@@ -22,7 +22,9 @@
         "libs/web/features/properties/src/index.ts"
       ],
       "@grafloria/web-store": ["libs/web/essentials/store/src/index.ts"],
-      "@grafloria/web-ui-library": ["libs/web/essentials/ui-library/src/index.ts"]
+      "@grafloria/web-ui-library": ["libs/web/essentials/ui-library/src/index.ts"],
+      "@grafloria/mock-api": ["tools/mock-api/src/index.ts"]
+
     }
   },
   "exclude": ["node_modules", "tmp"]
