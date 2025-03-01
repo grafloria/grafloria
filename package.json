@@ -83,6 +83,7 @@
     "@photo-sphere-viewer/core": "^5.11.4",
     "@popperjs/core": "^2.11.8",
     "@primeng/themes": "^19.0.2",
+    "@stripe/stripe-js": "^5.7.0",
     "@types/googlemaps": "^3.43.3",
     "bootstrap": "^5.3.3",
     "crypto-js": "^4.2.0",
