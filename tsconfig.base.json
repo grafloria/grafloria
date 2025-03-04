@@ -16,10 +16,10 @@
     "baseUrl": ".",
     "paths": {
       "@grafloria/mock-api": ["tools/mock-api/src/index.ts"],
+      "@grafloria/structura": ["libs/web/structura/src/index.ts"],
       "@grafloria/web-assets": ["libs/web/essentials/assets/src/index.ts"],
       "@grafloria/web-core": ["libs/web/essentials/core/src/index.ts"],
       "@grafloria/web-feature-auth": ["libs/web/features/auth/src/index.ts"],
-      "@grafloria/structura": ["libs/web/structura/src/index.ts"],
       "@grafloria/web-feature-properties": [
         "libs/web/features/properties/src/index.ts"
       ],
