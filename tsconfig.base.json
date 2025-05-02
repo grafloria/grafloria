@@ -15,6 +15,7 @@
     "skipDefaultLibCheck": true,
     "baseUrl": ".",
     "paths": {
+      "@grafloria/dashboard": ["libs/web/dashboard/src/index.ts"],
       "@grafloria/mock-api": ["tools/mock-api/src/index.ts"],
       "@grafloria/structura": ["libs/web/structura/src/index.ts"],
       "@grafloria/web-assets": ["libs/web/essentials/assets/src/index.ts"],
