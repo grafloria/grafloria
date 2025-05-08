@@ -2,9 +2,7 @@
   "name": "@grafloria/source",
   "version": "0.0.0",
   "license": "MIT",
-  "scripts": {
-    "postinstall": "rm -rf node_modules/bootstrap-icons/icons"
-  },
+  "scripts": {},
   "private": true,
   "devDependencies": {
     "@angular-devkit/build-angular": "^18.2.11",
@@ -94,6 +92,7 @@
     "@nestjs/mongoose": "^11.0.3",
     "@nestjs/passport": "^11.0.5",
     "@nestjs/platform-express": "^10.0.2",
+    "@ng-bootstrap/ng-bootstrap": "^18.0.0",
     "@ng-select/ng-select": "^13.9.1",
     "@ngrx/effects": "^18.1.1",
     "@ngrx/entity": "^18.1.1",
