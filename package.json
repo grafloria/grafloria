@@ -138,6 +138,7 @@
     "passport": "^0.7.0",
     "passport-jwt": "^4.0.1",
     "passport-local": "^1.0.0",
+    "pg": "^8.15.6",
     "photo-sphere-viewer": "^4.8.1",
     "popper.js": "^1.16.1",
     "primeicons": "^7.0.0",
