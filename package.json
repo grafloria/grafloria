@@ -122,6 +122,7 @@
     "devexpress-dashboard-angular": "^24.2.7",
     "devextreme": "^24.2.7",
     "devextreme-angular": "^24.2.7",
+    "drawflow": "^0.0.59",
     "echarts": "^5.5.1",
     "express": "^4.21.1",
     "fast-deep-equal": "^3.1.3",
