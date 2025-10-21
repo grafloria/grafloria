@@ -11,6 +11,9 @@ import type { NodeModel } from '../models/NodeModel';
 import type { PortModel } from '../models/PortModel';
 import type { LinkModel } from '../models/LinkModel';
 
+// Re-export ValidationResult for convenience
+export type { ValidationResult, ValidationError, ValidationWarning } from '../types';
+
 export interface ValidationOptions {
   validateTypes?: boolean;
   validateConnections?: boolean;
@@ -23,9 +26,24 @@ export type ValidationRule<T = any> = (entity: T) => ValidationResult;
 export class ValidationEngine {
   private typeRegistry: TypeRegistry;
   private customRules: Map<string, ValidationRule[]> = new Map();
+  private realTimeValidation: boolean = false;
 
   constructor(typeRegistry: TypeRegistry) {
     this.typeRegistry = typeRegistry;
+  }
+
+  /**
+   * Enable real-time validation
+   */
+  enableRealTimeValidation(): void {
+    this.realTimeValidation = true;
+  }
+
+  /**
+   * Disable real-time validation
+   */
+  disableRealTimeValidation(): void {
+    this.realTimeValidation = false;
   }
 
   /**

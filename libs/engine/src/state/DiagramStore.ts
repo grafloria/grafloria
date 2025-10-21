@@ -440,9 +440,15 @@ export class DiagramStore {
       return obj.map((item) => this.deepClone(item));
     }
 
+    // For class instances (has a constructor other than Object), return as-is
+    // This prevents trying to clone DiagramModel, NodeModel, etc.
+    if (obj.constructor && obj.constructor !== Object) {
+      return obj;
+    }
+
     const cloned: any = {};
     for (const key in obj) {
-      if (obj.hasOwnProperty(key)) {
+      if (Object.prototype.hasOwnProperty.call(obj, key)) {
         cloned[key] = this.deepClone(obj[key]);
       }
     }

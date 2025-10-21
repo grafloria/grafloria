@@ -156,6 +156,25 @@ export class DiagramModel extends DiagramEntity {
   }
 
   /**
+   * Clear all nodes and links
+   */
+  clear(): void {
+    // Remove all links first
+    const linkIds = Array.from(this.links.keys());
+    for (const linkId of linkIds) {
+      this.removeLink(linkId);
+    }
+
+    // Remove all nodes
+    const nodeIds = Array.from(this.nodes.keys());
+    for (const nodeId of nodeIds) {
+      this.removeNode(nodeId);
+    }
+
+    this.emitter.emit('diagram:cleared');
+  }
+
+  /**
    * Serialize to JSON
    */
   serialize(): SerializedDiagram {

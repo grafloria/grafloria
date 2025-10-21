@@ -21,5 +21,14 @@ export * from './validation';
 // State
 export * from './state';
 
+// Engine
+export * from './engine';
+
+// Serialization
+export * from './serialization';
+
+// Performance
+export * from './performance';
+
 // Utils
 export * from './utils';

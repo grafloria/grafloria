@@ -263,6 +263,13 @@ export class CommandManager {
   }
 
   /**
+   * Update command context
+   */
+  updateContext(updates: Partial<CommandContext>): void {
+    this.context = { ...this.context, ...updates };
+  }
+
+  /**
    * Execute command without adding to history
    */
   private async executeCommand(command: Command): Promise<void> {
