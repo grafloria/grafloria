@@ -33,3 +33,6 @@ export * from './performance';
 
 // Utils
 export * from './utils';
+
+// Routing
+export * from './routing';
