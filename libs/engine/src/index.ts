@@ -18,5 +18,8 @@ export * from './plugins';
 // Validation
 export * from './validation';
 
+// State
+export * from './state';
+
 // Utils
 export * from './utils';
