@@ -33,6 +33,7 @@ export interface NodeBehavior {
 }
 
 export interface NodeStyle {
+  shape?: string; // Shape type (rectangle, circle, diamond, etc.)
   fill?: string;
   stroke?: string;
   strokeWidth?: number;
@@ -42,6 +43,8 @@ export interface NodeStyle {
   borderRadius?: number;
   fontSize?: number;
   fontFamily?: string;
+  fontWeight?: string; // normal, bold, etc.
+  textDecoration?: string; // underline, overline, line-through
   color?: string;
   padding?: number;
   zIndex?: number;
