@@ -4,3 +4,5 @@ export * from './AddNodeCommand';
 export * from './RemoveNodeCommand';
 export * from './MoveNodeCommand';
 export * from './ResizeNodeCommand';
+export * from './AddLinkCommand';
+export * from './RemoveLinkCommand';

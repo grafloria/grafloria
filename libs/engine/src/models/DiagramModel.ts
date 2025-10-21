@@ -2,12 +2,13 @@
 
 import { DiagramEntity } from './DiagramEntity';
 import { NodeModel, SerializedNode } from './NodeModel';
+import { LinkModel, SerializedLink } from './LinkModel';
 import type { SerializedEntity, Point } from '../types';
 
 export interface SerializedDiagram extends SerializedEntity {
   name: string;
   nodes: SerializedNode[];
-  links: any[]; // Will be properly typed when LinkModel is implemented
+  links: SerializedLink[];
   groups: any[];
   viewport: {
     x: number;
@@ -19,7 +20,7 @@ export interface SerializedDiagram extends SerializedEntity {
 export class DiagramModel extends DiagramEntity {
   name: string = 'Untitled Diagram';
   nodes: Map<string, NodeModel> = new Map();
-  links: Map<string, any> = new Map(); // Will be LinkModel
+  links: Map<string, LinkModel> = new Map();
   groups: Map<string, any> = new Map(); // Will be GroupModel
 
   viewport = {
@@ -82,6 +83,54 @@ export class DiagramModel extends DiagramEntity {
   }
 
   /**
+   * Add link to diagram
+   */
+  addLink(link: LinkModel): void {
+    if (this.links.has(link.id)) {
+      throw new Error(`Link with id ${link.id} already exists`);
+    }
+
+    this.links.set(link.id, link);
+    this.trackChange('links', null, link);
+    this.emitter.emit('link:added', link);
+  }
+
+  /**
+   * Remove link from diagram
+   */
+  removeLink(linkId: string): LinkModel | undefined {
+    const link = this.links.get(linkId);
+    if (link) {
+      this.links.delete(linkId);
+      this.trackChange('links', link, null);
+      this.emitter.emit('link:removed', link);
+    }
+    return link;
+  }
+
+  /**
+   * Get link by ID
+   */
+  getLink(linkId: string): LinkModel | undefined {
+    return this.links.get(linkId);
+  }
+
+  /**
+   * Get all links
+   */
+  getLinks(): LinkModel[] {
+    return Array.from(this.links.values());
+  }
+
+  /**
+   * Clear all links
+   */
+  clearLinks(): void {
+    this.links.clear();
+    this.emitter.emit('links:cleared');
+  }
+
+  /**
    * Set viewport
    */
   setViewport(x: number, y: number, zoom: number): void {
@@ -118,7 +167,7 @@ export class DiagramModel extends DiagramEntity {
       metadata: Object.fromEntries(this.metadata),
       name: this.name,
       nodes: Array.from(this.nodes.values()).map((n) => n.serialize()),
-      links: [], // Will implement when LinkModel is ready
+      links: Array.from(this.links.values()).map((l) => l.serialize()),
       groups: [],
       viewport: { ...this.viewport },
     };
@@ -136,6 +185,12 @@ export class DiagramModel extends DiagramEntity {
     for (const nodeData of data.nodes) {
       const node = NodeModel.fromJSON(nodeData);
       diagram.nodes.set(node.id, node);
+    }
+
+    // Restore links
+    for (const linkData of data.links) {
+      const link = LinkModel.fromJSON(linkData);
+      diagram.links.set(link.id, link);
     }
 
     // Restore metadata
