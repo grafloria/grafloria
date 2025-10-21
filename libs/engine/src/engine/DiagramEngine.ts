@@ -16,13 +16,16 @@ import { AddNodeCommand } from '../commands/basic/AddNodeCommand';
 import { RemoveNodeCommand } from '../commands/basic/RemoveNodeCommand';
 import { AddLinkCommand } from '../commands/basic/AddLinkCommand';
 import { RemoveLinkCommand } from '../commands/basic/RemoveLinkCommand';
+import { DiagramMode, isValidDiagramMode, ModeChangeEvent } from './DiagramMode';
 import type { Point, Size, Viewport } from '../types';
 import type { Plugin } from '../types';
 import type { ValidationResult } from '../validation/ValidationEngine';
 import type { NodeTypeDefinition, LinkTypeDefinition } from '../validation/TypeRegistry';
+import type { NodeBehavior } from '../types';
 
 export interface DiagramEngineConfig {
   plugins?: Plugin[];
+  mode?: DiagramMode;
   performance?: {
     enableMonitoring?: boolean;
     enableProfiling?: boolean;
@@ -58,9 +61,11 @@ export class DiagramEngine {
   // State
   private initialized: boolean = false;
   private destroyed: boolean = false;
+  private currentMode: DiagramMode = DiagramMode.DESIGNER;
 
   constructor(config: DiagramEngineConfig = {}) {
     this.config = config;
+    this.currentMode = config.mode || DiagramMode.DESIGNER;
 
     // Initialize core systems
     this.eventBus = new EventBus();
@@ -425,6 +430,197 @@ export class DiagramEngine {
   }
 
   /**
+   * Get current diagram mode
+   */
+  getMode(): DiagramMode {
+    return this.currentMode;
+  }
+
+  /**
+   * Set diagram mode
+   */
+  setMode(mode: DiagramMode): void {
+    if (!isValidDiagramMode(mode)) {
+      throw new Error(`Invalid diagram mode: ${mode}`);
+    }
+
+    if (this.currentMode === mode) {
+      return; // No change
+    }
+
+    const previousMode = this.currentMode;
+    this.currentMode = mode;
+
+    // Emit mode changed event
+    const event: ModeChangeEvent = {
+      previousMode,
+      currentMode: mode,
+    };
+    this.eventBus.emit('mode-changed', event);
+  }
+
+  /**
+   * Check if in designer mode
+   */
+  isDesignerMode(): boolean {
+    return this.currentMode === DiagramMode.DESIGNER;
+  }
+
+  /**
+   * Check if in running mode
+   */
+  isRunningMode(): boolean {
+    return this.currentMode === DiagramMode.RUNNING;
+  }
+
+  /**
+   * Check if in view mode
+   */
+  isViewMode(): boolean {
+    return this.currentMode === DiagramMode.VIEW;
+  }
+
+  /**
+   * Check if in debug mode
+   */
+  isDebugMode(): boolean {
+    return this.currentMode === DiagramMode.DEBUG;
+  }
+
+  /**
+   * Check if in presentation mode
+   */
+  isPresentationMode(): boolean {
+    return this.currentMode === DiagramMode.PRESENTATION;
+  }
+
+  /**
+   * Check if in read-only mode (any mode except designer)
+   */
+  isReadOnlyMode(): boolean {
+    return this.currentMode !== DiagramMode.DESIGNER;
+  }
+
+  /**
+   * Get node behavior adjusted for current mode
+   */
+  getNodeBehaviorForMode(baseBehavior: Partial<NodeBehavior>): NodeBehavior {
+    const defaults: NodeBehavior = {
+      selectable: true,
+      draggable: true,
+      resizable: true,
+      rotatable: true,
+      deletable: true,
+      editable: true,
+      connectable: true,
+      groupable: true,
+      cloneable: true,
+    };
+
+    // Merge base behavior with defaults
+    const merged = { ...defaults, ...baseBehavior };
+
+    // Apply mode restrictions
+    switch (this.currentMode) {
+      case DiagramMode.DESIGNER:
+        // In designer mode, respect all base behavior settings
+        return merged;
+
+      case DiagramMode.RUNNING:
+      case DiagramMode.VIEW:
+      case DiagramMode.DEBUG:
+      case DiagramMode.PRESENTATION:
+        // In all other modes, disable editing capabilities
+        return {
+          ...merged,
+          draggable: false,
+          resizable: false,
+          rotatable: false,
+          deletable: false,
+          editable: false,
+          connectable: false,
+          groupable: false,
+          cloneable: false,
+          selectable: merged.selectable, // Keep selectable as-is
+        };
+
+      default:
+        return merged;
+    }
+  }
+
+  /**
+   * Get link behavior adjusted for current mode
+   */
+  getLinkBehaviorForMode(baseBehavior: Partial<{ deletable: boolean; selectable: boolean }>): {
+    deletable: boolean;
+    selectable: boolean;
+  } {
+    const defaults = {
+      deletable: true,
+      selectable: true,
+    };
+
+    // Merge base behavior with defaults
+    const merged = { ...defaults, ...baseBehavior };
+
+    // Apply mode restrictions
+    switch (this.currentMode) {
+      case DiagramMode.DESIGNER:
+        // In designer mode, respect all base behavior settings
+        return merged;
+
+      case DiagramMode.RUNNING:
+      case DiagramMode.VIEW:
+      case DiagramMode.DEBUG:
+      case DiagramMode.PRESENTATION:
+        // In all other modes, disable editing but keep selectable
+        return {
+          deletable: false,
+          selectable: merged.selectable,
+        };
+
+      default:
+        return merged;
+    }
+  }
+
+  /**
+   * Initialize the engine
+   */
+  initialize(): void {
+    if (this.initialized) {
+      return;
+    }
+
+    this.initialized = true;
+    this.destroyed = false;
+    this.currentMode = this.config.mode || DiagramMode.DESIGNER;
+    this.eventBus.emit('engine:initialized');
+  }
+
+  /**
+   * Get the store
+   */
+  getStore(): DiagramStore {
+    return this.store;
+  }
+
+  /**
+   * Subscribe to events
+   */
+  on(event: string, listener: (...args: any[]) => void): void {
+    this.eventBus.on(event, listener);
+  }
+
+  /**
+   * Unsubscribe from events
+   */
+  off(event: string, listener: (...args: any[]) => void): void {
+    this.eventBus.off(event, listener);
+  }
+
+  /**
    * Destroy engine
    */
   destroy(): void {
@@ -439,6 +635,10 @@ export class DiagramEngine {
     if (this.diagram) {
       this.detachDiagram(this.diagram);
     }
+
+    // Reset mode
+    this.currentMode = DiagramMode.DESIGNER;
+    this.initialized = false;
 
     // Note: PluginManager doesn't have destroy method yet
     // this.pluginManager.destroy();
