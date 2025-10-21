@@ -15,5 +15,8 @@ export * from './commands';
 // Plugins
 export * from './plugins';
 
+// Validation
+export * from './validation';
+
 // Utils
 export * from './utils';
