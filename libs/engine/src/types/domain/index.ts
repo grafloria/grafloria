@@ -2,3 +2,5 @@
 
 export * from './flowchart';
 export * from './erd';
+export * from './bpmn';
+export * from './uml';

@@ -44,6 +44,7 @@ export interface NodeStyle {
   fontSize?: number;
   fontFamily?: string;
   fontWeight?: string; // normal, bold, etc.
+  fontStyle?: string; // normal, italic, oblique
   textDecoration?: string; // underline, overline, line-through
   color?: string;
   padding?: number;
