@@ -307,8 +307,15 @@ export class DiagramStore {
   /**
    * Diff two states
    */
-  private diffState(prev: any, current: any, path: string = ''): string[] {
+  private diffState(prev: any, current: any, path: string = '', depth: number = 0): string[] {
     const changes: string[] = [];
+    const MAX_DEPTH = 10; // Prevent infinite recursion
+
+    // Prevent infinite recursion
+    if (depth > MAX_DEPTH) {
+      if (path && prev !== current) changes.push(path);
+      return changes;
+    }
 
     // Handle primitives
     if (prev === current) return changes;
@@ -336,7 +343,13 @@ export class DiagramStore {
       return changes;
     }
 
-    // Handle objects
+    // Handle objects - skip class instances to avoid circular references
+    if (prev.constructor !== Object || current.constructor !== Object) {
+      if (path && prev !== current) changes.push(path);
+      return changes;
+    }
+
+    // Handle plain objects only
     const allKeys = new Set([...Object.keys(prev || {}), ...Object.keys(current || {})]);
 
     for (const key of allKeys) {
@@ -351,7 +364,7 @@ export class DiagramStore {
           prevValue !== null &&
           currentValue !== null
         ) {
-          changes.push(...this.diffState(prevValue, currentValue, keyPath));
+          changes.push(...this.diffState(prevValue, currentValue, keyPath, depth + 1));
         } else {
           changes.push(keyPath);
         }

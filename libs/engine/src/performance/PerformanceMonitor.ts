@@ -42,16 +42,32 @@ export class PerformanceMonitor {
   /**
    * Measure operation performance
    */
-  measure<T>(name: string, fn: () => T): T {
+  measure<T>(name: string, fn: () => T | Promise<T>): T | Promise<T> {
     if (!this.config.enableMonitoring) {
       return fn();
     }
 
     const startTime = performance.now();
     const result = fn();
+
+    // Handle async functions
+    if (result instanceof Promise) {
+      return result.then((value) => {
+        const endTime = performance.now();
+        const duration = endTime - startTime;
+        this.recordMetric(name, duration);
+
+        if (duration > this.warnThreshold) {
+          console.warn(`Performance warning: ${name} took ${duration.toFixed(2)}ms`);
+        }
+
+        return value;
+      }) as T | Promise<T>;
+    }
+
+    // Handle sync functions
     const endTime = performance.now();
     const duration = endTime - startTime;
-
     this.recordMetric(name, duration);
 
     if (duration > this.warnThreshold) {

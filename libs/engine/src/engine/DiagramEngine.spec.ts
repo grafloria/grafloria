@@ -20,7 +20,7 @@ import type { Plugin } from '../types';
 describe('DiagramEngine', () => {
   let engine: DiagramEngine;
 
-  beforeEach(() => {
+  beforeEach(async () => {
     idCounter = 0;
     uuidCounter = 0;
     engine = new DiagramEngine();
@@ -31,7 +31,7 @@ describe('DiagramEngine', () => {
   });
 
   describe('Initialization', () => {
-    it('should create engine with default configuration', () => {
+    it('should create engine with default configuration', async () => {
       expect(engine).toBeDefined();
       expect(engine.eventBus).toBeDefined();
       expect(engine.store).toBeDefined();
@@ -43,7 +43,7 @@ describe('DiagramEngine', () => {
       expect(engine.performanceMonitor).toBeDefined();
     });
 
-    it('should create engine with custom configuration', () => {
+    it('should create engine with custom configuration', async () => {
       const config: DiagramEngineConfig = {
         performance: {
           enableMonitoring: true,
@@ -64,7 +64,7 @@ describe('DiagramEngine', () => {
       customEngine.destroy();
     });
 
-    it('should emit initialized event', () => {
+    it('should emit initialized event', async () => {
       const listener = jest.fn();
       const newEngine = new DiagramEngine();
 
@@ -76,13 +76,13 @@ describe('DiagramEngine', () => {
       newEngine.destroy();
     });
 
-    it('should have no diagram initially', () => {
+    it('should have no diagram initially', async () => {
       expect(engine.getDiagram()).toBeNull();
     });
   });
 
   describe('Diagram Management', () => {
-    it('should create new diagram', () => {
+    it('should create new diagram', async () => {
       const diagram = engine.createDiagram('Test Diagram');
 
       expect(diagram).toBeInstanceOf(DiagramModel);
@@ -90,13 +90,13 @@ describe('DiagramEngine', () => {
       expect(engine.getDiagram()).toBe(diagram);
     });
 
-    it('should create diagram with default name', () => {
+    it('should create diagram with default name', async () => {
       const diagram = engine.createDiagram();
 
       expect(diagram.name).toBe('Untitled');
     });
 
-    it('should emit diagram:created event', () => {
+    it('should emit diagram:created event', async () => {
       const listener = jest.fn();
       engine.eventBus.on('diagram:created', listener);
 
@@ -105,7 +105,7 @@ describe('DiagramEngine', () => {
       expect(listener).toHaveBeenCalledWith(diagram);
     });
 
-    it('should set diagram', () => {
+    it('should set diagram', async () => {
       const diagram = new DiagramModel('External Diagram');
 
       engine.setDiagram(diagram);
@@ -113,7 +113,7 @@ describe('DiagramEngine', () => {
       expect(engine.getDiagram()).toBe(diagram);
     });
 
-    it('should emit diagram:changed event when setting diagram', () => {
+    it('should emit diagram:changed event when setting diagram', async () => {
       const listener = jest.fn();
       engine.eventBus.on('diagram:changed', listener);
 
@@ -130,7 +130,7 @@ describe('DiagramEngine', () => {
       });
     });
 
-    it('should clear diagram', () => {
+    it('should clear diagram', async () => {
       const diagram = engine.createDiagram();
 
       // Add some nodes
@@ -144,7 +144,7 @@ describe('DiagramEngine', () => {
       expect(diagram.getNodes()).toHaveLength(0);
     });
 
-    it('should emit diagram:cleared event', () => {
+    it('should emit diagram:cleared event', async () => {
       const listener = jest.fn();
       engine.eventBus.on('diagram:cleared', listener);
 
@@ -154,7 +154,7 @@ describe('DiagramEngine', () => {
       expect(listener).toHaveBeenCalled();
     });
 
-    it('should handle setting diagram to null', () => {
+    it('should handle setting diagram to null', async () => {
       engine.createDiagram();
       engine.setDiagram(null);
 
@@ -163,12 +163,12 @@ describe('DiagramEngine', () => {
   });
 
   describe('Node Operations', () => {
-    beforeEach(() => {
+    beforeEach(async () => {
       engine.createDiagram();
     });
 
-    it('should add node to diagram', () => {
-      const node = engine.addNode({
+    it('should add node to diagram', async () => {
+      const node = await engine.addNode({
         type: 'process',
         position: { x: 100, y: 100 },
         size: { width: 200, height: 100 },
@@ -180,19 +180,17 @@ describe('DiagramEngine', () => {
       expect(engine.getDiagram()?.getNode(node.id)).toBe(node);
     });
 
-    it('should throw error when adding node without diagram', () => {
+    it('should throw error when adding node without diagram', async () => {
       engine.setDiagram(null);
 
-      expect(() => {
-        engine.addNode({
-          type: 'test',
-          position: { x: 0, y: 0 },
-        });
-      }).toThrow('No diagram loaded');
+      await expect(engine.addNode({
+        type: 'test',
+        position: { x: 0, y: 0 },
+      })).rejects.toThrow('No diagram loaded');
     });
 
-    it('should remove node from diagram', () => {
-      const node = engine.addNode({
+    it('should remove node from diagram', async () => {
+      const node = await engine.addNode({
         type: 'test',
         position: { x: 0, y: 0 },
       });
@@ -202,13 +200,13 @@ describe('DiagramEngine', () => {
       expect(engine.getDiagram()?.getNode(node.id)).toBeUndefined();
     });
 
-    it('should throw error when removing non-existent node', () => {
+    it('should throw error when removing non-existent node', async () => {
       expect(() => {
         engine.removeNode('non-existent-id');
       }).toThrow('Node non-existent-id not found');
     });
 
-    it('should throw error when removing node without diagram', () => {
+    it('should throw error when removing node without diagram', async () => {
       engine.setDiagram(null);
 
       expect(() => {
@@ -223,7 +221,7 @@ describe('DiagramEngine', () => {
     let sourcePort: PortModel;
     let targetPort: PortModel;
 
-    beforeEach(() => {
+    beforeEach(async () => {
       engine.createDiagram();
 
       sourceNode = new NodeModel({ type: 'test', position: { x: 0, y: 0 } });
@@ -239,8 +237,8 @@ describe('DiagramEngine', () => {
       engine.getDiagram()?.addNode(targetNode);
     });
 
-    it('should add link to diagram', () => {
-      const link = engine.addLink({
+    it('should add link to diagram', async () => {
+      const link = await engine.addLink({
         sourcePortId: sourcePort.id,
         targetPortId: targetPort.id,
       });
@@ -251,28 +249,24 @@ describe('DiagramEngine', () => {
       expect(engine.getDiagram()?.getLink(link.id)).toBe(link);
     });
 
-    it('should throw error when adding link without diagram', () => {
+    it('should throw error when adding link without diagram', async () => {
       engine.setDiagram(null);
 
-      expect(() => {
-        engine.addLink({
-          sourcePortId: 'port1',
-          targetPortId: 'port2',
-        });
-      }).toThrow('No diagram loaded');
+      await expect(engine.addLink({
+        sourcePortId: 'port1',
+        targetPortId: 'port2',
+      })).rejects.toThrow('No diagram loaded');
     });
 
-    it('should throw error when adding link with invalid ports', () => {
-      expect(() => {
-        engine.addLink({
-          sourcePortId: 'invalid-port',
-          targetPortId: targetPort.id,
-        });
-      }).toThrow('Invalid ports');
+    it('should throw error when adding link with invalid ports', async () => {
+      await expect(engine.addLink({
+        sourcePortId: 'invalid-port',
+        targetPortId: targetPort.id,
+      })).rejects.toThrow('Invalid ports');
     });
 
-    it('should remove link from diagram', () => {
-      const link = engine.addLink({
+    it('should remove link from diagram', async () => {
+      const link = await engine.addLink({
         sourcePortId: sourcePort.id,
         targetPortId: targetPort.id,
       });
@@ -282,13 +276,13 @@ describe('DiagramEngine', () => {
       expect(engine.getDiagram()?.getLink(link.id)).toBeUndefined();
     });
 
-    it('should throw error when removing non-existent link', () => {
+    it('should throw error when removing non-existent link', async () => {
       expect(() => {
         engine.removeLink('non-existent-id');
       }).toThrow('Link non-existent-id not found');
     });
 
-    it('should throw error when removing link without diagram', () => {
+    it('should throw error when removing link without diagram', async () => {
       engine.setDiagram(null);
 
       expect(() => {
@@ -302,7 +296,7 @@ describe('DiagramEngine', () => {
     let node2: NodeModel;
     let link1: LinkModel;
 
-    beforeEach(() => {
+    beforeEach(async () => {
       engine.createDiagram();
 
       node1 = new NodeModel({ type: 'test', position: { x: 0, y: 0 } });
@@ -325,7 +319,7 @@ describe('DiagramEngine', () => {
       engine.getDiagram()?.addLink(link1);
     });
 
-    it('should select nodes', () => {
+    it('should select nodes', async () => {
       engine.selectNodes([node1.id, node2.id]);
 
       const selectedNodes = engine.store.select<Set<string>>('selectedNodes');
@@ -333,14 +327,14 @@ describe('DiagramEngine', () => {
       expect(selectedNodes.has(node2.id)).toBe(true);
     });
 
-    it('should update node selected state', () => {
+    it('should update node selected state', async () => {
       engine.selectNodes([node1.id]);
 
       expect(node1.state.selected).toBe(true);
       expect(node2.state.selected).toBe(false);
     });
 
-    it('should emit selection:changed event for nodes', () => {
+    it('should emit selection:changed event for nodes', async () => {
       const listener = jest.fn();
       engine.eventBus.on('selection:changed', listener);
 
@@ -349,20 +343,20 @@ describe('DiagramEngine', () => {
       expect(listener).toHaveBeenCalledWith({ nodes: [node1.id] });
     });
 
-    it('should select links', () => {
+    it('should select links', async () => {
       engine.selectLinks([link1.id]);
 
       const selectedLinks = engine.store.select<Set<string>>('selectedLinks');
       expect(selectedLinks.has(link1.id)).toBe(true);
     });
 
-    it('should update link selected state', () => {
+    it('should update link selected state', async () => {
       engine.selectLinks([link1.id]);
 
       expect(link1.state).toBe('selected');
     });
 
-    it('should emit selection:changed event for links', () => {
+    it('should emit selection:changed event for links', async () => {
       const listener = jest.fn();
       engine.eventBus.on('selection:changed', listener);
 
@@ -371,7 +365,7 @@ describe('DiagramEngine', () => {
       expect(listener).toHaveBeenCalledWith({ links: [link1.id] });
     });
 
-    it('should clear selection', () => {
+    it('should clear selection', async () => {
       engine.selectNodes([node1.id, node2.id]);
       engine.selectLinks([link1.id]);
 
@@ -384,7 +378,7 @@ describe('DiagramEngine', () => {
       expect(selectedLinks.size).toBe(0);
     });
 
-    it('should emit selection:cleared event', () => {
+    it('should emit selection:cleared event', async () => {
       const listener = jest.fn();
       engine.eventBus.on('selection:cleared', listener);
 
@@ -395,12 +389,12 @@ describe('DiagramEngine', () => {
   });
 
   describe('Undo/Redo', () => {
-    beforeEach(() => {
+    beforeEach(async () => {
       engine.createDiagram();
     });
 
     it('should support undo', async () => {
-      const node = engine.addNode({
+      const node = await engine.addNode({
         type: 'test',
         position: { x: 0, y: 0 },
       });
@@ -413,7 +407,7 @@ describe('DiagramEngine', () => {
     });
 
     it('should support redo', async () => {
-      const node = engine.addNode({
+      const node = await engine.addNode({
         type: 'test',
         position: { x: 0, y: 0 },
       });
@@ -426,10 +420,10 @@ describe('DiagramEngine', () => {
       expect(engine.getDiagram()?.getNode(node.id)).toBeDefined();
     });
 
-    it('should report canUndo correctly', () => {
+    it('should report canUndo correctly', async () => {
       expect(engine.canUndo()).toBe(false);
 
-      engine.addNode({
+      await engine.addNode({
         type: 'test',
         position: { x: 0, y: 0 },
       });
@@ -440,7 +434,7 @@ describe('DiagramEngine', () => {
     it('should report canRedo correctly', async () => {
       expect(engine.canRedo()).toBe(false);
 
-      engine.addNode({
+      await engine.addNode({
         type: 'test',
         position: { x: 0, y: 0 },
       });
@@ -452,11 +446,11 @@ describe('DiagramEngine', () => {
   });
 
   describe('Validation', () => {
-    beforeEach(() => {
+    beforeEach(async () => {
       engine.createDiagram();
     });
 
-    it('should validate diagram', () => {
+    it('should validate diagram', async () => {
       const result = engine.validate();
 
       expect(result).toBeDefined();
@@ -465,15 +459,15 @@ describe('DiagramEngine', () => {
       expect(result.warnings).toBeDefined();
     });
 
-    it('should return valid for empty diagram', () => {
+    it('should return valid for empty diagram', async () => {
       const result = engine.validate();
 
       expect(result.valid).toBe(true);
       expect(result.errors).toHaveLength(0);
     });
 
-    it('should return valid for diagram with valid nodes', () => {
-      engine.addNode({
+    it('should return valid for diagram with valid nodes', async () => {
+      await engine.addNode({
         type: 'test',
         position: { x: 0, y: 0 },
       });
@@ -485,11 +479,11 @@ describe('DiagramEngine', () => {
   });
 
   describe('Serialization', () => {
-    beforeEach(() => {
+    beforeEach(async () => {
       engine.createDiagram('Serialization Test');
     });
 
-    it('should serialize diagram', () => {
+    it('should serialize diagram', async () => {
       const serialized = engine.serialize();
 
       expect(serialized).toBeDefined();
@@ -497,7 +491,7 @@ describe('DiagramEngine', () => {
       expect(serialized?.version).toBe('1.0.0');
     });
 
-    it('should return null when serializing without diagram', () => {
+    it('should return null when serializing without diagram', async () => {
       engine.setDiagram(null);
 
       const serialized = engine.serialize();
@@ -505,7 +499,7 @@ describe('DiagramEngine', () => {
       expect(serialized).toBeNull();
     });
 
-    it('should deserialize diagram', () => {
+    it('should deserialize diagram', async () => {
       const original = engine.serialize();
       expect(original).toBeDefined();
 
@@ -518,7 +512,7 @@ describe('DiagramEngine', () => {
       newEngine.destroy();
     });
 
-    it('should save to JSON', () => {
+    it('should save to JSON', async () => {
       const json = engine.saveToJSON();
 
       expect(json).toBeDefined();
@@ -528,7 +522,7 @@ describe('DiagramEngine', () => {
       expect(parsed.name).toBe('Serialization Test');
     });
 
-    it('should return null when saving without diagram', () => {
+    it('should return null when saving without diagram', async () => {
       engine.setDiagram(null);
 
       const json = engine.saveToJSON();
@@ -536,7 +530,7 @@ describe('DiagramEngine', () => {
       expect(json).toBeNull();
     });
 
-    it('should load from JSON', () => {
+    it('should load from JSON', async () => {
       const json = engine.saveToJSON();
       expect(json).toBeDefined();
 
@@ -551,7 +545,7 @@ describe('DiagramEngine', () => {
   });
 
   describe('Type Registration', () => {
-    it('should register node type', () => {
+    it('should register node type', async () => {
       engine.registerNodeType({
         type: 'custom-node',
         label: 'Custom Node',
@@ -560,7 +554,7 @@ describe('DiagramEngine', () => {
       expect(engine.typeRegistry.hasNodeType('custom-node')).toBe(true);
     });
 
-    it('should register link type', () => {
+    it('should register link type', async () => {
       engine.registerLinkType({
         type: 'custom-link',
         label: 'Custom Link',
@@ -602,7 +596,7 @@ describe('DiagramEngine', () => {
       expect(retrieved).toBe(plugin);
     });
 
-    it('should return undefined for non-existent plugin', () => {
+    it('should return undefined for non-existent plugin', async () => {
       const plugin = engine.getPlugin('non-existent');
 
       expect(plugin).toBeUndefined();
@@ -610,7 +604,7 @@ describe('DiagramEngine', () => {
   });
 
   describe('Viewport Management', () => {
-    it('should set viewport', () => {
+    it('should set viewport', async () => {
       const viewport = {
         x: 100,
         y: 200,
@@ -626,7 +620,7 @@ describe('DiagramEngine', () => {
       expect(stored).toEqual(viewport);
     });
 
-    it('should emit viewport:changed event', () => {
+    it('should emit viewport:changed event', async () => {
       const listener = jest.fn();
       engine.eventBus.on('viewport:changed', listener);
 
@@ -642,14 +636,14 @@ describe('DiagramEngine', () => {
       expect(listener).toHaveBeenCalledWith(viewport);
     });
 
-    it('should set zoom', () => {
+    it('should set zoom', async () => {
       engine.setZoom(2.0);
 
       const zoom = engine.store.select<number>('zoom');
       expect(zoom).toBe(2.0);
     });
 
-    it('should clamp zoom to valid range', () => {
+    it('should clamp zoom to valid range', async () => {
       engine.setZoom(10.0); // Too high
       expect(engine.store.select<number>('zoom')).toBe(5.0);
 
@@ -657,7 +651,7 @@ describe('DiagramEngine', () => {
       expect(engine.store.select<number>('zoom')).toBe(0.1);
     });
 
-    it('should emit viewport:zoomed event', () => {
+    it('should emit viewport:zoomed event', async () => {
       const listener = jest.fn();
       engine.eventBus.on('viewport:zoomed', listener);
 
@@ -668,7 +662,7 @@ describe('DiagramEngine', () => {
   });
 
   describe('Performance Monitoring', () => {
-    it('should get performance report', () => {
+    it('should get performance report', async () => {
       const report = engine.getPerformanceReport();
 
       expect(report).toBeDefined();
@@ -676,7 +670,7 @@ describe('DiagramEngine', () => {
       expect(report.summary).toBeDefined();
     });
 
-    it('should track node additions when monitoring enabled', () => {
+    it('should track node additions when monitoring enabled', async () => {
       const monitoredEngine = new DiagramEngine({
         performance: {
           enableMonitoring: true,
@@ -684,7 +678,7 @@ describe('DiagramEngine', () => {
       });
 
       monitoredEngine.createDiagram();
-      monitoredEngine.addNode({
+      await monitoredEngine.addNode({
         type: 'test',
         position: { x: 0, y: 0 },
       });
@@ -697,7 +691,7 @@ describe('DiagramEngine', () => {
   });
 
   describe('Lifecycle', () => {
-    it('should destroy engine', () => {
+    it('should destroy engine', async () => {
       const diagram = engine.createDiagram();
 
       engine.destroy();
@@ -706,7 +700,7 @@ describe('DiagramEngine', () => {
       engine.destroy();
     });
 
-    it('should emit engine:destroyed event', () => {
+    it('should emit engine:destroyed event', async () => {
       const listener = jest.fn();
       engine.eventBus.on('engine:destroyed', listener);
 
@@ -715,7 +709,7 @@ describe('DiagramEngine', () => {
       expect(listener).toHaveBeenCalled();
     });
 
-    it('should cleanup diagram on destroy', () => {
+    it('should cleanup diagram on destroy', async () => {
       const diagram = engine.createDiagram();
 
       engine.destroy();
@@ -726,11 +720,11 @@ describe('DiagramEngine', () => {
   });
 
   describe('Event Forwarding', () => {
-    beforeEach(() => {
+    beforeEach(async () => {
       engine.createDiagram();
     });
 
-    it('should forward node:added events from diagram to eventBus', () => {
+    it('should forward node:added events from diagram to eventBus', async () => {
       const listener = jest.fn();
       engine.eventBus.on('node:added', listener);
 
@@ -740,7 +734,7 @@ describe('DiagramEngine', () => {
       expect(listener).toHaveBeenCalledWith(node);
     });
 
-    it('should forward node:removed events from diagram to eventBus', () => {
+    it('should forward node:removed events from diagram to eventBus', async () => {
       const listener = jest.fn();
       const node = new NodeModel({ type: 'test', position: { x: 0, y: 0 } });
       engine.getDiagram()?.addNode(node);
@@ -751,7 +745,7 @@ describe('DiagramEngine', () => {
       expect(listener).toHaveBeenCalledWith(node);
     });
 
-    it('should forward link:added events from diagram to eventBus', () => {
+    it('should forward link:added events from diagram to eventBus', async () => {
       const listener = jest.fn();
       engine.eventBus.on('link:added', listener);
 
@@ -776,7 +770,7 @@ describe('DiagramEngine', () => {
       expect(listener).toHaveBeenCalledWith(link);
     });
 
-    it('should forward link:removed events from diagram to eventBus', () => {
+    it('should forward link:removed events from diagram to eventBus', async () => {
       const listener = jest.fn();
 
       const node1 = new NodeModel({ type: 'test', position: { x: 0, y: 0 } });

@@ -25,7 +25,8 @@ export * from './state';
 export * from './engine';
 
 // Serialization
-export * from './serialization';
+export { DiagramSerializer } from './serialization/Serializer';
+export type { SerializedDiagram as SerializedDiagramData } from './serialization/Serializer';
 
 // Performance
 export * from './performance';

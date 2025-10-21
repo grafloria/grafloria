@@ -147,17 +147,17 @@ export class DiagramEngine {
   /**
    * Add node
    */
-  addNode(config: {
+  async addNode(config: {
     type: string;
     position: Point;
     size?: Size;
     data?: any;
-  }): NodeModel {
+  }): Promise<NodeModel> {
     if (!this.diagram) {
       throw new Error('No diagram loaded');
     }
 
-    return this.performanceMonitor.measure('addNode', () => {
+    return this.performanceMonitor.measure('addNode', async () => {
       const node = new NodeModel(config);
 
       // Validate
@@ -170,9 +170,10 @@ export class DiagramEngine {
 
       // Add via command
       const command = new AddNodeCommand(node);
-      this.commandManager.execute(command);
+      await this.commandManager.execute(command);
 
-      return node;
+      // Return the node that was actually added (might be deserialized)
+      return (this.diagram && this.diagram.getNode(node.id)) || node;
     });
   }
 
@@ -196,17 +197,17 @@ export class DiagramEngine {
   /**
    * Add link
    */
-  addLink(config: {
+  async addLink(config: {
     sourcePortId: string;
     targetPortId: string;
     type?: string;
     data?: any;
-  }): LinkModel {
+  }): Promise<LinkModel> {
     if (!this.diagram) {
       throw new Error('No diagram loaded');
     }
 
-    return this.performanceMonitor.measure('addLink', () => {
+    return this.performanceMonitor.measure('addLink', async () => {
       // Check ports exist
       const sourcePort = this.findPort(config.sourcePortId);
       const targetPort = this.findPort(config.targetPortId);
@@ -225,9 +226,10 @@ export class DiagramEngine {
 
       // Add via command
       const command = new AddLinkCommand(link);
-      this.commandManager.execute(command);
+      await this.commandManager.execute(command);
 
-      return link;
+      // Return the link that was actually added (might be deserialized)
+      return (this.diagram && this.diagram.getLink(link.id)) || link;
     });
   }
 
