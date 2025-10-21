@@ -1,5 +1,4 @@
-// PerformanceMonitor - Stub implementation for performance monitoring
-// TODO: Implement full performance monitoring in future phase
+// PerformanceMonitor - Tracks operation performance and generates reports
 
 export interface PerformanceConfig {
   enableMonitoring?: boolean;
