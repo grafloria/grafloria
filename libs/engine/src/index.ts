@@ -12,5 +12,8 @@ export * from './events';
 // Commands
 export * from './commands';
 
+// Plugins
+export * from './plugins';
+
 // Utils
 export * from './utils';
