@@ -454,6 +454,107 @@ export class DiagramModel extends DiagramEntity {
   }
 
   /**
+   * Get all dirty nodes (Phase 5.2)
+   * Returns nodes that need re-rendering
+   */
+  getDirtyNodes(): NodeModel[] {
+    return this.getNodes().filter((node) => node.isDirty);
+  }
+
+  /**
+   * Get all dirty links (Phase 5.2)
+   * Returns links that need re-rendering
+   */
+  getDirtyLinks(): LinkModel[] {
+    return this.getLinks().filter((link) => link.isDirty);
+  }
+
+  /**
+   * Get all dirty groups (Phase 5.2)
+   * Returns groups that need re-rendering
+   */
+  getDirtyGroups(): GroupModel[] {
+    return this.getGroups().filter((group) => group.isDirty);
+  }
+
+  /**
+   * Mark all entities as clean (Phase 5.2)
+   * Call this after rendering to reset dirty flags
+   */
+  markAllClean(): void {
+    // Mark all nodes clean
+    for (const node of this.nodes.values()) {
+      node.markClean();
+    }
+
+    // Mark all links clean
+    for (const link of this.links.values()) {
+      link.markClean();
+    }
+
+    // Mark all groups clean
+    for (const group of this.groups.values()) {
+      group.markClean();
+    }
+
+    // Emit event
+    this.emitter.emit('dirty:cleared');
+  }
+
+  /**
+   * Get total count of dirty entities (Phase 5.2)
+   * Useful for monitoring render performance
+   */
+  getDirtyCount(): number {
+    let count = 0;
+
+    for (const node of this.nodes.values()) {
+      if (node.isDirty) count++;
+    }
+
+    for (const link of this.links.values()) {
+      if (link.isDirty) count++;
+    }
+
+    for (const group of this.groups.values()) {
+      if (group.isDirty) count++;
+    }
+
+    return count;
+  }
+
+  /**
+   * Get visible dirty nodes (Phase 5.2)
+   * Combines viewport virtualization with dirty marking
+   * Only returns nodes that are both visible AND need re-rendering
+   *
+   * @param viewport - Rectangular viewport region
+   * @returns Array of nodes that are visible and dirty
+   *
+   * @example
+   * ```typescript
+   * const viewport = { x: 0, y: 0, width: 800, height: 600 };
+   * const dirtyVisible = diagram.getVisibleDirtyNodes(viewport);
+   * // Only re-render these nodes - maximum efficiency!
+   * ```
+   */
+  getVisibleDirtyNodes(viewport: Rectangle): NodeModel[] {
+    return this.getVisibleNodes(viewport).filter((node) => node.isDirty);
+  }
+
+  /**
+   * Get visible dirty links (Phase 5.2)
+   * Combines viewport virtualization with dirty marking
+   * Only returns links that are both visible AND need re-rendering
+   *
+   * @param viewport - Rectangular viewport region
+   * @returns Array of links that are visible and dirty
+   */
+  getVisibleDirtyLinks(viewport: Rectangle): LinkModel[] {
+    return this.getVisibleLinks(viewport).filter((link) => link.isDirty);
+  }
+
+  /**
    * Serialize to JSON
    */
   serialize(): SerializedDiagram {

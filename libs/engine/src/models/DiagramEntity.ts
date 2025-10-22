@@ -21,11 +21,97 @@ export abstract class DiagramEntity {
   protected changeLog: ChangeEntry[] = [];
   protected maxChangeLogSize = 100;
 
+  // Phase 5.2: Dirty marking for lazy rendering
+  private _isDirty: boolean = true; // Start dirty since never rendered
+  private _dirtyTimestamp: number | null = null;
+  private _dirtyReasons: Set<string> = new Set(['created']);
+  private _batchDepth: number = 0;
+  private _batchHadChanges: boolean = false;
+
   constructor(id?: string, uuid?: string) {
     this.id = id || generateId();
     this.uuid = uuid || generateUUID();
     this.metadata = new Map();
     this.emitter = new EventEmitter();
+    this._dirtyTimestamp = Date.now(); // Set initial timestamp
+  }
+
+  /**
+   * Check if entity has been modified since last render (Phase 5.2)
+   */
+  get isDirty(): boolean {
+    return this._isDirty;
+  }
+
+  /**
+   * Mark entity as dirty (needs re-render) (Phase 5.2)
+   */
+  markDirty(reason?: string): void {
+    const wasDirty = this._isDirty;
+
+    this._isDirty = true;
+    this._dirtyTimestamp = Date.now();
+
+    if (reason) {
+      this._dirtyReasons.add(reason);
+    }
+
+    // Only emit if state changed
+    if (!wasDirty) {
+      this.emitter.emit('dirty:changed', true);
+    }
+  }
+
+  /**
+   * Mark entity as clean (rendered) (Phase 5.2)
+   */
+  markClean(): void {
+    const wasDirty = this._isDirty;
+
+    this._isDirty = false;
+    this._dirtyTimestamp = null;
+    this._dirtyReasons.clear();
+
+    // Only emit if state changed
+    if (wasDirty) {
+      this.emitter.emit('dirty:changed', false);
+    }
+  }
+
+  /**
+   * Get reasons why entity is dirty (Phase 5.2)
+   */
+  getDirtyReasons(): string[] {
+    return Array.from(this._dirtyReasons);
+  }
+
+  /**
+   * Get timestamp when entity was marked dirty (Phase 5.2)
+   */
+  getDirtyTimestamp(): number | null {
+    return this._dirtyTimestamp;
+  }
+
+  /**
+   * Begin batch update (Phase 5.2)
+   * Delays dirty marking until batch ends
+   */
+  beginBatch(): void {
+    this._batchDepth++;
+  }
+
+  /**
+   * End batch update (Phase 5.2)
+   * Marks dirty once if any changes occurred
+   */
+  endBatch(): void {
+    this._batchDepth = Math.max(0, this._batchDepth - 1);
+
+    // When all batches complete, mark dirty if needed
+    if (this._batchDepth === 0 && this._batchHadChanges) {
+      this.markDirty('batch');
+      this._batchHadChanges = false;
+    }
   }
 
   /**
@@ -54,6 +140,16 @@ export abstract class DiagramEntity {
 
     // Increment version
     this.version++;
+
+    // Phase 5.2: Auto-mark dirty on changes
+    if (this._batchDepth > 0) {
+      // In batch mode, just track that changes occurred
+      this._batchHadChanges = true;
+      this._dirtyReasons.add(property);
+    } else {
+      // Not in batch, mark dirty immediately
+      this.markDirty(property);
+    }
 
     // Emit change event
     this.emitter.emit('change', entry);
