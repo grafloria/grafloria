@@ -81,13 +81,15 @@ export class SVGRenderer implements IRenderer {
     const linksLayer = this.renderLinksLayer(visibleLinks, lod);
     const nodesLayer = this.renderNodesLayer(visibleNodes, lod);
 
-    // Apply zoom to viewBox (divide by zoom to create zoom effect)
-    // zoom > 1: smaller viewBox = zoomed in
-    // zoom < 1: larger viewBox = zoomed out
+    // Apply zoom to viewBox (zoom around center point)
+    // The center point should remain constant regardless of zoom level
+    const centerX = viewport.x + viewport.width / 2;
+    const centerY = viewport.y + viewport.height / 2;
+
     const viewBoxWidth = viewport.width / zoom;
     const viewBoxHeight = viewport.height / zoom;
-    const viewBoxX = viewport.x + (viewport.width - viewBoxWidth) / 2;
-    const viewBoxY = viewport.y + (viewport.height - viewBoxHeight) / 2;
+    const viewBoxX = centerX - viewBoxWidth / 2;
+    const viewBoxY = centerY - viewBoxHeight / 2;
 
     // Create root SVG VNode
     const root: VNode = {

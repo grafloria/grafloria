@@ -186,7 +186,7 @@ export class AppComponent implements OnInit {
   }
 
   /**
-   * Add a new node with collision avoidance
+   * Add a new node with smart placement (avoids collisions)
    */
   addRandomNode(): void {
     const diagram = this.engine.getDiagram();
@@ -194,10 +194,9 @@ export class AppComponent implements OnInit {
 
     const nodeWidth = 200;
     const nodeHeight = 100;
-    const spacing = 20; // Minimum spacing between nodes
+    const spacing = 20;
 
-    // Try to find a non-overlapping position
-    let position = this.findNonOverlappingPosition(diagram, nodeWidth, nodeHeight, spacing);
+    const position = this.findNonOverlappingPosition(diagram, nodeWidth, nodeHeight, spacing);
 
     const node = new NodeModel({
       type: 'basic',
@@ -211,6 +210,7 @@ export class AppComponent implements OnInit {
 
   /**
    * Find a position for a new node that doesn't overlap existing nodes
+   * Strategy: Place below last node, or to the right if collision
    */
   private findNonOverlappingPosition(
     diagram: any,
@@ -220,76 +220,74 @@ export class AppComponent implements OnInit {
   ): { x: number; y: number } {
     const nodes = diagram.getNodes();
 
-    // If no nodes, place at viewport center
+    // If no nodes, place in visible area
     if (nodes.length === 0) {
-      return {
-        x: this.viewport.x + this.viewport.width / 2 - width / 2,
-        y: this.viewport.y + this.viewport.height / 2 - height / 2,
-      };
+      return { x: 100, y: 100 };
     }
 
-    // Strategy 1: Try placing below the last added node
+    // Try placing below the last added node
     const lastNode = nodes[nodes.length - 1];
     const lastBounds = lastNode.getBoundingBox();
 
-    let candidateY = lastBounds.bottom + spacing;
-    let candidateX = lastBounds.left;
+    // Try multiple positions
+    const candidates = [
+      // Below last node (preferred)
+      { x: lastBounds.left, y: lastBounds.bottom + spacing },
+      // To the right of last node
+      { x: lastBounds.right + spacing, y: lastBounds.top },
+      // Below and to the right
+      { x: lastBounds.right + spacing, y: lastBounds.bottom + spacing },
+      // In a grid pattern
+      { x: 100, y: lastBounds.bottom + spacing },
+      { x: 350, y: lastBounds.bottom + spacing },
+      { x: 600, y: lastBounds.bottom + spacing },
+    ];
 
-    // Check if this position overlaps with any node
-    let maxAttempts = 20;
-    let attempt = 0;
-
-    while (attempt < maxAttempts) {
-      const testBounds = {
-        left: candidateX,
-        top: candidateY,
-        right: candidateX + width,
-        bottom: candidateY + height,
-        width,
-        height,
-      };
-
-      // Check for collision with existing nodes
-      let hasCollision = false;
-      for (const node of nodes) {
-        const nodeBounds = node.getBoundingBox();
-        const expandedBounds = {
-          left: nodeBounds.left - spacing,
-          top: nodeBounds.top - spacing,
-          right: nodeBounds.right + spacing,
-          bottom: nodeBounds.bottom + spacing,
-          width: nodeBounds.width + spacing * 2,
-          height: nodeBounds.height + spacing * 2,
-        };
-
-        if (this.boundsIntersect(testBounds, expandedBounds)) {
-          hasCollision = true;
-          break;
-        }
+    // Try each candidate position
+    for (const candidate of candidates) {
+      if (!this.hasCollision(candidate, width, height, spacing, nodes)) {
+        return candidate;
       }
-
-      if (!hasCollision) {
-        return { x: candidateX, y: candidateY };
-      }
-
-      // Strategy 2: Try moving to the right
-      if (attempt < 10) {
-        candidateX += width + spacing;
-      }
-      // Strategy 3: Try a new row
-      else {
-        candidateY += height + spacing;
-        candidateX = this.viewport.x + 100;
-      }
-
-      attempt++;
     }
 
-    // Fallback: Place at viewport center with random offset
-    return {
-      x: this.viewport.x + this.viewport.width / 2 - width / 2 + (Math.random() - 0.5) * 100,
-      y: this.viewport.y + this.viewport.height / 2 - height / 2 + (Math.random() - 0.5) * 100,
+    // Fallback: place in next available row
+    const maxY = Math.max(...nodes.map((n: any) => n.getBoundingBox().bottom));
+    return { x: 100, y: maxY + spacing };
+  }
+
+  /**
+   * Check if a position would cause collision with existing nodes
+   */
+  private hasCollision(
+    position: { x: number; y: number },
+    width: number,
+    height: number,
+    spacing: number,
+    nodes: any[]
+  ): boolean {
+    const testBounds = {
+      left: position.x,
+      top: position.y,
+      right: position.x + width,
+      bottom: position.y + height,
     };
+
+    for (const node of nodes) {
+      const nodeBounds = node.getBoundingBox();
+      // Add spacing buffer around existing node
+      const expandedBounds = {
+        left: nodeBounds.left - spacing,
+        top: nodeBounds.top - spacing,
+        right: nodeBounds.right + spacing,
+        bottom: nodeBounds.bottom + spacing,
+      };
+
+      if (this.boundsIntersect(testBounds, expandedBounds)) {
+        return true;
+      }
+    }
+
+    return false;
   }
 
   /**
