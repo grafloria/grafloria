@@ -133,6 +133,13 @@ export class ObstacleMap {
   }
 
   /**
+   * Get all obstacles as an array (Phase 1.6b)
+   */
+  getObstacles(): Obstacle[] {
+    return Array.from(this.obstacles.values());
+  }
+
+  /**
    * Check if a point is inside any obstacle
    */
   isPointInside(point: Point, respectMargin = false): boolean {
