@@ -20,12 +20,29 @@ export class AddNodeCommand extends Command {
     // Restore node from serialized data
     const node = NodeModel.fromJSON(this.nodeData);
     diagram.addNode(node);
+
+    // Set up hierarchy if node has parent (Phase 1.6a Part 5)
+    if (node.parentId) {
+      const parent = diagram.getNode(node.parentId);
+      if (parent) {
+        parent.addChild(node.id);
+      }
+    }
   }
 
   override undo(context: CommandContext): void {
     const diagram = context.diagram;
     if (!diagram) {
       throw new Error('Diagram not found in context');
+    }
+
+    // Clean up hierarchy before removing (Phase 1.6a Part 5)
+    const node = diagram.getNode(this.nodeData.id);
+    if (node && node.parentId) {
+      const parent = diagram.getNode(node.parentId);
+      if (parent) {
+        parent.removeChild(node.id);
+      }
     }
 
     diagram.removeNode(this.nodeData.id);
