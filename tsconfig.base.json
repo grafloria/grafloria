@@ -27,7 +27,11 @@
       "@grafloria/web-store": ["libs/web/essentials/store/src/index.ts"],
       "@grafloria/web-ui-library": ["libs/web/essentials/ui-library/src/index.ts"],
       "@grafloria/canvas-ng": ["libs/canvas-ng/canvas-ng/src/index.ts"],
-      "@grafloria/engine": ["libs/engine/src/index.ts"]
+      "@grafloria/engine": ["libs/engine/src/index.ts"],
+      "@grafloria/renderer": ["libs/renderer/src/index.ts"],
+      "@grafloria/renderer-angular": [
+        "libs/renderer-angular/renderer-angular/src/index.ts"
+      ]
     }
   },
   "exclude": ["node_modules", "tmp"]
