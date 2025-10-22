@@ -1,3 +1,6 @@
+// Geometry types
+export * from './geometry.types';
+
 // VNode types
 export * from './vnode.types';
 

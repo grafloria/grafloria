@@ -1,16 +1,9 @@
 // Routing Types - Core types for smart routing system
 
-import type { Point } from '../types';
+import type { Point, Rectangle as GeometryRectangle } from '../types';
 
-/**
- * Rectangle shape
- */
-export interface Rectangle {
-  x: number;
-  y: number;
-  width: number;
-  height: number;
-}
+// Re-export Rectangle for backward compatibility
+export type { GeometryRectangle as Rectangle };
 
 /**
  * A point in the routing grid/space
@@ -51,7 +44,7 @@ export interface RoutedPath {
 /**
  * Obstacle in the routing space (usually a node)
  */
-export interface Obstacle extends Rectangle {
+export interface Obstacle extends GeometryRectangle {
   /** Unique identifier */
   id: string;
   /** Optional padding/margin around obstacle */

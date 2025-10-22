@@ -1,5 +1,5 @@
 import type { VNode } from './vnode.types';
-import type { Rectangle } from '@grafloria/engine';
+import type { Rectangle } from './geometry.types';
 
 /**
  * Renderer interface - contract for all renderers (SVG, Canvas, etc.)
