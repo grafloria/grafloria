@@ -566,11 +566,13 @@ export class DiagramModel extends DiagramEntity {
    *
    * @param zoom - Current zoom level
    * @returns LOD level (high/medium/low)
+   *
+   * NOTE: Threshold lowered from 0.5 to 0.2 for better label visibility in demos
    */
   getLODLevel(zoom: number): LODLevel {
     if (zoom > 1.0) {
       return 'high';
-    } else if (zoom > 0.5) {
+    } else if (zoom > 0.2) {
       return 'medium';
     } else {
       return 'low';

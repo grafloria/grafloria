@@ -269,8 +269,8 @@ describe('SVGRenderer', () => {
       const hasLabel = nodeHigh.children?.some(child => child.type === 'text');
       expect(hasLabel).toBe(true);
 
-      // Low LOD (zoom < 0.5) - should NOT render labels
-      const vnodeLow = renderer.render(viewport, 0.3) as VNode;
+      // Low LOD (zoom <= 0.2) - should NOT render labels
+      const vnodeLow = renderer.render(viewport, 0.15) as VNode;
       const nodeLow = vnodeLow.children![1].children![0];
       const hasLabelLow = nodeLow.children?.some(child => child.type === 'text');
       expect(hasLabelLow).toBe(false);
@@ -281,7 +281,7 @@ describe('SVGRenderer', () => {
 
       // Verify engine LOD system is used
       const lodHigh = diagram.getLODLevel(1.5);
-      const lodLow = diagram.getLODLevel(0.3);
+      const lodLow = diagram.getLODLevel(0.15);
 
       expect(lodHigh).toBe('high');
       expect(lodLow).toBe('low');

@@ -19,15 +19,17 @@ describe('DiagramModel - Level of Detail (Phase 5.3)', () => {
       expect(level).toBe('high');
     });
 
-    it('should return MEDIUM detail for 0.5 < zoom <= 1.0', () => {
+    it('should return MEDIUM detail for 0.2 < zoom <= 1.0', () => {
       expect(diagram.getLODLevel(1.0)).toBe('medium');
       expect(diagram.getLODLevel(0.75)).toBe('medium');
       expect(diagram.getLODLevel(0.6)).toBe('medium');
+      expect(diagram.getLODLevel(0.5)).toBe('medium');
+      expect(diagram.getLODLevel(0.3)).toBe('medium');
     });
 
-    it('should return LOW detail for zoom <= 0.5', () => {
-      expect(diagram.getLODLevel(0.5)).toBe('low');
-      expect(diagram.getLODLevel(0.3)).toBe('low');
+    it('should return LOW detail for zoom <= 0.2', () => {
+      expect(diagram.getLODLevel(0.2)).toBe('low');
+      expect(diagram.getLODLevel(0.15)).toBe('low');
       expect(diagram.getLODLevel(0.1)).toBe('low');
     });
 
@@ -90,7 +92,7 @@ describe('DiagramModel - Level of Detail (Phase 5.3)', () => {
         height: 1000,
       };
 
-      const nodesWithLOD = diagram.getNodesWithLOD(viewport, 0.3);
+      const nodesWithLOD = diagram.getNodesWithLOD(viewport, 0.15);
 
       nodesWithLOD.forEach((item) => {
         expect(item.lod).toBe('low');
@@ -153,7 +155,7 @@ describe('DiagramModel - Level of Detail (Phase 5.3)', () => {
 
       const highLOD = diagram.getLinksWithLOD(viewport, 1.5);
       const mediumLOD = diagram.getLinksWithLOD(viewport, 0.75);
-      const lowLOD = diagram.getLinksWithLOD(viewport, 0.3);
+      const lowLOD = diagram.getLinksWithLOD(viewport, 0.15);
 
       expect(highLOD.every((item) => item.lod === 'high')).toBe(true);
       expect(mediumLOD.every((item) => item.lod === 'medium')).toBe(true);

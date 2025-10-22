@@ -127,35 +127,44 @@ export class AppComponent implements OnInit {
   }
 
   /**
-   * Zoom in
+   * Zoom in (multiply by 1.1 for proportional zooming)
    */
   zoomIn(): void {
-    this.zoom = Math.min(this.zoom + 0.1, 3.0);
+    this.zoom = Math.min(this.zoom * 1.1, 3.0);
   }
 
   /**
-   * Zoom out
+   * Zoom out (divide by 1.1 for proportional zooming)
    */
   zoomOut(): void {
-    this.zoom = Math.max(this.zoom - 0.1, 0.1);
+    this.zoom = Math.max(this.zoom / 1.1, 0.1);
   }
 
   /**
-   * Reset zoom
+   * Reset zoom to 100% and center viewport
    */
   resetZoom(): void {
     this.zoom = 1.0;
+    this.viewport = { x: 0, y: 0, width: 1200, height: 800 };
   }
 
   /**
-   * Add a random node
+   * Add a new node at the center of the viewport
    */
   addRandomNode(): void {
     const diagram = this.engine.getDiagram();
     if (!diagram) return;
 
-    const x = Math.random() * 1000 + 100;
-    const y = Math.random() * 600 + 100;
+    // Calculate center of viewport
+    const centerX = this.viewport.x + this.viewport.width / 2;
+    const centerY = this.viewport.y + this.viewport.height / 2;
+
+    // Add some randomness but keep it near the center (within ±100px)
+    const offsetX = (Math.random() - 0.5) * 200;
+    const offsetY = (Math.random() - 0.5) * 200;
+
+    const x = centerX + offsetX - 100; // -100 to account for half node width
+    const y = centerY + offsetY - 50;  // -50 to account for half node height
 
     const node = new NodeModel({
       type: 'basic',
