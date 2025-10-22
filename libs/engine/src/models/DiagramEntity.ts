@@ -28,6 +28,9 @@ export abstract class DiagramEntity {
   private _batchDepth: number = 0;
   private _batchHadChanges: boolean = false;
 
+  // Phase 5.4: Memory management
+  private _disposed: boolean = false;
+
   constructor(id?: string, uuid?: string) {
     this.id = id || generateId();
     this.uuid = uuid || generateUUID();
@@ -47,6 +50,8 @@ export abstract class DiagramEntity {
    * Mark entity as dirty (needs re-render) (Phase 5.2)
    */
   markDirty(reason?: string): void {
+    this.assertNotDisposed(); // Phase 5.4: Prevent operations on disposed entities
+
     const wasDirty = this._isDirty;
 
     this._isDirty = true;
@@ -66,6 +71,8 @@ export abstract class DiagramEntity {
    * Mark entity as clean (rendered) (Phase 5.2)
    */
   markClean(): void {
+    this.assertNotDisposed(); // Phase 5.4
+
     const wasDirty = this._isDirty;
 
     this._isDirty = false;
@@ -122,6 +129,8 @@ export abstract class DiagramEntity {
     oldValue: any,
     newValue: any
   ): void {
+    this.assertNotDisposed(); // Phase 5.4
+
     // Skip if values are the same
     if (oldValue === newValue) return;
 
@@ -192,6 +201,7 @@ export abstract class DiagramEntity {
    * Set metadata value
    */
   setMetadata(key: string, value: any): void {
+    this.assertNotDisposed(); // Phase 5.4
     const oldValue = this.metadata.get(key);
     this.metadata.set(key, value);
     this.trackChange(`metadata.${key}`, oldValue, value);
@@ -226,11 +236,51 @@ export abstract class DiagramEntity {
   abstract serialize(): SerializedEntity;
 
   /**
-   * Dispose entity and clean up resources
+   * Check if entity has been disposed (Phase 5.4)
+   */
+  isDisposed(): boolean {
+    return this._disposed;
+  }
+
+  /**
+   * Check if entity is not disposed and throw if it is (Phase 5.4)
+   */
+  protected assertNotDisposed(): void {
+    if (this._disposed) {
+      throw new Error('Cannot operate on disposed entity');
+    }
+  }
+
+  /**
+   * Dispose entity and clean up resources (Phase 5.4)
+   * Prevents memory leaks by:
+   * - Removing all event listeners
+   * - Clearing change log
+   * - Clearing metadata
+   * - Marking as disposed
    */
   dispose(): void {
+    if (this._disposed) {
+      return; // Already disposed, idempotent
+    }
+
+    // Emit disposed event before cleanup
+    this.emitter.emit('disposed');
+
+    // Remove all event listeners (prevents memory leaks)
     this.emitter.removeAllListeners();
+
+    // Clear change log
     this.changeLog = [];
+
+    // Clear metadata
     this.metadata.clear();
+
+    // Clear dirty tracking
+    this._dirtyReasons.clear();
+    this._dirtyTimestamp = null;
+
+    // Mark as disposed
+    this._disposed = true;
   }
 }

@@ -10,6 +10,7 @@ import type {
 import { ObstacleMap } from './ObstacleMap';
 import { StraightRouter } from './algorithms/StraightRouter';
 import { OrthogonalRouter } from './algorithms/OrthogonalRouter';
+import { LRUCache } from '../performance/LRUCache'; // Phase 5.3
 
 /**
  * RoutingEngine coordinates routing operations and manages obstacles
@@ -18,10 +19,14 @@ export class RoutingEngine {
   private routers: Map<string, IRouter> = new Map();
   private obstacleMap: ObstacleMap = new ObstacleMap();
   private globalObstacles: Obstacle[] = []; // Simple array to avoid huge spatial queries
-  private routeCache: Map<string, RoutedPath | null> = new Map();
+  private routeCache: LRUCache<string, RoutedPath | null>; // Phase 5.3: LRU cache prevents unbounded growth
   private defaultAlgorithm: RoutingAlgorithm = 'straight';
 
   constructor() {
+    // Phase 5.3: Initialize LRU cache with capacity of 1000 routes
+    // This prevents unbounded memory growth while maintaining good hit rate
+    this.routeCache = new LRUCache<string, RoutedPath | null>(1000);
+
     // Register built-in routers
     this.registerRouter('straight', new StraightRouter());
     this.registerRouter('orthogonal', new OrthogonalRouter());
@@ -186,7 +191,7 @@ export class RoutingEngine {
     return {
       obstacleCount: this.obstacleMap.size(),
       routerCount: this.routers.size,
-      cacheSize: this.routeCache.size,
+      cacheSize: this.routeCache.size(), // Phase 5.3: LRUCache uses method instead of property
     };
   }
 

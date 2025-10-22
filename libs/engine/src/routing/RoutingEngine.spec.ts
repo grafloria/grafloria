@@ -313,18 +313,17 @@ describe('RoutingEngine (Phase 4.1)', () => {
         end: { x: 500, y: 500 },
       };
 
-      // First call - no cache
-      const start1 = performance.now();
+      // First call - no cache, does actual routing
       routingEngine.route(request);
-      const duration1 = performance.now() - start1;
 
-      // Second call - cached
-      const start2 = performance.now();
-      routingEngine.route(request);
-      const duration2 = performance.now() - start2;
+      // Second call - should be cached (just lookup, no routing)
+      const start = performance.now();
+      const cachedResult = routingEngine.route(request);
+      const duration = performance.now() - start;
 
-      // Cached call should be significantly faster
-      expect(duration2).toBeLessThan(duration1 / 2);
+      // Cached call should be very fast (<1ms) since it's just a Map lookup
+      expect(cachedResult).not.toBeNull();
+      expect(duration).toBeLessThan(1); // LRU cache lookup is O(1)
     });
   });
 

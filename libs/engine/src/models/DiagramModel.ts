@@ -7,6 +7,7 @@ import { GroupModel, SerializedGroup } from './GroupModel'; // Phase 1.6c
 import type { SerializedEntity, Point } from '../types';
 import { SpatialIndex } from '../performance/SpatialIndex'; // Phase 5.1
 import type { Rectangle } from '../types/geometry.types'; // Phase 5.1
+import type { LODLevel, EntityWithLOD } from '../types/performance.types'; // Phase 5.3
 
 export interface SerializedDiagram extends SerializedEntity {
   name: string;
@@ -552,6 +553,86 @@ export class DiagramModel extends DiagramEntity {
    */
   getVisibleDirtyLinks(viewport: Rectangle): LinkModel[] {
     return this.getVisibleLinks(viewport).filter((link) => link.isDirty);
+  }
+
+  /**
+   * Get LOD level based on zoom (Phase 5.3)
+   *
+   * @param zoom - Current zoom level
+   * @returns LOD level (high/medium/low)
+   */
+  getLODLevel(zoom: number): LODLevel {
+    if (zoom > 1.0) {
+      return 'high';
+    } else if (zoom > 0.5) {
+      return 'medium';
+    } else {
+      return 'low';
+    }
+  }
+
+  /**
+   * Get visible nodes with LOD information (Phase 5.3)
+   * Combines viewport virtualization with Level of Detail
+   *
+   * @param viewport - Rectangular viewport region
+   * @param zoom - Current zoom level
+   * @returns Array of nodes with LOD level
+   */
+  getNodesWithLOD(viewport: Rectangle, zoom: number): EntityWithLOD<NodeModel>[] {
+    const lod = this.getLODLevel(zoom);
+    const visibleNodes = this.getVisibleNodes(viewport);
+
+    return visibleNodes.map((node) => ({
+      entity: node,
+      lod,
+    }));
+  }
+
+  /**
+   * Get visible links with LOD information (Phase 5.3)
+   * Combines viewport virtualization with Level of Detail
+   *
+   * @param viewport - Rectangular viewport region
+   * @param zoom - Current zoom level
+   * @returns Array of links with LOD level
+   */
+  getLinksWithLOD(viewport: Rectangle, zoom: number): EntityWithLOD<LinkModel>[] {
+    const lod = this.getLODLevel(zoom);
+    const visibleLinks = this.getVisibleLinks(viewport);
+
+    return visibleLinks.map((link) => ({
+      entity: link,
+      lod,
+    }));
+  }
+
+  /**
+   * Check if labels should be rendered at this LOD level (Phase 5.3)
+   */
+  shouldRenderLabels(lod: LODLevel): boolean {
+    return lod === 'high' || lod === 'medium';
+  }
+
+  /**
+   * Check if icons should be rendered at this LOD level (Phase 5.3)
+   */
+  shouldRenderIcons(lod: LODLevel): boolean {
+    return lod === 'high';
+  }
+
+  /**
+   * Check if borders should be rendered at this LOD level (Phase 5.3)
+   */
+  shouldRenderBorders(lod: LODLevel): boolean {
+    return lod === 'high' || lod === 'medium';
+  }
+
+  /**
+   * Check if shadows should be rendered at this LOD level (Phase 5.3)
+   */
+  shouldRenderShadows(lod: LODLevel): boolean {
+    return lod === 'high';
   }
 
   /**
