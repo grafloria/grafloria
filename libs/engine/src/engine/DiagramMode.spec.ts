@@ -18,6 +18,7 @@ describe('Diagram Mode System (Phase 1.5)', () => {
   beforeEach(() => {
     engine = new DiagramEngine({});
     engine.initialize();
+    engine.createDiagram('Test Diagram'); // Create diagram for tests that need it
   });
 
   afterEach(() => {
@@ -724,7 +725,10 @@ describe('Diagram Mode System (Phase 1.5)', () => {
       node.setBehaviorOverride(DiagramMode.RUNNING, { draggable: true });
 
       const serialized = node.serialize();
-      const restored = await engine.addNode(serialized);
+
+      // Deserialize using NodeModel.fromJSON
+      const { NodeModel } = await import('../models/NodeModel');
+      const restored = NodeModel.fromJSON(serialized);
 
       engine.setMode(DiagramMode.RUNNING);
       const behavior = engine.getNodeBehaviorForMode(restored.behavior, restored);
@@ -934,7 +938,11 @@ describe('Diagram Mode System (Phase 1.5)', () => {
 
       engine.setMode(DiagramMode.RUNNING);
 
-      expect(hook).toHaveBeenCalledWith(DiagramMode.DESIGNER, DiagramMode.RUNNING);
+      expect(hook).toHaveBeenCalledWith(
+        DiagramMode.DESIGNER,
+        DiagramMode.RUNNING,
+        expect.objectContaining({ engine, diagram: expect.anything() })
+      );
     });
 
     it('should call afterModeChange hook', () => {
@@ -943,7 +951,11 @@ describe('Diagram Mode System (Phase 1.5)', () => {
 
       engine.setMode(DiagramMode.RUNNING);
 
-      expect(hook).toHaveBeenCalledWith(DiagramMode.DESIGNER, DiagramMode.RUNNING);
+      expect(hook).toHaveBeenCalledWith(
+        DiagramMode.DESIGNER,
+        DiagramMode.RUNNING,
+        expect.objectContaining({ engine, diagram: expect.anything() })
+      );
     });
 
     it('should call hooks in correct order', () => {
