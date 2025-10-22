@@ -21,6 +21,7 @@ import { AddGroupCommand, RemoveGroupCommand, AddToGroupCommand, RemoveFromGroup
 import { SetLayoutCommand, SetFlexItemCommand, SetGridItemCommand } from '../commands/basic'; // Phase 1.7
 import { CopyCommand, PasteCommand, DuplicateCommand, DeleteSelectionCommand } from '../commands/basic'; // Phase 1.8
 import { ClipboardManager } from '../clipboard/ClipboardManager'; // Phase 1.8
+import { SelectionManager } from '../selection/SelectionManager'; // Phase 1.8a
 import { DiagramMode, isValidDiagramMode, ModeChangeEvent } from './DiagramMode';
 import { ModeManager } from './ModeManager';
 import type {
@@ -70,6 +71,7 @@ export class DiagramEngine {
   readonly performanceMonitor: PerformanceMonitor;
   readonly modeManager: ModeManager;
   readonly clipboardManager: ClipboardManager; // Phase 1.8
+  readonly selectionManager: SelectionManager; // Phase 1.8a
 
   // Current diagram
   private diagram: DiagramModel | null = null;
@@ -112,6 +114,7 @@ export class DiagramEngine {
     this.serializer = new DiagramSerializer();
     this.performanceMonitor = new PerformanceMonitor(config.performance);
     this.clipboardManager = new ClipboardManager(); // Phase 1.8
+    this.selectionManager = new SelectionManager(null, this.store, this.eventBus); // Phase 1.8a
 
     // Configure systems
     this.configureSystems();
@@ -152,6 +155,9 @@ export class DiagramEngine {
 
     // Update command context
     this.commandManager.updateContext({ diagram });
+
+    // Update selection manager diagram reference (Phase 1.8a)
+    this.selectionManager.setDiagram(diagram);
   }
 
   /**
