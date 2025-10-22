@@ -3,13 +3,14 @@
 import { DiagramEntity } from './DiagramEntity';
 import { NodeModel, SerializedNode } from './NodeModel';
 import { LinkModel, SerializedLink } from './LinkModel';
+import { GroupModel, SerializedGroup } from './GroupModel'; // Phase 1.6c
 import type { SerializedEntity, Point } from '../types';
 
 export interface SerializedDiagram extends SerializedEntity {
   name: string;
   nodes: SerializedNode[];
   links: SerializedLink[];
-  groups: any[];
+  groups: SerializedGroup[]; // Phase 1.6c
   viewport: {
     x: number;
     y: number;
@@ -21,7 +22,7 @@ export class DiagramModel extends DiagramEntity {
   name: string = 'Untitled Diagram';
   nodes: Map<string, NodeModel> = new Map();
   links: Map<string, LinkModel> = new Map();
-  groups: Map<string, any> = new Map(); // Will be GroupModel
+  groups: Map<string, GroupModel> = new Map(); // Phase 1.6c
 
   viewport = {
     x: 0,
@@ -134,6 +135,54 @@ export class DiagramModel extends DiagramEntity {
   }
 
   /**
+   * Add group (Phase 1.6c)
+   */
+  addGroup(group: GroupModel): void {
+    if (this.groups.has(group.id)) {
+      throw new Error(`Group with id ${group.id} already exists`);
+    }
+
+    this.groups.set(group.id, group);
+    this.trackChange('groups', null, group);
+    this.emitter.emit('group:added', group);
+  }
+
+  /**
+   * Remove group (Phase 1.6c)
+   */
+  removeGroup(groupId: string): GroupModel | undefined {
+    const group = this.groups.get(groupId);
+    if (group) {
+      this.groups.delete(groupId);
+      this.trackChange('groups', group, null);
+      this.emitter.emit('group:removed', group);
+    }
+    return group;
+  }
+
+  /**
+   * Get group by ID (Phase 1.6c)
+   */
+  getGroup(groupId: string): GroupModel | undefined {
+    return this.groups.get(groupId);
+  }
+
+  /**
+   * Get all groups (Phase 1.6c)
+   */
+  getGroups(): GroupModel[] {
+    return Array.from(this.groups.values());
+  }
+
+  /**
+   * Clear all groups (Phase 1.6c)
+   */
+  clearGroups(): void {
+    this.groups.clear();
+    this.emitter.emit('groups:cleared');
+  }
+
+  /**
    * Set viewport
    */
   setViewport(x: number, y: number, zoom: number): void {
@@ -159,7 +208,7 @@ export class DiagramModel extends DiagramEntity {
   }
 
   /**
-   * Clear all nodes and links
+   * Clear all nodes, links, and groups (Phase 1.6c)
    */
   clear(): void {
     // Remove all links first
@@ -172,6 +221,12 @@ export class DiagramModel extends DiagramEntity {
     const nodeIds = Array.from(this.nodes.keys());
     for (const nodeId of nodeIds) {
       this.removeNode(nodeId);
+    }
+
+    // Remove all groups (Phase 1.6c)
+    const groupIds = Array.from(this.groups.keys());
+    for (const groupId of groupIds) {
+      this.removeGroup(groupId);
     }
 
     this.emitter.emit('diagram:cleared');
@@ -190,7 +245,7 @@ export class DiagramModel extends DiagramEntity {
       name: this.name,
       nodes: Array.from(this.nodes.values()).map((n) => n.serialize()),
       links: Array.from(this.links.values()).map((l) => l.serialize()),
-      groups: [],
+      groups: Array.from(this.groups.values()).map((g) => g.serialize()), // Phase 1.6c
       viewport: { ...this.viewport },
     };
   }
@@ -213,6 +268,14 @@ export class DiagramModel extends DiagramEntity {
     for (const linkData of data.links) {
       const link = LinkModel.fromJSON(linkData);
       diagram.links.set(link.id, link);
+    }
+
+    // Restore groups (Phase 1.6c)
+    if (data.groups) {
+      for (const groupData of data.groups) {
+        const group = GroupModel.fromJSON(groupData);
+        diagram.groups.set(group.id, group);
+      }
     }
 
     // Restore metadata
