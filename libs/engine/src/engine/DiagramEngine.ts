@@ -18,6 +18,7 @@ import { RemoveNodeCommand } from '../commands/basic/RemoveNodeCommand';
 import { AddLinkCommand } from '../commands/basic/AddLinkCommand';
 import { RemoveLinkCommand } from '../commands/basic/RemoveLinkCommand';
 import { AddGroupCommand, RemoveGroupCommand, AddToGroupCommand, RemoveFromGroupCommand, ExpandGroupCommand, CollapseGroupCommand } from '../commands/basic'; // Phase 1.6c
+import { SetLayoutCommand, SetFlexItemCommand, SetGridItemCommand } from '../commands/basic'; // Phase 1.7
 import { DiagramMode, isValidDiagramMode, ModeChangeEvent } from './DiagramMode';
 import { ModeManager } from './ModeManager';
 import type {
@@ -35,6 +36,7 @@ import type { Plugin } from '../types';
 import type { ValidationResult } from '../validation/ValidationEngine';
 import type { NodeTypeDefinition, LinkTypeDefinition } from '../validation/TypeRegistry';
 import type { NodeBehavior } from '../types';
+import type { LayoutType, LayoutConfig, FlexItemConfig, GridItemConfig } from '../types/layout.types'; // Phase 1.7
 
 export interface DiagramEngineConfig {
   plugins?: Plugin[];
@@ -390,6 +392,86 @@ export class DiagramEngine {
    */
   getGroups(): GroupModel[] {
     return this.diagram?.getGroups() || [];
+  }
+
+  /**
+   * Set layout configuration on a group (Phase 1.7)
+   */
+  async setLayout(
+    groupId: string,
+    layoutType: 'flexbox' | 'grid',
+    layoutConfig: LayoutConfig
+  ): Promise<void> {
+    if (!this.diagram) {
+      throw new Error('No diagram loaded');
+    }
+
+    const group = this.diagram.getGroup(groupId);
+    if (!group) {
+      throw new Error(`Group ${groupId} not found`);
+    }
+
+    const command = new SetLayoutCommand(groupId, layoutType, layoutConfig);
+    await this.commandManager.execute(command);
+  }
+
+  /**
+   * Clear layout configuration from a group (Phase 1.7)
+   */
+  async clearLayout(groupId: string): Promise<void> {
+    if (!this.diagram) {
+      throw new Error('No diagram loaded');
+    }
+
+    const group = this.diagram.getGroup(groupId);
+    if (!group) {
+      throw new Error(`Group ${groupId} not found`);
+    }
+
+    // Clear layout by setting to 'none' (this triggers a command internally through the model)
+    group.clearLayout();
+  }
+
+  /**
+   * Get layout configuration from a group (Phase 1.7)
+   */
+  getLayout(groupId: string): { type: LayoutType; config?: LayoutConfig } | undefined {
+    const group = this.diagram?.getGroup(groupId);
+    return group?.getLayout();
+  }
+
+  /**
+   * Set flex item configuration on a node (Phase 1.7)
+   */
+  async setFlexItem(nodeId: string, flexConfig: FlexItemConfig): Promise<void> {
+    if (!this.diagram) {
+      throw new Error('No diagram loaded');
+    }
+
+    const node = this.diagram.getNode(nodeId);
+    if (!node) {
+      throw new Error(`Node ${nodeId} not found`);
+    }
+
+    const command = new SetFlexItemCommand(nodeId, flexConfig);
+    await this.commandManager.execute(command);
+  }
+
+  /**
+   * Set grid item configuration on a node (Phase 1.7)
+   */
+  async setGridItem(nodeId: string, gridConfig: GridItemConfig): Promise<void> {
+    if (!this.diagram) {
+      throw new Error('No diagram loaded');
+    }
+
+    const node = this.diagram.getNode(nodeId);
+    if (!node) {
+      throw new Error(`Node ${nodeId} not found`);
+    }
+
+    const command = new SetGridItemCommand(nodeId, gridConfig);
+    await this.commandManager.execute(command);
   }
 
   /**

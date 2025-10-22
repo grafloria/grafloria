@@ -13,3 +13,6 @@ export * from './AddToGroupCommand'; // Phase 1.6c Part 3
 export * from './RemoveFromGroupCommand'; // Phase 1.6c Part 3
 export * from './ExpandGroupCommand'; // Phase 1.6c Part 3
 export * from './CollapseGroupCommand'; // Phase 1.6c Part 3
+export * from './SetLayoutCommand'; // Phase 1.7 Part 2
+export * from './SetFlexItemCommand'; // Phase 1.7 Part 2
+export * from './SetGridItemCommand'; // Phase 1.7 Part 2
