@@ -2,6 +2,7 @@
 
 import { Command, CommandContext } from './Command';
 import { EventBus } from '../events/EventBus';
+import { DiagramEventTypes } from '../types/event.types';
 
 export interface CommandHistoryEntry {
   command: Command;
@@ -48,7 +49,7 @@ export class CommandManager {
 
         // Re-execute merged command
         await this.executeCommand(merged);
-        this.eventBus.emit('command:merged', { command: merged });
+        this.eventBus.emit(DiagramEventTypes.COMMAND_MERGED, { command: merged });
         return;
       }
     }
@@ -77,7 +78,7 @@ export class CommandManager {
       });
 
       // Emit event
-      this.eventBus.emit(success ? 'command:executed' : 'command:failed', {
+      this.eventBus.emit(success ? DiagramEventTypes.COMMAND_EXECUTED : DiagramEventTypes.COMMAND_FAILED, {
         command,
         duration,
         error,
@@ -110,12 +111,12 @@ export class CommandManager {
 
       const duration = performance.now() - startTime;
 
-      this.eventBus.emit('command:undone', {
+      this.eventBus.emit(DiagramEventTypes.COMMAND_UNDONE, {
         command,
         duration,
       });
     } catch (error) {
-      this.eventBus.emit('command:failed', {
+      this.eventBus.emit(DiagramEventTypes.COMMAND_FAILED, {
         command,
         action: 'undo',
         error,
@@ -145,13 +146,13 @@ export class CommandManager {
 
       const duration = performance.now() - startTime;
 
-      this.eventBus.emit('command:redone', {
+      this.eventBus.emit(DiagramEventTypes.COMMAND_REDONE, {
         command,
         duration,
       });
     } catch (error) {
       this.currentIndex--;
-      this.eventBus.emit('command:failed', {
+      this.eventBus.emit(DiagramEventTypes.COMMAND_FAILED, {
         command,
         action: 'redo',
         error,
@@ -202,7 +203,7 @@ export class CommandManager {
   clear(): void {
     this.history = [];
     this.currentIndex = -1;
-    this.eventBus.emit('command:history:cleared');
+    this.eventBus.emit(DiagramEventTypes.COMMAND_HISTORY_CLEARED);
   }
 
   /**
