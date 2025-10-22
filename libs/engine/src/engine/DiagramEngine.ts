@@ -19,6 +19,8 @@ import { AddLinkCommand } from '../commands/basic/AddLinkCommand';
 import { RemoveLinkCommand } from '../commands/basic/RemoveLinkCommand';
 import { AddGroupCommand, RemoveGroupCommand, AddToGroupCommand, RemoveFromGroupCommand, ExpandGroupCommand, CollapseGroupCommand } from '../commands/basic'; // Phase 1.6c
 import { SetLayoutCommand, SetFlexItemCommand, SetGridItemCommand } from '../commands/basic'; // Phase 1.7
+import { CopyCommand, PasteCommand, DuplicateCommand, DeleteSelectionCommand } from '../commands/basic'; // Phase 1.8
+import { ClipboardManager } from '../clipboard/ClipboardManager'; // Phase 1.8
 import { DiagramMode, isValidDiagramMode, ModeChangeEvent } from './DiagramMode';
 import { ModeManager } from './ModeManager';
 import type {
@@ -67,6 +69,7 @@ export class DiagramEngine {
   readonly serializer: DiagramSerializer;
   readonly performanceMonitor: PerformanceMonitor;
   readonly modeManager: ModeManager;
+  readonly clipboardManager: ClipboardManager; // Phase 1.8
 
   // Current diagram
   private diagram: DiagramModel | null = null;
@@ -108,6 +111,7 @@ export class DiagramEngine {
     this.validationEngine = new ValidationEngine(this.typeRegistry);
     this.serializer = new DiagramSerializer();
     this.performanceMonitor = new PerformanceMonitor(config.performance);
+    this.clipboardManager = new ClipboardManager(); // Phase 1.8
 
     // Configure systems
     this.configureSystems();
@@ -472,6 +476,101 @@ export class DiagramEngine {
 
     const command = new SetGridItemCommand(nodeId, gridConfig);
     await this.commandManager.execute(command);
+  }
+
+  /**
+   * Copy selected entities to clipboard (Phase 1.8)
+   */
+  async copy(options?: { includeGroups?: boolean; includeLinks?: boolean }): Promise<void> {
+    if (!this.diagram) {
+      throw new Error('No diagram loaded');
+    }
+
+    const command = new CopyCommand(this.clipboardManager, options);
+    await this.commandManager.execute(command);
+  }
+
+  /**
+   * Paste entities from clipboard (Phase 1.8)
+   */
+  async paste(options?: { offset?: Point; selectPasted?: boolean }): Promise<void> {
+    if (!this.diagram) {
+      throw new Error('No diagram loaded');
+    }
+
+    if (!this.clipboardManager.hasData()) {
+      throw new Error('Clipboard is empty');
+    }
+
+    const command = new PasteCommand(this.clipboardManager, options);
+    await this.commandManager.execute(command);
+  }
+
+  /**
+   * Duplicate selected entities (Phase 1.8)
+   */
+  async duplicate(options?: { offset?: Point; selectDuplicated?: boolean }): Promise<void> {
+    if (!this.diagram) {
+      throw new Error('No diagram loaded');
+    }
+
+    const selectedNodeIds = this.store.get('selectedNodes') as Set<string> | undefined;
+    if (!selectedNodeIds || selectedNodeIds.size === 0) {
+      throw new Error('No nodes selected');
+    }
+
+    const command = new DuplicateCommand(options);
+    await this.commandManager.execute(command);
+  }
+
+  /**
+   * Delete selected entities (Phase 1.8)
+   */
+  async deleteSelection(options?: { deleteChildren?: boolean; deleteLinks?: boolean }): Promise<void> {
+    if (!this.diagram) {
+      throw new Error('No diagram loaded');
+    }
+
+    const selectedNodeIds = this.store.get('selectedNodes') as Set<string> | undefined;
+    const selectedLinkIds = this.store.get('selectedLinks') as Set<string> | undefined;
+
+    if (
+      (!selectedNodeIds || selectedNodeIds.size === 0) &&
+      (!selectedLinkIds || selectedLinkIds.size === 0)
+    ) {
+      throw new Error('No entities selected');
+    }
+
+    const command = new DeleteSelectionCommand(options);
+    await this.commandManager.execute(command);
+  }
+
+  /**
+   * Get clipboard data (Phase 1.8)
+   */
+  getClipboardData() {
+    return this.clipboardManager.get();
+  }
+
+  /**
+   * Check if clipboard has data (Phase 1.8)
+   */
+  hasClipboardData(): boolean {
+    return this.clipboardManager.hasData();
+  }
+
+  /**
+   * Clear clipboard (Phase 1.8)
+   */
+  clearClipboard(): void {
+    this.clipboardManager.clear();
+  }
+
+  /**
+   * Get clipboard statistics (Phase 1.8)
+   */
+  getClipboardStats() {
+    return this.clipboardManager.getStats();
   }
 
   /**

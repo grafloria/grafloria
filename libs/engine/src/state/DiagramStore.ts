@@ -125,6 +125,23 @@ export class DiagramStore {
   }
 
   /**
+   * Get state value by path
+   */
+  get(path: string): any {
+    const keys = path.split('.');
+    let target: any = this.state;
+
+    for (const key of keys) {
+      if (target === undefined || target === null) {
+        return undefined;
+      }
+      target = target[key];
+    }
+
+    return target;
+  }
+
+  /**
    * Set state value by path
    */
   set(path: string, value: any): void {

@@ -16,3 +16,7 @@ export * from './CollapseGroupCommand'; // Phase 1.6c Part 3
 export * from './SetLayoutCommand'; // Phase 1.7 Part 2
 export * from './SetFlexItemCommand'; // Phase 1.7 Part 2
 export * from './SetGridItemCommand'; // Phase 1.7 Part 2
+export * from './CopyCommand'; // Phase 1.8
+export * from './PasteCommand'; // Phase 1.8
+export * from './DuplicateCommand'; // Phase 1.8
+export * from './DeleteSelectionCommand'; // Phase 1.8

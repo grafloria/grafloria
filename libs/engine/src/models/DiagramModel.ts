@@ -65,6 +65,23 @@ export class DiagramModel extends DiagramEntity {
   }
 
   /**
+   * Restore node from serialized data (Phase 1.8)
+   */
+  restoreNode(data: any): NodeModel | undefined {
+    try {
+      const node = NodeModel.fromJSON(data);
+      node.diagram = this;
+      this.nodes.set(node.id, node);
+      this.trackChange('nodes', null, node);
+      this.emitter.emit('node:added', node);
+      return node;
+    } catch (error) {
+      console.error('Failed to restore node:', error);
+      return undefined;
+    }
+  }
+
+  /**
    * Get node by ID
    */
   getNode(nodeId: string): NodeModel | undefined {
@@ -113,6 +130,22 @@ export class DiagramModel extends DiagramEntity {
   }
 
   /**
+   * Restore link from serialized data (Phase 1.8)
+   */
+  restoreLink(data: any): LinkModel | undefined {
+    try {
+      const link = LinkModel.fromJSON(data);
+      this.links.set(link.id, link);
+      this.trackChange('links', null, link);
+      this.emitter.emit('link:added', link);
+      return link;
+    } catch (error) {
+      console.error('Failed to restore link:', error);
+      return undefined;
+    }
+  }
+
+  /**
    * Get link by ID
    */
   getLink(linkId: string): LinkModel | undefined {
@@ -158,6 +191,22 @@ export class DiagramModel extends DiagramEntity {
       this.emitter.emit('group:removed', group);
     }
     return group;
+  }
+
+  /**
+   * Restore group from serialized data (Phase 1.8)
+   */
+  restoreGroup(data: any): GroupModel | undefined {
+    try {
+      const group = GroupModel.fromJSON(data);
+      this.groups.set(group.id, group);
+      this.trackChange('groups', null, group);
+      this.emitter.emit('group:added', group);
+      return group;
+    } catch (error) {
+      console.error('Failed to restore group:', error);
+      return undefined;
+    }
   }
 
   /**
