@@ -17,6 +17,7 @@ import { RemoveNodeCommand } from '../commands/basic/RemoveNodeCommand';
 import { AddLinkCommand } from '../commands/basic/AddLinkCommand';
 import { RemoveLinkCommand } from '../commands/basic/RemoveLinkCommand';
 import { DiagramMode, isValidDiagramMode, ModeChangeEvent } from './DiagramMode';
+import { ModeManager } from './ModeManager';
 import type {
   ModeGuardFunction,
   ModeGuardBlockedEvent,
@@ -61,6 +62,7 @@ export class DiagramEngine {
   readonly validationEngine: ValidationEngine;
   readonly serializer: DiagramSerializer;
   readonly performanceMonitor: PerformanceMonitor;
+  readonly modeManager: ModeManager;
 
   // Current diagram
   private diagram: DiagramModel | null = null;
@@ -71,15 +73,23 @@ export class DiagramEngine {
   // State
   private initialized: boolean = false;
   private destroyed: boolean = false;
-  private currentMode: DiagramMode = DiagramMode.DESIGNER;
 
   constructor(config: DiagramEngineConfig = {}) {
     this.config = config;
-    this.currentMode = config.mode || DiagramMode.DESIGNER;
 
     // Initialize core systems
     this.eventBus = new EventBus();
     this.store = new DiagramStore();
+
+    // Initialize ModeManager with context provider
+    this.modeManager = new ModeManager(
+      this.eventBus,
+      () => ({
+        engine: this,
+        diagram: this.diagram,
+      }),
+      config.mode
+    );
 
     const context = {
       diagram: this.diagram!,
@@ -352,30 +362,37 @@ export class DiagramEngine {
   }
 
   /**
-   * Serialize diagram
+   * Serialize diagram (with mode)
    */
   serialize(): SerializedDiagram | null {
     if (!this.diagram) {
       return null;
     }
 
-    return this.serializer.serialize(this.diagram);
+    const serialized = this.serializer.serialize(this.diagram);
+    // Include current mode
+    serialized.mode = this.modeManager.serialize();
+    return serialized;
   }
 
   /**
-   * Deserialize diagram
+   * Deserialize diagram (with mode)
    */
   deserialize(data: SerializedDiagram): DiagramModel {
     const diagram = this.serializer.deserialize(data);
     this.setDiagram(diagram);
+
+    // Restore mode if present
+    this.modeManager.restore(data.mode);
+
     return diagram;
   }
 
   /**
-   * Load diagram from JSON
+   * Load diagram from JSON (with mode)
    */
-  loadFromJSON(json: string): DiagramModel {
-    const data = JSON.parse(json);
+  loadFromJSON(json: string | SerializedDiagram): DiagramModel {
+    const data = typeof json === 'string' ? JSON.parse(json) : json;
     return this.deserialize(data);
   }
 
@@ -439,82 +456,168 @@ export class DiagramEngine {
     return this.performanceMonitor.getReport();
   }
 
+  // ============================================================================
+  // Mode Management (Delegation to ModeManager)
+  // ============================================================================
+
   /**
    * Get current diagram mode
    */
   getMode(): DiagramMode {
-    return this.currentMode;
+    return this.modeManager.getMode();
   }
 
   /**
    * Set diagram mode
    */
   setMode(mode: DiagramMode): void {
-    if (!isValidDiagramMode(mode)) {
-      throw new Error(`Invalid diagram mode: ${mode}`);
-    }
-
-    if (this.currentMode === mode) {
-      return; // No change
-    }
-
-    const previousMode = this.currentMode;
-    this.currentMode = mode;
-
-    // Emit mode changed event
-    const event: ModeChangeEvent = {
-      previousMode,
-      currentMode: mode,
-    };
-    this.eventBus.emit('mode-changed', event);
+    this.modeManager.setMode(mode);
   }
 
   /**
    * Check if in designer mode
    */
   isDesignerMode(): boolean {
-    return this.currentMode === DiagramMode.DESIGNER;
+    return this.modeManager.isDesignerMode();
   }
 
   /**
    * Check if in running mode
    */
   isRunningMode(): boolean {
-    return this.currentMode === DiagramMode.RUNNING;
+    return this.modeManager.isRunningMode();
   }
 
   /**
    * Check if in view mode
    */
   isViewMode(): boolean {
-    return this.currentMode === DiagramMode.VIEW;
+    return this.modeManager.isViewMode();
   }
 
   /**
    * Check if in debug mode
    */
   isDebugMode(): boolean {
-    return this.currentMode === DiagramMode.DEBUG;
+    return this.modeManager.isDebugMode();
   }
 
   /**
    * Check if in presentation mode
    */
   isPresentationMode(): boolean {
-    return this.currentMode === DiagramMode.PRESENTATION;
+    return this.modeManager.isPresentationMode();
   }
 
   /**
    * Check if in read-only mode (any mode except designer)
    */
   isReadOnlyMode(): boolean {
-    return this.currentMode !== DiagramMode.DESIGNER;
+    return this.modeManager.isReadOnlyMode();
   }
 
   /**
-   * Get node behavior adjusted for current mode
+   * Add mode transition guard
    */
-  getNodeBehaviorForMode(baseBehavior: Partial<NodeBehavior>): NodeBehavior {
+  addModeGuard(name: string, guard: ModeGuardFunction): void {
+    this.modeManager.addModeGuard(name, guard);
+  }
+
+  /**
+   * Remove mode transition guard
+   */
+  removeModeGuard(name: string): void {
+    this.modeManager.removeModeGuard(name);
+  }
+
+  /**
+   * Clear all mode transition guards
+   */
+  clearModeGuards(): void {
+    this.modeManager.clearModeGuards();
+  }
+
+  /**
+   * Configure viewport settings for specific mode
+   */
+  configureModeViewport(mode: DiagramMode, settings: ModeViewportSettings): void {
+    this.modeManager.configureModeViewport(mode, settings);
+  }
+
+  /**
+   * Get viewport settings for specific mode
+   */
+  getModeViewportSettings(mode: DiagramMode): ModeViewportSettings {
+    return this.modeManager.getModeViewportSettings(mode);
+  }
+
+  /**
+   * Get mode history
+   */
+  getModeHistory(): ModeHistoryEntry[] {
+    return this.modeManager.getModeHistory();
+  }
+
+  /**
+   * Clear mode history
+   */
+  clearModeHistory(): void {
+    this.modeManager.clearModeHistory();
+  }
+
+  /**
+   * Navigate to previous mode
+   */
+  previousMode(): void {
+    this.modeManager.previousMode();
+  }
+
+  /**
+   * Navigate to next mode
+   */
+  nextMode(): void {
+    this.modeManager.nextMode();
+  }
+
+  /**
+   * Push mode onto stack (save current, switch to new)
+   */
+  pushMode(mode: DiagramMode): void {
+    this.modeManager.pushMode(mode);
+  }
+
+  /**
+   * Pop mode from stack (return to previous)
+   */
+  popMode(): void {
+    this.modeManager.popMode();
+  }
+
+  /**
+   * Get mode analytics
+   */
+  getModeAnalytics(): ModeAnalytics {
+    return this.modeManager.getModeAnalytics();
+  }
+
+  /**
+   * Register before mode change hook
+   */
+  beforeModeChange(hook: ModeChangeHook): () => void {
+    return this.modeManager.beforeModeChange(hook);
+  }
+
+  /**
+   * Register after mode change hook
+   */
+  afterModeChange(hook: ModeChangeHook): () => void {
+    return this.modeManager.afterModeChange(hook);
+  }
+
+  /**
+   * Get node behavior adjusted for current mode (with per-node overrides)
+   */
+  getNodeBehaviorForMode(baseBehavior: Partial<NodeBehavior>, node?: NodeModel): NodeBehavior {
     const defaults: NodeBehavior = {
       selectable: true,
       draggable: true,
@@ -528,10 +631,21 @@ export class DiagramEngine {
     };
 
     // Merge base behavior with defaults
-    const merged = { ...defaults, ...baseBehavior };
+    let merged = { ...defaults, ...baseBehavior };
 
-    // Apply mode restrictions
-    switch (this.currentMode) {
+    // Check for per-node behavior override for current mode
+    if (node) {
+      const currentMode = this.modeManager.getMode();
+      const override = node.getBehaviorOverride(currentMode);
+      if (override) {
+        merged = { ...merged, ...override };
+        return merged; // Use override directly
+      }
+    }
+
+    // Apply mode restrictions (if no override)
+    const currentMode = this.modeManager.getMode();
+    switch (currentMode) {
       case DiagramMode.DESIGNER:
         // In designer mode, respect all base behavior settings
         return merged;
@@ -575,7 +689,8 @@ export class DiagramEngine {
     const merged = { ...defaults, ...baseBehavior };
 
     // Apply mode restrictions
-    switch (this.currentMode) {
+    const currentMode = this.modeManager.getMode();
+    switch (currentMode) {
       case DiagramMode.DESIGNER:
         // In designer mode, respect all base behavior settings
         return merged;
@@ -605,7 +720,6 @@ export class DiagramEngine {
 
     this.initialized = true;
     this.destroyed = false;
-    this.currentMode = this.config.mode || DiagramMode.DESIGNER;
     this.eventBus.emit('engine:initialized');
   }
 
@@ -646,8 +760,8 @@ export class DiagramEngine {
       this.detachDiagram(this.diagram);
     }
 
-    // Reset mode
-    this.currentMode = DiagramMode.DESIGNER;
+    // Reset mode through ModeManager
+    this.modeManager.restore(DiagramMode.DESIGNER);
     this.initialized = false;
 
     // Note: PluginManager doesn't have destroy method yet

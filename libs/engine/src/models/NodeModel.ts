@@ -376,7 +376,7 @@ export class NodeModel extends DiagramEntity {
    */
   setBehaviorOverride(mode: string, behavior: Partial<NodeBehavior>): void {
     this.behaviorOverrides.set(mode, behavior);
-    this.incrementVersion();
+    this.version++;
   }
 
   /**
@@ -384,7 +384,7 @@ export class NodeModel extends DiagramEntity {
    */
   clearBehaviorOverride(mode: string): void {
     this.behaviorOverrides.delete(mode);
-    this.incrementVersion();
+    this.version++;
   }
 
   /**
@@ -399,7 +399,7 @@ export class NodeModel extends DiagramEntity {
    */
   clearAllBehaviorOverrides(): void {
     this.behaviorOverrides.clear();
-    this.incrementVersion();
+    this.version++;
   }
 
   /**

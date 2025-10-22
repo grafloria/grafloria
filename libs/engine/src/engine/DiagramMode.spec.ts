@@ -659,58 +659,58 @@ describe('Diagram Mode System (Phase 1.5)', () => {
   });
 
   describe('Priority 2b: Per-Entity Behavior Overrides', () => {
-    it('should allow node to override behavior for specific mode', () => {
-      const node = engine.addNode({ x: 0, y: 0, label: 'Test' });
+    it('should allow node to override behavior for specific mode', async () => {
+      const node = await engine.addNode({ type: 'test', position: { x: 0, y: 0 } });
 
       // Override: allow dragging in RUNNING mode
       node.setBehaviorOverride(DiagramMode.RUNNING, { draggable: true });
 
       engine.setMode(DiagramMode.RUNNING);
-      const behavior = engine.getNodeBehaviorForMode(node.behavior);
+      const behavior = engine.getNodeBehaviorForMode(node.behavior, node);
 
       // Should use override
       expect(behavior.draggable).toBe(true);
     });
 
-    it('should respect base behavior when no override exists', () => {
-      const node = engine.addNode({ x: 0, y: 0, label: 'Test' });
+    it('should respect base behavior when no override exists', async () => {
+      const node = await engine.addNode({ type: 'test', position: { x: 0, y: 0 } });
 
       engine.setMode(DiagramMode.RUNNING);
-      const behavior = engine.getNodeBehaviorForMode(node.behavior);
+      const behavior = engine.getNodeBehaviorForMode(node.behavior, node);
 
       // Should use default mode behavior (not draggable in RUNNING)
       expect(behavior.draggable).toBe(false);
     });
 
-    it('should allow multiple overrides for different modes', () => {
-      const node = engine.addNode({ x: 0, y: 0, label: 'Test' });
+    it('should allow multiple overrides for different modes', async () => {
+      const node = await engine.addNode({ type: 'test', position: { x: 0, y: 0 } });
 
       node.setBehaviorOverride(DiagramMode.RUNNING, { draggable: true });
       node.setBehaviorOverride(DiagramMode.VIEW, { selectable: false });
 
       engine.setMode(DiagramMode.RUNNING);
-      let behavior = engine.getNodeBehaviorForMode(node.behavior);
+      let behavior = engine.getNodeBehaviorForMode(node.behavior, node);
       expect(behavior.draggable).toBe(true);
 
       engine.setMode(DiagramMode.VIEW);
-      behavior = engine.getNodeBehaviorForMode(node.behavior);
+      behavior = engine.getNodeBehaviorForMode(node.behavior, node);
       expect(behavior.selectable).toBe(false);
     });
 
-    it('should allow removing behavior override', () => {
-      const node = engine.addNode({ x: 0, y: 0, label: 'Test' });
+    it('should allow removing behavior override', async () => {
+      const node = await engine.addNode({ type: 'test', position: { x: 0, y: 0 } });
 
       node.setBehaviorOverride(DiagramMode.RUNNING, { draggable: true });
       node.clearBehaviorOverride(DiagramMode.RUNNING);
 
       engine.setMode(DiagramMode.RUNNING);
-      const behavior = engine.getNodeBehaviorForMode(node.behavior);
+      const behavior = engine.getNodeBehaviorForMode(node.behavior, node);
 
       expect(behavior.draggable).toBe(false); // Back to default
     });
 
-    it('should serialize behavior overrides', () => {
-      const node = engine.addNode({ x: 0, y: 0, label: 'Test' });
+    it('should serialize behavior overrides', async () => {
+      const node = await engine.addNode({ type: 'test', position: { x: 0, y: 0 } });
       node.setBehaviorOverride(DiagramMode.RUNNING, { draggable: true });
 
       const serialized = node.serialize();
@@ -719,15 +719,15 @@ describe('Diagram Mode System (Phase 1.5)', () => {
       expect(serialized.behaviorOverrides![DiagramMode.RUNNING]).toEqual({ draggable: true });
     });
 
-    it('should restore behavior overrides from serialization', () => {
-      const node = engine.addNode({ x: 0, y: 0, label: 'Test' });
+    it('should restore behavior overrides from serialization', async () => {
+      const node = await engine.addNode({ type: 'test', position: { x: 0, y: 0 } });
       node.setBehaviorOverride(DiagramMode.RUNNING, { draggable: true });
 
       const serialized = node.serialize();
-      const restored = engine.addNode(serialized);
+      const restored = await engine.addNode(serialized);
 
       engine.setMode(DiagramMode.RUNNING);
-      const behavior = engine.getNodeBehaviorForMode(restored.behavior);
+      const behavior = engine.getNodeBehaviorForMode(restored.behavior, restored);
 
       expect(behavior.draggable).toBe(true);
     });
@@ -792,8 +792,8 @@ describe('Diagram Mode System (Phase 1.5)', () => {
       expect(settings.fitToScreen).toBe(true);
     });
 
-    it('should support followNode setting for auto-centering', () => {
-      const node = engine.addNode({ x: 100, y: 100, label: 'Target' });
+    it('should support followNode setting for auto-centering', async () => {
+      const node = await engine.addNode({ type: 'test', position: { x: 100, y: 100 } });
 
       engine.configureModeViewport(DiagramMode.RUNNING, {
         followNode: node.id,
@@ -949,9 +949,15 @@ describe('Diagram Mode System (Phase 1.5)', () => {
     it('should call hooks in correct order', () => {
       const callOrder: string[] = [];
 
-      engine.beforeModeChange(() => callOrder.push('before'));
-      engine.on('mode-changed', () => callOrder.push('event'));
-      engine.afterModeChange(() => callOrder.push('after'));
+      engine.beforeModeChange(() => {
+        callOrder.push('before');
+      });
+      engine.on('mode-changed', () => {
+        callOrder.push('event');
+      });
+      engine.afterModeChange(() => {
+        callOrder.push('after');
+      });
 
       engine.setMode(DiagramMode.RUNNING);
 
@@ -963,6 +969,7 @@ describe('Diagram Mode System (Phase 1.5)', () => {
         if (next === DiagramMode.DEBUG) {
           return false; // Prevent change
         }
+        return undefined; // Allow change
       });
 
       engine.setMode(DiagramMode.DEBUG);
@@ -996,8 +1003,9 @@ describe('Diagram Mode System (Phase 1.5)', () => {
 
     it('should pass context to hooks for plugins', () => {
       engine.beforeModeChange((prev, next, context) => {
-        expect(context.engine).toBe(engine);
-        expect(context.diagram).toBe(engine.getDiagram());
+        expect(context).toBeDefined();
+        expect(context!.engine).toBe(engine);
+        expect(context!.diagram).toBe(engine.getDiagram());
       });
 
       engine.setMode(DiagramMode.RUNNING);
