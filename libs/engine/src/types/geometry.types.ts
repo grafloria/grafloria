@@ -28,6 +28,42 @@ export interface Transform {
   origin: Point;   // Transform origin
 }
 
+/**
+ * 2D Affine Transform Matrix (Phase 1.6a)
+ * Represents: translate, rotate, scale, skew
+ * CSS-compatible format: matrix(a, b, c, d, e, f)
+ *
+ * Matrix structure:
+ * | a  c  e |
+ * | b  d  f |
+ * | 0  0  1 |
+ *
+ * Where:
+ * - a, d: Scale X and Y (also affected by rotation/skew)
+ * - b, c: Rotation and skew components
+ * - e, f: Translation X and Y
+ */
+export interface TransformMatrix {
+  a: number; // Scale X / cos(rotation)
+  b: number; // sin(rotation) / Skew Y
+  c: number; // -sin(rotation) / Skew X
+  d: number; // Scale Y / cos(rotation)
+  e: number; // Translate X
+  f: number; // Translate Y
+}
+
+/**
+ * Identity matrix (no transformation)
+ */
+export const IDENTITY_MATRIX: TransformMatrix = {
+  a: 1,
+  b: 0,
+  c: 0,
+  d: 1,
+  e: 0,
+  f: 0,
+};
+
 export interface Viewport {
   x: number;
   y: number;
