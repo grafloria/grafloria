@@ -1,6 +1,7 @@
 // NodeModel - Represents a node in the diagram
 
 import { DiagramEntity } from './DiagramEntity';
+import type { DiagramModel } from './DiagramModel';
 import { PortModel, SerializedPort } from './PortModel';
 import type {
   Point,
@@ -12,7 +13,24 @@ import type {
   ValidationResult,
   SerializedEntity,
 } from '../types';
+import type { TransformMatrix } from '../types/geometry.types';
 import { createBoundingBox } from '../utils';
+import {
+  composeMatrices,
+  createTranslateMatrix,
+  createRotateMatrix,
+  createScaleMatrix,
+  transformPoint,
+  invertMatrix,
+} from '../utils/transform';
+
+/**
+ * Positioning mode (Phase 1.6a)
+ * - absolute: Position relative to diagram origin (default, backward compatible)
+ * - relative: Position relative to parent
+ * - layout: Position managed by parent's layout algorithm (future)
+ */
+export type PositioningMode = 'absolute' | 'relative' | 'layout';
 
 export interface SerializedNode extends SerializedEntity {
   position: Point;
@@ -30,14 +48,21 @@ export interface SerializedNode extends SerializedEntity {
   style: Partial<NodeStyle>;
   data: Record<string, any>;
   behaviorOverrides?: Record<string, Partial<NodeBehavior>>; // Mode-specific behavior overrides
+  positionMode?: PositioningMode; // Phase 1.6a: Positioning mode
+  transformOrigin?: Point; // Phase 1.6a: Transform origin (normalized 0-1)
 }
 
 export class NodeModel extends DiagramEntity {
+  // Diagram reference (Phase 1.6a) - Non-enumerable to prevent circular cloning
+  diagram?: DiagramModel;
+
   // Position & Transform
   position: Point;
   size: Size;
   rotation: number = 0;
   scale: Point = { x: 1, y: 1 };
+  positionMode: PositioningMode = 'absolute'; // Phase 1.6a: Default to absolute for backward compatibility
+  transformOrigin: Point = { x: 0.5, y: 0.5 }; // Phase 1.6a: Default to center (normalized 0-1)
 
   // Type System
   type: string;
@@ -102,6 +127,14 @@ export class NodeModel extends DiagramEntity {
     this.definitionId = config.definitionId;
     this.position = { ...config.position };
     this.size = config.size || { width: 100, height: 50 };
+
+    // Define diagram property as non-enumerable to prevent circular reference issues (Phase 1.6a)
+    Object.defineProperty(this, 'diagram', {
+      value: undefined,
+      writable: true,
+      enumerable: false,
+      configurable: true
+    });
   }
 
   /**
@@ -403,6 +436,179 @@ export class NodeModel extends DiagramEntity {
   }
 
   /**
+   * Set transform origin (Phase 1.6a)
+   * @param x Normalized X coordinate (0-1)
+   * @param y Normalized Y coordinate (0-1)
+   */
+  setTransformOrigin(x: number, y: number): void {
+    const oldOrigin = { ...this.transformOrigin };
+    this.transformOrigin = { x, y };
+    this.trackChange('transformOrigin', oldOrigin, this.transformOrigin);
+  }
+
+  /**
+   * Get absolute transform origin in pixels (Phase 1.6a)
+   */
+  getAbsoluteTransformOrigin(): Point {
+    return {
+      x: this.transformOrigin.x * this.size.width,
+      y: this.transformOrigin.y * this.size.height,
+      z: this.transformOrigin.z !== undefined && this.size.depth !== undefined
+        ? this.transformOrigin.z * this.size.depth
+        : 0
+    };
+  }
+
+  /**
+   * Get local position (Phase 1.6a)
+   * Returns the position property as-is
+   */
+  getLocalPosition(): Point {
+    return { ...this.position };
+  }
+
+  /**
+   * Get global position (Phase 1.6a)
+   * In absolute mode: returns position as-is
+   * In relative mode: transforms position by parent's global transform
+   */
+  getGlobalPosition(): Point {
+    if (this.positionMode === 'absolute' || !this.parentId) {
+      return { ...this.position };
+    }
+
+    // In relative mode with parent: apply parent's global transform
+    const parent = this.getParentNode();
+    if (!parent) {
+      return { ...this.position };
+    }
+
+    const parentMatrix = parent.getGlobalTransformMatrix();
+    return transformPoint(this.position, parentMatrix);
+  }
+
+  /**
+   * Set local position (Phase 1.6a)
+   * Sets position directly and switches to relative mode
+   */
+  setLocalPosition(x: number, y: number, z?: number): void {
+    this.positionMode = 'relative';
+    this.setPosition(x, y, z);
+  }
+
+  /**
+   * Set global position (Phase 1.6a)
+   * Converts global coordinates to local if parent exists
+   */
+  setGlobalPosition(x: number, y: number, z?: number): void {
+    if (!this.parentId) {
+      this.setPosition(x, y, z);
+      return;
+    }
+
+    const parent = this.getParentNode();
+    if (!parent) {
+      this.setPosition(x, y, z);
+      return;
+    }
+
+    // Convert global to local by inverting parent's transform
+    this.positionMode = 'relative';
+    const parentMatrix = parent.getGlobalTransformMatrix();
+    const invertedMatrix = invertMatrix(parentMatrix);
+    const localPos = transformPoint({ x, y, z }, invertedMatrix);
+
+    this.setPosition(localPos.x, localPos.y, localPos.z);
+  }
+
+  /**
+   * Get local transform matrix (Phase 1.6a)
+   * Composes translation, rotation, and scale relative to transform origin
+   */
+  getLocalTransformMatrix(): TransformMatrix {
+    const origin = this.getAbsoluteTransformOrigin();
+
+    // Compose: translate to position, rotate around origin, scale around origin
+    // Order: translate-to-origin, scale, rotate, translate-back, translate-to-position
+    return composeMatrices(
+      createTranslateMatrix(this.position.x, this.position.y),
+      createTranslateMatrix(origin.x, origin.y),
+      createRotateMatrix(this.rotation),
+      createScaleMatrix(this.scale.x, this.scale.y),
+      createTranslateMatrix(-origin.x, -origin.y)
+    );
+  }
+
+  /**
+   * Get global transform matrix (Phase 1.6a)
+   * In absolute mode: returns local matrix
+   * In relative mode: composes parent's global matrix with local matrix
+   */
+  getGlobalTransformMatrix(): TransformMatrix {
+    const localMatrix = this.getLocalTransformMatrix();
+
+    if (this.positionMode === 'absolute' || !this.parentId) {
+      return localMatrix;
+    }
+
+    const parent = this.getParentNode();
+    if (!parent) {
+      return localMatrix;
+    }
+
+    const parentMatrix = parent.getGlobalTransformMatrix();
+    return composeMatrices(parentMatrix, localMatrix);
+  }
+
+  /**
+   * Get global bounding box (Phase 1.6a)
+   * Calculates bounds by transforming all 4 corners through global matrix
+   */
+  getGlobalBounds(): BoundingBox {
+    const matrix = this.getGlobalTransformMatrix();
+
+    // Get 4 corners in local space
+    const corners = [
+      { x: 0, y: 0 },
+      { x: this.size.width, y: 0 },
+      { x: this.size.width, y: this.size.height },
+      { x: 0, y: this.size.height }
+    ];
+
+    // Transform all corners
+    const transformedCorners = corners.map(corner => transformPoint(corner, matrix));
+
+    // Find min/max to create axis-aligned bounding box
+    const xs = transformedCorners.map(p => p.x);
+    const ys = transformedCorners.map(p => p.y);
+
+    const left = Math.min(...xs);
+    const right = Math.max(...xs);
+    const top = Math.min(...ys);
+    const bottom = Math.max(...ys);
+
+    return {
+      left,
+      top,
+      right,
+      bottom,
+      width: right - left,
+      height: bottom - top
+    };
+  }
+
+  /**
+   * Helper to get parent node (Phase 1.6a)
+   * Uses diagram reference to look up parent by ID
+   */
+  private getParentNode(): NodeModel | undefined {
+    if (!this.parentId || !this.diagram) {
+      return undefined;
+    }
+    return this.diagram.getNode(this.parentId);
+  }
+
+  /**
    * Serialize to JSON
    */
   serialize(): SerializedNode {
@@ -425,6 +631,8 @@ export class NodeModel extends DiagramEntity {
       behavior: { ...this.behavior },
       style: { ...this.style },
       data: { ...this.data },
+      positionMode: this.positionMode, // Phase 1.6a
+      transformOrigin: { ...this.transformOrigin }, // Phase 1.6a
     };
 
     // Include behavior overrides if any exist
@@ -456,6 +664,10 @@ export class NodeModel extends DiagramEntity {
     node.behavior = data.behavior;
     node.style = data.style;
     node.data = data.data;
+
+    // Restore Phase 1.6a properties (with defaults for backward compatibility)
+    node.positionMode = data.positionMode || 'absolute';
+    node.transformOrigin = data.transformOrigin || { x: 0.5, y: 0.5 };
 
     // Restore metadata
     for (const [key, value] of Object.entries(data.metadata)) {

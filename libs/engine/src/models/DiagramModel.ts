@@ -42,6 +42,9 @@ export class DiagramModel extends DiagramEntity {
       throw new Error(`Node with id ${node.id} already exists`);
     }
 
+    // Set diagram reference (Phase 1.6a)
+    node.diagram = this;
+
     this.nodes.set(node.id, node);
     this.trackChange('nodes', null, node);
     this.emitter.emit('node:added', node);
