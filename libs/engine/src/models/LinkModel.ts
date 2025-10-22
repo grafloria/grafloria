@@ -414,6 +414,162 @@ export class LinkModel extends DiagramEntity {
     };
   }
 
+  // ========================================
+  // Phase 4: Advanced Path Calculations
+  // ========================================
+
+  /**
+   * Get path length (alias for getTotalLength for API consistency)
+   */
+  getLength(): number {
+    return this.getTotalLength();
+  }
+
+  /**
+   * Get tangent (direction vector) at position along path (0-1)
+   * Returns normalized direction vector
+   */
+  getTangentAt(t: number): Point | null {
+    if (this.segments.length === 0) return null;
+
+    t = Math.max(0, Math.min(1, t));
+
+    // For direct path, tangent is constant
+    if (this.pathType === 'direct' && this.points.length >= 2) {
+      const from = this.points[0]!;
+      const to = this.points[this.points.length - 1]!;
+      const dx = to.x - from.x;
+      const dy = to.y - from.y;
+      const length = Math.sqrt(dx * dx + dy * dy);
+      return length > 0 ? { x: dx / length, y: dy / length } : { x: 1, y: 0 };
+    }
+
+    // Find segment at position t
+    const totalLength = this.getTotalLength();
+    const targetLength = totalLength * t;
+    let currentLength = 0;
+
+    for (const segment of this.segments) {
+      const segmentLength = this.getSegmentLength(segment);
+      if (currentLength + segmentLength >= targetLength) {
+        const segmentT = segmentLength > 0 ? (targetLength - currentLength) / segmentLength : 0;
+        return this.getTangentOnSegment(segment, segmentT);
+      }
+      currentLength += segmentLength;
+    }
+
+    // Fallback to last segment direction
+    const lastSegment = this.segments[this.segments.length - 1];
+    return lastSegment ? this.getTangentOnSegment(lastSegment, 1) : { x: 1, y: 0 };
+  }
+
+  /**
+   * Get tangent on a specific segment
+   */
+  private getTangentOnSegment(segment: PathSegment, t: number): Point {
+    if (segment.type === 'curve' && segment.control1 && segment.control2) {
+      // Cubic bezier derivative
+      const mt = 1 - t;
+      const mt2 = mt * mt;
+      const t2 = t * t;
+
+      const dx =
+        3 * mt2 * (segment.control1.x - segment.from.x) +
+        6 * mt * t * (segment.control2.x - segment.control1.x) +
+        3 * t2 * (segment.to.x - segment.control2.x);
+
+      const dy =
+        3 * mt2 * (segment.control1.y - segment.from.y) +
+        6 * mt * t * (segment.control2.y - segment.control1.y) +
+        3 * t2 * (segment.to.y - segment.control2.y);
+
+      const length = Math.sqrt(dx * dx + dy * dy);
+      return length > 0 ? { x: dx / length, y: dy / length } : { x: 1, y: 0 };
+    }
+
+    // Linear segment
+    const dx = segment.to.x - segment.from.x;
+    const dy = segment.to.y - segment.from.y;
+    const length = Math.sqrt(dx * dx + dy * dy);
+    return length > 0 ? { x: dx / length, y: dy / length } : { x: 1, y: 0 };
+  }
+
+  /**
+   * Get normal (perpendicular vector) at position along path (0-1)
+   * Returns normalized perpendicular vector (90° counter-clockwise from tangent)
+   */
+  getNormalAt(t: number): Point | null {
+    const tangent = this.getTangentAt(t);
+    if (!tangent) return null;
+
+    // Rotate tangent 90° counter-clockwise
+    return {
+      x: -tangent.y,
+      y: tangent.x,
+    };
+  }
+
+  /**
+   * Get closest point on path to a given point
+   * Returns the closest point, distance, and normalized position (t)
+   */
+  getClosestPoint(point: Point): { point: Point; distance: number; t: number } | null {
+    if (this.segments.length === 0) {
+      return null;
+    }
+
+    let closestPoint: Point | null = null;
+    let minDistance = Infinity;
+    let closestT = 0;
+    let cumulativeLength = 0;
+    const totalLength = this.getTotalLength();
+
+    for (let i = 0; i < this.segments.length; i++) {
+      const segment = this.segments[i]!;
+      const segmentLength = this.getSegmentLength(segment);
+
+      // Sample points along segment to find closest
+      const samples = 20;
+      for (let j = 0; j <= samples; j++) {
+        const segmentT = j / samples;
+        const samplePoint = this.getPointOnSegment(segment, segmentT);
+        const dx = samplePoint.x - point.x;
+        const dy = samplePoint.y - point.y;
+        const distance = Math.sqrt(dx * dx + dy * dy);
+
+        if (distance < minDistance) {
+          minDistance = distance;
+          closestPoint = samplePoint;
+          // Calculate global t
+          closestT = totalLength > 0 ? (cumulativeLength + segmentLength * segmentT) / totalLength : 0;
+        }
+      }
+
+      cumulativeLength += segmentLength;
+    }
+
+    if (!closestPoint) {
+      return null;
+    }
+
+    return {
+      point: closestPoint,
+      distance: minDistance,
+      t: closestT,
+    };
+  }
+
+  /**
+   * Get angle at position along path (0-1) in degrees
+   * Useful for label rotation
+   */
+  getAngleAt(t: number): number | null {
+    const tangent = this.getTangentAt(t);
+    if (!tangent) return null;
+
+    return (Math.atan2(tangent.y, tangent.x) * 180) / Math.PI;
+  }
+
   /**
    * Serialize to JSON
    */
