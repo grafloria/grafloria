@@ -1,1 +1,5 @@
-export * from './lib/renderer-angular-renderer-angular/renderer-angular-renderer-angular.component';
+// Export components
+export * from './lib/components/diagram-canvas.component';
+
+// Export services
+export * from './lib/services/vnode-renderer.service';

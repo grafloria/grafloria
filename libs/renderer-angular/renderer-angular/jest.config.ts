@@ -15,6 +15,10 @@ export default {
     ],
   },
   transformIgnorePatterns: ['node_modules/(?!.*\\.mjs$)'],
+  moduleNameMapper: {
+    '^nanoid': '<rootDir>/../../engine/src/__mocks__/nanoid.ts',
+    '^uuid': '<rootDir>/../../engine/src/__mocks__/uuid.ts',
+  },
   snapshotSerializers: [
     'jest-preset-angular/build/serializers/no-ng-attributes',
     'jest-preset-angular/build/serializers/ng-snapshot',
