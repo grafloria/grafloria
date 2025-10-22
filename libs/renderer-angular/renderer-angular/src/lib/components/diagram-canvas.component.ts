@@ -9,6 +9,7 @@ import {
   ViewChild,
   ElementRef,
   ChangeDetectionStrategy,
+  ChangeDetectorRef,
 } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import type { DiagramEngine } from '@grafloria/engine';
@@ -75,7 +76,10 @@ export class DiagramCanvasComponent implements OnInit, AfterViewInit, OnChanges,
    */
   private destroyed = false;
 
-  constructor(private vnodeRenderer: VNodeRendererService) {}
+  constructor(
+    private vnodeRenderer: VNodeRendererService,
+    private cdr: ChangeDetectorRef
+  ) {}
 
   ngOnInit(): void {
     // Initialization logic if needed
@@ -106,10 +110,12 @@ export class DiagramCanvasComponent implements OnInit, AfterViewInit, OnChanges,
 
     if (changes['zoom'] && !changes['zoom'].firstChange) {
       this.renderDiagram();
+      this.cdr.markForCheck();
     }
 
     if (changes['viewport'] && !changes['viewport'].firstChange) {
       this.renderDiagram();
+      this.cdr.markForCheck();
     }
   }
 

@@ -141,38 +141,166 @@ export class AppComponent implements OnInit {
   }
 
   /**
-   * Reset zoom to 100% and center viewport
+   * Reset zoom to 100% and fit all nodes in view
    */
   resetZoom(): void {
     this.zoom = 1.0;
-    this.viewport = { x: 0, y: 0, width: 1200, height: 800 };
+
+    const diagram = this.engine.getDiagram();
+    if (!diagram) {
+      this.viewport = { x: 0, y: 0, width: 1200, height: 800 };
+      return;
+    }
+
+    const nodes = diagram.getNodes();
+    if (nodes.length === 0) {
+      this.viewport = { x: 0, y: 0, width: 1200, height: 800 };
+      return;
+    }
+
+    // Calculate bounding box of all nodes
+    let minX = Infinity;
+    let minY = Infinity;
+    let maxX = -Infinity;
+    let maxY = -Infinity;
+
+    nodes.forEach(node => {
+      const bounds = node.getBoundingBox();
+      minX = Math.min(minX, bounds.left);
+      minY = Math.min(minY, bounds.top);
+      maxX = Math.max(maxX, bounds.right);
+      maxY = Math.max(maxY, bounds.bottom);
+    });
+
+    // Add padding around nodes
+    const padding = 50;
+    const width = maxX - minX + padding * 2;
+    const height = maxY - minY + padding * 2;
+
+    this.viewport = {
+      x: minX - padding,
+      y: minY - padding,
+      width: width,
+      height: height,
+    };
   }
 
   /**
-   * Add a new node at the center of the viewport
+   * Add a new node with collision avoidance
    */
   addRandomNode(): void {
     const diagram = this.engine.getDiagram();
     if (!diagram) return;
 
-    // Calculate center of viewport
-    const centerX = this.viewport.x + this.viewport.width / 2;
-    const centerY = this.viewport.y + this.viewport.height / 2;
+    const nodeWidth = 200;
+    const nodeHeight = 100;
+    const spacing = 20; // Minimum spacing between nodes
 
-    // Add some randomness but keep it near the center (within ±100px)
-    const offsetX = (Math.random() - 0.5) * 200;
-    const offsetY = (Math.random() - 0.5) * 200;
-
-    const x = centerX + offsetX - 100; // -100 to account for half node width
-    const y = centerY + offsetY - 50;  // -50 to account for half node height
+    // Try to find a non-overlapping position
+    let position = this.findNonOverlappingPosition(diagram, nodeWidth, nodeHeight, spacing);
 
     const node = new NodeModel({
       type: 'basic',
-      position: { x, y },
-      size: { width: 200, height: 100 },
+      position,
+      size: { width: nodeWidth, height: nodeHeight },
     });
     node.setMetadata('label', `Node ${diagram.getNodes().length + 1}`);
 
     diagram.addNode(node);
+  }
+
+  /**
+   * Find a position for a new node that doesn't overlap existing nodes
+   */
+  private findNonOverlappingPosition(
+    diagram: any,
+    width: number,
+    height: number,
+    spacing: number
+  ): { x: number; y: number } {
+    const nodes = diagram.getNodes();
+
+    // If no nodes, place at viewport center
+    if (nodes.length === 0) {
+      return {
+        x: this.viewport.x + this.viewport.width / 2 - width / 2,
+        y: this.viewport.y + this.viewport.height / 2 - height / 2,
+      };
+    }
+
+    // Strategy 1: Try placing below the last added node
+    const lastNode = nodes[nodes.length - 1];
+    const lastBounds = lastNode.getBoundingBox();
+
+    let candidateY = lastBounds.bottom + spacing;
+    let candidateX = lastBounds.left;
+
+    // Check if this position overlaps with any node
+    let maxAttempts = 20;
+    let attempt = 0;
+
+    while (attempt < maxAttempts) {
+      const testBounds = {
+        left: candidateX,
+        top: candidateY,
+        right: candidateX + width,
+        bottom: candidateY + height,
+        width,
+        height,
+      };
+
+      // Check for collision with existing nodes
+      let hasCollision = false;
+      for (const node of nodes) {
+        const nodeBounds = node.getBoundingBox();
+        const expandedBounds = {
+          left: nodeBounds.left - spacing,
+          top: nodeBounds.top - spacing,
+          right: nodeBounds.right + spacing,
+          bottom: nodeBounds.bottom + spacing,
+          width: nodeBounds.width + spacing * 2,
+          height: nodeBounds.height + spacing * 2,
+        };
+
+        if (this.boundsIntersect(testBounds, expandedBounds)) {
+          hasCollision = true;
+          break;
+        }
+      }
+
+      if (!hasCollision) {
+        return { x: candidateX, y: candidateY };
+      }
+
+      // Strategy 2: Try moving to the right
+      if (attempt < 10) {
+        candidateX += width + spacing;
+      }
+      // Strategy 3: Try a new row
+      else {
+        candidateY += height + spacing;
+        candidateX = this.viewport.x + 100;
+      }
+
+      attempt++;
+    }
+
+    // Fallback: Place at viewport center with random offset
+    return {
+      x: this.viewport.x + this.viewport.width / 2 - width / 2 + (Math.random() - 0.5) * 100,
+      y: this.viewport.y + this.viewport.height / 2 - height / 2 + (Math.random() - 0.5) * 100,
+    };
+  }
+
+  /**
+   * Check if two bounding boxes intersect
+   */
+  private boundsIntersect(box1: any, box2: any): boolean {
+    return !(
+      box1.right < box2.left ||
+      box1.left > box2.right ||
+      box1.bottom < box2.top ||
+      box1.top > box2.bottom
+    );
   }
 }

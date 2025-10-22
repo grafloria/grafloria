@@ -81,6 +81,14 @@ export class SVGRenderer implements IRenderer {
     const linksLayer = this.renderLinksLayer(visibleLinks, lod);
     const nodesLayer = this.renderNodesLayer(visibleNodes, lod);
 
+    // Apply zoom to viewBox (divide by zoom to create zoom effect)
+    // zoom > 1: smaller viewBox = zoomed in
+    // zoom < 1: larger viewBox = zoomed out
+    const viewBoxWidth = viewport.width / zoom;
+    const viewBoxHeight = viewport.height / zoom;
+    const viewBoxX = viewport.x + (viewport.width - viewBoxWidth) / 2;
+    const viewBoxY = viewport.y + (viewport.height - viewBoxHeight) / 2;
+
     // Create root SVG VNode
     const root: VNode = {
       type: 'svg',
@@ -88,7 +96,7 @@ export class SVGRenderer implements IRenderer {
       props: {
         width: viewport.width,
         height: viewport.height,
-        viewBox: `${viewport.x} ${viewport.y} ${viewport.width} ${viewport.height}`,
+        viewBox: `${viewBoxX} ${viewBoxY} ${viewBoxWidth} ${viewBoxHeight}`,
         className: 'grafloria-diagram',
       },
       children: [linksLayer, nodesLayer],
