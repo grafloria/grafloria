@@ -1,10 +1,11 @@
 // Deep clone utility
 
 /**
- * Deep clone an object
- * Handles dates, arrays, maps, sets, and plain objects
+ * Deep clone an object with circular reference handling
+ * Handles dates, arrays, maps, sets, plain objects, and circular references
  */
-export function deepClone<T>(value: T): T {
+export function deepClone<T>(value: T, visited: WeakMap<any, any> = new WeakMap()): T {
+  // Primitives and null/undefined
   if (value === null || value === undefined) {
     return value;
   }
@@ -13,39 +14,72 @@ export function deepClone<T>(value: T): T {
     return value;
   }
 
+  // Check if we've already cloned this object (circular reference)
+  if (visited.has(value)) {
+    return visited.get(value);
+  }
+
+  // Date objects
   if (value instanceof Date) {
     return new Date(value.getTime()) as T;
   }
 
-  if (Array.isArray(value)) {
-    return value.map((item) => deepClone(item)) as T;
-  }
-
-  if (value instanceof Map) {
-    const cloned = new Map();
-    value.forEach((val, key) => {
-      cloned.set(deepClone(key), deepClone(val));
-    });
-    return cloned as T;
-  }
-
-  if (value instanceof Set) {
-    const cloned = new Set();
-    value.forEach((val) => {
-      cloned.add(deepClone(val));
-    });
-    return cloned as T;
-  }
-
+  // RegExp objects
   if (value instanceof RegExp) {
     return new RegExp(value.source, value.flags) as T;
   }
 
-  // Plain object
+  // Class instances (not plain objects) - return as-is to avoid breaking them
+  if (value.constructor && value.constructor !== Object && value.constructor !== Array) {
+    // Check if it's a Map, Set, or Date (which we want to clone)
+    if (!(value instanceof Map) && !(value instanceof Set) && !(value instanceof Date) && !(value instanceof RegExp)) {
+      return value; // Return class instances as-is
+    }
+  }
+
+  // Arrays
+  if (Array.isArray(value)) {
+    const cloned: any[] = [];
+    visited.set(value, cloned); // Register BEFORE recursing to handle circular refs
+
+    for (let i = 0; i < value.length; i++) {
+      cloned[i] = deepClone(value[i], visited);
+    }
+
+    return cloned as T;
+  }
+
+  // Maps
+  if (value instanceof Map) {
+    const cloned = new Map();
+    visited.set(value, cloned); // Register BEFORE recursing
+
+    value.forEach((val, key) => {
+      cloned.set(deepClone(key, visited), deepClone(val, visited));
+    });
+
+    return cloned as T;
+  }
+
+  // Sets
+  if (value instanceof Set) {
+    const cloned = new Set();
+    visited.set(value, cloned); // Register BEFORE recursing
+
+    value.forEach((val) => {
+      cloned.add(deepClone(val, visited));
+    });
+
+    return cloned as T;
+  }
+
+  // Plain objects
   const cloned: any = {};
+  visited.set(value, cloned); // Register BEFORE recursing to handle circular refs
+
   for (const key in value) {
     if (Object.prototype.hasOwnProperty.call(value, key)) {
-      cloned[key] = deepClone(value[key]);
+      cloned[key] = deepClone((value as any)[key], visited);
     }
   }
 
