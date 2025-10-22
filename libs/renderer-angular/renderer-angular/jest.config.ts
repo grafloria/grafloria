@@ -2,6 +2,7 @@
 export default {
   displayName: 'renderer-angular-renderer-angular',
   preset: '../../../jest.preset.js',
+  testEnvironment: 'jsdom',
   setupFilesAfterEnv: ['<rootDir>/src/test-setup.ts'],
   coverageDirectory: '../../../coverage/libs/renderer-angular/renderer-angular',
   transform: {
