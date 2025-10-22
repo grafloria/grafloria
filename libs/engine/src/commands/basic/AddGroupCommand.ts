@@ -32,11 +32,11 @@ export class AddGroupCommand extends Command {
   }
 
   override canExecute(context: CommandContext): boolean {
-    return context.diagram && !context.diagram.groups.has(this.groupData.id);
+    return !!(context.diagram && !context.diagram.groups.has(this.groupData.id));
   }
 
   override canUndo(context: CommandContext): boolean {
-    return context.diagram && context.diagram.groups.has(this.groupData.id);
+    return !!(context.diagram && context.diagram.groups.has(this.groupData.id));
   }
 
   override serialize(): SerializedCommand {

@@ -12,10 +12,12 @@ import { DiagramModel } from '../models/DiagramModel';
 import { NodeModel } from '../models/NodeModel';
 import { LinkModel } from '../models/LinkModel';
 import { PortModel } from '../models/PortModel';
+import { GroupModel } from '../models/GroupModel'; // Phase 1.6c
 import { AddNodeCommand } from '../commands/basic/AddNodeCommand';
 import { RemoveNodeCommand } from '../commands/basic/RemoveNodeCommand';
 import { AddLinkCommand } from '../commands/basic/AddLinkCommand';
 import { RemoveLinkCommand } from '../commands/basic/RemoveLinkCommand';
+import { AddGroupCommand, RemoveGroupCommand, AddToGroupCommand, RemoveFromGroupCommand, ExpandGroupCommand, CollapseGroupCommand } from '../commands/basic'; // Phase 1.6c
 import { DiagramMode, isValidDiagramMode, ModeChangeEvent } from './DiagramMode';
 import { ModeManager } from './ModeManager';
 import type {
@@ -289,6 +291,105 @@ export class DiagramEngine {
 
     const command = new RemoveLinkCommand(linkId);
     this.commandManager.execute(command);
+  }
+
+  /**
+   * Add group (Phase 1.6c)
+   */
+  async addGroup(config: { name: string }): Promise<GroupModel> {
+    if (!this.diagram) {
+      throw new Error('No diagram loaded');
+    }
+
+    return this.performanceMonitor.measure('addGroup', async () => {
+      const group = new GroupModel(config);
+
+      // Add via command
+      const command = new AddGroupCommand(group);
+      await this.commandManager.execute(command);
+
+      // Return the group that was actually added
+      return (this.diagram && this.diagram.getGroup(group.id)) || group;
+    });
+  }
+
+  /**
+   * Remove group (Phase 1.6c)
+   */
+  async removeGroup(groupId: string): Promise<void> {
+    if (!this.diagram) {
+      throw new Error('No diagram loaded');
+    }
+
+    const group = this.diagram.getGroup(groupId);
+    if (!group) {
+      throw new Error(`Group ${groupId} not found`);
+    }
+
+    const command = new RemoveGroupCommand(groupId);
+    await this.commandManager.execute(command);
+  }
+
+  /**
+   * Add entity to group (Phase 1.6c)
+   */
+  async addToGroup(groupId: string, entityId: string): Promise<void> {
+    if (!this.diagram) {
+      throw new Error('No diagram loaded');
+    }
+
+    const command = new AddToGroupCommand(groupId, entityId);
+    await this.commandManager.execute(command);
+  }
+
+  /**
+   * Remove entity from group (Phase 1.6c)
+   */
+  async removeFromGroup(groupId: string, entityId: string): Promise<void> {
+    if (!this.diagram) {
+      throw new Error('No diagram loaded');
+    }
+
+    const command = new RemoveFromGroupCommand(groupId, entityId);
+    await this.commandManager.execute(command);
+  }
+
+  /**
+   * Expand group (Phase 1.6c)
+   */
+  async expandGroup(groupId: string): Promise<void> {
+    if (!this.diagram) {
+      throw new Error('No diagram loaded');
+    }
+
+    const command = new ExpandGroupCommand(groupId);
+    await this.commandManager.execute(command);
+  }
+
+  /**
+   * Collapse group (Phase 1.6c)
+   */
+  async collapseGroup(groupId: string): Promise<void> {
+    if (!this.diagram) {
+      throw new Error('No diagram loaded');
+    }
+
+    const command = new CollapseGroupCommand(groupId);
+    await this.commandManager.execute(command);
+  }
+
+  /**
+   * Get group by ID (Phase 1.6c)
+   */
+  getGroup(groupId: string): GroupModel | undefined {
+    return this.diagram?.getGroup(groupId);
+  }
+
+  /**
+   * Get all groups (Phase 1.6c)
+   */
+  getGroups(): GroupModel[] {
+    return this.diagram?.getGroups() || [];
   }
 
   /**
