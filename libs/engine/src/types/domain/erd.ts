@@ -21,6 +21,17 @@ export const ERDTypes = {
   MULTIVALUED_ATTRIBUTE: 'erd:multivalued-attribute',
   DERIVED_ATTRIBUTE: 'erd:derived-attribute',
   COMPOSITE_ATTRIBUTE: 'erd:composite-attribute',
+
+  // Phase 3: Extended ERD Elements
+  ASSOCIATIVE_ENTITY: 'erd:associative-entity',
+  PARTIAL_KEY_ATTRIBUTE: 'erd:partial-key',
+  OPTIONAL_ATTRIBUTE: 'erd:optional-attribute',
+  TABLE: 'erd:table',
+  VIEW: 'erd:view',
+  BRIDGE_ENTITY: 'erd:bridge-entity',
+  SUBTYPE: 'erd:subtype',
+  SUPERTYPE: 'erd:supertype',
+  DISCRIMINATOR: 'erd:discriminator',
 } as const;
 
 /**
@@ -218,6 +229,186 @@ export function registerERDTypes(registry: TypeRegistry): void {
       draggable: true,
       deletable: true,
       resizable: true,
+      selectable: true,
+    },
+  });
+
+  // === Phase 3: Extended ERD Elements ===
+
+  // Associative Entity - Rectangle within diamond (or rounded rectangle)
+  registry.registerNodeType({
+    type: ERDTypes.ASSOCIATIVE_ENTITY,
+    label: 'Associative Entity',
+    description: 'An entity that represents a many-to-many relationship with attributes',
+    category: 'erd',
+    family: 'entity',
+    tags: ['entity', 'associative', 'junction', 'bridge', 'many-to-many'],
+    minPorts: 0,
+    maxPorts: 20,
+    defaultSize: {
+      width: 150,
+      height: 70,
+    },
+    defaultStyle: {
+      shape: 'rounded-rectangle',
+      fill: '#FFF3E0',
+      stroke: '#F57C00',
+      strokeWidth: 3,
+      borderRadius: 8,
+    },
+    defaultBehavior: {
+      draggable: true,
+      deletable: true,
+      resizable: true,
+      selectable: true,
+    },
+  });
+
+  // Partial Key Attribute - Dashed underlined ellipse
+  registry.registerNodeType({
+    type: ERDTypes.PARTIAL_KEY_ATTRIBUTE,
+    label: 'Partial Key',
+    description: 'A partial key attribute (discriminator for weak entities)',
+    extends: ERDTypes.ATTRIBUTE,
+    category: 'erd',
+    family: 'attribute',
+    tags: ['attribute', 'partial-key', 'discriminator', 'weak-key'],
+    defaultStyle: {
+      textDecoration: 'underline',
+      strokeDasharray: '5,5',
+      fontWeight: 'bold',
+    },
+  });
+
+  // Optional Attribute - Ellipse with (O) notation
+  registry.registerNodeType({
+    type: ERDTypes.OPTIONAL_ATTRIBUTE,
+    label: 'Optional Attribute',
+    description: 'An attribute that may have null values',
+    extends: ERDTypes.ATTRIBUTE,
+    category: 'erd',
+    family: 'attribute',
+    tags: ['attribute', 'optional', 'nullable'],
+    defaultStyle: {
+      fontStyle: 'italic',
+    },
+  });
+
+  // Table - Rectangle with header section (for physical models)
+  registry.registerNodeType({
+    type: ERDTypes.TABLE,
+    label: 'Table',
+    description: 'A database table (physical model)',
+    category: 'erd',
+    family: 'physical',
+    tags: ['physical', 'table', 'database', 'relational'],
+    minPorts: 0,
+    maxPorts: 30,
+    defaultSize: {
+      width: 180,
+      height: 120,
+    },
+    defaultStyle: {
+      shape: 'rectangle',
+      fill: '#E8F5E9',
+      stroke: '#388E3C',
+      strokeWidth: 2,
+    },
+    defaultBehavior: {
+      draggable: true,
+      deletable: true,
+      resizable: true,
+      selectable: true,
+    },
+  });
+
+  // View - Rectangle with (V) notation (for database views)
+  registry.registerNodeType({
+    type: ERDTypes.VIEW,
+    label: 'View',
+    description: 'A database view (virtual table)',
+    extends: ERDTypes.TABLE,
+    category: 'erd',
+    family: 'physical',
+    tags: ['physical', 'view', 'virtual-table', 'query'],
+    defaultStyle: {
+      fill: '#E0F2F1',
+      stroke: '#00695C',
+      strokeDasharray: '5,5',
+    },
+  });
+
+  // Bridge Entity - Rectangle for many-to-many resolution
+  registry.registerNodeType({
+    type: ERDTypes.BRIDGE_ENTITY,
+    label: 'Bridge Entity',
+    description: 'A bridge table resolving many-to-many relationships',
+    extends: ERDTypes.ENTITY,
+    category: 'erd',
+    family: 'entity',
+    tags: ['entity', 'bridge', 'junction', 'link-table', 'many-to-many'],
+    defaultStyle: {
+      fill: '#FFF9C4',
+      stroke: '#F57F17',
+    },
+  });
+
+  // Subtype - Rectangle for specialized entities
+  registry.registerNodeType({
+    type: ERDTypes.SUBTYPE,
+    label: 'Subtype',
+    description: 'A specialized entity in a generalization hierarchy',
+    extends: ERDTypes.ENTITY,
+    category: 'erd',
+    family: 'inheritance',
+    tags: ['inheritance', 'subtype', 'specialization', 'child'],
+    defaultStyle: {
+      fill: '#E8F5E9',
+      stroke: '#388E3C',
+    },
+  });
+
+  // Supertype - Rectangle for generalized entities
+  registry.registerNodeType({
+    type: ERDTypes.SUPERTYPE,
+    label: 'Supertype',
+    description: 'A generalized entity in a generalization hierarchy',
+    extends: ERDTypes.ENTITY,
+    category: 'erd',
+    family: 'inheritance',
+    tags: ['inheritance', 'supertype', 'generalization', 'parent'],
+    defaultStyle: {
+      fill: '#E3F2FD',
+      stroke: '#1976D2',
+      fontWeight: 'bold',
+    },
+  });
+
+  // Discriminator - Small diamond or notation for subtype discrimination
+  registry.registerNodeType({
+    type: ERDTypes.DISCRIMINATOR,
+    label: 'Discriminator',
+    description: 'A discriminator attribute for subtype determination',
+    category: 'erd',
+    family: 'inheritance',
+    tags: ['inheritance', 'discriminator', 'subtype-indicator'],
+    minPorts: 0,
+    maxPorts: 10,
+    defaultSize: {
+      width: 60,
+      height: 60,
+    },
+    defaultStyle: {
+      shape: 'diamond',
+      fill: '#FFF9C4',
+      stroke: '#F57F17',
+      strokeWidth: 2,
+      fontSize: 10,
+    },
+    defaultBehavior: {
+      draggable: true,
+      deletable: true,
+      resizable: false,
       selectable: true,
     },
   });

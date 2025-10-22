@@ -738,6 +738,40 @@ export class DiagramEngine {
   }
 
   /**
+   * Validate layout configuration for a group (Phase 3 - Layout validation)
+   */
+  validateLayout(groupId: string, options?: { strict?: boolean }): ValidationResult {
+    if (!this.diagram) {
+      return {
+        valid: false,
+        errors: [{
+          path: `group.${groupId}.layout`,
+          message: 'No diagram loaded',
+          code: 'NO_DIAGRAM',
+          severity: 'error'
+        }],
+        warnings: []
+      };
+    }
+
+    const group = this.diagram.getGroup(groupId);
+    if (!group) {
+      return {
+        valid: false,
+        errors: [{
+          path: `group.${groupId}.layout`,
+          message: `Group ${groupId} not found`,
+          code: 'GROUP_NOT_FOUND',
+          severity: 'error'
+        }],
+        warnings: []
+      };
+    }
+
+    return this.validationEngine.validateLayout(group, this.diagram, options);
+  }
+
+  /**
    * Register a node type definition
    * @param definition Node type definition
    */

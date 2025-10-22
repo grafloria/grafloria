@@ -13,6 +13,7 @@ import type { NodeModel } from '../models/NodeModel';
 import type { PortModel } from '../models/PortModel';
 import type { LinkModel } from '../models/LinkModel';
 import type { GroupModel } from '../models/GroupModel'; // Phase 2
+import type { FlexboxLayoutConfig, GridLayoutConfig, FlexItemConfig, GridItemConfig } from '../types/layout.types'; // Phase 3
 
 // Re-export ValidationResult for convenience
 export type { ValidationResult, ValidationError, ValidationWarning } from '../types';
@@ -108,6 +109,15 @@ export class ValidationEngine {
       const result = this.validateGroup(group, diagram, opts);
       errors.push(...result.errors);
       warnings.push(...result.warnings);
+    }
+
+    // Phase 3: Validate layout for all groups with layouts
+    for (const group of diagram.getGroups()) {
+      if (group.layoutType !== 'none') {
+        const result = this.validateLayout(group, diagram, opts);
+        errors.push(...result.errors);
+        warnings.push(...result.warnings);
+      }
     }
 
     // Custom diagram-level rules
@@ -803,6 +813,457 @@ export class ValidationEngine {
     } else {
       this.eventBus?.emit(DiagramEventTypes.VALIDATION_FAILED, {
         type: 'group',
+        entityId: group.id,
+        result,
+        timestamp: Date.now()
+      });
+    }
+
+    return result;
+  }
+
+  /**
+   * Validate layout configuration (Phase 3 - Layout validation)
+   */
+  validateLayout(
+    group: GroupModel,
+    diagram: DiagramModel,
+    options: ValidationOptions = {}
+  ): ValidationResult {
+    // Emit validation started event
+    this.eventBus?.emit(DiagramEventTypes.VALIDATION_STARTED, {
+      type: 'layout',
+      entityId: group.id,
+      timestamp: Date.now()
+    });
+
+    const errors: ValidationError[] = [];
+    const warnings: ValidationWarning[] = [];
+
+    // Get group type definition
+    const groupType = (group as any).type || 'default';
+    const typeDef = this.typeRegistry.getGroupType(groupType);
+
+    // 1. Check if group type requires layout
+    if (typeDef?.requireLayout && group.layoutType === 'none') {
+      errors.push({
+        path: `group.${group.id}.layout`,
+        message: `Group type '${groupType}' requires a layout to be configured`,
+        code: 'LAYOUT_REQUIRED',
+        severity: 'error',
+      });
+    }
+
+    // 2. Check if layout type is allowed for this group type
+    if (typeDef?.allowedLayoutTypes && group.layoutType !== 'none') {
+      if (!typeDef.allowedLayoutTypes.includes(group.layoutType as 'flexbox' | 'grid')) {
+        errors.push({
+          path: `group.${group.id}.layout`,
+          message: `Group type '${groupType}' does not allow layout type '${group.layoutType}'. Allowed: ${typeDef.allowedLayoutTypes.join(', ')}`,
+          code: 'INVALID_LAYOUT_TYPE',
+          severity: 'error',
+        });
+      }
+    }
+
+    // 3. Validate flexbox configuration
+    if (group.layoutType === 'flexbox' && group.layoutConfig) {
+      const flexConfig = group.layoutConfig as FlexboxLayoutConfig;
+
+      // Validate direction
+      const validDirections = ['row', 'column', 'row-reverse', 'column-reverse'];
+      if (!validDirections.includes(flexConfig.direction)) {
+        errors.push({
+          path: `group.${group.id}.layout.direction`,
+          message: `Invalid flexbox direction '${flexConfig.direction}'. Must be one of: ${validDirections.join(', ')}`,
+          code: 'INVALID_FLEX_DIRECTION',
+          severity: 'error',
+        });
+      }
+
+      // Validate wrap
+      const validWraps = ['nowrap', 'wrap', 'wrap-reverse'];
+      if (!validWraps.includes(flexConfig.wrap)) {
+        errors.push({
+          path: `group.${group.id}.layout.wrap`,
+          message: `Invalid flexbox wrap '${flexConfig.wrap}'. Must be one of: ${validWraps.join(', ')}`,
+          code: 'INVALID_FLEX_WRAP',
+          severity: 'error',
+        });
+      }
+
+      // Validate justifyContent
+      const validJustify = ['start', 'center', 'end', 'space-between', 'space-around', 'space-evenly'];
+      if (!validJustify.includes(flexConfig.justifyContent)) {
+        errors.push({
+          path: `group.${group.id}.layout.justifyContent`,
+          message: `Invalid flexbox justifyContent '${flexConfig.justifyContent}'. Must be one of: ${validJustify.join(', ')}`,
+          code: 'INVALID_FLEX_JUSTIFY',
+          severity: 'error',
+        });
+      }
+
+      // Validate alignItems
+      const validAlignItems = ['start', 'center', 'end', 'stretch', 'baseline'];
+      if (!validAlignItems.includes(flexConfig.alignItems)) {
+        errors.push({
+          path: `group.${group.id}.layout.alignItems`,
+          message: `Invalid flexbox alignItems '${flexConfig.alignItems}'. Must be one of: ${validAlignItems.join(', ')}`,
+          code: 'INVALID_FLEX_ALIGN_ITEMS',
+          severity: 'error',
+        });
+      }
+
+      // Validate alignContent
+      const validAlignContent = ['start', 'center', 'end', 'space-between', 'space-around', 'stretch'];
+      if (!validAlignContent.includes(flexConfig.alignContent)) {
+        errors.push({
+          path: `group.${group.id}.layout.alignContent`,
+          message: `Invalid flexbox alignContent '${flexConfig.alignContent}'. Must be one of: ${validAlignContent.join(', ')}`,
+          code: 'INVALID_FLEX_ALIGN_CONTENT',
+          severity: 'error',
+        });
+      }
+
+      // Validate gap (must be non-negative)
+      if (typeof flexConfig.gap === 'number') {
+        if (flexConfig.gap < 0) {
+          errors.push({
+            path: `group.${group.id}.layout.gap`,
+            message: `Flexbox gap must be non-negative, got ${flexConfig.gap}`,
+            code: 'INVALID_FLEX_GAP',
+            severity: 'error',
+          });
+        }
+      } else if (flexConfig.gap) {
+        if (flexConfig.gap.row < 0 || flexConfig.gap.column < 0) {
+          errors.push({
+            path: `group.${group.id}.layout.gap`,
+            message: `Flexbox gap values must be non-negative`,
+            code: 'INVALID_FLEX_GAP',
+            severity: 'error',
+          });
+        }
+      }
+
+      // Validate padding
+      if (flexConfig.padding !== undefined) {
+        if (typeof flexConfig.padding === 'number') {
+          if (flexConfig.padding < 0) {
+            errors.push({
+              path: `group.${group.id}.layout.padding`,
+              message: `Flexbox padding must be non-negative, got ${flexConfig.padding}`,
+              code: 'INVALID_FLEX_PADDING',
+              severity: 'error',
+            });
+          }
+        } else {
+          const p = flexConfig.padding;
+          if (p.top < 0 || p.right < 0 || p.bottom < 0 || p.left < 0) {
+            errors.push({
+              path: `group.${group.id}.layout.padding`,
+              message: `Flexbox padding values must be non-negative`,
+              code: 'INVALID_FLEX_PADDING',
+              severity: 'error',
+            });
+          }
+        }
+      }
+    }
+
+    // 4. Validate grid configuration
+    if (group.layoutType === 'grid' && group.layoutConfig) {
+      const gridConfig = group.layoutConfig as GridLayoutConfig;
+
+      // Validate templateColumns (must be non-empty string)
+      if (!gridConfig.templateColumns || gridConfig.templateColumns.trim() === '') {
+        errors.push({
+          path: `group.${group.id}.layout.templateColumns`,
+          message: `Grid templateColumns must be a non-empty string`,
+          code: 'INVALID_GRID_TEMPLATE_COLUMNS',
+          severity: 'error',
+        });
+      }
+
+      // Validate templateRows (must be non-empty string)
+      if (!gridConfig.templateRows || gridConfig.templateRows.trim() === '') {
+        errors.push({
+          path: `group.${group.id}.layout.templateRows`,
+          message: `Grid templateRows must be a non-empty string`,
+          code: 'INVALID_GRID_TEMPLATE_ROWS',
+          severity: 'error',
+        });
+      }
+
+      // Validate gaps (must be non-negative)
+      if (gridConfig.columnGap < 0) {
+        errors.push({
+          path: `group.${group.id}.layout.columnGap`,
+          message: `Grid columnGap must be non-negative, got ${gridConfig.columnGap}`,
+          code: 'INVALID_GRID_COLUMN_GAP',
+          severity: 'error',
+        });
+      }
+
+      if (gridConfig.rowGap < 0) {
+        errors.push({
+          path: `group.${group.id}.layout.rowGap`,
+          message: `Grid rowGap must be non-negative, got ${gridConfig.rowGap}`,
+          code: 'INVALID_GRID_ROW_GAP',
+          severity: 'error',
+        });
+      }
+
+      // Validate autoFlow
+      const validAutoFlow = ['row', 'column', 'dense'];
+      if (!validAutoFlow.includes(gridConfig.autoFlow)) {
+        errors.push({
+          path: `group.${group.id}.layout.autoFlow`,
+          message: `Invalid grid autoFlow '${gridConfig.autoFlow}'. Must be one of: ${validAutoFlow.join(', ')}`,
+          code: 'INVALID_GRID_AUTO_FLOW',
+          severity: 'error',
+        });
+      }
+
+      // Validate alignment properties
+      if (gridConfig.justifyItems) {
+        const validJustifyItems = ['start', 'center', 'end', 'stretch'];
+        if (!validJustifyItems.includes(gridConfig.justifyItems)) {
+          errors.push({
+            path: `group.${group.id}.layout.justifyItems`,
+            message: `Invalid grid justifyItems '${gridConfig.justifyItems}'. Must be one of: ${validJustifyItems.join(', ')}`,
+            code: 'INVALID_GRID_JUSTIFY_ITEMS',
+            severity: 'error',
+          });
+        }
+      }
+
+      if (gridConfig.alignItems) {
+        const validAlignItems = ['start', 'center', 'end', 'stretch'];
+        if (!validAlignItems.includes(gridConfig.alignItems)) {
+          errors.push({
+            path: `group.${group.id}.layout.alignItems`,
+            message: `Invalid grid alignItems '${gridConfig.alignItems}'. Must be one of: ${validAlignItems.join(', ')}`,
+            code: 'INVALID_GRID_ALIGN_ITEMS',
+            severity: 'error',
+          });
+        }
+      }
+
+      if (gridConfig.justifyContent) {
+        const validJustifyContent = ['start', 'center', 'end', 'space-between', 'space-around', 'space-evenly'];
+        if (!validJustifyContent.includes(gridConfig.justifyContent)) {
+          errors.push({
+            path: `group.${group.id}.layout.justifyContent`,
+            message: `Invalid grid justifyContent '${gridConfig.justifyContent}'. Must be one of: ${validJustifyContent.join(', ')}`,
+            code: 'INVALID_GRID_JUSTIFY_CONTENT',
+            severity: 'error',
+          });
+        }
+      }
+
+      if (gridConfig.alignContent) {
+        const validAlignContent = ['start', 'center', 'end', 'space-between', 'space-around', 'space-evenly'];
+        if (!validAlignContent.includes(gridConfig.alignContent)) {
+          errors.push({
+            path: `group.${group.id}.layout.alignContent`,
+            message: `Invalid grid alignContent '${gridConfig.alignContent}'. Must be one of: ${validAlignContent.join(', ')}`,
+            code: 'INVALID_GRID_ALIGN_CONTENT',
+            severity: 'error',
+          });
+        }
+      }
+
+      // Validate padding
+      if (gridConfig.padding !== undefined) {
+        if (typeof gridConfig.padding === 'number') {
+          if (gridConfig.padding < 0) {
+            errors.push({
+              path: `group.${group.id}.layout.padding`,
+              message: `Grid padding must be non-negative, got ${gridConfig.padding}`,
+              code: 'INVALID_GRID_PADDING',
+              severity: 'error',
+            });
+          }
+        } else {
+          const p = gridConfig.padding;
+          if (p.top < 0 || p.right < 0 || p.bottom < 0 || p.left < 0) {
+            errors.push({
+              path: `group.${group.id}.layout.padding`,
+              message: `Grid padding values must be non-negative`,
+              code: 'INVALID_GRID_PADDING',
+              severity: 'error',
+            });
+          }
+        }
+      }
+    }
+
+    // 5. Validate that member nodes have appropriate item configurations
+    if (group.layoutType !== 'none') {
+      for (const memberId of group.members) {
+        const node = diagram.getNode(memberId);
+        if (node) {
+          if (group.layoutType === 'flexbox') {
+            // Validate flex item config if present
+            if (node.flexConfig) {
+              const flexItem = node.flexConfig;
+
+              // Validate flexGrow (must be non-negative)
+              if (flexItem.flexGrow !== undefined && flexItem.flexGrow < 0) {
+                errors.push({
+                  path: `node.${node.id}.flexConfig.flexGrow`,
+                  message: `Flex item flexGrow must be non-negative, got ${flexItem.flexGrow}`,
+                  code: 'INVALID_FLEX_GROW',
+                  severity: 'error',
+                });
+              }
+
+              // Validate flexShrink (must be non-negative)
+              if (flexItem.flexShrink !== undefined && flexItem.flexShrink < 0) {
+                errors.push({
+                  path: `node.${node.id}.flexConfig.flexShrink`,
+                  message: `Flex item flexShrink must be non-negative, got ${flexItem.flexShrink}`,
+                  code: 'INVALID_FLEX_SHRINK',
+                  severity: 'error',
+                });
+              }
+
+              // Validate flexBasis (must be non-negative if number)
+              if (typeof flexItem.flexBasis === 'number' && flexItem.flexBasis < 0) {
+                errors.push({
+                  path: `node.${node.id}.flexConfig.flexBasis`,
+                  message: `Flex item flexBasis must be non-negative, got ${flexItem.flexBasis}`,
+                  code: 'INVALID_FLEX_BASIS',
+                  severity: 'error',
+                });
+              }
+
+              // Validate alignSelf
+              if (flexItem.alignSelf) {
+                const validAlignSelf = ['auto', 'start', 'center', 'end', 'stretch', 'baseline'];
+                if (!validAlignSelf.includes(flexItem.alignSelf)) {
+                  errors.push({
+                    path: `node.${node.id}.flexConfig.alignSelf`,
+                    message: `Invalid flex item alignSelf '${flexItem.alignSelf}'. Must be one of: ${validAlignSelf.join(', ')}`,
+                    code: 'INVALID_FLEX_ALIGN_SELF',
+                    severity: 'error',
+                  });
+                }
+              }
+            }
+          } else if (group.layoutType === 'grid') {
+            // Validate grid item config if present
+            if (node.gridConfig) {
+              const gridItem = node.gridConfig;
+
+              // Validate grid line numbers (must be positive if not 'auto')
+              if (typeof gridItem.columnStart === 'number' && gridItem.columnStart < 1) {
+                errors.push({
+                  path: `node.${node.id}.gridConfig.columnStart`,
+                  message: `Grid item columnStart must be positive (1-based), got ${gridItem.columnStart}`,
+                  code: 'INVALID_GRID_COLUMN_START',
+                  severity: 'error',
+                });
+              }
+
+              if (typeof gridItem.columnEnd === 'number' && gridItem.columnEnd < 1) {
+                errors.push({
+                  path: `node.${node.id}.gridConfig.columnEnd`,
+                  message: `Grid item columnEnd must be positive (1-based), got ${gridItem.columnEnd}`,
+                  code: 'INVALID_GRID_COLUMN_END',
+                  severity: 'error',
+                });
+              }
+
+              if (typeof gridItem.rowStart === 'number' && gridItem.rowStart < 1) {
+                errors.push({
+                  path: `node.${node.id}.gridConfig.rowStart`,
+                  message: `Grid item rowStart must be positive (1-based), got ${gridItem.rowStart}`,
+                  code: 'INVALID_GRID_ROW_START',
+                  severity: 'error',
+                });
+              }
+
+              if (typeof gridItem.rowEnd === 'number' && gridItem.rowEnd < 1) {
+                errors.push({
+                  path: `node.${node.id}.gridConfig.rowEnd`,
+                  message: `Grid item rowEnd must be positive (1-based), got ${gridItem.rowEnd}`,
+                  code: 'INVALID_GRID_ROW_END',
+                  severity: 'error',
+                });
+              }
+
+              // Validate that end is greater than start
+              if (typeof gridItem.columnStart === 'number' && typeof gridItem.columnEnd === 'number') {
+                if (gridItem.columnEnd <= gridItem.columnStart) {
+                  errors.push({
+                    path: `node.${node.id}.gridConfig`,
+                    message: `Grid item columnEnd (${gridItem.columnEnd}) must be greater than columnStart (${gridItem.columnStart})`,
+                    code: 'INVALID_GRID_COLUMN_SPAN',
+                    severity: 'error',
+                  });
+                }
+              }
+
+              if (typeof gridItem.rowStart === 'number' && typeof gridItem.rowEnd === 'number') {
+                if (gridItem.rowEnd <= gridItem.rowStart) {
+                  errors.push({
+                    path: `node.${node.id}.gridConfig`,
+                    message: `Grid item rowEnd (${gridItem.rowEnd}) must be greater than rowStart (${gridItem.rowStart})`,
+                    code: 'INVALID_GRID_ROW_SPAN',
+                    severity: 'error',
+                  });
+                }
+              }
+
+              // Validate alignment overrides
+              if (gridItem.justifySelf) {
+                const validJustifySelf = ['auto', 'start', 'center', 'end', 'stretch'];
+                if (!validJustifySelf.includes(gridItem.justifySelf)) {
+                  errors.push({
+                    path: `node.${node.id}.gridConfig.justifySelf`,
+                    message: `Invalid grid item justifySelf '${gridItem.justifySelf}'. Must be one of: ${validJustifySelf.join(', ')}`,
+                    code: 'INVALID_GRID_JUSTIFY_SELF',
+                    severity: 'error',
+                  });
+                }
+              }
+
+              if (gridItem.alignSelf) {
+                const validAlignSelf = ['auto', 'start', 'center', 'end', 'stretch'];
+                if (!validAlignSelf.includes(gridItem.alignSelf)) {
+                  errors.push({
+                    path: `node.${node.id}.gridConfig.alignSelf`,
+                    message: `Invalid grid item alignSelf '${gridItem.alignSelf}'. Must be one of: ${validAlignSelf.join(', ')}`,
+                    code: 'INVALID_GRID_ALIGN_SELF',
+                    severity: 'error',
+                  });
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+
+    const result: ValidationResult = {
+      valid: errors.length === 0,
+      errors,
+      warnings,
+    };
+
+    // Emit validation events
+    if (result.valid) {
+      this.eventBus?.emit(DiagramEventTypes.VALIDATION_COMPLETED, {
+        type: 'layout',
+        entityId: group.id,
+        result,
+        timestamp: Date.now()
+      });
+    } else {
+      this.eventBus?.emit(DiagramEventTypes.VALIDATION_FAILED, {
+        type: 'layout',
         entityId: group.id,
         result,
         timestamp: Date.now()

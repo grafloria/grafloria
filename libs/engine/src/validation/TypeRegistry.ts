@@ -56,6 +56,8 @@ export interface GroupTypeDefinition {
   minMembers?: number; // Minimum number of members
   maxMembers?: number; // Maximum number of members
   canNest?: boolean; // Can contain other groups
+  allowedLayoutTypes?: ('flexbox' | 'grid')[]; // Phase 3: Allowed layout types for this group
+  requireLayout?: boolean; // Phase 3: Whether this group must have a layout configured
   validator?: (group: any) => ValidationResult;
 }
 

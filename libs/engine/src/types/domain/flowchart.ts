@@ -15,6 +15,15 @@ export const FlowchartTypes = {
   DELAY: 'flowchart:delay',
   MANUAL_INPUT: 'flowchart:manual-input',
   MANUAL_OPERATION: 'flowchart:manual-operation',
+
+  // Phase 3: Extended Flowchart Elements
+  PREDEFINED_PROCESS: 'flowchart:predefined-process',
+  STORED_DATA: 'flowchart:stored-data',
+  DISPLAY: 'flowchart:display',
+  PREPARATION: 'flowchart:preparation',
+  MERGE: 'flowchart:merge',
+  OR: 'flowchart:or',
+  SUMMING_JUNCTION: 'flowchart:summing-junction',
 } as const;
 
 /**
@@ -272,6 +281,170 @@ export function registerFlowchartTypes(registry: TypeRegistry): void {
       deletable: true,
       resizable: true,
       selectable: true,
+    },
+  });
+
+  // === Phase 3: Extended Flowchart Elements ===
+
+  // Predefined Process - Rectangle with double-struck vertical edges
+  registry.registerNodeType({
+    type: FlowchartTypes.PREDEFINED_PROCESS,
+    label: 'Predefined Process',
+    description: 'A predefined process or subroutine',
+    extends: FlowchartTypes.PROCESS,
+    category: 'flowchart',
+    family: 'operation',
+    tags: ['operation', 'subroutine', 'predefined', 'module'],
+    defaultStyle: {
+      strokeWidth: 3,
+    },
+  });
+
+  // Stored Data - Cylinder for database/storage
+  registry.registerNodeType({
+    type: FlowchartTypes.STORED_DATA,
+    label: 'Stored Data',
+    description: 'Stored data, database, or file',
+    extends: FlowchartTypes.DATA,
+    category: 'flowchart',
+    family: 'data',
+    tags: ['data', 'storage', 'database', 'file'],
+    defaultSize: {
+      width: 120,
+      height: 70,
+    },
+    defaultStyle: {
+      shape: 'cylinder',
+      fill: '#E8F5E9',
+      stroke: '#388E3C',
+    },
+  });
+
+  // Display - Monitor/screen shape
+  registry.registerNodeType({
+    type: FlowchartTypes.DISPLAY,
+    label: 'Display',
+    description: 'Display or output to screen',
+    category: 'flowchart',
+    family: 'data',
+    tags: ['data', 'display', 'output', 'screen'],
+    minPorts: 0,
+    maxPorts: 6,
+    defaultSize: {
+      width: 120,
+      height: 80,
+    },
+    defaultStyle: {
+      shape: 'rounded-rectangle',
+      fill: '#F3E5F5',
+      stroke: '#7B1FA2',
+      strokeWidth: 2,
+      borderRadius: 15,
+    },
+    defaultBehavior: {
+      draggable: true,
+      deletable: true,
+      resizable: true,
+      selectable: true,
+    },
+  });
+
+  // Preparation - Hexagon
+  registry.registerNodeType({
+    type: FlowchartTypes.PREPARATION,
+    label: 'Preparation',
+    description: 'Preparation or initialization step',
+    category: 'flowchart',
+    family: 'operation',
+    tags: ['operation', 'preparation', 'initialization', 'setup'],
+    minPorts: 0,
+    maxPorts: 8,
+    defaultSize: {
+      width: 140,
+      height: 60,
+    },
+    defaultStyle: {
+      shape: 'hexagon',
+      fill: '#FFF3E0',
+      stroke: '#F57C00',
+      strokeWidth: 2,
+    },
+    defaultBehavior: {
+      draggable: true,
+      deletable: true,
+      resizable: true,
+      selectable: true,
+    },
+  });
+
+  // Merge - Inverted triangle for merging flows
+  registry.registerNodeType({
+    type: FlowchartTypes.MERGE,
+    label: 'Merge',
+    description: 'Merge multiple flows into one',
+    category: 'flowchart',
+    family: 'flow-control',
+    tags: ['flow-control', 'merge', 'join'],
+    minPorts: 0,
+    maxPorts: 10,
+    defaultSize: {
+      width: 80,
+      height: 70,
+    },
+    defaultStyle: {
+      shape: 'triangle',
+      fill: '#E8F5E9',
+      stroke: '#388E3C',
+      strokeWidth: 2,
+    },
+    defaultBehavior: {
+      draggable: true,
+      deletable: true,
+      resizable: true,
+      selectable: true,
+    },
+  });
+
+  // OR - Circle for OR logic
+  registry.registerNodeType({
+    type: FlowchartTypes.OR,
+    label: 'OR',
+    description: 'Logical OR operation',
+    category: 'flowchart',
+    family: 'flow-control',
+    tags: ['flow-control', 'or', 'logic'],
+    minPorts: 0,
+    maxPorts: 10,
+    defaultSize: {
+      width: 60,
+      height: 60,
+    },
+    defaultStyle: {
+      shape: 'circle',
+      fill: '#FFF9C4',
+      stroke: '#F57F17',
+      strokeWidth: 2,
+    },
+    defaultBehavior: {
+      draggable: true,
+      deletable: true,
+      resizable: true,
+      selectable: true,
+    },
+  });
+
+  // Summing Junction - Circle with X for summing
+  registry.registerNodeType({
+    type: FlowchartTypes.SUMMING_JUNCTION,
+    label: 'Summing Junction',
+    description: 'Summing junction for combining flows',
+    extends: FlowchartTypes.OR,
+    category: 'flowchart',
+    family: 'flow-control',
+    tags: ['flow-control', 'sum', 'combine', 'junction'],
+    defaultStyle: {
+      fill: '#E0F2F1',
+      stroke: '#00695C',
     },
   });
 }
