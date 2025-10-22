@@ -90,6 +90,8 @@ export class DiagramModel extends DiagramEntity {
    * Add node to diagram
    */
   addNode(node: NodeModel): void {
+    this.assertNotDisposed(); // Phase 5.4
+
     if (this.nodes.has(node.id)) {
       throw new Error(`Node with id ${node.id} already exists`);
     }
@@ -180,6 +182,8 @@ export class DiagramModel extends DiagramEntity {
    * Add link to diagram
    */
   addLink(link: LinkModel): void {
+    this.assertNotDisposed(); // Phase 5.4
+
     if (this.links.has(link.id)) {
       throw new Error(`Link with id ${link.id} already exists`);
     }
@@ -257,6 +261,8 @@ export class DiagramModel extends DiagramEntity {
    * Add group (Phase 1.6c)
    */
   addGroup(group: GroupModel): void {
+    this.assertNotDisposed(); // Phase 5.4
+
     if (this.groups.has(group.id)) {
       throw new Error(`Group with id ${group.id} already exists`);
     }
@@ -687,5 +693,49 @@ export class DiagramModel extends DiagramEntity {
     }
 
     return diagram;
+  }
+
+  /**
+   * Dispose diagram and all child entities (Phase 5.4)
+   * Prevents memory leaks by:
+   * - Disposing all nodes, links, and groups
+   * - Breaking circular references
+   * - Clearing spatial indices
+   * - Calling parent dispose()
+   */
+  override dispose(): void {
+    this.assertNotDisposed();
+
+    // Dispose all child entities first (children before parent)
+    // This ensures proper cleanup order and prevents orphaned listeners
+
+    // Dispose all nodes
+    for (const node of this.nodes.values()) {
+      // Break circular reference before disposal
+      node.diagram = undefined;
+      node.dispose();
+    }
+
+    // Dispose all links
+    for (const link of this.links.values()) {
+      link.dispose();
+    }
+
+    // Dispose all groups
+    for (const group of this.groups.values()) {
+      group.dispose();
+    }
+
+    // Clear collections
+    this.nodes.clear();
+    this.links.clear();
+    this.groups.clear();
+
+    // Clear spatial indices (prevents memory leaks from indexed entities)
+    this.nodeSpatialIndex.clear();
+    this.linkSpatialIndex.clear();
+
+    // Call parent dispose (removes listeners, clears metadata, etc.)
+    super.dispose();
   }
 }

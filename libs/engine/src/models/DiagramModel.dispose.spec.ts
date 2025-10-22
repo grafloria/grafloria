@@ -184,7 +184,7 @@ describe('DiagramModel - Memory Management (Phase 5.4)', () => {
       // Dispose should break circular reference
       diagram.dispose();
 
-      expect(node.diagram).toBeNull();
+      expect(node.diagram).toBeUndefined();
     });
   });
 });
