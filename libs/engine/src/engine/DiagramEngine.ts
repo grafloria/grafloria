@@ -170,20 +170,36 @@ export class DiagramEngine {
   }
 
   /**
-   * Add node
+   * Add node (from config)
    */
   async addNode(config: {
     type: string;
     position: Point;
     size?: Size;
     data?: any;
-  }): Promise<NodeModel> {
+  }): Promise<NodeModel>;
+
+  /**
+   * Add node (pre-created NodeModel) (Phase 1.6b)
+   */
+  async addNode(node: NodeModel): Promise<NodeModel>;
+
+  /**
+   * Add node implementation
+   */
+  async addNode(configOrNode: { type: string; position: Point; size?: Size; data?: any } | NodeModel): Promise<NodeModel> {
     if (!this.diagram) {
       throw new Error('No diagram loaded');
     }
 
     return this.performanceMonitor.measure('addNode', async () => {
-      const node = new NodeModel(config);
+      // Determine if we received a config or a NodeModel
+      let node: NodeModel;
+      if (configOrNode instanceof NodeModel) {
+        node = configOrNode;
+      } else {
+        node = new NodeModel(configOrNode);
+      }
 
       // Validate
       if (this.config.validation?.strict) {
@@ -848,5 +864,144 @@ export class DiagramEngine {
     }
 
     return undefined;
+  }
+
+  /**
+   * Get node that owns a port (Phase 1.6b)
+   */
+  private getNodeForPort(portId: string): NodeModel | undefined {
+    if (!this.diagram) {
+      return undefined;
+    }
+
+    for (const node of this.diagram.getNodes()) {
+      if (node.getPort(portId)) {
+        return node;
+      }
+    }
+
+    return undefined;
+  }
+
+  /**
+   * Get port position in global coordinates (Phase 1.6b)
+   * @param portId Port ID
+   * @returns Global position of the port
+   */
+  private getPortGlobalPosition(portId: string): Point {
+    const port = this.findPort(portId);
+    if (!port) {
+      return { x: 0, y: 0 };
+    }
+
+    const node = this.getNodeForPort(portId);
+    if (!node) {
+      return { x: 0, y: 0 };
+    }
+
+    // Port position is normalized (0-1) relative to node size
+    const localPortPos: Point = {
+      x: (port.position?.x ?? 0.5) * node.size.width,
+      y: (port.position?.y ?? 0.5) * node.size.height,
+    };
+
+    // Transform to global using node's global position
+    const nodeGlobalPos = node.getGlobalPosition();
+
+    return {
+      x: nodeGlobalPos.x + localPortPos.x,
+      y: nodeGlobalPos.y + localPortPos.y,
+    };
+  }
+
+  /**
+   * Compute link path using specified routing algorithm (Phase 1.6b)
+   * @param linkId Link ID
+   * @param algorithm Routing algorithm to use
+   * @param options Routing options
+   * @returns Array of points forming the path
+   */
+  private computeLinkPath(
+    linkId: string,
+    algorithm: 'straight' | 'orthogonal' | 'astar' | 'dijkstra' | 'visibility',
+    options: any = {}
+  ): Point[] {
+    const link = this.diagram?.getLink(linkId);
+    if (!link) {
+      return [];
+    }
+
+    // Build obstacle map (excluding source and target nodes)
+    const sourceNode = this.getNodeForPort(link.sourcePortId);
+    const targetNode = this.getNodeForPort(link.targetPortId);
+    const excludeIds = [sourceNode?.id, targetNode?.id].filter(
+      (id) => id !== undefined
+    ) as string[];
+
+    const { ObstacleMapBuilder } = require('../routing/ObstacleMapBuilder');
+    const obstacleMap = ObstacleMapBuilder.fromDiagramExcluding(
+      this.diagram!,
+      excludeIds,
+      { margin: options.obstacleMargin ?? 5 }
+    );
+
+    // Get port positions (in global coordinates)
+    const start = this.getPortGlobalPosition(link.sourcePortId);
+    const end = this.getPortGlobalPosition(link.targetPortId);
+
+    // Import routers
+    const { StraightRouter } = require('../routing/algorithms/StraightRouter');
+    const { OrthogonalRouter } = require('../routing/algorithms/OrthogonalRouter');
+    const { AStarRouter } = require('../routing/algorithms/AStarRouter');
+    const { DijkstraRouter } = require('../routing/algorithms/DijkstraRouter');
+    const { VisibilityGraphRouter } = require('../routing/algorithms/VisibilityGraphRouter');
+
+    // Route based on algorithm
+    let points: Point[];
+    switch (algorithm) {
+      case 'straight': {
+        const router = new StraightRouter();
+        const result = router.route({ start, end, obstacles: obstacleMap.getObstacles(), options });
+        points = result?.points || [start, end];
+        break;
+      }
+      case 'orthogonal': {
+        const router = new OrthogonalRouter();
+        const result = router.route({ start, end, obstacles: obstacleMap.getObstacles(), options });
+        points = result?.points || [start, end];
+        break;
+      }
+      case 'astar': {
+        const router = new AStarRouter(obstacleMap, options);
+        points = router.route(start, end);
+        // Fallback to direct path if no path found
+        if (points.length === 0) {
+          points = [start, end];
+        }
+        break;
+      }
+      case 'dijkstra': {
+        const router = new DijkstraRouter(obstacleMap, options);
+        points = router.route(start, end);
+        // Fallback to direct path if no path found
+        if (points.length === 0) {
+          points = [start, end];
+        }
+        break;
+      }
+      case 'visibility': {
+        const router = new VisibilityGraphRouter(obstacleMap, options);
+        points = router.route(start, end);
+        // Fallback to direct path if no path found
+        if (points.length === 0) {
+          points = [start, end];
+        }
+        break;
+      }
+      default:
+        throw new Error(`Unknown routing algorithm: ${algorithm}`);
+    }
+
+    return points;
   }
 }
