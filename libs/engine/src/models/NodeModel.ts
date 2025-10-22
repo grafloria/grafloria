@@ -29,6 +29,7 @@ export interface SerializedNode extends SerializedEntity {
   behavior: NodeBehavior;
   style: Partial<NodeStyle>;
   data: Record<string, any>;
+  behaviorOverrides?: Record<string, Partial<NodeBehavior>>; // Mode-specific behavior overrides
 }
 
 export class NodeModel extends DiagramEntity {
@@ -74,6 +75,9 @@ export class NodeModel extends DiagramEntity {
     groupable: true,
     cloneable: true,
   };
+
+  // Mode-specific behavior overrides
+  behaviorOverrides: Map<string, Partial<NodeBehavior>> = new Map();
 
   // Styling
   style: Partial<NodeStyle> = {};
@@ -368,10 +372,41 @@ export class NodeModel extends DiagramEntity {
   }
 
   /**
+   * Set behavior override for specific mode
+   */
+  setBehaviorOverride(mode: string, behavior: Partial<NodeBehavior>): void {
+    this.behaviorOverrides.set(mode, behavior);
+    this.incrementVersion();
+  }
+
+  /**
+   * Clear behavior override for specific mode
+   */
+  clearBehaviorOverride(mode: string): void {
+    this.behaviorOverrides.delete(mode);
+    this.incrementVersion();
+  }
+
+  /**
+   * Get behavior override for specific mode
+   */
+  getBehaviorOverride(mode: string): Partial<NodeBehavior> | undefined {
+    return this.behaviorOverrides.get(mode);
+  }
+
+  /**
+   * Clear all behavior overrides
+   */
+  clearAllBehaviorOverrides(): void {
+    this.behaviorOverrides.clear();
+    this.incrementVersion();
+  }
+
+  /**
    * Serialize to JSON
    */
   serialize(): SerializedNode {
-    return {
+    const serialized: SerializedNode = {
       id: this.id,
       uuid: this.uuid,
       type: this.type,
@@ -391,6 +426,13 @@ export class NodeModel extends DiagramEntity {
       style: { ...this.style },
       data: { ...this.data },
     };
+
+    // Include behavior overrides if any exist
+    if (this.behaviorOverrides.size > 0) {
+      serialized.behaviorOverrides = Object.fromEntries(this.behaviorOverrides);
+    }
+
+    return serialized;
   }
 
   /**
@@ -424,6 +466,13 @@ export class NodeModel extends DiagramEntity {
     for (const portData of data.ports) {
       const port = PortModel.fromJSON(portData);
       node.ports.set(port.id, port);
+    }
+
+    // Restore behavior overrides
+    if (data.behaviorOverrides) {
+      for (const [mode, behavior] of Object.entries(data.behaviorOverrides)) {
+        node.behaviorOverrides.set(mode, behavior);
+      }
     }
 
     return node;

@@ -488,4 +488,519 @@ describe('Diagram Mode System (Phase 1.5)', () => {
       customEngine.destroy();
     });
   });
+
+  describe('Priority 1: Mode Persistence', () => {
+    it('should serialize current mode with diagram', () => {
+      engine.setMode(DiagramMode.RUNNING);
+
+      const serialized = engine.serialize();
+
+      expect(serialized).toBeDefined();
+      expect(serialized!.mode).toBe(DiagramMode.RUNNING);
+    });
+
+    it('should restore mode when deserializing diagram', () => {
+      // Create diagram in RUNNING mode
+      engine.setMode(DiagramMode.RUNNING);
+      const serialized = engine.serialize();
+
+      // Create new engine and load diagram
+      const newEngine = new DiagramEngine({});
+      newEngine.initialize();
+      newEngine.loadFromJSON(serialized!);
+
+      expect(newEngine.getMode()).toBe(DiagramMode.RUNNING);
+
+      newEngine.destroy();
+    });
+
+    it('should preserve mode across save/load cycle', () => {
+      const modes = [
+        DiagramMode.DESIGNER,
+        DiagramMode.RUNNING,
+        DiagramMode.VIEW,
+        DiagramMode.DEBUG,
+        DiagramMode.PRESENTATION,
+      ];
+
+      modes.forEach((mode) => {
+        engine.setMode(mode);
+        const serialized = engine.serialize();
+
+        const newEngine = new DiagramEngine({});
+        newEngine.initialize();
+        newEngine.loadFromJSON(serialized!);
+
+        expect(newEngine.getMode()).toBe(mode);
+        newEngine.destroy();
+      });
+    });
+
+    it('should default to DESIGNER if mode not in serialized data', () => {
+      const serialized = engine.serialize();
+      delete serialized!.mode; // Remove mode field
+
+      const newEngine = new DiagramEngine({});
+      newEngine.initialize();
+      newEngine.loadFromJSON(serialized!);
+
+      expect(newEngine.getMode()).toBe(DiagramMode.DESIGNER);
+      newEngine.destroy();
+    });
+
+    it('should validate mode from serialized data', () => {
+      const serialized = engine.serialize();
+      (serialized as any).mode = 'invalid-mode';
+
+      const newEngine = new DiagramEngine({});
+      newEngine.initialize();
+
+      // Should fall back to DESIGNER for invalid mode
+      newEngine.loadFromJSON(serialized!);
+      expect(newEngine.getMode()).toBe(DiagramMode.DESIGNER);
+
+      newEngine.destroy();
+    });
+  });
+
+  describe('Priority 2a: Mode Transition Guards', () => {
+    it('should allow registering mode transition guard', () => {
+      const guard = jest.fn(() => ({ allowed: true }));
+
+      engine.addModeGuard('test-guard', guard);
+      engine.setMode(DiagramMode.RUNNING);
+
+      expect(guard).toHaveBeenCalledWith(DiagramMode.DESIGNER, DiagramMode.RUNNING);
+    });
+
+    it('should prevent mode change when guard returns false', () => {
+      engine.addModeGuard('block-running', (prev, next) => {
+        if (next === DiagramMode.RUNNING) {
+          return { allowed: false, reason: 'Running mode disabled' };
+        }
+        return { allowed: true };
+      });
+
+      engine.setMode(DiagramMode.RUNNING);
+
+      // Mode should not change
+      expect(engine.getMode()).toBe(DiagramMode.DESIGNER);
+    });
+
+    it('should emit guard-blocked event when transition prevented', () => {
+      const listener = jest.fn();
+      engine.on('mode-guard-blocked', listener);
+
+      engine.addModeGuard('block-debug', (prev, next) => {
+        if (next === DiagramMode.DEBUG) {
+          return { allowed: false, reason: 'Debug disabled' };
+        }
+        return { allowed: true };
+      });
+
+      engine.setMode(DiagramMode.DEBUG);
+
+      expect(listener).toHaveBeenCalledWith({
+        previousMode: DiagramMode.DESIGNER,
+        requestedMode: DiagramMode.DEBUG,
+        guard: 'block-debug',
+        reason: 'Debug disabled',
+      });
+    });
+
+    it('should allow mode change when all guards pass', () => {
+      engine.addModeGuard('guard1', () => ({ allowed: true }));
+      engine.addModeGuard('guard2', () => ({ allowed: true }));
+      engine.addModeGuard('guard3', () => ({ allowed: true }));
+
+      engine.setMode(DiagramMode.RUNNING);
+
+      expect(engine.getMode()).toBe(DiagramMode.RUNNING);
+    });
+
+    it('should stop at first failing guard', () => {
+      const guard1 = jest.fn(() => ({ allowed: true }));
+      const guard2 = jest.fn(() => ({ allowed: false, reason: 'Blocked' }));
+      const guard3 = jest.fn(() => ({ allowed: true }));
+
+      engine.addModeGuard('guard1', guard1);
+      engine.addModeGuard('guard2', guard2);
+      engine.addModeGuard('guard3', guard3);
+
+      engine.setMode(DiagramMode.RUNNING);
+
+      expect(guard1).toHaveBeenCalled();
+      expect(guard2).toHaveBeenCalled();
+      expect(guard3).not.toHaveBeenCalled(); // Should not call after failure
+      expect(engine.getMode()).toBe(DiagramMode.DESIGNER);
+    });
+
+    it('should allow removing mode guard', () => {
+      const guard = jest.fn(() => ({ allowed: false }));
+
+      engine.addModeGuard('removable', guard);
+      engine.removeModeGuard('removable');
+
+      engine.setMode(DiagramMode.RUNNING);
+
+      expect(guard).not.toHaveBeenCalled();
+      expect(engine.getMode()).toBe(DiagramMode.RUNNING);
+    });
+
+    it('should clear all mode guards', () => {
+      engine.addModeGuard('guard1', () => ({ allowed: false }));
+      engine.addModeGuard('guard2', () => ({ allowed: false }));
+
+      engine.clearModeGuards();
+      engine.setMode(DiagramMode.RUNNING);
+
+      expect(engine.getMode()).toBe(DiagramMode.RUNNING);
+    });
+  });
+
+  describe('Priority 2b: Per-Entity Behavior Overrides', () => {
+    it('should allow node to override behavior for specific mode', () => {
+      const node = engine.addNode({ x: 0, y: 0, label: 'Test' });
+
+      // Override: allow dragging in RUNNING mode
+      node.setBehaviorOverride(DiagramMode.RUNNING, { draggable: true });
+
+      engine.setMode(DiagramMode.RUNNING);
+      const behavior = engine.getNodeBehaviorForMode(node.behavior);
+
+      // Should use override
+      expect(behavior.draggable).toBe(true);
+    });
+
+    it('should respect base behavior when no override exists', () => {
+      const node = engine.addNode({ x: 0, y: 0, label: 'Test' });
+
+      engine.setMode(DiagramMode.RUNNING);
+      const behavior = engine.getNodeBehaviorForMode(node.behavior);
+
+      // Should use default mode behavior (not draggable in RUNNING)
+      expect(behavior.draggable).toBe(false);
+    });
+
+    it('should allow multiple overrides for different modes', () => {
+      const node = engine.addNode({ x: 0, y: 0, label: 'Test' });
+
+      node.setBehaviorOverride(DiagramMode.RUNNING, { draggable: true });
+      node.setBehaviorOverride(DiagramMode.VIEW, { selectable: false });
+
+      engine.setMode(DiagramMode.RUNNING);
+      let behavior = engine.getNodeBehaviorForMode(node.behavior);
+      expect(behavior.draggable).toBe(true);
+
+      engine.setMode(DiagramMode.VIEW);
+      behavior = engine.getNodeBehaviorForMode(node.behavior);
+      expect(behavior.selectable).toBe(false);
+    });
+
+    it('should allow removing behavior override', () => {
+      const node = engine.addNode({ x: 0, y: 0, label: 'Test' });
+
+      node.setBehaviorOverride(DiagramMode.RUNNING, { draggable: true });
+      node.clearBehaviorOverride(DiagramMode.RUNNING);
+
+      engine.setMode(DiagramMode.RUNNING);
+      const behavior = engine.getNodeBehaviorForMode(node.behavior);
+
+      expect(behavior.draggable).toBe(false); // Back to default
+    });
+
+    it('should serialize behavior overrides', () => {
+      const node = engine.addNode({ x: 0, y: 0, label: 'Test' });
+      node.setBehaviorOverride(DiagramMode.RUNNING, { draggable: true });
+
+      const serialized = node.serialize();
+
+      expect(serialized.behaviorOverrides).toBeDefined();
+      expect(serialized.behaviorOverrides![DiagramMode.RUNNING]).toEqual({ draggable: true });
+    });
+
+    it('should restore behavior overrides from serialization', () => {
+      const node = engine.addNode({ x: 0, y: 0, label: 'Test' });
+      node.setBehaviorOverride(DiagramMode.RUNNING, { draggable: true });
+
+      const serialized = node.serialize();
+      const restored = engine.addNode(serialized);
+
+      engine.setMode(DiagramMode.RUNNING);
+      const behavior = engine.getNodeBehaviorForMode(restored.behavior);
+
+      expect(behavior.draggable).toBe(true);
+    });
+  });
+
+  describe('Priority 3a: Mode-Specific Viewport Settings', () => {
+    it('should allow configuring viewport settings per mode', () => {
+      engine.configureModeViewport(DiagramMode.PRESENTATION, {
+        allowZoom: false,
+        allowPan: false,
+        minZoom: 1.0,
+        maxZoom: 1.0,
+      });
+
+      const settings = engine.getModeViewportSettings(DiagramMode.PRESENTATION);
+
+      expect(settings.allowZoom).toBe(false);
+      expect(settings.allowPan).toBe(false);
+      expect(settings.minZoom).toBe(1.0);
+      expect(settings.maxZoom).toBe(1.0);
+    });
+
+    it('should return default settings when none configured', () => {
+      const settings = engine.getModeViewportSettings(DiagramMode.DESIGNER);
+
+      expect(settings.allowZoom).toBe(true);
+      expect(settings.allowPan).toBe(true);
+      expect(settings.minZoom).toBeUndefined();
+      expect(settings.maxZoom).toBeUndefined();
+    });
+
+    it('should apply viewport settings when mode changes', () => {
+      const listener = jest.fn();
+      engine.on('viewport-settings-changed', listener);
+
+      engine.configureModeViewport(DiagramMode.PRESENTATION, {
+        allowZoom: false,
+        fitToScreen: true,
+      });
+
+      engine.setMode(DiagramMode.PRESENTATION);
+
+      expect(listener).toHaveBeenCalledWith({
+        mode: DiagramMode.PRESENTATION,
+        settings: expect.objectContaining({
+          allowZoom: false,
+          fitToScreen: true,
+        }),
+      });
+    });
+
+    it('should support centerOnLoad setting', () => {
+      engine.configureModeViewport(DiagramMode.VIEW, {
+        centerOnLoad: true,
+        fitToScreen: true,
+      });
+
+      engine.setMode(DiagramMode.VIEW);
+      const settings = engine.getModeViewportSettings(DiagramMode.VIEW);
+
+      expect(settings.centerOnLoad).toBe(true);
+      expect(settings.fitToScreen).toBe(true);
+    });
+
+    it('should support followNode setting for auto-centering', () => {
+      const node = engine.addNode({ x: 100, y: 100, label: 'Target' });
+
+      engine.configureModeViewport(DiagramMode.RUNNING, {
+        followNode: node.id,
+        autoCenter: true,
+      });
+
+      const settings = engine.getModeViewportSettings(DiagramMode.RUNNING);
+
+      expect(settings.followNode).toBe(node.id);
+      expect(settings.autoCenter).toBe(true);
+    });
+  });
+
+  describe('Priority 3b: Mode History/Stack', () => {
+    it('should track mode changes in history', () => {
+      engine.setMode(DiagramMode.RUNNING);
+      engine.setMode(DiagramMode.DEBUG);
+      engine.setMode(DiagramMode.VIEW);
+
+      const history = engine.getModeHistory();
+
+      expect(history.length).toBe(4); // DESIGNER + 3 changes
+      expect(history[0].mode).toBe(DiagramMode.DESIGNER);
+      expect(history[1].mode).toBe(DiagramMode.RUNNING);
+      expect(history[2].mode).toBe(DiagramMode.DEBUG);
+      expect(history[3].mode).toBe(DiagramMode.VIEW);
+    });
+
+    it('should include timestamp in mode history', () => {
+      const before = Date.now();
+      engine.setMode(DiagramMode.RUNNING);
+      const after = Date.now();
+
+      const history = engine.getModeHistory();
+      const entry = history[history.length - 1];
+
+      expect(entry.timestamp).toBeGreaterThanOrEqual(before);
+      expect(entry.timestamp).toBeLessThanOrEqual(after);
+    });
+
+    it('should track duration in mode history', () => {
+      jest.useFakeTimers();
+
+      engine.setMode(DiagramMode.RUNNING);
+      jest.advanceTimersByTime(5000);
+      engine.setMode(DiagramMode.DEBUG);
+
+      const history = engine.getModeHistory();
+      const runningEntry = history.find(h => h.mode === DiagramMode.RUNNING);
+
+      expect(runningEntry!.duration).toBe(5000);
+
+      jest.useRealTimers();
+    });
+
+    it('should support previousMode navigation', () => {
+      engine.setMode(DiagramMode.RUNNING);
+      engine.setMode(DiagramMode.DEBUG);
+
+      engine.previousMode();
+
+      expect(engine.getMode()).toBe(DiagramMode.RUNNING);
+    });
+
+    it('should support nextMode navigation', () => {
+      engine.setMode(DiagramMode.RUNNING);
+      engine.setMode(DiagramMode.DEBUG);
+      engine.previousMode(); // Back to RUNNING
+
+      engine.nextMode(); // Forward to DEBUG
+
+      expect(engine.getMode()).toBe(DiagramMode.DEBUG);
+    });
+
+    it('should support push/pop mode stack', () => {
+      engine.setMode(DiagramMode.RUNNING);
+
+      engine.pushMode(DiagramMode.DEBUG); // Push DEBUG, save RUNNING
+      expect(engine.getMode()).toBe(DiagramMode.DEBUG);
+
+      engine.popMode(); // Pop back to RUNNING
+      expect(engine.getMode()).toBe(DiagramMode.RUNNING);
+    });
+
+    it('should handle multiple push/pop operations', () => {
+      engine.pushMode(DiagramMode.RUNNING);
+      engine.pushMode(DiagramMode.DEBUG);
+      engine.pushMode(DiagramMode.VIEW);
+
+      expect(engine.getMode()).toBe(DiagramMode.VIEW);
+
+      engine.popMode(); // Back to DEBUG
+      expect(engine.getMode()).toBe(DiagramMode.DEBUG);
+
+      engine.popMode(); // Back to RUNNING
+      expect(engine.getMode()).toBe(DiagramMode.RUNNING);
+
+      engine.popMode(); // Back to DESIGNER
+      expect(engine.getMode()).toBe(DiagramMode.DESIGNER);
+    });
+
+    it('should provide mode analytics', () => {
+      jest.useFakeTimers();
+
+      engine.setMode(DiagramMode.RUNNING);
+      jest.advanceTimersByTime(1000);
+      engine.setMode(DiagramMode.DESIGNER);
+      jest.advanceTimersByTime(2000);
+      engine.setMode(DiagramMode.RUNNING);
+      jest.advanceTimersByTime(3000);
+      engine.setMode(DiagramMode.DESIGNER);
+
+      const analytics = engine.getModeAnalytics();
+
+      expect(analytics[DiagramMode.RUNNING].count).toBe(2);
+      expect(analytics[DiagramMode.RUNNING].totalTime).toBe(4000);
+      expect(analytics[DiagramMode.RUNNING].avgTime).toBe(2000);
+
+      jest.useRealTimers();
+    });
+
+    it('should clear mode history', () => {
+      engine.setMode(DiagramMode.RUNNING);
+      engine.setMode(DiagramMode.DEBUG);
+
+      engine.clearModeHistory();
+
+      const history = engine.getModeHistory();
+      expect(history.length).toBe(1); // Only current mode
+      expect(history[0].mode).toBe(DiagramMode.DEBUG);
+    });
+  });
+
+  describe('Priority 3c: Before/After Mode Change Hooks', () => {
+    it('should call beforeModeChange hook', () => {
+      const hook = jest.fn();
+      engine.beforeModeChange(hook);
+
+      engine.setMode(DiagramMode.RUNNING);
+
+      expect(hook).toHaveBeenCalledWith(DiagramMode.DESIGNER, DiagramMode.RUNNING);
+    });
+
+    it('should call afterModeChange hook', () => {
+      const hook = jest.fn();
+      engine.afterModeChange(hook);
+
+      engine.setMode(DiagramMode.RUNNING);
+
+      expect(hook).toHaveBeenCalledWith(DiagramMode.DESIGNER, DiagramMode.RUNNING);
+    });
+
+    it('should call hooks in correct order', () => {
+      const callOrder: string[] = [];
+
+      engine.beforeModeChange(() => callOrder.push('before'));
+      engine.on('mode-changed', () => callOrder.push('event'));
+      engine.afterModeChange(() => callOrder.push('after'));
+
+      engine.setMode(DiagramMode.RUNNING);
+
+      expect(callOrder).toEqual(['before', 'event', 'after']);
+    });
+
+    it('should allow preventing mode change in beforeModeChange', () => {
+      engine.beforeModeChange((prev, next) => {
+        if (next === DiagramMode.DEBUG) {
+          return false; // Prevent change
+        }
+      });
+
+      engine.setMode(DiagramMode.DEBUG);
+
+      expect(engine.getMode()).toBe(DiagramMode.DESIGNER);
+    });
+
+    it('should support multiple before hooks', () => {
+      const hook1 = jest.fn();
+      const hook2 = jest.fn();
+
+      engine.beforeModeChange(hook1);
+      engine.beforeModeChange(hook2);
+
+      engine.setMode(DiagramMode.RUNNING);
+
+      expect(hook1).toHaveBeenCalled();
+      expect(hook2).toHaveBeenCalled();
+    });
+
+    it('should support removing hooks', () => {
+      const hook = jest.fn();
+      const unsubscribe = engine.beforeModeChange(hook);
+
+      unsubscribe(); // Remove hook
+
+      engine.setMode(DiagramMode.RUNNING);
+
+      expect(hook).not.toHaveBeenCalled();
+    });
+
+    it('should pass context to hooks for plugins', () => {
+      engine.beforeModeChange((prev, next, context) => {
+        expect(context.engine).toBe(engine);
+        expect(context.diagram).toBe(engine.getDiagram());
+      });
+
+      engine.setMode(DiagramMode.RUNNING);
+    });
+  });
 });

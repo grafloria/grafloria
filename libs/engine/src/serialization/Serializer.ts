@@ -2,11 +2,13 @@
 
 import { DiagramModel } from '../models/DiagramModel';
 import type { SerializedDiagram as DiagramSerializedData } from '../models/DiagramModel';
+import type { DiagramMode } from '../engine/DiagramMode';
 
 // Serializer's output type with string version for format version
 export interface SerializedDiagram extends Omit<DiagramSerializedData, 'version'> {
   version: string; // Serializer format version
   diagramVersion?: number; // Original diagram version
+  mode?: DiagramMode; // Current diagram mode
 }
 
 export class DiagramSerializer {

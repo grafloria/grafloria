@@ -17,6 +17,16 @@ import { RemoveNodeCommand } from '../commands/basic/RemoveNodeCommand';
 import { AddLinkCommand } from '../commands/basic/AddLinkCommand';
 import { RemoveLinkCommand } from '../commands/basic/RemoveLinkCommand';
 import { DiagramMode, isValidDiagramMode, ModeChangeEvent } from './DiagramMode';
+import type {
+  ModeGuardFunction,
+  ModeGuardBlockedEvent,
+  ModeViewportSettings,
+  ViewportSettingsChangedEvent,
+  ModeHistoryEntry,
+  ModeAnalytics,
+  ModeChangeHook,
+  ModeChangeContext,
+} from './DiagramModeTypes';
 import type { Point, Size, Viewport } from '../types';
 import type { Plugin } from '../types';
 import type { ValidationResult } from '../validation/ValidationEngine';
