@@ -1,6 +1,8 @@
 // ValidationEngine - Validates diagrams, nodes, ports, and links
 
 import { TypeRegistry } from './TypeRegistry';
+import { EventBus } from '../events/EventBus'; // Phase 1 - Critical Fixes
+import { DiagramEventTypes } from '../types/event.types'; // Phase 1 - Critical Fixes
 import type {
   ValidationResult,
   ValidationError,
@@ -27,9 +29,11 @@ export class ValidationEngine {
   private typeRegistry: TypeRegistry;
   private customRules: Map<string, ValidationRule[]> = new Map();
   private realTimeValidation: boolean = false;
+  private eventBus?: EventBus; // Phase 1 - Critical Fixes
 
-  constructor(typeRegistry: TypeRegistry) {
+  constructor(typeRegistry: TypeRegistry, eventBus?: EventBus) {
     this.typeRegistry = typeRegistry;
+    this.eventBus = eventBus; // Phase 1 - Critical Fixes
   }
 
   /**
@@ -47,12 +51,25 @@ export class ValidationEngine {
   }
 
   /**
+   * Check if real-time validation is enabled (Phase 1 - Critical Fixes)
+   */
+  isRealTimeValidationEnabled(): boolean {
+    return this.realTimeValidation;
+  }
+
+  /**
    * Validate entire diagram
    */
   validateDiagram(
     diagram: DiagramModel,
     options: ValidationOptions = {}
   ): ValidationResult {
+    // Emit validation started event (Phase 1 - Critical Fixes)
+    this.eventBus?.emit(DiagramEventTypes.VALIDATION_STARTED, {
+      type: 'diagram',
+      timestamp: Date.now()
+    });
+
     const opts = {
       validateTypes: true,
       validateConnections: true,
@@ -86,11 +103,36 @@ export class ValidationEngine {
       warnings.push(...result.warnings);
     }
 
-    return {
+    const result: ValidationResult = {
       valid: errors.length === 0,
       errors,
       warnings,
     };
+
+    // Emit validation events (Phase 1 - Critical Fixes)
+    if (result.valid) {
+      this.eventBus?.emit(DiagramEventTypes.VALIDATION_COMPLETED, {
+        type: 'diagram',
+        result,
+        timestamp: Date.now()
+      });
+    } else {
+      this.eventBus?.emit(DiagramEventTypes.VALIDATION_FAILED, {
+        type: 'diagram',
+        result,
+        timestamp: Date.now()
+      });
+    }
+
+    // Emit individual error/warning events
+    errors.forEach(error => {
+      this.eventBus?.emit(DiagramEventTypes.VALIDATION_ERROR, error);
+    });
+    warnings.forEach(warning => {
+      this.eventBus?.emit(DiagramEventTypes.VALIDATION_WARNING, warning);
+    });
+
+    return result;
   }
 
   /**
@@ -100,6 +142,13 @@ export class ValidationEngine {
     node: NodeModel,
     options: ValidationOptions = {}
   ): ValidationResult {
+    // Emit validation started event (Phase 1 - Critical Fixes)
+    this.eventBus?.emit(DiagramEventTypes.VALIDATION_STARTED, {
+      type: 'node',
+      entityId: node.id,
+      timestamp: Date.now()
+    });
+
     const errors: ValidationError[] = [];
     const warnings: ValidationWarning[] = [];
 
@@ -171,11 +220,30 @@ export class ValidationEngine {
       warnings.push(...result.warnings);
     }
 
-    return {
+    const result: ValidationResult = {
       valid: errors.length === 0,
       errors,
       warnings,
     };
+
+    // Emit validation events (Phase 1 - Critical Fixes)
+    if (result.valid) {
+      this.eventBus?.emit(DiagramEventTypes.VALIDATION_COMPLETED, {
+        type: 'node',
+        entityId: node.id,
+        result,
+        timestamp: Date.now()
+      });
+    } else {
+      this.eventBus?.emit(DiagramEventTypes.VALIDATION_FAILED, {
+        type: 'node',
+        entityId: node.id,
+        result,
+        timestamp: Date.now()
+      });
+    }
+
+    return result;
   }
 
   /**
@@ -186,6 +254,13 @@ export class ValidationEngine {
     node: NodeModel,
     options: ValidationOptions = {}
   ): ValidationResult {
+    // Emit validation started event (Phase 1 - Critical Fixes)
+    this.eventBus?.emit(DiagramEventTypes.VALIDATION_STARTED, {
+      type: 'port',
+      entityId: port.id,
+      timestamp: Date.now()
+    });
+
     const errors: ValidationError[] = [];
     const warnings: ValidationWarning[] = [];
 
@@ -242,11 +317,30 @@ export class ValidationEngine {
       warnings.push(...result.warnings);
     }
 
-    return {
+    const result: ValidationResult = {
       valid: errors.length === 0,
       errors,
       warnings,
     };
+
+    // Emit validation events (Phase 1 - Critical Fixes)
+    if (result.valid) {
+      this.eventBus?.emit(DiagramEventTypes.VALIDATION_COMPLETED, {
+        type: 'port',
+        entityId: port.id,
+        result,
+        timestamp: Date.now()
+      });
+    } else {
+      this.eventBus?.emit(DiagramEventTypes.VALIDATION_FAILED, {
+        type: 'port',
+        entityId: port.id,
+        result,
+        timestamp: Date.now()
+      });
+    }
+
+    return result;
   }
 
   /**
@@ -257,6 +351,13 @@ export class ValidationEngine {
     diagram: DiagramModel,
     options: ValidationOptions = {}
   ): ValidationResult {
+    // Emit validation started event (Phase 1 - Critical Fixes)
+    this.eventBus?.emit(DiagramEventTypes.VALIDATION_STARTED, {
+      type: 'link',
+      entityId: link.id,
+      timestamp: Date.now()
+    });
+
     const errors: ValidationError[] = [];
     const warnings: ValidationWarning[] = [];
 
@@ -352,6 +453,17 @@ export class ValidationEngine {
       }
     }
 
+    // Custom link type validator (Phase 1 - Critical Fixes)
+    const linkType = (link as any).systemType || (link as any).type;
+    if (linkType) {
+      const linkTypeDef = this.typeRegistry.getLinkType(linkType);
+      if (linkTypeDef && linkTypeDef.validator) {
+        const customResult = linkTypeDef.validator(link);
+        errors.push(...customResult.errors);
+        warnings.push(...customResult.warnings);
+      }
+    }
+
     // Custom link-level rules
     const customRules = this.customRules.get('link') || [];
     for (const rule of customRules) {
@@ -360,11 +472,30 @@ export class ValidationEngine {
       warnings.push(...result.warnings);
     }
 
-    return {
+    const result: ValidationResult = {
       valid: errors.length === 0,
       errors,
       warnings,
     };
+
+    // Emit validation events (Phase 1 - Critical Fixes)
+    if (result.valid) {
+      this.eventBus?.emit(DiagramEventTypes.VALIDATION_COMPLETED, {
+        type: 'link',
+        entityId: link.id,
+        result,
+        timestamp: Date.now()
+      });
+    } else {
+      this.eventBus?.emit(DiagramEventTypes.VALIDATION_FAILED, {
+        type: 'link',
+        entityId: link.id,
+        result,
+        timestamp: Date.now()
+      });
+    }
+
+    return result;
   }
 
   /**

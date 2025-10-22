@@ -62,8 +62,24 @@ export class CommandManager {
     try {
       await this.executeCommand(command);
       success = true;
+
+      // Real-time validation (Phase 1 - Critical Fixes)
+      if (success && this.context.engine) {
+        const engine = this.context.engine;
+        if (engine.isRealTimeValidationEnabled && engine.isRealTimeValidationEnabled()) {
+          const config = engine.getConfig && engine.getConfig();
+          const validationResult = engine.validateDiagram({ strict: config?.validation?.strict || false });
+
+          // If validation fails in strict mode, undo the command
+          if (!validationResult.valid && config?.validation?.strict) {
+            await this.undo();
+            throw new Error(`Command validation failed: ${validationResult.errors[0]?.message}`);
+          }
+        }
+      }
     } catch (e) {
       error = e as Error;
+      success = false;
       throw e;
     } finally {
       const duration = performance.now() - startTime;

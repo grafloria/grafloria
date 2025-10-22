@@ -37,7 +37,7 @@ import type {
 import type { Point, Size, Viewport } from '../types';
 import type { Plugin } from '../types';
 import type { ValidationResult } from '../validation/ValidationEngine';
-import type { NodeTypeDefinition, LinkTypeDefinition } from '../validation/TypeRegistry';
+import type { NodeTypeDefinition, LinkTypeDefinition, PortTypeDefinition } from '../validation/TypeRegistry';
 import type { NodeBehavior } from '../types';
 import type { LayoutType, LayoutConfig, FlexItemConfig, GridItemConfig } from '../types/layout.types'; // Phase 1.7
 
@@ -110,7 +110,7 @@ export class DiagramEngine {
     this.commandManager = new CommandManager(context, this.eventBus);
     this.pluginManager = new PluginManager(this, this.eventBus);
     this.typeRegistry = new TypeRegistry();
-    this.validationEngine = new ValidationEngine(this.typeRegistry);
+    this.validationEngine = new ValidationEngine(this.typeRegistry, this.eventBus); // Phase 1 - Pass EventBus
     this.serializer = new DiagramSerializer();
     this.performanceMonitor = new PerformanceMonitor(config.performance);
     this.clipboardManager = new ClipboardManager(); // Phase 1.8
@@ -132,6 +132,13 @@ export class DiagramEngine {
    */
   getDiagram(): DiagramModel | null {
     return this.diagram;
+  }
+
+  /**
+   * Get configuration (Phase 1 - Critical Fixes)
+   */
+  getConfig(): DiagramEngineConfig {
+    return this.config;
   }
 
   /**
@@ -579,6 +586,206 @@ export class DiagramEngine {
     return this.clipboardManager.getStats();
   }
 
+  // ============================================================================
+  // Validation API (Phase 1 - Critical Fixes)
+  // ============================================================================
+
+  /**
+   * Validate the entire diagram
+   * @param options Validation options
+   * @returns Validation result with errors and warnings
+   */
+  validateDiagram(options?: { validateTypes?: boolean; validateConnections?: boolean; validatePorts?: boolean; strict?: boolean }): ValidationResult {
+    if (!this.diagram) {
+      return {
+        valid: false,
+        errors: [{
+          path: 'diagram',
+          message: 'No diagram loaded',
+          code: 'NO_DIAGRAM',
+          severity: 'error'
+        }],
+        warnings: []
+      };
+    }
+    return this.validationEngine.validateDiagram(this.diagram, options);
+  }
+
+  /**
+   * Validate a specific node
+   * @param nodeId Node ID to validate
+   * @param options Validation options
+   * @returns Validation result with errors and warnings
+   */
+  validateNode(nodeId: string, options?: { validateTypes?: boolean; validateConnections?: boolean; validatePorts?: boolean; strict?: boolean }): ValidationResult {
+    if (!this.diagram) {
+      return {
+        valid: false,
+        errors: [{
+          path: `node.${nodeId}`,
+          message: 'No diagram loaded',
+          code: 'NO_DIAGRAM',
+          severity: 'error'
+        }],
+        warnings: []
+      };
+    }
+
+    const node = this.diagram.getNode(nodeId);
+    if (!node) {
+      return {
+        valid: false,
+        errors: [{
+          path: `node.${nodeId}`,
+          message: `Node ${nodeId} not found`,
+          code: 'NODE_NOT_FOUND',
+          severity: 'error'
+        }],
+        warnings: []
+      };
+    }
+
+    return this.validationEngine.validateNode(node, options);
+  }
+
+  /**
+   * Validate a specific link
+   * @param linkId Link ID to validate
+   * @param options Validation options
+   * @returns Validation result with errors and warnings
+   */
+  validateLink(linkId: string, options?: { validateTypes?: boolean; validateConnections?: boolean; validatePorts?: boolean; strict?: boolean }): ValidationResult {
+    if (!this.diagram) {
+      return {
+        valid: false,
+        errors: [{
+          path: `link.${linkId}`,
+          message: 'No diagram loaded',
+          code: 'NO_DIAGRAM',
+          severity: 'error'
+        }],
+        warnings: []
+      };
+    }
+
+    const link = this.diagram.getLink(linkId);
+    if (!link) {
+      return {
+        valid: false,
+        errors: [{
+          path: `link.${linkId}`,
+          message: `Link ${linkId} not found`,
+          code: 'LINK_NOT_FOUND',
+          severity: 'error'
+        }],
+        warnings: []
+      };
+    }
+
+    return this.validationEngine.validateLink(link, this.diagram, options);
+  }
+
+  /**
+   * Validate a specific port
+   * @param portId Port ID to validate
+   * @param nodeId Node ID containing the port
+   * @param options Validation options
+   * @returns Validation result with errors and warnings
+   */
+  validatePort(portId: string, nodeId: string, options?: { validateTypes?: boolean; validateConnections?: boolean; validatePorts?: boolean; strict?: boolean }): ValidationResult {
+    if (!this.diagram) {
+      return {
+        valid: false,
+        errors: [{
+          path: `node.${nodeId}.port.${portId}`,
+          message: 'No diagram loaded',
+          code: 'NO_DIAGRAM',
+          severity: 'error'
+        }],
+        warnings: []
+      };
+    }
+
+    const node = this.diagram.getNode(nodeId);
+    if (!node) {
+      return {
+        valid: false,
+        errors: [{
+          path: `node.${nodeId}.port.${portId}`,
+          message: `Node ${nodeId} not found`,
+          code: 'NODE_NOT_FOUND',
+          severity: 'error'
+        }],
+        warnings: []
+      };
+    }
+
+    const port = node.getPorts().find(p => p.id === portId);
+    if (!port) {
+      return {
+        valid: false,
+        errors: [{
+          path: `node.${nodeId}.port.${portId}`,
+          message: `Port ${portId} not found`,
+          code: 'PORT_NOT_FOUND',
+          severity: 'error'
+        }],
+        warnings: []
+      };
+    }
+
+    return this.validationEngine.validatePort(port, node, options);
+  }
+
+  /**
+   * Register a node type definition
+   * @param definition Node type definition
+   */
+  registerNodeType(definition: NodeTypeDefinition): void {
+    this.typeRegistry.registerNodeType(definition);
+  }
+
+  /**
+   * Register a port type definition
+   * @param definition Port type definition
+   */
+  registerPortType(definition: PortTypeDefinition): void {
+    this.typeRegistry.registerPortType(definition);
+  }
+
+  /**
+   * Register a link type definition
+   * @param definition Link type definition
+   */
+  registerLinkType(definition: LinkTypeDefinition): void {
+    this.typeRegistry.registerLinkType(definition);
+  }
+
+  /**
+   * Enable real-time validation
+   */
+  enableRealTimeValidation(): void {
+    this.validationEngine.enableRealTimeValidation();
+  }
+
+  /**
+   * Disable real-time validation
+   */
+  disableRealTimeValidation(): void {
+    this.validationEngine.disableRealTimeValidation();
+  }
+
+  /**
+   * Check if real-time validation is enabled
+   */
+  isRealTimeValidationEnabled(): boolean {
+    return this.validationEngine.isRealTimeValidationEnabled();
+  }
+
+  // ============================================================================
+  // End Validation API
+  // ============================================================================
+
   /**
    * Select nodes
    */
@@ -706,20 +913,6 @@ export class DiagramEngine {
   saveToJSON(): string | null {
     const data = this.serialize();
     return data ? JSON.stringify(data, null, 2) : null;
-  }
-
-  /**
-   * Register node type
-   */
-  registerNodeType(descriptor: NodeTypeDefinition): void {
-    this.typeRegistry.registerNodeType(descriptor);
-  }
-
-  /**
-   * Register link type
-   */
-  registerLinkType(descriptor: LinkTypeDefinition): void {
-    this.typeRegistry.registerLinkType(descriptor);
   }
 
   /**
