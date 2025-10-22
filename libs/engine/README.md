@@ -150,11 +150,11 @@ console.log('✅ Diagram created with', diagram.getNodes().length, 'nodes');
 **Real-world use cases with complete code:**
 
 - **[All Examples](docs/engine/examples/README.md)** - Overview with quick start code for:
-  - 🗄️ **[ERD Builder](docs/engine/examples/04-page-builder.md#erd-quick-start)** - Database design with tables and relationships
-  - 📊 **[UML Class Diagram](docs/engine/examples/04-page-builder.md#uml-quick-start)** - Class diagrams with inheritance
-  - 🔄 **[Workflow Builder](docs/engine/examples/04-page-builder.md#bpmn-quick-start)** - BPMN-style workflows
+  - 🗄️ **[ERD Builder](docs/engine/examples/README.md#erd-entity-relationship-diagram)** - Database design with tables and relationships
+  - 📊 **[UML Class Diagram](docs/engine/examples/README.md#uml-class-diagram)** - Class diagrams with inheritance
+  - 🔄 **[Workflow Builder](docs/engine/examples/README.md#bpmn-workflow)** - BPMN-style workflows
   - 🎨 **[Page Builder](docs/engine/examples/04-page-builder.md)** - Elementor-style visual page builder (750 lines, complete)
-  - 📈 **[Large Diagrams](docs/engine/examples/04-page-builder.md#performance)** - Optimizing 10,000+ nodes
+  - 📈 **[Large Diagrams](docs/engine/examples/README.md#large-diagram-10000-nodes)** - Optimizing 10,000+ nodes
 
 ---
 
