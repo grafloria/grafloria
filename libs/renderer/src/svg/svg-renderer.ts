@@ -92,12 +92,11 @@ export class SVGRenderer implements IRenderer {
     const viewBoxY = centerY - viewBoxHeight / 2;
 
     // Create root SVG VNode
+    // Note: width/height omitted - controlled by CSS (100%)
     const root: VNode = {
       type: 'svg',
       key: 'diagram-root',
       props: {
-        width: viewport.width,
-        height: viewport.height,
         viewBox: `${viewBoxX} ${viewBoxY} ${viewBoxWidth} ${viewBoxHeight}`,
         className: 'grafloria-diagram',
       },

@@ -173,12 +173,30 @@ export class DiagramCanvasComponent implements OnInit, AfterViewInit, OnChanges,
     }
 
     // Re-render when entities are added/removed/changed
-    diagram.on('node:added', () => this.renderDiagram());
-    diagram.on('node:removed', () => this.renderDiagram());
-    diagram.on('node:changed', () => this.renderDiagram());
-    diagram.on('link:added', () => this.renderDiagram());
-    diagram.on('link:removed', () => this.renderDiagram());
-    diagram.on('link:changed', () => this.renderDiagram());
+    diagram.on('node:added', () => {
+      this.renderDiagram();
+      this.cdr.detectChanges();
+    });
+    diagram.on('node:removed', () => {
+      this.renderDiagram();
+      this.cdr.detectChanges();
+    });
+    diagram.on('node:changed', () => {
+      this.renderDiagram();
+      this.cdr.detectChanges();
+    });
+    diagram.on('link:added', () => {
+      this.renderDiagram();
+      this.cdr.detectChanges();
+    });
+    diagram.on('link:removed', () => {
+      this.renderDiagram();
+      this.cdr.detectChanges();
+    });
+    diagram.on('link:changed', () => {
+      this.renderDiagram();
+      this.cdr.detectChanges();
+    });
   }
 
   /**

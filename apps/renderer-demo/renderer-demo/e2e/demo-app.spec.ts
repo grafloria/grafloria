@@ -112,19 +112,26 @@ test.describe('Renderer Demo App', () => {
   test('should add new node and increment node count', async ({ page }) => {
     const addNodeButton = page.locator('button:has-text("Add Node")');
 
-    // Get initial node count
+    // Get initial node count from stats
     const initialNodesText = await page.locator('.stats span:has-text("Nodes:")').textContent();
     const initialCount = parseInt(initialNodesText?.match(/\d+/)?.[0] || '0');
 
+    // Get initial SVG node elements count
+    const initialSvgNodes = await page.locator('svg.grafloria-diagram .nodes-layer > g').count();
+    expect(initialSvgNodes).toBe(initialCount);
+
     // Click add node
     await addNodeButton.click();
-    await page.waitForTimeout(100);
+    await page.waitForTimeout(200);
 
-    // Node count should increment by 1
+    // Node count should increment by 1 in stats
     const newNodesText = await page.locator('.stats span:has-text("Nodes:")').textContent();
     const newCount = parseInt(newNodesText?.match(/\d+/)?.[0] || '0');
-
     expect(newCount).toBe(initialCount + 1);
+
+    // Verify node actually rendered in SVG
+    const newSvgNodes = await page.locator('svg.grafloria-diagram .nodes-layer > g').count();
+    expect(newSvgNodes).toBe(initialCount + 1);
   });
 
   test('should display node labels at default zoom', async ({ page }) => {
@@ -199,7 +206,7 @@ test.describe('Renderer Demo App', () => {
     // Add 3 nodes
     for (let i = 0; i < 3; i++) {
       await addNodeButton.click();
-      await page.waitForTimeout(100);
+      await page.waitForTimeout(200);
     }
 
     // Count should increase by 3
@@ -207,5 +214,37 @@ test.describe('Renderer Demo App', () => {
     const newCount = parseInt(newNodesText?.match(/\d+/)?.[0] || '0');
 
     expect(newCount).toBe(initialCount + 3);
+
+    // Verify all nodes rendered in SVG
+    const svgNodes = await page.locator('svg.grafloria-diagram .nodes-layer > g').count();
+    expect(svgNodes).toBe(initialCount + 3);
+  });
+
+  test('should add unlimited nodes (test 10 additions)', async ({ page }) => {
+    const addNodeButton = page.locator('button:has-text("Add Node")');
+
+    // Get initial count
+    const initialNodesText = await page.locator('.stats span:has-text("Nodes:")').textContent();
+    const initialCount = parseInt(initialNodesText?.match(/\d+/)?.[0] || '0');
+
+    // Add 10 nodes
+    for (let i = 0; i < 10; i++) {
+      await addNodeButton.click();
+      await page.waitForTimeout(150);
+
+      // Verify count after each addition
+      const currentText = await page.locator('.stats span:has-text("Nodes:")').textContent();
+      const currentCount = parseInt(currentText?.match(/\d+/)?.[0] || '0');
+      expect(currentCount).toBe(initialCount + i + 1);
+    }
+
+    // Final verification
+    const finalNodesText = await page.locator('.stats span:has-text("Nodes:")').textContent();
+    const finalCount = parseInt(finalNodesText?.match(/\d+/)?.[0] || '0');
+    expect(finalCount).toBe(initialCount + 10);
+
+    // Verify all 10 nodes rendered in DOM
+    const svgNodes = await page.locator('svg.grafloria-diagram .nodes-layer > g').count();
+    expect(svgNodes).toBe(initialCount + 10);
   });
 });
