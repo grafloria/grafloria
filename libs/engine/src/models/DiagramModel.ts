@@ -5,6 +5,8 @@ import { NodeModel, SerializedNode } from './NodeModel';
 import { LinkModel, SerializedLink } from './LinkModel';
 import { GroupModel, SerializedGroup } from './GroupModel'; // Phase 1.6c
 import type { SerializedEntity, Point } from '../types';
+import { SpatialIndex } from '../performance/SpatialIndex'; // Phase 5.1
+import type { Rectangle } from '../types/geometry.types'; // Phase 5.1
 
 export interface SerializedDiagram extends SerializedEntity {
   name: string;
@@ -30,9 +32,57 @@ export class DiagramModel extends DiagramEntity {
     zoom: 1,
   };
 
+  // Phase 5.1: Spatial indexing for viewport virtualization
+  private nodeSpatialIndex: SpatialIndex<NodeModel>;
+  private linkSpatialIndex: SpatialIndex<LinkModel>;
+
   constructor(name?: string) {
     super();
     if (name) this.name = name;
+
+    // Phase 5.1: Initialize spatial indices
+    this.nodeSpatialIndex = new SpatialIndex<NodeModel>({
+      cellSize: 100,
+      getBounds: (node) => {
+        // Get bounds considering rotation and scale
+        const bounds = node.getBoundingBox();
+        return {
+          x: bounds.left,
+          y: bounds.top,
+          width: bounds.width,
+          height: bounds.height,
+        };
+      },
+    });
+
+    this.linkSpatialIndex = new SpatialIndex<LinkModel>({
+      cellSize: 100,
+      getBounds: (link) => {
+        // Calculate bounding box from points
+        if (link.points.length === 0) {
+          return { x: 0, y: 0, width: 0, height: 0 };
+        }
+
+        let minX = Infinity;
+        let minY = Infinity;
+        let maxX = -Infinity;
+        let maxY = -Infinity;
+
+        for (const point of link.points) {
+          minX = Math.min(minX, point.x);
+          minY = Math.min(minY, point.y);
+          maxX = Math.max(maxX, point.x);
+          maxY = Math.max(maxY, point.y);
+        }
+
+        return {
+          x: minX,
+          y: minY,
+          width: maxX - minX,
+          height: maxY - minY,
+        };
+      },
+    });
   }
 
   /**
@@ -49,6 +99,15 @@ export class DiagramModel extends DiagramEntity {
     this.nodes.set(node.id, node);
     this.trackChange('nodes', null, node);
     this.emitter.emit('node:added', node);
+
+    // Phase 5.1: Add to spatial index and listen for spatial changes
+    // Do this AFTER trackChange to avoid cloning issues
+    this.nodeSpatialIndex.add(node);
+    const updateSpatialIndex = () => this.nodeSpatialIndex.update(node);
+    node.on('change:position', updateSpatialIndex);
+    node.on('change:size', updateSpatialIndex);
+    node.on('change:rotation', updateSpatialIndex);
+    node.on('change:scale', updateSpatialIndex);
   }
 
   /**
@@ -58,6 +117,10 @@ export class DiagramModel extends DiagramEntity {
     const node = this.nodes.get(nodeId);
     if (node) {
       this.nodes.delete(nodeId);
+
+      // Phase 5.1: Remove from spatial index
+      this.nodeSpatialIndex.remove(nodeId);
+
       this.trackChange('nodes', node, null);
       this.emitter.emit('node:removed', node);
     }
@@ -74,6 +137,15 @@ export class DiagramModel extends DiagramEntity {
       this.nodes.set(node.id, node);
       this.trackChange('nodes', null, node);
       this.emitter.emit('node:added', node);
+
+      // Phase 5.1: Add to spatial index and listen - AFTER trackChange
+      this.nodeSpatialIndex.add(node);
+      const updateSpatialIndex = () => this.nodeSpatialIndex.update(node);
+      node.on('change:position', updateSpatialIndex);
+      node.on('change:size', updateSpatialIndex);
+      node.on('change:rotation', updateSpatialIndex);
+      node.on('change:scale', updateSpatialIndex);
+
       return node;
     } catch (error) {
       console.error('Failed to restore node:', error);
@@ -114,6 +186,10 @@ export class DiagramModel extends DiagramEntity {
     this.links.set(link.id, link);
     this.trackChange('links', null, link);
     this.emitter.emit('link:added', link);
+
+    // Phase 5.1: Add to spatial index and listen - AFTER trackChange
+    this.linkSpatialIndex.add(link);
+    link.on('change:points', () => this.linkSpatialIndex.update(link));
   }
 
   /**
@@ -123,6 +199,10 @@ export class DiagramModel extends DiagramEntity {
     const link = this.links.get(linkId);
     if (link) {
       this.links.delete(linkId);
+
+      // Phase 5.1: Remove from spatial index
+      this.linkSpatialIndex.remove(linkId);
+
       this.trackChange('links', link, null);
       this.emitter.emit('link:removed', link);
     }
@@ -138,6 +218,11 @@ export class DiagramModel extends DiagramEntity {
       this.links.set(link.id, link);
       this.trackChange('links', null, link);
       this.emitter.emit('link:added', link);
+
+      // Phase 5.1: Add to spatial index and listen - AFTER trackChange
+      this.linkSpatialIndex.add(link);
+      link.on('change:points', () => this.linkSpatialIndex.update(link));
+
       return link;
     } catch (error) {
       console.error('Failed to restore link:', error);
@@ -278,7 +363,94 @@ export class DiagramModel extends DiagramEntity {
       this.removeGroup(groupId);
     }
 
+    // Phase 5.1: Clear spatial indices
+    this.nodeSpatialIndex.clear();
+    this.linkSpatialIndex.clear();
+
     this.emitter.emit('diagram:cleared');
+  }
+
+  /**
+   * Get nodes visible in viewport (Phase 5.1)
+   * This enables viewport virtualization - only render visible nodes
+   *
+   * @param viewport - Rectangular viewport region in world coordinates
+   * @returns Array of nodes that intersect with the viewport
+   *
+   * @example
+   * ```typescript
+   * const viewport = {
+   *   x: camera.x,
+   *   y: camera.y,
+   *   width: canvas.width / camera.zoom,
+   *   height: canvas.height / camera.zoom,
+   * };
+   * const visibleNodes = diagram.getVisibleNodes(viewport);
+   * // Only render visibleNodes instead of all nodes
+   * ```
+   */
+  getVisibleNodes(viewport: Rectangle): NodeModel[] {
+    return this.nodeSpatialIndex.queryRegion(viewport, {
+      filter: (node) => node.state.visible !== false,
+    });
+  }
+
+  /**
+   * Get links visible in viewport (Phase 5.1)
+   * This enables viewport virtualization - only render visible links
+   *
+   * @param viewport - Rectangular viewport region in world coordinates
+   * @returns Array of links that intersect with the viewport
+   */
+  getVisibleLinks(viewport: Rectangle): LinkModel[] {
+    return this.linkSpatialIndex.queryRegion(viewport);
+  }
+
+  /**
+   * Get bounding box of all visible entities (Phase 5.1)
+   * Useful for "fit to viewport" operations
+   *
+   * @param viewport - Rectangular viewport region
+   * @returns Bounding rectangle of visible entities, or null if none visible
+   */
+  getVisibleBounds(viewport: Rectangle): Rectangle | null {
+    const visibleNodes = this.getVisibleNodes(viewport);
+    const visibleLinks = this.getVisibleLinks(viewport);
+
+    if (visibleNodes.length === 0 && visibleLinks.length === 0) {
+      return null;
+    }
+
+    let minX = Infinity;
+    let minY = Infinity;
+    let maxX = -Infinity;
+    let maxY = -Infinity;
+
+    // Include visible nodes
+    for (const node of visibleNodes) {
+      const bounds = node.getBoundingBox();
+      minX = Math.min(minX, bounds.left);
+      minY = Math.min(minY, bounds.top);
+      maxX = Math.max(maxX, bounds.right);
+      maxY = Math.max(maxY, bounds.bottom);
+    }
+
+    // Include visible links
+    for (const link of visibleLinks) {
+      for (const point of link.points) {
+        minX = Math.min(minX, point.x);
+        minY = Math.min(minY, point.y);
+        maxX = Math.max(maxX, point.x);
+        maxY = Math.max(maxY, point.y);
+      }
+    }
+
+    return {
+      x: minX,
+      y: minY,
+      width: maxX - minX,
+      height: maxY - minY,
+    };
   }
 
   /**

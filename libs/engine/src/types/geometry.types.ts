@@ -21,6 +21,17 @@ export interface BoundingBox {
   height: number;
 }
 
+/**
+ * Rectangle defined by position and size (Phase 5.1)
+ * Used for viewport queries and spatial indexing
+ */
+export interface Rectangle {
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+}
+
 export interface Transform {
   position: Point;
   rotation: number; // Degrees
