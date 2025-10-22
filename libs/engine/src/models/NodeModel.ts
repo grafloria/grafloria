@@ -1,4 +1,5 @@
 // NodeModel - Represents a node in the diagram
+// Layout item configuration storage added in Phase 1.7
 
 import { DiagramEntity } from './DiagramEntity';
 import type { DiagramModel } from './DiagramModel';
@@ -14,6 +15,7 @@ import type {
   SerializedEntity,
 } from '../types';
 import type { TransformMatrix } from '../types/geometry.types';
+import type { FlexItemConfig, GridItemConfig } from '../types/layout.types';
 import { createBoundingBox } from '../utils';
 import {
   composeMatrices,
@@ -50,6 +52,8 @@ export interface SerializedNode extends SerializedEntity {
   behaviorOverrides?: Record<string, Partial<NodeBehavior>>; // Mode-specific behavior overrides
   positionMode?: PositioningMode; // Phase 1.6a: Positioning mode
   transformOrigin?: Point; // Phase 1.6a: Transform origin (normalized 0-1)
+  flexConfig?: FlexItemConfig; // Phase 1.7: Flexbox item configuration
+  gridConfig?: GridItemConfig; // Phase 1.7: Grid item configuration
 }
 
 export class NodeModel extends DiagramEntity {
@@ -63,6 +67,10 @@ export class NodeModel extends DiagramEntity {
   scale: Point = { x: 1, y: 1 };
   positionMode: PositioningMode = 'absolute'; // Phase 1.6a: Default to absolute for backward compatibility
   transformOrigin: Point = { x: 0.5, y: 0.5 }; // Phase 1.6a: Default to center (normalized 0-1)
+
+  // Phase 1.7: Layout item configuration
+  flexConfig?: FlexItemConfig;
+  gridConfig?: GridItemConfig;
 
   // Type System
   type: string;
@@ -856,6 +864,74 @@ export class NodeModel extends DiagramEntity {
   }
 
   /**
+   * Set flexbox item configuration (Phase 1.7)
+   */
+  setFlexItem(config: FlexItemConfig): void {
+    const oldConfig = this.flexConfig;
+    this.flexConfig = config;
+    this.trackChange('flexConfig', oldConfig, config);
+    this.emitter.emit('flex-item:changed', config);
+  }
+
+  /**
+   * Clear flexbox item configuration (Phase 1.7)
+   */
+  clearFlexItem(): void {
+    const oldConfig = this.flexConfig;
+    this.flexConfig = undefined;
+    this.trackChange('flexConfig', oldConfig, undefined);
+    this.emitter.emit('flex-item:cleared');
+  }
+
+  /**
+   * Get flexbox item configuration (Phase 1.7)
+   */
+  getFlexItem(): FlexItemConfig | undefined {
+    return this.flexConfig;
+  }
+
+  /**
+   * Check if node has flex item configuration (Phase 1.7)
+   */
+  hasFlexItem(): boolean {
+    return this.flexConfig !== undefined;
+  }
+
+  /**
+   * Set grid item configuration (Phase 1.7)
+   */
+  setGridItem(config: GridItemConfig): void {
+    const oldConfig = this.gridConfig;
+    this.gridConfig = config;
+    this.trackChange('gridConfig', oldConfig, config);
+    this.emitter.emit('grid-item:changed', config);
+  }
+
+  /**
+   * Clear grid item configuration (Phase 1.7)
+   */
+  clearGridItem(): void {
+    const oldConfig = this.gridConfig;
+    this.gridConfig = undefined;
+    this.trackChange('gridConfig', oldConfig, undefined);
+    this.emitter.emit('grid-item:cleared');
+  }
+
+  /**
+   * Get grid item configuration (Phase 1.7)
+   */
+  getGridItem(): GridItemConfig | undefined {
+    return this.gridConfig;
+  }
+
+  /**
+   * Check if node has grid item configuration (Phase 1.7)
+   */
+  hasGridItem(): boolean {
+    return this.gridConfig !== undefined;
+  }
+
+  /**
    * Serialize to JSON
    */
   serialize(): SerializedNode {
@@ -885,6 +961,14 @@ export class NodeModel extends DiagramEntity {
     // Include behavior overrides if any exist
     if (this.behaviorOverrides.size > 0) {
       serialized.behaviorOverrides = Object.fromEntries(this.behaviorOverrides);
+    }
+
+    // Phase 1.7: Include layout configs if they exist
+    if (this.flexConfig) {
+      serialized.flexConfig = { ...this.flexConfig };
+    }
+    if (this.gridConfig) {
+      serialized.gridConfig = { ...this.gridConfig };
     }
 
     return serialized;
@@ -932,6 +1016,14 @@ export class NodeModel extends DiagramEntity {
       for (const [mode, behavior] of Object.entries(data.behaviorOverrides)) {
         node.behaviorOverrides.set(mode, behavior);
       }
+    }
+
+    // Restore Phase 1.7 layout configs
+    if (data.flexConfig) {
+      node.flexConfig = data.flexConfig;
+    }
+    if (data.gridConfig) {
+      node.gridConfig = data.gridConfig;
     }
 
     return node;

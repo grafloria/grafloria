@@ -1,15 +1,24 @@
 // GroupModel - Entity for organizing nodes into groups (Phase 1.6c)
+// Layout configuration storage added in Phase 1.7
 
 import { DiagramEntity } from './DiagramEntity';
 import type { DiagramModel } from './DiagramModel';
 import type { NodeModel } from './NodeModel';
 import type { SerializedEntity } from '../types';
+import type {
+  LayoutType,
+  LayoutConfig,
+  FlexboxLayoutConfig,
+  GridLayoutConfig,
+} from '../types/layout.types';
 
 export interface SerializedGroup extends SerializedEntity {
   name: string;
   members: string[];
   isCollapsed: boolean;
   bounds?: { x: number; y: number; width: number; height: number };
+  layoutType?: LayoutType; // Phase 1.7
+  layoutConfig?: LayoutConfig; // Phase 1.7
 }
 
 export class GroupModel extends DiagramEntity {
@@ -17,6 +26,10 @@ export class GroupModel extends DiagramEntity {
   members: Set<string> = new Set();
   isCollapsed: boolean = false;
   bounds?: { x: number; y: number; width: number; height: number };
+
+  // Phase 1.7: Layout configuration storage
+  layoutType: LayoutType = 'none';
+  layoutConfig?: LayoutConfig;
 
   constructor(config: { id?: string; name: string }) {
     super(config.id);
@@ -70,6 +83,79 @@ export class GroupModel extends DiagramEntity {
   }
 
   /**
+   * Set layout configuration (Phase 1.7)
+   * @param type - Layout type ('flexbox' or 'grid')
+   * @param config - Layout configuration object
+   */
+  setLayout(type: 'flexbox' | 'grid', config: LayoutConfig): void {
+    const oldType = this.layoutType;
+    const oldConfig = this.layoutConfig;
+
+    this.layoutType = type;
+    this.layoutConfig = config;
+    this.version++;
+
+    this.trackChange('layoutType', oldType, type);
+    this.trackChange('layoutConfig', oldConfig, config);
+    this.emitter.emit('layout:changed', { type, config });
+  }
+
+  /**
+   * Clear layout configuration (Phase 1.7)
+   */
+  clearLayout(): void {
+    const oldType = this.layoutType;
+    const oldConfig = this.layoutConfig;
+
+    this.layoutType = 'none';
+    this.layoutConfig = undefined;
+    this.version++;
+
+    this.trackChange('layoutType', oldType, 'none');
+    this.trackChange('layoutConfig', oldConfig, undefined);
+    this.emitter.emit('layout:cleared');
+  }
+
+  /**
+   * Get layout configuration (Phase 1.7)
+   */
+  getLayout(): { type: LayoutType; config?: LayoutConfig } {
+    return {
+      type: this.layoutType,
+      config: this.layoutConfig,
+    };
+  }
+
+  /**
+   * Check if group has layout configured (Phase 1.7)
+   */
+  hasLayout(): boolean {
+    return this.layoutType !== 'none' && this.layoutConfig !== undefined;
+  }
+
+  /**
+   * Get layout as flexbox config (Phase 1.7)
+   * @throws Error if layout is not flexbox
+   */
+  getFlexboxLayout(): FlexboxLayoutConfig {
+    if (this.layoutType !== 'flexbox') {
+      throw new Error(`Group ${this.id} does not have flexbox layout`);
+    }
+    return this.layoutConfig as FlexboxLayoutConfig;
+  }
+
+  /**
+   * Get layout as grid config (Phase 1.7)
+   * @throws Error if layout is not grid
+   */
+  getGridLayout(): GridLayoutConfig {
+    if (this.layoutType !== 'grid') {
+      throw new Error(`Group ${this.id} does not have grid layout`);
+    }
+    return this.layoutConfig as GridLayoutConfig;
+  }
+
+  /**
    * Calculate bounds from member nodes using global bounds
    */
   calculateBounds(diagram: DiagramModel): void {
@@ -117,7 +203,9 @@ export class GroupModel extends DiagramEntity {
       name: this.name,
       members: Array.from(this.members),
       isCollapsed: this.isCollapsed,
-      bounds: this.bounds
+      bounds: this.bounds,
+      layoutType: this.layoutType, // Phase 1.7
+      layoutConfig: this.layoutConfig, // Phase 1.7
     };
   }
 
@@ -129,6 +217,14 @@ export class GroupModel extends DiagramEntity {
     group.members = new Set(data.members);
     group.isCollapsed = data.isCollapsed;
     group.bounds = data.bounds;
+
+    // Phase 1.7: Restore layout configuration
+    if (data.layoutType) {
+      group.layoutType = data.layoutType;
+    }
+    if (data.layoutConfig) {
+      group.layoutConfig = data.layoutConfig;
+    }
 
     // Restore metadata
     for (const [key, value] of Object.entries(data.metadata)) {
