@@ -144,6 +144,9 @@ export class NodeModel extends DiagramEntity {
     const oldPosition = { ...this.position };
     this.position = { x, y, z };
     this.trackChange('position', oldPosition, this.position);
+
+    // Emit transform propagation event (Phase 1.6a Part 4)
+    this.emitTransformPropagated('position', this.position);
   }
 
   /**
@@ -188,6 +191,9 @@ export class NodeModel extends DiagramEntity {
     const oldRotation = this.rotation;
     this.rotation = degrees % 360;
     this.trackChange('rotation', oldRotation, this.rotation);
+
+    // Emit transform propagation event (Phase 1.6a Part 4)
+    this.emitTransformPropagated('rotation', this.rotation);
   }
 
   /**
@@ -204,6 +210,9 @@ export class NodeModel extends DiagramEntity {
     const oldScale = { ...this.scale };
     this.scale = { x, y };
     this.trackChange('scale', oldScale, this.scale);
+
+    // Emit transform propagation event (Phase 1.6a Part 4)
+    this.emitTransformPropagated('scale', this.scale);
   }
 
   /**
@@ -444,6 +453,9 @@ export class NodeModel extends DiagramEntity {
     const oldOrigin = { ...this.transformOrigin };
     this.transformOrigin = { x, y };
     this.trackChange('transformOrigin', oldOrigin, this.transformOrigin);
+
+    // Emit transform propagation event (Phase 1.6a Part 4)
+    this.emitTransformPropagated('transformOrigin', this.transformOrigin);
   }
 
   /**
@@ -766,6 +778,42 @@ export class NodeModel extends DiagramEntity {
     const children = this.getChildren();
     for (const child of children) {
       child.updateHierarchyDepth();
+    }
+  }
+
+  /**
+   * Get all nodes affected by transform changes (Phase 1.6a Part 4)
+   * Returns this node plus all descendants in relative positioning mode
+   * @returns Array of nodes that would be affected by this node's transform
+   */
+  getAffectedByTransform(): NodeModel[] {
+    const affected: NodeModel[] = [this];
+    const children = this.getChildren();
+
+    for (const child of children) {
+      // Only include children in relative mode (they inherit parent's transform)
+      if (child.positionMode === 'relative') {
+        affected.push(...child.getAffectedByTransform());
+      }
+    }
+
+    return affected;
+  }
+
+  /**
+   * Emit transform propagation event (Phase 1.6a Part 4)
+   * Called after transform changes to notify renderers
+   */
+  private emitTransformPropagated(type: string, value: any): void {
+    const affectedNodes = this.getAffectedByTransform();
+
+    // Only emit if there are affected children (besides self)
+    if (affectedNodes.length > 1) {
+      this.emitter.emit('transform-propagated', {
+        type,
+        value,
+        affectedNodes
+      });
     }
   }
 
