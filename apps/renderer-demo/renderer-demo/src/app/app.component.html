@@ -1,0 +1,42 @@
+<div class="app-container">
+  <header class="header">
+    <h1>{{ title }}</h1>
+    <div class="controls">
+      <button (click)="toggleTheme()" class="btn">
+        {{ isDarkTheme ? '☀️ Light' : '🌙 Dark' }} Theme
+      </button>
+      <div class="zoom-controls">
+        <button (click)="zoomOut()" class="btn">-</button>
+        <span class="zoom-level">{{ (zoom * 100).toFixed(0) }}%</span>
+        <button (click)="zoomIn()" class="btn">+</button>
+        <button (click)="resetZoom()" class="btn">Reset</button>
+      </div>
+      <button (click)="addRandomNode()" class="btn btn-primary">
+        + Add Node
+      </button>
+    </div>
+  </header>
+
+  <div class="canvas-wrapper">
+    <grafloria-diagram-canvas
+      *ngIf="engine"
+      [engine]="engine"
+      [viewport]="viewport"
+      [zoom]="zoom"
+      [theme]="theme"
+      class="diagram-canvas">
+    </grafloria-diagram-canvas>
+  </div>
+
+  <footer class="footer">
+    <div class="stats">
+      <span>Nodes: {{ engine?.getDiagram()?.getNodes().length || 0 }}</span>
+      <span>Links: {{ engine?.getDiagram()?.getLinks().length || 0 }}</span>
+      <span>Zoom: {{ (zoom * 100).toFixed(0) }}%</span>
+      <span>Theme: {{ theme.name }}</span>
+    </div>
+    <div class="info">
+      Powered by @grafloria/renderer + @grafloria/engine
+    </div>
+  </footer>
+</div>
