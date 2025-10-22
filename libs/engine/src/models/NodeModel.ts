@@ -609,6 +609,167 @@ export class NodeModel extends DiagramEntity {
   }
 
   /**
+   * Get direct children nodes (Phase 1.6a Part 3)
+   */
+  getChildren(): NodeModel[] {
+    if (!this.diagram) {
+      return [];
+    }
+
+    const children: NodeModel[] = [];
+    for (const childId of this.children) {
+      const child = this.diagram.getNode(childId);
+      if (child) {
+        children.push(child);
+      }
+    }
+    return children;
+  }
+
+  /**
+   * Get parent node (Phase 1.6a Part 3)
+   * Public version of getParentNode
+   */
+  getParent(): NodeModel | undefined {
+    return this.getParentNode();
+  }
+
+  /**
+   * Get all ancestor nodes up to root (Phase 1.6a Part 3)
+   * Returns array with direct parent first, then grandparent, etc.
+   */
+  getAncestors(): NodeModel[] {
+    const ancestors: NodeModel[] = [];
+    let current = this.getParent();
+
+    while (current) {
+      ancestors.push(current);
+      current = current.getParent();
+    }
+
+    return ancestors;
+  }
+
+  /**
+   * Get all descendant nodes recursively (Phase 1.6a Part 3)
+   */
+  getDescendants(): NodeModel[] {
+    const descendants: NodeModel[] = [];
+    const children = this.getChildren();
+
+    for (const child of children) {
+      descendants.push(child);
+      descendants.push(...child.getDescendants());
+    }
+
+    return descendants;
+  }
+
+  /**
+   * Get root node of hierarchy (Phase 1.6a Part 3)
+   * Returns self if this is the root
+   */
+  getRoot(): NodeModel {
+    let current: NodeModel = this;
+    let parent = current.getParent();
+
+    while (parent) {
+      current = parent;
+      parent = current.getParent();
+    }
+
+    return current;
+  }
+
+  /**
+   * Get sibling nodes (same parent, excluding self) (Phase 1.6a Part 3)
+   */
+  getSiblings(): NodeModel[] {
+    const parent = this.getParent();
+    if (!parent) {
+      return [];
+    }
+
+    return parent.getChildren().filter(child => child.id !== this.id);
+  }
+
+  /**
+   * Check if this node is an ancestor of another node (Phase 1.6a Part 3)
+   * @param nodeId ID of node to check
+   * @returns true if this node is an ancestor of the given node
+   */
+  isAncestorOf(nodeId: string): boolean {
+    if (nodeId === this.id) {
+      return false; // Node is not ancestor of itself
+    }
+
+    if (!this.diagram) {
+      return false;
+    }
+
+    const targetNode = this.diagram.getNode(nodeId);
+    if (!targetNode) {
+      return false;
+    }
+
+    const ancestors = targetNode.getAncestors();
+    return ancestors.some(ancestor => ancestor.id === this.id);
+  }
+
+  /**
+   * Get depth in hierarchy (Phase 1.6a Part 3)
+   * Root nodes have depth 0, their children have depth 1, etc.
+   * @returns depth level (0 = root)
+   */
+  getDepth(): number {
+    let depth = 0;
+    let current = this.getParent();
+
+    while (current) {
+      depth++;
+      current = current.getParent();
+    }
+
+    return depth;
+  }
+
+  /**
+   * Validate hierarchy for circular references (Phase 1.6a Part 3)
+   * @returns true if hierarchy is valid (no cycles)
+   */
+  validateHierarchy(): boolean {
+    const visited = new Set<string>();
+    let current: NodeModel | undefined = this;
+
+    while (current) {
+      if (visited.has(current.id)) {
+        // Found circular reference
+        return false;
+      }
+
+      visited.add(current.id);
+      current = current.getParent();
+    }
+
+    return true;
+  }
+
+  /**
+   * Update depth for this node and all descendants (Phase 1.6a Part 3)
+   * Recalculates depth values based on current hierarchy
+   */
+  updateHierarchyDepth(): void {
+    // Update own depth
+    this.depth = this.getDepth();
+
+    // Recursively update children
+    const children = this.getChildren();
+    for (const child of children) {
+      child.updateHierarchyDepth();
+    }
+  }
+
+  /**
    * Serialize to JSON
    */
   serialize(): SerializedNode {
