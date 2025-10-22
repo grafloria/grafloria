@@ -110,6 +110,13 @@ export const DiagramEventTypes = {
   COMMAND_MERGED: 'command:merged',
   COMMAND_HISTORY_CLEARED: 'command:history:cleared',
 
+  // Validation events (Phase 1.8d)
+  VALIDATION_STARTED: 'validation:started',
+  VALIDATION_COMPLETED: 'validation:completed',
+  VALIDATION_FAILED: 'validation:failed',
+  VALIDATION_ERROR: 'validation:error',
+  VALIDATION_WARNING: 'validation:warning',
+
   // Engine events
   ENGINE_INITIALIZED: 'engine:initialized',
   ENGINE_DESTROYED: 'engine:destroyed',
@@ -171,4 +178,13 @@ export interface ViewportEvent {
   zoom?: number;
   position?: { x: number; y: number };
   settings?: any; // ModeViewportSettings
+}
+
+// Validation event payloads (Phase 1.8d)
+// Note: ValidationResult, ValidationError, ValidationWarning are defined in model.types.ts
+export interface ValidationEvent {
+  type: 'diagram' | 'node' | 'link' | 'port' | 'group';
+  entityId?: string; // ID of entity being validated
+  result?: any; // ValidationResult (avoiding circular imports)
+  timestamp?: number;
 }
