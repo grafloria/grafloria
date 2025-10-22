@@ -37,7 +37,7 @@ import type {
 import type { Point, Size, Viewport } from '../types';
 import type { Plugin } from '../types';
 import type { ValidationResult } from '../validation/ValidationEngine';
-import type { NodeTypeDefinition, LinkTypeDefinition, PortTypeDefinition } from '../validation/TypeRegistry';
+import type { NodeTypeDefinition, LinkTypeDefinition, PortTypeDefinition, GroupTypeDefinition } from '../validation/TypeRegistry'; // Phase 2
 import type { NodeBehavior } from '../types';
 import type { LayoutType, LayoutConfig, FlexItemConfig, GridItemConfig } from '../types/layout.types'; // Phase 1.7
 
@@ -759,6 +759,14 @@ export class DiagramEngine {
    */
   registerLinkType(definition: LinkTypeDefinition): void {
     this.typeRegistry.registerLinkType(definition);
+  }
+
+  /**
+   * Register a group type definition (Phase 2 - Group validation)
+   * @param definition Group type definition
+   */
+  registerGroupType(definition: GroupTypeDefinition): void {
+    this.typeRegistry.registerGroupType(definition);
   }
 
   /**

@@ -208,6 +208,7 @@ describe('TypeRegistry', () => {
         nodeTypes: 2,
         portTypes: 1,
         linkTypes: 1,
+        groupTypes: 0, // Phase 2
       });
     });
   });

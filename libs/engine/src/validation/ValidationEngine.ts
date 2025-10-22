@@ -12,6 +12,7 @@ import type { DiagramModel } from '../models/DiagramModel';
 import type { NodeModel } from '../models/NodeModel';
 import type { PortModel } from '../models/PortModel';
 import type { LinkModel } from '../models/LinkModel';
+import type { GroupModel } from '../models/GroupModel'; // Phase 2
 
 // Re-export ValidationResult for convenience
 export type { ValidationResult, ValidationError, ValidationWarning } from '../types';
@@ -91,6 +92,20 @@ export class ValidationEngine {
     // Validate all links
     for (const link of diagram.getLinks()) {
       const result = this.validateLink(link, diagram, opts);
+      errors.push(...result.errors);
+      warnings.push(...result.warnings);
+    }
+
+    // Phase 2: Validate hierarchy for all nodes
+    for (const node of diagram.getNodes()) {
+      const result = this.validateHierarchy(node, diagram, opts);
+      errors.push(...result.errors);
+      warnings.push(...result.warnings);
+    }
+
+    // Phase 2: Validate all groups
+    for (const group of diagram.getGroups()) {
+      const result = this.validateGroup(group, diagram, opts);
       errors.push(...result.errors);
       warnings.push(...result.warnings);
     }
@@ -490,6 +505,305 @@ export class ValidationEngine {
       this.eventBus?.emit(DiagramEventTypes.VALIDATION_FAILED, {
         type: 'link',
         entityId: link.id,
+        result,
+        timestamp: Date.now()
+      });
+    }
+
+    return result;
+  }
+
+  /**
+   * Validate node hierarchy (Phase 2 - Hierarchy-aware validation)
+   */
+  validateHierarchy(
+    node: NodeModel,
+    diagram: DiagramModel,
+    options: ValidationOptions = {}
+  ): ValidationResult {
+    // Emit validation started event
+    this.eventBus?.emit(DiagramEventTypes.VALIDATION_STARTED, {
+      type: 'hierarchy',
+      entityId: node.id,
+      timestamp: Date.now()
+    });
+
+    const errors: ValidationError[] = [];
+    const warnings: ValidationWarning[] = [];
+
+    // Get node type definition with resolved inheritance
+    const typeDef = this.typeRegistry.getNodeType(node.type);
+    if (!typeDef) {
+      // Skip hierarchy validation if type not registered
+      return { valid: true, errors: [], warnings: [] };
+    }
+
+    // Resolve type definition with inheritance
+    const resolved = this.typeRegistry.resolveNodeType(node.type);
+
+    // 1. Validate canBeRoot constraint
+    if (!node.parentId && resolved.canBeRoot === false) {
+      errors.push({
+        path: `node.${node.id}.hierarchy`,
+        message: `Node type '${node.type}' cannot be a root node (requires parent)`,
+        code: 'INVALID_ROOT_NODE',
+        severity: 'error',
+      });
+    }
+
+    // 2. Validate parent type constraints
+    if (node.parentId) {
+      const parent = diagram.getNode(node.parentId);
+      if (parent) {
+        // Check if parent type is allowed
+        if (resolved.allowedParentTypes && resolved.allowedParentTypes.length > 0) {
+          if (!resolved.allowedParentTypes.includes(parent.type)) {
+            errors.push({
+              path: `node.${node.id}.hierarchy`,
+              message: `Node type '${node.type}' cannot have parent of type '${parent.type}'. Allowed: ${resolved.allowedParentTypes.join(', ')}`,
+              code: 'INVALID_PARENT_TYPE',
+              severity: 'error',
+            });
+          }
+        }
+
+        // Check if parent allows this child type
+        const parentResolved = this.typeRegistry.resolveNodeType(parent.type);
+        if (parentResolved.allowedChildTypes && parentResolved.allowedChildTypes.length > 0) {
+          if (!parentResolved.allowedChildTypes.includes(node.type)) {
+            errors.push({
+              path: `node.${node.id}.hierarchy`,
+              message: `Parent node type '${parent.type}' does not allow child of type '${node.type}'. Allowed: ${parentResolved.allowedChildTypes.join(', ')}`,
+              code: 'INVALID_CHILD_TYPE',
+              severity: 'error',
+            });
+          }
+        }
+      } else {
+        errors.push({
+          path: `node.${node.id}.hierarchy`,
+          message: `Parent node '${node.parentId}' not found`,
+          code: 'PARENT_NOT_FOUND',
+          severity: 'error',
+        });
+      }
+    }
+
+    // 3. Validate maxChildren constraint
+    if (resolved.maxChildren !== undefined) {
+      const childCount = node.children.size;
+      if (childCount > resolved.maxChildren) {
+        errors.push({
+          path: `node.${node.id}.hierarchy`,
+          message: `Node type '${node.type}' allows at most ${resolved.maxChildren} children, has ${childCount}`,
+          code: 'EXCESSIVE_CHILDREN',
+          severity: 'error',
+        });
+      }
+    }
+
+    // 4. Validate maxDepth constraint
+    if (resolved.maxDepth !== undefined) {
+      const actualDepth = node.depth;
+      if (actualDepth > resolved.maxDepth) {
+        errors.push({
+          path: `node.${node.id}.hierarchy`,
+          message: `Node type '${node.type}' allows maximum depth of ${resolved.maxDepth}, actual depth is ${actualDepth}`,
+          code: 'EXCESSIVE_DEPTH',
+          severity: 'error',
+        });
+      }
+    }
+
+    // 5. Validate child types
+    if (resolved.allowedChildTypes && resolved.allowedChildTypes.length > 0) {
+      for (const childId of node.children) {
+        const child = diagram.getNode(childId);
+        if (child) {
+          if (!resolved.allowedChildTypes.includes(child.type)) {
+            errors.push({
+              path: `node.${node.id}.hierarchy`,
+              message: `Node type '${node.type}' does not allow child of type '${child.type}'. Allowed: ${resolved.allowedChildTypes.join(', ')}`,
+              code: 'INVALID_CHILD_TYPE',
+              severity: 'error',
+            });
+          }
+        }
+      }
+    }
+
+    const result: ValidationResult = {
+      valid: errors.length === 0,
+      errors,
+      warnings,
+    };
+
+    // Emit validation events
+    if (result.valid) {
+      this.eventBus?.emit(DiagramEventTypes.VALIDATION_COMPLETED, {
+        type: 'hierarchy',
+        entityId: node.id,
+        result,
+        timestamp: Date.now()
+      });
+    } else {
+      this.eventBus?.emit(DiagramEventTypes.VALIDATION_FAILED, {
+        type: 'hierarchy',
+        entityId: node.id,
+        result,
+        timestamp: Date.now()
+      });
+    }
+
+    return result;
+  }
+
+  /**
+   * Validate group (Phase 2 - Group validation)
+   */
+  validateGroup(
+    group: GroupModel,
+    diagram: DiagramModel,
+    options: ValidationOptions = {}
+  ): ValidationResult {
+    // Emit validation started event
+    this.eventBus?.emit(DiagramEventTypes.VALIDATION_STARTED, {
+      type: 'group',
+      entityId: group.id,
+      timestamp: Date.now()
+    });
+
+    const errors: ValidationError[] = [];
+    const warnings: ValidationWarning[] = [];
+
+    // Get group type definition
+    const groupType = (group as any).type || 'default';
+    const typeDef = this.typeRegistry.getGroupType(groupType);
+
+    if (!typeDef) {
+      // If no type definition, skip validation
+      return { valid: true, errors: [], warnings: [] };
+    }
+
+    // 1. Validate member count
+    const memberCount = group.members.size;
+
+    if (typeDef.minMembers !== undefined && memberCount < typeDef.minMembers) {
+      errors.push({
+        path: `group.${group.id}`,
+        message: `Group type '${groupType}' requires at least ${typeDef.minMembers} members, has ${memberCount}`,
+        code: 'INSUFFICIENT_MEMBERS',
+        severity: 'error',
+      });
+    }
+
+    if (typeDef.maxMembers !== undefined && memberCount > typeDef.maxMembers) {
+      errors.push({
+        path: `group.${group.id}`,
+        message: `Group type '${groupType}' allows at most ${typeDef.maxMembers} members, has ${memberCount}`,
+        code: 'EXCESSIVE_MEMBERS',
+        severity: 'error',
+      });
+    }
+
+    // 2. Validate member types
+    if (typeDef.allowedMemberTypes && typeDef.allowedMemberTypes.length > 0) {
+      for (const memberId of group.members) {
+        const node = diagram.getNode(memberId);
+        if (node) {
+          if (!typeDef.allowedMemberTypes.includes(node.type)) {
+            errors.push({
+              path: `group.${group.id}`,
+              message: `Group type '${groupType}' does not allow member of type '${node.type}'. Allowed: ${typeDef.allowedMemberTypes.join(', ')}`,
+              code: 'INVALID_MEMBER_TYPE',
+              severity: 'error',
+            });
+          }
+        } else {
+          errors.push({
+            path: `group.${group.id}`,
+            message: `Group member '${memberId}' not found`,
+            code: 'MEMBER_NOT_FOUND',
+            severity: 'error',
+          });
+        }
+      }
+    }
+
+    // 3. Validate nesting constraint
+    if (typeDef.canNest === false) {
+      // Check if any members are themselves groups
+      for (const memberId of group.members) {
+        const node = diagram.getNode(memberId);
+        // Check if this member is actually a group (groups can contain nodes, so check type)
+        if (node && node.type === 'group') {
+          errors.push({
+            path: `group.${group.id}`,
+            message: `Group type '${groupType}' does not allow nested groups`,
+            code: 'NESTED_GROUP_NOT_ALLOWED',
+            severity: 'error',
+          });
+          break; // Only report once
+        }
+      }
+    }
+
+    // 4. Validate link types within group
+    if (typeDef.allowedLinkTypes && typeDef.allowedLinkTypes.length > 0) {
+      const memberIds = Array.from(group.members);
+      const links = diagram.getLinks();
+
+      for (const link of links) {
+        // Check if this link is between group members
+        const sourceNode = diagram
+          .getNodes()
+          .find((n) => n.getPorts().some((p) => p.id === link.sourcePortId));
+        const targetNode = diagram
+          .getNodes()
+          .find((n) => n.getPorts().some((p) => p.id === link.targetPortId));
+
+        if (sourceNode && targetNode &&
+            memberIds.includes(sourceNode.id) &&
+            memberIds.includes(targetNode.id)) {
+          // This link is between group members
+          const linkType = (link as any).type || 'default';
+          if (!typeDef.allowedLinkTypes.includes(linkType)) {
+            errors.push({
+              path: `group.${group.id}`,
+              message: `Group type '${groupType}' does not allow link type '${linkType}' within group. Allowed: ${typeDef.allowedLinkTypes.join(', ')}`,
+              code: 'INVALID_LINK_TYPE_IN_GROUP',
+              severity: 'error',
+            });
+          }
+        }
+      }
+    }
+
+    // 5. Custom group validator
+    if (typeDef.validator) {
+      const customResult = typeDef.validator(group);
+      errors.push(...customResult.errors);
+      warnings.push(...customResult.warnings);
+    }
+
+    const result: ValidationResult = {
+      valid: errors.length === 0,
+      errors,
+      warnings,
+    };
+
+    // Emit validation events
+    if (result.valid) {
+      this.eventBus?.emit(DiagramEventTypes.VALIDATION_COMPLETED, {
+        type: 'group',
+        entityId: group.id,
+        result,
+        timestamp: Date.now()
+      });
+    } else {
+      this.eventBus?.emit(DiagramEventTypes.VALIDATION_FAILED, {
+        type: 'group',
+        entityId: group.id,
         result,
         timestamp: Date.now()
       });

@@ -19,6 +19,12 @@ export interface NodeTypeDefinition {
   defaultBehavior?: Partial<NodeBehavior>;
   defaultStyle?: Partial<NodeStyle>;
   defaultSize?: Partial<Size>;
+  // Phase 2: Hierarchy Validation
+  allowedChildTypes?: string[]; // Allowed child node types
+  allowedParentTypes?: string[]; // Allowed parent node types
+  maxChildren?: number; // Maximum number of children
+  maxDepth?: number; // Maximum depth from root
+  canBeRoot?: boolean; // Can be a root node (no parent)
 }
 
 export interface PortTypeDefinition {
@@ -40,10 +46,24 @@ export interface LinkTypeDefinition {
   validator?: (link: any) => ValidationResult;
 }
 
+// Phase 2: Group Validation
+export interface GroupTypeDefinition {
+  type: string;
+  label: string;
+  description?: string;
+  allowedMemberTypes?: string[]; // Allowed node types in this group
+  allowedLinkTypes?: string[]; // Allowed link types within group
+  minMembers?: number; // Minimum number of members
+  maxMembers?: number; // Maximum number of members
+  canNest?: boolean; // Can contain other groups
+  validator?: (group: any) => ValidationResult;
+}
+
 export class TypeRegistry {
   private nodeTypes: Map<string, NodeTypeDefinition> = new Map();
   private portTypes: Map<string, PortTypeDefinition> = new Map();
   private linkTypes: Map<string, LinkTypeDefinition> = new Map();
+  private groupTypes: Map<string, GroupTypeDefinition> = new Map(); // Phase 2
 
   /**
    * Register a node type
@@ -115,6 +135,17 @@ export class TypeRegistry {
   }
 
   /**
+   * Register a group type (Phase 2)
+   */
+  registerGroupType(definition: GroupTypeDefinition): void {
+    if (this.groupTypes.has(definition.type)) {
+      throw new Error(`Group type '${definition.type}' is already registered`);
+    }
+
+    this.groupTypes.set(definition.type, definition);
+  }
+
+  /**
    * Unregister a node type
    */
   unregisterNodeType(type: string): boolean {
@@ -133,6 +164,13 @@ export class TypeRegistry {
    */
   unregisterLinkType(type: string): boolean {
     return this.linkTypes.delete(type);
+  }
+
+  /**
+   * Unregister a group type (Phase 2)
+   */
+  unregisterGroupType(type: string): boolean {
+    return this.groupTypes.delete(type);
   }
 
   /**
@@ -157,6 +195,13 @@ export class TypeRegistry {
   }
 
   /**
+   * Get group type definition (Phase 2)
+   */
+  getGroupType(type: string): GroupTypeDefinition | undefined {
+    return this.groupTypes.get(type);
+  }
+
+  /**
    * Check if node type exists
    */
   hasNodeType(type: string): boolean {
@@ -175,6 +220,13 @@ export class TypeRegistry {
    */
   hasLinkType(type: string): boolean {
     return this.linkTypes.has(type);
+  }
+
+  /**
+   * Check if group type exists (Phase 2)
+   */
+  hasGroupType(type: string): boolean {
+    return this.groupTypes.has(type);
   }
 
   /**
@@ -199,12 +251,20 @@ export class TypeRegistry {
   }
 
   /**
+   * List all group types (Phase 2)
+   */
+  listGroupTypes(): GroupTypeDefinition[] {
+    return Array.from(this.groupTypes.values());
+  }
+
+  /**
    * Clear all registered types
    */
   clear(): void {
     this.nodeTypes.clear();
     this.portTypes.clear();
     this.linkTypes.clear();
+    this.groupTypes.clear(); // Phase 2
   }
 
   /**
@@ -214,11 +274,13 @@ export class TypeRegistry {
     nodeTypes: number;
     portTypes: number;
     linkTypes: number;
+    groupTypes: number; // Phase 2
   } {
     return {
       nodeTypes: this.nodeTypes.size,
       portTypes: this.portTypes.size,
       linkTypes: this.linkTypes.size,
+      groupTypes: this.groupTypes.size, // Phase 2
     };
   }
 
