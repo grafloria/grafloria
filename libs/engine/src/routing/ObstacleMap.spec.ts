@@ -187,8 +187,10 @@ describe('ObstacleMap (Phase 4.1)', () => {
       expect(isIntersecting).toBe(false);
     });
 
-    it.skip('should handle line with margin around obstacle', () => {
-      // TODO: Edge case - line exactly on boundary needs special handling
+    it('should handle line with margin around obstacle', () => {
+      // Line at y=90 is 10px above obstacle (y=100)
+      // With margin=10, expanded obstacle spans y=90-140
+      // So line should intersect the margin
       const isIntersecting = obstacleMap.doesLineIntersect(
         { x: 50, y: 90 },
         { x: 200, y: 90 },
@@ -340,8 +342,10 @@ describe('ObstacleMap (Phase 4.1)', () => {
       expect(retrieved).toEqual(obstacle);
     });
 
-    it.skip('should handle obstacles with margin', () => {
-      // TODO: Edge case - point exactly on boundary needs special handling
+    it('should handle obstacles with margin', () => {
+      // Obstacle at (100, 100) with size (50, 50) and margin 10
+      // Expanded bounds: (90, 90) to (160, 160)
+      // Point (90, 100) is on the edge of the margin
       const obstacle: Obstacle = {
         id: 'node1',
         x: 100,

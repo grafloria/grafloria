@@ -143,12 +143,15 @@ export class ObstacleMap {
    * Check if a point is inside any obstacle
    */
   isPointInside(point: Point, respectMargin = false): boolean {
-    // Query nearby obstacles
+    // When respecting margins, we need to query a larger region
+    // to find obstacles whose margins might contain this point
+    const maxMargin = respectMargin ? 100 : 1; // Assume max margin of 100px
+
     const nearby = this.queryRegion({
-      x: point.x - 1,
-      y: point.y - 1,
-      width: 2,
-      height: 2,
+      x: point.x - maxMargin,
+      y: point.y - maxMargin,
+      width: maxMargin * 2,
+      height: maxMargin * 2,
     });
 
     for (const obstacle of nearby) {
@@ -172,7 +175,21 @@ export class ObstacleMap {
    * Check if a line segment intersects any obstacle
    */
   doesLineIntersect(start: Point, end: Point, margin = 0): boolean {
-    const obstacles = this.queryLine(start, end);
+    // Expand query region by margin to catch nearby obstacles
+    const minX = Math.min(start.x, end.x) - margin;
+    const minY = Math.min(start.y, end.y) - margin;
+    const maxX = Math.max(start.x, end.x) + margin;
+    const maxY = Math.max(start.y, end.y) + margin;
+
+    const expandedRegion: Rectangle = {
+      x: minX,
+      y: minY,
+      width: maxX - minX,
+      height: maxY - minY,
+    };
+
+    // Query obstacles in expanded region
+    const obstacles = this.queryRegion(expandedRegion);
 
     for (const obstacle of obstacles) {
       const expanded: Rectangle = {
