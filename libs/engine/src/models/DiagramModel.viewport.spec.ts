@@ -400,12 +400,10 @@ describe('DiagramModel - Viewport Virtualization (Phase 5.1)', () => {
       expect(visible.find((l) => l === link)).toBeDefined();
     });
 
-    it.skip('should be fast with many links (skipped due to nanoid mock counter overflow)', () => {
-      // Create fresh diagram to avoid ID conflicts from mocked nanoid counter
-      // Using 500 links instead of 1000 to avoid counter wraparound in mocked nanoid
+    it('should be fast with many links', () => {
       const testDiagram = new DiagramModel('Large Link Test');
 
-      for (let i = 0; i < 500; i++) {
+      for (let i = 0; i < 1000; i++) {
         const link = new LinkModel(`port${i}-src`, `port${i}-tgt`);
         link.sourceNodeId = 'node1';
         link.targetNodeId = 'node2';
