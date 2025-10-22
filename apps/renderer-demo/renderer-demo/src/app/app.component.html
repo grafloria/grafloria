@@ -30,13 +30,13 @@
 
   <footer class="footer">
     <div class="stats">
-      <span>Nodes: {{ engine?.getDiagram()?.getNodes().length || 0 }}</span>
-      <span>Links: {{ engine?.getDiagram()?.getLinks().length || 0 }}</span>
+      <span>Nodes: {{ (engine?.getDiagram()?.getNodes()?.length) || 0 }}</span>
+      <span>Links: {{ (engine?.getDiagram()?.getLinks()?.length) || 0 }}</span>
       <span>Zoom: {{ (zoom * 100).toFixed(0) }}%</span>
       <span>Theme: {{ theme.name }}</span>
     </div>
     <div class="info">
-      Powered by @grafloria/renderer + @grafloria/engine
+      Powered by &#64;grafloria/renderer + &#64;grafloria/engine
     </div>
   </footer>
 </div>

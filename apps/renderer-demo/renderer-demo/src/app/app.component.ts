@@ -77,12 +77,12 @@ export class AppComponent implements OnInit {
     diagram.addNode(node4);
 
     // Create ports
-    const port1Out = new PortModel('output', { x: 1, y: 0.5 });
-    const port2In = new PortModel('input', { x: 0, y: 0.5 });
-    const port2Out = new PortModel('output', { x: 1, y: 0.5 });
-    const port3In = new PortModel('input', { x: 0, y: 0.5 });
-    const port4In = new PortModel('input', { x: 0, y: 0.5 });
-    const port2OutAlt = new PortModel('output', { x: 0.5, y: 1 });
+    const port1Out = new PortModel({ type: 'output', position: { x: 1, y: 0.5 } });
+    const port2In = new PortModel({ type: 'input', position: { x: 0, y: 0.5 } });
+    const port2Out = new PortModel({ type: 'output', position: { x: 1, y: 0.5 } });
+    const port3In = new PortModel({ type: 'input', position: { x: 0, y: 0.5 } });
+    const port4In = new PortModel({ type: 'input', position: { x: 0, y: 0.5 } });
+    const port2OutAlt = new PortModel({ type: 'output', position: { x: 0.5, y: 1 } });
 
     // Add ports to nodes
     node1.addPort(port1Out);

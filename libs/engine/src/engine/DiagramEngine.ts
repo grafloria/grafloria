@@ -24,6 +24,13 @@ import { ClipboardManager } from '../clipboard/ClipboardManager'; // Phase 1.8
 import { SelectionManager } from '../selection/SelectionManager'; // Phase 1.8a
 import { DiagramMode, isValidDiagramMode, ModeChangeEvent } from './DiagramMode';
 import { ModeManager } from './ModeManager';
+// Routing imports
+import { ObstacleMapBuilder } from '../routing/ObstacleMapBuilder';
+import { StraightRouter } from '../routing/algorithms/StraightRouter';
+import { OrthogonalRouter } from '../routing/algorithms/OrthogonalRouter';
+import { AStarRouter } from '../routing/algorithms/AStarRouter';
+import { DijkstraRouter } from '../routing/algorithms/DijkstraRouter';
+import { VisibilityGraphRouter } from '../routing/algorithms/VisibilityGraphRouter';
 import type {
   ModeGuardFunction,
   ModeGuardBlockedEvent,
@@ -1461,7 +1468,6 @@ export class DiagramEngine {
       (id) => id !== undefined
     ) as string[];
 
-    const { ObstacleMapBuilder } = require('../routing/ObstacleMapBuilder');
     const obstacleMap = ObstacleMapBuilder.fromDiagramExcluding(
       this.diagram!,
       excludeIds,
@@ -1471,13 +1477,6 @@ export class DiagramEngine {
     // Get port positions (in global coordinates)
     const start = this.getPortGlobalPosition(link.sourcePortId);
     const end = this.getPortGlobalPosition(link.targetPortId);
-
-    // Import routers
-    const { StraightRouter } = require('../routing/algorithms/StraightRouter');
-    const { OrthogonalRouter } = require('../routing/algorithms/OrthogonalRouter');
-    const { AStarRouter } = require('../routing/algorithms/AStarRouter');
-    const { DijkstraRouter } = require('../routing/algorithms/DijkstraRouter');
-    const { VisibilityGraphRouter } = require('../routing/algorithms/VisibilityGraphRouter');
 
     // Route based on algorithm
     let points: Point[];
