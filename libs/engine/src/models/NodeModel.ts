@@ -482,21 +482,43 @@ export class NodeModel extends DiagramEntity {
   /**
    * Get global position (Phase 1.6a)
    * In absolute mode: returns position as-is
-   * In relative mode: transforms position by parent's global transform
+   * In relative mode: transforms position by parent's hierarchy transform
    */
   getGlobalPosition(): Point {
     if (this.positionMode === 'absolute' || !this.parentId) {
       return { ...this.position };
     }
 
-    // In relative mode with parent: apply parent's global transform
+    // In relative mode with parent: apply parent's hierarchy transform
     const parent = this.getParentNode();
     if (!parent) {
       return { ...this.position };
     }
 
-    const parentMatrix = parent.getGlobalTransformMatrix();
-    return transformPoint(this.position, parentMatrix);
+    // For hierarchical positioning, apply: scale -> rotate -> translate
+    // (without transform origin offsets which are for visual transforms)
+    const parentGlobalPos = parent.getGlobalPosition();
+
+    // Scale child position by parent's scale
+    let x = this.position.x * parent.scale.x;
+    let y = this.position.y * parent.scale.y;
+
+    // Rotate scaled position by parent's rotation
+    if (parent.rotation !== 0) {
+      const cos = Math.cos(parent.rotation);
+      const sin = Math.sin(parent.rotation);
+      const rotatedX = x * cos - y * sin;
+      const rotatedY = x * sin + y * cos;
+      x = rotatedX;
+      y = rotatedY;
+    }
+
+    // Add parent's global position
+    return {
+      x: parentGlobalPos.x + x,
+      y: parentGlobalPos.y + y,
+      z: (this.position.z ?? 0) + (parentGlobalPos.z ?? 0)
+    };
   }
 
   /**
@@ -524,13 +546,29 @@ export class NodeModel extends DiagramEntity {
       return;
     }
 
-    // Convert global to local by inverting parent's transform
+    // Convert global to local by inverting parent's hierarchy transform
     this.positionMode = 'relative';
-    const parentMatrix = parent.getGlobalTransformMatrix();
-    const invertedMatrix = invertMatrix(parentMatrix);
-    const localPos = transformPoint({ x, y, z }, invertedMatrix);
+    const parentGlobalPos = parent.getGlobalPosition();
 
-    this.setPosition(localPos.x, localPos.y, localPos.z);
+    // Subtract parent's global position
+    let localX = x - parentGlobalPos.x;
+    let localY = y - parentGlobalPos.y;
+
+    // Rotate by -parent.rotation
+    if (parent.rotation !== 0) {
+      const cos = Math.cos(-parent.rotation);
+      const sin = Math.sin(-parent.rotation);
+      const rotatedX = localX * cos - localY * sin;
+      const rotatedY = localX * sin + localY * cos;
+      localX = rotatedX;
+      localY = rotatedY;
+    }
+
+    // Divide by parent's scale
+    localX /= parent.scale.x;
+    localY /= parent.scale.y;
+
+    this.setPosition(localX, localY, z !== undefined ? z - (parentGlobalPos.z ?? 0) : undefined);
   }
 
   /**

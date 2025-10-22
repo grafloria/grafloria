@@ -239,10 +239,13 @@ describe('NodeModel - Coordinate Space System (Phase 1.6a)', () => {
 
       const matrix = node.getLocalTransformMatrix();
 
-      // Matrix should compose: translate(100, 200) + rotate(90) + scale(2, 2)
+      // Matrix should compose with transform origin: translate(100, 200) + rotate(90) + scale(2, 2)
+      // Transform origin is at center (25, 25) of the 50x50 node
+      // When rotating/scaling around origin, the final translation is affected:
+      // Point (0,0) -> (-25,-25) -> scale(-50,-50) -> rotate(50,-50) -> (75,-25) -> (175,175)
       expect(matrix).toBeDefined();
-      expect(matrix.e).toBeCloseTo(100, 1); // Translation X
-      expect(matrix.f).toBeCloseTo(200, 1); // Translation Y (approx, affected by origin)
+      expect(matrix.e).toBeCloseTo(175, 1); // Translation X (affected by transform origin)
+      expect(matrix.f).toBeCloseTo(175, 1); // Translation Y (affected by transform origin)
     });
 
     it('should get global transform matrix without parent', async () => {
