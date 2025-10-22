@@ -2,6 +2,9 @@
   <header class="header">
     <h1>{{ title }}</h1>
     <div class="controls">
+      <button (click)="toggleCommandPanel()" class="btn" [class.active]="showCommandPanel">
+        {{ showCommandPanel ? '⬅️ Hide' : '💻 Commands' }}
+      </button>
       <button (click)="toggleTheme()" class="btn">
         {{ isDarkTheme ? '☀️ Light' : '🌙 Dark' }} Theme
       </button>
@@ -17,15 +20,44 @@
     </div>
   </header>
 
-  <div class="canvas-wrapper">
-    <grafloria-diagram-canvas
-      *ngIf="engine"
-      [engine]="engine"
-      [viewport]="viewport"
-      [zoom]="zoom"
-      [theme]="theme"
-      class="diagram-canvas">
-    </grafloria-diagram-canvas>
+  <div class="main-content">
+    <!-- Command Panel -->
+    <div class="command-panel" [class.show]="showCommandPanel">
+      <div class="command-header">
+        <h3>Command Console</h3>
+        <button (click)="clearOutput()" class="btn-small">Clear</button>
+      </div>
+
+      <div class="command-output">
+        <div *ngFor="let line of commandOutput" class="output-line">{{ line }}</div>
+        <div *ngIf="commandOutput.length === 0" class="output-line hint">
+          Type 'help' for available commands
+        </div>
+      </div>
+
+      <div class="command-input-wrapper">
+        <input
+          type="text"
+          [(ngModel)]="commandInput"
+          (keyup.enter)="executeCommand()"
+          placeholder="Enter command..."
+          class="command-input"
+        />
+        <button (click)="executeCommand()" class="btn-execute">Run</button>
+      </div>
+    </div>
+
+    <!-- Canvas -->
+    <div class="canvas-wrapper">
+      <grafloria-diagram-canvas
+        *ngIf="engine"
+        [engine]="engine"
+        [viewport]="viewport"
+        [zoom]="zoom"
+        [theme]="theme"
+        class="diagram-canvas">
+      </grafloria-diagram-canvas>
+    </div>
   </div>
 
   <footer class="footer">

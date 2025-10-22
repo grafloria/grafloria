@@ -1,12 +1,13 @@
 import { Component, OnInit } from '@angular/core';
 import { CommonModule } from '@angular/common';
+import { FormsModule } from '@angular/forms';
 import { DiagramCanvasComponent } from '@grafloria/renderer-angular';
 import { DiagramEngine, NodeModel, LinkModel, PortModel } from '@grafloria/engine';
 import { LIGHT_THEME, DARK_THEME, type Theme, type Rectangle } from '@grafloria/renderer';
 
 @Component({
   standalone: true,
-  imports: [CommonModule, DiagramCanvasComponent],
+  imports: [CommonModule, FormsModule, DiagramCanvasComponent],
   selector: 'app-root',
   templateUrl: './app.component.html',
   styleUrl: './app.component.css',
@@ -22,6 +23,11 @@ export class AppComponent implements OnInit {
 
   // Theme toggle
   isDarkTheme = false;
+
+  // Command panel
+  showCommandPanel = false;
+  commandInput = '';
+  commandOutput: string[] = [];
 
   ngOnInit() {
     this.initializeEngine();
@@ -190,27 +196,43 @@ export class AppComponent implements OnInit {
    */
   addRandomNode(): void {
     const diagram = this.engine.getDiagram();
-    if (!diagram) return;
+    if (!diagram) {
+      console.log('❌ No diagram available');
+      return;
+    }
 
     const nodeWidth = 200;
     const nodeHeight = 100;
     const spacing = 20;
 
+    const currentCount = diagram.getNodes().length;
+    console.log(`\n🔵 Adding node #${currentCount + 1}...`);
+    console.log(`Current nodes in diagram:`, currentCount);
+
     const position = this.findNonOverlappingPosition(diagram, nodeWidth, nodeHeight, spacing);
+    console.log(`✅ Found position:`, position);
 
     const node = new NodeModel({
       type: 'basic',
       position,
       size: { width: nodeWidth, height: nodeHeight },
     });
-    node.setMetadata('label', `Node ${diagram.getNodes().length + 1}`);
+    node.setMetadata('label', `Node ${currentCount + 1}`);
 
     diagram.addNode(node);
+
+    const newCount = diagram.getNodes().length;
+    console.log(`✅ Node added! Total nodes: ${newCount}`);
+    console.log(`Node list:`, diagram.getNodes().map((n: any) => ({
+      id: n.id,
+      label: n.getMetadata('label'),
+      position: n.position
+    })));
   }
 
   /**
    * Find a position for a new node that doesn't overlap existing nodes
-   * Strategy: Place below last node, or to the right if collision
+   * Uses a simple grid system to guarantee placement
    */
   private findNonOverlappingPosition(
     diagram: any,
@@ -220,39 +242,31 @@ export class AppComponent implements OnInit {
   ): { x: number; y: number } {
     const nodes = diagram.getNodes();
 
-    // If no nodes, place in visible area
-    if (nodes.length === 0) {
-      return { x: 100, y: 100 };
-    }
+    // Grid configuration
+    const startX = 100;
+    const startY = 100;
+    const nodesPerRow = 3; // 3 nodes per row
+    const columnWidth = width + spacing;
+    const rowHeight = height + spacing;
 
-    // Try placing below the last added node
-    const lastNode = nodes[nodes.length - 1];
-    const lastBounds = lastNode.getBoundingBox();
+    // Try grid positions systematically
+    for (let row = 0; row < 100; row++) { // Support up to 300 nodes (100 rows x 3 columns)
+      for (let col = 0; col < nodesPerRow; col++) {
+        const candidate = {
+          x: startX + col * columnWidth,
+          y: startY + row * rowHeight
+        };
 
-    // Try multiple positions
-    const candidates = [
-      // Below last node (preferred)
-      { x: lastBounds.left, y: lastBounds.bottom + spacing },
-      // To the right of last node
-      { x: lastBounds.right + spacing, y: lastBounds.top },
-      // Below and to the right
-      { x: lastBounds.right + spacing, y: lastBounds.bottom + spacing },
-      // In a grid pattern
-      { x: 100, y: lastBounds.bottom + spacing },
-      { x: 350, y: lastBounds.bottom + spacing },
-      { x: 600, y: lastBounds.bottom + spacing },
-    ];
-
-    // Try each candidate position
-    for (const candidate of candidates) {
-      if (!this.hasCollision(candidate, width, height, spacing, nodes)) {
-        return candidate;
+        if (!this.hasCollision(candidate, width, height, spacing, nodes)) {
+          console.log(`  → Grid position: row ${row}, col ${col}`);
+          return candidate;
+        }
       }
     }
 
-    // Fallback: place in next available row
-    const maxY = Math.max(...nodes.map((n: any) => n.getBoundingBox().bottom));
-    return { x: 100, y: maxY + spacing };
+    // This should never happen with the grid system, but just in case
+    console.warn('⚠️  Grid system exhausted, using fallback position');
+    return { x: startX, y: startY + nodes.length * rowHeight };
   }
 
   /**
@@ -300,5 +314,111 @@ export class AppComponent implements OnInit {
       box1.bottom < box2.top ||
       box1.top > box2.bottom
     );
+  }
+
+  /**
+   * Toggle command panel visibility
+   */
+  toggleCommandPanel(): void {
+    this.showCommandPanel = !this.showCommandPanel;
+  }
+
+  /**
+   * Execute command from input
+   */
+  executeCommand(): void {
+    const command = this.commandInput.trim();
+    if (!command) return;
+
+    this.commandOutput.push(`> ${command}`);
+    console.log(`\n💻 Command: ${command}`);
+
+    try {
+      const parts = command.split(' ');
+      const cmd = parts[0].toLowerCase();
+
+      switch (cmd) {
+        case 'add':
+        case 'addnode':
+          const count = parseInt(parts[1]) || 1;
+          for (let i = 0; i < count; i++) {
+            this.addRandomNode();
+          }
+          this.commandOutput.push(`✅ Added ${count} node(s)`);
+          break;
+
+        case 'clear':
+          const diagram = this.engine.getDiagram();
+          if (diagram) {
+            const nodes = [...diagram.getNodes()];
+            nodes.forEach((n: any) => diagram.removeNode(n.id));
+            this.commandOutput.push(`✅ Cleared all nodes`);
+            console.log('🗑️  All nodes cleared');
+          }
+          break;
+
+        case 'reset':
+          this.resetZoom();
+          this.commandOutput.push(`✅ Reset zoom and viewport`);
+          break;
+
+        case 'zoom':
+          const zoomValue = parseFloat(parts[1]);
+          if (zoomValue) {
+            this.zoom = Math.max(0.1, Math.min(3.0, zoomValue));
+            this.commandOutput.push(`✅ Set zoom to ${this.zoom}`);
+          }
+          break;
+
+        case 'list':
+          const diag = this.engine.getDiagram();
+          if (diag) {
+            const nodeList = diag.getNodes().map((n: any) => ({
+              label: n.getMetadata('label'),
+              position: `(${n.position.x}, ${n.position.y})`
+            }));
+            this.commandOutput.push(`📋 ${diag.getNodes().length} nodes:`);
+            nodeList.forEach((n: any) => {
+              this.commandOutput.push(`  • ${n.label} at ${n.position}`);
+            });
+            console.table(nodeList);
+          }
+          break;
+
+        case 'help':
+          this.commandOutput.push(`Available commands:`);
+          this.commandOutput.push(`  add [count] - Add nodes (default 1)`);
+          this.commandOutput.push(`  clear - Remove all nodes`);
+          this.commandOutput.push(`  reset - Reset zoom and viewport`);
+          this.commandOutput.push(`  zoom [value] - Set zoom level`);
+          this.commandOutput.push(`  list - List all nodes`);
+          this.commandOutput.push(`  help - Show this help`);
+          break;
+
+        default:
+          this.commandOutput.push(`❌ Unknown command: ${cmd}`);
+          this.commandOutput.push(`Type 'help' for available commands`);
+      }
+    } catch (error) {
+      this.commandOutput.push(`❌ Error: ${error}`);
+      console.error('Command error:', error);
+    }
+
+    this.commandInput = '';
+
+    // Keep output scrolled to bottom
+    setTimeout(() => {
+      const output = document.querySelector('.command-output');
+      if (output) {
+        output.scrollTop = output.scrollHeight;
+      }
+    }, 0);
+  }
+
+  /**
+   * Clear command output
+   */
+  clearOutput(): void {
+    this.commandOutput = [];
   }
 }

@@ -74,6 +74,120 @@
   background: #f0f0f0;
 }
 
+.btn.active {
+  background: rgba(255, 255, 255, 0.3);
+}
+
+.main-content {
+  display: flex;
+  flex: 1;
+  overflow: hidden;
+}
+
+.command-panel {
+  width: 0;
+  overflow: hidden;
+  background: #1a202c;
+  color: #e2e8f0;
+  display: flex;
+  flex-direction: column;
+  transition: width 0.3s ease;
+  border-right: 1px solid #2d3748;
+}
+
+.command-panel.show {
+  width: 350px;
+}
+
+.command-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 1rem;
+  background: #2d3748;
+  border-bottom: 1px solid #4a5568;
+}
+
+.command-header h3 {
+  margin: 0;
+  font-size: 1rem;
+  font-weight: 600;
+}
+
+.btn-small {
+  padding: 0.25rem 0.75rem;
+  border: 1px solid #4a5568;
+  background: transparent;
+  color: #e2e8f0;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 0.75rem;
+  transition: all 0.2s;
+}
+
+.btn-small:hover {
+  background: #4a5568;
+}
+
+.command-output {
+  flex: 1;
+  overflow-y: auto;
+  padding: 1rem;
+  font-family: 'Courier New', Courier, monospace;
+  font-size: 0.875rem;
+  line-height: 1.6;
+}
+
+.output-line {
+  margin-bottom: 0.5rem;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.output-line.hint {
+  color: #718096;
+  font-style: italic;
+}
+
+.command-input-wrapper {
+  display: flex;
+  gap: 0.5rem;
+  padding: 1rem;
+  background: #2d3748;
+  border-top: 1px solid #4a5568;
+}
+
+.command-input {
+  flex: 1;
+  padding: 0.5rem;
+  background: #1a202c;
+  border: 1px solid #4a5568;
+  border-radius: 4px;
+  color: #e2e8f0;
+  font-family: 'Courier New', Courier, monospace;
+  font-size: 0.875rem;
+}
+
+.command-input:focus {
+  outline: none;
+  border-color: #667eea;
+}
+
+.btn-execute {
+  padding: 0.5rem 1rem;
+  background: #667eea;
+  border: none;
+  color: white;
+  border-radius: 4px;
+  cursor: pointer;
+  font-weight: 500;
+  transition: all 0.2s;
+}
+
+.btn-execute:hover {
+  background: #5568d3;
+}
+
 .canvas-wrapper {
   flex: 1;
   position: relative;
