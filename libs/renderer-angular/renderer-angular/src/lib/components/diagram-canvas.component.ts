@@ -401,29 +401,33 @@ export class DiagramCanvasComponent implements OnInit, AfterViewInit, OnChanges,
         if (event.ctrlKey || event.metaKey) {
           // Ctrl+Click: Toggle selection (multi-select)
           diagram.toggleNodeSelection(clickedNode);
-        } else {
-          // Normal click: Always select this node (clearing others if needed)
-          // This ensures clicking a different node immediately switches selection
+        } else if (!clickedNode.isSelected()) {
+          // Normal click on unselected node: Select only this node (clearing others)
           diagram.selectNode(clickedNode);
         }
+        // If clicking an already-selected node without Ctrl: Keep all selections for multi-drag
 
         // Force immediate render to show selection highlight instantly
         this.renderDiagram();
 
         // Start drag if node is draggable
+        // Allow dragging if clicked node is draggable (even if other selected nodes are locked)
         if (clickedNode.isDraggable() && clickedNode.isSelected()) {
           this.isDraggingNode = true;
           this.dragStartX = event.clientX;
           this.dragStartY = event.clientY;
 
-          // Store initial positions of all selected nodes
+          // Store initial positions of all selected nodes (only draggable ones)
           const selectedNodes = diagram.getSelectedNodes();
           this.draggedNodes.clear();
           selectedNodes.forEach((node) => {
-            this.draggedNodes.set(node.id, {
-              startX: node.position.x,
-              startY: node.position.y
-            });
+            // Only include draggable nodes (skip locked nodes)
+            if (node.isDraggable()) {
+              this.draggedNodes.set(node.id, {
+                startX: node.position.x,
+                startY: node.position.y
+              });
+            }
           });
 
           // Change cursor

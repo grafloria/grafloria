@@ -381,8 +381,8 @@ export class SVGRenderer implements IRenderer {
       ? this.computeLinkStylesCSS(link)
       : this.computeLinkStylesProgrammatic(link);
 
-    // Generate path from points
-    const pathData = this.generatePathData(link.points);
+    // Generate path from points or segments (for curves)
+    const pathData = this.generatePathData(link.points, link.segments);
 
     // Option 2: Calculate arrow position (at the end of the link)
     const points = link.points;
@@ -560,12 +560,30 @@ export class SVGRenderer implements IRenderer {
   }
 
   /**
-   * Generate SVG path data from points
+   * Generate SVG path data from points and segments
+   * Supports both straight lines and bezier curves
    */
-  private generatePathData(points: Array<{ x: number; y: number }>): string {
+  private generatePathData(points: Array<{ x: number; y: number }>, segments?: any[]): string {
     if (points.length === 0) return '';
     if (points.length === 1) return `M ${points[0].x} ${points[0].y}`;
 
+    // If segments exist and contain curve information, use them
+    if (segments && segments.length > 0 && segments[0].type === 'curve') {
+      const segment = segments[0];
+      let path = `M ${segment.from.x} ${segment.from.y}`;
+
+      // Use cubic bezier curve (C command)
+      if (segment.control1 && segment.control2) {
+        path += ` C ${segment.control1.x} ${segment.control1.y}, ${segment.control2.x} ${segment.control2.y}, ${segment.to.x} ${segment.to.y}`;
+      } else {
+        // Fallback to line if no control points
+        path += ` L ${segment.to.x} ${segment.to.y}`;
+      }
+
+      return path;
+    }
+
+    // Default: straight lines between points
     let path = `M ${points[0].x} ${points[0].y}`;
     for (let i = 1; i < points.length; i++) {
       path += ` L ${points[i].x} ${points[i].y}`;
