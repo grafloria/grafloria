@@ -407,6 +407,9 @@ export class DiagramCanvasComponent implements OnInit, AfterViewInit, OnChanges,
           diagram.selectNode(clickedNode);
         }
 
+        // Force immediate render to show selection highlight instantly
+        this.renderDiagram();
+
         // Start drag if node is draggable
         if (clickedNode.isDraggable() && clickedNode.isSelected()) {
           this.isDraggingNode = true;
@@ -431,6 +434,8 @@ export class DiagramCanvasComponent implements OnInit, AfterViewInit, OnChanges,
       } else {
         // Clicked on empty space - always clear selection
         diagram.clearSelection();
+        // Force immediate render to clear selection highlights instantly
+        this.renderDiagram();
       }
 
       this.cdr.markForCheck();
