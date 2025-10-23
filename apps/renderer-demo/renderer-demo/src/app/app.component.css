@@ -249,6 +249,23 @@
   font-weight: 500;
 }
 
+.navigation-hints {
+  display: flex;
+  gap: 1.5rem;
+  color: #cbd5e0;
+  font-size: 0.8rem;
+}
+
+.hint-item {
+  display: flex;
+  align-items: center;
+  gap: 0.25rem;
+  padding: 0.25rem 0.75rem;
+  background: rgba(255, 255, 255, 0.05);
+  border-radius: 4px;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+}
+
 .info {
   color: #a0aec0;
 }
@@ -273,5 +290,10 @@
 
   .stats {
     gap: 1rem;
+  }
+
+  .navigation-hints {
+    flex-direction: column;
+    gap: 0.5rem;
   }
 }

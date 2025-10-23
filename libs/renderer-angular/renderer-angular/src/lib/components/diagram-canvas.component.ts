@@ -120,6 +120,7 @@ export class DiagramCanvasComponent implements OnInit, AfterViewInit, OnChanges,
   private isPanning = false;
   private lastPanX = 0;
   private lastPanY = 0;
+  private spaceKeyPressed = false;
 
   constructor(
     private vnodeRenderer: VNodeRendererService,
@@ -245,6 +246,35 @@ export class DiagramCanvasComponent implements OnInit, AfterViewInit, OnChanges,
   }
 
   /**
+   * Handle keydown for pan mode (Space key)
+   */
+  @HostListener('window:keydown', ['$event'])
+  onKeyDown(event: KeyboardEvent): void {
+    if (event.code === 'Space' && !this.spaceKeyPressed) {
+      this.spaceKeyPressed = true;
+      // Change cursor to indicate pan mode
+      if (this.containerRef?.nativeElement) {
+        this.containerRef.nativeElement.style.cursor = 'grab';
+      }
+    }
+  }
+
+  /**
+   * Handle keyup to exit pan mode (Space key)
+   */
+  @HostListener('window:keyup', ['$event'])
+  onKeyUp(event: KeyboardEvent): void {
+    if (event.code === 'Space') {
+      this.spaceKeyPressed = false;
+      this.isPanning = false;
+      // Reset cursor
+      if (this.containerRef?.nativeElement) {
+        this.containerRef.nativeElement.style.cursor = 'default';
+      }
+    }
+  }
+
+  /**
    * Handle mouse wheel for zooming (Phase 0.5 - Option B)
    */
   @HostListener('wheel', ['$event'])
@@ -278,6 +308,9 @@ export class DiagramCanvasComponent implements OnInit, AfterViewInit, OnChanges,
 
   /**
    * Handle mouse down for panning (Phase 0.5 - Option B)
+   * Supports:
+   * - Middle mouse button (scroll wheel click)
+   * - Left mouse button + Space key
    */
   @HostListener('mousedown', ['$event'])
   onMouseDown(event: MouseEvent): void {
@@ -286,11 +319,17 @@ export class DiagramCanvasComponent implements OnInit, AfterViewInit, OnChanges,
     }
 
     // Middle mouse button (button === 1) for panning
-    if (event.button === 1) {
+    // OR left mouse button (button === 0) while Space key is pressed
+    if (event.button === 1 || (event.button === 0 && this.spaceKeyPressed)) {
       event.preventDefault();
       this.isPanning = true;
       this.lastPanX = event.clientX;
       this.lastPanY = event.clientY;
+
+      // Change cursor to grabbing when panning starts
+      if (this.containerRef?.nativeElement) {
+        this.containerRef.nativeElement.style.cursor = 'grabbing';
+      }
     }
   }
 
@@ -332,8 +371,13 @@ export class DiagramCanvasComponent implements OnInit, AfterViewInit, OnChanges,
    */
   @HostListener('mouseup', ['$event'])
   onMouseUp(event: MouseEvent): void {
-    if (event.button === 1) {
+    if (event.button === 1 || event.button === 0) {
       this.isPanning = false;
+
+      // Restore cursor based on space key state
+      if (this.containerRef?.nativeElement) {
+        this.containerRef.nativeElement.style.cursor = this.spaceKeyPressed ? 'grab' : 'default';
+      }
     }
   }
 
@@ -343,6 +387,11 @@ export class DiagramCanvasComponent implements OnInit, AfterViewInit, OnChanges,
   @HostListener('mouseleave')
   onMouseLeave(): void {
     this.isPanning = false;
+
+    // Reset cursor
+    if (this.containerRef?.nativeElement) {
+      this.containerRef.nativeElement.style.cursor = 'default';
+    }
   }
 
   /**
