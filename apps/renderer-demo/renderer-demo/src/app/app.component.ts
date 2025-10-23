@@ -42,6 +42,9 @@ export class AppComponent implements OnInit {
     this.initializeEngine();
     this.createSampleDiagram();
     this.configureLayout();
+
+    // Ensure all nodes are visible on initial load
+    this.fitToView();
   }
 
   /**
