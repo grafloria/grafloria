@@ -500,6 +500,10 @@ export class DiagramCanvasComponent implements OnInit, AfterViewInit, OnChanges,
         }
       });
 
+      // CRITICAL: Recalculate link paths for dragged nodes
+      // Links don't automatically update when nodes move, we must regenerate their paths
+      this.recalculateLinkPathsForNodes(diagram, Array.from(this.draggedNodes.keys()));
+
       // Trigger re-render
       this.renderDiagram();
       this.cdr.markForCheck();
@@ -586,6 +590,55 @@ export class DiagramCanvasComponent implements OnInit, AfterViewInit, OnChanges,
     if (this.containerRef?.nativeElement) {
       this.containerRef.nativeElement.style.cursor = 'default';
     }
+  }
+
+  /**
+   * Recalculate link paths for specific nodes
+   * Called during node drag to keep links connected to moving nodes
+   */
+  private recalculateLinkPathsForNodes(diagram: any, nodeIds: string[]): void {
+    const links = diagram.getLinks();
+    const allNodes = diagram.getNodes();
+
+    links.forEach((link: any) => {
+      // Find source and target nodes
+      const sourceNode = allNodes.find((n: any) =>
+        n.getPorts().some((p: any) => p.id === link.sourcePortId)
+      );
+      const targetNode = allNodes.find((n: any) =>
+        n.getPorts().some((p: any) => p.id === link.targetPortId)
+      );
+
+      if (!sourceNode || !targetNode) {
+        return;
+      }
+
+      // Check if this link is connected to any of the dragged nodes
+      const isConnected = nodeIds.includes(sourceNode.id) || nodeIds.includes(targetNode.id);
+      if (!isConnected) {
+        return; // Skip links not connected to dragged nodes
+      }
+
+      // Find the actual port objects
+      const sourcePort = sourceNode.getPorts().find((p: any) => p.id === link.sourcePortId);
+      const targetPort = targetNode.getPorts().find((p: any) => p.id === link.targetPortId);
+
+      if (!sourcePort || !targetPort) {
+        return;
+      }
+
+      // Get node bounding boxes
+      const sourceBounds = sourceNode.getBoundingBox();
+      const targetBounds = targetNode.getBoundingBox();
+
+      // Calculate absolute port positions
+      const sourcePoint = sourcePort.getAbsolutePosition(sourceBounds);
+      const targetPoint = targetPort.getAbsolutePosition(targetBounds);
+
+      // Regenerate the link path with new port positions
+      link.generatePath(sourcePoint, targetPoint);
+      link.markDirty(); // Force re-render
+    });
   }
 
   /**
