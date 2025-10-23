@@ -151,7 +151,13 @@ export class AppComponent implements OnInit {
    */
   resetZoom(): void {
     this.zoom = 1.0;
+    this.fitToView();
+  }
 
+  /**
+   * Fit viewport to show all nodes (without changing zoom)
+   */
+  fitToView(): void {
     const diagram = this.engine.getDiagram();
     if (!diagram) {
       this.viewport = { x: 0, y: 0, width: 1200, height: 800 };
@@ -179,16 +185,26 @@ export class AppComponent implements OnInit {
     });
 
     // Add padding around nodes
-    const padding = 50;
-    const width = maxX - minX + padding * 2;
-    const height = maxY - minY + padding * 2;
+    const padding = 100; // Increased padding for better visibility
+    const contentWidth = maxX - minX;
+    const contentHeight = maxY - minY;
+
+    // Calculate viewport size to fit content with padding
+    const viewportWidth = contentWidth + padding * 2;
+    const viewportHeight = contentHeight + padding * 2;
+
+    // Center the viewport on the content
+    const centerX = (minX + maxX) / 2;
+    const centerY = (minY + maxY) / 2;
 
     this.viewport = {
-      x: minX - padding,
-      y: minY - padding,
-      width: width,
-      height: height,
+      x: centerX - viewportWidth / 2,
+      y: centerY - viewportHeight / 2,
+      width: viewportWidth,
+      height: viewportHeight,
     };
+
+    console.log(`📐 Fit to view: bounds=(${minX}, ${minY}) to (${maxX}, ${maxY}), viewport=${JSON.stringify(this.viewport)}`);
   }
 
   /**
@@ -228,6 +244,9 @@ export class AppComponent implements OnInit {
       label: n.getMetadata('label'),
       position: n.position
     })));
+
+    // Auto-fit viewport to show all nodes
+    this.fitToView();
   }
 
   /**
@@ -362,6 +381,12 @@ export class AppComponent implements OnInit {
           this.commandOutput.push(`✅ Reset zoom and viewport`);
           break;
 
+        case 'fit':
+        case 'fitview':
+          this.fitToView();
+          this.commandOutput.push(`✅ Fit viewport to show all nodes`);
+          break;
+
         case 'zoom':
           const zoomValue = parseFloat(parts[1]);
           if (zoomValue) {
@@ -389,6 +414,7 @@ export class AppComponent implements OnInit {
           this.commandOutput.push(`Available commands:`);
           this.commandOutput.push(`  add [count] - Add nodes (default 1)`);
           this.commandOutput.push(`  clear - Remove all nodes`);
+          this.commandOutput.push(`  fit - Fit viewport to show all nodes`);
           this.commandOutput.push(`  reset - Reset zoom and viewport`);
           this.commandOutput.push(`  zoom [value] - Set zoom level`);
           this.commandOutput.push(`  list - List all nodes`);

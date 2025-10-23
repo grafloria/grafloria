@@ -12,6 +12,7 @@
         <button (click)="zoomOut()" class="btn">-</button>
         <span class="zoom-level">{{ (zoom * 100).toFixed(0) }}%</span>
         <button (click)="zoomIn()" class="btn">+</button>
+        <button (click)="fitToView()" class="btn">Fit View</button>
         <button (click)="resetZoom()" class="btn">Reset</button>
       </div>
       <button (click)="addRandomNode()" class="btn btn-primary">
