@@ -116,6 +116,55 @@ export class DiagramEngine {
     // Phase 1: Initialize connection state manager
     this.connectionStateManager = new ConnectionStateManager(this.eventBus);
 
+    // CRITICAL FIX: Listen for connection complete events and create the actual link
+    this.eventBus.on('connection:complete', (event: any) => {
+      if (this.diagram && event.sourcePort && event.targetPort) {
+        const sourcePort = event.sourcePort;
+        const targetPort = event.targetPort;
+
+        // Find the nodes that own these ports
+        const nodes = this.diagram.getNodes();
+        let sourceNode: any = null;
+        let targetNode: any = null;
+
+        for (const node of nodes) {
+          if (node.getPort(sourcePort.id)) {
+            sourceNode = node;
+          }
+          if (node.getPort(targetPort.id)) {
+            targetNode = node;
+          }
+          if (sourceNode && targetNode) break;
+        }
+
+        if (sourceNode && targetNode) {
+          // Determine path type from config
+          const pathType = this.interactionConfig.connectionLineStyle === 'bezier' ? 'bezier' : 'smooth';
+
+          // Create the link manually (same logic as createSmartLink)
+          const link = new LinkModel(sourcePort.id, targetPort.id, pathType);
+          link.sourceNodeId = sourceNode.id;
+          link.targetNodeId = targetNode.id;
+
+          // Register connections in ports
+          sourcePort.addConnection(link.id);
+          targetPort.addConnection(link.id);
+
+          // Calculate initial path
+          const sourcePos = sourcePort.getAbsolutePosition(sourceNode.getBoundingBox());
+          const targetPos = targetPort.getAbsolutePosition(targetNode.getBoundingBox());
+          link.generatePath(sourcePos, targetPos);
+
+          // Add link to diagram
+          this.diagram.addLink(link);
+
+          console.log('✅ Link created successfully:', link.id, 'from', sourcePort.id, 'to', targetPort.id);
+        } else {
+          console.error('❌ Failed to find nodes for ports');
+        }
+      }
+    });
+
     // Initialize ModeManager with context provider
     this.modeManager = new ModeManager(
       this.eventBus,

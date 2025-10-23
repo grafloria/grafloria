@@ -552,8 +552,10 @@ export class SVGRenderer implements IRenderer {
       return null;
     }
 
-    // Get port position relative to node
-    const portPos = port.position;
+    // CRITICAL FIX: Get port position in absolute coordinates (pixels)
+    // NOT the normalized position (0-1 range)
+    const nodeBounds = node.getBoundingBox();
+    const portPos = port.getAbsolutePosition(nodeBounds);
 
     // Calculate port radius with hover scaling
     const baseRadius = config.portDefaultRadius;

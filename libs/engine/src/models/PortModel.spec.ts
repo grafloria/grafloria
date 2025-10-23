@@ -326,4 +326,135 @@ describe('PortModel', () => {
       });
     });
   });
+
+  describe('getAbsolutePosition() - Port Positioning', () => {
+    // Test node bounds: 100x50 at position (50, 50)
+    // So: left=50, right=150, top=50, bottom=100
+    const nodeBounds = {
+      left: 50,
+      right: 150,
+      top: 50,
+      bottom: 100,
+      width: 100,
+      height: 50
+    };
+
+    it('should calculate top port position correctly', () => {
+      const port = new PortModel({
+        type: 'bi',
+        side: 'top',
+        position: { x: 0.5, y: 0 } // middle of top edge
+      });
+
+      const pos = port.getAbsolutePosition(nodeBounds);
+
+      expect(pos.x).toBe(100); // 50 + 100 * 0.5 = 100 (middle)
+      expect(pos.y).toBe(50);  // top edge
+    });
+
+    it('should calculate right port position correctly', () => {
+      const port = new PortModel({
+        type: 'bi',
+        side: 'right',
+        position: { x: 1, y: 0.5 } // middle of right edge
+      });
+
+      const pos = port.getAbsolutePosition(nodeBounds);
+
+      expect(pos.x).toBe(150); // right edge
+      expect(pos.y).toBe(75);  // 50 + 50 * 0.5 = 75 (middle)
+    });
+
+    it('should calculate bottom port position correctly', () => {
+      const port = new PortModel({
+        type: 'bi',
+        side: 'bottom',
+        position: { x: 0.5, y: 1 } // middle of bottom edge
+      });
+
+      const pos = port.getAbsolutePosition(nodeBounds);
+
+      expect(pos.x).toBe(100); // 50 + 100 * 0.5 = 100 (middle)
+      expect(pos.y).toBe(100); // bottom edge
+    });
+
+    it('should calculate left port position correctly', () => {
+      const port = new PortModel({
+        type: 'bi',
+        side: 'left',
+        position: { x: 0, y: 0.5 } // middle of left edge
+      });
+
+      const pos = port.getAbsolutePosition(nodeBounds);
+
+      expect(pos.x).toBe(50); // left edge
+      expect(pos.y).toBe(75); // 50 + 50 * 0.5 = 75 (middle)
+    });
+
+    it('should handle alignment offset correctly', () => {
+      const port = new PortModel({
+        type: 'bi',
+        side: 'right',
+        position: { x: 1, y: 0.5 }
+      });
+      port.alignment.offset = 10; // 10px offset outward
+
+      const pos = port.getAbsolutePosition(nodeBounds);
+
+      expect(pos.x).toBe(160); // 150 + 10 offset
+      expect(pos.y).toBe(75);
+    });
+
+    it('should handle custom position offset correctly', () => {
+      const port = new PortModel({
+        type: 'bi',
+        side: 'top',
+        position: { x: 0.5, y: 0 }
+      });
+      port.offset = { x: 5, y: -5 }; // Custom offset
+
+      const pos = port.getAbsolutePosition(nodeBounds);
+
+      expect(pos.x).toBe(105); // 100 + 5
+      expect(pos.y).toBe(45);  // 50 - 5
+    });
+
+    it('should handle different position values on same side', () => {
+      // Three ports on top edge at different positions
+      const leftPort = new PortModel({ type: 'bi', side: 'top', position: { x: 0.25, y: 0 } });
+      const midPort = new PortModel({ type: 'bi', side: 'top', position: { x: 0.5, y: 0 } });
+      const rightPort = new PortModel({ type: 'bi', side: 'top', position: { x: 0.75, y: 0 } });
+
+      const leftPos = leftPort.getAbsolutePosition(nodeBounds);
+      const midPos = midPort.getAbsolutePosition(nodeBounds);
+      const rightPos = rightPort.getAbsolutePosition(nodeBounds);
+
+      expect(leftPos.x).toBe(75);  // 50 + 100 * 0.25
+      expect(midPos.x).toBe(100);  // 50 + 100 * 0.5
+      expect(rightPos.x).toBe(125); // 50 + 100 * 0.75
+
+      // All on top edge
+      expect(leftPos.y).toBe(50);
+      expect(midPos.y).toBe(50);
+      expect(rightPos.y).toBe(50);
+    });
+
+    it('should produce different positions for ports on different sides', () => {
+      const topPort = new PortModel({ type: 'bi', side: 'top' });
+      const rightPort = new PortModel({ type: 'bi', side: 'right' });
+      const bottomPort = new PortModel({ type: 'bi', side: 'bottom' });
+      const leftPort = new PortModel({ type: 'bi', side: 'left' });
+
+      const topPos = topPort.getAbsolutePosition(nodeBounds);
+      const rightPos = rightPort.getAbsolutePosition(nodeBounds);
+      const bottomPos = bottomPort.getAbsolutePosition(nodeBounds);
+      const leftPos = leftPort.getAbsolutePosition(nodeBounds);
+
+      // All should have different positions
+      const positions = [topPos, rightPos, bottomPos, leftPos];
+      const uniquePositions = new Set(positions.map(p => `${p.x},${p.y}`));
+
+      expect(uniquePositions.size).toBe(4); // All 4 positions should be different
+    });
+  });
 });

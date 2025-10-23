@@ -262,6 +262,16 @@ export class DiagramCanvasComponent implements OnInit, AfterViewInit, OnChanges,
       return;
     }
 
+    // CRITICAL FIX: Subscribe to interaction config changes
+    // This ensures the diagram re-renders when port visibility, connection modes, etc. change
+    const eventBus = this.engine['eventBus']; // Access private eventBus
+    if (eventBus) {
+      eventBus.on('config:interaction-changed', () => {
+        this.renderDiagram();
+        this.cdr.detectChanges();
+      });
+    }
+
     // Re-render when entities are added/removed/changed
     diagram.on('node:added', () => {
       this.renderDiagram();
