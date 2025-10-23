@@ -117,23 +117,20 @@ export class AppComponent implements OnInit {
     diagram.addNode(node3);
     diagram.addNode(node4);
 
-    // Create ports
-    const port1Out = new PortModel({ type: 'output', position: { x: 1, y: 0.5 } });
-    const port2In = new PortModel({ type: 'input', position: { x: 0, y: 0.5 } });
-    const port2Out = new PortModel({ type: 'output', position: { x: 1, y: 0.5 } });
-    const port3In = new PortModel({ type: 'input', position: { x: 0, y: 0.5 } });
-    const port4In = new PortModel({ type: 'input', position: { x: 0, y: 0.5 } });
-    const port2OutAlt = new PortModel({ type: 'output', position: { x: 0.5, y: 1 } });
+    // Phase 0.5.1: Use automatic default ports (no manual port creation needed!)
+    // Each node now automatically has 4 ports: top, right, bottom, left
+    console.log('✨ Node 1 ports:', node1.getPorts().map(p => ({ side: p.side, type: p.type })));
+    console.log('✨ Node 2 ports:', node2.getPorts().map(p => ({ side: p.side, type: p.type })));
 
-    // Add ports to nodes
-    node1.addPort(port1Out);
-    node2.addPort(port2In);
-    node2.addPort(port2Out);
-    node2.addPort(port2OutAlt);
-    node3.addPort(port3In);
-    node4.addPort(port4In);
+    // Get default ports by side
+    const port1Out = node1.getPortBySide('right')!;    // Node 1 right port
+    const port2In = node2.getPortBySide('left')!;      // Node 2 left port
+    const port2Out = node2.getPortBySide('right')!;    // Node 2 right port
+    const port3In = node3.getPortBySide('left')!;      // Node 3 left port
+    const port4In = node4.getPortBySide('left')!;      // Node 4 left port
+    const port2OutAlt = node2.getPortBySide('bottom')!; // Node 2 bottom port
 
-    // Create links
+    // Create links (ports are auto-created, just get them by side!)
     const link1 = new LinkModel(port1Out.id, port2In.id, 'smooth');
     link1.points = [
       { x: 300, y: 150 },
