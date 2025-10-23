@@ -18,6 +18,7 @@ import { CommonModule } from '@angular/common';
 import type { DiagramEngine } from '@grafloria/engine';
 import { SVGRenderer, LIGHT_THEME, type Theme, type Rectangle } from '@grafloria/renderer';
 import { VNodeRendererService } from '../services/vnode-renderer.service';
+import { InteractionHandlerService } from '../services/interaction-handler.service';
 
 /**
  * DiagramCanvasComponent
@@ -132,7 +133,8 @@ export class DiagramCanvasComponent implements OnInit, AfterViewInit, OnChanges,
 
   constructor(
     private vnodeRenderer: VNodeRendererService,
-    private cdr: ChangeDetectorRef
+    private cdr: ChangeDetectorRef,
+    private interactionHandler: InteractionHandlerService
   ) {}
 
   ngOnInit(): void {
@@ -391,6 +393,25 @@ export class DiagramCanvasComponent implements OnInit, AfterViewInit, OnChanges,
       const worldX = this.viewport.x + (clientX / this.zoom);
       const worldY = this.viewport.y + (clientY / this.zoom);
 
+      // Phase 3: Check for port click (highest priority)
+      const interactionState = this.interactionHandler.getState();
+      if (interactionState.hoveredPort) {
+        event.preventDefault();
+        this.interactionHandler.startConnection(interactionState.hoveredPort, worldX, worldY, this.engine);
+        this.renderDiagram();
+        this.cdr.markForCheck();
+        return;
+      }
+
+      // Phase 3: Check for link click (for selection)
+      if (interactionState.hoveredLink) {
+        event.preventDefault();
+        this.interactionHandler.selectLink(interactionState.hoveredLink, this.engine);
+        this.renderDiagram();
+        this.cdr.markForCheck();
+        return;
+      }
+
       // Check if clicking on a node
       const clickedNode = diagram.getNodeAtPosition(worldX, worldY);
 
@@ -517,7 +538,7 @@ export class DiagramCanvasComponent implements OnInit, AfterViewInit, OnChanges,
       return;
     }
 
-    // Handle hover detection (Option 2: Visual Enhancements)
+    // Phase 3: Handle hover detection and connection drag
     if (!this.spaceKeyPressed) {
       // Convert client coordinates to world coordinates
       const rect = this.containerRef.nativeElement.getBoundingClientRect();
@@ -527,29 +548,17 @@ export class DiagramCanvasComponent implements OnInit, AfterViewInit, OnChanges,
       const worldX = this.viewport.x + (clientX / this.zoom);
       const worldY = this.viewport.y + (clientY / this.zoom);
 
-      // Check if hovering over a node
-      const hoveredNode = diagram.getNodeAtPosition(worldX, worldY);
-      const allNodes = diagram.getNodes();
+      // Handle hover detection (nodes, ports, links)
+      let needsRender = this.interactionHandler.handleMouseMove(worldX, worldY, this.engine);
 
-      // Update hover state for all nodes
-      let needsRender = false;
-      allNodes.forEach((node) => {
-        const wasHovered = node.state.hovered;
-        const isHovered = node === hoveredNode;
+      // Handle connection drag update
+      if (this.interactionHandler.getState().isConnecting) {
+        needsRender = this.interactionHandler.handleConnectionDrag(worldX, worldY, this.engine) || needsRender;
+      }
 
-        if (wasHovered !== isHovered) {
-          node.setState({ hovered: isHovered });
-          needsRender = true;
-        }
-      });
-
-      // Update cursor
+      // Update cursor based on interaction state
       if (this.containerRef?.nativeElement) {
-        if (hoveredNode) {
-          this.containerRef.nativeElement.style.cursor = hoveredNode.isDraggable() ? 'pointer' : 'default';
-        } else {
-          this.containerRef.nativeElement.style.cursor = 'default';
-        }
+        this.containerRef.nativeElement.style.cursor = this.interactionHandler.getCursor(this.engine);
       }
 
       // Re-render if hover state changed
@@ -561,11 +570,30 @@ export class DiagramCanvasComponent implements OnInit, AfterViewInit, OnChanges,
   }
 
   /**
-   * Handle mouse up to stop panning and node dragging (Phase 0.5 - Option B + Option 1)
+   * Handle mouse up to stop panning, node dragging, and connections (Phase 0.5 - Option B + Option 1 + Phase 3)
    */
   @HostListener('mouseup', ['$event'])
   onMouseUp(event: MouseEvent): void {
     if (event.button === 1 || event.button === 0) {
+      // Phase 3: Complete connection if in progress
+      const interactionState = this.interactionHandler.getState();
+      if (interactionState.isConnecting) {
+        event.preventDefault();
+        const success = this.interactionHandler.completeConnection(this.engine);
+        this.renderDiagram();
+        this.cdr.markForCheck();
+        return;
+      }
+
+      // Phase 3: Complete link reconnection if in progress
+      if (interactionState.isReconnectingLink) {
+        event.preventDefault();
+        const success = this.interactionHandler.completeLinkReconnection(this.engine);
+        this.renderDiagram();
+        this.cdr.markForCheck();
+        return;
+      }
+
       // Stop panning
       if (this.isPanning) {
         this.isPanning = false;
@@ -675,7 +703,7 @@ export class DiagramCanvasComponent implements OnInit, AfterViewInit, OnChanges,
       return;
     }
 
-    // Handle Delete key
+    // Handle Delete key (Phase 3: Also delete links)
     if (event.key === 'Delete' || event.key === 'Backspace') {
       // Don't delete if user is typing in an input field
       const target = event.target as HTMLElement;
@@ -683,17 +711,38 @@ export class DiagramCanvasComponent implements OnInit, AfterViewInit, OnChanges,
         return;
       }
 
+      // Try deleting selected link first
+      const linkDeleted = this.interactionHandler.deleteSelectedLink(this.engine);
+      if (linkDeleted) {
+        event.preventDefault();
+        console.log('🗑️ Deleted selected link');
+        this.renderDiagram();
+        this.cdr.markForCheck();
+        return;
+      }
+
+      // Otherwise delete selected nodes
       const deletedCount = diagram.deleteSelected();
       if (deletedCount > 0) {
         event.preventDefault();
-        console.log(`🗑️  Deleted ${deletedCount} selected node(s)`);
+        console.log(`🗑️ Deleted ${deletedCount} selected node(s)`);
         this.renderDiagram();
         this.cdr.markForCheck();
       }
     }
 
-    // Handle Escape key - clear selection
+    // Handle Escape key - cancel connection or clear selection (Phase 3)
     if (event.key === 'Escape') {
+      // Cancel connection if in progress
+      const interactionState = this.interactionHandler.getState();
+      if (interactionState.isConnecting || interactionState.isReconnectingLink) {
+        this.interactionHandler.cancelConnection(this.engine);
+        this.renderDiagram();
+        this.cdr.markForCheck();
+        return;
+      }
+
+      // Otherwise clear selection
       diagram.clearSelection();
       this.renderDiagram();
       this.cdr.markForCheck();
