@@ -38,6 +38,9 @@ export class AppComponent implements OnInit {
   currentLayout: LayoutAlgorithmType = 'grid';
   availableLayouts: LayoutAlgorithmType[] = ['grid', 'hierarchical', 'force-directed', 'hybrid'];
 
+  // Link path type configuration
+  currentLinkType: 'direct' | 'smooth' | 'orthogonal' | 'bezier' = 'smooth';
+
   // Selection state (Option 1: Node Interaction)
   selectedNodeCount = 0;
 
@@ -468,6 +471,37 @@ export class AppComponent implements OnInit {
   }
 
   /**
+   * Change link path type for all links
+   */
+  changeLinkType(type: 'direct' | 'smooth' | 'orthogonal' | 'bezier'): void {
+    const diagram = this.engine.getDiagram();
+    if (!diagram) return;
+
+    const links = diagram.getLinks();
+    links.forEach((link: any) => {
+      link.pathType = type;
+      // Recalculate path with new type
+      const sourceNode = diagram.getNodes().find((n: any) =>
+        n.getPorts().some((p: any) => p.id === link.sourcePortId)
+      );
+      const targetNode = diagram.getNodes().find((n: any) =>
+        n.getPorts().some((p: any) => p.id === link.targetPortId)
+      );
+      if (sourceNode && targetNode) {
+        const sourcePort = sourceNode.getPorts().find((p: any) => p.id === link.sourcePortId);
+        const targetPort = targetNode.getPorts().find((p: any) => p.id === link.targetPortId);
+        if (sourcePort && targetPort) {
+          const sourcePoint = sourcePort.getAbsolutePosition(sourceNode.getBoundingBox());
+          const targetPoint = targetPort.getAbsolutePosition(targetNode.getBoundingBox());
+          link.generatePath(sourcePoint, targetPoint);
+          link.markDirty();
+        }
+      }
+    });
+    console.log(`🔗 Changed ${links.length} links to ${type} path type`);
+  }
+
+  /**
    * Toggle command panel visibility
    */
   toggleCommandPanel(): void {
@@ -570,7 +604,174 @@ export class AppComponent implements OnInit {
           this.commandOutput.push(`  reset - Reset zoom and viewport`);
           this.commandOutput.push(`  zoom [value] - Set zoom level`);
           this.commandOutput.push(`  list - List all nodes`);
+          this.commandOutput.push(`  node [id] - Show selected/specific node details`);
+          this.commandOutput.push(`  nodes - Show all nodes with full details`);
+          this.commandOutput.push(`  link [id] - Show specific link details`);
+          this.commandOutput.push(`  links - Show all links with details`);
+          this.commandOutput.push(`  viewport - Show viewport information`);
+          this.commandOutput.push(`  linktype [type] - Set link path type (direct/smooth/orthogonal/bezier)`);
           this.commandOutput.push(`  help - Show this help`);
+          break;
+
+        // DEBUG: Show selected or specific node details
+        case 'node':
+          const diag2 = this.engine.getDiagram();
+          if (diag2) {
+            let targetNode;
+            if (parts[1]) {
+              // Find node by ID or label
+              targetNode = diag2.getNodes().find((n: any) =>
+                n.id === parts[1] || n.getMetadata('label') === parts[1]
+              );
+            } else {
+              // Use selected node
+              const selected = diag2.getSelectedNodes();
+              targetNode = selected.length > 0 ? selected[0] : null;
+            }
+
+            if (targetNode) {
+              this.commandOutput.push(`🔍 Node Details:`);
+              this.commandOutput.push(`  ID: ${targetNode.id}`);
+              this.commandOutput.push(`  Label: ${targetNode.getMetadata('label')}`);
+              this.commandOutput.push(`  Position: (${targetNode.position.x.toFixed(1)}, ${targetNode.position.y.toFixed(1)})`);
+              this.commandOutput.push(`  Size: ${targetNode.size.width} x ${targetNode.size.height}`);
+              this.commandOutput.push(`  Type: ${targetNode.type}`);
+              this.commandOutput.push(`  State: ${JSON.stringify(targetNode.state)}`);
+              this.commandOutput.push(`  Ports: ${targetNode.getPorts().length} ports`);
+              targetNode.getPorts().forEach((p: any) => {
+                this.commandOutput.push(`    - ${p.side}: ${p.type} (${p.id})`);
+              });
+              console.log('📊 Full Node Object:', targetNode);
+            } else {
+              this.commandOutput.push(`❌ No node found. Select a node or specify ID/label`);
+            }
+          }
+          break;
+
+        // DEBUG: Show all nodes with full details
+        case 'nodes':
+          const diag3 = this.engine.getDiagram();
+          if (diag3) {
+            const nodes = diag3.getNodes();
+            this.commandOutput.push(`📋 All Nodes (${nodes.length}):`);
+            nodes.forEach((n: any, index: number) => {
+              this.commandOutput.push(`\n  [${index}] ${n.getMetadata('label') || 'Unnamed'}`);
+              this.commandOutput.push(`      ID: ${n.id}`);
+              this.commandOutput.push(`      Position: (${n.position.x.toFixed(1)}, ${n.position.y.toFixed(1)})`);
+              this.commandOutput.push(`      Size: ${n.size.width} x ${n.size.height}`);
+              this.commandOutput.push(`      Selected: ${n.state.selected}, Locked: ${n.state.locked}, Hovered: ${n.state.hovered}`);
+            });
+            console.log('📊 Full Nodes Array:', nodes);
+          }
+          break;
+
+        // DEBUG: Show specific link details
+        case 'link':
+          const diag4 = this.engine.getDiagram();
+          if (diag4 && parts[1]) {
+            const link = diag4.getLinks().find((l: any) => l.id === parts[1]);
+            if (link) {
+              this.commandOutput.push(`🔍 Link Details:`);
+              this.commandOutput.push(`  ID: ${link.id}`);
+              this.commandOutput.push(`  Path Type: ${link.pathType}`);
+              this.commandOutput.push(`  Source Port: ${link.sourcePortId}`);
+              this.commandOutput.push(`  Target Port: ${link.targetPortId}`);
+              this.commandOutput.push(`  Points: ${link.points.length} points`);
+              link.points.forEach((p: any, i: number) => {
+                this.commandOutput.push(`    [${i}] (${p.x.toFixed(1)}, ${p.y.toFixed(1)})`);
+              });
+              this.commandOutput.push(`  Label: ${link.getMetadata('label') || 'none'}`);
+              console.log('📊 Full Link Object:', link);
+            } else {
+              this.commandOutput.push(`❌ Link not found: ${parts[1]}`);
+            }
+          } else {
+            this.commandOutput.push(`❌ Usage: link <id>`);
+          }
+          break;
+
+        // DEBUG: Show all links
+        case 'links':
+          const diag5 = this.engine.getDiagram();
+          if (diag5) {
+            const links = diag5.getLinks();
+            this.commandOutput.push(`🔗 All Links (${links.length}):`);
+            links.forEach((l: any, index: number) => {
+              const sourceNode = diag5.getNodes().find((n: any) =>
+                n.getPorts().some((p: any) => p.id === l.sourcePortId)
+              );
+              const targetNode = diag5.getNodes().find((n: any) =>
+                n.getPorts().some((p: any) => p.id === l.targetPortId)
+              );
+              this.commandOutput.push(`\n  [${index}] ${l.getMetadata('label') || 'Unnamed'}`);
+              this.commandOutput.push(`      ID: ${l.id}`);
+              this.commandOutput.push(`      Type: ${l.pathType}`);
+              this.commandOutput.push(`      From: ${sourceNode?.getMetadata('label')} (${l.sourcePortId})`);
+              this.commandOutput.push(`      To: ${targetNode?.getMetadata('label')} (${l.targetPortId})`);
+              this.commandOutput.push(`      Points: ${l.points.length}`);
+            });
+            console.log('📊 Full Links Array:', links);
+          }
+          break;
+
+        // DEBUG: Show viewport information
+        case 'viewport':
+          const diag6 = this.engine.getDiagram();
+          if (diag6) {
+            const vp = diag6.getViewport();
+            this.commandOutput.push(`👁️  Viewport Information:`);
+            this.commandOutput.push(`  Position: (${vp.x.toFixed(1)}, ${vp.y.toFixed(1)})`);
+            this.commandOutput.push(`  Dimensions: ${vp.width.toFixed(1)} x ${vp.height.toFixed(1)}`);
+            this.commandOutput.push(`  Zoom: ${vp.zoom.toFixed(3)} (${(vp.zoom * 100).toFixed(1)}%)`);
+            this.commandOutput.push(`  Visible Area: ${(vp.width * vp.height).toFixed(0)} sq units`);
+            console.log('📊 Viewport Object:', vp);
+          }
+          break;
+
+        // Set link path type for all links
+        case 'linktype':
+          const diag7 = this.engine.getDiagram();
+          if (diag7) {
+            if (parts[1]) {
+              const type = parts[1] as any;
+              if (['direct', 'smooth', 'orthogonal', 'bezier'].includes(type)) {
+                const links = diag7.getLinks();
+                links.forEach((link: any) => {
+                  link.pathType = type;
+                  // Recalculate path
+                  const sourceNode = diag7.getNodes().find((n: any) =>
+                    n.getPorts().some((p: any) => p.id === link.sourcePortId)
+                  );
+                  const targetNode = diag7.getNodes().find((n: any) =>
+                    n.getPorts().some((p: any) => p.id === link.targetPortId)
+                  );
+                  if (sourceNode && targetNode) {
+                    const sourcePort = sourceNode.getPorts().find((p: any) => p.id === link.sourcePortId);
+                    const targetPort = targetNode.getPorts().find((p: any) => p.id === link.targetPortId);
+                    if (sourcePort && targetPort) {
+                      const sourcePoint = sourcePort.getAbsolutePosition(sourceNode.getBoundingBox());
+                      const targetPoint = targetPort.getAbsolutePosition(targetNode.getBoundingBox());
+                      link.generatePath(sourcePoint, targetPoint);
+                      link.markDirty();
+                    }
+                  }
+                });
+                this.commandOutput.push(`✅ Set all links to: ${type}`);
+                console.log(`🔗 Changed ${links.length} links to ${type} path type`);
+              } else {
+                this.commandOutput.push(`❌ Invalid type. Use: direct, smooth, orthogonal, or bezier`);
+              }
+            } else {
+              const links = diag7.getLinks();
+              if (links.length > 0) {
+                this.commandOutput.push(`Current link types:`);
+                links.forEach((l: any, i: number) => {
+                  this.commandOutput.push(`  [${i}] ${l.getMetadata('label') || l.id}: ${l.pathType}`);
+                });
+              }
+              this.commandOutput.push(`Available types: direct, smooth, orthogonal, bezier`);
+            }
+          }
           break;
 
         default:

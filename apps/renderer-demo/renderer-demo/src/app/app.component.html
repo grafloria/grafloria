@@ -23,6 +23,15 @@
           </option>
         </select>
       </div>
+      <div class="link-controls">
+        <label class="link-label">Links:</label>
+        <select [(ngModel)]="currentLinkType" (change)="changeLinkType(currentLinkType)" class="link-select">
+          <option value="direct">Direct</option>
+          <option value="smooth">Smooth</option>
+          <option value="orthogonal">Orthogonal</option>
+          <option value="bezier">Bezier</option>
+        </select>
+      </div>
       <button (click)="addRandomNode()" class="btn btn-primary">
         + Add Node
       </button>

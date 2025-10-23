@@ -74,6 +74,43 @@
   color: white;
 }
 
+/* Link Type Controls */
+.link-controls {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  background: rgba(255, 255, 255, 0.2);
+  padding: 0.25rem 0.5rem;
+  border-radius: 8px;
+}
+
+.link-label {
+  font-size: 0.9rem;
+  font-weight: 500;
+  color: white;
+}
+
+.link-select {
+  padding: 0.4rem 0.8rem;
+  border: 2px solid white;
+  background: rgba(255, 255, 255, 0.1);
+  color: white;
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 0.9rem;
+  font-weight: 500;
+  transition: all 0.2s;
+}
+
+.link-select:hover {
+  background: rgba(255, 255, 255, 0.2);
+}
+
+.link-select option {
+  background: #667eea;
+  color: white;
+}
+
 .btn {
   padding: 0.5rem 1rem;
   border: 2px solid white;
