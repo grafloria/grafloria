@@ -39,15 +39,15 @@ export class ForceDirectedLayoutAlgorithm extends BaseLayoutAlgorithm implements
   constructor(options?: ForceDirectedOptions) {
     super();
     this.forceOptions = {
-      iterations: 100,
-      repulsionStrength: 5000,
-      attractionStrength: 0.01,
-      damping: 0.9,
-      temperature: 100,
+      iterations: 50,
+      repulsionStrength: 1.0,     // Reduced from 5000 - was causing explosion!
+      attractionStrength: 0.05,   // Increased for better edge attraction
+      damping: 0.85,              // Slightly less damping for smoother movement
+      temperature: 10,            // Much lower initial temperature
       coolingFactor: 0.95,
       minDistance: 50,
       maxDistance: 500,
-      centerGravity: 0.1,
+      centerGravity: 0.05,        // Reduced center gravity
       ...options,
     };
   }
@@ -238,6 +238,8 @@ export class ForceDirectedLayoutAlgorithm extends BaseLayoutAlgorithm implements
     const area = 1200 * 800; // Approximate canvas area
     const k = Math.sqrt(area / nodes.length);
 
+    console.log(`🧲 Force-Directed: ${nodes.length} nodes, k=${k.toFixed(2)}, area=${area}`);
+
     // Simulation parameters
     let temperature = this.forceOptions.temperature || 100;
     const coolingFactor = this.forceOptions.coolingFactor || 0.95;
@@ -262,7 +264,9 @@ export class ForceDirectedLayoutAlgorithm extends BaseLayoutAlgorithm implements
           const distance = Math.sqrt(dx * dx + dy * dy) || 1; // Avoid division by zero
 
           // Fruchterman-Reingold repulsion: fr(d) = k^2 / d
-          const repulsionForce = (k * k) / distance * (this.forceOptions.repulsionStrength || 1);
+          // Scale k by repulsionStrength for tuning
+          const kScaled = k * (this.forceOptions.repulsionStrength || 1.0);
+          const repulsionForce = (kScaled * kScaled) / distance;
 
           const fx = (dx / distance) * repulsionForce;
           const fy = (dy / distance) * repulsionForce;
@@ -288,7 +292,9 @@ export class ForceDirectedLayoutAlgorithm extends BaseLayoutAlgorithm implements
         const distance = Math.sqrt(dx * dx + dy * dy) || 1;
 
         // Fruchterman-Reingold attraction: fa(d) = d^2 / k
-        const attractionForce = (distance * distance) / k * (this.forceOptions.attractionStrength || 1);
+        // Scale by attractionStrength for tuning
+        const kAttr = k / (this.forceOptions.attractionStrength || 1.0);
+        const attractionForce = (distance * distance) / kAttr;
 
         const fx = (dx / distance) * attractionForce;
         const fy = (dy / distance) * attractionForce;
@@ -329,6 +335,11 @@ export class ForceDirectedLayoutAlgorithm extends BaseLayoutAlgorithm implements
         // Update position
         nf.position.x += nf.velocity.x;
         nf.position.y += nf.velocity.y;
+
+        // Prevent positions from exploding - clamp to reasonable bounds
+        const maxCoord = 10000;
+        nf.position.x = Math.max(-maxCoord, Math.min(maxCoord, nf.position.x));
+        nf.position.y = Math.max(-maxCoord, Math.min(maxCoord, nf.position.y));
       });
 
       // Cool down temperature
@@ -338,11 +349,17 @@ export class ForceDirectedLayoutAlgorithm extends BaseLayoutAlgorithm implements
     // Extract final positions and normalize to positive coordinates
     let minX = Infinity;
     let minY = Infinity;
+    let maxX = -Infinity;
+    let maxY = -Infinity;
 
     nodeForces.forEach((nf) => {
       minX = Math.min(minX, nf.position.x);
       minY = Math.min(minY, nf.position.y);
+      maxX = Math.max(maxX, nf.position.x);
+      maxY = Math.max(maxY, nf.position.y);
     });
+
+    console.log(`🧲 Final bounds: (${minX.toFixed(1)}, ${minY.toFixed(1)}) to (${maxX.toFixed(1)}, ${maxY.toFixed(1)})`);
 
     // Add padding
     const padding = 100;
