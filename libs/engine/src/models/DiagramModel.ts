@@ -8,6 +8,8 @@ import type { SerializedEntity, Point } from '../types';
 import { SpatialIndex } from '../performance/SpatialIndex'; // Phase 5.1
 import type { Rectangle } from '../types/geometry.types'; // Phase 5.1
 import type { LODLevel, EntityWithLOD } from '../types/performance.types'; // Phase 5.3
+import { LayoutManager } from '../layout/LayoutManager'; // Layout system
+import type { LayoutAlgorithmType, LayoutConfiguration } from '../layout/types';
 
 export interface SerializedDiagram extends SerializedEntity {
   name: string;
@@ -37,9 +39,16 @@ export class DiagramModel extends DiagramEntity {
   private nodeSpatialIndex: SpatialIndex<NodeModel>;
   private linkSpatialIndex: SpatialIndex<LinkModel>;
 
+  // Layout system
+  private _layoutManager: LayoutManager;
+  private _autoLayoutEnabled: boolean = false;
+
   constructor(name?: string) {
     super();
     if (name) this.name = name;
+
+    // Initialize layout manager
+    this._layoutManager = new LayoutManager(this, 'grid');
 
     // Phase 5.1: Initialize spatial indices
     this.nodeSpatialIndex = new SpatialIndex<NodeModel>({
@@ -643,6 +652,70 @@ export class DiagramModel extends DiagramEntity {
     return lod === 'high';
   }
 
+  // =============================================================================
+  // Layout Management API
+  // =============================================================================
+
+  /**
+   * Get the layout manager for this diagram
+   */
+  getLayoutManager(): LayoutManager {
+    return this._layoutManager;
+  }
+
+  /**
+   * Set layout algorithm
+   * @param type - Algorithm type ('grid', 'force-directed', 'hierarchical', 'hybrid')
+   * @param config - Optional configuration
+   */
+  setLayoutAlgorithm(type: LayoutAlgorithmType, config?: LayoutConfiguration): void {
+    this._layoutManager.setAlgorithm(type, config);
+  }
+
+  /**
+   * Get current layout algorithm type
+   */
+  getLayoutAlgorithm(): LayoutAlgorithmType {
+    return this._layoutManager.getCurrentAlgorithmType();
+  }
+
+  /**
+   * Configure current layout algorithm
+   */
+  configureLayout(config: LayoutConfiguration): void {
+    this._layoutManager.configure(config);
+  }
+
+  /**
+   * Get layout configuration
+   */
+  getLayoutConfiguration(): LayoutConfiguration {
+    return this._layoutManager.getConfiguration();
+  }
+
+  /**
+   * Enable or disable automatic layout for new nodes
+   * When enabled, newly added nodes will be automatically positioned using the current layout algorithm
+   */
+  setAutoLayout(enabled: boolean): void {
+    this._autoLayoutEnabled = enabled;
+  }
+
+  /**
+   * Check if auto-layout is enabled
+   */
+  isAutoLayoutEnabled(): boolean {
+    return this._autoLayoutEnabled;
+  }
+
+  /**
+   * Re-layout all nodes using current algorithm
+   * This will recalculate positions for all nodes in the diagram
+   */
+  async reLayout(config?: LayoutConfiguration): Promise<void> {
+    return this._layoutManager.reLayout(config);
+  }
+
   /**
    * Serialize to JSON
    */
@@ -736,6 +809,9 @@ export class DiagramModel extends DiagramEntity {
     // Clear spatial indices (prevents memory leaks from indexed entities)
     this.nodeSpatialIndex.clear();
     this.linkSpatialIndex.clear();
+
+    // Dispose layout manager
+    this._layoutManager.dispose();
 
     // Call parent dispose (removes listeners, clears metadata, etc.)
     super.dispose();

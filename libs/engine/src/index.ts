@@ -36,3 +36,6 @@ export * from './utils';
 
 // Routing
 export * from './routing';
+
+// Layout
+export * from './layout';
