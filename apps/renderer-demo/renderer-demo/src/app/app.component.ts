@@ -321,6 +321,17 @@ export class AppComponent implements OnInit {
     console.log(`\n🔄 Re-layouting diagram using ${this.currentLayout} algorithm...`);
 
     try {
+      // Reset viewport to default canvas dimensions before re-layout
+      // This prevents viewport from previous layout affecting the new layout's scaling
+      const defaultViewport = { x: 0, y: 0, width: 1200, height: 800 };
+      diagram.setViewport(
+        defaultViewport.x,
+        defaultViewport.y,
+        defaultViewport.width,
+        defaultViewport.height,
+        this.zoom
+      );
+
       await diagram.reLayout();
       console.log(`✅ Re-layout complete!`);
 
