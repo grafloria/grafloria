@@ -17,6 +17,7 @@ export interface SerializedPort extends SerializedEntity {
   position: PortPosition;
   alignment: PortAlignment;
   offset: Point;
+  index: number; // NEW: For multiple ports per side
   maxConnections: number;
   allowedTypes: string[];
   visible: boolean;
@@ -33,6 +34,9 @@ export class PortModel extends DiagramEntity {
   position: PortPosition = { x: 0.5, y: 0.5 };
   alignment: PortAlignment = { side: 'right', offset: 0 };
   offset: Point = { x: 0, y: 0 };
+
+  // NEW: Index for multiple ports per side (0-based)
+  index: number = 0;
 
   // Constraints
   maxConnections: number = Infinity;
@@ -52,6 +56,8 @@ export class PortModel extends DiagramEntity {
     systemType?: string;
     position?: PortPosition;
     alignment?: PortAlignment;
+    side?: 'left' | 'right' | 'top' | 'bottom'; // NEW: Convenience parameter
+    index?: number; // NEW: For multiple ports per side
     maxConnections?: number;
   }) {
     super(config.id);
@@ -59,17 +65,41 @@ export class PortModel extends DiagramEntity {
     this.type = config.type;
     this.systemType = config.systemType;
 
+    // NEW: Support 'side' as shorthand for alignment
+    if (config.side) {
+      this.alignment = { side: config.side, offset: 0 };
+    } else if (config.alignment) {
+      this.alignment = config.alignment;
+    }
+
     if (config.position) {
       this.position = config.position;
     }
 
-    if (config.alignment) {
-      this.alignment = config.alignment;
+    // NEW: Set index
+    if (config.index !== undefined) {
+      this.index = config.index;
     }
 
     if (config.maxConnections !== undefined) {
       this.maxConnections = config.maxConnections;
     }
+  }
+
+  /**
+   * Get the side this port is on (convenience getter)
+   */
+  get side(): 'left' | 'right' | 'top' | 'bottom' {
+    return this.alignment.side;
+  }
+
+  /**
+   * Set the side this port is on (convenience setter)
+   */
+  set side(value: 'left' | 'right' | 'top' | 'bottom') {
+    const oldAlignment = { ...this.alignment };
+    this.alignment = { ...this.alignment, side: value };
+    this.trackChange('alignment', oldAlignment, this.alignment);
   }
 
   /**
@@ -170,6 +200,43 @@ export class PortModel extends DiagramEntity {
   }
 
   /**
+   * Check if this port can connect to another port
+   * Validates direction compatibility (input/output rules)
+   *
+   * Rules:
+   * - input can connect to output or bi
+   * - output can connect to input or bi
+   * - bi can connect to any
+   */
+  canConnectTo(targetPort: PortModel): boolean {
+    // Check if both ports can accept more connections
+    if (!this.canConnect() || !targetPort.canConnect()) {
+      return false;
+    }
+
+    // Validate type compatibility
+    const sourceType = this.type;
+    const targetType = targetPort.type;
+
+    // Bi-directional ports can connect to anything
+    if (sourceType === 'bi' || targetType === 'bi') {
+      return true;
+    }
+
+    // Input cannot connect to input
+    if (sourceType === 'input' && targetType === 'input') {
+      return false;
+    }
+
+    // Output cannot connect to output
+    if (sourceType === 'output' && targetType === 'output') {
+      return false;
+    }
+
+    return true;
+  }
+
+  /**
    * Get absolute position relative to node
    */
   getAbsolutePosition(nodeBounds: BoundingBox): Point {
@@ -216,6 +283,7 @@ export class PortModel extends DiagramEntity {
       position: { ...this.position },
       alignment: { ...this.alignment },
       offset: { ...this.offset },
+      index: this.index, // NEW: Serialize index
       maxConnections: this.maxConnections,
       allowedTypes: Array.from(this.allowedTypes),
       visible: this.visible,
@@ -234,14 +302,21 @@ export class PortModel extends DiagramEntity {
       systemType: data.systemType,
       position: data.position,
       alignment: data.alignment,
+      index: data.index, // NEW: Restore index (will be undefined for old diagrams)
       maxConnections: data.maxConnections,
     });
 
     port.nodeId = data.nodeId;
     port.offset = data.offset;
+
+    // NEW: Backward compatibility - if index is undefined, default to 0
+    if (data.index === undefined) {
+      port.index = 0;
+    }
+
     port.allowedTypes = new Set(data.allowedTypes);
     port.visible = data.visible;
-    port.style = data.data;
+    port.style = data.style; // BUG FIX: was using data.data for style
     port.data = data.data;
 
     // Restore metadata

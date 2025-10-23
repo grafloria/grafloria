@@ -143,6 +143,41 @@ export class NodeModel extends DiagramEntity {
       enumerable: false,
       configurable: true
     });
+
+    // Phase 0.5.1: Auto-create default ports (industry standard)
+    this.initializeDefaultPorts();
+  }
+
+  /**
+   * Initialize default ports (Phase 0.5.1)
+   * Creates 4 bidirectional ports (top, right, bottom, left) automatically
+   * This matches industry standards (Draw.io, Lucidchart, mxGraph, yFiles)
+   *
+   * Ports can be accessed via:
+   * - node.getPortBySide('top')
+   * - node.getPortsBySide('right')
+   * - node.getPorts() // all ports
+   */
+  private initializeDefaultPorts(): void {
+    const defaultPorts = [
+      { side: 'top' as const, position: { x: 0.5, y: 0 } },
+      { side: 'right' as const, position: { x: 1, y: 0.5 } },
+      { side: 'bottom' as const, position: { x: 0.5, y: 1 } },
+      { side: 'left' as const, position: { x: 0, y: 0.5 } },
+    ];
+
+    defaultPorts.forEach(({side, position}) => {
+      const port = new PortModel({
+        type: 'bi', // Bidirectional - can act as input or output
+        side,
+        position,
+        index: 0, // First (and only) port on this side
+      });
+      port.nodeId = this.id;
+      port.setMetadata('default', true); // Mark as auto-created
+      port.setMetadata('side', side); // Store side for easy querying
+      this.ports.set(port.id, port);
+    });
   }
 
   /**
@@ -269,6 +304,57 @@ export class NodeModel extends DiagramEntity {
    */
   getPortsByType(type: 'input' | 'output' | 'bi'): PortModel[] {
     return this.getPorts().filter((p) => p.type === type);
+  }
+
+  /**
+   * Get port by side (Phase 0.5.1)
+   * Returns the first port found on the specified side
+   *
+   * @param side - The side to search ('top', 'right', 'bottom', 'left')
+   * @returns The first port on that side, or undefined if none found
+   */
+  getPortBySide(side: 'top' | 'right' | 'bottom' | 'left'): PortModel | undefined {
+    return Array.from(this.ports.values()).find((port) => port.side === side);
+  }
+
+  /**
+   * Get all ports on a specific side (Phase 0.5.1)
+   * Useful for nodes with multiple ports per side
+   *
+   * @param side - The side to search ('top', 'right', 'bottom', 'left')
+   * @returns Array of ports on that side, sorted by index
+   */
+  getPortsBySide(side: 'top' | 'right' | 'bottom' | 'left'): PortModel[] {
+    return Array.from(this.ports.values())
+      .filter((port) => port.side === side)
+      .sort((a, b) => a.index - b.index); // Sort by index for consistent ordering
+  }
+
+  /**
+   * Get available ports that can accept connections (Phase 0.5.1)
+   *
+   * @param type - Optional filter by port type ('input', 'output', 'bi')
+   * @returns Array of ports that can accept more connections
+   */
+  getAvailablePorts(type?: 'input' | 'output' | 'bi'): PortModel[] {
+    let ports = Array.from(this.ports.values());
+
+    if (type) {
+      ports = ports.filter((port) => port.type === type || port.type === 'bi');
+    }
+
+    return ports.filter((port) => port.canConnect());
+  }
+
+  /**
+   * Get ports that have active connections (Phase 0.5.1)
+   *
+   * @returns Array of ports with at least one connection
+   */
+  getConnectedPorts(): PortModel[] {
+    return Array.from(this.ports.values()).filter(
+      (port) => port.getConnectionCount() > 0
+    );
   }
 
   /**
