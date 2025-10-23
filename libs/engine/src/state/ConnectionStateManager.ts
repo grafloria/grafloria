@@ -226,16 +226,25 @@ export class ConnectionStateManager {
       return false;
     }
 
-    // Check port types (input can't connect to input, output can't connect to output)
-    if (sourcePort.type === 'input' && targetPort.type === 'input') {
-      return false;
-    }
-    if (sourcePort.type === 'output' && targetPort.type === 'output') {
-      return false;
-    }
+    // CRITICAL FIX: Check port types (input can't connect to input, output can't connect to output)
+    // Bidirectional ('bi') ports can connect to anything
+    const isBidirectional = (port: PortModel) => port.type === 'bi';
 
-    // Check if target port is in valid set
-    if (!this.state.validTargetPorts.has(targetPort.id)) {
+    // If either port is bidirectional, allow the connection (type-wise)
+    if (!isBidirectional(sourcePort) && !isBidirectional(targetPort)) {
+      // Both ports are directional (input/output), check compatibility
+      if (sourcePort.type === 'input' && targetPort.type === 'input') {
+        return false;
+      }
+      if (sourcePort.type === 'output' && targetPort.type === 'output') {
+        return false;
+      }
+    }
+    // If either is bidirectional, we allow the connection (skip type check)
+
+    // CRITICAL FIX: Only check validTargetPorts if it has been populated by DiagramEngine
+    // If the set is empty, it means DiagramEngine hasn't set up validation yet, so skip this check
+    if (this.state.validTargetPorts.size > 0 && !this.state.validTargetPorts.has(targetPort.id)) {
       return false;
     }
 

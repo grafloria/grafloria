@@ -99,6 +99,7 @@ export class InteractionHandlerService {
    * Phase 3: Handle mouse move for hover detection
    * Phase 5: Enhanced with performance monitoring and validation
    * Updates hover states for nodes, ports, and links
+   * CRITICAL FIX: Added comprehensive debugging
    */
   handleMouseMove(
     worldX: number,
@@ -121,8 +122,19 @@ export class InteractionHandlerService {
 
     // Find what's under the cursor
     const nodeAtPosition = diagram.getNodeAtPosition(worldX, worldY);
-    const portAtPosition = this.findPortAtPosition(worldX, worldY, diagram);
+    const portAtPosition = this.findPortAtPosition(worldX, worldY, diagram, engine);
     const linkAtPosition = this.findLinkAtPosition(worldX, worldY, diagram);
+
+    // CRITICAL FIX: Debug logging for port detection
+    const debugPortDetection = false; // Disabled - working correctly now
+    if (debugPortDetection && (portAtPosition || nodeAtPosition)) {
+      console.log('🔍 Hover detection:', {
+        worldPos: { x: worldX.toFixed(1), y: worldY.toFixed(1) },
+        node: nodeAtPosition?.getMetadata('label') || 'none',
+        port: portAtPosition ? `${portAtPosition.side} (${portAtPosition.id})` : 'none',
+        portVisibility: config.portVisibility,
+      });
+    }
 
     // Update node hover state
     const allNodes = diagram.getNodes();
@@ -133,6 +145,9 @@ export class InteractionHandlerService {
       if (wasHovered !== isHovered) {
         node.setState({ hovered: isHovered });
         needsRender = true;
+        if (debugPortDetection) {
+          console.log(`  Node ${node.getMetadata('label')} hover: ${wasHovered} → ${isHovered}`);
+        }
       }
     });
 
@@ -145,6 +160,11 @@ export class InteractionHandlerService {
         if (wasHovered !== isHovered) {
           port.isHovered = isHovered;
           needsRender = true;
+          // CRITICAL FIX: Mark node as dirty when port hover state changes
+          // This forces the renderer to regenerate the port VNodes with updated styles
+          node.markDirty('port-hover-changed');
+          // TEMPORARY DEBUG: Always log port hover changes to see what's happening
+          console.log(`🔘 Port ${port.side} hover: ${wasHovered} → ${isHovered}`, { nodeLabel: node.getMetadata('label') });
         }
       });
     });
@@ -222,11 +242,12 @@ export class InteractionHandlerService {
   /**
    * Phase 3: Start connection from port
    * Phase 5: Enhanced with validation and error handling
+   * CRITICAL FIX: Added detailed logging
    */
   startConnection(port: PortModel, worldX: number, worldY: number, engine: DiagramEngine): void {
     // Phase 5: Validate inputs
     if (!port || !engine || !isFinite(worldX) || !isFinite(worldY)) {
-      console.warn('Invalid inputs for startConnection');
+      console.warn('❌ Invalid inputs for startConnection:', { port: !!port, engine: !!engine, worldX, worldY });
       return;
     }
 
@@ -237,10 +258,15 @@ export class InteractionHandlerService {
       const connectionStateManager = engine.getConnectionStateManager();
       connectionStateManager.startConnection(port, { x: worldX, y: worldY });
 
-      console.log('🔌 Connection started from port:', port.id);
+      console.log('🔌 Connection started:', {
+        portId: port.id,
+        portType: port.type,
+        portSide: port.side,
+        position: { x: worldX.toFixed(1), y: worldY.toFixed(1) }
+      });
     } catch (error) {
       // Phase 5: Error recovery
-      console.error('Error starting connection:', error);
+      console.error('❌ Error starting connection:', error);
       this.isConnecting = false;
       this.connectionSourcePort = null;
     }
@@ -530,17 +556,19 @@ export class InteractionHandlerService {
   /**
    * Find port at world position
    * Phase 5: Optimized with performance monitoring and early exit
+   * CRITICAL FIX: Accept engine parameter instead of calling diagram.getEngine()
    */
   private findPortAtPosition(
     worldX: number,
     worldY: number,
-    diagram: any
+    diagram: any,
+    engine: DiagramEngine
   ): PortModel | null {
     // Phase 5: Performance monitoring
     const startTime = performance.now();
 
     try {
-      const config = diagram.getEngine().getInteractionConfig();
+      const config = engine.getInteractionConfig();
       const portRadius = config.portDefaultRadius * config.portHoverScaleFactor;
       const hitRadius = portRadius + 2; // Add 2px tolerance
 

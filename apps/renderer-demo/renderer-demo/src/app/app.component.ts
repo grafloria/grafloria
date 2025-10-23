@@ -76,10 +76,12 @@ export class AppComponent implements OnInit {
     this.engine = new DiagramEngine({
       interaction: {
         mode: InteractionMode.SMART, // Start with Smart/Visio-style mode
-        portVisibility: PortVisibilityStrategy.ON_HOVER,
+        portVisibility: PortVisibilityStrategy.ALWAYS, // CRITICAL FIX: Start with ALWAYS to debug visibility
         enableSmartAutoConnect: true,
       }
     });
+
+    console.log('🔧 Engine initialized with port visibility:', this.engine.getInteractionConfig().portVisibility);
   }
 
   /**
@@ -87,6 +89,12 @@ export class AppComponent implements OnInit {
    */
   onInteractionConfigChanged(config: Partial<InteractionConfig>): void {
     console.log('🎛️ Interaction config changed:', config);
+
+    // CRITICAL FIX: Update engine config
+    if (this.engine) {
+      this.engine.setInteractionConfig(config);
+      console.log('✅ Engine config updated. Current visibility:', this.engine.getInteractionConfig().portVisibility);
+    }
   }
 
   /**

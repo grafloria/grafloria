@@ -275,11 +275,10 @@ export class SVGRenderer implements IRenderer {
 
     if (!sourceNode) return null;
 
-    // Calculate source position (port position + node position)
-    const sourcePos = {
-      x: sourceNode.position.x + dragState.sourcePort.position.x,
-      y: sourceNode.position.y + dragState.sourcePort.position.y,
-    };
+    // CRITICAL FIX: Calculate source position using getAbsolutePosition() like links do
+    // This ensures the line starts from the port center, not the node's top-left corner
+    const sourceBounds = sourceNode.getBoundingBox();
+    const sourcePos = dragState.sourcePort.getAbsolutePosition(sourceBounds);
 
     const targetPos = dragState.currentMousePosition;
 
@@ -542,6 +541,7 @@ export class SVGRenderer implements IRenderer {
 
   /**
    * Phase 2: Render single port
+   * CRITICAL FIX: Added pointer-events and proper z-index to ensure ports are clickable
    */
   private renderPort(
     port: PortModel,
@@ -585,10 +585,14 @@ export class SVGRenderer implements IRenderer {
         className: this.config.useCSSMode
           ? `port port-${port.type}${port.isHovered ? ' port-hovered' : ''}${isHighlighted ? ' port-highlighted' : ''}`
           : undefined,
-        style: port.isHovered || isHighlighted
-          ? 'transition: all 0.2s ease; cursor: pointer'
-          : 'transition: all 0.2s ease; cursor: crosshair',
+        // CRITICAL FIX: Ensure ports capture pointer events and have proper cursor
+        // pointer-events: all ensures the port intercepts mouse events even when overlapping the node
+        style: `transition: all 0.2s ease; cursor: ${port.isHovered || isHighlighted ? 'pointer' : 'crosshair'}; pointer-events: all;`,
         opacity: isHighlighted ? 1 : 0.9,
+        // CRITICAL FIX: Add data attribute for debugging
+        'data-port-id': port.id,
+        'data-port-type': port.type,
+        'data-port-side': port.side,
       },
     };
   }
@@ -631,6 +635,7 @@ export class SVGRenderer implements IRenderer {
 
   /**
    * Phase 2: Determine if port should be rendered based on visibility strategy
+   * CRITICAL FIX: Added comprehensive debugging and proper string comparison
    */
   private shouldRenderPort(
     port: PortModel,
@@ -639,15 +644,40 @@ export class SVGRenderer implements IRenderer {
   ): boolean {
     const { portVisibility } = config;
 
-    switch (portVisibility) {
+    // CRITICAL FIX: portVisibility is a string, not an enum
+    // It could be 'always', 'on-hover', or 'hidden'
+    const visibilityStr = String(portVisibility).toLowerCase();
+
+    // DEBUG: Enable this to see port visibility decisions
+    const debugPortVisibility = false; // Disabled - working correctly now
+
+    if (debugPortVisibility && visibilityStr === 'on-hover') {
+      console.log(`🔍 Port visibility check:`, {
+        port: `${port.side}`,
+        nodeHovered: node.state.hovered,
+        portHovered: port.isHovered,
+        highlighted: port.isHighlighted,
+        validTarget: port.isValidTarget,
+        nodeLabel: node.getMetadata('label'),
+        shouldShow: node.state.hovered || port.isHovered || port.isHighlighted || port.isValidTarget
+      });
+    }
+
+    switch (visibilityStr) {
       case 'always':
         return true;
       case 'on-hover':
-        return node.state.hovered || port.isHovered || port.isHighlighted;
+        // CRITICAL FIX: Show ports when node is hovered, OR during connection (highlighted/validTarget)
+        // Do NOT show just because port.isHovered - that creates the "sticky port" bug
+        // where the port you exit through stays visible
+        const shouldShow = node.state.hovered || port.isHighlighted || port.isValidTarget;
+        return shouldShow;
       case 'hidden':
         // Only show if actively involved in connection
         return port.isHighlighted || port.isValidTarget;
       default:
+        // Fallback to always visible
+        console.warn(`Unknown port visibility strategy: ${portVisibility}, defaulting to 'always'`);
         return true;
     }
   }
