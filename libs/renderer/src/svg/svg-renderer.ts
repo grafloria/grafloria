@@ -1303,6 +1303,15 @@ export class SVGRenderer implements IRenderer {
     diagram.on('node:removed', () => this.vnodeCache.clear());
     diagram.on('link:added', () => this.vnodeCache.clear());
     diagram.on('link:removed', () => this.vnodeCache.clear());
+
+    // Listen for interaction config changes (port visibility, etc.)
+    this.engine.eventBus.on('config:interaction-changed', () => {
+      this.vnodeCache.clear();
+      // Mark all nodes dirty to ensure re-render with new config
+      if (diagram) {
+        diagram.getNodes().forEach(node => node.markDirty('config-changed'));
+      }
+    });
   }
 
   /**

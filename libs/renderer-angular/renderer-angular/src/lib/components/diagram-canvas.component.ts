@@ -403,6 +403,10 @@ export class DiagramCanvasComponent implements OnInit, AfterViewInit, OnChanges,
       const worldX = this.viewport.x + (clientX / this.zoom);
       const worldY = this.viewport.y + (clientY / this.zoom);
 
+      // CRITICAL FIX: Update hover state before checking for clicks
+      // This ensures ports are detected even if mouse hasn't moved yet
+      this.interactionHandler.handleMouseMove(worldX, worldY, this.engine);
+
       // Phase 3: Check for port click (highest priority)
       const interactionState = this.interactionHandler.getState();
       if (interactionState.hoveredPort) {
