@@ -41,6 +41,13 @@
         "targetName": "eslint:lint"
       }
     }
+    // Temporarily disabled Playwright plugin due to project graph error
+    // {
+    //   "plugin": "@nx/playwright/plugin",
+    //   "options": {
+    //     "targetName": "e2e"
+    //   }
+    // }
   ],
   "targetDefaults": {
     "@angular-devkit/build-angular:application": {
@@ -84,6 +91,11 @@
       "cache": true
     },
     "@nx/esbuild:esbuild": {
+      "cache": true,
+      "dependsOn": ["^build"],
+      "inputs": ["production", "^production"]
+    },
+    "@nx/js:tsc": {
       "cache": true,
       "dependsOn": ["^build"],
       "inputs": ["production", "^production"]

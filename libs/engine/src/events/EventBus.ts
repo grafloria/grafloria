@@ -125,7 +125,7 @@ export class EventBus {
     delay: number,
     handler: Function
   ): () => void {
-    let timeout: NodeJS.Timeout;
+    let timeout: ReturnType<typeof setTimeout>;
     const wrappedHandler = (data: any) => {
       clearTimeout(timeout);
       timeout = setTimeout(() => handler(data), delay);

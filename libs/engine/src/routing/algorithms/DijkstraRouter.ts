@@ -105,6 +105,13 @@ export class DijkstraRouter {
   }
 
   /**
+   * Get algorithm name
+   */
+  getName(): string {
+    return 'dijkstra';
+  }
+
+  /**
    * Find shortest path from start to end using Dijkstra's algorithm
    */
   route(start: Point, end: Point): Point[] {

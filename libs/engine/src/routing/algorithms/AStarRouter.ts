@@ -121,6 +121,13 @@ export class AStarRouter {
   }
 
   /**
+   * Get algorithm name
+   */
+  getName(): string {
+    return 'a-star';
+  }
+
+  /**
    * Find path from start to end using A* algorithm
    */
   route(start: Point, end: Point): Point[] {

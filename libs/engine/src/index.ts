@@ -21,6 +21,9 @@ export * from './validation';
 // State
 export * from './state';
 
+// Config
+export * from './config';
+
 // Engine
 export * from './engine';
 
@@ -36,3 +39,6 @@ export * from './utils';
 
 // Routing
 export * from './routing';
+
+// Layout
+export * from './layout';

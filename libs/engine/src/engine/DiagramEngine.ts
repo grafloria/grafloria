@@ -24,6 +24,17 @@ import { ClipboardManager } from '../clipboard/ClipboardManager'; // Phase 1.8
 import { SelectionManager } from '../selection/SelectionManager'; // Phase 1.8a
 import { DiagramMode, isValidDiagramMode, ModeChangeEvent } from './DiagramMode';
 import { ModeManager } from './ModeManager';
+// Phase 1: Interaction modes
+import { ConnectionStateManager } from '../state/ConnectionStateManager';
+import type { InteractionConfig } from '../config/InteractionConfig';
+import { DEFAULT_INTERACTION_CONFIG } from '../config/InteractionConfig';
+// Routing imports
+import { ObstacleMapBuilder } from '../routing/ObstacleMapBuilder';
+import { StraightRouter } from '../routing/algorithms/StraightRouter';
+import { OrthogonalRouter } from '../routing/algorithms/OrthogonalRouter';
+import { AStarRouter } from '../routing/algorithms/AStarRouter';
+import { DijkstraRouter } from '../routing/algorithms/DijkstraRouter';
+import { VisibilityGraphRouter } from '../routing/algorithms/VisibilityGraphRouter';
 import type {
   ModeGuardFunction,
   ModeGuardBlockedEvent,
@@ -57,6 +68,8 @@ export interface DiagramEngineConfig {
     maxCommands?: number;
     maxSnapshots?: number;
   };
+  // Phase 1: Interaction configuration
+  interaction?: Partial<InteractionConfig>;
 }
 
 export class DiagramEngine {
@@ -79,6 +92,10 @@ export class DiagramEngine {
   // Configuration
   private config: DiagramEngineConfig;
 
+  // Phase 1: Interaction configuration and state
+  private interactionConfig: InteractionConfig;
+  private connectionStateManager: ConnectionStateManager;
+
   // State
   private initialized: boolean = false;
   private destroyed: boolean = false;
@@ -89,6 +106,64 @@ export class DiagramEngine {
     // Initialize core systems
     this.eventBus = new EventBus();
     this.store = new DiagramStore();
+
+    // Phase 1: Initialize interaction config
+    this.interactionConfig = {
+      ...DEFAULT_INTERACTION_CONFIG,
+      ...config.interaction,
+    };
+
+    // Phase 1: Initialize connection state manager
+    this.connectionStateManager = new ConnectionStateManager(this.eventBus);
+
+    // CRITICAL FIX: Listen for connection complete events and create the actual link
+    this.eventBus.on('connection:complete', (event: any) => {
+      if (this.diagram && event.sourcePort && event.targetPort) {
+        const sourcePort = event.sourcePort;
+        const targetPort = event.targetPort;
+
+        // Find the nodes that own these ports
+        const nodes = this.diagram.getNodes();
+        let sourceNode: any = null;
+        let targetNode: any = null;
+
+        for (const node of nodes) {
+          if (node.getPort(sourcePort.id)) {
+            sourceNode = node;
+          }
+          if (node.getPort(targetPort.id)) {
+            targetNode = node;
+          }
+          if (sourceNode && targetNode) break;
+        }
+
+        if (sourceNode && targetNode) {
+          // Determine path type from config
+          const pathType = this.interactionConfig.connectionLineStyle === 'bezier' ? 'bezier' : 'smooth';
+
+          // Create the link manually (same logic as createSmartLink)
+          const link = new LinkModel(sourcePort.id, targetPort.id, pathType);
+          link.sourceNodeId = sourceNode.id;
+          link.targetNodeId = targetNode.id;
+
+          // Register connections in ports
+          sourcePort.addConnection(link.id);
+          targetPort.addConnection(link.id);
+
+          // Calculate initial path
+          const sourcePos = sourcePort.getAbsolutePosition(sourceNode.getBoundingBox());
+          const targetPos = targetPort.getAbsolutePosition(targetNode.getBoundingBox());
+          link.generatePath(sourcePos, targetPos);
+
+          // Add link to diagram
+          this.diagram.addLink(link);
+
+          console.log('✅ Link created successfully:', link.id, 'from', sourcePort.id, 'to', targetPort.id);
+        } else {
+          console.error('❌ Failed to find nodes for ports');
+        }
+      }
+    });
 
     // Initialize ModeManager with context provider
     this.modeManager = new ModeManager(
@@ -139,6 +214,39 @@ export class DiagramEngine {
    */
   getConfig(): DiagramEngineConfig {
     return this.config;
+  }
+
+  /**
+   * Phase 1: Get interaction configuration
+   * Returns the current interaction mode settings
+   */
+  getInteractionConfig(): InteractionConfig {
+    return { ...this.interactionConfig };
+  }
+
+  /**
+   * Phase 1: Set interaction configuration
+   * Updates interaction mode settings and emits event
+   */
+  setInteractionConfig(config: Partial<InteractionConfig>): void {
+    const oldConfig = { ...this.interactionConfig };
+    this.interactionConfig = {
+      ...this.interactionConfig,
+      ...config,
+    };
+
+    this.eventBus.emit('config:interaction-changed', {
+      oldConfig,
+      newConfig: this.interactionConfig,
+    });
+  }
+
+  /**
+   * Phase 1: Get connection state manager
+   * Used for managing connection drag operations
+   */
+  getConnectionStateManager(): ConnectionStateManager {
+    return this.connectionStateManager;
   }
 
   /**
@@ -1461,7 +1569,6 @@ export class DiagramEngine {
       (id) => id !== undefined
     ) as string[];
 
-    const { ObstacleMapBuilder } = require('../routing/ObstacleMapBuilder');
     const obstacleMap = ObstacleMapBuilder.fromDiagramExcluding(
       this.diagram!,
       excludeIds,
@@ -1471,13 +1578,6 @@ export class DiagramEngine {
     // Get port positions (in global coordinates)
     const start = this.getPortGlobalPosition(link.sourcePortId);
     const end = this.getPortGlobalPosition(link.targetPortId);
-
-    // Import routers
-    const { StraightRouter } = require('../routing/algorithms/StraightRouter');
-    const { OrthogonalRouter } = require('../routing/algorithms/OrthogonalRouter');
-    const { AStarRouter } = require('../routing/algorithms/AStarRouter');
-    const { DijkstraRouter } = require('../routing/algorithms/DijkstraRouter');
-    const { VisibilityGraphRouter } = require('../routing/algorithms/VisibilityGraphRouter');
 
     // Route based on algorithm
     let points: Point[];

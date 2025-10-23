@@ -2,8 +2,8 @@
   "name": "@grafloria/engine",
   "version": "0.0.1",
   "type": "commonjs",
-  "main": "./index.cjs",
-  "types": "./index.d.ts",
+  "main": "./src/index.js",
+  "types": "./src/index.d.ts",
   "dependencies": {
     "eventemitter3": "^5.0.1",
     "nanoid": "^5.0.0",

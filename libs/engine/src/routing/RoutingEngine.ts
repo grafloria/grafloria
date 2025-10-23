@@ -10,7 +10,141 @@ import type {
 import { ObstacleMap } from './ObstacleMap';
 import { StraightRouter } from './algorithms/StraightRouter';
 import { OrthogonalRouter } from './algorithms/OrthogonalRouter';
+import { AStarRouter } from './algorithms/AStarRouter';
+import { DijkstraRouter } from './algorithms/DijkstraRouter';
+import { VisibilityGraphRouter } from './algorithms/VisibilityGraphRouter';
 import { LRUCache } from '../performance/LRUCache'; // Phase 5.3
+
+/**
+ * Adapter for A* Router to match IRouter interface
+ */
+class AStarRouterAdapter implements IRouter {
+  private router: AStarRouter;
+
+  constructor(obstacleMap: ObstacleMap) {
+    this.router = new AStarRouter(obstacleMap);
+  }
+
+  getName(): string {
+    return 'a-star';
+  }
+
+  route(request: RouteRequest): RoutedPath | null {
+    const points = this.router.route(request.start, request.end);
+    if (points.length === 0) return null;
+
+    // Calculate total length and bend count
+    let totalLength = 0;
+    let bendCount = 0;
+    for (let i = 0; i < points.length - 1; i++) {
+      const dx = points[i + 1].x - points[i].x;
+      const dy = points[i + 1].y - points[i].y;
+      totalLength += Math.sqrt(dx * dx + dy * dy);
+
+      // Count bends (direction changes)
+      if (i > 0) {
+        const prevDx = points[i].x - points[i - 1].x;
+        const prevDy = points[i].y - points[i - 1].y;
+        if (Math.abs(dx - prevDx) > 0.01 || Math.abs(dy - prevDy) > 0.01) {
+          bendCount++;
+        }
+      }
+    }
+
+    return {
+      points,
+      totalLength,
+      bendCount,
+      cost: totalLength,
+    };
+  }
+}
+
+/**
+ * Adapter for Dijkstra Router to match IRouter interface
+ */
+class DijkstraRouterAdapter implements IRouter {
+  private router: DijkstraRouter;
+
+  constructor(obstacleMap: ObstacleMap) {
+    this.router = new DijkstraRouter(obstacleMap);
+  }
+
+  getName(): string {
+    return 'dijkstra';
+  }
+
+  route(request: RouteRequest): RoutedPath | null {
+    const points = this.router.route(request.start, request.end);
+    if (points.length === 0) return null;
+
+    let totalLength = 0;
+    let bendCount = 0;
+    for (let i = 0; i < points.length - 1; i++) {
+      const dx = points[i + 1].x - points[i].x;
+      const dy = points[i + 1].y - points[i].y;
+      totalLength += Math.sqrt(dx * dx + dy * dy);
+
+      if (i > 0) {
+        const prevDx = points[i].x - points[i - 1].x;
+        const prevDy = points[i].y - points[i - 1].y;
+        if (Math.abs(dx - prevDx) > 0.01 || Math.abs(dy - prevDy) > 0.01) {
+          bendCount++;
+        }
+      }
+    }
+
+    return {
+      points,
+      totalLength,
+      bendCount,
+      cost: totalLength,
+    };
+  }
+}
+
+/**
+ * Adapter for Visibility Graph Router to match IRouter interface
+ */
+class VisibilityGraphRouterAdapter implements IRouter {
+  private router: VisibilityGraphRouter;
+
+  constructor(obstacleMap: ObstacleMap) {
+    this.router = new VisibilityGraphRouter(obstacleMap);
+  }
+
+  getName(): string {
+    return 'visibility-graph';
+  }
+
+  route(request: RouteRequest): RoutedPath | null {
+    const points = this.router.route(request.start, request.end);
+    if (points.length === 0) return null;
+
+    let totalLength = 0;
+    let bendCount = 0;
+    for (let i = 0; i < points.length - 1; i++) {
+      const dx = points[i + 1].x - points[i].x;
+      const dy = points[i + 1].y - points[i].y;
+      totalLength += Math.sqrt(dx * dx + dy * dy);
+
+      if (i > 0) {
+        const prevDx = points[i].x - points[i - 1].x;
+        const prevDy = points[i].y - points[i - 1].y;
+        if (Math.abs(dx - prevDx) > 0.01 || Math.abs(dy - prevDy) > 0.01) {
+          bendCount++;
+        }
+      }
+    }
+
+    return {
+      points,
+      totalLength,
+      bendCount,
+      cost: totalLength,
+    };
+  }
+}
 
 /**
  * RoutingEngine coordinates routing operations and manages obstacles
@@ -30,6 +164,11 @@ export class RoutingEngine {
     // Register built-in routers
     this.registerRouter('straight', new StraightRouter());
     this.registerRouter('orthogonal', new OrthogonalRouter());
+
+    // Register advanced routers with obstacle avoidance (using adapters)
+    this.registerRouter('a-star', new AStarRouterAdapter(this.obstacleMap));
+    this.registerRouter('dijkstra', new DijkstraRouterAdapter(this.obstacleMap));
+    this.registerRouter('visibility-graph', new VisibilityGraphRouterAdapter(this.obstacleMap));
   }
 
   /**

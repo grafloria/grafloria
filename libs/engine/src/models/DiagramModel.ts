@@ -8,6 +8,8 @@ import type { SerializedEntity, Point } from '../types';
 import { SpatialIndex } from '../performance/SpatialIndex'; // Phase 5.1
 import type { Rectangle } from '../types/geometry.types'; // Phase 5.1
 import type { LODLevel, EntityWithLOD } from '../types/performance.types'; // Phase 5.3
+import { LayoutManager } from '../layout/LayoutManager'; // Layout system
+import type { LayoutAlgorithmType, LayoutConfiguration } from '../layout/types';
 
 export interface SerializedDiagram extends SerializedEntity {
   name: string;
@@ -17,6 +19,8 @@ export interface SerializedDiagram extends SerializedEntity {
   viewport: {
     x: number;
     y: number;
+    width: number;   // Phase 0.5 - Viewport-aware layout
+    height: number;  // Phase 0.5 - Viewport-aware layout
     zoom: number;
   };
 }
@@ -30,6 +34,8 @@ export class DiagramModel extends DiagramEntity {
   viewport = {
     x: 0,
     y: 0,
+    width: 1200,  // Default viewport width
+    height: 800,  // Default viewport height
     zoom: 1,
   };
 
@@ -37,9 +43,16 @@ export class DiagramModel extends DiagramEntity {
   private nodeSpatialIndex: SpatialIndex<NodeModel>;
   private linkSpatialIndex: SpatialIndex<LinkModel>;
 
+  // Layout system
+  private _layoutManager: LayoutManager;
+  private _autoLayoutEnabled: boolean = false;
+
   constructor(name?: string) {
     super();
     if (name) this.name = name;
+
+    // Initialize layout manager
+    this._layoutManager = new LayoutManager(this, 'grid');
 
     // Phase 5.1: Initialize spatial indices
     this.nodeSpatialIndex = new SpatialIndex<NodeModel>({
@@ -258,6 +271,201 @@ export class DiagramModel extends DiagramEntity {
   }
 
   /**
+   * Phase 0.5.3: Create a smart link with automatic port selection
+   *
+   * This high-level API simplifies link creation by:
+   * - Automatically selecting optimal ports based on node geometry
+   * - Creating the link with proper port connections
+   * - Registering connections in port models
+   * - Generating the initial path
+   *
+   * @param sourceNode - The source node
+   * @param targetNode - The target node
+   * @param pathType - Path rendering type (default: 'smooth')
+   * @returns The created link, or undefined if port selection failed
+   *
+   * @example
+   * ```typescript
+   * const link = diagram.createSmartLink(node1, node2, 'smooth');
+   * if (link) {
+   *   console.log('Connected with optimal ports!');
+   * }
+   * ```
+   */
+  createSmartLink(
+    sourceNode: NodeModel,
+    targetNode: NodeModel,
+    pathType: 'direct' | 'orthogonal' | 'smooth' | 'bezier' = 'smooth'
+  ): LinkModel | undefined {
+    // Use layout manager's intelligent port selection
+    const optimalPorts = this._layoutManager.selectOptimalPorts(sourceNode, targetNode);
+
+    if (!optimalPorts) {
+      console.warn(`⚠️ Could not select optimal ports for nodes ${sourceNode.id} → ${targetNode.id}`);
+      return undefined;
+    }
+
+    const { sourcePort, targetPort } = optimalPorts;
+
+    // Validate port compatibility
+    if (!sourcePort.canConnectTo(targetPort)) {
+      console.warn(`⚠️ Ports are not compatible: ${sourcePort.type} → ${targetPort.type}`);
+      return undefined;
+    }
+
+    // Create the link
+    const link = new LinkModel(sourcePort.id, targetPort.id, pathType);
+    link.sourceNodeId = sourceNode.id;
+    link.targetNodeId = targetNode.id;
+
+    // Register connections in ports
+    sourcePort.addConnection(link.id);
+    targetPort.addConnection(link.id);
+
+    // Calculate initial path
+    const sourceBounds = sourceNode.getBoundingBox();
+    const targetBounds = targetNode.getBoundingBox();
+    const sourcePoint = sourcePort.getAbsolutePosition(sourceBounds);
+    const targetPoint = targetPort.getAbsolutePosition(targetBounds);
+    link.generatePath(sourcePoint, targetPoint);
+
+    // Add to diagram
+    this.addLink(link);
+
+    return link;
+  }
+
+  /**
+   * Phase 0.5.3: High-level API to connect two nodes
+   *
+   * Convenience method that creates a smart link and returns success status.
+   * This is the simplest way to connect nodes.
+   *
+   * @param sourceNode - The source node
+   * @param targetNode - The target node
+   * @param pathType - Path rendering type (default: 'smooth')
+   * @returns true if connection was successful, false otherwise
+   *
+   * @example
+   * ```typescript
+   * if (diagram.connectNodes(node1, node2)) {
+   *   console.log('Nodes connected successfully!');
+   * }
+   * ```
+   */
+  connectNodes(
+    sourceNode: NodeModel,
+    targetNode: NodeModel,
+    pathType: 'direct' | 'orthogonal' | 'smooth' | 'bezier' = 'smooth'
+  ): boolean {
+    const link = this.createSmartLink(sourceNode, targetNode, pathType);
+    return link !== undefined;
+  }
+
+  /**
+   * Phase 0.5.3: Get all connections for a node
+   *
+   * Returns all links where the node is either source or target.
+   * Useful for querying node connectivity.
+   *
+   * @param node - The node to query
+   * @returns Object containing incoming and outgoing links
+   *
+   * @example
+   * ```typescript
+   * const connections = diagram.getNodeConnections(node);
+   * console.log(`Incoming: ${connections.incoming.length}`);
+   * console.log(`Outgoing: ${connections.outgoing.length}`);
+   * console.log(`Total: ${connections.all.length}`);
+   * ```
+   */
+  getNodeConnections(node: NodeModel): {
+    incoming: LinkModel[];
+    outgoing: LinkModel[];
+    all: LinkModel[];
+  } {
+    const incoming: LinkModel[] = [];
+    const outgoing: LinkModel[] = [];
+
+    // Get node's port IDs
+    const portIds = new Set(node.getPorts().map((p) => p.id));
+
+    // Check all links
+    for (const link of this.links.values()) {
+      const isTarget = portIds.has(link.targetPortId);
+      const isSource = portIds.has(link.sourcePortId);
+
+      if (isTarget) {
+        incoming.push(link);
+      }
+      if (isSource) {
+        outgoing.push(link);
+      }
+    }
+
+    return {
+      incoming,
+      outgoing,
+      all: [...incoming, ...outgoing],
+    };
+  }
+
+  /**
+   * Phase 0.5.3: Disconnect two nodes
+   *
+   * Removes all links between the specified nodes.
+   * Handles cleanup of port connections.
+   *
+   * @param sourceNode - The source node
+   * @param targetNode - The target node
+   * @returns Number of links removed
+   *
+   * @example
+   * ```typescript
+   * const removed = diagram.disconnectNodes(node1, node2);
+   * console.log(`Removed ${removed} connections`);
+   * ```
+   */
+  disconnectNodes(sourceNode: NodeModel, targetNode: NodeModel): number {
+    const sourcePortIds = new Set(sourceNode.getPorts().map((p) => p.id));
+    const targetPortIds = new Set(targetNode.getPorts().map((p) => p.id));
+
+    const linksToRemove: string[] = [];
+
+    // Find all links between these nodes
+    for (const link of this.links.values()) {
+      const hasSourcePort = sourcePortIds.has(link.sourcePortId);
+      const hasTargetPort = targetPortIds.has(link.targetPortId);
+
+      if (hasSourcePort && hasTargetPort) {
+        linksToRemove.push(link.id);
+      }
+    }
+
+    // Remove the links
+    for (const linkId of linksToRemove) {
+      const link = this.getLink(linkId);
+      if (link) {
+        // Clean up port connections
+        const sourcePort = sourceNode.getPorts().find((p) => p.id === link.sourcePortId);
+        const targetPort = targetNode.getPorts().find((p) => p.id === link.targetPortId);
+
+        if (sourcePort) {
+          sourcePort.removeConnection(link.id);
+        }
+        if (targetPort) {
+          targetPort.removeConnection(link.id);
+        }
+
+        // Remove link from diagram
+        this.removeLink(linkId);
+      }
+    }
+
+    return linksToRemove.length;
+  }
+
+  /**
    * Add group (Phase 1.6c)
    */
   addGroup(group: GroupModel): void {
@@ -324,28 +532,393 @@ export class DiagramModel extends DiagramEntity {
   }
 
   /**
-   * Set viewport
+   * Selection Management
    */
-  setViewport(x: number, y: number, zoom: number): void {
+
+  /**
+   * Get all selected nodes
+   */
+  getSelectedNodes(): NodeModel[] {
+    return this.getNodes().filter((node) => node.isSelected());
+  }
+
+  /**
+   * Select a single node (clears previous selection)
+   * @param node - Node to select
+   */
+  selectNode(node: NodeModel): void {
+    if (!node.isSelectable()) {
+      return;
+    }
+
+    // Clear previous selection
+    this.clearSelection();
+
+    // Select the node
+    node.setSelected(true);
+
+    // Emit selection changed event
+    this.emitter.emit('selection:changed', {
+      selected: [node],
+      deselected: []
+    });
+  }
+
+  /**
+   * Add node to selection (multi-select)
+   * @param node - Node to add to selection
+   */
+  addToSelection(node: NodeModel): void {
+    if (!node.isSelectable() || node.isSelected()) {
+      return;
+    }
+
+    node.setSelected(true);
+
+    this.emitter.emit('selection:changed', {
+      selected: [node],
+      deselected: []
+    });
+  }
+
+  /**
+   * Remove node from selection
+   * @param node - Node to remove from selection
+   */
+  removeFromSelection(node: NodeModel): void {
+    if (!node.isSelected()) {
+      return;
+    }
+
+    node.setSelected(false);
+
+    this.emitter.emit('selection:changed', {
+      selected: [],
+      deselected: [node]
+    });
+  }
+
+  /**
+   * Toggle node selection (add if not selected, remove if selected)
+   * @param node - Node to toggle
+   */
+  toggleNodeSelection(node: NodeModel): void {
+    if (!node.isSelectable()) {
+      return;
+    }
+
+    if (node.isSelected()) {
+      this.removeFromSelection(node);
+    } else {
+      this.addToSelection(node);
+    }
+  }
+
+  /**
+   * Clear all selections
+   */
+  clearSelection(): void {
+    const selectedNodes = this.getSelectedNodes();
+    if (selectedNodes.length === 0) {
+      return;
+    }
+
+    selectedNodes.forEach((node) => node.setSelected(false));
+
+    this.emitter.emit('selection:changed', {
+      selected: [],
+      deselected: selectedNodes
+    });
+  }
+
+  /**
+   * Select all nodes
+   */
+  selectAll(): void {
+    const selectableNodes = this.getNodes().filter((node) => node.isSelectable());
+    const previouslySelected = this.getSelectedNodes();
+    const newlySelected = selectableNodes.filter((node) => !node.isSelected());
+
+    newlySelected.forEach((node) => node.setSelected(true));
+
+    if (newlySelected.length > 0) {
+      this.emitter.emit('selection:changed', {
+        selected: newlySelected,
+        deselected: []
+      });
+    }
+  }
+
+  /**
+   * Delete all selected nodes and their connected links
+   * @returns Number of nodes deleted
+   */
+  deleteSelected(): number {
+    const selectedNodes = this.getSelectedNodes();
+    if (selectedNodes.length === 0) {
+      return 0;
+    }
+
+    // Delete nodes (this will also trigger link cleanup via events)
+    selectedNodes.forEach((node) => {
+      this.removeNode(node.id);
+    });
+
+    return selectedNodes.length;
+  }
+
+  /**
+   * Get node at position (for click detection)
+   * Returns the topmost node at the given position
+   * @param x - X coordinate
+   * @param y - Y coordinate
+   * @returns Node at position, or undefined if none found
+   */
+  getNodeAtPosition(x: number, y: number): NodeModel | undefined {
+    const nodes = this.getNodes();
+
+    // Iterate in reverse order (topmost node first)
+    for (let i = nodes.length - 1; i >= 0; i--) {
+      const node = nodes[i];
+      const bounds = node.getBoundingBox();
+
+      if (
+        x >= bounds.left &&
+        x <= bounds.right &&
+        y >= bounds.top &&
+        y <= bounds.bottom
+      ) {
+        return node;
+      }
+    }
+
+    return undefined;
+  }
+
+  /**
+   * Option 3: Lock/pin selected nodes
+   * Locked nodes will not move during layout operations
+   */
+  lockSelected(): number {
+    const selectedNodes = this.getSelectedNodes();
+    if (selectedNodes.length === 0) {
+      return 0;
+    }
+
+    selectedNodes.forEach((node) => {
+      node.setState({ locked: true });
+    });
+
+    return selectedNodes.length;
+  }
+
+  /**
+   * Option 3: Unlock selected nodes
+   */
+  unlockSelected(): number {
+    const selectedNodes = this.getSelectedNodes();
+    if (selectedNodes.length === 0) {
+      return 0;
+    }
+
+    selectedNodes.forEach((node) => {
+      node.setState({ locked: false });
+    });
+
+    return selectedNodes.length;
+  }
+
+  /**
+   * Option 3: Get locked nodes
+   */
+  getLockedNodes(): NodeModel[] {
+    return this.getNodes().filter((node) => node.state.locked);
+  }
+
+  /**
+   * Option 3: Unlock all nodes
+   */
+  unlockAll(): number {
+    const lockedNodes = this.getLockedNodes();
+    lockedNodes.forEach((node) => {
+      node.setState({ locked: false });
+    });
+    return lockedNodes.length;
+  }
+
+  /**
+   * Set viewport (Phase 0.5 - Viewport-Aware Layout)
+   */
+  setViewport(x: number, y: number, width: number, height: number, zoom?: number): void {
     const oldViewport = { ...this.viewport };
-    this.viewport = { x, y, zoom };
+    this.viewport = {
+      x,
+      y,
+      width,
+      height,
+      zoom: zoom !== undefined ? zoom : this.viewport.zoom
+    };
     this.trackChange('viewport', oldViewport, this.viewport);
     this.emitter.emit('viewport:changed', this.viewport);
+  }
+
+  /**
+   * Get current viewport
+   */
+  getViewport(): { x: number; y: number; width: number; height: number; zoom: number } {
+    return { ...this.viewport };
   }
 
   /**
    * Pan viewport
    */
   pan(dx: number, dy: number): void {
-    this.setViewport(this.viewport.x + dx, this.viewport.y + dy, this.viewport.zoom);
+    this.setViewport(
+      this.viewport.x + dx,
+      this.viewport.y + dy,
+      this.viewport.width,
+      this.viewport.height,
+      this.viewport.zoom
+    );
   }
 
   /**
-   * Zoom viewport
+   * Zoom viewport (relative adjustment)
    */
   zoom(delta: number, center?: Point): void {
     const newZoom = Math.max(0.1, Math.min(10, this.viewport.zoom + delta));
-    this.setViewport(this.viewport.x, this.viewport.y, newZoom);
+    this.setViewport(
+      this.viewport.x,
+      this.viewport.y,
+      this.viewport.width,
+      this.viewport.height,
+      newZoom
+    );
+  }
+
+  /**
+   * Set absolute zoom level
+   * Phase 0.5 - Option B: Pan/Zoom controls
+   * @param level - Zoom level (0.1 to 10.0)
+   * @param center - Optional center point for zoom (defaults to viewport center)
+   */
+  setZoom(level: number, center?: Point): void {
+    const newZoom = Math.max(0.1, Math.min(10, level));
+    this.setViewport(
+      this.viewport.x,
+      this.viewport.y,
+      this.viewport.width,
+      this.viewport.height,
+      newZoom
+    );
+  }
+
+  /**
+   * Fit viewport to show all nodes (without changing zoom level)
+   * Phase 0.5 - Option B: Pan/Zoom controls
+   * @param padding - Padding around content (default 100)
+   */
+  fitToView(padding: number = 100): void {
+    const nodes = this.getNodes();
+
+    if (nodes.length === 0) {
+      // No nodes - reset to default viewport
+      this.setViewport(0, 0, 1200, 800, this.viewport.zoom);
+      return;
+    }
+
+    // Calculate bounding box of all nodes
+    let minX = Infinity;
+    let minY = Infinity;
+    let maxX = -Infinity;
+    let maxY = -Infinity;
+
+    nodes.forEach(node => {
+      const bounds = node.getBoundingBox();
+      minX = Math.min(minX, bounds.left);
+      minY = Math.min(minY, bounds.top);
+      maxX = Math.max(maxX, bounds.right);
+      maxY = Math.max(maxY, bounds.bottom);
+    });
+
+    // Calculate content dimensions
+    const contentWidth = maxX - minX;
+    const contentHeight = maxY - minY;
+
+    // Calculate viewport size to fit content with padding
+    const viewportWidth = contentWidth + padding * 2;
+    const viewportHeight = contentHeight + padding * 2;
+
+    // Center the viewport on the content
+    const centerX = (minX + maxX) / 2;
+    const centerY = (minY + maxY) / 2;
+
+    this.setViewport(
+      centerX - viewportWidth / 2,
+      centerY - viewportHeight / 2,
+      viewportWidth,
+      viewportHeight,
+      this.viewport.zoom
+    );
+
+    console.log(`📐 Fit to view: ${nodes.length} nodes, bounds=(${minX.toFixed(1)}, ${minY.toFixed(1)}) to (${maxX.toFixed(1)}, ${maxY.toFixed(1)})`);
+  }
+
+  /**
+   * Fit viewport to show all nodes AND adjust zoom to fit screen
+   * Phase 0.5 - Option B: Pan/Zoom controls
+   * @param targetWidth - Target viewport width (e.g. screen width)
+   * @param targetHeight - Target viewport height (e.g. screen height)
+   * @param padding - Padding around content (default 100)
+   */
+  zoomToFit(targetWidth: number, targetHeight: number, padding: number = 100): void {
+    const nodes = this.getNodes();
+
+    if (nodes.length === 0) {
+      // No nodes - reset to default
+      this.setViewport(0, 0, targetWidth, targetHeight, 1.0);
+      return;
+    }
+
+    // Calculate bounding box of all nodes
+    let minX = Infinity;
+    let minY = Infinity;
+    let maxX = -Infinity;
+    let maxY = -Infinity;
+
+    nodes.forEach(node => {
+      const bounds = node.getBoundingBox();
+      minX = Math.min(minX, bounds.left);
+      minY = Math.min(minY, bounds.top);
+      maxX = Math.max(maxX, bounds.right);
+      maxY = Math.max(maxY, bounds.bottom);
+    });
+
+    // Calculate content dimensions
+    const contentWidth = maxX - minX;
+    const contentHeight = maxY - minY;
+
+    // Calculate zoom level to fit content in target viewport
+    const availableWidth = targetWidth - padding * 2;
+    const availableHeight = targetHeight - padding * 2;
+
+    const scaleX = availableWidth / contentWidth;
+    const scaleY = availableHeight / contentHeight;
+    const newZoom = Math.min(scaleX, scaleY, 1.0); // Don't zoom in beyond 1.0, only zoom out
+
+    // Center the content in the target viewport
+    const centerX = (minX + maxX) / 2;
+    const centerY = (minY + maxY) / 2;
+
+    this.setViewport(
+      centerX - targetWidth / 2,
+      centerY - targetHeight / 2,
+      targetWidth,
+      targetHeight,
+      Math.max(0.1, Math.min(10, newZoom))
+    );
+
+    console.log(`🔍 Zoom to fit: ${nodes.length} nodes, zoom=${newZoom.toFixed(2)}, content=${contentWidth.toFixed(1)}x${contentHeight.toFixed(1)}`);
   }
 
   /**
@@ -566,11 +1139,13 @@ export class DiagramModel extends DiagramEntity {
    *
    * @param zoom - Current zoom level
    * @returns LOD level (high/medium/low)
+   *
+   * NOTE: Threshold lowered from 0.5 to 0.2 for better label visibility in demos
    */
   getLODLevel(zoom: number): LODLevel {
     if (zoom > 1.0) {
       return 'high';
-    } else if (zoom > 0.5) {
+    } else if (zoom > 0.2) {
       return 'medium';
     } else {
       return 'low';
@@ -641,6 +1216,70 @@ export class DiagramModel extends DiagramEntity {
     return lod === 'high';
   }
 
+  // =============================================================================
+  // Layout Management API
+  // =============================================================================
+
+  /**
+   * Get the layout manager for this diagram
+   */
+  getLayoutManager(): LayoutManager {
+    return this._layoutManager;
+  }
+
+  /**
+   * Set layout algorithm
+   * @param type - Algorithm type ('grid', 'force-directed', 'hierarchical', 'hybrid')
+   * @param config - Optional configuration
+   */
+  setLayoutAlgorithm(type: LayoutAlgorithmType, config?: LayoutConfiguration): void {
+    this._layoutManager.setAlgorithm(type, config);
+  }
+
+  /**
+   * Get current layout algorithm type
+   */
+  getLayoutAlgorithm(): LayoutAlgorithmType {
+    return this._layoutManager.getCurrentAlgorithmType();
+  }
+
+  /**
+   * Configure current layout algorithm
+   */
+  configureLayout(config: LayoutConfiguration): void {
+    this._layoutManager.configure(config);
+  }
+
+  /**
+   * Get layout configuration
+   */
+  getLayoutConfiguration(): LayoutConfiguration {
+    return this._layoutManager.getConfiguration();
+  }
+
+  /**
+   * Enable or disable automatic layout for new nodes
+   * When enabled, newly added nodes will be automatically positioned using the current layout algorithm
+   */
+  setAutoLayout(enabled: boolean): void {
+    this._autoLayoutEnabled = enabled;
+  }
+
+  /**
+   * Check if auto-layout is enabled
+   */
+  isAutoLayoutEnabled(): boolean {
+    return this._autoLayoutEnabled;
+  }
+
+  /**
+   * Re-layout all nodes using current algorithm
+   * This will recalculate positions for all nodes in the diagram
+   */
+  async reLayout(config?: LayoutConfiguration): Promise<void> {
+    return this._layoutManager.reLayout(config);
+  }
+
   /**
    * Serialize to JSON
    */
@@ -665,7 +1304,14 @@ export class DiagramModel extends DiagramEntity {
   static fromJSON(data: SerializedDiagram): DiagramModel {
     const diagram = new DiagramModel(data.name);
 
-    diagram.viewport = data.viewport;
+    // Restore viewport with backward compatibility
+    diagram.viewport = {
+      x: data.viewport.x,
+      y: data.viewport.y,
+      width: data.viewport.width || 1200,   // Default for old diagrams
+      height: data.viewport.height || 800,  // Default for old diagrams
+      zoom: data.viewport.zoom
+    };
 
     // Restore nodes
     for (const nodeData of data.nodes) {
@@ -734,6 +1380,9 @@ export class DiagramModel extends DiagramEntity {
     // Clear spatial indices (prevents memory leaks from indexed entities)
     this.nodeSpatialIndex.clear();
     this.linkSpatialIndex.clear();
+
+    // Dispose layout manager
+    this._layoutManager.dispose();
 
     // Call parent dispose (removes listeners, clears metadata, etc.)
     super.dispose();
