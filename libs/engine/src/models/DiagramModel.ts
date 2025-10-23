@@ -568,7 +568,7 @@ export class DiagramModel extends DiagramEntity {
   }
 
   /**
-   * Zoom viewport
+   * Zoom viewport (relative adjustment)
    */
   zoom(delta: number, center?: Point): void {
     const newZoom = Math.max(0.1, Math.min(10, this.viewport.zoom + delta));
@@ -579,6 +579,131 @@ export class DiagramModel extends DiagramEntity {
       this.viewport.height,
       newZoom
     );
+  }
+
+  /**
+   * Set absolute zoom level
+   * Phase 0.5 - Option B: Pan/Zoom controls
+   * @param level - Zoom level (0.1 to 10.0)
+   * @param center - Optional center point for zoom (defaults to viewport center)
+   */
+  setZoom(level: number, center?: Point): void {
+    const newZoom = Math.max(0.1, Math.min(10, level));
+    this.setViewport(
+      this.viewport.x,
+      this.viewport.y,
+      this.viewport.width,
+      this.viewport.height,
+      newZoom
+    );
+  }
+
+  /**
+   * Fit viewport to show all nodes (without changing zoom level)
+   * Phase 0.5 - Option B: Pan/Zoom controls
+   * @param padding - Padding around content (default 100)
+   */
+  fitToView(padding: number = 100): void {
+    const nodes = this.getNodes();
+
+    if (nodes.length === 0) {
+      // No nodes - reset to default viewport
+      this.setViewport(0, 0, 1200, 800, this.viewport.zoom);
+      return;
+    }
+
+    // Calculate bounding box of all nodes
+    let minX = Infinity;
+    let minY = Infinity;
+    let maxX = -Infinity;
+    let maxY = -Infinity;
+
+    nodes.forEach(node => {
+      const bounds = node.getBoundingBox();
+      minX = Math.min(minX, bounds.left);
+      minY = Math.min(minY, bounds.top);
+      maxX = Math.max(maxX, bounds.right);
+      maxY = Math.max(maxY, bounds.bottom);
+    });
+
+    // Calculate content dimensions
+    const contentWidth = maxX - minX;
+    const contentHeight = maxY - minY;
+
+    // Calculate viewport size to fit content with padding
+    const viewportWidth = contentWidth + padding * 2;
+    const viewportHeight = contentHeight + padding * 2;
+
+    // Center the viewport on the content
+    const centerX = (minX + maxX) / 2;
+    const centerY = (minY + maxY) / 2;
+
+    this.setViewport(
+      centerX - viewportWidth / 2,
+      centerY - viewportHeight / 2,
+      viewportWidth,
+      viewportHeight,
+      this.viewport.zoom
+    );
+
+    console.log(`📐 Fit to view: ${nodes.length} nodes, bounds=(${minX.toFixed(1)}, ${minY.toFixed(1)}) to (${maxX.toFixed(1)}, ${maxY.toFixed(1)})`);
+  }
+
+  /**
+   * Fit viewport to show all nodes AND adjust zoom to fit screen
+   * Phase 0.5 - Option B: Pan/Zoom controls
+   * @param targetWidth - Target viewport width (e.g. screen width)
+   * @param targetHeight - Target viewport height (e.g. screen height)
+   * @param padding - Padding around content (default 100)
+   */
+  zoomToFit(targetWidth: number, targetHeight: number, padding: number = 100): void {
+    const nodes = this.getNodes();
+
+    if (nodes.length === 0) {
+      // No nodes - reset to default
+      this.setViewport(0, 0, targetWidth, targetHeight, 1.0);
+      return;
+    }
+
+    // Calculate bounding box of all nodes
+    let minX = Infinity;
+    let minY = Infinity;
+    let maxX = -Infinity;
+    let maxY = -Infinity;
+
+    nodes.forEach(node => {
+      const bounds = node.getBoundingBox();
+      minX = Math.min(minX, bounds.left);
+      minY = Math.min(minY, bounds.top);
+      maxX = Math.max(maxX, bounds.right);
+      maxY = Math.max(maxY, bounds.bottom);
+    });
+
+    // Calculate content dimensions
+    const contentWidth = maxX - minX;
+    const contentHeight = maxY - minY;
+
+    // Calculate zoom level to fit content in target viewport
+    const availableWidth = targetWidth - padding * 2;
+    const availableHeight = targetHeight - padding * 2;
+
+    const scaleX = availableWidth / contentWidth;
+    const scaleY = availableHeight / contentHeight;
+    const newZoom = Math.min(scaleX, scaleY, 1.0); // Don't zoom in beyond 1.0, only zoom out
+
+    // Center the content in the target viewport
+    const centerX = (minX + maxX) / 2;
+    const centerY = (minY + maxY) / 2;
+
+    this.setViewport(
+      centerX - targetWidth / 2,
+      centerY - targetHeight / 2,
+      targetWidth,
+      targetHeight,
+      Math.max(0.1, Math.min(10, newZoom))
+    );
+
+    console.log(`🔍 Zoom to fit: ${nodes.length} nodes, zoom=${newZoom.toFixed(2)}, content=${contentWidth.toFixed(1)}x${contentHeight.toFixed(1)}`);
   }
 
   /**

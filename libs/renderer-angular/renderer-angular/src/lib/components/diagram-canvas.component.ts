@@ -1,6 +1,8 @@
 import {
   Component,
   Input,
+  Output,
+  EventEmitter,
   OnInit,
   AfterViewInit,
   OnDestroy,
@@ -8,6 +10,7 @@ import {
   SimpleChanges,
   ViewChild,
   ElementRef,
+  HostListener,
   ChangeDetectionStrategy,
   ChangeDetectorRef,
 } from '@angular/core';
@@ -62,6 +65,41 @@ export class DiagramCanvasComponent implements OnInit, AfterViewInit, OnChanges,
   @Input() theme: Theme = LIGHT_THEME;
 
   /**
+   * Enable mouse wheel zoom (Phase 0.5 - Option B)
+   */
+  @Input() enableMouseWheelZoom = true;
+
+  /**
+   * Enable pan/drag with middle mouse button (Phase 0.5 - Option B)
+   */
+  @Input() enablePan = true;
+
+  /**
+   * Zoom sensitivity (Phase 0.5 - Option B)
+   */
+  @Input() zoomSensitivity = 0.1;
+
+  /**
+   * Minimum zoom level (Phase 0.5 - Option B)
+   */
+  @Input() minZoom = 0.1;
+
+  /**
+   * Maximum zoom level (Phase 0.5 - Option B)
+   */
+  @Input() maxZoom = 3.0;
+
+  /**
+   * Emit viewport changes (Phase 0.5 - Option B)
+   */
+  @Output() viewportChanged = new EventEmitter<Rectangle>();
+
+  /**
+   * Emit zoom changes (Phase 0.5 - Option B)
+   */
+  @Output() zoomChanged = new EventEmitter<number>();
+
+  /**
    * SVG container reference
    */
   @ViewChild('container', { static: true }) containerRef!: ElementRef<HTMLDivElement>;
@@ -75,6 +113,13 @@ export class DiagramCanvasComponent implements OnInit, AfterViewInit, OnChanges,
    * Flag to track if component is destroyed
    */
   private destroyed = false;
+
+  /**
+   * Pan/drag state (Phase 0.5 - Option B)
+   */
+  private isPanning = false;
+  private lastPanX = 0;
+  private lastPanY = 0;
 
   constructor(
     private vnodeRenderer: VNodeRendererService,
@@ -197,6 +242,107 @@ export class DiagramCanvasComponent implements OnInit, AfterViewInit, OnChanges,
       this.renderDiagram();
       this.cdr.detectChanges();
     });
+  }
+
+  /**
+   * Handle mouse wheel for zooming (Phase 0.5 - Option B)
+   */
+  @HostListener('wheel', ['$event'])
+  onWheel(event: WheelEvent): void {
+    if (!this.enableMouseWheelZoom || !this.engine) {
+      return;
+    }
+
+    event.preventDefault();
+
+    const diagram = this.engine.getDiagram();
+    if (!diagram) {
+      return;
+    }
+
+    // Calculate zoom delta based on wheel direction
+    const delta = event.deltaY > 0 ? -this.zoomSensitivity : this.zoomSensitivity;
+    const currentZoom = diagram.viewport.zoom;
+    const newZoom = Math.max(this.minZoom, Math.min(this.maxZoom, currentZoom + delta));
+
+    // Update diagram zoom
+    diagram.setZoom(newZoom);
+
+    // Emit zoom change event
+    this.zoomChanged.emit(newZoom);
+
+    // Trigger re-render
+    this.renderDiagram();
+    this.cdr.markForCheck();
+  }
+
+  /**
+   * Handle mouse down for panning (Phase 0.5 - Option B)
+   */
+  @HostListener('mousedown', ['$event'])
+  onMouseDown(event: MouseEvent): void {
+    if (!this.enablePan || !this.engine) {
+      return;
+    }
+
+    // Middle mouse button (button === 1) for panning
+    if (event.button === 1) {
+      event.preventDefault();
+      this.isPanning = true;
+      this.lastPanX = event.clientX;
+      this.lastPanY = event.clientY;
+    }
+  }
+
+  /**
+   * Handle mouse move for panning (Phase 0.5 - Option B)
+   */
+  @HostListener('mousemove', ['$event'])
+  onMouseMove(event: MouseEvent): void {
+    if (!this.isPanning || !this.engine) {
+      return;
+    }
+
+    const diagram = this.engine.getDiagram();
+    if (!diagram) {
+      return;
+    }
+
+    // Calculate pan delta
+    const dx = this.lastPanX - event.clientX;
+    const dy = this.lastPanY - event.clientY;
+
+    // Update diagram viewport
+    diagram.pan(dx / diagram.viewport.zoom, dy / diagram.viewport.zoom);
+
+    // Update last position
+    this.lastPanX = event.clientX;
+    this.lastPanY = event.clientY;
+
+    // Emit viewport change event
+    this.viewportChanged.emit(diagram.getViewport());
+
+    // Trigger re-render
+    this.renderDiagram();
+    this.cdr.markForCheck();
+  }
+
+  /**
+   * Handle mouse up to stop panning (Phase 0.5 - Option B)
+   */
+  @HostListener('mouseup', ['$event'])
+  onMouseUp(event: MouseEvent): void {
+    if (event.button === 1) {
+      this.isPanning = false;
+    }
+  }
+
+  /**
+   * Handle mouse leave to stop panning (Phase 0.5 - Option B)
+   */
+  @HostListener('mouseleave')
+  onMouseLeave(): void {
+    this.isPanning = false;
   }
 
   /**

@@ -157,22 +157,36 @@ export class AppComponent implements OnInit {
    * Zoom in (multiply by 1.1 for proportional zooming)
    */
   zoomIn(): void {
-    this.zoom = Math.min(this.zoom * 1.1, 3.0);
+    const diagram = this.engine.getDiagram();
+    if (diagram) {
+      const newZoom = Math.min(diagram.viewport.zoom * 1.1, 3.0);
+      diagram.setZoom(newZoom);
+      this.updateViewportFromDiagram();
+    }
   }
 
   /**
    * Zoom out (divide by 1.1 for proportional zooming)
    */
   zoomOut(): void {
-    this.zoom = Math.max(this.zoom / 1.1, 0.1);
+    const diagram = this.engine.getDiagram();
+    if (diagram) {
+      const newZoom = Math.max(diagram.viewport.zoom / 1.1, 0.1);
+      diagram.setZoom(newZoom);
+      this.updateViewportFromDiagram();
+    }
   }
 
   /**
    * Reset zoom to 100% and fit all nodes in view
    */
   resetZoom(): void {
-    this.zoom = 1.0;
-    this.fitToView();
+    const diagram = this.engine.getDiagram();
+    if (diagram) {
+      diagram.setZoom(1.0);
+      diagram.fitToView(100);
+      this.updateViewportFromDiagram();
+    }
   }
 
   /**
@@ -180,52 +194,22 @@ export class AppComponent implements OnInit {
    */
   fitToView(): void {
     const diagram = this.engine.getDiagram();
-    if (!diagram) {
-      this.viewport = { x: 0, y: 0, width: 1200, height: 800 };
-      return;
+    if (diagram) {
+      diagram.fitToView(100);
+      this.updateViewportFromDiagram();
     }
+  }
 
-    const nodes = diagram.getNodes();
-    if (nodes.length === 0) {
-      this.viewport = { x: 0, y: 0, width: 1200, height: 800 };
-      return;
+  /**
+   * Update local viewport state from diagram (Phase 0.5 - Option B)
+   */
+  private updateViewportFromDiagram(): void {
+    const diagram = this.engine.getDiagram();
+    if (diagram) {
+      const vp = diagram.getViewport();
+      this.viewport = { x: vp.x, y: vp.y, width: vp.width, height: vp.height };
+      this.zoom = vp.zoom;
     }
-
-    // Calculate bounding box of all nodes
-    let minX = Infinity;
-    let minY = Infinity;
-    let maxX = -Infinity;
-    let maxY = -Infinity;
-
-    nodes.forEach(node => {
-      const bounds = node.getBoundingBox();
-      minX = Math.min(minX, bounds.left);
-      minY = Math.min(minY, bounds.top);
-      maxX = Math.max(maxX, bounds.right);
-      maxY = Math.max(maxY, bounds.bottom);
-    });
-
-    // Add padding around nodes
-    const padding = 100; // Increased padding for better visibility
-    const contentWidth = maxX - minX;
-    const contentHeight = maxY - minY;
-
-    // Calculate viewport size to fit content with padding
-    const viewportWidth = contentWidth + padding * 2;
-    const viewportHeight = contentHeight + padding * 2;
-
-    // Center the viewport on the content
-    const centerX = (minX + maxX) / 2;
-    const centerY = (minY + maxY) / 2;
-
-    this.viewport = {
-      x: centerX - viewportWidth / 2,
-      y: centerY - viewportHeight / 2,
-      width: viewportWidth,
-      height: viewportHeight,
-    };
-
-    console.log(`📐 Fit to view: bounds=(${minX}, ${minY}) to (${maxX}, ${maxY}), viewport=${JSON.stringify(this.viewport)}`);
   }
 
   /**
