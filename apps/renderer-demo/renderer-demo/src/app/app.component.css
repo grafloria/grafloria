@@ -325,11 +325,57 @@
   margin-bottom: 0.5rem;
   white-space: pre-wrap;
   word-break: break-word;
+  color: #e2e8f0; /* Default light gray */
 }
 
 .output-line.hint {
   color: #718096;
   font-style: italic;
+}
+
+/* Command output color coding */
+.output-line.success {
+  color: #68d391; /* Success green */
+  font-weight: 500;
+}
+
+.output-line.error {
+  color: #fc8181; /* Error red */
+  font-weight: 500;
+}
+
+.output-line.warning {
+  color: #f6ad55; /* Warning orange */
+  font-weight: 500;
+}
+
+.output-line.info {
+  color: #63b3ed; /* Info blue */
+  font-weight: 500;
+}
+
+.output-line.command {
+  color: #90cdf4; /* Command blue */
+}
+
+.output-line.query {
+  color: #b794f4; /* Query purple */
+}
+
+.output-line.config {
+  color: #9ae6b4; /* Config green */
+}
+
+/* Box drawing characters and headers */
+.output-line.header {
+  color: #4fd1c5; /* Cyan for borders */
+  font-weight: bold;
+}
+
+/* Command prompts */
+.output-line.user-input {
+  color: #f6ad55; /* Orange for user input echo */
+  font-weight: 600;
 }
 
 .command-input-wrapper {

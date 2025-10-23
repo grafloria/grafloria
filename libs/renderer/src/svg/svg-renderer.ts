@@ -552,10 +552,10 @@ export class SVGRenderer implements IRenderer {
       return null;
     }
 
-    // CRITICAL FIX: Get port position in absolute coordinates (pixels)
-    // NOT the normalized position (0-1 range)
-    const nodeBounds = node.getBoundingBox();
-    const portPos = port.getAbsolutePosition(nodeBounds);
+    // CRITICAL FIX: Calculate port position RELATIVE to node's local coordinate system
+    // NOT absolute world coordinates, since ports are rendered inside a transformed group
+    // The node group already has: transform="translate(node.position.x, node.position.y)"
+    const portPos = this.getPortRelativePosition(port, node);
 
     // Calculate port radius with hover scaling
     const baseRadius = config.portDefaultRadius;
@@ -587,6 +587,42 @@ export class SVGRenderer implements IRenderer {
           : 'transition: all 0.2s ease; cursor: crosshair',
         opacity: isHighlighted ? 1 : 0.9,
       },
+    };
+  }
+
+  /**
+   * Get port position relative to node's local coordinate system
+   * Used for rendering ports inside node groups that are already transformed
+   */
+  private getPortRelativePosition(port: PortModel, node: NodeModel): { x: number; y: number } {
+    const { side } = port.alignment;
+    const nodeWidth = node.size.width;
+    const nodeHeight = node.size.height;
+    let x = 0;
+    let y = 0;
+
+    switch (side) {
+      case 'left':
+        x = 0 - port.alignment.offset;
+        y = nodeHeight * port.position.y;
+        break;
+      case 'right':
+        x = nodeWidth + port.alignment.offset;
+        y = nodeHeight * port.position.y;
+        break;
+      case 'top':
+        x = nodeWidth * port.position.x;
+        y = 0 - port.alignment.offset;
+        break;
+      case 'bottom':
+        x = nodeWidth * port.position.x;
+        y = nodeHeight + port.alignment.offset;
+        break;
+    }
+
+    return {
+      x: x + port.offset.x,
+      y: y + port.offset.y,
     };
   }
 

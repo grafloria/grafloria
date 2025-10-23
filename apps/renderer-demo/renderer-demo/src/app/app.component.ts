@@ -650,22 +650,32 @@ export class AppComponent implements OnInit {
           break;
 
         case 'help':
-          this.commandOutput.push(`Available commands:`);
-          this.commandOutput.push(`  add [count] - Add nodes (default 1)`);
-          this.commandOutput.push(`  clear - Remove all nodes`);
-          this.commandOutput.push(`  fit - Fit viewport to show all nodes`);
-          this.commandOutput.push(`  relayout - Re-arrange all nodes`);
-          this.commandOutput.push(`  layout [type] - Set/view layout algorithm`);
-          this.commandOutput.push(`  reset - Reset zoom and viewport`);
-          this.commandOutput.push(`  zoom [value] - Set zoom level`);
-          this.commandOutput.push(`  list - List all nodes`);
-          this.commandOutput.push(`  node [id] - Show selected/specific node details`);
-          this.commandOutput.push(`  nodes - Show all nodes with full details`);
-          this.commandOutput.push(`  link [id] - Show specific link details`);
-          this.commandOutput.push(`  links - Show all links with details`);
-          this.commandOutput.push(`  viewport - Show viewport information`);
-          this.commandOutput.push(`  linktype [type] - Set link path type (direct/smooth/orthogonal/bezier)`);
-          this.commandOutput.push(`  help - Show this help`);
+          this.commandOutput.push(`╔════════════════════════════════════════════════════════════════════╗`);
+          this.commandOutput.push(`║                    📋 Available Commands                          ║`);
+          this.commandOutput.push(`╚════════════════════════════════════════════════════════════════════╝`);
+          this.commandOutput.push(``);
+          this.commandOutput.push(`  🔹 add [count]           Add nodes to diagram (default: 1)`);
+          this.commandOutput.push(`  🔹 clear                 Remove all nodes from diagram`);
+          this.commandOutput.push(`  🔹 fit                   Fit viewport to show all nodes`);
+          this.commandOutput.push(`  🔹 relayout              Re-arrange all nodes with current layout`);
+          this.commandOutput.push(`  🔹 layout [type]         Set/view layout algorithm`);
+          this.commandOutput.push(`                             (grid, hierarchical, force-directed, hybrid)`);
+          this.commandOutput.push(`  🔹 reset                 Reset zoom to 100% and center viewport`);
+          this.commandOutput.push(`  🔹 zoom [value]          Set zoom level (0.1 to 3.0)`);
+          this.commandOutput.push(``);
+          this.commandOutput.push(`  🔍 list                  List all nodes with basic info`);
+          this.commandOutput.push(`  🔍 nodes                 Show all nodes with detailed properties`);
+          this.commandOutput.push(`  🔍 node [id]             Show specific node details (or selected)`);
+          this.commandOutput.push(`  🔍 links                 Show all links with detailed properties`);
+          this.commandOutput.push(`  🔍 link [id]             Show specific link details`);
+          this.commandOutput.push(`  🔍 viewport              Display viewport information`);
+          this.commandOutput.push(``);
+          this.commandOutput.push(`  ⚙️  linktype [type]      Set link path type`);
+          this.commandOutput.push(`                             (direct, smooth, orthogonal, bezier)`);
+          this.commandOutput.push(`  ⚙️  help                 Show this help message`);
+          this.commandOutput.push(``);
+          this.commandOutput.push(`  💡 Tip: Commands are case-insensitive`);
+          this.commandOutput.push(`─────────────────────────────────────────────────────────────────────`);
           break;
 
         // DEBUG: Show selected or specific node details
@@ -854,5 +864,51 @@ export class AppComponent implements OnInit {
    */
   clearOutput(): void {
     this.commandOutput = [];
+  }
+
+  /**
+   * Get CSS class for command output line based on content
+   */
+  getLineClass(line: string): string {
+    const classes = ['output-line'];
+
+    // Success messages
+    if (line.includes('✅')) {
+      classes.push('success');
+    }
+    // Error messages
+    else if (line.includes('❌')) {
+      classes.push('error');
+    }
+    // Warning messages
+    else if (line.includes('⚠️')) {
+      classes.push('warning');
+    }
+    // Info/tip messages
+    else if (line.includes('💡')) {
+      classes.push('info');
+    }
+    // Command lines (blue)
+    else if (line.includes('🔹')) {
+      classes.push('command');
+    }
+    // Query lines (purple)
+    else if (line.includes('🔍')) {
+      classes.push('query');
+    }
+    // Config lines (green)
+    else if (line.includes('⚙️')) {
+      classes.push('config');
+    }
+    // Box drawing / headers
+    else if (line.includes('╔') || line.includes('║') || line.includes('╚') || line.includes('─')) {
+      classes.push('header');
+    }
+    // User input echo (starts with >)
+    else if (line.trim().startsWith('>')) {
+      classes.push('user-input');
+    }
+
+    return classes.join(' ');
   }
 }
