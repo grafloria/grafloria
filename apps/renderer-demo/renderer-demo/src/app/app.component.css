@@ -366,10 +366,21 @@
   color: #9ae6b4; /* Config green */
 }
 
-/* Box drawing characters and headers */
+/* Description lines - smaller and italic */
+.output-line.description {
+  font-size: 0.75rem;
+  font-style: italic;
+  color: #a0aec0; /* Muted gray */
+  margin-top: -0.25rem; /* Pull closer to command */
+  line-height: 1.4;
+}
+
+/* Section headers */
 .output-line.header {
-  color: #4fd1c5; /* Cyan for borders */
+  color: #4fd1c5; /* Cyan */
   font-weight: bold;
+  font-size: 1rem;
+  margin-bottom: 0.3rem;
 }
 
 /* Command prompts */

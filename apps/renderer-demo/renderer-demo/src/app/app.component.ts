@@ -650,32 +650,42 @@ export class AppComponent implements OnInit {
           break;
 
         case 'help':
-          this.commandOutput.push(`╔════════════════════════════════════════════════════════════════════╗`);
-          this.commandOutput.push(`║                    📋 Available Commands                          ║`);
-          this.commandOutput.push(`╚════════════════════════════════════════════════════════════════════╝`);
+          this.commandOutput.push(`📋 Available Commands`);
           this.commandOutput.push(``);
-          this.commandOutput.push(`  🔹 add [count]           Add nodes to diagram (default: 1)`);
-          this.commandOutput.push(`  🔹 clear                 Remove all nodes from diagram`);
-          this.commandOutput.push(`  🔹 fit                   Fit viewport to show all nodes`);
-          this.commandOutput.push(`  🔹 relayout              Re-arrange all nodes with current layout`);
-          this.commandOutput.push(`  🔹 layout [type]         Set/view layout algorithm`);
-          this.commandOutput.push(`                             (grid, hierarchical, force-directed, hybrid)`);
-          this.commandOutput.push(`  🔹 reset                 Reset zoom to 100% and center viewport`);
-          this.commandOutput.push(`  🔹 zoom [value]          Set zoom level (0.1 to 3.0)`);
+          this.commandOutput.push(`  🔹 add [count]`);
+          this.commandOutput.push(`     ~Add nodes to diagram (default: 1)`);
+          this.commandOutput.push(`  🔹 clear`);
+          this.commandOutput.push(`     ~Remove all nodes from diagram`);
+          this.commandOutput.push(`  🔹 fit`);
+          this.commandOutput.push(`     ~Fit viewport to show all nodes`);
+          this.commandOutput.push(`  🔹 relayout`);
+          this.commandOutput.push(`     ~Re-arrange all nodes with current layout`);
+          this.commandOutput.push(`  🔹 layout [type]`);
+          this.commandOutput.push(`     ~Set/view layout algorithm (grid, hierarchical, force-directed, hybrid)`);
+          this.commandOutput.push(`  🔹 reset`);
+          this.commandOutput.push(`     ~Reset zoom to 100% and center viewport`);
+          this.commandOutput.push(`  🔹 zoom [value]`);
+          this.commandOutput.push(`     ~Set zoom level (0.1 to 3.0)`);
           this.commandOutput.push(``);
-          this.commandOutput.push(`  🔍 list                  List all nodes with basic info`);
-          this.commandOutput.push(`  🔍 nodes                 Show all nodes with detailed properties`);
-          this.commandOutput.push(`  🔍 node [id]             Show specific node details (or selected)`);
-          this.commandOutput.push(`  🔍 links                 Show all links with detailed properties`);
-          this.commandOutput.push(`  🔍 link [id]             Show specific link details`);
-          this.commandOutput.push(`  🔍 viewport              Display viewport information`);
+          this.commandOutput.push(`  🔍 list`);
+          this.commandOutput.push(`     ~List all nodes with basic info`);
+          this.commandOutput.push(`  🔍 nodes`);
+          this.commandOutput.push(`     ~Show all nodes with detailed properties`);
+          this.commandOutput.push(`  🔍 node [id]`);
+          this.commandOutput.push(`     ~Show specific node details (or selected)`);
+          this.commandOutput.push(`  🔍 links`);
+          this.commandOutput.push(`     ~Show all links with detailed properties`);
+          this.commandOutput.push(`  🔍 link [id]`);
+          this.commandOutput.push(`     ~Show specific link details`);
+          this.commandOutput.push(`  🔍 viewport`);
+          this.commandOutput.push(`     ~Display viewport information`);
           this.commandOutput.push(``);
-          this.commandOutput.push(`  ⚙️  linktype [type]      Set link path type`);
-          this.commandOutput.push(`                             (direct, smooth, orthogonal, bezier)`);
-          this.commandOutput.push(`  ⚙️  help                 Show this help message`);
+          this.commandOutput.push(`  ⚙️  linktype [type]`);
+          this.commandOutput.push(`     ~Set link path type (direct, smooth, orthogonal, bezier)`);
+          this.commandOutput.push(`  ⚙️  help`);
+          this.commandOutput.push(`     ~Show this help message`);
           this.commandOutput.push(``);
-          this.commandOutput.push(`  💡 Tip: Commands are case-insensitive`);
-          this.commandOutput.push(`─────────────────────────────────────────────────────────────────────`);
+          this.commandOutput.push(`💡 Tip: Commands are case-insensitive`);
           break;
 
         // DEBUG: Show selected or specific node details
@@ -867,13 +877,28 @@ export class AppComponent implements OnInit {
   }
 
   /**
+   * Format line for display (strip special markers)
+   */
+  formatLine(line: string): string {
+    // Remove ~ prefix from description lines
+    if (line.trim().startsWith('~')) {
+      return line.replace('~', '');
+    }
+    return line;
+  }
+
+  /**
    * Get CSS class for command output line based on content
    */
   getLineClass(line: string): string {
     const classes = ['output-line'];
 
+    // Description lines (start with spaces and ~)
+    if (line.trim().startsWith('~')) {
+      classes.push('description');
+    }
     // Success messages
-    if (line.includes('✅')) {
+    else if (line.includes('✅')) {
       classes.push('success');
     }
     // Error messages
@@ -900,13 +925,13 @@ export class AppComponent implements OnInit {
     else if (line.includes('⚙️')) {
       classes.push('config');
     }
-    // Box drawing / headers
-    else if (line.includes('╔') || line.includes('║') || line.includes('╚') || line.includes('─')) {
-      classes.push('header');
-    }
     // User input echo (starts with >)
     else if (line.trim().startsWith('>')) {
       classes.push('user-input');
+    }
+    // Header (section titles)
+    else if (line.includes('📋')) {
+      classes.push('header');
     }
 
     return classes.join(' ');

@@ -26,7 +26,7 @@
       </div>
 
       <div class="command-output">
-        <div *ngFor="let line of commandOutput" [ngClass]="getLineClass(line)">{{ line }}</div>
+        <div *ngFor="let line of commandOutput" [ngClass]="getLineClass(line)">{{ formatLine(line) }}</div>
         <div *ngIf="commandOutput.length === 0" class="output-line hint">
           Type 'help' for available commands
         </div>
