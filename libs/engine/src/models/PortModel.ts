@@ -50,6 +50,25 @@ export class PortModel extends DiagramEntity {
   // User data
   data: Record<string, any> = {};
 
+  // Phase 1: Interaction state (for connection modes)
+  /**
+   * Whether mouse is currently hovering over this port
+   * Used for visual feedback (scaling, highlighting)
+   */
+  isHovered: boolean = false;
+
+  /**
+   * Whether this port is highlighted as a valid connection target
+   * Set during connection drag operations
+   */
+  isHighlighted: boolean = false;
+
+  /**
+   * Whether this port is a valid target for current connection
+   * Set by ConnectionStateManager during drag
+   */
+  isValidTarget: boolean = false;
+
   constructor(config: {
     id?: string;
     type: 'input' | 'output' | 'bi';
@@ -266,6 +285,96 @@ export class PortModel extends DiagramEntity {
       x: x + this.offset.x,
       y: y + this.offset.y,
     };
+  }
+
+  /**
+   * Phase 1: Get port position at node edge (for smart mode)
+   * Returns the position at the edge midpoint based on alignment
+   */
+  getEdgePosition(nodeBounds: BoundingBox): Point {
+    const { side } = this.alignment;
+
+    switch (side) {
+      case 'left':
+        return {
+          x: nodeBounds.left,
+          y: nodeBounds.top + nodeBounds.height / 2,
+        };
+      case 'right':
+        return {
+          x: nodeBounds.right,
+          y: nodeBounds.top + nodeBounds.height / 2,
+        };
+      case 'top':
+        return {
+          x: nodeBounds.left + nodeBounds.width / 2,
+          y: nodeBounds.top,
+        };
+      case 'bottom':
+        return {
+          x: nodeBounds.left + nodeBounds.width / 2,
+          y: nodeBounds.bottom,
+        };
+    }
+  }
+
+  /**
+   * Phase 1: Find nearest port on a node to a given point
+   * Used in smart mode for auto-connect to nearest port
+   *
+   * @param point - Point in world coordinates
+   * @param node - Node to find port on
+   * @param nodeBounds - Bounding box of the node
+   * @returns Nearest port or null
+   */
+  static findNearestPort(
+    point: Point,
+    ports: Map<string, PortModel>,
+    nodeBounds: BoundingBox
+  ): PortModel | null {
+    let nearestPort: PortModel | null = null;
+    let minDistance = Infinity;
+
+    ports.forEach((port) => {
+      // Get port position at edge
+      const portPos = port.getEdgePosition(nodeBounds);
+
+      // Calculate distance
+      const dx = point.x - portPos.x;
+      const dy = point.y - portPos.y;
+      const distance = Math.sqrt(dx * dx + dy * dy);
+
+      if (distance < minDistance) {
+        minDistance = distance;
+        nearestPort = port;
+      }
+    });
+
+    return nearestPort;
+  }
+
+  /**
+   * Phase 1: Calculate distance from point to this port
+   *
+   * @param point - Point in world coordinates
+   * @param nodeBounds - Bounding box of the node this port belongs to
+   * @returns Distance in pixels
+   */
+  getDistanceFromPoint(point: Point, nodeBounds: BoundingBox): number {
+    const portPos = this.getAbsolutePosition(nodeBounds);
+    const dx = point.x - portPos.x;
+    const dy = point.y - portPos.y;
+    return Math.sqrt(dx * dx + dy * dy);
+  }
+
+  /**
+   * Phase 1: Reset interaction state
+   * Called when connection drag ends or is cancelled
+   */
+  resetInteractionState(): void {
+    this.isHovered = false;
+    this.isHighlighted = false;
+    this.isValidTarget = false;
   }
 
   /**

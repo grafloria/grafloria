@@ -48,6 +48,19 @@ export class LinkModel extends DiagramEntity {
   // User data
   data: Record<string, any> = {};
 
+  // Phase 1: Endpoint selection state (for reconnection)
+  /**
+   * Whether source endpoint handle is selected
+   * Used for dragging endpoint to reconnect
+   */
+  isSourceEndpointSelected: boolean = false;
+
+  /**
+   * Whether target endpoint handle is selected
+   * Used for dragging endpoint to reconnect
+   */
+  isTargetEndpointSelected: boolean = false;
+
   constructor(
     sourcePortId: string,
     targetPortId: string,
@@ -326,6 +339,110 @@ export class LinkModel extends DiagramEntity {
    */
   getData(key: string): any {
     return this.data[key];
+  }
+
+  /**
+   * Phase 1: Reconnect source endpoint to new port
+   * Used for link reconnection workflow
+   */
+  reconnectSource(newPortId: string, newNodeId?: string): void {
+    const oldPortId = this.sourcePortId;
+    const oldNodeId = this.sourceNodeId;
+
+    this.sourcePortId = newPortId;
+    if (newNodeId) {
+      this.sourceNodeId = newNodeId;
+    }
+
+    this.trackChange('sourcePortId', oldPortId, newPortId);
+
+    this.emitter.emit('link:reconnected', {
+      endpoint: 'source',
+      oldPortId,
+      newPortId,
+      oldNodeId,
+      newNodeId,
+    });
+
+    // Mark dirty for re-rendering
+    this.markDirty();
+  }
+
+  /**
+   * Phase 1: Reconnect target endpoint to new port
+   * Used for link reconnection workflow
+   */
+  reconnectTarget(newPortId: string, newNodeId?: string): void {
+    const oldPortId = this.targetPortId;
+    const oldNodeId = this.targetNodeId;
+
+    this.targetPortId = newPortId;
+    if (newNodeId) {
+      this.targetNodeId = newNodeId;
+    }
+
+    this.trackChange('targetPortId', oldPortId, newPortId);
+
+    this.emitter.emit('link:reconnected', {
+      endpoint: 'target',
+      oldPortId,
+      newPortId,
+      oldNodeId,
+      newNodeId,
+    });
+
+    // Mark dirty for re-rendering
+    this.markDirty();
+  }
+
+  /**
+   * Phase 1: Get source endpoint position
+   * Returns the first point in the path (source end)
+   */
+  getSourceEndpoint(): Point {
+    return this.points[0] || { x: 0, y: 0 };
+  }
+
+  /**
+   * Phase 1: Get target endpoint position
+   * Returns the last point in the path (target end)
+   */
+  getTargetEndpoint(): Point {
+    return this.points[this.points.length - 1] || { x: 0, y: 0 };
+  }
+
+  /**
+   * Phase 1: Select source endpoint handle
+   */
+  selectSourceEndpoint(): void {
+    this.isSourceEndpointSelected = true;
+    this.isTargetEndpointSelected = false;
+    this.emitter.emit('link:endpoint-selected', { endpoint: 'source' });
+  }
+
+  /**
+   * Phase 1: Select target endpoint handle
+   */
+  selectTargetEndpoint(): void {
+    this.isTargetEndpointSelected = true;
+    this.isSourceEndpointSelected = false;
+    this.emitter.emit('link:endpoint-selected', { endpoint: 'target' });
+  }
+
+  /**
+   * Phase 1: Deselect all endpoint handles
+   */
+  deselectEndpoints(): void {
+    this.isSourceEndpointSelected = false;
+    this.isTargetEndpointSelected = false;
+    this.emitter.emit('link:endpoint-deselected');
+  }
+
+  /**
+   * Phase 1: Check if any endpoint is selected
+   */
+  hasSelectedEndpoint(): boolean {
+    return this.isSourceEndpointSelected || this.isTargetEndpointSelected;
   }
 
   /**

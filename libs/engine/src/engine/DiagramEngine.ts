@@ -24,6 +24,10 @@ import { ClipboardManager } from '../clipboard/ClipboardManager'; // Phase 1.8
 import { SelectionManager } from '../selection/SelectionManager'; // Phase 1.8a
 import { DiagramMode, isValidDiagramMode, ModeChangeEvent } from './DiagramMode';
 import { ModeManager } from './ModeManager';
+// Phase 1: Interaction modes
+import { ConnectionStateManager } from '../state/ConnectionStateManager';
+import type { InteractionConfig } from '../config/InteractionConfig';
+import { DEFAULT_INTERACTION_CONFIG } from '../config/InteractionConfig';
 // Routing imports
 import { ObstacleMapBuilder } from '../routing/ObstacleMapBuilder';
 import { StraightRouter } from '../routing/algorithms/StraightRouter';
@@ -64,6 +68,8 @@ export interface DiagramEngineConfig {
     maxCommands?: number;
     maxSnapshots?: number;
   };
+  // Phase 1: Interaction configuration
+  interaction?: Partial<InteractionConfig>;
 }
 
 export class DiagramEngine {
@@ -86,6 +92,10 @@ export class DiagramEngine {
   // Configuration
   private config: DiagramEngineConfig;
 
+  // Phase 1: Interaction configuration and state
+  private interactionConfig: InteractionConfig;
+  private connectionStateManager: ConnectionStateManager;
+
   // State
   private initialized: boolean = false;
   private destroyed: boolean = false;
@@ -96,6 +106,15 @@ export class DiagramEngine {
     // Initialize core systems
     this.eventBus = new EventBus();
     this.store = new DiagramStore();
+
+    // Phase 1: Initialize interaction config
+    this.interactionConfig = {
+      ...DEFAULT_INTERACTION_CONFIG,
+      ...config.interaction,
+    };
+
+    // Phase 1: Initialize connection state manager
+    this.connectionStateManager = new ConnectionStateManager(this.eventBus);
 
     // Initialize ModeManager with context provider
     this.modeManager = new ModeManager(
@@ -146,6 +165,39 @@ export class DiagramEngine {
    */
   getConfig(): DiagramEngineConfig {
     return this.config;
+  }
+
+  /**
+   * Phase 1: Get interaction configuration
+   * Returns the current interaction mode settings
+   */
+  getInteractionConfig(): InteractionConfig {
+    return { ...this.interactionConfig };
+  }
+
+  /**
+   * Phase 1: Set interaction configuration
+   * Updates interaction mode settings and emits event
+   */
+  setInteractionConfig(config: Partial<InteractionConfig>): void {
+    const oldConfig = { ...this.interactionConfig };
+    this.interactionConfig = {
+      ...this.interactionConfig,
+      ...config,
+    };
+
+    this.eventBus.emit('config:interaction-changed', {
+      oldConfig,
+      newConfig: this.interactionConfig,
+    });
+  }
+
+  /**
+   * Phase 1: Get connection state manager
+   * Used for managing connection drag operations
+   */
+  getConnectionStateManager(): ConnectionStateManager {
+    return this.connectionStateManager;
   }
 
   /**

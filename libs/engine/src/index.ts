@@ -21,6 +21,9 @@ export * from './validation';
 // State
 export * from './state';
 
+// Config
+export * from './config';
+
 // Engine
 export * from './engine';
 
