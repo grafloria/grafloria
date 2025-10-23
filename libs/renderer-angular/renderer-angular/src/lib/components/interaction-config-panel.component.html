@@ -1,0 +1,179 @@
+<div class="config-panel" *ngIf="config">
+  <!-- Panel Header -->
+  <div class="panel-header" (click)="toggleCollapse()">
+    <h3 class="panel-title">{{ title }}</h3>
+    <button class="toggle-button" type="button">
+      {{ isCollapsed ? '▼' : '▲' }}
+    </button>
+  </div>
+
+  <!-- Panel Content -->
+  <div class="panel-content" [class.collapsed]="isCollapsed">
+    <!-- Interaction Mode -->
+    <div class="config-section">
+      <label class="section-label">Interaction Mode</label>
+      <select
+        class="config-select"
+        [value]="config.mode"
+        (change)="onModeChange($any($event.target).value)">
+        <option *ngFor="let mode of interactionModes" [value]="mode.value">
+          {{ mode.label }}
+        </option>
+      </select>
+      <p class="help-text">{{ getModeDescription() }}</p>
+    </div>
+
+    <!-- Port Visibility -->
+    <div class="config-section">
+      <label class="section-label">Port Visibility</label>
+      <select
+        class="config-select"
+        [value]="config.portVisibility"
+        (change)="onPortVisibilityChange($any($event.target).value)">
+        <option *ngFor="let visibility of portVisibilityOptions" [value]="visibility.value">
+          {{ visibility.label }}
+        </option>
+      </select>
+      <p class="help-text">{{ getPortVisibilityDescription() }}</p>
+    </div>
+
+    <!-- Connection Line Style -->
+    <div class="config-section">
+      <label class="section-label">Connection Line Style</label>
+      <select
+        class="config-select"
+        [value]="config.connectionLineStyle"
+        (change)="onConnectionLineStyleChange($any($event.target).value)">
+        <option *ngFor="let style of connectionLineStyles" [value]="style.value">
+          {{ style.label }}
+        </option>
+      </select>
+      <p class="help-text">{{ getConnectionLineStyleDescription() }}</p>
+    </div>
+
+    <!-- Feature Toggles -->
+    <div class="config-section">
+      <label class="section-label">Features</label>
+
+      <div class="checkbox-group">
+        <label class="checkbox-label">
+          <input
+            type="checkbox"
+            [checked]="config.showConnectionPreview"
+            (change)="onToggleChange('showConnectionPreview', $any($event.target).checked)">
+          <span>Show Connection Preview</span>
+        </label>
+
+        <label class="checkbox-label">
+          <input
+            type="checkbox"
+            [checked]="config.animateConnectionPreview"
+            (change)="onToggleChange('animateConnectionPreview', $any($event.target).checked)">
+          <span>Animate Preview Line</span>
+        </label>
+
+        <label class="checkbox-label">
+          <input
+            type="checkbox"
+            [checked]="config.highlightValidTargets"
+            (change)="onToggleChange('highlightValidTargets', $any($event.target).checked)">
+          <span>Highlight Valid Targets</span>
+        </label>
+
+        <label class="checkbox-label">
+          <input
+            type="checkbox"
+            [checked]="config.enableLinkReconnection"
+            (change)="onToggleChange('enableLinkReconnection', $any($event.target).checked)">
+          <span>Enable Link Reconnection</span>
+        </label>
+
+        <label class="checkbox-label" *ngIf="config.enableLinkReconnection">
+          <input
+            type="checkbox"
+            [checked]="config.showLinkEndpointHandles"
+            (change)="onToggleChange('showLinkEndpointHandles', $any($event.target).checked)">
+          <span>Show Endpoint Handles</span>
+        </label>
+
+        <label class="checkbox-label" *ngIf="config.mode === 'smart'">
+          <input
+            type="checkbox"
+            [checked]="config.enableSmartAutoConnect"
+            (change)="onToggleChange('enableSmartAutoConnect', $any($event.target).checked)">
+          <span>Enable Smart Auto-Connect</span>
+        </label>
+      </div>
+    </div>
+
+    <!-- Advanced Settings -->
+    <div class="config-section" *ngIf="showAdvanced">
+      <div class="advanced-header" (click)="toggleAdvanced()">
+        <label class="section-label">Advanced Settings</label>
+        <button class="toggle-button-small" type="button">
+          {{ isAdvancedCollapsed ? '▼' : '▲' }}
+        </button>
+      </div>
+
+      <div class="advanced-content" [class.collapsed]="isAdvancedCollapsed">
+        <!-- Port Default Radius -->
+        <div class="slider-group">
+          <label class="slider-label">
+            <span>Port Radius</span>
+            <span class="slider-value">{{ config.portDefaultRadius }}px</span>
+          </label>
+          <input
+            type="range"
+            class="config-slider"
+            min="4"
+            max="12"
+            step="1"
+            [value]="config.portDefaultRadius"
+            (input)="onPortRadiusChange(+$any($event.target).value)">
+          <p class="help-text-small">Default size of port circles</p>
+        </div>
+
+        <!-- Port Hover Scale Factor -->
+        <div class="slider-group">
+          <label class="slider-label">
+            <span>Port Hover Scale</span>
+            <span class="slider-value">{{ config.portHoverScaleFactor }}x</span>
+          </label>
+          <input
+            type="range"
+            class="config-slider"
+            min="1"
+            max="2"
+            step="0.1"
+            [value]="config.portHoverScaleFactor"
+            (input)="onPortHoverScaleChange(+$any($event.target).value)">
+          <p class="help-text-small">How much ports grow on hover</p>
+        </div>
+
+        <!-- Snap to Port Radius -->
+        <div class="slider-group">
+          <label class="slider-label">
+            <span>Snap Radius</span>
+            <span class="slider-value">{{ config.snapToPortRadius }}px</span>
+          </label>
+          <input
+            type="range"
+            class="config-slider"
+            min="10"
+            max="50"
+            step="5"
+            [value]="config.snapToPortRadius"
+            (input)="onSnapRadiusChange(+$any($event.target).value)">
+          <p class="help-text-small">Distance for auto-connect in smart mode</p>
+        </div>
+      </div>
+    </div>
+
+    <!-- Reset Button -->
+    <div class="config-section">
+      <button class="reset-button" type="button" (click)="resetToDefaults()">
+        Reset to Defaults
+      </button>
+    </div>
+  </div>
+</div>
