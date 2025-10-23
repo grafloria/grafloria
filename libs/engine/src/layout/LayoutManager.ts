@@ -189,6 +189,10 @@ export class LayoutManager {
         }
       });
 
+      // CRITICAL: Recalculate all link paths after nodes have moved
+      // Links don't automatically update when nodes move - we must explicitly regenerate their paths
+      this.recalculateLinkPaths();
+
       this.emitEvent({
         type: 'layout:completed',
         algorithmType: this.currentAlgorithm.getType(),
@@ -205,6 +209,63 @@ export class LayoutManager {
 
       throw error;
     }
+  }
+
+  /**
+   * Recalculate all link paths based on current node/port positions
+   *
+   * CRITICAL: This must be called after moving nodes programmatically (e.g., layout algorithms)
+   * because links don't automatically update their paths when nodes move.
+   *
+   * How it works:
+   * 1. Get all links in the diagram
+   * 2. For each link, find its source and target ports
+   * 3. Calculate port absolute positions based on current node positions
+   * 4. Call link.generatePath() to recalculate the path points
+   */
+  private recalculateLinkPaths(): void {
+    const links = this.diagram.getLinks();
+    let recalculated = 0;
+
+    links.forEach((link) => {
+      // Find source and target nodes
+      const sourceNode = this.diagram.getNodes().find((n) =>
+        n.getPorts().some((p) => p.id === link.sourcePortId)
+      );
+      const targetNode = this.diagram.getNodes().find((n) =>
+        n.getPorts().some((p) => p.id === link.targetPortId)
+      );
+
+      if (!sourceNode || !targetNode) {
+        console.warn(`⚠️ Link ${link.id} missing source or target node`);
+        return;
+      }
+
+      // Find the actual port objects
+      const sourcePort = sourceNode.getPorts().find((p) => p.id === link.sourcePortId);
+      const targetPort = targetNode.getPorts().find((p) => p.id === link.targetPortId);
+
+      if (!sourcePort || !targetPort) {
+        console.warn(`⚠️ Link ${link.id} missing source or target port`);
+        return;
+      }
+
+      // Get node bounding boxes
+      const sourceBounds = sourceNode.getBoundingBox();
+      const targetBounds = targetNode.getBoundingBox();
+
+      // Calculate absolute port positions
+      const sourcePoint = sourcePort.getAbsolutePosition(sourceBounds);
+      const targetPoint = targetPort.getAbsolutePosition(targetBounds);
+
+      // Regenerate the link path with new port positions
+      link.generatePath(sourcePoint, targetPoint);
+      link.markDirty(); // Force re-render
+
+      recalculated++;
+    });
+
+    console.log(`🔗 Recalculated ${recalculated} link paths after layout`);
   }
 
   /**
