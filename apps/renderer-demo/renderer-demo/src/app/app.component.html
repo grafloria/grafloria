@@ -15,6 +15,14 @@
         <button (click)="fitToView()" class="btn">Fit View</button>
         <button (click)="resetZoom()" class="btn">Reset</button>
       </div>
+      <div class="layout-controls">
+        <button (click)="reLayoutDiagram()" class="btn">🔄 Re-Layout</button>
+        <select [(ngModel)]="currentLayout" (change)="setLayoutAlgorithm(currentLayout)" class="layout-select">
+          <option *ngFor="let layout of availableLayouts" [value]="layout">
+            {{ layout === 'grid' ? 'Grid' : layout === 'force-directed' ? 'Force' : layout === 'hierarchical' ? 'Hierarchical' : 'Hybrid' }}
+          </option>
+        </select>
+      </div>
       <button (click)="addRandomNode()" class="btn btn-primary">
         + Add Node
       </button>
@@ -66,6 +74,7 @@
       <span>Nodes: {{ (engine?.getDiagram()?.getNodes()?.length) || 0 }}</span>
       <span>Links: {{ (engine?.getDiagram()?.getLinks()?.length) || 0 }}</span>
       <span>Zoom: {{ (zoom * 100).toFixed(0) }}%</span>
+      <span>Layout: {{ currentLayout }}</span>
       <span>Theme: {{ theme.name }}</span>
     </div>
     <div class="info">

@@ -2,7 +2,14 @@ import { Component, OnInit } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { DiagramCanvasComponent } from '@grafloria/renderer-angular';
-import { DiagramEngine, NodeModel, LinkModel, PortModel } from '@grafloria/engine';
+import {
+  DiagramEngine,
+  NodeModel,
+  LinkModel,
+  PortModel,
+  LayoutAlgorithmType,
+  GridLayoutOptions
+} from '@grafloria/engine';
 import { LIGHT_THEME, DARK_THEME, type Theme, type Rectangle } from '@grafloria/renderer';
 
 @Component({
@@ -29,9 +36,14 @@ export class AppComponent implements OnInit {
   commandInput = '';
   commandOutput: string[] = [];
 
+  // Layout configuration
+  currentLayout: LayoutAlgorithmType = 'grid';
+  availableLayouts: LayoutAlgorithmType[] = ['grid']; // Will add more in Phase 2
+
   ngOnInit() {
     this.initializeEngine();
     this.createSampleDiagram();
+    this.configureLayout();
   }
 
   /**
@@ -39,6 +51,29 @@ export class AppComponent implements OnInit {
    */
   private initializeEngine(): void {
     this.engine = new DiagramEngine();
+  }
+
+  /**
+   * Configure the layout system
+   */
+  private configureLayout(): void {
+    const diagram = this.engine.getDiagram();
+    if (!diagram) return;
+
+    // Configure grid layout with smart column calculation
+    diagram.configureLayout({
+      type: 'grid',
+      options: {
+        columns: 'auto', // Auto-calculate based on viewport
+        horizontalSpacing: 20,
+        verticalSpacing: 20,
+        startPosition: { x: 100, y: 100 },
+        nodeSize: { width: 200, height: 100 }
+      } as GridLayoutOptions
+    });
+
+    console.log(`🎨 Layout configured: ${this.currentLayout}`);
+    console.log(`📐 Configuration:`, diagram.getLayoutConfiguration());
   }
 
   /**
@@ -208,7 +243,7 @@ export class AppComponent implements OnInit {
   }
 
   /**
-   * Add a new node with smart placement (avoids collisions)
+   * Add a new node using engine's layout system
    */
   addRandomNode(): void {
     const diagram = this.engine.getDiagram();
@@ -217,24 +252,43 @@ export class AppComponent implements OnInit {
       return;
     }
 
-    const nodeWidth = 200;
-    const nodeHeight = 100;
-    const spacing = 20;
-
     const currentCount = diagram.getNodes().length;
-    console.log(`\n🔵 Adding node #${currentCount + 1}...`);
+    console.log(`\n🔵 Adding node #${currentCount + 1} using ${this.currentLayout} layout...`);
     console.log(`Current nodes in diagram:`, currentCount);
 
-    const position = this.findNonOverlappingPosition(diagram, nodeWidth, nodeHeight, spacing);
-    console.log(`✅ Found position:`, position);
-
+    // Create node with temporary position
     const node = new NodeModel({
       type: 'basic',
-      position,
-      size: { width: nodeWidth, height: nodeHeight },
+      position: { x: 0, y: 0 }, // Will be calculated by layout engine
+      size: { width: 200, height: 100 },
     });
     node.setMetadata('label', `Node ${currentCount + 1}`);
 
+    // Use engine's layout system to calculate position
+    const layoutManager = diagram.getLayoutManager();
+    const placementResult = layoutManager.calculatePlacement(
+      node,
+      this.viewport,
+      {
+        spacing: 20,
+        padding: 100
+      }
+    );
+
+    if (placementResult.success) {
+      console.log(`✅ Layout calculated position:`, placementResult.position);
+      if (placementResult.metadata) {
+        console.log(`📊 Placement metadata:`, placementResult.metadata);
+      }
+
+      // Set the calculated position
+      node.setPosition(placementResult.position.x, placementResult.position.y);
+    } else {
+      console.warn('⚠️  Layout placement failed, using fallback position');
+      node.setPosition(100, 100);
+    }
+
+    // Add node to diagram
     diagram.addNode(node);
 
     const newCount = diagram.getNodes().length;
@@ -250,89 +304,40 @@ export class AppComponent implements OnInit {
   }
 
   /**
-   * Find a position for a new node that doesn't overlap existing nodes
-   * Uses a simple grid system to guarantee placement
+   * Change layout algorithm
    */
-  private findNonOverlappingPosition(
-    diagram: any,
-    width: number,
-    height: number,
-    spacing: number
-  ): { x: number; y: number } {
-    const nodes = diagram.getNodes();
+  setLayoutAlgorithm(algorithm: LayoutAlgorithmType): void {
+    const diagram = this.engine.getDiagram();
+    if (!diagram) return;
 
-    // Grid configuration
-    const startX = 100;
-    const startY = 100;
-    const nodesPerRow = 3; // 3 nodes per row
-    const columnWidth = width + spacing;
-    const rowHeight = height + spacing;
-
-    // Try grid positions systematically
-    for (let row = 0; row < 100; row++) { // Support up to 300 nodes (100 rows x 3 columns)
-      for (let col = 0; col < nodesPerRow; col++) {
-        const candidate = {
-          x: startX + col * columnWidth,
-          y: startY + row * rowHeight
-        };
-
-        if (!this.hasCollision(candidate, width, height, spacing, nodes)) {
-          console.log(`  → Grid position: row ${row}, col ${col}`);
-          return candidate;
-        }
-      }
+    try {
+      diagram.setLayoutAlgorithm(algorithm);
+      this.currentLayout = algorithm;
+      console.log(`🎨 Layout algorithm changed to: ${algorithm}`);
+      console.log(`📐 New configuration:`, diagram.getLayoutConfiguration());
+    } catch (error) {
+      console.error('Failed to set layout algorithm:', error);
     }
-
-    // This should never happen with the grid system, but just in case
-    console.warn('⚠️  Grid system exhausted, using fallback position');
-    return { x: startX, y: startY + nodes.length * rowHeight };
   }
 
   /**
-   * Check if a position would cause collision with existing nodes
+   * Re-layout all nodes using current algorithm
    */
-  private hasCollision(
-    position: { x: number; y: number },
-    width: number,
-    height: number,
-    spacing: number,
-    nodes: any[]
-  ): boolean {
-    const testBounds = {
-      left: position.x,
-      top: position.y,
-      right: position.x + width,
-      bottom: position.y + height,
-    };
+  async reLayoutDiagram(): Promise<void> {
+    const diagram = this.engine.getDiagram();
+    if (!diagram) return;
 
-    for (const node of nodes) {
-      const nodeBounds = node.getBoundingBox();
-      // Add spacing buffer around existing node
-      const expandedBounds = {
-        left: nodeBounds.left - spacing,
-        top: nodeBounds.top - spacing,
-        right: nodeBounds.right + spacing,
-        bottom: nodeBounds.bottom + spacing,
-      };
+    console.log(`\n🔄 Re-layouting diagram using ${this.currentLayout} algorithm...`);
 
-      if (this.boundsIntersect(testBounds, expandedBounds)) {
-        return true;
-      }
+    try {
+      await diagram.reLayout();
+      console.log(`✅ Re-layout complete!`);
+
+      // Fit viewport to show all nodes after re-layout
+      this.fitToView();
+    } catch (error) {
+      console.error('❌ Re-layout failed:', error);
     }
-
-    return false;
-  }
-
-  /**
-   * Check if two bounding boxes intersect
-   */
-  private boundsIntersect(box1: any, box2: any): boolean {
-    return !(
-      box1.right < box2.left ||
-      box1.left > box2.right ||
-      box1.bottom < box2.top ||
-      box1.top > box2.bottom
-    );
   }
 
   /**
@@ -345,7 +350,7 @@ export class AppComponent implements OnInit {
   /**
    * Execute command from input
    */
-  executeCommand(): void {
+  async executeCommand(): Promise<void> {
     const command = this.commandInput.trim();
     if (!command) return;
 
@@ -410,11 +415,31 @@ export class AppComponent implements OnInit {
           }
           break;
 
+        case 'relayout':
+        case 'rearrange':
+          this.commandOutput.push(`🔄 Re-layouting diagram...`);
+          await this.reLayoutDiagram();
+          this.commandOutput.push(`✅ Re-layout complete`);
+          break;
+
+        case 'layout':
+          if (parts[1]) {
+            const algo = parts[1] as LayoutAlgorithmType;
+            this.setLayoutAlgorithm(algo);
+            this.commandOutput.push(`✅ Layout algorithm set to: ${algo}`);
+          } else {
+            this.commandOutput.push(`Current layout: ${this.currentLayout}`);
+            this.commandOutput.push(`Available: ${this.availableLayouts.join(', ')}`);
+          }
+          break;
+
         case 'help':
           this.commandOutput.push(`Available commands:`);
           this.commandOutput.push(`  add [count] - Add nodes (default 1)`);
           this.commandOutput.push(`  clear - Remove all nodes`);
           this.commandOutput.push(`  fit - Fit viewport to show all nodes`);
+          this.commandOutput.push(`  relayout - Re-arrange all nodes`);
+          this.commandOutput.push(`  layout [type] - Set/view layout algorithm`);
           this.commandOutput.push(`  reset - Reset zoom and viewport`);
           this.commandOutput.push(`  zoom [value] - Set zoom level`);
           this.commandOutput.push(`  list - List all nodes`);
