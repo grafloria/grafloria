@@ -29,6 +29,7 @@ import { ConnectionStateManager } from '../state/ConnectionStateManager';
 import type { InteractionConfig } from '../config/InteractionConfig';
 import { DEFAULT_INTERACTION_CONFIG } from '../config/InteractionConfig';
 // Routing imports
+import { RoutingEngine } from '../routing/RoutingEngine';
 import { ObstacleMapBuilder } from '../routing/ObstacleMapBuilder';
 import { StraightRouter } from '../routing/algorithms/StraightRouter';
 import { OrthogonalRouter } from '../routing/algorithms/OrthogonalRouter';
@@ -85,6 +86,7 @@ export class DiagramEngine {
   readonly modeManager: ModeManager;
   readonly clipboardManager: ClipboardManager; // Phase 1.8
   readonly selectionManager: SelectionManager; // Phase 1.8a
+  readonly routingEngine: RoutingEngine; // Routing system for link paths
 
   // Current diagram
   private diagram: DiagramModel | null = null;
@@ -188,6 +190,7 @@ export class DiagramEngine {
     this.validationEngine = new ValidationEngine(this.typeRegistry, this.eventBus); // Phase 1 - Pass EventBus
     this.serializer = new DiagramSerializer();
     this.performanceMonitor = new PerformanceMonitor(config.performance);
+    this.routingEngine = new RoutingEngine(); // Initialize routing engine with LRU cache
     this.clipboardManager = new ClipboardManager(); // Phase 1.8
     this.selectionManager = new SelectionManager(null, this.store, this.eventBus); // Phase 1.8a
 
@@ -247,6 +250,14 @@ export class DiagramEngine {
    */
   getConnectionStateManager(): ConnectionStateManager {
     return this.connectionStateManager;
+  }
+
+  /**
+   * Get routing engine
+   * Used for calculating link paths with various algorithms
+   */
+  getRoutingEngine(): RoutingEngine {
+    return this.routingEngine;
   }
 
   /**

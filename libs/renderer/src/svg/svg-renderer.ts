@@ -2,6 +2,9 @@ import type { DiagramEngine, NodeModel, LinkModel, PortModel, InteractionConfig 
 import type { IRenderer, PerformanceMetrics, SVGRendererConfig, VNode, Theme, Rectangle } from '../types';
 import { LIGHT_THEME } from '../themes';
 
+// Import routing types
+import type { RoutedPath, RoutingAlgorithm } from '@grafloria/engine';
+
 // LOD Level type (matches engine's LODLevel)
 type LODLevel = 'high' | 'medium' | 'low';
 
@@ -666,6 +669,95 @@ export class SVGRenderer implements IRenderer {
   }
 
   /**
+   * Get link endpoints (source and target port positions in world coordinates)
+   */
+  private getLinkEndpoints(link: LinkModel): { start: { x: number; y: number }; end: { x: number; y: number } } | null {
+    const diagram = this.engine.getDiagram();
+    if (!diagram) return null;
+
+    // Get source and target nodes
+    const sourceNode = link.sourceNodeId ? diagram.getNode(link.sourceNodeId) : null;
+    const targetNode = link.targetNodeId ? diagram.getNode(link.targetNodeId) : null;
+
+    if (!sourceNode || !targetNode) return null;
+
+    // Get source and target ports
+    const sourcePort = sourceNode.getPort(link.sourcePortId);
+    const targetPort = targetNode.getPort(link.targetPortId);
+
+    if (!sourcePort || !targetPort) return null;
+
+    // Calculate absolute positions
+    const sourceBounds = sourceNode.getBoundingBox();
+    const targetBounds = targetNode.getBoundingBox();
+    const start = sourcePort.getAbsolutePosition(sourceBounds);
+    const end = targetPort.getAbsolutePosition(targetBounds);
+
+    return { start, end };
+  }
+
+  /**
+   * Map LinkModel pathType to RoutingAlgorithm
+   */
+  private mapPathTypeToAlgorithm(pathType: string): RoutingAlgorithm {
+    switch (pathType) {
+      case 'direct':
+        return 'straight';
+      case 'orthogonal':
+        return 'orthogonal';
+      case 'smooth':
+      case 'bezier':
+      default:
+        return 'straight'; // Use straight for smooth/bezier, will add curve post-processing
+    }
+  }
+
+  /**
+   * Convert RoutedPath to SVG path string
+   */
+  private convertRoutedPathToSVG(routedPath: RoutedPath, pathType: string): string {
+    if (!routedPath || routedPath.points.length === 0) return '';
+
+    const points = routedPath.points;
+
+    // For smooth/bezier types, add curve control points
+    if (pathType === 'smooth' || pathType === 'bezier') {
+      if (points.length < 2) return `M ${points[0].x} ${points[0].y}`;
+
+      let path = `M ${points[0].x} ${points[0].y}`;
+
+      // Simple bezier curve for 2 points
+      if (points.length === 2) {
+        const dx = points[1].x - points[0].x;
+        const dy = points[1].y - points[0].y;
+        const distance = Math.sqrt(dx * dx + dy * dy);
+        const controlDistance = Math.min(distance / 2, 100);
+
+        const cp1x = points[0].x + controlDistance;
+        const cp1y = points[0].y;
+        const cp2x = points[1].x - controlDistance;
+        const cp2y = points[1].y;
+
+        path += ` C ${cp1x} ${cp1y}, ${cp2x} ${cp2y}, ${points[1].x} ${points[1].y}`;
+      } else {
+        // For multiple points, use straight lines between waypoints
+        for (let i = 1; i < points.length; i++) {
+          path += ` L ${points[i].x} ${points[i].y}`;
+        }
+      }
+
+      return path;
+    }
+
+    // For straight/orthogonal, just connect the points
+    let path = `M ${points[0].x} ${points[0].y}`;
+    for (let i = 1; i < points.length; i++) {
+      path += ` L ${points[i].x} ${points[i].y}`;
+    }
+    return path;
+  }
+
+  /**
    * Render single link (Option 2: Enhanced with arrows and labels)
    */
   private renderLink(link: LinkModel, lod: LODLevel): VNode {
@@ -682,11 +774,39 @@ export class SVGRenderer implements IRenderer {
       ? this.computeLinkStylesCSS(link)
       : this.computeLinkStylesProgrammatic(link);
 
-    // Generate path from points or segments (for curves)
-    const pathData = this.generatePathData(link.points, link.segments);
+    // Get link endpoints from ports
+    const endpoints = this.getLinkEndpoints(link);
 
-    // Option 2: Calculate arrow position (at the end of the link)
-    const points = link.points;
+    // Fallback to existing points if endpoints can't be calculated
+    let pathData: string;
+    let points: Array<{ x: number; y: number }>;
+
+    if (endpoints) {
+      // Use RoutingEngine to calculate path
+      const routingEngine = this.engine.getRoutingEngine();
+      const algorithm = this.mapPathTypeToAlgorithm(link.pathType);
+
+      const routedPath = routingEngine.route({
+        start: endpoints.start,
+        end: endpoints.end,
+        options: { algorithm }
+      });
+
+      if (routedPath) {
+        points = routedPath.points;
+        pathData = this.convertRoutedPathToSVG(routedPath, link.pathType);
+      } else {
+        // Fallback to simple straight line
+        points = [endpoints.start, endpoints.end];
+        pathData = `M ${endpoints.start.x} ${endpoints.start.y} L ${endpoints.end.x} ${endpoints.end.y}`;
+      }
+    } else {
+      // Fallback to existing link.points
+      points = link.points;
+      pathData = this.generatePathData(link.points, link.segments);
+    }
+
+    // Calculate arrow position (at the end of the link)
     const lastPoint = points[points.length - 1];
     const secondLastPoint = points[points.length - 2] || points[0];
 
@@ -695,7 +815,7 @@ export class SVGRenderer implements IRenderer {
     const dy = lastPoint.y - secondLastPoint.y;
     const angle = Math.atan2(dy, dx) * (180 / Math.PI);
 
-    // Option 2: Calculate label position (middle of the link)
+    // Calculate label position (middle of the link)
     const midIndex = Math.floor(points.length / 2);
     const labelPoint = points[midIndex];
     const label = link.getMetadata('label');
