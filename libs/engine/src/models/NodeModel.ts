@@ -403,13 +403,15 @@ export class NodeModel extends DiagramEntity {
 
   /**
    * Check if node is selectable (based on behavior)
+   * Note: Locked nodes are still selectable so users can unlock them
    */
   isSelectable(): boolean {
-    return this.behavior.selectable && !this.state.locked;
+    return this.behavior.selectable;
   }
 
   /**
    * Check if node is draggable (based on behavior and state)
+   * Note: Locked nodes cannot be dragged
    */
   isDraggable(): boolean {
     return this.behavior.draggable && !this.state.locked;
