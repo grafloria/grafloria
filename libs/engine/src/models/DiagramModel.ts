@@ -267,6 +267,201 @@ export class DiagramModel extends DiagramEntity {
   }
 
   /**
+   * Phase 0.5.3: Create a smart link with automatic port selection
+   *
+   * This high-level API simplifies link creation by:
+   * - Automatically selecting optimal ports based on node geometry
+   * - Creating the link with proper port connections
+   * - Registering connections in port models
+   * - Generating the initial path
+   *
+   * @param sourceNode - The source node
+   * @param targetNode - The target node
+   * @param pathType - Path rendering type (default: 'smooth')
+   * @returns The created link, or undefined if port selection failed
+   *
+   * @example
+   * ```typescript
+   * const link = diagram.createSmartLink(node1, node2, 'smooth');
+   * if (link) {
+   *   console.log('Connected with optimal ports!');
+   * }
+   * ```
+   */
+  createSmartLink(
+    sourceNode: NodeModel,
+    targetNode: NodeModel,
+    pathType: 'direct' | 'orthogonal' | 'smooth' | 'bezier' = 'smooth'
+  ): LinkModel | undefined {
+    // Use layout manager's intelligent port selection
+    const optimalPorts = this._layoutManager.selectOptimalPorts(sourceNode, targetNode);
+
+    if (!optimalPorts) {
+      console.warn(`⚠️ Could not select optimal ports for nodes ${sourceNode.id} → ${targetNode.id}`);
+      return undefined;
+    }
+
+    const { sourcePort, targetPort } = optimalPorts;
+
+    // Validate port compatibility
+    if (!sourcePort.canConnectTo(targetPort)) {
+      console.warn(`⚠️ Ports are not compatible: ${sourcePort.type} → ${targetPort.type}`);
+      return undefined;
+    }
+
+    // Create the link
+    const link = new LinkModel(sourcePort.id, targetPort.id, pathType);
+    link.sourceNodeId = sourceNode.id;
+    link.targetNodeId = targetNode.id;
+
+    // Register connections in ports
+    sourcePort.addConnection(link.id);
+    targetPort.addConnection(link.id);
+
+    // Calculate initial path
+    const sourceBounds = sourceNode.getBoundingBox();
+    const targetBounds = targetNode.getBoundingBox();
+    const sourcePoint = sourcePort.getAbsolutePosition(sourceBounds);
+    const targetPoint = targetPort.getAbsolutePosition(targetBounds);
+    link.generatePath(sourcePoint, targetPoint);
+
+    // Add to diagram
+    this.addLink(link);
+
+    return link;
+  }
+
+  /**
+   * Phase 0.5.3: High-level API to connect two nodes
+   *
+   * Convenience method that creates a smart link and returns success status.
+   * This is the simplest way to connect nodes.
+   *
+   * @param sourceNode - The source node
+   * @param targetNode - The target node
+   * @param pathType - Path rendering type (default: 'smooth')
+   * @returns true if connection was successful, false otherwise
+   *
+   * @example
+   * ```typescript
+   * if (diagram.connectNodes(node1, node2)) {
+   *   console.log('Nodes connected successfully!');
+   * }
+   * ```
+   */
+  connectNodes(
+    sourceNode: NodeModel,
+    targetNode: NodeModel,
+    pathType: 'direct' | 'orthogonal' | 'smooth' | 'bezier' = 'smooth'
+  ): boolean {
+    const link = this.createSmartLink(sourceNode, targetNode, pathType);
+    return link !== undefined;
+  }
+
+  /**
+   * Phase 0.5.3: Get all connections for a node
+   *
+   * Returns all links where the node is either source or target.
+   * Useful for querying node connectivity.
+   *
+   * @param node - The node to query
+   * @returns Object containing incoming and outgoing links
+   *
+   * @example
+   * ```typescript
+   * const connections = diagram.getNodeConnections(node);
+   * console.log(`Incoming: ${connections.incoming.length}`);
+   * console.log(`Outgoing: ${connections.outgoing.length}`);
+   * console.log(`Total: ${connections.all.length}`);
+   * ```
+   */
+  getNodeConnections(node: NodeModel): {
+    incoming: LinkModel[];
+    outgoing: LinkModel[];
+    all: LinkModel[];
+  } {
+    const incoming: LinkModel[] = [];
+    const outgoing: LinkModel[] = [];
+
+    // Get node's port IDs
+    const portIds = new Set(node.getPorts().map((p) => p.id));
+
+    // Check all links
+    for (const link of this.links.values()) {
+      const isTarget = portIds.has(link.targetPortId);
+      const isSource = portIds.has(link.sourcePortId);
+
+      if (isTarget) {
+        incoming.push(link);
+      }
+      if (isSource) {
+        outgoing.push(link);
+      }
+    }
+
+    return {
+      incoming,
+      outgoing,
+      all: [...incoming, ...outgoing],
+    };
+  }
+
+  /**
+   * Phase 0.5.3: Disconnect two nodes
+   *
+   * Removes all links between the specified nodes.
+   * Handles cleanup of port connections.
+   *
+   * @param sourceNode - The source node
+   * @param targetNode - The target node
+   * @returns Number of links removed
+   *
+   * @example
+   * ```typescript
+   * const removed = diagram.disconnectNodes(node1, node2);
+   * console.log(`Removed ${removed} connections`);
+   * ```
+   */
+  disconnectNodes(sourceNode: NodeModel, targetNode: NodeModel): number {
+    const sourcePortIds = new Set(sourceNode.getPorts().map((p) => p.id));
+    const targetPortIds = new Set(targetNode.getPorts().map((p) => p.id));
+
+    const linksToRemove: string[] = [];
+
+    // Find all links between these nodes
+    for (const link of this.links.values()) {
+      const hasSourcePort = sourcePortIds.has(link.sourcePortId);
+      const hasTargetPort = targetPortIds.has(link.targetPortId);
+
+      if (hasSourcePort && hasTargetPort) {
+        linksToRemove.push(link.id);
+      }
+    }
+
+    // Remove the links
+    for (const linkId of linksToRemove) {
+      const link = this.getLink(linkId);
+      if (link) {
+        // Clean up port connections
+        const sourcePort = sourceNode.getPorts().find((p) => p.id === link.sourcePortId);
+        const targetPort = targetNode.getPorts().find((p) => p.id === link.targetPortId);
+
+        if (sourcePort) {
+          sourcePort.removeConnection(link.id);
+        }
+        if (targetPort) {
+          targetPort.removeConnection(link.id);
+        }
+
+        // Remove link from diagram
+        this.removeLink(linkId);
+      }
+    }
+
+    return linksToRemove.length;
+  }
+
+  /**
    * Add group (Phase 1.6c)
    */
   addGroup(group: GroupModel): void {

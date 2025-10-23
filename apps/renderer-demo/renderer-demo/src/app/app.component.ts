@@ -5,8 +5,6 @@ import { DiagramCanvasComponent } from '@grafloria/renderer-angular';
 import {
   DiagramEngine,
   NodeModel,
-  LinkModel,
-  PortModel,
   LayoutAlgorithmType,
   GridLayoutOptions
 } from '@grafloria/engine';
@@ -117,43 +115,34 @@ export class AppComponent implements OnInit {
     diagram.addNode(node3);
     diagram.addNode(node4);
 
-    // Phase 0.5.1: Use automatic default ports (no manual port creation needed!)
-    // Each node now automatically has 4 ports: top, right, bottom, left
+    // Phase 0.5.1: Nodes automatically have 4 default ports (top, right, bottom, left)
     console.log('✨ Node 1 ports:', node1.getPorts().map(p => ({ side: p.side, type: p.type })));
     console.log('✨ Node 2 ports:', node2.getPorts().map(p => ({ side: p.side, type: p.type })));
 
-    // Get default ports by side
-    const port1Out = node1.getPortBySide('right')!;    // Node 1 right port
-    const port2In = node2.getPortBySide('left')!;      // Node 2 left port
-    const port2Out = node2.getPortBySide('right')!;    // Node 2 right port
-    const port3In = node3.getPortBySide('left')!;      // Node 3 left port
-    const port4In = node4.getPortBySide('left')!;      // Node 4 left port
-    const port2OutAlt = node2.getPortBySide('bottom')!; // Node 2 bottom port
+    // Phase 0.5.3: Use simplified connection API with automatic port selection!
+    // No need to manually get ports or create LinkModel instances
+    // The diagram intelligently selects the best ports based on node positions
 
-    // Create links (ports are auto-created, just get them by side!)
-    const link1 = new LinkModel(port1Out.id, port2In.id, 'smooth');
-    link1.points = [
-      { x: 300, y: 150 },
-      { x: 450, y: 150 },
-    ];
+    console.log('\n🔗 Creating smart connections...');
 
-    const link2 = new LinkModel(port2Out.id, port3In.id, 'smooth');
-    link2.points = [
-      { x: 650, y: 150 },
-      { x: 800, y: 150 },
-    ];
+    // Option 1: createSmartLink() - returns the created link
+    const link1 = diagram.createSmartLink(node1, node2, 'smooth');
+    console.log('✅ Created smart link 1:', link1 ? 'Success' : 'Failed');
 
-    const link3 = new LinkModel(port2OutAlt.id, port4In.id, 'smooth');
-    link3.points = [
-      { x: 550, y: 200 },
-      { x: 550, y: 350 },
-      { x: 450, y: 350 },
-    ];
+    // Option 2: connectNodes() - returns boolean success status (even simpler!)
+    const success2 = diagram.connectNodes(node2, node3, 'smooth');
+    console.log('✅ Connected nodes 2→3:', success2);
 
-    // Add links to diagram
-    diagram.addLink(link1);
-    diagram.addLink(link2);
-    diagram.addLink(link3);
+    const success3 = diagram.connectNodes(node2, node4, 'smooth');
+    console.log('✅ Connected nodes 2→4:', success3);
+
+    // Query node connections (Phase 0.5.3 API)
+    const node2Connections = diagram.getNodeConnections(node2);
+    console.log('📊 Node 2 connections:', {
+      incoming: node2Connections.incoming.length,
+      outgoing: node2Connections.outgoing.length,
+      total: node2Connections.all.length
+    });
   }
 
   /**
