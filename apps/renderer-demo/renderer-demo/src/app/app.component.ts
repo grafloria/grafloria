@@ -38,6 +38,9 @@ export class AppComponent implements OnInit {
   currentLayout: LayoutAlgorithmType = 'grid';
   availableLayouts: LayoutAlgorithmType[] = ['grid', 'hierarchical', 'force-directed', 'hybrid'];
 
+  // Selection state (Option 1: Node Interaction)
+  selectedNodeCount = 0;
+
   ngOnInit() {
     this.initializeEngine();
     this.createSampleDiagram();
@@ -45,6 +48,9 @@ export class AppComponent implements OnInit {
 
     // Ensure all nodes are visible on initial load
     this.fitToView();
+
+    // Subscribe to selection changes
+    this.subscribeToSelectionEvents();
   }
 
   /**
@@ -339,6 +345,43 @@ export class AppComponent implements OnInit {
       this.fitToView();
     } catch (error) {
       console.error('❌ Re-layout failed:', error);
+    }
+  }
+
+  /**
+   * Subscribe to selection events (Option 1: Node Interaction)
+   */
+  subscribeToSelectionEvents(): void {
+    const diagram = this.engine.getDiagram();
+    if (!diagram) return;
+
+    diagram.on('selection:changed', (event: any) => {
+      this.selectedNodeCount = diagram.getSelectedNodes().length;
+      console.log(`🎯 Selection changed: ${this.selectedNodeCount} node(s) selected`);
+    });
+  }
+
+  /**
+   * Clear all node selections (Option 1: Node Interaction)
+   */
+  clearSelection(): void {
+    const diagram = this.engine.getDiagram();
+    if (!diagram) return;
+
+    diagram.clearSelection();
+    console.log('✨ Selection cleared');
+  }
+
+  /**
+   * Delete all selected nodes (Option 1: Node Interaction)
+   */
+  deleteSelectedNodes(): void {
+    const diagram = this.engine.getDiagram();
+    if (!diagram) return;
+
+    const count = diagram.deleteSelected();
+    if (count > 0) {
+      console.log(`🗑️  Deleted ${count} selected node(s)`);
     }
   }
 

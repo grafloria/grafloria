@@ -104,8 +104,61 @@
   background: #f0f0f0;
 }
 
+.btn-secondary {
+  background: rgba(255, 255, 255, 0.15);
+  border-color: rgba(255, 255, 255, 0.6);
+}
+
+.btn-secondary:hover {
+  background: rgba(255, 255, 255, 0.25);
+  border-color: white;
+}
+
+.btn-danger {
+  background: #ef4444;
+  border-color: #ef4444;
+  color: white;
+}
+
+.btn-danger:hover {
+  background: #dc2626;
+  border-color: #dc2626;
+}
+
 .btn.active {
   background: rgba(255, 255, 255, 0.3);
+}
+
+/* Selection Controls (Option 1: Node Interaction) */
+.selection-controls {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.25rem 0.75rem;
+  background: rgba(255, 255, 255, 0.25);
+  border-radius: 8px;
+  border: 2px solid rgba(255, 255, 255, 0.4);
+  animation: slideIn 0.3s ease;
+}
+
+.selection-count {
+  font-weight: 600;
+  font-size: 0.9rem;
+  color: white;
+  padding: 0 0.5rem;
+  background: rgba(255, 255, 255, 0.15);
+  border-radius: 4px;
+}
+
+@keyframes slideIn {
+  from {
+    opacity: 0;
+    transform: translateX(-10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
 }
 
 .main-content {

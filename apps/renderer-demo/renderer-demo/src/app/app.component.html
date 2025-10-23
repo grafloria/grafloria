@@ -26,6 +26,15 @@
       <button (click)="addRandomNode()" class="btn btn-primary">
         + Add Node
       </button>
+      <div class="selection-controls" *ngIf="selectedNodeCount > 0">
+        <span class="selection-count">{{ selectedNodeCount }} selected</span>
+        <button (click)="clearSelection()" class="btn btn-secondary" title="Clear Selection (Esc)">
+          ✨ Clear
+        </button>
+        <button (click)="deleteSelectedNodes()" class="btn btn-danger" title="Delete Selected (Del)">
+          🗑️ Delete
+        </button>
+      </div>
     </div>
   </header>
 
@@ -80,9 +89,10 @@
       <span>Theme: {{ theme.name }}</span>
     </div>
     <div class="navigation-hints">
-      <span class="hint-item">🖱️ Scroll to zoom</span>
-      <span class="hint-item">⌨️ Space + Drag to pan</span>
-      <span class="hint-item">🖱️ Middle-click + Drag to pan</span>
+      <span class="hint-item">🖱️ Click to select</span>
+      <span class="hint-item">⌨️ Ctrl+Click for multi-select</span>
+      <span class="hint-item">🖱️ Drag to move</span>
+      <span class="hint-item">⌨️ Del to delete</span>
     </div>
     <div class="info">
       Powered by &#64;grafloria/renderer + &#64;grafloria/engine
