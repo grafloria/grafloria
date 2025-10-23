@@ -141,13 +141,39 @@ export class AppComponent implements OnInit {
     // Option 1: createSmartLink() - returns the created link
     const link1 = diagram.createSmartLink(node1, node2, 'smooth');
     console.log('✅ Created smart link 1:', link1 ? 'Success' : 'Failed');
+    // Option 2: Set link label to demonstrate link labels feature
+    if (link1) {
+      link1.setMetadata('label', 'Start');
+    }
 
     // Option 2: connectNodes() - returns boolean success status (even simpler!)
     const success2 = diagram.connectNodes(node2, node3, 'smooth');
     console.log('✅ Connected nodes 2→3:', success2);
+    // Option 2: Add label to second link
+    if (success2) {
+      const link2 = diagram.getLinks().find(l =>
+        l.sourcePortId && l.targetPortId &&
+        node2.getPorts().some(p => p.id === l.sourcePortId) &&
+        node3.getPorts().some(p => p.id === l.targetPortId)
+      );
+      if (link2) {
+        link2.setMetadata('label', 'Next');
+      }
+    }
 
     const success3 = diagram.connectNodes(node2, node4, 'smooth');
     console.log('✅ Connected nodes 2→4:', success3);
+    // Option 2: Add label to third link
+    if (success3) {
+      const link3 = diagram.getLinks().find(l =>
+        l.sourcePortId && l.targetPortId &&
+        node2.getPorts().some(p => p.id === l.sourcePortId) &&
+        node4.getPorts().some(p => p.id === l.targetPortId)
+      );
+      if (link3) {
+        link3.setMetadata('label', 'Alt');
+      }
+    }
 
     // Query node connections (Phase 0.5.3 API)
     const node2Connections = diagram.getNodeConnections(node2);

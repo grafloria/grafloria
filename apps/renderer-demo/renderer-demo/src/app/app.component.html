@@ -100,14 +100,17 @@
     <div class="stats">
       <span>Nodes: {{ (engine?.getDiagram()?.getNodes()?.length) || 0 }}</span>
       <span>Links: {{ (engine?.getDiagram()?.getLinks()?.length) || 0 }}</span>
+      <span>Locked: {{ getLockedNodeCount() }}</span>
       <span>Zoom: {{ (zoom * 100).toFixed(0) }}%</span>
       <span>Layout: {{ currentLayout }}</span>
       <span>Theme: {{ theme.name }}</span>
     </div>
     <div class="navigation-hints">
+      <span class="hint-item">🖱️ Hover for highlights</span>
       <span class="hint-item">🖱️ Click to select</span>
-      <span class="hint-item">⌨️ Ctrl+Click for multi-select</span>
+      <span class="hint-item">⌨️ Ctrl+Click multi-select</span>
       <span class="hint-item">🖱️ Drag to move</span>
+      <span class="hint-item">📌 Lock to pin position</span>
       <span class="hint-item">⌨️ Del to delete</span>
     </div>
     <div class="info">
