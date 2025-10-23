@@ -440,7 +440,7 @@ export class DiagramCanvasComponent implements OnInit, AfterViewInit, OnChanges,
   }
 
   /**
-   * Handle mouse move for panning and node dragging (Phase 0.5 - Option B + Option 1)
+   * Handle mouse move for panning, node dragging, and hover (Phase 0.5 - Option B + Option 1 + Option 2)
    */
   @HostListener('mousemove', ['$event'])
   onMouseMove(event: MouseEvent): void {
@@ -503,6 +503,49 @@ export class DiagramCanvasComponent implements OnInit, AfterViewInit, OnChanges,
       // Trigger re-render
       this.renderDiagram();
       this.cdr.markForCheck();
+      return;
+    }
+
+    // Handle hover detection (Option 2: Visual Enhancements)
+    if (!this.spaceKeyPressed) {
+      // Convert client coordinates to world coordinates
+      const rect = this.containerRef.nativeElement.getBoundingClientRect();
+      const clientX = event.clientX - rect.left;
+      const clientY = event.clientY - rect.top;
+
+      const worldX = this.viewport.x + (clientX / this.zoom);
+      const worldY = this.viewport.y + (clientY / this.zoom);
+
+      // Check if hovering over a node
+      const hoveredNode = diagram.getNodeAtPosition(worldX, worldY);
+      const allNodes = diagram.getNodes();
+
+      // Update hover state for all nodes
+      let needsRender = false;
+      allNodes.forEach((node) => {
+        const wasHovered = node.state.hovered;
+        const isHovered = node === hoveredNode;
+
+        if (wasHovered !== isHovered) {
+          node.setState({ hovered: isHovered });
+          needsRender = true;
+        }
+      });
+
+      // Update cursor
+      if (this.containerRef?.nativeElement) {
+        if (hoveredNode) {
+          this.containerRef.nativeElement.style.cursor = hoveredNode.isDraggable() ? 'pointer' : 'default';
+        } else {
+          this.containerRef.nativeElement.style.cursor = 'default';
+        }
+      }
+
+      // Re-render if hover state changed
+      if (needsRender) {
+        this.renderDiagram();
+        this.cdr.markForCheck();
+      }
     }
   }
 

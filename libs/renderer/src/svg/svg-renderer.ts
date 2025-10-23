@@ -229,16 +229,22 @@ export class SVGRenderer implements IRenderer {
       ? this.computeNodeStylesCSS(node)
       : this.computeNodeStylesProgrammatic(node);
 
+    // Option 2: Enhanced visual effects
+    const isHovered = node.state.hovered;
+    const isSelected = node.isSelected();
+
     const vnode: VNode = {
       type: 'g',
       key: `node-${node.id}`,
       props: {
         transform: `translate(${node.position.x}, ${node.position.y})`,
         className: 'node-group',
+        // Option 2: Add subtle transition effect
+        style: isHovered ? 'transition: all 0.2s ease' : undefined,
       },
       children: [
         // Selection highlight (rendered behind the node)
-        ...(node.isSelected()
+        ...(isSelected
           ? [
               {
                 type: 'rect',
@@ -251,9 +257,28 @@ export class SVGRenderer implements IRenderer {
                   stroke: this.theme.colors.primary,
                   strokeWidth: 3,
                   strokeDasharray: '5,5',
-                  rx: 4,
-                  ry: 4,
+                  rx: 6,
+                  ry: 6,
                   className: 'selection-highlight',
+                },
+              } as VNode,
+            ]
+          : []),
+        // Drop shadow (Option 2: Visual Enhancement)
+        ...(lod !== 'low'
+          ? [
+              {
+                type: 'rect',
+                props: {
+                  x: isHovered ? 2 : 3,
+                  y: isHovered ? 2 : 3,
+                  width: node.size.width,
+                  height: node.size.height,
+                  fill: '#000',
+                  opacity: isHovered ? 0.15 : 0.1,
+                  rx: (node.style.borderRadius ?? 4) as number,
+                  filter: 'blur(4px)',
+                  className: 'node-shadow',
                 },
               } as VNode,
             ]
@@ -267,6 +292,13 @@ export class SVGRenderer implements IRenderer {
             width: node.size.width,
             height: node.size.height,
             ...styles,
+            // Option 2: Enhanced hover effect
+            ...(isHovered && !this.config.useCSSMode
+              ? {
+                  strokeWidth: (styles.strokeWidth || 1) + 1,
+                  filter: 'brightness(1.05)',
+                }
+              : {}),
           },
         },
         // Label (if LOD allows and label exists)
@@ -279,9 +311,12 @@ export class SVGRenderer implements IRenderer {
                   y: node.size.height / 2,
                   textContent: node.getMetadata('label'),
                   textAnchor: 'middle',
+                  dominantBaseline: 'middle', // Option 2: Better text alignment
                   className: this.config.useCSSMode ? 'diagram-label' : undefined,
                   fontSize: this.config.useCSSMode ? undefined : this.theme.typography.fontSize.md,
                   fill: this.config.useCSSMode ? undefined : this.theme.colors.text.primary,
+                  fontWeight: this.config.useCSSMode ? undefined : this.theme.typography.fontWeight.medium,
+                  pointerEvents: 'none', // Option 2: Don't block mouse events
                 },
               } as VNode,
             ]
@@ -299,7 +334,7 @@ export class SVGRenderer implements IRenderer {
   }
 
   /**
-   * Render single link
+   * Render single link (Option 2: Enhanced with arrows and labels)
    */
   private renderLink(link: LinkModel, lod: LODLevel): VNode {
     // Check cache if enabled
@@ -318,14 +353,88 @@ export class SVGRenderer implements IRenderer {
     // Generate path from points
     const pathData = this.generatePathData(link.points);
 
+    // Option 2: Calculate arrow position (at the end of the link)
+    const points = link.points;
+    const lastPoint = points[points.length - 1];
+    const secondLastPoint = points[points.length - 2] || points[0];
+
+    // Calculate arrow angle
+    const dx = lastPoint.x - secondLastPoint.x;
+    const dy = lastPoint.y - secondLastPoint.y;
+    const angle = Math.atan2(dy, dx) * (180 / Math.PI);
+
+    // Option 2: Calculate label position (middle of the link)
+    const midIndex = Math.floor(points.length / 2);
+    const labelPoint = points[midIndex];
+    const label = link.getMetadata('label');
+
     const vnode: VNode = {
-      type: 'path',
+      type: 'g',
       key: `link-${link.id}`,
       props: {
-        d: pathData,
-        fill: 'none',
-        ...styles,
+        className: 'link-group',
       },
+      children: [
+        // Link path
+        {
+          type: 'path',
+          props: {
+            d: pathData,
+            fill: 'none',
+            ...styles,
+          },
+        },
+        // Arrow marker (Option 2: Visual Enhancement)
+        ...(lod !== 'low'
+          ? [
+              {
+                type: 'polygon',
+                props: {
+                  points: '0,-5 10,0 0,5',
+                  fill: styles.stroke || this.theme.colors.link.default,
+                  transform: `translate(${lastPoint.x}, ${lastPoint.y}) rotate(${angle})`,
+                  className: 'link-arrow',
+                },
+              } as VNode,
+            ]
+          : []),
+        // Link label (Option 2: Visual Enhancement)
+        ...(lod === 'high' && label
+          ? [
+              // Label background
+              {
+                type: 'rect',
+                props: {
+                  x: labelPoint.x - 20,
+                  y: labelPoint.y - 10,
+                  width: 40,
+                  height: 20,
+                  fill: this.theme.colors.background.surface,
+                  stroke: styles.stroke || this.theme.colors.link.default,
+                  strokeWidth: 1,
+                  rx: 3,
+                  className: 'link-label-bg',
+                },
+              } as VNode,
+              // Label text
+              {
+                type: 'text',
+                props: {
+                  x: labelPoint.x,
+                  y: labelPoint.y,
+                  textContent: label,
+                  textAnchor: 'middle',
+                  dominantBaseline: 'middle',
+                  fontSize: this.theme.typography.fontSize.sm,
+                  fill: this.theme.colors.text.primary,
+                  fontWeight: this.theme.typography.fontWeight.medium,
+                  className: 'link-label',
+                  pointerEvents: 'none',
+                },
+              } as VNode,
+            ]
+          : []),
+      ],
     };
 
     // Cache if enabled
