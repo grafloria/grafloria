@@ -103,6 +103,13 @@ export class VisibilityGraphRouter {
   }
 
   /**
+   * Get algorithm name
+   */
+  getName(): string {
+    return 'visibility-graph';
+  }
+
+  /**
    * Find shortest geometric path using visibility graph
    */
   route(start: Point, end: Point): Point[] {

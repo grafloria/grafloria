@@ -34,12 +34,18 @@ export class AppComponent implements OnInit {
   commandInput = '';
   commandOutput: string[] = [];
 
+  // Control panel (right side)
+  showControlPanel = true; // Open by default
+
   // Layout configuration
   currentLayout: LayoutAlgorithmType = 'grid';
   availableLayouts: LayoutAlgorithmType[] = ['grid', 'hierarchical', 'force-directed', 'hybrid'];
 
   // Link path type configuration
   currentLinkType: 'direct' | 'smooth' | 'orthogonal' | 'bezier' = 'smooth';
+
+  // Routing algorithm configuration (for obstacle avoidance)
+  currentRoutingAlgorithm: 'none' | 'straight' | 'orthogonal' | 'a-star' | 'dijkstra' | 'visibility-graph' = 'none';
 
   // Selection state (Option 1: Node Interaction)
   selectedNodeCount = 0;
@@ -506,6 +512,39 @@ export class AppComponent implements OnInit {
    */
   toggleCommandPanel(): void {
     this.showCommandPanel = !this.showCommandPanel;
+  }
+
+  /**
+   * Toggle control panel visibility
+   */
+  toggleControlPanel(): void {
+    this.showControlPanel = !this.showControlPanel;
+  }
+
+  /**
+   * Change routing algorithm for obstacle avoidance
+   */
+  changeRoutingAlgorithm(algorithm: 'none' | 'straight' | 'orthogonal' | 'a-star' | 'dijkstra' | 'visibility-graph'): void {
+    this.currentRoutingAlgorithm = algorithm;
+    console.log(`🛣️ Routing algorithm changed to: ${algorithm}`);
+
+    if (algorithm === 'none') {
+      console.log('   Using simple path generation (no obstacle avoidance)');
+    } else {
+      console.log(`   ${algorithm} will avoid obstacles when routing links`);
+      console.log('   Note: Full integration with link generation coming soon');
+    }
+
+    // TODO: Integrate with LinkModel to actually use routing algorithms
+    // For now, this demonstrates the available options
+    const availableAlgorithms = [
+      'straight - Direct paths',
+      'orthogonal - Right-angle paths',
+      'a-star - Fast pathfinding with obstacle avoidance',
+      'dijkstra - Guaranteed shortest path with obstacle avoidance',
+      'visibility-graph - Optimal for sparse obstacles'
+    ];
+    console.log('   Available algorithms:', availableAlgorithms);
   }
 
   /**

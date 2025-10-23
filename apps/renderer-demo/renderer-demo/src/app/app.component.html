@@ -1,65 +1,19 @@
 <div class="app-container">
   <header class="header">
     <h1>{{ title }}</h1>
-    <div class="controls">
+    <div class="header-controls">
       <button (click)="toggleCommandPanel()" class="btn" [class.active]="showCommandPanel">
         {{ showCommandPanel ? '⬅️ Hide' : '💻 Commands' }}
       </button>
       <button (click)="toggleTheme()" class="btn">
-        {{ isDarkTheme ? '☀️ Light' : '🌙 Dark' }} Theme
+        {{ isDarkTheme ? '☀️ Light' : '🌙 Dark' }}
       </button>
-      <div class="zoom-controls">
-        <button (click)="zoomOut()" class="btn">-</button>
-        <span class="zoom-level">{{ (zoom * 100).toFixed(0) }}%</span>
-        <button (click)="zoomIn()" class="btn">+</button>
-        <button (click)="fitToView()" class="btn">Fit View</button>
-        <button (click)="resetZoom()" class="btn">Reset</button>
-      </div>
-      <div class="layout-controls">
-        <button (click)="reLayoutDiagram()" class="btn">🔄 Re-Layout</button>
-        <select [(ngModel)]="currentLayout" (change)="setLayoutAlgorithm(currentLayout)" class="layout-select">
-          <option *ngFor="let layout of availableLayouts" [value]="layout">
-            {{ layout === 'grid' ? 'Grid' : layout === 'force-directed' ? 'Force' : layout === 'hierarchical' ? 'Hierarchical' : 'Hybrid' }}
-          </option>
-        </select>
-      </div>
-      <div class="link-controls">
-        <label class="link-label">Links:</label>
-        <select [(ngModel)]="currentLinkType" (change)="changeLinkType(currentLinkType)" class="link-select">
-          <option value="direct">Direct</option>
-          <option value="smooth">Smooth</option>
-          <option value="orthogonal">Orthogonal</option>
-          <option value="bezier">Bezier</option>
-        </select>
-      </div>
       <button (click)="addRandomNode()" class="btn btn-primary">
         + Add Node
       </button>
-      <div class="selection-controls" *ngIf="selectedNodeCount > 0">
-        <span class="selection-count">{{ selectedNodeCount }} selected</span>
-        <button (click)="clearSelection()" class="btn btn-secondary" title="Clear Selection (Esc)">
-          ✨ Clear
-        </button>
-        <button (click)="lockSelectedNodes()" class="btn btn-warning" title="Lock Selected (Pin position)">
-          📌 Lock
-        </button>
-        <button (click)="unlockSelectedNodes()" class="btn btn-info" title="Unlock Selected">
-          🔓 Unlock
-        </button>
-        <button (click)="deleteSelectedNodes()" class="btn btn-danger" title="Delete Selected (Del)">
-          🗑️ Delete
-        </button>
-      </div>
-      <div class="animation-controls">
-        <label class="checkbox-label">
-          <input type="checkbox" [(ngModel)]="enableAnimation" />
-          <span>Animate {{ enableAnimation ? '✓' : '' }}</span>
-        </label>
-        <div class="slider-control" *ngIf="enableAnimation">
-          <label>{{ animationDuration }}ms</label>
-          <input type="range" [(ngModel)]="animationDuration" min="200" max="2000" step="100" class="duration-slider" />
-        </div>
-      </div>
+      <button (click)="toggleControlPanel()" class="btn" [class.active]="showControlPanel">
+        {{ showControlPanel ? 'Hide ➡️' : '⚙️ Controls' }}
+      </button>
     </div>
   </header>
 
@@ -102,6 +56,98 @@
         (zoomChanged)="onZoomChanged($event)"
         class="diagram-canvas">
       </grafloria-diagram-canvas>
+    </div>
+
+    <!-- Control Panel -->
+    <div class="control-panel" [class.show]="showControlPanel">
+      <div class="panel-header">
+        <h3>Controls</h3>
+        <button (click)="toggleControlPanel()" class="btn-small">×</button>
+      </div>
+
+      <div class="panel-content">
+        <!-- Zoom Controls -->
+        <div class="panel-section">
+          <h4>Zoom</h4>
+          <div class="zoom-controls">
+            <button (click)="zoomOut()" class="btn-control">-</button>
+            <span class="zoom-level">{{ (zoom * 100).toFixed(0) }}%</span>
+            <button (click)="zoomIn()" class="btn-control">+</button>
+          </div>
+          <div class="button-row">
+            <button (click)="fitToView()" class="btn-control-full">Fit View</button>
+            <button (click)="resetZoom()" class="btn-control-full">Reset</button>
+          </div>
+        </div>
+
+        <!-- Layout Controls -->
+        <div class="panel-section">
+          <h4>Layout</h4>
+          <select [(ngModel)]="currentLayout" (change)="setLayoutAlgorithm(currentLayout)" class="control-select">
+            <option *ngFor="let layout of availableLayouts" [value]="layout">
+              {{ layout === 'grid' ? 'Grid' : layout === 'force-directed' ? 'Force' : layout === 'hierarchical' ? 'Hierarchical' : 'Hybrid' }}
+            </option>
+          </select>
+          <button (click)="reLayoutDiagram()" class="btn-control-full">🔄 Re-Layout</button>
+        </div>
+
+        <!-- Link Path Type -->
+        <div class="panel-section">
+          <h4>Link Path Type</h4>
+          <select [(ngModel)]="currentLinkType" (change)="changeLinkType(currentLinkType)" class="control-select">
+            <option value="direct">Direct</option>
+            <option value="smooth">Smooth</option>
+            <option value="orthogonal">Orthogonal</option>
+            <option value="bezier">Bezier</option>
+          </select>
+        </div>
+
+        <!-- Routing Algorithm -->
+        <div class="panel-section">
+          <h4>Routing Algorithm</h4>
+          <select [(ngModel)]="currentRoutingAlgorithm" (change)="changeRoutingAlgorithm(currentRoutingAlgorithm)" class="control-select">
+            <option value="none">None (Simple)</option>
+            <option value="straight">Straight</option>
+            <option value="orthogonal">Orthogonal</option>
+            <option value="a-star">A* (Obstacle Avoidance)</option>
+            <option value="dijkstra">Dijkstra (Shortest Path)</option>
+            <option value="visibility-graph">Visibility Graph</option>
+          </select>
+          <p class="help-text">Obstacle avoidance algorithms find paths around nodes</p>
+        </div>
+
+        <!-- Selection Controls -->
+        <div class="panel-section" *ngIf="selectedNodeCount > 0">
+          <h4>Selection ({{ selectedNodeCount }})</h4>
+          <button (click)="clearSelection()" class="btn-control-full" title="Clear Selection (Esc)">
+            ✨ Clear Selection
+          </button>
+          <div class="button-row">
+            <button (click)="lockSelectedNodes()" class="btn-control-half btn-warning" title="Lock Selected">
+              📌 Lock
+            </button>
+            <button (click)="unlockSelectedNodes()" class="btn-control-half btn-info" title="Unlock Selected">
+              🔓 Unlock
+            </button>
+          </div>
+          <button (click)="deleteSelectedNodes()" class="btn-control-full btn-danger" title="Delete Selected (Del)">
+            🗑️ Delete
+          </button>
+        </div>
+
+        <!-- Animation Controls -->
+        <div class="panel-section">
+          <h4>Animation</h4>
+          <label class="checkbox-control">
+            <input type="checkbox" [(ngModel)]="enableAnimation" />
+            <span>Enable Animation</span>
+          </label>
+          <div *ngIf="enableAnimation" class="slider-wrapper">
+            <label class="slider-label">Duration: {{ animationDuration }}ms</label>
+            <input type="range" [(ngModel)]="animationDuration" min="200" max="2000" step="100" class="range-slider" />
+          </div>
+        </div>
+      </div>
     </div>
   </div>
 
