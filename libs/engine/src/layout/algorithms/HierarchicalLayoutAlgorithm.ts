@@ -33,6 +33,7 @@ import {
   applyTransform,
   calculateNodeBounds
 } from '../ViewportTransform';
+import { calculateHierarchicalSmartSpacing } from '../SmartSpacingCalculator';
 
 export class HierarchicalLayoutAlgorithm extends BaseLayoutAlgorithm {
   private hierarchicalOptions: HierarchicalOptions;
@@ -197,14 +198,28 @@ export class HierarchicalLayoutAlgorithm extends BaseLayoutAlgorithm {
       return positions;
     }
 
+    // Use viewport from config if provided, otherwise fallback to default
+    const viewport = config?.viewport || { x: 0, y: 0, width: 1200, height: 800 };
+
+    // Calculate smart spacing for hierarchical layout
+    const smartSpacing = calculateHierarchicalSmartSpacing({
+      viewport,
+      nodeCount: nodes.length,
+      zoom: (viewport as any).zoom || 1.0, // Zoom might be on viewport from config
+    });
+
+    // Use smart spacing (fallback to manual config if provided)
+    const nodeSpacing = this.hierarchicalOptions.nodeSpacing || smartSpacing.horizontal;
+    const rankSpacing = this.hierarchicalOptions.rankSpacing || smartSpacing.vertical;
+
     // Create Dagre graph
     const g = new dagre.graphlib.Graph();
 
-    // Set graph options
+    // Set graph options with smart spacing
     g.setGraph({
       rankdir: this.hierarchicalOptions.direction || 'TB',
-      nodesep: this.hierarchicalOptions.nodeSpacing || 50,
-      ranksep: this.hierarchicalOptions.rankSpacing || 100,
+      nodesep: nodeSpacing,
+      ranksep: rankSpacing,
       marginx: 20,
       marginy: 20,
     });
@@ -268,7 +283,7 @@ export class HierarchicalLayoutAlgorithm extends BaseLayoutAlgorithm {
         positions.set(node.id, transformedPos);
       });
 
-      console.log(`📐 Hierarchical layout: ${nodes.length} nodes fit in viewport (scale: ${transform.scale.toFixed(2)})`);
+      console.log(`📐 Hierarchical layout: ${nodes.length} nodes fit in viewport (scale: ${transform.scale.toFixed(2)}, node-spacing: ${nodeSpacing}px, rank-spacing: ${rankSpacing}px)`);
     } else {
       // No viewport - use relative positions as-is (backward compatibility)
       relativePositions.forEach(({ node, position }) => {

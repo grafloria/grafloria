@@ -29,6 +29,7 @@ import {
   applyTransform,
   calculateNodeBounds
 } from '../ViewportTransform';
+import { calculateGridSmartSpacing } from '../SmartSpacingCalculator';
 
 export class GridLayoutAlgorithm extends BaseLayoutAlgorithm {
   private gridOptions: GridLayoutOptions;
@@ -115,11 +116,27 @@ export class GridLayoutAlgorithm extends BaseLayoutAlgorithm {
     const referenceNode = nodes[0];
     const nodeWidth = referenceNode.size?.width || this.gridOptions.nodeSize?.width || 200;
     const nodeHeight = referenceNode.size?.height || this.gridOptions.nodeSize?.height || 100;
-    const spacing = this.gridOptions.horizontalSpacing || 20;
-    const padding = 100;
 
     // Use viewport from config if provided (Phase 0.5), otherwise fallback to default
     const viewport = config?.viewport || { x: 0, y: 0, width: 1200, height: 800 };
+
+    // Calculate initial columns for smart spacing calculation
+    const initialColumns = this.calculateOptimalColumns(viewport, nodeWidth, 20, 100);
+
+    // Calculate smart spacing based on viewport, node count, and zoom
+    const smartSpacing = calculateGridSmartSpacing(
+      {
+        viewport,
+        nodeCount: nodes.length,
+        zoom: (viewport as any).zoom || 1.0, // Zoom might be on viewport from config
+        averageNodeSize: { width: nodeWidth, height: nodeHeight }
+      },
+      initialColumns
+    );
+
+    // Use smart spacing (fallback to manual config if provided)
+    const spacing = this.gridOptions.horizontalSpacing || smartSpacing.horizontal;
+    const padding = smartSpacing.padding;
 
     // Calculate grid parameters based on viewport
     const gridParams = this.calculateGridParameters(
@@ -167,7 +184,7 @@ export class GridLayoutAlgorithm extends BaseLayoutAlgorithm {
         positions.set(node.id, transformedPos);
       });
 
-      console.log(`📐 Grid layout: ${nodes.length} nodes in ${gridParams.columns} columns, fit in viewport (scale: ${transform.scale.toFixed(2)})`);
+      console.log(`📐 Grid layout: ${nodes.length} nodes in ${gridParams.columns} columns, fit in viewport (scale: ${transform.scale.toFixed(2)}, spacing: ${spacing}px)`);
     } else {
       // No viewport - use relative positions with padding offset (backward compatibility)
       relativePositions.forEach(({ node, position }) => {
@@ -179,6 +196,34 @@ export class GridLayoutAlgorithm extends BaseLayoutAlgorithm {
     }
 
     return positions;
+  }
+
+  /**
+   * Calculate optimal number of columns for grid layout
+   */
+  private calculateOptimalColumns(
+    viewport: { x: number; y: number; width: number; height: number },
+    nodeWidth: number,
+    spacing: number,
+    padding: number
+  ): number {
+    if (this.gridOptions.columns !== 'auto' && this.gridOptions.columns !== undefined) {
+      return this.gridOptions.columns as number;
+    }
+
+    const columnWidth = nodeWidth + spacing;
+    const availableWidth = viewport.width - padding * 2;
+    const maxColumns = Math.floor(availableWidth / columnWidth);
+
+    // Use at least 2 columns, at most what fits in viewport
+    let columns = Math.max(2, Math.min(maxColumns, 5)); // Cap at 5 for readability
+
+    // If viewport is very wide, use more columns
+    if (viewport.width > 2000) {
+      columns = Math.min(maxColumns, 6);
+    }
+
+    return columns;
   }
 
   /**

@@ -11,6 +11,7 @@ import {
   applyTransform,
   calculateNodeBounds
 } from '../ViewportTransform';
+import { calculateForceDirectedSmartSpacing } from '../SmartSpacingCalculator';
 
 interface Vector2D {
   x: number;
@@ -242,11 +243,20 @@ export class ForceDirectedLayoutAlgorithm extends BaseLayoutAlgorithm implements
     // Phase 0.5: Use viewport from config if provided, otherwise fallback to default
     const viewport = config?.viewport || { x: 0, y: 0, width: 1200, height: 800 };
 
-    // Calculate optimal k (ideal spring length) based on area and node count
-    const area = viewport.width * viewport.height;
-    const k = Math.sqrt(area / nodes.length);
+    // Calculate smart spacing for force-directed layout
+    const smartSpacing = calculateForceDirectedSmartSpacing({
+      viewport,
+      nodeCount: nodes.length,
+      zoom: (viewport as any).zoom || 1.0, // Zoom might be on viewport from config
+    });
 
-    console.log(`🧲 Force-Directed: ${nodes.length} nodes, k=${k.toFixed(2)}, area=${area}`);
+    // Calculate optimal k (ideal spring length) based on smart spacing
+    // k represents the ideal distance between connected nodes
+    const area = viewport.width * viewport.height;
+    const baseK = Math.sqrt(area / nodes.length);
+    const k = baseK * (smartSpacing.horizontal / 36); // Scale by spacing factor
+
+    console.log(`🧲 Force-Directed: ${nodes.length} nodes, k=${k.toFixed(2)}, area=${area}, spacing=${smartSpacing.horizontal}px`);
 
     // Simulation parameters
     let temperature = this.forceOptions.temperature || 100;
