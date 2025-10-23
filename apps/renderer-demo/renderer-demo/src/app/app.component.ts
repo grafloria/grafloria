@@ -1,18 +1,21 @@
 import { Component, OnInit } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
-import { DiagramCanvasComponent } from '@grafloria/renderer-angular';
+import { DiagramCanvasComponent, InteractionConfigPanelComponent } from '@grafloria/renderer-angular';
 import {
   DiagramEngine,
   NodeModel,
   LayoutAlgorithmType,
-  GridLayoutOptions
+  GridLayoutOptions,
+  type InteractionConfig,
+  InteractionMode,
+  PortVisibilityStrategy
 } from '@grafloria/engine';
 import { LIGHT_THEME, DARK_THEME, type Theme, type Rectangle } from '@grafloria/renderer';
 
 @Component({
   standalone: true,
-  imports: [CommonModule, FormsModule, DiagramCanvasComponent],
+  imports: [CommonModule, FormsModule, DiagramCanvasComponent, InteractionConfigPanelComponent],
   selector: 'app-root',
   templateUrl: './app.component.html',
   styleUrl: './app.component.css',
@@ -70,7 +73,20 @@ export class AppComponent implements OnInit {
    * Initialize the diagram engine
    */
   private initializeEngine(): void {
-    this.engine = new DiagramEngine();
+    this.engine = new DiagramEngine({
+      interaction: {
+        mode: InteractionMode.SMART, // Start with Smart/Visio-style mode
+        portVisibility: PortVisibilityStrategy.ON_HOVER,
+        enableSmartAutoConnect: true,
+      }
+    });
+  }
+
+  /**
+   * Handle interaction config changes from the panel
+   */
+  onInteractionConfigChanged(config: Partial<InteractionConfig>): void {
+    console.log('🎛️ Interaction config changed:', config);
   }
 
   /**

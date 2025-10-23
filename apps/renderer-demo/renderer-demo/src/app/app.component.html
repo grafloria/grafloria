@@ -66,6 +66,18 @@
       </div>
 
       <div class="panel-content">
+        <!-- Interaction Config Panel -->
+        <div class="panel-section">
+          <grafloria-interaction-config-panel
+            *ngIf="engine"
+            [engine]="engine"
+            [expanded]="true"
+            [title]="'Interaction Modes'"
+            [showAdvanced]="true"
+            (configChanged)="onInteractionConfigChanged($event)">
+          </grafloria-interaction-config-panel>
+        </div>
+
         <!-- Zoom Controls -->
         <div class="panel-section">
           <h4>Zoom</h4>
