@@ -1,4 +1,4 @@
-import type { DiagramEngine, NodeModel, LinkModel } from '@grafloria/engine';
+import type { DiagramEngine, NodeModel, LinkModel, PortModel, InteractionConfig } from '@grafloria/engine';
 import type { IRenderer, PerformanceMetrics, SVGRendererConfig, VNode, Theme, Rectangle } from '../types';
 import { LIGHT_THEME } from '../themes';
 
@@ -80,6 +80,7 @@ export class SVGRenderer implements IRenderer {
     // Render layers
     const linksLayer = this.renderLinksLayer(visibleLinks, lod);
     const nodesLayer = this.renderNodesLayer(visibleNodes, lod);
+    const connectionPreviewLayer = this.renderConnectionPreviewLayer();
 
     // Apply zoom to viewBox (zoom around center point)
     // The center point should remain constant regardless of zoom level
@@ -100,7 +101,7 @@ export class SVGRenderer implements IRenderer {
         viewBox: `${viewBoxX} ${viewBoxY} ${viewBoxWidth} ${viewBoxHeight}`,
         className: 'grafloria-diagram',
       },
-      children: [linksLayer, nodesLayer],
+      children: [linksLayer, nodesLayer, connectionPreviewLayer],
     };
 
     // Track render time
@@ -210,6 +211,132 @@ export class SVGRenderer implements IRenderer {
   }
 
   /**
+   * Phase 2: Render connection preview layer
+   */
+  private renderConnectionPreviewLayer(): VNode {
+    const connectionStateManager = this.engine.getConnectionStateManager();
+    const dragState = connectionStateManager.getState();
+
+    const children: VNode[] = [];
+
+    // Render connection preview if active
+    if (dragState.isConnecting && dragState.sourcePort && dragState.currentMousePosition) {
+      const previewLine = this.renderConnectionPreview(dragState);
+      if (previewLine) {
+        children.push(previewLine);
+      }
+
+      // Render target port highlight if hovering over valid target
+      if (dragState.targetPort && dragState.isOverValidTarget) {
+        // The target port will already be highlighted by the port renderer
+        // No additional rendering needed here
+      }
+    }
+
+    return {
+      type: 'g',
+      key: 'connection-preview-layer',
+      props: {
+        className: 'connection-preview-layer',
+        pointerEvents: 'none', // Don't block mouse events
+      },
+      children,
+    };
+  }
+
+  /**
+   * Phase 2: Render connection preview line
+   */
+  private renderConnectionPreview(dragState: any): VNode | null {
+    if (!dragState.sourcePort || !dragState.currentMousePosition) {
+      return null;
+    }
+
+    const config = this.engine.getInteractionConfig();
+    if (!config.showConnectionPreview) {
+      return null;
+    }
+
+    // Get source port world position
+    const diagram = this.engine.getDiagram();
+    if (!diagram) return null;
+
+    // Find source node
+    let sourceNode: NodeModel | undefined;
+    for (const node of diagram.getNodes()) {
+      if (node.getPort(dragState.sourcePort.id)) {
+        sourceNode = node;
+        break;
+      }
+    }
+
+    if (!sourceNode) return null;
+
+    // Calculate source position (port position + node position)
+    const sourcePos = {
+      x: sourceNode.position.x + dragState.sourcePort.position.x,
+      y: sourceNode.position.y + dragState.sourcePort.position.y,
+    };
+
+    const targetPos = dragState.currentMousePosition;
+
+    // Generate path based on connection line style
+    const pathData = this.generateConnectionPreviewPath(
+      sourcePos,
+      targetPos,
+      config.connectionLineStyle
+    );
+
+    // Determine line color based on validity
+    const isValid = dragState.isOverValidTarget;
+    const strokeColor = isValid
+      ? this.theme.colors.success
+      : this.theme.colors.link.default;
+
+    return {
+      type: 'path',
+      key: 'connection-preview',
+      props: {
+        d: pathData,
+        stroke: strokeColor,
+        strokeWidth: 2,
+        strokeDasharray: '5,5',
+        fill: 'none',
+        opacity: 0.7,
+        className: 'connection-preview-line',
+        style: config.animateConnectionPreview
+          ? 'animation: dash 0.5s linear infinite'
+          : undefined,
+      },
+    };
+  }
+
+  /**
+   * Phase 2: Generate connection preview path
+   */
+  private generateConnectionPreviewPath(
+    from: { x: number; y: number },
+    to: { x: number; y: number },
+    style: string
+  ): string {
+    if (style === 'straight') {
+      return `M ${from.x} ${from.y} L ${to.x} ${to.y}`;
+    }
+
+    // Bezier curve (default)
+    const dx = to.x - from.x;
+    const dy = to.y - from.y;
+    const distance = Math.sqrt(dx * dx + dy * dy);
+
+    // Control points for smooth bezier curve
+    const curvature = Math.min(distance / 2, 100);
+    const control1 = { x: from.x + curvature, y: from.y };
+    const control2 = { x: to.x - curvature, y: to.y };
+
+    return `M ${from.x} ${from.y} C ${control1.x} ${control1.y}, ${control2.x} ${control2.y}, ${to.x} ${to.y}`;
+  }
+
+  /**
    * Render single node
    */
   private renderNode(node: NodeModel, lod: LODLevel): VNode {
@@ -232,6 +359,12 @@ export class SVGRenderer implements IRenderer {
     // Option 2: Enhanced visual effects
     const isHovered = node.state.hovered;
     const isSelected = node.isSelected();
+
+    // Phase 2: Check if node is a valid connection target
+    const connectionState = this.engine.getConnectionStateManager().getState();
+    const isConnectionTarget =
+      connectionState.isConnecting &&
+      connectionState.validTargetNodes.has(node.id);
 
     const vnode: VNode = {
       type: 'g',
@@ -260,6 +393,27 @@ export class SVGRenderer implements IRenderer {
                   rx: 6,
                   ry: 6,
                   className: 'selection-highlight',
+                },
+              } as VNode,
+            ]
+          : []),
+        // Phase 2: Connection target highlight (rendered behind the node)
+        ...(isConnectionTarget
+          ? [
+              {
+                type: 'rect',
+                props: {
+                  x: -2,
+                  y: -2,
+                  width: node.size.width + 4,
+                  height: node.size.height + 4,
+                  fill: 'none',
+                  stroke: this.theme.colors.success,
+                  strokeWidth: 2,
+                  rx: 5,
+                  ry: 5,
+                  className: 'connection-target-highlight',
+                  opacity: 0.8,
                 },
               } as VNode,
             ]
@@ -352,6 +506,8 @@ export class SVGRenderer implements IRenderer {
               } as VNode,
             ]
           : []),
+        // Phase 2: Render ports
+        ...this.renderPorts(node, lod),
       ],
     };
 
@@ -362,6 +518,113 @@ export class SVGRenderer implements IRenderer {
     }
 
     return vnode;
+  }
+
+  /**
+   * Phase 2: Render ports for a node
+   */
+  private renderPorts(node: NodeModel, lod: LODLevel): VNode[] {
+    // Skip port rendering in low LOD
+    if (lod === 'low') {
+      return [];
+    }
+
+    const interactionConfig = this.engine.getInteractionConfig();
+    const ports = Array.from(node.getPorts().values());
+
+    return ports
+      .map(port => this.renderPort(port, node, interactionConfig, lod))
+      .filter(Boolean) as VNode[];
+  }
+
+  /**
+   * Phase 2: Render single port
+   */
+  private renderPort(
+    port: PortModel,
+    node: NodeModel,
+    config: InteractionConfig,
+    lod: LODLevel
+  ): VNode | null {
+    // Determine if port should be visible based on visibility strategy
+    const shouldRender = this.shouldRenderPort(port, node, config);
+    if (!shouldRender) {
+      return null;
+    }
+
+    // Get port position relative to node
+    const portPos = port.position;
+
+    // Calculate port radius with hover scaling
+    const baseRadius = config.portDefaultRadius;
+    const radius = port.isHovered
+      ? baseRadius * config.portHoverScaleFactor
+      : baseRadius;
+
+    // Get port color based on type
+    const portColor = this.getPortColor(port);
+
+    // Determine if port is highlighted (valid target during connection)
+    const isHighlighted = port.isHighlighted || port.isValidTarget;
+
+    return {
+      type: 'circle',
+      key: `port-${port.id}`,
+      props: {
+        cx: portPos.x,
+        cy: portPos.y,
+        r: radius,
+        fill: isHighlighted ? portColor : this.theme.colors.background.surface,
+        stroke: portColor,
+        strokeWidth: isHighlighted ? 3 : this.theme.ports.strokeWidth,
+        className: this.config.useCSSMode
+          ? `port port-${port.type}${port.isHovered ? ' port-hovered' : ''}${isHighlighted ? ' port-highlighted' : ''}`
+          : undefined,
+        style: port.isHovered || isHighlighted
+          ? 'transition: all 0.2s ease; cursor: pointer'
+          : 'transition: all 0.2s ease; cursor: crosshair',
+        opacity: isHighlighted ? 1 : 0.9,
+      },
+    };
+  }
+
+  /**
+   * Phase 2: Determine if port should be rendered based on visibility strategy
+   */
+  private shouldRenderPort(
+    port: PortModel,
+    node: NodeModel,
+    config: InteractionConfig
+  ): boolean {
+    const { portVisibility } = config;
+
+    switch (portVisibility) {
+      case 'always':
+        return true;
+      case 'on-hover':
+        return node.state.hovered || port.isHovered || port.isHighlighted;
+      case 'hidden':
+        // Only show if actively involved in connection
+        return port.isHighlighted || port.isValidTarget;
+      default:
+        return true;
+    }
+  }
+
+  /**
+   * Phase 2: Get port color based on type
+   */
+  private getPortColor(port: PortModel): string {
+    switch (port.type) {
+      case 'input':
+        return this.theme.colors.port.input;
+      case 'output':
+        return this.theme.colors.port.output;
+      case 'bi':
+        return this.theme.colors.port.bi;
+      default:
+        return this.theme.colors.port.bi;
+    }
   }
 
   /**
@@ -398,6 +661,15 @@ export class SVGRenderer implements IRenderer {
     const midIndex = Math.floor(points.length / 2);
     const labelPoint = points[midIndex];
     const label = link.getMetadata('label');
+
+    // Phase 2: Check if link is selected and reconnection handles should be shown
+    const config = this.engine.getInteractionConfig();
+    const isSelected = link.state === 'selected';
+    const showHandles =
+      config.enableLinkReconnection &&
+      config.showLinkEndpointHandles &&
+      isSelected &&
+      lod !== 'low';
 
     const vnode: VNode = {
       type: 'g',
@@ -461,6 +733,45 @@ export class SVGRenderer implements IRenderer {
                   fontWeight: this.theme.typography.fontWeight.medium,
                   className: 'link-label',
                   pointerEvents: 'none',
+                },
+              } as VNode,
+            ]
+          : []),
+        // Phase 2: Link endpoint handles for reconnection
+        ...(showHandles
+          ? [
+              // Source endpoint handle
+              {
+                type: 'circle',
+                key: `link-${link.id}-source-handle`,
+                props: {
+                  cx: points[0].x,
+                  cy: points[0].y,
+                  r: 6,
+                  fill: link.isSourceEndpointSelected
+                    ? this.theme.colors.primary
+                    : this.theme.colors.background.surface,
+                  stroke: this.theme.colors.primary,
+                  strokeWidth: 2,
+                  className: 'link-endpoint-handle link-source-handle',
+                  style: 'cursor: move; transition: all 0.2s ease',
+                },
+              } as VNode,
+              // Target endpoint handle
+              {
+                type: 'circle',
+                key: `link-${link.id}-target-handle`,
+                props: {
+                  cx: lastPoint.x,
+                  cy: lastPoint.y,
+                  r: 6,
+                  fill: link.isTargetEndpointSelected
+                    ? this.theme.colors.primary
+                    : this.theme.colors.background.surface,
+                  stroke: this.theme.colors.primary,
+                  strokeWidth: 2,
+                  className: 'link-endpoint-handle link-target-handle',
+                  style: 'cursor: move; transition: all 0.2s ease',
                 },
               } as VNode,
             ]
@@ -743,6 +1054,81 @@ export class SVGRenderer implements IRenderer {
   font-family: ${t.typography.fontFamily.default};
   font-size: ${t.typography.fontSize.md}px;
   fill: ${t.colors.text.primary};
+}
+
+/* Phase 2: Port Styles */
+.port {
+  transition: all 0.2s ease;
+  cursor: crosshair;
+}
+
+.port-input {
+  fill: ${t.colors.background.surface};
+  stroke: ${t.colors.port.input};
+  stroke-width: ${t.ports.strokeWidth}px;
+}
+
+.port-output {
+  fill: ${t.colors.background.surface};
+  stroke: ${t.colors.port.output};
+  stroke-width: ${t.ports.strokeWidth}px;
+}
+
+.port-bi {
+  fill: ${t.colors.background.surface};
+  stroke: ${t.colors.port.bi};
+  stroke-width: ${t.ports.strokeWidth}px;
+}
+
+.port-hovered {
+  stroke-width: 3px;
+  cursor: pointer;
+}
+
+.port-highlighted {
+  stroke-width: 3px;
+  opacity: 1;
+}
+
+.port-input.port-highlighted {
+  fill: ${t.colors.port.input};
+}
+
+.port-output.port-highlighted {
+  fill: ${t.colors.port.output};
+}
+
+.port-bi.port-highlighted {
+  fill: ${t.colors.port.bi};
+}
+
+/* Phase 2: Connection Preview Styles */
+.connection-preview-line {
+  pointer-events: none;
+  transition: stroke 0.2s ease;
+}
+
+@keyframes dash {
+  to {
+    stroke-dashoffset: -10;
+  }
+}
+
+/* Phase 2: Connection Target Highlight */
+.connection-target-highlight {
+  transition: all 0.2s ease;
+  pointer-events: none;
+}
+
+/* Phase 2: Link Endpoint Handles */
+.link-endpoint-handle {
+  cursor: move;
+  transition: all 0.2s ease;
+}
+
+.link-endpoint-handle:hover {
+  r: 8;
+  stroke-width: 3px;
 }
     `.trim();
   }
