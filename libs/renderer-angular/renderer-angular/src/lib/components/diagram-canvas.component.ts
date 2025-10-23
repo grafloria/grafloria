@@ -198,11 +198,45 @@ export class DiagramCanvasComponent implements OnInit, AfterViewInit, OnChanges,
       return;
     }
 
+    // Calculate actual viewport dimensions based on canvas size and zoom
+    const actualViewport = this.calculateActualViewport();
+
     // Generate VNode tree using SVGRenderer
-    const vnode = this.renderer.render(this.viewport, this.zoom);
+    const vnode = this.renderer.render(actualViewport, this.zoom);
 
     // Render VNode tree to DOM using VNodeRendererService
     this.vnodeRenderer.render(vnode, this.containerRef.nativeElement);
+  }
+
+  /**
+   * Calculate the actual viewport in world-space coordinates
+   * The viewport dimensions must scale with zoom level:
+   * - At zoom = 1.0, viewport = canvas pixel dimensions
+   * - At zoom = 0.5 (zoomed out), viewport = 2x canvas dimensions (see more)
+   * - At zoom = 2.0 (zoomed in), viewport = 0.5x canvas dimensions (see less)
+   */
+  private calculateActualViewport(): Rectangle {
+    const container = this.containerRef?.nativeElement;
+    if (!container) {
+      return this.viewport;
+    }
+
+    // Get actual canvas pixel dimensions
+    const rect = container.getBoundingClientRect();
+    const canvasWidth = rect.width || this.viewport.width;
+    const canvasHeight = rect.height || this.viewport.height;
+
+    // Calculate world-space dimensions based on zoom
+    // worldWidth = pixelWidth / zoom
+    const worldWidth = canvasWidth / this.zoom;
+    const worldHeight = canvasHeight / this.zoom;
+
+    return {
+      x: this.viewport.x,
+      y: this.viewport.y,
+      width: worldWidth,
+      height: worldHeight
+    };
   }
 
   /**
@@ -292,8 +326,10 @@ export class DiagramCanvasComponent implements OnInit, AfterViewInit, OnChanges,
 
     // Calculate zoom delta based on wheel direction
     const delta = event.deltaY > 0 ? -this.zoomSensitivity : this.zoomSensitivity;
-    const currentZoom = diagram.viewport.zoom;
-    const newZoom = Math.max(this.minZoom, Math.min(this.maxZoom, currentZoom + delta));
+    const newZoom = Math.max(this.minZoom, Math.min(this.maxZoom, this.zoom + delta));
+
+    // Update local zoom
+    this.zoom = newZoom;
 
     // Update diagram zoom
     diagram.setZoom(newZoom);
@@ -301,7 +337,7 @@ export class DiagramCanvasComponent implements OnInit, AfterViewInit, OnChanges,
     // Emit zoom change event
     this.zoomChanged.emit(newZoom);
 
-    // Trigger re-render
+    // Trigger re-render with updated viewport dimensions
     this.renderDiagram();
     this.cdr.markForCheck();
   }
@@ -347,19 +383,27 @@ export class DiagramCanvasComponent implements OnInit, AfterViewInit, OnChanges,
       return;
     }
 
-    // Calculate pan delta
-    const dx = this.lastPanX - event.clientX;
-    const dy = this.lastPanY - event.clientY;
+    // Calculate pan delta in world-space coordinates
+    const dx = (this.lastPanX - event.clientX) / this.zoom;
+    const dy = (this.lastPanY - event.clientY) / this.zoom;
+
+    // Update local viewport position
+    this.viewport = {
+      ...this.viewport,
+      x: this.viewport.x + dx,
+      y: this.viewport.y + dy
+    };
 
     // Update diagram viewport
-    diagram.pan(dx / diagram.viewport.zoom, dy / diagram.viewport.zoom);
+    diagram.pan(dx, dy);
 
     // Update last position
     this.lastPanX = event.clientX;
     this.lastPanY = event.clientY;
 
-    // Emit viewport change event
-    this.viewportChanged.emit(diagram.getViewport());
+    // Emit viewport change event with calculated viewport
+    const actualViewport = this.calculateActualViewport();
+    this.viewportChanged.emit(actualViewport);
 
     // Trigger re-render
     this.renderDiagram();
