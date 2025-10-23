@@ -213,6 +213,24 @@ export class AppComponent implements OnInit {
   }
 
   /**
+   * Handle viewport changed event from canvas (Phase 0.5 - Option B)
+   * Called when user pans with middle mouse button
+   */
+  onViewportChanged(rect: any): void {
+    this.viewport = rect;
+    console.log(`📷 Viewport panned to: (${rect.x.toFixed(1)}, ${rect.y.toFixed(1)})`);
+  }
+
+  /**
+   * Handle zoom changed event from canvas (Phase 0.5 - Option B)
+   * Called when user zooms with mouse wheel
+   */
+  onZoomChanged(newZoom: number): void {
+    this.zoom = newZoom;
+    console.log(`🔍 Zoom changed to: ${(newZoom * 100).toFixed(0)}%`);
+  }
+
+  /**
    * Add a new node using engine's layout system
    */
   addRandomNode(): void {

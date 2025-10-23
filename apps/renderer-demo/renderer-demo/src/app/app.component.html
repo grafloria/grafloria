@@ -64,6 +64,8 @@
         [viewport]="viewport"
         [zoom]="zoom"
         [theme]="theme"
+        (viewportChanged)="onViewportChanged($event)"
+        (zoomChanged)="onZoomChanged($event)"
         class="diagram-canvas">
       </grafloria-diagram-canvas>
     </div>
