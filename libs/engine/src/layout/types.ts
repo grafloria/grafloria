@@ -88,6 +88,16 @@ export interface PlacementResult {
      * Reason for placement choice
      */
     reason?: string;
+
+    /**
+     * Number of attempts made (for iterative placement)
+     */
+    attempt?: number;
+
+    /**
+     * Allow additional metadata properties
+     */
+    [key: string]: any;
   };
 }
 
@@ -161,34 +171,49 @@ export interface GridLayoutOptions {
  */
 export interface ForceDirectedOptions {
   /**
-   * Strength of repulsive force between nodes
+   * Number of simulation iterations (default: 100)
+   */
+  iterations?: number;
+
+  /**
+   * Strength of repulsive force between nodes (default: 5000)
    */
   repulsionStrength?: number;
 
   /**
-   * Ideal distance between connected nodes
+   * Strength of attraction between connected nodes (default: 0.01)
    */
-  linkDistance?: number;
+  attractionStrength?: number;
 
   /**
-   * Strength of attraction between connected nodes
+   * Velocity damping factor (0-1, default: 0.9)
    */
-  linkStrength?: number;
+  damping?: number;
 
   /**
-   * Center force strength (pulls towards center)
+   * Initial temperature for simulation (default: 100)
    */
-  centerStrength?: number;
+  temperature?: number;
 
   /**
-   * Collision detection radius
+   * Cooling factor per iteration (default: 0.95)
    */
-  collisionRadius?: number;
+  coolingFactor?: number;
 
   /**
-   * Number of simulation iterations
+   * Minimum distance between nodes (default: 50)
    */
-  iterations?: number;
+  minDistance?: number;
+
+  /**
+   * Maximum distance for force calculation (default: 500)
+   */
+  maxDistance?: number;
+
+  /**
+   * Center gravity strength (pulls towards center, default: 0.1)
+   */
+  centerGravity?: number;
 
   /**
    * Pin existing nodes (don't move them)
@@ -236,17 +261,23 @@ export interface HierarchicalOptions {
  */
 export interface HybridOptions {
   /**
-   * Fallback algorithm if pattern detection fails
+   * Fallback algorithm if pattern detection fails or confidence is low
    */
   fallbackAlgorithm?: 'grid' | 'force-directed' | 'hierarchical';
 
   /**
-   * Threshold for pattern detection (0-1)
+   * Enable automatic algorithm switching based on pattern detection (default: true)
    */
-  patternDetectionThreshold?: number;
+  enableAutoSwitch?: boolean;
 
   /**
-   * Options for each algorithm
+   * Confidence threshold for pattern detection (0-1, default: 0.7)
+   * If confidence is below this, fallback algorithm is used
+   */
+  analysisThreshold?: number;
+
+  /**
+   * Options for each sub-algorithm
    */
   gridOptions?: GridLayoutOptions;
   forceDirectedOptions?: ForceDirectedOptions;
