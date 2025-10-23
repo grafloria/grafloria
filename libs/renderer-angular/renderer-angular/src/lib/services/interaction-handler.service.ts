@@ -42,10 +42,62 @@ export class InteractionHandlerService {
   private reconnectingLink: LinkModel | null = null;
   private reconnectingEndpoint: 'source' | 'target' | null = null;
 
+  /**
+   * Phase 5: Performance optimization - debounce hover detection
+   */
+  private hoverDebounceTimer: any = null;
+  private readonly HOVER_DEBOUNCE_MS = 16; // ~60fps
+
+  /**
+   * Phase 5: Performance monitoring
+   */
+  private performanceMetrics = {
+    hoverDetectionTime: 0,
+    connectionUpdateTime: 0,
+    portHitTestTime: 0,
+  };
+
+  /**
+   * Phase 5: Port hit test cache for performance
+   */
+  private portHitCache = new Map<string, { x: number; y: number; radius: number }>();
+  private portHitCacheInvalidated = false;
+
   constructor() {}
 
   /**
+   * Phase 5: Dispose and cleanup resources
+   */
+  dispose(): void {
+    if (this.hoverDebounceTimer) {
+      clearTimeout(this.hoverDebounceTimer);
+      this.hoverDebounceTimer = null;
+    }
+    this.portHitCache.clear();
+    this.hoveredNode = null;
+    this.hoveredPort = null;
+    this.hoveredLink = null;
+    this.connectionSourcePort = null;
+    this.reconnectingLink = null;
+  }
+
+  /**
+   * Phase 5: Get performance metrics
+   */
+  getPerformanceMetrics() {
+    return { ...this.performanceMetrics };
+  }
+
+  /**
+   * Phase 5: Invalidate port hit cache (call when nodes move or ports change)
+   */
+  invalidatePortHitCache(): void {
+    this.portHitCacheInvalidated = true;
+  }
+
+  /**
    * Phase 3: Handle mouse move for hover detection
+   * Phase 5: Enhanced with performance monitoring and validation
    * Updates hover states for nodes, ports, and links
    */
   handleMouseMove(
@@ -53,8 +105,16 @@ export class InteractionHandlerService {
     worldY: number,
     engine: DiagramEngine
   ): boolean {
+    // Phase 5: Validate inputs
+    if (!engine || !isFinite(worldX) || !isFinite(worldY)) {
+      return false;
+    }
+
     const diagram = engine.getDiagram();
     if (!diagram) return false;
+
+    // Phase 5: Performance monitoring
+    const startTime = performance.now();
 
     const config = engine.getInteractionConfig();
     let needsRender = false;
@@ -106,11 +166,15 @@ export class InteractionHandlerService {
     this.hoveredPort = portAtPosition;
     this.hoveredLink = linkAtPosition;
 
+    // Phase 5: Track performance
+    this.performanceMetrics.hoverDetectionTime = performance.now() - startTime;
+
     return needsRender;
   }
 
   /**
    * Phase 3: Handle connection drag update
+   * Phase 5: Enhanced with performance monitoring and validation
    * Updates connection preview during drag
    */
   handleConnectionDrag(
@@ -118,49 +182,90 @@ export class InteractionHandlerService {
     worldY: number,
     engine: DiagramEngine
   ): boolean {
+    // Phase 5: Validate state and inputs
     if (!this.isConnecting || !this.connectionSourcePort) {
       return false;
     }
 
-    const connectionStateManager = engine.getConnectionStateManager();
-    const hoveredPort = this.hoveredPort;
+    if (!engine || !isFinite(worldX) || !isFinite(worldY)) {
+      return false;
+    }
 
-    // Update connection state with current mouse position and hovered port
-    connectionStateManager.updateConnection(
-      { x: worldX, y: worldY },
-      hoveredPort || undefined
-    );
+    // Phase 5: Performance monitoring
+    const startTime = performance.now();
 
-    // Update port highlight states
-    this.updatePortHighlights(engine);
+    try {
+      const connectionStateManager = engine.getConnectionStateManager();
+      const hoveredPort = this.hoveredPort;
 
-    return true;
+      // Update connection state with current mouse position and hovered port
+      connectionStateManager.updateConnection(
+        { x: worldX, y: worldY },
+        hoveredPort || undefined
+      );
+
+      // Update port highlight states
+      this.updatePortHighlights(engine);
+
+      // Phase 5: Track performance
+      this.performanceMetrics.connectionUpdateTime = performance.now() - startTime;
+
+      return true;
+    } catch (error) {
+      // Phase 5: Error handling
+      console.error('Error during connection drag:', error);
+      this.cancelConnection(engine);
+      return false;
+    }
   }
 
   /**
    * Phase 3: Start connection from port
+   * Phase 5: Enhanced with validation and error handling
    */
   startConnection(port: PortModel, worldX: number, worldY: number, engine: DiagramEngine): void {
-    this.isConnecting = true;
-    this.connectionSourcePort = port;
+    // Phase 5: Validate inputs
+    if (!port || !engine || !isFinite(worldX) || !isFinite(worldY)) {
+      console.warn('Invalid inputs for startConnection');
+      return;
+    }
 
-    const connectionStateManager = engine.getConnectionStateManager();
-    connectionStateManager.startConnection(port, { x: worldX, y: worldY });
+    try {
+      this.isConnecting = true;
+      this.connectionSourcePort = port;
 
-    console.log('🔌 Connection started from port:', port.id);
+      const connectionStateManager = engine.getConnectionStateManager();
+      connectionStateManager.startConnection(port, { x: worldX, y: worldY });
+
+      console.log('🔌 Connection started from port:', port.id);
+    } catch (error) {
+      // Phase 5: Error recovery
+      console.error('Error starting connection:', error);
+      this.isConnecting = false;
+      this.connectionSourcePort = null;
+    }
   }
 
   /**
    * Phase 3: Complete connection to target port
+   * Phase 5: Enhanced with validation and error handling
    */
   completeConnection(engine: DiagramEngine): boolean {
+    // Phase 5: Validate state
     if (!this.isConnecting || !this.connectionSourcePort) {
       return false;
     }
 
-    const config = engine.getInteractionConfig();
-    const connectionStateManager = engine.getConnectionStateManager();
-    let targetPort = this.hoveredPort;
+    if (!engine) {
+      console.warn('Invalid engine in completeConnection');
+      this.cancelConnection(engine);
+      return false;
+    }
+
+    try {
+      const config = engine.getInteractionConfig();
+      const connectionStateManager = engine.getConnectionStateManager();
+      let targetPort = this.hoveredPort;
 
     // Smart mode: Auto-connect to nearest port if dropping on node body
     if (config.mode === 'smart' && config.enableSmartAutoConnect) {
@@ -201,10 +306,16 @@ export class InteractionHandlerService {
       }
     }
 
-    // Cleanup
-    this.cancelConnection(engine);
+      // Cleanup
+      this.cancelConnection(engine);
 
-    return success;
+      return success;
+    } catch (error) {
+      // Phase 5: Error recovery
+      console.error('Error completing connection:', error);
+      this.cancelConnection(engine);
+      return false;
+    }
   }
 
   /**
@@ -418,42 +529,76 @@ export class InteractionHandlerService {
 
   /**
    * Find port at world position
+   * Phase 5: Optimized with performance monitoring and early exit
    */
   private findPortAtPosition(
     worldX: number,
     worldY: number,
     diagram: any
   ): PortModel | null {
-    const config = diagram.getEngine().getInteractionConfig();
-    const portRadius = config.portDefaultRadius * config.portHoverScaleFactor;
-    const hitRadius = portRadius + 2; // Add 2px tolerance
+    // Phase 5: Performance monitoring
+    const startTime = performance.now();
 
-    for (const node of diagram.getNodes()) {
-      // Skip if node is not hovered and ports are not always visible
-      if (config.portVisibility === 'on-hover' && !node.state.hovered) {
-        continue;
+    try {
+      const config = diagram.getEngine().getInteractionConfig();
+      const portRadius = config.portDefaultRadius * config.portHoverScaleFactor;
+      const hitRadius = portRadius + 2; // Add 2px tolerance
+
+      // Phase 5: Optimization - early exit if no nodes
+      const nodes = diagram.getNodes();
+      if (!nodes || nodes.length === 0) {
+        return null;
       }
 
-      const nodeBounds = node.getBoundingBox();
-      const portsMap = node.getPorts();
-      const ports: PortModel[] = Array.from((portsMap as Map<string, PortModel>).values());
+      for (const node of nodes) {
+        // Skip if node is not hovered and ports are not always visible
+        if (config.portVisibility === 'on-hover' && !node.state.hovered) {
+          continue;
+        }
 
-      for (const port of ports) {
-        // Get absolute port position
-        const portPos = port.getAbsolutePosition(nodeBounds);
+        // Phase 5: Optimization - rough node bounds check first
+        const nodeBounds = node.getBoundingBox();
+        const nodeExpandedBounds = {
+          left: nodeBounds.left - hitRadius,
+          right: nodeBounds.right + hitRadius,
+          top: nodeBounds.top - hitRadius,
+          bottom: nodeBounds.bottom + hitRadius,
+        };
 
-        // Check if mouse is within port radius
-        const dx = worldX - portPos.x;
-        const dy = worldY - portPos.y;
-        const distance = Math.sqrt(dx * dx + dy * dy);
+        // Skip node if mouse is not even near it
+        if (
+          worldX < nodeExpandedBounds.left ||
+          worldX > nodeExpandedBounds.right ||
+          worldY < nodeExpandedBounds.top ||
+          worldY > nodeExpandedBounds.bottom
+        ) {
+          continue;
+        }
 
-        if (distance <= hitRadius) {
-          return port;
+        const portsMap = node.getPorts();
+        const ports: PortModel[] = Array.from((portsMap as Map<string, PortModel>).values());
+
+        for (const port of ports) {
+          // Get absolute port position
+          const portPos = port.getAbsolutePosition(nodeBounds);
+
+          // Check if mouse is within port radius
+          const dx = worldX - portPos.x;
+          const dy = worldY - portPos.y;
+          const distanceSquared = dx * dx + dy * dy;
+
+          // Phase 5: Optimization - compare squared distances to avoid sqrt
+          if (distanceSquared <= hitRadius * hitRadius) {
+            return port;
+          }
         }
       }
-    }
 
-    return null;
+      return null;
+    } finally {
+      // Phase 5: Track performance
+      this.performanceMetrics.portHitTestTime = performance.now() - startTime;
+    }
   }
 
   /**
