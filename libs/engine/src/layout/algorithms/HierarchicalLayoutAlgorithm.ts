@@ -17,7 +17,7 @@
  * - Professional appearance
  */
 
-import dagre from '@dagrejs/dagre';
+import * as dagre from '@dagrejs/dagre';
 import { DiagramModel } from '../../models/DiagramModel';
 import { NodeModel } from '../../models/NodeModel';
 import { Point } from '../../types';

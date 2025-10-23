@@ -189,6 +189,10 @@ export class LayoutManager {
         }
       });
 
+      // Phase 0.5.2: Optimize connections based on new node positions
+      // This must happen BEFORE recalculating paths, so links use optimal ports
+      this.optimizeConnections();
+
       // CRITICAL: Recalculate all link paths after nodes have moved
       // Links don't automatically update when nodes move - we must explicitly regenerate their paths
       this.recalculateLinkPaths();
@@ -266,6 +270,148 @@ export class LayoutManager {
     });
 
     console.log(`🔗 Recalculated ${recalculated} link paths after layout`);
+  }
+
+  /**
+   * Phase 0.5.2: Select optimal ports based on node geometry
+   *
+   * Uses geometric analysis to determine the best ports for connection:
+   * - Calculates relative position between nodes
+   * - Selects ports that face each other
+   * - Returns ports that create the shortest, most natural connection
+   *
+   * @param sourceNode - The source node
+   * @param targetNode - The target node
+   * @returns Object containing optimal source and target ports, or undefined if not found
+   */
+  selectOptimalPorts(
+    sourceNode: NodeModel,
+    targetNode: NodeModel
+  ): { sourcePort: any; targetPort: any } | undefined {
+    // Get node centers
+    const sourceBounds = sourceNode.getBoundingBox();
+    const targetBounds = targetNode.getBoundingBox();
+
+    const sourceCenter = {
+      x: sourceBounds.left + sourceBounds.width / 2,
+      y: sourceBounds.top + sourceBounds.height / 2,
+    };
+
+    const targetCenter = {
+      x: targetBounds.left + targetBounds.width / 2,
+      y: targetBounds.top + targetBounds.height / 2,
+    };
+
+    // Calculate relative position
+    const dx = targetCenter.x - sourceCenter.x;
+    const dy = targetCenter.y - sourceCenter.y;
+
+    // Determine dominant direction (horizontal vs vertical)
+    const isHorizontal = Math.abs(dx) > Math.abs(dy);
+
+    let sourceSide: 'left' | 'right' | 'top' | 'bottom';
+    let targetSide: 'left' | 'right' | 'top' | 'bottom';
+
+    if (isHorizontal) {
+      // Horizontal connection
+      if (dx > 0) {
+        // Target is to the right of source
+        sourceSide = 'right';
+        targetSide = 'left';
+      } else {
+        // Target is to the left of source
+        sourceSide = 'left';
+        targetSide = 'right';
+      }
+    } else {
+      // Vertical connection
+      if (dy > 0) {
+        // Target is below source
+        sourceSide = 'bottom';
+        targetSide = 'top';
+      } else {
+        // Target is above source
+        sourceSide = 'top';
+        targetSide = 'bottom';
+      }
+    }
+
+    // Get ports by the determined sides
+    const sourcePort = sourceNode.getPortBySide(sourceSide);
+    const targetPort = targetNode.getPortBySide(targetSide);
+
+    if (!sourcePort || !targetPort) {
+      console.warn(`⚠️ Could not find optimal ports for nodes ${sourceNode.id} → ${targetNode.id}`);
+      return undefined;
+    }
+
+    return { sourcePort, targetPort };
+  }
+
+  /**
+   * Phase 0.5.2: Optimize all connections after layout
+   *
+   * Reassigns ports for all links based on current node positions.
+   * This ensures connections look natural after layout algorithms reposition nodes.
+   *
+   * Called automatically after layout, fixes the "weird diagonal connections" issue.
+   *
+   * @returns Number of connections optimized
+   */
+  private optimizeConnections(): number {
+    const links = this.diagram.getLinks();
+    let optimized = 0;
+
+    links.forEach((link) => {
+      // Find source and target nodes
+      const sourceNode = this.diagram.getNodes().find((n) =>
+        n.getPorts().some((p) => p.id === link.sourcePortId)
+      );
+      const targetNode = this.diagram.getNodes().find((n) =>
+        n.getPorts().some((p) => p.id === link.targetPortId)
+      );
+
+      if (!sourceNode || !targetNode) {
+        return; // Skip if nodes not found
+      }
+
+      // Select optimal ports based on current node positions
+      const optimalPorts = this.selectOptimalPorts(sourceNode, targetNode);
+
+      if (optimalPorts) {
+        const { sourcePort, targetPort } = optimalPorts;
+
+        // Only reassign if ports changed
+        if (link.sourcePortId !== sourcePort.id || link.targetPortId !== targetPort.id) {
+          // Remove connection from old ports
+          const oldSourcePort = sourceNode.getPorts().find((p) => p.id === link.sourcePortId);
+          const oldTargetPort = targetNode.getPorts().find((p) => p.id === link.targetPortId);
+
+          if (oldSourcePort) {
+            oldSourcePort.removeConnection(link.id);
+          }
+          if (oldTargetPort) {
+            oldTargetPort.removeConnection(link.id);
+          }
+
+          // Update link with new ports
+          link.setSourcePort(sourcePort.id, sourceNode.id);
+          link.setTargetPort(targetPort.id, targetNode.id);
+
+          // Add connection to new ports
+          sourcePort.addConnection(link.id);
+          targetPort.addConnection(link.id);
+
+          optimized++;
+        }
+      }
+    });
+
+    if (optimized > 0) {
+      console.log(`🎯 Optimized ${optimized} connections based on node geometry`);
+    }
+
+    return optimized;
   }
 
   /**
