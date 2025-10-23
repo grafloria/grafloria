@@ -321,6 +321,37 @@ export class SVGRenderer implements IRenderer {
               } as VNode,
             ]
           : []),
+        // Option 3: Lock/pin indicator for locked nodes
+        ...(node.state.locked && lod !== 'low'
+          ? [
+              // Pin icon background circle
+              {
+                type: 'circle',
+                props: {
+                  cx: node.size.width - 10,
+                  cy: 10,
+                  r: 8,
+                  fill: this.theme.colors.warning || '#f59e0b',
+                  opacity: 0.9,
+                  className: 'lock-indicator-bg',
+                },
+              } as VNode,
+              // Pin icon (simple pushpin shape using text)
+              {
+                type: 'text',
+                props: {
+                  x: node.size.width - 10,
+                  y: 10,
+                  textContent: '📌',
+                  textAnchor: 'middle',
+                  dominantBaseline: 'middle',
+                  fontSize: 12,
+                  pointerEvents: 'none',
+                  className: 'lock-indicator',
+                },
+              } as VNode,
+            ]
+          : []),
       ],
     };
 

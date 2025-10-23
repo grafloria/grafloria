@@ -696,6 +696,57 @@ export class DiagramModel extends DiagramEntity {
   }
 
   /**
+   * Option 3: Lock/pin selected nodes
+   * Locked nodes will not move during layout operations
+   */
+  lockSelected(): number {
+    const selectedNodes = this.getSelectedNodes();
+    if (selectedNodes.length === 0) {
+      return 0;
+    }
+
+    selectedNodes.forEach((node) => {
+      node.setState({ locked: true });
+    });
+
+    return selectedNodes.length;
+  }
+
+  /**
+   * Option 3: Unlock selected nodes
+   */
+  unlockSelected(): number {
+    const selectedNodes = this.getSelectedNodes();
+    if (selectedNodes.length === 0) {
+      return 0;
+    }
+
+    selectedNodes.forEach((node) => {
+      node.setState({ locked: false });
+    });
+
+    return selectedNodes.length;
+  }
+
+  /**
+   * Option 3: Get locked nodes
+   */
+  getLockedNodes(): NodeModel[] {
+    return this.getNodes().filter((node) => node.state.locked);
+  }
+
+  /**
+   * Option 3: Unlock all nodes
+   */
+  unlockAll(): number {
+    const lockedNodes = this.getLockedNodes();
+    lockedNodes.forEach((node) => {
+      node.setState({ locked: false });
+    });
+    return lockedNodes.length;
+  }
+
+  /**
    * Set viewport (Phase 0.5 - Viewport-Aware Layout)
    */
   setViewport(x: number, y: number, width: number, height: number, zoom?: number): void {

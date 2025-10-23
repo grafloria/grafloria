@@ -170,6 +170,7 @@ export class LayoutManager {
 
   /**
    * Re-layout all nodes using current algorithm (Phase 0.5 - Viewport-aware)
+   * Option 3: Supports animation and locked node constraints
    */
   async reLayout(config?: LayoutConfiguration): Promise<void> {
     this.emitEvent({
@@ -195,16 +196,43 @@ export class LayoutManager {
         };
       }
 
+      // Option 3: Store old positions for animation
+      const oldPositions = new Map<string, Point>();
+      if (config?.animate) {
+        this.diagram.getNodes().forEach((node) => {
+          oldPositions.set(node.id, { ...node.position });
+        });
+      }
+
       // Calculate new positions (viewport-aware)
       const positions = this.currentAlgorithm.reLayout(this.diagram, enhancedConfig);
 
-      // Apply positions to nodes
-      positions.forEach((position, nodeId) => {
-        const node = this.diagram.getNode(nodeId);
-        if (node) {
-          node.setPosition(position.x, position.y);
+      // Option 3: Filter out locked nodes - they keep their current positions
+      const lockedNodes = new Set<string>();
+      this.diagram.getNodes().forEach((node) => {
+        if (node.state.locked) {
+          lockedNodes.add(node.id);
+          // Restore locked node's original position
+          positions.set(node.id, { ...node.position });
         }
       });
+
+      if (lockedNodes.size > 0) {
+        console.log(`📌 ${lockedNodes.size} locked node(s) preserved during layout`);
+      }
+
+      // Option 3: Apply animation if requested
+      if (config?.animate && config.animationDuration) {
+        await this.animateLayout(oldPositions, positions, config.animationDuration);
+      } else {
+        // Apply positions immediately (no animation)
+        positions.forEach((position, nodeId) => {
+          const node = this.diagram.getNode(nodeId);
+          if (node) {
+            node.setPosition(position.x, position.y);
+          }
+        });
+      }
 
       // Phase 0.5.2: Optimize connections based on new node positions
       // This must happen BEFORE recalculating paths, so links use optimal ports
@@ -217,7 +245,7 @@ export class LayoutManager {
       this.emitEvent({
         type: 'layout:completed',
         algorithmType: this.currentAlgorithm.getType(),
-        data: { nodeCount: positions.size },
+        data: { nodeCount: positions.size, lockedNodes: lockedNodes.size, animated: !!config?.animate },
       });
     } catch (error) {
       console.error('Layout failed:', error);
@@ -230,6 +258,60 @@ export class LayoutManager {
 
       throw error;
     }
+  }
+
+  /**
+   * Option 3: Animate layout transitions
+   *
+   * Smoothly transitions nodes from old positions to new positions over the specified duration.
+   * Uses requestAnimationFrame for smooth 60fps animation.
+   */
+  private async animateLayout(
+    oldPositions: Map<string, Point>,
+    newPositions: Map<string, Point>,
+    duration: number
+  ): Promise<void> {
+    return new Promise((resolve) => {
+      const startTime = performance.now();
+      const easeInOutCubic = (t: number): number => {
+        return t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2;
+      };
+
+      const animate = (currentTime: number) => {
+        const elapsed = currentTime - startTime;
+        const progress = Math.min(elapsed / duration, 1);
+        const easedProgress = easeInOutCubic(progress);
+
+        // Interpolate positions
+        newPositions.forEach((newPos, nodeId) => {
+          const oldPos = oldPositions.get(nodeId);
+          if (!oldPos) return;
+
+          const node = this.diagram.getNode(nodeId);
+          if (!node) return;
+
+          // Linear interpolation
+          const x = oldPos.x + (newPos.x - oldPos.x) * easedProgress;
+          const y = oldPos.y + (newPos.y - oldPos.y) * easedProgress;
+
+          node.setPosition(x, y);
+        });
+
+        // Update link paths during animation
+        this.recalculateLinkPaths();
+
+        // Emit progress event for renderer to update
+        this.diagram.markDirty();
+
+        if (progress < 1) {
+          requestAnimationFrame(animate);
+        } else {
+          resolve();
+        }
+      };
+
+      requestAnimationFrame(animate);
+    });
   }
 
   /**

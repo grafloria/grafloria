@@ -41,6 +41,10 @@ export class AppComponent implements OnInit {
   // Selection state (Option 1: Node Interaction)
   selectedNodeCount = 0;
 
+  // Option 3: Animation configuration
+  enableAnimation = true;
+  animationDuration = 800; // milliseconds
+
   ngOnInit() {
     this.initializeEngine();
     this.createSampleDiagram();
@@ -338,8 +342,12 @@ export class AppComponent implements OnInit {
         this.zoom
       );
 
-      await diagram.reLayout();
-      console.log(`✅ Re-layout complete!`);
+      // Option 3: Apply layout with animation if enabled
+      await diagram.reLayout({
+        animate: this.enableAnimation,
+        animationDuration: this.animationDuration
+      });
+      console.log(`✅ Re-layout complete! ${this.enableAnimation ? `(animated in ${this.animationDuration}ms)` : '(instant)'}`);
 
       // Fit viewport to show all nodes after re-layout
       this.fitToView();
@@ -383,6 +391,54 @@ export class AppComponent implements OnInit {
     if (count > 0) {
       console.log(`🗑️  Deleted ${count} selected node(s)`);
     }
+  }
+
+  /**
+   * Lock/pin selected nodes (Option 3: Advanced Layout Features)
+   */
+  lockSelectedNodes(): void {
+    const diagram = this.engine.getDiagram();
+    if (!diagram) return;
+
+    const count = diagram.lockSelected();
+    if (count > 0) {
+      console.log(`📌 Locked ${count} selected node(s)`);
+    }
+  }
+
+  /**
+   * Unlock selected nodes (Option 3: Advanced Layout Features)
+   */
+  unlockSelectedNodes(): void {
+    const diagram = this.engine.getDiagram();
+    if (!diagram) return;
+
+    const count = diagram.unlockSelected();
+    if (count > 0) {
+      console.log(`🔓 Unlocked ${count} selected node(s)`);
+    }
+  }
+
+  /**
+   * Unlock all nodes (Option 3: Advanced Layout Features)
+   */
+  unlockAllNodes(): void {
+    const diagram = this.engine.getDiagram();
+    if (!diagram) return;
+
+    const count = diagram.unlockAll();
+    if (count > 0) {
+      console.log(`🔓 Unlocked ${count} node(s)`);
+    }
+  }
+
+  /**
+   * Get count of locked nodes (Option 3: Advanced Layout Features)
+   */
+  getLockedNodeCount(): number {
+    const diagram = this.engine.getDiagram();
+    if (!diagram) return 0;
+    return diagram.getLockedNodes().length;
   }
 
   /**

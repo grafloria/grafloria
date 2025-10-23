@@ -31,9 +31,25 @@
         <button (click)="clearSelection()" class="btn btn-secondary" title="Clear Selection (Esc)">
           ✨ Clear
         </button>
+        <button (click)="lockSelectedNodes()" class="btn btn-warning" title="Lock Selected (Pin position)">
+          📌 Lock
+        </button>
+        <button (click)="unlockSelectedNodes()" class="btn btn-info" title="Unlock Selected">
+          🔓 Unlock
+        </button>
         <button (click)="deleteSelectedNodes()" class="btn btn-danger" title="Delete Selected (Del)">
           🗑️ Delete
         </button>
+      </div>
+      <div class="animation-controls">
+        <label class="checkbox-label">
+          <input type="checkbox" [(ngModel)]="enableAnimation" />
+          <span>Animate {{ enableAnimation ? '✓' : '' }}</span>
+        </label>
+        <div class="slider-control" *ngIf="enableAnimation">
+          <label>{{ animationDuration }}ms</label>
+          <input type="range" [(ngModel)]="animationDuration" min="200" max="2000" step="100" class="duration-slider" />
+        </div>
       </div>
     </div>
   </header>
