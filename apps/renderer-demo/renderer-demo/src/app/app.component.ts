@@ -38,7 +38,7 @@ export class AppComponent implements OnInit {
 
   // Layout configuration
   currentLayout: LayoutAlgorithmType = 'grid';
-  availableLayouts: LayoutAlgorithmType[] = ['grid']; // Will add more in Phase 2
+  availableLayouts: LayoutAlgorithmType[] = ['grid', 'hierarchical'];
 
   ngOnInit() {
     this.initializeEngine();

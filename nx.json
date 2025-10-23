@@ -40,13 +40,14 @@
       "options": {
         "targetName": "eslint:lint"
       }
-    },
-    {
-      "plugin": "@nx/playwright/plugin",
-      "options": {
-        "targetName": "e2e"
-      }
     }
+    // Temporarily disabled Playwright plugin due to project graph error
+    // {
+    //   "plugin": "@nx/playwright/plugin",
+    //   "options": {
+    //     "targetName": "e2e"
+    //   }
+    // }
   ],
   "targetDefaults": {
     "@angular-devkit/build-angular:application": {

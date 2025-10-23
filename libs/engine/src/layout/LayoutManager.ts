@@ -21,6 +21,7 @@ import {
   DiagramLayoutEvent,
 } from './types';
 import { GridLayoutAlgorithm } from './algorithms/GridLayoutAlgorithm';
+import { HierarchicalLayoutAlgorithm } from './algorithms/HierarchicalLayoutAlgorithm';
 
 /**
  * Layout Manager
@@ -38,10 +39,10 @@ export class LayoutManager {
 
     // Register built-in algorithms
     this.registerAlgorithm('grid', new GridLayoutAlgorithm());
+    this.registerAlgorithm('hierarchical', new HierarchicalLayoutAlgorithm());
 
     // TODO: Register other algorithms when implemented
     // this.registerAlgorithm('force-directed', new ForceDirectedLayoutAlgorithm());
-    // this.registerAlgorithm('hierarchical', new HierarchicalLayoutAlgorithm());
     // this.registerAlgorithm('hybrid', new HybridLayoutAlgorithm());
 
     // Set initial algorithm

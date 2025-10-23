@@ -93,6 +93,7 @@
     "@angular/ssr": "~18.1.0",
     "@angular/youtube-player": "^18.2.11",
     "@azure/openai": "^2.0.0",
+    "@dagrejs/dagre": "^1.1.5",
     "@devexpress/analytics-core": "^24.2.7",
     "@fortawesome/fontawesome-free": "^6.6.0",
     "@googlemaps/js-api-loader": "^1.16.8",

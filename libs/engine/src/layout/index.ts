@@ -28,8 +28,8 @@ export * from './LayoutManager';
 
 // Built-in algorithms
 export * from './algorithms/GridLayoutAlgorithm';
+export * from './algorithms/HierarchicalLayoutAlgorithm';
 
 // TODO: Export other algorithms when implemented
 // export * from './algorithms/ForceDirectedLayoutAlgorithm';
-// export * from './algorithms/HierarchicalLayoutAlgorithm';
 // export * from './algorithms/HybridLayoutAlgorithm';
