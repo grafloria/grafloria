@@ -237,6 +237,27 @@ export class SVGRenderer implements IRenderer {
         className: 'node-group',
       },
       children: [
+        // Selection highlight (rendered behind the node)
+        ...(node.isSelected()
+          ? [
+              {
+                type: 'rect',
+                props: {
+                  x: -3,
+                  y: -3,
+                  width: node.size.width + 6,
+                  height: node.size.height + 6,
+                  fill: 'none',
+                  stroke: this.theme.colors.primary,
+                  strokeWidth: 3,
+                  strokeDasharray: '5,5',
+                  rx: 4,
+                  ry: 4,
+                  className: 'selection-highlight',
+                },
+              } as VNode,
+            ]
+          : []),
         // Node shape
         {
           type: 'rect',

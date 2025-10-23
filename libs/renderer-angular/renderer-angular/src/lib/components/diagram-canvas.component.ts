@@ -122,6 +122,14 @@ export class DiagramCanvasComponent implements OnInit, AfterViewInit, OnChanges,
   private lastPanY = 0;
   private spaceKeyPressed = false;
 
+  /**
+   * Node drag state (Option 1: Node Interaction)
+   */
+  private isDraggingNode = false;
+  private dragStartX = 0;
+  private dragStartY = 0;
+  private draggedNodes: Map<string, { startX: number; startY: number }> = new Map();
+
   constructor(
     private vnodeRenderer: VNodeRendererService,
     private cdr: ChangeDetectorRef
@@ -280,18 +288,10 @@ export class DiagramCanvasComponent implements OnInit, AfterViewInit, OnChanges,
   }
 
   /**
-   * Handle keydown for pan mode (Space key)
+   * Handle keydown for pan mode (Space key) - This is now merged with the other onKeyDown handler below
+   * Kept as a comment for reference
    */
-  @HostListener('window:keydown', ['$event'])
-  onKeyDown(event: KeyboardEvent): void {
-    if (event.code === 'Space' && !this.spaceKeyPressed) {
-      this.spaceKeyPressed = true;
-      // Change cursor to indicate pan mode
-      if (this.containerRef?.nativeElement) {
-        this.containerRef.nativeElement.style.cursor = 'grab';
-      }
-    }
-  }
+  // This method is merged with the onKeyDown method that handles Delete/Escape/Ctrl+A
 
   /**
    * Handle keyup to exit pan mode (Space key)
@@ -343,20 +343,31 @@ export class DiagramCanvasComponent implements OnInit, AfterViewInit, OnChanges,
   }
 
   /**
-   * Handle mouse down for panning (Phase 0.5 - Option B)
+   * Handle mouse down for panning and node selection (Phase 0.5 - Option B + Option 1)
    * Supports:
-   * - Middle mouse button (scroll wheel click)
-   * - Left mouse button + Space key
+   * - Left click: Select/drag nodes
+   * - Ctrl + Left click: Multi-select
+   * - Middle mouse button: Pan
+   * - Space + Left click: Pan
    */
   @HostListener('mousedown', ['$event'])
   onMouseDown(event: MouseEvent): void {
-    if (!this.enablePan || !this.engine) {
+    if (!this.engine) {
+      return;
+    }
+
+    const diagram = this.engine.getDiagram();
+    if (!diagram) {
       return;
     }
 
     // Middle mouse button (button === 1) for panning
     // OR left mouse button (button === 0) while Space key is pressed
     if (event.button === 1 || (event.button === 0 && this.spaceKeyPressed)) {
+      if (!this.enablePan) {
+        return;
+      }
+
       event.preventDefault();
       this.isPanning = true;
       this.lastPanX = event.clientX;
@@ -366,15 +377,74 @@ export class DiagramCanvasComponent implements OnInit, AfterViewInit, OnChanges,
       if (this.containerRef?.nativeElement) {
         this.containerRef.nativeElement.style.cursor = 'grabbing';
       }
+      return;
+    }
+
+    // Left mouse button for node interaction
+    if (event.button === 0 && !this.spaceKeyPressed) {
+      // Convert client coordinates to world coordinates
+      const rect = this.containerRef.nativeElement.getBoundingClientRect();
+      const clientX = event.clientX - rect.left;
+      const clientY = event.clientY - rect.top;
+
+      // Convert to world coordinates
+      const worldX = this.viewport.x + (clientX / this.zoom);
+      const worldY = this.viewport.y + (clientY / this.zoom);
+
+      // Check if clicking on a node
+      const clickedNode = diagram.getNodeAtPosition(worldX, worldY);
+
+      if (clickedNode) {
+        event.preventDefault();
+
+        // Handle selection
+        if (event.ctrlKey || event.metaKey) {
+          // Ctrl+Click: Toggle selection (multi-select)
+          diagram.toggleNodeSelection(clickedNode);
+        } else if (!clickedNode.isSelected()) {
+          // Normal click on unselected node: Select only this node
+          diagram.selectNode(clickedNode);
+        }
+
+        // Start drag if node is draggable
+        if (clickedNode.isDraggable() && clickedNode.isSelected()) {
+          this.isDraggingNode = true;
+          this.dragStartX = event.clientX;
+          this.dragStartY = event.clientY;
+
+          // Store initial positions of all selected nodes
+          const selectedNodes = diagram.getSelectedNodes();
+          this.draggedNodes.clear();
+          selectedNodes.forEach((node) => {
+            this.draggedNodes.set(node.id, {
+              startX: node.position.x,
+              startY: node.position.y
+            });
+          });
+
+          // Change cursor
+          if (this.containerRef?.nativeElement) {
+            this.containerRef.nativeElement.style.cursor = 'move';
+          }
+        }
+      } else {
+        // Clicked on empty space
+        if (!event.ctrlKey && !event.metaKey) {
+          // Clear selection if not holding Ctrl
+          diagram.clearSelection();
+        }
+      }
+
+      this.cdr.markForCheck();
     }
   }
 
   /**
-   * Handle mouse move for panning (Phase 0.5 - Option B)
+   * Handle mouse move for panning and node dragging (Phase 0.5 - Option B + Option 1)
    */
   @HostListener('mousemove', ['$event'])
   onMouseMove(event: MouseEvent): void {
-    if (!this.isPanning || !this.engine) {
+    if (!this.engine) {
       return;
     }
 
@@ -383,40 +453,75 @@ export class DiagramCanvasComponent implements OnInit, AfterViewInit, OnChanges,
       return;
     }
 
-    // Calculate pan delta in world-space coordinates
-    const dx = (this.lastPanX - event.clientX) / this.zoom;
-    const dy = (this.lastPanY - event.clientY) / this.zoom;
+    // Handle panning
+    if (this.isPanning) {
+      // Calculate pan delta in world-space coordinates
+      const dx = (this.lastPanX - event.clientX) / this.zoom;
+      const dy = (this.lastPanY - event.clientY) / this.zoom;
 
-    // Update local viewport position
-    this.viewport = {
-      ...this.viewport,
-      x: this.viewport.x + dx,
-      y: this.viewport.y + dy
-    };
+      // Update local viewport position
+      this.viewport = {
+        ...this.viewport,
+        x: this.viewport.x + dx,
+        y: this.viewport.y + dy
+      };
 
-    // Update diagram viewport
-    diagram.pan(dx, dy);
+      // Update diagram viewport
+      diagram.pan(dx, dy);
 
-    // Update last position
-    this.lastPanX = event.clientX;
-    this.lastPanY = event.clientY;
+      // Update last position
+      this.lastPanX = event.clientX;
+      this.lastPanY = event.clientY;
 
-    // Emit viewport change event with calculated viewport
-    const actualViewport = this.calculateActualViewport();
-    this.viewportChanged.emit(actualViewport);
+      // Emit viewport change event with calculated viewport
+      const actualViewport = this.calculateActualViewport();
+      this.viewportChanged.emit(actualViewport);
 
-    // Trigger re-render
-    this.renderDiagram();
-    this.cdr.markForCheck();
+      // Trigger re-render
+      this.renderDiagram();
+      this.cdr.markForCheck();
+      return;
+    }
+
+    // Handle node dragging
+    if (this.isDraggingNode) {
+      // Calculate delta in world-space coordinates
+      const dx = (event.clientX - this.dragStartX) / this.zoom;
+      const dy = (event.clientY - this.dragStartY) / this.zoom;
+
+      // Update all dragged nodes
+      this.draggedNodes.forEach((initialPos, nodeId) => {
+        const node = diagram.getNode(nodeId);
+        if (node) {
+          node.setPosition(
+            initialPos.startX + dx,
+            initialPos.startY + dy
+          );
+        }
+      });
+
+      // Trigger re-render
+      this.renderDiagram();
+      this.cdr.markForCheck();
+    }
   }
 
   /**
-   * Handle mouse up to stop panning (Phase 0.5 - Option B)
+   * Handle mouse up to stop panning and node dragging (Phase 0.5 - Option B + Option 1)
    */
   @HostListener('mouseup', ['$event'])
   onMouseUp(event: MouseEvent): void {
     if (event.button === 1 || event.button === 0) {
-      this.isPanning = false;
+      // Stop panning
+      if (this.isPanning) {
+        this.isPanning = false;
+      }
+
+      // Stop node dragging
+      if (this.isDraggingNode) {
+        this.isDraggingNode = false;
+        this.draggedNodes.clear();
+      }
 
       // Restore cursor based on space key state
       if (this.containerRef?.nativeElement) {
@@ -426,15 +531,77 @@ export class DiagramCanvasComponent implements OnInit, AfterViewInit, OnChanges,
   }
 
   /**
-   * Handle mouse leave to stop panning (Phase 0.5 - Option B)
+   * Handle mouse leave to stop panning and node dragging (Phase 0.5 - Option B + Option 1)
    */
   @HostListener('mouseleave')
   onMouseLeave(): void {
     this.isPanning = false;
+    this.isDraggingNode = false;
+    this.draggedNodes.clear();
 
     // Reset cursor
     if (this.containerRef?.nativeElement) {
       this.containerRef.nativeElement.style.cursor = 'default';
+    }
+  }
+
+  /**
+   * Handle keyboard events (Option 1: Node Interaction)
+   * - Space: Pan mode cursor
+   * - Delete/Backspace: Delete selected nodes
+   * - Escape: Clear selection
+   * - Ctrl+A: Select all
+   */
+  @HostListener('window:keydown', ['$event'])
+  onKeyDown(event: KeyboardEvent): void {
+    // Handle Space key for pan mode cursor
+    if (event.code === 'Space' && !this.spaceKeyPressed) {
+      this.spaceKeyPressed = true;
+      // Change cursor to indicate pan mode
+      if (this.containerRef?.nativeElement) {
+        this.containerRef.nativeElement.style.cursor = 'grab';
+      }
+    }
+
+    if (!this.engine) {
+      return;
+    }
+
+    const diagram = this.engine.getDiagram();
+    if (!diagram) {
+      return;
+    }
+
+    // Handle Delete key
+    if (event.key === 'Delete' || event.key === 'Backspace') {
+      // Don't delete if user is typing in an input field
+      const target = event.target as HTMLElement;
+      if (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA') {
+        return;
+      }
+
+      const deletedCount = diagram.deleteSelected();
+      if (deletedCount > 0) {
+        event.preventDefault();
+        console.log(`🗑️  Deleted ${deletedCount} selected node(s)`);
+        this.renderDiagram();
+        this.cdr.markForCheck();
+      }
+    }
+
+    // Handle Escape key - clear selection
+    if (event.key === 'Escape') {
+      diagram.clearSelection();
+      this.renderDiagram();
+      this.cdr.markForCheck();
+    }
+
+    // Handle Ctrl+A - select all
+    if ((event.ctrlKey || event.metaKey) && event.key === 'a') {
+      event.preventDefault();
+      diagram.selectAll();
+      this.renderDiagram();
+      this.cdr.markForCheck();
     }
   }
 

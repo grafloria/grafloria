@@ -532,6 +532,170 @@ export class DiagramModel extends DiagramEntity {
   }
 
   /**
+   * Selection Management
+   */
+
+  /**
+   * Get all selected nodes
+   */
+  getSelectedNodes(): NodeModel[] {
+    return this.getNodes().filter((node) => node.isSelected());
+  }
+
+  /**
+   * Select a single node (clears previous selection)
+   * @param node - Node to select
+   */
+  selectNode(node: NodeModel): void {
+    if (!node.isSelectable()) {
+      return;
+    }
+
+    // Clear previous selection
+    this.clearSelection();
+
+    // Select the node
+    node.setSelected(true);
+
+    // Emit selection changed event
+    this.emitter.emit('selection:changed', {
+      selected: [node],
+      deselected: []
+    });
+  }
+
+  /**
+   * Add node to selection (multi-select)
+   * @param node - Node to add to selection
+   */
+  addToSelection(node: NodeModel): void {
+    if (!node.isSelectable() || node.isSelected()) {
+      return;
+    }
+
+    node.setSelected(true);
+
+    this.emitter.emit('selection:changed', {
+      selected: [node],
+      deselected: []
+    });
+  }
+
+  /**
+   * Remove node from selection
+   * @param node - Node to remove from selection
+   */
+  removeFromSelection(node: NodeModel): void {
+    if (!node.isSelected()) {
+      return;
+    }
+
+    node.setSelected(false);
+
+    this.emitter.emit('selection:changed', {
+      selected: [],
+      deselected: [node]
+    });
+  }
+
+  /**
+   * Toggle node selection (add if not selected, remove if selected)
+   * @param node - Node to toggle
+   */
+  toggleNodeSelection(node: NodeModel): void {
+    if (!node.isSelectable()) {
+      return;
+    }
+
+    if (node.isSelected()) {
+      this.removeFromSelection(node);
+    } else {
+      this.addToSelection(node);
+    }
+  }
+
+  /**
+   * Clear all selections
+   */
+  clearSelection(): void {
+    const selectedNodes = this.getSelectedNodes();
+    if (selectedNodes.length === 0) {
+      return;
+    }
+
+    selectedNodes.forEach((node) => node.setSelected(false));
+
+    this.emitter.emit('selection:changed', {
+      selected: [],
+      deselected: selectedNodes
+    });
+  }
+
+  /**
+   * Select all nodes
+   */
+  selectAll(): void {
+    const selectableNodes = this.getNodes().filter((node) => node.isSelectable());
+    const previouslySelected = this.getSelectedNodes();
+    const newlySelected = selectableNodes.filter((node) => !node.isSelected());
+
+    newlySelected.forEach((node) => node.setSelected(true));
+
+    if (newlySelected.length > 0) {
+      this.emitter.emit('selection:changed', {
+        selected: newlySelected,
+        deselected: []
+      });
+    }
+  }
+
+  /**
+   * Delete all selected nodes and their connected links
+   * @returns Number of nodes deleted
+   */
+  deleteSelected(): number {
+    const selectedNodes = this.getSelectedNodes();
+    if (selectedNodes.length === 0) {
+      return 0;
+    }
+
+    // Delete nodes (this will also trigger link cleanup via events)
+    selectedNodes.forEach((node) => {
+      this.removeNode(node.id);
+    });
+
+    return selectedNodes.length;
+  }
+
+  /**
+   * Get node at position (for click detection)
+   * Returns the topmost node at the given position
+   * @param x - X coordinate
+   * @param y - Y coordinate
+   * @returns Node at position, or undefined if none found
+   */
+  getNodeAtPosition(x: number, y: number): NodeModel | undefined {
+    const nodes = this.getNodes();
+
+    // Iterate in reverse order (topmost node first)
+    for (let i = nodes.length - 1; i >= 0; i--) {
+      const node = nodes[i];
+      const bounds = node.getBoundingBox();
+
+      if (
+        x >= bounds.left &&
+        x <= bounds.right &&
+        y >= bounds.top &&
+        y <= bounds.bottom
+      ) {
+        return node;
+      }
+    }
+
+    return undefined;
+  }
+
+  /**
    * Set viewport (Phase 0.5 - Viewport-Aware Layout)
    */
   setViewport(x: number, y: number, width: number, height: number, zoom?: number): void {

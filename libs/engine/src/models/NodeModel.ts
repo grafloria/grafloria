@@ -376,6 +376,46 @@ export class NodeModel extends DiagramEntity {
   }
 
   /**
+   * Check if node is selected
+   */
+  isSelected(): boolean {
+    return this.state.selected;
+  }
+
+  /**
+   * Set selection state
+   * @param selected - Whether the node should be selected
+   * @emits node:selected when node becomes selected
+   * @emits node:deselected when node becomes deselected
+   */
+  setSelected(selected: boolean): void {
+    if (this.state.selected === selected) {
+      return; // No change
+    }
+
+    const oldState = { ...this.state };
+    this.state.selected = selected;
+    this.trackChange('state', oldState, this.state);
+
+    // Emit specific selection events
+    this.emitter.emit(selected ? 'node:selected' : 'node:deselected', this);
+  }
+
+  /**
+   * Check if node is selectable (based on behavior)
+   */
+  isSelectable(): boolean {
+    return this.behavior.selectable && !this.state.locked;
+  }
+
+  /**
+   * Check if node is draggable (based on behavior and state)
+   */
+  isDraggable(): boolean {
+    return this.behavior.draggable && !this.state.locked;
+  }
+
+  /**
    * Set style property
    */
   setStyle(style: Partial<NodeStyle>): void {
