@@ -401,8 +401,9 @@ export class DiagramCanvasComponent implements OnInit, AfterViewInit, OnChanges,
         if (event.ctrlKey || event.metaKey) {
           // Ctrl+Click: Toggle selection (multi-select)
           diagram.toggleNodeSelection(clickedNode);
-        } else if (!clickedNode.isSelected()) {
-          // Normal click on unselected node: Select only this node
+        } else {
+          // Normal click: Always select this node (clearing others if needed)
+          // This ensures clicking a different node immediately switches selection
           diagram.selectNode(clickedNode);
         }
 
@@ -428,11 +429,8 @@ export class DiagramCanvasComponent implements OnInit, AfterViewInit, OnChanges,
           }
         }
       } else {
-        // Clicked on empty space
-        if (!event.ctrlKey && !event.metaKey) {
-          // Clear selection if not holding Ctrl
-          diagram.clearSelection();
-        }
+        // Clicked on empty space - always clear selection
+        diagram.clearSelection();
       }
 
       this.cdr.markForCheck();
