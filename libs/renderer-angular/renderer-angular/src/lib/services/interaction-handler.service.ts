@@ -551,10 +551,10 @@ export class InteractionHandlerService {
       }
 
       for (const node of nodes) {
-        // Skip if node is not hovered and ports are not always visible
-        if (config.portVisibility === 'on-hover' && !node.state.hovered) {
-          continue;
-        }
+        // CRITICAL FIX: Always check for port hits regardless of visibility mode
+        // Visibility affects RENDERING, not HIT DETECTION
+        // This fixes the chicken-and-egg problem where ports couldn't be hovered
+        // because the node wasn't hovered yet
 
         // Phase 5: Optimization - rough node bounds check first
         const nodeBounds = node.getBoundingBox();
