@@ -169,7 +169,7 @@ export class LayoutManager {
   }
 
   /**
-   * Re-layout all nodes using current algorithm
+   * Re-layout all nodes using current algorithm (Phase 0.5 - Viewport-aware)
    */
   async reLayout(config?: LayoutConfiguration): Promise<void> {
     this.emitEvent({
@@ -178,8 +178,25 @@ export class LayoutManager {
     });
 
     try {
-      // Calculate new positions
-      const positions = this.currentAlgorithm.reLayout(this.diagram, config);
+      // Phase 0.5: Get viewport from diagram and pass to layout algorithm
+      const viewport = this.diagram.getViewport();
+      const enhancedConfig: LayoutConfiguration = {
+        ...config,
+        type: this.currentAlgorithm.getType(),
+        viewport,
+        margins: config?.margins || 50
+      };
+
+      // If direction shorthand is provided, merge it into hierarchical options
+      if (config?.direction && this.currentAlgorithm.getType() === 'hierarchical') {
+        enhancedConfig.options = {
+          ...config.options,
+          direction: config.direction
+        };
+      }
+
+      // Calculate new positions (viewport-aware)
+      const positions = this.currentAlgorithm.reLayout(this.diagram, enhancedConfig);
 
       // Apply positions to nodes
       positions.forEach((position, nodeId) => {

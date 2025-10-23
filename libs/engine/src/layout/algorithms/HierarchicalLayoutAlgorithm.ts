@@ -28,6 +28,11 @@ import {
   LayoutConfiguration,
   HierarchicalOptions,
 } from '../types';
+import {
+  calculateViewportTransform,
+  applyTransform,
+  calculateNodeBounds
+} from '../ViewportTransform';
 
 export class HierarchicalLayoutAlgorithm extends BaseLayoutAlgorithm {
   private hierarchicalOptions: HierarchicalOptions;
@@ -226,17 +231,50 @@ export class HierarchicalLayoutAlgorithm extends BaseLayoutAlgorithm {
     // Run Dagre layout
     dagre.layout(g);
 
-    // Extract positions from Dagre
+    // Extract positions from Dagre (in relative space)
+    const relativePositions: Array<{ node: NodeModel; position: Point }> = [];
     nodes.forEach((node) => {
       const dagreNode = g.node(node.id);
       if (dagreNode) {
         // Dagre returns center position, convert to top-left
-        positions.set(node.id, {
+        const relativePos = {
           x: dagreNode.x - dagreNode.width / 2,
           y: dagreNode.y - dagreNode.height / 2,
-        });
+        };
+        relativePositions.push({ node, position: relativePos });
       }
     });
+
+    // Phase 0.5: Apply viewport transform if viewport is provided
+    if (config?.viewport) {
+      // Calculate bounding box of layout
+      const layoutBounds = calculateNodeBounds(
+        relativePositions.map(({ node, position }) => ({
+          position,
+          size: node.size || { width: 200, height: 100 }
+        }))
+      );
+
+      // Calculate transform to fit in viewport
+      const transform = calculateViewportTransform(
+        layoutBounds,
+        config.viewport,
+        config.margins || 50
+      );
+
+      // Apply transform to all positions
+      relativePositions.forEach(({ node, position }) => {
+        const transformedPos = applyTransform(position, transform);
+        positions.set(node.id, transformedPos);
+      });
+
+      console.log(`📐 Hierarchical layout: ${nodes.length} nodes fit in viewport (scale: ${transform.scale.toFixed(2)})`);
+    } else {
+      // No viewport - use relative positions as-is (backward compatibility)
+      relativePositions.forEach(({ node, position }) => {
+        positions.set(node.id, position);
+      });
+    }
 
     return positions;
   }

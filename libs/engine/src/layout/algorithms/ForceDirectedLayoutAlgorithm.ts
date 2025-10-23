@@ -6,6 +6,11 @@ import type { PlacementOptions, PlacementResult, LayoutConfiguration, ForceDirec
 import type { DiagramModel } from '../../models/DiagramModel';
 import type { NodeModel } from '../../models/NodeModel';
 import type { Point } from '../../types';
+import {
+  calculateViewportTransform,
+  applyTransform,
+  calculateNodeBounds
+} from '../ViewportTransform';
 
 interface Vector2D {
   x: number;
@@ -234,8 +239,11 @@ export class ForceDirectedLayoutAlgorithm extends BaseLayoutAlgorithm implements
       }
     });
 
+    // Phase 0.5: Use viewport from config if provided, otherwise fallback to default
+    const viewport = config?.viewport || { x: 0, y: 0, width: 1200, height: 800 };
+
     // Calculate optimal k (ideal spring length) based on area and node count
-    const area = 1200 * 800; // Approximate canvas area
+    const area = viewport.width * viewport.height;
     const k = Math.sqrt(area / nodes.length);
 
     console.log(`🧲 Force-Directed: ${nodes.length} nodes, k=${k.toFixed(2)}, area=${area}`);
@@ -307,8 +315,8 @@ export class ForceDirectedLayoutAlgorithm extends BaseLayoutAlgorithm implements
 
       // Apply center gravity (keep nodes from drifting too far)
       const centerGravity = this.forceOptions.centerGravity || 0.1;
-      const centerX = 600; // Center of canvas
-      const centerY = 400;
+      const centerX = viewport.width / 2;
+      const centerY = viewport.height / 2;
 
       nodeForces.forEach((nf) => {
         const dx = centerX - nf.position.x;
@@ -346,29 +354,54 @@ export class ForceDirectedLayoutAlgorithm extends BaseLayoutAlgorithm implements
       temperature *= coolingFactor;
     }
 
-    // Extract final positions and normalize to positive coordinates
-    let minX = Infinity;
-    let minY = Infinity;
-    let maxX = -Infinity;
-    let maxY = -Infinity;
+    // Extract final positions in relative space
+    const relativePositions: Array<{ node: NodeModel; position: Point }> = nodeForces.map((nf) => ({
+      node: nf.node,
+      position: { x: nf.position.x, y: nf.position.y }
+    }));
 
-    nodeForces.forEach((nf) => {
-      minX = Math.min(minX, nf.position.x);
-      minY = Math.min(minY, nf.position.y);
-      maxX = Math.max(maxX, nf.position.x);
-      maxY = Math.max(maxY, nf.position.y);
-    });
+    // Phase 0.5: Apply viewport transform if viewport is provided
+    if (config?.viewport) {
+      // Calculate bounding box of force-directed layout
+      const layoutBounds = calculateNodeBounds(
+        relativePositions.map(({ node, position }) => ({
+          position,
+          size: node.size || { width: 200, height: 100 }
+        }))
+      );
 
-    console.log(`🧲 Final bounds: (${minX.toFixed(1)}, ${minY.toFixed(1)}) to (${maxX.toFixed(1)}, ${maxY.toFixed(1)})`);
+      // Calculate transform to fit in viewport
+      const transform = calculateViewportTransform(
+        layoutBounds,
+        config.viewport,
+        config.margins || 50
+      );
 
-    // Add padding
-    const padding = 100;
-    nodeForces.forEach((nf) => {
-      positions.set(nf.node.id, {
-        x: nf.position.x - minX + padding,
-        y: nf.position.y - minY + padding,
+      // Apply transform to all positions
+      relativePositions.forEach(({ node, position }) => {
+        const transformedPos = applyTransform(position, transform);
+        positions.set(node.id, transformedPos);
       });
-    });
+
+      console.log(`🧲 Force-Directed layout: ${nodes.length} nodes fit in viewport (scale: ${transform.scale.toFixed(2)})`);
+    } else {
+      // No viewport - normalize to positive coordinates with padding (backward compatibility)
+      let minX = Infinity;
+      let minY = Infinity;
+
+      relativePositions.forEach(({ position }) => {
+        minX = Math.min(minX, position.x);
+        minY = Math.min(minY, position.y);
+      });
+
+      const padding = 100;
+      relativePositions.forEach(({ node, position }) => {
+        positions.set(node.id, {
+          x: position.x - minX + padding,
+          y: position.y - minY + padding,
+        });
+      });
+    }
 
     return positions;
   }

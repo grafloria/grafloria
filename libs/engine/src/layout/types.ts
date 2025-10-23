@@ -106,9 +106,9 @@ export interface PlacementResult {
  */
 export interface LayoutConfiguration {
   /**
-   * Algorithm type
+   * Algorithm type (optional when passed to reLayout, as it uses current algorithm)
    */
-  type: LayoutAlgorithmType;
+  type?: LayoutAlgorithmType;
 
   /**
    * Algorithm-specific options
@@ -124,6 +124,21 @@ export interface LayoutConfiguration {
    * Animation duration in ms
    */
   animationDuration?: number;
+
+  /**
+   * Viewport for viewport-aware layout (Phase 0.5)
+   */
+  viewport?: Rectangle;
+
+  /**
+   * Margins around content (Phase 0.5)
+   */
+  margins?: number;
+
+  /**
+   * Shorthand for hierarchical direction (Phase 0.5)
+   */
+  direction?: 'TB' | 'BT' | 'LR' | 'RL';
 }
 
 /**

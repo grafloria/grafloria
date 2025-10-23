@@ -24,6 +24,11 @@ import {
   LayoutConfiguration,
   GridLayoutOptions,
 } from '../types';
+import {
+  calculateViewportTransform,
+  applyTransform,
+  calculateNodeBounds
+} from '../ViewportTransform';
 
 export class GridLayoutAlgorithm extends BaseLayoutAlgorithm {
   private gridOptions: GridLayoutOptions;
@@ -92,7 +97,7 @@ export class GridLayoutAlgorithm extends BaseLayoutAlgorithm {
   }
 
   /**
-   * Re-layout all nodes in grid pattern
+   * Re-layout all nodes in grid pattern (Phase 0.5 - Viewport-aware)
    */
   reLayout(diagram: DiagramModel, config?: LayoutConfiguration): Map<string, Point> {
     if (config) {
@@ -106,10 +111,6 @@ export class GridLayoutAlgorithm extends BaseLayoutAlgorithm {
       return positions;
     }
 
-    // Get viewport for calculations
-    // Note: diagram.viewport only has {x, y, zoom}, so we need to provide dimensions
-    const viewport = { x: 0, y: 0, width: 1200, height: 800 };
-
     // Get node dimensions (use first node as reference)
     const referenceNode = nodes[0];
     const nodeWidth = referenceNode.size?.width || this.gridOptions.nodeSize?.width || 200;
@@ -117,7 +118,10 @@ export class GridLayoutAlgorithm extends BaseLayoutAlgorithm {
     const spacing = this.gridOptions.horizontalSpacing || 20;
     const padding = 100;
 
-    // Calculate grid parameters
+    // Use viewport from config if provided (Phase 0.5), otherwise fallback to default
+    const viewport = config?.viewport || { x: 0, y: 0, width: 1200, height: 800 };
+
+    // Calculate grid parameters based on viewport
     const gridParams = this.calculateGridParameters(
       viewport,
       nodeWidth,
@@ -126,18 +130,53 @@ export class GridLayoutAlgorithm extends BaseLayoutAlgorithm {
       padding
     );
 
-    // Place all nodes in grid
+    // Calculate grid positions in relative space (starting from 0,0)
+    const relativePositions: Array<{ node: NodeModel; position: Point }> = [];
     nodes.forEach((node, index) => {
       const row = Math.floor(index / gridParams.columns);
       const col = index % gridParams.columns;
 
-      const position = {
-        x: gridParams.startX + col * gridParams.columnWidth,
-        y: gridParams.startY + row * gridParams.rowHeight,
+      const relativePos = {
+        x: col * gridParams.columnWidth,
+        y: row * gridParams.rowHeight,
       };
 
-      positions.set(node.id, position);
+      relativePositions.push({ node, position: relativePos });
     });
+
+    // Phase 0.5: Apply viewport transform if viewport is provided
+    if (config?.viewport) {
+      // Calculate bounding box of grid layout
+      const layoutBounds = calculateNodeBounds(
+        relativePositions.map(({ node, position }) => ({
+          position,
+          size: node.size || { width: nodeWidth, height: nodeHeight }
+        }))
+      );
+
+      // Calculate transform to fit in viewport
+      const transform = calculateViewportTransform(
+        layoutBounds,
+        config.viewport,
+        config.margins || 50
+      );
+
+      // Apply transform to all positions
+      relativePositions.forEach(({ node, position }) => {
+        const transformedPos = applyTransform(position, transform);
+        positions.set(node.id, transformedPos);
+      });
+
+      console.log(`📐 Grid layout: ${nodes.length} nodes in ${gridParams.columns} columns, fit in viewport (scale: ${transform.scale.toFixed(2)})`);
+    } else {
+      // No viewport - use relative positions with padding offset (backward compatibility)
+      relativePositions.forEach(({ node, position }) => {
+        positions.set(node.id, {
+          x: position.x + padding,
+          y: position.y + padding
+        });
+      });
+    }
 
     return positions;
   }

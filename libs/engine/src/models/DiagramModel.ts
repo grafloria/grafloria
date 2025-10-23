@@ -19,6 +19,8 @@ export interface SerializedDiagram extends SerializedEntity {
   viewport: {
     x: number;
     y: number;
+    width: number;   // Phase 0.5 - Viewport-aware layout
+    height: number;  // Phase 0.5 - Viewport-aware layout
     zoom: number;
   };
 }
@@ -32,6 +34,8 @@ export class DiagramModel extends DiagramEntity {
   viewport = {
     x: 0,
     y: 0,
+    width: 1200,  // Default viewport width
+    height: 800,  // Default viewport height
     zoom: 1,
   };
 
@@ -528,20 +532,39 @@ export class DiagramModel extends DiagramEntity {
   }
 
   /**
-   * Set viewport
+   * Set viewport (Phase 0.5 - Viewport-Aware Layout)
    */
-  setViewport(x: number, y: number, zoom: number): void {
+  setViewport(x: number, y: number, width: number, height: number, zoom?: number): void {
     const oldViewport = { ...this.viewport };
-    this.viewport = { x, y, zoom };
+    this.viewport = {
+      x,
+      y,
+      width,
+      height,
+      zoom: zoom !== undefined ? zoom : this.viewport.zoom
+    };
     this.trackChange('viewport', oldViewport, this.viewport);
     this.emitter.emit('viewport:changed', this.viewport);
+  }
+
+  /**
+   * Get current viewport
+   */
+  getViewport(): { x: number; y: number; width: number; height: number; zoom: number } {
+    return { ...this.viewport };
   }
 
   /**
    * Pan viewport
    */
   pan(dx: number, dy: number): void {
-    this.setViewport(this.viewport.x + dx, this.viewport.y + dy, this.viewport.zoom);
+    this.setViewport(
+      this.viewport.x + dx,
+      this.viewport.y + dy,
+      this.viewport.width,
+      this.viewport.height,
+      this.viewport.zoom
+    );
   }
 
   /**
@@ -549,7 +572,13 @@ export class DiagramModel extends DiagramEntity {
    */
   zoom(delta: number, center?: Point): void {
     const newZoom = Math.max(0.1, Math.min(10, this.viewport.zoom + delta));
-    this.setViewport(this.viewport.x, this.viewport.y, newZoom);
+    this.setViewport(
+      this.viewport.x,
+      this.viewport.y,
+      this.viewport.width,
+      this.viewport.height,
+      newZoom
+    );
   }
 
   /**
@@ -935,7 +964,14 @@ export class DiagramModel extends DiagramEntity {
   static fromJSON(data: SerializedDiagram): DiagramModel {
     const diagram = new DiagramModel(data.name);
 
-    diagram.viewport = data.viewport;
+    // Restore viewport with backward compatibility
+    diagram.viewport = {
+      x: data.viewport.x,
+      y: data.viewport.y,
+      width: data.viewport.width || 1200,   // Default for old diagrams
+      height: data.viewport.height || 800,  // Default for old diagrams
+      zoom: data.viewport.zoom
+    };
 
     // Restore nodes
     for (const nodeData of data.nodes) {
