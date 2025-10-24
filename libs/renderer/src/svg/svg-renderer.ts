@@ -2,6 +2,9 @@ import type { DiagramEngine, NodeModel, LinkModel, PortModel, InteractionConfig 
 import type { IRenderer, PerformanceMetrics, SVGRendererConfig, VNode, Theme, Rectangle } from '../types';
 import { LIGHT_THEME } from '../themes';
 
+// Import routing types
+import type { RoutedPath, RoutingAlgorithm } from '@grafloria/engine';
+
 // LOD Level type (matches engine's LODLevel)
 type LODLevel = 'high' | 'medium' | 'low';
 
@@ -272,20 +275,51 @@ export class SVGRenderer implements IRenderer {
 
     if (!sourceNode) return null;
 
-    // Calculate source position (port position + node position)
-    const sourcePos = {
-      x: sourceNode.position.x + dragState.sourcePort.position.x,
-      y: sourceNode.position.y + dragState.sourcePort.position.y,
-    };
+    // CRITICAL FIX: Calculate source position using getAbsolutePosition() like links do
+    // This ensures the line starts from the port center, not the node's top-left corner
+    const sourceBounds = sourceNode.getBoundingBox();
+    const sourcePos = dragState.sourcePort.getAbsolutePosition(sourceBounds);
 
     const targetPos = dragState.currentMousePosition;
 
-    // Generate path based on connection line style
-    const pathData = this.generateConnectionPreviewPath(
-      sourcePos,
-      targetPos,
-      config.connectionLineStyle
-    );
+    // CRITICAL FIX: Determine pathType for preview from most recent link or default
+    // This ensures preview matches the actual routing algorithm that will be used
+    let pathType: 'direct' | 'orthogonal' | 'smooth' | 'bezier' = 'smooth'; // Default
+    const links = diagram.getLinks();
+    if (links.length > 0) {
+      // Use pathType from the most recent link
+      pathType = links[links.length - 1].pathType;
+    }
+
+    // Get source port direction for orthogonal routing
+    const sourceDirection = dragState.sourcePort.alignment.side;
+
+    // Get target port direction if hovering over a valid target port
+    let targetDirection: 'left' | 'right' | 'top' | 'bottom' | undefined;
+    if (dragState.targetPort) {
+      targetDirection = dragState.targetPort.alignment.side;
+    }
+
+    // Use RoutingEngine to calculate preview path (same as link rendering)
+    const routingEngine = this.engine.getRoutingEngine();
+    const algorithm = this.mapPathTypeToAlgorithm(pathType);
+
+    const routedPath = routingEngine.route({
+      start: sourcePos,
+      end: targetPos,
+      sourceDirection,
+      targetDirection,
+      options: { algorithm }
+    });
+
+    // Generate SVG path data
+    let pathData: string;
+    if (routedPath) {
+      pathData = this.convertRoutedPathToSVG(routedPath, pathType);
+    } else {
+      // Fallback to simple straight line
+      pathData = `M ${sourcePos.x} ${sourcePos.y} L ${targetPos.x} ${targetPos.y}`;
+    }
 
     // Determine line color based on validity
     const isValid = dragState.isOverValidTarget;
@@ -313,6 +347,7 @@ export class SVGRenderer implements IRenderer {
 
   /**
    * Phase 2: Generate connection preview path
+   * Supports straight, bezier, step (orthogonal) routing
    */
   private generateConnectionPreviewPath(
     from: { x: number; y: number },
@@ -321,6 +356,23 @@ export class SVGRenderer implements IRenderer {
   ): string {
     if (style === 'straight') {
       return `M ${from.x} ${from.y} L ${to.x} ${to.y}`;
+    }
+
+    if (style === 'step' || style === 'orthogonal') {
+      // Simple orthogonal routing for preview: horizontal then vertical, or vertical then horizontal
+      // Choose the path with fewer total turns based on alignment
+      const dx = Math.abs(to.x - from.x);
+      const dy = Math.abs(to.y - from.y);
+
+      // If mostly horizontal, route horizontally first
+      if (dx > dy) {
+        const midX = from.x + (to.x - from.x) / 2;
+        return `M ${from.x} ${from.y} L ${midX} ${from.y} L ${midX} ${to.y} L ${to.x} ${to.y}`;
+      } else {
+        // Route vertically first
+        const midY = from.y + (to.y - from.y) / 2;
+        return `M ${from.x} ${from.y} L ${from.x} ${midY} L ${to.x} ${midY} L ${to.x} ${to.y}`;
+      }
     }
 
     // Bezier curve (default)
@@ -539,6 +591,7 @@ export class SVGRenderer implements IRenderer {
 
   /**
    * Phase 2: Render single port
+   * CRITICAL FIX: Added pointer-events and proper z-index to ensure ports are clickable
    */
   private renderPort(
     port: PortModel,
@@ -582,10 +635,14 @@ export class SVGRenderer implements IRenderer {
         className: this.config.useCSSMode
           ? `port port-${port.type}${port.isHovered ? ' port-hovered' : ''}${isHighlighted ? ' port-highlighted' : ''}`
           : undefined,
-        style: port.isHovered || isHighlighted
-          ? 'transition: all 0.2s ease; cursor: pointer'
-          : 'transition: all 0.2s ease; cursor: crosshair',
+        // CRITICAL FIX: Ensure ports capture pointer events and have proper cursor
+        // pointer-events: all ensures the port intercepts mouse events even when overlapping the node
+        style: `transition: all 0.2s ease; cursor: ${port.isHovered || isHighlighted ? 'pointer' : 'crosshair'}; pointer-events: all;`,
         opacity: isHighlighted ? 1 : 0.9,
+        // CRITICAL FIX: Add data attribute for debugging
+        'data-port-id': port.id,
+        'data-port-type': port.type,
+        'data-port-side': port.side,
       },
     };
   }
@@ -628,6 +685,7 @@ export class SVGRenderer implements IRenderer {
 
   /**
    * Phase 2: Determine if port should be rendered based on visibility strategy
+   * CRITICAL FIX: Added comprehensive debugging and proper string comparison
    */
   private shouldRenderPort(
     port: PortModel,
@@ -636,15 +694,40 @@ export class SVGRenderer implements IRenderer {
   ): boolean {
     const { portVisibility } = config;
 
-    switch (portVisibility) {
+    // CRITICAL FIX: portVisibility is a string, not an enum
+    // It could be 'always', 'on-hover', or 'hidden'
+    const visibilityStr = String(portVisibility).toLowerCase();
+
+    // DEBUG: Enable this to see port visibility decisions
+    const debugPortVisibility = false; // Disabled - working correctly now
+
+    if (debugPortVisibility && visibilityStr === 'on-hover') {
+      console.log(`🔍 Port visibility check:`, {
+        port: `${port.side}`,
+        nodeHovered: node.state.hovered,
+        portHovered: port.isHovered,
+        highlighted: port.isHighlighted,
+        validTarget: port.isValidTarget,
+        nodeLabel: node.getMetadata('label'),
+        shouldShow: node.state.hovered || port.isHovered || port.isHighlighted || port.isValidTarget
+      });
+    }
+
+    switch (visibilityStr) {
       case 'always':
         return true;
       case 'on-hover':
-        return node.state.hovered || port.isHovered || port.isHighlighted;
+        // CRITICAL FIX: Show ports when node is hovered, OR during connection (highlighted/validTarget)
+        // Do NOT show just because port.isHovered - that creates the "sticky port" bug
+        // where the port you exit through stays visible
+        const shouldShow = node.state.hovered || port.isHighlighted || port.isValidTarget;
+        return shouldShow;
       case 'hidden':
         // Only show if actively involved in connection
         return port.isHighlighted || port.isValidTarget;
       default:
+        // Fallback to always visible
+        console.warn(`Unknown port visibility strategy: ${portVisibility}, defaulting to 'always'`);
         return true;
     }
   }
@@ -666,6 +749,104 @@ export class SVGRenderer implements IRenderer {
   }
 
   /**
+   * Get link endpoints (source and target port positions in world coordinates)
+   */
+  private getLinkEndpoints(link: LinkModel): {
+    start: { x: number; y: number };
+    end: { x: number; y: number };
+    sourceDirection?: 'left' | 'right' | 'top' | 'bottom';
+    targetDirection?: 'left' | 'right' | 'top' | 'bottom';
+  } | null {
+    const diagram = this.engine.getDiagram();
+    if (!diagram) return null;
+
+    // Get source and target nodes
+    const sourceNode = link.sourceNodeId ? diagram.getNode(link.sourceNodeId) : null;
+    const targetNode = link.targetNodeId ? diagram.getNode(link.targetNodeId) : null;
+
+    if (!sourceNode || !targetNode) return null;
+
+    // Get source and target ports
+    const sourcePort = sourceNode.getPort(link.sourcePortId);
+    const targetPort = targetNode.getPort(link.targetPortId);
+
+    if (!sourcePort || !targetPort) return null;
+
+    // Calculate absolute positions
+    const sourceBounds = sourceNode.getBoundingBox();
+    const targetBounds = targetNode.getBoundingBox();
+    const start = sourcePort.getAbsolutePosition(sourceBounds);
+    const end = targetPort.getAbsolutePosition(targetBounds);
+
+    // Get port directions (for orthogonal routing)
+    const sourceDirection = sourcePort.alignment.side;
+    const targetDirection = targetPort.alignment.side;
+
+    return { start, end, sourceDirection, targetDirection };
+  }
+
+  /**
+   * Map LinkModel pathType to RoutingAlgorithm
+   */
+  private mapPathTypeToAlgorithm(pathType: string): RoutingAlgorithm {
+    switch (pathType) {
+      case 'direct':
+        return 'straight';
+      case 'orthogonal':
+        return 'orthogonal';
+      case 'smooth':
+      case 'bezier':
+      default:
+        return 'straight'; // Use straight for smooth/bezier, will add curve post-processing
+    }
+  }
+
+  /**
+   * Convert RoutedPath to SVG path string
+   */
+  private convertRoutedPathToSVG(routedPath: RoutedPath, pathType: string): string {
+    if (!routedPath || routedPath.points.length === 0) return '';
+
+    const points = routedPath.points;
+
+    // For smooth/bezier types, add curve control points
+    if (pathType === 'smooth' || pathType === 'bezier') {
+      if (points.length < 2) return `M ${points[0].x} ${points[0].y}`;
+
+      let path = `M ${points[0].x} ${points[0].y}`;
+
+      // Simple bezier curve for 2 points
+      if (points.length === 2) {
+        const dx = points[1].x - points[0].x;
+        const dy = points[1].y - points[0].y;
+        const distance = Math.sqrt(dx * dx + dy * dy);
+        const controlDistance = Math.min(distance / 2, 100);
+
+        const cp1x = points[0].x + controlDistance;
+        const cp1y = points[0].y;
+        const cp2x = points[1].x - controlDistance;
+        const cp2y = points[1].y;
+
+        path += ` C ${cp1x} ${cp1y}, ${cp2x} ${cp2y}, ${points[1].x} ${points[1].y}`;
+      } else {
+        // For multiple points, use straight lines between waypoints
+        for (let i = 1; i < points.length; i++) {
+          path += ` L ${points[i].x} ${points[i].y}`;
+        }
+      }
+
+      return path;
+    }
+
+    // For straight/orthogonal, just connect the points
+    let path = `M ${points[0].x} ${points[0].y}`;
+    for (let i = 1; i < points.length; i++) {
+      path += ` L ${points[i].x} ${points[i].y}`;
+    }
+    return path;
+  }
+
+  /**
    * Render single link (Option 2: Enhanced with arrows and labels)
    */
   private renderLink(link: LinkModel, lod: LODLevel): VNode {
@@ -682,23 +863,54 @@ export class SVGRenderer implements IRenderer {
       ? this.computeLinkStylesCSS(link)
       : this.computeLinkStylesProgrammatic(link);
 
-    // Generate path from points or segments (for curves)
-    const pathData = this.generatePathData(link.points, link.segments);
+    // Get link endpoints from ports
+    const endpoints = this.getLinkEndpoints(link);
 
-    // Option 2: Calculate arrow position (at the end of the link)
-    const points = link.points;
-    const lastPoint = points[points.length - 1];
-    const secondLastPoint = points[points.length - 2] || points[0];
+    // Fallback to existing points if endpoints can't be calculated
+    let pathData: string;
+    let points: Array<{ x: number; y: number }>;
 
-    // Calculate arrow angle
-    const dx = lastPoint.x - secondLastPoint.x;
-    const dy = lastPoint.y - secondLastPoint.y;
-    const angle = Math.atan2(dy, dx) * (180 / Math.PI);
+    if (endpoints) {
+      // Use RoutingEngine to calculate path
+      const routingEngine = this.engine.getRoutingEngine();
+      const algorithm = this.mapPathTypeToAlgorithm(link.pathType);
 
-    // Option 2: Calculate label position (middle of the link)
+      const routedPath = routingEngine.route({
+        start: endpoints.start,
+        end: endpoints.end,
+        sourceDirection: endpoints.sourceDirection,
+        targetDirection: endpoints.targetDirection,
+        options: { algorithm }
+      });
+
+      if (routedPath) {
+        points = routedPath.points;
+        pathData = this.convertRoutedPathToSVG(routedPath, link.pathType);
+      } else {
+        // Fallback to simple straight line
+        points = [endpoints.start, endpoints.end];
+        pathData = `M ${endpoints.start.x} ${endpoints.start.y} L ${endpoints.end.x} ${endpoints.end.y}`;
+      }
+    } else {
+      // Fallback to existing link.points
+      points = link.points;
+      pathData = this.generatePathData(link.points, link.segments);
+    }
+
+    // Calculate arrow position and angle using unified utility
+    // The arrow polygon '0,-5 10,0 0,5' has its tip at x=10, base at x=0
+    const arrowLength = 10;
+    const arrowData = this.calculateArrowPositionAndAngle(link, points, true, arrowLength);
+    const arrowTipPosition = arrowData.position;
+    const angle = arrowData.angle;
+
+    // Calculate label position (middle of the link)
     const midIndex = Math.floor(points.length / 2);
     const labelPoint = points[midIndex];
     const label = link.getMetadata('label');
+
+    // Store last point for endpoint handle rendering
+    const lastPoint = points[points.length - 1];
 
     // Phase 2: Check if link is selected and reconnection handles should be shown
     const config = this.engine.getInteractionConfig();
@@ -733,7 +945,7 @@ export class SVGRenderer implements IRenderer {
                 props: {
                   points: '0,-5 10,0 0,5',
                   fill: styles.stroke || this.theme.colors.link.default,
-                  transform: `translate(${lastPoint.x}, ${lastPoint.y}) rotate(${angle})`,
+                  transform: `translate(${arrowTipPosition.x}, ${arrowTipPosition.y}) rotate(${angle})`,
                   className: 'link-arrow',
                 },
               } as VNode,
@@ -1183,6 +1395,15 @@ export class SVGRenderer implements IRenderer {
     diagram.on('node:removed', () => this.vnodeCache.clear());
     diagram.on('link:added', () => this.vnodeCache.clear());
     diagram.on('link:removed', () => this.vnodeCache.clear());
+
+    // Listen for interaction config changes (port visibility, etc.)
+    this.engine.eventBus.on('config:interaction-changed', () => {
+      this.vnodeCache.clear();
+      // Mark all nodes dirty to ensure re-render with new config
+      if (diagram) {
+        diagram.getNodes().forEach(node => node.markDirty('config-changed'));
+      }
+    });
   }
 
   /**
@@ -1206,5 +1427,314 @@ export class SVGRenderer implements IRenderer {
     // Rough estimate: cache size * average VNode size
     const avgVNodeSize = 1024; // bytes
     return this.vnodeCache.size * avgVNodeSize;
+  }
+
+  /**
+   * Calculate intersection point between a line segment and a rectangle
+   * Used to position arrows at node boundaries instead of port centers
+   */
+  private calculateLineRectIntersection(
+    lineStart: { x: number; y: number },
+    lineEnd: { x: number; y: number },
+    rect: { left: number; top: number; right: number; bottom: number; width: number; height: number }
+  ): { x: number; y: number } | null {
+    // Line direction vector
+    const dx = lineEnd.x - lineStart.x;
+    const dy = lineEnd.y - lineStart.y;
+
+    // Rectangle boundaries (BoundingBox uses left/top/right/bottom)
+    const rectLeft = rect.left;
+    const rectRight = rect.right;
+    const rectTop = rect.top;
+    const rectBottom = rect.bottom;
+
+    // Check intersection with each edge of the rectangle
+    const intersections: Array<{ x: number; y: number; distance: number }> = [];
+
+    // Helper to check if point is on line segment
+    const isOnSegment = (px: number, py: number): boolean => {
+      const minX = Math.min(lineStart.x, lineEnd.x);
+      const maxX = Math.max(lineStart.x, lineEnd.x);
+      const minY = Math.min(lineStart.y, lineEnd.y);
+      const maxY = Math.max(lineStart.y, lineEnd.y);
+      return px >= minX && px <= maxX && py >= minY && py <= maxY;
+    };
+
+    // Check left edge (x = rectLeft)
+    if (dx !== 0) {
+      const t = (rectLeft - lineStart.x) / dx;
+      const y = lineStart.y + t * dy;
+      if (t >= 0 && t <= 1 && y >= rectTop && y <= rectBottom) {
+        const dist = Math.sqrt((rectLeft - lineEnd.x) ** 2 + (y - lineEnd.y) ** 2);
+        intersections.push({ x: rectLeft, y, distance: dist });
+      }
+    }
+
+    // Check right edge (x = rectRight)
+    if (dx !== 0) {
+      const t = (rectRight - lineStart.x) / dx;
+      const y = lineStart.y + t * dy;
+      if (t >= 0 && t <= 1 && y >= rectTop && y <= rectBottom) {
+        const dist = Math.sqrt((rectRight - lineEnd.x) ** 2 + (y - lineEnd.y) ** 2);
+        intersections.push({ x: rectRight, y, distance: dist });
+      }
+    }
+
+    // Check top edge (y = rectTop)
+    if (dy !== 0) {
+      const t = (rectTop - lineStart.y) / dy;
+      const x = lineStart.x + t * dx;
+      if (t >= 0 && t <= 1 && x >= rectLeft && x <= rectRight) {
+        const dist = Math.sqrt((x - lineEnd.x) ** 2 + (rectTop - lineEnd.y) ** 2);
+        intersections.push({ x, y: rectTop, distance: dist });
+      }
+    }
+
+    // Check bottom edge (y = rectBottom)
+    if (dy !== 0) {
+      const t = (rectBottom - lineStart.y) / dy;
+      const x = lineStart.x + t * dx;
+      if (t >= 0 && t <= 1 && x >= rectLeft && x <= rectRight) {
+        const dist = Math.sqrt((x - lineEnd.x) ** 2 + (rectBottom - lineEnd.y) ** 2);
+        intersections.push({ x, y: rectBottom, distance: dist });
+      }
+    }
+
+    // Return the intersection closest to lineEnd (the target point)
+    if (intersections.length > 0) {
+      intersections.sort((a, b) => a.distance - b.distance);
+      return { x: intersections[0].x, y: intersections[0].y };
+    }
+
+    return null;
+  }
+
+  /**
+   * Calculate the tangent angle at the end of a bezier curve
+   * For a cubic bezier curve, the tangent at t=1 (endpoint) is determined by
+   * the direction from the second control point (cp2) to the endpoint
+   *
+   * @param cp2 Second control point of the bezier curve
+   * @param endpoint End point of the bezier curve
+   * @returns Angle in degrees
+   */
+  private calculateBezierEndTangent(
+    cp2: { x: number; y: number },
+    endpoint: { x: number; y: number }
+  ): number {
+    const dx = endpoint.x - cp2.x;
+    const dy = endpoint.y - cp2.y;
+    return Math.atan2(dy, dx) * (180 / Math.PI);
+  }
+
+  /**
+   * Get target port position for arrow positioning
+   * Returns the port's absolute position, which is typically at the node boundary
+   *
+   * @param link Link model
+   * @returns Port position or null if not found
+   */
+  private getTargetPortPosition(link: LinkModel): { x: number; y: number } | null {
+    const diagram = this.engine.getDiagram();
+    if (!diagram || !link.targetPortId) return null;
+
+    const targetNode = diagram.getNode(link.targetNodeId!);
+    if (!targetNode) return null;
+
+    const targetPort = targetNode.getPort(link.targetPortId);
+    if (!targetPort) return null;
+
+    // Get port's absolute position using the same method as getLinkEndpoints
+    const targetBounds = targetNode.getBoundingBox();
+    return targetPort.getAbsolutePosition(targetBounds);
+  }
+
+  /**
+   * Get source port position for arrow positioning
+   * Returns the port's absolute position, which is typically at the node boundary
+   *
+   * @param link Link model
+   * @returns Port position or null if not found
+   */
+  private getSourcePortPosition(link: LinkModel): { x: number; y: number } | null {
+    const diagram = this.engine.getDiagram();
+    if (!diagram || !link.sourcePortId) return null;
+
+    const sourceNode = diagram.getNode(link.sourceNodeId!);
+    if (!sourceNode) return null;
+
+    const sourcePort = sourceNode.getPort(link.sourcePortId);
+    if (!sourcePort) return null;
+
+    // Get port's absolute position using the same method as getLinkEndpoints
+    const sourceBounds = sourceNode.getBoundingBox();
+    return sourcePort.getAbsolutePosition(sourceBounds);
+  }
+
+  /**
+   * Get perpendicular angle from port side
+   * Used for orthogonal routing to ensure arrows are perpendicular to node edges
+   *
+   * @param portSide Port side ('left' | 'right' | 'top' | 'bottom')
+   * @returns Angle in degrees pointing away from the node
+   */
+  private getPerpendicularAngleFromPortSide(portSide: 'left' | 'right' | 'top' | 'bottom'): number {
+    switch (portSide) {
+      case 'left':
+        return 180; // Arrow points left
+      case 'right':
+        return 0;   // Arrow points right
+      case 'top':
+        return -90; // Arrow points up
+      case 'bottom':
+        return 90;  // Arrow points down
+    }
+  }
+
+  /**
+   * Calculate arrow direction based on routing algorithm and path geometry
+   * Implements research-based best practices for each algorithm type
+   *
+   * @param algorithm Routing algorithm used
+   * @param pathType Path type (bezier, smooth, straight, etc.)
+   * @param points Path points
+   * @param portSide Port side for orthogonal routing (optional)
+   * @returns Angle in degrees
+   */
+  private calculateArrowDirection(
+    algorithm: 'straight' | 'orthogonal' | 'a-star' | 'dijkstra' | 'visibility-graph' | 'custom',
+    pathType: string,
+    points: Array<{ x: number; y: number }>,
+    portSide?: 'left' | 'right' | 'top' | 'bottom'
+  ): number {
+    // Handle bezier/smooth paths - calculate tangent from bezier control point
+    // For 2-point bezier, the control point cp2 determines the tangent at the endpoint
+    if (pathType === 'bezier' || pathType === 'smooth') {
+      if (points.length === 2) {
+        // Calculate control point cp2 (same logic as convertRoutedPathToSVG at line 819-828)
+        const dx = points[1].x - points[0].x;
+        const dy = points[1].y - points[0].y;
+        const distance = Math.sqrt(dx * dx + dy * dy);
+        const controlDistance = Math.min(distance / 2, 100);
+
+        // cp2 is controlDistance pixels to the left of the endpoint (horizontal approach)
+        const cp2x = points[1].x - controlDistance;
+        const cp2y = points[1].y;
+
+        // Calculate tangent from cp2 to endpoint
+        const tangentDx = points[1].x - cp2x;  // Always positive (pointing right)
+        const tangentDy = points[1].y - cp2y;  // Always zero (horizontal)
+        return Math.atan2(tangentDy, tangentDx) * (180 / Math.PI);  // Always 0° (horizontal right)
+      } else if (points.length > 2) {
+        // Multiple points: use last segment
+        const lastPoint = points[points.length - 1];
+        const secondLastPoint = points[points.length - 2];
+        const dx = lastPoint.x - secondLastPoint.x;
+        const dy = lastPoint.y - secondLastPoint.y;
+        return Math.atan2(dy, dx) * (180 / Math.PI);
+      }
+    }
+
+    // Orthogonal routing MUST use port side for perpendicular arrows
+    if (algorithm === 'orthogonal' && portSide) {
+      return this.getPerpendicularAngleFromPortSide(portSide);
+    }
+
+    // For all other algorithms (straight, a-star, dijkstra, visibility-graph, custom):
+    // Use last segment direction
+    if (points.length >= 2) {
+      const lastPoint = points[points.length - 1];
+      const secondLastPoint = points[points.length - 2];
+      const dx = lastPoint.x - secondLastPoint.x;
+      const dy = lastPoint.y - secondLastPoint.y;
+      return Math.atan2(dy, dx) * (180 / Math.PI);
+    }
+
+    // Fallback: pointing right
+    return 0;
+  }
+
+  /**
+   * Calculate arrow position and angle for a link endpoint
+   * Handles both source and target ends with algorithm-aware direction calculation
+   *
+   * @param link Link model
+   * @param points Path points
+   * @param isTarget True for target end, false for source end
+   * @param arrowLength Length of arrow in pixels
+   * @returns Object with position and angle
+   */
+  private calculateArrowPositionAndAngle(
+    link: LinkModel,
+    points: Array<{ x: number; y: number }>,
+    isTarget: boolean,
+    arrowLength: number
+  ): { position: { x: number; y: number }; angle: number } {
+    // Get the relevant port and its side
+    const diagram = this.engine.getDiagram();
+    let portSide: 'left' | 'right' | 'top' | 'bottom' | undefined;
+    let portPosition: { x: number; y: number } | null = null;
+
+    if (diagram) {
+      if (isTarget && link.targetPortId) {
+        const targetNode = diagram.getNode(link.targetNodeId!);
+        if (targetNode) {
+          const targetPort = targetNode.getPort(link.targetPortId);
+          if (targetPort) {
+            portSide = targetPort.alignment.side;
+            portPosition = this.getTargetPortPosition(link);
+          }
+        }
+      } else if (!isTarget && link.sourcePortId) {
+        const sourceNode = diagram.getNode(link.sourceNodeId!);
+        if (sourceNode) {
+          const sourcePort = sourceNode.getPort(link.sourcePortId);
+          if (sourcePort) {
+            portSide = sourcePort.alignment.side;
+            portPosition = this.getSourcePortPosition(link);
+          }
+        }
+      }
+    }
+
+    // Map path type to algorithm
+    const algorithm = this.mapPathTypeToAlgorithm(link.pathType);
+
+    // Calculate arrow direction based on algorithm
+    let pointsToUse = points;
+    if (!isTarget) {
+      // For source end, reverse the points to get the correct direction
+      pointsToUse = [...points].reverse();
+    }
+
+    const angle = this.calculateArrowDirection(
+      algorithm,
+      link.pathType,
+      pointsToUse,
+      portSide
+    );
+
+    // Calculate arrow position
+    // Arrow polygon: '0,-5 10,0 0,5' (tip at x=10, base at x=0)
+    // We want the tip to show at the port center
+    //
+    // Key insight: The arrow should extend OUTWARD from the node
+    // - For smooth/bezier/straight: position arrow base outside node boundary
+    // - For orthogonal: path endpoint is already offset, use it directly
+
+    const pathEndpoint = isTarget ? points[points.length - 1] : points[0];
+    const angleRad = angle * (Math.PI / 180);
+
+    // Strategy: Position the arrow TIP at the port center
+    // The arrow base will be arrowLength away in the opposite direction
+    // This means the base is at: port - arrowLength * direction
+    // Since the arrow points in 'angle' direction, base is at angle + 180°
+
+    const position = {
+      x: pathEndpoint.x + arrowLength * Math.cos(angleRad + Math.PI),
+      y: pathEndpoint.y + arrowLength * Math.sin(angleRad + Math.PI)
+    };
+
+    return { position, angle };
   }
 }

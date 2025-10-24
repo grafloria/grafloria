@@ -87,6 +87,11 @@ export interface RoutingOptions {
 }
 
 /**
+ * Port direction for routing algorithms that need to respect port orientation
+ */
+export type PortDirection = 'left' | 'right' | 'top' | 'bottom';
+
+/**
  * Routing request
  */
 export interface RouteRequest {
@@ -98,6 +103,10 @@ export interface RouteRequest {
   obstacles?: Obstacle[];
   /** Routing options */
   options?: RoutingOptions;
+  /** Direction the source port points (for orthogonal routing) */
+  sourceDirection?: PortDirection;
+  /** Direction the target port points (for orthogonal routing) */
+  targetDirection?: PortDirection;
 }
 
 /**

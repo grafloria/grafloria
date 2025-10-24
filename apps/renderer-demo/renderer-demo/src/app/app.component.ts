@@ -76,10 +76,12 @@ export class AppComponent implements OnInit {
     this.engine = new DiagramEngine({
       interaction: {
         mode: InteractionMode.SMART, // Start with Smart/Visio-style mode
-        portVisibility: PortVisibilityStrategy.ON_HOVER,
+        portVisibility: PortVisibilityStrategy.ALWAYS, // CRITICAL FIX: Start with ALWAYS to debug visibility
         enableSmartAutoConnect: true,
       }
     });
+
+    console.log('🔧 Engine initialized with port visibility:', this.engine.getInteractionConfig().portVisibility);
   }
 
   /**
@@ -87,6 +89,12 @@ export class AppComponent implements OnInit {
    */
   onInteractionConfigChanged(config: Partial<InteractionConfig>): void {
     console.log('🎛️ Interaction config changed:', config);
+
+    // CRITICAL FIX: Update engine config
+    if (this.engine) {
+      this.engine.setInteractionConfig(config);
+      console.log('✅ Engine config updated. Current visibility:', this.engine.getInteractionConfig().portVisibility);
+    }
   }
 
   /**
@@ -680,12 +688,14 @@ export class AppComponent implements OnInit {
           this.commandOutput.push(`  🔍 viewport`);
           this.commandOutput.push(`     ~Display viewport information`);
           this.commandOutput.push(``);
-          this.commandOutput.push(`  ⚙️  linktype [type]`);
-          this.commandOutput.push(`     ~Set link path type (direct, smooth, orthogonal, bezier)`);
+          this.commandOutput.push(`  🔗 linktype [type]`);
+          this.commandOutput.push(`     ~Change link routing algorithm (RoutingEngine)`);
+          this.commandOutput.push(`     ~Types: direct, orthogonal, smooth, bezier`);
           this.commandOutput.push(`  ⚙️  help`);
           this.commandOutput.push(`     ~Show this help message`);
           this.commandOutput.push(``);
-          this.commandOutput.push(`💡 Tip: Commands are case-insensitive`);
+          this.commandOutput.push(`💡 Tip: Try 'linktype orthogonal' to see right-angle routing!`);
+          this.commandOutput.push(`💡 All commands are case-insensitive`);
           break;
 
         // DEBUG: Show selected or specific node details
@@ -813,26 +823,12 @@ export class AppComponent implements OnInit {
                 const links = diag7.getLinks();
                 links.forEach((link: any) => {
                   link.pathType = type;
-                  // Recalculate path
-                  const sourceNode = diag7.getNodes().find((n: any) =>
-                    n.getPorts().some((p: any) => p.id === link.sourcePortId)
-                  );
-                  const targetNode = diag7.getNodes().find((n: any) =>
-                    n.getPorts().some((p: any) => p.id === link.targetPortId)
-                  );
-                  if (sourceNode && targetNode) {
-                    const sourcePort = sourceNode.getPorts().find((p: any) => p.id === link.sourcePortId);
-                    const targetPort = targetNode.getPorts().find((p: any) => p.id === link.targetPortId);
-                    if (sourcePort && targetPort) {
-                      const sourcePoint = sourcePort.getAbsolutePosition(sourceNode.getBoundingBox());
-                      const targetPoint = targetPort.getAbsolutePosition(targetNode.getBoundingBox());
-                      link.generatePath(sourcePoint, targetPoint);
-                      link.markDirty();
-                    }
-                  }
+                  // Mark dirty - SVGRenderer will automatically use RoutingEngine to calculate path
+                  link.markDirty();
                 });
                 this.commandOutput.push(`✅ Set all links to: ${type}`);
-                console.log(`🔗 Changed ${links.length} links to ${type} path type`);
+                this.commandOutput.push(`   Using RoutingEngine for dynamic path calculation`);
+                console.log(`🔗 Changed ${links.length} links to ${type} path type (RoutingEngine enabled)`);
               } else {
                 this.commandOutput.push(`❌ Invalid type. Use: direct, smooth, orthogonal, or bezier`);
               }
@@ -844,7 +840,12 @@ export class AppComponent implements OnInit {
                   this.commandOutput.push(`  [${i}] ${l.getMetadata('label') || l.id}: ${l.pathType}`);
                 });
               }
-              this.commandOutput.push(`Available types: direct, smooth, orthogonal, bezier`);
+              this.commandOutput.push(``);
+              this.commandOutput.push(`Available types (RoutingEngine):`);
+              this.commandOutput.push(`  🔹 direct      - Straight line (straight algorithm)`);
+              this.commandOutput.push(`  🔹 orthogonal  - Right angles (orthogonal algorithm)`);
+              this.commandOutput.push(`  🔹 smooth      - Curved path (straight + bezier)`);
+              this.commandOutput.push(`  🔹 bezier      - Bezier curves (straight + bezier)`);
             }
           }
           break;

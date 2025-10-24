@@ -403,10 +403,14 @@ export class DiagramCanvasComponent implements OnInit, AfterViewInit, OnChanges,
       const worldX = this.viewport.x + (clientX / this.zoom);
       const worldY = this.viewport.y + (clientY / this.zoom);
 
-      // Phase 3: Check for port click (highest priority)
+      // CRITICAL FIX: Get the current interaction state (from last mousemove)
+      // We rely on mousemove to have already updated hover states
       const interactionState = this.interactionHandler.getState();
+
+      // Phase 3: Check for port click (highest priority)
       if (interactionState.hoveredPort) {
         event.preventDefault();
+        console.log('🖱️ Port clicked:', interactionState.hoveredPort.side, interactionState.hoveredPort.id);
         this.interactionHandler.startConnection(interactionState.hoveredPort, worldX, worldY, this.engine);
         this.renderDiagram();
         this.cdr.markForCheck();
@@ -416,6 +420,7 @@ export class DiagramCanvasComponent implements OnInit, AfterViewInit, OnChanges,
       // Phase 3: Check for link click (for selection)
       if (interactionState.hoveredLink) {
         event.preventDefault();
+        console.log('🖱️ Link clicked:', interactionState.hoveredLink.id);
         this.interactionHandler.selectLink(interactionState.hoveredLink, this.engine);
         this.renderDiagram();
         this.cdr.markForCheck();
@@ -424,6 +429,7 @@ export class DiagramCanvasComponent implements OnInit, AfterViewInit, OnChanges,
 
       // Check if clicking on a node
       const clickedNode = diagram.getNodeAtPosition(worldX, worldY);
+      console.log('🖱️ Click at world coords:', { x: worldX.toFixed(1), y: worldY.toFixed(1) }, 'Node:', clickedNode?.getMetadata('label') || 'none');
 
       if (clickedNode) {
         event.preventDefault();
@@ -571,11 +577,11 @@ export class DiagramCanvasComponent implements OnInit, AfterViewInit, OnChanges,
         this.containerRef.nativeElement.style.cursor = this.interactionHandler.getCursor(this.engine);
       }
 
-      // Re-render if hover state changed
-      if (needsRender) {
-        this.renderDiagram();
-        this.cdr.markForCheck();
-      }
+      // CRITICAL FIX: Always re-render on mousemove to ensure port visibility updates
+      // This is necessary because port visibility depends on hover state
+      // and we need to show/hide ports as the user moves the mouse
+      this.renderDiagram();
+      this.cdr.markForCheck();
     }
   }
 
