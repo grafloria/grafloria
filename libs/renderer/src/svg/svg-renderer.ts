@@ -1,6 +1,7 @@
 import type { DiagramEngine, NodeModel, LinkModel, PortModel, InteractionConfig } from '@grafloria/engine';
 import type { IRenderer, PerformanceMetrics, SVGRendererConfig, VNode, Theme, Rectangle } from '../types';
 import { LIGHT_THEME } from '../themes';
+import { createForeignObject, isForeignObject, getContainerId } from '../vnode/foreign-object';
 
 // Import routing types
 import type { RoutedPath, RoutingAlgorithm } from '@grafloria/engine';
@@ -21,6 +22,10 @@ export class SVGRenderer implements IRenderer {
   private vnodeCache = new Map<string, VNode>();
   private styleElement?: HTMLStyleElement;
   private disposed = false;
+
+  // foreignObject support
+  private containerIds = new Map<string, string>(); // nodeId -> containerId mapping
+  private foreignObjectNodes = new Set<string>(); // Track which nodes use foreignObject
 
   // Performance tracking
   private lastRenderTime = 0;
@@ -176,6 +181,10 @@ export class SVGRenderer implements IRenderer {
 
     // Clear cache
     this.vnodeCache.clear();
+
+    // Clear foreignObject tracking
+    this.containerIds.clear();
+    this.foreignObjectNodes.clear();
 
     // Unsubscribe from engine events
     // (EventBus will handle cleanup on engine destroy)
@@ -419,6 +428,11 @@ export class SVGRenderer implements IRenderer {
    * Render single node
    */
   private renderNode(node: NodeModel, lod: LODLevel): VNode {
+    // Check if node should use foreignObject rendering
+    if (this.shouldUseForeignObject(node)) {
+      return this.renderNodeWithForeignObject(node, lod);
+    }
+
     // Check cache if enabled (include LOD in cache key since rendering varies by LOD)
     const cacheKey = `node-${node.id}-${lod}`;
     if (this.config.enableCaching && !node.isDirty) {
@@ -597,6 +611,123 @@ export class SVGRenderer implements IRenderer {
     }
 
     return vnode;
+  }
+
+  /**
+   * Check if a node should use foreignObject rendering
+   * Nodes can indicate they want foreignObject by setting metadata.useForeignObject = true
+   */
+  private shouldUseForeignObject(node: NodeModel): boolean {
+    return node.getMetadata('useForeignObject') === true;
+  }
+
+  /**
+   * Render a node using foreignObject for component embedding
+   */
+  private renderNodeWithForeignObject(node: NodeModel, lod: LODLevel): VNode {
+    const diagram = this.engine.getDiagram()!;
+    const isSelected = node.isSelected();
+    const isHovered = node.state.hovered;
+
+    // Phase 2: Check if node is a valid connection target
+    const connectionState = this.engine.getConnectionStateManager().getState();
+    const isConnectionTarget =
+      connectionState.isConnecting &&
+      connectionState.validTargetNodes.has(node.id);
+
+    // Track this node uses foreignObject
+    this.foreignObjectNodes.add(node.id);
+
+    // Create foreignObject VNode for component rendering
+    const foreignObject = createForeignObject({
+      nodeId: node.id,
+      x: 0,
+      y: 0,
+      width: node.size.width,
+      height: node.size.height,
+      key: `fo-${node.id}`,
+    });
+
+    // Store container ID for external access
+    const containerId = getContainerId(foreignObject);
+    if (containerId) {
+      this.containerIds.set(node.id, containerId);
+    }
+
+    // Build node group with foreignObject and overlays
+    const vnode: VNode = {
+      type: 'g',
+      key: `node-${node.id}`,
+      props: {
+        transform: `translate(${node.position.x}, ${node.position.y})`,
+        className: 'node-group node-with-component',
+        style: isHovered ? { transition: 'all 0.2s ease' } : undefined,
+      },
+      children: [
+        // Selection highlight (rendered behind foreignObject)
+        ...(isSelected
+          ? [
+              {
+                type: 'rect',
+                props: {
+                  x: -3,
+                  y: -3,
+                  width: node.size.width + 6,
+                  height: node.size.height + 6,
+                  fill: 'none',
+                  stroke: this.theme.colors.primary,
+                  strokeWidth: 3,
+                  strokeDasharray: '5,5',
+                  rx: 6,
+                  ry: 6,
+                  className: 'selection-highlight',
+                },
+              } as VNode,
+            ]
+          : []),
+        // Connection target highlight
+        ...(isConnectionTarget
+          ? [
+              {
+                type: 'rect',
+                props: {
+                  x: -2,
+                  y: -2,
+                  width: node.size.width + 4,
+                  height: node.size.height + 4,
+                  fill: 'none',
+                  stroke: this.theme.colors.success,
+                  strokeWidth: 2,
+                  rx: 5,
+                  ry: 5,
+                  className: 'connection-target-highlight',
+                  opacity: 0.8,
+                },
+              } as VNode,
+            ]
+          : []),
+        // foreignObject for component embedding
+        foreignObject,
+        // Ports (rendered on top of foreignObject)
+        ...this.renderPorts(node, lod),
+      ],
+    };
+
+    return vnode;
+  }
+
+  /**
+   * Get container ID for a node (if it uses foreignObject)
+   */
+  getContainerId(nodeId: string): string | undefined {
+    return this.containerIds.get(nodeId);
+  }
+
+  /**
+   * Check if a node uses foreignObject rendering
+   */
+  isUsingForeignObject(nodeId: string): boolean {
+    return this.foreignObjectNodes.has(nodeId);
   }
 
   /**
