@@ -1,0 +1,185 @@
+<div class="diagram-property-panel" role="region" aria-label="Property Panel">
+  <!-- Header -->
+  <div class="panel-header" *ngIf="showHeader && selectedNodes.length > 0">
+    <ng-container *ngIf="headerTemplate; else defaultHeader">
+      <ng-container *ngTemplateOutlet="headerTemplate; context: { $implicit: selectedNodes }"></ng-container>
+    </ng-container>
+
+    <ng-template #defaultHeader>
+      <div class="header-content">
+        <div class="node-info">
+          <div class="node-type" aria-label="Node type">
+            {{ schema?.title || selectedNodes[0]?.type }}
+          </div>
+          <div class="node-label" *ngIf="selectedNodes.length === 1" aria-label="Node label">
+            {{ selectedNodes[0].label || selectedNodes[0].id }}
+          </div>
+          <div class="node-count" *ngIf="selectedNodes.length > 1" aria-label="Selected nodes count">
+            {{ selectedNodes.length }} nodes selected
+          </div>
+        </div>
+
+        <div class="header-actions" *ngIf="showActions" role="toolbar" aria-label="Node actions">
+          <button
+            type="button"
+            class="icon-button"
+            aria-label="Delete selected nodes"
+            title="Delete">
+            <span class="icon" aria-hidden="true">🗑️</span>
+          </button>
+          <button
+            type="button"
+            class="icon-button"
+            aria-label="Duplicate selected nodes"
+            title="Duplicate">
+            <span class="icon" aria-hidden="true">📋</span>
+          </button>
+        </div>
+      </div>
+    </ng-template>
+  </div>
+
+  <!-- Empty State -->
+  <div class="panel-empty" *ngIf="selectedNodes.length === 0" role="status">
+    <ng-container *ngIf="emptyStateTemplate; else defaultEmptyState">
+      <ng-container *ngTemplateOutlet="emptyStateTemplate"></ng-container>
+    </ng-container>
+
+    <ng-template #defaultEmptyState>
+      <div class="empty-content">
+        <div class="empty-icon" aria-hidden="true">📝</div>
+        <div class="empty-title">No node selected</div>
+        <div class="empty-message">Select a node to edit its properties</div>
+      </div>
+    </ng-template>
+  </div>
+
+  <!-- Property Groups -->
+  <div class="panel-content" *ngIf="selectedNodes.length > 0 && schema">
+    <div
+      class="property-group"
+      *ngFor="let group of propertyGroups | keyvalue; trackBy: trackByGroupName"
+      [attr.data-group]="group.key">
+
+      <!-- Group Header -->
+      <div
+        class="group-header"
+        [class.expanded]="isGroupExpanded(group.key)"
+        [attr.aria-expanded]="isGroupExpanded(group.key)"
+        [attr.aria-controls]="'group-content-' + group.key"
+        role="button"
+        tabindex="0"
+        (click)="collapsibleGroups && toggleGroup(group.key)"
+        (keydown.enter)="collapsibleGroups && toggleGroup(group.key)"
+        (keydown.space)="collapsibleGroups && toggleGroup(group.key); $event.preventDefault()"
+        *ngIf="collapsibleGroups">
+
+        <ng-container *ngIf="groupHeaderTemplate; else defaultGroupHeader">
+          <ng-container *ngTemplateOutlet="groupHeaderTemplate; context: { $implicit: group.key }"></ng-container>
+        </ng-container>
+
+        <ng-template #defaultGroupHeader>
+          <span class="group-icon" aria-hidden="true">
+            {{ isGroupExpanded(group.key) ? '▼' : '▶' }}
+          </span>
+          <span class="group-name">{{ group.key }}</span>
+        </ng-template>
+      </div>
+
+      <!-- Static Group Header (non-collapsible) -->
+      <div class="group-header-static" *ngIf="!collapsibleGroups">
+        <span class="group-name">{{ group.key }}</span>
+      </div>
+
+      <!-- Group Content -->
+      <div
+        class="group-content"
+        [id]="'group-content-' + group.key"
+        [attr.aria-hidden]="collapsibleGroups && !isGroupExpanded(group.key)"
+        *ngIf="!collapsibleGroups || isGroupExpanded(group.key)">
+
+        <div
+          class="property-row"
+          *ngFor="let property of group.value; trackBy: trackByPropertyKey"
+          [hidden]="!isPropertyVisible(property)"
+          [class.has-error]="getPropertyErrors(property).length > 0">
+
+          <!-- Property Label -->
+          <label
+            class="property-label"
+            [for]="'prop-' + property.key"
+            [class.required]="property.required">
+            {{ property.label }}
+            <span class="required-indicator" *ngIf="property.required" aria-label="required">*</span>
+          </label>
+
+          <!-- Property Description -->
+          <div class="property-description" *ngIf="property.description">
+            {{ property.description }}
+          </div>
+
+          <!-- Property Editor -->
+          <div class="property-editor">
+            <diagram-property-editor
+              [id]="'prop-' + property.key"
+              [property]="property"
+              [value]="getPropertyValue(property)"
+              [readonly]="false"
+              [attr.aria-invalid]="getPropertyErrors(property).length > 0"
+              [attr.aria-describedby]="getPropertyErrors(property).length > 0 ? 'error-' + property.key : null"
+              (valueChange)="onPropertyChange(property, $event)">
+            </diagram-property-editor>
+          </div>
+
+          <!-- Validation Errors -->
+          <div
+            class="property-errors"
+            *ngIf="getPropertyErrors(property).length > 0"
+            [id]="'error-' + property.key"
+            role="alert"
+            aria-live="polite">
+            <div
+              class="error-message"
+              *ngFor="let error of getPropertyErrors(property)">
+              <span class="error-icon" aria-hidden="true">⚠️</span>
+              {{ error }}
+            </div>
+          </div>
+
+          <!-- Mixed Values Indicator -->
+          <div
+            class="mixed-values-indicator"
+            *ngIf="hasMixedValues(property)"
+            role="status">
+            <span class="info-icon" aria-hidden="true">ℹ️</span>
+            Multiple values - editing will apply to all selected nodes
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Footer (deferred mode) -->
+  <div
+    class="panel-footer"
+    *ngIf="updateMode === 'deferred' && selectedNodes.length > 0"
+    role="toolbar"
+    aria-label="Property panel actions">
+    <button
+      type="button"
+      class="btn btn-secondary"
+      (click)="onCancel()"
+      [disabled]="!isDirty"
+      [attr.aria-disabled]="!isDirty">
+      Cancel
+    </button>
+    <button
+      type="button"
+      class="btn btn-primary"
+      (click)="onSave()"
+      [disabled]="!isDirty"
+      [attr.aria-disabled]="!isDirty">
+      Save Changes
+    </button>
+  </div>
+</div>

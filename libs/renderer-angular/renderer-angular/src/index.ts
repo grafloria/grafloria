@@ -1,6 +1,8 @@
 // Export components
 export * from './lib/components/diagram-canvas.component';
 export * from './lib/components/interaction-config-panel.component';
+export * from './lib/components/property-panel/property-panel.component';
+export * from './lib/components/property-panel/property-editor.component';
 
 // Export services
 export * from './lib/services/vnode-renderer.service';
