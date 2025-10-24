@@ -26,9 +26,19 @@ export interface TableData {
       </div>
       <div class="columns-container">
         <div *ngFor="let column of data.columns" class="column-row">
+          <!-- Left port indicator for foreign keys -->
+          <div class="port-indicator left-port" *ngIf="column.isForeignKey" title="Drag from here to connect">
+            <div class="port-dot"></div>
+          </div>
+
           <span class="column-icon">{{ getColumnIcon(column) }}</span>
           <span class="column-name">{{ column.name }}</span>
           <span class="column-type">{{ column.dataType }}</span>
+
+          <!-- Right port indicator for all fields (especially primary keys) -->
+          <div class="port-indicator right-port" title="Drag to another field to connect">
+            <div class="port-dot"></div>
+          </div>
         </div>
       </div>
     </div>
@@ -73,6 +83,7 @@ export interface TableData {
       padding: 0.6rem 1rem;
       border-bottom: 1px solid #e9ecef;
       transition: background 0.2s;
+      position: relative;
     }
 
     .column-row:last-child {
@@ -81,6 +92,47 @@ export interface TableData {
 
     .column-row:hover {
       background: #e3f2fd;
+    }
+
+    .column-row:hover .port-indicator {
+      opacity: 1;
+    }
+
+    .port-indicator {
+      position: absolute;
+      width: 12px;
+      height: 12px;
+      opacity: 0.3;
+      transition: opacity 0.2s, transform 0.2s;
+      cursor: pointer;
+      z-index: 10;
+    }
+
+    .port-indicator:hover {
+      opacity: 1 !important;
+      transform: scale(1.3);
+    }
+
+    .left-port {
+      left: -6px;
+    }
+
+    .right-port {
+      right: -6px;
+    }
+
+    .port-dot {
+      width: 100%;
+      height: 100%;
+      border-radius: 50%;
+      background: #3498db;
+      border: 2px solid white;
+      box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
+    }
+
+    .port-indicator:hover .port-dot {
+      background: #27ae60;
+      box-shadow: 0 0 0 3px rgba(39, 174, 96, 0.3);
     }
 
     .column-icon {

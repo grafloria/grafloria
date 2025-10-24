@@ -96,11 +96,30 @@ export class ErdDesignerComponent implements OnInit {
     this.tables.set('products', productsTable);
     this.createTableNode(productsTable, { x: 100, y: 400 });
 
-    // Create relationships
+    // Create relationships with field-level connections
     const usersNode = diagram.getNodes().find(n => n.getMetadata('tableId') === 'users');
     const ordersNode = diagram.getNodes().find(n => n.getMetadata('tableId') === 'orders');
+
     if (usersNode && ordersNode) {
-      diagram.connectNodes(usersNode, ordersNode, 'direct');
+      // Connect users.id (primary key) to orders.user_id (foreign key)
+      // Find the port for users.id (right side of first field - primary key)
+      const usersPorts = usersNode.getPorts();
+      const ordersPorts = ordersNode.getPorts();
+
+      // Users.id is first field (index 0), right port
+      const usersIdPort = usersPorts.find(p => p.type === 'output' && p.alignment.side === 'right');
+      // Orders.user_id is second field (index 1), left port
+      const ordersUserIdPort = ordersPorts.find(p => p.type === 'input' && p.alignment.side === 'left');
+
+      if (usersIdPort && ordersUserIdPort) {
+        const link = diagram.createLink(usersIdPort.id, ordersUserIdPort.id, 'orthogonal');
+        if (link) {
+          link.setMetadata('relationship', '1:N');
+          link.setMetadata('label', '1:N');
+          link.setMetadata('description', 'One user has many orders');
+          console.log('✅ Created relationship: Users(1) → Orders(N)');
+        }
+      }
     }
 
     diagram.fitToView(100);
@@ -127,6 +146,43 @@ export class ErdDesignerComponent implements OnInit {
     node.setMetadata('tableId', table.id);
     node.setMetadata('tableName', table.name);
     node.setMetadata('columns', table.columns);
+
+    // CRITICAL: Clear default ports - we'll create field-specific ports
+    node.ports.clear();
+
+    // Create a port for each field (column) in the table
+    table.columns.forEach((column, index) => {
+      // Calculate vertical position for this field
+      // Header is 40px, each row is 30px, center port in middle of row
+      const fieldY = headerHeight + (index * rowHeight) + (rowHeight / 2);
+      const normalizedY = fieldY / height; // Normalize to 0-1
+
+      // Left port for foreign keys (input)
+      if (column.isForeignKey) {
+        node.addPort({
+          type: 'input',
+          alignment: {
+            side: 'left',
+            horizontal: 0, // Left edge
+            vertical: normalizedY // Positioned at field row
+          }
+        });
+        console.log(`✅ Created LEFT port for FK field: ${column.name} at y=${fieldY}px (normalized: ${normalizedY})`);
+      }
+
+      // Right port for all fields (output) - especially primary keys
+      node.addPort({
+        type: 'output',
+        alignment: {
+          side: 'right',
+          horizontal: 1, // Right edge
+          vertical: normalizedY // Positioned at field row
+        }
+      });
+      console.log(`✅ Created RIGHT port for field: ${column.name} at y=${fieldY}px (normalized: ${normalizedY})`);
+    });
+
+    console.log(`🔌 Total ports created for ${table.name}: ${node.getPorts().length}`);
 
     diagram.addNode(node);
   }
