@@ -1477,16 +1477,66 @@ export class DiagramEngine {
   }
 
   /**
+   * Register a node as an obstacle in the routing engine
+   */
+  private registerNodeAsObstacle(node: NodeModel): void {
+    const obstacle = {
+      id: node.id,
+      x: node.position.x,
+      y: node.position.y,
+      width: node.size.width,
+      height: node.size.height,
+    };
+    this.routingEngine.addObstacle(obstacle);
+    console.log(`🚧 Registered obstacle: ${node.data?.['label'] || node.id} at (${obstacle.x}, ${obstacle.y}) size ${obstacle.width}x${obstacle.height}`);
+    console.log(`   Total obstacles: ${this.routingEngine.getObstacleCount()}`);
+  }
+
+  /**
+   * Update a node's obstacle when it moves or resizes
+   */
+  private updateNodeObstacle(node: NodeModel): void {
+    const obstacle = {
+      id: node.id,
+      x: node.position.x,
+      y: node.position.y,
+      width: node.size.width,
+      height: node.size.height,
+    };
+    this.routingEngine.updateObstacle(obstacle);
+  }
+
+  /**
+   * Unregister a node obstacle when node is removed
+   */
+  private unregisterNodeObstacle(nodeId: string): void {
+    this.routingEngine.removeObstacle(nodeId);
+  }
+
+  /**
    * Attach diagram
    */
   private attachDiagram(diagram: DiagramModel): void {
     // Subscribe to diagram events
     diagram.on('node:added', (node: NodeModel) => {
       this.eventBus.emit('node:added', node);
+      // Register node as obstacle for routing
+      this.registerNodeAsObstacle(node);
+
+      // Listen for node position/size changes
+      node.on('position', () => {
+        this.updateNodeObstacle(node);
+      });
+
+      node.on('size', () => {
+        this.updateNodeObstacle(node);
+      });
     });
 
     diagram.on('node:removed', (node: NodeModel) => {
       this.eventBus.emit('node:removed', node);
+      // Unregister node obstacle
+      this.unregisterNodeObstacle(node.id);
     });
 
     diagram.on('link:added', (link: LinkModel) => {
@@ -1495,6 +1545,20 @@ export class DiagramEngine {
 
     diagram.on('link:removed', (link: LinkModel) => {
       this.eventBus.emit('link:removed', link);
+    });
+
+    // Register all existing nodes as obstacles
+    diagram.getNodes().forEach((node) => {
+      this.registerNodeAsObstacle(node);
+
+      // Listen for node position/size changes
+      node.on('position', () => {
+        this.updateNodeObstacle(node);
+      });
+
+      node.on('size', () => {
+        this.updateNodeObstacle(node);
+      });
     });
   }
 

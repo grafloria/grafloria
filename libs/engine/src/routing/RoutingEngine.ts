@@ -234,6 +234,27 @@ export class RoutingEngine {
   }
 
   /**
+   * Update an existing obstacle's position/size
+   * More efficient than remove + add
+   */
+  updateObstacle(obstacle: Obstacle): void {
+    // Remove old version
+    this.obstacleMap.remove(obstacle.id);
+    // Add updated version
+    this.obstacleMap.add(obstacle);
+
+    // Update in global array
+    const index = this.globalObstacles.findIndex((o) => o.id === obstacle.id);
+    if (index !== -1) {
+      this.globalObstacles[index] = obstacle;
+    } else {
+      this.globalObstacles.push(obstacle);
+    }
+
+    this.clearCache(); // Invalidate cache when obstacles change
+  }
+
+  /**
    * Get number of global obstacles
    */
   getObstacleCount(): number {

@@ -15,6 +15,15 @@ export class OrthogonalRouter implements IRouter {
   route(request: RouteRequest): RoutedPath | null {
     const { start, end, obstacles = [], options = {}, sourceDirection, targetDirection } = request;
 
+    console.log('🔀 OrthogonalRouter.route called:', {
+      start,
+      end,
+      sourceDirection,
+      targetDirection,
+      obstacleCount: obstacles.length,
+      avoidObstacles: options.avoidObstacles
+    });
+
     // Handle same start and end point
     if (start.x === end.x && start.y === end.y) {
       return {
@@ -28,12 +37,14 @@ export class OrthogonalRouter implements IRouter {
 
     // Simple orthogonal routing without obstacles
     if (!options.avoidObstacles || obstacles.length === 0) {
+      console.log('📐 Using simpleOrthogonalRoute (no obstacle avoidance)');
       const bendCost = options.costs?.bends ?? 10;
       return this.simpleOrthogonalRoute(start, end, options.gridSize, bendCost, sourceDirection, targetDirection);
     }
 
     // Complex routing with obstacle avoidance
-    return this.avoidObstaclesRoute(start, end, obstacles, options);
+    console.log('🚧 Using avoidObstaclesRoute (WITH obstacle avoidance)');
+    return this.avoidObstaclesRoute(start, end, obstacles, options, sourceDirection, targetDirection);
   }
 
   /**
@@ -55,6 +66,13 @@ export class OrthogonalRouter implements IRouter {
     const sourceOffset = this.applyGapOffset(start, sourceDirection, gapOffset);
     const targetOffset = this.applyGapOffset(end, targetDirection, gapOffset);
 
+    console.log('  📏 Gap offset calculation:', {
+      start,
+      sourceDirection,
+      sourceOffset,
+      gapApplied: sourceOffset.x !== start.x || sourceOffset.y !== start.y
+    });
+
     // Build path points
     let points: RoutePoint[] = [
       { x: start.x, y: start.y },
@@ -63,13 +81,28 @@ export class OrthogonalRouter implements IRouter {
     // Add source offset point if we have a source direction
     if (sourceDirection && (sourceOffset.x !== start.x || sourceOffset.y !== start.y)) {
       points.push(sourceOffset);
+      console.log('  ✅ Added source offset point:', sourceOffset);
+    } else {
+      console.log('  ⚠️ NO source offset added - sourceDirection:', sourceDirection);
     }
 
     // Check if source and target offsets are aligned (can connect with one segment)
-    const alignedHorizontally = Math.abs(sourceOffset.y - targetOffset.y) < 1;
-    const alignedVertically = Math.abs(sourceOffset.x - targetOffset.x) < 1;
+    // Use a tolerance of 2px to account for minor alignment issues
+    const alignedHorizontally = Math.abs(sourceOffset.y - targetOffset.y) < 2;
+    const alignedVertically = Math.abs(sourceOffset.x - targetOffset.x) < 2;
 
-    if (!alignedHorizontally && !alignedVertically) {
+    // STRAIGHT LINE OPTIMIZATION: If ports are perfectly aligned and facing each other,
+    // create a straight line without intermediate points
+    if (this.canUseDirectLine(start, end, sourceDirection, targetDirection, sourceOffset, targetOffset)) {
+      console.log('  🎯 Using direct line (ports aligned and facing each other)');
+
+      // Add target offset point if we have a target direction
+      if (targetDirection && (targetOffset.x !== end.x || targetOffset.y !== end.y)) {
+        points.push(targetOffset);
+      }
+
+      points.push({ x: end.x, y: end.y });
+    } else if (!alignedHorizontally && !alignedVertically) {
       // Need intermediate points - determine routing strategy based on port directions
       const needsZShape = this.needsZShape(sourceDirection, targetDirection, sourceOffset, targetOffset);
 
@@ -84,14 +117,24 @@ export class OrthogonalRouter implements IRouter {
           points.push(midPoint);
         }
       }
-    }
 
-    // Add target offset point if we have a target direction
-    if (targetDirection && (targetOffset.x !== end.x || targetOffset.y !== end.y)) {
-      points.push(targetOffset);
-    }
+      // Add target offset point if we have a target direction
+      if (targetDirection && (targetOffset.x !== end.x || targetOffset.y !== end.y)) {
+        points.push(targetOffset);
+      }
 
-    points.push({ x: end.x, y: end.y });
+      points.push({ x: end.x, y: end.y });
+    } else {
+      // Aligned case - just connect straight
+      console.log('  ➡️ Using aligned connection');
+
+      // Add target offset point if we have a target direction
+      if (targetDirection && (targetOffset.x !== end.x || targetOffset.y !== end.y)) {
+        points.push(targetOffset);
+      }
+
+      points.push({ x: end.x, y: end.y });
+    }
 
     // Snap to grid if specified
     if (gridSize && gridSize > 1) {
@@ -114,6 +157,99 @@ export class OrthogonalRouter implements IRouter {
       cost: totalLength + bendCount * bendCost,
       segments: this.calculateSegments(uniquePoints),
     };
+  }
+
+  /**
+   * Check if we can use a direct straight line between ports
+   * This happens when ports are aligned and facing each other directly
+   */
+  private canUseDirectLine(
+    start: Point,
+    end: Point,
+    sourceDirection: 'left' | 'right' | 'top' | 'bottom' | undefined,
+    targetDirection: 'left' | 'right' | 'top' | 'bottom' | undefined,
+    _sourceOffset: Point,
+    _targetOffset: Point
+  ): boolean {
+    if (!sourceDirection || !targetDirection) return false;
+
+    const tolerance = 2; // pixels
+
+    // Check if horizontally aligned (same Y)
+    const horizontallyAligned = Math.abs(start.y - end.y) < tolerance;
+    // Check if vertically aligned (same X)
+    const verticallyAligned = Math.abs(start.x - end.x) < tolerance;
+
+    // For horizontal alignment, ports should face left/right
+    if (horizontallyAligned) {
+      const horizontalPorts = (
+        (sourceDirection === 'left' || sourceDirection === 'right') &&
+        (targetDirection === 'left' || targetDirection === 'right')
+      );
+
+      // Check if they face each other
+      const facingEachOther = (
+        (sourceDirection === 'right' && targetDirection === 'left' && start.x < end.x) ||
+        (sourceDirection === 'left' && targetDirection === 'right' && start.x > end.x)
+      );
+
+      return horizontalPorts && facingEachOther;
+    }
+
+    // For vertical alignment, ports should face top/bottom
+    if (verticallyAligned) {
+      const verticalPorts = (
+        (sourceDirection === 'top' || sourceDirection === 'bottom') &&
+        (targetDirection === 'top' || targetDirection === 'bottom')
+      );
+
+      // Check if they face each other
+      const facingEachOther = (
+        (sourceDirection === 'bottom' && targetDirection === 'top' && start.y < end.y) ||
+        (sourceDirection === 'top' && targetDirection === 'bottom' && start.y > end.y)
+      );
+
+      return verticalPorts && facingEachOther;
+    }
+
+    return false;
+  }
+
+  /**
+   * Simplify orthogonal path by removing redundant collinear points
+   * ONLY removes points that are on the same straight line (horizontal or vertical)
+   * This preserves proper orthogonal (right-angle) routing
+   */
+  private simplifyOrthogonalPath(points: RoutePoint[]): RoutePoint[] {
+    if (points.length <= 2) return points;
+
+    const simplified: RoutePoint[] = [points[0]];
+    const tolerance = 0.1; // Very tight tolerance for orthogonal alignment
+
+    for (let i = 1; i < points.length - 1; i++) {
+      const prev = simplified[simplified.length - 1]; // Use last point in simplified array
+      const curr = points[i];
+      const next = points[i + 1];
+
+      // Check if prev, curr, next are collinear (on same horizontal or vertical line)
+      const isHorizontalLine =
+        Math.abs(prev.y - curr.y) < tolerance &&
+        Math.abs(curr.y - next.y) < tolerance;
+
+      const isVerticalLine =
+        Math.abs(prev.x - curr.x) < tolerance &&
+        Math.abs(curr.x - next.x) < tolerance;
+
+      // Only skip this point if it's truly collinear (on same straight line)
+      // This removes redundant intermediate points but keeps all bends
+      if (!isHorizontalLine && !isVerticalLine) {
+        simplified.push(curr);
+      }
+    }
+
+    simplified.push(points[points.length - 1]);
+
+    return simplified;
   }
 
   /**
@@ -233,17 +369,25 @@ export class OrthogonalRouter implements IRouter {
     start: Point,
     end: Point,
     obstacles: Obstacle[],
-    options: any
+    options: any,
+    sourceDirection?: 'left' | 'right' | 'top' | 'bottom',
+    targetDirection?: 'left' | 'right' | 'top' | 'bottom'
   ): RoutedPath | null {
     const gridSize = options.gridSize ?? 10;
-    const margin = options.obstacleMargin ?? 5;
+    const margin = options.obstacleMargin ?? 10; // Match React Flow standard (10px)
     const maxIterations = options.maxIterations ?? 10000;
+    const gapOffset = 20; // Distance to move away from port
 
-    // Snap start and end to grid
-    const gridStart = this.snapToGrid(start, gridSize);
-    const gridEnd = this.snapToGrid(end, gridSize);
+    // Apply gap offset to move away from ports before pathfinding
+    // This ensures paths don't start/end directly on node borders
+    const sourceOffset = this.applyGapOffset(start, sourceDirection, gapOffset);
+    const targetOffset = this.applyGapOffset(end, targetDirection, gapOffset);
 
-    // Use A* to find path
+    // Snap offset points to grid for A* pathfinding
+    const gridStart = this.snapToGrid(sourceOffset, gridSize);
+    const gridEnd = this.snapToGrid(targetOffset, gridSize);
+
+    // Use A* to find path between offset points
     const path = this.aStarPathfinding(
       gridStart,
       gridEnd,
@@ -255,24 +399,35 @@ export class OrthogonalRouter implements IRouter {
 
     if (!path || path.length === 0) {
       // Fallback to simple route if pathfinding fails
-      return this.simpleOrthogonalRoute(start, end, gridSize);
+      return this.simpleOrthogonalRoute(start, end, gridSize, options.costs?.bends ?? 10, sourceDirection, targetDirection);
     }
 
-    const totalLength = this.calculatePathLength(path);
-    const bendCount = this.countBends(path);
+    // Prepend actual start point and append actual end point
+    // This ensures the path connects to the exact port positions
+    const fullPath: RoutePoint[] = [
+      { x: start.x, y: start.y },
+      ...path,
+      { x: end.x, y: end.y }
+    ];
+
+    // Remove duplicate consecutive points
+    const uniquePath = this.removeDuplicatePoints(fullPath);
+
+    const totalLength = this.calculatePathLength(uniquePath);
+    const bendCount = this.countBends(uniquePath);
     const bendCost = options.costs?.bends ?? 10;
 
     return {
-      points: path,
+      points: uniquePath,
       totalLength,
       bendCount,
       cost: totalLength + bendCount * bendCost,
-      segments: this.calculateSegments(path),
+      segments: this.calculateSegments(uniquePath),
     };
   }
 
   /**
-   * A* pathfinding on a grid
+   * A* pathfinding on a grid with improved obstacle avoidance
    */
   private aStarPathfinding(
     start: Point,
@@ -317,7 +472,9 @@ export class OrthogonalRouter implements IRouter {
 
       // Reached goal
       if (currentKey === endKey) {
-        return this.reconstructPath(cameFrom, current);
+        const path = this.reconstructPath(cameFrom, current);
+        // Simplify the A* path to remove unnecessary waypoints
+        return this.simplifyOrthogonalPath(path);
       }
 
       openSet.delete(currentKey);
@@ -337,7 +494,20 @@ export class OrthogonalRouter implements IRouter {
           continue;
         }
 
-        const tentativeG = (gScore.get(currentKey) ?? Infinity) + gridSize;
+        // Calculate movement cost with penalty for direction changes
+        let movementCost = gridSize;
+
+        // Add bend penalty if direction changed from previous segment
+        const parent = cameFrom.get(currentKey);
+        if (parent) {
+          const prevDir = this.getDirection(parent, current);
+          const nextDir = this.getDirection(current, neighbor);
+          if (prevDir !== nextDir) {
+            movementCost += gridSize * 0.5; // Penalty for bends to favor straighter paths
+          }
+        }
+
+        const tentativeG = (gScore.get(currentKey) ?? Infinity) + movementCost;
 
         if (!openSet.has(neighborKey)) {
           openSet.add(neighborKey);
@@ -392,6 +562,7 @@ export class OrthogonalRouter implements IRouter {
 
   /**
    * Check if point collides with any obstacle
+   * Enhanced to properly expand obstacles by margin for better avoidance
    */
   private collidesWithObstacles(
     point: Point,
@@ -399,18 +570,18 @@ export class OrthogonalRouter implements IRouter {
     margin: number
   ): boolean {
     for (const obstacle of obstacles) {
-      const expanded = {
-        x: obstacle.x - margin,
-        y: obstacle.y - margin,
-        width: obstacle.width + margin * 2,
-        height: obstacle.height + margin * 2,
-      };
+      // Expand obstacle boundaries by margin to create safe zone around obstacles
+      const minX = obstacle.x - margin;
+      const maxX = obstacle.x + obstacle.width + margin;
+      const minY = obstacle.y - margin;
+      const maxY = obstacle.y + obstacle.height + margin;
 
+      // Check if point falls within expanded obstacle bounds
       if (
-        point.x >= expanded.x &&
-        point.x <= expanded.x + expanded.width &&
-        point.y >= expanded.y &&
-        point.y <= expanded.y + expanded.height
+        point.x > minX &&
+        point.x < maxX &&
+        point.y > minY &&
+        point.y < maxY
       ) {
         return true;
       }
