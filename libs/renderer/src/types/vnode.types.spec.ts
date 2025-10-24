@@ -217,4 +217,136 @@ describe('VNode Types', () => {
       expect(diagram.children![1].children![0].children).toHaveLength(2);
     });
   });
+
+  describe('VNode foreignObject Support - FR-FO-001', () => {
+    test('should create foreignObject VNode with required properties', () => {
+      const vnode: VNode = {
+        type: 'foreignObject',
+        props: {
+          x: 10,
+          y: 20,
+          width: 200,
+          height: 150,
+          containerId: 'fo-node-123'
+        }
+      };
+
+      expect(vnode.type).toBe('foreignObject');
+      expect(vnode.props.containerId).toBe('fo-node-123');
+      expect(vnode.props.x).toBe(10);
+      expect(vnode.props.y).toBe(20);
+      expect(vnode.props.width).toBe(200);
+      expect(vnode.props.height).toBe(150);
+    });
+
+    test('should support foreignObject with XHTML children', () => {
+      const vnode: VNode = {
+        type: 'foreignObject',
+        props: {
+          x: 0,
+          y: 0,
+          width: 200,
+          height: 150,
+          containerId: 'fo-node-1'
+        },
+        children: [
+          {
+            type: 'div',
+            props: {
+              xmlns: 'http://www.w3.org/1999/xhtml',
+              style: {
+                width: '100%',
+                height: '100%',
+                overflow: 'hidden'
+              }
+            }
+          }
+        ]
+      };
+
+      expect(vnode.children).toHaveLength(1);
+      expect(vnode.children![0].type).toBe('div');
+      expect(vnode.children![0].props.xmlns).toBe('http://www.w3.org/1999/xhtml');
+      expect(vnode.children![0].props.style).toEqual({
+        width: '100%',
+        height: '100%',
+        overflow: 'hidden'
+      });
+    });
+
+    test('should support requiredExtensions attribute', () => {
+      const vnode: VNode = {
+        type: 'foreignObject',
+        props: {
+          x: 0,
+          y: 0,
+          width: 100,
+          height: 100,
+          containerId: 'fo-node-1',
+          requiredExtensions: 'http://www.w3.org/1999/xhtml'
+        }
+      };
+
+      expect(vnode.props.requiredExtensions).toBe('http://www.w3.org/1999/xhtml');
+    });
+
+    test('should support HTML props for foreignObject children', () => {
+      const props: VNodeProps = {
+        xmlns: 'http://www.w3.org/1999/xhtml',
+        style: {
+          display: 'flex',
+          flexDirection: 'column',
+          padding: '10px'
+        },
+        className: 'node-content'
+      };
+
+      expect(props.xmlns).toBe('http://www.w3.org/1999/xhtml');
+      expect(props.style).toEqual({
+        display: 'flex',
+        flexDirection: 'column',
+        padding: '10px'
+      });
+      expect(props.className).toBe('node-content');
+    });
+  });
+
+  describe('VNodeType - Type Safety', () => {
+    test('should accept all SVG element types', () => {
+      const types: VNodeType[] = [
+        'rect',
+        'circle',
+        'ellipse',
+        'line',
+        'polyline',
+        'polygon',
+        'path',
+        'text',
+        'g',
+        'svg',
+        'foreignObject'
+      ];
+
+      types.forEach(type => {
+        const vnode: VNode = { type, props: {} };
+        expect(vnode.type).toBe(type);
+      });
+    });
+
+    test('should accept HTML element types for foreignObject children', () => {
+      const types: VNodeType[] = ['div', 'span'];
+
+      types.forEach(type => {
+        const vnode: VNode = { type, props: {} };
+        expect(vnode.type).toBe(type);
+      });
+    });
+
+    test('should accept custom string types for extensibility', () => {
+      const customType: VNodeType = 'customElement';
+      const vnode: VNode = { type: customType, props: {} };
+
+      expect(vnode.type).toBe('customElement');
+    });
+  });
 });

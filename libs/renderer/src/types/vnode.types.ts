@@ -1,14 +1,37 @@
 /**
+ * VNode element type
+ *
+ * Discriminated union of all supported SVG and HTML element types.
+ * Using a union type enables better TypeScript type checking and autocomplete.
+ */
+export type VNodeType =
+  | 'rect'
+  | 'circle'
+  | 'ellipse'
+  | 'line'
+  | 'polyline'
+  | 'polygon'
+  | 'path'
+  | 'text'
+  | 'g'
+  | 'svg'
+  | 'foreignObject'
+  | 'div'
+  | 'span'
+  | string; // Allow custom types for extensibility
+
+/**
  * Virtual Node - Abstract representation of visual element
  * Framework-agnostic, serializable, diffable
  *
- * Supports both SVG and Canvas rendering modes
+ * Supports both SVG and Canvas rendering modes, as well as HTML content
+ * via foreignObject for embedding rich components.
  */
 export interface VNode {
   /**
    * Element type: 'svg', 'g', 'rect', 'circle', 'path', 'text', 'foreignObject', etc.
    */
-  type: string;
+  type: VNodeType;
 
   /**
    * Element properties (attributes, styles, event handlers)
@@ -102,6 +125,37 @@ export interface VNodeProps {
 
   /** CSS class names (space-separated) */
   className?: string;
+
+  // ============================================
+  // foreignObject Attributes
+  // ============================================
+
+  /**
+   * Container ID for foreignObject elements
+   * Used by ComponentRenderer to target the specific foreignObject for Angular component injection
+   */
+  containerId?: string;
+
+  /**
+   * SVG foreignObject requiredExtensions attribute
+   * Specifies SVG extensions required for rendering
+   */
+  requiredExtensions?: string;
+
+  // ============================================
+  // HTML Attributes (for foreignObject children)
+  // ============================================
+
+  /**
+   * XML namespace (typically for XHTML in foreignObject)
+   * Example: 'http://www.w3.org/1999/xhtml'
+   */
+  xmlns?: string;
+
+  /**
+   * Inline CSS styles (for HTML elements in foreignObject)
+   */
+  style?: Record<string, any>;
 
   // ============================================
   // Event Handlers (for Angular/React binding)
