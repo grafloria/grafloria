@@ -26,6 +26,7 @@ export type ConditionOperator =
   | '<=' // Less than or equal
   | 'contains' // Array/string contains value
   | 'in' // Value in array
+  | 'notIn' // Value not in array
   | 'matches'; // Regex match
 
 /**

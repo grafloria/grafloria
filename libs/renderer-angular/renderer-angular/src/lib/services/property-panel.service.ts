@@ -1,17 +1,35 @@
+/**
+ * PropertyPanelService
+ *
+ * Core service for managing property schemas and property values.
+ * Acts as bridge between property panel UI and diagram engine.
+ *
+ * @see /documentation/gap-analysis/PHASE-A-DETAILED/02-core-services/property-panel-service.md
+ */
+
 import { Injectable } from '@angular/core';
-import { Observable, Subject } from 'rxjs';
+import { Subject, Observable } from 'rxjs';
 import { filter } from 'rxjs/operators';
 import {
   PropertySchema,
   PropertyDefinition,
   PropertyGroup,
   ValidationResult,
-  ValidationError,
+  ValidationError as ValidationErrorType,
 } from '@grafloria/renderer';
 
 /**
+ * Mock DiagramNode interface
+ * In production, this should import from @grafloria/engine
+ */
+interface DiagramNode {
+  id: string;
+  type: string;
+  getMetadata(): Record<string, any>;
+}
+
+/**
  * Property change event.
- * Emitted when property values change on nodes.
  */
 export interface PropertyChangeEvent {
   /** Node ID (single node change) */
@@ -34,48 +52,18 @@ export interface PropertyChangeEvent {
 }
 
 /**
- * Mock DiagramNode interface for type safety.
- * In production, this would come from @grafloria/engine.
- * Note: Not exported to avoid conflict with component-renderer.service
+ * Validation error class.
  */
-interface DiagramNode {
-  id: string;
-  type: string;
-  getMetadata(): any;
+export class ValidationError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = 'ValidationError';
+  }
 }
 
 /**
  * Core service for managing property schemas and property values.
  * Acts as bridge between property panel UI and diagram engine.
- *
- * ## Responsibilities
- * - Schema management (register, extend, retrieve)
- * - Property value get/set with validation
- * - Change event emission
- * - Bulk operations
- * - Conditional visibility evaluation
- * - Default value application
- * - Property grouping
- *
- * ## Usage Example
- *
- * ```typescript
- * // Register schema
- * propertyPanel.registerSchema('ERD.TABLE', {
- *   properties: [
- *     { key: 'tableName', label: 'Table Name', editor: 'string', required: true }
- *   ]
- * });
- *
- * // Get/set property values
- * const value = propertyPanel.getPropertyValue(node, 'tableName');
- * propertyPanel.setPropertyValue(node, 'tableName', 'users');
- *
- * // Listen to changes
- * propertyPanel.propertyChanged$.subscribe(event => {
- *   console.log('Property changed:', event);
- * });
- * ```
  */
 @Injectable({ providedIn: 'root' })
 export class PropertyPanelService {
@@ -98,7 +86,7 @@ export class PropertyPanelService {
    * @example
    * propertyPanel.registerSchema('ERD.TABLE', {
    *   properties: [
-   *     { key: 'tableName', label: 'Table Name', editor: 'string', required: true }
+   *     { key: 'tableName', label: 'Table Name', editor: 'string', validation: { required: true } }
    *   ]
    * });
    */
@@ -120,7 +108,7 @@ export class PropertyPanelService {
    * @throws Error if JSON invalid or schema invalid
    *
    * @example
-   * const json = '{"properties": [{"key": "name", "label": "Name", "editor": "string"}]}';
+   * const json = '{"properties": [...]}';
    * propertyPanel.registerSchemaFromJSON('ERD.TABLE', json);
    */
   registerSchemaFromJSON(nodeType: string, schemaJson: string): void {
@@ -180,7 +168,16 @@ export class PropertyPanelService {
    */
   getSchema(nodeType: string): PropertySchema | null {
     const schema = this.schemaRegistry.get(nodeType);
-    return schema ? { ...schema, properties: [...schema.properties] } : null;
+    if (!schema) {
+      return null;
+    }
+
+    // Return defensive copy
+    return {
+      ...schema,
+      properties: [...schema.properties],
+      groups: schema.groups ? [...schema.groups] : undefined,
+    };
   }
 
   /**
@@ -250,8 +247,10 @@ export class PropertyPanelService {
     // Validate
     const validation = this.validateProperty(value, property);
     if (!validation.valid) {
-      throw new Error(
-        `Invalid value for property '${propertyKey}': ${validation.errors.map(e => e.message).join(', ')}`
+      throw new ValidationError(
+        `Invalid value for property '${propertyKey}': ${validation.errors
+          .map((e) => e.message)
+          .join(', ')}`
       );
     }
 
@@ -310,8 +309,8 @@ export class PropertyPanelService {
 
     const validation = this.validateProperty(value, property);
     if (!validation.valid) {
-      throw new Error(
-        `Invalid value: ${validation.errors.map(e => e.message).join(', ')}`
+      throw new ValidationError(
+        `Invalid value: ${validation.errors.map((e) => e.message).join(', ')}`
       );
     }
 
@@ -353,7 +352,7 @@ export class PropertyPanelService {
    * }
    */
   validateProperty(value: any, property: PropertyDefinition): ValidationResult {
-    const errors: ValidationError[] = [];
+    const errors: ValidationErrorType[] = [];
 
     // Required check
     if (
@@ -383,12 +382,12 @@ export class PropertyPanelService {
         } else {
           if (validation.minLength && value.length < validation.minLength) {
             errors.push({
-              message: `${property.label} must be at least ${validation.minLength} characters`
+              message: `${property.label} must be at least ${validation.minLength} characters`,
             });
           }
           if (validation.maxLength && value.length > validation.maxLength) {
             errors.push({
-              message: `${property.label} must be at most ${validation.maxLength} characters`
+              message: `${property.label} must be at most ${validation.maxLength} characters`,
             });
           }
           if (validation.pattern) {
@@ -407,11 +406,13 @@ export class PropertyPanelService {
         } else {
           if (validation.min !== undefined && value < validation.min) {
             errors.push({
-              message: `${property.label} must be at least ${validation.min}`
+              message: `${property.label} must be at least ${validation.min}`,
             });
           }
           if (validation.max !== undefined && value > validation.max) {
-            errors.push({ message: `${property.label} must be at most ${validation.max}` });
+            errors.push({
+              message: `${property.label} must be at most ${validation.max}`,
+            });
           }
           // Note: 'integer' validation not in PropertyValidation interface - removed
         }
@@ -437,7 +438,7 @@ export class PropertyPanelService {
       case 'color':
         if (typeof value !== 'string' || !this.isValidColor(value)) {
           errors.push({
-            message: `${property.label} must be a valid color (hex, rgb, or named)`
+            message: `${property.label} must be a valid color (hex, rgb, or named)`,
           });
         }
         break;
@@ -474,7 +475,7 @@ export class PropertyPanelService {
    * const isVisible = propertyPanel.isPropertyVisible(node, {
    *   key: 'patternType',
    *   editor: 'select',
-   *   condition: { key: 'fill', operator: 'equals', value: 'pattern' }
+   *   condition: { property: 'fill', operator: '==', value: 'pattern' }
    * });
    */
   isPropertyVisible(node: DiagramNode, property: PropertyDefinition): boolean {
@@ -602,7 +603,7 @@ export class PropertyPanelService {
     // Sort groups by order field (if present)
     const sortedGroups = new Map<string, PropertyDefinition[]>();
     const groupOrder =
-      schema.groups?.sort((a: PropertyGroup, b: PropertyGroup) => (a.order || 0) - (b.order || 0)) || [];
+      schema.groups?.sort((a, b) => (a.order || 0) - (b.order || 0)) || [];
 
     for (const groupDef of groupOrder) {
       if (groups.has(groupDef.name)) {
@@ -625,7 +626,7 @@ export class PropertyPanelService {
   getPropertyChangesForNode(nodeId: string): Observable<PropertyChangeEvent> {
     return this.propertyChanged$.pipe(
       filter(
-        (event: PropertyChangeEvent) =>
+        (event) =>
           event.nodeId === nodeId ||
           Boolean(event.nodeIds && event.nodeIds.includes(nodeId))
       )
@@ -639,7 +640,7 @@ export class PropertyPanelService {
     propertyKey: string
   ): Observable<PropertyChangeEvent> {
     return this.propertyChanged$.pipe(
-      filter((event: PropertyChangeEvent) => event.propertyKey === propertyKey)
+      filter((event) => event.propertyKey === propertyKey)
     );
   }
 
@@ -653,7 +654,9 @@ export class PropertyPanelService {
     for (const property of schema.properties) {
       if (!property.key || !property.label || !property.editor) {
         throw new Error(
-          `Property must have key, label, and editor: ${JSON.stringify(property)}`
+          `Property must have key, label, and editor: ${JSON.stringify(
+            property
+          )}`
         );
       }
     }
@@ -693,7 +696,7 @@ export class PropertyPanelService {
     schema: PropertySchema,
     key: string
   ): PropertyDefinition | null {
-    return schema.properties.find((p: PropertyDefinition) => p.key === key) || null;
+    return schema.properties.find((p) => p.key === key) || null;
   }
 
   private getNestedValue(obj: any, path: string): any {
@@ -739,20 +742,7 @@ export class PropertyPanelService {
     }
 
     // Named colors (basic check)
-    const namedColors = [
-      'red',
-      'blue',
-      'green',
-      'black',
-      'white',
-      'transparent',
-      'yellow',
-      'orange',
-      'purple',
-      'pink',
-      'gray',
-      'brown',
-    ];
+    const namedColors = ['red', 'blue', 'green', 'black', 'white', 'transparent'];
     if (namedColors.includes(value.toLowerCase())) {
       return true;
     }
@@ -760,7 +750,7 @@ export class PropertyPanelService {
     return false;
   }
 
-  private validateJsonSchema(value: any, schema: any): string[] {
+  private validateJsonSchema(value: any, schema: any): ValidationErrorType[] {
     // TODO: Implement using Ajv or similar library
     // For now, return empty array (no validation)
     return [];

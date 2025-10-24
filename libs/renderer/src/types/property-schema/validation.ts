@@ -124,6 +124,23 @@ export interface PropertyValidation {
   step?: number;
 
   /**
+   * Whether the number must be an integer (for number properties)
+   */
+  integer?: boolean;
+
+  // Select/Multiselect validation
+  /**
+   * Allowed values (for select/multiselect properties)
+   */
+  enum?: any[];
+
+  // JSON validation
+  /**
+   * JSON Schema for validating JSON properties
+   */
+  jsonSchema?: any;
+
+  /**
    * Custom validation function
    *
    * @param value - The value to validate
