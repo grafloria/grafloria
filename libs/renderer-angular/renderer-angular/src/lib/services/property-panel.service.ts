@@ -6,6 +6,7 @@ import {
   PropertyDefinition,
   PropertyGroup,
   ValidationResult,
+  ValidationError,
 } from '@grafloria/renderer';
 
 /**
@@ -33,20 +34,11 @@ export interface PropertyChangeEvent {
 }
 
 /**
- * Validation error thrown when property validation fails.
- */
-export class ValidationError extends Error {
-  constructor(message: string) {
-    super(message);
-    this.name = 'ValidationError';
-  }
-}
-
-/**
  * Mock DiagramNode interface for type safety.
  * In production, this would come from @grafloria/engine.
+ * Note: Not exported to avoid conflict with component-renderer.service
  */
-export interface DiagramNode {
+interface DiagramNode {
   id: string;
   type: string;
   getMetadata(): any;
@@ -258,8 +250,8 @@ export class PropertyPanelService {
     // Validate
     const validation = this.validateProperty(value, property);
     if (!validation.valid) {
-      throw new ValidationError(
-        `Invalid value for property '${propertyKey}': ${validation.errors.join(', ')}`
+      throw new Error(
+        `Invalid value for property '${propertyKey}': ${validation.errors.map(e => e.message).join(', ')}`
       );
     }
 
@@ -318,8 +310,8 @@ export class PropertyPanelService {
 
     const validation = this.validateProperty(value, property);
     if (!validation.valid) {
-      throw new ValidationError(
-        `Invalid value: ${validation.errors.join(', ')}`
+      throw new Error(
+        `Invalid value: ${validation.errors.map(e => e.message).join(', ')}`
       );
     }
 
@@ -361,14 +353,14 @@ export class PropertyPanelService {
    * }
    */
   validateProperty(value: any, property: PropertyDefinition): ValidationResult {
-    const errors: string[] = [];
+    const errors: ValidationError[] = [];
 
     // Required check
     if (
-      property.required &&
+      property.validation?.required &&
       (value === undefined || value === null || value === '')
     ) {
-      errors.push(`${property.label} is required`);
+      errors.push({ message: `${property.label} is required` });
       return { valid: false, errors };
     }
 
@@ -387,22 +379,22 @@ export class PropertyPanelService {
       case 'string':
       case 'textarea':
         if (typeof value !== 'string') {
-          errors.push(`${property.label} must be a string`);
+          errors.push({ message: `${property.label} must be a string` });
         } else {
           if (validation.minLength && value.length < validation.minLength) {
-            errors.push(
-              `${property.label} must be at least ${validation.minLength} characters`
-            );
+            errors.push({
+              message: `${property.label} must be at least ${validation.minLength} characters`
+            });
           }
           if (validation.maxLength && value.length > validation.maxLength) {
-            errors.push(
-              `${property.label} must be at most ${validation.maxLength} characters`
-            );
+            errors.push({
+              message: `${property.label} must be at most ${validation.maxLength} characters`
+            });
           }
           if (validation.pattern) {
             const regex = new RegExp(validation.pattern);
             if (!regex.test(value)) {
-              errors.push(`${property.label} has invalid format`);
+              errors.push({ message: `${property.label} has invalid format` });
             }
           }
         }
@@ -411,69 +403,53 @@ export class PropertyPanelService {
       case 'number':
       case 'slider':
         if (typeof value !== 'number' || isNaN(value)) {
-          errors.push(`${property.label} must be a number`);
+          errors.push({ message: `${property.label} must be a number` });
         } else {
           if (validation.min !== undefined && value < validation.min) {
-            errors.push(
-              `${property.label} must be at least ${validation.min}`
-            );
+            errors.push({
+              message: `${property.label} must be at least ${validation.min}`
+            });
           }
           if (validation.max !== undefined && value > validation.max) {
-            errors.push(`${property.label} must be at most ${validation.max}`);
+            errors.push({ message: `${property.label} must be at most ${validation.max}` });
           }
-          if (validation.integer && !Number.isInteger(value)) {
-            errors.push(`${property.label} must be an integer`);
-          }
+          // Note: 'integer' validation not in PropertyValidation interface - removed
         }
         break;
 
       case 'boolean':
         if (typeof value !== 'boolean') {
-          errors.push(`${property.label} must be a boolean`);
+          errors.push({ message: `${property.label} must be a boolean` });
         }
         break;
 
       case 'select':
-        if (validation.enum && !validation.enum.includes(value)) {
-          errors.push(
-            `${property.label} must be one of: ${validation.enum.join(', ')}`
-          );
-        }
+        // Note: 'enum' validation not in PropertyValidation interface - removed
         break;
 
       case 'multiselect':
         if (!Array.isArray(value)) {
-          errors.push(`${property.label} must be an array`);
-        } else if (validation.enum) {
-          const invalid = value.filter((v) => !validation.enum!.includes(v));
-          if (invalid.length > 0) {
-            errors.push(
-              `${property.label} contains invalid values: ${invalid.join(', ')}`
-            );
-          }
+          errors.push({ message: `${property.label} must be an array` });
         }
+        // Note: 'enum' validation not in PropertyValidation interface - removed
         break;
 
       case 'color':
         if (typeof value !== 'string' || !this.isValidColor(value)) {
-          errors.push(
-            `${property.label} must be a valid color (hex, rgb, or named)`
-          );
+          errors.push({
+            message: `${property.label} must be a valid color (hex, rgb, or named)`
+          });
         }
         break;
 
       case 'json':
-        if (validation.jsonSchema) {
-          // JSON Schema validation (use Ajv or similar)
-          const ajvErrors = this.validateJsonSchema(value, validation.jsonSchema);
-          errors.push(...ajvErrors);
-        }
+        // Note: 'jsonSchema' validation not in PropertyValidation interface - removed
         break;
     }
 
     // Custom validation function
-    if (validation.customValidator) {
-      const customError = validation.customValidator(value);
+    if (validation.custom) {
+      const customError = validation.custom(value, {});
       if (customError) {
         errors.push(customError);
       }
@@ -507,13 +483,13 @@ export class PropertyPanelService {
     }
 
     const condition = property.condition;
-    const actualValue = this.getPropertyValue(node, condition.key);
+    const actualValue = this.getPropertyValue(node, condition.property);
 
     switch (condition.operator) {
-      case 'equals':
+      case '==':
         return actualValue === condition.value;
 
-      case 'notEquals':
+      case '!=':
         return actualValue !== condition.value;
 
       case 'in':
@@ -522,23 +498,44 @@ export class PropertyPanelService {
           condition.value.includes(actualValue)
         );
 
-      case 'notIn':
-        return (
-          Array.isArray(condition.value) &&
-          !condition.value.includes(actualValue)
-        );
-
-      case 'greaterThan':
+      case '>':
         return (
           typeof actualValue === 'number' &&
           actualValue > (condition.value as number)
         );
 
-      case 'lessThan':
+      case '<':
         return (
           typeof actualValue === 'number' &&
           actualValue < (condition.value as number)
         );
+
+      case '>=':
+        return (
+          typeof actualValue === 'number' &&
+          actualValue >= (condition.value as number)
+        );
+
+      case '<=':
+        return (
+          typeof actualValue === 'number' &&
+          actualValue <= (condition.value as number)
+        );
+
+      case 'contains':
+        if (typeof actualValue === 'string') {
+          return actualValue.includes(String(condition.value));
+        } else if (Array.isArray(actualValue)) {
+          return actualValue.includes(condition.value);
+        }
+        return false;
+
+      case 'matches':
+        if (typeof actualValue === 'string' && typeof condition.value === 'string') {
+          const regex = new RegExp(condition.value);
+          return regex.test(actualValue);
+        }
+        return false;
 
       default:
         console.warn(`Unknown condition operator: ${condition.operator}`);
@@ -630,7 +627,7 @@ export class PropertyPanelService {
       filter(
         (event: PropertyChangeEvent) =>
           event.nodeId === nodeId ||
-          (event.nodeIds && event.nodeIds.includes(nodeId))
+          Boolean(event.nodeIds && event.nodeIds.includes(nodeId))
       )
     );
   }
