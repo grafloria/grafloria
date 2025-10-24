@@ -112,4 +112,34 @@ export interface PropertyDefinition {
    * Display order within group (default: definition order)
    */
   order?: number;
+
+  /**
+   * Display options and hints for the editor
+   */
+  display?: PropertyDisplayOptions;
+}
+
+/**
+ * Display options for property editors
+ */
+export interface PropertyDisplayOptions {
+  /**
+   * Variant of the editor (e.g., 'toggle' for boolean)
+   */
+  variant?: string;
+
+  /**
+   * Number of rows for textarea/json editors
+   */
+  rows?: number;
+
+  /**
+   * Auto-resize for textarea
+   */
+  autoResize?: boolean;
+
+  /**
+   * Show labels on slider (min/max)
+   */
+  showLabels?: boolean;
 }

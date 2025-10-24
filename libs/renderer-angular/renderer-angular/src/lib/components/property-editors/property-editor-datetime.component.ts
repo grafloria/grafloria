@@ -154,14 +154,14 @@ export class PropertyEditorDatetimeComponent
 
   getMinDatetime(): string | undefined {
     if (this.property.validation?.min) {
-      return this.formatDatetime(this.property.validation.min);
+      return this.formatDatetime(this.property.validation.min as any);
     }
     return undefined;
   }
 
   getMaxDatetime(): string | undefined {
     if (this.property.validation?.max) {
-      return this.formatDatetime(this.property.validation.max);
+      return this.formatDatetime(this.property.validation.max as any);
     }
     return undefined;
   }

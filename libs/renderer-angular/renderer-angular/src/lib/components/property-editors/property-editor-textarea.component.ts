@@ -51,14 +51,14 @@ import { PropertyEditorComponent } from './property-editor.interface';
         (input)="onInput()"
         [placeholder]="property.validation?.placeholder || ''"
         [readonly]="readonly"
-        [maxlength]="property.validation?.maxLength"
+        [attr.maxlength]="property.validation?.maxLength"
         [rows]="getRows()"
         class="form-textarea"
         [class.auto-resize]="isAutoResize()"
       ></textarea>
 
       <div class="character-count" *ngIf="property.validation?.maxLength">
-        {{ currentValue?.length || 0 }} / {{ property.validation.maxLength }}
+        {{ currentValue?.length || 0 }} / {{ property.validation!.maxLength }}
       </div>
     </div>
   `,

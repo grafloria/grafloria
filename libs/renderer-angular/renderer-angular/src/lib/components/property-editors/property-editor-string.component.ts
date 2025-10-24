@@ -42,7 +42,7 @@ import { PropertyEditorComponent } from './property-editor.interface';
     <div class="property-editor property-editor-string">
       <div class="input-wrapper">
         <span class="input-prefix" *ngIf="property.validation?.prefix">
-          {{ property.validation.prefix }}
+          {{ property.validation!.prefix }}
         </span>
 
         <input
@@ -52,19 +52,19 @@ import { PropertyEditorComponent } from './property-editor.interface';
           (ngModelChange)="onValueChange($event)"
           [placeholder]="property.validation?.placeholder || ''"
           [readonly]="readonly"
-          [maxlength]="property.validation?.maxLength"
+          [attr.maxlength]="property.validation?.maxLength"
           class="form-input"
           [class.has-prefix]="property.validation?.prefix"
           [class.has-suffix]="property.validation?.suffix"
         />
 
         <span class="input-suffix" *ngIf="property.validation?.suffix">
-          {{ property.validation.suffix }}
+          {{ property.validation!.suffix }}
         </span>
       </div>
 
       <div class="character-count" *ngIf="property.validation?.maxLength">
-        {{ currentValue?.length || 0 }} / {{ property.validation.maxLength }}
+        {{ currentValue?.length || 0 }} / {{ property.validation!.maxLength }}
       </div>
     </div>
   `,

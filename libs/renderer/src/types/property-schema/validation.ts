@@ -134,11 +134,53 @@ export interface PropertyValidation {
    */
   enum?: any[];
 
+  /**
+   * Options for select/multiselect (alternative to enum with more control)
+   */
+  options?: SelectOption[];
+
   // JSON validation
   /**
    * JSON Schema for validating JSON properties
    */
   jsonSchema?: any;
+
+  // UI Display options
+  /**
+   * Placeholder text for input fields
+   */
+  placeholder?: string;
+
+  /**
+   * Prefix text to display before input (e.g., "$" for currency)
+   */
+  prefix?: string;
+
+  /**
+   * Suffix text to display after input (e.g., "px" for pixels)
+   */
+  suffix?: string;
+
+  /**
+   * Preset color values for color picker
+   */
+  presets?: string[];
+
+  // File validation
+  /**
+   * Accepted file types (for file uploads)
+   */
+  accept?: string;
+
+  /**
+   * Allow multiple file selection
+   */
+  multiple?: boolean;
+
+  /**
+   * Maximum file size in bytes
+   */
+  maxSize?: number;
 
   /**
    * Custom validation function
@@ -148,4 +190,24 @@ export interface PropertyValidation {
    * @returns ValidationError if invalid, null if valid
    */
   custom?: (value: any, allValues: Record<string, any>) => ValidationError | null;
+}
+
+/**
+ * Select option for dropdown editors
+ */
+export interface SelectOption {
+  /**
+   * The value of the option
+   */
+  value: any;
+
+  /**
+   * Display label for the option
+   */
+  label: string;
+
+  /**
+   * Whether this option is disabled
+   */
+  disabled?: boolean;
 }

@@ -44,7 +44,7 @@ import { PropertyEditorComponent } from './property-editor.interface';
     <div class="property-editor property-editor-number">
       <div class="input-wrapper">
         <span class="input-prefix" *ngIf="property.validation?.prefix">
-          {{ property.validation.prefix }}
+          {{ property.validation!.prefix }}
         </span>
 
         <input
@@ -53,14 +53,14 @@ import { PropertyEditorComponent } from './property-editor.interface';
           [(ngModel)]="currentValue"
           (ngModelChange)="onValueChange($event)"
           [readonly]="readonly"
-          [min]="property.validation?.min"
-          [max]="property.validation?.max"
+          [attr.min]="property.validation?.min"
+          [attr.max]="property.validation?.max"
           [step]="getStep()"
           class="form-input"
         />
 
         <span class="input-suffix" *ngIf="property.validation?.suffix">
-          {{ property.validation.suffix }}
+          {{ property.validation!.suffix }}
         </span>
 
         <div class="stepper-buttons" *ngIf="!readonly">
