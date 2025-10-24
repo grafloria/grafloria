@@ -88,8 +88,8 @@ import type { PropertyDefinition } from '@grafloria/renderer';
         (change)="onSelectChange($event)"
         class="property-select"
       >
-        <option *ngFor="let option of property.options" [value]="option.value">
-          {{ option.label }}
+        <option *ngFor="let option of property.validation?.enum || []" [value]="option">
+          {{ option }}
         </option>
       </select>
 
@@ -97,16 +97,6 @@ import type { PropertyDefinition } from '@grafloria/renderer';
       <input
         *ngIf="property.editor === 'date'"
         type="date"
-        [id]="id"
-        [value]="value"
-        [readonly]="readonly"
-        (input)="onValueChange($event)"
-        class="property-input"
-      />
-
-      <input
-        *ngIf="property.editor === 'time'"
-        type="time"
         [id]="id"
         [value]="value"
         [readonly]="readonly"

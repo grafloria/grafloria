@@ -9,10 +9,10 @@
       <div class="header-content">
         <div class="node-info">
           <div class="node-type" aria-label="Node type">
-            {{ schema?.title || selectedNodes[0]?.type }}
+            {{ selectedNodes[0]?.type }}
           </div>
           <div class="node-label" *ngIf="selectedNodes.length === 1" aria-label="Node label">
-            {{ selectedNodes[0].label || selectedNodes[0].id }}
+            {{ selectedNodes[0].id }}
           </div>
           <div class="node-count" *ngIf="selectedNodes.length > 1" aria-label="Selected nodes count">
             {{ selectedNodes.length }} nodes selected
@@ -108,9 +108,9 @@
           <label
             class="property-label"
             [for]="'prop-' + property.key"
-            [class.required]="property.required">
+            [class.required]="property.validation?.required">
             {{ property.label }}
-            <span class="required-indicator" *ngIf="property.required" aria-label="required">*</span>
+            <span class="required-indicator" *ngIf="property.validation?.required" aria-label="required">*</span>
           </label>
 
           <!-- Property Description -->

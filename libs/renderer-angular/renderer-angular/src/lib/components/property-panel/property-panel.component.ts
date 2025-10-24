@@ -15,9 +15,9 @@ import { PropertyEditorComponent } from './property-editor.component';
 import type { PropertySchema, PropertyDefinition } from '@grafloria/renderer';
 
 /**
- * Property change event.
+ * Property panel change event (UI-level event).
  */
-export interface PropertyChangeEvent {
+export interface PropertyPanelChangeEvent {
   nodes: PropertyDiagramNode[];
   property: string;
   value: any;
@@ -126,7 +126,7 @@ export class PropertyPanelComponent implements OnInit, OnDestroy {
   /**
    * Emitted when property value changes.
    */
-  @Output() propertyChanged = new EventEmitter<PropertyChangeEvent>();
+  @Output() propertyChanged = new EventEmitter<PropertyPanelChangeEvent>();
 
   /**
    * Emitted when validation error occurs.
@@ -457,8 +457,8 @@ export class PropertyPanelComponent implements OnInit, OnDestroy {
   /**
    * Track by function for property groups (performance optimization).
    */
-  trackByGroupName(index: number, entry: [string, PropertyDefinition[]]): string {
-    return entry[0];
+  trackByGroupName(index: number, entry: { key: string; value: PropertyDefinition[] }): string {
+    return entry.key;
   }
 
   /**
