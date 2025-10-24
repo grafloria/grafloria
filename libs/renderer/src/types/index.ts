@@ -9,3 +9,6 @@ export * from './renderer.interface';
 
 // Theme types
 export * from './theme.types';
+
+// Property schema types
+export * from './property-schema';
