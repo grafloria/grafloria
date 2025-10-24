@@ -1,35 +1,27 @@
-/**
- * PropertyPanelService
- *
- * Core service for managing property schemas and property values.
- * Acts as bridge between property panel UI and diagram engine.
- *
- * @see /documentation/gap-analysis/PHASE-A-DETAILED/02-core-services/property-panel-service.md
- */
-
 import { Injectable } from '@angular/core';
 import { Subject, Observable } from 'rxjs';
 import { filter } from 'rxjs/operators';
-import {
+import type {
   PropertySchema,
   PropertyDefinition,
-  PropertyGroup,
+  PropertyValidation,
+  PropertyCondition,
+  ValidationError,
   ValidationResult,
-  ValidationError as ValidationErrorType,
 } from '@grafloria/renderer';
 
 /**
- * Mock DiagramNode interface
- * In production, this should import from @grafloria/engine
+ * Diagram node interface for property management
+ * Simplified interface to work with any node type that has data storage
  */
-interface DiagramNode {
+export interface PropertyDiagramNode {
   id: string;
   type: string;
-  getMetadata(): Record<string, any>;
+  data: Record<string, any>;
 }
 
 /**
- * Property change event.
+ * Property change event
  */
 export interface PropertyChangeEvent {
   /** Node ID (single node change) */
@@ -49,16 +41,6 @@ export interface PropertyChangeEvent {
 
   /** Timestamp of change */
   timestamp: number;
-}
-
-/**
- * Validation error class.
- */
-export class ValidationError extends Error {
-  constructor(message: string) {
-    super(message);
-    this.name = 'ValidationError';
-  }
 }
 
 /**
@@ -86,7 +68,7 @@ export class PropertyPanelService {
    * @example
    * propertyPanel.registerSchema('ERD.TABLE', {
    *   properties: [
-   *     { key: 'tableName', label: 'Table Name', editor: 'string', validation: { required: true } }
+   *     { key: 'tableName', label: 'Table Name', editor: 'string' }
    *   ]
    * });
    */
@@ -168,16 +150,8 @@ export class PropertyPanelService {
    */
   getSchema(nodeType: string): PropertySchema | null {
     const schema = this.schemaRegistry.get(nodeType);
-    if (!schema) {
-      return null;
-    }
-
-    // Return defensive copy
-    return {
-      ...schema,
-      properties: [...schema.properties],
-      groups: schema.groups ? [...schema.groups] : undefined,
-    };
+    // Return defensive copy to prevent external mutations
+    return schema ? this.deepCopy(schema) : null;
   }
 
   /**
@@ -211,8 +185,8 @@ export class PropertyPanelService {
    * const tableName = propertyPanel.getPropertyValue(node, 'tableName');
    * const fillColor = propertyPanel.getPropertyValue(node, 'style.fill.color');
    */
-  getPropertyValue(node: DiagramNode, propertyKey: string): any {
-    return this.getNestedValue(node.getMetadata(), propertyKey);
+  getPropertyValue(node: PropertyDiagramNode, propertyKey: string): any {
+    return this.getNestedValue(node.data, propertyKey);
   }
 
   /**
@@ -229,7 +203,7 @@ export class PropertyPanelService {
    * propertyPanel.setPropertyValue(node, 'tableName', 'users');
    * propertyPanel.setPropertyValue(node, 'style.fill.color', '#ff0000');
    */
-  setPropertyValue(node: DiagramNode, propertyKey: string, value: any): any {
+  setPropertyValue(node: PropertyDiagramNode, propertyKey: string, value: any): any {
     const schema = this.getSchema(node.type);
 
     if (!schema) {
@@ -239,18 +213,15 @@ export class PropertyPanelService {
     const property = this.findProperty(schema, propertyKey);
 
     if (!property) {
-      throw new Error(
-        `Property '${propertyKey}' not found in schema for '${node.type}'`
-      );
+      throw new Error(`Property '${propertyKey}' not found in schema for '${node.type}'`);
     }
 
     // Validate
     const validation = this.validateProperty(value, property);
     if (!validation.valid) {
-      throw new ValidationError(
-        `Invalid value for property '${propertyKey}': ${validation.errors
-          .map((e) => e.message)
-          .join(', ')}`
+      const errorMessages = validation.errors.map(e => e.message).join(', ');
+      throw new Error(
+        `Invalid value for property '${propertyKey}': ${errorMessages}`
       );
     }
 
@@ -258,7 +229,7 @@ export class PropertyPanelService {
     const oldValue = this.getPropertyValue(node, propertyKey);
 
     // Set new value
-    this.setNestedValue(node.getMetadata(), propertyKey, value);
+    this.setNestedValue(node.data, propertyKey, value);
 
     // Emit change event
     this.propertyChangedSubject.next({
@@ -266,7 +237,7 @@ export class PropertyPanelService {
       propertyKey,
       oldValue,
       newValue: value,
-      timestamp: Date.now(),
+      timestamp: Date.now()
     });
 
     return oldValue;
@@ -288,7 +259,7 @@ export class PropertyPanelService {
    * propertyPanel.setPropertyValues(selectedNodes, 'style.fill.color', '#ff0000');
    */
   setPropertyValues(
-    nodes: DiagramNode[],
+    nodes: PropertyDiagramNode[],
     propertyKey: string,
     value: any
   ): string[] {
@@ -309,8 +280,9 @@ export class PropertyPanelService {
 
     const validation = this.validateProperty(value, property);
     if (!validation.valid) {
-      throw new ValidationError(
-        `Invalid value: ${validation.errors.map((e) => e.message).join(', ')}`
+      const errorMessages = validation.errors.map(e => e.message).join(', ');
+      throw new Error(
+        `Invalid value: ${errorMessages}`
       );
     }
 
@@ -318,7 +290,7 @@ export class PropertyPanelService {
     const updatedIds: string[] = [];
 
     for (const node of nodes) {
-      this.setNestedValue(node.getMetadata(), propertyKey, value);
+      this.setNestedValue(node.data, propertyKey, value);
       updatedIds.push(node.id);
     }
 
@@ -327,7 +299,7 @@ export class PropertyPanelService {
       nodeIds: updatedIds,
       propertyKey,
       newValue: value,
-      timestamp: Date.now(),
+      timestamp: Date.now()
     });
 
     return updatedIds;
@@ -352,13 +324,12 @@ export class PropertyPanelService {
    * }
    */
   validateProperty(value: any, property: PropertyDefinition): ValidationResult {
-    const errors: ValidationErrorType[] = [];
+    const errors: ValidationError[] = [];
+
+    const validation = property.validation;
 
     // Required check
-    if (
-      property.validation?.required &&
-      (value === undefined || value === null || value === '')
-    ) {
+    if (validation?.required && (value === undefined || value === null || value === '')) {
       errors.push({ message: `${property.label} is required` });
       return { valid: false, errors };
     }
@@ -368,7 +339,6 @@ export class PropertyPanelService {
       return { valid: true, errors: [] };
     }
 
-    const validation = property.validation;
     if (!validation) {
       return { valid: true, errors: [] };
     }
@@ -381,14 +351,10 @@ export class PropertyPanelService {
           errors.push({ message: `${property.label} must be a string` });
         } else {
           if (validation.minLength && value.length < validation.minLength) {
-            errors.push({
-              message: `${property.label} must be at least ${validation.minLength} characters`,
-            });
+            errors.push({ message: `${property.label} must be at least ${validation.minLength} characters` });
           }
           if (validation.maxLength && value.length > validation.maxLength) {
-            errors.push({
-              message: `${property.label} must be at most ${validation.maxLength} characters`,
-            });
+            errors.push({ message: `${property.label} must be at most ${validation.maxLength} characters` });
           }
           if (validation.pattern) {
             const regex = new RegExp(validation.pattern);
@@ -405,16 +371,11 @@ export class PropertyPanelService {
           errors.push({ message: `${property.label} must be a number` });
         } else {
           if (validation.min !== undefined && value < validation.min) {
-            errors.push({
-              message: `${property.label} must be at least ${validation.min}`,
-            });
+            errors.push({ message: `${property.label} must be at least ${validation.min}` });
           }
           if (validation.max !== undefined && value > validation.max) {
-            errors.push({
-              message: `${property.label} must be at most ${validation.max}`,
-            });
+            errors.push({ message: `${property.label} must be at most ${validation.max}` });
           }
-          // Note: 'integer' validation not in PropertyValidation interface - removed
         }
         break;
 
@@ -424,27 +385,10 @@ export class PropertyPanelService {
         }
         break;
 
-      case 'select':
-        // Note: 'enum' validation not in PropertyValidation interface - removed
-        break;
-
-      case 'multiselect':
-        if (!Array.isArray(value)) {
-          errors.push({ message: `${property.label} must be an array` });
-        }
-        // Note: 'enum' validation not in PropertyValidation interface - removed
-        break;
-
       case 'color':
         if (typeof value !== 'string' || !this.isValidColor(value)) {
-          errors.push({
-            message: `${property.label} must be a valid color (hex, rgb, or named)`,
-          });
+          errors.push({ message: `${property.label} must be a valid color (hex, rgb, or named)` });
         }
-        break;
-
-      case 'json':
-        // Note: 'jsonSchema' validation not in PropertyValidation interface - removed
         break;
     }
 
@@ -452,13 +396,13 @@ export class PropertyPanelService {
     if (validation.custom) {
       const customError = validation.custom(value, {});
       if (customError) {
-        errors.push(customError);
+        errors.push({ message: customError.message });
       }
     }
 
     return {
       valid: errors.length === 0,
-      errors,
+      errors
     };
   }
 
@@ -478,7 +422,7 @@ export class PropertyPanelService {
    *   condition: { property: 'fill', operator: '==', value: 'pattern' }
    * });
    */
-  isPropertyVisible(node: DiagramNode, property: PropertyDefinition): boolean {
+  isPropertyVisible(node: PropertyDiagramNode, property: PropertyDefinition): boolean {
     if (!property.condition) {
       return true; // No condition = always visible
     }
@@ -494,39 +438,25 @@ export class PropertyPanelService {
         return actualValue !== condition.value;
 
       case 'in':
-        return (
-          Array.isArray(condition.value) &&
-          condition.value.includes(actualValue)
-        );
+        return Array.isArray(condition.value) && condition.value.includes(actualValue);
 
       case '>':
-        return (
-          typeof actualValue === 'number' &&
-          actualValue > (condition.value as number)
-        );
+        return typeof actualValue === 'number' && actualValue > (condition.value as number);
 
       case '<':
-        return (
-          typeof actualValue === 'number' &&
-          actualValue < (condition.value as number)
-        );
+        return typeof actualValue === 'number' && actualValue < (condition.value as number);
 
       case '>=':
-        return (
-          typeof actualValue === 'number' &&
-          actualValue >= (condition.value as number)
-        );
+        return typeof actualValue === 'number' && actualValue >= (condition.value as number);
 
       case '<=':
-        return (
-          typeof actualValue === 'number' &&
-          actualValue <= (condition.value as number)
-        );
+        return typeof actualValue === 'number' && actualValue <= (condition.value as number);
 
       case 'contains':
+        if (Array.isArray(actualValue)) {
+          return actualValue.includes(condition.value);
+        }
         if (typeof actualValue === 'string') {
-          return actualValue.includes(String(condition.value));
-        } else if (Array.isArray(actualValue)) {
           return actualValue.includes(condition.value);
         }
         return false;
@@ -557,13 +487,13 @@ export class PropertyPanelService {
    * const schema = propertyPanel.getSchema('ERD.TABLE');
    * propertyPanel.applyDefaults(node, schema);
    */
-  applyDefaults(node: DiagramNode, schema: PropertySchema): void {
+  applyDefaults(node: PropertyDiagramNode, schema: PropertySchema): void {
     for (const property of schema.properties) {
       const currentValue = this.getPropertyValue(node, property.key);
 
       if (currentValue === undefined && property.defaultValue !== undefined) {
         this.setNestedValue(
-          node.getMetadata(),
+          node.data,
           property.key,
           property.defaultValue
         );
@@ -585,9 +515,7 @@ export class PropertyPanelService {
    *   properties.forEach(p => console.log(`  - ${p.label}`));
    * }
    */
-  getPropertyGroups(
-    schema: PropertySchema
-  ): Map<string, PropertyDefinition[]> {
+  getPropertyGroups(schema: PropertySchema): Map<string, PropertyDefinition[]> {
     const groups = new Map<string, PropertyDefinition[]>();
 
     for (const property of schema.properties) {
@@ -602,8 +530,7 @@ export class PropertyPanelService {
 
     // Sort groups by order field (if present)
     const sortedGroups = new Map<string, PropertyDefinition[]>();
-    const groupOrder =
-      schema.groups?.sort((a, b) => (a.order || 0) - (b.order || 0)) || [];
+    const groupOrder = schema.groups?.sort((a, b) => (a.order || 0) - (b.order || 0)) || [];
 
     for (const groupDef of groupOrder) {
       if (groups.has(groupDef.name)) {
@@ -625,10 +552,9 @@ export class PropertyPanelService {
    */
   getPropertyChangesForNode(nodeId: string): Observable<PropertyChangeEvent> {
     return this.propertyChanged$.pipe(
-      filter(
-        (event) =>
-          event.nodeId === nodeId ||
-          Boolean(event.nodeIds && event.nodeIds.includes(nodeId))
+      filter(event =>
+        event.nodeId === nodeId ||
+        Boolean(event.nodeIds && event.nodeIds.includes(nodeId))
       )
     );
   }
@@ -636,11 +562,9 @@ export class PropertyPanelService {
   /**
    * Filter property change events by property key.
    */
-  getPropertyChangesForKey(
-    propertyKey: string
-  ): Observable<PropertyChangeEvent> {
+  getPropertyChangesForKey(propertyKey: string): Observable<PropertyChangeEvent> {
     return this.propertyChanged$.pipe(
-      filter((event) => event.propertyKey === propertyKey)
+      filter(event => event.propertyKey === propertyKey)
     );
   }
 
@@ -654,9 +578,7 @@ export class PropertyPanelService {
     for (const property of schema.properties) {
       if (!property.key || !property.label || !property.editor) {
         throw new Error(
-          `Property must have key, label, and editor: ${JSON.stringify(
-            property
-          )}`
+          `Property must have key, label, and editor: ${JSON.stringify(property)}`
         );
       }
     }
@@ -671,9 +593,7 @@ export class PropertyPanelService {
 
     if (overrides.properties) {
       for (const overrideProp of overrides.properties) {
-        const existingIndex = mergedProperties.findIndex(
-          (p) => p.key === overrideProp.key
-        );
+        const existingIndex = mergedProperties.findIndex(p => p.key === overrideProp.key);
 
         if (existingIndex >= 0) {
           // Override existing
@@ -688,15 +608,12 @@ export class PropertyPanelService {
     return {
       ...parent,
       ...overrides,
-      properties: mergedProperties,
+      properties: mergedProperties
     };
   }
 
-  private findProperty(
-    schema: PropertySchema,
-    key: string
-  ): PropertyDefinition | null {
-    return schema.properties.find((p) => p.key === key) || null;
+  private findProperty(schema: PropertySchema, key: string): PropertyDefinition | null {
+    return schema.properties.find(p => p.key === key) || null;
   }
 
   private getNestedValue(obj: any, path: string): any {
@@ -750,9 +667,7 @@ export class PropertyPanelService {
     return false;
   }
 
-  private validateJsonSchema(value: any, schema: any): ValidationErrorType[] {
-    // TODO: Implement using Ajv or similar library
-    // For now, return empty array (no validation)
-    return [];
+  private deepCopy<T>(obj: T): T {
+    return JSON.parse(JSON.stringify(obj));
   }
 }

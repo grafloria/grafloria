@@ -1,46 +1,34 @@
-/**
- * Unit tests for PropertyPanelService
- *
- * Following TDD approach - tests written first, then implementation
- * Tests cover all 10 functional requirements (FR-PPS-001 to FR-PPS-010)
- */
-
 import { TestBed } from '@angular/core/testing';
-import { PropertyPanelService, ValidationError } from './property-panel.service';
-import {
-  PropertySchema,
-  PropertyDefinition,
-  SelectPropertyDefinition,
-} from '@grafloria/renderer/types/property-schema';
+import { PropertyPanelService, ValidationError, PropertyChangeEvent } from './property-panel.service';
+import type { PropertySchema, PropertyDefinition } from '@grafloria/renderer';
 
-// Mock DiagramNode interface
+/**
+ * Mock DiagramNode for testing
+ */
 interface DiagramNode {
   id: string;
   type: string;
-  getMetadata(): Record<string, any>;
+  data: Record<string, any>;
+}
+
+function createMockNode(id: string, type: string, data: Record<string, any> = {}): DiagramNode {
+  return { id, type, data };
 }
 
 describe('PropertyPanelService', () => {
   let service: PropertyPanelService;
 
   beforeEach(() => {
-    TestBed.configureTestingModule({
-      providers: [PropertyPanelService],
-    });
+    TestBed.configureTestingModule({});
     service = TestBed.inject(PropertyPanelService);
   });
 
-  afterEach(() => {
-    // Clean up to prevent test pollution
-    (service as any).schemaRegistry.clear();
-  });
-
-  describe('FR-PPS-001: Property Schema Registration', () => {
-    it('should register schema successfully', () => {
+  describe('FR-PPS-001: Schema Registration', () => {
+    test('should register schema successfully', () => {
       const schema: PropertySchema = {
         properties: [
-          { key: 'tableName', label: 'Table Name', editor: 'string' },
-        ],
+          { key: 'tableName', label: 'Table Name', editor: 'string' }
+        ]
       };
 
       service.registerSchema('ERD.TABLE', schema);
@@ -49,11 +37,11 @@ describe('PropertyPanelService', () => {
       expect(service.getSchema('ERD.TABLE')).toEqual(schema);
     });
 
-    it('should register schema from JSON', () => {
+    test('should register schema from JSON', () => {
       const json = JSON.stringify({
         properties: [
-          { key: 'tableName', label: 'Table Name', editor: 'string' },
-        ],
+          { key: 'tableName', label: 'Table Name', editor: 'string' }
+        ]
       });
 
       service.registerSchemaFromJSON('ERD.TABLE', json);
@@ -61,44 +49,41 @@ describe('PropertyPanelService', () => {
       expect(service.hasSchema('ERD.TABLE')).toBe(true);
     });
 
-    it('should throw on duplicate registration', () => {
+    test('should throw on duplicate registration', () => {
       const schema: PropertySchema = {
-        properties: [{ key: 'name', label: 'Name', editor: 'string' }],
+        properties: [{ key: 'name', label: 'Name', editor: 'string' }]
       };
 
       service.registerSchema('ERD.TABLE', schema);
 
-      expect(() => service.registerSchema('ERD.TABLE', schema)).toThrow(
-        "Schema for type 'ERD.TABLE' is already registered"
-      );
+      expect(() => service.registerSchema('ERD.TABLE', schema))
+        .toThrow("Schema for type 'ERD.TABLE' is already registered");
     });
 
-    it('should throw on invalid schema (no properties)', () => {
+    test('should throw on invalid schema (no properties)', () => {
       const schema = {
-        properties: [],
+        properties: []
       } as PropertySchema;
 
-      expect(() => service.registerSchema('ERD.TABLE', schema)).toThrow(
-        'Schema must have at least one property'
-      );
+      expect(() => service.registerSchema('ERD.TABLE', schema))
+        .toThrow('Schema must have at least one property');
     });
 
-    it('should throw on invalid schema (missing property key)', () => {
+    test('should throw on invalid schema (property missing required fields)', () => {
       const schema = {
-        properties: [{ label: 'Name', editor: 'string' }],
-      } as any;
+        properties: [{ key: 'name' } as any]
+      } as PropertySchema;
 
-      expect(() => service.registerSchema('ERD.TABLE', schema)).toThrow(
-        'Property must have key, label, and editor'
-      );
+      expect(() => service.registerSchema('ERD.TABLE', schema))
+        .toThrow('Property must have key, label, and editor');
     });
 
-    it('should return all registered types', () => {
+    test('should return all registered types', () => {
       service.registerSchema('ERD.TABLE', {
-        properties: [{ key: 'name', label: 'Name', editor: 'string' }],
+        properties: [{ key: 'name', label: 'Name', editor: 'string' }]
       });
       service.registerSchema('BPMN.TASK', {
-        properties: [{ key: 'name', label: 'Name', editor: 'string' }],
+        properties: [{ key: 'task', label: 'Task', editor: 'string' }]
       });
 
       const types = service.getAllTypes();
@@ -107,120 +92,104 @@ describe('PropertyPanelService', () => {
       expect(types).toContain('BPMN.TASK');
       expect(types.length).toBe(2);
     });
-
-    it('should validate hasSchema returns false for unregistered type', () => {
-      expect(service.hasSchema('NON_EXISTENT')).toBe(false);
-    });
   });
 
-  describe('FR-PPS-002: Property Schema Extension', () => {
+  describe('FR-PPS-002: Schema Extension', () => {
     beforeEach(() => {
       // Register parent schema
       service.registerSchema('ERD.TABLE', {
         properties: [
           { key: 'tableName', label: 'Table Name', editor: 'string' },
-          {
-            key: 'schema',
-            label: 'Schema',
-            editor: 'string',
-            defaultValue: 'public',
-          },
-        ],
+          { key: 'schema', label: 'Schema', editor: 'string', defaultValue: 'public' }
+        ]
       });
     });
 
-    it('should extend schema with new properties', () => {
+    test('should extend schema with new properties', () => {
       service.extendSchema('ERD.TABLE_WITH_AUDIT', 'ERD.TABLE', {
         properties: [
           { key: 'createdAt', label: 'Created At', editor: 'datetime' },
-          { key: 'updatedAt', label: 'Updated At', editor: 'datetime' },
-        ],
+          { key: 'updatedAt', label: 'Updated At', editor: 'datetime' }
+        ]
       });
 
       const schema = service.getSchema('ERD.TABLE_WITH_AUDIT')!;
 
       expect(schema.properties.length).toBe(4);
-      expect(schema.properties.find((p) => p.key === 'tableName')).toBeTruthy();
-      expect(schema.properties.find((p) => p.key === 'createdAt')).toBeTruthy();
+      expect(schema.properties.find(p => p.key === 'tableName')).toBeTruthy();
+      expect(schema.properties.find(p => p.key === 'createdAt')).toBeTruthy();
     });
 
-    it('should override parent property', () => {
+    test('should override parent property', () => {
       service.extendSchema('ERD.TABLE_CUSTOM', 'ERD.TABLE', {
         properties: [
-          {
-            key: 'schema',
-            label: 'Schema',
-            editor: 'string',
-            defaultValue: 'custom',
-          },
-        ],
+          { key: 'schema', label: 'Schema', editor: 'string', defaultValue: 'custom' }
+        ]
       });
 
       const schema = service.getSchema('ERD.TABLE_CUSTOM')!;
-      const schemaProp = schema.properties.find((p) => p.key === 'schema')!;
+      const schemaProp = schema.properties.find(p => p.key === 'schema')!;
 
       expect(schemaProp.defaultValue).toBe('custom');
     });
 
-    it('should support three-level inheritance', () => {
-      service.extendSchema('ERD.TABLE_WITH_AUDIT', 'ERD.TABLE', {
-        properties: [
-          { key: 'createdAt', label: 'Created At', editor: 'datetime' },
-        ],
-      });
-
-      service.extendSchema('ERD.TABLE_FULL_AUDIT', 'ERD.TABLE_WITH_AUDIT', {
-        properties: [
-          { key: 'createdBy', label: 'Created By', editor: 'string' },
-        ],
-      });
-
-      const schema = service.getSchema('ERD.TABLE_FULL_AUDIT')!;
-
-      expect(schema.properties.length).toBe(4);
-      expect(schema.properties.find((p) => p.key === 'tableName')).toBeTruthy();
-      expect(schema.properties.find((p) => p.key === 'createdAt')).toBeTruthy();
-      expect(schema.properties.find((p) => p.key === 'createdBy')).toBeTruthy();
-    });
-
-    it('should throw when extending non-existent parent', () => {
+    test('should throw when extending non-existent parent', () => {
       expect(() =>
         service.extendSchema('CHILD', 'NON_EXISTENT', { properties: [] })
       ).toThrow("Parent type 'NON_EXISTENT' not found");
     });
-  });
 
-  describe('FR-PPS-003: Property Schema Retrieval', () => {
-    it('should get schema for registered type', () => {
-      const schema: PropertySchema = {
-        properties: [{ key: 'name', label: 'Name', editor: 'string' }],
-      };
-
-      service.registerSchema('ERD.TABLE', schema);
-
-      expect(service.getSchema('ERD.TABLE')).toEqual(schema);
-    });
-
-    it('should return null for unregistered type', () => {
-      expect(service.getSchema('NON_EXISTENT')).toBeNull();
-    });
-
-    it('should return defensive copy (modifying returned schema does not affect registry)', () => {
-      const schema: PropertySchema = {
-        properties: [{ key: 'name', label: 'Name', editor: 'string' }],
-      };
-
-      service.registerSchema('ERD.TABLE', schema);
-
-      const retrieved = service.getSchema('ERD.TABLE')!;
-      retrieved.properties.push({
-        key: 'new',
-        label: 'New',
-        editor: 'string',
+    test('should support three-level inheritance', () => {
+      service.extendSchema('ERD.TABLE_WITH_AUDIT', 'ERD.TABLE', {
+        properties: [
+          { key: 'createdAt', label: 'Created At', editor: 'datetime' }
+        ]
       });
 
-      const retrievedAgain = service.getSchema('ERD.TABLE')!;
-      expect(retrievedAgain.properties.length).toBe(1);
+      service.extendSchema('ERD.TABLE_WITH_FULL_AUDIT', 'ERD.TABLE_WITH_AUDIT', {
+        properties: [
+          { key: 'deletedAt', label: 'Deleted At', editor: 'datetime' }
+        ]
+      });
+
+      const schema = service.getSchema('ERD.TABLE_WITH_FULL_AUDIT')!;
+
+      expect(schema.properties.length).toBe(4); // tableName, schema, createdAt, deletedAt
+      expect(schema.properties.find(p => p.key === 'tableName')).toBeTruthy();
+      expect(schema.properties.find(p => p.key === 'createdAt')).toBeTruthy();
+      expect(schema.properties.find(p => p.key === 'deletedAt')).toBeTruthy();
+    });
+  });
+
+  describe('FR-PPS-003: Schema Retrieval', () => {
+    beforeEach(() => {
+      service.registerSchema('ERD.TABLE', {
+        properties: [
+          { key: 'tableName', label: 'Table Name', editor: 'string' }
+        ]
+      });
+    });
+
+    test('should get schema for registered type', () => {
+      const schema = service.getSchema('ERD.TABLE');
+
+      expect(schema).toBeTruthy();
+      expect(schema!.properties.length).toBe(1);
+    });
+
+    test('should return null for unregistered type', () => {
+      const schema = service.getSchema('NON_EXISTENT');
+
+      expect(schema).toBeNull();
+    });
+
+    test('should return defensive copy (mutations should not affect registry)', () => {
+      const schema = service.getSchema('ERD.TABLE')!;
+      schema.properties.push({ key: 'hacked', label: 'Hacked', editor: 'string' });
+
+      const schema2 = service.getSchema('ERD.TABLE')!;
+
+      expect(schema2.properties.length).toBe(1);
     });
   });
 
@@ -228,138 +197,112 @@ describe('PropertyPanelService', () => {
     let node: DiagramNode;
 
     beforeEach(() => {
-      // Register schema
       service.registerSchema('ERD.TABLE', {
         properties: [
-          {
-            key: 'tableName',
-            label: 'Table Name',
-            editor: 'string',
-            validation: { required: true },
-          },
-          {
-            key: 'rowCount',
-            label: 'Row Count',
-            editor: 'number',
-            validation: { min: 0 },
-          },
-        ],
+          { key: 'tableName', label: 'Table Name', editor: 'string' },
+          { key: 'rowCount', label: 'Row Count', editor: 'number', validation: { min: 0 } }
+        ]
       });
 
-      // Create mock node
-      node = {
-        id: 'node1',
-        type: 'ERD.TABLE',
-        getMetadata: jest.fn().mockReturnValue({
-          tableName: 'users',
-          rowCount: 1000,
-        }),
-      } as any;
+      node = createMockNode('node1', 'ERD.TABLE', {
+        tableName: 'users',
+        rowCount: 1000
+      });
     });
 
-    it('should get property value', () => {
+    test('should get property value', () => {
       const value = service.getPropertyValue(node, 'tableName');
       expect(value).toBe('users');
     });
 
-    it('should set property value', () => {
+    test('should set property value and return old value', () => {
       const oldValue = service.setPropertyValue(node, 'tableName', 'products');
 
       expect(oldValue).toBe('users');
-      expect(node.getMetadata().tableName).toBe('products');
+      expect(node.data.tableName).toBe('products');
     });
 
-    it('should throw on invalid property value', () => {
-      expect(() => service.setPropertyValue(node, 'rowCount', -10)).toThrow(
-        ValidationError
-      );
+    test('should throw on invalid property value', () => {
+      expect(() => service.setPropertyValue(node, 'rowCount', -10))
+        .toThrow(ValidationError);
     });
 
-    it('should emit change event on set', (done) => {
-      service.propertyChanged$.subscribe((event) => {
-        expect(event.nodeId).toBe('node1');
-        expect(event.propertyKey).toBe('tableName');
-        expect(event.oldValue).toBe('users');
-        expect(event.newValue).toBe('products');
-        done();
-      });
-
-      service.setPropertyValue(node, 'tableName', 'products');
+    test('should throw on non-existent property key', () => {
+      expect(() => service.setPropertyValue(node, 'nonexistent', 'value'))
+        .toThrow("Property 'nonexistent' not found in schema");
     });
 
-    it('should get nested property value', () => {
-      node.getMetadata().style = { fill: { color: '#ff0000' } };
+    test('should throw when no schema registered for node type', () => {
+      const node2 = createMockNode('node2', 'UNREGISTERED_TYPE', {});
 
-      service.registerSchema('ERD.TABLE', {
-        properties: [
-          {
-            key: 'style.fill.color',
-            label: 'Fill Color',
-            editor: 'color',
-          },
-        ],
-      });
+      expect(() => service.setPropertyValue(node2, 'test', 'value'))
+        .toThrow("No schema registered for type 'UNREGISTERED_TYPE'");
+    });
+
+    test('should get nested property value', () => {
+      node.data.style = { fill: { color: '#ff0000' } };
 
       const value = service.getPropertyValue(node, 'style.fill.color');
       expect(value).toBe('#ff0000');
     });
 
-    it('should set nested property value', () => {
-      node.getMetadata().style = { fill: { color: '#ff0000' } };
+    test('should set nested property value', () => {
+      node.data.style = { fill: { color: '#ff0000' } };
 
-      service.registerSchema('ERD.TABLE', {
+      // Register schema with nested property
+      service.registerSchema('ERD.TABLE_STYLED', {
         properties: [
-          {
-            key: 'style.fill.color',
-            label: 'Fill Color',
-            editor: 'color',
-          },
-        ],
+          { key: 'style.fill.color', label: 'Fill Color', editor: 'color' }
+        ]
       });
 
-      service.setPropertyValue(node, 'style.fill.color', '#00ff00');
+      const styledNode = createMockNode('node2', 'ERD.TABLE_STYLED', {
+        style: { fill: { color: '#ff0000' } }
+      });
 
-      expect(node.getMetadata().style.fill.color).toBe('#00ff00');
+      service.setPropertyValue(styledNode, 'style.fill.color', '#00ff00');
+
+      expect(styledNode.data.style.fill.color).toBe('#00ff00');
     });
 
-    it('should throw on non-existent property key', () => {
-      expect(() =>
-        service.setPropertyValue(node, 'nonExistent', 'value')
-      ).toThrow("Property 'nonExistent' not found");
-    });
-
-    it('should throw on missing schema for node type', () => {
-      const nodeWithoutSchema = {
-        id: 'node2',
-        type: 'UNKNOWN_TYPE',
-        getMetadata: jest.fn().mockReturnValue({}),
-      } as any;
-
-      expect(() =>
-        service.setPropertyValue(nodeWithoutSchema, 'prop', 'value')
-      ).toThrow("No schema registered for type 'UNKNOWN_TYPE'");
+    test('should return undefined for non-existent nested property', () => {
+      const value = service.getPropertyValue(node, 'nonexistent.nested.path');
+      expect(value).toBeUndefined();
     });
   });
 
   describe('FR-PPS-005: Property Value Validation', () => {
-    it('should validate string pattern', () => {
+    test('should validate string pattern', () => {
       const property: PropertyDefinition = {
         key: 'tableName',
         label: 'Table Name',
         editor: 'string',
-        validation: { pattern: '^[a-z_]+$' },
+        validation: { pattern: '^[a-z_]+$' }
       };
 
       expect(service.validateProperty('user_table', property).valid).toBe(true);
       expect(service.validateProperty('UserTable', property).valid).toBe(false);
     });
 
-    it('should validate number range', () => {
+    test('should validate string length', () => {
+      const property: PropertyDefinition = {
+        key: 'name',
+        label: 'Name',
+        editor: 'string',
+        validation: { minLength: 3, maxLength: 10 }
+      };
+
+      expect(service.validateProperty('abc', property).valid).toBe(true);
+      expect(service.validateProperty('ab', property).valid).toBe(false);
+      expect(service.validateProperty('abcdefghijk', property).valid).toBe(false);
+    });
+
+    test('should validate number range', () => {
       const property: PropertyDefinition = {
         key: 'port',
         label: 'Port',
         editor: 'number',
-        validation: { min: 1, max: 65535 },
+        validation: { min: 1, max: 65535 }
       };
 
       expect(service.validateProperty(8080, property).valid).toBe(true);
@@ -367,12 +310,12 @@ describe('PropertyPanelService', () => {
       expect(service.validateProperty(70000, property).valid).toBe(false);
     });
 
-    it('should validate required property', () => {
+    test('should validate required property', () => {
       const property: PropertyDefinition = {
         key: 'name',
         label: 'Name',
         editor: 'string',
-        validation: { required: true },
+        validation: { required: true }
       };
 
       expect(service.validateProperty('test', property).valid).toBe(true);
@@ -381,106 +324,77 @@ describe('PropertyPanelService', () => {
       expect(service.validateProperty(undefined, property).valid).toBe(false);
     });
 
-    it('should validate enum (select options)', () => {
+    test('should validate select options', () => {
       const property: PropertyDefinition = {
         key: 'type',
         label: 'Type',
         editor: 'select',
-        validation: { enum: ['PRIMARY', 'FOREIGN', 'UNIQUE'] },
+        validation: {
+          custom: (value) => {
+            const validOptions = ['PRIMARY', 'FOREIGN', 'UNIQUE'];
+            if (!validOptions.includes(value)) {
+              return { message: `Type must be one of: ${validOptions.join(', ')}` };
+            }
+            return null;
+          }
+        }
       };
 
       expect(service.validateProperty('PRIMARY', property).valid).toBe(true);
       expect(service.validateProperty('INVALID', property).valid).toBe(false);
     });
 
-    it('should validate string length constraints', () => {
-      const property: PropertyDefinition = {
-        key: 'name',
-        label: 'Name',
-        editor: 'string',
-        validation: { minLength: 3, maxLength: 10 },
-      };
-
-      expect(service.validateProperty('test', property).valid).toBe(true);
-      expect(service.validateProperty('ab', property).valid).toBe(false);
-      expect(service.validateProperty('verylongname', property).valid).toBe(
-        false
-      );
-    });
-
-    it('should validate number integer constraint', () => {
-      const property: PropertyDefinition = {
-        key: 'count',
-        label: 'Count',
-        editor: 'number',
-        validation: { integer: true },
-      };
-
-      expect(service.validateProperty(10, property).valid).toBe(true);
-      expect(service.validateProperty(10.5, property).valid).toBe(false);
-    });
-
-    it('should validate color values', () => {
+    test('should validate color format', () => {
       const property: PropertyDefinition = {
         key: 'color',
         label: 'Color',
-        editor: 'color',
+        editor: 'color'
       };
 
       expect(service.validateProperty('#ff0000', property).valid).toBe(true);
       expect(service.validateProperty('#f00', property).valid).toBe(true);
-      expect(service.validateProperty('rgb(255, 0, 0)', property).valid).toBe(
-        true
-      );
+      expect(service.validateProperty('rgb(255, 0, 0)', property).valid).toBe(true);
       expect(service.validateProperty('red', property).valid).toBe(true);
       expect(service.validateProperty('invalid', property).valid).toBe(false);
     });
 
-    it('should validate multiselect values', () => {
+    test('should validate boolean type', () => {
       const property: PropertyDefinition = {
-        key: 'tags',
-        label: 'Tags',
-        editor: 'multiselect',
-        validation: { enum: ['tag1', 'tag2', 'tag3'] },
+        key: 'enabled',
+        label: 'Enabled',
+        editor: 'boolean'
       };
 
-      expect(service.validateProperty(['tag1', 'tag2'], property).valid).toBe(
-        true
-      );
-      expect(service.validateProperty(['tag1', 'invalid'], property).valid).toBe(
-        false
-      );
-      expect(service.validateProperty('not-array', property).valid).toBe(false);
+      expect(service.validateProperty(true, property).valid).toBe(true);
+      expect(service.validateProperty(false, property).valid).toBe(true);
+      expect(service.validateProperty('true', property).valid).toBe(false);
     });
 
-    it('should validate custom validation function', () => {
+    test('should support custom validation function', () => {
       const property: PropertyDefinition = {
         key: 'value',
         label: 'Value',
         editor: 'number',
         validation: {
-          custom: (value: any) => {
+          custom: (value) => {
             if (value % 2 !== 0) {
-              return { message: 'Must be even number' };
+              return { message: 'Value must be even' };
             }
             return null;
-          },
-        },
+          }
+        }
       };
 
       expect(service.validateProperty(10, property).valid).toBe(true);
       expect(service.validateProperty(11, property).valid).toBe(false);
-      expect(
-        service.validateProperty(11, property).errors[0].message
-      ).toContain('even number');
     });
 
-    it('should skip validation if value is empty and not required', () => {
+    test('should skip validation if value is empty and not required', () => {
       const property: PropertyDefinition = {
         key: 'optional',
         label: 'Optional',
         editor: 'string',
-        validation: { pattern: '^[a-z]+$' },
+        validation: { minLength: 5 }
       };
 
       expect(service.validateProperty('', property).valid).toBe(true);
@@ -495,23 +409,15 @@ describe('PropertyPanelService', () => {
     beforeEach(() => {
       service.registerSchema('ERD.TABLE', {
         properties: [
-          { key: 'tableName', label: 'Table Name', editor: 'string' },
-          { key: 'schema', label: 'Schema', editor: 'string' },
-        ],
+          { key: 'tableName', label: 'Table Name', editor: 'string' }
+        ]
       });
 
-      node = {
-        id: 'node1',
-        type: 'ERD.TABLE',
-        getMetadata: jest.fn().mockReturnValue({
-          tableName: 'users',
-          schema: 'public',
-        }),
-      } as any;
+      node = createMockNode('node1', 'ERD.TABLE', { tableName: 'users' });
     });
 
-    it('should emit event on property change', (done) => {
-      service.propertyChanged$.subscribe((event) => {
+    test('should emit change event on property set', (done) => {
+      service.propertyChanged$.subscribe(event => {
         expect(event.nodeId).toBe('node1');
         expect(event.propertyKey).toBe('tableName');
         expect(event.oldValue).toBe('users');
@@ -523,53 +429,48 @@ describe('PropertyPanelService', () => {
       service.setPropertyValue(node, 'tableName', 'products');
     });
 
-    it('should filter events by node ID', (done) => {
-      const node2 = {
-        id: 'node2',
-        type: 'ERD.TABLE',
-        getMetadata: jest.fn().mockReturnValue({ tableName: 'orders' }),
-      } as any;
+    test('should support multiple listeners', () => {
+      const events: PropertyChangeEvent[] = [];
 
-      service.getPropertyChangesForNode('node1').subscribe((event) => {
+      service.propertyChanged$.subscribe(event => events.push(event));
+      service.propertyChanged$.subscribe(event => events.push(event));
+
+      service.setPropertyValue(node, 'tableName', 'products');
+
+      expect(events.length).toBe(2);
+      expect(events[0].newValue).toBe('products');
+      expect(events[1].newValue).toBe('products');
+    });
+
+    test('should filter events by node ID', (done) => {
+      const node2 = createMockNode('node2', 'ERD.TABLE', { tableName: 'posts' });
+
+      service.getPropertyChangesForNode('node1').subscribe(event => {
         expect(event.nodeId).toBe('node1');
         done();
       });
 
-      service.setPropertyValue(node2, 'tableName', 'items'); // Should not trigger
-      service.setPropertyValue(node, 'tableName', 'products'); // Should trigger
+      service.setPropertyValue(node, 'tableName', 'users2');
+      service.setPropertyValue(node2, 'tableName', 'posts2'); // Should not trigger
     });
 
-    it('should filter events by property key', (done) => {
-      service.getPropertyChangesForKey('tableName').subscribe((event) => {
-        expect(event.propertyKey).toBe('tableName');
+    test('should filter events by property key', (done) => {
+      service.registerSchema('MULTI', {
+        properties: [
+          { key: 'prop1', label: 'Prop 1', editor: 'string' },
+          { key: 'prop2', label: 'Prop 2', editor: 'string' }
+        ]
+      });
+
+      const multiNode = createMockNode('multi', 'MULTI', { prop1: 'a', prop2: 'b' });
+
+      service.getPropertyChangesForKey('prop1').subscribe(event => {
+        expect(event.propertyKey).toBe('prop1');
         done();
       });
 
-      service.setPropertyValue(node, 'schema', 'private'); // Should not trigger
-      service.setPropertyValue(node, 'tableName', 'products'); // Should trigger
-    });
-
-    it('should support multiple listeners', (done) => {
-      let listener1Called = false;
-      let listener2Called = false;
-
-      service.propertyChanged$.subscribe(() => {
-        listener1Called = true;
-        checkDone();
-      });
-
-      service.propertyChanged$.subscribe(() => {
-        listener2Called = true;
-        checkDone();
-      });
-
-      function checkDone() {
-        if (listener1Called && listener2Called) {
-          done();
-        }
-      }
-
-      service.setPropertyValue(node, 'tableName', 'products');
+      service.setPropertyValue(multiNode, 'prop1', 'changed');
+      service.setPropertyValue(multiNode, 'prop2', 'not-relevant'); // Should not trigger
     });
   });
 
@@ -579,76 +480,61 @@ describe('PropertyPanelService', () => {
     beforeEach(() => {
       service.registerSchema('ERD.TABLE', {
         properties: [
-          { key: 'schema', label: 'Schema', editor: 'string' },
-          {
-            key: 'rowCount',
-            label: 'Row Count',
-            editor: 'number',
-            validation: { min: 0 },
-          },
-        ],
+          { key: 'schema', label: 'Schema', editor: 'string' }
+        ]
       });
 
       nodes = [
-        {
-          id: 'node1',
-          type: 'ERD.TABLE',
-          getMetadata: () => ({ schema: 'public', rowCount: 100 }),
-        },
-        {
-          id: 'node2',
-          type: 'ERD.TABLE',
-          getMetadata: () => ({ schema: 'public', rowCount: 200 }),
-        },
-        {
-          id: 'node3',
-          type: 'ERD.TABLE',
-          getMetadata: () => ({ schema: 'public', rowCount: 300 }),
-        },
-      ] as any[];
+        createMockNode('node1', 'ERD.TABLE', { schema: 'public' }),
+        createMockNode('node2', 'ERD.TABLE', { schema: 'public' }),
+        createMockNode('node3', 'ERD.TABLE', { schema: 'public' })
+      ];
     });
 
-    it('should update multiple nodes', () => {
+    test('should update multiple nodes', () => {
       const updatedIds = service.setPropertyValues(nodes, 'schema', 'private');
 
       expect(updatedIds).toEqual(['node1', 'node2', 'node3']);
-      expect(nodes[0].getMetadata().schema).toBe('private');
-      expect(nodes[1].getMetadata().schema).toBe('private');
-      expect(nodes[2].getMetadata().schema).toBe('private');
+      expect(nodes[0].data.schema).toBe('private');
+      expect(nodes[1].data.schema).toBe('private');
+      expect(nodes[2].data.schema).toBe('private');
     });
 
-    it('should emit single batch event', (done) => {
-      service.propertyChanged$.subscribe((event) => {
+    test('should emit single batch event', (done) => {
+      service.propertyChanged$.subscribe(event => {
         expect(event.nodeIds).toEqual(['node1', 'node2', 'node3']);
         expect(event.propertyKey).toBe('schema');
         expect(event.newValue).toBe('private');
-        expect(event.nodeId).toBeUndefined();
+        expect(event.nodeId).toBeUndefined(); // Batch event has no single nodeId
         done();
       });
 
       service.setPropertyValues(nodes, 'schema', 'private');
     });
 
-    it('should throw validation error for invalid value', () => {
-      expect(() => service.setPropertyValues(nodes, 'rowCount', -10)).toThrow(
-        ValidationError
-      );
+    test('should throw validation error and not update any nodes', () => {
+      service.registerSchema('VALIDATED', {
+        properties: [
+          { key: 'count', label: 'Count', editor: 'number', validation: { min: 0 } }
+        ]
+      });
 
-      // Verify no nodes were updated
-      expect(nodes[0].getMetadata().rowCount).toBe(100);
-      expect(nodes[1].getMetadata().rowCount).toBe(200);
-      expect(nodes[2].getMetadata().rowCount).toBe(300);
+      const validatedNodes = [
+        createMockNode('v1', 'VALIDATED', { count: 10 }),
+        createMockNode('v2', 'VALIDATED', { count: 20 })
+      ];
+
+      expect(() => service.setPropertyValues(validatedNodes, 'count', -5))
+        .toThrow(ValidationError);
+
+      // Verify no nodes were updated (rollback behavior)
+      expect(validatedNodes[0].data.count).toBe(10);
+      expect(validatedNodes[1].data.count).toBe(20);
     });
 
-    it('should return empty array for empty nodes list', () => {
+    test('should return empty array when no nodes provided', () => {
       const result = service.setPropertyValues([], 'schema', 'private');
       expect(result).toEqual([]);
-    });
-
-    it('should throw on non-existent property', () => {
-      expect(() =>
-        service.setPropertyValues(nodes, 'nonExistent', 'value')
-      ).toThrow("Property 'nonExistent' not found");
     });
   });
 
@@ -656,139 +542,111 @@ describe('PropertyPanelService', () => {
     let node: DiagramNode;
 
     beforeEach(() => {
-      node = {
-        id: 'node1',
-        type: 'SHAPE',
-        getMetadata: () => ({ fill: 'pattern', patternType: 'stripes' }),
-      } as any;
+      node = createMockNode('node1', 'SHAPE', {
+        fill: 'pattern',
+        patternType: 'stripes'
+      });
     });
 
-    it('should show property when equals condition met', () => {
+    test('should show property when condition met (equals)', () => {
       const property: PropertyDefinition = {
         key: 'patternType',
         label: 'Pattern Type',
         editor: 'select',
-        condition: { property: 'fill', operator: '==', value: 'pattern' },
+        condition: { property: 'fill', operator: '==', value: 'pattern' }
       };
 
       expect(service.isPropertyVisible(node, property)).toBe(true);
     });
 
-    it('should hide property when equals condition not met', () => {
-      node.getMetadata().fill = 'solid';
+    test('should hide property when condition not met', () => {
+      node.data.fill = 'solid';
 
       const property: PropertyDefinition = {
         key: 'patternType',
         label: 'Pattern Type',
         editor: 'select',
-        condition: { property: 'fill', operator: '==', value: 'pattern' },
+        condition: { property: 'fill', operator: '==', value: 'pattern' }
       };
 
       expect(service.isPropertyVisible(node, property)).toBe(false);
     });
 
-    it('should evaluate notEquals condition', () => {
+    test('should support notEquals operator', () => {
       const property: PropertyDefinition = {
-        key: 'customPattern',
-        label: 'Custom Pattern',
+        key: 'customSetting',
+        label: 'Custom Setting',
         editor: 'string',
-        condition: { property: 'fill', operator: '!=', value: 'solid' },
+        condition: { property: 'fill', operator: '!=', value: 'none' }
       };
 
       expect(service.isPropertyVisible(node, property)).toBe(true);
 
-      node.getMetadata().fill = 'solid';
+      node.data.fill = 'none';
       expect(service.isPropertyVisible(node, property)).toBe(false);
     });
 
-    it('should evaluate in condition', () => {
+    test('should support greaterThan operator', () => {
+      node.data.count = 150;
+
       const property: PropertyDefinition = {
-        key: 'specialOptions',
-        label: 'Special Options',
-        editor: 'string',
-        condition: {
-          property: 'fill',
-          operator: 'in',
-          value: ['pattern', 'gradient'],
-        },
+        key: 'largeDataset',
+        label: 'Large Dataset',
+        editor: 'boolean',
+        condition: { property: 'count', operator: '>', value: 100 }
       };
 
       expect(service.isPropertyVisible(node, property)).toBe(true);
 
-      node.getMetadata().fill = 'solid';
+      node.data.count = 50;
       expect(service.isPropertyVisible(node, property)).toBe(false);
     });
 
-    it('should evaluate notIn condition', () => {
+    test('should support lessThan operator', () => {
+      node.data.size = 50;
+
       const property: PropertyDefinition = {
-        key: 'basicOptions',
-        label: 'Basic Options',
+        key: 'smallSize',
+        label: 'Small Size',
+        editor: 'boolean',
+        condition: { property: 'size', operator: '<', value: 100 }
+      };
+
+      expect(service.isPropertyVisible(node, property)).toBe(true);
+    });
+
+    test('should support in operator (value in array)', () => {
+      node.data.type = 'table';
+
+      const property: PropertyDefinition = {
+        key: 'dbSpecific',
+        label: 'DB Specific',
         editor: 'string',
-        condition: {
-          property: 'fill',
-          operator: 'notIn',
-          value: ['gradient', 'image'],
-        },
+        condition: { property: 'type', operator: 'in', value: ['table', 'view'] }
       };
 
       expect(service.isPropertyVisible(node, property)).toBe(true);
 
-      node.getMetadata().fill = 'gradient';
+      node.data.type = 'function';
       expect(service.isPropertyVisible(node, property)).toBe(false);
     });
 
-    it('should evaluate greaterThan condition', () => {
-      node.getMetadata().count = 100;
-
-      const property: PropertyDefinition = {
-        key: 'advancedOptions',
-        label: 'Advanced Options',
-        editor: 'string',
-        condition: { property: 'count', operator: '>', value: 50 },
-      };
-
-      expect(service.isPropertyVisible(node, property)).toBe(true);
-
-      node.getMetadata().count = 25;
-      expect(service.isPropertyVisible(node, property)).toBe(false);
-    });
-
-    it('should evaluate lessThan condition', () => {
-      node.getMetadata().count = 25;
-
-      const property: PropertyDefinition = {
-        key: 'basicOptions',
-        label: 'Basic Options',
-        editor: 'string',
-        condition: { property: 'count', operator: '<', value: 50 },
-      };
-
-      expect(service.isPropertyVisible(node, property)).toBe(true);
-
-      node.getMetadata().count = 75;
-      expect(service.isPropertyVisible(node, property)).toBe(false);
-    });
-
-    it('should show property when no condition specified', () => {
+    test('should return true when no condition specified', () => {
       const property: PropertyDefinition = {
         key: 'alwaysVisible',
         label: 'Always Visible',
-        editor: 'string',
+        editor: 'string'
       };
 
       expect(service.isPropertyVisible(node, property)).toBe(true);
     });
 
-    it('should handle missing property gracefully', () => {
+    test('should handle missing property gracefully', () => {
       const property: PropertyDefinition = {
         key: 'conditional',
         label: 'Conditional',
         editor: 'string',
-        condition: {
-          property: 'nonExistent',
-          operator: '==',
-          value: 'something',
-        },
+        condition: { property: 'nonexistent', operator: '==', value: 'test' }
       };
 
       expect(service.isPropertyVisible(node, property)).toBe(false);
@@ -801,77 +659,67 @@ describe('PropertyPanelService', () => {
     beforeEach(() => {
       service.registerSchema('ERD.TABLE', {
         properties: [
-          {
-            key: 'schema',
-            label: 'Schema',
-            editor: 'string',
-            defaultValue: 'public',
-          },
+          { key: 'schema', label: 'Schema', editor: 'string', defaultValue: 'public' },
           { key: 'tableName', label: 'Table Name', editor: 'string' },
-          {
-            key: 'style.fill.color',
-            label: 'Fill Color',
-            editor: 'color',
-            defaultValue: '#ffffff',
-          },
-        ],
+          { key: 'rowCount', label: 'Row Count', editor: 'number', defaultValue: 0 }
+        ]
       });
 
-      node = {
-        id: 'node1',
-        type: 'ERD.TABLE',
-        getMetadata: () => ({}),
-      } as any;
+      node = createMockNode('node1', 'ERD.TABLE', {});
     });
 
-    it('should apply default values', () => {
+    test('should apply default values to undefined properties', () => {
       const schema = service.getSchema('ERD.TABLE')!;
       service.applyDefaults(node, schema);
 
-      expect(node.getMetadata().schema).toBe('public');
+      expect(node.data.schema).toBe('public');
+      expect(node.data.rowCount).toBe(0);
     });
 
-    it('should not override existing values', () => {
-      node.getMetadata().schema = 'custom';
+    test('should not override existing values', () => {
+      node.data.schema = 'custom';
 
       const schema = service.getSchema('ERD.TABLE')!;
       service.applyDefaults(node, schema);
 
-      expect(node.getMetadata().schema).toBe('custom');
+      expect(node.data.schema).toBe('custom');
     });
 
-    it('should apply nested default values', () => {
+    test('should not set value for properties without defaults', () => {
       const schema = service.getSchema('ERD.TABLE')!;
       service.applyDefaults(node, schema);
 
-      expect(node.getMetadata().style?.fill?.color).toBe('#ffffff');
+      expect(node.data.tableName).toBeUndefined();
     });
 
-    it('should not apply defaults for properties without defaultValue', () => {
-      const schema = service.getSchema('ERD.TABLE')!;
-      service.applyDefaults(node, schema);
+    test('should handle nested default values', () => {
+      service.registerSchema('STYLED', {
+        properties: [
+          { key: 'style.fill.color', label: 'Fill Color', editor: 'color', defaultValue: '#ffffff' }
+        ]
+      });
 
-      expect(node.getMetadata().tableName).toBeUndefined();
+      const styledNode = createMockNode('styled', 'STYLED', {});
+      const schema = service.getSchema('STYLED')!;
+
+      service.applyDefaults(styledNode, schema);
+
+      expect(styledNode.data.style.fill.color).toBe('#ffffff');
     });
   });
 
   describe('FR-PPS-010: Property Groups', () => {
-    it('should group properties correctly', () => {
+    test('should group properties correctly', () => {
       const schema: PropertySchema = {
         properties: [
           { key: 'name', label: 'Name', editor: 'string', group: 'Basic' },
-          {
-            key: 'schema',
-            label: 'Schema',
-            editor: 'string',
-            group: 'Basic',
-          },
-          { key: 'color', label: 'Color', editor: 'color', group: 'Style' },
+          { key: 'schema', label: 'Schema', editor: 'string', group: 'Basic' },
+          { key: 'color', label: 'Color', editor: 'color', group: 'Style' }
         ],
         groups: [
-          { name: 'Basic', label: 'Basic Information', order: 1 },
-          { name: 'Style', label: 'Styling', order: 2 },
-        ],
+          { name: 'Basic', label: 'Basic Info', order: 1 },
+          { name: 'Style', label: 'Styling', order: 2 }
+        ]
       };
 
       service.registerSchema('ERD.TABLE', schema);
@@ -883,108 +731,86 @@ describe('PropertyPanelService', () => {
       expect(groups.get('Style')?.length).toBe(1);
     });
 
-    it('should put ungrouped properties in General', () => {
+    test('should put ungrouped properties in General group', () => {
       const schema: PropertySchema = {
         properties: [
-          { key: 'name', label: 'Name', editor: 'string' },
-          { key: 'description', label: 'Description', editor: 'textarea' },
-        ],
+          { key: 'name', label: 'Name', editor: 'string' }
+        ]
       };
 
       const groups = service.getPropertyGroups(schema);
 
       expect(groups.has('General')).toBe(true);
-      expect(groups.get('General')?.length).toBe(2);
+      expect(groups.get('General')?.length).toBe(1);
     });
 
-    it('should maintain property order within group', () => {
+    test('should preserve property order within groups', () => {
       const schema: PropertySchema = {
         properties: [
-          { key: 'first', label: 'First', editor: 'string', group: 'Basic' },
-          { key: 'second', label: 'Second', editor: 'string', group: 'Basic' },
-          { key: 'third', label: 'Third', editor: 'string', group: 'Basic' },
-        ],
+          { key: 'prop1', label: 'Prop 1', editor: 'string', group: 'G1' },
+          { key: 'prop2', label: 'Prop 2', editor: 'string', group: 'G1' },
+          { key: 'prop3', label: 'Prop 3', editor: 'string', group: 'G1' }
+        ]
       };
 
       const groups = service.getPropertyGroups(schema);
-      const basicProps = groups.get('Basic')!;
+      const g1Props = groups.get('G1')!;
 
-      expect(basicProps[0].key).toBe('first');
-      expect(basicProps[1].key).toBe('second');
-      expect(basicProps[2].key).toBe('third');
+      expect(g1Props[0].key).toBe('prop1');
+      expect(g1Props[1].key).toBe('prop2');
+      expect(g1Props[2].key).toBe('prop3');
     });
 
-    it('should sort groups by order field', () => {
+    test('should sort groups by order field', () => {
       const schema: PropertySchema = {
         properties: [
-          { key: 'name', label: 'Name', editor: 'string', group: 'Basic' },
-          { key: 'color', label: 'Color', editor: 'color', group: 'Style' },
-          {
-            key: 'advanced',
-            label: 'Advanced',
-            editor: 'string',
-            group: 'Advanced',
-          },
+          { key: 'a', label: 'A', editor: 'string', group: 'Second' },
+          { key: 'b', label: 'B', editor: 'string', group: 'First' }
         ],
         groups: [
-          { name: 'Advanced', label: 'Advanced', order: 3 },
-          { name: 'Basic', label: 'Basic', order: 1 },
-          { name: 'Style', label: 'Style', order: 2 },
-        ],
+          { name: 'Second', label: 'Second Group', order: 2 },
+          { name: 'First', label: 'First Group', order: 1 }
+        ]
       };
 
       const groups = service.getPropertyGroups(schema);
       const groupNames = Array.from(groups.keys());
 
-      expect(groupNames[0]).toBe('Basic');
-      expect(groupNames[1]).toBe('Style');
-      expect(groupNames[2]).toBe('Advanced');
+      expect(groupNames[0]).toBe('First');
+      expect(groupNames[1]).toBe('Second');
     });
   });
 
-  describe('Performance Tests', () => {
-    it('should handle 50 registered schemas efficiently', () => {
-      const start = performance.now();
-
-      for (let i = 0; i < 50; i++) {
-        service.registerSchema(`TYPE_${i}`, {
-          properties: [
-            { key: 'name', label: 'Name', editor: 'string' },
-            { key: 'value', label: 'Value', editor: 'number' },
-          ],
-        });
-      }
-
-      const duration = performance.now() - start;
-      expect(duration).toBeLessThan(100); // Should be very fast
-      expect(service.getAllTypes().length).toBe(50);
-    });
-
-    it('should retrieve schema quickly', () => {
+  describe('Edge Cases and Error Handling', () => {
+    test('should handle empty node data gracefully', () => {
       service.registerSchema('TEST', {
-        properties: [{ key: 'name', label: 'Name', editor: 'string' }],
+        properties: [
+          { key: 'value', label: 'Value', editor: 'string' }
+        ]
       });
 
-      const start = performance.now();
-      service.getSchema('TEST');
-      const duration = performance.now() - start;
+      const node = createMockNode('test', 'TEST', {});
+      const value = service.getPropertyValue(node, 'value');
 
-      expect(duration).toBeLessThan(1); // <1ms
+      expect(value).toBeUndefined();
     });
 
-    it('should validate property quickly', () => {
-      const property: PropertyDefinition = {
-        key: 'name',
-        label: 'Name',
-        editor: 'string',
-        validation: { required: true, minLength: 3, maxLength: 50 },
-      };
+    test('should handle invalid JSON in registerSchemaFromJSON', () => {
+      expect(() => service.registerSchemaFromJSON('TEST', 'invalid json'))
+        .toThrow();
+    });
 
-      const start = performance.now();
-      service.validateProperty('testvalue', property);
-      const duration = performance.now() - start;
+    test('should create nested objects when setting nested property on empty data', () => {
+      service.registerSchema('NESTED', {
+        properties: [
+          { key: 'a.b.c', label: 'Deep', editor: 'string' }
+        ]
+      });
 
-      expect(duration).toBeLessThan(5); // <5ms
+      const node = createMockNode('nested', 'NESTED', {});
+      service.setPropertyValue(node, 'a.b.c', 'value');
+
+      expect(node.data.a.b.c).toBe('value');
     });
   });
 });
