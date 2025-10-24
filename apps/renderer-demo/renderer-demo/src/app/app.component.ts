@@ -45,7 +45,7 @@ export class AppComponent implements OnInit {
   availableLayouts: LayoutAlgorithmType[] = ['grid', 'hierarchical', 'force-directed', 'hybrid'];
 
   // Link path type configuration
-  currentLinkType: 'direct' | 'smooth' | 'orthogonal' | 'bezier' = 'smooth';
+  currentLinkType: 'direct' | 'smooth' | 'orthogonal' | 'bezier' = 'orthogonal';
 
   // Routing algorithm configuration (for obstacle avoidance)
   currentRoutingAlgorithm: 'none' | 'straight' | 'orthogonal' | 'a-star' | 'dijkstra' | 'visibility-graph' = 'none';
@@ -57,6 +57,16 @@ export class AppComponent implements OnInit {
   enableAnimation = true;
   animationDuration = 800; // milliseconds
 
+  // History tracking
+  private history: Array<{
+    timestamp: Date;
+    action: string;
+    category: 'node' | 'link' | 'viewport' | 'layout' | 'config' | 'interaction' | 'command';
+    details: any;
+    before?: any;
+    after?: any;
+  }> = [];
+
   ngOnInit() {
     this.initializeEngine();
     this.createSampleDiagram();
@@ -67,6 +77,9 @@ export class AppComponent implements OnInit {
 
     // Subscribe to selection changes
     this.subscribeToSelectionEvents();
+
+    // Subscribe to link creation to apply current link type
+    this.subscribeToLinkCreation();
   }
 
   /**
@@ -172,7 +185,7 @@ export class AppComponent implements OnInit {
     console.log('\n🔗 Creating smart connections...');
 
     // Option 1: createSmartLink() - returns the created link
-    const link1 = diagram.createSmartLink(node1, node2, 'smooth');
+    const link1 = diagram.createSmartLink(node1, node2, this.currentLinkType);
     console.log('✅ Created smart link 1:', link1 ? 'Success' : 'Failed');
     // Option 2: Set link label to demonstrate link labels feature
     if (link1) {
@@ -180,7 +193,7 @@ export class AppComponent implements OnInit {
     }
 
     // Option 2: connectNodes() - returns boolean success status (even simpler!)
-    const success2 = diagram.connectNodes(node2, node3, 'smooth');
+    const success2 = diagram.connectNodes(node2, node3, this.currentLinkType);
     console.log('✅ Connected nodes 2→3:', success2);
     // Option 2: Add label to second link
     if (success2) {
@@ -194,7 +207,7 @@ export class AppComponent implements OnInit {
       }
     }
 
-    const success3 = diagram.connectNodes(node2, node4, 'smooth');
+    const success3 = diagram.connectNodes(node2, node4, this.currentLinkType);
     console.log('✅ Connected nodes 2→4:', success3);
     // Option 2: Add label to third link
     if (success3) {
@@ -289,7 +302,11 @@ export class AppComponent implements OnInit {
    * Called when user pans with middle mouse button
    */
   onViewportChanged(rect: any): void {
+    const before = { x: this.viewport.x, y: this.viewport.y };
     this.viewport = rect;
+    this.logHistory('viewport-pan', 'viewport', 'User panned viewport', {
+      position: { x: rect.x, y: rect.y }
+    }, before, { x: rect.x, y: rect.y });
     console.log(`📷 Viewport panned to: (${rect.x.toFixed(1)}, ${rect.y.toFixed(1)})`);
   }
 
@@ -298,7 +315,12 @@ export class AppComponent implements OnInit {
    * Called when user zooms with mouse wheel
    */
   onZoomChanged(newZoom: number): void {
+    const before = this.zoom;
     this.zoom = newZoom;
+    this.logHistory('viewport-zoom', 'viewport', 'User changed zoom', {
+      zoom: newZoom,
+      percentage: `${(newZoom * 100).toFixed(0)}%`
+    }, before, newZoom);
     console.log(`🔍 Zoom changed to: ${(newZoom * 100).toFixed(0)}%`);
   }
 
@@ -352,6 +374,14 @@ export class AppComponent implements OnInit {
     diagram.addNode(node);
 
     const newCount = diagram.getNodes().length;
+    this.logHistory('node-add', 'node', 'Added new node', {
+      nodeId: node.id,
+      label: node.getMetadata('label'),
+      position: node.position,
+      layout: this.currentLayout,
+      totalNodes: newCount
+    }, currentCount, newCount);
+
     console.log(`✅ Node added! Total nodes: ${newCount}`);
     console.log(`Node list:`, diagram.getNodes().map((n: any) => ({
       id: n.id,
@@ -370,9 +400,14 @@ export class AppComponent implements OnInit {
     const diagram = this.engine.getDiagram();
     if (!diagram) return;
 
+    const before = this.currentLayout;
     try {
       diagram.setLayoutAlgorithm(algorithm);
       this.currentLayout = algorithm;
+      this.logHistory('layout-change', 'layout', 'Changed layout algorithm', {
+        algorithm,
+        config: diagram.getLayoutConfiguration()
+      }, before, algorithm);
       console.log(`🎨 Layout algorithm changed to: ${algorithm}`);
       console.log(`📐 New configuration:`, diagram.getLayoutConfiguration());
     } catch (error) {
@@ -425,6 +460,55 @@ export class AppComponent implements OnInit {
     diagram.on('selection:changed', (event: any) => {
       this.selectedNodeCount = diagram.getSelectedNodes().length;
       console.log(`🎯 Selection changed: ${this.selectedNodeCount} node(s) selected`);
+    });
+  }
+
+  /**
+   * Subscribe to link creation events to apply current link type
+   * This ensures newly created links use the selected path type from the dropdown
+   */
+  subscribeToLinkCreation(): void {
+    const diagram = this.engine.getDiagram();
+    if (!diagram) return;
+
+    diagram.on('link:added', (event: any) => {
+      const link = event.link;
+      if (link && link.pathType !== this.currentLinkType) {
+        console.log(`🔗 New link created, applying current link type: ${this.currentLinkType}`);
+
+        // Update the link's pathType to match the currently selected type
+        link.pathType = this.currentLinkType;
+
+        // Recalculate the path with the new type
+        const sourceNode = diagram.getNodes().find((n: any) =>
+          n.getPorts().some((p: any) => p.id === link.sourcePortId)
+        );
+        const targetNode = diagram.getNodes().find((n: any) =>
+          n.getPorts().some((p: any) => p.id === link.targetPortId)
+        );
+
+        if (sourceNode && targetNode) {
+          const sourcePort = sourceNode.getPorts().find((p: any) => p.id === link.sourcePortId);
+          const targetPort = targetNode.getPorts().find((p: any) => p.id === link.targetPortId);
+
+          if (sourcePort && targetPort) {
+            const sourcePoint = sourcePort.getAbsolutePosition(sourceNode.getBoundingBox());
+            const targetPoint = targetPort.getAbsolutePosition(targetNode.getBoundingBox());
+            link.generatePath(sourcePoint, targetPoint);
+            link.markDirty();
+
+            console.log(`✅ Link path regenerated with ${this.currentLinkType} routing`);
+          }
+        }
+
+        // Log to history
+        this.logHistory('link-created', 'link', 'User created new link', {
+          linkId: link.id,
+          pathType: this.currentLinkType,
+          sourcePortId: link.sourcePortId,
+          targetPortId: link.targetPortId
+        });
+      }
     });
   }
 
@@ -572,6 +656,73 @@ export class AppComponent implements OnInit {
   }
 
   /**
+   * Log an action to history for debugging and analysis
+   */
+  private logHistory(
+    action: string,
+    category: 'node' | 'link' | 'viewport' | 'layout' | 'config' | 'interaction' | 'command',
+    details: string,
+    data: any,
+    before?: any,
+    after?: any
+  ): void {
+    const entry = {
+      timestamp: new Date(),
+      action,
+      category,
+      details: typeof data === 'string' ? data : JSON.stringify(data),
+      before,
+      after
+    };
+    this.history.push(entry);
+
+    // Keep only last 100 entries to avoid memory issues
+    if (this.history.length > 100) {
+      this.history.shift();
+    }
+
+    // Console log for debugging
+    console.log(`📜 [${category.toUpperCase()}] ${action}:`, details, data);
+  }
+
+  /**
+   * Map link path type to routing algorithm name
+   * Matches the logic in SVGRenderer
+   */
+  private mapPathTypeToAlgorithm(pathType: string): string {
+    switch (pathType) {
+      case 'direct':
+      case 'straight':
+        return 'straight';
+      case 'orthogonal':
+      case 'ortho':
+        return 'orthogonal';
+      case 'smooth':
+      case 'bezier':
+      case 'curved':
+      default:
+        return 'straight (with bezier conversion)';
+    }
+  }
+
+  /**
+   * Get perpendicular angle from port side
+   * Matches the logic in SVGRenderer.getPerpendicularAngleFromPortSide
+   */
+  private getPerpendicularAngleFromSide(portSide: 'left' | 'right' | 'top' | 'bottom'): number {
+    switch (portSide) {
+      case 'left':
+        return 180; // Arrow points left
+      case 'right':
+        return 0;   // Arrow points right
+      case 'top':
+        return -90; // Arrow points up
+      case 'bottom':
+        return 90;  // Arrow points down
+    }
+  }
+
+  /**
    * Execute command from input
    */
   async executeCommand(): Promise<void> {
@@ -685,8 +836,14 @@ export class AppComponent implements OnInit {
           this.commandOutput.push(`     ~Show all links with detailed properties`);
           this.commandOutput.push(`  🔍 link [id]`);
           this.commandOutput.push(`     ~Show specific link details`);
+          this.commandOutput.push(`  🔍 connections (or conn)`);
+          this.commandOutput.push(`     ~Comprehensive analysis of all links, arrows, ports, routing`);
           this.commandOutput.push(`  🔍 viewport`);
           this.commandOutput.push(`     ~Display viewport information`);
+          this.commandOutput.push(`  🔍 history [category] [limit]`);
+          this.commandOutput.push(`     ~Show action history timeline with timestamps and changes`);
+          this.commandOutput.push(`     ~Categories: node, link, viewport, layout, config, interaction, command`);
+          this.commandOutput.push(`     ~Example: history link 30 (show last 30 link actions)`);
           this.commandOutput.push(``);
           this.commandOutput.push(`  🔗 linktype [type]`);
           this.commandOutput.push(`     ~Change link routing algorithm (RoutingEngine)`);
@@ -813,6 +970,500 @@ export class AppComponent implements OnInit {
           }
           break;
 
+        // DEBUG: Show action history timeline
+        case 'history':
+        case 'hist':
+          const filterCategory = parts[1]?.toLowerCase();
+          const limit = parseInt(parts[2]) || 20;
+
+          let filteredHistory = this.history;
+          if (filterCategory && ['node', 'link', 'viewport', 'layout', 'config', 'interaction', 'command'].includes(filterCategory)) {
+            filteredHistory = this.history.filter(h => h.category === filterCategory);
+          }
+
+          const displayHistory = filteredHistory.slice(-limit);
+
+          this.commandOutput.push(`╔═══════════════════════════════════════════════════════════════════╗`);
+          this.commandOutput.push(`║  📜 ACTION HISTORY - Timeline of Visual Changes                  ║`);
+          this.commandOutput.push(`╚═══════════════════════════════════════════════════════════════════╝`);
+          this.commandOutput.push(``);
+          this.commandOutput.push(`📊 Showing last ${displayHistory.length} of ${this.history.length} total entries`);
+          if (filterCategory) {
+            this.commandOutput.push(`   🔍 Filtered by category: ${filterCategory.toUpperCase()}`);
+          }
+          this.commandOutput.push(``);
+
+          if (displayHistory.length === 0) {
+            this.commandOutput.push(`   ⚠️  No history entries found`);
+            this.commandOutput.push(``);
+            this.commandOutput.push(`   Available categories: node, link, viewport, layout, config, interaction, command`);
+          } else {
+            const diag = this.engine.getDiagram();
+
+            displayHistory.forEach((entry, index) => {
+              const time = entry.timestamp.toISOString().split('T')[1].split('.')[0];
+              const relativeIndex = filteredHistory.length - displayHistory.length + index;
+
+              const categoryIcon = {
+                'node': '🔷',
+                'link': '🔗',
+                'viewport': '👁️',
+                'layout': '📐',
+                'config': '⚙️',
+                'interaction': '👆',
+                'command': '💻'
+              }[entry.category] || '📝';
+
+              this.commandOutput.push(`━━━ Entry #${relativeIndex + 1} ━━━`);
+              this.commandOutput.push(`  ⏰ Timestamp: ${time}`);
+              this.commandOutput.push(`  ${categoryIcon} Category: ${entry.category.toUpperCase()}`);
+              this.commandOutput.push(`  🎬 Action: ${entry.action}`);
+              this.commandOutput.push(``);
+
+              // Parse details if it's JSON
+              let parsedDetails = null;
+              try {
+                parsedDetails = JSON.parse(entry.details);
+              } catch {
+                parsedDetails = null;
+              }
+
+              // Enhanced category-specific output
+              if (entry.category === 'viewport') {
+                this.commandOutput.push(`  📍 Viewport Details:`);
+                if (parsedDetails?.position) {
+                  this.commandOutput.push(`     Position: (${parsedDetails.position.x?.toFixed?.(1) || parsedDetails.position.x}, ${parsedDetails.position.y?.toFixed?.(1) || parsedDetails.position.y})`);
+                }
+                if (parsedDetails?.zoom !== undefined) {
+                  this.commandOutput.push(`     Zoom: ${parsedDetails.zoom} (${(parsedDetails.zoom * 100).toFixed(0)}%)`);
+                }
+                if (entry.before && entry.after) {
+                  if (typeof entry.before === 'object' && 'x' in entry.before) {
+                    const dx = entry.after.x - entry.before.x;
+                    const dy = entry.after.y - entry.before.y;
+                    this.commandOutput.push(`     Delta: (Δx=${dx.toFixed(1)}, Δy=${dy.toFixed(1)})`);
+                  }
+                }
+              } else if (entry.category === 'node') {
+                this.commandOutput.push(`  📦 Node Details:`);
+                if (parsedDetails?.nodeId) {
+                  this.commandOutput.push(`     Node ID: ${parsedDetails.nodeId}`);
+                }
+                if (parsedDetails?.label) {
+                  this.commandOutput.push(`     Label: "${parsedDetails.label}"`);
+                }
+                if (parsedDetails?.position) {
+                  this.commandOutput.push(`     Position: (${parsedDetails.position.x?.toFixed?.(1) || parsedDetails.position.x}, ${parsedDetails.position.y?.toFixed?.(1) || parsedDetails.position.y})`);
+                }
+                if (parsedDetails?.layout) {
+                  this.commandOutput.push(`     Layout Algorithm: ${parsedDetails.layout}`);
+                }
+                if (parsedDetails?.totalNodes !== undefined) {
+                  this.commandOutput.push(`     Total Nodes in Diagram: ${parsedDetails.totalNodes}`);
+                }
+              } else if (entry.category === 'link') {
+                this.commandOutput.push(`  🔗 Link Details:`);
+                if (parsedDetails?.newType) {
+                  this.commandOutput.push(`     New Path Type: ${parsedDetails.newType}`);
+                }
+                if (parsedDetails?.algorithm) {
+                  this.commandOutput.push(`     Algorithm: ${parsedDetails.algorithm}`);
+                }
+                if (parsedDetails?.linkCount !== undefined) {
+                  this.commandOutput.push(`     Links Affected: ${parsedDetails.linkCount}`);
+                }
+              } else if (entry.category === 'layout') {
+                this.commandOutput.push(`  📐 Layout Details:`);
+                if (parsedDetails?.algorithm) {
+                  this.commandOutput.push(`     Algorithm: ${parsedDetails.algorithm}`);
+                }
+                if (parsedDetails?.config) {
+                  this.commandOutput.push(`     Configuration: ${typeof parsedDetails.config === 'string' ? parsedDetails.config : JSON.stringify(parsedDetails.config).substring(0, 60)}`);
+                }
+              } else {
+                // Generic details output
+                if (entry.details && entry.details.length < 200) {
+                  this.commandOutput.push(`  📝 Details: ${entry.details}`);
+                } else if (entry.details) {
+                  this.commandOutput.push(`  📝 Details: ${entry.details.substring(0, 100)}...`);
+                }
+              }
+
+              // Before/After comparison
+              if (entry.before !== undefined && entry.after !== undefined) {
+                this.commandOutput.push(``);
+                this.commandOutput.push(`  🔄 State Change:`);
+                const beforeStr = typeof entry.before === 'string' ? entry.before : JSON.stringify(entry.before);
+                const afterStr = typeof entry.after === 'string' ? entry.after : JSON.stringify(entry.after);
+
+                if (beforeStr.length < 60 && afterStr.length < 60) {
+                  this.commandOutput.push(`     Before: ${beforeStr}`);
+                  this.commandOutput.push(`     After:  ${afterStr}`);
+                } else {
+                  this.commandOutput.push(`     Before: ${beforeStr.substring(0, 40)}...`);
+                  this.commandOutput.push(`     After:  ${afterStr.substring(0, 40)}...`);
+                }
+              }
+
+              this.commandOutput.push(``);
+            });
+
+            // Summary statistics
+            this.commandOutput.push(`╔═══════════════════════════════════════════════════════════════════╗`);
+            this.commandOutput.push(`║  📊 HISTORY SUMMARY                                               ║`);
+            this.commandOutput.push(`╚═══════════════════════════════════════════════════════════════════╝`);
+            this.commandOutput.push(``);
+
+            const categoryCounts: any = {};
+            this.history.forEach(h => {
+              categoryCounts[h.category] = (categoryCounts[h.category] || 0) + 1;
+            });
+
+            this.commandOutput.push(`  📊 Actions by Category (all time):`);
+            Object.entries(categoryCounts).sort(([,a], [,b]) => (b as number) - (a as number)).forEach(([cat, count]) => {
+              const icon = {
+                'node': '🔷',
+                'link': '🔗',
+                'viewport': '👁️',
+                'layout': '📐',
+                'config': '⚙️',
+                'interaction': '👆',
+                'command': '💻'
+              }[cat] || '📝';
+              this.commandOutput.push(`     ${icon} ${cat}: ${count} actions`);
+            });
+            this.commandOutput.push(``);
+
+            // Time range
+            if (this.history.length > 0) {
+              const firstTime = this.history[0].timestamp;
+              const lastTime = this.history[this.history.length - 1].timestamp;
+              const duration = lastTime.getTime() - firstTime.getTime();
+              const minutes = Math.floor(duration / 60000);
+              const seconds = Math.floor((duration % 60000) / 1000);
+
+              this.commandOutput.push(`  ⏱️  Session Duration: ${minutes}m ${seconds}s`);
+              this.commandOutput.push(`  📅 First Action: ${firstTime.toISOString().split('T')[1].split('.')[0]}`);
+              this.commandOutput.push(`  📅 Latest Action: ${lastTime.toISOString().split('T')[1].split('.')[0]}`);
+            }
+          }
+
+          console.log('📜 Full History:', this.history);
+          break;
+
+        // DEBUG: Show comprehensive connection details (links, arrows, ports, routing)
+        case 'connections':
+        case 'conn':
+          const diagConn = this.engine.getDiagram();
+          if (diagConn) {
+            const links = diagConn.getLinks();
+            const viewport = diagConn.getViewport();
+            const nodes = diagConn.getNodes();
+
+            this.commandOutput.push(`╔═══════════════════════════════════════════════════════════════════╗`);
+            this.commandOutput.push(`║  🔗 COMPLETE VISUAL RELATIONSHIP ANALYSIS                        ║`);
+            this.commandOutput.push(`╚═══════════════════════════════════════════════════════════════════╝`);
+            this.commandOutput.push(``);
+            this.commandOutput.push(`📊 DIAGRAM OVERVIEW:`);
+            this.commandOutput.push(`   • Total Nodes: ${nodes.length}`);
+            this.commandOutput.push(`   • Total Links: ${links.length}`);
+            this.commandOutput.push(`   • Viewport: (${viewport.x.toFixed(1)}, ${viewport.y.toFixed(1)}) @ ${(viewport.zoom * 100).toFixed(0)}% zoom`);
+            this.commandOutput.push(`   • Canvas Dimensions: ${viewport.width.toFixed(0)} x ${viewport.height.toFixed(0)}`);
+            this.commandOutput.push(``);
+
+            // First show all nodes with complete geometry
+            this.commandOutput.push(`╔═══════════════════════════════════════════════════════════════════╗`);
+            this.commandOutput.push(`║  📦 NODES - Complete Geometry & Port Configuration               ║`);
+            this.commandOutput.push(`╚═══════════════════════════════════════════════════════════════════╝`);
+            this.commandOutput.push(``);
+
+            nodes.forEach((node: any, nodeIndex: number) => {
+              const bbox = node.getBoundingBox();
+              const ports = node.getPorts();
+
+              this.commandOutput.push(`━━━ Node ${nodeIndex + 1}: "${node.getMetadata('label')}" ━━━`);
+              this.commandOutput.push(`  🆔 Identity:`);
+              this.commandOutput.push(`     ID: ${node.id}`);
+              this.commandOutput.push(`     Type: ${node.type}`);
+              this.commandOutput.push(`     Label: ${node.getMetadata('label')}`);
+              this.commandOutput.push(``);
+
+              this.commandOutput.push(`  📐 Geometry:`);
+              this.commandOutput.push(`     Position: (${node.position.x.toFixed(1)}, ${node.position.y.toFixed(1)})`);
+              this.commandOutput.push(`     Size: ${node.size.width} x ${node.size.height}px`);
+              this.commandOutput.push(`     Bounding Box:`);
+              this.commandOutput.push(`       • Top-Left: (${bbox.left.toFixed(1)}, ${bbox.top.toFixed(1)})`);
+              this.commandOutput.push(`       • Top-Right: (${bbox.right.toFixed(1)}, ${bbox.top.toFixed(1)})`);
+              this.commandOutput.push(`       • Bottom-Left: (${bbox.left.toFixed(1)}, ${bbox.bottom.toFixed(1)})`);
+              this.commandOutput.push(`       • Bottom-Right: (${bbox.right.toFixed(1)}, ${bbox.bottom.toFixed(1)})`);
+              this.commandOutput.push(`       • Center: (${((bbox.left + bbox.right)/2).toFixed(1)}, ${((bbox.top + bbox.bottom)/2).toFixed(1)})`);
+              this.commandOutput.push(``);
+
+              this.commandOutput.push(`  🔌 Ports (${ports.length}):`);
+              ports.forEach((port: any, portIndex: number) => {
+                const portPos = port.getAbsolutePosition(bbox);
+                const offset = port.offset || { x: 0, y: 0 };
+                this.commandOutput.push(`     [${portIndex}] ${port.side?.toUpperCase() || 'UNKNOWN'} Port:`);
+                this.commandOutput.push(`         ID: ${port.id}`);
+                this.commandOutput.push(`         Type: ${port.type}`);
+                this.commandOutput.push(`         Side: ${port.alignment.side}`);
+                this.commandOutput.push(`         Alignment: horizontal=${port.alignment.horizontal}, vertical=${port.alignment.vertical}`);
+                this.commandOutput.push(`         Offset: ${offset.x}, ${offset.y}`);
+                this.commandOutput.push(`         Absolute Position: (${portPos.x.toFixed(1)}, ${portPos.y.toFixed(1)})`);
+                this.commandOutput.push(`         Visual: ${port.alignment.side === 'top' ? '↑' : port.alignment.side === 'bottom' ? '↓' : port.alignment.side === 'left' ? '←' : '→'} on ${port.alignment.side} edge`);
+              });
+              this.commandOutput.push(``);
+
+              this.commandOutput.push(`  🎯 State:`);
+              this.commandOutput.push(`     Selected: ${node.state.selected}`);
+              this.commandOutput.push(`     Locked: ${node.state.locked}`);
+              this.commandOutput.push(`     Hovered: ${node.state.hovered}`);
+              this.commandOutput.push(``);
+
+              // Count connections
+              const nodeConnections = diagConn.getNodeConnections(node);
+              this.commandOutput.push(`  🔗 Connections:`);
+              this.commandOutput.push(`     Incoming: ${nodeConnections.incoming.length}`);
+              this.commandOutput.push(`     Outgoing: ${nodeConnections.outgoing.length}`);
+              this.commandOutput.push(`     Total: ${nodeConnections.all.length}`);
+              this.commandOutput.push(``);
+            });
+
+            // Now show all links with complete visual analysis
+            this.commandOutput.push(`╔═══════════════════════════════════════════════════════════════════╗`);
+            this.commandOutput.push(`║  🔗 LINKS - Complete Path, Arrow & Routing Analysis              ║`);
+            this.commandOutput.push(`╚═══════════════════════════════════════════════════════════════════╝`);
+            this.commandOutput.push(``);
+
+            links.forEach((link: any, index: number) => {
+              // Get source and target nodes
+              const sourceNode = diagConn.getNodes().find((n: any) =>
+                n.getPorts().some((p: any) => p.id === link.sourcePortId)
+              );
+              const targetNode = diagConn.getNodes().find((n: any) =>
+                n.getPorts().some((p: any) => p.id === link.targetPortId)
+              );
+
+              // Get ports
+              const sourcePort = sourceNode?.getPorts().find((p: any) => p.id === link.sourcePortId);
+              const targetPort = targetNode?.getPorts().find((p: any) => p.id === link.targetPortId);
+
+              // Calculate port absolute positions
+              let sourcePortPos = null;
+              let targetPortPos = null;
+              let sourceBounds = null;
+              let targetBounds = null;
+              if (sourceNode && sourcePort) {
+                sourceBounds = sourceNode.getBoundingBox();
+                sourcePortPos = sourcePort.getAbsolutePosition(sourceBounds);
+              }
+              if (targetNode && targetPort) {
+                targetBounds = targetNode.getBoundingBox();
+                targetPortPos = targetPort.getAbsolutePosition(targetBounds);
+              }
+
+              // Display link info
+              this.commandOutput.push(`━━━ Link ${index + 1}: "${link.getMetadata('label') || 'Unnamed'}" ━━━`);
+              this.commandOutput.push(`  🆔 Identity:`);
+              this.commandOutput.push(`     ID: ${link.id}`);
+              this.commandOutput.push(`     Label: ${link.getMetadata('label') || '(none)'}`);
+              this.commandOutput.push(``);
+
+              this.commandOutput.push(`  🎯 Routing Configuration:`);
+              this.commandOutput.push(`     Path Type: ${link.pathType}`);
+              this.commandOutput.push(`     Algorithm: ${this.mapPathTypeToAlgorithm(link.pathType)}`);
+              this.commandOutput.push(`     Points Count: ${link.points.length}`);
+              this.commandOutput.push(``);
+
+              // Source info
+              this.commandOutput.push(`  📤 SOURCE NODE: "${sourceNode?.getMetadata('label') || 'Unknown'}"`);
+              this.commandOutput.push(`     Node ID: ${sourceNode?.id || 'unknown'}`);
+              this.commandOutput.push(`     Node Position: (${sourceNode?.position.x.toFixed(1)}, ${sourceNode?.position.y.toFixed(1)})`);
+              this.commandOutput.push(`     Node Size: ${sourceNode?.size.width} x ${sourceNode?.size.height}px`);
+              if (sourceBounds) {
+                this.commandOutput.push(`     Node Bounds: [${sourceBounds.left.toFixed(1)}, ${sourceBounds.top.toFixed(1)}, ${sourceBounds.right.toFixed(1)}, ${sourceBounds.bottom.toFixed(1)}]`);
+              }
+              this.commandOutput.push(``);
+              this.commandOutput.push(`  🔌 SOURCE PORT:`);
+              this.commandOutput.push(`     Port ID: ${link.sourcePortId}`);
+              this.commandOutput.push(`     Port Side: ${sourcePort?.alignment.side || 'unknown'} ${sourcePort ? (sourcePort.alignment.side === 'top' ? '↑' : sourcePort.alignment.side === 'bottom' ? '↓' : sourcePort.alignment.side === 'left' ? '←' : '→') : ''}`);
+              this.commandOutput.push(`     Port Type: ${sourcePort?.type || 'unknown'}`);
+              if (sourcePortPos && sourcePort?.offset) {
+                this.commandOutput.push(`     Port Absolute Position: (${sourcePortPos.x.toFixed(1)}, ${sourcePortPos.y.toFixed(1)})`);
+                this.commandOutput.push(`     Port Offset from Node: (${sourcePort.offset.x}, ${sourcePort.offset.y})`);
+              }
+              this.commandOutput.push(``);
+
+              // Target info
+              this.commandOutput.push(`  📥 TARGET NODE: "${targetNode?.getMetadata('label') || 'Unknown'}"`);
+              this.commandOutput.push(`     Node ID: ${targetNode?.id || 'unknown'}`);
+              this.commandOutput.push(`     Node Position: (${targetNode?.position.x.toFixed(1)}, ${targetNode?.position.y.toFixed(1)})`);
+              this.commandOutput.push(`     Node Size: ${targetNode?.size.width} x ${targetNode?.size.height}px`);
+              if (targetBounds) {
+                this.commandOutput.push(`     Node Bounds: [${targetBounds.left.toFixed(1)}, ${targetBounds.top.toFixed(1)}, ${targetBounds.right.toFixed(1)}, ${targetBounds.bottom.toFixed(1)}]`);
+              }
+              this.commandOutput.push(``);
+              this.commandOutput.push(`  🔌 TARGET PORT:`);
+              this.commandOutput.push(`     Port ID: ${link.targetPortId}`);
+              this.commandOutput.push(`     Port Side: ${targetPort?.alignment.side || 'unknown'} ${targetPort ? (targetPort.alignment.side === 'top' ? '↑' : targetPort.alignment.side === 'bottom' ? '↓' : targetPort.alignment.side === 'left' ? '←' : '→') : ''}`);
+              this.commandOutput.push(`     Port Type: ${targetPort?.type || 'unknown'}`);
+              if (targetPortPos && targetPort?.offset) {
+                this.commandOutput.push(`     Port Absolute Position: (${targetPortPos.x.toFixed(1)}, ${targetPortPos.y.toFixed(1)})`);
+                this.commandOutput.push(`     Port Offset from Node: (${targetPort.offset.x}, ${targetPort.offset.y})`);
+              }
+              this.commandOutput.push(``);
+
+              // Spatial relationship
+              if (sourcePortPos && targetPortPos) {
+                const dx = targetPortPos.x - sourcePortPos.x;
+                const dy = targetPortPos.y - sourcePortPos.y;
+                const distance = Math.sqrt(dx * dx + dy * dy);
+                const angle = Math.atan2(dy, dx) * (180 / Math.PI);
+
+                this.commandOutput.push(`  📏 SPATIAL RELATIONSHIP:`);
+                this.commandOutput.push(`     Port-to-Port Distance: ${distance.toFixed(1)}px`);
+                this.commandOutput.push(`     Port-to-Port Delta: (Δx=${dx.toFixed(1)}, Δy=${dy.toFixed(1)})`);
+                this.commandOutput.push(`     Port-to-Port Angle: ${angle.toFixed(1)}° ${angle >= -45 && angle < 45 ? '→ Right' : angle >= 45 && angle < 135 ? '↓ Down' : angle >= 135 || angle < -135 ? '← Left' : '↑ Up'}`);
+                this.commandOutput.push(``);
+              }
+
+              // Path points
+              this.commandOutput.push(`  📍 PATH POINTS (${link.points.length} points):`);
+              link.points.forEach((p: any, i: number) => {
+                const label = i === 0 ? 'START' : i === link.points.length - 1 ? 'END  ' : `MID-${i}`;
+                const dx = i > 0 ? p.x - link.points[i-1].x : 0;
+                const dy = i > 0 ? p.y - link.points[i-1].y : 0;
+                const segmentLength = i > 0 ? Math.sqrt(dx*dx + dy*dy) : 0;
+                const segmentAngle = i > 0 ? Math.atan2(dy, dx) * (180 / Math.PI) : 0;
+
+                this.commandOutput.push(`     [${i}] ${label}: (${p.x.toFixed(1)}, ${p.y.toFixed(1)})`);
+                if (i > 0) {
+                  this.commandOutput.push(`         └─ From point ${i-1}: Δ(${dx.toFixed(1)}, ${dy.toFixed(1)}) | ${segmentLength.toFixed(1)}px | ${segmentAngle.toFixed(1)}°`);
+                }
+              });
+              this.commandOutput.push(``);
+
+              // Arrow calculations (simulate what SVGRenderer does)
+              const arrowLength = 10; // Standard arrow length
+              if (link.points.length >= 2) {
+                // Target arrow analysis
+                const lastPoint = link.points[link.points.length - 1];
+                const secondLastPoint = link.points[link.points.length - 2];
+                const targetDx = lastPoint.x - secondLastPoint.x;
+                const targetDy = lastPoint.y - secondLastPoint.y;
+                const pathAngle = Math.atan2(targetDy, targetDx) * (180 / Math.PI);
+
+                // Determine arrow angle based on path type
+                let targetArrowAngle = pathAngle;
+                let arrowLogic = 'Based on last path segment direction';
+
+                if ((link.pathType === 'bezier' || link.pathType === 'smooth') && link.points.length === 2 && targetPort) {
+                  const outwardAngle = this.getPerpendicularAngleFromSide(targetPort.alignment.side);
+                  targetArrowAngle = (outwardAngle + 180) % 360;
+                  arrowLogic = `Port-based (${targetPort.alignment.side} port → outward ${outwardAngle}° + 180° reversal = ${targetArrowAngle}°)`;
+                } else if (link.pathType === 'orthogonal' && targetPort) {
+                  const outwardAngle = this.getPerpendicularAngleFromSide(targetPort.alignment.side);
+                  targetArrowAngle = (outwardAngle + 180) % 360;
+                  arrowLogic = `Port-based orthogonal (${targetPort.alignment.side} port → outward ${outwardAngle}° + 180° reversal = ${targetArrowAngle}°)`;
+                }
+
+                const targetAngleRad = targetArrowAngle * (Math.PI / 180);
+                const targetArrowBase = {
+                  x: lastPoint.x + arrowLength * Math.cos(targetAngleRad + Math.PI),
+                  y: lastPoint.y + arrowLength * Math.sin(targetAngleRad + Math.PI)
+                };
+                const targetArrowTip = lastPoint;
+
+                // Calculate if arrow is inside or outside target node
+                let arrowVisibility = 'UNKNOWN';
+                if (targetBounds) {
+                  const tipInside = targetArrowTip.x >= targetBounds.left && targetArrowTip.x <= targetBounds.right &&
+                                   targetArrowTip.y >= targetBounds.top && targetArrowTip.y <= targetBounds.bottom;
+                  const baseInside = targetArrowBase.x >= targetBounds.left && targetArrowBase.x <= targetBounds.right &&
+                                    targetArrowBase.y >= targetBounds.top && targetArrowBase.y <= targetBounds.bottom;
+
+                  if (tipInside && baseInside) {
+                    arrowVisibility = '🔴 FULLY HIDDEN (both tip and base inside node)';
+                  } else if (tipInside) {
+                    arrowVisibility = '🟡 PARTIALLY HIDDEN (tip inside, base outside)';
+                  } else if (baseInside) {
+                    arrowVisibility = '🟡 PARTIALLY HIDDEN (base inside, tip outside)';
+                  } else {
+                    arrowVisibility = '🟢 FULLY VISIBLE (both tip and base outside node)';
+                  }
+                }
+
+                this.commandOutput.push(`  ➡️  TARGET ARROW ANALYSIS:`);
+                this.commandOutput.push(`     Logic: ${arrowLogic}`);
+                this.commandOutput.push(`     Path Segment Angle: ${pathAngle.toFixed(1)}°`);
+                this.commandOutput.push(`     Arrow Rotation Angle: ${targetArrowAngle.toFixed(1)}° ${targetArrowAngle >= -45 && targetArrowAngle < 45 ? '→' : targetArrowAngle >= 45 && targetArrowAngle < 135 ? '↓' : targetArrowAngle >= 135 && targetArrowAngle < 225 ? '←' : targetArrowAngle >= 225 && targetArrowAngle < 315 ? '↑' : '→'}`);
+                this.commandOutput.push(`     Arrow Length: ${arrowLength}px`);
+                this.commandOutput.push(`     Arrow Tip (Path End): (${targetArrowTip.x.toFixed(1)}, ${targetArrowTip.y.toFixed(1)})`);
+                this.commandOutput.push(`     Arrow Base: (${targetArrowBase.x.toFixed(1)}, ${targetArrowBase.y.toFixed(1)})`);
+                this.commandOutput.push(`     SVG Transform: translate(${targetArrowBase.x.toFixed(1)}, ${targetArrowBase.y.toFixed(1)}) rotate(${targetArrowAngle.toFixed(1)})`);
+                this.commandOutput.push(`     SVG Polygon: '0,-5 10,0 0,5' (tip at x=10 relative to base)`);
+                this.commandOutput.push(`     Visibility: ${arrowVisibility}`);
+                this.commandOutput.push(``);
+              }
+
+              this.commandOutput.push(``);
+            });
+
+            // Summary statistics
+            this.commandOutput.push(`╔═══════════════════════════════════════════════════════════════════╗`);
+            this.commandOutput.push(`║  📊 SUMMARY STATISTICS                                            ║`);
+            this.commandOutput.push(`╚═══════════════════════════════════════════════════════════════════╝`);
+            this.commandOutput.push(``);
+
+            const pathTypeCounts: any = {};
+            links.forEach((l: any) => {
+              pathTypeCounts[l.pathType] = (pathTypeCounts[l.pathType] || 0) + 1;
+            });
+
+            this.commandOutput.push(`  🔗 Links by Path Type:`);
+            Object.entries(pathTypeCounts).forEach(([type, count]) => {
+              this.commandOutput.push(`     • ${type}: ${count}`);
+            });
+            this.commandOutput.push(``);
+
+            const totalPorts = nodes.reduce((sum: number, n: any) => sum + n.getPorts().length, 0);
+            const usedSourcePorts = new Set(links.map((l: any) => l.sourcePortId)).size;
+            const usedTargetPorts = new Set(links.map((l: any) => l.targetPortId)).size;
+            this.commandOutput.push(`  🔌 Port Usage:`);
+            this.commandOutput.push(`     • Total Ports: ${totalPorts}`);
+            this.commandOutput.push(`     • Used as Source: ${usedSourcePorts}`);
+            this.commandOutput.push(`     • Used as Target: ${usedTargetPorts}`);
+            this.commandOutput.push(`     • Unused: ${totalPorts - usedSourcePorts - usedTargetPorts}`);
+            this.commandOutput.push(``);
+
+            // Full objects to console for deep inspection
+            console.log('🔗 Full Connection Analysis:', {
+              nodes: nodes.map((n: any) => ({
+                id: n.id,
+                label: n.getMetadata('label'),
+                position: n.position,
+                size: n.size,
+                bbox: n.getBoundingBox(),
+                ports: n.getPorts().map((p: any) => ({
+                  id: p.id,
+                  side: p.alignment.side,
+                  type: p.type,
+                  absolutePos: p.getAbsolutePosition(n.getBoundingBox())
+                }))
+              })),
+              links: links.map((l: any) => ({
+                id: l.id,
+                label: l.getMetadata('label'),
+                pathType: l.pathType,
+                points: l.points,
+                sourcePortId: l.sourcePortId,
+                targetPortId: l.targetPortId
+              })),
+              viewport
+            });
+          }
+          break;
+
         // Set link path type for all links
         case 'linktype':
           const diag7 = this.engine.getDiagram();
@@ -821,11 +1472,17 @@ export class AppComponent implements OnInit {
               const type = parts[1] as any;
               if (['direct', 'smooth', 'orthogonal', 'bezier'].includes(type)) {
                 const links = diag7.getLinks();
+                const oldTypes = links.map((l: any) => ({ id: l.id, type: l.pathType }));
                 links.forEach((link: any) => {
                   link.pathType = type;
                   // Mark dirty - SVGRenderer will automatically use RoutingEngine to calculate path
                   link.markDirty();
                 });
+                this.logHistory('link-pathtype-change', 'link', 'Changed all link path types', {
+                  newType: type,
+                  linkCount: links.length,
+                  algorithm: this.mapPathTypeToAlgorithm(type)
+                }, oldTypes, type);
                 this.commandOutput.push(`✅ Set all links to: ${type}`);
                 this.commandOutput.push(`   Using RoutingEngine for dynamic path calculation`);
                 console.log(`🔗 Changed ${links.length} links to ${type} path type (RoutingEngine enabled)`);

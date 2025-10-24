@@ -1528,50 +1528,6 @@ export class SVGRenderer implements IRenderer {
   }
 
   /**
-   * Get target port position for arrow positioning
-   * Returns the port's absolute position, which is typically at the node boundary
-   *
-   * @param link Link model
-   * @returns Port position or null if not found
-   */
-  private getTargetPortPosition(link: LinkModel): { x: number; y: number } | null {
-    const diagram = this.engine.getDiagram();
-    if (!diagram || !link.targetPortId) return null;
-
-    const targetNode = diagram.getNode(link.targetNodeId!);
-    if (!targetNode) return null;
-
-    const targetPort = targetNode.getPort(link.targetPortId);
-    if (!targetPort) return null;
-
-    // Get port's absolute position using the same method as getLinkEndpoints
-    const targetBounds = targetNode.getBoundingBox();
-    return targetPort.getAbsolutePosition(targetBounds);
-  }
-
-  /**
-   * Get source port position for arrow positioning
-   * Returns the port's absolute position, which is typically at the node boundary
-   *
-   * @param link Link model
-   * @returns Port position or null if not found
-   */
-  private getSourcePortPosition(link: LinkModel): { x: number; y: number } | null {
-    const diagram = this.engine.getDiagram();
-    if (!diagram || !link.sourcePortId) return null;
-
-    const sourceNode = diagram.getNode(link.sourceNodeId!);
-    if (!sourceNode) return null;
-
-    const sourcePort = sourceNode.getPort(link.sourcePortId);
-    if (!sourcePort) return null;
-
-    // Get port's absolute position using the same method as getLinkEndpoints
-    const sourceBounds = sourceNode.getBoundingBox();
-    return sourcePort.getAbsolutePosition(sourceBounds);
-  }
-
-  /**
    * Get perpendicular angle from port side
    * Used for orthogonal routing to ensure arrows are perpendicular to node edges
    *
@@ -1611,7 +1567,16 @@ export class SVGRenderer implements IRenderer {
     // For 2-point bezier, the control point cp2 determines the tangent at the endpoint
     if (pathType === 'bezier' || pathType === 'smooth') {
       if (points.length === 2) {
-        // Calculate control point cp2 (same logic as convertRoutedPathToSVG at line 819-828)
+        // For 2-point bezier/smooth, use port side to determine arrow direction
+        // This ensures the arrow points in the correct direction based on the port's orientation
+        if (portSide) {
+          // getPerpendicularAngleFromPortSide returns angle pointing OUT from port
+          // But arrows need to point INTO the port, so reverse by adding 180°
+          const outwardAngle = this.getPerpendicularAngleFromPortSide(portSide);
+          return (outwardAngle + 180) % 360;
+        }
+
+        // Fallback: Calculate control point cp2 (same logic as convertRoutedPathToSVG at line 819-828)
         const dx = points[1].x - points[0].x;
         const dy = points[1].y - points[0].y;
         const distance = Math.sqrt(dx * dx + dy * dy);
@@ -1622,9 +1587,9 @@ export class SVGRenderer implements IRenderer {
         const cp2y = points[1].y;
 
         // Calculate tangent from cp2 to endpoint
-        const tangentDx = points[1].x - cp2x;  // Always positive (pointing right)
-        const tangentDy = points[1].y - cp2y;  // Always zero (horizontal)
-        return Math.atan2(tangentDy, tangentDx) * (180 / Math.PI);  // Always 0° (horizontal right)
+        const tangentDx = points[1].x - cp2x;
+        const tangentDy = points[1].y - cp2y;
+        return Math.atan2(tangentDy, tangentDx) * (180 / Math.PI);
       } else if (points.length > 2) {
         // Multiple points: use last segment
         const lastPoint = points[points.length - 1];
@@ -1637,7 +1602,10 @@ export class SVGRenderer implements IRenderer {
 
     // Orthogonal routing MUST use port side for perpendicular arrows
     if (algorithm === 'orthogonal' && portSide) {
-      return this.getPerpendicularAngleFromPortSide(portSide);
+      // getPerpendicularAngleFromPortSide returns angle pointing OUT from port
+      // But arrows need to point INTO the port, so reverse by adding 180°
+      const outwardAngle = this.getPerpendicularAngleFromPortSide(portSide);
+      return (outwardAngle + 180) % 360;
     }
 
     // For all other algorithms (straight, a-star, dijkstra, visibility-graph, custom):
@@ -1673,7 +1641,6 @@ export class SVGRenderer implements IRenderer {
     // Get the relevant port and its side
     const diagram = this.engine.getDiagram();
     let portSide: 'left' | 'right' | 'top' | 'bottom' | undefined;
-    let portPosition: { x: number; y: number } | null = null;
 
     if (diagram) {
       if (isTarget && link.targetPortId) {
@@ -1682,7 +1649,6 @@ export class SVGRenderer implements IRenderer {
           const targetPort = targetNode.getPort(link.targetPortId);
           if (targetPort) {
             portSide = targetPort.alignment.side;
-            portPosition = this.getTargetPortPosition(link);
           }
         }
       } else if (!isTarget && link.sourcePortId) {
@@ -1691,7 +1657,6 @@ export class SVGRenderer implements IRenderer {
           const sourcePort = sourceNode.getPort(link.sourcePortId);
           if (sourcePort) {
             portSide = sourcePort.alignment.side;
-            portPosition = this.getSourcePortPosition(link);
           }
         }
       }
