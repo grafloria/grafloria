@@ -10,7 +10,8 @@ import {
   type InteractionConfig,
   InteractionMode,
   PortVisibilityStrategy,
-  ConnectionLineStyle
+  ConnectionLineStyle,
+  DiagramMode
 } from '@grafloria/engine';
 import { LIGHT_THEME, DARK_THEME, type Theme, type Rectangle } from '@grafloria/renderer';
 
@@ -50,6 +51,16 @@ export class BasicDemoComponent implements OnInit {
 
   // Routing algorithm configuration (for obstacle avoidance)
   currentRoutingAlgorithm: 'none' | 'straight' | 'orthogonal' | 'a-star' | 'dijkstra' | 'visibility-graph' = 'none';
+
+  // Diagram Mode configuration (Phase 1 - Critical Feature!)
+  currentMode: DiagramMode = DiagramMode.DESIGNER;
+  availableModes = [
+    { value: DiagramMode.DESIGNER, label: 'Designer', icon: '✏️', description: 'Full editing mode' },
+    { value: DiagramMode.RUNNING, label: 'Running', icon: '▶️', description: 'Execute workflow' },
+    { value: DiagramMode.VIEW, label: 'View', icon: '👁️', description: 'Read-only view' },
+    { value: DiagramMode.DEBUG, label: 'Debug', icon: '🐛', description: 'Debug with breakpoints' },
+    { value: DiagramMode.PRESENTATION, label: 'Present', icon: '📽️', description: 'Clean presentation' }
+  ];
 
   // Selection state (Option 1: Node Interaction)
   selectedNodeCount = 0;
@@ -747,6 +758,38 @@ export class BasicDemoComponent implements OnInit {
       'visibility-graph - Optimal for sparse obstacles'
     ];
     console.log('   Available algorithms:', availableAlgorithms);
+  }
+
+  /**
+   * Change diagram mode (DESIGNER, RUNNING, VIEW, DEBUG, PRESENTATION)
+   * Phase 1 - Critical Feature!
+   */
+  changeMode(mode: DiagramMode): void {
+    const before = this.currentMode;
+    this.currentMode = mode;
+
+    // Apply mode to engine
+    this.engine.setMode(mode);
+
+    // Log mode change with description
+    const modeInfo = this.availableModes.find(m => m.value === mode);
+    console.log(`🎭 Mode changed: ${modeInfo?.label} (${modeInfo?.description})`);
+    console.log(`   From: ${before} → To: ${mode}`);
+
+    // Show mode-specific capabilities
+    const capabilities = {
+      [DiagramMode.DESIGNER]: 'Full editing, node/link creation, layout changes',
+      [DiagramMode.RUNNING]: 'Workflow execution, read-only diagram, execution tracking',
+      [DiagramMode.VIEW]: 'Read-only view, zoom/pan only, no editing',
+      [DiagramMode.DEBUG]: 'Breakpoints, step-through, variable inspection',
+      [DiagramMode.PRESENTATION]: 'Clean view, no controls, optimized for presenting'
+    };
+    console.log(`   Capabilities: ${capabilities[mode]}`);
+
+    this.logHistory('mode-change', 'config', 'Changed diagram mode', {
+      mode: modeInfo?.label,
+      description: modeInfo?.description
+    }, before, mode);
   }
 
   /**

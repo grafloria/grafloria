@@ -66,6 +66,23 @@
       </div>
 
       <div class="panel-content">
+        <!-- Diagram Mode Switcher (Phase 1 - Critical Feature!) -->
+        <div class="panel-section mode-section">
+          <h4>🎭 Diagram Mode</h4>
+          <div class="mode-buttons">
+            <button
+              *ngFor="let mode of availableModes"
+              (click)="changeMode(mode.value)"
+              [class.active]="currentMode === mode.value"
+              [title]="mode.description"
+              class="mode-btn">
+              <span class="mode-icon">{{ mode.icon }}</span>
+              <span class="mode-label">{{ mode.label }}</span>
+            </button>
+          </div>
+          <p class="help-text">{{ availableModes.find(m => m.value === currentMode)?.description }}</p>
+        </div>
+
         <!-- Interaction Config Panel -->
         <div class="panel-section">
           <grafloria-interaction-config-panel
