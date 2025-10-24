@@ -1,0 +1,76 @@
+<div class="tutorial-container">
+  <header class="tutorial-header">
+    <h1>🧩 Custom Node Types - Tutorial</h1>
+    <p class="subtitle">Step-by-step guide to creating custom diagram components</p>
+  </header>
+
+  <div class="tutorial-content">
+    <section class="intro-section">
+      <h2>Overview</h2>
+      <p>
+        This tutorial teaches you how to create custom node types for the Grafloria diagram library.
+        You'll learn everything from basic component structure to advanced rendering techniques.
+      </p>
+      <div class="difficulty-badges">
+        <span class="badge beginner">Beginner Friendly</span>
+        <span class="badge intermediate">Intermediate Concepts</span>
+        <span class="badge advanced">Advanced Techniques</span>
+      </div>
+    </section>
+
+    <div class="sections-grid">
+      <div *ngFor="let section of sections; let i = index" class="tutorial-section">
+        <div class="section-header">
+          <span class="section-number">{{ i + 1 }}</span>
+          <h3>{{ section.title }}</h3>
+        </div>
+        <p class="section-description">{{ section.description }}</p>
+
+        <div class="steps-list">
+          <h4>What you'll learn:</h4>
+          <ul>
+            <li *ngFor="let step of section.steps">{{ step }}</li>
+          </ul>
+        </div>
+
+        <div class="code-example" *ngIf="section.codeExample">
+          <h4>Example Code:</h4>
+          <pre><code>{{ section.codeExample }}</code></pre>
+        </div>
+      </div>
+    </div>
+
+    <section class="resources-section">
+      <h2>📚 Additional Resources</h2>
+      <div class="resources-grid">
+        <div class="resource-card">
+          <h3>API Documentation</h3>
+          <p>Complete reference for all component APIs and interfaces</p>
+          <a href="#" class="resource-link">View Docs →</a>
+        </div>
+        <div class="resource-card">
+          <h3>Example Gallery</h3>
+          <p>Browse pre-built custom node examples and templates</p>
+          <a href="#" class="resource-link">Browse Examples →</a>
+        </div>
+        <div class="resource-card">
+          <h3>Community Forum</h3>
+          <p>Get help and share your custom node creations</p>
+          <a href="#" class="resource-link">Join Forum →</a>
+        </div>
+      </div>
+    </section>
+
+    <section class="next-steps">
+      <h2>🚀 Ready to Start?</h2>
+      <p>
+        Follow the tutorial parts in order, starting with Part 1.
+        Each part builds on the previous one, so we recommend completing them sequentially.
+      </p>
+      <div class="cta-buttons">
+        <button class="btn btn-primary">Start Part 1 →</button>
+        <button class="btn btn-secondary">Download Full Tutorial</button>
+      </div>
+    </section>
+  </div>
+</div>

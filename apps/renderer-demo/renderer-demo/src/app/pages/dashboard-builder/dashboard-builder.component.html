@@ -1,0 +1,40 @@
+<div class="dashboard-container">
+  <header class="dashboard-header">
+    <h1>Dashboard Builder</h1>
+    <div class="header-controls">
+      <div class="zoom-controls">
+        <button (click)="zoomOut()" class="btn-icon">-</button>
+        <span class="zoom-display">{{ (zoom * 100).toFixed(0) }}%</span>
+        <button (click)="zoomIn()" class="btn-icon">+</button>
+        <button (click)="fitToView()" class="btn">Fit</button>
+      </div>
+    </div>
+  </header>
+
+  <div class="info-banner">
+    <p>
+      📊 This example demonstrates a dashboard builder with draggable widgets.
+      In a complete implementation, you would add custom widget components with real-time data binding.
+    </p>
+  </div>
+
+  <div class="canvas-wrapper">
+    <grafloria-diagram-canvas
+      *ngIf="engine"
+      [engine]="engine"
+      [viewport]="viewport"
+      [zoom]="zoom"
+      [theme]="theme"
+      (viewportChanged)="onViewportChanged($event)"
+      (zoomChanged)="onZoomChanged($event)"
+      class="diagram-canvas">
+    </grafloria-diagram-canvas>
+  </div>
+
+  <footer class="dashboard-footer">
+    <div class="stats">
+      <span>Widgets: {{ (engine?.getDiagram()?.getNodes()?.length) || 0 }}</span>
+      <span>Zoom: {{ (zoom * 100).toFixed(0) }}%</span>
+    </div>
+  </footer>
+</div>

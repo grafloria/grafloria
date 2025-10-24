@@ -1,0 +1,90 @@
+<div class="workflow-container">
+  <header class="workflow-header">
+    <h1>Workflow Builder</h1>
+    <div class="header-controls">
+      <div class="execution-controls">
+        <button
+          (click)="startExecution()"
+          class="btn btn-success"
+          [disabled]="executionStatus === 'running'">
+          ▶️ Start
+        </button>
+        <button
+          (click)="pauseExecution()"
+          class="btn btn-warning"
+          [disabled]="executionStatus !== 'running'">
+          ⏸️ Pause
+        </button>
+        <button
+          (click)="resumeExecution()"
+          class="btn btn-info"
+          [disabled]="executionStatus !== 'paused'">
+          ▶️ Resume
+        </button>
+        <button
+          (click)="stopExecution()"
+          class="btn btn-danger"
+          [disabled]="executionStatus === 'idle'">
+          ⏹️ Stop
+        </button>
+        <button
+          (click)="stepForward()"
+          class="btn"
+          [disabled]="executionStatus === 'running' || executionStatus === 'completed'">
+          ⏭️ Step
+        </button>
+      </div>
+      <div class="zoom-controls">
+        <button (click)="zoomOut()" class="btn-icon">-</button>
+        <span class="zoom-display">{{ (zoom * 100).toFixed(0) }}%</span>
+        <button (click)="zoomIn()" class="btn-icon">+</button>
+        <button (click)="fitToView()" class="btn">Fit</button>
+      </div>
+    </div>
+  </header>
+
+  <!-- Status Bar -->
+  <div class="status-bar">
+    <div class="status-info">
+      <span class="status-label">Status:</span>
+      <span class="status-value" [ngClass]="'status-' + executionStatus">
+        {{ getStatusIcon(executionStatus) }} {{ executionStatus | titlecase }}
+      </span>
+    </div>
+    <div class="progress-info">
+      <span class="progress-label">Progress:</span>
+      <span class="progress-value">{{ currentExecutionIndex }} / {{ executionOrder.length }}</span>
+      <div class="progress-bar">
+        <div
+          class="progress-fill"
+          [style.width.%]="(currentExecutionIndex / executionOrder.length) * 100">
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Canvas -->
+  <div class="canvas-wrapper">
+    <grafloria-diagram-canvas
+      *ngIf="engine"
+      [engine]="engine"
+      [viewport]="viewport"
+      [zoom]="zoom"
+      [theme]="theme"
+      (viewportChanged)="onViewportChanged($event)"
+      (zoomChanged)="onZoomChanged($event)"
+      class="diagram-canvas">
+    </grafloria-diagram-canvas>
+  </div>
+
+  <footer class="workflow-footer">
+    <div class="stats">
+      <span>Nodes: {{ workflowNodes.size }}</span>
+      <span>Connections: {{ (engine?.getDiagram()?.getLinks()?.length) || 0 }}</span>
+      <span>Current Step: {{ currentExecutionIndex + 1 }} / {{ executionOrder.length }}</span>
+    </div>
+    <div class="info">
+      <span class="hint">⏯️ Use execution controls to simulate workflow · 🔍 Zoom to inspect nodes</span>
+    </div>
+  </footer>
+</div>

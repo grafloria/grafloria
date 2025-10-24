@@ -1,0 +1,64 @@
+<div class="erd-container">
+  <header class="erd-header">
+    <h1>ERD Designer</h1>
+    <div class="header-controls">
+      <button (click)="showAddTablePanel = !showAddTablePanel" class="btn btn-primary">
+        + Add Table
+      </button>
+      <button (click)="exportSQL()" class="btn">
+        📥 Export SQL
+      </button>
+      <div class="zoom-controls">
+        <button (click)="zoomOut()" class="btn-icon">-</button>
+        <span class="zoom-display">{{ (zoom * 100).toFixed(0) }}%</span>
+        <button (click)="zoomIn()" class="btn-icon">+</button>
+        <button (click)="fitToView()" class="btn">Fit</button>
+      </div>
+    </div>
+  </header>
+
+  <!-- Add Table Panel -->
+  <div class="add-table-panel" *ngIf="showAddTablePanel">
+    <h3>Create New Table</h3>
+    <input
+      type="text"
+      [(ngModel)]="newTableName"
+      placeholder="Table name..."
+      (keyup.enter)="addTable()"
+      class="table-name-input"
+    />
+    <div class="panel-actions">
+      <button (click)="addTable()" class="btn btn-primary" [disabled]="!newTableName.trim()">
+        Create
+      </button>
+      <button (click)="showAddTablePanel = false" class="btn">
+        Cancel
+      </button>
+    </div>
+  </div>
+
+  <!-- Canvas -->
+  <div class="canvas-wrapper">
+    <grafloria-diagram-canvas
+      *ngIf="engine"
+      [engine]="engine"
+      [viewport]="viewport"
+      [zoom]="zoom"
+      [theme]="theme"
+      (viewportChanged)="onViewportChanged($event)"
+      (zoomChanged)="onZoomChanged($event)"
+      class="diagram-canvas">
+    </grafloria-diagram-canvas>
+  </div>
+
+  <footer class="erd-footer">
+    <div class="stats">
+      <span>Tables: {{ tables.size }}</span>
+      <span>Relationships: {{ (engine?.getDiagram()?.getLinks()?.length) || 0 }}</span>
+      <span>Zoom: {{ (zoom * 100).toFixed(0) }}%</span>
+    </div>
+    <div class="info">
+      <span class="hint">🖱️ Drag to pan · 🔍 Scroll to zoom · 🔗 Drag ports to create relationships</span>
+    </div>
+  </footer>
+</div>

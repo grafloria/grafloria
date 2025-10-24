@@ -1,0 +1,40 @@
+<div class="form-builder-container">
+  <header class="form-header">
+    <h1>Form Builder</h1>
+    <div class="header-controls">
+      <div class="zoom-controls">
+        <button (click)="zoomOut()" class="btn-icon">-</button>
+        <span class="zoom-display">{{ (zoom * 100).toFixed(0) }}%</span>
+        <button (click)="zoomIn()" class="btn-icon">+</button>
+        <button (click)="fitToView()" class="btn">Fit</button>
+      </div>
+    </div>
+  </header>
+
+  <div class="info-banner">
+    <p>
+      📝 This example demonstrates a visual form builder.
+      In a complete implementation, you would add drag-and-drop form controls, property panels, and Angular template export.
+    </p>
+  </div>
+
+  <div class="canvas-wrapper">
+    <grafloria-diagram-canvas
+      *ngIf="engine"
+      [engine]="engine"
+      [viewport]="viewport"
+      [zoom]="zoom"
+      [theme]="theme"
+      (viewportChanged)="onViewportChanged($event)"
+      (zoomChanged)="onZoomChanged($event)"
+      class="diagram-canvas">
+    </grafloria-diagram-canvas>
+  </div>
+
+  <footer class="form-footer">
+    <div class="stats">
+      <span>Form Fields: {{ (engine?.getDiagram()?.getNodes()?.length) || 0 }}</span>
+      <span>Zoom: {{ (zoom * 100).toFixed(0) }}%</span>
+    </div>
+  </footer>
+</div>

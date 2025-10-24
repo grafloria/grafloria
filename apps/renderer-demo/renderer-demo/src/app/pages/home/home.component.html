@@ -1,0 +1,44 @@
+<div class="home-container">
+  <header class="home-header">
+    <h1>@grafloria Renderer Examples</h1>
+    <p class="subtitle">Interactive demonstrations of the Grafloria diagram rendering library</p>
+  </header>
+
+  <div class="examples-grid">
+    <div *ngFor="let example of examples" class="example-card">
+      <div class="card-header">
+        <span class="icon">{{ example.icon }}</span>
+        <h2>{{ example.title }}</h2>
+        <span class="difficulty" [ngClass]="getDifficultyClass(example.difficulty)">
+          {{ example.difficulty }}
+        </span>
+      </div>
+
+      <p class="description">{{ example.description }}</p>
+
+      <div class="features">
+        <h3>Features:</h3>
+        <ul>
+          <li *ngFor="let feature of example.features">{{ feature }}</li>
+        </ul>
+      </div>
+
+      <a [routerLink]="example.route" class="btn-launch">
+        Launch Example →
+      </a>
+    </div>
+  </div>
+
+  <footer class="home-footer">
+    <div class="footer-content">
+      <p>Powered by <strong>@grafloria/renderer</strong> + <strong>@grafloria/engine</strong></p>
+      <p class="footer-links">
+        <a href="https://github.com/grafloria/grafloria" target="_blank">GitHub</a>
+        <span>·</span>
+        <a href="#" target="_blank">Documentation</a>
+        <span>·</span>
+        <a href="#" target="_blank">API Reference</a>
+      </p>
+    </div>
+  </footer>
+</div>
