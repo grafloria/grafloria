@@ -4,6 +4,7 @@ import { FormsModule } from '@angular/forms';
 import { DiagramCanvasComponent } from '@grafloria/renderer-angular';
 import { DiagramEngine, NodeModel } from '@grafloria/engine';
 import { LIGHT_THEME, type Theme, type Rectangle } from '@grafloria/renderer';
+import { TableNodeComponent } from './table-node.component';
 
 interface Column {
   name: string;
@@ -18,8 +19,6 @@ interface Table {
   name: string;
   columns: Column[];
 }
-
-import { TableNodeComponent } from './table-node.component';
 
 @Component({
   standalone: true,
