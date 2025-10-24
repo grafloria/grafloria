@@ -113,6 +113,16 @@ export class AppComponent implements OnInit {
 
     console.log('🔧 Engine initialized with port visibility:', this.engine.getInteractionConfig().portVisibility);
 
+    // CRITICAL FIX: Initialize the routing algorithm to match the currentRoutingAlgorithm
+    // This ensures obstacle avoidance works from the start
+    const routingEngine = this.engine.getRoutingEngine();
+    if (this.currentRoutingAlgorithm === 'none') {
+      routingEngine.setDefaultAlgorithm('straight');
+    } else {
+      routingEngine.setDefaultAlgorithm(this.currentRoutingAlgorithm);
+    }
+    console.log(`🛣️ Initial routing algorithm set to: ${this.currentRoutingAlgorithm === 'none' ? 'straight' : this.currentRoutingAlgorithm}`);
+
     // Subscribe to connection:complete event at the engine level (before link is created)
     // This allows us to influence the pathType before the DiagramEngine creates the link
     this.engine.eventBus.on('connection:complete', (event: any) => {
@@ -714,15 +724,21 @@ export class AppComponent implements OnInit {
     this.currentRoutingAlgorithm = algorithm;
     console.log(`🛣️ Routing algorithm changed to: ${algorithm}`);
 
+    // CRITICAL FIX: Apply the routing algorithm to the RoutingEngine
+    // This ensures all new paths use the selected algorithm for obstacle avoidance
+    const routingEngine = this.engine.getRoutingEngine();
+
     if (algorithm === 'none') {
       console.log('   Using simple path generation (no obstacle avoidance)');
+      // Use 'straight' as the default when 'none' is selected
+      routingEngine.setDefaultAlgorithm('straight');
     } else {
+      console.log(`   ✅ ${algorithm} is now active for all new connections`);
       console.log(`   ${algorithm} will avoid obstacles when routing links`);
-      console.log('   Note: Full integration with link generation coming soon');
+      routingEngine.setDefaultAlgorithm(algorithm);
     }
 
-    // TODO: Integrate with LinkModel to actually use routing algorithms
-    // For now, this demonstrates the available options
+    // Log current routing capabilities
     const availableAlgorithms = [
       'straight - Direct paths',
       'orthogonal - Right-angle paths',

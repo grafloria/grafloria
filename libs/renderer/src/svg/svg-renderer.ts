@@ -302,14 +302,41 @@ export class SVGRenderer implements IRenderer {
 
     // Use RoutingEngine to calculate preview path (same as link rendering)
     const routingEngine = this.engine.getRoutingEngine();
+
+    // ARCHITECTURE: Use pathType to determine routing algorithm for preview
     const algorithm = this.mapPathTypeToAlgorithm(pathType);
+
+    // OBSTACLE AVOIDANCE: Get obstacles from the diagram for preview routing
+    const obstacles: Array<{ id: string; x: number; y: number; width: number; height: number }> = [];
+
+    // diagram is already defined at line 264
+    // Find source node ID to exclude from obstacles
+    let sourceNodeId = sourceNode?.id;
+
+    diagram.getNodes().forEach(node => {
+      // Don't add source node as obstacle (allow connection to start from it)
+      if (node.id !== sourceNodeId) {
+        obstacles.push({
+          id: node.id,
+          x: node.position.x,
+          y: node.position.y,
+          width: node.size.width,
+          height: node.size.height,
+        });
+      }
+    });
 
     const routedPath = routingEngine.route({
       start: sourcePos,
       end: targetPos,
       sourceDirection,
       targetDirection,
-      options: { algorithm }
+      obstacles, // Pass obstacles for avoidance
+      options: {
+        algorithm,
+        avoidObstacles: true, // Enable obstacle avoidance
+        obstacleMargin: 10,   // Add 10px margin around obstacles
+      }
     });
 
     // Generate SVG path data
@@ -873,14 +900,48 @@ export class SVGRenderer implements IRenderer {
     if (endpoints) {
       // Use RoutingEngine to calculate path
       const routingEngine = this.engine.getRoutingEngine();
+
+      // ARCHITECTURE: pathType determines the base routing algorithm
+      // - 'orthogonal' → orthogonal router (produces perpendicular paths)
+      // - 'direct'/'smooth'/'bezier' → straight router (produces straight paths)
+      // The routing algorithms (a-star, dijkstra, etc.) are for advanced obstacle avoidance
+      // but they don't produce orthogonal paths, so we use pathType as the primary determinant
       const algorithm = this.mapPathTypeToAlgorithm(link.pathType);
+
+      // OBSTACLE AVOIDANCE: Get obstacles from the diagram for routing
+      // Exclude source and target nodes so the link can start/end at ports
+      const diagram = this.engine.getDiagram();
+      const obstacles: Array<{ id: string; x: number; y: number; width: number; height: number }> = [];
+
+      if (diagram) {
+        const sourceNode = diagram.getNodes().find(n => n.getPorts().some(p => p.id === link.sourcePortId));
+        const targetNode = diagram.getNodes().find(n => n.getPorts().some(p => p.id === link.targetPortId));
+
+        diagram.getNodes().forEach(node => {
+          // Don't add source or target nodes as obstacles
+          if (node.id !== sourceNode?.id && node.id !== targetNode?.id) {
+            obstacles.push({
+              id: node.id,
+              x: node.position.x,
+              y: node.position.y,
+              width: node.size.width,
+              height: node.size.height,
+            });
+          }
+        });
+      }
 
       const routedPath = routingEngine.route({
         start: endpoints.start,
         end: endpoints.end,
         sourceDirection: endpoints.sourceDirection,
         targetDirection: endpoints.targetDirection,
-        options: { algorithm }
+        obstacles, // Pass obstacles for avoidance
+        options: {
+          algorithm,
+          avoidObstacles: true, // Enable obstacle avoidance
+          obstacleMargin: 10,   // Add 10px margin around obstacles
+        }
       });
 
       if (routedPath) {
@@ -1600,16 +1661,10 @@ export class SVGRenderer implements IRenderer {
       }
     }
 
-    // Orthogonal routing MUST use port side for perpendicular arrows
-    if (algorithm === 'orthogonal' && portSide) {
-      // getPerpendicularAngleFromPortSide returns angle pointing OUT from port
-      // But arrows need to point INTO the port, so reverse by adding 180°
-      const outwardAngle = this.getPerpendicularAngleFromPortSide(portSide);
-      return (outwardAngle + 180) % 360;
-    }
-
-    // For all other algorithms (straight, a-star, dijkstra, visibility-graph, custom):
-    // Use last segment direction
+    // For orthogonal and all other algorithms (straight, a-star, dijkstra, visibility-graph, custom):
+    // Use last segment direction for accurate arrow pointing
+    // CRITICAL FIX: Orthogonal arrows must follow the actual path direction, not the port side
+    // This ensures arrows point in the direction the path is traveling when it reaches the port
     if (points.length >= 2) {
       const lastPoint = points[points.length - 1];
       const secondLastPoint = points[points.length - 2];
