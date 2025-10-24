@@ -19,9 +19,11 @@ interface Table {
   columns: Column[];
 }
 
+import { TableNodeComponent } from './table-node.component';
+
 @Component({
   standalone: true,
-  imports: [CommonModule, FormsModule, DiagramCanvasComponent],
+  imports: [CommonModule, FormsModule, DiagramCanvasComponent, TableNodeComponent],
   selector: 'app-erd-designer',
   templateUrl: './erd-designer.component.html',
   styleUrl: './erd-designer.component.css',
@@ -33,6 +35,7 @@ export class ErdDesignerComponent implements OnInit {
   theme: Theme = LIGHT_THEME;
 
   tables: Map<string, Table> = new Map();
+  tablePositions: Map<string, {x: number, y: number}> = new Map();
 
   // UI State
   showAddTablePanel = false;
@@ -109,6 +112,9 @@ export class ErdDesignerComponent implements OnInit {
     const diagram = this.engine.getDiagram();
     if (!diagram) return;
 
+    // Store position for rendering overlay
+    this.tablePositions.set(table.id, position);
+
     const rowHeight = 30;
     const headerHeight = 40;
     const height = headerHeight + (table.columns.length * rowHeight);
@@ -124,6 +130,10 @@ export class ErdDesignerComponent implements OnInit {
     node.setMetadata('columns', table.columns);
 
     diagram.addNode(node);
+  }
+
+  getTablePosition(tableId: string): {x: number, y: number} {
+    return this.tablePositions.get(tableId) || {x: 0, y: 0};
   }
 
   addTable(): void {

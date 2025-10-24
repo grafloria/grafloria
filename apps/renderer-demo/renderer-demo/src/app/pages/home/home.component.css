@@ -2,16 +2,18 @@
   min-height: 100vh;
   background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
   padding: 2rem;
+  overflow-y: auto;
+  max-height: 100vh;
 }
 
 .home-header {
   text-align: center;
   color: white;
-  margin-bottom: 3rem;
+  margin-bottom: 2rem;
 }
 
 .home-header h1 {
-  font-size: 3rem;
+  font-size: 2.5rem;
   margin-bottom: 0.5rem;
   font-weight: 700;
 }
@@ -23,8 +25,8 @@
 
 .examples-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(350px, 1fr));
-  gap: 2rem;
+  grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+  gap: 1.5rem;
   max-width: 1400px;
   margin: 0 auto;
   padding: 0 1rem;
@@ -33,11 +35,12 @@
 .example-card {
   background: white;
   border-radius: 12px;
-  padding: 2rem;
+  padding: 1.5rem;
   box-shadow: 0 10px 30px rgba(0, 0, 0, 0.2);
   display: flex;
   flex-direction: column;
   transition: transform 0.3s ease, box-shadow 0.3s ease;
+  max-height: 400px;
 }
 
 .example-card:hover {

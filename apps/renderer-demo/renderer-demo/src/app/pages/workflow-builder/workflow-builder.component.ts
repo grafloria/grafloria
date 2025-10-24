@@ -4,21 +4,21 @@ import { FormsModule } from '@angular/forms';
 import { DiagramCanvasComponent } from '@grafloria/renderer-angular';
 import { DiagramEngine, NodeModel } from '@grafloria/engine';
 import { LIGHT_THEME, type Theme, type Rectangle } from '@grafloria/renderer';
+import { WorkflowNodeComponent, type WorkflowNodeType, type NodeStatus } from './workflow-node.component';
 
-type WorkflowNodeType = 'start' | 'task' | 'decision' | 'end';
 type ExecutionStatus = 'idle' | 'running' | 'paused' | 'completed';
-type NodeStatus = 'pending' | 'running' | 'completed' | 'error';
 
 interface WorkflowNode {
   id: string;
   type: WorkflowNodeType;
   label: string;
   status: NodeStatus;
+  position: {x: number, y: number};
 }
 
 @Component({
   standalone: true,
-  imports: [CommonModule, FormsModule, DiagramCanvasComponent],
+  imports: [CommonModule, FormsModule, DiagramCanvasComponent, WorkflowNodeComponent],
   selector: 'app-workflow-builder',
   templateUrl: './workflow-builder.component.html',
   styleUrl: './workflow-builder.component.css',
@@ -80,10 +80,10 @@ export class WorkflowBuilderComponent implements OnInit {
     if (!diagram) throw new Error('No diagram');
 
     const sizes = {
-      start: { width: 120, height: 60 },
-      task: { width: 180, height: 80 },
-      decision: { width: 160, height: 100 },
-      end: { width: 120, height: 60 }
+      start: { width: 120, height: 120 },
+      task: { width: 180, height: 100 },
+      decision: { width: 140, height: 140 },
+      end: { width: 120, height: 120 }
     };
 
     const node = new NodeModel({
@@ -100,7 +100,8 @@ export class WorkflowBuilderComponent implements OnInit {
       id,
       type,
       label,
-      status: 'pending'
+      status: 'pending',
+      position
     };
     this.workflowNodes.set(id, workflowNode);
 

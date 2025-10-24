@@ -63,7 +63,7 @@
     </div>
   </div>
 
-  <!-- Canvas -->
+  <!-- Canvas with Workflow Nodes Overlay -->
   <div class="canvas-wrapper">
     <grafloria-diagram-canvas
       *ngIf="engine"
@@ -75,6 +75,17 @@
       (zoomChanged)="onZoomChanged($event)"
       class="diagram-canvas">
     </grafloria-diagram-canvas>
+
+    <!-- Render workflow nodes as overlays -->
+    <div class="nodes-overlay">
+      <app-workflow-node
+        *ngFor="let node of workflowNodes | keyvalue"
+        [data]="{type: node.value.type, label: node.value.label, status: node.value.status}"
+        [style.left.px]="node.value.position.x"
+        [style.top.px]="node.value.position.y"
+        class="node-overlay">
+      </app-workflow-node>
+    </div>
   </div>
 
   <footer class="workflow-footer">
