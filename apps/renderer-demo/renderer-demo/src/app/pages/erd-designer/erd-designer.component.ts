@@ -2,7 +2,7 @@ import { Component, OnInit } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { DiagramCanvasComponent } from '@grafloria/renderer-angular';
-import { DiagramEngine, NodeModel } from '@grafloria/engine';
+import { DiagramEngine, NodeModel, PortModel } from '@grafloria/engine';
 import { LIGHT_THEME, type Theme, type Rectangle } from '@grafloria/renderer';
 import { TableNodeComponent } from './table-node.component';
 
@@ -51,7 +51,7 @@ export class ErdDesignerComponent implements OnInit {
     console.log('ERD Designer initialized');
   }
 
-  private createSampleERD(): void {
+  private async createSampleERD(): Promise<void> {
     const diagram = this.engine.createDiagram('ERD Diagram');
 
     // Create Users table
@@ -112,7 +112,11 @@ export class ErdDesignerComponent implements OnInit {
       const ordersUserIdPort = ordersPorts.find(p => p.type === 'input' && p.alignment.side === 'left');
 
       if (usersIdPort && ordersUserIdPort) {
-        const link = diagram.createLink(usersIdPort.id, ordersUserIdPort.id, 'orthogonal');
+        const link = await this.engine.addLink({
+          sourcePortId: usersIdPort.id,
+          targetPortId: ordersUserIdPort.id,
+          type: 'orthogonal'
+        });
         if (link) {
           link.setMetadata('relationship', '1:N');
           link.setMetadata('label', '1:N');
@@ -155,31 +159,30 @@ export class ErdDesignerComponent implements OnInit {
       // Calculate vertical position for this field
       // Header is 40px, each row is 30px, center port in middle of row
       const fieldY = headerHeight + (index * rowHeight) + (rowHeight / 2);
-      const normalizedY = fieldY / height; // Normalize to 0-1
 
       // Left port for foreign keys (input)
       if (column.isForeignKey) {
-        node.addPort({
+        const leftPort = new PortModel({
           type: 'input',
           alignment: {
             side: 'left',
-            horizontal: 0, // Left edge
-            vertical: normalizedY // Positioned at field row
+            offset: fieldY // Pixel offset from top
           }
         });
-        console.log(`✅ Created LEFT port for FK field: ${column.name} at y=${fieldY}px (normalized: ${normalizedY})`);
+        node.addPort(leftPort);
+        console.log(`✅ Created LEFT port for FK field: ${column.name} at y=${fieldY}px`);
       }
 
       // Right port for all fields (output) - especially primary keys
-      node.addPort({
+      const rightPort = new PortModel({
         type: 'output',
         alignment: {
           side: 'right',
-          horizontal: 1, // Right edge
-          vertical: normalizedY // Positioned at field row
+          offset: fieldY // Pixel offset from top
         }
       });
-      console.log(`✅ Created RIGHT port for field: ${column.name} at y=${fieldY}px (normalized: ${normalizedY})`);
+      node.addPort(rightPort);
+      console.log(`✅ Created RIGHT port for field: ${column.name} at y=${fieldY}px`);
     });
 
     console.log(`🔌 Total ports created for ${table.name}: ${node.getPorts().length}`);

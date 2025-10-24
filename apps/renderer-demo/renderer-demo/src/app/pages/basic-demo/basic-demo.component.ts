@@ -793,6 +793,14 @@ export class BasicDemoComponent implements OnInit {
   }
 
   /**
+   * Get the description for the current diagram mode
+   */
+  getCurrentModeDescription(): string {
+    const mode = this.availableModes.find(m => m.value === this.currentMode);
+    return mode?.description || '';
+  }
+
+  /**
    * Log an action to history for debugging and analysis
    */
   private logHistory(

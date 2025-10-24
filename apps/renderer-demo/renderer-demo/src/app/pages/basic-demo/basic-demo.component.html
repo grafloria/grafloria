@@ -80,7 +80,7 @@
               <span class="mode-label">{{ mode.label }}</span>
             </button>
           </div>
-          <p class="help-text">{{ availableModes.find(m => m.value === currentMode)?.description }}</p>
+          <p class="help-text">{{ getCurrentModeDescription() }}</p>
         </div>
 
         <!-- Interaction Config Panel -->
