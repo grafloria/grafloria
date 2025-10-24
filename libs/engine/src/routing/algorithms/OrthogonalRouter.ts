@@ -13,7 +13,7 @@ export class OrthogonalRouter implements IRouter {
   }
 
   route(request: RouteRequest): RoutedPath | null {
-    const { start, end, obstacles = [], options = {} } = request;
+    const { start, end, obstacles = [], options = {}, sourceDirection, targetDirection } = request;
 
     // Handle same start and end point
     if (start.x === end.x && start.y === end.y) {
@@ -29,7 +29,7 @@ export class OrthogonalRouter implements IRouter {
     // Simple orthogonal routing without obstacles
     if (!options.avoidObstacles || obstacles.length === 0) {
       const bendCost = options.costs?.bends ?? 10;
-      return this.simpleOrthogonalRoute(start, end, options.gridSize, bendCost);
+      return this.simpleOrthogonalRoute(start, end, options.gridSize, bendCost, sourceDirection, targetDirection);
     }
 
     // Complex routing with obstacle avoidance
@@ -37,39 +37,61 @@ export class OrthogonalRouter implements IRouter {
   }
 
   /**
-   * Simple 3-point orthogonal route (no obstacles)
+   * Simple orthogonal route respecting port directions
+   * Based on React Flow's approach: ensure first and last segments are perpendicular to ports
    */
   private simpleOrthogonalRoute(
     start: Point,
     end: Point,
     gridSize?: number,
-    bendCost = 10
+    bendCost = 10,
+    sourceDirection?: 'left' | 'right' | 'top' | 'bottom',
+    targetDirection?: 'left' | 'right' | 'top' | 'bottom'
   ): RoutedPath {
-    // If already aligned horizontally or vertically, use direct route
-    if (start.x === end.x || start.y === end.y) {
-      const length = Math.abs(end.x - start.x) + Math.abs(end.y - start.y);
-      return {
-        points: [
-          { x: start.x, y: start.y },
-          { x: end.x, y: end.y },
-        ],
-        totalLength: length,
-        bendCount: 0,
-        cost: length,
-        segments: this.calculateSegments([start, end]),
-      };
+    // Gap offset - distance to move away from port in its direction
+    const gapOffset = 20;
+
+    // Calculate offset points (move away from port in the direction it points)
+    const sourceOffset = this.applyGapOffset(start, sourceDirection, gapOffset);
+    const targetOffset = this.applyGapOffset(end, targetDirection, gapOffset);
+
+    // Build path points
+    let points: RoutePoint[] = [
+      { x: start.x, y: start.y },
+    ];
+
+    // Add source offset point if we have a source direction
+    if (sourceDirection && (sourceOffset.x !== start.x || sourceOffset.y !== start.y)) {
+      points.push(sourceOffset);
     }
 
-    // Create 3-point path with midpoint
-    // Go horizontal first, then vertical
-    const midpoint: Point = { x: (start.x + end.x) / 2, y: start.y };
+    // Check if source and target offsets are aligned (can connect with one segment)
+    const alignedHorizontally = Math.abs(sourceOffset.y - targetOffset.y) < 1;
+    const alignedVertically = Math.abs(sourceOffset.x - targetOffset.x) < 1;
 
-    const points: RoutePoint[] = [
-      { x: start.x, y: start.y },
-      midpoint,
-      { x: midpoint.x, y: end.y },
-      { x: end.x, y: end.y },
-    ];
+    if (!alignedHorizontally && !alignedVertically) {
+      // Need intermediate points - determine routing strategy based on port directions
+      const needsZShape = this.needsZShape(sourceDirection, targetDirection, sourceOffset, targetOffset);
+
+      if (needsZShape) {
+        // Z-shape or U-shape: Add two intermediate points
+        const midPoints = this.calculateZShapeMidpoints(sourceOffset, targetOffset, sourceDirection, targetDirection);
+        points.push(...midPoints);
+      } else {
+        // L-shape: Add one intermediate point
+        const midPoint = this.calculateLShapeMidpoint(sourceOffset, targetOffset, sourceDirection, targetDirection);
+        if (midPoint) {
+          points.push(midPoint);
+        }
+      }
+    }
+
+    // Add target offset point if we have a target direction
+    if (targetDirection && (targetOffset.x !== end.x || targetOffset.y !== end.y)) {
+      points.push(targetOffset);
+    }
+
+    points.push({ x: end.x, y: end.y });
 
     // Snap to grid if specified
     if (gridSize && gridSize > 1) {
@@ -92,6 +114,116 @@ export class OrthogonalRouter implements IRouter {
       cost: totalLength + bendCount * bendCost,
       segments: this.calculateSegments(uniquePoints),
     };
+  }
+
+  /**
+   * Apply gap offset in the direction the port points
+   */
+  private applyGapOffset(
+    point: Point,
+    direction: 'left' | 'right' | 'top' | 'bottom' | undefined,
+    offset: number
+  ): Point {
+    if (!direction) return point;
+
+    switch (direction) {
+      case 'left':
+        return { x: point.x - offset, y: point.y };
+      case 'right':
+        return { x: point.x + offset, y: point.y };
+      case 'top':
+        return { x: point.x, y: point.y - offset };
+      case 'bottom':
+        return { x: point.x, y: point.y + offset };
+    }
+  }
+
+  /**
+   * Determine if we need Z-shape routing (vs L-shape)
+   * Z-shape is needed when ports point toward each other or in same direction
+   */
+  private needsZShape(
+    sourceDir: 'left' | 'right' | 'top' | 'bottom' | undefined,
+    targetDir: 'left' | 'right' | 'top' | 'bottom' | undefined,
+    sourceOffset: Point,
+    targetOffset: Point
+  ): boolean {
+    if (!sourceDir || !targetDir) return false;
+
+    // Ports pointing opposite directions (toward each other)
+    const oppositeDirections = (
+      (sourceDir === 'left' && targetDir === 'right') ||
+      (sourceDir === 'right' && targetDir === 'left') ||
+      (sourceDir === 'top' && targetDir === 'bottom') ||
+      (sourceDir === 'bottom' && targetDir === 'top')
+    );
+
+    // Ports pointing same direction
+    const sameDirection = sourceDir === targetDir;
+
+    return oppositeDirections || sameDirection;
+  }
+
+  /**
+   * Calculate L-shape midpoint (one bend)
+   */
+  private calculateLShapeMidpoint(
+    sourceOffset: Point,
+    targetOffset: Point,
+    sourceDir: 'left' | 'right' | 'top' | 'bottom' | undefined,
+    targetDir: 'left' | 'right' | 'top' | 'bottom' | undefined
+  ): Point | null {
+    // For L-shape, decide whether to go horizontal-then-vertical or vertical-then-horizontal
+    // Based on which port direction is dominant
+
+    const isSourceHorizontal = sourceDir === 'left' || sourceDir === 'right';
+    const isTargetHorizontal = targetDir === 'left' || targetDir === 'right';
+
+    if (isSourceHorizontal && !isTargetHorizontal) {
+      // Source is horizontal, target is vertical: horizontal first
+      return { x: targetOffset.x, y: sourceOffset.y };
+    } else if (!isSourceHorizontal && isTargetHorizontal) {
+      // Source is vertical, target is horizontal: vertical first
+      return { x: sourceOffset.x, y: targetOffset.y };
+    } else {
+      // Both same orientation - choose based on distance
+      const dx = Math.abs(targetOffset.x - sourceOffset.x);
+      const dy = Math.abs(targetOffset.y - sourceOffset.y);
+
+      if (dx > dy) {
+        return { x: targetOffset.x, y: sourceOffset.y };
+      } else {
+        return { x: sourceOffset.x, y: targetOffset.y };
+      }
+    }
+  }
+
+  /**
+   * Calculate Z-shape midpoints (two bends)
+   */
+  private calculateZShapeMidpoints(
+    sourceOffset: Point,
+    targetOffset: Point,
+    sourceDir: 'left' | 'right' | 'top' | 'bottom' | undefined,
+    targetDir: 'left' | 'right' | 'top' | 'bottom' | undefined
+  ): Point[] {
+    const isSourceHorizontal = sourceDir === 'left' || sourceDir === 'right';
+
+    if (isSourceHorizontal) {
+      // Horizontal source: H-V-H routing
+      const midX = (sourceOffset.x + targetOffset.x) / 2;
+      return [
+        { x: midX, y: sourceOffset.y },
+        { x: midX, y: targetOffset.y }
+      ];
+    } else {
+      // Vertical source: V-H-V routing
+      const midY = (sourceOffset.y + targetOffset.y) / 2;
+      return [
+        { x: sourceOffset.x, y: midY },
+        { x: targetOffset.x, y: midY }
+      ];
+    }
   }
 
   /**
