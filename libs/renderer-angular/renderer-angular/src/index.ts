@@ -10,6 +10,7 @@ export * from './lib/services/interaction-handler.service';
 export * from './lib/services/component-renderer.service';
 export * from './lib/services/property-panel.service';
 export * from './lib/services/property-editor-registry.service';
+export * from './lib/services/diagram-renderer.service';
 
 // Export mode-aware services
 export * from './lib/services/mode-manager.service';
