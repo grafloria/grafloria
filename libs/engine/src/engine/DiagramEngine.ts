@@ -141,7 +141,24 @@ export class DiagramEngine {
 
         if (sourceNode && targetNode) {
           // Determine path type from config
-          const pathType = this.interactionConfig.connectionLineStyle === 'bezier' ? 'bezier' : 'smooth';
+          // Map ConnectionLineStyle enum to LinkModel pathType
+          let pathType: 'direct' | 'smooth' | 'orthogonal' | 'bezier' = 'smooth';
+
+          switch (this.interactionConfig.connectionLineStyle) {
+            case 'bezier':
+              pathType = 'bezier';
+              break;
+            case 'step':
+              pathType = 'orthogonal';
+              break;
+            case 'straight':
+              pathType = 'direct';
+              break;
+            default:
+              pathType = 'smooth';
+          }
+
+          console.log(`🔗 Creating link with pathType: ${pathType} (from connectionLineStyle: ${this.interactionConfig.connectionLineStyle})`);
 
           // Create the link manually (same logic as createSmartLink)
           const link = new LinkModel(sourcePort.id, targetPort.id, pathType);

@@ -9,7 +9,8 @@ import {
   GridLayoutOptions,
   type InteractionConfig,
   InteractionMode,
-  PortVisibilityStrategy
+  PortVisibilityStrategy,
+  ConnectionLineStyle
 } from '@grafloria/engine';
 import { LIGHT_THEME, DARK_THEME, type Theme, type Rectangle } from '@grafloria/renderer';
 
@@ -69,6 +70,22 @@ export class AppComponent implements OnInit {
 
   ngOnInit() {
     this.initializeEngine();
+
+    // CRITICAL FIX: Initialize engine's connection line style to match our default
+    // This ensures new connections created by user match the selected dropdown value
+    let connectionLineStyle: ConnectionLineStyle;
+    if (this.currentLinkType === 'bezier') {
+      connectionLineStyle = ConnectionLineStyle.BEZIER;
+    } else if (this.currentLinkType === 'orthogonal') {
+      connectionLineStyle = ConnectionLineStyle.STEP;
+    } else {
+      connectionLineStyle = ConnectionLineStyle.STRAIGHT;
+    }
+
+    // IMPORTANT: Must call setInteractionConfig to actually update the engine
+    this.engine.setInteractionConfig({ connectionLineStyle });
+    console.log(`🔧 Initial engine connectionLineStyle set to: ${connectionLineStyle} (for ${this.currentLinkType})`);
+
     this.createSampleDiagram();
     this.configureLayout();
 
@@ -95,6 +112,14 @@ export class AppComponent implements OnInit {
     });
 
     console.log('🔧 Engine initialized with port visibility:', this.engine.getInteractionConfig().portVisibility);
+
+    // Subscribe to connection:complete event at the engine level (before link is created)
+    // This allows us to influence the pathType before the DiagramEngine creates the link
+    this.engine.eventBus.on('connection:complete', (event: any) => {
+      console.log(`🔗 Connection completed, will create link with type: ${this.currentLinkType}`);
+      // Store the desired pathType for the link:added handler to use
+      (event as any)._desiredPathType = this.currentLinkType;
+    });
   }
 
   /**
@@ -102,6 +127,25 @@ export class AppComponent implements OnInit {
    */
   onInteractionConfigChanged(config: Partial<InteractionConfig>): void {
     console.log('🎛️ Interaction config changed:', config);
+
+    // CRITICAL FIX: Sync the Link Path Type dropdown when Connection Line Style changes
+    if (config.connectionLineStyle !== undefined) {
+      // Map ConnectionLineStyle enum to our pathType
+      switch (config.connectionLineStyle) {
+        case ConnectionLineStyle.BEZIER:
+          this.currentLinkType = 'bezier';
+          break;
+        case ConnectionLineStyle.STEP:
+          this.currentLinkType = 'orthogonal';
+          break;
+        case ConnectionLineStyle.STRAIGHT:
+          this.currentLinkType = 'direct';
+          break;
+        default:
+          this.currentLinkType = 'smooth';
+      }
+      console.log(`🔄 Synced currentLinkType to: ${this.currentLinkType} (from connectionLineStyle: ${config.connectionLineStyle})`);
+    }
 
     // CRITICAL FIX: Update engine config
     if (this.engine) {
@@ -473,8 +517,17 @@ export class AppComponent implements OnInit {
 
     diagram.on('link:added', (event: any) => {
       const link = event.link;
-      if (link && link.pathType !== this.currentLinkType) {
-        console.log(`🔗 New link created, applying current link type: ${this.currentLinkType}`);
+      if (!link) return;
+
+      console.log(`🔗 New link created with pathType: ${link.pathType}, currentLinkType: ${this.currentLinkType}`);
+
+      // ALWAYS update the link to match the selected type (don't check if different)
+      // This is important because the engine might create it with a different type
+      if (link.pathType !== this.currentLinkType) {
+        console.log(`   ⚠️  PathType mismatch detected, applying current link type: ${this.currentLinkType}`);
+
+        // Store original pathType for debugging
+        const originalPathType = link.pathType;
 
         // Update the link's pathType to match the currently selected type
         link.pathType = this.currentLinkType;
@@ -494,20 +547,29 @@ export class AppComponent implements OnInit {
           if (sourcePort && targetPort) {
             const sourcePoint = sourcePort.getAbsolutePosition(sourceNode.getBoundingBox());
             const targetPoint = targetPort.getAbsolutePosition(targetNode.getBoundingBox());
+
+            // Clear existing points to ensure clean regeneration
+            link.points = [];
+
+            // Generate new path with correct algorithm
             link.generatePath(sourcePoint, targetPoint);
             link.markDirty();
 
-            console.log(`✅ Link path regenerated with ${this.currentLinkType} routing`);
+            console.log(`   ✅ Link path regenerated: ${originalPathType} → ${this.currentLinkType}`);
+            console.log(`   📍 New path has ${link.points.length} points`);
           }
         }
 
         // Log to history
         this.logHistory('link-created', 'link', 'User created new link', {
           linkId: link.id,
-          pathType: this.currentLinkType,
+          originalPathType,
+          appliedPathType: this.currentLinkType,
           sourcePortId: link.sourcePortId,
           targetPortId: link.targetPortId
         });
+      } else {
+        console.log(`   ✅ PathType already matches: ${this.currentLinkType}`);
       }
     });
   }
@@ -590,6 +652,22 @@ export class AppComponent implements OnInit {
   changeLinkType(type: 'direct' | 'smooth' | 'orthogonal' | 'bezier'): void {
     const diagram = this.engine.getDiagram();
     if (!diagram) return;
+
+    // CRITICAL FIX: Update the engine's interaction config so NEW connections use this type
+    // The DiagramEngine uses connectionLineStyle to determine pathType for new links
+    let connectionLineStyle: ConnectionLineStyle;
+    if (type === 'bezier') {
+      connectionLineStyle = ConnectionLineStyle.BEZIER;
+    } else if (type === 'orthogonal') {
+      connectionLineStyle = ConnectionLineStyle.STEP;
+    } else {
+      // For direct and smooth
+      connectionLineStyle = ConnectionLineStyle.STRAIGHT;
+    }
+
+    // IMPORTANT: Must call setInteractionConfig to actually update the engine
+    this.engine.setInteractionConfig({ connectionLineStyle });
+    console.log(`🔧 Updated engine connectionLineStyle to match link type: ${type} → ${connectionLineStyle}`);
 
     const links = diagram.getLinks();
     links.forEach((link: any) => {
