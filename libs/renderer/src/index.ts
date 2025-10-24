@@ -7,8 +7,9 @@ export * from './vnode';
 // Export themes
 export * from './themes';
 
-// Export core interfaces and services
-export * from './core';
+// Export core services (excluding interfaces already exported from types)
+export { RendererFactory } from './core/renderer-factory';
+export { RendererStrategyManager } from './core/renderer-strategy-manager';
 
 // Export renderers
 export * from './svg';

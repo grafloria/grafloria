@@ -1494,6 +1494,7 @@ export class DiagramEngine {
 
   /**
    * Update a node's obstacle when it moves or resizes
+   * Also invalidates all links so they recalculate paths with new obstacle positions
    */
   private updateNodeObstacle(node: NodeModel): void {
     const obstacle = {
@@ -1504,6 +1505,14 @@ export class DiagramEngine {
       height: node.size.height,
     };
     this.routingEngine.updateObstacle(obstacle);
+
+    // Mark all links as dirty so they recalculate their paths
+    // This enables dynamic rerouting when nodes move through paths
+    if (this.diagram) {
+      this.diagram.getLinks().forEach(link => {
+        link.markDirty();
+      });
+    }
   }
 
   /**

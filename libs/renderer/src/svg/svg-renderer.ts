@@ -366,7 +366,7 @@ export class SVGRenderer implements IRenderer {
         opacity: 0.7,
         className: 'connection-preview-line',
         style: config.animateConnectionPreview
-          ? 'animation: dash 0.5s linear infinite'
+          ? { animation: 'dash 0.5s linear infinite' }
           : undefined,
       },
     };
@@ -452,7 +452,7 @@ export class SVGRenderer implements IRenderer {
         transform: `translate(${node.position.x}, ${node.position.y})`,
         className: 'node-group',
         // Option 2: Add subtle transition effect
-        style: isHovered ? 'transition: all 0.2s ease' : undefined,
+        style: isHovered ? { transition: 'all 0.2s ease' } : undefined,
       },
       children: [
         // Selection highlight (rendered behind the node)
@@ -664,7 +664,11 @@ export class SVGRenderer implements IRenderer {
           : undefined,
         // CRITICAL FIX: Ensure ports capture pointer events and have proper cursor
         // pointer-events: all ensures the port intercepts mouse events even when overlapping the node
-        style: `transition: all 0.2s ease; cursor: ${port.isHovered || isHighlighted ? 'pointer' : 'crosshair'}; pointer-events: all;`,
+        style: {
+          transition: 'all 0.2s ease',
+          cursor: port.isHovered || isHighlighted ? 'pointer' : 'crosshair',
+          pointerEvents: 'all'
+        },
         opacity: isHighlighted ? 1 : 0.9,
         // CRITICAL FIX: Add data attribute for debugging
         'data-port-id': port.id,
@@ -1065,7 +1069,7 @@ export class SVGRenderer implements IRenderer {
                   stroke: this.theme.colors.primary,
                   strokeWidth: 2,
                   className: 'link-endpoint-handle link-source-handle',
-                  style: 'cursor: move; transition: all 0.2s ease',
+                  style: { cursor: 'move', transition: 'all 0.2s ease' },
                 },
               } as VNode,
               // Target endpoint handle
@@ -1082,7 +1086,7 @@ export class SVGRenderer implements IRenderer {
                   stroke: this.theme.colors.primary,
                   strokeWidth: 2,
                   className: 'link-endpoint-handle link-target-handle',
-                  style: 'cursor: move; transition: all 0.2s ease',
+                  style: { cursor: 'move', transition: 'all 0.2s ease' },
                 },
               } as VNode,
             ]

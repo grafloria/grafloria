@@ -36,6 +36,10 @@ export class SVGRendererV2 implements IRenderer {
   private elementCache = new Map<string, SVGElement>();
   private initialized = false;
 
+  // Lifecycle hooks (optional from IRenderer interface)
+  onBeforeRender?: (vnode: VNode) => void;
+  onAfterRender?: (vnode: VNode) => void;
+
   constructor(private config: SVGRendererConfig) {}
 
   initialize(container: HTMLElement, config: RendererConfig): void {
@@ -195,7 +199,7 @@ export class SVGRendererV2 implements IRenderer {
     }
 
     this.svgElement.appendChild(element);
-    const bbox = element.getBBox();
+    const bbox = (element as SVGGraphicsElement).getBBox();
     this.svgElement.removeChild(element);
 
     return {
