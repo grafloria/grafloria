@@ -95,7 +95,7 @@
  */
 
 // Core property definition
-export { PropertyDefinition, PropertyEditorType } from './property-definition';
+export { PropertyDefinition, PropertyEditorType, PropertyDisplayOptions } from './property-definition';
 
 // Editor types and type-specific definitions
 export {
@@ -111,7 +111,6 @@ export {
   DateTimePropertyDefinition,
   SliderPropertyDefinition,
   FilePropertyDefinition,
-  SelectOption,
 } from './editor-types';
 
 // Validation types
@@ -119,6 +118,7 @@ export {
   PropertyValidation,
   ValidationError,
   ValidationResult,
+  SelectOption,
 } from './validation';
 
 // Condition types
