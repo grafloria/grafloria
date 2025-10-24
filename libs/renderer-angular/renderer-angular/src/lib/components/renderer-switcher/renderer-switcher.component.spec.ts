@@ -109,12 +109,12 @@ describe('RendererSwitcherComponent', () => {
     });
 
     it('should emit rendererChanged event', async () => {
-      spyOn(component.rendererChanged, 'emit');
+      const emitSpy = jest.spyOn(component.rendererChanged, 'emit');
 
       component.selectedRenderer = 'canvas';
       await component.onRendererChange();
 
-      expect(component.rendererChanged.emit).toHaveBeenCalledWith('canvas');
+      expect(emitSpy).toHaveBeenCalledWith('canvas');
     });
   });
 
@@ -126,6 +126,8 @@ describe('RendererSwitcherComponent', () => {
 
     it('should show recommendation when enabled', () => {
       component.showRecommendation = true;
+      component.recommendationCriteria = { nodeCount: 5000 };
+      component['updateRecommendation']();
       fixture.detectChanges();
 
       const compiled = fixture.nativeElement;
@@ -145,6 +147,7 @@ describe('RendererSwitcherComponent', () => {
     it('should apply recommendation when clicked', async () => {
       component.showRecommendation = true;
       component.recommendationCriteria = { nodeCount: 5000 };
+      component['updateRecommendation']();
       fixture.detectChanges();
 
       await component.applyRecommendation();
@@ -175,7 +178,7 @@ describe('RendererSwitcherComponent', () => {
     });
 
     it('should trigger change on selection', async () => {
-      spyOn(component, 'onRendererChange');
+      const changeSpy = jest.spyOn(component, 'onRendererChange');
       const compiled = fixture.nativeElement;
       const select = compiled.querySelector('select') as HTMLSelectElement;
 
@@ -183,7 +186,7 @@ describe('RendererSwitcherComponent', () => {
       select.dispatchEvent(new Event('change'));
       fixture.detectChanges();
 
-      expect(component.onRendererChange).toHaveBeenCalled();
+      expect(changeSpy).toHaveBeenCalled();
     });
   });
 
@@ -220,11 +223,11 @@ describe('RendererSwitcherComponent', () => {
 
     it('should unsubscribe from observables', () => {
       fixture.detectChanges();
-      const spy = spyOn(component['destroy$'], 'next');
+      const destroySpy = jest.spyOn(component['destroy$'], 'next');
 
       component.ngOnDestroy();
 
-      expect(spy).toHaveBeenCalled();
+      expect(destroySpy).toHaveBeenCalled();
     });
   });
 });

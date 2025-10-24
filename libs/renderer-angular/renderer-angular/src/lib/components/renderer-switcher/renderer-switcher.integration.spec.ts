@@ -4,8 +4,36 @@ import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { RendererSwitcherComponent } from './renderer-switcher.component';
 import { DiagramRendererService } from '../../services/diagram-renderer.service';
-import { RendererFactory } from '@grafloria/renderer';
 import type { VNode } from '@grafloria/renderer';
+import type { IRenderer } from '../../../../../../renderer/src/core/renderer.interface';
+
+// Mock renderer for integration tests
+class MockRenderer implements IRenderer {
+  type: string;
+  capabilities = {
+    supportsHitTest: true,
+    supportsBatching: true,
+    supportsExport: true,
+    supportsMeasurement: true,
+    supportsForeignObject: true,
+    supportsFilters: true,
+    supportsOffscreen: true,
+  };
+
+  constructor(type: string) {
+    this.type = type;
+  }
+
+  initialize(): void {}
+  async render(): Promise<void> {}
+  async update(): Promise<void> {}
+  clear(): void {}
+  measureText(): any { return { width: 100, height: 20, baseline: 15 }; }
+  measureElement(): any { return { x: 0, y: 0, width: 100, height: 100 }; }
+  hitTest(): VNode | null { return null; }
+  async export(): Promise<string> { return 'data:image/png;base64,'; }
+  destroy(): void {}
+}
 
 /**
  * Integration tests for RendererSwitcherComponent with real renderers.
@@ -14,7 +42,6 @@ import type { VNode } from '@grafloria/renderer';
 
 @Component({
   template: `
-    <div #container class="diagram-container" style="width: 800px; height: 600px;"></div>
     <grafloria-renderer-switcher
       [container]="containerElement"
       [label]="'Select Renderer'"
@@ -25,18 +52,27 @@ import type { VNode } from '@grafloria/renderer';
   `
 })
 class TestHostComponent {
-  @ViewChild('container') containerRef!: ElementRef<HTMLElement>;
   @ViewChild(RendererSwitcherComponent) switcher!: RendererSwitcherComponent;
 
-  get containerElement(): HTMLElement {
-    return this.containerRef?.nativeElement;
-  }
-
+  containerElement: HTMLElement;
   criteria = { nodeCount: 100 };
   lastRendererChanged = '';
 
+  constructor() {
+    this.containerElement = document.createElement('div');
+    this.containerElement.style.width = '800px';
+    this.containerElement.style.height = '600px';
+    document.body.appendChild(this.containerElement);
+  }
+
   onRendererChanged(renderer: string) {
     this.lastRendererChanged = renderer;
+  }
+
+  ngOnDestroy() {
+    if (this.containerElement.parentNode) {
+      document.body.removeChild(this.containerElement);
+    }
   }
 }
 
@@ -63,17 +99,9 @@ describe('RendererSwitcher Integration Tests', () => {
 
   describe('end-to-end renderer switching', () => {
     it('should register renderers and switch via UI', async () => {
-      // Create real renderer instances (stubs for Phase A)
-      const svgRenderer = RendererFactory.createRenderer('svg', {
-        width: 800,
-        height: 600,
-      });
-
-      const canvasRenderer = RendererFactory.createRenderer('canvas', {
-        width: 800,
-        height: 600,
-        contextType: '2d',
-      } as any);
+      // Create mock renderer instances
+      const svgRenderer = new MockRenderer('svg');
+      const canvasRenderer = new MockRenderer('canvas');
 
       // Register renderers
       rendererService.registerRenderer('svg', svgRenderer);
@@ -105,17 +133,9 @@ describe('RendererSwitcher Integration Tests', () => {
 
   describe('recommendation integration', () => {
     beforeEach(() => {
-      // Register renderers
-      const svgRenderer = RendererFactory.createRenderer('svg', {
-        width: 800,
-        height: 600,
-      });
-
-      const canvasRenderer = RendererFactory.createRenderer('canvas', {
-        width: 800,
-        height: 600,
-        contextType: '2d',
-      } as any);
+      // Register mock renderers
+      const svgRenderer = new MockRenderer('svg');
+      const canvasRenderer = new MockRenderer('canvas');
 
       rendererService.registerRenderer('svg', svgRenderer);
       rendererService.registerRenderer('canvas', canvasRenderer);
@@ -169,16 +189,8 @@ describe('RendererSwitcher Integration Tests', () => {
 
   describe('bidirectional sync', () => {
     beforeEach(() => {
-      const svgRenderer = RendererFactory.createRenderer('svg', {
-        width: 800,
-        height: 600,
-      });
-
-      const canvasRenderer = RendererFactory.createRenderer('canvas', {
-        width: 800,
-        height: 600,
-        contextType: '2d',
-      } as any);
+      const svgRenderer = new MockRenderer('svg');
+      const canvasRenderer = new MockRenderer('canvas');
 
       rendererService.registerRenderer('svg', svgRenderer);
       rendererService.registerRenderer('canvas', canvasRenderer);
@@ -224,10 +236,7 @@ describe('RendererSwitcher Integration Tests', () => {
 
   describe('error handling', () => {
     it('should handle switching to unregistered renderer gracefully', async () => {
-      const svgRenderer = RendererFactory.createRenderer('svg', {
-        width: 800,
-        height: 600,
-      });
+      const svgRenderer = new MockRenderer('svg');
 
       rendererService.registerRenderer('svg', svgRenderer);
 
@@ -249,16 +258,8 @@ describe('RendererSwitcher Integration Tests', () => {
 
   describe('UI rendering', () => {
     beforeEach(() => {
-      const svgRenderer = RendererFactory.createRenderer('svg', {
-        width: 800,
-        height: 600,
-      });
-
-      const canvasRenderer = RendererFactory.createRenderer('canvas', {
-        width: 800,
-        height: 600,
-        contextType: '2d',
-      } as any);
+      const svgRenderer = new MockRenderer('svg');
+      const canvasRenderer = new MockRenderer('canvas');
 
       rendererService.registerRenderer('svg', svgRenderer);
       rendererService.registerRenderer('canvas', canvasRenderer);
