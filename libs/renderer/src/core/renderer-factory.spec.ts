@@ -1,7 +1,7 @@
 import { RendererFactory } from './renderer-factory';
 import { SVGRendererV2 } from '../svg/svg-renderer-v2';
 import { CanvasRenderer } from '../canvas/canvas-renderer.stub';
-import type { IRenderer } from './renderer.interface';
+import type { IRenderer, CanvasRendererConfig } from './renderer.interface';
 
 describe('RendererFactory', () => {
   beforeEach(() => {
@@ -57,11 +57,12 @@ describe('RendererFactory', () => {
     });
 
     it('should create Canvas renderer stub instance', () => {
-      const renderer = RendererFactory.createRenderer('canvas', {
+      const config: CanvasRendererConfig = {
         width: 800,
         height: 600,
         contextType: '2d',
-      });
+      };
+      const renderer = RendererFactory.createRenderer('canvas', config);
 
       expect(renderer).toBeInstanceOf(CanvasRenderer);
       expect(renderer.type).toBe('canvas');

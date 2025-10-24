@@ -36,11 +36,11 @@ export class CanvasRenderer implements IRenderer {
     throw new Error('CanvasRenderer is not implemented in Phase A. Coming in Phase B.');
   }
 
-  render(vnode: VNode, options?: RenderOptions): Promise<void> {
+  async render(vnode: VNode, options?: RenderOptions): Promise<void> {
     throw new Error('CanvasRenderer is not implemented in Phase A. Coming in Phase B.');
   }
 
-  update(updates: NodeUpdate[]): Promise<void> {
+  async update(updates: NodeUpdate[]): Promise<void> {
     throw new Error('CanvasRenderer is not implemented in Phase A. Coming in Phase B.');
   }
 
@@ -60,7 +60,7 @@ export class CanvasRenderer implements IRenderer {
     throw new Error('CanvasRenderer is not implemented in Phase A. Coming in Phase B.');
   }
 
-  export(format: ExportFormat, options?: ExportOptions): Promise<string> {
+  async export(format: ExportFormat, options?: ExportOptions): Promise<string> {
     throw new Error('CanvasRenderer is not implemented in Phase A. Coming in Phase B.');
   }
 
