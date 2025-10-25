@@ -35,6 +35,47 @@ export type FlexDirection = 'row' | 'column' | 'row-reverse' | 'column-reverse';
 export type NodeRole = 'container' | 'drag-handler' | 'content' | 'repeater';
 
 /**
+ * Shape type for SVG rendering (Phase 3.1)
+ */
+export type ShapeType = 'rect' | 'circle' | 'ellipse' | 'diamond' | 'hexagon';
+
+/**
+ * Shape configuration for SVG node rendering (Phase 3.1)
+ * Defines the geometric shape of the node in the SVG layer
+ */
+export interface ShapeConfig {
+  /**
+   * Shape type
+   */
+  type: ShapeType;
+
+  /**
+   * Fill color (CSS color)
+   */
+  fill?: string;
+
+  /**
+   * Stroke color (CSS color)
+   */
+  stroke?: string;
+
+  /**
+   * Stroke width in pixels
+   */
+  strokeWidth?: number;
+
+  /**
+   * Corner radius for rectangles (in pixels)
+   */
+  cornerRadius?: number;
+
+  /**
+   * Opacity (0-1)
+   */
+  opacity?: number;
+}
+
+/**
  * Port configuration for a specific side
  */
 export interface PortConfig {
@@ -186,6 +227,13 @@ export interface NodeStructureDefinition {
     minHeight?: number;
     maxHeight?: number;
   };
+
+  /**
+   * Shape configuration for SVG rendering (Phase 3.1)
+   * Defines the geometric shape of the node
+   * If not specified, defaults to rectangle
+   */
+  shape?: ShapeConfig;
 
   layout?: LayoutConfig;
 

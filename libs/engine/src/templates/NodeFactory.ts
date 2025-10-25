@@ -123,6 +123,11 @@ export class NodeFactory {
       node.connectionGroup = structure.connectionGroup;
     }
 
+    // Phase 3.1: Set shape configuration
+    if (structure.shape) {
+      node.setMetadata('shape', structure.shape);
+    }
+
     // Handle HTML configuration
     if (structure.html) {
       node.setMetadata('useHTMLLayer', true);
