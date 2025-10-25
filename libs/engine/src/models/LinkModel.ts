@@ -172,13 +172,18 @@ export class LinkModel extends DiagramEntity {
   /**
    * Generate path based on type
    */
-  generatePath(sourcePoint: Point, targetPoint: Point): void {
+  generatePath(
+    sourcePoint: Point,
+    targetPoint: Point,
+    sourceDirection?: 'left' | 'right' | 'top' | 'bottom',
+    targetDirection?: 'left' | 'right' | 'top' | 'bottom'
+  ): void {
     switch (this.pathType) {
       case 'direct':
         this.generateDirectPath(sourcePoint, targetPoint);
         break;
       case 'orthogonal':
-        this.generateOrthogonalPath(sourcePoint, targetPoint);
+        this.generateOrthogonalPath(sourcePoint, targetPoint, sourceDirection, targetDirection);
         break;
       case 'smooth':
       case 'bezier':
@@ -204,22 +209,172 @@ export class LinkModel extends DiagramEntity {
 
   /**
    * Generate orthogonal path (right angles)
+   * Uses React Flow's smoothstep algorithm with port directions for proper routing
    */
-  private generateOrthogonalPath(from: Point, to: Point): void {
-    const midX = (from.x + to.x) / 2;
+  private generateOrthogonalPath(
+    from: Point,
+    to: Point,
+    sourceDirection?: 'left' | 'right' | 'top' | 'bottom',
+    targetDirection?: 'left' | 'right' | 'top' | 'bottom'
+  ): void {
+    // If no directions provided, use simple default
+    if (!sourceDirection || !targetDirection) {
+      const midX = (from.x + to.x) / 2;
+      this.points = [
+        { ...from },
+        { x: midX, y: from.y },
+        { x: midX, y: to.y },
+        { ...to },
+      ];
+      this.segments = [
+        { type: 'line', from: this.points[0]!, to: this.points[1]! },
+        { type: 'line', from: this.points[1]!, to: this.points[2]! },
+        { type: 'line', from: this.points[2]!, to: this.points[3]! },
+      ];
+      return;
+    }
 
+    // React Flow smoothstep algorithm
+    const gapOffset = 20;
+
+    // Calculate offset points (gap from ports)
+    let sourceOffset = this.applyGapOffset(from, sourceDirection, gapOffset);
+    let targetOffset = this.applyGapOffset(to, targetDirection, gapOffset);
+
+    // Determine routing direction
+    const dir = this.getRoutingDirection(sourceOffset, sourceDirection, targetOffset);
+    const dirAccessor = dir.x !== 0 ? 'x' : 'y';
+
+    const sourceDir = this.getDirectionVector(sourceDirection);
+    const targetDir = this.getDirectionVector(targetDirection);
+
+    let intermediatePoints: Point[] = [];
+    const sourceGapOffset = { x: 0, y: 0 };
+    const targetGapOffset = { x: 0, y: 0 };
+
+    // Check if ports are opposite
+    const areOpposite = sourceDir[dirAccessor] * targetDir[dirAccessor] === -1;
+
+    if (areOpposite) {
+      // Z-shape routing for opposite ports
+      if (dirAccessor === 'x') {
+        const centerX = (sourceOffset.x + targetOffset.x) / 2;
+        intermediatePoints = [
+          { x: centerX, y: sourceOffset.y },
+          { x: centerX, y: targetOffset.y }
+        ];
+      } else {
+        const centerY = (sourceOffset.y + targetOffset.y) / 2;
+        intermediatePoints = [
+          { x: sourceOffset.x, y: centerY },
+          { x: targetOffset.x, y: centerY }
+        ];
+      }
+    } else {
+      // L-shape routing for perpendicular ports
+      const isSourceHorizontal = sourceDirection === 'left' || sourceDirection === 'right';
+      const isTargetHorizontal = targetDirection === 'left' || targetDirection === 'right';
+
+      if (isSourceHorizontal && !isTargetHorizontal) {
+        intermediatePoints = [{ x: targetOffset.x, y: sourceOffset.y }];
+      } else if (!isSourceHorizontal && isTargetHorizontal) {
+        intermediatePoints = [{ x: sourceOffset.x, y: targetOffset.y }];
+      } else {
+        if (dirAccessor === 'x') {
+          intermediatePoints = [{ x: targetOffset.x, y: sourceOffset.y }];
+        } else {
+          intermediatePoints = [{ x: sourceOffset.x, y: targetOffset.y }];
+        }
+      }
+
+      // Handle same position ports that are too close
+      if (sourceDirection === targetDirection) {
+        const diff = Math.abs(from[dirAccessor] - to[dirAccessor]);
+        if (diff <= gapOffset) {
+          const additionalGap = Math.min(gapOffset - 1, gapOffset - diff);
+          const currDir = dir[dirAccessor];
+
+          if (sourceDir[dirAccessor] === currDir) {
+            const sign = sourceOffset[dirAccessor] > from[dirAccessor] ? -1 : 1;
+            sourceGapOffset[dirAccessor] = sign * additionalGap;
+          } else {
+            const sign = targetOffset[dirAccessor] > to[dirAccessor] ? -1 : 1;
+            targetGapOffset[dirAccessor] = sign * additionalGap;
+          }
+        }
+      }
+    }
+
+    // Apply gap offsets
+    sourceOffset.x += sourceGapOffset.x;
+    sourceOffset.y += sourceGapOffset.y;
+    targetOffset.x += targetGapOffset.x;
+    targetOffset.y += targetGapOffset.y;
+
+    // Construct final points array
     this.points = [
       { ...from },
-      { x: midX, y: from.y },
-      { x: midX, y: to.y },
-      { ...to },
+      sourceOffset,
+      ...intermediatePoints,
+      targetOffset,
+      { ...to }
     ];
 
-    this.segments = [
-      { type: 'line', from: this.points[0]!, to: this.points[1]! },
-      { type: 'line', from: this.points[1]!, to: this.points[2]! },
-      { type: 'line', from: this.points[2]!, to: this.points[3]! },
-    ];
+    // Build segments
+    this.segments = [];
+    for (let i = 0; i < this.points.length - 1; i++) {
+      this.segments.push({
+        type: 'line',
+        from: { ...this.points[i]! },
+        to: { ...this.points[i + 1]! }
+      });
+    }
+  }
+
+  /**
+   * Apply gap offset in port direction
+   */
+  private applyGapOffset(
+    point: Point,
+    direction: 'left' | 'right' | 'top' | 'bottom',
+    offset: number
+  ): Point {
+    switch (direction) {
+      case 'left':
+        return { x: point.x - offset, y: point.y };
+      case 'right':
+        return { x: point.x + offset, y: point.y };
+      case 'top':
+        return { x: point.x, y: point.y - offset };
+      case 'bottom':
+        return { x: point.x, y: point.y + offset };
+    }
+  }
+
+  /**
+   * Get direction vector for port orientation
+   */
+  private getDirectionVector(direction: 'left' | 'right' | 'top' | 'bottom'): { x: number; y: number } {
+    switch (direction) {
+      case 'left': return { x: -1, y: 0 };
+      case 'right': return { x: 1, y: 0 };
+      case 'top': return { x: 0, y: -1 };
+      case 'bottom': return { x: 0, y: 1 };
+    }
+  }
+
+  /**
+   * Get routing direction from source to target
+   */
+  private getRoutingDirection(
+    source: Point,
+    sourcePosition: 'left' | 'right' | 'top' | 'bottom',
+    target: Point
+  ): { x: number; y: number } {
+    if (sourcePosition === 'left' || sourcePosition === 'right') {
+      return source.x < target.x ? { x: 1, y: 0 } : { x: -1, y: 0 };
+    }
+    return source.y < target.y ? { x: 0, y: 1 } : { x: 0, y: -1 };
   }
 
   /**

@@ -791,8 +791,12 @@ Handle system is fully functional:
             // Clear existing points to ensure clean regeneration
             link.points = [];
 
+            // Get port directions for orthogonal routing
+            const sourceDirection = sourcePort.alignment?.side;
+            const targetDirection = targetPort.alignment?.side;
+
             // Generate new path with correct algorithm
-            link.generatePath(sourcePoint, targetPoint);
+            link.generatePath(sourcePoint, targetPoint, sourceDirection, targetDirection);
             link.markDirty();
 
             console.log(`   ✅ Link path regenerated: ${originalPathType} → ${this.currentLinkType}`);
@@ -925,7 +929,12 @@ Handle system is fully functional:
         if (sourcePort && targetPort) {
           const sourcePoint = sourcePort.getAbsolutePosition(sourceNode.getBoundingBox());
           const targetPoint = targetPort.getAbsolutePosition(targetNode.getBoundingBox());
-          link.generatePath(sourcePoint, targetPoint);
+
+          // Get port directions for orthogonal routing
+          const sourceDirection = sourcePort.alignment?.side;
+          const targetDirection = targetPort.alignment?.side;
+
+          link.generatePath(sourcePoint, targetPoint, sourceDirection, targetDirection);
           link.markDirty();
         }
       }

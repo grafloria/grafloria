@@ -446,7 +446,11 @@ export class InteractionHandlerService {
         const sourcePoint = sourcePort.getAbsolutePosition(sourceBounds);
         const targetPoint = reconnectedTargetPort.getAbsolutePosition(targetBounds);
 
-        this.reconnectingLink.generatePath(sourcePoint, targetPoint);
+        // Get port directions for orthogonal routing
+        const sourceDirection = sourcePort.alignment?.side;
+        const targetDirection = reconnectedTargetPort.alignment?.side;
+
+        this.reconnectingLink.generatePath(sourcePoint, targetPoint, sourceDirection, targetDirection);
       }
     }
 

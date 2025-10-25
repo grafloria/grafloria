@@ -144,8 +144,8 @@ import type { DiagramEngine } from '@grafloria/engine';
     }
 
     .handle-dot {
-      width: 12px;
-      height: 12px;
+      width: 10px;
+      height: 10px;
       background: #3b82f6;
       border: 2px solid white;
       border-radius: 50%;
@@ -154,8 +154,8 @@ import type { DiagramEngine } from '@grafloria/engine';
     }
 
     .handle-dot:hover {
-      width: 16px;
-      height: 16px;
+      width: 14px;
+      height: 14px;
       background: #2563eb;
       box-shadow: 0 0 0 4px rgba(59, 130, 246, 0.2);
     }

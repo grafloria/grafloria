@@ -361,8 +361,12 @@ export class LayoutManager {
       const sourcePoint = sourcePort.getAbsolutePosition(sourceBounds);
       const targetPoint = targetPort.getAbsolutePosition(targetBounds);
 
-      // Regenerate the link path with new port positions
-      link.generatePath(sourcePoint, targetPoint);
+      // Get port directions for orthogonal routing
+      const sourceDirection = sourcePort.alignment?.side;
+      const targetDirection = targetPort.alignment?.side;
+
+      // Regenerate the link path with new port positions and directions
+      link.generatePath(sourcePoint, targetPoint, sourceDirection, targetDirection);
       link.markDirty(); // Force re-render
 
       recalculated++;

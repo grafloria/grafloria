@@ -327,7 +327,12 @@ export class DiagramModel extends DiagramEntity {
     const targetBounds = targetNode.getBoundingBox();
     const sourcePoint = sourcePort.getAbsolutePosition(sourceBounds);
     const targetPoint = targetPort.getAbsolutePosition(targetBounds);
-    link.generatePath(sourcePoint, targetPoint);
+
+    // Get port directions for orthogonal routing
+    const sourceDirection = sourcePort.alignment?.side;
+    const targetDirection = targetPort.alignment?.side;
+
+    link.generatePath(sourcePoint, targetPoint, sourceDirection, targetDirection);
 
     // Add to diagram
     this.addLink(link);

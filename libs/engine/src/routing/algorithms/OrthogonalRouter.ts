@@ -64,78 +64,115 @@ export class OrthogonalRouter implements IRouter {
     const gapOffset = 20;
 
     // Calculate offset points (move away from port in the direction it points)
-    const sourceOffset = this.applyGapOffset(start, sourceDirection, gapOffset);
-    const targetOffset = this.applyGapOffset(end, targetDirection, gapOffset);
+    let sourceOffset = this.applyGapOffset(start, sourceDirection, gapOffset);
+    let targetOffset = this.applyGapOffset(end, targetDirection, gapOffset);
 
-    console.log('  📏 Gap offset calculation:', {
+    console.log('  📏 Initial gap offset:', {
       start,
       sourceDirection,
       sourceOffset,
-      gapApplied: sourceOffset.x !== start.x || sourceOffset.y !== start.y
+      targetDirection,
+      targetOffset
     });
 
-    // Build path points
-    let points: RoutePoint[] = [
-      { x: start.x, y: start.y },
-    ];
+    // React Flow algorithm: determine primary direction and routing strategy
+    const dir = this.getRoutingDirection(sourceOffset, sourceDirection, targetOffset);
+    const dirAccessor = dir.x !== 0 ? 'x' : 'y';
 
-    // Add source offset point if we have a source direction
-    if (sourceDirection && (sourceOffset.x !== start.x || sourceOffset.y !== start.y)) {
-      points.push(sourceOffset);
-      console.log('  ✅ Added source offset point:', sourceOffset);
-    } else {
-      console.log('  ⚠️ NO source offset added - sourceDirection:', sourceDirection);
-    }
+    // Get handle direction vectors
+    const sourceDir = this.getDirectionVector(sourceDirection);
+    const targetDir = this.getDirectionVector(targetDirection);
 
-    // Check if source and target offsets are aligned (can connect with one segment)
-    // Use a tolerance of 2px to account for minor alignment issues
-    const alignedHorizontally = Math.abs(sourceOffset.y - targetOffset.y) < 2;
-    const alignedVertically = Math.abs(sourceOffset.x - targetOffset.x) < 2;
+    let intermediatePoints: Point[] = [];
+    const sourceGapOffset = { x: 0, y: 0 };
+    const targetGapOffset = { x: 0, y: 0 };
 
-    // STRAIGHT LINE OPTIMIZATION: If ports are perfectly aligned and facing each other,
-    // create a straight line without intermediate points
-    if (this.canUseDirectLine(start, end, sourceDirection, targetDirection, sourceOffset, targetOffset)) {
-      console.log('  🎯 Using direct line (ports aligned and facing each other)');
+    // Check if ports are opposite (React Flow logic line 107)
+    const areOpposite = sourceDir[dirAccessor] * targetDir[dirAccessor] === -1;
 
-      // Add target offset point if we have a target direction
-      if (targetDirection && (targetOffset.x !== end.x || targetOffset.y !== end.y)) {
-        points.push(targetOffset);
-      }
+    if (areOpposite) {
+      // Opposite handle positions - use Z-shape routing
+      console.log('  🔄 Opposite handles - using Z-shape');
 
-      points.push({ x: end.x, y: end.y });
-    } else if (!alignedHorizontally && !alignedVertically) {
-      // Need intermediate points - determine routing strategy based on port directions
-      const needsZShape = this.needsZShape(sourceDirection, targetDirection, sourceOffset, targetOffset);
-
-      if (needsZShape) {
-        // Z-shape or U-shape: Add two intermediate points
-        const midPoints = this.calculateZShapeMidpoints(sourceOffset, targetOffset, sourceDirection, targetDirection);
-        points.push(...midPoints);
+      if (dirAccessor === 'x') {
+        // Horizontal routing (left/right ports)
+        const centerX = (sourceOffset.x + targetOffset.x) / 2;
+        intermediatePoints = [
+          { x: centerX, y: sourceOffset.y },
+          { x: centerX, y: targetOffset.y }
+        ];
       } else {
-        // L-shape: Add one intermediate point
-        const midPoint = this.calculateLShapeMidpoint(sourceOffset, targetOffset, sourceDirection, targetDirection);
-        if (midPoint) {
-          points.push(midPoint);
+        // Vertical routing (top/bottom ports)
+        const centerY = (sourceOffset.y + targetOffset.y) / 2;
+        intermediatePoints = [
+          { x: sourceOffset.x, y: centerY },
+          { x: targetOffset.x, y: centerY }
+        ];
+      }
+    } else {
+      // Same or perpendicular handle positions - use L-shape routing
+      console.log('  ↗️ Same/perpendicular handles - using L-shape');
+
+      // CRITICAL: Ensure intermediate point aligns with BOTH gap points to prevent diagonal segments
+      // The intermediate point must be perpendicular to both source and target
+      const isSourceHorizontal = sourceDirection === 'left' || sourceDirection === 'right';
+      const isTargetHorizontal = targetDirection === 'left' || targetDirection === 'right';
+
+      if (isSourceHorizontal && !isTargetHorizontal) {
+        // Source horizontal, target vertical: go horizontal first, then vertical
+        intermediatePoints = [{ x: targetOffset.x, y: sourceOffset.y }];
+      } else if (!isSourceHorizontal && isTargetHorizontal) {
+        // Source vertical, target horizontal: go vertical first, then horizontal
+        intermediatePoints = [{ x: sourceOffset.x, y: targetOffset.y }];
+      } else {
+        // Both same orientation - use direction accessor
+        if (dirAccessor === 'x') {
+          intermediatePoints = [{ x: targetOffset.x, y: sourceOffset.y }];
+        } else {
+          intermediatePoints = [{ x: sourceOffset.x, y: targetOffset.y }];
         }
       }
 
-      // Add target offset point if we have a target direction
-      if (targetDirection && (targetOffset.x !== end.x || targetOffset.y !== end.y)) {
-        points.push(targetOffset);
+      // React Flow: Handle same position ports that are too close (lines 153-165)
+      if (sourceDirection === targetDirection) {
+        const diff = Math.abs(start[dirAccessor] - end[dirAccessor]);
+
+        if (diff <= gapOffset) {
+          const additionalGap = Math.min(gapOffset - 1, gapOffset - diff);
+          const currDir = dir[dirAccessor];
+
+          if (sourceDir[dirAccessor] === currDir) {
+            const sign = sourceOffset[dirAccessor] > start[dirAccessor] ? -1 : 1;
+            sourceGapOffset[dirAccessor] = sign * additionalGap;
+          } else {
+            const sign = targetOffset[dirAccessor] > end[dirAccessor] ? -1 : 1;
+            targetGapOffset[dirAccessor] = sign * additionalGap;
+          }
+
+          console.log('  ⚠️ Same position ports too close - adding gap offset:', {
+            diff,
+            additionalGap,
+            sourceGapOffset,
+            targetGapOffset
+          });
+        }
       }
-
-      points.push({ x: end.x, y: end.y });
-    } else {
-      // Aligned case - just connect straight
-      console.log('  ➡️ Using aligned connection');
-
-      // Add target offset point if we have a target direction
-      if (targetDirection && (targetOffset.x !== end.x || targetOffset.y !== end.y)) {
-        points.push(targetOffset);
-      }
-
-      points.push({ x: end.x, y: end.y });
     }
+
+    // Apply gap offsets to source/target offset points
+    sourceOffset.x += sourceGapOffset.x;
+    sourceOffset.y += sourceGapOffset.y;
+    targetOffset.x += targetGapOffset.x;
+    targetOffset.y += targetGapOffset.y;
+
+    // Build final path ensuring perpendicular segments
+    const points: RoutePoint[] = [
+      { x: start.x, y: start.y },
+      sourceOffset,
+      ...intermediatePoints,
+      targetOffset,
+      { x: end.x, y: end.y }
+    ];
 
     // Snap to grid if specified
     if (gridSize && gridSize > 1) {
@@ -276,6 +313,43 @@ export class OrthogonalRouter implements IRouter {
   }
 
   /**
+   * Get direction vector for a port direction (React Flow style)
+   */
+  private getDirectionVector(direction: 'left' | 'right' | 'top' | 'bottom' | undefined): { x: number; y: number } {
+    if (!direction) return { x: 0, y: 0 };
+
+    switch (direction) {
+      case 'left':
+        return { x: -1, y: 0 };
+      case 'right':
+        return { x: 1, y: 0 };
+      case 'top':
+        return { x: 0, y: -1 };
+      case 'bottom':
+        return { x: 0, y: 1 };
+    }
+  }
+
+  /**
+   * Determine routing direction based on source/target positions (React Flow logic)
+   */
+  private getRoutingDirection(
+    source: Point,
+    sourcePosition: 'left' | 'right' | 'top' | 'bottom' | undefined,
+    target: Point
+  ): { x: number; y: number } {
+    if (!sourcePosition) return { x: 1, y: 0 };
+
+    // For horizontal ports (left/right), determine X direction
+    if (sourcePosition === 'left' || sourcePosition === 'right') {
+      return source.x < target.x ? { x: 1, y: 0 } : { x: -1, y: 0 };
+    }
+
+    // For vertical ports (top/bottom), determine Y direction
+    return source.y < target.y ? { x: 0, y: 1 } : { x: 0, y: -1 };
+  }
+
+  /**
    * Determine if we need Z-shape routing (vs L-shape)
    * Z-shape is needed when ports point toward each other or in same direction
    */
@@ -375,7 +449,7 @@ export class OrthogonalRouter implements IRouter {
     targetDirection?: 'left' | 'right' | 'top' | 'bottom'
   ): RoutedPath | null {
     const gridSize = options.gridSize ?? 10;
-    const margin = options.obstacleMargin ?? 10; // Match React Flow standard (10px)
+    const margin = options.obstacleMargin ?? 20; // Increased margin for better obstacle avoidance
     const maxIterations = options.maxIterations ?? 10000;
     const gapOffset = 20; // Distance to move away from port
 

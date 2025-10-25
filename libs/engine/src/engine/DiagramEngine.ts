@@ -169,10 +169,16 @@ export class DiagramEngine {
           sourcePort.addConnection(link.id);
           targetPort.addConnection(link.id);
 
-          // Calculate initial path
+          // Calculate initial path using RoutingEngine
           const sourcePos = sourcePort.getAbsolutePosition(sourceNode.getBoundingBox());
           const targetPos = targetPort.getAbsolutePosition(targetNode.getBoundingBox());
-          link.generatePath(sourcePos, targetPos);
+
+          // Get port directions for routing
+          const sourceDirection = sourcePort.alignment?.side;
+          const targetDirection = targetPort.alignment?.side;
+
+          // Use RoutingEngine to calculate path with obstacle avoidance
+          this.generateLinkPathWithRouting(link, sourcePos, targetPos, sourceDirection, targetDirection, sourceNode, targetNode);
 
           // Add link to diagram
           this.diagram.addLink(link);
@@ -1727,5 +1733,62 @@ export class DiagramEngine {
     }
 
     return points;
+  }
+
+  /**
+   * Generate link path using RoutingEngine with obstacle avoidance
+   * This ensures the final link respects the routing algorithm setting (A*, none, etc.)
+   */
+  private generateLinkPathWithRouting(
+    link: LinkModel,
+    sourcePos: Point,
+    targetPos: Point,
+    sourceDirection?: 'left' | 'right' | 'top' | 'bottom',
+    targetDirection?: 'left' | 'right' | 'top' | 'bottom',
+    sourceNode?: any,
+    targetNode?: any
+  ): void {
+    // Get obstacles from diagram (exclude source and target nodes)
+    const obstacles: Array<{ id: string; x: number; y: number; width: number; height: number }> = [];
+
+    if (this.diagram) {
+      this.diagram.getNodes().forEach(node => {
+        // Don't add source or target nodes as obstacles
+        if (node.id !== sourceNode?.id && node.id !== targetNode?.id) {
+          obstacles.push({
+            id: node.id,
+            x: node.position.x,
+            y: node.position.y,
+            width: node.size.width,
+            height: node.size.height,
+          });
+        }
+      });
+    }
+
+    // Use the routing engine's default algorithm
+    const algorithm = this.routingEngine.getDefaultAlgorithm();
+
+    // Route the path with obstacle avoidance
+    const routedPath = this.routingEngine.route({
+      start: sourcePos,
+      end: targetPos,
+      sourceDirection,
+      targetDirection,
+      obstacles,
+      options: {
+        algorithm,
+        avoidObstacles: algorithm !== 'straight' && algorithm !== 'orthogonal', // Only avoid obstacles for A*, Dijkstra, etc.
+        obstacleMargin: 20,
+      }
+    });
+
+    // Set the link points from the routed path
+    if (routedPath && routedPath.points.length > 0) {
+      link.setPoints(routedPath.points);
+    } else {
+      // Fallback to simple path generation if routing failed
+      link.generatePath(sourcePos, targetPos, sourceDirection, targetDirection);
+    }
   }
 }
