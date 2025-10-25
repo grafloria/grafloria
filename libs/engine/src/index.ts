@@ -48,3 +48,6 @@ export * from './templates';
 
 // Rendering (Phase 3.4)
 export * from './rendering';
+
+// Template Library (Phase 4)
+export * from './template-library';
