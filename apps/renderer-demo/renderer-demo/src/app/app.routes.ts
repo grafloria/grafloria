@@ -32,6 +32,10 @@ export const appRoutes: Route[] = [
     loadComponent: () => import('./pages/custom-nodes/custom-nodes.component').then(m => m.CustomNodesComponent)
   },
   {
+    path: 'shape-gallery',
+    loadComponent: () => import('./pages/shape-gallery/shape-gallery.component').then(m => m.ShapeGalleryComponent)
+  },
+  {
     path: '**',
     redirectTo: ''
   }
