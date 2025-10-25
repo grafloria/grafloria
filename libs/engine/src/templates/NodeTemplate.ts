@@ -186,13 +186,68 @@ export interface PortsConfig {
 
 /**
  * HTML rendering configuration
+ * Phase 3.4: Enhanced to support LemonadeJS templates for framework-agnostic rendering
  */
 export interface HtmlConfig {
-  component: string;
+  /**
+   * Rendering mode
+   * - 'component': Reference to a framework-specific component (Angular, React, etc.)
+   * - 'template': LemonadeJS template string (framework-agnostic)
+   */
+  mode?: 'component' | 'template';
+
+  /**
+   * Component reference (for mode='component')
+   * Used when integrating with framework-specific components
+   */
+  component?: string;
+
+  /**
+   * LemonadeJS template string (for mode='template')
+   * HTML string with LemonadeJS binding syntax
+   * Example: '<div>{{data.name}}</div>'
+   *
+   * Phase 3.4: Framework-agnostic HTML templates
+   */
+  template?: string;
+
+  /**
+   * CSS classes to apply
+   */
   className?: string | string[];
+
+  /**
+   * Inline styles
+   */
   style?: Record<string, any>;
+
+  /**
+   * Data bindings (property mappings)
+   * Maps template variables to node data paths
+   * Example: { userName: 'data.user.name', count: 'data.items.length' }
+   */
   bindings?: Record<string, string>;
+
+  /**
+   * Event handlers
+   * Maps DOM events to engine event names
+   * Example: { click: 'node:clicked', input: 'node:valueChanged' }
+   *
+   * Phase 3.4: Events are emitted through the engine's EventBus
+   * Handler signature: (nodeId: string, eventData: any) => void
+   */
   events?: Record<string, string>;
+
+  /**
+   * Z-index for HTML layer positioning
+   */
+  zIndex?: number;
+
+  /**
+   * Whether to enable pointer events
+   * If false, the HTML layer won't capture mouse events (pass-through to SVG)
+   */
+  pointerEvents?: boolean;
 }
 
 /**

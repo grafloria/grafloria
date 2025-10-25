@@ -42,3 +42,9 @@ export * from './routing';
 
 // Layout
 export * from './layout';
+
+// Templates (Phase 2)
+export * from './templates';
+
+// Rendering (Phase 3.4)
+export * from './rendering';
