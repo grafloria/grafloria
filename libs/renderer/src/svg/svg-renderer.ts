@@ -6,6 +6,9 @@ import { createForeignObject, isForeignObject, getContainerId } from '../vnode/f
 // Import routing types
 import type { RoutedPath, RoutingAlgorithm } from '@grafloria/engine';
 
+// Phase 3.2: Shape-aware port positioning
+import { getPortPositionForShape } from './port-positioning';
+
 // LOD Level type (matches engine's LODLevel)
 type LODLevel = 'high' | 'medium' | 'low';
 
@@ -775,36 +778,10 @@ export class SVGRenderer implements IRenderer {
    * Get port position relative to node's local coordinate system
    * Used for rendering ports inside node groups that are already transformed
    */
+  // Phase 3.2: Shape-aware port positioning
   private getPortRelativePosition(port: PortModel, node: NodeModel): { x: number; y: number } {
-    const { side } = port.alignment;
-    const nodeWidth = node.size.width;
-    const nodeHeight = node.size.height;
-    let x = 0;
-    let y = 0;
-
-    switch (side) {
-      case 'left':
-        x = 0 - port.alignment.offset;
-        y = nodeHeight * port.position.y;
-        break;
-      case 'right':
-        x = nodeWidth + port.alignment.offset;
-        y = nodeHeight * port.position.y;
-        break;
-      case 'top':
-        x = nodeWidth * port.position.x;
-        y = 0 - port.alignment.offset;
-        break;
-      case 'bottom':
-        x = nodeWidth * port.position.x;
-        y = nodeHeight + port.alignment.offset;
-        break;
-    }
-
-    return {
-      x: x + port.offset.x,
-      y: y + port.offset.y,
-    };
+    // Use shape-aware positioning utility
+    return getPortPositionForShape(port, node);
   }
 
   /**
