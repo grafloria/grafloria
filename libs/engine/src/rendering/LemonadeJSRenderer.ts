@@ -89,6 +89,26 @@ export interface LemonadeRenderResult {
  * - Component mode support
  */
 export class LemonadeJSRenderer {
+  /**
+   * Track rendered elements by node UUID for cleanup
+   */
+  private renderedElements = new Map<string, HTMLElement>();
+
+  /**
+   * Track LemonadeJS self objects by node UUID for cleanup
+   */
+  private selfObjects = new Map<string, any>();
+
+  /**
+   * Track event handlers by node UUID for cleanup
+   */
+  private eventHandlers = new Map<string, Record<string, (event: any) => void>>();
+
+  /**
+   * Track EventBus subscriptions by node UUID for cleanup
+   */
+  private eventSubscriptions = new Map<string, Array<() => void>>();
+
   constructor(private eventBus: EventBus) {}
 
   /**
@@ -98,6 +118,9 @@ export class LemonadeJSRenderer {
    * @returns Render result with LemonadeJS element
    */
   render(config: HtmlConfig, node: NodeModel): LemonadeRenderResult {
+    // Clean up any existing resources for this node before re-rendering
+    this.disposeNode(node.uuid);
+
     const mode = this.determineMode(config);
 
     const result: LemonadeRenderResult = {
@@ -176,12 +199,10 @@ export class LemonadeJSRenderer {
     // Resolve bindings
     result.bindings = this.resolveBindings(config, node);
 
-    // Process template for LemonadeJS
-    const processedTemplate = this.processTemplate(config.template, config.events);
-
     try {
       // Create LemonadeJS element with reactive data
-      result.element = lemonade.element(processedTemplate, result.self);
+      // Event handlers are attached via self object methods
+      result.element = lemonade.element(config.template, result.self);
 
       // Apply additional styles/classes to the element
       if (result.element) {
@@ -191,9 +212,28 @@ export class LemonadeJSRenderer {
       // Get HTML string for compatibility
       result.html = result.element?.outerHTML;
     } catch (error) {
-      console.error('LemonadeJS rendering error:', error);
+      // Emit error event through EventBus
+      this.eventBus.emit('renderer:error', {
+        nodeId: node.id,
+        nodeUuid: node.uuid,
+        error,
+        message: 'LemonadeJS rendering error',
+        phase: 'template-rendering',
+      });
+
       // Fallback to simple rendering
       result.html = this.fallbackRender(config.template, result.bindings);
+    }
+
+    // Track created resources for cleanup
+    if (result.element) {
+      this.renderedElements.set(node.uuid, result.element);
+    }
+    if (result.self) {
+      this.selfObjects.set(node.uuid, result.self);
+    }
+    if (Object.keys(result.eventHandlers).length > 0) {
+      this.eventHandlers.set(node.uuid, result.eventHandlers);
     }
 
     return result;
@@ -253,30 +293,6 @@ export class LemonadeJSRenderer {
     }
 
     return resolved;
-  }
-
-  /**
-   * Process template to convert event syntax
-   * Converts events config to LemonadeJS :onclick syntax
-   */
-  private processTemplate(template: string, events?: Record<string, string>): string {
-    let processed = template;
-
-    // Convert event handlers to LemonadeJS syntax
-    if (events) {
-      Object.keys(events).forEach((domEvent) => {
-        const methodName = `on${domEvent.charAt(0).toUpperCase()}${domEvent.slice(1)}`;
-
-        // Add :onclick="self.onClick" style handlers to elements
-        // This is a simple approach - in production, you'd parse the HTML more carefully
-        const eventAttr = `:${domEvent}`;
-
-        // If template doesn't already have the event handler, we'll rely on
-        // manual attachment after rendering
-      });
-    }
-
-    return processed;
   }
 
   /**
@@ -399,7 +415,13 @@ export class LemonadeJSRenderer {
 
       return value;
     } catch (error) {
-      console.warn(`Failed to evaluate expression: ${expression}`, error);
+      // Emit warning event through EventBus
+      this.eventBus.emit('renderer:warning', {
+        message: 'Failed to evaluate expression',
+        expression,
+        error,
+        phase: 'expression-evaluation',
+      });
       return undefined;
     }
   }
@@ -427,9 +449,61 @@ export class LemonadeJSRenderer {
   }
 
   /**
-   * Cleanup renderer resources
+   * Dispose resources for a specific node
+   * @param nodeUuid - UUID of node to clean up
+   */
+  disposeNode(nodeUuid: string): void {
+    // Remove DOM element if it's still in the document
+    const element = this.renderedElements.get(nodeUuid);
+    if (element && element.parentNode) {
+      element.parentNode.removeChild(element);
+    }
+    this.renderedElements.delete(nodeUuid);
+
+    // Clean up LemonadeJS self object
+    const self = this.selfObjects.get(nodeUuid);
+    if (self) {
+      // If LemonadeJS provides a destroy method, call it
+      if (typeof self.destroy === 'function') {
+        self.destroy();
+      }
+      // Clear all reactive properties
+      Object.keys(self).forEach((key) => {
+        delete self[key];
+      });
+    }
+    this.selfObjects.delete(nodeUuid);
+
+    // Remove event handlers
+    const handlers = this.eventHandlers.get(nodeUuid);
+    if (handlers) {
+      // Event handlers will be garbage collected when references are removed
+      Object.keys(handlers).forEach((key) => {
+        delete handlers[key];
+      });
+    }
+    this.eventHandlers.delete(nodeUuid);
+
+    // Clean up EventBus subscriptions
+    const subscriptions = this.eventSubscriptions.get(nodeUuid);
+    if (subscriptions) {
+      subscriptions.forEach((unsubscribe) => unsubscribe());
+    }
+    this.eventSubscriptions.delete(nodeUuid);
+  }
+
+  /**
+   * Cleanup all renderer resources
    */
   dispose(): void {
-    // Future: cleanup LemonadeJS instances, remove event listeners, etc.
+    // Dispose all tracked nodes
+    const nodeUuids = Array.from(this.renderedElements.keys());
+    nodeUuids.forEach((uuid) => this.disposeNode(uuid));
+
+    // Clear all tracking maps
+    this.renderedElements.clear();
+    this.selfObjects.clear();
+    this.eventHandlers.clear();
+    this.eventSubscriptions.clear();
   }
 }

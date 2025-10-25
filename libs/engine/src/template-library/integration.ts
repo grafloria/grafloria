@@ -16,7 +16,8 @@ import { TemplateLibrary } from './index';
  * import { registerTemplateLibrary } from '@grafloria/engine';
  *
  * // In your engine setup
- * registerTemplateLibrary(engine.templateRegistry);
+ * const count = registerTemplateLibrary(engine.templateRegistry);
+ * // count = 20 (number of templates registered)
  *
  * // Now you can use templates with NodeFactory
  * const node = engine.nodeFactory.createFromTemplate(
@@ -25,17 +26,17 @@ import { TemplateLibrary } from './index';
  *   { x: 100, y: 100 }
  * );
  * ```
+ * @returns Number of templates registered
  */
-export function registerTemplateLibrary(registry: TemplateRegistry): void {
+export function registerTemplateLibrary(registry: TemplateRegistry): number {
   const templates = TemplateLibrary.getAll();
 
   // Register all templates from the library
   templates.forEach((template) => {
-    // Cast to any to handle the FlexibleTemplate vs NodeTemplate difference
-    registry.register(template as any);
+    registry.register(template);
   });
 
-  console.log(`Registered ${templates.length} templates from TemplateLibrary`);
+  return templates.length;
 }
 
 /**
@@ -44,20 +45,34 @@ export function registerTemplateLibrary(registry: TemplateRegistry): void {
  * @example
  * ```typescript
  * // Only register workflow templates
- * registerTemplatesByCategory(engine.templateRegistry, 'workflow');
+ * const count = registerTemplatesByCategory(engine.templateRegistry, 'workflow');
+ * // count = 7 (number of workflow templates)
  * ```
+ * @returns Number of templates registered
  */
 export function registerTemplatesByCategory(
   registry: TemplateRegistry,
   category: 'common' | 'workflow' | 'data-viz' | 'diagram'
-): void {
+): number {
   const templates = TemplateLibrary.getByCategory(category);
 
   templates.forEach((template) => {
-    registry.register(template as any);
+    registry.register(template);
   });
 
-  console.log(`Registered ${templates.length} ${category} templates`);
+  return templates.length;
+}
+
+/**
+ * Registration result for template by ID
+ */
+export interface TemplateRegistrationResult {
+  /** Number of templates successfully registered */
+  registered: number;
+  /** IDs of templates that were not found */
+  notFound: string[];
+  /** Total number of template IDs requested */
+  total: number;
 }
 
 /**
@@ -66,30 +81,36 @@ export function registerTemplatesByCategory(
  * @example
  * ```typescript
  * // Only register specific templates
- * registerTemplatesById(engine.templateRegistry, [
+ * const result = registerTemplatesById(engine.templateRegistry, [
  *   'user-avatar',
  *   'card-node',
  *   'process-step'
  * ]);
+ * // result = { registered: 3, notFound: [], total: 3 }
  * ```
+ * @returns Registration result with counts and missing template IDs
  */
 export function registerTemplatesById(
   registry: TemplateRegistry,
   templateIds: string[]
-): void {
-  let registered = 0;
+): TemplateRegistrationResult {
+  const result: TemplateRegistrationResult = {
+    registered: 0,
+    notFound: [],
+    total: templateIds.length,
+  };
 
   templateIds.forEach((id) => {
     const template = TemplateLibrary.get(id);
     if (template) {
-      registry.register(template as any);
-      registered++;
+      registry.register(template);
+      result.registered++;
     } else {
-      console.warn(`Template not found: ${id}`);
+      result.notFound.push(id);
     }
   });
 
-  console.log(`Registered ${registered}/${templateIds.length} templates`);
+  return result;
 }
 
 /**

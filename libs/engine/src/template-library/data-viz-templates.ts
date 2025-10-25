@@ -6,26 +6,18 @@
 import type { NodeTemplate } from '../templates/NodeTemplate';
 
 /**
- * Flexible template type with additional convenience properties
- * Makes NodeTemplate properties optional and adds convenience fields
- */
-type FlexibleTemplate = Partial<NodeTemplate> & {
-  id: string; // ID is always required
-  structure: NodeTemplate['structure']; // structure is always required
-  name?: string;
-  description?: string;
-  category?: string;
-};
-
-/**
  * Metric Card Template
  * Card displaying a key metric with trend
  */
-export const MetricCardTemplate: FlexibleTemplate = {
+export const MetricCardTemplate: NodeTemplate = {
   id: 'metric-card',
-  name: 'Metric Card',
-  description: 'Display key metrics with trends and sparklines',
-  category: 'data-viz',
+  version: '1.0.0',
+  meta: {
+    name: 'Metric Card',
+    description: 'Display key metrics with trends and sparklines',
+    category: 'data-viz',
+  },
+
 
   structure: {
     type: 'metric',
@@ -90,11 +82,15 @@ export const MetricCardTemplate: FlexibleTemplate = {
  * Gauge Template
  * Circular gauge/dial for percentage values
  */
-export const GaugeTemplate: FlexibleTemplate = {
+export const GaugeTemplate: NodeTemplate = {
   id: 'gauge',
-  name: 'Gauge',
-  description: 'Circular gauge for displaying percentage values',
-  category: 'data-viz',
+  version: '1.0.0',
+  meta: {
+    name: 'Gauge',
+    description: 'Circular gauge for displaying percentage values',
+    category: 'data-viz',
+  },
+
 
   structure: {
     type: 'gauge',
@@ -156,11 +152,15 @@ export const GaugeTemplate: FlexibleTemplate = {
  * Bar Chart Template
  * Simple bar chart visualization
  */
-export const BarChartTemplate: FlexibleTemplate = {
+export const BarChartTemplate: NodeTemplate = {
   id: 'bar-chart',
-  name: 'Bar Chart',
-  description: 'Simple bar chart for comparing values',
-  category: 'data-viz',
+  version: '1.0.0',
+  meta: {
+    name: 'Bar Chart',
+    description: 'Simple bar chart for comparing values',
+    category: 'data-viz',
+  },
+
 
   structure: {
     type: 'chart',
@@ -226,11 +226,15 @@ export const BarChartTemplate: FlexibleTemplate = {
  * Data Table Template
  * Tabular data display
  */
-export const DataTableTemplate: FlexibleTemplate = {
+export const DataTableTemplate: NodeTemplate = {
   id: 'data-table',
-  name: 'Data Table',
-  description: 'Tabular data display with headers',
-  category: 'data-viz',
+  version: '1.0.0',
+  meta: {
+    name: 'Data Table',
+    description: 'Tabular data display with headers',
+    category: 'data-viz',
+  },
+
 
   structure: {
     type: 'table',
@@ -306,11 +310,15 @@ export const DataTableTemplate: FlexibleTemplate = {
  * Pie Chart Template
  * Circular pie/donut chart
  */
-export const PieChartTemplate: FlexibleTemplate = {
+export const PieChartTemplate: NodeTemplate = {
   id: 'pie-chart',
-  name: 'Pie Chart',
-  description: 'Circular pie chart for proportions',
-  category: 'data-viz',
+  version: '1.0.0',
+  meta: {
+    name: 'Pie Chart',
+    description: 'Circular pie chart for proportions',
+    category: 'data-viz',
+  },
+
 
   structure: {
     type: 'pie',
@@ -367,11 +375,15 @@ export const PieChartTemplate: FlexibleTemplate = {
  * Stat Counter Template
  * Large number display with icon
  */
-export const StatCounterTemplate: FlexibleTemplate = {
+export const StatCounterTemplate: NodeTemplate = {
   id: 'stat-counter',
-  name: 'Stat Counter',
-  description: 'Large statistic counter with icon',
-  category: 'data-viz',
+  version: '1.0.0',
+  meta: {
+    name: 'Stat Counter',
+    description: 'Large statistic counter with icon',
+    category: 'data-viz',
+  },
+
 
   structure: {
     type: 'stat',
@@ -429,11 +441,15 @@ export const StatCounterTemplate: FlexibleTemplate = {
  * Progress Bar Template
  * Horizontal progress indicator
  */
-export const ProgressBarTemplate: FlexibleTemplate = {
+export const ProgressBarTemplate: NodeTemplate = {
   id: 'progress-bar',
-  name: 'Progress Bar',
-  description: 'Horizontal progress bar indicator',
-  category: 'data-viz',
+  version: '1.0.0',
+  meta: {
+    name: 'Progress Bar',
+    description: 'Horizontal progress bar indicator',
+    category: 'data-viz',
+  },
+
 
   structure: {
     type: 'progress',

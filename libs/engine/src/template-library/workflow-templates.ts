@@ -6,26 +6,18 @@
 import type { NodeTemplate } from '../templates/NodeTemplate';
 
 /**
- * Flexible template type with additional convenience properties
- * Makes NodeTemplate properties optional and adds convenience fields
- */
-type FlexibleTemplate = Partial<NodeTemplate> & {
-  id: string; // ID is always required
-  structure: NodeTemplate['structure']; // structure is always required
-  name?: string;
-  description?: string;
-  category?: string;
-};
-
-/**
  * Process Step Template
  * Rectangular process box for workflow diagrams
  */
-export const ProcessStepTemplate: FlexibleTemplate = {
+export const ProcessStepTemplate: NodeTemplate = {
   id: 'process-step',
-  name: 'Process Step',
-  description: 'Standard process step for flowcharts',
-  category: 'workflow',
+  version: '1.0.0',
+  meta: {
+    name: 'Process Step',
+    description: 'Standard process step for flowcharts',
+    category: 'workflow',
+  },
+
 
   structure: {
     type: 'process',
@@ -88,11 +80,15 @@ export const ProcessStepTemplate: FlexibleTemplate = {
  * Decision Node Template
  * Diamond-shaped decision point
  */
-export const DecisionNodeTemplate: FlexibleTemplate = {
+export const DecisionNodeTemplate: NodeTemplate = {
   id: 'decision-node',
-  name: 'Decision Node',
-  description: 'Diamond-shaped decision point for branching logic',
-  category: 'workflow',
+  version: '1.0.0',
+  meta: {
+    name: 'Decision Node',
+    description: 'Diamond-shaped decision point for branching logic',
+    category: 'workflow',
+  },
+
 
   structure: {
     type: 'decision',
@@ -152,11 +148,15 @@ export const DecisionNodeTemplate: FlexibleTemplate = {
  * Start Event Template
  * Circle indicating workflow start
  */
-export const StartEventTemplate: FlexibleTemplate = {
+export const StartEventTemplate: NodeTemplate = {
   id: 'start-event',
-  name: 'Start Event',
-  description: 'Circle node marking the start of a workflow',
-  category: 'workflow',
+  version: '1.0.0',
+  meta: {
+    name: 'Start Event',
+    description: 'Circle node marking the start of a workflow',
+    category: 'workflow',
+  },
+
 
   structure: {
     type: 'start',
@@ -210,11 +210,15 @@ export const StartEventTemplate: FlexibleTemplate = {
  * End Event Template
  * Circle indicating workflow end
  */
-export const EndEventTemplate: FlexibleTemplate = {
+export const EndEventTemplate: NodeTemplate = {
   id: 'end-event',
-  name: 'End Event',
-  description: 'Circle node marking the end of a workflow',
-  category: 'workflow',
+  version: '1.0.0',
+  meta: {
+    name: 'End Event',
+    description: 'Circle node marking the end of a workflow',
+    category: 'workflow',
+  },
+
 
   structure: {
     type: 'end',
@@ -268,11 +272,15 @@ export const EndEventTemplate: FlexibleTemplate = {
  * Subprocess Template
  * Rounded rectangle for subprocess
  */
-export const SubprocessTemplate: FlexibleTemplate = {
+export const SubprocessTemplate: NodeTemplate = {
   id: 'subprocess',
-  name: 'Subprocess',
-  description: 'Subprocess or grouped activity',
-  category: 'workflow',
+  version: '1.0.0',
+  meta: {
+    name: 'Subprocess',
+    description: 'Subprocess or grouped activity',
+    category: 'workflow',
+  },
+
 
   structure: {
     type: 'subprocess',
@@ -335,11 +343,15 @@ export const SubprocessTemplate: FlexibleTemplate = {
  * Gateway Template
  * Diamond for parallel/exclusive gateways
  */
-export const GatewayTemplate: FlexibleTemplate = {
+export const GatewayTemplate: NodeTemplate = {
   id: 'gateway',
-  name: 'Gateway',
-  description: 'Gateway for splitting/joining workflow paths',
-  category: 'workflow',
+  version: '1.0.0',
+  meta: {
+    name: 'Gateway',
+    description: 'Gateway for splitting/joining workflow paths',
+    category: 'workflow',
+  },
+
 
   structure: {
     type: 'gateway',
@@ -395,11 +407,15 @@ export const GatewayTemplate: FlexibleTemplate = {
  * Activity Template
  * Rounded rectangle for activity/task
  */
-export const ActivityTemplate: FlexibleTemplate = {
+export const ActivityTemplate: NodeTemplate = {
   id: 'activity',
-  name: 'Activity',
-  description: 'Activity or task in a workflow',
-  category: 'workflow',
+  version: '1.0.0',
+  meta: {
+    name: 'Activity',
+    description: 'Activity or task in a workflow',
+    category: 'workflow',
+  },
+
 
   structure: {
     type: 'activity',

@@ -23,7 +23,10 @@ describe('Template Library Integration', () => {
 
   describe('registerTemplateLibrary', () => {
     it('should register all 20 templates', () => {
-      registerTemplateLibrary(registry);
+      const count = registerTemplateLibrary(registry);
+
+      // Should return count of 20
+      expect(count).toBe(20);
 
       // Check that all templates are registered
       expect(registry.has('user-avatar')).toBe(true);
@@ -36,8 +39,11 @@ describe('Template Library Integration', () => {
     });
 
     it('should not duplicate registrations', () => {
-      registerTemplateLibrary(registry);
-      registerTemplateLibrary(registry); // Register again
+      const count1 = registerTemplateLibrary(registry);
+      const count2 = registerTemplateLibrary(registry); // Register again
+
+      expect(count1).toBe(20);
+      expect(count2).toBe(20);
 
       const all = registry.getAll();
       expect(all.length).toBe(20); // Still 20, not 40
@@ -46,8 +52,9 @@ describe('Template Library Integration', () => {
 
   describe('registerTemplatesByCategory', () => {
     it('should register only common templates', () => {
-      registerTemplatesByCategory(registry, 'common');
+      const count = registerTemplatesByCategory(registry, 'common');
 
+      expect(count).toBe(6);
       expect(registry.has('user-avatar')).toBe(true);
       expect(registry.has('card-node')).toBe(true);
       expect(registry.has('process-step')).toBe(false); // workflow
@@ -58,8 +65,9 @@ describe('Template Library Integration', () => {
     });
 
     it('should register only workflow templates', () => {
-      registerTemplatesByCategory(registry, 'workflow');
+      const count = registerTemplatesByCategory(registry, 'workflow');
 
+      expect(count).toBe(7);
       expect(registry.has('process-step')).toBe(true);
       expect(registry.has('decision-node')).toBe(true);
       expect(registry.has('user-avatar')).toBe(false); // common
@@ -69,8 +77,9 @@ describe('Template Library Integration', () => {
     });
 
     it('should register only data-viz templates', () => {
-      registerTemplatesByCategory(registry, 'data-viz');
+      const count = registerTemplatesByCategory(registry, 'data-viz');
 
+      expect(count).toBe(7);
       expect(registry.has('metric-card')).toBe(true);
       expect(registry.has('gauge')).toBe(true);
       expect(registry.has('user-avatar')).toBe(false); // common
@@ -82,11 +91,15 @@ describe('Template Library Integration', () => {
 
   describe('registerTemplatesById', () => {
     it('should register specific templates', () => {
-      registerTemplatesById(registry, [
+      const result = registerTemplatesById(registry, [
         'user-avatar',
         'process-step',
         'metric-card'
       ]);
+
+      expect(result.registered).toBe(3);
+      expect(result.notFound).toEqual([]);
+      expect(result.total).toBe(3);
 
       expect(registry.has('user-avatar')).toBe(true);
       expect(registry.has('process-step')).toBe(true);
@@ -98,26 +111,29 @@ describe('Template Library Integration', () => {
     });
 
     it('should handle non-existent template IDs gracefully', () => {
-      const consoleSpy = jest.spyOn(console, 'warn').mockImplementation();
-
-      registerTemplatesById(registry, [
+      const result = registerTemplatesById(registry, [
         'user-avatar',
         'non-existent-template',
         'metric-card'
       ]);
 
+      expect(result.registered).toBe(2);
+      expect(result.notFound).toEqual(['non-existent-template']);
+      expect(result.total).toBe(3);
+
       expect(registry.has('user-avatar')).toBe(true);
       expect(registry.has('metric-card')).toBe(true);
-      expect(consoleSpy).toHaveBeenCalledWith('Template not found: non-existent-template');
 
       const all = registry.getAll();
       expect(all.length).toBe(2);
-
-      consoleSpy.mockRestore();
     });
 
     it('should handle empty array', () => {
-      registerTemplatesById(registry, []);
+      const result = registerTemplatesById(registry, []);
+
+      expect(result.registered).toBe(0);
+      expect(result.notFound).toEqual([]);
+      expect(result.total).toBe(0);
 
       const all = registry.getAll();
       expect(all.length).toBe(0);

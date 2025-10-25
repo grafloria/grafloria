@@ -44,17 +44,24 @@ export interface TemplateInfo {
 /**
  * Template Library Registry
  * Central registry for all available templates
+ *
+ * Can be used directly via factory pattern:
+ * ```typescript
+ * const myLibrary = createTemplateLibrary();
+ * // or
+ * const emptyLibrary = new TemplateRegistry();
+ * initializeTemplateLibrary(emptyLibrary);
+ * ```
  */
-class TemplateRegistry {
+export class TemplateRegistry {
   private templates: Map<string, TemplateInfo> = new Map();
 
   /**
    * Register a template in the library
-   * Accepts any template-like object and casts to NodeTemplate
    */
-  register(template: any, category: TemplateCategory, tags: string[] = []): void {
+  register(template: NodeTemplate, category: TemplateCategory, tags: string[] = []): void {
     this.templates.set(template.id, {
-      template: template as NodeTemplate,
+      template,
       category,
       tags,
     });
@@ -106,11 +113,11 @@ class TemplateRegistry {
     const lowerQuery = query.toLowerCase();
     return Array.from(this.templates.values())
       .filter((info) => {
-        const template = info.template as any; // Use any to access convenience properties
+        const template = info.template;
         return (
           template.id.toLowerCase().includes(lowerQuery) ||
-          (template.name && template.name.toLowerCase().includes(lowerQuery)) ||
-          (template.description && template.description.toLowerCase().includes(lowerQuery))
+          (template.meta?.name && template.meta.name.toLowerCase().includes(lowerQuery)) ||
+          (template.meta?.description && template.meta.description.toLowerCase().includes(lowerQuery))
         );
       })
       .map((info) => info.template);
@@ -146,43 +153,88 @@ class TemplateRegistry {
 }
 
 /**
- * Global template library instance
+ * Initialize a template registry with all built-in templates
+ * @param registry - Registry to populate (optional, creates new if not provided)
+ * @returns Populated template registry
  */
-export const TemplateLibrary = new TemplateRegistry();
+export function initializeTemplateLibrary(registry?: TemplateRegistry): TemplateRegistry {
+  const lib = registry || new TemplateRegistry();
 
-/**
- * Initialize the template library with all built-in templates
- */
-function initializeLibrary(): void {
   // Common Templates
-  TemplateLibrary.register(CommonTemplates.UserAvatar, 'common', ['user', 'avatar', 'profile']);
-  TemplateLibrary.register(CommonTemplates.CardNode, 'common', ['card', 'content', 'panel']);
-  TemplateLibrary.register(CommonTemplates.ButtonNode, 'common', ['button', 'action', 'interactive']);
-  TemplateLibrary.register(CommonTemplates.InputField, 'common', ['input', 'form', 'field']);
-  TemplateLibrary.register(CommonTemplates.BadgeLabel, 'common', ['badge', 'label', 'tag', 'status']);
-  TemplateLibrary.register(CommonTemplates.IconNode, 'common', ['icon', 'symbol']);
+  lib.register(CommonTemplates.UserAvatar, 'common', ['user', 'avatar', 'profile']);
+  lib.register(CommonTemplates.CardNode, 'common', ['card', 'content', 'panel']);
+  lib.register(CommonTemplates.ButtonNode, 'common', ['button', 'action', 'interactive']);
+  lib.register(CommonTemplates.InputField, 'common', ['input', 'form', 'field']);
+  lib.register(CommonTemplates.BadgeLabel, 'common', ['badge', 'label', 'tag', 'status']);
+  lib.register(CommonTemplates.IconNode, 'common', ['icon', 'symbol']);
 
   // Workflow Templates
-  TemplateLibrary.register(WorkflowTemplates.ProcessStep, 'workflow', ['process', 'step', 'flowchart', 'bpmn']);
-  TemplateLibrary.register(WorkflowTemplates.DecisionNode, 'workflow', ['decision', 'branch', 'condition', 'flowchart']);
-  TemplateLibrary.register(WorkflowTemplates.StartEvent, 'workflow', ['start', 'begin', 'trigger', 'bpmn']);
-  TemplateLibrary.register(WorkflowTemplates.EndEvent, 'workflow', ['end', 'finish', 'terminate', 'bpmn']);
-  TemplateLibrary.register(WorkflowTemplates.Subprocess, 'workflow', ['subprocess', 'group', 'bpmn']);
-  TemplateLibrary.register(WorkflowTemplates.Gateway, 'workflow', ['gateway', 'split', 'join', 'bpmn']);
-  TemplateLibrary.register(WorkflowTemplates.Activity, 'workflow', ['activity', 'task', 'action', 'bpmn']);
+  lib.register(WorkflowTemplates.ProcessStep, 'workflow', ['process', 'step', 'flowchart', 'bpmn']);
+  lib.register(WorkflowTemplates.DecisionNode, 'workflow', ['decision', 'branch', 'condition', 'flowchart']);
+  lib.register(WorkflowTemplates.StartEvent, 'workflow', ['start', 'begin', 'trigger', 'bpmn']);
+  lib.register(WorkflowTemplates.EndEvent, 'workflow', ['end', 'finish', 'terminate', 'bpmn']);
+  lib.register(WorkflowTemplates.Subprocess, 'workflow', ['subprocess', 'group', 'bpmn']);
+  lib.register(WorkflowTemplates.Gateway, 'workflow', ['gateway', 'split', 'join', 'bpmn']);
+  lib.register(WorkflowTemplates.Activity, 'workflow', ['activity', 'task', 'action', 'bpmn']);
 
   // Data Visualization Templates
-  TemplateLibrary.register(DataVizTemplates.MetricCard, 'data-viz', ['metric', 'kpi', 'dashboard']);
-  TemplateLibrary.register(DataVizTemplates.Gauge, 'data-viz', ['gauge', 'dial', 'percentage', 'dashboard']);
-  TemplateLibrary.register(DataVizTemplates.BarChart, 'data-viz', ['chart', 'bar', 'graph', 'dashboard']);
-  TemplateLibrary.register(DataVizTemplates.DataTable, 'data-viz', ['table', 'grid', 'data', 'dashboard']);
-  TemplateLibrary.register(DataVizTemplates.PieChart, 'data-viz', ['pie', 'chart', 'proportion', 'dashboard']);
-  TemplateLibrary.register(DataVizTemplates.StatCounter, 'data-viz', ['stat', 'counter', 'number', 'dashboard']);
-  TemplateLibrary.register(DataVizTemplates.ProgressBar, 'data-viz', ['progress', 'bar', 'indicator', 'dashboard']);
+  lib.register(DataVizTemplates.MetricCard, 'data-viz', ['metric', 'kpi', 'dashboard']);
+  lib.register(DataVizTemplates.Gauge, 'data-viz', ['gauge', 'dial', 'percentage', 'dashboard']);
+  lib.register(DataVizTemplates.BarChart, 'data-viz', ['chart', 'bar', 'graph', 'dashboard']);
+  lib.register(DataVizTemplates.DataTable, 'data-viz', ['table', 'grid', 'data', 'dashboard']);
+  lib.register(DataVizTemplates.PieChart, 'data-viz', ['pie', 'chart', 'proportion', 'dashboard']);
+  lib.register(DataVizTemplates.StatCounter, 'data-viz', ['stat', 'counter', 'number', 'dashboard']);
+  lib.register(DataVizTemplates.ProgressBar, 'data-viz', ['progress', 'bar', 'indicator', 'dashboard']);
+
+  return lib;
 }
 
-// Initialize the library on module load
-initializeLibrary();
+/**
+ * Create a new template library instance
+ * Factory function for creating template registries
+ * @param includeBuiltIn - Whether to include built-in templates (default: true)
+ * @returns New template registry instance
+ */
+export function createTemplateLibrary(includeBuiltIn = true): TemplateRegistry {
+  if (includeBuiltIn) {
+    return initializeTemplateLibrary();
+  }
+  return new TemplateRegistry();
+}
+
+/**
+ * Default template library instance (lazy initialized)
+ * For backward compatibility and convenience
+ */
+let defaultInstance: TemplateRegistry | null = null;
+
+/**
+ * Get the default template library instance
+ * Lazy initialization - only created when first accessed
+ */
+function getDefaultInstance(): TemplateRegistry {
+  if (!defaultInstance) {
+    defaultInstance = initializeTemplateLibrary();
+  }
+  return defaultInstance;
+}
+
+/**
+ * Global template library instance (backward compatible)
+ * Uses lazy initialization via getter
+ */
+export const TemplateLibrary = new Proxy({} as TemplateRegistry, {
+  get(_target, prop) {
+    const instance = getDefaultInstance();
+    const value = instance[prop as keyof TemplateRegistry];
+
+    // Bind methods to the instance
+    if (typeof value === 'function') {
+      return value.bind(instance);
+    }
+    return value;
+  },
+});
 
 /**
  * Export all templates for direct access

@@ -6,26 +6,18 @@
 import type { NodeTemplate } from '../templates/NodeTemplate';
 
 /**
- * Flexible template type with additional convenience properties
- * Makes NodeTemplate properties optional and adds convenience fields
- */
-type FlexibleTemplate = Partial<NodeTemplate> & {
-  id: string; // ID is always required
-  structure: NodeTemplate['structure']; // structure is always required
-  name?: string;
-  description?: string;
-  category?: string;
-};
-
-/**
  * User Avatar Template
  * Circular node for displaying user information
  */
-export const UserAvatarTemplate: FlexibleTemplate = {
+export const UserAvatarTemplate: NodeTemplate = {
   id: 'user-avatar',
-  name: 'User Avatar',
-  description: 'Circular avatar with user name and status indicator',
-  category: 'common',
+  version: '1.0.0',
+  meta: {
+    name: 'User Avatar',
+    description: 'Circular avatar with user name and status indicator',
+    category: 'common',
+    tags: ['user', 'avatar', 'profile'],
+  },
 
   structure: {
     type: 'user-avatar',
@@ -87,11 +79,15 @@ export const UserAvatarTemplate: FlexibleTemplate = {
  * Card Node Template
  * Rectangular card for displaying structured content
  */
-export const CardNodeTemplate: FlexibleTemplate = {
+export const CardNodeTemplate: NodeTemplate = {
   id: 'card-node',
-  name: 'Card Node',
-  description: 'Flexible card layout for content and actions',
-  category: 'common',
+  version: '1.0.0',
+  meta: {
+    name: 'Card Node',
+    description: 'Flexible card layout for content and actions',
+    category: 'common',
+  },
+
 
   structure: {
     type: 'card',
@@ -158,11 +154,15 @@ export const CardNodeTemplate: FlexibleTemplate = {
  * Button Node Template
  * Interactive button element
  */
-export const ButtonNodeTemplate: FlexibleTemplate = {
+export const ButtonNodeTemplate: NodeTemplate = {
   id: 'button-node',
-  name: 'Button Node',
-  description: 'Clickable button with icon and label',
-  category: 'common',
+  version: '1.0.0',
+  meta: {
+    name: 'Button Node',
+    description: 'Clickable button with icon and label',
+    category: 'common',
+  },
+
 
   structure: {
     type: 'button',
@@ -227,11 +227,15 @@ export const ButtonNodeTemplate: FlexibleTemplate = {
  * Input Field Template
  * Form input element
  */
-export const InputFieldTemplate: FlexibleTemplate = {
+export const InputFieldTemplate: NodeTemplate = {
   id: 'input-field',
-  name: 'Input Field',
-  description: 'Text input field with label',
-  category: 'common',
+  version: '1.0.0',
+  meta: {
+    name: 'Input Field',
+    description: 'Text input field with label',
+    category: 'common',
+  },
+
 
   structure: {
     type: 'input',
@@ -293,11 +297,15 @@ export const InputFieldTemplate: FlexibleTemplate = {
  * Badge/Label Template
  * Small label or status badge
  */
-export const BadgeLabelTemplate: FlexibleTemplate = {
+export const BadgeLabelTemplate: NodeTemplate = {
   id: 'badge-label',
-  name: 'Badge Label',
-  description: 'Small status badge or label',
-  category: 'common',
+  version: '1.0.0',
+  meta: {
+    name: 'Badge Label',
+    description: 'Small status badge or label',
+    category: 'common',
+  },
+
 
   structure: {
     type: 'badge',
@@ -354,11 +362,15 @@ export const BadgeLabelTemplate: FlexibleTemplate = {
  * Icon Node Template
  * Simple icon with optional label
  */
-export const IconNodeTemplate: FlexibleTemplate = {
+export const IconNodeTemplate: NodeTemplate = {
   id: 'icon-node',
-  name: 'Icon Node',
-  description: 'Icon-based node with tooltip',
-  category: 'common',
+  version: '1.0.0',
+  meta: {
+    name: 'Icon Node',
+    description: 'Icon-based node with tooltip',
+    category: 'common',
+  },
+
 
   structure: {
     type: 'icon',
