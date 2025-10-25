@@ -761,7 +761,8 @@ export class SVGRenderer implements IRenderer {
   }
 
   /**
-   * Phase 2: Render single port
+   * Phase 3: Render single port
+   * Updated to support template system port rendering configuration
    * CRITICAL FIX: Added pointer-events and proper z-index to ensure ports are clickable
    */
   private renderPort(
@@ -859,7 +860,8 @@ export class SVGRenderer implements IRenderer {
   }
 
   /**
-   * Phase 2: Determine if port should be rendered based on visibility strategy
+   * Phase 3: Determine if port should be rendered based on visibility strategy
+   * Updated to support template system configuration
    * CRITICAL FIX: Added comprehensive debugging and proper string comparison
    */
   private shouldRenderPort(
@@ -867,11 +869,36 @@ export class SVGRenderer implements IRenderer {
     node: NodeModel,
     config: InteractionConfig
   ): boolean {
-    const { portVisibility } = config;
+    // Phase 3: Check port rendering mode first
+    // If port is configured for HTML rendering, skip SVG rendering
+    const renderingConfig = port.getRenderingConfig?.();
+    if (renderingConfig) {
+      const mode = renderingConfig.mode || 'svg';
 
-    // CRITICAL FIX: portVisibility is a string, not an enum
-    // It could be 'always', 'on-hover', or 'hidden'
-    const visibilityStr = String(portVisibility).toLowerCase();
+      // Skip HTML mode ports in SVGRenderer
+      if (mode === 'html') {
+        return false;
+      }
+
+      // Auto mode: detect based on node's HTML layer flag
+      if (mode === 'auto') {
+        const usesHTMLLayer = node.getMetadata?.('useHTMLLayer');
+        if (usesHTMLLayer === true) {
+          return false; // Skip - will be rendered in HTML layer
+        }
+      }
+    }
+
+    // Phase 3: Use effective visibility (port > node > global config)
+    // Try to get effective visibility from port
+    let visibilityStr: string;
+    if (port.getEffectiveVisibility && typeof port.getEffectiveVisibility === 'function') {
+      const effectiveVisibility = port.getEffectiveVisibility(node);
+      visibilityStr = String(effectiveVisibility).toLowerCase();
+    } else {
+      // Fallback to global config if port doesn't have getEffectiveVisibility
+      visibilityStr = String(config.portVisibility).toLowerCase();
+    }
 
     // DEBUG: Enable this to see port visibility decisions
     const debugPortVisibility = false; // Disabled - working correctly now
@@ -884,6 +911,7 @@ export class SVGRenderer implements IRenderer {
         highlighted: port.isHighlighted,
         validTarget: port.isValidTarget,
         nodeLabel: node.getMetadata('label'),
+        effectiveVisibility: visibilityStr,
         shouldShow: node.state.hovered || port.isHovered || port.isHighlighted || port.isValidTarget
       });
     }
@@ -897,12 +925,13 @@ export class SVGRenderer implements IRenderer {
         // where the port you exit through stays visible
         const shouldShow = node.state.hovered || port.isHighlighted || port.isValidTarget;
         return shouldShow;
+      case 'never':
       case 'hidden':
         // Only show if actively involved in connection
         return port.isHighlighted || port.isValidTarget;
       default:
         // Fallback to always visible
-        console.warn(`Unknown port visibility strategy: ${portVisibility}, defaulting to 'always'`);
+        console.warn(`Unknown port visibility strategy: ${visibilityStr}, defaulting to 'always'`);
         return true;
     }
   }

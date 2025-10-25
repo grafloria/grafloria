@@ -184,6 +184,20 @@ export class DiagramModel extends DiagramEntity {
   }
 
   /**
+   * Phase 3: Get node that owns a specific port
+   * Used for connection group validation and other port-based queries
+   */
+  getNodeByPortId(portId: string): NodeModel | undefined {
+    for (const node of this.nodes.values()) {
+      const port = node.getPort(portId);
+      if (port) {
+        return node;
+      }
+    }
+    return undefined;
+  }
+
+  /**
    * Clear all nodes
    */
   clearNodes(): void {
