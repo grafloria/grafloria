@@ -141,6 +141,15 @@
   background: #f0f0f0;
 }
 
+.btn-test {
+  background: #10b981;
+  color: white;
+}
+
+.btn-test:hover {
+  background: #059669;
+}
+
 .btn-secondary {
   background: rgba(255, 255, 255, 0.15);
   border-color: rgba(255, 255, 255, 0.6);

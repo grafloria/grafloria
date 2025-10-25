@@ -2,7 +2,7 @@ import { Component, OnInit } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { DiagramCanvasComponent } from '@grafloria/renderer-angular';
-import { DiagramEngine, NodeModel } from '@grafloria/engine';
+import { DiagramEngine, NodeModel, InteractionMode, PortVisibilityStrategy } from '@grafloria/engine';
 import { LIGHT_THEME, type Theme, type Rectangle } from '@grafloria/renderer';
 import { WorkflowNodeComponent, type WorkflowNodeType, type NodeStatus } from './workflow-node.component';
 
@@ -40,8 +40,14 @@ export class WorkflowBuilderComponent implements OnInit {
   }
 
   private initializeEngine(): void {
-    this.engine = new DiagramEngine();
-    console.log('Workflow Builder initialized');
+    this.engine = new DiagramEngine({
+      interaction: {
+        mode: InteractionMode.SMART,
+        portVisibility: PortVisibilityStrategy.ALWAYS,
+        enableSmartAutoConnect: true,
+      }
+    });
+    console.log('Workflow Builder initialized with smart interaction mode');
   }
 
   private createSampleWorkflow(): void {
@@ -93,8 +99,9 @@ export class WorkflowBuilderComponent implements OnInit {
     });
 
     node.setMetadata('workflowType', type);
-    node.setMetadata('label', label);
+    node.setMetadata('label', label);  // Set label for SVG rendering
     node.setMetadata('status', 'pending');
+    node.setMetadata('useForeignObject', true);  // Use foreignObject to embed WorkflowNodeComponent
 
     const workflowNode: WorkflowNode = {
       id,

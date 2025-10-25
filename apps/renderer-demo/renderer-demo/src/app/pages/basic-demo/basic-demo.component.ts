@@ -1,7 +1,12 @@
 import { Component, OnInit } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
-import { DiagramCanvasComponent, InteractionConfigPanelComponent } from '@grafloria/renderer-angular';
+import {
+  DiagramCanvasComponent,
+  InteractionConfigPanelComponent,
+  ComponentRendererService,
+  HandleRegistryService
+} from '@grafloria/renderer-angular';
 import {
   DiagramEngine,
   NodeModel,
@@ -14,6 +19,7 @@ import {
   DiagramMode
 } from '@grafloria/engine';
 import { LIGHT_THEME, DARK_THEME, type Theme, type Rectangle } from '@grafloria/renderer';
+import { TestHtmlNodeComponent } from '../../components/test-html-node.component';
 
 @Component({
   standalone: true,
@@ -78,6 +84,15 @@ export class BasicDemoComponent implements OnInit {
     before?: any;
     after?: any;
   }> = [];
+
+  constructor(
+    private componentRenderer: ComponentRendererService,
+    private handleRegistry: HandleRegistryService
+  ) {
+    // Register test HTML node component (Phase 2.5 testing)
+    this.componentRenderer.registerComponent('test-html', TestHtmlNodeComponent);
+    console.log('✅ Registered TestHtmlNodeComponent for type "test-html"');
+  }
 
   ngOnInit() {
     this.initializeEngine();
@@ -456,6 +471,210 @@ export class BasicDemoComponent implements OnInit {
 
     // Auto-fit viewport to show all nodes
     this.fitToView();
+  }
+
+  /**
+   * Add a test HTML node (Phase 2.5 - Testing HTML layer with handles)
+   */
+  addTestHtmlNode(): void {
+    const diagram = this.engine.getDiagram();
+    if (!diagram) {
+      console.log('❌ No diagram available');
+      return;
+    }
+
+    // CRITICAL FIX: Count only HTML nodes, not all nodes
+    const allNodes = diagram.getNodes();
+    const existingHtmlNodes = allNodes.filter(n => n.getMetadata('useHTMLLayer') === true);
+    const htmlNodeCount = existingHtmlNodes.length;
+
+    console.log(`\n🧪 [Phase 2.5] Adding test HTML node #${htmlNodeCount + 1}...`);
+    console.log(`   Total nodes: ${allNodes.length}, HTML nodes: ${htmlNodeCount}`);
+
+    // Create node with useHTMLLayer metadata
+    // Position based on HTML node count, not total node count
+    const node = new NodeModel({
+      type: 'test-html',
+      position: { x: 100 + (htmlNodeCount * 250), y: 150 },
+      size: { width: 200, height: 120 },
+    });
+
+    // CRITICAL: Mark for HTML layer rendering
+    node.setMetadata('useHTMLLayer', true);
+    node.setMetadata('label', `HTML Node ${htmlNodeCount + 1}`);
+
+    console.log(`✅ Created test HTML node with:
+  - ID: ${node.id}
+  - type: ${node.type}
+  - useHTMLLayer: ${node.getMetadata('useHTMLLayer')}
+  - position: (${node.position.x}, ${node.position.y})
+  - size: (${node.size.width} x ${node.size.height})`);
+
+    // Add node to diagram
+    diagram.addNode(node);
+
+    console.log(`✅ Test HTML node added! Total nodes: ${diagram.getNodes().length}`);
+
+    // Log ALL HTML nodes currently in the diagram
+    const currentNodes = diagram.getNodes();
+    const currentHtmlNodes = currentNodes.filter(n => n.getMetadata('useHTMLLayer') === true);
+    console.log(`\n📋 [HTML Nodes Inventory] Current HTML nodes in diagram:`);
+    currentHtmlNodes.forEach((n, index) => {
+      console.log(`  ${index + 1}. Node ID: ${n.id}
+     - type: ${n.type}
+     - label: ${n.getMetadata('label')}
+     - position: (${n.position.x}, ${n.position.y})
+     - size: (${n.size.width} x ${n.size.height})`);
+    });
+    console.log(`Total HTML nodes: ${currentHtmlNodes.length} / Total nodes: ${currentNodes.length}\n`);
+
+    // Log handle registry stats after a brief delay (to allow component creation)
+    setTimeout(() => {
+      this.verifyHandleSystem(node.id);
+    }, 200);
+  }
+
+  /**
+   * Verify handle system is working correctly (Phase 2.6)
+   */
+  private verifyHandleSystem(nodeId: string): void {
+    console.log(`\n🔍 [Phase 2.6] Verifying handle system for node "${nodeId}"...\n`);
+
+    // 1. Check handle registry stats
+    const stats = this.handleRegistry.getStats();
+    console.log(`📊 Handle Registry Stats:
+  - Nodes with handles: ${stats.nodeCount}
+  - Total handles: ${stats.handleCount}`);
+
+    if (stats.handleCount === 0) {
+      console.error('❌ VERIFICATION FAILED: No handles registered!');
+      return;
+    }
+
+    // 2. Get handles for this specific node
+    const nodeHandles = this.handleRegistry.getHandles(nodeId);
+    console.log(`\n📍 Handles for node "${nodeId}":`, nodeHandles.map(h => ({
+      id: h.id,
+      type: h.type,
+      position: h.position,
+      element: h.element.tagName
+    })));
+
+    if (nodeHandles.length !== 4) {
+      console.error(`❌ VERIFICATION FAILED: Expected 4 handles, got ${nodeHandles.length}`);
+      return;
+    }
+
+    // 3. Verify each handle has correct properties
+    const expectedHandles = [
+      { id: 'input-top', type: 'target', position: 'top' },
+      { id: 'output-right', type: 'source', position: 'right' },
+      { id: 'output-bottom', type: 'source', position: 'bottom' },
+      { id: 'input-left', type: 'target', position: 'left' }
+    ];
+
+    let allHandlesCorrect = true;
+    for (const expected of expectedHandles) {
+      const handle = nodeHandles.find(h => h.id === expected.id);
+      if (!handle) {
+        console.error(`❌ Missing handle: ${expected.id}`);
+        allHandlesCorrect = false;
+        continue;
+      }
+      if (handle.type !== expected.type) {
+        console.error(`❌ Handle "${expected.id}" has wrong type: expected ${expected.type}, got ${handle.type}`);
+        allHandlesCorrect = false;
+      }
+      if (handle.position !== expected.position) {
+        console.error(`❌ Handle "${expected.id}" has wrong position: expected ${expected.position}, got ${handle.position}`);
+        allHandlesCorrect = false;
+      }
+    }
+
+    if (!allHandlesCorrect) {
+      console.error('❌ VERIFICATION FAILED: Handle configuration incorrect');
+      return;
+    }
+
+    console.log('✅ All handles registered correctly!');
+
+    // 4. Test bounds calculation for each handle
+    console.log(`\n📐 Testing bounds calculation (zoom: ${this.zoom}):\n`);
+
+    let allBoundsValid = true;
+    for (const handle of nodeHandles) {
+      const bounds = this.handleRegistry.getHandleBounds(nodeId, handle.id, this.zoom);
+
+      if (!bounds) {
+        console.error(`❌ Failed to get bounds for handle "${handle.id}"`);
+        allBoundsValid = false;
+        continue;
+      }
+
+      console.log(`  ${handle.id}:
+    - Position: (${bounds.x.toFixed(1)}, ${bounds.y.toFixed(1)})
+    - Size: ${bounds.width}x${bounds.height}
+    - Absolute: (${bounds.absoluteX?.toFixed(1)}, ${bounds.absoluteY?.toFixed(1)})`);
+
+      // Validate bounds have reasonable values
+      if (bounds.width <= 0 || bounds.height <= 0) {
+        console.error(`❌ Handle "${handle.id}" has invalid size`);
+        allBoundsValid = false;
+      }
+      if (bounds.absoluteX === undefined || bounds.absoluteY === undefined) {
+        console.error(`❌ Handle "${handle.id}" missing absolute coordinates`);
+        allBoundsValid = false;
+      }
+    }
+
+    if (!allBoundsValid) {
+      console.error('\n❌ VERIFICATION FAILED: Bounds calculation issues');
+      return;
+    }
+
+    console.log('\n✅ All handle bounds calculated correctly!');
+
+    // 5. Test getAllHandleBounds
+    const allBounds = this.handleRegistry.getAllHandleBounds(this.zoom);
+    console.log(`\n📊 getAllHandleBounds() returned bounds for ${allBounds.size} nodes`);
+
+    // 6. Test hit detection at handle positions
+    console.log(`\n🎯 Testing hit detection:\n`);
+    let hitTestsPassed = 0;
+
+    for (const handle of nodeHandles.slice(0, 2)) { // Test first 2 handles
+      const bounds = this.handleRegistry.getHandleBounds(nodeId, handle.id, this.zoom);
+      if (bounds && bounds.absoluteX !== undefined && bounds.absoluteY !== undefined) {
+        // Test hit at center of handle
+        const centerX = bounds.absoluteX + bounds.width / 2;
+        const centerY = bounds.absoluteY + bounds.height / 2;
+
+        const hitResult = this.handleRegistry.getHandleAtPoint(centerX, centerY, this.zoom);
+
+        if (hitResult && hitResult.handleId === handle.id) {
+          console.log(`  ✅ Hit test at (${centerX.toFixed(1)}, ${centerY.toFixed(1)}) correctly detected "${handle.id}"`);
+          hitTestsPassed++;
+        } else {
+          console.error(`  ❌ Hit test failed for "${handle.id}" at center position`);
+        }
+      }
+    }
+
+    // Final verdict
+    console.log(`\n${'='.repeat(60)}`);
+    if (allHandlesCorrect && allBoundsValid && hitTestsPassed === 2) {
+      console.log('✅✅✅ PHASE 2.6 VERIFICATION PASSED! ✅✅✅');
+      console.log(`
+Handle system is fully functional:
+  ✓ All 4 handles registered correctly
+  ✓ Handle properties validated
+  ✓ Bounds calculation working
+  ✓ Hit detection working
+  ✓ DOM queries working correctly`);
+    } else {
+      console.error('❌ PHASE 2.6 VERIFICATION FAILED - See errors above');
+    }
+    console.log(`${'='.repeat(60)}\n`);
   }
 
   /**

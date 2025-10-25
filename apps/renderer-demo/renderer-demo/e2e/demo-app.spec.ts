@@ -2,14 +2,14 @@ import { test, expect } from '@playwright/test';
 
 test.describe('Renderer Demo App', () => {
   test.beforeEach(async ({ page }) => {
-    await page.goto('/');
+    await page.goto('/basic-demo');
     // Wait for the app to load
     await page.waitForSelector('h1');
   });
 
   test('should load the app with correct title', async ({ page }) => {
-    const title = await page.locator('h1').textContent();
-    expect(title).toContain('Renderer Demo');
+    const title = await page.locator('.header h1').textContent();
+    expect(title).toContain('Basic Demo');
   });
 
   test('should render initial diagram with nodes and links', async ({ page }) => {
@@ -29,21 +29,21 @@ test.describe('Renderer Demo App', () => {
 
     // Initial state should be light theme
     let themeText = await page.locator('.stats span:has-text("Theme:")').textContent();
-    expect(themeText).toContain('Light Theme');
+    expect(themeText).toContain('Light');
 
     // Click to switch to dark theme
     await themeButton.click();
     await page.waitForTimeout(100); // Small delay for state update
 
     themeText = await page.locator('.stats span:has-text("Theme:")').textContent();
-    expect(themeText).toContain('Dark Theme');
+    expect(themeText).toContain('Dark');
 
     // Click again to switch back to light theme
     await themeButton.click();
     await page.waitForTimeout(100);
 
     themeText = await page.locator('.stats span:has-text("Theme:")').textContent();
-    expect(themeText).toContain('Light Theme');
+    expect(themeText).toContain('Light');
   });
 
   test('should zoom in correctly', async ({ page }) => {
@@ -88,7 +88,7 @@ test.describe('Renderer Demo App', () => {
 
   test('should reset zoom to 100%', async ({ page }) => {
     const zoomInButton = page.locator('.zoom-controls button:has-text("+")');
-    const resetButton = page.locator('.zoom-controls button:has-text("Reset")');
+    const resetButton = page.locator('.btn-control-full:has-text("Reset")');
 
     // Zoom in a few times
     await zoomInButton.click();
@@ -206,8 +206,11 @@ test.describe('Renderer Demo App', () => {
     // Add 3 nodes
     for (let i = 0; i < 3; i++) {
       await addNodeButton.click();
-      await page.waitForTimeout(200);
+      await page.waitForTimeout(300);
     }
+
+    // Wait for all nodes to finish rendering
+    await page.waitForTimeout(500);
 
     // Count should increase by 3
     const newNodesText = await page.locator('.stats span:has-text("Nodes:")').textContent();
@@ -215,9 +218,9 @@ test.describe('Renderer Demo App', () => {
 
     expect(newCount).toBe(initialCount + 3);
 
-    // Verify all nodes rendered in SVG
+    // Verify all nodes rendered in SVG - use stats count instead
     const svgNodes = await page.locator('svg.grafloria-diagram .nodes-layer > g').count();
-    expect(svgNodes).toBe(initialCount + 3);
+    expect(svgNodes).toBe(newCount);
   });
 
   test('should add unlimited nodes (test 10 additions)', async ({ page }) => {
@@ -238,13 +241,16 @@ test.describe('Renderer Demo App', () => {
       expect(currentCount).toBe(initialCount + i + 1);
     }
 
+    // Wait for all rendering to complete
+    await page.waitForTimeout(500);
+
     // Final verification
     const finalNodesText = await page.locator('.stats span:has-text("Nodes:")').textContent();
     const finalCount = parseInt(finalNodesText?.match(/\d+/)?.[0] || '0');
     expect(finalCount).toBe(initialCount + 10);
 
-    // Verify all 10 nodes rendered in DOM
+    // Verify all nodes rendered in DOM - use stats count instead
     const svgNodes = await page.locator('svg.grafloria-diagram .nodes-layer > g').count();
-    expect(svgNodes).toBe(initialCount + 10);
+    expect(svgNodes).toBe(finalCount);
   });
 });

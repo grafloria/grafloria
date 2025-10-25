@@ -9,10 +9,45 @@
   width: 100%;
   height: 100%;
   position: relative;
+  overflow: hidden;
 }
 
-.diagram-canvas-container svg {
+/* SVG Layer: Existing rendering layer for edges and pure SVG nodes */
+.grafloria-svg-layer {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none; /* Let mouse events pass through to HTML layer */
+  z-index: 1; /* Below HTML layer */
+}
+
+.grafloria-svg-layer svg {
   display: block;
   width: 100%;
   height: 100%;
+  pointer-events: all; /* Re-enable pointer events for SVG elements */
+}
+
+/* HTML Layer: NEW - For HTML nodes rendered outside SVG (React Flow style) */
+.grafloria-html-layer {
+  position: absolute;
+  top: 0;
+  left: 0;
+  /* CRITICAL FIX: Don't constrain to canvas size - allow infinite canvas like SVG
+     React Flow uses the same approach - HTML nodes can be positioned anywhere */
+  width: 100%;
+  height: 100%;
+  min-width: 100%;
+  min-height: 100%;
+  overflow: visible; /* Allow content to render outside bounds */
+  transform-origin: 0 0;
+  z-index: 2; /* Above SVG layer */
+  pointer-events: none; /* Layer itself doesn't capture events */
+}
+
+/* HTML nodes inside the layer should capture events */
+.grafloria-html-layer > * {
+  pointer-events: all;
 }

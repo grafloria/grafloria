@@ -2,7 +2,7 @@ import { Component, OnInit } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { DiagramCanvasComponent } from '@grafloria/renderer-angular';
-import { DiagramEngine, NodeModel, PortModel } from '@grafloria/engine';
+import { DiagramEngine, NodeModel, PortModel, InteractionMode, PortVisibilityStrategy } from '@grafloria/engine';
 import { LIGHT_THEME, type Theme, type Rectangle } from '@grafloria/renderer';
 import { TableNodeComponent } from './table-node.component';
 
@@ -34,7 +34,6 @@ export class ErdDesignerComponent implements OnInit {
   theme: Theme = LIGHT_THEME;
 
   tables: Map<string, Table> = new Map();
-  tablePositions: Map<string, {x: number, y: number}> = new Map();
 
   // UI State
   showAddTablePanel = false;
@@ -47,8 +46,14 @@ export class ErdDesignerComponent implements OnInit {
   }
 
   private initializeEngine(): void {
-    this.engine = new DiagramEngine();
-    console.log('ERD Designer initialized');
+    this.engine = new DiagramEngine({
+      interaction: {
+        mode: InteractionMode.SMART,
+        portVisibility: PortVisibilityStrategy.ALWAYS,
+        enableSmartAutoConnect: true,
+      }
+    });
+    console.log('ERD Designer initialized with smart interaction mode');
   }
 
   private async createSampleERD(): Promise<void> {
@@ -134,9 +139,6 @@ export class ErdDesignerComponent implements OnInit {
     const diagram = this.engine.getDiagram();
     if (!diagram) return;
 
-    // Store position for rendering overlay
-    this.tablePositions.set(table.id, position);
-
     const rowHeight = 30;
     const headerHeight = 40;
     const height = headerHeight + (table.columns.length * rowHeight);
@@ -149,7 +151,9 @@ export class ErdDesignerComponent implements OnInit {
 
     node.setMetadata('tableId', table.id);
     node.setMetadata('tableName', table.name);
+    node.setMetadata('label', table.name);  // Set table name as label for SVG rendering
     node.setMetadata('columns', table.columns);
+    node.setMetadata('useForeignObject', true);  // Use foreignObject to embed TableNodeComponent
 
     // CRITICAL: Clear default ports - we'll create field-specific ports
     node.ports.clear();
@@ -188,10 +192,6 @@ export class ErdDesignerComponent implements OnInit {
     console.log(`🔌 Total ports created for ${table.name}: ${node.getPorts().length}`);
 
     diagram.addNode(node);
-  }
-
-  getTablePosition(tableId: string): {x: number, y: number} {
-    return this.tablePositions.get(tableId) || {x: 0, y: 0};
   }
 
   addTable(): void {

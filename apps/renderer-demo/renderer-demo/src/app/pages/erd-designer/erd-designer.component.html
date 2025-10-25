@@ -37,7 +37,7 @@
     </div>
   </div>
 
-  <!-- Canvas with Tables Overlay -->
+  <!-- Canvas - Pure SVG Rendering (no HTML overlays) -->
   <div class="canvas-wrapper">
     <grafloria-diagram-canvas
       *ngIf="engine"
@@ -49,17 +49,6 @@
       (zoomChanged)="onZoomChanged($event)"
       class="diagram-canvas">
     </grafloria-diagram-canvas>
-
-    <!-- Render tables as overlays -->
-    <div class="tables-overlay">
-      <app-table-node
-        *ngFor="let table of tables | keyvalue"
-        [data]="{tableName: table.value.name, columns: table.value.columns}"
-        [style.left.px]="getTablePosition(table.key).x"
-        [style.top.px]="getTablePosition(table.key).y"
-        class="table-overlay">
-      </app-table-node>
-    </div>
   </div>
   <footer class="erd-footer">
     <div class="stats">

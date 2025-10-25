@@ -5,6 +5,9 @@ export * from './lib/components/property-panel/property-panel.component';
 export * from './lib/components/property-panel/property-editor.component';
 export * from './lib/components/renderer-switcher/renderer-switcher.component';
 
+// Export directives
+export * from './lib/directives/grafloria-handle.directive';
+
 // Export services
 export * from './lib/services/vnode-renderer.service';
 export * from './lib/services/interaction-handler.service';
@@ -12,6 +15,7 @@ export * from './lib/services/component-renderer.service';
 export * from './lib/services/property-panel.service';
 export * from './lib/services/property-editor-registry.service';
 export * from './lib/services/diagram-renderer.service';
+export * from './lib/services/handle-registry.service';
 
 // Export mode-aware services
 export * from './lib/services/mode-manager.service';

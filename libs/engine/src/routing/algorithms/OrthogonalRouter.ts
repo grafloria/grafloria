@@ -49,7 +49,8 @@ export class OrthogonalRouter implements IRouter {
 
   /**
    * Simple orthogonal route respecting port directions
-   * Based on React Flow's approach: ensure first and last segments are perpendicular to ports
+   * Based on React Flow's getSmoothStepPath approach (without the curve rendering)
+   * Ensures first and last segments are perpendicular to ports
    */
   private simpleOrthogonalRoute(
     start: Point,
@@ -59,7 +60,7 @@ export class OrthogonalRouter implements IRouter {
     sourceDirection?: 'left' | 'right' | 'top' | 'bottom',
     targetDirection?: 'left' | 'right' | 'top' | 'bottom'
   ): RoutedPath {
-    // Gap offset - distance to move away from port in its direction
+    // Gap offset - distance to move away from port in its direction (matches React Flow default)
     const gapOffset = 20;
 
     // Calculate offset points (move away from port in the direction it points)

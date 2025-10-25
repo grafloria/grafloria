@@ -1,1 +1,21 @@
-<div #container class="diagram-canvas-container"></div>
+<div #container class="diagram-canvas-container">
+  <!-- SVG Layer: Existing rendering (edges, pure SVG nodes, ports) -->
+  <div #svgLayer class="grafloria-svg-layer"></div>
+
+  <!-- HTML Layer: NEW - HTML nodes rendered outside SVG (React Flow style) -->
+  <!-- CRITICAL FIX: Use declarative rendering like React Flow, not imperative createComponent() -->
+  <div #htmlLayer class="grafloria-html-layer" [style.transform]="htmlLayerTransform">
+    <!-- Render all HTML nodes declaratively with @for (React Flow pattern) -->
+    @for (node of htmlNodes; track node.id) {
+      <div class="html-node-wrapper"
+           [attr.data-node-id]="node.id"
+           [style.position]="'absolute'"
+           [style.left.px]="node.position.x"
+           [style.top.px]="node.position.y"
+           [style.z-index]="node.getMetadata('z') || 1">
+        <!-- Dynamically render component using directive -->
+        <ng-container [htmlNodeRenderer]="node" [nodeType]="node.type" [engine]="engine"></ng-container>
+      </div>
+    }
+  </div>
+</div>

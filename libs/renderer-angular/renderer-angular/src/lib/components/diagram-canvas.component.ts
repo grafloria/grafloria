@@ -1,5 +1,6 @@
 import {
   Component,
+  ComponentRef,
   Input,
   Output,
   EventEmitter,
@@ -13,12 +14,20 @@ import {
   HostListener,
   ChangeDetectionStrategy,
   ChangeDetectorRef,
+  ViewContainerRef,
+  createComponent,
+  EnvironmentInjector,
+  inject,
 } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import type { DiagramEngine } from '@grafloria/engine';
+import { PortModel } from '@grafloria/engine';
 import { SVGRenderer, LIGHT_THEME, type Theme, type Rectangle } from '@grafloria/renderer';
 import { VNodeRendererService } from '../services/vnode-renderer.service';
 import { InteractionHandlerService } from '../services/interaction-handler.service';
+import { ComponentRendererService } from '../services/component-renderer.service';
+import { HandleRegistryService } from '../services/handle-registry.service';
+import { HtmlNodeRendererDirective } from '../directives/html-node-renderer.directive';
 
 /**
  * DiagramCanvasComponent
@@ -39,7 +48,7 @@ import { InteractionHandlerService } from '../services/interaction-handler.servi
 @Component({
   selector: 'grafloria-diagram-canvas',
   standalone: true,
-  imports: [CommonModule],
+  imports: [CommonModule, HtmlNodeRendererDirective],
   templateUrl: './diagram-canvas.component.html',
   styleUrls: ['./diagram-canvas.component.css'],
   changeDetection: ChangeDetectionStrategy.OnPush,
@@ -101,9 +110,19 @@ export class DiagramCanvasComponent implements OnInit, AfterViewInit, OnChanges,
   @Output() zoomChanged = new EventEmitter<number>();
 
   /**
-   * SVG container reference
+   * Main container reference
    */
   @ViewChild('container', { static: true }) containerRef!: ElementRef<HTMLDivElement>;
+
+  /**
+   * SVG layer reference (Phase 1: Hybrid Rendering)
+   */
+  @ViewChild('svgLayer', { static: true }) svgLayerRef!: ElementRef<HTMLDivElement>;
+
+  /**
+   * HTML layer reference (Phase 1: Hybrid Rendering)
+   */
+  @ViewChild('htmlLayer', { static: true }) htmlLayerRef!: ElementRef<HTMLDivElement>;
 
   /**
    * SVGRenderer instance
@@ -131,10 +150,32 @@ export class DiagramCanvasComponent implements OnInit, AfterViewInit, OnChanges,
   private dragStartY = 0;
   private draggedNodes: Map<string, { startX: number; startY: number }> = new Map();
 
+  /**
+   * HTML layer transform (Phase 1: Hybrid Rendering)
+   * Synced with viewport to keep HTML nodes aligned with SVG
+   */
+  htmlLayerTransform = '';
+
+  /**
+   * HTML nodes to render (DECLARATIVE APPROACH - React Flow style)
+   * Exposed as a public property for template binding
+   */
+  htmlNodes: any[] = [];
+
+  /**
+   * HTML node component instances (Phase 1: Hybrid Rendering)
+   * DEPRECATED: No longer used - switched to declarative rendering
+   * Maps node ID to Angular ComponentRef for lifecycle management
+   */
+  private htmlNodeComponents = new Map<string, ComponentRef<any>>();
+
   constructor(
     private vnodeRenderer: VNodeRendererService,
     private cdr: ChangeDetectorRef,
-    private interactionHandler: InteractionHandlerService
+    private interactionHandler: InteractionHandlerService,
+    private componentRenderer: ComponentRendererService,
+    private environmentInjector: EnvironmentInjector,
+    private handleRegistry: HandleRegistryService
   ) {}
 
   ngOnInit(): void {
@@ -201,21 +242,196 @@ export class DiagramCanvasComponent implements OnInit, AfterViewInit, OnChanges,
   }
 
   /**
+   * Update HTML layer transform to sync with viewport (Phase 1: Hybrid Rendering)
+   * The HTML layer uses CSS transform to match the SVG viewport pan/zoom
+   * This keeps HTML nodes visually aligned with SVG edges
+   */
+  private updateHTMLLayerTransform(): void {
+    // Calculate transform: translate by negative viewport position scaled by zoom
+    // This mirrors how React Flow syncs their HTML viewport with panning
+    const translateX = -this.viewport.x * this.zoom;
+    const translateY = -this.viewport.y * this.zoom;
+
+    this.htmlLayerTransform = `translate(${translateX}px, ${translateY}px) scale(${this.zoom})`;
+  }
+
+  /**
+   * Render HTML nodes to HTML layer (Phase 2: Hybrid Rendering)
+   * This method renders nodes with metadata.useHTMLLayer = true as HTML elements
+   * outside the SVG canvas, similar to React Flow's approach
+   *
+   * Component Lifecycle:
+   * 1. Detect nodes marked for HTML layer (metadata.useHTMLLayer = true)
+   * 2. Create new component instances for new nodes
+   * 3. Update existing components for changed nodes
+   * 4. Destroy components for removed nodes
+   * 5. Position all components based on node.position (accounting for zoom)
+   */
+  /**
+   * Update HTML nodes array for declarative rendering (React Flow pattern)
+   * Phase 3: REFACTORED to use Angular's declarative rendering instead of imperative createComponent
+   *
+   * PERFORMANCE FIX: Only update array when nodes actually change (add/remove)
+   * Don't recreate array on every render cycle (mousemove)
+   */
+  private renderHTMLNodes(): void {
+    const diagram = this.engine?.getDiagram();
+    if (!diagram) {
+      if (this.htmlNodes.length > 0) {
+        this.htmlNodes = [];
+      }
+      return;
+    }
+
+    // Get all nodes that should render in HTML layer
+    const nodes = diagram.getNodes();
+    const newHtmlNodes = nodes.filter(node => node.getMetadata('useHTMLLayer') === true);
+
+    // CRITICAL FIX: Only update array if the set of HTML nodes has actually changed
+    // Compare IDs to avoid unnecessary array reassignment that triggers full re-render
+    const currentIds = this.htmlNodes.map(n => n.id).sort().join(',');
+    const newIds = newHtmlNodes.map(n => n.id).sort().join(',');
+
+    if (currentIds !== newIds) {
+      this.htmlNodes = newHtmlNodes;
+      console.log(`🔄 [HTMLLayer DECLARATIVE] HTML nodes changed:`, {
+        totalNodes: nodes.length,
+        htmlNodeCount: this.htmlNodes.length,
+        htmlNodeIds: this.htmlNodes.map(n => n.id),
+        positions: this.htmlNodes.map(n => ({ id: n.id, x: n.position.x, y: n.position.y }))
+      });
+    }
+    // If nodes haven't changed, keep existing array reference to prevent re-render
+
+    // No need for imperative component management - Angular template handles it with @for
+  }
+
+  /**
+   * Create a new HTML node component (Phase 2)
+   */
+  private createHTMLNode(node: any): void {
+    console.log(`🏗️  [HTMLLayer] createHTMLNode called for:`, {
+      nodeId: node.id,
+      nodeType: node.type,
+      hasHtmlLayerRef: !!this.htmlLayerRef,
+      hasComponent: this.componentRenderer.hasComponent(node.type)
+    });
+
+    if (!this.htmlLayerRef || !this.componentRenderer.hasComponent(node.type)) {
+      console.log(`⏭️  [HTMLLayer] Skipping node "${node.id}" - no htmlLayerRef or component not registered`);
+      // Component not registered for this node type - skip silently
+      // (This is expected for nodes that haven't been migrated to HTML layer yet)
+      return;
+    }
+
+    try {
+      // Get component class
+      const componentClass = this.componentRenderer.getRegisteredComponent(node.type);
+      if (!componentClass) {
+        console.log(`❌ [HTMLLayer] No component class found for type "${node.type}"`);
+        return;
+      }
+
+      console.log(`🔧 [HTMLLayer] Creating component instance for node "${node.id}"`);
+
+      // CRITICAL FIX: Create component WITHOUT specifying hostElement
+      // Let Angular create its own host element, then we append it
+      const componentRef = createComponent(componentClass, {
+        environmentInjector: this.environmentInjector,
+        // Do NOT pass hostElement here - it causes component reuse issues
+      });
+
+      // Get the host element that Angular created
+      const hostElement = componentRef.location.nativeElement as HTMLElement;
+
+      // Set node ID attribute for handle detection
+      hostElement.setAttribute('data-node-id', node.id);
+      hostElement.style.position = 'absolute';
+
+      console.log(`📝 [HTMLLayer] Set data-node-id="${node.id}" on host element`);
+
+      // Set initial inputs (if component has them)
+      if ('node' in componentRef.instance) {
+        componentRef.instance.node = node;
+        console.log(`📥 [HTMLLayer] Set node input on component instance`);
+      }
+
+      // Position the component
+      this.updateHTMLNodePosition(node, componentRef);
+
+      // Store component reference BEFORE appending
+      this.htmlNodeComponents.set(node.id, componentRef);
+      console.log(`💾 [HTMLLayer] Stored component in Map, size=${this.htmlNodeComponents.size}`);
+
+      // Append to HTML layer - this is where it actually gets added to the DOM
+      this.htmlLayerRef.nativeElement.appendChild(hostElement);
+      console.log(`📌 [HTMLLayer] Appended component to HTML layer DOM`);
+
+      // Trigger change detection
+      componentRef.changeDetectorRef.detectChanges();
+
+      console.log(`✅ [HTMLLayer] Created component for node "${node.id}" of type "${node.type}"`);
+    } catch (error) {
+      console.error(`❌ [HTMLLayer] Failed to create component for node "${node.id}":`, error);
+    }
+  }
+
+  /**
+   * Update HTML node component position (Phase 2)
+   * Position is relative to HTML layer (which is already transformed)
+   * so we just use node.position directly
+   */
+  private updateHTMLNodePosition(node: any, componentRef: ComponentRef<any>): void {
+    const hostElement = componentRef.location.nativeElement as HTMLElement;
+    const position = node.position || { x: 0, y: 0 };
+
+    // Position is already in world coordinates, HTML layer transform handles zoom/pan
+    hostElement.style.left = `${position.x}px`;
+    hostElement.style.top = `${position.y}px`;
+
+    console.log(`📍 [HTMLLayer] Updated position for node "${node.id}":`, {
+      nodeId: node.id,
+      nodeLabel: node.getMetadata?.('label') || node.type,
+      position: `(${position.x}, ${position.y})`,
+      appliedCSS: {
+        left: hostElement.style.left,
+        top: hostElement.style.top,
+        position: hostElement.style.position
+      },
+      computedPosition: {
+        left: hostElement.offsetLeft,
+        top: hostElement.offsetTop
+      }
+    });
+  }
+
+  /**
    * Render diagram to DOM
+   * Phase 1: Updated to support hybrid HTML+SVG rendering
    */
   private renderDiagram(): void {
     if (!this.renderer || !this.containerRef || this.destroyed) {
       return;
     }
 
+    // Phase 1: Update HTML layer transform FIRST (before rendering)
+    // This ensures HTML nodes stay in sync with viewport changes
+    this.updateHTMLLayerTransform();
+
     // Calculate actual viewport dimensions based on canvas size and zoom
     const actualViewport = this.calculateActualViewport();
 
-    // Generate VNode tree using SVGRenderer
+    // Generate VNode tree using SVGRenderer (edges, pure SVG nodes, ports)
     const vnode = this.renderer.render(actualViewport, this.zoom);
 
-    // Render VNode tree to DOM using VNodeRendererService
-    this.vnodeRenderer.render(vnode, this.containerRef.nativeElement);
+    // Render SVG content to svgLayer div (Phase 1: changed from containerRef)
+    if (this.svgLayerRef) {
+      this.vnodeRenderer.render(vnode, this.svgLayerRef.nativeElement);
+    }
+
+    // Phase 1: Render HTML nodes to htmlLayer div
+    // This renders nodes with metadata.useHTMLLayer = true
+    this.renderHTMLNodes();
   }
 
   /**
@@ -403,11 +619,43 @@ export class DiagramCanvasComponent implements OnInit, AfterViewInit, OnChanges,
       const worldX = this.viewport.x + (clientX / this.zoom);
       const worldY = this.viewport.y + (clientY / this.zoom);
 
+      // Phase 3: Check for HTML handle click (Phase 2 integration - HIGHEST PRIORITY)
+      // HTML handles need to be checked before SVG ports
+      console.log('🔍 [Phase 3 Debug] Checking for HTML handle at:', {
+        clientX: event.clientX,
+        clientY: event.clientY,
+        zoom: this.zoom,
+        handleStats: this.handleRegistry.getStats()
+      });
+
+      const htmlHandleHit = this.handleRegistry.getHandleAtPoint(event.clientX, event.clientY, this.zoom);
+
+      console.log('🔍 [Phase 3 Debug] Handle detection result:', htmlHandleHit);
+
+      if (htmlHandleHit) {
+        event.preventDefault();
+        console.log('🧪 [Phase 3] HTML Handle clicked:', {
+          nodeId: htmlHandleHit.nodeId,
+          handleId: htmlHandleHit.handleId,
+          type: htmlHandleHit.handle.type,
+          position: htmlHandleHit.handle.position
+        });
+
+        // Create a temporary PortModel to work with existing connection system
+        const tempPort = this.createTempPortFromHandle(htmlHandleHit, worldX, worldY);
+        if (tempPort) {
+          this.interactionHandler.startConnection(tempPort, worldX, worldY, this.engine);
+          this.renderDiagram();
+          this.cdr.markForCheck();
+        }
+        return;
+      }
+
       // CRITICAL FIX: Get the current interaction state (from last mousemove)
       // We rely on mousemove to have already updated hover states
       const interactionState = this.interactionHandler.getState();
 
-      // Phase 3: Check for port click (highest priority)
+      // Phase 3: Check for SVG port click
       if (interactionState.hoveredPort) {
         event.preventDefault();
         console.log('🖱️ Port clicked:', interactionState.hoveredPort.side, interactionState.hoveredPort.id);
@@ -577,11 +825,12 @@ export class DiagramCanvasComponent implements OnInit, AfterViewInit, OnChanges,
         this.containerRef.nativeElement.style.cursor = this.interactionHandler.getCursor(this.engine);
       }
 
-      // CRITICAL FIX: Always re-render on mousemove to ensure port visibility updates
-      // This is necessary because port visibility depends on hover state
-      // and we need to show/hide ports as the user moves the mouse
-      this.renderDiagram();
-      this.cdr.markForCheck();
+      // PERFORMANCE FIX: Only re-render if something actually changed
+      // Previously we re-rendered on EVERY mousemove which was very expensive
+      if (needsRender) {
+        this.renderDiagram();
+        this.cdr.markForCheck();
+      }
     }
   }
 
@@ -774,9 +1023,70 @@ export class DiagramCanvasComponent implements OnInit, AfterViewInit, OnChanges,
   }
 
   /**
+   * Create a temporary PortModel from an HTML handle (Phase 3)
+   * This allows HTML handles to work with the existing connection system
+   */
+  private createTempPortFromHandle(
+    htmlHandleHit: { nodeId: string; handleId: string; handle: any },
+    worldX: number,
+    worldY: number
+  ): PortModel | null {
+    const diagram = this.engine?.getDiagram();
+    if (!diagram) return null;
+
+    // Get the node that owns this handle
+    const node = diagram.getNode(htmlHandleHit.nodeId);
+    if (!node) {
+      console.error(`❌ [Phase 3] Node not found: ${htmlHandleHit.nodeId}`);
+      return null;
+    }
+
+    // Check if node already has a port for this handle
+    // HTML handles map to virtual ports on the node
+    const portId = `html-port-${htmlHandleHit.handleId}`;
+    let port = node.getPort(portId);
+
+    if (!port) {
+      // Create a new virtual port for this HTML handle
+      // Map handle type to port type
+      const portType = htmlHandleHit.handle.type === 'source' ? 'output' : 'input';
+
+      // Map handle position to port side
+      const portSide = htmlHandleHit.handle.position; // 'top' | 'right' | 'bottom' | 'left'
+
+      port = new PortModel({
+        id: portId,
+        type: portType,
+        side: portSide,
+      });
+
+      // Add port to node
+      node.addPort(port);
+
+      console.log(`✅ [Phase 3] Created virtual port for HTML handle:`, {
+        portId,
+        type: portType,
+        side: portSide,
+        nodeId: node.id
+      });
+    }
+
+    return port;
+  }
+
+  /**
    * Cleanup resources
+   * Phase 2: Also destroy HTML node components
    */
   private cleanup(): void {
+    // Destroy all HTML node components
+    for (const [nodeId, componentRef] of this.htmlNodeComponents.entries()) {
+      console.log(`🗑️  [HTMLLayer] Destroying component for node "${nodeId}" (cleanup)`);
+      componentRef.destroy();
+    }
+    this.htmlNodeComponents.clear();
+
+    // Dispose SVG renderer
     if (this.renderer) {
       this.renderer.dispose();
       this.renderer = undefined;

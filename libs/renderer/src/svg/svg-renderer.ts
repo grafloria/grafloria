@@ -428,6 +428,18 @@ export class SVGRenderer implements IRenderer {
    * Render single node
    */
   private renderNode(node: NodeModel, lod: LODLevel): VNode {
+    // PHASE 3: Skip HTML layer nodes entirely (React Flow style)
+    // These nodes are rendered as HTML divs with handles in the HTML layer
+    // NO SVG rendering at all - edges will query handle positions via DOM
+    if (node.getMetadata('useHTMLLayer') === true) {
+      return {
+        type: 'g',
+        key: `node-${node.id}-html-layer`,
+        props: {},
+        children: [],
+      };
+    }
+
     // Check if node should use foreignObject rendering
     if (this.shouldUseForeignObject(node)) {
       return this.renderNodeWithForeignObject(node, lod);
