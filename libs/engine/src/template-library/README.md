@@ -12,11 +12,31 @@ The Template Library provides ready-to-use node templates organized into three c
 
 ## Quick Start
 
+### Step 1: Register Templates with Your Engine
+
+**IMPORTANT:** The template library must be registered with your engine's `TemplateRegistry` before you can use it with `NodeFactory`:
+
+```typescript
+import { registerTemplateLibrary } from '@grafloria/engine';
+
+// In your engine setup (once per application)
+registerTemplateLibrary(engine.templateRegistry);
+```
+
+### Step 2: Use Templates
+
 ```typescript
 import { TemplateLibrary, CommonTemplates } from '@grafloria/engine';
 
 // Get a template by ID
 const template = TemplateLibrary.get('user-avatar');
+
+// Create a node using NodeFactory
+const node = engine.nodeFactory.createFromTemplate(
+  'user-avatar',
+  { name: 'John Doe', status: 'online' },
+  { x: 100, y: 100 }
+);
 
 // Or use direct imports
 const cardTemplate = CommonTemplates.CardNode;
@@ -323,6 +343,58 @@ const template = DataVizTemplates.ProgressBar;
 // - Shape: Rectangle (250x60)
 // - Events: click
 // - Data: label, percentage, status
+```
+
+## Integration with NodeFactory
+
+The template library provides integration helpers to connect with the Phase 2 `TemplateRegistry`:
+
+### Register All Templates
+
+```typescript
+import { registerTemplateLibrary } from '@grafloria/engine';
+
+// Register all 20 templates at once
+registerTemplateLibrary(engine.templateRegistry);
+```
+
+### Register by Category
+
+```typescript
+import { registerTemplatesByCategory } from '@grafloria/engine';
+
+// Only register workflow templates
+registerTemplatesByCategory(engine.templateRegistry, 'workflow');
+
+// Only register data visualization templates
+registerTemplatesByCategory(engine.templateRegistry, 'data-viz');
+```
+
+### Register Specific Templates
+
+```typescript
+import { registerTemplatesById } from '@grafloria/engine';
+
+// Only register specific templates you need
+registerTemplatesById(engine.templateRegistry, [
+  'user-avatar',
+  'card-node',
+  'process-step',
+  'metric-card'
+]);
+```
+
+### Check Registration Status
+
+```typescript
+import { getUnregisteredTemplates } from '@grafloria/engine';
+
+// Check which templates aren't registered yet
+const missing = getUnregisteredTemplates(engine.templateRegistry);
+if (missing.length > 0) {
+  console.log('Missing templates:', missing);
+  registerTemplateLibrary(engine.templateRegistry);
+}
 ```
 
 ## Advanced Usage

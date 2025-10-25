@@ -256,3 +256,13 @@ export function registerCustomTemplate(
 ): void {
   TemplateLibrary.register(template, category, tags);
 }
+
+/**
+ * Integration helpers for connecting to TemplateRegistry (Phase 2)
+ */
+export {
+  registerTemplateLibrary,
+  registerTemplatesByCategory,
+  registerTemplatesById,
+  getUnregisteredTemplates,
+} from './integration';
