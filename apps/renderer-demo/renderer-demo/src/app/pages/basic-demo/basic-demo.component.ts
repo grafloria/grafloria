@@ -20,6 +20,7 @@ import {
 } from '@grafloria/engine';
 import { LIGHT_THEME, DARK_THEME, type Theme, type Rectangle } from '@grafloria/renderer';
 import { TestHtmlNodeComponent } from '../../components/test-html-node.component';
+import { TableNodeComponent } from '../../components/table-node.component';
 
 @Component({
   standalone: true,
@@ -92,6 +93,10 @@ export class BasicDemoComponent implements OnInit {
     // Register test HTML node component (Phase 2.5 testing)
     this.componentRenderer.registerComponent('test-html', TestHtmlNodeComponent);
     console.log('✅ Registered TestHtmlNodeComponent for type "test-html"');
+
+    // Register table node component (field-level connections)
+    this.componentRenderer.registerComponent('table', TableNodeComponent);
+    console.log('✅ Registered TableNodeComponent for type "table"');
   }
 
   ngOnInit() {
@@ -248,11 +253,58 @@ export class BasicDemoComponent implements OnInit {
     });
     node4.setMetadata('label', 'Alternative Path');
 
+    // Create table nodes (HTML layer with field-level ports)
+    const usersTable = new NodeModel({
+      type: 'table',
+      position: { x: 100, y: 500 },
+      size: { width: 240, height: 200 }, // Auto-calculated based on fields
+    });
+    usersTable.setMetadata('useHTMLLayer', true);
+    usersTable.setData('tableName', 'Users');
+    usersTable.setData('fields', [
+      { id: 'user-1', name: 'id', type: 'INT', isPrimaryKey: true },
+      { id: 'user-2', name: 'username', type: 'VARCHAR(50)' },
+      { id: 'user-3', name: 'email', type: 'VARCHAR(100)' },
+      { id: 'user-4', name: 'created_at', type: 'TIMESTAMP' }
+    ]);
+
+    const ordersTable = new NodeModel({
+      type: 'table',
+      position: { x: 450, y: 500 },
+      size: { width: 240, height: 200 },
+    });
+    ordersTable.setMetadata('useHTMLLayer', true);
+    ordersTable.setData('tableName', 'Orders');
+    ordersTable.setData('fields', [
+      { id: 'order-1', name: 'id', type: 'INT', isPrimaryKey: true },
+      { id: 'order-2', name: 'user_id', type: 'INT', isForeignKey: true },
+      { id: 'order-3', name: 'total', type: 'DECIMAL(10,2)' },
+      { id: 'order-4', name: 'status', type: 'VARCHAR(20)' },
+      { id: 'order-5', name: 'created_at', type: 'TIMESTAMP' }
+    ]);
+
+    const productsTable = new NodeModel({
+      type: 'table',
+      position: { x: 800, y: 500 },
+      size: { width: 240, height: 180 },
+    });
+    productsTable.setMetadata('useHTMLLayer', true);
+    productsTable.setData('tableName', 'Products');
+    productsTable.setData('fields', [
+      { id: 'product-1', name: 'id', type: 'INT', isPrimaryKey: true },
+      { id: 'product-2', name: 'name', type: 'VARCHAR(200)' },
+      { id: 'product-3', name: 'price', type: 'DECIMAL(10,2)' },
+      { id: 'product-4', name: 'stock', type: 'INT' }
+    ]);
+
     // Add nodes to diagram
     diagram.addNode(node1);
     diagram.addNode(node2);
     diagram.addNode(node3);
     diagram.addNode(node4);
+    diagram.addNode(usersTable);
+    diagram.addNode(ordersTable);
+    diagram.addNode(productsTable);
 
     // Phase 0.5.1: Nodes automatically have 4 default ports (top, right, bottom, left)
     console.log('✨ Node 1 ports:', node1.getPorts().map(p => ({ side: p.side, type: p.type })));
