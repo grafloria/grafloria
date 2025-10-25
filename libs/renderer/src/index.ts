@@ -14,3 +14,6 @@ export { RendererStrategyManager } from './core/renderer-strategy-manager';
 // Export renderers
 export * from './svg';
 export * from './canvas';
+
+// Hybrid rendering (Phase 3.5)
+export * from './hybrid';
