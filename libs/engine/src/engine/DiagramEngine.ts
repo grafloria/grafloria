@@ -1748,21 +1748,20 @@ export class DiagramEngine {
     sourceNode?: any,
     targetNode?: any
   ): void {
-    // Get obstacles from diagram (exclude source and target nodes)
+    // Get obstacles from diagram (INCLUDE ALL nodes, even source and target)
+    // The routing algorithm uses gap offset to ensure paths start/end outside node boundaries
     const obstacles: Array<{ id: string; x: number; y: number; width: number; height: number }> = [];
 
     if (this.diagram) {
       this.diagram.getNodes().forEach(node => {
-        // Don't add source or target nodes as obstacles
-        if (node.id !== sourceNode?.id && node.id !== targetNode?.id) {
-          obstacles.push({
-            id: node.id,
-            x: node.position.x,
-            y: node.position.y,
-            width: node.size.width,
-            height: node.size.height,
-          });
-        }
+        // Include ALL nodes as obstacles - the gap offset ensures we start/end outside
+        obstacles.push({
+          id: node.id,
+          x: node.position.x,
+          y: node.position.y,
+          width: node.size.width,
+          height: node.size.height,
+        });
       });
     }
 
@@ -1770,6 +1769,12 @@ export class DiagramEngine {
     const algorithm = this.routingEngine.getDefaultAlgorithm();
 
     // Route the path with obstacle avoidance
+    // IMPORTANT: avoidObstacles should be based on whether obstacles exist, not on the algorithm
+    // - 'orthogonal' algorithm with avoidObstacles=true uses A* with orthogonal-only movement
+    // - 'a-star', 'dijkstra', etc. also use obstacle avoidance
+    // - 'straight' never avoids obstacles (direct line)
+    const shouldAvoidObstacles = obstacles.length > 0 && algorithm !== 'straight';
+
     const routedPath = this.routingEngine.route({
       start: sourcePos,
       end: targetPos,
@@ -1778,8 +1783,9 @@ export class DiagramEngine {
       obstacles,
       options: {
         algorithm,
-        avoidObstacles: algorithm !== 'straight' && algorithm !== 'orthogonal', // Only avoid obstacles for A*, Dijkstra, etc.
+        avoidObstacles: shouldAvoidObstacles,
         obstacleMargin: 20,
+        gridSize: 10, // Grid size for A* pathfinding
       }
     });
 

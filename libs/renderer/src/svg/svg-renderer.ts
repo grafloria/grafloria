@@ -318,22 +318,22 @@ export class SVGRenderer implements IRenderer {
     // OBSTACLE AVOIDANCE: Get obstacles from the diagram for preview routing
     const obstacles: Array<{ id: string; x: number; y: number; width: number; height: number }> = [];
 
-    // diagram is already defined at line 264
-    // Find source node ID to exclude from obstacles
-    let sourceNodeId = sourceNode?.id;
-
+    // Include ALL nodes as obstacles for preview
+    // The routing algorithm uses gap offset to ensure paths start/end outside node boundaries
     diagram.getNodes().forEach(node => {
-      // Don't add source node as obstacle (allow connection to start from it)
-      if (node.id !== sourceNodeId) {
-        obstacles.push({
-          id: node.id,
-          x: node.position.x,
-          y: node.position.y,
-          width: node.size.width,
-          height: node.size.height,
-        });
-      }
+      obstacles.push({
+        id: node.id,
+        x: node.position.x,
+        y: node.position.y,
+        width: node.size.width,
+        height: node.size.height,
+      });
     });
+
+    // Use link's pathType-derived algorithm, fallback to routing engine's default
+    const defaultAlgorithm = routingEngine.getDefaultAlgorithm();
+    const finalAlgorithm = algorithm || defaultAlgorithm;
+    const shouldAvoidObstacles = obstacles.length > 0 && finalAlgorithm !== 'straight';
 
     const routedPath = routingEngine.route({
       start: sourcePos,
@@ -342,9 +342,10 @@ export class SVGRenderer implements IRenderer {
       targetDirection,
       obstacles, // Pass obstacles for avoidance
       options: {
-        algorithm,
-        avoidObstacles: true, // Enable obstacle avoidance
-        obstacleMargin: 10,   // Add 10px margin around obstacles
+        algorithm: finalAlgorithm,
+        avoidObstacles: shouldAvoidObstacles,
+        obstacleMargin: 20,   // Add 20px margin around obstacles (matches final link routing)
+        gridSize: 10,         // Grid size for A* pathfinding
       }
     });
 
@@ -1065,18 +1066,21 @@ export class SVGRenderer implements IRenderer {
         const targetNode = diagram.getNodes().find(n => n.getPorts().some(p => p.id === link.targetPortId));
 
         diagram.getNodes().forEach(node => {
-          // Don't add source or target nodes as obstacles
-          if (node.id !== sourceNode?.id && node.id !== targetNode?.id) {
-            obstacles.push({
-              id: node.id,
-              x: node.position.x,
-              y: node.position.y,
-              width: node.size.width,
-              height: node.size.height,
-            });
-          }
+          // Include ALL nodes as obstacles - gap offset ensures paths start/end outside
+          obstacles.push({
+            id: node.id,
+            x: node.position.x,
+            y: node.position.y,
+            width: node.size.width,
+            height: node.size.height,
+          });
         });
       }
+
+      // Use link's pathType-derived algorithm, fallback to routing engine's default
+      const defaultAlgorithm = routingEngine.getDefaultAlgorithm();
+      const finalAlgorithm = algorithm || defaultAlgorithm;
+      const shouldAvoidObstacles = obstacles.length > 0 && finalAlgorithm !== 'straight';
 
       const routedPath = routingEngine.route({
         start: endpoints.start,
@@ -1085,9 +1089,10 @@ export class SVGRenderer implements IRenderer {
         targetDirection: endpoints.targetDirection,
         obstacles, // Pass obstacles for avoidance
         options: {
-          algorithm,
-          avoidObstacles: true, // Enable obstacle avoidance
-          obstacleMargin: 10,   // Add 10px margin around obstacles
+          algorithm: finalAlgorithm,
+          avoidObstacles: shouldAvoidObstacles,
+          obstacleMargin: 20,   // Add 20px margin around obstacles (consistent with link creation)
+          gridSize: 10,         // Grid size for A* pathfinding
         }
       });
 
