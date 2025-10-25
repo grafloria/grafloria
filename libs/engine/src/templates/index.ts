@@ -10,6 +10,7 @@ export * from './NodeTemplate';
 // Core services
 export { TemplateLoader } from './TemplateLoader';
 export { TemplateRegistry } from './TemplateRegistry';
+export { NodeFactory } from './NodeFactory';
 
 // Re-export for convenience
 export type {
