@@ -98,8 +98,12 @@ export class NodeFactory {
       node.setData(key, value);
     });
 
-    // Set layout configuration
-    // Note: layout configuration is handled at the group level, not at individual nodes
+    // Set layout configuration if present
+    if (structure.layout) {
+      // Store layout config in metadata
+      node.setMetadata('layout', structure.layout);
+      node.setMetadata('autoLayout', true);
+    }
 
     // Set behavior
     if (structure.behavior) {
@@ -160,6 +164,37 @@ export class NodeFactory {
       structure.children.forEach(childStructure => {
         this.buildNodeTree(childStructure, data, position, node, template);
       });
+
+      // Apply layout after all children are created
+      if (structure.layout && node.getMetadata('layout')) {
+        // For flexbox layouts, apply the layout to position children
+        const layoutConfig = node.getMetadata('layout');
+        if (layoutConfig.direction) {
+          // Cast to FlexboxLayoutConfig type
+          const flexLayout = layoutConfig as any;
+
+          // Position children based on flex direction
+          let offset = flexLayout.padding?.top || 0;
+          const gap = flexLayout.gap || 0;
+
+          node.children.forEach((childId) => {
+            const child = this.diagram.getNode(childId);
+            if (child) {
+              if (flexLayout.direction === 'column') {
+                // Stack vertically
+                child.position.x = flexLayout.padding?.left || 0;
+                child.position.y = offset;
+                offset += child.size.height + gap;
+              } else if (flexLayout.direction === 'row') {
+                // Stack horizontally
+                child.position.x = offset;
+                child.position.y = flexLayout.padding?.top || 0;
+                offset += child.size.width + gap;
+              }
+            }
+          });
+        }
+      }
     }
 
     return node;

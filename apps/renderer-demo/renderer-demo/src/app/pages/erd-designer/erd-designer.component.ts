@@ -75,99 +75,281 @@ export class ErdDesignerComponent implements OnInit {
   }
 
   private async createSampleERD(): Promise<void> {
-    const diagram = this.engine.createDiagram('ERD Diagram');
+    const diagram = this.engine.createDiagram('ERD Diagram - Option Comparison');
 
     // Initialize node factory
     this.nodeFactory = new NodeFactory(this.templateRegistry, diagram);
 
-    // Create Users table
-    const usersTable: Table = {
-      id: 'users',
+    // ===== OPTION A EXAMPLES (Top Row) =====
+    // OPTION A Example 1: Users table
+    const usersTableA: Table = {
+      id: 'users-a',
       name: 'Users',
       columns: [
         { name: 'id', dataType: 'INT', isPrimaryKey: true, isForeignKey: false, isNullable: false },
         { name: 'email', dataType: 'VARCHAR(255)', isPrimaryKey: false, isForeignKey: false, isNullable: false },
         { name: 'name', dataType: 'VARCHAR(100)', isPrimaryKey: false, isForeignKey: false, isNullable: false },
-        { name: 'created_at', dataType: 'TIMESTAMP', isPrimaryKey: false, isForeignKey: false, isNullable: false }
+        { name: 'created_at', dataType: 'TIMESTAMP', isPrimaryKey: false, isForeignKey: false, isNullable: false },
       ]
     };
-    this.tables.set('users', usersTable);
-    this.createTableNode(usersTable, { x: 100, y: 100 });
+    this.tables.set('users-a', usersTableA);
+    this.createTableNodeOptionA(usersTableA, { x: 50, y: 50 });
 
-    // Create Orders table
-    const ordersTable: Table = {
-      id: 'orders',
+    // OPTION A Example 2: Orders table
+    const ordersTableA: Table = {
+      id: 'orders-a',
       name: 'Orders',
       columns: [
         { name: 'id', dataType: 'INT', isPrimaryKey: true, isForeignKey: false, isNullable: false },
         { name: 'user_id', dataType: 'INT', isPrimaryKey: false, isForeignKey: true, isNullable: false },
         { name: 'total', dataType: 'DECIMAL(10,2)', isPrimaryKey: false, isForeignKey: false, isNullable: false },
-        { name: 'status', dataType: 'VARCHAR(50)', isPrimaryKey: false, isForeignKey: false, isNullable: false }
+        { name: 'status', dataType: 'VARCHAR(20)', isPrimaryKey: false, isForeignKey: false, isNullable: false },
       ]
     };
-    this.tables.set('orders', ordersTable);
-    this.createTableNode(ordersTable, { x: 500, y: 100 });
+    this.tables.set('orders-a', ordersTableA);
+    this.createTableNodeOptionA(ordersTableA, { x: 350, y: 50 });
 
-    // Create Products table
-    const productsTable: Table = {
-      id: 'products',
+    // OPTION A Example 3: Payments table
+    const paymentsTableA: Table = {
+      id: 'payments-a',
+      name: 'Payments',
+      columns: [
+        { name: 'id', dataType: 'INT', isPrimaryKey: true, isForeignKey: false, isNullable: false },
+        { name: 'order_id', dataType: 'INT', isPrimaryKey: false, isForeignKey: true, isNullable: false },
+        { name: 'amount', dataType: 'DECIMAL(10,2)', isPrimaryKey: false, isForeignKey: false, isNullable: false },
+        { name: 'method', dataType: 'VARCHAR(50)', isPrimaryKey: false, isForeignKey: false, isNullable: false },
+        { name: 'paid_at', dataType: 'TIMESTAMP', isPrimaryKey: false, isForeignKey: false, isNullable: false },
+      ]
+    };
+    this.tables.set('payments-a', paymentsTableA);
+    this.createTableNodeOptionA(paymentsTableA, { x: 650, y: 50 });
+
+    // ===== OPTION B EXAMPLES (Bottom Row) =====
+    // OPTION B Example 1: Products table
+    const productsTableB: Table = {
+      id: 'products-b',
       name: 'Products',
       columns: [
         { name: 'id', dataType: 'INT', isPrimaryKey: true, isForeignKey: false, isNullable: false },
         { name: 'name', dataType: 'VARCHAR(255)', isPrimaryKey: false, isForeignKey: false, isNullable: false },
         { name: 'price', dataType: 'DECIMAL(10,2)', isPrimaryKey: false, isForeignKey: false, isNullable: false },
-        { name: 'stock', dataType: 'INT', isPrimaryKey: false, isForeignKey: false, isNullable: false }
+        { name: 'stock', dataType: 'INT', isPrimaryKey: false, isForeignKey: false, isNullable: false },
       ]
     };
-    this.tables.set('products', productsTable);
-    this.createTableNode(productsTable, { x: 100, y: 400 });
+    this.tables.set('products-b', productsTableB);
+    this.createTableNodeOptionB(productsTableB, { x: 50, y: 350 });
 
-    // Create relationships with field-level connections
-    // Find the table group nodes
-    const usersTableGroup = diagram.getGroups().find(g => g.getMetadata('tableId') === 'users');
-    const ordersTableGroup = diagram.getGroups().find(g => g.getMetadata('tableId') === 'orders');
+    // OPTION B Example 2: Categories table
+    const categoriesTableB: Table = {
+      id: 'categories-b',
+      name: 'Categories',
+      columns: [
+        { name: 'id', dataType: 'INT', isPrimaryKey: true, isForeignKey: false, isNullable: false },
+        { name: 'name', dataType: 'VARCHAR(100)', isPrimaryKey: false, isForeignKey: false, isNullable: false },
+        { name: 'description', dataType: 'TEXT', isPrimaryKey: false, isForeignKey: false, isNullable: true },
+      ]
+    };
+    this.tables.set('categories-b', categoriesTableB);
+    this.createTableNodeOptionB(categoriesTableB, { x: 350, y: 350 });
 
-    if (usersTableGroup && ordersTableGroup) {
-      // Get field nodes (members of the table groups)
-      const usersMemberIds = Array.from(usersTableGroup.members);
-      const ordersMemberIds = Array.from(ordersTableGroup.members);
+    // OPTION B Example 3: ProductCategories table (junction table)
+    const productCategoriesTableB: Table = {
+      id: 'product-categories-b',
+      name: 'ProductCategories',
+      columns: [
+        { name: 'id', dataType: 'INT', isPrimaryKey: true, isForeignKey: false, isNullable: false },
+        { name: 'product_id', dataType: 'INT', isPrimaryKey: false, isForeignKey: true, isNullable: false },
+        { name: 'category_id', dataType: 'INT', isPrimaryKey: false, isForeignKey: true, isNullable: false },
+        { name: 'created_at', dataType: 'TIMESTAMP', isPrimaryKey: false, isForeignKey: false, isNullable: false },
+      ]
+    };
+    this.tables.set('product-categories-b', productCategoriesTableB);
+    this.createTableNodeOptionB(productCategoriesTableB, { x: 650, y: 350 });
 
-      // Find users.id field node (primary key)
-      const usersIdField = usersMemberIds
-        .map(id => diagram.getNode(id))
-        .find(node => node?.getMetadata('columnData')?.name === 'id');
-
-      // Find orders.user_id field node (foreign key)
-      const ordersUserIdField = ordersMemberIds
-        .map(id => diagram.getNode(id))
-        .find(node => node?.getMetadata('columnData')?.name === 'user_id');
-
-      if (usersIdField && ordersUserIdField) {
-        // Get output port from users.id field (right side)
-        const usersIdPort = usersIdField.getPorts().find(p => p.type === 'output');
-        // Get input port from orders.user_id field (left side)
-        const ordersUserIdPort = ordersUserIdField.getPorts().find(p => p.type === 'input');
-
-        if (usersIdPort && ordersUserIdPort) {
-          // Create link between field nodes
-          const link = await this.engine.addLink({
-            sourcePortId: usersIdPort.id,
-            targetPortId: ordersUserIdPort.id,
-            type: 'orthogonal'
-          });
-
-          if (link) {
-            link.setMetadata('relationship', '1:N');
-            link.setMetadata('label', '1:N');
-            link.setMetadata('description', 'One user has many orders');
-            console.log('✅ Created relationship: Users.id (PK) → Orders.user_id (FK) using nested field nodes');
-          }
-        }
-      }
-    }
+    console.log('📋 ERD Comparison Page:');
+    console.log('  Top Row: Option A tables (purple headers with integrated drag handler)');
+    console.log('    - Users, Orders, Payments');
+    console.log('  Bottom Row: Option B tables (green headers as separate nodes)');
+    console.log('    - Products, Categories, ProductCategories');
+    console.log('  Try dragging the headers to see the difference!');
 
     diagram.fitToView(100);
     this.updateViewportFromDiagram();
+
+    // COMPREHENSIVE DIAGRAM STRUCTURE LOGGING
+    this.logDiagramStructure();
+  }
+
+  /**
+   * Log complete diagram structure for debugging
+   */
+  private logDiagramStructure(): void {
+    const diagram = this.engine.getDiagram();
+    if (!diagram) {
+      console.error('❌ No diagram available for logging');
+      return;
+    }
+
+    console.log('\n' + '='.repeat(80));
+    console.log('📊 COMPLETE DIAGRAM STRUCTURE');
+    console.log('='.repeat(80));
+
+    // Log the raw diagram object first
+    console.log('\n🔍 RAW DIAGRAM OBJECT:');
+    console.dir(diagram, { depth: 3, colors: true });
+
+    // Diagram-level info
+    console.log('\n🎯 DIAGRAM METADATA:');
+    const metadata = {
+      id: diagram.id,
+      name: diagram.name,
+      zoom: diagram.zoom,
+      viewport: diagram.getViewport(),
+      totalNodes: diagram.getNodes().length,
+      totalLinks: diagram.getLinks().length,
+      totalGroups: diagram.getGroups().length,
+    };
+    console.log(JSON.stringify(metadata, null, 2));
+    console.dir(metadata);
+
+    // All nodes with full details
+    console.log('\n📦 ALL NODES:');
+    const nodes = diagram.getNodes();
+    console.log(`Total nodes: ${nodes.length}`);
+
+    nodes.forEach((node, index) => {
+      console.log(`\n  [${index}] Node: ${node.id}`);
+
+      // Create a comprehensive node info object
+      const nodeInfo = {
+        id: node.id,
+        type: node.type,
+        position: { x: node.position.x, y: node.position.y },
+        size: { width: node.size.width, height: node.size.height },
+        parentId: node.parentId || null,
+        children: Array.from(node.children),
+        childrenCount: node.children.size,
+        behavior: {
+          draggable: node.behavior.draggable,
+          selectable: node.behavior.selectable,
+        },
+        isSelected: node.isSelected(),
+        useHTMLLayer: node.getMetadata('useHTMLLayer'),
+        layout: node.getMetadata('layout'),
+        portsCount: node.getPorts().length,
+        data: node.data,
+      };
+
+      console.log('    Node Info Object:');
+      console.dir(nodeInfo, { depth: 5 });
+      console.log('    Node Info JSON:');
+      console.log(JSON.stringify(nodeInfo, null, 2));
+
+      // If it has children, show the tree
+      if (node.children.size > 0) {
+        console.log('    📂 CHILDREN TREE:');
+        const childArray = Array.from(node.children);
+        childArray.forEach((childId, childIndex) => {
+          const child = diagram.getNode(childId);
+          if (child) {
+            const childInfo = {
+              index: childIndex,
+              id: child.id,
+              type: child.type,
+              position: { x: child.position.x, y: child.position.y },
+              size: { width: child.size.width, height: child.size.height },
+              parentId: child.parentId,
+              draggable: child.behavior.draggable,
+              useHTMLLayer: child.getMetadata('useHTMLLayer'),
+              data: child.data,
+            };
+            console.log(`      Child [${childIndex}]:`, JSON.stringify(childInfo, null, 2));
+          }
+        });
+      }
+    });
+
+    // All links
+    console.log('\n🔗 ALL LINKS:');
+    const links = diagram.getLinks();
+    if (links.length === 0) {
+      console.log('  No links created yet');
+    } else {
+      links.forEach((link, index) => {
+        console.log(`\n  [${index}] Link: ${link.id}`);
+        console.log('    ├─ sourcePortId:', link.sourcePortId);
+        console.log('    └─ targetPortId:', link.targetPortId);
+      });
+    }
+
+    // Groups
+    console.log('\n👥 ALL GROUPS:');
+    const groups = diagram.getGroups();
+    if (groups.length === 0) {
+      console.log('  No groups created');
+    } else {
+      groups.forEach((group, index) => {
+        console.log(`\n  [${index}] Group: ${group.id}`);
+        console.log('    ├─ name:', group.name);
+        console.log('    ├─ position:', group.position);
+        console.log('    ├─ size:', group.size);
+        console.log('    └─ members:', group.members);
+      });
+    }
+
+    // Option B specific analysis
+    console.log('\n🔍 OPTION B TABLES ANALYSIS:');
+    const containerNodes = nodes.filter(n => n.type === 'erd-table-container-b');
+    console.log(`  Found ${containerNodes.length} container nodes`);
+
+    containerNodes.forEach((container, index) => {
+      const childArray = Array.from(container.children);
+      const tableName = childArray.length > 0
+        ? diagram.getNode(childArray[0])?.data['tableName'] || 'Unknown'
+        : 'Unknown';
+
+      console.log(`\n  📋 Table ${index + 1}: ${tableName}`);
+
+      const containerInfo = {
+        id: container.id,
+        position: { x: container.position.x, y: container.position.y },
+        size: { width: container.size.width, height: container.size.height },
+        childrenCount: container.children.size,
+        useHTMLLayer: container.getMetadata('useHTMLLayer'),
+        layout: container.getMetadata('layout'),
+      };
+
+      console.log('    Container Info:');
+      console.log(JSON.stringify(containerInfo, null, 2));
+
+      // Analyze children
+      const childrenInfo: any[] = [];
+      childArray.forEach((childId, childIdx) => {
+        const child = diagram.getNode(childId);
+        if (child) {
+          const role = childIdx === 0 ? 'HEADER' : `FIELD ${childIdx}`;
+          const childData = {
+            role: role,
+            id: child.id,
+            type: child.type,
+            position: { x: child.position.x, y: child.position.y },
+            size: { width: child.size.width, height: child.size.height },
+            parentId: child.parentId,
+            useHTMLLayer: child.getMetadata('useHTMLLayer'),
+            layout: child.getMetadata('layout'),
+            data: child.data,
+          };
+          childrenInfo.push(childData);
+        }
+      });
+
+      console.log('    Children:');
+      console.log(JSON.stringify(childrenInfo, null, 2));
+    });
+
+    console.log('\n' + '='.repeat(80));
+    console.log('✅ DIAGRAM STRUCTURE LOGGING COMPLETE');
+    console.log('='.repeat(80) + '\n');
   }
 
   private createTableNode(table: Table, position: { x: number; y: number }): GroupModel {
@@ -181,6 +363,7 @@ export class ErdDesignerComponent implements OnInit {
     // Create GroupModel for table (container for field nodes)
     const tableGroup = new GroupModel({ name: table.name });
     tableGroup.position = position;
+    tableGroup.setMetadata('type', 'erd-table'); // Set type in metadata for HTML renderer
     tableGroup.setMetadata('tableId', table.id);
     tableGroup.setMetadata('tableName', table.name);
 
@@ -209,7 +392,7 @@ export class ErdDesignerComponent implements OnInit {
       // Cast to FlexboxLayoutConfig since template uses flex column
       const flexLayout = tableTemplate.structure.layout as FlexboxLayoutConfig;
       tableGroup.setLayout('flexbox', flexLayout);
-      tableGroup.setMetadata('autoLayout', true); // Enable auto-layout
+      // NOTE: Don't enable autoLayout yet - we'll do it after adding to diagram
     }
 
     // Calculate table size based on number of fields
@@ -239,8 +422,11 @@ export class ErdDesignerComponent implements OnInit {
       tableGroup.addMember(fieldNode.id);
     });
 
-    // Add table group to diagram
+    // Add table group to diagram FIRST
     diagram.addGroup(tableGroup);
+
+    // Enable auto-layout AFTER adding to diagram to avoid warnings
+    tableGroup.setMetadata('autoLayout', true);
 
     // Apply smart layout to position field nodes
     tableGroup.applyLayout(diagram);
@@ -249,6 +435,136 @@ export class ErdDesignerComponent implements OnInit {
     console.log(`📐 Using flex column layout with auto-positioning`);
 
     return tableGroup;
+  }
+
+  /**
+   * Apply flexbox layout to position children nodes
+   */
+  private applyFlexLayout(containerNode: NodeModel): void {
+    const diagram = this.engine.getDiagram();
+    if (!diagram) return;
+
+    const layoutConfig = containerNode.getMetadata('layout');
+    if (!layoutConfig || !layoutConfig.direction) return;
+
+    // Position children based on flex direction
+    let offset = layoutConfig.padding?.top || 0;
+    const gap = layoutConfig.gap || 0;
+    const alignItems = layoutConfig.alignItems || 'start';
+
+    // Calculate available width for stretching
+    const containerWidth = containerNode.size.width;
+    const horizontalPadding = (layoutConfig.padding?.left || 0) + (layoutConfig.padding?.right || 0);
+    const availableWidth = containerWidth - horizontalPadding;
+
+    containerNode.children.forEach((childId) => {
+      const child = diagram.getNode(childId);
+      if (child) {
+        if (layoutConfig.direction === 'column') {
+          // Stack vertically
+          child.position.x = layoutConfig.padding?.left || 0;
+          child.position.y = offset;
+
+          // If alignItems is 'stretch', make child take full width
+          if (alignItems === 'stretch') {
+            child.size.width = availableWidth;
+          }
+
+          offset += child.size.height + gap;
+        } else if (layoutConfig.direction === 'row') {
+          // Stack horizontally
+          child.position.x = offset;
+          child.position.y = layoutConfig.padding?.top || 0;
+          offset += child.size.width + gap;
+        }
+      }
+    });
+  }
+
+  /**
+   * OPTION A: Create table using template with children array
+   * Container node has header child built-in via template
+   */
+  private createTableNodeOptionA(table: Table, position: { x: number; y: number }): NodeModel {
+    const diagram = this.engine.getDiagram();
+    if (!diagram) throw new Error('Diagram not initialized');
+
+    // Create container node with header child from template
+    const containerNode = this.nodeFactory.createFromTemplate('erd-table-option-a', {
+      tableName: table.name,
+    }, position);
+
+    // Create field nodes as children of container
+    table.columns.forEach((column, index) => {
+      const fieldNode = this.nodeFactory.createFromTemplate('erd-field-option-a', {
+        fieldName: column.name,
+        fieldType: column.dataType,
+        isPrimaryKey: column.isPrimaryKey,
+        isForeignKey: column.isForeignKey,
+        isNullable: column.isNullable,
+      }, { x: 0, y: 0 }); // Position handled by layout
+
+      // Add as child of container
+      fieldNode.setParent(containerNode.id);
+      containerNode.addChild(fieldNode.id);
+
+      // Store metadata
+      fieldNode.setMetadata('columnData', column);
+      fieldNode.setMetadata('tableName', table.name);
+      fieldNode.setMetadata('isLastField', index === table.columns.length - 1);
+    });
+
+    // Apply layout to position children
+    this.applyFlexLayout(containerNode);
+
+    console.log(`✅ Created Option A table '${table.name}' with ${table.columns.length} fields`);
+    return containerNode;
+  }
+
+  /**
+   * OPTION B: Create table using three separate templates
+   * Container, header, and fields are all separate templates
+   */
+  private createTableNodeOptionB(table: Table, position: { x: number; y: number }): NodeModel {
+    const diagram = this.engine.getDiagram();
+    if (!diagram) throw new Error('Diagram not initialized');
+
+    // Create container node
+    const containerNode = this.nodeFactory.createFromTemplate('erd-table-container-b', {}, position);
+
+    // Create header node as child
+    const headerNode = this.nodeFactory.createFromTemplate('erd-table-header-b', {
+      tableName: table.name,
+    }, { x: 0, y: 0 });
+
+    headerNode.setParent(containerNode.id);
+    containerNode.addChild(headerNode.id);
+
+    // Create field nodes as children
+    table.columns.forEach((column, index) => {
+      const fieldNode = this.nodeFactory.createFromTemplate('erd-field-option-b', {
+        fieldName: column.name,
+        fieldType: column.dataType,
+        isPrimaryKey: column.isPrimaryKey,
+        isForeignKey: column.isForeignKey,
+        isNullable: column.isNullable,
+      }, { x: 0, y: 0 });
+
+      // Add as child of container
+      fieldNode.setParent(containerNode.id);
+      containerNode.addChild(fieldNode.id);
+
+      // Store metadata
+      fieldNode.setMetadata('columnData', column);
+      fieldNode.setMetadata('tableName', table.name);
+      fieldNode.setMetadata('isLastField', index === table.columns.length - 1);
+    });
+
+    // Apply layout to position children (header + fields)
+    this.applyFlexLayout(containerNode);
+
+    console.log(`✅ Created Option B table '${table.name}' with ${table.columns.length} fields`);
+    return containerNode;
   }
 
   addTable(): void {

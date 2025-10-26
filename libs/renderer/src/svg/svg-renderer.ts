@@ -1210,8 +1210,17 @@ export class SVGRenderer implements IRenderer {
     if (!diagram) return null;
 
     // Get source and target nodes
-    const sourceNode = link.sourceNodeId ? diagram.getNode(link.sourceNodeId) : null;
-    const targetNode = link.targetNodeId ? diagram.getNode(link.targetNodeId) : null;
+    // Try to get by node ID first, if not set, find the node that owns the port
+    let sourceNode = link.sourceNodeId ? diagram.getNode(link.sourceNodeId) : null;
+    let targetNode = link.targetNodeId ? diagram.getNode(link.targetNodeId) : null;
+
+    // If node IDs not set, find nodes by searching for ports
+    if (!sourceNode) {
+      sourceNode = diagram.getNodes().find(n => n.getPorts().some(p => p.id === link.sourcePortId)) || null;
+    }
+    if (!targetNode) {
+      targetNode = diagram.getNodes().find(n => n.getPorts().some(p => p.id === link.targetPortId)) || null;
+    }
 
     if (!sourceNode || !targetNode) return null;
 
@@ -1222,8 +1231,28 @@ export class SVGRenderer implements IRenderer {
     if (!sourcePort || !targetPort) return null;
 
     // Calculate absolute positions
-    const sourceBounds = sourceNode.getBoundingBox();
-    const targetBounds = targetNode.getBoundingBox();
+    // For nodes that are children/group members, we need to use global position
+    const sourceGlobalPos = sourceNode.getGlobalPosition();
+    const targetGlobalPos = targetNode.getGlobalPosition();
+
+    // Create bounding boxes using global positions
+    const sourceBounds = {
+      left: sourceGlobalPos.x - sourceNode.size.width / 2,
+      right: sourceGlobalPos.x + sourceNode.size.width / 2,
+      top: sourceGlobalPos.y - sourceNode.size.height / 2,
+      bottom: sourceGlobalPos.y + sourceNode.size.height / 2,
+      width: sourceNode.size.width,
+      height: sourceNode.size.height,
+    };
+    const targetBounds = {
+      left: targetGlobalPos.x - targetNode.size.width / 2,
+      right: targetGlobalPos.x + targetNode.size.width / 2,
+      top: targetGlobalPos.y - targetNode.size.height / 2,
+      bottom: targetGlobalPos.y + targetNode.size.height / 2,
+      width: targetNode.size.width,
+      height: targetNode.size.height,
+    };
+
     const start = sourcePort.getAbsolutePosition(sourceBounds);
     const end = targetPort.getAbsolutePosition(targetBounds);
 
@@ -1382,6 +1411,17 @@ export class SVGRenderer implements IRenderer {
       // Fallback to existing link.points
       points = link.points;
       pathData = this.generatePathData(link.points, link.segments);
+    }
+
+    // Safety check: if points is still empty/undefined, skip rendering
+    if (!points || points.length === 0) {
+      console.warn(`Cannot render link ${link.id}: no valid points available`);
+      return {
+        type: 'g',
+        key: `link-${link.id}`,
+        props: {},
+        children: []
+      };
     }
 
     // Calculate arrow position and angle using unified utility
@@ -2167,6 +2207,12 @@ export class SVGRenderer implements IRenderer {
     // Key insight: The arrow should extend OUTWARD from the node
     // - For smooth/bezier/straight: position arrow base outside node boundary
     // - For orthogonal: path endpoint is already offset, use it directly
+
+    // Safety check: ensure points array is valid
+    if (!points || points.length === 0) {
+      console.warn(`Cannot calculate arrow position: points array is empty for link ${link.id}`);
+      return { position: { x: 0, y: 0 }, angle: 0 };
+    }
 
     const pathEndpoint = isTarget ? points[points.length - 1] : points[0];
     const angleRad = angle * (Math.PI / 180);

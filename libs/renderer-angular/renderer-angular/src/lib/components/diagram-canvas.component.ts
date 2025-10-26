@@ -288,9 +288,14 @@ export class DiagramCanvasComponent implements OnInit, AfterViewInit, OnChanges,
       return;
     }
 
-    // Get all nodes that should render in HTML layer
+    // Get all nodes AND groups that should render in HTML layer
     const nodes = diagram.getNodes();
-    const newHtmlNodes = nodes.filter(node => node.getMetadata('useHTMLLayer') === true);
+    const groups = diagram.getGroups();
+
+    // Combine nodes and groups, filtering for HTML layer rendering
+    const htmlNodeModels = nodes.filter(node => node.getMetadata('useHTMLLayer') === true);
+    const htmlGroupModels = groups.filter(group => group.getMetadata('useHTMLLayer') === true);
+    const newHtmlNodes = [...htmlNodeModels, ...htmlGroupModels];
 
     // CRITICAL FIX: Only update array if the set of HTML nodes has actually changed
     // Compare IDs to avoid unnecessary array reassignment that triggers full re-render
@@ -301,6 +306,7 @@ export class DiagramCanvasComponent implements OnInit, AfterViewInit, OnChanges,
       this.htmlNodes = newHtmlNodes;
       console.log(`🔄 [HTMLLayer DECLARATIVE] HTML nodes changed:`, {
         totalNodes: nodes.length,
+        totalGroups: groups.length,
         htmlNodeCount: this.htmlNodes.length,
         htmlNodeIds: this.htmlNodes.map(n => n.id),
         positions: this.htmlNodes.map(n => ({ id: n.id, x: n.position.x, y: n.position.y }))
@@ -1081,6 +1087,54 @@ export class DiagramCanvasComponent implements OnInit, AfterViewInit, OnChanges,
     }
 
     return port;
+  }
+
+  /**
+   * Get absolute X position for a node (including parent offset)
+   * Walks up the parent chain to calculate world coordinates
+   */
+  getAbsoluteX(node: any): number {
+    let x = node.position.x;
+    let currentNode = node;
+    const diagram = this.engine?.getDiagram();
+
+    // Walk up parent chain
+    // FIXED: Use parentId instead of parent (NodeModel uses parentId property)
+    while (currentNode.parentId && diagram) {
+      const parentNode = diagram.getNode(currentNode.parentId);
+      if (parentNode) {
+        x += parentNode.position.x;
+        currentNode = parentNode;
+      } else {
+        break;
+      }
+    }
+
+    return x;
+  }
+
+  /**
+   * Get absolute Y position for a node (including parent offset)
+   * Walks up the parent chain to calculate world coordinates
+   */
+  getAbsoluteY(node: any): number {
+    let y = node.position.y;
+    let currentNode = node;
+    const diagram = this.engine?.getDiagram();
+
+    // Walk up parent chain
+    // FIXED: Use parentId instead of parent (NodeModel uses parentId property)
+    while (currentNode.parentId && diagram) {
+      const parentNode = diagram.getNode(currentNode.parentId);
+      if (parentNode) {
+        y += parentNode.position.y;
+        currentNode = parentNode;
+      } else {
+        break;
+      }
+    }
+
+    return y;
   }
 
   /**

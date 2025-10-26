@@ -9,12 +9,14 @@
     @for (node of htmlNodes; track node.id) {
       <div class="html-node-wrapper"
            [attr.data-node-id]="node.id"
+           [attr.data-parent-id]="node.parent || ''"
            [style.position]="'absolute'"
-           [style.left.px]="node.position.x"
-           [style.top.px]="node.position.y"
+           [style.left.px]="getAbsoluteX(node)"
+           [style.top.px]="getAbsoluteY(node)"
            [style.z-index]="node.getMetadata('z') || 1">
         <!-- Dynamically render component using directive -->
-        <ng-container [htmlNodeRenderer]="node" [nodeType]="node.type" [engine]="engine"></ng-container>
+        <!-- Support both NodeModel (node.type) and GroupModel (metadata.type) -->
+        <ng-container [htmlNodeRenderer]="node" [nodeType]="node.type || node.getMetadata('type')" [engine]="engine"></ng-container>
       </div>
     }
   </div>
