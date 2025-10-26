@@ -542,12 +542,14 @@ export class ErdDesignerComponent implements OnInit {
 
     // Create field nodes as children
     table.columns.forEach((column, index) => {
+      const isLastField = index === table.columns.length - 1;
       const fieldNode = this.nodeFactory.createFromTemplate('erd-field-option-b', {
         fieldName: column.name,
         fieldType: column.dataType,
         isPrimaryKey: column.isPrimaryKey,
         isForeignKey: column.isForeignKey,
         isNullable: column.isNullable,
+        isLastField: isLastField,
       }, { x: 0, y: 0 });
 
       // Add as child of container
@@ -557,14 +559,96 @@ export class ErdDesignerComponent implements OnInit {
       // Store metadata
       fieldNode.setMetadata('columnData', column);
       fieldNode.setMetadata('tableName', table.name);
-      fieldNode.setMetadata('isLastField', index === table.columns.length - 1);
+      fieldNode.setMetadata('isLastField', isLastField);
     });
 
     // Apply layout to position children (header + fields)
     this.applyFlexLayout(containerNode);
 
-    console.log(`✅ Created Option B table '${table.name}' with ${table.columns.length} fields`);
+    // Auto-resize container to fit content + padding
+    this.autoResizeContainer(containerNode);
+
+    // Re-apply layout after resizing to stretch children to new container width
+    this.applyFlexLayout(containerNode);
+
+    console.log(`✅ Created Option B table '${table.name}' with ${table.columns.length} fields (container width: ${containerNode.size.width}px)`);
     return containerNode;
+  }
+
+  /**
+   * Auto-resize container to fit its children + padding
+   */
+  private autoResizeContainer(containerNode: NodeModel): void {
+    const diagram = this.engine.getDiagram();
+    if (!diagram) return;
+
+    const layoutConfig = containerNode.getMetadata('layout');
+    if (!layoutConfig) return;
+
+    let maxHeight = 0;
+    let maxWidth = 0;
+
+    // Calculate total height and max width needed for all children
+    containerNode.children.forEach((childId) => {
+      const child = diagram.getNode(childId);
+      if (child) {
+        const childBottom = child.position.y + child.size.height;
+        if (childBottom > maxHeight) {
+          maxHeight = childBottom;
+        }
+
+        // Calculate content width based on field data
+        const contentWidth = this.calculateFieldContentWidth(child);
+        if (contentWidth > maxWidth) {
+          maxWidth = contentWidth;
+        }
+      }
+    });
+
+    // Add padding
+    const bottomPadding = layoutConfig.padding?.bottom || 0;
+    const horizontalPadding = (layoutConfig.padding?.left || 0) + (layoutConfig.padding?.right || 0);
+    const totalHeight = maxHeight + bottomPadding;
+    const totalWidth = Math.max(200, maxWidth + horizontalPadding);
+
+    // Resize container to fit content
+    containerNode.setSize(totalWidth, totalHeight);
+
+    // CRITICAL: Also resize all children to match the new container width
+    // This is necessary because children were created with static template widths (200px)
+    // but need to stretch to the calculated container width
+    containerNode.children.forEach((childId) => {
+      const child = diagram.getNode(childId);
+      if (child) {
+        // Keep child's height, but update width to match container
+        child.setSize(totalWidth, child.size.height);
+      }
+    });
+  }
+
+  /**
+   * Calculate the required width for a field or header based on its content
+   */
+  private calculateFieldContentWidth(node: NodeModel): number {
+    // Base width for padding and icon
+    let width = 30; // Left/right padding + icon space
+
+    // For headers (have tableName)
+    if (node.data['tableName']) {
+      width += node.data['tableName'].length * 8; // Headers use larger font
+    }
+    // For fields (have fieldName and fieldType)
+    else if (node.data['fieldName']) {
+      width += node.data['fieldName'].length * 7;
+
+      // Add space for field type (approximate 6px per character for monospace)
+      if (node.data['fieldType']) {
+        width += node.data['fieldType'].length * 6 + 10; // Extra space for gap
+      }
+    }
+
+    // Minimum width
+    return Math.max(180, width);
   }
 
   addTable(): void {

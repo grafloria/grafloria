@@ -258,7 +258,7 @@ export const ERDField: NodeTemplate = {
     // Field has ports on left and right
     ports: {
       enabled: true,
-      defaultVisibility: 'on-hover',
+      defaultVisibility: 'always',
       left: {
         enabled: true,
         type: 'input',
@@ -413,7 +413,7 @@ export const ERDFieldOptionA: NodeTemplate = {
 
     ports: {
       enabled: true,
-      defaultVisibility: 'on-hover',
+      defaultVisibility: 'always',
       left: {
         enabled: true,
         type: 'input',
@@ -455,29 +455,9 @@ export const ERDTableContainerOptionB: NodeTemplate = {
     shape: {
       type: 'rect',
       fill: '#ffffff',
-      stroke: '#d4d4d8',
+      stroke: '#a1a1aa',
       strokeWidth: 1,
       cornerRadius: 0,
-    },
-
-    html: {
-      mode: 'template',
-      template: `
-        <div class="erd-table-background-b" style="
-          position: absolute;
-          top: 0;
-          left: 0;
-          width: 250px;
-          height: 100%;
-          background: #ffffff;
-          border: 1px solid #a1a1aa;
-          box-shadow: 0 2px 4px rgba(0, 0, 0, 0.15);
-          box-sizing: border-box;
-          pointer-events: none;
-        "></div>
-      `,
-      className: 'node-erd-table-container-b',
-      zIndex: 0,
     },
 
     behavior: {
@@ -493,7 +473,7 @@ export const ERDTableContainerOptionB: NodeTemplate = {
       alignItems: 'stretch',
       alignContent: 'start',
       gap: 0,
-      padding: { top: 0, right: 0, bottom: 0, left: 0 },
+      padding: { top: 0, right: 0, bottom: 8, left: 0 },
     },
 
     ports: {
@@ -611,7 +591,7 @@ export const ERDFieldOptionB: NodeTemplate = {
           font-size: 12px;
           font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
           background: #ffffff;
-          border-bottom: 1px solid #e5e5e5;
+          border-bottom: {{#data.isLastField}}none{{/data.isLastField}}{{^data.isLastField}}1px solid #e5e5e5{{/data.isLastField}};
           height: 24px;
           min-height: 24px;
         ">
@@ -652,7 +632,7 @@ export const ERDFieldOptionB: NodeTemplate = {
 
     ports: {
       enabled: true,
-      defaultVisibility: 'on-hover',
+      defaultVisibility: 'always',
       left: {
         enabled: true,
         type: 'input',
