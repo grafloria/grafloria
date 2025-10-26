@@ -287,10 +287,13 @@ export class SVGRenderer implements IRenderer {
 
     if (!sourceNode) return null;
 
-    // CRITICAL FIX: Calculate source position using getAbsolutePosition() like links do
-    // This ensures the line starts from the port center, not the node's top-left corner
-    const sourceBounds = sourceNode.getBoundingBox();
-    const sourcePos = dragState.sourcePort.getAbsolutePosition(sourceBounds);
+    // CRITICAL FIX: Use getPortPositionForShape() for consistent positioning
+    // This ensures the preview line starts from the same position where the port is rendered
+    const sourceLocalPos = getPortPositionForShape(dragState.sourcePort, sourceNode);
+    const sourcePos = {
+      x: sourceNode.position.x + sourceLocalPos.x,
+      y: sourceNode.position.y + sourceLocalPos.y,
+    };
 
     const targetPos = dragState.currentMousePosition;
 
@@ -1199,6 +1202,7 @@ export class SVGRenderer implements IRenderer {
 
   /**
    * Get link endpoints (source and target port positions in world coordinates)
+   * CRITICAL FIX: Use the same getPortPositionForShape() as port rendering to ensure alignment
    */
   private getLinkEndpoints(link: LinkModel): {
     start: { x: number; y: number };
@@ -1221,11 +1225,20 @@ export class SVGRenderer implements IRenderer {
 
     if (!sourcePort || !targetPort) return null;
 
-    // Calculate absolute positions
-    const sourceBounds = sourceNode.getBoundingBox();
-    const targetBounds = targetNode.getBoundingBox();
-    const start = sourcePort.getAbsolutePosition(sourceBounds);
-    const end = targetPort.getAbsolutePosition(targetBounds);
+    // CRITICAL FIX: Use getPortPositionForShape() for consistent positioning
+    // This ensures links connect to the same positions where ports are rendered
+    const sourceLocalPos = getPortPositionForShape(sourcePort, sourceNode);
+    const targetLocalPos = getPortPositionForShape(targetPort, targetNode);
+
+    // Convert from local (node-relative) to world coordinates
+    const start = {
+      x: sourceNode.position.x + sourceLocalPos.x,
+      y: sourceNode.position.y + sourceLocalPos.y,
+    };
+    const end = {
+      x: targetNode.position.x + targetLocalPos.x,
+      y: targetNode.position.y + targetLocalPos.y,
+    };
 
     // Get port directions (for orthogonal routing)
     const sourceDirection = sourcePort.alignment.side;
