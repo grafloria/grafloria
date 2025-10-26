@@ -13,6 +13,7 @@
     "src/test-setup.ts",
     "jest.config.ts",
     "src/**/*.test.ts",
+    "src/**/*.stories.ts",
     "src/integration-tests/**/*"
   ],
   "include": ["src/**/*.ts"]
