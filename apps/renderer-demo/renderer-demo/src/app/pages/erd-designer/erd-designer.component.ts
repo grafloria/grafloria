@@ -12,6 +12,7 @@ import {
   NodeFactory,
   TemplateRegistry,
   registerTemplateLibrary,
+  FlexboxLayoutConfig,
 } from '@grafloria/engine';
 import { LIGHT_THEME, type Theme, type Rectangle } from '@grafloria/renderer';
 import { TableNodeComponent } from './table-node.component';
@@ -183,8 +184,8 @@ export class ErdDesignerComponent implements OnInit {
     tableGroup.setMetadata('tableId', table.id);
     tableGroup.setMetadata('tableName', table.name);
 
-    // Apply template data
-    tableGroup.data = { tableName: table.name };
+    // Apply template data (store in metadata since GroupModel doesn't have data property)
+    tableGroup.setMetadata('data', { tableName: table.name });
 
     // Apply template structure to group
     if (tableTemplate.structure.html) {
@@ -196,7 +197,9 @@ export class ErdDesignerComponent implements OnInit {
 
     // Set layout from template (flex column for stacking fields)
     if (tableTemplate.structure.layout) {
-      tableGroup.setLayout('flexbox', tableTemplate.structure.layout);
+      // Cast to FlexboxLayoutConfig since template uses flex column
+      const flexLayout = tableTemplate.structure.layout as FlexboxLayoutConfig;
+      tableGroup.setLayout('flexbox', flexLayout);
       tableGroup.setMetadata('autoLayout', true); // Enable auto-layout
     }
 
