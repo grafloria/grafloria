@@ -4,15 +4,12 @@
  * Template-driven node creation system for declarative diagram building
  */
 
-// Type definitions
-export * from './NodeTemplate';
-
 // Core services
 export { TemplateLoader } from './TemplateLoader';
 export { TemplateRegistry } from './TemplateRegistry';
 export { NodeFactory } from './NodeFactory';
 
-// Re-export for convenience
+// Export only template-specific types (not layout types which are exported from ./types)
 export type {
   NodeTemplate,
   NodeStructureDefinition,
@@ -20,10 +17,13 @@ export type {
   PortConfig,
   PortRenderingConfig,
   PortsConfig,
+  PortRenderingMode,
+  PortVisibility,
+  FlexDirection,
+  NodeRole,
+  ShapeType,
+  ShapeConfig,
   HtmlConfig,
-  FlexLayoutConfig,
-  GridLayoutConfig,
-  LayoutConfig,
   DragHandlerConfig,
   DataBindConfig,
   RepeaterConfig,

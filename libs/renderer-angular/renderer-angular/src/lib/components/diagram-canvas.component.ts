@@ -188,6 +188,11 @@ export class DiagramCanvasComponent implements OnInit, AfterViewInit, OnChanges,
       this.initializeRenderer();
       this.renderDiagram();
       this.subscribeToEngineEvents();
+
+      // CRITICAL FIX: Force change detection after initial render
+      // With OnPush strategy, initial render won't show until an event occurs
+      // This ensures nodes created before AfterViewInit are immediately visible
+      this.cdr.detectChanges();
     }
   }
 

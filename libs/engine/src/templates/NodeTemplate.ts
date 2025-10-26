@@ -13,6 +13,11 @@
 import type { PositioningMode } from '../models/NodeModel';
 import type { ValidationResult } from '../types/model.types';
 import type { ConnectionValidator } from '../state/ConnectionStateManager';
+import type {
+  FlexboxLayoutConfig,
+  GridLayoutConfig,
+  LayoutConfig,
+} from '../types/layout.types';
 
 /**
  * Port rendering mode
@@ -143,33 +148,6 @@ export interface DragHandlerConfig {
   gridSize?: number;
 }
 
-/**
- * Flexbox layout configuration
- */
-export interface FlexLayoutConfig {
-  type: 'flexbox';
-  direction: FlexDirection;
-  gap?: number;
-  padding?: { top: number; right: number; bottom: number; left: number };
-  alignItems?: string;
-  justifyContent?: string;
-}
-
-/**
- * Grid layout configuration (future)
- */
-export interface GridLayoutConfig {
-  type: 'grid';
-  columns?: number;
-  rows?: number;
-  gap?: number;
-  padding?: { top: number; right: number; bottom: number; left: number };
-}
-
-/**
- * Layout configuration union
- */
-export type LayoutConfig = FlexLayoutConfig | GridLayoutConfig;
 
 /**
  * Ports configuration

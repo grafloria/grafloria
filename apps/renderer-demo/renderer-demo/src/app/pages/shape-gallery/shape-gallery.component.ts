@@ -1,7 +1,7 @@
 // Shape Gallery Demo (Phase 3.6)
 // Demonstrates all shape system features from Phases 3.1-3.5
 
-import { Component, OnInit, OnDestroy } from '@angular/core';
+import { Component, OnInit, OnDestroy, ChangeDetectorRef } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import {
@@ -11,8 +11,11 @@ import {
 import {
   DiagramEngine,
   NodeModel,
+  GroupModel,
   type NodeTemplate,
   type ShapeType,
+  type FlexboxLayoutConfig,
+  type GridLayoutConfig,
 } from '@grafloria/engine';
 import { LIGHT_THEME, type Theme, type Rectangle } from '@grafloria/renderer';
 
@@ -38,6 +41,7 @@ export class ShapeGalleryComponent implements OnInit, OnDestroy {
     { id: 'hitdetection', name: '3.3: Hit Detection', active: true },
     { id: 'templates', name: '3.4: HTML Templates', active: true },
     { id: 'hybrid', name: '3.5: Hybrid Rendering', active: true },
+    { id: 'layouts', name: 'Composite Layouts', active: true },
   ];
 
   // Shape types to demonstrate
@@ -57,7 +61,10 @@ export class ShapeGalleryComponent implements OnInit, OnDestroy {
     eventsEmitted: 0,
   };
 
-  constructor(private componentRenderer: ComponentRendererService) {}
+  constructor(
+    private componentRenderer: ComponentRendererService,
+    private cdr: ChangeDetectorRef
+  ) {}
 
   ngOnInit(): void {
     this.engine = new DiagramEngine();
@@ -72,8 +79,14 @@ export class ShapeGalleryComponent implements OnInit, OnDestroy {
     this.createPhase33Demo(); // Hit detection
     this.createPhase34Demo(); // HTML templates with events
     this.createPhase35Demo(); // Hybrid rendering
+    this.createCompositeLayoutsDemo(); // Composite node layouts
 
     this.updateStats();
+
+    // Force change detection to ensure initial render
+    setTimeout(() => {
+      this.cdr.detectChanges();
+    }, 0);
   }
 
   ngOnDestroy(): void {
@@ -498,6 +511,479 @@ export class ShapeGalleryComponent implements OnInit, OnDestroy {
   }
 
   /**
+   * Composite Layouts Demo: Flexbox and Grid layouts
+   */
+  private createCompositeLayoutsDemo(): void {
+    const diagram = this.engine.getDiagram();
+    if (!diagram) return;
+
+    // 1. Flexbox Row Layout
+    const flexRowGroup = new GroupModel({ name: 'Flex Row Container' });
+    flexRowGroup.position = { x: 650, y: 50 };
+    flexRowGroup.size = { width: 400, height: 120, depth: 0 };
+    diagram.addGroup(flexRowGroup);
+
+    const flexRowConfig: FlexboxLayoutConfig = {
+      direction: 'row',
+      wrap: 'nowrap',
+      justifyContent: 'space-between',
+      alignItems: 'center',
+      alignContent: 'stretch',
+      gap: 10,
+      padding: 10,
+    };
+    flexRowGroup.setLayout('flexbox', flexRowConfig);
+
+    // Add child nodes to flex row
+    for (let i = 0; i < 3; i++) {
+      const childNode = new NodeModel({
+        id: `flex-row-child-${i}`,
+        type: 'rect',
+        position: { x: 0, y: 0 },
+        size: { width: 80, height: 80 },
+      });
+      childNode.setMetadata('shape', {
+        type: 'rect',
+        fill: ['#e3f2fd', '#fff3e0', '#f3e5f5'][i],
+        stroke: ['#2196f3', '#ff9800', '#9c27b0'][i],
+        strokeWidth: 2,
+        cornerRadius: 8,
+      });
+      childNode.setMetadata('label', `Item ${i + 1}`);
+      diagram.addNode(childNode);
+      flexRowGroup.addMember(childNode.id);
+    }
+    flexRowGroup.applyLayout(diagram);
+
+    // 2. Flexbox Column Layout
+    const flexColGroup = new GroupModel({ name: 'Flex Column Container' });
+    flexColGroup.position = { x: 650, y: 200 };
+    flexColGroup.size = { width: 140, height: 320, depth: 0 };
+    diagram.addGroup(flexColGroup);
+
+    const flexColConfig: FlexboxLayoutConfig = {
+      direction: 'column',
+      wrap: 'nowrap',
+      justifyContent: 'start',
+      alignItems: 'stretch',
+      alignContent: 'stretch',
+      gap: 10,
+      padding: 10,
+    };
+    flexColGroup.setLayout('flexbox', flexColConfig);
+
+    // Add child nodes to flex column
+    for (let i = 0; i < 3; i++) {
+      const childNode = new NodeModel({
+        id: `flex-col-child-${i}`,
+        type: 'rect',
+        position: { x: 0, y: 0 },
+        size: { width: 100, height: 80 },
+      });
+      childNode.setMetadata('shape', {
+        type: 'rect',
+        fill: ['#e8f5e9', '#fce4ec', '#fff3e0'][i],
+        stroke: ['#4caf50', '#e91e63', '#ff9800'][i],
+        strokeWidth: 2,
+        cornerRadius: 8,
+      });
+      childNode.setMetadata('label', `Row ${i + 1}`);
+      diagram.addNode(childNode);
+      flexColGroup.addMember(childNode.id);
+    }
+    flexColGroup.applyLayout(diagram);
+
+    // 3. Grid Layout (3 columns)
+    const gridGroup = new GroupModel({ name: 'Grid Container' });
+    gridGroup.position = { x: 820, y: 200 };
+    gridGroup.size = { width: 320, height: 320, depth: 0 };
+    diagram.addGroup(gridGroup);
+
+    const gridConfig: GridLayoutConfig = {
+      templateColumns: 'repeat(3, 1fr)',
+      templateRows: 'auto',
+      columnGap: 10,
+      rowGap: 10,
+      autoFlow: 'row',
+      padding: { top: 10, right: 10, bottom: 10, left: 10 },
+    };
+    gridGroup.setLayout('grid', gridConfig);
+
+    // Add child nodes to grid
+    const gridColors = ['#e3f2fd', '#fff3e0', '#f3e5f5', '#e8f5e9', '#fce4ec', '#e0f2f1'];
+    const gridStrokes = ['#2196f3', '#ff9800', '#9c27b0', '#4caf50', '#e91e63', '#00897b'];
+    for (let i = 0; i < 6; i++) {
+      const childNode = new NodeModel({
+        id: `grid-child-${i}`,
+        type: 'rect',
+        position: { x: 0, y: 0 },
+        size: { width: 90, height: 90 },
+      });
+      childNode.setMetadata('shape', {
+        type: 'rect',
+        fill: gridColors[i],
+        stroke: gridStrokes[i],
+        strokeWidth: 2,
+        cornerRadius: 8,
+      });
+      childNode.setMetadata('label', `${i + 1}`);
+      diagram.addNode(childNode);
+      gridGroup.addMember(childNode.id);
+    }
+    gridGroup.applyLayout(diagram);
+
+    // 4. 12-Column Grid Layout (Bootstrap-style)
+    const columnGroup = new GroupModel({ name: '12-Column Dashboard' });
+    columnGroup.position = { x: 650, y: 550 };
+    columnGroup.size = { width: 500, height: 200, depth: 0 };
+    diagram.addGroup(columnGroup);
+
+    const columnConfig: FlexboxLayoutConfig = {
+      direction: 'row',
+      wrap: 'wrap',
+      justifyContent: 'start',
+      alignItems: 'start',
+      alignContent: 'start',
+      gap: 10,
+      padding: 10,
+      columns: 12, // 12-column layout
+    };
+    columnGroup.setLayout('flexbox', columnConfig);
+
+    // Widget 1: 4 columns (1/3 width)
+    const widget1 = new NodeModel({
+      id: 'widget-4col',
+      type: 'rect',
+      position: { x: 0, y: 0 },
+      size: { width: 100, height: 80 },
+    });
+    widget1.setMetadata('columnSpan', 4);
+    widget1.setMetadata('shape', {
+      type: 'rect',
+      fill: '#e3f2fd',
+      stroke: '#2196f3',
+      strokeWidth: 2,
+      cornerRadius: 8,
+    });
+    widget1.setMetadata('label', '4 cols');
+    diagram.addNode(widget1);
+    columnGroup.addMember(widget1.id);
+
+    // Widget 2: 8 columns (2/3 width)
+    const widget2 = new NodeModel({
+      id: 'widget-8col',
+      type: 'rect',
+      position: { x: 0, y: 0 },
+      size: { width: 100, height: 80 },
+    });
+    widget2.setMetadata('columnSpan', 8);
+    widget2.setMetadata('shape', {
+      type: 'rect',
+      fill: '#fff3e0',
+      stroke: '#ff9800',
+      strokeWidth: 2,
+      cornerRadius: 8,
+    });
+    widget2.setMetadata('label', '8 cols');
+    diagram.addNode(widget2);
+    columnGroup.addMember(widget2.id);
+
+    // Widget 3: 12 columns (full width)
+    const widget3 = new NodeModel({
+      id: 'widget-12col',
+      type: 'rect',
+      position: { x: 0, y: 0 },
+      size: { width: 100, height: 80 },
+    });
+    widget3.setMetadata('columnSpan', 12);
+    widget3.setMetadata('shape', {
+      type: 'rect',
+      fill: '#e8f5e9',
+      stroke: '#4caf50',
+      strokeWidth: 2,
+      cornerRadius: 8,
+    });
+    widget3.setMetadata('label', '12 cols');
+    diagram.addNode(widget3);
+    columnGroup.addMember(widget3.id);
+
+    columnGroup.applyLayout(diagram);
+
+    // 5. Table-style demo with field nodes (ERD-like)
+    this.createTableStyleDemo(diagram);
+  }
+
+  /**
+   * Create table-style demo with field nodes and connections
+   */
+  private createTableStyleDemo(diagram: any): void {
+    // Create first table (Users) - this is a container node
+    const usersTable = new NodeModel({
+      id: 'users-table',
+      type: 'rect',
+      position: { x: 50, y: 800 },
+      size: { width: 200, height: 250 },
+    });
+
+    // Make it a container with flexbox layout for children
+    usersTable.setMetadata('shape', {
+      type: 'rect',
+      fill: '#f5f5f5',
+      stroke: '#0d47a1',
+      strokeWidth: 3,
+      cornerRadius: 8,
+    });
+
+    // Add HTML styling for better visual presentation
+    usersTable.setMetadata('html', {
+      className: 'erd-table-container',
+      style: {
+        border: '3px solid #0d47a1',
+        borderRadius: '8px',
+        backgroundColor: '#f5f5f5',
+        boxShadow: '0 2px 8px rgba(0,0,0,0.1)',
+      }
+    });
+
+    usersTable.setMetadata('layout', {
+      type: 'flexbox',
+      direction: 'column',
+      gap: 2,
+      padding: { top: 5, right: 5, bottom: 5, left: 5 },
+      justifyContent: 'start',
+      alignItems: 'stretch',
+    });
+
+    diagram.addNode(usersTable);
+
+    // Add table header as a child node
+    const usersHeader = new NodeModel({
+      id: 'users-header',
+      type: 'rect',
+      position: { x: 55, y: 805 }, // Relative to parent
+      size: { width: 190, height: 30 },
+    });
+    usersHeader.setMetadata('shape', {
+      type: 'rect',
+      fill: '#1976d2',
+      stroke: '#0d47a1',
+      strokeWidth: 2,
+      cornerRadius: 4,
+    });
+
+    // Add HTML styling for header
+    usersHeader.setMetadata('html', {
+      className: 'erd-table-header',
+      style: {
+        backgroundColor: '#1976d2',
+        color: '#ffffff',
+        fontWeight: 'bold',
+        fontSize: '14px',
+        textAlign: 'center',
+        borderRadius: '4px',
+        border: '2px solid #0d47a1',
+        padding: '8px',
+        cursor: 'default',
+      }
+    });
+
+    usersHeader.setMetadata('label', 'Users');
+    usersHeader.setMetadata('labelColor', '#ffffff');
+    usersHeader.behavior.draggable = false; // Make header non-draggable
+    usersHeader.parentId = usersTable.id; // Set parent relationship
+    diagram.addNode(usersHeader);
+
+    // Add field nodes as children of Users table
+    const userFields = [
+      { id: 'user-id', label: 'id (PK)', isPrimary: true, yOffset: 40 },
+      { id: 'user-name', label: 'name', isPrimary: false, yOffset: 77 },
+      { id: 'user-email', label: 'email', isPrimary: false, yOffset: 114 },
+      { id: 'user-created', label: 'created_at', isPrimary: false, yOffset: 151 },
+    ];
+
+    userFields.forEach((field) => {
+      const fieldNode = new NodeModel({
+        id: field.id,
+        type: 'rect',
+        position: { x: 55, y: 800 + field.yOffset },
+        size: { width: 190, height: 35 },
+      });
+
+      // Configure ports - left and right for connections
+      fieldNode.setMetadata('ports', {
+        left: { enabled: true, visibility: 'always' },
+        right: { enabled: true, visibility: 'always' },
+      });
+
+      fieldNode.setMetadata('shape', {
+        type: 'rect',
+        fill: field.isPrimary ? '#fff3e0' : '#ffffff',
+        stroke: '#bdbdbd',
+        strokeWidth: 1,
+        cornerRadius: 2,
+      });
+
+      // Add HTML styling for field rows
+      fieldNode.setMetadata('html', {
+        className: field.isPrimary ? 'erd-field-primary' : 'erd-field',
+        style: {
+          backgroundColor: field.isPrimary ? '#fff3e0' : '#ffffff',
+          border: '1px solid #bdbdbd',
+          borderRadius: '2px',
+          padding: '6px 8px',
+          fontSize: '12px',
+          color: '#000000',
+          cursor: 'default',
+          fontFamily: 'monospace',
+        }
+      });
+
+      fieldNode.setMetadata('label', field.label);
+      fieldNode.setMetadata('labelColor', '#000000');
+      fieldNode.behavior.draggable = false; // Make field nodes non-draggable
+      fieldNode.parentId = usersTable.id; // Set parent relationship
+      diagram.addNode(fieldNode);
+    });
+
+    // Create second table (Orders) - this is a container node
+    const ordersTable = new NodeModel({
+      id: 'orders-table',
+      type: 'rect',
+      position: { x: 350, y: 800 },
+      size: { width: 200, height: 250 },
+    });
+
+    ordersTable.setMetadata('shape', {
+      type: 'rect',
+      fill: '#f5f5f5',
+      stroke: '#1b5e20',
+      strokeWidth: 3,
+      cornerRadius: 8,
+    });
+
+    // Add HTML styling for better visual presentation
+    ordersTable.setMetadata('html', {
+      className: 'erd-table-container',
+      style: {
+        border: '3px solid #1b5e20',
+        borderRadius: '8px',
+        backgroundColor: '#f5f5f5',
+        boxShadow: '0 2px 8px rgba(0,0,0,0.1)',
+      }
+    });
+
+    ordersTable.setMetadata('layout', {
+      type: 'flexbox',
+      direction: 'column',
+      gap: 2,
+      padding: { top: 5, right: 5, bottom: 5, left: 5 },
+      justifyContent: 'start',
+      alignItems: 'stretch',
+    });
+
+    diagram.addNode(ordersTable);
+
+    // Add table header as a child node
+    const ordersHeader = new NodeModel({
+      id: 'orders-header',
+      type: 'rect',
+      position: { x: 355, y: 805 },
+      size: { width: 190, height: 30 },
+    });
+    ordersHeader.setMetadata('shape', {
+      type: 'rect',
+      fill: '#388e3c',
+      stroke: '#1b5e20',
+      strokeWidth: 2,
+      cornerRadius: 4,
+    });
+
+    // Add HTML styling for header
+    ordersHeader.setMetadata('html', {
+      className: 'erd-table-header',
+      style: {
+        backgroundColor: '#388e3c',
+        color: '#ffffff',
+        fontWeight: 'bold',
+        fontSize: '14px',
+        textAlign: 'center',
+        borderRadius: '4px',
+        border: '2px solid #1b5e20',
+        padding: '8px',
+        cursor: 'default',
+      }
+    });
+
+    ordersHeader.setMetadata('label', 'Orders');
+    ordersHeader.setMetadata('labelColor', '#ffffff');
+    ordersHeader.behavior.draggable = false; // Make header non-draggable
+    ordersHeader.parentId = ordersTable.id; // Set parent relationship
+    diagram.addNode(ordersHeader);
+
+    // Add field nodes as children of Orders table
+    const orderFields = [
+      { id: 'order-id', label: 'id (PK)', isPrimary: true, yOffset: 40 },
+      { id: 'order-user-id', label: 'user_id (FK)', isForeign: true, yOffset: 77 },
+      { id: 'order-amount', label: 'amount', isPrimary: false, yOffset: 114 },
+      { id: 'order-created', label: 'created_at', isPrimary: false, yOffset: 151 },
+    ];
+
+    orderFields.forEach((field) => {
+      const fieldNode = new NodeModel({
+        id: field.id,
+        type: 'rect',
+        position: { x: 355, y: 800 + field.yOffset },
+        size: { width: 190, height: 35 },
+      });
+
+      // Configure ports - left and right for connections
+      fieldNode.setMetadata('ports', {
+        left: { enabled: true, visibility: 'always' },
+        right: { enabled: true, visibility: 'always' },
+      });
+
+      const bgColor = field.isPrimary ? '#fff3e0' : (field.isForeign ? '#e1f5fe' : '#ffffff');
+      fieldNode.setMetadata('shape', {
+        type: 'rect',
+        fill: bgColor,
+        stroke: '#bdbdbd',
+        strokeWidth: 1,
+        cornerRadius: 2,
+      });
+
+      // Add HTML styling for field rows
+      const className = field.isPrimary ? 'erd-field-primary' : (field.isForeign ? 'erd-field-foreign' : 'erd-field');
+      fieldNode.setMetadata('html', {
+        className: className,
+        style: {
+          backgroundColor: bgColor,
+          border: '1px solid #bdbdbd',
+          borderRadius: '2px',
+          padding: '6px 8px',
+          fontSize: '12px',
+          color: '#000000',
+          cursor: 'default',
+          fontFamily: 'monospace',
+        }
+      });
+
+      fieldNode.setMetadata('label', field.label);
+      fieldNode.setMetadata('labelColor', '#000000');
+      fieldNode.behavior.draggable = false; // Make field nodes non-draggable
+      fieldNode.parentId = ordersTable.id; // Set parent relationship
+      diagram.addNode(fieldNode);
+    });
+
+    // Create link between user-id and order-user-id
+    const link = diagram.createLink('user-id', 'order-user-id', 'right', 'left');
+    if (link) {
+      link.setMetadata('strokeColor', '#1976d2');
+      link.setMetadata('strokeWidth', 2);
+      link.setMetadata('label', '1:N');
+    }
+  }
+
+  /**
    * Update statistics
    */
   private updateStats(): void {
@@ -514,6 +1000,7 @@ export class ShapeGalleryComponent implements OnInit, OnDestroy {
     this.createPhase33Demo();
     this.createPhase34Demo();
     this.createPhase35Demo();
+    this.createCompositeLayoutsDemo();
     this.updateStats();
     this.eventLog = [];
     this.stats.clicksRecorded = 0;

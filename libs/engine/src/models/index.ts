@@ -5,3 +5,4 @@ export * from './PortModel';
 export * from './NodeModel';
 export * from './LinkModel';
 export * from './DiagramModel';
+export * from './GroupModel';

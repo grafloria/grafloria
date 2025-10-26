@@ -96,6 +96,8 @@ export class GroupModel extends DiagramEntity {
    * @param type - Layout type ('flexbox' or 'grid')
    * @param config - Layout configuration object
    */
+  setLayout(type: 'flexbox', config: FlexboxLayoutConfig): void;
+  setLayout(type: 'grid', config: GridLayoutConfig): void;
   setLayout(type: 'flexbox' | 'grid', config: LayoutConfig): void {
     const oldType = this.layoutType;
     const oldConfig = this.layoutConfig;
