@@ -31,6 +31,10 @@ export class GroupModel extends DiagramEntity {
   layoutType: LayoutType = 'none';
   layoutConfig?: LayoutConfig;
 
+  // Position and size for layout calculations
+  position: { x: number; y: number } = { x: 0, y: 0 };
+  size?: { width: number; height: number; depth: number };
+
   constructor(config: { id?: string; name: string }) {
     super(config.id);
     this.name = config.name;
@@ -44,6 +48,11 @@ export class GroupModel extends DiagramEntity {
       this.members.add(entityId);
       this.trackChange('members', null, entityId);
       this.emitter.emit('member:added', entityId);
+
+      // Auto-apply layout if enabled
+      if (this.getMetadata('autoLayout') === true) {
+        this.applyLayout();
+      }
     }
   }
 
@@ -188,6 +197,190 @@ export class GroupModel extends DiagramEntity {
       width: maxX - minX,
       height: maxY - minY
     };
+  }
+
+  /**
+   * Apply layout to member nodes (Phase 1.7+)
+   * Positions child nodes based on flex or grid layout configuration
+   */
+  applyLayout(diagram?: DiagramModel): void {
+    if (!this.hasLayout()) {
+      return;
+    }
+
+    // Get diagram from metadata if not provided
+    const diagramToUse = diagram || (this.metadata.get('diagram') as DiagramModel);
+    if (!diagramToUse) {
+      console.warn(`Cannot apply layout to group ${this.id}: diagram not available`);
+      return;
+    }
+
+    // Get member entities (nodes and groups)
+    const entities: Array<NodeModel | GroupModel> = [];
+    for (const id of this.members) {
+      const node = diagramToUse.getNode(id);
+      if (node) {
+        entities.push(node);
+      } else {
+        const group = diagramToUse.getGroup(id);
+        if (group) {
+          entities.push(group);
+        }
+      }
+    }
+
+    if (entities.length === 0) {
+      return;
+    }
+
+    // Apply layout based on type
+    if (this.layoutType === 'flexbox') {
+      this.applyFlexboxLayout(entities);
+    } else if (this.layoutType === 'grid') {
+      this.applyGridLayout(entities);
+    }
+  }
+
+  /**
+   * Apply flexbox layout to entities (nodes or groups)
+   */
+  private applyFlexboxLayout(entities: Array<NodeModel | GroupModel>): void {
+    const config = this.getFlexboxLayout();
+
+    // Get padding values
+    const padding = this.normalizePadding(config.padding);
+
+    // Calculate starting position
+    let currentX = this.position.x + padding.left;
+    let currentY = this.position.y + padding.top;
+
+    // Get gap value
+    const gap = typeof config.gap === 'number' ? config.gap : config.gap.row;
+
+    if (config.direction === 'column' || config.direction === 'column-reverse') {
+      // Vertical stacking
+      const orderedEntities = config.direction === 'column-reverse' ? entities.slice().reverse() : entities;
+
+      for (const entity of orderedEntities) {
+        if ('setPosition' in entity && typeof entity.setPosition === 'function') {
+          entity.setPosition(currentX, currentY);
+        } else {
+          // GroupModel
+          entity.position = { x: currentX, y: currentY };
+        }
+        const entityHeight = entity.size?.height || 50;
+        currentY += entityHeight + gap;
+      }
+    } else {
+      // Horizontal stacking (row or row-reverse)
+      const orderedEntities = config.direction === 'row-reverse' ? entities.slice().reverse() : entities;
+
+      // Handle justifyContent for horizontal centering
+      if (config.justifyContent === 'center' && this.size) {
+        const totalWidth = this.calculateTotalWidth(orderedEntities, gap);
+        currentX = this.position.x + (this.size.width - totalWidth) / 2;
+      }
+
+      for (const entity of orderedEntities) {
+        // Handle alignItems for vertical centering
+        let entityY = currentY;
+        if (config.alignItems === 'center' && this.size) {
+          const entityHeight = entity.size?.height || 50;
+          entityY = this.position.y + (this.size.height - entityHeight) / 2;
+        }
+
+        if ('setPosition' in entity && typeof entity.setPosition === 'function') {
+          entity.setPosition(currentX, entityY);
+        } else {
+          // GroupModel
+          entity.position = { x: currentX, y: entityY };
+        }
+        const entityWidth = entity.size?.width || 100;
+        currentX += entityWidth + gap;
+      }
+    }
+  }
+
+  /**
+   * Apply grid layout to entities (nodes or groups)
+   */
+  private applyGridLayout(entities: Array<NodeModel | GroupModel>): void {
+    const config = this.getGridLayout();
+
+    // Parse template columns to get column count
+    const columns = this.parseGridColumns(config.templateColumns);
+
+    // Get gaps
+    const columnGap = config.columnGap || 0;
+    const rowGap = config.rowGap || 0;
+
+    // Get padding
+    const padding = this.normalizePadding(config.padding);
+
+    // Starting position
+    const startX = this.position.x + padding.left;
+    const startY = this.position.y + padding.top;
+
+    // Position entities in grid
+    entities.forEach((entity, index) => {
+      const row = Math.floor(index / columns);
+      const col = index % columns;
+
+      const entityWidth = entity.size?.width || 100;
+      const entityHeight = entity.size?.height || 100;
+
+      const x = startX + col * (entityWidth + columnGap);
+      const y = startY + row * (entityHeight + rowGap);
+
+      if ('setPosition' in entity && typeof entity.setPosition === 'function') {
+        entity.setPosition(x, y);
+      } else {
+        // GroupModel
+        entity.position = { x, y };
+      }
+    });
+  }
+
+  /**
+   * Normalize padding to all four sides
+   */
+  private normalizePadding(
+    padding: number | { top: number; right: number; bottom: number; left: number } | undefined
+  ): { top: number; right: number; bottom: number; left: number } {
+    if (padding === undefined) {
+      return { top: 0, right: 0, bottom: 0, left: 0 };
+    }
+    if (typeof padding === 'number') {
+      return { top: padding, right: padding, bottom: padding, left: padding };
+    }
+    return padding;
+  }
+
+  /**
+   * Calculate total width of entities for centering
+   */
+  private calculateTotalWidth(entities: Array<NodeModel | GroupModel>, gap: number): number {
+    let total = 0;
+    for (let i = 0; i < entities.length; i++) {
+      total += entities[i].size?.width || 100;
+      if (i < entities.length - 1) {
+        total += gap;
+      }
+    }
+    return total;
+  }
+
+  /**
+   * Parse grid template columns to get column count
+   */
+  private parseGridColumns(templateColumns: string): number {
+    // Simple parser - count space-separated values
+    // Example: "1fr 1fr 1fr" = 3 columns, "repeat(3, 1fr)" = 3 columns
+    const repeatMatch = templateColumns.match(/repeat\((\d+),/);
+    if (repeatMatch) {
+      return parseInt(repeatMatch[1], 10);
+    }
+    return templateColumns.split(' ').length;
   }
 
   /**

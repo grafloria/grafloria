@@ -495,6 +495,9 @@ export class DiagramModel extends DiagramEntity {
       throw new Error(`Group with id ${group.id} already exists`);
     }
 
+    // Store diagram reference for layout operations
+    group.setMetadata('diagram', this);
+
     this.groups.set(group.id, group);
     this.trackChange('groups', null, group);
     this.emitter.emit('group:added', group);
