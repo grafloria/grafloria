@@ -184,12 +184,21 @@ export class ErdDesignerComponent implements OnInit {
     tableGroup.setMetadata('tableId', table.id);
     tableGroup.setMetadata('tableName', table.name);
 
-    // Apply template data (store in metadata since GroupModel doesn't have data property)
+    // Apply template data (GroupModel uses metadata for all data)
     tableGroup.setMetadata('data', { tableName: table.name });
+    tableGroup.setMetadata('tableName', table.name); // For easy access
 
-    // Apply template structure to group
+    // Apply template structure to group for rendering
     if (tableTemplate.structure.html) {
+      tableGroup.setMetadata('useHTMLLayer', true);
       tableGroup.setMetadata('html', tableTemplate.structure.html);
+      // Also store in format the renderer expects
+      tableGroup.setMetadata('_html', {
+        mode: tableTemplate.structure.html.mode,
+        template: tableTemplate.structure.html.template,
+        className: tableTemplate.structure.html.className,
+        style: tableTemplate.structure.html.style,
+      });
     }
     if (tableTemplate.structure.shape) {
       tableGroup.setMetadata('shape', tableTemplate.structure.shape);
@@ -223,8 +232,8 @@ export class ErdDesignerComponent implements OnInit {
       fieldNode.setMetadata('columnData', column);
       fieldNode.setMetadata('tableName', table.name);
 
-      // Add field node to diagram first
-      diagram.addNode(fieldNode);
+      // NOTE: NodeFactory already added the node to the diagram
+      // We don't need to call diagram.addNode(fieldNode) here
 
       // Add field as member of table group
       tableGroup.addMember(fieldNode.id);

@@ -128,6 +128,8 @@ export class NodeFactory {
     if (structure.html) {
       node.setMetadata('useHTMLLayer', true);
       node.data['_html'] = {
+        mode: structure.html.mode,
+        template: structure.html.template,
         component: structure.html.component,
         className: structure.html.className,
         style: structure.html.style,
