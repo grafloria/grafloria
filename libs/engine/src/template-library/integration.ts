@@ -4,7 +4,39 @@
  */
 
 import type { TemplateRegistry } from '../templates/TemplateRegistry';
-import { TemplateLibrary } from './index';
+import { CommonTemplates } from './common-templates';
+import { WorkflowTemplates } from './workflow-templates';
+import { DataVizTemplates } from './data-viz-templates';
+// Temporarily commented out to test build
+// import { ERDTemplates } from './erd-templates';
+import type { NodeTemplate } from '../templates/NodeTemplate';
+
+// Collect all templates without importing from index
+function getAllLibraryTemplates(): NodeTemplate[] {
+  return [
+    ...Object.values(CommonTemplates),
+    ...Object.values(WorkflowTemplates),
+    ...Object.values(DataVizTemplates),
+    // ...Object.values(ERDTemplates),
+  ];
+}
+
+// Get template by ID
+function getLibraryTemplateById(id: string): NodeTemplate | undefined {
+  const all = getAllLibraryTemplates();
+  return all.find(t => t.id === id);
+}
+
+// Get all template IDs
+function getLibraryTemplateIds(): string[] {
+  return getAllLibraryTemplates().map(t => t.id);
+}
+
+// Get templates by category
+function getLibraryTemplatesByCategory(category: string): NodeTemplate[] {
+  const all = getAllLibraryTemplates();
+  return all.filter(t => t.meta.category === category);
+}
 
 /**
  * Register all Phase 4 templates into a TemplateRegistry instance
@@ -29,7 +61,7 @@ import { TemplateLibrary } from './index';
  * @returns Number of templates registered
  */
 export function registerTemplateLibrary(registry: TemplateRegistry): number {
-  const templates = TemplateLibrary.getAll();
+  const templates = getAllLibraryTemplates();
 
   // Register all templates from the library
   templates.forEach((template) => {
@@ -52,9 +84,9 @@ export function registerTemplateLibrary(registry: TemplateRegistry): number {
  */
 export function registerTemplatesByCategory(
   registry: TemplateRegistry,
-  category: 'common' | 'workflow' | 'data-viz' | 'diagram'
+  category: 'common' | 'workflow' | 'data-viz' | 'diagram' | 'erd'
 ): number {
-  const templates = TemplateLibrary.getByCategory(category);
+  const templates = getLibraryTemplatesByCategory(category);
 
   templates.forEach((template) => {
     registry.register(template);
@@ -101,7 +133,7 @@ export function registerTemplatesById(
   };
 
   templateIds.forEach((id) => {
-    const template = TemplateLibrary.get(id);
+    const template = getLibraryTemplateById(id);
     if (template) {
       registry.register(template);
       result.registered++;
@@ -126,7 +158,7 @@ export function registerTemplatesById(
  * ```
  */
 export function getUnregisteredTemplates(registry: TemplateRegistry): string[] {
-  const libraryTemplates = TemplateLibrary.list();
+  const libraryTemplates = getLibraryTemplateIds();
   const unregistered: string[] = [];
 
   libraryTemplates.forEach((id) => {
