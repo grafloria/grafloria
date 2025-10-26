@@ -1,0 +1,60 @@
+<div class="performance-panel" *ngIf="metrics">
+  <div class="panel-header">
+    <h3>Performance Metrics</h3>
+  </div>
+
+  <div class="metrics-container">
+    <!-- Performance Score -->
+    <div class="metric-card">
+      <div class="metric-label">Performance Score</div>
+      <div class="metric-value" [style.color]="getScoreColor(metrics.score)">
+        {{ metrics.score }}
+      </div>
+      <div class="metric-subtitle">{{ getScoreLabel(metrics.score) }}</div>
+    </div>
+
+    <!-- Render Time -->
+    <div class="metric-card">
+      <div class="metric-label">Render Time</div>
+      <div class="metric-value" [class]="getRenderTimeStatus(metrics.renderTime)">
+        {{ metrics.renderTime.toFixed(1) }} ms
+      </div>
+      <div class="metric-subtitle">Target: &lt; 16ms (60 FPS)</div>
+    </div>
+
+    <!-- Node Count -->
+    <div class="metric-card">
+      <div class="metric-label">DOM Nodes</div>
+      <div class="metric-value" [class.warning]="metrics.nodeCount > 100">
+        {{ metrics.nodeCount }}
+      </div>
+      <div class="metric-subtitle">Target: &lt; 100 nodes</div>
+    </div>
+
+    <!-- Warnings -->
+    <div class="warnings-section" *ngIf="metrics.warnings.length > 0">
+      <div class="section-title">⚠️ Warnings</div>
+      <div class="warning-item" *ngFor="let warning of metrics.warnings">
+        {{ warning }}
+      </div>
+    </div>
+
+    <!-- Recommendations -->
+    <div class="recommendations-section" *ngIf="metrics.recommendations.length > 0">
+      <div class="section-title">💡 Recommendations</div>
+      <div class="recommendation-item" *ngFor="let rec of metrics.recommendations">
+        {{ rec }}
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="performance-panel" *ngIf="!metrics">
+  <div class="panel-header">
+    <h3>Performance Metrics</h3>
+  </div>
+  <div class="no-metrics">
+    <div class="no-metrics-icon">⏱️</div>
+    <div class="no-metrics-text">No metrics available yet</div>
+  </div>
+</div>

@@ -1,0 +1,104 @@
+<div class="template-builder">
+  <!-- Header Toolbar -->
+  <div class="toolbar">
+    <div class="toolbar-left">
+      <h1 class="title">Template Builder</h1>
+      <span class="subtitle">Advanced Node Template Editor</span>
+    </div>
+
+    <div class="toolbar-right">
+      <!-- Undo/Redo -->
+      <button
+        class="btn btn-icon"
+        [disabled]="!(canUndo$ | async)"
+        (click)="undo()"
+        title="Undo (Ctrl+Z)">
+        ↶
+      </button>
+      <button
+        class="btn btn-icon"
+        [disabled]="!(canRedo$ | async)"
+        (click)="redo()"
+        title="Redo (Ctrl+Y)">
+        ↷
+      </button>
+
+      <div class="divider"></div>
+
+      <!-- Actions -->
+      <button class="btn" (click)="save()" title="Save (Ctrl+S)">
+        💾 Save
+      </button>
+      <button class="btn" (click)="reset()" title="Reset">
+        🔄 Reset
+      </button>
+      <button class="btn" (click)="exportTemplate()" title="Export">
+        📥 Export
+      </button>
+      <button class="btn" (click)="importTemplate()" title="Import">
+        📤 Import
+      </button>
+
+      <div class="divider"></div>
+
+      <!-- Toggles -->
+      <button
+        class="btn btn-icon"
+        (click)="toggleSidebar()"
+        [class.active]="showSidebar"
+        title="Toggle Sidebar (Ctrl+L)">
+        ☰
+      </button>
+      <button
+        class="btn btn-icon"
+        (click)="togglePerformancePanel()"
+        [class.active]="showPerformancePanel"
+        title="Toggle Performance (Ctrl+Shift+P)">
+        📊
+      </button>
+    </div>
+  </div>
+
+  <!-- Main Content -->
+  <div class="main-content">
+    <!-- Left Sidebar: Template Library -->
+    <div class="sidebar" *ngIf="showSidebar">
+      <app-template-sidebar
+        (templateSelect)="onTemplateSelect($event)">
+      </app-template-sidebar>
+    </div>
+
+    <!-- Center: JSON Editor -->
+    <div class="editor-panel">
+      <div class="panel-header">
+        <h3>JSON Template</h3>
+        <div class="panel-info">
+          <span class="status" *ngIf="editorState$ | async as state">
+            <span class="dot" [class.valid]="state.isValid" [class.invalid]="!state.isValid"></span>
+            {{ state.isValid ? 'Valid' : 'Invalid' }}
+          </span>
+        </div>
+      </div>
+      <div class="panel-body">
+        <app-json-editor
+          [content]="(editorState$ | async)?.json || ''"
+          (contentChange)="onJsonChange($event)">
+        </app-json-editor>
+      </div>
+    </div>
+
+    <!-- Right: Live Preview -->
+    <div class="preview-panel">
+      <app-preview-panel
+        [template]="(editorState$ | async)?.json || ''">
+      </app-preview-panel>
+    </div>
+  </div>
+
+  <!-- Bottom: Performance Metrics -->
+  <div class="bottom-panel" *ngIf="showPerformancePanel">
+    <app-performance-panel
+      [metrics]="performanceMetrics$ | async">
+    </app-performance-panel>
+  </div>
+</div>

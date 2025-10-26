@@ -1,0 +1,15 @@
+<div class="json-editor">
+  <div class="editor-toolbar">
+    <button class="btn-format" (click)="formatJson()" title="Format JSON (Ctrl+Shift+F)">
+      Format
+    </button>
+  </div>
+  <textarea
+    class="editor-textarea"
+    [value]="editorContent"
+    (input)="onContentChange($event)"
+    (keydown)="onKeyDown($event)"
+    spellcheck="false"
+    placeholder="Enter JSON template here...">
+  </textarea>
+</div>
