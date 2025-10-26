@@ -1797,4 +1797,25 @@ export class DiagramEngine {
       link.generatePath(sourcePos, targetPos, sourceDirection, targetDirection);
     }
   }
+
+  /**
+   * Cleanup and dispose of all resources
+   * Should be called when the engine is no longer needed
+   */
+  dispose(): void {
+    // Clear diagram
+    if (this.diagram) {
+      this.diagram.clear();
+      this.diagram = null;
+    }
+
+    // Clear command history
+    this.commandManager.clear();
+
+    // Clear performance data
+    this.performanceMonitor.clear();
+
+    // Clear clipboard
+    this.clipboardManager.clear();
+  }
 }

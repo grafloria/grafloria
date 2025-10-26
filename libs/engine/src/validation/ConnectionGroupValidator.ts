@@ -1,7 +1,7 @@
 // ConnectionGroupValidator - Validates connections based on node connection groups (Phase 3)
 
 import type { PortModel } from '../models/PortModel';
-import type { DiagramEngine } from '../DiagramEngine';
+import type { DiagramEngine } from '../engine/DiagramEngine';
 
 /**
  * Creates a connection validator that enforces connection group restrictions

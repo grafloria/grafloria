@@ -42,18 +42,13 @@ export interface TemplateInfo {
 }
 
 /**
- * Template Library Registry
- * Central registry for all available templates
+ * Template Library Manager
+ * Simple registry for template library with category and tag support
  *
- * Can be used directly via factory pattern:
- * ```typescript
- * const myLibrary = createTemplateLibrary();
- * // or
- * const emptyLibrary = new TemplateRegistry();
- * initializeTemplateLibrary(emptyLibrary);
- * ```
+ * Note: This is separate from the Phase 2 TemplateRegistry which requires EventBus.
+ * Use integration.ts functions to connect this library to a Phase 2 TemplateRegistry.
  */
-export class TemplateRegistry {
+class TemplateLibraryManager {
   private templates: Map<string, TemplateInfo> = new Map();
 
   /**
@@ -153,12 +148,12 @@ export class TemplateRegistry {
 }
 
 /**
- * Initialize a template registry with all built-in templates
- * @param registry - Registry to populate (optional, creates new if not provided)
- * @returns Populated template registry
+ * Initialize a template library with all built-in templates
+ * @param manager - Library manager to populate (optional, creates new if not provided)
+ * @returns Populated template library manager
  */
-export function initializeTemplateLibrary(registry?: TemplateRegistry): TemplateRegistry {
-  const lib = registry || new TemplateRegistry();
+export function initializeTemplateLibrary(manager?: TemplateLibraryManager): TemplateLibraryManager {
+  const lib = manager || new TemplateLibraryManager();
 
   // Common Templates
   lib.register(CommonTemplates.UserAvatar, 'common', ['user', 'avatar', 'profile']);
@@ -191,28 +186,28 @@ export function initializeTemplateLibrary(registry?: TemplateRegistry): Template
 
 /**
  * Create a new template library instance
- * Factory function for creating template registries
+ * Factory function for creating template library managers
  * @param includeBuiltIn - Whether to include built-in templates (default: true)
- * @returns New template registry instance
+ * @returns New template library manager instance
  */
-export function createTemplateLibrary(includeBuiltIn = true): TemplateRegistry {
+export function createTemplateLibrary(includeBuiltIn = true): TemplateLibraryManager {
   if (includeBuiltIn) {
     return initializeTemplateLibrary();
   }
-  return new TemplateRegistry();
+  return new TemplateLibraryManager();
 }
 
 /**
  * Default template library instance (lazy initialized)
  * For backward compatibility and convenience
  */
-let defaultInstance: TemplateRegistry | null = null;
+let defaultInstance: TemplateLibraryManager | null = null;
 
 /**
  * Get the default template library instance
  * Lazy initialization - only created when first accessed
  */
-function getDefaultInstance(): TemplateRegistry {
+function getDefaultInstance(): TemplateLibraryManager {
   if (!defaultInstance) {
     defaultInstance = initializeTemplateLibrary();
   }
@@ -223,10 +218,10 @@ function getDefaultInstance(): TemplateRegistry {
  * Global template library instance (backward compatible)
  * Uses lazy initialization via getter
  */
-export const TemplateLibrary = new Proxy({} as TemplateRegistry, {
+export const TemplateLibrary = new Proxy({} as TemplateLibraryManager, {
   get(_target, prop) {
     const instance = getDefaultInstance();
-    const value = instance[prop as keyof TemplateRegistry];
+    const value = instance[prop as keyof TemplateLibraryManager];
 
     // Bind methods to the instance
     if (typeof value === 'function') {

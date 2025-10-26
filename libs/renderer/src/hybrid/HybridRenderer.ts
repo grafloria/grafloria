@@ -279,14 +279,14 @@ export class HybridRenderer {
 
     // Z-index
     if (htmlConfig?.zIndex !== undefined) {
-      styles.zIndex = htmlConfig.zIndex;
+      styles['zIndex'] = htmlConfig.zIndex;
     } else {
-      styles.zIndex = 1; // Default above SVG
+      styles['zIndex'] = 1; // Default above SVG
     }
 
     // Pointer events
     if (htmlConfig?.pointerEvents === false) {
-      styles.pointerEvents = 'none';
+      styles['pointerEvents'] = 'none';
     }
 
     // Custom styles from config

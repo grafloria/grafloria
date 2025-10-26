@@ -10,7 +10,7 @@ import {
 } from '@grafloria/renderer-angular';
 import {
   DiagramEngine,
-  NodeFactory,
+  NodeModel,
   type NodeTemplate,
   type ShapeType,
 } from '@grafloria/engine';
@@ -121,11 +121,29 @@ export class ShapeGalleryComponent implements OnInit, OnDestroy {
         },
       };
 
-      const node = NodeFactory.createFromTemplate(template, {
+      // Create node directly since we're not using a template registry
+      const node = new NodeModel({
+        id: `shape-${shapeType}-${index}`,
+        type: shapeType,
         position: { x: 50 + index * 150, y: 50 },
+        size: { width: 120, height: 100 },
       });
 
-      this.engine.diagram?.addNode(node);
+      // Set metadata from template
+      node.setMetadata('templateId', template.id);
+
+      // CRITICAL: Set shape metadata for SVGRenderer
+      if (template.structure.shape) {
+        node.setMetadata('shape', template.structure.shape);
+      }
+
+      if (template.defaultData) {
+        Object.entries(template.defaultData).forEach(([key, value]) => {
+          node.setMetadata(key, value);
+        });
+      }
+
+      this.engine.getDiagram()?.addNode(node);
     });
   }
 
@@ -165,11 +183,11 @@ export class ShapeGalleryComponent implements OnInit, OnDestroy {
       },
     };
 
-    const node = NodeFactory.createFromTemplate(template, {
+    const node = this.createNodeFromTemplate(template, {
       position: { x: 50, y: 220 },
     });
 
-    this.engine.diagram?.addNode(node);
+    this.engine.getDiagram()?.addNode(node);
 
     // Diamond with ports
     const diamondTemplate: NodeTemplate = {
@@ -204,11 +222,11 @@ export class ShapeGalleryComponent implements OnInit, OnDestroy {
       },
     };
 
-    const diamondNode = NodeFactory.createFromTemplate(diamondTemplate, {
+    const diamondNode = this.createNodeFromTemplate(diamondTemplate, {
       position: { x: 250, y: 220 },
     });
 
-    this.engine.diagram?.addNode(diamondNode);
+    this.engine.getDiagram()?.addNode(diamondNode);
   }
 
   /**
@@ -240,11 +258,11 @@ export class ShapeGalleryComponent implements OnInit, OnDestroy {
       },
     };
 
-    const node = NodeFactory.createFromTemplate(template, {
+    const node = this.createNodeFromTemplate(template, {
       position: { x: 450, y: 220 },
     });
 
-    this.engine.diagram?.addNode(node);
+    this.engine.getDiagram()?.addNode(node);
   }
 
   /**
@@ -307,11 +325,11 @@ export class ShapeGalleryComponent implements OnInit, OnDestroy {
       },
     };
 
-    const node = NodeFactory.createFromTemplate(template, {
+    const node = this.createNodeFromTemplate(template, {
       position: { x: 50, y: 450 },
     });
 
-    this.engine.diagram?.addNode(node);
+    this.engine.getDiagram()?.addNode(node);
   }
 
   /**
@@ -379,11 +397,11 @@ export class ShapeGalleryComponent implements OnInit, OnDestroy {
       },
     };
 
-    const node = NodeFactory.createFromTemplate(template, {
+    const node = this.createNodeFromTemplate(template, {
       position: { x: 320, y: 450 },
     });
 
-    this.engine.diagram?.addNode(node);
+    this.engine.getDiagram()?.addNode(node);
   }
 
   /**
@@ -438,17 +456,59 @@ export class ShapeGalleryComponent implements OnInit, OnDestroy {
   }
 
   /**
+   * Helper to create a node from a template definition
+   * Since we're not using a template registry, we create nodes directly
+   */
+  private createNodeFromTemplate(
+    template: NodeTemplate,
+    options: {
+      position: { x: number; y: number };
+      id?: string;
+    }
+  ): NodeModel {
+    // Get size with proper type handling
+    const size = template.structure.size || { width: 100, height: 100 };
+    const nodeSize = {
+      width: typeof size.width === 'number' ? size.width : 100,
+      height: typeof size.height === 'number' ? size.height : 100,
+    };
+
+    const node = new NodeModel({
+      id: options.id || `${template.id}-${Date.now()}`,
+      type: template.structure.type || 'rect',
+      position: options.position,
+      size: nodeSize,
+    });
+
+    // Set metadata from template - setMetadata takes key/value pairs
+    node.setMetadata('templateId', template.id);
+
+    // CRITICAL: Set shape metadata for SVGRenderer
+    if (template.structure.shape) {
+      node.setMetadata('shape', template.structure.shape);
+    }
+
+    if (template.defaultData) {
+      Object.entries(template.defaultData).forEach(([key, value]) => {
+        node.setMetadata(key, value);
+      });
+    }
+
+    return node;
+  }
+
+  /**
    * Update statistics
    */
   private updateStats(): void {
-    this.stats.totalNodes = this.engine.diagram?.getNodes().length || 0;
+    this.stats.totalNodes = this.engine.getDiagram()?.getNodes().length || 0;
   }
 
   /**
    * Reset demo
    */
   resetDemo(): void {
-    this.engine.diagram?.clear();
+    this.engine.getDiagram()?.clear();
     this.createPhase31Demo();
     this.createPhase32Demo();
     this.createPhase33Demo();

@@ -9,6 +9,11 @@
  * - Layout management (flexbox/grid)
  */
 
+// Import types from their canonical locations
+import type { PositioningMode } from '../models/NodeModel';
+import type { ValidationResult } from '../types/model.types';
+import type { ConnectionValidator } from '../state/ConnectionStateManager';
+
 /**
  * Port rendering mode
  */
@@ -18,11 +23,6 @@ export type PortRenderingMode = 'svg' | 'html' | 'auto';
  * Port visibility strategy
  */
 export type PortVisibility = 'always' | 'on-hover' | 'never';
-
-/**
- * Positioning mode for nodes
- */
-export type PositioningMode = 'absolute' | 'relative' | 'layout';
 
 /**
  * Flexbox direction
@@ -377,18 +377,6 @@ export interface NodeTemplate {
   styles?: Record<string, any>;
 }
 
-/**
- * Validation result
- */
-export interface ValidationResult {
-  valid: boolean;
-  errors?: string[];
-}
-
-/**
- * Connection validator function
- */
-export type ConnectionValidator = (
-  sourceNode: any,
-  targetNode: any
-) => boolean;
+// ValidationResult and ConnectionValidator are imported from their canonical locations above
+// Re-export them for convenience
+export type { ValidationResult, ConnectionValidator };

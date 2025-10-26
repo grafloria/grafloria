@@ -5,13 +5,15 @@
     "declaration": true,
     "declarationMap": true,
     "inlineSources": true,
-    "types": []
+    "types": [],
+    "skipLibCheck": true
   },
   "exclude": [
     "src/**/*.spec.ts",
     "src/test-setup.ts",
     "jest.config.ts",
-    "src/**/*.test.ts"
+    "src/**/*.test.ts",
+    "src/integration-tests/**/*"
   ],
   "include": ["src/**/*.ts"]
 }
