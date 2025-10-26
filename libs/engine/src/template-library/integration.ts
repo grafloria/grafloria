@@ -7,8 +7,7 @@ import type { TemplateRegistry } from '../templates/TemplateRegistry';
 import { CommonTemplates } from './common-templates';
 import { WorkflowTemplates } from './workflow-templates';
 import { DataVizTemplates } from './data-viz-templates';
-// Temporarily commented out to test build
-// import { ERDTemplates } from './erd-templates';
+import { ERDTemplates } from './erd-templates';
 import type { NodeTemplate } from '../templates/NodeTemplate';
 
 // Collect all templates without importing from index
@@ -17,7 +16,7 @@ function getAllLibraryTemplates(): NodeTemplate[] {
     ...Object.values(CommonTemplates),
     ...Object.values(WorkflowTemplates),
     ...Object.values(DataVizTemplates),
-    // ...Object.values(ERDTemplates),
+    ...Object.values(ERDTemplates),
   ];
 }
 

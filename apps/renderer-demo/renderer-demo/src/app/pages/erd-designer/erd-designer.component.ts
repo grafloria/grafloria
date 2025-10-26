@@ -2,7 +2,17 @@ import { Component, OnInit } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { DiagramCanvasComponent } from '@grafloria/renderer-angular';
-import { DiagramEngine, NodeModel, PortModel, InteractionMode, PortVisibilityStrategy } from '@grafloria/engine';
+import {
+  DiagramEngine,
+  NodeModel,
+  PortModel,
+  GroupModel,
+  InteractionMode,
+  PortVisibilityStrategy,
+  NodeFactory,
+  TemplateRegistry,
+  registerTemplateLibrary,
+} from '@grafloria/engine';
 import { LIGHT_THEME, type Theme, type Rectangle } from '@grafloria/renderer';
 import { TableNodeComponent } from './table-node.component';
 
@@ -34,6 +44,8 @@ export class ErdDesignerComponent implements OnInit {
   theme: Theme = LIGHT_THEME;
 
   tables: Map<string, Table> = new Map();
+  nodeFactory!: NodeFactory;
+  templateRegistry!: TemplateRegistry;
 
   // UI State
   showAddTablePanel = false;
@@ -53,11 +65,19 @@ export class ErdDesignerComponent implements OnInit {
         enableSmartAutoConnect: true,
       }
     });
-    console.log('ERD Designer initialized with smart interaction mode');
+
+    // Initialize template registry and register ERD templates
+    this.templateRegistry = new TemplateRegistry(this.engine.eventBus);
+    registerTemplateLibrary(this.templateRegistry);
+
+    console.log('✅ ERD Designer initialized with template system');
   }
 
   private async createSampleERD(): Promise<void> {
     const diagram = this.engine.createDiagram('ERD Diagram');
+
+    // Initialize node factory
+    this.nodeFactory = new NodeFactory(this.templateRegistry, diagram);
 
     // Create Users table
     const usersTable: Table = {
@@ -102,31 +122,45 @@ export class ErdDesignerComponent implements OnInit {
     this.createTableNode(productsTable, { x: 100, y: 400 });
 
     // Create relationships with field-level connections
-    const usersNode = diagram.getNodes().find(n => n.getMetadata('tableId') === 'users');
-    const ordersNode = diagram.getNodes().find(n => n.getMetadata('tableId') === 'orders');
+    // Find the table group nodes
+    const usersTableGroup = diagram.getGroups().find(g => g.getMetadata('tableId') === 'users');
+    const ordersTableGroup = diagram.getGroups().find(g => g.getMetadata('tableId') === 'orders');
 
-    if (usersNode && ordersNode) {
-      // Connect users.id (primary key) to orders.user_id (foreign key)
-      // Find the port for users.id (right side of first field - primary key)
-      const usersPorts = usersNode.getPorts();
-      const ordersPorts = ordersNode.getPorts();
+    if (usersTableGroup && ordersTableGroup) {
+      // Get field nodes (members of the table groups)
+      const usersMemberIds = Array.from(usersTableGroup.members);
+      const ordersMemberIds = Array.from(ordersTableGroup.members);
 
-      // Users.id is first field (index 0), right port
-      const usersIdPort = usersPorts.find(p => p.type === 'output' && p.alignment.side === 'right');
-      // Orders.user_id is second field (index 1), left port
-      const ordersUserIdPort = ordersPorts.find(p => p.type === 'input' && p.alignment.side === 'left');
+      // Find users.id field node (primary key)
+      const usersIdField = usersMemberIds
+        .map(id => diagram.getNode(id))
+        .find(node => node?.getMetadata('columnData')?.name === 'id');
 
-      if (usersIdPort && ordersUserIdPort) {
-        const link = await this.engine.addLink({
-          sourcePortId: usersIdPort.id,
-          targetPortId: ordersUserIdPort.id,
-          type: 'orthogonal'
-        });
-        if (link) {
-          link.setMetadata('relationship', '1:N');
-          link.setMetadata('label', '1:N');
-          link.setMetadata('description', 'One user has many orders');
-          console.log('✅ Created relationship: Users(1) → Orders(N)');
+      // Find orders.user_id field node (foreign key)
+      const ordersUserIdField = ordersMemberIds
+        .map(id => diagram.getNode(id))
+        .find(node => node?.getMetadata('columnData')?.name === 'user_id');
+
+      if (usersIdField && ordersUserIdField) {
+        // Get output port from users.id field (right side)
+        const usersIdPort = usersIdField.getPorts().find(p => p.type === 'output');
+        // Get input port from orders.user_id field (left side)
+        const ordersUserIdPort = ordersUserIdField.getPorts().find(p => p.type === 'input');
+
+        if (usersIdPort && ordersUserIdPort) {
+          // Create link between field nodes
+          const link = await this.engine.addLink({
+            sourcePortId: usersIdPort.id,
+            targetPortId: ordersUserIdPort.id,
+            type: 'orthogonal'
+          });
+
+          if (link) {
+            link.setMetadata('relationship', '1:N');
+            link.setMetadata('label', '1:N');
+            link.setMetadata('description', 'One user has many orders');
+            console.log('✅ Created relationship: Users.id (PK) → Orders.user_id (FK) using nested field nodes');
+          }
         }
       }
     }
@@ -135,63 +169,74 @@ export class ErdDesignerComponent implements OnInit {
     this.updateViewportFromDiagram();
   }
 
-  private createTableNode(table: Table, position: { x: number; y: number }): void {
+  private createTableNode(table: Table, position: { x: number; y: number }): GroupModel {
     const diagram = this.engine.getDiagram();
-    if (!diagram) return;
+    if (!diagram) throw new Error('Diagram not initialized');
 
+    // Get ERD table template
+    const tableTemplate = this.templateRegistry.get('erd-table');
+    if (!tableTemplate) throw new Error('ERD Table template not found');
+
+    // Create GroupModel for table (container for field nodes)
+    const tableGroup = new GroupModel({ name: table.name });
+    tableGroup.position = position;
+    tableGroup.setMetadata('tableId', table.id);
+    tableGroup.setMetadata('tableName', table.name);
+
+    // Apply template data
+    tableGroup.data = { tableName: table.name };
+
+    // Apply template structure to group
+    if (tableTemplate.structure.html) {
+      tableGroup.setMetadata('html', tableTemplate.structure.html);
+    }
+    if (tableTemplate.structure.shape) {
+      tableGroup.setMetadata('shape', tableTemplate.structure.shape);
+    }
+
+    // Set layout from template (flex column for stacking fields)
+    if (tableTemplate.structure.layout) {
+      tableGroup.setLayout('flexbox', tableTemplate.structure.layout);
+      tableGroup.setMetadata('autoLayout', true); // Enable auto-layout
+    }
+
+    // Calculate table size based on number of fields
     const rowHeight = 30;
-    const headerHeight = 40;
+    const headerHeight = 45;
     const height = headerHeight + (table.columns.length * rowHeight);
+    tableGroup.size = { width: 250, height, depth: 0 };
 
-    const node = new NodeModel({
-      type: 'table',
-      position,
-      size: { width: 300, height }
+    // Create field nodes as nested children using ERD field template
+    table.columns.forEach((column) => {
+      const fieldNode = this.nodeFactory.createFromTemplate('erd-field', {
+        fieldName: column.name,
+        fieldType: column.dataType,
+        isPrimaryKey: column.isPrimaryKey,
+        isForeignKey: column.isForeignKey,
+        isNullable: column.isNullable,
+      }, { x: 0, y: 0 }); // Position doesn't matter - flex layout will position it
+
+      // Store column data in metadata for later retrieval
+      fieldNode.setMetadata('columnData', column);
+      fieldNode.setMetadata('tableName', table.name);
+
+      // Add field node to diagram first
+      diagram.addNode(fieldNode);
+
+      // Add field as member of table group
+      tableGroup.addMember(fieldNode.id);
     });
 
-    node.setMetadata('tableId', table.id);
-    node.setMetadata('tableName', table.name);
-    node.setMetadata('label', table.name);  // Set table name as label for SVG rendering
-    node.setMetadata('columns', table.columns);
-    node.setMetadata('useForeignObject', true);  // Use foreignObject to embed TableNodeComponent
+    // Add table group to diagram
+    diagram.addGroup(tableGroup);
 
-    // CRITICAL: Clear default ports - we'll create field-specific ports
-    node.ports.clear();
+    // Apply smart layout to position field nodes
+    tableGroup.applyLayout(diagram);
 
-    // Create a port for each field (column) in the table
-    table.columns.forEach((column, index) => {
-      // Calculate vertical position for this field
-      // Header is 40px, each row is 30px, center port in middle of row
-      const fieldY = headerHeight + (index * rowHeight) + (rowHeight / 2);
+    console.log(`✅ Created table '${table.name}' as GroupModel with ${table.columns.length} nested field nodes`);
+    console.log(`📐 Using flex column layout with auto-positioning`);
 
-      // Left port for foreign keys (input)
-      if (column.isForeignKey) {
-        const leftPort = new PortModel({
-          type: 'input',
-          alignment: {
-            side: 'left',
-            offset: fieldY // Pixel offset from top
-          }
-        });
-        node.addPort(leftPort);
-        console.log(`✅ Created LEFT port for FK field: ${column.name} at y=${fieldY}px`);
-      }
-
-      // Right port for all fields (output) - especially primary keys
-      const rightPort = new PortModel({
-        type: 'output',
-        alignment: {
-          side: 'right',
-          offset: fieldY // Pixel offset from top
-        }
-      });
-      node.addPort(rightPort);
-      console.log(`✅ Created RIGHT port for field: ${column.name} at y=${fieldY}px`);
-    });
-
-    console.log(`🔌 Total ports created for ${table.name}: ${node.getPorts().length}`);
-
-    diagram.addNode(node);
+    return tableGroup;
   }
 
   addTable(): void {
