@@ -90,7 +90,6 @@ export class NodeFactory {
     const node = new NodeModel({
       type: structure.type,
       position: parent ? { x: 0, y: 0 } : position,
-      positionMode: parent ? 'layout' : 'absolute',
       size: this.parseSize(structure.size),
     });
 
@@ -100,10 +99,7 @@ export class NodeFactory {
     });
 
     // Set layout configuration
-    if (structure.layout) {
-      node.flexConfig = structure.layout.type === 'flexbox' ? structure.layout : undefined;
-      node.gridConfig = structure.layout.type === 'grid' ? structure.layout : undefined;
-    }
+    // Note: layout configuration is handled at the group level, not at individual nodes
 
     // Set behavior
     if (structure.behavior) {
@@ -131,7 +127,7 @@ export class NodeFactory {
     // Handle HTML configuration
     if (structure.html) {
       node.setMetadata('useHTMLLayer', true);
-      node.data._html = {
+      node.data['_html'] = {
         component: structure.html.component,
         className: structure.html.className,
         style: structure.html.style,
