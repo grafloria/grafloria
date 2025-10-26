@@ -75,8 +75,19 @@ export interface RenderResult {
  * - Data binding from NodeModel.data
  * - Event handlers connected to EventBus
  * - Component mode support (pass-through for framework-specific rendering)
+ * - Proper resource cleanup to prevent memory leaks
  */
 export class HtmlTemplateRenderer {
+  /**
+   * Track event handlers by node UUID for cleanup
+   */
+  private eventHandlers = new Map<string, Record<string, (event: any) => void>>();
+
+  /**
+   * Track rendered results by node UUID for cleanup
+   */
+  private renderResults = new Map<string, RenderResult>();
+
   constructor(private eventBus: EventBus) {}
 
   /**
@@ -86,6 +97,9 @@ export class HtmlTemplateRenderer {
    * @returns Render result with HTML, bindings, and event handlers
    */
   render(config: HtmlConfig, node: NodeModel): RenderResult {
+    // Clean up any existing resources for this node before re-rendering
+    this.disposeNode(node.uuid);
+
     // Determine rendering mode
     const mode = this.determineMode(config);
 
@@ -165,6 +179,12 @@ export class HtmlTemplateRenderer {
     // Render template with bindings
     result.html = this.renderTemplate(config.template, result.bindings, result);
 
+    // Track created resources for cleanup
+    this.renderResults.set(node.uuid, result);
+    if (Object.keys(result.eventHandlers).length > 0) {
+      this.eventHandlers.set(node.uuid, result.eventHandlers);
+    }
+
     return result;
   }
 
@@ -175,9 +195,9 @@ export class HtmlTemplateRenderer {
     const bindings: Record<string, any> = {};
 
     // Auto-bind: Make node data available directly
-    bindings.data = node.data || {};
-    bindings.nodeId = node.id;
-    bindings.nodeUuid = node.uuid;
+    bindings['data'] = node.data || {};
+    bindings['nodeId'] = node.id;
+    bindings['nodeUuid'] = node.uuid;
 
     // Custom bindings from config
     if (config.bindings) {
@@ -308,7 +328,14 @@ export class HtmlTemplateRenderer {
 
       return value;
     } catch (error) {
-      console.warn(`Failed to evaluate expression: ${expression}`, error);
+      // Emit warning event through EventBus
+      this.eventBus.emit('renderer:warning', {
+        message: 'Failed to evaluate expression',
+        expression,
+        error,
+        phase: 'expression-evaluation',
+        renderer: 'HtmlTemplateRenderer',
+      });
       return undefined;
     }
   }
@@ -336,9 +363,48 @@ export class HtmlTemplateRenderer {
   }
 
   /**
-   * Cleanup renderer resources
+   * Dispose resources for a specific node
+   * @param nodeUuid - UUID of node to clean up
+   */
+  disposeNode(nodeUuid: string): void {
+    // Remove event handlers
+    const handlers = this.eventHandlers.get(nodeUuid);
+    if (handlers) {
+      // Event handlers will be garbage collected when references are removed
+      Object.keys(handlers).forEach((key) => {
+        delete handlers[key];
+      });
+    }
+    this.eventHandlers.delete(nodeUuid);
+
+    // Remove render result
+    const result = this.renderResults.get(nodeUuid);
+    if (result) {
+      // Clear bindings and handlers
+      if (result.bindings) {
+        Object.keys(result.bindings).forEach((key) => {
+          delete result.bindings[key];
+        });
+      }
+      if (result.eventHandlers) {
+        Object.keys(result.eventHandlers).forEach((key) => {
+          delete result.eventHandlers[key];
+        });
+      }
+    }
+    this.renderResults.delete(nodeUuid);
+  }
+
+  /**
+   * Cleanup all renderer resources
    */
   dispose(): void {
-    // Future: cleanup LemonadeJS instances, remove event listeners, etc.
+    // Dispose all tracked nodes
+    const nodeUuids = Array.from(this.renderResults.keys());
+    nodeUuids.forEach((uuid) => this.disposeNode(uuid));
+
+    // Clear all tracking maps
+    this.eventHandlers.clear();
+    this.renderResults.clear();
   }
 }

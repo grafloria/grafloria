@@ -138,7 +138,7 @@ describe('HtmlTemplateRenderer (Phase 3.4)', () => {
       const result = renderer.render(config, mockNode as NodeModel);
 
       expect(result.eventHandlers).toBeDefined();
-      expect(result.eventHandlers.click).toBeDefined();
+      expect(result.eventHandlers['click']).toBeDefined();
     });
 
     it('should emit event through EventBus when handler is called', (done) => {
@@ -161,7 +161,7 @@ describe('HtmlTemplateRenderer (Phase 3.4)', () => {
 
       // Simulate click event
       const mockEvent = { type: 'click', target: {} };
-      result.eventHandlers.click(mockEvent);
+      result.eventHandlers['click'](mockEvent);
     });
 
     it('should pass event data to EventBus', (done) => {
@@ -183,7 +183,7 @@ describe('HtmlTemplateRenderer (Phase 3.4)', () => {
       });
 
       const mockEvent = { type: 'input', target: { value: 'new value' } };
-      result.eventHandlers.input(mockEvent);
+      result.eventHandlers['input'](mockEvent);
     });
 
     it('should support multiple event handlers', () => {
@@ -199,9 +199,9 @@ describe('HtmlTemplateRenderer (Phase 3.4)', () => {
 
       const result = renderer.render(config, mockNode as NodeModel);
 
-      expect(result.eventHandlers.click).toBeDefined();
-      expect(result.eventHandlers.mouseenter).toBeDefined();
-      expect(result.eventHandlers.mouseleave).toBeDefined();
+      expect(result.eventHandlers['click']).toBeDefined();
+      expect(result.eventHandlers['mouseenter']).toBeDefined();
+      expect(result.eventHandlers['mouseleave']).toBeDefined();
     });
 
     it('should include node metadata in event payload', (done) => {
@@ -224,7 +224,7 @@ describe('HtmlTemplateRenderer (Phase 3.4)', () => {
       });
 
       const mockEvent = { type: 'click', target: {} };
-      result.eventHandlers.click(mockEvent);
+      result.eventHandlers["click"](mockEvent);
     });
   });
 
@@ -241,7 +241,7 @@ describe('HtmlTemplateRenderer (Phase 3.4)', () => {
       const result = renderer.render(config, mockNode as NodeModel);
 
       expect(result.bindings).toBeDefined();
-      expect(result.bindings.userName).toBe('John');
+      expect(result.bindings["userName"]).toBe('John');
     });
 
     it('should support computed bindings', () => {
@@ -255,7 +255,7 @@ describe('HtmlTemplateRenderer (Phase 3.4)', () => {
 
       const result = renderer.render(config, mockNode as NodeModel);
 
-      expect(result.bindings.itemCount).toBe(3);
+      expect(result.bindings["itemCount"]).toBe(3);
     });
 
     it('should merge data and bindings', () => {
@@ -270,8 +270,8 @@ describe('HtmlTemplateRenderer (Phase 3.4)', () => {
 
       const result = renderer.render(config, mockNode as NodeModel);
 
-      expect(result.bindings.fullName).toBe('John');
-      expect(result.bindings.itemCount).toBe(3);
+      expect(result.bindings["fullName"]).toBe('John');
+      expect(result.bindings["itemCount"]).toBe(3);
     });
   });
 
@@ -336,7 +336,7 @@ describe('HtmlTemplateRenderer (Phase 3.4)', () => {
       const result = renderer.render(config, mockNode as NodeModel);
 
       // Should not throw, should return undefined
-      expect(result.bindings.value).toBeUndefined();
+      expect(result.bindings["value"]).toBeUndefined();
     });
 
     it('should validate config mode', () => {
