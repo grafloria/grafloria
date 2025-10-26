@@ -54,6 +54,9 @@ export interface SerializedNode extends SerializedEntity {
   transformOrigin?: Point; // Phase 1.6a: Transform origin (normalized 0-1)
   flexConfig?: FlexItemConfig; // Phase 1.7: Flexbox item configuration
   gridConfig?: GridItemConfig; // Phase 1.7: Grid item configuration
+  portRenderingConfig?: any; // Phase 2: Port rendering configuration
+  dragHandlerConfig?: any; // Phase 2: Drag handler configuration
+  connectionGroup?: string; // Phase 2: Connection group identifier
 }
 
 export class NodeModel extends DiagramEntity {
@@ -71,6 +74,11 @@ export class NodeModel extends DiagramEntity {
   // Phase 1.7: Layout item configuration
   flexConfig?: FlexItemConfig;
   gridConfig?: GridItemConfig;
+
+  // Phase 2: Template system support
+  portRenderingConfig?: any; // PortRenderingConfig from templates
+  dragHandlerConfig?: any; // DragHandlerConfig from templates
+  connectionGroup?: string; // Connection group identifier
 
   // Type System
   type: string;
@@ -1059,6 +1067,94 @@ export class NodeModel extends DiagramEntity {
     return this.gridConfig !== undefined;
   }
 
+  // ========================================
+  // Template Support Methods (Phase 2)
+  // ========================================
+
+  /**
+   * Set port rendering configuration (Phase 2)
+   */
+  setPortRenderingConfig(config: any): void {
+    const oldConfig = this.portRenderingConfig;
+    this.portRenderingConfig = config;
+    this.trackChange('portRenderingConfig', oldConfig, config);
+    this.emitter.emit('port-rendering:changed', config);
+  }
+
+  /**
+   * Get port rendering configuration (Phase 2)
+   */
+  getPortRenderingConfig(): any | undefined {
+    return this.portRenderingConfig;
+  }
+
+  /**
+   * Get port rendering mode (Phase 2)
+   * Auto-detects based on configuration and metadata
+   */
+  getPortRenderingMode(): 'svg' | 'html' | 'auto' {
+    // Priority 1: Explicit metadata override
+    const metadataMode = this.getMetadata('portRenderingMode');
+    if (metadataMode) {
+      return metadataMode as 'svg' | 'html' | 'auto';
+    }
+
+    // Priority 2: Port rendering config
+    if (this.portRenderingConfig?.mode) {
+      return this.portRenderingConfig.mode;
+    }
+
+    // Priority 3: Auto-detect from HTML layer flag
+    const useHTMLLayer = this.getMetadata('useHTMLLayer');
+    if (useHTMLLayer === true) {
+      return 'html';
+    }
+
+    // Default: SVG mode
+    return 'svg';
+  }
+
+  /**
+   * Set drag handler configuration (Phase 2)
+   */
+  setDragHandlerConfig(config: any): void {
+    const oldConfig = this.dragHandlerConfig;
+    this.dragHandlerConfig = config;
+    this.trackChange('dragHandlerConfig', oldConfig, config);
+    this.emitter.emit('drag-handler:changed', config);
+  }
+
+  /**
+   * Get drag handler configuration (Phase 2)
+   */
+  getDragHandlerConfig(): any | undefined {
+    return this.dragHandlerConfig;
+  }
+
+  /**
+   * Check if this node is a drag handler (Phase 2)
+   */
+  isDragHandler(): boolean {
+    return this.dragHandlerConfig?.isDragHandler === true;
+  }
+
+  /**
+   * Set connection group (Phase 2)
+   */
+  setConnectionGroup(group: string): void {
+    const oldGroup = this.connectionGroup;
+    this.connectionGroup = group;
+    this.trackChange('connectionGroup', oldGroup, group);
+    this.emitter.emit('connection-group:changed', { group });
+  }
+
+  /**
+   * Get connection group (Phase 2)
+   */
+  getConnectionGroup(): string | undefined {
+    return this.connectionGroup;
+  }
+
   /**
    * Serialize to JSON
    */
@@ -1097,6 +1193,17 @@ export class NodeModel extends DiagramEntity {
     }
     if (this.gridConfig) {
       serialized.gridConfig = { ...this.gridConfig };
+    }
+
+    // Phase 2: Include template properties if they exist
+    if (this.portRenderingConfig) {
+      serialized.portRenderingConfig = { ...this.portRenderingConfig };
+    }
+    if (this.dragHandlerConfig) {
+      serialized.dragHandlerConfig = { ...this.dragHandlerConfig };
+    }
+    if (this.connectionGroup) {
+      serialized.connectionGroup = this.connectionGroup;
     }
 
     return serialized;
@@ -1152,6 +1259,17 @@ export class NodeModel extends DiagramEntity {
     }
     if (data.gridConfig) {
       node.gridConfig = data.gridConfig;
+    }
+
+    // Restore Phase 2 template properties (backward compatible)
+    if ((data as any).portRenderingConfig) {
+      node.portRenderingConfig = (data as any).portRenderingConfig;
+    }
+    if ((data as any).dragHandlerConfig) {
+      node.dragHandlerConfig = (data as any).dragHandlerConfig;
+    }
+    if ((data as any).connectionGroup) {
+      node.connectionGroup = (data as any).connectionGroup;
     }
 
     return node;

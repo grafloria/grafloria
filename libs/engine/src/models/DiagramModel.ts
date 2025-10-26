@@ -10,6 +10,7 @@ import type { Rectangle } from '../types/geometry.types'; // Phase 5.1
 import type { LODLevel, EntityWithLOD } from '../types/performance.types'; // Phase 5.3
 import { LayoutManager } from '../layout/LayoutManager'; // Layout system
 import type { LayoutAlgorithmType, LayoutConfiguration } from '../layout/types';
+import { isPointInShape } from '../utils/geometry'; // Phase 3.3
 
 export interface SerializedDiagram extends SerializedEntity {
   name: string;
@@ -181,6 +182,20 @@ export class DiagramModel extends DiagramEntity {
    */
   getNodes(): NodeModel[] {
     return Array.from(this.nodes.values());
+  }
+
+  /**
+   * Phase 3: Get node that owns a specific port
+   * Used for connection group validation and other port-based queries
+   */
+  getNodeByPortId(portId: string): NodeModel | undefined {
+    for (const node of this.nodes.values()) {
+      const port = node.getPort(portId);
+      if (port) {
+        return node;
+      }
+    }
+    return undefined;
   }
 
   /**
@@ -480,6 +495,9 @@ export class DiagramModel extends DiagramEntity {
       throw new Error(`Group with id ${group.id} already exists`);
     }
 
+    // Store diagram reference for layout operations
+    group.setMetadata('diagram', this);
+
     this.groups.set(group.id, group);
     this.trackChange('groups', null, group);
     this.emitter.emit('group:added', group);
@@ -678,6 +696,7 @@ export class DiagramModel extends DiagramEntity {
    * @param x - X coordinate
    * @param y - Y coordinate
    * @returns Node at position, or undefined if none found
+   * Phase 3.3: Uses shape-aware hit detection
    */
   getNodeAtPosition(x: number, y: number): NodeModel | undefined {
     const nodes = this.getNodes();
@@ -687,12 +706,9 @@ export class DiagramModel extends DiagramEntity {
       const node = nodes[i];
       const bounds = node.getBoundingBox();
 
-      if (
-        x >= bounds.left &&
-        x <= bounds.right &&
-        y >= bounds.top &&
-        y <= bounds.bottom
-      ) {
+      // Phase 3.3: Use shape-aware hit detection
+      const shapeConfig = node.getMetadata('shape');
+      if (isPointInShape(x, y, bounds, shapeConfig)) {
         return node;
       }
     }

@@ -23,6 +23,7 @@ export interface SerializedPort extends SerializedEntity {
   visible: boolean;
   style: Record<string, any>;
   data: Record<string, any>;
+  renderingConfig?: any; // Phase 2: Port rendering configuration from templates
 }
 
 export class PortModel extends DiagramEntity {
@@ -49,6 +50,9 @@ export class PortModel extends DiagramEntity {
 
   // User data
   data: Record<string, any> = {};
+
+  // Phase 2: Template system support
+  renderingConfig?: any; // Port rendering configuration from templates
 
   // Phase 1: Interaction state (for connection modes)
   /**
@@ -378,10 +382,46 @@ export class PortModel extends DiagramEntity {
   }
 
   /**
+   * Phase 2: Set port rendering configuration from template
+   */
+  setRenderingConfig(config: any): void {
+    const oldConfig = this.renderingConfig;
+    this.renderingConfig = config;
+    this.trackChange('renderingConfig', oldConfig, config);
+  }
+
+  /**
+   * Phase 2: Get port rendering configuration
+   */
+  getRenderingConfig(): any | undefined {
+    return this.renderingConfig;
+  }
+
+  /**
+   * Phase 2: Get effective visibility considering port and node configuration
+   * Priority: port config > node metadata > default ('on-hover')
+   */
+  getEffectiveVisibility(node: any): 'always' | 'on-hover' | 'never' {
+    // Priority 1: Port's own rendering config
+    if (this.renderingConfig?.visibility) {
+      return this.renderingConfig.visibility;
+    }
+
+    // Priority 2: Node's metadata (legacy support)
+    const nodeVisibility = node.getMetadata?.('portVisibility');
+    if (nodeVisibility) {
+      return nodeVisibility;
+    }
+
+    // Default: on-hover
+    return 'on-hover';
+  }
+
+  /**
    * Serialize to JSON
    */
   serialize(): SerializedPort {
-    return {
+    const serialized: SerializedPort = {
       id: this.id,
       uuid: this.uuid,
       type: this.type,
@@ -399,6 +439,13 @@ export class PortModel extends DiagramEntity {
       style: { ...this.style },
       data: { ...this.data },
     };
+
+    // Phase 2: Include template configuration if present
+    if (this.renderingConfig) {
+      serialized.renderingConfig = { ...this.renderingConfig };
+    }
+
+    return serialized;
   }
 
   /**
@@ -427,6 +474,11 @@ export class PortModel extends DiagramEntity {
     port.visible = data.visible;
     port.style = data.style; // BUG FIX: was using data.data for style
     port.data = data.data;
+
+    // Phase 2: Restore template configuration if present
+    if (data.renderingConfig) {
+      port.renderingConfig = data.renderingConfig;
+    }
 
     // Restore metadata
     for (const [key, value] of Object.entries(data.metadata)) {

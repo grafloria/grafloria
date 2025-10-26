@@ -25,6 +25,9 @@ export interface NodeTypeDefinition {
   maxChildren?: number; // Maximum number of children
   maxDepth?: number; // Maximum depth from root
   canBeRoot?: boolean; // Can be a root node (no parent)
+  // Phase 2: Template System Integration
+  templateId?: string; // Reference to NodeTemplate
+  defaultPortRendering?: any; // Default port rendering configuration
 }
 
 export interface PortTypeDefinition {
@@ -329,6 +332,8 @@ export class TypeRegistry {
       if (def.category !== undefined) resolved.category = def.category;
       if (def.family !== undefined) resolved.family = def.family;
       if (def.validator !== undefined) resolved.validator = def.validator;
+      // Phase 2: Template system properties
+      if (def.templateId !== undefined) resolved.templateId = def.templateId;
 
       // Array merging (tags)
       if (def.tags !== undefined) {
@@ -369,6 +374,14 @@ export class TypeRegistry {
         resolved.defaultSize = {
           ...resolved.defaultSize,
           ...def.defaultSize,
+        };
+      }
+
+      // Object merging (defaultPortRendering) - Phase 2
+      if (def.defaultPortRendering !== undefined) {
+        resolved.defaultPortRendering = {
+          ...resolved.defaultPortRendering,
+          ...def.defaultPortRendering,
         };
       }
     }
@@ -430,6 +443,29 @@ export class TypeRegistry {
           try {
             const resolved = this.resolveNodeType(def.type);
             return resolved.tags?.includes(tag) ?? false;
+          } catch {
+            return false;
+          }
+        }
+        return false;
+      }
+    );
+  }
+
+  /**
+   * Get all node types using a specific template (Phase 2)
+   * Includes types that inherit template ID from parent
+   */
+  getNodeTypesByTemplate(templateId: string): NodeTypeDefinition[] {
+    return Array.from(this.nodeTypes.values()).filter(
+      (def) => {
+        // Check direct template ID
+        if (def.templateId === templateId) return true;
+        // Check inherited template ID
+        if (def.extends) {
+          try {
+            const resolved = this.resolveNodeType(def.type);
+            return resolved.templateId === templateId;
           } catch {
             return false;
           }

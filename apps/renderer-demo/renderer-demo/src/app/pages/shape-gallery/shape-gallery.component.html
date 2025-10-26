@@ -1,0 +1,119 @@
+<div class="shape-gallery-container">
+  <!-- Header -->
+  <header class="demo-header">
+    <h1>{{ title }}</h1>
+    <p class="subtitle">
+      Comprehensive demonstration of all shape system features
+    </p>
+  </header>
+
+  <!-- Main content area -->
+  <div class="demo-content">
+    <!-- Left sidebar: Info -->
+    <aside class="sidebar left">
+      <div class="panel">
+        <h3>Features Demonstrated</h3>
+        <ul class="feature-list">
+          <li *ngFor="let section of sections"
+              [class.active]="section.active"
+              (click)="toggleSection(section.id)">
+            <span class="checkbox">{{ section.active ? '✓' : '○' }}</span>
+            {{ section.name }}
+          </li>
+        </ul>
+      </div>
+
+      <div class="panel stats-panel">
+        <h3>Statistics</h3>
+        <div class="stats">
+          <div class="stat-item">
+            <span class="stat-value">{{ stats.totalNodes }}</span>
+            <span class="stat-label">Total Nodes</span>
+          </div>
+          <div class="stat-item">
+            <span class="stat-value">{{ stats.eventsEmitted }}</span>
+            <span class="stat-label">Events Emitted</span>
+          </div>
+          <div class="stat-item">
+            <span class="stat-value">{{ stats.clicksRecorded }}</span>
+            <span class="stat-label">Clicks Recorded</span>
+          </div>
+        </div>
+      </div>
+
+      <div class="panel">
+        <h3>Instructions</h3>
+        <div class="instructions">
+          <p><strong>Phase 3.1:</strong> Observe 5 different shape types</p>
+          <p><strong>Phase 3.2:</strong> Hover over nodes to see shape-aware port positioning</p>
+          <p><strong>Phase 3.3:</strong> Click the circle - corners miss, center hits!</p>
+          <p><strong>Phase 3.4:</strong> Interact with HTML templates (hover, click)</p>
+          <p><strong>Phase 3.5:</strong> See hybrid SVG + HTML rendering</p>
+          <p><strong>Layouts:</strong> Composite nodes with flexbox (row/column), grid (3x2), and 12-column layouts</p>
+        </div>
+      </div>
+    </aside>
+
+    <!-- Center: Diagram canvas -->
+    <main class="canvas-container">
+      <grafloria-diagram-canvas
+        [engine]="engine"
+        [viewport]="viewport"
+        [zoom]="zoom"
+        [theme]="theme"
+        class="diagram-canvas">
+      </grafloria-diagram-canvas>
+
+      <!-- Canvas overlay controls -->
+      <div class="canvas-controls">
+        <button (click)="resetDemo()" class="btn btn-primary">
+          Reset Demo
+        </button>
+      </div>
+    </main>
+
+    <!-- Right sidebar: Event log -->
+    <aside class="sidebar right">
+      <div class="panel event-log-panel">
+        <div class="panel-header">
+          <h3>Event Log</h3>
+          <button (click)="clearLog()" class="btn-small">Clear</button>
+        </div>
+        <div class="event-log">
+          <div *ngIf="eventLog.length === 0" class="empty-state">
+            No events yet. Interact with the diagram!
+          </div>
+          <div *ngFor="let event of eventLog" class="event-entry">
+            {{ event }}
+          </div>
+        </div>
+      </div>
+
+      <div class="panel">
+        <h3>Legend</h3>
+        <div class="legend">
+          <div class="legend-item">
+            <span class="color-box" style="background: #e3f2fd; border: 2px solid #2196f3;"></span>
+            <span>Rectangle / Circle</span>
+          </div>
+          <div class="legend-item">
+            <span class="color-box" style="background: #fff3e0; border: 2px solid #ff9800;"></span>
+            <span>Ellipse</span>
+          </div>
+          <div class="legend-item">
+            <span class="color-box" style="background: #f3e5f5; border: 2px solid #9c27b0;"></span>
+            <span>Diamond</span>
+          </div>
+          <div class="legend-item">
+            <span class="color-box" style="background: #e8f5e9; border: 2px solid #4caf50;"></span>
+            <span>Hexagon</span>
+          </div>
+          <div class="legend-item">
+            <span class="color-box" style="background: #fce4ec; border: 2px solid #e91e63;"></span>
+            <span>Interactive</span>
+          </div>
+        </div>
+      </div>
+    </aside>
+  </div>
+</div>

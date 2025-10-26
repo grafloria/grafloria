@@ -6,6 +6,9 @@ import { createForeignObject, isForeignObject, getContainerId } from '../vnode/f
 // Import routing types
 import type { RoutedPath, RoutingAlgorithm } from '@grafloria/engine';
 
+// Phase 3.2: Shape-aware port positioning
+import { getPortPositionForShape } from './port-positioning';
+
 // LOD Level type (matches engine's LODLevel)
 type LODLevel = 'high' | 'medium' | 'low';
 
@@ -482,27 +485,8 @@ export class SVGRenderer implements IRenderer {
         style: isHovered ? { transition: 'all 0.2s ease' } : undefined,
       },
       children: [
-        // Selection highlight (rendered behind the node)
-        ...(isSelected
-          ? [
-              {
-                type: 'rect',
-                props: {
-                  x: -3,
-                  y: -3,
-                  width: node.size.width + 6,
-                  height: node.size.height + 6,
-                  fill: 'none',
-                  stroke: this.theme.colors.primary,
-                  strokeWidth: 3,
-                  strokeDasharray: '5,5',
-                  rx: 6,
-                  ry: 6,
-                  className: 'selection-highlight',
-                },
-              } as VNode,
-            ]
-          : []),
+        // Selection highlight (Phase 3.1: Shape-aware)
+        ...(isSelected ? [this.renderSelectionHighlight(node)] : []),
         // Phase 2: Connection target highlight (rendered behind the node)
         ...(isConnectionTarget
           ? [
@@ -524,43 +508,10 @@ export class SVGRenderer implements IRenderer {
               } as VNode,
             ]
           : []),
-        // Drop shadow (Option 2: Visual Enhancement)
-        ...(lod !== 'low'
-          ? [
-              {
-                type: 'rect',
-                props: {
-                  x: isHovered ? 2 : 3,
-                  y: isHovered ? 2 : 3,
-                  width: node.size.width,
-                  height: node.size.height,
-                  fill: '#000',
-                  opacity: isHovered ? 0.15 : 0.1,
-                  rx: (node.style.borderRadius ?? 4) as number,
-                  filter: 'blur(4px)',
-                  className: 'node-shadow',
-                },
-              } as VNode,
-            ]
-          : []),
-        // Node shape
-        {
-          type: 'rect',
-          props: {
-            x: 0,
-            y: 0,
-            width: node.size.width,
-            height: node.size.height,
-            ...styles,
-            // Option 2: Enhanced hover effect
-            ...(isHovered && !this.config.useCSSMode
-              ? {
-                  strokeWidth: (styles.strokeWidth || 1) + 1,
-                  filter: 'brightness(1.05)',
-                }
-              : {}),
-          },
-        },
+        // Drop shadow (Phase 3.1: Shape-aware)
+        ...(lod !== 'low' ? [this.renderShadow(node, isHovered)] : []),
+        // Node shape (Phase 3.1: Shape-based rendering)
+        this.renderNodeShape(node, styles, isHovered),
         // Label (if LOD allows and label exists)
         ...(diagram.shouldRenderLabels(lod) && node.getMetadata('label')
           ? [
@@ -761,7 +712,8 @@ export class SVGRenderer implements IRenderer {
   }
 
   /**
-   * Phase 2: Render single port
+   * Phase 3: Render single port
+   * Updated to support template system port rendering configuration
    * CRITICAL FIX: Added pointer-events and proper z-index to ensure ports are clickable
    */
   private renderPort(
@@ -826,40 +778,15 @@ export class SVGRenderer implements IRenderer {
    * Get port position relative to node's local coordinate system
    * Used for rendering ports inside node groups that are already transformed
    */
+  // Phase 3.2: Shape-aware port positioning
   private getPortRelativePosition(port: PortModel, node: NodeModel): { x: number; y: number } {
-    const { side } = port.alignment;
-    const nodeWidth = node.size.width;
-    const nodeHeight = node.size.height;
-    let x = 0;
-    let y = 0;
-
-    switch (side) {
-      case 'left':
-        x = 0 - port.alignment.offset;
-        y = nodeHeight * port.position.y;
-        break;
-      case 'right':
-        x = nodeWidth + port.alignment.offset;
-        y = nodeHeight * port.position.y;
-        break;
-      case 'top':
-        x = nodeWidth * port.position.x;
-        y = 0 - port.alignment.offset;
-        break;
-      case 'bottom':
-        x = nodeWidth * port.position.x;
-        y = nodeHeight + port.alignment.offset;
-        break;
-    }
-
-    return {
-      x: x + port.offset.x,
-      y: y + port.offset.y,
-    };
+    // Use shape-aware positioning utility
+    return getPortPositionForShape(port, node);
   }
 
   /**
-   * Phase 2: Determine if port should be rendered based on visibility strategy
+   * Phase 3: Determine if port should be rendered based on visibility strategy
+   * Updated to support template system configuration
    * CRITICAL FIX: Added comprehensive debugging and proper string comparison
    */
   private shouldRenderPort(
@@ -867,11 +794,36 @@ export class SVGRenderer implements IRenderer {
     node: NodeModel,
     config: InteractionConfig
   ): boolean {
-    const { portVisibility } = config;
+    // Phase 3: Check port rendering mode first
+    // If port is configured for HTML rendering, skip SVG rendering
+    const renderingConfig = port.getRenderingConfig?.();
+    if (renderingConfig) {
+      const mode = renderingConfig.mode || 'svg';
 
-    // CRITICAL FIX: portVisibility is a string, not an enum
-    // It could be 'always', 'on-hover', or 'hidden'
-    const visibilityStr = String(portVisibility).toLowerCase();
+      // Skip HTML mode ports in SVGRenderer
+      if (mode === 'html') {
+        return false;
+      }
+
+      // Auto mode: detect based on node's HTML layer flag
+      if (mode === 'auto') {
+        const usesHTMLLayer = node.getMetadata?.('useHTMLLayer');
+        if (usesHTMLLayer === true) {
+          return false; // Skip - will be rendered in HTML layer
+        }
+      }
+    }
+
+    // Phase 3: Use effective visibility (port > node > global config)
+    // Try to get effective visibility from port
+    let visibilityStr: string;
+    if (port.getEffectiveVisibility && typeof port.getEffectiveVisibility === 'function') {
+      const effectiveVisibility = port.getEffectiveVisibility(node);
+      visibilityStr = String(effectiveVisibility).toLowerCase();
+    } else {
+      // Fallback to global config if port doesn't have getEffectiveVisibility
+      visibilityStr = String(config.portVisibility).toLowerCase();
+    }
 
     // DEBUG: Enable this to see port visibility decisions
     const debugPortVisibility = false; // Disabled - working correctly now
@@ -884,6 +836,7 @@ export class SVGRenderer implements IRenderer {
         highlighted: port.isHighlighted,
         validTarget: port.isValidTarget,
         nodeLabel: node.getMetadata('label'),
+        effectiveVisibility: visibilityStr,
         shouldShow: node.state.hovered || port.isHovered || port.isHighlighted || port.isValidTarget
       });
     }
@@ -897,12 +850,13 @@ export class SVGRenderer implements IRenderer {
         // where the port you exit through stays visible
         const shouldShow = node.state.hovered || port.isHighlighted || port.isValidTarget;
         return shouldShow;
+      case 'never':
       case 'hidden':
         // Only show if actively involved in connection
         return port.isHighlighted || port.isValidTarget;
       default:
         // Fallback to always visible
-        console.warn(`Unknown port visibility strategy: ${portVisibility}, defaulting to 'always'`);
+        console.warn(`Unknown port visibility strategy: ${visibilityStr}, defaulting to 'always'`);
         return true;
     }
   }
@@ -920,6 +874,326 @@ export class SVGRenderer implements IRenderer {
         return this.theme.colors.port.bi;
       default:
         return this.theme.colors.port.bi;
+    }
+  }
+
+  /**
+   * Phase 3.1: Render node shape based on shape configuration
+   * Supports: rect, circle, ellipse, diamond, hexagon
+   */
+  private renderNodeShape(node: NodeModel, styles: any, isHovered: boolean): VNode {
+    const shapeConfig = node.getMetadata('shape') || { type: 'rect' };
+    const { width, height } = node.size;
+
+    // Apply shape-specific fill/stroke if provided
+    const shapeStyles = {
+      ...styles,
+      ...(shapeConfig.fill ? { fill: shapeConfig.fill } : {}),
+      ...(shapeConfig.stroke ? { stroke: shapeConfig.stroke } : {}),
+      ...(shapeConfig.strokeWidth !== undefined ? { strokeWidth: shapeConfig.strokeWidth } : {}),
+      ...(shapeConfig.opacity !== undefined ? { opacity: shapeConfig.opacity } : {}),
+    };
+
+    // Enhanced hover effect
+    if (isHovered && !this.config.useCSSMode) {
+      shapeStyles.strokeWidth = (shapeStyles.strokeWidth || 1) + 1;
+      shapeStyles.filter = 'brightness(1.05)';
+    }
+
+    switch (shapeConfig.type) {
+      case 'circle':
+        return this.renderCircleShape(width, height, shapeStyles);
+
+      case 'ellipse':
+        return this.renderEllipseShape(width, height, shapeStyles);
+
+      case 'diamond':
+        return this.renderDiamondShape(width, height, shapeStyles);
+
+      case 'hexagon':
+        return this.renderHexagonShape(width, height, shapeStyles);
+
+      case 'rect':
+      default:
+        return this.renderRectShape(width, height, shapeStyles, shapeConfig.cornerRadius);
+    }
+  }
+
+  /**
+   * Phase 3.1: Render rectangle shape
+   */
+  private renderRectShape(width: number, height: number, styles: any, cornerRadius?: number): VNode {
+    return {
+      type: 'rect',
+      props: {
+        x: 0,
+        y: 0,
+        width,
+        height,
+        ...styles,
+        ...(cornerRadius ? { rx: cornerRadius, ry: cornerRadius } : {}),
+      },
+    };
+  }
+
+  /**
+   * Phase 3.1: Render circle shape
+   */
+  private renderCircleShape(width: number, height: number, styles: any): VNode {
+    const radius = Math.min(width, height) / 2;
+    const cx = width / 2;
+    const cy = height / 2;
+
+    return {
+      type: 'circle',
+      props: {
+        cx,
+        cy,
+        r: radius,
+        ...styles,
+      },
+    };
+  }
+
+  /**
+   * Phase 3.1: Render ellipse shape
+   */
+  private renderEllipseShape(width: number, height: number, styles: any): VNode {
+    const rx = width / 2;
+    const ry = height / 2;
+    const cx = width / 2;
+    const cy = height / 2;
+
+    return {
+      type: 'ellipse',
+      props: {
+        cx,
+        cy,
+        rx,
+        ry,
+        ...styles,
+      },
+    };
+  }
+
+  /**
+   * Phase 3.1: Render diamond shape (rotated square)
+   */
+  private renderDiamondShape(width: number, height: number, styles: any): VNode {
+    const cx = width / 2;
+    const cy = height / 2;
+
+    // Diamond vertices: top, right, bottom, left
+    const points = `${cx},0 ${width},${cy} ${cx},${height} 0,${cy}`;
+
+    return {
+      type: 'polygon',
+      props: {
+        points,
+        ...styles,
+      },
+    };
+  }
+
+  /**
+   * Phase 3.1: Render hexagon shape
+   */
+  private renderHexagonShape(width: number, height: number, styles: any): VNode {
+    const cx = width / 2;
+    const cy = height / 2;
+
+    // Flat-top hexagon (6 vertices)
+    const offset = width * 0.25; // 25% offset for flat sides
+
+    const points = [
+      `${offset},0`,           // top-left
+      `${width - offset},0`,   // top-right
+      `${width},${cy}`,        // right
+      `${width - offset},${height}`, // bottom-right
+      `${offset},${height}`,   // bottom-left
+      `0,${cy}`,               // left
+    ].join(' ');
+
+    return {
+      type: 'polygon',
+      props: {
+        points,
+        ...styles,
+      },
+    };
+  }
+
+  /**
+   * Phase 3.1: Render selection highlight matching node shape
+   */
+  private renderSelectionHighlight(node: NodeModel): VNode {
+    const shapeConfig = node.getMetadata('shape') || { type: 'rect' };
+    const { width, height } = node.size;
+    const padding = 3;
+
+    const baseProps = {
+      fill: 'none',
+      stroke: this.theme.colors.primary,
+      strokeWidth: 3,
+      strokeDasharray: '5,5',
+      className: 'selection-highlight',
+    };
+
+    switch (shapeConfig.type) {
+      case 'circle':
+        const radius = Math.min(width, height) / 2;
+        return {
+          type: 'circle',
+          props: {
+            cx: width / 2,
+            cy: height / 2,
+            r: radius + padding,
+            ...baseProps,
+          },
+        };
+
+      case 'ellipse':
+        return {
+          type: 'ellipse',
+          props: {
+            cx: width / 2,
+            cy: height / 2,
+            rx: width / 2 + padding,
+            ry: height / 2 + padding,
+            ...baseProps,
+          },
+        };
+
+      case 'diamond':
+        const cx = width / 2;
+        const cy = height / 2;
+        const points = `${cx},${-padding} ${width + padding},${cy} ${cx},${height + padding} ${-padding},${cy}`;
+        return {
+          type: 'polygon',
+          props: {
+            points,
+            ...baseProps,
+          },
+        };
+
+      case 'hexagon':
+        const offset = width * 0.25;
+        const hexPoints = [
+          `${offset - padding},${-padding}`,
+          `${width - offset + padding},${-padding}`,
+          `${width + padding},${height / 2}`,
+          `${width - offset + padding},${height + padding}`,
+          `${offset - padding},${height + padding}`,
+          `${-padding},${height / 2}`,
+        ].join(' ');
+        return {
+          type: 'polygon',
+          props: {
+            points: hexPoints,
+            ...baseProps,
+          },
+        };
+
+      case 'rect':
+      default:
+        return {
+          type: 'rect',
+          props: {
+            x: -padding,
+            y: -padding,
+            width: width + (padding * 2),
+            height: height + (padding * 2),
+            rx: 6,
+            ry: 6,
+            ...baseProps,
+          },
+        };
+    }
+  }
+
+  /**
+   * Phase 3.1: Render shadow matching node shape
+   */
+  private renderShadow(node: NodeModel, isHovered: boolean): VNode {
+    const shapeConfig = node.getMetadata('shape') || { type: 'rect' };
+    const { width, height } = node.size;
+    const offset = isHovered ? 2 : 3;
+
+    const baseProps = {
+      fill: '#000',
+      opacity: isHovered ? 0.15 : 0.1,
+      filter: 'blur(4px)',
+      className: 'node-shadow',
+    };
+
+    switch (shapeConfig.type) {
+      case 'circle':
+        const radius = Math.min(width, height) / 2;
+        return {
+          type: 'circle',
+          props: {
+            cx: width / 2 + offset,
+            cy: height / 2 + offset,
+            r: radius,
+            ...baseProps,
+          },
+        };
+
+      case 'ellipse':
+        return {
+          type: 'ellipse',
+          props: {
+            cx: width / 2 + offset,
+            cy: height / 2 + offset,
+            rx: width / 2,
+            ry: height / 2,
+            ...baseProps,
+          },
+        };
+
+      case 'diamond':
+        const cx = width / 2;
+        const cy = height / 2;
+        const points = `${cx + offset},${offset} ${width + offset},${cy + offset} ${cx + offset},${height + offset} ${offset},${cy + offset}`;
+        return {
+          type: 'polygon',
+          props: {
+            points,
+            ...baseProps,
+          },
+        };
+
+      case 'hexagon':
+        const hexOffset = width * 0.25;
+        const hexPoints = [
+          `${hexOffset + offset},${offset}`,
+          `${width - hexOffset + offset},${offset}`,
+          `${width + offset},${height / 2 + offset}`,
+          `${width - hexOffset + offset},${height + offset}`,
+          `${hexOffset + offset},${height + offset}`,
+          `${offset},${height / 2 + offset}`,
+        ].join(' ');
+        return {
+          type: 'polygon',
+          props: {
+            points: hexPoints,
+            ...baseProps,
+          },
+        };
+
+      case 'rect':
+      default:
+        return {
+          type: 'rect',
+          props: {
+            x: offset,
+            y: offset,
+            width,
+            height,
+            rx: (node.style.borderRadius ?? 4) as number,
+            ...baseProps,
+          },
+        };
     }
   }
 

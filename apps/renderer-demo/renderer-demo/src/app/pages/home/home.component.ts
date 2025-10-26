@@ -103,6 +103,20 @@ export class HomeComponent {
         'Step-by-step tutorial'
       ],
       difficulty: 'Advanced'
+    },
+    {
+      title: 'Shape Gallery',
+      description: 'Interactive showcase of shape system features (Phases 3.1-3.5)',
+      icon: '🎯',
+      route: '/shape-gallery',
+      features: [
+        'All 5 shape types',
+        'Shape-aware port positioning',
+        'Accurate hit detection',
+        'HTML templates with events',
+        'Hybrid rendering demo'
+      ],
+      difficulty: 'Beginner'
     }
   ];
 
