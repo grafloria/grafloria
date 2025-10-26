@@ -275,29 +275,108 @@ export class GroupModel extends DiagramEntity {
       // Horizontal stacking (row or row-reverse)
       const orderedEntities = config.direction === 'row-reverse' ? entities.slice().reverse() : entities;
 
-      // Handle justifyContent for horizontal centering
-      if (config.justifyContent === 'center' && this.size) {
-        const totalWidth = this.calculateTotalWidth(orderedEntities, gap);
-        currentX = this.position.x + (this.size.width - totalWidth) / 2;
-      }
+      // Check if using column-based layout (like Bootstrap grid)
+      const useColumnLayout = config.columns !== undefined && config.columns > 0 && this.size;
 
-      for (const entity of orderedEntities) {
-        // Handle alignItems for vertical centering
-        let entityY = currentY;
-        if (config.alignItems === 'center' && this.size) {
-          const entityHeight = entity.size?.height || 50;
-          entityY = this.position.y + (this.size.height - entityHeight) / 2;
+      if (useColumnLayout && this.size) {
+        // Column-based layout (e.g., 12-column grid)
+        this.applyColumnBasedLayout(orderedEntities, config, padding, currentX, currentY);
+      } else {
+        // Standard flexbox layout
+        // Handle justifyContent for horizontal centering
+        if (config.justifyContent === 'center' && this.size) {
+          const totalWidth = this.calculateTotalWidth(orderedEntities, gap);
+          currentX = this.position.x + (this.size.width - totalWidth) / 2;
         }
 
-        if ('setPosition' in entity && typeof entity.setPosition === 'function') {
-          entity.setPosition(currentX, entityY);
-        } else {
-          // GroupModel
-          entity.position = { x: currentX, y: entityY };
+        for (const entity of orderedEntities) {
+          // Handle alignItems for vertical centering
+          let entityY = currentY;
+          if (config.alignItems === 'center' && this.size) {
+            const entityHeight = entity.size?.height || 50;
+            entityY = this.position.y + (this.size.height - entityHeight) / 2;
+          }
+
+          if ('setPosition' in entity && typeof entity.setPosition === 'function') {
+            entity.setPosition(currentX, entityY);
+          } else {
+            // GroupModel
+            entity.position = { x: currentX, y: entityY };
+          }
+          const entityWidth = entity.size?.width || 100;
+          currentX += entityWidth + gap;
         }
-        const entityWidth = entity.size?.width || 100;
-        currentX += entityWidth + gap;
       }
+    }
+  }
+
+  /**
+   * Apply column-based layout (like Bootstrap 12-column grid)
+   */
+  private applyColumnBasedLayout(
+    entities: Array<NodeModel | GroupModel>,
+    config: FlexboxLayoutConfig,
+    padding: { top: number; right: number; bottom: number; left: number },
+    startX: number,
+    startY: number
+  ): void {
+    if (!this.size || !config.columns) return;
+
+    const totalColumns = config.columns;
+    const gap = typeof config.gap === 'number' ? config.gap : config.gap.column || 0;
+
+    // Available width for content (excluding padding)
+    const availableWidth = this.size.width - padding.left - padding.right;
+
+    // Calculate column width (including gaps)
+    const totalGaps = (totalColumns - 1) * gap;
+    const columnWidth = (availableWidth - totalGaps) / totalColumns;
+
+    let currentX = startX;
+    let currentY = startY;
+    let currentColumn = 0;
+    let currentRowHeight = 0; // Track max height in current row
+    const rowEntities: Array<NodeModel | GroupModel> = []; // Track entities in current row
+
+    for (const entity of entities) {
+      // Get column span from metadata (default = 1)
+      const columnSpan = entity.getMetadata('columnSpan') as number || 1;
+      const clampedSpan = Math.min(columnSpan, totalColumns);
+
+      // Check if entity fits in current row
+      if (currentColumn + clampedSpan > totalColumns) {
+        // Move to next row
+        currentColumn = 0;
+        currentX = startX;
+        currentY += currentRowHeight + gap;
+        currentRowHeight = 0;
+        rowEntities.length = 0; // Clear row entities
+      }
+
+      // Calculate entity width based on column span
+      const entityWidth = columnWidth * clampedSpan + gap * (clampedSpan - 1);
+
+      // Update entity size to match column width
+      if (entity.size) {
+        entity.size.width = entityWidth;
+      }
+
+      // Position entity
+      if ('setPosition' in entity && typeof entity.setPosition === 'function') {
+        entity.setPosition(currentX, currentY);
+      } else {
+        // GroupModel
+        entity.position = { x: currentX, y: currentY };
+      }
+
+      // Track row height (max height in this row)
+      const entityHeight = entity.size?.height || 100;
+      currentRowHeight = Math.max(currentRowHeight, entityHeight);
+      rowEntities.push(entity);
+
+      // Move to next column position
+      currentX += entityWidth + gap;
+      currentColumn += clampedSpan;
     }
   }
 

@@ -32,6 +32,9 @@ export interface FlexboxLayoutConfig {
 
   /** Padding inside container (px) */
   padding?: number | { top: number; right: number; bottom: number; left: number };
+
+  /** Column-based layout (like Bootstrap 12-column grid) */
+  columns?: number; // e.g., 12 for 12-column layout, child nodes use columnSpan metadata
 }
 
 /**
