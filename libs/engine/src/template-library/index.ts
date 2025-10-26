@@ -26,11 +26,12 @@ import type { NodeTemplate } from '../templates/NodeTemplate';
 import { CommonTemplates } from './common-templates';
 import { WorkflowTemplates } from './workflow-templates';
 import { DataVizTemplates } from './data-viz-templates';
+import { ERDTemplates } from './erd-templates';
 
 /**
  * Template categories for organization
  */
-export type TemplateCategory = 'common' | 'workflow' | 'data-viz' | 'diagram';
+export type TemplateCategory = 'common' | 'workflow' | 'data-viz' | 'diagram' | 'erd';
 
 /**
  * Template metadata for discovery
@@ -181,6 +182,11 @@ export function initializeTemplateLibrary(manager?: TemplateLibraryManager): Tem
   lib.register(DataVizTemplates.StatCounter, 'data-viz', ['stat', 'counter', 'number', 'dashboard']);
   lib.register(DataVizTemplates.ProgressBar, 'data-viz', ['progress', 'bar', 'indicator', 'dashboard']);
 
+  // ERD Templates
+  lib.register(ERDTemplates.ERDTable, 'erd', ['database', 'table', 'schema', 'erd']);
+  lib.register(ERDTemplates.ERDField, 'erd', ['database', 'field', 'column', 'erd']);
+  lib.register(ERDTemplates.ERDRelationship, 'erd', ['database', 'relationship', 'erd', 'many-to-many']);
+
   return lib;
 }
 
@@ -237,6 +243,7 @@ export const TemplateLibrary = new Proxy({} as TemplateLibraryManager, {
 export { CommonTemplates } from './common-templates';
 export { WorkflowTemplates } from './workflow-templates';
 export { DataVizTemplates } from './data-viz-templates';
+export { ERDTemplates } from './erd-templates';
 
 /**
  * Export individual templates for convenience
@@ -270,6 +277,12 @@ export const {
   ProgressBar,
 } = DataVizTemplates;
 
+export const {
+  ERDTable,
+  ERDField,
+  ERDRelationship,
+} = ERDTemplates;
+
 /**
  * Helper functions
  */
@@ -290,6 +303,7 @@ export function getTemplatesByCategory(): Record<TemplateCategory, NodeTemplate[
     workflow: TemplateLibrary.getByCategory('workflow'),
     'data-viz': TemplateLibrary.getByCategory('data-viz'),
     diagram: TemplateLibrary.getByCategory('diagram'),
+    erd: TemplateLibrary.getByCategory('erd'),
   };
 }
 
