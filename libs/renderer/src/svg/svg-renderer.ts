@@ -287,10 +287,13 @@ export class SVGRenderer implements IRenderer {
 
     if (!sourceNode) return null;
 
-    // CRITICAL FIX: Calculate source position using getAbsolutePosition() like links do
-    // This ensures the line starts from the port center, not the node's top-left corner
-    const sourceBounds = sourceNode.getBoundingBox();
-    const sourcePos = dragState.sourcePort.getAbsolutePosition(sourceBounds);
+    // CRITICAL FIX: Use getPortPositionForShape() for consistent positioning
+    // This ensures the preview line starts from the same position where the port is rendered
+    const sourceLocalPos = getPortPositionForShape(dragState.sourcePort, sourceNode);
+    const sourcePos = {
+      x: sourceNode.position.x + sourceLocalPos.x,
+      y: sourceNode.position.y + sourceLocalPos.y,
+    };
 
     const targetPos = dragState.currentMousePosition;
 
@@ -1199,6 +1202,7 @@ export class SVGRenderer implements IRenderer {
 
   /**
    * Get link endpoints (source and target port positions in world coordinates)
+   * CRITICAL FIX: Use the same getPortPositionForShape() as port rendering to ensure alignment
    */
   private getLinkEndpoints(link: LinkModel): {
     start: { x: number; y: number };
@@ -1230,31 +1234,20 @@ export class SVGRenderer implements IRenderer {
 
     if (!sourcePort || !targetPort) return null;
 
-    // Calculate absolute positions
-    // For nodes that are children/group members, we need to use global position
-    const sourceGlobalPos = sourceNode.getGlobalPosition();
-    const targetGlobalPos = targetNode.getGlobalPosition();
+    // CRITICAL FIX: Use getPortPositionForShape() for consistent positioning
+    // This ensures links connect to the same positions where ports are rendered
+    const sourceLocalPos = getPortPositionForShape(sourcePort, sourceNode);
+    const targetLocalPos = getPortPositionForShape(targetPort, targetNode);
 
-    // Create bounding boxes using global positions
-    const sourceBounds = {
-      left: sourceGlobalPos.x - sourceNode.size.width / 2,
-      right: sourceGlobalPos.x + sourceNode.size.width / 2,
-      top: sourceGlobalPos.y - sourceNode.size.height / 2,
-      bottom: sourceGlobalPos.y + sourceNode.size.height / 2,
-      width: sourceNode.size.width,
-      height: sourceNode.size.height,
+    // Convert from local (node-relative) to world coordinates
+    const start = {
+      x: sourceNode.position.x + sourceLocalPos.x,
+      y: sourceNode.position.y + sourceLocalPos.y,
     };
-    const targetBounds = {
-      left: targetGlobalPos.x - targetNode.size.width / 2,
-      right: targetGlobalPos.x + targetNode.size.width / 2,
-      top: targetGlobalPos.y - targetNode.size.height / 2,
-      bottom: targetGlobalPos.y + targetNode.size.height / 2,
-      width: targetNode.size.width,
-      height: targetNode.size.height,
+    const end = {
+      x: targetNode.position.x + targetLocalPos.x,
+      y: targetNode.position.y + targetLocalPos.y,
     };
-
-    const start = sourcePort.getAbsolutePosition(sourceBounds);
-    const end = targetPort.getAbsolutePosition(targetBounds);
 
     // Get port directions (for orthogonal routing)
     const sourceDirection = sourcePort.alignment.side;
