@@ -2,18 +2,7 @@ import { Component, OnInit } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { DiagramCanvasComponent } from '@grafloria/renderer-angular';
-import {
-  DiagramEngine,
-  NodeModel,
-  PortModel,
-  LinkModel,
-  GroupModel,
-  InteractionMode,
-  PortVisibilityStrategy,
-  NodeFactory,
-  TemplateRegistry,
-  registerTemplateLibrary,
-} from '@grafloria/engine';
+import { DiagramEngine, NodeModel, PortModel, InteractionMode, PortVisibilityStrategy } from '@grafloria/engine';
 import { LIGHT_THEME, type Theme, type Rectangle } from '@grafloria/renderer';
 import { TableNodeComponent } from './table-node.component';
 
@@ -45,8 +34,6 @@ export class ErdDesignerComponent implements OnInit {
   theme: Theme = LIGHT_THEME;
 
   tables: Map<string, Table> = new Map();
-  nodeFactory!: NodeFactory;
-  templateRegistry!: TemplateRegistry;
 
   // UI State
   showAddTablePanel = false;
@@ -66,21 +53,11 @@ export class ErdDesignerComponent implements OnInit {
         enableSmartAutoConnect: true,
       }
     });
-
-    // Initialize template registry and register ERD templates
-    this.templateRegistry = new TemplateRegistry(this.engine.eventBus);
-    registerTemplateLibrary(this.templateRegistry);
-
-    // Create node factory
-    const diagram = this.engine.createDiagram('ERD Diagram');
-    this.nodeFactory = new NodeFactory(this.templateRegistry, diagram);
-
-    console.log('✅ ERD Designer initialized with template system');
+    console.log('ERD Designer initialized with smart interaction mode');
   }
 
   private async createSampleERD(): Promise<void> {
-    const diagram = this.engine.getDiagram();
-    if (!diagram) return;
+    const diagram = this.engine.createDiagram('ERD Diagram');
 
     // Create Users table
     const usersTable: Table = {
@@ -125,46 +102,31 @@ export class ErdDesignerComponent implements OnInit {
     this.createTableNode(productsTable, { x: 100, y: 400 });
 
     // Create relationships with field-level connections
-    // Find the table group nodes
-    const usersTableGroup = diagram.getGroups().find(g => g.getMetadata('tableId') === 'users') as GroupModel;
-    const ordersTableGroup = diagram.getGroups().find(g => g.getMetadata('tableId') === 'orders') as GroupModel;
+    const usersNode = diagram.getNodes().find(n => n.getMetadata('tableId') === 'users');
+    const ordersNode = diagram.getNodes().find(n => n.getMetadata('tableId') === 'orders');
 
-    if (usersTableGroup && ordersTableGroup) {
-      // Get field nodes (members of the table groups)
-      const usersMemberIds = Array.from(usersTableGroup.members);
-      const ordersMemberIds = Array.from(ordersTableGroup.members);
+    if (usersNode && ordersNode) {
+      // Connect users.id (primary key) to orders.user_id (foreign key)
+      // Find the port for users.id (right side of first field - primary key)
+      const usersPorts = usersNode.getPorts();
+      const ordersPorts = ordersNode.getPorts();
 
-      // Find users.id field node (primary key)
-      const usersIdField = usersMemberIds
-        .map(id => diagram.getNode(id))
-        .find(node => node?.getMetadata('columnData')?.name === 'id');
+      // Users.id is first field (index 0), right port
+      const usersIdPort = usersPorts.find(p => p.type === 'output' && p.alignment.side === 'right');
+      // Orders.user_id is second field (index 1), left port
+      const ordersUserIdPort = ordersPorts.find(p => p.type === 'input' && p.alignment.side === 'left');
 
-      // Find orders.user_id field node (foreign key)
-      const ordersUserIdField = ordersMemberIds
-        .map(id => diagram.getNode(id))
-        .find(node => node?.getMetadata('columnData')?.name === 'user_id');
-
-      if (usersIdField && ordersUserIdField) {
-        // Get output port from users.id field (right side)
-        const usersIdPort = usersIdField.getPorts().find(p => p.type === 'output');
-        // Get input port from orders.user_id field (left side)
-        const ordersUserIdPort = ordersUserIdField.getPorts().find(p => p.type === 'input');
-
-        if (usersIdPort && ordersUserIdPort) {
-          // Create link between field nodes
-          const link = new LinkModel(usersIdPort.id, ordersUserIdPort.id);
+      if (usersIdPort && ordersUserIdPort) {
+        const link = await this.engine.addLink({
+          sourcePortId: usersIdPort.id,
+          targetPortId: ordersUserIdPort.id,
+          type: 'orthogonal'
+        });
+        if (link) {
           link.setMetadata('relationship', '1:N');
           link.setMetadata('label', '1:N');
           link.setMetadata('description', 'One user has many orders');
-
-          // Register connection with ports
-          usersIdPort.addConnection(link.id);
-          ordersUserIdPort.addConnection(link.id);
-
-          // Add link to diagram
-          diagram.addLink(link);
-
-          console.log('✅ Created relationship: Users.id → Orders.user_id using nested field nodes');
+          console.log('✅ Created relationship: Users(1) → Orders(N)');
         }
       }
     }
@@ -173,46 +135,63 @@ export class ErdDesignerComponent implements OnInit {
     this.updateViewportFromDiagram();
   }
 
-  private createTableNode(table: Table, position: { x: number; y: number }): GroupModel {
+  private createTableNode(table: Table, position: { x: number; y: number }): void {
     const diagram = this.engine.getDiagram();
-    if (!diagram) throw new Error('Diagram not initialized');
+    if (!diagram) return;
 
-    // Create table node using ERD template
-    const tableNode = this.nodeFactory.createFromTemplate('erd-table', {
-      tableName: table.name,
-    }, position) as GroupModel;
-
-    tableNode.setMetadata('tableId', table.id);
-
-    // Calculate table size based on fields
     const rowHeight = 30;
-    const headerHeight = 45;
+    const headerHeight = 40;
     const height = headerHeight + (table.columns.length * rowHeight);
-    tableNode.size = { width: 250, height, depth: 0 };
 
-    // Create field nodes as nested children
-    const fieldNodes: NodeModel[] = [];
-    table.columns.forEach((column) => {
-      const fieldNode = this.nodeFactory.createFromTemplate('erd-field', {
-        fieldName: column.name,
-        fieldType: column.dataType,
-        isPrimaryKey: column.isPrimaryKey,
-        isForeignKey: column.isForeignKey,
-        isNullable: column.isNullable,
-      }, { x: 0, y: 0 }); // Position doesn't matter - layout will handle it
-
-      fieldNode.setMetadata('columnData', column);
-      fieldNodes.push(fieldNode);
-
-      // Add field as member of table group
-      tableNode.addMember(fieldNode.id);
+    const node = new NodeModel({
+      type: 'table',
+      position,
+      size: { width: 300, height }
     });
 
-    // Apply smart layout to stack fields vertically
-    tableNode.applyLayout(diagram);
+    node.setMetadata('tableId', table.id);
+    node.setMetadata('tableName', table.name);
+    node.setMetadata('label', table.name);  // Set table name as label for SVG rendering
+    node.setMetadata('columns', table.columns);
+    node.setMetadata('useForeignObject', true);  // Use foreignObject to embed TableNodeComponent
 
-    console.log(`✅ Created table '${table.name}' with ${fieldNodes.length} field nodes using nested architecture`);
-    return tableNode;
+    // CRITICAL: Clear default ports - we'll create field-specific ports
+    node.ports.clear();
+
+    // Create a port for each field (column) in the table
+    table.columns.forEach((column, index) => {
+      // Calculate vertical position for this field
+      // Header is 40px, each row is 30px, center port in middle of row
+      const fieldY = headerHeight + (index * rowHeight) + (rowHeight / 2);
+
+      // Left port for foreign keys (input)
+      if (column.isForeignKey) {
+        const leftPort = new PortModel({
+          type: 'input',
+          alignment: {
+            side: 'left',
+            offset: fieldY // Pixel offset from top
+          }
+        });
+        node.addPort(leftPort);
+        console.log(`✅ Created LEFT port for FK field: ${column.name} at y=${fieldY}px`);
+      }
+
+      // Right port for all fields (output) - especially primary keys
+      const rightPort = new PortModel({
+        type: 'output',
+        alignment: {
+          side: 'right',
+          offset: fieldY // Pixel offset from top
+        }
+      });
+      node.addPort(rightPort);
+      console.log(`✅ Created RIGHT port for field: ${column.name} at y=${fieldY}px`);
+    });
+
+    console.log(`🔌 Total ports created for ${table.name}: ${node.getPorts().length}`);
+
+    diagram.addNode(node);
   }
 
   addTable(): void {
