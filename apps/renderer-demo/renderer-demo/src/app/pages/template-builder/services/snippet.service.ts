@@ -209,52 +209,6 @@ export class SnippetService {
     });
 
     this.snippets.push({
-      id: 'erd-table',
-      name: 'ERD Table',
-      description: 'Database table template with fields',
-      category: 'json',
-      subcategory: 'templates',
-      tags: ['erd', 'database', 'table'],
-      icon: '🗄️',
-      code: `{
-  "id": "erd-table",
-  "version": "1.0.0",
-  "meta": {
-    "name": "ERD Table",
-    "description": "Database table with fields",
-    "category": "erd"
-  },
-  "structure": {
-    "type": "erd-table",
-    "size": {
-      "width": 220,
-      "height": "auto"
-    },
-    "shape": {
-      "type": "rect",
-      "fill": "#ffffff",
-      "stroke": "#667eea",
-      "strokeWidth": 2,
-      "cornerRadius": 8
-    },
-    "ports": {
-      "enabled": true,
-      "left": { "enabled": true, "type": "input" },
-      "right": { "enabled": true, "type": "output" }
-    }
-  },
-  "defaultData": {
-    "tableName": "users",
-    "fields": [
-      { "name": "id", "type": "INT", "isPrimaryKey": true },
-      { "name": "email", "type": "VARCHAR(255)" },
-      { "name": "created_at", "type": "TIMESTAMP" }
-    ]
-  }
-}`
-    });
-
-    this.snippets.push({
       id: 'process-node',
       name: 'Process Node',
       description: 'Workflow process step with icon',

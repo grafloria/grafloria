@@ -134,14 +134,6 @@ export class TemplateLibraryService {
         htmlLayer: this.getERDTableOptionAHTML(),
         cssLayer: this.getERDTableOptionACSS()
       },
-      {
-        id: 'erd-table-nested',
-        name: 'ERD Table (Nested Header)',
-        category: 'database',
-        description: 'ERD table with nested header child defined in template - shows children array usage',
-        tags: ['erd', 'database', 'table', 'nested', 'children', 'advanced'],
-        template: this.createERDTableNested()
-      },
 
       // Workflow Templates
       {
@@ -319,115 +311,6 @@ export class TemplateLibraryService {
           { name: 'created_at', type: 'TIMESTAMP', isPrimaryKey: false, isForeignKey: false }
         ]
       }
-    };
-  }
-
-  private createERDTableNested(): NodeTemplate {
-    return {
-      id: 'erd-table-nested',
-      version: '1.0.0',
-      meta: {
-        name: 'ERD Table (Nested Header)',
-        category: 'database',
-        description: 'ERD table with nested header child - demonstrates children array in template',
-        tags: ['erd', 'database', 'nested', 'children', 'advanced']
-      },
-      structure: {
-        type: 'erd-table-container-nested',
-        role: 'container',
-        size: { width: 250, height: 200 },
-        shape: {
-          type: 'rect',
-          fill: '#ffffff',
-          stroke: '#667eea',
-          strokeWidth: 2,
-          cornerRadius: 8,
-        },
-        html: {
-          mode: 'template',
-          template: `
-            <div class="erd-table-background" style="
-              width: 100%;
-              height: 100%;
-              background: white;
-              border: 2px solid #667eea;
-              border-radius: 8px;
-              box-shadow: 0 2px 8px rgba(102, 126, 234, 0.15);
-              overflow: hidden;
-            "></div>
-          `,
-          className: 'node-erd-table-container',
-          zIndex: 0,
-        },
-        behavior: {
-          draggable: true,
-          selectable: true,
-          connectable: false,
-        },
-        layout: {
-          direction: 'column',
-          wrap: 'nowrap',
-          justifyContent: 'start',
-          alignItems: 'stretch',
-          alignContent: 'start',
-          gap: 0,
-          padding: { top: 0, right: 0, bottom: 0, left: 0 },
-        },
-        ports: {
-          enabled: false,
-        },
-        // THIS IS THE KEY: Children array defines nested nodes in template
-        children: [
-          {
-            type: 'erd-table-header-nested',
-            role: 'drag-handler',
-            size: { width: 250, height: 45 },
-            shape: {
-              type: 'rect',
-              fill: 'transparent',
-              stroke: 'none',
-            },
-            html: {
-              mode: 'template',
-              template: `
-                <div class="erd-table-header" style="
-                  width: 100%;
-                  height: 45px;
-                  padding: 12px;
-                  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-                  color: white;
-                  font-weight: 600;
-                  font-size: 14px;
-                  display: flex;
-                  align-items: center;
-                  gap: 8px;
-                  cursor: move;
-                  user-select: none;
-                ">
-                  <span style="font-size: 16px;">📊</span>
-                  <span>{{data.tableName}}</span>
-                </div>
-              `,
-              className: 'node-erd-header',
-              zIndex: 2,
-            },
-            behavior: {
-              draggable: true,
-              dragHandler: {
-                isDragHandler: true,
-                dragChildren: true,
-              },
-              selectable: false,
-            },
-            ports: {
-              enabled: false,
-            },
-          },
-        ],
-      },
-      defaultData: {
-        tableName: 'Orders',
-      },
     };
   }
 
