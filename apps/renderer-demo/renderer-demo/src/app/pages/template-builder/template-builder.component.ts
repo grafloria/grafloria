@@ -6,7 +6,7 @@ import { TemplateEditorService } from './services/template-editor.service';
 import { TemplateLibraryService } from './services/template-library.service';
 import { UndoRedoService } from './services/undo-redo.service';
 import { PerformanceMonitorService } from './services/performance-monitor.service';
-import { JsonEditorComponent } from './components/json-editor/json-editor.component';
+import { MonacoEditorComponent } from './components/monaco-editor/monaco-editor.component';
 import { PreviewPanelComponent } from './components/preview-panel/preview-panel.component';
 import { TemplateSidebarComponent } from './components/template-library/template-sidebar.component';
 import { PerformancePanelComponent } from './components/performance-panel/performance-panel.component';
@@ -43,7 +43,7 @@ import { PerformancePanelComponent } from './components/performance-panel/perfor
   imports: [
     CommonModule,
     FormsModule,
-    JsonEditorComponent,
+    MonacoEditorComponent,
     PreviewPanelComponent,
     TemplateSidebarComponent,
     PerformancePanelComponent

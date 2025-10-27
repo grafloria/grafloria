@@ -19,6 +19,11 @@
           {
             "glob": "**/*",
             "input": "apps/renderer-demo/renderer-demo/public"
+          },
+          {
+            "glob": "**/*",
+            "input": "node_modules/monaco-editor",
+            "output": "assets/monaco-editor"
           }
         ],
         "styles": ["apps/renderer-demo/renderer-demo/src/styles.css"],
