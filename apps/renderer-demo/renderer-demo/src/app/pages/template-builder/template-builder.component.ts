@@ -18,6 +18,7 @@ import { DataTestingPanelComponent } from './components/data-testing-panel/data-
 import { EventMonitorPanelComponent } from './components/event-monitor-panel/event-monitor-panel.component';
 import { PortConfigPanelComponent } from './components/port-config-panel/port-config-panel.component';
 import { NodeLayerEditorComponent } from './components/node-layer-editor/node-layer-editor.component';
+import { ChildNodeWizardComponent, type ChildNodeConfig } from './components/child-node-wizard/child-node-wizard.component';
 import { KeyboardShortcutsService } from './services/keyboard-shortcuts.service';
 import type { PortsConfig } from './components/port-config-panel/port-config-panel.component';
 
@@ -64,7 +65,8 @@ import type { PortsConfig } from './components/port-config-panel/port-config-pan
     DataTestingPanelComponent,
     EventMonitorPanelComponent,
     PortConfigPanelComponent,
-    NodeLayerEditorComponent
+    NodeLayerEditorComponent,
+    ChildNodeWizardComponent
   ],
   selector: 'app-template-builder',
   templateUrl: './template-builder.component.html',
@@ -119,6 +121,9 @@ export class TemplateBuilderComponent implements OnInit, OnDestroy {
   currentNodeHtml = '';
   currentNodeCss = '';
   private monacoEditor: any;
+
+  // Child Node Wizard
+  showChildNodeWizard = false;
 
   // ViewChild references
   @ViewChild(EventMonitorPanelComponent) eventMonitor?: EventMonitorPanelComponent;
@@ -689,6 +694,106 @@ export class TemplateBuilderComponent implements OnInit, OnDestroy {
     } catch (error) {
       console.error('❌ Failed to save node layers:', error);
       alert('Failed to save layers. Please check console for details.');
+    }
+  }
+
+  /**
+   * Open child node wizard
+   */
+  openChildNodeWizard(): void {
+    this.showChildNodeWizard = true;
+  }
+
+  /**
+   * Generate and insert child node from wizard configuration
+   */
+  onChildNodeGenerate(config: ChildNodeConfig): void {
+    try {
+      const template = this.editorService.parseTemplate();
+
+      if (!template) {
+        alert('Invalid JSON template');
+        return;
+      }
+
+      // Ensure structure exists
+      if (!template.structure) {
+        template.structure = {};
+      }
+
+      // Generate child node JSON based on configuration
+      let childNode: any;
+
+      if (config.type === 'static') {
+        // Static child node
+        childNode = {
+          type: config.nodeType,
+          size: {
+            width: config.width,
+            height: config.height
+          }
+        };
+
+        // Add position if specified
+        if (config.x !== undefined && config.x !== null) {
+          childNode.position = { x: config.x, y: config.y || 0 };
+        }
+
+        // Add default shape
+        childNode.shape = {
+          type: 'rect',
+          fill: '#e3f2fd',
+          stroke: '#2196f3',
+          strokeWidth: 2
+        };
+
+      } else {
+        // Dynamic child node with data binding
+        childNode = {
+          type: config.nodeType,
+          dataTemplate: {
+            dataPath: config.dataPath || 'items',
+            itemVariable: config.itemVariable || 'item'
+          },
+          size: {
+            width: config.width,
+            height: config.height
+          },
+          shape: {
+            type: 'rect',
+            fill: '#e3f2fd',
+            stroke: '#2196f3',
+            strokeWidth: 2
+          },
+          htmlLayer: `<div style="padding: 8px;">{{${config.itemVariable || 'item'}}}</div>`
+        };
+
+        // Add layout for dynamic children
+        childNode.layout = {
+          direction: 'column',
+          wrap: 'nowrap',
+          justifyContent: 'start',
+          alignItems: 'stretch',
+          alignContent: 'start',
+          gap: 8,
+          padding: { top: 0, right: 0, bottom: 0, left: 0 }
+        };
+      }
+
+      // Insert into children array
+      if (!template.structure.children) {
+        template.structure.children = [];
+      }
+
+      template.structure.children.push(childNode);
+
+      // Update the editor
+      this.editorService.updateJson(JSON.stringify(template, null, 2));
+
+      console.log(`✅ ${config.type === 'static' ? 'Static' : 'Dynamic'} child node added:`, childNode);
+    } catch (error) {
+      console.error('❌ Failed to generate child node:', error);
+      alert('Failed to add child node. Please check console for details.');
     }
   }
 

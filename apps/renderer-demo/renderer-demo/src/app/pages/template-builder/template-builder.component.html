@@ -114,6 +114,17 @@
           </button>
         </div>
         <div class="panel-info">
+          <!-- Child Node Wizard Button -->
+          <app-button
+            *ngIf="activeEditorTab === 'json'"
+            variant="primary"
+            size="sm"
+            icon="➕"
+            (clicked)="openChildNodeWizard()"
+            title="Add a child node using guided wizard">
+            Add Child Node
+          </app-button>
+
           <!-- Node Layer Editor Button -->
           <app-button
             *ngIf="activeEditorTab === 'json'"
@@ -299,6 +310,13 @@
       </div>
     </div>
   </div>
+
+  <!-- Child Node Wizard Modal -->
+  <app-child-node-wizard
+    [isOpen]="showChildNodeWizard"
+    (generate)="onChildNodeGenerate($event)"
+    (close)="showChildNodeWizard = false">
+  </app-child-node-wizard>
 
   <!-- Node Layer Editor Modal -->
   <app-node-layer-editor
