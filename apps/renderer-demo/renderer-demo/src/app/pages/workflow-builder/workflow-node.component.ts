@@ -1,4 +1,4 @@
-import { Component, Input } from '@angular/core';
+import { Component, Input, OnInit, OnChanges, SimpleChanges, ChangeDetectorRef, ChangeDetectionStrategy } from '@angular/core';
 import { CommonModule } from '@angular/common';
 
 export type WorkflowNodeType = 'start' | 'task' | 'decision' | 'end';
@@ -14,14 +14,15 @@ export interface WorkflowNodeData {
   selector: 'app-workflow-node',
   standalone: true,
   imports: [CommonModule],
+  changeDetection: ChangeDetectionStrategy.Default,
   template: `
-    <div class="workflow-node" [ngClass]="['node-' + data.type, 'status-' + data.status]" *ngIf="data">
-      <div class="node-status-indicator" [ngClass]="'indicator-' + data.status">
+    <div class="workflow-node" [ngClass]="['node-' + workflowType, 'status-' + status]" *ngIf="node">
+      <div class="node-status-indicator" [ngClass]="'indicator-' + status">
         {{ getStatusIcon() }}
       </div>
       <div class="node-content">
         <div class="node-icon">{{ getTypeIcon() }}</div>
-        <div class="node-label">{{ data.label }}</div>
+        <div class="node-label">{{ label }}</div>
       </div>
     </div>
   `,
@@ -129,11 +130,39 @@ export interface WorkflowNodeData {
     }
   `]
 })
-export class WorkflowNodeComponent {
-  @Input() data!: WorkflowNodeData;
+export class WorkflowNodeComponent implements OnInit, OnChanges {
+  @Input() node: any; // NodeModel from the engine
+  @Input() engine?: any; // DiagramEngine (optional)
+
+  constructor(private cdr: ChangeDetectorRef) {}
+
+  ngOnInit(): void {
+    // Initial setup - no need to extract metadata here
+    // We'll use getters to always read fresh data
+  }
+
+  ngOnChanges(changes: SimpleChanges): void {
+    // Trigger change detection when inputs change
+    if (changes['node']) {
+      this.cdr.markForCheck();
+    }
+  }
+
+  // Use getters to always read fresh metadata from the node
+  get workflowType(): WorkflowNodeType {
+    return this.node?.getMetadata('workflowType') || 'task';
+  }
+
+  get label(): string {
+    return this.node?.getMetadata('label') || '';
+  }
+
+  get status(): NodeStatus {
+    return this.node?.getMetadata('status') || 'pending';
+  }
 
   getTypeIcon(): string {
-    switch (this.data.type) {
+    switch (this.workflowType) {
       case 'start': return '▶️';
       case 'task': return '⚙️';
       case 'decision': return '❓';
@@ -143,7 +172,7 @@ export class WorkflowNodeComponent {
   }
 
   getStatusIcon(): string {
-    switch (this.data.status) {
+    switch (this.status) {
       case 'pending': return '⏸️';
       case 'running': return '▶️';
       case 'completed': return '✅';

@@ -1,7 +1,7 @@
 import { Component, OnInit } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
-import { DiagramCanvasComponent } from '@grafloria/renderer-angular';
+import { DiagramCanvasComponent, ComponentRendererService } from '@grafloria/renderer-angular';
 import { DiagramEngine, NodeModel, InteractionMode, PortVisibilityStrategy } from '@grafloria/engine';
 import { LIGHT_THEME, type Theme, type Rectangle } from '@grafloria/renderer';
 import { WorkflowNodeComponent, type WorkflowNodeType, type NodeStatus } from './workflow-node.component';
@@ -33,6 +33,12 @@ export class WorkflowBuilderComponent implements OnInit {
   currentExecutionIndex = 0;
   workflowNodes: Map<string, WorkflowNode> = new Map();
   executionOrder: string[] = [];
+
+  constructor(private componentRenderer: ComponentRendererService) {
+    // Register workflow node component for HTML layer rendering
+    this.componentRenderer.registerComponent('workflow', WorkflowNodeComponent);
+    console.log('✅ Registered WorkflowNodeComponent for type "workflow"');
+  }
 
   ngOnInit() {
     this.initializeEngine();
@@ -101,7 +107,7 @@ export class WorkflowBuilderComponent implements OnInit {
     node.setMetadata('workflowType', type);
     node.setMetadata('label', label);  // Set label for SVG rendering
     node.setMetadata('status', 'pending');
-    node.setMetadata('useForeignObject', true);  // Use foreignObject to embed WorkflowNodeComponent
+    node.setMetadata('useHTMLLayer', true);  // Use HTML layer to render WorkflowNodeComponent
 
     const workflowNode: WorkflowNode = {
       id,
