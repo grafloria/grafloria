@@ -17,7 +17,7 @@ export interface PortConfig {
  */
 export interface PortsConfig {
   enabled?: boolean;
-  defaultVisibility?: 'always' | 'hover' | 'never';
+  defaultVisibility?: 'always' | 'on-hover' | 'never';
   left?: PortConfig;
   right?: PortConfig;
   top?: PortConfig;
@@ -83,7 +83,7 @@ export interface PortsConfig {
             (ngModelChange)="emitChange()"
             class="config-select">
             <option value="always">Always Visible</option>
-            <option value="hover">On Hover</option>
+            <option value="on-hover">On Hover</option>
             <option value="never">Never (Hidden)</option>
           </select>
         </div>
