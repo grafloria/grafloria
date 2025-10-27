@@ -2,7 +2,7 @@ import { Component, OnInit, ChangeDetectorRef } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { DiagramCanvasComponent } from '@grafloria/renderer-angular';
-import { DiagramEngine, NodeModel, PortModel, InteractionMode, PortVisibilityStrategy } from '@grafloria/engine';
+import { DiagramEngine, NodeModel, PortModel, LinkModel, InteractionMode, PortVisibilityStrategy } from '@grafloria/engine';
 import { LIGHT_THEME, type Theme, type Rectangle } from '@grafloria/renderer';
 
 type WorkflowNodeType = 'start' | 'task' | 'decision' | 'end';
@@ -68,12 +68,19 @@ export class WorkflowBuilderComponent implements OnInit {
     const endNode = this.createWorkflowNode('end', 'end', 'End', { x: 950, y: 200 });
 
     // Create connections using ports for proper shape-aware routing
-    diagram.connectPorts(startNode.getPorts()[1].id, task1Node.getPorts()[0].id, 'orthogonal');
-    diagram.connectPorts(task1Node.getPorts()[1].id, decisionNode.getPorts()[0].id, 'orthogonal');
-    diagram.connectPorts(decisionNode.getPorts()[1].id, task2Node.getPorts()[0].id, 'orthogonal'); // right -> top branch
-    diagram.connectPorts(decisionNode.getPorts()[2].id, task3Node.getPorts()[0].id, 'orthogonal'); // bottom -> bottom branch
-    diagram.connectPorts(task2Node.getPorts()[1].id, endNode.getPorts()[0].id, 'orthogonal');
-    diagram.connectPorts(task3Node.getPorts()[1].id, endNode.getPorts()[0].id, 'orthogonal');
+    const link1 = new LinkModel(startNode.getPorts()[1].id, task1Node.getPorts()[0].id, 'orthogonal');
+    const link2 = new LinkModel(task1Node.getPorts()[1].id, decisionNode.getPorts()[0].id, 'orthogonal');
+    const link3 = new LinkModel(decisionNode.getPorts()[1].id, task2Node.getPorts()[0].id, 'orthogonal'); // right -> top branch
+    const link4 = new LinkModel(decisionNode.getPorts()[2].id, task3Node.getPorts()[0].id, 'orthogonal'); // bottom -> bottom branch
+    const link5 = new LinkModel(task2Node.getPorts()[1].id, endNode.getPorts()[0].id, 'orthogonal');
+    const link6 = new LinkModel(task3Node.getPorts()[1].id, endNode.getPorts()[0].id, 'orthogonal');
+
+    diagram.addLink(link1);
+    diagram.addLink(link2);
+    diagram.addLink(link3);
+    diagram.addLink(link4);
+    diagram.addLink(link5);
+    diagram.addLink(link6);
 
     // Set execution order
     this.executionOrder = ['start', 'task1', 'decision1', 'task2', 'end'];
