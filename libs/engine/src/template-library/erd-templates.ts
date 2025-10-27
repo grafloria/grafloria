@@ -653,6 +653,157 @@ export const ERDFieldOptionB: NodeTemplate = {
 };
 
 /**
+ * ERD Table with Dynamic Fields (Repeater)
+ * Modern approach using repeater configuration for dynamic field generation
+ * This is the RECOMMENDED approach for new ERD implementations
+ */
+export const ERDTableRepeater: NodeTemplate = {
+  id: 'erd-table-repeater',
+  version: '1.0.0',
+  meta: {
+    name: 'ERD Table (Repeater)',
+    description: 'Database table with dynamic field nodes using repeater',
+    category: 'erd',
+    tags: ['database', 'table', 'erd', 'repeater', 'dynamic'],
+  },
+  structure: {
+    type: 'erd-container-repeater',
+    role: 'container',
+    size: { width: 250, height: 200 },
+
+    shape: {
+      type: 'rect',
+      fill: '#ffffff',
+      stroke: '#6b7280',
+      strokeWidth: 2,
+      cornerRadius: 4,
+    },
+
+    behavior: {
+      draggable: true,
+      selectable: true,
+    },
+
+    ports: { enabled: false },
+
+    layout: {
+      direction: 'column',
+      gap: 0,
+      padding: { top: 0, right: 0, bottom: 0, left: 0 },
+    },
+
+    // Static header child
+    children: [
+      {
+        type: 'erd-header-repeater',
+        size: { width: 250, height: 32 },
+
+        html: {
+          mode: 'template',
+          template: `
+            <div class="erd-header" style="
+              width: 100%;
+              height: 32px;
+              padding: 8px;
+              background: #f3f4f6;
+              border-bottom: 1px solid #d1d5db;
+              font-weight: 600;
+              font-size: 13px;
+              display: flex;
+              align-items: center;
+              gap: 6px;
+            ">
+              <span>🔑</span>
+              <span>{{data.tableName}}</span>
+            </div>
+          `,
+          className: 'node-erd-header-repeater',
+          zIndex: 2,
+        },
+
+        behavior: {
+          draggable: true,
+          dragHandler: {
+            isDragHandler: true,
+            dragChildren: true,
+          },
+          selectable: false,
+        },
+
+        ports: { enabled: false },
+      }
+    ],
+
+    // Dynamic field children using repeater
+    repeater: {
+      dataSource: 'columns',
+      keyField: 'name',
+      itemTemplate: {
+        type: 'erd-field-repeater',
+        role: 'content',
+        size: { width: 250, height: 24 },
+
+        shape: {
+          type: 'rect',
+          fill: 'transparent',
+          stroke: 'none',
+        },
+
+        html: {
+          mode: 'template',
+          template: `
+            <div class="erd-field-row" style="
+              display: flex;
+              align-items: center;
+              gap: 6px;
+              padding: 4px 8px;
+              font-size: 12px;
+              background: #ffffff;
+              border-bottom: {{#data._isLast}}none{{/data._isLast}}{{^data._isLast}}1px solid #e5e7eb{{/data._isLast}};
+              height: 24px;
+            ">
+              <span class="field-icon" style="width: 14px; text-align: center; font-size: 11px;">
+                {{#data.isPrimaryKey}}🔑{{/data.isPrimaryKey}}
+                {{#data.isForeignKey}}{{^data.isPrimaryKey}}🔗{{/data.isPrimaryKey}}{{/data.isForeignKey}}
+                {{^data.isPrimaryKey}}{{^data.isForeignKey}}📝{{/data.isForeignKey}}{{/data.isPrimaryKey}}
+              </span>
+              <span class="field-name" style="
+                flex: 1;
+                font-weight: {{#data.isPrimaryKey}}600{{/data.isPrimaryKey}}{{^data.isPrimaryKey}}400{{/data.isPrimaryKey}};
+                color: {{#data.isPrimaryKey}}#0066cc{{/data.isPrimaryKey}}{{^data.isPrimaryKey}}#18181b{{/data.isPrimaryKey}};
+              ">{{data.name}}</span>
+              <span class="field-type" style="
+                color: #71717a;
+                font-size: 11px;
+                font-family: 'Consolas', 'Courier New', monospace;
+              ">{{data.dataType}}</span>
+            </div>
+          `,
+          className: 'node-erd-field-repeater',
+          zIndex: 1,
+        },
+
+        behavior: {
+          draggable: false,
+          selectable: false,
+          connectable: true,
+        },
+
+        ports: {
+          enabled: true,
+          left: { enabled: true, type: 'input' },
+          right: { enabled: true, type: 'output' },
+        },
+      }
+    }
+  },
+  defaultData: {
+    tableName: 'Table',
+    columns: [],
+  },
+};
+
+/**
  * Export all ERD templates
  */
 export const ERDTemplates = {
@@ -666,4 +817,6 @@ export const ERDTemplates = {
   ERDTableContainerOptionB,
   ERDTableHeaderOptionB,
   ERDFieldOptionB,
+  // Modern Repeater Approach (RECOMMENDED)
+  ERDTableRepeater,
 };

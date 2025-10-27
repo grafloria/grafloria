@@ -100,11 +100,15 @@ export class HtmlNodeRendererDirective implements OnInit, OnChanges {
   }
 
   private renderTemplate(node: any, htmlConfig: any) {
-    // Simple Mustache-style template rendering
+    // Enhanced template rendering with :loop support
     let html = htmlConfig.template;
 
     // Get data source - NodeModel has node.data, GroupModel has metadata.data
     const dataSource = node.data || node.getMetadata?.('data') || {};
+
+    // Handle :loop attribute for array iteration (LemonadeJS-style)
+    // Example: <div :loop="${this.data.items}">{{self.name}}</div>
+    html = this.renderLoops(html, dataSource);
 
     // Replace {{data.key}} with dataSource[key]
     html = html.replace(/\{\{data\.(\w+)\}\}/g, (match: string, key: string) => {
@@ -144,6 +148,49 @@ export class HtmlNodeRendererDirective implements OnInit, OnChanges {
       hostElement.parentNode.insertBefore(container, hostElement.nextSibling);
       this.templateElement = container;
     }
+  }
+
+  /**
+   * Render :loop attributes for array iteration (LemonadeJS-style)
+   * Supports patterns like: <div :loop="${this.data.items}">{{self.name}}</div>
+   */
+  private renderLoops(html: string, dataSource: any): string {
+    // Match elements with :loop attribute
+    // Pattern: <tagName :loop="${this.data.arrayName}">...content...</tagName>
+    const loopRegex = /<(\w+)([^>]*?):loop="\$\{this\.data\.(\w+)\}"([^>]*?)>(.*?)<\/\1>/gs;
+
+    return html.replace(loopRegex, (match, tagName, attrsBefore, arrayName, attrsAfter, content) => {
+      // Get the array data
+      const arrayData = dataSource[arrayName];
+
+      // If not an array or empty, return empty string
+      if (!Array.isArray(arrayData) || arrayData.length === 0) {
+        return '';
+      }
+
+      // Generate repeated HTML for each item
+      const repeatedHtml = arrayData.map((item, index) => {
+        // Replace {{self.property}} with item data
+        let itemHtml = content.replace(/\{\{self\.(\w+)\}\}/g, (_m: string, prop: string) => {
+          return item[prop] ?? '';
+        });
+
+        // Handle conditional blocks for item properties {{#self.prop}}...{{/self.prop}}
+        itemHtml = itemHtml.replace(/\{\{#self\.(\w+)\}\}(.*?)\{\{\/self\.\1\}\}/gs, (_m: string, prop: string, conditionalContent: string) => {
+          return item[prop] ? conditionalContent : '';
+        });
+
+        // Handle inverted conditional blocks {{^self.prop}}...{{/self.prop}}
+        itemHtml = itemHtml.replace(/\{\{\^self\.(\w+)\}\}(.*?)\{\{\/self\.\1\}\}/gs, (_m: string, prop: string, conditionalContent: string) => {
+          return !item[prop] ? conditionalContent : '';
+        });
+
+        // Reconstruct the element without :loop attribute
+        return `<${tagName}${attrsBefore}${attrsAfter} data-loop-index="${index}">${itemHtml}</${tagName}>`;
+      }).join('');
+
+      return repeatedHtml;
+    });
   }
 
   ngOnDestroy() {
