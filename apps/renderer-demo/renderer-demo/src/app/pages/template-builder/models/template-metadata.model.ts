@@ -286,39 +286,43 @@ export function generateTemplateThumbnail(template: any, category: string): stri
     shapeSvg = `<rect x="10" y="10" width="${width-20}" height="${height-20}" rx="${radius}" fill="${fill}" stroke="${stroke}" stroke-width="2"/>`;
   }
 
-  // Add HTML indicator if present
-  const htmlBadge = hasHtml ? `<text x="${width-15}" y="20" font-size="16" text-anchor="end">🌐</text>` : '';
+  // Add HTML indicator if present (use circle instead of emoji to avoid Unicode issues)
+  const htmlBadge = hasHtml ? `<circle cx="${width-15}" cy="15" r="8" fill="#4ade80"/><text x="${width-15}" y="19" font-size="12" text-anchor="middle" fill="white" font-weight="bold">H</text>` : '';
 
   const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}" viewBox="0 0 ${width} ${height}">
     ${shapeSvg}
     ${htmlBadge}
   </svg>`;
 
-  return `data:image/svg+xml;base64,${btoa(svg)}`;
+  // Use encodeURIComponent instead of btoa to handle Unicode properly
+  return `data:image/svg+xml,${encodeURIComponent(svg)}`;
 }
 
 /**
  * Generate category-based placeholder
  */
 function generateCategoryPlaceholder(category: string): string {
-  const colors: Record<string, { bg: string; fg: string; icon: string }> = {
-    basic: { bg: '#e3f2fd', fg: '#2196f3', icon: '▢' },
-    workflow: { bg: '#f0f4ff', fg: '#4f46e5', icon: '⚡' },
-    diagram: { bg: '#dbeafe', fg: '#1e40af', icon: '□' },
-    dashboard: { bg: '#ffffff', fg: '#111827', icon: '📊' },
-    'ui-component': { bg: '#faf5ff', fg: '#9333ea', icon: '🎨' },
-    database: { bg: '#e0e7ff', fg: '#4338ca', icon: '💾' },
-    'data-visualization': { bg: '#f0fdfa', fg: '#14b8a6', icon: '📈' },
-    custom: { bg: '#f3f4f6', fg: '#6b7280', icon: '⭐' }
+  const colors: Record<string, { bg: string; fg: string; shape: string }> = {
+    basic: { bg: '#e3f2fd', fg: '#2196f3', shape: '<rect x="75" y="45" width="50" height="30" fill="none" stroke="currentColor" stroke-width="3"/>' },
+    workflow: { bg: '#f0f4ff', fg: '#4f46e5', shape: '<polygon points="100,40 85,55 100,70 115,55" fill="none" stroke="currentColor" stroke-width="3"/><line x1="100" y1="70" x2="100" y2="80" stroke="currentColor" stroke-width="3"/>' },
+    diagram: { bg: '#dbeafe', fg: '#1e40af', shape: '<circle cx="100" cy="60" r="20" fill="none" stroke="currentColor" stroke-width="3"/>' },
+    dashboard: { bg: '#ffffff', fg: '#111827', shape: '<rect x="75" y="50" width="15" height="30" fill="currentColor"/><rect x="95" y="40" width="15" height="40" fill="currentColor"/><rect x="115" y="55" width="15" height="25" fill="currentColor"/>' },
+    'ui-component': { bg: '#faf5ff', fg: '#9333ea', shape: '<rect x="80" y="45" width="40" height="30" rx="5" fill="none" stroke="currentColor" stroke-width="3"/>' },
+    database: { bg: '#e0e7ff', fg: '#4338ca', shape: '<ellipse cx="100" cy="50" rx="25" ry="10" fill="none" stroke="currentColor" stroke-width="3"/><line x1="75" y1="50" x2="75" y2="70" stroke="currentColor" stroke-width="3"/><line x1="125" y1="50" x2="125" y2="70" stroke="currentColor" stroke-width="3"/><ellipse cx="100" cy="70" rx="25" ry="10" fill="none" stroke="currentColor" stroke-width="3"/>' },
+    'data-visualization': { bg: '#f0fdfa', fg: '#14b8a6', shape: '<polyline points="75,75 85,65 95,70 105,50 115,55 125,45" fill="none" stroke="currentColor" stroke-width="3"/>' },
+    custom: { bg: '#f3f4f6', fg: '#6b7280', shape: '<polygon points="100,45 110,60 100,75 90,60" fill="none" stroke="currentColor" stroke-width="3"/>' }
   };
 
   const config = colors[category] || colors['custom'];
   const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="200" height="120" viewBox="0 0 200 120">
     <rect width="200" height="120" fill="${config.bg}"/>
-    <text x="100" y="70" font-size="48" text-anchor="middle" fill="${config.fg}">${config.icon}</text>
+    <g color="${config.fg}">
+      ${config.shape}
+    </g>
   </svg>`;
 
-  return `data:image/svg+xml;base64,${btoa(svg)}`;
+  // Use encodeURIComponent instead of btoa to handle Unicode properly
+  return `data:image/svg+xml,${encodeURIComponent(svg)}`;
 }
 
 /**
