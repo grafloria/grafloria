@@ -7,55 +7,75 @@
     </div>
 
     <div class="toolbar-right">
-      <!-- Undo/Redo -->
-      <button
-        class="btn btn-icon"
+      <!-- Undo/Redo with NEW Button Component -->
+      <app-button
+        variant="ghost"
+        size="sm"
+        icon="↶"
+        iconOnly="true"
         [disabled]="!(canUndo$ | async)"
-        (click)="undo()"
-        title="Undo (Ctrl+Z)">
-        ↶
-      </button>
-      <button
-        class="btn btn-icon"
+        (clicked)="undo()">
+      </app-button>
+      <app-button
+        variant="ghost"
+        size="sm"
+        icon="↷"
+        iconOnly="true"
         [disabled]="!(canRedo$ | async)"
-        (click)="redo()"
-        title="Redo (Ctrl+Y)">
-        ↷
-      </button>
+        (clicked)="redo()">
+      </app-button>
 
       <div class="divider"></div>
 
-      <!-- Actions -->
-      <button class="btn" (click)="save()" title="Save (Ctrl+S)">
-        💾 Save
-      </button>
-      <button class="btn" (click)="reset()" title="Reset">
-        🔄 Reset
-      </button>
-      <button class="btn" (click)="exportTemplate()" title="Export">
-        📥 Export
-      </button>
-      <button class="btn" (click)="importTemplate()" title="Import">
-        📤 Import
-      </button>
+      <!-- Actions with NEW Button Component -->
+      <app-button
+        variant="primary"
+        size="sm"
+        icon="💾"
+        (clicked)="save()">
+        Save
+      </app-button>
+      <app-button
+        variant="secondary"
+        size="sm"
+        icon="🔄"
+        (clicked)="reset()">
+        Reset
+      </app-button>
+      <app-button
+        variant="secondary"
+        size="sm"
+        icon="📥"
+        (clicked)="exportTemplate()">
+        Export
+      </app-button>
+      <app-button
+        variant="secondary"
+        size="sm"
+        icon="📤"
+        (clicked)="importTemplate()">
+        Import
+      </app-button>
 
       <div class="divider"></div>
 
-      <!-- Toggles -->
-      <button
-        class="btn btn-icon"
-        (click)="toggleSidebar()"
+      <!-- Toggles with NEW Button Component -->
+      <app-button
+        variant="ghost"
+        size="sm"
+        icon="☰"
+        iconOnly="true"
         [class.active]="showSidebar"
-        title="Toggle Sidebar (Ctrl+L)">
-        ☰
-      </button>
-      <button
-        class="btn btn-icon"
-        (click)="togglePerformancePanel()"
-        [class.active]="showPerformancePanel"
-        title="Toggle Performance (Ctrl+Shift+P)">
-        📊
-      </button>
+        (clicked)="toggleSidebar()">
+      </app-button>
+      <app-button
+        variant="ghost"
+        size="sm"
+        icon="📊"
+        iconOnly="true"
+        [class.active]="showBottomPanel"
+        (clicked)="toggleBottomPanel()">
+      </app-button>
     </div>
   </div>
 
@@ -129,13 +149,53 @@
       </div>
     </div>
 
-    <!-- Right: Live Preview -->
-    <div class="preview-panel">
-      <app-preview-panel
-        [template]="(editorState$ | async)?.json || ''"
-        [htmlLayer]="(editorState$ | async)?.html || ''"
-        [cssLayer]="(editorState$ | async)?.css || ''">
-      </app-preview-panel>
+    <!-- Right: NEW Multi-Tab Panel (Preview/Data/Ports) -->
+    <div class="right-panel">
+      <div class="right-panel-tabs">
+        <button
+          class="tab"
+          [class.active]="activeRightTab === 'preview'"
+          (click)="activeRightTab = 'preview'">
+          Preview
+        </button>
+        <button
+          class="tab"
+          [class.active]="activeRightTab === 'data'"
+          (click)="activeRightTab = 'data'">
+          Test Data
+        </button>
+        <button
+          class="tab"
+          [class.active]="activeRightTab === 'ports'"
+          (click)="activeRightTab = 'ports'">
+          Ports
+        </button>
+      </div>
+
+      <div class="right-panel-content">
+        <!-- Preview Panel -->
+        <app-preview-panel
+          *ngIf="activeRightTab === 'preview'"
+          [template]="(editorState$ | async)?.json || ''"
+          [htmlLayer]="(editorState$ | async)?.html || ''"
+          [cssLayer]="(editorState$ | async)?.css || ''">
+        </app-preview-panel>
+
+        <!-- NEW: Data Testing Panel -->
+        <app-data-testing-panel
+          *ngIf="activeRightTab === 'data'"
+          [template]="getCurrentTemplate()"
+          [data]="testData"
+          (dataChange)="onTestDataChange($event)">
+        </app-data-testing-panel>
+
+        <!-- NEW: Port Configuration Panel -->
+        <app-port-config-panel
+          *ngIf="activeRightTab === 'ports'"
+          [portsConfig]="getCurrentTemplate()?.structure?.ports || { enabled: false }"
+          (portsConfigChange)="onPortsConfigChange($event)">
+        </app-port-config-panel>
+      </div>
     </div>
 
     <!-- Far Right: Documentation Sidebar -->
@@ -151,10 +211,49 @@
     </div>
   </div>
 
-  <!-- Bottom: Performance Metrics -->
-  <div class="bottom-panel" *ngIf="showPerformancePanel">
-    <app-performance-panel
-      [metrics]="performanceMetrics$ | async">
-    </app-performance-panel>
+  <!-- Bottom: NEW Multi-Tab Panel (Events/Performance/Validation) -->
+  <div class="bottom-panel" *ngIf="showBottomPanel">
+    <div class="bottom-panel-tabs">
+      <button
+        class="tab"
+        [class.active]="activeBottomTab === 'events'"
+        (click)="activeBottomTab = 'events'">
+        Event Monitor
+      </button>
+      <button
+        class="tab"
+        [class.active]="activeBottomTab === 'performance'"
+        (click)="activeBottomTab = 'performance'">
+        Performance
+      </button>
+      <button
+        class="tab"
+        [class.active]="activeBottomTab === 'validation'"
+        (click)="activeBottomTab = 'validation'">
+        Validation
+      </button>
+    </div>
+
+    <div class="bottom-panel-content">
+      <!-- NEW: Event Monitor Panel -->
+      <app-event-monitor-panel
+        *ngIf="activeBottomTab === 'events'">
+      </app-event-monitor-panel>
+
+      <!-- Performance Panel -->
+      <app-performance-panel
+        *ngIf="activeBottomTab === 'performance'"
+        [metrics]="performanceMetrics$ | async">
+      </app-performance-panel>
+
+      <!-- Validation Panel (Placeholder) -->
+      <div *ngIf="activeBottomTab === 'validation'" class="validation-placeholder">
+        <div class="placeholder-content">
+          <div class="placeholder-icon">✓</div>
+          <div class="placeholder-text">Validation Panel</div>
+          <div class="placeholder-hint">Coming soon... Template validation and linting</div>
+        </div>
+      </div>
+    </div>
   </div>
 </div>

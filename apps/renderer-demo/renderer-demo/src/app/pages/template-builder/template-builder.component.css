@@ -194,10 +194,144 @@
   overflow: hidden;
 }
 
+/* Right Panel */
+.right-panel {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  background: white;
+  overflow: hidden;
+}
+
+.right-panel-tabs {
+  display: flex;
+  gap: 0;
+  background: #fafafa;
+  border-bottom: 1px solid #e0e0e0;
+  padding: 0 12px;
+}
+
+.right-panel-tabs .tab {
+  padding: 10px 16px;
+  background: transparent;
+  border: none;
+  border-bottom: 2px solid transparent;
+  color: #666;
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.right-panel-tabs .tab:hover {
+  color: #333;
+  background: rgba(102, 126, 234, 0.05);
+}
+
+.right-panel-tabs .tab.active {
+  color: #667eea;
+  border-bottom-color: #667eea;
+  background: rgba(102, 126, 234, 0.08);
+}
+
+.right-panel-content {
+  flex: 1;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+
 /* Bottom Panel */
 .bottom-panel {
-  height: 280px;
+  height: 300px;
   background: white;
   border-top: 1px solid #e0e0e0;
-  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.bottom-panel-tabs {
+  display: flex;
+  gap: 0;
+  background: #fafafa;
+  border-bottom: 1px solid #e0e0e0;
+  padding: 0 12px;
+  flex-shrink: 0;
+}
+
+.bottom-panel-tabs .tab {
+  padding: 10px 16px;
+  background: transparent;
+  border: none;
+  border-bottom: 2px solid transparent;
+  color: #666;
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.bottom-panel-tabs .tab:hover {
+  color: #333;
+  background: rgba(102, 126, 234, 0.05);
+}
+
+.bottom-panel-tabs .tab.active {
+  color: #667eea;
+  border-bottom-color: #667eea;
+  background: rgba(102, 126, 234, 0.08);
+}
+
+.bottom-panel-content {
+  flex: 1;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+
+/* Validation Placeholder */
+.validation-placeholder {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  height: 100%;
+  color: #999;
+  padding: 24px;
+  text-align: center;
+}
+
+.validation-placeholder h3 {
+  margin: 0 0 8px 0;
+  font-size: 16px;
+  font-weight: 600;
+  color: #666;
+}
+
+.validation-placeholder p {
+  margin: 0;
+  font-size: 14px;
+  color: #999;
+}
+
+/* Responsive adjustments */
+@media (max-width: 1280px) {
+  .sidebar {
+    width: 200px;
+  }
+
+  .right-panel {
+    min-width: 300px;
+  }
+}
+
+@media (max-width: 1024px) {
+  .main-content {
+    flex-direction: column;
+  }
+
+  .bottom-panel {
+    height: 250px;
+  }
 }

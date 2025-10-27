@@ -1,4 +1,4 @@
-import { Component, OnInit, OnDestroy, inject } from '@angular/core';
+import { Component, OnInit, OnDestroy, inject, ViewChild } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { Subject, takeUntil, debounceTime, distinctUntilChanged } from 'rxjs';
@@ -12,6 +12,13 @@ import { TemplateSidebarComponent } from './components/template-library/template
 import { PerformancePanelComponent } from './components/performance-panel/performance-panel.component';
 import { DocumentationSidebarComponent } from './components/documentation-sidebar/documentation-sidebar.component';
 import { SnippetPanelComponent } from './components/snippet-panel/snippet-panel.component';
+// NEW IMPORTS - Foundation & Core Features
+import { ButtonComponent } from './shared/components/button/button.component';
+import { DataTestingPanelComponent } from './components/data-testing-panel/data-testing-panel.component';
+import { EventMonitorPanelComponent } from './components/event-monitor-panel/event-monitor-panel.component';
+import { PortConfigPanelComponent } from './components/port-config-panel/port-config-panel.component';
+import { KeyboardShortcutsService } from './services/keyboard-shortcuts.service';
+import type { PortsConfig } from './components/port-config-panel/port-config-panel.component';
 
 /**
  * Template Builder Component
@@ -50,7 +57,12 @@ import { SnippetPanelComponent } from './components/snippet-panel/snippet-panel.
     TemplateSidebarComponent,
     PerformancePanelComponent,
     DocumentationSidebarComponent,
-    SnippetPanelComponent
+    SnippetPanelComponent,
+    // NEW COMPONENTS
+    ButtonComponent,
+    DataTestingPanelComponent,
+    EventMonitorPanelComponent,
+    PortConfigPanelComponent
   ],
   selector: 'app-template-builder',
   templateUrl: './template-builder.component.html',
@@ -65,11 +77,22 @@ export class TemplateBuilderComponent implements OnInit, OnDestroy {
   libraryService = inject(TemplateLibraryService);
   undoRedoService = inject(UndoRedoService);
   performanceMonitorService = inject(PerformanceMonitorService);
+  keyboardService = inject(KeyboardShortcutsService); // NEW
 
   // UI State
-  showPerformancePanel = true;
+  showPerformancePanel = false;
   showSidebar = true;
+  showBottomPanel = false; // NEW
   activeEditorTab: 'json' | 'html' | 'css' = 'json';
+  activeRightTab: 'preview' | 'data' | 'ports' = 'preview'; // NEW
+  activeBottomTab: 'events' | 'performance' | 'validation' = 'events'; // NEW
+
+  // NEW: Test data for data testing panel
+  testData: any = {};
+
+  // ViewChild references
+  @ViewChild(EventMonitorPanelComponent) eventMonitor?: EventMonitorPanelComponent;
+  @ViewChild(PreviewPanelComponent) previewPanel?: PreviewPanelComponent;
 
   // Service observables
   canUndo$ = this.undoRedoService.canUndo$;
@@ -80,6 +103,7 @@ export class TemplateBuilderComponent implements OnInit, OnDestroy {
   ngOnInit(): void {
     this.setupKeyboardShortcuts();
     this.setupAutoSaveHistory();
+    this.initializeTestData(); // NEW
   }
 
   ngOnDestroy(): void {
@@ -88,46 +112,143 @@ export class TemplateBuilderComponent implements OnInit, OnDestroy {
   }
 
   /**
-   * Setup keyboard shortcuts
+   * Setup keyboard shortcuts using KeyboardShortcutsService
    */
   private setupKeyboardShortcuts(): void {
-    document.addEventListener('keydown', this.handleKeyDown.bind(this));
+    // File operations
+    this.keyboardService.register({
+      key: 's',
+      ctrl: true,
+      description: 'Save template',
+      category: 'file',
+      handler: () => this.save()
+    });
+
+    this.keyboardService.register({
+      key: 'e',
+      ctrl: true,
+      description: 'Export template',
+      category: 'file',
+      handler: () => this.exportTemplate()
+    });
+
+    // Edit operations
+    this.keyboardService.register({
+      key: 'z',
+      ctrl: true,
+      description: 'Undo',
+      category: 'edit',
+      handler: () => this.undo()
+    });
+
+    this.keyboardService.register({
+      key: 'y',
+      ctrl: true,
+      description: 'Redo',
+      category: 'edit',
+      handler: () => this.redo()
+    });
+
+    this.keyboardService.register({
+      key: 'z',
+      ctrl: true,
+      shift: true,
+      description: 'Redo (alternative)',
+      category: 'edit',
+      handler: () => this.redo()
+    });
+
+    // View operations - Tab switching
+    this.keyboardService.register({
+      key: '1',
+      ctrl: true,
+      description: 'Switch to JSON tab',
+      category: 'view',
+      handler: () => this.activeEditorTab = 'json'
+    });
+
+    this.keyboardService.register({
+      key: '2',
+      ctrl: true,
+      description: 'Switch to HTML tab',
+      category: 'view',
+      handler: () => this.activeEditorTab = 'html'
+    });
+
+    this.keyboardService.register({
+      key: '3',
+      ctrl: true,
+      description: 'Switch to CSS tab',
+      category: 'view',
+      handler: () => this.activeEditorTab = 'css'
+    });
+
+    // View operations - Panel toggles
+    this.keyboardService.register({
+      key: 'b',
+      ctrl: true,
+      description: 'Toggle left sidebar',
+      category: 'view',
+      handler: () => this.toggleSidebar()
+    });
+
+    this.keyboardService.register({
+      key: 'l',
+      ctrl: true,
+      description: 'Toggle right panel tab',
+      category: 'view',
+      handler: () => this.cycleRightTab()
+    });
+
+    this.keyboardService.register({
+      key: 'p',
+      ctrl: true,
+      shift: true,
+      description: 'Toggle bottom panel',
+      category: 'view',
+      handler: () => this.toggleBottomPanel()
+    });
+
+    // Preview operations
+    this.keyboardService.register({
+      key: '=',
+      ctrl: true,
+      description: 'Zoom in preview',
+      category: 'preview',
+      handler: () => this.previewPanel?.zoomIn()
+    });
+
+    this.keyboardService.register({
+      key: '-',
+      ctrl: true,
+      description: 'Zoom out preview',
+      category: 'preview',
+      handler: () => this.previewPanel?.zoomOut()
+    });
+
+    this.keyboardService.register({
+      key: '0',
+      ctrl: true,
+      description: 'Reset zoom',
+      category: 'preview',
+      handler: () => this.previewPanel?.resetZoom()
+    });
+
+    console.log('✅ Registered', this.keyboardService.getAllShortcuts().length, 'keyboard shortcuts');
   }
 
   /**
-   * Handle keyboard shortcuts
+   * Initialize test data from template
    */
-  private handleKeyDown(event: KeyboardEvent): void {
-    // Ctrl+Z - Undo
-    if (event.ctrlKey && event.key === 'z' && !event.shiftKey) {
-      event.preventDefault();
-      this.undo();
-    }
-
-    // Ctrl+Y or Ctrl+Shift+Z - Redo
-    if ((event.ctrlKey && event.key === 'y') ||
-        (event.ctrlKey && event.shiftKey && event.key === 'z')) {
-      event.preventDefault();
-      this.redo();
-    }
-
-    // Ctrl+S - Save
-    if (event.ctrlKey && event.key === 's') {
-      event.preventDefault();
-      this.save();
-    }
-
-    // Ctrl+Shift+P - Toggle performance panel
-    if (event.ctrlKey && event.shiftKey && event.key === 'p') {
-      event.preventDefault();
-      this.togglePerformancePanel();
-    }
-
-    // Ctrl+L - Toggle sidebar
-    if (event.ctrlKey && event.key === 'l') {
-      event.preventDefault();
-      this.toggleSidebar();
-    }
+  private initializeTestData(): void {
+    this.editorState$
+      .pipe(takeUntil(this.destroy$))
+      .subscribe(state => {
+        const template = this.editorService.parseTemplate();
+        if (template?.defaultData && Object.keys(this.testData).length === 0) {
+          this.testData = { ...template.defaultData };
+        }
+      });
   }
 
   /**
@@ -346,5 +467,59 @@ export class TemplateBuilderComponent implements OnInit, OnDestroy {
    */
   toggleSidebar(): void {
     this.showSidebar = !this.showSidebar;
+  }
+
+  /**
+   * NEW: Toggle bottom panel
+   */
+  toggleBottomPanel(): void {
+    this.showBottomPanel = !this.showBottomPanel;
+  }
+
+  /**
+   * NEW: Cycle through right panel tabs
+   */
+  cycleRightTab(): void {
+    const tabs: Array<'preview' | 'data' | 'ports'> = ['preview', 'data', 'ports'];
+    const currentIndex = tabs.indexOf(this.activeRightTab);
+    this.activeRightTab = tabs[(currentIndex + 1) % tabs.length];
+  }
+
+  /**
+   * NEW: Handle test data change
+   */
+  onTestDataChange(data: any): void {
+    this.testData = data;
+    // TODO: Update preview with new data
+    console.log('✅ Test data updated:', data);
+  }
+
+  /**
+   * NEW: Handle ports configuration change
+   */
+  onPortsConfigChange(portsConfig: PortsConfig): void {
+    const currentState = this.editorService.getState();
+    try {
+      const template = JSON.parse(currentState.json);
+
+      if (!template.structure) {
+        template.structure = {};
+      }
+
+      template.structure.ports = portsConfig;
+
+      this.editorService.updateJson(JSON.stringify(template, null, 2));
+
+      console.log('✅ Ports configuration updated');
+    } catch (error) {
+      console.error('❌ Failed to update ports:', error);
+    }
+  }
+
+  /**
+   * Get current template for data testing panel
+   */
+  getCurrentTemplate() {
+    return this.editorService.parseTemplate();
   }
 }
