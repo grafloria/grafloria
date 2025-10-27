@@ -151,6 +151,9 @@ export class SnippetService {
     this.addJsonTemplateSnippets();
     this.addJsonShapeSnippets();
     this.addJsonPortSnippets();
+    this.addJsonEventSnippets();
+    this.addJsonDataBindingSnippets();
+    this.addJsonAdvancedSnippets();
 
     // HTML Snippets
     this.addHtmlElementSnippets();
@@ -1117,6 +1120,30 @@ export class SnippetService {
   "right": { "enabled": true, "type": "output" }
 }`
     });
+
+    this.snippets.push({
+      id: 'ports-max-connections',
+      name: 'Ports with Connection Limits',
+      description: 'Limit number of connections per port',
+      category: 'json',
+      subcategory: 'ports',
+      tags: ['ports', 'max', 'connections', 'limit'],
+      icon: '🔢',
+      code: `"ports": {
+  "enabled": true,
+  "defaultVisibility": "always",
+  "left": {
+    "enabled": true,
+    "type": "input",
+    "maxConnections": 1
+  },
+  "right": {
+    "enabled": true,
+    "type": "output",
+    "maxConnections": 5
+  }
+}`
+    });
   }
 
   /**
@@ -1353,6 +1380,562 @@ export class SnippetService {
   to {
     opacity: 1;
     transform: translateY(0);
+  }
+}`
+    });
+  }
+
+  /**
+   * Add JSON event handling snippets (Phase 10)
+   */
+  private addJsonEventSnippets(): void {
+    this.snippets.push({
+      id: 'events-basic',
+      name: 'Basic Event Handlers',
+      description: 'Map DOM events to EventBus',
+      category: 'json',
+      subcategory: 'templates',
+      tags: ['events', 'click', 'eventbus', 'handlers'],
+      icon: '⚡',
+      code: `"html": {
+  "mode": "template",
+  "template": "<div class='node-content'>{{data.title}}</div>",
+  "events": {
+    "click": "node:clicked",
+    "dblclick": "node:edit",
+    "mouseenter": "node:hover-start",
+    "mouseleave": "node:hover-end"
+  }
+}`
+    });
+
+    this.snippets.push({
+      id: 'events-form-input',
+      name: 'Form Input Events',
+      description: 'Handle input and form events',
+      category: 'json',
+      subcategory: 'templates',
+      tags: ['events', 'form', 'input', 'submit'],
+      icon: '📝',
+      code: `"html": {
+  "mode": "template",
+  "template": "<form><input type='text' name='value' value='{{data.value}}' /></form>",
+  "events": {
+    "input": "node:value-changed",
+    "change": "node:field-updated",
+    "submit": "form:submitted",
+    "focus": "field:focused",
+    "blur": "field:blurred"
+  }
+}`
+    });
+
+    this.snippets.push({
+      id: 'events-interactive-button',
+      name: 'Interactive Button Node',
+      description: 'Clickable node with button',
+      category: 'json',
+      subcategory: 'templates',
+      tags: ['events', 'button', 'interactive', 'action'],
+      icon: '🎯',
+      code: `{
+  "id": "action-node",
+  "structure": {
+    "type": "custom",
+    "size": { "width": 180, "height": 80 },
+    "shape": {
+      "type": "rect",
+      "fill": "#667eea",
+      "cornerRadius": 8
+    }
+  },
+  "html": {
+    "mode": "template",
+    "template": "<div class='content'><button class='action-btn'>{{data.label}}</button></div>",
+    "events": {
+      "click": "action:triggered",
+      "mouseenter": "action:hover"
+    },
+    "style": {
+      "color": "white",
+      "textAlign": "center",
+      "padding": "20px"
+    }
+  },
+  "defaultData": {
+    "label": "Execute"
+  }
+}`
+    });
+
+    this.snippets.push({
+      id: 'events-custom-eventbus',
+      name: 'Custom EventBus Listener',
+      description: 'Listen to custom events',
+      category: 'json',
+      subcategory: 'templates',
+      tags: ['events', 'eventbus', 'custom', 'listener'],
+      icon: '📡',
+      code: `"html": {
+  "mode": "template",
+  "template": "<div class='status'>{{data.status}}</div>",
+  "events": {
+    "click": "status:toggle",
+    "dblclick": "status:reset"
+  },
+  "bindings": {
+    "statusClass": "data.status"
+  }
+}
+
+// EventBus listener example (in your app):
+// eventBus.on('status:toggle', (event) => {
+//   const node = event.target;
+//   node.updateData({ status: !node.data.status });
+// });`
+    });
+
+    this.snippets.push({
+      id: 'events-delegation',
+      name: 'Event Delegation Pattern',
+      description: 'Handle events from child elements',
+      category: 'json',
+      subcategory: 'templates',
+      tags: ['events', 'delegation', 'children', 'bubbling'],
+      icon: '🎪',
+      code: `"html": {
+  "mode": "template",
+  "template": \`
+    <div class='container'>
+      <button data-action='add'>Add</button>
+      <button data-action='remove'>Remove</button>
+      <button data-action='edit'>Edit</button>
+    </div>
+  \`,
+  "events": {
+    "click": "container:action"
+  }
+}
+
+// Handle in app:
+// eventBus.on('container:action', (event) => {
+//   const action = event.originalEvent.target.dataset.action;
+//   // Handle add, remove, edit
+// });`
+    });
+  }
+
+  /**
+   * Add JSON data binding snippets (Phase 11)
+   */
+  private addJsonDataBindingSnippets(): void {
+    this.snippets.push({
+      id: 'data-schema-basic',
+      name: 'Basic Data Schema',
+      description: 'JSON Schema validation',
+      category: 'json',
+      subcategory: 'templates',
+      tags: ['data', 'schema', 'validation', 'required'],
+      icon: '✅',
+      code: `"dataSchema": {
+  "type": "object",
+  "properties": {
+    "name": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 100
+    },
+    "email": {
+      "type": "string",
+      "format": "email"
+    },
+    "age": {
+      "type": "number",
+      "minimum": 0,
+      "maximum": 150
+    }
+  },
+  "required": ["name", "email"]
+}`
+    });
+
+    this.snippets.push({
+      id: 'data-schema-advanced',
+      name: 'Advanced Data Schema',
+      description: 'Complex validation with nested objects',
+      category: 'json',
+      subcategory: 'templates',
+      tags: ['data', 'schema', 'nested', 'validation'],
+      icon: '🔒',
+      code: `"dataSchema": {
+  "type": "object",
+  "properties": {
+    "user": {
+      "type": "object",
+      "properties": {
+        "firstName": { "type": "string", "minLength": 1 },
+        "lastName": { "type": "string", "minLength": 1 },
+        "role": {
+          "type": "string",
+          "enum": ["admin", "user", "guest"]
+        }
+      },
+      "required": ["firstName", "lastName"]
+    },
+    "settings": {
+      "type": "object",
+      "properties": {
+        "theme": { "type": "string", "enum": ["light", "dark"] },
+        "notifications": { "type": "boolean" }
+      }
+    }
+  },
+  "required": ["user"]
+}`
+    });
+
+    this.snippets.push({
+      id: 'bindings-custom',
+      name: 'Custom Data Bindings',
+      description: 'Map template variables to data paths',
+      category: 'json',
+      subcategory: 'templates',
+      tags: ['bindings', 'data', 'mapping', 'variables'],
+      icon: '🔗',
+      code: `"html": {
+  "mode": "template",
+  "template": \`
+    <div class='user-card'>
+      <h3>{{fullName}}</h3>
+      <p>{{roleLabel}}</p>
+      <span class='status {{statusClass}}'>{{statusText}}</span>
+    </div>
+  \`,
+  "bindings": {
+    "fullName": "data.user.firstName + ' ' + data.user.lastName",
+    "roleLabel": "data.user.role.toUpperCase()",
+    "statusClass": "data.active ? 'active' : 'inactive'",
+    "statusText": "data.active ? 'Online' : 'Offline'"
+  }
+}`
+    });
+
+    this.snippets.push({
+      id: 'bindings-computed',
+      name: 'Computed Properties',
+      description: 'Derived values from data',
+      category: 'json',
+      subcategory: 'templates',
+      tags: ['bindings', 'computed', 'derived', 'calculation'],
+      icon: '🧮',
+      code: `"html": {
+  "mode": "template",
+  "template": \`
+    <div class='metric-card'>
+      <h2>{{totalValue}}</h2>
+      <p>{{percentageChange}}%</p>
+      <span class='trend {{trendDirection}}'>{{trendIcon}}</span>
+    </div>
+  \`,
+  "bindings": {
+    "totalValue": "data.values.reduce((sum, v) => sum + v, 0)",
+    "percentageChange": "((data.current - data.previous) / data.previous * 100).toFixed(2)",
+    "trendDirection": "data.current > data.previous ? 'up' : 'down'",
+    "trendIcon": "data.current > data.previous ? '📈' : '📉'"
+  }
+}`
+    });
+
+    this.snippets.push({
+      id: 'data-validation-example',
+      name: 'Complete Validation Example',
+      description: 'Full template with schema and validation',
+      category: 'json',
+      subcategory: 'templates',
+      tags: ['data', 'validation', 'schema', 'complete'],
+      icon: '📋',
+      code: `{
+  "id": "validated-form",
+  "structure": {
+    "type": "custom",
+    "size": { "width": 300, "height": 250 }
+  },
+  "html": {
+    "mode": "template",
+    "template": \`
+      <form class='validated-form'>
+        <input type='text' name='name' value='{{data.name}}' required />
+        <input type='email' name='email' value='{{data.email}}' required />
+        <input type='number' name='age' value='{{data.age}}' min='0' max='150' />
+        <button type='submit'>Submit</button>
+      </form>
+    \`,
+    "events": {
+      "submit": "form:validated-submit",
+      "input": "form:field-changed"
+    }
+  },
+  "dataSchema": {
+    "type": "object",
+    "properties": {
+      "name": { "type": "string", "minLength": 1 },
+      "email": { "type": "string", "format": "email" },
+      "age": { "type": "number", "minimum": 0, "maximum": 150 }
+    },
+    "required": ["name", "email"]
+  },
+  "defaultData": {
+    "name": "",
+    "email": "",
+    "age": null
+  }
+}`
+    });
+  }
+
+  /**
+   * Add JSON advanced feature snippets (Phase 12)
+   */
+  private addJsonAdvancedSnippets(): void {
+    this.snippets.push({
+      id: 'html-zindex-layers',
+      name: 'Z-Index Layering',
+      description: 'Layer HTML elements with zIndex',
+      category: 'json',
+      subcategory: 'templates',
+      tags: ['html', 'zindex', 'layers', 'stacking'],
+      icon: '📚',
+      code: `"html": {
+  "mode": "template",
+  "template": \`
+    <div class='background-layer' style='z-index: 1;'>Background</div>
+    <div class='content-layer' style='z-index: 2;'>Content</div>
+    <div class='overlay-layer' style='z-index: 3;'>Overlay</div>
+  \`,
+  "zIndex": 10,
+  "style": {
+    "position": "relative"
+  }
+}`
+    });
+
+    this.snippets.push({
+      id: 'html-pointer-events',
+      name: 'Pointer Events Control',
+      description: 'Control click-through behavior',
+      category: 'json',
+      subcategory: 'templates',
+      tags: ['html', 'pointer', 'events', 'click'],
+      icon: '👆',
+      code: `"html": {
+  "mode": "template",
+  "template": \`
+    <div class='background' style='pointer-events: none;'>
+      <!-- Allows clicks to pass through -->
+    </div>
+    <button class='interactive' style='pointer-events: auto;'>
+      Click Me
+    </button>
+  \`,
+  "pointerEvents": true,
+  "style": {
+    "pointerEvents": "all"
+  }
+}`
+    });
+
+    this.snippets.push({
+      id: 'ports-field-level',
+      name: 'Field-Level Ports (ERD)',
+      description: 'Individual ports for table fields',
+      category: 'json',
+      subcategory: 'templates',
+      tags: ['ports', 'fields', 'erd', 'database'],
+      icon: '🗃️',
+      code: `{
+  "id": "erd-table",
+  "structure": {
+    "type": "custom",
+    "size": { "width": 200, "height": "auto" },
+    "layout": {
+      "type": "flexbox",
+      "direction": "column",
+      "gap": 0
+    },
+    "children": [
+      {
+        "type": "flex-item",
+        "size": { "width": "100%", "height": 40 },
+        "shape": { "type": "rect", "fill": "#1e3a8a" },
+        "html": {
+          "template": "<div class='table-header'>Users</div>"
+        }
+      },
+      {
+        "type": "flex-item",
+        "size": { "width": "100%", "height": 30 },
+        "ports": {
+          "enabled": true,
+          "left": { "enabled": true, "type": "input" },
+          "right": { "enabled": true, "type": "output" }
+        },
+        "html": {
+          "template": "<div class='field'>id: INT</div>"
+        }
+      },
+      {
+        "type": "flex-item",
+        "size": { "width": "100%", "height": 30 },
+        "ports": {
+          "enabled": true,
+          "left": { "enabled": true, "type": "input" },
+          "right": { "enabled": true, "type": "output" }
+        },
+        "html": {
+          "template": "<div class='field'>name: VARCHAR</div>"
+        }
+      }
+    ]
+  }
+}`
+    });
+
+    this.snippets.push({
+      id: 'advanced-combo',
+      name: 'Advanced Features Combo',
+      description: 'Combines zIndex, events, bindings, validation',
+      category: 'json',
+      subcategory: 'templates',
+      tags: ['advanced', 'complete', 'combo', 'full-featured'],
+      icon: '🚀',
+      code: `{
+  "id": "advanced-node",
+  "structure": {
+    "type": "custom",
+    "size": { "width": 280, "height": 180 },
+    "shape": {
+      "type": "rect",
+      "fill": "linear-gradient(135deg, #667eea 0%, #764ba2 100%)",
+      "cornerRadius": 12,
+      "stroke": "#667eea",
+      "strokeWidth": 2
+    },
+    "ports": {
+      "enabled": true,
+      "defaultVisibility": "hover",
+      "left": { "enabled": true, "type": "input", "maxConnections": 3 },
+      "right": { "enabled": true, "type": "output", "maxConnections": 5 }
+    }
+  },
+  "html": {
+    "mode": "template",
+    "template": \`
+      <div class='node-container'>
+        <div class='header' style='z-index: 2;'>
+          <h3>{{title}}</h3>
+          <span class='badge {{statusClass}}'>{{status}}</span>
+        </div>
+        <div class='content' style='z-index: 1;'>
+          <p>{{description}}</p>
+          <div class='metric'>Value: {{formattedValue}}</div>
+        </div>
+        <button class='action-btn' style='z-index: 3; pointer-events: auto;'>
+          {{actionLabel}}
+        </button>
+      </div>
+    \`,
+    "events": {
+      "click": "node:clicked",
+      "dblclick": "node:edit",
+      ".action-btn click": "action:execute"
+    },
+    "bindings": {
+      "title": "data.name.toUpperCase()",
+      "statusClass": "data.active ? 'status-active' : 'status-inactive'",
+      "formattedValue": "data.value.toLocaleString()",
+      "actionLabel": "data.actionType === 'edit' ? 'Edit' : 'View'"
+    },
+    "zIndex": 10,
+    "pointerEvents": true,
+    "style": {
+      "color": "white",
+      "padding": "16px"
+    }
+  },
+  "dataSchema": {
+    "type": "object",
+    "properties": {
+      "name": { "type": "string", "minLength": 1 },
+      "description": { "type": "string" },
+      "value": { "type": "number", "minimum": 0 },
+      "active": { "type": "boolean" },
+      "status": { "type": "string", "enum": ["active", "pending", "inactive"] },
+      "actionType": { "type": "string", "enum": ["edit", "view"] }
+    },
+    "required": ["name", "value"]
+  },
+  "defaultData": {
+    "name": "Advanced Node",
+    "description": "Feature-rich node template",
+    "value": 1000,
+    "active": true,
+    "status": "active",
+    "actionType": "edit"
+  }
+}`
+    });
+
+    this.snippets.push({
+      id: 'component-mode-example',
+      name: 'Component Mode Template',
+      description: 'Use Angular/React component instead of template',
+      category: 'json',
+      subcategory: 'templates',
+      tags: ['html', 'component', 'mode', 'framework'],
+      icon: '🧩',
+      code: `"html": {
+  "mode": "component",
+  "component": "CustomNodeComponent",
+  "props": {
+    "title": "{{data.title}}",
+    "value": "{{data.value}}",
+    "onAction": "node:action-triggered"
+  },
+  "style": {
+    "width": "100%",
+    "height": "100%"
+  }
+}
+
+// Register component:
+// templateRegistry.registerComponent('CustomNodeComponent', MyComponent);`
+    });
+
+    this.snippets.push({
+      id: 'opacity-layers',
+      name: 'Opacity and Transparency',
+      description: 'Control shape and HTML opacity',
+      category: 'json',
+      subcategory: 'shapes',
+      tags: ['opacity', 'transparency', 'alpha', 'fade'],
+      icon: '👻',
+      code: `{
+  "structure": {
+    "shape": {
+      "type": "rect",
+      "fill": "#667eea",
+      "stroke": "#764ba2",
+      "strokeWidth": 2,
+      "opacity": 0.7,
+      "cornerRadius": 8
+    }
+  },
+  "html": {
+    "template": "<div class='content'>Semi-transparent</div>",
+    "style": {
+      "opacity": "0.9",
+      "background": "rgba(255, 255, 255, 0.5)"
+    }
   }
 }`
     });
