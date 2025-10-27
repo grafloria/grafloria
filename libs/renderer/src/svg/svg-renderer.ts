@@ -901,6 +901,13 @@ export class SVGRenderer implements IRenderer {
       ...(shapeConfig.opacity !== undefined ? { opacity: shapeConfig.opacity } : {}),
     };
 
+    console.log(`[SVGRenderer] renderNodeShape for ${node.id}:`, {
+      baseStroke: styles.stroke,
+      shapeConfigStroke: shapeConfig.stroke,
+      finalStroke: shapeStyles.stroke,
+      strokeWidth: shapeStyles.strokeWidth
+    });
+
     // Enhanced hover effect
     if (isHovered && !this.config.useCSSMode) {
       shapeStyles.strokeWidth = (shapeStyles.strokeWidth || 1) + 1;
