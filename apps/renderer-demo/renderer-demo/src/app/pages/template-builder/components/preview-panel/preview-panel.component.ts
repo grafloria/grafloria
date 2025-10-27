@@ -94,18 +94,28 @@ export class PreviewPanelComponent implements OnInit, OnDestroy, OnChanges {
       // Apply HTML layer if provided
       if (this.htmlLayer && this.htmlLayer.trim()) {
         if (!templateData.structure.html) {
-          templateData.structure.html = {} as any;
+          templateData.structure.html = {
+            mode: 'template' as const,
+            template: this.htmlLayer
+          };
+        } else {
+          templateData.structure.html.template = this.htmlLayer;
+          templateData.structure.html.mode = 'template';
         }
-        templateData.structure.html.template = this.htmlLayer;
-        templateData.structure.html.mode = 'template';
       }
 
-      // Apply CSS layer if provided (store in html.style)
+      // Apply CSS layer if provided (inject as style tag in template)
       if (this.cssLayer && this.cssLayer.trim()) {
         if (!templateData.structure.html) {
-          templateData.structure.html = {} as any;
+          templateData.structure.html = {
+            mode: 'template' as const,
+            template: `<style>${this.cssLayer}</style>`
+          };
+        } else {
+          // Prepend style tag to existing template
+          const existingTemplate = templateData.structure.html.template || '';
+          templateData.structure.html.template = `<style>${this.cssLayer}</style>${existingTemplate}`;
         }
-        templateData.structure.html.style = this.cssLayer;
       }
 
       // Clear previous preview
