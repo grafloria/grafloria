@@ -17,6 +17,12 @@ export interface WorkflowNodeData {
   changeDetection: ChangeDetectionStrategy.Default,
   template: `
     <div class="workflow-node" [ngClass]="['node-' + workflowType, 'status-' + status]" *ngIf="node">
+      <svg *ngIf="workflowType === 'decision'" class="diamond-bg" viewBox="0 0 140 140" preserveAspectRatio="none">
+        <polygon points="70,5 135,70 70,135 5,70"
+                 [attr.fill]="getShapeFill()"
+                 [attr.stroke]="getShapeStroke()"
+                 [attr.stroke-width]="status === 'running' ? 4 : 3"/>
+      </svg>
       <div class="node-status-indicator" [ngClass]="'indicator-' + status">
         {{ getStatusIcon() }}
       </div>
@@ -51,12 +57,28 @@ export interface WorkflowNodeData {
     }
 
     .node-decision {
-      border-color: #f39c12;
-      transform: rotate(45deg);
+      border: none;
+      background: transparent;
+      position: relative;
+    }
+
+    .diamond-bg {
+      position: absolute;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      z-index: 0;
+      transition: filter 0.3s ease;
+    }
+
+    .node-decision.status-running .diamond-bg {
+      filter: drop-shadow(0 0 8px rgba(241, 196, 15, 0.6));
     }
 
     .node-decision .node-content {
-      transform: rotate(-45deg);
+      position: relative;
+      z-index: 1;
     }
 
     .node-task {
@@ -207,5 +229,21 @@ export class WorkflowNodeComponent implements OnInit, OnChanges, OnDestroy {
       case 'error': return '❌';
       default: return '⏸️';
     }
+  }
+
+  getShapeFill(): string {
+    // Return white background for all statuses
+    return 'white';
+  }
+
+  getShapeStroke(): string {
+    // Return stroke color based on status and node type
+    if (this.status === 'completed') {
+      return '#27ae60'; // Green when completed
+    } else if (this.status === 'running') {
+      return '#f39c12'; // Orange when running
+    }
+    // Default color for decision node
+    return '#f39c12';
   }
 }
