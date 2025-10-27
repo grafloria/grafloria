@@ -111,10 +111,25 @@
 }
 
 .docs-sidebar {
+  width: 250px;
   display: flex;
   flex-direction: column;
   background: white;
   height: 100%;
+  border-left: 1px solid #e0e0e0;
+  flex-shrink: 0;
+  overflow-y: auto;
+}
+
+.snippet-panel-container {
+  width: 280px;
+  display: flex;
+  flex-direction: column;
+  background: white;
+  height: 100%;
+  border-left: 1px solid #e0e0e0;
+  flex-shrink: 0;
+  overflow-y: auto;
 }
 
 .panel-header {
@@ -197,6 +212,8 @@
 
 /* Right Panel */
 .right-panel {
+  flex: 1;
+  min-width: 300px;
   display: flex;
   flex-direction: column;
   background: white;
