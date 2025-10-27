@@ -1,0 +1,149 @@
+<div class="template-card"
+     [class.favorite]="metadata.isFavorite"
+     (click)="onCardClick($event)"
+     @fadeIn>
+
+  <!-- Thumbnail -->
+  <div class="card-thumbnail" (click)="onPreview()">
+    <img [src]="thumbnailUrl" [alt]="metadata.name" />
+
+    <!-- Favorite Star Overlay -->
+    <div class="favorite-indicator" *ngIf="metadata.isFavorite">
+      <span class="star-icon">⭐</span>
+    </div>
+
+    <!-- Hover Overlay -->
+    <div class="thumbnail-overlay">
+      <button class="btn-preview" (click)="onPreview()">
+        <span class="icon">👁️</span>
+        <span class="label">Preview</span>
+      </button>
+    </div>
+
+    <!-- Complexity Badge -->
+    <div class="complexity-badge" [style.background]="complexityColor">
+      {{ metadata.complexity }}
+    </div>
+  </div>
+
+  <!-- Card Body -->
+  <div class="card-body">
+    <!-- Header -->
+    <div class="card-header">
+      <h4 class="card-title" [title]="metadata.name">{{ metadata.name }}</h4>
+
+      <!-- Rating Stars -->
+      <div class="card-rating" *ngIf="metadata.userRating">
+        <span
+          *ngFor="let filled of ratingStars; let i = index"
+          class="star"
+          [class.filled]="filled"
+          (click)="onRate(i + 1, $event)"
+          [title]="'Rate ' + (i + 1) + ' stars'">
+          {{ filled ? '⭐' : '☆' }}
+        </span>
+        <span class="rating-value">{{ metadata.userRating.toFixed(1) }}</span>
+      </div>
+    </div>
+
+    <!-- Metadata Row -->
+    <div class="card-meta">
+      <span class="meta-category" [style.color]="categoryColor">
+        {{ metadata.category }}
+      </span>
+      <span class="meta-separator">•</span>
+      <span class="meta-nodes">{{ metadata.nodeCount || 1 }} node<span *ngIf="(metadata.nodeCount || 1) !== 1">s</span></span>
+      <span class="meta-separator">•</span>
+      <span class="meta-usage" [title]="'Used ' + metadata.usageCount + ' times'">
+        {{ metadata.usageCount }} uses
+      </span>
+    </div>
+
+    <!-- Feature Badges -->
+    <div class="feature-badges" *ngIf="metadata.features.length > 0">
+      <span
+        *ngFor="let feature of metadata.features.slice(0, 6)"
+        class="badge"
+        [title]="getFeatureName(feature)">
+        {{ getFeatureIcon(feature) }}
+      </span>
+      <span class="badge badge-more" *ngIf="metadata.features.length > 6">
+        +{{ metadata.features.length - 6 }}
+      </span>
+    </div>
+
+    <!-- Description -->
+    <p class="card-description" [title]="metadata.description">
+      {{ metadata.description }}
+    </p>
+
+    <!-- Collections -->
+    <div class="card-collections" *ngIf="metadata.collections.length > 0">
+      <span
+        *ngFor="let collectionId of metadata.collections.slice(0, 3)"
+        class="collection-badge"
+        [style.background]="getCollectionColor(collectionId)"
+        [title]="getCollectionName(collectionId)">
+        {{ getCollectionName(collectionId) }}
+      </span>
+      <span class="collection-badge collection-more" *ngIf="metadata.collections.length > 3">
+        +{{ metadata.collections.length - 3 }}
+      </span>
+    </div>
+
+    <!-- Last Used -->
+    <div class="card-footer-meta">
+      <span class="last-used">{{ lastUsedFormatted }}</span>
+    </div>
+  </div>
+
+  <!-- Actions -->
+  <div class="card-actions">
+    <button
+      class="btn-action btn-preview"
+      (click)="onPreview()"
+      title="Preview template">
+      <span class="icon">👁️</span>
+      <span class="label">Preview</span>
+    </button>
+    <button
+      class="btn-action btn-primary"
+      (click)="onUse()"
+      title="Use this template">
+      <span class="icon">✓</span>
+      <span class="label">Use</span>
+    </button>
+    <button
+      class="btn-action btn-menu"
+      [class.active]="showMenu"
+      (click)="toggleMenu()"
+      title="More actions">
+      <span class="icon">⋮</span>
+    </button>
+  </div>
+
+  <!-- Quick Actions Menu -->
+  <div class="quick-menu" *ngIf="showMenu" @slideDown (click)="$event.stopPropagation()">
+    <button (click)="onToggleFavorite($event)" class="menu-item">
+      <span class="menu-icon">{{ metadata.isFavorite ? '★' : '☆' }}</span>
+      <span class="menu-label">{{ metadata.isFavorite ? 'Remove from' : 'Add to' }} Favorites</span>
+    </button>
+    <button (click)="onDuplicate($event)" class="menu-item">
+      <span class="menu-icon">📋</span>
+      <span class="menu-label">Duplicate</span>
+    </button>
+    <button (click)="onExport($event)" class="menu-item">
+      <span class="menu-icon">💾</span>
+      <span class="menu-label">Export</span>
+    </button>
+    <button (click)="onAddToCollection($event)" class="menu-item">
+      <span class="menu-icon">📁</span>
+      <span class="menu-label">Add to Collection</span>
+    </button>
+    <div class="menu-divider"></div>
+    <button (click)="onDelete($event)" class="menu-item danger">
+      <span class="menu-icon">🗑️</span>
+      <span class="menu-label">Delete</span>
+    </button>
+  </div>
+</div>

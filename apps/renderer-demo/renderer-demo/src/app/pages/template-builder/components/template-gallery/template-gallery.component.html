@@ -1,0 +1,218 @@
+<div class="template-gallery">
+
+  <!-- Header -->
+  <div class="gallery-header">
+    <div class="header-left">
+      <h2 class="gallery-title">Template Gallery</h2>
+      <span class="template-count">{{ templateCountText }}</span>
+    </div>
+
+    <div class="header-right">
+      <!-- View Mode Toggle -->
+      <div class="view-toggle">
+        <button
+          class="view-btn"
+          [class.active]="viewMode === 'grid'"
+          (click)="setViewMode('grid')"
+          title="Grid View">
+          <span class="icon">▦</span>
+        </button>
+        <button
+          class="view-btn"
+          [class.active]="viewMode === 'list'"
+          (click)="setViewMode('list')"
+          title="List View">
+          <span class="icon">☰</span>
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Search & Filter Bar -->
+  <div class="search-filter-bar">
+    <!-- Search Input -->
+    <div class="search-box">
+      <span class="search-icon">🔍</span>
+      <input
+        type="text"
+        class="search-input"
+        placeholder="Search templates by name, description, or tags..."
+        [(ngModel)]="searchQuery"
+        (ngModelChange)="onSearchChange()"
+      />
+      <button
+        class="clear-search"
+        *ngIf="searchQuery"
+        (click)="searchQuery = ''; onSearchChange()"
+        title="Clear search">
+        ×
+      </button>
+    </div>
+
+    <!-- Filter Toggle -->
+    <button
+      class="filter-toggle"
+      [class.active]="showFilters"
+      (click)="showFilters = !showFilters"
+      title="Toggle filters">
+      <span class="icon">🎚️</span>
+      <span class="label">Filters</span>
+      <span class="badge" *ngIf="hasActiveFilters">{{ selectedCategories.length + selectedComplexity.length + (showFavoritesOnly ? 1 : 0) }}</span>
+    </button>
+
+    <!-- Sort Dropdown -->
+    <div class="sort-dropdown">
+      <span class="sort-label">Sort:</span>
+      <select
+        class="sort-select"
+        [(ngModel)]="sortBy"
+        (ngModelChange)="applyFilters()">
+        <option *ngFor="let option of sortOptions" [value]="option.value">
+          {{ option.label }}
+        </option>
+      </select>
+      <button
+        class="sort-order-btn"
+        (click)="sortOrder = sortOrder === 'asc' ? 'desc' : 'asc'; applyFilters()"
+        [title]="sortOrder === 'asc' ? 'Ascending' : 'Descending'">
+        {{ sortOrder === 'asc' ? '↑' : '↓' }}
+      </button>
+    </div>
+  </div>
+
+  <!-- Filter Panel -->
+  <div class="filter-panel" *ngIf="showFilters">
+    <!-- Categories -->
+    <div class="filter-section">
+      <h4 class="filter-title">Categories</h4>
+      <div class="filter-chips">
+        <button
+          *ngFor="let category of categories"
+          class="filter-chip"
+          [class.active]="isCategorySelected(category)"
+          [style.--category-color]="getCategoryColor(category)"
+          (click)="toggleCategory(category)">
+          {{ getCategoryName(category) }}
+          <span class="chip-count" *ngIf="categoryCount[category]">
+            ({{ categoryCount[category] }})
+          </span>
+        </button>
+      </div>
+    </div>
+
+    <!-- Complexity -->
+    <div class="filter-section">
+      <h4 class="filter-title">Complexity</h4>
+      <div class="filter-chips">
+        <button
+          *ngFor="let complexity of complexityLevels"
+          class="filter-chip complexity-chip"
+          [class.active]="isComplexitySelected(complexity)"
+          (click)="toggleComplexity(complexity)">
+          {{ complexity }}
+        </button>
+      </div>
+    </div>
+
+    <!-- Quick Filters -->
+    <div class="filter-section">
+      <h4 class="filter-title">Quick Filters</h4>
+      <div class="filter-chips">
+        <button
+          class="filter-chip favorite-chip"
+          [class.active]="showFavoritesOnly"
+          (click)="toggleFavorites()">
+          ⭐ Favorites Only
+        </button>
+      </div>
+    </div>
+
+    <!-- Clear Filters -->
+    <div class="filter-actions" *ngIf="hasActiveFilters">
+      <button class="btn-clear-filters" (click)="clearFilters()">
+        Clear All Filters
+      </button>
+    </div>
+  </div>
+
+  <!-- Collections (if any) -->
+  <div class="collections-section" *ngIf="collections.length > 0">
+    <h3 class="collections-title">My Collections</h3>
+    <div class="collections-list">
+      <div
+        *ngFor="let collection of collections; trackBy: trackByCollectionId"
+        class="collection-card"
+        [style.borderColor]="collection.color">
+        <span class="collection-icon">{{ collection.icon || '📁' }}</span>
+        <span class="collection-name">{{ collection.name }}</span>
+        <span class="collection-count">{{ collection.templateIds.length }}</span>
+      </div>
+    </div>
+  </div>
+
+  <!-- Templates Grid/List -->
+  <div class="templates-container">
+    <!-- Loading State -->
+    <div class="loading-state" *ngIf="isLoading">
+      <div class="spinner"></div>
+      <p>Loading templates...</p>
+    </div>
+
+    <!-- Empty State -->
+    <div class="empty-state" *ngIf="!isLoading && filteredTemplates.length === 0">
+      <div class="empty-icon">📭</div>
+      <h3 class="empty-title">No templates found</h3>
+      <p class="empty-message" *ngIf="hasActiveFilters">
+        Try adjusting your filters or search query
+      </p>
+      <p class="empty-message" *ngIf="!hasActiveFilters">
+        Start by creating your first template!
+      </p>
+      <button class="btn-clear-filters" *ngIf="hasActiveFilters" (click)="clearFilters()">
+        Clear Filters
+      </button>
+    </div>
+
+    <!-- Grid View -->
+    <div class="templates-grid" *ngIf="!isLoading && viewMode === 'grid' && filteredTemplates.length > 0">
+      <app-template-card
+        *ngFor="let template of filteredTemplates; trackBy: trackByTemplateId"
+        [metadata]="template"
+        [collectionNames]="collectionNames"
+        (action)="onTemplateAction($event)">
+      </app-template-card>
+    </div>
+
+    <!-- List View -->
+    <div class="templates-list" *ngIf="!isLoading && viewMode === 'list' && filteredTemplates.length > 0">
+      <div
+        *ngFor="let template of filteredTemplates; trackBy: trackByTemplateId"
+        class="template-list-item"
+        (click)="onUseTemplate(template)">
+        <div class="list-item-thumbnail">
+          <img [src]="template.thumbnail || 'assets/template-placeholder.svg'" [alt]="template.name" />
+        </div>
+        <div class="list-item-content">
+          <h4 class="list-item-title">{{ template.name }}</h4>
+          <p class="list-item-description">{{ template.description }}</p>
+          <div class="list-item-meta">
+            <span class="meta-item">{{ template.category }}</span>
+            <span class="meta-separator">•</span>
+            <span class="meta-item">{{ template.complexity }}</span>
+            <span class="meta-separator">•</span>
+            <span class="meta-item">{{ template.usageCount }} uses</span>
+          </div>
+        </div>
+        <div class="list-item-actions">
+          <button class="btn-list-action" (click)="onPreviewTemplate(template); $event.stopPropagation()">
+            👁️ Preview
+          </button>
+          <button class="btn-list-action btn-primary" (click)="onUseTemplate(template); $event.stopPropagation()">
+            ✓ Use
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+</div>
