@@ -137,6 +137,11 @@
         [cssLayer]="(editorState$ | async)?.css || ''">
       </app-preview-panel>
     </div>
+
+    <!-- Far Right: Documentation Sidebar -->
+    <div class="docs-sidebar">
+      <app-documentation-sidebar></app-documentation-sidebar>
+    </div>
   </div>
 
   <!-- Bottom: Performance Metrics -->

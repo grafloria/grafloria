@@ -10,6 +10,7 @@ import { MonacoEditorComponent } from './components/monaco-editor/monaco-editor.
 import { PreviewPanelComponent } from './components/preview-panel/preview-panel.component';
 import { TemplateSidebarComponent } from './components/template-library/template-sidebar.component';
 import { PerformancePanelComponent } from './components/performance-panel/performance-panel.component';
+import { DocumentationSidebarComponent } from './components/documentation-sidebar/documentation-sidebar.component';
 
 /**
  * Template Builder Component
@@ -46,7 +47,8 @@ import { PerformancePanelComponent } from './components/performance-panel/perfor
     MonacoEditorComponent,
     PreviewPanelComponent,
     TemplateSidebarComponent,
-    PerformancePanelComponent
+    PerformancePanelComponent,
+    DocumentationSidebarComponent
   ],
   selector: 'app-template-builder',
   templateUrl: './template-builder.component.html',

@@ -109,6 +109,13 @@
   background: white;
 }
 
+.docs-sidebar {
+  display: flex;
+  flex-direction: column;
+  background: white;
+  height: 100%;
+}
+
 .panel-header {
   display: flex;
   justify-content: space-between;

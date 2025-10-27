@@ -1,0 +1,151 @@
+<div class="documentation-sidebar" [class.collapsed]="isCollapsed">
+  <!-- Collapse Toggle Button -->
+  <button class="collapse-toggle" (click)="toggleCollapse()" [title]="isCollapsed ? 'Expand Documentation' : 'Collapse Documentation'">
+    <span *ngIf="!isCollapsed">❯</span>
+    <span *ngIf="isCollapsed">❮</span>
+  </button>
+
+  <!-- Collapsed State -->
+  <div class="collapsed-content" *ngIf="isCollapsed">
+    <div class="collapsed-label">
+      <span class="icon">📚</span>
+      <span class="text">Docs</span>
+    </div>
+  </div>
+
+  <!-- Expanded State -->
+  <div class="expanded-content" *ngIf="!isCollapsed">
+    <!-- Header -->
+    <div class="sidebar-header">
+      <h3 class="title">📚 Documentation</h3>
+    </div>
+
+    <!-- Search Box -->
+    <div class="search-box">
+      <input
+        type="text"
+        [(ngModel)]="searchQuery"
+        (input)="onSearch()"
+        placeholder="Search properties..."
+        class="search-input">
+      <span class="search-icon">🔍</span>
+    </div>
+
+    <!-- Category Filter -->
+    <div class="category-filter">
+      <select [(ngModel)]="selectedCategory" (change)="onCategoryChange()" class="category-select">
+        <option *ngFor="let cat of categories" [value]="cat.value">
+          {{ cat.label }}
+        </option>
+      </select>
+    </div>
+
+    <!-- Property List -->
+    <div class="property-list" *ngIf="!selectedEntry">
+      <div class="list-header">
+        <span class="count">{{ displayedEntries.length }} properties</span>
+      </div>
+
+      <div class="property-item" *ngFor="let entry of displayedEntries" (click)="selectEntry(entry)">
+        <div class="property-name">
+          {{ entry.property }}
+          <span class="required-badge" *ngIf="entry.required">*</span>
+        </div>
+        <div class="property-path">{{ entry.path }}</div>
+        <div class="property-meta">
+          <span class="type-badge" [style.background-color]="getTypeBadgeColor(entry.type)">
+            {{ entry.type }}
+          </span>
+          <span class="enum-badge" *ngIf="entry.enumValues">
+            {{ entry.enumValues.length }} values
+          </span>
+        </div>
+      </div>
+
+      <div class="no-results" *ngIf="displayedEntries.length === 0">
+        <p>No properties found</p>
+        <p class="hint">Try a different search or category</p>
+      </div>
+    </div>
+
+    <!-- Property Detail View -->
+    <div class="property-detail" *ngIf="selectedEntry">
+      <button class="back-button" (click)="clearSelection()">
+        ← Back to list
+      </button>
+
+      <div class="detail-header">
+        <h4 class="detail-title">{{ selectedEntry.property }}</h4>
+        <span class="type-badge" [style.background-color]="getTypeBadgeColor(selectedEntry.type)">
+          {{ selectedEntry.type }}
+        </span>
+      </div>
+
+      <div class="detail-path">
+        <code>{{ selectedEntry.path }}</code>
+      </div>
+
+      <div class="detail-section">
+        <h5 class="section-title">Description</h5>
+        <p class="description">{{ selectedEntry.description }}</p>
+      </div>
+
+      <div class="detail-section" *ngIf="selectedEntry.required !== undefined">
+        <h5 class="section-title">Required</h5>
+        <p class="required-value">
+          <span class="badge" [class.yes]="selectedEntry.required" [class.no]="!selectedEntry.required">
+            {{ selectedEntry.required ? 'Yes' : 'No' }}
+          </span>
+        </p>
+      </div>
+
+      <div class="detail-section" *ngIf="selectedEntry.enumValues && selectedEntry.enumValues.length > 0">
+        <h5 class="section-title">Valid Values</h5>
+        <ul class="enum-list">
+          <li *ngFor="let value of selectedEntry.enumValues" class="enum-value">
+            <code>{{ value }}</code>
+          </li>
+        </ul>
+      </div>
+
+      <div class="detail-section" *ngIf="selectedEntry.minimum !== undefined || selectedEntry.maximum !== undefined">
+        <h5 class="section-title">Constraints</h5>
+        <p *ngIf="selectedEntry.minimum !== undefined" class="constraint">
+          Minimum: <code>{{ selectedEntry.minimum }}</code>
+        </p>
+        <p *ngIf="selectedEntry.maximum !== undefined" class="constraint">
+          Maximum: <code>{{ selectedEntry.maximum }}</code>
+        </p>
+      </div>
+
+      <div class="detail-section" *ngIf="selectedEntry.pattern">
+        <h5 class="section-title">Pattern</h5>
+        <p class="pattern"><code>{{ selectedEntry.pattern }}</code></p>
+      </div>
+
+      <div class="detail-section" *ngIf="selectedEntry.defaultValue !== undefined">
+        <h5 class="section-title">Default Value</h5>
+        <p class="default-value"><code>{{ selectedEntry.defaultValue }}</code></p>
+      </div>
+
+      <div class="detail-section" *ngIf="selectedEntry.examples && selectedEntry.examples.length > 0">
+        <h5 class="section-title">Examples</h5>
+        <div class="example-item" *ngFor="let example of selectedEntry.examples">
+          <pre class="example-code">{{ example }}</pre>
+          <button class="copy-button" (click)="copyExample(example)" title="Copy to clipboard">
+            📋
+          </button>
+        </div>
+      </div>
+
+      <div class="detail-section" *ngIf="selectedEntry.relatedProperties && selectedEntry.relatedProperties.length > 0">
+        <h5 class="section-title">Related Properties</h5>
+        <ul class="related-list">
+          <li *ngFor="let prop of selectedEntry.relatedProperties" class="related-item">
+            <code>{{ prop }}</code>
+          </li>
+        </ul>
+      </div>
+    </div>
+  </div>
+</div>
