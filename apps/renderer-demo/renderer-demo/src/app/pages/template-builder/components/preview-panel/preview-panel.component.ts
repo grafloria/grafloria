@@ -120,17 +120,15 @@ export class PreviewPanelComponent implements OnInit, OnDestroy, OnChanges {
         }
       }
 
-      // Clear previous preview
+      // Clear entire diagram (removes all nodes including children/repeaters)
       const diagram = this.engine.getDiagram();
       if (!diagram) {
         throw new Error('Diagram not initialized');
       }
 
-      // Remove old preview node
-      if (this.previewNode) {
-        diagram.removeNode(this.previewNode.id);
-        this.previewNode = null;
-      }
+      // Clear ALL nodes, links, and groups from previous template
+      diagram.clear();
+      this.previewNode = null;
 
       // Register template
       this.templateRegistry.register(templateData);
@@ -155,7 +153,7 @@ export class PreviewPanelComponent implements OnInit, OnDestroy, OnChanges {
         }, 100);
       }
 
-      console.log('✅ Preview updated');
+      console.log('✅ Preview updated - diagram cleared');
     } catch (error) {
       this.errorMessage = error instanceof Error ? error.message : 'Invalid template JSON';
       console.error('❌ Preview update failed:', error);
