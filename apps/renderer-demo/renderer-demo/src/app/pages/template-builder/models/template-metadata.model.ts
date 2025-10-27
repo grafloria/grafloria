@@ -312,7 +312,7 @@ function generateCategoryPlaceholder(category: string): string {
     custom: { bg: '#f3f4f6', fg: '#6b7280', icon: '⭐' }
   };
 
-  const config = colors[category] || colors.custom;
+  const config = colors[category] || colors['custom'];
   const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="200" height="120" viewBox="0 0 200 120">
     <rect width="200" height="120" fill="${config.bg}"/>
     <text x="100" y="70" font-size="48" text-anchor="middle" fill="${config.fg}">${config.icon}</text>
