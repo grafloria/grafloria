@@ -1,10 +1,12 @@
 import { Component, OnInit, ChangeDetectorRef } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
-import { DiagramCanvasComponent, ComponentRendererService } from '@grafloria/renderer-angular';
+import { DiagramCanvasComponent } from '@grafloria/renderer-angular';
 import { DiagramEngine, NodeModel, PortModel, InteractionMode, PortVisibilityStrategy } from '@grafloria/engine';
 import { LIGHT_THEME, type Theme, type Rectangle } from '@grafloria/renderer';
-import { WorkflowNodeComponent, type WorkflowNodeType, type NodeStatus } from './workflow-node.component';
+
+type WorkflowNodeType = 'start' | 'task' | 'decision' | 'end';
+type NodeStatus = 'pending' | 'running' | 'completed' | 'error';
 
 type ExecutionStatus = 'idle' | 'running' | 'paused' | 'completed';
 
@@ -18,7 +20,7 @@ interface WorkflowNode {
 
 @Component({
   standalone: true,
-  imports: [CommonModule, FormsModule, DiagramCanvasComponent, WorkflowNodeComponent],
+  imports: [CommonModule, FormsModule, DiagramCanvasComponent],
   selector: 'app-workflow-builder',
   templateUrl: './workflow-builder.component.html',
   styleUrl: './workflow-builder.component.css',
@@ -34,11 +36,8 @@ export class WorkflowBuilderComponent implements OnInit {
   workflowNodes: Map<string, WorkflowNode> = new Map();
   executionOrder: string[] = [];
 
-  constructor(
-    private componentRenderer: ComponentRendererService,
-    private cdr: ChangeDetectorRef
-  ) {
-    // No longer using HTML layer components - using SVG shapes with engine's shape system
+  constructor(private cdr: ChangeDetectorRef) {
+    // Using SVG shapes with engine's native shape system
   }
 
   ngOnInit() {
