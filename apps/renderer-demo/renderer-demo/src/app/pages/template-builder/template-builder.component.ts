@@ -989,8 +989,9 @@ export class TemplateBuilderComponent implements OnInit, OnDestroy {
 
       if (node) {
         this.currentNodePath = nodePath;
-        this.currentNodeHtml = node.htmlLayer || '';
-        this.currentNodeCss = node.cssLayer || '';
+        // Extract HTML from new structure format (structure.html.template)
+        this.currentNodeHtml = node.html?.template || node.htmlLayer || '';
+        this.currentNodeCss = node.cssLayer || ''; // CSS is now inline in HTML
         this.showNodeLayerEditor = true;
         console.log('📝 Opening layer editor for:', nodePath);
       } else {
@@ -1104,10 +1105,22 @@ export class TemplateBuilderComponent implements OnInit, OnDestroy {
         }
       }
 
-      // Update the node's layers
+      // Update the node's layers using new structure format
       if (layers.html) {
-        node.htmlLayer = layers.html;
+        // Create html object if it doesn't exist
+        if (!node.html) {
+          node.html = {
+            mode: 'template' as const
+          };
+        }
+        node.html.template = layers.html;
+        node.html.mode = 'template';
+
+        // Remove old htmlLayer property if it exists
+        delete node.htmlLayer;
       } else {
+        // Remove html config if no template provided
+        delete node.html;
         delete node.htmlLayer;
       }
 
@@ -1340,10 +1353,15 @@ export class TemplateBuilderComponent implements OnInit, OnDestroy {
 
     // Load template directly from metadata
     if (metadata.template) {
+      // Extract HTML and CSS from new structure format
+      const template = metadata.template;
+      const htmlLayer = template.structure?.html?.template || '';
+      const cssLayer = ''; // CSS is now inline in HTML, not separate
+
       this.editorService.loadTemplate({
-        json: JSON.stringify(metadata.template, null, 2),
-        html: (metadata as any).htmlLayer || '',
-        css: (metadata as any).cssLayer || ''
+        json: JSON.stringify(template, null, 2),
+        html: htmlLayer,
+        css: cssLayer
       });
 
       // Increment usage count

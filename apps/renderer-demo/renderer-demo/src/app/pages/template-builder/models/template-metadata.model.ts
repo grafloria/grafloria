@@ -256,12 +256,82 @@ export type TemplateActionType =
   | 'rate';
 
 /**
+ * Generate placeholder thumbnail from template
+ */
+export function generateTemplateThumbnail(template: any, category: string): string {
+  const structure = template?.structure;
+  if (!structure) {
+    return generateCategoryPlaceholder(category);
+  }
+
+  // Extract basic info
+  const type = structure.type || 'rectangle';
+  const shape = structure.shape || {};
+  const fill = shape.fill || '#e3f2fd';
+  const stroke = shape.stroke || '#2196f3';
+  const hasHtml = !!(structure.html?.template);
+
+  // Create simple SVG thumbnail
+  const width = 200;
+  const height = 120;
+
+  let shapeSvg = '';
+  if (type === 'circle' || type === 'ellipse') {
+    shapeSvg = `<ellipse cx="${width/2}" cy="${height/2}" rx="${width/2 - 10}" ry="${height/2 - 10}" fill="${fill}" stroke="${stroke}" stroke-width="2"/>`;
+  } else if (type === 'diamond') {
+    shapeSvg = `<polygon points="${width/2},5 ${width-5},${height/2} ${width/2},${height-5} 5,${height/2}" fill="${fill}" stroke="${stroke}" stroke-width="2"/>`;
+  } else {
+    // Rectangle
+    const radius = shape.cornerRadius || 0;
+    shapeSvg = `<rect x="10" y="10" width="${width-20}" height="${height-20}" rx="${radius}" fill="${fill}" stroke="${stroke}" stroke-width="2"/>`;
+  }
+
+  // Add HTML indicator if present
+  const htmlBadge = hasHtml ? `<text x="${width-15}" y="20" font-size="16" text-anchor="end">🌐</text>` : '';
+
+  const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}" viewBox="0 0 ${width} ${height}">
+    ${shapeSvg}
+    ${htmlBadge}
+  </svg>`;
+
+  return `data:image/svg+xml;base64,${btoa(svg)}`;
+}
+
+/**
+ * Generate category-based placeholder
+ */
+function generateCategoryPlaceholder(category: string): string {
+  const colors: Record<string, { bg: string; fg: string; icon: string }> = {
+    basic: { bg: '#e3f2fd', fg: '#2196f3', icon: '▢' },
+    workflow: { bg: '#f0f4ff', fg: '#4f46e5', icon: '⚡' },
+    diagram: { bg: '#dbeafe', fg: '#1e40af', icon: '□' },
+    dashboard: { bg: '#ffffff', fg: '#111827', icon: '📊' },
+    'ui-component': { bg: '#faf5ff', fg: '#9333ea', icon: '🎨' },
+    database: { bg: '#e0e7ff', fg: '#4338ca', icon: '💾' },
+    'data-visualization': { bg: '#f0fdfa', fg: '#14b8a6', icon: '📈' },
+    custom: { bg: '#f3f4f6', fg: '#6b7280', icon: '⭐' }
+  };
+
+  const config = colors[category] || colors.custom;
+  const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="200" height="120" viewBox="0 0 200 120">
+    <rect width="200" height="120" fill="${config.bg}"/>
+    <text x="100" y="70" font-size="48" text-anchor="middle" fill="${config.fg}">${config.icon}</text>
+  </svg>`;
+
+  return `data:image/svg+xml;base64,${btoa(svg)}`;
+}
+
+/**
  * Default Template Metadata
  */
 export function createDefaultTemplateMetadata(
   partial: Partial<TemplateMetadata>
 ): TemplateMetadata {
   const now = Date.now();
+
+  // Generate thumbnail if not provided
+  const thumbnail = partial.thumbnail ||
+    (partial.template ? generateTemplateThumbnail(partial.template, partial.category || 'custom') : undefined);
 
   return {
     id: partial.id || `template-${now}`,
@@ -285,6 +355,7 @@ export function createDefaultTemplateMetadata(
     isFavorite: partial.isFavorite || false,
     collections: partial.collections || [],
     userTags: partial.userTags || [],
+    thumbnail,
     ...partial
   };
 }
