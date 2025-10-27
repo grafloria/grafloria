@@ -1,0 +1,216 @@
+<div class="modal-backdrop" *ngIf="isOpen" @backdropAnimation (click)="onBackdropClick($event)">
+  <div class="modal-container" @modalAnimation *ngIf="metadata">
+
+    <!-- Modal Header -->
+    <div class="modal-header">
+      <div class="header-left">
+        <h2 class="modal-title">{{ metadata.name }}</h2>
+        <span class="category-badge" [style.background]="complexityColor">
+          {{ categoryName }}
+        </span>
+      </div>
+
+      <div class="header-right">
+        <!-- Navigation Buttons -->
+        <button
+          class="btn-nav"
+          [disabled]="!hasPrev"
+          (click)="onNavigate('prev')"
+          title="Previous template (←)">
+          ←
+        </button>
+        <button
+          class="btn-nav"
+          [disabled]="!hasNext"
+          (click)="onNavigate('next')"
+          title="Next template (→)">
+          →
+        </button>
+
+        <!-- Close Button -->
+        <button class="btn-close" (click)="onClose()" title="Close (ESC)">
+          ×
+        </button>
+      </div>
+    </div>
+
+    <!-- Modal Body -->
+    <div class="modal-body">
+
+      <!-- Preview Canvas -->
+      <div class="preview-section">
+        <div class="canvas-container">
+          <!-- Loading State -->
+          <div class="preview-loading" *ngIf="isLoading">
+            <div class="spinner"></div>
+            <p>Rendering preview...</p>
+          </div>
+
+          <!-- Error State -->
+          <div class="preview-error" *ngIf="errorMessage">
+            <div class="error-icon">⚠️</div>
+            <p>{{ errorMessage }}</p>
+            <button class="btn-retry" (click)="renderPreview()">
+              Retry
+            </button>
+          </div>
+
+          <!-- Canvas -->
+          <canvas
+            #previewCanvas
+            class="preview-canvas"
+            [class.hidden]="isLoading || errorMessage">
+          </canvas>
+        </div>
+
+        <!-- Preview Info Banner -->
+        <div class="preview-info">
+          <span class="info-icon">ℹ️</span>
+          <span class="info-text">Live preview - This is how your template will render</span>
+        </div>
+      </div>
+
+      <!-- Metadata Sidebar -->
+      <div class="metadata-section">
+
+        <!-- Description -->
+        <div class="metadata-card">
+          <h3 class="card-title">Description</h3>
+          <p class="description-text">{{ metadata.description || 'No description available' }}</p>
+        </div>
+
+        <!-- Template Info -->
+        <div class="metadata-card">
+          <h3 class="card-title">Template Info</h3>
+          <div class="info-grid">
+            <div class="info-item">
+              <span class="info-label">Complexity</span>
+              <span class="info-value complexity-value" [style.color]="complexityColor">
+                {{ metadata.complexity }}
+              </span>
+            </div>
+            <div class="info-item">
+              <span class="info-label">Nodes</span>
+              <span class="info-value">{{ metadata.nodeCount || 1 }}</span>
+            </div>
+            <div class="info-item">
+              <span class="info-label">Version</span>
+              <span class="info-value">{{ metadata.version }}</span>
+            </div>
+            <div class="info-item">
+              <span class="info-label">Author</span>
+              <span class="info-value">{{ metadata.author }}</span>
+            </div>
+            <div class="info-item">
+              <span class="info-label">Created</span>
+              <span class="info-value">{{ createdDate }}</span>
+            </div>
+            <div class="info-item">
+              <span class="info-label">Last Used</span>
+              <span class="info-value">{{ lastUsedDate }}</span>
+            </div>
+            <div class="info-item">
+              <span class="info-label">Times Used</span>
+              <span class="info-value">{{ metadata.usageCount }}</span>
+            </div>
+            <div class="info-item">
+              <span class="info-label">Views</span>
+              <span class="info-value">{{ metadata.viewCount || 0 }}</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- Features -->
+        <div class="metadata-card" *ngIf="metadata.features.length > 0">
+          <h3 class="card-title">Features</h3>
+          <div class="features-list">
+            <span
+              *ngFor="let feature of metadata.features; trackBy: trackByFeature"
+              class="feature-badge">
+              {{ feature }}
+            </span>
+          </div>
+        </div>
+
+        <!-- Tags -->
+        <div class="metadata-card" *ngIf="metadata.tags.length > 0">
+          <h3 class="card-title">Tags</h3>
+          <div class="tags-list">
+            <span
+              *ngFor="let tag of metadata.tags"
+              class="tag-badge">
+              #{{ tag }}
+            </span>
+          </div>
+        </div>
+
+        <!-- Rating -->
+        <div class="metadata-card">
+          <h3 class="card-title">Your Rating</h3>
+          <div class="rating-stars">
+            <button
+              *ngFor="let filled of ratingStars; let i = index"
+              class="star-btn"
+              [class.filled]="filled"
+              (click)="onRate(i + 1)"
+              [title]="(i + 1) + ' stars'">
+              {{ filled ? '⭐' : '☆' }}
+            </button>
+          </div>
+          <p class="rating-hint" *ngIf="!metadata.userRating">
+            Click to rate this template
+          </p>
+        </div>
+
+        <!-- Quick Actions -->
+        <div class="quick-actions">
+          <button
+            class="btn-quick-action"
+            (click)="onToggleFavorite()"
+            [class.active]="metadata.isFavorite"
+            title="Toggle favorite">
+            <span class="icon">{{ metadata.isFavorite ? '⭐' : '☆' }}</span>
+            <span class="label">{{ metadata.isFavorite ? 'Favorited' : 'Favorite' }}</span>
+          </button>
+
+          <button
+            class="btn-quick-action"
+            (click)="onDuplicate()"
+            title="Duplicate template">
+            <span class="icon">📋</span>
+            <span class="label">Duplicate</span>
+          </button>
+
+          <button
+            class="btn-quick-action"
+            (click)="onExport()"
+            title="Export template">
+            <span class="icon">💾</span>
+            <span class="label">Export</span>
+          </button>
+
+          <button
+            class="btn-quick-action"
+            (click)="onEdit()"
+            title="Edit template">
+            <span class="icon">✏️</span>
+            <span class="label">Edit</span>
+          </button>
+        </div>
+      </div>
+
+    </div>
+
+    <!-- Modal Footer -->
+    <div class="modal-footer">
+      <button class="btn-footer btn-cancel" (click)="onClose()">
+        Cancel
+      </button>
+      <button class="btn-footer btn-use" (click)="onUseTemplate()">
+        <span class="icon">✓</span>
+        Use Template
+      </button>
+    </div>
+
+  </div>
+</div>
