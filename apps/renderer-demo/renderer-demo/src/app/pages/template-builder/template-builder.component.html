@@ -225,6 +225,12 @@
           (click)="activeRightTab = 'structure'">
           Structure
         </button>
+        <button
+          class="tab"
+          [class.active]="activeRightTab === 'behavior'"
+          (click)="activeRightTab = 'behavior'">
+          Behavior
+        </button>
       </div>
 
       <div class="right-panel-content">
@@ -275,6 +281,13 @@
             </app-layout-editor>
           </div>
         </div>
+
+        <!-- PHASE 6: Behavior Panel (Event Handlers + State Variables) -->
+        <app-behavior-editor
+          *ngIf="activeRightTab === 'behavior'"
+          [behavior]="getCurrentBehavior()"
+          (behaviorChange)="onBehaviorChange($event)">
+        </app-behavior-editor>
       </div>
     </div>
 

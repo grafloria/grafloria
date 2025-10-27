@@ -27,6 +27,8 @@ import { StylePropertiesPanelComponent, type StyleProperties } from './component
 import { NodeTreeViewComponent, type TreeNode, type NodeActionEvent } from './components/node-tree-view/node-tree-view.component';
 import { LayoutEditorComponent } from './components/layout-editor/layout-editor.component';
 import { SerializedLayoutConfig } from '@grafloria/engine';
+// PHASE 6 IMPORTS - Behavior & Interactivity
+import { BehaviorEditorComponent, type BehaviorConfig } from './components/behavior-editor/behavior-editor.component';
 // PHASE 9 IMPORTS - Template Gallery
 import { TemplateGalleryComponent } from './components/template-gallery/template-gallery.component';
 import { TemplatePreviewModalComponent } from './components/template-preview-modal/template-preview-modal.component';
@@ -83,6 +85,8 @@ import { TemplateGalleryService } from './services/template-gallery.service';
     // PHASE 5 COMPONENTS
     NodeTreeViewComponent,
     LayoutEditorComponent,
+    // PHASE 6 COMPONENTS
+    BehaviorEditorComponent,
     // PHASE 9 COMPONENTS
     TemplateGalleryComponent,
     TemplatePreviewModalComponent
@@ -110,7 +114,7 @@ export class TemplateBuilderComponent implements OnInit, OnDestroy {
   showDocsPanel = false; // NEW: collapsible docs
   showSnippetsPanel = false; // NEW: collapsible snippets
   activeEditorTab: 'json' | 'html' | 'css' = 'json';
-  activeRightTab: 'preview' | 'data' | 'ports' | 'style' | 'structure' = 'preview'; // NEW
+  activeRightTab: 'preview' | 'data' | 'ports' | 'style' | 'structure' | 'behavior' = 'preview'; // NEW
   activeBottomTab: 'events' | 'performance' | 'validation' = 'events'; // NEW
 
   // NEW: Test data for data testing panel
@@ -558,7 +562,7 @@ export class TemplateBuilderComponent implements OnInit, OnDestroy {
    * NEW: Cycle through right panel tabs
    */
   cycleRightTab(): void {
-    const tabs: Array<'preview' | 'data' | 'ports' | 'style' | 'structure'> = ['preview', 'data', 'ports', 'style', 'structure'];
+    const tabs: Array<'preview' | 'data' | 'ports' | 'style' | 'structure' | 'behavior'> = ['preview', 'data', 'ports', 'style', 'structure', 'behavior'];
     const currentIndex = tabs.indexOf(this.activeRightTab);
     this.activeRightTab = tabs[(currentIndex + 1) % tabs.length];
   }
@@ -745,23 +749,26 @@ export class TemplateBuilderComponent implements OnInit, OnDestroy {
       }
 
       // Map layout config to template structure
-      if (layoutConfig.type === 'flexbox') {
-        template.structure.layout.direction = layoutConfig.flexDirection;
-        template.structure.layout.wrap = layoutConfig.flexWrap;
-        template.structure.layout.justifyContent = layoutConfig.justifyContent;
-        template.structure.layout.alignItems = layoutConfig.alignItems;
-        template.structure.layout.alignContent = layoutConfig.alignContent;
-        template.structure.layout.gap = layoutConfig.gap;
-      } else if (layoutConfig.type === 'grid') {
-        template.structure.layout.gridTemplateColumns = layoutConfig.gridTemplateColumns;
-        template.structure.layout.gridTemplateRows = layoutConfig.gridTemplateRows;
-        template.structure.layout.gridAutoFlow = layoutConfig.gridAutoFlow;
-        template.structure.layout.gap = layoutConfig.gridGap;
-      }
-
-      // Update padding
-      if (layoutConfig.padding) {
-        template.structure.layout.padding = layoutConfig.padding;
+      if (layoutConfig.type === 'flexbox' && layoutConfig.config) {
+        const flexConfig = layoutConfig.config as any;
+        template.structure.layout.direction = flexConfig.direction;
+        template.structure.layout.wrap = flexConfig.wrap;
+        template.structure.layout.justifyContent = flexConfig.justifyContent;
+        template.structure.layout.alignItems = flexConfig.alignItems;
+        template.structure.layout.alignContent = flexConfig.alignContent;
+        template.structure.layout.gap = flexConfig.gap;
+        if (flexConfig.padding) {
+          template.structure.layout.padding = flexConfig.padding;
+        }
+      } else if (layoutConfig.type === 'grid' && layoutConfig.config) {
+        const gridConfig = layoutConfig.config as any;
+        template.structure.layout.gridTemplateColumns = gridConfig.templateColumns;
+        template.structure.layout.gridTemplateRows = gridConfig.templateRows;
+        template.structure.layout.gridAutoFlow = gridConfig.autoFlow;
+        template.structure.layout.gap = gridConfig.columnGap; // or rowGap
+        if (gridConfig.padding) {
+          template.structure.layout.padding = gridConfig.padding;
+        }
       }
 
       this.editorService.updateJson(JSON.stringify(template, null, 2));
@@ -786,43 +793,103 @@ export class TemplateBuilderComponent implements OnInit, OnDestroy {
     const template = this.getCurrentTemplate();
     const layout = template?.structure?.layout;
 
-    // Ensure we always return a valid LayoutConfig with type property
+    // Ensure we always return a valid SerializedLayoutConfig with type property
     if (!layout) {
       return { type: 'none' };
     }
 
-    // If layout exists but doesn't have type, infer it
+    // If layout exists but doesn't have type, infer it from properties
     if (!(layout as any).type) {
       // Check if it's flexbox layout
       if ((layout as any).direction || (layout as any).justifyContent || (layout as any).alignItems) {
         return {
           type: 'flexbox',
-          flexDirection: (layout as any).direction,
-          flexWrap: (layout as any).wrap,
-          justifyContent: (layout as any).justifyContent,
-          alignItems: (layout as any).alignItems,
-          alignContent: (layout as any).alignContent,
-          gap: (layout as any).gap,
-          padding: (layout as any).padding
+          config: {
+            direction: (layout as any).direction || 'row',
+            wrap: (layout as any).wrap || 'nowrap',
+            justifyContent: (layout as any).justifyContent || 'start',
+            alignItems: (layout as any).alignItems || 'start',
+            alignContent: (layout as any).alignContent || 'start',
+            gap: (layout as any).gap || 0,
+            padding: (layout as any).padding
+          }
         };
       }
       // Check if it's grid layout
       if ((layout as any).gridTemplateColumns || (layout as any).gridTemplateRows) {
         return {
           type: 'grid',
-          gridTemplateColumns: (layout as any).gridTemplateColumns,
-          gridTemplateRows: (layout as any).gridTemplateRows,
-          gridAutoFlow: (layout as any).gridAutoFlow,
-          gridGap: (layout as any).gap,
-          padding: (layout as any).padding
+          config: {
+            templateColumns: (layout as any).gridTemplateColumns || 'auto',
+            templateRows: (layout as any).gridTemplateRows || 'auto',
+            columnGap: (layout as any).columnGap || 0,
+            rowGap: (layout as any).rowGap || 0,
+            autoFlow: (layout as any).gridAutoFlow || 'row',
+            padding: (layout as any).padding
+          }
         };
       }
       // Default to none
       return { type: 'none' };
     }
 
-    // Layout already has type, return as is
-    return layout as SerializedLayoutConfig;
+    // Layout already has proper structure
+    return layout as unknown as SerializedLayoutConfig;
+  }
+
+  /**
+   * Get current behavior configuration
+   */
+  getCurrentBehavior(): BehaviorConfig {
+    const template = this.getCurrentTemplate();
+    const behavior = (template as any)?.behavior;
+
+    // Ensure we always return a valid BehaviorConfig
+    if (!behavior) {
+      return {
+        eventHandlers: [],
+        stateVariables: [],
+        draggable: false,
+        selectable: true,
+        resizable: false
+      };
+    }
+
+    return {
+      eventHandlers: behavior.eventHandlers || [],
+      stateVariables: behavior.stateVariables || [],
+      draggable: behavior.draggable || false,
+      selectable: behavior.selectable !== false, // default true
+      resizable: behavior.resizable || false
+    };
+  }
+
+  /**
+   * Handle behavior configuration changes
+   */
+  onBehaviorChange(behaviorConfig: BehaviorConfig): void {
+    const currentState = this.editorService.getState();
+
+    try {
+      const template = JSON.parse(currentState.json);
+
+      // Update behavior configuration
+      if (!template.behavior) {
+        template.behavior = {};
+      }
+
+      template.behavior.eventHandlers = behaviorConfig.eventHandlers;
+      template.behavior.stateVariables = behaviorConfig.stateVariables;
+      template.behavior.draggable = behaviorConfig.draggable;
+      template.behavior.selectable = behaviorConfig.selectable;
+      template.behavior.resizable = behaviorConfig.resizable;
+
+      this.editorService.updateJson(JSON.stringify(template, null, 2));
+
+      console.log('✅ Behavior configuration updated');
+    } catch (error) {
+      console.error('❌ Failed to update behavior:', error);
+    }
   }
 
   /**
