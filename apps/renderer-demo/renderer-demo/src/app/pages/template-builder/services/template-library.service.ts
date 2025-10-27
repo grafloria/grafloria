@@ -115,14 +115,24 @@ export class TemplateLibraryService {
 
       // ERD Templates
       {
-        id: 'erd-table',
-        name: 'ERD Table',
+        id: 'erd-table-option-b',
+        name: 'ERD Table (SSMS Style)',
         category: 'database',
-        description: 'Entity-Relationship Diagram table',
-        tags: ['erd', 'database', 'table'],
-        template: this.createERDTable(),
-        htmlLayer: this.getERDTableHTML(),
-        cssLayer: this.getERDTableCSS()
+        description: 'Entity-Relationship Diagram table - SQL Server Management Studio style',
+        tags: ['erd', 'database', 'table', 'ssms', 'option-b'],
+        template: this.createERDTableOptionB(),
+        htmlLayer: this.getERDTableOptionBHTML(),
+        cssLayer: this.getERDTableOptionBCSS()
+      },
+      {
+        id: 'erd-table-option-a',
+        name: 'ERD Table (Classic)',
+        category: 'database',
+        description: 'Entity-Relationship Diagram table - Classic purple gradient style',
+        tags: ['erd', 'database', 'table', 'classic', 'option-a'],
+        template: this.createERDTableOptionA(),
+        htmlLayer: this.getERDTableOptionAHTML(),
+        cssLayer: this.getERDTableOptionACSS()
       },
 
       // Workflow Templates
@@ -210,31 +220,96 @@ export class TemplateLibraryService {
     };
   }
 
-  private createERDTable(): NodeTemplate {
+  private createERDTableOptionB(): NodeTemplate {
     return {
-      id: 'erd-table',
+      id: 'erd-table-option-b',
       version: '1.0.0',
       meta: {
-        name: 'ERD Table',
+        name: 'ERD Table (SSMS Style)',
         category: 'database',
-        description: 'Entity-Relationship Diagram table',
-        tags: ['erd', 'database', 'table']
+        description: 'SQL Server Management Studio style table with gray header',
+        tags: ['erd', 'database', 'table', 'ssms']
       },
       structure: {
-        type: 'erd-table',
-        size: { width: 250, height: 45 },
-        shape: { type: 'rect', cornerRadius: 8, fill: '#e8f5e9', stroke: '#4caf50', strokeWidth: 2 },
+        type: 'erd-table-b',
+        size: { width: 250, height: 200 },
+        shape: { type: 'rect', cornerRadius: 0, fill: '#ffffff', stroke: '#a1a1aa', strokeWidth: 1 },
         behavior: { draggable: true, selectable: true }
       },
       dataSchema: {
         type: 'object',
         properties: {
-          tableName: { type: 'string' }
+          tableName: { type: 'string' },
+          fields: {
+            type: 'array',
+            items: {
+              type: 'object',
+              properties: {
+                name: { type: 'string' },
+                type: { type: 'string' },
+                isPrimaryKey: { type: 'boolean' },
+                isForeignKey: { type: 'boolean' }
+              }
+            }
+          }
         },
         required: ['tableName']
       },
       defaultData: {
-        tableName: 'TableName'
+        tableName: 'Products',
+        fields: [
+          { name: 'id', type: 'INT', isPrimaryKey: true, isForeignKey: false },
+          { name: 'name', type: 'VARCHAR(255)', isPrimaryKey: false, isForeignKey: false },
+          { name: 'price', type: 'DECIMAL(10,2)', isPrimaryKey: false, isForeignKey: false },
+          { name: 'stock', type: 'INT', isPrimaryKey: false, isForeignKey: false }
+        ]
+      }
+    };
+  }
+
+  private createERDTableOptionA(): NodeTemplate {
+    return {
+      id: 'erd-table-option-a',
+      version: '1.0.0',
+      meta: {
+        name: 'ERD Table (Classic)',
+        category: 'database',
+        description: 'Classic purple gradient style ERD table',
+        tags: ['erd', 'database', 'table', 'classic']
+      },
+      structure: {
+        type: 'erd-table-a',
+        size: { width: 250, height: 200 },
+        shape: { type: 'rect', cornerRadius: 8, fill: '#ffffff', stroke: '#667eea', strokeWidth: 2 },
+        behavior: { draggable: true, selectable: true }
+      },
+      dataSchema: {
+        type: 'object',
+        properties: {
+          tableName: { type: 'string' },
+          fields: {
+            type: 'array',
+            items: {
+              type: 'object',
+              properties: {
+                name: { type: 'string' },
+                type: { type: 'string' },
+                isPrimaryKey: { type: 'boolean' },
+                isForeignKey: { type: 'boolean' }
+              }
+            }
+          }
+        },
+        required: ['tableName']
+      },
+      defaultData: {
+        tableName: 'Users',
+        fields: [
+          { name: 'id', type: 'INT', isPrimaryKey: true, isForeignKey: false },
+          { name: 'email', type: 'VARCHAR(255)', isPrimaryKey: false, isForeignKey: false },
+          { name: 'name', type: 'VARCHAR(100)', isPrimaryKey: false, isForeignKey: false },
+          { name: 'created_at', type: 'TIMESTAMP', isPrimaryKey: false, isForeignKey: false }
+        ]
       }
     };
   }
@@ -303,23 +378,186 @@ export class TemplateLibraryService {
 
   // HTML/CSS Layers
 
-  private getERDTableHTML(): string {
-    return `<div class="erd-table-header">
-  <div class="table-name">{{data.tableName}}</div>
+  private getERDTableOptionBHTML(): string {
+    return `<div class="erd-table-container-b">
+  <div class="erd-table-header-b">
+    <span class="header-icon">🔑</span>
+    <span class="header-text">{{data.tableName}}</span>
+  </div>
+  <div class="erd-table-fields-b">
+    {{#data.fields}}
+    <div class="erd-field-row-b {{#isPrimaryKey}}primary-key{{/isPrimaryKey}}">
+      <span class="field-icon">
+        {{#isPrimaryKey}}🔑{{/isPrimaryKey}}
+        {{#isForeignKey}}🔗{{/isForeignKey}}
+      </span>
+      <span class="field-name">{{name}}</span>
+      <span class="field-type">{{type}}</span>
+    </div>
+    {{/data.fields}}
+  </div>
 </div>`;
   }
 
-  private getERDTableCSS(): string {
-    return `.erd-table-header {
-  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-  color: white;
-  padding: 12px;
-  font-weight: bold;
-  border-radius: 8px 8px 0 0;
+  private getERDTableOptionBCSS(): string {
+    return `.erd-table-container-b {
+  width: 100%;
+  height: 100%;
+  background: white;
+  font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
 }
 
-.table-name {
+.erd-table-header-b {
+  padding: 6px 8px;
+  background: #f5f5f5;
+  border-bottom: 1px solid #d4d4d8;
+  color: #18181b;
+  font-weight: 600;
+  font-size: 13px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.header-icon {
   font-size: 14px;
+}
+
+.erd-table-fields-b {
+  background: white;
+}
+
+.erd-field-row-b {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 8px;
+  font-size: 12px;
+  border-bottom: 1px solid #e5e5e5;
+  min-height: 24px;
+}
+
+.erd-field-row-b:last-child {
+  border-bottom: none;
+}
+
+.field-icon {
+  width: 14px;
+  min-width: 14px;
+  text-align: center;
+  font-size: 11px;
+}
+
+.field-name {
+  flex: 1;
+  color: #18181b;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.field-name.primary-key {
+  font-weight: 600;
+  color: #0066cc;
+}
+
+.field-type {
+  color: #71717a;
+  font-size: 11px;
+  font-family: 'Consolas', 'Courier New', monospace;
+  white-space: nowrap;
+}
+
+.primary-key .field-name {
+  font-weight: 600;
+  color: #0066cc;
+}`;
+  }
+
+  private getERDTableOptionAHTML(): string {
+    return `<div class="erd-table-container-a">
+  <div class="erd-table-header-a">
+    <span class="header-icon">📊</span>
+    <span class="header-text">{{data.tableName}}</span>
+  </div>
+  <div class="erd-table-fields-a">
+    {{#data.fields}}
+    <div class="erd-field-row-a {{#isPrimaryKey}}primary-key{{/isPrimaryKey}}">
+      <span class="field-icon">
+        {{#isPrimaryKey}}🔑{{/isPrimaryKey}}
+        {{#isForeignKey}}🔗{{/isForeignKey}}
+      </span>
+      <span class="field-name">{{name}}</span>
+      <span class="field-type">{{type}}</span>
+    </div>
+    {{/data.fields}}
+  </div>
+</div>`;
+  }
+
+  private getERDTableOptionACSS(): string {
+    return `.erd-table-container-a {
+  width: 100%;
+  height: 100%;
+  background: white;
+  border-radius: 8px;
+  overflow: hidden;
+  box-shadow: 0 2px 8px rgba(102, 126, 234, 0.15);
+}
+
+.erd-table-header-a {
+  padding: 12px;
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  color: white;
+  font-weight: 600;
+  font-size: 14px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.header-icon {
+  font-size: 16px;
+}
+
+.erd-table-fields-a {
+  background: white;
+}
+
+.erd-field-row-a {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px;
+  font-size: 12px;
+  border-bottom: 1px solid #e0e0e0;
+  min-height: 30px;
+}
+
+.erd-field-row-a:last-child {
+  border-bottom: none;
+}
+
+.field-icon {
+  width: 16px;
+  text-align: center;
+  font-size: 14px;
+}
+
+.field-name {
+  flex: 1;
+  color: #2c3e50;
+}
+
+.primary-key .field-name {
+  font-weight: 600;
+  color: #667eea;
+}
+
+.field-type {
+  color: #7f8c8d;
+  font-size: 11px;
+  font-family: 'Courier New', monospace;
 }`;
   }
 
