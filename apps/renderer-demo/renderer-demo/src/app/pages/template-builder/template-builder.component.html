@@ -114,28 +114,28 @@
           </button>
         </div>
         <div class="panel-info">
-          <!-- Child Node Wizard Button -->
-          <app-button
-            *ngIf="activeEditorTab === 'json'"
-            variant="primary"
-            size="sm"
-            icon="➕"
-            (clicked)="openChildNodeWizard()"
-            title="Add a child node using guided wizard">
-            Add Child Node
-          </app-button>
+          <!-- JSON Editor Actions (icon-only for compact layout) -->
+          <div class="json-actions" *ngIf="activeEditorTab === 'json'">
+            <app-button
+              variant="primary"
+              size="sm"
+              icon="➕"
+              [iconOnly]="true"
+              (clicked)="openChildNodeWizard()"
+              title="Add Child Node - Guided wizard">
+            </app-button>
 
-          <!-- Node Layer Editor Button -->
-          <app-button
-            *ngIf="activeEditorTab === 'json'"
-            variant="secondary"
-            size="sm"
-            icon="🎨"
-            (clicked)="openNodeLayerEditor()"
-            title="Edit HTML/CSS Layers for Node (place cursor inside node)">
-            Edit Node Layers
-          </app-button>
+            <app-button
+              variant="secondary"
+              size="sm"
+              icon="🎨"
+              [iconOnly]="true"
+              (clicked)="openNodeLayerEditor()"
+              title="Edit Node Layers - Place cursor inside node">
+            </app-button>
+          </div>
 
+          <!-- Status Indicator -->
           <span class="status" *ngIf="editorState$ | async as state">
             <span class="dot" [class.valid]="state.isValid" [class.invalid]="!state.isValid"></span>
             {{ state.isValid ? 'Valid' : 'Invalid' }}

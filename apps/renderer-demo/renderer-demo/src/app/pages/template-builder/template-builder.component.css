@@ -502,3 +502,13 @@
     min-height: 150px;
   }
 }
+
+/* JSON Actions Group */
+.json-actions {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+  padding: 0 8px;
+  border-right: 1px solid #e0e0e0;
+  margin-right: 12px;
+}

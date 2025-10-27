@@ -631,24 +631,69 @@ export class TemplateBuilderComponent implements OnInit, OnDestroy {
     }
     targetOffset = charCount + position.column - 1;
 
-    // Find which JSON path the cursor is in
-    // This is a simplified version - in production you'd use a proper JSON parser with position tracking
-    const currentLine = lines[position.lineNumber - 1];
+    // Get content up to cursor
+    const contentBeforeCursor = content.substring(0, targetOffset);
 
-    // Check if we're in structure or a child
-    if (content.substring(0, targetOffset).includes('"structure"')) {
-      if (content.substring(0, targetOffset).includes('"children"')) {
-        // We're in a child node - try to determine which one
-        // For simplicity, return the first child if it exists
-        if (template.structure?.children && template.structure.children.length > 0) {
-          return { nodePath: 'structure.children[0]', node: template.structure.children[0] };
-        }
-      }
-      // We're in the structure node itself
-      return { nodePath: 'structure', node: template.structure };
+    // Count brace depth to find which object we're in
+    // Strategy: Find the path by counting { and } and tracking property names
+
+    // Check if we're in structure
+    if (!contentBeforeCursor.includes('"structure"')) {
+      return { nodePath: '', node: null };
     }
 
-    return { nodePath: '', node: null };
+    // Check if we're in children array
+    const childrenMatch = contentBeforeCursor.lastIndexOf('"children"');
+    if (childrenMatch > -1) {
+      // Count which child we're in by counting opening braces after "children": [
+      const afterChildren = contentBeforeCursor.substring(childrenMatch);
+      const arrayStart = afterChildren.indexOf('[');
+      if (arrayStart === -1) {
+        // Not in the array yet
+        return { nodePath: 'structure', node: template.structure };
+      }
+
+      const inArray = afterChildren.substring(arrayStart);
+
+      // Count opening braces to determine which child
+      let braceDepth = 0;
+      let childIndex = -1;
+
+      for (let i = 0; i < inArray.length; i++) {
+        const char = inArray[i];
+        if (char === '{') {
+          if (braceDepth === 0) {
+            childIndex++;
+          }
+          braceDepth++;
+        } else if (char === '}') {
+          braceDepth--;
+        }
+      }
+
+      // If we found a child index and it's within bounds
+      if (childIndex >= 0 && template.structure?.children && template.structure.children[childIndex]) {
+        return {
+          nodePath: `structure.children[${childIndex}]`,
+          node: template.structure.children[childIndex]
+        };
+      }
+    }
+
+    // Check if we're in repeater.itemTemplate
+    const repeaterMatch = contentBeforeCursor.lastIndexOf('"repeater"');
+    if (repeaterMatch > -1) {
+      const afterRepeater = contentBeforeCursor.substring(repeaterMatch);
+      if (afterRepeater.includes('"itemTemplate"') && template.structure?.repeater?.itemTemplate) {
+        return {
+          nodePath: 'structure.repeater.itemTemplate',
+          node: template.structure.repeater.itemTemplate
+        };
+      }
+    }
+
+    // Default to structure itself
+    return { nodePath: 'structure', node: template.structure };
   }
 
   /**
@@ -723,55 +768,9 @@ export class TemplateBuilderComponent implements OnInit, OnDestroy {
         } as any;
       }
 
-      // Generate child node JSON based on configuration
-      let childNode: any;
-
-      if (config.type === 'static') {
-        // Static child node
-        childNode = {
-          type: config.nodeType,
-          size: {
-            width: config.width,
-            height: config.height
-          }
-        };
-
-        // Add position if specified
-        if (config.x !== undefined && config.x !== null) {
-          childNode.position = { x: config.x, y: config.y || 0 };
-        }
-
-        // Add default shape
-        childNode.shape = {
-          type: 'rect',
-          fill: '#e3f2fd',
-          stroke: '#2196f3',
-          strokeWidth: 2
-        };
-
-      } else {
-        // Dynamic child node with data binding
-        childNode = {
-          type: config.nodeType,
-          dataTemplate: {
-            dataPath: config.dataPath || 'items',
-            itemVariable: config.itemVariable || 'item'
-          },
-          size: {
-            width: config.width,
-            height: config.height
-          },
-          shape: {
-            type: 'rect',
-            fill: '#e3f2fd',
-            stroke: '#2196f3',
-            strokeWidth: 2
-          },
-          htmlLayer: `<div style="padding: 8px;">{{${config.itemVariable || 'item'}}}</div>`
-        };
-
-        // Add layout for dynamic children
-        childNode.layout = {
+      // Ensure layout exists for containers with children
+      if (!template.structure.layout) {
+        template.structure.layout = {
           direction: 'column',
           wrap: 'nowrap',
           justifyContent: 'start',
@@ -782,17 +781,69 @@ export class TemplateBuilderComponent implements OnInit, OnDestroy {
         };
       }
 
-      // Insert into children array
-      if (!template.structure.children) {
-        template.structure.children = [];
-      }
+      if (config.type === 'static') {
+        // ===== STATIC CHILD NODE =====
+        // Add to structure.children array
+        const childNode: any = {
+          type: config.nodeType,
+          size: {
+            width: config.width,
+            height: config.height
+          },
+          shape: {
+            type: 'rect',
+            fill: '#e3f2fd',
+            stroke: '#2196f3',
+            strokeWidth: 2
+          },
+          ports: { enabled: false }
+        };
 
-      template.structure.children.push(childNode);
+        // Add position if specified (absolute positioning)
+        if (config.x !== undefined && config.x !== null) {
+          childNode.position = { x: config.x, y: config.y || 0 };
+        }
+
+        // Initialize children array if needed
+        if (!template.structure.children) {
+          template.structure.children = [];
+        }
+
+        template.structure.children.push(childNode);
+        console.log('✅ Static child node added to structure.children:', childNode);
+
+      } else {
+        // ===== DYNAMIC CHILD NODES (REPEATER) =====
+        // Use structure.repeater for data-driven children
+        template.structure.repeater = {
+          dataSource: config.dataPath || 'items',
+          keyField: 'id', // You could make this configurable
+          itemTemplate: {
+            type: config.nodeType,
+            size: {
+              width: config.width,
+              height: config.height
+            },
+            shape: {
+              type: 'rect',
+              fill: '#e3f2fd',
+              stroke: '#2196f3',
+              strokeWidth: 2
+            },
+            html: {
+              mode: 'template',
+              template: `<div style="padding: 8px; text-align: center;">{{${config.itemVariable || 'item'}}}</div>`
+            },
+            ports: { enabled: false }
+          }
+        };
+
+        console.log('✅ Dynamic repeater configured:', template.structure.repeater);
+      }
 
       // Update the editor
       this.editorService.updateJson(JSON.stringify(template, null, 2));
 
-      console.log(`✅ ${config.type === 'static' ? 'Static' : 'Dynamic'} child node added:`, childNode);
     } catch (error) {
       console.error('❌ Failed to generate child node:', error);
       alert('Failed to add child node. Please check console for details.');
