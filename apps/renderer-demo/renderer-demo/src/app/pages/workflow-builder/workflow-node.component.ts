@@ -1,4 +1,4 @@
-import { Component, Input, OnInit, OnChanges, SimpleChanges, ChangeDetectorRef, ChangeDetectionStrategy } from '@angular/core';
+import { Component, Input, OnInit, OnChanges, OnDestroy, SimpleChanges, ChangeDetectorRef, ChangeDetectionStrategy } from '@angular/core';
 import { CommonModule } from '@angular/common';
 
 export type WorkflowNodeType = 'start' | 'task' | 'decision' | 'end';
@@ -130,21 +130,49 @@ export interface WorkflowNodeData {
     }
   `]
 })
-export class WorkflowNodeComponent implements OnInit, OnChanges {
+export class WorkflowNodeComponent implements OnInit, OnChanges, OnDestroy {
   @Input() node: any; // NodeModel from the engine
   @Input() engine?: any; // DiagramEngine (optional)
+
+  private unsubscribe?: () => void;
 
   constructor(private cdr: ChangeDetectorRef) {}
 
   ngOnInit(): void {
-    // Initial setup - no need to extract metadata here
-    // We'll use getters to always read fresh data
+    // Subscribe to node metadata changes
+    // When metadata changes, trigger change detection so getters are re-evaluated
+    if (this.node && typeof this.node.on === 'function') {
+      this.unsubscribe = this.node.on('change:metadata.status', () => {
+        // Status metadata changed - trigger change detection
+        this.cdr.detectChanges();
+      });
+    }
   }
 
   ngOnChanges(changes: SimpleChanges): void {
     // Trigger change detection when inputs change
     if (changes['node']) {
+      // Unsubscribe from old node
+      if (this.unsubscribe) {
+        this.unsubscribe();
+        this.unsubscribe = undefined;
+      }
+
+      // Subscribe to new node
+      if (this.node && typeof this.node.on === 'function') {
+        this.unsubscribe = this.node.on('change:metadata.status', () => {
+          this.cdr.detectChanges();
+        });
+      }
+
       this.cdr.markForCheck();
+    }
+  }
+
+  ngOnDestroy(): void {
+    // Clean up subscription
+    if (this.unsubscribe) {
+      this.unsubscribe();
     }
   }
 
