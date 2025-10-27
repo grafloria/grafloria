@@ -11,6 +11,7 @@ import { PreviewPanelComponent } from './components/preview-panel/preview-panel.
 import { TemplateSidebarComponent } from './components/template-library/template-sidebar.component';
 import { PerformancePanelComponent } from './components/performance-panel/performance-panel.component';
 import { DocumentationSidebarComponent } from './components/documentation-sidebar/documentation-sidebar.component';
+import { SnippetPanelComponent } from './components/snippet-panel/snippet-panel.component';
 
 /**
  * Template Builder Component
@@ -48,7 +49,8 @@ import { DocumentationSidebarComponent } from './components/documentation-sideba
     PreviewPanelComponent,
     TemplateSidebarComponent,
     PerformancePanelComponent,
-    DocumentationSidebarComponent
+    DocumentationSidebarComponent,
+    SnippetPanelComponent
   ],
   selector: 'app-template-builder',
   templateUrl: './template-builder.component.html',
@@ -191,6 +193,31 @@ export class TemplateBuilderComponent implements OnInit, OnDestroy {
 
       console.log(`✅ Loaded template: ${preset.name}`);
     }
+  }
+
+  /**
+   * Handle snippet insertion
+   */
+  onSnippetInsert(event: { code: string; language: 'json' | 'html' | 'css' }): void {
+    const state = this.editorService.getState();
+
+    // Insert snippet into the appropriate editor based on language
+    switch (event.language) {
+      case 'json':
+        this.editorService.updateJson(state.json + '\n\n' + event.code);
+        this.activeEditorTab = 'json';
+        break;
+      case 'html':
+        this.editorService.updateHtml(state.html + '\n\n' + event.code);
+        this.activeEditorTab = 'html';
+        break;
+      case 'css':
+        this.editorService.updateCss(state.css + '\n\n' + event.code);
+        this.activeEditorTab = 'css';
+        break;
+    }
+
+    console.log(`✅ Inserted ${event.language} snippet`);
   }
 
   /**

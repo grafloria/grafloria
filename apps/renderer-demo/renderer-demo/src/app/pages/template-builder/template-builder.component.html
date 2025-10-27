@@ -142,6 +142,13 @@
     <div class="docs-sidebar">
       <app-documentation-sidebar></app-documentation-sidebar>
     </div>
+
+    <!-- Far Right: Snippet Panel -->
+    <div class="snippet-panel-container">
+      <app-snippet-panel
+        (insertSnippet)="onSnippetInsert($event)">
+      </app-snippet-panel>
+    </div>
   </div>
 
   <!-- Bottom: Performance Metrics -->
