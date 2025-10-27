@@ -363,6 +363,158 @@ export class SnippetService {
   "cornerRadius": 12
 }`
     });
+
+    this.snippets.push({
+      id: 'shape-ellipse',
+      name: 'Ellipse Shape',
+      description: 'Oval/ellipse shape',
+      category: 'json',
+      subcategory: 'shapes',
+      tags: ['shape', 'ellipse', 'oval'],
+      icon: '⬭',
+      code: `"shape": {
+  "type": "ellipse",
+  "fill": "#fff3e0",
+  "stroke": "#ff9800",
+  "strokeWidth": 2
+}`
+    });
+
+    this.snippets.push({
+      id: 'shape-hexagon',
+      name: 'Hexagon Shape',
+      description: 'Six-sided hexagon',
+      category: 'json',
+      subcategory: 'shapes',
+      tags: ['shape', 'hexagon', 'polygon'],
+      icon: '⬡',
+      code: `"shape": {
+  "type": "hexagon",
+  "fill": "#e8f5e9",
+  "stroke": "#4caf50",
+  "strokeWidth": 2
+}`
+    });
+
+    this.snippets.push({
+      id: 'shape-radial-gradient',
+      name: 'Radial Gradient',
+      description: 'Radial gradient from center',
+      category: 'json',
+      subcategory: 'shapes',
+      tags: ['shape', 'gradient', 'radial', 'fill'],
+      icon: '⭕',
+      code: `"shape": {
+  "type": "circle",
+  "fill": "radial-gradient(circle, #667eea 0%, #764ba2 100%)",
+  "stroke": "#667eea",
+  "strokeWidth": 2
+}`
+    });
+
+    this.snippets.push({
+      id: 'shape-multi-stop-gradient',
+      name: 'Multi-Stop Gradient',
+      description: 'Gradient with multiple color stops',
+      category: 'json',
+      subcategory: 'shapes',
+      tags: ['shape', 'gradient', 'multi-stop', 'colorful'],
+      icon: '🌈',
+      code: `"shape": {
+  "type": "rect",
+  "fill": "linear-gradient(135deg, #667eea 0%, #764ba2 33%, #f093fb 66%, #4facfe 100%)",
+  "stroke": "#667eea",
+  "strokeWidth": 2,
+  "cornerRadius": 16
+}`
+    });
+
+    this.snippets.push({
+      id: 'shape-image-fill',
+      name: 'Image Background',
+      description: 'Base64 image as background',
+      category: 'json',
+      subcategory: 'shapes',
+      tags: ['shape', 'image', 'background', 'base64'],
+      icon: '🖼️',
+      code: `"shape": {
+  "type": "rect",
+  "fill": "url(data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMjAiIGhlaWdodD0iMjAiIHhtbG5zPSJodHRwOi8vd3d3LnczLm9yZy8yMDAwL3N2ZyI+PGNpcmNsZSBjeD0iMTAiIGN5PSIxMCIgcj0iMyIgZmlsbD0iI2NjYyIvPjwvc3ZnPg==)",
+  "stroke": "#999",
+  "strokeWidth": 1,
+  "cornerRadius": 8
+}`
+    });
+
+    this.snippets.push({
+      id: 'shape-pattern-dots',
+      name: 'Dot Pattern Fill',
+      description: 'SVG pattern with dots',
+      category: 'json',
+      subcategory: 'shapes',
+      tags: ['shape', 'pattern', 'dots', 'background'],
+      icon: '⬝',
+      code: `"shape": {
+  "type": "rect",
+  "fill": "url(data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMjAiIGhlaWdodD0iMjAiIHhtbG5zPSJodHRwOi8vd3d3LnczLm9yZy8yMDAwL3N2ZyI+PGNpcmNsZSBjeD0iMTAiIGN5PSIxMCIgcj0iMiIgZmlsbD0iIzY2N2VlYSIgb3BhY2l0eT0iMC4zIi8+PC9zdmc+)",
+  "stroke": "#667eea",
+  "strokeWidth": 2,
+  "cornerRadius": 8
+}`
+    });
+
+    this.snippets.push({
+      id: 'shape-pattern-grid',
+      name: 'Grid Pattern Fill',
+      description: 'SVG pattern with grid lines',
+      category: 'json',
+      subcategory: 'shapes',
+      tags: ['shape', 'pattern', 'grid', 'lines'],
+      icon: '⊞',
+      code: `"shape": {
+  "type": "rect",
+  "fill": "url(data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMjAiIGhlaWdodD0iMjAiIHhtbG5zPSJodHRwOi8vd3d3LnczLm9yZy8yMDAwL3N2ZyI+PHBhdGggZD0iTSAyMCAwIEwgMCAwIDAgMjAiIGZpbGw9Im5vbmUiIHN0cm9rZT0iI2NjYyIgc3Ryb2tlLXdpZHRoPSIxIiBvcGFjaXR5PSIwLjMiLz48L3N2Zz4=)",
+  "stroke": "#999",
+  "strokeWidth": 1,
+  "cornerRadius": 0
+}`
+    });
+
+    this.snippets.push({
+      id: 'shape-opacity',
+      name: 'Semi-Transparent Shape',
+      description: 'Shape with opacity',
+      category: 'json',
+      subcategory: 'shapes',
+      tags: ['shape', 'opacity', 'transparent', 'alpha'],
+      icon: '◯',
+      code: `"shape": {
+  "type": "rect",
+  "fill": "#667eea",
+  "stroke": "#5568d3",
+  "strokeWidth": 2,
+  "cornerRadius": 8,
+  "opacity": 0.7
+}`
+    });
+
+    this.snippets.push({
+      id: 'shape-dashed-border',
+      name: 'Dashed Border',
+      description: 'Shape with dashed stroke',
+      category: 'json',
+      subcategory: 'shapes',
+      tags: ['shape', 'border', 'dashed', 'stroke'],
+      icon: '⟐',
+      code: `"shape": {
+  "type": "rect",
+  "fill": "#f9fafb",
+  "stroke": "#6b7280",
+  "strokeWidth": 2,
+  "strokeDasharray": "5,5",
+  "cornerRadius": 8
+}`
+    });
   }
 
   /**
