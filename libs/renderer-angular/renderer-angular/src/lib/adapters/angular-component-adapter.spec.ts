@@ -418,7 +418,7 @@ describe('AngularComponentAdapter', () => {
     });
 
     it('should update position without updating data', () => {
-      const originalTitle = mockNode.data.title;
+      const originalTitle = mockNode.data['title'];
 
       mockNode.setPosition(500, 600);
       adapter.updateComponentInstance(instance, mockNode);

@@ -690,6 +690,10 @@ export const ERDTableRepeater: NodeTemplate = {
       direction: 'column',
       gap: 0,
       padding: { top: 0, right: 0, bottom: 0, left: 0 },
+      wrap: 'nowrap',
+      justifyContent: 'start',
+      alignItems: 'start',
+      alignContent: 'start',
     },
 
     // Static header child

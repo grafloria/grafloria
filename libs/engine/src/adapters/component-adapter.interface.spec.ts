@@ -31,8 +31,8 @@ describe('ComponentAdapter Interface Contract', () => {
       size: { width: 100, height: 100 }
     });
 
-    // Create mock container
-    mockContainer = document.createElement('div');
+    // Create mock container (plain object - framework-agnostic)
+    mockContainer = {};
   });
 
   describe('framework property', () => {
