@@ -152,13 +152,13 @@ export class TemplateGalleryService {
   addTemplate(template: NodeTemplate, metadata?: Partial<TemplateMetadata>): Observable<string> {
     const fullMetadata = createDefaultTemplateMetadata({
       id: template.id,
-      name: template.name,
+      name: template.meta.name,
       description: template.meta.description || '',
-      category: (template.category as any) || 'custom',
+      category: (template.meta.category as any) || 'custom',
       tags: template.meta.tags || [],
       author: template.meta.author || 'User',
       template,
-      features: this.detectFeatures(template),
+      features: this.detectFeatures(template) as any,
       hasChildNodes: this.hasChildNodes(template),
       hasConnections: this.hasConnections(template),
       hasCustomStyling: this.hasCustomStyling(template),
@@ -242,14 +242,14 @@ export class TemplateGalleryService {
     const duplicated: NodeTemplate = {
       ...original.template,
       id: newId,
-      name: newName || `${original.name} (Copy)`,
       meta: {
-        ...original.template.meta
+        ...original.template.meta,
+        name: newName || `${original.name} (Copy)`
       }
     };
 
     return this.addTemplate(duplicated, {
-      name: duplicated.name,
+      name: duplicated.meta.name,
       description: original.description,
       category: original.category,
       tags: [...original.tags],
@@ -680,10 +680,6 @@ export class TemplateGalleryService {
       features.push('behavior');
     }
 
-    if (template.structure.constraints) {
-      features.push('constraints');
-    }
-
     return features;
   }
 
@@ -705,7 +701,7 @@ export class TemplateGalleryService {
    * Check if template has custom styling
    */
   private hasCustomStyling(template: NodeTemplate): boolean {
-    return !!(template.structure.html || template.structure.html?.template?.includes('<style>'));
+    return !!(template.structure.html || template.styles);
   }
 
   /**

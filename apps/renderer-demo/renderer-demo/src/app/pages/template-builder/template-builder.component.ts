@@ -968,29 +968,22 @@ export class TemplateBuilderComponent implements OnInit, OnDestroy {
   onGalleryTemplateSelect(metadata: TemplateMetadata): void {
     console.log('📄 Template selected from gallery:', metadata.name);
 
-    // Load template from gallery service
-    this.galleryService.getTemplate(metadata.id)
-      .pipe(takeUntil(this.destroy$))
-      .subscribe({
-        next: (template) => {
-          if (template) {
-            this.editorService.loadTemplate({
-              json: JSON.stringify(template, null, 2),
-              html: metadata.template?.htmlLayer || '',
-              css: metadata.template?.cssLayer || ''
-            });
-
-            // Increment usage count
-            this.galleryService.incrementUsageCount(metadata.id);
-
-            console.log(`✅ Loaded template from gallery: ${metadata.name}`);
-          }
-        },
-        error: (error) => {
-          console.error('❌ Failed to load template from gallery:', error);
-          alert('Failed to load template. Please try again.');
-        }
+    // Load template directly from metadata
+    if (metadata.template) {
+      this.editorService.loadTemplate({
+        json: JSON.stringify(metadata.template, null, 2),
+        html: (metadata as any).htmlLayer || '',
+        css: (metadata as any).cssLayer || ''
       });
+
+      // Increment usage count
+      this.galleryService.incrementUsageCount(metadata.id);
+
+      console.log(`✅ Loaded template from gallery: ${metadata.name}`);
+    } else {
+      console.error('❌ Template data not found in metadata');
+      alert('Failed to load template. Please try again.');
+    }
 
     this.closeTemplateGallery();
   }

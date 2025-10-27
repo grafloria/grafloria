@@ -168,26 +168,8 @@ export class TemplatePreviewModalComponent implements OnInit, OnDestroy, AfterVi
     this.errorMessage = null;
     this.cdr.markForCheck();
 
-    // Load full template data if not already loaded
-    if (!this.metadata.template) {
-      this.galleryService.getTemplate(this.metadata.id)
-        .pipe(takeUntil(this.destroy$))
-        .subscribe({
-          next: (template) => {
-            if (template && this.metadata) {
-              this.metadata.template = template;
-              this.renderTemplateToCanvas();
-            }
-          },
-          error: (error) => {
-            this.errorMessage = 'Failed to load template';
-            this.isLoading = false;
-            this.cdr.markForCheck();
-          }
-        });
-    } else {
-      this.renderTemplateToCanvas();
-    }
+    // Render template to canvas
+    this.renderTemplateToCanvas();
 
     // Increment view count
     this.galleryService.incrementViewCount(this.metadata.id);

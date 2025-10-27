@@ -39,7 +39,7 @@ export const BASIC_TEMPLATES: Partial<TemplateMetadata>[] = [
         strokeWidth: 2
       },
       ports: { enabled: false }
-    }
+    } as any
   },
   {
     name: 'Rounded Card',
@@ -72,7 +72,7 @@ export const BASIC_TEMPLATES: Partial<TemplateMetadata>[] = [
         transition: box-shadow 0.3s;
       `,
       ports: { enabled: false }
-    }
+    } as any
   },
   {
     name: 'Circle Badge',
@@ -130,7 +130,38 @@ export const BASIC_TEMPLATES: Partial<TemplateMetadata>[] = [
         </div>
       `,
       ports: { enabled: false }
-    }
+    } as any
+  },
+  {
+    name: 'Text Label',
+    description: 'A simple text label with customizable content. Perfect for adding annotations or descriptions.',
+    category: 'basic',
+    tags: ['text', 'label', 'annotation'],
+    complexity: 'simple',
+    author: 'Grafloria',
+    version: '1.0.0',
+    features: ['html'],
+    hasChildNodes: false,
+    hasConnections: false,
+    hasCustomStyling: true,
+    hasDataBinding: false,
+    hasInteractivity: false,
+    template: {
+      id: 'text-label',
+      type: 'rectangle',
+      size: { width: 200, height: 60 },
+      shape: {
+        type: 'rect',
+        fill: 'transparent',
+        stroke: 'none'
+      },
+      htmlLayer: `
+        <div style="padding: 12px; text-align: center; font-size: 16px; color: #333;">
+          Your text here
+        </div>
+      `,
+      ports: { enabled: false }
+    } as any
   }
 ];
 
@@ -188,7 +219,7 @@ export const UI_COMPONENT_TEMPLATES: Partial<TemplateMetadata>[] = [
         }
       `,
       ports: { enabled: false }
-    }
+    } as any
   },
   {
     name: 'Input Field',
@@ -234,7 +265,7 @@ export const UI_COMPONENT_TEMPLATES: Partial<TemplateMetadata>[] = [
         }
       `,
       ports: { enabled: false }
-    }
+    } as any
   },
   {
     name: 'Card with Header',
@@ -303,7 +334,7 @@ export const UI_COMPONENT_TEMPLATES: Partial<TemplateMetadata>[] = [
         }
       `,
       ports: { enabled: false }
-    }
+    } as any
   }
 ];
 
@@ -377,7 +408,7 @@ export const DASHBOARD_TEMPLATES: Partial<TemplateMetadata>[] = [
         }
       `,
       ports: { enabled: false }
-    }
+    } as any
   },
   {
     name: 'Progress Bar',
@@ -452,7 +483,7 @@ export const DASHBOARD_TEMPLATES: Partial<TemplateMetadata>[] = [
         }
       `,
       ports: { enabled: false }
-    }
+    } as any
   }
 ];
 
@@ -537,7 +568,7 @@ export const WORKFLOW_TEMPLATES: Partial<TemplateMetadata>[] = [
           outputs: [{ id: 'out', position: 'right', label: 'Out' }]
         }
       }
-    }
+    } as any
   },
   {
     name: 'Decision Diamond',
@@ -594,7 +625,7 @@ export const WORKFLOW_TEMPLATES: Partial<TemplateMetadata>[] = [
           ]
         }
       }
-    }
+    } as any
   }
 ];
 
@@ -635,13 +666,14 @@ export const CONTAINER_TEMPLATES: Partial<TemplateMetadata>[] = [
           wrap: 'nowrap',
           justifyContent: 'start',
           alignItems: 'stretch',
+          alignContent: 'stretch',
           gap: 12,
           padding: { top: 16, right: 16, bottom: 16, left: 16 }
         },
         children: []
       },
       ports: { enabled: false }
-    }
+    } as any
   },
   {
     name: 'Horizontal Stack',
@@ -676,13 +708,14 @@ export const CONTAINER_TEMPLATES: Partial<TemplateMetadata>[] = [
           wrap: 'nowrap',
           justifyContent: 'start',
           alignItems: 'stretch',
+          alignContent: 'stretch',
           gap: 12,
           padding: { top: 16, right: 16, bottom: 16, left: 16 }
         },
         children: []
       },
       ports: { enabled: false }
-    }
+    } as any
   }
 ];
 

@@ -748,7 +748,7 @@ export class PreviewPanelComponent implements OnInit, OnDestroy, OnChanges {
     const diagram = this.engine.getDiagram();
     if (!diagram) return;
 
-    diagram.setViewport(position.x, position.y, this.viewport.width, this.viewport.height, this.viewport.zoom);
+    diagram.setViewport(position.x, position.y, this.viewport.width, this.viewport.height, this.zoom);
 
     this.updateViewportFromDiagram();
   }
