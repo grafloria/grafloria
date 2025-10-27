@@ -256,10 +256,8 @@ export class WorkflowBuilderComponent implements OnInit {
     // CRITICAL: Trigger change detection to update HTML layer components
     // The WorkflowNodeComponent uses getters that read metadata,
     // so we need to trigger Angular's change detection cycle
+    // The combination of setMetadata() + markDirty() + detectChanges() is sufficient
     this.cdr.detectChanges();
-
-    // Also emit diagram-level event to trigger canvas re-render
-    diagram.emit('node:changed', { source: 'workflow-execution' });
   }
 
   onViewportChanged(rect: Rectangle): void {
