@@ -128,6 +128,12 @@ export class NodeFactory {
       node.setMetadata('shape', structure.shape);
     }
 
+    // Apply property bindings (data-driven properties)
+    // This allows conditional properties based on item data
+    if ((structure as any).propertyBindings) {
+      this.applyPropertyBindings(node, (structure as any).propertyBindings, data);
+    }
+
     // Handle HTML configuration
     if (structure.html) {
       node.setMetadata('useHTMLLayer', true);
@@ -377,5 +383,81 @@ export class NodeFactory {
     }
 
     return path.split('.').reduce((acc, part) => acc?.[part], obj);
+  }
+
+  /**
+   * Apply property bindings to node for data-driven properties
+   * Allows conditional properties based on item data
+   *
+   * Example:
+   * propertyBindings: {
+   *   shape: {
+   *     fill: {
+   *       source: 'data.isPrimaryKey',
+   *       map: { 'true': '#e3f2fd', 'false': '#ffffff' }
+   *     }
+   *   }
+   * }
+   *
+   * @param node Node to apply bindings to
+   * @param bindings Property bindings configuration
+   * @param data Data to evaluate bindings against
+   */
+  private applyPropertyBindings(
+    node: NodeModel,
+    bindings: any,
+    data: Record<string, any>
+  ): void {
+    // Apply shape property bindings
+    if (bindings.shape) {
+      const currentShape = node.getMetadata('shape') || {};
+      const newShape = { ...currentShape };
+
+      for (const [prop, resolver] of Object.entries(bindings.shape)) {
+        newShape[prop] = this.resolvePropertyValue(resolver as any, data);
+      }
+
+      node.setMetadata('shape', newShape);
+    }
+
+    // Apply behavior property bindings
+    if (bindings.behavior) {
+      const currentBehavior = { ...node.behavior };
+
+      for (const [prop, resolver] of Object.entries(bindings.behavior)) {
+        (currentBehavior as any)[prop] = this.resolvePropertyValue(resolver as any, data);
+      }
+
+      node.behavior = currentBehavior;
+    }
+
+    // Note: Port bindings would require more complex logic (regenerating ports)
+    // For now, ports should be configured statically or conditionally via multiple templates
+  }
+
+  /**
+   * Resolve property value from binding configuration
+   *
+   * @param resolver Property resolver with source path and value map
+   * @param data Data to evaluate against
+   * @returns Resolved property value
+   */
+  private resolvePropertyValue(
+    resolver: { source: string; map: Record<string, any>; default?: any },
+    data: Record<string, any>
+  ): any {
+    // Get value from data path
+    const value = this.getNestedValue(data, resolver.source);
+
+    // Convert to string for map lookup
+    const key = String(value);
+
+    // Look up in map
+    if (key in resolver.map) {
+      return resolver.map[key];
+    }
+
+    // Return default or original value
+    return resolver.default !== undefined ? resolver.default : value;
   }
 }
