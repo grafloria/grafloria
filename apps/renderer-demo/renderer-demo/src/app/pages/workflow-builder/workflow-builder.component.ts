@@ -1,4 +1,4 @@
-import { Component, OnInit } from '@angular/core';
+import { Component, OnInit, ChangeDetectorRef } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { DiagramCanvasComponent, ComponentRendererService } from '@grafloria/renderer-angular';
@@ -34,7 +34,10 @@ export class WorkflowBuilderComponent implements OnInit {
   workflowNodes: Map<string, WorkflowNode> = new Map();
   executionOrder: string[] = [];
 
-  constructor(private componentRenderer: ComponentRendererService) {
+  constructor(
+    private componentRenderer: ComponentRendererService,
+    private cdr: ChangeDetectorRef
+  ) {
     // Register workflow node component for HTML layer rendering
     this.componentRenderer.registerComponent('workflow', WorkflowNodeComponent);
     console.log('✅ Registered WorkflowNodeComponent for type "workflow"');
@@ -166,6 +169,41 @@ export class WorkflowBuilderComponent implements OnInit {
     this.executeNextStep();
   }
 
+  stepBackward(): void {
+    // Can't step back if running or at the beginning
+    if (this.executionStatus === 'running' || this.currentExecutionIndex === 0) return;
+
+    // Set status to paused if it was completed
+    if (this.executionStatus === 'completed') {
+      this.executionStatus = 'paused';
+    }
+
+    // Move back one step
+    this.currentExecutionIndex--;
+
+    // Reset all nodes from current position onwards to pending
+    // (This includes the node we just stepped back from)
+    for (let i = this.currentExecutionIndex; i < this.executionOrder.length; i++) {
+      const nodeId = this.executionOrder[i];
+      const node = this.workflowNodes.get(nodeId);
+      if (node) {
+        node.status = 'pending';
+      }
+    }
+
+    // Set all nodes BEFORE current position to completed
+    for (let i = 0; i < this.currentExecutionIndex; i++) {
+      const nodeId = this.executionOrder[i];
+      const node = this.workflowNodes.get(nodeId);
+      if (node) {
+        node.status = 'completed';
+      }
+    }
+
+    // Update all node statuses in the diagram
+    this.updateNodeStatuses();
+  }
+
   private executeNextStep(): void {
     if (this.executionStatus !== 'running' && this.executionStatus !== 'paused') return;
     if (this.currentExecutionIndex >= this.executionOrder.length) {
@@ -209,9 +247,19 @@ export class WorkflowBuilderComponent implements OnInit {
         const workflowNode = this.workflowNodes.get(nodeId);
         if (workflowNode) {
           node.setMetadata('status', workflowNode.status);
+          // Mark node as dirty to ensure re-render
+          node.markDirty('status');
         }
       }
     });
+
+    // CRITICAL: Trigger change detection to update HTML layer components
+    // The WorkflowNodeComponent uses getters that read metadata,
+    // so we need to trigger Angular's change detection cycle
+    this.cdr.detectChanges();
+
+    // Also emit diagram-level event to trigger canvas re-render
+    diagram.emit('node:changed', { source: 'workflow-execution' });
   }
 
   onViewportChanged(rect: Rectangle): void {
