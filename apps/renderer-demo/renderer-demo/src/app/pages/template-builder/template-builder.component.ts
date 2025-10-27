@@ -25,7 +25,8 @@ import type { PortsConfig } from './components/port-config-panel/port-config-pan
 import { StylePropertiesPanelComponent, type StyleProperties } from './components/style-properties-panel/style-properties-panel.component';
 // PHASE 5 IMPORTS - Nested Nodes & Layout System
 import { NodeTreeViewComponent, type TreeNode, type NodeActionEvent } from './components/node-tree-view/node-tree-view.component';
-import { LayoutEditorComponent, type LayoutConfig } from './components/layout-editor/layout-editor.component';
+import { LayoutEditorComponent } from './components/layout-editor/layout-editor.component';
+import { SerializedLayoutConfig } from '@grafloria/engine';
 // PHASE 9 IMPORTS - Template Gallery
 import { TemplateGalleryComponent } from './components/template-gallery/template-gallery.component';
 import { TemplatePreviewModalComponent } from './components/template-preview-modal/template-preview-modal.component';
@@ -729,7 +730,7 @@ export class TemplateBuilderComponent implements OnInit, OnDestroy {
   /**
    * PHASE 5: Handle layout configuration change
    */
-  onLayoutChange(layoutConfig: LayoutConfig): void {
+  onLayoutChange(layoutConfig: SerializedLayoutConfig): void {
     const currentState = this.editorService.getState();
     try {
       const template = JSON.parse(currentState.json);
@@ -781,7 +782,7 @@ export class TemplateBuilderComponent implements OnInit, OnDestroy {
   /**
    * Get current layout configuration
    */
-  getCurrentLayout(): LayoutConfig {
+  getCurrentLayout(): SerializedLayoutConfig {
     const template = this.getCurrentTemplate();
     const layout = template?.structure?.layout;
 
@@ -821,7 +822,7 @@ export class TemplateBuilderComponent implements OnInit, OnDestroy {
     }
 
     // Layout already has type, return as is
-    return layout as LayoutConfig;
+    return layout as SerializedLayoutConfig;
   }
 
   /**

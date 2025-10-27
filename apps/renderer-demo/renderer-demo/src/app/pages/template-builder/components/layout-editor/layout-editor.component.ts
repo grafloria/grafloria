@@ -2,35 +2,7 @@ import { Component, Input, Output, EventEmitter, OnInit, OnChanges, SimpleChange
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { DESIGN_TOKENS } from '../../design-system/design-tokens';
-
-/**
- * Layout configuration
- */
-export interface LayoutConfig {
-  type: 'flexbox' | 'grid' | 'absolute' | 'none';
-
-  // Flexbox properties
-  flexDirection?: 'row' | 'column' | 'row-reverse' | 'column-reverse';
-  flexWrap?: 'nowrap' | 'wrap' | 'wrap-reverse';
-  justifyContent?: 'start' | 'center' | 'end' | 'space-between' | 'space-around' | 'space-evenly';
-  alignItems?: 'start' | 'center' | 'end' | 'stretch' | 'baseline';
-  alignContent?: 'start' | 'center' | 'end' | 'stretch' | 'space-between' | 'space-around';
-  gap?: number;
-
-  // Grid properties
-  gridTemplateColumns?: string;
-  gridTemplateRows?: string;
-  gridAutoFlow?: 'row' | 'column' | 'dense' | 'row dense' | 'column dense';
-  gridGap?: number;
-
-  // Padding
-  padding?: {
-    top: number;
-    right: number;
-    bottom: number;
-    left: number;
-  };
-}
+import { SerializedLayoutConfig } from '@grafloria/engine';
 
 /**
  * Layout Editor Component
@@ -55,8 +27,8 @@ export interface LayoutConfig {
   `]
 })
 export class LayoutEditorComponent implements OnInit, OnChanges {
-  @Input() layout: LayoutConfig = { type: 'none' };
-  @Output() layoutChange = new EventEmitter<LayoutConfig>();
+  @Input() layout: SerializedLayoutConfig = { type: 'none' };
+  @Output() layoutChange = new EventEmitter<SerializedLayoutConfig>();
 
   tokens = DESIGN_TOKENS;
 
