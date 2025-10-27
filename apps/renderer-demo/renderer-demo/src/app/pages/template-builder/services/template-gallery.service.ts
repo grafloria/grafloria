@@ -27,7 +27,7 @@ import { getSampleTemplates } from '../data/sample-templates';
  */
 
 // Template version for cache invalidation
-const TEMPLATE_VERSION = '2.1.0'; // Incremented to force reload with thumbnails and HTML fixes
+const TEMPLATE_VERSION = '2.2.0'; // Incremented to force reload with new ERD Table template
 const TEMPLATE_VERSION_KEY = 'template-gallery-version';
 
 @Injectable({

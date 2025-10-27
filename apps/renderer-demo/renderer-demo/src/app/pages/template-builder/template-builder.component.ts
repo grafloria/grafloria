@@ -1445,8 +1445,11 @@ export class TemplateBuilderComponent implements OnInit, OnDestroy {
       } else {
         // ===== DYNAMIC CHILD NODES (REPEATER) =====
         // Use structure.repeater for data-driven children
+        const dataPath = config.dataPath || 'items';
+        const itemVariable = config.itemVariable || 'item';
+
         template.structure.repeater = {
-          dataSource: config.dataPath || 'items',
+          dataSource: dataPath,
           keyField: 'id', // You could make this configurable
           itemTemplate: {
             type: config.nodeType,
@@ -1462,13 +1465,28 @@ export class TemplateBuilderComponent implements OnInit, OnDestroy {
             },
             html: {
               mode: 'template',
-              template: `<div style="padding: 8px; text-align: center;">{{${config.itemVariable || 'item'}}}</div>`
+              template: `<div style="padding: 8px; text-align: center;">{{${itemVariable}}}</div>`
             },
             ports: { enabled: false }
           }
         };
 
+        // Add default data with example array so user knows where to edit
+        if (!template.defaultData) {
+          template.defaultData = {};
+        }
+
+        // Add example data array if not already present
+        if (!template.defaultData[dataPath]) {
+          template.defaultData[dataPath] = [
+            { id: 1, name: 'Item 1', value: 'Example A' },
+            { id: 2, name: 'Item 2', value: 'Example B' },
+            { id: 3, name: 'Item 3', value: 'Example C' }
+          ];
+        }
+
         console.log('✅ Dynamic repeater configured:', template.structure.repeater);
+        console.log('✅ Default data added:', template.defaultData[dataPath]);
       }
 
       // Update the editor

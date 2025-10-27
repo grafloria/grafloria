@@ -518,50 +518,264 @@ export const DIAGRAM_TEMPLATES: Partial<TemplateMetadata>[] = [
     })
   },
   {
-    name: 'Database',
-    description: 'Database shape for data storage. Represents database or persistent storage.',
+    name: 'ERD Table (Products)',
+    description: 'Database table with dynamic children (header + fields). Example: Products table with id, name, price, stock fields.',
     category: 'diagram',
-    tags: ['database', 'storage', 'data', 'diagram'],
-    complexity: 'simple',
+    tags: ['database', 'erd', 'table', 'schema', 'children'],
+    complexity: 'moderate',
     author: 'Grafloria',
     version: '1.0.0',
-    features: ['html', 'ports'],
-    hasChildNodes: false,
+    features: ['html', 'ports', 'children', 'layout'],
+    hasChildNodes: true,
     hasConnections: true,
     hasCustomStyling: true,
-    hasDataBinding: false,
+    hasDataBinding: true,
     hasInteractivity: false,
     template: createTemplate({
-      id: 'database',
+      id: 'erd-table-products',
       meta: {
-        name: 'Database',
-        description: 'Database storage shape',
+        name: 'ERD Table (Products)',
+        description: 'Complete database table with header and field rows',
         category: 'diagram'
       },
       structure: {
-        type: 'rectangle',
-        size: { width: 140, height: 120 },
+        type: 'erd-table-container',
+        role: 'container',
+        size: { width: 250, height: 200 },
         shape: {
           type: 'rect',
-          fill: '#e0e7ff',
-          stroke: '#4338ca',
-          strokeWidth: 2,
-          cornerRadius: 8
+          fill: '#ffffff',
+          stroke: '#a1a1aa',
+          strokeWidth: 1,
+          cornerRadius: 0
         },
-        html: {
-          mode: 'template',
-          template: `<div style="height: 100%; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 8px;">
-            <div style="font-size: 32px;">💾</div>
-            <div style="font-weight: 600; font-size: 13px; color: #312e81;">Database</div>
-          </div>`
+        behavior: {
+          draggable: true,
+          selectable: true,
+          connectable: false
+        },
+        layout: {
+          direction: 'column',
+          wrap: 'nowrap',
+          justifyContent: 'start',
+          alignItems: 'stretch',
+          alignContent: 'start',
+          gap: 0,
+          padding: { top: 0, right: 0, bottom: 0, left: 0 }
         },
         ports: {
-          enabled: true,
-          top: { enabled: true, type: 'bi' },
-          left: { enabled: true, type: 'bi' },
-          right: { enabled: true, type: 'bi' },
-          bottom: { enabled: true, type: 'bi' }
-        }
+          enabled: false
+        },
+        // Dynamic children: header + fields
+        children: [
+          // Header (drag handler)
+          {
+            type: 'erd-table-header',
+            role: 'drag-handler',
+            size: { width: 250, height: 32 },
+            shape: {
+              type: 'rect',
+              fill: 'transparent',
+              stroke: 'none'
+            },
+            html: {
+              mode: 'template',
+              template: `<div style="
+                width: 100%;
+                height: 32px;
+                padding: 6px 8px;
+                background: #f5f5f5;
+                border-bottom: 1px solid #d4d4d8;
+                color: #18181b;
+                font-weight: 600;
+                font-size: 13px;
+                font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+                display: flex;
+                align-items: center;
+                gap: 6px;
+                cursor: move;
+                user-select: none;
+              ">
+                <span style="font-size: 14px;">🔑</span>
+                <span>Products</span>
+              </div>`,
+              zIndex: 2
+            },
+            behavior: {
+              draggable: true,
+              dragHandler: {
+                isDragHandler: true,
+                dragChildren: true
+              },
+              selectable: false
+            },
+            ports: {
+              enabled: false
+            }
+          },
+          // Field 1: id (Primary Key)
+          {
+            type: 'erd-field',
+            role: 'content',
+            size: { width: 250, height: 28 },
+            shape: {
+              type: 'rect',
+              fill: 'transparent',
+              stroke: 'none'
+            },
+            html: {
+              mode: 'template',
+              template: `<div style="
+                display: flex;
+                align-items: center;
+                gap: 8px;
+                padding: 6px 8px;
+                font-size: 12px;
+                background: white;
+                border-bottom: 1px solid #e5e7eb;
+                height: 28px;
+              ">
+                <span style="width: 16px; text-align: center; font-size: 13px;">🔑</span>
+                <span style="flex: 1; font-weight: 600; color: #4338ca;">id</span>
+                <span style="color: #7f8c8d; font-size: 11px; font-family: 'Courier New', monospace;">INT</span>
+              </div>`,
+              zIndex: 1
+            },
+            behavior: {
+              draggable: false,
+              selectable: false,
+              connectable: true
+            },
+            ports: {
+              enabled: true,
+              defaultVisibility: 'always',
+              left: { enabled: true, type: 'input' },
+              right: { enabled: true, type: 'output' }
+            }
+          },
+          // Field 2: name
+          {
+            type: 'erd-field',
+            role: 'content',
+            size: { width: 250, height: 28 },
+            shape: {
+              type: 'rect',
+              fill: 'transparent',
+              stroke: 'none'
+            },
+            html: {
+              mode: 'template',
+              template: `<div style="
+                display: flex;
+                align-items: center;
+                gap: 8px;
+                padding: 6px 8px;
+                font-size: 12px;
+                background: white;
+                border-bottom: 1px solid #e5e7eb;
+                height: 28px;
+              ">
+                <span style="width: 16px;"></span>
+                <span style="flex: 1; color: #2c3e50;">name</span>
+                <span style="color: #7f8c8d; font-size: 11px; font-family: 'Courier New', monospace;">VARCHAR(255)</span>
+              </div>`,
+              zIndex: 1
+            },
+            behavior: {
+              draggable: false,
+              selectable: false,
+              connectable: true
+            },
+            ports: {
+              enabled: true,
+              defaultVisibility: 'always',
+              left: { enabled: true, type: 'input' },
+              right: { enabled: true, type: 'output' }
+            }
+          },
+          // Field 3: price
+          {
+            type: 'erd-field',
+            role: 'content',
+            size: { width: 250, height: 28 },
+            shape: {
+              type: 'rect',
+              fill: 'transparent',
+              stroke: 'none'
+            },
+            html: {
+              mode: 'template',
+              template: `<div style="
+                display: flex;
+                align-items: center;
+                gap: 8px;
+                padding: 6px 8px;
+                font-size: 12px;
+                background: white;
+                border-bottom: 1px solid #e5e7eb;
+                height: 28px;
+              ">
+                <span style="width: 16px;"></span>
+                <span style="flex: 1; color: #2c3e50;">price</span>
+                <span style="color: #7f8c8d; font-size: 11px; font-family: 'Courier New', monospace;">DECIMAL(10,2)</span>
+              </div>`,
+              zIndex: 1
+            },
+            behavior: {
+              draggable: false,
+              selectable: false,
+              connectable: true
+            },
+            ports: {
+              enabled: true,
+              defaultVisibility: 'always',
+              left: { enabled: true, type: 'input' },
+              right: { enabled: true, type: 'output' }
+            }
+          },
+          // Field 4: stock
+          {
+            type: 'erd-field',
+            role: 'content',
+            size: { width: 250, height: 28 },
+            shape: {
+              type: 'rect',
+              fill: 'transparent',
+              stroke: 'none'
+            },
+            html: {
+              mode: 'template',
+              template: `<div style="
+                display: flex;
+                align-items: center;
+                gap: 8px;
+                padding: 6px 8px;
+                font-size: 12px;
+                background: white;
+                height: 28px;
+              ">
+                <span style="width: 16px;"></span>
+                <span style="flex: 1; color: #2c3e50;">stock</span>
+                <span style="color: #7f8c8d; font-size: 11px; font-family: 'Courier New', monospace;">INT</span>
+              </div>`,
+              zIndex: 1
+            },
+            behavior: {
+              draggable: false,
+              selectable: false,
+              connectable: true
+            },
+            ports: {
+              enabled: true,
+              defaultVisibility: 'always',
+              left: { enabled: true, type: 'input' },
+              right: { enabled: true, type: 'output' }
+            }
+          }
+        ]
+      },
+      defaultData: {
+        tableName: 'Products'
       }
     })
   }
