@@ -1,10 +1,12 @@
-import { Component, OnInit } from '@angular/core';
+import { Component, OnInit, ChangeDetectorRef } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { DiagramCanvasComponent } from '@grafloria/renderer-angular';
-import { DiagramEngine, NodeModel, InteractionMode, PortVisibilityStrategy } from '@grafloria/engine';
+import { DiagramEngine, NodeModel, PortModel, LinkModel, InteractionMode, PortVisibilityStrategy } from '@grafloria/engine';
 import { LIGHT_THEME, type Theme, type Rectangle } from '@grafloria/renderer';
-import { WorkflowNodeComponent, type WorkflowNodeType, type NodeStatus } from './workflow-node.component';
+
+type WorkflowNodeType = 'start' | 'task' | 'decision' | 'end';
+type NodeStatus = 'pending' | 'running' | 'completed' | 'error';
 
 type ExecutionStatus = 'idle' | 'running' | 'paused' | 'completed';
 
@@ -18,7 +20,7 @@ interface WorkflowNode {
 
 @Component({
   standalone: true,
-  imports: [CommonModule, FormsModule, DiagramCanvasComponent, WorkflowNodeComponent],
+  imports: [CommonModule, FormsModule, DiagramCanvasComponent],
   selector: 'app-workflow-builder',
   templateUrl: './workflow-builder.component.html',
   styleUrl: './workflow-builder.component.css',
@@ -33,6 +35,10 @@ export class WorkflowBuilderComponent implements OnInit {
   currentExecutionIndex = 0;
   workflowNodes: Map<string, WorkflowNode> = new Map();
   executionOrder: string[] = [];
+
+  constructor(private cdr: ChangeDetectorRef) {
+    // Using SVG shapes with engine's native shape system
+  }
 
   ngOnInit() {
     this.initializeEngine();
@@ -61,13 +67,20 @@ export class WorkflowBuilderComponent implements OnInit {
     const task3Node = this.createWorkflowNode('task3', 'task', 'Notify Customer', { x: 750, y: 300 });
     const endNode = this.createWorkflowNode('end', 'end', 'End', { x: 950, y: 200 });
 
-    // Create connections
-    diagram.connectNodes(startNode, task1Node, 'direct');
-    diagram.connectNodes(task1Node, decisionNode, 'direct');
-    diagram.connectNodes(decisionNode, task2Node, 'direct');
-    diagram.connectNodes(decisionNode, task3Node, 'direct');
-    diagram.connectNodes(task2Node, endNode, 'direct');
-    diagram.connectNodes(task3Node, endNode, 'direct');
+    // Create connections using ports for proper shape-aware routing
+    const link1 = new LinkModel(startNode.getPorts()[1].id, task1Node.getPorts()[0].id, 'orthogonal');
+    const link2 = new LinkModel(task1Node.getPorts()[1].id, decisionNode.getPorts()[0].id, 'orthogonal');
+    const link3 = new LinkModel(decisionNode.getPorts()[1].id, task2Node.getPorts()[0].id, 'orthogonal'); // right -> top branch
+    const link4 = new LinkModel(decisionNode.getPorts()[2].id, task3Node.getPorts()[0].id, 'orthogonal'); // bottom -> bottom branch
+    const link5 = new LinkModel(task2Node.getPorts()[1].id, endNode.getPorts()[0].id, 'orthogonal');
+    const link6 = new LinkModel(task3Node.getPorts()[1].id, endNode.getPorts()[0].id, 'orthogonal');
+
+    diagram.addLink(link1);
+    diagram.addLink(link2);
+    diagram.addLink(link3);
+    diagram.addLink(link4);
+    diagram.addLink(link5);
+    diagram.addLink(link6);
 
     // Set execution order
     this.executionOrder = ['start', 'task1', 'decision1', 'task2', 'end'];
@@ -92,16 +105,67 @@ export class WorkflowBuilderComponent implements OnInit {
       end: { width: 120, height: 120 }
     };
 
+    // Map workflow types to shape types
+    const shapeTypes: Record<WorkflowNodeType, 'circle' | 'rect' | 'diamond'> = {
+      start: 'circle',
+      task: 'rect',
+      decision: 'diamond',
+      end: 'circle'
+    };
+
+    // Color scheme based on node type
+    const colors = {
+      start: { fill: '#e8f5e9', stroke: '#27ae60' },
+      task: { fill: '#e3f2fd', stroke: '#3498db' },
+      decision: { fill: '#fff3e0', stroke: '#f39c12' },
+      end: { fill: '#ffebee', stroke: '#e74c3c' }
+    };
+
     const node = new NodeModel({
-      type: 'workflow',
+      type: shapeTypes[type],
       position,
       size: sizes[type]
     });
 
+    // Set shape metadata for SVG rendering
+    node.setMetadata('shape', {
+      type: shapeTypes[type],
+      fill: colors[type].fill,
+      stroke: colors[type].stroke,
+      strokeWidth: 3,
+      cornerRadius: type === 'task' ? 12 : undefined
+    });
+
+    // Set workflow metadata
     node.setMetadata('workflowType', type);
-    node.setMetadata('label', label);  // Set label for SVG rendering
+    node.setMetadata('label', label);
     node.setMetadata('status', 'pending');
-    node.setMetadata('useForeignObject', true);  // Use foreignObject to embed WorkflowNodeComponent
+
+    // Add ports for connections
+    const inputPort = new PortModel({
+      id: `${id}-in`,
+      type: 'input',
+      side: type === 'start' ? undefined : 'left'
+    });
+
+    const outputPort = new PortModel({
+      id: `${id}-out`,
+      type: 'output',
+      side: type === 'end' ? undefined : 'right'
+    });
+
+    node.addPort(inputPort);
+    node.addPort(outputPort);
+
+    // For decision nodes, add additional ports
+    if (type === 'decision') {
+      const yesPort = new PortModel({
+        id: `${id}-yes`,
+        type: 'output',
+        side: 'bottom'
+      });
+      node.addPort(yesPort);
+    }
 
     const workflowNode: WorkflowNode = {
       id,
@@ -160,6 +224,41 @@ export class WorkflowBuilderComponent implements OnInit {
     this.executeNextStep();
   }
 
+  stepBackward(): void {
+    // Can't step back if running or at the beginning
+    if (this.executionStatus === 'running' || this.currentExecutionIndex === 0) return;
+
+    // Set status to paused if it was completed
+    if (this.executionStatus === 'completed') {
+      this.executionStatus = 'paused';
+    }
+
+    // Move back one step
+    this.currentExecutionIndex--;
+
+    // Reset all nodes from current position onwards to pending
+    // (This includes the node we just stepped back from)
+    for (let i = this.currentExecutionIndex; i < this.executionOrder.length; i++) {
+      const nodeId = this.executionOrder[i];
+      const node = this.workflowNodes.get(nodeId);
+      if (node) {
+        node.status = 'pending';
+      }
+    }
+
+    // Set all nodes BEFORE current position to completed
+    for (let i = 0; i < this.currentExecutionIndex; i++) {
+      const nodeId = this.executionOrder[i];
+      const node = this.workflowNodes.get(nodeId);
+      if (node) {
+        node.status = 'completed';
+      }
+    }
+
+    // Update all node statuses in the diagram
+    this.updateNodeStatuses();
+  }
+
   private executeNextStep(): void {
     if (this.executionStatus !== 'running' && this.executionStatus !== 'paused') return;
     if (this.currentExecutionIndex >= this.executionOrder.length) {
@@ -194,6 +293,8 @@ export class WorkflowBuilderComponent implements OnInit {
     const diagram = this.engine.getDiagram();
     if (!diagram) return;
 
+    console.log('[Workflow] updateNodeStatuses called');
+
     diagram.getNodes().forEach(node => {
       const nodeId = this.executionOrder.find(id =>
         this.workflowNodes.get(id)?.label === node.getMetadata('label')
@@ -202,10 +303,53 @@ export class WorkflowBuilderComponent implements OnInit {
       if (nodeId) {
         const workflowNode = this.workflowNodes.get(nodeId);
         if (workflowNode) {
+          const oldStatus = node.getMetadata('status');
           node.setMetadata('status', workflowNode.status);
+
+          // Update shape stroke color based on status
+          const shape = node.getMetadata('shape');
+          if (shape) {
+            const workflowType = node.getMetadata('workflowType');
+            const baseColors = {
+              start: '#27ae60',
+              task: '#3498db',
+              decision: '#f39c12',
+              end: '#e74c3c'
+            };
+
+            let stroke = baseColors[workflowType as WorkflowNodeType] || '#95a5a6';
+            let strokeWidth = 3;
+
+            if (workflowNode.status === 'running') {
+              stroke = '#f39c12'; // Orange when running
+              strokeWidth = 4;
+            } else if (workflowNode.status === 'completed') {
+              stroke = '#27ae60'; // Green when completed
+            }
+
+            console.log(`[Workflow] Updating node ${nodeId} (${workflowNode.label}) to status ${workflowNode.status}, stroke: ${stroke}`);
+
+            node.setMetadata('shape', {
+              ...shape,
+              stroke,
+              strokeWidth
+            });
+
+            // Verify the metadata was updated
+            const updatedShape = node.getMetadata('shape');
+            console.log(`[Workflow] Verified shape metadata:`, updatedShape);
+          }
+
+          // Mark node as dirty to ensure re-render
+          node.markDirty('shape');
+          node.markDirty('status');
+          console.log(`[Workflow] Node ${nodeId} marked dirty, isDirty:`, node.isDirty);
         }
       }
     });
+
+    // Trigger change detection
+    this.cdr.detectChanges();
   }
 
   onViewportChanged(rect: Rectangle): void {

@@ -21,7 +21,7 @@ import {
 } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import type { DiagramEngine } from '@grafloria/engine';
-import { PortModel } from '@grafloria/engine';
+import { PortModel, NodeModel } from '@grafloria/engine';
 import { SVGRenderer, LIGHT_THEME, type Theme, type Rectangle } from '@grafloria/renderer';
 import { VNodeRendererService } from '../services/vnode-renderer.service';
 import { InteractionHandlerService } from '../services/interaction-handler.service';
@@ -240,7 +240,7 @@ export class DiagramCanvasComponent implements OnInit, AfterViewInit, OnChanges,
       this.engine,
       {
         enableCaching: true,
-        useCSSMode: true,
+        useCSSMode: false, // Disabled to allow shape metadata stroke to take effect
       },
       this.theme
     );
@@ -508,7 +508,8 @@ export class DiagramCanvasComponent implements OnInit, AfterViewInit, OnChanges,
       this.renderDiagram();
       this.cdr.detectChanges();
     });
-    diagram.on('node:changed', () => {
+    diagram.on('node:changed', (node: NodeModel) => {
+      console.log('[DiagramCanvas] node:changed event received for node:', node?.id);
       this.renderDiagram();
       this.cdr.detectChanges();
     });

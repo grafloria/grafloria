@@ -28,10 +28,16 @@
           ⏹️ Stop
         </button>
         <button
+          (click)="stepBackward()"
+          class="btn"
+          [disabled]="executionStatus === 'running' || currentExecutionIndex === 0">
+          ⏮️ Step Back
+        </button>
+        <button
           (click)="stepForward()"
           class="btn"
           [disabled]="executionStatus === 'running' || executionStatus === 'completed'">
-          ⏭️ Step
+          ⏭️ Step Forward
         </button>
       </div>
       <div class="zoom-controls">
@@ -53,7 +59,7 @@
     </div>
     <div class="progress-info">
       <span class="progress-label">Progress:</span>
-      <span class="progress-value">{{ currentExecutionIndex }} / {{ executionOrder.length }}</span>
+      <span class="progress-value">{{ currentExecutionIndex }} / {{ executionOrder.length }} steps completed</span>
       <div class="progress-bar">
         <div
           class="progress-fill"
@@ -81,10 +87,10 @@
     <div class="stats">
       <span>Nodes: {{ workflowNodes.size }}</span>
       <span>Connections: {{ (engine?.getDiagram()?.getLinks()?.length) || 0 }}</span>
-      <span>Current Step: {{ currentExecutionIndex + 1 }} / {{ executionOrder.length }}</span>
+      <span>Steps Completed: {{ currentExecutionIndex }} / {{ executionOrder.length }}</span>
     </div>
     <div class="info">
-      <span class="hint">⏯️ Use execution controls to simulate workflow · 🔍 Zoom to inspect nodes</span>
+      <span class="hint">⏯️ Use execution controls to simulate workflow · ⏮️⏭️ Step backward/forward to debug · 🔍 Zoom to inspect nodes</span>
     </div>
   </footer>
 </div>

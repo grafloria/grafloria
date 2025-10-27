@@ -125,6 +125,13 @@ export class DiagramModel extends DiagramEntity {
     node.on('change:size', updateSpatialIndex);
     node.on('change:rotation', updateSpatialIndex);
     node.on('change:scale', updateSpatialIndex);
+
+    // Listen for any node changes and forward as diagram-level 'node:changed' event
+    // This allows components like diagram-canvas to re-render when node properties change
+    node.on('change', () => {
+      console.log('[DiagramModel] Node change detected, emitting node:changed for:', node.id);
+      this.emitter.emit('node:changed', node);
+    });
   }
 
   /**
@@ -162,6 +169,11 @@ export class DiagramModel extends DiagramEntity {
       node.on('change:size', updateSpatialIndex);
       node.on('change:rotation', updateSpatialIndex);
       node.on('change:scale', updateSpatialIndex);
+
+      // Listen for any node changes and forward as diagram-level 'node:changed' event
+      node.on('change', () => {
+        this.emitter.emit('node:changed', node);
+      });
 
       return node;
     } catch (error) {
@@ -223,6 +235,11 @@ export class DiagramModel extends DiagramEntity {
     // Phase 5.1: Add to spatial index and listen - AFTER trackChange
     this.linkSpatialIndex.add(link);
     link.on('change:points', () => this.linkSpatialIndex.update(link));
+
+    // Listen for any link changes and forward as diagram-level 'link:changed' event
+    link.on('change', () => {
+      this.emitter.emit('link:changed', link);
+    });
   }
 
   /**
@@ -255,6 +272,11 @@ export class DiagramModel extends DiagramEntity {
       // Phase 5.1: Add to spatial index and listen - AFTER trackChange
       this.linkSpatialIndex.add(link);
       link.on('change:points', () => this.linkSpatialIndex.update(link));
+
+      // Listen for any link changes and forward as diagram-level 'link:changed' event
+      link.on('change', () => {
+        this.emitter.emit('link:changed', link);
+      });
 
       return link;
     } catch (error) {
