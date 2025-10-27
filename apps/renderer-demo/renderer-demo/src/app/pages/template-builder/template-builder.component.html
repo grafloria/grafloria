@@ -120,7 +120,9 @@
     <!-- Right: Live Preview -->
     <div class="preview-panel">
       <app-preview-panel
-        [template]="(editorState$ | async)?.json || ''">
+        [template]="(editorState$ | async)?.json || ''"
+        [htmlLayer]="(editorState$ | async)?.html || ''"
+        [cssLayer]="(editorState$ | async)?.css || ''">
       </app-preview-panel>
     </div>
   </div>

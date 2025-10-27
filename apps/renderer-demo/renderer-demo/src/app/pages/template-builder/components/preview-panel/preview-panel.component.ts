@@ -35,6 +35,8 @@ import { PerformanceMonitorService } from '../../services/performance-monitor.se
 export class PreviewPanelComponent implements OnInit, OnDestroy, OnChanges {
 
   @Input() template = '';
+  @Input() htmlLayer = '';
+  @Input() cssLayer = '';
 
   engine!: DiagramEngine;
   viewport: Rectangle = { x: 0, y: 0, width: 800, height: 600 };
@@ -59,7 +61,9 @@ export class PreviewPanelComponent implements OnInit, OnDestroy, OnChanges {
   }
 
   ngOnChanges(changes: SimpleChanges): void {
-    if (changes['template'] && !changes['template'].firstChange) {
+    if ((changes['template'] && !changes['template'].firstChange) ||
+        (changes['htmlLayer'] && !changes['htmlLayer'].firstChange) ||
+        (changes['cssLayer'] && !changes['cssLayer'].firstChange)) {
       this.updatePreview();
     }
   }
@@ -86,6 +90,23 @@ export class PreviewPanelComponent implements OnInit, OnDestroy, OnChanges {
 
       // Parse template
       const templateData: NodeTemplate = JSON.parse(this.template);
+
+      // Apply HTML layer if provided
+      if (this.htmlLayer && this.htmlLayer.trim()) {
+        if (!templateData.structure.html) {
+          templateData.structure.html = {} as any;
+        }
+        templateData.structure.html.template = this.htmlLayer;
+        templateData.structure.html.mode = 'template';
+      }
+
+      // Apply CSS layer if provided (store in html.style)
+      if (this.cssLayer && this.cssLayer.trim()) {
+        if (!templateData.structure.html) {
+          templateData.structure.html = {} as any;
+        }
+        templateData.structure.html.style = this.cssLayer;
+      }
 
       // Clear previous preview
       const diagram = this.engine.getDiagram();
