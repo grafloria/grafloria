@@ -90,7 +90,8 @@
     </div>
 
     <!-- Center: Editors with Tabs -->
-    <div class="editor-panel">
+    <div class="editor-panel" [style.width.px]="editorPanelWidth">
+      <div class="resize-handle resize-handle-right" (mousedown)="startResize($event, 'editor')"></div>
       <div class="panel-header">
         <div class="editor-tabs">
           <button

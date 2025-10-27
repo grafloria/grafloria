@@ -94,16 +94,19 @@ export class TemplateBuilderComponent implements OnInit, OnDestroy {
 
   // Panel Sizes (resizable)
   leftPanelWidth = 300;
+  editorPanelWidth = 500;  // NEW: resizable editor panel
   rightPanelWidth = 400;
   bottomPanelHeight = 300;
   minPanelWidth = 200;
-  maxPanelWidth = 600;
+  maxPanelWidth = 800;  // Increased max for editor
+  minEditorWidth = 300;
+  maxEditorWidth = 1000;
   minBottomHeight = 150;
   maxBottomHeight = 600;
 
   // Drag state
   private isDragging = false;
-  private dragTarget: 'left' | 'right' | 'bottom' | null = null;
+  private dragTarget: 'left' | 'editor' | 'right' | 'bottom' | null = null;
   private dragStartX = 0;
   private dragStartY = 0;
   private dragStartSize = 0;
@@ -668,7 +671,7 @@ export class TemplateBuilderComponent implements OnInit, OnDestroy {
   /**
    * Panel Resize: Start dragging
    */
-  startResize(event: MouseEvent, target: 'left' | 'right' | 'bottom'): void {
+  startResize(event: MouseEvent, target: 'left' | 'editor' | 'right' | 'bottom'): void {
     event.preventDefault();
     this.isDragging = true;
     this.dragTarget = target;
@@ -678,6 +681,9 @@ export class TemplateBuilderComponent implements OnInit, OnDestroy {
     switch (target) {
       case 'left':
         this.dragStartSize = this.leftPanelWidth;
+        break;
+      case 'editor':
+        this.dragStartSize = this.editorPanelWidth;
         break;
       case 'right':
         this.dragStartSize = this.rightPanelWidth;
@@ -704,6 +710,14 @@ export class TemplateBuilderComponent implements OnInit, OnDestroy {
         this.leftPanelWidth = Math.max(
           this.minPanelWidth,
           Math.min(this.maxPanelWidth, this.dragStartSize + leftDelta)
+        );
+        break;
+
+      case 'editor':
+        const editorDelta = event.clientX - this.dragStartX;
+        this.editorPanelWidth = Math.max(
+          this.minEditorWidth,
+          Math.min(this.maxEditorWidth, this.dragStartSize + editorDelta)
         );
         break;
 
