@@ -21,6 +21,8 @@ import { NodeLayerEditorComponent } from './components/node-layer-editor/node-la
 import { ChildNodeWizardComponent, type ChildNodeConfig } from './components/child-node-wizard/child-node-wizard.component';
 import { KeyboardShortcutsService } from './services/keyboard-shortcuts.service';
 import type { PortsConfig } from './components/port-config-panel/port-config-panel.component';
+// PHASE 4 IMPORTS - Shape & Style Visual Editors
+import { StylePropertiesPanelComponent, type StyleProperties } from './components/style-properties-panel/style-properties-panel.component';
 // PHASE 9 IMPORTS - Template Gallery
 import { TemplateGalleryComponent } from './components/template-gallery/template-gallery.component';
 import { TemplatePreviewModalComponent } from './components/template-preview-modal/template-preview-modal.component';
@@ -72,6 +74,8 @@ import { TemplateGalleryService } from './services/template-gallery.service';
     PortConfigPanelComponent,
     NodeLayerEditorComponent,
     ChildNodeWizardComponent,
+    // PHASE 4 COMPONENTS
+    StylePropertiesPanelComponent,
     // PHASE 9 COMPONENTS
     TemplateGalleryComponent,
     TemplatePreviewModalComponent
@@ -99,7 +103,7 @@ export class TemplateBuilderComponent implements OnInit, OnDestroy {
   showDocsPanel = false; // NEW: collapsible docs
   showSnippetsPanel = false; // NEW: collapsible snippets
   activeEditorTab: 'json' | 'html' | 'css' = 'json';
-  activeRightTab: 'preview' | 'data' | 'ports' = 'preview'; // NEW
+  activeRightTab: 'preview' | 'data' | 'ports' | 'style' = 'preview'; // NEW
   activeBottomTab: 'events' | 'performance' | 'validation' = 'events'; // NEW
 
   // NEW: Test data for data testing panel
@@ -547,7 +551,7 @@ export class TemplateBuilderComponent implements OnInit, OnDestroy {
    * NEW: Cycle through right panel tabs
    */
   cycleRightTab(): void {
-    const tabs: Array<'preview' | 'data' | 'ports'> = ['preview', 'data', 'ports'];
+    const tabs: Array<'preview' | 'data' | 'ports' | 'style'> = ['preview', 'data', 'ports', 'style'];
     const currentIndex = tabs.indexOf(this.activeRightTab);
     this.activeRightTab = tabs[(currentIndex + 1) % tabs.length];
   }
@@ -580,6 +584,99 @@ export class TemplateBuilderComponent implements OnInit, OnDestroy {
       console.log('✅ Ports configuration updated');
     } catch (error) {
       console.error('❌ Failed to update ports:', error);
+    }
+  }
+
+  /**
+   * PHASE 4: Handle style properties change
+   */
+  onStylePropertiesChange(styleProps: StyleProperties): void {
+    const currentState = this.editorService.getState();
+    try {
+      const template = JSON.parse(currentState.json);
+
+      if (!template.structure) {
+        template.structure = {};
+      }
+
+      // Update shape configuration
+      if (styleProps.shape) {
+        if (!template.structure.shape) {
+          template.structure.shape = {};
+        }
+        template.structure.shape.type = styleProps.shape;
+
+        // Apply border radius if applicable
+        if (styleProps.borderRadius !== undefined) {
+          template.structure.shape.cornerRadius = styleProps.borderRadius;
+        }
+      }
+
+      // Update fill
+      if (styleProps.fillType) {
+        if (!template.structure.shape) {
+          template.structure.shape = {};
+        }
+        if (styleProps.fillType === 'color' && styleProps.fillColor) {
+          template.structure.shape.fill = styleProps.fillColor.hex;
+        } else if (styleProps.fillType === 'gradient' && styleProps.fillGradient) {
+          template.structure.shape.fill = styleProps.fillGradient.cssValue;
+        } else {
+          template.structure.shape.fill = 'transparent';
+        }
+      }
+
+      // Update stroke
+      if (!template.structure.shape) {
+        template.structure.shape = {};
+      }
+      if (styleProps.strokeEnabled && styleProps.strokeColor) {
+        template.structure.shape.stroke = styleProps.strokeColor.hex;
+        template.structure.shape.strokeWidth = styleProps.strokeWidth;
+      } else {
+        delete template.structure.shape.stroke;
+        delete template.structure.shape.strokeWidth;
+      }
+
+      // Update opacity
+      if (styleProps.opacity !== undefined) {
+        if (!template.structure.shape) {
+          template.structure.shape = {};
+        }
+        template.structure.shape.opacity = styleProps.opacity / 100;
+      }
+
+      // Update shadow and filters in CSS if available
+      const cssUpdates: string[] = [];
+
+      if (styleProps.shadowEnabled && styleProps.shadowColor) {
+        const shadow = `${styleProps.shadowX}px ${styleProps.shadowY}px ${styleProps.shadowBlur}px ${styleProps.shadowSpread}px ${styleProps.shadowColor.rgba}`;
+        cssUpdates.push(`box-shadow: ${shadow};`);
+      }
+
+      // Build filters array
+      const filters = [
+        styleProps.blur > 0 ? `blur(${styleProps.blur}px)` : '',
+        styleProps.brightness !== 100 ? `brightness(${styleProps.brightness}%)` : '',
+        styleProps.contrast !== 100 ? `contrast(${styleProps.contrast}%)` : '',
+        styleProps.saturate !== 100 ? `saturate(${styleProps.saturate}%)` : '',
+        styleProps.hueRotate !== 0 ? `hue-rotate(${styleProps.hueRotate}deg)` : '',
+        styleProps.grayscale > 0 ? `grayscale(${styleProps.grayscale}%)` : ''
+      ].filter(f => f).join(' ');
+
+      if (filters) {
+        cssUpdates.push(`filter: ${filters};`);
+      }
+
+      if (cssUpdates.length > 0) {
+        this.editorService.updateCss(currentState.css + '\n' + cssUpdates.join('\n'));
+      }
+
+      this.editorService.updateJson(JSON.stringify(template, null, 2));
+
+      console.log('✅ Style properties updated');
+    } catch (error) {
+      console.error('❌ Failed to update style properties:', error);
     }
   }
 

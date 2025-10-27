@@ -213,6 +213,12 @@
           (click)="activeRightTab = 'ports'">
           Ports
         </button>
+        <button
+          class="tab"
+          [class.active]="activeRightTab === 'style'"
+          (click)="activeRightTab = 'style'">
+          Style
+        </button>
       </div>
 
       <div class="right-panel-content">
@@ -238,6 +244,12 @@
           [portsConfig]="getCurrentTemplate()?.structure?.ports || { enabled: false }"
           (portsConfigChange)="onPortsConfigChange($event)">
         </app-port-config-panel>
+
+        <!-- PHASE 4: Style Properties Panel -->
+        <app-style-properties-panel
+          *ngIf="activeRightTab === 'style'"
+          (propertiesChange)="onStylePropertiesChange($event)">
+        </app-style-properties-panel>
       </div>
     </div>
 
