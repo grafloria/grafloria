@@ -231,6 +231,12 @@
           (click)="activeRightTab = 'behavior'">
           Behavior
         </button>
+        <button
+          class="tab"
+          [class.active]="activeRightTab === 'component'"
+          (click)="activeRightTab = 'component'">
+          Component
+        </button>
       </div>
 
       <div class="right-panel-content">
@@ -288,6 +294,13 @@
           [behavior]="getCurrentBehavior()"
           (behaviorChange)="onBehaviorChange($event)">
         </app-behavior-editor>
+
+        <!-- PHASE 7: Component Editor Panel (Mode, Props, Slots) -->
+        <app-component-editor-panel
+          *ngIf="activeRightTab === 'component'"
+          [config]="getCurrentComponentConfig()"
+          (configChange)="onComponentConfigChange($event)">
+        </app-component-editor-panel>
       </div>
     </div>
 

@@ -29,6 +29,8 @@ import { LayoutEditorComponent } from './components/layout-editor/layout-editor.
 import { SerializedLayoutConfig } from '@grafloria/engine';
 // PHASE 6 IMPORTS - Behavior & Interactivity
 import { BehaviorEditorComponent, type BehaviorConfig } from './components/behavior-editor/behavior-editor.component';
+// PHASE 7 IMPORTS - Component Mode Support
+import { ComponentEditorPanelComponent, type ComponentConfig } from './components/component-editor-panel/component-editor-panel.component';
 // PHASE 9 IMPORTS - Template Gallery
 import { TemplateGalleryComponent } from './components/template-gallery/template-gallery.component';
 import { TemplatePreviewModalComponent } from './components/template-preview-modal/template-preview-modal.component';
@@ -87,6 +89,8 @@ import { TemplateGalleryService } from './services/template-gallery.service';
     LayoutEditorComponent,
     // PHASE 6 COMPONENTS
     BehaviorEditorComponent,
+    // PHASE 7 COMPONENTS
+    ComponentEditorPanelComponent,
     // PHASE 9 COMPONENTS
     TemplateGalleryComponent,
     TemplatePreviewModalComponent
@@ -114,7 +118,7 @@ export class TemplateBuilderComponent implements OnInit, OnDestroy {
   showDocsPanel = false; // NEW: collapsible docs
   showSnippetsPanel = false; // NEW: collapsible snippets
   activeEditorTab: 'json' | 'html' | 'css' = 'json';
-  activeRightTab: 'preview' | 'data' | 'ports' | 'style' | 'structure' | 'behavior' = 'preview'; // NEW
+  activeRightTab: 'preview' | 'data' | 'ports' | 'style' | 'structure' | 'behavior' | 'component' = 'preview'; // NEW
   activeBottomTab: 'events' | 'performance' | 'validation' = 'events'; // NEW
 
   // NEW: Test data for data testing panel
@@ -562,7 +566,7 @@ export class TemplateBuilderComponent implements OnInit, OnDestroy {
    * NEW: Cycle through right panel tabs
    */
   cycleRightTab(): void {
-    const tabs: Array<'preview' | 'data' | 'ports' | 'style' | 'structure' | 'behavior'> = ['preview', 'data', 'ports', 'style', 'structure', 'behavior'];
+    const tabs: Array<'preview' | 'data' | 'ports' | 'style' | 'structure' | 'behavior' | 'component'> = ['preview', 'data', 'ports', 'style', 'structure', 'behavior', 'component'];
     const currentIndex = tabs.indexOf(this.activeRightTab);
     this.activeRightTab = tabs[(currentIndex + 1) % tabs.length];
   }
@@ -889,6 +893,70 @@ export class TemplateBuilderComponent implements OnInit, OnDestroy {
       console.log('✅ Behavior configuration updated');
     } catch (error) {
       console.error('❌ Failed to update behavior:', error);
+    }
+  }
+
+  /**
+   * Get current component configuration (PHASE 7)
+   */
+  getCurrentComponentConfig(): ComponentConfig {
+    const template = this.getCurrentTemplate();
+    const html = (template as any)?.structure?.html;
+    const componentMeta = (template as any)?.componentMeta;
+
+    return {
+      mode: {
+        mode: html?.mode || 'template',
+        component: html?.component,
+        template: html?.template,
+        className: html?.className,
+        style: html?.style,
+        props: componentMeta?.props,
+        slots: componentMeta?.slots
+      },
+      props: componentMeta?.propsSchema || { props: [] },
+      slots: componentMeta?.slotsConfig || { slots: [] }
+    };
+  }
+
+  /**
+   * Handle component configuration changes (PHASE 7)
+   */
+  onComponentConfigChange(componentConfig: ComponentConfig): void {
+    const currentState = this.editorService.getState();
+
+    try {
+      const template = JSON.parse(currentState.json);
+
+      // Update HTML configuration
+      if (!template.structure) {
+        template.structure = {};
+      }
+      if (!template.structure.html) {
+        template.structure.html = {};
+      }
+
+      template.structure.html.mode = componentConfig.mode.mode;
+      if (componentConfig.mode.mode === 'component') {
+        template.structure.html.component = componentConfig.mode.component;
+      } else {
+        template.structure.html.template = componentConfig.mode.template;
+      }
+      template.structure.html.className = componentConfig.mode.className;
+      template.structure.html.style = componentConfig.mode.style;
+
+      // Update component metadata
+      if (!template.componentMeta) {
+        template.componentMeta = {};
+      }
+      template.componentMeta.propsSchema = componentConfig.props;
+      template.componentMeta.slotsConfig = componentConfig.slots;
+
+      this.editorService.updateJson(JSON.stringify(template, null, 2));
+
+      console.log('✅ Component configuration updated');
+    } catch (error) {
+      console.error('❌ Failed to update component config:', error);
     }
   }
 
