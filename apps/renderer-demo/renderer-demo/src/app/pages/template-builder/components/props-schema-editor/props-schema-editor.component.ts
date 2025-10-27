@@ -70,7 +70,7 @@ export interface PropsSchema {
               type="button"
               class="delete-button"
               (click)="removeProp(i)"
-              [style.color]="tokens.colors.error[500]"
+              [style.color]="tokens.colors.error.main"
               title="Remove prop">
               ✕
             </button>

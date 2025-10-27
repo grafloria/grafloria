@@ -42,13 +42,13 @@ export interface SlotsConfig {
       </div>
 
       <!-- Info Card -->
-      <div class="info-card" [style.background]="tokens.colors.info[50]" [style.border-color]="tokens.colors.info[200]">
-        <div class="info-icon" [style.color]="tokens.colors.info[600]">💡</div>
+      <div class="info-card" [style.background]="tokens.colors.info.light" [style.border-color]="tokens.colors.info.light">
+        <div class="info-icon" [style.color]="tokens.colors.info.main">💡</div>
         <div>
-          <div class="info-title" [style.color]="tokens.colors.info[800]">
+          <div class="info-title" [style.color]="tokens.colors.info.dark">
             What are Slots?
           </div>
-          <div class="info-text" [style.color]="tokens.colors.info[700]">
+          <div class="info-text" [style.color]="tokens.colors.info.main">
             Slots are named insertion points where child content can be injected. Similar to Vue/Web Components slots.
           </div>
         </div>
@@ -82,7 +82,7 @@ export interface SlotsConfig {
               type="button"
               class="delete-button"
               (click)="removeSlot(i)"
-              [style.color]="tokens.colors.error[500]"
+              [style.color]="tokens.colors.error.main"
               title="Remove slot">
               ✕
             </button>

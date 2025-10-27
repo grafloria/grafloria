@@ -66,13 +66,13 @@ export interface SlotDefinition {
       </div>
 
       <!-- Mode Description -->
-      <div class="info-card" [style.background]="tokens.colors.info[50]" [style.border-color]="tokens.colors.info[200]">
-        <div class="info-icon" [style.color]="tokens.colors.info[600]">ℹ️</div>
+      <div class="info-card" [style.background]="tokens.colors.info.light" [style.border-color]="tokens.colors.info.light">
+        <div class="info-icon" [style.color]="tokens.colors.info.main">ℹ️</div>
         <div>
-          <div class="info-title" [style.color]="tokens.colors.info[800]">
+          <div class="info-title" [style.color]="tokens.colors.info.dark">
             {{ config.mode === 'template' ? 'Template Mode' : 'Component Mode' }}
           </div>
-          <div class="info-text" [style.color]="tokens.colors.info[700]">
+          <div class="info-text" [style.color]="tokens.colors.info.main">
             {{ getModeDescription() }}
           </div>
         </div>
