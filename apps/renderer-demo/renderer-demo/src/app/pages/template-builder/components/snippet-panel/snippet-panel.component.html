@@ -1,0 +1,131 @@
+<div class="snippet-panel" [class.collapsed]="isCollapsed">
+  <!-- Collapse Toggle -->
+  <button class="collapse-toggle" (click)="toggleCollapse()" title="Toggle Snippets">
+    <span *ngIf="!isCollapsed">❮</span>
+    <span *ngIf="isCollapsed">❯</span>
+  </button>
+
+  <!-- Expanded Content -->
+  <div class="expanded-content" *ngIf="!isCollapsed">
+    <!-- Header -->
+    <div class="panel-header">
+      <h3>Code Snippets</h3>
+      <span class="subtitle">Quick insert patterns</span>
+    </div>
+
+    <!-- Category Tabs -->
+    <div class="category-tabs">
+      <button
+        class="tab"
+        [class.active]="selectedCategory === 'all'"
+        (click)="selectCategory('all')">
+        All
+      </button>
+      <button
+        class="tab"
+        [class.active]="selectedCategory === 'json'"
+        (click)="selectCategory('json')">
+        JSON
+      </button>
+      <button
+        class="tab"
+        [class.active]="selectedCategory === 'html'"
+        (click)="selectCategory('html')">
+        HTML
+      </button>
+      <button
+        class="tab"
+        [class.active]="selectedCategory === 'css'"
+        (click)="selectCategory('css')">
+        CSS
+      </button>
+    </div>
+
+    <!-- Search Box -->
+    <div class="search-box">
+      <input
+        type="text"
+        [(ngModel)]="searchQuery"
+        (input)="onSearch()"
+        placeholder="Search snippets..."
+        class="search-input">
+    </div>
+
+    <!-- Snippet List -->
+    <div class="snippet-list">
+      <div
+        *ngFor="let snippet of displayedSnippets"
+        class="snippet-item"
+        [class.selected]="selectedSnippet?.id === snippet.id"
+        (click)="selectSnippet(snippet)">
+        <div class="snippet-header">
+          <span class="snippet-icon">{{ snippet.icon }}</span>
+          <div class="snippet-info">
+            <div class="snippet-name">{{ snippet.name }}</div>
+            <div class="snippet-description">{{ snippet.description }}</div>
+          </div>
+        </div>
+        <span
+          class="category-badge"
+          [style.background-color]="getCategoryColor(snippet.category)">
+          {{ snippet.category }}
+        </span>
+      </div>
+
+      <!-- Empty State -->
+      <div class="empty-state" *ngIf="displayedSnippets.length === 0">
+        <div class="empty-icon">🔍</div>
+        <div class="empty-message">No snippets found</div>
+        <div class="empty-hint">Try a different search or category</div>
+      </div>
+    </div>
+
+    <!-- Snippet Detail Panel -->
+    <div class="snippet-detail" *ngIf="selectedSnippet">
+      <div class="detail-header">
+        <h4>
+          <span class="detail-icon">{{ selectedSnippet.icon }}</span>
+          {{ selectedSnippet.name }}
+        </h4>
+        <button class="close-btn" (click)="clearSelection()" title="Close">×</button>
+      </div>
+
+      <div class="detail-body">
+        <p class="detail-description">{{ selectedSnippet.description }}</p>
+
+        <!-- Tags -->
+        <div class="tags" *ngIf="selectedSnippet.tags.length > 0">
+          <span class="tag" *ngFor="let tag of selectedSnippet.tags">{{ tag }}</span>
+        </div>
+
+        <!-- Code Preview -->
+        <div class="code-preview">
+          <div class="code-header">
+            <span class="code-label">Code Preview</span>
+            <span
+              class="code-language"
+              [style.background-color]="getCategoryColor(selectedSnippet.category)">
+              {{ selectedSnippet.category }}
+            </span>
+          </div>
+          <pre class="code-block">{{ selectedSnippet.code }}</pre>
+        </div>
+
+        <!-- Actions -->
+        <div class="detail-actions">
+          <button class="btn btn-primary" (click)="insertSnippetIntoEditor()">
+            ✓ Insert
+          </button>
+          <button class="btn btn-secondary" (click)="copySnippet()">
+            📋 Copy
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Collapsed State -->
+  <div class="collapsed-content" *ngIf="isCollapsed">
+    <div class="collapsed-label">Snippets</div>
+  </div>
+</div>

@@ -1,0 +1,63 @@
+.json-editor {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  background: #1e1e1e;
+}
+
+.editor-toolbar {
+  padding: 8px;
+  background: #2d2d2d;
+  border-bottom: 1px solid #3e3e3e;
+}
+
+.btn-format {
+  padding: 6px 12px;
+  background: #0e639c;
+  border: none;
+  border-radius: 4px;
+  color: white;
+  font-size: 12px;
+  cursor: pointer;
+  transition: background 0.2s;
+}
+
+.btn-format:hover {
+  background: #1177bb;
+}
+
+.editor-textarea {
+  flex: 1;
+  padding: 16px;
+  background: #1e1e1e;
+  color: #d4d4d4;
+  border: none;
+  outline: none;
+  font-family: 'Consolas', 'Monaco', 'Courier New', monospace;
+  font-size: 14px;
+  line-height: 1.6;
+  resize: none;
+  tab-size: 2;
+}
+
+.editor-textarea::placeholder {
+  color: #6a6a6a;
+}
+
+/* Scrollbar styling */
+.editor-textarea::-webkit-scrollbar {
+  width: 12px;
+}
+
+.editor-textarea::-webkit-scrollbar-track {
+  background: #1e1e1e;
+}
+
+.editor-textarea::-webkit-scrollbar-thumb {
+  background: #424242;
+  border-radius: 6px;
+}
+
+.editor-textarea::-webkit-scrollbar-thumb:hover {
+  background: #4e4e4e;
+}

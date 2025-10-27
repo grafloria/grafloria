@@ -1,0 +1,141 @@
+.performance-panel {
+  height: 100%;
+  background: white;
+  overflow-y: auto;
+}
+
+.panel-header {
+  padding: 12px 16px;
+  background: #fafafa;
+  border-bottom: 1px solid #e0e0e0;
+}
+
+.panel-header h3 {
+  margin: 0;
+  font-size: 14px;
+  font-weight: 600;
+  color: #333;
+}
+
+.metrics-container {
+  display: flex;
+  gap: 16px;
+  padding: 16px;
+  flex-wrap: wrap;
+}
+
+.metric-card {
+  flex: 1;
+  min-width: 150px;
+  padding: 16px;
+  background: #fafafa;
+  border: 1px solid #e0e0e0;
+  border-radius: 8px;
+}
+
+.metric-label {
+  font-size: 12px;
+  color: #666;
+  margin-bottom: 8px;
+  font-weight: 500;
+}
+
+.metric-value {
+  font-size: 32px;
+  font-weight: bold;
+  color: #333;
+  margin-bottom: 4px;
+}
+
+.metric-value.good {
+  color: #10b981;
+}
+
+.metric-value.warning {
+  color: #f59e0b;
+}
+
+.metric-value.error {
+  color: #ef4444;
+}
+
+.metric-subtitle {
+  font-size: 11px;
+  color: #999;
+}
+
+/* Warnings Section */
+.warnings-section,
+.recommendations-section {
+  flex: 1 1 100%;
+  padding: 16px;
+  background: #fff8f0;
+  border: 1px solid #fed7aa;
+  border-radius: 8px;
+}
+
+.recommendations-section {
+  background: #f0f9ff;
+  border-color: #bae6fd;
+}
+
+.section-title {
+  font-size: 13px;
+  font-weight: 600;
+  color: #333;
+  margin-bottom: 12px;
+}
+
+.warning-item,
+.recommendation-item {
+  font-size: 12px;
+  color: #666;
+  padding: 8px 12px;
+  background: white;
+  border-radius: 4px;
+  margin-bottom: 6px;
+}
+
+.warning-item:last-child,
+.recommendation-item:last-child {
+  margin-bottom: 0;
+}
+
+/* No Metrics */
+.no-metrics {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 40px;
+  text-align: center;
+}
+
+.no-metrics-icon {
+  font-size: 48px;
+  margin-bottom: 12px;
+  opacity: 0.5;
+}
+
+.no-metrics-text {
+  font-size: 14px;
+  color: #999;
+}
+
+/* Scrollbar styling */
+.performance-panel::-webkit-scrollbar {
+  width: 8px;
+}
+
+.performance-panel::-webkit-scrollbar-track {
+  background: #fafafa;
+}
+
+.performance-panel::-webkit-scrollbar-thumb {
+  background: #d0d0d0;
+  border-radius: 4px;
+}
+
+.performance-panel::-webkit-scrollbar-thumb:hover {
+  background: #b0b0b0;
+}

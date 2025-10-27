@@ -36,6 +36,10 @@ export const appRoutes: Route[] = [
     loadComponent: () => import('./pages/shape-gallery/shape-gallery.component').then(m => m.ShapeGalleryComponent)
   },
   {
+    path: 'template-builder',
+    loadComponent: () => import('./pages/template-builder/template-builder.component').then(m => m.TemplateBuilderComponent)
+  },
+  {
     path: '**',
     redirectTo: ''
   }

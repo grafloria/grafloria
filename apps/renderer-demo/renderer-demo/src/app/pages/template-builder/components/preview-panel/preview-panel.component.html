@@ -1,0 +1,34 @@
+<div class="preview-panel">
+  <!-- Header -->
+  <div class="panel-header">
+    <h3>Live Preview</h3>
+    <div class="panel-controls">
+      <span class="zoom-label">{{ (zoom * 100).toFixed(0) }}%</span>
+      <button class="btn-icon" (click)="zoomOut()" title="Zoom Out">−</button>
+      <button class="btn-icon" (click)="zoomIn()" title="Zoom In">+</button>
+      <button class="btn-icon" (click)="resetZoom()" title="Reset Zoom">⊙</button>
+      <button class="btn-icon" (click)="fitToView()" title="Fit to View">⛶</button>
+      <button class="btn-icon" (click)="refresh()" title="Refresh">↻</button>
+    </div>
+  </div>
+
+  <!-- Canvas -->
+  <div class="panel-body">
+    <div class="canvas-container" *ngIf="!errorMessage">
+      <grafloria-diagram-canvas
+        [engine]="engine"
+        [viewport]="viewport"
+        [zoom]="zoom"
+        [theme]="theme"
+        class="diagram-canvas">
+      </grafloria-diagram-canvas>
+    </div>
+
+    <!-- Error Display -->
+    <div class="error-display" *ngIf="errorMessage">
+      <div class="error-icon">⚠️</div>
+      <div class="error-message">{{ errorMessage }}</div>
+      <div class="error-hint">Fix the JSON to see preview</div>
+    </div>
+  </div>
+</div>

@@ -1,0 +1,160 @@
+<div class="template-builder">
+  <!-- Header Toolbar -->
+  <div class="toolbar">
+    <div class="toolbar-left">
+      <h1 class="title">Template Builder</h1>
+      <span class="subtitle">Advanced Node Template Editor</span>
+    </div>
+
+    <div class="toolbar-right">
+      <!-- Undo/Redo -->
+      <button
+        class="btn btn-icon"
+        [disabled]="!(canUndo$ | async)"
+        (click)="undo()"
+        title="Undo (Ctrl+Z)">
+        ↶
+      </button>
+      <button
+        class="btn btn-icon"
+        [disabled]="!(canRedo$ | async)"
+        (click)="redo()"
+        title="Redo (Ctrl+Y)">
+        ↷
+      </button>
+
+      <div class="divider"></div>
+
+      <!-- Actions -->
+      <button class="btn" (click)="save()" title="Save (Ctrl+S)">
+        💾 Save
+      </button>
+      <button class="btn" (click)="reset()" title="Reset">
+        🔄 Reset
+      </button>
+      <button class="btn" (click)="exportTemplate()" title="Export">
+        📥 Export
+      </button>
+      <button class="btn" (click)="importTemplate()" title="Import">
+        📤 Import
+      </button>
+
+      <div class="divider"></div>
+
+      <!-- Toggles -->
+      <button
+        class="btn btn-icon"
+        (click)="toggleSidebar()"
+        [class.active]="showSidebar"
+        title="Toggle Sidebar (Ctrl+L)">
+        ☰
+      </button>
+      <button
+        class="btn btn-icon"
+        (click)="togglePerformancePanel()"
+        [class.active]="showPerformancePanel"
+        title="Toggle Performance (Ctrl+Shift+P)">
+        📊
+      </button>
+    </div>
+  </div>
+
+  <!-- Main Content -->
+  <div class="main-content">
+    <!-- Left Sidebar: Template Library -->
+    <div class="sidebar" *ngIf="showSidebar">
+      <app-template-sidebar
+        (templateSelect)="onTemplateSelect($event)">
+      </app-template-sidebar>
+    </div>
+
+    <!-- Center: Editors with Tabs -->
+    <div class="editor-panel">
+      <div class="panel-header">
+        <div class="editor-tabs">
+          <button
+            class="tab"
+            [class.active]="activeEditorTab === 'json'"
+            (click)="activeEditorTab = 'json'">
+            JSON Template
+          </button>
+          <button
+            class="tab"
+            [class.active]="activeEditorTab === 'html'"
+            (click)="activeEditorTab = 'html'">
+            HTML Layer
+          </button>
+          <button
+            class="tab"
+            [class.active]="activeEditorTab === 'css'"
+            (click)="activeEditorTab = 'css'">
+            CSS Styles
+          </button>
+        </div>
+        <div class="panel-info">
+          <span class="status" *ngIf="editorState$ | async as state">
+            <span class="dot" [class.valid]="state.isValid" [class.invalid]="!state.isValid"></span>
+            {{ state.isValid ? 'Valid' : 'Invalid' }}
+          </span>
+        </div>
+      </div>
+      <div class="panel-body">
+        <app-monaco-editor
+          *ngIf="activeEditorTab === 'json'"
+          [content]="(editorState$ | async)?.json || ''"
+          [language]="'json'"
+          [theme]="'vs'"
+          [minimap]="true"
+          [lineNumbers]="'on'"
+          (contentChange)="onJsonChange($event)">
+        </app-monaco-editor>
+        <app-monaco-editor
+          *ngIf="activeEditorTab === 'html'"
+          [content]="(editorState$ | async)?.html || ''"
+          [language]="'html'"
+          [theme]="'vs'"
+          [minimap]="true"
+          [lineNumbers]="'on'"
+          (contentChange)="onHtmlChange($event)">
+        </app-monaco-editor>
+        <app-monaco-editor
+          *ngIf="activeEditorTab === 'css'"
+          [content]="(editorState$ | async)?.css || ''"
+          [language]="'css'"
+          [theme]="'vs'"
+          [minimap]="true"
+          [lineNumbers]="'on'"
+          (contentChange)="onCssChange($event)">
+        </app-monaco-editor>
+      </div>
+    </div>
+
+    <!-- Right: Live Preview -->
+    <div class="preview-panel">
+      <app-preview-panel
+        [template]="(editorState$ | async)?.json || ''"
+        [htmlLayer]="(editorState$ | async)?.html || ''"
+        [cssLayer]="(editorState$ | async)?.css || ''">
+      </app-preview-panel>
+    </div>
+
+    <!-- Far Right: Documentation Sidebar -->
+    <div class="docs-sidebar">
+      <app-documentation-sidebar></app-documentation-sidebar>
+    </div>
+
+    <!-- Far Right: Snippet Panel -->
+    <div class="snippet-panel-container">
+      <app-snippet-panel
+        (insertSnippet)="onSnippetInsert($event)">
+      </app-snippet-panel>
+    </div>
+  </div>
+
+  <!-- Bottom: Performance Metrics -->
+  <div class="bottom-panel" *ngIf="showPerformancePanel">
+    <app-performance-panel
+      [metrics]="performanceMetrics$ | async">
+    </app-performance-panel>
+  </div>
+</div>

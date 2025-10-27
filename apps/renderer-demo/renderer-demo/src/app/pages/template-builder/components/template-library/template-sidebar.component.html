@@ -1,0 +1,51 @@
+<div class="template-sidebar">
+  <!-- Header -->
+  <div class="sidebar-header">
+    <h3>Template Library</h3>
+  </div>
+
+  <!-- Search -->
+  <div class="search-box">
+    <input
+      type="text"
+      class="search-input"
+      placeholder="Search templates..."
+      [(ngModel)]="searchQuery"
+      (ngModelChange)="onSearchChange()"
+    />
+  </div>
+
+  <!-- Category Filter -->
+  <div class="category-filter">
+    <select
+      class="category-select"
+      [(ngModel)]="selectedCategory"
+      (ngModelChange)="onCategoryChange()">
+      <option *ngFor="let cat of categories" [value]="cat">
+        {{ getCategoryIcon(cat) }} {{ getCategoryName(cat) }}
+      </option>
+    </select>
+  </div>
+
+  <!-- Template List -->
+  <div class="template-list">
+    <div
+      *ngFor="let preset of filteredPresets"
+      class="template-item"
+      (click)="selectTemplate(preset.id)">
+      <div class="template-icon">{{ getCategoryIcon(preset.category) }}</div>
+      <div class="template-info">
+        <div class="template-name">{{ preset.name }}</div>
+        <div class="template-desc">{{ preset.description }}</div>
+        <div class="template-tags">
+          <span *ngFor="let tag of preset.tags" class="tag">{{ tag }}</span>
+        </div>
+      </div>
+    </div>
+
+    <div *ngIf="filteredPresets.length === 0" class="no-results">
+      <div class="no-results-icon">🔍</div>
+      <div class="no-results-text">No templates found</div>
+    </div>
+  </div>
+</div>
