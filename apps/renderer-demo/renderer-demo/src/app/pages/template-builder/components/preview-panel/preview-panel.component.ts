@@ -10,6 +10,7 @@ import {
 } from '@grafloria/engine';
 import { LIGHT_THEME, type Theme, type Rectangle } from '@grafloria/renderer';
 import { PerformanceMonitorService } from '../../services/performance-monitor.service';
+import { PortOverlayComponent } from '../port-overlay/port-overlay.component';
 
 /**
  * Preview Panel Component
@@ -27,7 +28,7 @@ import { PerformanceMonitorService } from '../../services/performance-monitor.se
  */
 @Component({
   standalone: true,
-  imports: [CommonModule, DiagramCanvasComponent],
+  imports: [CommonModule, DiagramCanvasComponent, PortOverlayComponent],
   selector: 'app-preview-panel',
   templateUrl: './preview-panel.component.html',
   styleUrl: './preview-panel.component.css'
@@ -48,6 +49,7 @@ export class PreviewPanelComponent implements OnInit, OnDestroy, OnChanges {
   previewNode: NodeModel | null = null;
 
   errorMessage = '';
+  parsedTemplate: NodeTemplate | null = null;
 
   private performanceMonitor = inject(PerformanceMonitorService);
 
@@ -92,6 +94,9 @@ export class PreviewPanelComponent implements OnInit, OnDestroy, OnChanges {
 
       // Parse template
       const templateData: NodeTemplate = JSON.parse(this.template);
+
+      // Store parsed template for port overlay
+      this.parsedTemplate = templateData;
 
       // Apply HTML layer if provided
       if (this.htmlLayer && this.htmlLayer.trim()) {
@@ -158,6 +163,7 @@ export class PreviewPanelComponent implements OnInit, OnDestroy, OnChanges {
       console.log('✅ Preview updated');
     } catch (error) {
       this.errorMessage = error instanceof Error ? error.message : 'Invalid template JSON';
+      this.parsedTemplate = null; // Clear template on error
       console.error('❌ Preview update failed:', error);
 
       // Only reset if measurement was started
