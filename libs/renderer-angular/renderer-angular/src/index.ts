@@ -17,6 +17,9 @@ export * from './lib/services/property-editor-registry.service';
 export * from './lib/services/diagram-renderer.service';
 export * from './lib/services/handle-registry.service';
 
+// Export adapters
+export * from './lib/adapters/angular-component-adapter';
+
 // Export mode-aware services
 export * from './lib/services/mode-manager.service';
 export * from './lib/services/execution-tracker.service';

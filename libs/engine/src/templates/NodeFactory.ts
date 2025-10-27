@@ -128,6 +128,12 @@ export class NodeFactory {
       node.setMetadata('shape', structure.shape);
     }
 
+    // Apply property bindings (data-driven properties)
+    // This allows conditional properties based on item data
+    if ((structure as any).propertyBindings) {
+      this.applyPropertyBindings(node, (structure as any).propertyBindings, data);
+    }
+
     // Handle HTML configuration
     if (structure.html) {
       node.setMetadata('useHTMLLayer', true);
@@ -164,37 +170,16 @@ export class NodeFactory {
       structure.children.forEach(childStructure => {
         this.buildNodeTree(childStructure, data, position, node, template);
       });
+    }
 
-      // Apply layout after all children are created
-      if (structure.layout && node.getMetadata('layout')) {
-        // For flexbox layouts, apply the layout to position children
-        const layoutConfig = node.getMetadata('layout');
-        if (layoutConfig.direction) {
-          // Cast to FlexboxLayoutConfig type
-          const flexLayout = layoutConfig as any;
+    // Create dynamic children from repeater configuration
+    if (structure.repeater) {
+      this.createRepeaterChildren(structure, data, position, node, template);
+    }
 
-          // Position children based on flex direction
-          let offset = flexLayout.padding?.top || 0;
-          const gap = flexLayout.gap || 0;
-
-          node.children.forEach((childId) => {
-            const child = this.diagram.getNode(childId);
-            if (child) {
-              if (flexLayout.direction === 'column') {
-                // Stack vertically
-                child.position.x = flexLayout.padding?.left || 0;
-                child.position.y = offset;
-                offset += child.size.height + gap;
-              } else if (flexLayout.direction === 'row') {
-                // Stack horizontally
-                child.position.x = offset;
-                child.position.y = flexLayout.padding?.top || 0;
-                offset += child.size.width + gap;
-              }
-            }
-          });
-        }
-      }
+    // Apply layout after all children (static + repeater) are created
+    if ((structure.children || structure.repeater) && structure.layout && node.getMetadata('layout')) {
+      this.applyFlexboxLayout(node);
     }
 
     return node;
@@ -278,6 +263,118 @@ export class NodeFactory {
   }
 
   /**
+   * Create dynamic children from repeater configuration
+   * Iterates over an array in the data and creates a child node for each item
+   *
+   * @param structure Node structure with repeater config
+   * @param data Parent node data
+   * @param position Position (passed to children)
+   * @param parent Parent node
+   * @param template Root template reference
+   */
+  private createRepeaterChildren(
+    structure: NodeStructureDefinition,
+    data: Record<string, any>,
+    position: { x: number; y: number },
+    parent: NodeModel,
+    template: NodeTemplate
+  ): void {
+    if (!structure.repeater) {
+      return;
+    }
+
+    const { dataSource, itemTemplate, keyField } = structure.repeater;
+
+    // Get the array data from the specified path
+    const dataArray = this.getNestedValue(data, dataSource);
+
+    // Validate that we got an array
+    if (!Array.isArray(dataArray)) {
+      console.warn(
+        `[NodeFactory] Repeater dataSource "${dataSource}" did not resolve to an array. ` +
+        `Got: ${typeof dataArray}. Skipping repeater children.`
+      );
+      return;
+    }
+
+    // If array is empty, nothing to do
+    if (dataArray.length === 0) {
+      return;
+    }
+
+    const keyFieldName = keyField || 'id';
+
+    // Create a child node for each item in the array
+    dataArray.forEach((itemData, index) => {
+      // Create a unique data context for this item
+      // Merge parent data with item data, giving precedence to item data
+      const itemContext = {
+        ...data,      // Include parent/container data
+        ...itemData,  // Override with item-specific data
+
+        // Add helper properties for templates
+        _index: index,
+        _isFirst: index === 0,
+        _isLast: index === dataArray.length - 1,
+        _key: itemData[keyFieldName] !== undefined ? itemData[keyFieldName] : index,
+        _total: dataArray.length,
+      };
+
+      // Create child node from item template
+      const childNode = this.buildNodeTree(
+        itemTemplate,
+        itemContext,
+        position,
+        parent,
+        template
+      );
+
+      // Store repeater metadata on the child for potential updates/tracking
+      childNode.setMetadata('_repeaterSource', dataSource);
+      childNode.setMetadata('_repeaterItemIndex', index);
+      childNode.setMetadata('_repeaterItemKey', itemContext._key);
+      childNode.setMetadata('_isRepeaterItem', true);
+    });
+  }
+
+  /**
+   * Apply flexbox layout to position children
+   * Extracted from inline code to support both static and repeater children
+   *
+   * @param node Parent node with children to layout
+   */
+  private applyFlexboxLayout(node: NodeModel): void {
+    const layoutConfig = node.getMetadata('layout');
+    if (!layoutConfig || !layoutConfig.direction) {
+      return;
+    }
+
+    // Cast to FlexboxLayoutConfig type
+    const flexLayout = layoutConfig as any;
+
+    // Position children based on flex direction
+    let offset = flexLayout.padding?.top || 0;
+    const gap = flexLayout.gap || 0;
+
+    node.children.forEach((childId) => {
+      const child = this.diagram.getNode(childId);
+      if (child) {
+        if (flexLayout.direction === 'column') {
+          // Stack vertically
+          child.position.x = flexLayout.padding?.left || 0;
+          child.position.y = offset;
+          offset += child.size.height + gap;
+        } else if (flexLayout.direction === 'row') {
+          // Stack horizontally
+          child.position.x = offset;
+          child.position.y = flexLayout.padding?.top || 0;
+          offset += child.size.width + gap;
+        }
+      }
+    });
+  }
+
+  /**
    * Get nested value from object path (e.g., 'data.user.name')
    */
   private getNestedValue(obj: any, path: string): any {
@@ -286,5 +383,81 @@ export class NodeFactory {
     }
 
     return path.split('.').reduce((acc, part) => acc?.[part], obj);
+  }
+
+  /**
+   * Apply property bindings to node for data-driven properties
+   * Allows conditional properties based on item data
+   *
+   * Example:
+   * propertyBindings: {
+   *   shape: {
+   *     fill: {
+   *       source: 'data.isPrimaryKey',
+   *       map: { 'true': '#e3f2fd', 'false': '#ffffff' }
+   *     }
+   *   }
+   * }
+   *
+   * @param node Node to apply bindings to
+   * @param bindings Property bindings configuration
+   * @param data Data to evaluate bindings against
+   */
+  private applyPropertyBindings(
+    node: NodeModel,
+    bindings: any,
+    data: Record<string, any>
+  ): void {
+    // Apply shape property bindings
+    if (bindings.shape) {
+      const currentShape = node.getMetadata('shape') || {};
+      const newShape = { ...currentShape };
+
+      for (const [prop, resolver] of Object.entries(bindings.shape)) {
+        newShape[prop] = this.resolvePropertyValue(resolver as any, data);
+      }
+
+      node.setMetadata('shape', newShape);
+    }
+
+    // Apply behavior property bindings
+    if (bindings.behavior) {
+      const currentBehavior = { ...node.behavior };
+
+      for (const [prop, resolver] of Object.entries(bindings.behavior)) {
+        (currentBehavior as any)[prop] = this.resolvePropertyValue(resolver as any, data);
+      }
+
+      node.behavior = currentBehavior;
+    }
+
+    // Note: Port bindings would require more complex logic (regenerating ports)
+    // For now, ports should be configured statically or conditionally via multiple templates
+  }
+
+  /**
+   * Resolve property value from binding configuration
+   *
+   * @param resolver Property resolver with source path and value map
+   * @param data Data to evaluate against
+   * @returns Resolved property value
+   */
+  private resolvePropertyValue(
+    resolver: { source: string; map: Record<string, any>; default?: any },
+    data: Record<string, any>
+  ): any {
+    // Get value from data path
+    const value = this.getNestedValue(data, resolver.source);
+
+    // Convert to string for map lookup
+    const key = String(value);
+
+    // Look up in map
+    if (key in resolver.map) {
+      return resolver.map[key];
+    }
+
+    // Return default or original value
+    return resolver.default !== undefined ? resolver.default : value;
   }
 }

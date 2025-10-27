@@ -401,6 +401,23 @@ export class ComponentRendererService {
     return this.componentInstances.size;
   }
 
+  /**
+   * Get list of all registered node types.
+   * Useful for component palette UI and validation.
+   *
+   * @returns Array of registered node type strings
+   *
+   * @example
+   * ```typescript
+   * const types = componentRenderer.getRegisteredTypes();
+   * console.log('Available components:', types);
+   * // ['ERD.TABLE', 'BPMN.TASK', ...]
+   * ```
+   */
+  getRegisteredTypes(): string[] {
+    return Array.from(this.componentRegistry.keys());
+  }
+
   // Private helper methods
 
   /**
