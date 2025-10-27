@@ -77,6 +77,17 @@
 
       <div class="divider"></div>
 
+      <!-- PHASE 8: Multi-Node Mode Toggle -->
+      <app-button
+        variant="ghost"
+        size="sm"
+        icon="🎨"
+        [class.active]="multiNodeMode"
+        (clicked)="toggleMultiNodeMode()"
+        [title]="multiNodeMode ? 'Multi-Node Mode: ON' : 'Multi-Node Mode: OFF'">
+        Multi-Node
+      </app-button>
+
       <!-- Toggles with NEW Button Component -->
       <app-button
         variant="ghost"
@@ -245,7 +256,8 @@
           *ngIf="activeRightTab === 'preview'"
           [template]="(editorState$ | async)?.json || ''"
           [htmlLayer]="(editorState$ | async)?.html || ''"
-          [cssLayer]="(editorState$ | async)?.css || ''">
+          [cssLayer]="(editorState$ | async)?.css || ''"
+          [multiNodeMode]="multiNodeMode">
         </app-preview-panel>
 
         <!-- NEW: Data Testing Panel -->

@@ -124,6 +124,9 @@ export class TemplateBuilderComponent implements OnInit, OnDestroy {
   // NEW: Test data for data testing panel
   testData: any = {};
 
+  // PHASE 8: Multi-Node Mode
+  multiNodeMode = false;
+
   // Panel Sizes (resizable)
   leftPanelWidth = 300;
   editorPanelWidth = 500;  // NEW: resizable editor panel
@@ -559,6 +562,19 @@ export class TemplateBuilderComponent implements OnInit, OnDestroy {
     // If opening snippets, close docs to avoid clutter
     if (this.showSnippetsPanel && this.showDocsPanel) {
       this.showDocsPanel = false;
+    }
+  }
+
+  /**
+   * PHASE 8: Toggle Multi-Node Mode
+   */
+  toggleMultiNodeMode(): void {
+    this.multiNodeMode = !this.multiNodeMode;
+    console.log(`🎨 Multi-Node Mode: ${this.multiNodeMode ? 'ON' : 'OFF'}`);
+
+    // Automatically switch to preview tab when enabling multi-node mode
+    if (this.multiNodeMode && this.activeRightTab !== 'preview') {
+      this.activeRightTab = 'preview';
     }
   }
 
