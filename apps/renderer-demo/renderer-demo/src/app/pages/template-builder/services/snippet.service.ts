@@ -646,6 +646,199 @@ export class SnippetService {
   }
 }`
     });
+
+    this.snippets.push({
+      id: 'simple-card-complete',
+      name: 'Simple Card (Complete)',
+      description: 'Production-ready card with header, body, footer',
+      category: 'json',
+      subcategory: 'templates',
+      tags: ['card', 'complete', 'production', 'example'],
+      icon: '🃏',
+      code: `{
+  "id": "simple-card",
+  "version": "1.0.0",
+  "meta": {
+    "name": "Simple Card",
+    "description": "A basic card with title and description",
+    "category": "common",
+    "tags": ["card", "basic"]
+  },
+  "structure": {
+    "type": "simple-card",
+    "size": {
+      "width": 250,
+      "height": 150
+    },
+    "shape": {
+      "type": "rect",
+      "cornerRadius": 12,
+      "fill": "#ffffff",
+      "stroke": "#e5e7eb",
+      "strokeWidth": 1
+    },
+    "html": {
+      "mode": "template",
+      "template": "<div class='card-header'><h3>{{data.title}}</h3></div><div class='card-body'><p>{{data.description}}</p></div><div class='card-footer'><small>{{data.timestamp}}</small></div>",
+      "className": "simple-card-content",
+      "style": {
+        "display": "flex",
+        "flexDirection": "column",
+        "height": "100%",
+        "padding": "0"
+      },
+      "events": {
+        "click": "card:clicked",
+        "dblclick": "card:edit"
+      }
+    },
+    "ports": {
+      "enabled": true,
+      "defaultVisibility": "hover",
+      "top": { "enabled": false },
+      "right": { "enabled": true, "type": "output" },
+      "bottom": { "enabled": false },
+      "left": { "enabled": true, "type": "input" }
+    }
+  },
+  "defaultData": {
+    "title": "Card Title",
+    "description": "Card description goes here",
+    "timestamp": "2025-10-27"
+  }
+}`
+    });
+
+    this.snippets.push({
+      id: 'user-form-complete',
+      name: 'User Form (Complete)',
+      description: 'Interactive form node with inputs and validation',
+      category: 'json',
+      subcategory: 'templates',
+      tags: ['form', 'input', 'interactive', 'complete'],
+      icon: '📋',
+      code: `{
+  "id": "user-form",
+  "version": "1.0.0",
+  "meta": {
+    "name": "User Form",
+    "description": "An interactive form for user input",
+    "category": "forms",
+    "tags": ["form", "input", "user"]
+  },
+  "structure": {
+    "type": "user-form",
+    "size": {
+      "width": 300,
+      "height": 250
+    },
+    "shape": {
+      "type": "rect",
+      "cornerRadius": 8,
+      "fill": "#f9fafb",
+      "stroke": "#6366f1",
+      "strokeWidth": 2
+    },
+    "html": {
+      "mode": "template",
+      "template": "<form class='user-form'><div class='form-header'><h3>User Information</h3></div><div class='form-group'><label>Name:</label><input type='text' name='name' value='{{data.name}}' placeholder='Enter name' /></div><div class='form-group'><label>Email:</label><input type='email' name='email' value='{{data.email}}' placeholder='Enter email' /></div><div class='form-group'><label>Role:</label><select name='role'><option value='admin'>Admin</option><option value='user'>User</option><option value='guest'>Guest</option></select></div><div class='form-actions'><button type='submit' class='btn-primary'>Save</button><button type='button' class='btn-secondary'>Cancel</button></div></form>",
+      "className": "user-form-node",
+      "style": {
+        "padding": "20px",
+        "fontFamily": "system-ui"
+      },
+      "events": {
+        "submit": "form:submitted",
+        "input": "form:value-changed",
+        "click": "form:clicked"
+      }
+    },
+    "ports": {
+      "enabled": true,
+      "defaultVisibility": "hover",
+      "top": { "enabled": true, "type": "input" },
+      "bottom": { "enabled": true, "type": "output" }
+    }
+  },
+  "defaultData": {
+    "name": "",
+    "email": "",
+    "role": "user"
+  },
+  "dataSchema": {
+    "type": "object",
+    "properties": {
+      "name": { "type": "string", "minLength": 1 },
+      "email": { "type": "string", "format": "email" },
+      "role": { "type": "string", "enum": ["admin", "user", "guest"] }
+    },
+    "required": ["name", "email"]
+  }
+}`
+    });
+
+    this.snippets.push({
+      id: 'metric-card-complete',
+      name: 'Metric Dashboard Card (Complete)',
+      description: 'KPI card with icon, value, and trend indicator',
+      category: 'json',
+      subcategory: 'templates',
+      tags: ['metric', 'dashboard', 'kpi', 'analytics', 'complete'],
+      icon: '📊',
+      code: `{
+  "id": "metric-dashboard-card",
+  "version": "1.0.0",
+  "meta": {
+    "name": "Metric Dashboard Card",
+    "description": "A card showing key metrics with trends",
+    "category": "data-viz",
+    "tags": ["metric", "dashboard", "analytics"]
+  },
+  "structure": {
+    "type": "metric-card",
+    "size": {
+      "width": 220,
+      "height": 140
+    },
+    "shape": {
+      "type": "rect",
+      "cornerRadius": 12,
+      "fill": "#ffffff",
+      "stroke": "#e5e7eb",
+      "strokeWidth": 1
+    },
+    "html": {
+      "mode": "template",
+      "template": "<div class='metric-card'><div class='metric-header'><span class='metric-icon'>{{data.icon}}</span><span class='metric-label'>{{data.label}}</span></div><div class='metric-value'>{{data.value}}</div><div class='metric-trend'><span class='trend-icon'>{{data.trendDirection}}</span><span class='trend-value'>{{data.trendPercentage}}%</span><span class='trend-label'>vs. last period</span></div></div>",
+      "className": "metric-card-content",
+      "style": {
+        "display": "flex",
+        "flexDirection": "column",
+        "gap": "10px",
+        "padding": "16px",
+        "fontFamily": "system-ui"
+      },
+      "bindings": {
+        "trendDirection": "data.trend"
+      },
+      "events": {
+        "click": "metric:clicked",
+        "mouseenter": "metric:hover"
+      }
+    },
+    "ports": {
+      "enabled": false
+    }
+  },
+  "defaultData": {
+    "icon": "📊",
+    "label": "Total Users",
+    "value": "12,543",
+    "trend": "↑",
+    "trendPercentage": "+12.5"
+  }
+}`
+    });
   }
 
   /**
