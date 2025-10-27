@@ -112,7 +112,7 @@ export interface NodeActionEvent {
           </span>
 
           <!-- Node Type Badge -->
-          <span class="node-type" [style.background]="tokens.colors.gray[200]">
+          <span class="node-type" [style.background]="tokens.colors.background.tertiary">
             {{ node.type }}
           </span>
 

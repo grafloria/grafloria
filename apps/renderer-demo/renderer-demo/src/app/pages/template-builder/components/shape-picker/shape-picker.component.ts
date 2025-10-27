@@ -103,7 +103,7 @@ export interface ShapeConfig {
             <svg viewBox="0 0 100 100" xmlns="http://www.w3.org/2000/svg">
               <path
                 [attr.d]="shape.svgPath"
-                [attr.fill]="selectedShape === shape.type ? tokens.colors.primary[500] : tokens.colors.gray[300]"
+                [attr.fill]="selectedShape === shape.type ? tokens.colors.primary[500] : tokens.colors.border.secondary"
               />
             </svg>
           </div>

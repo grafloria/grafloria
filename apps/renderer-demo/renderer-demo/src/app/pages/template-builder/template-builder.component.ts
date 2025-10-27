@@ -779,6 +779,52 @@ export class TemplateBuilderComponent implements OnInit, OnDestroy {
   }
 
   /**
+   * Get current layout configuration
+   */
+  getCurrentLayout(): LayoutConfig {
+    const template = this.getCurrentTemplate();
+    const layout = template?.structure?.layout;
+
+    // Ensure we always return a valid LayoutConfig with type property
+    if (!layout) {
+      return { type: 'none' };
+    }
+
+    // If layout exists but doesn't have type, infer it
+    if (!(layout as any).type) {
+      // Check if it's flexbox layout
+      if ((layout as any).direction || (layout as any).justifyContent || (layout as any).alignItems) {
+        return {
+          type: 'flexbox',
+          flexDirection: (layout as any).direction,
+          flexWrap: (layout as any).wrap,
+          justifyContent: (layout as any).justifyContent,
+          alignItems: (layout as any).alignItems,
+          alignContent: (layout as any).alignContent,
+          gap: (layout as any).gap,
+          padding: (layout as any).padding
+        };
+      }
+      // Check if it's grid layout
+      if ((layout as any).gridTemplateColumns || (layout as any).gridTemplateRows) {
+        return {
+          type: 'grid',
+          gridTemplateColumns: (layout as any).gridTemplateColumns,
+          gridTemplateRows: (layout as any).gridTemplateRows,
+          gridAutoFlow: (layout as any).gridAutoFlow,
+          gridGap: (layout as any).gap,
+          padding: (layout as any).padding
+        };
+      }
+      // Default to none
+      return { type: 'none' };
+    }
+
+    // Layout already has type, return as is
+    return layout as LayoutConfig;
+  }
+
+  /**
    * Handle Monaco editor ready event
    */
   onEditorReady(editor: any): void {

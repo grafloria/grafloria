@@ -270,7 +270,7 @@
           <!-- Layout Editor -->
           <div class="structure-section layout-section">
             <app-layout-editor
-              [layout]="getCurrentTemplate()?.structure?.layout || { type: 'none' }"
+              [layout]="getCurrentLayout()"
               (layoutChange)="onLayoutChange($event)">
             </app-layout-editor>
           </div>

@@ -159,7 +159,7 @@ export class TemplatePreviewModalComponent implements OnInit, OnDestroy, AfterVi
 
   // ==================== Preview Rendering ====================
 
-  private renderPreview(): void {
+  renderPreview(): void {
     if (!this.metadata || !this.previewCanvas) {
       return;
     }
