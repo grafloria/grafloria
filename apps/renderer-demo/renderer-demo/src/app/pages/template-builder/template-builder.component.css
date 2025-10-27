@@ -6,45 +6,51 @@
   font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
 }
 
-/* Toolbar */
+/* Toolbar - Compact & Polished */
 .toolbar {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  padding: 12px 24px;
+  padding: 8px 16px;
   background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
   color: white;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.15);
+  min-height: 48px;
 }
 
 .toolbar-left {
   display: flex;
   align-items: baseline;
-  gap: 12px;
+  gap: 10px;
+  flex-shrink: 0;
 }
 
 .title {
   margin: 0;
-  font-size: 20px;
+  font-size: 18px;
   font-weight: 600;
+  letter-spacing: -0.2px;
 }
 
 .subtitle {
-  font-size: 14px;
-  opacity: 0.9;
+  font-size: 12px;
+  opacity: 0.85;
+  font-weight: 400;
 }
 
 .toolbar-right {
   display: flex;
-  gap: 8px;
+  gap: 6px;
   align-items: center;
+  flex-wrap: wrap;
 }
 
 .divider {
   width: 1px;
-  height: 24px;
-  background: rgba(255, 255, 255, 0.3);
-  margin: 0 4px;
+  height: 20px;
+  background: rgba(255, 255, 255, 0.25);
+  margin: 0 2px;
+  flex-shrink: 0;
 }
 
 .btn {
@@ -556,36 +562,39 @@
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 24px 32px;
+  padding: 16px 24px;
   border-bottom: 2px solid #e1e8ed;
-  background: #f8f9fa;
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
 }
 
 .gallery-modal-header h2 {
   margin: 0;
-  font-size: 28px;
+  font-size: 22px;
   font-weight: 700;
-  color: #2c3e50;
+  color: white;
+  letter-spacing: -0.3px;
 }
 
 .btn-close-gallery {
-  width: 44px;
-  height: 44px;
+  width: 36px;
+  height: 36px;
   border: none;
-  border-radius: 8px;
-  background: #e74c3c;
+  border-radius: 6px;
+  background: rgba(255, 255, 255, 0.2);
   color: white;
-  font-size: 32px;
+  font-size: 28px;
   line-height: 1;
   cursor: pointer;
   transition: all 0.2s;
   display: flex;
   align-items: center;
   justify-content: center;
+  border: 1px solid rgba(255, 255, 255, 0.3);
 }
 
 .btn-close-gallery:hover {
-  background: #c0392b;
+  background: rgba(255, 255, 255, 0.3);
+  border-color: rgba(255, 255, 255, 0.5);
   transform: scale(1.05);
 }
 

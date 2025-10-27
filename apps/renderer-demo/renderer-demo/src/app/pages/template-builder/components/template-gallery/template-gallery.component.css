@@ -9,8 +9,8 @@
 .template-gallery {
   display: flex;
   flex-direction: column;
-  gap: 24px;
-  padding: 24px;
+  gap: 16px;
+  padding: 16px;
   background: #f8f9fa;
   min-height: 100%;
   overflow-y: auto;
@@ -22,32 +22,34 @@
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 16px;
+  gap: 12px;
   flex-wrap: wrap;
+  padding: 8px 0;
 }
 
 .header-left {
   display: flex;
   align-items: center;
-  gap: 12px;
+  gap: 10px;
   flex: 1;
 }
 
 .gallery-title {
   margin: 0;
-  font-size: 28px;
+  font-size: 20px;
   font-weight: 700;
   color: #2c3e50;
-  letter-spacing: -0.5px;
+  letter-spacing: -0.3px;
 }
 
 .template-count {
-  font-size: 14px;
+  font-size: 12px;
   color: #7f8c8d;
-  padding: 4px 12px;
+  padding: 3px 10px;
   background: white;
-  border-radius: 12px;
-  font-weight: 500;
+  border-radius: 10px;
+  font-weight: 600;
+  border: 1px solid #e1e8ed;
 }
 
 .header-right {
@@ -103,25 +105,25 @@
 .search-box {
   position: relative;
   flex: 1;
-  min-width: 300px;
+  min-width: 280px;
 }
 
 .search-icon {
   position: absolute;
-  left: 14px;
+  left: 12px;
   top: 50%;
   transform: translateY(-50%);
-  font-size: 16px;
+  font-size: 14px;
   pointer-events: none;
   color: #95a5a6;
 }
 
 .search-input {
   width: 100%;
-  padding: 12px 40px 12px 44px;
-  border: 2px solid #e1e8ed;
-  border-radius: 10px;
-  font-size: 14px;
+  padding: 10px 36px 10px 38px;
+  border: 1px solid #d0d7de;
+  border-radius: 8px;
+  font-size: 13px;
   background: white;
   transition: all 0.2s;
   color: #2c3e50;
@@ -246,48 +248,49 @@
 
 .filter-panel {
   background: white;
-  border-radius: 12px;
-  padding: 24px;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.05);
+  border-radius: 10px;
+  padding: 16px;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.08);
+  border: 1px solid #e1e8ed;
   display: flex;
   flex-direction: column;
-  gap: 24px;
+  gap: 16px;
 }
 
 .filter-section {
   display: flex;
   flex-direction: column;
-  gap: 12px;
+  gap: 10px;
 }
 
 .filter-title {
   margin: 0;
-  font-size: 14px;
-  font-weight: 600;
-  color: #2c3e50;
+  font-size: 12px;
+  font-weight: 700;
+  color: #57606a;
   text-transform: uppercase;
-  letter-spacing: 0.5px;
+  letter-spacing: 0.6px;
 }
 
 .filter-chips {
   display: flex;
   flex-wrap: wrap;
-  gap: 8px;
+  gap: 6px;
 }
 
 .filter-chip {
-  padding: 8px 16px;
-  border: 2px solid #e1e8ed;
-  border-radius: 20px;
+  padding: 6px 12px;
+  border: 1px solid #d0d7de;
+  border-radius: 16px;
   background: white;
   cursor: pointer;
-  font-size: 13px;
+  font-size: 12px;
   font-weight: 500;
-  color: #2c3e50;
-  transition: all 0.2s;
+  color: #24292f;
+  transition: all 0.15s;
   display: flex;
   align-items: center;
-  gap: 6px;
+  gap: 5px;
 }
 
 .filter-chip:hover {
@@ -477,8 +480,8 @@
 
 .templates-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
-  gap: 24px;
+  grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+  gap: 16px;
   align-items: start;
 }
 
