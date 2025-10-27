@@ -522,7 +522,7 @@ export const DIAGRAM_TEMPLATES: Partial<TemplateMetadata>[] = [
     description: 'Database table with dynamic children (header + fields). Example: Products table with id, name, price, stock fields.',
     category: 'diagram',
     tags: ['database', 'erd', 'table', 'schema', 'children'],
-    complexity: 'moderate',
+    complexity: 'medium',
     author: 'Grafloria',
     version: '1.0.0',
     features: ['html', 'ports', 'children', 'layout'],
