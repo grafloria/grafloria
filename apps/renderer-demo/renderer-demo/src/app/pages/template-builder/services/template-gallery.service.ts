@@ -10,6 +10,7 @@ import {
   createDefaultTemplateMetadata,
   BUILT_IN_COLLECTIONS
 } from '../models/template-metadata.model';
+import { getSampleTemplates } from '../data/sample-templates';
 
 /**
  * Template Gallery Service
@@ -97,6 +98,34 @@ export class TemplateGalleryService {
 
     // Load user collections from storage
     this.loadCollectionsFromStorage();
+
+    // Load sample templates if no templates exist
+    this.loadSampleTemplatesIfNeeded();
+  }
+
+  /**
+   * Load sample templates on first initialization
+   */
+  private loadSampleTemplatesIfNeeded(): void {
+    const currentTemplates = this.templates$.value;
+
+    // Only load samples if no templates exist
+    if (currentTemplates.size === 0) {
+      console.log('📚 Loading sample templates into gallery...');
+
+      const sampleTemplates = getSampleTemplates();
+      const templatesMap = new Map(currentTemplates);
+
+      sampleTemplates.forEach(partial => {
+        const metadata = createDefaultTemplateMetadata(partial);
+        templatesMap.set(metadata.id, metadata);
+      });
+
+      this.templates$.next(templatesMap);
+      this.saveTemplatesToStorage();
+
+      console.log(`✅ Loaded ${sampleTemplates.length} sample templates`);
+    }
   }
 
   // ==================== Template Operations ====================
