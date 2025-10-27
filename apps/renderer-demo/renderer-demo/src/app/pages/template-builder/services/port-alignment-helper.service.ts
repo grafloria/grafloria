@@ -55,8 +55,13 @@ export class PortAlignmentHelperService {
     }
 
     const structure = template.structure;
-    const width = structure.size?.width || 200;
-    const height = structure.size?.height || 100;
+
+    // Convert width and height to numbers, handling string values like "auto"
+    const rawWidth = structure.size?.width || 200;
+    const rawHeight = structure.size?.height || 100;
+    const width = typeof rawWidth === 'number' ? rawWidth : 200;
+    const height = typeof rawHeight === 'number' ? rawHeight : 100;
+
     const shapeType = structure.shape?.type || 'rect';
     const portConfig = this.extractPortConfig(structure);
 
