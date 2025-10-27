@@ -88,11 +88,16 @@ export class DocumentationSidebarComponent implements OnInit, OnDestroy {
   "shape": {
     "type": "rect",
     "fill": "#e3f2fd",
-    "stroke": "#2196f3"
+    "stroke": "#2196f3",
+    "strokeWidth": 2
   },
   "htmlLayer": "<div style='padding: 8px;'>{{task.title}}</div>",
   "layout": {
     "direction": "column",
+    "wrap": "nowrap",
+    "justifyContent": "start",
+    "alignItems": "stretch",
+    "alignContent": "start",
     "gap": 8
   }
 }`
@@ -107,6 +112,7 @@ export class DocumentationSidebarComponent implements OnInit, OnDestroy {
   "wrap": "nowrap",
   "justifyContent": "space-between",
   "alignItems": "center",
+  "alignContent": "start",
   "gap": 12
 }`
     }

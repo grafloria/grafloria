@@ -716,9 +716,11 @@ export class TemplateBuilderComponent implements OnInit, OnDestroy {
         return;
       }
 
-      // Ensure structure exists
+      // Ensure structure exists with required type property
       if (!template.structure) {
-        template.structure = {};
+        template.structure = {
+          type: 'container'
+        } as any;
       }
 
       // Generate child node JSON based on configuration
