@@ -310,7 +310,7 @@ export class TemplateGalleryComponent implements OnInit, OnDestroy {
   /**
    * Use template
    */
-  private onUseTemplate(metadata: TemplateMetadata): void {
+  onUseTemplate(metadata: TemplateMetadata): void {
     this.galleryService.incrementUsageCount(metadata.id);
     this.templateSelected.emit(metadata);
   }
@@ -318,7 +318,7 @@ export class TemplateGalleryComponent implements OnInit, OnDestroy {
   /**
    * Preview template
    */
-  private onPreviewTemplate(metadata: TemplateMetadata): void {
+  onPreviewTemplate(metadata: TemplateMetadata): void {
     this.galleryService.incrementViewCount(metadata.id);
     // Preview modal will be handled by parent component
   }

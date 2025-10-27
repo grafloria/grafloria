@@ -54,8 +54,8 @@ import {
         [height]="canvasHeight"
         (mousedown)="onMinimapMouseDown($event)"
         (mousemove)="onMinimapMouseMove($event)"
-        (mouseup)="onMinimapMouseUp($event)"
-        (mouseleave)="onMinimapMouseUp($event)">
+        (mouseup)="onMinimapMouseUp()"
+        (mouseleave)="onMinimapMouseUp()">
       </canvas>
       <div class="minimap-stats">
         {{ nodes.size }} nodes, {{ connections.size }} links
@@ -137,6 +137,7 @@ export class MinimapComponent implements OnChanges, AfterViewInit, OnDestroy {
   @Input() nodes: Map<string, PreviewNodeInfo> = new Map();
   @Input() connections: Map<string, ConnectionInfo> = new Map();
   @Input() viewport!: Rectangle;
+  @Input() zoom: number = 1;
   @Input() visible = true;
 
   @Output() viewportChange = new EventEmitter<{ x: number; y: number }>();
@@ -297,8 +298,8 @@ export class MinimapComponent implements OnChanges, AfterViewInit, OnDestroy {
     offsetX: number,
     offsetY: number
   ): void {
-    const viewportWorldWidth = this.viewport.width / this.viewport.zoom;
-    const viewportWorldHeight = this.viewport.height / this.viewport.zoom;
+    const viewportWorldWidth = this.viewport.width / this.zoom;
+    const viewportWorldHeight = this.viewport.height / this.zoom;
 
     const x = offsetX + (this.viewport.x - bounds.minX) * scale;
     const y = offsetY + (this.viewport.y - bounds.minY) * scale;
@@ -404,8 +405,8 @@ export class MinimapComponent implements OnChanges, AfterViewInit, OnDestroy {
     const worldY = bounds.minY + (y - offsetY) / scale;
 
     // Center the viewport on the clicked position
-    const viewportWorldWidth = this.viewport.width / this.viewport.zoom;
-    const viewportWorldHeight = this.viewport.height / this.viewport.zoom;
+    const viewportWorldWidth = this.viewport.width / this.zoom;
+    const viewportWorldHeight = this.viewport.height / this.zoom;
 
     const newViewportX = worldX - viewportWorldWidth / 2;
     const newViewportY = worldY - viewportWorldHeight / 2;

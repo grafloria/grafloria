@@ -483,8 +483,13 @@ export class PreviewPanelComponent implements OnInit, OnDestroy, OnChanges {
       return '';
     }
 
+    // Map connection style to LinkModel style
+    const linkStyle = style === 'straight' ? 'direct' :
+                     style === 'curved' ? 'smooth' :
+                     'orthogonal';
+
     // Create link model
-    const linkModel = new LinkModel(sourcePort.id, targetPort.id, style);
+    const linkModel = new LinkModel(sourcePort.id, targetPort.id, linkStyle as any);
     if (label) {
       linkModel.setMetadata('label', label);
     }
@@ -599,11 +604,9 @@ export class PreviewPanelComponent implements OnInit, OnDestroy, OnChanges {
       };
 
       const delta = panDeltas[event.key];
-      diagram.setViewport({
-        ...viewport,
-        x: viewport.x + delta.x,
-        y: viewport.y + delta.y
-      });
+      const newX = viewport.x + delta.x;
+      const newY = viewport.y + delta.y;
+      diagram.setViewport(newX, newY, viewport.width, viewport.height, viewport.zoom);
 
       this.updateViewportFromDiagram();
     }
@@ -671,12 +674,9 @@ export class PreviewPanelComponent implements OnInit, OnDestroy, OnChanges {
       const zoom = Math.min(zoomX, zoomY, 2.0); // Max zoom 200%
 
       diagram.setZoom(zoom);
-      diagram.setViewport({
-        ...this.viewport,
-        x: centerX - (viewportWidth / (2 * zoom)),
-        y: centerY - (viewportHeight / (2 * zoom)),
-        zoom
-      });
+      const newX = centerX - (viewportWidth / (2 * zoom));
+      const newY = centerY - (viewportHeight / (2 * zoom));
+      diagram.setViewport(newX, newY, this.viewport.width, this.viewport.height, zoom);
 
       this.updateViewportFromDiagram();
     }
@@ -748,11 +748,7 @@ export class PreviewPanelComponent implements OnInit, OnDestroy, OnChanges {
     const diagram = this.engine.getDiagram();
     if (!diagram) return;
 
-    diagram.setViewport({
-      ...this.viewport,
-      x: position.x,
-      y: position.y
-    });
+    diagram.setViewport(position.x, position.y, this.viewport.width, this.viewport.height, this.viewport.zoom);
 
     this.updateViewportFromDiagram();
   }

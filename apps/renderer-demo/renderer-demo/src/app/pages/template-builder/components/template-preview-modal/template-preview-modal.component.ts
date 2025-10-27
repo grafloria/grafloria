@@ -15,7 +15,6 @@ import { CommonModule } from '@angular/common';
 import { trigger, state, style, transition, animate } from '@angular/animations';
 import { TemplateMetadata, TemplateActionEvent } from '../../models/template-metadata.model';
 import { TemplateGalleryService } from '../../services/template-gallery.service';
-import { CanvasRendererService } from '../../services/canvas-renderer.service';
 import { Subject } from 'rxjs';
 import { takeUntil } from 'rxjs/operators';
 
@@ -110,7 +109,6 @@ export class TemplatePreviewModalComponent implements OnInit, OnDestroy, AfterVi
 
   constructor(
     private galleryService: TemplateGalleryService,
-    private canvasRenderer: CanvasRendererService,
     private cdr: ChangeDetectorRef
   ) {}
 
@@ -217,18 +215,17 @@ export class TemplatePreviewModalComponent implements OnInit, OnDestroy, AfterVi
       // Clear canvas
       ctx.clearRect(0, 0, canvas.width, canvas.height);
 
-      // Render template using canvas renderer
-      this.canvasRenderer.renderTemplate(
-        ctx,
-        this.metadata.template,
-        {
-          width: canvas.width,
-          height: canvas.height,
-          centerContent: true,
-          fitToView: true,
-          data: this.metadata.previewData
-        }
-      );
+      // TODO: Implement canvas rendering when CanvasRendererService is available
+      // For now, show placeholder text
+      ctx.fillStyle = '#f0f0f0';
+      ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+      ctx.fillStyle = '#666';
+      ctx.font = '16px Arial';
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillText('Template Preview', canvas.width / 2, canvas.height / 2 - 20);
+      ctx.fillText('(Visual rendering coming soon)', canvas.width / 2, canvas.height / 2 + 20);
 
       this.isLoading = false;
       this.cdr.markForCheck();
