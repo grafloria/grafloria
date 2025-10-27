@@ -651,6 +651,357 @@ export class SnippetService {
     });
 
     this.snippets.push({
+      id: 'nested-children-with-html',
+      name: 'Nested Children with HTML/CSS',
+      description: 'Children with HTML templates and custom styles',
+      category: 'json',
+      subcategory: 'templates',
+      tags: ['nested', 'children', 'html', 'css', 'styling'],
+      icon: '🎨',
+      code: `{
+  "id": "nested-html-example",
+  "structure": {
+    "type": "custom",
+    "size": { "width": 280, "height": "auto" },
+    "layout": {
+      "type": "flexbox",
+      "direction": "column",
+      "gap": 0
+    },
+    "children": [
+      {
+        "type": "header-child",
+        "size": { "width": "100%", "height": 50 },
+        "shape": {
+          "type": "rect",
+          "fill": "#1e3a8a",
+          "cornerRadius": 8
+        },
+        "html": {
+          "mode": "template",
+          "template": "<div class='header-content'><h3>{{data.title}}</h3></div>",
+          "style": {
+            "color": "white",
+            "display": "flex",
+            "alignItems": "center",
+            "paddingLeft": "16px",
+            "fontFamily": "Arial, sans-serif"
+          }
+        }
+      },
+      {
+        "type": "body-child",
+        "size": { "width": "100%", "height": 100 },
+        "shape": {
+          "type": "rect",
+          "fill": "#ffffff",
+          "stroke": "#e5e7eb",
+          "strokeWidth": 1
+        },
+        "html": {
+          "mode": "template",
+          "template": "<div class='body-content'><p>{{data.description}}</p></div>",
+          "style": {
+            "padding": "16px",
+            "fontSize": "14px",
+            "color": "#374151",
+            "lineHeight": "1.5"
+          }
+        }
+      },
+      {
+        "type": "footer-child",
+        "size": { "width": "100%", "height": 40 },
+        "shape": {
+          "type": "rect",
+          "fill": "#f3f4f6",
+          "stroke": "#e5e7eb",
+          "strokeWidth": 1,
+          "cornerRadius": 8
+        },
+        "html": {
+          "mode": "template",
+          "template": "<div class='footer-content'><small>{{data.footer}}</small></div>",
+          "style": {
+            "padding": "12px 16px",
+            "fontSize": "12px",
+            "color": "#6b7280",
+            "display": "flex",
+            "justifyContent": "space-between"
+          }
+        }
+      }
+    ]
+  },
+  "defaultData": {
+    "title": "Card Title",
+    "description": "Card description goes here",
+    "footer": "Updated: 2024-01-01"
+  }
+}`
+    });
+
+    this.snippets.push({
+      id: 'nested-list-items',
+      name: 'Nested List with HTML Items',
+      description: 'List container with styled list items',
+      category: 'json',
+      subcategory: 'templates',
+      tags: ['nested', 'list', 'html', 'items'],
+      icon: '📋',
+      code: `{
+  "id": "list-container",
+  "structure": {
+    "type": "list-container",
+    "size": { "width": 250, "height": "auto" },
+    "shape": {
+      "type": "rect",
+      "fill": "#ffffff",
+      "stroke": "#d1d5db",
+      "strokeWidth": 1,
+      "cornerRadius": 8
+    },
+    "layout": {
+      "type": "flexbox",
+      "direction": "column",
+      "gap": 1
+    },
+    "children": [
+      {
+        "type": "list-item",
+        "size": { "width": "100%", "height": 40 },
+        "shape": {
+          "type": "rect",
+          "fill": "#f9fafb"
+        },
+        "html": {
+          "mode": "template",
+          "template": "<div class='item'><span class='icon'>✓</span><span class='text'>{{data.item1}}</span></div>",
+          "style": {
+            "display": "flex",
+            "alignItems": "center",
+            "gap": "8px",
+            "padding": "0 12px",
+            "fontSize": "14px"
+          }
+        },
+        "ports": {
+          "enabled": true,
+          "right": { "enabled": true, "type": "output" }
+        }
+      },
+      {
+        "type": "list-item",
+        "size": { "width": "100%", "height": 40 },
+        "shape": {
+          "type": "rect",
+          "fill": "#f9fafb"
+        },
+        "html": {
+          "mode": "template",
+          "template": "<div class='item'><span class='icon'>✓</span><span class='text'>{{data.item2}}</span></div>",
+          "style": {
+            "display": "flex",
+            "alignItems": "center",
+            "gap": "8px",
+            "padding": "0 12px",
+            "fontSize": "14px"
+          }
+        },
+        "ports": {
+          "enabled": true,
+          "right": { "enabled": true, "type": "output" }
+        }
+      },
+      {
+        "type": "list-item",
+        "size": { "width": "100%", "height": 40 },
+        "shape": {
+          "type": "rect",
+          "fill": "#f9fafb"
+        },
+        "html": {
+          "mode": "template",
+          "template": "<div class='item'><span class='icon'>✓</span><span class='text'>{{data.item3}}</span></div>",
+          "style": {
+            "display": "flex",
+            "alignItems": "center",
+            "gap": "8px",
+            "padding": "0 12px",
+            "fontSize": "14px"
+          }
+        },
+        "ports": {
+          "enabled": true,
+          "right": { "enabled": true, "type": "output" }
+        }
+      }
+    ]
+  },
+  "defaultData": {
+    "item1": "First item",
+    "item2": "Second item",
+    "item3": "Third item"
+  }
+}`
+    });
+
+    this.snippets.push({
+      id: 'nested-dashboard-widgets',
+      name: 'Dashboard with Widget Children',
+      description: 'Dashboard with multiple styled widget children',
+      category: 'json',
+      subcategory: 'templates',
+      tags: ['nested', 'dashboard', 'widgets', 'grid'],
+      icon: '📊',
+      code: `{
+  "id": "dashboard-container",
+  "structure": {
+    "type": "dashboard",
+    "size": { "width": 400, "height": 300 },
+    "shape": {
+      "type": "rect",
+      "fill": "#f8fafc",
+      "stroke": "#cbd5e1",
+      "strokeWidth": 1,
+      "cornerRadius": 12
+    },
+    "layout": {
+      "type": "grid",
+      "columns": 2,
+      "rows": 2,
+      "gap": 12,
+      "padding": 16
+    },
+    "children": [
+      {
+        "type": "widget",
+        "shape": {
+          "type": "rect",
+          "fill": "#ffffff",
+          "stroke": "#e2e8f0",
+          "strokeWidth": 1,
+          "cornerRadius": 8
+        },
+        "html": {
+          "mode": "template",
+          "template": \`
+            <div class='widget'>
+              <div class='widget-header'>Users</div>
+              <div class='widget-value'>{{data.users}}</div>
+              <div class='widget-change'>+12%</div>
+            </div>
+          \`,
+          "style": {
+            "padding": "16px",
+            "display": "flex",
+            "flexDirection": "column",
+            "gap": "8px"
+          },
+          "events": {
+            "click": "widget:users:clicked"
+          }
+        }
+      },
+      {
+        "type": "widget",
+        "shape": {
+          "type": "rect",
+          "fill": "#ffffff",
+          "stroke": "#e2e8f0",
+          "strokeWidth": 1,
+          "cornerRadius": 8
+        },
+        "html": {
+          "mode": "template",
+          "template": \`
+            <div class='widget'>
+              <div class='widget-header'>Revenue</div>
+              <div class='widget-value'>\${{data.revenue}}</div>
+              <div class='widget-change'>+8%</div>
+            </div>
+          \`,
+          "style": {
+            "padding": "16px",
+            "display": "flex",
+            "flexDirection": "column",
+            "gap": "8px"
+          },
+          "events": {
+            "click": "widget:revenue:clicked"
+          }
+        }
+      },
+      {
+        "type": "widget",
+        "shape": {
+          "type": "rect",
+          "fill": "#ffffff",
+          "stroke": "#e2e8f0",
+          "strokeWidth": 1,
+          "cornerRadius": 8
+        },
+        "html": {
+          "mode": "template",
+          "template": \`
+            <div class='widget'>
+              <div class='widget-header'>Orders</div>
+              <div class='widget-value'>{{data.orders}}</div>
+              <div class='widget-change'>-3%</div>
+            </div>
+          \`,
+          "style": {
+            "padding": "16px",
+            "display": "flex",
+            "flexDirection": "column",
+            "gap": "8px"
+          },
+          "events": {
+            "click": "widget:orders:clicked"
+          }
+        }
+      },
+      {
+        "type": "widget",
+        "shape": {
+          "type": "rect",
+          "fill": "#ffffff",
+          "stroke": "#e2e8f0",
+          "strokeWidth": 1,
+          "cornerRadius": 8
+        },
+        "html": {
+          "mode": "template",
+          "template": \`
+            <div class='widget'>
+              <div class='widget-header'>Conversion</div>
+              <div class='widget-value'>{{data.conversion}}%</div>
+              <div class='widget-change'>+5%</div>
+            </div>
+          \`,
+          "style": {
+            "padding": "16px",
+            "display": "flex",
+            "flexDirection": "column",
+            "gap": "8px"
+          },
+          "events": {
+            "click": "widget:conversion:clicked"
+          }
+        }
+      }
+    ]
+  },
+  "defaultData": {
+    "users": "1,234",
+    "revenue": "45,678",
+    "orders": "789",
+    "conversion": "3.2"
+  }
+}`
+    });
+
+    this.snippets.push({
       id: 'simple-card-complete',
       name: 'Simple Card (Complete)',
       description: 'Production-ready card with header, body, footer',
