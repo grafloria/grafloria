@@ -166,7 +166,7 @@ export class TemplateLibraryService {
       structure: {
         type: 'custom',
         size: { width: 200, height: 100 },
-        shape: { type: 'rect', borderRadius: 8 },
+        shape: { type: 'rect', cornerRadius: 8 },
         behavior: { draggable: true, selectable: true }
       }
     };
@@ -223,7 +223,7 @@ export class TemplateLibraryService {
       structure: {
         type: 'erd-table',
         size: { width: 250, height: 45 },
-        shape: { type: 'rect', borderRadius: 8 },
+        shape: { type: 'rect', cornerRadius: 8 },
         behavior: { draggable: true, selectable: true }
       },
       dataSchema: {
@@ -252,7 +252,7 @@ export class TemplateLibraryService {
       structure: {
         type: 'workflow-task',
         size: { width: 180, height: 100 },
-        shape: { type: 'rect', borderRadius: 12 },
+        shape: { type: 'rect', cornerRadius: 12 },
         behavior: { draggable: true, selectable: true }
       },
       dataSchema: {
@@ -282,7 +282,7 @@ export class TemplateLibraryService {
       structure: {
         type: 'dashboard-card',
         size: { width: 300, height: 200 },
-        shape: { type: 'rect', borderRadius: 16 },
+        shape: { type: 'rect', cornerRadius: 16 },
         behavior: { draggable: true, selectable: true }
       },
       dataSchema: {

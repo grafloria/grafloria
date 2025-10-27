@@ -135,7 +135,7 @@ export class PreviewPanelComponent implements OnInit, OnDestroy, OnChanges {
     const diagram = this.engine.getDiagram();
     if (diagram) {
       this.viewport = diagram.getViewport();
-      this.zoom = diagram.zoom;
+      this.zoom = diagram.getViewport().zoom;
     }
   }
 
@@ -145,7 +145,8 @@ export class PreviewPanelComponent implements OnInit, OnDestroy, OnChanges {
   zoomIn(): void {
     const diagram = this.engine.getDiagram();
     if (diagram) {
-      diagram.setZoom(Math.min(4.0, diagram.zoom + 0.1));
+      const currentZoom = diagram.getViewport().zoom;
+      diagram.setZoom(Math.min(4.0, currentZoom + 0.1));
       this.updateViewportFromDiagram();
     }
   }
@@ -156,7 +157,8 @@ export class PreviewPanelComponent implements OnInit, OnDestroy, OnChanges {
   zoomOut(): void {
     const diagram = this.engine.getDiagram();
     if (diagram) {
-      diagram.setZoom(Math.max(0.25, diagram.zoom - 0.1));
+      const currentZoom = diagram.getViewport().zoom;
+      diagram.setZoom(Math.max(0.25, currentZoom - 0.1));
       this.updateViewportFromDiagram();
     }
   }

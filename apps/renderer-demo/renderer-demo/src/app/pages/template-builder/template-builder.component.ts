@@ -1,4 +1,4 @@
-import { Component, OnInit, OnDestroy } from '@angular/core';
+import { Component, OnInit, OnDestroy, inject } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { Subject, takeUntil, debounceTime, distinctUntilChanged } from 'rxjs';
@@ -56,6 +56,12 @@ export class TemplateBuilderComponent implements OnInit, OnDestroy {
 
   private destroy$ = new Subject<void>();
 
+  // Services
+  editorService = inject(TemplateEditorService);
+  libraryService = inject(TemplateLibraryService);
+  undoRedoService = inject(UndoRedoService);
+  performanceMonitorService = inject(PerformanceMonitorService);
+
   // UI State
   showPerformancePanel = true;
   showSidebar = true;
@@ -65,13 +71,6 @@ export class TemplateBuilderComponent implements OnInit, OnDestroy {
   canRedo$ = this.undoRedoService.canRedo$;
   editorState$ = this.editorService.state$;
   performanceMetrics$ = this.performanceMonitorService.metrics$;
-
-  constructor(
-    public editorService: TemplateEditorService,
-    public libraryService: TemplateLibraryService,
-    public undoRedoService: UndoRedoService,
-    public performanceMonitorService: PerformanceMonitorService
-  ) {}
 
   ngOnInit(): void {
     this.setupKeyboardShortcuts();

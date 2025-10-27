@@ -1,5 +1,5 @@
 import { Injectable } from '@angular/core';
-import { BehaviorSubject, Observable, debounceTime, distinctUntilChanged } from 'rxjs';
+import { BehaviorSubject, Observable, debounceTime, distinctUntilChanged, map } from 'rxjs';
 import type { NodeTemplate } from '@grafloria/engine';
 
 /**
@@ -50,7 +50,7 @@ export class TemplateEditorService {
   public json$: Observable<string> = this.stateSubject.pipe(
     debounceTime(100),
     distinctUntilChanged((prev, curr) => prev.json === curr.json),
-    // Extract just the JSON
+    map(state => state.json)
   );
 
   constructor() {
@@ -245,7 +245,7 @@ export class TemplateEditorService {
         },
         shape: {
           type: 'rect',
-          borderRadius: 8
+          cornerRadius: 8
         },
         behavior: {
           draggable: true,
