@@ -292,6 +292,360 @@ export class SnippetService {
   }
 }`
     });
+
+    this.snippets.push({
+      id: 'nested-flex-column',
+      name: 'Nested Flex Column',
+      description: 'Parent node with children stacked vertically',
+      category: 'json',
+      subcategory: 'templates',
+      tags: ['nested', 'children', 'flex', 'column', 'vertical'],
+      icon: '⬇️',
+      code: `{
+  "id": "flex-column-container",
+  "version": "1.0.0",
+  "meta": {
+    "name": "Flex Column Container",
+    "description": "Container with vertically stacked children",
+    "category": "layout"
+  },
+  "structure": {
+    "type": "flex-column-container",
+    "size": {
+      "width": 200,
+      "height": "auto"
+    },
+    "shape": {
+      "type": "rect",
+      "fill": "#f9fafb",
+      "stroke": "#667eea",
+      "strokeWidth": 2,
+      "cornerRadius": 8
+    },
+    "layout": {
+      "type": "flexbox",
+      "direction": "column",
+      "gap": 8,
+      "padding": 12
+    },
+    "children": [
+      {
+        "type": "flex-item",
+        "size": { "width": "100%", "height": 40 },
+        "shape": {
+          "type": "rect",
+          "fill": "#e3f2fd",
+          "stroke": "#2196f3",
+          "strokeWidth": 1,
+          "cornerRadius": 4
+        },
+        "html": {
+          "mode": "template",
+          "template": "<div style='padding: 8px;'>Item 1</div>"
+        }
+      },
+      {
+        "type": "flex-item",
+        "size": { "width": "100%", "height": 40 },
+        "shape": {
+          "type": "rect",
+          "fill": "#e8f5e9",
+          "stroke": "#4caf50",
+          "strokeWidth": 1,
+          "cornerRadius": 4
+        },
+        "html": {
+          "mode": "template",
+          "template": "<div style='padding: 8px;'>Item 2</div>"
+        }
+      }
+    ],
+    "ports": {
+      "enabled": true,
+      "left": { "enabled": true, "type": "input" },
+      "right": { "enabled": true, "type": "output" }
+    }
+  },
+  "defaultData": {
+    "title": "Column Container"
+  }
+}`
+    });
+
+    this.snippets.push({
+      id: 'nested-flex-row',
+      name: 'Nested Flex Row',
+      description: 'Parent node with children arranged horizontally',
+      category: 'json',
+      subcategory: 'templates',
+      tags: ['nested', 'children', 'flex', 'row', 'horizontal'],
+      icon: '➡️',
+      code: `{
+  "id": "flex-row-container",
+  "version": "1.0.0",
+  "meta": {
+    "name": "Flex Row Container",
+    "description": "Container with horizontally arranged children",
+    "category": "layout"
+  },
+  "structure": {
+    "type": "flex-row-container",
+    "size": {
+      "width": "auto",
+      "height": 100
+    },
+    "shape": {
+      "type": "rect",
+      "fill": "#fff3e0",
+      "stroke": "#ff9800",
+      "strokeWidth": 2,
+      "cornerRadius": 8
+    },
+    "layout": {
+      "type": "flexbox",
+      "direction": "row",
+      "gap": 8,
+      "padding": 12
+    },
+    "children": [
+      {
+        "type": "flex-item",
+        "size": { "width": 80, "height": "100%" },
+        "shape": {
+          "type": "rect",
+          "fill": "#e3f2fd",
+          "stroke": "#2196f3",
+          "strokeWidth": 1,
+          "cornerRadius": 4
+        },
+        "html": {
+          "mode": "template",
+          "template": "<div style='padding: 8px; text-align: center;'>1</div>"
+        }
+      },
+      {
+        "type": "flex-item",
+        "size": { "width": 80, "height": "100%" },
+        "shape": {
+          "type": "rect",
+          "fill": "#e8f5e9",
+          "stroke": "#4caf50",
+          "strokeWidth": 1,
+          "cornerRadius": 4
+        },
+        "html": {
+          "mode": "template",
+          "template": "<div style='padding: 8px; text-align: center;'>2</div>"
+        }
+      }
+    ],
+    "ports": {
+      "enabled": true,
+      "top": { "enabled": true, "type": "input" },
+      "bottom": { "enabled": true, "type": "output" }
+    }
+  },
+  "defaultData": {
+    "title": "Row Container"
+  }
+}`
+    });
+
+    this.snippets.push({
+      id: 'nested-grid',
+      name: 'Nested Grid Layout',
+      description: 'Parent node with children in grid layout',
+      category: 'json',
+      subcategory: 'templates',
+      tags: ['nested', 'children', 'grid', 'layout', '2d'],
+      icon: '⊞',
+      code: `{
+  "id": "grid-container",
+  "version": "1.0.0",
+  "meta": {
+    "name": "Grid Container",
+    "description": "Container with children in 2D grid",
+    "category": "layout"
+  },
+  "structure": {
+    "type": "grid-container",
+    "size": {
+      "width": 240,
+      "height": 240
+    },
+    "shape": {
+      "type": "rect",
+      "fill": "#fce7f3",
+      "stroke": "#ec4899",
+      "strokeWidth": 2,
+      "cornerRadius": 8
+    },
+    "layout": {
+      "type": "grid",
+      "columns": 2,
+      "rows": 2,
+      "gap": 8,
+      "padding": 12
+    },
+    "children": [
+      {
+        "type": "grid-item",
+        "shape": {
+          "type": "rect",
+          "fill": "#e3f2fd",
+          "stroke": "#2196f3",
+          "strokeWidth": 1,
+          "cornerRadius": 4
+        },
+        "html": {
+          "mode": "template",
+          "template": "<div style='padding: 8px; text-align: center;'>1</div>"
+        }
+      },
+      {
+        "type": "grid-item",
+        "shape": {
+          "type": "rect",
+          "fill": "#e8f5e9",
+          "stroke": "#4caf50",
+          "strokeWidth": 1,
+          "cornerRadius": 4
+        },
+        "html": {
+          "mode": "template",
+          "template": "<div style='padding: 8px; text-align: center;'>2</div>"
+        }
+      },
+      {
+        "type": "grid-item",
+        "shape": {
+          "type": "rect",
+          "fill": "#fff3e0",
+          "stroke": "#ff9800",
+          "strokeWidth": 1,
+          "cornerRadius": 4
+        },
+        "html": {
+          "mode": "template",
+          "template": "<div style='padding: 8px; text-align: center;'>3</div>"
+        }
+      },
+      {
+        "type": "grid-item",
+        "shape": {
+          "type": "rect",
+          "fill": "#f3e5f5",
+          "stroke": "#9c27b0",
+          "strokeWidth": 1,
+          "cornerRadius": 4
+        },
+        "html": {
+          "mode": "template",
+          "template": "<div style='padding: 8px; text-align: center;'>4</div>"
+        }
+      }
+    ],
+    "ports": {
+      "enabled": true,
+      "defaultVisibility": "hover"
+    }
+  },
+  "defaultData": {
+    "title": "Grid Container"
+  }
+}`
+    });
+
+    this.snippets.push({
+      id: 'nested-absolute',
+      name: 'Nested Absolute Positioning',
+      description: 'Parent with absolutely positioned children',
+      category: 'json',
+      subcategory: 'templates',
+      tags: ['nested', 'children', 'absolute', 'unstacked', 'free'],
+      icon: '🎯',
+      code: `{
+  "id": "absolute-container",
+  "version": "1.0.0",
+  "meta": {
+    "name": "Absolute Container",
+    "description": "Container with freely positioned children",
+    "category": "layout"
+  },
+  "structure": {
+    "type": "absolute-container",
+    "size": {
+      "width": 300,
+      "height": 200
+    },
+    "shape": {
+      "type": "rect",
+      "fill": "#e8eaf6",
+      "stroke": "#5c6bc0",
+      "strokeWidth": 2,
+      "cornerRadius": 8
+    },
+    "layout": {
+      "type": "absolute"
+    },
+    "children": [
+      {
+        "type": "absolute-item",
+        "position": { "x": 20, "y": 20 },
+        "size": { "width": 60, "height": 60 },
+        "shape": {
+          "type": "circle",
+          "fill": "#ffcdd2",
+          "stroke": "#f44336",
+          "strokeWidth": 2
+        },
+        "html": {
+          "mode": "template",
+          "template": "<div style='text-align: center; padding-top: 20px;'>A</div>"
+        }
+      },
+      {
+        "type": "absolute-item",
+        "position": { "x": 120, "y": 60 },
+        "size": { "width": 80, "height": 40 },
+        "shape": {
+          "type": "rect",
+          "fill": "#c8e6c9",
+          "stroke": "#4caf50",
+          "strokeWidth": 2,
+          "cornerRadius": 4
+        },
+        "html": {
+          "mode": "template",
+          "template": "<div style='padding: 8px; text-align: center;'>B</div>"
+        }
+      },
+      {
+        "type": "absolute-item",
+        "position": { "x": 220, "y": 120 },
+        "size": { "width": 60, "height": 60 },
+        "shape": {
+          "type": "diamond",
+          "fill": "#fff9c4",
+          "stroke": "#fbc02d",
+          "strokeWidth": 2
+        },
+        "html": {
+          "mode": "template",
+          "template": "<div style='text-align: center; padding-top: 16px;'>C</div>"
+        }
+      }
+    ],
+    "ports": {
+      "enabled": true,
+      "defaultVisibility": "hover"
+    }
+  },
+  "defaultData": {
+    "title": "Free Layout"
+  }
+}`
+    });
   }
 
   /**
