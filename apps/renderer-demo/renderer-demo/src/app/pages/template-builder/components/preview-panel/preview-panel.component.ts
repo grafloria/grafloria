@@ -85,8 +85,10 @@ export class PreviewPanelComponent implements OnInit, OnDestroy, OnChanges {
    * Update preview with current template
    */
   private updatePreview(): void {
+    let measurementStarted = false;
     try {
       this.performanceMonitor.startMeasure('template-preview');
+      measurementStarted = true;
 
       // Parse template
       const templateData: NodeTemplate = JSON.parse(this.template);
@@ -146,16 +148,22 @@ export class PreviewPanelComponent implements OnInit, OnDestroy, OnChanges {
 
       this.errorMessage = '';
 
-      // End performance measurement
-      setTimeout(() => {
-        this.performanceMonitor.endMeasure('template-preview');
-      }, 100);
+      // End performance measurement after a short delay to capture render time
+      if (measurementStarted) {
+        setTimeout(() => {
+          this.performanceMonitor.endMeasure('template-preview');
+        }, 100);
+      }
 
       console.log('✅ Preview updated');
     } catch (error) {
       this.errorMessage = error instanceof Error ? error.message : 'Invalid template JSON';
       console.error('❌ Preview update failed:', error);
-      this.performanceMonitor.reset();
+
+      // Only reset if measurement was started
+      if (measurementStarted) {
+        this.performanceMonitor.reset();
+      }
     }
   }
 
