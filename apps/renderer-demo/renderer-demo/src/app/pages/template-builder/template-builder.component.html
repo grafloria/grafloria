@@ -59,6 +59,24 @@
 
       <div class="divider"></div>
 
+      <!-- PHASE 9: Template Gallery -->
+      <app-button
+        variant="primary"
+        size="sm"
+        icon="📚"
+        (clicked)="openTemplateGallery()">
+        Browse Gallery
+      </app-button>
+      <app-button
+        variant="secondary"
+        size="sm"
+        icon="➕"
+        (clicked)="saveToGallery()">
+        Save to Gallery
+      </app-button>
+
+      <div class="divider"></div>
+
       <!-- Toggles with NEW Button Component -->
       <app-button
         variant="ghost"
@@ -327,4 +345,31 @@
     (save)="onNodeLayersSave($event)"
     (close)="showNodeLayerEditor = false">
   </app-node-layer-editor>
+
+  <!-- PHASE 9: Template Gallery Modal -->
+  <div class="gallery-modal" *ngIf="showTemplateGallery">
+    <div class="gallery-modal-backdrop" (click)="closeTemplateGallery()"></div>
+    <div class="gallery-modal-container">
+      <div class="gallery-modal-header">
+        <h2>Template Gallery</h2>
+        <button class="btn-close-gallery" (click)="closeTemplateGallery()">×</button>
+      </div>
+      <div class="gallery-modal-body">
+        <app-template-gallery
+          (templateSelected)="onGalleryTemplateSelect($event)"
+          (templateAction)="onGalleryTemplateAction($event)">
+        </app-template-gallery>
+      </div>
+    </div>
+  </div>
+
+  <!-- PHASE 9: Template Preview Modal -->
+  <app-template-preview-modal
+    [isOpen]="showTemplatePreview"
+    [metadata]="currentPreviewTemplate"
+    [allTemplates]="allTemplatesForPreview"
+    (close)="closeTemplatePreview()"
+    (action)="onGalleryTemplateAction($event)"
+    (navigate)="onPreviewNavigate($event)">
+  </app-template-preview-modal>
 </div>

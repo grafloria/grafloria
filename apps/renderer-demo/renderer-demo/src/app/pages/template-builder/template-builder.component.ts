@@ -21,6 +21,11 @@ import { NodeLayerEditorComponent } from './components/node-layer-editor/node-la
 import { ChildNodeWizardComponent, type ChildNodeConfig } from './components/child-node-wizard/child-node-wizard.component';
 import { KeyboardShortcutsService } from './services/keyboard-shortcuts.service';
 import type { PortsConfig } from './components/port-config-panel/port-config-panel.component';
+// PHASE 9 IMPORTS - Template Gallery
+import { TemplateGalleryComponent } from './components/template-gallery/template-gallery.component';
+import { TemplatePreviewModalComponent } from './components/template-preview-modal/template-preview-modal.component';
+import { TemplateMetadata, TemplateActionEvent } from './models/template-metadata.model';
+import { TemplateGalleryService } from './services/template-gallery.service';
 
 /**
  * Template Builder Component
@@ -66,7 +71,10 @@ import type { PortsConfig } from './components/port-config-panel/port-config-pan
     EventMonitorPanelComponent,
     PortConfigPanelComponent,
     NodeLayerEditorComponent,
-    ChildNodeWizardComponent
+    ChildNodeWizardComponent,
+    // PHASE 9 COMPONENTS
+    TemplateGalleryComponent,
+    TemplatePreviewModalComponent
   ],
   selector: 'app-template-builder',
   templateUrl: './template-builder.component.html',
@@ -82,6 +90,7 @@ export class TemplateBuilderComponent implements OnInit, OnDestroy {
   undoRedoService = inject(UndoRedoService);
   performanceMonitorService = inject(PerformanceMonitorService);
   keyboardService = inject(KeyboardShortcutsService); // NEW
+  galleryService = inject(TemplateGalleryService); // PHASE 9
 
   // UI State
   showPerformancePanel = false;
@@ -124,6 +133,12 @@ export class TemplateBuilderComponent implements OnInit, OnDestroy {
 
   // Child Node Wizard
   showChildNodeWizard = false;
+
+  // PHASE 9: Template Gallery
+  showTemplateGallery = false;
+  showTemplatePreview = false;
+  currentPreviewTemplate: TemplateMetadata | null = null;
+  allTemplatesForPreview: TemplateMetadata[] = [];
 
   // ViewChild references
   @ViewChild(EventMonitorPanelComponent) eventMonitor?: EventMonitorPanelComponent;
@@ -930,6 +945,199 @@ export class TemplateBuilderComponent implements OnInit, OnDestroy {
     document.removeEventListener('mousemove', this.onMouseMove);
     document.removeEventListener('mouseup', this.onMouseUp);
   };
+
+  /**
+   * PHASE 9: Open template gallery
+   */
+  openTemplateGallery(): void {
+    this.showTemplateGallery = true;
+    console.log('📚 Template gallery opened');
+  }
+
+  /**
+   * PHASE 9: Close template gallery
+   */
+  closeTemplateGallery(): void {
+    this.showTemplateGallery = false;
+    console.log('📚 Template gallery closed');
+  }
+
+  /**
+   * PHASE 9: Handle template selection from gallery
+   */
+  onGalleryTemplateSelect(metadata: TemplateMetadata): void {
+    console.log('📄 Template selected from gallery:', metadata.name);
+
+    // Load template from gallery service
+    this.galleryService.getTemplate(metadata.id)
+      .pipe(takeUntil(this.destroy$))
+      .subscribe({
+        next: (template) => {
+          if (template) {
+            this.editorService.loadTemplate({
+              json: JSON.stringify(template, null, 2),
+              html: metadata.template?.htmlLayer || '',
+              css: metadata.template?.cssLayer || ''
+            });
+
+            // Increment usage count
+            this.galleryService.incrementUsageCount(metadata.id);
+
+            console.log(`✅ Loaded template from gallery: ${metadata.name}`);
+          }
+        },
+        error: (error) => {
+          console.error('❌ Failed to load template from gallery:', error);
+          alert('Failed to load template. Please try again.');
+        }
+      });
+
+    this.closeTemplateGallery();
+  }
+
+  /**
+   * PHASE 9: Handle template actions from gallery
+   */
+  onGalleryTemplateAction(event: TemplateActionEvent): void {
+    console.log('🎯 Template action:', event.type, event.templateId);
+
+    switch (event.type) {
+      case 'use':
+        if (event.metadata) {
+          this.onGalleryTemplateSelect(event.metadata);
+        }
+        break;
+
+      case 'preview':
+        if (event.metadata) {
+          this.currentPreviewTemplate = event.metadata;
+          this.showTemplatePreview = true;
+        }
+        break;
+
+      case 'favorite':
+        this.galleryService.toggleFavorite(event.templateId).subscribe();
+        break;
+
+      case 'duplicate':
+        this.galleryService.duplicateTemplate(event.templateId).subscribe({
+          next: (newId) => {
+            console.log(`✅ Template duplicated: ${newId}`);
+            alert('Template duplicated successfully!');
+          },
+          error: (error) => {
+            console.error('❌ Failed to duplicate template:', error);
+            alert('Failed to duplicate template.');
+          }
+        });
+        break;
+
+      case 'export':
+        this.galleryService.exportTemplate(event.templateId).subscribe({
+          next: (blob) => {
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = `${event.metadata?.name || 'template'}.template.json`;
+            a.click();
+            URL.revokeObjectURL(url);
+            console.log('📥 Template exported');
+          },
+          error: (error) => {
+            console.error('❌ Failed to export template:', error);
+            alert('Failed to export template.');
+          }
+        });
+        break;
+
+      case 'delete':
+        if (confirm('Are you sure you want to delete this template? This action cannot be undone.')) {
+          this.galleryService.deleteTemplate(event.templateId).subscribe({
+            next: () => {
+              console.log(`✅ Template deleted: ${event.templateId}`);
+            },
+            error: (error) => {
+              console.error('❌ Failed to delete template:', error);
+              alert('Failed to delete template.');
+            }
+          });
+        }
+        break;
+
+      case 'rate':
+        this.galleryService.setRating(event.templateId, event.data?.rating || 0).subscribe();
+        break;
+
+      case 'edit':
+        if (event.metadata) {
+          this.onGalleryTemplateSelect(event.metadata);
+        }
+        break;
+    }
+  }
+
+  /**
+   * PHASE 9: Close template preview modal
+   */
+  closeTemplatePreview(): void {
+    this.showTemplatePreview = false;
+    this.currentPreviewTemplate = null;
+  }
+
+  /**
+   * PHASE 9: Navigate preview (next/previous template)
+   */
+  onPreviewNavigate(direction: 'next' | 'prev'): void {
+    if (!this.currentPreviewTemplate || this.allTemplatesForPreview.length === 0) {
+      return;
+    }
+
+    const currentIndex = this.allTemplatesForPreview.findIndex(
+      t => t.id === this.currentPreviewTemplate!.id
+    );
+
+    if (direction === 'next' && currentIndex < this.allTemplatesForPreview.length - 1) {
+      this.currentPreviewTemplate = this.allTemplatesForPreview[currentIndex + 1];
+    } else if (direction === 'prev' && currentIndex > 0) {
+      this.currentPreviewTemplate = this.allTemplatesForPreview[currentIndex - 1];
+    }
+  }
+
+  /**
+   * PHASE 9: Save current template to gallery
+   */
+  saveToGallery(): void {
+    const template = this.editorService.parseTemplate();
+    const state = this.editorService.getState();
+
+    if (!template) {
+      alert('Cannot save to gallery: Invalid JSON');
+      return;
+    }
+
+    const name = prompt('Enter template name:', template.id);
+    if (!name) return;
+
+    const description = prompt('Enter template description (optional):', '');
+
+    this.galleryService.addTemplate(template, {
+      name,
+      description: description || undefined,
+      category: 'custom',
+      tags: [],
+      author: 'User',
+      complexity: 'medium'
+    }).subscribe({
+      next: (templateId) => {
+        console.log(`✅ Template saved to gallery: ${templateId}`);
+        alert('Template saved to gallery successfully!');
+      },
+      error: (error) => {
+        console.error('❌ Failed to save template to gallery:', error);
+        alert('Failed to save template to gallery.');
+      }
+    });
+  }
 
   /**
    * Cleanup
