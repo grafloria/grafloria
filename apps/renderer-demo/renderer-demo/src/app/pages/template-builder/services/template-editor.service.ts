@@ -245,7 +245,10 @@ export class TemplateEditorService {
         },
         shape: {
           type: 'rect',
-          cornerRadius: 8
+          cornerRadius: 8,
+          fill: '#e3f2fd',
+          stroke: '#2196f3',
+          strokeWidth: 2
         },
         behavior: {
           draggable: true,

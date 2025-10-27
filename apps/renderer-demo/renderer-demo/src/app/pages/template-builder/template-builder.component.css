@@ -125,6 +125,35 @@
   color: #333;
 }
 
+/* Editor Tabs */
+.editor-tabs {
+  display: flex;
+  gap: 4px;
+}
+
+.tab {
+  padding: 8px 16px;
+  background: transparent;
+  border: none;
+  border-bottom: 2px solid transparent;
+  color: #666;
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.tab:hover {
+  color: #333;
+  background: rgba(102, 126, 234, 0.05);
+}
+
+.tab.active {
+  color: #667eea;
+  border-bottom-color: #667eea;
+  background: rgba(102, 126, 234, 0.08);
+}
+
 .panel-info {
   display: flex;
   gap: 12px;
@@ -160,7 +189,7 @@
 
 /* Bottom Panel */
 .bottom-panel {
-  height: 200px;
+  height: 280px;
   background: white;
   border-top: 1px solid #e0e0e0;
   overflow-y: auto;

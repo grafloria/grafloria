@@ -68,10 +68,29 @@
       </app-template-sidebar>
     </div>
 
-    <!-- Center: JSON Editor -->
+    <!-- Center: Editors with Tabs -->
     <div class="editor-panel">
       <div class="panel-header">
-        <h3>JSON Template</h3>
+        <div class="editor-tabs">
+          <button
+            class="tab"
+            [class.active]="activeEditorTab === 'json'"
+            (click)="activeEditorTab = 'json'">
+            JSON Template
+          </button>
+          <button
+            class="tab"
+            [class.active]="activeEditorTab === 'html'"
+            (click)="activeEditorTab = 'html'">
+            HTML Layer
+          </button>
+          <button
+            class="tab"
+            [class.active]="activeEditorTab === 'css'"
+            (click)="activeEditorTab = 'css'">
+            CSS Styles
+          </button>
+        </div>
         <div class="panel-info">
           <span class="status" *ngIf="editorState$ | async as state">
             <span class="dot" [class.valid]="state.isValid" [class.invalid]="!state.isValid"></span>
@@ -81,8 +100,19 @@
       </div>
       <div class="panel-body">
         <app-json-editor
+          *ngIf="activeEditorTab === 'json'"
           [content]="(editorState$ | async)?.json || ''"
           (contentChange)="onJsonChange($event)">
+        </app-json-editor>
+        <app-json-editor
+          *ngIf="activeEditorTab === 'html'"
+          [content]="(editorState$ | async)?.html || ''"
+          (contentChange)="onHtmlChange($event)">
+        </app-json-editor>
+        <app-json-editor
+          *ngIf="activeEditorTab === 'css'"
+          [content]="(editorState$ | async)?.css || ''"
+          (contentChange)="onCssChange($event)">
         </app-json-editor>
       </div>
     </div>

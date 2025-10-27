@@ -65,6 +65,7 @@ export class TemplateBuilderComponent implements OnInit, OnDestroy {
   // UI State
   showPerformancePanel = true;
   showSidebar = true;
+  activeEditorTab: 'json' | 'html' | 'css' = 'json';
 
   // Service observables
   canUndo$ = this.undoRedoService.canUndo$;
@@ -158,6 +159,20 @@ export class TemplateBuilderComponent implements OnInit, OnDestroy {
    */
   onJsonChange(json: string): void {
     this.editorService.updateJson(json);
+  }
+
+  /**
+   * Handle HTML editor content change
+   */
+  onHtmlChange(html: string): void {
+    this.editorService.updateHtml(html);
+  }
+
+  /**
+   * Handle CSS editor content change
+   */
+  onCssChange(css: string): void {
+    this.editorService.updateCss(css);
   }
 
   /**

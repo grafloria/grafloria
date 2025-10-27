@@ -166,7 +166,7 @@ export class TemplateLibraryService {
       structure: {
         type: 'custom',
         size: { width: 200, height: 100 },
-        shape: { type: 'rect', cornerRadius: 8 },
+        shape: { type: 'rect', cornerRadius: 8, fill: '#e3f2fd', stroke: '#2196f3', strokeWidth: 2 },
         behavior: { draggable: true, selectable: true }
       }
     };
@@ -185,7 +185,7 @@ export class TemplateLibraryService {
       structure: {
         type: 'custom',
         size: { width: 120, height: 120 },
-        shape: { type: 'circle' },
+        shape: { type: 'circle', fill: '#fff3e0', stroke: '#ff9800', strokeWidth: 2 },
         behavior: { draggable: true, selectable: true }
       }
     };
@@ -204,7 +204,7 @@ export class TemplateLibraryService {
       structure: {
         type: 'custom',
         size: { width: 140, height: 140 },
-        shape: { type: 'diamond' },
+        shape: { type: 'diamond', fill: '#f3e5f5', stroke: '#9c27b0', strokeWidth: 2 },
         behavior: { draggable: true, selectable: true }
       }
     };
@@ -223,7 +223,7 @@ export class TemplateLibraryService {
       structure: {
         type: 'erd-table',
         size: { width: 250, height: 45 },
-        shape: { type: 'rect', cornerRadius: 8 },
+        shape: { type: 'rect', cornerRadius: 8, fill: '#e8f5e9', stroke: '#4caf50', strokeWidth: 2 },
         behavior: { draggable: true, selectable: true }
       },
       dataSchema: {
@@ -252,7 +252,7 @@ export class TemplateLibraryService {
       structure: {
         type: 'workflow-task',
         size: { width: 180, height: 100 },
-        shape: { type: 'rect', cornerRadius: 12 },
+        shape: { type: 'rect', cornerRadius: 12, fill: '#fce4ec', stroke: '#e91e63', strokeWidth: 2 },
         behavior: { draggable: true, selectable: true }
       },
       dataSchema: {
@@ -282,7 +282,7 @@ export class TemplateLibraryService {
       structure: {
         type: 'dashboard-card',
         size: { width: 300, height: 200 },
-        shape: { type: 'rect', cornerRadius: 16 },
+        shape: { type: 'rect', cornerRadius: 16, fill: '#fff9c4', stroke: '#fbc02d', strokeWidth: 2 },
         behavior: { draggable: true, selectable: true }
       },
       dataSchema: {
