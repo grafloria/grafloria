@@ -129,6 +129,7 @@ export class DiagramModel extends DiagramEntity {
     // Listen for any node changes and forward as diagram-level 'node:changed' event
     // This allows components like diagram-canvas to re-render when node properties change
     node.on('change', () => {
+      console.log('[DiagramModel] Node change detected, emitting node:changed for:', node.id);
       this.emitter.emit('node:changed', node);
     });
   }

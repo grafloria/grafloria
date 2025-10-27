@@ -293,6 +293,8 @@ export class WorkflowBuilderComponent implements OnInit {
     const diagram = this.engine.getDiagram();
     if (!diagram) return;
 
+    console.log('[Workflow] updateNodeStatuses called');
+
     diagram.getNodes().forEach(node => {
       const nodeId = this.executionOrder.find(id =>
         this.workflowNodes.get(id)?.label === node.getMetadata('label')
@@ -325,16 +327,23 @@ export class WorkflowBuilderComponent implements OnInit {
               stroke = '#27ae60'; // Green when completed
             }
 
+            console.log(`[Workflow] Updating node ${nodeId} (${workflowNode.label}) to status ${workflowNode.status}, stroke: ${stroke}`);
+
             node.setMetadata('shape', {
               ...shape,
               stroke,
               strokeWidth
             });
+
+            // Verify the metadata was updated
+            const updatedShape = node.getMetadata('shape');
+            console.log(`[Workflow] Verified shape metadata:`, updatedShape);
           }
 
           // Mark node as dirty to ensure re-render
           node.markDirty('shape');
           node.markDirty('status');
+          console.log(`[Workflow] Node ${nodeId} marked dirty, isDirty:`, node.isDirty);
         }
       }
     });

@@ -508,7 +508,8 @@ export class DiagramCanvasComponent implements OnInit, AfterViewInit, OnChanges,
       this.renderDiagram();
       this.cdr.detectChanges();
     });
-    diagram.on('node:changed', () => {
+    diagram.on('node:changed', (node) => {
+      console.log('[DiagramCanvas] node:changed event received for node:', node?.id);
       this.renderDiagram();
       this.cdr.detectChanges();
     });

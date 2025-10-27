@@ -457,8 +457,11 @@ export class SVGRenderer implements IRenderer {
     if (this.config.enableCaching && !node.isDirty) {
       const cached = this.vnodeCache.get(cacheKey);
       if (cached) {
+        console.log(`[SVGRenderer] Using cached node ${node.id} (not dirty)`);
         return cached;
       }
+    } else if (node.isDirty) {
+      console.log(`[SVGRenderer] Re-rendering node ${node.id} (dirty)`);
     }
 
     const diagram = this.engine.getDiagram()!;
@@ -574,6 +577,7 @@ export class SVGRenderer implements IRenderer {
     // Cache if enabled (use LOD-specific cache key)
     if (this.config.enableCaching) {
       this.vnodeCache.set(cacheKey, vnode);
+      console.log(`[SVGRenderer] Caching node ${node.id} and marking clean`);
       node.markClean();
     }
 
