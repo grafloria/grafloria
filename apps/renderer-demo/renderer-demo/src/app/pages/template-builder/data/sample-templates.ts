@@ -4,14 +4,33 @@ import { TemplateMetadata } from '../models/template-metadata.model';
 /**
  * Sample Templates for Gallery
  *
- * Pre-built example templates to populate the gallery
- * Organized by category and complexity
+ * Pre-built example templates following proper NodeTemplate schema
+ * Organized by category: Basic, Workflow, Diagram, Dashboard, UI Components
  *
  * Phase 9: Template Gallery & Management
  */
 
 /**
- * Basic Templates - Simple nodes for getting started
+ * Helper to create proper NodeTemplate structure
+ */
+function createTemplate(partial: Partial<NodeTemplate>): NodeTemplate {
+  return {
+    id: partial.id || 'unknown',
+    version: '1.0.0',
+    meta: {
+      name: partial.meta?.name || 'Unnamed',
+      description: partial.meta?.description,
+      category: partial.meta?.category || 'basic',
+      tags: partial.meta?.tags,
+      author: partial.meta?.author
+    },
+    structure: partial.structure!,
+    ...partial
+  } as NodeTemplate;
+}
+
+/**
+ * Basic Templates - Simple shapes for getting started
  */
 export const BASIC_TEMPLATES: Partial<TemplateMetadata>[] = [
   {
@@ -28,18 +47,25 @@ export const BASIC_TEMPLATES: Partial<TemplateMetadata>[] = [
     hasCustomStyling: false,
     hasDataBinding: false,
     hasInteractivity: false,
-    template: {
+    template: createTemplate({
       id: 'simple-rectangle',
-      type: 'rectangle',
-      size: { width: 200, height: 100 },
-      shape: {
-        type: 'rect',
-        fill: '#e3f2fd',
-        stroke: '#2196f3',
-        strokeWidth: 2
+      meta: {
+        name: 'Simple Rectangle',
+        description: 'Basic rectangular node',
+        category: 'basic'
       },
-      ports: { enabled: false }
-    } as any
+      structure: {
+        type: 'rectangle',
+        size: { width: 200, height: 100 },
+        shape: {
+          type: 'rect',
+          fill: '#e3f2fd',
+          stroke: '#2196f3',
+          strokeWidth: 2
+        },
+        ports: { enabled: false }
+      }
+    })
   },
   {
     name: 'Rounded Card',
@@ -55,24 +81,29 @@ export const BASIC_TEMPLATES: Partial<TemplateMetadata>[] = [
     hasCustomStyling: true,
     hasDataBinding: false,
     hasInteractivity: false,
-    template: {
+    template: createTemplate({
       id: 'rounded-card',
-      type: 'rectangle',
-      size: { width: 250, height: 150 },
-      shape: {
-        type: 'rect',
-        fill: 'white',
-        stroke: '#e0e0e0',
-        strokeWidth: 1,
-        rx: 12,
-        ry: 12
+      meta: {
+        name: 'Rounded Card',
+        description: 'Rounded rectangle with shadow',
+        category: 'basic'
       },
-      cssLayer: `
-        box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
-        transition: box-shadow 0.3s;
-      `,
-      ports: { enabled: false }
-    } as any
+      structure: {
+        type: 'rectangle',
+        size: { width: 250, height: 150 },
+        shape: {
+          type: 'rect',
+          fill: 'white',
+          stroke: '#e0e0e0',
+          strokeWidth: 1,
+          cornerRadius: 12
+        },
+        style: {
+          boxShadow: '0 4px 12px rgba(0, 0, 0, 0.1)'
+        },
+        ports: { enabled: false }
+      }
+    })
   },
   {
     name: 'Circle Badge',
@@ -88,18 +119,25 @@ export const BASIC_TEMPLATES: Partial<TemplateMetadata>[] = [
     hasCustomStyling: false,
     hasDataBinding: false,
     hasInteractivity: false,
-    template: {
+    template: createTemplate({
       id: 'circle-badge',
-      type: 'circle',
-      size: { width: 80, height: 80 },
-      shape: {
+      meta: {
+        name: 'Circle Badge',
+        description: 'Circular badge or avatar',
+        category: 'basic'
+      },
+      structure: {
         type: 'circle',
-        fill: '#f3e5f5',
-        stroke: '#9c27b0',
-        strokeWidth: 3
-      },
-      ports: { enabled: false }
-    }
+        size: { width: 80, height: 80 },
+        shape: {
+          type: 'circle',
+          fill: '#f3e5f5',
+          stroke: '#9c27b0',
+          strokeWidth: 3
+        },
+        ports: { enabled: false }
+      }
+    })
   },
   {
     name: 'Text Label',
@@ -115,28 +153,429 @@ export const BASIC_TEMPLATES: Partial<TemplateMetadata>[] = [
     hasCustomStyling: true,
     hasDataBinding: false,
     hasInteractivity: false,
-    template: {
+    template: createTemplate({
       id: 'text-label',
-      type: 'rectangle',
-      size: { width: 200, height: 60 },
-      shape: {
-        type: 'rect',
-        fill: 'transparent',
-        stroke: 'none'
+      meta: {
+        name: 'Text Label',
+        description: 'Simple text label',
+        category: 'basic'
       },
-      htmlLayer: `
-        <div style="padding: 12px; text-align: center; font-size: 16px; color: #333;">
-          Your text here
-        </div>
-      `,
-      ports: { enabled: false }
-    } as any
+      structure: {
+        type: 'rectangle',
+        size: { width: 200, height: 60 },
+        shape: {
+          type: 'rect',
+          fill: 'transparent',
+          stroke: 'none'
+        },
+        html: {
+          mode: 'template',
+          template: '<div style="padding: 12px; text-align: center; font-size: 16px; color: #333;">Your text here</div>'
+        },
+        ports: { enabled: false }
+      }
+    })
+  }
+];
+
+/**
+ * Workflow Templates - N8N-style automation and process nodes
+ */
+export const WORKFLOW_TEMPLATES: Partial<TemplateMetadata>[] = [
+  {
+    name: 'Trigger Node',
+    description: 'Workflow trigger that starts an automation. Like N8N trigger nodes for webhooks, schedules, or events.',
+    category: 'workflow',
+    tags: ['workflow', 'trigger', 'automation', 'n8n', 'start'],
+    complexity: 'simple',
+    author: 'Grafloria',
+    version: '1.0.0',
+    features: ['html', 'ports'],
+    hasChildNodes: false,
+    hasConnections: true,
+    hasCustomStyling: true,
+    hasDataBinding: false,
+    hasInteractivity: false,
+    template: createTemplate({
+      id: 'trigger-node',
+      meta: {
+        name: 'Trigger Node',
+        description: 'Workflow trigger node',
+        category: 'workflow'
+      },
+      structure: {
+        type: 'rectangle',
+        size: { width: 200, height: 90 },
+        shape: {
+          type: 'rect',
+          fill: '#f0f4ff',
+          stroke: '#4f46e5',
+          strokeWidth: 2,
+          cornerRadius: 8
+        },
+        html: {
+          mode: 'template',
+          template: `<div style="padding: 16px; display: flex; align-items: center; gap: 12px;">
+            <div style="width: 40px; height: 40px; border-radius: 8px; background: #4f46e5; display: flex; align-items: center; justify-content: center; color: white; font-size: 20px;">⚡</div>
+            <div style="flex: 1;">
+              <div style="font-weight: 600; font-size: 14px; color: #1e293b; margin-bottom: 2px;">Trigger</div>
+              <div style="font-size: 12px; color: #64748b;">When event occurs</div>
+            </div>
+          </div>`
+        },
+        ports: {
+          enabled: true,
+          right: { enabled: true, type: 'output' }
+        }
+      }
+    })
   },
   {
-    name: 'Text Label',
-    description: 'A simple text label with customizable content. Perfect for adding annotations or descriptions.',
-    category: 'basic',
-    tags: ['text', 'label', 'annotation'],
+    name: 'Action Node',
+    description: 'Workflow action that performs an operation. Like N8N action nodes for API calls, data transforms, or integrations.',
+    category: 'workflow',
+    tags: ['workflow', 'action', 'automation', 'n8n', 'task'],
+    complexity: 'simple',
+    author: 'Grafloria',
+    version: '1.0.0',
+    features: ['html', 'ports'],
+    hasChildNodes: false,
+    hasConnections: true,
+    hasCustomStyling: true,
+    hasDataBinding: false,
+    hasInteractivity: false,
+    template: createTemplate({
+      id: 'action-node',
+      meta: {
+        name: 'Action Node',
+        description: 'Workflow action node',
+        category: 'workflow'
+      },
+      structure: {
+        type: 'rectangle',
+        size: { width: 200, height: 90 },
+        shape: {
+          type: 'rect',
+          fill: '#f0fdf4',
+          stroke: '#16a34a',
+          strokeWidth: 2,
+          cornerRadius: 8
+        },
+        html: {
+          mode: 'template',
+          template: `<div style="padding: 16px; display: flex; align-items: center; gap: 12px;">
+            <div style="width: 40px; height: 40px; border-radius: 8px; background: #16a34a; display: flex; align-items: center; justify-content: center; color: white; font-size: 20px;">▶</div>
+            <div style="flex: 1;">
+              <div style="font-weight: 600; font-size: 14px; color: #1e293b; margin-bottom: 2px;">Action</div>
+              <div style="font-size: 12px; color: #64748b;">Perform operation</div>
+            </div>
+          </div>`
+        },
+        ports: {
+          enabled: true,
+          left: { enabled: true, type: 'input' },
+          right: { enabled: true, type: 'output' }
+        }
+      }
+    })
+  },
+  {
+    name: 'Decision Node',
+    description: 'Conditional branching node. Split workflow into multiple paths based on conditions.',
+    category: 'workflow',
+    tags: ['workflow', 'decision', 'conditional', 'branch', 'if'],
+    complexity: 'medium',
+    author: 'Grafloria',
+    version: '1.0.0',
+    features: ['html', 'ports'],
+    hasChildNodes: false,
+    hasConnections: true,
+    hasCustomStyling: true,
+    hasDataBinding: false,
+    hasInteractivity: false,
+    template: createTemplate({
+      id: 'decision-node',
+      meta: {
+        name: 'Decision Node',
+        description: 'Conditional branching',
+        category: 'workflow'
+      },
+      structure: {
+        type: 'diamond',
+        size: { width: 180, height: 120 },
+        shape: {
+          type: 'diamond',
+          fill: '#fff7ed',
+          stroke: '#ea580c',
+          strokeWidth: 2
+        },
+        html: {
+          mode: 'template',
+          template: `<div style="height: 100%; display: flex; align-items: center; justify-content: center; text-align: center; padding: 0 20px;">
+            <div>
+              <div style="font-size: 24px; margin-bottom: 4px;">?</div>
+              <div style="font-weight: 600; font-size: 13px; color: #9a3412;">Decision</div>
+            </div>
+          </div>`
+        },
+        ports: {
+          enabled: true,
+          top: { enabled: true, type: 'input' },
+          left: { enabled: true, type: 'output' },
+          right: { enabled: true, type: 'output' }
+        }
+      }
+    })
+  },
+  {
+    name: 'Data Transform',
+    description: 'Transform and map data between steps. Modify, filter, or restructure data in workflows.',
+    category: 'workflow',
+    tags: ['workflow', 'transform', 'data', 'map', 'filter'],
+    complexity: 'medium',
+    author: 'Grafloria',
+    version: '1.0.0',
+    features: ['html', 'ports'],
+    hasChildNodes: false,
+    hasConnections: true,
+    hasCustomStyling: true,
+    hasDataBinding: false,
+    hasInteractivity: false,
+    template: createTemplate({
+      id: 'data-transform',
+      meta: {
+        name: 'Data Transform',
+        description: 'Transform and map data',
+        category: 'workflow'
+      },
+      structure: {
+        type: 'rectangle',
+        size: { width: 200, height: 90 },
+        shape: {
+          type: 'rect',
+          fill: '#faf5ff',
+          stroke: '#9333ea',
+          strokeWidth: 2,
+          cornerRadius: 8
+        },
+        html: {
+          mode: 'template',
+          template: `<div style="padding: 16px; display: flex; align-items: center; gap: 12px;">
+            <div style="width: 40px; height: 40px; border-radius: 8px; background: #9333ea; display: flex; align-items: center; justify-content: center; color: white; font-size: 20px;">⚙</div>
+            <div style="flex: 1;">
+              <div style="font-weight: 600; font-size: 14px; color: #1e293b; margin-bottom: 2px;">Transform</div>
+              <div style="font-size: 12px; color: #64748b;">Map & filter data</div>
+            </div>
+          </div>`
+        },
+        ports: {
+          enabled: true,
+          left: { enabled: true, type: 'input' },
+          right: { enabled: true, type: 'output' }
+        }
+      }
+    })
+  }
+];
+
+/**
+ * Diagram Templates - Visio-style flowchart and process shapes
+ */
+export const DIAGRAM_TEMPLATES: Partial<TemplateMetadata>[] = [
+  {
+    name: 'Process Box',
+    description: 'Standard process box for flowcharts. Represents a process or action step.',
+    category: 'diagram',
+    tags: ['flowchart', 'process', 'visio', 'diagram'],
+    complexity: 'simple',
+    author: 'Grafloria',
+    version: '1.0.0',
+    features: ['html', 'ports'],
+    hasChildNodes: false,
+    hasConnections: true,
+    hasCustomStyling: true,
+    hasDataBinding: false,
+    hasInteractivity: false,
+    template: createTemplate({
+      id: 'process-box',
+      meta: {
+        name: 'Process Box',
+        description: 'Flowchart process step',
+        category: 'diagram'
+      },
+      structure: {
+        type: 'rectangle',
+        size: { width: 200, height: 80 },
+        shape: {
+          type: 'rect',
+          fill: '#dbeafe',
+          stroke: '#1e40af',
+          strokeWidth: 2,
+          cornerRadius: 4
+        },
+        html: {
+          mode: 'template',
+          template: `<div style="height: 100%; display: flex; align-items: center; justify-content: center; padding: 0 16px;">
+            <div style="font-weight: 500; font-size: 14px; color: #1e3a8a; text-align: center;">Process Step</div>
+          </div>`
+        },
+        ports: {
+          enabled: true,
+          top: { enabled: true, type: 'input' },
+          bottom: { enabled: true, type: 'output' },
+          left: { enabled: true, type: 'bi' },
+          right: { enabled: true, type: 'bi' }
+        }
+      }
+    })
+  },
+  {
+    name: 'Data/Document',
+    description: 'Data or document shape for flowcharts. Represents data input/output or documents.',
+    category: 'diagram',
+    tags: ['flowchart', 'data', 'document', 'visio', 'diagram'],
+    complexity: 'simple',
+    author: 'Grafloria',
+    version: '1.0.0',
+    features: ['html', 'ports'],
+    hasChildNodes: false,
+    hasConnections: true,
+    hasCustomStyling: true,
+    hasDataBinding: false,
+    hasInteractivity: false,
+    template: createTemplate({
+      id: 'data-document',
+      meta: {
+        name: 'Data/Document',
+        description: 'Data or document shape',
+        category: 'diagram'
+      },
+      structure: {
+        type: 'rectangle',
+        size: { width: 180, height: 100 },
+        shape: {
+          type: 'rect',
+          fill: '#fef3c7',
+          stroke: '#d97706',
+          strokeWidth: 2,
+          cornerRadius: 0
+        },
+        html: {
+          mode: 'template',
+          template: `<div style="height: 100%; display: flex; align-items: center; justify-content: center; padding: 0 16px; border-bottom: 12px solid transparent; border-image: linear-gradient(to right, #d97706, #f59e0b, #d97706) 1; border-image-slice: 0 0 1 0;">
+            <div style="font-weight: 500; font-size: 13px; color: #92400e; text-align: center;">Document</div>
+          </div>`
+        },
+        ports: {
+          enabled: true,
+          left: { enabled: true, type: 'input' },
+          right: { enabled: true, type: 'output' }
+        }
+      }
+    })
+  },
+  {
+    name: 'Start/End',
+    description: 'Terminal shape for flowchart start and end points. Oval/pill shape for process boundaries.',
+    category: 'diagram',
+    tags: ['flowchart', 'start', 'end', 'terminal', 'visio'],
+    complexity: 'simple',
+    author: 'Grafloria',
+    version: '1.0.0',
+    features: ['html', 'ports'],
+    hasChildNodes: false,
+    hasConnections: true,
+    hasCustomStyling: true,
+    hasDataBinding: false,
+    hasInteractivity: false,
+    template: createTemplate({
+      id: 'start-end',
+      meta: {
+        name: 'Start/End',
+        description: 'Terminal shape',
+        category: 'diagram'
+      },
+      structure: {
+        type: 'ellipse',
+        size: { width: 160, height: 70 },
+        shape: {
+          type: 'ellipse',
+          fill: '#d1fae5',
+          stroke: '#059669',
+          strokeWidth: 2
+        },
+        html: {
+          mode: 'template',
+          template: `<div style="height: 100%; display: flex; align-items: center; justify-content: center;">
+            <div style="font-weight: 600; font-size: 14px; color: #065f46;">Start</div>
+          </div>`
+        },
+        ports: {
+          enabled: true,
+          bottom: { enabled: true, type: 'output' }
+        }
+      }
+    })
+  },
+  {
+    name: 'Database',
+    description: 'Database shape for data storage. Represents database or persistent storage.',
+    category: 'diagram',
+    tags: ['database', 'storage', 'data', 'diagram'],
+    complexity: 'simple',
+    author: 'Grafloria',
+    version: '1.0.0',
+    features: ['html', 'ports'],
+    hasChildNodes: false,
+    hasConnections: true,
+    hasCustomStyling: true,
+    hasDataBinding: false,
+    hasInteractivity: false,
+    template: createTemplate({
+      id: 'database',
+      meta: {
+        name: 'Database',
+        description: 'Database storage shape',
+        category: 'diagram'
+      },
+      structure: {
+        type: 'rectangle',
+        size: { width: 140, height: 120 },
+        shape: {
+          type: 'rect',
+          fill: '#e0e7ff',
+          stroke: '#4338ca',
+          strokeWidth: 2,
+          cornerRadius: 8
+        },
+        html: {
+          mode: 'template',
+          template: `<div style="height: 100%; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 8px;">
+            <div style="font-size: 32px;">💾</div>
+            <div style="font-weight: 600; font-size: 13px; color: #312e81;">Database</div>
+          </div>`
+        },
+        ports: {
+          enabled: true,
+          top: { enabled: true, type: 'bi' },
+          left: { enabled: true, type: 'bi' },
+          right: { enabled: true, type: 'bi' },
+          bottom: { enabled: true, type: 'bi' }
+        }
+      }
+    })
+  }
+];
+
+/**
+ * Dashboard Templates - Analytics and metrics widgets
+ */
+export const DASHBOARD_TEMPLATES: Partial<TemplateMetadata>[] = [
+  {
+    name: 'Metric Card',
+    description: 'KPI metric card showing value, label, and trend. Perfect for dashboards and analytics.',
+    category: 'dashboard',
+    tags: ['metric', 'kpi', 'dashboard', 'statistics'],
     complexity: 'simple',
     author: 'Grafloria',
     version: '1.0.0',
@@ -144,24 +583,191 @@ export const BASIC_TEMPLATES: Partial<TemplateMetadata>[] = [
     hasChildNodes: false,
     hasConnections: false,
     hasCustomStyling: true,
-    hasDataBinding: false,
+    hasDataBinding: true,
     hasInteractivity: false,
-    template: {
-      id: 'text-label',
-      type: 'rectangle',
-      size: { width: 200, height: 60 },
-      shape: {
-        type: 'rect',
-        fill: 'transparent',
-        stroke: 'none'
+    template: createTemplate({
+      id: 'metric-card',
+      meta: {
+        name: 'Metric Card',
+        description: 'Dashboard KPI metric',
+        category: 'dashboard'
       },
-      htmlLayer: `
-        <div style="padding: 12px; text-align: center; font-size: 16px; color: #333;">
-          Your text here
-        </div>
-      `,
-      ports: { enabled: false }
-    } as any
+      structure: {
+        type: 'rectangle',
+        size: { width: 240, height: 140 },
+        shape: {
+          type: 'rect',
+          fill: 'white',
+          stroke: '#e5e7eb',
+          strokeWidth: 1,
+          cornerRadius: 12
+        },
+        html: {
+          mode: 'template',
+          template: `<div style="height: 100%; padding: 20px; display: flex; flex-direction: column; justify-content: center;">
+            <div style="font-size: 13px; color: #6b7280; margin-bottom: 8px; text-transform: uppercase; letter-spacing: 0.5px;">Total Users</div>
+            <div style="font-size: 32px; font-weight: 700; color: #111827; margin-bottom: 8px;">12,543</div>
+            <div style="font-size: 14px; font-weight: 600; color: #10b981;">+12.5%</div>
+          </div>`
+        },
+        style: {
+          boxShadow: '0 1px 3px rgba(0, 0, 0, 0.1)'
+        },
+        ports: { enabled: false }
+      }
+    })
+  },
+  {
+    name: 'Progress Bar',
+    description: 'Progress indicator with percentage. Show completion status for tasks or goals.',
+    category: 'dashboard',
+    tags: ['progress', 'bar', 'percentage', 'dashboard'],
+    complexity: 'simple',
+    author: 'Grafloria',
+    version: '1.0.0',
+    features: ['html'],
+    hasChildNodes: false,
+    hasConnections: false,
+    hasCustomStyling: true,
+    hasDataBinding: true,
+    hasInteractivity: false,
+    template: createTemplate({
+      id: 'progress-bar',
+      meta: {
+        name: 'Progress Bar',
+        description: 'Progress indicator',
+        category: 'dashboard'
+      },
+      structure: {
+        type: 'rectangle',
+        size: { width: 300, height: 80 },
+        shape: {
+          type: 'rect',
+          fill: 'white',
+          stroke: '#e5e7eb',
+          strokeWidth: 1,
+          cornerRadius: 8
+        },
+        html: {
+          mode: 'template',
+          template: `<div style="padding: 16px;">
+            <div style="display: flex; justify-content: space-between; margin-bottom: 12px;">
+              <span style="font-size: 13px; color: #6b7280;">Project Progress</span>
+              <span style="font-size: 14px; font-weight: 700; color: #3b82f6;">75%</span>
+            </div>
+            <div style="height: 12px; background: #f3f4f6; border-radius: 6px; overflow: hidden;">
+              <div style="height: 100%; width: 75%; background: linear-gradient(90deg, #3b82f6, #2563eb); border-radius: 6px; transition: width 0.3s;"></div>
+            </div>
+          </div>`
+        },
+        style: {
+          boxShadow: '0 1px 3px rgba(0, 0, 0, 0.1)'
+        },
+        ports: { enabled: false }
+      }
+    })
+  },
+  {
+    name: 'Status Badge',
+    description: 'Status indicator badge. Show system status, health, or availability.',
+    category: 'dashboard',
+    tags: ['status', 'badge', 'indicator', 'dashboard'],
+    complexity: 'simple',
+    author: 'Grafloria',
+    version: '1.0.0',
+    features: ['html'],
+    hasChildNodes: false,
+    hasConnections: false,
+    hasCustomStyling: true,
+    hasDataBinding: true,
+    hasInteractivity: false,
+    template: createTemplate({
+      id: 'status-badge',
+      meta: {
+        name: 'Status Badge',
+        description: 'Status indicator',
+        category: 'dashboard'
+      },
+      structure: {
+        type: 'rectangle',
+        size: { width: 180, height: 70 },
+        shape: {
+          type: 'rect',
+          fill: 'white',
+          stroke: '#e5e7eb',
+          strokeWidth: 1,
+          cornerRadius: 8
+        },
+        html: {
+          mode: 'template',
+          template: `<div style="height: 100%; padding: 16px; display: flex; align-items: center; gap: 12px;">
+            <div style="width: 12px; height: 12px; border-radius: 50%; background: #10b981; box-shadow: 0 0 0 3px rgba(16, 185, 129, 0.2);"></div>
+            <div style="flex: 1;">
+              <div style="font-size: 13px; color: #6b7280; margin-bottom: 2px;">System Status</div>
+              <div style="font-weight: 600; font-size: 14px; color: #10b981;">Operational</div>
+            </div>
+          </div>`
+        },
+        style: {
+          boxShadow: '0 1px 3px rgba(0, 0, 0, 0.1)'
+        },
+        ports: { enabled: false }
+      }
+    })
+  },
+  {
+    name: 'Chart Widget',
+    description: 'Chart placeholder widget. Represents data visualization like bar, line, or pie charts.',
+    category: 'dashboard',
+    tags: ['chart', 'graph', 'visualization', 'dashboard'],
+    complexity: 'simple',
+    author: 'Grafloria',
+    version: '1.0.0',
+    features: ['html'],
+    hasChildNodes: false,
+    hasConnections: false,
+    hasCustomStyling: true,
+    hasDataBinding: true,
+    hasInteractivity: false,
+    template: createTemplate({
+      id: 'chart-widget',
+      meta: {
+        name: 'Chart Widget',
+        description: 'Data visualization',
+        category: 'dashboard'
+      },
+      structure: {
+        type: 'rectangle',
+        size: { width: 400, height: 250 },
+        shape: {
+          type: 'rect',
+          fill: 'white',
+          stroke: '#e5e7eb',
+          strokeWidth: 1,
+          cornerRadius: 12
+        },
+        html: {
+          mode: 'template',
+          template: `<div style="height: 100%; padding: 20px; display: flex; flex-direction: column;">
+            <div style="margin-bottom: 16px;">
+              <div style="font-size: 16px; font-weight: 600; color: #111827; margin-bottom: 4px;">Sales Overview</div>
+              <div style="font-size: 13px; color: #6b7280;">Monthly revenue trend</div>
+            </div>
+            <div style="flex: 1; display: flex; align-items: flex-end; justify-content: space-around; gap: 8px; padding: 16px; background: #f9fafb; border-radius: 8px;">
+              <div style="flex: 1; height: 60%; background: linear-gradient(to top, #3b82f6, #60a5fa); border-radius: 4px;"></div>
+              <div style="flex: 1; height: 80%; background: linear-gradient(to top, #3b82f6, #60a5fa); border-radius: 4px;"></div>
+              <div style="flex: 1; height: 45%; background: linear-gradient(to top, #3b82f6, #60a5fa); border-radius: 4px;"></div>
+              <div style="flex: 1; height: 95%; background: linear-gradient(to top, #3b82f6, #60a5fa); border-radius: 4px;"></div>
+              <div style="flex: 1; height: 70%; background: linear-gradient(to top, #3b82f6, #60a5fa); border-radius: 4px;"></div>
+            </div>
+          </div>`
+        },
+        style: {
+          boxShadow: '0 1px 3px rgba(0, 0, 0, 0.1)'
+        },
+        ports: { enabled: false }
+      }
+    })
   }
 ];
 
@@ -171,551 +777,136 @@ export const BASIC_TEMPLATES: Partial<TemplateMetadata>[] = [
 export const UI_COMPONENT_TEMPLATES: Partial<TemplateMetadata>[] = [
   {
     name: 'Button Component',
-    description: 'A styled button with hover effects. Click-ready with customizable text and colors.',
+    description: 'Interactive button with hover effects. Styled button ready for actions.',
     category: 'ui-component',
-    tags: ['button', 'interactive', 'action'],
+    tags: ['button', 'interactive', 'action', 'ui'],
     complexity: 'simple',
     author: 'Grafloria',
     version: '1.0.0',
-    features: ['html', 'css', 'behavior'],
+    features: ['html', 'behavior'],
     hasChildNodes: false,
     hasConnections: false,
     hasCustomStyling: true,
     hasDataBinding: false,
     hasInteractivity: true,
-    template: {
+    template: createTemplate({
       id: 'button-component',
-      type: 'rectangle',
-      size: { width: 140, height: 44 },
-      shape: {
-        type: 'rect',
-        fill: '#3498db',
-        stroke: 'none',
-        rx: 8,
-        ry: 8
+      meta: {
+        name: 'Button Component',
+        description: 'Interactive button',
+        category: 'ui-component'
       },
-      htmlLayer: `
-        <div class="btn-content">
-          Click Me
-        </div>
-      `,
-      cssLayer: `
-        .btn-content {
-          display: flex;
-          align-items: center;
-          justify-content: center;
-          height: 100%;
-          color: white;
-          font-size: 14px;
-          font-weight: 600;
-          cursor: pointer;
-          user-select: none;
-        }
-        .btn-content:hover {
-          background: rgba(0, 0, 0, 0.1);
-        }
-        .btn-content:active {
-          transform: scale(0.98);
-        }
-      `,
-      ports: { enabled: false }
-    } as any
+      structure: {
+        type: 'rectangle',
+        size: { width: 140, height: 44 },
+        shape: {
+          type: 'rect',
+          fill: '#3b82f6',
+          stroke: 'none',
+          cornerRadius: 8
+        },
+        html: {
+          mode: 'template',
+          template: `<div style="display: flex; align-items: center; justify-content: center; height: 100%; color: white; font-size: 14px; font-weight: 600; cursor: pointer; user-select: none; transition: all 0.2s;" onmouseover="this.style.background='rgba(0,0,0,0.1)'" onmouseout="this.style.background='transparent'" onmousedown="this.style.transform='scale(0.98)'" onmouseup="this.style.transform='scale(1)'">
+            Click Me
+          </div>`
+        },
+        behavior: {
+          selectable: true,
+          draggable: true
+        },
+        ports: { enabled: false }
+      }
+    })
   },
   {
     name: 'Input Field',
-    description: 'A form input field with placeholder text. Great for building forms and data entry interfaces.',
+    description: 'Form input field with placeholder. For building forms and data entry.',
     category: 'ui-component',
-    tags: ['input', 'form', 'text-field'],
+    tags: ['input', 'form', 'text-field', 'ui'],
     complexity: 'simple',
     author: 'Grafloria',
     version: '1.0.0',
-    features: ['html', 'css'],
+    features: ['html'],
     hasChildNodes: false,
     hasConnections: false,
     hasCustomStyling: true,
     hasDataBinding: false,
     hasInteractivity: true,
-    template: {
+    template: createTemplate({
       id: 'input-field',
-      type: 'rectangle',
-      size: { width: 300, height: 48 },
-      shape: {
-        type: 'rect',
-        fill: 'white',
-        stroke: '#d0d0d0',
-        strokeWidth: 2,
-        rx: 6,
-        ry: 6
+      meta: {
+        name: 'Input Field',
+        description: 'Form input',
+        category: 'ui-component'
       },
-      htmlLayer: `
-        <input type="text" placeholder="Enter text..." class="input-field" />
-      `,
-      cssLayer: `
-        .input-field {
-          width: 100%;
-          height: 100%;
-          border: none;
-          outline: none;
-          padding: 0 16px;
-          font-size: 14px;
-          background: transparent;
-        }
-        .input-field:focus {
-          border-color: #3498db;
-        }
-      `,
-      ports: { enabled: false }
-    } as any
+      structure: {
+        type: 'rectangle',
+        size: { width: 300, height: 48 },
+        shape: {
+          type: 'rect',
+          fill: 'white',
+          stroke: '#d1d5db',
+          strokeWidth: 2,
+          cornerRadius: 6
+        },
+        html: {
+          mode: 'template',
+          template: `<input type="text" placeholder="Enter text..." style="width: 100%; height: 100%; border: none; outline: none; padding: 0 16px; font-size: 14px; background: transparent; color: #111827;" />`
+        },
+        ports: { enabled: false }
+      }
+    })
   },
   {
     name: 'Card with Header',
-    description: 'A card component with title, subtitle, and content area. Perfect for displaying structured information.',
+    description: 'Card component with title and content area. For structured information display.',
     category: 'ui-component',
-    tags: ['card', 'header', 'content'],
+    tags: ['card', 'header', 'content', 'ui'],
     complexity: 'medium',
     author: 'Grafloria',
     version: '1.0.0',
-    features: ['html', 'css', 'layout'],
+    features: ['html', 'layout'],
     hasChildNodes: false,
     hasConnections: false,
     hasCustomStyling: true,
     hasDataBinding: false,
     hasInteractivity: false,
-    template: {
+    template: createTemplate({
       id: 'card-with-header',
-      type: 'rectangle',
-      size: { width: 320, height: 200 },
-      shape: {
-        type: 'rect',
-        fill: 'white',
-        stroke: '#e0e0e0',
-        strokeWidth: 1,
-        rx: 12,
-        ry: 12
-      },
-      htmlLayer: `
-        <div class="card-container">
-          <div class="card-header">
-            <h3>Card Title</h3>
-            <p>Subtitle text here</p>
-          </div>
-          <div class="card-body">
-            Content goes here. Add your text, data, or other elements.
-          </div>
-        </div>
-      `,
-      cssLayer: `
-        .card-container {
-          height: 100%;
-          display: flex;
-          flex-direction: column;
-        }
-        .card-header {
-          padding: 16px;
-          border-bottom: 1px solid #f0f0f0;
-        }
-        .card-header h3 {
-          margin: 0 0 4px 0;
-          font-size: 18px;
-          font-weight: 600;
-          color: #333;
-        }
-        .card-header p {
-          margin: 0;
-          font-size: 13px;
-          color: #666;
-        }
-        .card-body {
-          flex: 1;
-          padding: 16px;
-          font-size: 14px;
-          color: #555;
-          line-height: 1.5;
-        }
-      `,
-      ports: { enabled: false }
-    } as any
-  }
-];
-
-/**
- * Dashboard Templates - Analytics and data visualization
- */
-export const DASHBOARD_TEMPLATES: Partial<TemplateMetadata>[] = [
-  {
-    name: 'Metric Card',
-    description: 'A dashboard metric card showing a value with label. Ideal for KPIs and statistics.',
-    category: 'dashboard',
-    tags: ['metric', 'kpi', 'statistics', 'dashboard'],
-    complexity: 'simple',
-    author: 'Grafloria',
-    version: '1.0.0',
-    features: ['html', 'css'],
-    hasChildNodes: false,
-    hasConnections: false,
-    hasCustomStyling: true,
-    hasDataBinding: true,
-    hasInteractivity: false,
-    template: {
-      id: 'metric-card',
-      type: 'rectangle',
-      size: { width: 240, height: 140 },
-      shape: {
-        type: 'rect',
-        fill: 'white',
-        stroke: '#e0e0e0',
-        strokeWidth: 1,
-        rx: 12,
-        ry: 12
-      },
-      htmlLayer: `
-        <div class="metric-card">
-          <div class="metric-label">Total Users</div>
-          <div class="metric-value">12,543</div>
-          <div class="metric-change positive">+12.5%</div>
-        </div>
-      `,
-      cssLayer: `
-        .metric-card {
-          height: 100%;
-          padding: 20px;
-          display: flex;
-          flex-direction: column;
-          justify-content: center;
-        }
-        .metric-label {
-          font-size: 13px;
-          color: #666;
-          margin-bottom: 8px;
-          text-transform: uppercase;
-          letter-spacing: 0.5px;
-        }
-        .metric-value {
-          font-size: 32px;
-          font-weight: 700;
-          color: #2c3e50;
-          margin-bottom: 8px;
-        }
-        .metric-change {
-          font-size: 14px;
-          font-weight: 600;
-        }
-        .metric-change.positive {
-          color: #27ae60;
-        }
-        .metric-change.negative {
-          color: #e74c3c;
-        }
-      `,
-      ports: { enabled: false }
-    } as any
-  },
-  {
-    name: 'Progress Bar',
-    description: 'An animated progress bar showing completion percentage. Perfect for loading states or progress tracking.',
-    category: 'dashboard',
-    tags: ['progress', 'bar', 'loading', 'percentage'],
-    complexity: 'medium',
-    author: 'Grafloria',
-    version: '1.0.0',
-    features: ['html', 'css'],
-    hasChildNodes: false,
-    hasConnections: false,
-    hasCustomStyling: true,
-    hasDataBinding: true,
-    hasInteractivity: false,
-    template: {
-      id: 'progress-bar',
-      type: 'rectangle',
-      size: { width: 300, height: 80 },
-      shape: {
-        type: 'rect',
-        fill: 'white',
-        stroke: '#e0e0e0',
-        strokeWidth: 1,
-        rx: 8,
-        ry: 8
-      },
-      htmlLayer: `
-        <div class="progress-container">
-          <div class="progress-header">
-            <span class="progress-label">Project Progress</span>
-            <span class="progress-percentage">75%</span>
-          </div>
-          <div class="progress-track">
-            <div class="progress-fill" style="width: 75%"></div>
-          </div>
-        </div>
-      `,
-      cssLayer: `
-        .progress-container {
-          padding: 16px;
-          height: 100%;
-          display: flex;
-          flex-direction: column;
-          justify-content: center;
-        }
-        .progress-header {
-          display: flex;
-          justify-content: space-between;
-          margin-bottom: 12px;
-        }
-        .progress-label {
-          font-size: 13px;
-          color: #666;
-        }
-        .progress-percentage {
-          font-size: 14px;
-          font-weight: 700;
-          color: #3498db;
-        }
-        .progress-track {
-          height: 12px;
-          background: #f0f0f0;
-          border-radius: 6px;
-          overflow: hidden;
-        }
-        .progress-fill {
-          height: 100%;
-          background: linear-gradient(90deg, #3498db, #2980b9);
-          border-radius: 6px;
-          transition: width 0.3s ease;
-        }
-      `,
-      ports: { enabled: false }
-    } as any
-  }
-];
-
-/**
- * Workflow Templates - Process flows and diagrams
- */
-export const WORKFLOW_TEMPLATES: Partial<TemplateMetadata>[] = [
-  {
-    name: 'Process Step',
-    description: 'A workflow process step with title and description. Connect multiple steps to create flows.',
-    category: 'workflow',
-    tags: ['workflow', 'process', 'step', 'flow'],
-    complexity: 'simple',
-    author: 'Grafloria',
-    version: '1.0.0',
-    features: ['html', 'css', 'ports'],
-    hasChildNodes: false,
-    hasConnections: true,
-    hasCustomStyling: true,
-    hasDataBinding: false,
-    hasInteractivity: false,
-    template: {
-      id: 'process-step',
-      type: 'rectangle',
-      size: { width: 220, height: 100 },
-      shape: {
-        type: 'rect',
-        fill: '#e8f5e9',
-        stroke: '#4caf50',
-        strokeWidth: 2,
-        rx: 8,
-        ry: 8
-      },
-      htmlLayer: `
-        <div class="process-step">
-          <div class="step-number">1</div>
-          <div class="step-content">
-            <div class="step-title">Process Name</div>
-            <div class="step-desc">Description</div>
-          </div>
-        </div>
-      `,
-      cssLayer: `
-        .process-step {
-          height: 100%;
-          padding: 16px;
-          display: flex;
-          gap: 12px;
-          align-items: center;
-        }
-        .step-number {
-          width: 32px;
-          height: 32px;
-          border-radius: 50%;
-          background: #4caf50;
-          color: white;
-          display: flex;
-          align-items: center;
-          justify-content: center;
-          font-weight: 700;
-          font-size: 16px;
-          flex-shrink: 0;
-        }
-        .step-content {
-          flex: 1;
-        }
-        .step-title {
-          font-size: 14px;
-          font-weight: 600;
-          color: #2c3e50;
-          margin-bottom: 4px;
-        }
-        .step-desc {
-          font-size: 12px;
-          color: #666;
-        }
-      `,
-      ports: {
-        enabled: true,
-        config: {
-          inputs: [{ id: 'in', position: 'left', label: 'In' }],
-          outputs: [{ id: 'out', position: 'right', label: 'Out' }]
-        }
-      }
-    } as any
-  },
-  {
-    name: 'Decision Diamond',
-    description: 'A decision point in a workflow. Use for branching logic and conditional paths.',
-    category: 'workflow',
-    tags: ['decision', 'diamond', 'conditional', 'branch'],
-    complexity: 'simple',
-    author: 'Grafloria',
-    version: '1.0.0',
-    features: ['html', 'css', 'ports'],
-    hasChildNodes: false,
-    hasConnections: true,
-    hasCustomStyling: true,
-    hasDataBinding: false,
-    hasInteractivity: false,
-    template: {
-      id: 'decision-diamond',
-      type: 'diamond',
-      size: { width: 180, height: 120 },
-      shape: {
-        type: 'polygon',
-        fill: '#fff3e0',
-        stroke: '#ff9800',
-        strokeWidth: 2,
-        points: '90,0 180,60 90,120 0,60'
-      },
-      htmlLayer: `
-        <div class="decision-content">
-          <div class="decision-text">Decision?</div>
-        </div>
-      `,
-      cssLayer: `
-        .decision-content {
-          height: 100%;
-          display: flex;
-          align-items: center;
-          justify-content: center;
-          text-align: center;
-        }
-        .decision-text {
-          font-size: 14px;
-          font-weight: 600;
-          color: #e65100;
-          padding: 0 20px;
-        }
-      `,
-      ports: {
-        enabled: true,
-        config: {
-          inputs: [{ id: 'in', position: 'top', label: 'In' }],
-          outputs: [
-            { id: 'yes', position: 'right', label: 'Yes' },
-            { id: 'no', position: 'bottom', label: 'No' }
-          ]
-        }
-      }
-    } as any
-  }
-];
-
-/**
- * Container Templates - Layouts with child nodes
- */
-export const CONTAINER_TEMPLATES: Partial<TemplateMetadata>[] = [
-  {
-    name: 'Vertical Stack',
-    description: 'A vertical container with flexbox layout. Add children to create stacked layouts.',
-    category: 'basic',
-    tags: ['container', 'layout', 'vertical', 'stack'],
-    complexity: 'medium',
-    author: 'Grafloria',
-    version: '1.0.0',
-    features: ['layout', 'children'],
-    hasChildNodes: true,
-    hasConnections: false,
-    hasCustomStyling: false,
-    hasDataBinding: false,
-    hasInteractivity: false,
-    template: {
-      id: 'vertical-stack',
-      type: 'container',
-      size: { width: 300, height: 400 },
-      shape: {
-        type: 'rect',
-        fill: '#fafafa',
-        stroke: '#e0e0e0',
-        strokeWidth: 1,
-        rx: 8,
-        ry: 8
+      meta: {
+        name: 'Card with Header',
+        description: 'Card with title and content',
+        category: 'ui-component'
       },
       structure: {
-        type: 'container',
-        layout: {
-          direction: 'column',
-          wrap: 'nowrap',
-          justifyContent: 'start',
-          alignItems: 'stretch',
-          alignContent: 'stretch',
-          gap: 12,
-          padding: { top: 16, right: 16, bottom: 16, left: 16 }
+        type: 'rectangle',
+        size: { width: 320, height: 200 },
+        shape: {
+          type: 'rect',
+          fill: 'white',
+          stroke: '#e5e7eb',
+          strokeWidth: 1,
+          cornerRadius: 12
         },
-        children: []
-      },
-      ports: { enabled: false }
-    } as any
-  },
-  {
-    name: 'Horizontal Stack',
-    description: 'A horizontal container with flexbox layout. Add children to create side-by-side layouts.',
-    category: 'basic',
-    tags: ['container', 'layout', 'horizontal', 'row'],
-    complexity: 'medium',
-    author: 'Grafloria',
-    version: '1.0.0',
-    features: ['layout', 'children'],
-    hasChildNodes: true,
-    hasConnections: false,
-    hasCustomStyling: false,
-    hasDataBinding: false,
-    hasInteractivity: false,
-    template: {
-      id: 'horizontal-stack',
-      type: 'container',
-      size: { width: 500, height: 200 },
-      shape: {
-        type: 'rect',
-        fill: '#fafafa',
-        stroke: '#e0e0e0',
-        strokeWidth: 1,
-        rx: 8,
-        ry: 8
-      },
-      structure: {
-        type: 'container',
-        layout: {
-          direction: 'row',
-          wrap: 'nowrap',
-          justifyContent: 'start',
-          alignItems: 'stretch',
-          alignContent: 'stretch',
-          gap: 12,
-          padding: { top: 16, right: 16, bottom: 16, left: 16 }
+        html: {
+          mode: 'template',
+          template: `<div style="height: 100%; display: flex; flex-direction: column;">
+            <div style="padding: 16px; border-bottom: 1px solid #f3f4f6;">
+              <h3 style="margin: 0 0 4px 0; font-size: 18px; font-weight: 600; color: #111827;">Card Title</h3>
+              <p style="margin: 0; font-size: 13px; color: #6b7280;">Subtitle text here</p>
+            </div>
+            <div style="flex: 1; padding: 16px; font-size: 14px; color: #4b5563; line-height: 1.5;">
+              Content goes here. Add your text, data, or other elements.
+            </div>
+          </div>`
         },
-        children: []
-      },
-      ports: { enabled: false }
-    } as any
+        style: {
+          boxShadow: '0 1px 3px rgba(0, 0, 0, 0.1)'
+        },
+        ports: { enabled: false }
+      }
+    })
   }
 ];
 
@@ -724,10 +915,10 @@ export const CONTAINER_TEMPLATES: Partial<TemplateMetadata>[] = [
  */
 export const ALL_SAMPLE_TEMPLATES: Partial<TemplateMetadata>[] = [
   ...BASIC_TEMPLATES,
-  ...UI_COMPONENT_TEMPLATES,
-  ...DASHBOARD_TEMPLATES,
   ...WORKFLOW_TEMPLATES,
-  ...CONTAINER_TEMPLATES
+  ...DIAGRAM_TEMPLATES,
+  ...DASHBOARD_TEMPLATES,
+  ...UI_COMPONENT_TEMPLATES
 ];
 
 /**
@@ -737,10 +928,10 @@ export function getSampleTemplates(): Partial<TemplateMetadata>[] {
   return ALL_SAMPLE_TEMPLATES.map((template, index) => ({
     ...template,
     id: template.template?.id || `sample-template-${index}`,
-    usageCount: Math.floor(Math.random() * 100), // Random usage count for demo
-    viewCount: Math.floor(Math.random() * 200), // Random view count for demo
-    createdAt: Date.now() - Math.floor(Math.random() * 30 * 24 * 60 * 60 * 1000), // Random date within last 30 days
-    modifiedAt: Date.now() - Math.floor(Math.random() * 7 * 24 * 60 * 60 * 1000), // Random date within last 7 days
+    usageCount: Math.floor(Math.random() * 100),
+    viewCount: Math.floor(Math.random() * 200),
+    createdAt: Date.now() - Math.floor(Math.random() * 30 * 24 * 60 * 60 * 1000),
+    modifiedAt: Date.now() - Math.floor(Math.random() * 7 * 24 * 60 * 60 * 1000),
     isFavorite: false,
     collections: [],
     userTags: []
