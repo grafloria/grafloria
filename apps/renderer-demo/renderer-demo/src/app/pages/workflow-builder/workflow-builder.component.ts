@@ -2,7 +2,7 @@ import { Component, OnInit, ChangeDetectorRef } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { DiagramCanvasComponent, ComponentRendererService } from '@grafloria/renderer-angular';
-import { DiagramEngine, NodeModel, InteractionMode, PortVisibilityStrategy } from '@grafloria/engine';
+import { DiagramEngine, NodeModel, PortModel, InteractionMode, PortVisibilityStrategy } from '@grafloria/engine';
 import { LIGHT_THEME, type Theme, type Rectangle } from '@grafloria/renderer';
 import { WorkflowNodeComponent, type WorkflowNodeType, type NodeStatus } from './workflow-node.component';
 
@@ -38,9 +38,7 @@ export class WorkflowBuilderComponent implements OnInit {
     private componentRenderer: ComponentRendererService,
     private cdr: ChangeDetectorRef
   ) {
-    // Register workflow node component for HTML layer rendering
-    this.componentRenderer.registerComponent('workflow', WorkflowNodeComponent);
-    console.log('✅ Registered WorkflowNodeComponent for type "workflow"');
+    // No longer using HTML layer components - using SVG shapes with engine's shape system
   }
 
   ngOnInit() {
@@ -70,13 +68,13 @@ export class WorkflowBuilderComponent implements OnInit {
     const task3Node = this.createWorkflowNode('task3', 'task', 'Notify Customer', { x: 750, y: 300 });
     const endNode = this.createWorkflowNode('end', 'end', 'End', { x: 950, y: 200 });
 
-    // Create connections
-    diagram.connectNodes(startNode, task1Node, 'direct');
-    diagram.connectNodes(task1Node, decisionNode, 'direct');
-    diagram.connectNodes(decisionNode, task2Node, 'direct');
-    diagram.connectNodes(decisionNode, task3Node, 'direct');
-    diagram.connectNodes(task2Node, endNode, 'direct');
-    diagram.connectNodes(task3Node, endNode, 'direct');
+    // Create connections using ports for proper shape-aware routing
+    diagram.connectPorts(startNode.getPorts()[1].id, task1Node.getPorts()[0].id, 'orthogonal');
+    diagram.connectPorts(task1Node.getPorts()[1].id, decisionNode.getPorts()[0].id, 'orthogonal');
+    diagram.connectPorts(decisionNode.getPorts()[1].id, task2Node.getPorts()[0].id, 'orthogonal'); // right -> top branch
+    diagram.connectPorts(decisionNode.getPorts()[2].id, task3Node.getPorts()[0].id, 'orthogonal'); // bottom -> bottom branch
+    diagram.connectPorts(task2Node.getPorts()[1].id, endNode.getPorts()[0].id, 'orthogonal');
+    diagram.connectPorts(task3Node.getPorts()[1].id, endNode.getPorts()[0].id, 'orthogonal');
 
     // Set execution order
     this.executionOrder = ['start', 'task1', 'decision1', 'task2', 'end'];
@@ -101,16 +99,67 @@ export class WorkflowBuilderComponent implements OnInit {
       end: { width: 120, height: 120 }
     };
 
+    // Map workflow types to shape types
+    const shapeTypes: Record<WorkflowNodeType, 'circle' | 'rect' | 'diamond'> = {
+      start: 'circle',
+      task: 'rect',
+      decision: 'diamond',
+      end: 'circle'
+    };
+
+    // Color scheme based on node type
+    const colors = {
+      start: { fill: '#e8f5e9', stroke: '#27ae60' },
+      task: { fill: '#e3f2fd', stroke: '#3498db' },
+      decision: { fill: '#fff3e0', stroke: '#f39c12' },
+      end: { fill: '#ffebee', stroke: '#e74c3c' }
+    };
+
     const node = new NodeModel({
-      type: 'workflow',
+      type: shapeTypes[type],
       position,
       size: sizes[type]
     });
 
+    // Set shape metadata for SVG rendering
+    node.setMetadata('shape', {
+      type: shapeTypes[type],
+      fill: colors[type].fill,
+      stroke: colors[type].stroke,
+      strokeWidth: 3,
+      cornerRadius: type === 'task' ? 12 : undefined
+    });
+
+    // Set workflow metadata
     node.setMetadata('workflowType', type);
-    node.setMetadata('label', label);  // Set label for SVG rendering
+    node.setMetadata('label', label);
     node.setMetadata('status', 'pending');
-    node.setMetadata('useHTMLLayer', true);  // Use HTML layer to render WorkflowNodeComponent
+
+    // Add ports for connections
+    const inputPort = new PortModel({
+      id: `${id}-in`,
+      type: 'input',
+      side: type === 'start' ? undefined : 'left'
+    });
+
+    const outputPort = new PortModel({
+      id: `${id}-out`,
+      type: 'output',
+      side: type === 'end' ? undefined : 'right'
+    });
+
+    node.addPort(inputPort);
+    node.addPort(outputPort);
+
+    // For decision nodes, add additional ports
+    if (type === 'decision') {
+      const yesPort = new PortModel({
+        id: `${id}-yes`,
+        type: 'output',
+        side: 'bottom'
+      });
+      node.addPort(yesPort);
+    }
 
     const workflowNode: WorkflowNode = {
       id,
@@ -246,17 +295,45 @@ export class WorkflowBuilderComponent implements OnInit {
       if (nodeId) {
         const workflowNode = this.workflowNodes.get(nodeId);
         if (workflowNode) {
+          const oldStatus = node.getMetadata('status');
           node.setMetadata('status', workflowNode.status);
+
+          // Update shape stroke color based on status
+          const shape = node.getMetadata('shape');
+          if (shape) {
+            const workflowType = node.getMetadata('workflowType');
+            const baseColors = {
+              start: '#27ae60',
+              task: '#3498db',
+              decision: '#f39c12',
+              end: '#e74c3c'
+            };
+
+            let stroke = baseColors[workflowType as WorkflowNodeType] || '#95a5a6';
+            let strokeWidth = 3;
+
+            if (workflowNode.status === 'running') {
+              stroke = '#f39c12'; // Orange when running
+              strokeWidth = 4;
+            } else if (workflowNode.status === 'completed') {
+              stroke = '#27ae60'; // Green when completed
+            }
+
+            node.setMetadata('shape', {
+              ...shape,
+              stroke,
+              strokeWidth
+            });
+          }
+
           // Mark node as dirty to ensure re-render
+          node.markDirty('shape');
           node.markDirty('status');
         }
       }
     });
 
-    // CRITICAL: Trigger change detection to update HTML layer components
-    // The WorkflowNodeComponent uses getters that read metadata,
-    // so we need to trigger Angular's change detection cycle
-    // The combination of setMetadata() + markDirty() + detectChanges() is sufficient
+    // Trigger change detection
     this.cdr.detectChanges();
   }
 
