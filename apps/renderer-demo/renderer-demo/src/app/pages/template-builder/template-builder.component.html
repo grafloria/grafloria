@@ -212,16 +212,44 @@
       </div>
     </div>
 
-    <!-- Far Right: Documentation Sidebar -->
-    <div class="docs-sidebar">
+    <!-- Far Right: Documentation Sidebar (Collapsible) -->
+    <div class="docs-sidebar" *ngIf="showDocsPanel">
+      <div class="panel-header">
+        <h3>Documentation</h3>
+        <button class="close-panel-btn" (click)="toggleDocsPanel()" title="Close">×</button>
+      </div>
       <app-documentation-sidebar></app-documentation-sidebar>
     </div>
 
-    <!-- Far Right: Snippet Panel -->
-    <div class="snippet-panel-container">
+    <!-- Far Right: Snippet Panel (Collapsible) -->
+    <div class="snippet-panel-container" *ngIf="showSnippetsPanel">
+      <div class="panel-header">
+        <h3>Code Snippets</h3>
+        <button class="close-panel-btn" (click)="toggleSnippetsPanel()" title="Close">×</button>
+      </div>
       <app-snippet-panel
         (insertSnippet)="onSnippetInsert($event)">
       </app-snippet-panel>
+    </div>
+
+    <!-- Right Edge: Collapsed Panel Tabs -->
+    <div class="right-edge-tabs">
+      <button
+        class="edge-tab"
+        [class.active]="showDocsPanel"
+        (click)="toggleDocsPanel()"
+        title="Documentation">
+        <span class="tab-icon">📚</span>
+        <span class="tab-label">Docs</span>
+      </button>
+      <button
+        class="edge-tab"
+        [class.active]="showSnippetsPanel"
+        (click)="toggleSnippetsPanel()"
+        title="Code Snippets">
+        <span class="tab-icon">✨</span>
+        <span class="tab-label">Snippets</span>
+      </button>
     </div>
   </div>
 

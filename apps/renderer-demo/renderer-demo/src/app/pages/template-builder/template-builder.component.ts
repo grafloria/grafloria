@@ -85,6 +85,8 @@ export class TemplateBuilderComponent implements OnInit, OnDestroy {
   showPerformancePanel = false;
   showSidebar = true;
   showBottomPanel = false; // NEW
+  showDocsPanel = false; // NEW: collapsible docs
+  showSnippetsPanel = false; // NEW: collapsible snippets
   activeEditorTab: 'json' | 'html' | 'css' = 'json';
   activeRightTab: 'preview' | 'data' | 'ports' = 'preview'; // NEW
   activeBottomTab: 'events' | 'performance' | 'validation' = 'events'; // NEW
@@ -497,6 +499,28 @@ export class TemplateBuilderComponent implements OnInit, OnDestroy {
    */
   toggleBottomPanel(): void {
     this.showBottomPanel = !this.showBottomPanel;
+  }
+
+  /**
+   * NEW: Toggle docs panel
+   */
+  toggleDocsPanel(): void {
+    this.showDocsPanel = !this.showDocsPanel;
+    // If opening docs, close snippets to avoid clutter
+    if (this.showDocsPanel && this.showSnippetsPanel) {
+      this.showSnippetsPanel = false;
+    }
+  }
+
+  /**
+   * NEW: Toggle snippets panel
+   */
+  toggleSnippetsPanel(): void {
+    this.showSnippetsPanel = !this.showSnippetsPanel;
+    // If opening snippets, close docs to avoid clutter
+    if (this.showSnippetsPanel && this.showDocsPanel) {
+      this.showDocsPanel = false;
+    }
   }
 
   /**
