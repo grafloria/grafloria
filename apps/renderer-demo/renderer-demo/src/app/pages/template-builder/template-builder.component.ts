@@ -23,6 +23,9 @@ import { KeyboardShortcutsService } from './services/keyboard-shortcuts.service'
 import type { PortsConfig } from './components/port-config-panel/port-config-panel.component';
 // PHASE 4 IMPORTS - Shape & Style Visual Editors
 import { StylePropertiesPanelComponent, type StyleProperties } from './components/style-properties-panel/style-properties-panel.component';
+// PHASE 5 IMPORTS - Nested Nodes & Layout System
+import { NodeTreeViewComponent, type TreeNode, type NodeActionEvent } from './components/node-tree-view/node-tree-view.component';
+import { LayoutEditorComponent, type LayoutConfig } from './components/layout-editor/layout-editor.component';
 // PHASE 9 IMPORTS - Template Gallery
 import { TemplateGalleryComponent } from './components/template-gallery/template-gallery.component';
 import { TemplatePreviewModalComponent } from './components/template-preview-modal/template-preview-modal.component';
@@ -76,6 +79,9 @@ import { TemplateGalleryService } from './services/template-gallery.service';
     ChildNodeWizardComponent,
     // PHASE 4 COMPONENTS
     StylePropertiesPanelComponent,
+    // PHASE 5 COMPONENTS
+    NodeTreeViewComponent,
+    LayoutEditorComponent,
     // PHASE 9 COMPONENTS
     TemplateGalleryComponent,
     TemplatePreviewModalComponent
@@ -103,7 +109,7 @@ export class TemplateBuilderComponent implements OnInit, OnDestroy {
   showDocsPanel = false; // NEW: collapsible docs
   showSnippetsPanel = false; // NEW: collapsible snippets
   activeEditorTab: 'json' | 'html' | 'css' = 'json';
-  activeRightTab: 'preview' | 'data' | 'ports' | 'style' = 'preview'; // NEW
+  activeRightTab: 'preview' | 'data' | 'ports' | 'style' | 'structure' = 'preview'; // NEW
   activeBottomTab: 'events' | 'performance' | 'validation' = 'events'; // NEW
 
   // NEW: Test data for data testing panel
@@ -551,7 +557,7 @@ export class TemplateBuilderComponent implements OnInit, OnDestroy {
    * NEW: Cycle through right panel tabs
    */
   cycleRightTab(): void {
-    const tabs: Array<'preview' | 'data' | 'ports' | 'style'> = ['preview', 'data', 'ports', 'style'];
+    const tabs: Array<'preview' | 'data' | 'ports' | 'style' | 'structure'> = ['preview', 'data', 'ports', 'style', 'structure'];
     const currentIndex = tabs.indexOf(this.activeRightTab);
     this.activeRightTab = tabs[(currentIndex + 1) % tabs.length];
   }
@@ -677,6 +683,91 @@ export class TemplateBuilderComponent implements OnInit, OnDestroy {
       console.log('✅ Style properties updated');
     } catch (error) {
       console.error('❌ Failed to update style properties:', error);
+    }
+  }
+
+  /**
+   * PHASE 5: Handle node action from tree view
+   */
+  onNodeAction(event: NodeActionEvent): void {
+    const currentState = this.editorService.getState();
+    try {
+      const template = JSON.parse(currentState.json);
+
+      if (!template.structure) {
+        template.structure = {};
+      }
+
+      switch (event.action) {
+        case 'select':
+          console.log('✅ Node selected:', event.node.id);
+          // TODO: Highlight node in preview
+          break;
+
+        case 'add':
+          console.log('✅ Adding child node to:', event.node.id);
+          // TODO: Add child node logic
+          break;
+
+        case 'delete':
+          console.log('✅ Deleting node:', event.node.id);
+          // TODO: Delete node logic
+          break;
+
+        case 'duplicate':
+          console.log('✅ Duplicating node:', event.node.id);
+          // TODO: Duplicate node logic
+          break;
+      }
+
+      this.editorService.updateJson(JSON.stringify(template, null, 2));
+    } catch (error) {
+      console.error('❌ Failed to handle node action:', error);
+    }
+  }
+
+  /**
+   * PHASE 5: Handle layout configuration change
+   */
+  onLayoutChange(layoutConfig: LayoutConfig): void {
+    const currentState = this.editorService.getState();
+    try {
+      const template = JSON.parse(currentState.json);
+
+      if (!template.structure) {
+        template.structure = {};
+      }
+
+      // Update layout configuration
+      if (!template.structure.layout) {
+        template.structure.layout = {};
+      }
+
+      // Map layout config to template structure
+      if (layoutConfig.type === 'flexbox') {
+        template.structure.layout.direction = layoutConfig.flexDirection;
+        template.structure.layout.wrap = layoutConfig.flexWrap;
+        template.structure.layout.justifyContent = layoutConfig.justifyContent;
+        template.structure.layout.alignItems = layoutConfig.alignItems;
+        template.structure.layout.alignContent = layoutConfig.alignContent;
+        template.structure.layout.gap = layoutConfig.gap;
+      } else if (layoutConfig.type === 'grid') {
+        template.structure.layout.gridTemplateColumns = layoutConfig.gridTemplateColumns;
+        template.structure.layout.gridTemplateRows = layoutConfig.gridTemplateRows;
+        template.structure.layout.gridAutoFlow = layoutConfig.gridAutoFlow;
+        template.structure.layout.gap = layoutConfig.gridGap;
+      }
+
+      // Update padding
+      if (layoutConfig.padding) {
+        template.structure.layout.padding = layoutConfig.padding;
+      }
+
+      this.editorService.updateJson(JSON.stringify(template, null, 2));
+
+      console.log('✅ Layout configuration updated');
+    } catch (error) {
+      console.error('❌ Failed to update layout:', error);
     }
   }
 

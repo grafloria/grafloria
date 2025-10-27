@@ -638,3 +638,31 @@
     font-size: 20px;
   }
 }
+
+/* PHASE 5: Structure Panel Styles */
+.structure-panel {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  gap: 1px;
+  background: #e0e0e0;
+}
+
+.structure-section {
+  flex: 1;
+  background: white;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+
+.tree-section {
+  flex: 1.2;
+  min-height: 300px;
+}
+
+.layout-section {
+  flex: 1;
+  min-height: 250px;
+}
+

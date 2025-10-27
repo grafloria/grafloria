@@ -219,6 +219,12 @@
           (click)="activeRightTab = 'style'">
           Style
         </button>
+        <button
+          class="tab"
+          [class.active]="activeRightTab === 'structure'"
+          (click)="activeRightTab = 'structure'">
+          Structure
+        </button>
       </div>
 
       <div class="right-panel-content">
@@ -250,6 +256,25 @@
           *ngIf="activeRightTab === 'style'"
           (propertiesChange)="onStylePropertiesChange($event)">
         </app-style-properties-panel>
+
+        <!-- PHASE 5: Structure Panel (Tree View + Layout Editor) -->
+        <div *ngIf="activeRightTab === 'structure'" class="structure-panel">
+          <!-- Node Tree View -->
+          <div class="structure-section tree-section">
+            <app-node-tree-view
+              [template]="getCurrentTemplate()"
+              (nodeAction)="onNodeAction($event)">
+            </app-node-tree-view>
+          </div>
+
+          <!-- Layout Editor -->
+          <div class="structure-section layout-section">
+            <app-layout-editor
+              [layout]="getCurrentTemplate()?.structure?.layout || { type: 'none' }"
+              (layoutChange)="onLayoutChange($event)">
+            </app-layout-editor>
+          </div>
+        </div>
       </div>
     </div>
 
