@@ -185,18 +185,7 @@ export class AngularComponentAdapter implements ComponentAdapter {
    * @returns Array of registered node type strings
    */
   getRegisteredTypes(): string[] {
-    // ComponentRendererService doesn't expose this directly,
-    // so we need to track it or enhance the service
-    // For now, we'll return empty array and enhance service later
-    // TODO: Add getRegisteredTypes() to ComponentRendererService
-
-    // Workaround: Use private registry accessor if available
-    const service = this.componentRenderer as any;
-    if (service.componentRegistry) {
-      return Array.from(service.componentRegistry.keys());
-    }
-
-    return [];
+    return this.componentRenderer.getRegisteredTypes();
   }
 
   /**

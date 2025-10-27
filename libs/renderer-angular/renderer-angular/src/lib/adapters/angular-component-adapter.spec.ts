@@ -243,11 +243,11 @@ describe('AngularComponentAdapter', () => {
         type: 'test.node',
         position: { x: 100, y: 200 },
         size: { width: 150, height: 100 },
-        data: {
-          title: 'Test Node',
-          count: 5,
-        },
       });
+      mockNode.data = {
+        title: 'Test Node',
+        count: 5,
+      };
 
       mockContainer = viewContainerRef;
     });
@@ -308,8 +308,8 @@ describe('AngularComponentAdapter', () => {
         id: 'test-node-2',
         type: 'test.node',
         position: { x: 300, y: 400 },
-        data: { title: 'Node 2' },
       });
+      node2.data = { title: 'Node 2' };
 
       const instance1 = adapter.createComponentInstance(node1, mockContainer);
       const instance2 = adapter.createComponentInstance(node2, mockContainer);
@@ -341,14 +341,14 @@ describe('AngularComponentAdapter', () => {
         id: 'table-1',
         type: 'erd.table',
         position: { x: 0, y: 0 },
-        data: {
-          tableName: 'users',
-          columns: [
-            { name: 'id', type: 'integer' },
-            { name: 'name', type: 'string' },
-          ],
-        },
       });
+      tableNode.data = {
+        tableName: 'users',
+        columns: [
+          { name: 'id', type: 'integer' },
+          { name: 'name', type: 'string' },
+        ],
+      };
 
       const testInstance = adapter.createComponentInstance(mockNode, mockContainer);
       const tableInstance = adapter.createComponentInstance(tableNode, mockContainer);
@@ -371,8 +371,8 @@ describe('AngularComponentAdapter', () => {
         id: 'test-node-1',
         type: 'test.node',
         position: { x: 100, y: 200 },
-        data: { title: 'Initial', count: 1 },
       });
+      mockNode.data = { title: 'Initial', count: 1 };
 
       mockContainer = viewContainerRef;
       instance = adapter.createComponentInstance(mockNode, mockContainer);
@@ -449,8 +449,8 @@ describe('AngularComponentAdapter', () => {
         id: 'test-node-1',
         type: 'test.node',
         position: { x: 0, y: 0 },
-        data: { title: 'Test' },
       });
+      mockNode.data = { title: 'Test' };
 
       mockContainer = viewContainerRef;
       instance = adapter.createComponentInstance(mockNode, mockContainer);
@@ -542,8 +542,8 @@ describe('AngularComponentAdapter', () => {
         id: 'lifecycle-node',
         type: 'test.node',
         position: { x: 0, y: 0 },
-        data: { title: 'Lifecycle Test', count: 1 },
       });
+      node.data = { title: 'Lifecycle Test', count: 1 };
 
       const instance = adapter.createComponentInstance(node, viewContainerRef);
       expect(instance).toBeDefined();
@@ -572,15 +572,15 @@ describe('AngularComponentAdapter', () => {
         id: 'table-1',
         type: 'erd.table',
         position: { x: 0, y: 0 },
-        data: { tableName: 'users', columns: [] },
       });
+      tableNode.data = { tableName: 'users', columns: [] };
 
       const taskNode = new NodeModel({
         id: 'task-1',
         type: 'bpmn.task',
         position: { x: 200, y: 0 },
-        data: { taskName: 'Process Order', status: 'active' },
       });
+      taskNode.data = { taskName: 'Process Order', status: 'active' };
 
       const tableInstance = adapter.createComponentInstance(tableNode, viewContainerRef);
       const taskInstance = adapter.createComponentInstance(taskNode, viewContainerRef);
@@ -608,15 +608,15 @@ describe('AngularComponentAdapter', () => {
         id: 'node-1',
         type: 'test.node',
         position: { x: 0, y: 0 },
-        data: { title: 'Node 1', count: 1 },
       });
+      node1.data = { title: 'Node 1', count: 1 };
 
       const node2 = new NodeModel({
         id: 'node-2',
         type: 'test.node',
         position: { x: 100, y: 0 },
-        data: { title: 'Node 2', count: 2 },
       });
+      node2.data = { title: 'Node 2', count: 2 };
 
       const instance1 = adapter.createComponentInstance(node1, viewContainerRef);
       const instance2 = adapter.createComponentInstance(node2, viewContainerRef);
@@ -673,8 +673,8 @@ describe('AngularComponentAdapter', () => {
         id: 'test-1',
         type: 'test.node',
         position: { x: 0, y: 0 },
-        data: { title: 'Initial' },
       });
+      node.data = { title: 'Initial' };
 
       const instance = adapter.createComponentInstance(node, viewContainerRef);
 
@@ -751,8 +751,8 @@ describe('AngularComponentAdapter', () => {
         id: 'good-node',
         type: 'test.node',
         position: { x: 0, y: 0 },
-        data: { title: 'Good Node' },
       });
+      goodNode.data = { title: 'Good Node' };
 
       const badNode = new NodeModel({
         id: 'bad-node',
@@ -803,8 +803,8 @@ describe('AngularComponentAdapter', () => {
         id: 'test-1',
         type: 'test.node',
         position: { x: 0, y: 0 },
-        data: { title: 'Initial' },
       });
+      node.data = { title: 'Initial' };
 
       const instance = adapter.createComponentInstance(node, viewContainerRef);
 
@@ -866,8 +866,8 @@ describe('AngularComponentAdapter', () => {
           id: `node-${i}`,
           type: 'test.node',
           position: { x: i * 100, y: i * 100 },
-          data: { title: `Node ${i}`, count: i },
         });
+        node.data = { title: `Node ${i}`, count: i };
 
         const instance = adapter.createComponentInstance(node, viewContainerRef);
         instances.push(instance);
@@ -893,8 +893,8 @@ describe('AngularComponentAdapter', () => {
           id: `perf-node-${i}`,
           type: 'test.node',
           position: { x: 0, y: 0 },
-          data: { title: `Node ${i}` },
         });
+        node.data = { title: `Node ${i}` };
 
         const instance = adapter.createComponentInstance(node, viewContainerRef);
         adapter.destroyComponentInstance(instance);
