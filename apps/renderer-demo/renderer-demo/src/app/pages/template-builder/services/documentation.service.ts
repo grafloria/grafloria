@@ -76,7 +76,35 @@ export class DocumentationService {
    * Get entries by category
    */
   getEntriesByCategory(category: 'root' | 'meta' | 'structure' | 'shape' | 'html' | 'behavior' | 'layout' | 'ports'): DocEntry[] {
-    return this.getAllEntries().filter(entry => entry.path.startsWith(category));
+    return this.getAllEntries().filter(entry => {
+      switch (category) {
+        case 'root':
+          // Top-level properties (no dots in path, excluding nested objects)
+          return !entry.path.includes('.') || entry.path === 'meta' || entry.path === 'structure' || entry.path === 'behavior' || entry.path === 'dataSchema' || entry.path === 'defaultData';
+        case 'meta':
+          return entry.path.startsWith('meta.');
+        case 'structure':
+          // Structure properties excluding ports, shape, layout, html
+          return entry.path.startsWith('structure.') &&
+                 !entry.path.startsWith('structure.ports') &&
+                 !entry.path.startsWith('structure.shape') &&
+                 !entry.path.startsWith('structure.layout') &&
+                 !entry.path.startsWith('structure.html') &&
+                 !entry.path.startsWith('structure.children');
+        case 'shape':
+          return entry.path.startsWith('structure.shape.');
+        case 'html':
+          return entry.path.startsWith('html.');
+        case 'behavior':
+          return entry.path.startsWith('behavior.');
+        case 'layout':
+          return entry.path.startsWith('structure.layout.') || entry.path === 'structure.layout' || entry.path.startsWith('structure.children');
+        case 'ports':
+          return entry.path.startsWith('structure.ports.');
+        default:
+          return false;
+      }
+    });
   }
 
   /**
@@ -695,6 +723,19 @@ export class DocumentationService {
     });
 
     // Port advanced properties
+    // Port side objects
+    this.addDoc({
+      property: 'left',
+      path: 'structure.ports.left',
+      description: 'Left port configuration.',
+      type: 'object',
+      required: false,
+      examples: [
+        '"left": { "enabled": true, "type": "input", "maxConnections": 1 }'
+      ],
+      relatedProperties: ['structure.ports.right', 'structure.ports.top', 'structure.ports.bottom']
+    });
+
     this.addDoc({
       property: 'maxConnections',
       path: 'structure.ports.left.maxConnections',
@@ -737,6 +778,173 @@ export class DocumentationService {
         '"enabled": false  // Port is disabled'
       ],
       relatedProperties: ['structure.ports.enabled']
+    });
+
+    // Right port object
+    this.addDoc({
+      property: 'right',
+      path: 'structure.ports.right',
+      description: 'Right port configuration.',
+      type: 'object',
+      required: false,
+      examples: [
+        '"right": { "enabled": true, "type": "output", "maxConnections": 5 }'
+      ],
+      relatedProperties: ['structure.ports.left', 'structure.ports.top', 'structure.ports.bottom']
+    });
+
+    this.addDoc({
+      property: 'maxConnections',
+      path: 'structure.ports.right.maxConnections',
+      description: 'Maximum number of connections allowed on right port.',
+      type: 'number',
+      required: false,
+      minimum: 1,
+      examples: [
+        '"maxConnections": 1',
+        '"maxConnections": 5',
+        '"maxConnections": 999'
+      ],
+      relatedProperties: ['structure.ports.left.maxConnections']
+    });
+
+    this.addDoc({
+      property: 'type',
+      path: 'structure.ports.right.type',
+      description: 'Right port connection type/direction.',
+      type: 'enum',
+      required: false,
+      enumValues: ['input', 'output', 'both'],
+      examples: [
+        '"type": "output"   // Typical for right port',
+        '"type": "input"',
+        '"type": "both"'
+      ],
+      relatedProperties: ['structure.ports.left.type']
+    });
+
+    this.addDoc({
+      property: 'enabled',
+      path: 'structure.ports.right.enabled',
+      description: 'Enable right port.',
+      type: 'boolean',
+      required: false,
+      defaultValue: true,
+      examples: [
+        '"enabled": true',
+        '"enabled": false'
+      ],
+      relatedProperties: ['structure.ports.left.enabled']
+    });
+
+    // Top port object
+    this.addDoc({
+      property: 'top',
+      path: 'structure.ports.top',
+      description: 'Top port configuration.',
+      type: 'object',
+      required: false,
+      examples: [
+        '"top": { "enabled": true, "type": "input", "maxConnections": 1 }'
+      ],
+      relatedProperties: ['structure.ports.left', 'structure.ports.right', 'structure.ports.bottom']
+    });
+
+    this.addDoc({
+      property: 'maxConnections',
+      path: 'structure.ports.top.maxConnections',
+      description: 'Maximum number of connections allowed on top port.',
+      type: 'number',
+      required: false,
+      minimum: 1,
+      examples: [
+        '"maxConnections": 1',
+        '"maxConnections": 3'
+      ],
+      relatedProperties: ['structure.ports.left.maxConnections']
+    });
+
+    this.addDoc({
+      property: 'type',
+      path: 'structure.ports.top.type',
+      description: 'Top port connection type/direction.',
+      type: 'enum',
+      required: false,
+      enumValues: ['input', 'output', 'both'],
+      examples: [
+        '"type": "input"    // Typical for top port',
+        '"type": "both"'
+      ],
+      relatedProperties: ['structure.ports.left.type']
+    });
+
+    this.addDoc({
+      property: 'enabled',
+      path: 'structure.ports.top.enabled',
+      description: 'Enable top port.',
+      type: 'boolean',
+      required: false,
+      defaultValue: true,
+      examples: [
+        '"enabled": true',
+        '"enabled": false'
+      ],
+      relatedProperties: ['structure.ports.left.enabled']
+    });
+
+    // Bottom port object
+    this.addDoc({
+      property: 'bottom',
+      path: 'structure.ports.bottom',
+      description: 'Bottom port configuration.',
+      type: 'object',
+      required: false,
+      examples: [
+        '"bottom": { "enabled": true, "type": "output", "maxConnections": 5 }'
+      ],
+      relatedProperties: ['structure.ports.left', 'structure.ports.right', 'structure.ports.top']
+    });
+
+    this.addDoc({
+      property: 'maxConnections',
+      path: 'structure.ports.bottom.maxConnections',
+      description: 'Maximum number of connections allowed on bottom port.',
+      type: 'number',
+      required: false,
+      minimum: 1,
+      examples: [
+        '"maxConnections": 1',
+        '"maxConnections": 5'
+      ],
+      relatedProperties: ['structure.ports.left.maxConnections']
+    });
+
+    this.addDoc({
+      property: 'type',
+      path: 'structure.ports.bottom.type',
+      description: 'Bottom port connection type/direction.',
+      type: 'enum',
+      required: false,
+      enumValues: ['input', 'output', 'both'],
+      examples: [
+        '"type": "output"   // Typical for bottom port',
+        '"type": "both"'
+      ],
+      relatedProperties: ['structure.ports.left.type']
+    });
+
+    this.addDoc({
+      property: 'enabled',
+      path: 'structure.ports.bottom.enabled',
+      description: 'Enable bottom port.',
+      type: 'boolean',
+      required: false,
+      defaultValue: true,
+      examples: [
+        '"enabled": true',
+        '"enabled": false'
+      ],
+      relatedProperties: ['structure.ports.left.enabled']
     });
 
     // Shape advanced properties
