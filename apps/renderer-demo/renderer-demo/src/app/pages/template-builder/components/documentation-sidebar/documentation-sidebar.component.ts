@@ -29,7 +29,7 @@ export class DocumentationSidebarComponent implements OnInit, OnDestroy {
 
   isCollapsed = false;
   searchQuery = '';
-  selectedCategory: 'all' | 'root' | 'meta' | 'structure' | 'shape' | 'ports' | 'layout' = 'all';
+  selectedCategory: 'all' | 'root' | 'meta' | 'structure' | 'shape' | 'ports' | 'html' | 'behavior' | 'layout' = 'all';
   selectedEntry: DocEntry | null = null;
 
   categories = [
@@ -39,6 +39,8 @@ export class DocumentationSidebarComponent implements OnInit, OnDestroy {
     { value: 'structure', label: 'Structure' },
     { value: 'shape', label: 'Shape' },
     { value: 'ports', label: 'Ports' },
+    { value: 'html', label: 'HTML' },
+    { value: 'behavior', label: 'Behavior' },
     { value: 'layout', label: 'Layout' }
   ];
 
@@ -100,13 +102,11 @@ export class DocumentationSidebarComponent implements OnInit, OnDestroy {
     // Apply search filter
     if (this.searchQuery.trim()) {
       entries = this.docService.search(this.searchQuery);
+    } else if (this.selectedCategory !== 'all') {
+      // Apply category filter using service method
+      entries = this.docService.getEntriesByCategory(this.selectedCategory as any);
     } else {
       entries = this.docService.getAllEntries();
-    }
-
-    // Apply category filter
-    if (this.selectedCategory !== 'all') {
-      entries = entries.filter(entry => entry.path.startsWith(this.selectedCategory));
     }
 
     // Sort by path
