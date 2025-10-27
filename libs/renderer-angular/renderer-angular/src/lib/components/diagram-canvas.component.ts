@@ -240,7 +240,7 @@ export class DiagramCanvasComponent implements OnInit, AfterViewInit, OnChanges,
       this.engine,
       {
         enableCaching: true,
-        useCSSMode: true,
+        useCSSMode: false, // Disabled to allow shape metadata stroke to take effect
       },
       this.theme
     );
