@@ -117,6 +117,20 @@ export class HomeComponent {
         'Hybrid rendering demo'
       ],
       difficulty: 'Beginner'
+    },
+    {
+      title: 'Template Builder',
+      description: 'Advanced node template editor with live preview and validation',
+      icon: '🛠️',
+      route: '/template-builder',
+      features: [
+        'JSON template editor',
+        'Live preview with zoom/pan',
+        'Template library with presets',
+        'Performance monitoring',
+        'Undo/redo support'
+      ],
+      difficulty: 'Advanced'
     }
   ];
 
