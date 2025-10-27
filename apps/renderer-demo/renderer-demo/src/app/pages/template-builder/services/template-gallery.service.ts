@@ -25,6 +25,11 @@ import { getSampleTemplates } from '../data/sample-templates';
  *
  * Phase 9: Template Gallery & Management
  */
+
+// Template version for cache invalidation
+const TEMPLATE_VERSION = '2.0.0'; // Incremented to force reload after schema change
+const TEMPLATE_VERSION_KEY = 'template-gallery-version';
+
 @Injectable({
   providedIn: 'root'
 })
@@ -718,6 +723,16 @@ export class TemplateGalleryService {
    */
   private loadTemplatesFromStorage(): void {
     try {
+      // Check version first - clear cache if version mismatch
+      const storedVersion = localStorage.getItem(TEMPLATE_VERSION_KEY);
+      if (storedVersion !== TEMPLATE_VERSION) {
+        console.log(`🔄 Template version mismatch (${storedVersion || 'none'} → ${TEMPLATE_VERSION}). Clearing cache...`);
+        localStorage.removeItem('template-gallery-templates');
+        localStorage.setItem(TEMPLATE_VERSION_KEY, TEMPLATE_VERSION);
+        // Return early - loadSampleTemplatesIfNeeded() will handle loading new templates
+        return;
+      }
+
       const stored = localStorage.getItem('template-gallery-templates');
       if (stored) {
         const data = JSON.parse(stored);
@@ -728,7 +743,7 @@ export class TemplateGalleryService {
         });
 
         this.templates$.next(templatesMap);
-        console.log(`✅ Loaded ${templatesMap.size} templates from storage`);
+        console.log(`✅ Loaded ${templatesMap.size} templates from storage (version ${TEMPLATE_VERSION})`);
       }
     } catch (error) {
       console.error('Failed to load templates from storage:', error);
@@ -748,6 +763,7 @@ export class TemplateGalleryService {
       });
 
       localStorage.setItem('template-gallery-templates', JSON.stringify(data));
+      localStorage.setItem(TEMPLATE_VERSION_KEY, TEMPLATE_VERSION);
     } catch (error) {
       console.error('Failed to save templates to storage:', error);
     }
