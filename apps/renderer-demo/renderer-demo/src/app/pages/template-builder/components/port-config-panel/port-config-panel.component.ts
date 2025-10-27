@@ -8,7 +8,7 @@ import { ButtonComponent } from '../../shared/components/button/button.component
  */
 export interface PortConfig {
   enabled: boolean;
-  type?: 'input' | 'output' | 'both';
+  type?: 'input' | 'output' | 'bi';
   maxConnections?: number;
 }
 
@@ -30,7 +30,7 @@ export interface PortsConfig {
  * Visual editor for configuring node ports without JSON.
  * Features:
  * - Visual port toggles (4 sides)
- * - Port type selector (input/output/both)
+ * - Port type selector (input/output/bi)
  * - Visibility mode
  * - Max connections
  * - Port preview overlay
@@ -165,7 +165,7 @@ export interface PortsConfig {
             class="config-select">
             <option value="input">Input (receives)</option>
             <option value="output">Output (sends)</option>
-            <option value="both">Both (bidirectional)</option>
+            <option value="bi">Both (bidirectional)</option>
           </select>
         </div>
 
@@ -589,9 +589,9 @@ export class PortConfigPanelComponent implements OnChanges {
         this.localConfig.right!.enabled = true;
         this.localConfig.right!.type = 'output';
         this.localConfig.top!.enabled = true;
-        this.localConfig.top!.type = 'both';
+        this.localConfig.top!.type = 'bi';
         this.localConfig.bottom!.enabled = true;
-        this.localConfig.bottom!.type = 'both';
+        this.localConfig.bottom!.type = 'bi';
         this.selectedPort = 'left';
         break;
 
