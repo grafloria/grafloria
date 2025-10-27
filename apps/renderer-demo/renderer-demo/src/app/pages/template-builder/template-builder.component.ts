@@ -17,6 +17,7 @@ import { ButtonComponent } from './shared/components/button/button.component';
 import { DataTestingPanelComponent } from './components/data-testing-panel/data-testing-panel.component';
 import { EventMonitorPanelComponent } from './components/event-monitor-panel/event-monitor-panel.component';
 import { PortConfigPanelComponent } from './components/port-config-panel/port-config-panel.component';
+import { NodeLayerEditorComponent } from './components/node-layer-editor/node-layer-editor.component';
 import { KeyboardShortcutsService } from './services/keyboard-shortcuts.service';
 import type { PortsConfig } from './components/port-config-panel/port-config-panel.component';
 
@@ -62,7 +63,8 @@ import type { PortsConfig } from './components/port-config-panel/port-config-pan
     ButtonComponent,
     DataTestingPanelComponent,
     EventMonitorPanelComponent,
-    PortConfigPanelComponent
+    PortConfigPanelComponent,
+    NodeLayerEditorComponent
   ],
   selector: 'app-template-builder',
   templateUrl: './template-builder.component.html',
@@ -106,6 +108,13 @@ export class TemplateBuilderComponent implements OnInit, OnDestroy {
   private dragStartY = 0;
   private dragStartSize = 0;
 
+  // Node Layer Editor
+  showNodeLayerEditor = false;
+  currentNodePath = '';
+  currentNodeHtml = '';
+  currentNodeCss = '';
+  private monacoEditor: any;
+
   // ViewChild references
   @ViewChild(EventMonitorPanelComponent) eventMonitor?: EventMonitorPanelComponent;
   @ViewChild(PreviewPanelComponent) previewPanel?: PreviewPanelComponent;
@@ -120,11 +129,6 @@ export class TemplateBuilderComponent implements OnInit, OnDestroy {
     this.setupKeyboardShortcuts();
     this.setupAutoSaveHistory();
     this.initializeTestData(); // NEW
-  }
-
-  ngOnDestroy(): void {
-    this.destroy$.next();
-    this.destroy$.complete();
   }
 
   /**
@@ -540,6 +544,128 @@ export class TemplateBuilderComponent implements OnInit, OnDestroy {
   }
 
   /**
+   * Handle Monaco editor ready event
+   */
+  onEditorReady(editor: any): void {
+    this.monacoEditor = editor;
+    console.log('✅ Monaco editor instance captured');
+  }
+
+  /**
+   * Open node layer editor for current cursor position
+   */
+  openNodeLayerEditor(): void {
+    if (!this.monacoEditor || this.activeEditorTab !== 'json') {
+      console.warn('Node layer editor only works in JSON editor mode');
+      return;
+    }
+
+    try {
+      // Get current cursor position
+      const position = this.monacoEditor.getPosition();
+      const model = this.monacoEditor.getModel();
+      const content = model.getValue();
+
+      // Parse JSON and find node at cursor
+      const template = JSON.parse(content);
+      const { nodePath, node } = this.findNodeAtPosition(template, position, content);
+
+      if (node) {
+        this.currentNodePath = nodePath;
+        this.currentNodeHtml = node.htmlLayer || '';
+        this.currentNodeCss = node.cssLayer || '';
+        this.showNodeLayerEditor = true;
+        console.log('📝 Opening layer editor for:', nodePath);
+      } else {
+        alert('Please place your cursor inside a node object to edit its layers.');
+      }
+    } catch (error) {
+      console.error('Failed to open node layer editor:', error);
+      alert('Invalid JSON or cursor position. Please ensure valid JSON and cursor is inside a node.');
+    }
+  }
+
+  /**
+   * Find node at cursor position in JSON
+   */
+  private findNodeAtPosition(template: any, position: any, content: string): { nodePath: string; node: any } {
+    const lines = content.split('\n');
+    let charCount = 0;
+    let targetOffset = 0;
+
+    // Calculate character offset from line/column position
+    for (let i = 0; i < position.lineNumber - 1; i++) {
+      charCount += lines[i].length + 1; // +1 for newline
+    }
+    targetOffset = charCount + position.column - 1;
+
+    // Find which JSON path the cursor is in
+    // This is a simplified version - in production you'd use a proper JSON parser with position tracking
+    const currentLine = lines[position.lineNumber - 1];
+
+    // Check if we're in structure or a child
+    if (content.substring(0, targetOffset).includes('"structure"')) {
+      if (content.substring(0, targetOffset).includes('"children"')) {
+        // We're in a child node - try to determine which one
+        // For simplicity, return the first child if it exists
+        if (template.structure?.children && template.structure.children.length > 0) {
+          return { nodePath: 'structure.children[0]', node: template.structure.children[0] };
+        }
+      }
+      // We're in the structure node itself
+      return { nodePath: 'structure', node: template.structure };
+    }
+
+    return { nodePath: '', node: null };
+  }
+
+  /**
+   * Save node layers back to JSON
+   */
+  onNodeLayersSave(layers: { html: string; css: string }): void {
+    try {
+      const template = this.editorService.parseTemplate();
+      const pathParts = this.currentNodePath.split('.');
+
+      // Navigate to the node
+      let node: any = template;
+      for (let i = 0; i < pathParts.length; i++) {
+        const part = pathParts[i];
+
+        // Handle array notation like "children[0]"
+        const arrayMatch = part.match(/^(\w+)\[(\d+)\]$/);
+        if (arrayMatch) {
+          const [, key, index] = arrayMatch;
+          node = node[key][parseInt(index, 10)];
+        } else {
+          node = node[part];
+        }
+      }
+
+      // Update the node's layers
+      if (layers.html) {
+        node.htmlLayer = layers.html;
+      } else {
+        delete node.htmlLayer;
+      }
+
+      if (layers.css) {
+        node.cssLayer = layers.css;
+      } else {
+        delete node.cssLayer;
+      }
+
+      // Update the editor
+      this.editorService.updateJson(JSON.stringify(template, null, 2));
+
+      console.log('✅ Node layers saved successfully');
+    } catch (error) {
+      console.error('❌ Failed to save node layers:', error);
+      alert('Failed to save layers. Please check console for details.');
+    }
+  }
+
+  /**
    * Panel Resize: Start dragging
    */
   startResize(event: MouseEvent, target: 'left' | 'right' | 'bottom'): void {
@@ -615,6 +741,7 @@ export class TemplateBuilderComponent implements OnInit, OnDestroy {
   ngOnDestroy(): void {
     this.destroy$.next();
     this.destroy$.complete();
+
     // Clean up resize listeners if still active
     document.removeEventListener('mousemove', this.onMouseMove);
     document.removeEventListener('mouseup', this.onMouseUp);

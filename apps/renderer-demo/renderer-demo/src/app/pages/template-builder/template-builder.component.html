@@ -113,6 +113,17 @@
           </button>
         </div>
         <div class="panel-info">
+          <!-- Node Layer Editor Button -->
+          <app-button
+            *ngIf="activeEditorTab === 'json'"
+            variant="secondary"
+            size="sm"
+            icon="🎨"
+            (clicked)="openNodeLayerEditor()"
+            title="Edit HTML/CSS Layers for Node (place cursor inside node)">
+            Edit Node Layers
+          </app-button>
+
           <span class="status" *ngIf="editorState$ | async as state">
             <span class="dot" [class.valid]="state.isValid" [class.invalid]="!state.isValid"></span>
             {{ state.isValid ? 'Valid' : 'Invalid' }}
@@ -127,7 +138,8 @@
           [theme]="'vs'"
           [minimap]="true"
           [lineNumbers]="'on'"
-          (contentChange)="onJsonChange($event)">
+          (contentChange)="onJsonChange($event)"
+          (editorReady)="onEditorReady($event)">
         </app-monaco-editor>
         <app-monaco-editor
           *ngIf="activeEditorTab === 'html'"
@@ -259,4 +271,14 @@
       </div>
     </div>
   </div>
+
+  <!-- Node Layer Editor Modal -->
+  <app-node-layer-editor
+    [isOpen]="showNodeLayerEditor"
+    [nodePath]="currentNodePath"
+    [htmlLayer]="currentNodeHtml"
+    [cssLayer]="currentNodeCss"
+    (save)="onNodeLayersSave($event)"
+    (close)="showNodeLayerEditor = false">
+  </app-node-layer-editor>
 </div>
