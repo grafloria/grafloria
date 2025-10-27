@@ -18,6 +18,7 @@ import {
   type CanvasLayoutConfig,
   DEFAULT_LAYOUT_CONFIG
 } from '../../models/multi-node-state.model';
+import { MinimapComponent } from '../minimap/minimap.component';
 
 /**
  * Preview Panel Component
@@ -42,7 +43,7 @@ import {
  */
 @Component({
   standalone: true,
-  imports: [CommonModule, DiagramCanvasComponent],
+  imports: [CommonModule, DiagramCanvasComponent, MinimapComponent],
   selector: 'app-preview-panel',
   templateUrl: './preview-panel.component.html',
   styleUrl: './preview-panel.component.css'
@@ -73,6 +74,9 @@ export class PreviewPanelComponent implements OnInit, OnDestroy, OnChanges {
 
   // Zoom presets
   zoomPresets = [25, 50, 75, 100, 125, 150, 200, 300, 400, 500];
+
+  // Minimap
+  minimapVisible = true;
 
   private performanceMonitor = inject(PerformanceMonitorService);
   private isCanvasFocused = false;
@@ -732,5 +736,39 @@ export class PreviewPanelComponent implements OnInit, OnDestroy, OnChanges {
    */
   getConnectionCount(): number {
     return this.connections.size;
+  }
+
+  // ==================== Minimap Integration ====================
+
+  /**
+   * Handle viewport change from minimap
+   * @param position New viewport position
+   */
+  onMinimapViewportChange(position: { x: number; y: number }): void {
+    const diagram = this.engine.getDiagram();
+    if (!diagram) return;
+
+    diagram.setViewport({
+      ...this.viewport,
+      x: position.x,
+      y: position.y
+    });
+
+    this.updateViewportFromDiagram();
+  }
+
+  /**
+   * Handle minimap visibility change
+   * @param visible New visibility state
+   */
+  onMinimapVisibilityChange(visible: boolean): void {
+    this.minimapVisible = visible;
+  }
+
+  /**
+   * Toggle minimap visibility
+   */
+  toggleMinimap(): void {
+    this.minimapVisible = !this.minimapVisible;
   }
 }

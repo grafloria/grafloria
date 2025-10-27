@@ -193,3 +193,14 @@
   background: linear-gradient(135deg, #c0392b, #a93226);
   border-color: #c0392b;
 }
+
+.btn-icon.active {
+  background: linear-gradient(135deg, #3498db, #2980b9);
+  color: white;
+  border-color: #3498db;
+}
+
+.btn-icon.active:hover {
+  background: linear-gradient(135deg, #2980b9, #21618c);
+  border-color: #2980b9;
+}
