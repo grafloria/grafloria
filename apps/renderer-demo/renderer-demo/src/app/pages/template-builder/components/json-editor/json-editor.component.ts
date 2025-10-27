@@ -1,4 +1,4 @@
-import { Component, Input, Output, EventEmitter, OnInit, OnDestroy, ElementRef } from '@angular/core';
+import { Component, Input, Output, EventEmitter, OnInit, OnDestroy, OnChanges, SimpleChanges, ElementRef } from '@angular/core';
 import { CommonModule } from '@angular/common';
 
 /**
@@ -21,7 +21,7 @@ import { CommonModule } from '@angular/common';
   templateUrl: './json-editor.component.html',
   styleUrl: './json-editor.component.css'
 })
-export class JsonEditorComponent implements OnInit, OnDestroy {
+export class JsonEditorComponent implements OnInit, OnDestroy, OnChanges {
 
   @Input() content = '';
   @Output() contentChange = new EventEmitter<string>();
@@ -32,6 +32,12 @@ export class JsonEditorComponent implements OnInit, OnDestroy {
 
   ngOnInit(): void {
     this.editorContent = this.content;
+  }
+
+  ngOnChanges(changes: SimpleChanges): void {
+    if (changes['content'] && !changes['content'].firstChange) {
+      this.editorContent = changes['content'].currentValue;
+    }
   }
 
   ngOnDestroy(): void {
