@@ -1,4 +1,4 @@
-import { Component, Output, EventEmitter, OnInit, OnDestroy, HostListener } from '@angular/core';
+import { Component, Input, Output, EventEmitter, OnInit, OnDestroy, HostListener } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 
@@ -320,11 +320,12 @@ const CATEGORY_LABELS: Record<CommandCategory, string> = {
   `]
 })
 export class CommandPaletteComponent implements OnInit, OnDestroy {
+  @Input() isOpen = false;
+  @Input() commands: Command[] = [];
+
   @Output() commandExecute = new EventEmitter<Command>();
   @Output() close = new EventEmitter<void>();
 
-  isOpen = false;
-  commands: Command[] = [];
   searchQuery = '';
   filteredCommands: Command[] = [];
   groupedCommands: { category: CommandCategory; commands: Command[] }[] = [];
