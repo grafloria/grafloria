@@ -12,7 +12,7 @@
         variant="ghost"
         size="sm"
         icon="↶"
-        iconOnly="true"
+        [iconOnly]="true"
         [disabled]="!(canUndo$ | async)"
         (clicked)="undo()">
       </app-button>
@@ -20,7 +20,7 @@
         variant="ghost"
         size="sm"
         icon="↷"
-        iconOnly="true"
+        [iconOnly]="true"
         [disabled]="!(canRedo$ | async)"
         (clicked)="redo()">
       </app-button>
@@ -64,7 +64,7 @@
         variant="ghost"
         size="sm"
         icon="☰"
-        iconOnly="true"
+        [iconOnly]="true"
         [class.active]="showSidebar"
         (clicked)="toggleSidebar()">
       </app-button>
@@ -72,7 +72,7 @@
         variant="ghost"
         size="sm"
         icon="📊"
-        iconOnly="true"
+        [iconOnly]="true"
         [class.active]="showBottomPanel"
         (clicked)="toggleBottomPanel()">
       </app-button>

@@ -16,7 +16,7 @@ export interface PortConfig {
  * Ports Configuration
  */
 export interface PortsConfig {
-  enabled: boolean;
+  enabled?: boolean;
   defaultVisibility?: 'always' | 'hover' | 'never';
   left?: PortConfig;
   right?: PortConfig;
