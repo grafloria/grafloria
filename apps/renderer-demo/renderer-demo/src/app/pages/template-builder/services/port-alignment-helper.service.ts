@@ -10,7 +10,7 @@ export interface PortPosition {
   x: number;
   y: number;
   type: 'input' | 'output' | 'both';
-  visibility: 'always' | 'hover' | 'never';
+  visibility: 'always' | 'on-hover' | 'never';
   enabled: boolean;
 }
 
@@ -20,7 +20,7 @@ export interface PortPosition {
  */
 export interface PortConfig {
   enabled: boolean;
-  defaultVisibility: 'always' | 'hover' | 'never';
+  defaultVisibility: 'always' | 'on-hover' | 'never';
   left?: { enabled: boolean; type: 'input' | 'output' | 'both' };
   right?: { enabled: boolean; type: 'input' | 'output' | 'both' };
   top?: { enabled: boolean; type: 'input' | 'output' | 'both' };
@@ -504,11 +504,11 @@ z-index: 100;
   /**
    * Get label for port visibility
    */
-  getPortVisibilityLabel(visibility: 'always' | 'hover' | 'never'): string {
+  getPortVisibilityLabel(visibility: 'always' | 'on-hover' | 'never'): string {
     switch (visibility) {
       case 'always':
         return 'Always Visible';
-      case 'hover':
+      case 'on-hover':
         return 'Visible on Hover';
       case 'never':
         return 'Hidden';

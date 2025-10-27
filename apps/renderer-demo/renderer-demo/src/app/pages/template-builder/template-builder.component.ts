@@ -90,6 +90,22 @@ export class TemplateBuilderComponent implements OnInit, OnDestroy {
   // NEW: Test data for data testing panel
   testData: any = {};
 
+  // Panel Sizes (resizable)
+  leftPanelWidth = 300;
+  rightPanelWidth = 400;
+  bottomPanelHeight = 300;
+  minPanelWidth = 200;
+  maxPanelWidth = 600;
+  minBottomHeight = 150;
+  maxBottomHeight = 600;
+
+  // Drag state
+  private isDragging = false;
+  private dragTarget: 'left' | 'right' | 'bottom' | null = null;
+  private dragStartX = 0;
+  private dragStartY = 0;
+  private dragStartSize = 0;
+
   // ViewChild references
   @ViewChild(EventMonitorPanelComponent) eventMonitor?: EventMonitorPanelComponent;
   @ViewChild(PreviewPanelComponent) previewPanel?: PreviewPanelComponent;
@@ -521,5 +537,86 @@ export class TemplateBuilderComponent implements OnInit, OnDestroy {
    */
   getCurrentTemplate() {
     return this.editorService.parseTemplate();
+  }
+
+  /**
+   * Panel Resize: Start dragging
+   */
+  startResize(event: MouseEvent, target: 'left' | 'right' | 'bottom'): void {
+    event.preventDefault();
+    this.isDragging = true;
+    this.dragTarget = target;
+    this.dragStartX = event.clientX;
+    this.dragStartY = event.clientY;
+
+    switch (target) {
+      case 'left':
+        this.dragStartSize = this.leftPanelWidth;
+        break;
+      case 'right':
+        this.dragStartSize = this.rightPanelWidth;
+        break;
+      case 'bottom':
+        this.dragStartSize = this.bottomPanelHeight;
+        break;
+    }
+
+    // Add global listeners
+    document.addEventListener('mousemove', this.onMouseMove);
+    document.addEventListener('mouseup', this.onMouseUp);
+  }
+
+  /**
+   * Panel Resize: Handle mouse move
+   */
+  private onMouseMove = (event: MouseEvent): void => {
+    if (!this.isDragging || !this.dragTarget) return;
+
+    switch (this.dragTarget) {
+      case 'left':
+        const leftDelta = event.clientX - this.dragStartX;
+        this.leftPanelWidth = Math.max(
+          this.minPanelWidth,
+          Math.min(this.maxPanelWidth, this.dragStartSize + leftDelta)
+        );
+        break;
+
+      case 'right':
+        const rightDelta = this.dragStartX - event.clientX;
+        this.rightPanelWidth = Math.max(
+          this.minPanelWidth,
+          Math.min(this.maxPanelWidth, this.dragStartSize + rightDelta)
+        );
+        break;
+
+      case 'bottom':
+        const bottomDelta = this.dragStartY - event.clientY;
+        this.bottomPanelHeight = Math.max(
+          this.minBottomHeight,
+          Math.min(this.maxBottomHeight, this.dragStartSize + bottomDelta)
+        );
+        break;
+    }
+  };
+
+  /**
+   * Panel Resize: Stop dragging
+   */
+  private onMouseUp = (): void => {
+    this.isDragging = false;
+    this.dragTarget = null;
+    document.removeEventListener('mousemove', this.onMouseMove);
+    document.removeEventListener('mouseup', this.onMouseUp);
+  };
+
+  /**
+   * Cleanup
+   */
+  ngOnDestroy(): void {
+    this.destroy$.next();
+    this.destroy$.complete();
+    // Clean up resize listeners if still active
+    document.removeEventListener('mousemove', this.onMouseMove);
+    document.removeEventListener('mouseup', this.onMouseUp);
   }
 }

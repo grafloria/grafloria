@@ -82,10 +82,11 @@
   <!-- Main Content -->
   <div class="main-content">
     <!-- Left Sidebar: Template Library -->
-    <div class="sidebar" *ngIf="showSidebar">
+    <div class="sidebar" *ngIf="showSidebar" [style.width.px]="leftPanelWidth">
       <app-template-sidebar
         (templateSelect)="onTemplateSelect($event)">
       </app-template-sidebar>
+      <div class="resize-handle resize-handle-right" (mousedown)="startResize($event, 'left')"></div>
     </div>
 
     <!-- Center: Editors with Tabs -->
@@ -150,7 +151,8 @@
     </div>
 
     <!-- Right: NEW Multi-Tab Panel (Preview/Data/Ports) -->
-    <div class="right-panel">
+    <div class="right-panel" [style.width.px]="rightPanelWidth">
+      <div class="resize-handle resize-handle-left" (mousedown)="startResize($event, 'right')"></div>
       <div class="right-panel-tabs">
         <button
           class="tab"
@@ -212,7 +214,8 @@
   </div>
 
   <!-- Bottom: NEW Multi-Tab Panel (Events/Performance/Validation) -->
-  <div class="bottom-panel" *ngIf="showBottomPanel">
+  <div class="bottom-panel" *ngIf="showBottomPanel" [style.height.px]="bottomPanelHeight">
+    <div class="resize-handle resize-handle-top" (mousedown)="startResize($event, 'bottom')"></div>
     <div class="bottom-panel-tabs">
       <button
         class="tab"
