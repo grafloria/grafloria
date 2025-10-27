@@ -240,7 +240,148 @@ export class MonacoEditorComponent implements OnInit, AfterViewInit, OnDestroy, 
       selectionRanges: true
     });
 
-    console.log('✅ JSON schema registered with Monaco');
+    // Register code snippets for common patterns
+    this.registerSnippets();
+
+    console.log('✅ JSON schema registered with Monaco + custom snippets');
+  }
+
+  /**
+   * Register code snippets for common template patterns
+   */
+  private registerSnippets(): void {
+    monaco.languages.registerCompletionItemProvider('json', {
+      provideCompletionItems: (model: any, position: any) => {
+        const word = model.getWordUntilPosition(position);
+        const range = {
+          startLineNumber: position.lineNumber,
+          endLineNumber: position.lineNumber,
+          startColumn: word.startColumn,
+          endColumn: word.endColumn
+        };
+
+        const snippets = [
+          // Child Node Snippet
+          {
+            label: 'child-node',
+            kind: monaco.languages.CompletionItemKind.Snippet,
+            documentation: 'Add a child node with basic structure',
+            insertText: [
+              '{',
+              '  "type": "${1:child-type}",',
+              '  "size": { "width": ${2:100}, "height": ${3:50} },',
+              '  "shape": {',
+              '    "type": "rect",',
+              '    "fill": "${4:#ffffff}",',
+              '    "stroke": "${5:#666}",',
+              '    "strokeWidth": 1,',
+              '    "cornerRadius": 4',
+              '  },',
+              '  "text": {',
+              '    "content": "${6:Child Node}",',
+              '    "fontSize": 12,',
+              '    "fontWeight": "normal",',
+              '    "fill": "#333"',
+              '  }',
+              '}$0'
+            ].join('\n'),
+            insertTextRules: monaco.languages.CompletionItemInsertTextRule.InsertAsSnippet,
+            range: range
+          },
+          // Data Template Snippet
+          {
+            label: 'data-template',
+            kind: monaco.languages.CompletionItemKind.Snippet,
+            documentation: 'Add data-driven rendering with items and itemTemplate',
+            insertText: [
+              '"data": ${1:null},',
+              '"items": "${2:items}",',
+              '"itemTemplate": {',
+              '  "type": "${3:item}",',
+              '  "size": { "width": ${4:100}, "height": ${5:40} },',
+              '  "shape": {',
+              '    "type": "rect",',
+              '    "fill": "{{item.color || \'#fff\'}}",',
+              '    "stroke": "#ccc",',
+              '    "strokeWidth": 1,',
+              '    "cornerRadius": 4',
+              '  },',
+              '  "text": {',
+              '    "content": "{{item.name}}",',
+              '    "fontSize": 12',
+              '  }',
+              '}$0'
+            ].join('\n'),
+            insertTextRules: monaco.languages.CompletionItemInsertTextRule.InsertAsSnippet,
+            range: range
+          },
+          // Children Array Snippet
+          {
+            label: 'children-array',
+            kind: monaco.languages.CompletionItemKind.Snippet,
+            documentation: 'Add children array structure',
+            insertText: [
+              '"children": [',
+              '  {',
+              '    "type": "${1:child-type}",',
+              '    "size": { "width": ${2:100}, "height": ${3:50} },',
+              '    "shape": {',
+              '      "type": "rect",',
+              '      "fill": "${4:#ffffff}"',
+              '    },',
+              '    "text": {',
+              '      "content": "${5:Child Node}"',
+              '    }',
+              '  }$0',
+              ']'
+            ].join('\n'),
+            insertTextRules: monaco.languages.CompletionItemInsertTextRule.InsertAsSnippet,
+            range: range
+          },
+          // Layout Config Snippet
+          {
+            label: 'layout-flexbox',
+            kind: monaco.languages.CompletionItemKind.Snippet,
+            documentation: 'Add flexbox layout configuration',
+            insertText: [
+              '"layout": {',
+              '  "direction": "${1|row,column,row-reverse,column-reverse|}",',
+              '  "wrap": "${2|nowrap,wrap,wrap-reverse|}",',
+              '  "justifyContent": "${3|start,center,end,space-between,space-around,space-evenly|}",',
+              '  "alignItems": "${4|start,center,end,stretch,baseline|}",',
+              '  "alignContent": "start",',
+              '  "gap": ${5:8},',
+              '  "padding": { "top": ${6:0}, "right": ${7:0}, "bottom": ${8:0}, "left": ${9:0} }',
+              '}$0'
+            ].join('\n'),
+            insertTextRules: monaco.languages.CompletionItemInsertTextRule.InsertAsSnippet,
+            range: range
+          },
+          // Ports Configuration Snippet
+          {
+            label: 'ports-config',
+            kind: monaco.languages.CompletionItemKind.Snippet,
+            documentation: 'Add ports configuration',
+            insertText: [
+              '"ports": {',
+              '  "enabled": ${1|true,false|},',
+              '  "defaultVisibility": "${2|always,on-hover,never|}",',
+              '  "left": { "enabled": ${3|true,false|}, "type": "${4|input,output,bi|}" },',
+              '  "right": { "enabled": ${5|true,false|}, "type": "${6|input,output,bi|}" },',
+              '  "top": { "enabled": ${7|false,true|}, "type": "${8|input,output,bi|}" },',
+              '  "bottom": { "enabled": ${9|false,true|}, "type": "${10|input,output,bi|}" }',
+              '}$0'
+            ].join('\n'),
+            insertTextRules: monaco.languages.CompletionItemInsertTextRule.InsertAsSnippet,
+            range: range
+          }
+        ];
+
+        return { suggestions: snippets };
+      }
+    });
+
+    console.log('✅ Code snippets registered');
   }
 
   /**
