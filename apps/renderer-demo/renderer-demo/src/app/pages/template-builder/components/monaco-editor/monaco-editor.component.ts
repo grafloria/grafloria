@@ -12,6 +12,7 @@ import {
   AfterViewInit
 } from '@angular/core';
 import { CommonModule } from '@angular/common';
+import { NODE_TEMPLATE_SCHEMA } from '../../schemas/node-template.schema';
 
 // Monaco types (will be loaded dynamically)
 declare const monaco: any;
@@ -144,6 +145,11 @@ export class MonacoEditorComponent implements OnInit, AfterViewInit, OnDestroy, 
       return;
     }
 
+    // Configure JSON language features (schema, validation, autocomplete)
+    if (this.language === 'json') {
+      this.configureJsonLanguage();
+    }
+
     // Create editor instance
     this.editor = monaco.editor.create(this.editorContainer.nativeElement, {
       value: this.content,
@@ -193,6 +199,48 @@ export class MonacoEditorComponent implements OnInit, AfterViewInit, OnDestroy, 
     this.editorReady.emit(this.editor);
 
     console.log(`✅ Monaco editor initialized (${this.language})`);
+  }
+
+  /**
+   * Configure JSON language features
+   */
+  private configureJsonLanguage(): void {
+    if (!monaco || !monaco.languages || !monaco.languages.json) {
+      console.error('Monaco JSON language service not available');
+      return;
+    }
+
+    // Configure JSON language defaults
+    monaco.languages.json.jsonDefaults.setDiagnosticsOptions({
+      validate: true,
+      allowComments: true,
+      schemas: [
+        {
+          uri: 'http://grafloria.internal/schemas/node-template.json',
+          fileMatch: ['*'], // Match all JSON documents in this editor
+          schema: NODE_TEMPLATE_SCHEMA
+        }
+      ],
+      enableSchemaRequest: false,
+      schemaValidation: 'error',
+      schemaRequest: 'error'
+    });
+
+    // Enable additional JSON features
+    monaco.languages.json.jsonDefaults.setModeConfiguration({
+      documentFormattingEdits: true,
+      documentRangeFormattingEdits: true,
+      completionItems: true,
+      hovers: true,
+      documentSymbols: true,
+      tokens: true,
+      colors: true,
+      foldingRanges: true,
+      diagnostics: true,
+      selectionRanges: true
+    });
+
+    console.log('✅ JSON schema registered with Monaco');
   }
 
   /**
