@@ -447,4 +447,12 @@
     (action)="onGalleryTemplateAction($event)"
     (navigate)="onPreviewNavigate($event)">
   </app-template-preview-modal>
+
+  <!-- PHASE 10: Command Palette -->
+  <app-command-palette
+    *ngIf="showCommandPalette"
+    [commands]="availableCommands"
+    (commandExecute)="onCommandExecute($event)"
+    (close)="showCommandPalette = false">
+  </app-command-palette>
 </div>

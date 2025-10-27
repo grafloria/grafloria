@@ -36,6 +36,8 @@ import { TemplateGalleryComponent } from './components/template-gallery/template
 import { TemplatePreviewModalComponent } from './components/template-preview-modal/template-preview-modal.component';
 import { TemplateMetadata, TemplateActionEvent } from './models/template-metadata.model';
 import { TemplateGalleryService } from './services/template-gallery.service';
+// PHASE 10 IMPORTS - UX Enhancements
+import { CommandPaletteComponent, type Command } from './components/command-palette/command-palette.component';
 
 /**
  * Template Builder Component
@@ -93,7 +95,9 @@ import { TemplateGalleryService } from './services/template-gallery.service';
     ComponentEditorPanelComponent,
     // PHASE 9 COMPONENTS
     TemplateGalleryComponent,
-    TemplatePreviewModalComponent
+    TemplatePreviewModalComponent,
+    // PHASE 10 COMPONENTS
+    CommandPaletteComponent
   ],
   selector: 'app-template-builder',
   templateUrl: './template-builder.component.html',
@@ -126,6 +130,10 @@ export class TemplateBuilderComponent implements OnInit, OnDestroy {
 
   // PHASE 8: Multi-Node Mode
   multiNodeMode = false;
+
+  // PHASE 10: Command Palette
+  showCommandPalette = false;
+  availableCommands: Command[] = [];
 
   // Panel Sizes (resizable)
   leftPanelWidth = 300;
@@ -176,6 +184,7 @@ export class TemplateBuilderComponent implements OnInit, OnDestroy {
     this.setupKeyboardShortcuts();
     this.setupAutoSaveHistory();
     this.initializeTestData(); // NEW
+    this.initializeCommands(); // PHASE 10
   }
 
   /**
@@ -197,6 +206,15 @@ export class TemplateBuilderComponent implements OnInit, OnDestroy {
       description: 'Export template',
       category: 'file',
       handler: () => this.exportTemplate()
+    });
+
+    // PHASE 10: Command Palette
+    this.keyboardService.register({
+      key: 'p',
+      ctrl: true,
+      description: 'Open command palette',
+      category: 'search',
+      handler: () => this.toggleCommandPalette()
     });
 
     // Edit operations
@@ -576,6 +594,204 @@ export class TemplateBuilderComponent implements OnInit, OnDestroy {
     if (this.multiNodeMode && this.activeRightTab !== 'preview') {
       this.activeRightTab = 'preview';
     }
+  }
+
+  /**
+   * PHASE 10: Toggle Command Palette
+   */
+  toggleCommandPalette(): void {
+    this.showCommandPalette = !this.showCommandPalette;
+    console.log(`⌨️ Command Palette: ${this.showCommandPalette ? 'OPEN' : 'CLOSED'}`);
+  }
+
+  /**
+   * PHASE 10: Handle command execution from palette
+   */
+  onCommandExecute(command: Command): void {
+    console.log(`🎯 Executing command: ${command.label}`);
+    // Command action is already executed by the palette component
+    // This is just for logging/tracking
+  }
+
+  /**
+   * PHASE 10: Initialize available commands
+   */
+  private initializeCommands(): void {
+    this.availableCommands = [
+      // File Commands
+      {
+        id: 'file-save',
+        label: 'Save Template',
+        description: 'Save current template to local storage',
+        category: 'file',
+        icon: '💾',
+        shortcut: 'Ctrl+S',
+        keywords: ['save', 'persist', 'store'],
+        action: () => this.save()
+      },
+      {
+        id: 'file-export',
+        label: 'Export Template',
+        description: 'Download template as JSON file',
+        category: 'file',
+        icon: '📥',
+        shortcut: 'Ctrl+E',
+        keywords: ['export', 'download', 'json'],
+        action: () => this.exportTemplate()
+      },
+      {
+        id: 'file-import',
+        label: 'Import Template',
+        description: 'Load template from JSON file',
+        category: 'file',
+        icon: '📤',
+        keywords: ['import', 'upload', 'load'],
+        action: () => this.importTemplate()
+      },
+      {
+        id: 'file-reset',
+        label: 'Reset Template',
+        description: 'Reset to default template',
+        category: 'file',
+        icon: '🔄',
+        keywords: ['reset', 'clear', 'default'],
+        action: () => this.reset()
+      },
+
+      // Edit Commands
+      {
+        id: 'edit-undo',
+        label: 'Undo',
+        description: 'Undo last change',
+        category: 'edit',
+        icon: '↶',
+        shortcut: 'Ctrl+Z',
+        keywords: ['undo', 'revert'],
+        action: () => this.undo()
+      },
+      {
+        id: 'edit-redo',
+        label: 'Redo',
+        description: 'Redo last undone change',
+        category: 'edit',
+        icon: '↷',
+        shortcut: 'Ctrl+Y',
+        keywords: ['redo', 'repeat'],
+        action: () => this.redo()
+      },
+
+      // View Commands
+      {
+        id: 'view-json',
+        label: 'Switch to JSON Tab',
+        description: 'Edit JSON template',
+        category: 'view',
+        icon: '📝',
+        shortcut: 'Ctrl+1',
+        keywords: ['json', 'template', 'editor'],
+        action: () => this.activeEditorTab = 'json'
+      },
+      {
+        id: 'view-html',
+        label: 'Switch to HTML Tab',
+        description: 'Edit HTML layer',
+        category: 'view',
+        icon: '🌐',
+        shortcut: 'Ctrl+2',
+        keywords: ['html', 'layer', 'markup'],
+        action: () => this.activeEditorTab = 'html'
+      },
+      {
+        id: 'view-css',
+        label: 'Switch to CSS Tab',
+        description: 'Edit CSS styles',
+        category: 'view',
+        icon: '🎨',
+        shortcut: 'Ctrl+3',
+        keywords: ['css', 'styles', 'styling'],
+        action: () => this.activeEditorTab = 'css'
+      },
+      {
+        id: 'view-sidebar',
+        label: 'Toggle Sidebar',
+        description: 'Show/hide template library sidebar',
+        category: 'view',
+        icon: '☰',
+        shortcut: 'Ctrl+B',
+        keywords: ['sidebar', 'library', 'toggle'],
+        action: () => this.toggleSidebar()
+      },
+      {
+        id: 'view-multi-node',
+        label: 'Toggle Multi-Node Mode',
+        description: 'Enable/disable multi-node canvas mode',
+        category: 'view',
+        icon: '🎨',
+        keywords: ['multi', 'node', 'canvas', 'multiple'],
+        action: () => this.toggleMultiNodeMode()
+      },
+
+      // Insert Commands
+      {
+        id: 'insert-child-node',
+        label: 'Add Child Node',
+        description: 'Open child node wizard',
+        category: 'insert',
+        icon: '➕',
+        keywords: ['add', 'child', 'node', 'nested'],
+        action: () => this.openChildNodeWizard()
+      },
+      {
+        id: 'insert-node-layer',
+        label: 'Edit Node Layers',
+        description: 'Edit HTML and CSS layers for selected node',
+        category: 'insert',
+        icon: '🎨',
+        keywords: ['edit', 'layers', 'html', 'css'],
+        action: () => this.openNodeLayerEditor()
+      },
+
+      // Navigation Commands
+      {
+        id: 'nav-gallery',
+        label: 'Browse Template Gallery',
+        description: 'Open template gallery',
+        category: 'navigation',
+        icon: '📚',
+        keywords: ['gallery', 'browse', 'templates'],
+        action: () => this.openTemplateGallery()
+      },
+      {
+        id: 'nav-save-gallery',
+        label: 'Save to Gallery',
+        description: 'Save current template to gallery',
+        category: 'navigation',
+        icon: '➕',
+        keywords: ['save', 'gallery', 'add'],
+        action: () => this.saveToGallery()
+      },
+
+      // Tools Commands
+      {
+        id: 'tools-format',
+        label: 'Format JSON',
+        description: 'Auto-format JSON template',
+        category: 'tools',
+        icon: '✨',
+        keywords: ['format', 'prettify', 'indent'],
+        action: () => {
+          const state = this.editorService.getState();
+          try {
+            const parsed = JSON.parse(state.json);
+            this.editorService.updateJson(JSON.stringify(parsed, null, 2));
+          } catch (e) {
+            console.error('Invalid JSON');
+          }
+        }
+      }
+    ];
+
+    console.log(`✅ Initialized ${this.availableCommands.length} commands`);
   }
 
   /**
