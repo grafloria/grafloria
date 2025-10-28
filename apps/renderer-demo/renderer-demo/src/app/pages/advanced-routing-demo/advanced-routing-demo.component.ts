@@ -102,6 +102,13 @@ export class AdvancedRoutingDemoComponent implements OnInit {
 
   ngOnInit() {
     this.initializeEngine();
+
+    // CRITICAL FIX: Initialize routing algorithm and line style in engine
+    // This ensures the preview line and final links use the correct settings
+    const routingEngine = this.engine.getRoutingEngine();
+    routingEngine.setDefaultAlgorithm(this.routingConfig.algorithm);
+    this.updateEngineConnectionLineStyle();
+
     this.createDemoContent(this.activeSection);
   }
 
@@ -584,15 +591,20 @@ export class AdvancedRoutingDemoComponent implements OnInit {
       }
     }
 
-    // Update all links with new settings
+    // CRITICAL FIX: Update routing engine's default algorithm
+    // This affects how NEW links are routed when created
+    const routingEngine = this.engine.getRoutingEngine();
+    routingEngine.setDefaultAlgorithm(this.routingConfig.algorithm);
+
+    // CRITICAL FIX: Update engine's connection line style for NEW links
+    // This ensures newly drawn links use the correct pathType
+    this.updateEngineConnectionLineStyle();
+
+    // Update EXISTING links with new settings
     diagram.getLinks().forEach(link => {
       link.pathType = this.lineRenderingConfig.style;
       link.markDirty(); // Force re-routing
     });
-
-    // Update routing engine with correct algorithm
-    const routingEngine = this.engine.getRoutingEngine();
-    routingEngine.setDefaultAlgorithm(this.routingConfig.algorithm);
 
     console.log(`🔄 Updated routing: algorithm=${this.routingConfig.algorithm}, lineStyle=${this.lineRenderingConfig.style}, avoidObstacles=${this.routingConfig.avoidObstacles}, margin=${this.routingConfig.obstacleMargin}px`);
 
@@ -611,7 +623,10 @@ export class AdvancedRoutingDemoComponent implements OnInit {
       return;
     }
 
-    // Update all links with new line rendering style
+    // CRITICAL FIX: Update engine's connection line style for NEW links
+    this.updateEngineConnectionLineStyle();
+
+    // Update EXISTING links with new line rendering style
     diagram.getLinks().forEach(link => {
       link.pathType = this.lineRenderingConfig.style;
       link.markDirty(); // Force re-render
@@ -621,6 +636,37 @@ export class AdvancedRoutingDemoComponent implements OnInit {
 
     this.updateStats();
     this.cdr.markForCheck();
+  }
+
+  /**
+   * Update engine's interaction config to use the current line rendering style
+   * This ensures NEW links created via connection dragging use the correct pathType
+   */
+  private updateEngineConnectionLineStyle(): void {
+    // Map our line rendering style to engine's ConnectionLineStyle
+    let connectionLineStyle: 'bezier' | 'straight' | 'step' | 'smooth' = 'smooth';
+
+    switch (this.lineRenderingConfig.style) {
+      case 'direct':
+        connectionLineStyle = 'straight';
+        break;
+      case 'smooth':
+        connectionLineStyle = 'smooth';
+        break;
+      case 'bezier':
+        connectionLineStyle = 'bezier';
+        break;
+      case 'orthogonal':
+        connectionLineStyle = 'step';
+        break;
+    }
+
+    // Update the engine's interaction config
+    this.engine.setInteractionConfig({
+      connectionLineStyle: connectionLineStyle
+    });
+
+    console.log(`🔧 Engine connectionLineStyle updated to: ${connectionLineStyle}`);
   }
 
   isLineStyleCompatible(style: string): boolean {
