@@ -9,6 +9,7 @@ import {
   LinkModel,
   InteractionMode,
   PortVisibilityStrategy,
+  ConnectionLineStyle,
   type InteractionConfig,
   type RoutingOptions,
 } from '@grafloria/engine';
@@ -643,21 +644,22 @@ export class AdvancedRoutingDemoComponent implements OnInit {
    * This ensures NEW links created via connection dragging use the correct pathType
    */
   private updateEngineConnectionLineStyle(): void {
-    // Map our line rendering style to engine's ConnectionLineStyle
-    let connectionLineStyle: 'bezier' | 'straight' | 'step' | 'smooth' = 'smooth';
+    // Map our line rendering style to engine's ConnectionLineStyle enum
+    let connectionLineStyle: ConnectionLineStyle = ConnectionLineStyle.BEZIER;
 
     switch (this.lineRenderingConfig.style) {
       case 'direct':
-        connectionLineStyle = 'straight';
+        connectionLineStyle = ConnectionLineStyle.STRAIGHT;
         break;
       case 'smooth':
-        connectionLineStyle = 'smooth';
+        // 'smooth' pathType uses bezier curves for rendering
+        connectionLineStyle = ConnectionLineStyle.BEZIER;
         break;
       case 'bezier':
-        connectionLineStyle = 'bezier';
+        connectionLineStyle = ConnectionLineStyle.BEZIER;
         break;
       case 'orthogonal':
-        connectionLineStyle = 'step';
+        connectionLineStyle = ConnectionLineStyle.STEP;
         break;
     }
 
