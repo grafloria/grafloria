@@ -119,6 +119,20 @@ export class HomeComponent {
       difficulty: 'Beginner'
     },
     {
+      title: 'Advanced Routing Demo',
+      description: 'Interactive demonstration of Phase 2 routing features - JointJS parity achieved',
+      icon: '🚀',
+      route: '/advanced-routing',
+      features: [
+        'Waypoint editing with drag & drop',
+        'Bezier control point manipulation',
+        'Douglas-Peucker path simplification',
+        'Performance optimized (99% fewer allocations)',
+        'Full feature comparison showcase'
+      ],
+      difficulty: 'Intermediate'
+    },
+    {
       title: 'Template Builder',
       description: 'Advanced node template editor with live preview and validation',
       icon: '🛠️',
