@@ -19,6 +19,9 @@ import { LabelRenderer } from './LabelRenderer';
 import { JumpPointDetector } from './JumpPointDetector';
 import { JumpPointRenderer } from './JumpPointRenderer';
 
+// Phase 2.3a: Waypoint editing
+import { WaypointEditor } from '../interaction/WaypointEditor';
+
 // LOD Level type (matches engine's LODLevel)
 type LODLevel = 'high' | 'medium' | 'low';
 
@@ -49,6 +52,9 @@ export class SVGRenderer implements IRenderer {
   // Phase 1.3: Jump point rendering
   private jumpPointDetector: JumpPointDetector;
   private jumpPointRenderer: JumpPointRenderer;
+
+  // Phase 2.3a: Waypoint editing
+  private waypointEditor: WaypointEditor;
 
   // Performance tracking
   private lastRenderTime = 0;
@@ -81,6 +87,19 @@ export class SVGRenderer implements IRenderer {
     // Phase 1.3: Initialize jump point detector and renderer
     this.jumpPointDetector = new JumpPointDetector();
     this.jumpPointRenderer = new JumpPointRenderer();
+
+    // Phase 2.3a: Initialize waypoint editor with default config
+    const waypointConfig = engine.getInteractionConfig().waypointEditor || {
+      snapToGrid: false,
+      gridSize: 20,
+      removeOnDoubleClick: true,
+      handleRadius: 5,
+      handleColor: '#3b82f6',
+      handleStrokeColor: '#ffffff',
+      minDistanceFromEndpoints: 30,
+      clickDetectionRadius: 10,
+    };
+    this.waypointEditor = new WaypointEditor(waypointConfig);
 
     // Inject theme CSS if in CSS mode
     if (this.config.useCSSMode) {
@@ -1698,6 +1717,10 @@ export class SVGRenderer implements IRenderer {
               } as VNode,
             ]
           : []),
+        // Phase 2.3a: Waypoint handles for interactive editing
+        ...(config.enableWaypointEditing && config.showWaypointHandles && isSelected && lod !== 'low'
+          ? this.waypointEditor.renderWaypointHandles(link.points, link.id)
+          : []),
       ],
     };
 
@@ -2050,6 +2073,18 @@ export class SVGRenderer implements IRenderer {
 
 .link-endpoint-handle:hover {
   r: 8;
+  stroke-width: 3px;
+}
+
+/* Phase 2.3a: Waypoint Handles */
+.waypoint-handle {
+  cursor: move;
+  transition: all 0.2s ease;
+  pointer-events: all;
+}
+
+.waypoint-handle:hover {
+  r: 7;
   stroke-width: 3px;
 }
     `.trim();

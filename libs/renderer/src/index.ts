@@ -17,3 +17,6 @@ export * from './canvas';
 
 // Hybrid rendering (Phase 3.5)
 export * from './hybrid';
+
+// Phase 2.3: Interactive link editing tools
+export * from './interaction';
