@@ -369,9 +369,11 @@ export class SVGRenderer implements IRenderer {
     // CRITICAL FIX: Use getPortPositionForShape() for consistent positioning
     // This ensures the preview line starts from the same position where the port is rendered
     const sourceLocalPos = getPortPositionForShape(dragState.sourcePort, sourceNode);
+    // CRITICAL FIX: Use getWorldPosition() for child nodes to get correct absolute coordinates
+    const sourceWorldPos = sourceNode.getWorldPosition();
     const sourcePos = {
-      x: sourceNode.position.x + sourceLocalPos.x,
-      y: sourceNode.position.y + sourceLocalPos.y,
+      x: sourceWorldPos.x + sourceLocalPos.x,
+      y: sourceWorldPos.y + sourceLocalPos.y,
     };
 
     const targetPos = dragState.currentMousePosition;
@@ -405,11 +407,13 @@ export class SVGRenderer implements IRenderer {
 
     // Include ALL nodes as obstacles for preview
     // The routing algorithm uses gap offset to ensure paths start/end outside node boundaries
+    // CRITICAL FIX: Use getWorldPosition() for child nodes to get correct absolute coordinates
     diagram.getNodes().forEach(node => {
+      const worldPos = node.getWorldPosition();
       obstacles.push({
         id: node.id,
-        x: node.position.x,
-        y: node.position.y,
+        x: worldPos.x,
+        y: worldPos.y,
         width: node.size.width,
         height: node.size.height,
       });
@@ -1492,10 +1496,12 @@ export class SVGRenderer implements IRenderer {
             return; // Skip this node
           }
 
+          // CRITICAL FIX: Use getWorldPosition() for child nodes to get correct absolute coordinates
+          const worldPos = node.getWorldPosition();
           obstacles.push({
             id: node.id,
-            x: node.position.x,
-            y: node.position.y,
+            x: worldPos.x,
+            y: worldPos.y,
             width: node.size.width,
             height: node.size.height,
           });
