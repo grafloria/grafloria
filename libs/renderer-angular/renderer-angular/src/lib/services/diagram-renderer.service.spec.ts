@@ -1,7 +1,6 @@
 import { TestBed } from '@angular/core/testing';
 import { DiagramRendererService, RendererRecommendation, PerformanceBenchmark } from './diagram-renderer.service';
-import type { IRenderer } from '../../../../../renderer/src/core/renderer.interface';
-import type { VNode } from '@grafloria/renderer';
+import type { IRendererStrategy as IRenderer, VNode } from '@grafloria/renderer';
 
 // Mock renderer
 class MockRenderer implements IRenderer {

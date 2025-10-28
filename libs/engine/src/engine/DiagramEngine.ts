@@ -30,6 +30,7 @@ import type { InteractionConfig } from '../config/InteractionConfig';
 import { DEFAULT_INTERACTION_CONFIG } from '../config/InteractionConfig';
 // Routing imports
 import { RoutingEngine } from '../routing/RoutingEngine';
+import { LiveReroutingEngine } from '../routing/LiveReroutingEngine'; // Phase 0.2
 import { ObstacleMapBuilder } from '../routing/ObstacleMapBuilder';
 import { StraightRouter } from '../routing/algorithms/StraightRouter';
 import { OrthogonalRouter } from '../routing/algorithms/OrthogonalRouter';
@@ -87,6 +88,9 @@ export class DiagramEngine {
   readonly clipboardManager: ClipboardManager; // Phase 1.8
   readonly selectionManager: SelectionManager; // Phase 1.8a
   readonly routingEngine: RoutingEngine; // Routing system for link paths
+
+  // Phase 0.2: Live rerouting engine
+  private liveReroutingEngine: LiveReroutingEngine | null = null;
 
   // Current diagram
   private diagram: DiagramModel | null = null;
@@ -281,6 +285,41 @@ export class DiagramEngine {
    */
   getRoutingEngine(): RoutingEngine {
     return this.routingEngine;
+  }
+
+  /**
+   * Phase 0.2: Enable live rerouting
+   * Automatically updates link paths when nodes move or resize
+   */
+  enableLiveRerouting(): void {
+    if (!this.diagram) {
+      console.warn('Cannot enable live rerouting: No diagram loaded');
+      return;
+    }
+
+    if (!this.liveReroutingEngine) {
+      this.liveReroutingEngine = new LiveReroutingEngine(this.routingEngine, this.diagram);
+    }
+
+    this.liveReroutingEngine.enable();
+    console.log('✅ Live rerouting enabled');
+  }
+
+  /**
+   * Phase 0.2: Disable live rerouting
+   */
+  disableLiveRerouting(): void {
+    if (this.liveReroutingEngine) {
+      this.liveReroutingEngine.disable();
+      console.log('⚠️ Live rerouting disabled');
+    }
+  }
+
+  /**
+   * Phase 0.2: Get live rerouting engine
+   */
+  getLiveReroutingEngine(): LiveReroutingEngine | null {
+    return this.liveReroutingEngine;
   }
 
   /**

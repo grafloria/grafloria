@@ -9,6 +9,22 @@ import type { RoutedPath, RoutingAlgorithm } from '@grafloria/engine';
 // Phase 3.2: Shape-aware port positioning
 import { getPortPositionForShape } from './port-positioning';
 
+// Phase 1.1: Arrow type rendering
+import { ArrowRenderer } from './ArrowRenderer';
+
+// Phase 1.2: Label rendering
+import { LabelRenderer } from './LabelRenderer';
+
+// Phase 1.3: Jump point rendering
+import { JumpPointDetector } from './JumpPointDetector';
+import { JumpPointRenderer } from './JumpPointRenderer';
+
+// Phase 2.3a: Waypoint editing
+import { WaypointEditor } from '../interaction/WaypointEditor';
+
+// Phase 2.3b: Control point editing
+import { ControlPointEditor } from '../interaction/ControlPointEditor';
+
 // LOD Level type (matches engine's LODLevel)
 type LODLevel = 'high' | 'medium' | 'low';
 
@@ -29,6 +45,22 @@ export class SVGRenderer implements IRenderer {
   // foreignObject support
   private containerIds = new Map<string, string>(); // nodeId -> containerId mapping
   private foreignObjectNodes = new Set<string>(); // Track which nodes use foreignObject
+
+  // Phase 1.1: Arrow type rendering
+  private arrowRenderer: ArrowRenderer;
+
+  // Phase 1.2: Label rendering
+  private labelRenderer: LabelRenderer;
+
+  // Phase 1.3: Jump point rendering
+  private jumpPointDetector: JumpPointDetector;
+  private jumpPointRenderer: JumpPointRenderer;
+
+  // Phase 2.3a: Waypoint editing
+  private waypointEditor: WaypointEditor;
+
+  // Phase 2.3b: Control point editing
+  private controlPointEditor: ControlPointEditor;
 
   // Performance tracking
   private lastRenderTime = 0;
@@ -51,6 +83,45 @@ export class SVGRenderer implements IRenderer {
     };
 
     this.theme = theme || LIGHT_THEME;
+
+    // Phase 1.1: Initialize arrow renderer
+    this.arrowRenderer = new ArrowRenderer();
+
+    // Phase 1.2: Initialize label renderer
+    this.labelRenderer = new LabelRenderer();
+
+    // Phase 1.3: Initialize jump point detector and renderer
+    this.jumpPointDetector = new JumpPointDetector();
+    this.jumpPointRenderer = new JumpPointRenderer();
+
+    // Phase 2.3a: Initialize waypoint editor with default config
+    const waypointConfig = engine.getInteractionConfig().waypointEditor || {
+      snapToGrid: false,
+      gridSize: 20,
+      removeOnDoubleClick: true,
+      handleRadius: 5,
+      handleColor: '#3b82f6',
+      handleStrokeColor: '#ffffff',
+      minDistanceFromEndpoints: 30,
+      clickDetectionRadius: 10,
+    };
+    this.waypointEditor = new WaypointEditor(waypointConfig);
+
+    // Phase 2.3b: Initialize control point editor with default config
+    const controlPointConfig = engine.getInteractionConfig().controlPointEditor || {
+      snapToGrid: false,
+      gridSize: 20,
+      handleRadius: 6,
+      handleColor: '#10b981',
+      handleStrokeColor: '#ffffff',
+      controlLineColor: '#6b7280',
+      controlLineWidth: 1,
+      controlLineDash: [5, 5],
+      clickDetectionRadius: 10,
+      showControlLines: true,
+      symmetricControls: false,
+    };
+    this.controlPointEditor = new ControlPointEditor(controlPointConfig);
 
     // Inject theme CSS if in CSS mode
     if (this.config.useCSSMode) {
@@ -195,9 +266,17 @@ export class SVGRenderer implements IRenderer {
 
   /**
    * Render links layer
+   * FIXED: Sort links so selected/highlighted links render on top
    */
   private renderLinksLayer(links: LinkModel[], lod: LODLevel): VNode {
-    const children = links.map(link => this.renderLink(link, lod));
+    // Sort links: default/hovered first, then selected/highlighted on top
+    const sortedLinks = [...links].sort((a, b) => {
+      const aOrder = (a.state === 'selected' || a.state === 'highlighted') ? 1 : 0;
+      const bOrder = (b.state === 'selected' || b.state === 'highlighted') ? 1 : 0;
+      return aOrder - bOrder;
+    });
+
+    const children = sortedLinks.map(link => this.renderLink(link, lod));
 
     return {
       type: 'g',
@@ -360,8 +439,33 @@ export class SVGRenderer implements IRenderer {
     if (routedPath) {
       pathData = this.convertRoutedPathToSVG(routedPath, pathType);
     } else {
-      // Fallback to simple straight line
-      pathData = `M ${sourcePos.x} ${sourcePos.y} L ${targetPos.x} ${targetPos.y}`;
+      // Phase 0.1: Fallback strategy for connection preview
+      console.warn('Primary routing failed for connection preview, trying fallback');
+
+      // Fallback Strategy 1: Try with reduced constraints
+      const fallbackPath = routingEngine.route({
+        start: sourcePos,
+        end: targetPos,
+        sourceDirection,
+        targetDirection,
+        obstacles,
+        options: {
+          algorithm: 'orthogonal',  // Force orthogonal as safest fallback
+          avoidObstacles: true,
+          obstacleMargin: 5,         // Reduced from 20px
+          gridSize: 20,              // Coarser grid
+          maxIterations: 1000        // Faster computation
+        }
+      });
+
+      if (fallbackPath) {
+        pathData = this.convertRoutedPathToSVG(fallbackPath, pathType);
+        console.log('✅ Fallback routing succeeded for connection preview');
+      } else {
+        // Fallback Strategy 2: Hide invalid preview (don't show crossing line)
+        console.warn('All routing strategies failed for connection preview - hiding invalid preview');
+        return null;
+      }
     }
 
     // Determine line color based on validity
@@ -1352,7 +1456,12 @@ export class SVGRenderer implements IRenderer {
     let pathData: string;
     let points: Array<{ x: number; y: number }>;
 
-    if (endpoints) {
+    // FIXED: Check if link has manually edited waypoints
+    // If link has more than 2 points, it means waypoints were added manually
+    // Don't regenerate the route in this case - use the existing points
+    const hasManualWaypoints = link.points && link.points.length > 2;
+
+    if (endpoints && !hasManualWaypoints) {
       // Use RoutingEngine to calculate path
       const routingEngine = this.engine.getRoutingEngine();
 
@@ -1364,7 +1473,7 @@ export class SVGRenderer implements IRenderer {
       const algorithm = this.mapPathTypeToAlgorithm(link.pathType);
 
       // OBSTACLE AVOIDANCE: Get obstacles from the diagram for routing
-      // Exclude source and target nodes so the link can start/end at ports
+      // FIXED: Exclude source and target nodes so paths can start/end at their ports
       const diagram = this.engine.getDiagram();
       const obstacles: Array<{ id: string; x: number; y: number; width: number; height: number }> = [];
 
@@ -1373,7 +1482,12 @@ export class SVGRenderer implements IRenderer {
         const targetNode = diagram.getNodes().find(n => n.getPorts().some(p => p.id === link.targetPortId));
 
         diagram.getNodes().forEach(node => {
-          // Include ALL nodes as obstacles - gap offset ensures paths start/end outside
+          // CRITICAL FIX: Exclude source and target nodes from obstacles
+          // Paths must be able to start/end at ports on these nodes
+          if (node.id === sourceNode?.id || node.id === targetNode?.id) {
+            return; // Skip this node
+          }
+
           obstacles.push({
             id: node.id,
             x: node.position.x,
@@ -1382,6 +1496,8 @@ export class SVGRenderer implements IRenderer {
             height: node.size.height,
           });
         });
+
+        console.log(`🚧 Routing with ${obstacles.length} obstacles (excluded source: ${sourceNode?.id}, target: ${targetNode?.id})`);
       }
 
       // Use link's pathType-derived algorithm, fallback to routing engine's default
@@ -1407,9 +1523,39 @@ export class SVGRenderer implements IRenderer {
         points = routedPath.points;
         pathData = this.convertRoutedPathToSVG(routedPath, link.pathType);
       } else {
-        // Fallback to simple straight line
-        points = [endpoints.start, endpoints.end];
-        pathData = `M ${endpoints.start.x} ${endpoints.start.y} L ${endpoints.end.x} ${endpoints.end.y}`;
+        // Phase 0.1: Fallback strategy to avoid crossing obstacles
+        console.warn(`Primary routing failed for link ${link.id}, trying fallback with reduced constraints`);
+
+        // Fallback Strategy 1: Try with reduced margin and coarser grid
+        const fallbackPath = routingEngine.route({
+          start: endpoints.start,
+          end: endpoints.end,
+          sourceDirection: endpoints.sourceDirection,
+          targetDirection: endpoints.targetDirection,
+          obstacles,
+          options: {
+            algorithm: 'orthogonal',  // Force orthogonal as safest fallback
+            avoidObstacles: true,
+            obstacleMargin: 5,         // Reduced from 20px
+            gridSize: 20,              // Coarser grid (was 10)
+            maxIterations: 1000        // Faster computation
+          }
+        });
+
+        if (fallbackPath) {
+          points = fallbackPath.points;
+          pathData = this.convertRoutedPathToSVG(fallbackPath, link.pathType);
+          console.log(`✅ Fallback routing succeeded for link ${link.id}`);
+        } else {
+          // Fallback Strategy 2: Hide invalid connection (don't render crossing line)
+          console.warn(`All routing strategies failed for link ${link.id} - hiding invalid preview`);
+          return {
+            type: 'g',
+            key: `link-${link.id}`,
+            props: {},
+            children: []
+          };
+        }
       }
     } else {
       // Fallback to existing link.points
@@ -1452,6 +1598,44 @@ export class SVGRenderer implements IRenderer {
       isSelected &&
       lod !== 'low';
 
+    // Phase 1.3: Apply jump points if enabled
+    let linkPathVNode: VNode;
+    if (link.style.jumpPoints?.enabled) {
+      // Get all other links for intersection detection
+      const diagram = this.engine.getDiagram();
+      const allLinks = diagram ? diagram.getLinks() : [];
+      const otherLinks = allLinks.filter(l => l.id !== link.id);
+
+      // Detect intersections
+      const intersections = this.jumpPointDetector.detectIntersections(
+        { id: link.id, points: link.points },
+        otherLinks.map(l => ({ id: l.id, points: l.points })),
+        link.style.jumpPoints.detectMode,
+        link.style.jumpPoints.threshold
+      );
+
+      // Render with jump points
+      linkPathVNode = this.jumpPointRenderer.renderWithJumpPoints(
+        pathData,
+        intersections,
+        link.style.jumpPoints,
+        {
+          fill: 'none',
+          ...styles
+        }
+      );
+    } else {
+      // No jump points, render normal path
+      linkPathVNode = {
+        type: 'path',
+        props: {
+          d: pathData,
+          fill: 'none',
+          ...styles,
+        },
+      };
+    }
+
     const vnode: VNode = {
       type: 'g',
       key: `link-${link.id}`,
@@ -1459,64 +1643,82 @@ export class SVGRenderer implements IRenderer {
         className: 'link-group',
       },
       children: [
-        // Link path
-        {
-          type: 'path',
-          props: {
-            d: pathData,
-            fill: 'none',
-            ...styles,
-          },
-        },
-        // Arrow marker (Option 2: Visual Enhancement)
+        // Link path (with or without jump points)
+        linkPathVNode,
+        // Phase 1.1: Arrow markers using ArrowRenderer
         ...(lod !== 'low'
-          ? [
-              {
-                type: 'polygon',
-                props: {
-                  points: '0,-5 10,0 0,5',
-                  fill: styles.stroke || this.theme.colors.link.default,
-                  transform: `translate(${arrowTipPosition.x}, ${arrowTipPosition.y}) rotate(${angle})`,
-                  className: 'link-arrow',
-                },
-              } as VNode,
-            ]
+          ? (() => {
+              const arrows: VNode[] = [];
+
+              // Get arrow styles from link (with defaults)
+              const arrowHeadStyle = link.style.arrowHead || {
+                type: 'arrow',
+                size: 10,
+                filled: true,
+                color: styles.stroke || this.theme.colors.link.default
+              };
+
+              const arrowTailStyle = link.style.arrowTail;
+
+              // Render arrow head (at target end)
+              if (arrowHeadStyle && arrowHeadStyle.type !== 'none') {
+                const transform = `translate(${arrowTipPosition.x}, ${arrowTipPosition.y}) rotate(${angle})`;
+                const arrowHeadVNode = this.arrowRenderer.renderArrow(arrowHeadStyle, transform);
+                if (arrowHeadVNode) {
+                  arrows.push(arrowHeadVNode);
+                }
+              }
+
+              // Render arrow tail (at source end) if specified
+              if (arrowTailStyle && arrowTailStyle.type !== 'none') {
+                // Calculate arrow tail position and angle (at source end)
+                const tailArrowData = this.calculateArrowPositionAndAngle(link, points, false, arrowTailStyle.size || 10);
+                const tailTransform = `translate(${tailArrowData.position.x}, ${tailArrowData.position.y}) rotate(${tailArrowData.angle})`;
+                const arrowTailVNode = this.arrowRenderer.renderArrow(arrowTailStyle, tailTransform);
+                if (arrowTailVNode) {
+                  arrows.push(arrowTailVNode);
+                }
+              }
+
+              return arrows;
+            })()
           : []),
-        // Link label (Option 2: Visual Enhancement)
-        ...(lod === 'high' && label
-          ? [
-              // Label background
-              {
-                type: 'rect',
-                props: {
-                  x: labelPoint.x - 20,
-                  y: labelPoint.y - 10,
-                  width: 40,
-                  height: 20,
-                  fill: this.theme.colors.background.surface,
-                  stroke: styles.stroke || this.theme.colors.link.default,
-                  strokeWidth: 1,
-                  rx: 3,
-                  className: 'link-label-bg',
-                },
-              } as VNode,
-              // Label text
-              {
-                type: 'text',
-                props: {
-                  x: labelPoint.x,
-                  y: labelPoint.y,
-                  textContent: label,
-                  textAnchor: 'middle',
-                  dominantBaseline: 'middle',
-                  fontSize: this.theme.typography.fontSize.sm,
-                  fill: this.theme.colors.text.primary,
-                  fontWeight: this.theme.typography.fontWeight.medium,
-                  className: 'link-label',
-                  pointerEvents: 'none',
-                },
-              } as VNode,
-            ]
+        // Phase 1.2: Multiple labels using LabelRenderer
+        ...(lod === 'high'
+          ? (() => {
+              const labelVNodes: VNode[] = [];
+
+              // Render labels from link.labels array
+              if (link.labels && link.labels.length > 0) {
+                link.labels.forEach(label => {
+                  const labelVNode = this.labelRenderer.renderLabel(label, link);
+                  if (labelVNode) {
+                    labelVNodes.push(labelVNode);
+                  }
+                });
+              }
+              // Backward compatibility: support old metadata label
+              else if (label) {
+                // Convert old label format to new LinkLabel format
+                const legacyLabel = {
+                  id: 'legacy-label',
+                  text: label,
+                  position: 0.5,
+                  offset: { x: 0, y: -10 },
+                  style: {
+                    fontSize: this.theme.typography.fontSize.sm,
+                    color: this.theme.colors.text.primary,
+                    background: this.theme.colors.background.surface
+                  }
+                };
+                const labelVNode = this.labelRenderer.renderLabel(legacyLabel, link);
+                if (labelVNode) {
+                  labelVNodes.push(labelVNode);
+                }
+              }
+
+              return labelVNodes;
+            })()
           : []),
         // Phase 2: Link endpoint handles for reconnection
         ...(showHandles
@@ -1556,6 +1758,14 @@ export class SVGRenderer implements IRenderer {
                 },
               } as VNode,
             ]
+          : []),
+        // Phase 2.3a: Waypoint handles for interactive editing
+        ...(config.enableWaypointEditing && config.showWaypointHandles && isSelected && lod !== 'low'
+          ? this.waypointEditor.renderWaypointHandles(link.points, link.id)
+          : []),
+        // Phase 2.3b: Control point handles for bezier curve editing
+        ...(config.enableControlPointEditing && config.showControlPointHandles && isSelected && lod !== 'low' && link.segments && link.segments.length > 0
+          ? this.controlPointEditor.renderControlPointHandles(link.segments, link.id)
           : []),
       ],
     };
@@ -1910,6 +2120,35 @@ export class SVGRenderer implements IRenderer {
 .link-endpoint-handle:hover {
   r: 8;
   stroke-width: 3px;
+}
+
+/* Phase 2.3a: Waypoint Handles */
+.waypoint-handle {
+  cursor: move;
+  transition: all 0.2s ease;
+  pointer-events: all;
+}
+
+.waypoint-handle:hover {
+  r: 7;
+  stroke-width: 3px;
+}
+
+/* Phase 2.3b: Control Point Handles */
+.control-point-handle {
+  cursor: move;
+  transition: all 0.2s ease;
+  pointer-events: all;
+}
+
+.control-point-handle:hover {
+  r: 8;
+  stroke-width: 3px;
+}
+
+.control-line {
+  pointer-events: none;
+  transition: opacity 0.2s ease;
 }
     `.trim();
   }

@@ -40,6 +40,10 @@ export const appRoutes: Route[] = [
     loadComponent: () => import('./pages/template-builder/template-builder.component').then(m => m.TemplateBuilderComponent)
   },
   {
+    path: 'advanced-routing',
+    loadComponent: () => import('./pages/advanced-routing-demo/advanced-routing-demo.component').then(m => m.AdvancedRoutingDemoComponent)
+  },
+  {
     path: '**',
     redirectTo: ''
   }

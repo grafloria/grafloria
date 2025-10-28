@@ -68,6 +68,15 @@ export interface LinkState {
   animated?: boolean;
 }
 
+// Phase 1.3: Jump point configuration
+export interface JumpPointConfig {
+  enabled: boolean;
+  size?: number;          // Arc/gap size in pixels (default: 10)
+  style?: 'arc' | 'gap' | 'bridge';  // Visual style (default: 'arc')
+  detectMode?: 'all' | 'perpendicular' | 'threshold';  // Detection mode (default: 'all')
+  threshold?: number;     // Angle threshold for perpendicular mode (default: 45 degrees)
+}
+
 export interface LinkStyle {
   stroke?: string;
   strokeWidth?: number;
@@ -76,6 +85,8 @@ export interface LinkStyle {
   arrowHead?: ArrowStyle;
   arrowTail?: ArrowStyle;
   curvature?: number;
+  // Phase 1.3: Jump points
+  jumpPoints?: JumpPointConfig;
   // Phase 4: Advanced styling
   gradient?: LinearGradient | RadialGradient;
   pattern?: Pattern;

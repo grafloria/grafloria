@@ -6,6 +6,7 @@ import type {
   InteractionMode,
 } from '@grafloria/engine';
 import { PortModel } from '@grafloria/engine';
+import { WaypointEditor, ControlPointEditor } from '@grafloria/renderer';
 
 /**
  * Phase 3: InteractionHandlerService
@@ -43,6 +44,28 @@ export class InteractionHandlerService {
   private reconnectingEndpoint: 'source' | 'target' | null = null;
 
   /**
+   * Phase 2.3a: Waypoint editing state
+   */
+  private isDraggingWaypoint = false;
+  private editingLink: LinkModel | null = null;
+  private editingWaypointIndex: number | null = null;
+  private waypointEditor: WaypointEditor | null = null;
+  private hoveredWaypointIndex: number | null = null;
+  private hoveredWaypointLink: LinkModel | null = null;
+
+  /**
+   * Phase 2.3b: Control point editing state
+   */
+  private isDraggingControlPoint = false;
+  private editingControlPointLink: LinkModel | null = null;
+  private editingControlPointSegmentIndex: number | null = null;
+  private editingControlPointType: 'control1' | 'control2' | null = null;
+  private controlPointEditor: ControlPointEditor | null = null;
+  private hoveredControlPointSegmentIndex: number | null = null;
+  private hoveredControlPointType: 'control1' | 'control2' | null = null;
+  private hoveredControlPointLink: LinkModel | null = null;
+
+  /**
    * Phase 5: Performance optimization - debounce hover detection
    */
   private hoverDebounceTimer: any = null;
@@ -63,7 +86,34 @@ export class InteractionHandlerService {
   private portHitCache = new Map<string, { x: number; y: number; radius: number }>();
   private portHitCacheInvalidated = false;
 
-  constructor() {}
+  constructor() {
+    // Phase 2.3a: Initialize waypoint editor with default config
+    this.waypointEditor = new WaypointEditor({
+      snapToGrid: false,
+      gridSize: 20,
+      removeOnDoubleClick: true,
+      handleRadius: 5,
+      handleColor: '#3b82f6',
+      handleStrokeColor: '#ffffff',
+      minDistanceFromEndpoints: 30,
+      clickDetectionRadius: 10,
+    });
+
+    // Phase 2.3b: Initialize control point editor with default config
+    this.controlPointEditor = new ControlPointEditor({
+      snapToGrid: false,
+      gridSize: 20,
+      handleRadius: 6,
+      handleColor: '#10b981',
+      handleStrokeColor: '#ffffff',
+      controlLineColor: '#6b7280',
+      controlLineWidth: 1,
+      controlLineDash: [5, 5],
+      clickDetectionRadius: 10,
+      showControlLines: true,
+      symmetricControls: false,
+    });
+  }
 
   /**
    * Phase 5: Dispose and cleanup resources
@@ -79,6 +129,20 @@ export class InteractionHandlerService {
     this.hoveredLink = null;
     this.connectionSourcePort = null;
     this.reconnectingLink = null;
+    // Phase 2.3a: Clean up waypoint editing state
+    this.editingLink = null;
+    this.editingWaypointIndex = null;
+    this.isDraggingWaypoint = false;
+    this.hoveredWaypointIndex = null;
+    this.hoveredWaypointLink = null;
+    // Phase 2.3b: Clean up control point editing state
+    this.editingControlPointLink = null;
+    this.editingControlPointSegmentIndex = null;
+    this.editingControlPointType = null;
+    this.isDraggingControlPoint = false;
+    this.hoveredControlPointSegmentIndex = null;
+    this.hoveredControlPointType = null;
+    this.hoveredControlPointLink = null;
   }
 
   /**
@@ -172,8 +236,16 @@ export class InteractionHandlerService {
     // Update link hover state
     const allLinks = diagram.getLinks();
     allLinks.forEach((link) => {
-      const wasHovered = link.state === 'hovered';
+      const currentState = link.state;
       const isHovered = link === linkAtPosition;
+
+      // Don't override selected/highlighted states with hover
+      // Selected and highlighted links keep their state even when hovered
+      if (currentState === 'selected' || currentState === 'highlighted') {
+        return; // Keep current state, don't change to hovered
+      }
+
+      const wasHovered = currentState === 'hovered';
 
       if (wasHovered !== isHovered) {
         link.setState(isHovered ? 'hovered' : 'default');
@@ -467,18 +539,32 @@ export class InteractionHandlerService {
 
   /**
    * Phase 3: Handle link selection
+   * FIXED: Support multi-select with Ctrl key, deselect other links otherwise
    */
-  selectLink(link: LinkModel, engine: DiagramEngine): void {
+  selectLink(link: LinkModel, engine: DiagramEngine, multiSelect: boolean = false): void {
     const diagram = engine.getDiagram();
     if (!diagram) return;
 
-    // Clear other selections
-    diagram.clearSelection();
+    if (!multiSelect) {
+      // Clear node selections
+      diagram.clearSelection();
 
-    // Select the link
-    link.setState('selected');
+      // Deselect all other links
+      diagram.getLinks().forEach((l: LinkModel) => {
+        if (l.id !== link.id && l.state === 'selected') {
+          l.setState('default');
+        }
+      });
+    }
 
-    console.log('🔗 Link selected:', link.id);
+    // Toggle or select this link
+    if (multiSelect && link.state === 'selected') {
+      link.setState('default');
+      console.log('🔗 Link deselected:', link.id);
+    } else {
+      link.setState('selected');
+      console.log('🔗 Link selected:', link.id);
+    }
   }
 
   /**
@@ -500,6 +586,17 @@ export class InteractionHandlerService {
   }
 
   /**
+   * Find link at world position (public wrapper for hit testing)
+   * Used for direct link selection without requiring hover state
+   */
+  getLinkAtPosition(worldX: number, worldY: number, engine: DiagramEngine): LinkModel | null {
+    const diagram = engine.getDiagram();
+    if (!diagram) return null;
+
+    return this.findLinkAtPosition(worldX, worldY, diagram);
+  }
+
+  /**
    * Phase 3: Get current interaction state
    */
   getState() {
@@ -509,6 +606,20 @@ export class InteractionHandlerService {
       hoveredNode: this.hoveredNode,
       hoveredPort: this.hoveredPort,
       hoveredLink: this.hoveredLink,
+      // Phase 2.3a: Waypoint editing state
+      isDraggingWaypoint: this.isDraggingWaypoint,
+      editingLink: this.editingLink,
+      editingWaypointIndex: this.editingWaypointIndex,
+      hoveredWaypointIndex: this.hoveredWaypointIndex,
+      hoveredWaypointLink: this.hoveredWaypointLink,
+      // Phase 2.3b: Control point editing state
+      isDraggingControlPoint: this.isDraggingControlPoint,
+      editingControlPointLink: this.editingControlPointLink,
+      editingControlPointSegmentIndex: this.editingControlPointSegmentIndex,
+      editingControlPointType: this.editingControlPointType,
+      hoveredControlPointSegmentIndex: this.hoveredControlPointSegmentIndex,
+      hoveredControlPointType: this.hoveredControlPointType,
+      hoveredControlPointLink: this.hoveredControlPointLink,
     };
   }
 
@@ -516,7 +627,7 @@ export class InteractionHandlerService {
    * Phase 3: Check if currently interacting
    */
   isInteracting(): boolean {
-    return this.isConnecting || this.isReconnectingLink;
+    return this.isConnecting || this.isReconnectingLink || this.isDraggingWaypoint || this.isDraggingControlPoint;
   }
 
   /**
@@ -768,5 +879,318 @@ export class InteractionHandlerService {
       }
     }
     return undefined;
+  }
+
+  // ============================================================================
+  // Phase 2.3a: Waypoint Editing Methods
+  // ============================================================================
+
+  /**
+   * Hit test for waypoint handle at mouse position
+   * Returns the waypoint index if hit, null otherwise
+   */
+  hitTestWaypoint(mouseX: number, mouseY: number, link: LinkModel): number | null {
+    if (!this.waypointEditor || !link.points || link.points.length < 3) {
+      return null;
+    }
+
+    const hit = this.waypointEditor.hitTestWaypoint(mouseX, mouseY, link.points);
+    return hit ? hit.waypointIndex : null;
+  }
+
+  /**
+   * Hit test for clicking on link path (to add waypoint)
+   */
+  hitTestPath(mouseX: number, mouseY: number, link: LinkModel): boolean {
+    if (!this.waypointEditor || !link.points || link.points.length < 2) {
+      return false;
+    }
+
+    const hit = this.waypointEditor.hitTestPath(mouseX, mouseY, link.points);
+    return hit !== null;
+  }
+
+  /**
+   * Start dragging a waypoint
+   */
+  startWaypointDrag(waypointIndex: number, link: LinkModel): void {
+    this.isDraggingWaypoint = true;
+    this.editingLink = link;
+    this.editingWaypointIndex = waypointIndex;
+    console.log(`🔵 Started dragging waypoint ${waypointIndex} on link ${link.id}`);
+  }
+
+  /**
+   * Move waypoint during drag
+   */
+  moveWaypoint(worldX: number, worldY: number, engine: DiagramEngine): boolean {
+    if (!this.isDraggingWaypoint || !this.editingLink || this.editingWaypointIndex === null || !this.waypointEditor) {
+      return false;
+    }
+
+    const newPosition = { x: worldX, y: worldY };
+    const newPoints = this.waypointEditor.moveWaypoint(
+      this.editingWaypointIndex,
+      newPosition,
+      this.editingLink.points
+    );
+
+    if (newPoints) {
+      this.editingLink.setPoints(newPoints);
+      console.log(`🔵 Moved waypoint ${this.editingWaypointIndex} to (${worldX.toFixed(1)}, ${worldY.toFixed(1)})`);
+      return true;
+    }
+
+    return false;
+  }
+
+  /**
+   * End waypoint drag
+   */
+  endWaypointDrag(): void {
+    if (this.isDraggingWaypoint) {
+      console.log(`🔵 Ended dragging waypoint ${this.editingWaypointIndex} on link ${this.editingLink?.id}`);
+    }
+    this.isDraggingWaypoint = false;
+    this.editingLink = null;
+    this.editingWaypointIndex = null;
+  }
+
+  /**
+   * Add waypoint at click position on path
+   */
+  addWaypoint(clickX: number, clickY: number, link: LinkModel): boolean {
+    if (!this.waypointEditor) {
+      return false;
+    }
+
+    const result = this.waypointEditor.addWaypointAtPosition(clickX, clickY, link.points);
+
+    if (result) {
+      link.setPoints(result.newPoints);
+      console.log(`🟢 Added waypoint at index ${result.waypointIndex} on link ${link.id}`);
+      return true;
+    }
+
+    return false;
+  }
+
+  /**
+   * Remove waypoint at index
+   */
+  removeWaypoint(waypointIndex: number, link: LinkModel): boolean {
+    if (!this.waypointEditor) {
+      return false;
+    }
+
+    const newPoints = this.waypointEditor.removeWaypoint(waypointIndex, link.points);
+
+    if (newPoints) {
+      link.setPoints(newPoints);
+      console.log(`🔴 Removed waypoint at index ${waypointIndex} from link ${link.id}`);
+      return true;
+    }
+
+    return false;
+  }
+
+  /**
+   * Update waypoint editor configuration
+   */
+  updateWaypointEditorConfig(config: Partial<any>): void {
+    if (this.waypointEditor) {
+      this.waypointEditor.updateConfig(config);
+    }
+  }
+
+  /**
+   * Synchronize editor configs with engine interaction config
+   * ADDED: Call this when engine config changes to update editor visuals
+   */
+  syncWithEngineConfig(engine: DiagramEngine): void {
+    const config = engine.getInteractionConfig();
+
+    if (config.waypointEditor) {
+      this.updateWaypointEditorConfig(config.waypointEditor);
+    }
+
+    if (config.controlPointEditor) {
+      this.updateControlPointEditorConfig(config.controlPointEditor);
+    }
+  }
+
+  /**
+   * Update hovered waypoint (for Delete key support)
+   * Call this from mousemove to track which waypoint is under cursor
+   */
+  updateHoveredWaypoint(worldX: number, worldY: number, link: LinkModel | null): void {
+    if (!link || !this.waypointEditor) {
+      this.hoveredWaypointIndex = null;
+      this.hoveredWaypointLink = null;
+      return;
+    }
+
+    const waypointIndex = this.hitTestWaypoint(worldX, worldY, link);
+    this.hoveredWaypointIndex = waypointIndex;
+    this.hoveredWaypointLink = waypointIndex !== null ? link : null;
+  }
+
+  /**
+   * Delete currently hovered waypoint (for Delete key)
+   */
+  deleteHoveredWaypoint(): boolean {
+    if (this.hoveredWaypointIndex !== null && this.hoveredWaypointLink) {
+      const removed = this.removeWaypoint(this.hoveredWaypointIndex, this.hoveredWaypointLink);
+      if (removed) {
+        this.hoveredWaypointIndex = null;
+        this.hoveredWaypointLink = null;
+        return true;
+      }
+    }
+    return false;
+  }
+
+  // ============================================================================
+  // Phase 2.3b: Control Point Editing Methods
+  // ============================================================================
+
+  /**
+   * Hit test for control point handle at mouse position
+   * Returns the control point info if hit, null otherwise
+   */
+  hitTestControlPoint(
+    mouseX: number,
+    mouseY: number,
+    link: LinkModel
+  ): { segmentIndex: number; controlType: 'control1' | 'control2' } | null {
+    if (!this.controlPointEditor || !link.segments || link.segments.length === 0) {
+      return null;
+    }
+
+    const hit = this.controlPointEditor.hitTestControlPoint(mouseX, mouseY, link.segments);
+    if (hit) {
+      return {
+        segmentIndex: hit.segmentIndex,
+        controlType: hit.controlType,
+      };
+    }
+    return null;
+  }
+
+  /**
+   * Start dragging a control point
+   */
+  startControlPointDrag(
+    segmentIndex: number,
+    controlType: 'control1' | 'control2',
+    link: LinkModel
+  ): void {
+    this.isDraggingControlPoint = true;
+    this.editingControlPointLink = link;
+    this.editingControlPointSegmentIndex = segmentIndex;
+    this.editingControlPointType = controlType;
+    console.log(`🟢 Started dragging ${controlType} of segment ${segmentIndex} on link ${link.id}`);
+  }
+
+  /**
+   * Move control point during drag
+   */
+  moveControlPoint(worldX: number, worldY: number, engine: DiagramEngine): boolean {
+    if (
+      !this.isDraggingControlPoint ||
+      !this.editingControlPointLink ||
+      this.editingControlPointSegmentIndex === null ||
+      !this.editingControlPointType ||
+      !this.controlPointEditor
+    ) {
+      return false;
+    }
+
+    const newPosition = { x: worldX, y: worldY };
+    const newSegments = this.controlPointEditor.moveControlPoint(
+      this.editingControlPointSegmentIndex,
+      this.editingControlPointType,
+      newPosition,
+      this.editingControlPointLink.segments
+    );
+
+    if (newSegments) {
+      this.editingControlPointLink.segments = newSegments;
+      // Mark link as dirty to trigger re-render with updated segments
+      this.editingControlPointLink.markDirty();
+      console.log(
+        `🟢 Moved ${this.editingControlPointType} of segment ${this.editingControlPointSegmentIndex} to (${worldX.toFixed(1)}, ${worldY.toFixed(1)})`
+      );
+      return true;
+    }
+
+    return false;
+  }
+
+  /**
+   * End control point drag
+   */
+  endControlPointDrag(): void {
+    if (this.isDraggingControlPoint) {
+      console.log(
+        `🟢 Ended dragging ${this.editingControlPointType} of segment ${this.editingControlPointSegmentIndex} on link ${this.editingControlPointLink?.id}`
+      );
+    }
+    this.isDraggingControlPoint = false;
+    this.editingControlPointLink = null;
+    this.editingControlPointSegmentIndex = null;
+    this.editingControlPointType = null;
+  }
+
+  /**
+   * Update control point editor configuration
+   */
+  updateControlPointEditorConfig(config: Partial<any>): void {
+    if (this.controlPointEditor) {
+      this.controlPointEditor.updateConfig(config);
+    }
+  }
+
+  /**
+   * Update hovered control point (for Delete key support)
+   * Call this from mousemove to track which control point is under cursor
+   */
+  updateHoveredControlPoint(worldX: number, worldY: number, link: LinkModel | null): void {
+    if (!link || !this.controlPointEditor) {
+      this.hoveredControlPointSegmentIndex = null;
+      this.hoveredControlPointType = null;
+      this.hoveredControlPointLink = null;
+      return;
+    }
+
+    const hit = this.hitTestControlPoint(worldX, worldY, link);
+    if (hit) {
+      this.hoveredControlPointSegmentIndex = hit.segmentIndex;
+      this.hoveredControlPointType = hit.controlType;
+      this.hoveredControlPointLink = link;
+    } else {
+      this.hoveredControlPointSegmentIndex = null;
+      this.hoveredControlPointType = null;
+      this.hoveredControlPointLink = null;
+    }
+  }
+
+  /**
+   * Reset control point to auto-generated position (for Delete key)
+   * This removes custom control point adjustment, reverting to default bezier
+   */
+  resetHoveredControlPoint(): boolean {
+    if (
+      this.hoveredControlPointSegmentIndex !== null &&
+      this.hoveredControlPointType &&
+      this.hoveredControlPointLink
+    ) {
+      // For now, we don't support "deleting" control points
+      // Control points are intrinsic to bezier curves
+      // User would need to change pathType instead
+      console.log('⚠️ Control points cannot be deleted, only moved');
+      return false;
+    }
+    return false;
   }
 }

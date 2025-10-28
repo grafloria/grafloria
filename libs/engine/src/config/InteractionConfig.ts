@@ -132,6 +132,143 @@ export interface InteractionConfig {
    * Show animated dots on connection preview
    */
   animateConnectionPreview: boolean;
+
+  /**
+   * Phase 2.3: Enable waypoint editing on links
+   * Allow users to add/move/remove waypoints by clicking/dragging link paths
+   */
+  enableWaypointEditing: boolean;
+
+  /**
+   * Phase 2.3: Show waypoint handles on selected links
+   */
+  showWaypointHandles: boolean;
+
+  /**
+   * Phase 2.3: Waypoint editor configuration
+   */
+  waypointEditor?: WaypointEditorConfig;
+
+  /**
+   * Phase 2.3: Enable control point editing on bezier curves
+   * Allow users to adjust bezier control points by dragging handles
+   */
+  enableControlPointEditing: boolean;
+
+  /**
+   * Phase 2.3: Show control point handles on selected bezier links
+   */
+  showControlPointHandles: boolean;
+
+  /**
+   * Phase 2.3: Control point editor configuration
+   */
+  controlPointEditor?: ControlPointEditorConfig;
+}
+
+/**
+ * Phase 2.3: Waypoint editor configuration
+ */
+export interface WaypointEditorConfig {
+  /**
+   * Snap waypoints to grid
+   */
+  snapToGrid: boolean;
+
+  /**
+   * Grid size for snapping (in pixels)
+   */
+  gridSize: number;
+
+  /**
+   * Remove waypoint on double-click
+   */
+  removeOnDoubleClick: boolean;
+
+  /**
+   * Waypoint handle radius (in pixels)
+   */
+  handleRadius: number;
+
+  /**
+   * Waypoint handle color
+   */
+  handleColor: string;
+
+  /**
+   * Waypoint handle stroke color
+   */
+  handleStrokeColor: string;
+
+  /**
+   * Minimum distance from endpoints to add waypoint (in pixels)
+   */
+  minDistanceFromEndpoints: number;
+
+  /**
+   * Maximum distance from path to detect click (in pixels)
+   */
+  clickDetectionRadius: number;
+}
+
+/**
+ * Phase 2.3: Control point editor configuration
+ */
+export interface ControlPointEditorConfig {
+  /**
+   * Snap control points to grid
+   */
+  snapToGrid: boolean;
+
+  /**
+   * Grid size for snapping (in pixels)
+   */
+  gridSize: number;
+
+  /**
+   * Control point handle radius (in pixels)
+   */
+  handleRadius: number;
+
+  /**
+   * Control point handle color
+   */
+  handleColor: string;
+
+  /**
+   * Control point handle stroke color
+   */
+  handleStrokeColor: string;
+
+  /**
+   * Control line color (line from anchor to control point)
+   */
+  controlLineColor: string;
+
+  /**
+   * Control line stroke width
+   */
+  controlLineWidth: number;
+
+  /**
+   * Control line dash pattern (e.g., [5, 5] for dashed)
+   */
+  controlLineDash: number[];
+
+  /**
+   * Maximum distance from control handle to detect click (in pixels)
+   */
+  clickDetectionRadius: number;
+
+  /**
+   * Show control lines connecting anchors to control points
+   */
+  showControlLines: boolean;
+
+  /**
+   * Auto-generate symmetric control points (mirror on both sides)
+   */
+  symmetricControls: boolean;
 }
 
 /**
@@ -151,6 +288,35 @@ export const DEFAULT_INTERACTION_CONFIG: InteractionConfig = {
   enableSmartAutoConnect: true,
   highlightValidTargets: true,
   animateConnectionPreview: true,
+  // Phase 2.3: Waypoint editing defaults
+  enableWaypointEditing: false,  // Disabled by default for backward compatibility
+  showWaypointHandles: true,
+  waypointEditor: {
+    snapToGrid: false,
+    gridSize: 20,
+    removeOnDoubleClick: true,
+    handleRadius: 5,
+    handleColor: '#3b82f6',
+    handleStrokeColor: '#ffffff',
+    minDistanceFromEndpoints: 30,
+    clickDetectionRadius: 10,
+  },
+  // Phase 2.3: Control point editing defaults
+  enableControlPointEditing: false,  // Disabled by default for backward compatibility
+  showControlPointHandles: true,
+  controlPointEditor: {
+    snapToGrid: false,
+    gridSize: 20,
+    handleRadius: 6,
+    handleColor: '#10b981',
+    handleStrokeColor: '#ffffff',
+    controlLineColor: '#6b7280',
+    controlLineWidth: 1,
+    controlLineDash: [5, 5],
+    clickDetectionRadius: 10,
+    showControlLines: true,
+    symmetricControls: false,
+  },
 };
 
 /**

@@ -494,6 +494,8 @@ export class DiagramCanvasComponent implements OnInit, AfterViewInit, OnChanges,
     const eventBus = this.engine['eventBus']; // Access private eventBus
     if (eventBus) {
       eventBus.on('config:interaction-changed', () => {
+        // Sync editor configs (handle colors, etc.) with engine config
+        this.interactionHandler.syncWithEngineConfig(this.engine);
         this.renderDiagram();
         this.cdr.detectChanges();
       });
@@ -677,11 +679,60 @@ export class DiagramCanvasComponent implements OnInit, AfterViewInit, OnChanges,
         return;
       }
 
+      // Phase 2.3b: Check for control point click (if control point editing enabled and link is selected)
+      const config = this.engine.getInteractionConfig();
+      if (config.enableControlPointEditing && interactionState.hoveredLink && interactionState.hoveredLink.state === 'selected') {
+        // Check if clicking on a control point handle
+        const controlPointHit = this.interactionHandler.hitTestControlPoint(worldX, worldY, interactionState.hoveredLink);
+
+        if (controlPointHit) {
+          event.preventDefault();
+          console.log('🟢 Control point handle clicked:', controlPointHit.controlType, 'of segment', controlPointHit.segmentIndex, 'on link', interactionState.hoveredLink.id);
+          this.interactionHandler.startControlPointDrag(controlPointHit.segmentIndex, controlPointHit.controlType, interactionState.hoveredLink);
+          this.cdr.markForCheck();
+          return;
+        }
+      }
+
+      // Phase 2.3a: Check for waypoint click (if waypoint editing enabled and link is selected)
+      if (config.enableWaypointEditing && interactionState.hoveredLink && interactionState.hoveredLink.state === 'selected') {
+        // Check if clicking on a waypoint handle
+        const waypointIndex = this.interactionHandler.hitTestWaypoint(worldX, worldY, interactionState.hoveredLink);
+
+        if (waypointIndex !== null) {
+          event.preventDefault();
+          console.log('🔵 Waypoint handle clicked:', waypointIndex, 'on link', interactionState.hoveredLink.id);
+          this.interactionHandler.startWaypointDrag(waypointIndex, interactionState.hoveredLink);
+          this.cdr.markForCheck();
+          return;
+        }
+
+        // Check if clicking on link path (to add waypoint)
+        const hitPath = this.interactionHandler.hitTestPath(worldX, worldY, interactionState.hoveredLink);
+        if (hitPath) {
+          event.preventDefault();
+          console.log('🟢 Link path clicked, adding waypoint on link', interactionState.hoveredLink.id);
+          const added = this.interactionHandler.addWaypoint(worldX, worldY, interactionState.hoveredLink);
+          if (added) {
+            this.renderDiagram();
+            this.cdr.markForCheck();
+          }
+          return;
+        }
+      }
+
       // Phase 3: Check for link click (for selection)
-      if (interactionState.hoveredLink) {
+      // FIXED: Use direct hit testing if hover state not available (e.g., on initial load)
+      let linkToSelect = interactionState.hoveredLink;
+      if (!linkToSelect) {
+        linkToSelect = this.interactionHandler.getLinkAtPosition(worldX, worldY, this.engine);
+      }
+
+      if (linkToSelect) {
         event.preventDefault();
-        console.log('🖱️ Link clicked:', interactionState.hoveredLink.id);
-        this.interactionHandler.selectLink(interactionState.hoveredLink, this.engine);
+        const multiSelect = event.ctrlKey || event.metaKey;
+        console.log('🖱️ Link clicked:', linkToSelect.id, multiSelect ? '(multi-select)' : '');
+        this.interactionHandler.selectLink(linkToSelect, this.engine, multiSelect);
         this.renderDiagram();
         this.cdr.markForCheck();
         return;
@@ -733,8 +784,16 @@ export class DiagramCanvasComponent implements OnInit, AfterViewInit, OnChanges,
           }
         }
       } else {
-        // Clicked on empty space - always clear selection
+        // Clicked on empty space - always clear all selections
         diagram.clearSelection();
+
+        // Also deselect all links
+        diagram.getLinks().forEach((link: any) => {
+          if (link.state === 'selected') {
+            link.setState('default');
+          }
+        });
+
         // Force immediate render to clear selection highlights instantly
         this.renderDiagram();
       }
@@ -814,6 +873,43 @@ export class DiagramCanvasComponent implements OnInit, AfterViewInit, OnChanges,
       return;
     }
 
+    // Phase 2.3b: Handle control point dragging
+    const interactionState = this.interactionHandler.getState();
+    if (interactionState.isDraggingControlPoint) {
+      // Convert to world coordinates
+      const rect = this.containerRef.nativeElement.getBoundingClientRect();
+      const clientX = event.clientX - rect.left;
+      const clientY = event.clientY - rect.top;
+      const worldX = this.viewport.x + (clientX / this.zoom);
+      const worldY = this.viewport.y + (clientY / this.zoom);
+
+      // Move control point to new position
+      const moved = this.interactionHandler.moveControlPoint(worldX, worldY, this.engine);
+      if (moved) {
+        this.renderDiagram();
+        this.cdr.markForCheck();
+      }
+      return;
+    }
+
+    // Phase 2.3a: Handle waypoint dragging
+    if (interactionState.isDraggingWaypoint) {
+      // Convert to world coordinates
+      const rect = this.containerRef.nativeElement.getBoundingClientRect();
+      const clientX = event.clientX - rect.left;
+      const clientY = event.clientY - rect.top;
+      const worldX = this.viewport.x + (clientX / this.zoom);
+      const worldY = this.viewport.y + (clientY / this.zoom);
+
+      // Move waypoint to new position
+      const moved = this.interactionHandler.moveWaypoint(worldX, worldY, this.engine);
+      if (moved) {
+        this.renderDiagram();
+        this.cdr.markForCheck();
+      }
+      return;
+    }
+
     // Phase 3: Handle hover detection and connection drag
     if (!this.spaceKeyPressed) {
       // Convert client coordinates to world coordinates
@@ -830,6 +926,23 @@ export class DiagramCanvasComponent implements OnInit, AfterViewInit, OnChanges,
       // Handle connection drag update
       if (this.interactionHandler.getState().isConnecting) {
         needsRender = this.interactionHandler.handleConnectionDrag(worldX, worldY, this.engine) || needsRender;
+      }
+
+      // Phase 2.3a: Update hovered waypoint for Delete key support
+      const config = this.engine.getInteractionConfig();
+      if (config.enableWaypointEditing) {
+        const state = this.interactionHandler.getState();
+        // Only track waypoint hover on selected links
+        const selectedLink = state.hoveredLink && state.hoveredLink.state === 'selected' ? state.hoveredLink : null;
+        this.interactionHandler.updateHoveredWaypoint(worldX, worldY, selectedLink);
+      }
+
+      // Phase 2.3b: Update hovered control point for Delete key support
+      if (config.enableControlPointEditing) {
+        const state = this.interactionHandler.getState();
+        // Only track control point hover on selected links with segments
+        const selectedLink = state.hoveredLink && state.hoveredLink.state === 'selected' ? state.hoveredLink : null;
+        this.interactionHandler.updateHoveredControlPoint(worldX, worldY, selectedLink);
       }
 
       // Update cursor based on interaction state
@@ -852,8 +965,26 @@ export class DiagramCanvasComponent implements OnInit, AfterViewInit, OnChanges,
   @HostListener('mouseup', ['$event'])
   onMouseUp(event: MouseEvent): void {
     if (event.button === 1 || event.button === 0) {
-      // Phase 3: Complete connection if in progress
+      // Phase 2.3b: End control point drag if in progress
       const interactionState = this.interactionHandler.getState();
+      if (interactionState.isDraggingControlPoint) {
+        event.preventDefault();
+        this.interactionHandler.endControlPointDrag();
+        this.renderDiagram();
+        this.cdr.markForCheck();
+        return;
+      }
+
+      // Phase 2.3a: End waypoint drag if in progress
+      if (interactionState.isDraggingWaypoint) {
+        event.preventDefault();
+        this.interactionHandler.endWaypointDrag();
+        this.renderDiagram();
+        this.cdr.markForCheck();
+        return;
+      }
+
+      // Phase 3: Complete connection if in progress
       if (interactionState.isConnecting) {
         event.preventDefault();
         const success = this.interactionHandler.completeConnection(this.engine);
@@ -984,7 +1115,7 @@ export class DiagramCanvasComponent implements OnInit, AfterViewInit, OnChanges,
       return;
     }
 
-    // Handle Delete key (Phase 3: Also delete links)
+    // Handle Delete key (Phase 3: Also delete links, Phase 2.3a: Also delete waypoints)
     if (event.key === 'Delete' || event.key === 'Backspace') {
       // Don't delete if user is typing in an input field
       const target = event.target as HTMLElement;
@@ -992,7 +1123,20 @@ export class DiagramCanvasComponent implements OnInit, AfterViewInit, OnChanges,
         return;
       }
 
-      // Try deleting selected link first
+      // Phase 2.3a: Try deleting hovered waypoint first (highest priority)
+      const config = this.engine.getInteractionConfig();
+      if (config.enableWaypointEditing) {
+        const waypointDeleted = this.interactionHandler.deleteHoveredWaypoint();
+        if (waypointDeleted) {
+          event.preventDefault();
+          console.log('🗑️ Deleted waypoint');
+          this.renderDiagram();
+          this.cdr.markForCheck();
+          return;
+        }
+      }
+
+      // Try deleting selected link
       const linkDeleted = this.interactionHandler.deleteSelectedLink(this.engine);
       if (linkDeleted) {
         event.preventDefault();

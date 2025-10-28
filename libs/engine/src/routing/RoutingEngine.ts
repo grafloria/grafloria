@@ -8,6 +8,7 @@ import type {
   RoutingAlgorithm,
 } from './types';
 import { ObstacleMap } from './ObstacleMap';
+import { PathSimplifier } from './PathSimplifier'; // Phase 2.2
 import { StraightRouter } from './algorithms/StraightRouter';
 import { OrthogonalRouter } from './algorithms/OrthogonalRouter';
 import { AStarRouter } from './algorithms/AStarRouter';
@@ -155,11 +156,15 @@ export class RoutingEngine {
   private globalObstacles: Obstacle[] = []; // Simple array to avoid huge spatial queries
   private routeCache: LRUCache<string, RoutedPath | null>; // Phase 5.3: LRU cache prevents unbounded growth
   private defaultAlgorithm: RoutingAlgorithm = 'straight';
+  private pathSimplifier: PathSimplifier; // Phase 2.2: Path simplification
 
   constructor() {
     // Phase 5.3: Initialize LRU cache with capacity of 1000 routes
     // This prevents unbounded memory growth while maintaining good hit rate
     this.routeCache = new LRUCache<string, RoutedPath | null>(1000);
+
+    // Phase 2.2: Initialize path simplifier
+    this.pathSimplifier = new PathSimplifier();
 
     // Register built-in routers
     this.registerRouter('straight', new StraightRouter());
@@ -332,7 +337,39 @@ export class RoutingEngine {
     };
 
     // Perform routing
-    const path = router.route(enhancedRequest);
+    let path = router.route(enhancedRequest);
+
+    // Phase 2.2: Apply path simplification if enabled
+    if (path && request.options?.simplifyPath && path.points.length > 2) {
+      const epsilon = request.options.simplificationEpsilon ?? 1.0;
+      const simplifiedPoints = this.pathSimplifier.simplify(path.points, epsilon);
+
+      // Recalculate path metrics after simplification
+      let totalLength = 0;
+      let bendCount = 0;
+      for (let i = 0; i < simplifiedPoints.length - 1; i++) {
+        const dx = simplifiedPoints[i + 1].x - simplifiedPoints[i].x;
+        const dy = simplifiedPoints[i + 1].y - simplifiedPoints[i].y;
+        totalLength += Math.sqrt(dx * dx + dy * dy);
+
+        // Count bends (direction changes)
+        if (i > 0) {
+          const prevDx = simplifiedPoints[i].x - simplifiedPoints[i - 1].x;
+          const prevDy = simplifiedPoints[i].y - simplifiedPoints[i - 1].y;
+          if (Math.abs(dx - prevDx) > 0.01 || Math.abs(dy - prevDy) > 0.01) {
+            bendCount++;
+          }
+        }
+      }
+
+      // Create new path with simplified points
+      path = {
+        ...path,
+        points: simplifiedPoints,
+        totalLength,
+        bendCount,
+      };
+    }
 
     // Cache result
     this.routeCache.set(cacheKey, path);
@@ -367,11 +404,14 @@ export class RoutingEngine {
    */
   private getCacheKey(request: RouteRequest): string {
     const algo = request.options?.algorithm ?? this.defaultAlgorithm;
+    const simplify = request.options?.simplifyPath ?? false;
+    const epsilon = request.options?.simplificationEpsilon ?? 1.0;
     const obstacleIds = (request.obstacles ?? [])
       .map((o) => o.id)
       .sort()
       .join(',');
 
-    return `${request.start.x},${request.start.y}|${request.end.x},${request.end.y}|${algo}|${obstacleIds}`;
+    // Phase 2.2: Include simplification options in cache key to prevent incorrect cache hits
+    return `${request.start.x},${request.start.y}|${request.end.x},${request.end.y}|${algo}|${obstacleIds}|${simplify}|${epsilon}`;
   }
 }
