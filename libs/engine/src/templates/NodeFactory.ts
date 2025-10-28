@@ -189,6 +189,11 @@ export class NodeFactory {
    * Create ports based on template configuration
    */
   private createPorts(node: NodeModel, structure: NodeStructureDefinition): void {
+    // Store ports configuration in metadata for HTML layer rendering
+    if (structure.ports) {
+      node.setMetadata('portsConfig', structure.ports);
+    }
+
     // If no port configuration, keep default 4 ports
     if (!structure.ports) {
       return;
@@ -226,6 +231,10 @@ export class NodeFactory {
           if (structure.ports?.rendering) {
             (port as any).renderingConfig = structure.ports.rendering;
           }
+
+          // Store port visibility for HTML layer rendering
+          const visibility = sideConfig.visibility || structure.ports?.defaultVisibility || 'always';
+          port.setMetadata('visibility', visibility);
 
           node.addPort(port);
         }

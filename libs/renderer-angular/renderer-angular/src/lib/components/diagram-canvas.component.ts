@@ -28,6 +28,7 @@ import { InteractionHandlerService } from '../services/interaction-handler.servi
 import { ComponentRendererService } from '../services/component-renderer.service';
 import { HandleRegistryService } from '../services/handle-registry.service';
 import { HtmlNodeRendererDirective } from '../directives/html-node-renderer.directive';
+import { GrafloriaHandleDirective } from '../directives/grafloria-handle.directive';
 
 /**
  * DiagramCanvasComponent
@@ -48,7 +49,7 @@ import { HtmlNodeRendererDirective } from '../directives/html-node-renderer.dire
 @Component({
   selector: 'grafloria-diagram-canvas',
   standalone: true,
-  imports: [CommonModule, HtmlNodeRendererDirective],
+  imports: [CommonModule, HtmlNodeRendererDirective, GrafloriaHandleDirective],
   templateUrl: './diagram-canvas.component.html',
   styleUrls: ['./diagram-canvas.component.css'],
   changeDetection: ChangeDetectionStrategy.OnPush,
@@ -1280,6 +1281,48 @@ export class DiagramCanvasComponent implements OnInit, AfterViewInit, OnChanges,
     }
 
     return y;
+  }
+
+  /**
+   * Check if a port should be rendered as an HTML handle
+   * Respects port visibility settings and template configuration
+   */
+  shouldRenderPort(port: PortModel, node: NodeModel): boolean {
+    // Check if node has ports enabled via template metadata
+    const portsConfig = node.getMetadata('portsConfig');
+    if (portsConfig && portsConfig.enabled === false) {
+      return false;
+    }
+
+    // Check port visibility (defaultVisibility or port-specific visibility)
+    const defaultVisibility = portsConfig?.defaultVisibility || 'on-hover';
+    const portVisibility = port.getMetadata('visibility') || defaultVisibility;
+
+    // For now, always show ports that are explicitly enabled
+    // TODO: Implement on-hover visibility when interaction system is enhanced
+    return portVisibility === 'always' || portVisibility === 'on-hover';
+  }
+
+  /**
+   * Get port position CSS value for top or left
+   * Positions ports at the center of each edge
+   */
+  getPortPosition(port: PortModel, node: NodeModel, axis: 'top' | 'left'): string {
+    const side = port.side;
+
+    if (axis === 'top') {
+      // Vertical positioning
+      if (side === 'top') return '0px';
+      if (side === 'bottom') return '100%';
+      if (side === 'left' || side === 'right') return '50%'; // Center vertically for left/right ports
+    } else {
+      // Horizontal positioning
+      if (side === 'left') return '0px';
+      if (side === 'right') return '100%';
+      if (side === 'top' || side === 'bottom') return '50%'; // Center horizontally for top/bottom ports
+    }
+
+    return '50%'; // Default to center
   }
 
   /**
