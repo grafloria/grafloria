@@ -236,8 +236,16 @@ export class InteractionHandlerService {
     // Update link hover state
     const allLinks = diagram.getLinks();
     allLinks.forEach((link) => {
-      const wasHovered = link.state === 'hovered';
+      const currentState = link.state;
       const isHovered = link === linkAtPosition;
+
+      // Don't override selected/highlighted states with hover
+      // Selected and highlighted links keep their state even when hovered
+      if (currentState === 'selected' || currentState === 'highlighted') {
+        return; // Keep current state, don't change to hovered
+      }
+
+      const wasHovered = currentState === 'hovered';
 
       if (wasHovered !== isHovered) {
         link.setState(isHovered ? 'hovered' : 'default');
