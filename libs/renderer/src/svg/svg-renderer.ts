@@ -15,6 +15,10 @@ import { ArrowRenderer } from './ArrowRenderer';
 // Phase 1.2: Label rendering
 import { LabelRenderer } from './LabelRenderer';
 
+// Phase 1.3: Jump point rendering
+import { JumpPointDetector } from './JumpPointDetector';
+import { JumpPointRenderer } from './JumpPointRenderer';
+
 // LOD Level type (matches engine's LODLevel)
 type LODLevel = 'high' | 'medium' | 'low';
 
@@ -41,6 +45,10 @@ export class SVGRenderer implements IRenderer {
 
   // Phase 1.2: Label rendering
   private labelRenderer: LabelRenderer;
+
+  // Phase 1.3: Jump point rendering
+  private jumpPointDetector: JumpPointDetector;
+  private jumpPointRenderer: JumpPointRenderer;
 
   // Performance tracking
   private lastRenderTime = 0;
@@ -69,6 +77,10 @@ export class SVGRenderer implements IRenderer {
 
     // Phase 1.2: Initialize label renderer
     this.labelRenderer = new LabelRenderer();
+
+    // Phase 1.3: Initialize jump point detector and renderer
+    this.jumpPointDetector = new JumpPointDetector();
+    this.jumpPointRenderer = new JumpPointRenderer();
 
     // Inject theme CSS if in CSS mode
     if (this.config.useCSSMode) {
@@ -1525,6 +1537,44 @@ export class SVGRenderer implements IRenderer {
       isSelected &&
       lod !== 'low';
 
+    // Phase 1.3: Apply jump points if enabled
+    let linkPathVNode: VNode;
+    if (link.style.jumpPoints?.enabled) {
+      // Get all other links for intersection detection
+      const diagram = this.engine.getDiagram();
+      const allLinks = diagram ? diagram.getLinks() : [];
+      const otherLinks = allLinks.filter(l => l.id !== link.id);
+
+      // Detect intersections
+      const intersections = this.jumpPointDetector.detectIntersections(
+        { id: link.id, points: link.points },
+        otherLinks.map(l => ({ id: l.id, points: l.points })),
+        link.style.jumpPoints.detectMode,
+        link.style.jumpPoints.threshold
+      );
+
+      // Render with jump points
+      linkPathVNode = this.jumpPointRenderer.renderWithJumpPoints(
+        pathData,
+        intersections,
+        link.style.jumpPoints,
+        {
+          fill: 'none',
+          ...styles
+        }
+      );
+    } else {
+      // No jump points, render normal path
+      linkPathVNode = {
+        type: 'path',
+        props: {
+          d: pathData,
+          fill: 'none',
+          ...styles,
+        },
+      };
+    }
+
     const vnode: VNode = {
       type: 'g',
       key: `link-${link.id}`,
@@ -1532,15 +1582,8 @@ export class SVGRenderer implements IRenderer {
         className: 'link-group',
       },
       children: [
-        // Link path
-        {
-          type: 'path',
-          props: {
-            d: pathData,
-            fill: 'none',
-            ...styles,
-          },
-        },
+        // Link path (with or without jump points)
+        linkPathVNode,
         // Phase 1.1: Arrow markers using ArrowRenderer
         ...(lod !== 'low'
           ? (() => {
