@@ -205,12 +205,54 @@
   font-weight: 600;
 }
 
-.routing-section {
+.routing-section,
+.line-rendering-section {
   background: #fff;
   padding: 16px;
   border-radius: 8px;
   margin-bottom: 20px;
   box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05);
+}
+
+.section-description {
+  font-size: 12px;
+  color: #6c757d;
+  margin: -10px 0 16px 0;
+  font-style: italic;
+}
+
+.algorithm-description {
+  display: block;
+  font-size: 11px;
+  color: #6c757d;
+  margin-top: 4px;
+  padding-left: 42px;
+  line-height: 1.4;
+}
+
+.incompatible-note {
+  color: #dc3545;
+  font-weight: 600;
+}
+
+/* Disabled algorithm option */
+.algorithm-label.disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+  background: #f8f9fa;
+}
+
+.algorithm-label.disabled:hover {
+  border-color: #e9ecef;
+  background: #f8f9fa;
+}
+
+.algorithm-label.disabled input[type="radio"] {
+  cursor: not-allowed;
+}
+
+.algorithm-label.disabled .algorithm-name {
+  color: #adb5bd;
 }
 
 /* Range Inputs */
