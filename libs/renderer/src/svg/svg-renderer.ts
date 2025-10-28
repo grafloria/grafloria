@@ -360,8 +360,33 @@ export class SVGRenderer implements IRenderer {
     if (routedPath) {
       pathData = this.convertRoutedPathToSVG(routedPath, pathType);
     } else {
-      // Fallback to simple straight line
-      pathData = `M ${sourcePos.x} ${sourcePos.y} L ${targetPos.x} ${targetPos.y}`;
+      // Phase 0.1: Fallback strategy for connection preview
+      console.warn('Primary routing failed for connection preview, trying fallback');
+
+      // Fallback Strategy 1: Try with reduced constraints
+      const fallbackPath = routingEngine.route({
+        start: sourcePos,
+        end: targetPos,
+        sourceDirection,
+        targetDirection,
+        obstacles,
+        options: {
+          algorithm: 'orthogonal',  // Force orthogonal as safest fallback
+          avoidObstacles: true,
+          obstacleMargin: 5,         // Reduced from 20px
+          gridSize: 20,              // Coarser grid
+          maxIterations: 1000        // Faster computation
+        }
+      });
+
+      if (fallbackPath) {
+        pathData = this.convertRoutedPathToSVG(fallbackPath, pathType);
+        console.log('✅ Fallback routing succeeded for connection preview');
+      } else {
+        // Fallback Strategy 2: Hide invalid preview (don't show crossing line)
+        console.warn('All routing strategies failed for connection preview - hiding invalid preview');
+        return null;
+      }
     }
 
     // Determine line color based on validity
@@ -1407,9 +1432,39 @@ export class SVGRenderer implements IRenderer {
         points = routedPath.points;
         pathData = this.convertRoutedPathToSVG(routedPath, link.pathType);
       } else {
-        // Fallback to simple straight line
-        points = [endpoints.start, endpoints.end];
-        pathData = `M ${endpoints.start.x} ${endpoints.start.y} L ${endpoints.end.x} ${endpoints.end.y}`;
+        // Phase 0.1: Fallback strategy to avoid crossing obstacles
+        console.warn(`Primary routing failed for link ${link.id}, trying fallback with reduced constraints`);
+
+        // Fallback Strategy 1: Try with reduced margin and coarser grid
+        const fallbackPath = routingEngine.route({
+          start: endpoints.start,
+          end: endpoints.end,
+          sourceDirection: endpoints.sourceDirection,
+          targetDirection: endpoints.targetDirection,
+          obstacles,
+          options: {
+            algorithm: 'orthogonal',  // Force orthogonal as safest fallback
+            avoidObstacles: true,
+            obstacleMargin: 5,         // Reduced from 20px
+            gridSize: 20,              // Coarser grid (was 10)
+            maxIterations: 1000        // Faster computation
+          }
+        });
+
+        if (fallbackPath) {
+          points = fallbackPath.points;
+          pathData = this.convertRoutedPathToSVG(fallbackPath, link.pathType);
+          console.log(`✅ Fallback routing succeeded for link ${link.id}`);
+        } else {
+          // Fallback Strategy 2: Hide invalid connection (don't render crossing line)
+          console.warn(`All routing strategies failed for link ${link.id} - hiding invalid preview`);
+          return {
+            type: 'g',
+            key: `link-${link.id}`,
+            props: {},
+            children: []
+          };
+        }
       }
     } else {
       // Fallback to existing link.points

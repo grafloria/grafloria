@@ -2,6 +2,7 @@
 
 export * from './types';
 export * from './RoutingEngine';
+export * from './LiveReroutingEngine'; // Phase 0.2
 export * from './ObstacleMap';
 export * from './ObstacleMapBuilder'; // Phase 1.6b
 export * from './algorithms/StraightRouter';
