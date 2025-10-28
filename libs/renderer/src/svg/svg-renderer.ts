@@ -1522,6 +1522,15 @@ export class SVGRenderer implements IRenderer {
       if (routedPath) {
         points = routedPath.points;
         pathData = this.convertRoutedPathToSVG(routedPath, link.pathType);
+
+        // CRITICAL FIX: Update link.points so interaction handler can use them for hit testing
+        // Only update if points are empty/missing to avoid triggering infinite render loop
+        // (setPoints emits 'link:changed' which triggers re-render)
+        if (!link.points || link.points.length < 2) {
+          // Directly update points array without emitting events to avoid render loop
+          // Note: Segments are not needed for hit testing, only points
+          link.points = points.map(p => ({ ...p }));
+        }
       } else {
         // Phase 0.1: Fallback strategy to avoid crossing obstacles
         console.warn(`Primary routing failed for link ${link.id}, trying fallback with reduced constraints`);
@@ -1545,6 +1554,12 @@ export class SVGRenderer implements IRenderer {
         if (fallbackPath) {
           points = fallbackPath.points;
           pathData = this.convertRoutedPathToSVG(fallbackPath, link.pathType);
+
+          // CRITICAL FIX: Update link.points for hit testing (same as above)
+          if (!link.points || link.points.length < 2) {
+            link.points = points.map(p => ({ ...p }));
+          }
+
           console.log(`✅ Fallback routing succeeded for link ${link.id}`);
         } else {
           // Fallback Strategy 2: Hide invalid connection (don't render crossing line)
