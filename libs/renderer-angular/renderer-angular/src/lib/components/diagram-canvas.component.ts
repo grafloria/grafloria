@@ -677,8 +677,22 @@ export class DiagramCanvasComponent implements OnInit, AfterViewInit, OnChanges,
         return;
       }
 
-      // Phase 2.3a: Check for waypoint click (if waypoint editing enabled and link is selected)
+      // Phase 2.3b: Check for control point click (if control point editing enabled and link is selected)
       const config = this.engine.getInteractionConfig();
+      if (config.enableControlPointEditing && interactionState.hoveredLink && interactionState.hoveredLink.state === 'selected') {
+        // Check if clicking on a control point handle
+        const controlPointHit = this.interactionHandler.hitTestControlPoint(worldX, worldY, interactionState.hoveredLink);
+
+        if (controlPointHit) {
+          event.preventDefault();
+          console.log('🟢 Control point handle clicked:', controlPointHit.controlType, 'of segment', controlPointHit.segmentIndex, 'on link', interactionState.hoveredLink.id);
+          this.interactionHandler.startControlPointDrag(controlPointHit.segmentIndex, controlPointHit.controlType, interactionState.hoveredLink);
+          this.cdr.markForCheck();
+          return;
+        }
+      }
+
+      // Phase 2.3a: Check for waypoint click (if waypoint editing enabled and link is selected)
       if (config.enableWaypointEditing && interactionState.hoveredLink && interactionState.hoveredLink.state === 'selected') {
         // Check if clicking on a waypoint handle
         const waypointIndex = this.interactionHandler.hitTestWaypoint(worldX, worldY, interactionState.hoveredLink);
@@ -842,8 +856,26 @@ export class DiagramCanvasComponent implements OnInit, AfterViewInit, OnChanges,
       return;
     }
 
-    // Phase 2.3a: Handle waypoint dragging
+    // Phase 2.3b: Handle control point dragging
     const interactionState = this.interactionHandler.getState();
+    if (interactionState.isDraggingControlPoint) {
+      // Convert to world coordinates
+      const rect = this.containerRef.nativeElement.getBoundingClientRect();
+      const clientX = event.clientX - rect.left;
+      const clientY = event.clientY - rect.top;
+      const worldX = this.viewport.x + (clientX / this.zoom);
+      const worldY = this.viewport.y + (clientY / this.zoom);
+
+      // Move control point to new position
+      const moved = this.interactionHandler.moveControlPoint(worldX, worldY, this.engine);
+      if (moved) {
+        this.renderDiagram();
+        this.cdr.markForCheck();
+      }
+      return;
+    }
+
+    // Phase 2.3a: Handle waypoint dragging
     if (interactionState.isDraggingWaypoint) {
       // Convert to world coordinates
       const rect = this.containerRef.nativeElement.getBoundingClientRect();
@@ -888,6 +920,14 @@ export class DiagramCanvasComponent implements OnInit, AfterViewInit, OnChanges,
         this.interactionHandler.updateHoveredWaypoint(worldX, worldY, selectedLink);
       }
 
+      // Phase 2.3b: Update hovered control point for Delete key support
+      if (config.enableControlPointEditing) {
+        const state = this.interactionHandler.getState();
+        // Only track control point hover on selected links with segments
+        const selectedLink = state.hoveredLink && state.hoveredLink.state === 'selected' ? state.hoveredLink : null;
+        this.interactionHandler.updateHoveredControlPoint(worldX, worldY, selectedLink);
+      }
+
       // Update cursor based on interaction state
       if (this.containerRef?.nativeElement) {
         this.containerRef.nativeElement.style.cursor = this.interactionHandler.getCursor(this.engine);
@@ -908,8 +948,17 @@ export class DiagramCanvasComponent implements OnInit, AfterViewInit, OnChanges,
   @HostListener('mouseup', ['$event'])
   onMouseUp(event: MouseEvent): void {
     if (event.button === 1 || event.button === 0) {
-      // Phase 2.3a: End waypoint drag if in progress
+      // Phase 2.3b: End control point drag if in progress
       const interactionState = this.interactionHandler.getState();
+      if (interactionState.isDraggingControlPoint) {
+        event.preventDefault();
+        this.interactionHandler.endControlPointDrag();
+        this.renderDiagram();
+        this.cdr.markForCheck();
+        return;
+      }
+
+      // Phase 2.3a: End waypoint drag if in progress
       if (interactionState.isDraggingWaypoint) {
         event.preventDefault();
         this.interactionHandler.endWaypointDrag();
