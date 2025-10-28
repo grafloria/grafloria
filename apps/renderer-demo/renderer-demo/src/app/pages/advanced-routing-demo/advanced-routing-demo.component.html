@@ -45,9 +45,65 @@
   <div class="demo-content">
     <!-- Left Sidebar - Controls -->
     <div class="control-panel">
+      <!-- Routing Algorithm Selection (Common to all sections) -->
+      <div class="control-section routing-section">
+        <h3>⚙️ Routing Algorithm</h3>
+
+        <div class="algorithm-grid">
+          <div *ngFor="let pathType of pathTypes" class="algorithm-option">
+            <label class="algorithm-label">
+              <input
+                type="radio"
+                name="pathType"
+                [value]="pathType.value"
+                [(ngModel)]="routingConfig.pathType"
+                (change)="updateRoutingConfig()"
+              />
+              <span class="algorithm-icon">{{ pathType.icon }}</span>
+              <span class="algorithm-name">{{ pathType.label }}</span>
+            </label>
+          </div>
+        </div>
+
+        <div class="control-group" *ngIf="routingConfig.pathType === 'orthogonal'">
+          <label class="toggle-label">
+            <input
+              type="checkbox"
+              [(ngModel)]="routingConfig.avoidObstacles"
+              (change)="updateRoutingConfig()"
+            />
+            <span>Avoid Obstacles (A* pathfinding)</span>
+          </label>
+        </div>
+
+        <div class="control-group" *ngIf="routingConfig.pathType === 'orthogonal' && routingConfig.avoidObstacles">
+          <label>Obstacle Margin: {{ routingConfig.obstacleMargin }}px</label>
+          <input
+            type="range"
+            min="5"
+            max="50"
+            step="5"
+            [(ngModel)]="routingConfig.obstacleMargin"
+            (input)="updateRoutingConfig()"
+          />
+        </div>
+
+        <div class="control-group" *ngIf="routingConfig.pathType === 'orthogonal' && routingConfig.avoidObstacles">
+          <label>Grid Size: {{ routingConfig.gridSize }}px</label>
+          <input
+            type="range"
+            min="5"
+            max="20"
+            step="5"
+            [(ngModel)]="routingConfig.gridSize"
+            (input)="updateRoutingConfig()"
+          />
+        </div>
+      </div>
+
       <!-- Waypoint Controls -->
       <div *ngIf="activeSection === 'waypoints'" class="control-section">
-        <h3>Waypoint Controls</h3>
+        <h3>📍 Waypoint Controls</h3>
 
         <div class="control-group">
           <label class="toggle-label">

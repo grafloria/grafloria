@@ -147,6 +147,72 @@
   color: #2c3e50;
 }
 
+/* Algorithm Grid */
+.algorithm-grid {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 8px;
+  margin-bottom: 16px;
+}
+
+.algorithm-option {
+  width: 100%;
+}
+
+.algorithm-label {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px;
+  border: 2px solid #e9ecef;
+  border-radius: 8px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  background: white;
+}
+
+.algorithm-label:hover {
+  border-color: #667eea;
+  background: #f8f9fa;
+}
+
+.algorithm-label input[type="radio"] {
+  accent-color: #667eea;
+  width: 18px;
+  height: 18px;
+  cursor: pointer;
+}
+
+.algorithm-label input[type="radio"]:checked + .algorithm-icon {
+  color: #667eea;
+}
+
+.algorithm-icon {
+  font-size: 24px;
+  min-width: 30px;
+  text-align: center;
+}
+
+.algorithm-name {
+  font-size: 13px;
+  font-weight: 500;
+  color: #2c3e50;
+  flex: 1;
+}
+
+.algorithm-label input[type="radio"]:checked ~ .algorithm-name {
+  color: #667eea;
+  font-weight: 600;
+}
+
+.routing-section {
+  background: #fff;
+  padding: 16px;
+  border-radius: 8px;
+  margin-bottom: 20px;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05);
+}
+
 /* Range Inputs */
 input[type="range"] {
   width: 100%;

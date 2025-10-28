@@ -62,6 +62,22 @@ export class AdvancedRoutingDemoComponent implements OnInit {
     epsilon: 1.0,
   };
 
+  // Routing algorithm controls
+  routingConfig = {
+    pathType: 'orthogonal' as 'orthogonal' | 'direct' | 'smooth' | 'bezier',
+    avoidObstacles: true,
+    obstacleMargin: 20,
+    gridSize: 10,
+  };
+
+  // Available path types (visual rendering styles)
+  pathTypes = [
+    { value: 'orthogonal' as const, label: 'Orthogonal (Right-angle)', icon: '⊏⊐', algorithm: 'orthogonal' as const },
+    { value: 'direct' as const, label: 'Direct (Straight line)', icon: '→', algorithm: 'straight' as const },
+    { value: 'smooth' as const, label: 'Smooth (Curved)', icon: '⌢', algorithm: 'straight' as const },
+    { value: 'bezier' as const, label: 'Bezier (Control points)', icon: '◠', algorithm: 'straight' as const },
+  ];
+
   // Stats
   stats = {
     waypointCount: 0,
@@ -538,6 +554,30 @@ export class AdvancedRoutingDemoComponent implements OnInit {
   updateSimplificationConfig(): void {
     // Note: Path simplification is applied at routing time
     // This would need to trigger re-routing of links
+    this.updateStats();
+    this.cdr.markForCheck();
+  }
+
+  updateRoutingConfig(): void {
+    const diagram = this.engine.getDiagram();
+    if (!diagram) return;
+
+    // Get selected path type config
+    const selectedPathType = this.pathTypes.find(pt => pt.value === this.routingConfig.pathType);
+    if (!selectedPathType) return;
+
+    // Update all links with new path type
+    diagram.getLinks().forEach(link => {
+      link.pathType = this.routingConfig.pathType;
+      link.markDirty(); // Force re-routing
+    });
+
+    // Update routing engine with correct algorithm
+    const routingEngine = this.engine.getRoutingEngine();
+    routingEngine.setDefaultAlgorithm(selectedPathType.algorithm);
+
+    console.log(`🔄 Updated routing: pathType=${this.routingConfig.pathType}, algorithm=${selectedPathType.algorithm}, avoidObstacles=${this.routingConfig.avoidObstacles}, margin=${this.routingConfig.obstacleMargin}px`);
+
     this.updateStats();
     this.cdr.markForCheck();
   }
