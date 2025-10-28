@@ -374,7 +374,11 @@ export class AdvancedRoutingDemoComponent implements OnInit {
       '#e67e22'
     );
 
-    // Row 1: Straight
+    // CRITICAL FIX: Adjusted Y positions to prevent overlap
+    // Each row needs enough space for nodes (height: 80) + labels (height: 40) + margins
+    // Row spacing: ~180px between row start positions
+
+    // Row 1: Straight (nodes at same height)
     const straight1 = this.createDemoNode('s1', 'A', { x: 100, y: 150 }, '#ecf0f1');
     const straight2 = this.createDemoNode('s2', 'B', { x: 300, y: 150 }, '#ecf0f1');
     const linkStraight = new LinkModel(
@@ -385,46 +389,46 @@ export class AdvancedRoutingDemoComponent implements OnInit {
     diagram.addLink(linkStraight);
     this.createInstructionNode('label1', 'Straight', { x: 150, y: 120 });
 
-    // Row 2: Orthogonal with waypoints
-    const ortho1 = this.createDemoNode('o1', 'A', { x: 100, y: 250 }, '#e3f2fd');
-    const ortho2 = this.createDemoNode('o2', 'B', { x: 300, y: 350 }, '#e3f2fd');
+    // Row 2: Orthogonal with waypoints (nodes at same height for cleaner layout)
+    const ortho1 = this.createDemoNode('o1', 'A', { x: 100, y: 280 }, '#e3f2fd');
+    const ortho2 = this.createDemoNode('o2', 'B', { x: 300, y: 280 }, '#e3f2fd');
     const linkOrtho = new LinkModel(
       ortho1.getPorts()[0].id,
       ortho2.getPorts()[0].id,
       'orthogonal'
     );
     diagram.addLink(linkOrtho);
-    this.createInstructionNode('label2', 'Orthogonal + Waypoints', { x: 120, y: 220 });
+    this.createInstructionNode('label2', 'Orthogonal + Waypoints', { x: 120, y: 250 });
 
-    // Row 3: Bezier with control points
-    const bezier1 = this.createDemoNode('b1', 'A', { x: 100, y: 450 }, '#f3e5f5');
-    const bezier2 = this.createDemoNode('b2', 'B', { x: 300, y: 550 }, '#f3e5f5');
+    // Row 3: Bezier with control points (nodes at same height for cleaner layout)
+    const bezier1 = this.createDemoNode('b1', 'A', { x: 100, y: 410 }, '#f3e5f5');
+    const bezier2 = this.createDemoNode('b2', 'B', { x: 300, y: 410 }, '#f3e5f5');
     const linkBezier = new LinkModel(
       bezier1.getPorts()[0].id,
       bezier2.getPorts()[0].id,
       'bezier'
     );
     diagram.addLink(linkBezier);
-    this.createInstructionNode('label3', 'Bezier + Control Points', { x: 120, y: 420 });
+    this.createInstructionNode('label3', 'Bezier + Control Points', { x: 120, y: 380 });
 
-    // Row 4: Simplified orthogonal
-    const simple1 = this.createDemoNode('si1', 'A', { x: 100, y: 650 }, '#e8f5e9');
-    const simple2 = this.createDemoNode('si2', 'B', { x: 300, y: 750 }, '#e8f5e9');
+    // Row 4: Simplified orthogonal (nodes at same height for cleaner layout)
+    const simple1 = this.createDemoNode('si1', 'A', { x: 100, y: 540 }, '#e8f5e9');
+    const simple2 = this.createDemoNode('si2', 'B', { x: 300, y: 540 }, '#e8f5e9');
     const linkSimple = new LinkModel(
       simple1.getPorts()[0].id,
       simple2.getPorts()[0].id,
       'orthogonal'
     );
     diagram.addLink(linkSimple);
-    this.createInstructionNode('label4', 'Simplified Path', { x: 130, y: 620 });
+    this.createInstructionNode('label4', 'Simplified Path', { x: 130, y: 510 });
 
-    // Feature comparison text
-    this.createInstructionNode('feat1', '✓ JointJS Parity: 100%', { x: 450, y: 200 });
-    this.createInstructionNode('feat2', '✓ Interactive Editing', { x: 450, y: 260 });
-    this.createInstructionNode('feat3', '✓ Smart Routing', { x: 450, y: 320 });
-    this.createInstructionNode('feat4', '✓ Performance Optimized', { x: 450, y: 380 });
-    this.createInstructionNode('feat5', '✓ Zero GC Pressure', { x: 450, y: 440 });
-    this.createInstructionNode('feat6', '✓ 166/166 Tests Passing', { x: 450, y: 500 });
+    // Feature comparison text (adjusted Y positions to align with rows)
+    this.createInstructionNode('feat1', '✓ JointJS Parity: 100%', { x: 550, y: 150 });
+    this.createInstructionNode('feat2', '✓ Interactive Editing', { x: 550, y: 210 });
+    this.createInstructionNode('feat3', '✓ Smart Routing', { x: 550, y: 270 });
+    this.createInstructionNode('feat4', '✓ Performance Optimized', { x: 550, y: 330 });
+    this.createInstructionNode('feat5', '✓ Zero GC Pressure', { x: 550, y: 390 });
+    this.createInstructionNode('feat6', '✓ 166/166 Tests Passing', { x: 550, y: 450 });
   }
 
   private createDemoNode(
