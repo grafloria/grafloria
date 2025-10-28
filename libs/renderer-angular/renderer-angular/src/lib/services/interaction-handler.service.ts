@@ -6,7 +6,7 @@ import type {
   InteractionMode,
 } from '@grafloria/engine';
 import { PortModel } from '@grafloria/engine';
-import { WaypointEditor } from '@grafloria/renderer';
+import { WaypointEditor, ControlPointEditor } from '@grafloria/renderer';
 
 /**
  * Phase 3: InteractionHandlerService
@@ -54,6 +54,18 @@ export class InteractionHandlerService {
   private hoveredWaypointLink: LinkModel | null = null;
 
   /**
+   * Phase 2.3b: Control point editing state
+   */
+  private isDraggingControlPoint = false;
+  private editingControlPointLink: LinkModel | null = null;
+  private editingControlPointSegmentIndex: number | null = null;
+  private editingControlPointType: 'control1' | 'control2' | null = null;
+  private controlPointEditor: ControlPointEditor | null = null;
+  private hoveredControlPointSegmentIndex: number | null = null;
+  private hoveredControlPointType: 'control1' | 'control2' | null = null;
+  private hoveredControlPointLink: LinkModel | null = null;
+
+  /**
    * Phase 5: Performance optimization - debounce hover detection
    */
   private hoverDebounceTimer: any = null;
@@ -86,6 +98,21 @@ export class InteractionHandlerService {
       minDistanceFromEndpoints: 30,
       clickDetectionRadius: 10,
     });
+
+    // Phase 2.3b: Initialize control point editor with default config
+    this.controlPointEditor = new ControlPointEditor({
+      snapToGrid: false,
+      gridSize: 20,
+      handleRadius: 6,
+      handleColor: '#10b981',
+      handleStrokeColor: '#ffffff',
+      controlLineColor: '#6b7280',
+      controlLineWidth: 1,
+      controlLineDash: [5, 5],
+      clickDetectionRadius: 10,
+      showControlLines: true,
+      symmetricControls: false,
+    });
   }
 
   /**
@@ -108,6 +135,14 @@ export class InteractionHandlerService {
     this.isDraggingWaypoint = false;
     this.hoveredWaypointIndex = null;
     this.hoveredWaypointLink = null;
+    // Phase 2.3b: Clean up control point editing state
+    this.editingControlPointLink = null;
+    this.editingControlPointSegmentIndex = null;
+    this.editingControlPointType = null;
+    this.isDraggingControlPoint = false;
+    this.hoveredControlPointSegmentIndex = null;
+    this.hoveredControlPointType = null;
+    this.hoveredControlPointLink = null;
   }
 
   /**
@@ -544,6 +579,14 @@ export class InteractionHandlerService {
       editingWaypointIndex: this.editingWaypointIndex,
       hoveredWaypointIndex: this.hoveredWaypointIndex,
       hoveredWaypointLink: this.hoveredWaypointLink,
+      // Phase 2.3b: Control point editing state
+      isDraggingControlPoint: this.isDraggingControlPoint,
+      editingControlPointLink: this.editingControlPointLink,
+      editingControlPointSegmentIndex: this.editingControlPointSegmentIndex,
+      editingControlPointType: this.editingControlPointType,
+      hoveredControlPointSegmentIndex: this.hoveredControlPointSegmentIndex,
+      hoveredControlPointType: this.hoveredControlPointType,
+      hoveredControlPointLink: this.hoveredControlPointLink,
     };
   }
 
@@ -551,7 +594,7 @@ export class InteractionHandlerService {
    * Phase 3: Check if currently interacting
    */
   isInteracting(): boolean {
-    return this.isConnecting || this.isReconnectingLink || this.isDraggingWaypoint;
+    return this.isConnecting || this.isReconnectingLink || this.isDraggingWaypoint || this.isDraggingControlPoint;
   }
 
   /**
@@ -954,6 +997,149 @@ export class InteractionHandlerService {
         this.hoveredWaypointLink = null;
         return true;
       }
+    }
+    return false;
+  }
+
+  // ============================================================================
+  // Phase 2.3b: Control Point Editing Methods
+  // ============================================================================
+
+  /**
+   * Hit test for control point handle at mouse position
+   * Returns the control point info if hit, null otherwise
+   */
+  hitTestControlPoint(
+    mouseX: number,
+    mouseY: number,
+    link: LinkModel
+  ): { segmentIndex: number; controlType: 'control1' | 'control2' } | null {
+    if (!this.controlPointEditor || !link.segments || link.segments.length === 0) {
+      return null;
+    }
+
+    const hit = this.controlPointEditor.hitTestControlPoint(mouseX, mouseY, link.segments);
+    if (hit) {
+      return {
+        segmentIndex: hit.segmentIndex,
+        controlType: hit.controlType,
+      };
+    }
+    return null;
+  }
+
+  /**
+   * Start dragging a control point
+   */
+  startControlPointDrag(
+    segmentIndex: number,
+    controlType: 'control1' | 'control2',
+    link: LinkModel
+  ): void {
+    this.isDraggingControlPoint = true;
+    this.editingControlPointLink = link;
+    this.editingControlPointSegmentIndex = segmentIndex;
+    this.editingControlPointType = controlType;
+    console.log(`🟢 Started dragging ${controlType} of segment ${segmentIndex} on link ${link.id}`);
+  }
+
+  /**
+   * Move control point during drag
+   */
+  moveControlPoint(worldX: number, worldY: number, engine: DiagramEngine): boolean {
+    if (
+      !this.isDraggingControlPoint ||
+      !this.editingControlPointLink ||
+      this.editingControlPointSegmentIndex === null ||
+      !this.editingControlPointType ||
+      !this.controlPointEditor
+    ) {
+      return false;
+    }
+
+    const newPosition = { x: worldX, y: worldY };
+    const newSegments = this.controlPointEditor.moveControlPoint(
+      this.editingControlPointSegmentIndex,
+      this.editingControlPointType,
+      newPosition,
+      this.editingControlPointLink.segments
+    );
+
+    if (newSegments) {
+      this.editingControlPointLink.segments = newSegments;
+      this.editingControlPointLink.updateSegments();
+      console.log(
+        `🟢 Moved ${this.editingControlPointType} of segment ${this.editingControlPointSegmentIndex} to (${worldX.toFixed(1)}, ${worldY.toFixed(1)})`
+      );
+      return true;
+    }
+
+    return false;
+  }
+
+  /**
+   * End control point drag
+   */
+  endControlPointDrag(): void {
+    if (this.isDraggingControlPoint) {
+      console.log(
+        `🟢 Ended dragging ${this.editingControlPointType} of segment ${this.editingControlPointSegmentIndex} on link ${this.editingControlPointLink?.id}`
+      );
+    }
+    this.isDraggingControlPoint = false;
+    this.editingControlPointLink = null;
+    this.editingControlPointSegmentIndex = null;
+    this.editingControlPointType = null;
+  }
+
+  /**
+   * Update control point editor configuration
+   */
+  updateControlPointEditorConfig(config: Partial<any>): void {
+    if (this.controlPointEditor) {
+      this.controlPointEditor.updateConfig(config);
+    }
+  }
+
+  /**
+   * Update hovered control point (for Delete key support)
+   * Call this from mousemove to track which control point is under cursor
+   */
+  updateHoveredControlPoint(worldX: number, worldY: number, link: LinkModel | null): void {
+    if (!link || !this.controlPointEditor) {
+      this.hoveredControlPointSegmentIndex = null;
+      this.hoveredControlPointType = null;
+      this.hoveredControlPointLink = null;
+      return;
+    }
+
+    const hit = this.hitTestControlPoint(worldX, worldY, link);
+    if (hit) {
+      this.hoveredControlPointSegmentIndex = hit.segmentIndex;
+      this.hoveredControlPointType = hit.controlType;
+      this.hoveredControlPointLink = link;
+    } else {
+      this.hoveredControlPointSegmentIndex = null;
+      this.hoveredControlPointType = null;
+      this.hoveredControlPointLink = null;
+    }
+  }
+
+  /**
+   * Reset control point to auto-generated position (for Delete key)
+   * This removes custom control point adjustment, reverting to default bezier
+   */
+  resetHoveredControlPoint(): boolean {
+    if (
+      this.hoveredControlPointSegmentIndex !== null &&
+      this.hoveredControlPointType &&
+      this.hoveredControlPointLink
+    ) {
+      // For now, we don't support "deleting" control points
+      // Control points are intrinsic to bezier curves
+      // User would need to change pathType instead
+      console.log('⚠️ Control points cannot be deleted, only moved');
+      return false;
     }
     return false;
   }
