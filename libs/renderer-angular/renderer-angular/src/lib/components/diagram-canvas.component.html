@@ -13,6 +13,8 @@
            [style.position]="'absolute'"
            [style.left.px]="getAbsoluteX(node)"
            [style.top.px]="getAbsoluteY(node)"
+           [style.width.px]="node.size.width"
+           [style.height.px]="node.size.height"
            [style.z-index]="node.getMetadata('z') || 1">
         <!-- Dynamically render component using directive -->
         <!-- Support both NodeModel (node.type) and GroupModel (metadata.type) -->
