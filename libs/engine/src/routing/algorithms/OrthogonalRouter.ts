@@ -459,8 +459,19 @@ export class OrthogonalRouter implements IRouter {
     const targetOffset = this.applyGapOffset(end, targetDirection, gapOffset);
 
     // Snap offset points to grid for A* pathfinding
-    const gridStart = this.snapToGrid(sourceOffset, gridSize);
-    const gridEnd = this.snapToGrid(targetOffset, gridSize);
+    let gridStart = this.snapToGrid(sourceOffset, gridSize);
+    let gridEnd = this.snapToGrid(targetOffset, gridSize);
+
+    // CRITICAL FIX: Validate start/end points are not inside obstacles
+    // If grid snapping moved them into an obstacle, adjust outward
+    if (this.collidesWithObstacles(gridStart, obstacles, margin)) {
+      console.warn(`⚠️ Grid start point inside obstacle, adjusting...`);
+      gridStart = this.findNearestValidPoint(gridStart, sourceDirection, obstacles, margin, gridSize);
+    }
+    if (this.collidesWithObstacles(gridEnd, obstacles, margin)) {
+      console.warn(`⚠️ Grid end point inside obstacle, adjusting...`);
+      gridEnd = this.findNearestValidPoint(gridEnd, targetDirection, obstacles, margin, gridSize);
+    }
 
     // Use A* to find path between offset points
     const path = this.aStarPathfinding(
@@ -473,6 +484,16 @@ export class OrthogonalRouter implements IRouter {
     );
 
     if (!path || path.length === 0) {
+      // IMPROVED: Log why pathfinding failed and what we're doing
+      console.warn(`⚠️ A* pathfinding failed for link routing:`, {
+        start: gridStart,
+        end: gridEnd,
+        obstacleCount: obstacles.length,
+        gridSize,
+        margin
+      });
+      console.warn(`   Falling back to simple orthogonal route (no obstacle avoidance)`);
+
       // Fallback to simple route if pathfinding fails
       return this.simpleOrthogonalRoute(start, end, gridSize, options.costs?.bends ?? 10, sourceDirection, targetDirection);
     }
@@ -637,7 +658,7 @@ export class OrthogonalRouter implements IRouter {
 
   /**
    * Check if point collides with any obstacle
-   * Enhanced to properly expand obstacles by margin for better avoidance
+   * FIXED: Use inclusive bounds to prevent paths grazing obstacle edges
    */
   private collidesWithObstacles(
     point: Point,
@@ -651,12 +672,13 @@ export class OrthogonalRouter implements IRouter {
       const minY = obstacle.y - margin;
       const maxY = obstacle.y + obstacle.height + margin;
 
-      // Check if point falls within expanded obstacle bounds
+      // FIXED: Use >= and <= (inclusive) instead of > and < (exclusive)
+      // This ensures points ON the boundary are also considered colliding
       if (
-        point.x > minX &&
-        point.x < maxX &&
-        point.y > minY &&
-        point.y < maxY
+        point.x >= minX &&
+        point.x <= maxX &&
+        point.y >= minY &&
+        point.y <= maxY
       ) {
         return true;
       }
@@ -672,6 +694,65 @@ export class OrthogonalRouter implements IRouter {
       x: Math.round(point.x / gridSize) * gridSize,
       y: Math.round(point.y / gridSize) * gridSize,
     };
+  }
+
+  /**
+   * Find nearest valid point outside obstacles
+   * Searches outward from point in the given direction until finding a valid position
+   */
+  private findNearestValidPoint(
+    point: Point,
+    direction: 'left' | 'right' | 'top' | 'bottom' | undefined,
+    obstacles: Obstacle[],
+    margin: number,
+    gridSize: number
+  ): Point {
+    // Try moving outward in the port direction to find a valid point
+    const maxAttempts = 10;
+    let current = { ...point };
+
+    for (let i = 1; i <= maxAttempts; i++) {
+      // Move one grid step in the port direction
+      switch (direction) {
+        case 'left':
+          current.x -= gridSize;
+          break;
+        case 'right':
+          current.x += gridSize;
+          break;
+        case 'top':
+          current.y -= gridSize;
+          break;
+        case 'bottom':
+          current.y += gridSize;
+          break;
+        default:
+          // No direction specified, try moving in all directions
+          const candidates = [
+            { x: point.x + i * gridSize, y: point.y },
+            { x: point.x - i * gridSize, y: point.y },
+            { x: point.x, y: point.y + i * gridSize },
+            { x: point.x, y: point.y - i * gridSize },
+          ];
+
+          for (const candidate of candidates) {
+            if (!this.collidesWithObstacles(candidate, obstacles, margin)) {
+              return candidate;
+            }
+          }
+          continue;
+      }
+
+      // Check if this position is valid
+      if (!this.collidesWithObstacles(current, obstacles, margin)) {
+        console.log(`   ✓ Found valid point at distance ${i * gridSize}px`);
+        return current;
+      }
+    }
+
+    // If all attempts failed, return original point (pathfinding will fail, but at least we tried)
+    console.warn(`   ✗ Could not find valid point after ${maxAttempts} attempts, using original`);
+    return point;
   }
 
   /**

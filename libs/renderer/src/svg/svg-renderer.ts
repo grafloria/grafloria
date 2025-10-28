@@ -1473,7 +1473,7 @@ export class SVGRenderer implements IRenderer {
       const algorithm = this.mapPathTypeToAlgorithm(link.pathType);
 
       // OBSTACLE AVOIDANCE: Get obstacles from the diagram for routing
-      // Exclude source and target nodes so the link can start/end at ports
+      // FIXED: Exclude source and target nodes so paths can start/end at their ports
       const diagram = this.engine.getDiagram();
       const obstacles: Array<{ id: string; x: number; y: number; width: number; height: number }> = [];
 
@@ -1482,7 +1482,12 @@ export class SVGRenderer implements IRenderer {
         const targetNode = diagram.getNodes().find(n => n.getPorts().some(p => p.id === link.targetPortId));
 
         diagram.getNodes().forEach(node => {
-          // Include ALL nodes as obstacles - gap offset ensures paths start/end outside
+          // CRITICAL FIX: Exclude source and target nodes from obstacles
+          // Paths must be able to start/end at ports on these nodes
+          if (node.id === sourceNode?.id || node.id === targetNode?.id) {
+            return; // Skip this node
+          }
+
           obstacles.push({
             id: node.id,
             x: node.position.x,
@@ -1491,6 +1496,8 @@ export class SVGRenderer implements IRenderer {
             height: node.size.height,
           });
         });
+
+        console.log(`🚧 Routing with ${obstacles.length} obstacles (excluded source: ${sourceNode?.id}, target: ${targetNode?.id})`);
       }
 
       // Use link's pathType-derived algorithm, fallback to routing engine's default
