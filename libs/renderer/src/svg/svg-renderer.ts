@@ -9,6 +9,9 @@ import type { RoutedPath, RoutingAlgorithm } from '@grafloria/engine';
 // Phase 3.2: Shape-aware port positioning
 import { getPortPositionForShape } from './port-positioning';
 
+// Phase 1.1: Arrow type rendering
+import { ArrowRenderer } from './ArrowRenderer';
+
 // LOD Level type (matches engine's LODLevel)
 type LODLevel = 'high' | 'medium' | 'low';
 
@@ -29,6 +32,9 @@ export class SVGRenderer implements IRenderer {
   // foreignObject support
   private containerIds = new Map<string, string>(); // nodeId -> containerId mapping
   private foreignObjectNodes = new Set<string>(); // Track which nodes use foreignObject
+
+  // Phase 1.1: Arrow type rendering
+  private arrowRenderer: ArrowRenderer;
 
   // Performance tracking
   private lastRenderTime = 0;
@@ -51,6 +57,9 @@ export class SVGRenderer implements IRenderer {
     };
 
     this.theme = theme || LIGHT_THEME;
+
+    // Phase 1.1: Initialize arrow renderer
+    this.arrowRenderer = new ArrowRenderer();
 
     // Inject theme CSS if in CSS mode
     if (this.config.useCSSMode) {
@@ -1523,19 +1532,43 @@ export class SVGRenderer implements IRenderer {
             ...styles,
           },
         },
-        // Arrow marker (Option 2: Visual Enhancement)
+        // Phase 1.1: Arrow markers using ArrowRenderer
         ...(lod !== 'low'
-          ? [
-              {
-                type: 'polygon',
-                props: {
-                  points: '0,-5 10,0 0,5',
-                  fill: styles.stroke || this.theme.colors.link.default,
-                  transform: `translate(${arrowTipPosition.x}, ${arrowTipPosition.y}) rotate(${angle})`,
-                  className: 'link-arrow',
-                },
-              } as VNode,
-            ]
+          ? (() => {
+              const arrows: VNode[] = [];
+
+              // Get arrow styles from link (with defaults)
+              const arrowHeadStyle = link.style.arrowHead || {
+                type: 'arrow',
+                size: 10,
+                filled: true,
+                color: styles.stroke || this.theme.colors.link.default
+              };
+
+              const arrowTailStyle = link.style.arrowTail;
+
+              // Render arrow head (at target end)
+              if (arrowHeadStyle && arrowHeadStyle.type !== 'none') {
+                const transform = `translate(${arrowTipPosition.x}, ${arrowTipPosition.y}) rotate(${angle})`;
+                const arrowHeadVNode = this.arrowRenderer.renderArrow(arrowHeadStyle, transform);
+                if (arrowHeadVNode) {
+                  arrows.push(arrowHeadVNode);
+                }
+              }
+
+              // Render arrow tail (at source end) if specified
+              if (arrowTailStyle && arrowTailStyle.type !== 'none') {
+                // Calculate arrow tail position and angle (at source end)
+                const tailArrowData = this.calculateArrowPositionAndAngle(link, points, false, arrowTailStyle.size || 10);
+                const tailTransform = `translate(${tailArrowData.position.x}, ${tailArrowData.position.y}) rotate(${tailArrowData.angle})`;
+                const arrowTailVNode = this.arrowRenderer.renderArrow(arrowTailStyle, tailTransform);
+                if (arrowTailVNode) {
+                  arrows.push(arrowTailVNode);
+                }
+              }
+
+              return arrows;
+            })()
           : []),
         // Link label (Option 2: Visual Enhancement)
         ...(lod === 'high' && label
