@@ -553,6 +553,7 @@ export class AdvancedRoutingDemoComponent implements OnInit {
         width: this.viewport.width,
         height: this.viewport.height,
       };
+      this.zoom = diagram.viewport.zoom;
     }
   }
 
@@ -594,23 +595,35 @@ export class AdvancedRoutingDemoComponent implements OnInit {
 
   // Zoom controls
   zoomIn(): void {
-    this.zoom = Math.min(this.zoom * 1.2, 3);
-    this.cdr.markForCheck();
+    const diagram = this.engine.getDiagram();
+    if (diagram) {
+      const newZoom = Math.min(this.zoom * 1.2, 3);
+      diagram.setZoom(newZoom);
+      this.zoom = diagram.viewport.zoom;
+      this.updateViewportFromDiagram();
+      this.cdr.markForCheck();
+    }
   }
 
   zoomOut(): void {
-    this.zoom = Math.max(this.zoom / 1.2, 0.1);
-    this.cdr.markForCheck();
+    const diagram = this.engine.getDiagram();
+    if (diagram) {
+      const newZoom = Math.max(this.zoom / 1.2, 0.1);
+      diagram.setZoom(newZoom);
+      this.zoom = diagram.viewport.zoom;
+      this.updateViewportFromDiagram();
+      this.cdr.markForCheck();
+    }
   }
 
   resetZoom(): void {
-    this.zoom = 1.0;
     const diagram = this.engine.getDiagram();
     if (diagram) {
       diagram.fitToView(80);
+      this.zoom = diagram.viewport.zoom;
       this.updateViewportFromDiagram();
+      this.cdr.markForCheck();
     }
-    this.cdr.markForCheck();
   }
 
   // Export demo as JSON
