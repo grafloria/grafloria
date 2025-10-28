@@ -1620,6 +1620,17 @@ export class DiagramEngine {
    * Detach diagram
    */
   private detachDiagram(diagram: DiagramModel): void {
+    // CRITICAL FIX: Unregister all node obstacles from routing engine
+    // Without this, old diagram nodes remain as obstacles affecting new diagrams
+    diagram.getNodes().forEach((node) => {
+      this.unregisterNodeObstacle(node.id);
+    });
+
+    // CRITICAL FIX: Clear the old diagram to remove nodes from spatial index
+    // Without this, old diagram nodes can interfere with hover detection in new diagrams
+    // This ensures spatial indices and event listeners are cleaned up
+    diagram.clear();
+
     // Unsubscribe from events
     // TODO: Store listener references in attachDiagram so we can remove them here
     // For now, leaving listeners attached as diagram might be reused
