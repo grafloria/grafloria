@@ -1,7 +1,7 @@
 // WaypointEditor.ts - Phase 2.3a: Waypoint editing implementation
 // TDD GREEN Phase: Implement to make tests pass
 
-import type { WaypointEditorConfig } from '../../../engine/src/config/InteractionConfig';
+import type { WaypointEditorConfig } from '@grafloria/engine';
 import type { VNode } from '../types';
 
 /**
