@@ -494,6 +494,8 @@ export class DiagramCanvasComponent implements OnInit, AfterViewInit, OnChanges,
     const eventBus = this.engine['eventBus']; // Access private eventBus
     if (eventBus) {
       eventBus.on('config:interaction-changed', () => {
+        // Sync editor configs (handle colors, etc.) with engine config
+        this.interactionHandler.syncWithEngineConfig(this.engine);
         this.renderDiagram();
         this.cdr.detectChanges();
       });
@@ -728,8 +730,9 @@ export class DiagramCanvasComponent implements OnInit, AfterViewInit, OnChanges,
 
       if (linkToSelect) {
         event.preventDefault();
-        console.log('🖱️ Link clicked:', linkToSelect.id);
-        this.interactionHandler.selectLink(linkToSelect, this.engine);
+        const multiSelect = event.ctrlKey || event.metaKey;
+        console.log('🖱️ Link clicked:', linkToSelect.id, multiSelect ? '(multi-select)' : '');
+        this.interactionHandler.selectLink(linkToSelect, this.engine, multiSelect);
         this.renderDiagram();
         this.cdr.markForCheck();
         return;
@@ -781,8 +784,16 @@ export class DiagramCanvasComponent implements OnInit, AfterViewInit, OnChanges,
           }
         }
       } else {
-        // Clicked on empty space - always clear selection
+        // Clicked on empty space - always clear all selections
         diagram.clearSelection();
+
+        // Also deselect all links
+        diagram.getLinks().forEach((link: any) => {
+          if (link.state === 'selected') {
+            link.setState('default');
+          }
+        });
+
         // Force immediate render to clear selection highlights instantly
         this.renderDiagram();
       }

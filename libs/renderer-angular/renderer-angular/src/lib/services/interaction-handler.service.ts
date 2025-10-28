@@ -539,18 +539,32 @@ export class InteractionHandlerService {
 
   /**
    * Phase 3: Handle link selection
+   * FIXED: Support multi-select with Ctrl key, deselect other links otherwise
    */
-  selectLink(link: LinkModel, engine: DiagramEngine): void {
+  selectLink(link: LinkModel, engine: DiagramEngine, multiSelect: boolean = false): void {
     const diagram = engine.getDiagram();
     if (!diagram) return;
 
-    // Clear other selections
-    diagram.clearSelection();
+    if (!multiSelect) {
+      // Clear node selections
+      diagram.clearSelection();
 
-    // Select the link
-    link.setState('selected');
+      // Deselect all other links
+      diagram.getLinks().forEach((l: LinkModel) => {
+        if (l.id !== link.id && l.state === 'selected') {
+          l.setState('default');
+        }
+      });
+    }
 
-    console.log('🔗 Link selected:', link.id);
+    // Toggle or select this link
+    if (multiSelect && link.state === 'selected') {
+      link.setState('default');
+      console.log('🔗 Link deselected:', link.id);
+    } else {
+      link.setState('selected');
+      console.log('🔗 Link selected:', link.id);
+    }
   }
 
   /**
@@ -986,6 +1000,22 @@ export class InteractionHandlerService {
   updateWaypointEditorConfig(config: Partial<any>): void {
     if (this.waypointEditor) {
       this.waypointEditor.updateConfig(config);
+    }
+  }
+
+  /**
+   * Synchronize editor configs with engine interaction config
+   * ADDED: Call this when engine config changes to update editor visuals
+   */
+  syncWithEngineConfig(engine: DiagramEngine): void {
+    const config = engine.getInteractionConfig();
+
+    if (config.waypointEditor) {
+      this.updateWaypointEditorConfig(config.waypointEditor);
+    }
+
+    if (config.controlPointEditor) {
+      this.updateControlPointEditorConfig(config.controlPointEditor);
     }
   }
 
