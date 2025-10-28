@@ -22,6 +22,9 @@ import { JumpPointRenderer } from './JumpPointRenderer';
 // Phase 2.3a: Waypoint editing
 import { WaypointEditor } from '../interaction/WaypointEditor';
 
+// Phase 2.3b: Control point editing
+import { ControlPointEditor } from '../interaction/ControlPointEditor';
+
 // LOD Level type (matches engine's LODLevel)
 type LODLevel = 'high' | 'medium' | 'low';
 
@@ -55,6 +58,9 @@ export class SVGRenderer implements IRenderer {
 
   // Phase 2.3a: Waypoint editing
   private waypointEditor: WaypointEditor;
+
+  // Phase 2.3b: Control point editing
+  private controlPointEditor: ControlPointEditor;
 
   // Performance tracking
   private lastRenderTime = 0;
@@ -100,6 +106,22 @@ export class SVGRenderer implements IRenderer {
       clickDetectionRadius: 10,
     };
     this.waypointEditor = new WaypointEditor(waypointConfig);
+
+    // Phase 2.3b: Initialize control point editor with default config
+    const controlPointConfig = engine.getInteractionConfig().controlPointEditor || {
+      snapToGrid: false,
+      gridSize: 20,
+      handleRadius: 6,
+      handleColor: '#10b981',
+      handleStrokeColor: '#ffffff',
+      controlLineColor: '#6b7280',
+      controlLineWidth: 1,
+      controlLineDash: [5, 5],
+      clickDetectionRadius: 10,
+      showControlLines: true,
+      symmetricControls: false,
+    };
+    this.controlPointEditor = new ControlPointEditor(controlPointConfig);
 
     // Inject theme CSS if in CSS mode
     if (this.config.useCSSMode) {
@@ -1721,6 +1743,10 @@ export class SVGRenderer implements IRenderer {
         ...(config.enableWaypointEditing && config.showWaypointHandles && isSelected && lod !== 'low'
           ? this.waypointEditor.renderWaypointHandles(link.points, link.id)
           : []),
+        // Phase 2.3b: Control point handles for bezier curve editing
+        ...(config.enableControlPointEditing && config.showControlPointHandles && isSelected && lod !== 'low' && link.segments && link.segments.length > 0
+          ? this.controlPointEditor.renderControlPointHandles(link.segments, link.id)
+          : []),
       ],
     };
 
@@ -2086,6 +2112,23 @@ export class SVGRenderer implements IRenderer {
 .waypoint-handle:hover {
   r: 7;
   stroke-width: 3px;
+}
+
+/* Phase 2.3b: Control Point Handles */
+.control-point-handle {
+  cursor: move;
+  transition: all 0.2s ease;
+  pointer-events: all;
+}
+
+.control-point-handle:hover {
+  r: 8;
+  stroke-width: 3px;
+}
+
+.control-line {
+  pointer-events: none;
+  transition: opacity 0.2s ease;
 }
     `.trim();
   }
