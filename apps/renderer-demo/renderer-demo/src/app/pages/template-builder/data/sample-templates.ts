@@ -519,12 +519,12 @@ export const DIAGRAM_TEMPLATES: Partial<TemplateMetadata>[] = [
   },
   {
     name: 'ERD Table (Products)',
-    description: 'Database table with dynamic children (header + fields). Example: Products table with id, name, price, stock fields.',
+    description: 'Database table with dynamic children (header + fields). Styled like React Flow schema nodes with proper borders and rounded corners.',
     category: 'diagram',
-    tags: ['database', 'erd', 'table', 'schema', 'children'],
+    tags: ['database', 'erd', 'table', 'schema', 'children', 'react-flow'],
     complexity: 'medium',
     author: 'Grafloria',
-    version: '1.0.0',
+    version: '2.0.0',
     features: ['html', 'ports', 'children', 'layout'],
     hasChildNodes: true,
     hasConnections: true,
@@ -535,19 +535,19 @@ export const DIAGRAM_TEMPLATES: Partial<TemplateMetadata>[] = [
       id: 'erd-table-products',
       meta: {
         name: 'ERD Table (Products)',
-        description: 'Complete database table with header and field rows',
+        description: 'Complete database table with header and field rows - React Flow styled',
         category: 'diagram'
       },
       structure: {
         type: 'erd-table-container',
         role: 'container',
-        size: { width: 250, height: 200 },
+        size: { width: 250, height: 148 },
         shape: {
           type: 'rect',
           fill: '#ffffff',
-          stroke: '#a1a1aa',
+          stroke: '#CBD2D9',
           strokeWidth: 1,
-          cornerRadius: 0
+          cornerRadius: 4
         },
         behavior: {
           draggable: true,
@@ -568,11 +568,11 @@ export const DIAGRAM_TEMPLATES: Partial<TemplateMetadata>[] = [
         },
         // Dynamic children: header + fields
         children: [
-          // Header (drag handler)
+          // Header (drag handler) - React Flow style with rounded top corners
           {
             type: 'erd-table-header',
             role: 'drag-handler',
-            size: { width: 250, height: 32 },
+            size: { width: 250, height: 36 },
             shape: {
               type: 'rect',
               fill: 'transparent',
@@ -582,23 +582,21 @@ export const DIAGRAM_TEMPLATES: Partial<TemplateMetadata>[] = [
               mode: 'template',
               template: `<div style="
                 width: 100%;
-                height: 32px;
-                padding: 6px 8px;
-                background: #f5f5f5;
-                border-bottom: 1px solid #d4d4d8;
-                color: #18181b;
-                font-weight: 600;
-                font-size: 13px;
-                font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+                height: 36px;
+                padding: 8px;
+                background: #91C4F2;
+                border-radius: 4px 4px 0 0;
+                color: #000;
+                font-weight: bold;
+                font-size: 14px;
+                font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
                 display: flex;
                 align-items: center;
-                gap: 6px;
+                justify-content: center;
                 cursor: move;
                 user-select: none;
-              ">
-                <span style="font-size: 14px;">🔑</span>
-                <span>Products</span>
-              </div>`,
+                box-sizing: border-box;
+              ">Products</div>`,
               zIndex: 2
             },
             behavior: {
@@ -626,18 +624,27 @@ export const DIAGRAM_TEMPLATES: Partial<TemplateMetadata>[] = [
             html: {
               mode: 'template',
               template: `<div style="
+                width: 100%;
+                height: 28px;
+                padding: 8px;
+                font-size: 12px;
+                font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+                background: transparent;
+                border-bottom: 1px solid #CBD2D9;
                 display: flex;
                 align-items: center;
-                gap: 8px;
-                padding: 6px 8px;
-                font-size: 12px;
-                background: white;
-                border-bottom: 1px solid #e5e7eb;
-                height: 28px;
+                justify-content: space-between;
+                box-sizing: border-box;
+                line-height: 1;
               ">
-                <span style="width: 16px; text-align: center; font-size: 13px;">🔑</span>
-                <span style="flex: 1; font-weight: 600; color: #4338ca;">id</span>
-                <span style="color: #7f8c8d; font-size: 11px; font-family: 'Courier New', monospace;">INT</span>
+                <div style="display: flex; align-items: center; gap: 8px;">
+                  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <rect x="3" y="11" width="18" height="11" rx="2" ry="2"></rect>
+                    <path d="M7 11V7a5 5 0 0 1 10 0v4"></path>
+                  </svg>
+                  <span style="font-weight: 500; color: #000;">id</span>
+                </div>
+                <span style="color: #BBB; font-size: 12px;">INT</span>
               </div>`,
               zIndex: 1
             },
@@ -666,18 +673,21 @@ export const DIAGRAM_TEMPLATES: Partial<TemplateMetadata>[] = [
             html: {
               mode: 'template',
               template: `<div style="
+                width: 100%;
+                height: 28px;
+                padding: 8px;
+                font-size: 12px;
+                font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+                background: transparent;
+                border-bottom: 1px solid #CBD2D9;
                 display: flex;
                 align-items: center;
-                gap: 8px;
-                padding: 6px 8px;
-                font-size: 12px;
-                background: white;
-                border-bottom: 1px solid #e5e7eb;
-                height: 28px;
+                justify-content: space-between;
+                box-sizing: border-box;
+                line-height: 1;
               ">
-                <span style="width: 16px;"></span>
-                <span style="flex: 1; color: #2c3e50;">name</span>
-                <span style="color: #7f8c8d; font-size: 11px; font-family: 'Courier New', monospace;">VARCHAR(255)</span>
+                <span style="margin-left: 20px; color: #000;">name</span>
+                <span style="color: #BBB; font-size: 12px;">VARCHAR(255)</span>
               </div>`,
               zIndex: 1
             },
@@ -706,18 +716,21 @@ export const DIAGRAM_TEMPLATES: Partial<TemplateMetadata>[] = [
             html: {
               mode: 'template',
               template: `<div style="
+                width: 100%;
+                height: 28px;
+                padding: 8px;
+                font-size: 12px;
+                font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+                background: transparent;
+                border-bottom: 1px solid #CBD2D9;
                 display: flex;
                 align-items: center;
-                gap: 8px;
-                padding: 6px 8px;
-                font-size: 12px;
-                background: white;
-                border-bottom: 1px solid #e5e7eb;
-                height: 28px;
+                justify-content: space-between;
+                box-sizing: border-box;
+                line-height: 1;
               ">
-                <span style="width: 16px;"></span>
-                <span style="flex: 1; color: #2c3e50;">price</span>
-                <span style="color: #7f8c8d; font-size: 11px; font-family: 'Courier New', monospace;">DECIMAL(10,2)</span>
+                <span style="margin-left: 20px; color: #000;">price</span>
+                <span style="color: #BBB; font-size: 12px;">DECIMAL(10,2)</span>
               </div>`,
               zIndex: 1
             },
@@ -733,7 +746,7 @@ export const DIAGRAM_TEMPLATES: Partial<TemplateMetadata>[] = [
               right: { enabled: true, type: 'output' }
             }
           },
-          // Field 4: stock
+          // Field 4: stock (last row - no border-bottom, rounded bottom corners)
           {
             type: 'erd-field',
             role: 'content',
@@ -746,17 +759,21 @@ export const DIAGRAM_TEMPLATES: Partial<TemplateMetadata>[] = [
             html: {
               mode: 'template',
               template: `<div style="
+                width: 100%;
+                height: 28px;
+                padding: 8px;
+                font-size: 12px;
+                font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+                background: transparent;
+                border-radius: 0 0 4px 4px;
                 display: flex;
                 align-items: center;
-                gap: 8px;
-                padding: 6px 8px;
-                font-size: 12px;
-                background: white;
-                height: 28px;
+                justify-content: space-between;
+                box-sizing: border-box;
+                line-height: 1;
               ">
-                <span style="width: 16px;"></span>
-                <span style="flex: 1; color: #2c3e50;">stock</span>
-                <span style="color: #7f8c8d; font-size: 11px; font-family: 'Courier New', monospace;">INT</span>
+                <span style="margin-left: 20px; color: #000;">stock</span>
+                <span style="color: #BBB; font-size: 12px;">INT</span>
               </div>`,
               zIndex: 1
             },
