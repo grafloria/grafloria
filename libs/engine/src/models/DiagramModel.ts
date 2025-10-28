@@ -126,6 +126,14 @@ export class DiagramModel extends DiagramEntity {
     node.on('change:rotation', updateSpatialIndex);
     node.on('change:scale', updateSpatialIndex);
 
+    // Phase 0.2: Forward position and size changes as diagram-level events for LiveReroutingEngine
+    node.on('change:position', () => {
+      this.emitter.emit('node:moved', { nodeId: node.id, position: node.position });
+    });
+    node.on('change:size', () => {
+      this.emitter.emit('node:resized', { nodeId: node.id, size: node.size });
+    });
+
     // Listen for any node changes and forward as diagram-level 'node:changed' event
     // This allows components like diagram-canvas to re-render when node properties change
     node.on('change', () => {
@@ -167,6 +175,14 @@ export class DiagramModel extends DiagramEntity {
       const updateSpatialIndex = () => this.nodeSpatialIndex.update(node);
       node.on('change:position', updateSpatialIndex);
       node.on('change:size', updateSpatialIndex);
+
+      // Phase 0.2: Forward position and size changes as diagram-level events
+      node.on('change:position', () => {
+        this.emitter.emit('node:moved', { nodeId: node.id, position: node.position });
+      });
+      node.on('change:size', () => {
+        this.emitter.emit('node:resized', { nodeId: node.id, size: node.size });
+      });
       node.on('change:rotation', updateSpatialIndex);
       node.on('change:scale', updateSpatialIndex);
 
@@ -297,6 +313,15 @@ export class DiagramModel extends DiagramEntity {
    */
   getLinks(): LinkModel[] {
     return Array.from(this.links.values());
+  }
+
+  /**
+   * Phase 0.2: Get all links connected to a specific port
+   */
+  getLinksForPort(portId: string): LinkModel[] {
+    return this.getLinks().filter(link =>
+      link.sourcePortId === portId || link.targetPortId === portId
+    );
   }
 
   /**
