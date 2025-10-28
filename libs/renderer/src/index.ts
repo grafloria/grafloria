@@ -7,9 +7,30 @@ export * from './vnode';
 // Export themes
 export * from './themes';
 
-// Export core services (excluding interfaces already exported from types)
+// Export core renderer strategy interfaces (used by Angular service)
+export type {
+  IRenderer as IRendererStrategy,
+  RendererCapabilities,
+  RendererConfig,
+  SVGRendererConfig as SVGRendererStrategyConfig,
+  CanvasRendererConfig as CanvasRendererStrategyConfig,
+  RenderOptions,
+  NodeUpdate,
+  TextStyle,
+  TextMetrics,
+  BoundingBox,
+  ExportFormat,
+  ExportOptions,
+  RendererConstructor,
+} from './core/renderer.interface';
+
+// Export core services
 export { RendererFactory } from './core/renderer-factory';
-export { RendererStrategyManager } from './core/renderer-strategy-manager';
+export {
+  RendererStrategyManager,
+  type RendererChangeEvent,
+  type RendererChangeCallback,
+} from './core/renderer-strategy-manager';
 
 // Export renderers
 export * from './svg';

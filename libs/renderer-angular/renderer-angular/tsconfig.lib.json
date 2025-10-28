@@ -16,7 +16,9 @@
     "jest.config.ts",
     "src/**/*.test.ts",
     "src/**/*.stories.ts",
-    "src/integration-tests/**/*"
+    "src/integration-tests/**/*",
+    "**/*.md",
+    "src/**/*.md"
   ],
   "include": ["src/**/*.ts"]
 }

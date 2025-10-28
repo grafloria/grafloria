@@ -76,30 +76,6 @@
           <label class="toggle-label">
             <input
               type="checkbox"
-              [(ngModel)]="waypointConfig.allowAddWaypoints"
-              (change)="updateWaypointConfig()"
-              [disabled]="!waypointConfig.enabled"
-            />
-            <span>Allow Add Waypoints</span>
-          </label>
-        </div>
-
-        <div class="control-group">
-          <label class="toggle-label">
-            <input
-              type="checkbox"
-              [(ngModel)]="waypointConfig.allowRemoveWaypoints"
-              (change)="updateWaypointConfig()"
-              [disabled]="!waypointConfig.enabled"
-            />
-            <span>Allow Remove Waypoints</span>
-          </label>
-        </div>
-
-        <div class="control-group">
-          <label class="toggle-label">
-            <input
-              type="checkbox"
               [(ngModel)]="waypointConfig.snapToGrid"
               (change)="updateWaypointConfig()"
               [disabled]="!waypointConfig.enabled"

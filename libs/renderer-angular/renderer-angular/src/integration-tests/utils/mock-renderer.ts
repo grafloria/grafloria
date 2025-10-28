@@ -1,5 +1,4 @@
-import type { IRenderer, RendererCapabilities } from '../../../../../renderer/src/core/renderer.interface';
-import type { VNode } from '@grafloria/renderer';
+import type { IRendererStrategy as IRenderer, RendererCapabilities, VNode } from '@grafloria/renderer';
 
 /**
  * MockRenderer

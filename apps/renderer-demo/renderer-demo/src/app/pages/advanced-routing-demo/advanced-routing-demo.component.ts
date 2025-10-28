@@ -40,8 +40,6 @@ export class AdvancedRoutingDemoComponent implements OnInit {
     gridSize: 10,
     handleRadius: 6,
     handleColor: '#3498db',
-    allowAddWaypoints: true,
-    allowRemoveWaypoints: true,
   };
 
   // Control point editing controls
@@ -97,8 +95,8 @@ export class AdvancedRoutingDemoComponent implements OnInit {
           handleColor: this.waypointConfig.handleColor,
           handleStrokeColor: '#2980b9',
           clickDetectionRadius: 15,
-          allowAddWaypoints: this.waypointConfig.allowAddWaypoints,
-          allowRemoveWaypoints: this.waypointConfig.allowRemoveWaypoints,
+          removeOnDoubleClick: true,
+          minDistanceFromEndpoints: 20,
         },
         controlPointEditor: {
           snapToGrid: this.controlPointConfig.snapToGrid,
@@ -347,7 +345,7 @@ export class AdvancedRoutingDemoComponent implements OnInit {
     const linkStraight = new LinkModel(
       straight1.getPorts()[0].id,
       straight2.getPorts()[0].id,
-      'straight'
+      'direct'
     );
     diagram.addLink(linkStraight);
     this.createInstructionNode('label1', 'Straight', { x: 150, y: 120 });
@@ -505,11 +503,11 @@ export class AdvancedRoutingDemoComponent implements OnInit {
         handleColor: this.waypointConfig.handleColor,
         handleStrokeColor: '#2980b9',
         clickDetectionRadius: 15,
-        allowAddWaypoints: this.waypointConfig.allowAddWaypoints,
-        allowRemoveWaypoints: this.waypointConfig.allowRemoveWaypoints,
+        removeOnDoubleClick: true,
+        minDistanceFromEndpoints: 20,
       },
     };
-    this.engine.updateInteractionConfig(config);
+    this.engine.setInteractionConfig(config);
     this.updateStats();
     this.cdr.markForCheck();
   }
@@ -532,7 +530,7 @@ export class AdvancedRoutingDemoComponent implements OnInit {
         symmetricControls: this.controlPointConfig.symmetricControls,
       },
     };
-    this.engine.updateInteractionConfig(config);
+    this.engine.setInteractionConfig(config);
     this.updateStats();
     this.cdr.markForCheck();
   }
@@ -567,9 +565,10 @@ export class AdvancedRoutingDemoComponent implements OnInit {
     let totalPoints = 0;
 
     for (const link of diagram.getLinks()) {
-      if (link.pathType === 'orthogonal' && link.waypoints) {
-        waypointCount += link.waypoints.length;
-        totalPoints += link.waypoints.length + 2; // +2 for start/end
+      if (link.pathType === 'orthogonal' && link.points.length > 2) {
+        // Waypoints are the intermediate points (exclude start and end)
+        waypointCount += link.points.length - 2;
+        totalPoints += link.points.length;
       } else if (link.pathType === 'bezier' && link.segments) {
         for (const segment of link.segments) {
           if (segment.type === 'curve') {

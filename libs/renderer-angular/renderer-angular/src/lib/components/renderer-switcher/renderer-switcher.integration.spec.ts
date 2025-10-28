@@ -4,8 +4,7 @@ import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { RendererSwitcherComponent } from './renderer-switcher.component';
 import { DiagramRendererService } from '../../services/diagram-renderer.service';
-import type { VNode } from '@grafloria/renderer';
-import type { IRenderer } from '../../../../../../renderer/src/core/renderer.interface';
+import type { IRendererStrategy as IRenderer, VNode } from '@grafloria/renderer';
 
 // Mock renderer for integration tests
 class MockRenderer implements IRenderer {

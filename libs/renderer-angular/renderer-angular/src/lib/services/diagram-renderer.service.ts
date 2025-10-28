@@ -1,13 +1,13 @@
 import { Injectable, OnDestroy } from '@angular/core';
 import { BehaviorSubject, Observable } from 'rxjs';
-import { RendererStrategyManager } from '@grafloria/renderer';
-import type {
-  IRenderer,
-  RendererConfig,
-  RendererCapabilities,
-} from '../../../../../renderer/src/core/renderer.interface';
-import type { RendererChangeEvent } from '../../../../../renderer/src/core/renderer-strategy-manager';
-import type { VNode } from '@grafloria/renderer';
+import {
+  RendererStrategyManager,
+  type IRendererStrategy as IRenderer,
+  type RendererConfig,
+  type RendererCapabilities,
+  type RendererChangeEvent,
+  type VNode,
+} from '@grafloria/renderer';
 
 /**
  * Criteria for renderer recommendation

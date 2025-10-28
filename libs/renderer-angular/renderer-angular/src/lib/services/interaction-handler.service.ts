@@ -1067,7 +1067,8 @@ export class InteractionHandlerService {
 
     if (newSegments) {
       this.editingControlPointLink.segments = newSegments;
-      this.editingControlPointLink.updateSegments();
+      // Mark link as dirty to trigger re-render with updated segments
+      this.editingControlPointLink.markDirty();
       console.log(
         `🟢 Moved ${this.editingControlPointType} of segment ${this.editingControlPointSegmentIndex} to (${worldX.toFixed(1)}, ${worldY.toFixed(1)})`
       );
