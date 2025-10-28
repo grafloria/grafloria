@@ -28,6 +28,7 @@ import { InteractionHandlerService } from '../services/interaction-handler.servi
 import { ComponentRendererService } from '../services/component-renderer.service';
 import { HandleRegistryService } from '../services/handle-registry.service';
 import { HtmlNodeRendererDirective } from '../directives/html-node-renderer.directive';
+import { GrafloriaHandleDirective } from '../directives/grafloria-handle.directive';
 
 /**
  * DiagramCanvasComponent
@@ -48,7 +49,7 @@ import { HtmlNodeRendererDirective } from '../directives/html-node-renderer.dire
 @Component({
   selector: 'grafloria-diagram-canvas',
   standalone: true,
-  imports: [CommonModule, HtmlNodeRendererDirective],
+  imports: [CommonModule, HtmlNodeRendererDirective, GrafloriaHandleDirective],
   templateUrl: './diagram-canvas.component.html',
   styleUrls: ['./diagram-canvas.component.css'],
   changeDetection: ChangeDetectionStrategy.OnPush,
@@ -733,11 +734,27 @@ export class DiagramCanvasComponent implements OnInit, AfterViewInit, OnChanges,
       }
 
       // Check if clicking on a node
-      const clickedNode = diagram.getNodeAtPosition(worldX, worldY);
+      let clickedNode = diagram.getNodeAtPosition(worldX, worldY);
       console.log('🖱️ Click at world coords:', { x: worldX.toFixed(1), y: worldY.toFixed(1) }, 'Node:', clickedNode?.getMetadata('label') || 'none');
 
       if (clickedNode) {
         event.preventDefault();
+
+        // CRITICAL FIX: If clicked node is not draggable, check for draggable parent
+        // This allows child nodes (like table rows) to trigger parent drag
+        if (!clickedNode.isDraggable() && clickedNode.parentId) {
+          let currentNode = clickedNode;
+          while (currentNode.parentId) {
+            const parentNode = diagram.getNode(currentNode.parentId);
+            if (parentNode && parentNode.isDraggable()) {
+              console.log('🖱️ Using draggable parent:', parentNode.id, 'instead of child:', clickedNode.id);
+              clickedNode = parentNode;
+              break;
+            }
+            currentNode = parentNode || currentNode;
+            if (!parentNode) break;
+          }
+        }
 
         // Handle selection
         if (event.ctrlKey || event.metaKey) {
@@ -1286,6 +1303,74 @@ export class DiagramCanvasComponent implements OnInit, AfterViewInit, OnChanges,
     }
 
     return y;
+  }
+
+  /**
+   * Get node X position for HTML rendering
+   * Accounts for parent chain and zoom transform on HTML layer
+   */
+  getNodeX(node: any): number {
+    // Get world coordinate
+    const worldX = this.getAbsoluteX(node);
+
+    // Divide by zoom because HTML layer has scale(zoom) applied
+    // This prevents double scaling: node position gets multiplied by layer scale
+    return worldX / this.zoom;
+  }
+
+  /**
+   * Get node Y position for HTML rendering
+   * Accounts for parent chain and zoom transform on HTML layer
+   */
+  getNodeY(node: any): number {
+    // Get world coordinate
+    const worldY = this.getAbsoluteY(node);
+
+    // Divide by zoom because HTML layer has scale(zoom) applied
+    // This prevents double scaling: node position gets multiplied by layer scale
+    return worldY / this.zoom;
+  }
+
+  /**
+   * Check if a port should be rendered as an HTML handle
+   * Respects port visibility settings and template configuration
+   */
+  shouldRenderPort(port: PortModel, node: NodeModel): boolean {
+    // Check if node has ports enabled via template metadata
+    const portsConfig = node.getMetadata('portsConfig');
+    if (portsConfig && portsConfig.enabled === false) {
+      return false;
+    }
+
+    // Check port visibility (defaultVisibility or port-specific visibility)
+    const defaultVisibility = portsConfig?.defaultVisibility || 'on-hover';
+    const portVisibility = port.getMetadata('visibility') || defaultVisibility;
+
+    // For now, always show ports that are explicitly enabled
+    // TODO: Implement on-hover visibility when interaction system is enhanced
+    return portVisibility === 'always' || portVisibility === 'on-hover';
+  }
+
+  /**
+   * Get port position CSS value for top or left
+   * Positions ports at the center of each edge
+   */
+  getPortPosition(port: PortModel, node: NodeModel, axis: 'top' | 'left'): string {
+    const side = port.side;
+
+    if (axis === 'top') {
+      // Vertical positioning
+      if (side === 'top') return '0px';
+      if (side === 'bottom') return '100%';
+      if (side === 'left' || side === 'right') return '50%'; // Center vertically for left/right ports
+    } else {
+      // Horizontal positioning
+      if (side === 'left') return '0px';
+      if (side === 'right') return '100%';
+      if (side === 'top' || side === 'bottom') return '50%'; // Center horizontally for top/bottom ports
+    }
+
+    return '50%'; // Default to center
   }
 
   /**

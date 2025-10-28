@@ -129,12 +129,18 @@ export class HtmlNodeRendererDirective implements OnInit, OnChanges {
     const container = document.createElement('div');
     container.innerHTML = html;
 
+    // CRITICAL FIX: Apply node size to container to ensure proper width/height
+    // This allows flexbox layout and other sizing mechanisms to work correctly
+    container.style.width = '100%';
+    container.style.height = '100%';
+    container.style.boxSizing = 'border-box';
+
     // Apply className if specified
     if (htmlConfig.className) {
       container.classList.add(htmlConfig.className);
     }
 
-    // Apply inline styles if specified
+    // Apply inline styles if specified (these override the default sizing if needed)
     if (htmlConfig.style) {
       Object.assign(container.style, htmlConfig.style);
     }

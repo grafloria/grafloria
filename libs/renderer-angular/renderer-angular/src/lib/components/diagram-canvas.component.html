@@ -11,12 +11,39 @@
            [attr.data-node-id]="node.id"
            [attr.data-parent-id]="node.parent || ''"
            [style.position]="'absolute'"
-           [style.left.px]="getAbsoluteX(node)"
-           [style.top.px]="getAbsoluteY(node)"
+           [style.left.px]="getNodeX(node)"
+           [style.top.px]="getNodeY(node)"
+           [style.width.px]="node.size.width"
+           [style.height.px]="node.size.height"
            [style.z-index]="node.getMetadata('z') || 1">
         <!-- Dynamically render component using directive -->
         <!-- Support both NodeModel (node.type) and GroupModel (metadata.type) -->
         <ng-container [htmlNodeRenderer]="node" [nodeType]="node.type || node.getMetadata('type')" [engine]="engine"></ng-container>
+
+        <!-- Render HTML handles for nodes with ports (React Flow style) -->
+        @for (port of node.ports.values(); track port.id) {
+          @if (shouldRenderPort(port, node)) {
+            <div class="html-port-handle"
+                 [grafloriaHandle]="port.type === 'output' ? 'source' : 'target'"
+                 [handleId]="port.id"
+                 [handlePosition]="port.side"
+                 [attr.data-port-id]="port.id"
+                 [attr.data-port-side]="port.side"
+                 [attr.data-port-type]="port.type"
+                 [style.position]="'absolute'"
+                 [style.width.px]="8"
+                 [style.height.px]="8"
+                 [style.background]="'#555'"
+                 [style.border]="'2px solid #fff'"
+                 [style.borderRadius]="'50%'"
+                 [style.cursor]="'crosshair'"
+                 [style.zIndex]="10"
+                 [style.top]="getPortPosition(port, node, 'top')"
+                 [style.left]="getPortPosition(port, node, 'left')"
+                 [style.transform]="'translate(-50%, -50%)'">
+            </div>
+          }
+        }
       </div>
     }
   </div>
