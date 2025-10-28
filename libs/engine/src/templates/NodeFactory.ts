@@ -356,18 +356,39 @@ export class NodeFactory {
     let offset = flexLayout.padding?.top || 0;
     const gap = flexLayout.gap || 0;
 
+    // Calculate available space for stretch alignment
+    const paddingLeft = flexLayout.padding?.left || 0;
+    const paddingRight = flexLayout.padding?.right || 0;
+    const paddingTop = flexLayout.padding?.top || 0;
+    const paddingBottom = flexLayout.padding?.bottom || 0;
+
+    const availableWidth = node.size.width - paddingLeft - paddingRight;
+    const availableHeight = node.size.height - paddingTop - paddingBottom;
+
     node.children.forEach((childId) => {
       const child = this.diagram.getNode(childId);
       if (child) {
         if (flexLayout.direction === 'column') {
           // Stack vertically
-          child.position.x = flexLayout.padding?.left || 0;
+          child.position.x = paddingLeft;
           child.position.y = offset;
+
+          // Apply alignItems stretch - child should fill parent width
+          if (flexLayout.alignItems === 'stretch') {
+            child.size.width = availableWidth;
+          }
+
           offset += child.size.height + gap;
         } else if (flexLayout.direction === 'row') {
           // Stack horizontally
           child.position.x = offset;
-          child.position.y = flexLayout.padding?.top || 0;
+          child.position.y = paddingTop;
+
+          // Apply alignItems stretch - child should fill parent height
+          if (flexLayout.alignItems === 'stretch') {
+            child.size.height = availableHeight;
+          }
+
           offset += child.size.width + gap;
         }
       }
