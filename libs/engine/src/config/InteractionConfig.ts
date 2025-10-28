@@ -132,6 +132,67 @@ export interface InteractionConfig {
    * Show animated dots on connection preview
    */
   animateConnectionPreview: boolean;
+
+  /**
+   * Phase 2.3: Enable waypoint editing on links
+   * Allow users to add/move/remove waypoints by clicking/dragging link paths
+   */
+  enableWaypointEditing: boolean;
+
+  /**
+   * Phase 2.3: Show waypoint handles on selected links
+   */
+  showWaypointHandles: boolean;
+
+  /**
+   * Phase 2.3: Waypoint editor configuration
+   */
+  waypointEditor?: WaypointEditorConfig;
+}
+
+/**
+ * Phase 2.3: Waypoint editor configuration
+ */
+export interface WaypointEditorConfig {
+  /**
+   * Snap waypoints to grid
+   */
+  snapToGrid: boolean;
+
+  /**
+   * Grid size for snapping (in pixels)
+   */
+  gridSize: number;
+
+  /**
+   * Remove waypoint on double-click
+   */
+  removeOnDoubleClick: boolean;
+
+  /**
+   * Waypoint handle radius (in pixels)
+   */
+  handleRadius: number;
+
+  /**
+   * Waypoint handle color
+   */
+  handleColor: string;
+
+  /**
+   * Waypoint handle stroke color
+   */
+  handleStrokeColor: string;
+
+  /**
+   * Minimum distance from endpoints to add waypoint (in pixels)
+   */
+  minDistanceFromEndpoints: number;
+
+  /**
+   * Maximum distance from path to detect click (in pixels)
+   */
+  clickDetectionRadius: number;
 }
 
 /**
@@ -151,6 +212,19 @@ export const DEFAULT_INTERACTION_CONFIG: InteractionConfig = {
   enableSmartAutoConnect: true,
   highlightValidTargets: true,
   animateConnectionPreview: true,
+  // Phase 2.3: Waypoint editing defaults
+  enableWaypointEditing: false,  // Disabled by default for backward compatibility
+  showWaypointHandles: true,
+  waypointEditor: {
+    snapToGrid: false,
+    gridSize: 20,
+    removeOnDoubleClick: true,
+    handleRadius: 5,
+    handleColor: '#3b82f6',
+    handleStrokeColor: '#ffffff',
+    minDistanceFromEndpoints: 30,
+    clickDetectionRadius: 10,
+  },
 };
 
 /**
