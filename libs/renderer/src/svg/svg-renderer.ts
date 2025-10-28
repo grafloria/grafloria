@@ -369,10 +369,9 @@ export class SVGRenderer implements IRenderer {
     // CRITICAL FIX: Use getPortPositionForShape() for consistent positioning
     // This ensures the preview line starts from the same position where the port is rendered
     const sourceLocalPos = getPortPositionForShape(dragState.sourcePort, sourceNode);
-    const sourceWorldPos = sourceNode.getWorldPosition();  // ✅ Get world coordinates
     const sourcePos = {
-      x: sourceWorldPos.x + sourceLocalPos.x,  // ✅ Use world position
-      y: sourceWorldPos.y + sourceLocalPos.y,  // ✅ Use world position
+      x: sourceNode.position.x + sourceLocalPos.x,
+      y: sourceNode.position.y + sourceLocalPos.y,
     };
 
     const targetPos = dragState.currentMousePosition;
@@ -407,11 +406,10 @@ export class SVGRenderer implements IRenderer {
     // Include ALL nodes as obstacles for preview
     // The routing algorithm uses gap offset to ensure paths start/end outside node boundaries
     diagram.getNodes().forEach(node => {
-      const worldPos = node.getWorldPosition();  // ✅ Get world coordinates
       obstacles.push({
         id: node.id,
-        x: worldPos.x,           // ✅ Use world position
-        y: worldPos.y,           // ✅ Use world position
+        x: node.position.x,
+        y: node.position.y,
         width: node.size.width,
         height: node.size.height,
       });
@@ -1494,11 +1492,10 @@ export class SVGRenderer implements IRenderer {
             return; // Skip this node
           }
 
-          const worldPos = node.getWorldPosition();  // ✅ Get world coordinates
           obstacles.push({
             id: node.id,
-            x: worldPos.x,           // ✅ Use world position
-            y: worldPos.y,           // ✅ Use world position
+            x: node.position.x,
+            y: node.position.y,
             width: node.size.width,
             height: node.size.height,
           });
