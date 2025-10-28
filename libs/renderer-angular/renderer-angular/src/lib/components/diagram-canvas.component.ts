@@ -1304,7 +1304,7 @@ export class DiagramCanvasComponent implements OnInit, AfterViewInit, OnChanges,
    * Used to determine if we need full transform calculations
    */
   private hasTransformsInHierarchy(node: NodeModel): boolean {
-    let currentNode: NodeModel | null = node;
+    let currentNode: NodeModel | null | undefined = node;
     const diagram = this.engine?.getDiagram();
 
     while (currentNode) {
