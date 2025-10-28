@@ -84,6 +84,10 @@ export interface RoutingOptions {
   };
   /** Maximum iterations for pathfinding */
   maxIterations?: number;
+  /** Phase 2.2: Simplify path to reduce waypoint count */
+  simplifyPath?: boolean;
+  /** Phase 2.2: Simplification tolerance (epsilon) - higher values = more aggressive */
+  simplificationEpsilon?: number;
 }
 
 /**
