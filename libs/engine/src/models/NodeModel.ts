@@ -485,20 +485,50 @@ export class NodeModel extends DiagramEntity {
   }
 
   /**
-   * Get bounding box
+   * Get world position (absolute coordinates accounting for parent chain)
+   * For nodes without parents, this is the same as position
+   * For child nodes, this walks up the parent chain and accumulates offsets
    */
-  getBoundingBox(): BoundingBox {
-    return createBoundingBox(this.position, this.size);
+  getWorldPosition(): Point {
+    let worldX = this.position.x;
+    let worldY = this.position.y;
+    let worldZ = this.position.z || 0;
+
+    // Walk up parent chain
+    let currentParentId = this.parentId;
+    while (currentParentId && this.diagram) {
+      const parentNode = this.diagram.getNode(currentParentId);
+      if (parentNode) {
+        worldX += parentNode.position.x;
+        worldY += parentNode.position.y;
+        worldZ += parentNode.position.z || 0;
+        currentParentId = parentNode.parentId;
+      } else {
+        break;
+      }
+    }
+
+    return { x: worldX, y: worldY, z: worldZ };
   }
 
   /**
-   * Get center point
+   * Get bounding box in world coordinates
+   * For child nodes, this accounts for parent position
+   */
+  getBoundingBox(): BoundingBox {
+    const worldPos = this.getWorldPosition();
+    return createBoundingBox(worldPos, this.size);
+  }
+
+  /**
+   * Get center point in world coordinates
    */
   getCenter(): Point {
+    const worldPos = this.getWorldPosition();
     return {
-      x: this.position.x,
-      y: this.position.y,
-      z: this.position.z,
+      x: worldPos.x + this.size.width / 2,
+      y: worldPos.y + this.size.height / 2,
+      z: worldPos.z,
     };
   }
 
