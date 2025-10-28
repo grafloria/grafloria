@@ -674,45 +674,57 @@ export class DiagramCanvasComponent implements OnInit, AfterViewInit, OnChanges,
         return;
       }
 
-      // Phase 2.3b: Check for control point click (if control point editing enabled and link is selected)
+      // Phase 2.3b: Check for control point click (if control point editing enabled)
       const config = this.engine.getInteractionConfig();
-      if (config.enableControlPointEditing && interactionState.hoveredLink && interactionState.hoveredLink.state === 'selected') {
-        // Check if clicking on a control point handle
-        const controlPointHit = this.interactionHandler.hitTestControlPoint(worldX, worldY, interactionState.hoveredLink);
+      if (config.enableControlPointEditing) {
+        // CRITICAL FIX: Check for control point clicks on ALL selected links, not just hovered link
+        // Control point handles are separate SVG circles, so clicking them doesn't register as hovering over the link path
+        // We need to check all selected links to see if any control point was clicked
+        const selectedLinks = diagram.getLinks().filter((link: any) => link.state === 'selected');
 
-        if (controlPointHit) {
-          event.preventDefault();
-          console.log('🟢 Control point handle clicked:', controlPointHit.controlType, 'of segment', controlPointHit.segmentIndex, 'on link', interactionState.hoveredLink.id);
-          this.interactionHandler.startControlPointDrag(controlPointHit.segmentIndex, controlPointHit.controlType, interactionState.hoveredLink);
-          this.cdr.markForCheck();
-          return;
+        for (const selectedLink of selectedLinks) {
+          const controlPointHit = this.interactionHandler.hitTestControlPoint(worldX, worldY, selectedLink);
+
+          if (controlPointHit) {
+            event.preventDefault();
+            console.log('🟢 Control point handle clicked:', controlPointHit.controlType, 'of segment', controlPointHit.segmentIndex, 'on link', selectedLink.id);
+            this.interactionHandler.startControlPointDrag(controlPointHit.segmentIndex, controlPointHit.controlType, selectedLink);
+            this.cdr.markForCheck();
+            return;
+          }
         }
       }
 
-      // Phase 2.3a: Check for waypoint click (if waypoint editing enabled and link is selected)
-      if (config.enableWaypointEditing && interactionState.hoveredLink && interactionState.hoveredLink.state === 'selected') {
-        // Check if clicking on a waypoint handle
-        const waypointIndex = this.interactionHandler.hitTestWaypoint(worldX, worldY, interactionState.hoveredLink);
+      // Phase 2.3a: Check for waypoint click (if waypoint editing enabled)
+      if (config.enableWaypointEditing) {
+        // CRITICAL FIX: Check for waypoint clicks on ALL selected links, not just hovered link
+        // Waypoint handles are separate SVG circles, so clicking them doesn't register as hovering over the link path
+        // We need to check all selected links to see if any waypoint was clicked
+        const selectedLinks = diagram.getLinks().filter((link: any) => link.state === 'selected');
 
-        if (waypointIndex !== null) {
-          event.preventDefault();
-          console.log('🔵 Waypoint handle clicked:', waypointIndex, 'on link', interactionState.hoveredLink.id);
-          this.interactionHandler.startWaypointDrag(waypointIndex, interactionState.hoveredLink);
-          this.cdr.markForCheck();
-          return;
-        }
+        for (const selectedLink of selectedLinks) {
+          const waypointIndex = this.interactionHandler.hitTestWaypoint(worldX, worldY, selectedLink);
 
-        // Check if clicking on link path (to add waypoint)
-        const hitPath = this.interactionHandler.hitTestPath(worldX, worldY, interactionState.hoveredLink);
-        if (hitPath) {
-          event.preventDefault();
-          console.log('🟢 Link path clicked, adding waypoint on link', interactionState.hoveredLink.id);
-          const added = this.interactionHandler.addWaypoint(worldX, worldY, interactionState.hoveredLink);
-          if (added) {
-            this.renderDiagram();
+          if (waypointIndex !== null) {
+            event.preventDefault();
+            console.log('🔵 Waypoint handle clicked:', waypointIndex, 'on link', selectedLink.id);
+            this.interactionHandler.startWaypointDrag(waypointIndex, selectedLink);
             this.cdr.markForCheck();
+            return;
           }
-          return;
+
+          // Check if clicking on link path (to add waypoint)
+          const hitPath = this.interactionHandler.hitTestPath(worldX, worldY, selectedLink);
+          if (hitPath) {
+            event.preventDefault();
+            console.log('🟢 Link path clicked, adding waypoint on link', selectedLink.id);
+            const added = this.interactionHandler.addWaypoint(worldX, worldY, selectedLink);
+            if (added) {
+              this.renderDiagram();
+              this.cdr.markForCheck();
+            }
+            return;
+          }
         }
       }
 
