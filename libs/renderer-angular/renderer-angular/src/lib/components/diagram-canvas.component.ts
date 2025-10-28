@@ -677,6 +677,34 @@ export class DiagramCanvasComponent implements OnInit, AfterViewInit, OnChanges,
         return;
       }
 
+      // Phase 2.3a: Check for waypoint click (if waypoint editing enabled and link is selected)
+      const config = this.engine.getInteractionConfig();
+      if (config.enableWaypointEditing && interactionState.hoveredLink && interactionState.hoveredLink.state === 'selected') {
+        // Check if clicking on a waypoint handle
+        const waypointIndex = this.interactionHandler.hitTestWaypoint(worldX, worldY, interactionState.hoveredLink);
+
+        if (waypointIndex !== null) {
+          event.preventDefault();
+          console.log('🔵 Waypoint handle clicked:', waypointIndex, 'on link', interactionState.hoveredLink.id);
+          this.interactionHandler.startWaypointDrag(waypointIndex, interactionState.hoveredLink);
+          this.cdr.markForCheck();
+          return;
+        }
+
+        // Check if clicking on link path (to add waypoint)
+        const hitPath = this.interactionHandler.hitTestPath(worldX, worldY, interactionState.hoveredLink);
+        if (hitPath) {
+          event.preventDefault();
+          console.log('🟢 Link path clicked, adding waypoint on link', interactionState.hoveredLink.id);
+          const added = this.interactionHandler.addWaypoint(worldX, worldY, interactionState.hoveredLink);
+          if (added) {
+            this.renderDiagram();
+            this.cdr.markForCheck();
+          }
+          return;
+        }
+      }
+
       // Phase 3: Check for link click (for selection)
       if (interactionState.hoveredLink) {
         event.preventDefault();
@@ -814,6 +842,25 @@ export class DiagramCanvasComponent implements OnInit, AfterViewInit, OnChanges,
       return;
     }
 
+    // Phase 2.3a: Handle waypoint dragging
+    const interactionState = this.interactionHandler.getState();
+    if (interactionState.isDraggingWaypoint) {
+      // Convert to world coordinates
+      const rect = this.containerRef.nativeElement.getBoundingClientRect();
+      const clientX = event.clientX - rect.left;
+      const clientY = event.clientY - rect.top;
+      const worldX = this.viewport.x + (clientX / this.zoom);
+      const worldY = this.viewport.y + (clientY / this.zoom);
+
+      // Move waypoint to new position
+      const moved = this.interactionHandler.moveWaypoint(worldX, worldY, this.engine);
+      if (moved) {
+        this.renderDiagram();
+        this.cdr.markForCheck();
+      }
+      return;
+    }
+
     // Phase 3: Handle hover detection and connection drag
     if (!this.spaceKeyPressed) {
       // Convert client coordinates to world coordinates
@@ -852,8 +899,17 @@ export class DiagramCanvasComponent implements OnInit, AfterViewInit, OnChanges,
   @HostListener('mouseup', ['$event'])
   onMouseUp(event: MouseEvent): void {
     if (event.button === 1 || event.button === 0) {
-      // Phase 3: Complete connection if in progress
+      // Phase 2.3a: End waypoint drag if in progress
       const interactionState = this.interactionHandler.getState();
+      if (interactionState.isDraggingWaypoint) {
+        event.preventDefault();
+        this.interactionHandler.endWaypointDrag();
+        this.renderDiagram();
+        this.cdr.markForCheck();
+        return;
+      }
+
+      // Phase 3: Complete connection if in progress
       if (interactionState.isConnecting) {
         event.preventDefault();
         const success = this.interactionHandler.completeConnection(this.engine);
