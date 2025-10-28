@@ -266,9 +266,17 @@ export class SVGRenderer implements IRenderer {
 
   /**
    * Render links layer
+   * FIXED: Sort links so selected/highlighted links render on top
    */
   private renderLinksLayer(links: LinkModel[], lod: LODLevel): VNode {
-    const children = links.map(link => this.renderLink(link, lod));
+    // Sort links: default/hovered first, then selected/highlighted on top
+    const sortedLinks = [...links].sort((a, b) => {
+      const aOrder = (a.state === 'selected' || a.state === 'highlighted') ? 1 : 0;
+      const bOrder = (b.state === 'selected' || b.state === 'highlighted') ? 1 : 0;
+      return aOrder - bOrder;
+    });
+
+    const children = sortedLinks.map(link => this.renderLink(link, lod));
 
     return {
       type: 'g',
@@ -1448,7 +1456,12 @@ export class SVGRenderer implements IRenderer {
     let pathData: string;
     let points: Array<{ x: number; y: number }>;
 
-    if (endpoints) {
+    // FIXED: Check if link has manually edited waypoints
+    // If link has more than 2 points, it means waypoints were added manually
+    // Don't regenerate the route in this case - use the existing points
+    const hasManualWaypoints = link.points && link.points.length > 2;
+
+    if (endpoints && !hasManualWaypoints) {
       // Use RoutingEngine to calculate path
       const routingEngine = this.engine.getRoutingEngine();
 

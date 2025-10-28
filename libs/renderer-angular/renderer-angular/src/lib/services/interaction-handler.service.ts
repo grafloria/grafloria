@@ -572,6 +572,17 @@ export class InteractionHandlerService {
   }
 
   /**
+   * Find link at world position (public wrapper for hit testing)
+   * Used for direct link selection without requiring hover state
+   */
+  getLinkAtPosition(worldX: number, worldY: number, engine: DiagramEngine): LinkModel | null {
+    const diagram = engine.getDiagram();
+    if (!diagram) return null;
+
+    return this.findLinkAtPosition(worldX, worldY, diagram);
+  }
+
+  /**
    * Phase 3: Get current interaction state
    */
   getState() {

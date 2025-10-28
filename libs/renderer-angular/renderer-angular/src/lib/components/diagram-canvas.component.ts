@@ -720,10 +720,16 @@ export class DiagramCanvasComponent implements OnInit, AfterViewInit, OnChanges,
       }
 
       // Phase 3: Check for link click (for selection)
-      if (interactionState.hoveredLink) {
+      // FIXED: Use direct hit testing if hover state not available (e.g., on initial load)
+      let linkToSelect = interactionState.hoveredLink;
+      if (!linkToSelect) {
+        linkToSelect = this.interactionHandler.getLinkAtPosition(worldX, worldY, this.engine);
+      }
+
+      if (linkToSelect) {
         event.preventDefault();
-        console.log('🖱️ Link clicked:', interactionState.hoveredLink.id);
-        this.interactionHandler.selectLink(interactionState.hoveredLink, this.engine);
+        console.log('🖱️ Link clicked:', linkToSelect.id);
+        this.interactionHandler.selectLink(linkToSelect, this.engine);
         this.renderDiagram();
         this.cdr.markForCheck();
         return;
