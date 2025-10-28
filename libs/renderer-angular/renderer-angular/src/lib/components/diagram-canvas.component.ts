@@ -22,7 +22,7 @@ import {
 import { CommonModule } from '@angular/common';
 import type { DiagramEngine } from '@grafloria/engine';
 import { PortModel, NodeModel } from '@grafloria/engine';
-import { SVGRenderer, LIGHT_THEME, type Theme, type Rectangle } from '@grafloria/renderer';
+import { SVGRenderer, LIGHT_THEME, type Theme, type Rectangle, getPortPositionForShape } from '@grafloria/renderer';
 import { VNodeRendererService } from '../services/vnode-renderer.service';
 import { InteractionHandlerService } from '../services/interaction-handler.service';
 import { ComponentRendererService } from '../services/component-renderer.service';
@@ -1258,51 +1258,72 @@ export class DiagramCanvasComponent implements OnInit, AfterViewInit, OnChanges,
   }
 
   /**
-   * Get absolute X position for a node (including parent offset)
-   * Walks up the parent chain to calculate world coordinates
+   * Get absolute X position for a node (including parent offset and transforms)
+   * CRITICAL FIX: Use getWorldPosition() for simple cases, getGlobalPosition() for transforms
+   * This properly handles rotation, scale, and nested hierarchies
    */
   getAbsoluteX(node: any): number {
-    let x = node.position.x;
-    let currentNode = node;
-    const diagram = this.engine?.getDiagram();
+    // CRITICAL FIX: Check if node or any ancestor has transforms (rotation/scale)
+    // If yes, use getGlobalPosition() which accounts for transforms
+    // Otherwise, use getWorldPosition() which is faster for simple cases
 
-    // Walk up parent chain
-    // FIXED: Use parentId instead of parent (NodeModel uses parentId property)
-    while (currentNode.parentId && diagram) {
-      const parentNode = diagram.getNode(currentNode.parentId);
-      if (parentNode) {
-        x += parentNode.position.x;
-        currentNode = parentNode;
-      } else {
-        break;
-      }
+    if (this.hasTransformsInHierarchy(node)) {
+      // Use global position which applies all parent transforms
+      const globalPos = node.getGlobalPosition();
+      return globalPos.x;
+    } else {
+      // Use world position (faster, no transform calculations)
+      const worldPos = node.getWorldPosition();
+      return worldPos.x;
     }
-
-    return x;
   }
 
   /**
-   * Get absolute Y position for a node (including parent offset)
-   * Walks up the parent chain to calculate world coordinates
+   * Get absolute Y position for a node (including parent offset and transforms)
+   * CRITICAL FIX: Use getWorldPosition() for simple cases, getGlobalPosition() for transforms
+   * This properly handles rotation, scale, and nested hierarchies
    */
   getAbsoluteY(node: any): number {
-    let y = node.position.y;
-    let currentNode = node;
+    // CRITICAL FIX: Check if node or any ancestor has transforms (rotation/scale)
+    // If yes, use getGlobalPosition() which accounts for transforms
+    // Otherwise, use getWorldPosition() which is faster for simple cases
+
+    if (this.hasTransformsInHierarchy(node)) {
+      // Use global position which applies all parent transforms
+      const globalPos = node.getGlobalPosition();
+      return globalPos.y;
+    } else {
+      // Use world position (faster, no transform calculations)
+      const worldPos = node.getWorldPosition();
+      return worldPos.y;
+    }
+  }
+
+  /**
+   * Check if node or any ancestor has transforms (rotation/scale)
+   * Used to determine if we need full transform calculations
+   */
+  private hasTransformsInHierarchy(node: NodeModel): boolean {
+    let currentNode: NodeModel | null = node;
     const diagram = this.engine?.getDiagram();
 
-    // Walk up parent chain
-    // FIXED: Use parentId instead of parent (NodeModel uses parentId property)
-    while (currentNode.parentId && diagram) {
-      const parentNode = diagram.getNode(currentNode.parentId);
-      if (parentNode) {
-        y += parentNode.position.y;
-        currentNode = parentNode;
+    while (currentNode) {
+      // Check if node has non-default rotation or scale
+      if (currentNode.rotation !== 0 ||
+          currentNode.scale?.x !== 1 ||
+          currentNode.scale?.y !== 1) {
+        return true;
+      }
+
+      // Move to parent
+      if (currentNode.parentId && diagram) {
+        currentNode = diagram.getNode(currentNode.parentId);
       } else {
         break;
       }
     }
 
-    return y;
+    return false;
   }
 
   /**
@@ -1353,24 +1374,24 @@ export class DiagramCanvasComponent implements OnInit, AfterViewInit, OnChanges,
 
   /**
    * Get port position CSS value for top or left
-   * Positions ports at the center of each edge
+   * CRITICAL FIX: Use shape-aware positioning from getPortPositionForShape()
+   * This ensures HTML ports align with SVG ports for all shape types
    */
   getPortPosition(port: PortModel, node: NodeModel, axis: 'top' | 'left'): string {
-    const side = port.side;
+    // Get shape-aware position in local coordinates (pixels relative to node origin)
+    const localPos = getPortPositionForShape(port, node);
 
+    // Convert to percentage based on node size for CSS positioning
+    // This ensures ports position correctly at any zoom level
     if (axis === 'top') {
-      // Vertical positioning
-      if (side === 'top') return '0px';
-      if (side === 'bottom') return '100%';
-      if (side === 'left' || side === 'right') return '50%'; // Center vertically for left/right ports
+      // Vertical positioning: convert Y coordinate to percentage
+      const percentage = (localPos.y / node.size.height) * 100;
+      return `${percentage}%`;
     } else {
-      // Horizontal positioning
-      if (side === 'left') return '0px';
-      if (side === 'right') return '100%';
-      if (side === 'top' || side === 'bottom') return '50%'; // Center horizontally for top/bottom ports
+      // Horizontal positioning: convert X coordinate to percentage
+      const percentage = (localPos.x / node.size.width) * 100;
+      return `${percentage}%`;
     }
-
-    return '50%'; // Default to center
   }
 
   /**

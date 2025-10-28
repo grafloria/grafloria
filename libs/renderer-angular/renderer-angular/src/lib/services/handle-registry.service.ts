@@ -39,6 +39,12 @@ export interface HandleBounds {
  * - Queries DOM positions using getBoundingClientRect() like React Flow
  * - Provides handle bounds for connection drawing
  * - Enables hit testing for connection drag operations
+ *
+ * SHAPE AWARENESS:
+ * This service queries actual DOM positions, so it automatically supports all shape types
+ * (rect, circle, ellipse, diamond, hexagon) as long as the handles are positioned correctly
+ * in the template. Handle positioning is done by diagram-canvas.component.ts using
+ * getPortPositionForShape() which provides shape-aware positioning.
  */
 @Injectable({ providedIn: 'root' })
 export class HandleRegistryService {
