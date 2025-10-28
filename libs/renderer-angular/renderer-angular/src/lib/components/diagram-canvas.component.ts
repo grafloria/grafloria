@@ -740,11 +740,27 @@ export class DiagramCanvasComponent implements OnInit, AfterViewInit, OnChanges,
       }
 
       // Check if clicking on a node
-      const clickedNode = diagram.getNodeAtPosition(worldX, worldY);
+      let clickedNode = diagram.getNodeAtPosition(worldX, worldY);
       console.log('🖱️ Click at world coords:', { x: worldX.toFixed(1), y: worldY.toFixed(1) }, 'Node:', clickedNode?.getMetadata('label') || 'none');
 
       if (clickedNode) {
         event.preventDefault();
+
+        // CRITICAL FIX: If clicked node is not draggable, check for draggable parent
+        // This allows child nodes (like table rows) to trigger parent drag
+        if (!clickedNode.isDraggable() && clickedNode.parentId) {
+          let currentNode = clickedNode;
+          while (currentNode.parentId) {
+            const parentNode = diagram.getNode(currentNode.parentId);
+            if (parentNode && parentNode.isDraggable()) {
+              console.log('🖱️ Using draggable parent:', parentNode.id, 'instead of child:', clickedNode.id);
+              clickedNode = parentNode;
+              break;
+            }
+            currentNode = parentNode || currentNode;
+            if (!parentNode) break;
+          }
+        }
 
         // Handle selection
         if (event.ctrlKey || event.metaKey) {

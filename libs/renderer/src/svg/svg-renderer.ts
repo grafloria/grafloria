@@ -1355,13 +1355,17 @@ export class SVGRenderer implements IRenderer {
     const targetLocalPos = getPortPositionForShape(targetPort, targetNode);
 
     // Convert from local (node-relative) to world coordinates
+    // CRITICAL FIX: Use getWorldPosition() for child nodes to get correct absolute coordinates
+    const sourceWorldPos = sourceNode.getWorldPosition();
+    const targetWorldPos = targetNode.getWorldPosition();
+
     const start = {
-      x: sourceNode.position.x + sourceLocalPos.x,
-      y: sourceNode.position.y + sourceLocalPos.y,
+      x: sourceWorldPos.x + sourceLocalPos.x,
+      y: sourceWorldPos.y + sourceLocalPos.y,
     };
     const end = {
-      x: targetNode.position.x + targetLocalPos.x,
-      y: targetNode.position.y + targetLocalPos.y,
+      x: targetWorldPos.x + targetLocalPos.x,
+      y: targetWorldPos.y + targetLocalPos.y,
     };
 
     // Get port directions (for orthogonal routing)
