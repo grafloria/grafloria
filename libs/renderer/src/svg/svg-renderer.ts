@@ -12,6 +12,9 @@ import { getPortPositionForShape } from './port-positioning';
 // Phase 1.1: Arrow type rendering
 import { ArrowRenderer } from './ArrowRenderer';
 
+// Phase 1.2: Label rendering
+import { LabelRenderer } from './LabelRenderer';
+
 // LOD Level type (matches engine's LODLevel)
 type LODLevel = 'high' | 'medium' | 'low';
 
@@ -35,6 +38,9 @@ export class SVGRenderer implements IRenderer {
 
   // Phase 1.1: Arrow type rendering
   private arrowRenderer: ArrowRenderer;
+
+  // Phase 1.2: Label rendering
+  private labelRenderer: LabelRenderer;
 
   // Performance tracking
   private lastRenderTime = 0;
@@ -60,6 +66,9 @@ export class SVGRenderer implements IRenderer {
 
     // Phase 1.1: Initialize arrow renderer
     this.arrowRenderer = new ArrowRenderer();
+
+    // Phase 1.2: Initialize label renderer
+    this.labelRenderer = new LabelRenderer();
 
     // Inject theme CSS if in CSS mode
     if (this.config.useCSSMode) {
@@ -1570,41 +1579,42 @@ export class SVGRenderer implements IRenderer {
               return arrows;
             })()
           : []),
-        // Link label (Option 2: Visual Enhancement)
-        ...(lod === 'high' && label
-          ? [
-              // Label background
-              {
-                type: 'rect',
-                props: {
-                  x: labelPoint.x - 20,
-                  y: labelPoint.y - 10,
-                  width: 40,
-                  height: 20,
-                  fill: this.theme.colors.background.surface,
-                  stroke: styles.stroke || this.theme.colors.link.default,
-                  strokeWidth: 1,
-                  rx: 3,
-                  className: 'link-label-bg',
-                },
-              } as VNode,
-              // Label text
-              {
-                type: 'text',
-                props: {
-                  x: labelPoint.x,
-                  y: labelPoint.y,
-                  textContent: label,
-                  textAnchor: 'middle',
-                  dominantBaseline: 'middle',
-                  fontSize: this.theme.typography.fontSize.sm,
-                  fill: this.theme.colors.text.primary,
-                  fontWeight: this.theme.typography.fontWeight.medium,
-                  className: 'link-label',
-                  pointerEvents: 'none',
-                },
-              } as VNode,
-            ]
+        // Phase 1.2: Multiple labels using LabelRenderer
+        ...(lod === 'high'
+          ? (() => {
+              const labelVNodes: VNode[] = [];
+
+              // Render labels from link.labels array
+              if (link.labels && link.labels.length > 0) {
+                link.labels.forEach(label => {
+                  const labelVNode = this.labelRenderer.renderLabel(label, link);
+                  if (labelVNode) {
+                    labelVNodes.push(labelVNode);
+                  }
+                });
+              }
+              // Backward compatibility: support old metadata label
+              else if (label) {
+                // Convert old label format to new LinkLabel format
+                const legacyLabel = {
+                  id: 'legacy-label',
+                  text: label,
+                  position: 0.5,
+                  offset: { x: 0, y: -10 },
+                  style: {
+                    fontSize: this.theme.typography.fontSize.sm,
+                    color: this.theme.colors.text.primary,
+                    background: this.theme.colors.background.surface
+                  }
+                };
+                const labelVNode = this.labelRenderer.renderLabel(legacyLabel, link);
+                if (labelVNode) {
+                  labelVNodes.push(labelVNode);
+                }
+              }
+
+              return labelVNodes;
+            })()
           : []),
         // Phase 2: Link endpoint handles for reconnection
         ...(showHandles
