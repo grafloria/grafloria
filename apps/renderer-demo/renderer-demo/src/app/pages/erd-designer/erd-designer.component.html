@@ -37,18 +37,57 @@
     </div>
   </div>
 
-  <!-- Canvas - Pure SVG Rendering (no HTML overlays) -->
-  <div class="canvas-wrapper">
-    <grafloria-diagram-canvas
-      *ngIf="engine"
-      [engine]="engine"
-      [viewport]="viewport"
-      [zoom]="zoom"
-      [theme]="theme"
-      (viewportChanged)="onViewportChanged($event)"
-      (zoomChanged)="onZoomChanged($event)"
-      class="diagram-canvas">
-    </grafloria-diagram-canvas>
+  <!-- Main Content Area -->
+  <div class="main-content">
+    <!-- Canvas - Pure SVG Rendering (no HTML overlays) -->
+    <div class="canvas-wrapper">
+      <grafloria-diagram-canvas
+        *ngIf="engine"
+        [engine]="engine"
+        [viewport]="viewport"
+        [zoom]="zoom"
+        [theme]="theme"
+        (viewportChanged)="onViewportChanged($event)"
+        (zoomChanged)="onZoomChanged($event)"
+        class="diagram-canvas">
+      </grafloria-diagram-canvas>
+    </div>
+
+    <!-- Connection Console Panel -->
+    <div class="connection-panel" *ngIf="showConnectionPanel">
+      <div class="panel-header">
+        <h3>🔗 Connections</h3>
+        <button (click)="showConnectionPanel = false" class="btn-close">×</button>
+      </div>
+      <div class="panel-content">
+        <div class="connection-count">
+          {{ connections.length }} connection{{ connections.length !== 1 ? 's' : '' }}
+        </div>
+        <div class="connection-list">
+          <div *ngFor="let conn of connections; let i = index" class="connection-item">
+            <div class="connection-index">#{{ i + 1 }}</div>
+            <div class="connection-details">
+              <div class="connection-source">
+                <span class="label">From:</span>
+                <span class="table-name">{{ conn.sourceTable }}</span>
+                <span class="field-name">{{ conn.sourceField }}</span>
+                <span class="data-type">({{ conn.sourceType }})</span>
+              </div>
+              <div class="connection-arrow">→</div>
+              <div class="connection-destination">
+                <span class="label">To:</span>
+                <span class="table-name">{{ conn.destinationTable }}</span>
+                <span class="field-name">{{ conn.destinationField }}</span>
+                <span class="data-type">({{ conn.destinationType }})</span>
+              </div>
+            </div>
+          </div>
+          <div *ngIf="connections.length === 0" class="empty-state">
+            No connections yet. Drag between field ports to create relationships.
+          </div>
+        </div>
+      </div>
+    </div>
   </div>
   <footer class="erd-footer">
     <div class="stats">

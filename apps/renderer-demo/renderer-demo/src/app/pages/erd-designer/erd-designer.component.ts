@@ -1,4 +1,4 @@
-import { Component, OnInit } from '@angular/core';
+import { Component, OnInit, ChangeDetectorRef } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { DiagramCanvasComponent } from '@grafloria/renderer-angular';
@@ -23,12 +23,24 @@ interface Column {
   isPrimaryKey: boolean;
   isForeignKey: boolean;
   isNullable: boolean;
+  icon?: string;
 }
 
 interface Table {
   id: string;
   name: string;
   columns: Column[];
+}
+
+interface ConnectionInfo {
+  linkId: string;
+  sourceTable: string;
+  sourceField: string;
+  sourceType: string;
+  destinationTable: string;
+  destinationField: string;
+  destinationType: string;
+  timestamp: number;
 }
 
 @Component({
@@ -48,10 +60,16 @@ export class ErdDesignerComponent implements OnInit {
   nodeFactory!: NodeFactory;
   templateRegistry!: TemplateRegistry;
 
+  // Connection tracking
+  connections: ConnectionInfo[] = [];
+  showConnectionPanel = true;
+
   // UI State
   showAddTablePanel = false;
   newTableName = '';
   selectedTable: Table | null = null;
+
+  constructor(private cdr: ChangeDetectorRef) {}
 
   ngOnInit() {
     this.initializeEngine();
@@ -71,7 +89,86 @@ export class ErdDesignerComponent implements OnInit {
     this.templateRegistry = new TemplateRegistry(this.engine.eventBus);
     registerTemplateLibrary(this.templateRegistry);
 
+    // Set up connection tracking listeners
+    this.setupConnectionTracking();
+
     console.log('✅ ERD Designer initialized with template system');
+  }
+
+  /**
+   * Set up event listeners for connection tracking
+   */
+  private setupConnectionTracking(): void {
+    const eventBus = this.engine.eventBus;
+
+    // Listen for link added events
+    eventBus.on('link:added', (event: any) => {
+      const link = event.link;
+      if (!link) return;
+
+      const diagram = this.engine.getDiagram();
+      if (!diagram) return;
+
+      // Get source and target node IDs from the link's port information
+      // Links store sourcePort and targetPort as port IDs, and ports have nodeId property
+      const allNodes = diagram.getNodes();
+      let sourceNode: NodeModel | null = null;
+      let targetNode: NodeModel | null = null;
+
+      // Find source and target nodes by checking their ports
+      for (const node of allNodes) {
+        if (link.sourcePort && node.ports.has(link.sourcePort)) {
+          sourceNode = node;
+        }
+        if (link.targetPort && node.ports.has(link.targetPort)) {
+          targetNode = node;
+        }
+        if (sourceNode && targetNode) break;
+      }
+
+      if (!sourceNode || !targetNode) return;
+
+      // Extract connection metadata
+      const sourceTable = sourceNode.getMetadata('tableName') || 'Unknown';
+      const targetTable = targetNode.getMetadata('tableName') || 'Unknown';
+      const sourceColumn = sourceNode.data;
+      const targetColumn = targetNode.data;
+
+      const connectionInfo: ConnectionInfo = {
+        linkId: link.id,
+        sourceTable: sourceTable,
+        sourceField: sourceColumn['name'] || sourceColumn['fieldName'] || 'Unknown',
+        sourceType: sourceColumn['dataType'] || sourceColumn['fieldType'] || 'Unknown',
+        destinationTable: targetTable,
+        destinationField: targetColumn['name'] || targetColumn['fieldName'] || 'Unknown',
+        destinationType: targetColumn['dataType'] || targetColumn['fieldType'] || 'Unknown',
+        timestamp: Date.now()
+      };
+
+      this.connections.push(connectionInfo);
+      console.log('🔗 Connection added:', connectionInfo);
+
+      // Trigger Angular change detection
+      this.cdr.detectChanges();
+    });
+
+    // Listen for link removed events
+    eventBus.on('link:removed', (event: any) => {
+      const link = event.link;
+      if (!link) return;
+
+      // Remove connection from tracking
+      const index = this.connections.findIndex(c => c.linkId === link.id);
+      if (index !== -1) {
+        const removed = this.connections.splice(index, 1)[0];
+        console.log('🔌 Connection removed:', removed);
+
+        // Trigger Angular change detection
+        this.cdr.detectChanges();
+      }
+    });
+
+    console.log('✅ Connection tracking enabled');
   }
 
   private async createSampleERD(): Promise<void> {
@@ -86,10 +183,10 @@ export class ErdDesignerComponent implements OnInit {
       id: 'users-a',
       name: 'Users',
       columns: [
-        { name: 'id', dataType: 'INT', isPrimaryKey: true, isForeignKey: false, isNullable: false },
-        { name: 'email', dataType: 'VARCHAR(255)', isPrimaryKey: false, isForeignKey: false, isNullable: false },
-        { name: 'name', dataType: 'VARCHAR(100)', isPrimaryKey: false, isForeignKey: false, isNullable: false },
-        { name: 'created_at', dataType: 'TIMESTAMP', isPrimaryKey: false, isForeignKey: false, isNullable: false },
+        { name: 'id', dataType: 'INT', isPrimaryKey: true, isForeignKey: false, isNullable: false, icon: '🔑' },
+        { name: 'email', dataType: 'VARCHAR(255)', isPrimaryKey: false, isForeignKey: false, isNullable: false, icon: '📧' },
+        { name: 'name', dataType: 'VARCHAR(100)', isPrimaryKey: false, isForeignKey: false, isNullable: false, icon: '👤' },
+        { name: 'created_at', dataType: 'TIMESTAMP', isPrimaryKey: false, isForeignKey: false, isNullable: false, icon: '📅' },
       ]
     };
     this.tables.set('users-a', usersTableA);
@@ -100,10 +197,10 @@ export class ErdDesignerComponent implements OnInit {
       id: 'orders-a',
       name: 'Orders',
       columns: [
-        { name: 'id', dataType: 'INT', isPrimaryKey: true, isForeignKey: false, isNullable: false },
-        { name: 'user_id', dataType: 'INT', isPrimaryKey: false, isForeignKey: true, isNullable: false },
-        { name: 'total', dataType: 'DECIMAL(10,2)', isPrimaryKey: false, isForeignKey: false, isNullable: false },
-        { name: 'status', dataType: 'VARCHAR(20)', isPrimaryKey: false, isForeignKey: false, isNullable: false },
+        { name: 'id', dataType: 'INT', isPrimaryKey: true, isForeignKey: false, isNullable: false, icon: '🔑' },
+        { name: 'user_id', dataType: 'INT', isPrimaryKey: false, isForeignKey: true, isNullable: false, icon: '🔗' },
+        { name: 'total', dataType: 'DECIMAL(10,2)', isPrimaryKey: false, isForeignKey: false, isNullable: false, icon: '💰' },
+        { name: 'status', dataType: 'VARCHAR(20)', isPrimaryKey: false, isForeignKey: false, isNullable: false, icon: '📊' },
       ]
     };
     this.tables.set('orders-a', ordersTableA);
@@ -114,11 +211,11 @@ export class ErdDesignerComponent implements OnInit {
       id: 'payments-a',
       name: 'Payments',
       columns: [
-        { name: 'id', dataType: 'INT', isPrimaryKey: true, isForeignKey: false, isNullable: false },
-        { name: 'order_id', dataType: 'INT', isPrimaryKey: false, isForeignKey: true, isNullable: false },
-        { name: 'amount', dataType: 'DECIMAL(10,2)', isPrimaryKey: false, isForeignKey: false, isNullable: false },
-        { name: 'method', dataType: 'VARCHAR(50)', isPrimaryKey: false, isForeignKey: false, isNullable: false },
-        { name: 'paid_at', dataType: 'TIMESTAMP', isPrimaryKey: false, isForeignKey: false, isNullable: false },
+        { name: 'id', dataType: 'INT', isPrimaryKey: true, isForeignKey: false, isNullable: false, icon: '🔑' },
+        { name: 'order_id', dataType: 'INT', isPrimaryKey: false, isForeignKey: true, isNullable: false, icon: '🔗' },
+        { name: 'amount', dataType: 'DECIMAL(10,2)', isPrimaryKey: false, isForeignKey: false, isNullable: false, icon: '💵' },
+        { name: 'method', dataType: 'VARCHAR(50)', isPrimaryKey: false, isForeignKey: false, isNullable: false, icon: '💳' },
+        { name: 'paid_at', dataType: 'TIMESTAMP', isPrimaryKey: false, isForeignKey: false, isNullable: false, icon: '📅' },
       ]
     };
     this.tables.set('payments-a', paymentsTableA);
@@ -130,10 +227,10 @@ export class ErdDesignerComponent implements OnInit {
       id: 'products-b',
       name: 'Products',
       columns: [
-        { name: 'id', dataType: 'INT', isPrimaryKey: true, isForeignKey: false, isNullable: false },
-        { name: 'name', dataType: 'VARCHAR(255)', isPrimaryKey: false, isForeignKey: false, isNullable: false },
-        { name: 'price', dataType: 'DECIMAL(10,2)', isPrimaryKey: false, isForeignKey: false, isNullable: false },
-        { name: 'stock', dataType: 'INT', isPrimaryKey: false, isForeignKey: false, isNullable: false },
+        { name: 'id', dataType: 'INT', isPrimaryKey: true, isForeignKey: false, isNullable: false, icon: '🔑' },
+        { name: 'name', dataType: 'VARCHAR(255)', isPrimaryKey: false, isForeignKey: false, isNullable: false, icon: '📦' },
+        { name: 'price', dataType: 'DECIMAL(10,2)', isPrimaryKey: false, isForeignKey: false, isNullable: false, icon: '💰' },
+        { name: 'stock', dataType: 'INT', isPrimaryKey: false, isForeignKey: false, isNullable: false, icon: '📊' },
       ]
     };
     this.tables.set('products-b', productsTableB);
@@ -144,9 +241,9 @@ export class ErdDesignerComponent implements OnInit {
       id: 'categories-b',
       name: 'Categories',
       columns: [
-        { name: 'id', dataType: 'INT', isPrimaryKey: true, isForeignKey: false, isNullable: false },
-        { name: 'name', dataType: 'VARCHAR(100)', isPrimaryKey: false, isForeignKey: false, isNullable: false },
-        { name: 'description', dataType: 'TEXT', isPrimaryKey: false, isForeignKey: false, isNullable: true },
+        { name: 'id', dataType: 'INT', isPrimaryKey: true, isForeignKey: false, isNullable: false, icon: '🔑' },
+        { name: 'name', dataType: 'VARCHAR(100)', isPrimaryKey: false, isForeignKey: false, isNullable: false, icon: '🏷️' },
+        { name: 'description', dataType: 'TEXT', isPrimaryKey: false, isForeignKey: false, isNullable: true, icon: '📝' },
       ]
     };
     this.tables.set('categories-b', categoriesTableB);
@@ -157,10 +254,10 @@ export class ErdDesignerComponent implements OnInit {
       id: 'product-categories-b',
       name: 'ProductCategories',
       columns: [
-        { name: 'id', dataType: 'INT', isPrimaryKey: true, isForeignKey: false, isNullable: false },
-        { name: 'product_id', dataType: 'INT', isPrimaryKey: false, isForeignKey: true, isNullable: false },
-        { name: 'category_id', dataType: 'INT', isPrimaryKey: false, isForeignKey: true, isNullable: false },
-        { name: 'created_at', dataType: 'TIMESTAMP', isPrimaryKey: false, isForeignKey: false, isNullable: false },
+        { name: 'id', dataType: 'INT', isPrimaryKey: true, isForeignKey: false, isNullable: false, icon: '🔑' },
+        { name: 'product_id', dataType: 'INT', isPrimaryKey: false, isForeignKey: true, isNullable: false, icon: '🔗' },
+        { name: 'category_id', dataType: 'INT', isPrimaryKey: false, isForeignKey: true, isNullable: false, icon: '🔗' },
+        { name: 'created_at', dataType: 'TIMESTAMP', isPrimaryKey: false, isForeignKey: false, isNullable: false, icon: '📅' },
       ]
     };
     this.tables.set('product-categories-b', productCategoriesTableB);
@@ -482,42 +579,31 @@ export class ErdDesignerComponent implements OnInit {
   }
 
   /**
-   * OPTION A: Create table using template with children array
-   * Container node has header child built-in via template
+   * OPTION A: Create table using REPEATER TEMPLATE
+   * Dynamic children - fields auto-generated from data array
    */
   private createTableNodeOptionA(table: Table, position: { x: number; y: number }): NodeModel {
     const diagram = this.engine.getDiagram();
     if (!diagram) throw new Error('Diagram not initialized');
 
-    // Create container node with header child from template
-    const containerNode = this.nodeFactory.createFromTemplate('erd-table-option-a', {
+    // Use repeater template - children generated automatically!
+    const containerNode = this.nodeFactory.createFromTemplate('erd-table-repeater', {
       tableName: table.name,
+      columns: table.columns  // Array of column data - repeater will auto-generate field nodes
     }, position);
 
-    // Create field nodes as children of container
-    table.columns.forEach((column, index) => {
-      const fieldNode = this.nodeFactory.createFromTemplate('erd-field-option-a', {
-        fieldName: column.name,
-        fieldType: column.dataType,
-        isPrimaryKey: column.isPrimaryKey,
-        isForeignKey: column.isForeignKey,
-        isNullable: column.isNullable,
-      }, { x: 0, y: 0 }); // Position handled by layout
-
-      // Add as child of container
-      fieldNode.setParent(containerNode.id);
-      containerNode.addChild(fieldNode.id);
-
-      // Store metadata
-      fieldNode.setMetadata('columnData', column);
-      fieldNode.setMetadata('tableName', table.name);
-      fieldNode.setMetadata('isLastField', index === table.columns.length - 1);
+    // Store metadata on the field nodes that were auto-generated by the repeater
+    // The repeater creates child nodes with the column data already in node.data
+    containerNode.children.forEach((childId) => {
+      const child = diagram.getNode(childId);
+      if (child && child.type.includes('field')) {
+        // Store additional metadata for connection tracking
+        child.setMetadata('tableName', table.name);
+        child.setMetadata('columnData', child.data);
+      }
     });
 
-    // Apply layout to position children
-    this.applyFlexLayout(containerNode);
-
-    console.log(`✅ Created Option A table '${table.name}' with ${table.columns.length} fields`);
+    console.log(`✅ Created Option A table '${table.name}' with repeater (${table.columns.length} fields auto-generated)`);
     return containerNode;
   }
 

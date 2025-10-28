@@ -795,6 +795,162 @@ export const DIAGRAM_TEMPLATES: Partial<TemplateMetadata>[] = [
         tableName: 'Products'
       }
     })
+  },
+  {
+    name: 'ERD Table (Users - Dynamic)',
+    description: 'Database table with DYNAMIC CHILDREN using repeater. Provide column data and fields are auto-generated with ports. Perfect for ERD diagrams.',
+    category: 'diagram',
+    tags: ['database', 'erd', 'table', 'schema', 'dynamic', 'repeater', 'react-flow'],
+    complexity: 'complex',
+    author: 'Grafloria',
+    version: '2.0.0',
+    features: ['html', 'ports', 'repeater', 'layout', 'children'],
+    hasChildNodes: true,
+    hasConnections: true,
+    hasCustomStyling: true,
+    hasDataBinding: true,
+    hasInteractivity: false,
+    template: createTemplate({
+      id: 'erd-table-dynamic',
+      meta: {
+        name: 'ERD Table (Dynamic Repeater)',
+        description: 'Database table with dynamic children - fields auto-generated from data',
+        category: 'diagram'
+      },
+      structure: {
+        type: 'erd-table-container',
+        role: 'container',
+        size: { width: 250, height: 100 },
+        shape: {
+          type: 'rect',
+          fill: '#ffffff',
+          stroke: '#CBD2D9',
+          strokeWidth: 1,
+          cornerRadius: 4
+        },
+        behavior: {
+          draggable: true,
+          selectable: true,
+          connectable: false
+        },
+        layout: {
+          direction: 'column',
+          wrap: 'nowrap',
+          justifyContent: 'start',
+          alignItems: 'stretch',
+          alignContent: 'start',
+          gap: 0,
+          padding: { top: 0, right: 0, bottom: 0, left: 0 }
+        },
+        ports: {
+          enabled: false
+        },
+        // Static header child
+        children: [
+          {
+            type: 'erd-table-header',
+            role: 'drag-handler',
+            size: { width: 250, height: 36 },
+            shape: {
+              type: 'rect',
+              fill: 'transparent',
+              stroke: 'none'
+            },
+            html: {
+              mode: 'template',
+              template: `<div style="
+                width: 100%;
+                height: 36px;
+                padding: 8px;
+                background: #91C4F2;
+                border-radius: 4px 4px 0 0;
+                color: #000;
+                font-weight: bold;
+                font-size: 14px;
+                font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+                display: flex;
+                align-items: center;
+                justify-content: center;
+                cursor: move;
+                user-select: none;
+                box-sizing: border-box;
+              ">{{data.tableName}}</div>`,
+              zIndex: 2
+            },
+            behavior: {
+              draggable: true,
+              dragHandler: {
+                isDragHandler: true,
+                dragChildren: true
+              },
+              selectable: false
+            },
+            ports: {
+              enabled: false
+            }
+          }
+        ],
+        // Dynamic field children using repeater
+        repeater: {
+          dataSource: 'columns',
+          keyField: 'name',
+          itemTemplate: {
+            type: 'erd-field',
+            role: 'content',
+            size: { width: 250, height: 28 },
+            shape: {
+              type: 'rect',
+              fill: 'transparent',
+              stroke: 'none'
+            },
+            html: {
+              mode: 'template',
+              template: `<div style="
+                width: 100%;
+                height: 28px;
+                padding: 8px;
+                font-size: 12px;
+                font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+                background: transparent;
+                border-bottom: 1px solid #CBD2D9;
+                display: flex;
+                align-items: center;
+                justify-content: space-between;
+                box-sizing: border-box;
+                line-height: 1;
+              ">
+                <div style="display: flex; align-items: center; gap: 6px;">
+                  <span style="width: 14px; font-size: 14px;">{{data.icon}}</span>
+                  <span style="font-weight: 400; color: #000;">{{data.name}}</span>
+                </div>
+                <span style="color: #999; font-size: 11px;">{{data.dataType}}</span>
+              </div>`,
+              zIndex: 1
+            },
+            behavior: {
+              draggable: false,
+              selectable: false,
+              connectable: true
+            },
+            ports: {
+              enabled: true,
+              defaultVisibility: 'always',
+              left: { enabled: true, type: 'input' },
+              right: { enabled: true, type: 'output' }
+            }
+          }
+        }
+      },
+      defaultData: {
+        tableName: 'Users',
+        columns: [
+          { name: 'id', dataType: 'INT', isPrimaryKey: true, isForeignKey: false, icon: '🔑' },
+          { name: 'email', dataType: 'VARCHAR(255)', isPrimaryKey: false, isForeignKey: false, icon: '📧' },
+          { name: 'name', dataType: 'VARCHAR(100)', isPrimaryKey: false, isForeignKey: false, icon: '👤' },
+          { name: 'created_at', dataType: 'TIMESTAMP', isPrimaryKey: false, isForeignKey: false, icon: '📅' }
+        ]
+      }
+    })
   }
 ];
 
