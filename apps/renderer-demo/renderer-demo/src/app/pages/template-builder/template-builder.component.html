@@ -7,69 +7,120 @@
     </div>
 
     <div class="toolbar-right">
-      <!-- Undo/Redo -->
-      <button
-        class="btn btn-icon"
+      <!-- Undo/Redo with NEW Button Component -->
+      <app-button
+        variant="ghost"
+        size="sm"
+        icon="↶"
+        [iconOnly]="true"
         [disabled]="!(canUndo$ | async)"
-        (click)="undo()"
-        title="Undo (Ctrl+Z)">
-        ↶
-      </button>
-      <button
-        class="btn btn-icon"
+        (clicked)="undo()">
+      </app-button>
+      <app-button
+        variant="ghost"
+        size="sm"
+        icon="↷"
+        [iconOnly]="true"
         [disabled]="!(canRedo$ | async)"
-        (click)="redo()"
-        title="Redo (Ctrl+Y)">
-        ↷
-      </button>
+        (clicked)="redo()">
+      </app-button>
 
       <div class="divider"></div>
 
-      <!-- Actions -->
-      <button class="btn" (click)="save()" title="Save (Ctrl+S)">
-        💾 Save
-      </button>
-      <button class="btn" (click)="reset()" title="Reset">
-        🔄 Reset
-      </button>
-      <button class="btn" (click)="exportTemplate()" title="Export">
-        📥 Export
-      </button>
-      <button class="btn" (click)="importTemplate()" title="Import">
-        📤 Import
-      </button>
+      <!-- Actions with NEW Button Component -->
+      <app-button
+        variant="primary"
+        size="sm"
+        icon="💾"
+        (clicked)="save()">
+        Save
+      </app-button>
+      <app-button
+        variant="secondary"
+        size="sm"
+        icon="🔄"
+        (clicked)="reset()">
+        Reset
+      </app-button>
+      <app-button
+        variant="secondary"
+        size="sm"
+        icon="📥"
+        (clicked)="exportTemplate()">
+        Export
+      </app-button>
+      <app-button
+        variant="secondary"
+        size="sm"
+        icon="📤"
+        (clicked)="importTemplate()">
+        Import
+      </app-button>
 
       <div class="divider"></div>
 
-      <!-- Toggles -->
-      <button
-        class="btn btn-icon"
-        (click)="toggleSidebar()"
+      <!-- PHASE 9: Template Gallery -->
+      <app-button
+        variant="primary"
+        size="sm"
+        icon="📚"
+        (clicked)="openTemplateGallery()">
+        Browse Gallery
+      </app-button>
+      <app-button
+        variant="secondary"
+        size="sm"
+        icon="➕"
+        (clicked)="saveToGallery()">
+        Save to Gallery
+      </app-button>
+
+      <div class="divider"></div>
+
+      <!-- PHASE 8: Multi-Node Mode Toggle -->
+      <app-button
+        variant="ghost"
+        size="sm"
+        icon="🎨"
+        [class.active]="multiNodeMode"
+        (clicked)="toggleMultiNodeMode()"
+        [title]="multiNodeMode ? 'Multi-Node Mode: ON' : 'Multi-Node Mode: OFF'">
+        Multi-Node
+      </app-button>
+
+      <!-- Toggles with NEW Button Component -->
+      <app-button
+        variant="ghost"
+        size="sm"
+        icon="☰"
+        [iconOnly]="true"
         [class.active]="showSidebar"
-        title="Toggle Sidebar (Ctrl+L)">
-        ☰
-      </button>
-      <button
-        class="btn btn-icon"
-        (click)="togglePerformancePanel()"
-        [class.active]="showPerformancePanel"
-        title="Toggle Performance (Ctrl+Shift+P)">
-        📊
-      </button>
+        (clicked)="toggleSidebar()">
+      </app-button>
+      <app-button
+        variant="ghost"
+        size="sm"
+        icon="📊"
+        [iconOnly]="true"
+        [class.active]="showBottomPanel"
+        (clicked)="toggleBottomPanel()">
+      </app-button>
     </div>
   </div>
 
   <!-- Main Content -->
   <div class="main-content">
     <!-- Left Sidebar: Template Library -->
-    <div class="sidebar" *ngIf="showSidebar">
+    <div class="sidebar" *ngIf="showSidebar" [style.width.px]="leftPanelWidth">
       <app-template-sidebar
         (templateSelect)="onTemplateSelect($event)">
       </app-template-sidebar>
+      <div class="resize-handle resize-handle-right" (mousedown)="startResize($event, 'left')"></div>
     </div>
 
     <!-- Center: Editors with Tabs -->
-    <div class="editor-panel">
+    <div class="editor-panel" [style.width.px]="editorPanelWidth">
+      <div class="resize-handle resize-handle-right" (mousedown)="startResize($event, 'editor')"></div>
       <div class="panel-header">
         <div class="editor-tabs">
           <button
@@ -92,6 +143,28 @@
           </button>
         </div>
         <div class="panel-info">
+          <!-- JSON Editor Actions (icon-only for compact layout) -->
+          <div class="json-actions" *ngIf="activeEditorTab === 'json'">
+            <app-button
+              variant="primary"
+              size="sm"
+              icon="➕"
+              [iconOnly]="true"
+              (clicked)="openChildNodeWizard()"
+              title="Add Child Node - Guided wizard">
+            </app-button>
+
+            <app-button
+              variant="secondary"
+              size="sm"
+              icon="🎨"
+              [iconOnly]="true"
+              (clicked)="openNodeLayerEditor()"
+              title="Edit Node Layers - Place cursor inside node">
+            </app-button>
+          </div>
+
+          <!-- Status Indicator -->
           <span class="status" *ngIf="editorState$ | async as state">
             <span class="dot" [class.valid]="state.isValid" [class.invalid]="!state.isValid"></span>
             {{ state.isValid ? 'Valid' : 'Invalid' }}
@@ -106,7 +179,8 @@
           [theme]="'vs'"
           [minimap]="true"
           [lineNumbers]="'on'"
-          (contentChange)="onJsonChange($event)">
+          (contentChange)="onJsonChange($event)"
+          (editorReady)="onEditorReady($event)">
         </app-monaco-editor>
         <app-monaco-editor
           *ngIf="activeEditorTab === 'html'"
@@ -129,32 +203,256 @@
       </div>
     </div>
 
-    <!-- Right: Live Preview -->
-    <div class="preview-panel">
-      <app-preview-panel
-        [template]="(editorState$ | async)?.json || ''"
-        [htmlLayer]="(editorState$ | async)?.html || ''"
-        [cssLayer]="(editorState$ | async)?.css || ''">
-      </app-preview-panel>
+    <!-- Right: NEW Multi-Tab Panel (Preview/Data/Ports) -->
+    <div class="right-panel">
+      <div class="right-panel-tabs">
+        <button
+          class="tab"
+          [class.active]="activeRightTab === 'preview'"
+          (click)="activeRightTab = 'preview'">
+          Preview
+        </button>
+        <button
+          class="tab"
+          [class.active]="activeRightTab === 'data'"
+          (click)="activeRightTab = 'data'">
+          Test Data
+        </button>
+        <button
+          class="tab"
+          [class.active]="activeRightTab === 'ports'"
+          (click)="activeRightTab = 'ports'">
+          Ports
+        </button>
+        <button
+          class="tab"
+          [class.active]="activeRightTab === 'style'"
+          (click)="activeRightTab = 'style'">
+          Style
+        </button>
+        <button
+          class="tab"
+          [class.active]="activeRightTab === 'structure'"
+          (click)="activeRightTab = 'structure'">
+          Structure
+        </button>
+        <button
+          class="tab"
+          [class.active]="activeRightTab === 'behavior'"
+          (click)="activeRightTab = 'behavior'">
+          Behavior
+        </button>
+        <button
+          class="tab"
+          [class.active]="activeRightTab === 'component'"
+          (click)="activeRightTab = 'component'">
+          Component
+        </button>
+      </div>
+
+      <div class="right-panel-content">
+        <!-- Preview Panel -->
+        <app-preview-panel
+          *ngIf="activeRightTab === 'preview'"
+          [template]="(editorState$ | async)?.json || ''"
+          [htmlLayer]="(editorState$ | async)?.html || ''"
+          [cssLayer]="(editorState$ | async)?.css || ''"
+          [multiNodeMode]="multiNodeMode">
+        </app-preview-panel>
+
+        <!-- NEW: Data Testing Panel -->
+        <app-data-testing-panel
+          *ngIf="activeRightTab === 'data'"
+          [template]="getCurrentTemplate()"
+          [data]="testData"
+          (dataChange)="onTestDataChange($event)">
+        </app-data-testing-panel>
+
+        <!-- NEW: Port Configuration Panel -->
+        <app-port-config-panel
+          *ngIf="activeRightTab === 'ports'"
+          [portsConfig]="getCurrentTemplate()?.structure?.ports || { enabled: false }"
+          (portsConfigChange)="onPortsConfigChange($event)">
+        </app-port-config-panel>
+
+        <!-- PHASE 4: Style Properties Panel -->
+        <app-style-properties-panel
+          *ngIf="activeRightTab === 'style'"
+          (propertiesChange)="onStylePropertiesChange($event)">
+        </app-style-properties-panel>
+
+        <!-- PHASE 5: Structure Panel (Tree View + Layout Editor) -->
+        <div *ngIf="activeRightTab === 'structure'" class="structure-panel">
+          <!-- Node Tree View -->
+          <div class="structure-section tree-section">
+            <app-node-tree-view
+              [template]="getCurrentTemplate()"
+              (nodeAction)="onNodeAction($event)">
+            </app-node-tree-view>
+          </div>
+
+          <!-- Layout Editor -->
+          <div class="structure-section layout-section">
+            <app-layout-editor
+              [layout]="getCurrentLayout()"
+              (layoutChange)="onLayoutChange($event)">
+            </app-layout-editor>
+          </div>
+        </div>
+
+        <!-- PHASE 6: Behavior Panel (Event Handlers + State Variables) -->
+        <app-behavior-editor
+          *ngIf="activeRightTab === 'behavior'"
+          [behavior]="getCurrentBehavior()"
+          (behaviorChange)="onBehaviorChange($event)">
+        </app-behavior-editor>
+
+        <!-- PHASE 7: Component Editor Panel (Mode, Props, Slots) -->
+        <app-component-editor-panel
+          *ngIf="activeRightTab === 'component'"
+          [config]="getCurrentComponentConfig()"
+          (configChange)="onComponentConfigChange($event)">
+        </app-component-editor-panel>
+      </div>
     </div>
 
-    <!-- Far Right: Documentation Sidebar -->
-    <div class="docs-sidebar">
+    <!-- Far Right: Documentation Sidebar (Collapsible) -->
+    <div class="docs-sidebar" *ngIf="showDocsPanel">
+      <div class="panel-header">
+        <h3>Documentation</h3>
+        <button class="close-panel-btn" (click)="toggleDocsPanel()" title="Close">×</button>
+      </div>
       <app-documentation-sidebar></app-documentation-sidebar>
     </div>
 
-    <!-- Far Right: Snippet Panel -->
-    <div class="snippet-panel-container">
+    <!-- Far Right: Snippet Panel (Collapsible) -->
+    <div class="snippet-panel-container" *ngIf="showSnippetsPanel">
+      <div class="panel-header">
+        <h3>Code Snippets</h3>
+        <button class="close-panel-btn" (click)="toggleSnippetsPanel()" title="Close">×</button>
+      </div>
       <app-snippet-panel
         (insertSnippet)="onSnippetInsert($event)">
       </app-snippet-panel>
     </div>
+
+    <!-- Right Edge: Collapsed Panel Tabs -->
+    <div class="right-edge-tabs">
+      <button
+        class="edge-tab"
+        [class.active]="showDocsPanel"
+        (click)="toggleDocsPanel()"
+        title="Documentation">
+        <span class="tab-icon">📚</span>
+        <span class="tab-label">Docs</span>
+      </button>
+      <button
+        class="edge-tab"
+        [class.active]="showSnippetsPanel"
+        (click)="toggleSnippetsPanel()"
+        title="Code Snippets">
+        <span class="tab-icon">✨</span>
+        <span class="tab-label">Snippets</span>
+      </button>
+    </div>
   </div>
 
-  <!-- Bottom: Performance Metrics -->
-  <div class="bottom-panel" *ngIf="showPerformancePanel">
-    <app-performance-panel
-      [metrics]="performanceMetrics$ | async">
-    </app-performance-panel>
+  <!-- Bottom: NEW Multi-Tab Panel (Events/Performance/Validation) -->
+  <div class="bottom-panel" *ngIf="showBottomPanel" [style.height.px]="bottomPanelHeight">
+    <div class="resize-handle resize-handle-top" (mousedown)="startResize($event, 'bottom')"></div>
+    <div class="bottom-panel-tabs">
+      <button
+        class="tab"
+        [class.active]="activeBottomTab === 'events'"
+        (click)="activeBottomTab = 'events'">
+        Event Monitor
+      </button>
+      <button
+        class="tab"
+        [class.active]="activeBottomTab === 'performance'"
+        (click)="activeBottomTab = 'performance'">
+        Performance
+      </button>
+      <button
+        class="tab"
+        [class.active]="activeBottomTab === 'validation'"
+        (click)="activeBottomTab = 'validation'">
+        Validation
+      </button>
+    </div>
+
+    <div class="bottom-panel-content">
+      <!-- NEW: Event Monitor Panel -->
+      <app-event-monitor-panel
+        *ngIf="activeBottomTab === 'events'">
+      </app-event-monitor-panel>
+
+      <!-- Performance Panel -->
+      <app-performance-panel
+        *ngIf="activeBottomTab === 'performance'"
+        [metrics]="performanceMetrics$ | async">
+      </app-performance-panel>
+
+      <!-- Validation Panel (Placeholder) -->
+      <div *ngIf="activeBottomTab === 'validation'" class="validation-placeholder">
+        <div class="placeholder-content">
+          <div class="placeholder-icon">✓</div>
+          <div class="placeholder-text">Validation Panel</div>
+          <div class="placeholder-hint">Coming soon... Template validation and linting</div>
+        </div>
+      </div>
+    </div>
   </div>
+
+  <!-- Child Node Wizard Modal -->
+  <app-child-node-wizard
+    [isOpen]="showChildNodeWizard"
+    (generate)="onChildNodeGenerate($event)"
+    (close)="showChildNodeWizard = false">
+  </app-child-node-wizard>
+
+  <!-- Node Layer Editor Modal -->
+  <app-node-layer-editor
+    [isOpen]="showNodeLayerEditor"
+    [nodePath]="currentNodePath"
+    [htmlLayer]="currentNodeHtml"
+    [cssLayer]="currentNodeCss"
+    (save)="onNodeLayersSave($event)"
+    (close)="showNodeLayerEditor = false">
+  </app-node-layer-editor>
+
+  <!-- PHASE 9: Template Gallery Modal -->
+  <div class="gallery-modal" *ngIf="showTemplateGallery">
+    <div class="gallery-modal-backdrop" (click)="closeTemplateGallery()"></div>
+    <div class="gallery-modal-container">
+      <div class="gallery-modal-header">
+        <h2>Template Gallery</h2>
+        <button class="btn-close-gallery" (click)="closeTemplateGallery()">×</button>
+      </div>
+      <div class="gallery-modal-body">
+        <app-template-gallery
+          (templateSelected)="onGalleryTemplateSelect($event)"
+          (templateAction)="onGalleryTemplateAction($event)">
+        </app-template-gallery>
+      </div>
+    </div>
+  </div>
+
+  <!-- PHASE 9: Template Preview Modal -->
+  <app-template-preview-modal
+    [isOpen]="showTemplatePreview"
+    [metadata]="currentPreviewTemplate"
+    [allTemplates]="allTemplatesForPreview"
+    (close)="closeTemplatePreview()"
+    (action)="onGalleryTemplateAction($event)"
+    (navigate)="onPreviewNavigate($event)">
+  </app-template-preview-modal>
+
+  <!-- PHASE 10: Command Palette -->
+  <app-command-palette
+    *ngIf="showCommandPalette"
+    [commands]="availableCommands"
+    (commandExecute)="onCommandExecute($event)"
+    (close)="showCommandPalette = false">
+  </app-command-palette>
 </div>

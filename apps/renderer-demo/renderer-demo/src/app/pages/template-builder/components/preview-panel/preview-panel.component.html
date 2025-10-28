@@ -1,20 +1,79 @@
 <div class="preview-panel">
   <!-- Header -->
   <div class="panel-header">
-    <h3>Live Preview</h3>
+    <h3>Live Preview
+      <span class="node-count" *ngIf="multiNodeMode">
+        ({{ getNodeCount() }} nodes, {{ getConnectionCount() }} connections)
+      </span>
+    </h3>
     <div class="panel-controls">
+      <!-- Zoom Controls -->
       <span class="zoom-label">{{ (zoom * 100).toFixed(0) }}%</span>
-      <button class="btn-icon" (click)="zoomOut()" title="Zoom Out">−</button>
-      <button class="btn-icon" (click)="zoomIn()" title="Zoom In">+</button>
-      <button class="btn-icon" (click)="resetZoom()" title="Reset Zoom">⊙</button>
+      <button class="btn-icon" (click)="zoomOut()" title="Zoom Out (Ctrl -)">−</button>
+      <button class="btn-icon" (click)="zoomIn()" title="Zoom In (Ctrl +)">+</button>
+      <button class="btn-icon" (click)="resetZoom()" title="Reset Zoom (Ctrl 0)">⊙</button>
       <button class="btn-icon" (click)="fitToView()" title="Fit to View">⛶</button>
+
+      <!-- Multi-Node Controls -->
+      <span class="separator" *ngIf="multiNodeMode"></span>
+      <button
+        class="btn-icon"
+        *ngIf="multiNodeMode"
+        (click)="addNodeToCanvas()"
+        title="Add Node (+)">
+        ➕
+      </button>
+      <button
+        class="btn-icon"
+        *ngIf="multiNodeMode && selectedNodeIds.size > 0"
+        (click)="removeSelectedNodes()"
+        title="Delete Selected (Del)">
+        🗑
+      </button>
+      <button
+        class="btn-icon"
+        *ngIf="multiNodeMode && getNodeCount() > 0"
+        (click)="clearCanvas()"
+        title="Clear Canvas">
+        🔄
+      </button>
+      <button
+        class="btn-icon"
+        *ngIf="multiNodeMode && getNodeCount() > 1"
+        (click)="autoLayoutNodes()"
+        title="Auto Layout">
+        🎯
+      </button>
+      <button
+        class="btn-icon"
+        *ngIf="multiNodeMode && selectedNodeIds.size > 0"
+        (click)="fitToSelection()"
+        title="Fit to Selection">
+        🔍
+      </button>
+      <button
+        class="btn-icon"
+        [class.active]="minimapVisible"
+        *ngIf="multiNodeMode"
+        (click)="toggleMinimap()"
+        title="Toggle Minimap">
+        🗺️
+      </button>
+
+      <!-- Refresh -->
+      <span class="separator"></span>
       <button class="btn-icon" (click)="refresh()" title="Refresh">↻</button>
     </div>
   </div>
 
   <!-- Canvas -->
   <div class="panel-body">
-    <div class="canvas-container" *ngIf="!errorMessage">
+    <div
+      class="canvas-container"
+      *ngIf="!errorMessage"
+      (focus)="onCanvasFocus()"
+      (blur)="onCanvasBlur()"
+      tabindex="0">
       <grafloria-diagram-canvas
         [engine]="engine"
         [viewport]="viewport"
@@ -22,6 +81,27 @@
         [theme]="theme"
         class="diagram-canvas">
       </grafloria-diagram-canvas>
+
+      <!-- Minimap (top-right corner) -->
+      <app-minimap
+        *ngIf="multiNodeMode"
+        [engine]="engine"
+        [nodes]="nodes"
+        [connections]="connections"
+        [viewport]="viewport"
+        [visible]="minimapVisible"
+        (viewportChange)="onMinimapViewportChange($event)"
+        (visibilityChange)="onMinimapVisibilityChange($event)">
+      </app-minimap>
+
+      <!-- Keyboard Shortcuts Help (bottom-left corner) -->
+      <div class="keyboard-shortcuts" *ngIf="multiNodeMode">
+        <div class="shortcuts-title">⌨️ Shortcuts</div>
+        <div class="shortcut-item"><kbd>Ctrl +/-</kbd> Zoom</div>
+        <div class="shortcut-item"><kbd>Ctrl 0</kbd> Reset Zoom</div>
+        <div class="shortcut-item"><kbd>Shift ↑↓←→</kbd> Pan</div>
+        <div class="shortcut-item"><kbd>Del</kbd> Delete Selected</div>
+      </div>
     </div>
 
     <!-- Error Display -->

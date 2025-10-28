@@ -32,7 +32,8 @@ import { PortAlignmentHelperService, PortPosition } from '../../services/port-al
         [class.input-port]="port.type === 'input'"
         [class.output-port]="port.type === 'output'"
         [class.both-port]="port.type === 'both'"
-        [class.hover-only]="port.visibility === 'hover'"
+        [class.always-visible]="port.visibility === 'always'"
+        [class.hover-only]="port.visibility === 'on-hover'"
         [class.hidden-port]="port.visibility === 'never'"
         [style.left.px]="port.x - 8"
         [style.top.px]="port.y - 8"
@@ -140,6 +141,10 @@ import { PortAlignmentHelperService, PortPosition } from '../../services/port-al
 
     .port-indicator.both-port .port-dot {
       background: #8b5cf6;
+    }
+
+    .port-indicator.always-visible {
+      opacity: 1;
     }
 
     .port-indicator.hover-only {

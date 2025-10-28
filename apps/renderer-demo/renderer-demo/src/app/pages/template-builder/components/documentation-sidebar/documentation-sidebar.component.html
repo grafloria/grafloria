@@ -40,6 +40,44 @@
       </select>
     </div>
 
+    <!-- Common Patterns Section -->
+    <div class="patterns-section">
+      <button class="patterns-toggle" (click)="togglePatterns()">
+        <span class="toggle-icon">{{ showPatterns ? '▼' : '▶' }}</span>
+        <span class="toggle-text">Common Patterns</span>
+        <span class="patterns-badge">{{ commonPatterns.length }}</span>
+      </button>
+
+      <div class="patterns-content" *ngIf="showPatterns && !selectedEntry">
+        <div class="pattern-card" *ngFor="let pattern of getFilteredPatterns()"
+             [class.copied]="wasRecentlyCopied(pattern)">
+          <div class="pattern-header">
+            <span class="pattern-icon">{{ pattern.icon }}</span>
+            <h4 class="pattern-title">{{ pattern.title }}</h4>
+            <span class="pattern-category-badge" [class.static]="pattern.category === 'static'"
+                  [class.dynamic]="pattern.category === 'dynamic'"
+                  [class.layout]="pattern.category === 'layout'">
+              {{ pattern.category }}
+            </span>
+          </div>
+          <p class="pattern-description">{{ pattern.description }}</p>
+          <div class="pattern-code-container">
+            <pre class="pattern-code">{{ pattern.code }}</pre>
+            <button class="copy-pattern-btn"
+                    (click)="copyPattern(pattern)"
+                    [class.copied]="wasRecentlyCopied(pattern)"
+                    [title]="wasRecentlyCopied(pattern) ? 'Copied!' : 'Copy to clipboard'">
+              {{ wasRecentlyCopied(pattern) ? '✓' : '📋' }}
+            </button>
+          </div>
+        </div>
+
+        <div class="no-patterns" *ngIf="getFilteredPatterns().length === 0">
+          <p>No matching patterns</p>
+        </div>
+      </div>
+    </div>
+
     <!-- Property List -->
     <div class="property-list" *ngIf="!selectedEntry">
       <div class="list-header">

@@ -182,6 +182,10 @@ export const ERDTableDynamic: NodeTemplate = {
 
     layout: {
       direction: 'column',
+      wrap: 'nowrap',
+      justifyContent: 'start',
+      alignItems: 'stretch',
+      alignContent: 'start',
       gap: 0,
       padding: { top: 0, right: 0, bottom: 0, left: 0 },
     },
@@ -317,6 +321,10 @@ export const ProcessFlow: NodeTemplate = {
 
     layout: {
       direction: 'column',
+      wrap: 'nowrap',
+      justifyContent: 'start',
+      alignItems: 'stretch',
+      alignContent: 'start',
       gap: 8,
       padding: { top: 16, right: 16, bottom: 16, left: 16 },
     },

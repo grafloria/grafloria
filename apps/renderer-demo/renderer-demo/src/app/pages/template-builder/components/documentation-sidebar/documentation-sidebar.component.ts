@@ -3,6 +3,14 @@ import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { DocumentationService, DocEntry } from '../../services/documentation.service';
 
+export interface PatternExample {
+  title: string;
+  description: string;
+  icon: string;
+  code: string;
+  category: 'static' | 'dynamic' | 'layout';
+}
+
 /**
  * Documentation Sidebar Component
  *
@@ -31,6 +39,8 @@ export class DocumentationSidebarComponent implements OnInit, OnDestroy {
   searchQuery = '';
   selectedCategory: 'all' | 'root' | 'meta' | 'structure' | 'shape' | 'ports' | 'html' | 'behavior' | 'layout' = 'all';
   selectedEntry: DocEntry | null = null;
+  showPatterns = false;
+  copiedPattern: string | null = null;
 
   categories = [
     { value: 'all', label: 'All Properties' },
@@ -42,6 +52,70 @@ export class DocumentationSidebarComponent implements OnInit, OnDestroy {
     { value: 'html', label: 'HTML' },
     { value: 'behavior', label: 'Behavior' },
     { value: 'layout', label: 'Layout' }
+  ];
+
+  commonPatterns: PatternExample[] = [
+    {
+      title: 'Static Child Node',
+      description: 'A single, fixed child node that\'s always visible. Perfect for labels, icons, or decorative elements.',
+      icon: '📄',
+      category: 'static',
+      code: `{
+  "type": "label",
+  "size": { "width": 100, "height": 30 },
+  "position": { "x": 10, "y": 10 },
+  "shape": {
+    "type": "rect",
+    "fill": "#e3f2fd",
+    "stroke": "#2196f3",
+    "strokeWidth": 2
+  },
+  "htmlLayer": "<div style='padding: 4px 8px;'>Label</div>"
+}`
+    },
+    {
+      title: 'Dynamic Children (Data-Driven)',
+      description: 'Multiple child nodes generated from data. Each item in your data array creates a new child.',
+      icon: '🔄',
+      category: 'dynamic',
+      code: `{
+  "type": "task-item",
+  "dataTemplate": {
+    "dataPath": "tasks",
+    "itemVariable": "task"
+  },
+  "size": { "width": 120, "height": 40 },
+  "shape": {
+    "type": "rect",
+    "fill": "#e3f2fd",
+    "stroke": "#2196f3",
+    "strokeWidth": 2
+  },
+  "htmlLayer": "<div style='padding: 8px;'>{{task.title}}</div>",
+  "layout": {
+    "direction": "column",
+    "wrap": "nowrap",
+    "justifyContent": "start",
+    "alignItems": "stretch",
+    "alignContent": "start",
+    "gap": 8
+  }
+}`
+    },
+    {
+      title: 'Flexbox Layout (Horizontal)',
+      description: 'Arrange children horizontally with flexbox spacing.',
+      icon: '↔️',
+      category: 'layout',
+      code: `"layout": {
+  "direction": "row",
+  "wrap": "nowrap",
+  "justifyContent": "space-between",
+  "alignItems": "center",
+  "alignContent": "start",
+  "gap": 12
+}`
+    }
   ];
 
   displayedEntries: DocEntry[] = [];
@@ -168,5 +242,52 @@ export class DocumentationSidebarComponent implements OnInit, OnDestroy {
       () => console.log('✅ Copied to clipboard'),
       err => console.error('❌ Failed to copy:', err)
     );
+  }
+
+  /**
+   * Toggle patterns section
+   */
+  togglePatterns(): void {
+    this.showPatterns = !this.showPatterns;
+  }
+
+  /**
+   * Copy pattern to clipboard with visual feedback
+   */
+  copyPattern(pattern: PatternExample): void {
+    navigator.clipboard.writeText(pattern.code).then(
+      () => {
+        this.copiedPattern = pattern.title;
+        console.log(`✅ Copied pattern: ${pattern.title}`);
+
+        // Clear feedback after 2 seconds
+        setTimeout(() => {
+          this.copiedPattern = null;
+        }, 2000);
+      },
+      err => console.error('❌ Failed to copy:', err)
+    );
+  }
+
+  /**
+   * Check if pattern was just copied
+   */
+  wasRecentlyCopied(pattern: PatternExample): boolean {
+    return this.copiedPattern === pattern.title;
+  }
+
+  /**
+   * Get filtered patterns (if search is active)
+   */
+  getFilteredPatterns(): PatternExample[] {
+    if (this.searchQuery.trim()) {
+      const query = this.searchQuery.toLowerCase();
+      return this.commonPatterns.filter(p =>
+        p.title.toLowerCase().includes(query) ||
+        p.description.toLowerCase().includes(query) ||
+        p.category.toLowerCase().includes(query)
+      );
+    }
+    return this.commonPatterns;
   }
 }
