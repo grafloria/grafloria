@@ -148,6 +148,22 @@ export interface InteractionConfig {
    * Phase 2.3: Waypoint editor configuration
    */
   waypointEditor?: WaypointEditorConfig;
+
+  /**
+   * Phase 2.3: Enable control point editing on bezier curves
+   * Allow users to adjust bezier control points by dragging handles
+   */
+  enableControlPointEditing: boolean;
+
+  /**
+   * Phase 2.3: Show control point handles on selected bezier links
+   */
+  showControlPointHandles: boolean;
+
+  /**
+   * Phase 2.3: Control point editor configuration
+   */
+  controlPointEditor?: ControlPointEditorConfig;
 }
 
 /**
@@ -196,6 +212,66 @@ export interface WaypointEditorConfig {
 }
 
 /**
+ * Phase 2.3: Control point editor configuration
+ */
+export interface ControlPointEditorConfig {
+  /**
+   * Snap control points to grid
+   */
+  snapToGrid: boolean;
+
+  /**
+   * Grid size for snapping (in pixels)
+   */
+  gridSize: number;
+
+  /**
+   * Control point handle radius (in pixels)
+   */
+  handleRadius: number;
+
+  /**
+   * Control point handle color
+   */
+  handleColor: string;
+
+  /**
+   * Control point handle stroke color
+   */
+  handleStrokeColor: string;
+
+  /**
+   * Control line color (line from anchor to control point)
+   */
+  controlLineColor: string;
+
+  /**
+   * Control line stroke width
+   */
+  controlLineWidth: number;
+
+  /**
+   * Control line dash pattern (e.g., [5, 5] for dashed)
+   */
+  controlLineDash: number[];
+
+  /**
+   * Maximum distance from control handle to detect click (in pixels)
+   */
+  clickDetectionRadius: number;
+
+  /**
+   * Show control lines connecting anchors to control points
+   */
+  showControlLines: boolean;
+
+  /**
+   * Auto-generate symmetric control points (mirror on both sides)
+   */
+  symmetricControls: boolean;
+}
+
+/**
  * Default interaction configuration
  * Optimized for modern diagramming workflows
  */
@@ -224,6 +300,22 @@ export const DEFAULT_INTERACTION_CONFIG: InteractionConfig = {
     handleStrokeColor: '#ffffff',
     minDistanceFromEndpoints: 30,
     clickDetectionRadius: 10,
+  },
+  // Phase 2.3: Control point editing defaults
+  enableControlPointEditing: false,  // Disabled by default for backward compatibility
+  showControlPointHandles: true,
+  controlPointEditor: {
+    snapToGrid: false,
+    gridSize: 20,
+    handleRadius: 6,
+    handleColor: '#10b981',
+    handleStrokeColor: '#ffffff',
+    controlLineColor: '#6b7280',
+    controlLineWidth: 1,
+    controlLineDash: [5, 5],
+    clickDetectionRadius: 10,
+    showControlLines: true,
+    symmetricControls: false,
   },
 };
 

@@ -2,3 +2,4 @@
 // Phase 2.3: Interactive link editing
 
 export * from './WaypointEditor';
+export * from './ControlPointEditor';
