@@ -47,10 +47,27 @@ export class PathSimplifier {
    * @param points - Array of points to simplify
    * @param epsilon - Maximum allowed distance from simplified path (default: 1.0)
    * @returns Simplified array of points
+   * @throws Error if epsilon is invalid or points contain invalid coordinates
    */
   simplify(points: Point[], epsilon: number = this.DEFAULT_EPSILON): Point[] {
+    // Validate epsilon
+    if (!isFinite(epsilon) || epsilon <= 0) {
+      throw new Error(`Invalid epsilon: ${epsilon}. Must be a positive number.`);
+    }
+
+    // Fast path for empty or small paths
     if (points.length <= 2) {
       return [...points];
+    }
+
+    // Validate all points have valid coordinates
+    for (let i = 0; i < points.length; i++) {
+      const p = points[i];
+      if (!p || !isFinite(p.x) || !isFinite(p.y)) {
+        throw new Error(
+          `Invalid point at index ${i}: ${JSON.stringify(p)}. All points must have finite x and y coordinates.`
+        );
+      }
     }
 
     return this.douglasPeucker(points, epsilon);

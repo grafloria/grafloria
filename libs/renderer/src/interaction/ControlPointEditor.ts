@@ -4,7 +4,6 @@
 import type { Point, PathSegment } from '@grafloria/engine';
 import type { ControlPointEditorConfig } from '@grafloria/engine';
 import type { VNode } from '../types/vnode.types';
-import { h } from '../vnode/h';
 
 /**
  * Control point information
@@ -111,6 +110,7 @@ export class ControlPointEditor {
 
   /**
    * Hit test for control point handles
+   * Optimized to avoid allocations on hot path (mousemove)
    *
    * @param mouseX - Mouse X coordinate
    * @param mouseY - Mouse Y coordinate
@@ -122,24 +122,48 @@ export class ControlPointEditor {
     mouseY: number,
     segments: PathSegment[]
   ): ControlPointHitResult | null {
-    const controlPoints = this.getControlPoints(segments);
     let closestPoint: ControlPointHitResult | null = null;
     let closestDistance = this.config.clickDetectionRadius;
 
-    for (const cp of controlPoints) {
-      const distance = this.calculateDistance(
-        { x: mouseX, y: mouseY },
-        cp.point
-      );
+    const mousePoint = { x: mouseX, y: mouseY };
 
-      if (distance <= closestDistance) {
-        closestDistance = distance;
-        closestPoint = {
-          segmentIndex: cp.segmentIndex,
-          controlType: cp.type,
-          point: cp.point,
-          anchor: cp.anchor,
-        };
+    // Direct iteration - no intermediate allocations
+    for (let i = 0; i < segments.length; i++) {
+      const segment = segments[i];
+
+      // Only curve segments have control points
+      if (segment.type === 'curve') {
+        // Check control1
+        if (segment.control1 && isFinite(segment.control1.x) && isFinite(segment.control1.y)) {
+          const distance = this.calculateDistance(mousePoint, segment.control1);
+
+          if (distance <= closestDistance) {
+            closestDistance = distance;
+            // Only allocate when we find a hit
+            closestPoint = {
+              segmentIndex: i,
+              controlType: 'control1',
+              point: { ...segment.control1 },
+              anchor: { ...segment.from },
+            };
+          }
+        }
+
+        // Check control2
+        if (segment.control2 && isFinite(segment.control2.x) && isFinite(segment.control2.y)) {
+          const distance = this.calculateDistance(mousePoint, segment.control2);
+
+          if (distance <= closestDistance) {
+            closestDistance = distance;
+            // Only allocate when we find a hit
+            closestPoint = {
+              segmentIndex: i,
+              controlType: 'control2',
+              point: { ...segment.control2 },
+              anchor: { ...segment.to },
+            };
+          }
+        }
       }
     }
 
@@ -332,18 +356,22 @@ export class ControlPointEditor {
    * @returns VNode representing the control point handle
    */
   renderControlPointHandle(controlPoint: ControlPoint, linkId: string): VNode {
-    return h('circle', {
-      cx: controlPoint.point.x,
-      cy: controlPoint.point.y,
-      r: this.config.handleRadius,
-      fill: this.config.handleColor,
-      stroke: this.config.handleStrokeColor,
-      'stroke-width': 2,
-      class: `control-point-handle control-point-${controlPoint.type}`,
-      'data-link-id': linkId,
-      'data-segment-index': controlPoint.segmentIndex.toString(),
-      'data-control-type': controlPoint.type,
-    });
+    return {
+      type: 'circle',
+      key: `control-point-${linkId}-${controlPoint.segmentIndex}-${controlPoint.type}`,
+      props: {
+        cx: controlPoint.point.x,
+        cy: controlPoint.point.y,
+        r: this.config.handleRadius,
+        fill: this.config.handleColor,
+        stroke: this.config.handleStrokeColor,
+        strokeWidth: 2,
+        className: `control-point-handle control-point-${controlPoint.type}`,
+        'data-link-id': linkId,
+        'data-segment-index': controlPoint.segmentIndex.toString(),
+        'data-control-type': controlPoint.type,
+      },
+    };
   }
 
   /**
@@ -354,17 +382,21 @@ export class ControlPointEditor {
    * @returns VNode representing the control line
    */
   renderControlLine(controlPoint: ControlPoint, linkId: string): VNode {
-    return h('line', {
-      x1: controlPoint.anchor.x,
-      y1: controlPoint.anchor.y,
-      x2: controlPoint.point.x,
-      y2: controlPoint.point.y,
-      stroke: this.config.controlLineColor,
-      'stroke-width': this.config.controlLineWidth,
-      'stroke-dasharray': this.config.controlLineDash.join(','),
-      class: 'control-line',
-      'data-link-id': linkId,
-    });
+    return {
+      type: 'line',
+      key: `control-line-${linkId}-${controlPoint.segmentIndex}-${controlPoint.type}`,
+      props: {
+        x1: controlPoint.anchor.x,
+        y1: controlPoint.anchor.y,
+        x2: controlPoint.point.x,
+        y2: controlPoint.point.y,
+        stroke: this.config.controlLineColor,
+        strokeWidth: this.config.controlLineWidth,
+        strokeDasharray: this.config.controlLineDash.join(','),
+        className: 'control-line',
+        'data-link-id': linkId,
+      },
+    };
   }
 
   /**

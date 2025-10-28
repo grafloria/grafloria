@@ -83,6 +83,19 @@ export interface VNodeProps {
   r?: number;
 
   // ============================================
+  // Line Attributes
+  // ============================================
+
+  /** Line start X */
+  x1?: number;
+  /** Line start Y */
+  y1?: number;
+  /** Line end X */
+  x2?: number;
+  /** Line end Y */
+  y2?: number;
+
+  // ============================================
   // Path Attributes
   // ============================================
 

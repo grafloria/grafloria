@@ -528,13 +528,13 @@ describe('ControlPointEditor', () => {
 
       const vnode = editor.renderControlPointHandle(controlPoint, 'link-123');
 
-      expect(vnode.tag).toBe('circle');
+      expect(vnode.type).toBe('circle');
       expect(vnode.props.cx).toBe(50);
       expect(vnode.props.cy).toBe(50);
       expect(vnode.props.r).toBe(config.handleRadius);
       expect(vnode.props.fill).toBe(config.handleColor);
       expect(vnode.props.stroke).toBe(config.handleStrokeColor);
-      expect(vnode.props.class).toContain('control-point-handle');
+      expect(vnode.props.className).toContain('control-point-handle');
     });
 
     it('should render control line as VNode when showControlLines is true', () => {
@@ -547,14 +547,14 @@ describe('ControlPointEditor', () => {
 
       const vnode = editor.renderControlLine(controlPoint, 'link-123');
 
-      expect(vnode.tag).toBe('line');
+      expect(vnode.type).toBe('line');
       expect(vnode.props.x1).toBe(0);
       expect(vnode.props.y1).toBe(0);
       expect(vnode.props.x2).toBe(50);
       expect(vnode.props.y2).toBe(50);
       expect(vnode.props.stroke).toBe(config.controlLineColor);
-      expect(vnode.props['stroke-width']).toBe(config.controlLineWidth);
-      expect(vnode.props['stroke-dasharray']).toBe('5,5');
+      expect(vnode.props.strokeWidth).toBe(config.controlLineWidth);
+      expect(vnode.props.strokeDasharray).toBe('5,5');
     });
 
     it('should render all control point handles for a link', () => {
@@ -572,10 +572,10 @@ describe('ControlPointEditor', () => {
 
       // Should render 2 control lines + 2 control point handles = 4 vnodes
       expect(vnodes).toHaveLength(4);
-      expect(vnodes[0].tag).toBe('line');  // Control line 1
-      expect(vnodes[1].tag).toBe('circle'); // Control point 1
-      expect(vnodes[2].tag).toBe('line');  // Control line 2
-      expect(vnodes[3].tag).toBe('circle'); // Control point 2
+      expect(vnodes[0].type).toBe('line');  // Control line 1
+      expect(vnodes[1].type).toBe('circle'); // Control point 1
+      expect(vnodes[2].type).toBe('line');  // Control line 2
+      expect(vnodes[3].type).toBe('circle'); // Control point 2
     });
 
     it('should not render control lines when showControlLines is false', () => {
@@ -596,8 +596,8 @@ describe('ControlPointEditor', () => {
 
       // Should render only 2 control point handles (no lines)
       expect(vnodes).toHaveLength(2);
-      expect(vnodes[0].tag).toBe('circle');
-      expect(vnodes[1].tag).toBe('circle');
+      expect(vnodes[0].type).toBe('circle');
+      expect(vnodes[1].type).toBe('circle');
     });
 
     it('should return empty array for non-curve segments', () => {

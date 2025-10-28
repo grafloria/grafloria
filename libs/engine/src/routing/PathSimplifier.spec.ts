@@ -344,6 +344,78 @@ describe('PathSimplifier', () => {
     });
   });
 
+  describe('Input Validation', () => {
+    it('should throw error for invalid epsilon (zero)', () => {
+      const points: Point[] = [
+        { x: 0, y: 0 },
+        { x: 10, y: 0 },
+        { x: 20, y: 0 },
+      ];
+
+      expect(() => simplifier.simplify(points, 0)).toThrow('Invalid epsilon');
+    });
+
+    it('should throw error for invalid epsilon (negative)', () => {
+      const points: Point[] = [
+        { x: 0, y: 0 },
+        { x: 10, y: 0 },
+        { x: 20, y: 0 },
+      ];
+
+      expect(() => simplifier.simplify(points, -1)).toThrow('Invalid epsilon');
+    });
+
+    it('should throw error for invalid epsilon (NaN)', () => {
+      const points: Point[] = [
+        { x: 0, y: 0 },
+        { x: 10, y: 0 },
+        { x: 20, y: 0 },
+      ];
+
+      expect(() => simplifier.simplify(points, NaN)).toThrow('Invalid epsilon');
+    });
+
+    it('should throw error for invalid epsilon (Infinity)', () => {
+      const points: Point[] = [
+        { x: 0, y: 0 },
+        { x: 10, y: 0 },
+        { x: 20, y: 0 },
+      ];
+
+      expect(() => simplifier.simplify(points, Infinity)).toThrow('Invalid epsilon');
+    });
+
+    it('should throw error for point with NaN coordinates', () => {
+      const points: Point[] = [
+        { x: 0, y: 0 },
+        { x: NaN, y: 10 },
+        { x: 20, y: 0 },
+      ];
+
+      expect(() => simplifier.simplify(points, 1.0)).toThrow('Invalid point at index 1');
+    });
+
+    it('should throw error for point with Infinity coordinates', () => {
+      const points: Point[] = [
+        { x: 0, y: 0 },
+        { x: 10, y: Infinity },
+        { x: 20, y: 0 },
+      ];
+
+      expect(() => simplifier.simplify(points, 1.0)).toThrow('Invalid point at index 1');
+    });
+
+    it('should throw error for null point', () => {
+      const points: Point[] = [
+        { x: 0, y: 0 },
+        null as any,
+        { x: 20, y: 0 },
+      ];
+
+      expect(() => simplifier.simplify(points, 1.0)).toThrow('Invalid point at index 1');
+    });
+  });
+
   describe('Edge Cases', () => {
     it('should handle duplicate consecutive points', () => {
       const points: Point[] = [

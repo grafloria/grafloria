@@ -120,22 +120,27 @@ export class WaypointEditor {
 
   /**
    * Hit test for clicking on a waypoint handle
+   * Optimized to avoid allocations on hot path (mousemove)
    */
   hitTestWaypoint(mouseX: number, mouseY: number, points: Point[]): WaypointHitResult | null {
+    // Fast path: no waypoints if less than 3 points
+    if (points.length < 3) return null;
+
     const mousePoint = { x: mouseX, y: mouseY };
-    const waypoints = this.getWaypoints(points);
+    const hitRadius = this.config.handleRadius + 5;
 
-    // Check each waypoint
-    for (const waypoint of waypoints) {
-      const distance = this.distance(mousePoint, waypoint.point);
-
-      // Use handle radius + small tolerance for hit detection
-      const hitRadius = this.config.handleRadius + 5;
+    // Direct iteration - no intermediate allocations
+    for (let i = 1; i < points.length - 1; i++) {
+      const distance = this.distance(mousePoint, points[i]);
 
       if (distance <= hitRadius) {
+        // Only allocate when we find a hit
         return {
-          waypointIndex: waypoint.index,
-          waypoint,
+          waypointIndex: i,
+          waypoint: {
+            index: i,
+            point: { ...points[i] },
+          },
           distance,
         };
       }

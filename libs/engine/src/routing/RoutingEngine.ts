@@ -404,11 +404,14 @@ export class RoutingEngine {
    */
   private getCacheKey(request: RouteRequest): string {
     const algo = request.options?.algorithm ?? this.defaultAlgorithm;
+    const simplify = request.options?.simplifyPath ?? false;
+    const epsilon = request.options?.simplificationEpsilon ?? 1.0;
     const obstacleIds = (request.obstacles ?? [])
       .map((o) => o.id)
       .sort()
       .join(',');
 
-    return `${request.start.x},${request.start.y}|${request.end.x},${request.end.y}|${algo}|${obstacleIds}`;
+    // Phase 2.2: Include simplification options in cache key to prevent incorrect cache hits
+    return `${request.start.x},${request.start.y}|${request.end.x},${request.end.y}|${algo}|${obstacleIds}|${simplify}|${epsilon}`;
   }
 }
