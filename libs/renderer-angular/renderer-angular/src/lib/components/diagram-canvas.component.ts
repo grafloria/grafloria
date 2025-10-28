@@ -879,6 +879,15 @@ export class DiagramCanvasComponent implements OnInit, AfterViewInit, OnChanges,
         needsRender = this.interactionHandler.handleConnectionDrag(worldX, worldY, this.engine) || needsRender;
       }
 
+      // Phase 2.3a: Update hovered waypoint for Delete key support
+      const config = this.engine.getInteractionConfig();
+      if (config.enableWaypointEditing) {
+        const state = this.interactionHandler.getState();
+        // Only track waypoint hover on selected links
+        const selectedLink = state.hoveredLink && state.hoveredLink.state === 'selected' ? state.hoveredLink : null;
+        this.interactionHandler.updateHoveredWaypoint(worldX, worldY, selectedLink);
+      }
+
       // Update cursor based on interaction state
       if (this.containerRef?.nativeElement) {
         this.containerRef.nativeElement.style.cursor = this.interactionHandler.getCursor(this.engine);
@@ -1040,7 +1049,7 @@ export class DiagramCanvasComponent implements OnInit, AfterViewInit, OnChanges,
       return;
     }
 
-    // Handle Delete key (Phase 3: Also delete links)
+    // Handle Delete key (Phase 3: Also delete links, Phase 2.3a: Also delete waypoints)
     if (event.key === 'Delete' || event.key === 'Backspace') {
       // Don't delete if user is typing in an input field
       const target = event.target as HTMLElement;
@@ -1048,7 +1057,20 @@ export class DiagramCanvasComponent implements OnInit, AfterViewInit, OnChanges,
         return;
       }
 
-      // Try deleting selected link first
+      // Phase 2.3a: Try deleting hovered waypoint first (highest priority)
+      const config = this.engine.getInteractionConfig();
+      if (config.enableWaypointEditing) {
+        const waypointDeleted = this.interactionHandler.deleteHoveredWaypoint();
+        if (waypointDeleted) {
+          event.preventDefault();
+          console.log('🗑️ Deleted waypoint');
+          this.renderDiagram();
+          this.cdr.markForCheck();
+          return;
+        }
+      }
+
+      // Try deleting selected link
       const linkDeleted = this.interactionHandler.deleteSelectedLink(this.engine);
       if (linkDeleted) {
         event.preventDefault();

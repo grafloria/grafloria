@@ -50,6 +50,8 @@ export class InteractionHandlerService {
   private editingLink: LinkModel | null = null;
   private editingWaypointIndex: number | null = null;
   private waypointEditor: WaypointEditor | null = null;
+  private hoveredWaypointIndex: number | null = null;
+  private hoveredWaypointLink: LinkModel | null = null;
 
   /**
    * Phase 5: Performance optimization - debounce hover detection
@@ -104,6 +106,8 @@ export class InteractionHandlerService {
     this.editingLink = null;
     this.editingWaypointIndex = null;
     this.isDraggingWaypoint = false;
+    this.hoveredWaypointIndex = null;
+    this.hoveredWaypointLink = null;
   }
 
   /**
@@ -538,6 +542,8 @@ export class InteractionHandlerService {
       isDraggingWaypoint: this.isDraggingWaypoint,
       editingLink: this.editingLink,
       editingWaypointIndex: this.editingWaypointIndex,
+      hoveredWaypointIndex: this.hoveredWaypointIndex,
+      hoveredWaypointLink: this.hoveredWaypointLink,
     };
   }
 
@@ -919,5 +925,36 @@ export class InteractionHandlerService {
     if (this.waypointEditor) {
       this.waypointEditor.updateConfig(config);
     }
+  }
+
+  /**
+   * Update hovered waypoint (for Delete key support)
+   * Call this from mousemove to track which waypoint is under cursor
+   */
+  updateHoveredWaypoint(worldX: number, worldY: number, link: LinkModel | null): void {
+    if (!link || !this.waypointEditor) {
+      this.hoveredWaypointIndex = null;
+      this.hoveredWaypointLink = null;
+      return;
+    }
+
+    const waypointIndex = this.hitTestWaypoint(worldX, worldY, link);
+    this.hoveredWaypointIndex = waypointIndex;
+    this.hoveredWaypointLink = waypointIndex !== null ? link : null;
+  }
+
+  /**
+   * Delete currently hovered waypoint (for Delete key)
+   */
+  deleteHoveredWaypoint(): boolean {
+    if (this.hoveredWaypointIndex !== null && this.hoveredWaypointLink) {
+      const removed = this.removeWaypoint(this.hoveredWaypointIndex, this.hoveredWaypointLink);
+      if (removed) {
+        this.hoveredWaypointIndex = null;
+        this.hoveredWaypointLink = null;
+        return true;
+      }
+    }
+    return false;
   }
 }
