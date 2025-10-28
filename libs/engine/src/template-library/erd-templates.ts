@@ -763,18 +763,16 @@ export const ERDTableRepeater: NodeTemplate = {
               padding: 4px 8px;
               font-size: 12px;
               background: #ffffff;
-              border-bottom: {{#data._isLast}}none{{/data._isLast}}{{^data._isLast}}1px solid #e5e7eb{{/data._isLast}};
+              border-bottom: 1px solid #e5e7eb;
               height: 24px;
             ">
               <span class="field-icon" style="width: 14px; text-align: center; font-size: 11px;">
-                {{#data.isPrimaryKey}}🔑{{/data.isPrimaryKey}}
-                {{#data.isForeignKey}}{{^data.isPrimaryKey}}🔗{{/data.isPrimaryKey}}{{/data.isForeignKey}}
-                {{^data.isPrimaryKey}}{{^data.isForeignKey}}📝{{/data.isForeignKey}}{{/data.isPrimaryKey}}
+                {{data.icon}}
               </span>
               <span class="field-name" style="
                 flex: 1;
-                font-weight: {{#data.isPrimaryKey}}600{{/data.isPrimaryKey}}{{^data.isPrimaryKey}}400{{/data.isPrimaryKey}};
-                color: {{#data.isPrimaryKey}}#0066cc{{/data.isPrimaryKey}}{{^data.isPrimaryKey}}#18181b{{/data.isPrimaryKey}};
+                font-weight: 400;
+                color: #18181b;
               ">{{data.name}}</span>
               <span class="field-type" style="
                 color: #71717a;
