@@ -625,13 +625,7 @@ export class DiagramCanvasComponent implements OnInit, AfterViewInit, OnChanges,
     // Left mouse button for node interaction
     if (event.button === 0 && !this.spaceKeyPressed) {
       // Convert client coordinates to world coordinates
-      const rect = this.containerRef.nativeElement.getBoundingClientRect();
-      const clientX = event.clientX - rect.left;
-      const clientY = event.clientY - rect.top;
-
-      // Convert to world coordinates
-      const worldX = this.viewport.x + (clientX / this.zoom);
-      const worldY = this.viewport.y + (clientY / this.zoom);
+      const { worldX, worldY } = this.clientToWorld(event.clientX, event.clientY);
 
       // Phase 3: Check for HTML handle click (Phase 2 integration - HIGHEST PRIORITY)
       // HTML handles need to be checked before SVG ports
@@ -877,11 +871,7 @@ export class DiagramCanvasComponent implements OnInit, AfterViewInit, OnChanges,
     const interactionState = this.interactionHandler.getState();
     if (interactionState.isDraggingControlPoint) {
       // Convert to world coordinates
-      const rect = this.containerRef.nativeElement.getBoundingClientRect();
-      const clientX = event.clientX - rect.left;
-      const clientY = event.clientY - rect.top;
-      const worldX = this.viewport.x + (clientX / this.zoom);
-      const worldY = this.viewport.y + (clientY / this.zoom);
+      const { worldX, worldY } = this.clientToWorld(event.clientX, event.clientY);
 
       // Move control point to new position
       const moved = this.interactionHandler.moveControlPoint(worldX, worldY, this.engine);
@@ -895,11 +885,7 @@ export class DiagramCanvasComponent implements OnInit, AfterViewInit, OnChanges,
     // Phase 2.3a: Handle waypoint dragging
     if (interactionState.isDraggingWaypoint) {
       // Convert to world coordinates
-      const rect = this.containerRef.nativeElement.getBoundingClientRect();
-      const clientX = event.clientX - rect.left;
-      const clientY = event.clientY - rect.top;
-      const worldX = this.viewport.x + (clientX / this.zoom);
-      const worldY = this.viewport.y + (clientY / this.zoom);
+      const { worldX, worldY } = this.clientToWorld(event.clientX, event.clientY);
 
       // Move waypoint to new position
       const moved = this.interactionHandler.moveWaypoint(worldX, worldY, this.engine);
@@ -913,12 +899,7 @@ export class DiagramCanvasComponent implements OnInit, AfterViewInit, OnChanges,
     // Phase 3: Handle hover detection and connection drag
     if (!this.spaceKeyPressed) {
       // Convert client coordinates to world coordinates
-      const rect = this.containerRef.nativeElement.getBoundingClientRect();
-      const clientX = event.clientX - rect.left;
-      const clientY = event.clientY - rect.top;
-
-      const worldX = this.viewport.x + (clientX / this.zoom);
-      const worldY = this.viewport.y + (clientY / this.zoom);
+      const { worldX, worldY } = this.clientToWorld(event.clientX, event.clientY);
 
       // Handle hover detection (nodes, ports, links)
       let needsRender = this.interactionHandler.handleMouseMove(worldX, worldY, this.engine);
@@ -1086,6 +1067,31 @@ export class DiagramCanvasComponent implements OnInit, AfterViewInit, OnChanges,
       link.generatePath(sourcePoint, targetPoint, sourceDirection, targetDirection);
       link.markDirty(); // Force re-render
     });
+  }
+
+  /**
+   * CRITICAL FIX: Convert client coordinates to world coordinates
+   * This must match the viewBox calculation in SVGRenderer which zooms around viewport center
+   */
+  private clientToWorld(clientX: number, clientY: number): { worldX: number; worldY: number } {
+    const rect = this.containerRef.nativeElement.getBoundingClientRect();
+    const localX = clientX - rect.left;
+    const localY = clientY - rect.top;
+
+    // SVGRenderer zooms around the viewport center, so we must calculate viewBox the same way
+    const centerX = this.viewport.x + this.viewport.width / 2;
+    const centerY = this.viewport.y + this.viewport.height / 2;
+
+    const viewBoxWidth = this.viewport.width / this.zoom;
+    const viewBoxHeight = this.viewport.height / this.zoom;
+    const viewBoxX = centerX - viewBoxWidth / 2;
+    const viewBoxY = centerY - viewBoxHeight / 2;
+
+    // Convert local canvas coordinates to world coordinates using viewBox
+    const worldX = viewBoxX + (localX / this.zoom);
+    const worldY = viewBoxY + (localY / this.zoom);
+
+    return { worldX, worldY };
   }
 
   /**

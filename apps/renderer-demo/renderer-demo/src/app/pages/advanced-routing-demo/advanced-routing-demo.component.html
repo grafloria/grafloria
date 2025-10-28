@@ -45,27 +45,29 @@
   <div class="demo-content">
     <!-- Left Sidebar - Controls -->
     <div class="control-panel">
-      <!-- Routing Algorithm Selection (Common to all sections) -->
+      <!-- Routing Algorithm Selection (Pathfinding) -->
       <div class="control-section routing-section">
-        <h3>⚙️ Routing Algorithm</h3>
+        <h3>🧭 Routing Algorithm (Pathfinding)</h3>
+        <p class="section-description">How to calculate the path from source to target</p>
 
         <div class="algorithm-grid">
-          <div *ngFor="let pathType of pathTypes" class="algorithm-option">
+          <div *ngFor="let algo of routingAlgorithms" class="algorithm-option">
             <label class="algorithm-label">
               <input
                 type="radio"
-                name="pathType"
-                [value]="pathType.value"
-                [(ngModel)]="routingConfig.pathType"
+                name="routingAlgorithm"
+                [value]="algo.value"
+                [(ngModel)]="routingConfig.algorithm"
                 (change)="updateRoutingConfig()"
               />
-              <span class="algorithm-icon">{{ pathType.icon }}</span>
-              <span class="algorithm-name">{{ pathType.label }}</span>
+              <span class="algorithm-icon">{{ algo.icon }}</span>
+              <span class="algorithm-name">{{ algo.label }}</span>
             </label>
+            <small class="algorithm-description">{{ algo.description }}</small>
           </div>
         </div>
 
-        <div class="control-group" *ngIf="routingConfig.pathType === 'orthogonal'">
+        <div class="control-group" *ngIf="routingConfig.algorithm === 'orthogonal'">
           <label class="toggle-label">
             <input
               type="checkbox"
@@ -76,7 +78,7 @@
           </label>
         </div>
 
-        <div class="control-group" *ngIf="routingConfig.pathType === 'orthogonal' && routingConfig.avoidObstacles">
+        <div class="control-group" *ngIf="routingConfig.algorithm === 'orthogonal' && routingConfig.avoidObstacles">
           <label>Obstacle Margin: {{ routingConfig.obstacleMargin }}px</label>
           <input
             type="range"
@@ -88,7 +90,7 @@
           />
         </div>
 
-        <div class="control-group" *ngIf="routingConfig.pathType === 'orthogonal' && routingConfig.avoidObstacles">
+        <div class="control-group" *ngIf="routingConfig.algorithm === 'orthogonal' && routingConfig.avoidObstacles">
           <label>Grid Size: {{ routingConfig.gridSize }}px</label>
           <input
             type="range"
@@ -98,6 +100,39 @@
             [(ngModel)]="routingConfig.gridSize"
             (input)="updateRoutingConfig()"
           />
+        </div>
+      </div>
+
+      <!-- Line Rendering Style Selection (Visual) -->
+      <div class="control-section line-rendering-section">
+        <h3>🎨 Line Rendering Style (Visual)</h3>
+        <p class="section-description">How to draw the calculated path</p>
+
+        <div class="algorithm-grid">
+          <div *ngFor="let style of lineRenderingStyles" class="algorithm-option">
+            <label
+              class="algorithm-label"
+              [class.disabled]="!isLineStyleCompatible(style.value)"
+              [title]="!isLineStyleCompatible(style.value) ? 'Not compatible with current routing algorithm' : ''"
+            >
+              <input
+                type="radio"
+                name="lineStyle"
+                [value]="style.value"
+                [(ngModel)]="lineRenderingConfig.style"
+                (change)="updateLineRenderingConfig()"
+                [disabled]="!isLineStyleCompatible(style.value)"
+              />
+              <span class="algorithm-icon">{{ style.icon }}</span>
+              <span class="algorithm-name">{{ style.label }}</span>
+            </label>
+            <small class="algorithm-description">
+              {{ style.description }}
+              <span *ngIf="!isLineStyleCompatible(style.value)" class="incompatible-note">
+                (Requires {{ style.compatibleWith.join(' or ') }} routing)
+              </span>
+            </small>
+          </div>
         </div>
       </div>
 

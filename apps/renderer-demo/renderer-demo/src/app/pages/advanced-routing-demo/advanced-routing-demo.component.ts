@@ -9,6 +9,7 @@ import {
   LinkModel,
   InteractionMode,
   PortVisibilityStrategy,
+  ConnectionLineStyle,
   type InteractionConfig,
   type RoutingOptions,
 } from '@grafloria/engine';
@@ -62,20 +63,31 @@ export class AdvancedRoutingDemoComponent implements OnInit {
     epsilon: 1.0,
   };
 
-  // Routing algorithm controls
+  // Routing algorithm controls (pathfinding)
   routingConfig = {
-    pathType: 'orthogonal' as 'orthogonal' | 'direct' | 'smooth' | 'bezier',
+    algorithm: 'orthogonal' as 'straight' | 'orthogonal',
     avoidObstacles: true,
     obstacleMargin: 20,
     gridSize: 10,
   };
 
-  // Available path types (visual rendering styles)
-  pathTypes = [
-    { value: 'orthogonal' as const, label: 'Orthogonal (Right-angle)', icon: '⊏⊐', algorithm: 'orthogonal' as const },
-    { value: 'direct' as const, label: 'Direct (Straight line)', icon: '→', algorithm: 'straight' as const },
-    { value: 'smooth' as const, label: 'Smooth (Curved)', icon: '⌢', algorithm: 'straight' as const },
-    { value: 'bezier' as const, label: 'Bezier (Control points)', icon: '◠', algorithm: 'straight' as const },
+  // Line rendering controls (visual style)
+  lineRenderingConfig = {
+    style: 'orthogonal' as 'direct' | 'smooth' | 'bezier' | 'orthogonal',
+  };
+
+  // Available routing algorithms (pathfinding)
+  routingAlgorithms = [
+    { value: 'straight' as const, label: 'Straight', icon: '→', description: 'Direct path from A to B' },
+    { value: 'orthogonal' as const, label: 'Orthogonal', icon: '⊏⊐', description: 'Right-angle paths with optional obstacle avoidance' },
+  ];
+
+  // Available line rendering styles (visual)
+  lineRenderingStyles = [
+    { value: 'direct' as const, label: 'Direct', icon: '━', description: 'Straight lines', compatibleWith: ['straight', 'orthogonal'] },
+    { value: 'smooth' as const, label: 'Smooth', icon: '⌢', description: 'Smooth curves', compatibleWith: ['straight'] },
+    { value: 'bezier' as const, label: 'Bezier', icon: '◠', description: 'Bezier curves with control points', compatibleWith: ['straight'] },
+    { value: 'orthogonal' as const, label: 'Orthogonal', icon: '⊏⊐', description: 'Right-angle lines', compatibleWith: ['orthogonal'] },
   ];
 
   // Stats
@@ -91,6 +103,13 @@ export class AdvancedRoutingDemoComponent implements OnInit {
 
   ngOnInit() {
     this.initializeEngine();
+
+    // CRITICAL FIX: Initialize routing algorithm and line style in engine
+    // This ensures the preview line and final links use the correct settings
+    const routingEngine = this.engine.getRoutingEngine();
+    routingEngine.setDefaultAlgorithm(this.routingConfig.algorithm);
+    this.updateEngineConnectionLineStyle();
+
     this.createDemoContent(this.activeSection);
   }
 
@@ -562,24 +581,99 @@ export class AdvancedRoutingDemoComponent implements OnInit {
     const diagram = this.engine.getDiagram();
     if (!diagram) return;
 
-    // Get selected path type config
-    const selectedPathType = this.pathTypes.find(pt => pt.value === this.routingConfig.pathType);
-    if (!selectedPathType) return;
+    // Validate line rendering style is compatible with routing algorithm
+    const lineStyle = this.lineRenderingStyles.find(s => s.value === this.lineRenderingConfig.style);
+    if (lineStyle && !lineStyle.compatibleWith.includes(this.routingConfig.algorithm)) {
+      // Auto-adjust to compatible style
+      const compatibleStyle = this.lineRenderingStyles.find(s => s.compatibleWith.includes(this.routingConfig.algorithm));
+      if (compatibleStyle) {
+        this.lineRenderingConfig.style = compatibleStyle.value;
+        console.log(`⚠️ Auto-adjusted line style to ${compatibleStyle.label} (compatible with ${this.routingConfig.algorithm})`);
+      }
+    }
 
-    // Update all links with new path type
+    // CRITICAL FIX: Update routing engine's default algorithm
+    // This affects how NEW links are routed when created
+    const routingEngine = this.engine.getRoutingEngine();
+    routingEngine.setDefaultAlgorithm(this.routingConfig.algorithm);
+
+    // CRITICAL FIX: Update engine's connection line style for NEW links
+    // This ensures newly drawn links use the correct pathType
+    this.updateEngineConnectionLineStyle();
+
+    // Update EXISTING links with new settings
     diagram.getLinks().forEach(link => {
-      link.pathType = this.routingConfig.pathType;
+      link.pathType = this.lineRenderingConfig.style;
       link.markDirty(); // Force re-routing
     });
 
-    // Update routing engine with correct algorithm
-    const routingEngine = this.engine.getRoutingEngine();
-    routingEngine.setDefaultAlgorithm(selectedPathType.algorithm);
-
-    console.log(`🔄 Updated routing: pathType=${this.routingConfig.pathType}, algorithm=${selectedPathType.algorithm}, avoidObstacles=${this.routingConfig.avoidObstacles}, margin=${this.routingConfig.obstacleMargin}px`);
+    console.log(`🔄 Updated routing: algorithm=${this.routingConfig.algorithm}, lineStyle=${this.lineRenderingConfig.style}, avoidObstacles=${this.routingConfig.avoidObstacles}, margin=${this.routingConfig.obstacleMargin}px`);
 
     this.updateStats();
     this.cdr.markForCheck();
+  }
+
+  updateLineRenderingConfig(): void {
+    const diagram = this.engine.getDiagram();
+    if (!diagram) return;
+
+    // Validate line rendering style is compatible with routing algorithm
+    const lineStyle = this.lineRenderingStyles.find(s => s.value === this.lineRenderingConfig.style);
+    if (lineStyle && !lineStyle.compatibleWith.includes(this.routingConfig.algorithm)) {
+      console.warn(`⚠️ Line style ${lineStyle.label} is not compatible with ${this.routingConfig.algorithm} routing algorithm`);
+      return;
+    }
+
+    // CRITICAL FIX: Update engine's connection line style for NEW links
+    this.updateEngineConnectionLineStyle();
+
+    // Update EXISTING links with new line rendering style
+    diagram.getLinks().forEach(link => {
+      link.pathType = this.lineRenderingConfig.style;
+      link.markDirty(); // Force re-render
+    });
+
+    console.log(`🎨 Updated line rendering: style=${this.lineRenderingConfig.style}`);
+
+    this.updateStats();
+    this.cdr.markForCheck();
+  }
+
+  /**
+   * Update engine's interaction config to use the current line rendering style
+   * This ensures NEW links created via connection dragging use the correct pathType
+   */
+  private updateEngineConnectionLineStyle(): void {
+    // Map our line rendering style to engine's ConnectionLineStyle enum
+    let connectionLineStyle: ConnectionLineStyle = ConnectionLineStyle.BEZIER;
+
+    switch (this.lineRenderingConfig.style) {
+      case 'direct':
+        connectionLineStyle = ConnectionLineStyle.STRAIGHT;
+        break;
+      case 'smooth':
+        // 'smooth' pathType uses bezier curves for rendering
+        connectionLineStyle = ConnectionLineStyle.BEZIER;
+        break;
+      case 'bezier':
+        connectionLineStyle = ConnectionLineStyle.BEZIER;
+        break;
+      case 'orthogonal':
+        connectionLineStyle = ConnectionLineStyle.STEP;
+        break;
+    }
+
+    // Update the engine's interaction config
+    this.engine.setInteractionConfig({
+      connectionLineStyle: connectionLineStyle
+    });
+
+    console.log(`🔧 Engine connectionLineStyle updated to: ${connectionLineStyle}`);
+  }
+
+  isLineStyleCompatible(style: string): boolean {
+    const lineStyle = this.lineRenderingStyles.find(s => s.value === style);
+    return lineStyle ? lineStyle.compatibleWith.includes(this.routingConfig.algorithm) : false;
   }
 
   private updateViewportFromDiagram(): void {
