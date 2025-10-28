@@ -11,8 +11,8 @@
            [attr.data-node-id]="node.id"
            [attr.data-parent-id]="node.parent || ''"
            [style.position]="'absolute'"
-           [style.left.px]="getAbsoluteX(node)"
-           [style.top.px]="getAbsoluteY(node)"
+           [style.left.px]="getNodeX(node)"
+           [style.top.px]="getNodeY(node)"
            [style.width.px]="node.size.width"
            [style.height.px]="node.size.height"
            [style.z-index]="node.getMetadata('z') || 1">

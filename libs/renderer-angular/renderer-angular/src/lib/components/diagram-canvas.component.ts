@@ -1284,6 +1284,32 @@ export class DiagramCanvasComponent implements OnInit, AfterViewInit, OnChanges,
   }
 
   /**
+   * Get node X position for HTML rendering
+   * Accounts for parent chain and zoom transform on HTML layer
+   */
+  getNodeX(node: any): number {
+    // Get world coordinate
+    const worldX = this.getAbsoluteX(node);
+
+    // Divide by zoom because HTML layer has scale(zoom) applied
+    // This prevents double scaling: node position gets multiplied by layer scale
+    return worldX / this.zoom;
+  }
+
+  /**
+   * Get node Y position for HTML rendering
+   * Accounts for parent chain and zoom transform on HTML layer
+   */
+  getNodeY(node: any): number {
+    // Get world coordinate
+    const worldY = this.getAbsoluteY(node);
+
+    // Divide by zoom because HTML layer has scale(zoom) applied
+    // This prevents double scaling: node position gets multiplied by layer scale
+    return worldY / this.zoom;
+  }
+
+  /**
    * Check if a port should be rendered as an HTML handle
    * Respects port visibility settings and template configuration
    */
