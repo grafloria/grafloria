@@ -6,6 +6,7 @@ import type {
   InteractionMode,
 } from '@grafloria/engine';
 import { PortModel } from '@grafloria/engine';
+import { WaypointEditor } from '@grafloria/renderer';
 
 /**
  * Phase 3: InteractionHandlerService
@@ -43,6 +44,14 @@ export class InteractionHandlerService {
   private reconnectingEndpoint: 'source' | 'target' | null = null;
 
   /**
+   * Phase 2.3a: Waypoint editing state
+   */
+  private isDraggingWaypoint = false;
+  private editingLink: LinkModel | null = null;
+  private editingWaypointIndex: number | null = null;
+  private waypointEditor: WaypointEditor | null = null;
+
+  /**
    * Phase 5: Performance optimization - debounce hover detection
    */
   private hoverDebounceTimer: any = null;
@@ -63,7 +72,19 @@ export class InteractionHandlerService {
   private portHitCache = new Map<string, { x: number; y: number; radius: number }>();
   private portHitCacheInvalidated = false;
 
-  constructor() {}
+  constructor() {
+    // Phase 2.3a: Initialize waypoint editor with default config
+    this.waypointEditor = new WaypointEditor({
+      snapToGrid: false,
+      gridSize: 20,
+      removeOnDoubleClick: true,
+      handleRadius: 5,
+      handleColor: '#3b82f6',
+      handleStrokeColor: '#ffffff',
+      minDistanceFromEndpoints: 30,
+      clickDetectionRadius: 10,
+    });
+  }
 
   /**
    * Phase 5: Dispose and cleanup resources
@@ -79,6 +100,10 @@ export class InteractionHandlerService {
     this.hoveredLink = null;
     this.connectionSourcePort = null;
     this.reconnectingLink = null;
+    // Phase 2.3a: Clean up waypoint editing state
+    this.editingLink = null;
+    this.editingWaypointIndex = null;
+    this.isDraggingWaypoint = false;
   }
 
   /**
@@ -509,6 +534,10 @@ export class InteractionHandlerService {
       hoveredNode: this.hoveredNode,
       hoveredPort: this.hoveredPort,
       hoveredLink: this.hoveredLink,
+      // Phase 2.3a: Waypoint editing state
+      isDraggingWaypoint: this.isDraggingWaypoint,
+      editingLink: this.editingLink,
+      editingWaypointIndex: this.editingWaypointIndex,
     };
   }
 
@@ -516,7 +545,7 @@ export class InteractionHandlerService {
    * Phase 3: Check if currently interacting
    */
   isInteracting(): boolean {
-    return this.isConnecting || this.isReconnectingLink;
+    return this.isConnecting || this.isReconnectingLink || this.isDraggingWaypoint;
   }
 
   /**
@@ -768,5 +797,127 @@ export class InteractionHandlerService {
       }
     }
     return undefined;
+  }
+
+  // ============================================================================
+  // Phase 2.3a: Waypoint Editing Methods
+  // ============================================================================
+
+  /**
+   * Hit test for waypoint handle at mouse position
+   * Returns the waypoint index if hit, null otherwise
+   */
+  hitTestWaypoint(mouseX: number, mouseY: number, link: LinkModel): number | null {
+    if (!this.waypointEditor || !link.points || link.points.length < 3) {
+      return null;
+    }
+
+    const hit = this.waypointEditor.hitTestWaypoint(mouseX, mouseY, link.points);
+    return hit ? hit.waypointIndex : null;
+  }
+
+  /**
+   * Hit test for clicking on link path (to add waypoint)
+   */
+  hitTestPath(mouseX: number, mouseY: number, link: LinkModel): boolean {
+    if (!this.waypointEditor || !link.points || link.points.length < 2) {
+      return false;
+    }
+
+    const hit = this.waypointEditor.hitTestPath(mouseX, mouseY, link.points);
+    return hit !== null;
+  }
+
+  /**
+   * Start dragging a waypoint
+   */
+  startWaypointDrag(waypointIndex: number, link: LinkModel): void {
+    this.isDraggingWaypoint = true;
+    this.editingLink = link;
+    this.editingWaypointIndex = waypointIndex;
+    console.log(`🔵 Started dragging waypoint ${waypointIndex} on link ${link.id}`);
+  }
+
+  /**
+   * Move waypoint during drag
+   */
+  moveWaypoint(worldX: number, worldY: number, engine: DiagramEngine): boolean {
+    if (!this.isDraggingWaypoint || !this.editingLink || this.editingWaypointIndex === null || !this.waypointEditor) {
+      return false;
+    }
+
+    const newPosition = { x: worldX, y: worldY };
+    const newPoints = this.waypointEditor.moveWaypoint(
+      this.editingWaypointIndex,
+      newPosition,
+      this.editingLink.points
+    );
+
+    if (newPoints) {
+      this.editingLink.setPoints(newPoints);
+      console.log(`🔵 Moved waypoint ${this.editingWaypointIndex} to (${worldX.toFixed(1)}, ${worldY.toFixed(1)})`);
+      return true;
+    }
+
+    return false;
+  }
+
+  /**
+   * End waypoint drag
+   */
+  endWaypointDrag(): void {
+    if (this.isDraggingWaypoint) {
+      console.log(`🔵 Ended dragging waypoint ${this.editingWaypointIndex} on link ${this.editingLink?.id}`);
+    }
+    this.isDraggingWaypoint = false;
+    this.editingLink = null;
+    this.editingWaypointIndex = null;
+  }
+
+  /**
+   * Add waypoint at click position on path
+   */
+  addWaypoint(clickX: number, clickY: number, link: LinkModel): boolean {
+    if (!this.waypointEditor) {
+      return false;
+    }
+
+    const result = this.waypointEditor.addWaypointAtPosition(clickX, clickY, link.points);
+
+    if (result) {
+      link.setPoints(result.newPoints);
+      console.log(`🟢 Added waypoint at index ${result.waypointIndex} on link ${link.id}`);
+      return true;
+    }
+
+    return false;
+  }
+
+  /**
+   * Remove waypoint at index
+   */
+  removeWaypoint(waypointIndex: number, link: LinkModel): boolean {
+    if (!this.waypointEditor) {
+      return false;
+    }
+
+    const newPoints = this.waypointEditor.removeWaypoint(waypointIndex, link.points);
+
+    if (newPoints) {
+      link.setPoints(newPoints);
+      console.log(`🔴 Removed waypoint at index ${waypointIndex} from link ${link.id}`);
+      return true;
+    }
+
+    return false;
+  }
+
+  /**
+   * Update waypoint editor configuration
+   */
+  updateWaypointEditorConfig(config: Partial<any>): void {
+    if (this.waypointEditor) {
+      this.waypointEditor.updateConfig(config);
+    }
   }
 }
