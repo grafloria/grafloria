@@ -145,6 +145,20 @@ export class HomeComponent {
         'Undo/redo support'
       ],
       difficulty: 'Advanced'
+    },
+    {
+      title: 'Layout Showcase',
+      description: 'Interactive demonstration of layout algorithms with business use cases',
+      icon: '📐',
+      route: '/layout-showcase',
+      features: [
+        'Dagre hierarchical layouts',
+        'ELK multi-algorithm layouts',
+        'Real business scenarios',
+        'Interactive controls',
+        'Performance metrics'
+      ],
+      difficulty: 'Intermediate'
     }
   ];
 
