@@ -103,7 +103,7 @@ const DEFAULT_ELK_OPTIONS: Partial<ELKLayoutOptions> = {
  */
 export class ELKLayoutAdapter implements LayoutAdapter {
   readonly name = 'elk';
-  private elk: ELK;
+  private elk: InstanceType<typeof ELK>;
 
   constructor() {
     this.elk = new ELK();
@@ -237,7 +237,6 @@ export class ELKLayoutAdapter implements LayoutAdapter {
 
       // Convert NodeModel[] to generic node array
       const genericNodes = nodes.map(node => ({
-        id: node.id,
         ...node
       }));
 
@@ -498,7 +497,7 @@ export class ELKLayoutAdapter implements LayoutAdapter {
     // Store original positions for movement calculation
     const oldPositions = new Map<string, { x: number; y: number }>();
     nodes.forEach(node => {
-      const pos = node.getPosition();
+      const pos = node.position;
       oldPositions.set(node.id, { x: pos.x, y: pos.y });
     });
 

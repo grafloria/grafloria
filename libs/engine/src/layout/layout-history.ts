@@ -63,7 +63,7 @@ export class LayoutHistory {
    * @param options - Layout options used
    * @returns The created snapshot
    */
-  push Snapshot(
+  pushSnapshot(
     nodes: NodeModel[],
     description?: string,
     algorithm?: string,
@@ -80,7 +80,7 @@ export class LayoutHistory {
     // Create position map
     const positions = new Map<string, { x: number; y: number }>();
     nodes.forEach(node => {
-      const pos = node.getPosition();
+      const pos = node.position;
       positions.set(node.id, { x: pos.x, y: pos.y });
     });
 

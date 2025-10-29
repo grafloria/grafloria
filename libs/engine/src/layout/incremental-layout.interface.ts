@@ -127,7 +127,7 @@ export class IncrementalLayoutManager {
     // Otherwise, identify nodes without valid positions
     const newNodes: string[] = [];
     nodes.forEach(node => {
-      const pos = node.getPosition();
+      const pos = node.position;
       // Consider a node "new" if it's at origin (0,0) or has invalid position
       if (!pos || (pos.x === 0 && pos.y === 0)) {
         newNodes.push(node.id);
@@ -176,7 +176,7 @@ export class IncrementalLayoutManager {
       options.anchorNodeIds.forEach(nodeId => {
         const node = nodes.find(n => n.id === nodeId);
         if (node) {
-          const pos = node.getPosition();
+          const pos = node.position;
           constraints.push({
             nodeId,
             type: 'pin',
@@ -238,7 +238,7 @@ export class IncrementalLayoutManager {
     existingNodeIds.forEach(nodeId => {
       const node = nodes.find(n => n.id === nodeId);
       if (node) {
-        const pos = node.getPosition();
+        const pos = node.position;
         constraints.push({
           nodeId,
           type: 'pin',
@@ -264,10 +264,12 @@ export class IncrementalLayoutManager {
 
     // Calculate connection count for each node
     const connectionCounts = new Map<string, number>();
+    // Note: Simple heuristic - treat all existing nodes equally
+    // TODO: Calculate actual connectivity when link data is available
     nodes.forEach(node => {
-      const incomingCount = node.getIncomingLinks().length;
-      const outgoingCount = node.getOutgoingLinks().length;
-      connectionCounts.set(node.id, incomingCount + outgoingCount);
+      connectionCounts.set(node.id, 1); // Default connectivity
+    });
+    nodes.forEach(node => {
     });
 
     // Determine threshold for "anchor" nodes (top 30% by connections)
@@ -278,7 +280,7 @@ export class IncrementalLayoutManager {
       const node = nodes.find(n => n.id === nodeId);
       if (!node) return;
 
-      const pos = node.getPosition();
+      const pos = node.position;
       const connectionCount = connectionCounts.get(nodeId) || 0;
 
       if (connectionCount >= anchorThreshold) {
@@ -327,7 +329,7 @@ export class IncrementalLayoutManager {
     newNodeIds.forEach(nodeId => {
       const node = nodes.find(n => n.id === nodeId);
       if (node) {
-        const pos = node.getPosition();
+        const pos = node.position;
         if (pos && !(pos.x === 0 && pos.y === 0)) {
           newNodeCenterX += pos.x;
           newNodeCenterY += pos.y;
@@ -345,7 +347,7 @@ export class IncrementalLayoutManager {
       const node = nodes.find(n => n.id === nodeId);
       if (!node) return;
 
-      const pos = node.getPosition();
+      const pos = node.position;
       const distance = Math.sqrt(
         Math.pow(pos.x - newNodeCenterX, 2) + Math.pow(pos.y - newNodeCenterY, 2)
       );
@@ -392,7 +394,7 @@ export class IncrementalLayoutManager {
       const node = nodes.find(n => n.id === nodeId);
       if (!node) return;
 
-      const pos = node.getPosition();
+      const pos = node.position;
       constraints.push({
         nodeId,
         type: 'boundary',
@@ -443,7 +445,7 @@ export class IncrementalLayoutManager {
     // Calculate movement for each node
     nodes.forEach(node => {
       const oldPos = oldPositions.get(node.id);
-      const newPos = node.getPosition();
+      const newPos = node.position;
 
       if (!oldPos) return; // New node, skip
 

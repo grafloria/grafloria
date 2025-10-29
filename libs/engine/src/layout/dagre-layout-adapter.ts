@@ -7,7 +7,7 @@
  * @see https://github.com/dagrejs/dagre
  */
 
-import dagre from 'dagre';
+import * as dagre from 'dagre';
 import { NodeModel } from '../models/NodeModel';
 import { LinkModel } from '../models/LinkModel';
 import { LayoutAdapter, LayoutOptions, LayoutResult } from './layout-adapter.interface';
@@ -214,7 +214,6 @@ export class DagreLayoutAdapter implements LayoutAdapter {
 
       // Convert NodeModel[] to generic node array
       const genericNodes = nodes.map(node => ({
-        id: node.id,
         ...node
       }));
 
@@ -368,7 +367,7 @@ export class DagreLayoutAdapter implements LayoutAdapter {
     // Store original positions for movement calculation
     const oldPositions = new Map<string, { x: number; y: number }>();
     nodes.forEach(node => {
-      const pos = node.getPosition();
+      const pos = node.position;
       oldPositions.set(node.id, { x: pos.x, y: pos.y });
     });
 

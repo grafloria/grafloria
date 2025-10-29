@@ -39,7 +39,7 @@ export interface LayoutQualityResult {
     edgeLength: QualityMetric;
     nodeDistribution: QualityMetric;
     symmetry: QualityMetric;
-    aspect Ratio: QualityMetric;
+    aspectRatio: QualityMetric;
   };
   /** Top suggestions for improvement */
   topSuggestions: string[];
@@ -150,7 +150,7 @@ export class LayoutQualityMetrics {
   ): QualityMetric {
     const nodePositions = new Map<string, { x: number; y: number }>();
     nodes.forEach(node => {
-      const pos = node.getPosition();
+      const pos = node.position;
       nodePositions.set(node.id, pos);
     });
 
@@ -254,7 +254,7 @@ export class LayoutQualityMetrics {
   ): QualityMetric {
     const nodePositions = new Map<string, { x: number; y: number }>();
     nodes.forEach(node => {
-      const pos = node.getPosition();
+      const pos = node.position;
       nodePositions.set(node.id, pos);
     });
 
@@ -330,7 +330,7 @@ export class LayoutQualityMetrics {
     // Calculate centroid
     let sumX = 0, sumY = 0;
     nodes.forEach(node => {
-      const pos = node.getPosition();
+      const pos = node.position;
       sumX += pos.x;
       sumY += pos.y;
     });
@@ -340,7 +340,7 @@ export class LayoutQualityMetrics {
     // Calculate variance from centroid
     let variance = 0;
     nodes.forEach(node => {
-      const pos = node.getPosition();
+      const pos = node.position;
       variance += Math.pow(pos.x - centroidX, 2) + Math.pow(pos.y - centroidY, 2);
     });
     variance /= nodes.length;
@@ -391,7 +391,7 @@ export class LayoutQualityMetrics {
     // Calculate horizontal and vertical symmetry
     let sumX = 0, sumY = 0;
     nodes.forEach(node => {
-      const pos = node.getPosition();
+      const pos = node.position;
       sumX += pos.x;
       sumY += pos.y;
     });
@@ -401,7 +401,7 @@ export class LayoutQualityMetrics {
     // Measure symmetry by comparing node distribution on each side
     let leftCount = 0, rightCount = 0, topCount = 0, bottomCount = 0;
     nodes.forEach(node => {
-      const pos = node.getPosition();
+      const pos = node.position;
       if (pos.x < centerX) leftCount++;
       else rightCount++;
       if (pos.y < centerY) topCount++;
@@ -452,7 +452,7 @@ export class LayoutQualityMetrics {
     // Calculate bounding box
     let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
     nodes.forEach(node => {
-      const pos = node.getPosition();
+      const pos = node.position;
       const size = node.size;
       minX = Math.min(minX, pos.x);
       minY = Math.min(minY, pos.y);
@@ -574,8 +574,8 @@ export class LayoutQualityMetrics {
    * Check if two nodes overlap
    */
   private static nodesOverlap(node1: NodeModel, node2: NodeModel): boolean {
-    const pos1 = node1.getPosition();
-    const pos2 = node2.getPosition();
+    const pos1 = node1.position;
+    const pos2 = node2.position;
     const size1 = node1.size;
     const size2 = node2.size;
 

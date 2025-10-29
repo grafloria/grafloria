@@ -21,7 +21,7 @@ export type PortSide = 'left' | 'right' | 'top' | 'bottom';
 /**
  * Port direction (input or output)
  */
-export type PortDirection = 'input' | 'output' | 'bidirectional';
+export type PortFlowDirection = 'input' | 'output' | 'bidirectional';
 
 /**
  * Information about a port for layout purposes
@@ -37,7 +37,7 @@ export interface PortInfo {
   preferredSide?: PortSide;
 
   /** Port direction */
-  direction?: PortDirection;
+  direction?: PortFlowDirection;
 
   /** Position along the side (0-1, where 0 is top/left, 1 is bottom/right) */
   offset?: number;
