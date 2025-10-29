@@ -1872,14 +1872,22 @@ export class SVGRenderer implements IRenderer {
     });
 
     // CRITICAL: Don't apply strokeWidth as inline style if border animation is active
-    // Inline styles override CSS animations, breaking animated stroke-width
+    // Inline styles override CSS animations, breaking animated stroke-width and stroke-dasharray
     const hasActiveBorderAnimation = node.style?.animatedBorder &&
                                      node.style?.borderAnimationType !== 'none';
+
+    console.log(`[SVGRenderer] CSS mode final check for ${node.id}:`, {
+      hasActiveBorderAnimation,
+      willApplyStroke: !!node.style.stroke,
+      willApplyStrokeWidth: node.style.strokeWidth !== undefined && !hasActiveBorderAnimation,
+      finalClassName
+    });
 
     return {
       className: finalClassName,
       // Entity-specific overrides (if any)
       ...(node.style.fill && { fill: node.style.fill }),
+      // Always apply stroke color (it doesn't interfere with animations)
       ...(node.style.stroke && { stroke: node.style.stroke }),
       // Only apply strokeWidth if no border animation is active
       ...(node.style.strokeWidth !== undefined && !hasActiveBorderAnimation && { strokeWidth: node.style.strokeWidth }),

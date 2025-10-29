@@ -664,6 +664,8 @@ export class AnimationService {
 }
 
 .node-border-pulse-svg {
+  stroke-width: 2;
+  stroke-opacity: 1;
   animation: svg-pulse-stroke 2s ease-out infinite;
   will-change: stroke-width, stroke-opacity;
 }
@@ -687,8 +689,10 @@ export class AnimationService {
 }
 
 .node-border-gradient-svg {
+  stroke-dasharray: 5, 10;
+  stroke-dashoffset: 0;
+  stroke-width: 3 !important;
   animation: svg-gradient-dash 2s linear infinite;
-  stroke-width: 3;
   will-change: stroke-dashoffset;
 }
 
@@ -704,8 +708,10 @@ export class AnimationService {
 }
 
 .node-border-shimmer-svg {
+  stroke-dasharray: 8, 4;
+  stroke-dashoffset: 0;
+  stroke-width: 2 !important;
   animation: svg-shimmer-dash 1.5s linear infinite;
-  stroke-width: 2;
   will-change: stroke-dashoffset;
 }
 
