@@ -19,6 +19,28 @@
  * // Re-layout entire diagram
  * await layoutManager.reLayout();
  * ```
+ *
+ * Phase 2: External Layout Adapters
+ * ```typescript
+ * import { LayoutService, DagreLayoutAdapter, ELKLayoutAdapter } from '@grafloria/engine/layout';
+ *
+ * const layoutService = new LayoutService();
+ * const engine = new DiagramEngine();
+ * engine.setLayoutService(layoutService);
+ *
+ * // Apply Dagre layout
+ * await engine.applyDagreLayout({
+ *   rankdir: 'TB',
+ *   nodesep: 50,
+ *   ranksep: 100
+ * });
+ *
+ * // Apply ELK layout
+ * await engine.applyELKLayout({
+ *   algorithm: 'layered',
+ *   'elk.direction': 'RIGHT'
+ * });
+ * ```
  */
 
 // Core types and interfaces
@@ -31,3 +53,9 @@ export * from './algorithms/GridLayoutAlgorithm';
 export * from './algorithms/HierarchicalLayoutAlgorithm';
 export * from './algorithms/ForceDirectedLayoutAlgorithm';
 export * from './algorithms/HybridLayoutAlgorithm';
+
+// Phase 2: External layout adapters
+export * from './layout-adapter.interface';
+export * from './dagre-layout-adapter';
+export * from './elk-layout-adapter';
+export * from './layout.service';

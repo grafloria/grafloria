@@ -1848,6 +1848,70 @@ export class DiagramEngine {
     }
   }
 
+  // ============================================================================
+  // Layout Service Integration (Phase 2: Layout Adapters)
+  // ============================================================================
+
+  private layoutService?: any; // LayoutService - avoiding circular dependency
+
+  /**
+   * Set layout service for diagram layouts
+   *
+   * @param service - Layout service instance
+   */
+  setLayoutService(service: any): void {
+    this.layoutService = service;
+  }
+
+  /**
+   * Apply layout to current diagram
+   *
+   * @param config - Layout configuration
+   * @returns Layout result with positions and metadata
+   * @throws Error if no diagram is loaded or layout service is not initialized
+   */
+  async applyLayout(config: any): Promise<any> {
+    if (!this.diagram) {
+      throw new Error('No diagram loaded');
+    }
+
+    if (!this.layoutService) {
+      throw new Error('LayoutService not initialized. Call setLayoutService() first.');
+    }
+
+    return this.layoutService.applyLayout(this.diagram, config);
+  }
+
+  /**
+   * Quick helper: Apply Dagre layout
+   *
+   * @param options - Dagre layout options
+   * @returns Layout result
+   */
+  async applyDagreLayout(options?: any): Promise<any> {
+    return this.applyLayout({
+      adapter: 'dagre',
+      options,
+      animate: true,
+      fit: false, // Don't auto-fit to allow user control
+    });
+  }
+
+  /**
+   * Quick helper: Apply ELK layout
+   *
+   * @param options - ELK layout options
+   * @returns Layout result
+   */
+  async applyELKLayout(options?: any): Promise<any> {
+    return this.applyLayout({
+      adapter: 'elk',
+      options,
+      animate: true,
+      fit: false, // Don't auto-fit to allow user control
+    });
+  }
+
   /**
    * Cleanup and dispose of all resources
    * Should be called when the engine is no longer needed
