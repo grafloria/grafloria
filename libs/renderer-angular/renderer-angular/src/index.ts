@@ -4,6 +4,7 @@ export * from './lib/components/interaction-config-panel.component';
 export * from './lib/components/property-panel/property-panel.component';
 export * from './lib/components/property-panel/property-editor.component';
 export * from './lib/components/renderer-switcher/renderer-switcher.component';
+export * from './lib/components/node-toolbar';
 
 // Export directives
 export * from './lib/directives/grafloria-handle.directive';
