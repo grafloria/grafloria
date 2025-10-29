@@ -25,6 +25,9 @@ import { WaypointEditor } from '../interaction/WaypointEditor';
 // Phase 2.3b: Control point editing
 import { ControlPointEditor } from '../interaction/ControlPointEditor';
 
+// Phase 1: Animation support
+import { AnimationService } from '../services/animation.service';
+
 // LOD Level type (matches engine's LODLevel)
 type LODLevel = 'high' | 'medium' | 'low';
 
@@ -61,6 +64,9 @@ export class SVGRenderer implements IRenderer {
 
   // Phase 2.3b: Control point editing
   private controlPointEditor: ControlPointEditor;
+
+  // Phase 1: Animation service
+  private animationService: AnimationService;
 
   // Performance tracking
   private lastRenderTime = 0;
@@ -123,10 +129,18 @@ export class SVGRenderer implements IRenderer {
     };
     this.controlPointEditor = new ControlPointEditor(controlPointConfig);
 
-    // Inject theme CSS if in CSS mode
+    // Phase 1: Initialize animation service
+    this.animationService = new AnimationService();
+
+    // CRITICAL: Inject theme CSS FIRST if in CSS mode
+    // Then inject animation CSS SECOND so it has higher specificity (last wins in CSS)
     if (this.config.useCSSMode) {
       this.injectThemeCSS();
     }
+
+    // CRITICAL: Inject animation CSS AFTER theme CSS
+    // This ensures animation styles override any duplicate definitions in theme CSS
+    this.animationService.injectCSS();
 
     // Subscribe to engine events
     this.subscribeToEngineEvents();
@@ -1001,12 +1015,23 @@ export class SVGRenderer implements IRenderer {
     const shapeConfig = node.getMetadata('shape') || { type: 'rect' };
     const { width, height } = node.size;
 
+    // CRITICAL: Remove strokeWidth from styles if border animation is active
+    // Inline strokeWidth overrides CSS animation strokeWidth
+    const hasActiveBorderAnimation = node.style?.animatedBorder &&
+                                     node.style?.borderAnimationType !== 'none';
+
+    if (hasActiveBorderAnimation && styles.strokeWidth !== undefined) {
+      console.log(`[SVGRenderer] Removing inline strokeWidth for ${node.id} due to active border animation`);
+      const { strokeWidth, ...stylesWithoutStrokeWidth } = styles;
+      styles = stylesWithoutStrokeWidth;
+    }
+
     // Apply shape-specific fill/stroke if provided
     const shapeStyles = {
       ...styles,
       ...(shapeConfig.fill ? { fill: shapeConfig.fill } : {}),
       ...(shapeConfig.stroke ? { stroke: shapeConfig.stroke } : {}),
-      ...(shapeConfig.strokeWidth !== undefined ? { strokeWidth: shapeConfig.strokeWidth } : {}),
+      ...(shapeConfig.strokeWidth !== undefined && !hasActiveBorderAnimation ? { strokeWidth: shapeConfig.strokeWidth } : {}),
       ...(shapeConfig.opacity !== undefined ? { opacity: shapeConfig.opacity } : {}),
     };
 
@@ -1014,7 +1039,10 @@ export class SVGRenderer implements IRenderer {
       baseStroke: styles.stroke,
       shapeConfigStroke: shapeConfig.stroke,
       finalStroke: shapeStyles.stroke,
-      strokeWidth: shapeStyles.strokeWidth
+      strokeWidth: shapeStyles.strokeWidth,
+      hasActiveBorderAnimation,
+      animatedBorder: node.style?.animatedBorder,
+      borderAnimationType: node.style?.borderAnimationType
     });
 
     // Enhanced hover effect
@@ -1046,6 +1074,14 @@ export class SVGRenderer implements IRenderer {
    * Phase 3.1: Render rectangle shape
    */
   private renderRectShape(width: number, height: number, styles: any, cornerRadius?: number): VNode {
+    // DEBUG: Log what classes are being applied to rect
+    console.log(`[SVGRenderer] renderRectShape:`, {
+      className: styles.className,
+      stroke: styles.stroke,
+      strokeWidth: styles.strokeWidth,
+      fill: styles.fill
+    });
+
     return {
       type: 'rect',
       props: {
@@ -1816,11 +1852,47 @@ export class SVGRenderer implements IRenderer {
     if (!node.state.enabled) classes.push('disabled');
     if (node.state.error) classes.push('error');
 
+    // Phase 1: Add animation classes
+    // Use SVG-specific animations if node doesn't use foreignObject
+    const useSVGVariant = !this.foreignObjectNodes.has(node.id);
+    const animationClasses = this.animationService.getNodeAnimationClass(node, useSVGVariant);
+    if (animationClasses) {
+      classes.push(animationClasses);
+    }
+
+    const finalClassName = classes.join(' ');
+
+    // DEBUG: Log animation classes
+    console.log(`[SVGRenderer] computeNodeStylesCSS for ${node.id}:`, {
+      useSVGVariant,
+      animationClasses,
+      animatedBorder: node.style?.animatedBorder,
+      borderAnimationType: node.style?.borderAnimationType,
+      animateStatus: node.state?.animateStatus,
+      status: node.state?.status,
+      finalClassName
+    });
+
+    // CRITICAL: Don't apply strokeWidth as inline style if border animation is active
+    // Inline styles override CSS animations, breaking animated stroke-width and stroke-dasharray
+    const hasActiveBorderAnimation = node.style?.animatedBorder &&
+                                     node.style?.borderAnimationType !== 'none';
+
+    console.log(`[SVGRenderer] CSS mode final check for ${node.id}:`, {
+      hasActiveBorderAnimation,
+      willApplyStroke: !!node.style.stroke,
+      willApplyStrokeWidth: node.style.strokeWidth !== undefined && !hasActiveBorderAnimation,
+      finalClassName
+    });
+
     return {
-      className: classes.join(' '),
+      className: finalClassName,
       // Entity-specific overrides (if any)
       ...(node.style.fill && { fill: node.style.fill }),
+      // Always apply stroke color (it doesn't interfere with animations)
       ...(node.style.stroke && { stroke: node.style.stroke }),
+      // Only apply strokeWidth if no border animation is active
+      ...(node.style.strokeWidth !== undefined && !hasActiveBorderAnimation && { strokeWidth: node.style.strokeWidth }),
     };
   }
 
@@ -1859,6 +1931,12 @@ export class SVGRenderer implements IRenderer {
 
     if (link.state === 'selected') classes.push('selected');
     if (link.state === 'hovered') classes.push('hovered');
+
+    // Phase 1: Add animation classes
+    const animationClasses = this.animationService.getEdgeAnimationClass(link);
+    if (animationClasses) {
+      classes.push(animationClasses);
+    }
 
     return {
       className: classes.join(' '),
@@ -2006,8 +2084,8 @@ export class SVGRenderer implements IRenderer {
     this.styleElement = document.createElement('style');
     this.styleElement.id = styleId;
 
-    // Generate CSS content
-    this.styleElement.textContent = this.generateThemeCSS();
+    // Generate CSS content (including animations)
+    this.styleElement.textContent = this.generateThemeCSS() + '\n\n' + this.generateAnimationCSS();
 
     // Append to document
     document.head.appendChild(this.styleElement);
@@ -2175,6 +2253,271 @@ export class SVGRenderer implements IRenderer {
 .control-line {
   pointer-events: none;
   transition: opacity 0.2s ease;
+}
+    `.trim();
+  }
+
+  /**
+   * Generate animation CSS
+   * Phase 1: Includes edge animations, node border animations, and status animations
+   */
+  private generateAnimationCSS(): string {
+    return `
+/* Phase 1: Diagram Animations */
+
+/* Edge Animations - Marching Ants */
+@keyframes marching-ants {
+  to { stroke-dashoffset: -20; }
+}
+
+.link-animated-marching-ants {
+  stroke-dasharray: 5, 5;
+  animation: marching-ants 1s linear infinite;
+  will-change: stroke-dashoffset;
+}
+
+.link-animated-marching-ants.link-speed-slow {
+  animation-duration: 2s;
+}
+
+.link-animated-marching-ants.link-speed-fast {
+  animation-duration: 0.5s;
+}
+
+.link-animated-marching-ants.link-direction-reverse {
+  animation-direction: reverse;
+}
+
+/* Edge Animations - Flow Dots */
+@keyframes flow-dots {
+  to { stroke-dashoffset: 10; }
+}
+
+.link-animated-flow {
+  stroke-dasharray: 1, 9;
+  animation: flow-dots 1s linear infinite;
+  will-change: stroke-dashoffset;
+}
+
+.link-animated-flow.link-speed-slow {
+  animation-duration: 2s;
+}
+
+.link-animated-flow.link-speed-fast {
+  animation-duration: 0.5s;
+}
+
+.link-animated-flow.link-direction-reverse {
+  animation-direction: reverse;
+}
+
+/* Edge Animations - Pulse */
+@keyframes link-pulse {
+  0%, 100% {
+    opacity: 1;
+    stroke-width: inherit;
+  }
+  50% {
+    opacity: 0.6;
+    stroke-width: calc(var(--link-stroke-width, 2px) * 1.5);
+  }
+}
+
+.link-animated-pulse {
+  animation: link-pulse 2s ease-in-out infinite;
+  will-change: opacity, stroke-width;
+}
+
+.link-animated-pulse.link-speed-slow {
+  animation-duration: 3s;
+}
+
+.link-animated-pulse.link-speed-fast {
+  animation-duration: 1s;
+}
+
+/* Node Border Animations - Gradient */
+@keyframes gradient-border {
+  0% { background-position: 0% center; }
+  100% { background-position: 200% center; }
+}
+
+.node-border-gradient {
+  position: relative;
+  background: white;
+}
+
+.node-border-gradient::before {
+  content: '';
+  position: absolute;
+  inset: -2px;
+  border-radius: inherit;
+  background: linear-gradient(90deg, #667eea 0%, #764ba2 25%, #667eea 50%, #764ba2 75%, #667eea 100%);
+  background-size: 200% 100%;
+  animation: gradient-border 3s linear infinite;
+  z-index: -1;
+  will-change: background-position;
+}
+
+/* Node Border Animations - Pulse Glow */
+@keyframes pulse-glow {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(102, 126, 234, 0.7); }
+  50% { box-shadow: 0 0 0 10px rgba(102, 126, 234, 0); }
+}
+
+.node-border-pulse {
+  animation: pulse-glow 2s ease-in-out infinite;
+  will-change: box-shadow;
+}
+
+/* Node Border Animations - Breathe */
+@keyframes breathe {
+  0%, 100% {
+    transform: scale(1);
+    opacity: 1;
+  }
+  50% {
+    transform: scale(1.05);
+    opacity: 0.9;
+  }
+}
+
+.node-border-breathe {
+  animation: breathe 3s ease-in-out infinite;
+  transform-origin: center center;
+  will-change: transform, opacity;
+}
+
+/* Node Border Animations - Shimmer */
+@keyframes shimmer {
+  0% { background-position: -100% 0; }
+  100% { background-position: 200% 0; }
+}
+
+.node-border-shimmer::after {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  background: linear-gradient(90deg, transparent 0%, rgba(255, 255, 255, 0.5) 50%, transparent 100%);
+  background-size: 50% 100%;
+  animation: shimmer 2s infinite;
+  pointer-events: none;
+  will-change: background-position;
+}
+
+/* Status Animations - Running */
+@keyframes status-running {
+  0%, 100% {
+    box-shadow: 0 0 0 0 rgba(52, 152, 219, 0.7);
+    border-color: #3498db;
+  }
+  50% {
+    box-shadow: 0 0 0 10px rgba(52, 152, 219, 0);
+    border-color: #5dade2;
+  }
+}
+
+.node-status-running {
+  animation: status-running 1.5s ease-in-out infinite;
+  will-change: box-shadow, border-color;
+}
+
+/* Status Animations - Error (Shake) */
+@keyframes status-error {
+  0%, 100% { transform: translateX(0); }
+  10%, 30%, 50%, 70%, 90% { transform: translateX(-5px); }
+  20%, 40%, 60%, 80% { transform: translateX(5px); }
+}
+
+.node-status-error {
+  animation: status-error 0.5s ease-in-out;
+  border-color: #e74c3c;
+  box-shadow: 0 0 10px rgba(231, 76, 60, 0.5);
+  will-change: transform;
+}
+
+/* Status Animations - Completed */
+@keyframes status-completed {
+  from {
+    opacity: 0;
+    transform: scale(0.8);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+.node-status-completed {
+  animation: status-completed 0.5s ease-out;
+  border-color: #27ae60;
+  opacity: 0.8;
+  will-change: transform, opacity;
+}
+
+/* Status Animations - Warning (Flash) */
+@keyframes status-warning {
+  0%, 100% { background-color: transparent; }
+  50% { background-color: rgba(243, 156, 18, 0.2); }
+}
+
+.node-status-warning {
+  animation: status-warning 1s ease-in-out 3;
+  border-color: #f39c12;
+  will-change: background-color;
+}
+
+/* Status Animations - Pending (Pulse) */
+@keyframes status-pending {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.7; }
+}
+
+.node-status-pending {
+  animation: status-pending 2s ease-in-out infinite;
+  will-change: opacity;
+}
+
+/* Reduced Motion Support */
+@media (prefers-reduced-motion: reduce) {
+  .link-animated-marching-ants,
+  .link-animated-flow,
+  .link-animated-pulse,
+  .node-border-gradient,
+  .node-border-pulse,
+  .node-border-breathe,
+  .node-border-shimmer,
+  .node-status-running,
+  .node-status-error,
+  .node-status-completed,
+  .node-status-warning,
+  .node-status-pending {
+    animation: none !important;
+  }
+}
+
+/* Animations Disabled */
+.animations-disabled,
+.animations-disabled * {
+  animation: none !important;
+  transition: none !important;
+}
+
+/* Performance Optimizations */
+.link-animated-marching-ants,
+.link-animated-flow,
+.link-animated-pulse,
+.node-border-gradient,
+.node-border-pulse,
+.node-border-breathe,
+.node-border-shimmer {
+  -webkit-backface-visibility: hidden;
+  backface-visibility: hidden;
+  -webkit-perspective: 1000px;
+  perspective: 1000px;
 }
     `.trim();
   }
