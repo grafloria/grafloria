@@ -15,6 +15,8 @@ import {
   IncrementalLayoutManager,
 } from './incremental-layout.interface';
 import { LayoutQualityResult } from './layout-quality-metrics';
+import { PortAwareLayoutOptions, PortAwareLayoutResult } from './port-aware-layout.interface';
+import { SubgraphLayoutOptions, SubgraphLayoutResult } from './subgraph-layout.interface';
 
 /**
  * Base options for all layout adapters
@@ -34,6 +36,10 @@ export interface LayoutOptions {
   calculateQuality?: boolean;
   /** Canvas dimensions for quality assessment */
   canvasDimensions?: { width: number; height: number };
+  /** Port-aware layout options (Phase 3) */
+  portAware?: PortAwareLayoutOptions;
+  /** Subgraph/group layout options (Phase 3) */
+  subgraph?: SubgraphLayoutOptions;
 }
 
 /**
@@ -57,6 +63,10 @@ export interface LayoutResult {
   };
   /** Quality assessment of the layout (if calculateQuality was true) */
   quality?: LayoutQualityResult;
+  /** Port-aware layout result (if portAware was enabled) */
+  portAware?: PortAwareLayoutResult;
+  /** Subgraph layout result (if subgraph was enabled) */
+  subgraph?: SubgraphLayoutResult;
 }
 
 /**

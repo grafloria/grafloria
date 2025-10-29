@@ -18,6 +18,8 @@ import {
   IncrementalLayoutManager,
 } from './incremental-layout.interface';
 import { LayoutQualityMetrics } from './layout-quality-metrics';
+import { PortAwareLayoutManager, PortInfo } from './port-aware-layout.interface';
+import { SubgraphLayoutManager } from './subgraph-layout.interface';
 
 /**
  * Dagre-specific layout options
@@ -176,6 +178,76 @@ export class DagreLayoutAdapter implements LayoutAdapter {
       });
     }
 
+    // Process port-aware layout if enabled (Phase 3)
+    let portAware = undefined;
+    if (options.portAware && options.portAware.enabled) {
+      const nodeSizes = new Map<string, { width: number; height: number }>();
+      nodes.forEach(node => {
+        nodeSizes.set(node.id, {
+          width: node.size.width || 150,
+          height: node.size.height || 50,
+        });
+      });
+
+      portAware = PortAwareLayoutManager.computePortLayout(
+        options.portAware.ports || [],
+        nodePositions,
+        nodeSizes,
+        links.map(link => ({
+          sourcePortId: link.sourcePortId,
+          targetPortId: link.targetPortId,
+        })),
+        options.portAware
+      );
+    }
+
+    // Process subgraph layout if enabled (Phase 3)
+    let subgraph = undefined;
+    if (options.subgraph && options.subgraph.enabled && options.subgraph.groups) {
+      const nodeSizes = new Map<string, { width: number; height: number }>();
+      nodes.forEach(node => {
+        nodeSizes.set(node.id, {
+          width: node.size.width || 150,
+          height: node.size.height || 50,
+        });
+      });
+
+      // Convert NodeModel[] to generic node array
+      const genericNodes = nodes.map(node => ({
+        id: node.id,
+        ...node
+      }));
+
+      const genericLinks = links.map(link => ({
+        sourceNodeId: link.sourceNodeId || '',
+        targetNodeId: link.targetNodeId || '',
+        ...link
+      }));
+
+      subgraph = await SubgraphLayoutManager.computeSubgraphLayout(
+        options.subgraph.groups,
+        genericNodes,
+        genericLinks,
+        nodeSizes,
+        this,
+        options.subgraph
+      );
+
+      // If subgraph layout was performed, use those positions
+      if (subgraph.nodePositions.size > 0) {
+        // Replace node positions with subgraph positions
+        subgraph.nodePositions.forEach((pos, nodeId) => {
+          nodePositions.set(nodeId, { x: pos.x, y: pos.y });
+        });
+
+        // Update bounds
+        bounds.x = subgraph.bounds.x;
+        bounds.y = subgraph.bounds.y;
+        bounds.width = subgraph.bounds.width;
+        bounds.height = subgraph.bounds.height;
+      }
+    }
+
     return {
       nodePositions,
       bounds,
@@ -188,6 +260,8 @@ export class DagreLayoutAdapter implements LayoutAdapter {
         linkCount: links.length,
       },
       quality,
+      portAware,
+      subgraph,
     };
   }
 

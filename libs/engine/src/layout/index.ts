@@ -64,3 +64,7 @@ export * from './layout-history';
 export * from './dagre-layout-adapter';
 export * from './elk-layout-adapter';
 export * from './layout.service';
+
+// Phase 3: Advanced layout features
+export * from './port-aware-layout.interface';
+export * from './subgraph-layout.interface';
