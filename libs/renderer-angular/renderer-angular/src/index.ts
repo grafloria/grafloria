@@ -8,6 +8,7 @@ export * from './lib/components/node-toolbar';
 
 // Export directives
 export * from './lib/directives/grafloria-handle.directive';
+export * from './lib/directives/responsive-canvas.directive';
 
 // Export services
 export * from './lib/services/vnode-renderer.service';
@@ -29,3 +30,7 @@ export * from './lib/services/breakpoint-manager.service';
 
 // Phase 1.1: Animation service
 export * from './lib/services/angular-animation.service';
+
+// Phase 4: Mobile components
+export * from './lib/components/mobile-toolbar/mobile-toolbar.component';
+export * from './lib/components/node-resize/touch-resize-handle.component';

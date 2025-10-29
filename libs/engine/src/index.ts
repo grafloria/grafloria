@@ -54,3 +54,6 @@ export * from './rendering';
 
 // Template Library (Phase 4)
 export * from './template-library';
+
+// Mobile Input (Phase 4)
+export * from './lib/input';
