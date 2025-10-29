@@ -7,7 +7,7 @@
  * - Animation timing calculations
  */
 
-import { LinkAnimation } from '../../../engine/src/types/model.types';
+import type { LinkAnimation } from '@grafloria/engine';
 
 /**
  * Generate dynamic CSS for gradient border animation
