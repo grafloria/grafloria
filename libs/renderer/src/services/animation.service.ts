@@ -25,8 +25,7 @@
  * ```
  */
 
-import { LinkModel } from '../../../engine/src/models/LinkModel';
-import { NodeModel } from '../../../engine/src/models/NodeModel';
+import type { LinkModel, NodeModel } from '@grafloria/engine';
 
 export interface AnimationConfig {
   /** Enable/disable all animations globally */
@@ -248,26 +247,34 @@ export class AnimationService {
    * Get animation CSS classes for a node
    *
    * @param node - NodeModel to generate classes for
+   * @param useSVGVariant - Whether to use SVG-compatible animations (for pure SVG nodes without foreignObject)
    * @returns Space-separated CSS class string
    */
-  getNodeAnimationClass(node: NodeModel): string {
+  getNodeAnimationClass(node: NodeModel, useSVGVariant: boolean = false): string {
     if (this.shouldDisableAnimations()) {
       return '';
     }
 
     const classes: string[] = [];
+    const svgSuffix = useSVGVariant ? '-svg' : '';
 
     // Border animation
     if (node.style?.animatedBorder) {
-      const type = node.style.borderAnimationType || this.config.defaultNodeBorderAnimation;
+      let type = node.style.borderAnimationType || this.config.defaultNodeBorderAnimation;
 
       if (type !== 'none') {
+        // Shimmer requires ::after pseudo-element, not available on pure SVG
+        // Fall back to breathe animation for SVG nodes
+        if (useSVGVariant && type === 'shimmer') {
+          type = 'breathe';
+        }
+
         // Skip expensive animations in performance mode
         if (this.config.performanceMode && (type === 'gradient' || type === 'shimmer')) {
           // Use simpler animation instead
-          classes.push('node-border-breathe');
+          classes.push(`node-border-breathe${svgSuffix}`);
         } else {
-          classes.push(`node-border-${type}`);
+          classes.push(`node-border-${type}${svgSuffix}`);
         }
       }
     }
@@ -277,10 +284,7 @@ export class AnimationService {
       const status = node.state.status;
 
       if (status !== 'idle') {
-        classes.push(`node-status-${status}`);
-
-        // Add SVG variant if needed (determined by renderer)
-        // The renderer will decide whether to add -svg suffix
+        classes.push(`node-status-${status}${svgSuffix}`);
       }
     }
 

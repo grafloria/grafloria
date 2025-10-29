@@ -1825,7 +1825,9 @@ export class SVGRenderer implements IRenderer {
     if (node.state.error) classes.push('error');
 
     // Phase 1: Add animation classes
-    const animationClasses = this.animationService.getNodeAnimationClass(node);
+    // Use SVG-specific animations if node doesn't use foreignObject
+    const useSVGVariant = !this.foreignObjectNodes.has(node.id);
+    const animationClasses = this.animationService.getNodeAnimationClass(node, useSVGVariant);
     if (animationClasses) {
       classes.push(animationClasses);
     }

@@ -203,9 +203,18 @@
   will-change: transform, opacity;
 }
 
+/* SVG-compatible version */
+.node-border-breathe-svg {
+  animation: breathe 3s ease-in-out infinite;
+  transform-origin: center center;
+  transform-box: fill-box;
+  will-change: transform, opacity;
+}
+
 /**
  * Shimmer - Light sweep effect
  * Creates a shimmering light sweep across the node
+ * Note: Not available for pure SVG nodes (requires ::after pseudo-element)
  */
 @keyframes shimmer {
   0% {

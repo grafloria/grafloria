@@ -41,3 +41,8 @@ export * from './hybrid';
 
 // Phase 2.3: Interactive link editing tools
 export * from './interaction';
+
+// Phase 1: Animation system
+export { AnimationService } from './services/animation.service';
+export type { AnimationConfig } from './services/animation.service';
+export * from './utils/animation-utils';
