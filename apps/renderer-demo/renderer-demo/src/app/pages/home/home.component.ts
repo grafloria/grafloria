@@ -173,6 +173,22 @@ export class HomeComponent {
         'Performance metrics'
       ],
       difficulty: 'Intermediate'
+    },
+    {
+      title: 'DSL Bidirectional Sync',
+      description: 'Real-time text ↔ diagram synchronization with DSL Engine',
+      icon: '🔄',
+      route: '/dsl-bidirectional-demo',
+      features: [
+        'Flowchart, ERD, BPMN, UML support',
+        'Real-time bidirectional sync',
+        '300ms debounced updates',
+        'CSS-like styling system',
+        'Custom HTML templates',
+        'Format preservation',
+        'Web Worker performance'
+      ],
+      difficulty: 'Intermediate'
     }
   ];
 

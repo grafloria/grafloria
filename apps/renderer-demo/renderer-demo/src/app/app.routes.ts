@@ -52,6 +52,10 @@ export const appRoutes: Route[] = [
     loadComponent: () => import('./pages/animation-demo/animation-demo.component').then(m => m.AnimationDemoComponent)
   },
   {
+    path: 'dsl-bidirectional-demo',
+    loadComponent: () => import('./pages/dsl-bidirectional-demo/dsl-bidirectional-demo.component').then(m => m.DslBidirectionalDemoComponent)
+  },
+  {
     path: '**',
     redirectTo: ''
   }

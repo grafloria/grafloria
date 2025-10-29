@@ -1,0 +1,102 @@
+<div class="demo-container">
+  <!-- Header -->
+  <header class="demo-header">
+    <div class="header-content">
+      <h1>🔄 DSL Bidirectional Sync Demo</h1>
+      <p class="subtitle">Real-time text ↔ diagram synchronization with 300ms debouncing</p>
+    </div>
+
+    <!-- Sync Status -->
+    <div class="sync-status" *ngIf="syncStatus">
+      <div class="status-indicator" [ngClass]="{
+        'status-success': syncDirection === 'text-to-diagram',
+        'status-info': syncDirection === 'diagram-to-text',
+        'status-error': !syncDirection
+      }">
+        {{ syncStatus }}
+      </div>
+    </div>
+  </header>
+
+  <!-- Main Content -->
+  <div class="demo-content">
+    <!-- Sidebar - Examples -->
+    <aside class="sidebar">
+      <h3>📋 Example Diagrams</h3>
+      <div class="examples-list">
+        <button
+          *ngFor="let example of examples"
+          class="example-button"
+          (click)="loadExample(example)"
+        >
+          <div class="example-name">{{ example.name }}</div>
+          <div class="example-desc">{{ example.description }}</div>
+        </button>
+      </div>
+
+      <div class="sidebar-actions">
+        <h3>🛠️ Actions</h3>
+        <button class="action-button" (click)="formatText()">
+          ✨ Format Text
+        </button>
+        <button class="action-button" (click)="clearText()">
+          🗑️ Clear
+        </button>
+        <button class="action-button" (click)="copyToClipboard()">
+          📋 Copy
+        </button>
+      </div>
+
+      <div class="info-box">
+        <h4>ℹ️ Features</h4>
+        <ul>
+          <li>✅ Real-time sync</li>
+          <li>✅ 300ms debouncing</li>
+          <li>✅ Auto-layout</li>
+          <li>✅ Format preservation</li>
+          <li>✅ Error handling</li>
+        </ul>
+      </div>
+    </aside>
+
+    <!-- Editor Panel -->
+    <div class="editor-panel">
+      <div class="panel-header">
+        <h3>📝 DSL Text Editor</h3>
+        <span class="char-count">{{ dslText.length }} characters</span>
+      </div>
+      <textarea
+        class="dsl-editor"
+        [(ngModel)]="dslText"
+        (ngModelChange)="onTextChange()"
+        placeholder="Enter DSL syntax here...&#10;&#10;Example:&#10;flowchart TD&#10;  A[Start] --> B[End]"
+        spellcheck="false"
+      ></textarea>
+    </div>
+
+    <!-- Preview Panel -->
+    <div class="preview-panel">
+      <div class="panel-header">
+        <h3>👁️ Generated Output</h3>
+      </div>
+      <div class="preview-content">
+        <pre class="generated-text">{{ generatedText || 'Diagram output will appear here after parsing...' }}</pre>
+      </div>
+    </div>
+  </div>
+
+  <!-- Footer Info -->
+  <footer class="demo-footer">
+    <div class="footer-content">
+      <div class="feature-badge">
+        <strong>Phase 2:</strong> Bidirectional Sync
+      </div>
+      <div class="feature-badge">
+        <strong>Phase 3:</strong> Extended Types (ERD, BPMN, UML)
+      </div>
+      <div class="feature-badge">
+        <strong>Phase 4:</strong> Styling & Templates
+      </div>
+    </div>
+  </footer>
+</div>
