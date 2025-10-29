@@ -189,6 +189,70 @@ export class HomeComponent {
         'Web Worker performance'
       ],
       difficulty: 'Intermediate'
+    },
+    {
+      title: 'DSL Extended Types Gallery',
+      description: 'Professional ERD, BPMN, and UML diagrams with real-world examples',
+      icon: '🗄️',
+      route: '/dsl-extended-types-gallery',
+      features: [
+        '9 real-world examples',
+        'ERD with table-like rendering',
+        'BPMN with pools & lanes',
+        'UML class diagrams',
+        'Parse metrics & stats',
+        'Layout suggestions',
+        'Professional use cases'
+      ],
+      difficulty: 'Intermediate'
+    },
+    {
+      title: 'DSL Styling Studio',
+      description: 'Interactive CSS-like style editor with theme presets',
+      icon: '🎨',
+      route: '/dsl-styling-studio',
+      features: [
+        'Visual style editor',
+        '5 professional themes',
+        'Color pickers & sliders',
+        'Typography controls',
+        'Live preview',
+        'JSON export',
+        'Style cascading demo'
+      ],
+      difficulty: 'Beginner'
+    },
+    {
+      title: 'DSL Template Builder',
+      description: 'Create custom HTML templates with data bindings',
+      icon: '🛠️',
+      route: '/dsl-template-builder',
+      features: [
+        'HTML template editor',
+        '4 template examples',
+        '{{data.field}} bindings',
+        'Real-time validation',
+        'Security checks',
+        'Sample data editor',
+        'JSON export'
+      ],
+      difficulty: 'Advanced'
+    },
+    {
+      title: 'DSL Performance Demo',
+      description: 'Web Workers and large diagram performance testing',
+      icon: '⚡',
+      route: '/dsl-performance-demo',
+      features: [
+        'Large diagram testing (1000+ nodes)',
+        'Web Worker comparison',
+        'Performance metrics',
+        'Memory tracking',
+        'Format preservation',
+        'Progress reporting',
+        'Benchmark suite'
+      ],
+      difficulty: 'Intermediate'
     }
   ];
 

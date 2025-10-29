@@ -1,0 +1,217 @@
+<div class="studio-container">
+  <!-- Header -->
+  <header class="studio-header">
+    <h1>🎨 DSL Styling Studio</h1>
+    <p class="subtitle">Interactive CSS-like style editor with live preview</p>
+  </header>
+
+  <!-- Tab Navigation -->
+  <nav class="tab-nav">
+    <button
+      class="tab-button"
+      [class.active]="activeTab === 'editor'"
+      (click)="activeTab = 'editor'; generateStyledDSL()"
+    >
+      ✏️ Style Editor
+    </button>
+    <button
+      class="tab-button"
+      [class.active]="activeTab === 'presets'"
+      (click)="activeTab = 'presets'"
+    >
+      🎨 Presets
+    </button>
+    <button
+      class="tab-button"
+      [class.active]="activeTab === 'preview'"
+      (click)="activeTab = 'preview'; generateStyledDSL()"
+    >
+      👁️ Live Preview
+    </button>
+  </nav>
+
+  <!-- Main Content -->
+  <div class="studio-content">
+    <!-- Style Editor Tab -->
+    <div class="editor-panel" *ngIf="activeTab === 'editor'">
+      <div class="controls-section">
+        <h3>🖌️ Style Properties</h3>
+        <p class="section-hint">Edit CSS-like properties for the "{{ currentStyleName }}" style</p>
+
+        <div class="property-grid">
+          <!-- Colors -->
+          <div class="property-group">
+            <h4>Colors</h4>
+            <div class="property-row">
+              <label>Fill Color</label>
+              <div class="input-group">
+                <input type="color" [(ngModel)]="currentStyle.fill" (ngModelChange)="onStyleChange()">
+                <input type="text" [(ngModel)]="currentStyle.fill" (ngModelChange)="onStyleChange()" placeholder="#3b82f6">
+              </div>
+            </div>
+
+            <div class="property-row">
+              <label>Stroke Color</label>
+              <div class="input-group">
+                <input type="color" [(ngModel)]="currentStyle.stroke" (ngModelChange)="onStyleChange()">
+                <input type="text" [(ngModel)]="currentStyle.stroke" (ngModelChange)="onStyleChange()" placeholder="#1e40af">
+              </div>
+            </div>
+
+            <div class="property-row">
+              <label>Text Color</label>
+              <div class="input-group">
+                <input type="color" [(ngModel)]="currentStyle.color" (ngModelChange)="onStyleChange()">
+                <input type="text" [(ngModel)]="currentStyle.color" (ngModelChange)="onStyleChange()" placeholder="#ffffff">
+              </div>
+            </div>
+          </div>
+
+          <!-- Dimensions -->
+          <div class="property-group">
+            <h4>Dimensions</h4>
+            <div class="property-row">
+              <label>Stroke Width</label>
+              <input type="range" min="0" max="10" [(ngModel)]="currentStyle.strokeWidth" (ngModelChange)="onStyleChange()">
+              <span class="value">{{ currentStyle.strokeWidth }}px</span>
+            </div>
+
+            <div class="property-row">
+              <label>Border Radius</label>
+              <input type="range" min="0" max="30" [(ngModel)]="currentStyle.borderRadius" (ngModelChange)="onStyleChange()">
+              <span class="value">{{ currentStyle.borderRadius }}px</span>
+            </div>
+
+            <div class="property-row">
+              <label>Padding</label>
+              <input type="range" min="0" max="30" [(ngModel)]="currentStyle.padding" (ngModelChange)="onStyleChange()">
+              <span class="value">{{ currentStyle.padding }}px</span>
+            </div>
+
+            <div class="property-row">
+              <label>Opacity</label>
+              <input type="range" min="0" max="1" step="0.1" [(ngModel)]="currentStyle.opacity" (ngModelChange)="onStyleChange()">
+              <span class="value">{{ currentStyle.opacity }}</span>
+            </div>
+          </div>
+
+          <!-- Typography -->
+          <div class="property-group">
+            <h4>Typography</h4>
+            <div class="property-row">
+              <label>Font Size</label>
+              <input type="range" min="8" max="32" [(ngModel)]="currentStyle.fontSize" (ngModelChange)="onStyleChange()">
+              <span class="value">{{ currentStyle.fontSize }}px</span>
+            </div>
+
+            <div class="property-row">
+              <label>Font Family</label>
+              <select [(ngModel)]="currentStyle.fontFamily" (ngModelChange)="onStyleChange()">
+                <option value="Arial">Arial</option>
+                <option value="Helvetica">Helvetica</option>
+                <option value="Georgia">Georgia</option>
+                <option value="Times New Roman">Times New Roman</option>
+                <option value="Courier New">Courier New</option>
+                <option value="Verdana">Verdana</option>
+              </select>
+            </div>
+
+            <div class="property-row">
+              <label>Font Weight</label>
+              <select [(ngModel)]="currentStyle.fontWeight" (ngModelChange)="onStyleChange()">
+                <option value="normal">Normal</option>
+                <option value="bold">Bold</option>
+                <option value="600">Semi-Bold (600)</option>
+                <option value="300">Light (300)</option>
+              </select>
+            </div>
+          </div>
+        </div>
+
+        <div class="action-buttons">
+          <button class="btn btn-primary" (click)="generateStyledDSL()">
+            🔄 Update Preview
+          </button>
+          <button class="btn btn-secondary" (click)="resetStyle()">
+            ↺ Reset
+          </button>
+        </div>
+      </div>
+
+      <div class="preview-section">
+        <h3>📝 Generated DSL</h3>
+        <textarea
+          class="dsl-output"
+          [value]="generatedDSL"
+          readonly
+        ></textarea>
+
+        <div class="output-actions">
+          <button class="btn btn-small" (click)="copyToClipboard()">
+            📋 Copy
+          </button>
+          <button class="btn btn-small" (click)="exportStyles()">
+            💾 Export JSON
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Presets Tab -->
+    <div class="presets-panel" *ngIf="activeTab === 'presets'">
+      <h3>🎨 Style Presets</h3>
+      <p class="section-hint">Choose from professionally designed style themes</p>
+
+      <div class="presets-grid">
+        <div
+          *ngFor="let preset of stylePresets"
+          class="preset-card"
+          (click)="applyPreset(preset)"
+        >
+          <div class="preset-header">
+            <h4>{{ preset.name }}</h4>
+          </div>
+          <p class="preset-description">{{ preset.description }}</p>
+
+          <div class="preset-colors">
+            <div
+              *ngFor="let style of preset.styles | keyvalue"
+              class="color-swatch"
+              [style.background]="style.value.fill"
+              [style.border-color]="style.value.stroke"
+              [title]="style.key"
+            ></div>
+          </div>
+
+          <button class="apply-button">Apply Theme</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Preview Tab -->
+    <div class="preview-panel" *ngIf="activeTab === 'preview'">
+      <h3>👁️ Live Preview</h3>
+      <p class="section-hint">See your styles in action</p>
+
+      <div class="preview-content">
+        <div class="preview-info">
+          <p>The diagram will be rendered with your custom styles applied.</p>
+          <p>This preview shows how the @style blocks cascade with inline styles.</p>
+        </div>
+
+        <div class="dsl-code-preview">
+          <h4>Current DSL:</h4>
+          <pre>{{ generatedDSL }}</pre>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Footer -->
+  <footer class="studio-footer">
+    <div class="feature-info">
+      <strong>Styling Features:</strong>
+      CSS-like @style blocks • Inline {prop:value} styles • Style cascading • Theme presets • JSON export
+    </div>
+  </footer>
+</div>
