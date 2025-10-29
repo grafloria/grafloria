@@ -1852,14 +1852,19 @@ export class DiagramEngine {
   // Layout Service Integration (Phase 2: Layout Adapters)
   // ============================================================================
 
-  private layoutService?: any; // LayoutService - avoiding circular dependency
+  // Using type import to avoid circular dependency
+  private layoutService?: {
+    applyLayout(diagram: DiagramModel, config: any): Promise<any>;
+  };
 
   /**
    * Set layout service for diagram layouts
    *
    * @param service - Layout service instance
    */
-  setLayoutService(service: any): void {
+  setLayoutService(service: {
+    applyLayout(diagram: DiagramModel, config: any): Promise<any>;
+  }): void {
     this.layoutService = service;
   }
 
@@ -1870,7 +1875,18 @@ export class DiagramEngine {
    * @returns Layout result with positions and metadata
    * @throws Error if no diagram is loaded or layout service is not initialized
    */
-  async applyLayout(config: any): Promise<any> {
+  async applyLayout(config: {
+    adapter: string | any;
+    options?: any;
+    animate?: boolean;
+    animationDuration?: number;
+    fit?: boolean;
+    canvasDimensions?: { width: number; height: number };
+  }): Promise<{
+    nodePositions: Map<string, { x: number; y: number }>;
+    bounds: { x: number; y: number; width: number; height: number };
+    metadata?: any;
+  }> {
     if (!this.diagram) {
       throw new Error('No diagram loaded');
     }
@@ -1886,14 +1902,28 @@ export class DiagramEngine {
    * Quick helper: Apply Dagre layout
    *
    * @param options - Dagre layout options
+   * @param canvasDimensions - Optional canvas dimensions for viewport fitting
    * @returns Layout result
    */
-  async applyDagreLayout(options?: any): Promise<any> {
+  async applyDagreLayout(
+    options?: {
+      rankdir?: 'TB' | 'BT' | 'LR' | 'RL';
+      align?: 'UL' | 'UR' | 'DL' | 'DR';
+      nodesep?: number;
+      edgesep?: number;
+      ranksep?: number;
+      marginx?: number;
+      marginy?: number;
+      ranker?: 'network-simplex' | 'tight-tree' | 'longest-path';
+    },
+    canvasDimensions?: { width: number; height: number }
+  ): Promise<any> {
     return this.applyLayout({
       adapter: 'dagre',
       options,
       animate: true,
-      fit: false, // Don't auto-fit to allow user control
+      fit: false, // Don't auto-fit by default to allow user control
+      canvasDimensions,
     });
   }
 
@@ -1901,14 +1931,24 @@ export class DiagramEngine {
    * Quick helper: Apply ELK layout
    *
    * @param options - ELK layout options
+   * @param canvasDimensions - Optional canvas dimensions for viewport fitting
    * @returns Layout result
    */
-  async applyELKLayout(options?: any): Promise<any> {
+  async applyELKLayout(
+    options?: {
+      algorithm?: 'layered' | 'force' | 'stress' | 'mrtree' | 'radial' | 'disco';
+      'elk.direction'?: 'RIGHT' | 'LEFT' | 'DOWN' | 'UP';
+      'elk.spacing.nodeNode'?: number;
+      [key: string]: any;
+    },
+    canvasDimensions?: { width: number; height: number }
+  ): Promise<any> {
     return this.applyLayout({
       adapter: 'elk',
       options,
       animate: true,
-      fit: false, // Don't auto-fit to allow user control
+      fit: false, // Don't auto-fit by default to allow user control
+      canvasDimensions,
     });
   }
 

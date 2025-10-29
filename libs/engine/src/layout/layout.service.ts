@@ -26,6 +26,8 @@ export interface ApplyLayoutConfig {
   animationDuration?: number;
   /** Whether to fit viewport after layout */
   fit?: boolean;
+  /** Canvas dimensions for viewport fitting */
+  canvasDimensions?: { width: number; height: number };
   /** Progress callback for long-running layouts */
   onProgress?: (progress: number) => void;
 }
@@ -122,6 +124,16 @@ export class LayoutService {
       );
     } else {
       this.applyPositions(diagram, result.nodePositions);
+    }
+
+    // Fit viewport if requested and canvas dimensions provided
+    if (config.fit && config.canvasDimensions && diagram.zoomToFit) {
+      const padding = config.options?.padding || 50;
+      diagram.zoomToFit(
+        config.canvasDimensions.width,
+        config.canvasDimensions.height,
+        padding
+      );
     }
 
     return result;

@@ -154,8 +154,15 @@
           </div>
         </div>
 
+        <!-- Error Message -->
+        <div class="error-banner" *ngIf="errorMessage">
+          <span class="error-icon">⚠️</span>
+          <span class="error-text">{{ errorMessage }}</span>
+          <button class="error-close" (click)="errorMessage = null" aria-label="Close error">×</button>
+        </div>
+
         <!-- Performance Info -->
-        <div class="performance-info" *ngIf="executionTime > 0">
+        <div class="performance-info" *ngIf="executionTime > 0 && !errorMessage">
           <span class="perf-label">Layout Execution Time:</span>
           <span class="perf-value">{{ executionTime.toFixed(2) }}ms</span>
         </div>
