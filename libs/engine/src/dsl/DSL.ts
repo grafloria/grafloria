@@ -31,6 +31,11 @@ import { DiagramModel } from '../models/DiagramModel';
 import { DiagramNode } from './types/ASTNode';
 import { Token } from './types/Token';
 
+// Extended types (Phase 3)
+import { ERDParser, ERDGenerator, ERDTransformer } from './extended';
+import { BPMNParser, BPMNGenerator } from './extended';
+import { UMLParser, UMLGenerator } from './extended';
+
 export interface DSLOptions {
   /**
    * Auto-apply layout after parsing
@@ -378,5 +383,123 @@ export class DSL {
         generatedText: '',
       };
     }
+  }
+
+  // =========================================================================
+  // Extended Diagram Types (Phase 3)
+  // =========================================================================
+
+  /**
+   * Parse ERD (Entity Relationship Diagram)
+   */
+  parseERD(text: string): DiagramModel {
+    const erdParser = new ERDParser();
+    const erdTransformer = new ERDTransformer();
+
+    const erdDiagram = erdParser.parse(text);
+    const diagram = erdTransformer.transform(erdDiagram);
+
+    if (this.options.debug) {
+      console.log(`[DSL] Parsed ERD: ${erdDiagram.entities.size} entities, ${erdDiagram.relationships.length} relationships`);
+    }
+
+    return diagram;
+  }
+
+  /**
+   * Generate ERD DSL from diagram
+   */
+  generateERD(diagram: DiagramModel): string {
+    const erdGenerator = new ERDGenerator();
+    return erdGenerator.generate(diagram);
+  }
+
+  /**
+   * Parse BPMN (Business Process Model)
+   */
+  parseBPMN(text: string): DiagramModel {
+    // BPMN uses extended flowchart syntax, so we can use the regular parser
+    // but with BPMN-specific interpretation
+    return this.parse(text);
+  }
+
+  /**
+   * Generate BPMN DSL from diagram
+   */
+  generateBPMN(diagram: DiagramModel): string {
+    const bpmnGenerator = new BPMNGenerator();
+    return bpmnGenerator.generate(diagram);
+  }
+
+  /**
+   * Parse UML Class Diagram
+   */
+  parseUML(text: string): DiagramModel {
+    const umlParser = new UMLParser();
+    const umlDiagram = umlParser.parse(text);
+
+    // Transform UML to DiagramModel
+    const diagram = new DiagramModel('UML Class Diagram');
+    diagram.setMetadata('diagramType', 'classDiagram');
+
+    // Create class nodes
+    let index = 0;
+    for (const [name, umlClass] of umlDiagram.classes) {
+      const row = Math.floor(index / 3);
+      const col = index % 3;
+
+      const NodeModel = require('../models/NodeModel').NodeModel;
+      const node = new NodeModel({
+        id: name,
+        type: 'uml:class',
+        position: {
+          x: 100 + col * 300,
+          y: 100 + row * 250,
+        },
+        size: {
+          width: 220,
+          height: 150 + (umlClass.attributes.length + umlClass.methods.length) * 20,
+        },
+      });
+
+      node.data.name = name;
+      node.data.label = name;
+      node.data.stereotype = umlClass.stereotype;
+      node.data.attributes = umlClass.attributes;
+      node.data.methods = umlClass.methods;
+
+      diagram.addNode(node);
+      index++;
+    }
+
+    // Create relationship links
+    for (const rel of umlDiagram.relationships) {
+      const sourceNode = diagram.getNode(rel.from);
+      const targetNode = diagram.getNode(rel.to);
+
+      if (sourceNode && targetNode) {
+        const link = diagram.createSmartLink(sourceNode, targetNode, 'smooth');
+        if (link) {
+          link.setMetadata('umlRelationship', rel.type);
+          if (rel.label) {
+            link.data.label = rel.label;
+          }
+        }
+      }
+    }
+
+    if (this.options.debug) {
+      console.log(`[DSL] Parsed UML: ${umlDiagram.classes.size} classes, ${umlDiagram.relationships.length} relationships`);
+    }
+
+    return diagram;
+  }
+
+  /**
+   * Generate UML DSL from diagram
+   */
+  generateUML(diagram: DiagramModel): string {
+    const umlGenerator = new UMLGenerator();
+    return umlGenerator.generate(diagram);
   }
 }
