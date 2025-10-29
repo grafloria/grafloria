@@ -8,6 +8,7 @@
 
 import { NodeModel } from '../models/NodeModel';
 import { LinkModel } from '../models/LinkModel';
+import { LayoutConstraints } from './layout-constraints.interface';
 
 /**
  * Base options for all layout adapters
@@ -21,6 +22,8 @@ export interface LayoutOptions {
   fit?: boolean;
   /** Padding around content when fitting */
   padding?: number;
+  /** Layout constraints for pinning/fixing nodes */
+  constraints?: LayoutConstraints;
 }
 
 /**

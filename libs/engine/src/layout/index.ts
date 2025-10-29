@@ -56,6 +56,7 @@ export * from './algorithms/HybridLayoutAlgorithm';
 
 // Phase 2: External layout adapters
 export * from './layout-adapter.interface';
+export * from './layout-constraints.interface';
 export * from './dagre-layout-adapter';
 export * from './elk-layout-adapter';
 export * from './layout.service';

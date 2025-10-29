@@ -127,6 +127,23 @@ export class LayoutShowcaseComponent implements OnInit, OnDestroy {
         'elk.layered.nodePlacement.strategy': 'NETWORK_SIMPLEX'
       },
       createDiagram: this.createSystemArchitecture.bind(this)
+    },
+    {
+      id: 'pinned-layout',
+      name: 'Interactive Layout (Pinned Nodes)',
+      description: 'Dashboard with pinned header and constrained components',
+      icon: '📌',
+      adapter: 'dagre',
+      defaultOptions: {
+        rankdir: 'TB',
+        nodesep: 70,
+        ranksep: 90,
+        constraints: {
+          constraints: [],
+          conflictResolution: 'priority'
+        }
+      },
+      createDiagram: this.createPinnedLayout.bind(this)
     }
   ];
 
@@ -676,5 +693,156 @@ export class LayoutShowcaseComponent implements OnInit, OnDestroy {
 
     model.addLink({ sourceNodeId: orderService.id, targetNodeId: messageQueue.id, sourcePortId: 'out', targetPortId: 'in' });
     model.addLink({ sourceNodeId: paymentService.id, targetNodeId: messageQueue.id, sourcePortId: 'out', targetPortId: 'in' });
+  }
+
+  private createPinnedLayout(engine: DiagramEngine): void {
+    const model = engine.getModel();
+
+    // Dashboard Header (Pinned to top)
+    const header = model.addNode({
+      position: { x: 400, y: 50 }, // Will be pinned here
+      size: { width: 400, height: 80 },
+      data: {
+        label: 'Dashboard Header',
+        subtitle: 'Pinned to position (400, 50)',
+        type: 'header'
+      }
+    });
+
+    // Navigation Menu (Fixed X position)
+    const nav = model.addNode({
+      position: { x: 0, y: 0 },
+      size: { width: 160, height: 300 },
+      data: {
+        label: 'Navigation',
+        subtitle: 'Fixed X = 50',
+        type: 'sidebar'
+      }
+    });
+
+    // Main Content Area (Boundary constrained)
+    const mainContent = model.addNode({
+      position: { x: 0, y: 0 },
+      size: { width: 300, height: 200 },
+      data: {
+        label: 'Main Content',
+        subtitle: 'Within boundary',
+        type: 'content'
+      }
+    });
+
+    // Analytics Widget 1
+    const analytics1 = model.addNode({
+      position: { x: 0, y: 0 },
+      size: { width: 200, height: 120 },
+      data: { label: 'Analytics Widget', type: 'widget' }
+    });
+
+    // Analytics Widget 2
+    const analytics2 = model.addNode({
+      position: { x: 0, y: 0 },
+      size: { width: 200, height: 120 },
+      data: { label: 'Chart Widget', type: 'widget' }
+    });
+
+    // Stats Widget (Fixed Y position)
+    const stats = model.addNode({
+      position: { x: 0, y: 0 },
+      size: { width: 180, height: 100 },
+      data: {
+        label: 'Stats Widget',
+        subtitle: 'Fixed Y = 400',
+        type: 'widget'
+      }
+    });
+
+    // User Profile
+    const userProfile = model.addNode({
+      position: { x: 0, y: 0 },
+      size: { width: 150, height: 80 },
+      data: { label: 'User Profile', type: 'widget' }
+    });
+
+    // Notifications
+    const notifications = model.addNode({
+      position: { x: 0, y: 0 },
+      size: { width: 150, height: 80 },
+      data: { label: 'Notifications', type: 'widget' }
+    });
+
+    // Settings
+    const settings = model.addNode({
+      position: { x: 0, y: 0 },
+      size: { width: 150, height: 80 },
+      data: { label: 'Settings', type: 'widget' }
+    });
+
+    // Footer (Pinned to bottom)
+    const footer = model.addNode({
+      position: { x: 400, y: 650 }, // Will be pinned here
+      size: { width: 400, height: 60 },
+      data: {
+        label: 'Footer',
+        subtitle: 'Pinned to position (400, 650)',
+        type: 'footer'
+      }
+    });
+
+    // Create relationships
+    model.addLink({ sourceNodeId: header.id, targetNodeId: nav.id, sourcePortId: 'out', targetPortId: 'in' });
+    model.addLink({ sourceNodeId: header.id, targetNodeId: mainContent.id, sourcePortId: 'out', targetPortId: 'in' });
+
+    model.addLink({ sourceNodeId: mainContent.id, targetNodeId: analytics1.id, sourcePortId: 'out', targetPortId: 'in' });
+    model.addLink({ sourceNodeId: mainContent.id, targetNodeId: analytics2.id, sourcePortId: 'out', targetPortId: 'in' });
+    model.addLink({ sourceNodeId: mainContent.id, targetNodeId: stats.id, sourcePortId: 'out', targetPortId: 'in' });
+
+    model.addLink({ sourceNodeId: nav.id, targetNodeId: userProfile.id, sourcePortId: 'out', targetPortId: 'in' });
+    model.addLink({ sourceNodeId: nav.id, targetNodeId: notifications.id, sourcePortId: 'out', targetPortId: 'in' });
+    model.addLink({ sourceNodeId: nav.id, targetNodeId: settings.id, sourcePortId: 'out', targetPortId: 'in' });
+
+    model.addLink({ sourceNodeId: mainContent.id, targetNodeId: footer.id, sourcePortId: 'out', targetPortId: 'in' });
+
+    // Set up constraints for this scenario
+    // These will be applied when the layout is run
+    this.currentOptions.constraints = {
+      constraints: [
+        // Pin header to top
+        {
+          nodeId: header.id,
+          type: 'pin',
+          position: { x: 400, y: 50 },
+          priority: 10
+        },
+        // Pin footer to bottom
+        {
+          nodeId: footer.id,
+          type: 'pin',
+          position: { x: 400, y: 650 },
+          priority: 10
+        },
+        // Fix navigation to left side
+        {
+          nodeId: nav.id,
+          type: 'fix-x',
+          value: 50,
+          priority: 5
+        },
+        // Fix stats widget Y position
+        {
+          nodeId: stats.id,
+          type: 'fix-y',
+          value: 400,
+          priority: 3
+        },
+        // Constrain main content to central area
+        {
+          nodeId: mainContent.id,
+          type: 'boundary',
+          boundary: { minX: 250, maxX: 750, minY: 150, maxY: 500 },
+          priority: 2
+        }
+      ],
+      conflictResolution: 'priority'
+    };
   }
 }

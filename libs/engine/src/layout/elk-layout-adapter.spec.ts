@@ -416,4 +416,137 @@ describe('ELKLayoutAdapter', () => {
       expect(executionTime).toBeLessThan(2000); // Should complete in less than 2 seconds
     });
   });
+
+  describe('Layout Constraints', () => {
+    it('should pin node to fixed position', async () => {
+      const node1 = new NodeModel({ x: 0, y: 0 }, { width: 100, height: 50 });
+      node1.id = '1';
+      const node2 = new NodeModel({ x: 0, y: 0 }, { width: 100, height: 50 });
+      node2.id = '2';
+
+      const link = new LinkModel('port1', 'port2');
+      link.sourceNodeId = '1';
+      link.targetNodeId = '2';
+
+      const result = await adapter.apply([node1, node2], [link], {
+        algorithm: 'layered',
+        constraints: {
+          constraints: [
+            {
+              nodeId: '1',
+              type: 'pin',
+              position: { x: 100, y: 50 },
+            },
+          ],
+        },
+      });
+
+      // Node 1 should be pinned to exact position
+      const pos1 = result.nodePositions.get('1')!;
+      expect(pos1.x).toBe(100);
+      expect(pos1.y).toBe(50);
+
+      // Node 2 should be laid out normally
+      expect(result.nodePositions.has('2')).toBe(true);
+    });
+
+    it('should fix Y coordinate with radial layout', async () => {
+      const node1 = new NodeModel({ x: 0, y: 0 }, { width: 100, height: 50 });
+      node1.id = '1';
+      const node2 = new NodeModel({ x: 0, y: 0 }, { width: 100, height: 50 });
+      node2.id = '2';
+      const node3 = new NodeModel({ x: 0, y: 0 }, { width: 100, height: 50 });
+      node3.id = '3';
+
+      const link1 = new LinkModel('port1', 'port2');
+      link1.sourceNodeId = '1';
+      link1.targetNodeId = '2';
+      const link2 = new LinkModel('port1', 'port3');
+      link2.sourceNodeId = '1';
+      link2.targetNodeId = '3';
+
+      const result = await adapter.apply([node1, node2, node3], [link1, link2], {
+        algorithm: 'radial',
+        constraints: {
+          constraints: [
+            {
+              nodeId: '1',
+              type: 'fix-y',
+              value: 200,
+            },
+          ],
+        },
+      });
+
+      // Node 1 should have fixed Y coordinate
+      const pos1 = result.nodePositions.get('1')!;
+      expect(pos1.y).toBe(200);
+    });
+
+    it('should clamp positions within boundaries', async () => {
+      const node1 = new NodeModel({ x: 0, y: 0 }, { width: 100, height: 50 });
+      node1.id = '1';
+
+      const result = await adapter.apply([node1], [], {
+        algorithm: 'layered',
+        constraints: {
+          constraints: [
+            {
+              nodeId: '1',
+              type: 'boundary',
+              boundary: { minX: 100, maxX: 500, minY: 100, maxY: 300 },
+            },
+          ],
+        },
+      });
+
+      const pos1 = result.nodePositions.get('1')!;
+      // Position should be within boundaries
+      expect(pos1.x).toBeGreaterThanOrEqual(100);
+      expect(pos1.x).toBeLessThanOrEqual(500);
+      expect(pos1.y).toBeGreaterThanOrEqual(100);
+      expect(pos1.y).toBeLessThanOrEqual(300);
+    });
+
+    it('should work with force algorithm and constraints', async () => {
+      const node1 = new NodeModel({ x: 0, y: 0 }, { width: 100, height: 50 });
+      node1.id = '1';
+      const node2 = new NodeModel({ x: 0, y: 0 }, { width: 100, height: 50 });
+      node2.id = '2';
+
+      const link = new LinkModel('port1', 'port2');
+      link.sourceNodeId = '1';
+      link.targetNodeId = '2';
+
+      const result = await adapter.apply([node1, node2], [link], {
+        algorithm: 'force',
+        constraints: {
+          constraints: [
+            {
+              nodeId: '1',
+              type: 'pin',
+              position: { x: 0, y: 0 },
+            },
+          ],
+        },
+      });
+
+      const pos1 = result.nodePositions.get('1')!;
+      expect(pos1.x).toBe(0);
+      expect(pos1.y).toBe(0);
+      expect(result.nodePositions.has('2')).toBe(true);
+    });
+
+    it('should work without constraints', async () => {
+      const node1 = new NodeModel({ x: 0, y: 0 }, { width: 100, height: 50 });
+      node1.id = '1';
+
+      const result = await adapter.apply([node1], [], {
+        algorithm: 'layered',
+      });
+
+      // Should work normally without constraints
+      expect(result.nodePositions.has('1')).toBe(true);
+    });
+  });
 });

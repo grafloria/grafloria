@@ -319,4 +319,144 @@ describe('DagreLayoutAdapter', () => {
       expect(executionTime).toBeLessThan(1000); // Should complete in less than 1 second
     });
   });
+
+  describe('Layout Constraints', () => {
+    it('should pin node to fixed position', async () => {
+      const node1 = new NodeModel({ x: 0, y: 0 }, { width: 100, height: 50 });
+      node1.id = '1';
+      const node2 = new NodeModel({ x: 0, y: 0 }, { width: 100, height: 50 });
+      node2.id = '2';
+
+      const link = new LinkModel('port1', 'port2');
+      link.sourceNodeId = '1';
+      link.targetNodeId = '2';
+
+      const result = await adapter.apply([node1, node2], [link], {
+        rankdir: 'TB',
+        constraints: {
+          constraints: [
+            {
+              nodeId: '1',
+              type: 'pin',
+              position: { x: 100, y: 50 },
+            },
+          ],
+        },
+      });
+
+      // Node 1 should be pinned to exact position
+      const pos1 = result.nodePositions.get('1')!;
+      expect(pos1.x).toBe(100);
+      expect(pos1.y).toBe(50);
+
+      // Node 2 should be laid out normally
+      expect(result.nodePositions.has('2')).toBe(true);
+    });
+
+    it('should fix X coordinate while allowing Y to vary', async () => {
+      const node1 = new NodeModel({ x: 0, y: 0 }, { width: 100, height: 50 });
+      node1.id = '1';
+      const node2 = new NodeModel({ x: 0, y: 0 }, { width: 100, height: 50 });
+      node2.id = '2';
+      const node3 = new NodeModel({ x: 0, y: 0 }, { width: 100, height: 50 });
+      node3.id = '3';
+
+      const link1 = new LinkModel('port1', 'port2');
+      link1.sourceNodeId = '1';
+      link1.targetNodeId = '2';
+      const link2 = new LinkModel('port1', 'port3');
+      link2.sourceNodeId = '1';
+      link2.targetNodeId = '3';
+
+      const result = await adapter.apply([node1, node2, node3], [link1, link2], {
+        rankdir: 'TB',
+        constraints: {
+          constraints: [
+            {
+              nodeId: '2',
+              type: 'fix-x',
+              value: 200,
+            },
+            {
+              nodeId: '3',
+              type: 'fix-x',
+              value: 200,
+            },
+          ],
+        },
+      });
+
+      // Nodes 2 and 3 should have fixed X coordinate
+      const pos2 = result.nodePositions.get('2')!;
+      const pos3 = result.nodePositions.get('3')!;
+      expect(pos2.x).toBe(200);
+      expect(pos3.x).toBe(200);
+
+      // But Y coordinates should be different (laid out vertically)
+      expect(pos2.y).not.toBe(pos3.y);
+    });
+
+    it('should clamp positions within boundaries', async () => {
+      const node1 = new NodeModel({ x: 0, y: 0 }, { width: 100, height: 50 });
+      node1.id = '1';
+
+      const result = await adapter.apply([node1], [], {
+        constraints: {
+          constraints: [
+            {
+              nodeId: '1',
+              type: 'boundary',
+              boundary: { minX: 100, maxX: 500, minY: 100, maxY: 300 },
+            },
+          ],
+        },
+      });
+
+      const pos1 = result.nodePositions.get('1')!;
+      // Position should be within boundaries
+      expect(pos1.x).toBeGreaterThanOrEqual(100);
+      expect(pos1.x).toBeLessThanOrEqual(500);
+      expect(pos1.y).toBeGreaterThanOrEqual(100);
+      expect(pos1.y).toBeLessThanOrEqual(300);
+    });
+
+    it('should handle multiple constraints with priority', async () => {
+      const node1 = new NodeModel({ x: 0, y: 0 }, { width: 100, height: 50 });
+      node1.id = '1';
+
+      const result = await adapter.apply([node1], [], {
+        constraints: {
+          constraints: [
+            {
+              nodeId: '1',
+              type: 'fix-x',
+              value: 150,
+              priority: 1,
+            },
+            {
+              nodeId: '1',
+              type: 'fix-y',
+              value: 250,
+              priority: 2,
+            },
+          ],
+          conflictResolution: 'priority',
+        },
+      });
+
+      const pos1 = result.nodePositions.get('1')!;
+      expect(pos1.x).toBe(150);
+      expect(pos1.y).toBe(250);
+    });
+
+    it('should work without constraints', async () => {
+      const node1 = new NodeModel({ x: 0, y: 0 }, { width: 100, height: 50 });
+      node1.id = '1';
+
+      const result = await adapter.apply([node1], []);
+
+      // Should work normally without constraints
+      expect(result.nodePositions.has('1')).toBe(true);
+    });
+  });
 });

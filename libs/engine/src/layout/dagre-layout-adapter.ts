@@ -11,6 +11,7 @@ import dagre from 'dagre';
 import { NodeModel } from '../models/NodeModel';
 import { LinkModel } from '../models/LinkModel';
 import { LayoutAdapter, LayoutOptions, LayoutResult } from './layout-adapter.interface';
+import { ConstraintManager } from './layout-constraints.interface';
 
 /**
  * Dagre-specific layout options
@@ -130,6 +131,22 @@ export class DagreLayoutAdapter implements LayoutAdapter {
         });
       }
     });
+
+    // Apply layout constraints if provided
+    if (options.constraints) {
+      const constraintManager = new ConstraintManager(options.constraints);
+      const conflictResolution = options.constraints.conflictResolution || 'priority';
+
+      // Apply constraints to each node position
+      nodePositions.forEach((position, nodeId) => {
+        const constrainedPosition = constraintManager.applyConstraints(
+          nodeId,
+          position,
+          conflictResolution
+        );
+        nodePositions.set(nodeId, constrainedPosition);
+      });
+    }
 
     // Calculate bounding box
     const bounds = this.calculateBounds(nodePositions, nodes);
