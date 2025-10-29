@@ -177,7 +177,7 @@ export class LayoutApplicator {
 
     try {
       if (this.options.debug) {
-        console.log(`[LayoutApplicator] Applying custom layout: ${config.algorithm}`);
+        console.log(`[LayoutApplicator] Applying custom layout: ${config.type || 'default'}`);
       }
 
       await diagram.reLayout(config);

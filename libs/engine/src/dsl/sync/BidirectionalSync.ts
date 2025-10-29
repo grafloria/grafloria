@@ -88,9 +88,9 @@ export class BidirectionalSync {
   private currentText: string = '';
   private options: Required<SyncOptions>;
 
-  // Debounce timers
-  private textDebounceTimer?: NodeJS.Timeout;
-  private visualDebounceTimer?: NodeJS.Timeout;
+  // Debounce timers (using ReturnType for browser compatibility)
+  private textDebounceTimer?: ReturnType<typeof setTimeout>;
+  private visualDebounceTimer?: ReturnType<typeof setTimeout>;
 
   // Sync state
   private state: SyncState = {
@@ -109,6 +109,9 @@ export class BidirectionalSync {
 
   // Sync lock to prevent loops
   private syncLock = false;
+
+  // Event unsubscribe functions
+  private unsubscribeFunctions: Array<() => void> = [];
 
   // Callbacks
   private callbacks: SyncCallback[] = [];
@@ -317,12 +320,13 @@ export class BidirectionalSync {
       }
     };
 
-    this.diagram.on('node:added', this.diagramChangeListener);
-    this.diagram.on('node:removed', this.diagramChangeListener);
-    this.diagram.on('node:changed', this.diagramChangeListener);
-    this.diagram.on('link:added', this.diagramChangeListener);
-    this.diagram.on('link:removed', this.diagramChangeListener);
-    this.diagram.on('link:changed', this.diagramChangeListener);
+    // Store unsubscribe functions returned by .on()
+    this.unsubscribeFunctions.push(this.diagram.on('node:added', this.diagramChangeListener));
+    this.unsubscribeFunctions.push(this.diagram.on('node:removed', this.diagramChangeListener));
+    this.unsubscribeFunctions.push(this.diagram.on('node:changed', this.diagramChangeListener));
+    this.unsubscribeFunctions.push(this.diagram.on('link:added', this.diagramChangeListener));
+    this.unsubscribeFunctions.push(this.diagram.on('link:removed', this.diagramChangeListener));
+    this.unsubscribeFunctions.push(this.diagram.on('link:changed', this.diagramChangeListener));
   }
 
   /**
@@ -460,15 +464,9 @@ export class BidirectionalSync {
       clearTimeout(this.visualDebounceTimer);
     }
 
-    // Remove listeners
-    if (this.diagram && this.diagramChangeListener) {
-      this.diagram.off('node:added', this.diagramChangeListener);
-      this.diagram.off('node:removed', this.diagramChangeListener);
-      this.diagram.off('node:changed', this.diagramChangeListener);
-      this.diagram.off('link:added', this.diagramChangeListener);
-      this.diagram.off('link:removed', this.diagramChangeListener);
-      this.diagram.off('link:changed', this.diagramChangeListener);
-    }
+    // Call all unsubscribe functions to remove listeners
+    this.unsubscribeFunctions.forEach(unsubscribe => unsubscribe());
+    this.unsubscribeFunctions = [];
 
     this.state.active = false;
     this.callbacks = [];

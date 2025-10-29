@@ -1,4 +1,4 @@
-import { TouchHandler, TouchGestureEvent } from './touch-handler';
+import { TouchHandler, TouchGestureEvent, TouchPoint } from './touch-handler';
 
 // Note: DiagramEngine import will be resolved at runtime
 // This service is designed to work with any diagram engine that provides these methods

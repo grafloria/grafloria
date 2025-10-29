@@ -28,8 +28,10 @@ import { LayoutDetector, LayoutSuggestion } from './detector/LayoutDetector';
 import { DSLGenerator, GeneratorOptions } from './generator/DSLGenerator';
 import { DSLFormatter, FormatterOptions } from './generator/DSLFormatter';
 import { DiagramModel } from '../models/DiagramModel';
+import { NodeModel } from '../models/NodeModel';
 import { DiagramNode } from './types/ASTNode';
 import { Token } from './types/Token';
+import { NodeStyle } from '../types/model.types';
 
 // Extended types (Phase 3)
 import { ERDParser, ERDGenerator, ERDTransformer } from './extended';
@@ -474,7 +476,6 @@ export class DSL {
       const row = Math.floor(index / 3);
       const col = index % 3;
 
-      const NodeModel = require('../models/NodeModel').NodeModel;
       const node = new NodeModel({
         id: name,
         type: 'uml:class',
@@ -488,11 +489,11 @@ export class DSL {
         },
       });
 
-      node.data.name = name;
-      node.data.label = name;
-      node.data.stereotype = umlClass.stereotype;
-      node.data.attributes = umlClass.attributes;
-      node.data.methods = umlClass.methods;
+      node.data['name'] = name;
+      node.data['label'] = name;
+      node.data['stereotype'] = umlClass.stereotype;
+      node.data['attributes'] = umlClass.attributes;
+      node.data['methods'] = umlClass.methods;
 
       diagram.addNode(node);
       index++;
@@ -535,7 +536,7 @@ export class DSL {
   private applyStylesAndTemplates(
     diagram: DiagramModel,
     text: string,
-    styleDefinitions: Map<string, Partial<import('../../types').NodeStyle>>,
+    styleDefinitions: Map<string, Partial<NodeStyle>>,
     templateDefinitions: Map<string, TemplateDefinition>
   ): void {
     // Apply diagram-level styles
@@ -554,7 +555,7 @@ export class DSL {
 
     // Extract node-specific styles from text
     const lines = text.split('\n');
-    const nodeStyleMap = new Map<string, Partial<import('../../types').NodeStyle>>();
+    const nodeStyleMap = new Map<string, Partial<NodeStyle>>();
     const nodeClassMap = new Map<string, string[]>();
 
     for (const line of lines) {
@@ -584,7 +585,7 @@ export class DSL {
 
     // Apply styles to nodes
     for (const node of diagram.getNodes()) {
-      const styles: Array<Partial<import('../../types').NodeStyle>> = [];
+      const styles: Array<Partial<NodeStyle>> = [];
 
       // 1. Apply diagram-level default styles
       if (diagramStyles) {

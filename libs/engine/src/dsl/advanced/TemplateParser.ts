@@ -148,7 +148,7 @@ export class TemplateParser {
     };
 
     for (const field of fields) {
-      schema.properties[field] = {
+      schema['properties'][field] = {
         type: 'string', // Default to string, could be inferred better
         description: `Value for ${field}`,
       };

@@ -1,4 +1,5 @@
 // Performance module exports
 
 export * from './PerformanceMonitor';
-export * from './mobile-performance.service';
+// Note: mobile-performance.service is in lib/performance, not here
+// export * from '../lib/performance/mobile-performance.service';
