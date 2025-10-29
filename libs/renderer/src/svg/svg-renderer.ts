@@ -1058,6 +1058,14 @@ export class SVGRenderer implements IRenderer {
    * Phase 3.1: Render rectangle shape
    */
   private renderRectShape(width: number, height: number, styles: any, cornerRadius?: number): VNode {
+    // DEBUG: Log what classes are being applied to rect
+    console.log(`[SVGRenderer] renderRectShape:`, {
+      className: styles.className,
+      stroke: styles.stroke,
+      strokeWidth: styles.strokeWidth,
+      fill: styles.fill
+    });
+
     return {
       type: 'rect',
       props: {
@@ -1836,8 +1844,21 @@ export class SVGRenderer implements IRenderer {
       classes.push(animationClasses);
     }
 
+    const finalClassName = classes.join(' ');
+
+    // DEBUG: Log animation classes
+    console.log(`[SVGRenderer] computeNodeStylesCSS for ${node.id}:`, {
+      useSVGVariant,
+      animationClasses,
+      animatedBorder: node.style?.animatedBorder,
+      borderAnimationType: node.style?.borderAnimationType,
+      animateStatus: node.state?.animateStatus,
+      status: node.state?.status,
+      finalClassName
+    });
+
     return {
-      className: classes.join(' '),
+      className: finalClassName,
       // Entity-specific overrides (if any)
       ...(node.style.fill && { fill: node.style.fill }),
       ...(node.style.stroke && { stroke: node.style.stroke }),
