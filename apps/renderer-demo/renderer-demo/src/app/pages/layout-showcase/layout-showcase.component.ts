@@ -152,6 +152,9 @@ export class LayoutShowcaseComponent implements OnInit, OnDestroy {
     this.layoutService = new LayoutService();
     this.engine.setLayoutService(this.layoutService);
 
+    // Create the diagram model
+    this.engine.createDiagram('Layout Showcase');
+
     // Load first scenario by default
     this.loadScenario(this.scenarios[0]);
   }
