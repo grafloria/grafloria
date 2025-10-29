@@ -68,3 +68,6 @@ export * from './layout.service';
 // Phase 3: Advanced layout features
 export * from './port-aware-layout.interface';
 export * from './subgraph-layout.interface';
+
+// Phase 4: Edge bundling
+export * from './edge-bundling.interface';

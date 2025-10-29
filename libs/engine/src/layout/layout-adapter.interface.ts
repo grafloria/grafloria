@@ -17,6 +17,7 @@ import {
 import { LayoutQualityResult } from './layout-quality-metrics';
 import { PortAwareLayoutOptions, PortAwareLayoutResult } from './port-aware-layout.interface';
 import { SubgraphLayoutOptions, SubgraphLayoutResult } from './subgraph-layout.interface';
+import { EdgeBundlingOptions, EdgeBundlingResult } from './edge-bundling.interface';
 
 /**
  * Base options for all layout adapters
@@ -40,6 +41,8 @@ export interface LayoutOptions {
   portAware?: PortAwareLayoutOptions;
   /** Subgraph/group layout options (Phase 3) */
   subgraph?: SubgraphLayoutOptions;
+  /** Edge bundling options (Phase 4) */
+  edgeBundling?: EdgeBundlingOptions;
 }
 
 /**
@@ -67,6 +70,8 @@ export interface LayoutResult {
   portAware?: PortAwareLayoutResult;
   /** Subgraph layout result (if subgraph was enabled) */
   subgraph?: SubgraphLayoutResult;
+  /** Edge bundling result (if edgeBundling was enabled) */
+  edgeBundling?: EdgeBundlingResult;
 }
 
 /**
