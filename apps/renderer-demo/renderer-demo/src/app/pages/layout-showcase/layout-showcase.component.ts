@@ -162,6 +162,10 @@ export class LayoutShowcaseComponent implements OnInit, OnDestroy {
     // Create the diagram model
     this.engine.createDiagram('Layout Showcase');
 
+    // Enable automatic link rerouting when nodes move
+    // This uses the Observer Pattern - links automatically update when nodes change position
+    this.engine.enableLiveRerouting();
+
     // Load first scenario by default
     this.loadScenario(this.scenarios[0]);
   }
