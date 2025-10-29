@@ -8,7 +8,7 @@
  * @see https://github.com/kieler/elkjs
  */
 
-import ELK, { ElkNode, ElkExtendedEdge } from 'elkjs/lib/elk.bundled';
+import ElkConstructor, { ElkNode, ElkExtendedEdge, ELK } from 'elkjs/lib/elk.bundled';
 import { NodeModel } from '../models/NodeModel';
 import { LinkModel } from '../models/LinkModel';
 import { LayoutAdapter, LayoutOptions, LayoutResult } from './layout-adapter.interface';
@@ -104,10 +104,10 @@ const DEFAULT_ELK_OPTIONS: Partial<ELKLayoutOptions> = {
  */
 export class ELKLayoutAdapter implements LayoutAdapter {
   readonly name = 'elk';
-  private elk: InstanceType<typeof ELK>;
+  private elk: ELK;
 
   constructor() {
-    this.elk = new ELK();
+    this.elk = new ElkConstructor();
   }
 
   /**
@@ -155,7 +155,7 @@ export class ELKLayoutAdapter implements LayoutAdapter {
     // Extract positions from layouted graph
     const nodePositions = new Map<string, { x: number; y: number }>();
 
-    layoutedGraph.children?.forEach((child) => {
+    layoutedGraph.children?.forEach((child: ElkNode) => {
       if (child.x !== undefined && child.y !== undefined) {
         nodePositions.set(child.id, {
           x: child.x,
@@ -508,7 +508,7 @@ export class ELKLayoutAdapter implements LayoutAdapter {
     let maxX = -Infinity;
     let maxY = -Infinity;
 
-    graph.children.forEach((child) => {
+    graph.children.forEach((child: ElkNode) => {
       if (child.x !== undefined && child.y !== undefined) {
         const width = child.width || 0;
         const height = child.height || 0;

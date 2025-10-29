@@ -130,7 +130,7 @@ export class DagreLayoutAdapter implements LayoutAdapter {
     // Extract positions from dagre graph
     const nodePositions = new Map<string, { x: number; y: number }>();
 
-    g.nodes().forEach((nodeId) => {
+    g.nodes().forEach((nodeId: string) => {
       const node = g.node(nodeId);
       if (node) {
         // Dagre returns center position, convert to top-left corner
