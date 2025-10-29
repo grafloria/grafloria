@@ -1,7 +1,9 @@
 import { Component, OnInit } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
-import { DSL } from '@grafloria/engine';
+import { DSL, DiagramEngine } from '@grafloria/engine';
+import { DiagramCanvasComponent } from '@grafloria/renderer-angular';
+import { LIGHT_THEME, type Theme, type Rectangle } from '@grafloria/renderer';
 
 interface TemplateExample {
   name: string;
@@ -12,13 +14,17 @@ interface TemplateExample {
 
 @Component({
   standalone: true,
-  imports: [CommonModule, FormsModule],
+  imports: [CommonModule, FormsModule, DiagramCanvasComponent],
   selector: 'app-dsl-template-builder',
   templateUrl: './dsl-template-builder.component.html',
   styleUrl: './dsl-template-builder.component.css',
 })
 export class DslTemplateBuilderComponent implements OnInit {
   dsl!: DSL;
+  engine!: DiagramEngine;
+  viewport: Rectangle = { x: 0, y: 0, width: 1200, height: 800 };
+  zoom = 1.0;
+  theme: Theme = LIGHT_THEME;
 
   templateName = 'customCard';
   templateHTML = `<div class="custom-card">
@@ -168,6 +174,8 @@ export class DslTemplateBuilderComponent implements OnInit {
   ];
 
   ngOnInit() {
+    this.engine = new DiagramEngine();
+
     this.dsl = new DSL({
       debug: true,
       autoLayout: true
@@ -189,6 +197,14 @@ flowchart TD
 
     this.generatedDSL = templateDef;
     this.validateTemplate();
+
+    // Parse and render the diagram
+    try {
+      const diagram = this.dsl.parse(this.generatedDSL);
+      this.engine.setDiagram(diagram);
+    } catch (error) {
+      console.error('Failed to parse template diagram:', error);
+    }
   }
 
   validateTemplate() {

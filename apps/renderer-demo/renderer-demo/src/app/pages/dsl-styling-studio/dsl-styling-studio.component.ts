@@ -1,7 +1,9 @@
 import { Component, OnInit } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
-import { DSL } from '@grafloria/engine';
+import { DSL, DiagramEngine } from '@grafloria/engine';
+import { DiagramCanvasComponent } from '@grafloria/renderer-angular';
+import { LIGHT_THEME, type Theme, type Rectangle } from '@grafloria/renderer';
 
 interface StylePreset {
   name: string;
@@ -24,13 +26,17 @@ interface StyleProperties {
 
 @Component({
   standalone: true,
-  imports: [CommonModule, FormsModule],
+  imports: [CommonModule, FormsModule, DiagramCanvasComponent],
   selector: 'app-dsl-styling-studio',
   templateUrl: './dsl-styling-studio.component.html',
   styleUrl: './dsl-styling-studio.component.css',
 })
 export class DslStylingStudioComponent implements OnInit {
   dsl!: DSL;
+  engine!: DiagramEngine;
+  viewport: Rectangle = { x: 0, y: 0, width: 1200, height: 800 };
+  zoom = 1.0;
+  theme: Theme = LIGHT_THEME;
 
   // Current style being edited
   currentStyleName = 'primary';
@@ -240,6 +246,8 @@ export class DslStylingStudioComponent implements OnInit {
   ];
 
   ngOnInit() {
+    this.engine = new DiagramEngine();
+
     this.dsl = new DSL({
       debug: true,
       autoLayout: true
@@ -258,6 +266,14 @@ export class DslStylingStudioComponent implements OnInit {
     }).join('\n\n');
 
     this.generatedDSL = `${styleBlocks}\n\n${this.diagramDSL}`;
+
+    // Parse and render the diagram
+    try {
+      const diagram = this.dsl.parse(this.generatedDSL);
+      this.engine.setDiagram(diagram);
+    } catch (error) {
+      console.error('Failed to parse styled diagram:', error);
+    }
   }
 
   getActiveStyles(): Record<string, StyleProperties> {
@@ -296,6 +312,14 @@ export class DslStylingStudioComponent implements OnInit {
     }).join('\n\n');
 
     this.generatedDSL = `${styleBlocks}\n\n${this.diagramDSL}`;
+
+    // Parse and render the diagram
+    try {
+      const diagram = this.dsl.parse(this.generatedDSL);
+      this.engine.setDiagram(diagram);
+    } catch (error) {
+      console.error('Failed to parse styled diagram:', error);
+    }
   }
 
   onStyleChange() {

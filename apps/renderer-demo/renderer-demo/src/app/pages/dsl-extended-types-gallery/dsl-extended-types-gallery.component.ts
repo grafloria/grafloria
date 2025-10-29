@@ -1,7 +1,9 @@
 import { Component, OnInit } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
-import { DSL } from '@grafloria/engine';
+import { DSL, DiagramEngine } from '@grafloria/engine';
+import { DiagramCanvasComponent } from '@grafloria/renderer-angular';
+import { LIGHT_THEME, type Theme, type Rectangle } from '@grafloria/renderer';
 
 interface DiagramExample {
   name: string;
@@ -14,13 +16,17 @@ interface DiagramExample {
 
 @Component({
   standalone: true,
-  imports: [CommonModule, FormsModule],
+  imports: [CommonModule, FormsModule, DiagramCanvasComponent],
   selector: 'app-dsl-extended-types-gallery',
   templateUrl: './dsl-extended-types-gallery.component.html',
   styleUrl: './dsl-extended-types-gallery.component.css',
 })
 export class DslExtendedTypesGalleryComponent implements OnInit {
   dsl!: DSL;
+  engine!: DiagramEngine;
+  viewport: Rectangle = { x: 0, y: 0, width: 1200, height: 800 };
+  zoom = 1.0;
+  theme: Theme = LIGHT_THEME;
 
   activeTab: 'ERD' | 'BPMN' | 'UML' = 'ERD';
   selectedExample: DiagramExample | null = null;
@@ -507,6 +513,8 @@ export class DslExtendedTypesGalleryComponent implements OnInit {
   ];
 
   ngOnInit() {
+    this.engine = new DiagramEngine();
+
     this.dsl = new DSL({
       debug: true,
       autoLayout: true
@@ -543,6 +551,11 @@ export class DslExtendedTypesGalleryComponent implements OnInit {
       const result = this.dsl.parseDetailed(this.currentDSL);
       this.parseResult = result;
       this.parseError = null;
+
+      // Set diagram to engine for visual rendering
+      if (result.diagram) {
+        this.engine.setDiagram(result.diagram);
+      }
     } catch (error: any) {
       this.parseError = error.message;
       this.parseResult = null;

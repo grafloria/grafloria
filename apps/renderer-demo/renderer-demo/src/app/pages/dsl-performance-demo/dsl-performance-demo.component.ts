@@ -1,7 +1,9 @@
 import { Component, OnInit } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
-import { DSL } from '@grafloria/engine';
+import { DSL, DiagramEngine } from '@grafloria/engine';
+import { DiagramCanvasComponent } from '@grafloria/renderer-angular';
+import { LIGHT_THEME, type Theme, type Rectangle } from '@grafloria/renderer';
 
 interface PerformanceMetrics {
   parseTime: number;
@@ -13,13 +15,17 @@ interface PerformanceMetrics {
 
 @Component({
   standalone: true,
-  imports: [CommonModule, FormsModule],
+  imports: [CommonModule, FormsModule, DiagramCanvasComponent],
   selector: 'app-dsl-performance-demo',
   templateUrl: './dsl-performance-demo.component.html',
   styleUrl: './dsl-performance-demo.component.css',
 })
 export class DslPerformanceDemoComponent implements OnInit {
   dsl!: DSL;
+  engine!: DiagramEngine;
+  viewport: Rectangle = { x: 0, y: 0, width: 1200, height: 800 };
+  zoom = 1.0;
+  theme: Theme = LIGHT_THEME;
 
   // Performance settings
   diagramSize: 'small' | 'medium' | 'large' | 'huge' = 'small';
@@ -43,6 +49,8 @@ export class DslPerformanceDemoComponent implements OnInit {
   };
 
   ngOnInit() {
+    this.engine = new DiagramEngine();
+
     this.dsl = new DSL({
       debug: true,
       autoLayout: true
@@ -126,6 +134,11 @@ export class DslPerformanceDemoComponent implements OnInit {
         memoryUsed: endMemory && startMemory ? Math.round((endMemory - startMemory) / 1024) : undefined,
         workerUsed: this.useWorkers
       };
+
+      // Set diagram to engine for visual rendering
+      if (result.diagram) {
+        this.engine.setDiagram(result.diagram);
+      }
 
       // Simulate worker delay for demo purposes
       if (this.useWorkers) {

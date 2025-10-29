@@ -74,10 +74,32 @@
       ></textarea>
     </div>
 
+    <!-- Visual Diagram Panel -->
+    <div class="diagram-panel">
+      <div class="panel-header">
+        <h3>📊 Visual Diagram</h3>
+        <div class="diagram-controls">
+          <button class="control-btn" (click)="zoom = zoom * 1.2">🔍+</button>
+          <button class="control-btn" (click)="zoom = zoom / 1.2">🔍-</button>
+          <button class="control-btn" (click)="zoom = 1.0">↺</button>
+        </div>
+      </div>
+      <div class="diagram-canvas-wrapper">
+        <grafloria-diagram-canvas
+          *ngIf="engine"
+          [engine]="engine"
+          [viewport]="viewport"
+          [zoom]="zoom"
+          [theme]="theme"
+          class="diagram-canvas">
+        </grafloria-diagram-canvas>
+      </div>
+    </div>
+
     <!-- Preview Panel -->
     <div class="preview-panel">
       <div class="panel-header">
-        <h3>👁️ Generated Output</h3>
+        <h3>👁️ Generated DSL</h3>
       </div>
       <div class="preview-content">
         <pre class="generated-text">{{ generatedText || 'Diagram output will appear here after parsing...' }}</pre>

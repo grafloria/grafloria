@@ -199,6 +199,25 @@
           <p>This preview shows how the &#64;style blocks cascade with inline styles.</p>
         </div>
 
+        <!-- Visual Diagram -->
+        <div class="diagram-preview-wrapper">
+          <div class="diagram-controls">
+            <button class="control-btn" (click)="zoom = zoom * 1.2">🔍+</button>
+            <button class="control-btn" (click)="zoom = zoom / 1.2">🔍-</button>
+            <button class="control-btn" (click)="zoom = 1.0">↺</button>
+          </div>
+          <div class="diagram-canvas-container">
+            <grafloria-diagram-canvas
+              *ngIf="engine"
+              [engine]="engine"
+              [viewport]="viewport"
+              [zoom]="zoom"
+              [theme]="theme"
+              class="diagram-canvas">
+            </grafloria-diagram-canvas>
+          </div>
+        </div>
+
         <div class="dsl-code-preview">
           <h4>Current DSL:</h4>
           <pre>{{ generatedDSL }}</pre>

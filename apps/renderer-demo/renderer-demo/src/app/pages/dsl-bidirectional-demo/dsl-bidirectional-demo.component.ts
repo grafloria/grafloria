@@ -1,11 +1,13 @@
 import { Component, OnInit, OnDestroy } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
-import { DSL, BidirectionalSync } from '@grafloria/engine';
+import { DSL, BidirectionalSync, DiagramEngine } from '@grafloria/engine';
+import { DiagramCanvasComponent } from '@grafloria/renderer-angular';
+import { LIGHT_THEME, type Theme, type Rectangle } from '@grafloria/renderer';
 
 @Component({
   standalone: true,
-  imports: [CommonModule, FormsModule],
+  imports: [CommonModule, FormsModule, DiagramCanvasComponent],
   selector: 'app-dsl-bidirectional-demo',
   templateUrl: './dsl-bidirectional-demo.component.html',
   styleUrl: './dsl-bidirectional-demo.component.css',
@@ -13,6 +15,10 @@ import { DSL, BidirectionalSync } from '@grafloria/engine';
 export class DslBidirectionalDemoComponent implements OnInit, OnDestroy {
   dsl!: DSL;
   sync!: BidirectionalSync;
+  engine!: DiagramEngine;
+  viewport: Rectangle = { x: 0, y: 0, width: 1200, height: 800 };
+  zoom = 1.0;
+  theme: Theme = LIGHT_THEME;
 
   dslText = `flowchart TD
   A[Start] --> B{Decision}
@@ -193,6 +199,9 @@ flowchart TD
   ];
 
   ngOnInit() {
+    // Create diagram engine for rendering
+    this.engine = new DiagramEngine();
+
     this.dsl = new DSL({
       debug: true,
       autoLayout: true
@@ -209,10 +218,12 @@ flowchart TD
       this.syncStatus = `Synced: ${direction}`;
 
       if (direction === 'text-to-visual' && success) {
-        // Update generated text
+        // Update generated text and render diagram
         const diagram = this.sync.getDiagram();
         if (diagram) {
           this.generatedText = this.dsl.generate(diagram);
+          // Set diagram to engine for visual rendering
+          this.engine.setDiagram(diagram);
         }
       }
 
