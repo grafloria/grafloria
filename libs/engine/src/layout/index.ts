@@ -71,3 +71,7 @@ export * from './subgraph-layout.interface';
 
 // Phase 4: Edge bundling
 export * from './edge-bundling.interface';
+
+// Phase 5: Web Workers
+export * from './layout-worker.interface';
+export * from './worker-layout-adapter';
