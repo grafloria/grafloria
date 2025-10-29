@@ -287,6 +287,62 @@
   height: 100%;
 }
 
+/* Property Panel */
+.property-panel {
+  width: 300px;
+  background: white;
+  border-left: 2px solid #e1e8ed;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  box-shadow: -2px 0 8px rgba(0, 0, 0, 0.05);
+}
+
+.property-section {
+  margin-bottom: 1.5rem;
+}
+
+.property-section:last-child {
+  margin-bottom: 0;
+}
+
+.property-section h4 {
+  margin: 0 0 0.75rem 0;
+  font-size: 0.9rem;
+  font-weight: 700;
+  color: #667eea;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  padding-bottom: 0.5rem;
+  border-bottom: 2px solid #f0f0f0;
+}
+
+.property-item {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 0.5rem 0;
+  font-size: 0.85rem;
+  border-bottom: 1px solid #f5f5f5;
+}
+
+.property-item:last-child {
+  border-bottom: none;
+}
+
+.property-label {
+  color: #7f8c8d;
+  font-weight: 600;
+}
+
+.property-value {
+  color: #2c3e50;
+  font-weight: 500;
+  word-break: break-word;
+  text-align: right;
+  max-width: 180px;
+}
+
 .erd-footer {
   background: white;
   padding: 0.75rem 2rem;
@@ -314,6 +370,41 @@
 
 .hint {
   font-style: italic;
+}
+
+/* ERD Field Node Hover and Selection Styles */
+/* These styles target the actual HTML overlay elements */
+:host ::ng-deep .erd-field-row:hover {
+  background-color: #e3f2fd !important;
+}
+
+:host ::ng-deep .erd-field:hover {
+  background-color: #e3f2fd !important;
+}
+
+/* Hover for field repeater nodes */
+:host ::ng-deep .node-erd-field-repeater:hover .erd-field-row {
+  background-color: #e3f2fd !important;
+}
+
+/* Selection styles - applied when node is selected */
+:host ::ng-deep .selected .erd-field-row {
+  background-color: #bbdefb !important;
+  border-left: 3px solid #2196f3 !important;
+  padding-left: 5px !important;
+}
+
+:host ::ng-deep .selected .erd-field {
+  background-color: #bbdefb !important;
+  border-left: 3px solid #2196f3 !important;
+  padding-left: 5px !important;
+}
+
+/* Selection for field repeater nodes - target the outer node wrapper */
+:host ::ng-deep .node-erd-field-repeater.selected .erd-field-row {
+  background-color: #bbdefb !important;
+  border-left: 3px solid #2196f3 !important;
+  padding-left: 5px !important;
 }
 
 @media (max-width: 768px) {

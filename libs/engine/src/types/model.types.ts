@@ -30,6 +30,10 @@ export interface NodeBehavior {
   connectable: boolean;
   groupable: boolean;
   cloneable: boolean;
+  dragHandler?: {
+    isDragHandler: boolean;
+    dragChildren?: boolean;
+  };
 }
 
 export interface NodeStyle {

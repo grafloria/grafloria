@@ -69,6 +69,10 @@ export class ErdDesignerComponent implements OnInit {
   newTableName = '';
   selectedTable: Table | null = null;
 
+  // Selection tracking
+  selectedNode: NodeModel | null = null;
+  showPropertyPanel = false;
+
   constructor(private cdr: ChangeDetectorRef) {}
 
   ngOnInit() {
@@ -89,8 +93,7 @@ export class ErdDesignerComponent implements OnInit {
     this.templateRegistry = new TemplateRegistry(this.engine.eventBus);
     registerTemplateLibrary(this.templateRegistry);
 
-    // Set up connection tracking listeners
-    this.setupConnectionTracking();
+    // NOTE: Connection tracking setup moved to createSampleERD() after diagram is created
 
     console.log('✅ ERD Designer initialized with template system');
   }
@@ -99,34 +102,54 @@ export class ErdDesignerComponent implements OnInit {
    * Set up event listeners for connection tracking
    */
   private setupConnectionTracking(): void {
-    const eventBus = this.engine.eventBus;
+    // Get the diagram (must be called AFTER diagram is created)
+    const diagram = this.engine.getDiagram();
+    if (!diagram) {
+      console.warn('⚠️ Cannot setup connection tracking - diagram not created yet');
+      return;
+    }
 
-    // Listen for link added events
-    eventBus.on('link:added', (event: any) => {
-      const link = event.link;
-      if (!link) return;
+    // Listen for link added events on the DIAGRAM's emitter, not the engine eventBus
+    // Event payload is the link object directly (not wrapped in event.link)
+    diagram.on('link:added', (link: any) => {
+      console.log('🔗 Link added event received:', link);
+
+      if (!link) {
+        console.warn('Link is null or undefined');
+        return;
+      }
 
       const diagram = this.engine.getDiagram();
-      if (!diagram) return;
+      if (!diagram) {
+        console.warn('Diagram not initialized');
+        return;
+      }
 
       // Get source and target node IDs from the link's port information
-      // Links store sourcePort and targetPort as port IDs, and ports have nodeId property
+      // Links store sourcePortId and targetPortId as port IDs, and ports have nodeId property
       const allNodes = diagram.getNodes();
       let sourceNode: NodeModel | null = null;
       let targetNode: NodeModel | null = null;
 
+      console.log('Looking for nodes with ports:', link.sourcePortId, link.targetPortId);
+
       // Find source and target nodes by checking their ports
       for (const node of allNodes) {
-        if (link.sourcePort && node.ports.has(link.sourcePort)) {
+        if (link.sourcePortId && node.ports.has(link.sourcePortId)) {
           sourceNode = node;
+          console.log('Found source node:', node.id, 'tableName:', node.getMetadata('tableName'));
         }
-        if (link.targetPort && node.ports.has(link.targetPort)) {
+        if (link.targetPortId && node.ports.has(link.targetPortId)) {
           targetNode = node;
+          console.log('Found target node:', node.id, 'tableName:', node.getMetadata('tableName'));
         }
         if (sourceNode && targetNode) break;
       }
 
-      if (!sourceNode || !targetNode) return;
+      if (!sourceNode || !targetNode) {
+        console.warn('Could not find source or target node. Source:', sourceNode?.id, 'Target:', targetNode?.id);
+        return;
+      }
 
       // Extract connection metadata
       const sourceTable = sourceNode.getMetadata('tableName') || 'Unknown';
@@ -146,22 +169,23 @@ export class ErdDesignerComponent implements OnInit {
       };
 
       this.connections.push(connectionInfo);
-      console.log('🔗 Connection added:', connectionInfo);
+      console.log('✅ Connection tracked:', connectionInfo);
 
       // Trigger Angular change detection
       this.cdr.detectChanges();
     });
 
     // Listen for link removed events
-    eventBus.on('link:removed', (event: any) => {
-      const link = event.link;
+    diagram.on('link:removed', (link: any) => {
+      console.log('🔌 Link removed event received:', link);
+
       if (!link) return;
 
       // Remove connection from tracking
       const index = this.connections.findIndex(c => c.linkId === link.id);
       if (index !== -1) {
         const removed = this.connections.splice(index, 1)[0];
-        console.log('🔌 Connection removed:', removed);
+        console.log('✅ Connection removed from tracking:', removed);
 
         // Trigger Angular change detection
         this.cdr.detectChanges();
@@ -171,11 +195,58 @@ export class ErdDesignerComponent implements OnInit {
     console.log('✅ Connection tracking enabled');
   }
 
+  /**
+   * Set up event listeners for node selection tracking
+   */
+  private setupSelectionTracking(): void {
+    const diagram = this.engine.getDiagram();
+    if (!diagram) {
+      console.warn('⚠️ Cannot setup selection tracking - diagram not created yet');
+      return;
+    }
+
+    // Listen for node selection events
+    diagram.on('node:selected', (node: NodeModel) => {
+      console.log('[FieldSelectDebug] Node selected event:', node.id, node.type);
+      this.selectedNode = node;
+      this.showPropertyPanel = true;
+      this.cdr.detectChanges();
+    });
+
+    // Listen for selection cleared events
+    diagram.on('selection:changed', (selection: any) => {
+      console.log('[FieldSelectDebug] Selection changed:', selection);
+      const selectedNodes = diagram.getSelectedNodes();
+      if (selectedNodes.length === 0) {
+        this.selectedNode = null;
+        this.showPropertyPanel = false;
+      } else if (selectedNodes.length === 1) {
+        this.selectedNode = selectedNodes[0];
+        this.showPropertyPanel = true;
+        console.log('[FieldSelectDebug] Selected node state:', {
+          id: this.selectedNode.id,
+          type: this.selectedNode.type,
+          selected: this.selectedNode.state.selected,
+          data: this.selectedNode.data
+        });
+      }
+      this.cdr.detectChanges();
+    });
+
+    console.log('✅ Selection tracking enabled');
+  }
+
   private async createSampleERD(): Promise<void> {
     const diagram = this.engine.createDiagram('ERD Diagram - Option Comparison');
 
     // Initialize node factory
     this.nodeFactory = new NodeFactory(this.templateRegistry, diagram);
+
+    // Set up connection tracking now that diagram exists
+    this.setupConnectionTracking();
+
+    // Set up selection tracking
+    this.setupSelectionTracking();
 
     // ===== OPTION A EXAMPLES (Top Row) =====
     // OPTION A Example 1: Users table
@@ -274,7 +345,7 @@ export class ErdDesignerComponent implements OnInit {
     this.updateViewportFromDiagram();
 
     // COMPREHENSIVE DIAGRAM STRUCTURE LOGGING
-    this.logDiagramStructure();
+    // this.logDiagramStructure(); // Commented out - too verbose
   }
 
   /**
@@ -511,6 +582,13 @@ export class ErdDesignerComponent implements OnInit {
       // Store column data in metadata for later retrieval
       fieldNode.setMetadata('columnData', column);
       fieldNode.setMetadata('tableName', table.name);
+
+      // Set behavior: Fields should be selectable but NOT draggable (parent drags instead)
+      fieldNode.behavior = {
+        ...fieldNode.behavior,
+        selectable: true,
+        draggable: false,
+      };
 
       // NOTE: NodeFactory already added the node to the diagram
       // We don't need to call diagram.addNode(fieldNode) here

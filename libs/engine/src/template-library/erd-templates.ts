@@ -716,6 +716,8 @@ export const ERDTableRepeater: NodeTemplate = {
               display: flex;
               align-items: center;
               gap: 6px;
+              cursor: move;
+              user-select: none;
             ">
               <span>🔑</span>
               <span>{{data.tableName}}</span>
@@ -765,6 +767,8 @@ export const ERDTableRepeater: NodeTemplate = {
               background: #ffffff;
               border-bottom: 1px solid #e5e7eb;
               height: 24px;
+              cursor: pointer;
+              transition: background-color 0.2s;
             ">
               <span class="field-icon" style="width: 14px; text-align: center; font-size: 11px;">
                 {{data.icon}}
@@ -787,7 +791,7 @@ export const ERDTableRepeater: NodeTemplate = {
 
         behavior: {
           draggable: false,
-          selectable: false,
+          selectable: true,
           connectable: true,
         },
 
