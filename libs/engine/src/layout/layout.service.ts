@@ -126,6 +126,10 @@ export class LayoutService {
       this.applyPositions(diagram, result.nodePositions);
     }
 
+    // CRITICAL: Regenerate all link paths after nodes have been repositioned
+    // This ensures links connect properly to nodes at their new positions
+    this.regenerateLinkPaths(diagram);
+
     // Fit viewport if requested and canvas dimensions provided
     if (config.fit && config.canvasDimensions && diagram.zoomToFit) {
       const padding = config.options?.padding || 50;
@@ -218,6 +222,49 @@ export class LayoutService {
       };
 
       requestAnimationFrame(animate);
+    });
+  }
+
+  /**
+   * Regenerate paths for all links in the diagram
+   *
+   * This is called after layout to ensure links connect properly to nodes
+   * at their new positions. Without this, links appear disconnected.
+   *
+   * @param diagram - Diagram containing the links to update
+   */
+  private regenerateLinkPaths(diagram: DiagramModel): void {
+    const links = Array.from(diagram.getLinks().values());
+
+    links.forEach((link) => {
+      // Get source and target nodes
+      const sourceNode = link.sourceNodeId ? diagram.getNode(link.sourceNodeId) : null;
+      const targetNode = link.targetNodeId ? diagram.getNode(link.targetNodeId) : null;
+
+      if (!sourceNode || !targetNode) {
+        return; // Skip links without valid nodes
+      }
+
+      // Get source and target ports
+      const sourcePort = link.sourcePortId ? sourceNode.getPort(link.sourcePortId) : null;
+      const targetPort = link.targetPortId ? targetNode.getPort(link.targetPortId) : null;
+
+      if (!sourcePort || !targetPort) {
+        return; // Skip links without valid ports
+      }
+
+      // Calculate absolute positions of ports
+      const sourceBounds = sourceNode.getBoundingBox();
+      const targetBounds = targetNode.getBoundingBox();
+      const sourcePoint = sourcePort.getAbsolutePosition(sourceBounds);
+      const targetPoint = targetPort.getAbsolutePosition(targetBounds);
+
+      // Get port directions
+      const sourceDirection = sourcePort.alignment?.side;
+      const targetDirection = targetPort.alignment?.side;
+
+      // Regenerate the link path
+      link.generatePath(sourcePoint, targetPoint, sourceDirection, targetDirection);
     });
   }
 }

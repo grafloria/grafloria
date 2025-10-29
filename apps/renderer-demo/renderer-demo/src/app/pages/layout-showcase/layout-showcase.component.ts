@@ -242,7 +242,7 @@ export class LayoutShowcaseComponent implements OnInit, OnDestroy {
     // CEO
     const ceo = new NodeModel({
       type: 'default',
-      position: { x: 0, y: 0 },
+      position: { x: 100, y: 100 },
       size: { width: 180, height: 80 }
     });
     ceo.setData('label', 'CEO');
@@ -253,7 +253,7 @@ export class LayoutShowcaseComponent implements OnInit, OnDestroy {
     // C-Level
     const cto = new NodeModel({
       type: 'default',
-      position: { x: 0, y: 0 },
+      position: { x: 300, y: 100 },
       size: { width: 180, height: 80 }
     });
     cto.setData('label', 'CTO');
@@ -263,7 +263,7 @@ export class LayoutShowcaseComponent implements OnInit, OnDestroy {
 
     const cfo = new NodeModel({
       type: 'default',
-      position: { x: 0, y: 0 },
+      position: { x: 500, y: 100 },
       size: { width: 180, height: 80 }
     });
     cfo.setData('label', 'CFO');
@@ -273,7 +273,7 @@ export class LayoutShowcaseComponent implements OnInit, OnDestroy {
 
     const cmo = new NodeModel({
       type: 'default',
-      position: { x: 0, y: 0 },
+      position: { x: 100, y: 300 },
       size: { width: 180, height: 80 }
     });
     cmo.setData('label', 'CMO');
@@ -284,7 +284,7 @@ export class LayoutShowcaseComponent implements OnInit, OnDestroy {
     // Engineering Team
     const engMgr = new NodeModel({
       type: 'default',
-      position: { x: 0, y: 0 },
+      position: { x: 300, y: 300 },
       size: { width: 160, height: 70 }
     });
     engMgr.setData('label', 'Engineering Manager');
@@ -293,7 +293,7 @@ export class LayoutShowcaseComponent implements OnInit, OnDestroy {
 
     const devLead = new NodeModel({
       type: 'default',
-      position: { x: 0, y: 0 },
+      position: { x: 500, y: 300 },
       size: { width: 160, height: 70 }
     });
     devLead.setData('label', 'Dev Lead');
@@ -302,7 +302,7 @@ export class LayoutShowcaseComponent implements OnInit, OnDestroy {
 
     const qaLead = new NodeModel({
       type: 'default',
-      position: { x: 0, y: 0 },
+      position: { x: 100, y: 500 },
       size: { width: 160, height: 70 }
     });
     qaLead.setData('label', 'QA Lead');
@@ -312,7 +312,7 @@ export class LayoutShowcaseComponent implements OnInit, OnDestroy {
     // Finance Team
     const finController = new NodeModel({
       type: 'default',
-      position: { x: 0, y: 0 },
+      position: { x: 300, y: 500 },
       size: { width: 160, height: 70 }
     });
     finController.setData('label', 'Controller');
@@ -322,7 +322,7 @@ export class LayoutShowcaseComponent implements OnInit, OnDestroy {
     // Marketing Team
     const mktMgr = new NodeModel({
       type: 'default',
-      position: { x: 0, y: 0 },
+      position: { x: 500, y: 500 },
       size: { width: 160, height: 70 }
     });
     mktMgr.setData('label', 'Marketing Manager');
@@ -349,7 +349,7 @@ export class LayoutShowcaseComponent implements OnInit, OnDestroy {
     // Start
     const start = new NodeModel({
       type: 'default',
-      position: { x: 0, y: 0 },
+      position: { x: 100, y: 100 },
       size: { width: 120, height: 60 }
     });
     start.setData('label', 'Start');
@@ -359,7 +359,7 @@ export class LayoutShowcaseComponent implements OnInit, OnDestroy {
     // Receive Order
     const receiveOrder = new NodeModel({
       type: 'default',
-      position: { x: 0, y: 0 },
+      position: { x: 300, y: 100 },
       size: { width: 150, height: 70 }
     });
     receiveOrder.setData('label', 'Receive Order');
@@ -369,7 +369,7 @@ export class LayoutShowcaseComponent implements OnInit, OnDestroy {
     // Check Inventory
     const checkInventory = new NodeModel({
       type: 'default',
-      position: { x: 0, y: 0 },
+      position: { x: 500, y: 100 },
       size: { width: 160, height: 70 }
     });
     checkInventory.setData('label', 'Check Inventory');
@@ -379,7 +379,7 @@ export class LayoutShowcaseComponent implements OnInit, OnDestroy {
     // Decision: In Stock?
     const inStockDecision = new NodeModel({
       type: 'default',
-      position: { x: 0, y: 0 },
+      position: { x: 100, y: 300 },
       size: { width: 140, height: 80 }
     });
     inStockDecision.setData('label', 'In Stock?');
@@ -389,7 +389,7 @@ export class LayoutShowcaseComponent implements OnInit, OnDestroy {
     // Process Payment
     const processPayment = new NodeModel({
       type: 'default',
-      position: { x: 0, y: 0 },
+      position: { x: 300, y: 300 },
       size: { width: 150, height: 70 }
     });
     processPayment.setData('label', 'Process Payment');
@@ -399,7 +399,7 @@ export class LayoutShowcaseComponent implements OnInit, OnDestroy {
     // Ship Order
     const shipOrder = new NodeModel({
       type: 'default',
-      position: { x: 0, y: 0 },
+      position: { x: 500, y: 300 },
       size: { width: 150, height: 70 }
     });
     shipOrder.setData('label', 'Ship Order');
@@ -409,7 +409,7 @@ export class LayoutShowcaseComponent implements OnInit, OnDestroy {
     // Backorder
     const backorder = new NodeModel({
       type: 'default',
-      position: { x: 0, y: 0 },
+      position: { x: 100, y: 500 },
       size: { width: 150, height: 70 }
     });
     backorder.setData('label', 'Create Backorder');
@@ -419,7 +419,7 @@ export class LayoutShowcaseComponent implements OnInit, OnDestroy {
     // Notify Customer
     const notifyCustomer = new NodeModel({
       type: 'default',
-      position: { x: 0, y: 0 },
+      position: { x: 300, y: 500 },
       size: { width: 150, height: 70 }
     });
     notifyCustomer.setData('label', 'Notify Customer');
@@ -429,7 +429,7 @@ export class LayoutShowcaseComponent implements OnInit, OnDestroy {
     // End
     const end = new NodeModel({
       type: 'default',
-      position: { x: 0, y: 0 },
+      position: { x: 500, y: 500 },
       size: { width: 120, height: 60 }
     });
     end.setData('label', 'End');
@@ -455,7 +455,7 @@ export class LayoutShowcaseComponent implements OnInit, OnDestroy {
     // Core Network
     const router1 = new NodeModel({
       type: 'default',
-      position: { x: 0, y: 0 },
+      position: { x: 100, y: 100 },
       size: { width: 140, height: 70 }
     });
     router1.setData('label', 'Core Router 1');
@@ -464,7 +464,7 @@ export class LayoutShowcaseComponent implements OnInit, OnDestroy {
 
     const router2 = new NodeModel({
       type: 'default',
-      position: { x: 0, y: 0 },
+      position: { x: 300, y: 100 },
       size: { width: 140, height: 70 }
     });
     router2.setData('label', 'Core Router 2');
@@ -474,7 +474,7 @@ export class LayoutShowcaseComponent implements OnInit, OnDestroy {
     // Switches
     const switch1 = new NodeModel({
       type: 'default',
-      position: { x: 0, y: 0 },
+      position: { x: 500, y: 100 },
       size: { width: 120, height: 60 }
     });
     switch1.setData('label', 'Switch A');
@@ -483,7 +483,7 @@ export class LayoutShowcaseComponent implements OnInit, OnDestroy {
 
     const switch2 = new NodeModel({
       type: 'default',
-      position: { x: 0, y: 0 },
+      position: { x: 100, y: 300 },
       size: { width: 120, height: 60 }
     });
     switch2.setData('label', 'Switch B');
@@ -492,7 +492,7 @@ export class LayoutShowcaseComponent implements OnInit, OnDestroy {
 
     const switch3 = new NodeModel({
       type: 'default',
-      position: { x: 0, y: 0 },
+      position: { x: 300, y: 300 },
       size: { width: 120, height: 60 }
     });
     switch3.setData('label', 'Switch C');
@@ -502,7 +502,7 @@ export class LayoutShowcaseComponent implements OnInit, OnDestroy {
     // Servers
     const webServer = new NodeModel({
       type: 'default',
-      position: { x: 0, y: 0 },
+      position: { x: 500, y: 300 },
       size: { width: 130, height: 65 }
     });
     webServer.setData('label', 'Web Server');
@@ -511,7 +511,7 @@ export class LayoutShowcaseComponent implements OnInit, OnDestroy {
 
     const dbServer = new NodeModel({
       type: 'default',
-      position: { x: 0, y: 0 },
+      position: { x: 100, y: 500 },
       size: { width: 130, height: 65 }
     });
     dbServer.setData('label', 'DB Server');
@@ -520,7 +520,7 @@ export class LayoutShowcaseComponent implements OnInit, OnDestroy {
 
     const appServer = new NodeModel({
       type: 'default',
-      position: { x: 0, y: 0 },
+      position: { x: 300, y: 500 },
       size: { width: 130, height: 65 }
     });
     appServer.setData('label', 'App Server');
@@ -529,7 +529,7 @@ export class LayoutShowcaseComponent implements OnInit, OnDestroy {
 
     const cacheServer = new NodeModel({
       type: 'default',
-      position: { x: 0, y: 0 },
+      position: { x: 500, y: 500 },
       size: { width: 130, height: 65 }
     });
     cacheServer.setData('label', 'Cache Server');
@@ -539,7 +539,7 @@ export class LayoutShowcaseComponent implements OnInit, OnDestroy {
     // Firewall
     const firewall = new NodeModel({
       type: 'default',
-      position: { x: 0, y: 0 },
+      position: { x: 100, y: 700 },
       size: { width: 120, height: 60 }
     });
     firewall.setData('label', 'Firewall');
@@ -570,7 +570,7 @@ export class LayoutShowcaseComponent implements OnInit, OnDestroy {
     // Root
     const root = new NodeModel({
       type: 'default',
-      position: { x: 0, y: 0 },
+      position: { x: 100, y: 100 },
       size: { width: 160, height: 70 }
     });
     root.setData('label', 'Budget?');
@@ -580,7 +580,7 @@ export class LayoutShowcaseComponent implements OnInit, OnDestroy {
     // Level 1
     const budget1 = new NodeModel({
       type: 'default',
-      position: { x: 0, y: 0 },
+      position: { x: 300, y: 100 },
       size: { width: 140, height: 60 }
     });
     budget1.setData('label', '< $500');
@@ -589,7 +589,7 @@ export class LayoutShowcaseComponent implements OnInit, OnDestroy {
 
     const budget2 = new NodeModel({
       type: 'default',
-      position: { x: 0, y: 0 },
+      position: { x: 500, y: 100 },
       size: { width: 140, height: 60 }
     });
     budget2.setData('label', '$500-$1000');
@@ -598,7 +598,7 @@ export class LayoutShowcaseComponent implements OnInit, OnDestroy {
 
     const budget3 = new NodeModel({
       type: 'default',
-      position: { x: 0, y: 0 },
+      position: { x: 100, y: 300 },
       size: { width: 140, height: 60 }
     });
     budget3.setData('label', '> $1000');
@@ -608,7 +608,7 @@ export class LayoutShowcaseComponent implements OnInit, OnDestroy {
     // Level 2 - Use Case
     const casual1 = new NodeModel({
       type: 'default',
-      position: { x: 0, y: 0 },
+      position: { x: 300, y: 300 },
       size: { width: 130, height: 55 }
     });
     casual1.setData('label', 'Casual Use');
@@ -617,7 +617,7 @@ export class LayoutShowcaseComponent implements OnInit, OnDestroy {
 
     const gaming1 = new NodeModel({
       type: 'default',
-      position: { x: 0, y: 0 },
+      position: { x: 500, y: 300 },
       size: { width: 130, height: 55 }
     });
     gaming1.setData('label', 'Light Gaming');
@@ -626,7 +626,7 @@ export class LayoutShowcaseComponent implements OnInit, OnDestroy {
 
     const gaming2 = new NodeModel({
       type: 'default',
-      position: { x: 0, y: 0 },
+      position: { x: 100, y: 500 },
       size: { width: 130, height: 55 }
     });
     gaming2.setData('label', 'Gaming');
@@ -635,7 +635,7 @@ export class LayoutShowcaseComponent implements OnInit, OnDestroy {
 
     const professional = new NodeModel({
       type: 'default',
-      position: { x: 0, y: 0 },
+      position: { x: 300, y: 500 },
       size: { width: 130, height: 55 }
     });
     professional.setData('label', 'Professional');
@@ -644,7 +644,7 @@ export class LayoutShowcaseComponent implements OnInit, OnDestroy {
 
     const workstation = new NodeModel({
       type: 'default',
-      position: { x: 0, y: 0 },
+      position: { x: 500, y: 500 },
       size: { width: 130, height: 55 }
     });
     workstation.setData('label', 'Workstation');
@@ -653,7 +653,7 @@ export class LayoutShowcaseComponent implements OnInit, OnDestroy {
 
     const enthusiast = new NodeModel({
       type: 'default',
-      position: { x: 0, y: 0 },
+      position: { x: 100, y: 700 },
       size: { width: 130, height: 55 }
     });
     enthusiast.setData('label', 'Enthusiast');
@@ -682,7 +682,7 @@ export class LayoutShowcaseComponent implements OnInit, OnDestroy {
     // Core module
     const core = new NodeModel({
       type: 'default',
-      position: { x: 0, y: 0 },
+      position: { x: 100, y: 100 },
       size: { width: 120, height: 60 }
     });
     core.setData('label', 'Core');
@@ -692,7 +692,7 @@ export class LayoutShowcaseComponent implements OnInit, OnDestroy {
     // Modules
     const auth = new NodeModel({
       type: 'default',
-      position: { x: 0, y: 0 },
+      position: { x: 300, y: 100 },
       size: { width: 120, height: 60 }
     });
     auth.setData('label', 'Auth');
@@ -701,7 +701,7 @@ export class LayoutShowcaseComponent implements OnInit, OnDestroy {
 
     const api = new NodeModel({
       type: 'default',
-      position: { x: 0, y: 0 },
+      position: { x: 500, y: 100 },
       size: { width: 120, height: 60 }
     });
     api.setData('label', 'API');
@@ -710,7 +710,7 @@ export class LayoutShowcaseComponent implements OnInit, OnDestroy {
 
     const database = new NodeModel({
       type: 'default',
-      position: { x: 0, y: 0 },
+      position: { x: 100, y: 300 },
       size: { width: 120, height: 60 }
     });
     database.setData('label', 'Database');
@@ -719,7 +719,7 @@ export class LayoutShowcaseComponent implements OnInit, OnDestroy {
 
     const cache = new NodeModel({
       type: 'default',
-      position: { x: 0, y: 0 },
+      position: { x: 300, y: 300 },
       size: { width: 120, height: 60 }
     });
     cache.setData('label', 'Cache');
@@ -728,7 +728,7 @@ export class LayoutShowcaseComponent implements OnInit, OnDestroy {
 
     const logger = new NodeModel({
       type: 'default',
-      position: { x: 0, y: 0 },
+      position: { x: 500, y: 300 },
       size: { width: 120, height: 60 }
     });
     logger.setData('label', 'Logger');
@@ -737,7 +737,7 @@ export class LayoutShowcaseComponent implements OnInit, OnDestroy {
 
     const config = new NodeModel({
       type: 'default',
-      position: { x: 0, y: 0 },
+      position: { x: 100, y: 500 },
       size: { width: 120, height: 60 }
     });
     config.setData('label', 'Config');
@@ -764,7 +764,7 @@ export class LayoutShowcaseComponent implements OnInit, OnDestroy {
     // Frontend
     const webApp = new NodeModel({
       type: 'default',
-      position: { x: 0, y: 0 },
+      position: { x: 100, y: 100 },
       size: { width: 140, height: 70 }
     });
     webApp.setData('label', 'Web App');
@@ -773,7 +773,7 @@ export class LayoutShowcaseComponent implements OnInit, OnDestroy {
 
     const mobileApp = new NodeModel({
       type: 'default',
-      position: { x: 0, y: 0 },
+      position: { x: 300, y: 100 },
       size: { width: 140, height: 70 }
     });
     mobileApp.setData('label', 'Mobile App');
@@ -783,7 +783,7 @@ export class LayoutShowcaseComponent implements OnInit, OnDestroy {
     // API Gateway
     const apiGateway = new NodeModel({
       type: 'default',
-      position: { x: 0, y: 0 },
+      position: { x: 500, y: 100 },
       size: { width: 150, height: 75 }
     });
     apiGateway.setData('label', 'API Gateway');
@@ -793,7 +793,7 @@ export class LayoutShowcaseComponent implements OnInit, OnDestroy {
     // Microservices
     const authService = new NodeModel({
       type: 'default',
-      position: { x: 0, y: 0 },
+      position: { x: 100, y: 300 },
       size: { width: 140, height: 70 }
     });
     authService.setData('label', 'Auth Service');
@@ -802,7 +802,7 @@ export class LayoutShowcaseComponent implements OnInit, OnDestroy {
 
     const userService = new NodeModel({
       type: 'default',
-      position: { x: 0, y: 0 },
+      position: { x: 300, y: 300 },
       size: { width: 140, height: 70 }
     });
     userService.setData('label', 'User Service');
@@ -811,7 +811,7 @@ export class LayoutShowcaseComponent implements OnInit, OnDestroy {
 
     const orderService = new NodeModel({
       type: 'default',
-      position: { x: 0, y: 0 },
+      position: { x: 500, y: 300 },
       size: { width: 140, height: 70 }
     });
     orderService.setData('label', 'Order Service');
@@ -820,7 +820,7 @@ export class LayoutShowcaseComponent implements OnInit, OnDestroy {
 
     const paymentService = new NodeModel({
       type: 'default',
-      position: { x: 0, y: 0 },
+      position: { x: 100, y: 500 },
       size: { width: 140, height: 70 }
     });
     paymentService.setData('label', 'Payment Service');
@@ -830,7 +830,7 @@ export class LayoutShowcaseComponent implements OnInit, OnDestroy {
     // Databases
     const authDB = new NodeModel({
       type: 'default',
-      position: { x: 0, y: 0 },
+      position: { x: 300, y: 500 },
       size: { width: 120, height: 60 }
     });
     authDB.setData('label', 'Auth DB');
@@ -839,7 +839,7 @@ export class LayoutShowcaseComponent implements OnInit, OnDestroy {
 
     const userDB = new NodeModel({
       type: 'default',
-      position: { x: 0, y: 0 },
+      position: { x: 500, y: 500 },
       size: { width: 120, height: 60 }
     });
     userDB.setData('label', 'User DB');
@@ -848,7 +848,7 @@ export class LayoutShowcaseComponent implements OnInit, OnDestroy {
 
     const orderDB = new NodeModel({
       type: 'default',
-      position: { x: 0, y: 0 },
+      position: { x: 100, y: 700 },
       size: { width: 120, height: 60 }
     });
     orderDB.setData('label', 'Order DB');
@@ -858,7 +858,7 @@ export class LayoutShowcaseComponent implements OnInit, OnDestroy {
     // Message Queue
     const messageQueue = new NodeModel({
       type: 'default',
-      position: { x: 0, y: 0 },
+      position: { x: 300, y: 700 },
       size: { width: 140, height: 70 }
     });
     messageQueue.setData('label', 'Message Queue');
@@ -900,7 +900,7 @@ export class LayoutShowcaseComponent implements OnInit, OnDestroy {
     // Navigation Menu (Fixed X position)
     const nav = new NodeModel({
       type: 'default',
-      position: { x: 0, y: 0 },
+      position: { x: 300, y: 100 },
       size: { width: 160, height: 300 }
     });
     nav.setData('label', 'Navigation');
@@ -911,7 +911,7 @@ export class LayoutShowcaseComponent implements OnInit, OnDestroy {
     // Main Content Area (Boundary constrained)
     const mainContent = new NodeModel({
       type: 'default',
-      position: { x: 0, y: 0 },
+      position: { x: 500, y: 100 },
       size: { width: 300, height: 200 }
     });
     mainContent.setData('label', 'Main Content');
@@ -922,7 +922,7 @@ export class LayoutShowcaseComponent implements OnInit, OnDestroy {
     // Analytics Widget 1
     const analytics1 = new NodeModel({
       type: 'default',
-      position: { x: 0, y: 0 },
+      position: { x: 100, y: 300 },
       size: { width: 200, height: 120 }
     });
     analytics1.setData('label', 'Analytics Widget');
@@ -932,7 +932,7 @@ export class LayoutShowcaseComponent implements OnInit, OnDestroy {
     // Analytics Widget 2
     const analytics2 = new NodeModel({
       type: 'default',
-      position: { x: 0, y: 0 },
+      position: { x: 300, y: 300 },
       size: { width: 200, height: 120 }
     });
     analytics2.setData('label', 'Chart Widget');
@@ -942,7 +942,7 @@ export class LayoutShowcaseComponent implements OnInit, OnDestroy {
     // Stats Widget (Fixed Y position)
     const stats = new NodeModel({
       type: 'default',
-      position: { x: 0, y: 0 },
+      position: { x: 500, y: 300 },
       size: { width: 180, height: 100 }
     });
     stats.setData('label', 'Stats Widget');
@@ -953,7 +953,7 @@ export class LayoutShowcaseComponent implements OnInit, OnDestroy {
     // User Profile
     const userProfile = new NodeModel({
       type: 'default',
-      position: { x: 0, y: 0 },
+      position: { x: 100, y: 500 },
       size: { width: 150, height: 80 }
     });
     userProfile.setData('label', 'User Profile');
@@ -963,7 +963,7 @@ export class LayoutShowcaseComponent implements OnInit, OnDestroy {
     // Notifications
     const notifications = new NodeModel({
       type: 'default',
-      position: { x: 0, y: 0 },
+      position: { x: 300, y: 500 },
       size: { width: 150, height: 80 }
     });
     notifications.setData('label', 'Notifications');
@@ -973,7 +973,7 @@ export class LayoutShowcaseComponent implements OnInit, OnDestroy {
     // Settings
     const settings = new NodeModel({
       type: 'default',
-      position: { x: 0, y: 0 },
+      position: { x: 500, y: 500 },
       size: { width: 150, height: 80 }
     });
     settings.setData('label', 'Settings');
