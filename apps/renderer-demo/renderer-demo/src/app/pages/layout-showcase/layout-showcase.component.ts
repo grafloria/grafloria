@@ -545,7 +545,7 @@ export class LayoutShowcaseComponent implements OnInit, OnDestroy {
   }
 
   private createCircularDeps(engine: DiagramEngine): void {
-    const model = engine.getModel();
+    const model = engine.getDiagram();
 
     // Core module
     const core = model.addNode({
@@ -605,7 +605,7 @@ export class LayoutShowcaseComponent implements OnInit, OnDestroy {
   }
 
   private createSystemArchitecture(engine: DiagramEngine): void {
-    const model = engine.getModel();
+    const model = engine.getDiagram();
 
     // Frontend
     const webApp = model.addNode({
@@ -696,7 +696,7 @@ export class LayoutShowcaseComponent implements OnInit, OnDestroy {
   }
 
   private createPinnedLayout(engine: DiagramEngine): void {
-    const model = engine.getModel();
+    const model = engine.getDiagram();
 
     // Dashboard Header (Pinned to top)
     const header = model.addNode({

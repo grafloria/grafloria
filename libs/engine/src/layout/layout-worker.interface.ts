@@ -187,7 +187,7 @@ export class LayoutWorkerPool {
     resolve: (result: LayoutResult) => void;
     reject: (error: Error) => void;
     onProgress?: ProgressCallback;
-    timeout?: NodeJS.Timeout;
+    timeout?: ReturnType<typeof setTimeout>;
   }>();
 
   private maxWorkers: number;
