@@ -1013,12 +1013,23 @@ export class SVGRenderer implements IRenderer {
     const shapeConfig = node.getMetadata('shape') || { type: 'rect' };
     const { width, height } = node.size;
 
+    // CRITICAL: Remove strokeWidth from styles if border animation is active
+    // Inline strokeWidth overrides CSS animation strokeWidth
+    const hasActiveBorderAnimation = node.style?.animatedBorder &&
+                                     node.style?.borderAnimationType !== 'none';
+
+    if (hasActiveBorderAnimation && styles.strokeWidth !== undefined) {
+      console.log(`[SVGRenderer] Removing inline strokeWidth for ${node.id} due to active border animation`);
+      const { strokeWidth, ...stylesWithoutStrokeWidth } = styles;
+      styles = stylesWithoutStrokeWidth;
+    }
+
     // Apply shape-specific fill/stroke if provided
     const shapeStyles = {
       ...styles,
       ...(shapeConfig.fill ? { fill: shapeConfig.fill } : {}),
       ...(shapeConfig.stroke ? { stroke: shapeConfig.stroke } : {}),
-      ...(shapeConfig.strokeWidth !== undefined ? { strokeWidth: shapeConfig.strokeWidth } : {}),
+      ...(shapeConfig.strokeWidth !== undefined && !hasActiveBorderAnimation ? { strokeWidth: shapeConfig.strokeWidth } : {}),
       ...(shapeConfig.opacity !== undefined ? { opacity: shapeConfig.opacity } : {}),
     };
 
@@ -1026,7 +1037,10 @@ export class SVGRenderer implements IRenderer {
       baseStroke: styles.stroke,
       shapeConfigStroke: shapeConfig.stroke,
       finalStroke: shapeStyles.stroke,
-      strokeWidth: shapeStyles.strokeWidth
+      strokeWidth: shapeStyles.strokeWidth,
+      hasActiveBorderAnimation,
+      animatedBorder: node.style?.animatedBorder,
+      borderAnimationType: node.style?.borderAnimationType
     });
 
     // Enhanced hover effect
@@ -1857,11 +1871,18 @@ export class SVGRenderer implements IRenderer {
       finalClassName
     });
 
+    // CRITICAL: Don't apply strokeWidth as inline style if border animation is active
+    // Inline styles override CSS animations, breaking animated stroke-width
+    const hasActiveBorderAnimation = node.style?.animatedBorder &&
+                                     node.style?.borderAnimationType !== 'none';
+
     return {
       className: finalClassName,
       // Entity-specific overrides (if any)
       ...(node.style.fill && { fill: node.style.fill }),
       ...(node.style.stroke && { stroke: node.style.stroke }),
+      // Only apply strokeWidth if no border animation is active
+      ...(node.style.strokeWidth !== undefined && !hasActiveBorderAnimation && { strokeWidth: node.style.strokeWidth }),
     };
   }
 
