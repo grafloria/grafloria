@@ -36,6 +36,9 @@ export { DSLGenerator, type GeneratorOptions } from './generator/DSLGenerator';
 export { DSLFormatter, type FormatterOptions } from './generator/DSLFormatter';
 export { DiagramAnalyzer, type DiagramAnalysis } from './generator/DiagramAnalyzer';
 
+// Sync components (Phase 2)
+export * from './sync';
+
 // Type definitions
 export {
   type Token,
