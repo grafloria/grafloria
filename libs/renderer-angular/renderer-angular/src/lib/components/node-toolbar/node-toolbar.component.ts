@@ -72,6 +72,8 @@ export interface ToolbarBehaviorConfig {
   followNode?: boolean;
   enableKeyboardNav?: boolean;
   hideOnMultiSelect?: boolean; // Auto-hide when multiple nodes are selected
+  showAs?: 'toolbar' | 'contextMenu' | 'both'; // Phase 3: Display mode
+  contextMenuTrigger?: 'rightClick' | 'longPress' | 'both'; // Phase 3: Trigger method
 }
 
 /**
@@ -463,7 +465,9 @@ export class NodeToolbarComponent implements OnInit, OnChanges, OnDestroy {
         closeOnClickOutside: false,
         followNode: true,
         enableKeyboardNav: true,
-        hideOnMultiSelect: true  // Match ReactFlow behavior
+        hideOnMultiSelect: true,  // Phase 1: ReactFlow behavior
+        showAs: 'toolbar',  // Phase 3: Default display mode
+        contextMenuTrigger: 'rightClick'  // Phase 3: Default trigger
       },
       ariaLabel: 'Node actions',
       positioningStrategy: 'auto'  // Phase 2: Smart positioning with boundary detection
