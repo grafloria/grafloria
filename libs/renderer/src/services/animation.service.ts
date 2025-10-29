@@ -51,6 +51,9 @@ export interface AnimationConfig {
 
   /** Battery saving mode (disables expensive animations) */
   batterySavingMode: boolean;
+
+  /** Lazy load CSS (only inject when first animation is used) */
+  lazyLoadCSS: boolean;
 }
 
 /**
@@ -72,12 +75,17 @@ export class AnimationService {
     animationSpeed: 1.0,
     autoDetectMotionPreference: true,
     performanceMode: false,
-    batterySavingMode: false
+    batterySavingMode: false,
+    lazyLoadCSS: false
   };
 
   private motionMediaQuery: MediaQueryList | null = null;
   private batteryManager: any = null;  // Battery API (experimental)
   private listeners: Set<(config: AnimationConfig) => void> = new Set();
+
+  // Phase 1.1: Lazy CSS loading
+  private cssInjected: boolean = false;
+  private styleElement: HTMLStyleElement | null = null;
 
   constructor(config?: Partial<AnimationConfig>) {
     if (config) {
@@ -213,6 +221,11 @@ export class AnimationService {
       return '';
     }
 
+    // Phase 1.1: Lazy load CSS on first animation request
+    if (this.config.lazyLoadCSS && !this.cssInjected) {
+      this.injectCSS();
+    }
+
     const animation = link.style?.animation;
     if (!animation || animation.type === 'none') {
       return '';
@@ -253,6 +266,11 @@ export class AnimationService {
   getNodeAnimationClass(node: NodeModel, useSVGVariant: boolean = false): string {
     if (this.shouldDisableAnimations()) {
       return '';
+    }
+
+    // Phase 1.1: Lazy load CSS on first animation request
+    if (this.config.lazyLoadCSS && !this.cssInjected) {
+      this.injectCSS();
     }
 
     const classes: string[] = [];
@@ -438,7 +456,8 @@ export class AnimationService {
       animationSpeed: 1.0,
       autoDetectMotionPreference: true,
       performanceMode: false,
-      batterySavingMode: false
+      batterySavingMode: false,
+      lazyLoadCSS: false
     };
 
     this.updateAllAnimations();
@@ -447,9 +466,325 @@ export class AnimationService {
   }
 
   /**
-   * Cleanup: Remove event listeners
+   * Phase 1.1: Inject animation CSS into the document
+   * This is called automatically when lazyLoadCSS is enabled and first animation is used
+   */
+  injectCSS(): void {
+    if (typeof document === 'undefined' || this.cssInjected) {
+      return;
+    }
+
+    try {
+      // Create style element
+      this.styleElement = document.createElement('style');
+      this.styleElement.id = 'grafloria-animations';
+      this.styleElement.textContent = this.getAnimationCSS();
+
+      // Inject into head
+      document.head.appendChild(this.styleElement);
+      this.cssInjected = true;
+
+      console.debug('Animation CSS injected');
+    } catch (error) {
+      console.error('Failed to inject animation CSS:', error);
+    }
+  }
+
+  /**
+   * Phase 1.1: Remove injected animation CSS from the document
+   */
+  removeCSS(): void {
+    if (typeof document === 'undefined' || !this.cssInjected) {
+      return;
+    }
+
+    try {
+      if (this.styleElement && this.styleElement.parentNode) {
+        this.styleElement.parentNode.removeChild(this.styleElement);
+      }
+
+      this.styleElement = null;
+      this.cssInjected = false;
+
+      console.debug('Animation CSS removed');
+    } catch (error) {
+      console.error('Failed to remove animation CSS:', error);
+    }
+  }
+
+  /**
+   * Phase 1.1: Check if CSS has been injected
+   */
+  isCSSInjected(): boolean {
+    return this.cssInjected;
+  }
+
+  /**
+   * Phase 1.1: Get animation CSS content
+   * This returns the complete CSS for all animations
+   */
+  private getAnimationCSS(): string {
+    // Import CSS content from animations.css
+    // Note: In a real implementation, this would import the actual CSS file content
+    // For now, we'll return a minimal version. The full implementation would use
+    // a bundler to inline the CSS or fetch it dynamically.
+    return `
+/* Phase 1: Diagram Animations - Injected by AnimationService */
+
+/* ============================================================================
+   EDGE ANIMATIONS
+   ============================================================================ */
+
+/* Marching Ants Animation */
+@keyframes marching-ants {
+  to { stroke-dashoffset: -20; }
+}
+
+.link-animated-marching-ants {
+  stroke-dasharray: 5, 5;
+  animation: marching-ants 1s linear infinite;
+  will-change: stroke-dashoffset;
+}
+
+/* Flow Animation */
+@keyframes flow {
+  to { stroke-dashoffset: -30; }
+}
+
+.link-animated-flow {
+  stroke-dasharray: 10, 5;
+  animation: flow 2s linear infinite;
+  will-change: stroke-dashoffset;
+}
+
+/* Pulse Animation */
+@keyframes pulse-edge {
+  0%, 100% { opacity: 1; stroke-width: 2; }
+  50% { opacity: 0.6; stroke-width: 3; }
+}
+
+.link-animated-pulse {
+  animation: pulse-edge 2s ease-in-out infinite;
+  will-change: opacity, stroke-width;
+}
+
+/* Dash Flow Animation */
+@keyframes dash-flow {
+  to { stroke-dashoffset: -40; }
+}
+
+.link-animated-dash-flow {
+  stroke-dasharray: 8, 12;
+  animation: dash-flow 1.5s linear infinite;
+  will-change: stroke-dashoffset;
+}
+
+/* Speed Variants */
+.link-speed-slow { animation-duration: 3s !important; }
+.link-speed-fast { animation-duration: 0.5s !important; }
+
+/* Direction Variants */
+.link-direction-reverse { animation-direction: reverse; }
+
+/* ============================================================================
+   NODE BORDER ANIMATIONS
+   ============================================================================ */
+
+/* Gradient Border Animation */
+@keyframes gradient-rotate {
+  0% { transform: rotate(0deg); }
+  100% { transform: rotate(360deg); }
+}
+
+.node-border-gradient::before {
+  content: '';
+  position: absolute;
+  top: -2px; right: -2px; bottom: -2px; left: -2px;
+  background: linear-gradient(90deg, #667eea, #764ba2, #667eea);
+  background-size: 200% 100%;
+  border-radius: inherit;
+  z-index: -1;
+  animation: gradient-rotate 3s linear infinite;
+  will-change: transform;
+}
+
+/* Pulse Border Animation */
+@keyframes pulse-border {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(102, 126, 234, 0.7); }
+  50% { box-shadow: 0 0 0 10px rgba(102, 126, 234, 0); }
+}
+
+.node-border-pulse {
+  animation: pulse-border 2s ease-out infinite;
+  will-change: box-shadow;
+}
+
+/* Breathe Border Animation */
+@keyframes breathe {
+  0%, 100% { transform: scale(1); opacity: 1; }
+  50% { transform: scale(1.05); opacity: 0.8; }
+}
+
+.node-border-breathe {
+  animation: breathe 3s ease-in-out infinite;
+  will-change: transform, opacity;
+}
+
+/* Shimmer Border Animation */
+@keyframes shimmer {
+  0% { background-position: -200% center; }
+  100% { background-position: 200% center; }
+}
+
+.node-border-shimmer::after {
+  content: '';
+  position: absolute;
+  top: 0; right: 0; bottom: 0; left: 0;
+  background: linear-gradient(90deg,
+    transparent,
+    rgba(255, 255, 255, 0.3),
+    transparent
+  );
+  background-size: 200% 100%;
+  border-radius: inherit;
+  animation: shimmer 2s linear infinite;
+  will-change: background-position;
+}
+
+/* SVG Variants */
+.node-border-pulse-svg {
+  animation: pulse-border 2s ease-out infinite;
+  transform-origin: center center;
+  transform-box: fill-box;
+  will-change: transform;
+}
+
+.node-border-breathe-svg {
+  animation: breathe 3s ease-in-out infinite;
+  transform-origin: center center;
+  transform-box: fill-box;
+  will-change: transform, opacity;
+}
+
+.node-border-gradient-svg {
+  animation: gradient-rotate 3s linear infinite;
+  transform-origin: center center;
+  transform-box: fill-box;
+  will-change: transform;
+}
+
+/* ============================================================================
+   STATUS ANIMATIONS
+   ============================================================================ */
+
+/* Running Status */
+@keyframes running {
+  0%, 100% { opacity: 1; transform: scale(1); }
+  50% { opacity: 0.7; transform: scale(1.1); }
+}
+
+.node-status-running {
+  animation: running 1.5s ease-in-out infinite;
+  will-change: opacity, transform;
+}
+
+/* Error Status */
+@keyframes error-shake {
+  0%, 100% { transform: translateX(0); }
+  10%, 30%, 50%, 70%, 90% { transform: translateX(-2px); }
+  20%, 40%, 60%, 80% { transform: translateX(2px); }
+}
+
+.node-status-error {
+  animation: error-shake 0.5s ease-in-out;
+  will-change: transform;
+}
+
+/* Completed Status */
+@keyframes completed-fade {
+  0% { opacity: 0.5; transform: scale(0.95); }
+  100% { opacity: 1; transform: scale(1); }
+}
+
+.node-status-completed {
+  animation: completed-fade 0.3s ease-out;
+  will-change: opacity, transform;
+}
+
+/* Warning Status */
+@keyframes warning-blink {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.6; }
+}
+
+.node-status-warning {
+  animation: warning-blink 1.5s ease-in-out infinite;
+  will-change: opacity;
+}
+
+/* Pending Status */
+@keyframes pending-pulse {
+  0%, 100% { opacity: 0.5; }
+  50% { opacity: 1; }
+}
+
+.node-status-pending {
+  animation: pending-pulse 2s ease-in-out infinite;
+  will-change: opacity;
+}
+
+/* ============================================================================
+   GLOBAL CONTROLS
+   ============================================================================ */
+
+/* Paused animations */
+.animations-paused * {
+  animation-play-state: paused !important;
+}
+
+/* Reduced motion */
+@media (prefers-reduced-motion: reduce) {
+  .link-animated-marching-ants,
+  .link-animated-flow,
+  .link-animated-pulse,
+  .link-animated-dash-flow,
+  .node-border-gradient,
+  .node-border-pulse,
+  .node-border-breathe,
+  .node-border-shimmer,
+  .node-status-running,
+  .node-status-error,
+  .node-status-warning,
+  .node-status-pending {
+    animation: none !important;
+  }
+}
+
+/* Animations disabled */
+.animations-disabled * {
+  animation: none !important;
+}
+
+/* Performance mode */
+.performance-mode .link-animated-marching-ants,
+.performance-mode .link-animated-flow {
+  animation-duration: 2s !important;
+}
+
+/* Battery saving mode */
+.battery-saving * {
+  animation: none !important;
+}
+`;
+  }
+
+  /**
+   * Cleanup: Remove event listeners and injected CSS
    */
   destroy(): void {
+    // Phase 1.1: Remove injected CSS
+    this.removeCSS();
+
     // Remove motion preference listener
     if (this.motionMediaQuery) {
       // Modern browsers
