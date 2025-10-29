@@ -67,7 +67,7 @@ export class BPMNGenerator {
    */
   private generateNode(node: NodeModel): string {
     const id = this.sanitizeId(node.id);
-    const label = node.data.label || node.id;
+    const label = node.data['label'] || node.id;
     const brackets = this.getNodeBrackets(node.type);
 
     return `${id}${brackets.open}${label}${brackets.close}`;
@@ -102,7 +102,7 @@ export class BPMNGenerator {
     let flow = `${sourceId} --> `;
 
     // Add condition label if present
-    const label = link.data.label;
+    const label = link.data['label'];
     if (label) {
       flow += `|${label}| `;
     }

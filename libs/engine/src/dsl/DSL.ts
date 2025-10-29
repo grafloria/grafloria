@@ -482,7 +482,7 @@ export class DSL {
         if (link) {
           link.setMetadata('umlRelationship', rel.type);
           if (rel.label) {
-            link.data.label = rel.label;
+            link.data['label'] = rel.label;
           }
         }
       }

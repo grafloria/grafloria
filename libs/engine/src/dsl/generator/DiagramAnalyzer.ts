@@ -334,7 +334,7 @@ export class DiagramAnalyzer {
     const metadata = new Map();
 
     for (const link of links) {
-      const hasLabel = !!link.data.label;
+      const hasLabel = !!link.data['label'];
       const hasCustomStyle = this.hasCustomStyle(link.style);
 
       metadata.set(link.id, { hasLabel, hasCustomStyle });

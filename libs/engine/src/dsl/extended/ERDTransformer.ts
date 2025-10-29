@@ -77,7 +77,7 @@ export class ERDTransformer {
 
           // Set label
           if (relationship.label) {
-            link.data.label = relationship.label;
+            link.data['label'] = relationship.label;
           }
 
           // Store relationship type
@@ -104,9 +104,9 @@ export class ERDTransformer {
     });
 
     // Set entity data
-    node.data.name = entity.name;
-    node.data.label = entity.name;
-    node.data.fields = entity.fields.map(field => ({
+    node.data['name'] = entity.name;
+    node.data['label'] = entity.name;
+    node.data['fields'] = entity.fields.map(field => ({
       name: field.name,
       type: field.type,
       primaryKey: field.primaryKey || false,

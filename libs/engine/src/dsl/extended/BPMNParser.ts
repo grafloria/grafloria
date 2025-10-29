@@ -123,8 +123,8 @@ export class BPMNParser {
           nodes.set(node.id, node);
 
           // Add to current lane if in pool
-          if (currentLane) {
-            currentLane.nodes.push(node.id);
+          if (currentLane && currentLane !== null) {
+            (currentLane as BPMNLane).nodes.push(node.id);
           }
         }
       }

@@ -90,7 +90,7 @@ flowchart LR
     type: 'flowchart:process',
     position: { x: 550, y: 100 },
   });
-  settingsNode.data.label = 'Settings';
+  settingsNode.data['label'] = 'Settings';
   diagram.addNode(settingsNode);
 
   const dashboardNode = diagram.getNode('B');
@@ -154,7 +154,7 @@ flowchart TD
   // List nodes to show structure
   console.log('📊 Diagram structure:');
   for (const node of diagram.getNodes()) {
-    console.log(`   - ${node.id}: ${node.data.label}`);
+    console.log(`   - ${node.id}: ${node.data['label']}`);
   }
 }
 
@@ -270,7 +270,7 @@ flowchart TD
     type: 'flowchart:process',
     position: { x: 300, y: 400 },
   });
-  newNode.data.label = 'Task 4';
+  newNode.data['label'] = 'Task 4';
   diagram.addNode(newNode);
 
   const nodeC = diagram.getNode('C');

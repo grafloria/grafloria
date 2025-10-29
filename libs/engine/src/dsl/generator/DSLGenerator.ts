@@ -189,7 +189,7 @@ export class DSLGenerator {
    */
   private generateNodeDefinition(node: NodeModel, preserveIds: boolean): string | null {
     const nodeId = preserveIds ? this.sanitizeId(node.id) : this.generateShortId(node);
-    const label = node.data.label || node.id;
+    const label = node.data['label'] || node.id;
 
     // Get shape from metadata
     const shapeMetadata = this.analysis?.nodeMetadata.get(node.id);
@@ -224,7 +224,7 @@ export class DSLGenerator {
     const linkSyntax = this.getLinkSyntax(linkType);
 
     // Add label if present
-    const label = link.data.label;
+    const label = link.data['label'];
     if (label) {
       return `${sourceId} ${linkSyntax.split('>')[0]}>|${label}|${linkSyntax.split('>')[1] || ''} ${targetId}`;
     }
@@ -357,7 +357,7 @@ export class DSLGenerator {
    */
   private generateShortId(node: NodeModel): string {
     // Use first letter of label if available
-    const label = node.data.label || node.id;
+    const label = node.data['label'] || node.id;
     const firstLetter = label.charAt(0).toUpperCase();
 
     // Add counter if needed (implementation detail)

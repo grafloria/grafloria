@@ -109,7 +109,7 @@ export async function demoVisualEditing() {
     type: 'flowchart:process',
     position: { x: 300, y: 200 },
   });
-  newNode.data.label = 'Process';
+  newNode.data['label'] = 'Process';
 
   const diag = syncManager.getDiagram();
   if (diag) {
@@ -259,7 +259,7 @@ export async function demoPerformanceMetrics() {
         type: 'flowchart:process',
         position: { x: 100 * i, y: 100 },
       });
-      node.data.label = `Visual ${i}`;
+      node.data['label'] = `Visual ${i}`;
       diag.addNode(node);
       await wait(400);
     }

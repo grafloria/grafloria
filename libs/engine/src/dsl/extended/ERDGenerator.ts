@@ -68,11 +68,11 @@ export class ERDGenerator {
   private generateEntity(node: NodeModel, indent: string): string[] {
     const lines: string[] = [];
 
-    const name = node.data.name || node.data.label || node.id;
+    const name = node.data['name'] || node.data['label'] || node.id;
     lines.push(indent + name + ' {');
 
     // Generate fields
-    const fields = node.data.fields || [];
+    const fields = node.data['fields'] || [];
     for (const field of fields) {
       const fieldLine = this.generateField(field, indent + indent);
       lines.push(fieldLine);
@@ -123,8 +123,8 @@ export class ERDGenerator {
 
     if (!sourceNode || !targetNode) return null;
 
-    const sourceName = sourceNode.data.name || sourceNode.data.label || sourceNode.id;
-    const targetName = targetNode.data.name || targetNode.data.label || targetNode.id;
+    const sourceName = sourceNode.data['name'] || sourceNode.data['label'] || sourceNode.id;
+    const targetName = targetNode.data['name'] || targetNode.data['label'] || targetNode.id;
 
     // Determine cardinality from link metadata
     const cardinality = link.getMetadata('cardinality') || {
@@ -138,7 +138,7 @@ export class ERDGenerator {
     let line = `${sourceName} ${fromSymbol}--${toSymbol} ${targetName}`;
 
     // Add label if present
-    const label = link.data.label;
+    const label = link.data['label'];
     if (label) {
       line += ` : ${label}`;
     }

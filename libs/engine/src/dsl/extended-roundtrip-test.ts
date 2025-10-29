@@ -335,14 +335,14 @@ export function runAllExtendedTests(verbose: boolean = false): {
     const result = runTest(testCase);
     if (result.passed) {
       passed++;
-      byType.erd.passed++;
+      byType['erd'].passed++;
       console.log(`  ✅ ${testCase.name}`);
       if (verbose) {
         console.log(`     ${result.message}`);
       }
     } else {
       failed++;
-      byType.erd.failed++;
+      byType['erd'].failed++;
       console.log(`  ❌ ${testCase.name}`);
       console.log(`     ${result.message}`);
       if (verbose && result.generatedText) {
@@ -360,14 +360,14 @@ export function runAllExtendedTests(verbose: boolean = false): {
     const result = runTest(testCase);
     if (result.passed) {
       passed++;
-      byType.bpmn.passed++;
+      byType['bpmn'].passed++;
       console.log(`  ✅ ${testCase.name}`);
       if (verbose) {
         console.log(`     ${result.message}`);
       }
     } else {
       failed++;
-      byType.bpmn.failed++;
+      byType['bpmn'].failed++;
       console.log(`  ❌ ${testCase.name}`);
       console.log(`     ${result.message}`);
       if (verbose && result.generatedText) {
@@ -385,14 +385,14 @@ export function runAllExtendedTests(verbose: boolean = false): {
     const result = runTest(testCase);
     if (result.passed) {
       passed++;
-      byType.uml.passed++;
+      byType['uml'].passed++;
       console.log(`  ✅ ${testCase.name}`);
       if (verbose) {
         console.log(`     ${result.message}`);
       }
     } else {
       failed++;
-      byType.uml.failed++;
+      byType['uml'].failed++;
       console.log(`  ❌ ${testCase.name}`);
       console.log(`     ${result.message}`);
       if (verbose && result.generatedText) {
@@ -405,9 +405,9 @@ export function runAllExtendedTests(verbose: boolean = false): {
 
   console.log('='.repeat(70));
   console.log('Summary by Type:');
-  console.log(`  ERD:  ${byType.erd.passed}/${erdTests.length} passed`);
-  console.log(`  BPMN: ${byType.bpmn.passed}/${bpmnTests.length} passed`);
-  console.log(`  UML:  ${byType.uml.passed}/${umlTests.length} passed`);
+  console.log(`  ERD:  ${byType['erd'].passed}/${erdTests.length} passed`);
+  console.log(`  BPMN: ${byType['bpmn'].passed}/${bpmnTests.length} passed`);
+  console.log(`  UML:  ${byType['uml'].passed}/${umlTests.length} passed`);
   console.log('─'.repeat(70));
   console.log(`Total: ${passed}/${testCases.length} passed, ${failed} failed`);
   console.log('='.repeat(70) + '\n');
@@ -481,12 +481,12 @@ erDiagram
   const diagram = dsl.parseERD(erdText);
   const userNode = diagram.getNodes()[0];
 
-  console.log(`✓ Parsed: ${userNode.data.name}`);
-  console.log(`  Fields: ${userNode.data.fields?.length || 0}`);
+  console.log(`✓ Parsed: ${userNode.data['name']}`);
+  console.log(`  Fields: ${userNode.data['fields']?.length || 0}`);
 
-  if (userNode.data.fields) {
+  if (userNode.data['fields']) {
     console.log('\nField details:');
-    for (const field of userNode.data.fields) {
+    for (const field of userNode.data['fields']) {
       const constraints = [];
       if (field.primaryKey) constraints.push('PK');
       if (field.foreignKey) constraints.push('FK');
@@ -505,7 +505,7 @@ erDiagram
   const diagram2 = dsl.parseERD(generatedText);
   const userNode2 = diagram2.getNodes()[0];
 
-  const fieldsMatch = userNode.data.fields?.length === userNode2.data.fields?.length;
+  const fieldsMatch = userNode.data['fields']?.length === userNode2.data['fields']?.length;
   console.log(`✓ Fields preserved: ${fieldsMatch ? '✅ YES' : '❌ NO'}`);
 }
 

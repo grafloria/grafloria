@@ -67,10 +67,10 @@ erDiagram
   // Show entity details
   console.log('📊 Entity Details (Table-like structure):');
   for (const node of diagram.getNodes()) {
-    console.log(`\n   ${node.data.name} (${node.id})`);
+    console.log(`\n   ${node.data['name']} (${node.id})`);
     console.log('   ' + '─'.repeat(40));
-    if (node.data.fields && Array.isArray(node.data.fields)) {
-      for (const field of node.data.fields) {
+    if (node.data['fields'] && Array.isArray(node.data['fields'])) {
+      for (const field of node.data['fields']) {
         const indicators = [];
         if (field.primaryKey) indicators.push('PK');
         if (field.foreignKey) indicators.push('FK');
@@ -138,17 +138,17 @@ flowchart TD
 
   console.log(`   Events: ${events.length}`);
   for (const node of events) {
-    console.log(`     - ${node.data.label} (${node.type})`);
+    console.log(`     - ${node.data['label']} (${node.type})`);
   }
 
   console.log(`   Tasks: ${tasks.length}`);
   for (const node of tasks) {
-    console.log(`     - ${node.data.label} (${node.type})`);
+    console.log(`     - ${node.data['label']} (${node.type})`);
   }
 
   console.log(`   Gateways: ${gateways.length}`);
   for (const node of gateways) {
-    console.log(`     - ${node.data.label} (${node.type})`);
+    console.log(`     - ${node.data['label']} (${node.type})`);
   }
   console.log();
 
@@ -223,22 +223,22 @@ classDiagram
   // Show class details
   console.log('📊 Class Details:');
   for (const node of diagram.getNodes()) {
-    console.log(`\n   ${node.data.name}`);
-    if (node.data.stereotype) {
-      console.log(`   <<${node.data.stereotype}>>`);
+    console.log(`\n   ${node.data['name']}`);
+    if (node.data['stereotype']) {
+      console.log(`   <<${node.data['stereotype']}>>`);
     }
     console.log('   ' + '─'.repeat(40));
 
-    if (node.data.attributes && Array.isArray(node.data.attributes)) {
+    if (node.data['attributes'] && Array.isArray(node.data['attributes'])) {
       console.log('   Attributes:');
-      for (const attr of node.data.attributes) {
+      for (const attr of node.data['attributes']) {
         console.log(`     ${attr.visibility} ${attr.name}: ${attr.type}`);
       }
     }
 
-    if (node.data.methods && Array.isArray(node.data.methods)) {
+    if (node.data['methods'] && Array.isArray(node.data['methods'])) {
       console.log('   Methods:');
-      for (const method of node.data.methods) {
+      for (const method of node.data['methods']) {
         const params = method.parameters.map((p: any) => `${p.name}: ${p.type}`).join(', ');
         const returnType = method.returnType ? `: ${method.returnType}` : '';
         console.log(`     ${method.visibility} ${method.name}(${params})${returnType}`);
@@ -254,7 +254,7 @@ classDiagram
     const sourceNode = link.sourceNodeId ? diagram.getNode(link.sourceNodeId) : null;
     const targetNode = link.targetNodeId ? diagram.getNode(link.targetNodeId) : null;
     if (sourceNode && targetNode) {
-      console.log(`   ${sourceNode.data.name} --[${relType}]--> ${targetNode.data.name}`);
+      console.log(`   ${sourceNode.data['name']} --[${relType}]--> ${targetNode.data['name']}`);
     }
   }
   console.log();
@@ -338,8 +338,8 @@ erDiagram
     const sourceNode = link.sourceNodeId ? diagram.getNode(link.sourceNodeId) : null;
     const targetNode = link.targetNodeId ? diagram.getNode(link.targetNodeId) : null;
     if (sourceNode && targetNode) {
-      const label = link.data.label || 'related to';
-      console.log(`   ${sourceNode.data.name} --> ${targetNode.data.name} (${label})`);
+      const label = link.data['label'] || 'related to';
+      console.log(`   ${sourceNode.data['name']} --> ${targetNode.data['name']} (${label})`);
     }
   }
 }

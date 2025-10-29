@@ -137,7 +137,7 @@ export class ASTTransformer {
     if (node) {
       // Update existing node with new information
       if (astNode.label) {
-        node.data.label = astNode.label;
+        node.data['label'] = astNode.label;
       }
       return node;
     }
@@ -165,7 +165,7 @@ export class ASTTransformer {
     });
 
     // Set label
-    node.data.label = astNode.label || astNode.id;
+    node.data['label'] = astNode.label || astNode.id;
 
     // Store shape information
     node.setMetadata('shape', astNode.shape);
@@ -205,7 +205,7 @@ export class ASTTransformer {
 
     // Set label if provided
     if (astEdge.label) {
-      link.data.label = astEdge.label;
+      link.data['label'] = astEdge.label;
     }
 
     // Store link type information
