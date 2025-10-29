@@ -23,6 +23,15 @@ import { takeUntil, throttleTime } from 'rxjs/operators';
 export type ToolbarPosition = 'top' | 'bottom' | 'left' | 'right';
 export type ToolbarAlignment = 'start' | 'center' | 'end';
 
+/**
+ * Positioning strategy (Phase 2)
+ * - auto: Smart positioning with boundary detection (default)
+ * - fixed: Fixed position relative to node, no boundary detection
+ * - follow: Follow node in real-time as it moves
+ * - sticky: Stick to viewport edge when node scrolls off-screen
+ */
+export type PositioningStrategy = 'auto' | 'fixed' | 'follow' | 'sticky';
+
 export interface ToolbarAction {
   id: string;
   label: string;
@@ -34,6 +43,17 @@ export interface ToolbarAction {
   onClick: (node: NodeModel) => void;
   group?: string; // For grouping actions with separators
   shortcut?: string; // Keyboard shortcut (e.g., 'Delete', 'Ctrl+D')
+}
+
+/**
+ * Toolbar Action Group (Phase 2)
+ * Organizes actions into logical groups with visual separators
+ */
+export interface ToolbarActionGroup {
+  id: string;
+  label?: string; // Optional group label
+  actions: ToolbarAction[];
+  separator?: 'before' | 'after' | 'both' | 'none'; // Where to show separators
 }
 
 export interface ToolbarStyleConfig {
@@ -54,10 +74,16 @@ export interface ToolbarBehaviorConfig {
   hideOnMultiSelect?: boolean; // Auto-hide when multiple nodes are selected
 }
 
+/**
+ * Animation preset (Phase 2)
+ */
+export type AnimationPreset = 'none' | 'fade' | 'slide' | 'scale' | 'bounce';
+
 export interface ToolbarAnimationConfig {
   enabled?: boolean;
   duration?: string;
   easing?: string;
+  preset?: AnimationPreset; // Phase 2: Pre-defined animation styles
 }
 
 /**
@@ -67,12 +93,14 @@ export interface NodeToolbarConfig {
   position?: ToolbarPosition;
   alignment?: ToolbarAlignment;
   offset?: number;
-  actions?: ToolbarAction[];
+  actions?: ToolbarAction[]; // Flat list of actions
+  actionGroups?: ToolbarActionGroup[]; // Organized groups (Phase 2)
   template?: TemplateRef<any>;
   style?: ToolbarStyleConfig;
   animation?: ToolbarAnimationConfig;
   behavior?: ToolbarBehaviorConfig;
   ariaLabel?: string;
+  positioningStrategy?: PositioningStrategy; // Phase 2
 }
 
 /**
@@ -116,6 +144,7 @@ export type EffectiveToolbarConfig = Required<Omit<NodeToolbarConfig, 'template'
       [attr.aria-hidden]="!isVisible"
       [class.visible]="isVisible"
       [class.animated]="effectiveConfig.animation?.enabled !== false"
+      [attr.data-animation-preset]="effectiveConfig.animation?.preset || 'fade'"
       [style.transform]="transform"
       [style.opacity]="isVisible ? 1 : 0"
       [style.--toolbar-bg]="effectiveConfig.style?.backgroundColor"
@@ -128,29 +157,48 @@ export type EffectiveToolbarConfig = Required<Omit<NodeToolbarConfig, 'template'
       [attr.data-position]="effectiveConfig.position"
       (keydown)="handleKeyDown($event)"
     >
-      <!-- Default toolbar content -->
+      <!-- Default toolbar content (Phase 2: Supports groups) -->
       @if (!effectiveConfig.template) {
         <div class="toolbar-content" role="group">
-          @for (action of visibleActions; track action.id; let idx = $index) {
-            <button
-              #actionButton
-              type="button"
-              role="button"
-              class="toolbar-button"
-              [attr.aria-label]="action.tooltip || action.label"
-              [attr.aria-disabled]="action.disabled"
-              [attr.data-action-id]="action.id"
-              [attr.tabindex]="idx === focusedActionIndex ? 0 : -1"
-              [disabled]="action.disabled"
-              [title]="action.tooltip || action.label"
-              (click)="handleActionClick(action)"
-              (focus)="onActionFocus(idx)"
-            >
-              @if (action.icon) {
-                <i [class]="action.icon" aria-hidden="true"></i>
-              }
-              <span>{{ action.label }}</span>
-            </button>
+          @for (group of effectiveGroups; track group.id; let groupIdx = $index) {
+            <!-- Group label (optional) -->
+            @if (group.label && useGroupedLayout) {
+              <div class="toolbar-group-label">{{ group.label }}</div>
+            }
+
+            <!-- Before separator -->
+            @if (groupIdx > 0 && (group.separator === 'before' || group.separator === 'both')) {
+              <div class="toolbar-separator" role="separator"></div>
+            }
+
+            <!-- Group actions -->
+            @for (action of group.actions; track action.id; let idx = $index) {
+              <button
+                #actionButton
+                type="button"
+                role="button"
+                class="toolbar-button"
+                [attr.aria-label]="action.tooltip || action.label"
+                [attr.aria-disabled]="action.disabled"
+                [attr.data-action-id]="action.id"
+                [attr.data-group-id]="group.id"
+                [attr.tabindex]="calculateTabIndex(groupIdx, idx)"
+                [disabled]="action.disabled"
+                [title]="action.tooltip || action.label"
+                (click)="handleActionClick(action)"
+                (focus)="onActionFocus(groupIdx, idx)"
+              >
+                @if (action.icon) {
+                  <i [class]="action.icon" aria-hidden="true"></i>
+                }
+                <span>{{ action.label }}</span>
+              </button>
+            }
+
+            <!-- After separator -->
+            @if (groupIdx < effectiveGroups.length - 1 && (group.separator === 'after' || group.separator === 'both')) {
+              <div class="toolbar-separator" role="separator"></div>
+            }
           }
         </div>
       }
@@ -181,6 +229,55 @@ export type EffectiveToolbarConfig = Required<Omit<NodeToolbarConfig, 'template'
     .grafloria-node-toolbar.animated {
       transition: opacity var(--toolbar-transition, 0.2s) ease,
                   transform var(--toolbar-transition, 0.2s) ease;
+    }
+
+    /* Phase 2: Animation Presets */
+    .grafloria-node-toolbar[data-animation-preset="none"] {
+      transition: none !important;
+    }
+
+    .grafloria-node-toolbar[data-animation-preset="fade"] {
+      transition: opacity var(--toolbar-transition, 0.2s) ease;
+    }
+
+    .grafloria-node-toolbar[data-animation-preset="slide"][data-position="top"]:not(.visible) {
+      transform: translateY(-10px);
+      opacity: 0;
+    }
+
+    .grafloria-node-toolbar[data-animation-preset="slide"][data-position="bottom"]:not(.visible) {
+      transform: translateY(10px);
+      opacity: 0;
+    }
+
+    .grafloria-node-toolbar[data-animation-preset="slide"][data-position="left"]:not(.visible) {
+      transform: translateX(-10px);
+      opacity: 0;
+    }
+
+    .grafloria-node-toolbar[data-animation-preset="slide"][data-position="right"]:not(.visible) {
+      transform: translateX(10px);
+      opacity: 0;
+    }
+
+    .grafloria-node-toolbar[data-animation-preset="scale"]:not(.visible) {
+      transform: scale(0.9);
+      opacity: 0;
+    }
+
+    .grafloria-node-toolbar[data-animation-preset="scale"] {
+      transition: opacity var(--toolbar-transition, 0.2s) ease,
+                  transform var(--toolbar-transition, 0.2s) cubic-bezier(0.34, 1.56, 0.64, 1);
+    }
+
+    .grafloria-node-toolbar[data-animation-preset="bounce"]:not(.visible) {
+      transform: scale(0.3);
+      opacity: 0;
+    }
+
+    .grafloria-node-toolbar[data-animation-preset="bounce"] {
+      transition: opacity var(--toolbar-transition, 0.2s) ease,
+                  transform var(--toolbar-transition, 0.3s) cubic-bezier(0.68, -0.55, 0.265, 1.55);
     }
 
     .grafloria-node-toolbar:focus-within {
@@ -252,6 +349,38 @@ export type EffectiveToolbarConfig = Required<Omit<NodeToolbarConfig, 'template'
       font-size: 16px;
     }
 
+    /* Phase 2: Group separators */
+    .toolbar-separator {
+      width: 1px;
+      background: var(--toolbar-separator, var(--grafloria-toolbar-separator, #e2e8f0));
+      margin: 4px 0;
+      align-self: stretch;
+    }
+
+    .grafloria-node-toolbar[data-position="top"] .toolbar-separator,
+    .grafloria-node-toolbar[data-position="bottom"] .toolbar-separator {
+      width: 1px;
+      height: auto;
+      margin: 0 4px;
+    }
+
+    .grafloria-node-toolbar[data-position="left"] .toolbar-separator,
+    .grafloria-node-toolbar[data-position="right"] .toolbar-separator {
+      width: auto;
+      height: 1px;
+      margin: 4px 0;
+    }
+
+    /* Phase 2: Group labels */
+    .toolbar-group-label {
+      font-size: 11px;
+      font-weight: 600;
+      text-transform: uppercase;
+      color: var(--toolbar-group-label, var(--grafloria-toolbar-group-label, #94a3b8));
+      padding: 4px 8px;
+      letter-spacing: 0.5px;
+    }
+
     /* High contrast mode support */
     @media (prefers-contrast: high) {
       .grafloria-node-toolbar {
@@ -260,6 +389,11 @@ export type EffectiveToolbarConfig = Required<Omit<NodeToolbarConfig, 'template'
 
       .toolbar-button:focus {
         outline-width: 3px;
+      }
+
+      .toolbar-separator {
+        background: currentColor;
+        width: 2px;
       }
     }
 
@@ -320,9 +454,10 @@ export class NodeToolbarComponent implements OnInit, OnChanges, OnDestroy {
       alignment: 'center',
       offset: 8,
       actions: [],
+      actionGroups: [], // Phase 2: Organized action groups
       template: undefined as any,
       style: {},
-      animation: { enabled: true, duration: '0.2s', easing: 'ease' },
+      animation: { enabled: true, duration: '0.2s', easing: 'ease', preset: 'fade' }, // Phase 2
       behavior: {
         autoHide: false,
         closeOnClickOutside: false,
@@ -330,7 +465,8 @@ export class NodeToolbarComponent implements OnInit, OnChanges, OnDestroy {
         enableKeyboardNav: true,
         hideOnMultiSelect: true  // Match ReactFlow behavior
       },
-      ariaLabel: 'Node actions'
+      ariaLabel: 'Node actions',
+      positioningStrategy: 'auto'  // Phase 2: Smart positioning with boundary detection
     };
 
     // Merge config object with individual inputs (individual inputs take precedence)
@@ -372,6 +508,43 @@ export class NodeToolbarComponent implements OnInit, OnChanges, OnDestroy {
       }
       return true;
     });
+  }
+
+  /**
+   * Get effective action groups (Phase 2)
+   * If actionGroups are provided, use them. Otherwise, convert flat actions into a single group.
+   */
+  get effectiveGroups(): ToolbarActionGroup[] {
+    // If groups are explicitly provided, use them
+    if (this.effectiveConfig.actionGroups && this.effectiveConfig.actionGroups.length > 0) {
+      return this.effectiveConfig.actionGroups.map(group => ({
+        ...group,
+        actions: group.actions.filter(action => {
+          if (action.hidden) return false;
+          if (action.visible && !action.visible(this.node)) return false;
+          return true;
+        })
+      })).filter(group => group.actions.length > 0); // Remove empty groups
+    }
+
+    // Otherwise, convert flat actions to a single default group
+    if (this.visibleActions.length > 0) {
+      return [{
+        id: 'default',
+        actions: this.visibleActions,
+        separator: 'none'
+      }];
+    }
+
+    return [];
+  }
+
+  /**
+   * Check if using grouped layout (Phase 2)
+   */
+  get useGroupedLayout(): boolean {
+    return this.effectiveConfig.actionGroups !== undefined &&
+           this.effectiveConfig.actionGroups.length > 0;
   }
 
   ngOnInit() {
@@ -534,7 +707,7 @@ export class NodeToolbarComponent implements OnInit, OnChanges, OnDestroy {
   }
 
   /**
-   * Update toolbar position with error handling
+   * Update toolbar position with error handling (Phase 2: Positioning Strategies)
    */
   updatePosition() {
     try {
@@ -552,35 +725,35 @@ export class NodeToolbarComponent implements OnInit, OnChanges, OnDestroy {
 
       const nodeRect = this.getNodeScreenRect(canvasEl);
       const toolbarRect = toolbarEl.getBoundingClientRect();
+      const canvasRect = canvasEl.getBoundingClientRect();
 
-      let x = 0;
-      let y = 0;
+      // Calculate base position
+      const basePosition = this.calculateBasePosition(nodeRect, toolbarRect);
+      let x = basePosition.x;
+      let y = basePosition.y;
 
-      // Calculate position
-      switch (this.effectiveConfig.position) {
-        case 'top':
-          x = this.calculateAlignedX(nodeRect, toolbarRect.width);
-          y = nodeRect.top - toolbarRect.height - this.effectiveConfig.offset;
+      // Apply positioning strategy
+      switch (this.effectiveConfig.positioningStrategy) {
+        case 'auto':
+          // Smart positioning with boundary detection
+          ({ x, y } = this.applyAutoPosStrategy(x, y, toolbarRect, canvasRect));
           break;
-        case 'bottom':
-          x = this.calculateAlignedX(nodeRect, toolbarRect.width);
-          y = nodeRect.bottom + this.effectiveConfig.offset;
+
+        case 'fixed':
+          // Fixed position relative to node, no boundary detection
+          // Use base position as-is
           break;
-        case 'left':
-          x = nodeRect.left - toolbarRect.width - this.effectiveConfig.offset;
-          y = this.calculateAlignedY(nodeRect, toolbarRect.height);
+
+        case 'follow':
+          // Follow node with boundary detection (same as auto for positioning)
+          ({ x, y } = this.applyAutoPosStrategy(x, y, toolbarRect, canvasRect));
           break;
-        case 'right':
-          x = nodeRect.right + this.effectiveConfig.offset;
-          y = this.calculateAlignedY(nodeRect, toolbarRect.height);
+
+        case 'sticky':
+          // Stick to viewport edge when node goes off-screen
+          ({ x, y } = this.applyStickyPosStrategy(x, y, nodeRect, toolbarRect, canvasRect));
           break;
       }
-
-      // Boundary detection
-      const canvasRect = canvasEl.getBoundingClientRect();
-      const margin = 8;
-      x = Math.max(canvasRect.left + margin, Math.min(x, canvasRect.right - toolbarRect.width - margin));
-      y = Math.max(canvasRect.top + margin, Math.min(y, canvasRect.bottom - toolbarRect.height - margin));
 
       // Store last known position
       this.lastKnownPosition = { x, y };
@@ -600,6 +773,94 @@ export class NodeToolbarComponent implements OnInit, OnChanges, OnDestroy {
       this.transform = `translate(${fallbackX}px, ${fallbackY}px)`;
       this.cdr.detectChanges();
     }
+  }
+
+  /**
+   * Calculate base position before applying strategy
+   */
+  private calculateBasePosition(nodeRect: DOMRect, toolbarRect: DOMRect): { x: number; y: number } {
+    let x = 0;
+    let y = 0;
+
+    switch (this.effectiveConfig.position) {
+      case 'top':
+        x = this.calculateAlignedX(nodeRect, toolbarRect.width);
+        y = nodeRect.top - toolbarRect.height - this.effectiveConfig.offset;
+        break;
+      case 'bottom':
+        x = this.calculateAlignedX(nodeRect, toolbarRect.width);
+        y = nodeRect.bottom + this.effectiveConfig.offset;
+        break;
+      case 'left':
+        x = nodeRect.left - toolbarRect.width - this.effectiveConfig.offset;
+        y = this.calculateAlignedY(nodeRect, toolbarRect.height);
+        break;
+      case 'right':
+        x = nodeRect.right + this.effectiveConfig.offset;
+        y = this.calculateAlignedY(nodeRect, toolbarRect.height);
+        break;
+    }
+
+    return { x, y };
+  }
+
+  /**
+   * Apply auto positioning strategy with boundary detection
+   */
+  private applyAutoPosStrategy(
+    x: number,
+    y: number,
+    toolbarRect: DOMRect,
+    canvasRect: DOMRect
+  ): { x: number; y: number } {
+    const margin = 8;
+    x = Math.max(canvasRect.left + margin, Math.min(x, canvasRect.right - toolbarRect.width - margin));
+    y = Math.max(canvasRect.top + margin, Math.min(y, canvasRect.bottom - toolbarRect.height - margin));
+    return { x, y };
+  }
+
+  /**
+   * Apply sticky positioning strategy
+   * Sticks toolbar to viewport edge when node scrolls off-screen
+   */
+  private applyStickyPosStrategy(
+    x: number,
+    y: number,
+    nodeRect: DOMRect,
+    toolbarRect: DOMRect,
+    canvasRect: DOMRect
+  ): { x: number; y: number } {
+    const margin = 8;
+
+    // Check if node is off-screen
+    const isNodeOffScreenLeft = nodeRect.right < canvasRect.left;
+    const isNodeOffScreenRight = nodeRect.left > canvasRect.right;
+    const isNodeOffScreenTop = nodeRect.bottom < canvasRect.top;
+    const isNodeOffScreenBottom = nodeRect.top > canvasRect.bottom;
+
+    // If node is on-screen, use normal boundary detection
+    if (!isNodeOffScreenLeft && !isNodeOffScreenRight && !isNodeOffScreenTop && !isNodeOffScreenBottom) {
+      return this.applyAutoPosStrategy(x, y, toolbarRect, canvasRect);
+    }
+
+    // Node is off-screen - stick to nearest viewport edge
+    if (isNodeOffScreenLeft) {
+      x = canvasRect.left + margin;
+    } else if (isNodeOffScreenRight) {
+      x = canvasRect.right - toolbarRect.width - margin;
+    }
+
+    if (isNodeOffScreenTop) {
+      y = canvasRect.top + margin;
+    } else if (isNodeOffScreenBottom) {
+      y = canvasRect.bottom - toolbarRect.height - margin;
+    }
+
+    // Apply boundary detection to ensure toolbar stays visible
+    x = Math.max(canvasRect.left + margin, Math.min(x, canvasRect.right - toolbarRect.width - margin));
+    y = Math.max(canvasRect.top + margin, Math.min(y, canvasRect.bottom - toolbarRect.height - margin));
+
+    return { x, y };
   }
 
   /**
@@ -693,14 +954,25 @@ export class NodeToolbarComponent implements OnInit, OnChanges, OnDestroy {
   }
 
   /**
-   * Handle keyboard navigation
+   * Get all visible actions (Phase 2: From groups)
+   */
+  private get allVisibleActions(): ToolbarAction[] {
+    const allActions: ToolbarAction[] = [];
+    for (const group of this.effectiveGroups) {
+      allActions.push(...group.actions);
+    }
+    return allActions;
+  }
+
+  /**
+   * Handle keyboard navigation (Phase 2: Group-aware)
    */
   handleKeyDown(event: KeyboardEvent) {
     if (!this.effectiveConfig.behavior.enableKeyboardNav) {
       return;
     }
 
-    const actions = this.visibleActions;
+    const actions = this.allVisibleActions;
     if (actions.length === 0) {
       return;
     }
@@ -761,10 +1033,28 @@ export class NodeToolbarComponent implements OnInit, OnChanges, OnDestroy {
   }
 
   /**
-   * Handle action focus
+   * Handle action focus (Phase 2: Group-aware)
    */
-  onActionFocus(index: number) {
-    this.focusedActionIndex = index;
+  onActionFocus(groupIdx: number, actionIdx: number) {
+    // Calculate flat index for keyboard navigation
+    let flatIndex = 0;
+    for (let i = 0; i < groupIdx; i++) {
+      flatIndex += this.effectiveGroups[i].actions.length;
+    }
+    flatIndex += actionIdx;
+    this.focusedActionIndex = flatIndex;
+  }
+
+  /**
+   * Calculate tabindex for group-aware navigation (Phase 2)
+   */
+  calculateTabIndex(groupIdx: number, actionIdx: number): number {
+    let flatIndex = 0;
+    for (let i = 0; i < groupIdx; i++) {
+      flatIndex += this.effectiveGroups[i].actions.length;
+    }
+    flatIndex += actionIdx;
+    return flatIndex === this.focusedActionIndex ? 0 : -1;
   }
 
   /**
