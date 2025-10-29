@@ -57,3 +57,6 @@ export * from './template-library';
 
 // Mobile Input (Phase 4)
 export * from './lib/input';
+
+// DSL (Phase 1.2)
+export * from './dsl';
