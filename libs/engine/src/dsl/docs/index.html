@@ -1,0 +1,433 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>DSL Engine - Diagram Text Language</title>
+  <style>
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+      line-height: 1.6;
+      color: #333;
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      min-height: 100vh;
+    }
+
+    .container {
+      max-width: 1200px;
+      margin: 0 auto;
+      padding: 2rem;
+    }
+
+    header {
+      text-align: center;
+      color: white;
+      padding: 3rem 0;
+    }
+
+    h1 {
+      font-size: 3rem;
+      font-weight: 700;
+      margin-bottom: 0.5rem;
+      text-shadow: 2px 2px 4px rgba(0,0,0,0.2);
+    }
+
+    .subtitle {
+      font-size: 1.25rem;
+      opacity: 0.95;
+      margin-bottom: 2rem;
+    }
+
+    .version-badge {
+      display: inline-block;
+      background: rgba(255,255,255,0.2);
+      padding: 0.5rem 1rem;
+      border-radius: 20px;
+      font-size: 0.875rem;
+      margin-top: 1rem;
+    }
+
+    .features-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+      gap: 1.5rem;
+      margin: 2rem 0;
+    }
+
+    .feature-card {
+      background: white;
+      border-radius: 12px;
+      padding: 2rem;
+      box-shadow: 0 4px 12px rgba(0,0,0,0.1);
+      transition: transform 0.3s ease, box-shadow 0.3s ease;
+    }
+
+    .feature-card:hover {
+      transform: translateY(-4px);
+      box-shadow: 0 8px 20px rgba(0,0,0,0.15);
+    }
+
+    .feature-icon {
+      font-size: 2.5rem;
+      margin-bottom: 1rem;
+    }
+
+    .feature-title {
+      font-size: 1.25rem;
+      font-weight: 600;
+      margin-bottom: 0.75rem;
+      color: #667eea;
+    }
+
+    .feature-description {
+      color: #666;
+      font-size: 0.95rem;
+      line-height: 1.5;
+    }
+
+    .section {
+      background: white;
+      border-radius: 12px;
+      padding: 2.5rem;
+      margin: 2rem 0;
+      box-shadow: 0 4px 12px rgba(0,0,0,0.1);
+    }
+
+    .section-title {
+      font-size: 2rem;
+      font-weight: 600;
+      margin-bottom: 1.5rem;
+      color: #667eea;
+    }
+
+    .demo-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+      gap: 1.5rem;
+    }
+
+    .demo-card {
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      color: white;
+      border-radius: 8px;
+      padding: 1.5rem;
+      text-decoration: none;
+      display: block;
+      transition: transform 0.3s ease;
+    }
+
+    .demo-card:hover {
+      transform: translateY(-4px);
+    }
+
+    .demo-title {
+      font-size: 1.1rem;
+      font-weight: 600;
+      margin-bottom: 0.5rem;
+    }
+
+    .demo-phase {
+      font-size: 0.75rem;
+      opacity: 0.9;
+      margin-bottom: 0.5rem;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+    }
+
+    .demo-description {
+      font-size: 0.875rem;
+      opacity: 0.95;
+      line-height: 1.4;
+    }
+
+    .quick-start {
+      background: #f8f9fa;
+      border-left: 4px solid #667eea;
+      padding: 1.5rem;
+      border-radius: 4px;
+      margin: 1.5rem 0;
+    }
+
+    .code-block {
+      background: #2d2d2d;
+      color: #f8f8f2;
+      padding: 1.5rem;
+      border-radius: 8px;
+      overflow-x: auto;
+      font-family: 'Monaco', 'Menlo', 'Courier New', monospace;
+      font-size: 0.875rem;
+      line-height: 1.5;
+      margin: 1rem 0;
+    }
+
+    .button {
+      display: inline-block;
+      background: #667eea;
+      color: white;
+      padding: 0.75rem 1.5rem;
+      border-radius: 6px;
+      text-decoration: none;
+      font-weight: 600;
+      transition: background 0.3s ease;
+      margin-right: 1rem;
+      margin-top: 1rem;
+    }
+
+    .button:hover {
+      background: #5568d3;
+    }
+
+    .button-secondary {
+      background: #6c757d;
+    }
+
+    .button-secondary:hover {
+      background: #5a6268;
+    }
+
+    .doc-links {
+      display: flex;
+      gap: 1rem;
+      flex-wrap: wrap;
+    }
+
+    .doc-link {
+      flex: 1;
+      min-width: 200px;
+      background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%);
+      color: white;
+      padding: 1.5rem;
+      border-radius: 8px;
+      text-decoration: none;
+      display: block;
+      text-align: center;
+      transition: transform 0.3s ease;
+    }
+
+    .doc-link:hover {
+      transform: translateY(-4px);
+    }
+
+    .doc-link-title {
+      font-size: 1.1rem;
+      font-weight: 600;
+      margin-bottom: 0.5rem;
+    }
+
+    .doc-link-desc {
+      font-size: 0.875rem;
+      opacity: 0.95;
+    }
+
+    footer {
+      text-align: center;
+      color: white;
+      padding: 2rem 0;
+      margin-top: 3rem;
+      opacity: 0.9;
+    }
+
+    .phase-badge {
+      display: inline-block;
+      background: rgba(102, 126, 234, 0.2);
+      color: #667eea;
+      padding: 0.25rem 0.75rem;
+      border-radius: 12px;
+      font-size: 0.75rem;
+      font-weight: 600;
+      margin-left: 0.5rem;
+    }
+
+    @media (max-width: 768px) {
+      h1 {
+        font-size: 2rem;
+      }
+
+      .features-grid,
+      .demo-grid {
+        grid-template-columns: 1fr;
+      }
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <header>
+      <h1>🎨 DSL Engine</h1>
+      <div class="subtitle">Transform text into beautiful diagrams with Mermaid-compatible syntax</div>
+      <div class="version-badge">v1.0.0 - All Phases Complete</div>
+    </header>
+
+    <!-- Features -->
+    <div class="features-grid">
+      <div class="feature-card">
+        <div class="feature-icon">📝</div>
+        <div class="feature-title">Mermaid Compatible</div>
+        <div class="feature-description">
+          Write diagrams using familiar Mermaid syntax. Fully compatible with flowcharts, ERD, BPMN, and UML.
+        </div>
+      </div>
+
+      <div class="feature-card">
+        <div class="feature-icon">🔄</div>
+        <div class="feature-title">Bidirectional Sync</div>
+        <div class="feature-description">
+          Seamless synchronization between text and visual editors with 300ms debouncing and auto-layout detection.
+        </div>
+      </div>
+
+      <div class="feature-card">
+        <div class="feature-icon">🎨</div>
+        <div class="feature-title">Advanced Styling</div>
+        <div class="feature-description">
+          CSS-like styling with inline styles, style classes, and custom templates. Full control over appearance.
+        </div>
+      </div>
+
+      <div class="feature-card">
+        <div class="feature-icon">⚡</div>
+        <div class="feature-title">High Performance</div>
+        <div class="feature-description">
+          Web Workers for async parsing, format preservation, and smooth UI even with large diagrams.
+        </div>
+      </div>
+
+      <div class="feature-card">
+        <div class="feature-icon">🗂️</div>
+        <div class="feature-title">Multiple Diagram Types</div>
+        <div class="feature-description">
+          Support for Flowcharts, ERD (Entity Relationship), BPMN (Business Process), and UML (Class Diagrams).
+        </div>
+      </div>
+
+      <div class="feature-card">
+        <div class="feature-icon">💾</div>
+        <div class="feature-title">Format Preservation</div>
+        <div class="feature-description">
+          Maintains comments, whitespace, and indentation across parse/generate cycles. Code quality preserved.
+        </div>
+      </div>
+    </div>
+
+    <!-- Quick Start -->
+    <div class="section">
+      <h2 class="section-title">Quick Start</h2>
+      <div class="quick-start">
+        <strong>Get started in 30 seconds!</strong> Write diagrams using simple text syntax.
+      </div>
+
+      <div class="code-block">// Basic Flowchart
+flowchart TD
+  A[Start] --> B{Decision}
+  B -->|Yes| C[Success]
+  B -->|No| D[Failure]
+  C --> E[End]
+  D --> E
+
+// With Styling (Phase 4)
+@style primary {
+  fill: #3b82f6;
+  stroke: #1e40af;
+  strokeWidth: 2;
+}
+
+flowchart TD
+  A[Start]:::primary --> B[Process]
+  B --> C[End]:::primary</div>
+
+      <a href="USER-GUIDE.md" class="button">Read User Guide</a>
+      <a href="API-REFERENCE.md" class="button button-secondary">API Reference</a>
+    </div>
+
+    <!-- Interactive Demos -->
+    <div class="section">
+      <h2 class="section-title">Interactive Demos</h2>
+      <div class="demo-grid">
+        <a href="../demo-page.html" class="demo-card">
+          <div class="demo-phase">Phase 2 - Bidirectional Sync</div>
+          <div class="demo-title">Live Sync Demo</div>
+          <div class="demo-description">
+            Real-time synchronization between text and visual editors with 300ms debouncing.
+          </div>
+        </a>
+
+        <a href="#" class="demo-card" onclick="alert('Run: npm run demo:extended'); return false;">
+          <div class="demo-phase">Phase 3 - Extended Types</div>
+          <div class="demo-title">ERD, BPMN & UML</div>
+          <div class="demo-description">
+            Entity Relationship Diagrams, Business Process Models, and UML Class Diagrams.
+          </div>
+        </a>
+
+        <a href="#" class="demo-card" onclick="alert('Run: npm run demo:styles'); return false;">
+          <div class="demo-phase">Phase 4 - Styling</div>
+          <div class="demo-title">Styles & Templates</div>
+          <div class="demo-description">
+            CSS-like styling with @style definitions, inline styles, and custom HTML templates.
+          </div>
+        </a>
+
+        <a href="#" class="demo-card" onclick="alert('Run: npm run demo:performance'); return false;">
+          <div class="demo-phase">Phase 5 - Performance</div>
+          <div class="demo-title">Web Workers & Format</div>
+          <div class="demo-description">
+            Async parsing with Web Workers and comprehensive format preservation.
+          </div>
+        </a>
+      </div>
+    </div>
+
+    <!-- Documentation -->
+    <div class="section">
+      <h2 class="section-title">Documentation</h2>
+      <div class="doc-links">
+        <a href="USER-GUIDE.md" class="doc-link">
+          <div class="doc-link-title">📖 User Guide</div>
+          <div class="doc-link-desc">Step-by-step guide with examples</div>
+        </a>
+
+        <a href="API-REFERENCE.md" class="doc-link">
+          <div class="doc-link-title">🔧 API Reference</div>
+          <div class="doc-link-desc">Complete API documentation</div>
+        </a>
+
+        <a href="EXAMPLES.md" class="doc-link">
+          <div class="doc-link-title">💡 Examples</div>
+          <div class="doc-link-desc">Code examples and use cases</div>
+        </a>
+
+        <a href="ARCHITECTURE.md" class="doc-link">
+          <div class="doc-link-title">🏗️ Architecture</div>
+          <div class="doc-link-desc">System design and structure</div>
+        </a>
+      </div>
+    </div>
+
+    <!-- Feature Phases -->
+    <div class="section">
+      <h2 class="section-title">Feature Phases</h2>
+      <div style="line-height: 2;">
+        <div><strong>Phase 1:</strong> Template Auto-Generator <span class="phase-badge">✓ Complete</span></div>
+        <div><strong>Phase 2:</strong> Bidirectional Sync with Auto-Layout <span class="phase-badge">✓ Complete</span></div>
+        <div><strong>Phase 3:</strong> Extended Types (ERD, BPMN, UML) <span class="phase-badge">✓ Complete</span></div>
+        <div><strong>Phase 4:</strong> Advanced Features (Styles & Templates) <span class="phase-badge">✓ Complete</span></div>
+        <div><strong>Phase 5:</strong> Performance (Web Workers & Format) <span class="phase-badge">✓ Complete</span></div>
+        <div><strong>Phase 6:</strong> Documentation & Examples <span class="phase-badge">✓ Complete</span></div>
+      </div>
+    </div>
+
+    <footer>
+      <div>DSL Engine - Part of the Grafloria Platform</div>
+      <div style="margin-top: 0.5rem; font-size: 0.875rem;">
+        Built with TypeScript, LemonadeJS, and Web Workers
+      </div>
+    </footer>
+  </div>
+</body>
+</html>
