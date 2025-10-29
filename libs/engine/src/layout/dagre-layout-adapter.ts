@@ -20,6 +20,7 @@ import {
 import { LayoutQualityMetrics } from './layout-quality-metrics';
 import { PortAwareLayoutManager, PortInfo } from './port-aware-layout.interface';
 import { SubgraphLayoutManager } from './subgraph-layout.interface';
+import { EdgeBundlingManager, EdgeInfo } from './edge-bundling.interface';
 
 /**
  * Dagre-specific layout options
@@ -247,6 +248,53 @@ export class DagreLayoutAdapter implements LayoutAdapter {
       }
     }
 
+    // Process edge bundling if enabled (Phase 4)
+    let edgeBundling = undefined;
+    if (options.edgeBundling && options.edgeBundling.enabled) {
+      // Convert links to EdgeInfo
+      const edgeInfos: EdgeInfo[] = links.map(link => ({
+        id: link.id,
+        sourceNodeId: link.sourceNodeId || '',
+        targetNodeId: link.targetNodeId || '',
+        sourcePortId: link.sourcePortId,
+        targetPortId: link.targetPortId,
+        weight: 1,
+      }));
+
+      // Prepare node positions for bundling
+      const bundlingNodePositions = new Map<string, { x: number; y: number }>();
+      nodePositions.forEach((pos, nodeId) => {
+        bundlingNodePositions.set(nodeId, { x: pos.x, y: pos.y });
+      });
+
+      // Prepare port positions if available
+      const bundlingPortPositions = new Map<string, { x: number; y: number }>();
+      if (portAware) {
+        portAware.portPositions.forEach((pos, portId) => {
+          // Port positions are relative, need to convert to absolute
+          // For now, use node positions as approximation
+          const portInfo = options.portAware?.ports?.find(p => p.id === portId);
+          if (portInfo) {
+            const nodePos = bundlingNodePositions.get(portInfo.nodeId);
+            if (nodePos) {
+              bundlingPortPositions.set(portId, {
+                x: nodePos.x + pos.x,
+                y: nodePos.y + pos.y,
+              });
+            }
+          }
+        });
+      }
+
+      // Compute edge bundling
+      edgeBundling = EdgeBundlingManager.computeBundling(
+        edgeInfos,
+        bundlingNodePositions,
+        bundlingPortPositions,
+        options.edgeBundling
+      );
+    }
+
     return {
       nodePositions,
       bounds,
@@ -261,6 +309,7 @@ export class DagreLayoutAdapter implements LayoutAdapter {
       quality,
       portAware,
       subgraph,
+      edgeBundling,
     };
   }
 
