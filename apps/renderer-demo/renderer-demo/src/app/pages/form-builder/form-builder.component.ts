@@ -29,6 +29,9 @@ export class FormBuilderComponent implements OnInit {
   private createSampleForm(): void {
     const diagram = this.engine.createDiagram('Form');
 
+    // Enable automatic link rerouting when nodes move (Observer Pattern)
+    this.engine.enableLiveRerouting();
+
     // Create form field nodes
     const fields = [
       { label: 'Text Input: Name', type: 'text', y: 100 },

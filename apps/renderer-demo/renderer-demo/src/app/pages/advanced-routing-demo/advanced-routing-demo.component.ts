@@ -159,6 +159,9 @@ export class AdvancedRoutingDemoComponent implements OnInit {
   private createDemoContent(section: DemoSection): void {
     const diagram = this.engine.createDiagram('Advanced Routing Demo');
 
+    // Enable automatic link rerouting when nodes move (Observer Pattern)
+    this.engine.enableLiveRerouting();
+
     switch (section) {
       case 'waypoints':
         this.createWaypointDemo();

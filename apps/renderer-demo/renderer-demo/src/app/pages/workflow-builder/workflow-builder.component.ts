@@ -59,6 +59,9 @@ export class WorkflowBuilderComponent implements OnInit {
   private createSampleWorkflow(): void {
     const diagram = this.engine.createDiagram('Workflow');
 
+    // Enable automatic link rerouting when nodes move (Observer Pattern)
+    this.engine.enableLiveRerouting();
+
     // Create workflow nodes
     const startNode = this.createWorkflowNode('start', 'start', 'Start', { x: 100, y: 200 });
     const task1Node = this.createWorkflowNode('task1', 'task', 'Process Order', { x: 300, y: 200 });
