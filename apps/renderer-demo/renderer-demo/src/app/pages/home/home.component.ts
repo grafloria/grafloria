@@ -35,6 +35,20 @@ export class HomeComponent {
       difficulty: 'Beginner'
     },
     {
+      title: 'Animation Demo',
+      description: 'Comprehensive showcase of Phase 1 & 1.1 animation features',
+      icon: '✨',
+      route: '/animation-demo',
+      features: [
+        '12 core animation types',
+        '50+ animation presets',
+        'Performance monitoring dashboard',
+        'Custom animation registry',
+        'Animation sequencing & lifecycle'
+      ],
+      difficulty: 'Beginner'
+    },
+    {
       title: 'ERD Designer',
       description: 'Entity-Relationship Diagram builder for database design',
       icon: '🗄️',
