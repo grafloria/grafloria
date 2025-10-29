@@ -75,3 +75,8 @@ export * from './edge-bundling.interface';
 // Phase 5: Web Workers
 export * from './layout-worker.interface';
 export * from './worker-layout-adapter';
+
+// Phase 6: Advanced Algorithms
+export * from './force-layout-adapter';
+export * from './spectral-layout-adapter';
+export * from './community-layout-adapter';
