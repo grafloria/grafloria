@@ -34,7 +34,7 @@ export class DslTemplateBuilderComponent implements OnInit {
   </div>
 </div>`;
 
-  sampleData = {
+  sampleData: Record<string, any> = {
     title: 'Sample Card',
     status: 'Active',
     description: 'This is a sample card description to show template rendering.',

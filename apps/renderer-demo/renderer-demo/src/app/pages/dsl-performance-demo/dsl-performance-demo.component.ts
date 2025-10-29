@@ -33,7 +33,9 @@ export class DslPerformanceDemoComponent implements OnInit {
   progressPercent = 0;
 
   // Size presets
-  sizePresets = {
+  readonly sizes: ReadonlyArray<'small' | 'medium' | 'large' | 'huge'> = ['small', 'medium', 'large', 'huge'];
+
+  sizePresets: Record<'small' | 'medium' | 'large' | 'huge', { nodes: number; label: string }> = {
     small: { nodes: 10, label: 'Small (10 nodes)' },
     medium: { nodes: 50, label: 'Medium (50 nodes)' },
     large: { nodes: 200, label: 'Large (200 nodes)' },
@@ -150,8 +152,8 @@ export class DslPerformanceDemoComponent implements OnInit {
       if (this.metrics) {
         results.push({
           size,
-          nodeCount: this.sizePresets[size].nodes,
-          ...this.metrics
+          ...this.metrics,
+          expectedNodeCount: this.sizePresets[size].nodes
         });
       }
 

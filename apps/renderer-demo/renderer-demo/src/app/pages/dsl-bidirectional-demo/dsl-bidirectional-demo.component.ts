@@ -23,7 +23,7 @@ export class DslBidirectionalDemoComponent implements OnInit, OnDestroy {
 
   generatedText = '';
   syncStatus = '';
-  syncDirection: 'text-to-diagram' | 'diagram-to-text' | '' = '';
+  syncDirection: 'text-to-diagram' | 'diagram-to-text' | 'text-to-visual' | 'visual-to-text' | 'none' | '' = '';
 
   examples = [
     {
@@ -198,19 +198,22 @@ flowchart TD
       autoLayout: true
     });
 
-    this.sync = new BidirectionalSync(this.dsl, {
-      debounceTime: 300,
+    this.sync = new BidirectionalSync({
+      debounceMs: 300,
       autoLayout: true
     });
 
     // Listen for sync events
-    this.sync.on('sync', (event: any) => {
-      this.syncDirection = event.direction;
-      this.syncStatus = `Synced: ${event.direction}`;
+    this.sync.onSync((direction, success) => {
+      this.syncDirection = direction;
+      this.syncStatus = `Synced: ${direction}`;
 
-      if (event.direction === 'text-to-diagram') {
+      if (direction === 'text-to-visual' && success) {
         // Update generated text
-        this.generatedText = this.dsl.generate(event.diagram);
+        const diagram = this.sync.getDiagram();
+        if (diagram) {
+          this.generatedText = this.dsl.generate(diagram);
+        }
       }
 
       setTimeout(() => {
@@ -226,7 +229,7 @@ flowchart TD
   ngOnDestroy() {
     // Clean up sync listeners
     if (this.sync) {
-      this.sync.removeAllListeners();
+      this.sync.dispose();
     }
   }
 

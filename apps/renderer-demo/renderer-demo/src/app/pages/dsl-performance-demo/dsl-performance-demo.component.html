@@ -11,7 +11,7 @@
       <h3>🎯 Diagram Size</h3>
       <div class="size-buttons">
         <button
-          *ngFor="let size of ['small', 'medium', 'large', 'huge']"
+          *ngFor="let size of sizes"
           class="size-button"
           [class.active]="diagramSize === size"
           (click)="diagramSize = size; generateDiagram()"

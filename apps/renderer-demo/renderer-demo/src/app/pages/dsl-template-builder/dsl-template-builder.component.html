@@ -51,14 +51,14 @@
       <div class="editor-section">
         <div class="section-header">
           <h3>📝 HTML Template</h3>
-          <span class="hint">Use {{data.field}} for data bindings</span>
+          <span class="hint">Use {{ '{{' }}data.field{{ '}}' }} for data bindings</span>
         </div>
         <textarea
           class="html-editor"
           [(ngModel)]="templateHTML"
           (ngModelChange)="generateDSL()"
           spellcheck="false"
-          placeholder="<div>{{data.title}}</div>"
+          placeholder="<div>{{ '{{' }}data.title{{ '}}' }}</div>"
         ></textarea>
       </div>
 
@@ -109,8 +109,8 @@
         <h4>ℹ️ Template Usage</h4>
         <p>To use this template in your diagrams:</p>
         <ol>
-          <li>Include the @template block in your DSL</li>
-          <li>Reference it with <code>@{{ templateName }}</code></li>
+          <li>Include the &#64;template block in your DSL</li>
+          <li>Reference it with <code>&#64;{{ '{{' }} templateName {{ '}}' }}</code></li>
           <li>Node data will be bound to template variables</li>
         </ol>
       </div>
@@ -121,7 +121,7 @@
   <footer class="builder-footer">
     <div class="feature-info">
       <strong>Template Features:</strong>
-      HTML templates • {{data.field}} bindings • {{#if}} conditionals • {{#each}} loops • Validation • Security checks
+      HTML templates • {{ '{{' }}data.field{{ '}}' }} bindings • {{ '{{' }}#if{{ '}}' }} conditionals • {{ '{{' }}#each{{ '}}' }} loops • Validation • Security checks
     </div>
   </footer>
 </div>
