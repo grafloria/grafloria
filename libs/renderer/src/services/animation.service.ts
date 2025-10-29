@@ -651,12 +651,21 @@ export class AnimationService {
   will-change: background-position;
 }
 
-/* SVG Variants */
+/* SVG Variants - Use SVG-compatible animations */
+@keyframes svg-pulse-stroke {
+  0%, 100% {
+    stroke-width: 2;
+    stroke-opacity: 1;
+  }
+  50% {
+    stroke-width: 4;
+    stroke-opacity: 0.6;
+  }
+}
+
 .node-border-pulse-svg {
-  animation: pulse-border 2s ease-out infinite;
-  transform-origin: center center;
-  transform-box: fill-box;
-  will-change: transform;
+  animation: svg-pulse-stroke 2s ease-out infinite;
+  will-change: stroke-width, stroke-opacity;
 }
 
 .node-border-breathe-svg {
@@ -666,11 +675,38 @@ export class AnimationService {
   will-change: transform, opacity;
 }
 
+@keyframes svg-gradient-dash {
+  0% {
+    stroke-dasharray: 5, 10;
+    stroke-dashoffset: 0;
+  }
+  100% {
+    stroke-dasharray: 5, 10;
+    stroke-dashoffset: 30;
+  }
+}
+
 .node-border-gradient-svg {
-  animation: gradient-rotate 3s linear infinite;
-  transform-origin: center center;
-  transform-box: fill-box;
-  will-change: transform;
+  animation: svg-gradient-dash 2s linear infinite;
+  stroke-width: 3;
+  will-change: stroke-dashoffset;
+}
+
+@keyframes svg-shimmer-dash {
+  0% {
+    stroke-dasharray: 8, 4;
+    stroke-dashoffset: 0;
+  }
+  100% {
+    stroke-dasharray: 8, 4;
+    stroke-dashoffset: 24;
+  }
+}
+
+.node-border-shimmer-svg {
+  animation: svg-shimmer-dash 1.5s linear infinite;
+  stroke-width: 2;
+  will-change: stroke-dashoffset;
 }
 
 /* ============================================================================
@@ -729,6 +765,38 @@ export class AnimationService {
 }
 
 .node-status-pending {
+  animation: pending-pulse 2s ease-in-out infinite;
+  will-change: opacity;
+}
+
+/* SVG Status Variants */
+.node-status-running-svg {
+  animation: running 1.5s ease-in-out infinite;
+  transform-origin: center center;
+  transform-box: fill-box;
+  will-change: opacity, transform;
+}
+
+.node-status-error-svg {
+  animation: error-shake 0.5s ease-in-out;
+  transform-origin: center center;
+  transform-box: fill-box;
+  will-change: transform;
+}
+
+.node-status-completed-svg {
+  animation: completed-fade 0.3s ease-out;
+  transform-origin: center center;
+  transform-box: fill-box;
+  will-change: opacity, transform;
+}
+
+.node-status-warning-svg {
+  animation: warning-blink 1.5s ease-in-out infinite;
+  will-change: opacity;
+}
+
+.node-status-pending-svg {
   animation: pending-pulse 2s ease-in-out infinite;
   will-change: opacity;
 }
