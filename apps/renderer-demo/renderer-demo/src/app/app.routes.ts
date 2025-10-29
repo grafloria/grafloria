@@ -43,11 +43,10 @@ export const appRoutes: Route[] = [
     path: 'advanced-routing',
     loadComponent: () => import('./pages/advanced-routing-demo/advanced-routing-demo.component').then(m => m.AdvancedRoutingDemoComponent)
   },
-  // Temporarily disabled - needs API updates
-  // {
-  //   path: 'layout-showcase',
-  //   loadComponent: () => import('./pages/layout-showcase/layout-showcase.component').then(m => m.LayoutShowcaseComponent)
-  // },
+  {
+    path: 'layout-showcase',
+    loadComponent: () => import('./pages/layout-showcase/layout-showcase.component').then(m => m.LayoutShowcaseComponent)
+  },
   {
     path: '**',
     redirectTo: ''

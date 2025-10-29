@@ -13,7 +13,7 @@
 import { Component, OnInit, OnDestroy } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
-import { DiagramEngine } from '@grafloria/engine';
+import { DiagramEngine, NodeModel } from '@grafloria/engine';
 import { LayoutService } from '@grafloria/engine';
 
 interface BusinessScenario {
@@ -165,7 +165,10 @@ export class LayoutShowcaseComponent implements OnInit, OnDestroy {
     this.currentOptions = { ...scenario.defaultOptions };
 
     // Clear and recreate diagram
-    this.engine.getModel().clear();
+    const model = this.engine.getDiagram();
+    if (model) {
+      model.clear();
+    }
     scenario.createDiagram(this.engine);
 
     // Apply layout
@@ -197,7 +200,10 @@ export class LayoutShowcaseComponent implements OnInit, OnDestroy {
   }
 
   randomizePositions(): void {
-    const nodes = Array.from(this.engine.getModel().getNodes().values());
+    const model = this.engine.getDiagram();
+    if (!model) return;
+
+    const nodes = Array.from(model.getNodes().values());
     nodes.forEach(node => {
       node.setPosition(
         Math.random() * 1000,
@@ -211,596 +217,774 @@ export class LayoutShowcaseComponent implements OnInit, OnDestroy {
   // ========================================================================
 
   private createOrgChart(engine: DiagramEngine): void {
-    const model = engine.getModel();
+    const model = engine.getDiagram();
+    if (!model) return;
 
     // CEO
-    const ceo = model.addNode({
+    const ceo = new NodeModel({
+      type: 'default',
       position: { x: 0, y: 0 },
-      size: { width: 180, height: 80 },
-      data: {
-        label: 'CEO',
-        name: 'Sarah Johnson',
-        role: 'Chief Executive Officer'
-      }
+      size: { width: 180, height: 80 }
     });
+    ceo.setData('label', 'CEO');
+    ceo.setData('name', 'Sarah Johnson');
+    ceo.setData('role', 'Chief Executive Officer');
+    model.addNode(ceo);
 
     // C-Level
-    const cto = model.addNode({
+    const cto = new NodeModel({
+      type: 'default',
       position: { x: 0, y: 0 },
-      size: { width: 180, height: 80 },
-      data: {
-        label: 'CTO',
-        name: 'Mike Chen',
-        role: 'Chief Technology Officer'
-      }
+      size: { width: 180, height: 80 }
     });
+    cto.setData('label', 'CTO');
+    cto.setData('name', 'Mike Chen');
+    cto.setData('role', 'Chief Technology Officer');
+    model.addNode(cto);
 
-    const cfo = model.addNode({
+    const cfo = new NodeModel({
+      type: 'default',
       position: { x: 0, y: 0 },
-      size: { width: 180, height: 80 },
-      data: {
-        label: 'CFO',
-        name: 'Emily Rodriguez',
-        role: 'Chief Financial Officer'
-      }
+      size: { width: 180, height: 80 }
     });
+    cfo.setData('label', 'CFO');
+    cfo.setData('name', 'Emily Rodriguez');
+    cfo.setData('role', 'Chief Financial Officer');
+    model.addNode(cfo);
 
-    const cmo = model.addNode({
+    const cmo = new NodeModel({
+      type: 'default',
       position: { x: 0, y: 0 },
-      size: { width: 180, height: 80 },
-      data: {
-        label: 'CMO',
-        name: 'David Park',
-        role: 'Chief Marketing Officer'
-      }
+      size: { width: 180, height: 80 }
     });
+    cmo.setData('label', 'CMO');
+    cmo.setData('name', 'David Park');
+    cmo.setData('role', 'Chief Marketing Officer');
+    model.addNode(cmo);
 
     // Engineering Team
-    const engMgr = model.addNode({
+    const engMgr = new NodeModel({
+      type: 'default',
       position: { x: 0, y: 0 },
-      size: { width: 160, height: 70 },
-      data: { label: 'Engineering Manager', name: 'Alex Kim' }
+      size: { width: 160, height: 70 }
     });
+    engMgr.setData('label', 'Engineering Manager');
+    engMgr.setData('name', 'Alex Kim');
+    model.addNode(engMgr);
 
-    const devLead = model.addNode({
+    const devLead = new NodeModel({
+      type: 'default',
       position: { x: 0, y: 0 },
-      size: { width: 160, height: 70 },
-      data: { label: 'Dev Lead', name: 'Jordan Lee' }
+      size: { width: 160, height: 70 }
     });
+    devLead.setData('label', 'Dev Lead');
+    devLead.setData('name', 'Jordan Lee');
+    model.addNode(devLead);
 
-    const qaLead = model.addNode({
+    const qaLead = new NodeModel({
+      type: 'default',
       position: { x: 0, y: 0 },
-      size: { width: 160, height: 70 },
-      data: { label: 'QA Lead', name: 'Sam Taylor' }
+      size: { width: 160, height: 70 }
     });
+    qaLead.setData('label', 'QA Lead');
+    qaLead.setData('name', 'Sam Taylor');
+    model.addNode(qaLead);
 
     // Finance Team
-    const finController = model.addNode({
+    const finController = new NodeModel({
+      type: 'default',
       position: { x: 0, y: 0 },
-      size: { width: 160, height: 70 },
-      data: { label: 'Controller', name: 'Lisa Wang' }
+      size: { width: 160, height: 70 }
     });
+    finController.setData('label', 'Controller');
+    finController.setData('name', 'Lisa Wang');
+    model.addNode(finController);
 
     // Marketing Team
-    const mktMgr = model.addNode({
+    const mktMgr = new NodeModel({
+      type: 'default',
       position: { x: 0, y: 0 },
-      size: { width: 160, height: 70 },
-      data: { label: 'Marketing Manager', name: 'Chris Brown' }
+      size: { width: 160, height: 70 }
     });
+    mktMgr.setData('label', 'Marketing Manager');
+    mktMgr.setData('name', 'Chris Brown');
+    model.addNode(mktMgr);
 
     // Create hierarchy links
-    model.addLink({ sourceNodeId: ceo.id, targetNodeId: cto.id, sourcePortId: 'out', targetPortId: 'in' });
-    model.addLink({ sourceNodeId: ceo.id, targetNodeId: cfo.id, sourcePortId: 'out', targetPortId: 'in' });
-    model.addLink({ sourceNodeId: ceo.id, targetNodeId: cmo.id, sourcePortId: 'out', targetPortId: 'in' });
+    model.connectNodes(ceo, cto);
+    model.connectNodes(ceo, cfo);
+    model.connectNodes(ceo, cmo);
 
-    model.addLink({ sourceNodeId: cto.id, targetNodeId: engMgr.id, sourcePortId: 'out', targetPortId: 'in' });
-    model.addLink({ sourceNodeId: engMgr.id, targetNodeId: devLead.id, sourcePortId: 'out', targetPortId: 'in' });
-    model.addLink({ sourceNodeId: engMgr.id, targetNodeId: qaLead.id, sourcePortId: 'out', targetPortId: 'in' });
+    model.connectNodes(cto, engMgr);
+    model.connectNodes(engMgr, devLead);
+    model.connectNodes(engMgr, qaLead);
 
-    model.addLink({ sourceNodeId: cfo.id, targetNodeId: finController.id, sourcePortId: 'out', targetPortId: 'in' });
-    model.addLink({ sourceNodeId: cmo.id, targetNodeId: mktMgr.id, sourcePortId: 'out', targetPortId: 'in' });
+    model.connectNodes(cfo, finController);
+    model.connectNodes(cmo, mktMgr);
   }
 
   private createProcessFlow(engine: DiagramEngine): void {
-    const model = engine.getModel();
+    const model = engine.getDiagram();
+    if (!model) return;
 
     // Start
-    const start = model.addNode({
+    const start = new NodeModel({
+      type: 'default',
       position: { x: 0, y: 0 },
-      size: { width: 120, height: 60 },
-      data: { label: 'Start', type: 'start' }
+      size: { width: 120, height: 60 }
     });
+    start.setData('label', 'Start');
+    start.setData('type', 'start');
+    model.addNode(start);
 
     // Receive Order
-    const receiveOrder = model.addNode({
+    const receiveOrder = new NodeModel({
+      type: 'default',
       position: { x: 0, y: 0 },
-      size: { width: 150, height: 70 },
-      data: { label: 'Receive Order', type: 'process' }
+      size: { width: 150, height: 70 }
     });
+    receiveOrder.setData('label', 'Receive Order');
+    receiveOrder.setData('type', 'process');
+    model.addNode(receiveOrder);
 
     // Check Inventory
-    const checkInventory = model.addNode({
+    const checkInventory = new NodeModel({
+      type: 'default',
       position: { x: 0, y: 0 },
-      size: { width: 160, height: 70 },
-      data: { label: 'Check Inventory', type: 'process' }
+      size: { width: 160, height: 70 }
     });
+    checkInventory.setData('label', 'Check Inventory');
+    checkInventory.setData('type', 'process');
+    model.addNode(checkInventory);
 
     // Decision: In Stock?
-    const inStockDecision = model.addNode({
+    const inStockDecision = new NodeModel({
+      type: 'default',
       position: { x: 0, y: 0 },
-      size: { width: 140, height: 80 },
-      data: { label: 'In Stock?', type: 'decision' }
+      size: { width: 140, height: 80 }
     });
+    inStockDecision.setData('label', 'In Stock?');
+    inStockDecision.setData('type', 'decision');
+    model.addNode(inStockDecision);
 
     // Process Payment
-    const processPayment = model.addNode({
+    const processPayment = new NodeModel({
+      type: 'default',
       position: { x: 0, y: 0 },
-      size: { width: 150, height: 70 },
-      data: { label: 'Process Payment', type: 'process' }
+      size: { width: 150, height: 70 }
     });
+    processPayment.setData('label', 'Process Payment');
+    processPayment.setData('type', 'process');
+    model.addNode(processPayment);
 
     // Ship Order
-    const shipOrder = model.addNode({
+    const shipOrder = new NodeModel({
+      type: 'default',
       position: { x: 0, y: 0 },
-      size: { width: 150, height: 70 },
-      data: { label: 'Ship Order', type: 'process' }
+      size: { width: 150, height: 70 }
     });
+    shipOrder.setData('label', 'Ship Order');
+    shipOrder.setData('type', 'process');
+    model.addNode(shipOrder);
 
     // Backorder
-    const backorder = model.addNode({
+    const backorder = new NodeModel({
+      type: 'default',
       position: { x: 0, y: 0 },
-      size: { width: 150, height: 70 },
-      data: { label: 'Create Backorder', type: 'process' }
+      size: { width: 150, height: 70 }
     });
+    backorder.setData('label', 'Create Backorder');
+    backorder.setData('type', 'process');
+    model.addNode(backorder);
 
     // Notify Customer
-    const notifyCustomer = model.addNode({
+    const notifyCustomer = new NodeModel({
+      type: 'default',
       position: { x: 0, y: 0 },
-      size: { width: 150, height: 70 },
-      data: { label: 'Notify Customer', type: 'process' }
+      size: { width: 150, height: 70 }
     });
+    notifyCustomer.setData('label', 'Notify Customer');
+    notifyCustomer.setData('type', 'process');
+    model.addNode(notifyCustomer);
 
     // End
-    const end = model.addNode({
+    const end = new NodeModel({
+      type: 'default',
       position: { x: 0, y: 0 },
-      size: { width: 120, height: 60 },
-      data: { label: 'End', type: 'end' }
+      size: { width: 120, height: 60 }
     });
+    end.setData('label', 'End');
+    end.setData('type', 'end');
+    model.addNode(end);
 
     // Create flow
-    model.addLink({ sourceNodeId: start.id, targetNodeId: receiveOrder.id, sourcePortId: 'out', targetPortId: 'in' });
-    model.addLink({ sourceNodeId: receiveOrder.id, targetNodeId: checkInventory.id, sourcePortId: 'out', targetPortId: 'in' });
-    model.addLink({ sourceNodeId: checkInventory.id, targetNodeId: inStockDecision.id, sourcePortId: 'out', targetPortId: 'in' });
-    model.addLink({ sourceNodeId: inStockDecision.id, targetNodeId: processPayment.id, sourcePortId: 'out', targetPortId: 'in', data: { label: 'Yes' } });
-    model.addLink({ sourceNodeId: inStockDecision.id, targetNodeId: backorder.id, sourcePortId: 'out', targetPortId: 'in', data: { label: 'No' } });
-    model.addLink({ sourceNodeId: processPayment.id, targetNodeId: shipOrder.id, sourcePortId: 'out', targetPortId: 'in' });
-    model.addLink({ sourceNodeId: shipOrder.id, targetNodeId: notifyCustomer.id, sourcePortId: 'out', targetPortId: 'in' });
-    model.addLink({ sourceNodeId: backorder.id, targetNodeId: notifyCustomer.id, sourcePortId: 'out', targetPortId: 'in' });
-    model.addLink({ sourceNodeId: notifyCustomer.id, targetNodeId: end.id, sourcePortId: 'out', targetPortId: 'in' });
+    model.connectNodes(start, receiveOrder);
+    model.connectNodes(receiveOrder, checkInventory);
+    model.connectNodes(checkInventory, inStockDecision);
+    model.connectNodes(inStockDecision, processPayment);
+    model.connectNodes(inStockDecision, backorder);
+    model.connectNodes(processPayment, shipOrder);
+    model.connectNodes(shipOrder, notifyCustomer);
+    model.connectNodes(backorder, notifyCustomer);
+    model.connectNodes(notifyCustomer, end);
   }
 
   private createNetworkTopology(engine: DiagramEngine): void {
-    const model = engine.getModel();
+    const model = engine.getDiagram();
+    if (!model) return;
 
     // Core Network
-    const router1 = model.addNode({
+    const router1 = new NodeModel({
+      type: 'default',
       position: { x: 0, y: 0 },
-      size: { width: 140, height: 70 },
-      data: { label: 'Core Router 1', type: 'router' }
+      size: { width: 140, height: 70 }
     });
+    router1.setData('label', 'Core Router 1');
+    router1.setData('type', 'router');
+    model.addNode(router1);
 
-    const router2 = model.addNode({
+    const router2 = new NodeModel({
+      type: 'default',
       position: { x: 0, y: 0 },
-      size: { width: 140, height: 70 },
-      data: { label: 'Core Router 2', type: 'router' }
+      size: { width: 140, height: 70 }
     });
+    router2.setData('label', 'Core Router 2');
+    router2.setData('type', 'router');
+    model.addNode(router2);
 
     // Switches
-    const switch1 = model.addNode({
+    const switch1 = new NodeModel({
+      type: 'default',
       position: { x: 0, y: 0 },
-      size: { width: 120, height: 60 },
-      data: { label: 'Switch A', type: 'switch' }
+      size: { width: 120, height: 60 }
     });
+    switch1.setData('label', 'Switch A');
+    switch1.setData('type', 'switch');
+    model.addNode(switch1);
 
-    const switch2 = model.addNode({
+    const switch2 = new NodeModel({
+      type: 'default',
       position: { x: 0, y: 0 },
-      size: { width: 120, height: 60 },
-      data: { label: 'Switch B', type: 'switch' }
+      size: { width: 120, height: 60 }
     });
+    switch2.setData('label', 'Switch B');
+    switch2.setData('type', 'switch');
+    model.addNode(switch2);
 
-    const switch3 = model.addNode({
+    const switch3 = new NodeModel({
+      type: 'default',
       position: { x: 0, y: 0 },
-      size: { width: 120, height: 60 },
-      data: { label: 'Switch C', type: 'switch' }
+      size: { width: 120, height: 60 }
     });
+    switch3.setData('label', 'Switch C');
+    switch3.setData('type', 'switch');
+    model.addNode(switch3);
 
     // Servers
-    const webServer = model.addNode({
+    const webServer = new NodeModel({
+      type: 'default',
       position: { x: 0, y: 0 },
-      size: { width: 130, height: 65 },
-      data: { label: 'Web Server', type: 'server' }
+      size: { width: 130, height: 65 }
     });
+    webServer.setData('label', 'Web Server');
+    webServer.setData('type', 'server');
+    model.addNode(webServer);
 
-    const dbServer = model.addNode({
+    const dbServer = new NodeModel({
+      type: 'default',
       position: { x: 0, y: 0 },
-      size: { width: 130, height: 65 },
-      data: { label: 'DB Server', type: 'server' }
+      size: { width: 130, height: 65 }
     });
+    dbServer.setData('label', 'DB Server');
+    dbServer.setData('type', 'server');
+    model.addNode(dbServer);
 
-    const appServer = model.addNode({
+    const appServer = new NodeModel({
+      type: 'default',
       position: { x: 0, y: 0 },
-      size: { width: 130, height: 65 },
-      data: { label: 'App Server', type: 'server' }
+      size: { width: 130, height: 65 }
     });
+    appServer.setData('label', 'App Server');
+    appServer.setData('type', 'server');
+    model.addNode(appServer);
 
-    const cacheServer = model.addNode({
+    const cacheServer = new NodeModel({
+      type: 'default',
       position: { x: 0, y: 0 },
-      size: { width: 130, height: 65 },
-      data: { label: 'Cache Server', type: 'server' }
+      size: { width: 130, height: 65 }
     });
+    cacheServer.setData('label', 'Cache Server');
+    cacheServer.setData('type', 'server');
+    model.addNode(cacheServer);
 
     // Firewall
-    const firewall = model.addNode({
+    const firewall = new NodeModel({
+      type: 'default',
       position: { x: 0, y: 0 },
-      size: { width: 120, height: 60 },
-      data: { label: 'Firewall', type: 'firewall' }
+      size: { width: 120, height: 60 }
     });
+    firewall.setData('label', 'Firewall');
+    firewall.setData('type', 'firewall');
+    model.addNode(firewall);
 
     // Create connections
-    model.addLink({ sourceNodeId: router1.id, targetNodeId: router2.id, sourcePortId: 'out', targetPortId: 'in' });
-    model.addLink({ sourceNodeId: router1.id, targetNodeId: switch1.id, sourcePortId: 'out', targetPortId: 'in' });
-    model.addLink({ sourceNodeId: router2.id, targetNodeId: switch2.id, sourcePortId: 'out', targetPortId: 'in' });
-    model.addLink({ sourceNodeId: router2.id, targetNodeId: switch3.id, sourcePortId: 'out', targetPortId: 'in' });
+    model.connectNodes(router1, router2);
+    model.connectNodes(router1, switch1);
+    model.connectNodes(router2, switch2);
+    model.connectNodes(router2, switch3);
 
-    model.addLink({ sourceNodeId: switch1.id, targetNodeId: webServer.id, sourcePortId: 'out', targetPortId: 'in' });
-    model.addLink({ sourceNodeId: switch1.id, targetNodeId: appServer.id, sourcePortId: 'out', targetPortId: 'in' });
-    model.addLink({ sourceNodeId: switch2.id, targetNodeId: dbServer.id, sourcePortId: 'out', targetPortId: 'in' });
-    model.addLink({ sourceNodeId: switch3.id, targetNodeId: cacheServer.id, sourcePortId: 'out', targetPortId: 'in' });
+    model.connectNodes(switch1, webServer);
+    model.connectNodes(switch1, appServer);
+    model.connectNodes(switch2, dbServer);
+    model.connectNodes(switch3, cacheServer);
 
-    model.addLink({ sourceNodeId: firewall.id, targetNodeId: router1.id, sourcePortId: 'out', targetPortId: 'in' });
-    model.addLink({ sourceNodeId: webServer.id, targetNodeId: appServer.id, sourcePortId: 'out', targetPortId: 'in' });
-    model.addLink({ sourceNodeId: appServer.id, targetNodeId: dbServer.id, sourcePortId: 'out', targetPortId: 'in' });
-    model.addLink({ sourceNodeId: appServer.id, targetNodeId: cacheServer.id, sourcePortId: 'out', targetPortId: 'in' });
+    model.connectNodes(firewall, router1);
+    model.connectNodes(webServer, appServer);
+    model.connectNodes(appServer, dbServer);
+    model.connectNodes(appServer, cacheServer);
   }
 
   private createDecisionTree(engine: DiagramEngine): void {
-    const model = engine.getModel();
+    const model = engine.getDiagram();
+    if (!model) return;
 
     // Root
-    const root = model.addNode({
+    const root = new NodeModel({
+      type: 'default',
       position: { x: 0, y: 0 },
-      size: { width: 160, height: 70 },
-      data: { label: 'Budget?', type: 'decision' }
+      size: { width: 160, height: 70 }
     });
+    root.setData('label', 'Budget?');
+    root.setData('type', 'decision');
+    model.addNode(root);
 
     // Level 1
-    const budget1 = model.addNode({
+    const budget1 = new NodeModel({
+      type: 'default',
       position: { x: 0, y: 0 },
-      size: { width: 140, height: 60 },
-      data: { label: '< $500', type: 'branch' }
+      size: { width: 140, height: 60 }
     });
+    budget1.setData('label', '< $500');
+    budget1.setData('type', 'branch');
+    model.addNode(budget1);
 
-    const budget2 = model.addNode({
+    const budget2 = new NodeModel({
+      type: 'default',
       position: { x: 0, y: 0 },
-      size: { width: 140, height: 60 },
-      data: { label: '$500-$1000', type: 'branch' }
+      size: { width: 140, height: 60 }
     });
+    budget2.setData('label', '$500-$1000');
+    budget2.setData('type', 'branch');
+    model.addNode(budget2);
 
-    const budget3 = model.addNode({
+    const budget3 = new NodeModel({
+      type: 'default',
       position: { x: 0, y: 0 },
-      size: { width: 140, height: 60 },
-      data: { label: '> $1000', type: 'branch' }
+      size: { width: 140, height: 60 }
     });
+    budget3.setData('label', '> $1000');
+    budget3.setData('type', 'branch');
+    model.addNode(budget3);
 
     // Level 2 - Use Case
-    const casual1 = model.addNode({
+    const casual1 = new NodeModel({
+      type: 'default',
       position: { x: 0, y: 0 },
-      size: { width: 130, height: 55 },
-      data: { label: 'Casual Use', type: 'leaf' }
+      size: { width: 130, height: 55 }
     });
+    casual1.setData('label', 'Casual Use');
+    casual1.setData('type', 'leaf');
+    model.addNode(casual1);
 
-    const gaming1 = model.addNode({
+    const gaming1 = new NodeModel({
+      type: 'default',
       position: { x: 0, y: 0 },
-      size: { width: 130, height: 55 },
-      data: { label: 'Light Gaming', type: 'leaf' }
+      size: { width: 130, height: 55 }
     });
+    gaming1.setData('label', 'Light Gaming');
+    gaming1.setData('type', 'leaf');
+    model.addNode(gaming1);
 
-    const gaming2 = model.addNode({
+    const gaming2 = new NodeModel({
+      type: 'default',
       position: { x: 0, y: 0 },
-      size: { width: 130, height: 55 },
-      data: { label: 'Gaming', type: 'leaf' }
+      size: { width: 130, height: 55 }
     });
+    gaming2.setData('label', 'Gaming');
+    gaming2.setData('type', 'leaf');
+    model.addNode(gaming2);
 
-    const professional = model.addNode({
+    const professional = new NodeModel({
+      type: 'default',
       position: { x: 0, y: 0 },
-      size: { width: 130, height: 55 },
-      data: { label: 'Professional', type: 'leaf' }
+      size: { width: 130, height: 55 }
     });
+    professional.setData('label', 'Professional');
+    professional.setData('type', 'leaf');
+    model.addNode(professional);
 
-    const workstation = model.addNode({
+    const workstation = new NodeModel({
+      type: 'default',
       position: { x: 0, y: 0 },
-      size: { width: 130, height: 55 },
-      data: { label: 'Workstation', type: 'leaf' }
+      size: { width: 130, height: 55 }
     });
+    workstation.setData('label', 'Workstation');
+    workstation.setData('type', 'leaf');
+    model.addNode(workstation);
 
-    const enthusiast = model.addNode({
+    const enthusiast = new NodeModel({
+      type: 'default',
       position: { x: 0, y: 0 },
-      size: { width: 130, height: 55 },
-      data: { label: 'Enthusiast', type: 'leaf' }
+      size: { width: 130, height: 55 }
     });
+    enthusiast.setData('label', 'Enthusiast');
+    enthusiast.setData('type', 'leaf');
+    model.addNode(enthusiast);
 
     // Create tree structure
-    model.addLink({ sourceNodeId: root.id, targetNodeId: budget1.id, sourcePortId: 'out', targetPortId: 'in' });
-    model.addLink({ sourceNodeId: root.id, targetNodeId: budget2.id, sourcePortId: 'out', targetPortId: 'in' });
-    model.addLink({ sourceNodeId: root.id, targetNodeId: budget3.id, sourcePortId: 'out', targetPortId: 'in' });
+    model.connectNodes(root, budget1);
+    model.connectNodes(root, budget2);
+    model.connectNodes(root, budget3);
 
-    model.addLink({ sourceNodeId: budget1.id, targetNodeId: casual1.id, sourcePortId: 'out', targetPortId: 'in' });
-    model.addLink({ sourceNodeId: budget1.id, targetNodeId: gaming1.id, sourcePortId: 'out', targetPortId: 'in' });
+    model.connectNodes(budget1, casual1);
+    model.connectNodes(budget1, gaming1);
 
-    model.addLink({ sourceNodeId: budget2.id, targetNodeId: gaming2.id, sourcePortId: 'out', targetPortId: 'in' });
-    model.addLink({ sourceNodeId: budget2.id, targetNodeId: professional.id, sourcePortId: 'out', targetPortId: 'in' });
+    model.connectNodes(budget2, gaming2);
+    model.connectNodes(budget2, professional);
 
-    model.addLink({ sourceNodeId: budget3.id, targetNodeId: workstation.id, sourcePortId: 'out', targetPortId: 'in' });
-    model.addLink({ sourceNodeId: budget3.id, targetNodeId: enthusiast.id, sourcePortId: 'out', targetPortId: 'in' });
+    model.connectNodes(budget3, workstation);
+    model.connectNodes(budget3, enthusiast);
   }
 
   private createCircularDeps(engine: DiagramEngine): void {
     const model = engine.getDiagram();
+    if (!model) return;
 
     // Core module
-    const core = model.addNode({
+    const core = new NodeModel({
+      type: 'default',
       position: { x: 0, y: 0 },
-      size: { width: 120, height: 60 },
-      data: { label: 'Core', type: 'module' }
+      size: { width: 120, height: 60 }
     });
+    core.setData('label', 'Core');
+    core.setData('type', 'module');
+    model.addNode(core);
 
     // Modules
-    const auth = model.addNode({
+    const auth = new NodeModel({
+      type: 'default',
       position: { x: 0, y: 0 },
-      size: { width: 120, height: 60 },
-      data: { label: 'Auth', type: 'module' }
+      size: { width: 120, height: 60 }
     });
+    auth.setData('label', 'Auth');
+    auth.setData('type', 'module');
+    model.addNode(auth);
 
-    const api = model.addNode({
+    const api = new NodeModel({
+      type: 'default',
       position: { x: 0, y: 0 },
-      size: { width: 120, height: 60 },
-      data: { label: 'API', type: 'module' }
+      size: { width: 120, height: 60 }
     });
+    api.setData('label', 'API');
+    api.setData('type', 'module');
+    model.addNode(api);
 
-    const database = model.addNode({
+    const database = new NodeModel({
+      type: 'default',
       position: { x: 0, y: 0 },
-      size: { width: 120, height: 60 },
-      data: { label: 'Database', type: 'module' }
+      size: { width: 120, height: 60 }
     });
+    database.setData('label', 'Database');
+    database.setData('type', 'module');
+    model.addNode(database);
 
-    const cache = model.addNode({
+    const cache = new NodeModel({
+      type: 'default',
       position: { x: 0, y: 0 },
-      size: { width: 120, height: 60 },
-      data: { label: 'Cache', type: 'module' }
+      size: { width: 120, height: 60 }
     });
+    cache.setData('label', 'Cache');
+    cache.setData('type', 'module');
+    model.addNode(cache);
 
-    const logger = model.addNode({
+    const logger = new NodeModel({
+      type: 'default',
       position: { x: 0, y: 0 },
-      size: { width: 120, height: 60 },
-      data: { label: 'Logger', type: 'module' }
+      size: { width: 120, height: 60 }
     });
+    logger.setData('label', 'Logger');
+    logger.setData('type', 'module');
+    model.addNode(logger);
 
-    const config = model.addNode({
+    const config = new NodeModel({
+      type: 'default',
       position: { x: 0, y: 0 },
-      size: { width: 120, height: 60 },
-      data: { label: 'Config', type: 'module' }
+      size: { width: 120, height: 60 }
     });
+    config.setData('label', 'Config');
+    config.setData('type', 'module');
+    model.addNode(config);
 
     // Create circular dependencies
-    model.addLink({ sourceNodeId: core.id, targetNodeId: auth.id, sourcePortId: 'out', targetPortId: 'in' });
-    model.addLink({ sourceNodeId: core.id, targetNodeId: api.id, sourcePortId: 'out', targetPortId: 'in' });
-    model.addLink({ sourceNodeId: auth.id, targetNodeId: database.id, sourcePortId: 'out', targetPortId: 'in' });
-    model.addLink({ sourceNodeId: auth.id, targetNodeId: cache.id, sourcePortId: 'out', targetPortId: 'in' });
-    model.addLink({ sourceNodeId: api.id, targetNodeId: auth.id, sourcePortId: 'out', targetPortId: 'in' });
-    model.addLink({ sourceNodeId: api.id, targetNodeId: database.id, sourcePortId: 'out', targetPortId: 'in' });
-    model.addLink({ sourceNodeId: database.id, targetNodeId: logger.id, sourcePortId: 'out', targetPortId: 'in' });
-    model.addLink({ sourceNodeId: cache.id, targetNodeId: logger.id, sourcePortId: 'out', targetPortId: 'in' });
-    model.addLink({ sourceNodeId: logger.id, targetNodeId: config.id, sourcePortId: 'out', targetPortId: 'in' });
-    model.addLink({ sourceNodeId: config.id, targetNodeId: core.id, sourcePortId: 'out', targetPortId: 'in' });
+    model.connectNodes(core, auth);
+    model.connectNodes(core, api);
+    model.connectNodes(auth, database);
+    model.connectNodes(auth, cache);
+    model.connectNodes(api, auth);
+    model.connectNodes(api, database);
+    model.connectNodes(database, logger);
+    model.connectNodes(cache, logger);
+    model.connectNodes(logger, config);
+    model.connectNodes(config, core);
   }
 
   private createSystemArchitecture(engine: DiagramEngine): void {
     const model = engine.getDiagram();
+    if (!model) return;
 
     // Frontend
-    const webApp = model.addNode({
+    const webApp = new NodeModel({
+      type: 'default',
       position: { x: 0, y: 0 },
-      size: { width: 140, height: 70 },
-      data: { label: 'Web App', type: 'frontend' }
+      size: { width: 140, height: 70 }
     });
+    webApp.setData('label', 'Web App');
+    webApp.setData('type', 'frontend');
+    model.addNode(webApp);
 
-    const mobileApp = model.addNode({
+    const mobileApp = new NodeModel({
+      type: 'default',
       position: { x: 0, y: 0 },
-      size: { width: 140, height: 70 },
-      data: { label: 'Mobile App', type: 'frontend' }
+      size: { width: 140, height: 70 }
     });
+    mobileApp.setData('label', 'Mobile App');
+    mobileApp.setData('type', 'frontend');
+    model.addNode(mobileApp);
 
     // API Gateway
-    const apiGateway = model.addNode({
+    const apiGateway = new NodeModel({
+      type: 'default',
       position: { x: 0, y: 0 },
-      size: { width: 150, height: 75 },
-      data: { label: 'API Gateway', type: 'gateway' }
+      size: { width: 150, height: 75 }
     });
+    apiGateway.setData('label', 'API Gateway');
+    apiGateway.setData('type', 'gateway');
+    model.addNode(apiGateway);
 
     // Microservices
-    const authService = model.addNode({
+    const authService = new NodeModel({
+      type: 'default',
       position: { x: 0, y: 0 },
-      size: { width: 140, height: 70 },
-      data: { label: 'Auth Service', type: 'service' }
+      size: { width: 140, height: 70 }
     });
+    authService.setData('label', 'Auth Service');
+    authService.setData('type', 'service');
+    model.addNode(authService);
 
-    const userService = model.addNode({
+    const userService = new NodeModel({
+      type: 'default',
       position: { x: 0, y: 0 },
-      size: { width: 140, height: 70 },
-      data: { label: 'User Service', type: 'service' }
+      size: { width: 140, height: 70 }
     });
+    userService.setData('label', 'User Service');
+    userService.setData('type', 'service');
+    model.addNode(userService);
 
-    const orderService = model.addNode({
+    const orderService = new NodeModel({
+      type: 'default',
       position: { x: 0, y: 0 },
-      size: { width: 140, height: 70 },
-      data: { label: 'Order Service', type: 'service' }
+      size: { width: 140, height: 70 }
     });
+    orderService.setData('label', 'Order Service');
+    orderService.setData('type', 'service');
+    model.addNode(orderService);
 
-    const paymentService = model.addNode({
+    const paymentService = new NodeModel({
+      type: 'default',
       position: { x: 0, y: 0 },
-      size: { width: 140, height: 70 },
-      data: { label: 'Payment Service', type: 'service' }
+      size: { width: 140, height: 70 }
     });
+    paymentService.setData('label', 'Payment Service');
+    paymentService.setData('type', 'service');
+    model.addNode(paymentService);
 
     // Databases
-    const authDB = model.addNode({
+    const authDB = new NodeModel({
+      type: 'default',
       position: { x: 0, y: 0 },
-      size: { width: 120, height: 60 },
-      data: { label: 'Auth DB', type: 'database' }
+      size: { width: 120, height: 60 }
     });
+    authDB.setData('label', 'Auth DB');
+    authDB.setData('type', 'database');
+    model.addNode(authDB);
 
-    const userDB = model.addNode({
+    const userDB = new NodeModel({
+      type: 'default',
       position: { x: 0, y: 0 },
-      size: { width: 120, height: 60 },
-      data: { label: 'User DB', type: 'database' }
+      size: { width: 120, height: 60 }
     });
+    userDB.setData('label', 'User DB');
+    userDB.setData('type', 'database');
+    model.addNode(userDB);
 
-    const orderDB = model.addNode({
+    const orderDB = new NodeModel({
+      type: 'default',
       position: { x: 0, y: 0 },
-      size: { width: 120, height: 60 },
-      data: { label: 'Order DB', type: 'database' }
+      size: { width: 120, height: 60 }
     });
+    orderDB.setData('label', 'Order DB');
+    orderDB.setData('type', 'database');
+    model.addNode(orderDB);
 
     // Message Queue
-    const messageQueue = model.addNode({
+    const messageQueue = new NodeModel({
+      type: 'default',
       position: { x: 0, y: 0 },
-      size: { width: 140, height: 70 },
-      data: { label: 'Message Queue', type: 'queue' }
+      size: { width: 140, height: 70 }
     });
+    messageQueue.setData('label', 'Message Queue');
+    messageQueue.setData('type', 'queue');
+    model.addNode(messageQueue);
 
     // Create architecture
-    model.addLink({ sourceNodeId: webApp.id, targetNodeId: apiGateway.id, sourcePortId: 'out', targetPortId: 'in' });
-    model.addLink({ sourceNodeId: mobileApp.id, targetNodeId: apiGateway.id, sourcePortId: 'out', targetPortId: 'in' });
+    model.connectNodes(webApp, apiGateway);
+    model.connectNodes(mobileApp, apiGateway);
 
-    model.addLink({ sourceNodeId: apiGateway.id, targetNodeId: authService.id, sourcePortId: 'out', targetPortId: 'in' });
-    model.addLink({ sourceNodeId: apiGateway.id, targetNodeId: userService.id, sourcePortId: 'out', targetPortId: 'in' });
-    model.addLink({ sourceNodeId: apiGateway.id, targetNodeId: orderService.id, sourcePortId: 'out', targetPortId: 'in' });
-    model.addLink({ sourceNodeId: apiGateway.id, targetNodeId: paymentService.id, sourcePortId: 'out', targetPortId: 'in' });
+    model.connectNodes(apiGateway, authService);
+    model.connectNodes(apiGateway, userService);
+    model.connectNodes(apiGateway, orderService);
+    model.connectNodes(apiGateway, paymentService);
 
-    model.addLink({ sourceNodeId: authService.id, targetNodeId: authDB.id, sourcePortId: 'out', targetPortId: 'in' });
-    model.addLink({ sourceNodeId: userService.id, targetNodeId: userDB.id, sourcePortId: 'out', targetPortId: 'in' });
-    model.addLink({ sourceNodeId: orderService.id, targetNodeId: orderDB.id, sourcePortId: 'out', targetPortId: 'in' });
+    model.connectNodes(authService, authDB);
+    model.connectNodes(userService, userDB);
+    model.connectNodes(orderService, orderDB);
 
-    model.addLink({ sourceNodeId: orderService.id, targetNodeId: messageQueue.id, sourcePortId: 'out', targetPortId: 'in' });
-    model.addLink({ sourceNodeId: paymentService.id, targetNodeId: messageQueue.id, sourcePortId: 'out', targetPortId: 'in' });
+    model.connectNodes(orderService, messageQueue);
+    model.connectNodes(paymentService, messageQueue);
   }
 
   private createPinnedLayout(engine: DiagramEngine): void {
     const model = engine.getDiagram();
+    if (!model) return;
 
     // Dashboard Header (Pinned to top)
-    const header = model.addNode({
+    const header = new NodeModel({
+      type: 'default',
       position: { x: 400, y: 50 }, // Will be pinned here
-      size: { width: 400, height: 80 },
-      data: {
-        label: 'Dashboard Header',
-        subtitle: 'Pinned to position (400, 50)',
-        type: 'header'
-      }
+      size: { width: 400, height: 80 }
     });
+    header.setData('label', 'Dashboard Header');
+    header.setData('subtitle', 'Pinned to position (400, 50)');
+    header.setData('type', 'header');
+    model.addNode(header);
 
     // Navigation Menu (Fixed X position)
-    const nav = model.addNode({
+    const nav = new NodeModel({
+      type: 'default',
       position: { x: 0, y: 0 },
-      size: { width: 160, height: 300 },
-      data: {
-        label: 'Navigation',
-        subtitle: 'Fixed X = 50',
-        type: 'sidebar'
-      }
+      size: { width: 160, height: 300 }
     });
+    nav.setData('label', 'Navigation');
+    nav.setData('subtitle', 'Fixed X = 50');
+    nav.setData('type', 'sidebar');
+    model.addNode(nav);
 
     // Main Content Area (Boundary constrained)
-    const mainContent = model.addNode({
+    const mainContent = new NodeModel({
+      type: 'default',
       position: { x: 0, y: 0 },
-      size: { width: 300, height: 200 },
-      data: {
-        label: 'Main Content',
-        subtitle: 'Within boundary',
-        type: 'content'
-      }
+      size: { width: 300, height: 200 }
     });
+    mainContent.setData('label', 'Main Content');
+    mainContent.setData('subtitle', 'Within boundary');
+    mainContent.setData('type', 'content');
+    model.addNode(mainContent);
 
     // Analytics Widget 1
-    const analytics1 = model.addNode({
+    const analytics1 = new NodeModel({
+      type: 'default',
       position: { x: 0, y: 0 },
-      size: { width: 200, height: 120 },
-      data: { label: 'Analytics Widget', type: 'widget' }
+      size: { width: 200, height: 120 }
     });
+    analytics1.setData('label', 'Analytics Widget');
+    analytics1.setData('type', 'widget');
+    model.addNode(analytics1);
 
     // Analytics Widget 2
-    const analytics2 = model.addNode({
+    const analytics2 = new NodeModel({
+      type: 'default',
       position: { x: 0, y: 0 },
-      size: { width: 200, height: 120 },
-      data: { label: 'Chart Widget', type: 'widget' }
+      size: { width: 200, height: 120 }
     });
+    analytics2.setData('label', 'Chart Widget');
+    analytics2.setData('type', 'widget');
+    model.addNode(analytics2);
 
     // Stats Widget (Fixed Y position)
-    const stats = model.addNode({
+    const stats = new NodeModel({
+      type: 'default',
       position: { x: 0, y: 0 },
-      size: { width: 180, height: 100 },
-      data: {
-        label: 'Stats Widget',
-        subtitle: 'Fixed Y = 400',
-        type: 'widget'
-      }
+      size: { width: 180, height: 100 }
     });
+    stats.setData('label', 'Stats Widget');
+    stats.setData('subtitle', 'Fixed Y = 400');
+    stats.setData('type', 'widget');
+    model.addNode(stats);
 
     // User Profile
-    const userProfile = model.addNode({
+    const userProfile = new NodeModel({
+      type: 'default',
       position: { x: 0, y: 0 },
-      size: { width: 150, height: 80 },
-      data: { label: 'User Profile', type: 'widget' }
+      size: { width: 150, height: 80 }
     });
+    userProfile.setData('label', 'User Profile');
+    userProfile.setData('type', 'widget');
+    model.addNode(userProfile);
 
     // Notifications
-    const notifications = model.addNode({
+    const notifications = new NodeModel({
+      type: 'default',
       position: { x: 0, y: 0 },
-      size: { width: 150, height: 80 },
-      data: { label: 'Notifications', type: 'widget' }
+      size: { width: 150, height: 80 }
     });
+    notifications.setData('label', 'Notifications');
+    notifications.setData('type', 'widget');
+    model.addNode(notifications);
 
     // Settings
-    const settings = model.addNode({
+    const settings = new NodeModel({
+      type: 'default',
       position: { x: 0, y: 0 },
-      size: { width: 150, height: 80 },
-      data: { label: 'Settings', type: 'widget' }
+      size: { width: 150, height: 80 }
     });
+    settings.setData('label', 'Settings');
+    settings.setData('type', 'widget');
+    model.addNode(settings);
 
     // Footer (Pinned to bottom)
-    const footer = model.addNode({
+    const footer = new NodeModel({
+      type: 'default',
       position: { x: 400, y: 650 }, // Will be pinned here
-      size: { width: 400, height: 60 },
-      data: {
-        label: 'Footer',
-        subtitle: 'Pinned to position (400, 650)',
-        type: 'footer'
-      }
+      size: { width: 400, height: 60 }
     });
+    footer.setData('label', 'Footer');
+    footer.setData('subtitle', 'Pinned to position (400, 650)');
+    footer.setData('type', 'footer');
+    model.addNode(footer);
 
     // Create relationships
-    model.addLink({ sourceNodeId: header.id, targetNodeId: nav.id, sourcePortId: 'out', targetPortId: 'in' });
-    model.addLink({ sourceNodeId: header.id, targetNodeId: mainContent.id, sourcePortId: 'out', targetPortId: 'in' });
+    model.connectNodes(header, nav);
+    model.connectNodes(header, mainContent);
 
-    model.addLink({ sourceNodeId: mainContent.id, targetNodeId: analytics1.id, sourcePortId: 'out', targetPortId: 'in' });
-    model.addLink({ sourceNodeId: mainContent.id, targetNodeId: analytics2.id, sourcePortId: 'out', targetPortId: 'in' });
-    model.addLink({ sourceNodeId: mainContent.id, targetNodeId: stats.id, sourcePortId: 'out', targetPortId: 'in' });
+    model.connectNodes(mainContent, analytics1);
+    model.connectNodes(mainContent, analytics2);
+    model.connectNodes(mainContent, stats);
 
-    model.addLink({ sourceNodeId: nav.id, targetNodeId: userProfile.id, sourcePortId: 'out', targetPortId: 'in' });
-    model.addLink({ sourceNodeId: nav.id, targetNodeId: notifications.id, sourcePortId: 'out', targetPortId: 'in' });
-    model.addLink({ sourceNodeId: nav.id, targetNodeId: settings.id, sourcePortId: 'out', targetPortId: 'in' });
+    model.connectNodes(nav, userProfile);
+    model.connectNodes(nav, notifications);
+    model.connectNodes(nav, settings);
 
-    model.addLink({ sourceNodeId: mainContent.id, targetNodeId: footer.id, sourcePortId: 'out', targetPortId: 'in' });
+    model.connectNodes(mainContent, footer);
 
     // Set up constraints for this scenario
     // These will be applied when the layout is run
