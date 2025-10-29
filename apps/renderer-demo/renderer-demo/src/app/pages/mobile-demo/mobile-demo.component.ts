@@ -1,8 +1,9 @@
 import { Component, OnInit, OnDestroy, ViewChild, ElementRef } from '@angular/core';
 import { CommonModule } from '@angular/common';
+import { FormsModule } from '@angular/forms';
 import { DiagramEngine } from '@grafloria/engine';
 import { NodeModel } from '@grafloria/engine';
-import { MobileInteractionService } from '@grafloria/engine';
+import { MobileManager } from '@grafloria/engine';
 import { MobilePerformanceService } from '@grafloria/engine';
 import { MobileToolbarComponent } from '@grafloria/renderer-angular';
 import { ResponsiveCanvasDirective } from '@grafloria/renderer-angular';
@@ -10,7 +11,7 @@ import { ResponsiveCanvasDirective } from '@grafloria/renderer-angular';
 @Component({
   selector: 'app-mobile-demo',
   standalone: true,
-  imports: [CommonModule, MobileToolbarComponent, ResponsiveCanvasDirective],
+  imports: [CommonModule, FormsModule, MobileToolbarComponent, ResponsiveCanvasDirective],
   template: `
     <div class="mobile-demo-container">
       <div class="demo-header">
@@ -19,20 +20,49 @@ import { ResponsiveCanvasDirective } from '@grafloria/renderer-angular';
           This demo showcases mobile touch gestures and responsive design.
           Try pinch-to-zoom, two-finger pan, tap to select, and long-press for context menu.
         </p>
+
+        <!-- Toggle Controls -->
+        <div class="toggle-controls">
+          <label class="toggle-label">
+            <input type="checkbox" [(ngModel)]="mobileEnabled" (change)="toggleMobile()">
+            <span class="toggle-text">Mobile Mode</span>
+            <span class="toggle-status" [class.active]="mobileEnabled">
+              {{ mobileEnabled ? 'ON' : 'OFF' }}
+            </span>
+          </label>
+          <label class="toggle-label">
+            <input type="checkbox" [(ngModel)]="responsiveEnabled" (change)="toggleResponsive()">
+            <span class="toggle-text">Auto-Resize</span>
+            <span class="toggle-status" [class.active]="responsiveEnabled">
+              {{ responsiveEnabled ? 'ON' : 'OFF' }}
+            </span>
+          </label>
+          <button class="manual-btn" (click)="fitToScreen()">
+            <i class="fa fa-expand"></i> Fit to Screen
+          </button>
+        </div>
+
         <div class="device-info" *ngIf="deviceInfo">
           <span class="info-badge" [class.mobile]="deviceInfo.isMobile">
-            {{ deviceInfo.isMobile ? 'Mobile Device' : 'Desktop' }}
+            {{ deviceInfo.isMobile ? '📱 Mobile' : '🖥️ Desktop' }}
           </span>
           <span class="info-badge" [class.low-power]="deviceInfo.isLowPower">
-            {{ deviceInfo.isLowPower ? 'Low Power' : 'Normal Power' }}
+            {{ deviceInfo.isLowPower ? '🔋 Low Power' : '⚡ Normal' }}
           </span>
           <span class="info-badge">
             Quality: {{ deviceInfo.renderQuality }}
           </span>
+          <span class="info-badge" *ngIf="deviceInfo.supportsTouch">
+            👆 Touch Supported
+          </span>
         </div>
       </div>
 
-      <div class="canvas-container" #canvasContainer grafloriaResponsiveCanvas [engine]="engine">
+      <div class="canvas-container" #canvasContainer
+           grafloriaResponsiveCanvas
+           [engine]="engine"
+           [enabled]="responsiveEnabled"
+           #responsiveDirective>
         <svg #canvas class="diagram-canvas" width="100%" height="600">
           <!-- Nodes will be rendered here -->
           <g *ngFor="let node of nodes">
@@ -103,10 +133,79 @@ import { ResponsiveCanvasDirective } from '@grafloria/renderer-angular';
     }
 
     .demo-description {
-      margin: 0 0 12px 0;
+      margin: 0 0 16px 0;
       font-size: 14px;
       color: #64748b;
       line-height: 1.5;
+    }
+
+    .toggle-controls {
+      display: flex;
+      gap: 16px;
+      flex-wrap: wrap;
+      margin-bottom: 16px;
+      padding: 16px;
+      background: #f8fafc;
+      border-radius: 8px;
+      border: 1px solid #e2e8f0;
+    }
+
+    .toggle-label {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      cursor: pointer;
+      user-select: none;
+    }
+
+    .toggle-label input[type="checkbox"] {
+      width: 40px;
+      height: 20px;
+      cursor: pointer;
+    }
+
+    .toggle-text {
+      font-size: 14px;
+      font-weight: 500;
+      color: #334155;
+    }
+
+    .toggle-status {
+      padding: 2px 8px;
+      border-radius: 12px;
+      font-size: 11px;
+      font-weight: 600;
+      background: #e2e8f0;
+      color: #64748b;
+      transition: all 0.2s;
+    }
+
+    .toggle-status.active {
+      background: #22c55e;
+      color: white;
+    }
+
+    .manual-btn {
+      padding: 8px 16px;
+      background: #667eea;
+      color: white;
+      border: none;
+      border-radius: 6px;
+      font-size: 14px;
+      font-weight: 500;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      transition: background 0.2s;
+    }
+
+    .manual-btn:hover {
+      background: #5568d3;
+    }
+
+    .manual-btn:active {
+      transform: scale(0.98);
     }
 
     .device-info {
@@ -217,32 +316,37 @@ import { ResponsiveCanvasDirective } from '@grafloria/renderer-angular';
 })
 export class MobileDemoComponent implements OnInit, OnDestroy {
   @ViewChild('canvas') canvasRef!: ElementRef<SVGElement>;
+  @ViewChild('responsiveDirective') responsiveDirective!: ResponsiveCanvasDirective;
 
   engine!: DiagramEngine;
-  mobileService!: MobileInteractionService;
-  performanceService!: MobilePerformanceService;
+  mobileManager!: MobileManager;
 
   nodes: any[] = [];
   toolbarActions: any[] = [];
   gestureLogs: any[] = [];
 
+  // Toggle states
+  mobileEnabled = true;
+  responsiveEnabled = true;
+
   deviceInfo = {
     isMobile: false,
     isLowPower: false,
     renderQuality: 'high' as 'high' | 'medium' | 'low',
+    supportsTouch: false,
   };
 
   ngOnInit() {
     this.initializeEngine();
-    this.initializeMobileSupport();
     this.createSampleDiagram();
     this.setupToolbarActions();
+    this.initializeMobileManager();
     this.detectDeviceCapabilities();
   }
 
   ngOnDestroy() {
-    if (this.mobileService) {
-      this.mobileService.destroy();
+    if (this.mobileManager) {
+      this.mobileManager.destroy();
     }
   }
 
@@ -282,27 +386,56 @@ export class MobileDemoComponent implements OnInit, OnDestroy {
     };
   }
 
-  private initializeMobileSupport() {
-    // Initialize performance service
-    this.performanceService = new MobilePerformanceService();
-    this.performanceService.initialize();
+  private initializeMobileManager() {
+    // Initialize MobileManager with auto-enable
+    this.mobileManager = new MobileManager(this.engine as any, {
+      autoEnable: this.mobileEnabled,
+      enableResponsive: this.responsiveEnabled,
+      interaction: {
+        enablePinchZoom: true,
+        enableTwoFingerPan: true,
+        enableDoubleTapZoom: true,
+        enableLongPressMenu: true,
+        minZoom: 0.5,
+        maxZoom: 3,
+      },
+      onMobileEnabled: () => {
+        this.logGesture('system', 'Mobile mode enabled');
+      },
+      onMobileDisabled: () => {
+        this.logGesture('system', 'Mobile mode disabled');
+      },
+    });
 
-    // Initialize mobile interaction service
-    this.mobileService = new MobileInteractionService(this.engine as any);
-
-    // Will initialize with canvas after view init
+    // Set canvas after view init
     setTimeout(() => {
       if (this.canvasRef) {
-        this.mobileService.initialize(this.canvasRef.nativeElement, {
-          enablePinchZoom: true,
-          enableTwoFingerPan: true,
-          enableDoubleTapZoom: true,
-          enableLongPressMenu: true,
-          minZoom: 0.5,
-          maxZoom: 3,
-        });
+        this.mobileManager.setCanvas(this.canvasRef.nativeElement);
       }
     }, 100);
+  }
+
+  toggleMobile() {
+    if (this.mobileEnabled) {
+      this.mobileManager.enable();
+    } else {
+      this.mobileManager.disable();
+    }
+    this.logGesture('toggle', `Mobile mode: ${this.mobileEnabled ? 'ON' : 'OFF'}`);
+  }
+
+  toggleResponsive() {
+    if (this.responsiveEnabled) {
+      this.mobileManager.enableResponsive();
+    } else {
+      this.mobileManager.disableResponsive();
+    }
+    this.logGesture('toggle', `Responsive mode: ${this.responsiveEnabled ? 'ON' : 'OFF'}`);
+  }
+
+  fitToScreen() {
+    this.mobileManager.triggerZoomToFit({ padding: 50 });
+    this.logGesture('action', 'Fit to screen triggered');
   }
 
   private createSampleDiagram() {
@@ -379,11 +512,15 @@ export class MobileDemoComponent implements OnInit, OnDestroy {
   }
 
   private detectDeviceCapabilities() {
-    this.deviceInfo.isMobile = MobilePerformanceService.isMobileDevice();
-    this.deviceInfo.isLowPower = MobilePerformanceService.isLowPowerDevice();
-    this.deviceInfo.renderQuality = this.performanceService.getRenderQuality();
+    const info = this.mobileManager.getDeviceInfo();
+    this.deviceInfo = {
+      isMobile: info.isMobile,
+      isLowPower: info.isLowPower,
+      renderQuality: info.renderQuality,
+      supportsTouch: info.supportsTouch,
+    };
 
-    this.logGesture('info', `Device detected: ${this.deviceInfo.isMobile ? 'Mobile' : 'Desktop'}`);
+    this.logGesture('info', `Device: ${this.deviceInfo.isMobile ? 'Mobile' : 'Desktop'}, Touch: ${this.deviceInfo.supportsTouch}`);
   }
 
   private logGesture(type: string, detail: string) {
