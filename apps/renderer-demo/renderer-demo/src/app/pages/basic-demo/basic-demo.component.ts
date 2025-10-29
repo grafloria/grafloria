@@ -144,6 +144,11 @@ export class BasicDemoComponent implements OnInit {
 
     console.log('🔧 Engine initialized with port visibility:', this.engine.getInteractionConfig().portVisibility);
 
+    // Enable automatic link rerouting when nodes move (Observer Pattern)
+    // Links will automatically update their paths when nodes are repositioned
+    this.engine.enableLiveRerouting();
+    console.log('✅ Live rerouting enabled - links will automatically update when nodes move');
+
     // CRITICAL FIX: Initialize the routing algorithm to match the currentRoutingAlgorithm
     // This ensures obstacle avoidance works from the start
     const routingEngine = this.engine.getRoutingEngine();

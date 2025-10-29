@@ -44,6 +44,14 @@ export const appRoutes: Route[] = [
     loadComponent: () => import('./pages/advanced-routing-demo/advanced-routing-demo.component').then(m => m.AdvancedRoutingDemoComponent)
   },
   {
+    path: 'layout-showcase',
+    loadComponent: () => import('./pages/layout-showcase/layout-showcase.component').then(m => m.LayoutShowcaseComponent)
+  },
+  {
+    path: 'animation-demo',
+    loadComponent: () => import('./pages/animation-demo/animation-demo.component').then(m => m.AnimationDemoComponent)
+  },
+  {
     path: '**',
     redirectTo: ''
   }

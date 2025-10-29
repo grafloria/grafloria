@@ -1,0 +1,121 @@
+/**
+ * Layout Adapter Interface
+ *
+ * Defines the common interface for external layout library adapters.
+ * This allows seamless integration of different layout engines (Dagre, ELK, etc.)
+ * into the Grafloria diagram engine.
+ */
+
+import { NodeModel } from '../models/NodeModel';
+import { LinkModel } from '../models/LinkModel';
+import { LayoutConstraints } from './layout-constraints.interface';
+import {
+  IncrementalLayoutOptions,
+  IncrementalLayoutResult,
+  IncrementalLayoutManager,
+} from './incremental-layout.interface';
+import { LayoutQualityResult } from './layout-quality-metrics';
+import { PortAwareLayoutOptions, PortAwareLayoutResult } from './port-aware-layout.interface';
+import { SubgraphLayoutOptions, SubgraphLayoutResult } from './subgraph-layout.interface';
+import { EdgeBundlingOptions, EdgeBundlingResult } from './edge-bundling.interface';
+
+/**
+ * Base options for all layout adapters
+ */
+export interface LayoutOptions {
+  /** Whether to animate to new positions */
+  animate?: boolean;
+  /** Animation duration in milliseconds */
+  animationDuration?: number;
+  /** Whether to fit viewport to content after layout */
+  fit?: boolean;
+  /** Padding around content when fitting */
+  padding?: number;
+  /** Layout constraints for pinning/fixing nodes */
+  constraints?: LayoutConstraints;
+  /** Whether to calculate quality metrics after layout */
+  calculateQuality?: boolean;
+  /** Canvas dimensions for quality assessment */
+  canvasDimensions?: { width: number; height: number };
+  /** Port-aware layout options (Phase 3) */
+  portAware?: PortAwareLayoutOptions;
+  /** Subgraph/group layout options (Phase 3) */
+  subgraph?: SubgraphLayoutOptions;
+  /** Edge bundling options (Phase 4) */
+  edgeBundling?: EdgeBundlingOptions;
+}
+
+/**
+ * Result of applying a layout algorithm
+ */
+export interface LayoutResult {
+  /** Map of node IDs to their new positions */
+  nodePositions: Map<string, { x: number; y: number }>;
+  /** Bounding box of the laid-out graph */
+  bounds: {
+    x: number;
+    y: number;
+    width: number;
+    height: number;
+  };
+  /** Additional metadata about the layout execution */
+  metadata?: {
+    algorithm: string;
+    executionTime: number;
+    [key: string]: any;
+  };
+  /** Quality assessment of the layout (if calculateQuality was true) */
+  quality?: LayoutQualityResult;
+  /** Port-aware layout result (if portAware was enabled) */
+  portAware?: PortAwareLayoutResult;
+  /** Subgraph layout result (if subgraph was enabled) */
+  subgraph?: SubgraphLayoutResult;
+  /** Edge bundling result (if edgeBundling was enabled) */
+  edgeBundling?: EdgeBundlingResult;
+}
+
+/**
+ * Interface that all layout adapters must implement
+ */
+export interface LayoutAdapter {
+  /** Name of the layout adapter (e.g., 'dagre', 'elk') */
+  readonly name: string;
+
+  /**
+   * Apply layout to nodes and links
+   *
+   * @param nodes - Array of nodes to layout
+   * @param links - Array of links connecting the nodes
+   * @param options - Layout-specific options
+   * @returns Layout result with new positions and metadata
+   */
+  apply(
+    nodes: NodeModel[],
+    links: LinkModel[],
+    options?: Partial<LayoutOptions>
+  ): Promise<LayoutResult>;
+
+  /**
+   * Apply incremental layout - layout new nodes while preserving existing positions
+   *
+   * @param nodes - Array of all nodes (existing + new)
+   * @param links - Array of all links
+   * @param incrementalOptions - Options for incremental layout
+   * @param layoutOptions - Base layout options (merged with generated constraints)
+   * @returns Layout result with positions and incremental statistics
+   */
+  applyIncremental(
+    nodes: NodeModel[],
+    links: LinkModel[],
+    incrementalOptions: IncrementalLayoutOptions,
+    layoutOptions?: Partial<LayoutOptions>
+  ): Promise<LayoutResult & { incremental: IncrementalLayoutResult }>;
+
+  /**
+   * Validate that options are valid for this adapter
+   *
+   * @param options - Options to validate
+   * @returns true if valid, false otherwise
+   */
+  validateOptions(options: Partial<LayoutOptions>): boolean;
+}

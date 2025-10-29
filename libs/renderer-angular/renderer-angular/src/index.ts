@@ -26,3 +26,6 @@ export * from './lib/services/mode-manager.service';
 export * from './lib/services/execution-tracker.service';
 export * from './lib/services/simulation-engine.service';
 export * from './lib/services/breakpoint-manager.service';
+
+// Phase 1.1: Animation service
+export * from './lib/services/angular-animation.service';
