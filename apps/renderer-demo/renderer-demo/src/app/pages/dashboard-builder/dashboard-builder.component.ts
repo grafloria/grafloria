@@ -29,6 +29,9 @@ export class DashboardBuilderComponent implements OnInit {
   private createSampleDashboard(): void {
     const diagram = this.engine.createDiagram('Dashboard');
 
+    // Enable automatic link rerouting when nodes move (Observer Pattern)
+    this.engine.enableLiveRerouting();
+
     // Create dashboard widgets
     const chartNode1 = new NodeModel({
       type: 'widget',

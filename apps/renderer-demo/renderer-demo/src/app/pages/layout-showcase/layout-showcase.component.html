@@ -1,0 +1,194 @@
+<div class="layout-showcase">
+  <!-- Header -->
+  <header class="header">
+    <div class="header-content">
+      <h1>📐 Layout Showcase</h1>
+      <p>Explore layout algorithms with real business use cases</p>
+    </div>
+  </header>
+
+  <!-- Main Content -->
+  <div class="content">
+    <!-- Sidebar - Scenario Selection -->
+    <aside class="sidebar">
+      <h2>Business Scenarios</h2>
+      <div class="scenario-list">
+        <button
+          *ngFor="let scenario of scenarios"
+          class="scenario-card"
+          [class.active]="selectedScenario?.id === scenario.id"
+          (click)="loadScenario(scenario)"
+        >
+          <div class="scenario-icon">{{ scenario.icon }}</div>
+          <div class="scenario-info">
+            <h3>{{ scenario.name }}</h3>
+            <p>{{ scenario.description }}</p>
+            <div class="scenario-meta">
+              <span class="badge">{{ scenario.adapter }}</span>
+            </div>
+          </div>
+        </button>
+      </div>
+    </aside>
+
+    <!-- Main Canvas Area -->
+    <main class="main-area">
+      <!-- Controls Panel -->
+      <div class="controls-panel" *ngIf="selectedScenario">
+        <div class="controls-header">
+          <h3>{{ selectedScenario.name }} - Layout Options</h3>
+          <div class="action-buttons">
+            <button class="btn btn-secondary" (click)="randomizePositions()">
+              🎲 Randomize
+            </button>
+            <button
+              class="btn btn-primary"
+              (click)="applyLayout()"
+              [disabled]="isAnimating"
+            >
+              <span *ngIf="!isAnimating">✨ Apply Layout</span>
+              <span *ngIf="isAnimating">⏳ Animating...</span>
+            </button>
+          </div>
+        </div>
+
+        <!-- Dagre Options -->
+        <div class="options-grid" *ngIf="selectedScenario.adapter === 'dagre'">
+          <div class="option-group">
+            <label>Direction</label>
+            <select [(ngModel)]="currentOptions.rankdir" (change)="applyLayout()">
+              <option value="TB">Top to Bottom</option>
+              <option value="BT">Bottom to Top</option>
+              <option value="LR">Left to Right</option>
+              <option value="RL">Right to Left</option>
+            </select>
+          </div>
+
+          <div class="option-group">
+            <label>Node Separation: {{ currentOptions.nodesep }}px</label>
+            <input
+              type="range"
+              min="20"
+              max="200"
+              [(ngModel)]="currentOptions.nodesep"
+              (change)="applyLayout()"
+            />
+          </div>
+
+          <div class="option-group">
+            <label>Rank Separation: {{ currentOptions.ranksep }}px</label>
+            <input
+              type="range"
+              min="20"
+              max="200"
+              [(ngModel)]="currentOptions.ranksep"
+              (change)="applyLayout()"
+            />
+          </div>
+
+          <div class="option-group">
+            <label>Ranker Algorithm</label>
+            <select [(ngModel)]="currentOptions.ranker" (change)="applyLayout()">
+              <option value="network-simplex">Network Simplex</option>
+              <option value="tight-tree">Tight Tree</option>
+              <option value="longest-path">Longest Path</option>
+            </select>
+          </div>
+        </div>
+
+        <!-- ELK Options -->
+        <div class="options-grid" *ngIf="selectedScenario.adapter === 'elk'">
+          <div class="option-group">
+            <label>Algorithm</label>
+            <select [(ngModel)]="currentOptions.algorithm" (change)="applyLayout()">
+              <option value="layered">Layered (Hierarchical)</option>
+              <option value="force">Force-Directed</option>
+              <option value="stress">Stress Minimization</option>
+              <option value="mrtree">Tree (Mr. Tree)</option>
+              <option value="radial">Radial</option>
+              <option value="disco">Disconnected Components</option>
+            </select>
+          </div>
+
+          <div class="option-group" *ngIf="currentOptions.algorithm === 'layered'">
+            <label>Direction</label>
+            <select [(ngModel)]="currentOptions['elk.direction']" (change)="applyLayout()">
+              <option value="RIGHT">Left to Right</option>
+              <option value="LEFT">Right to Left</option>
+              <option value="DOWN">Top to Bottom</option>
+              <option value="UP">Bottom to Top</option>
+            </select>
+          </div>
+
+          <div class="option-group">
+            <label>Node Spacing: {{ currentOptions['elk.spacing.nodeNode'] || 80 }}px</label>
+            <input
+              type="range"
+              min="20"
+              max="200"
+              [(ngModel)]="currentOptions['elk.spacing.nodeNode']"
+              (change)="applyLayout()"
+            />
+          </div>
+
+          <div class="option-group" *ngIf="currentOptions.algorithm === 'force'">
+            <label>Repulsion: {{ currentOptions['elk.force.repulsion'] || 100 }}</label>
+            <input
+              type="range"
+              min="50"
+              max="300"
+              [(ngModel)]="currentOptions['elk.force.repulsion']"
+              (change)="applyLayout()"
+            />
+          </div>
+
+          <div class="option-group" *ngIf="currentOptions.algorithm === 'radial'">
+            <label>Radius: {{ currentOptions['elk.radial.radius'] || 200 }}px</label>
+            <input
+              type="range"
+              min="100"
+              max="400"
+              [(ngModel)]="currentOptions['elk.radial.radius']"
+              (change)="applyLayout()"
+            />
+          </div>
+        </div>
+
+        <!-- Error Message -->
+        <div class="error-banner" *ngIf="errorMessage">
+          <span class="error-icon">⚠️</span>
+          <span class="error-text">{{ errorMessage }}</span>
+          <button class="error-close" (click)="errorMessage = null" aria-label="Close error">×</button>
+        </div>
+
+        <!-- Performance Info -->
+        <div class="performance-info" *ngIf="executionTime > 0 && !errorMessage">
+          <span class="perf-label">Layout Execution Time:</span>
+          <span class="perf-value">{{ executionTime.toFixed(2) }}ms</span>
+        </div>
+      </div>
+
+      <!-- Canvas -->
+      <div class="canvas-container">
+        <div class="canvas-placeholder" *ngIf="!selectedScenario">
+          <div class="placeholder-content">
+            <h2>👈 Select a Business Scenario</h2>
+            <p>Choose from the sidebar to see layout algorithms in action</p>
+          </div>
+        </div>
+
+        <!-- Diagram Canvas -->
+        <grafloria-diagram-canvas
+          *ngIf="selectedScenario"
+          [engine]="engine"
+          [viewport]="viewport"
+          [zoom]="zoom"
+          [theme]="theme"
+          (viewportChanged)="onViewportChanged($event)"
+          (zoomChanged)="onZoomChanged($event)"
+          class="canvas"
+        ></grafloria-diagram-canvas>
+      </div>
+    </main>
+  </div>
+</div>

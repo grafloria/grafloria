@@ -270,6 +270,9 @@ export class ErdDesignerComponent implements OnInit {
   private async createSampleERD(): Promise<void> {
     const diagram = this.engine.createDiagram('ERD Diagram - Option Comparison');
 
+    // Enable automatic link rerouting when nodes move (Observer Pattern)
+    this.engine.enableLiveRerouting();
+
     // Initialize node factory
     this.nodeFactory = new NodeFactory(this.templateRegistry, diagram);
 

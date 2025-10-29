@@ -70,6 +70,9 @@ export class ShapeGalleryComponent implements OnInit, OnDestroy {
     this.engine = new DiagramEngine();
     this.engine.createDiagram('shape-gallery');
 
+    // Enable automatic link rerouting when nodes move (Observer Pattern)
+    this.engine.enableLiveRerouting();
+
     // Subscribe to events to demonstrate Phase 3.4
     this.subscribeToEvents();
 
