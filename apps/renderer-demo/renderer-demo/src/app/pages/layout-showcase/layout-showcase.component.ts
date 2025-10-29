@@ -40,6 +40,7 @@ export class LayoutShowcaseComponent implements OnInit, OnDestroy {
   selectedScenario: BusinessScenario | null = null;
   isAnimating = false;
   executionTime = 0;
+  errorMessage: string | null = null;
 
   // Layout options for current scenario
   currentOptions: any = {};
@@ -158,6 +159,7 @@ export class LayoutShowcaseComponent implements OnInit, OnDestroy {
     if (!this.selectedScenario) return;
 
     this.isAnimating = true;
+    this.errorMessage = null;
     const startTime = performance.now();
 
     try {
@@ -169,8 +171,9 @@ export class LayoutShowcaseComponent implements OnInit, OnDestroy {
       });
 
       this.executionTime = result.metadata?.executionTime || 0;
-    } catch (error) {
+    } catch (error: any) {
       console.error('Layout error:', error);
+      this.errorMessage = error?.message || 'Failed to apply layout. Please check your options and try again.';
     } finally {
       this.isAnimating = false;
     }
