@@ -111,11 +111,6 @@ export class NodeFactory {
         ...node.behavior,
         ...structure.behavior,
       };
-
-      // Remove dragHandler from behavior (not a NodeBehavior property)
-      if ('dragHandler' in node.behavior) {
-        delete (node.behavior as any).dragHandler;
-      }
     }
 
     // Set connection group

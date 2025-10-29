@@ -667,7 +667,6 @@ export class DiagramCanvasComponent implements OnInit, AfterViewInit, OnChanges,
       // Phase 3: Check for SVG port click
       if (interactionState.hoveredPort) {
         event.preventDefault();
-        console.log('🖱️ Port clicked:', interactionState.hoveredPort.side, interactionState.hoveredPort.id);
         this.interactionHandler.startConnection(interactionState.hoveredPort, worldX, worldY, this.engine);
         this.renderDiagram();
         this.cdr.markForCheck();
@@ -738,7 +737,6 @@ export class DiagramCanvasComponent implements OnInit, AfterViewInit, OnChanges,
       if (linkToSelect) {
         event.preventDefault();
         const multiSelect = event.ctrlKey || event.metaKey;
-        console.log('🖱️ Link clicked:', linkToSelect.id, multiSelect ? '(multi-select)' : '');
         this.interactionHandler.selectLink(linkToSelect, this.engine, multiSelect);
         this.renderDiagram();
         this.cdr.markForCheck();
@@ -747,34 +745,83 @@ export class DiagramCanvasComponent implements OnInit, AfterViewInit, OnChanges,
 
       // Check if clicking on a node
       let clickedNode = diagram.getNodeAtPosition(worldX, worldY);
-      console.log('🖱️ Click at world coords:', { x: worldX.toFixed(1), y: worldY.toFixed(1) }, 'Node:', clickedNode?.getMetadata('label') || 'none');
+
+      // CRITICAL FIX: If no node found via SVG hit testing, check if clicking on HTML overlay
+      // HTML overlays are positioned absolutely and may not be detected by SVG hit testing
+      if (!clickedNode && event.target) {
+        const targetElement = event.target as HTMLElement;
+        // Check if clicked element or any parent has data-node-id attribute
+        let element: HTMLElement | null = targetElement;
+        while (element && element !== this.containerRef?.nativeElement) {
+          const nodeId = element.getAttribute('data-node-id');
+          if (nodeId) {
+            clickedNode = diagram.getNode(nodeId);
+            break;
+          }
+          element = element.parentElement;
+        }
+      }
 
       if (clickedNode) {
         event.preventDefault();
 
-        // CRITICAL FIX: If clicked node is not draggable, check for draggable parent
+        // Store the originally clicked node (before any parent substitution)
+        const originallyClickedNode = clickedNode;
+
+        console.log('[FieldSelectDebug] Clicked node:', {
+          id: clickedNode.id,
+          type: clickedNode.type,
+          draggable: clickedNode.behavior?.draggable,
+          selectable: clickedNode.behavior?.selectable,
+          parentId: clickedNode.parentId
+        });
+
+        // DRAG HANDLER SUPPORT: If clicked node is a drag handler, use its parent for dragging
+        const isDragHandler = originallyClickedNode.behavior?.dragHandler?.isDragHandler === true;
+        if (isDragHandler && originallyClickedNode.parentId) {
+          const parentNode = diagram.getNode(originallyClickedNode.parentId);
+          if (parentNode) {
+            console.log('[FieldSelectDebug] Drag handler - switching to parent:', parentNode.id);
+            clickedNode = parentNode;
+          }
+        }
+
+        // CRITICAL FIX: If clicked node is not draggable AND not selectable, check for draggable parent
         // This allows child nodes (like table rows) to trigger parent drag
-        if (!clickedNode.isDraggable() && clickedNode.parentId) {
-          let currentNode = clickedNode;
-          while (currentNode.parentId) {
-            const parentNode = diagram.getNode(currentNode.parentId);
-            if (parentNode && parentNode.isDraggable()) {
-              console.log('🖱️ Using draggable parent:', parentNode.id, 'instead of child:', clickedNode.id);
-              clickedNode = parentNode;
-              break;
+        // BUT if the node is selectable (even if not draggable), keep it selected
+        if (!isDragHandler) {
+          const nodeIsSelectable = clickedNode.behavior?.selectable !== false;
+          console.log('[FieldSelectDebug] Node selectable check:', {
+            nodeIsSelectable,
+            isDraggable: clickedNode.isDraggable(),
+            willCheckParent: !clickedNode.isDraggable() && !nodeIsSelectable && clickedNode.parentId
+          });
+
+          if (!clickedNode.isDraggable() && !nodeIsSelectable && clickedNode.parentId) {
+            let currentNode = clickedNode;
+            while (currentNode.parentId) {
+              const parentNode = diagram.getNode(currentNode.parentId);
+              if (parentNode && parentNode.isDraggable()) {
+                console.log('[FieldSelectDebug] Non-selectable node - switching to draggable parent:', parentNode.id);
+                clickedNode = parentNode;
+                break;
+              }
+              currentNode = parentNode || currentNode;
+              if (!parentNode) break;
             }
-            currentNode = parentNode || currentNode;
-            if (!parentNode) break;
           }
         }
 
         // Handle selection
+        console.log('[FieldSelectDebug] Before selection - node:', clickedNode.id, 'isSelected:', clickedNode.isSelected());
         if (event.ctrlKey || event.metaKey) {
           // Ctrl+Click: Toggle selection (multi-select)
           diagram.toggleNodeSelection(clickedNode);
+          console.log('[FieldSelectDebug] Toggled selection - isSelected:', clickedNode.isSelected());
         } else if (!clickedNode.isSelected()) {
           // Normal click on unselected node: Select only this node (clearing others)
           diagram.selectNode(clickedNode);
+          console.log('[FieldSelectDebug] Selected node - isSelected:', clickedNode.isSelected());
         }
         // If clicking an already-selected node without Ctrl: Keep all selections for multi-drag
 
@@ -783,7 +830,11 @@ export class DiagramCanvasComponent implements OnInit, AfterViewInit, OnChanges,
 
         // Start drag if node is draggable
         // Allow dragging if clicked node is draggable (even if other selected nodes are locked)
-        if (clickedNode.isDraggable() && clickedNode.isSelected()) {
+        // Note: Drag handler logic is already handled above - if user clicked a drag handler,
+        // clickedNode was already replaced with its parent
+        let canDrag = clickedNode.isDraggable() && clickedNode.isSelected();
+
+        if (canDrag) {
           this.isDraggingNode = true;
           this.dragStartX = event.clientX;
           this.dragStartY = event.clientY;

@@ -88,6 +88,79 @@
         </div>
       </div>
     </div>
+
+    <!-- Property Panel -->
+    <div class="property-panel" *ngIf="showPropertyPanel && selectedNode">
+      <div class="panel-header">
+        <h3>📋 Properties</h3>
+        <button (click)="showPropertyPanel = false" class="btn-close">×</button>
+      </div>
+      <div class="panel-content">
+        <div class="property-section">
+          <h4>Node Info</h4>
+          <div class="property-item">
+            <span class="property-label">ID:</span>
+            <span class="property-value">{{ selectedNode.id }}</span>
+          </div>
+          <div class="property-item">
+            <span class="property-label">Type:</span>
+            <span class="property-value">{{ selectedNode.type }}</span>
+          </div>
+          <div class="property-item" *ngIf="selectedNode.getMetadata('tableName')">
+            <span class="property-label">Table:</span>
+            <span class="property-value">{{ selectedNode.getMetadata('tableName') }}</span>
+          </div>
+        </div>
+
+        <div class="property-section" *ngIf="selectedNode.type === 'erd-field' || selectedNode.type === 'erd-field-repeater'">
+          <h4>Field Data</h4>
+          <div class="property-item">
+            <span class="property-label">Name:</span>
+            <span class="property-value">{{ selectedNode.data['fieldName'] || selectedNode.data['name'] }}</span>
+          </div>
+          <div class="property-item">
+            <span class="property-label">Type:</span>
+            <span class="property-value">{{ selectedNode.data['fieldType'] || selectedNode.data['dataType'] }}</span>
+          </div>
+          <div class="property-item">
+            <span class="property-label">Primary Key:</span>
+            <span class="property-value">{{ selectedNode.data['isPrimaryKey'] ? 'Yes' : 'No' }}</span>
+          </div>
+          <div class="property-item">
+            <span class="property-label">Foreign Key:</span>
+            <span class="property-value">{{ selectedNode.data['isForeignKey'] ? 'Yes' : 'No' }}</span>
+          </div>
+          <div class="property-item">
+            <span class="property-label">Nullable:</span>
+            <span class="property-value">{{ selectedNode.data['isNullable'] ? 'Yes' : 'No' }}</span>
+          </div>
+        </div>
+
+        <div class="property-section">
+          <h4>Position</h4>
+          <div class="property-item">
+            <span class="property-label">X:</span>
+            <span class="property-value">{{ selectedNode.position.x.toFixed(0) }}</span>
+          </div>
+          <div class="property-item">
+            <span class="property-label">Y:</span>
+            <span class="property-value">{{ selectedNode.position.y.toFixed(0) }}</span>
+          </div>
+        </div>
+
+        <div class="property-section">
+          <h4>Size</h4>
+          <div class="property-item">
+            <span class="property-label">Width:</span>
+            <span class="property-value">{{ selectedNode.size.width.toFixed(0) }}</span>
+          </div>
+          <div class="property-item">
+            <span class="property-label">Height:</span>
+            <span class="property-value">{{ selectedNode.size.height.toFixed(0) }}</span>
+          </div>
+        </div>
+      </div>
+    </div>
   </div>
   <footer class="erd-footer">
     <div class="stats">

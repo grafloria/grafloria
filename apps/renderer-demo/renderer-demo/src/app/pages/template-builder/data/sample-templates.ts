@@ -905,7 +905,7 @@ export const DIAGRAM_TEMPLATES: Partial<TemplateMetadata>[] = [
             },
             html: {
               mode: 'template',
-              template: `<div style="
+              template: `<div class="erd-field" style="
                 width: 100%;
                 height: 28px;
                 padding: 8px;
@@ -918,6 +918,8 @@ export const DIAGRAM_TEMPLATES: Partial<TemplateMetadata>[] = [
                 justify-content: space-between;
                 box-sizing: border-box;
                 line-height: 1;
+                cursor: pointer;
+                transition: background-color 0.2s;
               ">
                 <div style="display: flex; align-items: center; gap: 6px;">
                   <span style="width: 14px; font-size: 14px;">{{data.icon}}</span>
@@ -925,11 +927,12 @@ export const DIAGRAM_TEMPLATES: Partial<TemplateMetadata>[] = [
                 </div>
                 <span style="color: #999; font-size: 11px;">{{data.dataType}}</span>
               </div>`,
-              zIndex: 1
+              zIndex: 1,
+              className: 'erd-field-node'
             },
             behavior: {
               draggable: false,
-              selectable: false,
+              selectable: true,
               connectable: true
             },
             ports: {
