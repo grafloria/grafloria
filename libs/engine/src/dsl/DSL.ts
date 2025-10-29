@@ -36,6 +36,9 @@ import { ERDParser, ERDGenerator, ERDTransformer } from './extended';
 import { BPMNParser, BPMNGenerator } from './extended';
 import { UMLParser, UMLGenerator } from './extended';
 
+// Advanced features (Phase 4)
+import { StyleParser, TemplateParser, TemplateDefinition } from './advanced';
+
 export interface DSLOptions {
   /**
    * Auto-apply layout after parsing
@@ -93,6 +96,10 @@ export class DSL {
   private formatter: DSLFormatter;
   private options: DSLOptions;
 
+  // Phase 4: Advanced features
+  private styleParser: StyleParser;
+  private templateParser: TemplateParser;
+
   constructor(options: DSLOptions = {}) {
     this.lexer = new Lexer('');
     this.parser = new Parser();
@@ -100,6 +107,8 @@ export class DSL {
     this.layoutDetector = new LayoutDetector();
     this.generator = new DSLGenerator();
     this.formatter = new DSLFormatter();
+    this.styleParser = new StyleParser();
+    this.templateParser = new TemplateParser();
     this.options = {
       autoLayout: true,
       debug: false,
@@ -122,6 +131,20 @@ export class DSL {
     const startTime = performance.now();
 
     try {
+      // Phase 4: Parse styles and templates first
+      if (this.options.debug) {
+        console.log('[DSL] Phase 4: Parsing styles and templates...');
+      }
+      const styleDefinitions = this.styleParser.parseStyleDefinitions(text);
+      const templateDefinitions = this.templateParser.parseTemplateDefinitions(text);
+
+      if (this.options.debug && styleDefinitions.size > 0) {
+        console.log(`[DSL] Found ${styleDefinitions.size} style definitions`);
+      }
+      if (this.options.debug && templateDefinitions.size > 0) {
+        console.log(`[DSL] Found ${templateDefinitions.size} template definitions`);
+      }
+
       // Step 1: Lexical analysis
       if (this.options.debug) {
         console.log('[DSL] Starting lexical analysis...');
@@ -148,6 +171,9 @@ export class DSL {
         console.log('[DSL] Transforming AST to DiagramModel...');
       }
       const diagram = this.transformer.transform(ast, this.options.transformOptions);
+
+      // Phase 4: Apply styles and templates to nodes
+      this.applyStylesAndTemplates(diagram, text, styleDefinitions, templateDefinitions);
 
       const nodeCount = diagram.getNodes().length;
       const linkCount = diagram.getLinks().length;
@@ -501,5 +527,101 @@ export class DSL {
   generateUML(diagram: DiagramModel): string {
     const umlGenerator = new UMLGenerator();
     return umlGenerator.generate(diagram);
+  }
+
+  /**
+   * Phase 4: Apply styles and templates to diagram nodes
+   */
+  private applyStylesAndTemplates(
+    diagram: DiagramModel,
+    text: string,
+    styleDefinitions: Map<string, Partial<import('../../types').NodeStyle>>,
+    templateDefinitions: Map<string, TemplateDefinition>
+  ): void {
+    // Apply diagram-level styles
+    const diagramStyles = this.styleParser.parseDiagramStyles(text);
+    if (diagramStyles) {
+      diagram.setMetadata('defaultNodeStyle', diagramStyles);
+    }
+
+    // Store style and template definitions in diagram metadata
+    if (styleDefinitions.size > 0) {
+      diagram.setMetadata('styleDefinitions', Object.fromEntries(styleDefinitions));
+    }
+    if (templateDefinitions.size > 0) {
+      diagram.setMetadata('templateDefinitions', Object.fromEntries(templateDefinitions));
+    }
+
+    // Extract node-specific styles from text
+    const lines = text.split('\n');
+    const nodeStyleMap = new Map<string, Partial<import('../../types').NodeStyle>>();
+    const nodeClassMap = new Map<string, string[]>();
+
+    for (const line of lines) {
+      const trimmed = line.trim();
+      if (!trimmed || trimmed.startsWith('//') || trimmed.startsWith('@')) {
+        continue;
+      }
+
+      // Extract node ID and styles
+      const nodeIdMatch = trimmed.match(/^\s*(\w+)/);
+      if (!nodeIdMatch) continue;
+
+      const nodeId = nodeIdMatch[1];
+
+      // Extract style classes (:::className)
+      const styleClasses = this.styleParser.extractStyleClasses(trimmed);
+      if (styleClasses.length > 0) {
+        nodeClassMap.set(nodeId, styleClasses);
+      }
+
+      // Extract inline styles ({property:value})
+      const inlineStyle = this.styleParser.extractInlineStyle(trimmed);
+      if (inlineStyle) {
+        nodeStyleMap.set(nodeId, inlineStyle);
+      }
+    }
+
+    // Apply styles to nodes
+    for (const node of diagram.getNodes()) {
+      const styles: Array<Partial<import('../../types').NodeStyle>> = [];
+
+      // 1. Apply diagram-level default styles
+      if (diagramStyles) {
+        styles.push(diagramStyles);
+      }
+
+      // 2. Apply style classes
+      const classes = nodeClassMap.get(node.id);
+      if (classes) {
+        for (const className of classes) {
+          const classDef = styleDefinitions.get(className);
+          if (classDef) {
+            styles.push(classDef);
+          }
+        }
+      }
+
+      // 3. Apply inline styles (highest priority)
+      const inlineStyle = nodeStyleMap.get(node.id);
+      if (inlineStyle) {
+        styles.push(inlineStyle);
+      }
+
+      // Merge and apply styles
+      if (styles.length > 0) {
+        const mergedStyle = this.styleParser.mergeStyles(...styles);
+        node.setStyle(mergedStyle);
+      }
+
+      // Apply template if specified
+      // Template can be specified in node data or via @template mapping
+      const templateName = node.data['template'] as string | undefined;
+      if (templateName && templateDefinitions.has(templateName)) {
+        const template = templateDefinitions.get(templateName)!;
+        node.setMetadata('customTemplate', template.html);
+        node.setMetadata('templateBindings', template.bindings);
+      }
+    }
   }
 }
