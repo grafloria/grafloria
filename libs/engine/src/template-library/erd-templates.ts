@@ -764,11 +764,13 @@ export const ERDTableRepeater: NodeTemplate = {
               gap: 6px;
               padding: 4px 8px;
               font-size: 12px;
-              background: #ffffff;
+              background: {{#data.selected}}#bbdefb{{/data.selected}}{{^data.selected}}#ffffff{{/data.selected}};
               border-bottom: 1px solid #e5e7eb;
+              border-left: {{#data.selected}}3px solid #2196f3{{/data.selected}}{{^data.selected}}none{{/data.selected}};
+              padding-left: {{#data.selected}}5px{{/data.selected}}{{^data.selected}}8px{{/data.selected}};
               height: 24px;
               cursor: pointer;
-              transition: background-color 0.2s;
+              transition: all 0.2s;
             ">
               <span class="field-icon" style="width: 14px; text-align: center; font-size: 11px;">
                 {{data.icon}}

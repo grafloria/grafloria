@@ -210,12 +210,42 @@ export class ErdDesignerComponent implements OnInit {
       console.log('[FieldSelectDebug] Node selected event:', node.id, node.type);
       this.selectedNode = node;
       this.showPropertyPanel = true;
+
+      // Add selected property to node data for template access
+      if (!node.data['selected']) {
+        node.data = { ...node.data, selected: true };
+        console.log('[FieldSelectDebug] Added selected=true to node data');
+      }
+
       this.cdr.detectChanges();
     });
 
     // Listen for selection cleared events
     diagram.on('selection:changed', (selection: any) => {
       console.log('[FieldSelectDebug] Selection changed:', selection);
+
+      // Clear selected flag from deselected nodes
+      if (selection.deselected && selection.deselected.length > 0) {
+        selection.deselected.forEach((node: NodeModel) => {
+          if (node.data['selected']) {
+            // Use setData to trigger change tracking and re-render
+            node.setData('selected', false);
+            console.log('[FieldSelectDebug] Removed selected flag from node:', node.id, 'data:', node.data);
+          }
+        });
+      }
+
+      // Set selected flag on newly selected nodes
+      if (selection.selected && selection.selected.length > 0) {
+        selection.selected.forEach((node: NodeModel) => {
+          if (!node.data['selected']) {
+            // Use setData to trigger change tracking and re-render
+            node.setData('selected', true);
+            console.log('[FieldSelectDebug] Added selected flag to node:', node.id, 'data:', node.data);
+          }
+        });
+      }
+
       const selectedNodes = diagram.getSelectedNodes();
       if (selectedNodes.length === 0) {
         this.selectedNode = null;
@@ -227,6 +257,7 @@ export class ErdDesignerComponent implements OnInit {
           id: this.selectedNode.id,
           type: this.selectedNode.type,
           selected: this.selectedNode.state.selected,
+          dataSelected: this.selectedNode.data['selected'],
           data: this.selectedNode.data
         });
       }
