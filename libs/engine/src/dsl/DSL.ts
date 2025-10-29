@@ -25,6 +25,8 @@ import { Lexer } from './lexer/Lexer';
 import { Parser, ParseError } from './parser/Parser';
 import { ASTTransformer, TransformOptions } from './transformer/ASTTransformer';
 import { LayoutDetector, LayoutSuggestion } from './detector/LayoutDetector';
+import { DSLGenerator, GeneratorOptions } from './generator/DSLGenerator';
+import { DSLFormatter, FormatterOptions } from './generator/DSLFormatter';
 import { DiagramModel } from '../models/DiagramModel';
 import { DiagramNode } from './types/ASTNode';
 import { Token } from './types/Token';
@@ -82,6 +84,8 @@ export class DSL {
   private parser: Parser;
   private transformer: ASTTransformer;
   private layoutDetector: LayoutDetector;
+  private generator: DSLGenerator;
+  private formatter: DSLFormatter;
   private options: DSLOptions;
 
   constructor(options: DSLOptions = {}) {
@@ -89,6 +93,8 @@ export class DSL {
     this.parser = new Parser();
     this.transformer = new ASTTransformer();
     this.layoutDetector = new LayoutDetector();
+    this.generator = new DSLGenerator();
+    this.formatter = new DSLFormatter();
     this.options = {
       autoLayout: true,
       debug: false,
@@ -264,5 +270,113 @@ export class DSL {
    */
   getOptions(): DSLOptions {
     return { ...this.options };
+  }
+
+  // =========================================================================
+  // Generation API (Phase 1.3)
+  // =========================================================================
+
+  /**
+   * Generate DSL text from diagram
+   */
+  generate(diagram: DiagramModel, options?: GeneratorOptions): string {
+    if (this.options.debug) {
+      console.log('[DSL] Generating DSL text from diagram...');
+    }
+
+    const text = this.generator.generate(diagram, options);
+
+    if (this.options.debug) {
+      console.log(`[DSL] Generated ${text.split('\n').length} lines of DSL text`);
+    }
+
+    return text;
+  }
+
+  /**
+   * Generate and format DSL text from diagram
+   */
+  generateFormatted(
+    diagram: DiagramModel,
+    generatorOptions?: GeneratorOptions,
+    formatterOptions?: FormatterOptions
+  ): string {
+    const text = this.generate(diagram, generatorOptions);
+    const formatted = this.formatter.format(text);
+    return formatted;
+  }
+
+  /**
+   * Generate pretty-printed DSL text
+   */
+  generatePretty(diagram: DiagramModel, addHeaders: boolean = true): string {
+    const text = this.generate(diagram, {
+      includeComments: true,
+      includeStyles: true,
+      preserveIds: true,
+    });
+    return this.formatter.prettyPrint(text, addHeaders);
+  }
+
+  /**
+   * Format DSL text
+   */
+  format(text: string, options?: FormatterOptions): string {
+    if (options) {
+      const formatter = new DSLFormatter(options);
+      return formatter.format(text);
+    }
+    return this.formatter.format(text);
+  }
+
+  /**
+   * Round-trip test: parse → generate → parse
+   * Returns true if the round-trip preserves structure
+   */
+  testRoundTrip(text: string): {
+    success: boolean;
+    originalNodes: number;
+    originalLinks: number;
+    regeneratedNodes: number;
+    regeneratedLinks: number;
+    generatedText: string;
+  } {
+    try {
+      // Parse original text
+      const diagram1 = this.parse(text);
+      const originalNodes = diagram1.getNodes().length;
+      const originalLinks = diagram1.getLinks().length;
+
+      // Generate text from diagram
+      const generatedText = this.generate(diagram1);
+
+      // Parse generated text
+      const diagram2 = this.parse(generatedText);
+      const regeneratedNodes = diagram2.getNodes().length;
+      const regeneratedLinks = diagram2.getLinks().length;
+
+      // Check if structure is preserved
+      const success =
+        originalNodes === regeneratedNodes &&
+        originalLinks === regeneratedLinks;
+
+      return {
+        success,
+        originalNodes,
+        originalLinks,
+        regeneratedNodes,
+        regeneratedLinks,
+        generatedText,
+      };
+    } catch (error) {
+      return {
+        success: false,
+        originalNodes: 0,
+        originalLinks: 0,
+        regeneratedNodes: 0,
+        regeneratedLinks: 0,
+        generatedText: '',
+      };
+    }
   }
 }

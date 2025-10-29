@@ -31,6 +31,11 @@ export { Parser, ParseError } from './parser/Parser';
 export { ASTTransformer, type TransformOptions } from './transformer/ASTTransformer';
 export { LayoutDetector, type LayoutSuggestion, type DiagramCharacteristics } from './detector/LayoutDetector';
 
+// Generator components (Phase 1.3)
+export { DSLGenerator, type GeneratorOptions } from './generator/DSLGenerator';
+export { DSLFormatter, type FormatterOptions } from './generator/DSLFormatter';
+export { DiagramAnalyzer, type DiagramAnalysis } from './generator/DiagramAnalyzer';
+
 // Type definitions
 export {
   type Token,
