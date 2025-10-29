@@ -51,6 +51,7 @@ export interface ToolbarBehaviorConfig {
   closeOnClickOutside?: boolean;
   followNode?: boolean;
   enableKeyboardNav?: boolean;
+  hideOnMultiSelect?: boolean; // Auto-hide when multiple nodes are selected
 }
 
 export interface ToolbarAnimationConfig {
@@ -306,6 +307,7 @@ export class NodeToolbarComponent implements OnInit, OnChanges, OnDestroy {
   private positionUpdatePending = false;
   private eventListeners: Array<{ event: string; handler: Function }> = [];
   private lastKnownPosition = { x: 0, y: 0 };
+  private selectionUnsubscribe?: () => void;
 
   constructor(private cdr: ChangeDetectorRef, private elementRef: ElementRef) {}
 
@@ -325,7 +327,8 @@ export class NodeToolbarComponent implements OnInit, OnChanges, OnDestroy {
         autoHide: false,
         closeOnClickOutside: false,
         followNode: true,
-        enableKeyboardNav: true
+        enableKeyboardNav: true,
+        hideOnMultiSelect: true  // Match ReactFlow behavior
       },
       ariaLabel: 'Node actions'
     };
@@ -376,6 +379,7 @@ export class NodeToolbarComponent implements OnInit, OnChanges, OnDestroy {
     setTimeout(() => this.updatePosition(), 0);
     this.setupEventListeners();
     this.setupKeyboardNavigation();
+    this.setupMultiSelectionHandling();
   }
 
   ngOnChanges(changes: SimpleChanges) {
@@ -455,6 +459,45 @@ export class NodeToolbarComponent implements OnInit, OnChanges, OnDestroy {
   }
 
   /**
+   * Setup multi-selection handling (Phase 1: ReactFlow parity)
+   * Automatically hides toolbar when multiple nodes are selected
+   */
+  private setupMultiSelectionHandling() {
+    if (!this.effectiveConfig.behavior.hideOnMultiSelect) {
+      return;
+    }
+
+    if (!this.engine || !this.engine.store) {
+      console.warn('NodeToolbar: Cannot setup multi-selection handling - engine or store not available');
+      return;
+    }
+
+    // Watch for selection changes
+    this.selectionUnsubscribe = this.engine.store.watch('selectedNodes', (selectedNodes: Set<string>) => {
+      if (!selectedNodes) {
+        return;
+      }
+
+      const isThisNodeSelected = selectedNodes.has(this.node.id);
+      const multipleNodesSelected = selectedNodes.size > 1;
+
+      if (multipleNodesSelected && isThisNodeSelected) {
+        // Multiple nodes selected including this one - hide toolbar to prevent clutter
+        this.isVisible = false;
+        this.cdr.markForCheck();
+      } else if (selectedNodes.size === 1 && isThisNodeSelected) {
+        // Only this node is selected - show toolbar
+        this.isVisible = true;
+        this.cdr.markForCheck();
+      } else if (!isThisNodeSelected) {
+        // This node is not selected - hide toolbar
+        this.isVisible = false;
+        this.cdr.markForCheck();
+      }
+    });
+  }
+
+  /**
    * Clean up resources
    */
   private cleanup() {
@@ -464,6 +507,12 @@ export class NodeToolbarComponent implements OnInit, OnChanges, OnDestroy {
       });
     }
     this.eventListeners = [];
+
+    // Unsubscribe from selection changes
+    if (this.selectionUnsubscribe) {
+      this.selectionUnsubscribe();
+      this.selectionUnsubscribe = undefined;
+    }
 
     this.destroy$.next();
     this.destroy$.complete();

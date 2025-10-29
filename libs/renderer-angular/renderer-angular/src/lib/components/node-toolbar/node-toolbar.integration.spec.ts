@@ -127,6 +127,177 @@ describe('NodeToolbar Integration Tests', () => {
     });
   });
 
+  describe('Multi-Selection Handling (Phase 1: ReactFlow Parity)', () => {
+    it('should hide toolbar when multiple nodes are selected (default behavior)', (done) => {
+      // Create toolbar for node1 with default config (hideOnMultiSelect: true)
+      const toolbarRef = toolbarService.show(node1, engine);
+
+      setTimeout(() => {
+        // Initially, only node1 is selected, toolbar should be visible
+        engine.store.set('selectedNodes', new Set([node1.id]));
+
+        setTimeout(() => {
+          expect(toolbarRef.instance.isVisible).toBe(true);
+
+          // Select multiple nodes
+          engine.store.set('selectedNodes', new Set([node1.id, node2.id]));
+
+          setTimeout(() => {
+            // Toolbar should now be hidden due to multi-selection
+            expect(toolbarRef.instance.isVisible).toBe(false);
+            done();
+          }, 50);
+        }, 50);
+      }, 50);
+    });
+
+    it('should show toolbar when only one node is selected again', (done) => {
+      const toolbarRef = toolbarService.show(node1, engine);
+
+      setTimeout(() => {
+        // Select multiple nodes first
+        engine.store.set('selectedNodes', new Set([node1.id, node2.id]));
+
+        setTimeout(() => {
+          expect(toolbarRef.instance.isVisible).toBe(false);
+
+          // Deselect node2, leaving only node1 selected
+          engine.store.set('selectedNodes', new Set([node1.id]));
+
+          setTimeout(() => {
+            // Toolbar should now be visible again
+            expect(toolbarRef.instance.isVisible).toBe(true);
+            done();
+          }, 50);
+        }, 50);
+      }, 50);
+    });
+
+    it('should hide toolbar when node is deselected', (done) => {
+      const toolbarRef = toolbarService.show(node1, engine);
+
+      setTimeout(() => {
+        // Select node1
+        engine.store.set('selectedNodes', new Set([node1.id]));
+
+        setTimeout(() => {
+          expect(toolbarRef.instance.isVisible).toBe(true);
+
+          // Deselect all nodes
+          engine.store.set('selectedNodes', new Set());
+
+          setTimeout(() => {
+            expect(toolbarRef.instance.isVisible).toBe(false);
+            done();
+          }, 50);
+        }, 50);
+      }, 50);
+    });
+
+    it('should allow disabling multi-selection auto-hide via config', (done) => {
+      const toolbarRef = toolbarService.show(node1, engine, {
+        behavior: {
+          hideOnMultiSelect: false // Disable auto-hide
+        }
+      });
+
+      setTimeout(() => {
+        // Select node1
+        engine.store.set('selectedNodes', new Set([node1.id]));
+
+        setTimeout(() => {
+          expect(toolbarRef.instance.isVisible).toBe(true);
+
+          // Select multiple nodes
+          engine.store.set('selectedNodes', new Set([node1.id, node2.id]));
+
+          setTimeout(() => {
+            // Toolbar should still be visible because hideOnMultiSelect is false
+            expect(toolbarRef.instance.isVisible).toBe(true);
+            done();
+          }, 50);
+        }, 50);
+      }, 50);
+    });
+
+    it('should handle rapid selection changes gracefully', (done) => {
+      const toolbarRef = toolbarService.show(node1, engine);
+
+      setTimeout(() => {
+        // Rapid selection changes
+        engine.store.set('selectedNodes', new Set([node1.id]));
+        engine.store.set('selectedNodes', new Set([node1.id, node2.id]));
+        engine.store.set('selectedNodes', new Set([node1.id]));
+        engine.store.set('selectedNodes', new Set([node1.id, node2.id]));
+        engine.store.set('selectedNodes', new Set([node1.id]));
+
+        setTimeout(() => {
+          // Final state: only node1 selected, toolbar should be visible
+          expect(toolbarRef.instance.isVisible).toBe(true);
+          done();
+        }, 100);
+      }, 50);
+    });
+
+    it('should properly clean up selection subscription on destroy', (done) => {
+      const toolbarRef = toolbarService.show(node1, engine);
+
+      setTimeout(() => {
+        // Verify toolbar is created
+        expect(toolbarRef).toBeDefined();
+
+        // Destroy toolbar
+        toolbarService.hide(node1.id);
+
+        setTimeout(() => {
+          // Change selection - should not cause errors
+          expect(() => {
+            engine.store.set('selectedNodes', new Set([node1.id, node2.id]));
+          }).not.toThrow();
+
+          done();
+        }, 50);
+      }, 50);
+    });
+
+    it('should work correctly with 3+ nodes selected', (done) => {
+      const model = engine.getDiagram();
+      if (!model) {
+        done();
+        return;
+      }
+
+      // Create a third node
+      const node3 = model.addNode({
+        type: 'default',
+        data: { label: 'Node 3' },
+        position: { x: 500, y: 100 },
+        size: { width: 150, height: 50 },
+      });
+
+      const toolbarRef = toolbarService.show(node1, engine);
+
+      setTimeout(() => {
+        // Select all three nodes
+        engine.store.set('selectedNodes', new Set([node1.id, node2.id, node3.id]));
+
+        setTimeout(() => {
+          // Toolbar should be hidden
+          expect(toolbarRef.instance.isVisible).toBe(false);
+
+          // Select only node1
+          engine.store.set('selectedNodes', new Set([node1.id]));
+
+          setTimeout(() => {
+            // Toolbar should be visible
+            expect(toolbarRef.instance.isVisible).toBe(true);
+            done();
+          }, 50);
+        }, 50);
+      }, 50);
+    });
+  });
+
   describe('Position Updates', () => {
     it('should update position when node is moved', (done) => {
       engine.eventBus.emit('node:selected', { node: node1 });
