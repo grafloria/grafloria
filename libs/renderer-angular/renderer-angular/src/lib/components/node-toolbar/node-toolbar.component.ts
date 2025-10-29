@@ -11,6 +11,7 @@ import {
   ChangeDetectorRef,
   ChangeDetectionStrategy,
 } from '@angular/core';
+import { CommonModule } from '@angular/common';
 import { NodeModel } from '@grafloria/engine';
 import type { DiagramEngine } from '@grafloria/engine';
 import { Subject, fromEvent } from 'rxjs';
@@ -25,7 +26,20 @@ export interface ToolbarAction {
   icon?: string;
   tooltip?: string;
   disabled?: boolean;
+  hidden?: boolean; // Hide action without removing it
+  visible?: (node: NodeModel) => boolean; // Dynamic visibility
   onClick: (node: NodeModel) => void;
+  group?: string; // For grouping actions with separators
+}
+
+export interface ToolbarStyleConfig {
+  backgroundColor?: string;
+  borderColor?: string;
+  borderRadius?: string;
+  boxShadow?: string;
+  padding?: string;
+  zIndex?: number;
+  transitionDuration?: string;
 }
 
 /**
@@ -50,6 +64,7 @@ export interface ToolbarAction {
 @Component({
   selector: 'grafloria-node-toolbar',
   standalone: true,
+  imports: [CommonModule],
   template: `
     <div
       #toolbar
@@ -62,7 +77,7 @@ export interface ToolbarAction {
       <!-- Default toolbar content -->
       @if (!customTemplate) {
         <div class="toolbar-content">
-          @for (action of actions; track action.id) {
+          @for (action of visibleActions; track action.id) {
             <button
               class="toolbar-button"
               [disabled]="action.disabled"
@@ -166,6 +181,9 @@ export class NodeToolbarComponent implements OnInit, OnDestroy {
   @Input() actions: ToolbarAction[] = [];
   @Input() customTemplate?: TemplateRef<any>;
   @Input() visible: boolean = true;
+  @Input() styleConfig?: ToolbarStyleConfig; // Custom styling
+  @Input() enableAnimation: boolean = true; // Toggle animations
+  @Input() autoHide: boolean = false; // Auto-hide when clicking outside
 
   @Output() actionClicked = new EventEmitter<{ action: ToolbarAction; node: NodeModel }>();
 
@@ -176,8 +194,26 @@ export class NodeToolbarComponent implements OnInit, OnDestroy {
 
   private destroy$ = new Subject<void>();
   private positionUpdatePending = false;
+  private eventListeners: Array<{ event: string; handler: Function }> = [];
 
   constructor(private cdr: ChangeDetectorRef) {}
+
+  /**
+   * Get visible actions based on visibility conditions
+   */
+  get visibleActions(): ToolbarAction[] {
+    return this.actions.filter(action => {
+      // Check hidden flag
+      if (action.hidden) {
+        return false;
+      }
+      // Check dynamic visibility function
+      if (action.visible && !action.visible(this.node)) {
+        return false;
+      }
+      return true;
+    });
+  }
 
   ngOnInit() {
     // Show toolbar when component initializes
@@ -188,18 +224,31 @@ export class NodeToolbarComponent implements OnInit, OnDestroy {
 
     // Listen to engine events to update position
     if (this.engine) {
-      this.engine.eventBus.on('canvas:zoom', () => this.schedulePositionUpdate());
-      this.engine.eventBus.on('canvas:pan', () => this.schedulePositionUpdate());
-      this.engine.eventBus.on('node:moved', (event: any) => {
+      const zoomHandler = () => this.schedulePositionUpdate();
+      const panHandler = () => this.schedulePositionUpdate();
+      const moveHandler = (event: any) => {
         if (event.node?.id === this.node.id) {
           this.schedulePositionUpdate();
         }
-      });
-      this.engine.eventBus.on('node:resized', (event: any) => {
+      };
+      const resizeHandler = (event: any) => {
         if (event.node?.id === this.node.id) {
           this.schedulePositionUpdate();
         }
-      });
+      };
+
+      this.engine.eventBus.on('canvas:zoom', zoomHandler);
+      this.engine.eventBus.on('canvas:pan', panHandler);
+      this.engine.eventBus.on('node:moved', moveHandler);
+      this.engine.eventBus.on('node:resized', resizeHandler);
+
+      // Store references for cleanup
+      this.eventListeners.push(
+        { event: 'canvas:zoom', handler: zoomHandler },
+        { event: 'canvas:pan', handler: panHandler },
+        { event: 'node:moved', handler: moveHandler },
+        { event: 'node:resized', handler: resizeHandler }
+      );
     }
 
     // Update position on window resize
@@ -209,6 +258,14 @@ export class NodeToolbarComponent implements OnInit, OnDestroy {
   }
 
   ngOnDestroy() {
+    // Clean up event listeners
+    if (this.engine) {
+      this.eventListeners.forEach(({ event, handler }) => {
+        this.engine.eventBus.off(event, handler);
+      });
+    }
+    this.eventListeners = [];
+
     this.destroy$.next();
     this.destroy$.complete();
   }
