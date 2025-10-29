@@ -1,0 +1,504 @@
+/**
+ * Grafloria Diagram Animations
+ *
+ * Phase 1: CSS-based animations for diagram elements
+ * - Edge animations (marching ants, flow, pulse)
+ * - Node border animations (gradient, pulse, breathe, shimmer)
+ * - Status-based animations (running, error, completed, warning, pending)
+ *
+ * Performance target: 60 FPS with 100 animated edges
+ */
+
+/* ==========================================================================
+   EDGE ANIMATIONS
+   ========================================================================== */
+
+/**
+ * Marching Ants - Standard animated dashed line
+ * Creates the illusion of movement along the edge
+ */
+@keyframes marching-ants {
+  to {
+    stroke-dashoffset: -20;
+  }
+}
+
+.link-animated-marching-ants {
+  stroke-dasharray: 5, 5;
+  animation: marching-ants 1s linear infinite;
+  will-change: stroke-dashoffset;
+}
+
+.link-animated-marching-ants.link-speed-slow {
+  animation-duration: 2s;
+}
+
+.link-animated-marching-ants.link-speed-fast {
+  animation-duration: 0.5s;
+}
+
+.link-animated-marching-ants.link-direction-reverse {
+  animation-direction: reverse;
+}
+
+/**
+ * Flow Dots - Dots moving along the path
+ * Creates a visual flow indicator
+ */
+@keyframes flow-dots {
+  to {
+    stroke-dashoffset: 10;
+  }
+}
+
+.link-animated-flow {
+  stroke-dasharray: 1, 9;
+  animation: flow-dots 1s linear infinite;
+  will-change: stroke-dashoffset;
+}
+
+.link-animated-flow.link-speed-slow {
+  animation-duration: 2s;
+}
+
+.link-animated-flow.link-speed-fast {
+  animation-duration: 0.5s;
+}
+
+.link-animated-flow.link-direction-reverse {
+  animation-direction: reverse;
+}
+
+/**
+ * Pulse - Pulsing opacity effect
+ * Creates breathing effect on the edge
+ */
+@keyframes link-pulse {
+  0%, 100% {
+    opacity: 1;
+    stroke-width: inherit;
+  }
+  50% {
+    opacity: 0.6;
+    stroke-width: calc(var(--link-stroke-width, 2px) * 1.5);
+  }
+}
+
+.link-animated-pulse {
+  animation: link-pulse 2s ease-in-out infinite;
+  will-change: opacity, stroke-width;
+}
+
+.link-animated-pulse.link-speed-slow {
+  animation-duration: 3s;
+}
+
+.link-animated-pulse.link-speed-fast {
+  animation-duration: 1s;
+}
+
+/* ==========================================================================
+   NODE BORDER ANIMATIONS
+   ========================================================================== */
+
+/**
+ * Gradient Border - Rotating gradient effect
+ * Creates an animated gradient border around nodes
+ *
+ * Note: This uses a pseudo-element approach for SVG compatibility
+ * For HTML nodes, use the ::before approach shown in comments
+ */
+@keyframes gradient-border {
+  0% {
+    background-position: 0% center;
+  }
+  100% {
+    background-position: 200% center;
+  }
+}
+
+/* For foreignObject HTML content in SVG */
+.node-border-gradient {
+  position: relative;
+  background: white;
+}
+
+.node-border-gradient::before {
+  content: '';
+  position: absolute;
+  inset: -2px;
+  border-radius: inherit;
+  background: linear-gradient(
+    90deg,
+    #667eea 0%,
+    #764ba2 25%,
+    #667eea 50%,
+    #764ba2 75%,
+    #667eea 100%
+  );
+  background-size: 200% 100%;
+  animation: gradient-border 3s linear infinite;
+  z-index: -1;
+  will-change: background-position;
+}
+
+/* For SVG rect elements - use stroke with dash animation */
+.node-border-gradient-svg {
+  stroke-dasharray: 10, 5;
+  animation: marching-ants 3s linear infinite;
+  stroke: url(#gradient-border-gradient);
+}
+
+/**
+ * Pulse Glow - Expanding glow effect
+ * Creates a pulsing shadow that expands outward
+ */
+@keyframes pulse-glow {
+  0%, 100% {
+    box-shadow: 0 0 0 0 rgba(102, 126, 234, 0.7);
+  }
+  50% {
+    box-shadow: 0 0 0 10px rgba(102, 126, 234, 0);
+  }
+}
+
+.node-border-pulse {
+  animation: pulse-glow 2s ease-in-out infinite;
+  will-change: box-shadow;
+}
+
+/* SVG-compatible version using filter */
+.node-border-pulse-svg {
+  filter: drop-shadow(0 0 0 rgba(102, 126, 234, 0.7));
+  animation: pulse-glow-svg 2s ease-in-out infinite;
+}
+
+@keyframes pulse-glow-svg {
+  0%, 100% {
+    filter: drop-shadow(0 0 0 rgba(102, 126, 234, 0.7));
+  }
+  50% {
+    filter: drop-shadow(0 0 10px rgba(102, 126, 234, 0));
+  }
+}
+
+/**
+ * Breathe - Scale and opacity effect
+ * Creates a breathing animation
+ */
+@keyframes breathe {
+  0%, 100% {
+    transform: scale(1);
+    opacity: 1;
+  }
+  50% {
+    transform: scale(1.05);
+    opacity: 0.9;
+  }
+}
+
+.node-border-breathe {
+  animation: breathe 3s ease-in-out infinite;
+  transform-origin: center center;
+  will-change: transform, opacity;
+}
+
+/**
+ * Shimmer - Light sweep effect
+ * Creates a shimmering light sweep across the node
+ */
+@keyframes shimmer {
+  0% {
+    background-position: -100% 0;
+  }
+  100% {
+    background-position: 200% 0;
+  }
+}
+
+.node-border-shimmer::after {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  background: linear-gradient(
+    90deg,
+    transparent 0%,
+    rgba(255, 255, 255, 0.5) 50%,
+    transparent 100%
+  );
+  background-size: 50% 100%;
+  animation: shimmer 2s infinite;
+  pointer-events: none;
+  will-change: background-position;
+}
+
+/* ==========================================================================
+   STATUS-BASED ANIMATIONS
+   ========================================================================== */
+
+/**
+ * Running Status - Pulsing blue glow
+ * Indicates an active/running process
+ */
+@keyframes status-running {
+  0%, 100% {
+    box-shadow: 0 0 0 0 rgba(52, 152, 219, 0.7);
+    border-color: #3498db;
+  }
+  50% {
+    box-shadow: 0 0 0 10px rgba(52, 152, 219, 0);
+    border-color: #5dade2;
+  }
+}
+
+.node-status-running {
+  animation: status-running 1.5s ease-in-out infinite;
+  will-change: box-shadow, border-color;
+}
+
+/* SVG-compatible version */
+.node-status-running-svg {
+  stroke: #3498db;
+  filter: drop-shadow(0 0 0 rgba(52, 152, 219, 0.7));
+  animation: status-running-svg 1.5s ease-in-out infinite;
+}
+
+@keyframes status-running-svg {
+  0%, 100% {
+    filter: drop-shadow(0 0 0 rgba(52, 152, 219, 0.7));
+    stroke: #3498db;
+  }
+  50% {
+    filter: drop-shadow(0 0 10px rgba(52, 152, 219, 0));
+    stroke: #5dade2;
+  }
+}
+
+/**
+ * Error Status - Shake effect
+ * Indicates an error state with a shake animation
+ */
+@keyframes status-error {
+  0%, 100% {
+    transform: translateX(0);
+  }
+  10%, 30%, 50%, 70%, 90% {
+    transform: translateX(-5px);
+  }
+  20%, 40%, 60%, 80% {
+    transform: translateX(5px);
+  }
+}
+
+.node-status-error {
+  animation: status-error 0.5s ease-in-out;
+  border-color: #e74c3c;
+  box-shadow: 0 0 10px rgba(231, 76, 60, 0.5);
+  will-change: transform;
+}
+
+.node-status-error-svg {
+  stroke: #e74c3c;
+  filter: drop-shadow(0 0 10px rgba(231, 76, 60, 0.5));
+  animation: status-error 0.5s ease-in-out;
+}
+
+/**
+ * Completed Status - Fade in with scale
+ * Indicates successful completion
+ */
+@keyframes status-completed {
+  from {
+    opacity: 0;
+    transform: scale(0.8);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+.node-status-completed {
+  animation: status-completed 0.5s ease-out;
+  border-color: #27ae60;
+  opacity: 0.8;
+  will-change: transform, opacity;
+}
+
+.node-status-completed-svg {
+  stroke: #27ae60;
+  opacity: 0.8;
+  animation: status-completed 0.5s ease-out;
+}
+
+/**
+ * Warning Status - Flash effect
+ * Indicates a warning state with flashing background
+ */
+@keyframes status-warning {
+  0%, 100% {
+    background-color: transparent;
+  }
+  50% {
+    background-color: rgba(243, 156, 18, 0.2);
+  }
+}
+
+.node-status-warning {
+  animation: status-warning 1s ease-in-out 3;
+  border-color: #f39c12;
+  will-change: background-color;
+}
+
+.node-status-warning-svg {
+  stroke: #f39c12;
+  animation: status-warning-svg 1s ease-in-out 3;
+}
+
+@keyframes status-warning-svg {
+  0%, 100% {
+    fill-opacity: 0;
+  }
+  50% {
+    fill-opacity: 0.2;
+  }
+}
+
+/**
+ * Pending Status - Subtle pulse
+ * Indicates a pending/waiting state
+ */
+@keyframes status-pending {
+  0%, 100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.7;
+  }
+}
+
+.node-status-pending {
+  animation: status-pending 2s ease-in-out infinite;
+  will-change: opacity;
+}
+
+.node-status-pending-svg {
+  animation: status-pending 2s ease-in-out infinite;
+}
+
+/* ==========================================================================
+   ANIMATION SPEED MODIFIERS
+   ========================================================================== */
+
+/**
+ * Global speed multipliers
+ * Can be applied to any animation class
+ */
+.animation-speed-0-5x {
+  animation-duration: calc(var(--animation-duration, 1s) * 2);
+}
+
+.animation-speed-2x {
+  animation-duration: calc(var(--animation-duration, 1s) * 0.5);
+}
+
+/* ==========================================================================
+   ANIMATION UTILITIES
+   ========================================================================== */
+
+/**
+ * Disable all animations
+ * Applied when animations are globally disabled
+ */
+.animations-disabled,
+.animations-disabled * {
+  animation: none !important;
+  transition: none !important;
+}
+
+/**
+ * Smooth transitions for interactive states
+ * Non-animation transitions for hover/selection
+ */
+.diagram-node,
+.diagram-link {
+  transition: opacity 0.2s ease, transform 0.2s ease;
+}
+
+/**
+ * GPU acceleration hints
+ * Helps browser optimize animation performance
+ */
+.link-animated-marching-ants,
+.link-animated-flow,
+.link-animated-pulse,
+.node-border-gradient,
+.node-border-pulse,
+.node-border-breathe,
+.node-border-shimmer,
+.node-status-running,
+.node-status-error,
+.node-status-completed,
+.node-status-warning,
+.node-status-pending {
+  -webkit-backface-visibility: hidden;
+  backface-visibility: hidden;
+  -webkit-perspective: 1000px;
+  perspective: 1000px;
+}
+
+/* ==========================================================================
+   DARK MODE SUPPORT
+   ========================================================================== */
+
+/**
+ * Adjust animation colors for dark mode
+ */
+@media (prefers-color-scheme: dark) {
+  .node-border-gradient::before {
+    background: linear-gradient(
+      90deg,
+      #667eea 0%,
+      #764ba2 25%,
+      #667eea 50%,
+      #764ba2 75%,
+      #667eea 100%
+    );
+  }
+
+  .node-border-shimmer::after {
+    background: linear-gradient(
+      90deg,
+      transparent 0%,
+      rgba(255, 255, 255, 0.2) 50%,
+      transparent 100%
+    );
+  }
+}
+
+/* ==========================================================================
+   PRINT MODE
+   ========================================================================== */
+
+/**
+ * Disable animations in print
+ */
+@media print {
+  .link-animated-marching-ants,
+  .link-animated-flow,
+  .link-animated-pulse,
+  .node-border-gradient,
+  .node-border-pulse,
+  .node-border-breathe,
+  .node-border-shimmer,
+  .node-status-running,
+  .node-status-error,
+  .node-status-completed,
+  .node-status-warning,
+  .node-status-pending {
+    animation: none !important;
+  }
+}
