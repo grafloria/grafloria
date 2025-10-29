@@ -132,6 +132,10 @@ export class SVGRenderer implements IRenderer {
     // Phase 1: Initialize animation service
     this.animationService = new AnimationService();
 
+    // CRITICAL: Inject animation CSS immediately so animations work
+    // This ensures node-border-* and link-animation-* classes have their CSS definitions
+    this.animationService.injectCSS();
+
     // Inject theme CSS if in CSS mode
     if (this.config.useCSSMode) {
       this.injectThemeCSS();
