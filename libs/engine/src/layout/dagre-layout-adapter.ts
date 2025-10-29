@@ -12,6 +12,11 @@ import { NodeModel } from '../models/NodeModel';
 import { LinkModel } from '../models/LinkModel';
 import { LayoutAdapter, LayoutOptions, LayoutResult } from './layout-adapter.interface';
 import { ConstraintManager } from './layout-constraints.interface';
+import {
+  IncrementalLayoutOptions,
+  IncrementalLayoutResult,
+  IncrementalLayoutManager,
+} from './incremental-layout.interface';
 
 /**
  * Dagre-specific layout options
@@ -249,6 +254,63 @@ export class DagreLayoutAdapter implements LayoutAdapter {
       y: minY,
       width: maxX - minX,
       height: maxY - minY,
+    };
+  }
+
+  /**
+   * Apply incremental layout - layout new nodes while preserving existing positions
+   *
+   * @param nodes - Array of all nodes (existing + new)
+   * @param links - Array of all links
+   * @param incrementalOptions - Options for incremental layout
+   * @param layoutOptions - Base layout options
+   * @returns Layout result with positions and incremental statistics
+   */
+  async applyIncremental(
+    nodes: NodeModel[],
+    links: LinkModel[],
+    incrementalOptions: IncrementalLayoutOptions,
+    layoutOptions?: Partial<DagreLayoutOptions>
+  ): Promise<LayoutResult & { incremental: IncrementalLayoutResult }> {
+    // Store original positions for movement calculation
+    const oldPositions = new Map<string, { x: number; y: number }>();
+    nodes.forEach(node => {
+      const pos = node.getPosition();
+      oldPositions.set(node.id, { x: pos.x, y: pos.y });
+    });
+
+    // Identify new nodes
+    const newNodeIds = IncrementalLayoutManager.identifyNewNodes(nodes, incrementalOptions);
+    const strategy = incrementalOptions.strategy || 'pin-existing';
+
+    // Generate constraints based on strategy
+    const generatedConstraints = IncrementalLayoutManager.generateConstraints(
+      nodes,
+      incrementalOptions
+    );
+
+    // Merge layout options with generated constraints
+    const mergedOptions: Partial<DagreLayoutOptions> = {
+      ...layoutOptions,
+      constraints: generatedConstraints,
+    };
+
+    // Apply normal layout with constraints
+    const layoutResult = await this.apply(nodes, links, mergedOptions);
+
+    // Calculate incremental statistics
+    const incrementalResult = IncrementalLayoutManager.calculateResult(
+      nodes,
+      oldPositions,
+      newNodeIds,
+      generatedConstraints,
+      strategy
+    );
+
+    // Return combined result
+    return {
+      ...layoutResult,
+      incremental: incrementalResult,
     };
   }
 }

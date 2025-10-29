@@ -9,6 +9,11 @@
 import { NodeModel } from '../models/NodeModel';
 import { LinkModel } from '../models/LinkModel';
 import { LayoutConstraints } from './layout-constraints.interface';
+import {
+  IncrementalLayoutOptions,
+  IncrementalLayoutResult,
+  IncrementalLayoutManager,
+} from './incremental-layout.interface';
 
 /**
  * Base options for all layout adapters
@@ -67,6 +72,22 @@ export interface LayoutAdapter {
     links: LinkModel[],
     options?: Partial<LayoutOptions>
   ): Promise<LayoutResult>;
+
+  /**
+   * Apply incremental layout - layout new nodes while preserving existing positions
+   *
+   * @param nodes - Array of all nodes (existing + new)
+   * @param links - Array of all links
+   * @param incrementalOptions - Options for incremental layout
+   * @param layoutOptions - Base layout options (merged with generated constraints)
+   * @returns Layout result with positions and incremental statistics
+   */
+  applyIncremental(
+    nodes: NodeModel[],
+    links: LinkModel[],
+    incrementalOptions: IncrementalLayoutOptions,
+    layoutOptions?: Partial<LayoutOptions>
+  ): Promise<LayoutResult & { incremental: IncrementalLayoutResult }>;
 
   /**
    * Validate that options are valid for this adapter
