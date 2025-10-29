@@ -5,11 +5,14 @@ import {
   EventEmitter,
   OnInit,
   OnDestroy,
+  OnChanges,
+  SimpleChanges,
   TemplateRef,
   ViewChild,
   ElementRef,
   ChangeDetectorRef,
   ChangeDetectionStrategy,
+  HostListener,
 } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { NodeModel } from '@grafloria/engine';
@@ -30,6 +33,7 @@ export interface ToolbarAction {
   visible?: (node: NodeModel) => boolean; // Dynamic visibility
   onClick: (node: NodeModel) => void;
   group?: string; // For grouping actions with separators
+  shortcut?: string; // Keyboard shortcut (e.g., 'Delete', 'Ctrl+D')
 }
 
 export interface ToolbarStyleConfig {
@@ -42,6 +46,39 @@ export interface ToolbarStyleConfig {
   transitionDuration?: string;
 }
 
+export interface ToolbarBehaviorConfig {
+  autoHide?: boolean;
+  closeOnClickOutside?: boolean;
+  followNode?: boolean;
+  enableKeyboardNav?: boolean;
+}
+
+export interface ToolbarAnimationConfig {
+  enabled?: boolean;
+  duration?: string;
+  easing?: string;
+}
+
+/**
+ * Comprehensive configuration object for NodeToolbar
+ */
+export interface NodeToolbarConfig {
+  position?: ToolbarPosition;
+  alignment?: ToolbarAlignment;
+  offset?: number;
+  actions?: ToolbarAction[];
+  template?: TemplateRef<any>;
+  style?: ToolbarStyleConfig;
+  animation?: ToolbarAnimationConfig;
+  behavior?: ToolbarBehaviorConfig;
+  ariaLabel?: string;
+}
+
+/**
+ * Effective configuration type with all required properties except template
+ */
+export type EffectiveToolbarConfig = Required<Omit<NodeToolbarConfig, 'template'>> & { template?: TemplateRef<any> };
+
 /**
  * NodeToolbar Component
  *
@@ -49,15 +86,19 @@ export interface ToolbarStyleConfig {
  * The toolbar automatically positions itself relative to the node and updates
  * its position when the node moves, the canvas zooms/pans, or the window resizes.
  *
+ * Features:
+ * - Smart positioning with boundary detection
+ * - Keyboard navigation and accessibility (WCAG 2.1 Level AA)
+ * - Custom styling with CSS variables
+ * - Error boundaries for robust operation
+ * - Configuration object pattern
+ *
  * @example
  * ```html
  * <grafloria-node-toolbar
  *   [node]="selectedNode"
  *   [engine]="diagramEngine"
- *   [viewport]="viewport"
- *   [zoom]="zoom"
- *   [position]="'top'"
- *   [actions]="toolbarActions">
+ *   [config]="toolbarConfig">
  * </grafloria-node-toolbar>
  * ```
  */
@@ -69,23 +110,43 @@ export interface ToolbarStyleConfig {
     <div
       #toolbar
       class="grafloria-node-toolbar"
+      role="toolbar"
+      [attr.aria-label]="effectiveConfig.ariaLabel || 'Node actions'"
+      [attr.aria-hidden]="!isVisible"
       [class.visible]="isVisible"
+      [class.animated]="effectiveConfig.animation?.enabled !== false"
       [style.transform]="transform"
       [style.opacity]="isVisible ? 1 : 0"
-      [attr.data-position]="position"
+      [style.--toolbar-bg]="effectiveConfig.style?.backgroundColor"
+      [style.--toolbar-border]="effectiveConfig.style?.borderColor"
+      [style.--toolbar-radius]="effectiveConfig.style?.borderRadius"
+      [style.--toolbar-shadow]="effectiveConfig.style?.boxShadow"
+      [style.--toolbar-padding]="effectiveConfig.style?.padding"
+      [style.--toolbar-z]="effectiveConfig.style?.zIndex"
+      [style.--toolbar-transition]="effectiveConfig.animation?.duration || '0.2s'"
+      [attr.data-position]="effectiveConfig.position"
+      (keydown)="handleKeyDown($event)"
     >
       <!-- Default toolbar content -->
-      @if (!customTemplate) {
-        <div class="toolbar-content">
-          @for (action of visibleActions; track action.id) {
+      @if (!effectiveConfig.template) {
+        <div class="toolbar-content" role="group">
+          @for (action of visibleActions; track action.id; let idx = $index) {
             <button
+              #actionButton
+              type="button"
+              role="button"
               class="toolbar-button"
+              [attr.aria-label]="action.tooltip || action.label"
+              [attr.aria-disabled]="action.disabled"
+              [attr.data-action-id]="action.id"
+              [attr.tabindex]="idx === focusedActionIndex ? 0 : -1"
               [disabled]="action.disabled"
               [title]="action.tooltip || action.label"
               (click)="handleActionClick(action)"
+              (focus)="onActionFocus(idx)"
             >
               @if (action.icon) {
-                <i [class]="action.icon"></i>
+                <i [class]="action.icon" aria-hidden="true"></i>
               }
               <span>{{ action.label }}</span>
             </button>
@@ -94,8 +155,8 @@ export interface ToolbarStyleConfig {
       }
 
       <!-- Custom template content -->
-      @if (customTemplate) {
-        <ng-container *ngTemplateOutlet="customTemplate; context: { $implicit: node, actions: actions }">
+      @if (effectiveConfig.template) {
+        <ng-container *ngTemplateOutlet="effectiveConfig.template; context: { $implicit: node, actions: visibleActions, config: effectiveConfig }">
         </ng-container>
       }
     </div>
@@ -103,16 +164,27 @@ export interface ToolbarStyleConfig {
   styles: [`
     .grafloria-node-toolbar {
       position: absolute;
-      background: white;
-      border: 1px solid #e2e8f0;
-      border-radius: 8px;
-      box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
-      padding: 4px;
+      background: var(--toolbar-bg, var(--grafloria-toolbar-bg, white));
+      border: 1px solid var(--toolbar-border, var(--grafloria-toolbar-border, #e2e8f0));
+      border-radius: var(--toolbar-radius, var(--grafloria-toolbar-radius, 8px));
+      box-shadow: var(--toolbar-shadow, var(--grafloria-toolbar-shadow, 0 4px 6px rgba(0, 0, 0, 0.1)));
+      padding: var(--toolbar-padding, var(--grafloria-toolbar-padding, 4px));
       display: flex;
       gap: 4px;
-      z-index: 1000;
-      transition: opacity 0.2s ease;
+      z-index: var(--toolbar-z, var(--grafloria-toolbar-z, 1000));
+      transition: opacity var(--toolbar-transition, 0.2s) ease;
       pointer-events: all;
+      outline: none;
+    }
+
+    .grafloria-node-toolbar.animated {
+      transition: opacity var(--toolbar-transition, 0.2s) ease,
+                  transform var(--toolbar-transition, 0.2s) ease;
+    }
+
+    .grafloria-node-toolbar:focus-within {
+      outline: 2px solid var(--grafloria-focus-color, #667eea);
+      outline-offset: 2px;
     }
 
     .grafloria-node-toolbar[data-position="top"],
@@ -145,17 +217,24 @@ export interface ToolbarStyleConfig {
       border-radius: 4px;
       cursor: pointer;
       font-size: 14px;
-      color: #334155;
+      color: var(--grafloria-toolbar-text, #334155);
       transition: background-color 0.15s ease;
       white-space: nowrap;
+      position: relative;
     }
 
     .toolbar-button:hover:not(:disabled) {
-      background: #f1f5f9;
+      background: var(--grafloria-toolbar-hover, #f1f5f9);
     }
 
     .toolbar-button:active:not(:disabled) {
-      background: #e2e8f0;
+      background: var(--grafloria-toolbar-active, #e2e8f0);
+    }
+
+    .toolbar-button:focus {
+      outline: 2px solid var(--grafloria-focus-color, #667eea);
+      outline-offset: -2px;
+      z-index: 1;
     }
 
     .toolbar-button:disabled {
@@ -163,51 +242,128 @@ export interface ToolbarStyleConfig {
       cursor: not-allowed;
     }
 
+    .toolbar-button[aria-disabled="true"] {
+      opacity: 0.5;
+      cursor: not-allowed;
+    }
+
     .toolbar-button i {
       font-size: 16px;
+    }
+
+    /* High contrast mode support */
+    @media (prefers-contrast: high) {
+      .grafloria-node-toolbar {
+        border-width: 2px;
+      }
+
+      .toolbar-button:focus {
+        outline-width: 3px;
+      }
+    }
+
+    /* Reduced motion support */
+    @media (prefers-reduced-motion: reduce) {
+      .grafloria-node-toolbar,
+      .toolbar-button {
+        transition: none;
+      }
     }
   `],
   changeDetection: ChangeDetectionStrategy.OnPush,
 })
-export class NodeToolbarComponent implements OnInit, OnDestroy {
+export class NodeToolbarComponent implements OnInit, OnChanges, OnDestroy {
+  // Individual inputs (backward compatible)
   @Input() node!: NodeModel;
   @Input() engine!: DiagramEngine;
-  @Input() canvasElement?: HTMLElement; // The canvas container element
+  @Input() canvasElement?: HTMLElement;
   @Input() viewport: { x: number; y: number; width: number; height: number } = { x: 0, y: 0, width: 800, height: 600 };
   @Input() zoom: number = 1.0;
   @Input() position: ToolbarPosition = 'top';
   @Input() alignment: ToolbarAlignment = 'center';
-  @Input() offset: number = 8; // Distance from node in pixels
+  @Input() offset: number = 8;
   @Input() actions: ToolbarAction[] = [];
   @Input() customTemplate?: TemplateRef<any>;
   @Input() visible: boolean = true;
-  @Input() styleConfig?: ToolbarStyleConfig; // Custom styling
-  @Input() enableAnimation: boolean = true; // Toggle animations
-  @Input() autoHide: boolean = false; // Auto-hide when clicking outside
+  @Input() styleConfig?: ToolbarStyleConfig;
+  @Input() enableAnimation: boolean = true;
+  @Input() autoHide: boolean = false;
+
+  // Configuration object (preferred approach)
+  @Input() config?: NodeToolbarConfig;
 
   @Output() actionClicked = new EventEmitter<{ action: ToolbarAction; node: NodeModel }>();
+  @Output() visibilityChanged = new EventEmitter<boolean>();
+  @Output() positionUpdated = new EventEmitter<{ x: number; y: number }>();
 
   @ViewChild('toolbar', { read: ElementRef }) toolbarRef?: ElementRef<HTMLDivElement>;
 
   isVisible = false;
   transform = '';
+  focusedActionIndex = 0;
 
   private destroy$ = new Subject<void>();
   private positionUpdatePending = false;
   private eventListeners: Array<{ event: string; handler: Function }> = [];
+  private lastKnownPosition = { x: 0, y: 0 };
 
-  constructor(private cdr: ChangeDetectorRef) {}
+  constructor(private cdr: ChangeDetectorRef, private elementRef: ElementRef) {}
+
+  /**
+   * Effective configuration merging individual inputs with config object
+   */
+  get effectiveConfig(): EffectiveToolbarConfig {
+    const defaults: EffectiveToolbarConfig = {
+      position: 'top',
+      alignment: 'center',
+      offset: 8,
+      actions: [],
+      template: undefined as any,
+      style: {},
+      animation: { enabled: true, duration: '0.2s', easing: 'ease' },
+      behavior: {
+        autoHide: false,
+        closeOnClickOutside: false,
+        followNode: true,
+        enableKeyboardNav: true
+      },
+      ariaLabel: 'Node actions'
+    };
+
+    // Merge config object with individual inputs (individual inputs take precedence)
+    const merged = {
+      ...defaults,
+      ...(this.config || {}),
+      position: this.position,
+      alignment: this.alignment,
+      offset: this.offset,
+      actions: this.actions.length > 0 ? this.actions : (this.config?.actions || []),
+      template: this.customTemplate || this.config?.template,
+      style: { ...defaults.style, ...(this.config?.style || {}), ...(this.styleConfig || {}) },
+      animation: {
+        ...defaults.animation,
+        ...(this.config?.animation || {}),
+        enabled: this.enableAnimation
+      },
+      behavior: {
+        ...defaults.behavior,
+        ...(this.config?.behavior || {}),
+        autoHide: this.autoHide
+      },
+      ariaLabel: this.config?.ariaLabel || 'Node actions'
+    };
+
+    return merged;
+  }
 
   /**
    * Get visible actions based on visibility conditions
    */
   get visibleActions(): ToolbarAction[] {
-    return this.actions.filter(action => {
-      // Check hidden flag
+    return this.effectiveConfig.actions.filter(action => {
       if (action.hidden) {
         return false;
       }
-      // Check dynamic visibility function
       if (action.visible && !action.visible(this.node)) {
         return false;
       }
@@ -216,49 +372,92 @@ export class NodeToolbarComponent implements OnInit, OnDestroy {
   }
 
   ngOnInit() {
-    // Show toolbar when component initializes
     this.isVisible = this.visible;
-
-    // Update position initially
     setTimeout(() => this.updatePosition(), 0);
+    this.setupEventListeners();
+    this.setupKeyboardNavigation();
+  }
 
-    // Listen to engine events to update position
-    if (this.engine) {
-      const zoomHandler = () => this.schedulePositionUpdate();
-      const panHandler = () => this.schedulePositionUpdate();
-      const moveHandler = (event: any) => {
-        if (event.node?.id === this.node.id) {
-          this.schedulePositionUpdate();
-        }
-      };
-      const resizeHandler = (event: any) => {
-        if (event.node?.id === this.node.id) {
-          this.schedulePositionUpdate();
-        }
-      };
-
-      this.engine.eventBus.on('canvas:zoom', zoomHandler);
-      this.engine.eventBus.on('canvas:pan', panHandler);
-      this.engine.eventBus.on('node:moved', moveHandler);
-      this.engine.eventBus.on('node:resized', resizeHandler);
-
-      // Store references for cleanup
-      this.eventListeners.push(
-        { event: 'canvas:zoom', handler: zoomHandler },
-        { event: 'canvas:pan', handler: panHandler },
-        { event: 'node:moved', handler: moveHandler },
-        { event: 'node:resized', handler: resizeHandler }
-      );
+  ngOnChanges(changes: SimpleChanges) {
+    // Update viewport/zoom when inputs change
+    if (changes['viewport'] && !changes['viewport'].firstChange) {
+      this.schedulePositionUpdate();
     }
 
-    // Update position on window resize
+    if (changes['zoom'] && !changes['zoom'].firstChange) {
+      this.schedulePositionUpdate();
+    }
+
+    // Update visibility
+    if (changes['visible']) {
+      this.isVisible = this.visible;
+      this.visibilityChanged.emit(this.isVisible);
+    }
+
+    // Re-render if config changes
+    if (changes['config'] || changes['actions'] || changes['position']) {
+      this.cdr.markForCheck();
+    }
+  }
+
+  ngOnDestroy() {
+    this.cleanup();
+  }
+
+  /**
+   * Setup engine event listeners
+   */
+  private setupEventListeners() {
+    if (!this.engine) {
+      return;
+    }
+
+    const zoomHandler = () => this.schedulePositionUpdate();
+    const panHandler = () => this.schedulePositionUpdate();
+    const moveHandler = (event: any) => {
+      if (event.node?.id === this.node.id) {
+        this.schedulePositionUpdate();
+      }
+    };
+    const resizeHandler = (event: any) => {
+      if (event.node?.id === this.node.id) {
+        this.schedulePositionUpdate();
+      }
+    };
+
+    this.engine.eventBus.on('canvas:zoom', zoomHandler);
+    this.engine.eventBus.on('canvas:pan', panHandler);
+    this.engine.eventBus.on('node:moved', moveHandler);
+    this.engine.eventBus.on('node:resized', resizeHandler);
+
+    this.eventListeners.push(
+      { event: 'canvas:zoom', handler: zoomHandler },
+      { event: 'canvas:pan', handler: panHandler },
+      { event: 'node:moved', handler: moveHandler },
+      { event: 'node:resized', handler: resizeHandler }
+    );
+
+    // Window resize
     fromEvent(window, 'resize')
       .pipe(throttleTime(100), takeUntil(this.destroy$))
       .subscribe(() => this.updatePosition());
   }
 
-  ngOnDestroy() {
-    // Clean up event listeners
+  /**
+   * Setup keyboard navigation
+   */
+  private setupKeyboardNavigation() {
+    if (!this.effectiveConfig.behavior.enableKeyboardNav) {
+      return;
+    }
+
+    // Will handle keyboard events via HostListener below
+  }
+
+  /**
+   * Clean up resources
+   */
+  private cleanup() {
     if (this.engine) {
       this.eventListeners.forEach(({ event, handler }) => {
         this.engine.eventBus.off(event, handler);
@@ -271,7 +470,7 @@ export class NodeToolbarComponent implements OnInit, OnDestroy {
   }
 
   /**
-   * Schedule a position update (throttled to prevent excessive updates)
+   * Schedule a position update (throttled)
    */
   private schedulePositionUpdate() {
     if (this.positionUpdatePending) {
@@ -286,76 +485,104 @@ export class NodeToolbarComponent implements OnInit, OnDestroy {
   }
 
   /**
-   * Update toolbar position based on node position and zoom level
+   * Update toolbar position with error handling
    */
   updatePosition() {
-    if (!this.toolbarRef || !this.node) {
-      return;
-    }
-
-    const toolbarEl = this.toolbarRef.nativeElement;
-
-    // Get canvas element - try from input, fallback to finding it
-    let canvasEl = this.canvasElement;
-    if (!canvasEl) {
-      // Try to find the canvas element by looking for grafloria-diagram-canvas or similar
-      canvasEl = document.querySelector('grafloria-diagram-canvas') as HTMLElement;
-      if (!canvasEl) {
-        canvasEl = document.querySelector('.diagram-canvas') as HTMLElement;
+    try {
+      if (!this.toolbarRef || !this.node) {
+        return;
       }
+
+      const toolbarEl = this.toolbarRef.nativeElement;
+      const canvasEl = this.getCanvasElement();
+
+      if (!canvasEl) {
+        console.warn('NodeToolbar: Canvas element not found');
+        return;
+      }
+
+      const nodeRect = this.getNodeScreenRect(canvasEl);
+      const toolbarRect = toolbarEl.getBoundingClientRect();
+
+      let x = 0;
+      let y = 0;
+
+      // Calculate position
+      switch (this.effectiveConfig.position) {
+        case 'top':
+          x = this.calculateAlignedX(nodeRect, toolbarRect.width);
+          y = nodeRect.top - toolbarRect.height - this.effectiveConfig.offset;
+          break;
+        case 'bottom':
+          x = this.calculateAlignedX(nodeRect, toolbarRect.width);
+          y = nodeRect.bottom + this.effectiveConfig.offset;
+          break;
+        case 'left':
+          x = nodeRect.left - toolbarRect.width - this.effectiveConfig.offset;
+          y = this.calculateAlignedY(nodeRect, toolbarRect.height);
+          break;
+        case 'right':
+          x = nodeRect.right + this.effectiveConfig.offset;
+          y = this.calculateAlignedY(nodeRect, toolbarRect.height);
+          break;
+      }
+
+      // Boundary detection
+      const canvasRect = canvasEl.getBoundingClientRect();
+      const margin = 8;
+      x = Math.max(canvasRect.left + margin, Math.min(x, canvasRect.right - toolbarRect.width - margin));
+      y = Math.max(canvasRect.top + margin, Math.min(y, canvasRect.bottom - toolbarRect.height - margin));
+
+      // Store last known position
+      this.lastKnownPosition = { x, y };
+
+      // Update transform
+      this.transform = `translate(${x}px, ${y}px)`;
+      this.cdr.detectChanges();
+
+      // Emit position update
+      this.positionUpdated.emit({ x, y });
+
+    } catch (error) {
+      console.error('NodeToolbar: Failed to update position', error);
+      // Fallback to last known position or origin
+      const fallbackX = this.lastKnownPosition.x || 0;
+      const fallbackY = this.lastKnownPosition.y || 0;
+      this.transform = `translate(${fallbackX}px, ${fallbackY}px)`;
+      this.cdr.detectChanges();
     }
-
-    if (!canvasEl) {
-      return;
-    }
-
-    // Get node bounding rect in screen coordinates
-    const nodeRect = this.getNodeScreenRect(canvasEl);
-
-    // Get toolbar size
-    const toolbarRect = toolbarEl.getBoundingClientRect();
-
-    // Calculate position based on position prop
-    let x = 0;
-    let y = 0;
-
-    switch (this.position) {
-      case 'top':
-        x = this.calculateAlignedX(nodeRect, toolbarRect.width);
-        y = nodeRect.top - toolbarRect.height - this.offset;
-        break;
-
-      case 'bottom':
-        x = this.calculateAlignedX(nodeRect, toolbarRect.width);
-        y = nodeRect.bottom + this.offset;
-        break;
-
-      case 'left':
-        x = nodeRect.left - toolbarRect.width - this.offset;
-        y = this.calculateAlignedY(nodeRect, toolbarRect.height);
-        break;
-
-      case 'right':
-        x = nodeRect.right + this.offset;
-        y = this.calculateAlignedY(nodeRect, toolbarRect.height);
-        break;
-    }
-
-    // Adjust if toolbar would go off-screen
-    const canvasRect = canvasEl.getBoundingClientRect();
-    x = Math.max(canvasRect.left + 8, Math.min(x, canvasRect.right - toolbarRect.width - 8));
-    y = Math.max(canvasRect.top + 8, Math.min(y, canvasRect.bottom - toolbarRect.height - 8));
-
-    // Set transform
-    this.transform = `translate(${x}px, ${y}px)`;
-    this.cdr.detectChanges();
   }
 
   /**
-   * Calculate X position based on alignment
+   * Get canvas element with fallback
+   */
+  private getCanvasElement(): HTMLElement | null {
+    if (this.canvasElement) {
+      return this.canvasElement;
+    }
+
+    // Try to find canvas element
+    const selectors = [
+      'grafloria-diagram-canvas',
+      '.diagram-canvas',
+      '[role="application"]'
+    ];
+
+    for (const selector of selectors) {
+      const el = document.querySelector(selector) as HTMLElement;
+      if (el) {
+        return el;
+      }
+    }
+
+    return null;
+  }
+
+  /**
+   * Calculate aligned X position
    */
   private calculateAlignedX(nodeRect: DOMRect, toolbarWidth: number): number {
-    switch (this.alignment) {
+    switch (this.effectiveConfig.alignment) {
       case 'start':
         return nodeRect.left;
       case 'center':
@@ -368,10 +595,10 @@ export class NodeToolbarComponent implements OnInit, OnDestroy {
   }
 
   /**
-   * Calculate Y position based on alignment
+   * Calculate aligned Y position
    */
   private calculateAlignedY(nodeRect: DOMRect, toolbarHeight: number): number {
-    switch (this.alignment) {
+    switch (this.effectiveConfig.alignment) {
       case 'start':
         return nodeRect.top;
       case 'center':
@@ -384,7 +611,7 @@ export class NodeToolbarComponent implements OnInit, OnDestroy {
   }
 
   /**
-   * Get node's screen coordinates (accounting for zoom and pan)
+   * Get node's screen coordinates
    */
   private getNodeScreenRect(canvasEl: HTMLElement): DOMRect {
     const nodeX = this.node.position.x;
@@ -394,8 +621,6 @@ export class NodeToolbarComponent implements OnInit, OnDestroy {
 
     const canvasRect = canvasEl.getBoundingClientRect();
 
-    // Convert diagram coordinates to screen coordinates
-    // Account for viewport pan and zoom
     const screenX = canvasRect.left + (nodeX * this.zoom + this.viewport.x);
     const screenY = canvasRect.top + (nodeY * this.zoom + this.viewport.y);
     const screenWidth = nodeWidth * this.zoom;
@@ -405,13 +630,92 @@ export class NodeToolbarComponent implements OnInit, OnDestroy {
   }
 
   /**
-   * Handle action button click
+   * Handle action click
    */
   handleActionClick(action: ToolbarAction) {
     if (!action.disabled) {
-      action.onClick(this.node);
-      this.actionClicked.emit({ action, node: this.node });
+      try {
+        action.onClick(this.node);
+        this.actionClicked.emit({ action, node: this.node });
+      } catch (error) {
+        console.error('NodeToolbar: Action click handler failed', error);
+      }
     }
+  }
+
+  /**
+   * Handle keyboard navigation
+   */
+  handleKeyDown(event: KeyboardEvent) {
+    if (!this.effectiveConfig.behavior.enableKeyboardNav) {
+      return;
+    }
+
+    const actions = this.visibleActions;
+    if (actions.length === 0) {
+      return;
+    }
+
+    switch (event.key) {
+      case 'ArrowRight':
+      case 'ArrowDown':
+        event.preventDefault();
+        this.focusedActionIndex = (this.focusedActionIndex + 1) % actions.length;
+        this.focusAction(this.focusedActionIndex);
+        break;
+
+      case 'ArrowLeft':
+      case 'ArrowUp':
+        event.preventDefault();
+        this.focusedActionIndex = (this.focusedActionIndex - 1 + actions.length) % actions.length;
+        this.focusAction(this.focusedActionIndex);
+        break;
+
+      case 'Home':
+        event.preventDefault();
+        this.focusedActionIndex = 0;
+        this.focusAction(0);
+        break;
+
+      case 'End':
+        event.preventDefault();
+        this.focusedActionIndex = actions.length - 1;
+        this.focusAction(actions.length - 1);
+        break;
+
+      case 'Enter':
+      case ' ':
+        event.preventDefault();
+        const action = actions[this.focusedActionIndex];
+        if (action && !action.disabled) {
+          this.handleActionClick(action);
+        }
+        break;
+
+      case 'Escape':
+        event.preventDefault();
+        this.hide();
+        break;
+    }
+  }
+
+  /**
+   * Focus a specific action button
+   */
+  private focusAction(index: number) {
+    setTimeout(() => {
+      const buttons = this.toolbarRef?.nativeElement.querySelectorAll('.toolbar-button');
+      if (buttons && buttons[index]) {
+        (buttons[index] as HTMLElement).focus();
+      }
+    }, 0);
+  }
+
+  /**
+   * Handle action focus
+   */
+  onActionFocus(index: number) {
+    this.focusedActionIndex = index;
   }
 
   /**
@@ -420,7 +724,13 @@ export class NodeToolbarComponent implements OnInit, OnDestroy {
   show() {
     this.isVisible = true;
     this.updatePosition();
+    this.visibilityChanged.emit(true);
     this.cdr.detectChanges();
+
+    // Focus first action if keyboard nav enabled
+    if (this.effectiveConfig.behavior.enableKeyboardNav) {
+      setTimeout(() => this.focusAction(0), 100);
+    }
   }
 
   /**
@@ -428,17 +738,18 @@ export class NodeToolbarComponent implements OnInit, OnDestroy {
    */
   hide() {
     this.isVisible = false;
+    this.visibilityChanged.emit(false);
     this.cdr.detectChanges();
   }
 
   /**
-   * Toggle toolbar visibility
+   * Toggle visibility
    */
   toggle() {
-    this.isVisible = !this.isVisible;
     if (this.isVisible) {
-      this.updatePosition();
+      this.hide();
+    } else {
+      this.show();
     }
-    this.cdr.detectChanges();
   }
 }

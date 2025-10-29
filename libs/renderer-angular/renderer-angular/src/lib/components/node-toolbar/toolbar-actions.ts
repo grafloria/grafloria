@@ -12,7 +12,7 @@ export function createDeleteAction(engine: DiagramEngine): ToolbarAction {
     icon: 'fa fa-trash',
     tooltip: 'Delete node',
     onClick: (node: NodeModel) => {
-      const model = engine.getModel();
+      const model = engine.getDiagram();
       if (model) {
         model.removeNode(node.id);
         engine.eventBus.emit('diagram:changed', { source: 'toolbar-action', action: 'delete' });
@@ -31,23 +31,20 @@ export function createDuplicateAction(engine: DiagramEngine): ToolbarAction {
     label: 'Duplicate',
     icon: 'fa fa-copy',
     tooltip: 'Duplicate node',
-    onClick: (node: NodeModel) => {
-      const model = engine.getModel();
-      if (model) {
-        const clone = model.addNode({
-          type: node.type,
-          data: { ...node.data },
-          position: {
-            x: node.position.x + 20,
-            y: node.position.y + 20,
-          },
-          size: {
-            width: node.size.width,
-            height: node.size.height,
-          },
-        });
-        engine.eventBus.emit('diagram:changed', { source: 'toolbar-action', action: 'duplicate' });
-      }
+    onClick: async (node: NodeModel) => {
+      await engine.addNode({
+        type: node.type,
+        data: { ...node.data },
+        position: {
+          x: node.position.x + 20,
+          y: node.position.y + 20,
+        },
+        size: {
+          width: node.size.width,
+          height: node.size.height,
+        },
+      });
+      engine.eventBus.emit('diagram:changed', { source: 'toolbar-action', action: 'duplicate' });
     },
   };
 }
@@ -116,12 +113,12 @@ export function createBringToFrontAction(engine: DiagramEngine): ToolbarAction {
     tooltip: 'Bring to front',
     onClick: (node: NodeModel) => {
       // Find the highest z-index in the diagram
-      const model = engine.getModel();
+      const model = engine.getDiagram();
       if (model) {
         const nodes = model.getNodes();
         let maxZIndex = 0;
 
-        nodes.forEach(n => {
+        nodes.forEach((n: NodeModel) => {
           const zIndex = n.style.zIndex || 0;
           if (zIndex > maxZIndex) {
             maxZIndex = zIndex;
@@ -148,12 +145,12 @@ export function createSendToBackAction(engine: DiagramEngine): ToolbarAction {
     tooltip: 'Send to back',
     onClick: (node: NodeModel) => {
       // Find the lowest z-index in the diagram
-      const model = engine.getModel();
+      const model = engine.getDiagram();
       if (model) {
         const nodes = model.getNodes();
         let minZIndex = 0;
 
-        nodes.forEach(n => {
+        nodes.forEach((n: NodeModel) => {
           const zIndex = n.style.zIndex || 0;
           if (zIndex < minZIndex) {
             minZIndex = zIndex;
