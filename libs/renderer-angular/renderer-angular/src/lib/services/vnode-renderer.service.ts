@@ -91,6 +91,12 @@ export class VNodeRendererService {
    * Set a single property on an element
    */
   private setProp(element: Element, key: string, value: any): void {
+    // CRITICAL: Skip undefined and null values to prevent overriding CSS
+    // Setting stroke-width="undefined" as a string would override CSS animations
+    if (value === undefined || value === null) {
+      return;
+    }
+
     if (key === 'textContent') {
       element.textContent = value;
       return;

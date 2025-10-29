@@ -18,6 +18,9 @@ export interface NodeState {
   enabled: boolean;
   error?: string;
   warning?: string;
+  // Phase 1: Status-based animations
+  status?: 'idle' | 'pending' | 'running' | 'completed' | 'error' | 'warning';
+  animateStatus?: boolean;  // Enable automatic status-based animations
 }
 
 export interface NodeBehavior {
@@ -53,6 +56,11 @@ export interface NodeStyle {
   color?: string;
   padding?: number;
   zIndex?: number;
+  // Phase 1: Border animations
+  animatedBorder?: boolean;
+  borderAnimationType?: 'gradient' | 'pulse' | 'breathe' | 'shimmer' | 'none';
+  borderAnimationSpeed?: number;  // Duration in seconds
+  borderAnimationColors?: string[];  // For gradient animations
 }
 
 export interface PortPosition {
@@ -140,11 +148,15 @@ export interface Shadow {
   color: string;
 }
 
-// Phase 4: Animation
+// Phase 1 & 4: Animation
 export interface LinkAnimation {
-  type: 'dash-flow' | 'pulse' | 'none';
+  // Phase 1: New animation types
+  type: 'marching-ants' | 'flow' | 'pulse' | 'dash-flow' | 'none';
   duration?: number;  // milliseconds
   dashOffset?: number;
+  // Phase 1: Animation control
+  speed?: 'slow' | 'normal' | 'fast';
+  direction?: 'forward' | 'reverse';
 }
 
 // Phase 4: Markers along path

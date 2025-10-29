@@ -30,12 +30,18 @@ export class HtmlNodeRendererDirective implements OnInit, OnChanges {
   ngOnChanges(changes: SimpleChanges) {
     // PERFORMANCE FIX: Only re-render if node ID or type actually changed
     // Don't recreate component if it's the same node (same reference or same ID)
+    // EXCEPTION: For template mode, always re-render to pick up data changes
     if (changes['htmlNodeRenderer']) {
       const prev = changes['htmlNodeRenderer'].previousValue;
       const curr = changes['htmlNodeRenderer'].currentValue;
 
-      // Skip if it's the same node reference or same node ID
-      if (prev && curr && prev.id === curr.id && !changes['nodeType']) {
+      // Check if this is a template-based node
+      const htmlConfig = curr?.data?._html || curr?.metadata?.get?.('_html');
+      const isTemplateMode = htmlConfig && htmlConfig.mode === 'template';
+
+      // Skip re-render if it's the same node AND not in template mode
+      // Template mode needs to re-render to pick up data changes (like selection state)
+      if (prev && curr && prev.id === curr.id && !changes['nodeType'] && !isTemplateMode) {
         return; // Same node, no need to recreate component
       }
     }

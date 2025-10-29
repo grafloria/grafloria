@@ -164,6 +164,11 @@ export class DiagramCanvasComponent implements OnInit, AfterViewInit, OnChanges,
   htmlNodes: any[] = [];
 
   /**
+   * Track last HTML node count to reduce console logging
+   */
+  private _lastHtmlNodeCount?: number;
+
+  /**
    * HTML node component instances (Phase 1: Hybrid Rendering)
    * DEPRECATED: No longer used - switched to declarative rendering
    * Maps node ID to Angular ComponentRef for lifecycle management
@@ -241,7 +246,7 @@ export class DiagramCanvasComponent implements OnInit, AfterViewInit, OnChanges,
       this.engine,
       {
         enableCaching: true,
-        useCSSMode: false, // Disabled to allow shape metadata stroke to take effect
+        useCSSMode: true, // CRITICAL: Required for animations to work (CSS classes)
       },
       this.theme
     );
@@ -298,13 +303,16 @@ export class DiagramCanvasComponent implements OnInit, AfterViewInit, OnChanges,
     const htmlGroupModels = groups.filter(group => group.getMetadata('useHTMLLayer') === true);
     const newHtmlNodes = [...htmlNodeModels, ...htmlGroupModels];
 
-    // CRITICAL FIX: Only update array if the set of HTML nodes has actually changed
-    // Compare IDs to avoid unnecessary array reassignment that triggers full re-render
-    const currentIds = this.htmlNodes.map(n => n.id).sort().join(',');
-    const newIds = newHtmlNodes.map(n => n.id).sort().join(',');
+    // CRITICAL FIX: Always create new array reference to ensure template re-render
+    // This allows data changes (like selection state) to trigger re-render
+    // Note: We create a shallow copy with spread operator to maintain node references
+    // but signal Angular that the array has changed
+    this.htmlNodes = [...newHtmlNodes];
 
-    if (currentIds !== newIds) {
-      this.htmlNodes = newHtmlNodes;
+    // Log only when node count changes to reduce console noise
+    const currentCount = this.htmlNodes.length;
+    if (!this._lastHtmlNodeCount || this._lastHtmlNodeCount !== currentCount) {
+      this._lastHtmlNodeCount = currentCount;
       console.log(`🔄 [HTMLLayer DECLARATIVE] HTML nodes changed:`, {
         totalNodes: nodes.length,
         totalGroups: groups.length,
@@ -313,7 +321,6 @@ export class DiagramCanvasComponent implements OnInit, AfterViewInit, OnChanges,
         positions: this.htmlNodes.map(n => ({ id: n.id, x: n.position.x, y: n.position.y }))
       });
     }
-    // If nodes haven't changed, keep existing array reference to prevent re-render
 
     // No need for imperative component management - Angular template handles it with @for
   }

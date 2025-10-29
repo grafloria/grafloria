@@ -1,0 +1,313 @@
+/**
+ * Grafloria Diagram Reduced Motion Support
+ *
+ * Accessibility: Respects user's motion preferences
+ * Implements WCAG 2.1 Success Criterion 2.3.3 (Animation from Interactions)
+ *
+ * This file provides fallback styles for users who have enabled
+ * "Reduce Motion" in their system preferences.
+ *
+ * @see https://developer.mozilla.org/en-US/docs/Web/CSS/@media/prefers-reduced-motion
+ */
+
+/* ==========================================================================
+   REDUCED MOTION QUERY
+   ========================================================================== */
+
+/**
+ * Disable all animations when user prefers reduced motion
+ */
+@media (prefers-reduced-motion: reduce) {
+
+  /* Disable all edge animations */
+  .link-animated-marching-ants,
+  .link-animated-flow,
+  .link-animated-pulse {
+    animation: none !important;
+    stroke-dasharray: none !important;
+  }
+
+  /* Disable all node border animations */
+  .node-border-gradient,
+  .node-border-gradient::before,
+  .node-border-pulse,
+  .node-border-pulse-svg,
+  .node-border-breathe,
+  .node-border-shimmer,
+  .node-border-shimmer::after {
+    animation: none !important;
+  }
+
+  /* Disable status animations but keep visual indicators */
+  .node-status-running {
+    animation: none !important;
+    border-color: #3498db;
+    box-shadow: 0 0 5px rgba(52, 152, 219, 0.5);
+  }
+
+  .node-status-running-svg {
+    animation: none !important;
+    stroke: #3498db;
+    filter: drop-shadow(0 0 5px rgba(52, 152, 219, 0.5));
+  }
+
+  .node-status-error {
+    animation: none !important;
+    border-color: #e74c3c;
+    box-shadow: 0 0 5px rgba(231, 76, 60, 0.5);
+  }
+
+  .node-status-error-svg {
+    animation: none !important;
+    stroke: #e74c3c;
+    filter: drop-shadow(0 0 5px rgba(231, 76, 60, 0.5));
+  }
+
+  .node-status-completed {
+    animation: none !important;
+    border-color: #27ae60;
+    opacity: 0.8;
+  }
+
+  .node-status-completed-svg {
+    animation: none !important;
+    stroke: #27ae60;
+    opacity: 0.8;
+  }
+
+  .node-status-warning {
+    animation: none !important;
+    border-color: #f39c12;
+    background-color: rgba(243, 156, 18, 0.1);
+  }
+
+  .node-status-warning-svg {
+    animation: none !important;
+    stroke: #f39c12;
+    fill-opacity: 0.1;
+  }
+
+  .node-status-pending {
+    animation: none !important;
+    opacity: 0.85;
+  }
+
+  .node-status-pending-svg {
+    animation: none !important;
+    opacity: 0.85;
+  }
+
+  /* Keep instant transitions for interactive feedback */
+  .diagram-node,
+  .diagram-link {
+    transition: opacity 0.05s ease, transform 0.05s ease;
+  }
+
+  /* Disable all gradient animations */
+  .node-border-gradient::before {
+    background-position: 0% center;
+  }
+
+  /* Remove will-change hints */
+  * {
+    will-change: auto !important;
+  }
+}
+
+/* ==========================================================================
+   REDUCED MOTION - JAVASCRIPT FALLBACK
+   ========================================================================== */
+
+/**
+ * Class applied by AnimationService when reduced motion is detected
+ * Provides same behavior as media query for programmatic control
+ */
+body.reduced-motion,
+.reduced-motion * {
+  animation: none !important;
+  transition: opacity 0.05s ease, transform 0.05s ease !important;
+}
+
+body.reduced-motion .link-animated-marching-ants,
+body.reduced-motion .link-animated-flow,
+body.reduced-motion .link-animated-pulse {
+  stroke-dasharray: none !important;
+}
+
+body.reduced-motion .node-border-gradient::before {
+  background-position: 0% center;
+}
+
+/* ==========================================================================
+   HIGH CONTRAST MODE ADJUSTMENTS
+   ========================================================================== */
+
+/**
+ * Windows High Contrast Mode support
+ * Ensures animations work with high contrast themes
+ */
+@media (prefers-contrast: high) {
+
+  /* Simplify animations for better contrast */
+  .node-border-gradient,
+  .node-border-shimmer {
+    animation: none !important;
+  }
+
+  /* Keep functional animations but simplify */
+  .link-animated-marching-ants,
+  .link-animated-flow {
+    animation-duration: 2s !important; /* Slower for better visibility */
+  }
+
+  /* Enhance status indicators for high contrast */
+  .node-status-running {
+    border-width: 3px;
+  }
+
+  .node-status-error {
+    border-width: 3px;
+  }
+
+  .node-status-warning {
+    border-width: 3px;
+  }
+}
+
+/* ==========================================================================
+   PERFORMANCE MODE
+   ========================================================================== */
+
+/**
+ * Class applied when performance mode is enabled
+ * Reduces animation complexity for better performance
+ */
+body.performance-mode .link-animated-marching-ants,
+body.performance-mode .link-animated-flow {
+  animation-duration: 2s !important; /* Slower = fewer repaints */
+}
+
+body.performance-mode .node-border-gradient,
+body.performance-mode .node-border-shimmer,
+body.performance-mode .node-border-pulse-svg {
+  animation: none !important;
+}
+
+body.performance-mode .node-border-breathe {
+  animation-duration: 5s !important; /* Very slow breathing */
+}
+
+/* ==========================================================================
+   BATTERY SAVING MODE
+   ========================================================================== */
+
+/**
+ * Disable expensive animations when battery is low
+ * Can be toggled via JavaScript Battery API
+ */
+body.battery-saving .link-animated-marching-ants,
+body.battery-saving .link-animated-flow,
+body.battery-saving .link-animated-pulse,
+body.battery-saving .node-border-gradient,
+body.battery-saving .node-border-shimmer,
+body.battery-saving .node-border-pulse,
+body.battery-saving .node-border-breathe {
+  animation: none !important;
+}
+
+/* Keep critical status animations only */
+body.battery-saving .node-status-running,
+body.battery-saving .node-status-error {
+  animation-duration: 3s !important; /* Slower */
+}
+
+/* ==========================================================================
+   ACCESSIBILITY ENHANCEMENTS
+   ========================================================================== */
+
+/**
+ * Focus visible for keyboard navigation
+ * Ensures animated nodes are accessible
+ */
+.diagram-node:focus-visible {
+  outline: 3px solid #3498db;
+  outline-offset: 2px;
+  animation: none; /* Pause animation when focused for clarity */
+}
+
+/**
+ * Screen reader only content
+ * Provides text alternatives for animations
+ */
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border-width: 0;
+}
+
+/* ==========================================================================
+   SAFE ANIMATION FALLBACKS
+   ========================================================================== */
+
+/**
+ * Fallback for browsers without animation support
+ */
+@supports not (animation: test) {
+  .link-animated-marching-ants,
+  .link-animated-flow,
+  .link-animated-pulse,
+  .node-border-gradient,
+  .node-border-pulse,
+  .node-border-breathe,
+  .node-border-shimmer,
+  .node-status-running,
+  .node-status-error,
+  .node-status-completed,
+  .node-status-warning,
+  .node-status-pending {
+    /* Show static visual indicators instead */
+    border-width: 2px;
+    opacity: 1;
+  }
+}
+
+/* ==========================================================================
+   EPILEPSY SAFETY
+   ========================================================================== */
+
+/**
+ * Prevent rapid flashing that could trigger seizures
+ * WCAG 2.1 Success Criterion 2.3.1 (Three Flashes or Below Threshold)
+ */
+
+/* Ensure no animation flashes more than 3 times per second */
+.node-status-error {
+  /* Shake is 0.5s total = less than 3 times/sec */
+  animation-iteration-count: 1; /* Play once only */
+}
+
+.node-status-warning {
+  /* Flash 3 times over 1s = 3 times/sec (at threshold) */
+  animation-iteration-count: 3;
+}
+
+/* Prevent infinite rapid flashing */
+.link-animated-pulse,
+.node-status-running,
+.node-status-pending {
+  animation-duration: 1.5s; /* Minimum duration for safety */
+}
+
+/**
+ * User override: Stop all animations immediately
+ * Can be toggled via UI button
+ */
+body.animations-paused * {
+  animation-play-state: paused !important;
+}
