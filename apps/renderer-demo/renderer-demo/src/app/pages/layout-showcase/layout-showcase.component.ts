@@ -13,8 +13,10 @@
 import { Component, OnInit, OnDestroy } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
+import { DiagramCanvasComponent } from '@grafloria/renderer-angular';
 import { DiagramEngine, NodeModel } from '@grafloria/engine';
 import { LayoutService } from '@grafloria/engine';
+import { LIGHT_THEME, type Theme, type Rectangle } from '@grafloria/renderer';
 
 interface BusinessScenario {
   id: string;
@@ -29,13 +31,18 @@ interface BusinessScenario {
 @Component({
   selector: 'app-layout-showcase',
   standalone: true,
-  imports: [CommonModule, FormsModule],
+  imports: [CommonModule, FormsModule, DiagramCanvasComponent],
   templateUrl: './layout-showcase.component.html',
   styleUrls: ['./layout-showcase.component.css']
 })
 export class LayoutShowcaseComponent implements OnInit, OnDestroy {
   engine!: DiagramEngine;
   layoutService!: LayoutService;
+
+  // Canvas properties
+  viewport: Rectangle = { x: 0, y: 0, width: 1200, height: 800 };
+  zoom = 1.0;
+  theme: Theme = LIGHT_THEME;
 
   selectedScenario: BusinessScenario | null = null;
   isAnimating = false;
@@ -213,6 +220,15 @@ export class LayoutShowcaseComponent implements OnInit, OnDestroy {
         Math.random() * 600
       );
     });
+  }
+
+  // Canvas event handlers
+  onViewportChanged(rect: Rectangle): void {
+    this.viewport = rect;
+  }
+
+  onZoomChanged(newZoom: number): void {
+    this.zoom = newZoom;
   }
 
   // ========================================================================

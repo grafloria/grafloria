@@ -177,16 +177,17 @@
           </div>
         </div>
 
-        <!-- TODO: Canvas component will be rendered here -->
-        <div class="canvas" *ngIf="selectedScenario">
-          <p class="canvas-info">
-            🎨 Canvas rendering will be integrated with the Grafloria renderer
-          </p>
-          <p class="canvas-info">
-            Current scenario: <strong>{{ selectedScenario.name }}</strong> using
-            <strong>{{ selectedScenario.adapter }}</strong> adapter
-          </p>
-        </div>
+        <!-- Diagram Canvas -->
+        <grafloria-diagram-canvas
+          *ngIf="selectedScenario"
+          [engine]="engine"
+          [viewport]="viewport"
+          [zoom]="zoom"
+          [theme]="theme"
+          (viewportChanged)="onViewportChanged($event)"
+          (zoomChanged)="onZoomChanged($event)"
+          class="canvas"
+        ></grafloria-diagram-canvas>
       </div>
     </main>
   </div>
