@@ -4,6 +4,7 @@ import {
   Input,
   OnInit,
   OnDestroy,
+  OnChanges,
 } from '@angular/core';
 import { fromEvent, Subject } from 'rxjs';
 import { debounceTime, takeUntil } from 'rxjs/operators';
@@ -22,17 +23,45 @@ export interface IResponsiveCanvasEngine {
   selector: '[grafloriaResponsiveCanvas]',
   standalone: true,
 })
-export class ResponsiveCanvasDirective implements OnInit, OnDestroy {
+export class ResponsiveCanvasDirective implements OnInit, OnDestroy, OnChanges {
   @Input() engine!: IResponsiveCanvasEngine;
   @Input() maintainZoom = true; // Maintain zoom level on resize
   @Input() maintainCenter = true; // Keep same center point
+  @Input() enabled = true; // Enable/disable responsive behavior
+  @Input() autoEnable = true; // Auto-enable on init
 
   private destroy$ = new Subject<void>();
   private resizeObserver?: ResizeObserver;
+  private _isEnabled = false;
 
   constructor(private el: ElementRef<HTMLElement>) {}
 
   ngOnInit() {
+    // Auto-enable if configured
+    if (this.autoEnable && this.enabled) {
+      this.enable();
+    }
+  }
+
+  ngOnChanges(changes: any) {
+    // Handle enabled input changes
+    if (changes.enabled) {
+      if (changes.enabled.currentValue && !this._isEnabled) {
+        this.enable();
+      } else if (!changes.enabled.currentValue && this._isEnabled) {
+        this.disable();
+      }
+    }
+  }
+
+  /**
+   * Enable responsive behavior
+   */
+  enable() {
+    if (this._isEnabled) {
+      return;
+    }
+
     // Handle window resize
     fromEvent(window, 'resize')
       .pipe(debounceTime(150), takeUntil(this.destroy$))
@@ -51,8 +80,54 @@ export class ResponsiveCanvasDirective implements OnInit, OnDestroy {
       this.resizeObserver.observe(this.el.nativeElement);
     }
 
+    this._isEnabled = true;
+
     // Initial resize
     setTimeout(() => this.handleResize(), 100);
+  }
+
+  /**
+   * Disable responsive behavior
+   */
+  disable() {
+    if (!this._isEnabled) {
+      return;
+    }
+
+    // Disconnect ResizeObserver
+    if (this.resizeObserver) {
+      this.resizeObserver.disconnect();
+      this.resizeObserver = undefined;
+    }
+
+    this._isEnabled = false;
+  }
+
+  /**
+   * Toggle responsive behavior on/off
+   */
+  toggle() {
+    if (this._isEnabled) {
+      this.disable();
+    } else {
+      this.enable();
+    }
+  }
+
+  /**
+   * Check if responsive behavior is enabled
+   */
+  isEnabled(): boolean {
+    return this._isEnabled;
+  }
+
+  /**
+   * Manually trigger a resize operation
+   */
+  triggerResize() {
+    if (this._isEnabled) {
+      this.handleResize();
+    }
   }
 
   ngOnDestroy() {
@@ -65,7 +140,7 @@ export class ResponsiveCanvasDirective implements OnInit, OnDestroy {
   }
 
   private handleResize() {
-    if (!this.engine) {
+    if (!this.engine || !this._isEnabled) {
       return;
     }
 
