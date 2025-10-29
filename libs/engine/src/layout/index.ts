@@ -59,6 +59,8 @@ export * from './layout-adapter.interface';
 export * from './layout-constraints.interface';
 export * from './incremental-layout.interface';
 export * from './layout-presets';
+export * from './layout-quality-metrics';
+export * from './layout-history';
 export * from './dagre-layout-adapter';
 export * from './elk-layout-adapter';
 export * from './layout.service';

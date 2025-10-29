@@ -14,6 +14,7 @@ import {
   IncrementalLayoutResult,
   IncrementalLayoutManager,
 } from './incremental-layout.interface';
+import { LayoutQualityResult } from './layout-quality-metrics';
 
 /**
  * Base options for all layout adapters
@@ -29,6 +30,10 @@ export interface LayoutOptions {
   padding?: number;
   /** Layout constraints for pinning/fixing nodes */
   constraints?: LayoutConstraints;
+  /** Whether to calculate quality metrics after layout */
+  calculateQuality?: boolean;
+  /** Canvas dimensions for quality assessment */
+  canvasDimensions?: { width: number; height: number };
 }
 
 /**
@@ -50,6 +55,8 @@ export interface LayoutResult {
     executionTime: number;
     [key: string]: any;
   };
+  /** Quality assessment of the layout (if calculateQuality was true) */
+  quality?: LayoutQualityResult;
 }
 
 /**

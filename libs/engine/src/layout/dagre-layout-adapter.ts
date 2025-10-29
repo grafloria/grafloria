@@ -17,6 +17,7 @@ import {
   IncrementalLayoutResult,
   IncrementalLayoutManager,
 } from './incremental-layout.interface';
+import { LayoutQualityMetrics } from './layout-quality-metrics';
 
 /**
  * Dagre-specific layout options
@@ -158,6 +159,23 @@ export class DagreLayoutAdapter implements LayoutAdapter {
 
     const endTime = performance.now();
 
+    // Calculate quality metrics if requested
+    let quality = undefined;
+    if (options.calculateQuality) {
+      // Apply positions to nodes temporarily for quality assessment
+      nodes.forEach(node => {
+        const newPos = nodePositions.get(node.id);
+        if (newPos) {
+          node.setPosition(newPos.x, newPos.y);
+        }
+      });
+
+      quality = LayoutQualityMetrics.assess(nodes, links, {
+        includeSuggestions: true,
+        canvasDimensions: options.canvasDimensions,
+      });
+    }
+
     return {
       nodePositions,
       bounds,
@@ -169,6 +187,7 @@ export class DagreLayoutAdapter implements LayoutAdapter {
         nodeCount: nodes.length,
         linkCount: links.length,
       },
+      quality,
     };
   }
 
