@@ -167,13 +167,22 @@ export class ASTTransformer {
     // Set label
     node.data['label'] = astNode.label || astNode.id;
 
-    // Store shape information
-    node.setMetadata('shape', astNode.shape);
+    // Store shape information for DSL
     node.setMetadata('dslShape', astNode.shape);
+
+    // Convert DSL shape to SVG renderer shape config
+    const shapeConfig = this.getShapeConfigFromDSLShape(astNode.shape);
+    node.setMetadata('shape', shapeConfig);
 
     // Apply style if provided
     if (astNode.style) {
       this.applyStyleToNode(node, astNode.style);
+      // Merge style into shape config
+      const updatedShapeConfig: any = { ...shapeConfig };
+      if (astNode.style.fill) updatedShapeConfig.fill = astNode.style.fill;
+      if (astNode.style.stroke) updatedShapeConfig.stroke = astNode.style.stroke;
+      if (astNode.style.strokeWidth !== undefined) updatedShapeConfig.strokeWidth = astNode.style.strokeWidth;
+      node.setMetadata('shape', updatedShapeConfig);
     }
 
     // Add to diagram
@@ -186,12 +195,46 @@ export class ASTTransformer {
    * Create a link from EdgeDefinitionNode
    */
   private createLink(astEdge: EdgeDefinitionNode, diagram: DiagramModel): LinkModel | null {
-    const sourceNode = diagram.getNode(astEdge.source);
-    const targetNode = diagram.getNode(astEdge.target);
+    // Get or create source node
+    let sourceNode = diagram.getNode(astEdge.source);
+    if (!sourceNode) {
+      // Create implicit node for source using shape/label from edge definition
+      const sourceShape = astEdge.sourceShape || 'rectangle';
+      const sourceLabel = astEdge.sourceLabel || astEdge.source;
+      console.log(`[ASTTransformer] Creating implicit source node: ${astEdge.source} with shape=${sourceShape}, label=${sourceLabel}`);
+      sourceNode = this.createNode(
+        {
+          type: 'NodeDefinition',
+          id: astEdge.source,
+          label: sourceLabel,
+          shape: sourceShape,
+          location: astEdge.location,
+        },
+        diagram,
+        { width: 120, height: 80 },
+        true
+      );
+    }
 
-    if (!sourceNode || !targetNode) {
-      console.warn(`Cannot create link: source or target node not found (${astEdge.source} → ${astEdge.target})`);
-      return null;
+    // Get or create target node
+    let targetNode = diagram.getNode(astEdge.target);
+    if (!targetNode) {
+      // Create implicit node for target using shape/label from edge definition
+      const targetShape = astEdge.targetShape || 'rectangle';
+      const targetLabel = astEdge.targetLabel || astEdge.target;
+      console.log(`[ASTTransformer] Creating implicit target node: ${astEdge.target} with shape=${targetShape}, label=${targetLabel}`);
+      targetNode = this.createNode(
+        {
+          type: 'NodeDefinition',
+          id: astEdge.target,
+          label: targetLabel,
+          shape: targetShape,
+          location: astEdge.location,
+        },
+        diagram,
+        { width: 120, height: 80 },
+        true
+      );
     }
 
     // Use createSmartLink for automatic port selection
@@ -345,6 +388,28 @@ export class ASTTransformer {
     };
 
     return shapeToType[shape] || 'flowchart:process';
+  }
+
+  /**
+   * Convert DSL NodeShape to SVG renderer shape configuration
+   * SVG renderer expects shape metadata in format: { type: 'rect' | 'circle' | 'ellipse' | 'diamond' | 'hexagon', cornerRadius?: number }
+   */
+  private getShapeConfigFromDSLShape(shape: NodeShape): { type: string; cornerRadius?: number } {
+    const shapeMapping: Record<NodeShape, { type: string; cornerRadius?: number }> = {
+      'rectangle': { type: 'rect' },
+      'rounded-rectangle': { type: 'rect', cornerRadius: 10 },
+      'stadium': { type: 'ellipse' }, // Stadium is essentially a tall ellipse
+      'subroutine': { type: 'rect', cornerRadius: 5 },
+      'cylindrical': { type: 'ellipse' }, // Cylinder approximated as ellipse
+      'circle': { type: 'circle' },
+      'asymmetric': { type: 'rect' }, // Document shape - fallback to rect for now
+      'rhombus': { type: 'diamond' },
+      'hexagon': { type: 'hexagon' },
+      'trapezoid': { type: 'rect' }, // Trapezoid - fallback to rect for now
+      'trapezoid-alt': { type: 'rect' }, // Trapezoid alt - fallback to rect for now
+    };
+
+    return shapeMapping[shape] || { type: 'rect' };
   }
 
   /**

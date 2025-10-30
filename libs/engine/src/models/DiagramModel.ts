@@ -48,6 +48,9 @@ export class DiagramModel extends DiagramEntity {
   private _layoutManager: LayoutManager;
   private _autoLayoutEnabled: boolean = false;
 
+  // Batch update support for event queueing
+  private _pendingEvents: Array<{ type: string; data?: any }> = [];
+
   constructor(name?: string) {
     super();
     if (name) this.name = name;
@@ -115,7 +118,7 @@ export class DiagramModel extends DiagramEntity {
 
     this.nodes.set(node.id, node);
     this.trackChange('nodes', null, node);
-    this.emitter.emit('node:added', node);
+    this.emitOrQueue('node:added', node);
 
     // Phase 5.1: Add to spatial index and listen for spatial changes
     // Do this AFTER trackChange to avoid cloning issues
@@ -128,17 +131,17 @@ export class DiagramModel extends DiagramEntity {
 
     // Phase 0.2: Forward position and size changes as diagram-level events for LiveReroutingEngine
     node.on('change:position', () => {
-      this.emitter.emit('node:moved', { nodeId: node.id, position: node.position });
+      this.emitOrQueue('node:moved', { nodeId: node.id, position: node.position });
     });
     node.on('change:size', () => {
-      this.emitter.emit('node:resized', { nodeId: node.id, size: node.size });
+      this.emitOrQueue('node:resized', { nodeId: node.id, size: node.size });
     });
 
     // Listen for any node changes and forward as diagram-level 'node:changed' event
     // This allows components like diagram-canvas to re-render when node properties change
     node.on('change', () => {
       console.log('[DiagramModel] Node change detected, emitting node:changed for:', node.id);
-      this.emitter.emit('node:changed', node);
+      this.emitOrQueue('node:changed', node);
     });
   }
 
@@ -154,7 +157,7 @@ export class DiagramModel extends DiagramEntity {
       this.nodeSpatialIndex.remove(nodeId);
 
       this.trackChange('nodes', node, null);
-      this.emitter.emit('node:removed', node);
+      this.emitOrQueue('node:removed', node);
     }
     return node;
   }
@@ -168,7 +171,7 @@ export class DiagramModel extends DiagramEntity {
       node.diagram = this;
       this.nodes.set(node.id, node);
       this.trackChange('nodes', null, node);
-      this.emitter.emit('node:added', node);
+      this.emitOrQueue('node:added', node);
 
       // Phase 5.1: Add to spatial index and listen - AFTER trackChange
       this.nodeSpatialIndex.add(node);
@@ -178,17 +181,17 @@ export class DiagramModel extends DiagramEntity {
 
       // Phase 0.2: Forward position and size changes as diagram-level events
       node.on('change:position', () => {
-        this.emitter.emit('node:moved', { nodeId: node.id, position: node.position });
+        this.emitOrQueue('node:moved', { nodeId: node.id, position: node.position });
       });
       node.on('change:size', () => {
-        this.emitter.emit('node:resized', { nodeId: node.id, size: node.size });
+        this.emitOrQueue('node:resized', { nodeId: node.id, size: node.size });
       });
       node.on('change:rotation', updateSpatialIndex);
       node.on('change:scale', updateSpatialIndex);
 
       // Listen for any node changes and forward as diagram-level 'node:changed' event
       node.on('change', () => {
-        this.emitter.emit('node:changed', node);
+        this.emitOrQueue('node:changed', node);
       });
 
       return node;
@@ -231,7 +234,7 @@ export class DiagramModel extends DiagramEntity {
    */
   clearNodes(): void {
     this.nodes.clear();
-    this.emitter.emit('nodes:cleared');
+    this.emitOrQueue('nodes:cleared');
   }
 
   /**
@@ -246,7 +249,7 @@ export class DiagramModel extends DiagramEntity {
 
     this.links.set(link.id, link);
     this.trackChange('links', null, link);
-    this.emitter.emit('link:added', link);
+    this.emitOrQueue('link:added', link);
 
     // Phase 5.1: Add to spatial index and listen - AFTER trackChange
     this.linkSpatialIndex.add(link);
@@ -254,7 +257,7 @@ export class DiagramModel extends DiagramEntity {
 
     // Listen for any link changes and forward as diagram-level 'link:changed' event
     link.on('change', () => {
-      this.emitter.emit('link:changed', link);
+      this.emitOrQueue('link:changed', link);
     });
   }
 
@@ -270,7 +273,7 @@ export class DiagramModel extends DiagramEntity {
       this.linkSpatialIndex.remove(linkId);
 
       this.trackChange('links', link, null);
-      this.emitter.emit('link:removed', link);
+      this.emitOrQueue('link:removed', link);
     }
     return link;
   }
@@ -283,7 +286,7 @@ export class DiagramModel extends DiagramEntity {
       const link = LinkModel.fromJSON(data);
       this.links.set(link.id, link);
       this.trackChange('links', null, link);
-      this.emitter.emit('link:added', link);
+      this.emitOrQueue('link:added', link);
 
       // Phase 5.1: Add to spatial index and listen - AFTER trackChange
       this.linkSpatialIndex.add(link);
@@ -291,7 +294,7 @@ export class DiagramModel extends DiagramEntity {
 
       // Listen for any link changes and forward as diagram-level 'link:changed' event
       link.on('change', () => {
-        this.emitter.emit('link:changed', link);
+        this.emitOrQueue('link:changed', link);
       });
 
       return link;
@@ -329,7 +332,7 @@ export class DiagramModel extends DiagramEntity {
    */
   clearLinks(): void {
     this.links.clear();
-    this.emitter.emit('links:cleared');
+    this.emitOrQueue('links:cleared');
   }
 
   /**
@@ -547,7 +550,7 @@ export class DiagramModel extends DiagramEntity {
 
     this.groups.set(group.id, group);
     this.trackChange('groups', null, group);
-    this.emitter.emit('group:added', group);
+    this.emitOrQueue('group:added', group);
   }
 
   /**
@@ -558,7 +561,7 @@ export class DiagramModel extends DiagramEntity {
     if (group) {
       this.groups.delete(groupId);
       this.trackChange('groups', group, null);
-      this.emitter.emit('group:removed', group);
+      this.emitOrQueue('group:removed', group);
     }
     return group;
   }
@@ -571,7 +574,7 @@ export class DiagramModel extends DiagramEntity {
       const group = GroupModel.fromJSON(data);
       this.groups.set(group.id, group);
       this.trackChange('groups', null, group);
-      this.emitter.emit('group:added', group);
+      this.emitOrQueue('group:added', group);
       return group;
     } catch (error) {
       console.error('Failed to restore group:', error);
@@ -598,7 +601,7 @@ export class DiagramModel extends DiagramEntity {
    */
   clearGroups(): void {
     this.groups.clear();
-    this.emitter.emit('groups:cleared');
+    this.emitOrQueue('groups:cleared');
   }
 
   /**
@@ -628,7 +631,7 @@ export class DiagramModel extends DiagramEntity {
     node.setSelected(true);
 
     // Emit selection changed event
-    this.emitter.emit('selection:changed', {
+    this.emitOrQueue('selection:changed', {
       selected: [node],
       deselected: []
     });
@@ -645,7 +648,7 @@ export class DiagramModel extends DiagramEntity {
 
     node.setSelected(true);
 
-    this.emitter.emit('selection:changed', {
+    this.emitOrQueue('selection:changed', {
       selected: [node],
       deselected: []
     });
@@ -662,7 +665,7 @@ export class DiagramModel extends DiagramEntity {
 
     node.setSelected(false);
 
-    this.emitter.emit('selection:changed', {
+    this.emitOrQueue('selection:changed', {
       selected: [],
       deselected: [node]
     });
@@ -695,7 +698,7 @@ export class DiagramModel extends DiagramEntity {
 
     selectedNodes.forEach((node) => node.setSelected(false));
 
-    this.emitter.emit('selection:changed', {
+    this.emitOrQueue('selection:changed', {
       selected: [],
       deselected: selectedNodes
     });
@@ -712,7 +715,7 @@ export class DiagramModel extends DiagramEntity {
     newlySelected.forEach((node) => node.setSelected(true));
 
     if (newlySelected.length > 0) {
-      this.emitter.emit('selection:changed', {
+      this.emitOrQueue('selection:changed', {
         selected: newlySelected,
         deselected: []
       });
@@ -827,7 +830,7 @@ export class DiagramModel extends DiagramEntity {
       zoom: zoom !== undefined ? zoom : this.viewport.zoom
     };
     this.trackChange('viewport', oldViewport, this.viewport);
-    this.emitter.emit('viewport:changed', this.viewport);
+    this.emitOrQueue('viewport:changed', this.viewport);
   }
 
   /**
@@ -1015,7 +1018,7 @@ export class DiagramModel extends DiagramEntity {
     this.nodeSpatialIndex.clear();
     this.linkSpatialIndex.clear();
 
-    this.emitter.emit('diagram:cleared');
+    this.emitOrQueue('diagram:cleared');
   }
 
   /**
@@ -1146,7 +1149,7 @@ export class DiagramModel extends DiagramEntity {
     }
 
     // Emit event
-    this.emitter.emit('dirty:cleared');
+    this.emitOrQueue('dirty:cleared');
   }
 
   /**
@@ -1346,6 +1349,52 @@ export class DiagramModel extends DiagramEntity {
    */
   async reLayout(config?: LayoutConfiguration): Promise<void> {
     return this._layoutManager.reLayout(config);
+  }
+
+  /**
+   * Override: End batch update mode
+   * Fires accumulated events when all batches complete
+   */
+  override endBatch(): void {
+    // Call parent to handle dirty state
+    super.endBatch();
+
+    // When all batches complete (check parent's isBatching), fire queued events
+    if (!this.isBatching() && this._pendingEvents.length > 0) {
+      console.log('[DiagramModel] Batch complete, firing', this._pendingEvents.length, 'queued events');
+
+      // Fire all queued events individually
+      const events = [...this._pendingEvents];
+      this._pendingEvents = [];
+
+      for (const event of events) {
+        console.log('[DiagramModel] Firing queued event:', event.type);
+        this.emitter.emit(event.type, event.data);
+      }
+
+      // Also fire a batch:complete event for listeners that want to know
+      this.emitter.emit('batch:complete', {
+        eventCount: events.length,
+        events: events
+      });
+    }
+  }
+
+  /**
+   * Emit event, respecting batch mode
+   * During batch mode, events are queued instead of fired immediately
+   */
+  private emitOrQueue(eventType: string, data?: any): void {
+    const batching = this.isBatching();
+    if (batching) {
+      // Queue event for later
+      console.log('[DiagramModel] Queueing event:', eventType, 'batching:', batching);
+      this._pendingEvents.push({ type: eventType, data });
+    } else {
+      // Emit immediately
+      console.log('[DiagramModel] Emitting event immediately:', eventType);
+      this.emitter.emit(eventType, data);
+    }
   }
 
   /**

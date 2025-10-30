@@ -376,22 +376,30 @@ export class LayoutManager {
   }
 
   /**
-   * Phase 0.5.2: Select optimal ports based on node geometry
+   * Phase 0.5.2 Enhanced: Select optimal ports based on layout-aware algorithm
    *
-   * Uses geometric analysis to determine the best ports for connection:
-   * - Calculates relative position between nodes
-   * - Selects ports that face each other
-   * - Returns ports that create the shortest, most natural connection
+   * Uses layout-aware analysis based on academic research:
+   * - Considers layout direction (TB/LR/RL/BT)
+   * - Classifies edges as forward/backward/cross relative to layout flow
+   * - Uses hierarchical rank information when available
+   * - Falls back to geometric analysis for non-hierarchical layouts
+   *
+   * Algorithm based on "Drawing Layered Graphs with Port Constraints" (Spönemann et al., 2013)
    *
    * @param sourceNode - The source node
    * @param targetNode - The target node
+   * @param layoutContext - Optional layout context with direction and rank information
    * @returns Object containing optimal source and target ports, or undefined if not found
    */
   selectOptimalPorts(
     sourceNode: NodeModel,
-    targetNode: NodeModel
+    targetNode: NodeModel,
+    layoutContext?: {
+      direction?: 'TB' | 'LR' | 'RL' | 'BT';
+      ranks?: Map<string, number>;
+    }
   ): { sourcePort: any; targetPort: any } | undefined {
-    // Get node centers
+    // Get node centers for geometric calculations
     const sourceBounds = sourceNode.getBoundingBox();
     const targetBounds = targetNode.getBoundingBox();
 
@@ -409,33 +417,140 @@ export class LayoutManager {
     const dx = targetCenter.x - sourceCenter.x;
     const dy = targetCenter.y - sourceCenter.y;
 
-    // Determine dominant direction (horizontal vs vertical)
-    const isHorizontal = Math.abs(dx) > Math.abs(dy);
-
     let sourceSide: 'left' | 'right' | 'top' | 'bottom';
     let targetSide: 'left' | 'right' | 'top' | 'bottom';
 
-    if (isHorizontal) {
-      // Horizontal connection
-      if (dx > 0) {
-        // Target is to the right of source
-        sourceSide = 'right';
-        targetSide = 'left';
+    // ENHANCED: Layout-aware port selection
+    if (layoutContext?.direction && layoutContext?.ranks) {
+      const direction = layoutContext.direction;
+
+      // Get node ranks to classify edge type
+      const sourceRank = layoutContext.ranks.get(sourceNode.id) ?? 0;
+      const targetRank = layoutContext.ranks.get(targetNode.id) ?? 0;
+
+      // Classify edge type relative to layout flow
+      const isForward = targetRank > sourceRank;   // Edge flows with layout direction
+      const isBackward = targetRank < sourceRank;  // Edge flows against layout direction
+      const isCross = targetRank === sourceRank;   // Edge between nodes at same rank
+
+      // Apply layer-based port assignment algorithm
+      if (direction === 'TB' || direction === 'BT') {
+        // Vertical layout (Top-to-Bottom or Bottom-to-Top)
+        if (isForward) {
+          // Forward edge: consider position offset for branching nodes
+          // Calculate offset ratio to detect if target is significantly to the side
+          const parallelOffset = Math.abs(dy);
+          const perpendicularOffset = Math.abs(dx);
+          const offsetRatio = parallelOffset > 0 ? perpendicularOffset / parallelOffset : 0;
+
+          // Threshold: if perpendicular offset > 20% of parallel offset, use side ports
+          // This handles decision nodes with branches going left/right
+          if (offsetRatio > 0.2 && perpendicularOffset > 10) {
+            // Target is significantly to the side → use left/right ports for source
+            sourceSide = dx > 0 ? 'right' : 'left';
+            // Target port should face the source direction
+            // Check if source is more above/below or more left/right
+            if (Math.abs(dy) > Math.abs(dx)) {
+              // Source is more above/below → target uses top/bottom
+              targetSide = 'top';  // Since dy > 0 in TB layout (source is above)
+            } else {
+              // Source is more to the left/right → target uses left/right
+              targetSide = dx > 0 ? 'left' : 'right';
+            }
+          } else {
+            // Target is mostly below → use bottom port (standard forward edge)
+            sourceSide = 'bottom';
+            targetSide = 'top';
+          }
+        } else if (isBackward) {
+          // Backward edge (cycle): source connects from top, target from bottom
+          sourceSide = 'top';
+          targetSide = 'bottom';
+        } else {
+          // Cross edge (same rank): use horizontal ports based on relative position
+          if (dx > 0) {
+            sourceSide = 'right';
+            targetSide = 'left';
+          } else if (dx < 0) {
+            sourceSide = 'left';
+            targetSide = 'right';
+          } else {
+            // Nodes at exact same position - use bottom→top as default
+            sourceSide = 'bottom';
+            targetSide = 'top';
+          }
+        }
       } else {
-        // Target is to the left of source
-        sourceSide = 'left';
-        targetSide = 'right';
+        // Horizontal layout (Left-to-Right or Right-to-Left)
+        if (isForward) {
+          // Forward edge: consider position offset for branching nodes
+          // Calculate offset ratio to detect if target is significantly above/below
+          const parallelOffset = Math.abs(dx);
+          const perpendicularOffset = Math.abs(dy);
+          const offsetRatio = parallelOffset > 0 ? perpendicularOffset / parallelOffset : 0;
+
+          // Threshold: if perpendicular offset > 20% of parallel offset, use side ports
+          // This handles decision nodes with branches going up/down
+          if (offsetRatio > 0.2 && perpendicularOffset > 10) {
+            // Target is significantly above/below → use top/bottom ports for source
+            sourceSide = dy > 0 ? 'bottom' : 'top';
+            // Target port should face the source direction
+            // If source is to the left (dx > 0), target uses left port
+            // But also check vertical alignment - if source is above/below, use top/bottom
+            if (Math.abs(dx) > Math.abs(dy)) {
+              // Source is more to the left/right → target uses left/right
+              targetSide = 'left';  // Since dx > 0 in LR layout (source is to the left)
+            } else {
+              // Source is more above/below → target uses top/bottom
+              targetSide = dy > 0 ? 'top' : 'bottom';
+            }
+          } else {
+            // Target is mostly to the right → use right port (standard forward edge)
+            sourceSide = 'right';
+            targetSide = 'left';
+          }
+        } else if (isBackward) {
+          // Backward edge (cycle): source connects from left, target from right
+          sourceSide = 'left';
+          targetSide = 'right';
+        } else {
+          // Cross edge (same rank): use vertical ports based on relative position
+          if (dy > 0) {
+            sourceSide = 'bottom';
+            targetSide = 'top';
+          } else if (dy < 0) {
+            sourceSide = 'top';
+            targetSide = 'bottom';
+          } else {
+            // Nodes at exact same position - use right→left as default
+            sourceSide = 'right';
+            targetSide = 'left';
+          }
+        }
       }
     } else {
-      // Vertical connection
-      if (dy > 0) {
-        // Target is below source
-        sourceSide = 'bottom';
-        targetSide = 'top';
+      // FALLBACK: Geometric port selection (original algorithm)
+      // Used when layout context is not available
+      const isHorizontal = Math.abs(dx) > Math.abs(dy);
+
+      if (isHorizontal) {
+        // Horizontal connection
+        if (dx > 0) {
+          sourceSide = 'right';
+          targetSide = 'left';
+        } else {
+          sourceSide = 'left';
+          targetSide = 'right';
+        }
       } else {
-        // Target is above source
-        sourceSide = 'top';
-        targetSide = 'bottom';
+        // Vertical connection
+        if (dy > 0) {
+          sourceSide = 'bottom';
+          targetSide = 'top';
+        } else {
+          sourceSide = 'top';
+          targetSide = 'bottom';
+        }
       }
     }
 
@@ -452,16 +567,21 @@ export class LayoutManager {
   }
 
   /**
-   * Phase 0.5.2: Optimize all connections after layout
+   * Phase 0.5.2 Enhanced: Optimize all connections after layout
    *
-   * Reassigns ports for all links based on current node positions.
+   * Reassigns ports for all links based on current node positions and layout context.
    * This ensures connections look natural after layout algorithms reposition nodes.
    *
-   * Called automatically after layout, fixes the "weird diagonal connections" issue.
+   * Now public and layout-aware - uses hierarchical rank information when available
+   * to apply academic research-based port assignment (Spönemann et al., 2013).
    *
+   * @param layoutContext - Optional layout context with direction and rank information
    * @returns Number of connections optimized
    */
-  private optimizeConnections(): number {
+  public optimizeConnections(layoutContext?: {
+    direction?: 'TB' | 'LR' | 'RL' | 'BT';
+    ranks?: Map<string, number>;
+  }): number {
     const links = this.diagram.getLinks();
     let optimized = 0;
 
@@ -478,8 +598,8 @@ export class LayoutManager {
         return; // Skip if nodes not found
       }
 
-      // Select optimal ports based on current node positions
-      const optimalPorts = this.selectOptimalPorts(sourceNode, targetNode);
+      // Select optimal ports with layout context
+      const optimalPorts = this.selectOptimalPorts(sourceNode, targetNode, layoutContext);
 
       if (optimalPorts) {
         const { sourcePort, targetPort } = optimalPorts;
@@ -511,7 +631,10 @@ export class LayoutManager {
     });
 
     if (optimized > 0) {
-      console.log(`🎯 Optimized ${optimized} connections based on node geometry`);
+      const contextInfo = layoutContext?.direction
+        ? ` using layout-aware algorithm (${layoutContext.direction})`
+        : ' using geometric algorithm';
+      console.log(`🎯 Optimized ${optimized} connections${contextInfo}`);
     }
 
     return optimized;

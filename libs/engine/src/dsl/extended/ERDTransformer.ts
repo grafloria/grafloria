@@ -120,6 +120,18 @@ export class ERDTransformer {
     node.setMetadata('dslShape', 'table');
     node.setMetadata('entityType', 'erd');
 
+    // Set SVG renderer shape config for table rendering
+    node.setMetadata('shape', {
+      type: 'rect',
+      cornerRadius: 0,
+    });
+
+    // Set default styles for ERD entity
+    node.style.fill = '#f8f9fa';
+    node.style.stroke = '#495057';
+    node.style.strokeWidth = 2;
+    node.style.color = '#212529';
+
     return node;
   }
 

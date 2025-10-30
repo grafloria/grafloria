@@ -555,6 +555,13 @@ export class DslExtendedTypesGalleryComponent implements OnInit {
       // Set diagram to engine for visual rendering
       if (result.diagram) {
         this.engine.setDiagram(result.diagram);
+
+        // Debug: Log diagram stats
+        console.log('[DSL Debug] Diagram loaded:', {
+          nodes: result.diagram.getNodes().length,
+          links: result.diagram.getLinks().length,
+          suggestedLayout: result.diagram.getMetadata('suggestedLayout')
+        });
       }
     } catch (error: any) {
       this.parseError = error.message;

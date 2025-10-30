@@ -122,6 +122,13 @@ export abstract class DiagramEntity {
   }
 
   /**
+   * Check if currently in batch mode
+   */
+  isBatching(): boolean {
+    return this._batchDepth > 0;
+  }
+
+  /**
    * Track property changes for undo/redo and events
    */
   protected trackChange(

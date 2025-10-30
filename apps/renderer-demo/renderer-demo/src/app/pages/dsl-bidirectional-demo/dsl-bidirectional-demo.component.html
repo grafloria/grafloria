@@ -6,6 +6,38 @@
       <p class="subtitle">Real-time text ↔ diagram synchronization with 300ms debouncing</p>
     </div>
 
+    <!-- Panel Toggle Controls -->
+    <div class="panel-toggles">
+      <button
+        class="toggle-btn"
+        [class.active]="showExamples"
+        (click)="toggleExamples()"
+        title="Toggle Examples Panel">
+        📋
+      </button>
+      <button
+        class="toggle-btn"
+        [class.active]="showEditor"
+        (click)="toggleEditor()"
+        title="Toggle Editor Panel">
+        📝
+      </button>
+      <button
+        class="toggle-btn"
+        [class.active]="showDiagram"
+        (click)="toggleDiagram()"
+        title="Toggle Diagram Panel">
+        📊
+      </button>
+      <button
+        class="toggle-btn"
+        [class.active]="showGenerated"
+        (click)="toggleGenerated()"
+        title="Toggle Generated DSL Panel">
+        👁️
+      </button>
+    </div>
+
     <!-- Sync Status -->
     <div class="sync-status" *ngIf="syncStatus">
       <div class="status-indicator" [ngClass]="{
@@ -21,7 +53,7 @@
   <!-- Main Content -->
   <div class="demo-content">
     <!-- Sidebar - Examples -->
-    <aside class="sidebar">
+    <aside class="sidebar" *ngIf="showExamples">
       <h3>📋 Example Diagrams</h3>
       <div class="examples-list">
         <button
@@ -60,7 +92,7 @@
     </aside>
 
     <!-- Editor Panel -->
-    <div class="editor-panel">
+    <div class="editor-panel" *ngIf="showEditor">
       <div class="panel-header">
         <h3>📝 DSL Text Editor</h3>
         <span class="char-count">{{ dslText.length }} characters</span>
@@ -75,7 +107,7 @@
     </div>
 
     <!-- Visual Diagram Panel -->
-    <div class="diagram-panel">
+    <div class="diagram-panel" *ngIf="showDiagram">
       <div class="panel-header">
         <h3>📊 Visual Diagram</h3>
         <div class="diagram-controls">
@@ -86,18 +118,21 @@
       </div>
       <div class="diagram-canvas-wrapper">
         <grafloria-diagram-canvas
-          *ngIf="engine"
+          *ngIf="engine && diagramReady"
           [engine]="engine"
           [viewport]="viewport"
           [zoom]="zoom"
           [theme]="theme"
           class="diagram-canvas">
         </grafloria-diagram-canvas>
+        <div *ngIf="!diagramReady" class="loading-message">
+          Loading diagram...
+        </div>
       </div>
     </div>
 
     <!-- Preview Panel -->
-    <div class="preview-panel">
+    <div class="preview-panel" *ngIf="showGenerated">
       <div class="panel-header">
         <h3>👁️ Generated DSL</h3>
       </div>

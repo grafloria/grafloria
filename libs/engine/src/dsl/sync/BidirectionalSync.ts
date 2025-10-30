@@ -287,23 +287,67 @@ export class BidirectionalSync {
   private updateDiagram(newDiagram: DiagramModel): void {
     if (!this.diagram) return;
 
-    // Clear existing content
-    this.diagram.clear();
-
-    // Copy nodes
-    for (const node of newDiagram.getNodes()) {
-      this.diagram.addNode(node);
+    // BATCH UPDATE: Suspend events during clear+rebuild to prevent flickering
+    // This prevents the UI from seeing intermediate states (5→4→3→2→1→0 nodes during clear)
+    const batchMethod = (this.diagram as any).beginBatch;
+    console.log('[BidirectionalSync] Beginning batch update on OLD diagram, batchMethod exists:', !!batchMethod);
+    if (batchMethod && typeof batchMethod === 'function') {
+      (this.diagram as any).beginBatch();
+      console.log('[BidirectionalSync] OLD diagram batch mode active:', (this.diagram as any).isBatching?.());
     }
 
-    // Copy links
-    for (const link of newDiagram.getLinks()) {
-      this.diagram.addLink(link);
+    // IMPORTANT: Also put the NEW diagram in batch mode to prevent events during node iteration
+    const newBatchMethod = (newDiagram as any).beginBatch;
+    console.log('[BidirectionalSync] Beginning batch update on NEW diagram, batchMethod exists:', !!newBatchMethod);
+    if (newBatchMethod && typeof newBatchMethod === 'function') {
+      (newDiagram as any).beginBatch();
+      console.log('[BidirectionalSync] NEW diagram batch mode active:', (newDiagram as any).isBatching?.());
     }
 
-    // Copy metadata
-    const metadata = newDiagram.getMetadata('diagramType');
-    if (metadata) {
-      this.diagram.setMetadata('diagramType', metadata);
+    try {
+      // Clear existing content
+      console.log('[BidirectionalSync] Clearing diagram...');
+      this.diagram.clear();
+
+      // Copy nodes
+      for (const node of newDiagram.getNodes()) {
+        this.diagram.addNode(node);
+      }
+
+      // Copy links
+      for (const link of newDiagram.getLinks()) {
+        this.diagram.addLink(link);
+      }
+
+      // Copy metadata
+      const metadata = newDiagram.getMetadata('diagramType');
+      if (metadata) {
+        this.diagram.setMetadata('diagramType', metadata);
+      }
+
+      // Copy all metadata keys
+      const allMetadata = (newDiagram as any).metadata;
+      if (allMetadata && typeof allMetadata === 'object') {
+        for (const [key, value] of Object.entries(allMetadata)) {
+          this.diagram.setMetadata(key, value);
+        }
+      }
+    } finally {
+      // END BATCH on NEW diagram first (before ending old diagram batch)
+      console.log('[BidirectionalSync] Ending batch update on NEW diagram...');
+      const newEndBatchMethod = (newDiagram as any).endBatch;
+      if (newEndBatchMethod && typeof newEndBatchMethod === 'function') {
+        (newDiagram as any).endBatch();
+        console.log('[BidirectionalSync] NEW diagram batch mode ended, still batching:', (newDiagram as any).isBatching?.());
+      }
+
+      // END BATCH: Resume events and fire single update on OLD diagram
+      console.log('[BidirectionalSync] Ending batch update on OLD diagram...');
+      const endBatchMethod = (this.diagram as any).endBatch;
+      if (endBatchMethod && typeof endBatchMethod === 'function') {
+        (this.diagram as any).endBatch();
+        console.log('[BidirectionalSync] OLD diagram batch mode ended, still batching:', (this.diagram as any).isBatching?.());
+      }
     }
   }
 

@@ -133,6 +133,20 @@ export class DSL {
     const startTime = performance.now();
 
     try {
+      // Detect diagram type from first line
+      const diagramType = this.detectDiagramType(text);
+
+      if (this.options.debug) {
+        console.log(`[DSL] Detected diagram type: ${diagramType}`);
+      }
+
+      // Use specialized parsers for ERD, UML, BPMN
+      if (diagramType === 'erDiagram') {
+        return this.parseERDDetailed(text, startTime);
+      } else if (diagramType === 'classDiagram') {
+        return this.parseUMLDetailed(text, startTime);
+      }
+
       // Phase 4: Parse styles and templates first
       if (this.options.debug) {
         console.log('[DSL] Phase 4: Parsing styles and templates...');
@@ -495,6 +509,18 @@ export class DSL {
       node.data['attributes'] = umlClass.attributes;
       node.data['methods'] = umlClass.methods;
 
+      // Set shape metadata for SVG renderer
+      node.setMetadata('shape', {
+        type: 'rect',
+        cornerRadius: 0,
+      });
+
+      // Set default styles for UML class
+      node.style.fill = '#f0f8ff';
+      node.style.stroke = '#4682b4';
+      node.style.strokeWidth = 2;
+      node.style.color = '#000000';
+
       diagram.addNode(node);
       index++;
     }
@@ -624,5 +650,54 @@ export class DSL {
         node.setMetadata('templateBindings', template.bindings);
       }
     }
+  }
+
+  /**
+   * Detect diagram type from text
+   */
+  private detectDiagramType(text: string): string {
+    const firstLine = text.trim().split('\n')[0].toLowerCase();
+    if (firstLine.includes('erdiagram')) return 'erDiagram';
+    if (firstLine.includes('classdiagram')) return 'classDiagram';
+    if (firstLine.includes('flowchart') || firstLine.includes('graph')) return 'flowchart';
+    return 'flowchart'; // default
+  }
+
+  /**
+   * Parse ERD with detailed results
+   */
+  private parseERDDetailed(text: string, startTime: number): ParseResult {
+    const diagram = this.parseERD(text);
+    const parseTime = performance.now() - startTime;
+
+    return {
+      diagram,
+      ast: { type: 'Diagram', diagramType: 'erd', direction: 'TD', statements: [] },
+      tokens: [],
+      stats: {
+        nodeCount: diagram.getNodes().length,
+        linkCount: diagram.getLinks().length,
+        parseTime,
+      },
+    };
+  }
+
+  /**
+   * Parse UML with detailed results
+   */
+  private parseUMLDetailed(text: string, startTime: number): ParseResult {
+    const diagram = this.parseUML(text);
+    const parseTime = performance.now() - startTime;
+
+    return {
+      diagram,
+      ast: { type: 'Diagram', diagramType: 'classDiagram', direction: 'TD', statements: [] },
+      tokens: [],
+      stats: {
+        nodeCount: diagram.getNodes().length,
+        linkCount: diagram.getLinks().length,
+        parseTime,
+      },
+    };
   }
 }

@@ -21,7 +21,7 @@ import {
 } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import type { DiagramEngine } from '@grafloria/engine';
-import { PortModel, NodeModel } from '@grafloria/engine';
+import { PortModel, NodeModel, DiagramModel } from '@grafloria/engine';
 import { SVGRenderer, LIGHT_THEME, type Theme, type Rectangle, getPortPositionForShape } from '@grafloria/renderer';
 import { VNodeRendererService } from '../services/vnode-renderer.service';
 import { InteractionHandlerService } from '../services/interaction-handler.service';
@@ -492,21 +492,39 @@ export class DiagramCanvasComponent implements OnInit, AfterViewInit, OnChanges,
       return;
     }
 
-    const diagram = this.engine.getDiagram();
-    if (!diagram) {
-      return;
-    }
-
-    // CRITICAL FIX: Subscribe to interaction config changes
-    // This ensures the diagram re-renders when port visibility, connection modes, etc. change
+    // CRITICAL FIX: Subscribe to diagram:changed event
+    // This ensures we re-subscribe and re-render when the diagram is swapped
     const eventBus = this.engine['eventBus']; // Access private eventBus
     if (eventBus) {
+      eventBus.on('diagram:changed', ({ newDiagram }: { oldDiagram: DiagramModel | null; newDiagram: DiagramModel | null }) => {
+        console.log('[DiagramCanvas] diagram:changed event received, re-subscribing to new diagram');
+        // Re-subscribe to the new diagram's events
+        this.subscribeToDiagramEvents(newDiagram);
+        // Re-render with the new diagram
+        this.renderDiagram();
+        this.cdr.detectChanges();
+      });
+
+      // Subscribe to interaction config changes
       eventBus.on('config:interaction-changed', () => {
         // Sync editor configs (handle colors, etc.) with engine config
         this.interactionHandler.syncWithEngineConfig(this.engine);
         this.renderDiagram();
         this.cdr.detectChanges();
       });
+    }
+
+    // Subscribe to the current diagram's events
+    const diagram = this.engine.getDiagram();
+    this.subscribeToDiagramEvents(diagram);
+  }
+
+  /**
+   * Subscribe to diagram events
+   */
+  private subscribeToDiagramEvents(diagram: DiagramModel | null): void {
+    if (!diagram) {
+      return;
     }
 
     // Re-render when entities are added/removed/changed

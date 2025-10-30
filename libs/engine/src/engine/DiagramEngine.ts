@@ -1629,7 +1629,15 @@ export class DiagramEngine {
     // CRITICAL FIX: Clear the old diagram to remove nodes from spatial index
     // Without this, old diagram nodes can interfere with hover detection in new diagrams
     // This ensures spatial indices and event listeners are cleaned up
-    diagram.clear();
+    // BATCH MODE: Wrap clear() in batch to prevent UI flicker from individual node removals
+    console.log('[DiagramEngine] Detaching old diagram with batch mode...');
+    diagram.beginBatch();
+    try {
+      diagram.clear();
+    } finally {
+      diagram.endBatch();
+      console.log('[DiagramEngine] Old diagram detached and cleared in batch mode');
+    }
 
     // Unsubscribe from events
     // TODO: Store listener references in attachDiagram so we can remove them here

@@ -138,19 +138,25 @@ export class Parser {
       return null;
     }
 
+    // Check for source node shape
+    let sourceShape: NodeShape | undefined;
+    let sourceLabel: string | undefined;
+    if (this.isNodeShapeStart()) {
+      const shapeInfo = this.parseNodeShape();
+      sourceShape = shapeInfo.shape;
+      sourceLabel = shapeInfo.label;
+    }
+
     // Check if this is an edge or just a node
     if (this.isLinkToken()) {
-      return this.parseEdge(firstId, start);
+      return this.parseEdge(firstId, start, sourceShape, sourceLabel);
     } else {
-      // Check for node shape
-      const shape = this.parseNodeShape();
-      const label = shape.label;
-
+      // This is just a node definition
       return {
         type: 'NodeDefinition',
         id: firstId,
-        label,
-        shape: shape.shape,
+        label: sourceLabel || firstId,
+        shape: sourceShape || 'rectangle',
         location: this.getLocation(start, this.previous()),
       };
     }
@@ -217,7 +223,12 @@ export class Parser {
   /**
    * Parse edge definition: A --> B
    */
-  private parseEdge(sourceId: string, start: Token): EdgeDefinitionNode {
+  private parseEdge(
+    sourceId: string,
+    start: Token,
+    sourceShape?: NodeShape,
+    sourceLabel?: string
+  ): EdgeDefinitionNode {
     const linkToken = this.advance();
     const linkType = this.getLinkType(linkToken.type);
 
@@ -239,9 +250,13 @@ export class Parser {
       );
     }
 
-    // Check for target node shape
+    // Check for target node shape and capture it
+    let targetShape: NodeShape | undefined;
+    let targetLabel: string | undefined;
     if (this.isNodeShapeStart()) {
-      this.parseNodeShape();
+      const shapeInfo = this.parseNodeShape();
+      targetShape = shapeInfo.shape;
+      targetLabel = shapeInfo.label;
     }
 
     return {
@@ -250,6 +265,10 @@ export class Parser {
       target: targetId,
       linkType,
       label,
+      sourceShape,
+      sourceLabel,
+      targetShape,
+      targetLabel,
       location: this.getLocation(start, this.previous()),
     };
   }

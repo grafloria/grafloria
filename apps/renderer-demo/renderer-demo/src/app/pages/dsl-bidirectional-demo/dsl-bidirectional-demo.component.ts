@@ -1,7 +1,7 @@
-import { Component, OnInit, OnDestroy } from '@angular/core';
+import { Component, OnInit, OnDestroy, ChangeDetectorRef } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
-import { DSL, BidirectionalSync, DiagramEngine } from '@grafloria/engine';
+import { DSL, BidirectionalSync, DiagramEngine, DiagramModel, LayoutService } from '@grafloria/engine';
 import { DiagramCanvasComponent } from '@grafloria/renderer-angular';
 import { LIGHT_THEME, type Theme, type Rectangle } from '@grafloria/renderer';
 
@@ -13,12 +13,14 @@ import { LIGHT_THEME, type Theme, type Rectangle } from '@grafloria/renderer';
   styleUrl: './dsl-bidirectional-demo.component.css',
 })
 export class DslBidirectionalDemoComponent implements OnInit, OnDestroy {
+  constructor(private cdr: ChangeDetectorRef) {}
   dsl!: DSL;
   sync!: BidirectionalSync;
   engine!: DiagramEngine;
   viewport: Rectangle = { x: 0, y: 0, width: 1200, height: 800 };
   zoom = 1.0;
   theme: Theme = LIGHT_THEME;
+  diagramReady = false; // Flag to control when canvas should render
 
   dslText = `flowchart TD
   A[Start] --> B{Decision}
@@ -30,6 +32,12 @@ export class DslBidirectionalDemoComponent implements OnInit, OnDestroy {
   generatedText = '';
   syncStatus = '';
   syncDirection: 'text-to-diagram' | 'diagram-to-text' | 'text-to-visual' | 'visual-to-text' | 'none' | '' = '';
+
+  // Panel visibility controls
+  showExamples = true;
+  showEditor = true;
+  showDiagram = true;
+  showGenerated = true;
 
   examples = [
     {
@@ -202,18 +210,27 @@ flowchart TD
     // Create diagram engine for rendering
     this.engine = new DiagramEngine();
 
+    // CRITICAL: Initialize LayoutService on engine (required for engine.applyLayout())
+    const layoutService = new LayoutService();
+    this.engine.setLayoutService(layoutService);
+
     this.dsl = new DSL({
       debug: true,
-      autoLayout: true
+      autoLayout: true  // Enable auto-layout to detect optimal layout
     });
 
     this.sync = new BidirectionalSync({
       debounceMs: 300,
-      autoLayout: true
+      autoLayout: true,  // Enable auto-layout to apply layout during parse
+      debug: true
     });
 
+    // Initialize with empty diagram and initial text
+    const emptyDiagram = new DiagramModel('DSL Demo');
+    this.sync.initialize(emptyDiagram, this.dslText);
+
     // Listen for sync events
-    this.sync.onSync((direction, success) => {
+    this.sync.onSync(async (direction, success) => {
       this.syncDirection = direction;
       this.syncStatus = `Synced: ${direction}`;
 
@@ -222,8 +239,79 @@ flowchart TD
         const diagram = this.sync.getDiagram();
         if (diagram) {
           this.generatedText = this.dsl.generate(diagram);
-          // Set diagram to engine for visual rendering
+
+          // Debug: Log diagram stats
+          const suggestedLayout = diagram.getMetadata('suggestedLayout');
+          const layoutReasoning = diagram.getMetadata('layoutReasoning');
+          const layoutConfidence = diagram.getMetadata('layoutConfidence');
+
+          console.log('[DSL Debug] Diagram loaded:', {
+            nodes: diagram.getNodes().length,
+            links: diagram.getLinks().length,
+            suggestedLayout,
+            layoutReasoning,
+            layoutConfidence
+          });
+
+          // Log diagram stats for debugging
+          const direction = diagram.getMetadata('direction') || 'TB';
+          console.log('[DSL] Diagram parsed:', {
+            nodes: diagram.getNodes().length,
+            links: diagram.getLinks().length,
+            direction,
+            suggestedLayout
+          });
+
+          // Step 1: TEMPORARILY hide canvas to force re-initialization
+          this.diagramReady = false;
+
+          // Step 2: Set diagram to engine
           this.engine.setDiagram(diagram);
+
+          // Step 3: Enable live rerouting BEFORE applying layout
+          this.engine.enableLiveRerouting();
+
+          // Step 4: Apply layout
+          try {
+            const layoutResult = await this.engine.applyLayout({
+              adapter: 'dagre',
+              options: {
+                rankdir: direction,
+                nodesep: 80,
+                ranksep: 100,
+                ranker: 'network-simplex'
+              },
+              animate: false
+            });
+
+            console.log('[DSL] Layout applied with direction:', direction);
+
+            // Step 4.5: CRITICAL - Optimize port assignments using layout-aware algorithm
+            // This ensures connections use optimal port sides based on hierarchical layout
+            const nodeRanks = layoutResult.metadata?.nodeRanks;
+            if (nodeRanks) {
+              const layoutManager = diagram.getLayoutManager();
+              layoutManager.optimizeConnections({
+                direction: direction as 'TB' | 'LR' | 'RL' | 'BT',
+                ranks: nodeRanks
+              });
+              console.log('[DSL] Port assignments optimized using layout-aware algorithm');
+            } else {
+              // Fallback: optimize without ranks (geometric only)
+              const layoutManager = diagram.getLayoutManager();
+              layoutManager.optimizeConnections();
+              console.log('[DSL] Port assignments optimized using geometric algorithm (no ranks available)');
+            }
+          } catch (error: any) {
+            console.error('[DSL] Layout error:', error);
+          }
+
+          // Step 5: Show canvas AFTER layout completes (next tick)
+          // This mimics toggling the panel off/on
+          setTimeout(() => {
+            this.diagramReady = true;
+            this.cdr.detectChanges();
+          }, 0);
         }
       }
 
@@ -281,5 +369,21 @@ flowchart TD
         this.syncStatus = '';
       }, 2000);
     });
+  }
+
+  toggleExamples() {
+    this.showExamples = !this.showExamples;
+  }
+
+  toggleEditor() {
+    this.showEditor = !this.showEditor;
+  }
+
+  toggleDiagram() {
+    this.showDiagram = !this.showDiagram;
+  }
+
+  toggleGenerated() {
+    this.showGenerated = !this.showGenerated;
   }
 }

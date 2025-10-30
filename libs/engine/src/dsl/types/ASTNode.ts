@@ -101,6 +101,22 @@ export interface EdgeDefinitionNode extends ASTNode {
   linkType: LinkType;
   label?: string;
   style?: StyleProperties;
+  /**
+   * Source node shape if specified inline (e.g., A[Label] --> B)
+   */
+  sourceShape?: NodeShape;
+  /**
+   * Source node label if specified inline (e.g., A[Label] --> B)
+   */
+  sourceLabel?: string;
+  /**
+   * Target node shape if specified inline (e.g., A --> B[Label])
+   */
+  targetShape?: NodeShape;
+  /**
+   * Target node label if specified inline (e.g., A --> B[Label])
+   */
+  targetLabel?: string;
 }
 
 /**

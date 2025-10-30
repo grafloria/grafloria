@@ -1435,7 +1435,12 @@ export class SVGRenderer implements IRenderer {
   /**
    * Convert RoutedPath to SVG path string
    */
-  private convertRoutedPathToSVG(routedPath: RoutedPath, pathType: string): string {
+  private convertRoutedPathToSVG(
+    routedPath: RoutedPath,
+    pathType: string,
+    sourceDirection?: string,
+    targetDirection?: string
+  ): string {
     if (!routedPath || routedPath.points.length === 0) return '';
 
     const points = routedPath.points;
@@ -1453,10 +1458,60 @@ export class SVGRenderer implements IRenderer {
         const distance = Math.sqrt(dx * dx + dy * dy);
         const controlDistance = Math.min(distance / 2, 100);
 
-        const cp1x = points[0].x + controlDistance;
-        const cp1y = points[0].y;
-        const cp2x = points[1].x - controlDistance;
-        const cp2y = points[1].y;
+        // ENHANCED: Direction-aware control points (ReactFlow style)
+        // Control points extend from the port in the direction it faces
+        let cp1x = points[0].x;
+        let cp1y = points[0].y;
+        let cp2x = points[1].x;
+        let cp2y = points[1].y;
+
+        if (sourceDirection && targetDirection) {
+          // Calculate control point 1 based on source port direction
+          switch (sourceDirection) {
+            case 'right':
+              cp1x = points[0].x + controlDistance;
+              cp1y = points[0].y;
+              break;
+            case 'left':
+              cp1x = points[0].x - controlDistance;
+              cp1y = points[0].y;
+              break;
+            case 'bottom':
+              cp1x = points[0].x;
+              cp1y = points[0].y + controlDistance;
+              break;
+            case 'top':
+              cp1x = points[0].x;
+              cp1y = points[0].y - controlDistance;
+              break;
+          }
+
+          // Calculate control point 2 based on target port direction
+          switch (targetDirection) {
+            case 'right':
+              cp2x = points[1].x + controlDistance;
+              cp2y = points[1].y;
+              break;
+            case 'left':
+              cp2x = points[1].x - controlDistance;
+              cp2y = points[1].y;
+              break;
+            case 'bottom':
+              cp2x = points[1].x;
+              cp2y = points[1].y + controlDistance;
+              break;
+            case 'top':
+              cp2x = points[1].x;
+              cp2y = points[1].y - controlDistance;
+              break;
+          }
+        } else {
+          // Fallback to old horizontal-only behavior
+          cp1x = points[0].x + controlDistance;
+          cp1y = points[0].y;
+          cp2x = points[1].x - controlDistance;
+          cp2y = points[1].y;
+        }
 
         path += ` C ${cp1x} ${cp1y}, ${cp2x} ${cp2y}, ${points[1].x} ${points[1].y}`;
       } else {
@@ -1568,7 +1623,12 @@ export class SVGRenderer implements IRenderer {
 
       if (routedPath) {
         points = routedPath.points;
-        pathData = this.convertRoutedPathToSVG(routedPath, link.pathType);
+        pathData = this.convertRoutedPathToSVG(
+          routedPath,
+          link.pathType,
+          endpoints.sourceDirection,
+          endpoints.targetDirection
+        );
 
         // CRITICAL FIX: Update link.points so interaction handler can use them for hit testing
         // Only update if points are empty/missing to avoid triggering infinite render loop
@@ -1600,7 +1660,12 @@ export class SVGRenderer implements IRenderer {
 
         if (fallbackPath) {
           points = fallbackPath.points;
-          pathData = this.convertRoutedPathToSVG(fallbackPath, link.pathType);
+          pathData = this.convertRoutedPathToSVG(
+            fallbackPath,
+            link.pathType,
+            endpoints.sourceDirection,
+            endpoints.targetDirection
+          );
 
           // CRITICAL FIX: Update link.points for hit testing (same as above)
           if (!link.points || link.points.length < 2) {
