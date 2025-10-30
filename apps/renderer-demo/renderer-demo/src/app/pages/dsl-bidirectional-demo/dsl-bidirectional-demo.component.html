@@ -1,0 +1,159 @@
+<div class="demo-container">
+  <!-- Header -->
+  <header class="demo-header">
+    <div class="header-content">
+      <h1>🔄 DSL Bidirectional Sync Demo</h1>
+      <p class="subtitle">Real-time text ↔ diagram synchronization with 300ms debouncing</p>
+    </div>
+
+    <!-- Panel Toggle Controls -->
+    <div class="panel-toggles">
+      <button
+        class="toggle-btn"
+        [class.active]="showExamples"
+        (click)="toggleExamples()"
+        title="Toggle Examples Panel">
+        📋
+      </button>
+      <button
+        class="toggle-btn"
+        [class.active]="showEditor"
+        (click)="toggleEditor()"
+        title="Toggle Editor Panel">
+        📝
+      </button>
+      <button
+        class="toggle-btn"
+        [class.active]="showDiagram"
+        (click)="toggleDiagram()"
+        title="Toggle Diagram Panel">
+        📊
+      </button>
+      <button
+        class="toggle-btn"
+        [class.active]="showGenerated"
+        (click)="toggleGenerated()"
+        title="Toggle Generated DSL Panel">
+        👁️
+      </button>
+    </div>
+
+    <!-- Sync Status -->
+    <div class="sync-status" *ngIf="syncStatus">
+      <div class="status-indicator" [ngClass]="{
+        'status-success': syncDirection === 'text-to-diagram',
+        'status-info': syncDirection === 'diagram-to-text',
+        'status-error': !syncDirection
+      }">
+        {{ syncStatus }}
+      </div>
+    </div>
+  </header>
+
+  <!-- Main Content -->
+  <div class="demo-content">
+    <!-- Sidebar - Examples -->
+    <aside class="sidebar" *ngIf="showExamples">
+      <h3>📋 Example Diagrams</h3>
+      <div class="examples-list">
+        <button
+          *ngFor="let example of examples"
+          class="example-button"
+          (click)="loadExample(example)"
+        >
+          <div class="example-name">{{ example.name }}</div>
+          <div class="example-desc">{{ example.description }}</div>
+        </button>
+      </div>
+
+      <div class="sidebar-actions">
+        <h3>🛠️ Actions</h3>
+        <button class="action-button" (click)="formatText()">
+          ✨ Format Text
+        </button>
+        <button class="action-button" (click)="clearText()">
+          🗑️ Clear
+        </button>
+        <button class="action-button" (click)="copyToClipboard()">
+          📋 Copy
+        </button>
+      </div>
+
+      <div class="info-box">
+        <h4>ℹ️ Features</h4>
+        <ul>
+          <li>✅ Real-time sync</li>
+          <li>✅ 300ms debouncing</li>
+          <li>✅ Auto-layout</li>
+          <li>✅ Format preservation</li>
+          <li>✅ Error handling</li>
+        </ul>
+      </div>
+    </aside>
+
+    <!-- Editor Panel -->
+    <div class="editor-panel" *ngIf="showEditor">
+      <div class="panel-header">
+        <h3>📝 DSL Text Editor</h3>
+        <span class="char-count">{{ dslText.length }} characters</span>
+      </div>
+      <textarea
+        class="dsl-editor"
+        [(ngModel)]="dslText"
+        (ngModelChange)="onTextChange()"
+        placeholder="Enter DSL syntax here...&#10;&#10;Example:&#10;flowchart TD&#10;  A[Start] --> B[End]"
+        spellcheck="false"
+      ></textarea>
+    </div>
+
+    <!-- Visual Diagram Panel -->
+    <div class="diagram-panel" *ngIf="showDiagram">
+      <div class="panel-header">
+        <h3>📊 Visual Diagram</h3>
+        <div class="diagram-controls">
+          <button class="control-btn" (click)="zoom = zoom * 1.2">🔍+</button>
+          <button class="control-btn" (click)="zoom = zoom / 1.2">🔍-</button>
+          <button class="control-btn" (click)="zoom = 1.0">↺</button>
+        </div>
+      </div>
+      <div class="diagram-canvas-wrapper">
+        <grafloria-diagram-canvas
+          *ngIf="engine && diagramReady"
+          [engine]="engine"
+          [viewport]="viewport"
+          [zoom]="zoom"
+          [theme]="theme"
+          class="diagram-canvas">
+        </grafloria-diagram-canvas>
+        <div *ngIf="!diagramReady" class="loading-message">
+          Loading diagram...
+        </div>
+      </div>
+    </div>
+
+    <!-- Preview Panel -->
+    <div class="preview-panel" *ngIf="showGenerated">
+      <div class="panel-header">
+        <h3>👁️ Generated DSL</h3>
+      </div>
+      <div class="preview-content">
+        <pre class="generated-text">{{ generatedText || 'Diagram output will appear here after parsing...' }}</pre>
+      </div>
+    </div>
+  </div>
+
+  <!-- Footer Info -->
+  <footer class="demo-footer">
+    <div class="footer-content">
+      <div class="feature-badge">
+        <strong>Phase 2:</strong> Bidirectional Sync
+      </div>
+      <div class="feature-badge">
+        <strong>Phase 3:</strong> Extended Types (ERD, BPMN, UML)
+      </div>
+      <div class="feature-badge">
+        <strong>Phase 4:</strong> Styling & Templates
+      </div>
+    </div>
+  </footer>
+</div>

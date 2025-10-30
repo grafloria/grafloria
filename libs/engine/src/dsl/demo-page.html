@@ -1,0 +1,474 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>DSL Bidirectional Sync Demo</title>
+  <style>
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      background: #f5f5f5;
+      height: 100vh;
+      display: flex;
+      flex-direction: column;
+    }
+
+    header {
+      background: #2c3e50;
+      color: white;
+      padding: 1rem 2rem;
+      box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+    }
+
+    h1 {
+      font-size: 1.5rem;
+      font-weight: 600;
+    }
+
+    .subtitle {
+      font-size: 0.875rem;
+      opacity: 0.8;
+      margin-top: 0.25rem;
+    }
+
+    .container {
+      flex: 1;
+      display: flex;
+      gap: 1rem;
+      padding: 1rem;
+      overflow: hidden;
+    }
+
+    .panel {
+      flex: 1;
+      background: white;
+      border-radius: 8px;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+    }
+
+    .panel-header {
+      padding: 1rem;
+      border-bottom: 1px solid #e0e0e0;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+
+    .panel-title {
+      font-weight: 600;
+      font-size: 1rem;
+    }
+
+    .panel-body {
+      flex: 1;
+      overflow: auto;
+      padding: 1rem;
+    }
+
+    textarea {
+      width: 100%;
+      height: 100%;
+      padding: 1rem;
+      font-family: 'Monaco', 'Menlo', 'Courier New', monospace;
+      font-size: 14px;
+      line-height: 1.5;
+      border: none;
+      resize: none;
+      outline: none;
+      background: #fafafa;
+    }
+
+    .visual-editor {
+      min-height: 400px;
+      background: #fafafa;
+      border: 2px dashed #ddd;
+      border-radius: 4px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      color: #999;
+    }
+
+    .status-bar {
+      padding: 0.75rem 1rem;
+      border-top: 1px solid #e0e0e0;
+      background: #fafafa;
+      font-size: 0.875rem;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+
+    .status-indicator {
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+    }
+
+    .status-icon {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      background: #4caf50;
+    }
+
+    .status-icon.syncing {
+      background: #ff9800;
+      animation: pulse 1s infinite;
+    }
+
+    .status-icon.error {
+      background: #f44336;
+    }
+
+    @keyframes pulse {
+      0%, 100% { opacity: 1; }
+      50% { opacity: 0.5; }
+    }
+
+    .metrics {
+      display: flex;
+      gap: 1.5rem;
+      font-size: 0.75rem;
+      color: #666;
+    }
+
+    .metric {
+      display: flex;
+      align-items: center;
+      gap: 0.25rem;
+    }
+
+    .controls {
+      display: flex;
+      gap: 0.5rem;
+    }
+
+    button {
+      padding: 0.5rem 1rem;
+      border: none;
+      border-radius: 4px;
+      background: #3498db;
+      color: white;
+      font-size: 0.875rem;
+      cursor: pointer;
+      transition: background 0.2s;
+    }
+
+    button:hover {
+      background: #2980b9;
+    }
+
+    button.secondary {
+      background: #95a5a6;
+    }
+
+    button.secondary:hover {
+      background: #7f8c8d;
+    }
+
+    .node-list {
+      list-style: none;
+    }
+
+    .node-item {
+      padding: 0.5rem;
+      margin-bottom: 0.5rem;
+      background: #f5f5f5;
+      border-radius: 4px;
+      border-left: 3px solid #3498db;
+    }
+
+    .node-id {
+      font-weight: 600;
+      color: #2c3e50;
+    }
+
+    .node-label {
+      color: #7f8c8d;
+      font-size: 0.875rem;
+    }
+
+    .examples {
+      padding: 1rem;
+      background: #fff3cd;
+      border-radius: 4px;
+      margin-bottom: 1rem;
+    }
+
+    .examples-title {
+      font-weight: 600;
+      margin-bottom: 0.5rem;
+    }
+
+    .example-buttons {
+      display: flex;
+      gap: 0.5rem;
+      flex-wrap: wrap;
+    }
+
+    .example-btn {
+      padding: 0.25rem 0.75rem;
+      font-size: 0.75rem;
+      background: #fff;
+      border: 1px solid #ddd;
+      color: #333;
+    }
+
+    .example-btn:hover {
+      background: #f5f5f5;
+      border-color: #999;
+    }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>🔄 DSL Bidirectional Sync Demo</h1>
+    <div class="subtitle">Real-time text ↔ visual editing with 300ms debounce</div>
+  </header>
+
+  <div class="container">
+    <!-- Text Editor Panel -->
+    <div class="panel">
+      <div class="panel-header">
+        <div class="panel-title">📝 Text Editor</div>
+        <div class="controls">
+          <button class="example-btn" onclick="loadExample('simple')">Simple</button>
+          <button class="example-btn" onclick="loadExample('decision')">Decision</button>
+          <button class="example-btn" onclick="loadExample('workflow')">Workflow</button>
+        </div>
+      </div>
+      <div class="panel-body">
+        <textarea id="textEditor" placeholder="Enter Mermaid-compatible flowchart syntax...">flowchart TD
+  A[Start] --> B{Decision}
+  B -->|Yes| C[Process]
+  B -->|No| D[End]
+  C --> D</textarea>
+      </div>
+      <div class="status-bar">
+        <div class="status-indicator">
+          <div class="status-icon" id="statusIcon"></div>
+          <span id="statusText">Ready</span>
+        </div>
+        <div class="metrics">
+          <div class="metric">
+            <span>⬆</span>
+            <span id="textToVisual">0</span>
+          </div>
+          <div class="metric">
+            <span>⬇</span>
+            <span id="visualToText">0</span>
+          </div>
+          <div class="metric">
+            <span>⏱</span>
+            <span id="syncTime">0ms</span>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Visual Editor Panel -->
+    <div class="panel">
+      <div class="panel-header">
+        <div class="panel-title">🎨 Visual Diagram</div>
+        <div class="controls">
+          <button onclick="applyLayout()">Apply Layout</button>
+          <button class="secondary" onclick="resetDemo()">Reset</button>
+        </div>
+      </div>
+      <div class="panel-body">
+        <div id="diagramInfo">
+          <div class="examples">
+            <div class="examples-title">Diagram Structure:</div>
+            <ul class="node-list" id="nodeList"></ul>
+          </div>
+          <div style="color: #666; font-size: 0.875rem;">
+            <p><strong>Note:</strong> This is a simplified demo. A full visual editor would render an interactive canvas here.</p>
+            <p style="margin-top: 0.5rem;">The text editor automatically updates as you type. In a full implementation, you could drag nodes, create connections, and see the text update in real-time.</p>
+          </div>
+        </div>
+      </div>
+      <div class="status-bar">
+        <div>
+          <span style="font-weight: 600;">Nodes:</span> <span id="nodeCount">0</span>
+          <span style="margin-left: 1rem; font-weight: 600;">Links:</span> <span id="linkCount">0</span>
+        </div>
+        <div id="layoutSuggestion"></div>
+      </div>
+    </div>
+  </div>
+
+  <script type="module">
+    // Mock implementation for demo purposes
+    // In a real app, this would import from '@grafloria/engine/dsl'
+
+    let diagram = { nodes: [], links: [] };
+    let syncTimeout = null;
+    let metrics = { textToVisual: 0, visualToText: 0, syncTime: 0 };
+
+    // Initialize
+    const textEditor = document.getElementById('textEditor');
+    textEditor.addEventListener('input', handleTextChange);
+
+    // Initial parse
+    parseText(textEditor.value);
+
+    function handleTextChange() {
+      clearTimeout(syncTimeout);
+
+      updateStatus('syncing', 'Syncing...');
+
+      syncTimeout = setTimeout(() => {
+        const startTime = performance.now();
+        parseText(textEditor.value);
+        const syncTime = performance.now() - startTime;
+
+        metrics.textToVisual++;
+        metrics.syncTime = syncTime;
+
+        updateMetrics();
+        updateStatus('idle', 'Synced');
+      }, 300);
+    }
+
+    function parseText(text) {
+      // Simple parser mock
+      const lines = text.split('\n').filter(l => l.trim());
+      const nodes = new Set();
+      const links = [];
+
+      for (const line of lines) {
+        if (line.includes('flowchart') || line.includes('%')) continue;
+
+        // Find node IDs
+        const nodeMatches = line.match(/([A-Z][0-9]?)/g);
+        if (nodeMatches) {
+          nodeMatches.forEach(id => nodes.add(id));
+        }
+
+        // Find links
+        if (line.includes('-->') || line.includes('---')) {
+          const linkMatch = line.match(/([A-Z][0-9]?)\s*--[->]+\s*([A-Z][0-9]?)/);
+          if (linkMatch) {
+            links.push({ from: linkMatch[1], to: linkMatch[2] });
+          }
+        }
+      }
+
+      diagram.nodes = Array.from(nodes).map(id => ({
+        id,
+        label: extractLabel(text, id) || id
+      }));
+      diagram.links = links;
+
+      updateDiagram();
+    }
+
+    function extractLabel(text, nodeId) {
+      const regex = new RegExp(`${nodeId}\\[([^\\]]+)\\]|${nodeId}\\{([^}]+)\\}|${nodeId}\\(([^)]+)\\)`);
+      const match = text.match(regex);
+      return match ? (match[1] || match[2] || match[3]) : null;
+    }
+
+    function updateDiagram() {
+      document.getElementById('nodeCount').textContent = diagram.nodes.length;
+      document.getElementById('linkCount').textContent = diagram.links.length;
+
+      const nodeList = document.getElementById('nodeList');
+      nodeList.innerHTML = diagram.nodes.map(node => `
+        <li class="node-item">
+          <div class="node-id">${node.id}</div>
+          <div class="node-label">${node.label}</div>
+        </li>
+      `).join('');
+
+      // Suggest layout
+      const suggestion = suggestLayout();
+      document.getElementById('layoutSuggestion').textContent = suggestion;
+    }
+
+    function suggestLayout() {
+      if (diagram.links.length === 0) return '';
+
+      const hasCycles = checkCycles();
+      const direction = textEditor.value.includes('LR') ? 'Horizontal' : 'Vertical';
+
+      if (hasCycles) {
+        return `💡 Suggested: State Machine (${direction})`;
+      } else if (diagram.nodes.length > 5) {
+        return `💡 Suggested: Hierarchical Layout`;
+      } else {
+        return `💡 Suggested: Workflow (${direction})`;
+      }
+    }
+
+    function checkCycles() {
+      // Simple cycle detection mock
+      return diagram.links.some(link =>
+        diagram.links.some(other =>
+          link.from === other.to && link.to === other.from
+        )
+      );
+    }
+
+    function updateStatus(status, message) {
+      const icon = document.getElementById('statusIcon');
+      const text = document.getElementById('statusText');
+
+      icon.className = `status-icon ${status}`;
+      text.textContent = message;
+    }
+
+    function updateMetrics() {
+      document.getElementById('textToVisual').textContent = metrics.textToVisual;
+      document.getElementById('visualToText').textContent = metrics.visualToText;
+      document.getElementById('syncTime').textContent = `${Math.round(metrics.syncTime)}ms`;
+    }
+
+    window.loadExample = function(type) {
+      const examples = {
+        simple: `flowchart TD
+  A[Start] --> B[End]`,
+        decision: `flowchart TD
+  A[Start] --> B{Decision}
+  B -->|Yes| C[Process]
+  B -->|No| D[End]
+  C --> D`,
+        workflow: `flowchart LR
+  A[Input] --> B[Validate]
+  B --> C{Valid?}
+  C -->|Yes| D[Process]
+  C -->|No| E[Error]
+  D --> F[Output]
+  E --> A`
+      };
+
+      textEditor.value = examples[type] || examples.simple;
+      handleTextChange();
+    };
+
+    window.applyLayout = function() {
+      updateStatus('syncing', 'Applying layout...');
+      setTimeout(() => {
+        updateStatus('idle', 'Layout applied');
+      }, 500);
+    };
+
+    window.resetDemo = function() {
+      metrics = { textToVisual: 0, visualToText: 0, syncTime: 0 };
+      updateMetrics();
+      textEditor.value = 'flowchart TD\n  A[Start] --> B[End]';
+      handleTextChange();
+    };
+  </script>
+</body>
+</html>

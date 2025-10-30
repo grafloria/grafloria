@@ -1,34 +1,139 @@
 <div class="home-container">
+  <!-- Header -->
   <header class="home-header">
-    <h1>Grafloria Renderer Examples</h1>
+    <h1>🎨 Grafloria Renderer Examples</h1>
     <p class="subtitle">Interactive demonstrations of the Grafloria diagram rendering library</p>
+    <div class="stats">
+      <span class="stat">{{ examples.length }} Demos</span>
+      <span class="stat">{{ filteredExamples.length }} Shown</span>
+    </div>
   </header>
 
-  <div class="examples-grid">
-    <div *ngFor="let example of examples" class="example-card">
-      <div class="card-header">
-        <span class="icon">{{ example.icon }}</span>
-        <h2>{{ example.title }}</h2>
-        <span class="difficulty" [ngClass]="getDifficultyClass(example.difficulty)">
-          {{ example.difficulty }}
-        </span>
+  <!-- Search and Filters -->
+  <div class="filters-section">
+    <div class="search-box">
+      <input
+        type="text"
+        [(ngModel)]="searchTerm"
+        placeholder="🔍 Search demos by name, description, or tags..."
+        class="search-input"
+      />
+      <button *ngIf="searchTerm" (click)="searchTerm = ''" class="clear-search">✕</button>
+    </div>
+
+    <div class="filter-controls">
+      <div class="filter-group">
+        <label>Category:</label>
+        <select [(ngModel)]="selectedCategory" class="filter-select">
+          <option *ngFor="let category of categories" [value]="category">
+            {{ category }}
+          </option>
+        </select>
       </div>
 
-      <p class="description">{{ example.description }}</p>
-
-      <div class="features">
-        <h3>Features:</h3>
-        <ul>
-          <li *ngFor="let feature of example.features">{{ feature }}</li>
-        </ul>
+      <div class="filter-group">
+        <label>Difficulty:</label>
+        <select [(ngModel)]="selectedDifficulty" class="filter-select">
+          <option value="All">All Levels</option>
+          <option value="Beginner">Beginner</option>
+          <option value="Intermediate">Intermediate</option>
+          <option value="Advanced">Advanced</option>
+        </select>
       </div>
 
-      <a [routerLink]="example.route" class="btn-launch">
-        Launch Example →
-      </a>
+      <button
+        *ngIf="searchTerm || selectedCategory !== 'All' || selectedDifficulty !== 'All'"
+        (click)="clearFilters()"
+        class="btn-clear-filters"
+      >
+        Clear Filters
+      </button>
     </div>
   </div>
 
+  <!-- Category Pills -->
+  <div class="category-pills">
+    <button
+      *ngFor="let category of categories"
+      [class.active]="selectedCategory === category"
+      (click)="selectedCategory = category"
+      class="category-pill"
+    >
+      <span *ngIf="category !== 'All'">{{ getCategoryIcon(category) }}</span>
+      {{ category }}
+    </button>
+  </div>
+
+  <!-- Examples Grid (Grouped by Category) -->
+  <div *ngIf="selectedCategory === 'All'" class="grouped-view">
+    <div *ngFor="let category of ['Core Features', 'DSL Engine', 'Advanced Features', 'Builders']" class="category-section">
+      <div *ngIf="examplesByCategory[category].length > 0" class="category-group">
+        <h2 class="category-title">
+          <span class="category-icon">{{ getCategoryIcon(category) }}</span>
+          {{ category }}
+          <span class="category-count">({{ examplesByCategory[category].length }})</span>
+        </h2>
+
+        <div class="examples-grid">
+          <div *ngFor="let example of examplesByCategory[category]" class="example-card">
+            <div class="card-header">
+              <span class="icon">{{ example.icon }}</span>
+              <h3>{{ example.title }}</h3>
+              <span class="difficulty" [ngClass]="getDifficultyClass(example.difficulty)">
+                {{ example.difficulty }}
+              </span>
+            </div>
+
+            <p class="description">{{ example.description }}</p>
+
+            <div class="features">
+              <div class="feature-chip" *ngFor="let feature of example.features">
+                {{ feature }}
+              </div>
+            </div>
+
+            <a [routerLink]="example.route" class="btn-launch">
+              Launch Demo →
+            </a>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Simple Grid View (When Category Filter Active) -->
+  <div *ngIf="selectedCategory !== 'All'" class="simple-view">
+    <div *ngIf="filteredExamples.length === 0" class="no-results">
+      <p>📭 No demos found matching your criteria</p>
+      <button (click)="clearFilters()" class="btn-clear-filters">Clear Filters</button>
+    </div>
+
+    <div class="examples-grid">
+      <div *ngFor="let example of filteredExamples" class="example-card">
+        <div class="card-header">
+          <span class="icon">{{ example.icon }}</span>
+          <h3>{{ example.title }}</h3>
+          <span class="difficulty" [ngClass]="getDifficultyClass(example.difficulty)">
+            {{ example.difficulty }}
+          </span>
+        </div>
+
+        <p class="description">{{ example.description }}</p>
+
+        <div class="features">
+          <div class="feature-chip" *ngFor="let feature of example.features">
+            {{ feature }}
+          </div>
+        </div>
+
+        <a [routerLink]="example.route" class="btn-launch">
+          Launch Demo →
+        </a>
+      </div>
+    </div>
+  </div>
+
+  <!-- Footer -->
   <footer class="home-footer">
     <div class="footer-content">
       <p>Powered by <strong>&#64;grafloria/renderer</strong> + <strong>&#64;grafloria/engine</strong></p>

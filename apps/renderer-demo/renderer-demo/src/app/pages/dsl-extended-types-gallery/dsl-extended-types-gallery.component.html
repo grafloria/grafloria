@@ -1,0 +1,181 @@
+<div class="gallery-container">
+  <!-- Header -->
+  <header class="gallery-header">
+    <h1>{{ getTypeIcon(activeTab) }} DSL Extended Types Gallery</h1>
+    <p class="subtitle">Professional diagram types for real-world use cases</p>
+  </header>
+
+  <!-- Tab Navigation -->
+  <nav class="tab-nav">
+    <button
+      class="tab-button"
+      [class.active]="activeTab === 'ERD'"
+      (click)="switchTab('ERD')"
+    >
+      🗄️ Entity Relationship Diagrams
+    </button>
+    <button
+      class="tab-button"
+      [class.active]="activeTab === 'BPMN'"
+      (click)="switchTab('BPMN')"
+    >
+      ⚙️ Business Process Models
+    </button>
+    <button
+      class="tab-button"
+      [class.active]="activeTab === 'UML'"
+      (click)="switchTab('UML')"
+    >
+      🏗️ UML Class Diagrams
+    </button>
+  </nav>
+
+  <!-- Main Content -->
+  <div class="gallery-content">
+    <!-- Examples Sidebar -->
+    <aside class="examples-sidebar">
+      <h3>📋 {{ activeTab }} Examples</h3>
+
+      <div class="examples-list">
+        <div
+          *ngFor="let example of currentExamples"
+          class="example-card"
+          [class.selected]="selectedExample === example"
+          (click)="loadExample(example)"
+        >
+          <div class="example-header">
+            <div class="example-name">{{ example.name }}</div>
+            <span class="complexity-badge" [ngClass]="getComplexityClass(example.complexity)">
+              {{ example.complexity }}
+            </span>
+          </div>
+          <div class="example-description">{{ example.description }}</div>
+          <div class="example-usecase">
+            <span class="label">Use Case:</span>
+            {{ example.useCase }}
+          </div>
+        </div>
+      </div>
+    </aside>
+
+    <!-- Main Panel -->
+    <div class="main-panel">
+      <!-- Selected Example Info -->
+      <div class="example-info" *ngIf="selectedExample">
+        <div class="info-header">
+          <h2>{{ selectedExample.name }}</h2>
+          <div class="info-badges">
+            <span class="type-badge">{{ selectedExample.type }}</span>
+            <span class="complexity-badge" [ngClass]="getComplexityClass(selectedExample.complexity)">
+              {{ selectedExample.complexity }}
+            </span>
+          </div>
+        </div>
+        <p class="info-description">{{ selectedExample.description }}</p>
+        <div class="info-usecase">
+          <strong>Real-World Use Case:</strong> {{ selectedExample.useCase }}
+        </div>
+      </div>
+
+      <!-- Split Panel: Code + Visual Diagram -->
+      <div class="split-panels">
+        <!-- DSL Code Editor -->
+        <div class="code-panel">
+          <div class="code-header">
+            <h3>📝 DSL Code</h3>
+            <button class="copy-button" (click)="copyToClipboard()">
+              📋 Copy
+            </button>
+          </div>
+          <textarea
+            class="dsl-code"
+            [(ngModel)]="currentDSL"
+            (ngModelChange)="parseDiagram()"
+            spellcheck="false"
+          ></textarea>
+        </div>
+
+        <!-- Visual Diagram -->
+        <div class="diagram-panel">
+          <div class="diagram-header">
+            <h3>📊 Visual Diagram</h3>
+            <div class="diagram-controls">
+              <button class="control-btn" (click)="zoom = zoom * 1.2">🔍+</button>
+              <button class="control-btn" (click)="zoom = zoom / 1.2">🔍-</button>
+              <button class="control-btn" (click)="zoom = 1.0">↺</button>
+            </div>
+          </div>
+          <div class="diagram-canvas-wrapper">
+            <grafloria-diagram-canvas
+              *ngIf="engine"
+              [engine]="engine"
+              [viewport]="viewport"
+              [zoom]="zoom"
+              [theme]="theme"
+              class="diagram-canvas">
+            </grafloria-diagram-canvas>
+          </div>
+        </div>
+      </div>
+
+      <!-- Parse Results -->
+      <div class="results-panel" *ngIf="parseResult || parseError">
+        <div class="results-header">
+          <h3>🔍 Parse Results</h3>
+        </div>
+
+        <div class="parse-success" *ngIf="parseResult && !parseError">
+          <div class="stat-grid">
+            <div class="stat-card">
+              <div class="stat-value">{{ parseResult.stats.nodeCount }}</div>
+              <div class="stat-label">Nodes</div>
+            </div>
+            <div class="stat-card">
+              <div class="stat-value">{{ parseResult.stats.linkCount }}</div>
+              <div class="stat-label">Links</div>
+            </div>
+            <div class="stat-card">
+              <div class="stat-value">{{ parseResult.stats.parseTime }}ms</div>
+              <div class="stat-label">Parse Time</div>
+            </div>
+          </div>
+
+          <div class="layout-suggestion" *ngIf="parseResult.layoutSuggestion">
+            <h4>💡 Layout Suggestion</h4>
+            <div class="suggestion-content">
+              <div class="suggestion-item">
+                <strong>Preset:</strong> {{ parseResult.layoutSuggestion.presetId }}
+              </div>
+              <div class="suggestion-item">
+                <strong>Confidence:</strong> {{ parseResult.layoutSuggestion.confidence }}%
+              </div>
+              <div class="suggestion-item">
+                <strong>Reasoning:</strong> {{ parseResult.layoutSuggestion.reasoning }}
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div class="parse-error" *ngIf="parseError">
+          <div class="error-icon">⚠️</div>
+          <div class="error-message">{{ parseError }}</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Feature Highlights -->
+  <footer class="gallery-footer">
+    <div class="feature-highlights">
+      <div class="highlight" *ngIf="activeTab === 'ERD'">
+        <strong>ERD Features:</strong> Table-like rendering, PK/FK constraints, Unique/Not Null, Relationship cardinality
+      </div>
+      <div class="highlight" *ngIf="activeTab === 'BPMN'">
+        <strong>BPMN Features:</strong> Pools & Lanes, Intelligent type inference, Events & Gateways, Process flows
+      </div>
+      <div class="highlight" *ngIf="activeTab === 'UML'">
+        <strong>UML Features:</strong> Visibility modifiers, Abstract/Static methods, Inheritance, Interfaces
+      </div>
+    </div>
+  </footer>
+</div>

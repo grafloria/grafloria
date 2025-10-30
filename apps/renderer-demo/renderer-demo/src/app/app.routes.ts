@@ -52,6 +52,26 @@ export const appRoutes: Route[] = [
     loadComponent: () => import('./pages/animation-demo/animation-demo.component').then(m => m.AnimationDemoComponent)
   },
   {
+    path: 'dsl-bidirectional-demo',
+    loadComponent: () => import('./pages/dsl-bidirectional-demo/dsl-bidirectional-demo.component').then(m => m.DslBidirectionalDemoComponent)
+  },
+  {
+    path: 'dsl-extended-types-gallery',
+    loadComponent: () => import('./pages/dsl-extended-types-gallery/dsl-extended-types-gallery.component').then(m => m.DslExtendedTypesGalleryComponent)
+  },
+  {
+    path: 'dsl-styling-studio',
+    loadComponent: () => import('./pages/dsl-styling-studio/dsl-styling-studio.component').then(m => m.DslStylingStudioComponent)
+  },
+  {
+    path: 'dsl-template-builder',
+    loadComponent: () => import('./pages/dsl-template-builder/dsl-template-builder.component').then(m => m.DslTemplateBuilderComponent)
+  },
+  {
+    path: 'dsl-performance-demo',
+    loadComponent: () => import('./pages/dsl-performance-demo/dsl-performance-demo.component').then(m => m.DslPerformanceDemoComponent)
+  },
+  {
     path: '**',
     redirectTo: ''
   }

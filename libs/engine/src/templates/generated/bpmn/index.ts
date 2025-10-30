@@ -1,0 +1,15 @@
+export { bpmnTaskTemplate } from './bpmn-task.template';
+export { bpmnUserTaskTemplate } from './bpmn-user-task.template';
+export { bpmnServiceTaskTemplate } from './bpmn-service-task.template';
+export { bpmnManualTaskTemplate } from './bpmn-manual-task.template';
+export { bpmnBusinessRuleTaskTemplate } from './bpmn-business-rule-task.template';
+export { bpmnScriptTaskTemplate } from './bpmn-script-task.template';
+export { bpmnExclusiveGatewayTemplate } from './bpmn-exclusive-gateway.template';
+export { bpmnParallelGatewayTemplate } from './bpmn-parallel-gateway.template';
+export { bpmnInclusiveGatewayTemplate } from './bpmn-inclusive-gateway.template';
+export { bpmnStartEventTemplate } from './bpmn-start-event.template';
+export { bpmnEndEventTemplate } from './bpmn-end-event.template';
+export { bpmnIntermediateEventTemplate } from './bpmn-intermediate-event.template';
+export { bpmnMessageEventTemplate } from './bpmn-message-event.template';
+export { bpmnTimerEventTemplate } from './bpmn-timer-event.template';
+export { bpmnErrorEventTemplate } from './bpmn-error-event.template';

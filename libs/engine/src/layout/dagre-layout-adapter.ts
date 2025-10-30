@@ -130,6 +130,9 @@ export class DagreLayoutAdapter implements LayoutAdapter {
     // Extract positions from dagre graph
     const nodePositions = new Map<string, { x: number; y: number }>();
 
+    // Extract ranks for port assignment (hierarchical layer information)
+    const nodeRanks = new Map<string, number>();
+
     g.nodes().forEach((nodeId: string) => {
       const node = g.node(nodeId);
       if (node) {
@@ -138,6 +141,14 @@ export class DagreLayoutAdapter implements LayoutAdapter {
           x: node.x - (node.width || 0) / 2,
           y: node.y - (node.height || 0) / 2,
         });
+
+        // Extract rank (hierarchical layer) - used for port side selection
+        // Rank represents the layer in the hierarchy (0 = first layer, 1 = second, etc.)
+        // Note: rank property exists at runtime but not in TypeScript types
+        const nodeWithRank = node as any;
+        if (nodeWithRank.rank !== undefined) {
+          nodeRanks.set(nodeId, nodeWithRank.rank);
+        }
       }
     });
 
@@ -305,6 +316,7 @@ export class DagreLayoutAdapter implements LayoutAdapter {
         executionTime: endTime - startTime,
         nodeCount: nodes.length,
         linkCount: links.length,
+        nodeRanks,  // NEW: Include hierarchical ranks for port assignment
       },
       quality,
       portAware,
