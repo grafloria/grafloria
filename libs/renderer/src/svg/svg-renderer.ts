@@ -1728,15 +1728,27 @@ export class SVGRenderer implements IRenderer {
         const routingEngine = this.engine.getRoutingEngine();
         const allRoutedPoints: Array<{ x: number; y: number }> = [];
 
+        // Get port directions for first and last segments to ensure perpendicular connections
+        const sourceDirection = endpoints?.sourceDirection;
+        const targetDirection = endpoints?.targetDirection;
+
         // Route between each consecutive pair of waypoints
         for (let i = 0; i < points.length - 1; i++) {
           const start = points[i];
           const end = points[i + 1];
+          const isFirstSegment = i === 0;
+          const isLastSegment = i === points.length - 2;
+
+          // For first/last segments, use port directions to ensure perpendicular connections
+          const segmentSourceDir = isFirstSegment ? sourceDirection : undefined;
+          const segmentTargetDir = isLastSegment ? targetDirection : undefined;
 
           // Route this segment orthogonally
           const segmentRoute = routingEngine.route({
             start,
             end,
+            sourceDirection: segmentSourceDir,
+            targetDirection: segmentTargetDir,
             options: {
               algorithm: 'orthogonal',
               avoidObstacles: false,  // Don't avoid obstacles for manual waypoint segments

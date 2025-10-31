@@ -920,14 +920,25 @@ export class InteractionHandlerService {
     console.log(`🔵 Started dragging waypoint ${waypointIndex} on link ${link.id}`);
   }
 
+  private lastWaypointUpdateTime = 0;
+  private waypointUpdateThrottleMs = 16; // ~60fps, reduces flickering during orthogonal routing
+
   /**
    * Move waypoint during drag
    * The waypoint is just moved, orthogonal routing happens during rendering
+   * Throttled to reduce flickering on orthogonal paths
    */
   moveWaypoint(worldX: number, worldY: number, engine: DiagramEngine): boolean {
     if (!this.isDraggingWaypoint || !this.editingLink || this.editingWaypointIndex === null || !this.waypointEditor) {
       return false;
     }
+
+    // Throttle updates for orthogonal paths to reduce flickering
+    const now = Date.now();
+    if (this.editingLink.pathType === 'orthogonal' && now - this.lastWaypointUpdateTime < this.waypointUpdateThrottleMs) {
+      return false; // Skip this update
+    }
+    this.lastWaypointUpdateTime = now;
 
     const newPosition = { x: worldX, y: worldY };
 
