@@ -455,7 +455,9 @@ export class SVGRenderer implements IRenderer {
     // Generate SVG path data
     let pathData: string;
     if (routedPath) {
-      pathData = this.convertRoutedPathToSVG(routedPath, pathType);
+      // ✅ CRITICAL FIX: Pass source/target directions for correct bezier curve calculation
+      // Without these, the bezier control points won't extend in the proper direction
+      pathData = this.convertRoutedPathToSVG(routedPath, pathType, sourceDirection, targetDirection);
     } else {
       // Phase 0.1: Fallback strategy for connection preview
       console.warn('Primary routing failed for connection preview, trying fallback');
@@ -477,7 +479,8 @@ export class SVGRenderer implements IRenderer {
       });
 
       if (fallbackPath) {
-        pathData = this.convertRoutedPathToSVG(fallbackPath, pathType);
+        // ✅ CRITICAL FIX: Also pass directions for fallback path
+        pathData = this.convertRoutedPathToSVG(fallbackPath, pathType, sourceDirection, targetDirection);
         console.log('✅ Fallback routing succeeded for connection preview');
       } else {
         // Fallback Strategy 2: Hide invalid preview (don't show crossing line)
@@ -1082,6 +1085,16 @@ export class SVGRenderer implements IRenderer {
       fill: styles.fill
     });
 
+    // ✅ CRITICAL: When fill/stroke are set explicitly, use inline style to override CSS
+    // In SVG, CSS rules have higher specificity than presentation attributes
+    // But inline style attribute has highest specificity
+    const { fill, stroke, strokeWidth, className, ...otherProps } = styles;
+    const inlineStyle = [
+      fill ? `fill: ${fill}` : '',
+      stroke ? `stroke: ${stroke}` : '',
+      strokeWidth !== undefined ? `stroke-width: ${strokeWidth}` : ''
+    ].filter(Boolean).join('; ');
+
     return {
       type: 'rect',
       props: {
@@ -1089,7 +1102,9 @@ export class SVGRenderer implements IRenderer {
         y: 0,
         width,
         height,
-        ...styles,
+        ...(className ? { className } : {}),
+        ...(inlineStyle ? { style: inlineStyle } : {}),
+        ...otherProps,
         ...(cornerRadius ? { rx: cornerRadius, ry: cornerRadius } : {}),
       },
     };
@@ -1103,13 +1118,23 @@ export class SVGRenderer implements IRenderer {
     const cx = width / 2;
     const cy = height / 2;
 
+    // ✅ Use inline style to override CSS (same as renderRectShape)
+    const { fill, stroke, strokeWidth, className, ...otherProps } = styles;
+    const inlineStyle = [
+      fill ? `fill: ${fill}` : '',
+      stroke ? `stroke: ${stroke}` : '',
+      strokeWidth !== undefined ? `stroke-width: ${strokeWidth}` : ''
+    ].filter(Boolean).join('; ');
+
     return {
       type: 'circle',
       props: {
         cx,
         cy,
         r: radius,
-        ...styles,
+        ...(className ? { className } : {}),
+        ...(inlineStyle ? { style: inlineStyle } : {}),
+        ...otherProps,
       },
     };
   }
@@ -1145,11 +1170,21 @@ export class SVGRenderer implements IRenderer {
     // Diamond vertices: top, right, bottom, left
     const points = `${cx},0 ${width},${cy} ${cx},${height} 0,${cy}`;
 
+    // ✅ Use inline style to override CSS (same as renderRectShape)
+    const { fill, stroke, strokeWidth, className, ...otherProps } = styles;
+    const inlineStyle = [
+      fill ? `fill: ${fill}` : '',
+      stroke ? `stroke: ${stroke}` : '',
+      strokeWidth !== undefined ? `stroke-width: ${strokeWidth}` : ''
+    ].filter(Boolean).join('; ');
+
     return {
       type: 'polygon',
       props: {
         points,
-        ...styles,
+        ...(className ? { className } : {}),
+        ...(inlineStyle ? { style: inlineStyle } : {}),
+        ...otherProps,
       },
     };
   }
@@ -1685,9 +1720,54 @@ export class SVGRenderer implements IRenderer {
         }
       }
     } else {
-      // Fallback to existing link.points
+      // Has manual waypoints - use existing link.points
       points = link.points;
-      pathData = this.generatePathData(link.points, link.segments);
+
+      // ✅ CRITICAL: For orthogonal paths with manual waypoints, route between each pair of points
+      if (link.pathType === 'orthogonal' && hasManualWaypoints) {
+        const routingEngine = this.engine.getRoutingEngine();
+        const allRoutedPoints: Array<{ x: number; y: number }> = [];
+
+        // Route between each consecutive pair of waypoints
+        for (let i = 0; i < points.length - 1; i++) {
+          const start = points[i];
+          const end = points[i + 1];
+
+          // Route this segment orthogonally
+          const segmentRoute = routingEngine.route({
+            start,
+            end,
+            options: {
+              algorithm: 'orthogonal',
+              avoidObstacles: false,  // Don't avoid obstacles for manual waypoint segments
+              gridSize: 10
+            }
+          });
+
+          if (segmentRoute && segmentRoute.points.length > 0) {
+            // Add the routed points (excluding the last point to avoid duplicates)
+            if (i === 0) {
+              // First segment: add all points
+              allRoutedPoints.push(...segmentRoute.points);
+            } else {
+              // Subsequent segments: skip the first point (it's the same as the last point of previous segment)
+              allRoutedPoints.push(...segmentRoute.points.slice(1));
+            }
+          } else {
+            // Fallback: if routing fails, just use straight line for this segment
+            if (i === 0) {
+              allRoutedPoints.push(start);
+            }
+            allRoutedPoints.push(end);
+          }
+        }
+
+        points = allRoutedPoints;
+        pathData = this.generatePathData(allRoutedPoints, link.segments);
+      } else {
+        // For non-orthogonal paths or no waypoints, use points as-is
+        pathData = this.generatePathData(link.points, link.segments);
+      }
     }
 
     // Safety check: if points is still empty/undefined, skip rendering

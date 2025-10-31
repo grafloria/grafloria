@@ -36,13 +36,16 @@ export class WorkflowBuilderComponent implements OnInit {
   workflowNodes: Map<string, WorkflowNode> = new Map();
   executionOrder: string[] = [];
 
-  constructor(private cdr: ChangeDetectorRef) {
-    // Using SVG shapes with engine's native shape system
-  }
+  constructor(private cdr: ChangeDetectorRef) {}
 
   ngOnInit() {
     this.initializeEngine();
     this.createSampleWorkflow();
+
+    // Force change detection to ensure initial render (like shape-gallery demo)
+    setTimeout(() => {
+      this.cdr.detectChanges();
+    }, 0);
   }
 
   private initializeEngine(): void {
@@ -58,9 +61,13 @@ export class WorkflowBuilderComponent implements OnInit {
 
   private createSampleWorkflow(): void {
     const diagram = this.engine.createDiagram('Workflow');
+    // Note: createDiagram() automatically calls setDiagram()
 
     // Enable automatic link rerouting when nodes move (Observer Pattern)
     this.engine.enableLiveRerouting();
+
+    // ✅ Use batch mode for bulk operations (Principle #2 from Master Troubleshooting Guide)
+    diagram.beginBatch();
 
     // Create workflow nodes
     const startNode = this.createWorkflowNode('start', 'start', 'Start', { x: 100, y: 200 });
@@ -85,8 +92,14 @@ export class WorkflowBuilderComponent implements OnInit {
     diagram.addLink(link5);
     diagram.addLink(link6);
 
+    // End batch - events fire together, UI updates once
+    diagram.endBatch();
+
     // Set execution order
     this.executionOrder = ['start', 'task1', 'decision1', 'task2', 'end'];
+
+    // ✅ Mark dirty after programmatic changes (Principle #3 from Master Troubleshooting Guide)
+    diagram.markDirty();
 
     diagram.fitToView(100);
     this.updateViewportFromDiagram();
@@ -130,14 +143,26 @@ export class WorkflowBuilderComponent implements OnInit {
       size: sizes[type]
     });
 
-    // Set shape metadata for SVG rendering
-    node.setMetadata('shape', {
+    // ✅ CRITICAL: Set node.style (not just metadata) so computeNodeStylesProgrammatic uses these colors
+    node.style = {
+      fill: colors[type].fill,
+      stroke: colors[type].stroke,
+      strokeWidth: 3,
+      borderRadius: type === 'task' ? 12 : undefined
+    };
+
+    // Also set shape metadata for SVG renderer
+    const shapeMetadata = {
       type: shapeTypes[type],
       fill: colors[type].fill,
       stroke: colors[type].stroke,
       strokeWidth: 3,
       cornerRadius: type === 'task' ? 12 : undefined
-    });
+    };
+    node.setMetadata('shape', shapeMetadata);
+
+    console.log(`[Workflow] Created node ${id} with style:`, node.style);
+    console.log(`[Workflow] Created node ${id} with shape metadata:`, shapeMetadata);
 
     // Set workflow metadata
     node.setMetadata('workflowType', type);
@@ -306,7 +331,6 @@ export class WorkflowBuilderComponent implements OnInit {
       if (nodeId) {
         const workflowNode = this.workflowNodes.get(nodeId);
         if (workflowNode) {
-          const oldStatus = node.getMetadata('status');
           node.setMetadata('status', workflowNode.status);
 
           // Update shape stroke color based on status
@@ -343,16 +367,16 @@ export class WorkflowBuilderComponent implements OnInit {
             console.log(`[Workflow] Verified shape metadata:`, updatedShape);
           }
 
-          // Mark node as dirty to ensure re-render
-          node.markDirty('shape');
-          node.markDirty('status');
-          console.log(`[Workflow] Node ${nodeId} marked dirty, isDirty:`, node.isDirty);
+          // ✅ CORRECT: setMetadata() automatically triggers:
+          // → node 'change' event
+          // → diagram 'node:changed' event
+          // → DiagramCanvasComponent listener
+          // → renderDiagram() + cdr.detectChanges()
+          // No need to call node.markDirty() - it's redundant
+          // No need to call this.cdr.detectChanges() - wrong component
         }
       }
     });
-
-    // Trigger change detection
-    this.cdr.detectChanges();
   }
 
   onViewportChanged(rect: Rectangle): void {

@@ -922,6 +922,7 @@ export class InteractionHandlerService {
 
   /**
    * Move waypoint during drag
+   * The waypoint is just moved, orthogonal routing happens during rendering
    */
   moveWaypoint(worldX: number, worldY: number, engine: DiagramEngine): boolean {
     if (!this.isDraggingWaypoint || !this.editingLink || this.editingWaypointIndex === null || !this.waypointEditor) {
@@ -929,10 +930,12 @@ export class InteractionHandlerService {
     }
 
     const newPosition = { x: worldX, y: worldY };
+
     const newPoints = this.waypointEditor.moveWaypoint(
       this.editingWaypointIndex,
       newPosition,
-      this.editingLink.points
+      this.editingLink.points,
+      this.editingLink.pathType
     );
 
     if (newPoints) {

@@ -220,22 +220,28 @@ export class WaypointEditor {
 
   /**
    * Move waypoint to new position
+   * For orthogonal paths, just move the waypoint - the rendering will use orthogonal routing
    */
-  moveWaypoint(waypointIndex: number, newPosition: Point, points: Point[]): Point[] | null {
+  moveWaypoint(
+    waypointIndex: number,
+    newPosition: Point,
+    points: Point[],
+    pathType?: 'direct' | 'orthogonal' | 'smooth' | 'bezier'
+  ): Point[] | null {
     // Don't move endpoints
     if (!this.isWaypoint(waypointIndex, points)) {
       return null;
     }
 
-    const newPoints = [...points];
-
     // Apply grid snapping if enabled
-    const finalPosition = this.config.snapToGrid
+    let finalPosition = this.config.snapToGrid
       ? this.snapToGrid(newPosition)
       : { ...newPosition };
 
+    // Simple approach: just move the waypoint
+    // For orthogonal paths, the orthogonal router will create proper routing between points
+    const newPoints = [...points];
     newPoints[waypointIndex] = finalPosition;
-
     return newPoints;
   }
 
