@@ -226,7 +226,7 @@ export class WaypointEditor {
     waypointIndex: number,
     newPosition: Point,
     points: Point[],
-    pathType?: 'direct' | 'orthogonal' | 'smooth' | 'bezier'
+    pathType?: 'direct' | 'orthogonal' | 'smooth' | 'bezier' | 'straight'
   ): Point[] | null {
     // Don't move endpoints
     if (!this.isWaypoint(waypointIndex, points)) {
@@ -348,7 +348,7 @@ export class WaypointEditor {
         className: 'waypoint-handle',
         style: {
           cursor: 'move',
-          transition: 'all 0.2s ease',
+          // No transition - causes flickering during drag
         },
       },
     };

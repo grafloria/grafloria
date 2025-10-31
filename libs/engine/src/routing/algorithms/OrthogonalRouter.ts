@@ -15,15 +15,6 @@ export class OrthogonalRouter implements IRouter {
   route(request: RouteRequest): RoutedPath | null {
     const { start, end, obstacles = [], options = {}, sourceDirection, targetDirection } = request;
 
-    console.log('🔀 OrthogonalRouter.route called:', {
-      start,
-      end,
-      sourceDirection,
-      targetDirection,
-      obstacleCount: obstacles.length,
-      avoidObstacles: options.avoidObstacles
-    });
-
     // Handle same start and end point
     if (start.x === end.x && start.y === end.y) {
       return {
@@ -37,13 +28,11 @@ export class OrthogonalRouter implements IRouter {
 
     // Simple orthogonal routing without obstacles
     if (!options.avoidObstacles || obstacles.length === 0) {
-      console.log('📐 Using simpleOrthogonalRoute (no obstacle avoidance)');
       const bendCost = options.costs?.bends ?? 10;
       return this.simpleOrthogonalRoute(start, end, options.gridSize, bendCost, sourceDirection, targetDirection);
     }
 
     // Complex routing with obstacle avoidance
-    console.log('🚧 Using avoidObstaclesRoute (WITH obstacle avoidance)');
     return this.avoidObstaclesRoute(start, end, obstacles, options, sourceDirection, targetDirection);
   }
 
@@ -60,20 +49,12 @@ export class OrthogonalRouter implements IRouter {
     sourceDirection?: 'left' | 'right' | 'top' | 'bottom',
     targetDirection?: 'left' | 'right' | 'top' | 'bottom'
   ): RoutedPath {
-    // Gap offset - distance to move away from port in its direction (matches React Flow default)
-    const gapOffset = 20;
+    // Gap offset - distance to move away from port in its direction
+    const gapOffset = 30;
 
     // Calculate offset points (move away from port in the direction it points)
     let sourceOffset = this.applyGapOffset(start, sourceDirection, gapOffset);
     let targetOffset = this.applyGapOffset(end, targetDirection, gapOffset);
-
-    console.log('  📏 Initial gap offset:', {
-      start,
-      sourceDirection,
-      sourceOffset,
-      targetDirection,
-      targetOffset
-    });
 
     // React Flow algorithm: determine primary direction and routing strategy
     const dir = this.getRoutingDirection(sourceOffset, sourceDirection, targetOffset);
@@ -92,7 +73,6 @@ export class OrthogonalRouter implements IRouter {
 
     if (areOpposite) {
       // Opposite handle positions - use Z-shape routing
-      console.log('  🔄 Opposite handles - using Z-shape');
 
       if (dirAccessor === 'x') {
         // Horizontal routing (left/right ports)
@@ -111,7 +91,6 @@ export class OrthogonalRouter implements IRouter {
       }
     } else {
       // Same or perpendicular handle positions - use L-shape routing
-      console.log('  ↗️ Same/perpendicular handles - using L-shape');
 
       // CRITICAL: Ensure intermediate point aligns with BOTH gap points to prevent diagonal segments
       // The intermediate point must be perpendicular to both source and target
@@ -149,12 +128,6 @@ export class OrthogonalRouter implements IRouter {
             targetGapOffset[dirAccessor] = sign * additionalGap;
           }
 
-          console.log('  ⚠️ Same position ports too close - adding gap offset:', {
-            diff,
-            additionalGap,
-            sourceGapOffset,
-            targetGapOffset
-          });
         }
       }
     }
@@ -449,9 +422,9 @@ export class OrthogonalRouter implements IRouter {
     targetDirection?: 'left' | 'right' | 'top' | 'bottom'
   ): RoutedPath | null {
     const gridSize = options.gridSize ?? 10;
-    const margin = options.obstacleMargin ?? 20; // Increased margin for better obstacle avoidance
+    const margin = options.obstacleMargin ?? 20; // Margin around obstacles
     const maxIterations = options.maxIterations ?? 10000;
-    const gapOffset = 20; // Distance to move away from port
+    const gapOffset = 30; // Distance to move away from port (must be > margin to clear obstacle boundary)
 
     // Apply gap offset to move away from ports before pathfinding
     // This ensures paths don't start/end directly on node borders
@@ -745,7 +718,6 @@ export class OrthogonalRouter implements IRouter {
 
       // Check if this position is valid
       if (!this.collidesWithObstacles(current, obstacles, margin)) {
-        console.log(`   ✓ Found valid point at distance ${i * gridSize}px`);
         return current;
       }
     }

@@ -1613,17 +1613,8 @@ export class SVGRenderer implements IRenderer {
       const obstacles: Array<{ id: string; x: number; y: number; width: number; height: number }> = [];
 
       if (diagram) {
-        const sourceNode = diagram.getNodes().find(n => n.getPorts().some(p => p.id === link.sourcePortId));
-        const targetNode = diagram.getNodes().find(n => n.getPorts().some(p => p.id === link.targetPortId));
-
+        // Include ALL nodes as obstacles - the gap offset will handle port connections
         diagram.getNodes().forEach(node => {
-          // CRITICAL FIX: Exclude source and target nodes from obstacles
-          // Paths must be able to start/end at ports on these nodes
-          if (node.id === sourceNode?.id || node.id === targetNode?.id) {
-            return; // Skip this node
-          }
-
-          // CRITICAL FIX: Use getWorldPosition() for child nodes to get correct absolute coordinates
           const worldPos = node.getWorldPosition();
           obstacles.push({
             id: node.id,
@@ -1633,8 +1624,6 @@ export class SVGRenderer implements IRenderer {
             height: node.size.height,
           });
         });
-
-        console.log(`🚧 Routing with ${obstacles.length} obstacles (excluded source: ${sourceNode?.id}, target: ${targetNode?.id})`);
       }
 
       // Use link's pathType-derived algorithm, fallback to routing engine's default
@@ -1723,54 +1712,77 @@ export class SVGRenderer implements IRenderer {
       // Has manual waypoints - use existing link.points
       points = link.points;
 
-      // ✅ CRITICAL: For orthogonal paths with manual waypoints, route between each pair of points
+      // ✅ HIGH-PERFORMANCE: For orthogonal paths with manual waypoints
+      // Use fast direct orthogonal calculation for waypoint segments
+      // Only use routing engine for port connections (first/last segments)
       if (link.pathType === 'orthogonal' && hasManualWaypoints) {
         const routingEngine = this.engine.getRoutingEngine();
         const allRoutedPoints: Array<{ x: number; y: number }> = [];
 
-        // Get port directions for first and last segments to ensure perpendicular connections
+        // Get port directions for first and last segments
         const sourceDirection = endpoints?.sourceDirection;
         const targetDirection = endpoints?.targetDirection;
 
-        // Route between each consecutive pair of waypoints
+        // Collect obstacles for first/last segment routing (same as above)
+        const diagram = this.engine.getDiagram();
+        const obstacles: Array<{ id: string; x: number; y: number; width: number; height: number }> = [];
+        if (diagram) {
+          diagram.getNodes().forEach(node => {
+            const worldPos = node.getWorldPosition();
+            obstacles.push({
+              id: node.id,
+              x: worldPos.x,
+              y: worldPos.y,
+              width: node.size.width,
+              height: node.size.height,
+            });
+          });
+        }
+
         for (let i = 0; i < points.length - 1; i++) {
           const start = points[i];
           const end = points[i + 1];
           const isFirstSegment = i === 0;
           const isLastSegment = i === points.length - 2;
 
-          // For first/last segments, use port directions to ensure perpendicular connections
-          const segmentSourceDir = isFirstSegment ? sourceDirection : undefined;
-          const segmentTargetDir = isLastSegment ? targetDirection : undefined;
+          if (isFirstSegment || isLastSegment) {
+            // Use routing engine for port connections (perpendicular to ports)
+            const segmentSourceDir = isFirstSegment ? sourceDirection : undefined;
+            const segmentTargetDir = isLastSegment ? targetDirection : undefined;
 
-          // Route this segment orthogonally
-          const segmentRoute = routingEngine.route({
-            start,
-            end,
-            sourceDirection: segmentSourceDir,
-            targetDirection: segmentTargetDir,
-            options: {
-              algorithm: 'orthogonal',
-              avoidObstacles: false,  // Don't avoid obstacles for manual waypoint segments
-              gridSize: 10
-            }
-          });
+            const segmentRoute = routingEngine.route({
+              start,
+              end,
+              sourceDirection: segmentSourceDir,
+              targetDirection: segmentTargetDir,
+              obstacles,
+              options: {
+                algorithm: 'orthogonal',
+                avoidObstacles: true,  // Enable obstacle avoidance for port connections
+                obstacleMargin: 20,
+                gridSize: 10
+              }
+            });
 
-          if (segmentRoute && segmentRoute.points.length > 0) {
-            // Add the routed points (excluding the last point to avoid duplicates)
-            if (i === 0) {
-              // First segment: add all points
-              allRoutedPoints.push(...segmentRoute.points);
+            if (segmentRoute && segmentRoute.points.length > 0) {
+              if (i === 0) {
+                allRoutedPoints.push(...segmentRoute.points);
+              } else {
+                allRoutedPoints.push(...segmentRoute.points.slice(1));
+              }
             } else {
-              // Subsequent segments: skip the first point (it's the same as the last point of previous segment)
-              allRoutedPoints.push(...segmentRoute.points.slice(1));
+              if (i === 0) allRoutedPoints.push(start);
+              allRoutedPoints.push(end);
             }
           } else {
-            // Fallback: if routing fails, just use straight line for this segment
-            if (i === 0) {
-              allRoutedPoints.push(start);
+            // FAST PATH: Direct orthogonal segment calculation for waypoint-to-waypoint
+            // Create simple 3-point orthogonal path: start -> midpoint -> end
+            const orthogonalSegment = this.createOrthogonalSegment(start, end);
+
+            // Skip first point (already added from previous segment)
+            if (orthogonalSegment.length > 1) {
+              allRoutedPoints.push(...orthogonalSegment.slice(1));
             }
-            allRoutedPoints.push(end);
           }
         }
 
@@ -2306,6 +2318,11 @@ export class SVGRenderer implements IRenderer {
   font-family: ${t.typography.fontFamily.default};
   font-size: ${t.typography.fontSize.md}px;
   fill: ${t.colors.text.primary};
+}
+
+/* Link Path - Disable transitions for performance and visual correctness */
+.link-group path {
+  transition: none !important;
 }
 
 /* Phase 2: Port Styles */
@@ -2997,5 +3014,41 @@ export class SVGRenderer implements IRenderer {
     };
 
     return { position, angle };
+  }
+
+  /**
+   * HIGH-PERFORMANCE: Create simple orthogonal segment between two points
+   * Uses 3-point path: start -> corner -> end
+   * Much faster than calling routing engine
+   */
+  private createOrthogonalSegment(
+    start: { x: number; y: number },
+    end: { x: number; y: number }
+  ): Array<{ x: number; y: number }> {
+    const dx = Math.abs(end.x - start.x);
+    const dy = Math.abs(end.y - start.y);
+
+    // If points are already aligned horizontally or vertically, use direct path
+    if (dx === 0 || dy === 0) {
+      return [start, end];
+    }
+
+    // Create L-shape: start -> corner -> end
+    // Choose corner based on which direction is dominant
+    if (dx > dy) {
+      // Horizontal-first: go horizontal then vertical
+      return [
+        start,
+        { x: end.x, y: start.y },  // Corner: horizontal from start
+        end
+      ];
+    } else {
+      // Vertical-first: go vertical then horizontal
+      return [
+        start,
+        { x: start.x, y: end.y },  // Corner: vertical from start
+        end
+      ];
+    }
   }
 }
