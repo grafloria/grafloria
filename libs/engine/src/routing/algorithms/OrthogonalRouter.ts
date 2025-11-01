@@ -263,7 +263,7 @@ export class OrthogonalRouter implements IRouter {
 
         if (!firstIsHorizontal && !firstIsVertical) {
           console.log(`  ⚠️ First segment is diagonal! Fixing...`);
-          // Determine which direction to align based on source direction or closest alignment
+          // Determine which direction to align based on source direction or infer from geometry
           if (sourceDirection === 'left' || sourceDirection === 'right') {
             // Horizontal port - make first segment horizontal
             const oldY = firstIntermediate.y;
@@ -275,19 +275,22 @@ export class OrthogonalRouter implements IRouter {
             firstIntermediate.x = start.x;
             console.log(`  Adjusted point 1 x: ${oldX} → ${firstIntermediate.x} (vertical alignment)`);
           } else {
-            // Direction unknown - choose closer alignment
-            const deltaX = Math.abs(firstIntermediate.x - start.x);
-            const deltaY = Math.abs(firstIntermediate.y - start.y);
-            if (deltaX < deltaY) {
-              // Closer to vertical - align x
-              const oldX = firstIntermediate.x;
-              firstIntermediate.x = start.x;
-              console.log(`  Adjusted point 1 x: ${oldX} → ${firstIntermediate.x} (vertical, closer)`);
-            } else {
-              // Closer to horizontal - align y
+            // Direction unknown - infer from start/end relative positions
+            // If end is more to the left/right, likely horizontal port
+            // If end is more above/below, likely vertical port
+            const deltaX = Math.abs(end.x - start.x);
+            const deltaY = Math.abs(end.y - start.y);
+
+            if (deltaX > deltaY) {
+              // Endpoints are more horizontally separated - likely horizontal port
               const oldY = firstIntermediate.y;
               firstIntermediate.y = start.y;
-              console.log(`  Adjusted point 1 y: ${oldY} → ${firstIntermediate.y} (horizontal, closer)`);
+              console.log(`  Adjusted point 1 y: ${oldY} → ${firstIntermediate.y} (horizontal, inferred from geometry)`);
+            } else {
+              // Endpoints are more vertically separated - likely vertical port
+              const oldX = firstIntermediate.x;
+              firstIntermediate.x = start.x;
+              console.log(`  Adjusted point 1 x: ${oldX} → ${firstIntermediate.x} (vertical, inferred from geometry)`);
             }
           }
         }
@@ -302,7 +305,7 @@ export class OrthogonalRouter implements IRouter {
 
           if (!lastIsHorizontal && !lastIsVertical) {
             console.log(`  ⚠️ Last segment is diagonal! Fixing...`);
-            // Determine which direction to align based on target direction
+            // Determine which direction to align based on target direction or infer from geometry
             if (targetDirection === 'left' || targetDirection === 'right') {
               // Horizontal port - make last segment horizontal
               const oldY = lastIntermediate.y;
@@ -314,19 +317,22 @@ export class OrthogonalRouter implements IRouter {
               lastIntermediate.x = end.x;
               console.log(`  Adjusted point ${pathPoints.length - 2} x: ${oldX} → ${lastIntermediate.x} (vertical alignment)`);
             } else {
-              // Direction unknown - choose closer alignment
-              const deltaX = Math.abs(lastIntermediate.x - end.x);
-              const deltaY = Math.abs(lastIntermediate.y - end.y);
-              if (deltaX < deltaY) {
-                // Closer to vertical - align x
-                const oldX = lastIntermediate.x;
-                lastIntermediate.x = end.x;
-                console.log(`  Adjusted point ${pathPoints.length - 2} x: ${oldX} → ${lastIntermediate.x} (vertical, closer)`);
-              } else {
-                // Closer to horizontal - align y
+              // Direction unknown - infer from start/end relative positions
+              // If end is more to the left/right, likely horizontal port
+              // If end is more above/below, likely vertical port
+              const deltaX = Math.abs(end.x - start.x);
+              const deltaY = Math.abs(end.y - start.y);
+
+              if (deltaX > deltaY) {
+                // Endpoints are more horizontally separated - likely horizontal port
                 const oldY = lastIntermediate.y;
                 lastIntermediate.y = end.y;
-                console.log(`  Adjusted point ${pathPoints.length - 2} y: ${oldY} → ${lastIntermediate.y} (horizontal, closer)`);
+                console.log(`  Adjusted point ${pathPoints.length - 2} y: ${oldY} → ${lastIntermediate.y} (horizontal, inferred from geometry)`);
+              } else {
+                // Endpoints are more vertically separated - likely vertical port
+                const oldX = lastIntermediate.x;
+                lastIntermediate.x = end.x;
+                console.log(`  Adjusted point ${pathPoints.length - 2} x: ${oldX} → ${lastIntermediate.x} (vertical, inferred from geometry)`);
               }
             }
           }
