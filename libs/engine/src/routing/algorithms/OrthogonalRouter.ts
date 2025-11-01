@@ -264,15 +264,20 @@ export class OrthogonalRouter implements IRouter {
         if (!firstIsHorizontal && !firstIsVertical) {
           console.log(`  ⚠️ First segment is diagonal! Fixing...`);
           // Determine which direction to align based on source direction or infer from geometry
+          let alignedHorizontally = false;
+          let alignedVertically = false;
+
           if (sourceDirection === 'left' || sourceDirection === 'right') {
             // Horizontal port - make first segment horizontal
             const oldY = firstIntermediate.y;
             firstIntermediate.y = start.y;
+            alignedHorizontally = true;
             console.log(`  Adjusted point 1 y: ${oldY} → ${firstIntermediate.y} (horizontal alignment)`);
           } else if (sourceDirection === 'top' || sourceDirection === 'bottom') {
             // Vertical port - make first segment vertical
             const oldX = firstIntermediate.x;
             firstIntermediate.x = start.x;
+            alignedVertically = true;
             console.log(`  Adjusted point 1 x: ${oldX} → ${firstIntermediate.x} (vertical alignment)`);
           } else {
             // Direction unknown - infer from start/end relative positions
@@ -285,12 +290,30 @@ export class OrthogonalRouter implements IRouter {
               // Endpoints are more horizontally separated - likely horizontal port
               const oldY = firstIntermediate.y;
               firstIntermediate.y = start.y;
+              alignedHorizontally = true;
               console.log(`  Adjusted point 1 y: ${oldY} → ${firstIntermediate.y} (horizontal, inferred from geometry)`);
             } else {
               // Endpoints are more vertically separated - likely vertical port
               const oldX = firstIntermediate.x;
               firstIntermediate.x = start.x;
+              alignedVertically = true;
               console.log(`  Adjusted point 1 x: ${oldX} → ${firstIntermediate.x} (vertical, inferred from geometry)`);
+            }
+          }
+
+          // CRITICAL FIX: Propagate alignment to all intermediate points (not just first one)
+          // This fixes the issue where point 2, 3, etc. still have wrong coordinates after grid snap
+          if (pathPoints.length > 3) {
+            for (let i = 2; i < pathPoints.length - 1; i++) {
+              if (alignedHorizontally && pathPoints[i].y !== start.y) {
+                const oldY = pathPoints[i].y;
+                pathPoints[i].y = start.y;
+                console.log(`  Propagated horizontal alignment to point ${i}: y ${oldY} → ${pathPoints[i].y}`);
+              } else if (alignedVertically && pathPoints[i].x !== start.x) {
+                const oldX = pathPoints[i].x;
+                pathPoints[i].x = start.x;
+                console.log(`  Propagated vertical alignment to point ${i}: x ${oldX} → ${pathPoints[i].x}`);
+              }
             }
           }
         }
