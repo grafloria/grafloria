@@ -140,11 +140,21 @@ export class ElkComparisonComponent implements OnInit {
    * Called when a node is moved/dragged (via debounced wrapper)
    */
   private rerouteNodeLinks(nodeId: string) {
+    console.log(`⏰ rerouteNodeLinks CALLED for nodeId: ${nodeId}`);
+
     const diagram = this.engine.getDiagram();
-    if (!diagram) return;
+    if (!diagram) {
+      console.log(`❌ No diagram found`);
+      return;
+    }
 
     const node = diagram.getNode(nodeId);
-    if (!node) return;
+    if (!node) {
+      console.log(`❌ Node ${nodeId} not found`);
+      return;
+    }
+
+    console.log(`✅ Found node: ${node.getMetadata('label')} (${nodeId})`);
 
     // Find all links connected to this node
     const links = diagram.getLinks().filter(link => {
