@@ -26,7 +26,7 @@ export class ElkComparisonComponent implements OnInit {
 
   // Debounce timer for rerouting during drag to prevent visual lag
   private rerouteTimers = new Map<string, any>();
-  private readonly REROUTE_DEBOUNCE_MS = 16; // ~60fps for smooth visual updates
+  private readonly REROUTE_DEBOUNCE_MS = 300; // Wait 300ms after drag stops before logging/rerouting
 
   ngOnInit() {
     this.engine = new DiagramEngine({

@@ -37,15 +37,10 @@ export class OrthogonalRouter implements IRouter {
     }
 
     // Check if the simple path intersects any obstacles
-    console.log(`🔍 Checking ${simplePath.points.length} path points against ${obstacles.length} obstacles`);
-    console.log('  Path points:', simplePath.points.map(p => `(${p.x.toFixed(0)}, ${p.y.toFixed(0)})`).join(' → '));
-    console.log('  Obstacles:', obstacles.map(o => `[${o.id}: x=${o.x.toFixed(0)}-${(o.x + o.width).toFixed(0)}, y=${o.y.toFixed(0)}-${(o.y + o.height).toFixed(0)}]`).join(', '));
-
     const hasCollision = this.pathIntersectsObstacles(simplePath.points, obstacles);
 
     if (!hasCollision) {
       // Path is clear, use the simple routing
-      console.log('✅ OrthogonalRouter: Simple path is clear (no collisions)');
       return simplePath;
     }
 
@@ -121,10 +116,6 @@ export class OrthogonalRouter implements IRouter {
       // around potential node collisions. The bend happens at the midpoint, creating
       // a visual "elbow" that clearly shows the connection path.
 
-      console.log('  🔄 Opposite-side routing detected');
-      console.log(`    sourceDir: (${sourceDir.x}, ${sourceDir.y}), targetDir: (${targetDir.x}, ${targetDir.y})`);
-      console.log(`    dirAccessor: ${dirAccessor}, currDir: ${currDir}`);
-
       let centerX: number, centerY: number;
 
       if (dirAccessor === 'x') {
@@ -137,18 +128,13 @@ export class OrthogonalRouter implements IRouter {
         const isOvershooting = (sourceDir.x > 0 && sourceGapped.x > targetGapped.x) ||
                                (sourceDir.x < 0 && sourceGapped.x < targetGapped.x);
 
-        console.log(`    Overshoot check: sourceDir.x=${sourceDir.x}, sourceGapped.x=${sourceGapped.x}, targetGapped.x=${targetGapped.x}`);
-        console.log(`    isOvershooting: ${isOvershooting}`);
-
         if (isOvershooting) {
           // Overshoot detected: Place bend at source edge, not midpoint
           // This makes the path exit the source, turn immediately, and route around the side
           centerX = sourceGapped.x;
-          console.log(`    [Overshoot Fix] Horizontal: using centerX=${centerX} (clamped to source)`);
         } else {
           // Normal case: Use midpoint
           centerX = (sourceGapped.x + targetGapped.x) / 2;
-          console.log(`    [Geometric Midpoint] Horizontal: using centerX=${centerX} (midpoint between ${sourceGapped.x} and ${targetGapped.x})`);
         }
 
         // For horizontal routing, we keep Y at source/target levels to create clear steps
@@ -184,16 +170,10 @@ export class OrthogonalRouter implements IRouter {
         { x: targetGapped.x, y: centerY },
       ];
 
-      console.log(`    centerX=${centerX}, centerY=${centerY}`);
-      console.log(`    verticalSplit: (${centerX}, ${sourceGapped.y}) → (${centerX}, ${targetGapped.y})`);
-      console.log(`    horizontalSplit: (${sourceGapped.x}, ${centerY}) → (${targetGapped.x}, ${centerY})`);
-
       if (sourceDir[dirAccessor] === currDir) {
         points = dirAccessor === 'x' ? verticalSplit : horizontalSplit;
-        console.log(`    Using ${dirAccessor === 'x' ? 'VERTICAL' : 'HORIZONTAL'} split (sourceDir[${dirAccessor}]=${sourceDir[dirAccessor]} === currDir=${currDir})`);
       } else {
         points = dirAccessor === 'x' ? horizontalSplit : verticalSplit;
-        console.log(`    Using ${dirAccessor === 'x' ? 'HORIZONTAL' : 'VERTICAL'} split (sourceDir[${dirAccessor}]=${sourceDir[dirAccessor]} !== currDir=${currDir})`);
       }
     } else {
       // CASE 2: Same or perpendicular handle positions
