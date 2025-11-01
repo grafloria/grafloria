@@ -250,6 +250,88 @@ export class OrthogonalRouter implements IRouter {
         p.y = Math.round(p.y / gridSize) * gridSize;
         console.log(`  grid snap point ${index}: (${originalX}, ${originalY}) → (${p.x}, ${p.y})`);
       });
+
+      // CRITICAL FIX: After grid snapping, ensure first and last segments remain orthogonal
+      // Grid snapping intermediate points can create diagonal segments with unsnapped endpoints
+      if (pathPoints.length >= 2) {
+        // Fix first segment: ensure point[1] is orthogonal to point[0] (start)
+        const start = pathPoints[0];
+        const firstIntermediate = pathPoints[1];
+
+        const firstIsHorizontal = start.y === firstIntermediate.y;
+        const firstIsVertical = start.x === firstIntermediate.x;
+
+        if (!firstIsHorizontal && !firstIsVertical) {
+          console.log(`  ⚠️ First segment is diagonal! Fixing...`);
+          // Determine which direction to align based on source direction or closest alignment
+          if (sourceDirection === 'left' || sourceDirection === 'right') {
+            // Horizontal port - make first segment horizontal
+            const oldY = firstIntermediate.y;
+            firstIntermediate.y = start.y;
+            console.log(`  Adjusted point 1 y: ${oldY} → ${firstIntermediate.y} (horizontal alignment)`);
+          } else if (sourceDirection === 'top' || sourceDirection === 'bottom') {
+            // Vertical port - make first segment vertical
+            const oldX = firstIntermediate.x;
+            firstIntermediate.x = start.x;
+            console.log(`  Adjusted point 1 x: ${oldX} → ${firstIntermediate.x} (vertical alignment)`);
+          } else {
+            // Direction unknown - choose closer alignment
+            const deltaX = Math.abs(firstIntermediate.x - start.x);
+            const deltaY = Math.abs(firstIntermediate.y - start.y);
+            if (deltaX < deltaY) {
+              // Closer to vertical - align x
+              const oldX = firstIntermediate.x;
+              firstIntermediate.x = start.x;
+              console.log(`  Adjusted point 1 x: ${oldX} → ${firstIntermediate.x} (vertical, closer)`);
+            } else {
+              // Closer to horizontal - align y
+              const oldY = firstIntermediate.y;
+              firstIntermediate.y = start.y;
+              console.log(`  Adjusted point 1 y: ${oldY} → ${firstIntermediate.y} (horizontal, closer)`);
+            }
+          }
+        }
+
+        // Fix last segment: ensure point[n-2] is orthogonal to point[n-1] (end)
+        if (pathPoints.length >= 3) {
+          const end = pathPoints[pathPoints.length - 1];
+          const lastIntermediate = pathPoints[pathPoints.length - 2];
+
+          const lastIsHorizontal = lastIntermediate.y === end.y;
+          const lastIsVertical = lastIntermediate.x === end.x;
+
+          if (!lastIsHorizontal && !lastIsVertical) {
+            console.log(`  ⚠️ Last segment is diagonal! Fixing...`);
+            // Determine which direction to align based on target direction
+            if (targetDirection === 'left' || targetDirection === 'right') {
+              // Horizontal port - make last segment horizontal
+              const oldY = lastIntermediate.y;
+              lastIntermediate.y = end.y;
+              console.log(`  Adjusted point ${pathPoints.length - 2} y: ${oldY} → ${lastIntermediate.y} (horizontal alignment)`);
+            } else if (targetDirection === 'top' || targetDirection === 'bottom') {
+              // Vertical port - make last segment vertical
+              const oldX = lastIntermediate.x;
+              lastIntermediate.x = end.x;
+              console.log(`  Adjusted point ${pathPoints.length - 2} x: ${oldX} → ${lastIntermediate.x} (vertical alignment)`);
+            } else {
+              // Direction unknown - choose closer alignment
+              const deltaX = Math.abs(lastIntermediate.x - end.x);
+              const deltaY = Math.abs(lastIntermediate.y - end.y);
+              if (deltaX < deltaY) {
+                // Closer to vertical - align x
+                const oldX = lastIntermediate.x;
+                lastIntermediate.x = end.x;
+                console.log(`  Adjusted point ${pathPoints.length - 2} x: ${oldX} → ${lastIntermediate.x} (vertical, closer)`);
+              } else {
+                // Closer to horizontal - align y
+                const oldY = lastIntermediate.y;
+                lastIntermediate.y = end.y;
+                console.log(`  Adjusted point ${pathPoints.length - 2} y: ${oldY} → ${lastIntermediate.y} (horizontal, closer)`);
+              }
+            }
+          }
+        }
+      }
     }
 
     // Remove duplicate consecutive points
