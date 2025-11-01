@@ -234,10 +234,21 @@ export class OrthogonalRouter implements IRouter {
     console.log('  final pathPoints count:', pathPoints.length);
 
     // Snap to grid if specified
+    // CRITICAL FIX: Do NOT snap the first and last points (port positions)
+    // Only snap intermediate waypoints to prevent mismatch with port positions
     if (gridSize && gridSize > 1) {
-      pathPoints.forEach((p) => {
+      pathPoints.forEach((p, index) => {
+        // Skip first and last points - they must stay at exact port positions
+        if (index === 0 || index === pathPoints.length - 1) {
+          console.log(`  skipping grid snap for point ${index} (port position):`, p);
+          return;
+        }
+
+        const originalX = p.x;
+        const originalY = p.y;
         p.x = Math.round(p.x / gridSize) * gridSize;
         p.y = Math.round(p.y / gridSize) * gridSize;
+        console.log(`  grid snap point ${index}: (${originalX}, ${originalY}) → (${p.x}, ${p.y})`);
       });
     }
 
