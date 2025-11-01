@@ -1877,10 +1877,23 @@ export class SVGRenderer implements IRenderer {
       };
     }
 
+    // CRITICAL FIX: Get arrow styles FIRST to use actual arrow size for position calculation
+    // Get arrow styles from link (with defaults)
+    const arrowHeadStyle = link.style.arrowHead || {
+      type: 'arrow',
+      size: 10,
+      filled: true,
+      color: styles.stroke || this.theme.colors.link.default
+    };
+
+    const arrowTailStyle = link.style.arrowTail;
+
     // Calculate arrow position and angle using unified utility
     // The arrow polygon '0,-5 10,0 0,5' has its tip at x=10, base at x=0
-    const arrowLength = 10;
-    const arrowData = this.calculateArrowPositionAndAngle(link, points, true, arrowLength);
+    // CRITICAL FIX: Use the ACTUAL arrow size from style, not a hardcoded value
+    // This prevents offset issues where arrow size doesn't match position calculation
+    const arrowHeadSize = arrowHeadStyle.size || 10;
+    const arrowData = this.calculateArrowPositionAndAngle(link, points, true, arrowHeadSize);
     const arrowTipPosition = arrowData.position;
     const angle = arrowData.angle;
 
@@ -1952,16 +1965,6 @@ export class SVGRenderer implements IRenderer {
         ...(lod !== 'low'
           ? (() => {
               const arrows: VNode[] = [];
-
-              // Get arrow styles from link (with defaults)
-              const arrowHeadStyle = link.style.arrowHead || {
-                type: 'arrow',
-                size: 10,
-                filled: true,
-                color: styles.stroke || this.theme.colors.link.default
-              };
-
-              const arrowTailStyle = link.style.arrowTail;
 
               // Render arrow head (at target end)
               if (arrowHeadStyle && arrowHeadStyle.type !== 'none') {
