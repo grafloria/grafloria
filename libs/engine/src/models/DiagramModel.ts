@@ -140,7 +140,6 @@ export class DiagramModel extends DiagramEntity {
     // Listen for any node changes and forward as diagram-level 'node:changed' event
     // This allows components like diagram-canvas to re-render when node properties change
     node.on('change', () => {
-      console.log('[DiagramModel] Node change detected, emitting node:changed for:', node.id);
       this.emitOrQueue('node:changed', node);
     });
   }
@@ -1361,14 +1360,11 @@ export class DiagramModel extends DiagramEntity {
 
     // When all batches complete (check parent's isBatching), fire queued events
     if (!this.isBatching() && this._pendingEvents.length > 0) {
-      console.log('[DiagramModel] Batch complete, firing', this._pendingEvents.length, 'queued events');
-
       // Fire all queued events individually
       const events = [...this._pendingEvents];
       this._pendingEvents = [];
 
       for (const event of events) {
-        console.log('[DiagramModel] Firing queued event:', event.type);
         this.emitter.emit(event.type, event.data);
       }
 
@@ -1388,11 +1384,9 @@ export class DiagramModel extends DiagramEntity {
     const batching = this.isBatching();
     if (batching) {
       // Queue event for later
-      console.log('[DiagramModel] Queueing event:', eventType, 'batching:', batching);
       this._pendingEvents.push({ type: eventType, data });
     } else {
       // Emit immediately
-      console.log('[DiagramModel] Emitting event immediately:', eventType);
       this.emitter.emit(eventType, data);
     }
   }

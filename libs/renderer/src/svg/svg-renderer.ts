@@ -586,8 +586,6 @@ export class SVGRenderer implements IRenderer {
         // console.log(`[SVGRenderer] Using cached node ${node.id} (not dirty)`);
         return cached;
       }
-    } else if (node.isDirty) {
-      console.log(`[SVGRenderer] Re-rendering node ${node.id} (dirty)`);
     }
 
     const diagram = this.engine.getDiagram()!;
@@ -703,7 +701,6 @@ export class SVGRenderer implements IRenderer {
     // Cache if enabled (use LOD-specific cache key)
     if (this.config.enableCaching) {
       this.vnodeCache.set(cacheKey, vnode);
-      console.log(`[SVGRenderer] Caching node ${node.id} and marking clean`);
       node.markClean();
     }
 
@@ -1038,16 +1035,6 @@ export class SVGRenderer implements IRenderer {
       ...(shapeConfig.opacity !== undefined ? { opacity: shapeConfig.opacity } : {}),
     };
 
-    console.log(`[SVGRenderer] renderNodeShape for ${node.id}:`, {
-      baseStroke: styles.stroke,
-      shapeConfigStroke: shapeConfig.stroke,
-      finalStroke: shapeStyles.stroke,
-      strokeWidth: shapeStyles.strokeWidth,
-      hasActiveBorderAnimation,
-      animatedBorder: node.style?.animatedBorder,
-      borderAnimationType: node.style?.borderAnimationType
-    });
-
     // Enhanced hover effect
     if (isHovered && !this.config.useCSSMode) {
       shapeStyles.strokeWidth = (shapeStyles.strokeWidth || 1) + 1;
@@ -1077,14 +1064,6 @@ export class SVGRenderer implements IRenderer {
    * Phase 3.1: Render rectangle shape
    */
   private renderRectShape(width: number, height: number, styles: any, cornerRadius?: number): VNode {
-    // DEBUG: Log what classes are being applied to rect
-    console.log(`[SVGRenderer] renderRectShape:`, {
-      className: styles.className,
-      stroke: styles.stroke,
-      strokeWidth: styles.strokeWidth,
-      fill: styles.fill
-    });
-
     // ✅ CRITICAL: When fill/stroke are set explicitly, use inline style to override CSS
     // In SVG, CSS rules have higher specificity than presentation attributes
     // But inline style attribute has highest specificity
@@ -2106,28 +2085,10 @@ export class SVGRenderer implements IRenderer {
 
     const finalClassName = classes.join(' ');
 
-    // DEBUG: Log animation classes
-    console.log(`[SVGRenderer] computeNodeStylesCSS for ${node.id}:`, {
-      useSVGVariant,
-      animationClasses,
-      animatedBorder: node.style?.animatedBorder,
-      borderAnimationType: node.style?.borderAnimationType,
-      animateStatus: node.state?.animateStatus,
-      status: node.state?.status,
-      finalClassName
-    });
-
     // CRITICAL: Don't apply strokeWidth as inline style if border animation is active
     // Inline styles override CSS animations, breaking animated stroke-width and stroke-dasharray
     const hasActiveBorderAnimation = node.style?.animatedBorder &&
                                      node.style?.borderAnimationType !== 'none';
-
-    console.log(`[SVGRenderer] CSS mode final check for ${node.id}:`, {
-      hasActiveBorderAnimation,
-      willApplyStroke: !!node.style.stroke,
-      willApplyStrokeWidth: node.style.strokeWidth !== undefined && !hasActiveBorderAnimation,
-      finalClassName
-    });
 
     return {
       className: finalClassName,

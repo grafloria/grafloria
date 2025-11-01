@@ -309,19 +309,6 @@ export class DiagramCanvasComponent implements OnInit, AfterViewInit, OnChanges,
     // but signal Angular that the array has changed
     this.htmlNodes = [...newHtmlNodes];
 
-    // Log only when node count changes to reduce console noise
-    const currentCount = this.htmlNodes.length;
-    if (!this._lastHtmlNodeCount || this._lastHtmlNodeCount !== currentCount) {
-      this._lastHtmlNodeCount = currentCount;
-      console.log(`🔄 [HTMLLayer DECLARATIVE] HTML nodes changed:`, {
-        totalNodes: nodes.length,
-        totalGroups: groups.length,
-        htmlNodeCount: this.htmlNodes.length,
-        htmlNodeIds: this.htmlNodes.map(n => n.id),
-        positions: this.htmlNodes.map(n => ({ id: n.id, x: n.position.x, y: n.position.y }))
-      });
-    }
-
     // No need for imperative component management - Angular template handles it with @for
   }
 
@@ -329,15 +316,7 @@ export class DiagramCanvasComponent implements OnInit, AfterViewInit, OnChanges,
    * Create a new HTML node component (Phase 2)
    */
   private createHTMLNode(node: any): void {
-    console.log(`🏗️  [HTMLLayer] createHTMLNode called for:`, {
-      nodeId: node.id,
-      nodeType: node.type,
-      hasHtmlLayerRef: !!this.htmlLayerRef,
-      hasComponent: this.componentRenderer.hasComponent(node.type)
-    });
-
     if (!this.htmlLayerRef || !this.componentRenderer.hasComponent(node.type)) {
-      console.log(`⏭️  [HTMLLayer] Skipping node "${node.id}" - no htmlLayerRef or component not registered`);
       // Component not registered for this node type - skip silently
       // (This is expected for nodes that haven't been migrated to HTML layer yet)
       return;
@@ -347,11 +326,8 @@ export class DiagramCanvasComponent implements OnInit, AfterViewInit, OnChanges,
       // Get component class
       const componentClass = this.componentRenderer.getRegisteredComponent(node.type);
       if (!componentClass) {
-        console.log(`❌ [HTMLLayer] No component class found for type "${node.type}"`);
         return;
       }
-
-      console.log(`🔧 [HTMLLayer] Creating component instance for node "${node.id}"`);
 
       // CRITICAL FIX: Create component WITHOUT specifying hostElement
       // Let Angular create its own host element, then we append it
@@ -367,12 +343,9 @@ export class DiagramCanvasComponent implements OnInit, AfterViewInit, OnChanges,
       hostElement.setAttribute('data-node-id', node.id);
       hostElement.style.position = 'absolute';
 
-      console.log(`📝 [HTMLLayer] Set data-node-id="${node.id}" on host element`);
-
       // Set initial inputs (if component has them)
       if ('node' in componentRef.instance) {
         componentRef.instance.node = node;
-        console.log(`📥 [HTMLLayer] Set node input on component instance`);
       }
 
       // Position the component
@@ -380,16 +353,12 @@ export class DiagramCanvasComponent implements OnInit, AfterViewInit, OnChanges,
 
       // Store component reference BEFORE appending
       this.htmlNodeComponents.set(node.id, componentRef);
-      console.log(`💾 [HTMLLayer] Stored component in Map, size=${this.htmlNodeComponents.size}`);
 
       // Append to HTML layer - this is where it actually gets added to the DOM
       this.htmlLayerRef.nativeElement.appendChild(hostElement);
-      console.log(`📌 [HTMLLayer] Appended component to HTML layer DOM`);
 
       // Trigger change detection
       componentRef.changeDetectorRef.detectChanges();
-
-      console.log(`✅ [HTMLLayer] Created component for node "${node.id}" of type "${node.type}"`);
     } catch (error) {
       console.error(`❌ [HTMLLayer] Failed to create component for node "${node.id}":`, error);
     }
@@ -407,21 +376,6 @@ export class DiagramCanvasComponent implements OnInit, AfterViewInit, OnChanges,
     // Position is already in world coordinates, HTML layer transform handles zoom/pan
     hostElement.style.left = `${position.x}px`;
     hostElement.style.top = `${position.y}px`;
-
-    console.log(`📍 [HTMLLayer] Updated position for node "${node.id}":`, {
-      nodeId: node.id,
-      nodeLabel: node.getMetadata?.('label') || node.type,
-      position: `(${position.x}, ${position.y})`,
-      appliedCSS: {
-        left: hostElement.style.left,
-        top: hostElement.style.top,
-        position: hostElement.style.position
-      },
-      computedPosition: {
-        left: hostElement.offsetLeft,
-        top: hostElement.offsetTop
-      }
-    });
   }
 
   /**
@@ -1489,7 +1443,6 @@ export class DiagramCanvasComponent implements OnInit, AfterViewInit, OnChanges,
   private cleanup(): void {
     // Destroy all HTML node components
     for (const [nodeId, componentRef] of this.htmlNodeComponents.entries()) {
-      console.log(`🗑️  [HTMLLayer] Destroying component for node "${nodeId}" (cleanup)`);
       componentRef.destroy();
     }
     this.htmlNodeComponents.clear();
