@@ -24,6 +24,10 @@ export class ElkComparisonComponent implements OnInit {
   zoom = 1.0;
   theme: Theme = LIGHT_THEME;
 
+  // Debounce timer for rerouting during drag to prevent visual lag
+  private rerouteTimers = new Map<string, any>();
+  private readonly REROUTE_DEBOUNCE_MS = 16; // ~60fps for smooth visual updates
+
   ngOnInit() {
     this.engine = new DiagramEngine({
       interaction: {
@@ -38,9 +42,10 @@ export class ElkComparisonComponent implements OnInit {
     if (diagram) {
       diagram.subscribe((event) => {
         // When a node position changes, reroute all links connected to it
+        // Uses debouncing to prevent excessive rerouting during rapid position changes (dragging)
         if (event.type === 'change' && event.property === 'position') {
-          console.log('🔄 Node position changed:', event.entity.id, 'Rerouting connected links...');
-          this.rerouteNodeLinks(event.entity.id);
+          console.log('🔄 Node position changed:', event.entity.id, 'Scheduling reroute...');
+          this.debouncedRerouteNodeLinks(event.entity.id);
         }
       });
     }
@@ -115,8 +120,27 @@ export class ElkComparisonComponent implements OnInit {
   }
 
   /**
+   * Debounced version of rerouteNodeLinks for smooth drag performance
+   * Batches reroute requests to prevent excessive recalculations during rapid position changes
+   */
+  private debouncedRerouteNodeLinks(nodeId: string) {
+    // Clear any existing timer for this node
+    if (this.rerouteTimers.has(nodeId)) {
+      clearTimeout(this.rerouteTimers.get(nodeId));
+    }
+
+    // Schedule a new reroute after debounce delay
+    const timer = setTimeout(() => {
+      this.rerouteNodeLinks(nodeId);
+      this.rerouteTimers.delete(nodeId);
+    }, this.REROUTE_DEBOUNCE_MS);
+
+    this.rerouteTimers.set(nodeId, timer);
+  }
+
+  /**
    * Reroute all links connected to a specific node
-   * Called when a node is moved/dragged
+   * Called when a node is moved/dragged (via debounced wrapper)
    */
   private rerouteNodeLinks(nodeId: string) {
     const diagram = this.engine.getDiagram();
