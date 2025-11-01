@@ -394,6 +394,11 @@ export class ElkComparisonComponent implements OnInit {
     // Note: ELK is designed for graph layout, not pure edge routing
     // Our OrthogonalRouter provides React Flow-style smoothstep routing with A* obstacle avoidance
     const link = new LinkModel(sourcePort.id, targetPort.id, 'orthogonal');
+
+    // CRITICAL FIX: Set node IDs so rerouteNodeLinks() can find links by node
+    link.setSourcePort(sourcePort.id, source.id);
+    link.setTargetPort(targetPort.id, target.id);
+
     link.setMetadata('routing', {
       algorithm: 'orthogonal',  // Use OrthogonalRouter (React Flow smoothstep equivalent)
     });
