@@ -1661,7 +1661,16 @@ export class SVGRenderer implements IRenderer {
     // Don't regenerate the route in this case - use the existing points
     const hasManualWaypoints = link.points && link.points.length > 2;
 
+    console.log('🔍 SVG-Renderer renderLink:', link.id, {
+      hasEndpoints: !!endpoints,
+      hasManualWaypoints,
+      existingPointsCount: link.points?.length || 0,
+      willAutoRoute: endpoints && !hasManualWaypoints
+    });
+
     if (endpoints && !hasManualWaypoints) {
+      console.log('🔍 SVG-Renderer: Auto-routing link', link.id, 'during render');
+
       // Use RoutingEngine to calculate path
       const routingEngine = this.engine.getRoutingEngine();
 
@@ -1700,9 +1709,12 @@ export class SVGRenderer implements IRenderer {
             width: node.size.width,
             height: node.size.height,
           }));
+
+        console.log('🔍 SVG-Renderer: Collected', obstacles.length, 'obstacles for link', link.id);
       }
 
       // Route with smart obstacle avoidance enabled
+      console.log('🔍 SVG-Renderer: Calling primary routing with avoidObstacles: true, obstacles:', obstacles.length);
       const routedPath = routingEngine.route({
         start: endpoints.start,
         end: endpoints.end,
@@ -1717,6 +1729,7 @@ export class SVGRenderer implements IRenderer {
       });
 
       if (routedPath) {
+        console.log('✅ SVG-Renderer: Primary routing succeeded for link', link.id, 'with', routedPath.points.length, 'points');
         points = routedPath.points;
         pathData = this.convertRoutedPathToSVG(
           routedPath,
@@ -1735,7 +1748,7 @@ export class SVGRenderer implements IRenderer {
         }
       } else {
         // Phase 0.1: Fallback strategy - simple orthogonal routing
-        console.warn(`Primary routing failed for link ${link.id}, trying simple fallback`);
+        console.warn(`❌ SVG-Renderer: Primary routing FAILED (returned null) for link ${link.id}, trying simple fallback`);
 
         // Fallback Strategy 1: Try simple orthogonal routing
         const fallbackPath = routingEngine.route({
@@ -1791,6 +1804,27 @@ export class SVGRenderer implements IRenderer {
         const sourceDirection = endpoints?.sourceDirection;
         const targetDirection = endpoints?.targetDirection;
 
+        // Collect obstacles for segment routing (same as primary routing)
+        const currentDiagram = this.engine.getDiagram();
+        let segmentObstacles: Array<{id: string; x: number; y: number; width: number; height: number}> = [];
+
+        if (currentDiagram) {
+          const sourceNodeId = (link as any).sourceNodeId || (link as any).source;
+          const targetNodeId = (link as any).targetNodeId || (link as any).target;
+
+          segmentObstacles = currentDiagram.getNodes()
+            .filter((node: NodeModel) =>
+              node.id !== sourceNodeId && node.id !== targetNodeId
+            )
+            .map((node: NodeModel) => ({
+              id: node.id,
+              x: node.position.x,
+              y: node.position.y,
+              width: node.size.width,
+              height: node.size.height,
+            }));
+        }
+
         for (let i = 0; i < points.length - 1; i++) {
           const start = points[i];
           const end = points[i + 1];
@@ -1799,7 +1833,7 @@ export class SVGRenderer implements IRenderer {
 
           if (isFirstSegment || isLastSegment) {
             // Use routing engine for port connections (perpendicular to ports)
-            // Simple geometric routing like React Flow (no obstacle avoidance)
+            // FIXED: Enable obstacle avoidance to prevent penetrating nodes during drag
             const segmentSourceDir = isFirstSegment ? sourceDirection : undefined;
             const segmentTargetDir = isLastSegment ? targetDirection : undefined;
 
@@ -1808,9 +1842,10 @@ export class SVGRenderer implements IRenderer {
               end,
               sourceDirection: segmentSourceDir,
               targetDirection: segmentTargetDir,
+              obstacles: segmentObstacles,  // FIXED: Pass obstacles
               options: {
                 algorithm: 'orthogonal',
-                avoidObstacles: false,  // Simple routing like React Flow
+                avoidObstacles: true,  // FIXED: Enable A* pathfinding
                 gridSize: 10
               }
             });
