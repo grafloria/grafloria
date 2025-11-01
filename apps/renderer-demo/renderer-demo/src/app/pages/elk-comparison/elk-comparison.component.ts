@@ -183,6 +183,12 @@ export class ElkComparisonComponent implements OnInit {
         const sourceDirection = sourcePort.alignment?.side;
         const targetDirection = targetPort.alignment?.side;
 
+        // DEBUG: Log which connection is being routed
+        console.log(`🔗 Routing: ${sourceNode.getMetadata('label')} → ${targetNode.getMetadata('label')}`);
+        console.log(`  Source port: ${sourcePort.id}, alignment:`, sourcePort.alignment);
+        console.log(`  Target port: ${targetPort.id}, alignment:`, targetPort.alignment);
+        console.log(`  Directions: source=${sourceDirection}, target=${targetDirection}`);
+
         // Get obstacles (all nodes except source and target)
         const obstacles = nodes
           .filter(n => n.id !== sourceNode.id && n.id !== targetNode.id)
