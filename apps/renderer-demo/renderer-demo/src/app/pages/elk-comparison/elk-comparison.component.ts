@@ -39,14 +39,11 @@ export class ElkComparisonComponent implements OnInit {
     const diagram = this.engine.createDiagram('ELK Comparison');
 
     // Subscribe to diagram events to reroute links when nodes move
+    // The diagram emits 'node:moved' events when any node's position changes
     if (diagram) {
-      diagram.subscribe((event) => {
-        // When a node position changes, reroute all links connected to it
-        // Uses debouncing to prevent excessive rerouting during rapid position changes (dragging)
-        if (event.type === 'change' && event.property === 'position') {
-          console.log('🔄 Node position changed:', event.entity.id, 'Scheduling reroute...');
-          this.debouncedRerouteNodeLinks(event.entity.id);
-        }
+      diagram.on('node:moved', (data: { nodeId: string; position: { x: number; y: number } }) => {
+        console.log('🔄 Node position changed:', data.nodeId, 'Scheduling reroute...');
+        this.debouncedRerouteNodeLinks(data.nodeId);
       });
     }
 
