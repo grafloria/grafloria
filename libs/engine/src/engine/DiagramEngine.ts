@@ -123,7 +123,7 @@ export class DiagramEngine {
     this.connectionStateManager = new ConnectionStateManager(this.eventBus);
 
     // CRITICAL FIX: Listen for connection complete events and create the actual link
-    this.eventBus.on('connection:complete', (event: any) => {
+    this.eventBus.on('connection:complete', async (event: any) => {
       if (this.diagram && event.sourcePort && event.targetPort) {
         const sourcePort = event.sourcePort;
         const targetPort = event.targetPort;
@@ -182,7 +182,7 @@ export class DiagramEngine {
           const targetDirection = targetPort.alignment?.side;
 
           // Use RoutingEngine to calculate path with obstacle avoidance
-          this.generateLinkPathWithRouting(link, sourcePos, targetPos, sourceDirection, targetDirection, sourceNode, targetNode);
+          await this.generateLinkPathWithRouting(link, sourcePos, targetPos, sourceDirection, targetDirection, sourceNode, targetNode);
 
           // Add link to diagram
           this.diagram.addLink(link);
@@ -1797,7 +1797,7 @@ export class DiagramEngine {
    * Generate link path using RoutingEngine with obstacle avoidance
    * This ensures the final link respects the routing algorithm setting (A*, none, etc.)
    */
-  private generateLinkPathWithRouting(
+  private async generateLinkPathWithRouting(
     link: LinkModel,
     sourcePos: Point,
     targetPos: Point,
@@ -1805,7 +1805,7 @@ export class DiagramEngine {
     targetDirection?: 'left' | 'right' | 'top' | 'bottom',
     sourceNode?: any,
     targetNode?: any
-  ): void {
+  ): Promise<void> {
     // Get obstacles from diagram (INCLUDE ALL nodes, even source and target)
     // The routing algorithm uses gap offset to ensure paths start/end outside node boundaries
     const obstacles: Array<{ id: string; x: number; y: number; width: number; height: number }> = [];
@@ -1833,7 +1833,7 @@ export class DiagramEngine {
     // - 'straight' never avoids obstacles (direct line)
     const shouldAvoidObstacles = obstacles.length > 0 && algorithm !== 'straight';
 
-    const routedPath = this.routingEngine.route({
+    const routedPath = await this.routingEngine.routeAsync({
       start: sourcePos,
       end: targetPos,
       sourceDirection,

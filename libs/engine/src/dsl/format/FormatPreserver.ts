@@ -219,7 +219,7 @@ export class FormatPreserver {
   /**
    * Restore comments to generated text
    */
-  private restoreComments(text: string, comments: CommentInfo[]): string {
+  restoreComments(text: string, comments: CommentInfo[]): string {
     if (comments.length === 0) return text;
 
     const lines = text.split('\n');

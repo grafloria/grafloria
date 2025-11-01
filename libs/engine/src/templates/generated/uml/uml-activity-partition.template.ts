@@ -79,22 +79,22 @@ export const umlActivityPartitionTemplate: NodeTemplate = {
       "left": {
         "enabled": true,
         "type": "input",
-        "maxConnections": null
+        "maxConnections": undefined
       },
       "right": {
         "enabled": true,
         "type": "output",
-        "maxConnections": null
+        "maxConnections": undefined
       },
       "top": {
         "enabled": true,
         "type": "bi",
-        "maxConnections": null
+        "maxConnections": undefined
       },
       "bottom": {
         "enabled": true,
         "type": "bi",
-        "maxConnections": null
+        "maxConnections": undefined
       }
     },
     "behavior": {

@@ -72,12 +72,12 @@ export const erdEntityTemplate: NodeTemplate = {
       "left": {
         "enabled": true,
         "type": "bi",
-        "maxConnections": null
+        "maxConnections": undefined
       },
       "right": {
         "enabled": true,
         "type": "bi",
-        "maxConnections": null
+        "maxConnections": undefined
       }
     },
     "behavior": {

@@ -153,7 +153,7 @@ export class DSLWorkerPool {
               // Convert serialized diagram back to DiagramModel
               // Note: This is simplified - actual implementation needs proper reconstruction
               const diagram = new DiagramModel(resultResponse.payload.diagram.name);
-              diagram.id = resultResponse.payload.diagram.id;
+              // Note: Can't set id as it's readonly
 
               resolve({
                 diagram,

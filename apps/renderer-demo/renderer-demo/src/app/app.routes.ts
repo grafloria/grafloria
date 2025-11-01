@@ -72,6 +72,10 @@ export const appRoutes: Route[] = [
     loadComponent: () => import('./pages/dsl-performance-demo/dsl-performance-demo.component').then(m => m.DslPerformanceDemoComponent)
   },
   {
+    path: 'elk-comparison',
+    loadComponent: () => import('./pages/elk-comparison/elk-comparison.component').then(m => m.ElkComparisonComponent)
+  },
+  {
     path: '**',
     redirectTo: ''
   }

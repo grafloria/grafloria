@@ -77,22 +77,22 @@ export const umlInitialNodeTemplate: NodeTemplate = {
       "top": {
         "enabled": true,
         "type": "bi",
-        "maxConnections": null
+        "maxConnections": undefined
       },
       "right": {
         "enabled": true,
         "type": "bi",
-        "maxConnections": null
+        "maxConnections": undefined
       },
       "bottom": {
         "enabled": true,
         "type": "bi",
-        "maxConnections": null
+        "maxConnections": undefined
       },
       "left": {
         "enabled": true,
         "type": "bi",
-        "maxConnections": null
+        "maxConnections": undefined
       }
     },
     "behavior": {

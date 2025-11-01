@@ -11,6 +11,7 @@ import { ObstacleMap } from './ObstacleMap';
 import { PathSimplifier } from './PathSimplifier'; // Phase 2.2
 import { StraightRouter } from './algorithms/StraightRouter';
 import { OrthogonalRouter } from './algorithms/OrthogonalRouter';
+import { ElkRouter } from './algorithms/ElkRouter';
 import { AStarRouter } from './algorithms/AStarRouter';
 import { DijkstraRouter } from './algorithms/DijkstraRouter';
 import { VisibilityGraphRouter } from './algorithms/VisibilityGraphRouter';
@@ -169,6 +170,7 @@ export class RoutingEngine {
     // Register built-in routers
     this.registerRouter('straight', new StraightRouter());
     this.registerRouter('orthogonal', new OrthogonalRouter());
+    this.registerRouter('elk', new ElkRouter());
 
     // Register advanced routers with obstacle avoidance (using adapters)
     this.registerRouter('a-star', new AStarRouterAdapter(this.obstacleMap));
@@ -283,9 +285,118 @@ export class RoutingEngine {
   }
 
   /**
-   * Route from start to end
+   * Route from start to end (synchronous version)
+   * Throws error if algorithm is async (like ELK)
+   * Use routeAsync() for async routers
    */
   route(request: RouteRequest): RoutedPath | null {
+    // Validate coordinates
+    if (
+      !isFinite(request.start.x) ||
+      !isFinite(request.start.y) ||
+      !isFinite(request.end.x) ||
+      !isFinite(request.end.y)
+    ) {
+      throw new Error('Invalid coordinates');
+    }
+
+    // Handle same start and end point
+    if (
+      request.start.x === request.end.x &&
+      request.start.y === request.end.y
+    ) {
+      return {
+        points: [{ x: request.start.x, y: request.start.y }],
+        totalLength: 0,
+        bendCount: 0,
+        cost: 0,
+        segments: [],
+      };
+    }
+
+    // Check cache
+    const cacheKey = this.getCacheKey(request);
+    if (this.routeCache.has(cacheKey)) {
+      return this.routeCache.get(cacheKey)!;
+    }
+
+    // Get algorithm
+    const algorithm = request.options?.algorithm ?? this.defaultAlgorithm;
+
+    // ELK is async-only
+    if (algorithm === 'elk') {
+      throw new Error('ELK router is async. Use routeAsync() instead or pre-calculate paths.');
+    }
+
+    const router = this.routers.get(algorithm);
+
+    if (!router) {
+      throw new Error(`Router '${algorithm}' not found`);
+    }
+
+    // Merge global and request obstacles
+    const allObstacles = [
+      ...this.getAllGlobalObstacles(),
+      ...(request.obstacles ?? []),
+    ];
+
+    // Create enhanced request with all obstacles
+    const enhancedRequest: RouteRequest = {
+      ...request,
+      obstacles: allObstacles,
+    };
+
+    // Perform routing (must be sync)
+    const result = router.route(enhancedRequest);
+    if (result instanceof Promise) {
+      throw new Error(`Router '${algorithm}' is async. Use routeAsync() instead.`);
+    }
+
+    let path = result;
+
+    // Apply path simplification if enabled
+    if (path && request.options?.simplifyPath && path.points.length > 2) {
+      const epsilon = request.options.simplificationEpsilon ?? 1.0;
+      const simplifiedPoints = this.pathSimplifier.simplify(path.points, epsilon);
+
+      // Recalculate path metrics after simplification
+      let totalLength = 0;
+      let bendCount = 0;
+      for (let i = 0; i < simplifiedPoints.length - 1; i++) {
+        const dx = simplifiedPoints[i + 1].x - simplifiedPoints[i].x;
+        const dy = simplifiedPoints[i + 1].y - simplifiedPoints[i].y;
+        totalLength += Math.sqrt(dx * dx + dy * dy);
+
+        // Count bends (direction changes)
+        if (i > 0) {
+          const prevDx = simplifiedPoints[i].x - simplifiedPoints[i - 1].x;
+          const prevDy = simplifiedPoints[i].y - simplifiedPoints[i - 1].y;
+          if (Math.abs(dx - prevDx) > 0.01 || Math.abs(dy - prevDy) > 0.01) {
+            bendCount++;
+          }
+        }
+      }
+
+      // Create new path with simplified points
+      path = {
+        ...path,
+        points: simplifiedPoints,
+        totalLength,
+        bendCount,
+      };
+    }
+
+    // Cache result
+    this.routeCache.set(cacheKey, path);
+
+    return path;
+  }
+
+  /**
+   * Route from start to end (async version)
+   * Supports both sync and async routers like ELK.js
+   */
+  async routeAsync(request: RouteRequest): Promise<RoutedPath | null> {
     // Validate coordinates
     if (
       !isFinite(request.start.x) ||
@@ -336,8 +447,8 @@ export class RoutingEngine {
       obstacles: allObstacles,
     };
 
-    // Perform routing
-    let path = router.route(enhancedRequest);
+    // Perform routing (await in case router is async like ELK)
+    let path = await router.route(enhancedRequest);
 
     // Phase 2.2: Apply path simplification if enabled
     if (path && request.options?.simplifyPath && path.points.length > 2) {

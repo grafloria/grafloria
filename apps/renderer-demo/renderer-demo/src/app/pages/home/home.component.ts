@@ -73,6 +73,16 @@ export class HomeComponent {
       tags: ['routing', 'links', 'performance', 'waypoints']
     },
     {
+      title: 'ELK.js Comparison',
+      description: 'Side-by-side comparison with React Flow ELK.js implementation',
+      icon: '🔗',
+      route: '/elk-comparison',
+      features: ['Hierarchical layout', 'Orthogonal routing', 'Obstacle avoidance', 'React Flow parity'],
+      difficulty: 'Intermediate',
+      category: 'Advanced Features',
+      tags: ['elk', 'routing', 'comparison', 'orthogonal', 'reactflow']
+    },
+    {
       title: 'Template Builder',
       description: 'Advanced node template editor with live preview and validation',
       icon: '🛠️',

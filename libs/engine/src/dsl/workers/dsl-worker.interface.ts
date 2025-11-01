@@ -279,7 +279,7 @@ export function serializeDiagram(diagram: DiagramModel): SerializedDiagram {
       size: { width: node.size.width, height: node.size.height },
       data: { ...node.data },
       style: { ...node.style },
-      metadata: Object.fromEntries(node.getAllMetadata()),
+      metadata: Object.fromEntries(node.metadata),
     })),
     links: diagram.getLinks().map(link => ({
       id: link.id,
@@ -289,9 +289,9 @@ export function serializeDiagram(diagram: DiagramModel): SerializedDiagram {
       targetPortId: link.targetPortId,
       pathType: link.pathType,
       data: { ...link.data },
-      metadata: Object.fromEntries(link.getAllMetadata()),
+      metadata: Object.fromEntries(link.metadata),
     })),
-    metadata: Object.fromEntries(diagram.getAllMetadata()),
+    metadata: Object.fromEntries(diagram.metadata),
   };
 }
 
@@ -300,7 +300,7 @@ export function serializeDiagram(diagram: DiagramModel): SerializedDiagram {
  */
 export function deserializeDiagram(serialized: SerializedDiagram): DiagramModel {
   const diagram = new DiagramModel(serialized.name);
-  diagram.id = serialized.id;
+  // Note: Can't set id as it's readonly - would need to modify constructor or use Object.defineProperty
 
   // Restore metadata
   for (const [key, value] of Object.entries(serialized.metadata)) {

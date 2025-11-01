@@ -26,20 +26,52 @@ export class OrthogonalRouter implements IRouter {
       };
     }
 
-    // Simple orthogonal routing without obstacles
-    if (!options.avoidObstacles || obstacles.length === 0) {
-      const bendCost = options.costs?.bends ?? 10;
-      return this.simpleOrthogonalRoute(start, end, options.gridSize, bendCost, sourceDirection, targetDirection);
+    const bendCost = options.costs?.bends ?? 10;
+
+    // SMART ROUTING: Always calculate a simple orthogonal path first
+    const simplePath = this.simpleOrthogonalRoute(start, end, options.gridSize, bendCost, sourceDirection, targetDirection);
+
+    // If no obstacles provided, return the simple path
+    if (obstacles.length === 0) {
+      return simplePath;
     }
 
-    // Complex routing with obstacle avoidance
-    return this.avoidObstaclesRoute(start, end, obstacles, options, sourceDirection, targetDirection);
+    // Check if the simple path intersects any obstacles
+    const hasCollision = this.pathIntersectsObstacles(simplePath.points, obstacles);
+
+    if (!hasCollision) {
+      // Path is clear, use the simple routing
+      console.log('✅ OrthogonalRouter: Simple path is clear (no collisions)');
+      return simplePath;
+    }
+
+    // Path has collisions - use A* pathfinding for obstacle avoidance
+    console.log('⚠️  OrthogonalRouter: Collision detected! Obstacles:', obstacles.length, 'Switching to A* pathfinding');
+
+    if (options.avoidObstacles) {
+      const avoidancePath = this.avoidObstaclesRoute(start, end, obstacles, options, sourceDirection, targetDirection);
+      if (avoidancePath) {
+        console.log('✅ OrthogonalRouter: A* pathfinding succeeded with', avoidancePath.points.length, 'points');
+        return avoidancePath;
+      } else {
+        console.warn('❌ OrthogonalRouter: A* pathfinding failed, using simple path');
+      }
+    } else {
+      console.log('⚠️  OrthogonalRouter: avoidObstacles disabled, using simple path despite collision');
+    }
+
+    // Fallback: return simple path even with collisions
+    // (visual indicator that routing needs manual waypoints)
+    return simplePath;
   }
 
   /**
-   * Simple orthogonal route respecting port directions
-   * Based on React Flow's getSmoothStepPath approach (without the curve rendering)
-   * Ensures first and last segments are perpendicular to ports
+   * Simple orthogonal route - exact implementation of React Flow's getSmoothStepPath
+   * Based on React Flow's smoothstep-edge.ts getPoints() function
+   * Handles all edge cases: opposite ports, same ports, mixed ports
+   *
+   * CRITICAL: The offset determines how far the line moves away from the port
+   * before making turns. A larger offset creates more spacing from nodes.
    */
   private simpleOrthogonalRoute(
     start: Point,
@@ -49,114 +81,140 @@ export class OrthogonalRouter implements IRouter {
     sourceDirection?: 'left' | 'right' | 'top' | 'bottom',
     targetDirection?: 'left' | 'right' | 'top' | 'bottom'
   ): RoutedPath {
-    // Gap offset - distance to move away from port in its direction
-    const gapOffset = 30;
+    // CRITICAL OFFSET: This determines the "breathing room" around nodes
+    // Match React Flow's exact offset value for visual consistency
+    const offset = 20;
 
-    // Calculate offset points (move away from port in the direction it points)
-    let sourceOffset = this.applyGapOffset(start, sourceDirection, gapOffset);
-    let targetOffset = this.applyGapOffset(end, targetDirection, gapOffset);
-
-    // React Flow algorithm: determine primary direction and routing strategy
-    const dir = this.getRoutingDirection(sourceOffset, sourceDirection, targetOffset);
-    const dirAccessor = dir.x !== 0 ? 'x' : 'y';
-
-    // Get handle direction vectors
+    // Get direction vectors for source and target
     const sourceDir = this.getDirectionVector(sourceDirection);
     const targetDir = this.getDirectionVector(targetDirection);
 
-    let intermediatePoints: Point[] = [];
+    // Calculate gapped points (moved away from port in port direction)
+    const sourceGapped: Point = {
+      x: start.x + sourceDir.x * offset,
+      y: start.y + sourceDir.y * offset
+    };
+    const targetGapped: Point = {
+      x: end.x + targetDir.x * offset,
+      y: end.y + targetDir.y * offset
+    };
+
+    // Determine primary routing direction (React Flow line 86-92)
+    const dir = this.getRoutingDirection(sourceGapped, sourceDirection, targetGapped);
+    const dirAccessor: 'x' | 'y' = dir.x !== 0 ? 'x' : 'y';
+    const currDir = dir[dirAccessor];
+
+    let points: Point[] = [];
     const sourceGapOffset = { x: 0, y: 0 };
     const targetGapOffset = { x: 0, y: 0 };
 
-    // Check if ports are opposite (React Flow logic line 107)
-    const areOpposite = sourceDir[dirAccessor] * targetDir[dirAccessor] === -1;
+    // React Flow line 107: Check if handles are opposite
+    if (sourceDir[dirAccessor] * targetDir[dirAccessor] === -1) {
+      // CASE 1: Opposite handle positions (e.g., Left -> Right, Top -> Bottom)
+      // Use Z-shape routing with center point
+      //
+      // SMART ROUTING: When ports are opposite, we create a "bent" path that routes
+      // around potential node collisions. The bend happens at the midpoint, creating
+      // a visual "elbow" that clearly shows the connection path.
 
-    if (areOpposite) {
-      // Opposite handle positions - use Z-shape routing
+      let centerX: number, centerY: number;
 
       if (dirAccessor === 'x') {
-        // Horizontal routing (left/right ports)
-        const centerX = (sourceOffset.x + targetOffset.x) / 2;
-        intermediatePoints = [
-          { x: centerX, y: sourceOffset.y },
-          { x: centerX, y: targetOffset.y }
-        ];
+        // Horizontal routing (e.g., Left -> Right)
+        // The vertical center line is placed at the midpoint
+        centerX = (sourceGapped.x + targetGapped.x) / 2;
+
+        // For horizontal routing, we keep Y at source/target levels to create clear steps
+        centerY = (sourceGapped.y + targetGapped.y) / 2;
       } else {
-        // Vertical routing (top/bottom ports)
-        const centerY = (sourceOffset.y + targetOffset.y) / 2;
-        intermediatePoints = [
-          { x: sourceOffset.x, y: centerY },
-          { x: targetOffset.x, y: centerY }
-        ];
+        // Vertical routing (e.g., Top -> Bottom)
+        // The horizontal center line is placed at the midpoint
+        centerY = (sourceGapped.y + targetGapped.y) / 2;
+
+        // For vertical routing, we keep X at source/target levels to create clear steps
+        centerX = (sourceGapped.x + targetGapped.x) / 2;
+      }
+
+      // React Flow lines 123-140: Choose between vertical and horizontal split
+      // This creates the characteristic "step" pattern
+      const verticalSplit: Point[] = [
+        { x: centerX, y: sourceGapped.y },
+        { x: centerX, y: targetGapped.y },
+      ];
+      const horizontalSplit: Point[] = [
+        { x: sourceGapped.x, y: centerY },
+        { x: targetGapped.x, y: centerY },
+      ];
+
+      if (sourceDir[dirAccessor] === currDir) {
+        points = dirAccessor === 'x' ? verticalSplit : horizontalSplit;
+      } else {
+        points = dirAccessor === 'x' ? horizontalSplit : verticalSplit;
       }
     } else {
-      // Same or perpendicular handle positions - use L-shape routing
+      // CASE 2: Same or perpendicular handle positions
+      // Use L-shape routing
 
-      // CRITICAL: Ensure intermediate point aligns with BOTH gap points to prevent diagonal segments
-      // The intermediate point must be perpendicular to both source and target
-      const isSourceHorizontal = sourceDirection === 'left' || sourceDirection === 'right';
-      const isTargetHorizontal = targetDirection === 'left' || targetDirection === 'right';
+      // React Flow lines 144-145: Define the two L-shape options
+      const sourceTarget: Point[] = [{ x: sourceGapped.x, y: targetGapped.y }];
+      const targetSource: Point[] = [{ x: targetGapped.x, y: sourceGapped.y }];
 
-      if (isSourceHorizontal && !isTargetHorizontal) {
-        // Source horizontal, target vertical: go horizontal first, then vertical
-        intermediatePoints = [{ x: targetOffset.x, y: sourceOffset.y }];
-      } else if (!isSourceHorizontal && isTargetHorizontal) {
-        // Source vertical, target horizontal: go vertical first, then horizontal
-        intermediatePoints = [{ x: sourceOffset.x, y: targetOffset.y }];
+      // React Flow lines 147-151: Choose L-shape direction
+      if (dirAccessor === 'x') {
+        points = sourceDir.x === currDir ? targetSource : sourceTarget;
       } else {
-        // Both same orientation - use direction accessor
-        if (dirAccessor === 'x') {
-          intermediatePoints = [{ x: targetOffset.x, y: sourceOffset.y }];
-        } else {
-          intermediatePoints = [{ x: sourceOffset.x, y: targetOffset.y }];
-        }
+        points = sourceDir.y === currDir ? sourceTarget : targetSource;
       }
 
-      // React Flow: Handle same position ports that are too close (lines 153-165)
+      // React Flow lines 153-165: Handle same position ports that are too close
       if (sourceDirection === targetDirection) {
         const diff = Math.abs(start[dirAccessor] - end[dirAccessor]);
 
-        if (diff <= gapOffset) {
-          const additionalGap = Math.min(gapOffset - 1, gapOffset - diff);
-          const currDir = dir[dirAccessor];
-
+        if (diff <= offset) {
+          const gapOffset = Math.min(offset - 1, offset - diff);
           if (sourceDir[dirAccessor] === currDir) {
-            const sign = sourceOffset[dirAccessor] > start[dirAccessor] ? -1 : 1;
-            sourceGapOffset[dirAccessor] = sign * additionalGap;
+            sourceGapOffset[dirAccessor] = (sourceGapped[dirAccessor] > start[dirAccessor] ? -1 : 1) * gapOffset;
           } else {
-            const sign = targetOffset[dirAccessor] > end[dirAccessor] ? -1 : 1;
-            targetGapOffset[dirAccessor] = sign * additionalGap;
+            targetGapOffset[dirAccessor] = (targetGapped[dirAccessor] > end[dirAccessor] ? -1 : 1) * gapOffset;
           }
+        }
+      }
 
+      // React Flow lines 168-180: Handle mixed handle positions (e.g., Right -> Bottom)
+      if (sourceDirection !== targetDirection) {
+        const dirAccessorOpposite: 'x' | 'y' = dirAccessor === 'x' ? 'y' : 'x';
+        const isSameDir = sourceDir[dirAccessor] === targetDir[dirAccessorOpposite];
+        const sourceGtTargetOppo = sourceGapped[dirAccessorOpposite] > targetGapped[dirAccessorOpposite];
+        const sourceLtTargetOppo = sourceGapped[dirAccessorOpposite] < targetGapped[dirAccessorOpposite];
+        const flipSourceTarget =
+          (sourceDir[dirAccessor] === 1 && ((!isSameDir && sourceGtTargetOppo) || (isSameDir && sourceLtTargetOppo))) ||
+          (sourceDir[dirAccessor] !== 1 && ((!isSameDir && sourceLtTargetOppo) || (isSameDir && sourceGtTargetOppo)));
+
+        if (flipSourceTarget) {
+          points = dirAccessor === 'x' ? sourceTarget : targetSource;
         }
       }
     }
 
-    // Apply gap offsets to source/target offset points
-    sourceOffset.x += sourceGapOffset.x;
-    sourceOffset.y += sourceGapOffset.y;
-    targetOffset.x += targetGapOffset.x;
-    targetOffset.y += targetGapOffset.y;
-
-    // Build final path ensuring perpendicular segments
-    const points: RoutePoint[] = [
-      { x: start.x, y: start.y },
-      sourceOffset,
-      ...intermediatePoints,
-      targetOffset,
-      { x: end.x, y: end.y }
+    // React Flow lines 197-203: Build final path with all points
+    const pathPoints: RoutePoint[] = [
+      start,
+      { x: sourceGapped.x + sourceGapOffset.x, y: sourceGapped.y + sourceGapOffset.y },
+      ...points,
+      { x: targetGapped.x + targetGapOffset.x, y: targetGapped.y + targetGapOffset.y },
+      end,
     ];
 
     // Snap to grid if specified
     if (gridSize && gridSize > 1) {
-      points.forEach((p) => {
+      pathPoints.forEach((p) => {
         p.x = Math.round(p.x / gridSize) * gridSize;
         p.y = Math.round(p.y / gridSize) * gridSize;
       });
     }
 
     // Remove duplicate consecutive points
-    const uniquePoints = this.removeDuplicatePoints(points);
+    const uniquePoints = this.removeDuplicatePoints(pathPoints);
 
     const totalLength = this.calculatePathLength(uniquePoints);
     const bendCount = uniquePoints.length - 2;
@@ -657,6 +715,94 @@ export class OrthogonalRouter implements IRouter {
       }
     }
     return false;
+  }
+
+  /**
+   * Check if any segment of the path intersects with obstacles
+   * This determines if we need to use A* pathfinding
+   */
+  private pathIntersectsObstacles(points: Point[], obstacles: Obstacle[]): boolean {
+    if (obstacles.length === 0) return false;
+
+    // Check each line segment of the path
+    for (let i = 1; i < points.length; i++) {
+      const p1 = points[i - 1];
+      const p2 = points[i];
+
+      // Check if this segment intersects any obstacle
+      for (const obstacle of obstacles) {
+        const rect = {
+          x: obstacle.x,
+          y: obstacle.y,
+          width: obstacle.width,
+          height: obstacle.height
+        };
+        if (this.lineIntersectsRectangle(p1, p2, rect)) {
+          return true;
+        }
+      }
+    }
+
+    return false;
+  }
+
+  /**
+   * Check if a line segment intersects with a rectangle
+   */
+  private lineIntersectsRectangle(
+    p1: Point,
+    p2: Point,
+    rect: { x: number; y: number; width: number; height: number }
+  ): boolean {
+    const left = rect.x;
+    const right = rect.x + rect.width;
+    const top = rect.y;
+    const bottom = rect.y + rect.height;
+
+    // Check if either endpoint is inside the rectangle
+    if (this.pointInRectangle(p1, rect) || this.pointInRectangle(p2, rect)) {
+      return true;
+    }
+
+    // Check intersection with each edge of the rectangle
+    const edges = [
+      { x1: left, y1: top, x2: right, y2: top },     // top edge
+      { x1: right, y1: top, x2: right, y2: bottom }, // right edge
+      { x1: left, y1: bottom, x2: right, y2: bottom }, // bottom edge
+      { x1: left, y1: top, x2: left, y2: bottom },   // left edge
+    ];
+
+    for (const edge of edges) {
+      if (this.lineSegmentsIntersect(p1, p2, { x: edge.x1, y: edge.y1 }, { x: edge.x2, y: edge.y2 })) {
+        return true;
+      }
+    }
+
+    return false;
+  }
+
+  /**
+   * Check if a point is inside a rectangle
+   */
+  private pointInRectangle(p: Point, rect: { x: number; y: number; width: number; height: number }): boolean {
+    return (
+      p.x >= rect.x &&
+      p.x <= rect.x + rect.width &&
+      p.y >= rect.y &&
+      p.y <= rect.y + rect.height
+    );
+  }
+
+  /**
+   * Check if two line segments intersect
+   * Using the cross product method
+   */
+  private lineSegmentsIntersect(p1: Point, p2: Point, p3: Point, p4: Point): boolean {
+    const ccw = (a: Point, b: Point, c: Point) => {
+      return (c.y - a.y) * (b.x - a.x) > (b.y - a.y) * (c.x - a.x);
+    };
+
+    return ccw(p1, p3, p4) !== ccw(p2, p3, p4) && ccw(p1, p2, p3) !== ccw(p1, p2, p4);
   }
 
   /**

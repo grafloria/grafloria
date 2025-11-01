@@ -46,7 +46,7 @@ flowchart TD
   console.log(dslText);
   console.log();
 
-  const formatInfo = preserver.extractFormatInfo(dslText);
+  const formatInfo = preserv.extractFormatInfo(dslText);
 
   console.log(`✅ Extracted Format Info:`);
   console.log(`   Comments: ${formatInfo.comments.length}`);
@@ -62,13 +62,13 @@ flowchart TD
   console.log();
 
   // Strip comments for parsing
-  const stripped = preserver.stripComments(dslText);
+  const stripped = preserv.stripComments(dslText);
   console.log('🔧 Stripped Text (for parsing):');
   console.log(stripped);
   console.log();
 
   // Restore comments
-  const restored = preserver.restoreComments(stripped, formatInfo.comments);
+  const restored = preserv.restoreComments(stripped, formatInfo.comments);
   console.log('♻️  Restored Text:');
   console.log(restored);
 }

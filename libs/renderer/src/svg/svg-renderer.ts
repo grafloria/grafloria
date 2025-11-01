@@ -1468,6 +1468,78 @@ export class SVGRenderer implements IRenderer {
   }
 
   /**
+   * Calculate distance between two points
+   */
+  private distance(a: { x: number; y: number }, b: { x: number; y: number }): number {
+    const dx = b.x - a.x;
+    const dy = b.y - a.y;
+    return Math.sqrt(dx * dx + dy * dy);
+  }
+
+  /**
+   * Generate SVG path segment with rounded bend
+   * Based on React Flow's getBend function from smoothstep-edge.ts
+   */
+  private getBend(
+    a: { x: number; y: number },
+    b: { x: number; y: number },
+    c: { x: number; y: number },
+    size: number
+  ): string {
+    const bendSize = Math.min(
+      this.distance(a, b) / 2,
+      this.distance(b, c) / 2,
+      size
+    );
+    const { x, y } = b;
+
+    // No bend needed if points are collinear (straight line)
+    if ((a.x === x && x === c.x) || (a.y === y && y === c.y)) {
+      return `L${x} ${y}`;
+    }
+
+    // First segment is horizontal
+    if (a.y === y) {
+      const xDir = a.x < c.x ? -1 : 1;
+      const yDir = a.y < c.y ? 1 : -1;
+      return `L ${x + bendSize * xDir},${y}Q ${x},${y} ${x},${y + bendSize * yDir}`;
+    }
+
+    // First segment is vertical
+    const xDir = a.x < c.x ? 1 : -1;
+    const yDir = a.y < c.y ? -1 : 1;
+    return `L ${x},${y + bendSize * yDir}Q ${x},${y} ${x + bendSize * xDir},${y}`;
+  }
+
+  /**
+   * Convert orthogonal path to SVG with rounded corners
+   * Implements React Flow's smoothstep edge rendering
+   */
+  private convertOrthogonalPathWithBends(
+    points: Array<{ x: number; y: number }>,
+    borderRadius: number = 5
+  ): string {
+    if (points.length === 0) return '';
+    if (points.length === 1) return `M ${points[0].x} ${points[0].y}`;
+    if (points.length === 2) {
+      return `M ${points[0].x} ${points[0].y} L ${points[1].x} ${points[1].y}`;
+    }
+
+    // Start path at first point
+    let path = `M ${points[0].x} ${points[0].y}`;
+
+    // For each intermediate point, add a bend
+    for (let i = 1; i < points.length - 1; i++) {
+      path += this.getBend(points[i - 1], points[i], points[i + 1], borderRadius);
+    }
+
+    // Add final point
+    path += ` L ${points[points.length - 1].x} ${points[points.length - 1].y}`;
+
+    return path;
+  }
+
+  /**
    * Convert RoutedPath to SVG path string
    */
   private convertRoutedPathToSVG(
@@ -1559,7 +1631,21 @@ export class SVGRenderer implements IRenderer {
       return path;
     }
 
-    // For straight/orthogonal, just connect the points
+    // For straight, just connect the points
+    if (pathType === 'straight') {
+      let path = `M ${points[0].x} ${points[0].y}`;
+      for (let i = 1; i < points.length; i++) {
+        path += ` L ${points[i].x} ${points[i].y}`;
+      }
+      return path;
+    }
+
+    // For orthogonal with rounded corners (React Flow smoothstep style)
+    if (pathType === 'orthogonal') {
+      return this.convertOrthogonalPathWithBends(points, 5); // Default borderRadius = 5 (React Flow default)
+    }
+
+    // Fallback
     let path = `M ${points[0].x} ${points[0].y}`;
     for (let i = 1; i < points.length; i++) {
       path += ` L ${points[i].x} ${points[i].y}`;
@@ -1607,41 +1693,47 @@ export class SVGRenderer implements IRenderer {
       // but they don't produce orthogonal paths, so we use pathType as the primary determinant
       const algorithm = this.mapPathTypeToAlgorithm(link.pathType);
 
-      // OBSTACLE AVOIDANCE: Get obstacles from the diagram for routing
-      // FIXED: Exclude source and target nodes so paths can start/end at their ports
-      const diagram = this.engine.getDiagram();
-      const obstacles: Array<{ id: string; x: number; y: number; width: number; height: number }> = [];
+      // SMART ORTHOGONAL ROUTING with automatic obstacle avoidance
+      // 1. First tries simple geometric routing (React Flow style)
+      // 2. If path intersects nodes, automatically uses A* pathfinding to route around them
+      // This gives clean paths that intelligently avoid obstacles
 
-      if (diagram) {
-        // Include ALL nodes as obstacles - the gap offset will handle port connections
-        diagram.getNodes().forEach(node => {
-          const worldPos = node.getWorldPosition();
-          obstacles.push({
-            id: node.id,
-            x: worldPos.x,
-            y: worldPos.y,
-            width: node.size.width,
-            height: node.size.height,
-          });
-        });
-      }
-
-      // Use link's pathType-derived algorithm, fallback to routing engine's default
       const defaultAlgorithm = routingEngine.getDefaultAlgorithm();
       const finalAlgorithm = algorithm || defaultAlgorithm;
-      const shouldAvoidObstacles = obstacles.length > 0 && finalAlgorithm !== 'straight';
 
+      // Collect all nodes as obstacles (except source and target)
+      const currentDiagram = this.engine.getDiagram();
+      let obstacles: Array<{id: string; x: number; y: number; width: number; height: number}> = [];
+
+      if (currentDiagram) {
+        // Get source and target node IDs from link's sourceNodeId and targetNodeId
+        const sourceNodeId = (link as any).sourceNodeId || (link as any).source;
+        const targetNodeId = (link as any).targetNodeId || (link as any).target;
+
+        obstacles = currentDiagram.getNodes()
+          .filter((node: NodeModel) =>
+            node.id !== sourceNodeId && node.id !== targetNodeId
+          )
+          .map((node: NodeModel) => ({
+            id: node.id,
+            x: node.position.x,
+            y: node.position.y,
+            width: node.size.width,
+            height: node.size.height,
+          }));
+      }
+
+      // Route with smart obstacle avoidance enabled
       const routedPath = routingEngine.route({
         start: endpoints.start,
         end: endpoints.end,
         sourceDirection: endpoints.sourceDirection,
         targetDirection: endpoints.targetDirection,
-        obstacles, // Pass obstacles for avoidance
+        obstacles,  // Pass obstacles for collision detection
         options: {
           algorithm: finalAlgorithm,
-          avoidObstacles: shouldAvoidObstacles,
-          obstacleMargin: 20,   // Add 20px margin around obstacles (consistent with link creation)
-          gridSize: 10,         // Grid size for A* pathfinding
+          avoidObstacles: true,  // Enable A* pathfinding when collisions detected
+          gridSize: 10,
         }
       });
 
@@ -1663,22 +1755,19 @@ export class SVGRenderer implements IRenderer {
           link.points = points.map(p => ({ ...p }));
         }
       } else {
-        // Phase 0.1: Fallback strategy to avoid crossing obstacles
-        console.warn(`Primary routing failed for link ${link.id}, trying fallback with reduced constraints`);
+        // Phase 0.1: Fallback strategy - simple orthogonal routing
+        console.warn(`Primary routing failed for link ${link.id}, trying simple fallback`);
 
-        // Fallback Strategy 1: Try with reduced margin and coarser grid
+        // Fallback Strategy 1: Try simple orthogonal routing
         const fallbackPath = routingEngine.route({
           start: endpoints.start,
           end: endpoints.end,
           sourceDirection: endpoints.sourceDirection,
           targetDirection: endpoints.targetDirection,
-          obstacles,
           options: {
-            algorithm: 'orthogonal',  // Force orthogonal as safest fallback
-            avoidObstacles: true,
-            obstacleMargin: 5,         // Reduced from 20px
-            gridSize: 20,              // Coarser grid (was 10)
-            maxIterations: 1000        // Faster computation
+            algorithm: 'orthogonal',
+            avoidObstacles: false,  // Simple routing like React Flow
+            gridSize: 10
           }
         });
 
@@ -1723,22 +1812,6 @@ export class SVGRenderer implements IRenderer {
         const sourceDirection = endpoints?.sourceDirection;
         const targetDirection = endpoints?.targetDirection;
 
-        // Collect obstacles for first/last segment routing (same as above)
-        const diagram = this.engine.getDiagram();
-        const obstacles: Array<{ id: string; x: number; y: number; width: number; height: number }> = [];
-        if (diagram) {
-          diagram.getNodes().forEach(node => {
-            const worldPos = node.getWorldPosition();
-            obstacles.push({
-              id: node.id,
-              x: worldPos.x,
-              y: worldPos.y,
-              width: node.size.width,
-              height: node.size.height,
-            });
-          });
-        }
-
         for (let i = 0; i < points.length - 1; i++) {
           const start = points[i];
           const end = points[i + 1];
@@ -1747,6 +1820,7 @@ export class SVGRenderer implements IRenderer {
 
           if (isFirstSegment || isLastSegment) {
             // Use routing engine for port connections (perpendicular to ports)
+            // Simple geometric routing like React Flow (no obstacle avoidance)
             const segmentSourceDir = isFirstSegment ? sourceDirection : undefined;
             const segmentTargetDir = isLastSegment ? targetDirection : undefined;
 
@@ -1755,11 +1829,9 @@ export class SVGRenderer implements IRenderer {
               end,
               sourceDirection: segmentSourceDir,
               targetDirection: segmentTargetDir,
-              obstacles,
               options: {
                 algorithm: 'orthogonal',
-                avoidObstacles: true,  // Enable obstacle avoidance for port connections
-                obstacleMargin: 20,
+                avoidObstacles: false,  // Simple routing like React Flow
                 gridSize: 10
               }
             });
@@ -1787,10 +1859,10 @@ export class SVGRenderer implements IRenderer {
         }
 
         points = allRoutedPoints;
-        pathData = this.generatePathData(allRoutedPoints, link.segments);
+        pathData = this.generatePathData(allRoutedPoints, link.segments, link.pathType);
       } else {
         // For non-orthogonal paths or no waypoints, use points as-is
-        pathData = this.generatePathData(link.points, link.segments);
+        pathData = this.generatePathData(link.points, link.segments, link.pathType);
       }
     }
 
@@ -2138,7 +2210,7 @@ export class SVGRenderer implements IRenderer {
    * Generate SVG path data from points and segments
    * Supports both straight lines and bezier curves
    */
-  private generatePathData(points: Array<{ x: number; y: number }>, segments?: any[]): string {
+  private generatePathData(points: Array<{ x: number; y: number }>, segments?: any[], pathType?: string): string {
     if (points.length === 0) return '';
     if (points.length === 1) return `M ${points[0].x} ${points[0].y}`;
 
@@ -2156,6 +2228,11 @@ export class SVGRenderer implements IRenderer {
       }
 
       return path;
+    }
+
+    // For orthogonal paths, use rounded corners (React Flow smoothstep style)
+    if (pathType === 'orthogonal') {
+      return this.convertOrthogonalPathWithBends(points, 5);
     }
 
     // Default: straight lines between points
@@ -2871,7 +2948,7 @@ export class SVGRenderer implements IRenderer {
    * @returns Angle in degrees
    */
   private calculateArrowDirection(
-    algorithm: 'straight' | 'orthogonal' | 'a-star' | 'dijkstra' | 'visibility-graph' | 'custom',
+    algorithm: 'straight' | 'orthogonal' | 'elk' | 'a-star' | 'dijkstra' | 'visibility-graph' | 'custom',
     pathType: string,
     points: Array<{ x: number; y: number }>,
     portSide?: 'left' | 'right' | 'top' | 'bottom'

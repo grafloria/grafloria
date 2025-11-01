@@ -57,6 +57,7 @@ export interface Obstacle extends GeometryRectangle {
 export type RoutingAlgorithm =
   | 'straight'
   | 'orthogonal'
+  | 'elk'
   | 'a-star'
   | 'dijkstra'
   | 'visibility-graph'
@@ -119,8 +120,9 @@ export interface RouteRequest {
 export interface IRouter {
   /**
    * Calculate a route from start to end
+   * Can be synchronous or asynchronous (for algorithms like ELK.js)
    */
-  route(request: RouteRequest): RoutedPath | null;
+  route(request: RouteRequest): RoutedPath | null | Promise<RoutedPath | null>;
 
   /**
    * Get algorithm name
