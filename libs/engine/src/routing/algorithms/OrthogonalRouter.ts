@@ -244,21 +244,10 @@ export class OrthogonalRouter implements IRouter {
     const sourceGapPoint = { x: sourceGapped.x + sourceGapOffset.x, y: sourceGapped.y + sourceGapOffset.y };
     const targetGapPoint = { x: targetGapped.x + targetGapOffset.x, y: targetGapped.y + targetGapOffset.y };
 
-    // DEBUG: Log path construction
-    console.log('[OrthogonalRouter] Path construction:');
-    console.log('  start:', start, 'sourceDirection:', sourceDirection);
-    console.log('  sourceGapped:', sourceGapped, 'sourceGapOffset:', sourceGapOffset);
-    console.log('  sourceGapPoint:', sourceGapPoint);
-    console.log('  targetGapPoint:', targetGapPoint);
-    console.log('  end:', end, 'targetDirection:', targetDirection);
-
     // CRITICAL FIX: Ensure first and last segments are orthogonal
     // Check if start->sourceGapPoint creates a diagonal (non-orthogonal) segment
     const firstSegmentIsOrthogonal = (start.x === sourceGapPoint.x) || (start.y === sourceGapPoint.y);
     const lastSegmentIsOrthogonal = (end.x === targetGapPoint.x) || (end.y === targetGapPoint.y);
-
-    console.log('  firstSegmentIsOrthogonal:', firstSegmentIsOrthogonal);
-    console.log('  lastSegmentIsOrthogonal:', lastSegmentIsOrthogonal);
 
     // Build path: only include start/end if they create orthogonal segments
     const pathPoints: RoutePoint[] = [];
@@ -275,8 +264,6 @@ export class OrthogonalRouter implements IRouter {
       pathPoints.push(end);
     }
 
-    console.log('  final pathPoints count:', pathPoints.length);
-
     // Snap to grid if specified
     // CRITICAL FIX: Do NOT snap the first and last points (port positions)
     // Only snap intermediate waypoints to prevent mismatch with port positions
@@ -284,15 +271,11 @@ export class OrthogonalRouter implements IRouter {
       pathPoints.forEach((p, index) => {
         // Skip first and last points - they must stay at exact port positions
         if (index === 0 || index === pathPoints.length - 1) {
-          console.log(`  skipping grid snap for point ${index} (port position):`, p);
           return;
         }
 
-        const originalX = p.x;
-        const originalY = p.y;
         p.x = Math.round(p.x / gridSize) * gridSize;
         p.y = Math.round(p.y / gridSize) * gridSize;
-        console.log(`  grid snap point ${index}: (${originalX}, ${originalY}) → (${p.x}, ${p.y})`);
       });
 
       // CRITICAL FIX: After grid snapping, ensure first and last segments remain orthogonal
@@ -306,42 +289,29 @@ export class OrthogonalRouter implements IRouter {
         const firstIsVertical = start.x === firstIntermediate.x;
 
         if (!firstIsHorizontal && !firstIsVertical) {
-          console.log(`  ⚠️ First segment is diagonal! Fixing...`);
           // Determine which direction to align based on source direction or infer from geometry
           let alignedHorizontally = false;
           let alignedVertically = false;
 
           if (sourceDirection === 'left' || sourceDirection === 'right') {
             // Horizontal port - make first segment horizontal
-            const oldY = firstIntermediate.y;
             firstIntermediate.y = start.y;
             alignedHorizontally = true;
-            console.log(`  Adjusted point 1 y: ${oldY} → ${firstIntermediate.y} (horizontal alignment)`);
           } else if (sourceDirection === 'top' || sourceDirection === 'bottom') {
             // Vertical port - make first segment vertical
-            const oldX = firstIntermediate.x;
             firstIntermediate.x = start.x;
             alignedVertically = true;
-            console.log(`  Adjusted point 1 x: ${oldX} → ${firstIntermediate.x} (vertical alignment)`);
           } else {
             // Direction unknown - infer from start/end relative positions
-            // If end is more to the left/right, likely horizontal port
-            // If end is more above/below, likely vertical port
             const deltaX = Math.abs(end.x - start.x);
             const deltaY = Math.abs(end.y - start.y);
 
             if (deltaX > deltaY) {
-              // Endpoints are more horizontally separated - likely horizontal port
-              const oldY = firstIntermediate.y;
               firstIntermediate.y = start.y;
               alignedHorizontally = true;
-              console.log(`  Adjusted point 1 y: ${oldY} → ${firstIntermediate.y} (horizontal, inferred from geometry)`);
             } else {
-              // Endpoints are more vertically separated - likely vertical port
-              const oldX = firstIntermediate.x;
               firstIntermediate.x = start.x;
               alignedVertically = true;
-              console.log(`  Adjusted point 1 x: ${oldX} → ${firstIntermediate.x} (vertical, inferred from geometry)`);
             }
           }
 
@@ -350,13 +320,9 @@ export class OrthogonalRouter implements IRouter {
           if (pathPoints.length > 3) {
             for (let i = 2; i < pathPoints.length - 1; i++) {
               if (alignedHorizontally && pathPoints[i].y !== start.y) {
-                const oldY = pathPoints[i].y;
                 pathPoints[i].y = start.y;
-                console.log(`  Propagated horizontal alignment to point ${i}: y ${oldY} → ${pathPoints[i].y}`);
               } else if (alignedVertically && pathPoints[i].x !== start.x) {
-                const oldX = pathPoints[i].x;
                 pathPoints[i].x = start.x;
-                console.log(`  Propagated vertical alignment to point ${i}: x ${oldX} → ${pathPoints[i].x}`);
               }
             }
           }
@@ -371,35 +337,24 @@ export class OrthogonalRouter implements IRouter {
           const lastIsVertical = lastIntermediate.x === end.x;
 
           if (!lastIsHorizontal && !lastIsVertical) {
-            console.log(`  ⚠️ Last segment is diagonal! Fixing...`);
             // Determine which direction to align based on target direction or infer from geometry
             if (targetDirection === 'left' || targetDirection === 'right') {
               // Horizontal port - make last segment horizontal
-              const oldY = lastIntermediate.y;
               lastIntermediate.y = end.y;
-              console.log(`  Adjusted point ${pathPoints.length - 2} y: ${oldY} → ${lastIntermediate.y} (horizontal alignment)`);
             } else if (targetDirection === 'top' || targetDirection === 'bottom') {
               // Vertical port - make last segment vertical
-              const oldX = lastIntermediate.x;
               lastIntermediate.x = end.x;
-              console.log(`  Adjusted point ${pathPoints.length - 2} x: ${oldX} → ${lastIntermediate.x} (vertical alignment)`);
             } else {
               // Direction unknown - infer from start/end relative positions
-              // If end is more to the left/right, likely horizontal port
-              // If end is more above/below, likely vertical port
               const deltaX = Math.abs(end.x - start.x);
               const deltaY = Math.abs(end.y - start.y);
 
               if (deltaX > deltaY) {
                 // Endpoints are more horizontally separated - likely horizontal port
-                const oldY = lastIntermediate.y;
                 lastIntermediate.y = end.y;
-                console.log(`  Adjusted point ${pathPoints.length - 2} y: ${oldY} → ${lastIntermediate.y} (horizontal, inferred from geometry)`);
               } else {
                 // Endpoints are more vertically separated - likely vertical port
-                const oldX = lastIntermediate.x;
                 lastIntermediate.x = end.x;
-                console.log(`  Adjusted point ${pathPoints.length - 2} x: ${oldX} → ${lastIntermediate.x} (vertical, inferred from geometry)`);
               }
             }
           }

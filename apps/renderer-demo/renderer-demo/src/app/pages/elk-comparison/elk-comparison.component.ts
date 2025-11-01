@@ -183,11 +183,7 @@ export class ElkComparisonComponent implements OnInit {
         const sourceDirection = sourcePort.alignment?.side;
         const targetDirection = targetPort.alignment?.side;
 
-        // DEBUG: Log which connection is being routed
         console.log(`🔗 Routing: ${sourceNode.getMetadata('label')} → ${targetNode.getMetadata('label')}`);
-        console.log(`  Source port: ${sourcePort.id}, alignment:`, sourcePort.alignment);
-        console.log(`  Target port: ${targetPort.id}, alignment:`, targetPort.alignment);
-        console.log(`  Directions: source=${sourceDirection}, target=${targetDirection}`);
 
         // Get obstacles (all nodes except source and target)
         const obstacles = nodes
@@ -294,8 +290,6 @@ export class ElkComparisonComponent implements OnInit {
           };
         });
 
-        console.log(`📍 Routing link ${link.id} with orthogonal from`, sourcePos, 'to', targetPos);
-
         // Use route (synchronous) for orthogonal router
         const routedPath = routingEngine.route({
           start: sourcePos,
@@ -312,7 +306,6 @@ export class ElkComparisonComponent implements OnInit {
 
         if (routedPath && routedPath.points.length > 0) {
           link.setPoints(routedPath.points);
-          console.log(`✅ Routed link ${link.id} with ${routedPath.points.length} points`);
         } else {
           console.warn(`⚠️ ELK routing returned no points for link ${link.id}`);
         }
@@ -320,8 +313,6 @@ export class ElkComparisonComponent implements OnInit {
         console.error(`❌ Error routing link ${link.id}:`, error);
       }
     }
-
-    console.log('✅ Finished routing all links');
 
     // Force re-render - mark diagram and all links as dirty
     diagram.markDirty('elk-routing-complete');
