@@ -120,16 +120,42 @@ export class OrthogonalRouter implements IRouter {
       let centerX: number, centerY: number;
 
       if (dirAccessor === 'x') {
-        // Horizontal routing (e.g., Left -> Right)
-        // The vertical center line is placed at the midpoint
-        centerX = (sourceGapped.x + targetGapped.x) / 2;
+        // Horizontal routing (e.g., Left -> Right, Right -> Left)
+
+        // CRITICAL FIX: Detect overshoot scenario
+        // When routing right-to-left but sourceGapped is already to the right of targetGapped,
+        // using the midpoint would cause the path to overshoot and penetrate the target node.
+        // Instead, clamp the bend to the source edge to route around the side.
+        const isOvershooting = (sourceDir.x > 0 && sourceGapped.x > targetGapped.x) ||
+                               (sourceDir.x < 0 && sourceGapped.x < targetGapped.x);
+
+        if (isOvershooting) {
+          // Overshoot detected: Place bend at source edge, not midpoint
+          // This makes the path exit the source, turn immediately, and route around the side
+          centerX = sourceGapped.x;
+          console.log(`  [Overshoot Fix] Horizontal: sourceGapped.x=${sourceGapped.x}, targetGapped.x=${targetGapped.x}, using centerX=${centerX} (clamped to source)`);
+        } else {
+          // Normal case: Use midpoint
+          centerX = (sourceGapped.x + targetGapped.x) / 2;
+        }
 
         // For horizontal routing, we keep Y at source/target levels to create clear steps
         centerY = (sourceGapped.y + targetGapped.y) / 2;
       } else {
-        // Vertical routing (e.g., Top -> Bottom)
-        // The horizontal center line is placed at the midpoint
-        centerY = (sourceGapped.y + targetGapped.y) / 2;
+        // Vertical routing (e.g., Top -> Bottom, Bottom -> Top)
+
+        // CRITICAL FIX: Detect overshoot scenario for vertical routing
+        const isOvershooting = (sourceDir.y > 0 && sourceGapped.y > targetGapped.y) ||
+                               (sourceDir.y < 0 && sourceGapped.y < targetGapped.y);
+
+        if (isOvershooting) {
+          // Overshoot detected: Place bend at source edge
+          centerY = sourceGapped.y;
+          console.log(`  [Overshoot Fix] Vertical: sourceGapped.y=${sourceGapped.y}, targetGapped.y=${targetGapped.y}, using centerY=${centerY} (clamped to source)`);
+        } else {
+          // Normal case: Use midpoint
+          centerY = (sourceGapped.y + targetGapped.y) / 2;
+        }
 
         // For vertical routing, we keep X at source/target levels to create clear steps
         centerX = (sourceGapped.x + targetGapped.x) / 2;
