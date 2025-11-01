@@ -15,6 +15,14 @@ export class OrthogonalRouter implements IRouter {
   route(request: RouteRequest): RoutedPath | null {
     const { start, end, obstacles = [], options = {}, sourceDirection, targetDirection } = request;
 
+    // DEBUG: Log what options OrthogonalRouter receives
+    console.log('🎯 OrthogonalRouter.route() received options:', {
+      avoidObstacles: options.avoidObstacles,
+      gridSize: options.gridSize,
+      algorithm: options.algorithm,
+      obstacleCount: obstacles.length
+    });
+
     // Handle same start and end point
     if (start.x === end.x && start.y === end.y) {
       return {
