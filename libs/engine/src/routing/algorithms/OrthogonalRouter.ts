@@ -196,14 +196,42 @@ export class OrthogonalRouter implements IRouter {
       }
     }
 
-    // React Flow lines 197-203: Build final path with all points
-    const pathPoints: RoutePoint[] = [
-      start,
-      { x: sourceGapped.x + sourceGapOffset.x, y: sourceGapped.y + sourceGapOffset.y },
-      ...points,
-      { x: targetGapped.x + targetGapOffset.x, y: targetGapped.y + targetGapOffset.y },
-      end,
-    ];
+    // Build path points
+    const sourceGapPoint = { x: sourceGapped.x + sourceGapOffset.x, y: sourceGapped.y + sourceGapOffset.y };
+    const targetGapPoint = { x: targetGapped.x + targetGapOffset.x, y: targetGapped.y + targetGapOffset.y };
+
+    // DEBUG: Log path construction
+    console.log('[OrthogonalRouter] Path construction:');
+    console.log('  start:', start, 'sourceDirection:', sourceDirection);
+    console.log('  sourceGapped:', sourceGapped, 'sourceGapOffset:', sourceGapOffset);
+    console.log('  sourceGapPoint:', sourceGapPoint);
+    console.log('  targetGapPoint:', targetGapPoint);
+    console.log('  end:', end, 'targetDirection:', targetDirection);
+
+    // CRITICAL FIX: Ensure first and last segments are orthogonal
+    // Check if start->sourceGapPoint creates a diagonal (non-orthogonal) segment
+    const firstSegmentIsOrthogonal = (start.x === sourceGapPoint.x) || (start.y === sourceGapPoint.y);
+    const lastSegmentIsOrthogonal = (end.x === targetGapPoint.x) || (end.y === targetGapPoint.y);
+
+    console.log('  firstSegmentIsOrthogonal:', firstSegmentIsOrthogonal);
+    console.log('  lastSegmentIsOrthogonal:', lastSegmentIsOrthogonal);
+
+    // Build path: only include start/end if they create orthogonal segments
+    const pathPoints: RoutePoint[] = [];
+
+    if (firstSegmentIsOrthogonal) {
+      pathPoints.push(start);
+    }
+
+    pathPoints.push(sourceGapPoint);
+    pathPoints.push(...points);
+    pathPoints.push(targetGapPoint);
+
+    if (lastSegmentIsOrthogonal) {
+      pathPoints.push(end);
+    }
+
+    console.log('  final pathPoints count:', pathPoints.length);
 
     // Snap to grid if specified
     if (gridSize && gridSize > 1) {
