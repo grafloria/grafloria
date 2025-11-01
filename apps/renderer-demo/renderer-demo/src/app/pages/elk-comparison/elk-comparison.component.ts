@@ -34,6 +34,17 @@ export class ElkComparisonComponent implements OnInit {
 
     const diagram = this.engine.createDiagram('ELK Comparison');
 
+    // Subscribe to diagram events to reroute links when nodes move
+    if (diagram) {
+      diagram.subscribe((event) => {
+        // When a node position changes, reroute all links connected to it
+        if (event.type === 'change' && event.property === 'position') {
+          console.log('🔄 Node position changed:', event.entity.id, 'Rerouting connected links...');
+          this.rerouteNodeLinks(event.entity.id);
+        }
+      });
+    }
+
     // Create nodes similar to React Flow ELK.js example
     // Layout: hierarchical from left to right
 
@@ -104,6 +115,95 @@ export class ElkComparisonComponent implements OnInit {
   }
 
   /**
+   * Reroute all links connected to a specific node
+   * Called when a node is moved/dragged
+   */
+  private rerouteNodeLinks(nodeId: string) {
+    const diagram = this.engine.getDiagram();
+    if (!diagram) return;
+
+    const node = diagram.getNode(nodeId);
+    if (!node) return;
+
+    // Find all links connected to this node
+    const links = diagram.getLinks().filter(link => {
+      return link.sourceNodeId === nodeId || link.targetNodeId === nodeId;
+    });
+
+    if (links.length === 0) return;
+
+    console.log(`🔄 Rerouting ${links.length} links for node ${nodeId}`);
+
+    const nodes = diagram.getNodes();
+    const routingEngine = this.engine.getRoutingEngine();
+
+    // Reroute each connected link
+    links.forEach(link => {
+      try {
+        // Find source and target nodes
+        const sourceNode = nodes.find(n => n.id === link.sourceNodeId);
+        const targetNode = nodes.find(n => n.id === link.targetNodeId);
+
+        if (!sourceNode || !targetNode) return;
+
+        // Get ports
+        const sourcePort = sourceNode.getPort(link.sourcePortId);
+        const targetPort = targetNode.getPort(link.targetPortId);
+
+        if (!sourcePort || !targetPort) return;
+
+        // Calculate fresh port positions
+        const sourceBounds = sourceNode.getBoundingBox();
+        const targetBounds = targetNode.getBoundingBox();
+        const sourcePos = sourcePort.getAbsolutePosition(sourceBounds);
+        const targetPos = targetPort.getAbsolutePosition(targetBounds);
+
+        // Get port directions
+        const sourceDirection = sourcePort.alignment?.side;
+        const targetDirection = targetPort.alignment?.side;
+
+        // Get obstacles (all nodes except source and target)
+        const obstacles = nodes
+          .filter(n => n.id !== sourceNode.id && n.id !== targetNode.id)
+          .map(node => {
+            const worldPos = node.getWorldPosition();
+            return {
+              id: node.id,
+              x: worldPos.x,
+              y: worldPos.y,
+              width: node.size.width,
+              height: node.size.height,
+            };
+          });
+
+        // Reroute the link
+        const routedPath = routingEngine.route({
+          start: sourcePos,
+          end: targetPos,
+          sourceDirection,
+          targetDirection,
+          obstacles,
+          options: {
+            algorithm: 'orthogonal',
+            avoidObstacles: true,
+            gridSize: 10,
+          }
+        });
+
+        if (routedPath && routedPath.points.length > 0) {
+          link.setPoints(routedPath.points);
+          link.markDirty('node-moved');
+        }
+      } catch (error) {
+        console.error(`❌ Error rerouting link ${link.id}:`, error);
+      }
+    });
+
+    // Mark diagram dirty to trigger re-render
+    diagram.markDirty('node-position-changed');
+  }
+
+  /**
    * Route all links using ELK.js
    */
   private async routeAllLinks() {
@@ -137,8 +237,19 @@ export class ElkComparisonComponent implements OnInit {
         }
 
         // Calculate port positions
-        const sourcePos = sourcePort.getAbsolutePosition(sourceNode.getBoundingBox());
-        const targetPos = targetPort.getAbsolutePosition(targetNode.getBoundingBox());
+        const sourceBounds = sourceNode.getBoundingBox();
+        const targetBounds = targetNode.getBoundingBox();
+        const sourcePos = sourcePort.getAbsolutePosition(sourceBounds);
+        const targetPos = targetPort.getAbsolutePosition(targetBounds);
+
+        // Debug logging for Node 6
+        if (sourceNode.id.includes('node6') || targetNode.id.includes('node6')) {
+          console.log(`🔍 Node 6 Debug - Link ${link.id}:`);
+          console.log(`  Source: ${sourceNode.id}`, sourceBounds, sourcePos);
+          console.log(`  Target: ${targetNode.id}`, targetBounds, targetPos);
+          console.log(`  Source port:`, sourcePort.id, sourcePort.alignment, sourcePort.position);
+          console.log(`  Target port:`, targetPort.id, targetPort.alignment, targetPort.position);
+        }
 
         // Get port directions
         const sourceDirection = sourcePort.alignment?.side;
