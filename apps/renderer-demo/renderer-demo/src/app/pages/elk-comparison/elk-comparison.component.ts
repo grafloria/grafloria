@@ -157,11 +157,23 @@ export class ElkComparisonComponent implements OnInit {
     console.log(`✅ Found node: ${node.getMetadata('label')} (${nodeId})`);
 
     // Find all links connected to this node
-    const links = diagram.getLinks().filter(link => {
+    const allLinks = diagram.getLinks();
+    console.log(`📋 Total links in diagram: ${allLinks.length}`);
+    console.log(`🔍 Looking for links where sourceNodeId or targetNodeId === "${nodeId}"`);
+
+    allLinks.forEach((link, i) => {
+      console.log(`  Link ${i}: sourceNodeId="${link.sourceNodeId}", targetNodeId="${link.targetNodeId}"`);
+    });
+
+    const links = allLinks.filter(link => {
       return link.sourceNodeId === nodeId || link.targetNodeId === nodeId;
     });
 
-    if (links.length === 0) return;
+    console.log(`📊 Found ${links.length} links connected to node ${nodeId}`);
+    if (links.length === 0) {
+      console.log(`❌ No links to reroute for node ${nodeId}`);
+      return;
+    }
 
     console.log(`🔄 Rerouting ${links.length} links for node ${nodeId}`);
 
