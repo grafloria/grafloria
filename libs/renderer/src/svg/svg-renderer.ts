@@ -586,8 +586,6 @@ export class SVGRenderer implements IRenderer {
         // console.log(`[SVGRenderer] Using cached node ${node.id} (not dirty)`);
         return cached;
       }
-    } else if (node.isDirty) {
-      console.log(`[SVGRenderer] Re-rendering node ${node.id} (dirty)`);
     }
 
     const diagram = this.engine.getDiagram()!;
@@ -703,7 +701,6 @@ export class SVGRenderer implements IRenderer {
     // Cache if enabled (use LOD-specific cache key)
     if (this.config.enableCaching) {
       this.vnodeCache.set(cacheKey, vnode);
-      console.log(`[SVGRenderer] Caching node ${node.id} and marking clean`);
       node.markClean();
     }
 
@@ -1038,16 +1035,6 @@ export class SVGRenderer implements IRenderer {
       ...(shapeConfig.opacity !== undefined ? { opacity: shapeConfig.opacity } : {}),
     };
 
-    console.log(`[SVGRenderer] renderNodeShape for ${node.id}:`, {
-      baseStroke: styles.stroke,
-      shapeConfigStroke: shapeConfig.stroke,
-      finalStroke: shapeStyles.stroke,
-      strokeWidth: shapeStyles.strokeWidth,
-      hasActiveBorderAnimation,
-      animatedBorder: node.style?.animatedBorder,
-      borderAnimationType: node.style?.borderAnimationType
-    });
-
     // Enhanced hover effect
     if (isHovered && !this.config.useCSSMode) {
       shapeStyles.strokeWidth = (shapeStyles.strokeWidth || 1) + 1;
@@ -1077,14 +1064,6 @@ export class SVGRenderer implements IRenderer {
    * Phase 3.1: Render rectangle shape
    */
   private renderRectShape(width: number, height: number, styles: any, cornerRadius?: number): VNode {
-    // DEBUG: Log what classes are being applied to rect
-    console.log(`[SVGRenderer] renderRectShape:`, {
-      className: styles.className,
-      stroke: styles.stroke,
-      strokeWidth: styles.strokeWidth,
-      fill: styles.fill
-    });
-
     // ✅ CRITICAL: When fill/stroke are set explicitly, use inline style to override CSS
     // In SVG, CSS rules have higher specificity than presentation attributes
     // But inline style attribute has highest specificity
@@ -1682,7 +1661,16 @@ export class SVGRenderer implements IRenderer {
     // Don't regenerate the route in this case - use the existing points
     const hasManualWaypoints = link.points && link.points.length > 2;
 
+    console.log('🔍 SVG-Renderer renderLink:', link.id, {
+      hasEndpoints: !!endpoints,
+      hasManualWaypoints,
+      existingPointsCount: link.points?.length || 0,
+      willAutoRoute: endpoints && !hasManualWaypoints
+    });
+
     if (endpoints && !hasManualWaypoints) {
+      console.log('🔍 SVG-Renderer: Auto-routing link', link.id, 'during render');
+
       // Use RoutingEngine to calculate path
       const routingEngine = this.engine.getRoutingEngine();
 
@@ -1721,9 +1709,12 @@ export class SVGRenderer implements IRenderer {
             width: node.size.width,
             height: node.size.height,
           }));
+
+        console.log('🔍 SVG-Renderer: Collected', obstacles.length, 'obstacles for link', link.id);
       }
 
       // Route with smart obstacle avoidance enabled
+      console.log('🔍 SVG-Renderer: Calling primary routing with avoidObstacles: true, obstacles:', obstacles.length);
       const routedPath = routingEngine.route({
         start: endpoints.start,
         end: endpoints.end,
@@ -1738,6 +1729,7 @@ export class SVGRenderer implements IRenderer {
       });
 
       if (routedPath) {
+        console.log('✅ SVG-Renderer: Primary routing succeeded for link', link.id, 'with', routedPath.points.length, 'points');
         points = routedPath.points;
         pathData = this.convertRoutedPathToSVG(
           routedPath,
@@ -1756,7 +1748,7 @@ export class SVGRenderer implements IRenderer {
         }
       } else {
         // Phase 0.1: Fallback strategy - simple orthogonal routing
-        console.warn(`Primary routing failed for link ${link.id}, trying simple fallback`);
+        console.warn(`❌ SVG-Renderer: Primary routing FAILED (returned null) for link ${link.id}, trying simple fallback`);
 
         // Fallback Strategy 1: Try simple orthogonal routing
         const fallbackPath = routingEngine.route({
@@ -1812,6 +1804,27 @@ export class SVGRenderer implements IRenderer {
         const sourceDirection = endpoints?.sourceDirection;
         const targetDirection = endpoints?.targetDirection;
 
+        // Collect obstacles for segment routing (same as primary routing)
+        const currentDiagram = this.engine.getDiagram();
+        let segmentObstacles: Array<{id: string; x: number; y: number; width: number; height: number}> = [];
+
+        if (currentDiagram) {
+          const sourceNodeId = (link as any).sourceNodeId || (link as any).source;
+          const targetNodeId = (link as any).targetNodeId || (link as any).target;
+
+          segmentObstacles = currentDiagram.getNodes()
+            .filter((node: NodeModel) =>
+              node.id !== sourceNodeId && node.id !== targetNodeId
+            )
+            .map((node: NodeModel) => ({
+              id: node.id,
+              x: node.position.x,
+              y: node.position.y,
+              width: node.size.width,
+              height: node.size.height,
+            }));
+        }
+
         for (let i = 0; i < points.length - 1; i++) {
           const start = points[i];
           const end = points[i + 1];
@@ -1820,7 +1833,7 @@ export class SVGRenderer implements IRenderer {
 
           if (isFirstSegment || isLastSegment) {
             // Use routing engine for port connections (perpendicular to ports)
-            // Simple geometric routing like React Flow (no obstacle avoidance)
+            // FIXED: Enable obstacle avoidance to prevent penetrating nodes during drag
             const segmentSourceDir = isFirstSegment ? sourceDirection : undefined;
             const segmentTargetDir = isLastSegment ? targetDirection : undefined;
 
@@ -1829,9 +1842,10 @@ export class SVGRenderer implements IRenderer {
               end,
               sourceDirection: segmentSourceDir,
               targetDirection: segmentTargetDir,
+              obstacles: segmentObstacles,  // FIXED: Pass obstacles
               options: {
                 algorithm: 'orthogonal',
-                avoidObstacles: false,  // Simple routing like React Flow
+                avoidObstacles: true,  // FIXED: Enable A* pathfinding
                 gridSize: 10
               }
             });
@@ -1877,10 +1891,23 @@ export class SVGRenderer implements IRenderer {
       };
     }
 
+    // CRITICAL FIX: Get arrow styles FIRST to use actual arrow size for position calculation
+    // Get arrow styles from link (with defaults)
+    const arrowHeadStyle = link.style.arrowHead || {
+      type: 'arrow',
+      size: 10,
+      filled: true,
+      color: styles.stroke || this.theme.colors.link.default
+    };
+
+    const arrowTailStyle = link.style.arrowTail;
+
     // Calculate arrow position and angle using unified utility
     // The arrow polygon '0,-5 10,0 0,5' has its tip at x=10, base at x=0
-    const arrowLength = 10;
-    const arrowData = this.calculateArrowPositionAndAngle(link, points, true, arrowLength);
+    // CRITICAL FIX: Use the ACTUAL arrow size from style, not a hardcoded value
+    // This prevents offset issues where arrow size doesn't match position calculation
+    const arrowHeadSize = arrowHeadStyle.size || 10;
+    const arrowData = this.calculateArrowPositionAndAngle(link, points, true, arrowHeadSize);
     const arrowTipPosition = arrowData.position;
     const angle = arrowData.angle;
 
@@ -1952,16 +1979,6 @@ export class SVGRenderer implements IRenderer {
         ...(lod !== 'low'
           ? (() => {
               const arrows: VNode[] = [];
-
-              // Get arrow styles from link (with defaults)
-              const arrowHeadStyle = link.style.arrowHead || {
-                type: 'arrow',
-                size: 10,
-                filled: true,
-                color: styles.stroke || this.theme.colors.link.default
-              };
-
-              const arrowTailStyle = link.style.arrowTail;
 
               // Render arrow head (at target end)
               if (arrowHeadStyle && arrowHeadStyle.type !== 'none') {
@@ -2103,28 +2120,10 @@ export class SVGRenderer implements IRenderer {
 
     const finalClassName = classes.join(' ');
 
-    // DEBUG: Log animation classes
-    console.log(`[SVGRenderer] computeNodeStylesCSS for ${node.id}:`, {
-      useSVGVariant,
-      animationClasses,
-      animatedBorder: node.style?.animatedBorder,
-      borderAnimationType: node.style?.borderAnimationType,
-      animateStatus: node.state?.animateStatus,
-      status: node.state?.status,
-      finalClassName
-    });
-
     // CRITICAL: Don't apply strokeWidth as inline style if border animation is active
     // Inline styles override CSS animations, breaking animated stroke-width and stroke-dasharray
     const hasActiveBorderAnimation = node.style?.animatedBorder &&
                                      node.style?.borderAnimationType !== 'none';
-
-    console.log(`[SVGRenderer] CSS mode final check for ${node.id}:`, {
-      hasActiveBorderAnimation,
-      willApplyStroke: !!node.style.stroke,
-      willApplyStrokeWidth: node.style.strokeWidth !== undefined && !hasActiveBorderAnimation,
-      finalClassName
-    });
 
     return {
       className: finalClassName,

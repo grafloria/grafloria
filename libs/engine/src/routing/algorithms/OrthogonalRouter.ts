@@ -15,6 +15,14 @@ export class OrthogonalRouter implements IRouter {
   route(request: RouteRequest): RoutedPath | null {
     const { start, end, obstacles = [], options = {}, sourceDirection, targetDirection } = request;
 
+    // DEBUG: Log what options OrthogonalRouter receives
+    console.log('🎯 OrthogonalRouter.route() received options:', {
+      avoidObstacles: options.avoidObstacles,
+      gridSize: options.gridSize,
+      algorithm: options.algorithm,
+      obstacleCount: obstacles.length
+    });
+
     // Handle same start and end point
     if (start.x === end.x && start.y === end.y) {
       return {
@@ -41,7 +49,6 @@ export class OrthogonalRouter implements IRouter {
 
     if (!hasCollision) {
       // Path is clear, use the simple routing
-      console.log('✅ OrthogonalRouter: Simple path is clear (no collisions)');
       return simplePath;
     }
 
@@ -120,16 +127,41 @@ export class OrthogonalRouter implements IRouter {
       let centerX: number, centerY: number;
 
       if (dirAccessor === 'x') {
-        // Horizontal routing (e.g., Left -> Right)
-        // The vertical center line is placed at the midpoint
-        centerX = (sourceGapped.x + targetGapped.x) / 2;
+        // Horizontal routing (e.g., Left -> Right, Right -> Left)
+
+        // CRITICAL FIX: Detect overshoot scenario
+        // When routing right-to-left but sourceGapped is already to the right of targetGapped,
+        // using the midpoint would cause the path to overshoot and penetrate the target node.
+        // Instead, clamp the bend to the source edge to route around the side.
+        const isOvershooting = (sourceDir.x > 0 && sourceGapped.x > targetGapped.x) ||
+                               (sourceDir.x < 0 && sourceGapped.x < targetGapped.x);
+
+        if (isOvershooting) {
+          // Overshoot detected: Place bend at source edge, not midpoint
+          // This makes the path exit the source, turn immediately, and route around the side
+          centerX = sourceGapped.x;
+        } else {
+          // Normal case: Use midpoint
+          centerX = (sourceGapped.x + targetGapped.x) / 2;
+        }
 
         // For horizontal routing, we keep Y at source/target levels to create clear steps
         centerY = (sourceGapped.y + targetGapped.y) / 2;
       } else {
-        // Vertical routing (e.g., Top -> Bottom)
-        // The horizontal center line is placed at the midpoint
-        centerY = (sourceGapped.y + targetGapped.y) / 2;
+        // Vertical routing (e.g., Top -> Bottom, Bottom -> Top)
+
+        // CRITICAL FIX: Detect overshoot scenario for vertical routing
+        const isOvershooting = (sourceDir.y > 0 && sourceGapped.y > targetGapped.y) ||
+                               (sourceDir.y < 0 && sourceGapped.y < targetGapped.y);
+
+        if (isOvershooting) {
+          // Overshoot detected: Place bend at source edge
+          centerY = sourceGapped.y;
+          console.log(`  [Overshoot Fix] Vertical: sourceGapped.y=${sourceGapped.y}, targetGapped.y=${targetGapped.y}, using centerY=${centerY} (clamped to source)`);
+        } else {
+          // Normal case: Use midpoint
+          centerY = (sourceGapped.y + targetGapped.y) / 2;
+        }
 
         // For vertical routing, we keep X at source/target levels to create clear steps
         centerX = (sourceGapped.x + targetGapped.x) / 2;
@@ -196,21 +228,126 @@ export class OrthogonalRouter implements IRouter {
       }
     }
 
-    // React Flow lines 197-203: Build final path with all points
-    const pathPoints: RoutePoint[] = [
-      start,
-      { x: sourceGapped.x + sourceGapOffset.x, y: sourceGapped.y + sourceGapOffset.y },
-      ...points,
-      { x: targetGapped.x + targetGapOffset.x, y: targetGapped.y + targetGapOffset.y },
-      end,
-    ];
+    // Build path points
+    const sourceGapPoint = { x: sourceGapped.x + sourceGapOffset.x, y: sourceGapped.y + sourceGapOffset.y };
+    const targetGapPoint = { x: targetGapped.x + targetGapOffset.x, y: targetGapped.y + targetGapOffset.y };
+
+    // CRITICAL FIX: Ensure first and last segments are orthogonal
+    // Check if start->sourceGapPoint creates a diagonal (non-orthogonal) segment
+    const firstSegmentIsOrthogonal = (start.x === sourceGapPoint.x) || (start.y === sourceGapPoint.y);
+    const lastSegmentIsOrthogonal = (end.x === targetGapPoint.x) || (end.y === targetGapPoint.y);
+
+    // Build path: only include start/end if they create orthogonal segments
+    const pathPoints: RoutePoint[] = [];
+
+    if (firstSegmentIsOrthogonal) {
+      pathPoints.push(start);
+    }
+
+    pathPoints.push(sourceGapPoint);
+    pathPoints.push(...points);
+    pathPoints.push(targetGapPoint);
+
+    if (lastSegmentIsOrthogonal) {
+      pathPoints.push(end);
+    }
 
     // Snap to grid if specified
+    // CRITICAL FIX: Do NOT snap the first and last points (port positions)
+    // Only snap intermediate waypoints to prevent mismatch with port positions
     if (gridSize && gridSize > 1) {
-      pathPoints.forEach((p) => {
+      pathPoints.forEach((p, index) => {
+        // Skip first and last points - they must stay at exact port positions
+        if (index === 0 || index === pathPoints.length - 1) {
+          return;
+        }
+
         p.x = Math.round(p.x / gridSize) * gridSize;
         p.y = Math.round(p.y / gridSize) * gridSize;
       });
+
+      // CRITICAL FIX: After grid snapping, ensure first and last segments remain orthogonal
+      // Grid snapping intermediate points can create diagonal segments with unsnapped endpoints
+      if (pathPoints.length >= 2) {
+        // Fix first segment: ensure point[1] is orthogonal to point[0] (start)
+        const start = pathPoints[0];
+        const firstIntermediate = pathPoints[1];
+
+        const firstIsHorizontal = start.y === firstIntermediate.y;
+        const firstIsVertical = start.x === firstIntermediate.x;
+
+        if (!firstIsHorizontal && !firstIsVertical) {
+          // Determine which direction to align based on source direction or infer from geometry
+          let alignedHorizontally = false;
+          let alignedVertically = false;
+
+          if (sourceDirection === 'left' || sourceDirection === 'right') {
+            // Horizontal port - make first segment horizontal
+            firstIntermediate.y = start.y;
+            alignedHorizontally = true;
+          } else if (sourceDirection === 'top' || sourceDirection === 'bottom') {
+            // Vertical port - make first segment vertical
+            firstIntermediate.x = start.x;
+            alignedVertically = true;
+          } else {
+            // Direction unknown - infer from start/end relative positions
+            const deltaX = Math.abs(end.x - start.x);
+            const deltaY = Math.abs(end.y - start.y);
+
+            if (deltaX > deltaY) {
+              firstIntermediate.y = start.y;
+              alignedHorizontally = true;
+            } else {
+              firstIntermediate.x = start.x;
+              alignedVertically = true;
+            }
+          }
+
+          // CRITICAL FIX: Propagate alignment to all intermediate points (not just first one)
+          // This fixes the issue where point 2, 3, etc. still have wrong coordinates after grid snap
+          if (pathPoints.length > 3) {
+            for (let i = 2; i < pathPoints.length - 1; i++) {
+              if (alignedHorizontally && pathPoints[i].y !== start.y) {
+                pathPoints[i].y = start.y;
+              } else if (alignedVertically && pathPoints[i].x !== start.x) {
+                pathPoints[i].x = start.x;
+              }
+            }
+          }
+        }
+
+        // Fix last segment: ensure point[n-2] is orthogonal to point[n-1] (end)
+        if (pathPoints.length >= 3) {
+          const end = pathPoints[pathPoints.length - 1];
+          const lastIntermediate = pathPoints[pathPoints.length - 2];
+
+          const lastIsHorizontal = lastIntermediate.y === end.y;
+          const lastIsVertical = lastIntermediate.x === end.x;
+
+          if (!lastIsHorizontal && !lastIsVertical) {
+            // Determine which direction to align based on target direction or infer from geometry
+            if (targetDirection === 'left' || targetDirection === 'right') {
+              // Horizontal port - make last segment horizontal
+              lastIntermediate.y = end.y;
+            } else if (targetDirection === 'top' || targetDirection === 'bottom') {
+              // Vertical port - make last segment vertical
+              lastIntermediate.x = end.x;
+            } else {
+              // Direction unknown - infer from start/end relative positions
+              const deltaX = Math.abs(end.x - start.x);
+              const deltaY = Math.abs(end.y - start.y);
+
+              if (deltaX > deltaY) {
+                // Endpoints are more horizontally separated - likely horizontal port
+                lastIntermediate.y = end.y;
+              } else {
+                // Endpoints are more vertically separated - likely vertical port
+                lastIntermediate.x = end.x;
+              }
+            }
+          }
+        }
+      }
     }
 
     // Remove duplicate consecutive points

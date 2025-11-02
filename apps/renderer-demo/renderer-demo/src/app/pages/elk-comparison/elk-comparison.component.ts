@@ -24,6 +24,10 @@ export class ElkComparisonComponent implements OnInit {
   zoom = 1.0;
   theme: Theme = LIGHT_THEME;
 
+  // Debounce timer for rerouting during drag to prevent visual lag
+  private rerouteTimers = new Map<string, any>();
+  private readonly REROUTE_DEBOUNCE_MS = 300; // Wait 300ms after drag stops before logging/rerouting
+
   ngOnInit() {
     this.engine = new DiagramEngine({
       interaction: {
@@ -33,6 +37,15 @@ export class ElkComparisonComponent implements OnInit {
     });
 
     const diagram = this.engine.createDiagram('ELK Comparison');
+
+    // Subscribe to diagram events to reroute links when nodes move
+    // The diagram emits 'node:moved' events when any node's position changes
+    if (diagram) {
+      diagram.on('node:moved', (data: { nodeId: string; position: { x: number; y: number } }) => {
+        console.log('🔄 Node position changed:', data.nodeId, 'Scheduling reroute...');
+        this.debouncedRerouteNodeLinks(data.nodeId);
+      });
+    }
 
     // Create nodes similar to React Flow ELK.js example
     // Layout: hierarchical from left to right
@@ -104,6 +117,138 @@ export class ElkComparisonComponent implements OnInit {
   }
 
   /**
+   * Debounced version of rerouteNodeLinks for smooth drag performance
+   * Batches reroute requests to prevent excessive recalculations during rapid position changes
+   */
+  private debouncedRerouteNodeLinks(nodeId: string) {
+    // Clear any existing timer for this node
+    if (this.rerouteTimers.has(nodeId)) {
+      clearTimeout(this.rerouteTimers.get(nodeId));
+    }
+
+    // Schedule a new reroute after debounce delay
+    const timer = setTimeout(() => {
+      this.rerouteNodeLinks(nodeId);
+      this.rerouteTimers.delete(nodeId);
+    }, this.REROUTE_DEBOUNCE_MS);
+
+    this.rerouteTimers.set(nodeId, timer);
+  }
+
+  /**
+   * Reroute all links connected to a specific node
+   * Called when a node is moved/dragged (via debounced wrapper)
+   */
+  private rerouteNodeLinks(nodeId: string) {
+    console.log(`⏰ rerouteNodeLinks CALLED for nodeId: ${nodeId}`);
+
+    const diagram = this.engine.getDiagram();
+    if (!diagram) {
+      console.log(`❌ No diagram found`);
+      return;
+    }
+
+    const node = diagram.getNode(nodeId);
+    if (!node) {
+      console.log(`❌ Node ${nodeId} not found`);
+      return;
+    }
+
+    console.log(`✅ Found node: ${node.getMetadata('label')} (${nodeId})`);
+
+    // Find all links connected to this node
+    const allLinks = diagram.getLinks();
+    console.log(`📋 Total links in diagram: ${allLinks.length}`);
+    console.log(`🔍 Looking for links where sourceNodeId or targetNodeId === "${nodeId}"`);
+
+    allLinks.forEach((link, i) => {
+      console.log(`  Link ${i}: sourceNodeId="${link.sourceNodeId}", targetNodeId="${link.targetNodeId}"`);
+    });
+
+    const links = allLinks.filter(link => {
+      return link.sourceNodeId === nodeId || link.targetNodeId === nodeId;
+    });
+
+    console.log(`📊 Found ${links.length} links connected to node ${nodeId}`);
+    if (links.length === 0) {
+      console.log(`❌ No links to reroute for node ${nodeId}`);
+      return;
+    }
+
+    console.log(`🔄 Rerouting ${links.length} links for node ${nodeId}`);
+
+    const nodes = diagram.getNodes();
+    const routingEngine = this.engine.getRoutingEngine();
+
+    // Reroute each connected link
+    links.forEach(link => {
+      try {
+        // Find source and target nodes
+        const sourceNode = nodes.find(n => n.id === link.sourceNodeId);
+        const targetNode = nodes.find(n => n.id === link.targetNodeId);
+
+        if (!sourceNode || !targetNode) return;
+
+        // Get ports
+        const sourcePort = sourceNode.getPort(link.sourcePortId);
+        const targetPort = targetNode.getPort(link.targetPortId);
+
+        if (!sourcePort || !targetPort) return;
+
+        // Calculate fresh port positions
+        const sourceBounds = sourceNode.getBoundingBox();
+        const targetBounds = targetNode.getBoundingBox();
+        const sourcePos = sourcePort.getAbsolutePosition(sourceBounds);
+        const targetPos = targetPort.getAbsolutePosition(targetBounds);
+
+        // Get port directions
+        const sourceDirection = sourcePort.alignment?.side;
+        const targetDirection = targetPort.alignment?.side;
+
+        console.log(`🔗 Routing: ${sourceNode.getMetadata('label')} → ${targetNode.getMetadata('label')}`);
+
+        // Get obstacles (all nodes except source and target)
+        const obstacles = nodes
+          .filter(n => n.id !== sourceNode.id && n.id !== targetNode.id)
+          .map(node => {
+            const worldPos = node.getWorldPosition();
+            return {
+              id: node.id,
+              x: worldPos.x,
+              y: worldPos.y,
+              width: node.size.width,
+              height: node.size.height,
+            };
+          });
+
+        // Reroute the link
+        const routedPath = routingEngine.route({
+          start: sourcePos,
+          end: targetPos,
+          sourceDirection,
+          targetDirection,
+          obstacles,
+          options: {
+            algorithm: 'orthogonal',
+            avoidObstacles: true,
+            gridSize: 10,
+          }
+        });
+
+        if (routedPath && routedPath.points.length > 0) {
+          link.setPoints(routedPath.points);
+          link.markDirty('node-moved');
+        }
+      } catch (error) {
+        console.error(`❌ Error rerouting link ${link.id}:`, error);
+      }
+    });
+
+    // Mark diagram dirty to trigger re-render
+    diagram.markDirty('node-position-changed');
+  }
+
+  /**
    * Route all links using ELK.js
    */
   private async routeAllLinks() {
@@ -137,8 +282,19 @@ export class ElkComparisonComponent implements OnInit {
         }
 
         // Calculate port positions
-        const sourcePos = sourcePort.getAbsolutePosition(sourceNode.getBoundingBox());
-        const targetPos = targetPort.getAbsolutePosition(targetNode.getBoundingBox());
+        const sourceBounds = sourceNode.getBoundingBox();
+        const targetBounds = targetNode.getBoundingBox();
+        const sourcePos = sourcePort.getAbsolutePosition(sourceBounds);
+        const targetPos = targetPort.getAbsolutePosition(targetBounds);
+
+        // Debug logging for Node 6
+        if (sourceNode.id.includes('node6') || targetNode.id.includes('node6')) {
+          console.log(`🔍 Node 6 Debug - Link ${link.id}:`);
+          console.log(`  Source: ${sourceNode.id}`, sourceBounds, sourcePos);
+          console.log(`  Target: ${targetNode.id}`, targetBounds, targetPos);
+          console.log(`  Source port:`, sourcePort.id, sourcePort.alignment, sourcePort.position);
+          console.log(`  Target port:`, targetPort.id, targetPort.alignment, targetPort.position);
+        }
 
         // Get port directions
         const sourceDirection = sourcePort.alignment?.side;
@@ -156,8 +312,6 @@ export class ElkComparisonComponent implements OnInit {
           };
         });
 
-        console.log(`📍 Routing link ${link.id} with orthogonal from`, sourcePos, 'to', targetPos);
-
         // Use route (synchronous) for orthogonal router
         const routedPath = routingEngine.route({
           start: sourcePos,
@@ -174,7 +328,6 @@ export class ElkComparisonComponent implements OnInit {
 
         if (routedPath && routedPath.points.length > 0) {
           link.setPoints(routedPath.points);
-          console.log(`✅ Routed link ${link.id} with ${routedPath.points.length} points`);
         } else {
           console.warn(`⚠️ ELK routing returned no points for link ${link.id}`);
         }
@@ -182,8 +335,6 @@ export class ElkComparisonComponent implements OnInit {
         console.error(`❌ Error routing link ${link.id}:`, error);
       }
     }
-
-    console.log('✅ Finished routing all links');
 
     // Force re-render - mark diagram and all links as dirty
     diagram.markDirty('elk-routing-complete');
@@ -243,6 +394,11 @@ export class ElkComparisonComponent implements OnInit {
     // Note: ELK is designed for graph layout, not pure edge routing
     // Our OrthogonalRouter provides React Flow-style smoothstep routing with A* obstacle avoidance
     const link = new LinkModel(sourcePort.id, targetPort.id, 'orthogonal');
+
+    // CRITICAL FIX: Set node IDs so rerouteNodeLinks() can find links by node
+    link.setSourcePort(sourcePort.id, source.id);
+    link.setTargetPort(targetPort.id, target.id);
+
     link.setMetadata('routing', {
       algorithm: 'orthogonal',  // Use OrthogonalRouter (React Flow smoothstep equivalent)
     });
