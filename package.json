@@ -161,6 +161,7 @@
     "ngx-cookie": "^6.0.1",
     "ngx-echarts": "^19.0.0",
     "ngx-json-viewer": "^3.2.1",
+    "ngx-monaco-editor-v2": "^20.3.0",
     "npm": "^11.3.0",
     "nvm": "^0.0.4",
     "openai": "^6.5.0",
