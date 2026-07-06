@@ -6,5 +6,16 @@
   },
   "files": ["src/main.ts"],
   "include": ["src/**/*.d.ts"],
-  "exclude": ["jest.config.ts", "src/**/*.test.ts", "src/**/*.spec.ts"]
+  "exclude": ["jest.config.ts", "src/**/*.test.ts", "src/**/*.spec.ts"],
+  "references": [
+    {
+      "path": "../../../libs/renderer"
+    },
+    {
+      "path": "../../../libs/engine"
+    },
+    {
+      "path": "../../../libs/renderer-angular/renderer-angular"
+    }
+  ]
 }
