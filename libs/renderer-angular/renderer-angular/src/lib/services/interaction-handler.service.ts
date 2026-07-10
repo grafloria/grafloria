@@ -940,6 +940,7 @@ export class InteractionHandlerService {
 
     if (newPoints) {
       this.editingLink.setPoints(newPoints);
+      this.editingLink.setMetadata('hasManualWaypoints', true);
       console.log(`🔵 Moved waypoint ${this.editingWaypointIndex} to (${worldX.toFixed(1)}, ${worldY.toFixed(1)})`);
       return true;
     }
@@ -971,6 +972,7 @@ export class InteractionHandlerService {
 
     if (result) {
       link.setPoints(result.newPoints);
+      link.setMetadata('hasManualWaypoints', true);
       console.log(`🟢 Added waypoint at index ${result.waypointIndex} on link ${link.id}`);
       return true;
     }
@@ -990,6 +992,9 @@ export class InteractionHandlerService {
 
     if (newPoints) {
       link.setPoints(newPoints);
+      if (newPoints.length <= 2) {
+        link.setMetadata('hasManualWaypoints', false);
+      }
       console.log(`🔴 Removed waypoint at index ${waypointIndex} from link ${link.id}`);
       return true;
     }

@@ -106,6 +106,13 @@ export class LinkModel extends DiagramEntity {
   setPathType(pathType: 'direct' | 'orthogonal' | 'smooth' | 'bezier'): void {
     const oldType = this.pathType;
     this.pathType = pathType;
+    // The cached route belongs to the old path type; clear it so the renderer
+    // re-routes with the new algorithm instead of drawing the stale polyline.
+    if (oldType !== pathType) {
+      this.points = [];
+      this.segments = [];
+      this.setMetadata('hasManualWaypoints', false);
+    }
     this.trackChange('pathType', oldType, pathType);
   }
 

@@ -1,0 +1,790 @@
+// E2E harness for @grafloria/renderer line algorithms.
+// Builds real DiagramEngine diagrams, renders them through the real SVGRenderer,
+// materializes the VNode tree to DOM, and records numeric probes on window.__PROBES__.
+
+import {
+  DiagramEngine,
+  NodeModel,
+  PortModel,
+  LinkModel,
+  InteractionMode,
+  PortVisibilityStrategy,
+} from '@grafloria/engine';
+import {
+  SVGRenderer,
+  LIGHT_THEME,
+  DARK_THEME,
+  JumpPointDetector,
+  JumpPointRenderer,
+  getPortPositionForShape,
+} from '@grafloria/renderer';
+
+const SVG_NS = 'http://www.w3.org/2000/svg';
+const PROBES: Record<string, any> = {};
+(window as any).__PROBES__ = PROBES;
+
+// ---- console counting (perf finding) -------------------------------------
+let logCount = 0;
+const origLog = console.log.bind(console);
+console.log = (...args: any[]) => {
+  logCount++;
+  // keep quiet to not slow the page; comment next line to debug
+  // origLog(...args);
+};
+function resetLogCount() { logCount = 0; }
+
+// ---- VNode -> DOM materializer (mirrors SVGRendererV2 / VNodeRendererService rules)
+function camelToKebab(s: string): string {
+  return s.replace(/([a-z0-9])([A-Z])/g, '$1-$2').toLowerCase();
+}
+const VERBATIM_ATTRS = new Set(['viewBox', 'preserveAspectRatio', 'textContent']);
+function vnodeToDom(vnode: any): Element {
+  const el = document.createElementNS(SVG_NS, vnode.type);
+  const props = vnode.props || {};
+  for (const [k, v] of Object.entries(props)) {
+    if (v === null || v === undefined) continue;
+    if (k === 'className') { el.setAttribute('class', String(v)); continue; }
+    if (k === 'textContent') { el.textContent = String(v); continue; }
+    if (k === 'style' && typeof v === 'object') {
+      el.setAttribute('style', Object.entries(v as any).map(([sk, sv]) => `${camelToKebab(sk)}:${sv}`).join(';'));
+      continue;
+    }
+    if (VERBATIM_ATTRS.has(k)) { el.setAttribute(k, String(v)); continue; }
+    el.setAttribute(camelToKebab(k), String(v));
+  }
+  if (vnode.key) el.setAttribute('data-vnode-key', String(vnode.key));
+  for (const c of vnode.children || []) {
+    if (!c) continue;
+    if (typeof c === 'string') { el.appendChild(document.createTextNode(c)); continue; }
+    el.appendChild(vnodeToDom(c));
+  }
+  return el;
+}
+
+// ---- scenario cell helpers -------------------------------------------------
+const root = document.getElementById('root')!;
+function cell(id: string, title: string, dark = false): HTMLElement {
+  const wrap = document.createElement('div');
+  wrap.className = 'cell' + (dark ? ' dark' : '');
+  wrap.id = `cell-${id}`;
+  const h = document.createElement('h3');
+  h.textContent = title;
+  wrap.appendChild(h);
+  const inner = document.createElement('div');
+  inner.className = 'stage';
+  wrap.appendChild(inner);
+  root.appendChild(wrap);
+  return inner;
+}
+
+function makeEngine(): any {
+  return new DiagramEngine({
+    interaction: {
+      mode: InteractionMode.SMART,
+      portVisibility: PortVisibilityStrategy.ALWAYS,
+    },
+  } as any);
+}
+
+interface PortSpec { id: string; side: 'left' | 'right' | 'top' | 'bottom'; type: 'input' | 'output'; index?: number; }
+function addNode(
+  diagram: any, label: string, x: number, y: number,
+  opts: { w?: number; h?: number; shape?: string; fill?: string; ports: PortSpec[] }
+): any {
+  const node = new NodeModel({
+    type: 'rect',
+    position: { x, y },
+    size: { width: opts.w ?? 110, height: opts.h ?? 50 },
+  } as any);
+  node.setMetadata('shape', {
+    type: opts.shape ?? 'rect',
+    fill: opts.fill ?? '#dbeafe',
+    stroke: '#334155',
+    strokeWidth: 1.5,
+    cornerRadius: 4,
+  });
+  node.setMetadata('label', label);
+  for (const p of opts.ports) {
+    node.addPort(new PortModel({ id: p.id, type: p.type, side: p.side, index: p.index } as any));
+  }
+  diagram.addNode(node);
+  return node;
+}
+
+function makeLink(diagram: any, srcPortId: string, dstPortId: string, pathType: any, style: any = {}): any {
+  const link = new LinkModel(srcPortId, dstPortId, pathType);
+  link.updateStyle({ stroke: '#475569', strokeWidth: 2, ...style });
+  diagram.addLink(link);
+  return link;
+}
+
+function renderInto(engine: any, container: HTMLElement, w: number, h: number, theme: any = LIGHT_THEME): SVGSVGElement {
+  const renderer = new SVGRenderer(engine, { enableCaching: false, useCSSMode: false }, theme);
+  const vnode = renderer.render({ x: 0, y: 0, width: w, height: h }, 1.0);
+  const dom = vnodeToDom(vnode) as SVGSVGElement;
+  dom.setAttribute('width', String(w));
+  dom.setAttribute('height', String(h));
+  container.appendChild(dom);
+  return dom;
+}
+
+// First render populates link.points for every link (jump detection depends on
+// other links' points); second render is what a user sees after any update.
+function renderTwice(engine: any, container: HTMLElement, w: number, h: number, theme: any = LIGHT_THEME): SVGSVGElement {
+  const tmp = document.createElement('div');
+  renderInto(engine, tmp, w, h, theme);
+  tmp.remove();
+  return renderInto(engine, container, w, h, theme);
+}
+
+// overlay helper: draw a marker (cross/line/label) in world coords on a rendered svg
+function overlayLine(svg: SVGSVGElement, x1: number, y1: number, x2: number, y2: number, color = '#ef4444', dash = '4,3') {
+  const l = document.createElementNS(SVG_NS, 'line');
+  l.setAttribute('x1', String(x1)); l.setAttribute('y1', String(y1));
+  l.setAttribute('x2', String(x2)); l.setAttribute('y2', String(y2));
+  l.setAttribute('stroke', color); l.setAttribute('stroke-width', '1');
+  l.setAttribute('stroke-dasharray', dash);
+  svg.appendChild(l);
+}
+function overlayText(svg: SVGSVGElement, x: number, y: number, text: string, color = '#ef4444', size = 10) {
+  const t = document.createElementNS(SVG_NS, 'text');
+  t.setAttribute('x', String(x)); t.setAttribute('y', String(y));
+  t.setAttribute('fill', color); t.setAttribute('font-size', String(size));
+  t.setAttribute('font-family', 'monospace');
+  t.textContent = text;
+  svg.appendChild(t);
+}
+function overlayDot(svg: SVGSVGElement, x: number, y: number, color = '#ef4444', r = 2.5) {
+  const c = document.createElementNS(SVG_NS, 'circle');
+  c.setAttribute('cx', String(x)); c.setAttribute('cy', String(y)); c.setAttribute('r', String(r));
+  c.setAttribute('fill', color);
+  svg.appendChild(c);
+}
+
+// world-coord bbox of an element inside our svg (zoom=1, svg at natural size)
+function worldBBox(svg: SVGSVGElement, el: SVGGraphicsElement) {
+  const sr = svg.getBoundingClientRect();
+  const er = el.getBoundingClientRect();
+  return {
+    minX: er.left - sr.left, minY: er.top - sr.top,
+    maxX: er.right - sr.left, maxY: er.bottom - sr.top,
+    w: er.width, h: er.height,
+  };
+}
+
+function pathD(svg: SVGSVGElement, linkId: string): string | null {
+  const g = svg.querySelector(`[data-vnode-key="link-${linkId}"]`);
+  const p = g?.querySelector('path');
+  return p ? p.getAttribute('d') : null;
+}
+
+// ===========================================================================
+// S1: arrow anchoring per type (light theme)
+// ===========================================================================
+function s1_arrowAnchoring() {
+  const types = [
+    'arrow', 'open-arrow', 'double-arrow', 'circle', 'square', 'diamond',
+    'hollow-diamond', 'filled-diamond', 'generalization', 'crow-foot', 'one',
+    'zero-or-one', 'zero-or-many', 'one-or-many', 'cross', 'bar', 'dot', 'oval',
+  ];
+  const ROW = 52, W = 560, H = types.length * ROW + 20;
+  const stage = cell('s1', 'S1 — Arrow anchoring per type (size=16, red line = target node edge, tip should touch it)');
+  const engine = makeEngine();
+  const diagram = engine.createDiagram('s1');
+  const rows: Array<{ type: string; link: any; target: any }> = [];
+  types.forEach((t, i) => {
+    const y = 10 + i * ROW;
+    const src = addNode(diagram, '', 20, y, { w: 70, h: 36, ports: [{ id: `s1-src-${i}`, side: 'right', type: 'output' }] });
+    const dst = addNode(diagram, t, 420, y, { w: 120, h: 36, ports: [{ id: `s1-dst-${i}`, side: 'left', type: 'input' }] });
+    const link = makeLink(diagram, `s1-src-${i}`, `s1-dst-${i}`, 'direct', {
+      arrowHead: { type: t, size: 16, filled: true, color: '#1d4ed8', width: 1.5 },
+    });
+    rows.push({ type: t, link, target: dst });
+  });
+  const svg = renderInto(engine, stage, W, H);
+
+  // probes: for each arrow, gap between arrow bbox max-x and the target port x (=node left edge)
+  const results: any[] = [];
+  rows.forEach((row, i) => {
+    const portX = row.target.position.x;
+    const portY = row.target.position.y + row.target.size.height / 2;
+    overlayLine(svg, portX, portY - 22, portX, portY + 22);
+    const g = svg.querySelector(`[data-vnode-key="link-${row.link.id}"]`);
+    const arrowEl = g?.querySelector('.arrow') as SVGGraphicsElement | null;
+    let gap: number | null = null, bbox: any = null;
+    if (arrowEl) {
+      bbox = worldBBox(svg, arrowEl);
+      gap = portX - bbox.maxX; // >0 means arrow floats short of the node
+      overlayText(svg, portX + 6, portY - 8, `gap=${gap.toFixed(1)}px`, '#b91c1c', 10);
+    }
+    // where does the path itself end?
+    const d = pathD(svg, row.link.id);
+    const nums = d ? d.match(/-?[\d.]+/g)!.map(Number) : [];
+    const pathEndX = nums.length >= 2 ? nums[nums.length - 2] : null;
+    results.push({ type: row.type, portX, arrowMaxX: bbox ? +bbox.maxX.toFixed(2) : null, tipGapPx: gap !== null ? +gap.toFixed(2) : null, pathEndX });
+  });
+  PROBES.s1_arrowAnchoring = results;
+}
+
+// ===========================================================================
+// S2: hollow arrows on dark theme (hardcoded white fill)
+// ===========================================================================
+function s2_darkTheme() {
+  const types = ['arrow', 'open-arrow', 'hollow-diamond', 'generalization', 'zero-or-one'];
+  const ROW = 52, W = 560, H = types.length * ROW + 20;
+  const stage = cell('s2', 'S2 — Hollow arrows on DARK_THEME (filled:false → hardcoded white fill?)', true);
+  const engine = makeEngine();
+  const diagram = engine.createDiagram('s2');
+  const rows: any[] = [];
+  types.forEach((t, i) => {
+    const y = 10 + i * ROW;
+    addNode(diagram, '', 20, y, { w: 70, h: 36, fill: '#1e293b', ports: [{ id: `s2-src-${i}`, side: 'right', type: 'output' }] });
+    addNode(diagram, t, 420, y, { w: 120, h: 36, fill: '#1e293b', ports: [{ id: `s2-dst-${i}`, side: 'left', type: 'input' }] });
+    const link = makeLink(diagram, `s2-src-${i}`, `s2-dst-${i}`, 'direct', {
+      stroke: '#94a3b8',
+      arrowHead: { type: t, size: 16, filled: false, color: '#94a3b8', width: 1.5 },
+    });
+    rows.push({ type: t, link });
+  });
+  const svg = renderInto(engine, stage, W, H, DARK_THEME);
+  PROBES.s2_darkFills = rows.map((r) => {
+    const g = svg.querySelector(`[data-vnode-key="link-${r.link.id}"]`);
+    const arrowEl = g?.querySelector('.arrow');
+    const fill = arrowEl?.getAttribute('fill') ?? [...(arrowEl?.querySelectorAll('[fill]') ?? [])].map(e => e.getAttribute('fill')).join(',');
+    return { type: r.type, fill };
+  });
+}
+
+// ===========================================================================
+// S3: jump point size + sweep direction on straight crossings
+// ===========================================================================
+function s3_jumpSizeAndSweep() {
+  buildS3('s3a', 'S3a — FIRST render: jump points enabled but none drawn (other links have no points yet)', false);
+  buildS3('s3b', 'S3b — SECOND render of same diagram: arcs appear. size=12 configured; measure chord/sweep. Blue dots = true crossings', true);
+}
+function buildS3(id: string, title: string, twice: boolean) {
+  const W = 640, H = 340;
+  const stage = cell(id, title);
+  const engine = makeEngine();
+  const diagram = engine.createDiagram(id);
+  // horizontal link with jump points
+  addNode(diagram, 'A', 10, 140, { w: 60, h: 40, ports: [{ id: `${id}-a-r`, side: 'right', type: 'output' }] });
+  addNode(diagram, 'B', 560, 140, { w: 60, h: 40, ports: [{ id: `${id}-b-l`, side: 'left', type: 'input' }] });
+  const mainLink = makeLink(diagram, `${id}-a-r`, `${id}-b-l`, 'direct', {
+    jumpPoints: { enabled: true, size: 12, style: 'arc', detectMode: 'all', threshold: 45 },
+  });
+  // steep (90°) crossing at x≈220
+  addNode(diagram, '', 190, 10, { w: 60, h: 30, ports: [{ id: `${id}-c-b`, side: 'bottom', type: 'output' }] });
+  addNode(diagram, '', 190, 290, { w: 60, h: 30, ports: [{ id: `${id}-d-t`, side: 'top', type: 'input' }] });
+  makeLink(diagram, `${id}-c-b`, `${id}-d-t`, 'direct', { stroke: '#0891b2' });
+  // shallow (~20°) crossing around x≈430
+  addNode(diagram, '', 250, 100, { w: 60, h: 30, ports: [{ id: `${id}-e-r`, side: 'right', type: 'output' }] });
+  addNode(diagram, '', 570, 210, { w: 60, h: 30, ports: [{ id: `${id}-f-l`, side: 'left', type: 'input' }] });
+  makeLink(diagram, `${id}-e-r`, `${id}-f-l`, 'direct', { stroke: '#0891b2' });
+
+  const svg = twice ? renderTwice(engine, stage, W, H) : renderInto(engine, stage, W, H);
+  const d = pathD(svg, mainLink.id) || '';
+  // measure each arc: chord length between the point before 'A' and the arc endpoint
+  const arcRe = /L\s*(-?[\d.]+)\s+(-?[\d.]+)\s*A\s*(-?[\d.]+)\s+(-?[\d.]+)\s+\S+\s+(\S+)\s+(\S+)\s+(-?[\d.]+)\s+(-?[\d.]+)/g;
+  const arcs: any[] = [];
+  let m;
+  while ((m = arcRe.exec(d))) {
+    const [, x1, y1, rx, , , sweep, x2, y2] = m;
+    const chord = Math.hypot(+x2 - +x1, +y2 - +y1);
+    arcs.push({ from: [+x1, +y1], to: [+x2, +y2], declaredRadius: +rx, sweep: +sweep, chordLen: +chord.toFixed(2), effectiveRenderedRadius: +(chord / 2).toFixed(2) });
+    overlayText(svg, (+x1 + +x2) / 2 - 30, +y1 - 18, `chord=${chord.toFixed(0)} r=${rx} sweep=${sweep}`, '#b91c1c', 9);
+  }
+  // true intersections of mainLink polyline with the two crossing links
+  const det = new JumpPointDetector();
+  const others = diagram.getLinks().filter((l: any) => l.id !== mainLink.id).map((l: any) => ({ id: l.id, points: l.points }));
+  const ints = det.detectIntersections({ id: mainLink.id, points: mainLink.points }, others, 'all', 45);
+  ints.forEach((it: any) => overlayDot(svg, it.point.x, it.point.y, '#2563eb'));
+  PROBES[`${id}_jumpArcs`] = { configuredSize: 12, pathD: d, arcs, intersections: ints.map((i: any) => ({ x: +i.point.x.toFixed(1), y: +i.point.y.toFixed(1), angle: +i.angle.toFixed(1) })) };
+}
+
+// ===========================================================================
+// S4: jump points on orthogonal (rounded-corner) path — segment misalignment
+// ===========================================================================
+function s4_jumpOrthogonal() {
+  const W = 640, H = 360;
+  const stage = cell('s4', 'S4 — Jump points on ORTHOGONAL link (rounded corners). Blue dots = true crossings; arcs should sit on them');
+  const engine = makeEngine();
+  const diagram = engine.createDiagram('s4');
+  addNode(diagram, 'A', 10, 260, { w: 70, h: 40, ports: [{ id: 's4-a-r', side: 'right', type: 'output' }] });
+  addNode(diagram, 'B', 540, 40, { w: 70, h: 40, ports: [{ id: 's4-b-l', side: 'left', type: 'input' }] });
+  const mainLink = makeLink(diagram, 's4-a-r', 's4-b-l', 'orthogonal', {
+    jumpPoints: { enabled: true, size: 12, style: 'arc', detectMode: 'all', threshold: 45 },
+  });
+  // vertical crossing link (crosses the first horizontal segment)
+  addNode(diagram, '', 270, 5, { w: 60, h: 30, ports: [{ id: 's4-c-b', side: 'bottom', type: 'output' }] });
+  addNode(diagram, '', 270, 320, { w: 60, h: 30, ports: [{ id: 's4-d-t', side: 'top', type: 'input' }] });
+  makeLink(diagram, 's4-c-b', 's4-d-t', 'direct', { stroke: '#0891b2' });
+  // horizontal crossing link (crosses the VERTICAL segment of the orthogonal path)
+  addNode(diagram, '', 350, 155, { w: 60, h: 30, ports: [{ id: 's4-e-r', side: 'right', type: 'output' }] });
+  addNode(diagram, '', 585, 155, { w: 50, h: 30, ports: [{ id: 's4-f-l', side: 'left', type: 'input' }] });
+  makeLink(diagram, 's4-e-r', 's4-f-l', 'direct', { stroke: '#059669' });
+
+  const svg = renderTwice(engine, stage, W, H);
+  const d = pathD(svg, mainLink.id) || '';
+  const det = new JumpPointDetector();
+  const others = diagram.getLinks().filter((l: any) => l.id !== mainLink.id).map((l: any) => ({ id: l.id, points: l.points }));
+  const ints = det.detectIntersections({ id: mainLink.id, points: mainLink.points }, others, 'all', 45);
+  ints.forEach((it: any) => overlayDot(svg, it.point.x, it.point.y, '#2563eb', 3.5));
+  // arc positions in rendered path
+  const arcRe = /A\s*[\d.]+\s+[\d.]+\s+\S+\s+\S+\s+\S+\s+(-?[\d.]+)\s+(-?[\d.]+)/g;
+  const arcEnds: any[] = [];
+  let m;
+  while ((m = arcRe.exec(d))) arcEnds.push({ x: +m[1], y: +m[2] });
+  arcEnds.forEach(a => overlayDot(svg, a.x, a.y, '#dc2626', 3));
+  PROBES.s4_jumpOrthogonal = {
+    linkPoints: mainLink.points,
+    trueIntersections: ints.map((i: any) => ({ x: +i.point.x.toFixed(1), y: +i.point.y.toFixed(1), segmentIndex: i.segmentIndex })),
+    renderedArcEndpoints: arcEnds,
+    pathD: d,
+  };
+}
+
+// ===========================================================================
+// S5: jump points destroy bezier/smooth curves
+// ===========================================================================
+function s5_jumpBezier() {
+  const build = (withJumps: boolean, suffix: string) => {
+    const engine = makeEngine();
+    const diagram = engine.createDiagram('s5' + suffix);
+    addNode(diagram, 'A', 10, 200, { w: 70, h: 40, ports: [{ id: `s5${suffix}-a-r`, side: 'right', type: 'output' }] });
+    addNode(diagram, 'B', 500, 30, { w: 70, h: 40, ports: [{ id: `s5${suffix}-b-l`, side: 'left', type: 'input' }] });
+    const mainLink = makeLink(diagram, `s5${suffix}-a-r`, `s5${suffix}-b-l`, 'smooth', {
+      jumpPoints: withJumps ? { enabled: true, size: 12, style: 'arc', detectMode: 'all', threshold: 45 } : undefined,
+    });
+    addNode(diagram, '', 240, 5, { w: 60, h: 30, ports: [{ id: `s5${suffix}-c-b`, side: 'bottom', type: 'output' }] });
+    addNode(diagram, '', 240, 260, { w: 60, h: 30, ports: [{ id: `s5${suffix}-d-t`, side: 'top', type: 'input' }] });
+    makeLink(diagram, `s5${suffix}-c-b`, `s5${suffix}-d-t`, 'direct', { stroke: '#0891b2' });
+    return { engine, mainLink };
+  };
+  const stageA = cell('s5a', 'S5a — smooth link, jumpPoints DISABLED (reference)');
+  const a = build(false, 'a');
+  const svgA = renderTwice(a.engine, stageA, 620, 300);
+  const stageB = cell('s5b', 'S5b — SAME smooth link, jumpPoints ENABLED (2nd render)');
+  const b = build(true, 'b');
+  const svgB = renderTwice(b.engine, stageB, 620, 300);
+  PROBES.s5_bezier = {
+    disabled_d: pathD(svgA, a.mainLink.id),
+    enabled_d: pathD(svgB, b.mainLink.id),
+    disabledHasCurve: /C/.test(pathD(svgA, a.mainLink.id) || ''),
+    enabledHasCurve: /C/.test(pathD(svgB, b.mainLink.id) || ''),
+  };
+}
+
+// ===========================================================================
+// S6: two crossings closer than 2×size — overlapping jumps
+// ===========================================================================
+function s6_closeCrossings() {
+  const W = 640, H = 320;
+  const stage = cell('s6', 'S6 — Two crossings 14px apart, jump size=12 (cut half-width 12 → overlap). Path should not double back');
+  const engine = makeEngine();
+  const diagram = engine.createDiagram('s6');
+  addNode(diagram, 'A', 10, 130, { w: 60, h: 40, ports: [{ id: 's6-a-r', side: 'right', type: 'output' }] });
+  addNode(diagram, 'B', 560, 130, { w: 60, h: 40, ports: [{ id: 's6-b-l', side: 'left', type: 'input' }] });
+  const mainLink = makeLink(diagram, 's6-a-r', 's6-b-l', 'direct', {
+    jumpPoints: { enabled: true, size: 12, style: 'arc', detectMode: 'all', threshold: 45 },
+  });
+  [300, 314].forEach((x, i) => {
+    addNode(diagram, '', x - 30, 5, { w: 60, h: 30, ports: [{ id: `s6-c${i}-b`, side: 'bottom', type: 'output' }] });
+    addNode(diagram, '', x - 30, 280, { w: 60, h: 30, ports: [{ id: `s6-d${i}-t`, side: 'top', type: 'input' }] });
+    makeLink(diagram, `s6-c${i}-b`, `s6-d${i}-t`, 'direct', { stroke: '#0891b2' });
+  });
+  const svg = renderTwice(engine, stage, W, H);
+  const d = pathD(svg, mainLink.id) || '';
+  // check x-monotonicity of L/A command endpoints along the left-to-right main link
+  const cmdRe = /([LA])\s*((?:-?[\d.]+[\s,]*)+)/g;
+  const xs: number[] = [];
+  let m;
+  while ((m = cmdRe.exec(d))) {
+    const nums = m[2].trim().split(/[\s,]+/).map(Number);
+    xs.push(m[1] === 'L' ? nums[0] : nums[5]);
+  }
+  let backtracks = 0;
+  for (let i = 1; i < xs.length; i++) if (xs[i] < xs[i - 1] - 0.01) backtracks++;
+  PROBES.s6_closeCrossings = { pathD: d, xSequence: xs.map(x => +x.toFixed(1)), backtracks };
+}
+
+// ===========================================================================
+// S7: stale link.points — move a node, jumps stay at old crossing
+// ===========================================================================
+function s7_stalePoints() {
+  const W = 640, H = 320;
+  const engine = makeEngine();
+  const diagram = engine.createDiagram('s7');
+  addNode(diagram, 'A', 10, 130, { w: 60, h: 40, ports: [{ id: 's7-a-r', side: 'right', type: 'output' }] });
+  addNode(diagram, 'B', 560, 130, { w: 60, h: 40, ports: [{ id: 's7-b-l', side: 'left', type: 'input' }] });
+  const mainLink = makeLink(diagram, 's7-a-r', 's7-b-l', 'direct', {
+    jumpPoints: { enabled: true, size: 12, style: 'arc', detectMode: 'all', threshold: 45 },
+  });
+  const topNode = addNode(diagram, 'V', 270, 5, { w: 60, h: 30, ports: [{ id: 's7-c-b', side: 'bottom', type: 'output' }] });
+  const botNode = addNode(diagram, '', 270, 280, { w: 60, h: 30, ports: [{ id: 's7-d-t', side: 'top', type: 'input' }] });
+  const vlink = makeLink(diagram, 's7-c-b', 's7-d-t', 'direct', { stroke: '#0891b2' });
+
+  const stageA = cell('s7a', 'S7a — settled render: vertical link crosses at x≈300, jump drawn there');
+  const svgA = renderTwice(engine, stageA, W, H);
+  const dBefore = pathD(svgA, mainLink.id) || '';
+
+  // move the vertical link's nodes +160px right, render again (fresh renderer, no cache)
+  topNode.setPosition(430, 5);
+  botNode.setPosition(430, 280);
+  resetLogCount();
+  const stageB = cell('s7b', 'S7b — after moving vertical link +160px and re-rendering: jump should move to x≈460');
+  const svgB = renderInto(engine, stageB, W, H);
+  const dAfter = pathD(svgB, mainLink.id) || '';
+  const logsDuringRender = logCount;
+
+  const arcAt = (d: string) => {
+    const m = /L\s*(-?[\d.]+)\s+(-?[\d.]+)\s*A/.exec(d);
+    return m ? +m[1] : null;
+  };
+  PROBES.s7_stalePoints = {
+    jumpBeforeAtX: arcAt(dBefore),
+    jumpAfterAtX: arcAt(dAfter),
+    mainBefore_d: dBefore,
+    mainAfter_d: dAfter,
+    vlinkStalePoints: vlink.points,
+    vlinkRendered_d: pathD(svgB, vlink.id),
+    consoleLogsDuringOneRender: logsDuringRender,
+    linksInDiagram: diagram.getLinks().length,
+    nodesInDiagram: diagram.getNodes().length,
+  };
+}
+
+// ===========================================================================
+// S11: gap + bridge styles on a settled diagram
+// ===========================================================================
+function s11_gapBridge() {
+  const build = (style: string, id: string) => {
+    const stage = cell(id, `S11 — jump style '${style}' (size=12, 2nd render)`);
+    const engine = makeEngine();
+    const diagram = engine.createDiagram(id);
+    addNode(diagram, 'A', 10, 130, { w: 60, h: 40, ports: [{ id: `${id}-a-r`, side: 'right', type: 'output' }] });
+    addNode(diagram, 'B', 560, 130, { w: 60, h: 40, ports: [{ id: `${id}-b-l`, side: 'left', type: 'input' }] });
+    const mainLink = makeLink(diagram, `${id}-a-r`, `${id}-b-l`, 'direct', {
+      jumpPoints: { enabled: true, size: 12, style, detectMode: 'all', threshold: 45 },
+    });
+    addNode(diagram, '', 270, 5, { w: 60, h: 30, ports: [{ id: `${id}-c-b`, side: 'bottom', type: 'output' }] });
+    addNode(diagram, '', 270, 250, { w: 60, h: 30, ports: [{ id: `${id}-d-t`, side: 'top', type: 'input' }] });
+    makeLink(diagram, `${id}-c-b`, `${id}-d-t`, 'direct', { stroke: '#0891b2' });
+    const svg = renderTwice(engine, stage, 640, 290);
+    return pathD(svg, mainLink.id);
+  };
+  PROBES.s11_gapBridge = {
+    gap_d: build('gap', 's11a'),
+    bridge_d: build('bridge', 's11b'),
+  };
+}
+
+// ===========================================================================
+// S8: port positioning — index handling on rect + circle
+// ===========================================================================
+function s8_ports() {
+  const stage = cell('s8', 'S8 — Multi-port positioning: rect ports idx 0-2 (left), circle ports idx 0-3 (right). Red = computed positions');
+  const engine = makeEngine();
+  const diagram = engine.createDiagram('s8');
+  const rect = addNode(diagram, 'rect', 40, 60, {
+    w: 140, h: 70, ports: [0, 1, 2].map(i => ({ id: `s8-r-${i}`, side: 'right' as const, type: 'output' as const, index: i })),
+  });
+  const circle = addNode(diagram, 'circle', 320, 40, {
+    w: 120, h: 120, shape: 'circle', fill: '#fce7f3',
+    ports: [0, 1, 2, 3].map(i => ({ id: `s8-c-${i}`, side: 'right' as const, type: 'output' as const, index: i })),
+  });
+  const svg = renderInto(engine, stage, 560, 220);
+  const probe: any = { rect: [], circle: [] };
+  rect.getPorts().forEach((p: any) => {
+    const pos = getPortPositionForShape(p, rect);
+    probe.rect.push({ index: p.index, x: +pos.x.toFixed(2), y: +pos.y.toFixed(2) });
+    overlayDot(svg, rect.position.x + pos.x, rect.position.y + pos.y, '#dc2626', 3);
+    overlayText(svg, rect.position.x + pos.x + 6, rect.position.y + pos.y + 4 + p.index * 10, `i${p.index}`, '#dc2626', 9);
+  });
+  circle.getPorts().forEach((p: any) => {
+    const pos = getPortPositionForShape(p, circle);
+    probe.circle.push({ index: p.index, x: +pos.x.toFixed(2), y: +pos.y.toFixed(2) });
+    overlayDot(svg, circle.position.x + pos.x, circle.position.y + pos.y, '#dc2626', 3);
+    overlayText(svg, circle.position.x + pos.x + 6, circle.position.y + pos.y + 4 + p.index * 9, `i${p.index}`, '#dc2626', 9);
+  });
+  PROBES.s8_ports = probe;
+}
+
+// ===========================================================================
+// S9: relative-path commands parsed as absolute (unit-level, real JumpPointRenderer)
+// ===========================================================================
+function s9_relativePath() {
+  const stage = cell('s9', 'S9 — JumpPointRenderer on a RELATIVE path (green dashed = browser truth, red = reconstructed by library)');
+  const svg = document.createElementNS(SVG_NS, 'svg') as SVGSVGElement;
+  svg.setAttribute('width', '560'); svg.setAttribute('height', '220');
+  stage.appendChild(svg);
+  const dRel = 'm 20 40 l 200 0 l 0 120 l 260 0';
+  const truth = document.createElementNS(SVG_NS, 'path');
+  truth.setAttribute('d', dRel);
+  truth.setAttribute('fill', 'none'); truth.setAttribute('stroke', '#16a34a');
+  truth.setAttribute('stroke-width', '5'); truth.setAttribute('stroke-dasharray', '8,4');
+  truth.setAttribute('opacity', '0.6');
+  svg.appendChild(truth);
+  const jr = new JumpPointRenderer();
+  const out: any = jr.renderWithJumpPoints(
+    dRel,
+    [{ point: { x: 120, y: 40 }, angle: 90, t1: 0.5, t2: 0.5, segmentIndex: 0 } as any],
+    { enabled: true, size: 10, style: 'arc' } as any,
+    { stroke: '#dc2626', strokeWidth: 2, fill: 'none' }
+  );
+  svg.appendChild(vnodeToDom(out));
+  PROBES.s9_relativePath = { input: dRel, output: out.props.d };
+}
+
+// ===========================================================================
+// S10: detector unit probes — mode equivalence + endpoint touching
+// ===========================================================================
+function s10_detectorProbes() {
+  const det = new JumpPointDetector();
+  // (a) shared endpoint: A ends exactly where B starts
+  const A = { id: 'A', points: [{ x: 0, y: 0 }, { x: 100, y: 0 }] };
+  const B = { id: 'B', points: [{ x: 100, y: 0 }, { x: 100, y: 100 }] };
+  const touching = det.detectIntersections(A, [B], 'all', 45);
+  // (b) mode equivalence on a 30° crossing with threshold 25
+  const H_ = { id: 'H', points: [{ x: 0, y: 50 }, { x: 200, y: 50 }] };
+  const D = { id: 'D', points: [{ x: 0, y: 0 }, { x: 200, y: 115 }] }; // ~30°
+  const perp = det.detectIntersections(H_, [D], 'perpendicular', 25);
+  const thresh = det.detectIntersections(H_, [D], 'threshold', 25);
+  PROBES.s10_detector = {
+    sharedEndpointDetectedAsCrossing: touching.length > 0,
+    sharedEndpointT: touching[0] ? { t1: touching[0].t1, t2: touching[0].t2 } : null,
+    perpendicularModeCount: perp.length,
+    thresholdModeCount: thresh.length,
+    modesIdentical: JSON.stringify(perp) === JSON.stringify(thresh),
+  };
+}
+
+// Sample the rendered path every 2px and measure how much of it runs INSIDE
+// node bodies (rect inset by 2px so port-touch on the border doesn't count).
+// Inside samples are overlaid in red so screenshots show the penetration.
+function pathPenetration(svg: SVGSVGElement, linkId: string, nodes: any[], markSvg = true) {
+  const g = svg.querySelector(`[data-vnode-key="link-${linkId}"]`);
+  const p = g?.querySelector('path') as SVGPathElement | null;
+  if (!p) return null;
+  const inset = 2, step = 2;
+  const rects = nodes.map(n => ({
+    label: n.getMetadata('label') || n.id,
+    x: n.position.x + inset, y: n.position.y + inset,
+    X: n.position.x + n.size.width - inset, Y: n.position.y + n.size.height - inset,
+    inside: 0,
+  }));
+  const total = p.getTotalLength();
+  for (let d = 0; d <= total; d += step) {
+    const pt = p.getPointAtLength(d);
+    for (const r of rects) {
+      if (pt.x > r.x && pt.x < r.X && pt.y > r.y && pt.y < r.Y) {
+        r.inside += step;
+        if (markSvg) overlayDot(svg, pt.x, pt.y, 'rgba(220,38,38,0.55)', 1.6);
+      }
+    }
+  }
+  return {
+    pathLength: +total.toFixed(1),
+    perNode: rects.map(r => ({ node: r.label, insidePx: +r.inside.toFixed(0) })),
+  };
+}
+
+// ===========================================================================
+// S12: switching pathType on an existing (settled) link
+// ===========================================================================
+function s12_pathTypeSwitch() {
+  const transitions: Array<[string, string, string]> = [
+    ['direct', 'orthogonal', 's12a'],
+    ['orthogonal', 'smooth', 's12b'],
+    ['orthogonal', 'direct', 's12c'],
+    ['smooth', 'orthogonal', 's12d'],
+  ];
+  const probe: any = {};
+  for (const [from, to, id] of transitions) {
+    const engine = makeEngine();
+    const diagram = engine.createDiagram(id);
+    addNode(diagram, 'A', 20, 200, { w: 70, h: 40, ports: [{ id: `${id}-a-r`, side: 'right', type: 'output' }] });
+    addNode(diagram, 'B', 430, 30, { w: 70, h: 40, ports: [{ id: `${id}-b-l`, side: 'left', type: 'input' }] });
+    const link = makeLink(diagram, `${id}-a-r`, `${id}-b-l`, from);
+
+    // settle: two renders so link.points is populated with the FROM route
+    const tmp = document.createElement('div');
+    renderInto(engine, tmp, 560, 280); renderInto(engine, tmp, 560, 280); tmp.remove();
+    const pointsBeforeSwitch = link.points.map((p: any) => ({ ...p }));
+
+    // switch type, render what the user would now see
+    link.setPathType(to as any);
+    const stage = cell(id, `S12 — pathType '${from}' → '${to}' (switch after settled render)`);
+    const svg = renderInto(engine, stage, 560, 280);
+    const d = pathD(svg, link.id) || '';
+    probe[id] = {
+      from, to,
+      pointsAtSwitch: pointsBeforeSwitch.length,
+      rendered_d: d,
+      hasCurve: /C/.test(d),
+      hasBend: /Q/.test(d),
+      lineSegments: (d.match(/L/g) || []).length,
+    };
+  }
+  PROBES.s12_pathTypeSwitch = probe;
+}
+
+// ===========================================================================
+// S13: hub with one link of each type; move the hub; do lines follow?
+// ===========================================================================
+function s13_moveHub() {
+  const W = 720, H = 420;
+  const engine = makeEngine();
+  const diagram = engine.createDiagram('s13');
+  const hub = addNode(diagram, 'HUB', 40, 170, {
+    w: 90, h: 60, fill: '#fef3c7',
+    ports: [
+      { id: 's13-h-1', side: 'right', type: 'output', index: 0 },
+      { id: 's13-h-2', side: 'top', type: 'output', index: 0 },
+      { id: 's13-h-3', side: 'bottom', type: 'output', index: 0 },
+    ],
+  });
+  addNode(diagram, 'direct', 560, 40, { w: 90, h: 40, ports: [{ id: 's13-t1-l', side: 'left', type: 'input' }] });
+  addNode(diagram, 'smooth', 560, 190, { w: 90, h: 40, ports: [{ id: 's13-t2-l', side: 'left', type: 'input' }] });
+  addNode(diagram, 'orthogonal', 560, 340, { w: 90, h: 40, ports: [{ id: 's13-t3-l', side: 'left', type: 'input' }] });
+  const lDirect = makeLink(diagram, 's13-h-2', 's13-t1-l', 'direct', { stroke: '#2563eb', arrowHead: { type: 'arrow', size: 10, filled: true, color: '#2563eb' } });
+  const lSmooth = makeLink(diagram, 's13-h-1', 's13-t2-l', 'smooth', { stroke: '#059669', arrowHead: { type: 'arrow', size: 10, filled: true, color: '#059669' } });
+  const lOrtho = makeLink(diagram, 's13-h-3', 's13-t3-l', 'orthogonal', { stroke: '#475569', arrowHead: { type: 'arrow', size: 10, filled: true, color: '#475569' } });
+
+  const stageA = cell('s13a', 'S13a — settled: hub connected via direct (blue), smooth (green), orthogonal (grey)');
+  renderTwice(engine, stageA, W, H);
+  const orthoPointsBefore = lOrtho.points.map((p: any) => ({ ...p }));
+
+  // user drags the hub down-right
+  hub.setPosition(160, 60);
+  const stageB = cell('s13b', 'S13b — hub moved to (160,60) and re-rendered: which links follow?');
+  const svgB = renderInto(engine, stageB, W, H);
+
+  const startOf = (d: string) => {
+    const m = /M\s*(-?[\d.]+)[ ,]+(-?[\d.]+)/.exec(d);
+    return m ? { x: +m[1], y: +m[2] } : null;
+  };
+  const hubPortWorld = (portId: string) => {
+    const port = hub.getPorts().find((p: any) => p.id === portId);
+    const local = getPortPositionForShape(port, hub);
+    return { x: hub.position.x + local.x, y: hub.position.y + local.y };
+  };
+  PROBES.s13_moveHub = {
+    hubMovedTo: { x: 160, y: 60 },
+    direct: { rendered_d: pathD(svgB, lDirect.id), pathStart: startOf(pathD(svgB, lDirect.id) || ''), expectedStart: hubPortWorld('s13-h-2') },
+    smooth: { rendered_d: pathD(svgB, lSmooth.id), pathStart: startOf(pathD(svgB, lSmooth.id) || ''), expectedStart: hubPortWorld('s13-h-1') },
+    orthogonal: {
+      rendered_d: pathD(svgB, lOrtho.id),
+      pathStart: startOf(pathD(svgB, lOrtho.id) || ''),
+      expectedStart: hubPortWorld('s13-h-3'),
+      stalePointsUsed: JSON.stringify(lOrtho.points) === JSON.stringify(orthoPointsBefore),
+      linkPoints: lOrtho.points,
+    },
+  };
+}
+
+// ===========================================================================
+// S14: inverted geometry — target sits BEHIND the source's port.
+// Should the line ever cross its own endpoint nodes? (industry answer: no)
+// ===========================================================================
+function s14_endpointCrossing() {
+  const types = ['direct', 'smooth', 'bezier', 'orthogonal'];
+  const probe: any = {};
+  for (const t of types) {
+    const id = `s14-${t}`;
+    const stage = cell(id, `S14 — '${t}': target placed LEFT of source (right port → left port). Red dots = line inside a node body`);
+    const engine = makeEngine();
+    const diagram = engine.createDiagram(id);
+    const src = addNode(diagram, 'SRC', 300, 110, { w: 110, h: 50, fill: '#fef3c7', ports: [{ id: `${id}-a-r`, side: 'right', type: 'output' }] });
+    const tgt = addNode(diagram, 'TGT', 60, 110, { w: 110, h: 50, ports: [{ id: `${id}-b-l`, side: 'left', type: 'input' }] });
+    const link = makeLink(diagram, `${id}-a-r`, `${id}-b-l`, t, {
+      arrowHead: { type: 'arrow', size: 10, filled: true, color: '#475569' },
+    });
+    const svg = renderTwice(engine, stage, 560, 270);
+    probe[t] = pathPenetration(svg, link.id, [src, tgt]);
+  }
+  PROBES.s14_endpointCrossing = probe;
+}
+
+// ===========================================================================
+// S15: the reported move flows
+//  a/b — valid smooth link, then target dragged to the far side of the source
+//  c   — orthogonal link frozen by F16: target dragged ONTO its own old path
+// ===========================================================================
+function s15_moveCrossing() {
+  {
+    const engine = makeEngine();
+    const diagram = engine.createDiagram('s15ab');
+    const src = addNode(diagram, 'SRC', 200, 110, { w: 110, h: 50, fill: '#fef3c7', ports: [{ id: 's15-a-r', side: 'right', type: 'output' }] });
+    const tgt = addNode(diagram, 'TGT', 440, 110, { w: 110, h: 50, ports: [{ id: 's15-b-l', side: 'left', type: 'input' }] });
+    const link = makeLink(diagram, 's15-a-r', 's15-b-l', 'smooth', {
+      arrowHead: { type: 'arrow', size: 10, filled: true, color: '#475569' },
+    });
+    const stageA = cell('s15a', 'S15a — smooth link with arrow, valid layout (settled)');
+    renderTwice(engine, stageA, 600, 270);
+    tgt.setPosition(20, 110); // dragged to the far side of SRC, same row
+    const stageB = cell('s15b', 'S15b — TGT dragged to the far side of SRC (same row) and re-rendered');
+    const svgB = renderInto(engine, stageB, 600, 270);
+    PROBES.s15_smoothMove = pathPenetration(svgB, link.id, [src, tgt]);
+  }
+  {
+    const engine = makeEngine();
+    const diagram = engine.createDiagram('s15c');
+    const src = addNode(diagram, 'SRC', 20, 230, { w: 90, h: 50, fill: '#fef3c7', ports: [{ id: 's15c-a-r', side: 'right', type: 'output' }] });
+    const tgt = addNode(diagram, 'TGT', 480, 40, { w: 90, h: 50, ports: [{ id: 's15c-b-l', side: 'left', type: 'input' }] });
+    const link = makeLink(diagram, 's15c-a-r', 's15c-b-l', 'orthogonal', {
+      arrowHead: { type: 'arrow', size: 10, filled: true, color: '#475569' },
+    });
+    const tmp = document.createElement('div');
+    renderInto(engine, tmp, 640, 320); renderInto(engine, tmp, 640, 320); tmp.remove();
+    // drag the TARGET onto the middle of its own (now frozen, F16) route
+    tgt.setPosition(240, 230);
+    const stageC = cell('s15c', 'S15c — orthogonal link: TGT dragged onto its own frozen route (F16) and re-rendered');
+    const svgC = renderInto(engine, stageC, 640, 320);
+    PROBES.s15_orthoMoveOntoPath = pathPenetration(svgC, link.id, [src, tgt]);
+  }
+}
+
+// ===========================================================================
+// S16: third node sitting on the path — avoidObstacles:true is passed for
+// every link; which line types actually avoid it?
+// ===========================================================================
+function s16_obstacleCrossing() {
+  const types = ['direct', 'smooth', 'orthogonal'];
+  const probe: any = {};
+  for (const t of types) {
+    const id = `s16-${t}`;
+    const stage = cell(id, `S16 — '${t}': unrelated node OBST sits between SRC and TGT (avoidObstacles is on)`);
+    const engine = makeEngine();
+    const diagram = engine.createDiagram(id);
+    addNode(diagram, 'SRC', 30, 110, { w: 90, h: 50, fill: '#fef3c7', ports: [{ id: `${id}-a-r`, side: 'right', type: 'output' }] });
+    addNode(diagram, 'TGT', 460, 110, { w: 90, h: 50, ports: [{ id: `${id}-b-l`, side: 'left', type: 'input' }] });
+    const obst = addNode(diagram, 'OBST', 235, 100, { w: 110, h: 70, fill: '#fee2e2', ports: [] });
+    const link = makeLink(diagram, `${id}-a-r`, `${id}-b-l`, t, {
+      arrowHead: { type: 'arrow', size: 10, filled: true, color: '#475569' },
+    });
+    const svg = renderTwice(engine, stage, 600, 280);
+    probe[t] = pathPenetration(svg, link.id, [obst]);
+  }
+  PROBES.s16_obstacleCrossing = probe;
+}
+
+// ===========================================================================
+// run all
+// ===========================================================================
+const failures: any[] = [];
+for (const [name, fn] of Object.entries({
+  s1_arrowAnchoring, s2_darkTheme, s3_jumpSizeAndSweep, s4_jumpOrthogonal,
+  s5_jumpBezier, s6_closeCrossings, s7_stalePoints, s8_ports, s9_relativePath, s10_detectorProbes,
+  s11_gapBridge, s12_pathTypeSwitch, s13_moveHub,
+  s14_endpointCrossing, s15_moveCrossing, s16_obstacleCrossing,
+})) {
+  try {
+    (fn as any)();
+  } catch (e: any) {
+    failures.push({ scenario: name, error: String(e && e.stack || e) });
+    origLog('SCENARIO FAILED', name, e);
+  }
+}
+PROBES.__failures = failures;
+(window as any).__DONE__ = true;

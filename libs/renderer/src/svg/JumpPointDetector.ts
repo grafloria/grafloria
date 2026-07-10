@@ -188,6 +188,20 @@ export class JumpPointDetector {
           const intersection = this.findIntersection(segment1, segment2);
 
           if (intersection) {
+            // Links that merely touch at a path endpoint (e.g. two links
+            // meeting at the same port) are not crossings — don't draw a jump
+            // at a connection point.
+            const EPS = 1e-6;
+            const touchesOwnEndpoint =
+              (i === 0 && intersection.t1 < EPS) ||
+              (i === targetLink.points.length - 2 && intersection.t1 > 1 - EPS);
+            const touchesOtherEndpoint =
+              (j === 0 && intersection.t2 < EPS) ||
+              (j === otherLink.points.length - 2 && intersection.t2 > 1 - EPS);
+            if (touchesOwnEndpoint || touchesOtherEndpoint) {
+              continue;
+            }
+
             // Apply filtering based on detection mode
             if (this.shouldIncludeIntersection(intersection, mode, threshold)) {
               intersections.push({
@@ -222,8 +236,9 @@ export class JumpPointDetector {
         return true;
 
       case 'perpendicular':
-        // Include if angle is greater than threshold (closer to 90 degrees)
-        return intersection.angle >= threshold;
+        // Only near-perpendicular crossings (fixed 75° cutoff); the threshold
+        // parameter belongs to 'threshold' mode.
+        return intersection.angle >= 75;
 
       case 'threshold':
         // Include if angle is greater than or equal to threshold

@@ -68,6 +68,11 @@ export class SVGRenderer implements IRenderer {
   // Phase 1: Animation service
   private animationService: AnimationService;
 
+  // Per-frame auto-route cache: filled by the pre-pass in renderLinksLayer so
+  // every link's points are current before any link renders (jump detection
+  // reads other links' points).
+  private frameRoutes = new Map<string, RoutedPath>();
+
   // Performance tracking
   private lastRenderTime = 0;
   private lastNodeCount = 0;
@@ -289,6 +294,22 @@ export class SVGRenderer implements IRenderer {
       const bOrder = (b.state === 'selected' || b.state === 'highlighted') ? 1 : 0;
       return aOrder - bOrder;
     });
+
+    // Pre-pass: route every auto-routed link and sync its points BEFORE any
+    // link builds its VNode. Jump-point detection reads other links' points,
+    // so without this the first frame has no jumps and later frames use stale
+    // geometry after nodes move.
+    this.frameRoutes.clear();
+    for (const link of sortedLinks) {
+      if (this.linkHasManualWaypoints(link)) continue;
+      const endpoints = this.getLinkEndpoints(link);
+      if (!endpoints) continue;
+      const routed = this.computeAutoRoute(link, endpoints);
+      if (routed) {
+        this.frameRoutes.set(link.id, routed);
+        this.syncLinkPoints(link, routed.points);
+      }
+    }
 
     const children = sortedLinks.map(link => this.renderLink(link, lod));
 
@@ -1601,10 +1622,9 @@ export class SVGRenderer implements IRenderer {
 
         path += ` C ${cp1x} ${cp1y}, ${cp2x} ${cp2y}, ${points[1].x} ${points[1].y}`;
       } else {
-        // For multiple points, use straight lines between waypoints
-        for (let i = 1; i < points.length; i++) {
-          path += ` L ${points[i].x} ${points[i].y}`;
-        }
+        // Multi-point route (e.g. orthogonal detour around a node): render with
+        // generous rounded corners so it still reads as a smooth link.
+        return this.convertOrthogonalPathWithBends(points, 12);
       }
 
       return path;
@@ -1656,80 +1676,17 @@ export class SVGRenderer implements IRenderer {
     let pathData: string;
     let points: Array<{ x: number; y: number }>;
 
-    // FIXED: Check if link has manually edited waypoints
-    // If link has more than 2 points, it means waypoints were added manually
-    // Don't regenerate the route in this case - use the existing points
-    const hasManualWaypoints = link.points && link.points.length > 2;
-
-    console.log('🔍 SVG-Renderer renderLink:', link.id, {
-      hasEndpoints: !!endpoints,
-      hasManualWaypoints,
-      existingPointsCount: link.points?.length || 0,
-      willAutoRoute: endpoints && !hasManualWaypoints
-    });
+    // Waypoints only count as manual when the waypoint editor marked them so.
+    // Auto-routed orthogonal paths also have >2 points; treating those as
+    // manual froze links in place (they never re-routed after a node moved).
+    const hasManualWaypoints = this.linkHasManualWaypoints(link);
 
     if (endpoints && !hasManualWaypoints) {
-      console.log('🔍 SVG-Renderer: Auto-routing link', link.id, 'during render');
-
-      // Use RoutingEngine to calculate path
-      const routingEngine = this.engine.getRoutingEngine();
-
-      // ARCHITECTURE: pathType determines the base routing algorithm
-      // - 'orthogonal' → orthogonal router (produces perpendicular paths)
-      // - 'direct'/'smooth'/'bezier' → straight router (produces straight paths)
-      // The routing algorithms (a-star, dijkstra, etc.) are for advanced obstacle avoidance
-      // but they don't produce orthogonal paths, so we use pathType as the primary determinant
-      const algorithm = this.mapPathTypeToAlgorithm(link.pathType);
-
-      // SMART ORTHOGONAL ROUTING with automatic obstacle avoidance
-      // 1. First tries simple geometric routing (React Flow style)
-      // 2. If path intersects nodes, automatically uses A* pathfinding to route around them
-      // This gives clean paths that intelligently avoid obstacles
-
-      const defaultAlgorithm = routingEngine.getDefaultAlgorithm();
-      const finalAlgorithm = algorithm || defaultAlgorithm;
-
-      // Collect all nodes as obstacles (except source and target)
-      const currentDiagram = this.engine.getDiagram();
-      let obstacles: Array<{id: string; x: number; y: number; width: number; height: number}> = [];
-
-      if (currentDiagram) {
-        // Get source and target node IDs from link's sourceNodeId and targetNodeId
-        const sourceNodeId = (link as any).sourceNodeId || (link as any).source;
-        const targetNodeId = (link as any).targetNodeId || (link as any).target;
-
-        obstacles = currentDiagram.getNodes()
-          .filter((node: NodeModel) =>
-            node.id !== sourceNodeId && node.id !== targetNodeId
-          )
-          .map((node: NodeModel) => ({
-            id: node.id,
-            x: node.position.x,
-            y: node.position.y,
-            width: node.size.width,
-            height: node.size.height,
-          }));
-
-        console.log('🔍 SVG-Renderer: Collected', obstacles.length, 'obstacles for link', link.id);
-      }
-
-      // Route with smart obstacle avoidance enabled
-      console.log('🔍 SVG-Renderer: Calling primary routing with avoidObstacles: true, obstacles:', obstacles.length);
-      const routedPath = routingEngine.route({
-        start: endpoints.start,
-        end: endpoints.end,
-        sourceDirection: endpoints.sourceDirection,
-        targetDirection: endpoints.targetDirection,
-        obstacles,  // Pass obstacles for collision detection
-        options: {
-          algorithm: finalAlgorithm,
-          avoidObstacles: true,  // Enable A* pathfinding when collisions detected
-          gridSize: 10,
-        }
-      });
+      // Routes are pre-computed for the whole frame in renderLinksLayer so that
+      // jump-point detection sees every link's CURRENT geometry (not last frame's).
+      const routedPath = this.frameRoutes.get(link.id) ?? this.computeAutoRoute(link, endpoints);
 
       if (routedPath) {
-        console.log('✅ SVG-Renderer: Primary routing succeeded for link', link.id, 'with', routedPath.points.length, 'points');
         points = routedPath.points;
         pathData = this.convertRoutedPathToSVG(
           routedPath,
@@ -1737,57 +1694,16 @@ export class SVGRenderer implements IRenderer {
           endpoints.sourceDirection,
           endpoints.targetDirection
         );
-
-        // CRITICAL FIX: Update link.points so interaction handler can use them for hit testing
-        // Only update if points are empty/missing to avoid triggering infinite render loop
-        // (setPoints emits 'link:changed' which triggers re-render)
-        if (!link.points || link.points.length < 2) {
-          // Directly update points array without emitting events to avoid render loop
-          // Note: Segments are not needed for hit testing, only points
-          link.points = points.map(p => ({ ...p }));
-        }
+        this.syncLinkPoints(link, points);
       } else {
-        // Phase 0.1: Fallback strategy - simple orthogonal routing
-        console.warn(`❌ SVG-Renderer: Primary routing FAILED (returned null) for link ${link.id}, trying simple fallback`);
-
-        // Fallback Strategy 1: Try simple orthogonal routing
-        const fallbackPath = routingEngine.route({
-          start: endpoints.start,
-          end: endpoints.end,
-          sourceDirection: endpoints.sourceDirection,
-          targetDirection: endpoints.targetDirection,
-          options: {
-            algorithm: 'orthogonal',
-            avoidObstacles: false,  // Simple routing like React Flow
-            gridSize: 10
-          }
-        });
-
-        if (fallbackPath) {
-          points = fallbackPath.points;
-          pathData = this.convertRoutedPathToSVG(
-            fallbackPath,
-            link.pathType,
-            endpoints.sourceDirection,
-            endpoints.targetDirection
-          );
-
-          // CRITICAL FIX: Update link.points for hit testing (same as above)
-          if (!link.points || link.points.length < 2) {
-            link.points = points.map(p => ({ ...p }));
-          }
-
-          console.log(`✅ Fallback routing succeeded for link ${link.id}`);
-        } else {
-          // Fallback Strategy 2: Hide invalid connection (don't render crossing line)
-          console.warn(`All routing strategies failed for link ${link.id} - hiding invalid preview`);
-          return {
-            type: 'g',
-            key: `link-${link.id}`,
-            props: {},
-            children: []
-          };
-        }
+        // All routing strategies failed: hide invalid connection
+        console.warn(`All routing strategies failed for link ${link.id} - hiding invalid preview`);
+        return {
+          type: 'g',
+          key: `link-${link.id}`,
+          props: {},
+          children: []
+        };
       }
     } else {
       // Has manual waypoints - use existing link.points
@@ -1902,12 +1818,12 @@ export class SVGRenderer implements IRenderer {
 
     const arrowTailStyle = link.style.arrowTail;
 
-    // Calculate arrow position and angle using unified utility
-    // The arrow polygon '0,-5 10,0 0,5' has its tip at x=10, base at x=0
-    // CRITICAL FIX: Use the ACTUAL arrow size from style, not a hardcoded value
-    // This prevents offset issues where arrow size doesn't match position calculation
-    const arrowHeadSize = arrowHeadStyle.size || 10;
-    const arrowData = this.calculateArrowPositionAndAngle(link, points, true, arrowHeadSize);
+    // Calculate arrow position and angle using unified utility.
+    // Each marker shape has its own tip offset (triangle tip at +size, circles
+    // centered, diamonds tip at origin) — using the raw size floated every
+    // non-triangle marker off the node.
+    const arrowData = this.calculateArrowPositionAndAngle(
+      link, points, true, this.arrowRenderer.getTipOffset(arrowHeadStyle));
     const arrowTipPosition = arrowData.position;
     const angle = arrowData.angle;
 
@@ -1928,43 +1844,42 @@ export class SVGRenderer implements IRenderer {
       isSelected &&
       lod !== 'low';
 
-    // Phase 1.3: Apply jump points if enabled
+    // Phase 1.3: Apply jump points if enabled.
+    // Jumps are built from the SAME polyline the detector indexed — never by
+    // re-parsing the rendered path string (rounded corners would shift segment
+    // indices). Curved 2-point links keep their curve: chord-based jumps would
+    // both misplace the jump and destroy the bezier.
     let linkPathVNode: VNode;
-    if (link.style.jumpPoints?.enabled) {
-      // Get all other links for intersection detection
+    const jumpConfig = link.style.jumpPoints;
+    const isTwoPointCurve =
+      (link.pathType === 'smooth' || link.pathType === 'bezier') && points.length === 2;
+    let jumpPathData: string | null = null;
+
+    if (jumpConfig?.enabled && (jumpConfig.size ?? 10) > 0 && !isTwoPointCurve && points.length >= 2) {
       const diagram = this.engine.getDiagram();
       const allLinks = diagram ? diagram.getLinks() : [];
       const otherLinks = allLinks.filter(l => l.id !== link.id);
 
-      // Detect intersections
       const intersections = this.jumpPointDetector.detectIntersections(
-        { id: link.id, points: link.points },
+        { id: link.id, points },
         otherLinks.map(l => ({ id: l.id, points: l.points })),
-        link.style.jumpPoints.detectMode,
-        link.style.jumpPoints.threshold
+        jumpConfig.detectMode,
+        jumpConfig.threshold
       );
 
-      // Render with jump points
-      linkPathVNode = this.jumpPointRenderer.renderWithJumpPoints(
-        pathData,
-        intersections,
-        link.style.jumpPoints,
-        {
-          fill: 'none',
-          ...styles
-        }
-      );
-    } else {
-      // No jump points, render normal path
-      linkPathVNode = {
-        type: 'path',
-        props: {
-          d: pathData,
-          fill: 'none',
-          ...styles,
-        },
-      };
+      if (intersections.length > 0) {
+        jumpPathData = this.buildPathWithJumps(points, intersections, jumpConfig, link.pathType);
+      }
     }
+
+    linkPathVNode = {
+      type: 'path',
+      props: {
+        d: jumpPathData ?? pathData,
+        fill: 'none',
+        ...styles,
+      },
+    };
 
     const vnode: VNode = {
       type: 'g',
@@ -1983,7 +1898,7 @@ export class SVGRenderer implements IRenderer {
               // Render arrow head (at target end)
               if (arrowHeadStyle && arrowHeadStyle.type !== 'none') {
                 const transform = `translate(${arrowTipPosition.x}, ${arrowTipPosition.y}) rotate(${angle})`;
-                const arrowHeadVNode = this.arrowRenderer.renderArrow(arrowHeadStyle, transform);
+                const arrowHeadVNode = this.arrowRenderer.renderArrow(arrowHeadStyle, transform, this.theme.colors.background.default);
                 if (arrowHeadVNode) {
                   arrows.push(arrowHeadVNode);
                 }
@@ -1992,9 +1907,9 @@ export class SVGRenderer implements IRenderer {
               // Render arrow tail (at source end) if specified
               if (arrowTailStyle && arrowTailStyle.type !== 'none') {
                 // Calculate arrow tail position and angle (at source end)
-                const tailArrowData = this.calculateArrowPositionAndAngle(link, points, false, arrowTailStyle.size || 10);
+                const tailArrowData = this.calculateArrowPositionAndAngle(link, points, false, this.arrowRenderer.getTipOffset(arrowTailStyle));
                 const tailTransform = `translate(${tailArrowData.position.x}, ${tailArrowData.position.y}) rotate(${tailArrowData.angle})`;
-                const arrowTailVNode = this.arrowRenderer.renderArrow(arrowTailStyle, tailTransform);
+                const arrowTailVNode = this.arrowRenderer.renderArrow(arrowTailStyle, tailTransform, this.theme.colors.background.default);
                 if (arrowTailVNode) {
                   arrows.push(arrowTailVNode);
                 }
@@ -3126,5 +3041,244 @@ export class SVGRenderer implements IRenderer {
         end
       ];
     }
+  }
+
+  /**
+   * Build the link path from its polyline with jump geometry inserted.
+   *
+   * Works on the SAME point array the detector indexed (never re-parses the
+   * rendered path string, whose rounded corners would shift segment indices).
+   * Cuts ±size/2 around each crossing so the rendered jump is exactly `size`
+   * wide, merges overlapping cuts, keeps cuts clear of corner bends, and uses
+   * a constant sweep so every arc on a link bulges to the same side of travel.
+   */
+  private buildPathWithJumps(
+    points: Array<{ x: number; y: number }>,
+    intersections: Array<{ t1: number; segmentIndex?: number }>,
+    config: { size?: number; style?: 'arc' | 'gap' | 'bridge' },
+    pathType: string
+  ): string {
+    const size = config.size ?? 10;
+    const style = config.style ?? 'arc';
+    const half = size / 2;
+    const useBends = pathType === 'orthogonal' || pathType === 'smooth' || pathType === 'bezier';
+    const cornerRadius = pathType === 'orthogonal' ? 5 : 12;
+    const n = points.length;
+    const fmt = (v: number) => +v.toFixed(3);
+    let d = `M ${fmt(points[0].x)} ${fmt(points[0].y)}`;
+
+    for (let i = 0; i < n - 1; i++) {
+      const a = points[i];
+      const b = points[i + 1];
+      const segLen = Math.hypot(b.x - a.x, b.y - a.y);
+      if (segLen < 1e-6) continue;
+      const ux = (b.x - a.x) / segLen;
+      const uy = (b.y - a.y) / segLen;
+
+      // Rounded bends consume the ends of interior segments
+      let bendPrev = 0;
+      let bendNext = 0;
+      if (useBends) {
+        if (i > 0) bendPrev = Math.min(this.distance(points[i - 1], a) / 2, segLen / 2, cornerRadius);
+        if (i < n - 2) bendNext = Math.min(segLen / 2, this.distance(b, points[i + 2]) / 2, cornerRadius);
+      }
+
+      // Cut windows around each crossing on this segment, clamped clear of the
+      // bends, then merged so nearby crossings share one jump (no backtracking)
+      const lo = bendPrev + 1;
+      const hi = segLen - bendNext - 1;
+      const merged: Array<{ s: number; e: number }> = [];
+      const cuts = intersections
+        .filter(it => (it.segmentIndex ?? 0) === i && it.t1 > 0 && it.t1 < 1)
+        .map(it => ({ s: it.t1 * segLen - half, e: it.t1 * segLen + half }))
+        .sort((p, q) => p.s - q.s);
+      for (const c of cuts) {
+        const s = Math.max(lo, c.s);
+        const e = Math.min(hi, c.e);
+        if (e - s < 1) continue;
+        const last = merged[merged.length - 1];
+        if (last && s <= last.e) {
+          last.e = Math.max(last.e, e);
+        } else {
+          merged.push({ s, e });
+        }
+      }
+
+      const at = (dist: number) => ({ x: fmt(a.x + ux * dist), y: fmt(a.y + uy * dist) });
+
+      for (const c of merged) {
+        const p1 = at(c.s);
+        const p2 = at(c.e);
+        d += ` L ${p1.x} ${p1.y}`;
+        if (style === 'gap') {
+          d += ` M ${p2.x} ${p2.y}`;
+        } else if (style === 'bridge') {
+          // Rise perpendicular to the left of travel (screen-up when moving right)
+          const px = uy;
+          const py = -ux;
+          const h = size / 2;
+          d += ` L ${fmt(p1.x + px * h)} ${fmt(p1.y + py * h)}`;
+          d += ` L ${fmt(p2.x + px * h)} ${fmt(p2.y + py * h)}`;
+          d += ` L ${p2.x} ${p2.y}`;
+        } else {
+          const r = fmt((c.e - c.s) / 2);
+          d += ` A ${r} ${r} 0 0 1 ${p2.x} ${p2.y}`;
+        }
+      }
+
+      if (i < n - 2 && useBends && bendNext > 0) {
+        const before = at(segLen - bendNext);
+        const next = points[i + 2];
+        const outLen = Math.hypot(next.x - b.x, next.y - b.y) || 1;
+        const after = {
+          x: fmt(b.x + ((next.x - b.x) / outLen) * bendNext),
+          y: fmt(b.y + ((next.y - b.y) / outLen) * bendNext),
+        };
+        d += ` L ${before.x} ${before.y} Q ${fmt(b.x)} ${fmt(b.y)} ${after.x} ${after.y}`;
+      } else {
+        d += ` L ${fmt(b.x)} ${fmt(b.y)}`;
+      }
+    }
+
+    return d;
+  }
+
+  /**
+   * Manual waypoints are an explicit editor action (flagged via metadata by the
+   * interaction layer), never inferred from point count — auto-routed
+   * orthogonal paths also have >2 points.
+   */
+  private linkHasManualWaypoints(link: LinkModel): boolean {
+    return link.getMetadata('hasManualWaypoints') === true &&
+      !!link.points && link.points.length > 2;
+  }
+
+  /**
+   * Keep link.points in sync with the rendered route on every frame so hit
+   * testing and jump-point detection see current geometry. Direct assignment
+   * (no setPoints) to avoid emitting link:changed and re-render loops.
+   */
+  private syncLinkPoints(link: LinkModel, points: Array<{ x: number; y: number }>): void {
+    link.points = points.map(p => ({ ...p }));
+  }
+
+  /**
+   * Compute the auto route for a link.
+   *
+   * pathType determines the base routing algorithm ('orthogonal' → orthogonal
+   * router; direct/smooth/bezier → straight router). If a straight route would
+   * cross the link's own nodes (inverted geometry) or any obstacle, it falls
+   * back to the orthogonal router, which respects port directions and A*
+   * obstacle avoidance — links must never run through node bodies.
+   */
+  private computeAutoRoute(
+    link: LinkModel,
+    endpoints: NonNullable<ReturnType<SVGRenderer['getLinkEndpoints']>>
+  ): RoutedPath | null {
+    const routingEngine = this.engine.getRoutingEngine();
+    const algorithm = this.mapPathTypeToAlgorithm(link.pathType) || routingEngine.getDefaultAlgorithm();
+
+    // Collect obstacle rects (all nodes except source and target)
+    const currentDiagram = this.engine.getDiagram();
+    const sourceNodeId = (link as any).sourceNodeId || (link as any).source;
+    const targetNodeId = (link as any).targetNodeId || (link as any).target;
+    const allNodes: NodeModel[] = currentDiagram ? currentDiagram.getNodes() : [];
+    const obstacles = allNodes
+      .filter((node: NodeModel) => node.id !== sourceNodeId && node.id !== targetNodeId)
+      .map((node: NodeModel) => ({
+        id: node.id,
+        x: node.position.x,
+        y: node.position.y,
+        width: node.size.width,
+        height: node.size.height,
+      }));
+
+    const routeWith = (algo: RoutingAlgorithm, avoid: boolean): RoutedPath | null =>
+      routingEngine.route({
+        start: endpoints.start,
+        end: endpoints.end,
+        sourceDirection: endpoints.sourceDirection,
+        targetDirection: endpoints.targetDirection,
+        obstacles,
+        options: { algorithm: algo, avoidObstacles: avoid, gridSize: 10 },
+      });
+
+    let routedPath = routeWith(algorithm, true);
+
+    // The straight router ignores obstacles AND the link's own nodes. If its
+    // path cuts through any node body, reroute orthogonally instead.
+    if (routedPath && algorithm === 'straight' && this.routeCrossesNodes(routedPath.points, link, allNodes)) {
+      const detour = routeWith('orthogonal', true) || routeWith('orthogonal', false);
+      if (detour) {
+        routedPath = detour;
+      }
+    }
+
+    // Fallback: simple orthogonal routing
+    if (!routedPath) {
+      routedPath = routeWith('orthogonal', false);
+    }
+
+    return routedPath;
+  }
+
+  /**
+   * True if any polyline segment passes through a node body. Node rects are
+   * inset by 1px so a path legitimately touching the border at a port doesn't
+   * count as a crossing.
+   */
+  private routeCrossesNodes(
+    points: Array<{ x: number; y: number }>,
+    link: LinkModel,
+    nodes: NodeModel[]
+  ): boolean {
+    if (!points || points.length < 2) return false;
+    const inset = 1;
+    for (const node of nodes) {
+      const rect = {
+        minX: node.position.x + inset,
+        minY: node.position.y + inset,
+        maxX: node.position.x + node.size.width - inset,
+        maxY: node.position.y + node.size.height - inset,
+      };
+      for (let i = 0; i < points.length - 1; i++) {
+        if (this.segmentIntersectsRect(points[i], points[i + 1], rect)) {
+          return true;
+        }
+      }
+    }
+    return false;
+  }
+
+  /**
+   * Segment/rect intersection via Liang-Barsky clipping.
+   */
+  private segmentIntersectsRect(
+    a: { x: number; y: number },
+    b: { x: number; y: number },
+    rect: { minX: number; minY: number; maxX: number; maxY: number }
+  ): boolean {
+    let t0 = 0, t1 = 1;
+    const dx = b.x - a.x;
+    const dy = b.y - a.y;
+    const clip = (p: number, q: number): boolean => {
+      if (p === 0) return q >= 0;
+      const r = q / p;
+      if (p < 0) {
+        if (r > t1) return false;
+        if (r > t0) t0 = r;
+      } else {
+        if (r < t0) return false;
+        if (r < t1) t1 = r;
+      }
+      return true;
+    };
+    return (
+      clip(-dx, a.x - rect.minX) &&
+      clip(dx, rect.maxX - a.x) &&
+      clip(-dy, a.y - rect.minY) &&
+      clip(dy, rect.maxY - a.y) &&
+      t0 < t1
+    );
   }
 }

@@ -42,3 +42,7 @@ Thumbs.db
 .nx/workspace-data
 
 .angular
+
+# renderer e2e harness artifacts
+libs/renderer/e2e/out/
+libs/renderer/e2e/bundle.js

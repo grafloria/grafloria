@@ -29,13 +29,61 @@ export class ArrowRenderer {
   private readonly defaultStrokeWidth = 1.5;
 
   /**
+   * Distance from the marker's local origin to its forward-most point (its
+   * visual tip), in the +x direction the marker is rotated toward.
+   *
+   * The renderer positions markers by pulling the transform origin back from
+   * the path endpoint by exactly this amount so every tip lands ON the port —
+   * a uniform offset only fits the triangle family and left circles/diamonds
+   * floating off the node.
+   */
+  getTipOffset(style: ArrowStyle): number {
+    const size = Math.max(0, style.size);
+    if (size === 0 || style.type === 'none') return 0;
+
+    switch (style.type) {
+      // Tip at local +size
+      case 'arrow':
+      case 'open-arrow':
+      case 'double-arrow':
+      case 'crow-foot':
+      case 'zero-or-many':
+      case 'one-or-many':
+        return size;
+
+      // Centered on the local origin: forward edge at +size/2
+      case 'circle':
+      case 'square':
+      case 'cross':
+      case 'oval':
+      case 'dot':
+        return size / 2;
+
+      // Forward-most point at the local origin
+      case 'diamond':
+      case 'hollow-diamond':
+      case 'filled-diamond':
+      case 'generalization':
+      case 'one':
+      case 'zero-or-one':
+      case 'bar':
+        return 0;
+
+      default:
+        return size;
+    }
+  }
+
+  /**
    * Render an arrow based on the provided style and transform
    *
    * @param style Arrow style configuration
    * @param transform SVG transform string
+   * @param backgroundColor Fill for hollow (unfilled) markers — pass the theme
+   *   background so hollow arrows don't glare white on dark themes
    * @returns VNode representing the arrow, or null if type is 'none'
    */
-  renderArrow(style: ArrowStyle, transform: string): VNode | null {
+  renderArrow(style: ArrowStyle, transform: string, backgroundColor: string = 'white'): VNode | null {
     // Handle none type
     if (style.type === 'none') {
       return null;
@@ -55,13 +103,13 @@ export class ArrowRenderer {
     switch (style.type) {
       // Basic arrows
       case 'arrow':
-        return this.renderTriangleArrow(size, style.filled, color, width, transform);
+        return this.renderTriangleArrow(size, style.filled, color, width, transform, backgroundColor);
       case 'circle':
-        return this.renderCircleArrow(size, style.filled, color, width, transform);
+        return this.renderCircleArrow(size, style.filled, color, width, transform, backgroundColor);
       case 'square':
-        return this.renderSquareArrow(size, style.filled, color, width, transform);
+        return this.renderSquareArrow(size, style.filled, color, width, transform, backgroundColor);
       case 'diamond':
-        return this.renderDiamondArrow(size, style.filled, color, width, transform);
+        return this.renderDiamondArrow(size, style.filled, color, width, transform, backgroundColor);
 
       // ERD arrows
       case 'crow-foot':
@@ -77,15 +125,15 @@ export class ArrowRenderer {
 
       // UML arrows
       case 'hollow-diamond':
-        return this.renderHollowDiamondArrow(size, color, width, transform);
+        return this.renderHollowDiamondArrow(size, color, width, transform, backgroundColor);
       case 'filled-diamond':
         return this.renderFilledDiamondArrow(size, color, width, transform);
       case 'generalization':
-        return this.renderGeneralizationArrow(size, color, width, transform);
+        return this.renderGeneralizationArrow(size, color, width, transform, backgroundColor);
       case 'open-arrow':
         return this.renderOpenArrow(size, color, width, transform);
       case 'double-arrow':
-        return this.renderDoubleArrow(size, style.filled, color, width, transform);
+        return this.renderDoubleArrow(size, style.filled, color, width, transform, backgroundColor);
 
       // Additional arrows
       case 'cross':
@@ -95,12 +143,12 @@ export class ArrowRenderer {
       case 'dot':
         return this.renderDotArrow(size, color, transform);
       case 'oval':
-        return this.renderOvalArrow(size, style.filled, color, width, transform);
+        return this.renderOvalArrow(size, style.filled, color, width, transform, backgroundColor);
 
       default:
         // Fallback to basic arrow for unknown types
         console.warn(`Unknown arrow type: ${style.type}, falling back to basic arrow`);
-        return this.renderTriangleArrow(size, style.filled, color, width, transform);
+        return this.renderTriangleArrow(size, style.filled, color, width, transform, backgroundColor);
     }
   }
 
@@ -112,13 +160,14 @@ export class ArrowRenderer {
     filled: boolean,
     color: string,
     width: number,
-    transform: string
+    transform: string,
+    bg: string = 'white'
   ): VNode {
     return {
       type: 'polygon',
       props: {
         points: `0,${-size / 2} ${size},0 0,${size / 2}`,
-        fill: filled ? color : 'white',
+        fill: filled ? color : bg,
         stroke: color,
         strokeWidth: width,
         transform,
@@ -135,7 +184,8 @@ export class ArrowRenderer {
     filled: boolean,
     color: string,
     width: number,
-    transform: string
+    transform: string,
+    bg: string = 'white'
   ): VNode {
     const radius = size / 2;
     return {
@@ -144,7 +194,7 @@ export class ArrowRenderer {
         cx: 0,
         cy: 0,
         r: radius,
-        fill: filled ? color : 'white',
+        fill: filled ? color : bg,
         stroke: color,
         strokeWidth: width,
         transform,
@@ -161,7 +211,8 @@ export class ArrowRenderer {
     filled: boolean,
     color: string,
     width: number,
-    transform: string
+    transform: string,
+    bg: string = 'white'
   ): VNode {
     return {
       type: 'rect',
@@ -170,7 +221,7 @@ export class ArrowRenderer {
         y: -size / 2,
         width: size,
         height: size,
-        fill: filled ? color : 'white',
+        fill: filled ? color : bg,
         stroke: color,
         strokeWidth: width,
         transform,
@@ -187,14 +238,15 @@ export class ArrowRenderer {
     filled: boolean,
     color: string,
     width: number,
-    transform: string
+    transform: string,
+    bg: string = 'white'
   ): VNode {
     // Diamond: four points forming a rotated square
     return {
       type: 'polygon',
       props: {
         points: `0,0 ${-size / 2},${-size / 2} ${-size},0 ${-size / 2},${size / 2}`,
-        fill: filled ? color : 'white',
+        fill: filled ? color : bg,
         stroke: color,
         strokeWidth: width,
         transform,
@@ -457,13 +509,14 @@ export class ArrowRenderer {
     size: number,
     color: string,
     width: number,
-    transform: string
+    transform: string,
+    bg: string = 'white'
   ): VNode {
     return {
       type: 'polygon',
       props: {
         points: `0,0 ${-size},${-size / 2} ${-size * 2},0 ${-size},${size / 2}`,
-        fill: 'white',
+        fill: bg,
         stroke: color,
         strokeWidth: width,
         transform,
@@ -501,13 +554,14 @@ export class ArrowRenderer {
     size: number,
     color: string,
     width: number,
-    transform: string
+    transform: string,
+    bg: string = 'white'
   ): VNode {
     return {
       type: 'polygon',
       props: {
         points: `0,0 ${-size},${-size / 2} ${-size},${size / 2}`,
-        fill: 'white',
+        fill: bg,
         stroke: color,
         strokeWidth: width,
         transform,
@@ -546,7 +600,8 @@ export class ArrowRenderer {
     filled: boolean,
     color: string,
     width: number,
-    transform: string
+    transform: string,
+    bg: string = 'white'
   ): VNode {
     return {
       type: 'g',
@@ -559,7 +614,7 @@ export class ArrowRenderer {
           type: 'polygon',
           props: {
             points: `0,${-size / 2} ${size},0 0,${size / 2}`,
-            fill: filled ? color : 'white',
+            fill: filled ? color : bg,
             stroke: color,
             strokeWidth: width
           }
@@ -568,7 +623,7 @@ export class ArrowRenderer {
           type: 'polygon',
           props: {
             points: `${-size},${-size / 2} 0,0 ${-size},${size / 2}`,
-            fill: filled ? color : 'white',
+            fill: filled ? color : bg,
             stroke: color,
             strokeWidth: width
           }
@@ -656,7 +711,7 @@ export class ArrowRenderer {
       props: {
         cx: 0,
         cy: 0,
-        r: Math.min(size / 2, 3),
+        r: size / 2,
         fill: color,
         stroke: 'none',
         transform,
@@ -673,7 +728,8 @@ export class ArrowRenderer {
     filled: boolean,
     color: string,
     width: number,
-    transform: string
+    transform: string,
+    bg: string = 'white'
   ): VNode {
     return {
       type: 'ellipse',
@@ -682,7 +738,7 @@ export class ArrowRenderer {
         cy: 0,
         rx: size / 2,
         ry: size / 3,
-        fill: filled ? color : 'white',
+        fill: filled ? color : bg,
         stroke: color,
         strokeWidth: width,
         transform,
