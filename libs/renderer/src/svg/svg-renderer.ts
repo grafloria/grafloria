@@ -1552,7 +1552,8 @@ export class SVGRenderer implements IRenderer {
     routedPath: RoutedPath,
     pathType: string,
     sourceDirection?: string,
-    targetDirection?: string
+    targetDirection?: string,
+    avoidNodes?: NodeModel[]
   ): string {
     if (!routedPath || routedPath.points.length === 0) return '';
 
@@ -1628,8 +1629,16 @@ export class SVGRenderer implements IRenderer {
 
         path += ` C ${cp1x} ${cp1y}, ${cp2x} ${cp2y}, ${points[1].x} ${points[1].y}`;
       } else {
-        // Multi-point route (e.g. orthogonal detour around a node): render with
-        // generous rounded corners so it still reads as a smooth link.
+        // Multi-point route (e.g. a detour around a node): a smooth link must
+        // KEEP ITS CURVED IDENTITY — fit a spline through the route points.
+        // Guard: if the spline's corner overshoot would dip into the link's
+        // own nodes, fall back to tight rounded corners instead.
+        const spline = this.catmullRomPath(points);
+        const avoid = avoidNodes ?? [];
+        if (avoid.length === 0 ||
+            this.penetrationLength(this.sampleCatmullRom(points, 8), avoid) <= 2) {
+          return spline;
+        }
         return this.convertOrthogonalPathWithBends(points, 12);
       }
 
@@ -1698,7 +1707,8 @@ export class SVGRenderer implements IRenderer {
           routedPath,
           link.pathType,
           endpoints.sourceDirection,
-          endpoints.targetDirection
+          endpoints.targetDirection,
+          this.linkOwnNodes(link)
         );
         this.syncLinkPoints(link, points);
       } else {
@@ -2171,6 +2181,11 @@ export class SVGRenderer implements IRenderer {
     // For orthogonal paths, use rounded corners (React Flow smoothstep style)
     if (pathType === 'orthogonal') {
       return this.convertOrthogonalPathWithBends(points, 5);
+    }
+
+    // Smooth/bezier with manual waypoints: keep the curved identity
+    if ((pathType === 'smooth' || pathType === 'bezier') && points.length > 2) {
+      return this.catmullRomPath(points);
     }
 
     // Default: straight lines between points
@@ -3354,6 +3369,83 @@ export class SVGRenderer implements IRenderer {
       }
     }
     return best ?? { ...point };
+  }
+
+  /**
+   * The link's own endpoint nodes (resolved via cached ids or port search).
+   */
+  private linkOwnNodes(link: LinkModel): NodeModel[] {
+    const diagram = this.engine.getDiagram();
+    if (!diagram) return [];
+    const nodes: NodeModel[] = [];
+    for (const [nodeId, portId] of [
+      [link.sourceNodeId, link.sourcePortId],
+      [link.targetNodeId, link.targetPortId],
+    ] as const) {
+      let node = nodeId ? diagram.getNode(nodeId) : null;
+      if (!node && portId) {
+        node = diagram.getNodes().find((n: NodeModel) => !!n.getPort(portId)) || null;
+      }
+      if (node) nodes.push(node);
+    }
+    return nodes;
+  }
+
+  /**
+   * Smooth cubic spline (Catmull-Rom) through every route point — used so a
+   * smooth/bezier link keeps its curved identity on multi-point detours
+   * instead of visually turning into an orthogonal link.
+   */
+  private catmullRomPath(points: Array<{ x: number; y: number }>): string {
+    const n = points.length;
+    if (n === 0) return '';
+    if (n === 1) return `M ${points[0].x} ${points[0].y}`;
+    const fmt = (v: number) => +v.toFixed(2);
+    let d = `M ${fmt(points[0].x)} ${fmt(points[0].y)}`;
+    for (let i = 0; i < n - 1; i++) {
+      const p0 = points[i - 1] ?? points[0];
+      const p1 = points[i];
+      const p2 = points[i + 1];
+      const p3 = points[i + 2] ?? points[n - 1];
+      const c1x = p1.x + (p2.x - p0.x) / 6;
+      const c1y = p1.y + (p2.y - p0.y) / 6;
+      const c2x = p2.x - (p3.x - p1.x) / 6;
+      const c2y = p2.y - (p3.y - p1.y) / 6;
+      d += ` C ${fmt(c1x)} ${fmt(c1y)}, ${fmt(c2x)} ${fmt(c2y)}, ${fmt(p2.x)} ${fmt(p2.y)}`;
+    }
+    return d;
+  }
+
+  /**
+   * Sample the Catmull-Rom spline into a polyline (for penetration checks —
+   * the spline can overshoot corners beyond the route's own points).
+   */
+  private sampleCatmullRom(
+    points: Array<{ x: number; y: number }>,
+    stepsPerSegment = 8
+  ): Array<{ x: number; y: number }> {
+    const n = points.length;
+    if (n < 3) return points;
+    const out: Array<{ x: number; y: number }> = [points[0]];
+    for (let i = 0; i < n - 1; i++) {
+      const p0 = points[i - 1] ?? points[0];
+      const p1 = points[i];
+      const p2 = points[i + 1];
+      const p3 = points[i + 2] ?? points[n - 1];
+      const c1x = p1.x + (p2.x - p0.x) / 6;
+      const c1y = p1.y + (p2.y - p0.y) / 6;
+      const c2x = p2.x - (p3.x - p1.x) / 6;
+      const c2y = p2.y - (p3.y - p1.y) / 6;
+      for (let s = 1; s <= stepsPerSegment; s++) {
+        const t = s / stepsPerSegment;
+        const mt = 1 - t;
+        out.push({
+          x: mt * mt * mt * p1.x + 3 * mt * mt * t * c1x + 3 * mt * t * t * c2x + t * t * t * p2.x,
+          y: mt * mt * mt * p1.y + 3 * mt * mt * t * c1y + 3 * mt * t * t * c2y + t * t * t * p2.y,
+        });
+      }
+    }
+    return out;
   }
 
   /**

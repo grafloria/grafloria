@@ -1417,6 +1417,66 @@ function a12_penetrationSweep() {
 }
 
 // ===========================================================================
+// A13: the reported drag — source connects from its BOTTOM port to a target
+// below; the target is then dragged ABOVE the source. Through every drag
+// position the link must keep its visual identity (smooth stays a curve,
+// direct stays a straight polyline) and never cross either node.
+// ===========================================================================
+function a13_dragKeepsLineIdentity() {
+  const positions: Array<[string, number, number]> = [
+    ['below (start)', 480, 420],
+    ['beside (mid-drag)', 640, 240],
+    ['above (end)', 480, 40],
+    ['directly above (end)', 420, 30],
+  ];
+
+  // --- smooth: must stay a CURVE at every position -------------------------
+  {
+    const engine = makeEngine();
+    const diagram = engine.createDiagram('a13-smooth');
+    const src = addNode(diagram, 'S', 420, 220, { w: 120, h: 56, fill: '#fef3c7', ports: [{ id: 'a13s-s', side: 'bottom', type: 'output' }] });
+    const tgt = addNode(diagram, 'T', 480, 420, { w: 120, h: 56, ports: [{ id: 'a13s-t', side: 'top', type: 'input' }] });
+    const link = makeLink(diagram, 'a13s-s', 'a13s-t', 'smooth', {
+      stroke: '#059669',
+      arrowHead: { type: 'arrow', size: 11, filled: true, color: '#059669' },
+    });
+    for (const [label, x, y] of positions) {
+      tgt.setPosition(x, y);
+      const stage = cell(`a13-smooth-${label.replace(/[^a-z]/gi, '')}`, `A13 smooth — target ${label}: must stay a curve, no node crossing`);
+      const svg = renderInto(engine, stage, 1100, 520);
+      const d = pathD(svg, link.id) || '';
+      const pen = pathPenetration(svg, link.id, [src, tgt], true);
+      const inside = (pen?.perNode ?? []).reduce((a: number, n: any) => a + n.insidePx, 0);
+      expectThat(`A13 smooth stays a curve when target is ${label}`, /C/.test(d) && !/Q/.test(d), d.slice(0, 120));
+      expectThat(`A13 smooth pathType survives drag (${label})`, link.pathType === 'smooth');
+      expectThat(`A13 smooth no self-crossing when target is ${label}`, inside <= 2, `inside=${inside}px`);
+    }
+  }
+
+  // --- direct: must stay a straight polyline (no bends) at every position --
+  {
+    const engine = makeEngine();
+    const diagram = engine.createDiagram('a13-direct');
+    const src = addNode(diagram, 'S', 420, 220, { w: 120, h: 56, fill: '#fef3c7', ports: [{ id: 'a13d-s', side: 'bottom', type: 'output' }] });
+    const tgt = addNode(diagram, 'T', 480, 420, { w: 120, h: 56, ports: [{ id: 'a13d-t', side: 'top', type: 'input' }] });
+    const link = makeLink(diagram, 'a13d-s', 'a13d-t', 'direct', {
+      arrowHead: { type: 'arrow', size: 11, filled: true, color: '#475569' },
+    });
+    for (const [label, x, y] of positions) {
+      tgt.setPosition(x, y);
+      const tmp = document.createElement('div');
+      const svg = renderInto(engine, tmp, 1100, 520);
+      const d = pathD(svg, link.id) || '';
+      const pen = pathPenetration(svg, link.id, [src, tgt], false);
+      const inside = (pen?.perNode ?? []).reduce((a: number, n: any) => a + n.insidePx, 0);
+      tmp.remove();
+      expectThat(`A13 direct stays a polyline when target is ${label}`, !/C/.test(d), d.slice(0, 120));
+      expectThat(`A13 direct no self-crossing when target is ${label}`, inside <= 2, `inside=${inside}px`);
+    }
+  }
+}
+
+// ===========================================================================
 // run all
 // ===========================================================================
 const failures: any[] = [];
@@ -1428,7 +1488,7 @@ for (const [name, fn] of Object.entries({
   s17_manualWaypointFlow, s18_mergedJumps, s19_arrowTails, s20_hexEllipsePorts,
   a1_verticalSmooth, a2_sameSidePorts, a3_shortLinks, a4_overlappingNodes,
   a5_jumpNearCorner, a6_jumpNearArrow, a7_labels, a8_dashedJumps,
-  a9_diagonalArrows, a10_lod, a11_orthoAxisAligned, a12_penetrationSweep,
+  a9_diagonalArrows, a10_lod, a11_orthoAxisAligned, a12_penetrationSweep, a13_dragKeepsLineIdentity,
 })) {
   try {
     (fn as any)();
