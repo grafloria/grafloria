@@ -29,6 +29,14 @@ import { ComponentRendererService } from '../services/component-renderer.service
 import { HandleRegistryService } from '../services/handle-registry.service';
 import { HtmlNodeRendererDirective } from '../directives/html-node-renderer.directive';
 import { GrafloriaHandleDirective } from '../directives/grafloria-handle.directive';
+import {
+  ToolManager,
+  ToolActions,
+  ToolPointerEvent,
+  HitTestResult,
+  MarqueeSelection,
+  ToolInteractionMode,
+} from '../interaction';
 
 /**
  * DiagramCanvasComponent
@@ -152,9 +160,29 @@ export class DiagramCanvasComponent implements OnInit, AfterViewInit, OnChanges,
    * Node drag state (Option 1: Node Interaction)
    */
   private isDraggingNode = false;
-  private dragStartX = 0;
-  private dragStartY = 0;
   private draggedNodes: Map<string, { startX: number; startY: number }> = new Map();
+
+  /**
+   * Wave-2 Interaction: single-active-tool arbitration.
+   * Owns the click-vs-drag threshold, DELIBERATE gating and the marquee tool.
+   * The canvas keeps its existing port/pan/waypoint branches; the ToolManager
+   * is fed only for the node-drag and empty-space (marquee) gestures.
+   */
+  private toolManager!: ToolManager;
+
+  /**
+   * Live marquee overlay rectangle in SCREEN px (relative to the container),
+   * or null when no marquee is active. Bound by the template's SVG overlay.
+   */
+  marquee: { x: number; y: number; width: number; height: number } | null = null;
+
+  /** Selection captured when a marquee starts, restored before each move so
+   *  add/subtract/toggle stay idempotent as the rectangle grows/shrinks. */
+  private marqueeBaseSelection: Set<string> | null = null;
+
+  /** Throttle bookkeeping for marquee selection (RISK: applySelection rewrites
+   *  every node's state + the store on each move — expensive on big diagrams). */
+  private lastMarqueeSelectAt = 0;
 
   /**
    * HTML layer transform (Phase 1: Hybrid Rendering)
@@ -197,6 +225,7 @@ export class DiagramCanvasComponent implements OnInit, AfterViewInit, OnChanges,
     // Create renderer after view is initialized
     if (this.engine) {
       this.initializeRenderer();
+      this.initializeToolManager();
       this.renderDiagram();
       this.subscribeToEngineEvents();
 
@@ -211,6 +240,7 @@ export class DiagramCanvasComponent implements OnInit, AfterViewInit, OnChanges,
     // Re-render when inputs change
     if (changes['engine'] && !changes['engine'].firstChange) {
       this.initializeRenderer();
+      this.initializeToolManager();
       this.renderDiagram();
     }
 
@@ -261,6 +291,193 @@ export class DiagramCanvasComponent implements OnInit, AfterViewInit, OnChanges,
       },
       this.theme
     );
+  }
+
+  /**
+   * Wave-2 Interaction: build the ToolManager and wire its side-effect sink to
+   * the engine. Arbitration + threshold + DELIBERATE + modifier math live in the
+   * ToolManager; these adapters just translate its decisions into engine calls.
+   */
+  private initializeToolManager(): void {
+    const config = this.engine.getInteractionConfig();
+    const actions: ToolActions = {
+      beginNodeDrag: (_hit, down) => this.beginNodeDrag(down),
+      updateNodeDrag: (current, down) => this.updateNodeDrag(current, down),
+      endNodeDrag: () => this.endNodeDrag(),
+      beginMarquee: (down) => this.beginMarquee(down),
+      updateMarquee: (selection, current, down) => this.updateMarquee(selection, current, down),
+      endMarquee: (current) => this.endMarquee(current),
+    };
+    this.toolManager = new ToolManager(
+      (worldX, worldY) => this.hitTestForTool(worldX, worldY),
+      actions,
+      {
+        mode: this.toToolMode(config.mode),
+        dragThreshold: config.dragThreshold ?? 4,
+      }
+    );
+  }
+
+  /** Map the engine's InteractionMode enum value onto the ToolManager's mode. */
+  private toToolMode(mode: unknown): ToolInteractionMode {
+    return (mode as string) === 'deliberate'
+      ? 'deliberate'
+      : (mode as string) === 'direct'
+      ? 'direct'
+      : 'smart';
+  }
+
+  /** Build a canonical tool pointer event from a native MouseEvent. */
+  private toToolEvent(event: MouseEvent, type: ToolPointerEvent['type']): ToolPointerEvent {
+    const rect = this.containerRef.nativeElement.getBoundingClientRect();
+    const { worldX, worldY } = this.clientToWorld(event.clientX, event.clientY);
+    return {
+      type,
+      worldX,
+      worldY,
+      screenX: event.clientX - rect.left,
+      screenY: event.clientY - rect.top,
+      button: event.button,
+      buttons: event.buttons,
+      modifiers: {
+        shift: event.shiftKey,
+        ctrl: event.ctrlKey,
+        alt: event.altKey,
+        meta: event.metaKey,
+      },
+    };
+  }
+
+  /**
+   * Fallback hit-test for the ToolManager. The mousedown handler always passes
+   * an explicit hit (it already resolves the clicked node + prior selection), so
+   * this only classifies node-vs-empty for any direct ToolManager use.
+   */
+  private hitTestForTool(worldX: number, worldY: number): HitTestResult {
+    const diagram = this.engine?.getDiagram();
+    const node = diagram?.getNodeAtPosition(worldX, worldY);
+    if (node) {
+      return { kind: 'node', nodeId: node.id, nodeWasSelected: node.isSelected() };
+    }
+    return { kind: 'empty' };
+  }
+
+  // --- ToolActions: node drag ------------------------------------------------
+
+  /** Capture the start positions of all draggable selected nodes (no mutation
+   *  happens until the pointer has crossed the drag threshold). */
+  private beginNodeDrag(_down: ToolPointerEvent): void {
+    const diagram = this.engine.getDiagram();
+    if (!diagram) return;
+    this.isDraggingNode = true;
+    this.draggedNodes.clear();
+    diagram.getSelectedNodes().forEach((node) => {
+      if (node.isDraggable()) {
+        this.draggedNodes.set(node.id, { startX: node.position.x, startY: node.position.y });
+      }
+    });
+    if (this.containerRef?.nativeElement) {
+      this.containerRef.nativeElement.style.cursor = 'move';
+    }
+  }
+
+  private updateNodeDrag(current: ToolPointerEvent, down: ToolPointerEvent): void {
+    const diagram = this.engine.getDiagram();
+    if (!diagram) return;
+    // World-space delta measured from the DOWN point so there is no jump when
+    // the drag finally commits at the threshold.
+    const dx = current.worldX - down.worldX;
+    const dy = current.worldY - down.worldY;
+    this.draggedNodes.forEach((initialPos, nodeId) => {
+      const node = diagram.getNode(nodeId);
+      if (node) {
+        node.setPosition(initialPos.startX + dx, initialPos.startY + dy);
+      }
+    });
+    this.recalculateLinkPathsForNodes(diagram, Array.from(this.draggedNodes.keys()));
+    this.renderDiagram();
+    this.cdr.markForCheck();
+  }
+
+  private endNodeDrag(): void {
+    this.isDraggingNode = false;
+    this.draggedNodes.clear();
+    if (this.containerRef?.nativeElement) {
+      this.containerRef.nativeElement.style.cursor = this.spaceKeyPressed ? 'grab' : 'default';
+    }
+  }
+
+  // --- ToolActions: marquee --------------------------------------------------
+
+  private beginMarquee(down: ToolPointerEvent): void {
+    // Snapshot the selection so modifier combine modes are idempotent per move.
+    const store = this.engine.getStore();
+    const current = (store.get('selectedNodes') as Set<string>) ?? new Set<string>();
+    this.marqueeBaseSelection = new Set(current);
+    this.lastMarqueeSelectAt = 0;
+    this.marquee = { x: down.screenX, y: down.screenY, width: 0, height: 0 };
+    this.cdr.markForCheck();
+  }
+
+  private updateMarquee(
+    selection: MarqueeSelection,
+    current: ToolPointerEvent,
+    down: ToolPointerEvent
+  ): void {
+    // Remember the latest payload even when the sweep is throttled, so end can
+    // finalize with the TRUE last rectangle rather than the last applied one.
+    this.lastMarquee = selection;
+
+    // Overlay follows the pointer every frame (cheap).
+    this.marquee = {
+      x: Math.min(down.screenX, current.screenX),
+      y: Math.min(down.screenY, current.screenY),
+      width: Math.abs(current.screenX - down.screenX),
+      height: Math.abs(current.screenY - down.screenY),
+    };
+
+    // Throttle the (potentially expensive) selection sweep. Scale the interval
+    // with diagram size so huge diagrams don't re-select-all on every mousemove.
+    const nodeCount = this.engine.getDiagram()?.getNodes().length ?? 0;
+    const throttleMs = nodeCount > 400 ? 60 : nodeCount > 100 ? 30 : 0;
+    const now = Date.now();
+    if (now - this.lastMarqueeSelectAt >= throttleMs) {
+      this.applyMarqueeSelection(selection);
+      this.lastMarqueeSelectAt = now;
+    }
+    this.cdr.markForCheck();
+  }
+
+  private endMarquee(_current: ToolPointerEvent): void {
+    // Always finalize with the last rectangle (in case the tail move was throttled).
+    if (this.marquee) {
+      const diagram = this.engine.getDiagram();
+      if (diagram && this.lastMarquee) {
+        this.applyMarqueeSelection(this.lastMarquee);
+      }
+    }
+    this.marquee = null;
+    this.lastMarquee = null;
+    this.marqueeBaseSelection = null;
+    this.renderDiagram();
+    this.cdr.markForCheck();
+  }
+
+  /** Last marquee selection payload — remembered so end can re-apply it. */
+  private lastMarquee: MarqueeSelection | null = null;
+
+  private applyMarqueeSelection(selection: MarqueeSelection): void {
+    this.lastMarquee = selection;
+    // Restore the pre-marquee selection so add/subtract/toggle recompute from a
+    // stable base rather than compounding across moves.
+    if (this.marqueeBaseSelection) {
+      this.engine.getStore().set('selectedNodes', new Set(this.marqueeBaseSelection));
+    }
+    this.engine.selectionManager.selectInRectangle(selection.rect, {
+      intersectionMode: selection.intersectionMode,
+      mode: selection.selectionMode,
+    });
+    this.renderDiagram();
   }
 
   /**
@@ -474,6 +691,14 @@ export class DiagramCanvasComponent implements OnInit, AfterViewInit, OnChanges,
       eventBus.on('config:interaction-changed', () => {
         // Sync editor configs (handle colors, etc.) with engine config
         this.interactionHandler.syncWithEngineConfig(this.engine);
+        // Wave-2 Interaction: keep the ToolManager's mode + threshold in sync.
+        if (this.toolManager) {
+          const cfg = this.engine.getInteractionConfig();
+          this.toolManager.setConfig({
+            mode: this.toToolMode(cfg.mode),
+            dragThreshold: cfg.dragThreshold ?? 4,
+          });
+        }
         this.renderDiagram();
         this.cdr.detectChanges();
       });
@@ -801,6 +1026,10 @@ export class DiagramCanvasComponent implements OnInit, AfterViewInit, OnChanges,
           }
         }
 
+        // Wave-2 Interaction: capture selection state BEFORE we mutate it — this
+        // is the sole input to DELIBERATE-mode drag gating in the ToolManager.
+        const nodeWasSelected = clickedNode.isSelected();
+
         // Handle selection
         console.log('[FieldSelectDebug] Before selection - node:', clickedNode.id, 'isSelected:', clickedNode.isSelected());
         if (event.ctrlKey || event.metaKey) {
@@ -821,44 +1050,41 @@ export class DiagramCanvasComponent implements OnInit, AfterViewInit, OnChanges,
         // Allow dragging if clicked node is draggable (even if other selected nodes are locked)
         // Note: Drag handler logic is already handled above - if user clicked a drag handler,
         // clickedNode was already replaced with its parent
-        let canDrag = clickedNode.isDraggable() && clickedNode.isSelected();
+        const canDrag = clickedNode.isDraggable() && clickedNode.isSelected();
 
         if (canDrag) {
-          this.isDraggingNode = true;
-          this.dragStartX = event.clientX;
-          this.dragStartY = event.clientY;
+          // Wave-2 Interaction: hand the gesture to the ToolManager. It arms
+          // node-drag but does NOT move anything until the pointer crosses the
+          // drag threshold (fixing the mousedown micro-jitter), and refuses to
+          // arm at all in DELIBERATE mode unless the node was already selected.
+          this.toolManager?.pointerDown(this.toToolEvent(event, 'down'), {
+            kind: 'node',
+            nodeId: clickedNode.id,
+            nodeWasSelected,
+          });
+        }
+      } else {
+        // Clicked on empty space.
+        // With no modifier a bare click clears the selection (existing behavior);
+        // with a modifier we keep it so Shift/Cmd/Alt-marquee can extend it.
+        const hasModifier = event.shiftKey || event.ctrlKey || event.metaKey || event.altKey;
+        if (!hasModifier) {
+          diagram.clearSelection();
 
-          // Store initial positions of all selected nodes (only draggable ones)
-          const selectedNodes = diagram.getSelectedNodes();
-          this.draggedNodes.clear();
-          selectedNodes.forEach((node) => {
-            // Only include draggable nodes (skip locked nodes)
-            if (node.isDraggable()) {
-              this.draggedNodes.set(node.id, {
-                startX: node.position.x,
-                startY: node.position.y
-              });
+          // Also deselect all links
+          diagram.getLinks().forEach((link: any) => {
+            if (link.state === 'selected') {
+              link.setState('default');
             }
           });
 
-          // Change cursor
-          if (this.containerRef?.nativeElement) {
-            this.containerRef.nativeElement.style.cursor = 'move';
-          }
+          // Force immediate render to clear selection highlights instantly
+          this.renderDiagram();
         }
-      } else {
-        // Clicked on empty space - always clear all selections
-        diagram.clearSelection();
 
-        // Also deselect all links
-        diagram.getLinks().forEach((link: any) => {
-          if (link.state === 'selected') {
-            link.setState('default');
-          }
-        });
-
-        // Force immediate render to clear selection highlights instantly
-        this.renderDiagram();
+        // Wave-2 Interaction: arm the marquee tool. It commits (and starts
+        // sweeping selectInRectangle) only once the pointer crosses the threshold.
+        this.toolManager?.pointerDown(this.toToolEvent(event, 'down'), { kind: 'empty' });
       }
 
       this.cdr.markForCheck();
@@ -909,30 +1135,11 @@ export class DiagramCanvasComponent implements OnInit, AfterViewInit, OnChanges,
       return;
     }
 
-    // Handle node dragging
-    if (this.isDraggingNode) {
-      // Calculate delta in world-space coordinates
-      const dx = (event.clientX - this.dragStartX) / this.zoom;
-      const dy = (event.clientY - this.dragStartY) / this.zoom;
-
-      // Update all dragged nodes
-      this.draggedNodes.forEach((initialPos, nodeId) => {
-        const node = diagram.getNode(nodeId);
-        if (node) {
-          node.setPosition(
-            initialPos.startX + dx,
-            initialPos.startY + dy
-          );
-        }
-      });
-
-      // CRITICAL: Recalculate link paths for dragged nodes
-      // Links don't automatically update when nodes move, we must regenerate their paths
-      this.recalculateLinkPathsForNodes(diagram, Array.from(this.draggedNodes.keys()));
-
-      // Trigger re-render
-      this.renderDiagram();
-      this.cdr.markForCheck();
+    // Wave-2 Interaction: a ToolManager gesture (node-drag or marquee) owns the
+    // move. Below the threshold this is a no-op — which is exactly what stops a
+    // plain click from micro-jittering a node's position.
+    if (this.toolManager?.hasGesture) {
+      this.toolManager.pointerMove(this.toToolEvent(event, 'move'));
       return;
     }
 
@@ -1052,6 +1259,12 @@ export class DiagramCanvasComponent implements OnInit, AfterViewInit, OnChanges,
         return;
       }
 
+      // Wave-2 Interaction: end an active ToolManager gesture (node-drag /
+      // marquee). Its end hook clears drag/marquee state and finalizes selection.
+      if (this.toolManager?.hasGesture) {
+        this.toolManager.pointerUp(this.toToolEvent(event, 'up'));
+      }
+
       // Stop panning
       if (this.isPanning) {
         this.isPanning = false;
@@ -1076,6 +1289,24 @@ export class DiagramCanvasComponent implements OnInit, AfterViewInit, OnChanges,
   @HostListener('mouseleave')
   onMouseLeave(): void {
     this.isPanning = false;
+
+    // Wave-2 Interaction: abort any in-flight gesture so a drag/marquee doesn't
+    // "stick" when the pointer leaves the canvas.
+    if (this.toolManager?.hasGesture) {
+      this.toolManager.pointerCancel({
+        type: 'cancel',
+        worldX: 0,
+        worldY: 0,
+        screenX: 0,
+        screenY: 0,
+        button: -1,
+        buttons: 0,
+        modifiers: { shift: false, ctrl: false, alt: false, meta: false },
+      });
+    }
+    this.marquee = null;
+    this.lastMarquee = null;
+    this.marqueeBaseSelection = null;
     this.isDraggingNode = false;
     this.draggedNodes.clear();
 

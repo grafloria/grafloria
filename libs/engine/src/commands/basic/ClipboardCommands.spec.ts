@@ -244,26 +244,47 @@ describe('Clipboard Commands (Phase 1.8)', () => {
       expect(pastedNode?.position.y).toBe(120);
     });
 
-    it('should paste links with remapped port IDs', () => {
+    it('should paste links with valid remapped port IDs (production connect format)', () => {
       const node1 = new NodeModel({ type: 'rect', position: { x: 0, y: 0 } });
-      const node2 = new NodeModel({ type: 'rect', position: { x: 100, y: 100 } });
-      const port1 = new PortModel({ type: 'output' });
-      const port2 = new PortModel({ type: 'input' });
-      node1.addPort(port1);
-      node2.addPort(port2);
+      const node2 = new NodeModel({ type: 'rect', position: { x: 200, y: 0 } });
       diagram.addNode(node1);
       diagram.addNode(node2);
 
-      const link = new LinkModel(`${node1.id}:${port1.id}`, `${node2.id}:${port2.id}`);
-      diagram.addLink(link);
+      // Production format: engine-created nanoid port ids + cached node ids,
+      // NOT hand-built "nodeId:portName" strings.
+      expect(diagram.connectNodes(node1, node2)).toBe(true);
+      const originalLink = diagram.getLinks()[0];
 
-      clipboard.copy({ nodes: [node1, node2], links: [link], groups: [] });
+      clipboard.copy({ nodes: [node1, node2], links: [originalLink], groups: [] });
 
       const command = new PasteCommand(clipboard);
       command.execute(context);
 
       expect(diagram.getNodes().length).toBe(4); // 2 original + 2 pasted
       expect(diagram.getLinks().length).toBe(2); // 1 original + 1 pasted
+
+      // The pasted link's endpoints must resolve to REAL ports on the PASTED
+      // nodes — this is the regression the old colon-string remap broke.
+      const pastedNodes = diagram
+        .getNodes()
+        .filter((n) => n.id !== node1.id && n.id !== node2.id);
+      const pastedNodeIds = new Set(pastedNodes.map((n) => n.id));
+      const pastedPortIds = new Set(pastedNodes.flatMap((n) => n.getPorts().map((p) => p.id)));
+
+      const pastedLink = diagram.getLinks().find((l) => l.id !== originalLink.id)!;
+      expect(pastedPortIds.has(pastedLink.sourcePortId)).toBe(true);
+      expect(pastedPortIds.has(pastedLink.targetPortId)).toBe(true);
+
+      // Cached owning-node ids must be remapped to the pasted nodes too.
+      expect(pastedNodeIds.has(pastedLink.sourceNodeId!)).toBe(true);
+      expect(pastedNodeIds.has(pastedLink.targetNodeId!)).toBe(true);
+
+      // And must NOT still point at the original ports/nodes.
+      const originalPortIds = new Set(
+        [...node1.getPorts(), ...node2.getPorts()].map((p) => p.id),
+      );
+      expect(originalPortIds.has(pastedLink.sourcePortId)).toBe(false);
+      expect(originalPortIds.has(pastedLink.targetPortId)).toBe(false);
     });
 
     it('should preserve hierarchy when pasting', () => {
@@ -378,18 +399,15 @@ describe('Clipboard Commands (Phase 1.8)', () => {
       expect(duplicatedNode?.position.y).toBe(130);
     });
 
-    it('should duplicate links between selected nodes', () => {
+    it('should duplicate links between selected nodes with valid remapped ports (production connect format)', () => {
       const node1 = new NodeModel({ type: 'rect', position: { x: 0, y: 0 } });
-      const node2 = new NodeModel({ type: 'rect', position: { x: 100, y: 100 } });
-      const port1 = new PortModel({ type: 'output' });
-      const port2 = new PortModel({ type: 'input' });
-      node1.addPort(port1);
-      node2.addPort(port2);
+      const node2 = new NodeModel({ type: 'rect', position: { x: 200, y: 0 } });
       diagram.addNode(node1);
       diagram.addNode(node2);
 
-      const link = new LinkModel(`${node1.id}:${port1.id}`, `${node2.id}:${port2.id}`);
-      diagram.addLink(link);
+      // Production format: engine-created nanoid port ids, NOT colon strings.
+      expect(diagram.connectNodes(node1, node2)).toBe(true);
+      const originalLink = diagram.getLinks()[0];
 
       context.store!.set('selectedNodes', new Set([node1.id, node2.id]));
 
@@ -398,6 +416,25 @@ describe('Clipboard Commands (Phase 1.8)', () => {
 
       expect(diagram.getNodes().length).toBe(4);
       expect(diagram.getLinks().length).toBe(2);
+
+      // Duplicated link endpoints must resolve to REAL ports on the duplicated nodes.
+      const dupNodes = diagram
+        .getNodes()
+        .filter((n) => n.id !== node1.id && n.id !== node2.id);
+      const dupNodeIds = new Set(dupNodes.map((n) => n.id));
+      const dupPortIds = new Set(dupNodes.flatMap((n) => n.getPorts().map((p) => p.id)));
+
+      const dupLink = diagram.getLinks().find((l) => l.id !== originalLink.id)!;
+      expect(dupPortIds.has(dupLink.sourcePortId)).toBe(true);
+      expect(dupPortIds.has(dupLink.targetPortId)).toBe(true);
+      expect(dupNodeIds.has(dupLink.sourceNodeId!)).toBe(true);
+      expect(dupNodeIds.has(dupLink.targetNodeId!)).toBe(true);
+
+      const originalPortIds = new Set(
+        [...node1.getPorts(), ...node2.getPorts()].map((p) => p.id),
+      );
+      expect(originalPortIds.has(dupLink.sourcePortId)).toBe(false);
+      expect(originalPortIds.has(dupLink.targetPortId)).toBe(false);
     });
 
     it('should select duplicated entities by default', () => {
