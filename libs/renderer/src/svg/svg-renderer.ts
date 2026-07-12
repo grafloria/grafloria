@@ -3258,7 +3258,131 @@ export class SVGRenderer implements IRenderer {
       routedPath = { ...routedPath, points: this.rectifyOrthogonalRoute(routedPath.points) };
     }
 
+    // Last line of defence: a link must never run through its OWN nodes. If
+    // the chosen route still does (routers exclude the endpoints' nodes from
+    // their obstacle sets), retry with those nodes INCLUDED as obstacles and
+    // keep whichever route penetrates less. When the two node bodies overlap
+    // each other, some penetration is geometrically unavoidable — this keeps
+    // it minimal instead of slashing straight through.
+    const ownNodes = allNodes.filter(
+      (n: NodeModel) => n.id === sourceNodeId || n.id === targetNodeId
+    );
+    if (routedPath && ownNodes.length > 0) {
+      let bestPen = this.penetrationLength(routedPath.points, ownNodes);
+      if (bestPen > 0) {
+        const allObstacles = allNodes.map((n: NodeModel) => ({
+          id: n.id, x: n.position.x, y: n.position.y, width: n.size.width, height: n.size.height,
+        }));
+
+        const consider = (candidate: RoutedPath | null) => {
+          if (!candidate) return;
+          const rectified = { ...candidate, points: this.rectifyOrthogonalRoute(candidate.points) };
+          const pen = this.penetrationLength(rectified.points, ownNodes);
+          if (pen < bestPen) {
+            bestPen = pen;
+            routedPath = rectified;
+          }
+        };
+
+        // Candidate 1: same ports, but the own nodes count as obstacles too
+        consider(routingEngine.route({
+          start: endpoints.start,
+          end: endpoints.end,
+          sourceDirection: endpoints.sourceDirection,
+          targetDirection: endpoints.targetDirection,
+          obstacles: allObstacles,
+          options: { algorithm: 'orthogonal', avoidObstacles: true, gridSize: 10 },
+        }));
+
+        // Candidate 2 (overlapping bodies): escape each buried port by the
+        // SHORTEST way out of whatever body covers it — often perpendicular
+        // to the port side — then route between the escape points
+        if (bestPen > 0) {
+          const exitS = this.shortestEscape(endpoints.start, ownNodes);
+          const exitT = this.shortestEscape(endpoints.end, ownNodes);
+          const mid = routingEngine.route({
+            start: exitS,
+            end: exitT,
+            obstacles: allObstacles,
+            options: { algorithm: 'orthogonal', avoidObstacles: true, gridSize: 10 },
+          });
+          const midPts = mid?.points?.length ? mid.points : [exitS, exitT];
+          consider({
+            ...(mid ?? routedPath!),
+            points: [endpoints.start, exitS, ...midPts, exitT, endpoints.end],
+          });
+        }
+      }
+    }
+
     return routedPath;
+  }
+
+  /**
+   * Shortest way OUT of whatever node bodies cover the point (used when a
+   * port is buried inside the peer node because the two bodies overlap).
+   * Marches the four axis rays and returns the nearest point that is outside
+   * every covering body, with a small clearance.
+   */
+  private shortestEscape(
+    point: { x: number; y: number },
+    nodes: NodeModel[]
+  ): { x: number; y: number } {
+    const inset = 1;
+    const rects = nodes.map(n => ({
+      minX: n.position.x + inset, minY: n.position.y + inset,
+      maxX: n.position.x + n.size.width - inset, maxY: n.position.y + n.size.height - inset,
+    }));
+    const covered = (p: { x: number; y: number }) =>
+      rects.some(r => p.x > r.minX && p.x < r.maxX && p.y > r.minY && p.y < r.maxY);
+    if (!covered(point)) return { ...point };
+
+    const CLEAR = 4;
+    let best: { x: number; y: number } | null = null;
+    let bestDist = Infinity;
+    for (const [ux, uy] of [[1, 0], [-1, 0], [0, 1], [0, -1]] as const) {
+      for (let d = 2; d <= 600; d += 2) {
+        const p = { x: point.x + ux * d, y: point.y + uy * d };
+        if (!covered(p)) {
+          const dist = d + CLEAR;
+          if (dist < bestDist) {
+            bestDist = dist;
+            best = { x: point.x + ux * dist, y: point.y + uy * dist };
+          }
+          break;
+        }
+      }
+    }
+    return best ?? { ...point };
+  }
+
+  /**
+   * Total length of the polyline that lies inside the given node bodies
+   * (rects inset by 1px so port-touch on the border doesn't count).
+   */
+  private penetrationLength(
+    points: Array<{ x: number; y: number }>,
+    nodes: NodeModel[]
+  ): number {
+    if (!points || points.length < 2) return 0;
+    const inset = 1;
+    let total = 0;
+    for (const node of nodes) {
+      const rect = {
+        minX: node.position.x + inset,
+        minY: node.position.y + inset,
+        maxX: node.position.x + node.size.width - inset,
+        maxY: node.position.y + node.size.height - inset,
+      };
+      for (let i = 0; i < points.length - 1; i++) {
+        const clip = this.segmentRectClip(points[i], points[i + 1], rect);
+        if (clip) {
+          const segLen = Math.hypot(points[i + 1].x - points[i].x, points[i + 1].y - points[i].y);
+          total += (clip.t1 - clip.t0) * segLen;
+        }
+      }
+    }
+    return total;
   }
 
   /**
@@ -3377,6 +3501,18 @@ export class SVGRenderer implements IRenderer {
     b: { x: number; y: number },
     rect: { minX: number; minY: number; maxX: number; maxY: number }
   ): boolean {
+    return this.segmentRectClip(a, b, rect) !== null;
+  }
+
+  /**
+   * Liang-Barsky segment/rect clip — returns the parametric interval of the
+   * segment that lies inside the rect, or null if it misses entirely.
+   */
+  private segmentRectClip(
+    a: { x: number; y: number },
+    b: { x: number; y: number },
+    rect: { minX: number; minY: number; maxX: number; maxY: number }
+  ): { t0: number; t1: number } | null {
     let t0 = 0, t1 = 1;
     const dx = b.x - a.x;
     const dy = b.y - a.y;
@@ -3392,12 +3528,12 @@ export class SVGRenderer implements IRenderer {
       }
       return true;
     };
-    return (
+    const hit =
       clip(-dx, a.x - rect.minX) &&
       clip(dx, rect.maxX - a.x) &&
       clip(-dy, a.y - rect.minY) &&
       clip(dy, rect.maxY - a.y) &&
-      t0 < t1
-    );
+      t0 < t1;
+    return hit ? { t0, t1 } : null;
   }
 }

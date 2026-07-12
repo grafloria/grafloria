@@ -1327,6 +1327,96 @@ function a11_orthoAxisAligned() {
 }
 
 // ===========================================================================
+// A12: self-penetration sweep — the target node is placed on a grid of
+// positions around (and overlapping) the source; for EVERY line type the
+// rendered path must never run through either endpoint node's body.
+// ===========================================================================
+function a12_penetrationSweep() {
+  const types: Array<'direct' | 'smooth' | 'bezier' | 'orthogonal'> = ['direct', 'smooth', 'bezier', 'orthogonal'];
+  type Side = 'left' | 'right' | 'top' | 'bottom';
+  const combos: Array<[Side, Side]> = [
+    ['right', 'left'],   // classic facing
+    ['bottom', 'top'],   // vertical facing
+    ['top', 'bottom'],   // vertical reversed
+    ['right', 'right'],  // same side
+    ['bottom', 'bottom'],// same side vertical
+    ['left', 'right'],   // facing away
+  ];
+  const offsets: Array<[number, number]> = [];
+  for (const dx of [-220, -80, 80, 220]) {
+    for (const dy of [-160, -80, 0, 80, 160]) {
+      offsets.push([dx, dy]);
+    }
+  }
+
+  const failures: any[] = [];
+  let worst: any = null;
+
+  for (const t of types) {
+    for (const [srcSide, tgtSide] of combos) {
+      for (const [dx, dy] of offsets) {
+        const engine = makeEngine();
+        const diagram = engine.createDiagram(`a12-${t}-${srcSide}-${tgtSide}-${dx}-${dy}`);
+        const src = addNode(diagram, 'S', 420, 280, { w: 120, h: 56, ports: [{ id: 'a12-s', side: srcSide, type: 'output' }] });
+        const tgt = addNode(diagram, 'T', 420 + dx, 280 + dy, { w: 120, h: 56, ports: [{ id: 'a12-t', side: tgtSide, type: 'input' }] });
+        const link = makeLink(diagram, 'a12-s', 'a12-t', t, {
+          arrowHead: { type: 'arrow', size: 10, filled: true, color: '#475569' },
+        });
+        const tmp = document.createElement('div');
+        const svg = renderInto(engine, tmp, 1100, 700);
+        const pen = pathPenetration(svg, link.id, [src, tgt], false);
+        tmp.remove();
+        const inside = (pen?.perNode ?? []).reduce((a: number, n: any) => a + n.insidePx, 0);
+        // When the two node BODIES overlap, the ports sit inside the other
+        // node and some penetration is geometrically unavoidable — those
+        // placements are tracked separately (minimized, not zero)
+        const bodiesOverlap = Math.abs(dx) < 120 && Math.abs(dy) < 56;
+        if (inside > 2) { // small tolerance: stroke sampling jitter at the port
+          failures.push({ type: t, srcSide, tgtSide, dx, dy, insidePx: inside, bodiesOverlap });
+          if (!bodiesOverlap && (!worst || inside > worst.insidePx)) worst = { type: t, srcSide, tgtSide, dx, dy, insidePx: inside };
+        }
+      }
+    }
+  }
+
+  // Visual cell: re-render the worst offender so the failure is visible
+  const stage = cell('a12', `A12 — self-penetration sweep (${types.length * combos.length * offsets.length} placements). Red samples = line inside its own nodes`);
+  {
+    const w = worst ?? { type: 'smooth', srcSide: 'right', tgtSide: 'left', dx: -130, dy: 100 };
+    const engine = makeEngine();
+    const diagram = engine.createDiagram('a12-vis');
+    const src = addNode(diagram, 'S', 420, 280, { w: 120, h: 56, fill: '#fef3c7', ports: [{ id: 'a12v-s', side: w.srcSide, type: 'output' }] });
+    const tgt = addNode(diagram, 'T', 420 + w.dx, 280 + w.dy, { w: 120, h: 56, ports: [{ id: 'a12v-t', side: w.tgtSide, type: 'input' }] });
+    const link = makeLink(diagram, 'a12v-s', 'a12v-t', w.type, {
+      arrowHead: { type: 'arrow', size: 10, filled: true, color: '#475569' },
+    });
+    const svg = renderInto(engine, stage, 1100, 700);
+    pathPenetration(svg, link.id, [src, tgt], true);
+    overlayText(svg, 20, 24, worst
+      ? `worst: ${w.type} ${w.srcSide}→${w.tgtSide} at (${w.dx},${w.dy}) — ${w.insidePx}px inside`
+      : 'sweep clean — sample placement shown', worst ? '#dc2626' : '#16a34a', 13);
+  }
+
+  const hardFailures = failures.filter(f => !f.bodiesOverlap);
+  const overlapCases = failures.filter(f => f.bodiesOverlap);
+  expectThat('A12 no line type ever crosses its own nodes (non-overlapping placements)',
+    hardFailures.length === 0,
+    `${hardFailures.length} failing placements; worst=${JSON.stringify(worst)}; sample=${JSON.stringify(hardFailures.slice(0, 8))}`);
+  // overlapping bodies: penetration is unavoidable but must stay minimal —
+  // the own-node-obstacle retry must beat a straight slash through both
+  const worstOverlap = overlapCases.reduce((m, f) => Math.max(m, f.insidePx), 0);
+  expectThat('A12 overlapping-body placements keep penetration minimal (<120px, no straight slash)',
+    worstOverlap < 120,
+    `worst overlap penetration=${worstOverlap}px across ${overlapCases.length} unavoidable cases`);
+  PROBES.a12_penetrationSweep = {
+    placements: offsets.length * types.length * combos.length,
+    hardFailures,
+    overlapCases: overlapCases.length,
+    worstOverlapPx: worstOverlap,
+  };
+}
+
+// ===========================================================================
 // run all
 // ===========================================================================
 const failures: any[] = [];
@@ -1338,7 +1428,7 @@ for (const [name, fn] of Object.entries({
   s17_manualWaypointFlow, s18_mergedJumps, s19_arrowTails, s20_hexEllipsePorts,
   a1_verticalSmooth, a2_sameSidePorts, a3_shortLinks, a4_overlappingNodes,
   a5_jumpNearCorner, a6_jumpNearArrow, a7_labels, a8_dashedJumps,
-  a9_diagonalArrows, a10_lod, a11_orthoAxisAligned,
+  a9_diagonalArrows, a10_lod, a11_orthoAxisAligned, a12_penetrationSweep,
 })) {
   try {
     (fn as any)();
