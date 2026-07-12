@@ -57,6 +57,8 @@ let renderer: SVGRenderer | null = null;
 let diagram: any;
 let zoom = 1.0;
 let dark = false;
+let easySelect = true;
+let smartPorts = false;
 let selectedLinkId: string | null = null;
 const interaction = new InteractionHandlerService();
 
@@ -113,6 +115,8 @@ const SCENARIOS: Record<string, Scenario> = {
       'Try different <b>Arrow head</b> and <b>Arrow tail</b> markers — every tip must touch the node edge exactly.',
       'Type a <b>Label</b> — it sits at the path midpoint at 100% zoom.',
       'Drag the right node to the LEFT of the left node: the line must never cut through either node.',
+      'Toggle <b>smart connection points</b>, then drag B all around A — the link re-attaches to whichever sides face each other.',
+      '<b>easy line selection</b> gives every line an invisible 14px-wide grab zone — try clicking slightly off the line.',
     ],
     build() {
       addNode('A', 120, 280, { fill: '#fef3c7', ports: [{ id: 'a-r', side: 'right', type: 'output' }] });
@@ -261,7 +265,12 @@ const SCENARIOS: Record<string, Scenario> = {
 // ---------------------------------------------------------------------------
 function render() {
   if (!renderer) {
-    renderer = new SVGRenderer(engine, { enableCaching: false, useCSSMode: false }, dark ? DARK_THEME : LIGHT_THEME);
+    renderer = new SVGRenderer(engine, {
+      enableCaching: false,
+      useCSSMode: false,
+      linkHitAreaWidth: easySelect ? 14 : 0,
+      smartConnectionPoints: smartPorts,
+    } as any, dark ? DARK_THEME : LIGHT_THEME);
   }
   const vnode = renderer.render(VIEW, zoom);
   const dom = vnodeToDom(vnode) as SVGSVGElement;
@@ -272,7 +281,7 @@ function render() {
   // selection highlight + waypoint handles overlay
   if (selectedLinkId) {
     const link = diagram.getLink(selectedLinkId);
-    const g = dom.querySelector(`[data-vnode-key="link-${selectedLinkId}"] path`);
+    const g = dom.querySelector(`[data-vnode-key="link-${selectedLinkId}"] path:not(.link-hit-area)`);
     if (g) {
       (g as SVGElement).setAttribute('stroke-dasharray', '6,4');
       (g as SVGElement).setAttribute('stroke-width', '3');
@@ -480,6 +489,18 @@ $('zoom').addEventListener('input', () => {
   zoom = Number($('zoom').value);
   $('zoomVal').textContent = `${Math.round(zoom * 100)}%`;
   render();
+});
+
+$('easySelect').addEventListener('change', () => {
+  easySelect = $('easySelect').checked;
+  renderer = null;
+  render();
+});
+
+$('smartPorts').addEventListener('change', () => {
+  smartPorts = $('smartPorts').checked;
+  renderer = null;
+  render(); render(); // settle so routes re-detect with the new ports
 });
 
 $('theme').addEventListener('change', () => {

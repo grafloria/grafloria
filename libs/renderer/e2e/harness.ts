@@ -1477,6 +1477,84 @@ function a13_dragKeepsLineIdentity() {
 }
 
 // ===========================================================================
+// A14: easy line selection (invisible hit-area stroke) + optional smart
+// connection points (link re-attaches to the most natural side while nodes
+// move; assigned ports win again when the option is off)
+// ===========================================================================
+function a14_hitAreaAndSmartPorts() {
+  const build = (smart: boolean, hitArea: number, cellId: string, title: string) => {
+    const engine = makeEngine();
+    const diagram = engine.createDiagram(cellId);
+    const src = addNode(diagram, 'S', 420, 300, { w: 120, h: 56, fill: '#fef3c7', ports: [{ id: `${cellId}-s`, side: 'right', type: 'output' }] });
+    const tgt = addNode(diagram, 'T', 460, 60, { w: 120, h: 56, ports: [{ id: `${cellId}-t`, side: 'left', type: 'input' }] });
+    const link = makeLink(diagram, `${cellId}-s`, `${cellId}-t`, 'smooth', {
+      stroke: '#059669',
+      arrowHead: { type: 'arrow', size: 11, filled: true, color: '#059669' },
+    });
+    const stage = cell(cellId, title);
+    const renderer = new SVGRenderer(engine, {
+      enableCaching: false, useCSSMode: false,
+      smartConnectionPoints: smart, linkHitAreaWidth: hitArea,
+    } as any, LIGHT_THEME);
+    renderer.render({ x: 0, y: 0, width: 1000, height: 480 }, 1.0); // settle
+    const vnode = renderer.render({ x: 0, y: 0, width: 1000, height: 480 }, 1.0);
+    const dom = vnodeToDom(vnode) as SVGSVGElement;
+    dom.setAttribute('width', '1000'); dom.setAttribute('height', '480');
+    stage.appendChild(dom);
+    return { svg: dom, link, src, tgt };
+  };
+
+  // --- smart OFF: link uses the ASSIGNED right→left ports -------------------
+  {
+    const { svg, link, src } = build(false, 12, 'a14-off', 'A14 — smart points OFF: target above, link stays on the assigned right→left ports');
+    const ends = pathEndpoints(svg, link.id)!;
+    expectThat('A14 smart OFF keeps the assigned source port (right edge)',
+      Math.abs(ends.start.x - (src.position.x + src.size.width)) <= 2,
+      `start=(${ends.start.x.toFixed(1)},${ends.start.y.toFixed(1)})`);
+
+    // hit area present, wide, same geometry as the visible path
+    const g = svg.querySelector(`[data-vnode-key="link-${link.id}"]`)!;
+    const hit = g.querySelector('.link-hit-area') as SVGPathElement | null;
+    const visible = g.querySelector('path:not(.link-hit-area)') as SVGPathElement | null;
+    expectThat('A14 hit-area stroke rendered under the link', !!hit && !!visible);
+    if (hit && visible) {
+      expectThat('A14 hit-area is wide enough to click easily', Number(hit.getAttribute('stroke-width')) >= 12,
+        `width=${hit.getAttribute('stroke-width')}`);
+      expectThat('A14 hit-area follows the exact link geometry', hit.getAttribute('d') === visible.getAttribute('d'));
+      expectThat('A14 hit-area is invisible', hit.getAttribute('stroke') === 'transparent');
+    }
+  }
+
+  // --- hit area disabled: no extra path -------------------------------------
+  {
+    const { svg, link } = build(false, 0, 'a14-nohit', 'A14 — hit area disabled (linkHitAreaWidth: 0)');
+    const g = svg.querySelector(`[data-vnode-key="link-${link.id}"]`)!;
+    expectThat('A14 hit-area is optional (0 disables it)', g.querySelector('.link-hit-area') === null);
+  }
+
+  // --- smart ON: target above → link re-attaches top→bottom -----------------
+  {
+    const { svg, link, src, tgt } = build(true, 12, 'a14-on', 'A14 — smart points ON: same layout, link re-attaches to the natural sides (top→bottom)');
+    const ends = pathEndpoints(svg, link.id)!;
+    expectThat('A14 smart ON attaches at the source TOP edge',
+      Math.abs(ends.start.y - src.position.y) <= 2 &&
+      ends.start.x > src.position.x && ends.start.x < src.position.x + src.size.width,
+      `start=(${ends.start.x.toFixed(1)},${ends.start.y.toFixed(1)})`);
+    expectThat('A14 smart ON attaches at the target BOTTOM edge',
+      Math.abs(ends.end.y - (tgt.position.y + tgt.size.height)) <= 2 &&
+      ends.end.x > tgt.position.x && ends.end.x < tgt.position.x + tgt.size.width,
+      `end=(${ends.end.x.toFixed(1)},${ends.end.y.toFixed(1)})`);
+    // arrow must point UP into the bottom port
+    const tr = svg.querySelector(`[data-vnode-key="link-${link.id}"] .arrow`)?.getAttribute('transform') || '';
+    const rot = +(/rotate\((-?[\d.]+)/.exec(tr)?.[1] ?? NaN);
+    const norm = ((rot % 360) + 360) % 360;
+    expectThat('A14 smart ON arrow points up into the bottom port', Math.abs(norm - 270) <= 2, `rotate=${rot}`);
+    // the assigned ports were never mutated
+    expectThat('A14 smart mode never mutates the link', link.sourcePortId === 'a14-on-s' && link.targetPortId === 'a14-on-t');
+  }
+}
+
+// ===========================================================================
 // run all
 // ===========================================================================
 const failures: any[] = [];
@@ -1488,7 +1566,7 @@ for (const [name, fn] of Object.entries({
   s17_manualWaypointFlow, s18_mergedJumps, s19_arrowTails, s20_hexEllipsePorts,
   a1_verticalSmooth, a2_sameSidePorts, a3_shortLinks, a4_overlappingNodes,
   a5_jumpNearCorner, a6_jumpNearArrow, a7_labels, a8_dashedJumps,
-  a9_diagonalArrows, a10_lod, a11_orthoAxisAligned, a12_penetrationSweep, a13_dragKeepsLineIdentity,
+  a9_diagonalArrows, a10_lod, a11_orthoAxisAligned, a12_penetrationSweep, a13_dragKeepsLineIdentity, a14_hitAreaAndSmartPorts,
 })) {
   try {
     (fn as any)();

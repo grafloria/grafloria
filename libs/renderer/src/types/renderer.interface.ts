@@ -88,6 +88,21 @@ export interface SVGRendererConfig {
    * Default: true
    */
   useCSSMode?: boolean;
+
+  /**
+   * Width (px) of the invisible hit-area stroke rendered under every link so
+   * thin lines are easy to click/hover. 0 disables it.
+   * Default: 12
+   */
+  linkHitAreaWidth?: number;
+
+  /**
+   * Re-pick each link's connection sides dynamically from the nodes' relative
+   * positions (draw.io-style floating connections). Visual only — the link's
+   * assigned ports are never mutated, so toggling off restores them.
+   * Default: false
+   */
+  smartConnectionPoints?: boolean;
 }
 
 /**

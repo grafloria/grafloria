@@ -91,6 +91,8 @@ export class SVGRenderer implements IRenderer {
       enableCaching: config.enableCaching ?? true,
       maxCacheSize: config.maxCacheSize ?? 1000,
       useCSSMode: config.useCSSMode ?? true,
+      linkHitAreaWidth: config.linkHitAreaWidth ?? 12,
+      smartConnectionPoints: config.smartConnectionPoints ?? false,
     };
 
     this.theme = theme || LIGHT_THEME;
@@ -1426,10 +1428,29 @@ export class SVGRenderer implements IRenderer {
     if (!sourceNode || !targetNode) return null;
 
     // Get source and target ports
-    const sourcePort = sourceNode.getPort(link.sourcePortId);
-    const targetPort = targetNode.getPort(link.targetPortId);
+    let sourcePort = sourceNode.getPort(link.sourcePortId);
+    let targetPort = targetNode.getPort(link.targetPortId);
 
     if (!sourcePort || !targetPort) return null;
+
+    // Smart connection points (optional): pick the port SIDES from the nodes'
+    // relative positions instead of the assigned ports, so links attach where
+    // it looks most natural while dragging. Purely visual — the link's
+    // assigned ports are untouched and win again when the option is off.
+    if (this.config.smartConnectionPoints) {
+      const sc = { x: sourceNode.position.x + sourceNode.size.width / 2, y: sourceNode.position.y + sourceNode.size.height / 2 };
+      const tc = { x: targetNode.position.x + targetNode.size.width / 2, y: targetNode.position.y + targetNode.size.height / 2 };
+      const dx = tc.x - sc.x;
+      const dy = tc.y - sc.y;
+      const horizontal = Math.abs(dx) >= Math.abs(dy);
+      const srcSide: 'left' | 'right' | 'top' | 'bottom' = horizontal ? (dx >= 0 ? 'right' : 'left') : (dy >= 0 ? 'bottom' : 'top');
+      const tgtSide: 'left' | 'right' | 'top' | 'bottom' = horizontal ? (dx >= 0 ? 'left' : 'right') : (dy >= 0 ? 'top' : 'bottom');
+      sourcePort = this.portOnSide(sourceNode, srcSide, 'output') ?? sourcePort;
+      targetPort = this.portOnSide(targetNode, tgtSide, 'input') ?? targetPort;
+      this.frameSmartPorts.set(link.id, { sourcePort, targetPort });
+    } else {
+      this.frameSmartPorts.delete(link.id);
+    }
 
     // CRITICAL FIX: Use getPortPositionForShape() for consistent positioning
     // This ensures links connect to the same positions where ports are rendered
@@ -1915,6 +1936,26 @@ export class SVGRenderer implements IRenderer {
       },
     };
 
+    // Invisible wide stroke under the link so thin lines are easy to click
+    // and hover (classic diagram-tool "interaction stroke")
+    const hitAreaWidth = Math.max(
+      this.config.linkHitAreaWidth,
+      Number(styles.strokeWidth ?? 2) + 8
+    );
+    const hitAreaVNode: VNode | null = this.config.linkHitAreaWidth > 0
+      ? {
+          type: 'path',
+          props: {
+            d: jumpPathData ?? pathData,
+            fill: 'none',
+            stroke: 'transparent',
+            strokeWidth: hitAreaWidth,
+            pointerEvents: 'stroke',
+            className: 'link-hit-area',
+          },
+        }
+      : null;
+
     const vnode: VNode = {
       type: 'g',
       key: `link-${link.id}`,
@@ -1922,6 +1963,7 @@ export class SVGRenderer implements IRenderer {
         className: 'link-group',
       },
       children: [
+        ...(hitAreaVNode ? [hitAreaVNode] : []),
         // Link path (with or without jump points)
         linkPathVNode,
         // Phase 1.1: Arrow markers using ArrowRenderer
@@ -2983,7 +3025,11 @@ export class SVGRenderer implements IRenderer {
     const diagram = this.engine.getDiagram();
     let portSide: 'left' | 'right' | 'top' | 'bottom' | undefined;
 
-    if (diagram) {
+    // Smart connection points override the assigned port for this frame
+    const smart = this.frameSmartPorts.get(link.id);
+    if (smart) {
+      portSide = (isTarget ? smart.targetPort : smart.sourcePort).alignment.side;
+    } else if (diagram) {
       const portId = isTarget ? link.targetPortId : link.sourcePortId;
       const nodeId = isTarget ? link.targetNodeId : link.sourceNodeId;
       if (portId) {
@@ -3369,6 +3415,23 @@ export class SVGRenderer implements IRenderer {
       }
     }
     return best ?? { ...point };
+  }
+
+  // Smart-connection port overrides for the current frame (visual only)
+  private frameSmartPorts = new Map<string, { sourcePort: PortModel; targetPort: PortModel }>();
+
+  /**
+   * Best port on the given side of a node: prefers a matching port type,
+   * falls back to any port on that side.
+   */
+  private portOnSide(
+    node: NodeModel,
+    side: 'left' | 'right' | 'top' | 'bottom',
+    preferType: 'input' | 'output'
+  ): PortModel | null {
+    const onSide = node.getPorts().filter((p: PortModel) => p.alignment?.side === side);
+    if (onSide.length === 0) return null;
+    return onSide.find((p: PortModel) => p.type === preferType) ?? onSide[0];
   }
 
   /**
