@@ -4,9 +4,30 @@ import type {
   NodeModel,
   LinkModel,
   InteractionMode,
+  Point,
+  ArrowStyle,
 } from '@grafloria/engine';
 import { PortModel } from '@grafloria/engine';
-import { WaypointEditor, ControlPointEditor } from '@grafloria/renderer';
+import {
+  WaypointEditor,
+  ControlPointEditor,
+  ArrowRenderer,
+  hitTestLink,
+} from '@grafloria/renderer';
+import type { LinkHitTestOptions, LinkPart } from '@grafloria/renderer';
+
+/**
+ * Part-aware link hit result: a link plus WHICH sub-part of it was hit
+ * (body / label / endpoint / arrow) and local info (label index, or the 0-1
+ * position `t` along the path for body hits). Downstream edge features
+ * (inline label editing, endpoint reconnection, edge toolbar) key off `part`.
+ */
+export interface LinkPartHit {
+  link: LinkModel;
+  part: LinkPart;
+  labelIndex?: number;
+  t?: number;
+}
 
 /**
  * Phase 3: InteractionHandlerService
@@ -23,6 +44,12 @@ import { WaypointEditor, ControlPointEditor } from '@grafloria/renderer';
   providedIn: 'root',
 })
 export class InteractionHandlerService {
+  /**
+   * Shared arrow renderer used only for canonical arrow tip-offset geometry
+   * when computing arrowhead hit anchors (see {@link buildLinkHitOptions}).
+   */
+  private readonly arrowRenderer = new ArrowRenderer();
+
   /**
    * Current hover state
    */
@@ -597,6 +624,23 @@ export class InteractionHandlerService {
   }
 
   /**
+   * Part-aware public wrapper: like {@link getLinkAtPosition} but also reports
+   * WHICH sub-part of the link was hit (body / label / endpoint / arrow) plus
+   * local info. Foundation for later edge cards (label editing, endpoint
+   * reconnection, edge toolbar placement).
+   */
+  getLinkHitAtPosition(
+    worldX: number,
+    worldY: number,
+    engine: DiagramEngine
+  ): LinkPartHit | null {
+    const diagram = engine.getDiagram();
+    if (!diagram) return null;
+
+    return this.findLinkHitAtPosition(worldX, worldY, diagram);
+  }
+
+  /**
    * Phase 3: Get current interaction state
    */
   getState() {
@@ -745,29 +789,45 @@ export class InteractionHandlerService {
   }
 
   /**
-   * Find link at world position
-   * Uses simple distance-to-path calculation
+   * Find link at world position.
+   *
+   * Backward-compatible thin wrapper over {@link findLinkHitAtPosition}:
+   * existing callers that only ask "which link (if any) is under the cursor?"
+   * keep getting a `LinkModel | null`. Use `findLinkHitAtPosition` /
+   * `getLinkHitAtPosition` when you need to know WHICH sub-part was hit.
    */
   private findLinkAtPosition(
     worldX: number,
     worldY: number,
     diagram: any
   ): LinkModel | null {
+    return this.findLinkHitAtPosition(worldX, worldY, diagram)?.link ?? null;
+  }
+
+  /**
+   * Part-aware link hit-test.
+   *
+   * Reports the link under the cursor AND which sub-part of it was hit
+   * (body / label / source|target-endpoint / source|target-arrow) plus local
+   * info: the label index for label hits, or the 0-1 position `t` along the
+   * path for body hits. Delegates the geometry to the pure `hitTestLink`
+   * primitive in `@grafloria/renderer` so the same logic backs both hit paths.
+   */
+  findLinkHitAtPosition(
+    worldX: number,
+    worldY: number,
+    diagram: any
+  ): LinkPartHit | null {
     const hitThreshold = 5; // 5px tolerance for clicking links
+    const query: Point = { x: worldX, y: worldY };
 
     for (const link of diagram.getLinks()) {
       const points = link.points;
-      if (points.length < 2) continue;
+      if (!points || points.length < 2) continue;
 
-      // Check distance to each segment
-      for (let i = 0; i < points.length - 1; i++) {
-        const p1 = points[i];
-        const p2 = points[i + 1];
-
-        const distance = this.distanceToLineSegment(worldX, worldY, p1.x, p1.y, p2.x, p2.y);
-        if (distance <= hitThreshold) {
-          return link;
-        }
+      const hit = hitTestLink(this.buildLinkHitOptions(link), query, hitThreshold);
+      if (hit) {
+        return { link, ...hit };
       }
     }
 
@@ -775,39 +835,49 @@ export class InteractionHandlerService {
   }
 
   /**
-   * Calculate distance from point to line segment
+   * Translate a link model into the framework-agnostic geometry the pure
+   * `hitTestLink` primitive expects (routed points, label placements and
+   * endpoint / arrowhead anchors). Endpoints default to the path ends inside
+   * the primitive; arrowhead anchors are inset from those ends by the arrow's
+   * canonical tip offset so they line up with the rendered markers.
    */
-  private distanceToLineSegment(
-    px: number,
-    py: number,
-    x1: number,
-    y1: number,
-    x2: number,
-    y2: number
-  ): number {
-    const dx = x2 - x1;
-    const dy = y2 - y1;
-    const lengthSquared = dx * dx + dy * dy;
+  private buildLinkHitOptions(link: LinkModel): LinkHitTestOptions {
+    const points: Point[] = link.points;
+    const style = link.style ?? {};
 
-    if (lengthSquared === 0) {
-      // Line segment is a point
-      const dpx = px - x1;
-      const dpy = py - y1;
-      return Math.sqrt(dpx * dpx + dpy * dpy);
-    }
+    return {
+      points,
+      labels: (link.labels ?? []).map((label) => ({
+        position: label.position,
+        offset: label.offset,
+      })),
+      // arrowHead renders at the target end, arrowTail at the source end.
+      sourceArrow: this.arrowAnchor(points, false, style.arrowTail),
+      targetArrow: this.arrowAnchor(points, true, style.arrowHead),
+    };
+  }
 
-    // Calculate projection of point onto line
-    let t = ((px - x1) * dx + (py - y1) * dy) / lengthSquared;
-    t = Math.max(0, Math.min(1, t)); // Clamp to [0, 1]
+  /**
+   * Anchor point for an arrowhead hit region: the terminal point moved inward
+   * along the last (or first) segment by the arrow's tip offset, matching where
+   * the marker actually sits. Returns null when there is no visible arrow.
+   */
+  private arrowAnchor(
+    points: Point[],
+    atTarget: boolean,
+    style: ArrowStyle | undefined
+  ): Point | null {
+    if (!style || style.type === 'none' || points.length < 2) return null;
 
-    // Calculate closest point on segment
-    const closestX = x1 + t * dx;
-    const closestY = y1 + t * dy;
+    const offset = this.arrowRenderer.getTipOffset(style);
+    const tip = atTarget ? points[points.length - 1]! : points[0]!;
+    const adjacent = atTarget ? points[points.length - 2]! : points[1]!;
 
-    // Calculate distance
-    const dpx = px - closestX;
-    const dpy = py - closestY;
-    return Math.sqrt(dpx * dpx + dpy * dpy);
+    const dx = adjacent.x - tip.x;
+    const dy = adjacent.y - tip.y;
+    const len = Math.hypot(dx, dy) || 1;
+
+    return { x: tip.x + (dx / len) * offset, y: tip.y + (dy / len) * offset };
   }
 
   /**
