@@ -153,10 +153,12 @@ describe('DiagramCanvasComponent', () => {
       expect(component.zoom).toBe(1.5);
     });
 
-    test('should re-render when zoom changes', () => {
+    test('should schedule a re-render when zoom changes', () => {
       fixture.detectChanges();
 
-      const spy = jest.spyOn(component as any, 'renderDiagram');
+      // wave2/rendering: renders are frame-coalesced, so ngOnChanges schedules
+      // a frame rather than painting synchronously.
+      const spy = jest.spyOn(component as any, 'scheduleRender');
 
       component.zoom = 2.0;
       component.ngOnChanges({
@@ -173,10 +175,10 @@ describe('DiagramCanvasComponent', () => {
   });
 
   describe('Theme', () => {
-    test('should re-render when theme changes', () => {
+    test('should schedule a re-render when theme changes', () => {
       fixture.detectChanges();
 
-      const spy = jest.spyOn(component as any, 'renderDiagram');
+      const spy = jest.spyOn(component as any, 'scheduleRender');
 
       component.theme = DARK_THEME;
       component.ngOnChanges({
@@ -211,6 +213,130 @@ describe('DiagramCanvasComponent', () => {
         component.ngOnDestroy();
         component.ngOnDestroy();
       }).not.toThrow();
+    });
+  });
+
+  // ==========================================================================
+  // wave2/rendering: frame-coalesced render loop + real metrics
+  // ==========================================================================
+  describe('Frame-coalesced render loop (wave2/rendering)', () => {
+    let rafCallbacks: FrameRequestCallback[];
+    let rafSpy: jest.SpyInstance;
+    let cancelSpy: jest.SpyInstance;
+    let nextRafId: number;
+
+    // Deterministic rAF: capture callbacks and fire them on demand via flushRAF().
+    const flushRAF = () => {
+      const cbs = rafCallbacks;
+      rafCallbacks = [];
+      cbs.forEach((cb) => cb(performance.now()));
+    };
+
+    beforeEach(() => {
+      rafCallbacks = [];
+      nextRafId = 0;
+      rafSpy = jest
+        .spyOn(window, 'requestAnimationFrame')
+        .mockImplementation((cb: FrameRequestCallback) => {
+          rafCallbacks.push(cb);
+          return ++nextRafId;
+        });
+      cancelSpy = jest
+        .spyOn(window, 'cancelAnimationFrame')
+        .mockImplementation(() => undefined);
+      // Mount synchronously (renderNow, no rAF). rafSpy stays clean for asserts.
+      fixture.detectChanges();
+      rafSpy.mockClear();
+    });
+
+    afterEach(() => {
+      rafSpy.mockRestore();
+      cancelSpy.mockRestore();
+    });
+
+    test('coalesces N invalidations in one tick into a single animation frame', () => {
+      component.scheduleRender();
+      component.scheduleRender();
+      component.scheduleRender();
+      component.scheduleRender();
+      component.scheduleRender();
+
+      // Five schedule calls, exactly ONE frame queued.
+      expect(rafSpy).toHaveBeenCalledTimes(1);
+    });
+
+    test('renders exactly once for a burst of invalidations, when something is dirty', () => {
+      // Dirty a real entity so the frame is not idle-skipped.
+      const node = new NodeModel({
+        type: 'basic',
+        position: { x: 10, y: 10 },
+        size: { width: 80, height: 40 },
+      });
+      diagram.addNode(node); // triggers node:added -> scheduleRender (1 frame)
+      node.markDirty('test');
+      component.scheduleRender();
+      component.scheduleRender();
+
+      const renderSpy = jest.spyOn(component as any, 'renderDiagram');
+      expect(rafSpy).toHaveBeenCalledTimes(1); // all coalesced into one frame
+
+      flushRAF();
+
+      expect(renderSpy).toHaveBeenCalledTimes(1);
+    });
+
+    test('skips the frame when nothing is dirty and the viewport is unchanged', () => {
+      // Post-mount, guarantee a clean, unchanged state.
+      diagram.markAllClean();
+      const renderSpy = jest.spyOn(component as any, 'renderDiagram');
+
+      component.scheduleRender();
+      expect(rafSpy).toHaveBeenCalledTimes(1); // a frame is still queued...
+      flushRAF();
+
+      // ...but it is idle-skipped: no actual paint happens.
+      expect(renderSpy).not.toHaveBeenCalled();
+    });
+
+    test('performance metrics record one sample per painted frame and none per skip', () => {
+      // Mount already painted one frame.
+      const afterMount = component.getPerformanceMetrics();
+      expect(afterMount.sampleCount).toBe(1);
+      expect(typeof afterMount.fps).toBe('number');
+      expect(typeof afterMount.frameTime).toBe('number');
+      expect(afterMount.droppedFrames).toBeGreaterThanOrEqual(0);
+
+      // A real (dirty) frame adds a sample.
+      const node = new NodeModel({
+        type: 'basic',
+        position: { x: 10, y: 10 },
+        size: { width: 80, height: 40 },
+      });
+      diagram.addNode(node);
+      node.markDirty('test');
+      component.scheduleRender();
+      flushRAF();
+      expect(component.getPerformanceMetrics().sampleCount).toBe(2);
+
+      // A skipped (clean) frame adds nothing.
+      diagram.markAllClean();
+      component.scheduleRender();
+      flushRAF();
+      expect(component.getPerformanceMetrics().sampleCount).toBe(2);
+
+      // Two painted frames → rolling FPS is a finite, non-negative number.
+      const metrics = component.getPerformanceMetrics();
+      expect(Number.isFinite(metrics.fps)).toBe(true);
+      expect(metrics.fps).toBeGreaterThanOrEqual(0);
+    });
+
+    test('cancels the queued frame on destroy', () => {
+      component.scheduleRender();
+      expect(rafSpy).toHaveBeenCalledTimes(1);
+
+      component.ngOnDestroy();
+
+      expect(cancelSpy).toHaveBeenCalled();
     });
   });
 });
