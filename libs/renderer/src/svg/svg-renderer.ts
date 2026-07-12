@@ -10,6 +10,16 @@ import type { RoutedPath, RoutingAlgorithm } from '@grafloria/engine';
 // Phase 3.2: Shape-aware port positioning
 import { getPortPositionForShape } from './port-positioning';
 
+// Nodes & shapes foundation: unified shape registry / geometry contract.
+// The five shape switch sites below (renderNodeShape, renderSelectionHighlight,
+// renderShadow, shapeEdgePoint) route through this instead of inline switches.
+import {
+  getShape,
+  buildShapeBody,
+  buildShapeSelection,
+  buildShapeShadow,
+} from './shape-registry';
+
 // Phase 1.1: Arrow type rendering
 import { ArrowRenderer } from './ArrowRenderer';
 
@@ -1085,162 +1095,15 @@ export class SVGRenderer implements IRenderer {
       shapeStyles.filter = 'brightness(1.05)';
     }
 
-    switch (shapeConfig.type) {
-      case 'circle':
-        return this.renderCircleShape(width, height, shapeStyles);
-
-      case 'ellipse':
-        return this.renderEllipseShape(width, height, shapeStyles);
-
-      case 'diamond':
-        return this.renderDiamondShape(width, height, shapeStyles);
-
-      case 'hexagon':
-        return this.renderHexagonShape(width, height, shapeStyles);
-
-      case 'rect':
-      default:
-        return this.renderRectShape(width, height, shapeStyles, shapeConfig.cornerRadius);
-    }
-  }
-
-  /**
-   * Phase 3.1: Render rectangle shape
-   */
-  private renderRectShape(width: number, height: number, styles: any, cornerRadius?: number): VNode {
-    // ✅ CRITICAL: When fill/stroke are set explicitly, use inline style to override CSS
-    // In SVG, CSS rules have higher specificity than presentation attributes
-    // But inline style attribute has highest specificity
-    const { fill, stroke, strokeWidth, className, ...otherProps } = styles;
-    const inlineStyle = [
-      fill ? `fill: ${fill}` : '',
-      stroke ? `stroke: ${stroke}` : '',
-      strokeWidth !== undefined ? `stroke-width: ${strokeWidth}` : ''
-    ].filter(Boolean).join('; ');
-
-    return {
-      type: 'rect',
-      props: {
-        x: 0,
-        y: 0,
-        width,
-        height,
-        ...(className ? { className } : {}),
-        ...(inlineStyle ? { style: inlineStyle } : {}),
-        ...otherProps,
-        ...(cornerRadius ? { rx: cornerRadius, ry: cornerRadius } : {}),
-      },
-    };
-  }
-
-  /**
-   * Phase 3.1: Render circle shape
-   */
-  private renderCircleShape(width: number, height: number, styles: any): VNode {
-    const radius = Math.min(width, height) / 2;
-    const cx = width / 2;
-    const cy = height / 2;
-
-    // ✅ Use inline style to override CSS (same as renderRectShape)
-    // rx/ry are rect corner-radius styles — meaningless (and confusing) on a circle
-    const { fill, stroke, strokeWidth, className, rx: _rx, ry: _ry, ...otherProps } = styles;
-    const inlineStyle = [
-      fill ? `fill: ${fill}` : '',
-      stroke ? `stroke: ${stroke}` : '',
-      strokeWidth !== undefined ? `stroke-width: ${strokeWidth}` : ''
-    ].filter(Boolean).join('; ');
-
-    return {
-      type: 'circle',
-      props: {
-        cx,
-        cy,
-        r: radius,
-        ...(className ? { className } : {}),
-        ...(inlineStyle ? { style: inlineStyle } : {}),
-        ...otherProps,
-      },
-    };
-  }
-
-  /**
-   * Phase 3.1: Render ellipse shape
-   */
-  private renderEllipseShape(width: number, height: number, styles: any): VNode {
-    const rx = width / 2;
-    const ry = height / 2;
-    const cx = width / 2;
-    const cy = height / 2;
-
-    // Geometry AFTER the style spread: node styles carry a rect corner-radius
-    // `rx` (borderRadius) that must never override the ellipse's real radii
-    return {
-      type: 'ellipse',
-      props: {
-        ...styles,
-        cx,
-        cy,
-        rx,
-        ry,
-      },
-    };
-  }
-
-  /**
-   * Phase 3.1: Render diamond shape (rotated square)
-   */
-  private renderDiamondShape(width: number, height: number, styles: any): VNode {
-    const cx = width / 2;
-    const cy = height / 2;
-
-    // Diamond vertices: top, right, bottom, left
-    const points = `${cx},0 ${width},${cy} ${cx},${height} 0,${cy}`;
-
-    // ✅ Use inline style to override CSS (same as renderRectShape)
-    const { fill, stroke, strokeWidth, className, ...otherProps } = styles;
-    const inlineStyle = [
-      fill ? `fill: ${fill}` : '',
-      stroke ? `stroke: ${stroke}` : '',
-      strokeWidth !== undefined ? `stroke-width: ${strokeWidth}` : ''
-    ].filter(Boolean).join('; ');
-
-    return {
-      type: 'polygon',
-      props: {
-        points,
-        ...(className ? { className } : {}),
-        ...(inlineStyle ? { style: inlineStyle } : {}),
-        ...otherProps,
-      },
-    };
-  }
-
-  /**
-   * Phase 3.1: Render hexagon shape
-   */
-  private renderHexagonShape(width: number, height: number, styles: any): VNode {
-    const cx = width / 2;
-    const cy = height / 2;
-
-    // Flat-top hexagon (6 vertices)
-    const offset = width * 0.25; // 25% offset for flat sides
-
-    const points = [
-      `${offset},0`,           // top-left
-      `${width - offset},0`,   // top-right
-      `${width},${cy}`,        // right
-      `${width - offset},${height}`, // bottom-right
-      `${offset},${height}`,   // bottom-left
-      `0,${cy}`,               // left
-    ].join(' ');
-
-    return {
-      type: 'polygon',
-      props: {
-        points,
-        ...styles,
-      },
-    };
+    // Route through the shape registry (see shape-registry.ts). buildShapeBody
+    // reproduces the historical per-shape style composition exactly.
+    return buildShapeBody(
+      getShape(shapeConfig.type),
+      width,
+      height,
+      shapeConfig.cornerRadius,
+      shapeStyles
+    );
   }
 
   /**
@@ -1259,76 +1122,8 @@ export class SVGRenderer implements IRenderer {
       className: 'selection-highlight',
     };
 
-    switch (shapeConfig.type) {
-      case 'circle':
-        const radius = Math.min(width, height) / 2;
-        return {
-          type: 'circle',
-          props: {
-            cx: width / 2,
-            cy: height / 2,
-            r: radius + padding,
-            ...baseProps,
-          },
-        };
-
-      case 'ellipse':
-        return {
-          type: 'ellipse',
-          props: {
-            cx: width / 2,
-            cy: height / 2,
-            rx: width / 2 + padding,
-            ry: height / 2 + padding,
-            ...baseProps,
-          },
-        };
-
-      case 'diamond':
-        const cx = width / 2;
-        const cy = height / 2;
-        const points = `${cx},${-padding} ${width + padding},${cy} ${cx},${height + padding} ${-padding},${cy}`;
-        return {
-          type: 'polygon',
-          props: {
-            points,
-            ...baseProps,
-          },
-        };
-
-      case 'hexagon':
-        const offset = width * 0.25;
-        const hexPoints = [
-          `${offset - padding},${-padding}`,
-          `${width - offset + padding},${-padding}`,
-          `${width + padding},${height / 2}`,
-          `${width - offset + padding},${height + padding}`,
-          `${offset - padding},${height + padding}`,
-          `${-padding},${height / 2}`,
-        ].join(' ');
-        return {
-          type: 'polygon',
-          props: {
-            points: hexPoints,
-            ...baseProps,
-          },
-        };
-
-      case 'rect':
-      default:
-        return {
-          type: 'rect',
-          props: {
-            x: -padding,
-            y: -padding,
-            width: width + (padding * 2),
-            height: height + (padding * 2),
-            rx: 6,
-            ry: 6,
-            ...baseProps,
-          },
-        };
-    }
+    // Selection highlight = the shape outline grown by `padding` (registry).
+    return buildShapeSelection(getShape(shapeConfig.type), width, height, padding, baseProps);
   }
 
   /**
@@ -1346,75 +1141,15 @@ export class SVGRenderer implements IRenderer {
       className: 'node-shadow',
     };
 
-    switch (shapeConfig.type) {
-      case 'circle':
-        const radius = Math.min(width, height) / 2;
-        return {
-          type: 'circle',
-          props: {
-            cx: width / 2 + offset,
-            cy: height / 2 + offset,
-            r: radius,
-            ...baseProps,
-          },
-        };
-
-      case 'ellipse':
-        return {
-          type: 'ellipse',
-          props: {
-            cx: width / 2 + offset,
-            cy: height / 2 + offset,
-            rx: width / 2,
-            ry: height / 2,
-            ...baseProps,
-          },
-        };
-
-      case 'diamond':
-        const cx = width / 2;
-        const cy = height / 2;
-        const points = `${cx + offset},${offset} ${width + offset},${cy + offset} ${cx + offset},${height + offset} ${offset},${cy + offset}`;
-        return {
-          type: 'polygon',
-          props: {
-            points,
-            ...baseProps,
-          },
-        };
-
-      case 'hexagon':
-        const hexOffset = width * 0.25;
-        const hexPoints = [
-          `${hexOffset + offset},${offset}`,
-          `${width - hexOffset + offset},${offset}`,
-          `${width + offset},${height / 2 + offset}`,
-          `${width - hexOffset + offset},${height + offset}`,
-          `${hexOffset + offset},${height + offset}`,
-          `${offset},${height / 2 + offset}`,
-        ].join(' ');
-        return {
-          type: 'polygon',
-          props: {
-            points: hexPoints,
-            ...baseProps,
-          },
-        };
-
-      case 'rect':
-      default:
-        return {
-          type: 'rect',
-          props: {
-            x: offset,
-            y: offset,
-            width,
-            height,
-            rx: (node.style.borderRadius ?? 4) as number,
-            ...baseProps,
-          },
-        };
-    }
+    // Drop shadow = the shape outline offset by (offset, offset) (registry).
+    return buildShapeShadow(
+      getShape(shapeConfig.type),
+      width,
+      height,
+      offset,
+      (node.style.borderRadius ?? 4) as number,
+      baseProps
+    );
   }
 
   /**
@@ -3533,59 +3268,13 @@ export class SVGRenderer implements IRenderer {
     cross: number
   ): { x: number; y: number } {
     const type = (node.getMetadata('shape') || { type: 'rect' }).type;
-    const clampv = (v: number, lo: number, hi: number) => Math.max(lo, Math.min(hi, v));
-    const cx = rect.x + rect.w / 2;
-    const cy = rect.y + rect.h / 2;
-    const vertical = side === 'top' || side === 'bottom';
 
-    if (type === 'ellipse' || type === 'circle') {
-      const rx = type === 'circle' ? Math.min(rect.w, rect.h) / 2 : rect.w / 2;
-      const ry = type === 'circle' ? Math.min(rect.w, rect.h) / 2 : rect.h / 2;
-      if (vertical) {
-        const x = clampv(cross, cx - rx * 0.9, cx + rx * 0.9);
-        const dy = ry * Math.sqrt(Math.max(0, 1 - ((x - cx) / rx) ** 2));
-        return { x, y: side === 'top' ? cy - dy : cy + dy };
-      }
-      const y = clampv(cross, cy - ry * 0.9, cy + ry * 0.9);
-      const dx = rx * Math.sqrt(Math.max(0, 1 - ((y - cy) / ry) ** 2));
-      return { x: side === 'left' ? cx - dx : cx + dx, y };
-    }
-
-    if (type === 'hexagon' || type === 'diamond') {
-      // outline polygons matching renderHexagonShape / renderDiamondShape
-      const verts = type === 'hexagon'
-        ? [
-            { x: rect.x + rect.w * 0.25, y: rect.y }, { x: rect.x + rect.w * 0.75, y: rect.y },
-            { x: rect.x + rect.w, y: cy }, { x: rect.x + rect.w * 0.75, y: rect.y + rect.h },
-            { x: rect.x + rect.w * 0.25, y: rect.y + rect.h }, { x: rect.x, y: cy },
-          ]
-        : [
-            { x: cx, y: rect.y }, { x: rect.x + rect.w, y: cy },
-            { x: cx, y: rect.y + rect.h }, { x: rect.x, y: cy },
-          ];
-      // intersect the axis line at `cross` with the outline; keep the
-      // intersection belonging to the requested side
-      let best: number | null = null;
-      for (let i = 0; i < verts.length; i++) {
-        const a = verts[i];
-        const b = verts[(i + 1) % verts.length];
-        if (vertical) {
-          const lo = Math.min(a.x, b.x); const hi = Math.max(a.x, b.x);
-          if (cross < lo || cross > hi || lo === hi) continue;
-          const y = a.y + ((cross - a.x) / (b.x - a.x)) * (b.y - a.y);
-          if (best === null || (side === 'top' ? y < best : y > best)) best = y;
-        } else {
-          const lo = Math.min(a.y, b.y); const hi = Math.max(a.y, b.y);
-          if (cross < lo || cross > hi || lo === hi) continue;
-          const x = a.x + ((cross - a.y) / (b.y - a.y)) * (b.x - a.x);
-          if (best === null || (side === 'left' ? x < best : x > best)) best = x;
-        }
-      }
-      if (best !== null) {
-        return vertical ? { x: cross, y: best } : { x: best, y: cross };
-      }
-      // degenerate cross (at a vertex tangent) — fall through to the box edge
-    }
+    // Ask the shape registry for the outline point (ellipse/circle project
+    // analytically; hexagon/diamond intersect the outline polygon). A null
+    // result — rect, unknown shapes, or a degenerate vertex tangent — falls
+    // through to the bounding-box edge.
+    const pt = getShape(type).boundaryPoint(rect, side, cross);
+    if (pt) return pt;
 
     return side === 'left' ? { x: rect.x, y: cross }
       : side === 'right' ? { x: rect.x + rect.w, y: cross }
