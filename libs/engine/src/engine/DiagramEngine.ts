@@ -95,6 +95,12 @@ export class DiagramEngine {
   // Current diagram
   private diagram: DiagramModel | null = null;
 
+  // Disposer functions for the engine's own listeners on the attached diagram.
+  // Stored on attach and invoked on detach so switching diagrams unsubscribes
+  // cleanly without accumulating duplicate handlers (and without touching the
+  // diagram's contents).
+  private diagramDisposers: Array<() => void> = [];
+
   // Configuration
   private config: DiagramEngineConfig;
 
@@ -1571,48 +1577,64 @@ export class DiagramEngine {
    * Attach diagram
    */
   private attachDiagram(diagram: DiagramModel): void {
-    // Subscribe to diagram events
-    diagram.on('node:added', (node: NodeModel) => {
-      this.eventBus.emit('node:added', node);
-      // Register node as obstacle for routing
-      this.registerNodeAsObstacle(node);
+    // Subscribe to diagram events. Every subscription returns a disposer which
+    // we store so detachDiagram can unsubscribe the engine's own listeners
+    // without accumulating duplicates across attach/detach cycles.
+    this.diagramDisposers.push(
+      diagram.on('node:added', (node: NodeModel) => {
+        this.eventBus.emit('node:added', node);
+        // Register node as obstacle for routing
+        this.registerNodeAsObstacle(node);
 
-      // Listen for node position/size changes
-      node.on('position', () => {
-        this.updateNodeObstacle(node);
-      });
+        // Listen for node position/size changes
+        this.diagramDisposers.push(
+          node.on('position', () => {
+            this.updateNodeObstacle(node);
+          })
+        );
+        this.diagramDisposers.push(
+          node.on('size', () => {
+            this.updateNodeObstacle(node);
+          })
+        );
+      })
+    );
 
-      node.on('size', () => {
-        this.updateNodeObstacle(node);
-      });
-    });
+    this.diagramDisposers.push(
+      diagram.on('node:removed', (node: NodeModel) => {
+        this.eventBus.emit('node:removed', node);
+        // Unregister node obstacle
+        this.unregisterNodeObstacle(node.id);
+      })
+    );
 
-    diagram.on('node:removed', (node: NodeModel) => {
-      this.eventBus.emit('node:removed', node);
-      // Unregister node obstacle
-      this.unregisterNodeObstacle(node.id);
-    });
+    this.diagramDisposers.push(
+      diagram.on('link:added', (link: LinkModel) => {
+        this.eventBus.emit('link:added', link);
+      })
+    );
 
-    diagram.on('link:added', (link: LinkModel) => {
-      this.eventBus.emit('link:added', link);
-    });
-
-    diagram.on('link:removed', (link: LinkModel) => {
-      this.eventBus.emit('link:removed', link);
-    });
+    this.diagramDisposers.push(
+      diagram.on('link:removed', (link: LinkModel) => {
+        this.eventBus.emit('link:removed', link);
+      })
+    );
 
     // Register all existing nodes as obstacles
     diagram.getNodes().forEach((node) => {
       this.registerNodeAsObstacle(node);
 
       // Listen for node position/size changes
-      node.on('position', () => {
-        this.updateNodeObstacle(node);
-      });
-
-      node.on('size', () => {
-        this.updateNodeObstacle(node);
-      });
+      this.diagramDisposers.push(
+        node.on('position', () => {
+          this.updateNodeObstacle(node);
+        })
+      );
+      this.diagramDisposers.push(
+        node.on('size', () => {
+          this.updateNodeObstacle(node);
+        })
+      );
     });
   }
 
@@ -1620,28 +1642,22 @@ export class DiagramEngine {
    * Detach diagram
    */
   private detachDiagram(diagram: DiagramModel): void {
-    // CRITICAL FIX: Unregister all node obstacles from routing engine
-    // Without this, old diagram nodes remain as obstacles affecting new diagrams
+    // Unregister all node obstacles from routing engine so the old diagram's
+    // nodes don't remain as obstacles affecting the newly attached diagram.
+    // This only touches the routing engine's obstacle registry, not the diagram.
     diagram.getNodes().forEach((node) => {
       this.unregisterNodeObstacle(node.id);
     });
 
-    // CRITICAL FIX: Clear the old diagram to remove nodes from spatial index
-    // Without this, old diagram nodes can interfere with hover detection in new diagrams
-    // This ensures spatial indices and event listeners are cleaned up
-    // BATCH MODE: Wrap clear() in batch to prevent UI flicker from individual node removals
-    console.log('[DiagramEngine] Detaching old diagram with batch mode...');
-    diagram.beginBatch();
-    try {
-      diagram.clear();
-    } finally {
-      diagram.endBatch();
-      console.log('[DiagramEngine] Old diagram detached and cleared in batch mode');
+    // Unsubscribe the engine's own listeners that were registered in
+    // attachDiagram. We deliberately do NOT clear() or otherwise mutate the old
+    // diagram: it must stay fully intact so it can be re-attached later with all
+    // of its nodes and links preserved. Disposing the stored handlers also
+    // prevents duplicate handlers from accumulating across attach/detach cycles.
+    for (const dispose of this.diagramDisposers) {
+      dispose();
     }
-
-    // Unsubscribe from events
-    // TODO: Store listener references in attachDiagram so we can remove them here
-    // For now, leaving listeners attached as diagram might be reused
+    this.diagramDisposers = [];
   }
 
   /**

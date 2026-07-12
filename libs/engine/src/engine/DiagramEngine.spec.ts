@@ -162,6 +162,65 @@ describe('DiagramEngine', () => {
     });
   });
 
+  describe('Non-destructive setDiagram (wave1-grouping)', () => {
+    it('keeps the outgoing diagram intact when switching away and back', async () => {
+      // Build diagram A with two connected nodes.
+      const diagramA = new DiagramModel('A');
+      const a1 = new NodeModel({ type: 'test', position: { x: 0, y: 0 } });
+      const a2 = new NodeModel({ type: 'test', position: { x: 100, y: 0 } });
+      a1.addPort(new PortModel({ id: 'a-out', type: 'output' }));
+      a2.addPort(new PortModel({ id: 'a-in', type: 'input' }));
+      diagramA.addNode(a1);
+      diagramA.addNode(a2);
+
+      engine.setDiagram(diagramA);
+      const link = await engine.addLink({
+        sourcePortId: 'a-out',
+        targetPortId: 'a-in',
+      });
+
+      expect(diagramA.getNodes()).toHaveLength(2);
+      expect(diagramA.getLinks()).toHaveLength(1);
+
+      // Switch to a different diagram B.
+      const diagramB = new DiagramModel('B');
+      engine.setDiagram(diagramB);
+
+      // A must NOT be cleared/destroyed while it is detached.
+      expect(diagramA.getNodes()).toHaveLength(2);
+      expect(diagramA.getLinks()).toHaveLength(1);
+
+      // Switch back to A: it is re-attachable with everything preserved.
+      engine.setDiagram(diagramA);
+      expect(engine.getDiagram()).toBe(diagramA);
+      expect(diagramA.getNodes()).toHaveLength(2);
+      expect(diagramA.getLink(link.id)).toBe(link);
+    });
+
+    it('does not accumulate duplicate engine handlers across round-trips', async () => {
+      const diagramA = new DiagramModel('A');
+      const diagramB = new DiagramModel('B');
+
+      // Round-trip A -> B -> A -> B -> A several times. Each attach used to add
+      // another 'node:added' subscription that was never removed on detach.
+      engine.setDiagram(diagramA);
+      engine.setDiagram(diagramB);
+      engine.setDiagram(diagramA);
+      engine.setDiagram(diagramB);
+      engine.setDiagram(diagramA);
+
+      // The engine forwards the diagram's 'node:added' onto its own eventBus.
+      // With duplicate internal subscriptions this would fire more than once.
+      const forwarded = jest.fn();
+      engine.eventBus.on('node:added', forwarded);
+
+      const node = new NodeModel({ type: 'test', position: { x: 0, y: 0 } });
+      diagramA.addNode(node);
+
+      expect(forwarded).toHaveBeenCalledTimes(1);
+    });
+  });
+
   describe('Node Operations', () => {
     beforeEach(async () => {
       engine.createDiagram();
