@@ -7,6 +7,7 @@ import { LinkModel } from '../../models/LinkModel';
 import { GroupModel } from '../../models/GroupModel';
 import type { Point } from '../../types';
 import { generateId } from '../../utils/id';
+import { remapNodePortIds } from './remapNodePortIds';
 
 /**
  * PasteCommand pastes entities from clipboard into diagram
@@ -22,7 +23,8 @@ export class PasteCommand extends Command {
   private pastedNodeIds: string[] = [];
   private pastedLinkIds: string[] = [];
   private pastedGroupIds: string[] = [];
-  private idMap: Map<string, string> = new Map(); // old ID -> new ID
+  private idMap: Map<string, string> = new Map(); // old node/group ID -> new ID
+  private portIdMap: Map<string, string> = new Map(); // old port ID -> new port ID
 
   constructor(
     private clipboard: ClipboardManager,
@@ -45,8 +47,9 @@ export class PasteCommand extends Command {
       throw new Error('Clipboard is empty');
     }
 
-    // Reset ID map for this execution
+    // Reset ID maps for this execution
     this.idMap.clear();
+    this.portIdMap.clear();
     this.pastedNodeIds = [];
     this.pastedLinkIds = [];
     this.pastedGroupIds = [];
@@ -55,15 +58,21 @@ export class PasteCommand extends Command {
 
     // Step 1: Paste nodes with ID remapping
     for (const nodeData of clipboardData.nodes) {
-      const oldNode = NodeModel.fromJSON(nodeData);
-
       // Generate new ID
-      const oldId = oldNode.id;
+      const oldId = nodeData.id;
       const newId = generateId();
       this.idMap.set(oldId, newId);
 
       // Create new node with new ID
       const node = NodeModel.fromJSON({ ...nodeData, id: newId });
+
+      // Re-ID every port so the pasted node's ports are globally unique, and
+      // record oldPortId -> newPortId. NodeModel.fromJSON preserves the ORIGINAL
+      // port ids from the serialized data, so without this a pasted node would
+      // share port ids with its source — and links (which reference the engine's
+      // nanoid port ids, NOT "nodeId:portName" strings) would resolve to the
+      // wrong node. Rebuild the ports map since its keys are the port ids.
+      remapNodePortIds(node, newId, this.portIdMap);
 
       // Apply position offset
       node.position = {
@@ -100,32 +109,40 @@ export class PasteCommand extends Command {
 
     // Step 2: Paste links with ID remapping
     for (const linkData of clipboardData.links) {
-      const oldLink = LinkModel.fromJSON(linkData);
+      // Remap the endpoints through the port-id map built while cloning nodes.
+      // A link's sourcePortId/targetPortId ARE port ids (engine nanoids), so if
+      // either endpoint's port was not among the pasted nodes, drop the link.
+      const newSourcePortId = this.portIdMap.get(linkData.sourcePortId);
+      const newTargetPortId = this.portIdMap.get(linkData.targetPortId);
 
-      // Generate new ID
-      const oldId = oldLink.id;
-      const newId = generateId();
-      this.idMap.set(oldId, newId);
-
-      // Remap port IDs (format: "nodeId:portId")
-      const sourceNodeId = oldLink.sourcePortId.split(':')[0];
-      const sourcePortName = oldLink.sourcePortId.split(':')[1];
-      const targetNodeId = oldLink.targetPortId.split(':')[0];
-      const targetPortName = oldLink.targetPortId.split(':')[1];
-
-      const newSourceNodeId = this.idMap.get(sourceNodeId);
-      const newTargetNodeId = this.idMap.get(targetNodeId);
-
-      if (!newSourceNodeId || !newTargetNodeId) {
-        // Source or target node not pasted, skip this link
+      if (!newSourcePortId || !newTargetPortId) {
+        // Source or target port not pasted, skip this link
         continue;
       }
 
-      const newSourcePortId = `${newSourceNodeId}:${sourcePortName}`;
-      const newTargetPortId = `${newTargetNodeId}:${targetPortName}`;
+      // Generate new ID
+      const oldId = linkData.id;
+      const newId = generateId();
+      this.idMap.set(oldId, newId);
 
-      // Create new link with new ID and remapped ports
-      const link = LinkModel.fromJSON({ ...linkData, id: newId, sourcePortId: newSourcePortId, targetPortId: newTargetPortId });
+      // Remap the cached owning-node ids through the node-id map (may be absent
+      // on legacy links — addLink() backfills them from the port lookup).
+      const newSourceNodeId = linkData.sourceNodeId
+        ? this.idMap.get(linkData.sourceNodeId)
+        : undefined;
+      const newTargetNodeId = linkData.targetNodeId
+        ? this.idMap.get(linkData.targetNodeId)
+        : undefined;
+
+      // Create new link with new ID and remapped ports + node caches
+      const link = LinkModel.fromJSON({
+        ...linkData,
+        id: newId,
+        sourcePortId: newSourcePortId,
+        targetPortId: newTargetPortId,
+        sourceNodeId: newSourceNodeId,
+        targetNodeId: newTargetNodeId,
+      });
 
       // Add to diagram
       diagram.addLink(link);
@@ -219,6 +236,7 @@ export class PasteCommand extends Command {
         pastedLinkIds: this.pastedLinkIds,
         pastedGroupIds: this.pastedGroupIds,
         idMap: Object.fromEntries(this.idMap),
+        portIdMap: Object.fromEntries(this.portIdMap),
         options: this.options,
       },
     };

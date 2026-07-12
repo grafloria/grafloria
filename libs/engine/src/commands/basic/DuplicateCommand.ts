@@ -6,6 +6,7 @@ import { LinkModel } from '../../models/LinkModel';
 import { GroupModel } from '../../models/GroupModel';
 import type { Point } from '../../types';
 import { generateId } from '../../utils/id';
+import { remapNodePortIds } from './remapNodePortIds';
 
 /**
  * DuplicateCommand duplicates selected entities in the diagram
@@ -22,7 +23,8 @@ export class DuplicateCommand extends Command {
   private duplicatedNodeIds: string[] = [];
   private duplicatedLinkIds: string[] = [];
   private duplicatedGroupIds: string[] = [];
-  private idMap: Map<string, string> = new Map(); // old ID -> new ID
+  private idMap: Map<string, string> = new Map(); // old node/group ID -> new ID
+  private portIdMap: Map<string, string> = new Map(); // old port ID -> new port ID
 
   constructor(
     private options: {
@@ -44,8 +46,9 @@ export class DuplicateCommand extends Command {
       throw new Error('No nodes selected');
     }
 
-    // Reset ID map for this execution
+    // Reset ID maps for this execution
     this.idMap.clear();
+    this.portIdMap.clear();
     this.duplicatedNodeIds = [];
     this.duplicatedLinkIds = [];
     this.duplicatedGroupIds = [];
@@ -66,6 +69,12 @@ export class DuplicateCommand extends Command {
 
       this.idMap.set(oldId, newId);
       nodeIdSet.add(oldId);
+
+      // Re-ID every port so the duplicate's ports are globally unique, and
+      // record oldPortId -> newPortId for link remapping below (see
+      // remapNodePortIds for why the serialized-id preservation makes this
+      // mandatory).
+      remapNodePortIds(newNode, newId, this.portIdMap);
 
       // Apply position offset
       newNode.position = {
@@ -103,12 +112,13 @@ export class DuplicateCommand extends Command {
     // Step 2: Duplicate links between selected nodes
     const allLinks = diagram.getLinks();
     for (const link of allLinks) {
-      // Parse port IDs (format: "nodeId:portId")
-      const sourceNodeId = link.sourcePortId.split(':')[0];
-      const targetNodeId = link.targetPortId.split(':')[0];
+      // A link connects two duplicated nodes iff BOTH of its endpoint port ids
+      // were re-mapped while cloning nodes above. This uses the engine's real
+      // nanoid port ids — no "nodeId:portName" string parsing.
+      const newSourcePortId = this.portIdMap.get(link.sourcePortId);
+      const newTargetPortId = this.portIdMap.get(link.targetPortId);
 
-      // Only duplicate link if both nodes are selected
-      if (!nodeIdSet.has(sourceNodeId) || !nodeIdSet.has(targetNodeId)) {
+      if (!newSourcePortId || !newTargetPortId) {
         continue;
       }
 
@@ -116,22 +126,24 @@ export class DuplicateCommand extends Command {
       const linkData = link.serialize();
       const newId = generateId();
 
-      // Remap port IDs
-      const sourcePortName = link.sourcePortId.split(':')[1];
-      const targetPortName = link.targetPortId.split(':')[1];
+      // Remap the cached owning-node ids through the node-id map (may be absent;
+      // addLink() backfills from the port lookup when so).
+      const newSourceNodeId = linkData.sourceNodeId
+        ? this.idMap.get(linkData.sourceNodeId)
+        : undefined;
+      const newTargetNodeId = linkData.targetNodeId
+        ? this.idMap.get(linkData.targetNodeId)
+        : undefined;
 
-      const newSourceNodeId = this.idMap.get(sourceNodeId);
-      const newTargetNodeId = this.idMap.get(targetNodeId);
-
-      if (!newSourceNodeId || !newTargetNodeId) {
-        continue;
-      }
-
-      const newSourcePortId = `${newSourceNodeId}:${sourcePortName}`;
-      const newTargetPortId = `${newTargetNodeId}:${targetPortName}`;
-
-      // Create new link with new ID and remapped ports
-      const newLink = LinkModel.fromJSON({ ...linkData, id: newId, sourcePortId: newSourcePortId, targetPortId: newTargetPortId });
+      // Create new link with new ID and remapped ports + node caches
+      const newLink = LinkModel.fromJSON({
+        ...linkData,
+        id: newId,
+        sourcePortId: newSourcePortId,
+        targetPortId: newTargetPortId,
+        sourceNodeId: newSourceNodeId,
+        targetNodeId: newTargetNodeId,
+      });
 
       // Add to diagram
       diagram.addLink(newLink);
@@ -240,6 +252,7 @@ export class DuplicateCommand extends Command {
         duplicatedLinkIds: this.duplicatedLinkIds,
         duplicatedGroupIds: this.duplicatedGroupIds,
         idMap: Object.fromEntries(this.idMap),
+        portIdMap: Object.fromEntries(this.portIdMap),
         options: this.options,
       },
     };

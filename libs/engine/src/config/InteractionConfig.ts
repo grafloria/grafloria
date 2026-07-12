@@ -77,6 +77,15 @@ export interface InteractionConfig {
   mode: InteractionMode;
 
   /**
+   * Movement threshold in screen pixels that separates a click from a drag.
+   * A pointer must travel farther than this from its down position before a
+   * gesture is treated as a drag (node move / marquee) rather than a click.
+   * This is what prevents a plain click from micro-jittering a node's position.
+   * Default: 4.
+   */
+  dragThreshold: number;
+
+  /**
    * Port visibility strategy
    */
   portVisibility: PortVisibilityStrategy;
@@ -277,6 +286,7 @@ export interface ControlPointEditorConfig {
  */
 export const DEFAULT_INTERACTION_CONFIG: InteractionConfig = {
   mode: InteractionMode.SMART,
+  dragThreshold: 4,
   portVisibility: PortVisibilityStrategy.ON_HOVER,
   portHoverScaleFactor: 1.5,
   portDefaultRadius: 6,

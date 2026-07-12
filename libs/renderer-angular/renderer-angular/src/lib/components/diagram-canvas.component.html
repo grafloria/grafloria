@@ -2,6 +2,19 @@
   <!-- SVG Layer: Existing rendering (edges, pure SVG nodes, ports) -->
   <div #svgLayer class="grafloria-svg-layer"></div>
 
+  <!-- Wave-2 Interaction: live marquee (rubber-band) selection overlay.
+       Rendered in SCREEN space (px, container-relative) so it needs no viewBox. -->
+  @if (marquee) {
+    <svg class="grafloria-marquee-overlay">
+      <rect
+        class="grafloria-marquee-rect"
+        [attr.x]="marquee.x"
+        [attr.y]="marquee.y"
+        [attr.width]="marquee.width"
+        [attr.height]="marquee.height"></rect>
+    </svg>
+  }
+
   <!-- HTML Layer: NEW - HTML nodes rendered outside SVG (React Flow style) -->
   <!-- CRITICAL FIX: Use declarative rendering like React Flow, not imperative createComponent() -->
   <div #htmlLayer class="grafloria-html-layer" [style.transform]="htmlLayerTransform">
