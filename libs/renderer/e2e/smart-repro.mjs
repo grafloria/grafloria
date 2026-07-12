@@ -40,9 +40,16 @@ async function dragNodeByLabel(label, wx, wy) {
 }
 await dragNodeByLabel('A', 540, 272);
 
-for (const [name, x, y] of positions) {
-  await dragNodeByLabel('B', x, y);
-  await page.locator('#canvas').screenshot({ path: join(here, 'out', `smart-${name}.png`) });
+// two passes: ports SHOWN (smart snaps to the closest visible port) and
+// ports HIDDEN (attachment floats along the edge)
+for (const [mode, suffix] of [['shown', 'ports'], ['hidden', 'float']]) {
+  if (mode === 'shown') await page.check('#showPorts');
+  else await page.uncheck('#showPorts');
+  await page.waitForTimeout(200);
+  for (const [name, x, y] of positions) {
+    await dragNodeByLabel('B', x, y);
+    await page.locator('#canvas').screenshot({ path: join(here, 'out', `smart-${suffix}-${name}.png`) });
+  }
 }
 console.log('pageErrors:', errors.length, errors.slice(0, 3));
 await browser.close();

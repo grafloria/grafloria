@@ -1553,17 +1553,18 @@ function a14_hitAreaAndSmartPorts() {
     expectThat('A14 smart mode never mutates the link', link.sourcePortId === 'a14-on-s' && link.targetPortId === 'a14-on-t');
   }
 
-  // --- smart ON + overlapping spans: attachment SLIDES along the edge so the
-  // link is a single dead-straight segment (no stair-step jog) ---------------
+  // --- smart ON + ports SHOWN (nodes carry auto-created default ports on all
+  // sides, ALWAYS visible): visible ports are the contract — the link snaps to
+  // the centre ports of the natural sides instead of floating ----------------
   {
-    const engine = makeEngine();
+    const engine = makeEngine(); // portVisibility: ALWAYS
     const diagram = engine.createDiagram('a14-align');
-    addNode(diagram, 'S', 420, 300, { w: 120, h: 56, fill: '#fef3c7', ports: [{ id: 'a14a-s', side: 'right', type: 'output' }] });
-    addNode(diagram, 'T', 470, 60, { w: 120, h: 56, ports: [{ id: 'a14a-t', side: 'left', type: 'input' }] });
+    const src = addNode(diagram, 'S', 420, 300, { w: 120, h: 56, fill: '#fef3c7', ports: [{ id: 'a14a-s', side: 'right', type: 'output' }] });
+    const tgt = addNode(diagram, 'T', 470, 60, { w: 120, h: 56, ports: [{ id: 'a14a-t', side: 'left', type: 'input' }] });
     const link = makeLink(diagram, 'a14a-s', 'a14a-t', 'orthogonal', {
       arrowHead: { type: 'arrow', size: 11, filled: true, color: '#475569' },
     });
-    const stage = cell('a14-align', 'A14 — smart ON, spans overlap: floating attachment gives ONE straight vertical line');
+    const stage = cell('a14-align', 'A14 — smart ON, ports SHOWN: link snaps to the default centre ports of the natural sides');
     const renderer = new SVGRenderer(engine, {
       enableCaching: false, useCSSMode: false, smartConnectionPoints: true, linkHitAreaWidth: 12,
     } as any, LIGHT_THEME);
@@ -1573,12 +1574,106 @@ function a14_hitAreaAndSmartPorts() {
     dom.setAttribute('width', '1000'); dom.setAttribute('height', '480');
     stage.appendChild(dom);
     const ends = pathEndpoints(dom, link.id)!;
-    const d = pathD(dom, link.id) || '';
-    expectThat('A14 aligned nodes get a perfectly vertical attachment',
+    const srcTopPorts = src.getPorts().filter((p: any) => p.side === 'top').map((p: any) => portWorld(src, p.id));
+    const tgtBotPorts = tgt.getPorts().filter((p: any) => p.side === 'bottom').map((p: any) => portWorld(tgt, p.id));
+    const dTo = (e: { x: number; y: number }, p: { x: number; y: number }) => Math.hypot(e.x - p.x, e.y - p.y);
+    expectThat('A14 ports shown: source lands exactly on a visible TOP port',
+      srcTopPorts.length > 0 && Math.min(...srcTopPorts.map(p => dTo(ends.start, p))) <= 1,
+      `start=(${ends.start.x.toFixed(1)},${ends.start.y.toFixed(1)}) topPorts=${JSON.stringify(srcTopPorts)}`);
+    expectThat('A14 ports shown: target lands exactly on a visible BOTTOM port',
+      tgtBotPorts.length > 0 && Math.min(...tgtBotPorts.map(p => dTo(ends.end, p))) <= 1,
+      `end=(${ends.end.x.toFixed(1)},${ends.end.y.toFixed(1)}) botPorts=${JSON.stringify(tgtBotPorts)}`);
+  }
+
+  // --- smart ON + ports VISIBLE on the natural side: visible ports are the
+  // contract — the link snaps to the CLOSEST shown port instead of floating --
+  {
+    const engine = makeEngine(); // portVisibility: ALWAYS
+    const diagram = engine.createDiagram('a14-snap');
+    const src = addNode(diagram, 'S', 420, 300, { w: 120, h: 56, fill: '#fef3c7', ports: [
+      { id: 'a14p-s1', side: 'top', type: 'output', index: 0 },
+      { id: 'a14p-s2', side: 'top', type: 'output', index: 1 },
+    ] });
+    const tgt = addNode(diagram, 'T', 540, 60, { w: 120, h: 56, ports: [
+      { id: 'a14p-t', side: 'bottom', type: 'input' },
+    ] });
+    const link = makeLink(diagram, 'a14p-s1', 'a14p-t', 'orthogonal', {
+      arrowHead: { type: 'arrow', size: 11, filled: true, color: '#475569' },
+    });
+    const stage = cell('a14-snap', 'A14 — smart ON, ports SHOWN: link snaps to the closest visible top port, not a free-floating point');
+    const renderer = new SVGRenderer(engine, {
+      enableCaching: false, useCSSMode: false, smartConnectionPoints: true, linkHitAreaWidth: 12,
+    } as any, LIGHT_THEME);
+    renderer.render({ x: 0, y: 0, width: 1000, height: 480 }, 1.0);
+    const vnode = renderer.render({ x: 0, y: 0, width: 1000, height: 480 }, 1.0);
+    const dom = vnodeToDom(vnode) as SVGSVGElement;
+    dom.setAttribute('width', '1000'); dom.setAttribute('height', '480');
+    stage.appendChild(dom);
+
+    // all VISIBLE ports on each natural side (spec ports + auto-created defaults)
+    const topPorts = src.getPorts().filter((p: any) => p.side === 'top').map((p: any) => portWorld(src, p.id));
+    const botPorts = tgt.getPorts().filter((p: any) => p.side === 'bottom').map((p: any) => portWorld(tgt, p.id));
+    expectThat('A14 snap precondition: several distinct top ports to choose from',
+      topPorts.length >= 2 && Math.max(...topPorts.map(p => p.x)) - Math.min(...topPorts.map(p => p.x)) > 10,
+      JSON.stringify(topPorts));
+
+    const ends = pathEndpoints(dom, link.id)!;
+    const dToPort = (e: { x: number; y: number }, p: { x: number; y: number }) => Math.hypot(e.x - p.x, e.y - p.y);
+    expectThat('A14 ports shown: source attaches EXACTLY on a visible top port',
+      Math.min(...topPorts.map(p => dToPort(ends.start, p))) <= 1,
+      `start=(${ends.start.x.toFixed(1)},${ends.start.y.toFixed(1)}) topPorts=${JSON.stringify(topPorts)}`);
+    // target sits to the RIGHT → the right-most top port is the closest one
+    const rightMost = topPorts.reduce((a, b) => (a.x >= b.x ? a : b));
+    expectThat('A14 ports shown: source picks the top port CLOSEST to the target',
+      dToPort(ends.start, rightMost) <= 1,
+      `start.x=${ends.start.x.toFixed(1)} rightMost.x=${rightMost.x}`);
+    expectThat('A14 ports shown: target attaches EXACTLY on a visible bottom port',
+      Math.min(...botPorts.map(p => dToPort(ends.end, p))) <= 1,
+      `end=(${ends.end.x.toFixed(1)},${ends.end.y.toFixed(1)}) botPorts=${JSON.stringify(botPorts)}`);
+    // source sits to the LEFT of the target → the left-most bottom port is closest
+    const leftMost = botPorts.reduce((a, b) => (a.x <= b.x ? a : b));
+    expectThat('A14 ports shown: target picks the bottom port CLOSEST to the source',
+      dToPort(ends.end, leftMost) <= 1,
+      `end.x=${ends.end.x.toFixed(1)} leftMost.x=${leftMost.x}`);
+    expectThat('A14 ports shown: assigned ports still never mutated',
+      link.sourcePortId === 'a14p-s1' && link.targetPortId === 'a14p-t');
+  }
+
+  // --- smart ON + ports HIDDEN: floating attachment (spans overlap → the
+  // shared coordinate wins, deliberately ignoring the hidden ports) ----------
+  {
+    const engine = new DiagramEngine({
+      interaction: { mode: InteractionMode.SMART, portVisibility: PortVisibilityStrategy.HIDDEN },
+    } as any);
+    const diagram = engine.createDiagram('a14-float');
+    const src = addNode(diagram, 'S', 420, 300, { w: 120, h: 56, fill: '#fef3c7', ports: [
+      { id: 'a14f-s', side: 'top', type: 'output' },
+    ] });
+    // offset so the floating shared coordinate is clearly away from any port
+    addNode(diagram, 'T', 500, 60, { w: 120, h: 56, ports: [
+      { id: 'a14f-t', side: 'bottom', type: 'input' },
+    ] });
+    const link = makeLink(diagram, 'a14f-s', 'a14f-t', 'orthogonal', {
+      arrowHead: { type: 'arrow', size: 11, filled: true, color: '#475569' },
+    });
+    const stage = cell('a14-float', 'A14 — smart ON, ports HIDDEN: attachment floats to the shared coordinate → one straight line');
+    const renderer = new SVGRenderer(engine, {
+      enableCaching: false, useCSSMode: false, smartConnectionPoints: true, linkHitAreaWidth: 12,
+    } as any, LIGHT_THEME);
+    renderer.render({ x: 0, y: 0, width: 1000, height: 480 }, 1.0);
+    const vnode = renderer.render({ x: 0, y: 0, width: 1000, height: 480 }, 1.0);
+    const dom = vnodeToDom(vnode) as SVGSVGElement;
+    dom.setAttribute('width', '1000'); dom.setAttribute('height', '480');
+    stage.appendChild(dom);
+
+    const ends = pathEndpoints(dom, link.id)!;
+    expectThat('A14 ports hidden: floating gives a perfectly vertical line',
       Math.abs(ends.start.x - ends.end.x) <= 0.5,
-      `start.x=${ends.start.x.toFixed(1)} end.x=${ends.end.x.toFixed(1)} d=${d.slice(0, 90)}`);
-    expectThat('A14 aligned nodes: no stair-step jog (no bends in the path)',
-      !/Q/.test(d), d.slice(0, 120));
+      `start.x=${ends.start.x.toFixed(1)} end.x=${ends.end.x.toFixed(1)}`);
+    const sPort = portWorld(src, 'a14f-s');
+    expectThat('A14 ports hidden: attachment is NOT pinned to the hidden port',
+      Math.abs(ends.start.x - sPort.x) > 5,
+      `start.x=${ends.start.x.toFixed(1)} hidden port.x=${sPort.x}`);
   }
 }
 

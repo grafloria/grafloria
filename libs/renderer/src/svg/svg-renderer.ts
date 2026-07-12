@@ -1486,10 +1486,32 @@ export class SVGRenderer implements IRenderer {
         : side === 'top' ? { x: cross, y: rect.y }
         : { x: cross, y: rect.y + rect.h };
 
+      let start = edge(s, srcSide, srcCross);
+      let end = edge(t, tgtSide, tgtCross);
+
+      // VISIBLE ports are the contract: when the node shows ports on the
+      // chosen side, snap to the closest one instead of floating freely.
+      // Floating attachment only applies while ports are hidden.
+      const srcSnap = this.nearestVisiblePort(sourceNode, srcSide, start);
+      const tgtSnap = this.nearestVisiblePort(targetNode, tgtSide, end);
+      if (srcSnap) start = srcSnap;
+      if (tgtSnap) end = tgtSnap;
+      // If only one end snapped, re-aim the floating end at the snapped point
+      // so aligned layouts still get a straight line
+      if (srcSnap && !tgtSnap) {
+        end = edge(t, tgtSide, horizontal
+          ? clamp(start.y, t.y + PAD, t.y + t.h - PAD)
+          : clamp(start.x, t.x + PAD, t.x + t.w - PAD));
+      } else if (tgtSnap && !srcSnap) {
+        start = edge(s, srcSide, horizontal
+          ? clamp(end.y, s.y + PAD, s.y + s.h - PAD)
+          : clamp(end.x, s.x + PAD, s.x + s.w - PAD));
+      }
+
       this.frameSmartSides.set(link.id, { source: srcSide, target: tgtSide });
       return {
-        start: edge(s, srcSide, srcCross),
-        end: edge(t, tgtSide, tgtCross),
+        start,
+        end,
         sourceDirection: srcSide,
         targetDirection: tgtSide,
       };
@@ -3464,6 +3486,38 @@ export class SVGRenderer implements IRenderer {
 
   // Smart-connection side overrides for the current frame (visual only)
   private frameSmartSides = new Map<string, { source: 'left' | 'right' | 'top' | 'bottom'; target: 'left' | 'right' | 'top' | 'bottom' }>();
+
+  /**
+   * The VISIBLE port on the given side closest to the ideal attachment point,
+   * or null when the node shows no ports there (visibility resolves through
+   * port config → node metadata → the global interaction strategy; only
+   * 'always' counts — hover-revealed ports must not flip attachment mid-drag).
+   */
+  private nearestVisiblePort(
+    node: NodeModel,
+    side: 'left' | 'right' | 'top' | 'bottom',
+    ideal: { x: number; y: number }
+  ): { x: number; y: number } | null {
+    const globalDefault = String(this.engine.getInteractionConfig().portVisibility).toLowerCase() as any;
+    const world = node.getWorldPosition();
+    let best: { x: number; y: number } | null = null;
+    let bestDist = Infinity;
+    for (const port of node.getPorts()) {
+      if (port.alignment?.side !== side) continue;
+      const vis = typeof (port as any).getEffectiveVisibility === 'function'
+        ? String((port as any).getEffectiveVisibility(node, globalDefault)).toLowerCase()
+        : globalDefault;
+      if (vis !== 'always') continue;
+      const local = getPortPositionForShape(port, node);
+      const pos = { x: world.x + local.x, y: world.y + local.y };
+      const dist = Math.hypot(pos.x - ideal.x, pos.y - ideal.y);
+      if (dist < bestDist) {
+        bestDist = dist;
+        best = pos;
+      }
+    }
+    return best;
+  }
 
   /**
    * The link's own endpoint nodes (resolved via cached ids or port search).

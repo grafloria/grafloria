@@ -59,6 +59,7 @@ let zoom = 1.0;
 let dark = false;
 let easySelect = true;
 let smartPorts = false;
+let showPorts = true;
 let selectedLinkId: string | null = null;
 const interaction = new InteractionHandlerService();
 
@@ -75,7 +76,10 @@ interface Scenario { title: string; guide: string[]; build: () => void; }
 
 function freshEngine() {
   engine = new DiagramEngine({
-    interaction: { mode: InteractionMode.SMART, portVisibility: PortVisibilityStrategy.ALWAYS },
+    interaction: {
+      mode: InteractionMode.SMART,
+      portVisibility: showPorts ? PortVisibilityStrategy.ALWAYS : PortVisibilityStrategy.HIDDEN,
+    },
   } as any);
   diagram = engine.createDiagram('playground');
   renderer = null; // recreated on next render (theme/config)
@@ -115,7 +119,7 @@ const SCENARIOS: Record<string, Scenario> = {
       'Try different <b>Arrow head</b> and <b>Arrow tail</b> markers — every tip must touch the node edge exactly.',
       'Type a <b>Label</b> — it sits at the path midpoint at 100% zoom.',
       'Drag the right node to the LEFT of the left node: the line must never cut through either node.',
-      'Toggle <b>smart connection points</b>, then drag B all around A — the link re-attaches to whichever sides face each other.',
+      'Toggle <b>smart connection points</b>, then drag B all around A — the link re-attaches to whichever sides face each other. With <b>show node ports</b> ON it snaps to the closest visible port; turn ports OFF and the attachment floats freely along the edge (aligned nodes get a dead-straight line).',
       '<b>easy line selection</b> gives every line an invisible 14px-wide grab zone — try clicking slightly off the line.',
     ],
     build() {
@@ -501,6 +505,15 @@ $('smartPorts').addEventListener('change', () => {
   smartPorts = $('smartPorts').checked;
   renderer = null;
   render(); render(); // settle so routes re-detect with the new ports
+});
+
+$('showPorts').addEventListener('change', () => {
+  showPorts = $('showPorts').checked;
+  engine.setInteractionConfig({
+    portVisibility: showPorts ? PortVisibilityStrategy.ALWAYS : PortVisibilityStrategy.HIDDEN,
+  } as any);
+  renderer = null;
+  render(); render(); // smart attachment re-resolves against the new visibility
 });
 
 $('theme').addEventListener('change', () => {
