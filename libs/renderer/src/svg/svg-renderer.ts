@@ -2196,6 +2196,13 @@ export class SVGRenderer implements IRenderer {
       ...(node.style.stroke && { stroke: node.style.stroke }),
       // Only apply strokeWidth if no border animation is active
       ...(node.style.strokeWidth !== undefined && !hasActiveBorderAnimation && { strokeWidth: node.style.strokeWidth }),
+      // Per-element opacity + corner radius survive in CSS mode too (previously
+      // dropped, so translucent/rounded nodes fell back to theme defaults). No
+      // `.diagram-node` stylesheet rule sets rx/opacity for normal nodes, so a
+      // presentation attribute is enough; emit only when explicitly set so unset
+      // props still fall back to theme defaults.
+      ...(node.style.opacity !== undefined && { opacity: node.style.opacity }),
+      ...(node.style.borderRadius !== undefined && { rx: node.style.borderRadius }),
     };
   }
 
@@ -2241,9 +2248,22 @@ export class SVGRenderer implements IRenderer {
       classes.push(animationClasses);
     }
 
+    // Per-element inline overrides must WIN over the injected `.diagram-link`
+    // stylesheet rule (e.g. `.diagram-link { stroke-width }`). A presentation
+    // attribute like stroke-width="3" loses to a stylesheet rule, but an inline
+    // `style` attribute beats stylesheet rules — so emit per-link strokeWidth,
+    // strokeDasharray and opacity inline. Only when explicitly set, so unset
+    // props still fall back to the theme CSS defaults.
+    const inlineStyle = [
+      link.style.strokeWidth !== undefined ? `stroke-width: ${link.style.strokeWidth}` : '',
+      link.style.strokeDasharray !== undefined ? `stroke-dasharray: ${link.style.strokeDasharray}` : '',
+      link.style.opacity !== undefined ? `opacity: ${link.style.opacity}` : '',
+    ].filter(Boolean).join('; ');
+
     return {
       className: classes.join(' '),
       ...(link.style.stroke && { stroke: link.style.stroke }),
+      ...(inlineStyle ? { style: inlineStyle } : {}),
     };
   }
 
