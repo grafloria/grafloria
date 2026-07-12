@@ -32,6 +32,10 @@ export const DARK_THEME: Theme = {
         fill: '#1e3a8a',
         stroke: '#3b82f6',
       },
+      highlighted: {
+        fill: '#78350f',
+        stroke: '#f59e0b',
+      },
       hovered: {
         fill: '#374151',
         stroke: '#6b7280',
@@ -49,6 +53,7 @@ export const DARK_THEME: Theme = {
     link: {
       default: '#6b7280',
       selected: '#3b82f6',
+      highlighted: '#f59e0b',
       hovered: '#9ca3af',
       disabled: '#4b5563',
     },

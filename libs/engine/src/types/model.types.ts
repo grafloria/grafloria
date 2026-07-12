@@ -13,6 +13,12 @@ export interface NodeState {
   locked: boolean;
   selected: boolean;
   hovered: boolean;
+  /**
+   * Draw attention to the node without selecting it (search hits, traversal
+   * highlights, "related" emphasis). Independent of `selected`; when both are
+   * set, `selected` wins in the renderer's state precedence.
+   */
+  highlighted?: boolean;
   focused: boolean;
   expanded: boolean;
   enabled: boolean;
@@ -41,12 +47,18 @@ export interface NodeBehavior {
 
 export interface NodeStyle {
   shape?: string; // Shape type (rectangle, circle, diamond, etc.)
-  fill?: string;
-  stroke?: string;
+  // Phase 4 (styling & theming): fill/stroke accept a paint-server SPEC OBJECT
+  // (gradient/pattern) as well as a plain colour string. When an object is
+  // supplied the renderer materialises a deduped <defs> entry and references it
+  // via url(#…). (Types declared later in this file.)
+  fill?: string | LinearGradient | RadialGradient | Pattern;
+  stroke?: string | LinearGradient | RadialGradient | Pattern;
   strokeWidth?: number;
   strokeDasharray?: string;
   opacity?: number;
-  shadow?: boolean;
+  // `true` keeps the legacy always-on drop-shadow VNode; a Shadow SPEC OBJECT
+  // materialises an SVG feDropShadow <filter> referenced via url(#…).
+  shadow?: boolean | Shadow;
   borderRadius?: number;
   fontSize?: number;
   fontFamily?: string;
@@ -90,7 +102,10 @@ export interface JumpPointConfig {
 }
 
 export interface LinkStyle {
-  stroke?: string;
+  // Phase 4 (styling & theming): stroke accepts a paint-server SPEC OBJECT
+  // (gradient/pattern) as well as a plain colour string — materialised as a
+  // deduped <defs> entry and referenced via url(#…).
+  stroke?: string | LinearGradient | RadialGradient | Pattern;
   strokeWidth?: number;
   strokeDasharray?: string;
   opacity?: number;

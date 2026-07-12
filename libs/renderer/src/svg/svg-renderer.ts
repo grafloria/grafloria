@@ -1,5 +1,13 @@
-import type { DiagramEngine, NodeModel, LinkModel, PortModel, InteractionConfig, ReconnectionPreview, LODLevel, LODFeature } from '@grafloria/engine';
+import type { DiagramEngine, NodeModel, LinkModel, PortModel, InteractionConfig, ReconnectionPreview, LODLevel, LODFeature, Shadow } from '@grafloria/engine';
 import type { IRenderer, PerformanceMetrics, SVGRendererConfig, VNode, Theme, Rectangle } from '../types';
+import {
+  type PaintSpec,
+  isPaintSpec,
+  isShadowSpec,
+  buildPaintServerVNode,
+  buildShadowFilterVNode,
+  paintDefId,
+} from './paint-servers';
 import { LIGHT_THEME } from '../themes';
 import { createForeignObject, isForeignObject, getContainerId } from '../vnode/foreign-object';
 import { LruCache } from '../utils/lru-cache';
@@ -91,6 +99,12 @@ export class SVGRenderer implements IRenderer {
   // every link's points are current before any link renders (jump detection
   // reads other links' points).
   private frameRoutes = new Map<string, RoutedPath>();
+
+  // Per-frame paint-server defs (Styling & theming — Card 2). Keyed by the
+  // stable spec hash so identical gradient/pattern/shadow specs share ONE
+  // `<defs>` entry. Cleared at the top of every render() and materialised into
+  // the root SVG's `<defs>` child after the layers have been built.
+  private frameDefs = new Map<string, VNode>();
 
   // Performance tracking
   private lastRenderTime = 0;
@@ -202,6 +216,11 @@ export class SVGRenderer implements IRenderer {
     this.lastNodeCount = visibleNodes.length;
     this.lastLinkCount = visibleLinks.length;
 
+    // Card 2: start each frame with an empty paint-server registry. Rendering
+    // the layers below populates it (via the style-computation resolvers); the
+    // deduped `<defs>` block is assembled from it once the layers are built.
+    this.frameDefs.clear();
+
     // Render layers
     const linksLayer = this.renderLinksLayer(visibleLinks, lod);
     const nodesLayer = this.renderNodesLayer(visibleNodes, lod);
@@ -217,6 +236,12 @@ export class SVGRenderer implements IRenderer {
     const viewBoxX = centerX - viewBoxWidth / 2;
     const viewBoxY = centerY - viewBoxHeight / 2;
 
+    // Card 2: assemble the deduped paint-server `<defs>` populated while the
+    // layers rendered. Appended LAST (not prepended) so existing positional
+    // children[0]=links / children[1]=nodes contracts stay intact; SVG resolves
+    // url(#id) by document-wide id lookup, so `<defs>` position is irrelevant.
+    const defsNode = this.buildDefsNode();
+
     // Create root SVG VNode
     // Note: width/height omitted - controlled by CSS (100%)
     const root: VNode = {
@@ -226,7 +251,7 @@ export class SVGRenderer implements IRenderer {
         viewBox: `${viewBoxX} ${viewBoxY} ${viewBoxWidth} ${viewBoxHeight}`,
         className: 'grafloria-diagram',
       },
-      children: [linksLayer, nodesLayer, connectionPreviewLayer],
+      children: [linksLayer, nodesLayer, connectionPreviewLayer, defsNode],
     };
 
     // Track render time
@@ -724,9 +749,12 @@ export class SVGRenderer implements IRenderer {
       return this.renderNodeWithForeignObject(node, lod);
     }
 
-    // Check cache if enabled (include LOD in cache key since rendering varies by LOD)
+    // Check cache if enabled (include LOD in cache key since rendering varies by LOD).
+    // Paint-server nodes bypass the cache so their `<defs>` entry is re-registered
+    // every frame (a cache hit would skip style computation and orphan url(#…)).
     const cacheKey = `node-${node.id}-${lod}`;
-    if (this.config.enableCaching && !node.isDirty) {
+    const usesPaintServer = this.nodeUsesPaintServer(node);
+    if (this.config.enableCaching && !node.isDirty && !usesPaintServer) {
       const cached = this.vnodeCache.get(cacheKey);
       if (cached) {
         // Removed overwhelming cache log - use only for debugging if needed
@@ -830,8 +858,9 @@ export class SVGRenderer implements IRenderer {
       ],
     };
 
-    // Cache if enabled (use LOD-specific cache key)
-    if (this.config.enableCaching) {
+    // Cache if enabled (use LOD-specific cache key). Never cache paint-server
+    // nodes — see the cache-read note above.
+    if (this.config.enableCaching && !usesPaintServer) {
       this.vnodeCache.set(cacheKey, vnode);
       node.markClean();
     }
@@ -1650,7 +1679,10 @@ export class SVGRenderer implements IRenderer {
     // wrong-LOD VNode. NOTE: this is the cache lookup key only; the VNode's
     // `key` prop stays `link-${link.id}` for stable VDOM reconciliation.
     const cacheKey = `link-${link.id}-${lod}`;
-    if (this.config.enableCaching && !link.isDirty) {
+    // Paint-server links bypass the cache so their `<defs>` entry is re-registered
+    // every frame (a cache hit would skip style computation and orphan url(#…)).
+    const usesPaintServer = this.linkUsesPaintServer(link);
+    if (this.config.enableCaching && !link.isDirty && !usesPaintServer) {
       const cached = this.vnodeCache.get(cacheKey);
       if (cached) {
         return cached;
@@ -2038,13 +2070,87 @@ export class SVGRenderer implements IRenderer {
       ],
     };
 
-    // Cache if enabled (use LOD-specific cache key to match the lookup above)
-    if (this.config.enableCaching) {
+    // Cache if enabled (use LOD-specific cache key to match the lookup above).
+    // Never cache paint-server links — see the cache-read note above.
+    if (this.config.enableCaching && !usesPaintServer) {
       this.vnodeCache.set(cacheKey, vnode);
       link.markClean();
     }
 
     return vnode;
+  }
+
+  // =========================================================================
+  // Card 2: SVG paint servers (gradients / patterns / drop-shadow filters)
+  // =========================================================================
+
+  /**
+   * Assemble the per-frame `<defs>` VNode from the registered paint servers.
+   * Empty (`<defs/>`) when nothing needed a paint server this frame.
+   */
+  private buildDefsNode(): VNode {
+    return {
+      type: 'defs',
+      key: 'defs',
+      props: {},
+      children: Array.from(this.frameDefs.values()),
+    };
+  }
+
+  /**
+   * Resolve a fill/stroke value to something an SVG `fill`/`stroke` accepts.
+   * A colour string passes through unchanged; a gradient/pattern SPEC OBJECT is
+   * registered as a deduped `<defs>` entry and returned as `url(#grafloria-def-…)`.
+   */
+  private resolvePaint(paint: string | PaintSpec | undefined): string | undefined {
+    if (paint == null) return undefined;
+    if (typeof paint === 'string') return paint;
+    if (isPaintSpec(paint)) {
+      const id = paintDefId(paint);
+      if (!this.frameDefs.has(id)) {
+        this.frameDefs.set(id, buildPaintServerVNode(id, paint));
+      }
+      return `url(#${id})`;
+    }
+    return undefined;
+  }
+
+  private resolveFill(fill: string | PaintSpec | undefined): string | undefined {
+    return this.resolvePaint(fill);
+  }
+
+  private resolveStroke(stroke: string | PaintSpec | undefined): string | undefined {
+    return this.resolvePaint(stroke);
+  }
+
+  /**
+   * Resolve a `style.shadow` value to a `filter` attribute. The legacy boolean
+   * is ignored here (its always-on drop-shadow VNode is unchanged); a Shadow
+   * SPEC OBJECT registers a deduped `<filter>` and returns `url(#grafloria-def-…)`.
+   */
+  private resolveShadowFilter(shadow: boolean | Shadow | undefined): string | undefined {
+    if (!isShadowSpec(shadow)) return undefined;
+    const id = paintDefId(shadow);
+    if (!this.frameDefs.has(id)) {
+      this.frameDefs.set(id, buildShadowFilterVNode(id, shadow));
+    }
+    return `url(#${id})`;
+  }
+
+  /**
+   * A node/link whose style references a paint server must NOT be served from
+   * (or written to) the vnode cache: the cached VNode carries the url(#…)
+   * reference, but the matching `<defs>` entry is only registered while the
+   * style is (re)computed — a cache hit would skip that and orphan the ref.
+   */
+  private nodeUsesPaintServer(node: NodeModel): boolean {
+    const s = node.style;
+    return isPaintSpec(s.fill) || isPaintSpec(s.stroke) || isShadowSpec(s.shadow);
+  }
+
+  private linkUsesPaintServer(link: LinkModel): boolean {
+    const s = link.style;
+    return isPaintSpec(s.stroke) || isShadowSpec(s.shadow);
   }
 
   /**
@@ -2054,6 +2160,9 @@ export class SVGRenderer implements IRenderer {
     const classes = ['diagram-node'];
 
     if (node.state.selected) classes.push('selected');
+    // Attention emphasis (Card 1). Emitted alongside `selected`; the injected
+    // theme CSS orders `.highlighted` BEFORE `.selected` so selected wins.
+    if (node.state.highlighted) classes.push('highlighted');
     if (node.state.hovered) classes.push('hovered');
     if (!node.state.enabled) classes.push('disabled');
     if (node.state.error) classes.push('error');
@@ -2073,12 +2182,18 @@ export class SVGRenderer implements IRenderer {
     const hasActiveBorderAnimation = node.style?.animatedBorder &&
                                      node.style?.borderAnimationType !== 'none';
 
+    // Card 2: fill/stroke may be a gradient/pattern spec object → url(#…);
+    // shadow may be a Shadow spec → a drop-shadow filter reference.
+    const resolvedFill = this.resolveFill(node.style.fill);
+    const resolvedStroke = this.resolveStroke(node.style.stroke);
+    const shadowFilter = this.resolveShadowFilter(node.style.shadow);
+
     return {
       className: finalClassName,
       // Entity-specific overrides (if any)
-      ...(node.style.fill && { fill: node.style.fill }),
+      ...(resolvedFill && { fill: resolvedFill }),
       // Always apply stroke color (it doesn't interfere with animations)
-      ...(node.style.stroke && { stroke: node.style.stroke }),
+      ...(resolvedStroke && { stroke: resolvedStroke }),
       // Only apply strokeWidth if no border animation is active
       ...(node.style.strokeWidth !== undefined && !hasActiveBorderAnimation && { strokeWidth: node.style.strokeWidth }),
       // Per-element opacity + corner radius survive in CSS mode too (previously
@@ -2088,6 +2203,7 @@ export class SVGRenderer implements IRenderer {
       // props still fall back to theme defaults.
       ...(node.style.opacity !== undefined && { opacity: node.style.opacity }),
       ...(node.style.borderRadius !== undefined && { rx: node.style.borderRadius }),
+      ...(shadowFilter && { filter: shadowFilter }),
     };
   }
 
@@ -2095,10 +2211,13 @@ export class SVGRenderer implements IRenderer {
    * Compute node styles for programmatic mode
    */
   private computeNodeStylesProgrammatic(node: NodeModel): any {
-    // Get state-based colors from theme
+    // Get state-based colors from theme. `selected` is checked before
+    // `highlighted` so selection wins when a node is both (Card 1 precedence).
     let stateColors = this.theme.colors.node.default;
     if (node.state.selected) {
       stateColors = this.theme.colors.node.selected;
+    } else if (node.state.highlighted) {
+      stateColors = this.theme.colors.node.highlighted;
     } else if (node.state.hovered) {
       stateColors = this.theme.colors.node.hovered;
     } else if (!node.state.enabled) {
@@ -2109,12 +2228,16 @@ export class SVGRenderer implements IRenderer {
 
     const themeDefaults = this.theme.nodes.default;
 
+    // Card 2: gradient/pattern fill/stroke → url(#…); Shadow spec → filter ref.
+    const shadowFilter = this.resolveShadowFilter(node.style.shadow);
+
     return {
-      fill: node.style.fill || stateColors.fill || themeDefaults.fill,
-      stroke: node.style.stroke || stateColors.stroke || themeDefaults.stroke,
+      fill: this.resolveFill(node.style.fill) || stateColors.fill || themeDefaults.fill,
+      stroke: this.resolveStroke(node.style.stroke) || stateColors.stroke || themeDefaults.stroke,
       strokeWidth: node.style.strokeWidth ?? themeDefaults.strokeWidth,
       rx: node.style.borderRadius ?? themeDefaults.borderRadius,
       opacity: node.style.opacity ?? (node.state.enabled ? themeDefaults.opacity : this.theme.effects.opacity.disabled),
+      ...(shadowFilter && { filter: shadowFilter }),
     };
   }
 
@@ -2125,6 +2248,10 @@ export class SVGRenderer implements IRenderer {
     const classes = ['diagram-link'];
 
     if (link.state === 'selected') classes.push('selected');
+    // Attention emphasis (Card 1). Link state is exclusive, so this can't
+    // co-occur with `selected`; the `.diagram-link.highlighted` theme rule
+    // supplies its stroke colour.
+    if (link.state === 'highlighted') classes.push('highlighted');
     if (link.state === 'hovered') classes.push('hovered');
 
     // Phase 1: Add animation classes
@@ -2145,9 +2272,14 @@ export class SVGRenderer implements IRenderer {
       link.style.opacity !== undefined ? `opacity: ${link.style.opacity}` : '',
     ].filter(Boolean).join('; ');
 
+    // Card 2: gradient/pattern stroke → url(#…); Shadow spec → filter ref.
+    const resolvedStroke = this.resolveStroke(link.style.stroke);
+    const shadowFilter = this.resolveShadowFilter(link.style.shadow);
+
     return {
       className: classes.join(' '),
-      ...(link.style.stroke && { stroke: link.style.stroke }),
+      ...(resolvedStroke && { stroke: resolvedStroke }),
+      ...(shadowFilter && { filter: shadowFilter }),
       ...(inlineStyle ? { style: inlineStyle } : {}),
     };
   }
@@ -2159,17 +2291,23 @@ export class SVGRenderer implements IRenderer {
     let stateColor = this.theme.colors.link.default;
     if (link.state === 'selected') {
       stateColor = this.theme.colors.link.selected;
+    } else if (link.state === 'highlighted') {
+      stateColor = this.theme.colors.link.highlighted;
     } else if (link.state === 'hovered') {
       stateColor = this.theme.colors.link.hovered;
     }
 
     const themeDefaults = this.theme.links.default;
 
+    // Card 2: gradient/pattern stroke → url(#…); Shadow spec → filter ref.
+    const shadowFilter = this.resolveShadowFilter(link.style.shadow);
+
     return {
-      stroke: link.style.stroke || stateColor || themeDefaults.stroke,
+      stroke: this.resolveStroke(link.style.stroke) || stateColor || themeDefaults.stroke,
       strokeWidth: link.style.strokeWidth ?? themeDefaults.strokeWidth,
       strokeDasharray: link.style.strokeDasharray ?? themeDefaults.strokeDasharray,
       opacity: link.style.opacity ?? themeDefaults.opacity,
+      ...(shadowFilter && { filter: shadowFilter }),
     };
   }
 
@@ -2272,6 +2410,9 @@ export class SVGRenderer implements IRenderer {
           props: { className: 'nodes-layer' },
           children: [],
         },
+        // Card 2: paint-server defs (empty for an empty diagram, kept for a
+        // consistent root shape). Appended last to preserve children ordering.
+        { type: 'defs', key: 'defs', props: {}, children: [] },
       ],
     };
   }
@@ -2320,6 +2461,14 @@ export class SVGRenderer implements IRenderer {
   stroke-width: ${t.nodes.default.strokeWidth}px;
 }
 
+/* Authored before the selected rule so that, at equal specificity, selection
+   wins the cascade when a node is both highlighted and selected. */
+.diagram-node.highlighted {
+  fill: ${t.colors.node.highlighted.fill};
+  stroke: ${t.colors.node.highlighted.stroke};
+  stroke-width: 2px;
+}
+
 .diagram-node.selected {
   fill: ${t.colors.node.selected.fill};
   stroke: ${t.colors.node.selected.stroke};
@@ -2351,6 +2500,11 @@ export class SVGRenderer implements IRenderer {
 
 .diagram-link.selected {
   stroke: ${t.colors.link.selected};
+  stroke-width: 3px;
+}
+
+.diagram-link.highlighted {
+  stroke: ${t.colors.link.highlighted};
   stroke-width: 3px;
 }
 

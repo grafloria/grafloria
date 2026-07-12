@@ -82,8 +82,11 @@ export class TemplateConverter {
         },
         shape: {
           ...shapeConfig,
-          fill: entry.defaultStyle?.fill || '#FFFFFF',
-          stroke: entry.defaultStyle?.stroke || '#000000',
+          // NodeStyle.fill/stroke may now be a gradient/pattern spec object; a
+          // template shape config only carries colour strings, so a spec-object
+          // default falls back to the base colour here.
+          fill: (typeof entry.defaultStyle?.fill === 'string' ? entry.defaultStyle.fill : undefined) || '#FFFFFF',
+          stroke: (typeof entry.defaultStyle?.stroke === 'string' ? entry.defaultStyle.stroke : undefined) || '#000000',
           strokeWidth: entry.defaultStyle?.strokeWidth || 2,
           opacity: 1,
         },

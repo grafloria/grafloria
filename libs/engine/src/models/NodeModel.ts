@@ -429,6 +429,31 @@ export class NodeModel extends DiagramEntity {
   }
 
   /**
+   * Check if node is highlighted (attention state, independent of selection)
+   */
+  isHighlighted(): boolean {
+    return this.state.highlighted === true;
+  }
+
+  /**
+   * Set highlight state (attention emphasis without selecting the node)
+   * @param highlighted - Whether the node should be highlighted
+   * @emits node:highlighted when node becomes highlighted
+   * @emits node:unhighlighted when node stops being highlighted
+   */
+  setHighlighted(highlighted: boolean): void {
+    if (this.isHighlighted() === highlighted) {
+      return; // No change
+    }
+
+    const oldState = { ...this.state };
+    this.state.highlighted = highlighted;
+    this.trackChange('state', oldState, this.state);
+
+    this.emitter.emit(highlighted ? 'node:highlighted' : 'node:unhighlighted', this);
+  }
+
+  /**
    * Check if node is selectable (based on behavior)
    * Note: Locked nodes are still selectable so users can unlock them
    */
