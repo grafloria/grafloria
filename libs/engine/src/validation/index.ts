@@ -2,3 +2,4 @@
 
 export * from './TypeRegistry';
 export * from './ValidationEngine';
+export * from './ConnectionGroupValidator';
