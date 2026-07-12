@@ -13,11 +13,10 @@ interface TemplateExample {
 }
 
 @Component({
-  standalone: true,
-  imports: [CommonModule, FormsModule, DiagramCanvasComponent],
-  selector: 'app-dsl-template-builder',
-  templateUrl: './dsl-template-builder.component.html',
-  styleUrl: './dsl-template-builder.component.css',
+    imports: [CommonModule, FormsModule, DiagramCanvasComponent],
+    selector: 'app-dsl-template-builder',
+    templateUrl: './dsl-template-builder.component.html',
+    styleUrl: './dsl-template-builder.component.css'
 })
 export class DslTemplateBuilderComponent implements OnInit {
   dsl!: DSL;

@@ -44,11 +44,10 @@ interface ConnectionInfo {
 }
 
 @Component({
-  standalone: true,
-  imports: [CommonModule, FormsModule, DiagramCanvasComponent, TableNodeComponent],
-  selector: 'app-erd-designer',
-  templateUrl: './erd-designer.component.html',
-  styleUrl: './erd-designer.component.css',
+    imports: [CommonModule, FormsModule, DiagramCanvasComponent, TableNodeComponent],
+    selector: 'app-erd-designer',
+    templateUrl: './erd-designer.component.html',
+    styleUrl: './erd-designer.component.css'
 })
 export class ErdDesignerComponent implements OnInit {
   engine!: DiagramEngine;

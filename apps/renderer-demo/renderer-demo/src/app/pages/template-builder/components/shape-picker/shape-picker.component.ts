@@ -52,10 +52,9 @@ export interface ShapeConfig {
  * ```
  */
 @Component({
-  selector: 'app-shape-picker',
-  standalone: true,
-  imports: [CommonModule, FormsModule],
-  template: `
+    selector: 'app-shape-picker',
+    imports: [CommonModule, FormsModule],
+    template: `
     <div class="shape-picker" [style.font-family]="tokens.typography.fontFamily">
       <!-- Header -->
       <div class="picker-header">
@@ -131,7 +130,7 @@ export interface ShapeConfig {
       </div>
     </div>
   `,
-  styles: [`
+    styles: [`
     .shape-picker {
       padding: 16px;
       background: white;

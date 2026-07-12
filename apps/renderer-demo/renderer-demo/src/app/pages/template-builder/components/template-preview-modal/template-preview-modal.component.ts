@@ -33,32 +33,31 @@ import { takeUntil } from 'rxjs/operators';
  * Phase 9: Template Gallery & Management
  */
 @Component({
-  selector: 'app-template-preview-modal',
-  standalone: true,
-  imports: [CommonModule],
-  templateUrl: './template-preview-modal.component.html',
-  styleUrls: ['./template-preview-modal.component.css'],
-  changeDetection: ChangeDetectionStrategy.OnPush,
-  animations: [
-    trigger('modalAnimation', [
-      state('void', style({
-        opacity: 0,
-        transform: 'scale(0.95)'
-      })),
-      state('*', style({
-        opacity: 1,
-        transform: 'scale(1)'
-      })),
-      transition('void => *', animate('200ms cubic-bezier(0.4, 0, 0.2, 1)')),
-      transition('* => void', animate('150ms cubic-bezier(0.4, 0, 1, 1)'))
-    ]),
-    trigger('backdropAnimation', [
-      state('void', style({ opacity: 0 })),
-      state('*', style({ opacity: 1 })),
-      transition('void => *', animate('200ms')),
-      transition('* => void', animate('150ms'))
-    ])
-  ]
+    selector: 'app-template-preview-modal',
+    imports: [CommonModule],
+    templateUrl: './template-preview-modal.component.html',
+    styleUrls: ['./template-preview-modal.component.css'],
+    changeDetection: ChangeDetectionStrategy.OnPush,
+    animations: [
+        trigger('modalAnimation', [
+            state('void', style({
+                opacity: 0,
+                transform: 'scale(0.95)'
+            })),
+            state('*', style({
+                opacity: 1,
+                transform: 'scale(1)'
+            })),
+            transition('void => *', animate('200ms cubic-bezier(0.4, 0, 0.2, 1)')),
+            transition('* => void', animate('150ms cubic-bezier(0.4, 0, 1, 1)'))
+        ]),
+        trigger('backdropAnimation', [
+            state('void', style({ opacity: 0 })),
+            state('*', style({ opacity: 1 })),
+            transition('void => *', animate('200ms')),
+            transition('* => void', animate('150ms'))
+        ])
+    ]
 })
 export class TemplatePreviewModalComponent implements OnInit, OnDestroy, AfterViewInit {
   // ==================== Inputs & Outputs ====================

@@ -37,10 +37,9 @@ import { PropertyEditorComponent } from './property-editor.interface';
  * ```
  */
 @Component({
-  selector: 'property-editor-number',
-  standalone: true,
-  imports: [CommonModule, FormsModule],
-  template: `
+    selector: 'property-editor-number',
+    imports: [CommonModule, FormsModule],
+    template: `
     <div class="property-editor property-editor-number">
       <div class="input-wrapper">
         <span class="input-prefix" *ngIf="property.validation?.prefix">
@@ -86,8 +85,8 @@ import { PropertyEditorComponent } from './property-editor.interface';
       </div>
     </div>
   `,
-  styles: [
-    `
+    styles: [
+        `
       .property-editor-number {
         width: 100%;
       }
@@ -182,7 +181,7 @@ import { PropertyEditorComponent } from './property-editor.interface';
         border-bottom: 1px solid var(--input-border, #ccc);
       }
     `,
-  ],
+    ]
 })
 export class PropertyEditorNumberComponent
   implements PropertyEditorComponent, OnInit, OnChanges

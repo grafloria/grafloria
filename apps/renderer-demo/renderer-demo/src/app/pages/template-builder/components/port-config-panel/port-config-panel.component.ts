@@ -42,10 +42,9 @@ export interface PortsConfig {
  * </app-port-config-panel>
  */
 @Component({
-  selector: 'app-port-config-panel',
-  standalone: true,
-  imports: [CommonModule, FormsModule, ButtonComponent],
-  template: `
+    selector: 'app-port-config-panel',
+    imports: [CommonModule, FormsModule, ButtonComponent],
+    template: `
     <div class="port-config-panel">
       <!-- Header -->
       <div class="panel-header">
@@ -239,7 +238,7 @@ export interface PortsConfig {
       </div>
     </div>
   `,
-  styles: [`
+    styles: [`
     .port-config-panel {
       display: flex;
       flex-direction: column;

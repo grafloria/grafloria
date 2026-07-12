@@ -19,11 +19,10 @@ import { SnippetService, Snippet, SnippetCategory } from '../../services/snippet
  * ~180 lines
  */
 @Component({
-  standalone: true,
-  imports: [CommonModule, FormsModule],
-  selector: 'app-snippet-panel',
-  templateUrl: './snippet-panel.component.html',
-  styleUrl: './snippet-panel.component.css'
+    imports: [CommonModule, FormsModule],
+    selector: 'app-snippet-panel',
+    templateUrl: './snippet-panel.component.html',
+    styleUrl: './snippet-panel.component.css'
 })
 export class SnippetPanelComponent implements OnInit {
 

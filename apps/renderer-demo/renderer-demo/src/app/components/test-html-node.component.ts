@@ -14,10 +14,9 @@ import type { DiagramEngine } from '@grafloria/engine';
  * - Port visibility modes (always, on-hover, hidden)
  */
 @Component({
-  selector: 'app-test-html-node',
-  standalone: true,
-  imports: [CommonModule, GrafloriaHandleDirective],
-  template: `
+    selector: 'app-test-html-node',
+    imports: [CommonModule, GrafloriaHandleDirective],
+    template: `
     <div class="test-node"
          (mouseenter)="onMouseEnter()"
          (mouseleave)="onMouseLeave()">
@@ -71,7 +70,7 @@ import type { DiagramEngine } from '@grafloria/engine';
       </div>
     </div>
   `,
-  styles: [`
+    styles: [`
     :host {
       display: block;
     }

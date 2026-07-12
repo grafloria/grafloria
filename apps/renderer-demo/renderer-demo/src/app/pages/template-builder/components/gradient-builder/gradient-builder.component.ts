@@ -45,10 +45,9 @@ export interface GradientConfig {
  * ```
  */
 @Component({
-  selector: 'app-gradient-builder',
-  standalone: true,
-  imports: [CommonModule, FormsModule, ColorPickerComponent, ButtonComponent],
-  template: `
+    selector: 'app-gradient-builder',
+    imports: [CommonModule, FormsModule, ColorPickerComponent, ButtonComponent],
+    template: `
     <div class="gradient-builder" [style.font-family]="tokens.typography.fontFamily">
       <!-- Gradient Preview -->
       <div class="preview-section">
@@ -213,7 +212,7 @@ export interface GradientConfig {
       </div>
     </div>
   `,
-  styles: [`
+    styles: [`
     .gradient-builder {
       padding: 16px;
       background: white;

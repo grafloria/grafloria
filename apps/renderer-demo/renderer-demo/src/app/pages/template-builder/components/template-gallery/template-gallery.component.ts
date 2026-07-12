@@ -31,11 +31,10 @@ import {
  * Phase 9: Template Gallery & Management
  */
 @Component({
-  standalone: true,
-  imports: [CommonModule, FormsModule, TemplateCardComponent],
-  selector: 'app-template-gallery',
-  templateUrl: './template-gallery.component.html',
-  styleUrl: './template-gallery.component.css'
+    imports: [CommonModule, FormsModule, TemplateCardComponent],
+    selector: 'app-template-gallery',
+    templateUrl: './template-gallery.component.html',
+    styleUrl: './template-gallery.component.css'
 })
 export class TemplateGalleryComponent implements OnInit, OnDestroy {
 

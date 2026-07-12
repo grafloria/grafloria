@@ -18,10 +18,9 @@ export interface MobileToolbarAction {
 }
 
 @Component({
-  selector: 'grafloria-mobile-toolbar',
-  standalone: true,
-  imports: [CommonModule],
-  template: `
+    selector: 'grafloria-mobile-toolbar',
+    imports: [CommonModule],
+    template: `
     <div class="mobile-toolbar" [class.expanded]="isExpanded">
       <!-- Main action button -->
       <button class="toolbar-toggle" (click)="toggleExpanded()" type="button">
@@ -56,7 +55,7 @@ export interface MobileToolbarAction {
       </div>
     </div>
   `,
-  styles: [`
+    styles: [`
     .mobile-toolbar {
       position: fixed;
       bottom: 20px;
@@ -169,7 +168,7 @@ export interface MobileToolbarAction {
       color: #334155;
     }
   `],
-  changeDetection: ChangeDetectionStrategy.OnPush,
+    changeDetection: ChangeDetectionStrategy.OnPush
 })
 export class MobileToolbarComponent implements OnInit {
   @Input() engine!: IMobileToolbarEngine;

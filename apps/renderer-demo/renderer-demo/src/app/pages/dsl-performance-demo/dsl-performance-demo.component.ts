@@ -14,11 +14,10 @@ interface PerformanceMetrics {
 }
 
 @Component({
-  standalone: true,
-  imports: [CommonModule, FormsModule, DiagramCanvasComponent],
-  selector: 'app-dsl-performance-demo',
-  templateUrl: './dsl-performance-demo.component.html',
-  styleUrl: './dsl-performance-demo.component.css',
+    imports: [CommonModule, FormsModule, DiagramCanvasComponent],
+    selector: 'app-dsl-performance-demo',
+    templateUrl: './dsl-performance-demo.component.html',
+    styleUrl: './dsl-performance-demo.component.css'
 })
 export class DslPerformanceDemoComponent implements OnInit {
   dsl!: DSL;

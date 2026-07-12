@@ -27,10 +27,9 @@ export interface ChildNodeConfig {
  * 3. Data Binding (if dynamic): Data path and variable
  */
 @Component({
-  standalone: true,
-  imports: [CommonModule, FormsModule, ButtonComponent],
-  selector: 'app-child-node-wizard',
-  template: `
+    imports: [CommonModule, FormsModule, ButtonComponent],
+    selector: 'app-child-node-wizard',
+    template: `
     <div class="modal-backdrop" *ngIf="isOpen" (click)="onBackdropClick()">
       <div class="modal-dialog wizard-dialog" (click)="$event.stopPropagation()">
         <!-- Header -->
@@ -231,7 +230,7 @@ export interface ChildNodeConfig {
       </div>
     </div>
   `,
-  styles: [`
+    styles: [`
     .modal-backdrop {
       position: fixed;
       top: 0;

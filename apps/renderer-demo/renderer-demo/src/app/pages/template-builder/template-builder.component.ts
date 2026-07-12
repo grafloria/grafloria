@@ -67,41 +67,40 @@ import { CommandPaletteComponent, type Command } from './components/command-pale
  * ~250 lines
  */
 @Component({
-  standalone: true,
-  imports: [
-    CommonModule,
-    FormsModule,
-    MonacoEditorComponent,
-    PreviewPanelComponent,
-    TemplateSidebarComponent,
-    PerformancePanelComponent,
-    DocumentationSidebarComponent,
-    SnippetPanelComponent,
-    // NEW COMPONENTS
-    ButtonComponent,
-    DataTestingPanelComponent,
-    EventMonitorPanelComponent,
-    PortConfigPanelComponent,
-    NodeLayerEditorComponent,
-    ChildNodeWizardComponent,
-    // PHASE 4 COMPONENTS
-    StylePropertiesPanelComponent,
-    // PHASE 5 COMPONENTS
-    NodeTreeViewComponent,
-    LayoutEditorComponent,
-    // PHASE 6 COMPONENTS
-    BehaviorEditorComponent,
-    // PHASE 7 COMPONENTS
-    ComponentEditorPanelComponent,
-    // PHASE 9 COMPONENTS
-    TemplateGalleryComponent,
-    TemplatePreviewModalComponent,
-    // PHASE 10 COMPONENTS
-    CommandPaletteComponent
-  ],
-  selector: 'app-template-builder',
-  templateUrl: './template-builder.component.html',
-  styleUrl: './template-builder.component.css'
+    imports: [
+        CommonModule,
+        FormsModule,
+        MonacoEditorComponent,
+        PreviewPanelComponent,
+        TemplateSidebarComponent,
+        PerformancePanelComponent,
+        DocumentationSidebarComponent,
+        SnippetPanelComponent,
+        // NEW COMPONENTS
+        ButtonComponent,
+        DataTestingPanelComponent,
+        EventMonitorPanelComponent,
+        PortConfigPanelComponent,
+        NodeLayerEditorComponent,
+        ChildNodeWizardComponent,
+        // PHASE 4 COMPONENTS
+        StylePropertiesPanelComponent,
+        // PHASE 5 COMPONENTS
+        NodeTreeViewComponent,
+        LayoutEditorComponent,
+        // PHASE 6 COMPONENTS
+        BehaviorEditorComponent,
+        // PHASE 7 COMPONENTS
+        ComponentEditorPanelComponent,
+        // PHASE 9 COMPONENTS
+        TemplateGalleryComponent,
+        TemplatePreviewModalComponent,
+        // PHASE 10 COMPONENTS
+        CommandPaletteComponent
+    ],
+    selector: 'app-template-builder',
+    templateUrl: './template-builder.component.html',
+    styleUrl: './template-builder.component.css'
 })
 export class TemplateBuilderComponent implements OnInit, OnDestroy {
 

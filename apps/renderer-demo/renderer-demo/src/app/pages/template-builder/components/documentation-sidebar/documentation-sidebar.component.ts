@@ -27,11 +27,10 @@ export interface PatternExample {
  * ~200 lines
  */
 @Component({
-  standalone: true,
-  imports: [CommonModule, FormsModule],
-  selector: 'app-documentation-sidebar',
-  templateUrl: './documentation-sidebar.component.html',
-  styleUrl: './documentation-sidebar.component.css'
+    imports: [CommonModule, FormsModule],
+    selector: 'app-documentation-sidebar',
+    templateUrl: './documentation-sidebar.component.html',
+    styleUrl: './documentation-sidebar.component.css'
 })
 export class DocumentationSidebarComponent implements OnInit, OnDestroy {
 

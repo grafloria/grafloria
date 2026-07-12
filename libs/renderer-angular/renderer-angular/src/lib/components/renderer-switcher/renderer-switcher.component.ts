@@ -41,10 +41,9 @@ import {
  * ```
  */
 @Component({
-  selector: 'grafloria-renderer-switcher',
-  standalone: true,
-  imports: [CommonModule, FormsModule],
-  template: `
+    selector: 'grafloria-renderer-switcher',
+    imports: [CommonModule, FormsModule],
+    template: `
     <div class="renderer-switcher" [ngClass]="customClass">
       <div class="switcher-controls">
         <label *ngIf="label" class="switcher-label">{{ label }}</label>
@@ -80,8 +79,8 @@ import {
       </div>
     </div>
   `,
-  styles: [
-    `
+    styles: [
+        `
       .renderer-switcher {
         display: flex;
         flex-direction: column;
@@ -195,7 +194,7 @@ import {
         cursor: not-allowed;
       }
     `,
-  ],
+    ]
 })
 export class RendererSwitcherComponent implements OnInit, OnDestroy {
   /**

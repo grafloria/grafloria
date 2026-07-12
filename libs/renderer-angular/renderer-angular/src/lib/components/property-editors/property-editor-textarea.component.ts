@@ -38,10 +38,9 @@ import { PropertyEditorComponent } from './property-editor.interface';
  * ```
  */
 @Component({
-  selector: 'property-editor-textarea',
-  standalone: true,
-  imports: [CommonModule, FormsModule],
-  template: `
+    selector: 'property-editor-textarea',
+    imports: [CommonModule, FormsModule],
+    template: `
     <div class="property-editor property-editor-textarea">
       <textarea
         #textareaElement
@@ -62,8 +61,8 @@ import { PropertyEditorComponent } from './property-editor.interface';
       </div>
     </div>
   `,
-  styles: [
-    `
+    styles: [
+        `
       .property-editor-textarea {
         width: 100%;
       }
@@ -103,7 +102,7 @@ import { PropertyEditorComponent } from './property-editor.interface';
         text-align: right;
       }
     `,
-  ],
+    ]
 })
 export class PropertyEditorTextareaComponent
   implements PropertyEditorComponent, OnInit, OnChanges, AfterViewInit

@@ -24,10 +24,9 @@ export interface SlotDefinition {
 }
 
 @Component({
-  selector: 'app-component-mode-editor',
-  standalone: true,
-  imports: [CommonModule, FormsModule],
-  template: `
+    selector: 'app-component-mode-editor',
+    imports: [CommonModule, FormsModule],
+    template: `
     <div class="component-mode-editor" [style.font-family]="tokens.typography.fontFamily">
       <div class="header">
         <h3 [style.color]="tokens.colors.text.primary" [style.margin]="0">
@@ -186,7 +185,7 @@ export interface SlotDefinition {
       </div>
     </div>
   `,
-  styles: [`
+    styles: [`
     .component-mode-editor {
       padding: 16px;
       display: flex;

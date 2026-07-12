@@ -6,10 +6,9 @@ import { AnimationPresets, LIGHT_THEME, type Theme, type Rectangle } from '@graf
 import { DiagramCanvasComponent } from '@grafloria/renderer-angular';
 
 @Component({
-  selector: 'app-animation-demo',
-  standalone: true,
-  imports: [CommonModule, FormsModule, DiagramCanvasComponent],
-  template: `
+    selector: 'app-animation-demo',
+    imports: [CommonModule, FormsModule, DiagramCanvasComponent],
+    template: `
     <div class="animation-demo">
       <div class="header">
         <h1>🎨 Practical Animation Demo</h1>
@@ -198,7 +197,7 @@ import { DiagramCanvasComponent } from '@grafloria/renderer-angular';
       </div>
     </div>
   `,
-  styles: [`
+    styles: [`
     .animation-demo {
       padding: 20px;
       height: 100vh;

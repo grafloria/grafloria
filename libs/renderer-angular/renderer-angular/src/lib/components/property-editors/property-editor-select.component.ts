@@ -34,10 +34,9 @@ import { PropertyEditorComponent } from './property-editor.interface';
  * ```
  */
 @Component({
-  selector: 'property-editor-select',
-  standalone: true,
-  imports: [CommonModule, FormsModule],
-  template: `
+    selector: 'property-editor-select',
+    imports: [CommonModule, FormsModule],
+    template: `
     <div class="property-editor property-editor-select">
       <select
         [id]="property.key"
@@ -59,8 +58,8 @@ import { PropertyEditorComponent } from './property-editor.interface';
       </select>
     </div>
   `,
-  styles: [
-    `
+    styles: [
+        `
       .property-editor-select {
         width: 100%;
       }
@@ -94,7 +93,7 @@ import { PropertyEditorComponent } from './property-editor.interface';
         color: var(--text-disabled, #999);
       }
     `,
-  ],
+    ]
 })
 export class PropertyEditorSelectComponent
   implements PropertyEditorComponent, OnInit, OnChanges

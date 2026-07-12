@@ -5,11 +5,10 @@ import { DiagramEngine, NodeModel } from '@grafloria/engine';
 import { LIGHT_THEME, type Theme, type Rectangle } from '@grafloria/renderer';
 
 @Component({
-  standalone: true,
-  imports: [CommonModule, DiagramCanvasComponent],
-  selector: 'app-dashboard-builder',
-  templateUrl: './dashboard-builder.component.html',
-  styleUrl: './dashboard-builder.component.css',
+    imports: [CommonModule, DiagramCanvasComponent],
+    selector: 'app-dashboard-builder',
+    templateUrl: './dashboard-builder.component.html',
+    styleUrl: './dashboard-builder.component.css'
 })
 export class DashboardBuilderComponent implements OnInit {
   engine!: DiagramEngine;

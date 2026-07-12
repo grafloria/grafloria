@@ -17,10 +17,9 @@ export interface SlotsConfig {
 }
 
 @Component({
-  selector: 'app-slot-config-editor',
-  standalone: true,
-  imports: [CommonModule, FormsModule],
-  template: `
+    selector: 'app-slot-config-editor',
+    imports: [CommonModule, FormsModule],
+    template: `
     <div class="slot-config-editor" [style.font-family]="tokens.typography.fontFamily">
       <div class="header">
         <div>
@@ -207,7 +206,7 @@ export interface SlotsConfig {
       </div>
     </div>
   `,
-  styles: [`
+    styles: [`
     .slot-config-editor {
       padding: 16px;
       display: flex;

@@ -134,10 +134,9 @@ export type EffectiveToolbarConfig = Required<Omit<NodeToolbarConfig, 'template'
  * ```
  */
 @Component({
-  selector: 'grafloria-node-toolbar',
-  standalone: true,
-  imports: [CommonModule],
-  template: `
+    selector: 'grafloria-node-toolbar',
+    imports: [CommonModule],
+    template: `
     <div
       #toolbar
       class="grafloria-node-toolbar"
@@ -212,7 +211,7 @@ export type EffectiveToolbarConfig = Required<Omit<NodeToolbarConfig, 'template'
       }
     </div>
   `,
-  styles: [`
+    styles: [`
     .grafloria-node-toolbar {
       position: absolute;
       background: var(--toolbar-bg, var(--grafloria-toolbar-bg, white));
@@ -407,7 +406,7 @@ export type EffectiveToolbarConfig = Required<Omit<NodeToolbarConfig, 'template'
       }
     }
   `],
-  changeDetection: ChangeDetectionStrategy.OnPush,
+    changeDetection: ChangeDetectionStrategy.OnPush
 })
 export class NodeToolbarComponent implements OnInit, OnChanges, OnDestroy {
   // Individual inputs (backward compatible)

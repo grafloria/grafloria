@@ -19,11 +19,10 @@ interface WorkflowNode {
 }
 
 @Component({
-  standalone: true,
-  imports: [CommonModule, FormsModule, DiagramCanvasComponent],
-  selector: 'app-workflow-builder',
-  templateUrl: './workflow-builder.component.html',
-  styleUrl: './workflow-builder.component.css',
+    imports: [CommonModule, FormsModule, DiagramCanvasComponent],
+    selector: 'app-workflow-builder',
+    templateUrl: './workflow-builder.component.html',
+    styleUrl: './workflow-builder.component.css'
 })
 export class WorkflowBuilderComponent implements OnInit {
   engine!: DiagramEngine;

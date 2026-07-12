@@ -13,10 +13,9 @@ import { CommonModule } from '@angular/common';
  * </app-button>
  */
 @Component({
-  selector: 'app-button',
-  standalone: true,
-  imports: [CommonModule],
-  template: `
+    selector: 'app-button',
+    imports: [CommonModule],
+    template: `
     <button
       [type]="type"
       [disabled]="disabled || loading"
@@ -35,7 +34,7 @@ import { CommonModule } from '@angular/common';
       </span>
     </button>
   `,
-  styles: [`
+    styles: [`
     :host {
       display: inline-block;
     }

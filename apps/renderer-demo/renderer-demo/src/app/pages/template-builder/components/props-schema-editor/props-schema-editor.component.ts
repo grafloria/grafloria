@@ -21,10 +21,9 @@ export interface PropsSchema {
 }
 
 @Component({
-  selector: 'app-props-schema-editor',
-  standalone: true,
-  imports: [CommonModule, FormsModule],
-  template: `
+    selector: 'app-props-schema-editor',
+    imports: [CommonModule, FormsModule],
+    template: `
     <div class="props-schema-editor" [style.font-family]="tokens.typography.fontFamily">
       <div class="header">
         <div>
@@ -231,7 +230,7 @@ export interface PropsSchema {
       </div>
     </div>
   `,
-  styles: [`
+    styles: [`
     .props-schema-editor {
       padding: 16px;
       display: flex;

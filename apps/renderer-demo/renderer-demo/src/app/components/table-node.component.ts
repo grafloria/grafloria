@@ -24,10 +24,9 @@ export interface TableField {
  * - Different port types (source/target on same field)
  */
 @Component({
-  selector: 'app-table-node',
-  standalone: true,
-  imports: [CommonModule, GrafloriaHandleDirective],
-  template: `
+    selector: 'app-table-node',
+    imports: [CommonModule, GrafloriaHandleDirective],
+    template: `
     <div class="table-node"
          (mouseenter)="onMouseEnter()"
          (mouseleave)="onMouseLeave()">
@@ -92,7 +91,7 @@ export interface TableField {
       </div>
     </div>
   `,
-  styles: [`
+    styles: [`
     :host {
       display: block;
     }

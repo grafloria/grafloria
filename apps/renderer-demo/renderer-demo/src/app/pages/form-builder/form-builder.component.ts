@@ -5,11 +5,10 @@ import { DiagramEngine, NodeModel } from '@grafloria/engine';
 import { LIGHT_THEME, type Theme, type Rectangle } from '@grafloria/renderer';
 
 @Component({
-  standalone: true,
-  imports: [CommonModule, DiagramCanvasComponent],
-  selector: 'app-form-builder',
-  templateUrl: './form-builder.component.html',
-  styleUrl: './form-builder.component.css',
+    imports: [CommonModule, DiagramCanvasComponent],
+    selector: 'app-form-builder',
+    templateUrl: './form-builder.component.html',
+    styleUrl: './form-builder.component.css'
 })
 export class FormBuilderComponent implements OnInit {
   engine!: DiagramEngine;

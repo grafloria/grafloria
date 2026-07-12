@@ -33,10 +33,9 @@ export interface ValidationError {
  * </app-data-testing-panel>
  */
 @Component({
-  selector: 'app-data-testing-panel',
-  standalone: true,
-  imports: [CommonModule, FormsModule, MonacoEditorComponent, ButtonComponent],
-  template: `
+    selector: 'app-data-testing-panel',
+    imports: [CommonModule, FormsModule, MonacoEditorComponent, ButtonComponent],
+    template: `
     <div class="data-testing-panel">
       <!-- Header -->
       <div class="panel-header">
@@ -120,7 +119,7 @@ export interface ValidationError {
       </div>
     </div>
   `,
-  styles: [`
+    styles: [`
     .data-testing-panel {
       display: flex;
       flex-direction: column;

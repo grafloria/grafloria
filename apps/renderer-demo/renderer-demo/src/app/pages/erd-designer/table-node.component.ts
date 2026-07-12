@@ -15,10 +15,9 @@ export interface TableData {
 }
 
 @Component({
-  selector: 'app-table-node',
-  standalone: true,
-  imports: [CommonModule],
-  template: `
+    selector: 'app-table-node',
+    imports: [CommonModule],
+    template: `
     <div class="table-node" *ngIf="data">
       <div class="table-header">
         <span class="table-icon">🗄️</span>
@@ -46,7 +45,7 @@ export interface TableData {
       </div>
     </div>
   `,
-  styles: [`
+    styles: [`
     .table-node {
       background: white;
       border: 2px solid #3498db;

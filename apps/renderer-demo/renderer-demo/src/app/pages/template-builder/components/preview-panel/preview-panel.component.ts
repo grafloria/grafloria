@@ -42,11 +42,10 @@ import { MinimapComponent } from '../minimap/minimap.component';
  * ~500 lines (enhanced from ~180)
  */
 @Component({
-  standalone: true,
-  imports: [CommonModule, DiagramCanvasComponent, MinimapComponent],
-  selector: 'app-preview-panel',
-  templateUrl: './preview-panel.component.html',
-  styleUrl: './preview-panel.component.css'
+    imports: [CommonModule, DiagramCanvasComponent, MinimapComponent],
+    selector: 'app-preview-panel',
+    templateUrl: './preview-panel.component.html',
+    styleUrl: './preview-panel.component.css'
 })
 export class PreviewPanelComponent implements OnInit, OnDestroy, OnChanges {
 

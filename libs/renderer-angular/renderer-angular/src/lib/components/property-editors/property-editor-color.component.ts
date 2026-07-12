@@ -33,10 +33,9 @@ import { PropertyEditorComponent } from './property-editor.interface';
  * ```
  */
 @Component({
-  selector: 'property-editor-color',
-  standalone: true,
-  imports: [CommonModule, FormsModule],
-  template: `
+    selector: 'property-editor-color',
+    imports: [CommonModule, FormsModule],
+    template: `
     <div class="property-editor property-editor-color">
       <div class="color-input-wrapper">
         <div class="color-swatch" [style.background-color]="currentValue">
@@ -74,8 +73,8 @@ import { PropertyEditorComponent } from './property-editor.interface';
       </div>
     </div>
   `,
-  styles: [
-    `
+    styles: [
+        `
       .property-editor-color {
         width: 100%;
       }
@@ -157,7 +156,7 @@ import { PropertyEditorComponent } from './property-editor.interface';
         cursor: not-allowed;
       }
     `,
-  ],
+    ]
 })
 export class PropertyEditorColorComponent
   implements PropertyEditorComponent, OnInit, OnChanges

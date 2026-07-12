@@ -47,12 +47,11 @@ import { GrafloriaHandleDirective } from '../directives/grafloria-handle.directi
  * ```
  */
 @Component({
-  selector: 'grafloria-diagram-canvas',
-  standalone: true,
-  imports: [CommonModule, HtmlNodeRendererDirective, GrafloriaHandleDirective],
-  templateUrl: './diagram-canvas.component.html',
-  styleUrls: ['./diagram-canvas.component.css'],
-  changeDetection: ChangeDetectionStrategy.OnPush,
+    selector: 'grafloria-diagram-canvas',
+    imports: [CommonModule, HtmlNodeRendererDirective, GrafloriaHandleDirective],
+    templateUrl: './diagram-canvas.component.html',
+    styleUrls: ['./diagram-canvas.component.css'],
+    changeDetection: ChangeDetectionStrategy.OnPush
 })
 export class DiagramCanvasComponent implements OnInit, AfterViewInit, OnChanges, OnDestroy {
   /**

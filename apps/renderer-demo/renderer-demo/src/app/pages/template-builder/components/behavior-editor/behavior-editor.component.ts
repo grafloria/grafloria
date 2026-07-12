@@ -58,10 +58,9 @@ export interface BehaviorConfig {
  * ```
  */
 @Component({
-  selector: 'app-behavior-editor',
-  standalone: true,
-  imports: [CommonModule, FormsModule],
-  template: `
+    selector: 'app-behavior-editor',
+    imports: [CommonModule, FormsModule],
+    template: `
     <div class="behavior-editor" [style.font-family]="tokens.typography.fontFamily">
       <!-- Header -->
       <div class="editor-header">
@@ -291,7 +290,7 @@ export interface BehaviorConfig {
       </div>
     </div>
   `,
-  styles: [`
+    styles: [`
     .behavior-editor {
       display: flex;
       flex-direction: column;

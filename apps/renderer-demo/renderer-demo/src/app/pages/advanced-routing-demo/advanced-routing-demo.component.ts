@@ -18,11 +18,10 @@ import { LIGHT_THEME, type Theme, type Rectangle } from '@grafloria/renderer';
 type DemoSection = 'waypoints' | 'controlPoints' | 'simplification' | 'comparison';
 
 @Component({
-  standalone: true,
-  imports: [CommonModule, FormsModule, DiagramCanvasComponent],
-  selector: 'app-advanced-routing-demo',
-  templateUrl: './advanced-routing-demo.component.html',
-  styleUrl: './advanced-routing-demo.component.css',
+    imports: [CommonModule, FormsModule, DiagramCanvasComponent],
+    selector: 'app-advanced-routing-demo',
+    templateUrl: './advanced-routing-demo.component.html',
+    styleUrl: './advanced-routing-demo.component.css'
 })
 export class AdvancedRoutingDemoComponent implements OnInit {
   engine!: DiagramEngine;

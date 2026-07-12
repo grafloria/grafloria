@@ -6,11 +6,10 @@ import { DiagramCanvasComponent } from '@grafloria/renderer-angular';
 import { LIGHT_THEME, type Theme, type Rectangle } from '@grafloria/renderer';
 
 @Component({
-  standalone: true,
-  imports: [CommonModule, FormsModule, DiagramCanvasComponent],
-  selector: 'app-dsl-bidirectional-demo',
-  templateUrl: './dsl-bidirectional-demo.component.html',
-  styleUrl: './dsl-bidirectional-demo.component.css',
+    imports: [CommonModule, FormsModule, DiagramCanvasComponent],
+    selector: 'app-dsl-bidirectional-demo',
+    templateUrl: './dsl-bidirectional-demo.component.html',
+    styleUrl: './dsl-bidirectional-demo.component.css'
 })
 export class DslBidirectionalDemoComponent implements OnInit, OnDestroy {
   constructor(private cdr: ChangeDetectorRef) {}

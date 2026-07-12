@@ -17,11 +17,10 @@ interface ExampleCard {
 type Category = 'All' | 'Core Features' | 'DSL Engine' | 'Advanced Features' | 'Builders';
 
 @Component({
-  standalone: true,
-  imports: [CommonModule, RouterModule, FormsModule],
-  selector: 'app-home',
-  templateUrl: './home.component.html',
-  styleUrl: './home.component.css',
+    imports: [CommonModule, RouterModule, FormsModule],
+    selector: 'app-home',
+    templateUrl: './home.component.html',
+    styleUrl: './home.component.css'
 })
 export class HomeComponent {
   searchTerm = '';

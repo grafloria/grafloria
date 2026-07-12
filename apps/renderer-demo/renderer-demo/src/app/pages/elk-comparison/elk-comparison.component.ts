@@ -12,11 +12,10 @@ import {
 import { LIGHT_THEME, type Theme, type Rectangle } from '@grafloria/renderer';
 
 @Component({
-  standalone: true,
-  imports: [CommonModule, DiagramCanvasComponent],
-  selector: 'app-elk-comparison',
-  templateUrl: './elk-comparison.component.html',
-  styleUrl: './elk-comparison.component.css',
+    imports: [CommonModule, DiagramCanvasComponent],
+    selector: 'app-elk-comparison',
+    templateUrl: './elk-comparison.component.html',
+    styleUrl: './elk-comparison.component.css'
 })
 export class ElkComparisonComponent implements OnInit {
   engine!: DiagramEngine;

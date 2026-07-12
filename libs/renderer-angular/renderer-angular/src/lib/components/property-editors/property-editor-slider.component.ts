@@ -34,10 +34,9 @@ import { PropertyEditorComponent } from './property-editor.interface';
  * ```
  */
 @Component({
-  selector: 'property-editor-slider',
-  standalone: true,
-  imports: [CommonModule, FormsModule],
-  template: `
+    selector: 'property-editor-slider',
+    imports: [CommonModule, FormsModule],
+    template: `
     <div class="property-editor property-editor-slider">
       <div class="slider-header">
         <span class="slider-label">{{ getLabel() }}</span>
@@ -63,8 +62,8 @@ import { PropertyEditorComponent } from './property-editor.interface';
       </div>
     </div>
   `,
-  styles: [
-    `
+    styles: [
+        `
       .property-editor-slider {
         width: 100%;
       }
@@ -167,7 +166,7 @@ import { PropertyEditorComponent } from './property-editor.interface';
         cursor: not-allowed;
       }
     `,
-  ],
+    ]
 })
 export class PropertyEditorSliderComponent
   implements PropertyEditorComponent, OnInit, OnChanges

@@ -34,10 +34,9 @@ import { PropertyEditorComponent } from './property-editor.interface';
  * ```
  */
 @Component({
-  selector: 'property-editor-multiselect',
-  standalone: true,
-  imports: [CommonModule, FormsModule],
-  template: `
+    selector: 'property-editor-multiselect',
+    imports: [CommonModule, FormsModule],
+    template: `
     <div class="property-editor property-editor-multiselect">
       <div class="chips-container" *ngIf="currentValue.length > 0">
         <div class="chip" *ngFor="let value of currentValue">
@@ -78,8 +77,8 @@ import { PropertyEditorComponent } from './property-editor.interface';
       </div>
     </div>
   `,
-  styles: [
-    `
+    styles: [
+        `
       .property-editor-multiselect {
         width: 100%;
       }
@@ -177,7 +176,7 @@ import { PropertyEditorComponent } from './property-editor.interface';
         cursor: not-allowed;
       }
     `,
-  ],
+    ]
 })
 export class PropertyEditorMultiselectComponent
   implements PropertyEditorComponent, OnInit, OnChanges

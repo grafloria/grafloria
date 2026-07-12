@@ -39,10 +39,9 @@ export interface Color {
  * ```
  */
 @Component({
-  selector: 'app-color-picker',
-  standalone: true,
-  imports: [CommonModule, FormsModule],
-  template: `
+    selector: 'app-color-picker',
+    imports: [CommonModule, FormsModule],
+    template: `
     <div class="color-picker" [style.font-family]="tokens.typography.fontFamily">
       <!-- Current Color Preview -->
       <div class="color-preview-section">
@@ -178,7 +177,7 @@ export interface Color {
       </div>
     </div>
   `,
-  styles: [`
+    styles: [`
     .color-picker {
       padding: 16px;
       background: white;

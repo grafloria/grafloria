@@ -33,10 +33,9 @@ import { PropertyEditorComponent } from './property-editor.interface';
  * ```
  */
 @Component({
-  selector: 'property-editor-file',
-  standalone: true,
-  imports: [CommonModule],
-  template: `
+    selector: 'property-editor-file',
+    imports: [CommonModule],
+    template: `
     <div class="property-editor property-editor-file">
       <div
         class="file-drop-zone"
@@ -110,8 +109,8 @@ import { PropertyEditorComponent } from './property-editor.interface';
       </div>
     </div>
   `,
-  styles: [
-    `
+    styles: [
+        `
       .property-editor-file {
         width: 100%;
       }
@@ -232,7 +231,7 @@ import { PropertyEditorComponent } from './property-editor.interface';
         font-size: 13px;
       }
     `,
-  ],
+    ]
 })
 export class PropertyEditorFileComponent
   implements PropertyEditorComponent, OnInit, OnChanges

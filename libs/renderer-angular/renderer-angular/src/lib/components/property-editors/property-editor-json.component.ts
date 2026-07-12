@@ -37,10 +37,9 @@ import { PropertyEditorComponent } from './property-editor.interface';
  * ```
  */
 @Component({
-  selector: 'property-editor-json',
-  standalone: true,
-  imports: [CommonModule, FormsModule],
-  template: `
+    selector: 'property-editor-json',
+    imports: [CommonModule, FormsModule],
+    template: `
     <div class="property-editor property-editor-json">
       <div class="json-toolbar" *ngIf="!readonly">
         <button
@@ -81,8 +80,8 @@ import { PropertyEditorComponent } from './property-editor.interface';
       </div>
     </div>
   `,
-  styles: [
-    `
+    styles: [
+        `
       .property-editor-json {
         width: 100%;
       }
@@ -164,7 +163,7 @@ import { PropertyEditorComponent } from './property-editor.interface';
         flex: 1;
       }
     `,
-  ],
+    ]
 })
 export class PropertyEditorJsonComponent
   implements PropertyEditorComponent, OnInit, OnChanges

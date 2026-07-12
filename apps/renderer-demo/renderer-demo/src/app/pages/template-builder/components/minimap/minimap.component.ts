@@ -38,10 +38,9 @@ import {
  * ~300 lines
  */
 @Component({
-  standalone: true,
-  imports: [CommonModule],
-  selector: 'app-minimap',
-  template: `
+    imports: [CommonModule],
+    selector: 'app-minimap',
+    template: `
     <div class="minimap-container" *ngIf="visible && nodes.size > 0">
       <div class="minimap-header">
         <span class="minimap-title">🗺️ Mini-Map</span>
@@ -62,7 +61,7 @@ import {
       </div>
     </div>
   `,
-  styles: [`
+    styles: [`
     .minimap-container {
       position: absolute;
       top: 16px;

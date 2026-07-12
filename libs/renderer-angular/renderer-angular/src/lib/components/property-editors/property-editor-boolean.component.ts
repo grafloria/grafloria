@@ -41,10 +41,9 @@ import { PropertyEditorComponent } from './property-editor.interface';
  * ```
  */
 @Component({
-  selector: 'property-editor-boolean',
-  standalone: true,
-  imports: [CommonModule, FormsModule],
-  template: `
+    selector: 'property-editor-boolean',
+    imports: [CommonModule, FormsModule],
+    template: `
     <div class="property-editor property-editor-boolean">
       <label class="checkbox-label" *ngIf="!isToggleMode()">
         <input
@@ -73,8 +72,8 @@ import { PropertyEditorComponent } from './property-editor.interface';
       </div>
     </div>
   `,
-  styles: [
-    `
+    styles: [
+        `
       .property-editor-boolean {
         display: inline-flex;
         align-items: center;
@@ -191,7 +190,7 @@ import { PropertyEditorComponent } from './property-editor.interface';
         transition: transform 0.2s;
       }
     `,
-  ],
+    ]
 })
 export class PropertyEditorBooleanComponent
   implements PropertyEditorComponent, OnInit, OnChanges

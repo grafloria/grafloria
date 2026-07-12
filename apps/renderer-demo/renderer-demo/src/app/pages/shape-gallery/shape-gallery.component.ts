@@ -20,11 +20,10 @@ import {
 import { LIGHT_THEME, type Theme, type Rectangle } from '@grafloria/renderer';
 
 @Component({
-  standalone: true,
-  imports: [CommonModule, FormsModule, DiagramCanvasComponent],
-  selector: 'app-shape-gallery',
-  templateUrl: './shape-gallery.component.html',
-  styleUrl: './shape-gallery.component.css',
+    imports: [CommonModule, FormsModule, DiagramCanvasComponent],
+    selector: 'app-shape-gallery',
+    templateUrl: './shape-gallery.component.html',
+    styleUrl: './shape-gallery.component.css'
 })
 export class ShapeGalleryComponent implements OnInit, OnDestroy {
   title = 'Shape Gallery - Phases 3.1-3.5 Demo';

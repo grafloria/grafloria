@@ -33,10 +33,9 @@ import { PropertyEditorComponent } from './property-editor.interface';
  * ```
  */
 @Component({
-  selector: 'property-editor-date',
-  standalone: true,
-  imports: [CommonModule, FormsModule],
-  template: `
+    selector: 'property-editor-date',
+    imports: [CommonModule, FormsModule],
+    template: `
     <div class="property-editor property-editor-date">
       <div class="date-input-wrapper">
         <input
@@ -73,8 +72,8 @@ import { PropertyEditorComponent } from './property-editor.interface';
       </div>
     </div>
   `,
-  styles: [
-    `
+    styles: [
+        `
       .property-editor-date {
         width: 100%;
       }
@@ -128,7 +127,7 @@ import { PropertyEditorComponent } from './property-editor.interface';
         background-color: var(--button-active-bg, #e5e5e5);
       }
     `,
-  ],
+    ]
 })
 export class PropertyEditorDateComponent
   implements PropertyEditorComponent, OnInit, OnChanges

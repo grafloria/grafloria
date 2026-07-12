@@ -54,10 +54,9 @@ export interface NodeActionEvent {
  * ```
  */
 @Component({
-  selector: 'app-node-tree-view',
-  standalone: true,
-  imports: [CommonModule, FormsModule],
-  template: `
+    selector: 'app-node-tree-view',
+    imports: [CommonModule, FormsModule],
+    template: `
     <div class="tree-view" [style.font-family]="tokens.typography.fontFamily">
       <!-- Header -->
       <div class="tree-header">
@@ -156,7 +155,7 @@ export interface NodeActionEvent {
       </div>
     </div>
   `,
-  styles: [`
+    styles: [`
     .tree-view {
       display: flex;
       flex-direction: column;

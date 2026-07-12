@@ -28,12 +28,11 @@ import type { DiagramEngine, InteractionConfig } from '@grafloria/engine';
  * ```
  */
 @Component({
-  selector: 'grafloria-interaction-config-panel',
-  standalone: true,
-  imports: [CommonModule, FormsModule],
-  templateUrl: './interaction-config-panel.component.html',
-  styleUrls: ['./interaction-config-panel.component.css'],
-  changeDetection: ChangeDetectionStrategy.OnPush,
+    selector: 'grafloria-interaction-config-panel',
+    imports: [CommonModule, FormsModule],
+    templateUrl: './interaction-config-panel.component.html',
+    styleUrls: ['./interaction-config-panel.component.css'],
+    changeDetection: ChangeDetectionStrategy.OnPush
 })
 export class InteractionConfigPanelComponent implements OnInit, OnChanges {
   /**

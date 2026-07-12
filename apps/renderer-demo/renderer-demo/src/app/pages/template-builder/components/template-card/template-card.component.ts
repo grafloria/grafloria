@@ -24,25 +24,24 @@ import {
  * Phase 9: Template Gallery & Management
  */
 @Component({
-  standalone: true,
-  imports: [CommonModule],
-  selector: 'app-template-card',
-  templateUrl: './template-card.component.html',
-  styleUrl: './template-card.component.css',
-  changeDetection: ChangeDetectionStrategy.OnPush,
-  animations: [
-    trigger('slideDown', [
-      state('void', style({ height: '0', opacity: '0' })),
-      state('*', style({ height: '*', opacity: '1' })),
-      transition('void <=> *', animate('200ms ease-in-out'))
-    ]),
-    trigger('fadeIn', [
-      transition(':enter', [
-        style({ opacity: 0, transform: 'scale(0.95)' }),
-        animate('200ms ease-out', style({ opacity: 1, transform: 'scale(1)' }))
-      ])
-    ])
-  ]
+    imports: [CommonModule],
+    selector: 'app-template-card',
+    templateUrl: './template-card.component.html',
+    styleUrl: './template-card.component.css',
+    changeDetection: ChangeDetectionStrategy.OnPush,
+    animations: [
+        trigger('slideDown', [
+            state('void', style({ height: '0', opacity: '0' })),
+            state('*', style({ height: '*', opacity: '1' })),
+            transition('void <=> *', animate('200ms ease-in-out'))
+        ]),
+        trigger('fadeIn', [
+            transition(':enter', [
+                style({ opacity: 0, transform: 'scale(0.95)' }),
+                animate('200ms ease-out', style({ opacity: 1, transform: 'scale(1)' }))
+            ])
+        ])
+    ]
 })
 export class TemplateCardComponent {
 

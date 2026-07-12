@@ -11,16 +11,15 @@ import { SerializedLayoutConfig } from '@grafloria/engine';
  * Phase 5: Nested Nodes & Layout System
  */
 @Component({
-  selector: 'app-layout-editor',
-  standalone: true,
-  imports: [CommonModule, FormsModule],
-  template: `
+    selector: 'app-layout-editor',
+    imports: [CommonModule, FormsModule],
+    template: `
     <div class="layout-editor">
       <h3>Layout Configuration</h3>
       <p>Layout editor component</p>
     </div>
   `,
-  styles: [`
+    styles: [`
     .layout-editor {
       padding: 16px;
     }

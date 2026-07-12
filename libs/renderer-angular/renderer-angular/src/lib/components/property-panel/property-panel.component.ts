@@ -64,12 +64,11 @@ export interface SaveEvent {
  * ```
  */
 @Component({
-  selector: 'diagram-property-panel',
-  standalone: true,
-  imports: [CommonModule, PropertyEditorComponent],
-  templateUrl: './property-panel.component.html',
-  styleUrls: ['./property-panel.component.scss'],
-  changeDetection: ChangeDetectionStrategy.OnPush
+    selector: 'diagram-property-panel',
+    imports: [CommonModule, PropertyEditorComponent],
+    templateUrl: './property-panel.component.html',
+    styleUrls: ['./property-panel.component.scss'],
+    changeDetection: ChangeDetectionStrategy.OnPush
 })
 export class PropertyPanelComponent implements OnInit, OnDestroy {
   /**

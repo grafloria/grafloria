@@ -17,11 +17,10 @@ import { TemplateLibraryService, type TemplatePreset } from '../../services/temp
  * ~150 lines
  */
 @Component({
-  standalone: true,
-  imports: [CommonModule, FormsModule],
-  selector: 'app-template-sidebar',
-  templateUrl: './template-sidebar.component.html',
-  styleUrl: './template-sidebar.component.css'
+    imports: [CommonModule, FormsModule],
+    selector: 'app-template-sidebar',
+    templateUrl: './template-sidebar.component.html',
+    styleUrl: './template-sidebar.component.css'
 })
 export class TemplateSidebarComponent implements OnInit {
 

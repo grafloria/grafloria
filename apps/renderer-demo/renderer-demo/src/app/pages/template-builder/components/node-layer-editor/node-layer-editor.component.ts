@@ -27,10 +27,9 @@ import { ButtonComponent } from '../../shared/components/button/button.component
  * </app-node-layer-editor>
  */
 @Component({
-  standalone: true,
-  imports: [CommonModule, FormsModule, ButtonComponent],
-  selector: 'app-node-layer-editor',
-  template: `
+    imports: [CommonModule, FormsModule, ButtonComponent],
+    selector: 'app-node-layer-editor',
+    template: `
     <div class="modal-backdrop" *ngIf="isOpen" (click)="onBackdropClick()">
       <div class="modal-dialog" (click)="$event.stopPropagation()">
         <!-- Header -->
@@ -131,7 +130,7 @@ Example:
       </div>
     </div>
   `,
-  styles: [`
+    styles: [`
     .modal-backdrop {
       position: fixed;
       top: 0;

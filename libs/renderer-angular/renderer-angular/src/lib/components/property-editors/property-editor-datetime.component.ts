@@ -33,10 +33,9 @@ import { PropertyEditorComponent } from './property-editor.interface';
  * ```
  */
 @Component({
-  selector: 'property-editor-datetime',
-  standalone: true,
-  imports: [CommonModule, FormsModule],
-  template: `
+    selector: 'property-editor-datetime',
+    imports: [CommonModule, FormsModule],
+    template: `
     <div class="property-editor property-editor-datetime">
       <div class="datetime-input-wrapper">
         <input
@@ -73,8 +72,8 @@ import { PropertyEditorComponent } from './property-editor.interface';
       </div>
     </div>
   `,
-  styles: [
-    `
+    styles: [
+        `
       .property-editor-datetime {
         width: 100%;
       }
@@ -128,7 +127,7 @@ import { PropertyEditorComponent } from './property-editor.interface';
         background-color: var(--button-active-bg, #e5e5e5);
       }
     `,
-  ],
+    ]
 })
 export class PropertyEditorDatetimeComponent
   implements PropertyEditorComponent, OnInit, OnChanges

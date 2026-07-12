@@ -4,10 +4,9 @@ import { CommonModule } from '@angular/common';
 export type HandlePosition = 'nw' | 'n' | 'ne' | 'e' | 'se' | 's' | 'sw' | 'w';
 
 @Component({
-  selector: 'grafloria-touch-resize-handle',
-  standalone: true,
-  imports: [CommonModule],
-  template: `
+    selector: 'grafloria-touch-resize-handle',
+    imports: [CommonModule],
+    template: `
     <div
       class="touch-resize-handle"
       [attr.data-position]="position"
@@ -18,7 +17,7 @@ export type HandlePosition = 'nw' | 'n' | 'ne' | 'e' | 'se' | 's' | 'sw' | 'w';
       <div class="handle-dot"></div>
     </div>
   `,
-  styles: [`
+    styles: [`
     .touch-resize-handle {
       position: absolute;
       width: 44px;
@@ -92,7 +91,7 @@ export type HandlePosition = 'nw' | 'n' | 'ne' | 'e' | 'se' | 's' | 'sw' | 'w';
       box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
     }
   `],
-  changeDetection: ChangeDetectionStrategy.OnPush,
+    changeDetection: ChangeDetectionStrategy.OnPush
 })
 export class TouchResizeHandleComponent {
   @Input() position!: HandlePosition;

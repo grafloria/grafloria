@@ -12,15 +12,14 @@ export interface ComponentConfig {
 }
 
 @Component({
-  selector: 'app-component-editor-panel',
-  standalone: true,
-  imports: [
-    CommonModule,
-    ComponentModeEditorComponent,
-    PropsSchemaEditorComponent,
-    SlotConfigEditorComponent
-  ],
-  template: `
+    selector: 'app-component-editor-panel',
+    imports: [
+        CommonModule,
+        ComponentModeEditorComponent,
+        PropsSchemaEditorComponent,
+        SlotConfigEditorComponent
+    ],
+    template: `
     <div class="component-editor-panel" [style.font-family]="tokens.typography.fontFamily">
       <div class="panel-header" [style.background]="tokens.colors.background.secondary">
         <h2 [style.color]="tokens.colors.text.primary" [style.margin]="0">
@@ -76,7 +75,7 @@ export interface ComponentConfig {
       </div>
     </div>
   `,
-  styles: [`
+    styles: [`
     .component-editor-panel {
       display: flex;
       flex-direction: column;

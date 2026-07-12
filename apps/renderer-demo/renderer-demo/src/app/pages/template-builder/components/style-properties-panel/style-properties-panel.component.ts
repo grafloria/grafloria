@@ -77,16 +77,15 @@ export interface StyleProperties {
  * ```
  */
 @Component({
-  selector: 'app-style-properties-panel',
-  standalone: true,
-  imports: [
-    CommonModule,
-    FormsModule,
-    ColorPickerComponent,
-    GradientBuilderComponent,
-    ShapePickerComponent
-  ],
-  template: `
+    selector: 'app-style-properties-panel',
+    imports: [
+        CommonModule,
+        FormsModule,
+        ColorPickerComponent,
+        GradientBuilderComponent,
+        ShapePickerComponent
+    ],
+    template: `
     <div class="style-panel" [style.font-family]="tokens.typography.fontFamily">
       <!-- Panel Header -->
       <div class="panel-header">
@@ -580,7 +579,7 @@ export interface StyleProperties {
       </div>
     </div>
   `,
-  styles: [`
+    styles: [`
     .style-panel {
       padding: 16px;
       background: white;

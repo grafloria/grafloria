@@ -23,11 +23,10 @@ import { TestHtmlNodeComponent } from '../../components/test-html-node.component
 import { TableNodeComponent } from '../../components/table-node.component';
 
 @Component({
-  standalone: true,
-  imports: [CommonModule, FormsModule, DiagramCanvasComponent, InteractionConfigPanelComponent],
-  selector: 'app-basic-demo',
-  templateUrl: './basic-demo.component.html',
-  styleUrl: './basic-demo.component.css',
+    imports: [CommonModule, FormsModule, DiagramCanvasComponent, InteractionConfigPanelComponent],
+    selector: 'app-basic-demo',
+    templateUrl: './basic-demo.component.html',
+    styleUrl: './basic-demo.component.css'
 })
 export class BasicDemoComponent implements OnInit {
   title = 'Basic Demo - Interactive Diagram';

@@ -34,13 +34,12 @@ declare const monaco: any;
  * ~200 lines
  */
 @Component({
-  standalone: true,
-  imports: [CommonModule],
-  selector: 'app-monaco-editor',
-  template: `
+    imports: [CommonModule],
+    selector: 'app-monaco-editor',
+    template: `
     <div class="monaco-editor-container" #editorContainer></div>
   `,
-  styles: [`
+    styles: [`
     :host {
       display: block;
       width: 100%;

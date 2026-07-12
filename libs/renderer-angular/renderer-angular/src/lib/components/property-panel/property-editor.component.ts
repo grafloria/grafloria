@@ -16,10 +16,9 @@ import type { PropertyDefinition } from '@grafloria/renderer';
  * @internal
  */
 @Component({
-  selector: 'diagram-property-editor',
-  standalone: true,
-  imports: [CommonModule, FormsModule],
-  template: `
+    selector: 'diagram-property-editor',
+    imports: [CommonModule, FormsModule],
+    template: `
     <div class="property-editor-wrapper">
       <!-- String/Textarea Editor -->
       <input
@@ -126,7 +125,7 @@ import type { PropertyDefinition } from '@grafloria/renderer';
       />
     </div>
   `,
-  styles: [`
+    styles: [`
     .property-editor-wrapper {
       width: 100%;
     }
@@ -188,7 +187,7 @@ import type { PropertyDefinition } from '@grafloria/renderer';
       opacity: 0.6;
     }
   `],
-  changeDetection: ChangeDetectionStrategy.OnPush
+    changeDetection: ChangeDetectionStrategy.OnPush
 })
 export class PropertyEditorComponent {
   @Input() id = '';

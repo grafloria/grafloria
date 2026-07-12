@@ -15,11 +15,10 @@ interface DiagramExample {
 }
 
 @Component({
-  standalone: true,
-  imports: [CommonModule, FormsModule, DiagramCanvasComponent],
-  selector: 'app-dsl-extended-types-gallery',
-  templateUrl: './dsl-extended-types-gallery.component.html',
-  styleUrl: './dsl-extended-types-gallery.component.css',
+    imports: [CommonModule, FormsModule, DiagramCanvasComponent],
+    selector: 'app-dsl-extended-types-gallery',
+    templateUrl: './dsl-extended-types-gallery.component.html',
+    styleUrl: './dsl-extended-types-gallery.component.css'
 })
 export class DslExtendedTypesGalleryComponent implements OnInit {
   dsl!: DSL;

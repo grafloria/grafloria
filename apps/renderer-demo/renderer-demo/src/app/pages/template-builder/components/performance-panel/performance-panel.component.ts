@@ -16,11 +16,10 @@ import type { PerformanceMetrics } from '../../services/performance-monitor.serv
  * ~120 lines
  */
 @Component({
-  standalone: true,
-  imports: [CommonModule],
-  selector: 'app-performance-panel',
-  templateUrl: './performance-panel.component.html',
-  styleUrl: './performance-panel.component.css'
+    imports: [CommonModule],
+    selector: 'app-performance-panel',
+    templateUrl: './performance-panel.component.html',
+    styleUrl: './performance-panel.component.css'
 })
 export class PerformancePanelComponent {
 

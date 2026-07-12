@@ -25,11 +25,10 @@ interface StyleProperties {
 }
 
 @Component({
-  standalone: true,
-  imports: [CommonModule, FormsModule, DiagramCanvasComponent],
-  selector: 'app-dsl-styling-studio',
-  templateUrl: './dsl-styling-studio.component.html',
-  styleUrl: './dsl-styling-studio.component.css',
+    imports: [CommonModule, FormsModule, DiagramCanvasComponent],
+    selector: 'app-dsl-styling-studio',
+    templateUrl: './dsl-styling-studio.component.html',
+    styleUrl: './dsl-styling-studio.component.css'
 })
 export class DslStylingStudioComponent implements OnInit {
   dsl!: DSL;

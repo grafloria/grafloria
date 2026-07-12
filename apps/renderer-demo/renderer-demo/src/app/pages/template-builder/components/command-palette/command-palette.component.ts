@@ -57,10 +57,9 @@ const CATEGORY_LABELS: Record<CommandCategory, string> = {
 };
 
 @Component({
-  standalone: true,
-  imports: [CommonModule, FormsModule],
-  selector: 'app-command-palette',
-  template: `
+    imports: [CommonModule, FormsModule],
+    selector: 'app-command-palette',
+    template: `
     <div class="command-palette-backdrop" *ngIf="isOpen" (click)="close.emit()">
       <div class="command-palette" (click)="$event.stopPropagation()">
         <!-- Search Input -->
@@ -113,7 +112,7 @@ const CATEGORY_LABELS: Record<CommandCategory, string> = {
       </div>
     </div>
   `,
-  styles: [`
+    styles: [`
     .command-palette-backdrop {
       position: fixed;
       top: 0;

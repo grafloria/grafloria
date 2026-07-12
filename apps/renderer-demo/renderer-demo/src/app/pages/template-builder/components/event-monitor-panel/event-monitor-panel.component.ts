@@ -41,10 +41,9 @@ export interface EventStats {
  * <app-event-monitor-panel></app-event-monitor-panel>
  */
 @Component({
-  selector: 'app-event-monitor-panel',
-  standalone: true,
-  imports: [CommonModule, FormsModule, ButtonComponent],
-  template: `
+    selector: 'app-event-monitor-panel',
+    imports: [CommonModule, FormsModule, ButtonComponent],
+    template: `
     <div class="event-monitor-panel">
       <!-- Header -->
       <div class="panel-header">
@@ -161,7 +160,7 @@ export interface EventStats {
       </div>
     </div>
   `,
-  styles: [`
+    styles: [`
     .event-monitor-panel {
       display: flex;
       flex-direction: column;

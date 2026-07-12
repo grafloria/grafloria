@@ -29,11 +29,10 @@ interface BusinessScenario {
 }
 
 @Component({
-  selector: 'app-layout-showcase',
-  standalone: true,
-  imports: [CommonModule, FormsModule, DiagramCanvasComponent],
-  templateUrl: './layout-showcase.component.html',
-  styleUrls: ['./layout-showcase.component.css']
+    selector: 'app-layout-showcase',
+    imports: [CommonModule, FormsModule, DiagramCanvasComponent],
+    templateUrl: './layout-showcase.component.html',
+    styleUrls: ['./layout-showcase.component.css']
 })
 export class LayoutShowcaseComponent implements OnInit, OnDestroy {
   engine!: DiagramEngine;

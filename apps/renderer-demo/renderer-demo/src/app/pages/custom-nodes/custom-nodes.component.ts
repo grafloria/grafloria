@@ -9,11 +9,10 @@ interface TutorialSection {
 }
 
 @Component({
-  standalone: true,
-  imports: [CommonModule],
-  selector: 'app-custom-nodes',
-  templateUrl: './custom-nodes.component.html',
-  styleUrl: './custom-nodes.component.css',
+    imports: [CommonModule],
+    selector: 'app-custom-nodes',
+    templateUrl: './custom-nodes.component.html',
+    styleUrl: './custom-nodes.component.css'
 })
 export class CustomNodesComponent {
   sections: TutorialSection[] = [
