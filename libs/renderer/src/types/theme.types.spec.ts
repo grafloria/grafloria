@@ -27,6 +27,7 @@ describe('Theme Types', () => {
         node: {
           default: { fill: '#ffffff', stroke: '#d1d5db' },
           selected: { fill: '#eff6ff', stroke: '#2563eb' },
+          highlighted: { fill: '#fef3c7', stroke: '#f59e0b' },
           hovered: { fill: '#f9fafb', stroke: '#9ca3af' },
           disabled: { fill: '#f3f4f6', stroke: '#e5e7eb' },
           error: { fill: '#fee2e2', stroke: '#ef4444' }
@@ -34,6 +35,7 @@ describe('Theme Types', () => {
         link: {
           default: '#9ca3af',
           selected: '#2563eb',
+          highlighted: '#f59e0b',
           hovered: '#6b7280',
           disabled: '#d1d5db'
         },
@@ -62,6 +64,7 @@ describe('Theme Types', () => {
         node: {
           default: { fill: '#fff', stroke: '#ddd' },
           selected: { fill: '#eff6ff', stroke: '#2563eb' },
+          highlighted: { fill: '#fef3c7', stroke: '#f59e0b' },
           hovered: { fill: '#f9f', stroke: '#9ca' },
           disabled: { fill: '#f3f', stroke: '#e5e' },
           error: { fill: '#fee', stroke: '#ef4' }
@@ -70,6 +73,7 @@ describe('Theme Types', () => {
 
       expect(palette.node?.default).toBeDefined();
       expect(palette.node?.selected).toBeDefined();
+      expect(palette.node?.highlighted).toBeDefined();
       expect(palette.node?.hovered).toBeDefined();
       expect(palette.node?.disabled).toBeDefined();
       expect(palette.node?.error).toBeDefined();

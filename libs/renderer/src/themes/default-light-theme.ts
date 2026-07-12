@@ -31,6 +31,10 @@ export const LIGHT_THEME: Theme = {
         fill: '#eff6ff',
         stroke: '#2563eb',
       },
+      highlighted: {
+        fill: '#fef3c7',
+        stroke: '#f59e0b',
+      },
       hovered: {
         fill: '#f9fafb',
         stroke: '#9ca3af',
@@ -48,6 +52,7 @@ export const LIGHT_THEME: Theme = {
     link: {
       default: '#9ca3af',
       selected: '#2563eb',
+      highlighted: '#f59e0b',
       hovered: '#6b7280',
       disabled: '#d1d5db',
     },

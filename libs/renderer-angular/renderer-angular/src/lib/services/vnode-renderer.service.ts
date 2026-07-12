@@ -107,8 +107,21 @@ export class VNodeRendererService {
       return;
     }
 
-    // Special SVG attributes that preserve their casing
-    const svgSpecialAttrs = ['viewBox', 'preserveAspectRatio'];
+    // Special SVG attributes that preserve their casing. camelToKebab would
+    // corrupt these genuinely-camelCase SVG attribute names (e.g. gradientUnits
+    // → gradient-units), so they're set verbatim. The paint-server defs
+    // (gradients/patterns/drop-shadow filters) rely on this list.
+    const svgSpecialAttrs = [
+      'viewBox',
+      'preserveAspectRatio',
+      'gradientUnits',
+      'gradientTransform',
+      'spreadMethod',
+      'patternUnits',
+      'patternContentUnits',
+      'patternTransform',
+      'stdDeviation',
+    ];
     if (svgSpecialAttrs.includes(key)) {
       element.setAttribute(key, String(value));
       return;

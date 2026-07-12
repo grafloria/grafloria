@@ -101,6 +101,11 @@ export interface ColorPalette {
       fill: string;
       stroke: string;
     };
+    /** Attention emphasis (independent of selection); selected wins when both. */
+    highlighted: {
+      fill: string;
+      stroke: string;
+    };
     hovered: {
       fill: string;
       stroke: string;
@@ -121,6 +126,8 @@ export interface ColorPalette {
   link: {
     default: string;
     selected: string;
+    /** Attention emphasis (independent of selection). */
+    highlighted: string;
     hovered: string;
     disabled: string;
   };

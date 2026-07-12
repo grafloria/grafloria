@@ -67,7 +67,9 @@ describe('SVGRenderer', () => {
       expect(vnode.type).toBe('svg');
       // width/height are CSS-controlled (100%) — the viewBox carries the size
       expect(vnode.props['viewBox']).toBe('0 0 1920 1080');
-      expect(vnode.children).toHaveLength(3); // links + nodes + connection preview
+      // links + nodes + connection preview + paint-server <defs> (appended last)
+      expect(vnode.children).toHaveLength(4);
+      expect(vnode.children![3].type).toBe('defs');
     });
 
     test('should create links layer and nodes layer', () => {
