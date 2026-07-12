@@ -404,7 +404,10 @@ export class PortModel extends DiagramEntity {
    * Phase 2: Get effective visibility considering port and node configuration
    * Priority: port config > node metadata > default ('on-hover')
    */
-  getEffectiveVisibility(node: any): 'always' | 'on-hover' | 'never' {
+  getEffectiveVisibility(
+    node: any,
+    globalDefault?: 'always' | 'on-hover' | 'never' | 'hidden'
+  ): 'always' | 'on-hover' | 'never' | 'hidden' {
     // Priority 1: Port's own rendering config
     if (this.renderingConfig?.visibility) {
       return this.renderingConfig.visibility;
@@ -416,8 +419,9 @@ export class PortModel extends DiagramEntity {
       return nodeVisibility;
     }
 
-    // Default: on-hover
-    return 'on-hover';
+    // Priority 3: the diagram's GLOBAL interaction config — previously this
+    // hardcoded 'on-hover', silently ignoring portVisibility=ALWAYS
+    return globalDefault ?? 'on-hover';
   }
 
   /**

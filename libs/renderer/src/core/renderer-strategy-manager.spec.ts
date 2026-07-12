@@ -28,13 +28,13 @@ describe('RendererStrategyManager', () => {
       width: 800,
       height: 600,
       enableCaching: true,
-    });
+    } as import('./renderer.interface').SVGRendererConfig);
 
     canvasRenderer = RendererFactory.createRenderer('canvas', {
       width: 800,
       height: 600,
       contextType: '2d',
-    });
+    } as import('./renderer.interface').CanvasRendererConfig);
   });
 
   afterEach(() => {

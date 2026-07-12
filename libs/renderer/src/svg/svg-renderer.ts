@@ -969,7 +969,10 @@ export class SVGRenderer implements IRenderer {
     // Try to get effective visibility from port
     let visibilityStr: string;
     if (port.getEffectiveVisibility && typeof port.getEffectiveVisibility === 'function') {
-      const effectiveVisibility = port.getEffectiveVisibility(node);
+      const effectiveVisibility = port.getEffectiveVisibility(
+        node,
+        String(config.portVisibility).toLowerCase() as any
+      );
       visibilityStr = String(effectiveVisibility).toLowerCase();
     } else {
       // Fallback to global config if port doesn't have getEffectiveVisibility

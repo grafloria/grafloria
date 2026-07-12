@@ -11,7 +11,7 @@ describe('SVGRenderer - Template Integration (Phase 3)', () => {
 
   beforeEach(() => {
     engine = new DiagramEngine();
-    diagram = engine.getDiagram();
+    diagram = engine.createDiagram('Test')!;
     renderer = new SVGRenderer(engine);
   });
 
@@ -44,8 +44,7 @@ describe('SVGRenderer - Template Integration (Phase 3)', () => {
       diagram.addNode(node);
 
       // Set global config to 'never' - port should override this
-      const interactionConfig = engine.getInteractionConfig();
-      interactionConfig.portVisibility = 'never';
+      engine.setInteractionConfig({ portVisibility: 'hidden' as any });
 
       // Render diagram
       const viewport = { x: 0, y: 0, width: 800, height: 600 };
@@ -78,9 +77,9 @@ describe('SVGRenderer - Template Integration (Phase 3)', () => {
       node.addPort(port);
       diagram.addNode(node);
 
-      // Set global config to 'always'
-      const interactionConfig = engine.getInteractionConfig();
-      interactionConfig.portVisibility = 'always';
+      // Set global config to 'always' (getInteractionConfig returns a copy —
+      // mutating it is a no-op, the setter is the real API)
+      engine.setInteractionConfig({ portVisibility: 'always' as any });
 
       // Render diagram
       const viewport = { x: 0, y: 0, width: 800, height: 600 };
@@ -111,8 +110,7 @@ describe('SVGRenderer - Template Integration (Phase 3)', () => {
       diagram.addNode(node);
 
       // Set global config to 'never'
-      const interactionConfig = engine.getInteractionConfig();
-      interactionConfig.portVisibility = 'never';
+      engine.setInteractionConfig({ portVisibility: 'hidden' as any });
 
       // Render diagram
       const viewport = { x: 0, y: 0, width: 800, height: 600 };
@@ -139,9 +137,9 @@ describe('SVGRenderer - Template Integration (Phase 3)', () => {
       node.addPort(port);
       diagram.addNode(node);
 
-      // Set global config to 'always'
-      const interactionConfig = engine.getInteractionConfig();
-      interactionConfig.portVisibility = 'always';
+      // Set global config to 'always' (getInteractionConfig returns a copy —
+      // mutating it is a no-op, the setter is the real API)
+      engine.setInteractionConfig({ portVisibility: 'always' as any });
 
       // Render diagram
       const viewport = { x: 0, y: 0, width: 800, height: 600 };
@@ -267,8 +265,7 @@ describe('SVGRenderer - Template Integration (Phase 3)', () => {
       diagram.addNode(node);
 
       // Use default global config
-      const interactionConfig = engine.getInteractionConfig();
-      interactionConfig.portVisibility = 'always';
+      engine.setInteractionConfig({ portVisibility: 'always' as any });
 
       const viewport = { x: 0, y: 0, width: 800, height: 600 };
       const vnode = renderer.render(viewport, 1.0);

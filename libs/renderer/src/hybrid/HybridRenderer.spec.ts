@@ -43,52 +43,52 @@ describe('HybridRenderer (Phase 3.5)', () => {
       const result = renderer.render(mockNode as NodeModel);
 
       // SVG layer uses transform attribute
-      const svgTransform = result.svgLayer.props?.transform;
+      const svgTransform = result.svgLayer.props?.['transform'];
       expect(svgTransform).toContain('translate(100, 200)');
 
       // HTML layer uses CSS transform
       const htmlStyle = result.htmlLayer.style;
-      expect(htmlStyle?.transform).toContain('translate(100px, 200px)');
+      expect(htmlStyle?.['transform']).toContain('translate(100px, 200px)');
     });
 
     it('should synchronize position changes', () => {
-      mockNode.position = { x: 300, y: 400 };
+      mockNode['position'] = { x: 300, y: 400 };
       const result = renderer.render(mockNode as NodeModel);
 
-      expect(result.svgLayer.props?.transform).toContain('translate(300, 400)');
-      expect(result.htmlLayer.style?.transform).toContain('translate(300px, 400px)');
+      expect(result.svgLayer.props?.['transform']).toContain('translate(300, 400)');
+      expect(result.htmlLayer.style?.['transform']).toContain('translate(300px, 400px)');
     });
 
     it('should synchronize rotation', () => {
       mockNode.rotation = 45;
       const result = renderer.render(mockNode as NodeModel);
 
-      expect(result.svgLayer.props?.transform).toContain('rotate(45)');
-      expect(result.htmlLayer.style?.transform).toContain('rotate(45deg)');
+      expect(result.svgLayer.props?.['transform']).toContain('rotate(45 ');
+      expect(result.htmlLayer.style?.['transform']).toContain('rotate(45deg)');
     });
 
     it('should synchronize scale', () => {
       mockNode.scale = { x: 1.5, y: 1.5 };
       const result = renderer.render(mockNode as NodeModel);
 
-      expect(result.svgLayer.props?.transform).toContain('scale(1.5, 1.5)');
-      expect(result.htmlLayer.style?.transform).toContain('scale(1.5, 1.5)');
+      expect(result.svgLayer.props?.['transform']).toContain('scale(1.5, 1.5)');
+      expect(result.htmlLayer.style?.['transform']).toContain('scale(1.5, 1.5)');
     });
 
     it('should synchronize combined transforms', () => {
-      mockNode.position = { x: 200, y: 300 };
+      mockNode['position'] = { x: 200, y: 300 };
       mockNode.rotation = 30;
       mockNode.scale = { x: 2, y: 2 };
 
       const result = renderer.render(mockNode as NodeModel);
 
       // SVG: translate rotate scale order
-      expect(result.svgLayer.props?.transform).toContain('translate(200, 300)');
-      expect(result.svgLayer.props?.transform).toContain('rotate(30)');
-      expect(result.svgLayer.props?.transform).toContain('scale(2, 2)');
+      expect(result.svgLayer.props?.['transform']).toContain('translate(200, 300)');
+      expect(result.svgLayer.props?.['transform']).toContain('rotate(30 ');
+      expect(result.svgLayer.props?.['transform']).toContain('scale(2, 2)');
 
       // HTML: same order
-      const htmlTransform = result.htmlLayer.style?.transform;
+      const htmlTransform = result.htmlLayer.style?.['transform'];
       expect(htmlTransform).toContain('translate(200px, 300px)');
       expect(htmlTransform).toContain('rotate(30deg)');
       expect(htmlTransform).toContain('scale(2, 2)');
@@ -97,11 +97,11 @@ describe('HybridRenderer (Phase 3.5)', () => {
     it('should synchronize size', () => {
       const result = renderer.render(mockNode as NodeModel);
 
-      expect(result.svgLayer.props?.width).toBe(150);
-      expect(result.svgLayer.props?.height).toBe(80);
+      expect(result.svgLayer.props?.['width']).toBe(150);
+      expect(result.svgLayer.props?.['height']).toBe(80);
 
-      expect(result.htmlLayer.style?.width).toBe('150px');
-      expect(result.htmlLayer.style?.height).toBe('80px');
+      expect(result.htmlLayer.style?.['width']).toBe('150px');
+      expect(result.htmlLayer.style?.['height']).toBe('80px');
     });
   });
 
@@ -110,7 +110,7 @@ describe('HybridRenderer (Phase 3.5)', () => {
       const result = renderer.render(mockNode as NodeModel);
 
       // HTML layer should be above SVG by default
-      expect(result.htmlLayer.style?.zIndex).toBeDefined();
+      expect(result.htmlLayer.style?.['zIndex']).toBeDefined();
     });
 
     it('should use custom z-index from config', () => {
@@ -122,7 +122,7 @@ describe('HybridRenderer (Phase 3.5)', () => {
 
       const result = renderer.render(mockNode as NodeModel, { htmlConfig });
 
-      expect(result.htmlLayer.style?.zIndex).toBe(100);
+      expect(result.htmlLayer.style?.['zIndex']).toBe(100);
     });
 
     it('should allow HTML layer below SVG', () => {
@@ -134,7 +134,7 @@ describe('HybridRenderer (Phase 3.5)', () => {
 
       const result = renderer.render(mockNode as NodeModel, { htmlConfig });
 
-      expect(result.htmlLayer.style?.zIndex).toBe(-1);
+      expect(result.htmlLayer.style?.['zIndex']).toBe(-1);
     });
   });
 
@@ -142,7 +142,7 @@ describe('HybridRenderer (Phase 3.5)', () => {
     it('should enable pointer events on HTML layer by default', () => {
       const result = renderer.render(mockNode as NodeModel);
 
-      expect(result.htmlLayer.style?.pointerEvents).not.toBe('none');
+      expect(result.htmlLayer.style?.['pointerEvents']).not.toBe('none');
     });
 
     it('should disable pointer events when configured', () => {
@@ -154,7 +154,7 @@ describe('HybridRenderer (Phase 3.5)', () => {
 
       const result = renderer.render(mockNode as NodeModel, { htmlConfig });
 
-      expect(result.htmlLayer.style?.pointerEvents).toBe('none');
+      expect(result.htmlLayer.style?.['pointerEvents']).toBe('none');
     });
 
     it('should pass events through to SVG when HTML pointer events disabled', () => {
@@ -167,10 +167,10 @@ describe('HybridRenderer (Phase 3.5)', () => {
       const result = renderer.render(mockNode as NodeModel, { htmlConfig });
 
       // HTML layer doesn't capture events
-      expect(result.htmlLayer.style?.pointerEvents).toBe('none');
+      expect(result.htmlLayer.style?.['pointerEvents']).toBe('none');
 
       // SVG layer can receive events
-      expect(result.svgLayer.props?.pointerEvents).not.toBe('none');
+      expect(result.svgLayer.props?.['pointerEvents']).not.toBe('none');
     });
   });
 
@@ -250,9 +250,9 @@ describe('HybridRenderer (Phase 3.5)', () => {
 
       const result = renderer.render(mockNode as NodeModel, { htmlConfig });
 
-      expect(result.htmlLayer.style?.backgroundColor).toBe('#fff');
-      expect(result.htmlLayer.style?.padding).toBe('10px');
-      expect(result.htmlLayer.style?.borderRadius).toBe('8px');
+      expect(result.htmlLayer.style?.['backgroundColor']).toBe('#fff');
+      expect(result.htmlLayer.style?.['padding']).toBe('10px');
+      expect(result.htmlLayer.style?.['borderRadius']).toBe('8px');
     });
 
     it('should skip HTML layer when no config provided', () => {
@@ -270,7 +270,7 @@ describe('HybridRenderer (Phase 3.5)', () => {
 
       // Transform origin should be at center of node
       const expectedOrigin = '50% 50%';
-      expect(result.htmlLayer.style?.transformOrigin).toBe(expectedOrigin);
+      expect(result.htmlLayer.style?.['transformOrigin']).toBe(expectedOrigin);
     });
 
     it('should synchronize transform origin between layers', () => {
@@ -278,7 +278,7 @@ describe('HybridRenderer (Phase 3.5)', () => {
       const result = renderer.render(mockNode as NodeModel);
 
       // Both layers should rotate around same point (center)
-      expect(result.htmlLayer.style?.transformOrigin).toBe('50% 50%');
+      expect(result.htmlLayer.style?.['transformOrigin']).toBe('50% 50%');
       // SVG uses transform-origin via props or inline style
       expect(result.svgLayer.props?.['transform-origin']).toBeDefined();
     });
@@ -288,16 +288,16 @@ describe('HybridRenderer (Phase 3.5)', () => {
     it('should use absolute positioning for HTML layer', () => {
       const result = renderer.render(mockNode as NodeModel);
 
-      expect(result.htmlLayer.style?.position).toBe('absolute');
+      expect(result.htmlLayer.style?.['position']).toBe('absolute');
     });
 
     it('should calculate correct absolute position', () => {
-      mockNode.position = { x: 500, y: 600 };
+      mockNode['position'] = { x: 500, y: 600 };
       const result = renderer.render(mockNode as NodeModel);
 
       // HTML layer uses left/top for positioning
-      expect(result.htmlLayer.style?.left).toBe('500px');
-      expect(result.htmlLayer.style?.top).toBe('600px');
+      expect(result.htmlLayer.style?.['left']).toBe('500px');
+      expect(result.htmlLayer.style?.['top']).toBe('600px');
     });
   });
 
@@ -334,13 +334,13 @@ describe('HybridRenderer (Phase 3.5)', () => {
     });
 
     it('should handle negative positions', () => {
-      mockNode.position = { x: -100, y: -50 };
+      mockNode['position'] = { x: -100, y: -50 };
 
       const result = renderer.render(mockNode as NodeModel);
 
-      expect(result.svgLayer.props?.transform).toContain('translate(-100, -50)');
-      expect(result.htmlLayer.style?.left).toBe('-100px');
-      expect(result.htmlLayer.style?.top).toBe('-50px');
+      expect(result.svgLayer.props?.['transform']).toContain('translate(-100, -50)');
+      expect(result.htmlLayer.style?.['left']).toBe('-100px');
+      expect(result.htmlLayer.style?.['top']).toBe('-50px');
     });
 
     it('should handle extreme rotation values', () => {
@@ -348,8 +348,8 @@ describe('HybridRenderer (Phase 3.5)', () => {
 
       const result = renderer.render(mockNode as NodeModel);
 
-      expect(result.svgLayer.props?.transform).toContain('rotate(720)');
-      expect(result.htmlLayer.style?.transform).toContain('rotate(720deg)');
+      expect(result.svgLayer.props?.['transform']).toContain('rotate(720 ');
+      expect(result.htmlLayer.style?.['transform']).toContain('rotate(720deg)');
     });
 
     it('should handle non-uniform scale', () => {
@@ -357,8 +357,8 @@ describe('HybridRenderer (Phase 3.5)', () => {
 
       const result = renderer.render(mockNode as NodeModel);
 
-      expect(result.svgLayer.props?.transform).toContain('scale(2, 0.5)');
-      expect(result.htmlLayer.style?.transform).toContain('scale(2, 0.5)');
+      expect(result.svgLayer.props?.['transform']).toContain('scale(2, 0.5)');
+      expect(result.htmlLayer.style?.['transform']).toContain('scale(2, 0.5)');
     });
   });
 

@@ -1,11 +1,20 @@
 // Shape-Aware Port Positioning Tests (Phase 3.2 - TDD)
 
 import { NodeModel, PortModel } from '@grafloria/engine';
+import { getPortPositionForShape } from './port-positioning';
+
+// NodeModel auto-creates 4 default ports which shift the same-side spread —
+// these positioning tests declare their ports explicitly, so start bare
+function bareNode(config: ConstructorParameters<typeof NodeModel>[0]): NodeModel {
+  const node = new NodeModel(config);
+  node.getPorts().forEach((port) => node.removePort(port.id));
+  return node;
+}
 
 describe('Shape-Aware Port Positioning (Phase 3.2)', () => {
   describe('Rectangle Port Positioning', () => {
     it('should position ports on rectangle edges', () => {
-      const node = new NodeModel({
+      const node = bareNode({
         type: 'test-node',
         position: { x: 100, y: 100 },
         size: { width: 100, height: 60 },
@@ -49,7 +58,7 @@ describe('Shape-Aware Port Positioning (Phase 3.2)', () => {
 
   describe('Circle Port Positioning', () => {
     it('should position ports on circle circumference', () => {
-      const node = new NodeModel({
+      const node = bareNode({
         type: 'test-node',
         position: { x: 100, y: 100 },
         size: { width: 100, height: 100 },
@@ -74,24 +83,24 @@ describe('Shape-Aware Port Positioning (Phase 3.2)', () => {
       // Left: center + (-radius, 0) = (0, 50)
 
       const topPos = getPortPositionForShape(topPort, node);
-      expect(topPos.x).toBe(50);
-      expect(topPos.y).toBe(0);
+      expect(topPos.x).toBeCloseTo(50, 6);
+      expect(topPos.y).toBeCloseTo(0, 6);
 
       const rightPos = getPortPositionForShape(rightPort, node);
-      expect(rightPos.x).toBe(100);
-      expect(rightPos.y).toBe(50);
+      expect(rightPos.x).toBeCloseTo(100, 6);
+      expect(rightPos.y).toBeCloseTo(50, 6);
 
       const bottomPos = getPortPositionForShape(bottomPort, node);
-      expect(bottomPos.x).toBe(50);
-      expect(bottomPos.y).toBe(100);
+      expect(bottomPos.x).toBeCloseTo(50, 6);
+      expect(bottomPos.y).toBeCloseTo(100, 6);
 
       const leftPos = getPortPositionForShape(leftPort, node);
-      expect(leftPos.x).toBe(0);
-      expect(leftPos.y).toBe(50);
+      expect(leftPos.x).toBeCloseTo(0, 6);
+      expect(leftPos.y).toBeCloseTo(50, 6);
     });
 
     it('should handle non-square circles (use smaller dimension)', () => {
-      const node = new NodeModel({
+      const node = bareNode({
         type: 'test-node',
         position: { x: 100, y: 100 },
         size: { width: 120, height: 80 }, // Non-square
@@ -107,14 +116,14 @@ describe('Shape-Aware Port Positioning (Phase 3.2)', () => {
       // Right port: center + (radius, 0) = (60 + 40, 40) = (100, 40)
 
       const rightPos = getPortPositionForShape(rightPort, node);
-      expect(rightPos.x).toBe(100);
-      expect(rightPos.y).toBe(40);
+      expect(rightPos.x).toBeCloseTo(100, 6);
+      expect(rightPos.y).toBeCloseTo(40, 6);
     });
   });
 
   describe('Diamond Port Positioning', () => {
     it('should position ports at diamond vertices', () => {
-      const node = new NodeModel({
+      const node = bareNode({
         type: 'decision-node',
         position: { x: 100, y: 100 },
         size: { width: 120, height: 120 },
@@ -158,7 +167,7 @@ describe('Shape-Aware Port Positioning (Phase 3.2)', () => {
 
   describe('Ellipse Port Positioning', () => {
     it('should position ports on ellipse perimeter', () => {
-      const node = new NodeModel({
+      const node = bareNode({
         type: 'test-node',
         position: { x: 100, y: 100 },
         size: { width: 150, height: 80 },
@@ -183,26 +192,26 @@ describe('Shape-Aware Port Positioning (Phase 3.2)', () => {
       // Left: (0, 40)
 
       const topPos = getPortPositionForShape(topPort, node);
-      expect(topPos.x).toBe(75);
-      expect(topPos.y).toBe(0);
+      expect(topPos.x).toBeCloseTo(75, 6);
+      expect(topPos.y).toBeCloseTo(0, 6);
 
       const rightPos = getPortPositionForShape(rightPort, node);
-      expect(rightPos.x).toBe(150);
-      expect(rightPos.y).toBe(40);
+      expect(rightPos.x).toBeCloseTo(150, 6);
+      expect(rightPos.y).toBeCloseTo(40, 6);
 
       const bottomPos = getPortPositionForShape(bottomPort, node);
-      expect(bottomPos.x).toBe(75);
-      expect(bottomPos.y).toBe(80);
+      expect(bottomPos.x).toBeCloseTo(75, 6);
+      expect(bottomPos.y).toBeCloseTo(80, 6);
 
       const leftPos = getPortPositionForShape(leftPort, node);
-      expect(leftPos.x).toBe(0);
-      expect(leftPos.y).toBe(40);
+      expect(leftPos.x).toBeCloseTo(0, 6);
+      expect(leftPos.y).toBeCloseTo(40, 6);
     });
   });
 
   describe('Hexagon Port Positioning', () => {
     it('should position ports at hexagon edge centers', () => {
-      const node = new NodeModel({
+      const node = bareNode({
         type: 'test-node',
         position: { x: 100, y: 100 },
         size: { width: 120, height: 100 },
@@ -246,7 +255,7 @@ describe('Shape-Aware Port Positioning (Phase 3.2)', () => {
 
   describe('Multi-Port Positioning', () => {
     it('should position multiple ports on same side with index offset', () => {
-      const node = new NodeModel({
+      const node = bareNode({
         type: 'test-node',
         position: { x: 100, y: 100 },
         size: { width: 100, height: 100 },
@@ -284,7 +293,7 @@ describe('Shape-Aware Port Positioning (Phase 3.2)', () => {
 
   describe('Port Offset Support', () => {
     it('should apply port offset to calculated position', () => {
-      const node = new NodeModel({
+      const node = bareNode({
         type: 'test-node',
         position: { x: 100, y: 100 },
         size: { width: 100, height: 100 },
@@ -308,7 +317,7 @@ describe('Shape-Aware Port Positioning (Phase 3.2)', () => {
 
   describe('Backward Compatibility', () => {
     it('should default to rectangle positioning if no shape config', () => {
-      const node = new NodeModel({
+      const node = bareNode({
         type: 'legacy-node',
         position: { x: 100, y: 100 },
         size: { width: 100, height: 60 },
@@ -325,12 +334,3 @@ describe('Shape-Aware Port Positioning (Phase 3.2)', () => {
     });
   });
 });
-
-/**
- * Helper function to get port position for a given shape
- * This will be implemented in the actual code
- */
-function getPortPositionForShape(port: PortModel, node: NodeModel): { x: number; y: number } {
-  // This is a placeholder - will be implemented in actual code
-  throw new Error('Not implemented yet - this is a test placeholder');
-}

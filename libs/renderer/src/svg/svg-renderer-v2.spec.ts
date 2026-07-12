@@ -1,6 +1,31 @@
 import { SVGRendererV2 } from './svg-renderer-v2';
 import type { VNode } from '../types/vnode.types';
 
+// jsdom implements no SVG geometry — approximate getBBox from attributes and
+// text length so the measurement pipeline can be exercised
+beforeAll(() => {
+  (SVGElement.prototype as any).getBBox = function (this: SVGElement) {
+    const num = (name: string) => parseFloat(this.getAttribute(name) || '0');
+    if (this.tagName.toLowerCase() === 'text') {
+      const fontSize = parseFloat(this.getAttribute('font-size') || '16');
+      const text = this.textContent || '';
+      return { x: num('x'), y: num('y'), width: Math.max(1, text.length * fontSize * 0.6), height: fontSize * 1.2 };
+    }
+    const own = { x: num('x'), y: num('y'), width: num('width'), height: num('height') };
+    if (own.width > 0 || own.height > 0 || this.children.length === 0) return own;
+    // containers (g/svg): union the children's boxes like the real getBBox
+    let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+    for (const child of Array.from(this.children)) {
+      const b = (child as any).getBBox?.();
+      if (!b) continue;
+      minX = Math.min(minX, b.x); minY = Math.min(minY, b.y);
+      maxX = Math.max(maxX, b.x + b.width); maxY = Math.max(maxY, b.y + b.height);
+    }
+    if (minX === Infinity) return own;
+    return { x: minX, y: minY, width: maxX - minX, height: maxY - minY };
+  };
+});
+
 describe('SVGRendererV2', () => {
   let renderer: SVGRendererV2;
   let container: HTMLElement;
@@ -277,6 +302,7 @@ describe('SVGRendererV2', () => {
     it('should update specific nodes', async () => {
       const vnode: VNode = {
         type: 'g',
+        props: {},
         children: [
           {
             type: 'rect',
@@ -467,6 +493,10 @@ describe('SVGRendererV2', () => {
       });
 
       expect(exportPromise).toBeInstanceOf(Promise);
+      // jsdom has no URL.createObjectURL / real image loading — the rejection
+      // is expected here; swallow it so the unhandled rejection doesn't kill
+      // the jest worker process
+      await exportPromise.catch(() => undefined);
     });
   });
 

@@ -66,7 +66,9 @@ export class ContainerIdGenerator {
    * ```
    */
   static isContainerId(id: string): boolean {
-    return id.startsWith('fo-');
+    // Must match the full documented format `fo-{nodeId}-{counter}` — a bare
+    // 'fo-' prefix accepted arbitrary ids like 'fo-invalid'
+    return /^fo-.+-\d+$/.test(id);
   }
 
   /**

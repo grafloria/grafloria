@@ -1,5 +1,5 @@
 import { SVGRenderer } from './svg-renderer';
-import { DiagramEngine, DiagramModel, NodeModel, LinkModel } from '@grafloria/engine';
+import { DiagramEngine, DiagramModel, NodeModel, LinkModel, PortModel } from '@grafloria/engine';
 import { LIGHT_THEME, DARK_THEME } from '../themes';
 import type { VNode, Rectangle } from '../types';
 
@@ -65,9 +65,9 @@ describe('SVGRenderer', () => {
       const vnode = renderer.render(viewport, 1.0) as VNode;
 
       expect(vnode.type).toBe('svg');
-      expect(vnode.props.width).toBe(1920);
-      expect(vnode.props.height).toBe(1080);
-      expect(vnode.children).toHaveLength(2); // links layer + nodes layer
+      // width/height are CSS-controlled (100%) — the viewBox carries the size
+      expect(vnode.props['viewBox']).toBe('0 0 1920 1080');
+      expect(vnode.children).toHaveLength(3); // links + nodes + connection preview
     });
 
     test('should create links layer and nodes layer', () => {
@@ -146,9 +146,9 @@ describe('SVGRenderer', () => {
       const node2 = new NodeModel({ type: 'basic', position: { x: 200, y: 200 } });
       const node3 = new NodeModel({ type: 'basic', position: { x: -500, y: -500 } }); // Outside
 
-      node1.addPort({ id: 'port1', type: 'output' } as any);
-      node2.addPort({ id: 'port2', type: 'input' } as any);
-      node3.addPort({ id: 'port3', type: 'output' } as any);
+      node1.addPort(new PortModel({ id: 'port1', type: 'output', side: 'right' }));
+      node2.addPort(new PortModel({ id: 'port2', type: 'input', side: 'left' }));
+      node3.addPort(new PortModel({ id: 'port3', type: 'output', side: 'right' }));
 
       diagram.addNode(node1);
       diagram.addNode(node2);
@@ -303,9 +303,13 @@ describe('SVGRenderer', () => {
       const vnode = renderer.render(viewport, 1.0) as VNode;
 
       const nodeVNode = vnode.children![1].children![0];
-      const rect = nodeVNode.children![0];
+      // children[0] is the drop shadow — locate the themed shape
+      const rect = nodeVNode.children!.find(
+        (c: any) => typeof c.props?.className === 'string' && c.props.className.includes('diagram-node')
+      )!;
 
       // CSS mode - should use CSS classes
+      expect(rect).toBeDefined();
       expect(rect.props.className).toContain('diagram-node');
     });
 
@@ -323,11 +327,12 @@ describe('SVGRenderer', () => {
       const vnode = renderer.render(viewport, 1.0) as VNode;
 
       const nodeVNode = vnode.children![1].children![0];
-      const rect = nodeVNode.children![0];
+      // children[0] is the drop shadow; theme colors land in the inline style
+      const rect = nodeVNode.children![1];
 
       // Programmatic mode - should use computed styles
-      expect(rect.props.fill).toBe(LIGHT_THEME.colors.node.default.fill);
-      expect(rect.props.stroke).toBe(LIGHT_THEME.colors.node.default.stroke);
+      expect(rect.props.style).toContain(`fill: ${LIGHT_THEME.colors.node.default.fill}`);
+      expect(rect.props.style).toContain(`stroke: ${LIGHT_THEME.colors.node.default.stroke}`);
     });
 
     test('should switch themes dynamically', () => {
@@ -341,18 +346,18 @@ describe('SVGRenderer', () => {
 
       const viewport = { x: 0, y: 0, width: 800, height: 600 };
 
-      // Render with light theme
+      // Render with light theme (children[0] is the drop shadow)
       let vnode = renderer.render(viewport, 1.0) as VNode;
-      let rect = vnode.children![1].children![0].children![0];
-      expect(rect.props.fill).toBe(LIGHT_THEME.colors.node.default.fill);
+      let rect = vnode.children![1].children![0].children![1];
+      expect(rect.props.style).toContain(`fill: ${LIGHT_THEME.colors.node.default.fill}`);
 
       // Switch to dark theme
       renderer.setTheme(DARK_THEME);
 
       // Re-render with dark theme
       vnode = renderer.render(viewport, 1.0) as VNode;
-      rect = vnode.children![1].children![0].children![0];
-      expect(rect.props.fill).toBe(DARK_THEME.colors.node.default.fill);
+      rect = vnode.children![1].children![0].children![1];
+      expect(rect.props.style).toContain(`fill: ${DARK_THEME.colors.node.default.fill}`);
     });
 
     test('should emit theme changed event', () => {

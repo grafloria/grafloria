@@ -10,7 +10,7 @@ describe('SVGRenderer - Shape Rendering (Phase 3.1)', () => {
 
   beforeEach(() => {
     engine = new DiagramEngine();
-    diagram = engine.getDiagram();
+    diagram = engine.createDiagram('Test')!;
     renderer = new SVGRenderer(engine);
   });
 
@@ -65,9 +65,10 @@ describe('SVGRenderer - Shape Rendering (Phase 3.1)', () => {
       const rect = findChildVNodeByType(nodeShape, 'rect');
 
       expect(rect).toBeDefined();
-      expect(rect?.props.fill).toBe('#f5f5f5');
-      expect(rect?.props.stroke).toBe('#333');
-      expect(rect?.props.strokeWidth).toBe(2);
+      // fill/stroke live in the inline style (highest CSS specificity)
+      expect(rect?.props.style).toContain('fill: #f5f5f5');
+      expect(rect?.props.style).toContain('stroke: #333');
+      expect(rect?.props.style).toContain('stroke-width: 2');
     });
 
     it('should render rectangle with corner radius', () => {
@@ -123,8 +124,8 @@ describe('SVGRenderer - Shape Rendering (Phase 3.1)', () => {
       expect(circle?.props.cx).toBe(50); // center x = width / 2
       expect(circle?.props.cy).toBe(50); // center y = height / 2
       expect(circle?.props.r).toBe(50); // radius = min(width, height) / 2
-      expect(circle?.props.fill).toBe('#e3f2fd');
-      expect(circle?.props.stroke).toBe('#1976d2');
+      expect(circle?.props.style).toContain('fill: #e3f2fd');
+      expect(circle?.props.style).toContain('stroke: #1976d2');
     });
 
     it('should render circle with correct radius for non-square nodes', () => {
@@ -178,8 +179,8 @@ describe('SVGRenderer - Shape Rendering (Phase 3.1)', () => {
 
       expect(polygon).toBeDefined();
       expect(polygon?.props.points).toBeDefined();
-      expect(polygon?.props.fill).toBe('#fff9c4');
-      expect(polygon?.props.stroke).toBe('#f57f17');
+      expect(polygon?.props.style).toContain('fill: #fff9c4');
+      expect(polygon?.props.style).toContain('stroke: #f57f17');
 
       // Diamond points should be: top, right, bottom, left
       const points = polygon?.props.points as string;
@@ -326,7 +327,10 @@ function findChildVNodeByType(vnode: any, type: string): any {
   if (!vnode || !vnode.children) return undefined;
 
   for (const child of vnode.children) {
-    if (child.type === type) return child;
+    // Skip the drop-shadow twin — these tests assert on the SHAPE geometry
+    const isShadow = typeof child?.props?.className === 'string' &&
+      child.props.className.includes('node-shadow');
+    if (child.type === type && !isShadow) return child;
 
     // Recursive search
     const found = findChildVNodeByType(child, type);

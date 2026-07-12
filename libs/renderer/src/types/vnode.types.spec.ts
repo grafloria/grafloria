@@ -1,4 +1,4 @@
-import type { VNode, VNodeProps } from './vnode.types';
+import type { VNode, VNodeProps, VNodeType } from './vnode.types';
 
 describe('VNode Types', () => {
   describe('Basic VNode Structure', () => {
