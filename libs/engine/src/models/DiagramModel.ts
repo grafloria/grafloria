@@ -671,6 +671,69 @@ export class DiagramModel extends DiagramEntity {
   }
 
   /**
+   * Compound-graph containment (Wave-2)
+   *
+   * These derive the nesting tree from each GroupModel.parentGroupId pointer,
+   * which addMember/removeMember/setParent keep authoritative. Coordinates stay
+   * ABSOLUTE across the codebase; nesting is purely a logical containment tree.
+   */
+
+  /**
+   * Get a group's ancestor chain (nearest parent first), walking parentGroupId
+   * upward. Robust against malformed self/looping pointers.
+   */
+  getAncestors(groupId: string): GroupModel[] {
+    const result: GroupModel[] = [];
+    const seen = new Set<string>([groupId]);
+
+    let current = this.groups.get(groupId);
+    while (current && current.parentGroupId) {
+      if (seen.has(current.parentGroupId)) {
+        break; // defensive: never loop on a corrupt pointer
+      }
+      const parent = this.groups.get(current.parentGroupId);
+      if (!parent) {
+        break;
+      }
+      result.push(parent);
+      seen.add(parent.id);
+      current = parent;
+    }
+
+    return result;
+  }
+
+  /**
+   * Get every group nested (directly or transitively) inside `groupId`.
+   * Breadth-first over the parentGroupId back-pointers.
+   */
+  getDescendants(groupId: string): GroupModel[] {
+    const result: GroupModel[] = [];
+    const seen = new Set<string>([groupId]);
+    const queue: string[] = [groupId];
+
+    while (queue.length > 0) {
+      const currentId = queue.shift()!;
+      for (const group of this.groups.values()) {
+        if (group.parentGroupId === currentId && !seen.has(group.id)) {
+          seen.add(group.id);
+          result.push(group);
+          queue.push(group.id);
+        }
+      }
+    }
+
+    return result;
+  }
+
+  /**
+   * Nesting depth of a group: number of ancestors (0 for a top-level group).
+   */
+  getDepth(groupId: string): number {
+    return this.getAncestors(groupId).length;
+  }
+
+  /**
    * Selection Management
    */
 

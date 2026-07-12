@@ -49,10 +49,12 @@ export class AddToGroupCommand extends Command {
       return false;
     }
 
-    // Check entity exists (node or link)
+    // Check entity exists (node, link, or nested group). Groups may be members
+    // of groups for compound-graph nesting (Wave-2).
     const entityExists =
       context.diagram.nodes.has(this.entityId) ||
-      context.diagram.links.has(this.entityId);
+      context.diagram.links.has(this.entityId) ||
+      context.diagram.groups.has(this.entityId);
 
     return entityExists;
   }

@@ -21,7 +21,16 @@ export interface SerializedGroup extends SerializedEntity {
   layoutConfig?: LayoutConfig; // Phase 1.7
   position?: { x: number; y: number }; // group geometry
   size?: { width: number; height: number; depth: number }; // group geometry
+  parentGroupId?: string; // Wave-2: compound-graph containment (nesting)
 }
+
+/**
+ * Predicate used to gate group membership (Wave-2).
+ * Return false to reject a candidate entity from joining the group.
+ * @param candidateId - id of the node/group being added
+ * @param group - the group the candidate would join
+ */
+export type MemberValidation = (candidateId: string, group: GroupModel) => boolean;
 
 export class GroupModel extends DiagramEntity {
   name: string;
@@ -37,38 +46,210 @@ export class GroupModel extends DiagramEntity {
   position: { x: number; y: number } = { x: 0, y: 0 };
   size?: { width: number; height: number; depth: number };
 
+  // Wave-2: compound-graph containment. `parentGroupId` is the single source of
+  // truth for the nesting tree; it is kept in sync with the containing group's
+  // `members` set by addMember/removeMember/setParent. Undefined => top-level.
+  parentGroupId?: string;
+
+  // Wave-2: optional per-group predicate gating who may join this group.
+  // Not serialized (functions can't round-trip). Checked in addMember and by
+  // the drag-drop membership service before it commits.
+  memberValidation?: MemberValidation;
+
+  // Wave-2: transient drag-hover highlight state (not serialized).
+  isHovered: boolean = false;
+
   constructor(config: { id?: string; name: string }) {
     super(config.id);
     this.name = config.name;
   }
 
   /**
-   * Add member to group
+   * Resolve the owning diagram, preferring an explicit argument and falling
+   * back to the reference stashed in metadata by DiagramModel.addGroup.
    */
-  addMember(entityId: string): void {
-    if (!this.members.has(entityId)) {
-      this.members.add(entityId);
-      this.trackChange('members', null, entityId);
-      this.emitter.emit('member:added', entityId);
+  private resolveDiagram(diagram?: DiagramModel): DiagramModel | undefined {
+    return diagram ?? (this.metadata.get('diagram') as DiagramModel | undefined);
+  }
 
-      // Auto-apply layout if enabled
-      if (this.getMetadata('autoLayout') === true) {
-        this.applyLayout();
+  /**
+   * Whether `candidateId` may legally join this group (Wave-2).
+   * Rejects self-membership, ancestor cycles (adding an ancestor group as a
+   * member would create a containment loop), and candidates failing the
+   * per-group `memberValidation` predicate. Node candidates only run the
+   * predicate check (nodes can't form group cycles).
+   */
+  canAddMember(candidateId: string, diagram?: DiagramModel): boolean {
+    if (candidateId === this.id) {
+      return false;
+    }
+
+    const dm = this.resolveDiagram(diagram);
+    const candidateGroup = dm?.getGroup(candidateId);
+
+    // Cycle prevention: reject if the candidate is an ancestor of this group.
+    if (candidateGroup && dm) {
+      const ancestors = dm.getAncestors(this.id);
+      if (ancestors.some((g) => g.id === candidateId)) {
+        return false;
       }
+    }
+
+    // Per-group membership predicate.
+    if (this.memberValidation && !this.memberValidation(candidateId, this)) {
+      return false;
+    }
+
+    return true;
+  }
+
+  /**
+   * Add member to group.
+   *
+   * When the member is itself a group, this establishes containment by setting
+   * the child's `parentGroupId` (detaching it from any previous parent), which
+   * keeps the nesting tree consistent for getAncestors/getDescendants. Members
+   * that would create a cycle or fail `memberValidation` are rejected (no-op).
+   */
+  addMember(entityId: string, diagram?: DiagramModel): void {
+    if (this.members.has(entityId)) {
+      return;
+    }
+
+    const dm = this.resolveDiagram(diagram);
+
+    // Guard cycles + validation (no-op on rejection to preserve void contract).
+    if (!this.canAddMember(entityId, dm)) {
+      return;
+    }
+
+    this.members.add(entityId);
+
+    // Group member => maintain the containment back-pointer.
+    const childGroup = dm?.getGroup(entityId);
+    if (childGroup) {
+      this.linkChildGroup(childGroup, dm!);
+    }
+
+    this.trackChange('members', null, entityId);
+    this.emitter.emit('member:added', entityId);
+
+    // Auto-apply layout if enabled
+    if (this.getMetadata('autoLayout') === true) {
+      this.applyLayout();
     }
   }
 
   /**
-   * Remove member from group
+   * Remove member from group. When the member is a group whose parent is this
+   * group, its `parentGroupId` back-pointer is cleared so the nesting tree
+   * stays consistent.
    */
-  removeMember(entityId: string): boolean {
+  removeMember(entityId: string, diagram?: DiagramModel): boolean {
     if (this.members.has(entityId)) {
       this.members.delete(entityId);
+
+      const dm = this.resolveDiagram(diagram);
+      const childGroup = dm?.getGroup(entityId);
+      if (childGroup && childGroup.parentGroupId === this.id) {
+        childGroup.clearParentGroupId();
+      }
+
       this.trackChange('members', entityId, null);
       this.emitter.emit('member:removed', entityId);
       return true;
     }
     return false;
+  }
+
+  /**
+   * Make `child` a nested group of this group: detach from previous parent's
+   * members and point `parentGroupId` here. Uses protected access allowed
+   * between GroupModel instances.
+   */
+  private linkChildGroup(child: GroupModel, diagram: DiagramModel): void {
+    if (child.parentGroupId === this.id) {
+      return;
+    }
+    // Detach from a previous parent so its members set stays consistent.
+    if (child.parentGroupId) {
+      const oldParent = diagram.getGroup(child.parentGroupId);
+      oldParent?.members.delete(child.id);
+    }
+    const old = child.parentGroupId;
+    child.parentGroupId = this.id;
+    child.trackChange('parentGroupId', old, this.id);
+    child.emitter.emit('parent:changed', { oldParentId: old, newParentId: this.id });
+  }
+
+  /**
+   * Clear this group's parent back-pointer (used when detached from a parent).
+   */
+  private clearParentGroupId(): void {
+    if (this.parentGroupId === undefined) {
+      return;
+    }
+    const old = this.parentGroupId;
+    this.parentGroupId = undefined;
+    this.trackChange('parentGroupId', old, undefined);
+    this.emitter.emit('parent:changed', { oldParentId: old, newParentId: undefined });
+  }
+
+  /**
+   * Reparent this group under `newParentId` (or detach when undefined),
+   * keeping both the `parentGroupId` pointer and the parents' `members` sets
+   * consistent. Rejects cycles (a group cannot be nested under one of its own
+   * descendants) and returns false without mutating anything.
+   */
+  setParent(newParentId: string | undefined, diagram?: DiagramModel): boolean {
+    const dm = this.resolveDiagram(diagram);
+
+    if (newParentId !== undefined) {
+      if (newParentId === this.id) {
+        return false;
+      }
+      // Cycle prevention: the new parent must not live inside this subtree.
+      if (dm && dm.getDescendants(this.id).some((g) => g.id === newParentId)) {
+        return false;
+      }
+      // Honour the target group's own membership predicate.
+      const newParent = dm?.getGroup(newParentId);
+      if (newParent && !newParent.canAddMember(this.id, dm)) {
+        return false;
+      }
+    }
+
+    const oldParentId = this.parentGroupId;
+    if (oldParentId === newParentId) {
+      return true;
+    }
+
+    // Detach from old parent's members.
+    if (dm && oldParentId) {
+      dm.getGroup(oldParentId)?.members.delete(this.id);
+    }
+
+    this.parentGroupId = newParentId;
+    this.trackChange('parentGroupId', oldParentId, newParentId);
+    this.emitter.emit('parent:changed', { oldParentId, newParentId });
+
+    // Attach to new parent's members (kept in sync with parentGroupId).
+    if (dm && newParentId) {
+      dm.getGroup(newParentId)?.members.add(this.id);
+    }
+
+    return true;
+  }
+
+  /**
+   * Set transient drag-hover highlight state and notify listeners (Wave-2).
+   * Renderers/canvas can subscribe to 'hover:changed' to outline a drop target.
+   */
+  setHovered(hovered: boolean): void {
+    if (this.isHovered !== hovered) {
+      this.isHovered = hovered;
+      this.emitter.emit('hover:changed', hovered);
+    }
   }
 
   /**
@@ -488,6 +669,8 @@ export class GroupModel extends DiagramEntity {
       size: this.size
         ? { width: this.size.width, height: this.size.height, depth: this.size.depth }
         : undefined,
+      // Wave-2: containment tree pointer (undefined for top-level groups).
+      parentGroupId: this.parentGroupId,
     };
   }
 
@@ -499,6 +682,11 @@ export class GroupModel extends DiagramEntity {
     group.members = new Set(data.members);
     group.isCollapsed = data.isCollapsed;
     group.bounds = data.bounds;
+
+    // Wave-2: restore containment tree pointer.
+    if (data.parentGroupId !== undefined) {
+      group.parentGroupId = data.parentGroupId;
+    }
 
     // Restore group geometry (position/size). Position defaults to origin when
     // absent so older serialized payloads keep working.

@@ -46,6 +46,9 @@ export * from './routing';
 // Layout
 export * from './layout';
 
+// Interaction (Wave-2: group drag-in/out membership)
+export * from './interaction';
+
 // Templates (Phase 2)
 export * from './templates';
 
