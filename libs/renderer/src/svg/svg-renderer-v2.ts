@@ -180,7 +180,9 @@ export class SVGRendererV2 implements IRenderer {
       if (this.measurementCache.size > maxSize) {
         // Remove oldest entry
         const firstKey = this.measurementCache.keys().next().value;
-        this.measurementCache.delete(firstKey);
+        if (firstKey !== undefined) {
+          this.measurementCache.delete(firstKey);
+        }
       }
     }
 
@@ -325,7 +327,9 @@ export class SVGRendererV2 implements IRenderer {
       const maxSize = this.config.maxCacheSize ?? 1000;
       if (this.elementCache.size > maxSize) {
         const firstKey = this.elementCache.keys().next().value;
-        this.elementCache.delete(firstKey);
+        if (firstKey !== undefined) {
+          this.elementCache.delete(firstKey);
+        }
       }
     }
 

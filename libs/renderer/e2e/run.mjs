@@ -25,8 +25,17 @@ await build({
   alias: {
     '@grafloria/engine': join(repo, 'libs/engine/src/index.ts'),
     '@grafloria/renderer': join(repo, 'libs/renderer/src/index.ts'),
+    // Real interaction service (deep import so the whole component lib stays out)
+    '@grafloria/interaction-handler': join(repo, 'libs/renderer-angular/renderer-angular/src/lib/services/interaction-handler.service.ts'),
     'fs/promises': join(here, 'node-stubs.ts'),
     'path': join(here, 'node-stubs.ts'),
+  },
+  tsconfigRaw: {
+    compilerOptions: {
+      experimentalDecorators: true,
+      emitDecoratorMetadata: false,
+      useDefineForClassFields: false,
+    },
   },
   logLevel: 'warning',
 });
@@ -48,8 +57,16 @@ for (const cell of await page.locator('.cell').all()) {
 }
 writeFileSync(join(outDir, 'page-errors.json'), JSON.stringify(pageErrors, null, 2));
 
+const expectations = await page.evaluate(() => window.__EXPECTATIONS__ || []);
+writeFileSync(join(outDir, 'expectations.json'), JSON.stringify(expectations, null, 2));
+const failedExpectations = expectations.filter((e) => !e.pass);
+for (const e of failedExpectations) {
+  console.log(`EXPECTATION FAILED: ${e.name}${e.detail ? ` — ${e.detail}` : ''}`);
+}
+console.log(`expectations: ${expectations.length - failedExpectations.length}/${expectations.length} passed`);
+
 const failures = probes.__failures || [];
 console.log('scenario failures:', failures.length, failures.map((f) => f.scenario));
 console.log('page errors:', pageErrors.length);
 await browser.close();
-process.exit(failures.length || pageErrors.length ? 1 : 0);
+process.exit(failures.length || pageErrors.length || failedExpectations.length ? 1 : 0);

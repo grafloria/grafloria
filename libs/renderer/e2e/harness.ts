@@ -19,9 +19,18 @@ import {
   getPortPositionForShape,
 } from '@grafloria/renderer';
 
+import { InteractionHandlerService } from '@grafloria/interaction-handler';
+
 const SVG_NS = 'http://www.w3.org/2000/svg';
 const PROBES: Record<string, any> = {};
 (window as any).__PROBES__ = PROBES;
+
+// ---- expectations: hard pass/fail assertions collected for run.mjs ---------
+const EXPECT: Array<{ name: string; pass: boolean; detail: string }> = [];
+(window as any).__EXPECTATIONS__ = EXPECT;
+function expectThat(name: string, pass: boolean, detail = '') {
+  EXPECT.push({ name, pass: !!pass, detail });
+}
 
 // ---- console counting (perf finding) -------------------------------------
 let logCount = 0;
@@ -769,6 +778,295 @@ function s16_obstacleCrossing() {
   PROBES.s16_obstacleCrossing = probe;
 }
 
+// sample the rendered path and return min distance to a point (world coords)
+function pathDistanceToPoint(svg: SVGSVGElement, linkId: string, pt: { x: number; y: number }): number {
+  const g = svg.querySelector(`[data-vnode-key="link-${linkId}"]`);
+  const p = g?.querySelector('path') as SVGPathElement | null;
+  if (!p) return Infinity;
+  const total = p.getTotalLength();
+  let min = Infinity;
+  for (let d = 0; d <= total; d += 1.5) {
+    const s = p.getPointAtLength(d);
+    min = Math.min(min, Math.hypot(s.x - pt.x, s.y - pt.y));
+  }
+  return min;
+}
+function pathEndpoints(svg: SVGSVGElement, linkId: string) {
+  const g = svg.querySelector(`[data-vnode-key="link-${linkId}"]`);
+  const p = g?.querySelector('path') as SVGPathElement | null;
+  if (!p) return null;
+  const total = p.getTotalLength();
+  return { start: p.getPointAtLength(0), end: p.getPointAtLength(total) };
+}
+// world position of a specific port, via the library's own positioning
+// (NodeModel auto-creates default ports, so same-side spread must be computed,
+// never hand-derived from the node centre)
+function portWorld(node: any, portId: string) {
+  const port = node.getPorts().find((p: any) => p.id === portId);
+  const local = getPortPositionForShape(port, node);
+  return { x: node.position.x + local.x, y: node.position.y + local.y };
+}
+
+// ===========================================================================
+// S17: manual-waypoint lifecycle through the REAL InteractionHandlerService —
+// add → drag → node move (endpoints must follow, waypoint must survive) →
+// remove (flag must clear, auto-routing must resume)
+// ===========================================================================
+function s17_manualWaypointFlow() {
+  // --- direct link: full lifecycle including the flag-clear branch ---------
+  {
+    const engine = makeEngine();
+    const diagram = engine.createDiagram('s17');
+    const src = addNode(diagram, 'SRC', 30, 60, { w: 90, h: 50, fill: '#fef3c7', ports: [{ id: 's17-a-r', side: 'right', type: 'output' }] });
+    const tgt = addNode(diagram, 'TGT', 470, 60, { w: 90, h: 50, ports: [{ id: 's17-b-l', side: 'left', type: 'input' }] });
+    const link = makeLink(diagram, 's17-a-r', 's17-b-l', 'direct', {
+      arrowHead: { type: 'arrow', size: 10, filled: true, color: '#475569' },
+    });
+    const tmp = document.createElement('div');
+    renderInto(engine, tmp, 620, 330); tmp.remove();
+    expectThat('S17 settled auto link has no manual flag', link.getMetadata('hasManualWaypoints') !== true);
+
+    const svc = new InteractionHandlerService();
+    const mid = { x: (link.points[0].x + link.points[1].x) / 2, y: link.points[0].y };
+    expectThat('S17 service.addWaypoint accepts click on path', svc.addWaypoint(mid.x, mid.y, link) === true);
+    expectThat('S17 flag set by real service on add', link.getMetadata('hasManualWaypoints') === true);
+    expectThat('S17 waypoint inserted', link.points.length === 3);
+
+    // real drag lifecycle
+    svc.startWaypointDrag(1, link);
+    const dragTo = { x: mid.x + 30, y: mid.y + 90 };
+    expectThat('S17 service.moveWaypoint during drag', svc.moveWaypoint(dragTo.x, dragTo.y, engine) === true);
+
+    const stageA = cell('s17a', 'S17a — waypoint added + dragged via real InteractionHandlerService (red dot = waypoint)');
+    const svgA = renderInto(engine, stageA, 620, 330);
+    overlayDot(svgA, dragTo.x, dragTo.y, '#dc2626', 4);
+    expectThat('S17 rendered path honors dragged waypoint',
+      pathDistanceToPoint(svgA, link.id, dragTo) <= 2,
+      `distance=${pathDistanceToPoint(svgA, link.id, dragTo).toFixed(1)}px`);
+
+    // node move: endpoints must follow while the waypoint stays
+    src.setPosition(30, 250);
+    const stageB = cell('s17b', 'S17b — SRC moved: manual waypoint kept, endpoint follows the node');
+    const svgB = renderInto(engine, stageB, 620, 380);
+    overlayDot(svgB, dragTo.x, dragTo.y, '#dc2626', 4);
+    const ends = pathEndpoints(svgB, link.id)!;
+    const newPort = portWorld(src, 's17-a-r');
+    expectThat('S17 manual link endpoint follows moved node',
+      Math.hypot(ends.start.x - newPort.x, ends.start.y - newPort.y) <= 2,
+      `start=(${ends.start.x.toFixed(1)},${ends.start.y.toFixed(1)}) expected=(${newPort.x.toFixed(1)},${newPort.y.toFixed(1)})`);
+    expectThat('S17 waypoint survives node move', pathDistanceToPoint(svgB, link.id, dragTo) <= 2);
+    expectThat('S17 flag survives node move', link.getMetadata('hasManualWaypoints') === true);
+
+    // remove the waypoint → back to 2 points → flag clears, auto-route resumes
+    expectThat('S17 service.removeWaypoint', svc.removeWaypoint(1, link) === true);
+    expectThat('S17 flag cleared when waypoints gone', link.getMetadata('hasManualWaypoints') === false);
+    const stageC = cell('s17c', 'S17c — waypoint removed: flag cleared, auto-routing resumes');
+    const svgC = renderInto(engine, stageC, 620, 380);
+    const endsC = pathEndpoints(svgC, link.id)!;
+    const tgtPort = portWorld(tgt, 's17-b-l');
+    expectThat('S17 auto-routing resumed after removal',
+      Math.hypot(endsC.start.x - newPort.x, endsC.start.y - newPort.y) <= 2 &&
+      Math.hypot(endsC.end.x - tgtPort.x, endsC.end.y - tgtPort.y) <= 2,
+      `end=(${endsC.end.x.toFixed(1)},${endsC.end.y.toFixed(1)}) expected=(${tgtPort.x.toFixed(1)},${tgtPort.y.toFixed(1)})`);
+    PROBES.s17_direct = { finalPoints: link.points, flag: link.getMetadata('hasManualWaypoints') };
+  }
+
+  // --- orthogonal link: the manual fast-path branch under a node move ------
+  {
+    const engine = makeEngine();
+    const diagram = engine.createDiagram('s17o');
+    const src = addNode(diagram, 'SRC', 30, 60, { w: 90, h: 50, fill: '#fef3c7', ports: [{ id: 's17o-a-r', side: 'right', type: 'output' }] });
+    addNode(diagram, 'TGT', 470, 230, { w: 90, h: 50, ports: [{ id: 's17o-b-l', side: 'left', type: 'input' }] });
+    const link = makeLink(diagram, 's17o-a-r', 's17o-b-l', 'orthogonal', {
+      arrowHead: { type: 'arrow', size: 10, filled: true, color: '#475569' },
+    });
+    const tmp = document.createElement('div');
+    renderInto(engine, tmp, 640, 400); tmp.remove();
+
+    const svc = new InteractionHandlerService();
+    // longest segment midpoint is a safe add spot (≥30px from endpoints)
+    const pts = link.points;
+    let segIdx = 0, best = 0;
+    for (let i = 0; i < pts.length - 1; i++) {
+      const L = Math.hypot(pts[i + 1].x - pts[i].x, pts[i + 1].y - pts[i].y);
+      if (L > best) { best = L; segIdx = i; }
+    }
+    const mid = { x: (pts[segIdx].x + pts[segIdx + 1].x) / 2, y: (pts[segIdx].y + pts[segIdx + 1].y) / 2 };
+    expectThat('S17o addWaypoint on orthogonal link', svc.addWaypoint(mid.x, mid.y, link) === true);
+    const wpIdx = link.points.findIndex(p => Math.hypot(p.x - mid.x, p.y - mid.y) < 1);
+    svc.startWaypointDrag(wpIdx, link);
+    const dragTo = { x: mid.x + 25, y: mid.y + 55 };
+    expectThat('S17o moveWaypoint on orthogonal link', svc.moveWaypoint(dragTo.x, dragTo.y, engine) === true);
+
+    const stageA = cell('s17d', 'S17d — ORTHOGONAL manual waypoint (red dot), rendered through the manual fast path');
+    const svgA = renderInto(engine, stageA, 640, 400);
+    overlayDot(svgA, dragTo.x, dragTo.y, '#dc2626', 4);
+    expectThat('S17o orthogonal path honors waypoint', pathDistanceToPoint(svgA, link.id, dragTo) <= 2);
+
+    src.setPosition(30, 300);
+    const stageB = cell('s17e', 'S17e — SRC moved: orthogonal manual link follows, waypoint kept');
+    const svgB = renderInto(engine, stageB, 640, 420);
+    overlayDot(svgB, dragTo.x, dragTo.y, '#dc2626', 4);
+    const ends = pathEndpoints(svgB, link.id)!;
+    const newPort = portWorld(src, 's17o-a-r');
+    expectThat('S17o orthogonal manual link follows moved node',
+      Math.hypot(ends.start.x - newPort.x, ends.start.y - newPort.y) <= 2,
+      `start=(${ends.start.x.toFixed(1)},${ends.start.y.toFixed(1)}) expected=(${newPort.x.toFixed(1)},${newPort.y.toFixed(1)})`);
+    expectThat('S17o waypoint survives orthogonal node move', pathDistanceToPoint(svgB, link.id, dragTo) <= 2);
+    PROBES.s17_orthogonal = { points: link.points };
+  }
+}
+
+// ===========================================================================
+// S18: two crossings closer than the jump size — the merge branch must emit
+// ONE arc spanning both, with no backtracking
+// ===========================================================================
+function s18_mergedJumps() {
+  const stage = cell('s18', 'S18 — crossings 8px apart, size 12: overlapping cuts must merge into ONE arc');
+  const engine = makeEngine();
+  const diagram = engine.createDiagram('s18');
+  addNode(diagram, 'A', 10, 130, { w: 60, h: 40, ports: [{ id: 's18-a-r', side: 'right', type: 'output' }] });
+  addNode(diagram, 'B', 560, 130, { w: 60, h: 40, ports: [{ id: 's18-b-l', side: 'left', type: 'input' }] });
+  const mainLink = makeLink(diagram, 's18-a-r', 's18-b-l', 'direct', {
+    jumpPoints: { enabled: true, size: 12, style: 'arc', detectMode: 'all', threshold: 45 },
+  });
+  [300, 308].forEach((x, i) => {
+    addNode(diagram, '', x - 30, 5, { w: 60, h: 30, ports: [{ id: `s18-c${i}-b`, side: 'bottom', type: 'output' }] });
+    addNode(diagram, '', x - 30, 280, { w: 60, h: 30, ports: [{ id: `s18-d${i}-t`, side: 'top', type: 'input' }] });
+    makeLink(diagram, `s18-c${i}-b`, `s18-d${i}-t`, 'direct', { stroke: '#0891b2' });
+  });
+  const svg = renderTwice(engine, stage, 640, 320);
+  const d = pathD(svg, mainLink.id) || '';
+  const arcs = [...d.matchAll(/L (-?[\d.]+) (-?[\d.]+) A (-?[\d.]+) [\d.-]+ \d \d \d (-?[\d.]+) (-?[\d.]+)/g)]
+    .map(m => ({ x1: +m[1], r: +m[3], x2: +m[4] }));
+  expectThat('S18 overlapping cuts merged into one arc', arcs.length === 1, `arcs=${arcs.length} d=${d}`);
+  if (arcs.length === 1) {
+    const chord = arcs[0].x2 - arcs[0].x1;
+    expectThat('S18 merged chord spans both crossings (≈20px)', Math.abs(chord - 20) <= 0.5, `chord=${chord.toFixed(1)}`);
+    expectThat('S18 arc radius matches chord (no SVG auto-scaling)', Math.abs(arcs[0].r - chord / 2) <= 0.1, `r=${arcs[0].r}`);
+  }
+  // monotonic x along the whole path: for M/L the 1st number is x, for A the
+  // endpoint x is the 6th number
+  const xs = [...d.matchAll(/([MLA])\s*((?:-?[\d.]+[ ,]*)+)/g)].map(m => {
+    const n = m[2].trim().split(/[\s,]+/).map(Number);
+    return m[1] === 'A' ? n[5] : n[0];
+  });
+  let backtracks = 0;
+  for (let i = 1; i < xs.length; i++) if (xs[i] < xs[i - 1] - 0.01) backtracks++;
+  expectThat('S18 no backtracking with sub-size crossing spacing', backtracks === 0, `xs=${xs.join(',')}`);
+  PROBES.s18_mergedJumps = { d, arcs };
+}
+
+// ===========================================================================
+// S19: arrow TAILS — tips must land on the source port for every anchor family
+// ===========================================================================
+function s19_arrowTails() {
+  const types = ['arrow', 'diamond', 'circle', 'one', 'crow-foot', 'oval'];
+  const ROW = 52, W = 560, H = types.length * ROW + 20;
+  const stage = cell('s19', 'S19 — arrow TAILS (size=16): red line = source node edge, tail tip must touch it');
+  const engine = makeEngine();
+  const diagram = engine.createDiagram('s19');
+  const rows: Array<{ type: string; link: any; src: any }> = [];
+  types.forEach((t, i) => {
+    const y = 10 + i * ROW;
+    const src = addNode(diagram, t, 20, y, { w: 110, h: 36, ports: [{ id: `s19-src-${i}`, side: 'right', type: 'output' }] });
+    addNode(diagram, '', 440, y, { w: 90, h: 36, ports: [{ id: `s19-dst-${i}`, side: 'left', type: 'input' }] });
+    const link = makeLink(diagram, `s19-src-${i}`, `s19-dst-${i}`, 'direct', {
+      arrowHead: { type: 'arrow', size: 16, filled: true, color: '#1d4ed8', width: 1.5 },
+      arrowTail: { type: t, size: 16, filled: true, color: '#b91c1c', width: 1.5 },
+    });
+    rows.push({ type: t, link, src });
+  });
+  const svg = renderInto(engine, stage, W, H);
+  const results: any[] = [];
+  rows.forEach(row => {
+    const portX = row.src.position.x + row.src.size.width;
+    const portY = row.src.position.y + row.src.size.height / 2;
+    overlayLine(svg, portX, portY - 22, portX, portY + 22);
+    const g = svg.querySelector(`[data-vnode-key="link-${row.link.id}"]`);
+    const arrows = g ? Array.from(g.querySelectorAll(':scope > .arrow, :scope > g.arrow')) : [];
+    // head is rendered first, tail second
+    const tailEl = arrows[1] as SVGGraphicsElement | undefined;
+    let gap: number | null = null;
+    if (tailEl) {
+      const bbox = worldBBox(svg, tailEl);
+      gap = bbox.minX - portX; // >0 means the tail floats away from the node
+      overlayText(svg, portX + 6, portY - 8, `gap=${gap.toFixed(1)}px`, '#b91c1c', 10);
+    }
+    expectThat(`S19 tail '${row.type}' tip on source port`, gap !== null && Math.abs(gap) <= 1.2, `gap=${gap?.toFixed(2)}px`);
+    results.push({ type: row.type, tailGapPx: gap !== null ? +gap.toFixed(2) : null });
+  });
+  PROBES.s19_arrowTails = results;
+}
+
+// ===========================================================================
+// S20: hexagon + ellipse multi-port spread — unique, symmetric, on the shape
+// ===========================================================================
+function s20_hexEllipsePorts() {
+  const stage = cell('s20', 'S20 — hexagon 3 top ports + ellipse 4 right ports (red = computed positions)');
+  const engine = makeEngine();
+  const diagram = engine.createDiagram('s20');
+  const hex = addNode(diagram, 'hexagon', 40, 60, {
+    w: 160, h: 80, shape: 'hexagon', fill: '#dcfce7',
+    ports: [0, 1, 2].map(i => ({ id: `s20-h-${i}`, side: 'top' as const, type: 'output' as const, index: i })),
+  });
+  const ell = addNode(diagram, 'ellipse', 330, 50, {
+    w: 160, h: 80, shape: 'ellipse', fill: '#fce7f3',
+    ports: [0, 1, 2, 3].map(i => ({ id: `s20-e-${i}`, side: 'right' as const, type: 'output' as const, index: i })),
+  });
+  const svg = renderInto(engine, stage, 560, 220);
+
+  const hexPos = hex.getPorts().filter((p: any) => p.id.startsWith('s20-h')).map((p: any) => getPortPositionForShape(p, hex));
+  hexPos.forEach((pos: any, i: number) => {
+    overlayDot(svg, hex.position.x + pos.x, hex.position.y + pos.y, '#dc2626', 3);
+    overlayText(svg, hex.position.x + pos.x - 6, hex.position.y + pos.y - 6, `i${i}`, '#dc2626', 9);
+  });
+  const hxs = hexPos.map((p: any) => p.x);
+  expectThat('S20 hexagon top ports all distinct', new Set(hxs.map((x: number) => x.toFixed(1))).size === 3, `xs=${hxs.join(',')}`);
+  expectThat('S20 hexagon ports on the flat top edge (y=0, inside slant)',
+    hexPos.every((p: any) => p.y === 0 && p.x >= 160 * 0.25 && p.x <= 160 * 0.75), `xs=${hxs.join(',')}`);
+  // symmetry holds over ALL top-side ports (NodeModel auto-creates a default
+  // top port, so the full set is default + the 3 declared ones)
+  const allTop = hex.getPorts()
+    .filter((p: any) => p.alignment?.side === 'top')
+    .map((p: any) => getPortPositionForShape(p, hex).x)
+    .sort((a: number, b: number) => a - b);
+  const topSymmetric = allTop.every((x: number, i: number) => Math.abs(x + allTop[allTop.length - 1 - i] - 160) <= 0.1);
+  expectThat('S20 hexagon full port set symmetric about centre', topSymmetric, `all=${allTop.map((x: number) => x.toFixed(1)).join(',')}`);
+
+  const ellPos = ell.getPorts().filter((p: any) => p.id.startsWith('s20-e')).map((p: any) => getPortPositionForShape(p, ell));
+  ellPos.forEach((pos: any, i: number) => {
+    overlayDot(svg, ell.position.x + pos.x, ell.position.y + pos.y, '#dc2626', 3);
+    overlayText(svg, ell.position.x + pos.x + 5, ell.position.y + pos.y + 3, `i${i}`, '#dc2626', 9);
+  });
+  const uniq = new Set(ellPos.map((p: any) => `${p.x.toFixed(1)},${p.y.toFixed(1)}`));
+  expectThat('S20 ellipse right ports all distinct (no rank collision)', uniq.size === 4, [...uniq].join(' | '));
+  const onPerimeter = ellPos.every((p: any) => {
+    const v = ((p.x - 80) / 80) ** 2 + ((p.y - 40) / 40) ** 2;
+    return Math.abs(v - 1) <= 0.02;
+  });
+  expectThat('S20 ellipse ports lie on the perimeter', onPerimeter);
+  // symmetry over ALL right-side ports (default + 4 declared)
+  const allRight = ell.getPorts()
+    .filter((p: any) => p.alignment?.side === 'right')
+    .map((p: any) => getPortPositionForShape(p, ell).y)
+    .sort((a: number, b: number) => a - b);
+  const rightSymmetric = allRight.every((y: number, i: number) => Math.abs(y + allRight[allRight.length - 1 - i] - 80) <= 0.5);
+  expectThat('S20 ellipse full fan symmetric about the side axis', rightSymmetric,
+    `all=${allRight.map((y: number) => y.toFixed(1)).join(',')}`);
+  expectThat('S20 ellipse ports on the right half', ellPos.every((p: any) => p.x > 80));
+
+  // shape ↔ port consistency: the RENDERED ellipse geometry must match the node
+  // size the port math uses (guards the borderRadius-rx style leak)
+  const renderedEllipse = Array.from(svg.querySelectorAll('ellipse'))
+    .find(e => e.getAttribute('class') !== 'node-shadow' && e.getAttribute('fill') === '#fce7f3');
+  expectThat('S20 rendered ellipse geometry matches node size',
+    !!renderedEllipse &&
+    renderedEllipse.getAttribute('rx') === '80' && renderedEllipse.getAttribute('ry') === '40',
+    renderedEllipse ? `rx=${renderedEllipse.getAttribute('rx')} ry=${renderedEllipse.getAttribute('ry')}` : 'ellipse element not found');
+  PROBES.s20_ports = { hexagon: hexPos, ellipse: ellPos };
+}
+
 // ===========================================================================
 // run all
 // ===========================================================================
@@ -778,6 +1076,7 @@ for (const [name, fn] of Object.entries({
   s5_jumpBezier, s6_closeCrossings, s7_stalePoints, s8_ports, s9_relativePath, s10_detectorProbes,
   s11_gapBridge, s12_pathTypeSwitch, s13_moveHub,
   s14_endpointCrossing, s15_moveCrossing, s16_obstacleCrossing,
+  s17_manualWaypointFlow, s18_mergedJumps, s19_arrowTails, s20_hexEllipsePorts,
 })) {
   try {
     (fn as any)();

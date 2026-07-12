@@ -1119,7 +1119,8 @@ export class SVGRenderer implements IRenderer {
     const cy = height / 2;
 
     // ✅ Use inline style to override CSS (same as renderRectShape)
-    const { fill, stroke, strokeWidth, className, ...otherProps } = styles;
+    // rx/ry are rect corner-radius styles — meaningless (and confusing) on a circle
+    const { fill, stroke, strokeWidth, className, rx: _rx, ry: _ry, ...otherProps } = styles;
     const inlineStyle = [
       fill ? `fill: ${fill}` : '',
       stroke ? `stroke: ${stroke}` : '',
@@ -1148,14 +1149,16 @@ export class SVGRenderer implements IRenderer {
     const cx = width / 2;
     const cy = height / 2;
 
+    // Geometry AFTER the style spread: node styles carry a rect corner-radius
+    // `rx` (borderRadius) that must never override the ellipse's real radii
     return {
       type: 'ellipse',
       props: {
+        ...styles,
         cx,
         cy,
         rx,
         ry,
-        ...styles,
       },
     };
   }
@@ -1706,8 +1709,18 @@ export class SVGRenderer implements IRenderer {
         };
       }
     } else {
-      // Has manual waypoints - use existing link.points
+      // Has manual waypoints — keep the user's interior waypoints but refresh
+      // both endpoints from the CURRENT port positions, otherwise the link
+      // stays anchored to wherever the nodes were when the waypoint was added.
       points = link.points;
+      if (endpoints && points.length >= 2) {
+        points = [
+          { ...endpoints.start },
+          ...points.slice(1, -1).map(p => ({ ...p })),
+          { ...endpoints.end },
+        ];
+        this.syncLinkPoints(link, points);
+      }
 
       // ✅ HIGH-PERFORMANCE: For orthogonal paths with manual waypoints
       // Use fast direct orthogonal calculation for waypoint segments
@@ -1791,8 +1804,9 @@ export class SVGRenderer implements IRenderer {
         points = allRoutedPoints;
         pathData = this.generatePathData(allRoutedPoints, link.segments, link.pathType);
       } else {
-        // For non-orthogonal paths or no waypoints, use points as-is
-        pathData = this.generatePathData(link.points, link.segments, link.pathType);
+        // For non-orthogonal paths or no waypoints, use the (endpoint-refreshed)
+        // points as-is
+        pathData = this.generatePathData(points, link.segments, link.pathType);
       }
     }
 
