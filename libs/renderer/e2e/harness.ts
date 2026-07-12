@@ -1552,6 +1552,34 @@ function a14_hitAreaAndSmartPorts() {
     // the assigned ports were never mutated
     expectThat('A14 smart mode never mutates the link', link.sourcePortId === 'a14-on-s' && link.targetPortId === 'a14-on-t');
   }
+
+  // --- smart ON + overlapping spans: attachment SLIDES along the edge so the
+  // link is a single dead-straight segment (no stair-step jog) ---------------
+  {
+    const engine = makeEngine();
+    const diagram = engine.createDiagram('a14-align');
+    addNode(diagram, 'S', 420, 300, { w: 120, h: 56, fill: '#fef3c7', ports: [{ id: 'a14a-s', side: 'right', type: 'output' }] });
+    addNode(diagram, 'T', 470, 60, { w: 120, h: 56, ports: [{ id: 'a14a-t', side: 'left', type: 'input' }] });
+    const link = makeLink(diagram, 'a14a-s', 'a14a-t', 'orthogonal', {
+      arrowHead: { type: 'arrow', size: 11, filled: true, color: '#475569' },
+    });
+    const stage = cell('a14-align', 'A14 — smart ON, spans overlap: floating attachment gives ONE straight vertical line');
+    const renderer = new SVGRenderer(engine, {
+      enableCaching: false, useCSSMode: false, smartConnectionPoints: true, linkHitAreaWidth: 12,
+    } as any, LIGHT_THEME);
+    renderer.render({ x: 0, y: 0, width: 1000, height: 480 }, 1.0);
+    const vnode = renderer.render({ x: 0, y: 0, width: 1000, height: 480 }, 1.0);
+    const dom = vnodeToDom(vnode) as SVGSVGElement;
+    dom.setAttribute('width', '1000'); dom.setAttribute('height', '480');
+    stage.appendChild(dom);
+    const ends = pathEndpoints(dom, link.id)!;
+    const d = pathD(dom, link.id) || '';
+    expectThat('A14 aligned nodes get a perfectly vertical attachment',
+      Math.abs(ends.start.x - ends.end.x) <= 0.5,
+      `start.x=${ends.start.x.toFixed(1)} end.x=${ends.end.x.toFixed(1)} d=${d.slice(0, 90)}`);
+    expectThat('A14 aligned nodes: no stair-step jog (no bends in the path)',
+      !/Q/.test(d), d.slice(0, 120));
+  }
 }
 
 // ===========================================================================

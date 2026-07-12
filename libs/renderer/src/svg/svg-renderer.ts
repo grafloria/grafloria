@@ -1433,23 +1433,68 @@ export class SVGRenderer implements IRenderer {
 
     if (!sourcePort || !targetPort) return null;
 
-    // Smart connection points (optional): pick the port SIDES from the nodes'
-    // relative positions instead of the assigned ports, so links attach where
-    // it looks most natural while dragging. Purely visual — the link's
-    // assigned ports are untouched and win again when the option is off.
+    // Smart connection points (optional): FLOATING attachment, draw.io-style.
+    // The side is picked from the nodes' relative positions, and the exact
+    // attachment point SLIDES along that edge to line up with the other node —
+    // aligned nodes get a dead-straight line instead of a stair-step jog.
+    // Purely visual: the link's assigned ports are untouched and win again
+    // the moment the option is turned off.
     if (this.config.smartConnectionPoints) {
-      const sc = { x: sourceNode.position.x + sourceNode.size.width / 2, y: sourceNode.position.y + sourceNode.size.height / 2 };
-      const tc = { x: targetNode.position.x + targetNode.size.width / 2, y: targetNode.position.y + targetNode.size.height / 2 };
+      const srcPos = sourceNode.getWorldPosition();
+      const tgtPos = targetNode.getWorldPosition();
+      const s = { x: srcPos.x, y: srcPos.y, w: sourceNode.size.width, h: sourceNode.size.height };
+      const t = { x: tgtPos.x, y: tgtPos.y, w: targetNode.size.width, h: targetNode.size.height };
+      const sc = { x: s.x + s.w / 2, y: s.y + s.h / 2 };
+      const tc = { x: t.x + t.w / 2, y: t.y + t.h / 2 };
       const dx = tc.x - sc.x;
       const dy = tc.y - sc.y;
       const horizontal = Math.abs(dx) >= Math.abs(dy);
       const srcSide: 'left' | 'right' | 'top' | 'bottom' = horizontal ? (dx >= 0 ? 'right' : 'left') : (dy >= 0 ? 'bottom' : 'top');
       const tgtSide: 'left' | 'right' | 'top' | 'bottom' = horizontal ? (dx >= 0 ? 'left' : 'right') : (dy >= 0 ? 'top' : 'bottom');
-      sourcePort = this.portOnSide(sourceNode, srcSide, 'output') ?? sourcePort;
-      targetPort = this.portOnSide(targetNode, tgtSide, 'input') ?? targetPort;
-      this.frameSmartPorts.set(link.id, { sourcePort, targetPort });
+
+      const PAD = 10; // keep the attachment off the node corners
+      const clamp = (v: number, lo: number, hi: number) => Math.max(lo, Math.min(hi, v));
+
+      // Cross-axis coordinate for each end. When the two nodes' spans overlap
+      // on that axis, BOTH ends share one coordinate inside the overlap — that
+      // is what makes near-aligned nodes connect with a dead-straight line.
+      let srcCross: number;
+      let tgtCross: number;
+      if (horizontal) {
+        const lo = Math.max(s.y, t.y) + PAD;
+        const hi = Math.min(s.y + s.h, t.y + t.h) - PAD;
+        if (lo <= hi) {
+          srcCross = tgtCross = clamp((sc.y + tc.y) / 2, lo, hi);
+        } else {
+          srcCross = clamp(tc.y, s.y + PAD, s.y + s.h - PAD);
+          tgtCross = clamp(sc.y, t.y + PAD, t.y + t.h - PAD);
+        }
+      } else {
+        const lo = Math.max(s.x, t.x) + PAD;
+        const hi = Math.min(s.x + s.w, t.x + t.w) - PAD;
+        if (lo <= hi) {
+          srcCross = tgtCross = clamp((sc.x + tc.x) / 2, lo, hi);
+        } else {
+          srcCross = clamp(tc.x, s.x + PAD, s.x + s.w - PAD);
+          tgtCross = clamp(sc.x, t.x + PAD, t.x + t.w - PAD);
+        }
+      }
+
+      const edge = (rect: { x: number; y: number; w: number; h: number }, side: string, cross: number) =>
+        side === 'left' ? { x: rect.x, y: cross }
+        : side === 'right' ? { x: rect.x + rect.w, y: cross }
+        : side === 'top' ? { x: cross, y: rect.y }
+        : { x: cross, y: rect.y + rect.h };
+
+      this.frameSmartSides.set(link.id, { source: srcSide, target: tgtSide });
+      return {
+        start: edge(s, srcSide, srcCross),
+        end: edge(t, tgtSide, tgtCross),
+        sourceDirection: srcSide,
+        targetDirection: tgtSide,
+      };
     } else {
-      this.frameSmartPorts.delete(link.id);
+      this.frameSmartSides.delete(link.id);
     }
 
     // CRITICAL FIX: Use getPortPositionForShape() for consistent positioning
@@ -3026,9 +3071,9 @@ export class SVGRenderer implements IRenderer {
     let portSide: 'left' | 'right' | 'top' | 'bottom' | undefined;
 
     // Smart connection points override the assigned port for this frame
-    const smart = this.frameSmartPorts.get(link.id);
+    const smart = this.frameSmartSides.get(link.id);
     if (smart) {
-      portSide = (isTarget ? smart.targetPort : smart.sourcePort).alignment.side;
+      portSide = isTarget ? smart.target : smart.source;
     } else if (diagram) {
       const portId = isTarget ? link.targetPortId : link.sourcePortId;
       const nodeId = isTarget ? link.targetNodeId : link.sourceNodeId;
@@ -3417,22 +3462,8 @@ export class SVGRenderer implements IRenderer {
     return best ?? { ...point };
   }
 
-  // Smart-connection port overrides for the current frame (visual only)
-  private frameSmartPorts = new Map<string, { sourcePort: PortModel; targetPort: PortModel }>();
-
-  /**
-   * Best port on the given side of a node: prefers a matching port type,
-   * falls back to any port on that side.
-   */
-  private portOnSide(
-    node: NodeModel,
-    side: 'left' | 'right' | 'top' | 'bottom',
-    preferType: 'input' | 'output'
-  ): PortModel | null {
-    const onSide = node.getPorts().filter((p: PortModel) => p.alignment?.side === side);
-    if (onSide.length === 0) return null;
-    return onSide.find((p: PortModel) => p.type === preferType) ?? onSide[0];
-  }
+  // Smart-connection side overrides for the current frame (visual only)
+  private frameSmartSides = new Map<string, { source: 'left' | 'right' | 'top' | 'bottom'; target: 'left' | 'right' | 'top' | 'bottom' }>();
 
   /**
    * The link's own endpoint nodes (resolved via cached ids or port search).
