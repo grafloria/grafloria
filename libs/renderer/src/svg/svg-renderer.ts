@@ -2,6 +2,7 @@ import type { DiagramEngine, NodeModel, LinkModel, PortModel, InteractionConfig 
 import type { IRenderer, PerformanceMetrics, SVGRendererConfig, VNode, Theme, Rectangle } from '../types';
 import { LIGHT_THEME } from '../themes';
 import { createForeignObject, isForeignObject, getContainerId } from '../vnode/foreign-object';
+import { LruCache } from '../utils/lru-cache';
 
 // Import routing types
 import type { RoutedPath, RoutingAlgorithm } from '@grafloria/engine';
@@ -41,7 +42,10 @@ export class SVGRenderer implements IRenderer {
 
   private theme: Theme;
   private config: Required<SVGRendererConfig>;
-  private vnodeCache = new Map<string, VNode>();
+  // Bounded LRU so the cache honors config.maxCacheSize instead of growing
+  // unbounded between wholesale clears. Initialized in the constructor once
+  // maxCacheSize is resolved.
+  private vnodeCache: LruCache<string, VNode>;
   private styleElement?: HTMLStyleElement;
   private disposed = false;
 
@@ -94,6 +98,9 @@ export class SVGRenderer implements IRenderer {
       linkHitAreaWidth: config.linkHitAreaWidth ?? 12,
       smartConnectionPoints: config.smartConnectionPoints ?? false,
     };
+
+    // Bounded LRU vnode cache (evicts least-recently-used past maxCacheSize)
+    this.vnodeCache = new LruCache<string, VNode>(Math.max(1, this.config.maxCacheSize));
 
     this.theme = theme || LIGHT_THEME;
 
@@ -1764,9 +1771,14 @@ export class SVGRenderer implements IRenderer {
    * Render single link (Option 2: Enhanced with arrows and labels)
    */
   private renderLink(link: LinkModel, lod: LODLevel): VNode {
-    // Check cache if enabled
+    // Check cache if enabled (include LOD in cache key since rendering varies
+    // by LOD — arrows/labels/handles differ per tier, exactly like nodes).
+    // A clean link crossing an LOD threshold on zoom must NOT serve a
+    // wrong-LOD VNode. NOTE: this is the cache lookup key only; the VNode's
+    // `key` prop stays `link-${link.id}` for stable VDOM reconciliation.
+    const cacheKey = `link-${link.id}-${lod}`;
     if (this.config.enableCaching && !link.isDirty) {
-      const cached = this.vnodeCache.get(`link-${link.id}`);
+      const cached = this.vnodeCache.get(cacheKey);
       if (cached) {
         return cached;
       }
@@ -2153,9 +2165,9 @@ export class SVGRenderer implements IRenderer {
       ],
     };
 
-    // Cache if enabled
+    // Cache if enabled (use LOD-specific cache key to match the lookup above)
     if (this.config.enableCaching) {
-      this.vnodeCache.set(`link-${link.id}`, vnode);
+      this.vnodeCache.set(cacheKey, vnode);
       link.markClean();
     }
 
@@ -2332,18 +2344,14 @@ export class SVGRenderer implements IRenderer {
   }
 
   /**
-   * Get node that owns a port
+   * Get node that owns a port.
+   * Uses the diagram's O(1) portIndex instead of an O(nodes×ports) scan —
+   * this runs once per link per frame inside getVisibleLinks().
    */
   private getNodeForPort(portId: string): NodeModel | undefined {
     const diagram = this.engine.getDiagram();
     if (!diagram) return undefined;
-
-    for (const node of diagram.getNodes()) {
-      if (node.getPort(portId)) {
-        return node;
-      }
-    }
-    return undefined;
+    return diagram.getNodeByPortId(portId);
   }
 
   /**
