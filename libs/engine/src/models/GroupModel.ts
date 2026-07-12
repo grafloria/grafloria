@@ -19,6 +19,8 @@ export interface SerializedGroup extends SerializedEntity {
   bounds?: { x: number; y: number; width: number; height: number };
   layoutType?: LayoutType; // Phase 1.7
   layoutConfig?: LayoutConfig; // Phase 1.7
+  position?: { x: number; y: number }; // group geometry
+  size?: { width: number; height: number; depth: number }; // group geometry
 }
 
 export class GroupModel extends DiagramEntity {
@@ -480,6 +482,12 @@ export class GroupModel extends DiagramEntity {
       bounds: this.bounds,
       layoutType: this.layoutType, // Phase 1.7
       layoutConfig: this.layoutConfig, // Phase 1.7
+      // Group geometry: round-trip position (always present) and size (optional)
+      // so layout/placement survives save/load.
+      position: { x: this.position.x, y: this.position.y },
+      size: this.size
+        ? { width: this.size.width, height: this.size.height, depth: this.size.depth }
+        : undefined,
     };
   }
 
@@ -491,6 +499,19 @@ export class GroupModel extends DiagramEntity {
     group.members = new Set(data.members);
     group.isCollapsed = data.isCollapsed;
     group.bounds = data.bounds;
+
+    // Restore group geometry (position/size). Position defaults to origin when
+    // absent so older serialized payloads keep working.
+    if (data.position) {
+      group.position = { x: data.position.x, y: data.position.y };
+    }
+    if (data.size) {
+      group.size = {
+        width: data.size.width,
+        height: data.size.height,
+        depth: data.size.depth,
+      };
+    }
 
     // Phase 1.7: Restore layout configuration
     if (data.layoutType) {

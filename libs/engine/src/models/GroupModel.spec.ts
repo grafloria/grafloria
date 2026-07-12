@@ -313,5 +313,49 @@ describe('GroupModel (Phase 1.6c)', () => {
       expect(restored.isCollapsed).toBe(original.isCollapsed);
       expect(restored.metadata.get('key')).toBe('value');
     });
+
+    it('should serialize position and size', () => {
+      const group = new GroupModel({ id: 'group-geo', name: 'Geo Group' });
+      group.position = { x: 42, y: 84 };
+      group.size = { width: 300, height: 200, depth: 10 };
+
+      const serialized = group.serialize();
+
+      expect(serialized.position).toEqual({ x: 42, y: 84 });
+      expect(serialized.size).toEqual({ width: 300, height: 200, depth: 10 });
+    });
+
+    it('should round-trip position and size through serialize/fromJSON', () => {
+      const original = new GroupModel({ id: 'group-geo', name: 'Geo Group' });
+      original.position = { x: 42, y: 84 };
+      original.size = { width: 300, height: 200, depth: 10 };
+      original.collapse();
+
+      const restored = GroupModel.fromJSON(original.serialize());
+
+      expect(restored.position).toEqual({ x: 42, y: 84 });
+      expect(restored.size).toEqual({ width: 300, height: 200, depth: 10 });
+      // Sanity: existing serialized shape (collapse state) still round-trips
+      expect(restored.isCollapsed).toBe(true);
+    });
+
+    it('should default position to origin when absent in serialized payload', () => {
+      const data = {
+        id: 'group-legacy',
+        uuid: '00000001-0000-4000-a000-000000010000',
+        type: 'group',
+        version: 1,
+        metadata: {},
+        name: 'Legacy Group',
+        members: [],
+        isCollapsed: false,
+        // no position/size (older payload)
+      };
+
+      const group = GroupModel.fromJSON(data as any);
+
+      expect(group.position).toEqual({ x: 0, y: 0 });
+      expect(group.size).toBeUndefined();
+    });
   });
 });
