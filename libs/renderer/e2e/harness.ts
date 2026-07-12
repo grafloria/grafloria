@@ -1068,6 +1068,221 @@ function s20_hexEllipsePorts() {
 }
 
 // ===========================================================================
+// AUDIT PACK (A1-A11): visual edge-case sweep, probe-only (no hard assertions
+// so the run always completes; findings are judged from screenshots + probes)
+// ===========================================================================
+
+function a1_verticalSmooth() {
+  const stage = cell('a1', 'A1 — smooth links on vertical ports: down (bottom→top) and up (top→bottom)');
+  const engine = makeEngine();
+  const diagram = engine.createDiagram('a1');
+  addNode(diagram, 'A', 60, 30, { w: 90, h: 44, ports: [{ id: 'a1-a-b', side: 'bottom', type: 'output' }] });
+  addNode(diagram, 'B', 200, 240, { w: 90, h: 44, ports: [{ id: 'a1-b-t', side: 'top', type: 'input' }] });
+  makeLink(diagram, 'a1-a-b', 'a1-b-t', 'smooth', { arrowHead: { type: 'arrow', size: 10, filled: true, color: '#2563eb' } });
+  addNode(diagram, 'C', 400, 240, { w: 90, h: 44, ports: [{ id: 'a1-c-t', side: 'top', type: 'output' }] });
+  addNode(diagram, 'D', 540, 30, { w: 90, h: 44, ports: [{ id: 'a1-d-b', side: 'bottom', type: 'input' }] });
+  makeLink(diagram, 'a1-c-t', 'a1-d-b', 'smooth', { arrowHead: { type: 'arrow', size: 10, filled: true, color: '#059669' } });
+  renderTwice(engine, stage, 680, 320);
+}
+
+function a2_sameSidePorts() {
+  const stage = cell('a2', 'A2 — same-side ports (right→right): orthogonal (top pair) and smooth (bottom pair)');
+  const engine = makeEngine();
+  const diagram = engine.createDiagram('a2');
+  const o1 = addNode(diagram, 'A', 40, 40, { w: 90, h: 44, ports: [{ id: 'a2-a-r', side: 'right', type: 'output' }] });
+  const o2 = addNode(diagram, 'B', 320, 40, { w: 90, h: 44, ports: [{ id: 'a2-b-r', side: 'right', type: 'input' }] });
+  const l1 = makeLink(diagram, 'a2-a-r', 'a2-b-r', 'orthogonal', { arrowHead: { type: 'arrow', size: 10, filled: true, color: '#475569' } });
+  const s1 = addNode(diagram, 'C', 40, 200, { w: 90, h: 44, ports: [{ id: 'a2-c-r', side: 'right', type: 'output' }] });
+  const s2 = addNode(diagram, 'D', 320, 200, { w: 90, h: 44, ports: [{ id: 'a2-d-r', side: 'right', type: 'input' }] });
+  const l2 = makeLink(diagram, 'a2-c-r', 'a2-d-r', 'smooth', { arrowHead: { type: 'arrow', size: 10, filled: true, color: '#059669' } });
+  const svg = renderTwice(engine, stage, 620, 300);
+  PROBES.a2_sameSide = {
+    orthogonal: pathPenetration(svg, l1.id, [o1, o2]),
+    smooth: pathPenetration(svg, l2.id, [s1, s2]),
+  };
+}
+
+function a3_shortLinks() {
+  const types = ['direct', 'smooth', 'orthogonal'];
+  const stage = cell('a3', 'A3 — very short links (24px gap between nodes)');
+  const engine = makeEngine();
+  const diagram = engine.createDiagram('a3');
+  const probe: any = {};
+  types.forEach((t, i) => {
+    const y = 20 + i * 80;
+    addNode(diagram, t, 40, y, { w: 110, h: 44, ports: [{ id: `a3-${t}-r`, side: 'right', type: 'output' }] });
+    addNode(diagram, '', 174, y, { w: 110, h: 44, ports: [{ id: `a3-${t}-l`, side: 'left', type: 'input' }] });
+    const link = makeLink(diagram, `a3-${t}-r`, `a3-${t}-l`, t, { arrowHead: { type: 'arrow', size: 10, filled: true, color: '#475569' } });
+    probe[t] = link;
+  });
+  const svg = renderTwice(engine, stage, 400, 270);
+  PROBES.a3_short = Object.fromEntries(Object.entries(probe).map(([t, l]: any) => [t, pathD(svg, l.id)]));
+}
+
+function a4_overlappingNodes() {
+  const stage = cell('a4', 'A4 — target overlaps source: smooth (top) and orthogonal (bottom)');
+  const engine = makeEngine();
+  const diagram = engine.createDiagram('a4');
+  addNode(diagram, 'A', 100, 30, { w: 110, h: 50, fill: '#fef3c7', ports: [{ id: 'a4-a-r', side: 'right', type: 'output' }] });
+  addNode(diagram, 'B', 160, 55, { w: 110, h: 50, ports: [{ id: 'a4-b-l', side: 'left', type: 'input' }] });
+  makeLink(diagram, 'a4-a-r', 'a4-b-l', 'smooth', { arrowHead: { type: 'arrow', size: 10, filled: true, color: '#475569' } });
+  addNode(diagram, 'C', 100, 200, { w: 110, h: 50, fill: '#fef3c7', ports: [{ id: 'a4-c-r', side: 'right', type: 'output' }] });
+  addNode(diagram, 'D', 160, 225, { w: 110, h: 50, ports: [{ id: 'a4-d-l', side: 'left', type: 'input' }] });
+  makeLink(diagram, 'a4-c-r', 'a4-d-l', 'orthogonal', { arrowHead: { type: 'arrow', size: 10, filled: true, color: '#475569' } });
+  renderTwice(engine, stage, 560, 320);
+}
+
+function a5_jumpNearCorner() {
+  const stage = cell('a5', 'A5 — crossing 10px before an orthogonal corner (cut must clamp clear of the bend)');
+  const engine = makeEngine();
+  const diagram = engine.createDiagram('a5');
+  addNode(diagram, 'A', 10, 240, { w: 70, h: 40, ports: [{ id: 'a5-a-r', side: 'right', type: 'output' }] });
+  addNode(diagram, 'B', 540, 40, { w: 70, h: 40, ports: [{ id: 'a5-b-l', side: 'left', type: 'input' }] });
+  const main = makeLink(diagram, 'a5-a-r', 'a5-b-l', 'orthogonal', {
+    jumpPoints: { enabled: true, size: 12, style: 'arc', detectMode: 'all', threshold: 45 },
+  });
+  // settle once to learn the corner x, then place the crossing 10px before it
+  const tmp = document.createElement('div');
+  renderInto(engine, tmp, 640, 320); tmp.remove();
+  const cornerX = main.points[2]?.x ?? 300;
+  addNode(diagram, '', cornerX - 10 - 30, 5, { w: 60, h: 30, ports: [{ id: 'a5-c-b', side: 'bottom', type: 'output' }] });
+  addNode(diagram, '', cornerX - 10 - 30, 290, { w: 60, h: 30, ports: [{ id: 'a5-d-t', side: 'top', type: 'input' }] });
+  makeLink(diagram, 'a5-c-b', 'a5-d-t', 'direct', { stroke: '#0891b2' });
+  const svg = renderTwice(engine, stage, 640, 330);
+  PROBES.a5_jumpNearCorner = { cornerX, mainD: pathD(svg, main.id) };
+}
+
+function a6_jumpNearArrow() {
+  const stage = cell('a6', 'A6 — crossing 16px before the target port: jump cut vs arrowhead');
+  const engine = makeEngine();
+  const diagram = engine.createDiagram('a6');
+  addNode(diagram, 'A', 10, 130, { w: 70, h: 40, ports: [{ id: 'a6-a-r', side: 'right', type: 'output' }] });
+  addNode(diagram, 'B', 480, 130, { w: 70, h: 40, ports: [{ id: 'a6-b-l', side: 'left', type: 'input' }] });
+  const main = makeLink(diagram, 'a6-a-r', 'a6-b-l', 'direct', {
+    arrowHead: { type: 'arrow', size: 12, filled: true, color: '#475569' },
+    jumpPoints: { enabled: true, size: 12, style: 'arc', detectMode: 'all', threshold: 45 },
+  });
+  addNode(diagram, '', 434, 5, { w: 60, h: 30, ports: [{ id: 'a6-c-b', side: 'bottom', type: 'output' }] });
+  addNode(diagram, '', 434, 260, { w: 60, h: 30, ports: [{ id: 'a6-d-t', side: 'top', type: 'input' }] });
+  makeLink(diagram, 'a6-c-b', 'a6-d-t', 'direct', { stroke: '#0891b2' });
+  const svg = renderTwice(engine, stage, 620, 300);
+  PROBES.a6_jumpNearArrow = { mainD: pathD(svg, main.id) };
+}
+
+function a7_labels() {
+  const types = ['direct', 'smooth', 'orthogonal'];
+  const stage = cell('a7', 'A7 — link labels (metadata label): where do they land vs the path midpoint?');
+  const engine = makeEngine();
+  const diagram = engine.createDiagram('a7');
+  const links: any = {};
+  types.forEach((t, i) => {
+    const y = 20 + i * 85;
+    addNode(diagram, t, 30, y, { w: 100, h: 44, ports: [{ id: `a7-${t}-r`, side: 'right', type: 'output' }] });
+    addNode(diagram, '', 440, y + 25, { w: 100, h: 44, ports: [{ id: `a7-${t}-l`, side: 'left', type: 'input' }] });
+    const link = makeLink(diagram, `a7-${t}-r`, `a7-${t}-l`, t);
+    link.setMetadata('label', `${t}-label`);
+    links[t] = link;
+  });
+  const svg = renderTwice(engine, stage, 620, 320);
+  const probe: any = {};
+  for (const t of types) {
+    const g = svg.querySelector(`[data-vnode-key="link-${links[t].id}"]`);
+    const texts = Array.from(g?.querySelectorAll('text') ?? []).map(el => ({
+      x: el.getAttribute('x'), y: el.getAttribute('y'), text: el.textContent,
+    }));
+    // true path midpoint for comparison
+    const p = g?.querySelector('path') as SVGPathElement | null;
+    const mid = p ? p.getPointAtLength(p.getTotalLength() / 2) : null;
+    probe[t] = { labels: texts, pathMidpoint: mid ? { x: +mid.x.toFixed(1), y: +mid.y.toFixed(1) } : null };
+  }
+  PROBES.a7_labels = probe;
+}
+
+function a8_dashedJumps() {
+  const stage = cell('a8', 'A8 — dashed link with a jump arc (dash continuity across the arc)');
+  const engine = makeEngine();
+  const diagram = engine.createDiagram('a8');
+  addNode(diagram, 'A', 10, 130, { w: 70, h: 40, ports: [{ id: 'a8-a-r', side: 'right', type: 'output' }] });
+  addNode(diagram, 'B', 520, 130, { w: 70, h: 40, ports: [{ id: 'a8-b-l', side: 'left', type: 'input' }] });
+  makeLink(diagram, 'a8-a-r', 'a8-b-l', 'direct', {
+    strokeDasharray: '8,5',
+    jumpPoints: { enabled: true, size: 12, style: 'arc', detectMode: 'all', threshold: 45 },
+  });
+  addNode(diagram, '', 270, 5, { w: 60, h: 30, ports: [{ id: 'a8-c-b', side: 'bottom', type: 'output' }] });
+  addNode(diagram, '', 270, 260, { w: 60, h: 30, ports: [{ id: 'a8-d-t', side: 'top', type: 'input' }] });
+  makeLink(diagram, 'a8-c-b', 'a8-d-t', 'direct', { stroke: '#0891b2' });
+  renderTwice(engine, stage, 640, 300);
+}
+
+function a9_diagonalArrows() {
+  const stage = cell('a9', 'A9 — diagonal direct links: arrow rotation + tip anchoring at 30°/45°');
+  const engine = makeEngine();
+  const diagram = engine.createDiagram('a9');
+  addNode(diagram, 'A', 30, 30, { w: 90, h: 44, ports: [{ id: 'a9-a-r', side: 'right', type: 'output' }] });
+  addNode(diagram, 'B', 420, 220, { w: 90, h: 44, ports: [{ id: 'a9-b-l', side: 'left', type: 'input' }] });
+  makeLink(diagram, 'a9-a-r', 'a9-b-l', 'direct', {
+    arrowHead: { type: 'arrow', size: 14, filled: true, color: '#2563eb' },
+    arrowTail: { type: 'diamond', size: 14, filled: true, color: '#b91c1c' },
+  });
+  addNode(diagram, 'C', 30, 220, { w: 90, h: 44, ports: [{ id: 'a9-c-r', side: 'right', type: 'output' }] });
+  addNode(diagram, 'D', 420, 30, { w: 90, h: 44, ports: [{ id: 'a9-d-l', side: 'left', type: 'input' }] });
+  makeLink(diagram, 'a9-c-r', 'a9-d-l', 'direct', {
+    arrowHead: { type: 'hollow-diamond', size: 14, color: '#059669' },
+    arrowTail: { type: 'circle', size: 14, filled: false, color: '#059669' },
+  });
+  renderTwice(engine, stage, 560, 300);
+}
+
+function a10_lod() {
+  for (const zoom of [1.0, 0.4, 0.15]) {
+    const stage = cell(`a10-${String(zoom).replace('.', '_')}`, `A10 — LOD at zoom ${zoom} (arrow/label gating)`);
+    const engine = makeEngine();
+    const diagram = engine.createDiagram(`a10-${zoom}`);
+    addNode(diagram, 'A', 30, 60, { w: 100, h: 44, ports: [{ id: `a10${zoom}-a-r`, side: 'right', type: 'output' }] });
+    addNode(diagram, 'B', 400, 120, { w: 100, h: 44, ports: [{ id: `a10${zoom}-b-l`, side: 'left', type: 'input' }] });
+    const link = makeLink(diagram, `a10${zoom}-a-r`, `a10${zoom}-b-l`, 'smooth', {
+      arrowHead: { type: 'arrow', size: 12, filled: true, color: '#2563eb' },
+    });
+    link.setMetadata('label', 'lod-label');
+    const renderer = new SVGRenderer(engine, { enableCaching: false, useCSSMode: false }, LIGHT_THEME);
+    renderer.render({ x: 0, y: 0, width: 560, height: 240 }, zoom); // settle
+    const vnode = renderer.render({ x: 0, y: 0, width: 560, height: 240 }, zoom);
+    const dom = vnodeToDom(vnode) as SVGSVGElement;
+    dom.setAttribute('width', '560'); dom.setAttribute('height', '240');
+    stage.appendChild(dom);
+    PROBES[`a10_lod_${zoom}`] = {
+      lod: engine.getDiagram()?.getLODLevel(zoom),
+      hasArrow: !!dom.querySelector('.arrow'),
+      hasLabel: !!Array.from(dom.querySelectorAll('text')).find(t => t.textContent?.includes('lod-label')),
+    };
+  }
+}
+
+function a11_orthoAxisAligned() {
+  // Orthogonal routes must be strictly axis-aligned — the small slanted stubs
+  // seen at port exits would show up here as diagonal L segments.
+  const stage = cell('a11', 'A11 — orthogonal axis-alignment probe (diagonal segments are defects)');
+  const engine = makeEngine();
+  const diagram = engine.createDiagram('a11');
+  addNode(diagram, 'A', 20, 230, { w: 90, h: 50, ports: [{ id: 'a11-a-r', side: 'right', type: 'output' }] });
+  addNode(diagram, 'B', 480, 40, { w: 90, h: 50, ports: [{ id: 'a11-b-l', side: 'left', type: 'input' }] });
+  const link = makeLink(diagram, 'a11-a-r', 'a11-b-l', 'orthogonal', { arrowHead: { type: 'arrow', size: 10, filled: true, color: '#475569' } });
+  const svg = renderTwice(engine, stage, 620, 330);
+  const pts = link.points;
+  const diagonalSegs: any[] = [];
+  for (let i = 0; i < pts.length - 1; i++) {
+    const dx = Math.abs(pts[i + 1].x - pts[i].x);
+    const dy = Math.abs(pts[i + 1].y - pts[i].y);
+    if (dx > 0.01 && dy > 0.01) diagonalSegs.push({ i, from: pts[i], to: pts[i + 1], dx: +dx.toFixed(1), dy: +dy.toFixed(1) });
+  }
+  diagonalSegs.forEach(s => {
+    overlayDot(svg, s.from.x, s.from.y, '#dc2626', 4);
+    overlayText(svg, s.from.x + 6, s.from.y - 6, `diag ${s.dx}x${s.dy}`, '#dc2626', 10);
+  });
+  PROBES.a11_orthoAxisAligned = { points: pts, diagonalSegments: diagonalSegs, d: pathD(svg, link.id) };
+}
+
+// ===========================================================================
 // run all
 // ===========================================================================
 const failures: any[] = [];
@@ -1077,6 +1292,9 @@ for (const [name, fn] of Object.entries({
   s11_gapBridge, s12_pathTypeSwitch, s13_moveHub,
   s14_endpointCrossing, s15_moveCrossing, s16_obstacleCrossing,
   s17_manualWaypointFlow, s18_mergedJumps, s19_arrowTails, s20_hexEllipsePorts,
+  a1_verticalSmooth, a2_sameSidePorts, a3_shortLinks, a4_overlappingNodes,
+  a5_jumpNearCorner, a6_jumpNearArrow, a7_labels, a8_dashedJumps,
+  a9_diagonalArrows, a10_lod, a11_orthoAxisAligned,
 })) {
   try {
     (fn as any)();
