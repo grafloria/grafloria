@@ -308,6 +308,25 @@ export class NodeModel extends DiagramEntity {
   }
 
   /**
+   * Links arriving at this node (resolved through the owning diagram; empty
+   * when the node isn't attached to a diagram yet)
+   */
+  getIncomingLinks(): import('./LinkModel').LinkModel[] {
+    const diagram = (this as any).diagram as DiagramModel | undefined;
+    if (!diagram?.getLinks) return [];
+    return diagram.getLinks().filter((link) => link.targetNodeId === this.id);
+  }
+
+  /**
+   * Links leaving this node (resolved through the owning diagram)
+   */
+  getOutgoingLinks(): import('./LinkModel').LinkModel[] {
+    const diagram = (this as any).diagram as DiagramModel | undefined;
+    if (!diagram?.getLinks) return [];
+    return diagram.getLinks().filter((link) => link.sourceNodeId === this.id);
+  }
+
+  /**
    * Get ports by type
    */
   getPortsByType(type: 'input' | 'output' | 'bi'): PortModel[] {

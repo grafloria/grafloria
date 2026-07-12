@@ -279,7 +279,7 @@ describe('NodeModel - Template Support (Phase 2)', () => {
       node.setConnectionGroup('test:group');
 
       const serialized = node.serialize();
-      const deserialized = NodeModel.fromJSON(serialized, {} as any);
+      const deserialized = NodeModel.fromJSON(serialized);
 
       expect(deserialized.portRenderingConfig).toEqual({ mode: 'html' });
       expect(deserialized.dragHandlerConfig).toEqual({ isDragHandler: true });

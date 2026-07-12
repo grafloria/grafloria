@@ -14,8 +14,10 @@ import {
 
 describe('Template Library (Phase 4)', () => {
   describe('Template Registry', () => {
-    it('should have 20 templates registered', () => {
-      expect(TemplateLibrary.count()).toBe(20);
+    it('should register every library template', () => {
+      // Count against the source of truth — the library grows over time
+      expect(TemplateLibrary.count()).toBe(getAllTemplates().length);
+      expect(TemplateLibrary.count()).toBeGreaterThanOrEqual(20);
     });
 
     it('should retrieve template by ID', () => {
@@ -31,7 +33,7 @@ describe('Template Library (Phase 4)', () => {
 
     it('should list all template IDs', () => {
       const ids = TemplateLibrary.list();
-      expect(ids.length).toBe(20);
+      expect(ids.length).toBe(getAllTemplates().length);
       expect(ids).toContain('user-avatar');
       expect(ids).toContain('process-step');
       expect(ids).toContain('metric-card');

@@ -73,6 +73,41 @@ export class OrthogonalRouter implements IRouter {
     sourceDirection?: 'left' | 'right' | 'top' | 'bottom',
     targetDirection?: 'left' | 'right' | 'top' | 'bottom'
   ): RoutedPath {
+    // No port directions at all: route through the midline (classic HVH/VHV,
+    // the React Flow default for undirected points). The gap-point logic below
+    // assumes port directions and emits stub artifacts without them.
+    if (!sourceDirection && !targetDirection) {
+      let pts: Point[];
+      if (start.x === end.x || start.y === end.y) {
+        pts = [{ ...start }, { ...end }];
+      } else if (Math.abs(end.x - start.x) >= Math.abs(end.y - start.y)) {
+        const midX = (start.x + end.x) / 2;
+        pts = [{ ...start }, { x: midX, y: start.y }, { x: midX, y: end.y }, { ...end }];
+      } else {
+        const midY = (start.y + end.y) / 2;
+        pts = [{ ...start }, { x: start.x, y: midY }, { x: end.x, y: midY }, { ...end }];
+      }
+      if (gridSize && gridSize > 1) {
+        // Interior points share one snapped ordinate, so segments stay orthogonal
+        for (let i = 1; i < pts.length - 1; i++) {
+          pts[i] = {
+            x: Math.round(pts[i].x / gridSize) * gridSize,
+            y: Math.round(pts[i].y / gridSize) * gridSize,
+          };
+        }
+      }
+      const merged = this.mergeCollinearPoints(this.removeDuplicatePoints(pts));
+      const totalLength = this.calculatePathLength(merged);
+      const bendCount = Math.max(0, merged.length - 2);
+      return {
+        points: merged,
+        totalLength,
+        bendCount,
+        cost: totalLength + bendCount * bendCost,
+        segments: this.calculateSegments(merged),
+      };
+    }
+
     // CRITICAL OFFSET: This determines the "breathing room" around nodes
     // Match React Flow's exact offset value for visual consistency
     const offset = 20;
@@ -334,8 +369,10 @@ export class OrthogonalRouter implements IRouter {
       }
     }
 
-    // Remove duplicate consecutive points
-    const uniquePoints = this.removeDuplicatePoints(pathPoints);
+    // Remove duplicate consecutive points, then merge collinear runs — the
+    // gap-point construction can emit out-and-back stubs (A→B→A) and split
+    // straight lines into multiple segments
+    const uniquePoints = this.mergeCollinearPoints(this.removeDuplicatePoints(pathPoints));
 
     const totalLength = this.calculatePathLength(uniquePoints);
     const bendCount = uniquePoints.length - 2;
@@ -347,6 +384,30 @@ export class OrthogonalRouter implements IRouter {
       cost: totalLength + bendCount * bendCost,
       segments: this.calculateSegments(uniquePoints),
     };
+  }
+
+  /**
+   * Merge collinear consecutive points. Because the kept path lies on the
+   * same line the removed points did, this also collapses out-and-back
+   * excursions (backtracking stubs) without changing route coverage.
+   */
+  private mergeCollinearPoints(points: RoutePoint[]): RoutePoint[] {
+    if (points.length <= 2) return points;
+    const out: RoutePoint[] = [points[0]];
+    for (let i = 1; i < points.length; i++) {
+      const q = points[i];
+      while (out.length >= 2) {
+        const a = out[out.length - 2];
+        const b = out[out.length - 1];
+        const cross = (b.x - a.x) * (q.y - b.y) - (b.y - a.y) * (q.x - b.x);
+        if (Math.abs(cross) < 1e-6) out.pop(); else break;
+      }
+      const tail = out[out.length - 1];
+      if (Math.abs(q.x - tail.x) > 1e-9 || Math.abs(q.y - tail.y) > 1e-9) {
+        out.push(q);
+      }
+    }
+    return out;
   }
 
   /**
@@ -659,7 +720,7 @@ export class OrthogonalRouter implements IRouter {
     ];
 
     // Remove duplicate consecutive points
-    const uniquePath = this.removeDuplicatePoints(fullPath);
+    const uniquePath = this.mergeCollinearPoints(this.removeDuplicatePoints(fullPath));
 
     const totalLength = this.calculatePathLength(uniquePath);
     const bendCount = this.countBends(uniquePath);

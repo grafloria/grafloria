@@ -17,6 +17,8 @@ describe('LayoutHistory', () => {
     });
 
     it('should respect custom max history size', () => {
+      // Dedup uses Date.now(); fake timers make advanceTimersByTime move it
+      jest.useFakeTimers();
       const history = new LayoutHistory({ maxHistorySize: 5 });
 
       const nodes = [createNode('1', 0, 0)];
@@ -30,6 +32,7 @@ describe('LayoutHistory', () => {
 
       // Should only keep last 5
       expect(history.size()).toBe(5);
+      jest.useRealTimers();
     });
   });
 
@@ -325,8 +328,8 @@ describe('LayoutHistory', () => {
       const updated = LayoutHistory.applySnapshot(snapshot, nodes);
 
       expect(updated).toBe(2);
-      expect(nodes[0].getPosition()).toEqual({ x: 100, y: 200 });
-      expect(nodes[1].getPosition()).toEqual({ x: 300, y: 400 });
+      expect(nodes[0].position).toEqual({ x: 100, y: 200 });
+      expect(nodes[1].position).toEqual({ x: 300, y: 400 });
     });
 
     it('should handle partial matches', () => {
@@ -349,9 +352,9 @@ describe('LayoutHistory', () => {
       const updated = LayoutHistory.applySnapshot(snapshot, nodes);
 
       expect(updated).toBe(2);
-      expect(nodes[0].getPosition()).toEqual({ x: 100, y: 200 });
-      expect(nodes[1].getPosition()).toEqual({ x: 0, y: 0 }); // Unchanged
-      expect(nodes[2].getPosition()).toEqual({ x: 300, y: 400 });
+      expect(nodes[0].position).toEqual({ x: 100, y: 200 });
+      expect(nodes[1].position).toEqual({ x: 0, y: 0 }); // Unchanged
+      expect(nodes[2].position).toEqual({ x: 300, y: 400 });
     });
   });
 
@@ -465,7 +468,6 @@ describe('LayoutHistory', () => {
 
 // Helper function to create test nodes
 function createNode(id: string, x: number, y: number): NodeModel {
-  const node = new NodeModel({ x, y }, { width: 150, height: 50 });
-  node.id = id;
+  const node = new NodeModel({ id, type: 'layout-test', position: { x, y }, size: { width: 150, height: 50 } });
   return node;
 }

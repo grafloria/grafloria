@@ -262,14 +262,12 @@ export class IncrementalLayoutManager {
   ): NodeConstraint[] {
     const constraints: NodeConstraint[] = [];
 
-    // Calculate connection count for each node
+    // Calculate connection count for each node from its diagram links
     const connectionCounts = new Map<string, number>();
-    // Note: Simple heuristic - treat all existing nodes equally
-    // TODO: Calculate actual connectivity when link data is available
     nodes.forEach(node => {
-      connectionCounts.set(node.id, 1); // Default connectivity
-    });
-    nodes.forEach(node => {
+      const connectivity =
+        node.getIncomingLinks().length + node.getOutgoingLinks().length;
+      connectionCounts.set(node.id, connectivity);
     });
 
     // Determine threshold for "anchor" nodes (top 30% by connections)

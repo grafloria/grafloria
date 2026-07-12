@@ -30,6 +30,10 @@ export class TouchHandler {
   private lastPanX: number = 0;
   private lastPanY: number = 0;
   private longPressTimer?: number;
+  // Tap validity: movement beyond tapMaxMovement (measured from the START
+  // position, not the last move) or a second finger invalidates the tap
+  private tapCancelled = false;
+  private touchStartPositions = new Map<number, { x: number; y: number }>();
 
   // Configuration
   private longPressDuration = 500; // ms
@@ -78,12 +82,14 @@ export class TouchHandler {
         clientX: touch.clientX,
         clientY: touch.clientY,
       });
+      this.touchStartPositions.set(touch.identifier, { x: touch.pageX, y: touch.pageY });
     }
 
     const touchArray = Array.from(this.touches.values());
 
     // Single touch: could be tap or long-press
     if (this.touches.size === 1) {
+      this.tapCancelled = false;
       // Start long-press timer
       this.longPressTimer = window.setTimeout(() => {
         this.emit({
@@ -94,8 +100,9 @@ export class TouchHandler {
       }, this.longPressDuration);
     }
 
-    // Two touches: could be pinch or pan
+    // Two touches: could be pinch or pan — never a tap
     if (this.touches.size === 2) {
+      this.tapCancelled = true;
       this.clearLongPressTimer();
       this.touchStartDistance = this.getDistance(touchArray[0], touchArray[1]);
       this.lastPanX = (touchArray[0].x + touchArray[1].x) / 2;
@@ -114,13 +121,16 @@ export class TouchHandler {
       const touch = event.changedTouches[i];
       const existing = this.touches.get(touch.identifier);
       if (existing) {
-        // Check if moved beyond tap threshold
-        const moved = this.getDistance(existing, {
+        // Check if moved beyond tap threshold — measured against the START
+        // position so a slow drag of many small steps still cancels the tap
+        const start = this.touchStartPositions.get(touch.identifier);
+        const moved = this.getDistance((start ?? existing) as any, {
           x: touch.pageX,
           y: touch.pageY,
         } as any);
 
         if (moved > this.tapMaxMovement) {
+          this.tapCancelled = true;
           this.clearLongPressTimer();
         }
 
@@ -197,10 +207,11 @@ export class TouchHandler {
     for (let i = 0; i < event.changedTouches.length; i++) {
       const touch = event.changedTouches[i];
       this.touches.delete(touch.identifier);
+      this.touchStartPositions.delete(touch.identifier);
     }
 
     // If all touches ended and it was quick and didn't move much: tap
-    if (this.touches.size === 0 && duration < this.tapMaxDuration) {
+    if (this.touches.size === 0 && duration < this.tapMaxDuration && !this.tapCancelled) {
       this.emit({
         type: 'tap',
         touches: [],
@@ -221,6 +232,8 @@ export class TouchHandler {
    */
   private handleTouchCancel(event: TouchEvent) {
     this.touches.clear();
+    this.touchStartPositions.clear();
+    this.tapCancelled = false;
     this.clearLongPressTimer();
   }
 

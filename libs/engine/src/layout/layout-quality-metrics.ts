@@ -337,19 +337,30 @@ export class LayoutQualityMetrics {
     const centroidX = sumX / nodes.length;
     const centroidY = sumY / nodes.length;
 
-    // Calculate variance from centroid
-    let variance = 0;
-    nodes.forEach(node => {
-      const pos = node.position;
-      variance += Math.pow(pos.x - centroidX, 2) + Math.pow(pos.y - centroidY, 2);
-    });
-    variance /= nodes.length;
-    const stdDev = Math.sqrt(variance);
-
-    // Score based on coefficient of variation
-    // Lower CV = more evenly distributed
-    const avgDistance = Math.sqrt(centroidX * centroidX + centroidY * centroidY);
-    const cv = avgDistance > 0 ? stdDev / avgDistance : 0;
+    // Evenness = coefficient of variation of nearest-neighbour distances —
+    // the classic spatial-uniformity measure. Translation-invariant (the old
+    // version divided by the centroid's distance from the ORIGIN, so the same
+    // layout scored differently depending on where it sat on the canvas), and
+    // it correctly punishes clusters: tight groups have tiny NN distances
+    // while outliers have huge ones. 0 = perfectly even grid.
+    let cv = 0;
+    if (nodes.length >= 2) {
+      const nnDistances = nodes.map((node, i) => {
+        let min = Infinity;
+        nodes.forEach((other, j) => {
+          if (i === j) return;
+          min = Math.min(
+            min,
+            Math.hypot(other.position.x - node.position.x, other.position.y - node.position.y)
+          );
+        });
+        return min;
+      });
+      const meanNN = nnDistances.reduce((a, b) => a + b, 0) / nnDistances.length;
+      const nnVariance =
+        nnDistances.reduce((a, d) => a + Math.pow(d - meanNN, 2), 0) / nnDistances.length;
+      cv = meanNN > 0 ? Math.sqrt(nnVariance) / meanNN : 0;
+    }
 
     // Good CV is < 0.5, excellent is < 0.3
     const score = cv < 0.3 ? 100 : cv < 0.5 ? 80 : Math.max(0, 100 - (cv - 0.5) * 100);

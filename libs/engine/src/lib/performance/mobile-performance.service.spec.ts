@@ -1,3 +1,6 @@
+/**
+ * @jest-environment jsdom
+ */
 import { MobilePerformanceService } from './mobile-performance.service';
 
 describe('MobilePerformanceService', () => {

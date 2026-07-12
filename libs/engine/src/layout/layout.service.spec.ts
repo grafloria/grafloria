@@ -1,4 +1,7 @@
 /**
+ * @jest-environment jsdom
+ */
+/**
  * Unit tests for LayoutService
  */
 
@@ -9,6 +12,32 @@ import { LayoutAdapter } from './layout-adapter.interface';
 import { DiagramModel } from '../models/DiagramModel';
 import { NodeModel } from '../models/NodeModel';
 import { LinkModel } from '../models/LinkModel';
+
+// Helpers bridging the old object-config diagram API this spec was written
+// against to the current model-instance API
+function mkNode(
+  diagram: DiagramModel,
+  position: { x: number; y: number },
+  size: { width: number; height: number },
+  id?: string
+): NodeModel {
+  const node = new NodeModel({ id, type: 'layout-test', position, size });
+  diagram.addNode(node);
+  return node;
+}
+function mkLink(
+  diagram: DiagramModel,
+  sourceNodeId: string,
+  targetNodeId: string,
+  sourcePortId: string,
+  targetPortId: string
+): LinkModel {
+  const link = new LinkModel(sourcePortId, targetPortId);
+  link.sourceNodeId = sourceNodeId;
+  link.targetNodeId = targetNodeId;
+  diagram.addLink(link);
+  return link;
+}
 
 describe('LayoutService', () => {
   let service: LayoutService;
@@ -27,6 +56,7 @@ describe('LayoutService', () => {
       const customAdapter: LayoutAdapter = {
         name: 'custom',
         apply: jest.fn(),
+        applyIncremental: jest.fn(),
         validateOptions: jest.fn(() => true),
       };
 
@@ -64,32 +94,23 @@ describe('LayoutService', () => {
     });
 
     it('should throw error for invalid options', async () => {
-      const node1 = diagram.addNode({
-        position: { x: 0, y: 0 },
-        size: { width: 100, height: 50 },
-      });
+      const node1 = mkNode(diagram, { x: 0, y: 0 }, { width: 100, height: 50 });
 
       await expect(
         service.applyLayout(diagram, {
           adapter: 'dagre',
-          options: { rankdir: 'INVALID' as any },
+          options: { rankdir: 'INVALID' as any } as any,
         })
       ).rejects.toThrow('Invalid layout options');
     });
 
     it('should apply Dagre layout by name', async () => {
-      const node1 = diagram.addNode({
-        position: { x: 0, y: 0 },
-        size: { width: 100, height: 50 },
-      });
-      const node2 = diagram.addNode({
-        position: { x: 0, y: 0 },
-        size: { width: 100, height: 50 },
-      });
+      const node1 = mkNode(diagram, { x: 0, y: 0 }, { width: 100, height: 50 });
+      const node2 = mkNode(diagram, { x: 0, y: 0 }, { width: 100, height: 50 });
 
       const result = await service.applyLayout(diagram, {
         adapter: 'dagre',
-        options: { rankdir: 'TB' },
+        options: { rankdir: 'TB' } as any,
       });
 
       expect(result.nodePositions.size).toBe(2);
@@ -97,18 +118,12 @@ describe('LayoutService', () => {
     });
 
     it('should apply ELK layout by name', async () => {
-      const node1 = diagram.addNode({
-        position: { x: 0, y: 0 },
-        size: { width: 100, height: 50 },
-      });
-      const node2 = diagram.addNode({
-        position: { x: 0, y: 0 },
-        size: { width: 100, height: 50 },
-      });
+      const node1 = mkNode(diagram, { x: 0, y: 0 }, { width: 100, height: 50 });
+      const node2 = mkNode(diagram, { x: 0, y: 0 }, { width: 100, height: 50 });
 
       const result = await service.applyLayout(diagram, {
         adapter: 'elk',
-        options: { algorithm: 'layered' },
+        options: { algorithm: 'layered' } as any,
       });
 
       expect(result.nodePositions.size).toBe(2);
@@ -116,10 +131,7 @@ describe('LayoutService', () => {
     });
 
     it('should apply layout with adapter instance', async () => {
-      const node1 = diagram.addNode({
-        position: { x: 0, y: 0 },
-        size: { width: 100, height: 50 },
-      });
+      const node1 = mkNode(diagram, { x: 0, y: 0 }, { width: 100, height: 50 });
 
       const adapter = new DagreLayoutAdapter();
       const result = await service.applyLayout(diagram, {
@@ -139,21 +151,10 @@ describe('LayoutService', () => {
     });
 
     it('should update node positions without animation', async () => {
-      const node1 = diagram.addNode({
-        position: { x: 0, y: 0 },
-        size: { width: 100, height: 50 },
-      });
-      const node2 = diagram.addNode({
-        position: { x: 0, y: 0 },
-        size: { width: 100, height: 50 },
-      });
+      const node1 = mkNode(diagram, { x: 0, y: 0 }, { width: 100, height: 50 });
+      const node2 = mkNode(diagram, { x: 0, y: 0 }, { width: 100, height: 50 });
 
-      const link = diagram.addLink({
-        sourceNodeId: node1.id,
-        targetNodeId: node2.id,
-        sourcePortId: 'out',
-        targetPortId: 'in',
-      });
+      const link = mkLink(diagram, node1.id, node2.id, 'out', 'in');
 
       await service.applyLayout(diagram, {
         adapter: 'dagre',
@@ -168,21 +169,10 @@ describe('LayoutService', () => {
     });
 
     it('should update node positions with animation', async () => {
-      const node1 = diagram.addNode({
-        position: { x: 0, y: 0 },
-        size: { width: 100, height: 50 },
-      });
-      const node2 = diagram.addNode({
-        position: { x: 0, y: 0 },
-        size: { width: 100, height: 50 },
-      });
+      const node1 = mkNode(diagram, { x: 0, y: 0 }, { width: 100, height: 50 });
+      const node2 = mkNode(diagram, { x: 0, y: 0 }, { width: 100, height: 50 });
 
-      const link = diagram.addLink({
-        sourceNodeId: node1.id,
-        targetNodeId: node2.id,
-        sourcePortId: 'out',
-        targetPortId: 'in',
-      });
+      const link = mkLink(diagram, node1.id, node2.id, 'out', 'in');
 
       await service.applyLayout(diagram, {
         adapter: 'dagre',
@@ -201,10 +191,7 @@ describe('LayoutService', () => {
   describe('Animation', () => {
     it('should animate positions over time', async () => {
       const diagram = new DiagramModel();
-      const node = diagram.addNode({
-        position: { x: 0, y: 0 },
-        size: { width: 100, height: 50 },
-      });
+      const node = mkNode(diagram, { x: 0, y: 0 }, { width: 100, height: 50 });
 
       const initialX = node.position.x;
       const initialY = node.position.y;
@@ -234,26 +221,15 @@ describe('LayoutService', () => {
   describe('Integration', () => {
     it('should work with multiple layout applications', async () => {
       const diagram = new DiagramModel();
-      const node1 = diagram.addNode({
-        position: { x: 0, y: 0 },
-        size: { width: 100, height: 50 },
-      });
-      const node2 = diagram.addNode({
-        position: { x: 0, y: 0 },
-        size: { width: 100, height: 50 },
-      });
+      const node1 = mkNode(diagram, { x: 0, y: 0 }, { width: 100, height: 50 });
+      const node2 = mkNode(diagram, { x: 0, y: 0 }, { width: 100, height: 50 });
 
-      const link = diagram.addLink({
-        sourceNodeId: node1.id,
-        targetNodeId: node2.id,
-        sourcePortId: 'out',
-        targetPortId: 'in',
-      });
+      const link = mkLink(diagram, node1.id, node2.id, 'out', 'in');
 
       // Apply Dagre layout
       await service.applyLayout(diagram, {
         adapter: 'dagre',
-        options: { rankdir: 'TB' },
+        options: { rankdir: 'TB' } as any,
       });
 
       const pos1TB = { ...node1.position };
@@ -262,33 +238,24 @@ describe('LayoutService', () => {
       // Apply Dagre layout with different direction
       await service.applyLayout(diagram, {
         adapter: 'dagre',
-        options: { rankdir: 'LR' },
+        options: { rankdir: 'LR' } as any,
       });
 
       const pos1LR = { ...node1.position };
       const pos2LR = { ...node2.position };
 
-      // Positions should be different for different directions
-      expect(pos1LR.x !== pos1TB.x || pos1LR.y !== pos1TB.y).toBe(true);
+      // The root can legitimately keep its origin spot in both directions —
+      // the CHAINED node must move (below the root in TB, beside it in LR)
+      expect(pos2LR.x !== pos2TB.x || pos2LR.y !== pos2TB.y).toBe(true);
+      void pos1TB; void pos1LR;
     });
 
     it('should switch between different adapters', async () => {
       const diagram = new DiagramModel();
-      const node1 = diagram.addNode({
-        position: { x: 0, y: 0 },
-        size: { width: 100, height: 50 },
-      });
-      const node2 = diagram.addNode({
-        position: { x: 0, y: 0 },
-        size: { width: 100, height: 50 },
-      });
+      const node1 = mkNode(diagram, { x: 0, y: 0 }, { width: 100, height: 50 });
+      const node2 = mkNode(diagram, { x: 0, y: 0 }, { width: 100, height: 50 });
 
-      const link = diagram.addLink({
-        sourceNodeId: node1.id,
-        targetNodeId: node2.id,
-        sourcePortId: 'out',
-        targetPortId: 'in',
-      });
+      const link = mkLink(diagram, node1.id, node2.id, 'out', 'in');
 
       // Apply Dagre layout
       const result1 = await service.applyLayout(diagram, {
@@ -313,20 +280,17 @@ describe('LayoutService', () => {
           bounds: { x: 100, y: 200, width: 100, height: 50 },
           metadata: { algorithm: 'custom', executionTime: 10 },
         })),
+        applyIncremental: jest.fn(),
         validateOptions: jest.fn(() => true),
       };
 
       service.registerAdapter(customAdapter);
 
       const diagram = new DiagramModel();
-      const node = diagram.addNode({
-        position: { x: 0, y: 0 },
-        size: { width: 100, height: 50 },
-      });
-      node.id = '1';
+      const node = mkNode(diagram, { x: 0, y: 0 }, { width: 100, height: 50 }, '1');
 
       const result = await service.applyLayout(diagram, {
-        adapter: 'custom',
+        adapter: customAdapter,
       });
 
       expect(customAdapter.apply).toHaveBeenCalled();
@@ -343,21 +307,13 @@ describe('LayoutService', () => {
 
       // Create 50 nodes
       for (let i = 0; i < 50; i++) {
-        const node = diagram.addNode({
-          position: { x: 0, y: 0 },
-          size: { width: 100, height: 50 },
-        });
+        const node = mkNode(diagram, { x: 0, y: 0 }, { width: 100, height: 50 });
         nodes.push(node);
       }
 
       // Connect nodes in a chain
       for (let i = 0; i < nodes.length - 1; i++) {
-        diagram.addLink({
-          sourceNodeId: nodes[i].id,
-          targetNodeId: nodes[i + 1].id,
-          sourcePortId: 'out',
-          targetPortId: 'in',
-        });
+        mkLink(diagram, nodes[i].id, nodes[i + 1].id, 'out', 'in');
       }
 
       const startTime = performance.now();

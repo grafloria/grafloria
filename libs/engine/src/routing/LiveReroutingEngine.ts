@@ -105,9 +105,7 @@ export class LiveReroutingEngine {
       const link = this.diagram.getLink(linkId);
       if (!link) return;
 
-      // TODO: Force path regeneration - requires sourcePoint and targetPoint
-      // This is placeholder code until the API is properly integrated
-      // link.generatePath();
+      this.regenerateLinkPath(link);
 
       // Mark as dirty to trigger re-render
       link.markDirty();
@@ -116,8 +114,26 @@ export class LiveReroutingEngine {
     // Clear pending reroutes
     this.pendingReroutes.clear();
 
-    // TODO: Emit event for renderer to update - DiagramModel doesn't expose emit() publicly
-    // this.diagram.emit('links:rerouted', { count: reroutedCount });
+    // Notify renderers (DiagramModel routes external events through its
+    // protected emitter; engine-internal collaborators use it directly)
+    (this.diagram as any).emitter?.emit('links:rerouted', { count: reroutedCount });
+  }
+
+  /**
+   * Regenerate a link's path from the CURRENT port positions
+   */
+  private regenerateLinkPath(link: import('../models/LinkModel').LinkModel): void {
+    const sourceNode = this.diagram.getNodeByPortId(link.sourcePortId);
+    const targetNode = this.diagram.getNodeByPortId(link.targetPortId);
+    if (!sourceNode || !targetNode) return;
+
+    const sourcePort = sourceNode.getPort(link.sourcePortId);
+    const targetPort = targetNode.getPort(link.targetPortId);
+    if (!sourcePort || !targetPort) return;
+
+    const sourcePoint = sourcePort.getAbsolutePosition(sourceNode.getBoundingBox());
+    const targetPoint = targetPort.getAbsolutePosition(targetNode.getBoundingBox());
+    link.generatePath(sourcePoint, targetPoint, sourcePort.alignment?.side, targetPort.alignment?.side);
   }
 
   /**
@@ -157,13 +173,11 @@ export class LiveReroutingEngine {
     const links = this.diagram.getLinks();
 
     links.forEach(link => {
-      // TODO: Force path regeneration - requires sourcePoint and targetPoint
-      // link.generatePath();
+      this.regenerateLinkPath(link);
       link.markDirty();
     });
 
-    // TODO: Emit event for renderer to update - DiagramModel doesn't expose emit() publicly
-    // this.diagram.emit('links:rerouted', { count: links.length });
+    (this.diagram as any).emitter?.emit('links:rerouted', { count: links.length });
   }
 
   /**

@@ -319,8 +319,7 @@ describe('IncrementalLayoutManager', () => {
 
 // Helper function to create test nodes
 function createNode(id: string, x: number, y: number): NodeModel {
-  const node = new NodeModel({ x, y }, { width: 100, height: 50 });
-  node.id = id;
+  const node = new NodeModel({ id, type: 'layout-test', position: { x, y }, size: { width: 100, height: 50 } });
 
   // Mock getIncomingLinks and getOutgoingLinks with default empty arrays
   node.getIncomingLinks = jest.fn(() => []);

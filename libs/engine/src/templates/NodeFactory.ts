@@ -210,8 +210,11 @@ export class NodeFactory {
     if (hasCustomConfig) {
       node.ports.clear();
 
-      // Create ports for each enabled side
-      const sides = ['top', 'right', 'bottom', 'left'] as const;
+      // Create ports for each enabled side, in the order the template
+      // declares them (declaration order also drives same-side port ranking)
+      const allSides = ['top', 'right', 'bottom', 'left'];
+      const sides = (Object.keys(structure.ports) as Array<'top' | 'right' | 'bottom' | 'left'>)
+        .filter((key) => allSides.includes(key));
 
       sides.forEach(side => {
         const sideConfig = structure.ports![side];
@@ -372,6 +375,9 @@ export class NodeFactory {
     node.children.forEach((childId) => {
       const child = this.diagram.getNode(childId);
       if (child) {
+        // Children are layout-managed: their position is parent-relative and
+        // owned by this layout pass, not by the user
+        child.positionMode = 'layout';
         if (flexLayout.direction === 'column') {
           // Stack vertically
           child.position.x = paddingLeft;

@@ -56,10 +56,12 @@ describe('ValidationEngine', () => {
     });
 
     it('should validate minimum port count', () => {
+      // NodeModel auto-creates 4 default ports, so the minimum must exceed
+      // that for the rule to trip
       const nodeDef: NodeTypeDefinition = {
         type: 'processor',
         label: 'Processor',
-        minPorts: 2,
+        minPorts: 5,
       };
 
       registry.registerNodeType(nodeDef);
@@ -331,10 +333,11 @@ describe('ValidationEngine', () => {
     });
 
     it('should aggregate errors from multiple nodes', () => {
+      // NodeModel auto-creates 4 default ports — require more to trip the rule
       const nodeDef: NodeTypeDefinition = {
         type: 'constrained',
         label: 'Constrained',
-        minPorts: 2,
+        minPorts: 5,
       };
 
       registry.registerNodeType(nodeDef);

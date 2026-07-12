@@ -1,7 +1,7 @@
 // ConnectionGroupValidator Tests (Phase 3)
 
 import { createConnectionGroupValidator, isConnectionAllowedByGroup } from './ConnectionGroupValidator';
-import { DiagramEngine } from '../DiagramEngine';
+import { DiagramEngine } from '../engine/DiagramEngine';
 import { NodeModel, PortModel } from '../models';
 
 describe('ConnectionGroupValidator (Phase 3)', () => {
@@ -10,7 +10,7 @@ describe('ConnectionGroupValidator (Phase 3)', () => {
 
   beforeEach(() => {
     engine = new DiagramEngine();
-    diagram = engine.getDiagram();
+    diagram = engine.createDiagram('Test');
   });
 
   describe('Connection Group Validation', () => {

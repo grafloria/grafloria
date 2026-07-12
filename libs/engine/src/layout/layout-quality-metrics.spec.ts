@@ -377,8 +377,7 @@ function createNode(
   width: number = 150,
   height: number = 50
 ): NodeModel {
-  const node = new NodeModel({ x, y }, { width, height });
-  node.id = id;
+  const node = new NodeModel({ id, type: 'layout-test', position: { x, y }, size: { width, height } });
   return node;
 }
 

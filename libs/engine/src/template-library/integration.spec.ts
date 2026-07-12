@@ -10,7 +10,12 @@ import {
   getUnregisteredTemplates,
 } from './integration';
 import { TemplateRegistry } from '../templates/TemplateRegistry';
+import { getAllTemplates } from './index';
 import { EventBus } from '../events/EventBus';
+
+// The library grows over time — count against the source of truth instead of
+// hardcoding a number that goes stale with every new template
+const LIBRARY_SIZE = getAllTemplates().length;
 
 describe('Template Library Integration', () => {
   let registry: TemplateRegistry;
@@ -22,31 +27,29 @@ describe('Template Library Integration', () => {
   });
 
   describe('registerTemplateLibrary', () => {
-    it('should register all 20 templates', () => {
+    it('should register every library template', () => {
       const count = registerTemplateLibrary(registry);
 
-      // Should return count of 20
-      expect(count).toBe(20);
+      expect(count).toBe(LIBRARY_SIZE);
 
       // Check that all templates are registered
       expect(registry.has('user-avatar')).toBe(true);
       expect(registry.has('process-step')).toBe(true);
       expect(registry.has('metric-card')).toBe(true);
 
-      // Should have all 20 templates
       const all = registry.getAll();
-      expect(all.length).toBe(20);
+      expect(all.length).toBe(LIBRARY_SIZE);
     });
 
     it('should not duplicate registrations', () => {
       const count1 = registerTemplateLibrary(registry);
       const count2 = registerTemplateLibrary(registry); // Register again
 
-      expect(count1).toBe(20);
-      expect(count2).toBe(20);
+      expect(count1).toBe(LIBRARY_SIZE);
+      expect(count2).toBe(LIBRARY_SIZE);
 
       const all = registry.getAll();
-      expect(all.length).toBe(20); // Still 20, not 40
+      expect(all.length).toBe(LIBRARY_SIZE); // no duplicates on re-register
     });
   });
 
@@ -143,7 +146,7 @@ describe('Template Library Integration', () => {
   describe('getUnregisteredTemplates', () => {
     it('should return all template IDs when none registered', () => {
       const unregistered = getUnregisteredTemplates(registry);
-      expect(unregistered.length).toBe(20);
+      expect(unregistered.length).toBe(LIBRARY_SIZE);
       expect(unregistered).toContain('user-avatar');
       expect(unregistered).toContain('process-step');
     });
@@ -158,7 +161,7 @@ describe('Template Library Integration', () => {
       registerTemplatesById(registry, ['user-avatar', 'card-node']);
 
       const unregistered = getUnregisteredTemplates(registry);
-      expect(unregistered.length).toBe(18);
+      expect(unregistered.length).toBe(LIBRARY_SIZE - 2);
       expect(unregistered).not.toContain('user-avatar');
       expect(unregistered).not.toContain('card-node');
       expect(unregistered).toContain('process-step');

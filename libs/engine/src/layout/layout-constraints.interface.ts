@@ -186,19 +186,22 @@ export class ConstraintManager {
   ): NodeConstraint[] {
     const sorted = [...constraints];
 
+    // Constraints are applied sequentially, so the LAST one applied wins a
+    // contested field. Order them so the intended winner runs last.
     switch (strategy) {
       case 'priority':
-        // Sort by priority (higher first), then by original order
-        sorted.sort((a, b) => (b.priority || 0) - (a.priority || 0));
+        // Ascending priority: the highest-priority constraint applies last
+        // (e.g. fix-x@1 proposes 600, boundary@2 clamps it to 500)
+        sorted.sort((a, b) => (a.priority || 0) - (b.priority || 0));
         break;
 
       case 'first':
-        // Keep original order
+        // First-declared wins: apply in reverse declaration order
+        sorted.reverse();
         break;
 
       case 'last':
-        // Reverse order
-        sorted.reverse();
+        // Last-declared wins: keep declaration order
         break;
     }
 

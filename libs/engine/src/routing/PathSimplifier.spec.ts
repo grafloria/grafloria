@@ -172,12 +172,18 @@ describe('PathSimplifier', () => {
         { x: 20, y: 10 },
       ];
 
+      // Both staircase corners sit ~7px off any simplified chord — far above
+      // epsilon 1 — so Douglas-Peucker must keep them all; dropping either
+      // (the old expectation) would deform the path beyond the tolerance.
       const simplified = simplifier.simplify(points, 1.0);
+      expect(simplified).toEqual(points);
 
-      expect(simplified).toHaveLength(3);
-      expect(simplified[0]).toEqual({ x: 0, y: 0 });
-      expect(simplified[1]).toEqual({ x: 10, y: 10 });
-      expect(simplified[2]).toEqual({ x: 20, y: 10 });
+      // A tolerance larger than the corner offsets may collapse the path
+      const collapsed = simplifier.simplify(points, 10.0);
+      expect(collapsed).toEqual([
+        { x: 0, y: 0 },
+        { x: 20, y: 10 },
+      ]);
     });
 
     it('should respect epsilon tolerance', () => {
@@ -207,14 +213,17 @@ describe('PathSimplifier', () => {
         { x: 60, y: 0 },
       ];
 
+      // Every zigzag peak deviates 5px from the baseline — above epsilon 2 —
+      // so the shape must be fully preserved at this tolerance
       const simplified = simplifier.simplify(points, 2.0);
+      expect(simplified).toEqual(points);
 
-      // Should reduce points while preserving shape
-      expect(simplified.length).toBeLessThan(points.length);
-      expect(simplified.length).toBeGreaterThanOrEqual(2);
-      // First and last points always preserved
-      expect(simplified[0]).toEqual(points[0]);
-      expect(simplified[simplified.length - 1]).toEqual(points[points.length - 1]);
+      // Above the 5px amplitude the zigzag flattens to its endpoints
+      const flattened = simplifier.simplify(points, 6.0);
+      expect(flattened).toEqual([
+        { x: 0, y: 0 },
+        { x: 60, y: 0 },
+      ]);
     });
 
     it('should handle two-point path', () => {

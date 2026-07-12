@@ -7,7 +7,7 @@
 import {
   PortInfo,
   PortSide,
-  PortDirection,
+  PortFlowDirection,
   PortAwareLayoutOptions,
   PortAwareLayoutManager,
 } from './port-aware-layout.interface';

@@ -28,8 +28,7 @@ describe('DagreLayoutAdapter', () => {
     });
 
     it('should handle single node', async () => {
-      const node = new NodeModel({ x: 0, y: 0 }, { width: 100, height: 50 });
-      node.id = '1';
+      const node = new NodeModel({ id: '1', type: 'layout-test', position: { x: 0, y: 0 }, size: { width: 100, height: 50 } });
 
       const result = await adapter.apply([node], []);
 
@@ -41,10 +40,8 @@ describe('DagreLayoutAdapter', () => {
 
   describe('Layout direction', () => {
     it('should layout nodes top-to-bottom (TB)', async () => {
-      const node1 = new NodeModel({ x: 0, y: 0 }, { width: 100, height: 50 });
-      node1.id = '1';
-      const node2 = new NodeModel({ x: 0, y: 0 }, { width: 100, height: 50 });
-      node2.id = '2';
+      const node1 = new NodeModel({ id: '1', type: 'layout-test', position: { x: 0, y: 0 }, size: { width: 100, height: 50 } });
+      const node2 = new NodeModel({ id: '2', type: 'layout-test', position: { x: 0, y: 0 }, size: { width: 100, height: 50 } });
 
       const link = new LinkModel('port1', 'port2');
       link.sourceNodeId = '1';
@@ -60,10 +57,8 @@ describe('DagreLayoutAdapter', () => {
     });
 
     it('should layout nodes left-to-right (LR)', async () => {
-      const node1 = new NodeModel({ x: 0, y: 0 }, { width: 100, height: 50 });
-      node1.id = '1';
-      const node2 = new NodeModel({ x: 0, y: 0 }, { width: 100, height: 50 });
-      node2.id = '2';
+      const node1 = new NodeModel({ id: '1', type: 'layout-test', position: { x: 0, y: 0 }, size: { width: 100, height: 50 } });
+      const node2 = new NodeModel({ id: '2', type: 'layout-test', position: { x: 0, y: 0 }, size: { width: 100, height: 50 } });
 
       const link = new LinkModel('port1', 'port2');
       link.sourceNodeId = '1';
@@ -79,10 +74,8 @@ describe('DagreLayoutAdapter', () => {
     });
 
     it('should layout nodes bottom-to-top (BT)', async () => {
-      const node1 = new NodeModel({ x: 0, y: 0 }, { width: 100, height: 50 });
-      node1.id = '1';
-      const node2 = new NodeModel({ x: 0, y: 0 }, { width: 100, height: 50 });
-      node2.id = '2';
+      const node1 = new NodeModel({ id: '1', type: 'layout-test', position: { x: 0, y: 0 }, size: { width: 100, height: 50 } });
+      const node2 = new NodeModel({ id: '2', type: 'layout-test', position: { x: 0, y: 0 }, size: { width: 100, height: 50 } });
 
       const link = new LinkModel('port1', 'port2');
       link.sourceNodeId = '1';
@@ -98,10 +91,8 @@ describe('DagreLayoutAdapter', () => {
     });
 
     it('should layout nodes right-to-left (RL)', async () => {
-      const node1 = new NodeModel({ x: 0, y: 0 }, { width: 100, height: 50 });
-      node1.id = '1';
-      const node2 = new NodeModel({ x: 0, y: 0 }, { width: 100, height: 50 });
-      node2.id = '2';
+      const node1 = new NodeModel({ id: '1', type: 'layout-test', position: { x: 0, y: 0 }, size: { width: 100, height: 50 } });
+      const node2 = new NodeModel({ id: '2', type: 'layout-test', position: { x: 0, y: 0 }, size: { width: 100, height: 50 } });
 
       const link = new LinkModel('port1', 'port2');
       link.sourceNodeId = '1';
@@ -119,12 +110,9 @@ describe('DagreLayoutAdapter', () => {
 
   describe('Spacing options', () => {
     it('should respect nodesep option', async () => {
-      const node1 = new NodeModel({ x: 0, y: 0 }, { width: 100, height: 50 });
-      node1.id = '1';
-      const node2 = new NodeModel({ x: 0, y: 0 }, { width: 100, height: 50 });
-      node2.id = '2';
-      const node3 = new NodeModel({ x: 0, y: 0 }, { width: 100, height: 50 });
-      node3.id = '3';
+      const node1 = new NodeModel({ id: '1', type: 'layout-test', position: { x: 0, y: 0 }, size: { width: 100, height: 50 } });
+      const node2 = new NodeModel({ id: '2', type: 'layout-test', position: { x: 0, y: 0 }, size: { width: 100, height: 50 } });
+      const node3 = new NodeModel({ id: '3', type: 'layout-test', position: { x: 0, y: 0 }, size: { width: 100, height: 50 } });
 
       const link1 = new LinkModel('port1', 'port2');
       link1.sourceNodeId = '1';
@@ -147,10 +135,8 @@ describe('DagreLayoutAdapter', () => {
     });
 
     it('should respect ranksep option', async () => {
-      const node1 = new NodeModel({ x: 0, y: 0 }, { width: 100, height: 50 });
-      node1.id = '1';
-      const node2 = new NodeModel({ x: 0, y: 0 }, { width: 100, height: 50 });
-      node2.id = '2';
+      const node1 = new NodeModel({ id: '1', type: 'layout-test', position: { x: 0, y: 0 }, size: { width: 100, height: 50 } });
+      const node2 = new NodeModel({ id: '2', type: 'layout-test', position: { x: 0, y: 0 }, size: { width: 100, height: 50 } });
 
       const link = new LinkModel('port1', 'port2');
       link.sourceNodeId = '1';
@@ -172,10 +158,8 @@ describe('DagreLayoutAdapter', () => {
 
   describe('Ranker algorithms', () => {
     const createTestGraph = () => {
-      const node1 = new NodeModel({ x: 0, y: 0 }, { width: 100, height: 50 });
-      node1.id = '1';
-      const node2 = new NodeModel({ x: 0, y: 0 }, { width: 100, height: 50 });
-      node2.id = '2';
+      const node1 = new NodeModel({ id: '1', type: 'layout-test', position: { x: 0, y: 0 }, size: { width: 100, height: 50 } });
+      const node2 = new NodeModel({ id: '2', type: 'layout-test', position: { x: 0, y: 0 }, size: { width: 100, height: 50 } });
 
       const link = new LinkModel('port1', 'port2');
       link.sourceNodeId = '1';
@@ -190,7 +174,7 @@ describe('DagreLayoutAdapter', () => {
         ranker: 'network-simplex',
       });
 
-      expect(result.metadata?.ranker).toBe('network-simplex');
+      expect(result.metadata?.['ranker']).toBe('network-simplex');
       expect(result.nodePositions.size).toBe(2);
     });
 
@@ -200,7 +184,7 @@ describe('DagreLayoutAdapter', () => {
         ranker: 'tight-tree',
       });
 
-      expect(result.metadata?.ranker).toBe('tight-tree');
+      expect(result.metadata?.['ranker']).toBe('tight-tree');
       expect(result.nodePositions.size).toBe(2);
     });
 
@@ -210,7 +194,7 @@ describe('DagreLayoutAdapter', () => {
         ranker: 'longest-path',
       });
 
-      expect(result.metadata?.ranker).toBe('longest-path');
+      expect(result.metadata?.['ranker']).toBe('longest-path');
       expect(result.nodePositions.size).toBe(2);
     });
   });
@@ -251,10 +235,8 @@ describe('DagreLayoutAdapter', () => {
 
   describe('Bounds calculation', () => {
     it('should calculate correct bounds', async () => {
-      const node1 = new NodeModel({ x: 0, y: 0 }, { width: 100, height: 50 });
-      node1.id = '1';
-      const node2 = new NodeModel({ x: 0, y: 0 }, { width: 100, height: 50 });
-      node2.id = '2';
+      const node1 = new NodeModel({ id: '1', type: 'layout-test', position: { x: 0, y: 0 }, size: { width: 100, height: 50 } });
+      const node2 = new NodeModel({ id: '2', type: 'layout-test', position: { x: 0, y: 0 }, size: { width: 100, height: 50 } });
 
       const link = new LinkModel('port1', 'port2');
       link.sourceNodeId = '1';
@@ -270,25 +252,23 @@ describe('DagreLayoutAdapter', () => {
 
   describe('Metadata', () => {
     it('should return execution time in metadata', async () => {
-      const node = new NodeModel({ x: 0, y: 0 }, { width: 100, height: 50 });
-      node.id = '1';
+      const node = new NodeModel({ id: '1', type: 'layout-test', position: { x: 0, y: 0 }, size: { width: 100, height: 50 } });
 
       const result = await adapter.apply([node], []);
 
       expect(result.metadata).toBeDefined();
       expect(result.metadata!.executionTime).toBeGreaterThan(0);
       expect(result.metadata!.algorithm).toBe('dagre');
-      expect(result.metadata!.nodeCount).toBe(1);
-      expect(result.metadata!.linkCount).toBe(0);
+      expect(result.metadata!['nodeCount']).toBe(1);
+      expect(result.metadata!['linkCount']).toBe(0);
     });
 
     it('should include direction in metadata', async () => {
-      const node = new NodeModel({ x: 0, y: 0 }, { width: 100, height: 50 });
-      node.id = '1';
+      const node = new NodeModel({ id: '1', type: 'layout-test', position: { x: 0, y: 0 }, size: { width: 100, height: 50 } });
 
       const result = await adapter.apply([node], [], { rankdir: 'LR' });
 
-      expect(result.metadata!.direction).toBe('LR');
+      expect(result.metadata!['direction']).toBe('LR');
     });
   });
 
@@ -299,8 +279,7 @@ describe('DagreLayoutAdapter', () => {
 
       // Create a tree structure
       for (let i = 0; i < 100; i++) {
-        const node = new NodeModel({ x: 0, y: 0 }, { width: 100, height: 50 });
-        node.id = `${i}`;
+        const node = new NodeModel({ id: `${i}`, type: 'layout-test', position: { x: 0, y: 0 }, size: { width: 100, height: 50 } });
         nodes.push(node);
 
         if (i > 0) {
@@ -322,10 +301,8 @@ describe('DagreLayoutAdapter', () => {
 
   describe('Layout Constraints', () => {
     it('should pin node to fixed position', async () => {
-      const node1 = new NodeModel({ x: 0, y: 0 }, { width: 100, height: 50 });
-      node1.id = '1';
-      const node2 = new NodeModel({ x: 0, y: 0 }, { width: 100, height: 50 });
-      node2.id = '2';
+      const node1 = new NodeModel({ id: '1', type: 'layout-test', position: { x: 0, y: 0 }, size: { width: 100, height: 50 } });
+      const node2 = new NodeModel({ id: '2', type: 'layout-test', position: { x: 0, y: 0 }, size: { width: 100, height: 50 } });
 
       const link = new LinkModel('port1', 'port2');
       link.sourceNodeId = '1';
@@ -354,18 +331,17 @@ describe('DagreLayoutAdapter', () => {
     });
 
     it('should fix X coordinate while allowing Y to vary', async () => {
-      const node1 = new NodeModel({ x: 0, y: 0 }, { width: 100, height: 50 });
-      node1.id = '1';
-      const node2 = new NodeModel({ x: 0, y: 0 }, { width: 100, height: 50 });
-      node2.id = '2';
-      const node3 = new NodeModel({ x: 0, y: 0 }, { width: 100, height: 50 });
-      node3.id = '3';
+      const node1 = new NodeModel({ id: '1', type: 'layout-test', position: { x: 0, y: 0 }, size: { width: 100, height: 50 } });
+      const node2 = new NodeModel({ id: '2', type: 'layout-test', position: { x: 0, y: 0 }, size: { width: 100, height: 50 } });
+      const node3 = new NodeModel({ id: '3', type: 'layout-test', position: { x: 0, y: 0 }, size: { width: 100, height: 50 } });
 
       const link1 = new LinkModel('port1', 'port2');
       link1.sourceNodeId = '1';
       link1.targetNodeId = '2';
-      const link2 = new LinkModel('port1', 'port3');
-      link2.sourceNodeId = '1';
+      // Chain 2→3 so the nodes land on DIFFERENT ranks: TB siblings share the
+      // same y by design, which would make the "Y varies" assertion meaningless
+      const link2 = new LinkModel('port2', 'port3');
+      link2.sourceNodeId = '2';
       link2.targetNodeId = '3';
 
       const result = await adapter.apply([node1, node2, node3], [link1, link2], {
@@ -397,8 +373,7 @@ describe('DagreLayoutAdapter', () => {
     });
 
     it('should clamp positions within boundaries', async () => {
-      const node1 = new NodeModel({ x: 0, y: 0 }, { width: 100, height: 50 });
-      node1.id = '1';
+      const node1 = new NodeModel({ id: '1', type: 'layout-test', position: { x: 0, y: 0 }, size: { width: 100, height: 50 } });
 
       const result = await adapter.apply([node1], [], {
         constraints: {
@@ -421,8 +396,7 @@ describe('DagreLayoutAdapter', () => {
     });
 
     it('should handle multiple constraints with priority', async () => {
-      const node1 = new NodeModel({ x: 0, y: 0 }, { width: 100, height: 50 });
-      node1.id = '1';
+      const node1 = new NodeModel({ id: '1', type: 'layout-test', position: { x: 0, y: 0 }, size: { width: 100, height: 50 } });
 
       const result = await adapter.apply([node1], [], {
         constraints: {
@@ -450,8 +424,7 @@ describe('DagreLayoutAdapter', () => {
     });
 
     it('should work without constraints', async () => {
-      const node1 = new NodeModel({ x: 0, y: 0 }, { width: 100, height: 50 });
-      node1.id = '1';
+      const node1 = new NodeModel({ id: '1', type: 'layout-test', position: { x: 0, y: 0 }, size: { width: 100, height: 50 } });
 
       const result = await adapter.apply([node1], []);
 

@@ -64,8 +64,11 @@ describe('NodeFactory', () => {
       type: 'container',
       size: { width: 300, height: 'auto' },
       layout: {
-        type: 'flexbox',
         direction: 'column',
+        wrap: 'nowrap',
+        justifyContent: 'start',
+        alignItems: 'stretch',
+        alignContent: 'start',
         gap: 8,
       },
       children: [
@@ -107,7 +110,7 @@ describe('NodeFactory', () => {
 
       expect(node).toBeDefined();
       expect(node.type).toBe('container');
-      expect(node.position).toEqual({ x: 100, y: 100, z: 0 });
+      expect(node.position).toEqual({ x: 100, y: 100 });
       expect(node.size).toEqual({ width: 200, height: 100, depth: 0 });
     });
 
@@ -141,9 +144,9 @@ describe('NodeFactory', () => {
         { x: 0, y: 0 }
       );
 
-      expect(node.data.title).toBe('Custom Title'); // User override
-      expect(node.data.count).toBe(0); // Default
-      expect(node.data.value).toBe(42); // User data
+      expect(node.data['title']).toBe('Custom Title'); // User override
+      expect(node.data['count']).toBe(0); // Default
+      expect(node.data['value']).toBe(42); // User data
     });
 
     it('should add node to diagram', () => {
@@ -324,7 +327,7 @@ describe('NodeFactory', () => {
         { x: 0, y: 0 }
       );
 
-      const htmlConfig = node.data._html;
+      const htmlConfig = node.data['_html'];
       expect(htmlConfig).toBeDefined();
       expect(htmlConfig.component).toBe('test-component');
       expect(htmlConfig.className).toBe('test-class');
@@ -382,8 +385,8 @@ describe('NodeFactory', () => {
         { x: 0, y: 0 }
       );
 
-      expect(node.data.label).toBe('My Title');
-      expect(node.data.value).toBe(42);
+      expect(node.data['label']).toBe('My Title');
+      expect(node.data['value']).toBe(42);
     });
   });
 });

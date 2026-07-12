@@ -294,7 +294,7 @@ describe('TemplateRegistry', () => {
       expect(retrieved).toBeDefined();
 
       // Test validator works
-      const result = retrieved!({ id: 'a' }, { id: 'b' });
+      const result = retrieved!({ id: 'a' } as any, { id: 'b' } as any);
       expect(result).toBe(true);
     });
   });

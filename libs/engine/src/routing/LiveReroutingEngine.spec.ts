@@ -1,3 +1,6 @@
+/**
+ * @jest-environment jsdom
+ */
 // LiveReroutingEngine.spec.ts
 // TDD tests for automatic link rerouting (Phase 0.2)
 
@@ -18,11 +21,12 @@ describe('LiveReroutingEngine (Phase 0.2)', () => {
 
   beforeEach(() => {
     engine = new DiagramEngine();
-    diagram = engine.getDiagram();
+    diagram = engine.createDiagram('Test')!;
     routingEngine = engine.getRoutingEngine();
 
     // Create test nodes with ports
     nodeA = new NodeModel({
+      type: 'test',
       id: 'nodeA',
       position: { x: 0, y: 50 },
       size: { width: 60, height: 40 }
@@ -35,6 +39,7 @@ describe('LiveReroutingEngine (Phase 0.2)', () => {
     }));
 
     nodeB = new NodeModel({
+      type: 'test',
       id: 'nodeB',
       position: { x: 200, y: 50 },
       size: { width: 60, height: 40 }
@@ -50,12 +55,8 @@ describe('LiveReroutingEngine (Phase 0.2)', () => {
     diagram.addNode(nodeB);
 
     // Create link
-    link = new LinkModel({
-      id: 'link1',
-      sourcePortId: 'portA-out',
-      targetPortId: 'portB-in',
-      pathType: 'orthogonal'
-    });
+    link = new LinkModel('portA-out', 'portB-in', 'orthogonal');
+    (link as any).id = 'link1'; // tests reference the link by this id
     diagram.addLink(link);
 
     // Initialize LiveReroutingEngine
@@ -78,7 +79,7 @@ describe('LiveReroutingEngine (Phase 0.2)', () => {
 
     it('should register event listeners on diagram', () => {
       // Verify that event listeners were attached
-      const eventListeners = (diagram as any)._eventEmitter?._events || (diagram as any)._events;
+      const eventListeners = (diagram as any).emitter?._events;
       expect(eventListeners?.['node:moved']).toBeDefined();
       expect(eventListeners?.['node:resized']).toBeDefined();
     });
@@ -86,18 +87,23 @@ describe('LiveReroutingEngine (Phase 0.2)', () => {
 
   describe('RED PHASE: Node Movement Detection', () => {
     it('should detect when node moves', () => {
-      const handleNodeMovedSpy = jest.spyOn(liveRerouting as any, 'handleNodeMoved');
+      // The constructor BINDS the handler, so spy the prototype before
+      // constructing a fresh engine
+      const handleNodeMovedSpy = jest.spyOn(LiveReroutingEngine.prototype as any, 'handleNodeMoved');
+      const freshEngine = new LiveReroutingEngine(routingEngine, diagram);
+      void freshEngine;
 
       // Move nodeA
-      nodeA.setPosition({ x: 50, y: 50 });
-      diagram.emit('node:moved', { nodeId: 'nodeA', position: { x: 50, y: 50 } });
+      nodeA.setPosition(50, 50);
+      (diagram as any).emitter.emit('node:moved', { nodeId: 'nodeA', position: { x: 50, y: 50 } });
 
       expect(handleNodeMovedSpy).toHaveBeenCalled();
+      handleNodeMovedSpy.mockRestore();
     });
 
     it('should add affected links to pending reroutes when node moves', () => {
       // Move nodeA
-      diagram.emit('node:moved', { nodeId: 'nodeA', position: { x: 50, y: 50 } });
+      (diagram as any).emitter.emit('node:moved', { nodeId: 'nodeA', position: { x: 50, y: 50 } });
 
       // Check pending reroutes includes the link
       const pendingReroutes = (liveRerouting as any).pendingReroutes;
@@ -106,16 +112,12 @@ describe('LiveReroutingEngine (Phase 0.2)', () => {
 
     it('should identify all links connected to moved node', () => {
       // Create additional link
-      const link2 = new LinkModel({
-        id: 'link2',
-        sourcePortId: 'portA-out',
-        targetPortId: 'portB-in',
-        pathType: 'smooth'
-      });
+      const link2 = new LinkModel('portA-out', 'portB-in', 'smooth');
+      (link2 as any).id = 'link2';
       diagram.addLink(link2);
 
       // Move nodeA
-      diagram.emit('node:moved', { nodeId: 'nodeA', position: { x: 50, y: 50 } });
+      (diagram as any).emitter.emit('node:moved', { nodeId: 'nodeA', position: { x: 50, y: 50 } });
 
       // Both links should be pending reroute
       const pendingReroutes = (liveRerouting as any).pendingReroutes;
@@ -124,9 +126,11 @@ describe('LiveReroutingEngine (Phase 0.2)', () => {
     });
 
     it('should handle node resize events', () => {
-      const handleNodeResizedSpy = jest.spyOn(liveRerouting as any, 'handleNodeResized');
+      const handleNodeResizedSpy = jest.spyOn(LiveReroutingEngine.prototype as any, 'handleNodeResized');
+      const freshEngine = new LiveReroutingEngine(routingEngine, diagram);
+      void freshEngine;
 
-      diagram.emit('node:resized', {
+      (diagram as any).emitter.emit('node:resized', {
         nodeId: 'nodeA',
         size: { width: 80, height: 60 }
       });
@@ -148,9 +152,9 @@ describe('LiveReroutingEngine (Phase 0.2)', () => {
       const processReroutesSpy = jest.spyOn(liveRerouting as any, 'processReroutes');
 
       // Move node multiple times rapidly
-      diagram.emit('node:moved', { nodeId: 'nodeA', position: { x: 10, y: 50 } });
-      diagram.emit('node:moved', { nodeId: 'nodeA', position: { x: 20, y: 50 } });
-      diagram.emit('node:moved', { nodeId: 'nodeA', position: { x: 30, y: 50 } });
+      (diagram as any).emitter.emit('node:moved', { nodeId: 'nodeA', position: { x: 10, y: 50 } });
+      (diagram as any).emitter.emit('node:moved', { nodeId: 'nodeA', position: { x: 20, y: 50 } });
+      (diagram as any).emitter.emit('node:moved', { nodeId: 'nodeA', position: { x: 30, y: 50 } });
 
       // Should not process immediately
       expect(processReroutesSpy).not.toHaveBeenCalled();
@@ -166,8 +170,8 @@ describe('LiveReroutingEngine (Phase 0.2)', () => {
       const processReroutesSpy = jest.spyOn(liveRerouting as any, 'processReroutes');
 
       // Move both nodes
-      diagram.emit('node:moved', { nodeId: 'nodeA', position: { x: 50, y: 50 } });
-      diagram.emit('node:moved', { nodeId: 'nodeB', position: { x: 250, y: 50 } });
+      (diagram as any).emitter.emit('node:moved', { nodeId: 'nodeA', position: { x: 50, y: 50 } });
+      (diagram as any).emitter.emit('node:moved', { nodeId: 'nodeB', position: { x: 250, y: 50 } });
 
       jest.advanceTimersByTime(16);
 
@@ -181,7 +185,7 @@ describe('LiveReroutingEngine (Phase 0.2)', () => {
 
       const processReroutesSpy = jest.spyOn(liveRerouting as any, 'processReroutes');
 
-      diagram.emit('node:moved', { nodeId: 'nodeA', position: { x: 50, y: 50 } });
+      (diagram as any).emitter.emit('node:moved', { nodeId: 'nodeA', position: { x: 50, y: 50 } });
 
       // Should not process at 16ms
       jest.advanceTimersByTime(16);
@@ -205,7 +209,7 @@ describe('LiveReroutingEngine (Phase 0.2)', () => {
     it('should call generatePath on affected links', () => {
       const generatePathSpy = jest.spyOn(link, 'generatePath');
 
-      diagram.emit('node:moved', { nodeId: 'nodeA', position: { x: 50, y: 50 } });
+      (diagram as any).emitter.emit('node:moved', { nodeId: 'nodeA', position: { x: 50, y: 50 } });
       jest.advanceTimersByTime(16);
 
       expect(generatePathSpy).toHaveBeenCalled();
@@ -214,7 +218,7 @@ describe('LiveReroutingEngine (Phase 0.2)', () => {
     it('should mark links as dirty after rerouting', () => {
       const markDirtySpy = jest.spyOn(link, 'markDirty');
 
-      diagram.emit('node:moved', { nodeId: 'nodeA', position: { x: 50, y: 50 } });
+      (diagram as any).emitter.emit('node:moved', { nodeId: 'nodeA', position: { x: 50, y: 50 } });
       jest.advanceTimersByTime(16);
 
       expect(markDirtySpy).toHaveBeenCalled();
@@ -226,12 +230,12 @@ describe('LiveReroutingEngine (Phase 0.2)', () => {
         done();
       });
 
-      diagram.emit('node:moved', { nodeId: 'nodeA', position: { x: 50, y: 50 } });
+      (diagram as any).emitter.emit('node:moved', { nodeId: 'nodeA', position: { x: 50, y: 50 } });
       jest.advanceTimersByTime(16);
     });
 
     it('should clear pending reroutes after processing', () => {
-      diagram.emit('node:moved', { nodeId: 'nodeA', position: { x: 50, y: 50 } });
+      (diagram as any).emitter.emit('node:moved', { nodeId: 'nodeA', position: { x: 50, y: 50 } });
 
       const pendingBefore = (liveRerouting as any).pendingReroutes.size;
       expect(pendingBefore).toBeGreaterThan(0);
@@ -254,7 +258,7 @@ describe('LiveReroutingEngine (Phase 0.2)', () => {
 
       const processReroutesSpy = jest.spyOn(liveRerouting as any, 'processReroutes');
 
-      diagram.emit('node:moved', { nodeId: 'nodeA', position: { x: 50, y: 50 } });
+      (diagram as any).emitter.emit('node:moved', { nodeId: 'nodeA', position: { x: 50, y: 50 } });
 
       // Should not add to pending
       const pendingReroutes = (liveRerouting as any).pendingReroutes;
@@ -269,7 +273,7 @@ describe('LiveReroutingEngine (Phase 0.2)', () => {
       expect((liveRerouting as any).enabled).toBe(true);
 
       // Should work again
-      diagram.emit('node:moved', { nodeId: 'nodeA', position: { x: 50, y: 50 } });
+      (diagram as any).emitter.emit('node:moved', { nodeId: 'nodeA', position: { x: 50, y: 50 } });
       const pendingReroutes = (liveRerouting as any).pendingReroutes;
       expect(pendingReroutes.size).toBeGreaterThan(0);
     });
@@ -283,12 +287,8 @@ describe('LiveReroutingEngine (Phase 0.2)', () => {
 
     it('should regenerate paths for all links', () => {
       // Create multiple links
-      const link2 = new LinkModel({
-        id: 'link2',
-        sourcePortId: 'portA-out',
-        targetPortId: 'portB-in',
-        pathType: 'smooth'
-      });
+      const link2 = new LinkModel('portA-out', 'portB-in', 'smooth');
+      (link2 as any).id = 'link2';
       diagram.addLink(link2);
 
       const generatePath1 = jest.spyOn(link, 'generatePath');
@@ -301,12 +301,8 @@ describe('LiveReroutingEngine (Phase 0.2)', () => {
     });
 
     it('should mark all links as dirty', () => {
-      const link2 = new LinkModel({
-        id: 'link2',
-        sourcePortId: 'portA-out',
-        targetPortId: 'portB-in',
-        pathType: 'smooth'
-      });
+      const link2 = new LinkModel('portA-out', 'portB-in', 'smooth');
+      (link2 as any).id = 'link2';
       diagram.addLink(link2);
 
       const markDirty1 = jest.spyOn(link, 'markDirty');
@@ -322,12 +318,13 @@ describe('LiveReroutingEngine (Phase 0.2)', () => {
   describe('RED PHASE: Edge Cases', () => {
     it('should handle non-existent node gracefully', () => {
       expect(() => {
-        diagram.emit('node:moved', { nodeId: 'non-existent', position: { x: 0, y: 0 } });
+        (diagram as any).emitter.emit('node:moved', { nodeId: 'non-existent', position: { x: 0, y: 0 } });
       }).not.toThrow();
     });
 
     it('should handle node with no ports', () => {
       const nodeC = new NodeModel({
+        type: 'test',
         id: 'nodeC',
         position: { x: 100, y: 100 },
         size: { width: 50, height: 50 }
@@ -335,7 +332,7 @@ describe('LiveReroutingEngine (Phase 0.2)', () => {
       diagram.addNode(nodeC);
 
       expect(() => {
-        diagram.emit('node:moved', { nodeId: 'nodeC', position: { x: 150, y: 100 } });
+        (diagram as any).emitter.emit('node:moved', { nodeId: 'nodeC', position: { x: 150, y: 100 } });
       }).not.toThrow();
     });
 
@@ -344,7 +341,7 @@ describe('LiveReroutingEngine (Phase 0.2)', () => {
       (liveRerouting as any).pendingReroutes.add('invalid-link-id');
 
       jest.useFakeTimers();
-      diagram.emit('node:moved', { nodeId: 'nodeA', position: { x: 50, y: 50 } });
+      (diagram as any).emitter.emit('node:moved', { nodeId: 'nodeA', position: { x: 50, y: 50 } });
 
       expect(() => {
         jest.advanceTimersByTime(16);
@@ -358,7 +355,7 @@ describe('LiveReroutingEngine (Phase 0.2)', () => {
 
       // Rapid movements
       for (let i = 0; i < 10; i++) {
-        diagram.emit('node:moved', { nodeId: 'nodeA', position: { x: i * 10, y: 50 } });
+        (diagram as any).emitter.emit('node:moved', { nodeId: 'nodeA', position: { x: i * 10, y: 50 } });
       }
 
       // Should only process once after throttle
@@ -377,17 +374,13 @@ describe('LiveReroutingEngine (Phase 0.2)', () => {
 
       // Create many links
       for (let i = 0; i < 100; i++) {
-        const testLink = new LinkModel({
-          id: `link-${i}`,
-          sourcePortId: 'portA-out',
-          targetPortId: 'portB-in',
-          pathType: 'orthogonal'
-        });
+        const testLink = new LinkModel('portA-out', 'portB-in', 'orthogonal');
+        (testLink as any).id = `link-${i}`;
         diagram.addLink(testLink);
       }
 
       const startTime = Date.now();
-      diagram.emit('node:moved', { nodeId: 'nodeA', position: { x: 50, y: 50 } });
+      (diagram as any).emitter.emit('node:moved', { nodeId: 'nodeA', position: { x: 50, y: 50 } });
       jest.advanceTimersByTime(16);
       const endTime = Date.now();
 
@@ -405,7 +398,7 @@ describe('LiveReroutingEngine (Phase 0.2)', () => {
 
       // Move many times
       for (let i = 0; i < 50; i++) {
-        diagram.emit('node:moved', { nodeId: 'nodeA', position: { x: i, y: 50 } });
+        (diagram as any).emitter.emit('node:moved', { nodeId: 'nodeA', position: { x: i, y: 50 } });
         jest.advanceTimersByTime(16);
       }
 

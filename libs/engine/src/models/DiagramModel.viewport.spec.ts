@@ -17,6 +17,8 @@ describe('DiagramModel - Viewport Virtualization (Phase 5.1)', () => {
       expect(diagram.viewport).toEqual({
         x: 0,
         y: 0,
+        width: 1200,
+        height: 800,
         zoom: 1,
       });
     });
@@ -25,25 +27,27 @@ describe('DiagramModel - Viewport Virtualization (Phase 5.1)', () => {
       const listener = jest.fn();
       diagram.on('viewport:changed', listener);
 
-      diagram.setViewport(100, 200, 1.5);
+      diagram.setViewport(100, 200, 800, 600, 1.5);
 
-      expect(listener).toHaveBeenCalledWith({
-        x: 100,
-        y: 200,
-        zoom: 1.5,
-      });
+      expect(listener).toHaveBeenCalledWith(
+        expect.objectContaining({
+          x: 100,
+          y: 200,
+          zoom: 1.5,
+        })
+      );
     });
 
     it('should track viewport changes in history', () => {
       const oldViewport = { ...diagram.viewport };
-      diagram.setViewport(100, 200, 1.5);
+      diagram.setViewport(100, 200, 800, 600, 1.5);
 
       const changes = diagram.getChangeLog();
       const viewportChange = changes.find((c) => c.property === 'viewport');
 
       expect(viewportChange).toBeDefined();
       expect(viewportChange?.oldValue).toEqual(oldViewport);
-      expect(viewportChange?.newValue).toEqual({ x: 100, y: 200, zoom: 1.5 });
+      expect(viewportChange?.newValue).toEqual({ x: 100, y: 200, width: 800, height: 600, zoom: 1.5 });
     });
   });
 

@@ -28,8 +28,7 @@ describe('ELKLayoutAdapter', () => {
     });
 
     it('should handle single node', async () => {
-      const node = new NodeModel({ x: 0, y: 0 }, { width: 100, height: 50 });
-      node.id = '1';
+      const node = new NodeModel({ id: '1', type: 'layout-test', position: { x: 0, y: 0 }, size: { width: 100, height: 50 } });
 
       const result = await adapter.apply([node], []);
 
@@ -41,10 +40,8 @@ describe('ELKLayoutAdapter', () => {
 
   describe('Layout algorithms', () => {
     const createTestGraph = () => {
-      const node1 = new NodeModel({ x: 0, y: 0 }, { width: 100, height: 50 });
-      node1.id = '1';
-      const node2 = new NodeModel({ x: 0, y: 0 }, { width: 100, height: 50 });
-      node2.id = '2';
+      const node1 = new NodeModel({ id: '1', type: 'layout-test', position: { x: 0, y: 0 }, size: { width: 100, height: 50 } });
+      const node2 = new NodeModel({ id: '2', type: 'layout-test', position: { x: 0, y: 0 }, size: { width: 100, height: 50 } });
 
       const link = new LinkModel('port1', 'port2');
       link.sourceNodeId = '1';
@@ -59,7 +56,7 @@ describe('ELKLayoutAdapter', () => {
         algorithm: 'layered',
       });
 
-      expect(result.metadata?.elkAlgorithm).toBe('layered');
+      expect(result.metadata?.['elkAlgorithm']).toBe('layered');
       expect(result.nodePositions.size).toBe(2);
     });
 
@@ -69,7 +66,7 @@ describe('ELKLayoutAdapter', () => {
         algorithm: 'force',
       });
 
-      expect(result.metadata?.elkAlgorithm).toBe('force');
+      expect(result.metadata?.['elkAlgorithm']).toBe('force');
       expect(result.nodePositions.size).toBe(2);
     });
 
@@ -79,7 +76,7 @@ describe('ELKLayoutAdapter', () => {
         algorithm: 'stress',
       });
 
-      expect(result.metadata?.elkAlgorithm).toBe('stress');
+      expect(result.metadata?.['elkAlgorithm']).toBe('stress');
       expect(result.nodePositions.size).toBe(2);
     });
 
@@ -89,7 +86,7 @@ describe('ELKLayoutAdapter', () => {
         algorithm: 'mrtree',
       });
 
-      expect(result.metadata?.elkAlgorithm).toBe('mrtree');
+      expect(result.metadata?.['elkAlgorithm']).toBe('mrtree');
       expect(result.nodePositions.size).toBe(2);
     });
 
@@ -99,34 +96,31 @@ describe('ELKLayoutAdapter', () => {
         algorithm: 'radial',
       });
 
-      expect(result.metadata?.elkAlgorithm).toBe('radial');
+      expect(result.metadata?.['elkAlgorithm']).toBe('radial');
       expect(result.nodePositions.size).toBe(2);
     });
 
-    it('should support disco algorithm', async () => {
+    it('should reject the disco algorithm (not in the bundled elkjs build)', async () => {
       const { nodes, links } = createTestGraph();
-      const result = await adapter.apply(nodes, links, {
-        algorithm: 'disco',
-      });
-
-      expect(result.metadata?.elkAlgorithm).toBe('disco');
-      expect(result.nodePositions.size).toBe(2);
+      // elk.bundled.js ships only the core algorithms — 'disco' requires the
+      // full ELK distribution, so requesting it must surface a clear error
+      await expect(
+        adapter.apply(nodes, links, { algorithm: 'disco' })
+      ).rejects.toThrow(/disco/i);
     });
 
     it('should default to layered algorithm', async () => {
       const { nodes, links } = createTestGraph();
       const result = await adapter.apply(nodes, links);
 
-      expect(result.metadata?.elkAlgorithm).toBe('layered');
+      expect(result.metadata?.['elkAlgorithm']).toBe('layered');
     });
   });
 
   describe('Layout direction', () => {
     const createTestGraph = () => {
-      const node1 = new NodeModel({ x: 0, y: 0 }, { width: 100, height: 50 });
-      node1.id = '1';
-      const node2 = new NodeModel({ x: 0, y: 0 }, { width: 100, height: 50 });
-      node2.id = '2';
+      const node1 = new NodeModel({ id: '1', type: 'layout-test', position: { x: 0, y: 0 }, size: { width: 100, height: 50 } });
+      const node2 = new NodeModel({ id: '2', type: 'layout-test', position: { x: 0, y: 0 }, size: { width: 100, height: 50 } });
 
       const link = new LinkModel('port1', 'port2');
       link.sourceNodeId = '1';
@@ -147,7 +141,7 @@ describe('ELKLayoutAdapter', () => {
 
       // Node 2 should be to the right of node 1
       expect(pos2.x).toBeGreaterThan(pos1.x);
-      expect(result.metadata?.direction).toBe('RIGHT');
+      expect(result.metadata?.['direction']).toBe('RIGHT');
     });
 
     it('should layout nodes top-to-bottom (DOWN)', async () => {
@@ -195,12 +189,9 @@ describe('ELKLayoutAdapter', () => {
 
   describe('Spacing options', () => {
     it('should respect node spacing option', async () => {
-      const node1 = new NodeModel({ x: 0, y: 0 }, { width: 100, height: 50 });
-      node1.id = '1';
-      const node2 = new NodeModel({ x: 0, y: 0 }, { width: 100, height: 50 });
-      node2.id = '2';
-      const node3 = new NodeModel({ x: 0, y: 0 }, { width: 100, height: 50 });
-      node3.id = '3';
+      const node1 = new NodeModel({ id: '1', type: 'layout-test', position: { x: 0, y: 0 }, size: { width: 100, height: 50 } });
+      const node2 = new NodeModel({ id: '2', type: 'layout-test', position: { x: 0, y: 0 }, size: { width: 100, height: 50 } });
+      const node3 = new NodeModel({ id: '3', type: 'layout-test', position: { x: 0, y: 0 }, size: { width: 100, height: 50 } });
 
       const link1 = new LinkModel('port1', 'port2');
       link1.sourceNodeId = '1';
@@ -221,10 +212,8 @@ describe('ELKLayoutAdapter', () => {
 
   describe('Layered algorithm options', () => {
     const createTestGraph = () => {
-      const node1 = new NodeModel({ x: 0, y: 0 }, { width: 100, height: 50 });
-      node1.id = '1';
-      const node2 = new NodeModel({ x: 0, y: 0 }, { width: 100, height: 50 });
-      node2.id = '2';
+      const node1 = new NodeModel({ id: '1', type: 'layout-test', position: { x: 0, y: 0 }, size: { width: 100, height: 50 } });
+      const node2 = new NodeModel({ id: '2', type: 'layout-test', position: { x: 0, y: 0 }, size: { width: 100, height: 50 } });
 
       const link = new LinkModel('port1', 'port2');
       link.sourceNodeId = '1';
@@ -266,10 +255,8 @@ describe('ELKLayoutAdapter', () => {
 
   describe('Force algorithm options', () => {
     it('should support force algorithm options', async () => {
-      const node1 = new NodeModel({ x: 0, y: 0 }, { width: 100, height: 50 });
-      node1.id = '1';
-      const node2 = new NodeModel({ x: 0, y: 0 }, { width: 100, height: 50 });
-      node2.id = '2';
+      const node1 = new NodeModel({ id: '1', type: 'layout-test', position: { x: 0, y: 0 }, size: { width: 100, height: 50 } });
+      const node2 = new NodeModel({ id: '2', type: 'layout-test', position: { x: 0, y: 0 }, size: { width: 100, height: 50 } });
 
       const link = new LinkModel('port1', 'port2');
       link.sourceNodeId = '1';
@@ -288,10 +275,8 @@ describe('ELKLayoutAdapter', () => {
 
   describe('Radial algorithm options', () => {
     it('should support radial algorithm options', async () => {
-      const node1 = new NodeModel({ x: 0, y: 0 }, { width: 100, height: 50 });
-      node1.id = '1';
-      const node2 = new NodeModel({ x: 0, y: 0 }, { width: 100, height: 50 });
-      node2.id = '2';
+      const node1 = new NodeModel({ id: '1', type: 'layout-test', position: { x: 0, y: 0 }, size: { width: 100, height: 50 } });
+      const node2 = new NodeModel({ id: '2', type: 'layout-test', position: { x: 0, y: 0 }, size: { width: 100, height: 50 } });
 
       const link = new LinkModel('port1', 'port2');
       link.sourceNodeId = '1';
@@ -348,10 +333,8 @@ describe('ELKLayoutAdapter', () => {
 
   describe('Bounds calculation', () => {
     it('should calculate correct bounds', async () => {
-      const node1 = new NodeModel({ x: 0, y: 0 }, { width: 100, height: 50 });
-      node1.id = '1';
-      const node2 = new NodeModel({ x: 0, y: 0 }, { width: 100, height: 50 });
-      node2.id = '2';
+      const node1 = new NodeModel({ id: '1', type: 'layout-test', position: { x: 0, y: 0 }, size: { width: 100, height: 50 } });
+      const node2 = new NodeModel({ id: '2', type: 'layout-test', position: { x: 0, y: 0 }, size: { width: 100, height: 50 } });
 
       const link = new LinkModel('port1', 'port2');
       link.sourceNodeId = '1';
@@ -367,25 +350,23 @@ describe('ELKLayoutAdapter', () => {
 
   describe('Metadata', () => {
     it('should return execution time in metadata', async () => {
-      const node = new NodeModel({ x: 0, y: 0 }, { width: 100, height: 50 });
-      node.id = '1';
+      const node = new NodeModel({ id: '1', type: 'layout-test', position: { x: 0, y: 0 }, size: { width: 100, height: 50 } });
 
       const result = await adapter.apply([node], []);
 
       expect(result.metadata).toBeDefined();
       expect(result.metadata!.executionTime).toBeGreaterThan(0);
       expect(result.metadata!.algorithm).toBe('elk');
-      expect(result.metadata!.nodeCount).toBe(1);
-      expect(result.metadata!.linkCount).toBe(0);
+      expect(result.metadata!['nodeCount']).toBe(1);
+      expect(result.metadata!['linkCount']).toBe(0);
     });
 
     it('should include algorithm in metadata', async () => {
-      const node = new NodeModel({ x: 0, y: 0 }, { width: 100, height: 50 });
-      node.id = '1';
+      const node = new NodeModel({ id: '1', type: 'layout-test', position: { x: 0, y: 0 }, size: { width: 100, height: 50 } });
 
       const result = await adapter.apply([node], [], { algorithm: 'force' });
 
-      expect(result.metadata!.elkAlgorithm).toBe('force');
+      expect(result.metadata!['elkAlgorithm']).toBe('force');
     });
   });
 
@@ -396,8 +377,7 @@ describe('ELKLayoutAdapter', () => {
 
       // Create a tree structure
       for (let i = 0; i < 100; i++) {
-        const node = new NodeModel({ x: 0, y: 0 }, { width: 100, height: 50 });
-        node.id = `${i}`;
+        const node = new NodeModel({ id: `${i}`, type: 'layout-test', position: { x: 0, y: 0 }, size: { width: 100, height: 50 } });
         nodes.push(node);
 
         if (i > 0) {
@@ -419,10 +399,8 @@ describe('ELKLayoutAdapter', () => {
 
   describe('Layout Constraints', () => {
     it('should pin node to fixed position', async () => {
-      const node1 = new NodeModel({ x: 0, y: 0 }, { width: 100, height: 50 });
-      node1.id = '1';
-      const node2 = new NodeModel({ x: 0, y: 0 }, { width: 100, height: 50 });
-      node2.id = '2';
+      const node1 = new NodeModel({ id: '1', type: 'layout-test', position: { x: 0, y: 0 }, size: { width: 100, height: 50 } });
+      const node2 = new NodeModel({ id: '2', type: 'layout-test', position: { x: 0, y: 0 }, size: { width: 100, height: 50 } });
 
       const link = new LinkModel('port1', 'port2');
       link.sourceNodeId = '1';
@@ -451,12 +429,9 @@ describe('ELKLayoutAdapter', () => {
     });
 
     it('should fix Y coordinate with radial layout', async () => {
-      const node1 = new NodeModel({ x: 0, y: 0 }, { width: 100, height: 50 });
-      node1.id = '1';
-      const node2 = new NodeModel({ x: 0, y: 0 }, { width: 100, height: 50 });
-      node2.id = '2';
-      const node3 = new NodeModel({ x: 0, y: 0 }, { width: 100, height: 50 });
-      node3.id = '3';
+      const node1 = new NodeModel({ id: '1', type: 'layout-test', position: { x: 0, y: 0 }, size: { width: 100, height: 50 } });
+      const node2 = new NodeModel({ id: '2', type: 'layout-test', position: { x: 0, y: 0 }, size: { width: 100, height: 50 } });
+      const node3 = new NodeModel({ id: '3', type: 'layout-test', position: { x: 0, y: 0 }, size: { width: 100, height: 50 } });
 
       const link1 = new LinkModel('port1', 'port2');
       link1.sourceNodeId = '1';
@@ -484,8 +459,7 @@ describe('ELKLayoutAdapter', () => {
     });
 
     it('should clamp positions within boundaries', async () => {
-      const node1 = new NodeModel({ x: 0, y: 0 }, { width: 100, height: 50 });
-      node1.id = '1';
+      const node1 = new NodeModel({ id: '1', type: 'layout-test', position: { x: 0, y: 0 }, size: { width: 100, height: 50 } });
 
       const result = await adapter.apply([node1], [], {
         algorithm: 'layered',
@@ -509,10 +483,8 @@ describe('ELKLayoutAdapter', () => {
     });
 
     it('should work with force algorithm and constraints', async () => {
-      const node1 = new NodeModel({ x: 0, y: 0 }, { width: 100, height: 50 });
-      node1.id = '1';
-      const node2 = new NodeModel({ x: 0, y: 0 }, { width: 100, height: 50 });
-      node2.id = '2';
+      const node1 = new NodeModel({ id: '1', type: 'layout-test', position: { x: 0, y: 0 }, size: { width: 100, height: 50 } });
+      const node2 = new NodeModel({ id: '2', type: 'layout-test', position: { x: 0, y: 0 }, size: { width: 100, height: 50 } });
 
       const link = new LinkModel('port1', 'port2');
       link.sourceNodeId = '1';
@@ -538,8 +510,7 @@ describe('ELKLayoutAdapter', () => {
     });
 
     it('should work without constraints', async () => {
-      const node1 = new NodeModel({ x: 0, y: 0 }, { width: 100, height: 50 });
-      node1.id = '1';
+      const node1 = new NodeModel({ id: '1', type: 'layout-test', position: { x: 0, y: 0 }, size: { width: 100, height: 50 } });
 
       const result = await adapter.apply([node1], [], {
         algorithm: 'layered',

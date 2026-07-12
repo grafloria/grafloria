@@ -3,8 +3,25 @@
 
 import { DiagramEngine } from '../engine/DiagramEngine';
 import { NodeFactory } from '../templates/NodeFactory';
+import { TemplateRegistry } from '../templates/TemplateRegistry';
+import { EventBus } from '../events/EventBus';
 import type { NodeTemplate } from '../templates/NodeTemplate';
 import { isPointInShape } from '../utils/geometry';
+
+// Bridge to the current instance-based factory API: registers the template
+// and creates the node inside the engine's diagram (the factory also ADDS the
+// node to the diagram itself)
+function createFromTemplate(
+  engine: DiagramEngine,
+  template: NodeTemplate,
+  opts: { position: { x: number; y: number }; data?: Record<string, any> }
+) {
+  const diagram = engine.getDiagram()!;
+  const registry = new TemplateRegistry(new EventBus());
+  registry.register(template);
+  const factory = new NodeFactory(registry, diagram);
+  return factory.createFromTemplate(template.id, opts.data ?? {}, opts.position);
+}
 
 describe('Shape System Integration (Phases 3.1-3.5)', () => {
   let engine: DiagramEngine;
@@ -49,7 +66,7 @@ describe('Shape System Integration (Phases 3.1-3.5)', () => {
           },
         };
 
-        const node = NodeFactory.createFromTemplate(template, {
+        const node = createFromTemplate(engine, template, {
           position: { x: 0, y: 0 },
         });
 
@@ -117,7 +134,7 @@ describe('Shape System Integration (Phases 3.1-3.5)', () => {
         },
       };
 
-      const node = NodeFactory.createFromTemplate(template, {
+      const node = createFromTemplate(engine, template, {
         position: { x: 100, y: 100 },
       });
 
@@ -129,8 +146,8 @@ describe('Shape System Integration (Phases 3.1-3.5)', () => {
       expect(node.ports.size).toBe(4);
 
       // Verify data
-      expect(node.data.name).toBe('John Doe');
-      expect(node.data.email).toBe('john@example.com');
+      expect(node.data['name']).toBe('John Doe');
+      expect(node.data['email']).toBe('john@example.com');
     });
   });
 
@@ -147,18 +164,16 @@ describe('Shape System Integration (Phases 3.1-3.5)', () => {
         },
       };
 
-      const node = NodeFactory.createFromTemplate(template, {
+      const node = createFromTemplate(engine, template, {
         position: { x: 0, y: 0 },
       });
 
-      engine.diagram?.addNode(node);
-
       // Click center (should hit)
-      const centerNode = engine.diagram?.getNodeAtPosition(50, 50);
+      const centerNode = engine.getDiagram()?.getNodeAtPosition(50, 50);
       expect(centerNode?.id).toBe(node.id);
 
       // Click corner of bounding box (should miss - outside circle)
-      const cornerNode = engine.diagram?.getNodeAtPosition(5, 5);
+      const cornerNode = engine.getDiagram()?.getNodeAtPosition(5, 5);
       expect(cornerNode).toBeUndefined();
     });
 
@@ -174,22 +189,20 @@ describe('Shape System Integration (Phases 3.1-3.5)', () => {
         },
       };
 
-      const node = NodeFactory.createFromTemplate(template, {
+      const node = createFromTemplate(engine, template, {
         position: { x: 0, y: 0 },
       });
 
-      engine.diagram?.addNode(node);
-
       // Click center (should hit)
-      const centerNode = engine.diagram?.getNodeAtPosition(50, 40);
+      const centerNode = engine.getDiagram()?.getNodeAtPosition(50, 40);
       expect(centerNode?.id).toBe(node.id);
 
       // Click corner (should miss - outside diamond)
-      const cornerNode = engine.diagram?.getNodeAtPosition(5, 5);
+      const cornerNode = engine.getDiagram()?.getNodeAtPosition(5, 5);
       expect(cornerNode).toBeUndefined();
 
       // Click vertex (should hit - on diamond edge)
-      const vertexNode = engine.diagram?.getNodeAtPosition(50, 0);
+      const vertexNode = engine.getDiagram()?.getNodeAtPosition(50, 0);
       expect(vertexNode?.id).toBe(node.id);
     });
 
@@ -217,19 +230,16 @@ describe('Shape System Integration (Phases 3.1-3.5)', () => {
         },
       };
 
-      const node1 = NodeFactory.createFromTemplate(template1, {
+      const node1 = createFromTemplate(engine, template1, {
         position: { x: 0, y: 0 },
       });
 
-      const node2 = NodeFactory.createFromTemplate(template2, {
+      const node2 = createFromTemplate(engine, template2, {
         position: { x: 50, y: 50 },
       });
 
-      engine.diagram?.addNode(node1);
-      engine.diagram?.addNode(node2);
-
       // Click overlap area - should get topmost node (node2)
-      const clickedNode = engine.diagram?.getNodeAtPosition(75, 75);
+      const clickedNode = engine.getDiagram()?.getNodeAtPosition(75, 75);
       expect(clickedNode?.id).toBe(node2.id);
     });
   });
@@ -254,7 +264,7 @@ describe('Shape System Integration (Phases 3.1-3.5)', () => {
         },
       };
 
-      const node = NodeFactory.createFromTemplate(template, {
+      const node = createFromTemplate(engine, template, {
         position: { x: 0, y: 0 },
       });
 
@@ -296,7 +306,7 @@ describe('Shape System Integration (Phases 3.1-3.5)', () => {
         },
       };
 
-      const node = NodeFactory.createFromTemplate(template, {
+      const node = createFromTemplate(engine, template, {
         position: { x: 0, y: 0 },
       });
 
@@ -340,7 +350,7 @@ describe('Shape System Integration (Phases 3.1-3.5)', () => {
         },
       };
 
-      const node = NodeFactory.createFromTemplate(template, {
+      const node = createFromTemplate(engine, template, {
         position: { x: 0, y: 0 },
       });
 
@@ -440,7 +450,7 @@ describe('Shape System Integration (Phases 3.1-3.5)', () => {
         },
       };
 
-      const node = NodeFactory.createFromTemplate(template, {
+      const node = createFromTemplate(engine, template, {
         position: { x: 100, y: 100 },
       });
 
@@ -448,7 +458,7 @@ describe('Shape System Integration (Phases 3.1-3.5)', () => {
       expect(node.getMetadata('shape').type).toBe('rect');
       expect(node.getMetadata('shape').cornerRadius).toBe(12);
       expect(node.ports.size).toBe(4);
-      expect(node.data.title).toBe('User Metrics');
+      expect(node.data['title']).toBe('User Metrics');
       expect(node.position).toEqual({ x: 100, y: 100 });
     });
 
@@ -522,7 +532,7 @@ describe('Shape System Integration (Phases 3.1-3.5)', () => {
         },
       };
 
-      const node = NodeFactory.createFromTemplate(template, {
+      const node = createFromTemplate(engine, template, {
         position: { x: 200, y: 300 },
       });
 
@@ -558,11 +568,9 @@ describe('Shape System Integration (Phases 3.1-3.5)', () => {
           },
         };
 
-        const node = NodeFactory.createFromTemplate(template, {
+        const node = createFromTemplate(engine, template, {
           position: { x: (i % 10) * 120, y: Math.floor(i / 10) * 100 },
         });
-
-        engine.diagram?.addNode(node);
       }
 
       const endTime = Date.now();
@@ -570,7 +578,7 @@ describe('Shape System Integration (Phases 3.1-3.5)', () => {
 
       // Should create 50 nodes quickly (< 100ms)
       expect(duration).toBeLessThan(100);
-      expect(engine.diagram?.getNodes().length).toBe(50);
+      expect(engine.getDiagram()?.getNodes().length).toBe(50);
     });
 
     it('should perform hit detection efficiently on many nodes', () => {
@@ -587,11 +595,9 @@ describe('Shape System Integration (Phases 3.1-3.5)', () => {
           },
         };
 
-        const node = NodeFactory.createFromTemplate(template, {
+        const node = createFromTemplate(engine, template, {
           position: { x: (i % 10) * 60, y: Math.floor(i / 10) * 60 },
         });
-
-        engine.diagram?.addNode(node);
       }
 
       const startTime = Date.now();
@@ -600,7 +606,7 @@ describe('Shape System Integration (Phases 3.1-3.5)', () => {
       for (let i = 0; i < 1000; i++) {
         const x = Math.random() * 600;
         const y = Math.random() * 600;
-        engine.diagram?.getNodeAtPosition(x, y);
+        engine.getDiagram()?.getNodeAtPosition(x, y);
       }
 
       const endTime = Date.now();
@@ -628,7 +634,7 @@ describe('Shape System Integration (Phases 3.1-3.5)', () => {
         },
       };
 
-      const node = NodeFactory.createFromTemplate(template, {
+      const node = createFromTemplate(engine, template, {
         position: { x: 0, y: 0 },
       });
 

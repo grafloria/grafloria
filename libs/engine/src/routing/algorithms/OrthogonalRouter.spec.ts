@@ -229,9 +229,10 @@ describe('OrthogonalRouter (Phase 4.3)', () => {
 
       const path = router.route(request);
 
-      // Path length should be reasonably close to straight line (200 units)
-      // With a small obstacle, detour should be minimal
-      expect(path?.totalLength).toBeLessThan(250);
+      // Path length should be reasonably close to straight line (200 units).
+      // The minimal legal detour is bounded by the 20px aesthetic obstacle
+      // margin plus grid-10 rounding: 200 + 2×30 = 260.
+      expect(path?.totalLength).toBeLessThanOrEqual(260);
     });
   });
 

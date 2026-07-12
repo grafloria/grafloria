@@ -388,6 +388,9 @@ export class PortModel extends DiagramEntity {
     const oldConfig = this.renderingConfig;
     this.renderingConfig = config;
     this.trackChange('renderingConfig', oldConfig, config);
+    // Dedicated event — template consumers listen for this, not the generic
+    // change:renderingConfig channel
+    this.emitter.emit('rendering-config:changed', config);
   }
 
   /**

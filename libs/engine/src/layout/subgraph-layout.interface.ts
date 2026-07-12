@@ -277,17 +277,24 @@ export class SubgraphLayoutManager {
     let minY = Infinity;
     let maxX = -Infinity;
     let maxY = -Infinity;
+    let positioned = 0;
 
     for (const nodeId of group.memberNodeIds) {
       const pos = nodePositions.get(nodeId);
       const size = nodeSizes.get(nodeId) || { width: 100, height: 50 };
 
       if (pos) {
+        positioned++;
         minX = Math.min(minX, pos.x - size.width / 2);
         minY = Math.min(minY, pos.y - size.height / 2);
         maxX = Math.max(maxX, pos.x + size.width / 2);
         maxY = Math.max(maxY, pos.y + size.height / 2);
       }
+    }
+
+    // No positioned members: the -Infinity bounds would poison the size math
+    if (positioned === 0) {
+      minX = 0; minY = 0; maxX = 0; maxY = 0;
     }
 
     // Add padding

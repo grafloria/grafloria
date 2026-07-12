@@ -454,11 +454,7 @@ describe('NodeFactory - Repeater Configuration', () => {
         structure: {
           type: 'container',
           size: { width: 200, height: 200 },
-          layout: {
-            direction: 'column',
-            gap: 5,
-            padding: { top: 10, right: 0, bottom: 0, left: 10 },
-          },
+          layout: { direction: 'column' as const, wrap: 'nowrap' as const, justifyContent: 'start' as const, alignItems: 'stretch' as const, alignContent: 'start' as const, gap: 5, padding: { top: 10, right: 0, bottom: 0, left: 10 } },
           repeater: {
             dataSource: 'items',
             itemTemplate: {
@@ -482,9 +478,9 @@ describe('NodeFactory - Repeater Configuration', () => {
       const children = Array.from(node.children).map(id => diagram.getNode(id));
 
       // Check vertical stacking with gap
-      expect(children[0]?.position).toEqual({ x: 10, y: 10, z: 0 });
-      expect(children[1]?.position).toEqual({ x: 10, y: 45, z: 0 }); // 10 + 30 + 5
-      expect(children[2]?.position).toEqual({ x: 10, y: 80, z: 0 }); // 45 + 30 + 5
+      expect(children[0]?.position).toEqual({ x: 10, y: 10 });
+      expect(children[1]?.position).toEqual({ x: 10, y: 45 }); // 10 + 30 + 5
+      expect(children[2]?.position).toEqual({ x: 10, y: 80 }); // 45 + 30 + 5
     });
   });
 
@@ -551,11 +547,7 @@ describe('NodeFactory - Repeater Configuration', () => {
           type: 'erd-container',
           size: { width: 250, height: 200 },
           ports: { enabled: false },
-          layout: {
-            direction: 'column',
-            gap: 0,
-            padding: { top: 0, right: 0, bottom: 0, left: 0 },
-          },
+          layout: { direction: 'column' as const, wrap: 'nowrap' as const, justifyContent: 'start' as const, alignItems: 'stretch' as const, alignContent: 'start' as const, gap: 0, padding: { top: 0, right: 0, bottom: 0, left: 0 } },
           children: [
             {
               type: 'erd-header',

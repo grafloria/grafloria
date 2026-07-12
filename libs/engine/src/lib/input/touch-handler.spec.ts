@@ -1,3 +1,6 @@
+/**
+ * @jest-environment jsdom
+ */
 import { TouchHandler, TouchGestureEvent } from './touch-handler';
 
 describe('TouchHandler', () => {

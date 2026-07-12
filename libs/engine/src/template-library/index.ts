@@ -186,6 +186,14 @@ export function initializeTemplateLibrary(manager?: TemplateLibraryManager): Tem
   lib.register(ERDTemplates.ERDTable, 'erd', ['database', 'table', 'schema', 'erd']);
   lib.register(ERDTemplates.ERDField, 'erd', ['database', 'field', 'column', 'erd']);
   lib.register(ERDTemplates.ERDRelationship, 'erd', ['database', 'relationship', 'erd', 'many-to-many']);
+  // ERD rendering variants — shipped exports used by the ERD designer; keeps
+  // the curated library in sync with everything integration.ts registers
+  lib.register(ERDTemplates.ERDTableOptionA, 'erd', ['database', 'table', 'erd', 'variant']);
+  lib.register(ERDTemplates.ERDFieldOptionA, 'erd', ['database', 'field', 'erd', 'variant']);
+  lib.register(ERDTemplates.ERDTableContainerOptionB, 'erd', ['database', 'table', 'erd', 'variant']);
+  lib.register(ERDTemplates.ERDTableHeaderOptionB, 'erd', ['database', 'table', 'erd', 'variant']);
+  lib.register(ERDTemplates.ERDFieldOptionB, 'erd', ['database', 'field', 'erd', 'variant']);
+  lib.register(ERDTemplates.ERDTableRepeater, 'erd', ['database', 'table', 'erd', 'repeater']);
 
   return lib;
 }
