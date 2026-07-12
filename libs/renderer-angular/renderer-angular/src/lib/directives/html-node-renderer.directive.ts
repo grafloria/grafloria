@@ -1,4 +1,5 @@
-import { Directive, Input, ViewContainerRef, OnInit, OnChanges, SimpleChanges, EnvironmentInjector, createComponent, ComponentRef } from '@angular/core';
+import { Directive, Input, ViewContainerRef, OnInit, OnChanges, SimpleChanges, EnvironmentInjector, createComponent, ComponentRef, SecurityContext } from '@angular/core';
+import { DomSanitizer } from '@angular/platform-browser';
 import { ComponentRendererService } from '../services/component-renderer.service';
 
 /**
@@ -20,8 +21,26 @@ export class HtmlNodeRendererDirective implements OnInit, OnChanges {
   constructor(
     private viewContainerRef: ViewContainerRef,
     private componentRenderer: ComponentRendererService,
-    private environmentInjector: EnvironmentInjector
+    private environmentInjector: EnvironmentInjector,
+    private sanitizer: DomSanitizer
   ) {}
+
+  /**
+   * Sanitize a DATA value before it is interpolated into template HTML.
+   *
+   * SECURITY: template strings (htmlConfig.template) are authored by the
+   * app and trusted, but the interpolated {{data.*}} / {{self.*}} values may
+   * come from user-supplied node data. Running them through Angular's HTML
+   * sanitizer strips <script>, javascript: URLs and on* event handlers so a
+   * malicious value cannot inject executable markup into innerHTML, while
+   * still allowing benign inline formatting in the data.
+   */
+  private sanitizeDataValue(value: any): string {
+    if (value === null || value === undefined) {
+      return '';
+    }
+    return this.sanitizer.sanitize(SecurityContext.HTML, String(value)) ?? '';
+  }
 
   ngOnInit() {
     this.renderComponent();
@@ -116,18 +135,20 @@ export class HtmlNodeRendererDirective implements OnInit, OnChanges {
     // Example: <div :loop="${this.data.items}">{{self.name}}</div>
     html = this.renderLoops(html, dataSource);
 
-    // Replace {{data.key}} with dataSource[key]
+    // Replace {{data.key}} with dataSource[key] (sanitized against XSS)
     html = html.replace(/\{\{data\.(\w+)\}\}/g, (match: string, key: string) => {
-      return dataSource[key] ?? '';
+      return this.sanitizeDataValue(dataSource[key]);
     });
 
     // Handle conditional blocks {{#data.key}}...{{/data.key}}
-    html = html.replace(/\{\{#data\.(\w+)\}\}(.*?)\{\{\/data\.\1\}\}/gs, (match: string, key: string, content: string) => {
+    // NOTE: [\s\S] is used instead of the dotAll (/s) flag, which is illegal
+    // for this library's TS compilation target (es2016 → TS1501).
+    html = html.replace(/\{\{#data\.(\w+)\}\}([\s\S]*?)\{\{\/data\.\1\}\}/g, (match: string, key: string, content: string) => {
       return dataSource[key] ? content : '';
     });
 
     // Handle inverted conditional blocks {{^data.key}}...{{/data.key}}
-    html = html.replace(/\{\{\^data\.(\w+)\}\}(.*?)\{\{\/data\.\1\}\}/gs, (match: string, key: string, content: string) => {
+    html = html.replace(/\{\{\^data\.(\w+)\}\}([\s\S]*?)\{\{\/data\.\1\}\}/g, (match: string, key: string, content: string) => {
       return !dataSource[key] ? content : '';
     });
 
@@ -169,7 +190,7 @@ export class HtmlNodeRendererDirective implements OnInit, OnChanges {
   private renderLoops(html: string, dataSource: any): string {
     // Match elements with :loop attribute
     // Pattern: <tagName :loop="${this.data.arrayName}">...content...</tagName>
-    const loopRegex = /<(\w+)([^>]*?):loop="\$\{this\.data\.(\w+)\}"([^>]*?)>(.*?)<\/\1>/gs;
+    const loopRegex = /<(\w+)([^>]*?):loop="\$\{this\.data\.(\w+)\}"([^>]*?)>([\s\S]*?)<\/\1>/g;
 
     return html.replace(loopRegex, (match, tagName, attrsBefore, arrayName, attrsAfter, content) => {
       // Get the array data
@@ -182,18 +203,18 @@ export class HtmlNodeRendererDirective implements OnInit, OnChanges {
 
       // Generate repeated HTML for each item
       const repeatedHtml = arrayData.map((item, index) => {
-        // Replace {{self.property}} with item data
+        // Replace {{self.property}} with item data (sanitized against XSS)
         let itemHtml = content.replace(/\{\{self\.(\w+)\}\}/g, (_m: string, prop: string) => {
-          return item[prop] ?? '';
+          return this.sanitizeDataValue(item[prop]);
         });
 
         // Handle conditional blocks for item properties {{#self.prop}}...{{/self.prop}}
-        itemHtml = itemHtml.replace(/\{\{#self\.(\w+)\}\}(.*?)\{\{\/self\.\1\}\}/gs, (_m: string, prop: string, conditionalContent: string) => {
+        itemHtml = itemHtml.replace(/\{\{#self\.(\w+)\}\}([\s\S]*?)\{\{\/self\.\1\}\}/g, (_m: string, prop: string, conditionalContent: string) => {
           return item[prop] ? conditionalContent : '';
         });
 
         // Handle inverted conditional blocks {{^self.prop}}...{{/self.prop}}
-        itemHtml = itemHtml.replace(/\{\{\^self\.(\w+)\}\}(.*?)\{\{\/self\.\1\}\}/gs, (_m: string, prop: string, conditionalContent: string) => {
+        itemHtml = itemHtml.replace(/\{\{\^self\.(\w+)\}\}([\s\S]*?)\{\{\/self\.\1\}\}/g, (_m: string, prop: string, conditionalContent: string) => {
           return !item[prop] ? conditionalContent : '';
         });
 
