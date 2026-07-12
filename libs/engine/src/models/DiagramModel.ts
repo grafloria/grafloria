@@ -3,6 +3,7 @@
 import { DiagramEntity } from './DiagramEntity';
 import { NodeModel, SerializedNode } from './NodeModel';
 import { LinkModel, SerializedLink } from './LinkModel';
+import type { PortModel } from './PortModel';
 import { GroupModel, SerializedGroup } from './GroupModel'; // Phase 1.6c
 import type { SerializedEntity, Point } from '../types';
 import { SpatialIndex } from '../performance/SpatialIndex'; // Phase 5.1
@@ -31,6 +32,11 @@ export class DiagramModel extends DiagramEntity {
   nodes: Map<string, NodeModel> = new Map();
   links: Map<string, LinkModel> = new Map();
   groups: Map<string, GroupModel> = new Map(); // Phase 1.6c
+
+  // O(1) port -> owning node/port lookup. Maintained whenever nodes or ports
+  // are added/removed so callers (renderer per-frame link resolution, routing,
+  // connection validation) never linear-scan every node's ports.
+  private portIndex: Map<string, { node: NodeModel; port: PortModel }> = new Map();
 
   viewport = {
     x: 0,
@@ -120,6 +126,10 @@ export class DiagramModel extends DiagramEntity {
     this.trackChange('nodes', null, node);
     this.emitOrQueue('node:added', node);
 
+    // Maintain O(1) port -> node index (covers ports added before AND after
+    // the node joins the diagram)
+    this.indexNodePorts(node);
+
     // Phase 5.1: Add to spatial index and listen for spatial changes
     // Do this AFTER trackChange to avoid cloning issues
     this.nodeSpatialIndex.add(node);
@@ -152,6 +162,9 @@ export class DiagramModel extends DiagramEntity {
     if (node) {
       this.nodes.delete(nodeId);
 
+      // Drop this node's ports from the O(1) port index
+      this.unindexNodePorts(node);
+
       // Phase 5.1: Remove from spatial index
       this.nodeSpatialIndex.remove(nodeId);
 
@@ -171,6 +184,9 @@ export class DiagramModel extends DiagramEntity {
       this.nodes.set(node.id, node);
       this.trackChange('nodes', null, node);
       this.emitOrQueue('node:added', node);
+
+      // Maintain O(1) port -> node index for restored nodes too
+      this.indexNodePorts(node);
 
       // Phase 5.1: Add to spatial index and listen - AFTER trackChange
       this.nodeSpatialIndex.add(node);
@@ -216,16 +232,56 @@ export class DiagramModel extends DiagramEntity {
 
   /**
    * Phase 3: Get node that owns a specific port
-   * Used for connection group validation and other port-based queries
+   * Used for connection group validation and other port-based queries.
+   * O(1) via the portIndex (was an O(nodes×ports) linear scan).
    */
   getNodeByPortId(portId: string): NodeModel | undefined {
-    for (const node of this.nodes.values()) {
-      const port = node.getPort(portId);
-      if (port) {
-        return node;
+    return this.portIndex.get(portId)?.node;
+  }
+
+  /**
+   * Get the port model for a port id, O(1) via the portIndex.
+   * Companion to getNodeByPortId for callers that need the port itself.
+   */
+  getPortById(portId: string): PortModel | undefined {
+    return this.portIndex.get(portId)?.port;
+  }
+
+  /**
+   * Index every current port of a node and keep the index current as ports are
+   * added/removed on that node. Called from addNode/restoreNode/fromJSON.
+   * Listeners are guarded so a removed node can never re-pollute the index.
+   */
+  private indexNodePorts(node: NodeModel): void {
+    for (const port of node.getPorts()) {
+      this.portIndex.set(port.id, { node, port });
+    }
+
+    // Keep the index correct when ports change AFTER the node is in the diagram.
+    node.on('port:added', (port: PortModel) => {
+      // Ignore late additions from a node that is no longer this diagram's.
+      if (this.nodes.get(node.id) === node) {
+        this.portIndex.set(port.id, { node, port });
+      }
+    });
+    node.on('port:removed', (port: PortModel) => {
+      const entry = this.portIndex.get(port.id);
+      if (entry && entry.node === node) {
+        this.portIndex.delete(port.id);
+      }
+    });
+  }
+
+  /**
+   * Drop a node's ports from the index (called on removeNode).
+   */
+  private unindexNodePorts(node: NodeModel): void {
+    for (const port of node.getPorts()) {
+      const entry = this.portIndex.get(port.id);
+      if (entry && entry.node === node) {
+        this.portIndex.delete(port.id);
       }
     }
-    return undefined;
   }
 
   /**
@@ -233,6 +289,7 @@ export class DiagramModel extends DiagramEntity {
    */
   clearNodes(): void {
     this.nodes.clear();
+    this.portIndex.clear();
     this.emitOrQueue('nodes:cleared');
   }
 
@@ -1440,6 +1497,8 @@ export class DiagramModel extends DiagramEntity {
     for (const nodeData of data.nodes) {
       const node = NodeModel.fromJSON(nodeData);
       diagram.nodes.set(node.id, node);
+      // Keep the O(1) port index consistent for deserialized diagrams
+      diagram.indexNodePorts(node);
     }
 
     // Restore links
@@ -1499,6 +1558,7 @@ export class DiagramModel extends DiagramEntity {
     this.nodes.clear();
     this.links.clear();
     this.groups.clear();
+    this.portIndex.clear();
 
     // Clear spatial indices (prevents memory leaks from indexed entities)
     this.nodeSpatialIndex.clear();
