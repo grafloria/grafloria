@@ -7,3 +7,4 @@ export * from './JumpPointRenderer'; // Phase 1.3
 export * from './port-positioning'; // Phase 3.2 - Shape-aware port positioning
 export * from './link-hit-test'; // Wave 1 - Part-aware link hit-testing
 export * from './shape-registry'; // Nodes & shapes - unified shape registry + registerShape API
+export * from './text-block'; // Node/link label engine - wrap / multi-line / ellipsis / shape-fit

@@ -3,6 +3,7 @@
 
 import type { LinkLabel, LinkModel } from '@grafloria/engine';
 import type { VNode } from '../types/vnode.types';
+import { renderTextBlock } from './text-block';
 
 /**
  * LabelRenderer generates SVG VNodes for link labels.
@@ -22,7 +23,6 @@ export class LabelRenderer {
   private readonly defaultFontSize = 12;
   private readonly defaultColor = '#000000';
   private readonly defaultPadding = 4;
-  private readonly defaultLineHeight = 1.2;
 
   /**
    * Render a label on a link
@@ -128,7 +128,12 @@ export class LabelRenderer {
   }
 
   /**
-   * Render text element with optional wrapping
+   * Render the label's text element (single-line or wrapped).
+   *
+   * Delegates to the shared, link-agnostic {@link renderTextBlock} engine —
+   * the same code path node labels use — so wrapping / multi-line / vertical
+   * alignment behave identically for both. The link label is drawn at the group
+   * origin (0,0); the enclosing <g> carries the position + rotation transform.
    */
   private renderText(
     label: LinkLabel,
@@ -136,113 +141,18 @@ export class LabelRenderer {
     fontFamily: string | undefined,
     color: string
   ): VNode {
-    const textAnchor = label.textAnchor ?? 'middle';
-    const textBaseline = label.textBaseline ?? 'middle';
-
-    // Handle text wrapping
-    if (label.textWrap && label.maxWidth) {
-      return this.renderWrappedText(
-        label.text,
-        fontSize,
-        fontFamily,
-        color,
-        textAnchor,
-        textBaseline,
-        label.maxWidth
-      );
-    }
-
-    // Simple single-line text
-    return {
-      type: 'text',
-      props: {
-        x: 0,
-        y: 0,
-        textContent: label.text,
-        fontSize,
-        fontFamily,
-        fill: color,
-        textAnchor,
-        dominantBaseline: this.mapTextBaseline(textBaseline),
-        className: 'link-label-text'
-      }
-    };
-  }
-
-  /**
-   * Render wrapped text with multiple tspan elements
-   */
-  private renderWrappedText(
-    text: string,
-    fontSize: number,
-    fontFamily: string | undefined,
-    color: string,
-    textAnchor: 'start' | 'middle' | 'end',
-    textBaseline: 'top' | 'middle' | 'bottom',
-    maxWidth: number
-  ): VNode {
-    const lines = this.wrapText(text, maxWidth, fontSize);
-    const lineHeight = fontSize * this.defaultLineHeight;
-
-    // Calculate vertical offset for baseline
-    const totalHeight = lines.length * lineHeight;
-    let baselineOffset = 0;
-    if (textBaseline === 'middle') {
-      baselineOffset = -totalHeight / 2 + lineHeight / 2;
-    } else if (textBaseline === 'bottom') {
-      baselineOffset = -totalHeight + lineHeight;
-    }
-
-    // Create tspan for each line
-    const tspans: VNode[] = lines.map((line, index) => ({
-      type: 'tspan',
-      props: {
-        x: 0,
-        dy: index === 0 ? baselineOffset : lineHeight,
-        textContent: line
-      }
-    }));
-
-    return {
-      type: 'text',
-      props: {
-        x: 0,
-        y: 0,
-        fontSize,
-        fontFamily,
-        fill: color,
-        textAnchor,
-        className: 'link-label-text'
-      },
-      children: tspans
-    };
-  }
-
-  /**
-   * Wrap text into multiple lines based on maxWidth
-   */
-  private wrapText(text: string, maxWidth: number, fontSize: number): string[] {
-    const words = text.split(/\s+/);
-    const lines: string[] = [];
-    let currentLine = '';
-
-    for (const word of words) {
-      const testLine = currentLine ? `${currentLine} ${word}` : word;
-      const testWidth = this.estimateTextWidth(testLine, fontSize);
-
-      if (testWidth > maxWidth && currentLine) {
-        lines.push(currentLine);
-        currentLine = word;
-      } else {
-        currentLine = testLine;
-      }
-    }
-
-    if (currentLine) {
-      lines.push(currentLine);
-    }
-
-    return lines.length > 0 ? lines : [text];
+    return renderTextBlock({
+      text: label.text,
+      x: 0,
+      y: 0,
+      maxWidth: label.textWrap ? label.maxWidth : undefined,
+      align: label.textAnchor ?? 'middle',
+      valign: label.textBaseline ?? 'middle',
+      fontSize,
+      fontFamily,
+      color,
+      className: 'link-label-text',
+    });
   }
 
   /**
@@ -271,23 +181,6 @@ export class LabelRenderer {
       case 'middle':
       default:
         return -textWidth / 2 - padding;
-    }
-  }
-
-  /**
-   * Map textBaseline to SVG dominantBaseline
-   */
-  private mapTextBaseline(
-    baseline: 'top' | 'middle' | 'bottom'
-  ): string {
-    switch (baseline) {
-      case 'top':
-        return 'hanging';
-      case 'bottom':
-        return 'baseline';
-      case 'middle':
-      default:
-        return 'middle';
     }
   }
 }

@@ -69,6 +69,19 @@ export interface OutlineSpec {
 }
 
 /**
+ * A shape's inner label box in LOCAL coordinates (0,0 = node top-left). The
+ * node label engine wraps + clips text to this rect. Curved / slanted shapes
+ * (diamond, ellipse, triangle, cylinder …) inset it so text stays inside the
+ * visible silhouette. See {@link getInnerRect}.
+ */
+export interface InnerRect {
+  x: number;
+  y: number;
+  w: number;
+  h: number;
+}
+
+/**
  * The single geometry contract every node shape implements. Register once via
  * {@link registerShape} and the shape works across body, selection, shadow,
  * smart-connection boundary and port positioning — no switch edits required.
@@ -94,6 +107,13 @@ export interface ShapeDefinition {
     rank: number,
     count: number
   ): ShapePoint;
+
+  /**
+   * The label box in local coords (0,0 = top-left). Used by the node label
+   * engine to wrap, clip and ellipsis-truncate text inside the silhouette.
+   * Optional — omit to accept the padded-bbox default ({@link defaultInnerRect}).
+   */
+  innerRect?(width: number, height: number): InnerRect;
 
   /** How the node body applies node styles. Defaults to 'inline'. */
   styleMode?: 'inline' | 'spread';
@@ -270,6 +290,12 @@ const CircleShape: ShapeDefinition = {
     const angle = fanAngle(side, rank, count);
     return { x: cx + radius * Math.cos(angle), y: cy + radius * Math.sin(angle) };
   },
+  // A square inscribed in the circle: side = 2r/√2 ≈ 0.707·(2r). Use 0.6·min
+  // as a conservative label box so text never bleeds past the curve.
+  innerRect(width, height) {
+    const d = Math.min(width, height);
+    return { x: (width - 0.6 * d) / 2, y: (height - 0.6 * d) / 2, w: 0.6 * d, h: 0.6 * d };
+  },
 };
 
 const EllipseShape: ShapeDefinition = {
@@ -301,6 +327,10 @@ const EllipseShape: ShapeDefinition = {
     const cy = height / 2;
     const angle = fanAngle(side, rank, count);
     return { x: cx + rx * Math.cos(angle), y: cy + ry * Math.sin(angle) };
+  },
+  // ~0.6·w × ~0.6·h centered box (inscribed-rectangle approximation).
+  innerRect(width, height) {
+    return { x: 0.2 * width, y: 0.2 * height, w: 0.6 * width, h: 0.6 * height };
   },
 };
 
@@ -346,6 +376,11 @@ const DiamondShape: ShapeDefinition = {
       left: { x: 0, y: cy },
     };
     return vertices[side];
+  },
+  // The largest axis-aligned rectangle inside a diamond is half its span; use
+  // ~0.5 so text clears the sloped edges (documented approximation).
+  innerRect(width, height) {
+    return { x: 0.25 * width, y: 0.25 * height, w: 0.5 * width, h: 0.5 * height };
   },
 };
 
@@ -399,6 +434,447 @@ const HexagonShape: ShapeDefinition = {
   },
 };
 
+// ===========================================================================
+// EXTENDED FIGURE LIBRARY — flowchart / BPMN / UML / ERD shapes
+// ---------------------------------------------------------------------------
+// Every shape below is a first-class ShapeDefinition registered through the
+// SAME registry as the five built-ins, so it works across body / selection /
+// shadow / smart-connection boundary / port positioning with zero switch edits.
+//
+// Two families, two authoring helpers:
+//   • polygonShape(...) — a straight-edged silhouette given by a vertex list
+//     parameterized over the outline box (grow + dx/dy handled once). Ports and
+//     boundary points ride the REAL edges via polygonBoundaryPoint, so slanted
+//     sides (parallelogram, trapezoid, triangle …) attach correctly.
+//   • pathShape(...) — a curved / compound silhouette emitted as a single
+//     <path>. The registry contract only spoke rect/circle/ellipse/polygon; we
+//     extend it minimally to allow `el: 'path'` with `geom.d` so cylinder,
+//     document, cloud, actor … render as real geometry instead of rectangles.
+//     Path shapes are ~rectangular in footprint, so ports/boundary use the box
+//     edge (documented approximation).
+// ===========================================================================
+
+/** The outline reference box under a transform (grow expands, dx/dy translate). */
+interface OutlineBox {
+  x0: number;
+  y0: number;
+  w: number;
+  h: number;
+}
+function boxOf(width: number, height: number, t: OutlineTransform): OutlineBox {
+  const grow = t.grow ?? 0;
+  return { x0: -grow + (t.dx ?? 0), y0: -grow + (t.dy ?? 0), w: width + 2 * grow, h: height + 2 * grow };
+}
+
+/** Round to 3dp so path/point strings stay compact and diff-stable. */
+function r3(n: number): number {
+  return Math.round(n * 1000) / 1000;
+}
+
+/**
+ * Port anchor on a polygon's REAL edge: intersect the outline with the center
+ * line at the even edge-fraction; fall back to the box edge at a vertex tangent.
+ */
+function polygonPortAnchor(
+  verts: ShapePoint[],
+  width: number,
+  height: number,
+  side: ShapeSide,
+  rank: number,
+  count: number
+): ShapePoint {
+  const f = edgeFraction(rank, count);
+  const cross = side === 'top' || side === 'bottom' ? width * f : height * f;
+  const p = polygonBoundaryPoint(verts, side, cross);
+  if (p) return p;
+  return side === 'left'
+    ? { x: 0, y: cross }
+    : side === 'right'
+    ? { x: width, y: cross }
+    : side === 'top'
+    ? { x: cross, y: 0 }
+    : { x: cross, y: height };
+}
+
+/** Rect-style box-edge port anchor (used by the ~rectangular path shapes). */
+function boxPortAnchor(
+  width: number,
+  height: number,
+  side: ShapeSide,
+  rank: number,
+  count: number
+): ShapePoint {
+  const f = edgeFraction(rank, count);
+  switch (side) {
+    case 'left':
+      return { x: 0, y: height * f };
+    case 'right':
+      return { x: width, y: height * f };
+    case 'top':
+      return { x: width * f, y: 0 };
+    default:
+      return { x: width * f, y: height };
+  }
+}
+
+/** Build a straight-edged (polygon) shape from a box-parameterized vertex list. */
+function polygonShape(
+  type: string,
+  vertsFn: (box: OutlineBox) => ShapePoint[],
+  opts: {
+    portAnchor?: ShapeDefinition['portAnchor'];
+    innerRect?: ShapeDefinition['innerRect'];
+    styleMode?: ShapeDefinition['styleMode'];
+  } = {}
+): ShapeDefinition {
+  return {
+    type,
+    styleMode: opts.styleMode ?? 'inline',
+    outline(width, height, t = {}) {
+      const verts = vertsFn(boxOf(width, height, t));
+      return { el: 'polygon', geom: { points: fmt(verts) }, verts };
+    },
+    boundaryPoint(rect, side, cross) {
+      const local = vertsFn({ x0: 0, y0: 0, w: rect.w, h: rect.h });
+      const world = local.map((v) => ({ x: v.x + rect.x, y: v.y + rect.y }));
+      return polygonBoundaryPoint(world, side, cross);
+    },
+    portAnchor(width, height, side, rank, count) {
+      if (opts.portAnchor) return opts.portAnchor(width, height, side, rank, count);
+      const verts = vertsFn({ x0: 0, y0: 0, w: width, h: height });
+      return polygonPortAnchor(verts, width, height, side, rank, count);
+    },
+    innerRect: opts.innerRect,
+  };
+}
+
+/** Build a curved / compound shape emitted as a single <path> (`d` from box). */
+function pathShape(
+  type: string,
+  dFn: (box: OutlineBox) => string,
+  opts: {
+    portAnchor?: ShapeDefinition['portAnchor'];
+    boundaryPoint?: ShapeDefinition['boundaryPoint'];
+    innerRect?: ShapeDefinition['innerRect'];
+  } = {}
+): ShapeDefinition {
+  return {
+    type,
+    styleMode: 'inline',
+    outline(width, height, t = {}) {
+      return { el: 'path', geom: { d: dFn(boxOf(width, height, t)) } };
+    },
+    // ~rectangular footprint → the bounding-box edge is a good attachment.
+    boundaryPoint: opts.boundaryPoint ?? (() => null),
+    portAnchor: opts.portAnchor ?? boxPortAnchor,
+    innerRect: opts.innerRect,
+  };
+}
+
+// ── Vertex builders (skew = horizontal shear used by parallelogram/trapezoid) ─
+const SKEW = 0.25; // fraction of width sheared off — the classic flowchart lean
+
+function parallelogramVerts(b: OutlineBox, lean: 1 | -1): ShapePoint[] {
+  const s = b.w * SKEW;
+  // lean = 1 → top edge shifted right (data / I-O); lean = -1 → shifted left.
+  return lean === 1
+    ? [
+        { x: r3(b.x0 + s), y: b.y0 },
+        { x: r3(b.x0 + b.w), y: b.y0 },
+        { x: r3(b.x0 + b.w - s), y: r3(b.y0 + b.h) },
+        { x: b.x0, y: r3(b.y0 + b.h) },
+      ]
+    : [
+        { x: b.x0, y: b.y0 },
+        { x: r3(b.x0 + b.w - s), y: b.y0 },
+        { x: r3(b.x0 + b.w), y: r3(b.y0 + b.h) },
+        { x: r3(b.x0 + s), y: r3(b.y0 + b.h) },
+      ];
+}
+
+function trapezoidVerts(b: OutlineBox, narrow: 'top' | 'bottom'): ShapePoint[] {
+  const s = b.w * SKEW;
+  return narrow === 'top'
+    ? [
+        { x: r3(b.x0 + s), y: b.y0 },
+        { x: r3(b.x0 + b.w - s), y: b.y0 },
+        { x: r3(b.x0 + b.w), y: r3(b.y0 + b.h) },
+        { x: b.x0, y: r3(b.y0 + b.h) },
+      ]
+    : [
+        { x: b.x0, y: b.y0 },
+        { x: r3(b.x0 + b.w), y: b.y0 },
+        { x: r3(b.x0 + b.w - s), y: r3(b.y0 + b.h) },
+        { x: r3(b.x0 + s), y: r3(b.y0 + b.h) },
+      ];
+}
+
+function triangleVerts(b: OutlineBox, dir: 'up' | 'down'): ShapePoint[] {
+  const cx = r3(b.x0 + b.w / 2);
+  return dir === 'up'
+    ? [
+        { x: cx, y: b.y0 },
+        { x: r3(b.x0 + b.w), y: r3(b.y0 + b.h) },
+        { x: b.x0, y: r3(b.y0 + b.h) },
+      ]
+    : [
+        { x: b.x0, y: b.y0 },
+        { x: r3(b.x0 + b.w), y: b.y0 },
+        { x: cx, y: r3(b.y0 + b.h) },
+      ];
+}
+
+/** UML package (folder): a tab on the top-left plus the body — a 7-vertex poly. */
+function packageVerts(b: OutlineBox): ShapePoint[] {
+  const tabW = b.w * 0.4;
+  const tabH = b.h * 0.2;
+  return [
+    { x: b.x0, y: r3(b.y0 + tabH) },
+    { x: b.x0, y: b.y0 },
+    { x: r3(b.x0 + tabW), y: b.y0 },
+    { x: r3(b.x0 + tabW), y: r3(b.y0 + tabH) },
+    { x: r3(b.x0 + b.w), y: r3(b.y0 + tabH) },
+    { x: r3(b.x0 + b.w), y: r3(b.y0 + b.h) },
+    { x: b.x0, y: r3(b.y0 + b.h) },
+  ];
+}
+
+/** Isometric cube outer silhouette (a 6-vertex hexagon; edges drawn by cubePath). */
+function cubeSilhouetteVerts(b: OutlineBox): ShapePoint[] {
+  const d = Math.min(b.w, b.h) * 0.22;
+  return [
+    { x: b.x0, y: r3(b.y0 + d) },
+    { x: r3(b.x0 + d), y: b.y0 },
+    { x: r3(b.x0 + b.w), y: b.y0 },
+    { x: r3(b.x0 + b.w), y: r3(b.y0 + b.h - d) },
+    { x: r3(b.x0 + b.w - d), y: r3(b.y0 + b.h) },
+    { x: b.x0, y: r3(b.y0 + b.h) },
+  ];
+}
+
+/** Note silhouette (folded top-right corner) — a 6-vertex poly; fold by notePath. */
+function noteVerts(b: OutlineBox): ShapePoint[] {
+  const f = Math.min(b.w, b.h) * 0.25;
+  return [
+    { x: b.x0, y: b.y0 },
+    { x: r3(b.x0 + b.w - f), y: b.y0 },
+    { x: r3(b.x0 + b.w), y: r3(b.y0 + f) },
+    { x: r3(b.x0 + b.w), y: r3(b.y0 + b.h) },
+    { x: b.x0, y: r3(b.y0 + b.h) },
+  ];
+}
+
+// ── Straight-edged shapes ──────────────────────────────────────────────────
+const ParallelogramShape = polygonShape('parallelogram', (b) => parallelogramVerts(b, 1));
+const ParallelogramTopShape = polygonShape('parallelogram-top', (b) => parallelogramVerts(b, -1));
+const TrapezoidShape = polygonShape('trapezoid', (b) => trapezoidVerts(b, 'top'));
+const TrapezoidBottomShape = polygonShape('trapezoid-bottom', (b) => trapezoidVerts(b, 'bottom'));
+const TriangleShape = polygonShape('triangle', (b) => triangleVerts(b, 'up'), {
+  // apex/base custom anchors read better than generic edge intersections
+  portAnchor(width, height, side, rank, count) {
+    if (side === 'top') return { x: width / 2, y: 0 };
+    if (side === 'bottom') return { x: width * edgeFraction(rank, count), y: height };
+    if (side === 'left') return { x: width * 0.25, y: height / 2 };
+    return { x: width * 0.75, y: height / 2 };
+  },
+  innerRect: (w, h) => ({ x: 0.25 * w, y: 0.45 * h, w: 0.5 * w, h: 0.5 * h }),
+});
+const TriangleDownShape = polygonShape('triangle-down', (b) => triangleVerts(b, 'down'), {
+  innerRect: (w, h) => ({ x: 0.25 * w, y: 0.05 * h, w: 0.5 * w, h: 0.5 * h }),
+});
+const PackageShape = polygonShape('package', packageVerts, {
+  innerRect: (w, h) => ({ x: 0.08 * w, y: 0.28 * h, w: 0.84 * w, h: 0.64 * h }),
+});
+const CubeShape: ShapeDefinition = {
+  ...polygonShape('cube', cubeSilhouetteVerts, {
+    innerRect: (w, h) => ({ x: 0.06 * w, y: 0.32 * h, w: 0.62 * w, h: 0.6 * h }),
+  }),
+  // Override the outline to draw the two interior 3D edges as extra subpaths.
+  outline(width, height, t = {}) {
+    const b = boxOf(width, height, t);
+    const d = Math.min(b.w, b.h) * 0.22;
+    const { x0, y0 } = b;
+    const w = b.w;
+    const h = b.h;
+    const front = `M ${r3(x0)},${r3(y0 + d)} L ${r3(x0)},${r3(y0 + h)} L ${r3(x0 + w - d)},${r3(
+      y0 + h
+    )} L ${r3(x0 + w - d)},${r3(y0 + d)} Z`;
+    const top = `M ${r3(x0)},${r3(y0 + d)} L ${r3(x0 + d)},${r3(y0)} L ${r3(x0 + w)},${r3(y0)} L ${r3(
+      x0 + w - d
+    )},${r3(y0 + d)}`;
+    const rightEdge = `M ${r3(x0 + w - d)},${r3(y0 + d)} L ${r3(x0 + w)},${r3(y0)} L ${r3(x0 + w)},${r3(
+      y0 + h - d
+    )} L ${r3(x0 + w - d)},${r3(y0 + h)}`;
+    return { el: 'path', geom: { d: `${front} ${top} ${rightEdge}` } };
+  },
+};
+
+// ── Curved / compound (path) shapes ────────────────────────────────────────
+const DocumentShape = pathShape(
+  'document',
+  (b) => {
+    const wave = b.h * 0.12;
+    const { x0, y0, w, h } = b;
+    // rect top + sides, then a double Q-curve wavy bottom
+    return (
+      `M ${r3(x0)},${r3(y0)} L ${r3(x0 + w)},${r3(y0)} L ${r3(x0 + w)},${r3(y0 + h - wave)} ` +
+      `Q ${r3(x0 + 0.75 * w)},${r3(y0 + h - 2 * wave)} ${r3(x0 + 0.5 * w)},${r3(y0 + h - wave)} ` +
+      `Q ${r3(x0 + 0.25 * w)},${r3(y0 + h)} ${r3(x0)},${r3(y0 + h - wave)} Z`
+    );
+  },
+  { innerRect: (w, h) => ({ x: 0.08 * w, y: 0.08 * h, w: 0.84 * w, h: 0.72 * h }) }
+);
+
+const CylinderShape = pathShape(
+  'cylinder',
+  (b) => {
+    const { x0, y0, w, h } = b;
+    const rx = w / 2;
+    const ry = Math.min(h / 2, rx / (2.5 + w / h)); // classic DB rim curvature
+    const body = h - 2 * ry;
+    // full top ellipse (two arcs) + body sides + front bottom arc
+    return (
+      `M ${r3(x0)},${r3(y0 + ry)} ` +
+      `a ${r3(rx)},${r3(ry)} 0 0 0 ${r3(w)} 0 ` +
+      `a ${r3(rx)},${r3(ry)} 0 0 0 ${r3(-w)} 0 ` +
+      `l 0 ${r3(body)} ` +
+      `a ${r3(rx)},${r3(ry)} 0 0 0 ${r3(w)} 0 ` +
+      `l 0 ${r3(-body)}`
+    );
+  },
+  { innerRect: (w, h) => ({ x: 0.1 * w, y: 0.28 * h, w: 0.8 * w, h: 0.5 * h }) }
+);
+
+const CloudShape = pathShape(
+  'cloud',
+  (b) => {
+    // Five bump arcs around the box — a recognizable cloud silhouette scaled
+    // to (w, h). Bumps are cubic beziers so grow/dx-dy just move the box.
+    const { x0, y0, w, h } = b;
+    const X = (fx: number) => r3(x0 + fx * w);
+    const Y = (fy: number) => r3(y0 + fy * h);
+    return (
+      `M ${X(0.25)},${Y(0.85)} ` +
+      `C ${X(0.05)},${Y(0.85)} ${X(0.05)},${Y(0.55)} ${X(0.2)},${Y(0.5)} ` +
+      `C ${X(0.15)},${Y(0.2)} ${X(0.45)},${Y(0.1)} ${X(0.55)},${Y(0.3)} ` +
+      `C ${X(0.65)},${Y(0.08)} ${X(0.95)},${Y(0.15)} ${X(0.85)},${Y(0.45)} ` +
+      `C ${X(1.02)},${Y(0.5)} ${X(0.98)},${Y(0.82)} ${X(0.78)},${Y(0.85)} ` +
+      `Z`
+    );
+  },
+  { innerRect: (w, h) => ({ x: 0.2 * w, y: 0.35 * h, w: 0.6 * w, h: 0.45 * h }) }
+);
+
+// Predefined process / subroutine: rect + a vertical bar inset on each side.
+const PredefinedProcessShape = pathShape(
+  'predefined-process',
+  (b) => {
+    const { x0, y0, w, h } = b;
+    const bar = w * 0.1;
+    const rect = `M ${r3(x0)},${r3(y0)} L ${r3(x0 + w)},${r3(y0)} L ${r3(x0 + w)},${r3(
+      y0 + h
+    )} L ${r3(x0)},${r3(y0 + h)} Z`;
+    const left = `M ${r3(x0 + bar)},${r3(y0)} L ${r3(x0 + bar)},${r3(y0 + h)}`;
+    const right = `M ${r3(x0 + w - bar)},${r3(y0)} L ${r3(x0 + w - bar)},${r3(y0 + h)}`;
+    return `${rect} ${left} ${right}`;
+  },
+  { innerRect: (w, h) => ({ x: 0.12 * w, y: 0.12 * h, w: 0.76 * w, h: 0.76 * h }) }
+);
+
+// UML component: body rect + two small tabs protruding on the left edge.
+const ComponentShape = pathShape(
+  'component',
+  (b) => {
+    const { x0, y0, w, h } = b;
+    const tw = w * 0.14;
+    const th = h * 0.16;
+    const bodyX = x0 + tw / 2;
+    const bodyW = w - tw / 2;
+    const y1 = y0 + h * 0.2;
+    const y2 = y0 + h * 0.55;
+    const body = `M ${r3(bodyX)},${r3(y0)} L ${r3(x0 + bodyW)},${r3(y0)} L ${r3(x0 + bodyW)},${r3(
+      y0 + h
+    )} L ${r3(bodyX)},${r3(y0 + h)} Z`;
+    const tab = (ty: number) =>
+      `M ${r3(x0)},${r3(ty)} L ${r3(x0 + tw)},${r3(ty)} L ${r3(x0 + tw)},${r3(ty + th)} L ${r3(
+        x0
+      )},${r3(ty + th)} Z`;
+    return `${body} ${tab(y1)} ${tab(y2)}`;
+  },
+  { innerRect: (w, h) => ({ x: 0.16 * w, y: 0.1 * h, w: 0.76 * w, h: 0.8 * h }) }
+);
+
+// Note: folded top-right corner rect + the little fold triangle.
+const NoteShape: ShapeDefinition = {
+  ...pathShape('note', () => '', {
+    innerRect: (w, h) => ({ x: 0.08 * w, y: 0.08 * h, w: 0.84 * w, h: 0.84 * h }),
+  }),
+  outline(width, height, t = {}) {
+    const b = boxOf(width, height, t);
+    const f = Math.min(b.w, b.h) * 0.25;
+    const { x0, y0, w, h } = b;
+    const body = `M ${r3(x0)},${r3(y0)} L ${r3(x0 + w - f)},${r3(y0)} L ${r3(x0 + w)},${r3(
+      y0 + f
+    )} L ${r3(x0 + w)},${r3(y0 + h)} L ${r3(x0)},${r3(y0 + h)} Z`;
+    const fold = `M ${r3(x0 + w - f)},${r3(y0)} L ${r3(x0 + w - f)},${r3(y0 + f)} L ${r3(x0 + w)},${r3(
+      y0 + f
+    )}`;
+    return { el: 'path', geom: { d: `${body} ${fold}` } };
+  },
+  boundaryPoint(rect, side, cross) {
+    const local = noteVerts({ x0: 0, y0: 0, w: rect.w, h: rect.h });
+    const world = local.map((v) => ({ x: v.x + rect.x, y: v.y + rect.y }));
+    return polygonBoundaryPoint(world, side, cross);
+  },
+};
+
+// Terminal / stadium / pill: a fully rounded rectangle (rx = ry = height/2).
+const TerminalShape: ShapeDefinition = {
+  type: 'terminal',
+  styleMode: 'inline',
+  bodyStripKeys: ['rx', 'ry'], // never let a themed borderRadius fight rx = h/2
+  outline(width, height, t = {}) {
+    const b = boxOf(width, height, t);
+    const rad = b.h / 2;
+    return { el: 'rect', geom: { x: r3(b.x0), y: r3(b.y0), width: r3(b.w), height: r3(b.h), rx: r3(rad), ry: r3(rad) } };
+  },
+  boundaryPoint() {
+    return null; // straight top/bottom + semicircle ends → bbox edge is fine
+  },
+  portAnchor: boxPortAnchor,
+  innerRect: (w, h) => ({ x: h * 0.5, y: 0.15 * h, w: Math.max(0, w - h), h: 0.7 * h }),
+};
+
+// Actor (UML use-case): stick figure — head circle + torso/arms/legs strokes.
+const ActorShape: ShapeDefinition = {
+  type: 'actor',
+  styleMode: 'inline',
+  outline(width, height, t = {}) {
+    const b = boxOf(width, height, t);
+    const { x0, y0, w, h } = b;
+    const cx = x0 + w / 2;
+    const rHead = Math.min(w * 0.22, h * 0.16);
+    const headCy = y0 + rHead;
+    const neck = headCy + rHead;
+    const hip = y0 + h * 0.62;
+    const arms = y0 + h * 0.4;
+    // head as two arcs (full circle), then torso, arms, and two legs
+    const head = `M ${r3(cx - rHead)},${r3(headCy)} a ${r3(rHead)},${r3(rHead)} 0 1 0 ${r3(
+      2 * rHead
+    )} 0 a ${r3(rHead)},${r3(rHead)} 0 1 0 ${r3(-2 * rHead)} 0`;
+    const torso = `M ${r3(cx)},${r3(neck)} L ${r3(cx)},${r3(hip)}`;
+    const armLine = `M ${r3(x0 + w * 0.18)},${r3(arms)} L ${r3(x0 + w * 0.82)},${r3(arms)}`;
+    const legs = `M ${r3(x0 + w * 0.2)},${r3(y0 + h)} L ${r3(cx)},${r3(hip)} L ${r3(
+      x0 + w * 0.8
+    )},${r3(y0 + h)}`;
+    return { el: 'path', geom: { d: `${head} ${torso} ${armLine} ${legs}` } };
+  },
+  boundaryPoint() {
+    return null;
+  },
+  portAnchor: boxPortAnchor,
+};
+
 // ---------------------------------------------------------------------------
 // Registry
 // ---------------------------------------------------------------------------
@@ -424,9 +900,72 @@ export function hasShape(type: string): boolean {
   return registry.has(type);
 }
 
+/** All registered shape type names (built-ins + extended library + aliases). */
+export function listShapes(): string[] {
+  return [...registry.keys()];
+}
+
+/**
+ * The label box for a shape in local coords. Falls back to a padded bounding
+ * box when the shape doesn't override `innerRect`.
+ */
+export function getInnerRect(def: ShapeDefinition, width: number, height: number): InnerRect {
+  return def.innerRect ? def.innerRect(width, height) : defaultInnerRect(width, height);
+}
+
+/** Padded-bbox label box: inset by up to 8px, clamped so it never inverts. */
+export function defaultInnerRect(width: number, height: number): InnerRect {
+  const pad = Math.max(0, Math.min(8, width / 2 - 1, height / 2 - 1));
+  return { x: pad, y: pad, w: width - 2 * pad, h: height - 2 * pad };
+}
+
 // Register the five built-ins.
 for (const def of [RectShape, CircleShape, EllipseShape, DiamondShape, HexagonShape]) {
   registry.set(def.type, def);
+}
+
+// Register the extended flowchart / BPMN / UML / ERD figure library. Each is a
+// full ShapeDefinition, so it works everywhere the built-ins do — no switch
+// edits at any of the five render sites.
+for (const def of [
+  ParallelogramShape,
+  ParallelogramTopShape,
+  TrapezoidShape,
+  TrapezoidBottomShape,
+  TriangleShape,
+  TriangleDownShape,
+  PackageShape,
+  CubeShape,
+  DocumentShape,
+  CylinderShape,
+  CloudShape,
+  PredefinedProcessShape,
+  ComponentShape,
+  NoteShape,
+  TerminalShape,
+  ActorShape,
+]) {
+  registry.set(def.type, def);
+}
+
+// Common aliases (draw.io / mermaid / BPMN vocabulary) → the same definitions.
+const SHAPE_ALIASES: Record<string, ShapeDefinition> = {
+  data: ParallelogramShape, // flowchart I/O
+  'input-output': ParallelogramShape,
+  database: CylinderShape,
+  cylinder3d: CylinderShape,
+  subroutine: PredefinedProcessShape,
+  'predefined-process-alt': PredefinedProcessShape,
+  stadium: TerminalShape,
+  pill: TerminalShape,
+  terminator: TerminalShape,
+  'manual-operation': TrapezoidShape, // narrow-bottom in some dialects; near enough
+  folder: PackageShape,
+  comment: NoteShape,
+  'use-case-actor': ActorShape,
+};
+for (const [alias, def] of Object.entries(SHAPE_ALIASES)) {
+  registry.set(alias, def);
 }
 
 // ---------------------------------------------------------------------------
