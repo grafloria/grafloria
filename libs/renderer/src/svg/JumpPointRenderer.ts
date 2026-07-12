@@ -326,66 +326,61 @@ export class JumpPointRenderer {
       let currentY = 0;
 
       for (const cmd of commands) {
-        const type = cmd[0]!.toUpperCase();
+        const letter = cmd[0]!;
+        const type = letter.toUpperCase();
+        // Lowercase commands are RELATIVE to the current point per the SVG
+        // spec — treating them as absolute garbles the path
+        const rel = letter !== type;
         const coords = cmd
           .slice(1)
           .trim()
-          .split(/\s+/)
+          .split(/[\s,]+/)
           .map(parseFloat)
           .filter(n => !isNaN(n));
 
+        const setPoint = (x: number, y: number) => {
+          currentX = rel ? currentX + x : x;
+          currentY = rel ? currentY + y : y;
+          points.push({ x: currentX, y: currentY });
+        };
+
         switch (type) {
-          case 'M': // Move to
-            if (coords.length >= 2) {
-              currentX = coords[0]!;
-              currentY = coords[1]!;
+          case 'M': // Move to (subsequent pairs are implicit line-tos)
+          case 'L': // Line to (may carry multiple implicit pairs)
+            for (let k = 0; k + 1 < coords.length; k += 2) {
+              setPoint(coords[k]!, coords[k + 1]!);
+            }
+            break;
+
+          case 'H': // Horizontal line(s)
+            for (const c of coords) {
+              currentX = rel ? currentX + c : c;
               points.push({ x: currentX, y: currentY });
             }
             break;
 
-          case 'L': // Line to
-            if (coords.length >= 2) {
-              currentX = coords[0]!;
-              currentY = coords[1]!;
+          case 'V': // Vertical line(s)
+            for (const c of coords) {
+              currentY = rel ? currentY + c : c;
               points.push({ x: currentX, y: currentY });
             }
             break;
 
-          case 'H': // Horizontal line
-            if (coords.length >= 1) {
-              currentX = coords[0]!;
-              points.push({ x: currentX, y: currentY });
+          case 'Q': // Quadratic curve(s) — use endpoints
+            for (let k = 0; k + 3 < coords.length; k += 4) {
+              setPoint(coords[k + 2]!, coords[k + 3]!);
             }
             break;
 
-          case 'V': // Vertical line
-            if (coords.length >= 1) {
-              currentY = coords[0]!;
-              points.push({ x: currentX, y: currentY });
+          case 'C': // Cubic curve(s) — use endpoints
+            for (let k = 0; k + 5 < coords.length; k += 6) {
+              setPoint(coords[k + 4]!, coords[k + 5]!);
             }
             break;
 
-          case 'Q': // Quadratic curve (use endpoint)
-            if (coords.length >= 4) {
-              currentX = coords[2]!;
-              currentY = coords[3]!;
-              points.push({ x: currentX, y: currentY });
-            }
-            break;
-
-          case 'C': // Cubic curve (use endpoint)
-            if (coords.length >= 6) {
-              currentX = coords[4]!;
-              currentY = coords[5]!;
-              points.push({ x: currentX, y: currentY });
-            }
-            break;
-
-          case 'A': // Arc (use endpoint)
-            if (coords.length >= 7) {
-              currentX = coords[5]!;
-              currentY = coords[6]!;
-              points.push({ x: currentX, y: currentY });
+          case 'A': // Arc(s) — use endpoints
+            for (let k = 0; k + 6 < coords.length; k += 7) {
+              setPoint(coords[k + 5]!, coords[k + 6]!);
             }
             break;
         }

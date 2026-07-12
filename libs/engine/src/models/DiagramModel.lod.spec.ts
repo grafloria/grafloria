@@ -14,13 +14,14 @@ describe('DiagramModel - Level of Detail (Phase 5.3)', () => {
   });
 
   describe('LOD Level Determination', () => {
-    it('should return HIGH detail for zoom > 1.0', () => {
-      const level = diagram.getLODLevel(1.5);
-      expect(level).toBe('high');
+    it('should return HIGH detail for zoom >= 1.0 (default zoom shows full detail)', () => {
+      expect(diagram.getLODLevel(1.5)).toBe('high');
+      // 1.0 is the default zoom — labels and full detail must be visible there
+      expect(diagram.getLODLevel(1.0)).toBe('high');
     });
 
-    it('should return MEDIUM detail for 0.2 < zoom <= 1.0', () => {
-      expect(diagram.getLODLevel(1.0)).toBe('medium');
+    it('should return MEDIUM detail for 0.2 < zoom < 1.0', () => {
+      expect(diagram.getLODLevel(0.99)).toBe('medium');
       expect(diagram.getLODLevel(0.75)).toBe('medium');
       expect(diagram.getLODLevel(0.6)).toBe('medium');
       expect(diagram.getLODLevel(0.5)).toBe('medium');

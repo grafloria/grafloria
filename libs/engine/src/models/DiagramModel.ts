@@ -246,6 +246,16 @@ export class DiagramModel extends DiagramEntity {
       throw new Error(`Link with id ${link.id} already exists`);
     }
 
+    // Cache the owning node ids (renderers resolve port sides through them —
+    // without this, links built via `new LinkModel()` + addLink never resolve
+    // port direction, unlike connectNodes() which sets the ids itself)
+    if (!link.sourceNodeId) {
+      link.sourceNodeId = this.getNodeByPortId(link.sourcePortId)?.id;
+    }
+    if (!link.targetNodeId) {
+      link.targetNodeId = this.getNodeByPortId(link.targetPortId)?.id;
+    }
+
     this.links.set(link.id, link);
     this.trackChange('links', null, link);
     this.emitOrQueue('link:added', link);
@@ -1213,7 +1223,9 @@ export class DiagramModel extends DiagramEntity {
    * NOTE: Threshold lowered from 0.5 to 0.2 for better label visibility in demos
    */
   getLODLevel(zoom: number): LODLevel {
-    if (zoom > 1.0) {
+    // >= so the DEFAULT zoom (1.0) gets full detail — with a strict > the
+    // 'high' tier (link labels etc.) was unreachable until the user zoomed in
+    if (zoom >= 1.0) {
       return 'high';
     } else if (zoom > 0.2) {
       return 'medium';

@@ -290,14 +290,6 @@ export class RoutingEngine {
    * Use routeAsync() for async routers
    */
   route(request: RouteRequest): RoutedPath | null {
-    // DEBUG: Log what options we receive
-    console.log('🔧 RoutingEngine.route() called with options:', {
-      algorithm: request.options?.algorithm,
-      avoidObstacles: request.options?.avoidObstacles,
-      gridSize: request.options?.gridSize,
-      obstacleCount: request.obstacles?.length ?? 0
-    });
-
     // Validate coordinates
     if (
       !isFinite(request.start.x) ||
@@ -353,14 +345,6 @@ export class RoutingEngine {
       ...request,
       obstacles: allObstacles,
     };
-
-    // DEBUG: Log enhanced request options
-    console.log('🔧 Enhanced request options:', {
-      algorithm: enhancedRequest.options?.algorithm,
-      avoidObstacles: enhancedRequest.options?.avoidObstacles,
-      gridSize: enhancedRequest.options?.gridSize,
-      obstacleCount: enhancedRequest.obstacles?.length ?? 0
-    });
 
     // Perform routing (must be sync)
     const result = router.route(enhancedRequest);

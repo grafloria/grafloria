@@ -624,21 +624,45 @@ export class LinkModel extends DiagramEntity {
       };
     }
 
-    // For other path types, use segments
+    // For other path types, use segments when they exist. Renderers that sync
+    // `points` directly leave `segments` stale/empty — fall back to walking
+    // the points polyline so consumers (e.g. label placement) still get a
+    // real on-path position instead of the endpoint.
     const totalLength = this.getTotalLength();
-    const targetLength = totalLength * t;
-    let currentLength = 0;
+    if (this.segments.length > 0 && totalLength > 0) {
+      const targetLength = totalLength * t;
+      let currentLength = 0;
 
-    for (const segment of this.segments) {
-      const segmentLength = this.getSegmentLength(segment);
-      if (currentLength + segmentLength >= targetLength) {
-        const segmentT = (targetLength - currentLength) / segmentLength;
-        return this.getPointOnSegment(segment, segmentT);
+      for (const segment of this.segments) {
+        const segmentLength = this.getSegmentLength(segment);
+        if (currentLength + segmentLength >= targetLength) {
+          const segmentT = segmentLength > 0 ? (targetLength - currentLength) / segmentLength : 0;
+          return this.getPointOnSegment(segment, segmentT);
+        }
+        currentLength += segmentLength;
       }
-      currentLength += segmentLength;
+      return this.points[this.points.length - 1] || null;
     }
 
-    return this.points[this.points.length - 1] || null;
+    // Polyline fallback: arc-length interpolation over points
+    let polyLength = 0;
+    for (let i = 0; i < this.points.length - 1; i++) {
+      polyLength += Math.hypot(this.points[i + 1]!.x - this.points[i]!.x, this.points[i + 1]!.y - this.points[i]!.y);
+    }
+    if (polyLength <= 0) return { ...this.points[0]! };
+
+    let remaining = polyLength * t;
+    for (let i = 0; i < this.points.length - 1; i++) {
+      const a = this.points[i]!;
+      const b = this.points[i + 1]!;
+      const segLen = Math.hypot(b.x - a.x, b.y - a.y);
+      if (remaining <= segLen) {
+        const st = segLen > 0 ? remaining / segLen : 0;
+        return { x: a.x + (b.x - a.x) * st, y: a.y + (b.y - a.y) * st };
+      }
+      remaining -= segLen;
+    }
+    return { ...this.points[this.points.length - 1]! };
   }
 
   /**

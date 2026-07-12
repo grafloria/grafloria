@@ -1780,10 +1780,11 @@ export class SVGRenderer implements IRenderer {
             });
 
             if (segmentRoute && segmentRoute.points.length > 0) {
+              const segPts = this.rectifyOrthogonalRoute(segmentRoute.points);
               if (i === 0) {
-                allRoutedPoints.push(...segmentRoute.points);
+                allRoutedPoints.push(...segPts);
               } else {
-                allRoutedPoints.push(...segmentRoute.points.slice(1));
+                allRoutedPoints.push(...segPts.slice(1));
               }
             } else {
               if (i === 0) allRoutedPoints.push(start);
@@ -1882,7 +1883,13 @@ export class SVGRenderer implements IRenderer {
       );
 
       if (intersections.length > 0) {
-        jumpPathData = this.buildPathWithJumps(points, intersections, jumpConfig, link.pathType);
+        // Keep jumps clear of the arrow markers: reserve the marker's tip
+        // extent at each end so an arc never renders underneath an arrowhead
+        const headReserve = arrowHeadStyle && arrowHeadStyle.type !== 'none'
+          ? this.arrowRenderer.getTipOffset(arrowHeadStyle) + 2 : 0;
+        const tailReserve = arrowTailStyle && arrowTailStyle.type !== 'none'
+          ? this.arrowRenderer.getTipOffset(arrowTailStyle) + 2 : 0;
+        jumpPathData = this.buildPathWithJumps(points, intersections, jumpConfig, link.pathType, tailReserve, headReserve);
       }
     }
 
@@ -2950,26 +2957,25 @@ export class SVGRenderer implements IRenderer {
     isTarget: boolean,
     arrowLength: number
   ): { position: { x: number; y: number }; angle: number } {
-    // Get the relevant port and its side
+    // Get the relevant port and its side. Resolve the node by cached id when
+    // available, otherwise by searching for the port's owner — links built via
+    // `new LinkModel()` may not carry node ids, and without the side the
+    // bezier arrow falls into a horizontal-only fallback (arrows on top/bottom
+    // ports rendered sideways).
     const diagram = this.engine.getDiagram();
     let portSide: 'left' | 'right' | 'top' | 'bottom' | undefined;
 
     if (diagram) {
-      if (isTarget && link.targetPortId) {
-        const targetNode = diagram.getNode(link.targetNodeId!);
-        if (targetNode) {
-          const targetPort = targetNode.getPort(link.targetPortId);
-          if (targetPort) {
-            portSide = targetPort.alignment.side;
-          }
+      const portId = isTarget ? link.targetPortId : link.sourcePortId;
+      const nodeId = isTarget ? link.targetNodeId : link.sourceNodeId;
+      if (portId) {
+        let node = nodeId ? diagram.getNode(nodeId) : null;
+        if (!node) {
+          node = diagram.getNodes().find((n: NodeModel) => !!n.getPort(portId)) || null;
         }
-      } else if (!isTarget && link.sourcePortId) {
-        const sourceNode = diagram.getNode(link.sourceNodeId!);
-        if (sourceNode) {
-          const sourcePort = sourceNode.getPort(link.sourcePortId);
-          if (sourcePort) {
-            portSide = sourcePort.alignment.side;
-          }
+        const port = node?.getPort(portId);
+        if (port) {
+          portSide = port.alignment.side;
         }
       }
     }
@@ -3070,7 +3076,9 @@ export class SVGRenderer implements IRenderer {
     points: Array<{ x: number; y: number }>,
     intersections: Array<{ t1: number; segmentIndex?: number }>,
     config: { size?: number; style?: 'arc' | 'gap' | 'bridge' },
-    pathType: string
+    pathType: string,
+    startReserve = 0,
+    endReserve = 0
   ): string {
     const size = config.size ?? 10;
     const style = config.style ?? 'arc';
@@ -3097,19 +3105,23 @@ export class SVGRenderer implements IRenderer {
         if (i < n - 2) bendNext = Math.min(segLen / 2, this.distance(b, points[i + 2]) / 2, cornerRadius);
       }
 
-      // Cut windows around each crossing on this segment, clamped clear of the
-      // bends, then merged so nearby crossings share one jump (no backtracking)
-      const lo = bendPrev + 1;
-      const hi = segLen - bendNext - 1;
+      // Legal cut window on this segment: clear of the corner bends, and of
+      // the arrow markers on the terminal segments
+      const lo = bendPrev + 1 + (i === 0 ? startReserve : 0);
+      const hi = segLen - bendNext - 1 - (i === n - 2 ? endReserve : 0);
       const merged: Array<{ s: number; e: number }> = [];
       const cuts = intersections
         .filter(it => (it.segmentIndex ?? 0) === i && it.t1 > 0 && it.t1 < 1)
         .map(it => ({ s: it.t1 * segLen - half, e: it.t1 * segLen + half }))
         .sort((p, q) => p.s - q.s);
       for (const c of cuts) {
-        const s = Math.max(lo, c.s);
-        const e = Math.min(hi, c.e);
-        if (e - s < 1) continue;
+        // Shift the cut into the legal window instead of dropping it — a
+        // crossing right next to a bend or an arrowhead still gets its jump,
+        // just nudged along the segment
+        if (hi - lo < 3) continue; // genuinely no room on this segment
+        const width = Math.min(c.e - c.s, hi - lo);
+        const s = Math.max(lo, Math.min(c.s, hi - width));
+        const e = s + width;
         const last = merged[merged.length - 1];
         if (last && s <= last.e) {
           last.e = Math.max(last.e, e);
@@ -3207,6 +3219,7 @@ export class SVGRenderer implements IRenderer {
         height: node.size.height,
       }));
 
+    let usedOrthogonal = algorithm === 'orthogonal';
     const routeWith = (algo: RoutingAlgorithm, avoid: boolean): RoutedPath | null =>
       routingEngine.route({
         start: endpoints.start,
@@ -3225,15 +3238,104 @@ export class SVGRenderer implements IRenderer {
       const detour = routeWith('orthogonal', true) || routeWith('orthogonal', false);
       if (detour) {
         routedPath = detour;
+        usedOrthogonal = true;
       }
     }
 
     // Fallback: simple orthogonal routing
     if (!routedPath) {
       routedPath = routeWith('orthogonal', false);
+      usedOrthogonal = !!routedPath;
+    }
+
+    // The engine's router can emit slanted port stubs (grid-snapped elbows vs
+    // off-grid ports), diagonal middle segments and out-and-back retraces —
+    // rectify so an orthogonal route is actually orthogonal.
+    if (routedPath && usedOrthogonal) {
+      routedPath = { ...routedPath, points: this.rectifyOrthogonalRoute(routedPath.points) };
     }
 
     return routedPath;
+  }
+
+  /**
+   * Make an "orthogonal" route strictly orthogonal:
+   * 1. absorb near-miss elbows into the exact endpoint axes (grid-snapped
+   *    elbows sit up to gridSize/2 off the port, producing slanted stubs),
+   * 2. split any remaining diagonal segment with a corner point,
+   * 3. merge collinear runs, which also removes out-and-back retraces.
+   */
+  private rectifyOrthogonalRoute(
+    points: Array<{ x: number; y: number }>
+  ): Array<{ x: number; y: number }> {
+    const EPS = 0.01;
+    const SNAP = 6; // below the routing gridSize of 10
+    if (!points || points.length < 2) return points;
+
+    // 0) copy + drop consecutive duplicates
+    let pts = points.map(p => ({ x: p.x, y: p.y }));
+    pts = pts.filter((p, i) => i === 0 || Math.abs(p.x - pts[i - 1].x) > EPS || Math.abs(p.y - pts[i - 1].y) > EPS);
+    if (pts.length < 2) return pts;
+
+    // 1) endpoint absorption: shift the run of elbows adjacent to each
+    //    endpoint onto the endpoint's own axis line
+    const absorb = (idx: number, dir: 1 | -1) => {
+      const anchor = pts[idx];
+      const first = pts[idx + dir];
+      if (!first) return;
+      const dx = Math.abs(first.x - anchor.x);
+      const dy = Math.abs(first.y - anchor.y);
+      if (dy > EPS && dy <= SNAP && dx > dy) {
+        // meant to be horizontal: lift the whole co-linear run onto anchor.y
+        const oldY = first.y;
+        for (let i = idx + dir; i >= 0 && i < pts.length; i += dir) {
+          if (Math.abs(pts[i].y - oldY) > EPS) break;
+          pts[i].y = anchor.y;
+        }
+      } else if (dx > EPS && dx <= SNAP && dy > dx) {
+        const oldX = first.x;
+        for (let i = idx + dir; i >= 0 && i < pts.length; i += dir) {
+          if (Math.abs(pts[i].x - oldX) > EPS) break;
+          pts[i].x = anchor.x;
+        }
+      }
+    };
+    absorb(0, 1);
+    absorb(pts.length - 1, -1);
+
+    // 2) orthogonalize: insert a corner for any remaining diagonal segment,
+    //    continuing the previous segment's axis where one exists
+    const ortho: Array<{ x: number; y: number }> = [pts[0]];
+    for (let i = 1; i < pts.length; i++) {
+      const prev = ortho[ortho.length - 1];
+      const q = pts[i];
+      const dx = Math.abs(q.x - prev.x);
+      const dy = Math.abs(q.y - prev.y);
+      if (dx > EPS && dy > EPS) {
+        const before = ortho.length >= 2 ? ortho[ortho.length - 2] : null;
+        const prevHorizontal = before ? Math.abs(prev.y - before.y) <= EPS : dx >= dy;
+        ortho.push(prevHorizontal ? { x: q.x, y: prev.y } : { x: prev.x, y: q.y });
+      }
+      ortho.push({ x: q.x, y: q.y });
+    }
+
+    // 3) merge collinear runs (same axis, any direction) — keeps only the run
+    //    endpoints, which removes backtracking stubs
+    const merged: Array<{ x: number; y: number }> = [ortho[0]];
+    for (let i = 1; i < ortho.length; i++) {
+      const q = ortho[i];
+      while (merged.length >= 2) {
+        const a = merged[merged.length - 2];
+        const b = merged[merged.length - 1];
+        const sameH = Math.abs(b.y - a.y) <= EPS && Math.abs(q.y - b.y) <= EPS;
+        const sameV = Math.abs(b.x - a.x) <= EPS && Math.abs(q.x - b.x) <= EPS;
+        if (sameH || sameV) merged.pop(); else break;
+      }
+      if (Math.abs(q.x - merged[merged.length - 1].x) > EPS || Math.abs(q.y - merged[merged.length - 1].y) > EPS) {
+        merged.push(q);
+      }
+    }
+    return merged;
   }
 
   /**

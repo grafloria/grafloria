@@ -15,14 +15,6 @@ export class OrthogonalRouter implements IRouter {
   route(request: RouteRequest): RoutedPath | null {
     const { start, end, obstacles = [], options = {}, sourceDirection, targetDirection } = request;
 
-    // DEBUG: Log what options OrthogonalRouter receives
-    console.log('🎯 OrthogonalRouter.route() received options:', {
-      avoidObstacles: options.avoidObstacles,
-      gridSize: options.gridSize,
-      algorithm: options.algorithm,
-      obstacleCount: obstacles.length
-    });
-
     // Handle same start and end point
     if (start.x === end.x && start.y === end.y) {
       return {
@@ -53,18 +45,11 @@ export class OrthogonalRouter implements IRouter {
     }
 
     // Path has collisions - use A* pathfinding for obstacle avoidance
-    console.log('⚠️  OrthogonalRouter: Collision detected! Obstacles:', obstacles.length, 'Switching to A* pathfinding');
-
     if (options.avoidObstacles) {
       const avoidancePath = this.avoidObstaclesRoute(start, end, obstacles, options, sourceDirection, targetDirection);
       if (avoidancePath) {
-        console.log('✅ OrthogonalRouter: A* pathfinding succeeded with', avoidancePath.points.length, 'points');
         return avoidancePath;
-      } else {
-        console.warn('❌ OrthogonalRouter: A* pathfinding failed, using simple path');
       }
-    } else {
-      console.log('⚠️  OrthogonalRouter: avoidObstacles disabled, using simple path despite collision');
     }
 
     // Fallback: return simple path even with collisions
@@ -157,7 +142,6 @@ export class OrthogonalRouter implements IRouter {
         if (isOvershooting) {
           // Overshoot detected: Place bend at source edge
           centerY = sourceGapped.y;
-          console.log(`  [Overshoot Fix] Vertical: sourceGapped.y=${sourceGapped.y}, targetGapped.y=${targetGapped.y}, using centerY=${centerY} (clamped to source)`);
         } else {
           // Normal case: Use midpoint
           centerY = (sourceGapped.y + targetGapped.y) / 2;

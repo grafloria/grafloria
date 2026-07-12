@@ -450,6 +450,7 @@ function s7_stalePoints() {
     const m = /L\s*(-?[\d.]+)\s+(-?[\d.]+)\s*A/.exec(d);
     return m ? +m[1] : null;
   };
+  expectThat('S7 render hot path emits zero console.log', logsDuringRender === 0, `logs=${logsDuringRender}`);
   PROBES.s7_stalePoints = {
     jumpBeforeAtX: arcAt(dBefore),
     jumpAfterAtX: arcAt(dAfter),
@@ -542,6 +543,11 @@ function s9_relativePath() {
     { stroke: '#dc2626', strokeWidth: 2, fill: 'none' }
   );
   svg.appendChild(vnodeToDom(out));
+  // absolute truth of the relative input: (20,40) → (220,40) → (220,160) → (480,160)
+  const nums = (out.props.d.match(/-?[\d.]+/g) || []).map(Number);
+  const endX = nums[nums.length - 2], endY = nums[nums.length - 1];
+  expectThat('S9 legacy parser resolves relative commands (endpoint)',
+    Math.abs(endX - 480) <= 0.1 && Math.abs(endY - 160) <= 0.1, `end=(${endX},${endY})`);
   PROBES.s9_relativePath = { input: dRel, output: out.props.d };
 }
 
@@ -1078,11 +1084,23 @@ function a1_verticalSmooth() {
   const diagram = engine.createDiagram('a1');
   addNode(diagram, 'A', 60, 30, { w: 90, h: 44, ports: [{ id: 'a1-a-b', side: 'bottom', type: 'output' }] });
   addNode(diagram, 'B', 200, 240, { w: 90, h: 44, ports: [{ id: 'a1-b-t', side: 'top', type: 'input' }] });
-  makeLink(diagram, 'a1-a-b', 'a1-b-t', 'smooth', { arrowHead: { type: 'arrow', size: 10, filled: true, color: '#2563eb' } });
+  const down = makeLink(diagram, 'a1-a-b', 'a1-b-t', 'smooth', { arrowHead: { type: 'arrow', size: 10, filled: true, color: '#2563eb' } });
   addNode(diagram, 'C', 400, 240, { w: 90, h: 44, ports: [{ id: 'a1-c-t', side: 'top', type: 'output' }] });
   addNode(diagram, 'D', 540, 30, { w: 90, h: 44, ports: [{ id: 'a1-d-b', side: 'bottom', type: 'input' }] });
-  makeLink(diagram, 'a1-c-t', 'a1-d-b', 'smooth', { arrowHead: { type: 'arrow', size: 10, filled: true, color: '#059669' } });
-  renderTwice(engine, stage, 680, 320);
+  const up = makeLink(diagram, 'a1-c-t', 'a1-d-b', 'smooth', { arrowHead: { type: 'arrow', size: 10, filled: true, color: '#059669' } });
+  const svg = renderTwice(engine, stage, 680, 320);
+
+  const rotationOf = (link: any) => {
+    const g = svg.querySelector(`[data-vnode-key="link-${link.id}"]`);
+    const tr = g?.querySelector('.arrow')?.getAttribute('transform') || '';
+    return +(/rotate\((-?[\d.]+)/.exec(tr)?.[1] ?? NaN);
+  };
+  const norm = (a: number) => ((a % 360) + 360) % 360;
+  const rotDown = rotationOf(down);
+  const rotUp = rotationOf(up);
+  expectThat('A1 arrow into TOP port points down (90°)', Math.abs(norm(rotDown) - 90) <= 2, `rotate=${rotDown}`);
+  expectThat('A1 arrow into BOTTOM port points up (270°)', Math.abs(norm(rotUp) - 270) <= 2, `rotate=${rotUp}`);
+  PROBES.a1_arrowRotations = { down: rotDown, up: rotUp };
 }
 
 function a2_sameSidePorts() {
@@ -1117,6 +1135,10 @@ function a3_shortLinks() {
   });
   const svg = renderTwice(engine, stage, 400, 270);
   PROBES.a3_short = Object.fromEntries(Object.entries(probe).map(([t, l]: any) => [t, pathD(svg, l.id)]));
+  // short left→right orthogonal route must never travel backwards
+  const opts = (probe as any).orthogonal.points as Array<{ x: number; y: number }>;
+  const backtracks = opts.slice(1).filter((p, i) => p.x < opts[i].x - 0.01).length;
+  expectThat('A3 short orthogonal link has no backtracking', backtracks === 0, JSON.stringify(opts));
 }
 
 function a4_overlappingNodes() {
@@ -1149,7 +1171,10 @@ function a5_jumpNearCorner() {
   addNode(diagram, '', cornerX - 10 - 30, 290, { w: 60, h: 30, ports: [{ id: 'a5-d-t', side: 'top', type: 'input' }] });
   makeLink(diagram, 'a5-c-b', 'a5-d-t', 'direct', { stroke: '#0891b2' });
   const svg = renderTwice(engine, stage, 640, 330);
-  PROBES.a5_jumpNearCorner = { cornerX, mainD: pathD(svg, main.id) };
+  const d5 = pathD(svg, main.id) || '';
+  const arcCount5 = (d5.match(/A /g) || []).length;
+  expectThat('A5 crossing near a corner still gets a jump', arcCount5 >= 1, d5);
+  PROBES.a5_jumpNearCorner = { cornerX, mainD: d5, arcCount: arcCount5 };
 }
 
 function a6_jumpNearArrow() {
@@ -1166,7 +1191,12 @@ function a6_jumpNearArrow() {
   addNode(diagram, '', 434, 260, { w: 60, h: 30, ports: [{ id: 'a6-d-t', side: 'top', type: 'input' }] });
   makeLink(diagram, 'a6-c-b', 'a6-d-t', 'direct', { stroke: '#0891b2' });
   const svg = renderTwice(engine, stage, 620, 300);
-  PROBES.a6_jumpNearArrow = { mainD: pathD(svg, main.id) };
+  const d6 = pathD(svg, main.id) || '';
+  const arcXs = [...d6.matchAll(/A [\d.]+ [\d.]+ \d \d \d (-?[\d.]+)/g)].map(m => +m[1]);
+  expectThat('A6 crossing near the target still gets a jump', arcXs.length >= 1, d6);
+  // arrowhead (size 12, tip at portX=480) occupies [468, 480] — the arc must clear it
+  expectThat('A6 jump arc clears the arrowhead zone', arcXs.every(x => x <= 468), `arcEndXs=${arcXs.join(',')}`);
+  PROBES.a6_jumpNearArrow = { mainD: d6, arcEndXs: arcXs };
 }
 
 function a7_labels() {
@@ -1187,13 +1217,22 @@ function a7_labels() {
   const probe: any = {};
   for (const t of types) {
     const g = svg.querySelector(`[data-vnode-key="link-${links[t].id}"]`);
-    const texts = Array.from(g?.querySelectorAll('text') ?? []).map(el => ({
-      x: el.getAttribute('x'), y: el.getAttribute('y'), text: el.textContent,
-    }));
+    // labels are positioned by a transform on the label group — measure the
+    // RENDERED text box, not x/y attributes
+    const texts = Array.from(g?.querySelectorAll('text') ?? []).map(el => {
+      const bb = worldBBox(svg, el as unknown as SVGGraphicsElement);
+      return { cx: +((bb.minX + bb.maxX) / 2).toFixed(1), cy: +((bb.minY + bb.maxY) / 2).toFixed(1), text: el.textContent };
+    });
     // true path midpoint for comparison
     const p = g?.querySelector('path') as SVGPathElement | null;
     const mid = p ? p.getPointAtLength(p.getTotalLength() / 2) : null;
     probe[t] = { labels: texts, pathMidpoint: mid ? { x: +mid.x.toFixed(1), y: +mid.y.toFixed(1) } : null };
+    expectThat(`A7 '${t}' link label renders at default zoom`, texts.length >= 1, JSON.stringify(texts));
+    if (texts.length && probe[t].pathMidpoint) {
+      const m = probe[t].pathMidpoint;
+      expectThat(`A7 '${t}' label sits near the path midpoint`,
+        Math.hypot(texts[0].cx - m.x, texts[0].cy - m.y) <= 40, `label=(${texts[0].cx},${texts[0].cy}) mid=(${m.x},${m.y})`);
+    }
   }
   PROBES.a7_labels = probe;
 }
@@ -1255,6 +1294,10 @@ function a10_lod() {
       hasArrow: !!dom.querySelector('.arrow'),
       hasLabel: !!Array.from(dom.querySelectorAll('text')).find(t => t.textContent?.includes('lod-label')),
     };
+    if (zoom === 1.0) {
+      expectThat('A10 default zoom (1.0) reaches HIGH detail', PROBES[`a10_lod_${zoom}`].lod === 'high', `lod=${PROBES[`a10_lod_${zoom}`].lod}`);
+      expectThat('A10 labels visible at default zoom', PROBES[`a10_lod_${zoom}`].hasLabel === true);
+    }
   }
 }
 
@@ -1279,6 +1322,7 @@ function a11_orthoAxisAligned() {
     overlayDot(svg, s.from.x, s.from.y, '#dc2626', 4);
     overlayText(svg, s.from.x + 6, s.from.y - 6, `diag ${s.dx}x${s.dy}`, '#dc2626', 10);
   });
+  expectThat('A11 orthogonal route is strictly axis-aligned', diagonalSegs.length === 0, JSON.stringify(diagonalSegs));
   PROBES.a11_orthoAxisAligned = { points: pts, diagonalSegments: diagonalSegs, d: pathD(svg, link.id) };
 }
 
