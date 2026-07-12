@@ -1678,6 +1678,140 @@ function a14_hitAreaAndSmartPorts() {
 }
 
 // ===========================================================================
+// A15: smart connection points × shaped nodes / path types / overlap.
+// Floating attachment must land ON the visible shape boundary (ellipse,
+// hexagon, diamond, circle) — not on the invisible bounding box.
+// ===========================================================================
+
+/** Min distance from a world point to the node's VISIBLE shape boundary. */
+function shapeBoundaryDist(node: any, pt: { x: number; y: number }): number {
+  const type = (node.getMetadata('shape') || { type: 'rect' }).type;
+  const { width: w, height: h } = node.size;
+  const wp = node.getWorldPosition ? node.getWorldPosition() : node.position;
+  const local = { x: pt.x - wp.x, y: pt.y - wp.y };
+  const cx = w / 2, cy = h / 2;
+  let poly: Array<{ x: number; y: number }> = [];
+  if (type === 'ellipse' || type === 'circle') {
+    const rx = type === 'circle' ? Math.min(w, h) / 2 : w / 2;
+    const ry = type === 'circle' ? Math.min(w, h) / 2 : h / 2;
+    for (let i = 0; i < 144; i++) {
+      const a = (i / 144) * Math.PI * 2;
+      poly.push({ x: cx + rx * Math.cos(a), y: cy + ry * Math.sin(a) });
+    }
+  } else if (type === 'hexagon') {
+    const o = w * 0.25;
+    poly = [{ x: o, y: 0 }, { x: w - o, y: 0 }, { x: w, y: cy }, { x: w - o, y: h }, { x: o, y: h }, { x: 0, y: cy }];
+  } else if (type === 'diamond') {
+    poly = [{ x: cx, y: 0 }, { x: w, y: cy }, { x: cx, y: h }, { x: 0, y: cy }];
+  } else {
+    poly = [{ x: 0, y: 0 }, { x: w, y: 0 }, { x: w, y: h }, { x: 0, y: h }];
+  }
+  let best = Infinity;
+  for (let i = 0; i < poly.length; i++) {
+    const a = poly[i], b = poly[(i + 1) % poly.length];
+    const abx = b.x - a.x, aby = b.y - a.y;
+    const t = Math.max(0, Math.min(1, ((local.x - a.x) * abx + (local.y - a.y) * aby) / (abx * abx + aby * aby || 1)));
+    best = Math.min(best, Math.hypot(local.x - (a.x + t * abx), local.y - (a.y + t * aby)));
+  }
+  return best;
+}
+
+function a15_smartShapesAndPathTypes() {
+  // --- floating attachment on shaped nodes (ports hidden) -------------------
+  // T sits above-right so the shared floating coordinate is OFF-centre, where
+  // bounding box and real shape boundary genuinely differ.
+  for (const shape of ['ellipse', 'hexagon', 'diamond', 'circle'] as const) {
+    const engine = new DiagramEngine({
+      interaction: { mode: InteractionMode.SMART, portVisibility: PortVisibilityStrategy.HIDDEN },
+    } as any);
+    const diagram = engine.createDiagram(`a15-${shape}`);
+    const src = addNode(diagram, 'S', 420, 300, { w: 120, h: 80, shape, fill: '#fef3c7', ports: [
+      { id: `a15-${shape}-s`, side: 'top', type: 'output' },
+    ] });
+    addNode(diagram, 'T', 510, 60, { w: 120, h: 56, ports: [
+      { id: `a15-${shape}-t`, side: 'bottom', type: 'input' },
+    ] });
+    const link = makeLink(diagram, `a15-${shape}-s`, `a15-${shape}-t`, 'orthogonal', {
+      arrowHead: { type: 'arrow', size: 11, filled: true, color: '#475569' },
+    });
+    const stage = cell(`a15-${shape}`, `A15 — smart float on ${shape}: attachment must sit ON the shape boundary`);
+    const renderer = new SVGRenderer(engine, {
+      enableCaching: false, useCSSMode: false, smartConnectionPoints: true, linkHitAreaWidth: 12,
+    } as any, LIGHT_THEME);
+    renderer.render({ x: 0, y: 0, width: 1000, height: 480 }, 1.0);
+    const vnode = renderer.render({ x: 0, y: 0, width: 1000, height: 480 }, 1.0);
+    const dom = vnodeToDom(vnode) as SVGSVGElement;
+    dom.setAttribute('width', '1000'); dom.setAttribute('height', '480');
+    stage.appendChild(dom);
+    const ends = pathEndpoints(dom, link.id)!;
+    const gap = shapeBoundaryDist(src, ends.start);
+    expectThat(`A15 ${shape}: floating attachment sits ON the shape boundary`,
+      gap <= 1.5,
+      `start=(${ends.start.x.toFixed(1)},${ends.start.y.toFixed(1)}) gap=${gap.toFixed(1)}px`);
+  }
+
+  // --- smart + every path type (ports shown): endpoints land on a visible
+  // port for direct/smooth/bezier/orthogonal alike ---------------------------
+  for (const pathType of ['direct', 'smooth', 'bezier', 'orthogonal'] as const) {
+    const engine = makeEngine(); // ALWAYS
+    const diagram = engine.createDiagram(`a15-pt-${pathType}`);
+    const src = addNode(diagram, 'S', 420, 300, { w: 120, h: 56, fill: '#fef3c7', ports: [
+      { id: `a15p-${pathType}-s`, side: 'right', type: 'output' },
+    ] });
+    const tgt = addNode(diagram, 'T', 540, 60, { w: 120, h: 56, ports: [
+      { id: `a15p-${pathType}-t`, side: 'left', type: 'input' },
+    ] });
+    const link = makeLink(diagram, `a15p-${pathType}-s`, `a15p-${pathType}-t`, pathType, {
+      arrowHead: { type: 'arrow', size: 11, filled: true, color: '#475569' },
+    });
+    const stage = cell(`a15-pt-${pathType}`, `A15 — smart + ${pathType}: both ends land on visible ports`);
+    const renderer = new SVGRenderer(engine, {
+      enableCaching: false, useCSSMode: false, smartConnectionPoints: true, linkHitAreaWidth: 12,
+    } as any, LIGHT_THEME);
+    renderer.render({ x: 0, y: 0, width: 1000, height: 480 }, 1.0);
+    const vnode = renderer.render({ x: 0, y: 0, width: 1000, height: 480 }, 1.0);
+    const dom = vnodeToDom(vnode) as SVGSVGElement;
+    dom.setAttribute('width', '1000'); dom.setAttribute('height', '480');
+    stage.appendChild(dom);
+    const ends = pathEndpoints(dom, link.id)!;
+    const dTo = (e: { x: number; y: number }, p: { x: number; y: number }) => Math.hypot(e.x - p.x, e.y - p.y);
+    const srcPorts = src.getPorts().map((p: any) => portWorld(src, p.id));
+    const tgtPorts = tgt.getPorts().map((p: any) => portWorld(tgt, p.id));
+    expectThat(`A15 smart+${pathType}: source end on a visible port`,
+      Math.min(...srcPorts.map(p => dTo(ends.start, p))) <= 1,
+      `start=(${ends.start.x.toFixed(1)},${ends.start.y.toFixed(1)})`);
+    expectThat(`A15 smart+${pathType}: target end on a visible port`,
+      Math.min(...tgtPorts.map(p => dTo(ends.end, p))) <= 1,
+      `end=(${ends.end.x.toFixed(1)},${ends.end.y.toFixed(1)})`);
+  }
+
+  // --- smart + heavily overlapping nodes: must not crash, path stays sane ---
+  {
+    const engine = makeEngine();
+    const diagram = engine.createDiagram('a15-overlap');
+    addNode(diagram, 'S', 420, 200, { w: 120, h: 56, fill: '#fef3c7', ports: [{ id: 'a15o-s', side: 'right', type: 'output' }] });
+    addNode(diagram, 'T', 470, 220, { w: 120, h: 56, ports: [{ id: 'a15o-t', side: 'left', type: 'input' }] });
+    const link = makeLink(diagram, 'a15o-s', 'a15o-t', 'orthogonal', {
+      arrowHead: { type: 'arrow', size: 11, filled: true, color: '#475569' },
+    });
+    const stage = cell('a15-overlap', 'A15 — smart + overlapping nodes: no crash, finite path');
+    const renderer = new SVGRenderer(engine, {
+      enableCaching: false, useCSSMode: false, smartConnectionPoints: true, linkHitAreaWidth: 12,
+    } as any, LIGHT_THEME);
+    renderer.render({ x: 0, y: 0, width: 1000, height: 480 }, 1.0);
+    const vnode = renderer.render({ x: 0, y: 0, width: 1000, height: 480 }, 1.0);
+    const dom = vnodeToDom(vnode) as SVGSVGElement;
+    dom.setAttribute('width', '1000'); dom.setAttribute('height', '480');
+    stage.appendChild(dom);
+    const d = pathD(dom, link.id) || '';
+    const ends = pathEndpoints(dom, link.id);
+    expectThat('A15 overlap: link renders a finite path',
+      d.length > 0 && !!ends && [ends.start.x, ends.start.y, ends.end.x, ends.end.y].every(Number.isFinite),
+      `d=${d.slice(0, 80)}`);
+  }
+}
+
+// ===========================================================================
 // run all
 // ===========================================================================
 const failures: any[] = [];
@@ -1690,6 +1824,7 @@ for (const [name, fn] of Object.entries({
   a1_verticalSmooth, a2_sameSidePorts, a3_shortLinks, a4_overlappingNodes,
   a5_jumpNearCorner, a6_jumpNearArrow, a7_labels, a8_dashedJumps,
   a9_diagonalArrows, a10_lod, a11_orthoAxisAligned, a12_penetrationSweep, a13_dragKeepsLineIdentity, a14_hitAreaAndSmartPorts,
+  a15_smartShapesAndPathTypes,
 })) {
   try {
     (fn as any)();

@@ -281,6 +281,9 @@ export class SVGRenderer implements IRenderer {
     this.containerIds.clear();
     this.foreignObjectNodes.clear();
 
+    // Clear per-frame smart-connection state
+    this.frameSmartSides.clear();
+
     // Unsubscribe from engine events
     // (EventBus will handle cleanup on engine destroy)
   }
@@ -302,6 +305,14 @@ export class SVGRenderer implements IRenderer {
     // so without this the first frame has no jumps and later frames use stale
     // geometry after nodes move.
     this.frameRoutes.clear();
+    // Drop smart-side entries for links that no longer exist (getLinkEndpoints
+    // only ever touches the entry of the link it renders)
+    if (this.frameSmartSides.size > 0) {
+      const liveIds = new Set(links.map(l => l.id));
+      for (const id of Array.from(this.frameSmartSides.keys())) {
+        if (!liveIds.has(id)) this.frameSmartSides.delete(id);
+      }
+    }
     for (const link of sortedLinks) {
       if (this.linkHasManualWaypoints(link)) continue;
       const endpoints = this.getLinkEndpoints(link);
@@ -1480,14 +1491,8 @@ export class SVGRenderer implements IRenderer {
         }
       }
 
-      const edge = (rect: { x: number; y: number; w: number; h: number }, side: string, cross: number) =>
-        side === 'left' ? { x: rect.x, y: cross }
-        : side === 'right' ? { x: rect.x + rect.w, y: cross }
-        : side === 'top' ? { x: cross, y: rect.y }
-        : { x: cross, y: rect.y + rect.h };
-
-      let start = edge(s, srcSide, srcCross);
-      let end = edge(t, tgtSide, tgtCross);
+      let start = this.shapeEdgePoint(sourceNode, s, srcSide, srcCross);
+      let end = this.shapeEdgePoint(targetNode, t, tgtSide, tgtCross);
 
       // VISIBLE ports are the contract: when the node shows ports on the
       // chosen side, snap to the closest one instead of floating freely.
@@ -1499,11 +1504,11 @@ export class SVGRenderer implements IRenderer {
       // If only one end snapped, re-aim the floating end at the snapped point
       // so aligned layouts still get a straight line
       if (srcSnap && !tgtSnap) {
-        end = edge(t, tgtSide, horizontal
+        end = this.shapeEdgePoint(targetNode, t, tgtSide, horizontal
           ? clamp(start.y, t.y + PAD, t.y + t.h - PAD)
           : clamp(start.x, t.x + PAD, t.x + t.w - PAD));
       } else if (tgtSnap && !srcSnap) {
-        start = edge(s, srcSide, horizontal
+        start = this.shapeEdgePoint(sourceNode, s, srcSide, horizontal
           ? clamp(end.y, s.y + PAD, s.y + s.h - PAD)
           : clamp(end.x, s.x + PAD, s.x + s.w - PAD));
       }
@@ -3486,6 +3491,79 @@ export class SVGRenderer implements IRenderer {
 
   // Smart-connection side overrides for the current frame (visual only)
   private frameSmartSides = new Map<string, { source: 'left' | 'right' | 'top' | 'bottom'; target: 'left' | 'right' | 'top' | 'bottom' }>();
+
+  /**
+   * Point on the node's VISIBLE outline for a floating smart attachment:
+   * the given side at the given cross-axis coordinate (world). Rects use the
+   * bounding-box edge; ellipse/circle project analytically and hexagon/diamond
+   * intersect the outline polygon, so the line never hovers off the drawn shape.
+   */
+  private shapeEdgePoint(
+    node: NodeModel,
+    rect: { x: number; y: number; w: number; h: number },
+    side: 'left' | 'right' | 'top' | 'bottom',
+    cross: number
+  ): { x: number; y: number } {
+    const type = (node.getMetadata('shape') || { type: 'rect' }).type;
+    const clampv = (v: number, lo: number, hi: number) => Math.max(lo, Math.min(hi, v));
+    const cx = rect.x + rect.w / 2;
+    const cy = rect.y + rect.h / 2;
+    const vertical = side === 'top' || side === 'bottom';
+
+    if (type === 'ellipse' || type === 'circle') {
+      const rx = type === 'circle' ? Math.min(rect.w, rect.h) / 2 : rect.w / 2;
+      const ry = type === 'circle' ? Math.min(rect.w, rect.h) / 2 : rect.h / 2;
+      if (vertical) {
+        const x = clampv(cross, cx - rx * 0.9, cx + rx * 0.9);
+        const dy = ry * Math.sqrt(Math.max(0, 1 - ((x - cx) / rx) ** 2));
+        return { x, y: side === 'top' ? cy - dy : cy + dy };
+      }
+      const y = clampv(cross, cy - ry * 0.9, cy + ry * 0.9);
+      const dx = rx * Math.sqrt(Math.max(0, 1 - ((y - cy) / ry) ** 2));
+      return { x: side === 'left' ? cx - dx : cx + dx, y };
+    }
+
+    if (type === 'hexagon' || type === 'diamond') {
+      // outline polygons matching renderHexagonShape / renderDiamondShape
+      const verts = type === 'hexagon'
+        ? [
+            { x: rect.x + rect.w * 0.25, y: rect.y }, { x: rect.x + rect.w * 0.75, y: rect.y },
+            { x: rect.x + rect.w, y: cy }, { x: rect.x + rect.w * 0.75, y: rect.y + rect.h },
+            { x: rect.x + rect.w * 0.25, y: rect.y + rect.h }, { x: rect.x, y: cy },
+          ]
+        : [
+            { x: cx, y: rect.y }, { x: rect.x + rect.w, y: cy },
+            { x: cx, y: rect.y + rect.h }, { x: rect.x, y: cy },
+          ];
+      // intersect the axis line at `cross` with the outline; keep the
+      // intersection belonging to the requested side
+      let best: number | null = null;
+      for (let i = 0; i < verts.length; i++) {
+        const a = verts[i];
+        const b = verts[(i + 1) % verts.length];
+        if (vertical) {
+          const lo = Math.min(a.x, b.x); const hi = Math.max(a.x, b.x);
+          if (cross < lo || cross > hi || lo === hi) continue;
+          const y = a.y + ((cross - a.x) / (b.x - a.x)) * (b.y - a.y);
+          if (best === null || (side === 'top' ? y < best : y > best)) best = y;
+        } else {
+          const lo = Math.min(a.y, b.y); const hi = Math.max(a.y, b.y);
+          if (cross < lo || cross > hi || lo === hi) continue;
+          const x = a.x + ((cross - a.y) / (b.y - a.y)) * (b.x - a.x);
+          if (best === null || (side === 'left' ? x < best : x > best)) best = x;
+        }
+      }
+      if (best !== null) {
+        return vertical ? { x: cross, y: best } : { x: best, y: cross };
+      }
+      // degenerate cross (at a vertex tangent) — fall through to the box edge
+    }
+
+    return side === 'left' ? { x: rect.x, y: cross }
+      : side === 'right' ? { x: rect.x + rect.w, y: cross }
+      : side === 'top' ? { x: cross, y: rect.y }
+      : { x: cross, y: rect.y + rect.h };
+  }
 
   /**
    * The VISIBLE port on the given side closest to the ideal attachment point,

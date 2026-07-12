@@ -22,7 +22,7 @@ import {
 import { CommonModule } from '@angular/common';
 import type { DiagramEngine } from '@grafloria/engine';
 import { PortModel, NodeModel, DiagramModel } from '@grafloria/engine';
-import { SVGRenderer, LIGHT_THEME, type Theme, type Rectangle, getPortPositionForShape } from '@grafloria/renderer';
+import { SVGRenderer, LIGHT_THEME, type Theme, type Rectangle, type SVGRendererConfig, getPortPositionForShape } from '@grafloria/renderer';
 import { VNodeRendererService } from '../services/vnode-renderer.service';
 import { InteractionHandlerService } from '../services/interaction-handler.service';
 import { ComponentRendererService } from '../services/component-renderer.service';
@@ -73,6 +73,12 @@ export class DiagramCanvasComponent implements OnInit, AfterViewInit, OnChanges,
    * Theme configuration
    */
   @Input() theme: Theme = LIGHT_THEME;
+
+  /**
+   * Extra SVGRenderer options (e.g. smartConnectionPoints, linkHitAreaWidth).
+   * Merged over the component defaults; changing it recreates the renderer.
+   */
+  @Input() rendererConfig: Partial<SVGRendererConfig> = {};
 
   /**
    * Enable mouse wheel zoom (Phase 0.5 - Option B)
@@ -215,6 +221,11 @@ export class DiagramCanvasComponent implements OnInit, AfterViewInit, OnChanges,
       }
     }
 
+    if (changes['rendererConfig'] && !changes['rendererConfig'].firstChange) {
+      this.initializeRenderer();
+      this.renderDiagram();
+    }
+
     if (changes['zoom'] && !changes['zoom'].firstChange) {
       this.renderDiagram();
       this.cdr.markForCheck();
@@ -246,6 +257,7 @@ export class DiagramCanvasComponent implements OnInit, AfterViewInit, OnChanges,
       {
         enableCaching: true,
         useCSSMode: true, // CRITICAL: Required for animations to work (CSS classes)
+        ...this.rendererConfig,
       },
       this.theme
     );

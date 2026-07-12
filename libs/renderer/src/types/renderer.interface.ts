@@ -98,8 +98,12 @@ export interface SVGRendererConfig {
 
   /**
    * Re-pick each link's connection sides dynamically from the nodes' relative
-   * positions (draw.io-style floating connections). Visual only — the link's
-   * assigned ports are never mutated, so toggling off restores them.
+   * positions (draw.io-style floating connections). Visible ports are the
+   * contract: when the node shows ports on the chosen side (visibility
+   * 'always' via the port → node → global chain) the link snaps to the
+   * closest one; with ports hidden the attachment floats along the shape's
+   * real outline (rect/ellipse/circle/hexagon/diamond). Visual only — the
+   * link's assigned ports are never mutated, so toggling off restores them.
    * Default: false
    */
   smartConnectionPoints?: boolean;
