@@ -15,10 +15,15 @@ import { getPortPositionForShape } from './port-positioning';
 // renderShadow, shapeEdgePoint) route through this instead of inline switches.
 import {
   getShape,
+  getInnerRect,
   buildShapeBody,
   buildShapeSelection,
   buildShapeShadow,
 } from './shape-registry';
+
+// Node label engine: shared, link-agnostic text-block core (wrap / multi-line /
+// ellipsis / shape-fit) — the same code path link labels render through.
+import { renderTextBlock } from './text-block';
 
 // Phase 1.1: Arrow type rendering
 import { ArrowRenderer } from './ArrowRenderer';
@@ -693,25 +698,10 @@ export class SVGRenderer implements IRenderer {
         ...(lod !== 'low' ? [this.renderShadow(node, isHovered)] : []),
         // Node shape (Phase 3.1: Shape-based rendering)
         this.renderNodeShape(node, styles, isHovered),
-        // Label (if LOD allows and label exists)
+        // Label (if LOD allows and label exists) — shape-fit wrap + ellipsis,
+        // clipped to the shape's inner rect (see renderNodeLabel).
         ...(diagram.shouldRenderLabels(lod) && node.getMetadata('label')
-          ? [
-              {
-                type: 'text',
-                props: {
-                  x: node.size.width / 2,
-                  y: node.size.height / 2,
-                  textContent: node.getMetadata('label'),
-                  textAnchor: 'middle',
-                  dominantBaseline: 'middle', // Option 2: Better text alignment
-                  className: this.config.useCSSMode ? 'diagram-label' : undefined,
-                  fontSize: this.config.useCSSMode ? undefined : this.theme.typography.fontSize.md,
-                  fill: this.config.useCSSMode ? undefined : this.theme.colors.text.primary,
-                  fontWeight: this.config.useCSSMode ? undefined : this.theme.typography.fontWeight.medium,
-                  pointerEvents: 'none', // Option 2: Don't block mouse events
-                },
-              } as VNode,
-            ]
+          ? this.renderNodeLabel(node)
           : []),
         // Option 3: Lock/pin indicator for locked nodes
         ...(node.state.locked && lod !== 'low'
@@ -1065,6 +1055,63 @@ export class SVGRenderer implements IRenderer {
    * Phase 3.1: Render node shape based on shape configuration
    * Supports: rect, circle, ellipse, diamond, hexagon
    */
+  /**
+   * Node label engine: render the node's label as a shape-fitted text block.
+   *
+   * - maxWidth  = the shape's inner-rect width (getInnerRect); the diamond /
+   *   ellipse / triangle … inset it so text stays inside the silhouette.
+   * - maxLines  = floor(innerHeight / lineHeight); overflow collapses to '…'.
+   * - a per-node <clipPath> sized to the exact inner rect is the hard backstop
+   *   that guarantees glyphs never escape the shape even if the width estimate
+   *   is off (it uses the naive length*fontSize*0.6 heuristic — see text-block).
+   *
+   * Returns [clipPath, text]; both are children of the node's translated <g>,
+   * so the clip rect and the text share the node-local coordinate space.
+   */
+  private renderNodeLabel(node: NodeModel): VNode[] {
+    const shapeConfig = node.getMetadata('shape') || { type: 'rect' };
+    const { width, height } = node.size;
+    const inner = getInnerRect(getShape(shapeConfig.type), width, height);
+
+    const fontSize = this.theme.typography.fontSize.md as number;
+    const lineHeight = fontSize * 1.2;
+    const maxLines = Math.max(1, Math.floor(inner.h / lineHeight));
+    const clipId = `node-clip-${node.id}`;
+
+    const clip: VNode = {
+      type: 'clipPath',
+      key: `${clipId}-def`,
+      props: { id: clipId },
+      children: [
+        {
+          type: 'rect',
+          props: { x: inner.x, y: inner.y, width: inner.w, height: inner.h },
+        } as VNode,
+      ],
+    };
+
+    const text = renderTextBlock({
+      text: String(node.getMetadata('label')),
+      x: inner.x + inner.w / 2,
+      y: inner.y + inner.h / 2,
+      maxWidth: inner.w,
+      align: 'middle',
+      valign: 'middle',
+      fontSize,
+      lineHeight: 1.2,
+      maxLines,
+      clipId,
+      nonInteractive: true,
+      // CSS mode lets `.diagram-label` drive font/fill; programmatic mode emits them.
+      className: this.config.useCSSMode ? 'diagram-label' : undefined,
+      emitFontSize: !this.config.useCSSMode,
+      color: this.config.useCSSMode ? undefined : (this.theme.colors.text.primary as string),
+      fontWeight: this.config.useCSSMode ? undefined : (this.theme.typography.fontWeight.medium as number),
+    });
+
+    return [clip, text];
+  }
+
   private renderNodeShape(node: NodeModel, styles: any, isHovered: boolean): VNode {
     const shapeConfig = node.getMetadata('shape') || { type: 'rect' };
     const { width, height } = node.size;

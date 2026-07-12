@@ -40,9 +40,45 @@ export type FlexDirection = 'row' | 'column' | 'row-reverse' | 'column-reverse';
 export type NodeRole = 'container' | 'drag-handler' | 'content' | 'repeater';
 
 /**
- * Shape type for SVG rendering (Phase 3.1)
+ * Shape type for SVG rendering.
+ *
+ * The five originals (rect/circle/ellipse/diamond/hexagon) plus the extended
+ * flowchart / BPMN / UML / ERD figure library. Every value here has a matching
+ * ShapeDefinition in the renderer's shape registry (libs/renderer/src/svg/
+ * shape-registry.ts); adding a shape means: register its geometry there and add
+ * its name here. A few widely-used aliases (database, stadium, data …) are
+ * included so callers can type the vocabulary they already know.
  */
-export type ShapeType = 'rect' | 'circle' | 'ellipse' | 'diamond' | 'hexagon';
+export type ShapeType =
+  // originals
+  | 'rect'
+  | 'circle'
+  | 'ellipse'
+  | 'diamond'
+  | 'hexagon'
+  // extended figure library
+  | 'parallelogram'
+  | 'parallelogram-top'
+  | 'trapezoid'
+  | 'trapezoid-bottom'
+  | 'triangle'
+  | 'triangle-down'
+  | 'package'
+  | 'cube'
+  | 'document'
+  | 'cylinder'
+  | 'cloud'
+  | 'predefined-process'
+  | 'component'
+  | 'note'
+  | 'terminal'
+  | 'actor'
+  // common aliases
+  | 'database'
+  | 'stadium'
+  | 'data'
+  | 'subroutine'
+  | 'folder';
 
 /**
  * Shape configuration for SVG node rendering (Phase 3.1)
