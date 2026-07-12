@@ -8,7 +8,14 @@ import { GroupModel, SerializedGroup } from './GroupModel'; // Phase 1.6c
 import type { SerializedEntity, Point } from '../types';
 import { SpatialIndex } from '../performance/SpatialIndex'; // Phase 5.1
 import type { Rectangle } from '../types/geometry.types'; // Phase 5.1
-import type { LODLevel, EntityWithLOD } from '../types/performance.types'; // Phase 5.3
+import type {
+  LODLevel,
+  EntityWithLOD,
+  LODConfig,
+  LODTier,
+  LODFeature,
+} from '../types/performance.types'; // Phase 5.3
+import { createDefaultLODConfig } from '../types/performance.types'; // wave2/rendering
 import { LayoutManager } from '../layout/LayoutManager'; // Layout system
 import type { LayoutAlgorithmType, LayoutConfiguration } from '../layout/types';
 import { isPointInShape } from '../utils/geometry'; // Phase 3.3
@@ -57,9 +64,21 @@ export class DiagramModel extends DiagramEntity {
   // Batch update support for event queueing
   private _pendingEvents: Array<{ type: string; data?: any }> = [];
 
-  constructor(name?: string) {
+  // wave2/rendering: declarative, per-diagram Level-of-Detail policy. Replaces
+  // the old hardcoded zoom breakpoints (>=1.0 / >0.2) and per-tier feature
+  // gates. Defaults to the historical three tiers so behaviour is unchanged.
+  private _lodConfig: LODConfig;
+  // Tiers pre-sorted highest-minZoom first so getLODLevel() is a linear scan,
+  // not a per-call sort. Kept in sync whenever _lodConfig changes.
+  private _lodTiersDesc: LODTier[] = [];
+
+  constructor(name?: string, options?: { lodConfig?: LODConfig }) {
     super();
     if (name) this.name = name;
+
+    // wave2/rendering: install the LOD policy (custom or default).
+    this._lodConfig = options?.lodConfig ?? createDefaultLODConfig();
+    this._resortLODTiers();
 
     // Initialize layout manager
     this._layoutManager = new LayoutManager(this, 'grid');
@@ -1337,21 +1356,78 @@ export class DiagramModel extends DiagramEntity {
   /**
    * Get LOD level based on zoom (Phase 5.3)
    *
-   * @param zoom - Current zoom level
-   * @returns LOD level (high/medium/low)
+   * wave2/rendering: driven by the declarative {@link LODConfig}. Picks the
+   * tier whose `minZoom` the zoom crosses — tiers are pre-sorted highest-first,
+   * so the first match wins. With the default config this is exactly:
+   *   zoom >= 1.0        -> 'high'
+   *   0.2 < zoom < 1.0   -> 'medium'
+   *   zoom <= 0.2        -> 'low'
    *
-   * NOTE: Threshold lowered from 0.5 to 0.2 for better label visibility in demos
+   * @param zoom - Current zoom level
+   * @returns Tier name (default policy: 'high' | 'medium' | 'low')
    */
   getLODLevel(zoom: number): LODLevel {
-    // >= so the DEFAULT zoom (1.0) gets full detail — with a strict > the
-    // 'high' tier (link labels etc.) was unreachable until the user zoomed in
-    if (zoom >= 1.0) {
-      return 'high';
-    } else if (zoom > 0.2) {
-      return 'medium';
-    } else {
-      return 'low';
+    const tiers = this._lodTiersDesc;
+    for (const tier of tiers) {
+      if (zoom >= tier.minZoom) {
+        return tier.name;
+      }
     }
+    // Below every tier's minZoom → fall back to the coarsest (last) tier.
+    return tiers.length > 0 ? tiers[tiers.length - 1].name : 'low';
+  }
+
+  /**
+   * wave2/rendering: single feature gate that reads the active LOD tier's
+   * feature set. Renderers call this instead of hardcoding `lod === 'high'`
+   * checks, so custom tiers work automatically.
+   *
+   * @param feature - Visual feature being considered
+   * @param lod - Current tier name (from {@link getLODLevel})
+   * @returns true if the tier renders that feature
+   */
+  shouldRender(feature: LODFeature, lod: LODLevel): boolean {
+    const tier = this._lodConfig.tiers.find((t) => t.name === lod);
+    return tier ? tier.features.has(feature) : false;
+  }
+
+  // =========================================================================
+  // LOD configuration API (wave2/rendering)
+  // =========================================================================
+
+  /** Get the current Level-of-Detail policy. */
+  getLODConfig(): LODConfig {
+    return this._lodConfig;
+  }
+
+  /**
+   * Replace the Level-of-Detail policy wholesale. Apps use this to define
+   * their own tiers (names, breakpoints and feature sets).
+   */
+  setLODConfig(config: LODConfig): void {
+    this._lodConfig = config;
+    this._resortLODTiers();
+  }
+
+  /**
+   * Register (or replace, by name) a single LOD tier. Lets apps extend the
+   * default policy with an extra tier without rebuilding the whole config.
+   */
+  registerLODTier(tier: LODTier): void {
+    const idx = this._lodConfig.tiers.findIndex((t) => t.name === tier.name);
+    if (idx >= 0) {
+      this._lodConfig.tiers[idx] = tier;
+    } else {
+      this._lodConfig.tiers.push(tier);
+    }
+    this._resortLODTiers();
+  }
+
+  /** Keep the highest-minZoom-first tier cache in sync with _lodConfig. */
+  private _resortLODTiers(): void {
+    this._lodTiersDesc = [...this._lodConfig.tiers].sort(
+      (a, b) => b.minZoom - a.minZoom
+    );
   }
 
   /**
@@ -1392,30 +1468,34 @@ export class DiagramModel extends DiagramEntity {
 
   /**
    * Check if labels should be rendered at this LOD level (Phase 5.3)
+   * wave2/rendering: now reads the LOD tier's feature set.
    */
   shouldRenderLabels(lod: LODLevel): boolean {
-    return lod === 'high' || lod === 'medium';
+    return this.shouldRender('labels', lod);
   }
 
   /**
    * Check if icons should be rendered at this LOD level (Phase 5.3)
+   * wave2/rendering: now reads the LOD tier's feature set.
    */
   shouldRenderIcons(lod: LODLevel): boolean {
-    return lod === 'high';
+    return this.shouldRender('icons', lod);
   }
 
   /**
    * Check if borders should be rendered at this LOD level (Phase 5.3)
+   * wave2/rendering: now reads the LOD tier's feature set.
    */
   shouldRenderBorders(lod: LODLevel): boolean {
-    return lod === 'high' || lod === 'medium';
+    return this.shouldRender('borders', lod);
   }
 
   /**
    * Check if shadows should be rendered at this LOD level (Phase 5.3)
+   * wave2/rendering: now reads the LOD tier's feature set.
    */
   shouldRenderShadows(lod: LODLevel): boolean {
-    return lod === 'high';
+    return this.shouldRender('shadows', lod);
   }
 
   // =============================================================================

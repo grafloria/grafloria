@@ -208,6 +208,28 @@ export class DiagramCanvasComponent implements OnInit, AfterViewInit, OnChanges,
    */
   private htmlNodeComponents = new Map<string, ComponentRef<any>>();
 
+  // ==========================================================================
+  // wave2/rendering: frame-coalesced render loop + real frame metrics
+  // ==========================================================================
+  /** Set by scheduleRender(); cleared the moment a frame actually paints. */
+  private renderDirty = false;
+  /** Handle of the currently-queued animation frame (null when none pending). */
+  private rafHandle: number | null = null;
+  /** viewport+zoom actually drawn last frame — used by the idle-skip check. */
+  private lastRenderedViewportKey = '';
+  /** Whether last painted frame drew a live connection preview (idle-skip). */
+  private lastFrameHadConnectionPreview = false;
+  /** Ring buffer of recent frame END timestamps (ms) → rolling FPS. */
+  private frameTimestamps: number[] = [];
+  /** Ring buffer of recent frame render DURATIONS (ms) → rolling frame-time. */
+  private frameDurations: number[] = [];
+  /** Cumulative count of frames whose render blew the budget. */
+  private droppedFrameCount = 0;
+  /** How many recent frames to keep in the ring buffers. */
+  private static readonly FRAME_HISTORY = 60;
+  /** A frame render slower than this (ms, ~2× a 60fps budget) is "dropped". */
+  private static readonly DROPPED_FRAME_MS = 32;
+
   constructor(
     private vnodeRenderer: VNodeRendererService,
     private cdr: ChangeDetectorRef,
@@ -226,13 +248,13 @@ export class DiagramCanvasComponent implements OnInit, AfterViewInit, OnChanges,
     if (this.engine) {
       this.initializeRenderer();
       this.initializeToolManager();
-      this.renderDiagram();
       this.subscribeToEngineEvents();
 
-      // CRITICAL FIX: Force change detection after initial render
-      // With OnPush strategy, initial render won't show until an event occurs
-      // This ensures nodes created before AfterViewInit are immediately visible
-      this.cdr.detectChanges();
+      // wave2/rendering: paint the FIRST frame synchronously (renderNow also
+      // runs change detection). A single mount render can't benefit from
+      // coalescing, and OnPush needs the immediate paint so nodes created
+      // before AfterViewInit are visible right away.
+      this.renderNow();
     }
   }
 
@@ -241,28 +263,28 @@ export class DiagramCanvasComponent implements OnInit, AfterViewInit, OnChanges,
     if (changes['engine'] && !changes['engine'].firstChange) {
       this.initializeRenderer();
       this.initializeToolManager();
-      this.renderDiagram();
+      this.scheduleRender();
     }
 
     if (changes['theme'] && !changes['theme'].firstChange) {
       if (this.renderer) {
         this.renderer.setTheme(this.theme);
-        this.renderDiagram();
+        this.scheduleRender();
       }
     }
 
     if (changes['rendererConfig'] && !changes['rendererConfig'].firstChange) {
       this.initializeRenderer();
-      this.renderDiagram();
+      this.scheduleRender();
     }
 
     if (changes['zoom'] && !changes['zoom'].firstChange) {
-      this.renderDiagram();
+      this.scheduleRender();
       this.cdr.markForCheck();
     }
 
     if (changes['viewport'] && !changes['viewport'].firstChange) {
-      this.renderDiagram();
+      this.scheduleRender();
       this.cdr.markForCheck();
     }
   }
@@ -607,6 +629,163 @@ export class DiagramCanvasComponent implements OnInit, AfterViewInit, OnChanges,
   }
 
   /**
+   * wave2/rendering: the ONE coalescing entry point for every re-render.
+   *
+   * Marks the canvas dirty and queues a SINGLE requestAnimationFrame. Any
+   * number of scheduleRender() calls in the same tick collapse into one frame,
+   * so a burst of engine events (node:changed ×N, a drag's mousemoves, several
+   * @Input changes in one ngOnChanges) paints exactly once. Every former
+   * synchronous renderDiagram() call site now routes through here.
+   */
+  scheduleRender(): void {
+    if (this.destroyed) {
+      return;
+    }
+    this.renderDirty = true;
+    if (this.rafHandle !== null) {
+      return; // a frame is already queued for this tick → coalesce into it
+    }
+    this.rafHandle = requestAnimationFrame(() => {
+      this.rafHandle = null;
+      if (this.destroyed) {
+        return;
+      }
+      // Nothing asked for a paint (e.g. a synchronous flush already ran).
+      if (!this.renderDirty) {
+        return;
+      }
+      // Idle-skip: something scheduled a frame but nothing visible changed.
+      if (this.canSkipFrame()) {
+        this.renderDirty = false;
+        return;
+      }
+      this.renderNow();
+    });
+  }
+
+  /**
+   * wave2/rendering: render immediately (no rAF): paint, run change detection,
+   * record the frame in the metrics ring buffers and clear the dirty flag.
+   * Used for the synchronous mount paint and as the body of each queued frame.
+   */
+  private renderNow(): void {
+    if (!this.renderer || !this.containerRef || this.destroyed) {
+      this.renderDirty = false;
+      return;
+    }
+
+    const start = this.now();
+    this.renderDiagram();
+    this.cdr.detectChanges();
+    const end = this.now();
+
+    // Clear dirty + snapshot what we drew so the next frame can idle-skip.
+    this.renderDirty = false;
+    this.lastRenderedViewportKey = this.viewportKey();
+    this.lastFrameHadConnectionPreview = this.isConnectionPreviewActive();
+
+    // Real metrics: one sample per ACTUALLY-rendered frame (skips add nothing).
+    const duration = end - start;
+    if (duration > DiagramCanvasComponent.DROPPED_FRAME_MS) {
+      this.droppedFrameCount++;
+    }
+    this.frameTimestamps.push(end);
+    this.frameDurations.push(duration);
+    if (this.frameTimestamps.length > DiagramCanvasComponent.FRAME_HISTORY) {
+      this.frameTimestamps.shift();
+    }
+    if (this.frameDurations.length > DiagramCanvasComponent.FRAME_HISTORY) {
+      this.frameDurations.shift();
+    }
+  }
+
+  /**
+   * wave2/rendering: real render-loop metrics, computed from the ring buffers
+   * (replaces any hardcoded/estimated FPS).
+   * - fps:          rolling frames-per-second across the last N painted frames
+   * - frameTime:    average render duration (ms) over the same window
+   * - droppedFrames: cumulative frames whose render blew the ~60fps budget
+   * - sampleCount:  number of frames currently in the window
+   */
+  getPerformanceMetrics(): {
+    fps: number;
+    frameTime: number;
+    droppedFrames: number;
+    sampleCount: number;
+  } {
+    const ts = this.frameTimestamps;
+    let fps = 0;
+    if (ts.length >= 2) {
+      const span = ts[ts.length - 1] - ts[0];
+      if (span > 0) {
+        fps = ((ts.length - 1) / span) * 1000;
+      }
+    }
+    const durs = this.frameDurations;
+    const frameTime =
+      durs.length > 0 ? durs.reduce((a, b) => a + b, 0) / durs.length : 0;
+
+    return {
+      fps: Math.round(fps * 10) / 10,
+      frameTime: Math.round(frameTime * 100) / 100,
+      droppedFrames: this.droppedFrameCount,
+      sampleCount: durs.length,
+    };
+  }
+
+  /** Monotonic-ish clock, falling back to Date.now() where performance is absent. */
+  private now(): number {
+    return typeof performance !== 'undefined' && typeof performance.now === 'function'
+      ? performance.now()
+      : Date.now();
+  }
+
+  /** Stable key for the current viewport + zoom (idle-skip comparison). */
+  private viewportKey(): string {
+    const v = this.viewport;
+    return `${v.x},${v.y},${v.width},${v.height}@${this.zoom}`;
+  }
+
+  /** True while the engine is dragging out a new connection (preview line). */
+  private isConnectionPreviewActive(): boolean {
+    try {
+      return (
+        this.engine?.getConnectionStateManager?.().getState?.().isConnecting === true
+      );
+    } catch {
+      return false;
+    }
+  }
+
+  /**
+   * wave2/rendering idle-skip: a queued frame may be dropped only when nothing
+   * visible could have changed — no dirty entities, an unchanged viewport/zoom,
+   * and no connection preview this frame or last. The connection preview lives
+   * in interaction state (not entity dirty flags), so we never skip while it is
+   * (or just was) active, otherwise its removal wouldn't repaint.
+   */
+  private canSkipFrame(): boolean {
+    const diagram = this.engine?.getDiagram();
+    if (!diagram) {
+      return false; // no diagram snapshot yet → let the frame render
+    }
+    const dirtyEntities =
+      diagram.getDirtyNodes().length +
+      diagram.getDirtyLinks().length +
+      diagram.getDirtyGroups().length;
+    if (dirtyEntities > 0) {
+      return false;
+    }
+    if (this.viewportKey() !== this.lastRenderedViewportKey) {
+      return false; // pan / zoom changed
+    }
+    if (this.isConnectionPreviewActive() || this.lastFrameHadConnectionPreview) {
+      return false;
+    }
+    return true;
+  }
+
+  /**
    * Render diagram to DOM
    * Phase 1: Updated to support hybrid HTML+SVG rendering
    */
@@ -683,7 +862,7 @@ export class DiagramCanvasComponent implements OnInit, AfterViewInit, OnChanges,
         // Re-subscribe to the new diagram's events
         this.subscribeToDiagramEvents(newDiagram);
         // Re-render with the new diagram
-        this.renderDiagram();
+        this.scheduleRender();
         this.cdr.detectChanges();
       });
 
@@ -699,7 +878,7 @@ export class DiagramCanvasComponent implements OnInit, AfterViewInit, OnChanges,
             dragThreshold: cfg.dragThreshold ?? 4,
           });
         }
-        this.renderDiagram();
+        this.scheduleRender();
         this.cdr.detectChanges();
       });
     }
@@ -719,27 +898,27 @@ export class DiagramCanvasComponent implements OnInit, AfterViewInit, OnChanges,
 
     // Re-render when entities are added/removed/changed
     diagram.on('node:added', () => {
-      this.renderDiagram();
+      this.scheduleRender();
       this.cdr.detectChanges();
     });
     diagram.on('node:removed', () => {
-      this.renderDiagram();
+      this.scheduleRender();
       this.cdr.detectChanges();
     });
     diagram.on('node:changed', (node: NodeModel) => {
-      this.renderDiagram();
+      this.scheduleRender();
       this.cdr.detectChanges();
     });
     diagram.on('link:added', () => {
-      this.renderDiagram();
+      this.scheduleRender();
       this.cdr.detectChanges();
     });
     diagram.on('link:removed', () => {
-      this.renderDiagram();
+      this.scheduleRender();
       this.cdr.detectChanges();
     });
     diagram.on('link:changed', () => {
-      this.renderDiagram();
+      this.scheduleRender();
       this.cdr.detectChanges();
     });
   }
@@ -795,7 +974,7 @@ export class DiagramCanvasComponent implements OnInit, AfterViewInit, OnChanges,
     this.zoomChanged.emit(newZoom);
 
     // Trigger re-render with updated viewport dimensions
-    this.renderDiagram();
+    this.scheduleRender();
     this.cdr.markForCheck();
   }
 
@@ -868,7 +1047,7 @@ export class DiagramCanvasComponent implements OnInit, AfterViewInit, OnChanges,
         const tempPort = this.createTempPortFromHandle(htmlHandleHit, worldX, worldY);
         if (tempPort) {
           this.interactionHandler.startConnection(tempPort, worldX, worldY, this.engine);
-          this.renderDiagram();
+          this.scheduleRender();
           this.cdr.markForCheck();
         }
         return;
@@ -882,7 +1061,7 @@ export class DiagramCanvasComponent implements OnInit, AfterViewInit, OnChanges,
       if (interactionState.hoveredPort) {
         event.preventDefault();
         this.interactionHandler.startConnection(interactionState.hoveredPort, worldX, worldY, this.engine);
-        this.renderDiagram();
+        this.scheduleRender();
         this.cdr.markForCheck();
         return;
       }
@@ -933,7 +1112,7 @@ export class DiagramCanvasComponent implements OnInit, AfterViewInit, OnChanges,
             console.log('🟢 Link path clicked, adding waypoint on link', selectedLink.id);
             const added = this.interactionHandler.addWaypoint(worldX, worldY, selectedLink);
             if (added) {
-              this.renderDiagram();
+              this.scheduleRender();
               this.cdr.markForCheck();
             }
             return;
@@ -979,7 +1158,7 @@ export class DiagramCanvasComponent implements OnInit, AfterViewInit, OnChanges,
         event.preventDefault();
         const multiSelect = event.ctrlKey || event.metaKey;
         this.interactionHandler.selectLink(linkToSelect, this.engine, multiSelect);
-        this.renderDiagram();
+        this.scheduleRender();
         this.cdr.markForCheck();
         return;
       }
@@ -1071,7 +1250,7 @@ export class DiagramCanvasComponent implements OnInit, AfterViewInit, OnChanges,
         // If clicking an already-selected node without Ctrl: Keep all selections for multi-drag
 
         // Force immediate render to show selection highlight instantly
-        this.renderDiagram();
+        this.scheduleRender();
 
         // Start drag if node is draggable
         // Allow dragging if clicked node is draggable (even if other selected nodes are locked)
@@ -1105,8 +1284,8 @@ export class DiagramCanvasComponent implements OnInit, AfterViewInit, OnChanges,
             }
           });
 
-          // Force immediate render to clear selection highlights instantly
-          this.renderDiagram();
+          // Coalesced render to clear selection highlights
+          this.scheduleRender();
         }
 
         // Wave-2 Interaction: arm the marquee tool. It commits (and starts
@@ -1157,7 +1336,7 @@ export class DiagramCanvasComponent implements OnInit, AfterViewInit, OnChanges,
       this.viewportChanged.emit(actualViewport);
 
       // Trigger re-render
-      this.renderDiagram();
+      this.scheduleRender();
       this.cdr.markForCheck();
       return;
     }
@@ -1179,7 +1358,7 @@ export class DiagramCanvasComponent implements OnInit, AfterViewInit, OnChanges,
       // Move control point to new position
       const moved = this.interactionHandler.moveControlPoint(worldX, worldY, this.engine);
       if (moved) {
-        this.renderDiagram();
+        this.scheduleRender();
         this.cdr.markForCheck();
       }
       return;
@@ -1193,7 +1372,7 @@ export class DiagramCanvasComponent implements OnInit, AfterViewInit, OnChanges,
       // Move waypoint to new position
       const moved = this.interactionHandler.moveWaypoint(worldX, worldY, this.engine);
       if (moved) {
-        this.renderDiagram();
+        this.scheduleRender();
         this.cdr.markForCheck();
       }
       return;
@@ -1259,7 +1438,7 @@ export class DiagramCanvasComponent implements OnInit, AfterViewInit, OnChanges,
       // PERFORMANCE FIX: Only re-render if something actually changed
       // Previously we re-rendered on EVERY mousemove which was very expensive
       if (needsRender) {
-        this.renderDiagram();
+        this.scheduleRender();
         this.cdr.markForCheck();
       }
     }
@@ -1276,7 +1455,7 @@ export class DiagramCanvasComponent implements OnInit, AfterViewInit, OnChanges,
       if (interactionState.isDraggingControlPoint) {
         event.preventDefault();
         this.interactionHandler.endControlPointDrag();
-        this.renderDiagram();
+        this.scheduleRender();
         this.cdr.markForCheck();
         return;
       }
@@ -1285,7 +1464,7 @@ export class DiagramCanvasComponent implements OnInit, AfterViewInit, OnChanges,
       if (interactionState.isDraggingWaypoint) {
         event.preventDefault();
         this.interactionHandler.endWaypointDrag();
-        this.renderDiagram();
+        this.scheduleRender();
         this.cdr.markForCheck();
         return;
       }
@@ -1303,7 +1482,7 @@ export class DiagramCanvasComponent implements OnInit, AfterViewInit, OnChanges,
       if (interactionState.isConnecting) {
         event.preventDefault();
         const success = this.interactionHandler.completeConnection(this.engine);
-        this.renderDiagram();
+        this.scheduleRender();
         this.cdr.markForCheck();
         return;
       }
@@ -1312,7 +1491,7 @@ export class DiagramCanvasComponent implements OnInit, AfterViewInit, OnChanges,
       if (interactionState.isReconnectingLink) {
         event.preventDefault();
         const success = this.interactionHandler.completeLinkReconnection(this.engine);
-        this.renderDiagram();
+        this.scheduleRender();
         this.cdr.markForCheck();
         return;
       }
@@ -1638,7 +1817,7 @@ export class DiagramCanvasComponent implements OnInit, AfterViewInit, OnChanges,
         if (waypointDeleted) {
           event.preventDefault();
           console.log('🗑️ Deleted waypoint');
-          this.renderDiagram();
+          this.scheduleRender();
           this.cdr.markForCheck();
           return;
         }
@@ -1649,7 +1828,7 @@ export class DiagramCanvasComponent implements OnInit, AfterViewInit, OnChanges,
       if (linkDeleted) {
         event.preventDefault();
         console.log('🗑️ Deleted selected link');
-        this.renderDiagram();
+        this.scheduleRender();
         this.cdr.markForCheck();
         return;
       }
@@ -1659,7 +1838,7 @@ export class DiagramCanvasComponent implements OnInit, AfterViewInit, OnChanges,
       if (deletedCount > 0) {
         event.preventDefault();
         console.log(`🗑️ Deleted ${deletedCount} selected node(s)`);
-        this.renderDiagram();
+        this.scheduleRender();
         this.cdr.markForCheck();
       }
     }
@@ -1670,7 +1849,7 @@ export class DiagramCanvasComponent implements OnInit, AfterViewInit, OnChanges,
       const interactionState = this.interactionHandler.getState();
       if (interactionState.isConnecting) {
         this.interactionHandler.cancelConnection(this.engine);
-        this.renderDiagram();
+        this.scheduleRender();
         this.cdr.markForCheck();
         return;
       }
@@ -1684,7 +1863,7 @@ export class DiagramCanvasComponent implements OnInit, AfterViewInit, OnChanges,
 
       // Otherwise clear selection
       diagram.clearSelection();
-      this.renderDiagram();
+      this.scheduleRender();
       this.cdr.markForCheck();
     }
 
@@ -1692,7 +1871,7 @@ export class DiagramCanvasComponent implements OnInit, AfterViewInit, OnChanges,
     if ((event.ctrlKey || event.metaKey) && event.key === 'a') {
       event.preventDefault();
       diagram.selectAll();
-      this.renderDiagram();
+      this.scheduleRender();
       this.cdr.markForCheck();
     }
   }
@@ -1893,6 +2072,14 @@ export class DiagramCanvasComponent implements OnInit, AfterViewInit, OnChanges,
   private cleanup(): void {
     // Wave 2: tear down any open inline label editor
     this.closeLabelEditor();
+
+    // wave2/rendering: cancel any queued animation frame so no render fires
+    // after the component is gone.
+    if (this.rafHandle !== null) {
+      cancelAnimationFrame(this.rafHandle);
+      this.rafHandle = null;
+    }
+    this.renderDirty = false;
 
     // Destroy all HTML node components
     for (const [nodeId, componentRef] of this.htmlNodeComponents.entries()) {

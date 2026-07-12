@@ -1,4 +1,4 @@
-import type { DiagramEngine, NodeModel, LinkModel, PortModel, InteractionConfig, ReconnectionPreview } from '@grafloria/engine';
+import type { DiagramEngine, NodeModel, LinkModel, PortModel, InteractionConfig, ReconnectionPreview, LODLevel, LODFeature } from '@grafloria/engine';
 import type { IRenderer, PerformanceMetrics, SVGRendererConfig, VNode, Theme, Rectangle } from '../types';
 import { LIGHT_THEME } from '../themes';
 import { createForeignObject, isForeignObject, getContainerId } from '../vnode/foreign-object';
@@ -44,8 +44,8 @@ import { ControlPointEditor } from '../interaction/ControlPointEditor';
 // Phase 1: Animation support
 import { AnimationService } from '../services/animation.service';
 
-// LOD Level type (matches engine's LODLevel)
-type LODLevel = 'high' | 'medium' | 'low';
+// LODLevel + LODFeature now come from the engine (@grafloria/engine). LODLevel is a
+// `string` tier name (wave2/rendering), so custom tiers flow through unchanged.
 
 /**
  * SVG Renderer
@@ -696,6 +696,16 @@ export class SVGRenderer implements IRenderer {
   /**
    * Render single node
    */
+  /**
+   * wave2/rendering: single LOD feature gate. Reads the active diagram's
+   * declarative LODConfig (`diagram.shouldRender`) instead of hardcoding
+   * `lod === 'high'` / `lod !== 'low'` here, so custom tiers Just Work.
+   * Returns false when there is no diagram (nothing to render anyway).
+   */
+  private lodAllows(feature: LODFeature, lod: LODLevel): boolean {
+    return this.engine.getDiagram()?.shouldRender(feature, lod) ?? false;
+  }
+
   private renderNode(node: NodeModel, lod: LODLevel): VNode {
     // PHASE 3: Skip HTML layer nodes entirely (React Flow style)
     // These nodes are rendered as HTML divs with handles in the HTML layer
@@ -776,7 +786,7 @@ export class SVGRenderer implements IRenderer {
             ]
           : []),
         // Drop shadow (Phase 3.1: Shape-aware)
-        ...(lod !== 'low' ? [this.renderShadow(node, isHovered)] : []),
+        ...(this.lodAllows('shadows', lod) ? [this.renderShadow(node, isHovered)] : []),
         // Node shape (Phase 3.1: Shape-based rendering)
         this.renderNodeShape(node, styles, isHovered),
         // Label (if LOD allows and label exists) — shape-fit wrap + ellipsis,
@@ -785,7 +795,7 @@ export class SVGRenderer implements IRenderer {
           ? this.renderNodeLabel(node)
           : []),
         // Option 3: Lock/pin indicator for locked nodes
-        ...(node.state.locked && lod !== 'low'
+        ...(node.state.locked && this.lodAllows('decorations', lod)
           ? [
               // Pin icon background circle
               {
@@ -950,8 +960,8 @@ export class SVGRenderer implements IRenderer {
    * Phase 2: Render ports for a node
    */
   private renderPorts(node: NodeModel, lod: LODLevel): VNode[] {
-    // Skip port rendering in low LOD
-    if (lod === 'low') {
+    // Skip port rendering when this LOD tier doesn't render ports
+    if (!this.lodAllows('ports', lod)) {
       return [];
     }
 
@@ -1838,7 +1848,7 @@ export class SVGRenderer implements IRenderer {
       config.enableLinkReconnection &&
       config.showLinkEndpointHandles &&
       isSelected &&
-      lod !== 'low';
+      this.lodAllows('handles', lod);
 
     // Phase 1.3: Apply jump points if enabled.
     // Jumps are built from the SAME polyline the detector indexed — never by
@@ -1914,7 +1924,7 @@ export class SVGRenderer implements IRenderer {
         // Link path (with or without jump points)
         linkPathVNode,
         // Phase 1.1: Arrow markers using ArrowRenderer
-        ...(lod !== 'low'
+        ...(this.lodAllows('decorations', lod)
           ? (() => {
               const arrows: VNode[] = [];
 
@@ -1942,7 +1952,7 @@ export class SVGRenderer implements IRenderer {
             })()
           : []),
         // Phase 1.2: Multiple labels using LabelRenderer
-        ...(lod === 'high'
+        ...(this.lodAllows('labels', lod)
           ? (() => {
               const labelVNodes: VNode[] = [];
 
@@ -2018,11 +2028,11 @@ export class SVGRenderer implements IRenderer {
             ]
           : []),
         // Phase 2.3a: Waypoint handles for interactive editing
-        ...(config.enableWaypointEditing && config.showWaypointHandles && isSelected && lod !== 'low'
+        ...(config.enableWaypointEditing && config.showWaypointHandles && isSelected && this.lodAllows('handles', lod)
           ? this.waypointEditor.renderWaypointHandles(link.points, link.id)
           : []),
         // Phase 2.3b: Control point handles for bezier curve editing
-        ...(config.enableControlPointEditing && config.showControlPointHandles && isSelected && lod !== 'low' && link.segments && link.segments.length > 0
+        ...(config.enableControlPointEditing && config.showControlPointHandles && isSelected && this.lodAllows('handles', lod) && link.segments && link.segments.length > 0
           ? this.controlPointEditor.renderControlPointHandles(link.segments, link.id)
           : []),
       ],

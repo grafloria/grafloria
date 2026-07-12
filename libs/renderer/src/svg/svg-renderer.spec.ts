@@ -1,5 +1,6 @@
 import { SVGRenderer } from './svg-renderer';
 import { DiagramEngine, DiagramModel, NodeModel, LinkModel, PortModel } from '@grafloria/engine';
+import type { LODFeature } from '@grafloria/engine';
 import { LIGHT_THEME, DARK_THEME } from '../themes';
 import type { VNode, Rectangle } from '../types';
 
@@ -285,6 +286,77 @@ describe('SVGRenderer', () => {
 
       expect(lodHigh).toBe('high');
       expect(lodLow).toBe('low');
+    });
+  });
+
+  describe('Configurable LOD policy (wave2/rendering)', () => {
+    const hasText = (nodeVNode: VNode) =>
+      nodeVNode.children?.some((c: VNode) => c.type === 'text') ?? false;
+    const hasShadow = (nodeVNode: VNode) =>
+      nodeVNode.children?.some(
+        (c: VNode) =>
+          typeof c.props?.className === 'string' &&
+          c.props.className.includes('node-shadow')
+      ) ?? false;
+
+    test('a bare custom tier suppresses label + shadow the default tier would draw', () => {
+      renderer = new SVGRenderer(engine, { enableCaching: false, useCSSMode: false }, LIGHT_THEME);
+      const node = new NodeModel({
+        type: 'basic',
+        position: { x: 100, y: 100 },
+        size: { width: 200, height: 100 },
+      });
+      node.setMetadata('label', 'Test Node');
+      diagram.addNode(node);
+      const viewport = { x: 0, y: 0, width: 800, height: 600 };
+
+      // Default policy @ zoom 1.0 => 'high' => label + shadow both render.
+      const def = renderer.render(viewport, 1.0) as VNode;
+      const defNode = def.children![1].children![0];
+      expect(hasText(defNode)).toBe(true);
+      expect(hasShadow(defNode)).toBe(true);
+
+      // Install a single floor tier that renders NO features.
+      diagram.setLODConfig({
+        tiers: [
+          { name: 'bare', minZoom: Number.NEGATIVE_INFINITY, features: new Set<LODFeature>() },
+        ],
+      });
+
+      const bare = renderer.render(viewport, 1.0) as VNode;
+      const bareNode = bare.children![1].children![0];
+      expect(hasText(bareNode)).toBe(false);
+      expect(hasShadow(bareNode)).toBe(false);
+    });
+
+    test('a custom tier can render labels at a zoom the default policy would not', () => {
+      renderer = new SVGRenderer(engine, { enableCaching: false, useCSSMode: false }, LIGHT_THEME);
+      const node = new NodeModel({
+        type: 'basic',
+        position: { x: 100, y: 100 },
+        size: { width: 200, height: 100 },
+      });
+      node.setMetadata('label', 'Deep Zoom Label');
+      diagram.addNode(node);
+      const viewport = { x: 0, y: 0, width: 800, height: 600 };
+
+      // Default policy @ 0.1 => 'low' => no label.
+      const low = renderer.render(viewport, 0.1) as VNode;
+      expect(hasText(low.children![1].children![0])).toBe(false);
+
+      // A one-tier policy that always keeps labels on flips that.
+      diagram.setLODConfig({
+        tiers: [
+          {
+            name: 'labels-always',
+            minZoom: Number.NEGATIVE_INFINITY,
+            features: new Set<LODFeature>(['labels']),
+          },
+        ],
+      });
+
+      const deep = renderer.render(viewport, 0.1) as VNode;
+      expect(hasText(deep.children![1].children![0])).toBe(true);
     });
   });
 

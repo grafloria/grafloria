@@ -4,7 +4,13 @@ import { DiagramModel } from './DiagramModel';
 import { NodeModel } from './NodeModel';
 import { LinkModel } from './LinkModel';
 import type { Rectangle } from '../types/geometry.types';
-import type { LODLevel, EntityWithLOD } from '../types/performance.types';
+import type {
+  LODLevel,
+  EntityWithLOD,
+  LODConfig,
+  LODFeature,
+} from '../types/performance.types';
+import { createDefaultLODConfig } from '../types/performance.types';
 
 describe('DiagramModel - Level of Detail (Phase 5.3)', () => {
   let diagram: DiagramModel;
@@ -270,6 +276,158 @@ describe('DiagramModel - Level of Detail (Phase 5.3)', () => {
       // node1 should be in both lists
       expect(visibleDirty).toContain(node1);
       expect(visibleWithLOD.some((item) => item.entity === node1)).toBe(true);
+    });
+  });
+
+  // ==========================================================================
+  // wave2/rendering: configurable per-diagram LOD policy
+  // ==========================================================================
+  describe('Configurable LODConfig (wave2/rendering)', () => {
+    const ALL: LODFeature[] = [
+      'labels',
+      'icons',
+      'borders',
+      'shadows',
+      'ports',
+      'decorations',
+      'handles',
+    ];
+
+    describe('default config reproduces the old three tiers exactly', () => {
+      it('picks the same tier names across the historical breakpoints', () => {
+        // >= 1.0 -> high
+        expect(diagram.getLODLevel(10)).toBe('high');
+        expect(diagram.getLODLevel(1.5)).toBe('high');
+        expect(diagram.getLODLevel(1.0)).toBe('high');
+        // 0.2 < zoom < 1.0 -> medium
+        expect(diagram.getLODLevel(0.99)).toBe('medium');
+        expect(diagram.getLODLevel(0.5)).toBe('medium');
+        expect(diagram.getLODLevel(0.3)).toBe('medium');
+        // <= 0.2 -> low (0.2 exclusive from medium, exactly as before)
+        expect(diagram.getLODLevel(0.2)).toBe('low');
+        expect(diagram.getLODLevel(0.15)).toBe('low');
+        expect(diagram.getLODLevel(0)).toBe('low');
+      });
+
+      it('reproduces the shouldRenderX feature gate contract', () => {
+        // labels: high + medium
+        expect(diagram.shouldRenderLabels('high')).toBe(true);
+        expect(diagram.shouldRenderLabels('medium')).toBe(true);
+        expect(diagram.shouldRenderLabels('low')).toBe(false);
+        // icons: high only
+        expect(diagram.shouldRenderIcons('high')).toBe(true);
+        expect(diagram.shouldRenderIcons('medium')).toBe(false);
+        expect(diagram.shouldRenderIcons('low')).toBe(false);
+        // borders: high + medium
+        expect(diagram.shouldRenderBorders('high')).toBe(true);
+        expect(diagram.shouldRenderBorders('medium')).toBe(true);
+        expect(diagram.shouldRenderBorders('low')).toBe(false);
+        // shadows: high only
+        expect(diagram.shouldRenderShadows('high')).toBe(true);
+        expect(diagram.shouldRenderShadows('medium')).toBe(false);
+        expect(diagram.shouldRenderShadows('low')).toBe(false);
+      });
+
+      it('renders every feature at high, nothing at low', () => {
+        for (const f of ALL) {
+          expect(diagram.shouldRender(f, 'high')).toBe(true);
+          expect(diagram.shouldRender(f, 'low')).toBe(false);
+        }
+      });
+
+      it('gates the renderer feature set at medium (ports/decorations/handles on, icons/shadows off)', () => {
+        expect(diagram.shouldRender('ports', 'medium')).toBe(true);
+        expect(diagram.shouldRender('decorations', 'medium')).toBe(true);
+        expect(diagram.shouldRender('handles', 'medium')).toBe(true);
+        expect(diagram.shouldRender('icons', 'medium')).toBe(false);
+        expect(diagram.shouldRender('shadows', 'medium')).toBe(false);
+      });
+    });
+
+    it('shouldRender returns false for an unknown tier name', () => {
+      expect(diagram.shouldRender('labels', 'does-not-exist')).toBe(false);
+    });
+
+    describe('custom config changes tier selection + feature gating', () => {
+      it('honors a custom LODConfig passed to the constructor', () => {
+        const config: LODConfig = {
+          tiers: [
+            { name: 'full', minZoom: 2.0, features: new Set<LODFeature>(ALL) },
+            {
+              name: 'sparse',
+              minZoom: 0.5,
+              features: new Set<LODFeature>(['labels']),
+            },
+            {
+              name: 'blank',
+              minZoom: Number.NEGATIVE_INFINITY,
+              features: new Set<LODFeature>(),
+            },
+          ],
+        };
+        const custom = new DiagramModel('custom', { lodConfig: config });
+
+        // Tier selection follows the custom breakpoints, not 1.0 / 0.2.
+        expect(custom.getLODLevel(3)).toBe('full');
+        expect(custom.getLODLevel(2.0)).toBe('full');
+        expect(custom.getLODLevel(1.0)).toBe('sparse'); // 1.0 no longer 'high'
+        expect(custom.getLODLevel(0.5)).toBe('sparse');
+        expect(custom.getLODLevel(0.4)).toBe('blank');
+
+        // Feature gating follows the custom sets.
+        expect(custom.shouldRender('shadows', 'sparse')).toBe(false);
+        expect(custom.shouldRender('labels', 'sparse')).toBe(true);
+        expect(custom.shouldRender('labels', 'blank')).toBe(false);
+      });
+
+      it('setLODConfig swaps the policy at runtime', () => {
+        const before = diagram.getLODLevel(0.5);
+        expect(before).toBe('medium');
+
+        diagram.setLODConfig({
+          tiers: [
+            {
+              name: 'coarse',
+              minZoom: Number.NEGATIVE_INFINITY,
+              features: new Set<LODFeature>(['labels']),
+            },
+          ],
+        });
+
+        // Single floor tier now matches every zoom.
+        expect(diagram.getLODLevel(5)).toBe('coarse');
+        expect(diagram.getLODLevel(0.01)).toBe('coarse');
+        expect(diagram.shouldRender('labels', 'coarse')).toBe(true);
+        expect(diagram.shouldRender('shadows', 'coarse')).toBe(false);
+      });
+
+      it('registerLODTier adds a new tier and replaces an existing one by name', () => {
+        // Add a brand-new ultra-detail tier above 'high'.
+        diagram.registerLODTier({
+          name: 'ultra',
+          minZoom: 3.0,
+          features: new Set<LODFeature>(ALL),
+        });
+        expect(diagram.getLODLevel(4)).toBe('ultra');
+        expect(diagram.getLODLevel(1.5)).toBe('high'); // untouched tiers still work
+
+        // Replace 'high' with one that drops shadows.
+        diagram.registerLODTier({
+          name: 'high',
+          minZoom: 1.0,
+          features: new Set<LODFeature>(['labels', 'borders']),
+        });
+        expect(diagram.shouldRender('shadows', 'high')).toBe(false);
+        expect(diagram.shouldRender('labels', 'high')).toBe(true);
+        // Still selected at zoom 1.0..3.0
+        expect(diagram.getLODLevel(1.0)).toBe('high');
+      });
+    });
+
+    it('getLODConfig returns the active policy', () => {
+      const cfg = createDefaultLODConfig();
+      const d = new DiagramModel('d', { lodConfig: cfg });
+      expect(d.getLODConfig()).toBe(cfg);
     });
   });
 });
