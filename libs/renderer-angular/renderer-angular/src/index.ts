@@ -31,6 +31,9 @@ export * from './lib/services/breakpoint-manager.service';
 // Phase 1.1: Animation service
 export * from './lib/services/angular-animation.service';
 
+// Interaction foundation: unified Pointer Events input pipeline
+export * from './lib/interaction';
+
 // Phase 4: Mobile components
 export * from './lib/components/mobile-toolbar/mobile-toolbar.component';
 export * from './lib/components/node-resize/touch-resize-handle.component';
