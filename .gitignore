@@ -46,3 +46,4 @@ Thumbs.db
 # renderer e2e harness artifacts
 libs/renderer/e2e/out/
 libs/renderer/e2e/bundle.js
+libs/renderer/e2e/playground.bundle.js

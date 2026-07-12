@@ -1,0 +1,134 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<title>Grafloria line playground</title>
+<style>
+  :root {
+    --bg: #f1f5f9; --panel: #ffffff; --ink: #1e293b; --muted: #64748b;
+    --line: #cbd5e1; --accent: #2563eb;
+  }
+  body.dark {
+    --bg: #0b1120; --panel: #131c2e; --ink: #e2e8f0; --muted: #8fa0b8; --line: #2b3950;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; background: var(--bg); color: var(--ink);
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; font-size: 13px;
+    display: grid; grid-template-columns: 300px 1fr; grid-template-rows: auto 1fr; height: 100vh;
+  }
+  header {
+    grid-column: 1 / 3; display: flex; align-items: baseline; gap: 14px;
+    padding: 10px 16px; background: var(--panel); border-bottom: 1px solid var(--line);
+  }
+  header h1 { font-size: 15px; margin: 0; }
+  header #status { color: var(--muted); font-size: 12px; }
+  aside {
+    overflow-y: auto; background: var(--panel); border-right: 1px solid var(--line); padding: 14px;
+  }
+  main { overflow: auto; padding: 14px; }
+  #canvas { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; display: inline-block; }
+  #canvas svg { display: block; border-radius: 10px; }
+  fieldset { border: 1px solid var(--line); border-radius: 8px; margin: 0 0 12px; padding: 10px 12px; }
+  legend { font-weight: 600; font-size: 11px; letter-spacing: .06em; text-transform: uppercase; color: var(--muted); padding: 0 4px; }
+  label { display: block; margin: 6px 0 2px; color: var(--muted); font-size: 12px; }
+  select, input[type=number], input[type=text] {
+    width: 100%; padding: 5px 8px; border: 1px solid var(--line); border-radius: 6px;
+    background: var(--bg); color: var(--ink); font-size: 13px;
+  }
+  input[type=range] { width: 100%; }
+  .row { display: flex; gap: 8px; align-items: center; }
+  .row > * { flex: 1; }
+  .check { display: flex; align-items: center; gap: 8px; margin: 6px 0; color: var(--ink); }
+  .check input { width: auto; }
+  button {
+    width: 100%; padding: 7px; border: 1px solid var(--line); border-radius: 6px;
+    background: var(--bg); color: var(--ink); cursor: pointer; font-size: 13px; margin-top: 4px;
+  }
+  button:hover { border-color: var(--accent); color: var(--accent); }
+  #guide { border-top: 2px solid var(--accent); padding-top: 10px; }
+  #guide h3 { font-size: 13px; margin: 0 0 8px; }
+  #guide ol { margin: 0; padding-left: 18px; }
+  #guide li { margin-bottom: 8px; line-height: 1.45; color: var(--ink); }
+  #guide b { color: var(--accent); }
+</style>
+</head>
+<body>
+<header>
+  <h1>Grafloria line playground</h1>
+  <span id="status"></span>
+</header>
+
+<aside>
+  <fieldset>
+    <legend>Scenario</legend>
+    <select id="scenario"></select>
+    <button id="reset">Reset scenario</button>
+  </fieldset>
+
+  <fieldset>
+    <legend>Line</legend>
+    <label for="pathType">Line type</label>
+    <select id="pathType">
+      <option value="direct">direct</option>
+      <option value="smooth">smooth</option>
+      <option value="bezier">bezier</option>
+      <option value="orthogonal" selected>orthogonal</option>
+    </select>
+    <label for="labelText">Label</label>
+    <input type="text" id="labelText" placeholder="type a label…">
+    <button id="clearWps">Clear waypoints</button>
+  </fieldset>
+
+  <fieldset>
+    <legend>Arrows</legend>
+    <div class="row">
+      <div>
+        <label for="arrowHead">Head</label>
+        <select id="arrowHead"></select>
+      </div>
+      <div>
+        <label for="arrowTail">Tail</label>
+        <select id="arrowTail"></select>
+      </div>
+    </div>
+    <label for="arrowSize">Size</label>
+    <input type="number" id="arrowSize" value="12" min="4" max="32">
+  </fieldset>
+
+  <fieldset>
+    <legend>Jump points</legend>
+    <div class="check"><input type="checkbox" id="jumpsOn"><label for="jumpsOn" style="margin:0">enabled</label></div>
+    <div class="row">
+      <div>
+        <label for="jumpStyle">Style</label>
+        <select id="jumpStyle">
+          <option value="arc">arc</option>
+          <option value="gap">gap</option>
+          <option value="bridge">bridge</option>
+        </select>
+      </div>
+      <div>
+        <label for="jumpSize">Size</label>
+        <input type="number" id="jumpSize" value="12" min="4" max="30">
+      </div>
+    </div>
+  </fieldset>
+
+  <fieldset>
+    <legend>View</legend>
+    <label for="zoom">Zoom <span id="zoomVal">100%</span></label>
+    <input type="range" id="zoom" min="0.1" max="2" step="0.05" value="1">
+    <div class="check"><input type="checkbox" id="theme"><label for="theme" style="margin:0">dark theme</label></div>
+  </fieldset>
+
+  <div id="guide"></div>
+</aside>
+
+<main>
+  <div id="canvas"></div>
+</main>
+
+<script src="playground.bundle.js"></script>
+</body>
+</html>
