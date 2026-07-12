@@ -7,7 +7,7 @@ import type {
   Point,
   ArrowStyle,
 } from '@grafloria/engine';
-import { PortModel } from '@grafloria/engine';
+import { PortModel, isConnectionAllowedByGroup } from '@grafloria/engine';
 import {
   WaypointEditor,
   ControlPointEditor,
@@ -69,6 +69,17 @@ export class InteractionHandlerService {
   private isReconnectingLink = false;
   private reconnectingLink: LinkModel | null = null;
   private reconnectingEndpoint: 'source' | 'target' | null = null;
+  /** Wave 2: current cursor position while dragging a reconnecting endpoint. */
+  private reconnectingMousePoint: Point | null = null;
+
+  /**
+   * Wave 2 (Edges & links): inline label drag-reposition state. While active,
+   * mouse moves remap the cursor to a (position 0-1, offset) pair on the model
+   * so the label survives re-routing. See {@link computeLabelDragUpdate}.
+   */
+  private isDraggingLabel = false;
+  private editingLabelLink: LinkModel | null = null;
+  private editingLabelIndex: number | null = null;
 
   /**
    * Phase 2.3a: Waypoint editing state
@@ -156,6 +167,13 @@ export class InteractionHandlerService {
     this.hoveredLink = null;
     this.connectionSourcePort = null;
     this.reconnectingLink = null;
+    this.reconnectingEndpoint = null;
+    this.reconnectingMousePoint = null;
+    this.isReconnectingLink = false;
+    // Wave 2: Clean up label drag state
+    this.isDraggingLabel = false;
+    this.editingLabelLink = null;
+    this.editingLabelIndex = null;
     // Phase 2.3a: Clean up waypoint editing state
     this.editingLink = null;
     this.editingWaypointIndex = null;
@@ -464,7 +482,11 @@ export class InteractionHandlerService {
   }
 
   /**
-   * Phase 3: Start link reconnection
+   * Phase 3 / Wave 2: Start link reconnection.
+   *
+   * Enters endpoint-drag mode: the dragged endpoint follows the cursor while
+   * the OTHER endpoint stays put. Seeds the engine's {@link ReconnectionPreview}
+   * so the renderer can draw a ghost link, and primes port validity highlights.
    */
   startLinkReconnection(
     link: LinkModel,
@@ -476,6 +498,7 @@ export class InteractionHandlerService {
     this.isReconnectingLink = true;
     this.reconnectingLink = link;
     this.reconnectingEndpoint = endpoint;
+    this.reconnectingMousePoint = { x: worldX, y: worldY };
 
     // Select the endpoint on the link
     if (endpoint === 'source') {
@@ -484,11 +507,126 @@ export class InteractionHandlerService {
       link.selectTargetEndpoint();
     }
 
+    // Seed the live preview + validity highlights.
+    engine.setReconnectionPreview({
+      linkId: link.id,
+      endpoint,
+      mousePoint: { x: worldX, y: worldY },
+      isValid: false,
+    });
+    this.updateReconnectPortHighlights(engine);
+
     console.log(`🔗 Link reconnection started: ${endpoint} endpoint of link ${link.id}`);
   }
 
   /**
-   * Phase 3: Complete link reconnection
+   * Wave 2: Update the in-progress endpoint reconnection as the cursor moves.
+   *
+   * Refreshes the ghost-preview endpoint, recomputes which ports are valid drop
+   * targets (highlighting them), and reflects whether the currently hovered
+   * port would be accepted. Returns true when a re-render is warranted.
+   */
+  updateLinkReconnection(worldX: number, worldY: number, engine: DiagramEngine): boolean {
+    if (!this.isReconnectingLink || !this.reconnectingLink || !this.reconnectingEndpoint) {
+      return false;
+    }
+    if (!isFinite(worldX) || !isFinite(worldY)) {
+      return false;
+    }
+
+    this.reconnectingMousePoint = { x: worldX, y: worldY };
+
+    // Is the port under the cursor (if any) a legal drop target?
+    const isValid = !!(
+      this.hoveredPort &&
+      this.isValidReconnectionTarget(
+        this.reconnectingLink,
+        this.reconnectingEndpoint,
+        this.hoveredPort,
+        engine
+      )
+    );
+
+    engine.setReconnectionPreview({
+      linkId: this.reconnectingLink.id,
+      endpoint: this.reconnectingEndpoint,
+      mousePoint: { x: worldX, y: worldY },
+      isValid,
+    });
+
+    this.updateReconnectPortHighlights(engine);
+    return true;
+  }
+
+  /**
+   * Wave 2: Is `candidatePort` a legal target for reconnecting `endpoint` of
+   * `link`? The OTHER endpoint's port stays fixed; the candidate must differ
+   * from it, live on a different node, be type-compatible (input↔output, or a
+   * bidirectional port), and satisfy the connection-group rules. Pure w.r.t.
+   * the passed models — the core of the reconnect-validation tests.
+   */
+  isValidReconnectionTarget(
+    link: LinkModel,
+    endpoint: 'source' | 'target',
+    candidatePort: PortModel,
+    engine: DiagramEngine
+  ): boolean {
+    const diagram = engine.getDiagram();
+    if (!diagram) return false;
+
+    // The stationary endpoint's port is the one that must stay connected.
+    const fixedPortId = endpoint === 'source' ? link.targetPortId : link.sourcePortId;
+    const fixedPort = diagram.getPortById(fixedPortId);
+    if (!fixedPort) return false;
+
+    // Can't drop back onto the fixed port, or onto its own node.
+    if (candidatePort.id === fixedPortId) return false;
+    const candidateNode = diagram.getNodeByPortId(candidatePort.id);
+    const fixedNode = diagram.getNodeByPortId(fixedPortId);
+    if (!candidateNode || !fixedNode) return false;
+    if (candidateNode.id === fixedNode.id) return false;
+
+    // Type compatibility: directional ports can't share a direction; a
+    // bidirectional ('bi') port on either side lifts the restriction.
+    const isBi = (p: PortModel) => p.type === 'bi';
+    if (!isBi(fixedPort) && !isBi(candidatePort) && fixedPort.type === candidatePort.type) {
+      return false;
+    }
+
+    // Connection-group restriction (same seam the new-link flow validates on).
+    return isConnectionAllowedByGroup(fixedPort, candidatePort, engine);
+  }
+
+  /**
+   * Wave 2: Highlight ports as valid/invalid drop targets during an endpoint
+   * reconnection. Mirrors {@link updatePortHighlights} but uses the reconnect
+   * validity rule instead of the {@link ConnectionStateManager} valid-target set
+   * (which is empty during reconnection).
+   */
+  private updateReconnectPortHighlights(engine: DiagramEngine): void {
+    const diagram = engine.getDiagram();
+    if (!diagram || !this.reconnectingLink || !this.reconnectingEndpoint) return;
+
+    diagram.getNodes().forEach((node: NodeModel) => {
+      node.getPorts().forEach((port: PortModel) => {
+        const valid = this.isValidReconnectionTarget(
+          this.reconnectingLink!,
+          this.reconnectingEndpoint!,
+          port,
+          engine
+        );
+        port.isValidTarget = valid;
+        port.isHighlighted = valid && port === this.hoveredPort;
+      });
+    });
+  }
+
+  /**
+   * Phase 3 / Wave 2: Complete link reconnection.
+   *
+   * Drops the dragged endpoint on the hovered port. Rejects (and restores the
+   * original connection) when there is no port under the cursor or the port
+   * fails {@link isValidReconnectionTarget}.
    */
   completeLinkReconnection(engine: DiagramEngine): boolean {
     if (!this.isReconnectingLink || !this.reconnectingLink || !this.reconnectingEndpoint) {
@@ -496,19 +634,21 @@ export class InteractionHandlerService {
     }
 
     const targetPort = this.hoveredPort;
-    if (!targetPort) {
-      // Cancelled - restore original connection
-      this.reconnectingLink.deselectEndpoints();
-      this.isReconnectingLink = false;
-      this.reconnectingLink = null;
-      this.reconnectingEndpoint = null;
-      console.log('🚫 Link reconnection cancelled: No target port');
+
+    // Reject: no drop target, or an invalid one → restore original connection.
+    if (!targetPort ||
+        !this.isValidReconnectionTarget(this.reconnectingLink, this.reconnectingEndpoint, targetPort, engine)) {
+      console.log('🚫 Link reconnection rejected: no valid target port');
+      this.cancelLinkReconnection(engine);
       return false;
     }
 
     // Reconnect to new port
     const diagram = engine.getDiagram();
-    if (!diagram) return false;
+    if (!diagram) {
+      this.cancelLinkReconnection(engine);
+      return false;
+    }
 
     // Find the node that owns the target port
     let targetNode: NodeModel | undefined;
@@ -521,6 +661,7 @@ export class InteractionHandlerService {
 
     if (!targetNode) {
       console.log('❌ Link reconnection failed: Target node not found');
+      this.cancelLinkReconnection(engine);
       return false;
     }
 
@@ -555,13 +696,164 @@ export class InteractionHandlerService {
 
     console.log(`✅ Link reconnected: ${this.reconnectingEndpoint} endpoint to port ${targetPort.id}`);
 
-    // Cleanup
-    this.reconnectingLink.deselectEndpoints();
+    // Cleanup (clears preview + highlights + state)
+    this.resetReconnectionState(engine);
+
+    return true;
+  }
+
+  /**
+   * Wave 2: Cancel an in-progress endpoint reconnection, restoring the link to
+   * its original connection. Safe to call when not reconnecting.
+   */
+  cancelLinkReconnection(engine: DiagramEngine): void {
+    if (!this.isReconnectingLink) return;
+    this.resetReconnectionState(engine);
+    console.log('🚫 Link reconnection cancelled');
+  }
+
+  /**
+   * Wave 2: Tear down all reconnection state — deselect the link's endpoints,
+   * clear the engine preview, and clear port highlights.
+   */
+  private resetReconnectionState(engine: DiagramEngine): void {
+    this.reconnectingLink?.deselectEndpoints();
     this.isReconnectingLink = false;
     this.reconnectingLink = null;
     this.reconnectingEndpoint = null;
+    this.reconnectingMousePoint = null;
+    engine.setReconnectionPreview(null);
+    this.clearPortHighlights(engine);
+  }
 
+  // ============================================================================
+  // Wave 2 (Edges & links): inline label drag-reposition
+  // ============================================================================
+
+  /**
+   * Wave 2: Map a dragged world point to a model-space label placement.
+   *
+   * Returns the `{ position, offset }` to store on the label such that the
+   * renderer draws it exactly under the cursor now AND it sticks to the same
+   * fraction of the path after re-routing:
+   *   - `position` (0-1) = closest point on the path to the cursor;
+   *   - `offset`         = cursor − on-path anchor at `position`.
+   *
+   * The offset is measured against the SAME anchor the renderer uses
+   * ({@link LinkModel.getPointAtPosition}), so `getPointAtPosition(position) +
+   * offset` reproduces the cursor by construction. Falls back to a direct
+   * polyline projection over `link.points` when the model has no segments
+   * (renderers sync `points` but leave `segments` stale). Returns null when the
+   * link has no drawable path.
+   */
+  computeLabelDragUpdate(
+    link: LinkModel,
+    worldPoint: Point
+  ): { position: number; offset: Point } | null {
+    const points = link.points;
+    if (!points || points.length < 2) return null;
+
+    // Preferred: model's own segment-based projection.
+    let t: number | null = link.getClosestPoint(worldPoint)?.t ?? null;
+
+    // Fallback: project onto the raw points polyline (mirrors the polyline
+    // fallback in getPointAtPosition, so anchors stay consistent).
+    if (t === null) {
+      t = this.closestPositionOnPolyline(points, worldPoint);
+    }
+    if (t === null) return null;
+
+    const anchor = link.getPointAtPosition(t);
+    if (!anchor) return null;
+
+    return {
+      position: t,
+      offset: { x: worldPoint.x - anchor.x, y: worldPoint.y - anchor.y },
+    };
+  }
+
+  /**
+   * Arc-length position (0-1) of the closest point on a polyline to `query`.
+   * Returns null for < 2 points. Matches the parametrization used by
+   * {@link LinkModel.getPointAtPosition}'s polyline fallback and the
+   * hit-test primitive.
+   */
+  private closestPositionOnPolyline(points: Point[], query: Point): number | null {
+    if (points.length < 2) return null;
+
+    const segLengths: number[] = [];
+    let total = 0;
+    for (let i = 0; i < points.length - 1; i++) {
+      const len = Math.hypot(points[i + 1]!.x - points[i]!.x, points[i + 1]!.y - points[i]!.y);
+      segLengths.push(len);
+      total += len;
+    }
+    if (total <= 0) return 0;
+
+    let bestDist = Infinity;
+    let bestArc = 0;
+    let cumulative = 0;
+    for (let i = 0; i < points.length - 1; i++) {
+      const a = points[i]!;
+      const b = points[i + 1]!;
+      const dx = b.x - a.x;
+      const dy = b.y - a.y;
+      const lenSq = dx * dx + dy * dy;
+      let s = lenSq === 0 ? 0 : ((query.x - a.x) * dx + (query.y - a.y) * dy) / lenSq;
+      s = Math.max(0, Math.min(1, s));
+      const cx = a.x + s * dx;
+      const cy = a.y + s * dy;
+      const dist = Math.hypot(query.x - cx, query.y - cy);
+      if (dist < bestDist) {
+        bestDist = dist;
+        bestArc = cumulative + s * segLengths[i]!;
+      }
+      cumulative += segLengths[i]!;
+    }
+    return bestArc / total;
+  }
+
+  /**
+   * Wave 2: Begin dragging label `labelIndex` of `link`.
+   */
+  startLabelDrag(link: LinkModel, labelIndex: number): void {
+    this.isDraggingLabel = true;
+    this.editingLabelLink = link;
+    this.editingLabelIndex = labelIndex;
+    console.log(`🏷️ Started dragging label ${labelIndex} on link ${link.id}`);
+  }
+
+  /**
+   * Wave 2: Move the dragging label to follow the cursor. Writes the remapped
+   * `{ position, offset }` back onto the model so the label survives re-routing.
+   * Returns true when a re-render is warranted.
+   */
+  moveLabelDrag(worldX: number, worldY: number): boolean {
+    if (!this.isDraggingLabel || !this.editingLabelLink || this.editingLabelIndex === null) {
+      return false;
+    }
+    if (!isFinite(worldX) || !isFinite(worldY)) {
+      return false;
+    }
+
+    const update = this.computeLabelDragUpdate(this.editingLabelLink, { x: worldX, y: worldY });
+    if (!update) return false;
+
+    this.editingLabelLink.updateLabel(this.editingLabelIndex, update);
+    this.editingLabelLink.markDirty('label-dragged');
     return true;
+  }
+
+  /**
+   * Wave 2: End the label drag.
+   */
+  endLabelDrag(): void {
+    if (this.isDraggingLabel) {
+      console.log(`🏷️ Ended dragging label ${this.editingLabelIndex} on link ${this.editingLabelLink?.id}`);
+    }
+    this.isDraggingLabel = false;
+    this.editingLabelLink = null;
+    this.editingLabelIndex = null;
   }
 
   /**
@@ -647,9 +939,15 @@ export class InteractionHandlerService {
     return {
       isConnecting: this.isConnecting,
       isReconnectingLink: this.isReconnectingLink,
+      reconnectingEndpoint: this.reconnectingEndpoint,
+      reconnectingLink: this.reconnectingLink,
       hoveredNode: this.hoveredNode,
       hoveredPort: this.hoveredPort,
       hoveredLink: this.hoveredLink,
+      // Wave 2: Label drag-reposition state
+      isDraggingLabel: this.isDraggingLabel,
+      editingLabelLink: this.editingLabelLink,
+      editingLabelIndex: this.editingLabelIndex,
       // Phase 2.3a: Waypoint editing state
       isDraggingWaypoint: this.isDraggingWaypoint,
       editingLink: this.editingLink,
@@ -671,7 +969,7 @@ export class InteractionHandlerService {
    * Phase 3: Check if currently interacting
    */
   isInteracting(): boolean {
-    return this.isConnecting || this.isReconnectingLink || this.isDraggingWaypoint || this.isDraggingControlPoint;
+    return this.isConnecting || this.isReconnectingLink || this.isDraggingWaypoint || this.isDraggingControlPoint || this.isDraggingLabel;
   }
 
   /**

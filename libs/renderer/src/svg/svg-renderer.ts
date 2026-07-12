@@ -1,4 +1,4 @@
-import type { DiagramEngine, NodeModel, LinkModel, PortModel, InteractionConfig } from '@grafloria/engine';
+import type { DiagramEngine, NodeModel, LinkModel, PortModel, InteractionConfig, ReconnectionPreview } from '@grafloria/engine';
 import type { IRenderer, PerformanceMetrics, SVGRendererConfig, VNode, Theme, Rectangle } from '../types';
 import { LIGHT_THEME } from '../themes';
 import { createForeignObject, isForeignObject, getContainerId } from '../vnode/foreign-object';
@@ -390,6 +390,17 @@ export class SVGRenderer implements IRenderer {
         // The target port will already be highlighted by the port renderer
         // No additional rendering needed here
       }
+    } else {
+      // Wave 2 (Edges & links): endpoint-reconnection ghost preview.
+      // Guarded by `!isConnecting` so this and the new-link preview above are
+      // mutually exclusive — the two state sources never double-render.
+      const reconnect = this.engine.getReconnectionPreview();
+      if (reconnect) {
+        const ghost = this.renderReconnectionPreview(reconnect);
+        if (ghost) {
+          children.push(ghost);
+        }
+      }
     }
 
     return {
@@ -557,6 +568,76 @@ export class SVGRenderer implements IRenderer {
         fill: 'none',
         opacity: 0.7,
         className: 'connection-preview-line',
+        style: config.animateConnectionPreview
+          ? { animation: 'dash 0.5s linear infinite' }
+          : undefined,
+      },
+    };
+  }
+
+  /**
+   * Wave 2 (Edges & links): render the endpoint-reconnection ghost link.
+   *
+   * Draws a dashed preview from the STATIONARY endpoint of the link (the one
+   * not being dragged) to the cursor, using the same RoutingEngine the real
+   * connection preview uses so the ghost matches the link's routing algorithm.
+   * Colour reflects drop validity (success vs default link colour).
+   */
+  private renderReconnectionPreview(preview: ReconnectionPreview): VNode | null {
+    const config = this.engine.getInteractionConfig();
+    if (!config.showConnectionPreview) {
+      return null;
+    }
+
+    const diagram = this.engine.getDiagram();
+    if (!diagram) return null;
+
+    const link = diagram.getLinks().find(l => l.id === preview.linkId);
+    if (!link || !link.points || link.points.length < 2) return null;
+
+    // Dragging the source endpoint keeps the TARGET end fixed, and vice versa.
+    const fixedEnd = preview.endpoint === 'source'
+      ? link.points[link.points.length - 1]
+      : link.points[0];
+    const start = { x: fixedEnd.x, y: fixedEnd.y };
+    const end = preview.mousePoint;
+
+    const pathType = link.pathType;
+    const routingEngine = this.engine.getRoutingEngine();
+    const algorithm = this.mapPathTypeToAlgorithm(pathType) || routingEngine.getDefaultAlgorithm();
+
+    // Best-effort routing direction from the fixed port.
+    const fixedPortId = preview.endpoint === 'source' ? link.targetPortId : link.sourcePortId;
+    const fixedPort = diagram.getPortById(fixedPortId);
+    const startDirection = fixedPort?.alignment?.side;
+
+    const routed = routingEngine.route({
+      start,
+      end,
+      sourceDirection: startDirection,
+      obstacles: [],
+      options: { algorithm, avoidObstacles: false, gridSize: 10 },
+    });
+
+    const pathData = routed
+      ? this.convertRoutedPathToSVG(routed, pathType, startDirection, undefined)
+      : `M ${start.x} ${start.y} L ${end.x} ${end.y}`;
+
+    const strokeColor = preview.isValid
+      ? this.theme.colors.success
+      : this.theme.colors.link.default;
+
+    return {
+      type: 'path',
+      key: 'reconnection-preview',
+      props: {
+        d: pathData,
+        stroke: strokeColor,
+        strokeWidth: 2,
+        strokeDasharray: '5,5',
+        fill: 'none',
+        opacity: 0.7,
+        className: 'reconnection-preview-line',
         style: config.animateConnectionPreview
           ? { animation: 'dash 0.5s linear infinite' }
           : undefined,

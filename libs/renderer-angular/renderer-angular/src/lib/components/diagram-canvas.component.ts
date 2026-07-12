@@ -716,6 +716,33 @@ export class DiagramCanvasComponent implements OnInit, AfterViewInit, OnChanges,
         }
       }
 
+      // Wave 2 (Edges & links): part-aware edge interactions — grab a selected
+      // link's endpoint handle to reconnect it, or a label to drag-reposition it.
+      // Uses the merged part-aware hit-test so body clicks still fall through to
+      // the normal link-selection path below.
+      const edgeHit = this.interactionHandler.getLinkHitAtPosition(worldX, worldY, this.engine);
+      if (edgeHit) {
+        if (
+          (edgeHit.part === 'source-endpoint' || edgeHit.part === 'target-endpoint') &&
+          config.enableLinkReconnection &&
+          edgeHit.link.state === 'selected'
+        ) {
+          event.preventDefault();
+          const endpoint = edgeHit.part === 'source-endpoint' ? 'source' : 'target';
+          this.interactionHandler.startLinkReconnection(edgeHit.link, endpoint, worldX, worldY, this.engine);
+          this.renderDiagram();
+          this.cdr.markForCheck();
+          return;
+        }
+
+        if (edgeHit.part === 'label' && edgeHit.labelIndex !== undefined) {
+          event.preventDefault();
+          this.interactionHandler.startLabelDrag(edgeHit.link, edgeHit.labelIndex);
+          this.cdr.markForCheck();
+          return;
+        }
+      }
+
       // Phase 3: Check for link click (for selection)
       // FIXED: Use direct hit testing if hover state not available (e.g., on initial load)
       let linkToSelect = interactionState.hoveredLink;
@@ -965,6 +992,28 @@ export class DiagramCanvasComponent implements OnInit, AfterViewInit, OnChanges,
       return;
     }
 
+    // Wave 2: Handle label drag-reposition
+    if (interactionState.isDraggingLabel) {
+      const { worldX, worldY } = this.clientToWorld(event.clientX, event.clientY);
+      const moved = this.interactionHandler.moveLabelDrag(worldX, worldY);
+      if (moved) {
+        this.renderDiagram();
+        this.cdr.markForCheck();
+      }
+      return;
+    }
+
+    // Wave 2: Handle endpoint reconnection drag (ghost preview + port validity)
+    if (interactionState.isReconnectingLink) {
+      const { worldX, worldY } = this.clientToWorld(event.clientX, event.clientY);
+      // Refresh hover so the reconnection validity can see the port under the cursor
+      this.interactionHandler.handleMouseMove(worldX, worldY, this.engine);
+      this.interactionHandler.updateLinkReconnection(worldX, worldY, this.engine);
+      this.renderDiagram();
+      this.cdr.markForCheck();
+      return;
+    }
+
     // Phase 3: Handle hover detection and connection drag
     if (!this.spaceKeyPressed) {
       // Convert client coordinates to world coordinates
@@ -1034,6 +1083,15 @@ export class DiagramCanvasComponent implements OnInit, AfterViewInit, OnChanges,
         return;
       }
 
+      // Wave 2: End label drag if in progress
+      if (interactionState.isDraggingLabel) {
+        event.preventDefault();
+        this.interactionHandler.endLabelDrag();
+        this.renderDiagram();
+        this.cdr.markForCheck();
+        return;
+      }
+
       // Phase 3: Complete connection if in progress
       if (interactionState.isConnecting) {
         event.preventDefault();
@@ -1082,6 +1140,150 @@ export class DiagramCanvasComponent implements OnInit, AfterViewInit, OnChanges,
     // Reset cursor
     if (this.containerRef?.nativeElement) {
       this.containerRef.nativeElement.style.cursor = 'default';
+    }
+  }
+
+  /**
+   * Wave 2 (Edges & links): double-click on a link.
+   * - On a label: open an inline text editor in place.
+   * - On the link body: insert a waypoint at the double-clicked point.
+   */
+  @HostListener('dblclick', ['$event'])
+  onDoubleClick(event: MouseEvent): void {
+    if (!this.engine) {
+      return;
+    }
+    const diagram = this.engine.getDiagram();
+    if (!diagram) {
+      return;
+    }
+
+    const { worldX, worldY } = this.clientToWorld(event.clientX, event.clientY);
+    const edgeHit = this.interactionHandler.getLinkHitAtPosition(worldX, worldY, this.engine);
+    if (!edgeHit) {
+      return;
+    }
+
+    if (edgeHit.part === 'label' && edgeHit.labelIndex !== undefined) {
+      event.preventDefault();
+      this.openLinkLabelEditor(edgeHit.link, edgeHit.labelIndex, event.clientX, event.clientY);
+      return;
+    }
+
+    if (edgeHit.part === 'body') {
+      event.preventDefault();
+      const added = this.interactionHandler.addWaypoint(worldX, worldY, edgeHit.link);
+      if (added) {
+        this.renderDiagram();
+        this.cdr.markForCheck();
+      }
+    }
+  }
+
+  /**
+   * Wave 2: transient inline label editor (a floating <input>).
+   */
+  private activeLabelEditor?: HTMLInputElement;
+
+  /**
+   * Wave 2: open a transient <input> over a link label to edit its text in
+   * place. Commits on Enter/blur via LinkModel.updateLabel; cancels on Escape.
+   * Positioned at the double-click point (which the hit-test placed on the
+   * label) in the container's screen space.
+   */
+  private openLinkLabelEditor(
+    link: any,
+    labelIndex: number,
+    clientX: number,
+    clientY: number
+  ): void {
+    const container = this.containerRef?.nativeElement;
+    if (!container) {
+      return;
+    }
+    const label = link.labels?.[labelIndex];
+    if (!label) {
+      return;
+    }
+
+    // Only one editor at a time.
+    this.closeLabelEditor();
+
+    const rect = container.getBoundingClientRect();
+    const input = document.createElement('input');
+    input.type = 'text';
+    input.value = label.text ?? '';
+    input.className = 'grafloria-link-label-editor';
+    input.style.position = 'absolute';
+    input.style.left = `${clientX - rect.left}px`;
+    input.style.top = `${clientY - rect.top}px`;
+    input.style.transform = 'translate(-50%, -50%)';
+    input.style.zIndex = '1000';
+    input.style.font = '12px sans-serif';
+    input.style.textAlign = 'center';
+    input.style.minWidth = '40px';
+    input.style.padding = '1px 4px';
+
+    let committed = false;
+    const cleanup = () => {
+      input.removeEventListener('keydown', onKeyDown);
+      input.removeEventListener('blur', commit);
+      if (input.parentElement) {
+        input.parentElement.removeChild(input);
+      }
+      if (this.activeLabelEditor === input) {
+        this.activeLabelEditor = undefined;
+      }
+    };
+    const commit = () => {
+      if (committed) {
+        return;
+      }
+      committed = true;
+      link.updateLabel(labelIndex, { text: input.value });
+      link.markDirty('label-edited');
+      cleanup();
+      this.renderDiagram();
+      this.cdr.markForCheck();
+    };
+    const cancel = () => {
+      if (committed) {
+        return;
+      }
+      committed = true;
+      cleanup();
+    };
+    const onKeyDown = (e: KeyboardEvent) => {
+      // Keep the canvas' window key handlers (Delete/Escape/etc.) out of the way.
+      e.stopPropagation();
+      if (e.key === 'Enter') {
+        e.preventDefault();
+        commit();
+      } else if (e.key === 'Escape') {
+        e.preventDefault();
+        cancel();
+      }
+    };
+
+    input.addEventListener('keydown', onKeyDown);
+    input.addEventListener('blur', commit);
+
+    container.appendChild(input);
+    this.activeLabelEditor = input;
+    input.focus();
+    input.select();
+  }
+
+  /**
+   * Wave 2: remove the active inline label editor without committing.
+   */
+  private closeLabelEditor(): void {
+    const el = this.activeLabelEditor;
+    if (el) {
+      this.activeLabelEditor = undefined;
+      if (el.parentElement) {
+        el.parentElement.removeChild(el);
+      }
     }
   }
 
@@ -1233,10 +1435,17 @@ export class DiagramCanvasComponent implements OnInit, AfterViewInit, OnChanges,
 
     // Handle Escape key - cancel connection or clear selection (Phase 3)
     if (event.key === 'Escape') {
-      // Cancel connection if in progress
+      // Cancel connection or endpoint reconnection if in progress
       const interactionState = this.interactionHandler.getState();
-      if (interactionState.isConnecting || interactionState.isReconnectingLink) {
+      if (interactionState.isConnecting) {
         this.interactionHandler.cancelConnection(this.engine);
+        this.renderDiagram();
+        this.cdr.markForCheck();
+        return;
+      }
+      if (interactionState.isReconnectingLink) {
+        // Wave 2: restore the link's original connection and clear the ghost
+        this.interactionHandler.cancelLinkReconnection(this.engine);
         this.renderDiagram();
         this.cdr.markForCheck();
         return;
@@ -1451,6 +1660,9 @@ export class DiagramCanvasComponent implements OnInit, AfterViewInit, OnChanges,
    * Phase 2: Also destroy HTML node components
    */
   private cleanup(): void {
+    // Wave 2: tear down any open inline label editor
+    this.closeLabelEditor();
+
     // Destroy all HTML node components
     for (const [nodeId, componentRef] of this.htmlNodeComponents.entries()) {
       componentRef.destroy();

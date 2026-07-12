@@ -74,6 +74,24 @@ export interface DiagramEngineConfig {
   interaction?: Partial<InteractionConfig>;
 }
 
+/**
+ * Wave 2 (Edges & links): transient state for the endpoint-reconnection live
+ * preview. Set by the interaction layer while an endpoint handle is being
+ * dragged; read by the renderer to draw a ghost link from the stationary
+ * endpoint to the cursor. Deliberately separate from {@link ConnectionStateManager}
+ * (which owns NEW-link creation) so the two previews never double-render.
+ */
+export interface ReconnectionPreview {
+  /** Id of the link whose endpoint is being reconnected. */
+  linkId: string;
+  /** Which endpoint the cursor is dragging (the OTHER end stays fixed). */
+  endpoint: 'source' | 'target';
+  /** Current cursor position in world coordinates. */
+  mousePoint: Point;
+  /** Whether the port/node currently under the cursor is a valid drop target. */
+  isValid: boolean;
+}
+
 export class DiagramEngine {
   // Core systems
   readonly eventBus: EventBus;
@@ -107,6 +125,9 @@ export class DiagramEngine {
   // Phase 1: Interaction configuration and state
   private interactionConfig: InteractionConfig;
   private connectionStateManager: ConnectionStateManager;
+
+  // Wave 2 (Edges & links): transient endpoint-reconnection preview (see type).
+  private reconnectionPreview: ReconnectionPreview | null = null;
 
   // State
   private initialized: boolean = false;
@@ -283,6 +304,23 @@ export class DiagramEngine {
    */
   getConnectionStateManager(): ConnectionStateManager {
     return this.connectionStateManager;
+  }
+
+  /**
+   * Wave 2 (Edges & links): current endpoint-reconnection preview, or null when
+   * no endpoint is being dragged. The renderer reads this to draw a ghost link.
+   */
+  getReconnectionPreview(): ReconnectionPreview | null {
+    return this.reconnectionPreview;
+  }
+
+  /**
+   * Wave 2 (Edges & links): set (or clear, with null) the endpoint-reconnection
+   * preview. Called by the interaction layer on start/move/end of an endpoint
+   * drag. Does not emit — the interaction layer already triggers re-render.
+   */
+  setReconnectionPreview(preview: ReconnectionPreview | null): void {
+    this.reconnectionPreview = preview;
   }
 
   /**
