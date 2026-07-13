@@ -2,7 +2,18 @@ import type { VNode } from './vnode.types';
 import type { Rectangle } from './geometry.types';
 
 /**
- * Renderer interface - contract for all renderers (SVG, Canvas, etc.)
+ * Renderer interface — the contract for a DIAGRAM renderer: it turns the model
+ * plus a viewport into a visual representation (a VNode tree in SVG mode).
+ *
+ * This is the only renderer interface. A second `IRenderer` used to live in
+ * `core/renderer.interface.ts` describing a different layer — a VNode → DOM
+ * *consumer* (initialize/render/clear/destroy against a container) — together
+ * with an unused stack (SVGRendererV2, a throwing Canvas stub, HybridRenderer,
+ * RendererFactory, RendererStrategyManager). Nothing in production implemented
+ * it: the real VNode → DOM layer is the patcher in `vnode/patch.ts`. The stack
+ * is deleted; the useful vocabulary it defined is kept below, as OPTIONAL
+ * members here, so capability detection / export / hit-testing / text
+ * measurement have a home when a renderer actually implements them.
  */
 export interface IRenderer {
   /**
@@ -28,6 +39,106 @@ export interface IRenderer {
    * Dispose renderer and clean up resources
    */
   dispose(): void;
+
+  /**
+   * Optional: capability flags for runtime feature detection, so callers can ask
+   * instead of assuming (e.g. "can this renderer do foreignObject?").
+   */
+  readonly capabilities?: RendererCapabilities;
+
+  /**
+   * Optional: element at a coordinate (selection, hover, click routing).
+   * @param x - X coordinate in world space
+   * @param y - Y coordinate in world space
+   */
+  hitTest?(x: number, y: number): VNode | null;
+
+  /**
+   * Optional: measure text for layout (wrapping, ellipsis, shape-fit).
+   * Implementations are expected to cache.
+   */
+  measureText?(text: string, style: TextStyle): TextMetrics;
+
+  /**
+   * Optional: export the rendered diagram as an image or SVG string.
+   */
+  export?(format: ExportFormat, options?: ExportOptions): Promise<string>;
+}
+
+/**
+ * Renderer capability flags for runtime feature detection.
+ */
+export interface RendererCapabilities {
+  /** Can perform hit testing (element at coordinate) */
+  supportsHitTest: boolean;
+
+  /** Can batch multiple render operations */
+  supportsBatching: boolean;
+
+  /** Can export as image/SVG */
+  supportsExport: boolean;
+
+  /** Can measure text/elements accurately */
+  supportsMeasurement: boolean;
+
+  /** Can render foreignObject (HTML inside SVG) */
+  supportsForeignObject: boolean;
+
+  /** Can apply filters/effects */
+  supportsFilters: boolean;
+
+  /** Can render to an offscreen buffer */
+  supportsOffscreen: boolean;
+}
+
+/**
+ * Text styling for measurement.
+ */
+export interface TextStyle {
+  fontFamily?: string;
+  fontSize?: number;
+  fontWeight?: string | number;
+  fontStyle?: string;
+  letterSpacing?: number;
+  lineHeight?: number;
+}
+
+/**
+ * Text measurement result.
+ */
+export interface TextMetrics {
+  width: number;
+  height: number;
+  baseline: number;
+}
+
+/**
+ * Bounding box result.
+ */
+export interface BoundingBox {
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+}
+
+/**
+ * Export format types.
+ */
+export type ExportFormat = 'png' | 'svg' | 'jpeg' | 'webp';
+
+/**
+ * Export options.
+ */
+export interface ExportOptions {
+  /** Image scale (default: 1) */
+  scale?: number;
+
+  /** JPEG/WebP quality 0-1 (default: 0.92) */
+  quality?: number;
+
+  /** Background color (default: transparent) */
+  backgroundColor?: string;
 }
 
 /**

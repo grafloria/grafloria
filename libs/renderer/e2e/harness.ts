@@ -17,6 +17,7 @@ import {
   JumpPointDetector,
   JumpPointRenderer,
   getPortPositionForShape,
+  createDomElement,
 } from '@grafloria/renderer';
 
 import { InteractionHandlerService } from '@grafloria/interaction-handler';
@@ -42,32 +43,13 @@ console.log = (...args: any[]) => {
 };
 function resetLogCount() { logCount = 0; }
 
-// ---- VNode -> DOM materializer (mirrors SVGRendererV2 / VNodeRendererService rules)
-function camelToKebab(s: string): string {
-  return s.replace(/([a-z0-9])([A-Z])/g, '$1-$2').toLowerCase();
-}
-const VERBATIM_ATTRS = new Set(['viewBox', 'preserveAspectRatio', 'textContent']);
+// ---- VNode -> DOM materializer
+// This used to be a hand-written copy of the live materialization rules, which
+// meant the e2e harness could drift away from what users actually see. It now
+// calls the SAME patcher the Angular canvas renders through (@grafloria/renderer's
+// VNodePatcher), so there is exactly one set of VNode → DOM rules.
 function vnodeToDom(vnode: any): Element {
-  const el = document.createElementNS(SVG_NS, vnode.type);
-  const props = vnode.props || {};
-  for (const [k, v] of Object.entries(props)) {
-    if (v === null || v === undefined) continue;
-    if (k === 'className') { el.setAttribute('class', String(v)); continue; }
-    if (k === 'textContent') { el.textContent = String(v); continue; }
-    if (k === 'style' && typeof v === 'object') {
-      el.setAttribute('style', Object.entries(v as any).map(([sk, sv]) => `${camelToKebab(sk)}:${sv}`).join(';'));
-      continue;
-    }
-    if (VERBATIM_ATTRS.has(k)) { el.setAttribute(k, String(v)); continue; }
-    el.setAttribute(camelToKebab(k), String(v));
-  }
-  if (vnode.key) el.setAttribute('data-vnode-key', String(vnode.key));
-  for (const c of vnode.children || []) {
-    if (!c) continue;
-    if (typeof c === 'string') { el.appendChild(document.createTextNode(c)); continue; }
-    el.appendChild(vnodeToDom(c));
-  }
-  return el;
+  return createDomElement(vnode);
 }
 
 // ---- scenario cell helpers -------------------------------------------------

@@ -1,4 +1,15 @@
-import type { IRenderer, PerformanceMetrics, SVGRendererConfig, CanvasRendererConfig } from './renderer.interface';
+import type {
+  IRenderer,
+  PerformanceMetrics,
+  SVGRendererConfig,
+  CanvasRendererConfig,
+  RendererCapabilities,
+  TextStyle,
+  TextMetrics,
+  BoundingBox,
+  ExportFormat,
+  ExportOptions,
+} from './renderer.interface';
 import type { VNode } from './vnode.types';
 import type { Rectangle } from '@grafloria/engine';
 
@@ -200,6 +211,62 @@ describe('IRenderer Interface', () => {
       const config: CanvasRendererConfig = {};
 
       expect(config).toBeDefined();
+    });
+  });
+
+  /**
+   * Vocabulary salvaged from the deleted second `IRenderer` (the VNode → DOM
+   * consumer stack: SVGRendererV2 / Canvas stub / HybridRenderer / factory /
+   * strategy-manager). The ideas were worth keeping even though the code was
+   * dead, so they live here as OPTIONAL members — a renderer opts in.
+   */
+  describe('Salvaged renderer vocabulary', () => {
+    test('a renderer may declare capabilities, hitTest, measureText and export', () => {
+      const capabilities: RendererCapabilities = {
+        supportsHitTest: true,
+        supportsBatching: false,
+        supportsExport: true,
+        supportsMeasurement: true,
+        supportsForeignObject: true,
+        supportsFilters: true,
+        supportsOffscreen: false,
+      };
+
+      const style: TextStyle = { fontFamily: 'Inter', fontSize: 12, fontWeight: 600 };
+      const metrics: TextMetrics = { width: 40, height: 14, baseline: 11 };
+      const box: BoundingBox = { x: 0, y: 0, width: 10, height: 10 };
+      const format: ExportFormat = 'svg';
+      const options: ExportOptions = { scale: 2, quality: 0.9, backgroundColor: '#fff' };
+
+      const renderer: IRenderer = {
+        mode: 'svg',
+        capabilities,
+        render: jest.fn(),
+        getPerformanceMetrics: jest.fn(),
+        dispose: jest.fn(),
+        hitTest: jest.fn(() => null),
+        measureText: jest.fn(() => metrics),
+        export: jest.fn(async () => '<svg/>'),
+      };
+
+      expect(renderer.capabilities?.supportsForeignObject).toBe(true);
+      expect(renderer.hitTest?.(0, 0)).toBeNull();
+      expect(renderer.measureText?.('hi', style)).toBe(metrics);
+      expect(box.width).toBe(10);
+      expect(format).toBe('svg');
+      expect(options.scale).toBe(2);
+    });
+
+    test('the optional members really are optional (SVGRenderer does not implement them)', () => {
+      const minimal: IRenderer = {
+        mode: 'svg',
+        render: jest.fn(),
+        getPerformanceMetrics: jest.fn(),
+        dispose: jest.fn(),
+      };
+
+      expect(minimal.capabilities).toBeUndefined();
+      expect(minimal.hitTest).toBeUndefined();
     });
   });
 });
