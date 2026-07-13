@@ -39,6 +39,45 @@ export function isShadowSpec(value: unknown): value is Shadow {
   );
 }
 
+/**
+ * The one flat colour that best stands in for a paint server.
+ *
+ * wave8/culling — Card 4: at a far-zoom LOD tier the renderer stops emitting
+ * paint servers entirely and paints this instead. A gradient across a shape that
+ * is 35x17 CSS pixels resolves to about one colour on the display anyway; what it
+ * costs is a `<defs>` entry, a `url(#…)` indirection, and — the expensive part —
+ * a VNode-cache bypass for every gradient entity in the scene, every frame.
+ *
+ * For a gradient that stand-in is the stop nearest the MIDDLE, not the first one:
+ * a two-stop white→black gradient read as "white" is a bigger visual lie than
+ * reading it as mid-grey, and the middle stop is what the eye integrates to.
+ * For a pattern it is the background it is drawn on — the marks are sub-pixel and
+ * what survives is the field they sit on.
+ */
+export function flattenPaint(spec: PaintSpec): string {
+  if (spec.type === 'linear' || spec.type === 'radial') {
+    const stops = spec.stops ?? [];
+    if (stops.length === 0) return FLATTEN_FALLBACK;
+
+    let best = stops[0];
+    let bestDelta = Math.abs((best.offset ?? 0) - 0.5);
+    for (const stop of stops) {
+      const delta = Math.abs((stop.offset ?? 0) - 0.5);
+      if (delta < bestDelta) {
+        best = stop;
+        bestDelta = delta;
+      }
+    }
+    return best.color ?? FLATTEN_FALLBACK;
+  }
+
+  // Pattern: dots/lines/grid/hatch/crosshatch.
+  return spec.backgroundColor ?? spec.color ?? FLATTEN_FALLBACK;
+}
+
+/** Used only when a spec carries no colour at all — a malformed spec still paints. */
+const FLATTEN_FALLBACK = '#888888';
+
 // ---------------------------------------------------------------------------
 // Stable hashing — identical specs (regardless of key order) share one def id.
 // ---------------------------------------------------------------------------
