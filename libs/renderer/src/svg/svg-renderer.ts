@@ -8,6 +8,10 @@ import { getMutationEpoch } from '@grafloria/engine';
 import type { DiagramDocumentEnvelope } from '@grafloria/engine';
 // Wave 5 Card 4: corridor separation for DIFFERENT-pair edges sharing a channel.
 import { computeChannelNudges, applyChannelNudges } from './channel-nudging';
+// Wave 8 (Performance & scale) — Card 6: incremental routing, and the off-thread
+// global solver the render loop now actually drives.
+import { RouteMemo, coalesce, inflate, ROUTE_INFLUENCE_PAD, type Rect } from './route-memo';
+import { RouteSolverBridge, type RouteSolverStats } from './route-solver-bridge';
 import type {
   IRenderer,
   PerformanceMetrics,
@@ -54,6 +58,7 @@ import {
   buildPaintServerVNode,
   buildShadowFilterVNode,
   paintDefId,
+  flattenPaint,
 } from './paint-servers';
 import { LIGHT_THEME } from '../themes';
 // Styling & theming — instance-scoped CSS variables + the named-style cascade.
@@ -88,7 +93,7 @@ import { LruCache } from '../utils/lru-cache';
 import { hasDocument } from '../platform';
 
 // Import routing types
-import type { RoutedPath, RoutingAlgorithm } from '@grafloria/engine';
+import type { RoutedPath, RoutingAlgorithm, SolverEdge } from '@grafloria/engine';
 
 // Phase 3.2: Shape-aware port positioning
 // Wave 6 (Ports & connections): the port seam — group resolution (Card 3), the
@@ -99,6 +104,9 @@ import { glyphHalfExtents, renderPortGlyph } from './port-glyph';
 import { nudgePortLabels, portLabelGeometry, renderPortLabel } from './port-label';
 import { applySpread, assignSpreadLanes, resolveSpot } from './port-spots';
 import { portTypeColor, resolvePortConfig } from '@grafloria/engine';
+// wave8/culling — Card 4: the far-zoom path reducer. Douglas–Peucker has been in
+// the engine since Phase 2.2 and the renderer had never called it.
+import { PathSimplifier } from '@grafloria/engine';
 import type { ResolvedPortConfig } from '@grafloria/engine';
 // Wave 6 — Card 2: the link-pipeline extension seams (anchors, connection-point
 // strategies, connectors). The renderer CONSUMES these registries; it does not
@@ -442,6 +450,35 @@ export class SVGRenderer implements IRenderer {
   // reads other links' points).
   private frameRoutes = new Map<string, RoutedPath>();
 
+  // Wave 8 — Card 6: the frame's obstacle arrays (see frameObstacles()). Cleared
+  // at the top of every links pass; rebuilt lazily on first use.
+  private frameObstacleCache: {
+    nodes: NodeModel[];
+    routing: Array<{ id: string; x: number; y: number; width: number; height: number }>;
+    all: Array<{ id: string; x: number; y: number; width: number; height: number }>;
+    blockIds: Set<string>;
+  } | null = null;
+
+  // Wave 8 — Card 6: routes that SURVIVE the frame. The per-frame map above is
+  // rebuilt from scratch every render; this one remembers what each link was
+  // routed to and why, so an unchanged link is never re-routed. See route-memo.ts
+  // for what "unchanged" has to mean (it is not "its endpoints didn't move").
+  private routeMemo = new RouteMemo();
+  /** Set true to force the next frame to re-route everything (first frame, config changes). */
+  private routeMemoDirty = true;
+
+  // Wave 8 — Card 6: the OFF-THREAD global solver (opt-in; see config.globalRouting).
+  // Created lazily so a renderer that never asks for it never constructs a host.
+  private solverBridge: RouteSolverBridge | null = null;
+  /**
+   * Monotonic id of "the world the obstacles describe". Bumped whenever a node
+   * rect or the group state changes. This is what lets an ASYNC solver answer be
+   * matched to the world it was computed for — and discarded if that world is
+   * gone. Without it, a solve that lands one frame late paints links through
+   * nodes that have since moved.
+   */
+  private worldVersion = 0;
+
   // Wave 6 — Card 5: per-frame multi-link spread lanes, keyed by PORT id. Every
   // link on a spreading port needs to know how many siblings it shares that port
   // with, so the lane assignment is computed once per port per frame rather than
@@ -455,6 +492,10 @@ export class SVGRenderer implements IRenderer {
   // Card 5: ownership is per-renderer config; the optimizer is rebuilt in the
   // constructor once the merged config is known.
   private edgeOptimizer = new EdgeOptimizer();
+
+  // wave8/culling — Card 4: stateless Douglas–Peucker, used to reduce the DRAWN
+  // polyline below the `link-detail` tier. See pathForLOD.
+  private pathSimplifier = new PathSimplifier();
 
   // Per-frame outputs of the optimizer, keyed by link id.
   private frameJumps = new Map<string, Array<{ t1: number; segmentIndex?: number }>>();
@@ -482,6 +523,25 @@ export class SVGRenderer implements IRenderer {
   // `<defs>` entry. Cleared at the top of every render() and materialised into
   // the root SVG's `<defs>` child after the layers have been built.
   private frameDefs = new Map<string, VNode>();
+
+  // wave8/culling — the LOD tier and zoom THIS frame is being drawn at.
+  //
+  // Held as frame state, rather than threaded through every call, for one
+  // reason: the LOD decision has to reach places the `lod` argument does not go —
+  // the style cascade (`resolvePaint`) and the cache-eligibility predicates
+  // (`nodeUsesPaintServer`), which are called from deep inside style computation.
+  // Threading a parameter through all of them would have been a 40-file diff
+  // across code three other Wave-8 agents are editing.
+  //
+  // Defaults to 'high'/1: a renderer that is asked for a style OUTSIDE a frame
+  // (tests do this) must get the full-fidelity answer, not a far-zoom one.
+  private frameLod: LODLevel = 'high';
+  private frameZoom = 1;
+
+  // Per-frame memo for `lodAllows` — see the note there. Keyed by feature; the
+  // tier it was computed for is held alongside so a tier change invalidates it.
+  private lodCache = new Map<LODFeature, boolean>();
+  private lodCacheTier: LODLevel | null = null;
 
   // Performance tracking
   private lastRenderTime = 0;
@@ -526,6 +586,14 @@ export class SVGRenderer implements IRenderer {
       // Wave 5 (Edge routing)
       channelNudging: config.channelNudging ?? true,
       jumpOwnership: config.jumpOwnership ?? 'both',
+      // Wave 8 (Performance & scale) — Card 6: the global, off-thread route
+      // solver. OFF by default: its geometry is deliberately different from the
+      // one-at-a-time router, so switching it on globally would move every route
+      // in every existing diagram.
+      globalRouting: config.globalRouting ?? false,
+      routeSolverPort: config.routeSolverPort,
+      routeSolverOptions: config.routeSolverOptions,
+      onRoutesRefined: config.onRoutesRefined,
       // Wave 4 (Styling). `colorMode` is OPT-IN: unset means "use the theme I was
       // given and watch nothing", which is exactly the pre-Wave-4 behaviour.
       colorMode: config.colorMode ?? undefined,
@@ -690,6 +758,15 @@ export class SVGRenderer implements IRenderer {
 
     // Get LOD level from engine
     const lod = diagram.getLODLevel(zoom);
+
+    // wave8/culling: publish the tier for the parts of the pipeline the `lod`
+    // argument never reaches (the style cascade and the cache-eligibility
+    // predicates). See the field docs.
+    this.frameLod = lod;
+    this.frameZoom = zoom > 0 && Number.isFinite(zoom) ? zoom : 1;
+    // Drop the per-frame LOD memo: the TIER may be unchanged since the last frame
+    // while the POLICY behind it was replaced (setLODConfig / registerLODTier).
+    this.lodCache.clear();
 
     // Apply zoom to viewBox (zoom around center point)
     // The center point should remain constant regardless of zoom level
@@ -1552,10 +1629,30 @@ export class SVGRenderer implements IRenderer {
   /**
    * Dispose renderer and clean up resources
    */
+  /**
+   * Wave 8 — Card 6: how many links this frame actually had to route, and how
+   * many were served from the previous frame.
+   *
+   * Public because a cache that silently stops hitting is indistinguishable from
+   * no cache at all — it just gets slow again, and nothing says so. Tests assert
+   * on this; the benchmark harness prints it.
+   */
+  getRoutingStats(): { routed: number; reused: number; cached: number } {
+    return { ...this.routeMemo.stats, cached: this.routeMemo.size };
+  }
+
   dispose(): void {
     if (this.disposed) return;
 
     this.disposed = true;
+
+    // Wave 8 — Card 6: the route memo outlives the frame by design, so it must
+    // not outlive the renderer. (It holds a routed polyline per link plus a rect
+    // per node — on a 10k diagram that is real memory to hand back.)
+    this.routeMemo.clear();
+    this.frameObstacleCache = null;
+    this.solverBridge?.dispose();
+    this.solverBridge = null;
 
     // Stop the FPS sampler. It used to run FOREVER: `startFPSTracking` opened a
     // 1s interval in the constructor that nothing ever cleared, so every disposed
@@ -1659,35 +1756,120 @@ export class SVGRenderer implements IRenderer {
       }
     }
 
+    // =====================================================================
+    // wave8/culling — Card 4: THE ECONOMIC LOD GATE.
+    //
+    // This block is where a far-zoom frame stopped costing 63 seconds.
+    //
+    // Every pass below is O(nodes) or worse PER EDGE, and every one of them
+    // exists to make edges LEGIBLE — route around obstacles, fan parallel
+    // bundles onto their own lanes, nudge shared corridors apart, hop crossings.
+    // At 0.25 zoom a node is 35x17 CSS pixels and every one of those decisions
+    // is sub-pixel: the picture is byte-identical whether we compute them or not,
+    // and profiling says computing them is 96-99% of the frame.
+    //
+    // So at a tier that has dropped `routing`, we do not compute them. Edges
+    // become direct port-to-port polylines, in O(1) each instead of O(nodes)
+    // each. That is not a cheaper route — it is the SAME PICTURE, arrived at
+    // without the arithmetic.
+    //
+    // NOTE for wave8/routing: this is a gate at the CALL SITE. `computeAutoRoute`
+    // and everything under it is untouched and still owns how a route is found —
+    // this only decides whether finding one can possibly matter.
+    // =====================================================================
+    const routingLod = this.lodAllows('routing', lod);
+    const detailLod = this.lodAllows('link-detail', lod);
+
     // Wave 4 — Card 4: assign each link its lane in its parallel bundle BEFORE
     // routing, so the route can be separated in the same pass. Computed over the
     // WHOLE diagram, not just the visible links: a bundle whose other members are
     // scrolled off-screen must still keep this one on its own lane, or links
     // would visibly jump lanes as you pan.
-    this.computeParallelSeparation();
+    //
+    // Lane offsets are a few pixels wide; below the routing tier they are not
+    // resolvable. Cleared rather than skipped — a stale lane assignment from the
+    // last near-zoom frame would offset endpoints against a route that no longer
+    // has lanes.
+    if (routingLod) {
+      this.computeParallelSeparation();
+    } else {
+      this.frameSeparation.clear();
+    }
+
+    // Wave 8 — Card 6: work out what actually changed BEFORE routing anything.
+    // Diffs the node rects against last frame, asks the engine's link spatial
+    // index which links' corridors those changes touched, and forgets exactly
+    // those routes. Everything else is served from the previous frame.
+    this.invalidateStaleRoutes();
 
     for (const link of sortedLinks) {
       if (this.linkHasManualWaypoints(link)) continue;
       const endpoints = this.getLinkEndpoints(link);
       if (!endpoints) continue;
-      const routed = this.computeAutoRoute(link, endpoints);
+
+      // The key IS the routing inputs. An endpoint that moved changes the key by
+      // construction — no separate "did my node move?" check, and no way for one
+      // to be forgotten. What the key CANNOT see is a third-party obstacle moving
+      // into this link's path; that is what invalidateStaleRoutes() above is for.
+      //
+      // `routingLod` is IN the key, and that is not decoration. The LOD gate and
+      // the memo were built by different hands against different trees: the gate
+      // decides A*-vs-straight-line, the memo decides recompute-vs-reuse, and a
+      // link routed coarse at zoom 0.3 has the SAME endpoints — hence the same
+      // key — as the same link routed properly at zoom 0.6. Without the flag,
+      // zooming back IN serves the far-zoom straight line from cache and the
+      // diagram never recovers its real routes. Two correct changes, composed
+      // into a bug; the key is where they are made to compose.
+      const key = this.routeKey(link, endpoints, routingLod);
+      let routed = this.routeMemo.lookup(link.id, key);
+
+      if (!routed) {
+        const fresh = this.routeForLOD(link, endpoints, routingLod);
+        if (fresh) {
+          this.routeMemo.store(link.id, key, fresh);
+          routed = fresh;
+        } else {
+          // No route: make sure a previous frame's answer cannot linger.
+          this.routeMemo.drop(link.id);
+        }
+      }
+
       if (routed) {
         this.frameRoutes.set(link.id, routed);
         this.syncLinkPoints(link, routed.points);
       }
     }
 
+    // Wave 8 — Card 6: the OFF-THREAD global solver. Runs after the synchronous
+    // routes are in hand, never instead of them: `render()` cannot await a
+    // worker, so the sync routes are what gets painted THIS frame, and the
+    // solver's better answer is adopted on a later one. Opt-in.
+    this.applyGlobalSolver(sortedLinks);
+
     // Wave 5 — Card 4: corridor separation. Runs AFTER routing (it needs the
     // final polylines) and BEFORE the optimizer (jumps and labels must see the
     // nudged geometry, not the stacked one). Computed among the frame's routed
     // links: a corridor-mate scrolled off-screen doesn't hold its lane — the
     // separation is a legibility pass, not a persistent assignment.
-    this.applyChannelNudging(sortedLinks);
+    //
+    // A legibility pass on an illegible view is pure cost: skipped below the
+    // routing tier (and direct polylines share no corridors to begin with).
+    if (routingLod) this.applyChannelNudging(sortedLinks);
 
     // Wave 4 — Card 7: THE diagram-wide edge pass. Runs once, after every link's
     // geometry is final and before any link builds its VNode, because both of its
     // outputs (jump-overs, label placements) are functions of the WHOLE picture.
-    this.runEdgeOptimizer();
+    //
+    // Both of those outputs are gated on `link-detail` at draw time, and it walks
+    // EVERY link and EVERY node in the diagram to produce them — so below that
+    // tier it is computing an answer nobody will read. Its outputs are cleared,
+    // not left stale, for the same reason as the lanes above.
+    if (detailLod) {
+      this.runEdgeOptimizer();
+    } else {
+      this.frameJumps.clear();
+      this.frameLabelOffsets.clear();
+    }
 
     // The link VNode cache keys off `link.isDirty`, but a link's rendered output
     // also depends on things that are NOT on the link — where its nodes moved to,
@@ -1706,6 +1888,227 @@ export class SVGRenderer implements IRenderer {
       },
       children,
     };
+  }
+
+  // =========================================================================
+  // Wave 8 (Performance & scale) — Card 6: incremental routing
+  // =========================================================================
+
+  /**
+   * Everything that determines a link's route, as a string.
+   *
+   * If two frames produce the same key then `computeAutoRoute` — a pure function
+   * of these inputs and the obstacle set — would produce the same polyline, so we
+   * serve the old one. Which means: anything computeAutoRoute reads MUST be in
+   * here, or the cache serves a stale route. The obstacle set is the single input
+   * deliberately left out (it is the whole diagram); it is handled instead by
+   * invalidateStaleRoutes(), which evicts on obstacle MOTION.
+   *
+   * Endpoints are quantised to 1/100 unit. They are derived from node positions
+   * and port layouts in floating point, and an endpoint that is unchanged in
+   * every way that matters can still differ in the last mantissa bit; keying on
+   * the raw float would miss forever and quietly hand back the O(scene)
+   * behaviour this card exists to delete — a cache that never hits looks exactly
+   * like no cache at all, and says nothing while it does it.
+   */
+  private routeKey(
+    link: LinkModel,
+    endpoints: NonNullable<ReturnType<SVGRenderer['getLinkEndpoints']>>,
+    routingLod: boolean
+  ): string {
+    const q = (v: number) => Math.round(v * 100);
+    const sep = this.frameSeparation.get(link.id) ?? 0;
+    const jetty = link.style?.jetty ?? '-';
+    const isLoop = link.isSelfLoop();
+
+    return [
+      // Which ROUTER produced this answer, not just what it was given. A coarse
+      // far-zoom line and a real A* route share every other input.
+      routingLod ? 'a*' : 'coarse',
+      q(endpoints.start.x),
+      q(endpoints.start.y),
+      q(endpoints.end.x),
+      q(endpoints.end.y),
+      endpoints.sourceDirection ?? '-',
+      endpoints.targetDirection ?? '-',
+      this.routerForLink(link),
+      link.pathType ?? '-',
+      jetty,
+      sep,
+      // a self-loop is routed from the node's BOX, not just from its two ports
+      isLoop ? this.selfLoopBoxKey(link) : '-',
+    ].join('|');
+  }
+
+  /** The source node's box — the extra input a self-loop's route depends on. */
+  private selfLoopBoxKey(link: LinkModel): string {
+    const id = (link as any).sourceNodeId || (link as any).source;
+    const node = id ? this.engine.getDiagram()?.getNode(id) : undefined;
+    if (!node) return 'loop';
+    return `loop:${Math.round(node.position.x)},${Math.round(node.position.y)},${Math.round(
+      node.size.width
+    )},${Math.round(node.size.height)}`;
+  }
+
+  /**
+   * Forget the routes that the world just invalidated — and ONLY those.
+   *
+   * A link needs re-routing if one of its endpoint nodes moved (the route key
+   * catches that by itself, because the endpoints ARE the key) OR if some OTHER
+   * node moved into or out of the corridor it runs through. The second case is
+   * the one that matters and the one that is easy to miss: the link did not
+   * change, its own nodes did not change, and yet a wall just appeared across
+   * its path. "Re-route the links whose endpoints moved" is fast and wrong.
+   *
+   * So: diff the node rects against last frame; every node that moved, resized,
+   * appeared or vanished contributes both the rect it VACATED and the rect it now
+   * OCCUPIES; ask the engine's link spatial index — which is keyed on each link's
+   * routed bounding box, because syncLinkPoints refreshes it — which links run
+   * through those regions once the routing clearance is added; evict exactly them.
+   */
+  private invalidateStaleRoutes(): void {
+    const diagram = this.engine.getDiagram();
+    if (!diagram) return;
+
+    // A config change (or the very first frame) means we cannot trust anything
+    // we cached. Drop it and re-derive from the world as it is now.
+    if (this.routeMemoDirty) {
+      this.routeMemo.clear();
+      this.frameObstacleCache = null;
+      this.routeMemoDirty = false;
+      this.worldVersion++;
+    }
+
+    const rects = new Map<string, Rect>();
+    for (const node of diagram.getNodes()) {
+      rects.set(node.id, {
+        x: node.position.x,
+        y: node.position.y,
+        width: node.size.width,
+        height: node.size.height,
+      });
+    }
+
+    // Anything that changes the obstacle set WITHOUT moving a node rect — a group
+    // collapsing hides its members and raises a block — drops the cache whole.
+    // Rare, and reasoning about which links a collapse touched is how you ship a
+    // stale route.
+    const dirty = this.routeMemo.beginFrame(rects, this.obstacleEpoch(diagram));
+
+    if (dirty.length === 0) {
+      // Nothing moved: the obstacle arrays from last frame still describe the
+      // world exactly. KEEPING them (identity and all) is what makes an idle or
+      // pan frame free — the engine memoises its merged obstacle set and spatial
+      // index on that array's identity, so a fresh array every frame would
+      // rebuild both for a world that did not change.
+      return;
+    }
+
+    // The world moved, so the obstacle arrays are stale. A NEW array (not a
+    // mutated one) is required: its identity is the engine's memo key.
+    this.frameObstacleCache = null;
+    this.worldVersion++;
+
+    const stale = new Set<string>();
+    for (const region of coalesce(dirty)) {
+      for (const link of diagram.getVisibleLinks(inflate(region, ROUTE_INFLUENCE_PAD))) {
+        stale.add(link.id);
+      }
+    }
+    this.routeMemo.invalidate(stale);
+  }
+
+  /**
+   * Wave 8 — Card 6: drive the global penalty-field solver, and adopt its answer
+   * when (and only when) it describes the world we are actually drawing.
+   *
+   * Order of events across frames, which is the whole design:
+   *
+   *   frame N   — the sync router paints correct routes; we hand the solver this
+   *               world (edges + obstacles + version) and carry on. Nothing waits.
+   *   frame N+k — the solve lands. If the world is still version N, its routes are
+   *               adopted and `onRoutesRefined` asks the host for a re-render. If
+   *               the world has MOVED, the answer is dropped on the floor: it was
+   *               computed against obstacles that are not there any more, and
+   *               painting it would run links through nodes.
+   *
+   * So a link's geometry is always either "correct, one-at-a-time" or "correct,
+   * globally optimised" — never "optimised for a diagram that no longer exists".
+   */
+  private applyGlobalSolver(links: LinkModel[]): void {
+    if (!this.config.globalRouting) return;
+
+    const diagram = this.engine.getDiagram();
+    if (!diagram) return;
+
+    if (!this.solverBridge) {
+      this.solverBridge = new RouteSolverBridge({
+        port: this.config.routeSolverPort,
+        solver: this.config.routeSolverOptions,
+        onRoutesReady: this.config.onRoutesRefined,
+      });
+    }
+
+    const version = this.worldVersion;
+
+    // Already solved for this world? Take the good routes.
+    if (this.solverBridge.hasRoutesFor(version)) {
+      for (const link of links) {
+        if (this.linkHasManualWaypoints(link)) continue;
+        if (link.isSelfLoop()) continue; // a self-loop has no corridor to share
+        const solved = this.solverBridge.routeFor(link.id, version);
+        if (!solved) continue;
+        this.frameRoutes.set(link.id, solved);
+        this.syncLinkPoints(link, solved.points);
+      }
+      return;
+    }
+
+    // Not solved yet — describe this world and ask. Idempotent per version, so
+    // calling it every frame costs nothing.
+    const edges: SolverEdge[] = [];
+    for (const link of links) {
+      if (this.linkHasManualWaypoints(link) || link.isSelfLoop()) continue;
+      const endpoints = this.getLinkEndpoints(link);
+      if (!endpoints) continue;
+      edges.push({
+        id: link.id,
+        start: { x: endpoints.start.x, y: endpoints.start.y },
+        end: { x: endpoints.end.x, y: endpoints.end.y },
+        sourceDirection: endpoints.sourceDirection,
+        targetDirection: endpoints.targetDirection,
+        jetty: link.style?.jetty,
+      });
+    }
+    if (edges.length === 0) return;
+
+    this.solverBridge.submit(version, edges, this.frameObstacles(diagram).routing);
+  }
+
+  /** Wave 8 — Card 6: what the off-thread solver has been doing. */
+  getRouteSolverStats(): RouteSolverStats | null {
+    return this.solverBridge ? { ...this.solverBridge.stats } : null;
+  }
+
+  /**
+   * A fingerprint of the obstacle facts that are NOT node rectangles: which
+   * groups are collapsed, and where their blocks sit. Node motion is tracked
+   * precisely; this only has to notice that GROUP state moved.
+   */
+  private obstacleEpoch(diagram: NonNullable<ReturnType<DiagramEngine['getDiagram']>>): string {
+    const groups = (diagram as any).getGroups?.() ?? [];
+    if (groups.length === 0) return '';
+    const parts: string[] = [];
+    for (const g of groups as any[]) {
+      if (!g.isCollapsed) continue;
+      const r = g.size
+        ? `${g.position.x},${g.position.y},${g.size.width},${g.size.height}`
+        : g.bounds
+          ? `${g.bounds.x},${g.bounds.y},${g.bounds.width},${g.bounds.height}`
+          : 'x';
+      parts.push(`${g.id}:${r}:${g.members?.size ?? 0}`);
+    }
+    return parts.sort().join(';');
   }
 
   // =========================================================================
@@ -2454,7 +2857,26 @@ export class SVGRenderer implements IRenderer {
    * Returns false when there is no diagram (nothing to render anyway).
    */
   private lodAllows(feature: LODFeature, lod: LODLevel): boolean {
-    return this.engine.getDiagram()?.shouldRender(feature, lod) ?? false;
+    // wave8/culling: MEMOISED PER FRAME. `shouldRender` linearly scans the tier
+    // list and allocates a closure on every call, and this gate is asked ~12
+    // times per entity per frame (shadows, panel, label, html body, lock, ports,
+    // handles, decorations, and now routing/link-detail/gradients). On a 5k scene
+    // that is tens of thousands of array scans to answer at most ten distinct
+    // questions — the tier does not change during a frame.
+    //
+    // The cache is cleared at the top of render() (so a setLODConfig() between
+    // frames is picked up) and whenever the tier itself changes.
+    if (this.lodCacheTier !== lod) {
+      this.lodCacheTier = lod;
+      this.lodCache.clear();
+    }
+
+    const cached = this.lodCache.get(feature);
+    if (cached !== undefined) return cached;
+
+    const allowed = this.engine.getDiagram()?.shouldRender(feature, lod) ?? false;
+    this.lodCache.set(feature, allowed);
+    return allowed;
   }
 
   /**
@@ -3973,6 +4395,58 @@ export class SVGRenderer implements IRenderer {
   }
 
   /**
+   * wave8/culling — Card 4. The path type to EMIT at this tier.
+   *
+   * Below the `link-detail` tier a curve is drawn as its polyline. A cubic needs
+   * control points computed per segment and emits a `C` command per bend; at a
+   * zoom where the whole edge is a few dozen pixels the curve and its chord are
+   * the same handful of pixels, so the arithmetic buys nothing.
+   *
+   * Orthogonal stays orthogonal — its right angles are its MEANING (a flowchart
+   * that goes diagonal at low zoom has changed what it says, not how finely it
+   * says it), and the orthogonal emitter is a cheap `L` walk anyway.
+   */
+  private pathTypeForLOD(
+    link: LinkModel,
+    lod: LODLevel
+  ): 'direct' | 'orthogonal' | 'smooth' | 'bezier' {
+    const type = this.renderPathType(link);
+    if (this.lodAllows('link-detail', lod)) return type;
+    return type === 'smooth' || type === 'bezier' ? 'direct' : type;
+  }
+
+  /**
+   * wave8/culling — Card 4. The polyline to DRAW at this tier.
+   *
+   * Below the `link-detail` tier the path is run through the engine's
+   * `PathSimplifier` (Douglas–Peucker) with a tolerance of one SCREEN pixel —
+   * `1 / zoom` world units, so the tolerance tightens as you zoom in and the
+   * simplification silently retires itself. A bend the user cannot resolve is a
+   * `L` command, a VNode diff and a DOM attribute for nothing.
+   *
+   * The DRAWN path only. `link.points` keeps the true geometry (see the call
+   * site) — hit-testing, link bounds and the spatial index must not be told a
+   * simplification is the truth.
+   *
+   * A route that is already 2 points (which is what `computeCoarseRoute` emits,
+   * so: the common far-zoom case) short-circuits without allocating.
+   */
+  private pathForLOD(routed: RoutedPath, lod: LODLevel): RoutedPath {
+    if (this.lodAllows('link-detail', lod)) return routed;
+    if (routed.points.length <= 2) return routed;
+
+    const epsilon = 1 / this.frameZoom;
+    const simplified = this.pathSimplifier.simplify(routed.points, epsilon);
+    if (simplified.length === routed.points.length) return routed;
+
+    return {
+      ...routed,
+      points: simplified,
+      bendCount: Math.max(0, simplified.length - 2),
+    };
+  }
+
+  /**
    * Calculate distance between two points
    */
   private distance(a: { x: number; y: number }, b: { x: number; y: number }): number {
@@ -4254,20 +4728,25 @@ export class SVGRenderer implements IRenderer {
     if (endpoints && !hasManualWaypoints) {
       // Routes are pre-computed for the whole frame in renderLinksLayer so that
       // jump-point detection sees every link's CURRENT geometry (not last frame's).
-      const routedPath = this.frameRoutes.get(link.id) ?? this.computeAutoRoute(link, endpoints);
+      // The fallback goes through routeForLOD, not computeAutoRoute, so a link the
+      // pre-pass somehow missed cannot smuggle a full obstacle search into a tier
+      // that has dropped routing.
+      const routedPath =
+        this.frameRoutes.get(link.id) ??
+        this.routeForLOD(link, endpoints, this.lodAllows('routing', lod));
 
       if (routedPath) {
         points = routedPath.points;
-        // Wave 6 — Card 2: a REGISTERED connector owns the polyline → `d` step.
-        // This is the MAIN link path (auto-routed, no manual waypoints), so the
-        // hook has to live here as well as in generatePathData — that one only
-        // serves the manual-waypoint branch, and a connector that worked for
-        // dragged links but not for ordinary ones would be worse than none.
+        // wave8/culling — Card 4: what gets DRAWN at this tier. The model keeps
+        // the true polyline (`syncLinkPoints` below is unchanged, so link bounds,
+        // hit-testing and the spatial index all still see real geometry) — this
+        // only simplifies the `d` we hand the DOM.
+        const drawPath = this.pathForLOD(routedPath, lod);
         pathData =
-          this.customConnectorPath(link, points) ??
+          this.customConnectorPath(link, drawPath.points) ??
           this.convertRoutedPathToSVG(
-            routedPath,
-            this.renderPathType(link),   // Card 0: the CONNECTOR draws the polyline
+            drawPath,
+            this.pathTypeForLOD(link, lod),   // Card 0: the CONNECTOR draws the polyline
             endpoints.sourceDirection,
             endpoints.targetDirection,
             this.linkOwnNodes(link),
@@ -4766,6 +5245,16 @@ export class SVGRenderer implements IRenderer {
     if (paint == null) return undefined;
     if (typeof paint === 'string') return paint;
     if (isPaintSpec(paint)) {
+      // wave8/culling — Card 4: below the `gradients` tier a paint server
+      // collapses to one representative colour. A four-stop gradient across a
+      // 35x17px smudge is four stops the display cannot show — and the saving is
+      // not the `<defs>` entry (that is deduped and cheap), it is that a flat
+      // colour lets the entity back into the VNODE CACHE. Paint-server entities
+      // deliberately bypass it (see nodeUsesPaintServer), so every gradient node
+      // in the scene rebuilds its VNode from scratch on every single frame.
+      if (!this.lodAllows('gradients', this.frameLod)) {
+        return flattenPaint(paint);
+      }
       const id = paintDefId(paint);
       if (!this.frameDefs.has(id)) {
         this.frameDefs.set(id, buildPaintServerVNode(id, paint));
@@ -4790,6 +5279,12 @@ export class SVGRenderer implements IRenderer {
    */
   private resolveShadowFilter(shadow: boolean | Shadow | undefined): string | undefined {
     if (!isShadowSpec(shadow)) return undefined;
+    // wave8/culling: a `<filter>` def is a paint server like any other, and it is
+    // an SVG filter — the single most expensive thing you can ask a rasteriser
+    // for. It goes when `gradients` goes, which is also what makes
+    // `paintServersActive()` a true statement about the whole `<defs>` block and
+    // therefore what makes the cache-bypass safe to lift. See paintServersActive.
+    if (!this.paintServersActive()) return undefined;
     const id = paintDefId(shadow);
     if (!this.frameDefs.has(id)) {
       this.frameDefs.set(id, buildShadowFilterVNode(id, shadow));
@@ -4807,13 +5302,34 @@ export class SVGRenderer implements IRenderer {
    * named style or a theme type-default, not just from the entity's own style.
    */
   private nodeUsesPaintServer(node: NodeModel): boolean {
+    if (!this.paintServersActive()) return false;
     const s = this.resolvedNodeStyle(node);
     return isPaintSpec(s.fill) || isPaintSpec(s.stroke) || isShadowSpec(s.shadow);
   }
 
   private linkUsesPaintServer(link: LinkModel): boolean {
+    if (!this.paintServersActive()) return false;
     const s = this.resolvedLinkStyle(link);
     return isPaintSpec(s.stroke) || isShadowSpec(s.shadow);
+  }
+
+  /**
+   * wave8/culling — Card 4. Whether THIS frame emits paint servers at all.
+   *
+   * THE INVARIANT: when this is false, NOTHING registers a `<defs>` entry —
+   * `resolvePaint` returns a flat colour and `resolveShadowFilter` returns
+   * undefined. They are the only two producers. So no VNode built this frame can
+   * hold a `url(#…)`, and the cache-bypass that exists purely to keep such a ref
+   * from being orphaned has nothing left to protect — which is precisely what
+   * lets a gradient-heavy scene use the VNode cache at far zoom instead of
+   * rebuilding every gradient node from scratch on every frame.
+   *
+   * Both producers must stay gated on THIS predicate. Gate one and not the other
+   * and you get the original bug back: a cached VNode pointing at a def that was
+   * never emitted.
+   */
+  private paintServersActive(): boolean {
+    return this.lodAllows('gradients', this.frameLod);
   }
 
   // =========================================================================
@@ -6221,6 +6737,154 @@ export class SVGRenderer implements IRenderer {
     return { hiddenByCollapse, groupBlocks, container };
   }
 
+  /**
+   * Wave 8 — Card 6: the frame's obstacle arrays, built ONCE.
+   *
+   * `computeAutoRoute` used to rebuild these per link: `getNodes()`, a filter, a
+   * map — O(nodes) allocations for every link it routed, every frame. On the 10k
+   * benchmark that is 10,000 objects × ~700 visible links = 7 million throwaway
+   * rects per frame, before any routing happened at all.
+   *
+   * Two arrays, because the router needs two different sets:
+   *   `routing` — what a link routes AGAINST (minus collapsed-away members);
+   *   `all`     — every node, used by the own-node penetration fallback.
+   *
+   * The ARRAY IDENTITY matters as much as the contents: `RoutingEngine` memoises
+   * its merged obstacle set and spatial index on it, so handing every link the
+   * same array is what collapses N index builds into one.
+   *
+   * NOTE ON THE SOURCE/TARGET EXCLUSION — read before "fixing" this. The old
+   * per-link build filtered the link's own two nodes out of the obstacle array.
+   * That filter never did anything: `RoutingEngine.route()` unions the request's
+   * obstacles with its GLOBAL obstacle map, and `DiagramEngine` registers every
+   * node in that map, so both endpoint nodes came straight back in. Dropping the
+   * filter is therefore behaviour-preserving (the union is identical), which is
+   * why the 225-assertion line harness does not move.
+   *
+   * It is also a LATENT BUG, and a big one: because a link's own endpoints are
+   * obstacles, the straight port-to-port path "collides" for essentially every
+   * link, so essentially every link falls through to A* obstacle avoidance —
+   * measured at 72/72 links on the benchmark scene. Making the exclusion real
+   * would move routes across the whole product and is a routing-semantics
+   * decision, not a performance one. Left as found, and now documented.
+   */
+  private frameObstacles(diagram: ReturnType<DiagramEngine['getDiagram']>): {
+    nodes: NodeModel[];
+    routing: Array<{ id: string; x: number; y: number; width: number; height: number }>;
+    all: Array<{ id: string; x: number; y: number; width: number; height: number }>;
+    blockIds: Set<string>;
+  } {
+    if (this.frameObstacleCache) return this.frameObstacleCache;
+
+    const nodes: NodeModel[] = diagram ? diagram.getNodes() : [];
+    const group = this.collectGroupRouting(diagram, undefined, undefined);
+
+    const all: Array<{ id: string; x: number; y: number; width: number; height: number }> = [];
+    const routing: Array<{ id: string; x: number; y: number; width: number; height: number }> = [];
+    for (const node of nodes) {
+      const rect = {
+        id: node.id,
+        x: node.position.x,
+        y: node.position.y,
+        width: node.size.width,
+        height: node.size.height,
+      };
+      all.push(rect);
+      if (!group.hiddenByCollapse.has(node.id)) routing.push(rect);
+    }
+    for (const block of group.groupBlocks) routing.push(block);
+
+    this.frameObstacleCache = {
+      nodes,
+      routing,
+      all,
+      blockIds: new Set(group.groupBlocks.map((b) => b.id)),
+    };
+    return this.frameObstacleCache;
+  }
+
+  /**
+   * The obstacle array this link routes against — the frame's shared array in
+   * the overwhelming majority of cases.
+   *
+   * The one link that cannot use it is a PROXY LINK whose endpoint IS a collapsed
+   * group: that link must not treat its own group block as a wall. Rare enough
+   * to pay for a private array, and the group-block exclusion (unlike the node
+   * one above) is worth preserving because a block is not necessarily in the
+   * engine's global map.
+   */
+  private obstaclesForLink(
+    frame: ReturnType<SVGRenderer['frameObstacles']>,
+    groupInfo: ReturnType<SVGRenderer['collectGroupRouting']>,
+    sourceNodeId: string | undefined,
+    targetNodeId: string | undefined
+  ): Array<{ id: string; x: number; y: number; width: number; height: number }> {
+    const touchesBlock =
+      (sourceNodeId !== undefined && frame.blockIds.has(sourceNodeId)) ||
+      (targetNodeId !== undefined && frame.blockIds.has(targetNodeId));
+    if (!touchesBlock) return frame.routing;
+
+    return frame.routing.filter(
+      (o) => !frame.blockIds.has(o.id) || (o.id !== sourceNodeId && o.id !== targetNodeId)
+    );
+  }
+
+  /**
+   * Card 4. The route for this link AT THIS TIER: the real one when the tier
+   * renders `routing`, a direct polyline when it does not.
+   *
+   * The single door both the pre-pass and `renderLink`'s fallback go through, so
+   * the two can never disagree about which geometry a frame is drawing. Note that
+   * the pre-pass memoises AROUND this call and keys on `routingAllowed` — see
+   * `routeKey`: the two routers are indistinguishable by their inputs alone.
+   */
+  private routeForLOD(
+    link: LinkModel,
+    endpoints: NonNullable<ReturnType<SVGRenderer['getLinkEndpoints']>>,
+    routingAllowed: boolean
+  ): RoutedPath | null {
+    return routingAllowed
+      ? this.computeAutoRoute(link, endpoints)
+      : this.computeCoarseRoute(link, endpoints);
+  }
+
+  /**
+   * The far-zoom route: a straight line from port to port. O(1).
+   *
+   * `computeAutoRoute` builds an obstacle rectangle for EVERY node in the diagram
+   * for EVERY link, then searches against them — O(nodes) per edge, O(nodes x
+   * edges) per frame. Measured on the Wave-8 benchmark that is 96% of a 1k frame
+   * and 99% of a 5k one, and it is the whole of the 63-second 10k zoom-out.
+   *
+   * What it buys is a route that dodges node bodies. At the tiers this runs at,
+   * a node body is a smudge and the dodge is sub-pixel — so we do not buy it.
+   *
+   * SELF-LOOPS still loop. `computeSelfLoopRoute` never touches the routing
+   * engine (it is pure geometry, O(1) in the obstacle count), and a self-loop
+   * flattened to a straight line degenerates into a stub inside its own node —
+   * i.e. it would visually DISAPPEAR, which is a correctness loss, not a
+   * fidelity one. Cheap work that keeps an edge visible is work worth doing.
+   */
+  private computeCoarseRoute(
+    link: LinkModel,
+    endpoints: NonNullable<ReturnType<SVGRenderer['getLinkEndpoints']>>
+  ): RoutedPath | null {
+    if (link.isSelfLoop()) {
+      return this.computeSelfLoopRoute(link, endpoints);
+    }
+
+    const points = [
+      { x: endpoints.start.x, y: endpoints.start.y },
+      { x: endpoints.end.x, y: endpoints.end.y },
+    ];
+
+    return {
+      points,
+      totalLength: polylineLength(points),
+      bendCount: 0,
+    };
+  }
+
   private computeAutoRoute(
     link: LinkModel,
     endpoints: NonNullable<ReturnType<SVGRenderer['getLinkEndpoints']>>
@@ -6235,11 +6899,9 @@ export class SVGRenderer implements IRenderer {
     const routingEngine = this.engine.getRoutingEngine();
     const algorithm = this.routerForLink(link) || routingEngine.getDefaultAlgorithm();
 
-    // Collect obstacle rects (all nodes except source and target)
     const currentDiagram = this.engine.getDiagram();
     const sourceNodeId = (link as any).sourceNodeId || (link as any).source;
     const targetNodeId = (link as any).targetNodeId || (link as any).target;
-    const allNodes: NodeModel[] = currentDiagram ? currentDiagram.getNodes() : [];
 
     // Wave 5 — Card 6: group-aware obstacles.
     //   hiddenByCollapse — members of a collapsed group (any depth) are not
@@ -6249,17 +6911,14 @@ export class SVGRenderer implements IRenderer {
     //     to stay inside (soft, via the Manhattan container penalty).
     const groupInfo = this.collectGroupRouting(currentDiagram, sourceNodeId, targetNodeId);
 
-    const obstacles = allNodes
-      .filter((node: NodeModel) => node.id !== sourceNodeId && node.id !== targetNodeId)
-      .filter((node: NodeModel) => !groupInfo.hiddenByCollapse.has(node.id))
-      .map((node: NodeModel) => ({
-        id: node.id,
-        x: node.position.x,
-        y: node.position.y,
-        width: node.size.width,
-        height: node.size.height,
-      }))
-      .concat(groupInfo.groupBlocks);
+    // Wave 8 — Card 6: the obstacle ARRAY is built once per frame, not once per
+    // link. It used to be a filter+map over every node in the diagram, per link,
+    // per frame — 10k allocations × 700 visible links on the 10k benchmark — and
+    // the array's identity is also what lets the engine memoise its spatial index
+    // instead of rebuilding one per link.
+    const frame = this.frameObstacles(currentDiagram);
+    const allNodes = frame.nodes;
+    const obstacles = this.obstaclesForLink(frame, groupInfo, sourceNodeId, targetNodeId);
 
     let usedOrthogonal = algorithm === 'orthogonal';
     const routeWith = (algo: RoutingAlgorithm, avoid: boolean): RoutedPath | null =>
@@ -6311,15 +6970,21 @@ export class SVGRenderer implements IRenderer {
     // keep whichever route penetrates less. When the two node bodies overlap
     // each other, some penetration is geometrically unavoidable — this keeps
     // it minimal instead of slashing straight through.
-    const ownNodes = allNodes.filter(
-      (n: NodeModel) => n.id === sourceNodeId || n.id === targetNodeId
-    );
+    //
+    // Wave 8: was `allNodes.filter(...)` — a scan of the whole diagram, per link,
+    // to find at most two nodes we already have ids for.
+    const ownNodes: NodeModel[] = [];
+    const srcNode = sourceNodeId ? currentDiagram?.getNode(sourceNodeId) : undefined;
+    const tgtNode = targetNodeId ? currentDiagram?.getNode(targetNodeId) : undefined;
+    if (srcNode) ownNodes.push(srcNode);
+    if (tgtNode && tgtNode !== srcNode) ownNodes.push(tgtNode);
+
     if (routedPath && ownNodes.length > 0) {
       let bestPen = this.penetrationLength(routedPath.points, ownNodes);
       if (bestPen > 0) {
-        const allObstacles = allNodes.map((n: NodeModel) => ({
-          id: n.id, x: n.position.x, y: n.position.y, width: n.size.width, height: n.size.height,
-        }));
+        // Wave 8: also hoisted — "every node as an obstacle" is the same array
+        // for every link in the frame.
+        const allObstacles = frame.all;
 
         const consider = (candidate: RoutedPath | null) => {
           if (!candidate) return;

@@ -21,3 +21,5 @@ export * from './text-block'; // Node/link label engine - wrap / multi-line / el
 export * from './link-fanout'; // Wave 4 Card 4 - parallel-link separation + self-loop routing
 export * from './edge-optimizer'; // Wave 4 Card 7 - diagram-wide incremental label/jump/bundle pass
 export * from './edge-templates'; // Wave 4 Card 5 - link/label templates + custom markers
+export * from './route-memo'; // Wave 8 Card 6 - incremental routing: re-route only what changed
+export * from './route-solver-bridge'; // Wave 8 Card 6 - the render loop driving the off-thread global solver

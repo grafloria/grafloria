@@ -4,6 +4,7 @@ export * from './types';
 export * from './RoutingEngine';
 export * from './LiveReroutingEngine'; // Phase 0.2
 export * from './ObstacleMap';
+export * from './ObstacleIndex'; // Wave 8 Card 6
 export * from './ObstacleMapBuilder'; // Phase 1.6b
 export * from './PathSimplifier'; // Phase 2.2
 export * from './algorithms/StraightRouter';
