@@ -11,6 +11,7 @@ import { ObstacleMap } from './ObstacleMap';
 import { PathSimplifier } from './PathSimplifier'; // Phase 2.2
 import { StraightRouter } from './algorithms/StraightRouter';
 import { OrthogonalRouter } from './algorithms/OrthogonalRouter';
+import { ManhattanRouter } from './algorithms/ManhattanRouter';
 import { ElkRouter } from './algorithms/ElkRouter';
 import { AStarRouter } from './algorithms/AStarRouter';
 import { DijkstraRouter } from './algorithms/DijkstraRouter';
@@ -170,6 +171,9 @@ export class RoutingEngine {
     // Register built-in routers
     this.registerRouter('straight', new StraightRouter());
     this.registerRouter('orthogonal', new OrthogonalRouter());
+    // Wave 5 Card 3: the grid router with JointJS+-parity knobs (step, padding,
+    // turn cost, no U-turns, loop cap, perpendicular ends by construction).
+    this.registerRouter('manhattan', new ManhattanRouter());
     this.registerRouter('elk', new ElkRouter());
 
     // Register advanced routers with obstacle avoidance (using adapters)
