@@ -28,6 +28,14 @@
 // this is a structural refactor, not a visual change.
 
 import type { VNode, VNodeType } from '../types';
+import {
+  fitCmdsToBox,
+  translateCmds,
+  serializePathCmds,
+  sampleOutlinePoints,
+  type PathViewBox,
+} from './path-outline';
+import { parsePath, type PathCmd } from '../canvas/path-geometry';
 
 export type ShapeSide = 'left' | 'right' | 'top' | 'bottom';
 export interface ShapePoint {
@@ -888,6 +896,109 @@ const registry = new Map<string, ShapeDefinition>();
  */
 export function registerShape(type: string, def: Omit<ShapeDefinition, 'type'> & { type?: string }): void {
   registry.set(type, { ...def, type });
+}
+
+/**
+ * A static SVG path string, or a parametric generator that returns the path `d`
+ * for a specific `width × height` box (0,0 at top-left). The generator form is
+ * preferred for shapes whose detail should NOT scale uniformly (rounded corners,
+ * fixed-radius notches); the static form is the quickest way to drop in a figure
+ * authored in a design tool.
+ */
+export type PathGeometry = string | ((width: number, height: number) => string);
+
+/**
+ * Options for {@link registerPathShape}.
+ *
+ * By default the boundary point (smart-connection attachment) and the port
+ * anchors are DERIVED from the path outline by sampling — so a custom silhouette
+ * attaches links to its real edge, not its bounding box. Supply `portAnchor` /
+ * `boundaryPoint` to override the sampled geometry with exact analytic anchors
+ * (the same override seam the built-in triangle uses for its apex/base points).
+ */
+export interface PathShapeOptions {
+  /** Reference box for a STATIC path string (default `0 0 1 1` — unit box). */
+  viewBox?: PathViewBox;
+  /** Exact port anchors, bypassing outline sampling. */
+  portAnchor?: ShapeDefinition['portAnchor'];
+  /** Exact smart-connection boundary, bypassing outline sampling. */
+  boundaryPoint?: ShapeDefinition['boundaryPoint'];
+  /** Label box; defaults to the padded bounding box. */
+  innerRect?: ShapeDefinition['innerRect'];
+  /** Curve subdivision when sampling the outline (default 24). */
+  sampleSteps?: number;
+}
+
+/**
+ * Register an arbitrary SVG-path shape (Card 2). This is the payoff of the
+ * geometry contract: a userland caller adds a brand-new silhouette in ONE call
+ * and it works everywhere the built-ins do — node body, selection highlight,
+ * drop shadow, smart-connection boundary and geometry-true port anchors — with
+ * NO core-team switch edits.
+ *
+ * ```ts
+ * // Parametric — a 5-point star that fills any box.
+ * registerPathShape('star', (w, h) => starPath(w, h));
+ * // Static — a chevron authored in a 24×24 art box.
+ * registerPathShape('chevron', 'M2,4 L14,4 L22,12 L14,20 L2,20 L10,12 Z',
+ *   { viewBox: { x: 0, y: 0, w: 24, h: 24 } });
+ * ```
+ */
+export function registerPathShape(
+  type: string,
+  path: PathGeometry,
+  opts: PathShapeOptions = {}
+): void {
+  const steps = opts.sampleSteps ?? 24;
+  const viewBox = opts.viewBox ?? { x: 0, y: 0, w: 1, h: 1 };
+
+  // Commands for a natural (origin-anchored) `width × height` box. Static strings
+  // are parsed ONCE and rescaled per size; generators re-parse their output.
+  const staticCmds = typeof path === 'string' ? parsePath(path) : null;
+  const cmdsForSize = (width: number, height: number): PathCmd[] =>
+    staticCmds
+      ? fitCmdsToBox(staticCmds, viewBox, width, height)
+      : parsePath((path as (w: number, h: number) => string)(width, height));
+
+  // One-slot memo for the sampled outline — port positions are recomputed every
+  // frame per port, so re-flattening the path each call would be wasteful.
+  let sampleKey = '';
+  let sampleCache: ShapePoint[] = [];
+  const outlinePoints = (width: number, height: number): ShapePoint[] => {
+    const key = `${width}x${height}`;
+    if (key !== sampleKey) {
+      sampleKey = key;
+      sampleCache = sampleOutlinePoints(cmdsForSize(width, height), steps);
+    }
+    return sampleCache;
+  };
+
+  registry.set(type, {
+    type,
+    styleMode: 'inline',
+    outline(width, height, t = {}) {
+      const box = boxOf(width, height, t);
+      // Draw at the (grown) box size, then translate to the box origin so grow
+      // (selection padding) and dx/dy (shadow offset) compose exactly as they do
+      // for every other shape.
+      const cmds = translateCmds(cmdsForSize(box.w, box.h), box.x0, box.y0);
+      return { el: 'path', geom: { d: serializePathCmds(cmds) } };
+    },
+    boundaryPoint(rect, side, cross) {
+      if (opts.boundaryPoint) return opts.boundaryPoint(rect, side, cross);
+      const local = outlinePoints(rect.w, rect.h);
+      if (local.length < 3) return null; // degenerate → caller uses bbox edge
+      const world = local.map((v) => ({ x: v.x + rect.x, y: v.y + rect.y }));
+      return polygonBoundaryPoint(world, side, cross);
+    },
+    portAnchor(width, height, side, rank, count) {
+      if (opts.portAnchor) return opts.portAnchor(width, height, side, rank, count);
+      const verts = outlinePoints(width, height);
+      if (verts.length < 3) return boxPortAnchor(width, height, side, rank, count);
+      return polygonPortAnchor(verts, width, height, side, rank, count);
+    },
+    innerRect: opts.innerRect,
+  });
 }
 
 /** The rect shape is the default fallback for unknown / unset shape types. */
