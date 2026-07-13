@@ -385,11 +385,30 @@ export class LinkModel extends DiagramEntity {
   }
 
   /**
+   * Wave 3 (Edges & links): the curve tightness of a smooth/bezier link.
+   *
+   * `style.curvature` is a multiplier of the endpoint distance for the
+   * control-point offset. It used to be DEAD (declared on LinkStyle, read by
+   * nobody); it is now the single knob both this model and the SVG renderer
+   * read, so a per-link value produces the same curve whichever produced the
+   * path. Default 0.5 = the historical hardcoded factor; negatives are clamped
+   * to 0 (a straight chord).
+   */
+  static readonly DEFAULT_CURVATURE = 0.5;
+
+  getCurvature(): number {
+    const c = this.style.curvature;
+    return typeof c === 'number' && isFinite(c) && c >= 0
+      ? c
+      : LinkModel.DEFAULT_CURVATURE;
+  }
+
+  /**
    * Generate smooth/bezier path
    */
   private generateSmoothPath(from: Point, to: Point): void {
     const dx = to.x - from.x;
-    const controlOffset = Math.abs(dx) * 0.5;
+    const controlOffset = Math.abs(dx) * this.getCurvature();
 
     this.points = [{ ...from }, { ...to }];
 

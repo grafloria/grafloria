@@ -15,6 +15,22 @@
     </svg>
   }
 
+  <!-- Wave 3 (Edges & links): floating, path-anchored edge toolbar. Appears on
+       link hover/selection and stays glued to a fraction along the RENDERED
+       route (see LinkToolbarComponent / RenderedLinkPath). -->
+  @if (enableLinkToolbar && linkToolbarTarget) {
+    <grafloria-link-toolbar
+      [link]="linkToolbarTarget"
+      [engine]="engine"
+      [canvasElement]="containerRef.nativeElement"
+      [viewport]="viewport"
+      [zoom]="zoom"
+      [anchor]="linkToolbarAnchor"
+      [actions]="effectiveLinkToolbarActions"
+      (pointerOverChange)="onLinkToolbarPointerOver($event)">
+    </grafloria-link-toolbar>
+  }
+
   <!-- HTML Layer: NEW - HTML nodes rendered outside SVG (React Flow style) -->
   <!-- CRITICAL FIX: Use declarative rendering like React Flow, not imperative createComponent() -->
   <div #htmlLayer class="grafloria-html-layer" [style.transform]="htmlLayerTransform">
