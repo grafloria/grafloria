@@ -754,6 +754,17 @@ export class DiagramModel extends DiagramEntity {
   }
 
   /**
+   * Wave-5 Card 3: groups in deterministic back-to-front stacking order —
+   * ascending `zIndex`, ties broken by Map insertion order (a STABLE sort keeps
+   * it). This is the model-level z-order story that replaces "stacking == Map
+   * insertion order" as the only determinant; a renderer paints groups in this
+   * order (behind their members) instead of relying on iteration order.
+   */
+  getGroupsInRenderOrder(): GroupModel[] {
+    return this.getGroups().sort((a, b) => a.zIndex - b.zIndex);
+  }
+
+  /**
    * Clear all groups (Phase 1.6c)
    */
   clearGroups(): void {
@@ -1886,6 +1897,15 @@ export class DiagramModel extends DiagramEntity {
     if (data.position) group.position = { x: data.position.x, y: data.position.y };
     if (data.size) group.size = { ...data.size };
     group.parentGroupId = data.parentGroupId;
+    // Wave-5 Card 3: keep the incremental in-place path lossless for the new
+    // subflow geometry (absent keys reset to their defaults, matching fromJSON).
+    group.padding = data.padding;
+    group.headerHeight = typeof data.headerHeight === 'number' ? data.headerHeight : 0;
+    group.zIndex = typeof data.zIndex === 'number' ? data.zIndex : 0;
+    group.fitMode = data.fitMode ?? 'exact';
+    group.constrainChildren = data.constrainChildren ?? false;
+    // Wave-5 Card 4: collapsed-state payload (proxy wiring + saved layout).
+    group.collapsedState = data.collapsedState;
     // Replace metadata CONTENT but keep the runtime diagram back-ref wired.
     group.metadata = new Map(Object.entries(data.metadata ?? {}));
     group.metadata.set('diagram', this);

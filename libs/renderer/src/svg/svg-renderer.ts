@@ -1482,7 +1482,19 @@ export class SVGRenderer implements IRenderer {
    * Render nodes layer
    */
   private renderNodesLayer(nodes: NodeModel[], lod: LODLevel): VNode {
-    const children = nodes.map(node => this.renderNode(node, lod));
+    // Wave-5 Card 3 (grouping): honor a model-level z-order instead of relying
+    // on the visible-query iteration order. `Array.prototype.sort` is stable, so
+    // nodes that share a zIndex (the common case: none set → all 0) keep their
+    // incoming order — this is a no-op for diagrams that never set zIndex.
+    const ordered = nodes
+      .map((node, i) => ({ node, i }))
+      .sort((a, b) => {
+        const za = (a.node.style?.zIndex ?? 0) - (b.node.style?.zIndex ?? 0);
+        return za !== 0 ? za : a.i - b.i;
+      })
+      .map((entry) => entry.node);
+
+    const children = ordered.map(node => this.renderNode(node, lod));
 
     return {
       type: 'g',

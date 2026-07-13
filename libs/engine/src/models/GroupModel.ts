@@ -22,6 +22,85 @@ export interface SerializedGroup extends SerializedEntity {
   position?: { x: number; y: number }; // group geometry
   size?: { width: number; height: number; depth: number }; // group geometry
   parentGroupId?: string; // Wave-2: compound-graph containment (nesting)
+
+  // Wave-5 Card 3: subflow geometry — auto-fit padding, title band, z-order,
+  // fit mode and child-extent constraint. All optional so groups that never
+  // touch these serialize byte-for-byte as before (round-trip invariant).
+  padding?: GroupPadding;
+  headerHeight?: number;
+  zIndex?: number;
+  fitMode?: GroupFitMode;
+  constrainChildren?: boolean;
+
+  // Wave-5 Card 4: everything needed to expand a collapsed group back to
+  // exactly its prior state. Present iff the group is currently collapsed.
+  collapsedState?: CollapsedState;
+}
+
+/**
+ * Wave-5 Card 4: the reversible snapshot captured when a group collapses.
+ * Stored (serialized) on the group so a collapsed diagram round-trips and can
+ * be expanded losslessly after a save/load — not just within one session.
+ */
+export interface CollapsedState {
+  /** The hidden placeholder node that presents the group as a node endpoint. */
+  proxyNodeId: string;
+  /** The group's frame before it shrank to the placeholder (restored on expand). */
+  savedFrame?: GroupRect;
+  /** Member (node) world positions at collapse time (restored on expand). */
+  savedPositions: Record<string, { x: number; y: number }>;
+  /** Members whose visibility we toggled, with their prior `visible` value. */
+  hiddenNodes: Array<{ nodeId: string; prevVisible: boolean }>;
+  /**
+   * Serialized links removed at collapse time (internal links + the parallel
+   * boundary links that were aggregated away). Re-created verbatim on expand.
+   */
+  removedLinks: any[];
+  /**
+   * Boundary links that SURVIVED as proxy links: one per (external endpoint)
+   * bundle, re-pointed to the placeholder node. Records the original endpoint
+   * so expand can restore it, plus how many raw edges it now represents.
+   */
+  proxyLinks: Array<{
+    linkId: string;
+    end: 'source' | 'target';
+    originalPortId: string;
+    originalNodeId?: string;
+    aggregatedCount: number;
+  }>;
+}
+
+/** Wave-5 Card 3: per-side padding (a scalar expands to all four sides). */
+export type GroupPadding =
+  | number
+  | { top?: number; right?: number; bottom?: number; left?: number };
+
+/**
+ * Wave-5 Card 3: how {@link GroupModel.fitToContents} reconciles the freshly
+ * computed content rectangle with the group's current rectangle.
+ * - `exact`      — snap to the content rectangle (default).
+ * - `grow-only`  — never shrink below the current rectangle (union).
+ * - `shrink-only`— never grow beyond the current rectangle (intersection-ish).
+ */
+export type GroupFitMode = 'exact' | 'grow-only' | 'shrink-only';
+
+/** A resolved rectangle (all four sides present). */
+export interface GroupRect {
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+}
+
+/** Options for {@link GroupModel.fitToContents}. */
+export interface FitToContentsOptions {
+  /** Override the group's stored {@link GroupModel.fitMode} for this call. */
+  mode?: GroupFitMode;
+  /**
+   * Deep-recursive fit: fit every descendant group first (deepest first) so a
+   * parent fits around already-fitted children. Requires a diagram.
+   */
+  deepRecursive?: boolean;
 }
 
 /**
@@ -58,6 +137,25 @@ export class GroupModel extends DiagramEntity {
 
   // Wave-2: transient drag-hover highlight state (not serialized).
   isHovered: boolean = false;
+
+  // Wave-5 Card 3: subflow geometry.
+  // `padding` — inner gap between the member bounding box and the group frame,
+  // consumed by fitToContents/getInnerBounds (the GroupInfo.padding that used to
+  // be dead outside the never-wired SubgraphLayoutManager). `headerHeight` — a
+  // title band reserved at the TOP inside the frame (children live below it).
+  // `zIndex` — deterministic stacking (lower = further back); the model-level
+  // fix for "stacking == Map insertion order". `fitMode` — default fit policy.
+  // `constrainChildren` — clamp member drags to the inner extent when true.
+  padding?: GroupPadding;
+  headerHeight = 0;
+  zIndex = 0;
+  fitMode: GroupFitMode = 'exact';
+  constrainChildren = false;
+
+  // Wave-5 Card 4: reversible collapse snapshot (see CollapsedState). Set while
+  // collapsed, cleared on expand. Serialized so a collapsed diagram survives
+  // save/load and can still be expanded.
+  collapsedState?: CollapsedState;
 
   constructor(config: { id?: string; name: string }) {
     super(config.id);
@@ -384,6 +482,274 @@ export class GroupModel extends DiagramEntity {
     };
   }
 
+  // ---------------------------------------------------------------------------
+  // Wave-5 Card 3 — Subflow geometry: auto-fit, extent clamping & z-order
+  // ---------------------------------------------------------------------------
+
+  /** Resolve {@link padding} to a full four-sided rectangle (defaults to 0). */
+  getPadding(): { top: number; right: number; bottom: number; left: number } {
+    const p = this.padding;
+    if (p === undefined) {
+      return { top: 0, right: 0, bottom: 0, left: 0 };
+    }
+    if (typeof p === 'number') {
+      return { top: p, right: p, bottom: p, left: p };
+    }
+    return {
+      top: p.top ?? 0,
+      right: p.right ?? 0,
+      bottom: p.bottom ?? 0,
+      left: p.left ?? 0,
+    };
+  }
+
+  /**
+   * The group's outer frame rectangle in world coordinates. Prefers explicit
+   * geometry (position + size) and falls back to the derived member `bounds`,
+   * matching how GroupMembershipService hit-tests a group.
+   */
+  getOuterBounds(): GroupRect {
+    if (this.size) {
+      return {
+        x: this.position.x,
+        y: this.position.y,
+        width: this.size.width,
+        height: this.size.height,
+      };
+    }
+    if (this.bounds) {
+      return { ...this.bounds };
+    }
+    return { x: this.position.x, y: this.position.y, width: 0, height: 0 };
+  }
+
+  /**
+   * The rectangle members must stay inside: the outer frame minus padding and
+   * minus the header band (which is reserved at the top). Never returns a
+   * negative width/height.
+   */
+  getInnerBounds(): GroupRect {
+    const outer = this.getOuterBounds();
+    const pad = this.getPadding();
+    const x = outer.x + pad.left;
+    const y = outer.y + pad.top + this.headerHeight;
+    const width = Math.max(0, outer.width - pad.left - pad.right);
+    const height = Math.max(0, outer.height - pad.top - pad.bottom - this.headerHeight);
+    return { x, y, width, height };
+  }
+
+  /**
+   * Auto-fit the group frame to its members' bounding box plus padding and the
+   * header band. This is the real consumer of `padding`/`headerHeight` that
+   * `calculateBounds` (a tight, padding-free box) never was.
+   *
+   * Member groups contribute their own OUTER frame (so a parent fits around a
+   * nested group's full extent, not just its raw member points). With
+   * `deepRecursive`, descendant groups are fitted first (deepest first) so the
+   * parent fits around already-fitted children.
+   *
+   * The computed content rectangle is reconciled with the current frame per the
+   * effective fit mode (grow-only / shrink-only / exact) and written to both
+   * `position`/`size` (authoritative geometry) and `bounds` (hit-test rect).
+   * No-op with no positioned members (nothing to fit around).
+   */
+  fitToContents(diagram?: DiagramModel, options?: FitToContentsOptions): void {
+    const dm = this.resolveDiagram(diagram);
+    if (!dm) {
+      return;
+    }
+
+    if (options?.deepRecursive) {
+      // Deepest-first so each parent fits around already-fitted children.
+      const descendants = dm
+        .getDescendants(this.id)
+        .sort((a, b) => dm.getDepth(b.id) - dm.getDepth(a.id));
+      for (const child of descendants) {
+        child.fitToContents(dm, { mode: options.mode });
+      }
+    }
+
+    const content = this.computeMemberExtent(dm);
+    if (!content) {
+      return;
+    }
+
+    const pad = this.getPadding();
+    const fitted: GroupRect = {
+      x: content.x - pad.left,
+      y: content.y - pad.top - this.headerHeight,
+      width: content.width + pad.left + pad.right,
+      height: content.height + pad.top + pad.bottom + this.headerHeight,
+    };
+
+    const mode = options?.mode ?? this.fitMode;
+    const target = this.reconcileFit(fitted, mode);
+
+    this.setFrame(target);
+  }
+
+  /**
+   * Bounding box (world coords) of this group's members. Nodes contribute their
+   * global bounds; member groups contribute their outer frame. Returns
+   * undefined when nothing is positioned.
+   */
+  private computeMemberExtent(diagram: DiagramModel): GroupRect | undefined {
+    let minX = Infinity;
+    let minY = Infinity;
+    let maxX = -Infinity;
+    let maxY = -Infinity;
+    let count = 0;
+
+    for (const id of this.members) {
+      const node = diagram.getNode(id);
+      if (node) {
+        const b = node.getGlobalBounds();
+        minX = Math.min(minX, b.left);
+        minY = Math.min(minY, b.top);
+        maxX = Math.max(maxX, b.right);
+        maxY = Math.max(maxY, b.bottom);
+        count++;
+        continue;
+      }
+      const child = diagram.getGroup(id);
+      if (child) {
+        const r = child.getOuterBounds();
+        if (r.width > 0 || r.height > 0) {
+          minX = Math.min(minX, r.x);
+          minY = Math.min(minY, r.y);
+          maxX = Math.max(maxX, r.x + r.width);
+          maxY = Math.max(maxY, r.y + r.height);
+          count++;
+        }
+      }
+    }
+
+    if (count === 0) {
+      return undefined;
+    }
+    return { x: minX, y: minY, width: maxX - minX, height: maxY - minY };
+  }
+
+  /** Apply a fit mode to reconcile a freshly computed rect with the current frame. */
+  private reconcileFit(fitted: GroupRect, mode: GroupFitMode): GroupRect {
+    if (mode === 'exact' || !this.size) {
+      return fitted;
+    }
+    const current = this.getOuterBounds();
+    if (mode === 'grow-only') {
+      // Union: expand to contain content, never shrink.
+      const x = Math.min(current.x, fitted.x);
+      const y = Math.min(current.y, fitted.y);
+      const right = Math.max(current.x + current.width, fitted.x + fitted.width);
+      const bottom = Math.max(current.y + current.height, fitted.y + fitted.height);
+      return { x, y, width: right - x, height: bottom - y };
+    }
+    // shrink-only: never grow beyond the current frame — clamp the fitted rect
+    // inside it (but still snap smaller when content is smaller).
+    const x = Math.max(current.x, fitted.x);
+    const y = Math.max(current.y, fitted.y);
+    const right = Math.min(current.x + current.width, fitted.x + fitted.width);
+    const bottom = Math.min(current.y + current.height, fitted.y + fitted.height);
+    return {
+      x,
+      y,
+      width: Math.max(0, right - x),
+      height: Math.max(0, bottom - y),
+    };
+  }
+
+  /**
+   * Write a world rectangle into the group's authoritative geometry
+   * (position + size) and the derived hit-test `bounds`, keeping the existing
+   * `depth` when present. Tracks a single 'bounds' change for undo/diff.
+   */
+  setFrame(rect: GroupRect): void {
+    const oldBounds = this.bounds;
+    this.position = { x: rect.x, y: rect.y };
+    this.size = {
+      width: rect.width,
+      height: rect.height,
+      depth: this.size?.depth ?? 0,
+    };
+    this.bounds = { x: rect.x, y: rect.y, width: rect.width, height: rect.height };
+    this.trackChange('bounds', oldBounds, this.bounds);
+    this.emitter.emit('bounds:changed', this.bounds);
+  }
+
+  /**
+   * Clamp a member node so it stays fully inside the group's inner extent.
+   * No-op unless `constrainChildren` is set and the node is a direct member.
+   * Returns true when the node was actually moved. Absolute-coordinate model:
+   * this adjusts the node's world position directly.
+   */
+  clampChildToExtent(nodeId: string, diagram?: DiagramModel): boolean {
+    if (!this.constrainChildren || !this.members.has(nodeId)) {
+      return false;
+    }
+    const dm = this.resolveDiagram(diagram);
+    const node = dm?.getNode(nodeId);
+    if (!node) {
+      return false;
+    }
+    const inner = this.getInnerBounds();
+    if (inner.width <= 0 || inner.height <= 0) {
+      return false;
+    }
+
+    const b = node.getGlobalBounds();
+    const w = b.right - b.left;
+    const h = b.bottom - b.top;
+    // Largest top-left that still fits; clamp within [inner.x, inner.right - w].
+    const maxX = Math.max(inner.x, inner.x + inner.width - w);
+    const maxY = Math.max(inner.y, inner.y + inner.height - h);
+    const clampedLeft = Math.min(Math.max(b.left, inner.x), maxX);
+    const clampedTop = Math.min(Math.max(b.top, inner.y), maxY);
+
+    const dx = clampedLeft - b.left;
+    const dy = clampedTop - b.top;
+    if (dx === 0 && dy === 0) {
+      return false;
+    }
+    node.setPosition(node.position.x + dx, node.position.y + dy);
+    return true;
+  }
+
+  /** Set the group's stacking index (lower renders further back). */
+  setZIndex(z: number): void {
+    if (this.zIndex === z) {
+      return;
+    }
+    const old = this.zIndex;
+    this.zIndex = z;
+    this.trackChange('zIndex', old, z);
+    this.emitter.emit('zindex:changed', z);
+  }
+
+  /**
+   * Bring this group in front of every other group (highest zIndex + 1).
+   * Minimal z-order API — the renderer honors zIndex ordering.
+   */
+  bringToFront(diagram?: DiagramModel): void {
+    const dm = this.resolveDiagram(diagram);
+    if (!dm) {
+      this.setZIndex(this.zIndex + 1);
+      return;
+    }
+    const max = Math.max(0, ...dm.getGroups().map((g) => g.zIndex));
+    this.setZIndex(max + 1);
+  }
+
+  /** Send this group behind every other group (lowest zIndex - 1). */
+  sendToBack(diagram?: DiagramModel): void {
+    const dm = this.resolveDiagram(diagram);
+    if (!dm) {
+      this.setZIndex(this.zIndex - 1);
+      return;
+    }
+    const min = Math.min(0, ...dm.getGroups().map((g) => g.zIndex));
+    this.setZIndex(min - 1);
+  }
+
   /**
    * Apply layout to member nodes (Phase 1.7+)
    * Positions child nodes based on flex or grid layout configuration
@@ -679,6 +1045,15 @@ export class GroupModel extends DiagramEntity {
         : undefined,
       // Wave-2: containment tree pointer (undefined for top-level groups).
       parentGroupId: this.parentGroupId,
+      // Wave-5 Card 3: only emit non-default subflow geometry so groups that
+      // never touch it round-trip byte-for-byte identical to before.
+      padding: this.padding,
+      headerHeight: this.headerHeight !== 0 ? this.headerHeight : undefined,
+      zIndex: this.zIndex !== 0 ? this.zIndex : undefined,
+      fitMode: this.fitMode !== 'exact' ? this.fitMode : undefined,
+      constrainChildren: this.constrainChildren ? true : undefined,
+      // Wave-5 Card 4: present only while collapsed.
+      collapsedState: this.collapsedState,
     };
   }
 
@@ -715,6 +1090,28 @@ export class GroupModel extends DiagramEntity {
     }
     if (data.layoutConfig) {
       group.layoutConfig = data.layoutConfig;
+    }
+
+    // Wave-5 Card 3: restore subflow geometry (defaults preserved when absent).
+    if (data.padding !== undefined) {
+      group.padding = data.padding;
+    }
+    if (typeof data.headerHeight === 'number') {
+      group.headerHeight = data.headerHeight;
+    }
+    if (typeof data.zIndex === 'number') {
+      group.zIndex = data.zIndex;
+    }
+    if (data.fitMode) {
+      group.fitMode = data.fitMode;
+    }
+    if (data.constrainChildren !== undefined) {
+      group.constrainChildren = data.constrainChildren;
+    }
+
+    // Wave-5 Card 4: restore collapse snapshot (only present while collapsed).
+    if (data.collapsedState) {
+      group.collapsedState = data.collapsedState;
     }
 
     // Restore metadata
