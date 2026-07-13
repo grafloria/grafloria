@@ -14,7 +14,14 @@ export type {
 } from './canvas-renderer';
 
 export { DiagramRenderBackend } from './render-backend';
-export type { BackendMode, RenderBackendOptions } from './render-backend';
+export type { BackendMode, RenderBackendOptions, TierChangeEvent } from './render-backend';
+
+// Wave 8 (Card 5): WHEN to hand off between the tiers. The backend has been switchable
+// since wave 4; this is what actually switches it — and the guards that stop it from
+// stepping down onto a surface with no accessibility, no focusable DOM and no way to
+// paint an HTML node.
+export { DEFAULT_TIER_POLICY, decideTier, resolveTierPolicy } from './tier-policy';
+export type { TierDecision, TierInput, TierPolicy, TierReason } from './tier-policy';
 
 export {
   CANVAS_LINK_HIT_TOLERANCE,
