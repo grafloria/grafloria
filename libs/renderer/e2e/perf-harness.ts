@@ -139,10 +139,21 @@ export function runPerfSuite(container: HTMLElement, counts: number[]): PerfSamp
     // At 0.25 zoom the viewport covers 16x the area: culling and LOD are supposed
     // to keep this cheap. If it is SLOWER than the near view, the LOD tiers are a
     // lie and this number says so.
+    //
+    // wave8/dirty: each iteration nudges the viewport by ONE pixel. That pixel is
+    // load-bearing. Before it, this loop rendered the IDENTICAL view ten times —
+    // which was harmless while every frame was rebuilt from scratch, but the
+    // moment a renderer learns to skip an unchanged frame (the frame gate, Card 0)
+    // nine of these ten become idle frames and the median collapses to 0ms. The
+    // scenario would then report a spectacular speedup while measuring nothing at
+    // all. A 1px pan changes nothing about the work — same cull set, same routes,
+    // same LOD tier — but it makes every frame a REAL zoomed-out render, which is
+    // what this number is supposed to be. (Left as a warning: a benchmark that an
+    // optimisation can satisfy without doing the work is worse than no benchmark.)
     const zoomFrames: number[] = [];
     for (let f = 0; f < 10; f++) {
       const t = now();
-      const vnode = renderer.render({ x: 0, y: 0, width: 6400, height: 3600 }, 0.25) as never;
+      const vnode = renderer.render({ x: f, y: 0, width: 6400, height: 3600 }, 0.25) as never;
       patcher.reconcile(svg as unknown as Element, vnode);
       zoomFrames.push(now() - t);
     }

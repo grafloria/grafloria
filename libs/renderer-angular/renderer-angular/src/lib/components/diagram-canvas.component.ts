@@ -43,6 +43,10 @@ import {
   beginIncrementalCapture,
   type IncrementalCapture,
   type DiagramIncremental,
+  // wave8/dirty: the O(1) "has anything changed?" counter every model mutation
+  // bumps. Replaces the dirty-COUNT idle-skip, which never fired — see
+  // canSkipFrame().
+  getMutationEpoch,
 } from '@grafloria/engine';
 import {
   SVGRenderer,
@@ -562,6 +566,10 @@ export class DiagramCanvasComponent implements AfterViewInit, OnDestroy {
   private lastRenderedViewportKey = '';
   /** Whether last painted frame drew a live connection preview (idle-skip). */
   private lastFrameHadConnectionPreview = false;
+  /** wave8/dirty: mutation epoch as of the END of the last painted frame. */
+  private lastRenderedEpoch = -1;
+  /** wave8/dirty: the RENDERER's invalidation epoch as of that same frame. */
+  private lastRendererInvalidation = -1;
   /** Ring buffer of recent frame END timestamps (ms) → rolling FPS. */
   private frameTimestamps: number[] = [];
   /** Ring buffer of recent frame render DURATIONS (ms) → rolling frame-time. */
@@ -2068,6 +2076,12 @@ export class DiagramCanvasComponent implements AfterViewInit, OnDestroy {
     this.renderDirty = false;
     this.lastRenderedViewportKey = this.viewportKey();
     this.lastFrameHadConnectionPreview = this.isConnectionPreviewActive();
+    // AFTER the paint: rendering legitimately dirties entities of its own
+    // (routed link geometry, auto-sizing), so an epoch snapshotted before
+    // renderDiagram() would be one the frame itself invalidates on the way out —
+    // and the idle-skip would never fire again.
+    this.lastRenderedEpoch = getMutationEpoch();
+    this.lastRendererInvalidation = this.renderer?.getInvalidationEpoch() ?? -1;
 
     // Real metrics: one sample per ACTUALLY-rendered frame (skips add nothing).
     const duration = end - start;
@@ -2154,11 +2168,33 @@ export class DiagramCanvasComponent implements AfterViewInit, OnDestroy {
     if (!diagram) {
       return false; // no diagram snapshot yet → let the frame render
     }
-    const dirtyEntities =
-      diagram.getDirtyNodes().length +
-      diagram.getDirtyLinks().length +
-      diagram.getDirtyGroups().length;
-    if (dirtyEntities > 0) {
+    // wave8/dirty — BUG FIXED. This used to be:
+    //
+    //     getDirtyNodes().length + getDirtyLinks().length + getDirtyGroups().length
+    //     if (dirtyEntities > 0) return false;
+    //
+    // …which never once returned true on a diagram larger than the viewport. An
+    // entity is marked clean when the renderer DRAWS it, and the renderer draws
+    // only what is visible — so in a 10,000-node scene showing 56, the other
+    // 9,944 are dirty for the lifetime of the canvas. The count never reaches
+    // zero, the skip never fires, and every "idle" frame repaints the diagram in
+    // full. The check meant to make an idle canvas free was, in the only case
+    // where that matters, three O(n) array scans that always said "no".
+    //
+    // The mutation epoch asks the question that was actually meant — *has
+    // anything changed since the frame currently on screen?* — in O(1), and
+    // correctly counts changes to entities that are off-screen (an off-screen
+    // node is still an obstacle the edge optimizer routes around, and its edge
+    // may well cross the middle of the viewport).
+    if (getMutationEpoch() !== this.lastRenderedEpoch) {
+      return false;
+    }
+    // …and the RENDERER's own picture must not have gone stale. The model epoch
+    // answers "did the world change"; this answers "did my picture of it change".
+    // The off-thread route solver moves the second WITHOUT moving the first — it
+    // improves the routes without touching a single entity — so a skip keyed only
+    // on the model would silently bin the repaint that paints them.
+    if ((this.renderer?.getInvalidationEpoch() ?? -1) !== this.lastRendererInvalidation) {
       return false;
     }
     if (this.viewportKey() !== this.lastRenderedViewportKey) {

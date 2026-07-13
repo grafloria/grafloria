@@ -138,9 +138,16 @@ export function mountNodeComponents(
   const componentFor = (node: NodeModel): NodeComponent<never> | undefined =>
     registry[String(node.type)] ?? registry[String(node.getMetadata?.('component') ?? '')];
 
-  /** Measure → write back. See the two hazards in the header. */
-  const measure = (node: NodeModel, element: HTMLElement, component: NodeComponent<never>): void => {
-    if (!component.autoSize) return;
+  /**
+   * The READ half of auto-sizing: measure, and return the size to write back (or
+   * null when there is nothing to do). It writes NOTHING — see `measureAll`.
+   */
+  const readSize = (
+    node: NodeModel,
+    element: HTMLElement,
+    component: NodeComponent<never>
+  ): { width: number; height: number } | null => {
+    if (!component.autoSize) return null;
 
     const threshold = component.sizeThreshold ?? 1;
     const zoom = instance.viewport.getZoom() || 1;
@@ -150,22 +157,66 @@ export function mountNodeComponents(
     // node would grow every time the user zoomed in.
     const width = element.offsetWidth || element.getBoundingClientRect().width / zoom;
     const height = element.offsetHeight || element.getBoundingClientRect().height / zoom;
-    if (!(width > 0) || !(height > 0)) return;
+    if (!(width > 0) || !(height > 0)) return null;
 
     if (
       Math.abs(width - node.size.width) < threshold &&
       Math.abs(height - node.size.height) < threshold
     ) {
-      return; // sub-threshold jitter — writing it would loop
+      return null; // sub-threshold jitter — writing it would loop
     }
 
-    node.setSize(width, height);
-    instance.render();
+    return { width, height };
   };
 
-  const renderInto = (node: NodeModel, element: HTMLElement, first: boolean): void => {
+  /**
+   * wave8/dirty — Card 1: measure a WHOLE batch of components in one read phase.
+   *
+   * The bug this replaces: `renderInto()` used to write a component's DOM and
+   * then immediately read `offsetWidth` off it. Inside `refresh()`, which loops
+   * over every mounted component, that is
+   *
+   *     write → READ → write → READ → write → READ …
+   *
+   * and every one of those reads forces the browser to flush layout synchronously
+   * to answer it. N custom nodes ⇒ N forced layouts per frame. Textbook layout
+   * thrash, and invisible until someone puts 200 custom nodes on a canvas.
+   *
+   * Now: all writes, then all reads (ONE layout flush, because the first read
+   * pays for the whole batch), then the size write-backs — inside a single
+   * `batchUpdate` so N resizes still cost exactly one repaint.
+   */
+  const measureAll = (
+    pending: Array<{ node: NodeModel; element: HTMLElement; component: NodeComponent<never> }>
+  ): void => {
+    if (pending.length === 0) return;
+
+    // -- READ PHASE (no writes in this loop) ---------------------------------
+    const sizes: Array<{ node: NodeModel; width: number; height: number }> = [];
+    for (const { node, element, component } of pending) {
+      const size = readSize(node, element, component);
+      if (size) sizes.push({ node, ...size });
+    }
+    if (sizes.length === 0) return;
+
+    // -- WRITE-BACK PHASE ----------------------------------------------------
+    const batch = (instance as Partial<DiagramInstance>).batchUpdate;
+    const apply = (): void => {
+      for (const { node, width, height } of sizes) node.setSize(width, height);
+    };
+    // `batchUpdate` is the wave8 entry point; tolerate an older instance shape
+    // (tests build partial fakes) by falling back to the plain path.
+    if (typeof batch === 'function') batch.call(instance, apply);
+    else {
+      apply();
+      instance.render();
+    }
+  };
+
+  /** The WRITE half: paint the component into its host. Reads nothing. */
+  const writeInto = (node: NodeModel, element: HTMLElement, first: boolean): boolean => {
     const component = componentFor(node);
-    if (!component) return;
+    if (!component) return false;
 
     const dragging = instance.getDraggingNodeIds().includes(node.id);
     const props = propsFor(node, instance.viewport.getZoom(), dragging);
@@ -179,7 +230,13 @@ export function mountNodeComponents(
       component.onUpdate(props, element);
     }
 
-    measure(node, element, component);
+    return !!component.autoSize;
+  };
+
+  const renderInto = (node: NodeModel, element: HTMLElement, first: boolean): void => {
+    const component = componentFor(node);
+    if (!component) return;
+    if (writeInto(node, element, first)) measureAll([{ node, element, component }]);
   };
 
   // The host hook wave 4 shipped. We are a CONSUMER of it, not a replacement.
@@ -191,7 +248,10 @@ export function mountNodeComponents(
     renderInto(node, element, true);
 
     if (component.autoSize && typeof ResizeObserver !== 'undefined') {
-      const observer = new ResizeObserver(() => measure(node, element, component));
+      // A ResizeObserver callback already runs after layout, so reading here is
+      // free — but route it through measureAll anyway so there is exactly one
+      // place that reads a size and one place that writes it back.
+      const observer = new ResizeObserver(() => measureAll([{ node, element, component }]));
       observer.observe(element);
       observers.set(node.id, observer);
     }
@@ -210,12 +270,25 @@ export function mountNodeComponents(
 
   // Re-render mounted components when their node or the camera changes (zoom is
   // a PROP — an LOD component must re-render when it crosses its threshold).
+  //
+  // wave8/dirty — Card 1: WRITE every component first, THEN measure them all in
+  // one read pass. Interleaving (the old shape) cost one forced layout per node.
   const refresh = (): void => {
+    const pending: Array<{
+      node: NodeModel;
+      element: HTMLElement;
+      component: NodeComponent<never>;
+    }> = [];
+
     for (const [id, entry] of mounted) {
       const node = instance.getModel().getNode(id);
       if (!node) continue;
-      renderInto(node, entry.element, false);
+      if (writeInto(node, entry.element, false)) {
+        pending.push({ node, element: entry.element, component: entry.component });
+      }
     }
+
+    measureAll(pending);
   };
 
   store.add(instance.on('nodes:change', refresh));

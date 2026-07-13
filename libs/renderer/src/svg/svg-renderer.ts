@@ -2,6 +2,9 @@ import type { DiagramEngine, DiagramModel, NodeModel, NodeStyle, LinkModel, Link
 // Value import: the ONE definition of "where does a label sit along the path"
 // (slot vs position), shared by the model, this renderer and the edge optimizer.
 import { linkLabelPosition, DiagramSerializer } from '@grafloria/engine';
+// wave8/dirty — the O(1) "has anything changed?" counter every model mutation
+// bumps. See the FRAME GATE in render().
+import { getMutationEpoch } from '@grafloria/engine';
 import type { DiagramDocumentEnvelope } from '@grafloria/engine';
 // Wave 5 Card 4: corridor separation for DIFFERENT-pair edges sharing a channel.
 import { computeChannelNudges, applyChannelNudges } from './channel-nudging';
@@ -386,6 +389,69 @@ export class SVGRenderer implements IRenderer {
   // the ROVING TABINDEX — exactly one element in the diagram carries tabindex=0.
   private a11yFocus: { type: 'node' | 'link'; id: string } | null = null;
 
+  // =========================================================================
+  // wave8/dirty — Card 0: the FRAME GATE.
+  //
+  // The per-entity VNode cache (`vnodeCache` + `entity.isDirty`) already makes
+  // an unchanged NODE free. What it never made free is the FRAME: `render()`
+  // still walked the scene, ran three whole-diagram geometry passes and rebuilt
+  // both layer VNodes on every call, even when literally nothing had changed.
+  // Measured at 10k nodes, an idle frame — a frame in which NOTHING moved — cost
+  // 130ms. That is the price the scene charged simply for existing.
+  //
+  // The gate below answers "is this frame identical to the one already on
+  // screen?" in O(1), and if so hands the patcher back the SAME VNode object it
+  // reconciled last time. The patcher's identity-skip then does nothing at all,
+  // which is the correct amount of work for a picture that did not change.
+  //
+  // Soundness rests on the frame being a pure function of exactly three inputs:
+  //   1. the MODEL          → covered by the mutation epoch (see DiagramEntity),
+  //   2. the VIEW           → viewport + zoom, in `frameSignature()`,
+  //   3. INTERACTION state  → connection/reconnection preview + a11y focus, ditto.
+  // Anything that does not funnel through those three trips `frameInvalidated`
+  // explicitly (topology events, style/theme invalidation). Two independent
+  // channels, both fail-open: when in doubt we render.
+  // =========================================================================
+
+  /** The root VNode of the last frame we actually built (null ⇒ nothing to reuse). */
+  private lastFrameRoot: VNode | null = null;
+  /** View + interaction signature of that frame (null ⇒ that frame was not cacheable). */
+  private lastFrameSig: string | null = null;
+  /** Mutation epoch AFTER that frame was built (render() itself dirties links). */
+  private lastFrameEpoch = -1;
+  /** Set by anything whose effect on the picture the epoch cannot see. */
+  private frameInvalidated = true;
+  /** Monotone count of invalidateFrame() calls — a HOST's idle-skip keys on this. */
+  private invalidationEpoch = 0;
+  /**
+   * Did the frame being built move any link's FINAL geometry? If so it has not
+   * reached a fixed point and must not arm the gate.
+   *
+   * `render()` is not quite a pure function, and this is the one place it shows.
+   * The link cull query (`getVisibleLinks`) runs BEFORE the routing pre-pass, so
+   * a frame that re-routes a link writes its new geometry into the spatial index
+   * only AFTER that frame has already decided what to draw. The next frame
+   * therefore culls against a different index and can legitimately produce a
+   * different picture from identical model + view — which is precisely the
+   * two-frame settle the culling suite documents ("the link's cull box is the
+   * union of its LIVE endpoints and its last routed points, so for ONE frame it
+   * still spans the old route").
+   *
+   * Skipping that second frame leaves a link that should have been culled in the
+   * tree forever. So the gate closes only on a frame that changed nothing — a
+   * genuine fixed point — and geometry settles in the same two frames it always
+   * did.
+   *
+   * Set ONLY by markLinksWhoseFrameChanged, which is the only pass that sees a
+   * link's final geometry (three separate writers rewrite it during a frame; an
+   * intermediate difference is not a change). See the note there.
+   */
+  private frameChangedGeometry = false;
+  /** Frames served straight from `lastFrameRoot`. A quiet canvas should be all of them. */
+  private framesSkipped = 0;
+  /** Frames actually built. */
+  private framesBuilt = 0;
+
   // Per-frame auto-route cache: filled by the pre-pass in renderLinksLayer so
   // every link's points are current before any link renders (jump detection
   // reads other links' points).
@@ -688,6 +754,37 @@ export class SVGRenderer implements IRenderer {
       return this.createEmptyDiagram(viewport);
     }
 
+    // wave8/dirty — Card 0: THE FRAME GATE. Everything below this line is the
+    // cost of a frame; this is the check that says we do not have to pay it.
+    // Returning the PREVIOUS root object (not a copy) is the whole point: the
+    // patcher short-circuits on identity, so an unchanged frame reconciles to
+    // exactly zero DOM operations.
+    const frameSig = this.frameSignature(viewport, zoom);
+    if (
+      this.config.enableCaching &&
+      frameSig !== null &&
+      !this.frameInvalidated &&
+      this.lastFrameRoot !== null &&
+      this.lastFrameSig === frameSig &&
+      this.lastFrameEpoch === getMutationEpoch()
+    ) {
+      this.framesSkipped++;
+      this.frameCount++;
+      this.lastRenderTime = performance.now() - startTime;
+
+      // NOTE THE GOVERNOR IS DELIBERATELY NOT FED HERE, and do not "fix" that. A
+      // skipped frame costs ~0ms, and 0ms is not evidence that this machine can
+      // afford more detail — it is evidence that nobody asked for a frame. Record
+      // it and an idle canvas would drive the median toward zero, the governor would
+      // patiently restore detail the scene cannot actually afford, and the very next
+      // pan would blow the budget again. The governor must only ever judge frames it
+      // actually paid for.
+      return this.lastFrameRoot;
+    }
+
+    // Nothing has moved yet; the routing pre-pass will say otherwise if it does.
+    this.frameChangedGeometry = false;
+
     // Card 7 — content-aware auto-sizing MEASURE pass. Runs before the spatial
     // query so the grown bounds are the ones culled, indexed and routed against.
     // Opt-in (`metadata.sizing.auto`) and idempotent: a node already at its
@@ -802,6 +899,25 @@ export class SVGRenderer implements IRenderer {
       children: [linksLayer, nodesLayer, connectionPreviewLayer, defsNode],
     };
 
+    // wave8/dirty — arm the gate for the NEXT frame.
+    //
+    // The epoch is snapshotted HERE, at the end, not at the top: building a frame
+    // legitimately dirties model entities itself (markLinksWhoseFrameChanged
+    // re-dirties every link whose routed geometry moved; autoSizeNodes may resize
+    // one). Snapshotting on entry would record an epoch the frame then invalidates
+    // on its way out, and the gate would never once close.
+    //
+    // …but arm it ONLY on a frame that reached a fixed point. A frame that moved
+    // a link re-indexed it AFTER culling, so the next frame can honestly draw
+    // something different from the same model and the same viewport. See
+    // `frameChangedGeometry`.
+    const settled = !this.frameChangedGeometry;
+    this.lastFrameRoot = frameSig === null || !settled ? null : root;
+    this.lastFrameSig = settled ? frameSig : null;
+    this.lastFrameEpoch = getMutationEpoch();
+    this.frameInvalidated = false;
+    this.framesBuilt++;
+
     // Track render time
     this.lastRenderTime = performance.now() - startTime;
     this.frameCount++;
@@ -846,6 +962,87 @@ export class SVGRenderer implements IRenderer {
     return [...diagram.getLODConfig().tiers]
       .sort((a, b) => b.minZoom - a.minZoom)
       .map((t) => t.name);
+  }
+
+  /**
+   * wave8/dirty — everything a frame depends on that is NOT model state.
+   *
+   * Returns `null` for a frame that must never be reused: a live connection or
+   * reconnection drag paints a preview out of INTERACTION state, which no dirty
+   * flag and no epoch tracks. Rather than try to hash a drag (and get it subtly
+   * wrong once, which is a stuck ghost line on screen), we simply declare those
+   * frames uncacheable. They are, by definition, frames in which the user is
+   * moving the mouse — there was nothing to skip anyway.
+   */
+  private frameSignature(viewport: Rectangle, zoom: number): string | null {
+    const connection = this.engine.getConnectionStateManager?.()?.getState?.();
+    if (connection?.isConnecting) return null;
+    if (this.engine.getReconnectionPreview?.()) return null;
+
+    const focus = this.a11yFocus ? `${this.a11yFocus.type}:${this.a11yFocus.id}` : '-';
+
+    // The governor's bias is part of the frame, because it is the one input that can
+    // change the picture with NO model change, NO viewport change and NO user input —
+    // purely from the frame-time history of the last few frames. A signature that
+    // omits it is describing a different frame than the one we would draw.
+    //
+    // HONESTY ABOUT WHAT THIS ACTUALLY PREVENTS, because I first wrote it up as a
+    // catastrophe and the tests said otherwise. The two mechanisms very nearly cannot
+    // collide: a skipped frame does not feed the governor (see the skip path), so an
+    // idle canvas never advances the bias at all, and any frame that DOES advance it
+    // is by definition a frame something changed — which already moves the signature.
+    // The residue is a single frame: step down while idle, and without this field the
+    // gate would hand back the richer picture already on screen. Harmless, arguably
+    // even right, since redrawing it cheaper buys the user nothing.
+    //
+    // It stays because the signature's contract is "everything this frame depends
+    // on", and the bias is one of those things. Cheap insurance, honestly labelled —
+    // not the disaster it looked like before it was measured.
+    const bias = this.governor?.getBias() ?? 0;
+
+    return `${viewport.x},${viewport.y},${viewport.width},${viewport.height}|${zoom}|${focus}|q${bias}`;
+  }
+
+  /**
+   * Drop the cached frame. Call from anything whose effect on the picture the
+   * mutation epoch cannot see — a topology event, a style/theme invalidation, a
+   * registry swap. Cheap and idempotent: the cost of calling it when you did not
+   * need to is one rebuilt frame; the cost of NOT calling it when you did is a
+   * stale picture, so when in doubt, call it.
+   */
+  invalidateFrame(): void {
+    this.frameInvalidated = true;
+    this.invalidationEpoch++;
+    this.lastFrameRoot = null;
+    this.lastFrameSig = null;
+  }
+
+  /**
+   * How many times this renderer has been told "the picture you have is no longer
+   * the picture you would draw".
+   *
+   * A HOST'S idle-skip must consult this, not just the model's mutation epoch.
+   * The two are not the same, and the gap between them is a real bug: when the
+   * off-thread route solver answers, the MODEL has not changed — the epoch does
+   * not move — but the renderer's own answer about it has improved. A scheduler
+   * keyed only on the model would drop that repaint before `render()` was ever
+   * called, and the refined routes would never reach the screen. The renderer's
+   * internal gate cannot save you there; it never gets asked.
+   *
+   * So: model epoch says "did the world change", this says "did MY picture of it
+   * change". Skip a frame only when both say no.
+   */
+  getInvalidationEpoch(): number {
+    return this.invalidationEpoch;
+  }
+
+  /**
+   * wave8/dirty — the incrementality is only real if these move. `framesSkipped`
+   * counts frames served from the previous root (zero DOM work); `framesBuilt`
+   * counts frames actually walked. An idle canvas should build ONE.
+   */
+  getFrameStats(): { built: number; skipped: number } {
+    return { built: this.framesBuilt, skipped: this.framesSkipped };
   }
 
   /**
@@ -1047,6 +1244,7 @@ export class SVGRenderer implements IRenderer {
    */
   private invalidateStyles(reason: string = 'styles-changed'): void {
     this.vnodeCache.clear();
+    this.invalidateFrame();
     this.themeBoundNodes.clear();
     this.themeBoundLinks.clear();
 
@@ -1088,6 +1286,9 @@ export class SVGRenderer implements IRenderer {
 
   /** Cache keys are `<kind>-<id>-<lod>`; an entity owns one entry per LOD tier. */
   private dropCacheEntries(prefix: string): void {
+    // wave8/dirty: dropping ANY entity's VNode means the frame that embedded it
+    // is no longer the frame we would build now.
+    this.invalidateFrame();
     for (const key of this.vnodeCache.keys()) {
       if (key.startsWith(prefix)) this.vnodeCache.delete(key);
     }
@@ -1633,6 +1834,9 @@ export class SVGRenderer implements IRenderer {
     // Clear cache
     this.vnodeCache.clear();
 
+    // wave8/dirty: the cached frame holds the whole VNode tree of a dead diagram.
+    this.invalidateFrame();
+
     // Clear foreignObject tracking
     this.containerIds.clear();
     this.foreignObjectNodes.clear();
@@ -1972,7 +2176,28 @@ export class SVGRenderer implements IRenderer {
       this.solverBridge = new RouteSolverBridge({
         port: this.config.routeSolverPort,
         solver: this.config.routeSolverOptions,
-        onRoutesReady: this.config.onRoutesRefined,
+        // wave8/dirty × wave8/routing — THE MERGE SEAM. This bug is in neither
+        // branch alone, which is why both were green.
+        //
+        // When the worker answers, NOTHING IN THE MODEL HAS CHANGED. No node
+        // moved, no link changed, no entity was dirtied, so the mutation epoch
+        // did not move — and the viewport did not move either. Every input the
+        // frame gate keys on says "identical frame", so the gate answers the
+        // host's repaint request from cache and the globally-optimised routes we
+        // just paid a worker to compute are dropped on the floor. Permanently:
+        // nothing will reopen the gate until some unrelated edit happens to.
+        //
+        // The picture is not corrupt, so nothing screams. The feature just
+        // silently does not work.
+        //
+        // The general rule, and the one to apply to the NEXT thing that lands
+        // here: ask what can change about the picture that is not in the state
+        // you key on. "A better answer arrived asynchronously" is such a thing.
+        // It is not in the model and it is not in the view, so it must say so.
+        onRoutesReady: () => {
+          this.invalidateFrame();
+          this.config.onRoutesRefined?.();
+        },
       });
     }
 
@@ -2360,6 +2585,25 @@ export class SVGRenderer implements IRenderer {
       if (this.frameLinkSigs.get(link.id) !== sig) {
         this.frameLinkSigs.set(link.id, sig);
         link.markDirty('frame-geometry');
+
+        // wave8/dirty: THIS is the frame gate's "did anything actually move?"
+        // verdict, and this is the only place that can honestly give it.
+        //
+        // It runs after every writer of link geometry (the local router, the
+        // global solver, channel nudging, the edge optimizer's jumps and label
+        // placements) and it compares the frame's FINAL picture of a link against
+        // the previous frame's final picture. Anywhere earlier and you are
+        // comparing against an intermediate value — which is how the first cut of
+        // this got it wrong: the local router rewrites a link, the global solver
+        // immediately puts its own route back, and a per-write check declared
+        // "geometry moved!" on every single frame forever. The gate never
+        // re-armed, and an idle canvas never became free.
+        //
+        // A frame that moves geometry must not arm the gate: the link cull query
+        // ran BEFORE this, so the re-indexed geometry only reaches the culler on
+        // the NEXT frame, which can therefore legitimately draw something
+        // different from the same model and viewport.
+        this.frameChangedGeometry = true;
       }
     }
   }
@@ -6004,15 +6248,31 @@ export class SVGRenderer implements IRenderer {
     const diagram = this.engine.getDiagram();
     if (!diagram) return;
 
-    // Listen for entity changes to invalidate cache
-    diagram.on('node:added', () => this.vnodeCache.clear());
-    diagram.on('node:removed', () => this.vnodeCache.clear());
-    diagram.on('link:added', () => this.vnodeCache.clear());
-    diagram.on('link:removed', () => this.vnodeCache.clear());
+    // Listen for entity changes to invalidate cache.
+    //
+    // wave8/dirty: topology ALSO drops the cached frame. The mutation epoch would
+    // already catch these (DiagramModel is itself a DiagramEntity and trackChanges
+    // its own `nodes`/`links` maps), so this is the SECOND, independent channel —
+    // deliberately redundant, because a missed invalidation here is a picture that
+    // is wrong, and a spurious one is a frame we rebuild for nothing.
+    const dropFrame = () => {
+      this.vnodeCache.clear();
+      this.invalidateFrame();
+    };
+    diagram.on('node:added', dropFrame);
+    diagram.on('node:removed', dropFrame);
+    diagram.on('link:added', dropFrame);
+    diagram.on('link:removed', dropFrame);
+    diagram.on('group:added', dropFrame);
+    diagram.on('group:removed', dropFrame);
+    // (`link:path-changed` needs no listener here: LinkModel.generatePath() now
+    // markDirty()s the link, which is both more correct and bumps the epoch — see
+    // the note there. It used to rewrite `points` in place and tell no one.)
 
     // Listen for interaction config changes (port visibility, etc.)
     this.engine.eventBus.on('config:interaction-changed', () => {
       this.vnodeCache.clear();
+      this.invalidateFrame();
       // Mark all nodes dirty to ensure re-render with new config
       if (diagram) {
         diagram.getNodes().forEach(node => node.markDirty('config-changed'));
@@ -6556,6 +6816,16 @@ export class SVGRenderer implements IRenderer {
    * the link had when it was added, and a detoured link could be culled.
    */
   private syncLinkPoints(link: LinkModel, points: Array<{ x: number; y: number }>): void {
+    // NOTE (wave8/dirty): deliberately does NOT decide whether the frame "moved
+    // geometry". THREE writers call this within a single frame — the local
+    // router, the global solver, and channel nudging — and each overwrites the
+    // last. An intermediate write that differs from the previous frame's FINAL
+    // points is not a change; it is a step on the way to the same answer. Keying
+    // the frame gate on it meant the gate never re-armed once the global solver
+    // was in play (the local router rewrites the link, then the solver puts its
+    // own route straight back), so the canvas churned forever and an idle frame
+    // never became free. That verdict belongs to markLinksWhoseFrameChanged,
+    // which runs after every writer and compares NET change.
     link.points = points.map(p => ({ ...p }));
     this.engine.getDiagram()?.refreshLinkBounds(link);
   }

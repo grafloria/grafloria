@@ -246,6 +246,72 @@ describe('LOD economics (wave8/culling — Card 4)', () => {
       expect(routes()).toBe(0); // and at the cheaper tier, nothing routes
     });
 
+    // THE GOVERNOR (Card 7) THROUGH THE FRAME GATE (Card 0) — the two halves of this
+    // wave, meeting. The real user scenario: a heavy scene being PANNED. Every frame
+    // is genuinely built (the viewport moves, so the gate cannot skip), every frame
+    // is over budget, and the governor must make the picture cheaper *on screen* —
+    // not merely decide to.
+    test('a step-down reaches the screen while the user is panning a scene they cannot afford', () => {
+      ({ engine } = scene(20));
+      renderer = new SVGRenderer(
+        engine,
+        // Caching ON: the frame gate is live. It must not be able to swallow this.
+        { enableCaching: true, qualityGovernor: { budgetMs: 0 } },
+        LIGHT_THEME
+      );
+
+      const pan = (f: number) =>
+        renderer.render({ ...VIEWPORT, x: VIEWPORT.x + f }, SKETCH_ZOOM);
+
+      pan(0);
+      pan(1);
+      pan(2); // three over-budget frames → escalate
+      expect(renderer.getQualityState().governor?.lastDecision).toBe('escalated');
+
+      const routes = countRoutes(engine);
+      pan(3);
+
+      expect(renderer.getQualityState().tier).not.toBe('sketch');
+      expect(routes()).toBe(0); // the cheaper picture is the one actually drawn
+    });
+
+    // …AND THE RULE THAT MAKES THE ABOVE SAFE, which is easy to get backwards.
+    //
+    // A skipped frame costs ~0ms. Feed that to the governor and an IDLE canvas drives
+    // the median toward zero — so the governor patiently concludes the machine has
+    // headroom, restores detail the scene cannot actually afford, and the very next
+    // pan blows the budget again. The canvas would breathe in and out of detail
+    // whenever the user paused. The governor must only ever judge frames it PAID FOR.
+    //
+    // (This is also why the seam above is milder than it first looks: an idle canvas
+    // never advances the governor at all, so a step-down cannot be "stranded" behind
+    // the gate — the only frames that could strand it are frames nobody asked for.)
+    test('an idle skipped frame does not feed the governor free headroom', () => {
+      ({ engine } = scene(20));
+      renderer = new SVGRenderer(
+        engine,
+        {
+          enableCaching: true,
+          // A governor that never acts and only ever counts: a window long enough to
+          // never close and a panic threshold nothing can reach. `samples` then IS
+          // the number of frames it has been shown, which is exactly the invariant
+          // under test — and it cannot be confused by a window rolling over.
+          qualityGovernor: { window: 1000, panicFactor: 1e9 },
+        },
+        LIGHT_THEME
+      );
+
+      const frame = () => renderer.render(VIEWPORT, SKETCH_ZOOM);
+      for (let i = 0; i < 25; i++) frame();
+
+      const { built, skipped } = renderer.getFrameStats();
+      expect(skipped).toBeGreaterThan(20); // the gate is doing its job
+      // THE INVARIANT: the governor has seen the frames we PAID FOR, and not one of
+      // the free ones. Not "≤ built" — exactly built. A skipped frame is not evidence
+      // of anything, and must not be counted as evidence of headroom.
+      expect(renderer.getQualityState().governor?.samples).toBe(built);
+    });
+
     // The claim under the whole card: far-zoom cost stops depending on scene size.
     // Routing was O(nodes) per edge — an obstacle rect built for every node, for
     // every link, every frame — so a 4x scene cost 16x. Now it is O(1) per edge.
