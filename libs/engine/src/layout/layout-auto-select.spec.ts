@@ -334,6 +334,47 @@ describe('port/label quality metrics', () => {
     expect(result.judged).toBe(0);
   });
 
+  it('measures a label at the path MIDPOINT, not at the route\'s end', () => {
+    // THE BUG (found by driving a real graph, not by a unit test): the midpoint was
+    // taken as points[floor(n/2)] — an array index. A straight route has two
+    // points, so that selected points[1]: the route's END, sitting on the target
+    // node's border. A label centred there always "collides", so every clean,
+    // bend-free edge was scored as a label collision — systematically punishing the
+    // engines that route best, and biasing auto-selection AGAINST ELK, the very
+    // port-aware engine this card exists to favour.
+    //
+    // Here: two nodes far apart, a straight route between them, and a small label.
+    // Half-way along that route is empty space. There is no collision.
+    const a = makeNode('a', 100, 60);
+    const b = makeNode('b', 100, 60);
+    a.setPosition(0, 0);
+    b.setPosition(600, 0); // 500px of clear air between them
+
+    const link = new LinkModel('x', 'y');
+    (link as any).id = 'l1';
+    link.sourceNodeId = 'a';
+    link.targetNodeId = 'b';
+    link.addLabel({ text: 'ok', position: 0.5 });
+
+    const result = assessLabelClearance([a, b], [link], {
+      nodePositions: new Map(),
+      bounds: { x: 0, y: 0, width: 700, height: 60 },
+      routing: {
+        portPositions: new Map(),
+        // A straight, bend-free route: node A's right edge to node B's left edge.
+        edgeRoutes: new Map([
+          ['l1', { start: { x: 100, y: 30 }, end: { x: 600, y: 30 }, bends: [] }],
+        ]),
+        labelSpace: new Map(),
+        orthogonal: true,
+      },
+    });
+
+    expect(result.judged).toBe(1);
+    expect(result.overlaps).toBe(0); // was 1: the label was measured ON node b
+    expect(result.score).toBe(100);
+  });
+
   it('reports bends as ABSENT, not zero, when the engine gave no routes', () => {
     // A silent engine must not score a perfect 0 bends — that would let saying
     // nothing beat a measured result.

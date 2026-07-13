@@ -24,6 +24,43 @@ import type { LayoutResult } from './layout-adapter.interface';
 import type { PortInfo, PortSide } from './port-aware-layout.interface';
 import { derivePortInfos, linkLabelBox } from './port-label-bridge';
 
+/**
+ * The point half-way along a polyline, by ARC LENGTH.
+ *
+ * Not `points[floor(n/2)]` — that is an array index, not a midpoint, and on a
+ * two-point (straight) route it returns the END point.
+ */
+function midpointAlongPath(points: Array<{ x: number; y: number }>): { x: number; y: number } {
+  if (points.length === 0) return { x: 0, y: 0 };
+  if (points.length === 1) return points[0];
+
+  const segments: number[] = [];
+  let total = 0;
+  for (let i = 1; i < points.length; i++) {
+    const length = Math.hypot(points[i].x - points[i - 1].x, points[i].y - points[i - 1].y);
+    segments.push(length);
+    total += length;
+  }
+
+  // A degenerate zero-length path has no meaningful midpoint but a real position.
+  if (total === 0) return points[0];
+
+  let travelled = 0;
+  const half = total / 2;
+  for (let i = 0; i < segments.length; i++) {
+    if (travelled + segments[i] >= half) {
+      const along = segments[i] === 0 ? 0 : (half - travelled) / segments[i];
+      return {
+        x: points[i].x + (points[i + 1].x - points[i].x) * along,
+        y: points[i].y + (points[i + 1].y - points[i].y) * along,
+      };
+    }
+    travelled += segments[i];
+  }
+
+  return points[points.length - 1];
+}
+
 /** The centre of a node — the honest anchor for any direction question. */
 function centre(node: NodeModel): { x: number; y: number } {
   return {
@@ -164,8 +201,18 @@ export function assessLabelClearance(
     let mid: { x: number; y: number } | undefined;
 
     if (route) {
-      const pts = [route.start, ...route.bends, route.end];
-      mid = pts[Math.floor(pts.length / 2)];
+      // The label's natural home is the point HALFWAY ALONG THE PATH — measured by
+      // arc length, not by array index.
+      //
+      // Picking `pts[floor(n/2)]` (as this did) is wrong in the exact way that
+      // matters: a straight route has two points, so floor(2/2) = 1 selects the
+      // route's END — a point sitting on the target node's border. A label centred
+      // there ALWAYS overlaps that node, so every clean, bend-free edge was scored
+      // as a label collision. That systematically punished the engines that route
+      // best — ELK above all — and so biased auto-selection AGAINST the port-aware
+      // engine this card exists to favour. Found by driving a real graph through
+      // engine.layout(), not by any unit test.
+      mid = midpointAlongPath([route.start, ...route.bends, route.end]);
     } else {
       const s = nodeById.get(link.sourceNodeId ?? '');
       const t = nodeById.get(link.targetNodeId ?? '');
