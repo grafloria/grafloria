@@ -2,3 +2,5 @@
 
 export * from './GroupMembershipService';
 export * from './GroupCollapseService';
+export * from './SwimlaneService';
+export * from './SemanticMembershipService';

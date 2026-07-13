@@ -1927,6 +1927,11 @@ export class DiagramModel extends DiagramEntity {
     group.collapsedState = data.collapsedState;
     // Wave-5 Card 5: per-group compound-layout intent.
     group.subgraphLayout = data.subgraphLayout;
+    // Wave-5 Card 6: swimlane/pool band config.
+    group.laneConfig = data.laneConfig;
+    // Wave-5 Card 7: declarative membership rule + capacity/WIP limit.
+    group.membershipRule = data.membershipRule;
+    group.capacity = data.capacity;
     // Replace metadata CONTENT but keep the runtime diagram back-ref wired.
     group.metadata = new Map(Object.entries(data.metadata ?? {}));
     group.metadata.set('diagram', this);

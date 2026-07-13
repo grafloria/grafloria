@@ -39,6 +39,34 @@ export interface SerializedGroup extends SerializedEntity {
   // Wave-5 Card 5: per-group compound-layout intent (the GroupInfo bits that
   // belong to the group itself and should persist).
   subgraphLayout?: SubgraphGroupConfig;
+
+  // Wave-5 Card 6: swimlane/pool band config (present only on pools & lanes).
+  laneConfig?: LaneConfig;
+
+  // Wave-5 Card 7: serialized declarative membership rule (auto-membership).
+  membershipRule?: MembershipRule;
+  // Wave-5 Card 7: capacity / WIP limit (0+; present only when set).
+  capacity?: number;
+}
+
+/**
+ * Wave-5 Card 7: a SERIALIZABLE declarative membership predicate over a node's
+ * `data` (never eval'd code). Leaves match one field with an operator; branches
+ * compose with all/any/not. Kept intentionally small and closed so it round-
+ * trips and can be reasoned about / edited as data.
+ */
+export type MembershipRule =
+  | MembershipLeaf
+  | { all: MembershipRule[] }
+  | { any: MembershipRule[] }
+  | { not: MembershipRule };
+
+export interface MembershipLeaf {
+  /** Dot-free key looked up on the node's `data` map. */
+  field: string;
+  op: 'eq' | 'ne' | 'in' | 'nin' | 'gt' | 'gte' | 'lt' | 'lte' | 'exists' | 'matches';
+  /** Comparison operand (array for in/nin; regex source string for matches). */
+  value?: unknown;
 }
 
 /**
@@ -54,6 +82,34 @@ export interface SubgraphGroupConfig {
   fixed?: boolean;
   /** Opaque options forwarded to the chosen layout adapter. */
   layoutOptions?: Record<string, unknown>;
+}
+
+/**
+ * Wave-5 Card 6: swimlanes & pools as a GENERIC banded group (not BPMN-named).
+ * A `pool` group tiles its child `lane` groups into bands along one axis; each
+ * `lane` is an ordinary group (so drop-to-assign, membership, constraints all
+ * reuse the existing machinery). This is intrinsic band config that round-trips.
+ */
+export interface LaneConfig {
+  /** 'pool' owns the band grid; 'lane' is one band inside a pool. */
+  role: 'pool' | 'lane';
+  /**
+   * Band axis. 'horizontal' → lanes are rows stacked along Y (each spans the
+   * pool width). 'vertical' → lanes are columns along X (each spans the height).
+   * Set on the pool; lanes carry a copy for convenience.
+   */
+  orientation: 'horizontal' | 'vertical';
+  /** Pool only: ordered child lane group ids (band order). */
+  laneOrder?: string[];
+  /**
+   * Pool only: title-band thickness reserved along the main axis start (left for
+   * horizontal pools, top for vertical pools).
+   */
+  headerSize?: number;
+  /** Lane only: relative cross-axis size when not fixed (default 1). */
+  weight?: number;
+  /** Lane only: absolute cross-axis size (pins the band, overrides weight). */
+  fixedSize?: number;
 }
 
 /**
@@ -183,6 +239,13 @@ export class GroupModel extends DiagramEntity {
   // Wave-5 Card 5: per-group compound-layout intent (serialized when set).
   subgraphLayout?: SubgraphGroupConfig;
 
+  // Wave-5 Card 6: swimlane/pool band config (serialized when set).
+  laneConfig?: LaneConfig;
+
+  // Wave-5 Card 7: declarative auto-membership rule + capacity/WIP limit.
+  membershipRule?: MembershipRule;
+  capacity?: number;
+
   constructor(config: { id?: string; name: string }) {
     super(config.id);
     this.name = config.name;
@@ -219,12 +282,56 @@ export class GroupModel extends DiagramEntity {
       }
     }
 
+    // Wave-5 Card 7: capacity / WIP limit — reject an add that would push the
+    // group past its limit. Already-present candidates never count (re-adds are
+    // no-ops), so this only gates genuinely new members (incl. drops, which flow
+    // through GroupMembershipService → canAddMember).
+    if (
+      this.capacity !== undefined &&
+      !this.members.has(candidateId) &&
+      this.members.size >= this.capacity
+    ) {
+      return false;
+    }
+
     // Per-group membership predicate.
     if (this.memberValidation && !this.memberValidation(candidateId, this)) {
       return false;
     }
 
     return true;
+  }
+
+  /**
+   * Wave-5 Card 7: WIP state for the capacity limit. 'under' = room to spare,
+   * 'full' = exactly at the limit (the visual warning threshold), 'over' = past
+   * it (only reachable by lowering capacity below the current count). Returns
+   * 'unlimited' when no capacity is set.
+   */
+  getWipState(): { count: number; capacity?: number; state: 'unlimited' | 'under' | 'full' | 'over' } {
+    const count = this.members.size;
+    if (this.capacity === undefined) {
+      return { count, state: 'unlimited' };
+    }
+    const state = count > this.capacity ? 'over' : count >= this.capacity ? 'full' : 'under';
+    return { count, capacity: this.capacity, state };
+  }
+
+  /** Wave-5 Card 7: true when at or beyond the capacity limit (warning state). */
+  isOverCapacity(): boolean {
+    const s = this.getWipState().state;
+    return s === 'full' || s === 'over';
+  }
+
+  /** Set (or clear) the capacity / WIP limit, tracked for undo/diff. */
+  setCapacity(capacity: number | undefined): void {
+    if (this.capacity === capacity) {
+      return;
+    }
+    const old = this.capacity;
+    this.capacity = capacity;
+    this.trackChange('capacity', old, capacity);
+    this.emitter.emit('capacity:changed', this.getWipState());
   }
 
   /**
@@ -1110,6 +1217,11 @@ export class GroupModel extends DiagramEntity {
       collapsedState: this.collapsedState,
       // Wave-5 Card 5: per-group compound-layout intent (present only when set).
       subgraphLayout: this.subgraphLayout,
+      // Wave-5 Card 6: swimlane/pool band config (present only on pools & lanes).
+      laneConfig: this.laneConfig,
+      // Wave-5 Card 7: declarative auto-membership rule + capacity/WIP limit.
+      membershipRule: this.membershipRule,
+      capacity: this.capacity,
     };
   }
 
@@ -1173,6 +1285,19 @@ export class GroupModel extends DiagramEntity {
     // Wave-5 Card 5: restore per-group compound-layout intent.
     if (data.subgraphLayout) {
       group.subgraphLayout = data.subgraphLayout;
+    }
+
+    // Wave-5 Card 6: restore swimlane/pool band config.
+    if (data.laneConfig) {
+      group.laneConfig = data.laneConfig;
+    }
+
+    // Wave-5 Card 7: restore declarative membership rule + capacity/WIP limit.
+    if (data.membershipRule) {
+      group.membershipRule = data.membershipRule;
+    }
+    if (typeof data.capacity === 'number') {
+      group.capacity = data.capacity;
     }
 
     // Restore metadata
