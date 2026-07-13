@@ -445,6 +445,11 @@ export class SVGRenderer implements IRenderer {
   private frameLod: LODLevel = 'high';
   private frameZoom = 1;
 
+  // Per-frame memo for `lodAllows` — see the note there. Keyed by feature; the
+  // tier it was computed for is held alongside so a tier change invalidates it.
+  private lodCache = new Map<LODFeature, boolean>();
+  private lodCacheTier: LODLevel | null = null;
+
   // Performance tracking
   private lastRenderTime = 0;
   private lastNodeCount = 0;
@@ -635,6 +640,9 @@ export class SVGRenderer implements IRenderer {
     // predicates). See the field docs.
     this.frameLod = lod;
     this.frameZoom = zoom > 0 && Number.isFinite(zoom) ? zoom : 1;
+    // Drop the per-frame LOD memo: the TIER may be unchanged since the last frame
+    // while the POLICY behind it was replaced (setLODConfig / registerLODTier).
+    this.lodCache.clear();
 
     // Apply zoom to viewBox (zoom around center point)
     // The center point should remain constant regardless of zoom level
@@ -2378,7 +2386,26 @@ export class SVGRenderer implements IRenderer {
    * Returns false when there is no diagram (nothing to render anyway).
    */
   private lodAllows(feature: LODFeature, lod: LODLevel): boolean {
-    return this.engine.getDiagram()?.shouldRender(feature, lod) ?? false;
+    // wave8/culling: MEMOISED PER FRAME. `shouldRender` linearly scans the tier
+    // list and allocates a closure on every call, and this gate is asked ~12
+    // times per entity per frame (shadows, panel, label, html body, lock, ports,
+    // handles, decorations, and now routing/link-detail/gradients). On a 5k scene
+    // that is tens of thousands of array scans to answer at most ten distinct
+    // questions — the tier does not change during a frame.
+    //
+    // The cache is cleared at the top of render() (so a setLODConfig() between
+    // frames is picked up) and whenever the tier itself changes.
+    if (this.lodCacheTier !== lod) {
+      this.lodCacheTier = lod;
+      this.lodCache.clear();
+    }
+
+    const cached = this.lodCache.get(feature);
+    if (cached !== undefined) return cached;
+
+    const allowed = this.engine.getDiagram()?.shouldRender(feature, lod) ?? false;
+    this.lodCache.set(feature, allowed);
+    return allowed;
   }
 
   /**
