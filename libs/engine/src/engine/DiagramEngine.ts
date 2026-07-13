@@ -59,6 +59,8 @@ import type { NodeBehavior } from '../types';
 // Wave 7 (Auto-layout) — Card 0: the unified layout entry point.
 import {
   LayoutRegistry,
+  createAutoLayout,
+  DEFAULT_LAYOUT_NAME,
   fromAdapter,
   createBuiltInLayoutAdapters,
   type UnifiedLayoutOptions,
@@ -2156,11 +2158,16 @@ export class DiagramEngine {
       for (const adapter of createBuiltInLayoutAdapters()) {
         registry.register(fromAdapter(adapter));
       }
-      // Card 1: the zero-config layered default. Registered LAST so it is the one
-      // `engine.layout()` reaches for by name — and the only engine that can honour
-      // Card 5's semantic constraints, which are decisions taken during ranking and
-      // ordering rather than corrections applied to finished coordinates.
+      // Card 1: our own layered (Sugiyama) engine. It is the ONLY engine that can
+      // honour Card 5's semantic constraints — those are decisions taken during
+      // ranking and ordering, not corrections applied to finished coordinates — so
+      // the incremental/mental-map path (Card 6) always routes through it.
       registry.register(createLayeredLayout('layered'));
+
+      // Card 7b: the auto-selector is a registered layout like any other, so
+      // `engine.layout()` with no name runs a scored BAKE-OFF rather than a
+      // hard-coded guess. Registered after `layered` so the bake-off can pick it.
+      registry.register(createAutoLayout(registry));
       this._layoutRegistry = registry;
     }
     return this._layoutRegistry;
@@ -2183,7 +2190,7 @@ export class DiagramEngine {
    * them would force a single-node placer to pretend it can lay out a graph.
    */
   async layout(
-    name = 'layered',
+    name: string = DEFAULT_LAYOUT_NAME,
     options: UnifiedLayoutOptions = {}
   ): Promise<UnifiedLayoutResult> {
     if (!this.diagram) {
@@ -2269,6 +2276,15 @@ export class DiagramEngine {
    * Returns a tween PLAN rather than animating: the engine says where things go at
    * time t, the host drives t. That is what keeps this runnable in a worker, in SSR,
    * and in a test.
+   *
+   * ONE SEMANTIC, STATED PLAINLY. This runs the `layered` engine, because it is the
+   * only one that honours anchors DURING coordinate assignment. So if the diagram's
+   * current positions came from a DIFFERENT engine (dagre, ELK, or the auto
+   * bake-off's pick), the first incremental pass necessarily re-draws it — and that
+   * is not a bug to be papered over: "move as little as possible" is ill-posed
+   * across engines, because there is no meaningful small move between two engines'
+   * idea of the same graph. Lay out with `layered` if you intend to edit
+   * incrementally; after the first pass it is stable.
    */
   async layoutIncremental(
     options: IncrementalOptions & { name?: string } & UnifiedLayoutOptions = {}
@@ -2294,6 +2310,11 @@ export class DiagramEngine {
 
     const semantic = constraintsForStrategy(this.diagram, before, options);
 
+    // Card 6 pins the engine to `layered` on purpose: it is the only one that
+    // honours Card-5 anchors DURING coordinate assignment. Routing this through the
+    // auto-selector would hand the graph to whichever engine scored best on a
+    // FRESH layout — and a fresh layout is exactly what mental-map preservation is
+    // trying not to do. (A caller can still name another engine explicitly.)
     const result = await this.layout(options.name ?? 'layered', {
       ...options,
       semantic,

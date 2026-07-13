@@ -52,6 +52,11 @@ import { ELKLayoutAdapter } from './elk-layout-adapter';
 import { ForceLayoutAdapter } from './force-layout-adapter';
 import { SpectralLayoutAdapter } from './spectral-layout-adapter';
 import { CommunityLayoutAdapter } from './community-layout-adapter';
+import {
+  autoSelectLayout,
+  AUTO_LAYOUT_NAME,
+  type LayoutSelectionReport,
+} from './layout-auto-select';
 
 /**
  * The one options schema. Adapter-specific knobs still ride in `options`, but
@@ -129,6 +134,12 @@ export interface UnifiedLayoutResult extends LayoutResult {
   algorithm: string;
   /** The seed used — so a pleasing random layout can be reproduced on demand. */
   seed: number;
+  /**
+   * Wave 7 — Card 7b. Present when the AUTO layout ran: which algorithm it chose,
+   * why, and what every other candidate scored. An auto-selector that cannot show
+   * its working is a support ticket.
+   */
+  selection?: LayoutSelectionReport;
 }
 
 /**
@@ -270,4 +281,32 @@ export function createBuiltInLayoutAdapters(): LayoutAdapter[] {
     new SpectralLayoutAdapter(),
     new CommunityLayoutAdapter(),
   ];
+}
+
+/**
+ * The layout `engine.layout()` runs when the caller names none.
+ *
+ * Wave 7 — Card 7b: this is `'auto'`, not a fixed algorithm. A zero-config caller
+ * gets a bake-off (see layout-auto-select.ts) rather than whichever algorithm
+ * happened to be hard-coded, and can read back WHY it chose what it chose. Naming
+ * it here rather than inline in DiagramEngine keeps the decision in one place —
+ * a card that wants a different default (a Sugiyama, say) changes this constant
+ * and nothing else.
+ */
+export const DEFAULT_LAYOUT_NAME = AUTO_LAYOUT_NAME;
+
+/**
+ * The auto-selecting layout, as a registry engine.
+ *
+ * It is registered under a name like any other layout — deliberately. Card 0's
+ * contract is that `engine.layout(name)` is THE entry point, so auto-selection had
+ * to compose with the registry rather than fork a second one. It takes the registry
+ * it lives in so its candidate pool is whatever is actually registered, including
+ * layouts an extension host added after start-up.
+ */
+export function createAutoLayout(registry: LayoutRegistry): RegisteredLayout {
+  return {
+    name: AUTO_LAYOUT_NAME,
+    apply: (diagram, options) => autoSelectLayout(diagram, registry, options),
+  };
 }

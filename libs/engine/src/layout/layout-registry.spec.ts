@@ -73,17 +73,25 @@ describe('Card 0 — the unified layout API', () => {
 
     it('every built-in adapter is registered and addressable by name', () => {
       const engine = new DiagramEngine();
+      // 'auto' joins the built-ins in Wave 7 Card 7b: the auto-selector is a
+      // REGISTERED LAYOUT like any other, not a second entry point beside the
+      // registry. It is the layout `engine.layout()` runs when given no name.
       expect(engine.getLayoutRegistry().names()).toEqual(
-        ['community', 'dagre', 'elk', 'force', 'layered', 'spectral']
+        ['auto', 'community', 'dagre', 'elk', 'force', 'layered', 'spectral']
       );
       engine.destroy();
     });
 
-    it('Card 1: engine.layout() with NO name runs the layered default', async () => {
+    it('Cards 1 + 7b: engine.layout() with NO name runs the auto bake-off — and `layered` is in the pool', async () => {
       const engine = new DiagramEngine();
       buildGraph(engine, ['a', 'b', 'c']);
       const result = await engine.layout();
-      expect(result.algorithm).toBe('layered');
+      // the auto-selector ran…
+      expect(result.algorithm).toBe('auto');
+      // …and it can reach our layered engine, which is the only one that honours
+      // semantic constraints. A bake-off that cannot pick it is a bake-off with a
+      // hole in it.
+      expect(engine.getLayoutRegistry().has('layered')).toBe(true);
       engine.destroy();
     });
 

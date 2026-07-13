@@ -70,6 +70,11 @@ export * from './sugiyama/sugiyama'; // Wave 7 Cards 1 & 5
 export * from './sugiyama/layered-layout'; // Wave 7 Cards 1 & 5
 export * from './incremental/mental-map'; // Wave 7 Card 6
 
+// Wave 7 Card 7: port/label-aware layout + auto-algorithm selection
+export * from './port-label-bridge';
+export * from './layout-quality-extended';
+export * from './layout-auto-select';
+
 // Phase 3: Advanced layout features
 export * from './port-aware-layout.interface';
 export * from './subgraph-layout.interface';

@@ -696,14 +696,45 @@ export function sugiyama(
   const { layers: ordered, crossings } = orderLayers(layers, adj, tbConstraints, iterations);
   const xs = assignCoordinates(ordered, adj, nodeSpacing, tbConstraints, iterations);
 
-  // rank -> y (TB space): stacked by the tallest node in each layer
+  // rank -> y (TB space).
+  //
+  // Normally a layer is stacked below the previous one by its tallest node plus the
+  // rank spacing. But an ANCHORED node also pins the RANK axis, and honouring that
+  // is what makes "pin these nodes" exact rather than approximate:
+  //
+  //   The in-layer axis is the only one coordinate assignment is free to choose —
+  //   the other one IS the rank, derived from the graph. So without this, a pinned
+  //   node keeps its in-layer coordinate and still slides along the rank axis
+  //   whenever the layer heights or the rank spacing differ by a pixel — which they
+  //   always do the moment a different engine produced the previous layout. The
+  //   nodes were "pinned" and moved anyway, which reads as the pins not working.
+  //
+  // So: if a layer contains anchored nodes, the LAYER sits where they say it does
+  // (their median rank-axis coordinate). Monotonicity and non-overlap between layers
+  // are then re-imposed, because an anchor may not reorder the ranks — rank is the
+  // graph's decision, not the caller's.
+  const anchorY = tbConstraints?.anchors ?? {};
+  const rawLayerY: Array<number | undefined> = ordered.map((layer) => {
+    const pinned = layer
+      .map((n) => anchorY[n.id]?.y)
+      .filter((v): v is number => typeof v === 'number');
+    if (pinned.length === 0) return undefined;
+    pinned.sort((a, b) => a - b);
+    return pinned[pinned.length >> 1];
+  });
+
   const layerY: number[] = [];
   let y = 0;
-  for (const layer of ordered) {
+  ordered.forEach((layer, i) => {
     const h = Math.max(0, ...layer.map((n) => n.height));
-    layerY.push(y + h / 2);
-    y += h + rankSpacing;
-  }
+    const pinnedY = rawLayerY[i];
+    const stacked = y + h / 2;
+    // A pinned layer sits where its anchors say — but never above the layer before
+    // it, because that would invert the ranking the graph demands.
+    const chosen = pinnedY !== undefined ? Math.max(pinnedY, stacked) : stacked;
+    layerY.push(chosen);
+    y = chosen + h / 2 + rankSpacing;
+  });
   const totalHeight = Math.max(0, y - rankSpacing);
 
   const positions = new Map<string, { x: number; y: number }>();

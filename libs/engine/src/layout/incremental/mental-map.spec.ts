@@ -43,7 +43,12 @@ describe('Card 6 — mental-map preservation', () => {
     addLink(engine, 'b', 'c');
     addLink(engine, 'c', 'd');
 
-    await engine.layout();
+    // Lay out with the SAME engine the incremental pass uses. This is the coherent
+    // workflow, and the semantic is stated plainly in engine.layoutIncremental():
+    // "preserve the mental map" is ill-posed ACROSS engines — if dagre drew the
+    // current picture and the layered engine redraws it, there is no meaningful
+    // "small move" between two different engines' idea of the same graph.
+    await engine.layout('layered');
     const before = snapshot(engine);
 
     // the edit: a new node hanging off `a`
@@ -88,7 +93,7 @@ describe('Card 6 — mental-map preservation', () => {
     addLink(engine, 'a', 'b');
     addLink(engine, 'b', 'c');
 
-    await engine.layout();
+    await engine.layout('layered');
     const before = snapshot(engine);
 
     addNode(engine, 'new');
@@ -113,7 +118,7 @@ describe('Card 6 — mental-map preservation', () => {
     engine.createDiagram('mm');
     for (const id of ['a', 'b']) addNode(engine, id);
     addLink(engine, 'a', 'b');
-    await engine.layout();
+    await engine.layout('layered');
 
     addNode(engine, 'new');
     addLink(engine, 'a', 'new');
