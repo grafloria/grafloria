@@ -18,4 +18,6 @@ export * from './round-trip';
 export * from './svg-export';
 export * from './raster';
 export * from './node-raster';
+export * from './pagination';
+export * from './pdf';
 export * from './batch';

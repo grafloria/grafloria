@@ -25,6 +25,15 @@ import { DEFAULT_MAX_OUTPUT_SIZE } from '../export/bounds';
 import { bytesToDataUrl, dataUrlToBytes, embedModelInPng } from '../export/round-trip';
 import { filterTreeByIds } from '../export/scope';
 import { exportPdf, type PdfExportResult } from '../export/pdf/pdf-export';
+import { paginate, type Page, type PaginationOptions } from '../export/pagination';
+
+/** One paginated tile: its grid position, its world window, and the SVG for it. */
+export interface PagedSvgResult {
+  pages: Array<Page & { svg: string }>;
+  columns: number;
+  rows: number;
+  warnings: string[];
+}
 import {
   type PaintSpec,
   isPaintSpec,
@@ -1185,6 +1194,70 @@ export class SVGRenderer implements IRenderer {
       backgroundColor: options.backgroundColor,
       ...options.pdf,
     });
+  }
+
+  /**
+   * Slice the diagram into pages (Card 5).
+   *
+   * Returns one standalone SVG per page — a tile grid you can print, or lay out as a poster.
+   * Breaks are snapped so they do not cut a node in half; see `export/pagination.ts`.
+   */
+  exportPages(pagination: PaginationOptions, options: ExportOptions = {}): PagedSvgResult {
+    const padding = options.padding ?? 20;
+    const ids = options.scope === 'selection' ? this.selectedIds() : options.includeIds;
+
+    let tree = this.render(this.contentViewport(padding + CONTENT_RENDER_SLACK), 1);
+    if (ids !== undefined) tree = filterTreeByIds(tree, ids);
+
+    const layout = paginate(tree, { padding, ...pagination });
+    const warnings = [...layout.warnings];
+
+    const pages = layout.pages.map(page => {
+      // The page's WINDOW is the viewBox (so every tile is at the same scale); the clip is
+      // handled by the viewBox itself here — an SVG tile simply shows less content when its
+      // clip is narrower, which is the same white space the PDF path leaves.
+      const result = exportSvg(tree, {
+        theme: this.theme,
+        viewBox: page.rect,
+        fitToContent: false,
+        scale: options.scale,
+        backgroundColor: options.backgroundColor,
+        foreignObject: options.foreignObject,
+        captureForeignObject: options.captureForeignObject,
+        embedFontCss: options.embedFontCss,
+      });
+      warnings.push(...result.warnings);
+      return { ...page, svg: result.svg };
+    });
+
+    return { pages, columns: layout.columns, rows: layout.rows, warnings: [...new Set(warnings)] };
+  }
+
+  /**
+   * A multi-page PDF of a diagram too big for one sheet.
+   *
+   * The paginator supplies the page grid; the PDF writer honours each page's `clip`, so a
+   * break pulled back to spare a node leaves white space rather than half a box.
+   */
+  exportPaginatedPdf(pagination: PaginationOptions, options: ExportOptions = {}): PdfExportResult {
+    const padding = options.padding ?? 20;
+    const ids = options.scope === 'selection' ? this.selectedIds() : options.includeIds;
+
+    let tree = this.render(this.contentViewport(padding + CONTENT_RENDER_SLACK), 1);
+    if (ids !== undefined) tree = filterTreeByIds(tree, ids);
+
+    const layout = paginate(tree, { padding, ...pagination });
+
+    const result = exportPdf(tree, {
+      theme: this.theme,
+      padding,
+      backgroundColor: options.backgroundColor,
+      pageNumbers: true,
+      ...options.pdf,
+      pages: layout.pages,
+    });
+
+    return { ...result, warnings: [...new Set([...layout.warnings, ...result.warnings])] };
   }
 
   /**

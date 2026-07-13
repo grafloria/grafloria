@@ -92,10 +92,16 @@ export interface PdfExportOptions {
   /** Paint a page background. Default: none (white paper shows through). */
   backgroundColor?: string;
   /**
-   * Pages to lay the diagram across. Supplied by the paginator (Card 5) — each entry is a
-   * world rectangle. Default: one page holding the whole diagram.
+   * Pages to lay the diagram across. Supplied by the paginator (Card 5).
+   *
+   * `rect` is the world WINDOW mapped onto the paper — the same size on every page, so all
+   * pages render at one scale. `clip` is what is actually painted, and is smaller when a
+   * break was pulled in to spare a node: the page then shows white space at its edge rather
+   * than half a box. A bare Rectangle means "clip = rect".
+   *
+   * Default: one page holding the whole diagram.
    */
-  pages?: Rectangle[];
+  pages?: Array<Rectangle | { rect: Rectangle; clip?: Rectangle }>;
   /** Draw "n / total" at the foot of each page. Default false; the paginator turns it on. */
   pageNumbers?: boolean;
 }
@@ -244,7 +250,14 @@ export function exportPdf(root: VNode, options: PdfExportOptions = {}): PdfExpor
       return { x: bounds.x - pad, y: bounds.y - pad, width: bounds.width + pad * 2, height: bounds.height + pad * 2 };
     })();
 
-  const pages = options.pages?.length ? options.pages : [content];
+  // Normalise: a bare Rectangle means "paint the whole window".
+  const pages: Array<{ rect: Rectangle; clip: Rectangle }> = (
+    options.pages?.length ? options.pages : [content]
+  ).map(page => {
+    const rect = 'rect' in page ? page.rect : page;
+    const clip = 'rect' in page ? (page.clip ?? rect) : page;
+    return { rect, clip };
+  });
 
   // Gradients are resolved by id from <defs>, so collect them before painting.
   const gradients = collectGradientStops(root);
@@ -267,7 +280,7 @@ export function exportPdf(root: VNode, options: PdfExportOptions = {}): PdfExpor
   const boxWidth = page.width - margins.left - margins.right;
   const boxHeight = page.height - margins.top - margins.bottom;
 
-  pages.forEach((rect, index) => {
+  pages.forEach(({ rect, clip }, index) => {
     const stream = new ContentStream();
     streams.push(stream);
 
@@ -306,9 +319,10 @@ export function exportPdf(root: VNode, options: PdfExportOptions = {}): PdfExpor
     };
     stream.concat(ctm);
 
-    // Clip to the page's slice of the world, so a node straddling a page boundary is cut
-    // at the boundary instead of bleeding across the margin onto the next page.
-    stream.push(`${num(rect.x)} ${num(rect.y)} ${num(rect.width)} ${num(rect.height)} re`);
+    // Clip to what this page actually PAINTS. That is `clip`, not `rect`: when the
+    // paginator pulled a break back to spare a node, the clip is narrower than the window,
+    // and the page shows white space instead of a sliced-in-half box.
+    stream.push(`${num(clip.x)} ${num(clip.y)} ${num(clip.width)} ${num(clip.height)} re`);
     stream.push('W n');
 
     paint(root, stream, { gradients, warnings, classStyles });
