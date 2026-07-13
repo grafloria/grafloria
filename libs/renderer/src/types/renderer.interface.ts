@@ -8,6 +8,9 @@ import type { RasterBackend } from '../export/raster';
 import type { ExportScope } from '../export/bounds';
 import type { PdfExportOptions } from '../export/pdf/pdf-export';
 import type { FontSource } from '../export/assets';
+// Wave 8 (Performance & scale) — Card 6: the global route solver's worker seam.
+// Type-only, so the engine's solver is not pulled into every renderer bundle.
+import type { SolverPort, SolverOptions } from '@grafloria/engine';
 // Styling & theming (Wave 4): colorMode + the design-token bridge are RENDERER
 // CONFIG, so their types belong on the config contract. Type-only imports — no
 // runtime dependency from the types barrel into the themes barrel.
@@ -439,6 +442,48 @@ export interface SVGRendererConfig {
    * ties break on link id). See EdgeOptimizerOptions.jumpOwnership.
    */
   jumpOwnership?: 'both' | 'single';
+
+  /**
+   * Wave 8 (Performance & scale) — Card 6. Route every edge against ONE shared
+   * penalty field (`GlobalRouteSolver`, wave 5 card 7) instead of one at a time,
+   * so an edge pays for crossing another edge or crowding a corridor at ROUTING
+   * time and picks a different channel by itself — rather than being routed into
+   * a pile-up and then patched afterwards by fan-out, nudging and jump-overs.
+   *
+   * Runs OFF THE MAIN THREAD (pass `routeSolverPort`) and asynchronously, because
+   * `render()` is synchronous and cannot await a worker: the ordinary incremental
+   * router paints immediately, and the solver's answer is adopted on a later frame
+   * once it lands. An answer computed against a world that has since moved is
+   * discarded, never painted.
+   *
+   * OFF by default — deliberately. The solver's geometry is genuinely different
+   * (that is the point of it), and turning it on globally would change routes in
+   * every existing diagram.
+   *
+   * Default: false
+   */
+  globalRouting?: boolean;
+
+  /**
+   * The port the global route solver runs on — a real `Worker`, typically
+   * `new Worker(new URL('...', import.meta.url))` whose body is
+   * `serveSolver(self)`. Omit and the solver runs INLINE on this thread: same
+   * protocol, same code, same answers, no parallelism.
+   *
+   * The renderer does not construct the Worker itself; doing so would bake one
+   * bundler's URL scheme into the library.
+   */
+  routeSolverPort?: SolverPort;
+
+  /** Penalty weights and pass count for the global solver. See SolverOptions. */
+  routeSolverOptions?: SolverOptions;
+
+  /**
+   * Called when the global solver has produced routes better than the ones on
+   * screen. The host should schedule a re-render; the renderer cannot do it
+   * itself, because it does not own the frame loop.
+   */
+  onRoutesRefined?: () => void;
 
   /**
    * Wave 4 — Card 7. Run the diagram-wide edge optimizer: ONE incremental pass
