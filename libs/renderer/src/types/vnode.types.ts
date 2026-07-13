@@ -166,7 +166,19 @@ export interface VNodeProps {
   xmlns?: string;
 
   /**
-   * Inline CSS styles (for HTML elements in foreignObject)
+   * Inline CSS style.
+   *
+   * BOTH forms are emitted in production and both are supported by every
+   * consumer (`patch.ts::serializeStyle`, and the canvas style resolver):
+   *   - an OBJECT (`{ cursor: 'move' }`) — the interaction overlays,
+   *   - a STRING (`'fill: #fff; stroke-width: 2'`) — the shape registry and the
+   *     link style computation, which put the resolved cascade inline precisely
+   *     so it beats the theme stylesheet.
+   *
+   * This was typed object-only, and the string form slipped past the compiler
+   * only because it always arrives through an `any`-typed style bag. Anything
+   * reading `props.style` off a VNode had no way to know it had to handle a
+   * string. It does.
    */
   /**
    * Inline style: either a declaration map, or a raw CSS string.

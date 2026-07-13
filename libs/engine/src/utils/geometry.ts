@@ -224,20 +224,42 @@ function isPointInDiamond(px: number, py: number, bounds: BoundingBox): boolean 
 }
 
 /**
- * Hexagon hit detection - point within flat-top hexagon
- * Flat-top hexagon with vertices at specific positions
+ * Hexagon hit detection — point within the hexagon the renderer ACTUALLY DRAWS.
+ *
+ * BUG FIXED (Wave 4, found by the Canvas backend's hit-parity sweep): this used
+ * to test a hexagon rotated 90 degrees from the rendered one. The renderer draws
+ * a FLAT-TOP hexagon — a flat top edge, with the two points on the LEFT and
+ * RIGHT (`hexagonVerts` in `renderer/src/svg/shape-registry.ts`):
+ *
+ *      (0.25w, 0) ─── (0.75w, 0)
+ *          /                \
+ *     (0, 0.5h)          (w, 0.5h)
+ *          \                /
+ *      (0.25w, h) ─── (0.75w, h)
+ *
+ * ...but this function tested a POINTY-TOP hexagon (points at top and bottom,
+ * flat left and right edges). So the clickable region was not the visible shape:
+ * on a 100x60 hexagon, a click ~16px to the LEFT of the outline SELECTED it,
+ * while a click ON its top edge MISSED it. Both directions were wrong, and
+ * neither was caught, because the only hexagon tests probed the centre (inside
+ * both shapes) and the bounding-box corners (outside both).
+ *
+ * The vertex list below is the rendered one, so the shape you see is the shape
+ * you can click — in SVG mode and, by construction, in Canvas mode too.
  */
 function isPointInHexagon(px: number, py: number, bounds: BoundingBox): boolean {
-  // Flat-top hexagon vertices (clockwise from top)
   const w = bounds.width;
   const h = bounds.height;
+  const inset = w * 0.25; // horizontal inset of the flat top/bottom edges
+  const cy = bounds.top + h / 2;
+
   const vertices: Point[] = [
-    { x: bounds.left + w * 0.5, y: bounds.top }, // Top
-    { x: bounds.left + w, y: bounds.top + h * 0.25 }, // Top-right
-    { x: bounds.left + w, y: bounds.top + h * 0.75 }, // Bottom-right
-    { x: bounds.left + w * 0.5, y: bounds.top + h }, // Bottom
-    { x: bounds.left, y: bounds.top + h * 0.75 }, // Bottom-left
-    { x: bounds.left, y: bounds.top + h * 0.25 }, // Top-left
+    { x: bounds.left + inset, y: bounds.top }, // top-left
+    { x: bounds.left + w - inset, y: bounds.top }, // top-right
+    { x: bounds.left + w, y: cy }, // right point
+    { x: bounds.left + w - inset, y: bounds.top + h }, // bottom-right
+    { x: bounds.left + inset, y: bounds.top + h }, // bottom-left
+    { x: bounds.left, y: cy }, // left point
   ];
 
   return isPointInPolygon(px, py, vertices);

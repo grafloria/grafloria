@@ -21,6 +21,11 @@ export * from './svg';
 // Wave 4: deterministic headless export — VNode → standalone, styles-inlined SVG
 // (pure, zero-DOM) → PNG/JPEG/WebP. Same VNode contract the live patcher consumes.
 export * from './export';
+// Wave 4: the Canvas 2D backend — the THIRD consumer of the same VNode tree
+// (retained-mode painting, colour-keyed hit canvas, devicePixelRatio scaling,
+// dirty-rectangle partial redraw), plus the per-diagram SVG⇄Canvas switch. It shares
+// the export flattener's cascade, so screen / hit-canvas / exported file cannot drift.
+export * from './canvas';
 
 // Phase 2.3: Interactive link editing tools
 // Wave 3: also exports the framework-agnostic InteractionController.

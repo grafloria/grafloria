@@ -80,6 +80,19 @@ export const DEFAULT_LABEL_WIDTH = 40;
 export const DEFAULT_LABEL_HEIGHT = 18;
 
 /**
+ * Grab distance (WORLD units) for a link body — "how close to the line counts
+ * as clicking it".
+ *
+ * Exported because it is now a CROSS-BACKEND contract, not an implementation
+ * detail of one hit path: `InteractionController` applies it to resolve a link
+ * in SVG mode, and the Canvas backend strokes each link's pick region with
+ * exactly `2 x` this width on the colour-keyed hit canvas. If the two ever
+ * disagreed, switching backend would change which link is under the cursor.
+ * (It was previously a bare `5` inlined in the controller.)
+ */
+export const DEFAULT_LINK_HIT_TOLERANCE = 5;
+
+/**
  * Arc-length interpolation of a point at position `t` (0-1) along a polyline.
  * Mirrors {@link LinkModel.getPointAtPosition}'s polyline fallback so label
  * anchors line up with what the renderer draws. Returns `null` for < 2 points.
