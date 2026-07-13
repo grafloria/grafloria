@@ -1424,6 +1424,18 @@ export class SVGRenderer implements IRenderer {
   /**
    * Dispose renderer and clean up resources
    */
+  /**
+   * Wave 8 — Card 6: how many links this frame actually had to route, and how
+   * many were served from the previous frame.
+   *
+   * Public because a cache that silently stops hitting is indistinguishable from
+   * no cache at all — it just gets slow again, and nothing says so. Tests assert
+   * on this; the benchmark harness prints it.
+   */
+  getRoutingStats(): { routed: number; reused: number; cached: number } {
+    return { ...this.routeMemo.stats, cached: this.routeMemo.size };
+  }
+
   dispose(): void {
     if (this.disposed) return;
 
