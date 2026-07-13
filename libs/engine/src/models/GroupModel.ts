@@ -35,6 +35,25 @@ export interface SerializedGroup extends SerializedEntity {
   // Wave-5 Card 4: everything needed to expand a collapsed group back to
   // exactly its prior state. Present iff the group is currently collapsed.
   collapsedState?: CollapsedState;
+
+  // Wave-5 Card 5: per-group compound-layout intent (the GroupInfo bits that
+  // belong to the group itself and should persist).
+  subgraphLayout?: SubgraphGroupConfig;
+}
+
+/**
+ * Wave-5 Card 5: a group's own compound-layout configuration — the subset of
+ * the GroupInfo layout contract that is intrinsic to the group and round-trips.
+ * Padding/header come from Card 3 (padding/headerHeight); size clamps come from
+ * fitToContents.
+ */
+export interface SubgraphGroupConfig {
+  /** Algorithm for THIS group's contents. 'inherit' uses the parent/default. */
+  algorithm?: 'dagre' | 'elk' | 'grid' | 'inherit';
+  /** Pinned: neither laid out internally nor moved by the parent layout. */
+  fixed?: boolean;
+  /** Opaque options forwarded to the chosen layout adapter. */
+  layoutOptions?: Record<string, unknown>;
 }
 
 /**
@@ -160,6 +179,9 @@ export class GroupModel extends DiagramEntity {
   // collapsed, cleared on expand. Serialized so a collapsed diagram survives
   // save/load and can still be expanded.
   collapsedState?: CollapsedState;
+
+  // Wave-5 Card 5: per-group compound-layout intent (serialized when set).
+  subgraphLayout?: SubgraphGroupConfig;
 
   constructor(config: { id?: string; name: string }) {
     super(config.id);
@@ -1086,6 +1108,8 @@ export class GroupModel extends DiagramEntity {
       constrainChildren: this.constrainChildren ? true : undefined,
       // Wave-5 Card 4: present only while collapsed.
       collapsedState: this.collapsedState,
+      // Wave-5 Card 5: per-group compound-layout intent (present only when set).
+      subgraphLayout: this.subgraphLayout,
     };
   }
 
@@ -1144,6 +1168,11 @@ export class GroupModel extends DiagramEntity {
     // Wave-5 Card 4: restore collapse snapshot (only present while collapsed).
     if (data.collapsedState) {
       group.collapsedState = data.collapsedState;
+    }
+
+    // Wave-5 Card 5: restore per-group compound-layout intent.
+    if (data.subgraphLayout) {
+      group.subgraphLayout = data.subgraphLayout;
     }
 
     // Restore metadata

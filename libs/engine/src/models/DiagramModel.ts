@@ -1925,6 +1925,8 @@ export class DiagramModel extends DiagramEntity {
     group.constrainChildren = data.constrainChildren ?? false;
     // Wave-5 Card 4: collapsed-state payload (proxy wiring + saved layout).
     group.collapsedState = data.collapsedState;
+    // Wave-5 Card 5: per-group compound-layout intent.
+    group.subgraphLayout = data.subgraphLayout;
     // Replace metadata CONTENT but keep the runtime diagram back-ref wired.
     group.metadata = new Map(Object.entries(data.metadata ?? {}));
     group.metadata.set('diagram', this);
