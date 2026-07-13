@@ -126,6 +126,36 @@ function nodeStateStyle(node: NodeModel, theme: Theme): Partial<NodeStyle> {
   return {};
 }
 
+/**
+ * LEGACY `metadata.shape` PAINTS — part of the element-inline layer.
+ *
+ * `node.setMetadata('shape', { type: 'ellipse', fill, stroke, strokeWidth, opacity })`
+ * predates `NodeStyle` and is still how the shape TYPE and corner radius are
+ * configured, so its paint fields are widely used.
+ *
+ * THE BUG THIS FIXES: the renderer used to apply these paints in
+ * `renderNodeShape()` — i.e. AFTER the cascade had already resolved, spread on
+ * top of the finished object. That put them above EVERY layer, `state` included.
+ * A selected node whose shape config carried a fill therefore never showed its
+ * selection colour, and neither did a hovered, disabled or errored one: the shape
+ * config silently outranked the entire documented cascade.
+ *
+ * They belong HERE, inside element-inline, where `state` still beats them — and
+ * where an explicit `node.setStyle({ fill })` (the typed, documented API) beats
+ * an untyped legacy metadata bag, which is the other way round from how it used
+ * to be, and the way round a caller would expect.
+ */
+function shapeMetadataStyle(node: NodeModel): Partial<NodeStyle> {
+  const shape = node.getMetadata?.('shape') as Record<string, unknown> | undefined;
+  if (!shape) return {};
+  return declared({
+    fill: shape['fill'],
+    stroke: shape['stroke'],
+    strokeWidth: shape['strokeWidth'],
+    opacity: shape['opacity'],
+  } as Partial<NodeStyle>);
+}
+
 /** Resolve a node's effective style. ONE ordered spread — see the header. */
 export function resolveNodeStyle(
   node: NodeModel,
@@ -136,6 +166,9 @@ export function resolveNodeStyle(
     ...(options.includeThemeBase ? nodeThemeBase(theme) : undefined),
     ...nodeTypeDefaults(theme, node.type),
     ...resolveStyleClasses<NodeStyle>(node.style?.styleClass),
+    // element-inline: the entity's own props, from BOTH places they can live.
+    // The typed `node.style` wins over the legacy `metadata.shape` paints.
+    ...shapeMetadataStyle(node),
     ...declared(node.style),
     ...nodeStateStyle(node, theme),
   };

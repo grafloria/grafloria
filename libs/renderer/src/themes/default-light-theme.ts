@@ -152,4 +152,26 @@ export const LIGHT_THEME: Theme = {
       bi: '#8b5cf6',
     },
   },
+
+  // Card "Theme-bound properties": the SEMANTIC palette a caller binds its own
+  // nodes to — `fill: themeRef('category.critical')`. Every colour here is
+  // contrast-checked against this theme's node surface (#ffffff) by
+  // theme-a11y.spec, so a bound node is legible by construction.
+  categories: {
+    critical: '#b91c1c',
+    warning: '#b45309',
+    success: '#047857',
+    info: '#0369a1',
+    neutral: '#4b5563',
+    accent: '#6d28d9',
+  },
+
+  // …and the numeric scale, so `strokeWidth: themeRef('numbers.emphasis')`
+  // thickens with the theme (the high-contrast themes raise every one of these).
+  numbers: {
+    hairline: 1,
+    regular: 2,
+    emphasis: 3,
+    heavy: 4,
+  },
 };

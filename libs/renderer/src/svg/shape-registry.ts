@@ -982,6 +982,42 @@ for (const [alias, def] of Object.entries(SHAPE_ALIASES)) {
  *  - 'spread' shapes (ellipse/hexagon) spread node styles as presentation
  *    attributes with geometry merged last.
  */
+/** CSS property name for each paint key that may carry a `var()` reference. */
+const CSS_PAINT_PROPS: Record<string, string> = {
+  fill: 'fill',
+  stroke: 'stroke',
+  strokeWidth: 'stroke-width',
+};
+
+/**
+ * Pull any paint whose value is a `var(--…)` reference out of the attribute bag
+ * and into an inline CSS style string (where variables are legal).
+ *
+ * `hoisted` is `''` when nothing needed moving — the overwhelmingly common case,
+ * and the caller then emits the original props untouched.
+ */
+function hoistCssVarPaints(styles: any): { hoisted: string; rest: Record<string, any> } {
+  const rest: Record<string, any> = { ...styles };
+  const decls: string[] = [];
+
+  for (const [key, cssProp] of Object.entries(CSS_PAINT_PROPS)) {
+    const value = rest[key];
+    if (typeof value === 'string' && value.includes('var(')) {
+      decls.push(`${cssProp}: ${value}`);
+      delete rest[key];
+    }
+  }
+
+  if (decls.length === 0) return { hoisted: '', rest };
+
+  // Preserve an existing style string, with the hoisted paints appended so they
+  // still win over anything the caller had already put there.
+  const existing = typeof rest['style'] === 'string' ? rest['style'] : '';
+  delete rest['style'];
+
+  return { hoisted: [existing, decls.join('; ')].filter(Boolean).join('; '), rest };
+}
+
 export function buildShapeBody(
   def: ShapeDefinition,
   width: number,
@@ -994,23 +1030,39 @@ export function buildShapeBody(
   const spec = def.outline(width, height, { radius: cornerRadius, radiusY: true });
 
   if (def.styleMode === 'spread') {
-    // BUG (fixed): 'spread' shapes emitted the resolved fill/stroke/stroke-width
-    // as PRESENTATION ATTRIBUTES only — and a presentation attribute loses to any
-    // author stylesheet rule. So `[data-grafloria-instance] .diagram-node { fill:
-    // var(--grafloria-node-fill) }` beat `fill="#e8f5e9"`, and in CSS mode an
-    // ellipse/hexagon (and every 'spread' figure) silently rendered the THEME fill
-    // instead of its own. The 'inline' shapes never had the bug because they hoist
-    // the same values into an inline `style`, which does beat the stylesheet — the
-    // two style modes simply disagreed about the cascade.
+    // TWO bugs met on this line, found independently by the export and the theming
+    // work. Both are the same root cause — a 'spread' shape paints through
+    // PRESENTATION ATTRIBUTES — and the fix for one subsumes the other:
     //
-    // Fix: hoist here too. The presentation attributes are KEPT (Canvas/programmatic
-    // consumers and existing tests read props.fill), and the inline style carries the
-    // same values at the priority the cascade documents (element-inline > stylesheet).
+    //   1. A presentation attribute LOSES to any author stylesheet rule. So
+    //      `[data-grafloria-instance] .diagram-node { fill: var(--grafloria-node-fill) }`
+    //      beat `fill="#e8f5e9"`, and in CSS mode an ellipse/hexagon (and every
+    //      'spread' figure) silently rendered the THEME fill instead of its own.
+    //      'inline' shapes never had this, because they hoist the same values into
+    //      an inline `style`, which DOES beat the stylesheet — the two style modes
+    //      simply disagreed about the cascade.
+    //   2. An attribute cannot hold a CSS variable: `fill="var(--grafloria-…)"` is
+    //      invalid, the attribute is dropped, and the shape paints BLACK. Wave 4
+    //      made that reachable, because a theme-bound property (`themeRef(...)`)
+    //      emits exactly such a var() reference.
+    //
+    // Hoisting EVERY paint into the inline style fixes both: inline style outranks
+    // the stylesheet (1) and is the one place var() is legal (2). The presentation
+    // attributes are KEPT, because Canvas/programmatic consumers and existing tests
+    // read props.fill — and where the value is a var(), the inline style is what
+    // actually paints.
     const inlineStyle = composeInlineStyle(styles);
+    // Literal paints KEEP their presentation attribute (Canvas + programmatic
+    // consumers and the existing tests read props.fill). A var() paint DROPS it:
+    // the attribute is invalid, so it is not merely outranked — it is garbage that
+    // every downstream consumer would have to special-case (the headless exporter
+    // would write `fill="var(--…)"` into a standalone file, where nothing resolves
+    // it and the shape paints BLACK).
+    const { rest } = hoistCssVarPaints(styles);
     return {
       type: spec.el,
       props: {
-        ...styles,
+        ...rest,
         ...(inlineStyle ? { style: mergeInlineStyle(styles.style, inlineStyle) } : {}),
         ...spec.geom,
       },

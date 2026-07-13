@@ -168,7 +168,18 @@ export interface VNodeProps {
   /**
    * Inline CSS styles (for HTML elements in foreignObject)
    */
-  style?: Record<string, any>;
+  /**
+   * Inline style: either a declaration map, or a raw CSS string.
+   *
+   * The string form is not a convenience — it is the ONLY form in which a shape
+   * can carry a `var(--grafloria-*)` paint (a presentation attribute cannot hold a
+   * variable), and the shape registry and link styles have always emitted it.
+   * The type said object-only and got away with it purely because those values
+   * arrive through `any`-typed prop bags; the runtime (`serializeStyle`, and the
+   * patcher) has handled both all along. Typing it honestly is what lets the
+   * cascade fixes type-check at all.
+   */
+  style?: Record<string, any> | string;
 
   // ============================================
   // Event Handlers (for Angular/React binding)

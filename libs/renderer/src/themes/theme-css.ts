@@ -23,6 +23,7 @@
 
 import type { Theme } from '../types/theme.types';
 import { GRAFLORIA_INSTANCE_ATTR, THEME_TOKENS, THEME_VARS, themeVar, themeVarValue } from './theme-vars';
+import { resolveBindableVars } from './theme-ref';
 
 /** A single CSS rule in the shared stylesheet. */
 export interface StyleRule {
@@ -269,10 +270,25 @@ export function generateBaseStyleSheet(): string {
  * cannot be repainted by it.
  */
 export function generateInstanceVarBlock(theme: Theme, instanceId: string): string {
-  const decls = THEME_TOKENS.map(
+  // TWO groups of variables, one block:
+  //
+  //   CHROME    the 33 tokens the shared stylesheet above paints (`--grafloria-node-fill`).
+  //   BINDABLE  every other value in the theme, flattened by path
+  //             (`--grafloria-colors-primary`, `--grafloria-category-critical`,
+  //             `--grafloria-numbers-emphasis`) — see theme-ref.ts.
+  //
+  // The bindable half is what makes a theme-bound property (`themeRef(...)`)
+  // live-rebindable: because the value it points at is a variable on this root,
+  // rewriting this block re-colours every bound element WITHOUT rebuilding a
+  // single VNode. That is the mechanism behind the colorMode hot-swap.
+  const chrome = THEME_TOKENS.map(
     token => `  ${THEME_VARS[token].cssVar}: ${themeVarValue(token, theme)};`
-  ).join('\n');
+  );
+  const bindable = Object.entries(resolveBindableVars(theme)).map(
+    ([cssVar, value]) => `  ${cssVar}: ${value};`
+  );
+
   return `/* Grafloria Renderer Theme: ${theme.name} (instance ${instanceId}) */\n${instanceScopeSelector(
     instanceId
-  )} {\n${decls}\n}`;
+  )} {\n${[...chrome, ...bindable].join('\n')}\n}`;
 }

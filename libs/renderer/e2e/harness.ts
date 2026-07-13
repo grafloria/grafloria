@@ -21,6 +21,7 @@ import {
   // Wave 4 (Edges & links) — Card 5: the author-extensibility seams
   registerLinkTemplate,
   registerMarker,
+  themeRef,
 } from '@grafloria/renderer';
 
 import { InteractionHandlerService } from '@grafloria/interaction-handler';
@@ -2314,6 +2315,164 @@ function w8_optimizerIncremental() {
   PROBES.w8_optimizerIncremental = { cold, quiet, moved, settled };
 }
 
+// s21 — Wave 4 styling: theme-bound properties, colorMode hot-swap, token bridge
+//
+// This scenario exists because jsdom CANNOT answer the only questions that
+// matter here. It does not implement CSS custom properties, var() substitution,
+// or the presentation-attribute-vs-inline-style cascade — so every claim this
+// wave makes ("a bound fill paints the theme's colour", "rebinding a variable
+// re-themes an ALREADY-RENDERED element", "the bridge beats the theme") is only
+// checkable in a real browser. A previous wave shipped a bug of exactly this
+// shape: a per-link stroke that passed every unit test and was silently lost to
+// the theme rule in Chromium.
+//
+// Everything below is read back through getComputedStyle — i.e. what the browser
+// actually decided to paint.
+// ===========================================================================
+function s21_themingLive() {
+  const stage = cell('s21-theming', 'S21 theme-bound props + colorMode hot-swap + token bridge');
+
+  /** `#b91c1c` → `rgb(185, 28, 28)`, which is what getComputedStyle returns. */
+  function rgbOf(hex: string): string {
+    const h = hex.replace('#', '');
+    const n = parseInt(h.length === 3 ? h.split('').map(c => c + c).join('') : h, 16);
+    return `rgb(${(n >> 16) & 255}, ${(n >> 8) & 255}, ${n & 255})`;
+  }
+
+  const engine = makeEngine();
+  const diagram = engine.createDiagram('theming');
+
+  // A rect node bound to a semantic category, an ELLIPSE bound to another (the
+  // shape whose paints are presentation attributes — where var() is illegal and
+  // the fix has to hoist them into an inline style), and a link bound to a third.
+  const a = addNode(diagram, 'critical', 40, 40, { ports: [{ id: 'a-out', side: 'right', type: 'output' }] });
+  a.setStyle({ fill: themeRef('category.critical') } as any);
+
+  const b = addNode(diagram, 'success', 320, 40, {
+    shape: 'ellipse',
+    ports: [{ id: 'b-in', side: 'left', type: 'input' }],
+  });
+  b.setStyle({ fill: themeRef('category.success') } as any);
+
+  const link = makeLink(diagram, 'a-out', 'b-in', 'orthogonal', {
+    stroke: themeRef('category.info'),
+    strokeWidth: themeRef('numbers.emphasis'),
+    arrowHead: { type: 'arrow', size: 10, filled: true },
+  });
+
+  const renderer = new SVGRenderer(engine, { enableCaching: true, useCSSMode: true } as any, LIGHT_THEME);
+  const vnode = renderer.render({ x: 0, y: 0, width: 620, height: 200 }, 1.0);
+  const dom = vnodeToDom(vnode) as SVGSVGElement;
+  dom.setAttribute('width', '620');
+  dom.setAttribute('height', '200');
+  stage.appendChild(dom);
+
+  const rectBody = dom.querySelector(`g[data-vnode-key="node-${a.id}"] rect.diagram-node`) as SVGElement;
+  const ellipseBody = dom.querySelector(`g[data-vnode-key="node-${b.id}"] ellipse.diagram-node`) as SVGElement;
+  const linkPath = dom.querySelector(`g[data-vnode-key="link-${link.id}"] path.diagram-link`) as SVGElement;
+
+  // ---- Card 6: a bound property PAINTS the theme's colour -------------------
+  expectThat('S21 themeRef: bound node fill paints the light theme category colour',
+    !!rectBody && getComputedStyle(rectBody).fill === rgbOf(LIGHT_THEME.categories!.critical!),
+    `fill=${rectBody && getComputedStyle(rectBody).fill} want=${rgbOf(LIGHT_THEME.categories!.critical!)}`);
+
+  // The ellipse is THE trap: its paints are spread as presentation attributes,
+  // and `fill="var(--x)"` is invalid — the shape would paint BLACK.
+  expectThat('S21 themeRef: bound ELLIPSE fill paints (attribute shapes hoist to inline style)',
+    !!ellipseBody && getComputedStyle(ellipseBody).fill === rgbOf(LIGHT_THEME.categories!.success!),
+    `fill=${ellipseBody && getComputedStyle(ellipseBody).fill} want=${rgbOf(LIGHT_THEME.categories!.success!)}`);
+
+  expectThat('S21 themeRef: bound link stroke + strokeWidth paint',
+    !!linkPath &&
+      getComputedStyle(linkPath).stroke === rgbOf(LIGHT_THEME.categories!.info!) &&
+      parseFloat(getComputedStyle(linkPath).strokeWidth) === LIGHT_THEME.numbers!.emphasis!,
+    `stroke=${linkPath && getComputedStyle(linkPath).stroke} width=${linkPath && getComputedStyle(linkPath).strokeWidth}`);
+
+  // ---- Card 5: THE HOT-SWAP ------------------------------------------------
+  // Re-theme by rebinding the variables — WITHOUT re-rendering and WITHOUT
+  // touching the DOM. The very same elements must repaint. This is the claim the
+  // whole card rests on, and it is unfalsifiable outside a browser.
+  const boundBefore = renderer.getThemeBoundEntityCount();
+  renderer.applyThemeVariables(DARK_THEME);
+
+  expectThat('S21 colorMode: the SAME, un-re-rendered node repaints on a variable rebind',
+    getComputedStyle(rectBody).fill === rgbOf(DARK_THEME.categories!.critical!),
+    `fill=${getComputedStyle(rectBody).fill} want=${rgbOf(DARK_THEME.categories!.critical!)}`);
+
+  expectThat('S21 colorMode: the ellipse repaints too',
+    getComputedStyle(ellipseBody).fill === rgbOf(DARK_THEME.categories!.success!),
+    `fill=${getComputedStyle(ellipseBody).fill}`);
+
+  expectThat('S21 colorMode: the bound link repaints as well',
+    getComputedStyle(linkPath).stroke === rgbOf(DARK_THEME.categories!.info!),
+    `stroke=${getComputedStyle(linkPath).stroke}`);
+
+  // …and the NODES were never marked as needing a restyle: they are var-driven,
+  // so the rebind IS the re-theme. Only the link is theme-bound, because it draws
+  // an arrowhead, which paints through presentation attributes.
+  expectThat('S21 colorMode: bound nodes needed no restyle (only the arrowheaded link did)',
+    boundBefore === 1,
+    `themeBoundEntities=${boundBefore}`);
+
+  // ---- Card 7: the design-token bridge beats the theme ----------------------
+  renderer.setTokenBridge({ 'category.critical': '#00ff00' });
+  expectThat('S21 token bridge: a host token OVERRIDES the theme value, live',
+    getComputedStyle(rectBody).fill === 'rgb(0, 255, 0)',
+    `fill=${getComputedStyle(rectBody).fill}`);
+
+  renderer.setTokenBridge(null);
+  expectThat('S21 token bridge: removing it restores the theme value',
+    getComputedStyle(rectBody).fill === rgbOf(DARK_THEME.categories!.critical!),
+    `fill=${getComputedStyle(rectBody).fill}`);
+
+  // ---- The Wave-1 regression guard, re-run against the bigger var block -----
+  // A per-element LITERAL stroke must still beat the theme's stylesheet rule.
+  // (The bug this pins: it did not, in a real browser, and only a real browser
+  // could see it.)
+  const engine2 = makeEngine();
+  const diagram2 = engine2.createDiagram('literal');
+  addNode(diagram2, 'x', 40, 40, { ports: [{ id: 'x-out', side: 'right', type: 'output' }] });
+  addNode(diagram2, 'y', 320, 40, { ports: [{ id: 'y-in', side: 'left', type: 'input' }] });
+  const litLink = makeLink(diagram2, 'x-out', 'y-in', 'orthogonal', { stroke: '#ff00ff', strokeWidth: 6 });
+
+  const renderer2 = new SVGRenderer(engine2, { useCSSMode: true } as any, LIGHT_THEME);
+  const dom2 = vnodeToDom(renderer2.render({ x: 0, y: 0, width: 620, height: 160 }, 1.0)) as SVGSVGElement;
+  dom2.setAttribute('width', '620');
+  dom2.setAttribute('height', '160');
+  stage.appendChild(dom2);
+
+  const litPath = dom2.querySelector(`g[data-vnode-key="link-${litLink.id}"] path.diagram-link`) as SVGElement;
+  expectThat('S21 cascade: a per-element literal stroke still beats the theme rule',
+    !!litPath &&
+      getComputedStyle(litPath).stroke === 'rgb(255, 0, 255)' &&
+      parseFloat(getComputedStyle(litPath).strokeWidth) === 6,
+    `stroke=${litPath && getComputedStyle(litPath).stroke} width=${litPath && getComputedStyle(litPath).strokeWidth}`);
+
+  // ---- instance scoping survives all of it ---------------------------------
+  // renderer (hot-swapped to DARK) and renderer2 (LIGHT) are on the same page.
+  // Read the VARIABLES straight off each root: they are what carries the theme,
+  // and keeping them separate is the whole instance-scoping invariant. (Reading a
+  // painted colour would prove nothing here — the harness's addNode() puts an
+  // explicit stroke in the shape metadata, so those nodes never take the theme's.)
+  const varOf = (el: Element, name: string) => getComputedStyle(el).getPropertyValue(name).trim();
+
+  expectThat('S21 scoping: each diagram resolves its OWN --grafloria-node-fill after a hot-swap',
+    varOf(dom, '--grafloria-node-fill') === DARK_THEME.colors.node.default.fill &&
+      varOf(dom2, '--grafloria-node-fill') === LIGHT_THEME.colors.node.default.fill,
+    `dom=${varOf(dom, '--grafloria-node-fill')} dom2=${varOf(dom2, '--grafloria-node-fill')}`);
+
+  expectThat('S21 scoping: the bindable category vars are instance-scoped too',
+    varOf(dom, '--grafloria-category-critical') === DARK_THEME.categories!.critical &&
+      varOf(dom2, '--grafloria-category-critical') === LIGHT_THEME.categories!.critical,
+    `dom=${varOf(dom, '--grafloria-category-critical')} dom2=${varOf(dom2, '--grafloria-category-critical')}`);
+
+  PROBES.s21 = {
+    themeBoundBefore: boundBefore,
+    lightCritical: LIGHT_THEME.categories!.critical,
+    darkCritical: DARK_THEME.categories!.critical,
+  };
+}
+
 // ===========================================================================
 // run all
 // ===========================================================================
@@ -2332,6 +2491,7 @@ for (const [name, fn] of Object.entries({
   w1_parallelLinks, w2_bidirectionalPair, w3_selfLoops,
   w4_htmlLabels, w5_customMarkers, w6_linkTemplate,
   w7_edgeOptimizer, w8_optimizerIncremental,
+  s21_themingLive,
 })) {
   try {
     (fn as any)();

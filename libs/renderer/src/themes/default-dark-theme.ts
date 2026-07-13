@@ -117,4 +117,20 @@ export const DARK_THEME: Theme = {
       bi: '#8b5cf6',
     },
   },
+
+  // Card "Theme-bound properties": the SAME category NAMES as the light theme,
+  // with values tuned for a dark surface (#1f2937) — that is the whole point. A
+  // node bound with `fill: themeRef('category.critical')` paints the light
+  // theme's deep red on white and this brighter red on the dark canvas, from ONE
+  // unchanged model.
+  categories: {
+    critical: '#f87171',
+    warning: '#fbbf24',
+    success: '#34d399',
+    info: '#38bdf8',
+    neutral: '#9ca3af',
+    accent: '#a78bfa',
+  },
+
+  numbers: LIGHT_THEME.numbers,
 };

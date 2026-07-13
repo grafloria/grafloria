@@ -5,6 +5,11 @@ import type { Rectangle } from './geometry.types';
 // drifting copy of them.
 import type { ForeignObjectMode } from '../export/vnode-serializer';
 import type { RasterBackend } from '../export/raster';
+// Styling & theming (Wave 4): colorMode + the design-token bridge are RENDERER
+// CONFIG, so their types belong on the config contract. Type-only imports — no
+// runtime dependency from the types barrel into the themes barrel.
+import type { ColorMode, ThemeSet } from '../themes/color-mode';
+import type { TokenBridge } from '../themes/token-bridge';
 
 /**
  * Renderer interface — the contract for a DIAGRAM renderer: it turns the model
@@ -322,6 +327,40 @@ export interface SVGRendererConfig {
    * Default: true
    */
   edgeOptimizer?: boolean;
+
+  /**
+   * Styling & theming — Card "colorMode".
+   *
+   * Which of {@link SVGRendererConfig.themes} is active.
+   *   'light' | 'dark'  — pinned.
+   *   'system'          — follows `prefers-color-scheme`, and RE-THEMES LIVE when
+   *                       the OS flips, by rewriting this instance's `--grafloria-*`
+   *                       variables (no diagram rebuild).
+   *
+   * Whatever the mode, an explicit `prefers-contrast: more` or a forced-colors
+   * mode upgrades to the matching high-contrast theme when one is supplied — an
+   * accessibility preference outranks an aesthetic one.
+   *
+   * Leave it unset to keep the legacy behaviour: the `theme` constructor argument
+   * is used as-is and nothing is watched.
+   */
+  colorMode?: ColorMode;
+
+  /**
+   * The themes `colorMode` switches between. Defaults to the built-in
+   * LIGHT/DARK/HIGH_CONTRAST set. Only consulted when `colorMode` is set.
+   */
+  themes?: ThemeSet;
+
+  /**
+   * Styling & theming — Card "design-token bridge".
+   *
+   * Re-point Grafloria's CSS variables at the host design system's tokens
+   * (`shadcnBridge()`, `muiBridge()`, `tailwindBridge()`, or a hand-written map).
+   * Emitted as a variable block that overrides the theme's, so it re-skins the
+   * whole engine without touching a node template.
+   */
+  tokenBridge?: TokenBridge;
 }
 
 /**
