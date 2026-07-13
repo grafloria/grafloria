@@ -16,6 +16,7 @@
  */
 
 import { NodeModel } from '../models/NodeModel';
+import { createLayoutRng, type LayoutRng } from './rng';
 import { LinkModel } from '../models/LinkModel';
 import { LayoutAdapter, LayoutOptions, LayoutResult } from './layout-adapter.interface';
 import { LayoutQualityMetrics } from './layout-quality-metrics';
@@ -161,6 +162,13 @@ export class SpectralLayoutAdapter implements LayoutAdapter {
   readonly name = 'spectral';
 
   /**
+   * Card 0: the run's seeded generator. Established once per apply() so every
+   * helper below draws from the SAME reproducible stream — the seed alone is not
+   * enough if each helper mints its own generator.
+   */
+  private rng: LayoutRng = createLayoutRng();
+
+  /**
    * Apply spectral layout
    */
   async apply(
@@ -168,6 +176,7 @@ export class SpectralLayoutAdapter implements LayoutAdapter {
     links: LinkModel[],
     options: Partial<SpectralLayoutOptions> = {}
   ): Promise<LayoutResult> {
+    this.rng = createLayoutRng((options as { seed?: number } | undefined)?.seed);
     const startTime = performance.now();
 
     // Merge with defaults
@@ -280,7 +289,7 @@ export class SpectralLayoutAdapter implements LayoutAdapter {
       eigenvectors.push(
         Array(n)
           .fill(0)
-          .map(() => Math.random() - 0.5)
+          .map(() => this.rng.next() - 0.5) // Card 0: seeded, was Math.random()
       );
     }
 
@@ -364,7 +373,7 @@ export class SpectralLayoutAdapter implements LayoutAdapter {
     // Initialize with random vector
     let v = Array(n)
       .fill(0)
-      .map(() => Math.random() - 0.5);
+      .map(() => this.rng.next() - 0.5); // Card 0: seeded, was Math.random()
     v = VectorOps.normalize(v);
 
     // Orthogonalize against previous eigenvectors

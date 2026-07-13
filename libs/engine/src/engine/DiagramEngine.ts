@@ -56,6 +56,15 @@ import type { Plugin } from '../types';
 import type { ValidationResult } from '../validation/ValidationEngine';
 import type { NodeTypeDefinition, LinkTypeDefinition, PortTypeDefinition, GroupTypeDefinition } from '../validation/TypeRegistry'; // Phase 2
 import type { NodeBehavior } from '../types';
+// Wave 7 (Auto-layout) — Card 0: the unified layout entry point.
+import {
+  LayoutRegistry,
+  fromAdapter,
+  createBuiltInLayoutAdapters,
+  type UnifiedLayoutOptions,
+  type UnifiedLayoutResult,
+} from '../layout/layout-registry';
+import { DEFAULT_LAYOUT_SEED } from '../layout/rng';
 import type { LayoutType, LayoutConfig, FlexItemConfig, GridItemConfig } from '../types/layout.types'; // Phase 1.7
 
 export interface DiagramEngineConfig {
@@ -2111,12 +2120,86 @@ export class DiagramEngine {
     this.layoutService = service;
   }
 
+  // ==========================================================================
+  // Wave 7 (Auto-layout) — Card 0: THE unified entry point.
+  // ==========================================================================
+
+  /** Lazily-built registry of the built-in layout engines. */
+  private _layoutRegistry?: LayoutRegistry;
+
+  /**
+   * The named-algorithm registry, with the built-ins already registered.
+   *
+   * THE BUG THIS CLOSES: `applyLayout()` below requires `setLayoutService()` —
+   * and NOTHING in the codebase ever called it (the only mention is a doc comment
+   * in layout/index.ts). So dagre, ELK, force, spectral and community — thousands
+   * of lines, several of them untested — were UNREACHABLE from the engine. That
+   * is the whole "auto-layout is fragmented" finding. Layout now works out of the
+   * box, with no setup call.
+   */
+  getLayoutRegistry(): LayoutRegistry {
+    if (!this._layoutRegistry) {
+      const registry = new LayoutRegistry();
+      for (const adapter of createBuiltInLayoutAdapters()) {
+        registry.register(fromAdapter(adapter));
+      }
+      this._layoutRegistry = registry;
+    }
+    return this._layoutRegistry;
+  }
+
+  /**
+   * Lay out the whole diagram.
+   *
+   *     await engine.layout('dagre', { direction: 'LR' });
+   *
+   * DETERMINISTIC and IDEMPOTENT: the same graph and seed produce byte-identical
+   * coordinates, and running it twice changes nothing the second time. (The seed
+   * defaults to a fixed constant, so an author who never thinks about seeds still
+   * gets the same picture on every reload; randomness is opt-in.)
+   *
+   * NOT to be confused with `DiagramModel.getLayoutManager()`, which answers a
+   * DIFFERENT question — "where should this ONE newly-added node go?" — and is a
+   * placement strategy, not a graph layout. The audit called them "two parallel
+   * stacks" and asked for them to be merged; they are not parallel, and merging
+   * them would force a single-node placer to pretend it can lay out a graph.
+   */
+  async layout(
+    name = 'dagre',
+    options: UnifiedLayoutOptions = {}
+  ): Promise<UnifiedLayoutResult> {
+    if (!this.diagram) {
+      throw new Error('No diagram loaded');
+    }
+
+    const engine = this.getLayoutRegistry().get(name);
+    if (!engine) {
+      const available = this.getLayoutRegistry().names().join(', ');
+      throw new Error(`Unknown layout '${name}'. Registered layouts: ${available}`);
+    }
+
+    const seed = options.seed ?? DEFAULT_LAYOUT_SEED;
+    const result = await engine.apply(this.diagram, { ...options, seed });
+
+    // Commit the positions. setPosition (not a raw write) so the spatial index,
+    // the routing obstacle map and the renderer all see the move — the wave-5
+    // lesson: a subscription to an event nobody emits is a subscription to
+    // nothing.
+    for (const [nodeId, position] of result.nodePositions) {
+      this.diagram.getNode(nodeId)?.setPosition(position.x, position.y);
+    }
+
+    return { ...result, algorithm: name, seed };
+  }
+
   /**
    * Apply layout to current diagram
    *
    * @param config - Layout configuration
    * @returns Layout result with positions and metadata
    * @throws Error if no diagram is loaded or layout service is not initialized
+   * @deprecated Wave 7 Card 0 — use {@link layout} instead. This path requires a
+   * `setLayoutService()` call that nothing ever made, so it always threw.
    */
   async applyLayout(config: {
     adapter: string | any;

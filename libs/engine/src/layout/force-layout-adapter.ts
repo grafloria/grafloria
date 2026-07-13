@@ -16,6 +16,7 @@
  */
 
 import { NodeModel } from '../models/NodeModel';
+import { createLayoutRng } from './rng';
 import { LinkModel } from '../models/LinkModel';
 import { LayoutAdapter, LayoutOptions, LayoutResult } from './layout-adapter.interface';
 import { ConstraintManager } from './layout-constraints.interface';
@@ -241,14 +242,18 @@ export class ForceLayoutAdapter implements LayoutAdapter {
    */
   private initializeNodes(nodes: NodeModel[], options: ForceLayoutOptions): ForceNode[] {
     const forceNodes: ForceNode[] = [];
+    const rng = createLayoutRng((options as { seed?: number }).seed);
 
     for (const node of nodes) {
       let x: number, y: number;
 
       if (options.randomize) {
-        // Random position
-        x = (Math.random() - 0.5) * 500;
-        y = (Math.random() - 0.5) * 500;
+        // Card 0: SEEDED. This was `Math.random()`, so the same graph produced a
+        // different picture on every run — untestable, unreproducible on reload,
+        // and it makes the mental-map card undefinable (you cannot minimise
+        // movement against a baseline that itself moves).
+        x = rng.between(-250, 250);
+        y = rng.between(-250, 250);
       } else {
         // Use existing position
         x = node.position.x;

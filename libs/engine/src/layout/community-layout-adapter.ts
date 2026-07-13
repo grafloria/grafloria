@@ -16,6 +16,7 @@
  */
 
 import { NodeModel } from '../models/NodeModel';
+import { createLayoutRng, type LayoutRng } from './rng';
 import { LinkModel } from '../models/LinkModel';
 import { LayoutAdapter, LayoutOptions, LayoutResult } from './layout-adapter.interface';
 import { LayoutQualityMetrics } from './layout-quality-metrics';
@@ -70,6 +71,13 @@ interface Community {
  */
 export class CommunityLayoutAdapter implements LayoutAdapter {
   readonly name = 'community';
+
+  /**
+   * Card 0: the run's seeded generator. Established once per apply() so every
+   * helper below draws from the SAME reproducible stream — the seed alone is not
+   * enough if each helper mints its own generator.
+   */
+  private rng: LayoutRng = createLayoutRng();
   private forceAdapter = new ForceLayoutAdapter();
 
   /**
@@ -80,6 +88,7 @@ export class CommunityLayoutAdapter implements LayoutAdapter {
     links: LinkModel[],
     options: Partial<CommunityLayoutOptions> = {}
   ): Promise<LayoutResult> {
+    this.rng = createLayoutRng((options as { seed?: number } | undefined)?.seed);
     const startTime = performance.now();
 
     // Merge with defaults
@@ -366,7 +375,11 @@ export class CommunityLayoutAdapter implements LayoutAdapter {
       changed = false;
 
       // Randomize order
-      const nodeOrder = [...nodes].sort(() => Math.random() - 0.5);
+      // Card 0: a SEEDED shuffle. `sort(() => Math.random() - 0.5)` was doubly
+      // wrong — non-deterministic AND not even a uniform shuffle (a comparator
+      // that answers inconsistently violates the sort contract, so the result is
+      // engine-dependent). Fisher-Yates against the seeded generator instead.
+      const nodeOrder = shuffle([...nodes], this.rng);
 
       for (const node of nodeOrder) {
         // Count neighbor labels
@@ -643,4 +656,22 @@ export class CommunityLayoutAdapter implements LayoutAdapter {
     }
     return true;
   }
+}
+
+
+/**
+ * Fisher-Yates against a seeded generator.
+ *
+ * The code this replaces used `array.sort(() => Math.random() - 0.5)`, which is a
+ * classic: it is not merely non-deterministic, it is not a uniform shuffle at all
+ * (an inconsistent comparator breaks the sort contract, so the distribution is
+ * whatever the engine's sort happens to do). Label propagation's convergence
+ * depends on visit order, so the community layout was biased AND irreproducible.
+ */
+function shuffle<T>(items: T[], rng: LayoutRng): T[] {
+  for (let i = items.length - 1; i > 0; i--) {
+    const j = Math.floor(rng.next() * (i + 1));
+    [items[i], items[j]] = [items[j], items[i]];
+  }
+  return items;
 }
