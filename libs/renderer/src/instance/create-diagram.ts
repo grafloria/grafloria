@@ -126,6 +126,12 @@ export interface DiagramInstance {
   renderNow(): void;
   dispose(): void;
 
+  /**
+   * Wave 6 — Card 3: the nodes currently being dragged (past the movement
+   * threshold). Custom node components receive this as the `dragging` prop.
+   */
+  getDraggingNodeIds(): string[];
+
   /** Escape hatches for hosts and tests. */
   readonly container: HTMLElement;
   readonly scheduler: RenderScheduler;
@@ -448,6 +454,8 @@ export function createDiagram(
 
     render: () => scheduler.schedule(),
     renderNow: () => scheduler.flush(),
+
+    getDraggingNodeIds: () => binder.getDraggingNodeIds(),
 
     dispose() {
       if (disposed) return;

@@ -106,6 +106,19 @@ export class DomEventBinder {
   private activeTool?: CanvasTool;
   private activeToolHit?: ToolHitContext;
 
+  /**
+   * Wave 6 — Card 3. The nodes currently being DRAGGED (past the movement
+   * threshold — an armed-but-uncommitted press is a click, not a drag).
+   *
+   * Node-drag state lives here, not on the InteractionController, so a custom
+   * node component had no way to know it was being dragged — and `dragging` is
+   * one of the props the component contract promises. This is the read-only
+   * window onto it.
+   */
+  getDraggingNodeIds(): string[] {
+    return this.nodeDrag?.committed ? [...this.nodeDrag.nodeIds] : [];
+  }
+
   private readonly boundMouseDown = (e: MouseEvent) => this.onMouseDown(e);
   private readonly boundMouseMove = (e: MouseEvent) => this.onMouseMove(e);
   private readonly boundMouseUp = (e: MouseEvent) => this.onMouseUp(e);

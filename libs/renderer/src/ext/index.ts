@@ -60,6 +60,15 @@ export * from './link-pipeline';
 // Card 5 — the tool registry + the isValidConnection hook.
 export * from './tools';
 
+// Card 4 — the documented public reactive + imperative surface over the
+// ViewportController / InteractionController / createDiagram machinery waves 3-4
+// already shipped. A named API, not a new engine.
+export * from './public-api';
+
+// Card 3 — the framework-agnostic node-component authoring contract (typed
+// props, lifecycle, MEASURED SIZE) on top of wave 4's renderCustomNode hook.
+export * from './node-component';
+
 // Card 6 — portals (screen space + world space) and the drop-in components.
 export * from './portal';
 export * from './components/background';
