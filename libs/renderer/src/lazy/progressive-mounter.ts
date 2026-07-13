@@ -110,6 +110,7 @@ export class ProgressiveMounter {
     const stats: MountStats = {
       firstPaintMs: 0,
       completeMs: 0,
+      cpuMs: 0,
       slices: 0,
       nodesMounted: 0,
       linksMounted: 0,
@@ -126,10 +127,28 @@ export class ProgressiveMounter {
     this.frame(viewport, zoom);
 
     stats.firstPaintMs = now() - t0;
+    stats.cpuMs = stats.firstPaintMs;
     stats.slices = 1;
     stats.worstSliceMs = stats.firstPaintMs;
     stats.nodesMounted = this.mountedNodeCount();
     options.onFirstPaint?.(stats);
+
+    // The per-frame FIXED cost — what a render costs before it draws anything new.
+    //
+    // It is not small and it is not avoidable from here: the renderer rebuilds an
+    // obstacle rect map over EVERY node in the diagram on every frame (~15ms at 10k),
+    // so a slice that admits one link and a slice that admits fifty both pay it.
+    //
+    // Measuring it is the difference between chunking and thrashing. Without this the
+    // controller sees a 15ms slice against an 8ms target, concludes the chunk is too
+    // big, and shrinks it — to 1 — which MAXIMISES the number of slices and therefore
+    // the number of times the fixed cost is paid. It converges on the worst schedule
+    // available while believing it is optimising. (Measured: 70 slices for 72 links,
+    // turning a 553ms blocking render into a 1639ms mount.)
+    //
+    // Estimated with `learnFixedCost`, below, from the slices themselves.
+    let fixedMs = 0;
+    let marginalMs = 0;
 
     return new Promise<MountStats>((resolve) => {
       let settled = false;
@@ -185,21 +204,39 @@ export class ProgressiveMounter {
         const sliceMsActual = now() - t;
 
         stats.slices++;
+        stats.cpuMs += sliceMsActual;
         stats.worstSliceMs = Math.max(stats.worstSliceMs, sliceMsActual);
         options.onSlice?.(stats);
 
-        // Adapt towards `sliceMs`.
+        // ---- learn the cost model: slice ≈ fixed + marginal × chunk ----------------
         //
-        // Shrink as hard as the measurement says (one bad slice should immediately back
-        // off), but GROW no more than 4x at a time. Link costs are skewed by two orders
-        // of magnitude, so a run of cheap 3ms links would otherwise ramp the chunk into
-        // the hundreds and the next expensive link would arrive in a batch of 200.
+        // Both terms matter and they behave completely differently. `marginal` is what
+        // this slice's entities actually cost (1-3ms a link now that routing is memoised;
+        // it was 850ms for a long one before). `fixed` is the per-frame tax the renderer
+        // charges whatever we do, and no chunk size can duck it.
+        ({ fixedMs, marginalMs } = learnFixedCost(fixedMs, marginalMs, take, sliceMsActual));
+
+        // ---- choose the next chunk ------------------------------------------------
         //
-        // The floor is 1: a router cannot be pre-empted mid-path, so a single 850ms link
-        // IS an 850ms slice. Chunking cannot fix that and should not pretend to — what it
-        // can do is make sure such a link stalls the mount alone, and never in company.
-        const ratio = sliceMs / Math.max(sliceMsActual, 0.1);
-        chunk = clamp(Math.round(chunk * Math.min(ratio, 4)), 1, 256);
+        // Aim at `sliceMs` of MARGINAL work — but never at a target the fixed cost has
+        // already blown through. If a frame costs 15ms before it does anything useful,
+        // then a slice budget of 8ms is not achievable and chasing it just multiplies the
+        // number of frames that pay the 15ms. So the real budget is at least twice the
+        // fixed cost, which bounds the mount's overhead: the tax can never be more than
+        // half of what we spend.
+        const budget = Math.max(sliceMs, fixedMs * 2);
+        const useful = Math.max(budget - fixedMs, sliceMs);
+        const target = Math.round(useful / Math.max(marginalMs, 0.01));
+
+        // Shrink as hard as the measurement says (one bad slice must back off at once),
+        // but grow no more than 4x at a time — entity costs are skewed, and a run of cheap
+        // ones should not ramp the chunk so high that the next expensive one arrives in a
+        // batch of 200.
+        //
+        // The floor is 1: a router cannot be pre-empted mid-path, so a single 850ms link IS
+        // an 850ms slice. Chunking cannot fix that and should not pretend to — what it can
+        // do is ensure such a link stalls the mount alone, and never in company.
+        chunk = clamp(Math.min(target, chunk * 4), 1, 256);
 
         this.handle = requestFrame(step);
       };
@@ -245,4 +282,51 @@ export class ProgressiveMounter {
 
 function clamp(v: number, lo: number, hi: number): number {
   return v < lo ? lo : v > hi ? hi : v;
+}
+
+/**
+ * Separate a slice's cost into the part that scales with the work (`marginal`) and the
+ * part the renderer charges regardless (`fixed`).
+ *
+ * We never get to observe either directly — only `fixed + marginal × chunk`, once per
+ * slice, from a noisy clock. So:
+ *
+ *   - `fixed` is tracked as the cheapest per-entity-adjusted floor we have seen. A slice
+ *     can never cost LESS than the fixed cost, so the running minimum converges onto it
+ *     from above and cannot be dragged up by an expensive entity.
+ *   - `marginal` is whatever is left over, averaged with an EWMA so one pathological
+ *     entity (an 850ms link) moves the estimate without defining it.
+ *
+ * Deliberately conservative in one direction: if we UNDER-estimate `fixed`, the chunk
+ * comes out small and the mount is merely slower. If we OVER-estimate it, the chunk comes
+ * out large and a slice janks. Slow is recoverable; jank is what the user sees.
+ */
+export function learnFixedCost(
+  fixedMs: number,
+  marginalMs: number,
+  chunk: number,
+  sliceMs: number
+): { fixedMs: number; marginalMs: number } {
+  const perEntity = sliceMs / Math.max(chunk, 1);
+
+  // First observation: we cannot separate the terms from one sample, so assume the slice
+  // was all fixed cost minus one entity's worth. Pessimistic on purpose (see above).
+  if (fixedMs === 0 && marginalMs === 0) {
+    return {
+      fixedMs: Math.max(0, sliceMs - perEntity),
+      marginalMs: Math.max(perEntity, 0.01),
+    };
+  }
+
+  // A slice cannot cost less than the fixed cost. Anything cheaper than our estimate IS a
+  // better upper bound on it.
+  const nextFixed = Math.min(fixedMs, sliceMs);
+
+  // What this slice's entities cost, once the tax is taken out.
+  const observedMarginal = Math.max(sliceMs - nextFixed, 0) / Math.max(chunk, 1);
+
+  // EWMA: track real change, do not let one outlier become the model.
+  const nextMarginal = Math.max(0.01, marginalMs * 0.5 + observedMarginal * 0.5);
+
+  return { fixedMs: nextFixed, marginalMs: nextMarginal };
 }

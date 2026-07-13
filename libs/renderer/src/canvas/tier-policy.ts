@@ -1,198 +1,110 @@
-// Wave 8 — Card 5: WHEN to hand off between the SVG and Canvas tiers.
-//
-// The Canvas backend has existed since wave 4: it paints the same VNode tree, picks in
-// O(1) off a colour-keyed hit canvas, and its hit-testing is proven against the SVG
-// oracle over 10,826 probe points. What it never had was anything that SWITCHED it. A
-// backend you have to reach in and toggle by hand is a demo, not a tier.
-//
-// This is the policy. Pure, so it can be argued with in a test rather than in a browser.
+// Wave 8 — Card 5: what it is safe to LOSE by drawing on a canvas.
 //
 // ─────────────────────────────────────────────────────────────────────────────
-// THE ASYMMETRY THAT MAKES THIS SAFE
+// CARD 5 AS WRITTEN IS OBSOLETE, AND THE MEASUREMENT SAYS SO TWICE.
 //
-// Stepping UP to SVG is always allowed. Stepping DOWN to canvas is what needs guards —
-// because canvas mode is not merely a different way of drawing the same diagram, it is a
-// STRICTLY LESSER surface:
+// The card asked for an automatic far-zoom canvas tier: step down to canvas at high
+// element counts / low zoom, hand back to SVG for the near tier. It existed to rescue a
+// zoom-out frame that cost 63 SECONDS at 10k nodes.
 //
-//   - It has no accessibility story at all. The wave-6 a11y work (roles, accessible
-//     names, the roving tabindex, the AT-navigable outline) is emitted as props on the
-//     VNode tree and REALISED as SVG DOM. The canvas painter draws the same tree and
-//     throws every one of those props away. A screen reader handed a <canvas> gets a
-//     blank graphic. Auto-switching an assistive-technology user to canvas to save them
-//     40ms of DOM patching is not an optimisation, it is taking their diagram away.
+//   1. That cliff is gone. wave8/routing (obstacle index + route memo) and wave8/culling
+//      (LOD gates that skip A* below zoom 0.5) took zoom-out at 10k from 63,234ms to
+//      118ms — cheaper than a pan. There is no longer a frame for canvas to rescue.
 //
-//   - It cannot rasterise DOM (`supportsForeignObject: false`). An HTML node silently
-//     stops being drawn.
+//   2. Even if there were, canvas would not rescue it. `node libs/renderer/e2e/tier-run.mjs`
+//      times the two CONSUMERS against the same VNode tree, with the router stripped out so
+//      it cannot drown the signal:
 //
+//          vnodes    svg mount   svg repatch   canvas paint
+//          23,730       44.5ms        13.7ms        121.8ms    <- SVG 8.9x FASTER
+//
+//      The patcher DIFFS: a steady frame costs a function of what CHANGED. The canvas
+//      backend REPAINTS — the whole scene, every frame, and then a second time into the
+//      colour-keyed hit canvas that buys its O(1) picking. Two full paints, always.
+//
+// So the automatic tier handoff was built, measured, and DELETED. What would have been the
+// perf machinery (thresholds, hysteresis, a step-down loop) is gone; a mechanism that the
+// numbers say should never fire is not a feature, it is a liability with a config option.
+//
+// ─────────────────────────────────────────────────────────────────────────────
+// WHAT SURVIVES, AND WHY IT IS NOT ABOUT PERFORMANCE
+//
+// The canvas backend still exists (wave 4) and `DiagramRenderBackend.setMode('canvas')`
+// still works — a host may want canvas for reasons that have nothing to do with frame
+// time: 1 canvas element instead of 40,000 DOM nodes is a real memory and GC argument.
+//
+// But that switch has shipped since wave 4 with NOTHING guarding it, and canvas is a
+// strictly LESSER surface:
+//
+//   - It has NO accessibility story. The wave-6 a11y work — roles, accessible names, the
+//     roving tabindex, the AT-navigable outline — is emitted as props on the VNode tree and
+//     REALISED as SVG DOM. The canvas painter draws the same tree and throws every one of
+//     those props away. A screen reader handed a <canvas> gets a blank graphic. Today,
+//     setMode('canvas') will do that to a screen-reader user without a word.
+//   - It cannot rasterise DOM (`supportsForeignObject: false`): an HTML node stops being
+//     drawn at all.
 //   - Swapping the element out drops `document.activeElement` to <body>, destroying a
 //     keyboard user's position mid-navigation.
 //
-// So: canvas is opt-in-able, guarded, and always yields to any of those three signals.
-// Slow and correct beats fast and inaccessible, and the guards below are not advisory.
+// That is a real bug in shipped code, and it is independent of whether anyone ever wanted
+// an automatic tier. So THIS is what Card 5 leaves behind: not a perf switch, a safety
+// check on the switch that was already there.
 
 import type { BackendMode } from './render-backend';
 
-export interface TierPolicy {
-  /** Step DOWN to canvas at or above this many visible elements. */
-  canvasAboveElements: number;
-  /** Step back UP to SVG at or below this many. Strictly less than the above: hysteresis. */
-  svgBelowElements: number;
-  /** Step DOWN to canvas at or below this zoom (the far/low-LOD tier). */
-  canvasBelowZoom: number;
-  /** Step back UP to SVG at or above this zoom (the near/interactive tier). */
-  svgAboveZoom: number;
-  /** Never hand an assistive-technology user a canvas. Default true, and it means it. */
-  respectAccessibility: boolean;
-}
-
-/**
- * THE DEFAULT IS: NEVER STEP DOWN. And that is a measurement, not a hedge.
- *
- * `node libs/renderer/e2e/tier-run.mjs`, on the links-free isolation scene (which strips
- * out the router so the two CONSUMERS can actually be compared):
- *
- *     vnodes    svg mount   svg repatch   canvas paint
- *      5,005       10.1ms         0.0ms          0.0ms
- *     23,080       48.7ms        13.8ms        115.5ms     <- SVG 8.4x faster
- *     23,730       44.5ms        13.7ms        121.8ms     <- SVG 8.9x faster
- *
- * The canvas tier is SLOWER than the DOM at every count we can measure, and the reason is
- * structural, not a tuning problem:
- *
- *   - The VNode patcher DIFFS. A steady frame touches only what actually changed, so the
- *     DOM's per-frame cost is a function of the CHANGE, not of the scene.
- *   - The canvas backend REPAINTS. Every frame, the whole scene — and then a second time
- *     into the colour-keyed hit canvas that buys its O(1) picking. Two full paints, every
- *     frame, whatever changed.
- *
- * Canvas is not therefore worthless: it wins where the diff is as expensive as a repaint
- * (continuous zoom/pan, where every element moves), and 1 canvas element beats 40,000 DOM
- * nodes for memory and GC. But those are not the case the thresholds below fire on, and a
- * default that silently made every host 8.9x slower on a big diagram would be a lie told
- * with a feature flag.
- *
- * So: the mechanism ships, guarded and tested, and it steps down only when a host gives it
- * a number IT has measured on ITS scenes:
- *
- *     autoTier: { canvasAboveElements: 20000, svgBelowElements: 15000 }
- *
- * Re-measure and revisit these defaults when (a) the router stops dominating the frame
- * (wave8/routing) and (b) the hit-canvas repaint becomes conditional — with both fixed,
- * the comparison changes and this comment should stop being true.
- */
-export const DEFAULT_TIER_POLICY: TierPolicy = {
-  canvasAboveElements: Number.POSITIVE_INFINITY,
-  svgBelowElements: 1500,
-  canvasBelowZoom: 0,
-  svgAboveZoom: 0.5,
-  respectAccessibility: true,
-};
-
-export type TierReason =
-  /** Held on SVG: an assistive-technology surface is live. Outranks every perf signal. */
-  | 'a11y-pinned'
-  /** Held on SVG: focus is inside the diagram; swapping the element would drop it. */
+/** Why canvas mode would take something away from this particular diagram, right now. */
+export type CanvasHazard =
+  /** An assistive-technology surface is live. Canvas has no semantics to give it. */
+  | 'a11y-active'
+  /** Focus is inside the diagram; swapping the element out would drop it to <body>. */
   | 'focus-inside'
-  /** Held on SVG: the scene has foreignObject/HTML nodes, which canvas cannot paint. */
-  | 'foreign-object'
-  /** Held wherever the host pinned it. */
-  | 'pinned'
-  /** Stepped down: too many elements for the DOM. */
-  | 'element-count'
-  /** Stepped down: zoomed out past the interactive tier. */
-  | 'zoom'
-  /** Stepped up: back inside the near/interactive tier. */
-  | 'interactive'
-  /** Nothing to do. */
-  | 'unchanged';
+  /** The scene has foreignObject/HTML nodes. Canvas cannot paint them — they vanish. */
+  | 'foreign-object';
 
-export interface TierInput {
-  current: BackendMode;
-  /** Visible elements (nodes + links) — the thing the CONSUMER's cost scales with. */
-  elements: number;
-  zoom: number;
-  /** An outline/live-region/AT surface is mounted for this diagram. */
-  a11yEngaged: boolean;
-  /** DOM focus is inside the diagram right now. */
-  focusInside: boolean;
-  /** The visible scene contains nodes canvas cannot paint (foreignObject/HTML). */
-  hasForeignObject: boolean;
-  /** A hard host override. */
-  pinned: BackendMode | null;
-  policy: TierPolicy;
+export interface CanvasSafety {
+  /** True when nothing would be lost by drawing this diagram on a canvas. */
+  safe: boolean;
+  /** Everything that would be lost. Empty iff `safe`. */
+  hazards: CanvasHazard[];
 }
 
-export interface TierDecision {
-  mode: BackendMode;
-  reason: TierReason;
-  /** True when `mode` differs from `current`. */
-  changed: boolean;
+export interface CanvasSafetyInput {
+  a11yActive: boolean;
+  focusInside: boolean;
+  hasForeignObject: boolean;
 }
 
 /**
- * The tier this frame should be drawn in.
+ * What would canvas mode cost this diagram?
  *
- * Guards first, thresholds second — and every guard can only ever push TOWARDS svg.
+ * Note the asymmetry, and that it is the whole design: this question is only ever asked
+ * about stepping TO canvas. Going back to SVG can lose nothing — it only ever restores
+ * focusable, labelled, HTML-capable DOM — so it is never guarded, never refused, and
+ * always allowed.
  */
-export function decideTier(input: TierInput): TierDecision {
-  const { current, policy } = input;
-  const settle = (mode: BackendMode, reason: TierReason): TierDecision => ({
-    mode,
-    reason: mode === current ? (reason === 'unchanged' ? 'unchanged' : reason) : reason,
-    changed: mode !== current,
-  });
-
-  // A host that pinned the tier means it. Nothing below overrules it — including the
-  // a11y guard: a host that explicitly pins canvas has taken that decision knowingly,
-  // and silently ignoring it would be its own kind of lie.
-  if (input.pinned) return settle(input.pinned, 'pinned');
-
-  // ---- the guards. Each one can only hold us on (or return us to) SVG. --------
-
-  // An AT user must never be silently moved onto a surface with no semantics.
-  if (policy.respectAccessibility && input.a11yEngaged) return settle('svg', 'a11y-pinned');
-
-  // Swapping the rendered element out from under a focused keyboard user drops
-  // document.activeElement to <body>. Never do that mid-navigation. (Returning UP to
-  // SVG is still allowed — that direction only ever restores focusable DOM.)
-  if (input.focusInside && current === 'svg') return settle('svg', 'focus-inside');
-
-  // Canvas cannot rasterise DOM. Stepping down would make HTML nodes vanish.
-  if (input.hasForeignObject) return settle('svg', 'foreign-object');
-
-  // ---- thresholds, with a hysteresis band so the boundary cannot thrash --------
-
-  if (current === 'svg') {
-    if (input.elements >= policy.canvasAboveElements) return settle('canvas', 'element-count');
-    if (input.zoom <= policy.canvasBelowZoom) return settle('canvas', 'zoom');
-    return settle('svg', 'unchanged');
-  }
-
-  // current === 'canvas': come back up only once BOTH signals are comfortably inside the
-  // interactive tier. Either one alone would let a diagram oscillate.
-  if (input.elements <= policy.svgBelowElements && input.zoom >= policy.svgAboveZoom) {
-    return settle('svg', 'interactive');
-  }
-  return settle('canvas', 'unchanged');
+export function canvasSafety(input: CanvasSafetyInput): CanvasSafety {
+  const hazards: CanvasHazard[] = [];
+  if (input.a11yActive) hazards.push('a11y-active');
+  if (input.focusInside) hazards.push('focus-inside');
+  if (input.hasForeignObject) hazards.push('foreign-object');
+  return { safe: hazards.length === 0, hazards };
 }
 
-/** Fill in whatever the host left out. */
-export function resolveTierPolicy(partial?: Partial<TierPolicy>): TierPolicy {
-  const policy = { ...DEFAULT_TIER_POLICY, ...partial };
-
-  // A hysteresis band that is inverted (or zero-width) is not hysteresis — it is a
-  // config that thrashes. Refuse it loudly rather than oscillate quietly.
-  if (policy.svgBelowElements >= policy.canvasAboveElements) {
-    throw new Error(
-      `[grafloria] tier policy: svgBelowElements (${policy.svgBelowElements}) must be < ` +
-        `canvasAboveElements (${policy.canvasAboveElements}) — otherwise the boundary thrashes.`
-    );
-  }
-  if (policy.svgAboveZoom <= policy.canvasBelowZoom) {
-    throw new Error(
-      `[grafloria] tier policy: svgAboveZoom (${policy.svgAboveZoom}) must be > ` +
-        `canvasBelowZoom (${policy.canvasBelowZoom}) — otherwise the boundary thrashes.`
-    );
-  }
-  return policy;
+/** A human-readable account of what a canvas switch would take away. */
+export function explainHazards(hazards: readonly CanvasHazard[]): string {
+  const reasons: Record<CanvasHazard, string> = {
+    'a11y-active':
+      'an assistive-technology surface is live for this diagram, and canvas mode has no ' +
+      'accessible semantics at all (a screen reader would see a blank graphic)',
+    'focus-inside':
+      'focus is currently inside the diagram, and swapping the rendered element out would ' +
+      'drop it to <body>, losing a keyboard user their place',
+    'foreign-object':
+      'the scene contains HTML/foreignObject nodes, which canvas cannot rasterise — they ' +
+      'would silently stop being drawn',
+  };
+  return hazards.map((h) => reasons[h]).join('; ');
 }
+
+/** Modes it is always safe to be in. */
+export const ALWAYS_SAFE_MODE: BackendMode = 'svg';

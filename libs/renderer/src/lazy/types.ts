@@ -35,8 +35,17 @@ export interface MountGate {
 export interface MountStats {
   /** ms from `mount()` to the first frame that reached the screen. */
   firstPaintMs: number;
-  /** ms from `mount()` to the last entity mounted. */
+  /** Wall clock from `mount()` to the last entity mounted — INCLUDING the rAF waits. */
   completeMs: number;
+  /**
+   * CPU actually spent, summed over the slices — i.e. `completeMs` minus the time spent
+   * yielded to the browser.
+   *
+   * This is the number that says whether slicing costs anything REAL. Wall clock has to
+   * grow (that is what yielding means: ~16.7ms of vsync per slice, during which the tab
+   * paints and handles input). Work is what must not grow, and this is what proves it.
+   */
+  cpuMs: number;
   /** rAF slices used (1 = it all fitted in the first frame). */
   slices: number;
   /** Entities whose views were built. */

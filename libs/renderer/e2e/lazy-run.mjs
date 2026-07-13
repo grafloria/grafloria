@@ -94,11 +94,12 @@ console.log(
     pad('blocking', 13) +
     pad('progressive', 13) +
     pad('speedup', 10) +
+    pad('CPU work', 12) +
     pad('mount done', 13) +
     pad('worst slice', 13) +
     pad('slices', 8)
 );
-console.log('─'.repeat(78));
+console.log('─'.repeat(90));
 for (const { count, blocking, progressive } of samples) {
   const speedup = blocking.firstPaintMs / Math.max(progressive.firstPaintMs, 0.01);
   console.log(
@@ -106,11 +107,16 @@ for (const { count, blocking, progressive } of samples) {
       pad(ms(blocking.firstPaintMs), 13) +
       pad(ms(progressive.firstPaintMs), 13) +
       pad(speedup.toFixed(0) + 'x', 10) +
+      pad(ms(progressive.cpuMs), 12) +
       pad(ms(progressive.completeMs), 13) +
       pad(ms(progressive.worstSliceMs), 13) +
       pad(progressive.slices, 8)
   );
 }
+console.log('');
+console.log('CPU work = what the mount actually COSTS (sum of slices). Compare it to `blocking`:');
+console.log('slicing must not do MORE work, only spread it. `mount done` is wall clock, and it');
+console.log('is larger by design — each rAF yield hands ~16.7ms back to the browser to paint.');
 console.log('');
 
 // ---- the gate: nothing may be lost --------------------------------------------

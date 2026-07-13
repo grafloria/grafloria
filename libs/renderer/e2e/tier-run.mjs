@@ -1,14 +1,28 @@
-// Wave 8 — Card 5: is a canvas far-zoom tier worth anything on THIS engine?
+// Wave 8 — Card 5: THE EVIDENCE THAT KILLED THE CARD.
 //
 //   node libs/renderer/e2e/tier-run.mjs
 //
-// Splits a zoomed-out frame into producer (build the VNode tree — identical in both
-// tiers) and consumer (turn it into pixels — the ONLY thing a tier handoff changes), and
-// times both in a real browser.
+// Card 5 asked for an automatic canvas far-zoom tier. This is the benchmark that says not
+// to build one, and it is kept so the next person to have the idea can re-run it instead of
+// re-litigating it.
 //
-// Reports, and gates nothing. Its job is to keep the claim honest in both directions: if
-// the consumer is the bottleneck, the handoff is worth building; if it is not, no amount
-// of good canvas engineering will make it matter, and this table is what says so.
+// It splits a zoomed-out frame into PRODUCER (build the VNode tree — identical in both
+// tiers; canvas mode calls the same producer) and CONSUMER (turn that tree into pixels —
+// the ONLY thing a tier handoff changes), and times both in a real browser.
+//
+// Two findings, either of which is fatal on its own:
+//
+//   1. The consumer is 0-4% of a real zoomed-out frame. A handoff cannot address the other
+//      96%, because both tiers pay it.
+//   2. On the isolation scene (links stripped, so a 30-second router cannot drown the
+//      signal) the canvas consumer is ~9x SLOWER than the DOM patcher at 23k VNodes. The
+//      patcher DIFFS; canvas REPAINTS the whole scene, then repaints it AGAIN into the
+//      colour-keyed hit canvas.
+//
+// And since wave8/routing + wave8/culling landed, zoom-out at 10k is 118ms — the 63-SECOND
+// frame this card existed to rescue no longer exists.
+//
+// Reports, gates nothing.
 
 import { build } from 'esbuild';
 import { chromium } from 'playwright';

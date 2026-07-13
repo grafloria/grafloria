@@ -66,6 +66,7 @@ export async function runLazyScene(
       links: diagram.getLinks().length,
       firstPaintMs,
       completeMs: firstPaintMs,
+      cpuMs: firstPaintMs,
       worstSliceMs: firstPaintMs,
       slices: 1,
       domNodes: dom.nodes.size,
@@ -92,6 +93,7 @@ export async function runLazyScene(
     links: diagram.getLinks().length,
     firstPaintMs: stats.firstPaintMs,
     completeMs: stats.completeMs,
+    cpuMs: stats.cpuMs,
     worstSliceMs: stats.worstSliceMs,
     slices: stats.slices,
     domNodes: dom.nodes.size,
@@ -105,6 +107,8 @@ export interface LazyRun {
   links: number;
   firstPaintMs: number;
   completeMs: number;
+  /** CPU actually spent (sum of slices) — wall clock minus the rAF waits. */
+  cpuMs: number;
   worstSliceMs: number;
   slices: number;
   domNodes: number;

@@ -36,10 +36,10 @@ import { NULL_CONTEXT } from './canvas-context';
 import { VNodePainter, type HitRecord } from './vnode-painter';
 import { IDENTITY, distanceToPath, pointInPath } from './path-geometry';
 import {
-  decideTier,
-  resolveTierPolicy,
-  type TierPolicy,
-  type TierReason,
+  canvasSafety,
+  explainHazards,
+  type CanvasHazard,
+  type CanvasSafety,
 } from './tier-policy';
 // The SAME predicate the painter uses to decide a node is unpaintable — so the guard
 // that refuses to step down and the painter that would have dropped the node cannot
@@ -59,24 +59,23 @@ export interface RenderBackendOptions {
   enableDirtyRegions?: boolean;
 
   /**
-   * Wave 8 — Card 5: hand off between the tiers AUTOMATICALLY.
+   * Wave 8 — Card 5: REFUSE a switch to canvas that would take something away.
    *
-   * Off by default. The backend has been switchable since wave 4 and nothing switched
-   * it; this is what does. Canvas is only ever stepped down TO — never past the a11y,
-   * focus or foreignObject guards in `tier-policy.ts`.
+   * Canvas mode has no accessibility semantics, cannot paint HTML nodes, and drops DOM
+   * focus when it swaps the element out. Since wave 4, `setMode('canvas')` has done all
+   * three silently. With this on (the default), it refuses instead, and says why.
+   *
+   * `setMode(mode, { force: true })` overrides — a host that means it can still have it.
    */
-  autoTier?: boolean | Partial<TierPolicy>;
+  guardCanvas?: boolean;
 
-  /** Told when the tier changes, and why. Hosts should announce an a11y-relevant switch. */
-  onTierChange?: (event: TierChangeEvent) => void;
+  /** Told when the backend refuses a canvas switch, and what it would have cost. */
+  onCanvasRefused?: (event: CanvasRefusedEvent) => void;
 }
 
-export interface TierChangeEvent {
-  from: BackendMode;
-  to: BackendMode;
-  reason: TierReason;
-  elements: number;
-  zoom: number;
+export interface CanvasRefusedEvent {
+  hazards: readonly CanvasHazard[];
+  explanation: string;
 }
 
 /**
@@ -114,16 +113,10 @@ export class DiagramRenderBackend {
   private lastZoom = 1;
   private disposed = false;
 
-  // --- Wave 8 — Card 5: the automatic tier handoff --------------------------
+  // --- Wave 8 — Card 5: the canvas safety guard ------------------------------
 
-  /** null = the host has not asked for automatic tiering. */
-  private readonly tierPolicy: TierPolicy | null;
-
-  /** A hard host override. Outranks the policy. */
-  private pinnedMode: BackendMode | null = null;
-
-  /** Why we are in the tier we are in — exposed, because "it went to canvas" is a thing a host must be able to explain to a user. */
-  private tierReason: TierReason = 'unchanged';
+  /** Refuse a canvas switch that would cost this diagram its a11y, focus or HTML nodes. */
+  private readonly guardCanvas: boolean;
 
   /**
    * The host has declared an assistive-technology surface live for this diagram.
@@ -138,9 +131,7 @@ export class DiagramRenderBackend {
     this.mode = options.mode ?? 'svg';
     this.theme = options.theme ?? LIGHT_THEME;
 
-    this.tierPolicy = options.autoTier
-      ? resolveTierPolicy(typeof options.autoTier === 'object' ? options.autoTier : undefined)
-      : null;
+    this.guardCanvas = options.guardCanvas ?? true;
 
     this.producer = new SVGRenderer(engine, options.producerConfig, this.theme);
 
@@ -171,9 +162,32 @@ export class DiagramRenderBackend {
    * Switch backend on a LIVE diagram. The producer, the engine, the theme and
    * the camera all survive; only the paint target changes. The next `render()`
    * repaints from scratch into the new target.
+   *
+   * Wave 8 — Card 5: a switch TO canvas is now REFUSED when it would take something away
+   * (an AT surface is live, focus is inside the diagram, or the scene has HTML nodes
+   * canvas cannot paint). Returns whether the switch happened. Going back to SVG is never
+   * refused — that direction can only ever restore what canvas lacks.
+   *
+   * `setMode('canvas', { force: true })` overrides the guard. A host that has taken the
+   * decision knowingly can still have it; what it cannot do is take it by accident.
    */
-  setMode(mode: BackendMode): void {
-    if (mode === this.mode || this.disposed) return;
+  setMode(mode: BackendMode, options: { force?: boolean } = {}): boolean {
+    if (mode === this.mode || this.disposed) return false;
+
+    if (mode === 'canvas' && this.guardCanvas && !options.force) {
+      const safety = this.canvasSafety();
+      if (!safety.safe) {
+        const explanation = explainHazards(safety.hazards);
+        this.options.onCanvasRefused?.({ hazards: safety.hazards, explanation });
+        // Loud, because the alternative is a screen-reader user silently losing their
+        // diagram and nobody finding out.
+        console.warn(
+          `[grafloria] refusing to switch to the canvas backend: ${explanation}. ` +
+            `Pass { force: true } to override.`
+        );
+        return false;
+      }
+    }
 
     this.unmount();
     this.mode = mode;
@@ -185,19 +199,13 @@ export class DiagramRenderBackend {
     if (this.lastViewport.width > 0) {
       this.render(this.lastViewport, this.lastZoom);
     }
+    return true;
   }
 
   render(viewport: Rectangle, zoom: number): VNode {
     this.lastViewport = { ...viewport };
     this.lastZoom = zoom;
     this.hitRecords = null;
-
-    // Card 5: pick the tier BEFORE painting, so a frame that switches paints once into
-    // the new target rather than painting into the old one and then again into the new.
-    // The decision uses the PREVIOUS frame's element count (this frame's is not known
-    // until the producer has run) and THIS frame's zoom, which is the signal that
-    // actually moves fast. Hysteresis absorbs the one-frame lag in the count.
-    this.evaluateTier(zoom);
 
     if (this.mode === 'canvas' && this.canvasRenderer) {
       const tree = this.canvasRenderer.render(viewport, zoom);
@@ -214,51 +222,54 @@ export class DiagramRenderBackend {
   }
 
   // =========================================================================
-  // Wave 8 — Card 5: the automatic tier handoff
+  // Wave 8 — Card 5: the canvas SAFETY guard
+  //
+  // Not a performance feature. The automatic far-zoom tier this card asked for was built,
+  // measured and deleted — see the header of `tier-policy.ts` for the numbers that killed
+  // it. What is left is the thing the measurement did NOT excuse: since wave 4 this class
+  // has let a host switch to canvas and silently take away a screen-reader user's entire
+  // diagram. That was true before this card and would have stayed true after it.
   // =========================================================================
 
-  /** Which tier we are in, and WHY. */
-  getTierState(): { mode: BackendMode; reason: TierReason; auto: boolean } {
-    return { mode: this.mode, reason: this.tierReason, auto: this.tierPolicy !== null };
+  /** What canvas mode would cost this diagram right now. `safe` iff it would cost nothing. */
+  canvasSafety(): CanvasSafety {
+    return canvasSafety({
+      a11yActive: this.isA11yEngaged(),
+      focusInside: this.isFocusInside(),
+      hasForeignObject: this.hasForeignObject(),
+    });
   }
 
   /**
-   * Force a tier and keep it there. `null` hands control back to the policy.
+   * Tell the backend an assistive-technology surface is live for this diagram (an outline
+   * view, a live region, keyboard navigation).
    *
-   * Note this outranks the a11y guard. A host that pins canvas has made that call
-   * knowingly; quietly overruling it would be its own kind of lie. What the backend
-   * will NOT do is make that choice *for* a host by accident.
-   */
-  pinMode(mode: BackendMode | null): void {
-    this.pinnedMode = mode;
-    if (mode && mode !== this.mode) {
-      this.switchTo(mode, 'pinned', true);
-    }
-  }
-
-  /**
-   * Tell the backend an assistive-technology surface is live for this diagram (an
-   * outline view, a live region, keyboard navigation). While it is, automatic tiering
-   * will not step down to canvas.
-   *
-   * Also auto-detected from the outline view's `[data-grafloria-outline]` marker, so a host
-   * that used the wave-6 a11y layer is protected whether it remembers to call this or
-   * not. Defence in depth: the failure mode this guards against is a screen-reader user
-   * silently losing their diagram, and that is not a thing to leave to a host's memory.
+   * While it is, `setMode('canvas')` is refused — and if we are ALREADY on canvas, this
+   * immediately returns the diagram to SVG rather than waiting for the next frame. A
+   * screen reader that arrives mid-session gets its semantics back at once.
    */
   setAccessibilityActive(active: boolean): void {
     this.a11yActive = active;
-    if (active && this.tierPolicy?.respectAccessibility && this.mode === 'canvas') {
-      // Do not wait for the next frame to give an AT user their semantics back.
-      this.switchTo('svg', 'a11y-pinned', true);
+    if (active && this.guardCanvas && this.mode === 'canvas') {
+      // Going back to SVG can lose nothing, so it is never guarded and never refused.
+      this.unmount();
+      this.mode = 'svg';
+      this.mount();
+      if (this.lastViewport.width > 0) this.render(this.lastViewport, this.lastZoom);
     }
   }
 
-  /** Is an AT surface live — declared by the host, or detected in the DOM? */
+  /**
+   * Is an AT surface live — declared by the host, or detected in the DOM?
+   *
+   * Detected as well as declared, deliberately. The wave-6 outline view marks its hidden
+   * AT mirror with `[data-grafloria-outline]`; if one exists, somebody is reading this diagram
+   * with assistive technology whether or not the host remembered to say so. The failure
+   * mode here is a screen-reader user silently losing their diagram, which is not a thing
+   * to leave to a host's memory.
+   */
   private isA11yEngaged(): boolean {
     if (this.a11yActive) return true;
-    // The wave-6 outline view marks its hidden mirror with this. If one exists for this
-    // container, an AT user is being served semantics we must not take away.
     const scope = this.container.parentElement ?? this.container;
     return !!scope.querySelector?.('[data-grafloria-outline]');
   }
@@ -272,76 +283,20 @@ export class DiagramRenderBackend {
   }
 
   /**
-   * Does the visible scene contain nodes the canvas backend cannot paint?
+   * Does the scene contain nodes the canvas backend cannot paint?
    *
    * Canvas has no way to rasterise a DOM subtree, so an HTML/foreignObject node simply
-   * stops being drawn. Stepping down with one on screen would silently delete content.
+   * stops being drawn. Switching with one on screen would silently delete content.
    *
-   * Asked of the last VNODE TREE rather than of the CanvasRenderer's
-   * `getUnpaintableNodes()`, because that list only exists once canvas mode has ALREADY
-   * painted — by which point the HTML node has already been dropped for a frame. The
-   * question has to be answerable from SVG mode, before we step down.
+   * Asked of the last VNODE TREE rather than of `CanvasRenderer.getUnpaintableNodes()`,
+   * because that list only exists once canvas mode has ALREADY painted — by which point
+   * the HTML node has already been dropped for a frame. The question has to be answerable
+   * from SVG mode, BEFORE we switch.
    */
   private hasForeignObject(): boolean {
     return this.lastTree ? treeHasForeignObject(this.lastTree) : false;
   }
 
-  private evaluateTier(zoom: number): void {
-    if (!this.tierPolicy || this.disposed) return;
-
-    const metrics = this.producer.getPerformanceMetrics();
-    const elements = metrics.nodeCount + metrics.linkCount;
-
-    const decision = decideTier({
-      current: this.mode,
-      elements,
-      zoom,
-      a11yEngaged: this.isA11yEngaged(),
-      focusInside: this.isFocusInside(),
-      hasForeignObject: this.hasForeignObject(),
-      pinned: this.pinnedMode,
-      policy: this.tierPolicy,
-    });
-
-    this.tierReason = decision.reason;
-    if (!decision.changed) return;
-
-    this.switchTo(decision.mode, decision.reason, false, elements, zoom);
-  }
-
-  private switchTo(
-    mode: BackendMode,
-    reason: TierReason,
-    rerender: boolean,
-    elements = 0,
-    zoom = this.lastZoom
-  ): void {
-    if (mode === this.mode || this.disposed) return;
-
-    const from = this.mode;
-    this.unmount();
-    this.mode = mode;
-    this.tierReason = reason;
-    this.mount();
-
-    // SELECTION AND HIT-TESTING SURVIVE THIS, and not by luck: selection lives on the
-    // MODEL (engine), both tiers are painted from the SAME VNode tree produced by the
-    // SAME producer, and both answer hitTest() from the same hit records. There is no
-    // per-backend copy of either to fall out of sync. What does NOT survive is DOM focus
-    // and the a11y semantics — which is exactly why the guards above exist.
-    this.options.onTierChange?.({ from, to: mode, reason, elements, zoom });
-
-    if (rerender && this.lastViewport.width > 0) {
-      this.render(this.lastViewport, this.lastZoom);
-    }
-  }
-
-  /**
-   * The entity at a WORLD coordinate — the same answer in both modes.
-   *
-   * Canvas mode uses the colour-keyed hit canvas when it has one (O(1)); both
-   * modes otherwise walk the shared hit records geometrically.
-   */
   hitTest(worldX: number, worldY: number): CanvasPick | null {
     if (this.mode === 'canvas' && this.canvasRenderer) {
       return this.canvasRenderer.pick(worldX, worldY);

@@ -1,151 +1,48 @@
-// Wave 8 — Card 5: the tier handoff policy.
+// Wave 8 — Card 5: what a switch to canvas would COST.
 //
-// The perf thresholds are the easy half. The half that matters is the guards: canvas is
-// a STRICTLY LESSER surface (no a11y semantics, no focusable DOM, cannot paint HTML
-// nodes), so every guard must be able to hold us on SVG, and none of them may ever push
-// us towards canvas.
+// The automatic far-zoom tier this card asked for is gone — measured, refuted, deleted
+// (see the header of `tier-policy.ts`). These pin the thing that outlived it: canvas is a
+// strictly LESSER surface, and something has to know that before a host switches onto it.
 
-import { DEFAULT_TIER_POLICY, decideTier, resolveTierPolicy, type TierInput } from './tier-policy';
+import { canvasSafety, explainHazards, type CanvasHazard } from './tier-policy';
 
-/** Thresholds a host has explicitly opted into. The DEFAULTS never step down — see below. */
-const OPTED_IN = {
-  ...DEFAULT_TIER_POLICY,
-  canvasAboveElements: 2000,
-  svgBelowElements: 1500,
-  canvasBelowZoom: 0.35,
-  svgAboveZoom: 0.5,
-};
-
-const base = (over: Partial<TierInput> = {}): TierInput => ({
-  current: 'svg',
-  elements: 100,
-  zoom: 1,
-  a11yEngaged: false,
-  focusInside: false,
-  hasForeignObject: false,
-  pinned: null,
-  policy: OPTED_IN,
-  ...over,
-});
-
-describe('decideTier — the DEFAULT policy never steps down', () => {
-  // Not timidity — measurement. `tier-run.mjs` says the canvas consumer is 8.9x SLOWER
-  // than the DOM patcher at 23,730 VNodes, because the patcher diffs and canvas repaints
-  // (twice: once for the screen, once for the hit canvas). A default that silently made a
-  // host 8.9x slower on a big diagram would be a lie told with a feature flag.
-  const def = (over: Partial<TierInput> = {}) =>
-    decideTier(base({ policy: DEFAULT_TIER_POLICY, ...over }));
-
-  it('holds SVG at any element count', () => {
-    expect(def({ elements: 1_000_000 }).mode).toBe('svg');
+describe('canvasSafety', () => {
+  it('is safe when nothing would be lost', () => {
+    const s = canvasSafety({ a11yActive: false, focusInside: false, hasForeignObject: false });
+    expect(s.safe).toBe(true);
+    expect(s.hazards).toEqual([]);
   });
 
-  it('holds SVG at any zoom', () => {
-    expect(def({ zoom: 0.001 }).mode).toBe('svg');
+  it('is NOT safe while an assistive-technology surface is live', () => {
+    // The one that matters most. Canvas mode has no accessible semantics at all: a screen
+    // reader handed a <canvas> gets a blank graphic. Trading a user's entire diagram for
+    // frame time is not an optimisation.
+    const s = canvasSafety({ a11yActive: true, focusInside: false, hasForeignObject: false });
+    expect(s.safe).toBe(false);
+    expect(s.hazards).toContain('a11y-active');
   });
 
-  it('still steps UP to svg if something put us on canvas', () => {
-    expect(def({ current: 'canvas', elements: 10, zoom: 1 }).mode).toBe('svg');
-  });
-});
-
-describe('decideTier — thresholds (a host that opted in with its own numbers)', () => {
-  it('stays on SVG for a small, near-zoom scene', () => {
-    const d = decideTier(base());
-    expect(d.mode).toBe('svg');
-    expect(d.changed).toBe(false);
+  it('is NOT safe while focus is inside the diagram', () => {
+    const s = canvasSafety({ a11yActive: false, focusInside: true, hasForeignObject: false });
+    expect(s.safe).toBe(false);
+    expect(s.hazards).toContain('focus-inside');
   });
 
-  it('steps down to canvas once the element count crosses the line', () => {
-    const d = decideTier(base({ elements: 2000 }));
-    expect(d.mode).toBe('canvas');
-    expect(d.reason).toBe('element-count');
-    expect(d.changed).toBe(true);
+  it('is NOT safe while the scene has HTML nodes canvas cannot paint', () => {
+    const s = canvasSafety({ a11yActive: false, focusInside: false, hasForeignObject: true });
+    expect(s.safe).toBe(false);
+    expect(s.hazards).toContain('foreign-object');
   });
 
-  it('steps down to canvas when zoomed out past the interactive tier', () => {
-    const d = decideTier(base({ zoom: 0.3 }));
-    expect(d.mode).toBe('canvas');
-    expect(d.reason).toBe('zoom');
+  it('reports EVERY hazard, not just the first — a host deserves the whole bill', () => {
+    const s = canvasSafety({ a11yActive: true, focusInside: true, hasForeignObject: true });
+    expect(s.safe).toBe(false);
+    expect(s.hazards).toEqual<CanvasHazard[]>(['a11y-active', 'focus-inside', 'foreign-object']);
   });
 
-  it('comes back up to SVG only when BOTH signals are inside the interactive tier', () => {
-    // Few elements, but still zoomed out: stay on canvas.
-    expect(decideTier(base({ current: 'canvas', elements: 10, zoom: 0.3 })).mode).toBe('canvas');
-    // Zoomed in, but still huge: stay on canvas.
-    expect(decideTier(base({ current: 'canvas', elements: 9000, zoom: 1 })).mode).toBe('canvas');
-    // Both back inside: step up.
-    const up = decideTier(base({ current: 'canvas', elements: 10, zoom: 1 }));
-    expect(up.mode).toBe('svg');
-    expect(up.reason).toBe('interactive');
-  });
-
-  it('has a hysteresis band, so a scene parked on the boundary cannot thrash', () => {
-    // 1800 elements: past the "come back to svg" line (1500) but short of the "go to
-    // canvas" line (2000). Whichever tier we are in, we stay in it.
-    expect(decideTier(base({ current: 'svg', elements: 1800 })).mode).toBe('svg');
-    expect(decideTier(base({ current: 'canvas', elements: 1800, zoom: 1 })).mode).toBe('canvas');
-  });
-
-  it('refuses a policy whose hysteresis band is inverted', () => {
-    expect(() => resolveTierPolicy({ canvasAboveElements: 100, svgBelowElements: 200 })).toThrow(
-      /thrash/
-    );
-    expect(() => resolveTierPolicy({ canvasBelowZoom: 0.8, svgAboveZoom: 0.2 })).toThrow(/thrash/);
-  });
-});
-
-describe('decideTier — the guards (canvas is a lesser surface)', () => {
-  it('NEVER hands an assistive-technology user a canvas, however big the scene', () => {
-    const d = decideTier(base({ elements: 100000, zoom: 0.01, a11yEngaged: true }));
-    expect(d.mode).toBe('svg');
-    expect(d.reason).toBe('a11y-pinned');
-  });
-
-  it('drags an AT user back UP to SVG if they were somehow on canvas', () => {
-    const d = decideTier(base({ current: 'canvas', elements: 100000, a11yEngaged: true }));
-    expect(d.mode).toBe('svg');
-    expect(d.reason).toBe('a11y-pinned');
-    expect(d.changed).toBe(true);
-  });
-
-  it('honours respectAccessibility: false — but only when a host asks for it explicitly', () => {
-    const policy = { ...OPTED_IN, respectAccessibility: false };
-    const d = decideTier(base({ elements: 5000, a11yEngaged: true, policy }));
-    expect(d.mode).toBe('canvas');
-  });
-
-  it('will not swap the element out from under a focused keyboard user', () => {
-    const d = decideTier(base({ elements: 100000, focusInside: true }));
-    expect(d.mode).toBe('svg');
-    expect(d.reason).toBe('focus-inside');
-  });
-
-  it('but focus never BLOCKS the safe direction — canvas → svg is always allowed', () => {
-    const d = decideTier(base({ current: 'canvas', elements: 10, zoom: 1, focusInside: true }));
-    expect(d.mode).toBe('svg');
-  });
-
-  it('will not step down while an HTML node is on screen — canvas cannot paint it', () => {
-    const d = decideTier(base({ elements: 100000, hasForeignObject: true }));
-    expect(d.mode).toBe('svg');
-    expect(d.reason).toBe('foreign-object');
-  });
-
-  it('a pinned tier outranks everything, including the guards', () => {
-    const d = decideTier(base({ pinned: 'canvas', a11yEngaged: true, hasForeignObject: true }));
-    expect(d.mode).toBe('canvas');
-    expect(d.reason).toBe('pinned');
-  });
-
-  it('EVERY guard pushes towards svg and none towards canvas', () => {
-    // The safety invariant, stated as a test: for a scene that would otherwise step down,
-    // turning ON any single guard must keep it on SVG.
-    const wouldStepDown = base({ elements: 5000 });
-    expect(decideTier(wouldStepDown).mode).toBe('canvas');
-
-    for (const guard of ['a11yEngaged', 'focusInside', 'hasForeignObject'] as const) {
-      expect(decideTier({ ...wouldStepDown, [guard]: true }).mode).toBe('svg');
-    }
+  it('explains itself in words a host could put in front of a user', () => {
+    const text = explainHazards(['a11y-active', 'foreign-object']);
+    expect(text).toMatch(/screen reader/i);
+    expect(text).toMatch(/rasterise|rasterize/i);
   });
 });

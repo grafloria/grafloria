@@ -14,14 +14,17 @@ export type {
 } from './canvas-renderer';
 
 export { DiagramRenderBackend } from './render-backend';
-export type { BackendMode, RenderBackendOptions, TierChangeEvent } from './render-backend';
+export type { BackendMode, CanvasRefusedEvent, RenderBackendOptions } from './render-backend';
 
-// Wave 8 (Card 5): WHEN to hand off between the tiers. The backend has been switchable
-// since wave 4; this is what actually switches it — and the guards that stop it from
-// stepping down onto a surface with no accessibility, no focusable DOM and no way to
-// paint an HTML node.
-export { DEFAULT_TIER_POLICY, decideTier, resolveTierPolicy } from './tier-policy';
-export type { TierDecision, TierInput, TierPolicy, TierReason } from './tier-policy';
+// Wave 8 (Card 5): what a switch to canvas would COST this diagram.
+//
+// The automatic far-zoom tier the card asked for was built, measured and deleted — the
+// numbers are in the header of `tier-policy.ts`. What survives is not a perf switch but a
+// safety check on the switch that has existed since wave 4: canvas mode has no
+// accessibility semantics, cannot paint HTML nodes, and drops DOM focus, and until now it
+// would do all three without a word.
+export { ALWAYS_SAFE_MODE, canvasSafety, explainHazards } from './tier-policy';
+export type { CanvasHazard, CanvasSafety, CanvasSafetyInput } from './tier-policy';
 
 export {
   CANVAS_LINK_HIT_TOLERANCE,
