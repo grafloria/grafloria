@@ -81,13 +81,29 @@ describe('SVGRenderer — node rotation + ARIA (wave4/interaction)', () => {
     const node = addNode('Review invoice');
 
     let group = findNodeGroup(render(), node.id)!;
-    expect(group.props['role']).toBe('group');
+    // wave6/a11y: this used to be `role="group"` + `aria-selected`, which is an
+    // INVALID combination — `aria-selected` is only allowed on gridcell / option
+    // / row / tab / columnheader / rowheader / treeitem, never on `group`. Every
+    // node in every diagram therefore shipped an ARIA attribute that axe-core
+    // flags (`aria-allowed-attr`, WCAG 4.1.2). The node is a graphic, so it now
+    // takes the W3C Graphics role, and selection rides in the accessible NAME —
+    // which is what a screen reader reads out anyway — plus `data-selected`.
+    expect(group.props['role']).toBe('graphics-symbol');
     expect(group.props['aria-label']).toBe('Review invoice');
-    expect(group.props['aria-selected']).toBe('false');
+    expect(group.props['aria-selected']).toBeUndefined();
+    expect(group.props['data-selected']).toBe('false');
 
     diagram.selectNode(node);
     group = findNodeGroup(render(), node.id)!;
-    expect(group.props['aria-selected']).toBe('true');
+    expect(group.props['data-selected']).toBe('true');
+    expect(group.props['aria-label']).toBe('Review invoice, selected');
+  });
+
+  test('a node names its SHAPE via aria-roledescription, not the raw role', () => {
+    const node = addNode('Review invoice');
+    const group = findNodeGroup(render(), node.id)!;
+    // "Task" is infinitely more useful to a screen-reader user than "graphics-symbol".
+    expect(group.props['aria-roledescription']).toBe('Task');
   });
 
   test('an unlabelled node falls back to its type for the accessible name', () => {

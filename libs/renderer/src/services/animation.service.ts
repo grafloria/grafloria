@@ -25,6 +25,7 @@
  * ```
  */
 
+import { ensureMotionPreferenceStyles } from '../a11y/reduced-motion';
 import type { LinkModel, NodeModel } from '@grafloria/engine';
 
 export interface AnimationConfig {
@@ -329,6 +330,17 @@ export class AnimationService {
     }
 
     const body = document.body;
+
+    // wave6/a11y — DEAD CONFIG FIX. The classes toggled below only mean something
+    // if a stylesheet defines them, and `.reduced-motion`'s rules lived in an
+    // orphaned `themes/reduced-motion.css` that NOTHING ever imported. So the
+    // app's own reduced-motion toggle suppressed no animation whatsoever; the
+    // `@media (prefers-reduced-motion: reduce)` blocks elsewhere masked the bug,
+    // because they fire on the OS preference and never on this switch.
+    //
+    // Injecting the sheet here — in the one method that sets these classes —
+    // puts the config and its consumer in the same place. Idempotent (id-keyed).
+    ensureMotionPreferenceStyles(document);
 
     // Animations disabled
     body.classList.toggle('animations-disabled', !this.config.enabled);

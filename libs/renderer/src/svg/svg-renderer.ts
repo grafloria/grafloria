@@ -19,6 +19,16 @@ import type {
 // Deterministic headless export (VNode → standalone SVG → PNG/JPEG/WebP). The
 // serializer is the DOM-less sibling of vnode/patch.ts and consumes the very same
 // VNode tree this renderer hands the live pipeline — one contract, two consumers.
+import {
+  DIAGRAM_ROLE,
+  NODE_ROLE,
+  EDGE_ROLE,
+  nodeRoleDescription,
+  edgeRoleDescription,
+  diagramRoleDescription,
+  diagramAccessibleName,
+  edgeAccessibleName,
+} from '../a11y/semantics';
 import { exportSvg, type SvgExportResult } from '../export/svg-export';
 import { mimeTypeForFormat, resolveRasterBackend } from '../export/raster';
 import { DEFAULT_MAX_OUTPUT_SIZE } from '../export/bounds';
@@ -363,6 +373,10 @@ export class SVGRenderer implements IRenderer {
   // Phase 1: Animation service
   private animationService: AnimationService;
 
+  // wave6/a11y (card 1): which entity the keyboard controller has focused. Drives
+  // the ROVING TABINDEX — exactly one element in the diagram carries tabindex=0.
+  private a11yFocus: { type: 'node' | 'link'; id: string } | null = null;
+
   // Per-frame auto-route cache: filled by the pre-pass in renderLinksLayer so
   // every link's points are current before any link renders (jump detection
   // reads other links' points).
@@ -426,6 +440,13 @@ export class SVGRenderer implements IRenderer {
   ) {
     // Apply defaults
     this.config = {
+      // Wave 6 (a11y): the canvas's own semantics — what a screen reader calls
+      // this diagram. NOTE this merge is an explicit ALLOWLIST, not a spread: a
+      // config key that is not named here is silently dropped on the floor. That
+      // is exactly how these two arrived dead the first time, and it is the same
+      // "declared but never consumed" shape as the orphaned reduced-motion.css.
+      diagramType: config.diagramType ?? '',
+      diagramLabel: config.diagramLabel ?? '',
       enableCaching: config.enableCaching ?? true,
       maxCacheSize: config.maxCacheSize ?? 1000,
       useCSSMode: config.useCSSMode ?? true,
@@ -656,6 +677,12 @@ export class SVGRenderer implements IRenderer {
         // every rule in the shared stylesheet. Without it on the REAL render
         // root (not just the empty one) the scoped rules silently don't apply.
         ...this.instanceScopeProps(),
+        // wave6/a11y (cards 0 + 1): the canvas is a graphics DOCUMENT with one
+        // tab stop. `tabindex=0` only while nothing inside is focused — once
+        // focus lands on a node/edge, THAT element carries the 0 and the root
+        // drops to -1. That is what makes it a single-stop composite widget
+        // rather than an N-stop tab trap.
+        ...this.rootAriaProps(),
       },
       children: [linksLayer, nodesLayer, connectionPreviewLayer, defsNode],
     };
@@ -2306,6 +2333,299 @@ export class SVGRenderer implements IRenderer {
     return `${node.type} node`;
   }
 
+  // ==========================================================================
+  // wave6/a11y — the SEMANTIC layer (cards 0 + 1)
+  //
+  // Emitted into the VNODE TREE, not bolted onto the DOM afterwards, so the
+  // semantics survive SSR (`renderToStaticSVG`) and headless export untouched.
+  // A server-rendered SVG reads to a screen reader exactly like the live canvas.
+  // ==========================================================================
+
+  /**
+   * The ARIA props for a node group.
+   *
+   * FIXED HERE (a real, shipped WCAG 4.1.2 / axe `aria-allowed-attr` violation):
+   * every node used to emit `role="group" aria-selected="…"`. `aria-selected` is
+   * only valid on gridcell/option/row/tab/columnheader/rowheader/treeitem — NOT
+   * on `group`. So every node in every diagram carried an invalid ARIA attribute,
+   * and axe flags it on sight. The node is a graphic, so it takes the W3C Graphics
+   * role; selection now rides in the accessible NAME (which is what a screen
+   * reader actually reads out) and in `data-selected` for tooling. The place
+   * `aria-selected` is genuinely valid — `role="treeitem"` — is the outline
+   * mirror, and that is exactly where the outline view puts it.
+   */
+  private nodeAriaProps(node: NodeModel): Record<string, unknown> {
+    const isSelected = node.isSelected();
+    const name = this.nodeAccessibleName(node);
+    // Selection/error/highlight ride in the NAME. Keeping the name short and
+    // putting the heavy position context (degree, "node 3 of 12") in the live
+    // region + outline is deliberate: an over-stuffed aria-label makes every
+    // single focus step verbose, which AT users universally hate.
+    const stateBits: string[] = [];
+    if (isSelected) stateBits.push('selected');
+    if (node.state?.highlighted) stateBits.push('highlighted');
+    if (node.state?.error) stateBits.push('error');
+    if (node.state?.locked) stateBits.push('locked');
+
+    return {
+      role: NODE_ROLE,
+      // The SHAPE, in human words — "Decision", not "graphics-symbol".
+      'aria-roledescription': nodeRoleDescription(node),
+      'aria-label': stateBits.length ? `${name}, ${stateBits.join(', ')}` : name,
+      'data-node-id': node.id,
+      'data-selected': isSelected ? 'true' : 'false',
+      ...this.rovingTabIndexProps('node', node.id),
+    };
+  }
+
+  /**
+   * The ARIA props for a link group.
+   *
+   * THE headline gap of this wave: before it, `renderLink` emitted NO ARIA at
+   * all. Every edge in every diagram was invisible to a screen reader, so the
+   * graph read as a bag of disconnected shapes — the one thing a diagram exists
+   * to communicate (what connects to what) was the one thing AT users could not
+   * get.
+   */
+  private linkAriaProps(link: LinkModel): Record<string, unknown> {
+    const diagram = this.engine?.getDiagram?.();
+    return {
+      role: EDGE_ROLE,
+      'aria-roledescription': edgeRoleDescription(link),
+      'aria-label': diagram
+        ? edgeAccessibleName(link, diagram as never)
+        : `Edge ${link.id}`,
+      'data-link-id': link.id,
+      'data-selected': link.state === 'selected' ? 'true' : 'false',
+      ...this.rovingTabIndexProps('link', link.id),
+    };
+  }
+
+  /**
+   * ROVING TABINDEX (card 1). The canvas is ONE tab stop; arrow keys — not Tab —
+   * move within it. So exactly one element in the whole diagram carries
+   * `tabindex=0` at any moment (the focused one), and every other focusable
+   * element carries `-1`. Tab therefore enters the diagram once and leaves it
+   * once, which is what a composite widget is supposed to do; without this, a
+   * 200-node diagram is a 200-stop tab trap.
+   */
+  private rovingTabIndexProps(type: 'node' | 'link', id: string): Record<string, unknown> {
+    const focused = this.a11yFocus;
+    const isFocused = !!focused && focused.type === type && focused.id === id;
+    return {
+      tabindex: isFocused ? '0' : '-1',
+      // `:focus-visible` styling hangs off this; see the shared stylesheet.
+      ...(isFocused ? { 'data-focused': 'true' } : {}),
+    };
+  }
+
+  /**
+   * Tell the renderer which entity the keyboard controller has focused, so the
+   * next frame emits `tabindex=0` on it (and `-1` on everything else).
+   *
+   * Marks only the OLD and NEW focus targets dirty — moving focus must not
+   * invalidate the whole diagram.
+   */
+  setAccessibleFocus(target: { type: 'node' | 'link'; id: string } | null): void {
+    const previous = this.a11yFocus;
+    if (
+      previous?.type === target?.type &&
+      previous?.id === target?.id
+    ) {
+      return;
+    }
+
+    this.a11yFocus = target ? { ...target } : null;
+
+    const diagram = this.engine?.getDiagram?.();
+    if (!diagram) return;
+
+    for (const entry of [previous, this.a11yFocus]) {
+      if (!entry) continue;
+      if (entry.type === 'node') diagram.getNode(entry.id)?.markDirty?.();
+      else diagram.getLink(entry.id)?.markDirty?.();
+      // The VNode cache is keyed per entity — evict just those two.
+      this.vnodeCache.delete(`${entry.type}-${entry.id}`);
+      for (const lod of ['high', 'medium', 'low'] as const) {
+        this.vnodeCache.delete(`${entry.type}-${entry.id}-${lod}`);
+      }
+    }
+  }
+
+  getAccessibleFocus(): { type: 'node' | 'link'; id: string } | null {
+    return this.a11yFocus ? { ...this.a11yFocus } : null;
+  }
+
+  /** The canvas's own semantics. */
+  private rootAriaProps(): Record<string, unknown> {
+    const diagram = this.engine?.getDiagram?.();
+    return {
+      role: DIAGRAM_ROLE,
+      'aria-roledescription': diagramRoleDescription(this.config.diagramType),
+      'aria-label': diagram
+        ? diagramAccessibleName(diagram as never, this.config.diagramLabel)
+        : 'Diagram',
+      // The single tab stop — surrendered to whichever child is focused.
+      tabindex: this.a11yFocus ? '-1' : '0',
+    };
+  }
+
+  /**
+   * NON-COLOUR STATUS ENCODING — WCAG 1.4.1 (Use of Colour).
+   *
+   * The audit question, answered honestly: our states WERE largely colour-only.
+   *   - `selected`    already had a dashed outline → a genuine shape cue. Fine.
+   *   - `highlighted` was a fill/stroke SWAP and nothing else. Colour-only.
+   *   - `error`       was a fill/stroke SWAP and nothing else. Colour-only.
+   *
+   * A user with deuteranopia, or anyone on a monochrome display, could not tell
+   * an errored node from a highlighted one from a normal one. This is the exact
+   * failure most diagram engines quietly ship.
+   *
+   * So both now carry a REDUNDANT, non-colour cue:
+   *   - error       → a corner badge with a "!" glyph, plus a dense dashed ring;
+   *   - highlighted → a distinct dashed emphasis ring (a different dash rhythm
+   *                   from selection's, so the two never read as the same thing).
+   *
+   * The badges are `aria-hidden` — the state is already in the accessible name,
+   * and announcing it twice is its own accessibility bug.
+   */
+  private renderStateAffordances(node: NodeModel): VNode[] {
+    const affordances: VNode[] = [];
+    const { width } = node.size;
+
+    if (node.state?.highlighted) {
+      affordances.push({
+        type: 'rect',
+        key: `state-highlight-${node.id}`,
+        props: {
+          x: -5,
+          y: -5,
+          width: node.size.width + 10,
+          height: node.size.height + 10,
+          fill: 'none',
+          stroke: 'currentColor',
+          strokeWidth: 2,
+          // Deliberately NOT selection's '5,5' — two states must not share a cue.
+          strokeDasharray: '2,3',
+          rx: 4,
+          ry: 4,
+          className: 'node-state-highlighted-ring',
+          'aria-hidden': 'true',
+          // `vector-effect` keeps the ring 2px at ANY zoom — a focus/state cue
+          // that thins to invisibility when you zoom out is not a cue.
+          'vector-effect': 'non-scaling-stroke',
+        },
+        children: [],
+      });
+    }
+
+    if (node.state?.error) {
+      affordances.push({
+        type: 'rect',
+        key: `state-error-ring-${node.id}`,
+        props: {
+          x: -4,
+          y: -4,
+          width: node.size.width + 8,
+          height: node.size.height + 8,
+          fill: 'none',
+          stroke: 'currentColor',
+          strokeWidth: 2,
+          strokeDasharray: '1,2',
+          rx: 4,
+          ry: 4,
+          className: 'node-state-error-ring',
+          'aria-hidden': 'true',
+          'vector-effect': 'non-scaling-stroke',
+        },
+        children: [],
+      });
+
+      // The glyph. A shape, not a colour — legible in greyscale and in Windows
+      // forced-colors mode, where our palette is thrown away entirely.
+      affordances.push({
+        type: 'g',
+        key: `state-error-badge-${node.id}`,
+        props: {
+          transform: `translate(${width - 6}, -6)`,
+          className: 'node-state-error-badge',
+          'aria-hidden': 'true',
+        },
+        children: [
+          {
+            type: 'circle',
+            props: {
+              r: 8,
+              fill: this.theme.colors.error ?? '#ef4444',
+              stroke: this.theme.colors.background?.surface ?? '#ffffff',
+              strokeWidth: 1.5,
+            },
+            children: [],
+          },
+          {
+            type: 'text',
+            props: {
+              x: 0,
+              y: 0,
+              textAnchor: 'middle',
+              dominantBaseline: 'central',
+              fontSize: 11,
+              fontWeight: 700,
+              fill: '#ffffff',
+              textContent: '!',
+              // Pointer events off: the badge is decoration, and must never
+              // steal a click meant for the node.
+              style: { pointerEvents: 'none' },
+            },
+            children: [],
+          },
+        ],
+      });
+    }
+
+    return affordances;
+  }
+
+  /**
+   * The same 1.4.1 fix for LINKS, which were worse: a selected link and a
+   * highlighted link differed from a default one by stroke COLOUR and nothing
+   * else — no dash, no width, no shape. On a greyscale display all three edges
+   * are identical.
+   *
+   * The cue is a "casing" — a wider, semi-transparent halo drawn UNDER the real
+   * path. It reads as a shape change (the edge visibly thickens) at any colour
+   * perception, and because it is an additive sibling it does not perturb the
+   * path geometry that the routing/label/toolbar code all depend on.
+   */
+  private renderLinkStateAffordances(link: LinkModel, pathData: string): VNode[] {
+    const state = link.state;
+    if (state !== 'selected' && state !== 'highlighted') return [];
+    if (!pathData) return [];
+
+    return [
+      {
+        type: 'path',
+        key: `link-state-casing-${link.id}`,
+        props: {
+          d: pathData,
+          fill: 'none',
+          stroke: 'currentColor',
+          strokeWidth: 8,
+          strokeOpacity: 0.28,
+          strokeLinecap: 'round',
+          // Selected reads as a solid halo; highlighted as a dashed one — so the
+          // two states are still distinguishable from each other without colour.
+          ...(state === 'highlighted' ? { strokeDasharray: '6,4' } : {}),
+          className: `link-state-casing link-state-casing-${state}`,
+          'aria-hidden': 'true',
+          style: { pointerEvents: 'none' },
+        },
+        children: [],
+      },
+    ];
+  }
+
   private renderNode(node: NodeModel, lod: LODLevel): VNode {
     // PHASE 3: Skip HTML layer nodes entirely (React Flow style)
     // These nodes are rendered as HTML divs with handles in the HTML layer
@@ -2363,15 +2683,15 @@ export class SVGRenderer implements IRenderer {
         className: 'node-group',
         // Option 2: Add subtle transition effect
         style: isHovered ? { transition: 'all 0.2s ease' } : undefined,
-        // wave4/interaction (Card 7): the node is an accessible object, not
-        // decoration — a screen reader reads its name and selected state.
-        role: 'group',
-        'aria-label': this.nodeAccessibleName(node),
-        'aria-selected': isSelected ? 'true' : 'false',
+        // wave4/interaction (Card 7) named the node; wave6/a11y gives it a valid
+        // graphics role, a shape roledescription, and the roving tabindex.
+        ...this.nodeAriaProps(node),
       },
       children: [
         // Selection highlight (Phase 3.1: Shape-aware)
         ...(isSelected ? [this.renderSelectionHighlight(node)] : []),
+        // wave6/a11y (card 7 / WCAG 1.4.1): status must not be colour-ALONE.
+        ...this.renderStateAffordances(node),
         // Phase 2: Connection target highlight (rendered behind the node)
         ...(isConnectionTarget
           ? [
@@ -2504,9 +2824,7 @@ export class SVGRenderer implements IRenderer {
         transform: this.nodeTransform(node),
         className: 'node-group node-with-component',
         style: isHovered ? { transition: 'all 0.2s ease' } : undefined,
-        role: 'group',
-        'aria-label': this.nodeAccessibleName(node),
-        'aria-selected': isSelected ? 'true' : 'false',
+        ...this.nodeAriaProps(node),
       },
       children: [
         // Selection highlight (rendered behind foreignObject)
@@ -4067,6 +4385,10 @@ export class SVGRenderer implements IRenderer {
         props: {
           className: 'link-group link-group-templated',
           'data-link-id': link.id,
+          // wave6/a11y: a TEMPLATED link is still an edge. It gets the same
+          // semantics as a plain one — a custom template must not silently cost
+          // the user their screen-reader description of the connection.
+          ...this.linkAriaProps(link),
         },
         children: [...(hitAreaVNode ? [hitAreaVNode] : []), ...templateVNodes],
       };
@@ -4088,9 +4410,15 @@ export class SVGRenderer implements IRenderer {
         // is what the edge toolbar anchors to (the model's `segments` go stale;
         // the rendered path is the truth, curves and rounded corners included).
         'data-link-id': link.id,
+        // wave6/a11y (card 0): "Edge from Start to Is order valid?, labelled yes".
+        // Links emitted NO aria whatsoever before this wave.
+        ...this.linkAriaProps(link),
       },
       children: [
         ...(hitAreaVNode ? [hitAreaVNode] : []),
+        // wave6/a11y (card 7 / WCAG 1.4.1): a selected or highlighted link was
+        // distinguished by stroke COLOUR alone. This adds the shape cue.
+        ...this.renderLinkStateAffordances(link, jumpPathData ?? pathData),
         // Link path (with or without jump points)
         linkPathVNode,
         // Phase 1.1: Arrow markers using ArrowRenderer

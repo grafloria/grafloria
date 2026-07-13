@@ -538,9 +538,26 @@ export class NodeModel extends DiagramEntity {
     let worldY = this.position.y;
     let worldZ = this.position.z || 0;
 
-    // Walk up parent chain
+    // Walk up parent chain.
+    //
+    // wave6/a11y — CYCLE GUARD. This loop had no termination condition other
+    // than reaching a parentless node, so a cyclic `parentId` (a→b→a) span it
+    // forever. That is not academic: `getBoundingBox()` calls this, and the
+    // renderer calls `getBoundingBox()` on every node on every frame — so one
+    // corrupt parent link (a bad deserialize, a hand-set `parentId`, a buggy
+    // import) hangs the entire browser tab with no error, no stack, nothing.
+    //
+    // `SetParentCommand` tries to prevent cycles, but it checks by calling
+    // `getAncestors()` — which walks this same unguarded chain, so the very
+    // guard meant to keep cycles out would itself hang if one ever got in.
+    //
+    // Found by an a11y outline test that deliberately corrupts the parent chain.
+    const seen = new Set<string>([this.id]);
     let currentParentId = this.parentId;
     while (currentParentId && this.diagram) {
+      if (seen.has(currentParentId)) break; // cycle — stop, do not spin
+      seen.add(currentParentId);
+
       const parentNode = this.diagram.getNode(currentParentId);
       if (parentNode) {
         worldX += parentNode.position.x;
@@ -910,7 +927,12 @@ export class NodeModel extends DiagramEntity {
     const ancestors: NodeModel[] = [];
     let current = this.getParent();
 
-    while (current) {
+    // wave6/a11y — CYCLE GUARD, same bug as `getWorldPosition()`. This is the
+    // walk `SetParentCommand` uses to REJECT a cycle, so leaving it unguarded
+    // meant the cycle check hung the moment a cycle actually existed.
+    const seen = new Set<string>([this.id]);
+    while (current && !seen.has(current.id)) {
+      seen.add(current.id);
       ancestors.push(current);
       current = current.getParent();
     }
@@ -993,7 +1015,13 @@ export class NodeModel extends DiagramEntity {
     let depth = 0;
     let current = this.getParent();
 
-    while (current) {
+    // wave6/a11y — CYCLE GUARD (the third unguarded parent walk in this class;
+    // `validateHierarchy()` below has always had one, which is the irony: the
+    // cycle DETECTOR was safe while every hot path that walks the same chain
+    // was not).
+    const seen = new Set<string>([this.id]);
+    while (current && !seen.has(current.id)) {
+      seen.add(current.id);
       depth++;
       current = current.getParent();
     }
