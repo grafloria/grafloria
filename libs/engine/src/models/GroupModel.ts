@@ -45,8 +45,12 @@ export interface SerializedGroup extends SerializedEntity {
 export interface CollapsedState {
   /** The hidden placeholder node that presents the group as a node endpoint. */
   proxyNodeId: string;
-  /** The group's frame before it shrank to the placeholder (restored on expand). */
-  savedFrame?: GroupRect;
+  /** The group's exact geometry before it shrank (restored verbatim on expand). */
+  savedGeometry?: {
+    position: { x: number; y: number };
+    size?: { width: number; height: number; depth: number };
+    bounds?: GroupRect;
+  };
   /** Member (node) world positions at collapse time (restored on expand). */
   savedPositions: Record<string, { x: number; y: number }>;
   /** Members whose visibility we toggled, with their prior `visible` value. */
@@ -370,6 +374,16 @@ export class GroupModel extends DiagramEntity {
       this.trackChange('isCollapsed', false, true);
       this.emitter.emit('collapsed');
     }
+  }
+
+  /**
+   * Wave-5 Card 4: set (or clear) the reversible collapse snapshot. Tracked as a
+   * change so the incremental diff-capture serializes it and undo/redo see it.
+   */
+  setCollapsedState(state: CollapsedState | undefined): void {
+    const old = this.collapsedState;
+    this.collapsedState = state;
+    this.trackChange('collapsedState', old, state);
   }
 
   /**
@@ -712,6 +726,24 @@ export class GroupModel extends DiagramEntity {
     }
     node.setPosition(node.position.x + dx, node.position.y + dy);
     return true;
+  }
+
+  /**
+   * Wave-5 Card 4: restore raw geometry (position + optional size + bounds)
+   * captured before a collapse. Unlike setFrame this permits size === undefined
+   * so a group that had no explicit frame is restored to exactly that.
+   */
+  restoreGeometry(geo: {
+    position: { x: number; y: number };
+    size?: { width: number; height: number; depth: number };
+    bounds?: GroupRect;
+  }): void {
+    const oldBounds = this.bounds;
+    this.position = { x: geo.position.x, y: geo.position.y };
+    this.size = geo.size ? { ...geo.size } : undefined;
+    this.bounds = geo.bounds ? { ...geo.bounds } : undefined;
+    this.trackChange('bounds', oldBounds, this.bounds);
+    this.emitter.emit('bounds:changed', this.bounds);
   }
 
   /** Set the group's stacking index (lower renders further back). */

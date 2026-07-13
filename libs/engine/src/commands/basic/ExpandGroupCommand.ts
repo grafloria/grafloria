@@ -1,6 +1,11 @@
 // ExpandGroupCommand - Expands a collapsed group (Phase 1.6c)
+//
+// Wave-5 Card 4: expands a REAL collapse (restores members, positions, removed
+// links, and boundary-edge endpoints) via GroupCollapseService. Reverses a
+// collapse that was performed either by the service or by the bare flag.
 
 import { Command, CommandContext, SerializedCommand } from '../Command';
+import { GroupCollapseService } from '../../interaction/GroupCollapseService';
 
 export class ExpandGroupCommand extends Command {
   private wasCollapsed?: boolean;
@@ -23,7 +28,7 @@ export class ExpandGroupCommand extends Command {
     // Store previous state for undo
     this.wasCollapsed = group.isCollapsed;
 
-    group.expand();
+    new GroupCollapseService(diagram).expand(group);
   }
 
   override undo(context: CommandContext): void {
@@ -37,9 +42,9 @@ export class ExpandGroupCommand extends Command {
       throw new Error(`Group ${this.groupId} not found`);
     }
 
-    // Restore previous state
+    // Restore previous state — re-collapse if it had been collapsed.
     if (this.wasCollapsed) {
-      group.collapse();
+      new GroupCollapseService(diagram).collapse(group);
     }
   }
 

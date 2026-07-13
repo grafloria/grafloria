@@ -765,6 +765,25 @@ export class DiagramModel extends DiagramEntity {
   }
 
   /**
+   * Wave-5 Card 4: the placeholder "group-as-node" for a collapsed group, if
+   * present. Placeholder nodes are ordinary NodeModels tagged with the group id
+   * so callers can filter them out of exports / counts.
+   */
+  getProxyNodeForGroup(groupId: string): NodeModel | undefined {
+    for (const node of this.nodes.values()) {
+      if (node.getMetadata('__collapsedGroupId') === groupId) {
+        return node;
+      }
+    }
+    return undefined;
+  }
+
+  /** Wave-5 Card 4: is this node a collapsed-group placeholder? */
+  isProxyNode(node: NodeModel): boolean {
+    return node.getMetadata('__isGroupProxy') === true;
+  }
+
+  /**
    * Clear all groups (Phase 1.6c)
    */
   clearGroups(): void {

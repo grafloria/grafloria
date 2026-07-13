@@ -18,6 +18,7 @@ import { RemoveNodeCommand } from '../commands/basic/RemoveNodeCommand';
 import { AddLinkCommand } from '../commands/basic/AddLinkCommand';
 import { RemoveLinkCommand } from '../commands/basic/RemoveLinkCommand';
 import { AddGroupCommand, RemoveGroupCommand, AddToGroupCommand, RemoveFromGroupCommand, ExpandGroupCommand, CollapseGroupCommand } from '../commands/basic'; // Phase 1.6c
+import type { CollapseOptions } from '../interaction/GroupCollapseService'; // Wave-5 Card 4
 import { SetLayoutCommand, SetFlexItemCommand, SetGridItemCommand } from '../commands/basic'; // Phase 1.7
 import { CopyCommand, PasteCommand, DuplicateCommand, DeleteSelectionCommand } from '../commands/basic'; // Phase 1.8
 import { ClipboardManager } from '../clipboard/ClipboardManager'; // Phase 1.8
@@ -613,12 +614,12 @@ export class DiagramEngine {
   /**
    * Collapse group (Phase 1.6c)
    */
-  async collapseGroup(groupId: string): Promise<void> {
+  async collapseGroup(groupId: string, options?: CollapseOptions): Promise<void> {
     if (!this.diagram) {
       throw new Error('No diagram loaded');
     }
 
-    const command = new CollapseGroupCommand(groupId);
+    const command = new CollapseGroupCommand(groupId, options);
     await this.commandManager.execute(command);
   }
 
