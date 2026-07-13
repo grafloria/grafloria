@@ -10,7 +10,13 @@
 import * as dagre from 'dagre';
 import { NodeModel } from '../models/NodeModel';
 import { LinkModel } from '../models/LinkModel';
-import { LayoutAdapter, LayoutOptions, LayoutResult } from './layout-adapter.interface';
+import {
+  LayoutAdapter,
+  LayoutOptions,
+  LayoutResult,
+  LayoutRoutingHints,
+} from './layout-adapter.interface';
+import { linkLabelBox } from './port-label-bridge';
 import { ConstraintManager } from './layout-constraints.interface';
 import {
   IncrementalLayoutOptions,
@@ -83,8 +89,16 @@ export class DagreLayoutAdapter implements LayoutAdapter {
   ): Promise<LayoutResult> {
     const startTime = performance.now();
 
-    // Create dagre graph
-    const g = new dagre.graphlib.Graph();
+    // Create dagre graph.
+    //
+    // MULTIGRAPH — Wave 7, Card 7. A plain `new dagre.graphlib.Graph()` is NOT a
+    // multigraph: `setEdge(a, b)` keyed only by its endpoints, so two parallel
+    // links A→B silently COLLAPSED into one. Dagre then ranked the graph as if
+    // the second edge did not exist, and — now that edges carry label boxes —
+    // would have reserved room for one label where two were needed. Keying each
+    // edge by its link id keeps them distinct and lets the route be read back
+    // per link.
+    const g = new dagre.graphlib.Graph({ multigraph: true });
 
     // Merge default options with provided options
     const dagreOptions: DagreLayoutOptions = {
@@ -117,11 +131,25 @@ export class DagreLayoutAdapter implements LayoutAdapter {
       });
     });
 
-    // Add edges to dagre graph
+    // Add edges to dagre graph.
+    //
+    // LABEL-AWARE — Wave 7, Card 7. Dagre reserves space for an edge label when
+    // the edge carries a `width`/`height`: it ranks the label as a dummy node, so
+    // the channel between ranks genuinely widens to fit it. Before this, every
+    // layout packed the ranks as though edges were bare lines, and the renderer's
+    // edge optimizer was then asked to place a label into a gap that layout had
+    // never left. Placement is still the optimizer's job — this is the reservation.
+    const labelAware = options.labelAware !== false;
+
     links.forEach((link) => {
-      if (link.sourceNodeId && link.targetNodeId) {
-        g.setEdge(link.sourceNodeId, link.targetNodeId);
-      }
+      if (!link.sourceNodeId || !link.targetNodeId) return;
+
+      const box = labelAware ? linkLabelBox(link) : undefined;
+      const edgeLabel = box
+        ? { width: box.width, height: box.height, labelpos: 'c' as const }
+        : {};
+
+      g.setEdge(link.sourceNodeId, link.targetNodeId, edgeLabel, link.id);
     });
 
     // Run dagre layout algorithm
@@ -150,6 +178,36 @@ export class DagreLayoutAdapter implements LayoutAdapter {
           nodeRanks.set(nodeId, nodeWithRank.rank);
         }
       }
+    });
+
+    // Read back the polyline dagre computed for each edge — Wave 7, Card 7.
+    // Dagre has always produced `edge.points`, and the adapter has always thrown
+    // them away (the same bug shape as ELK's discarded sections). They are hints:
+    // the wave-5 routing engine still owns the final path.
+    const routing: LayoutRoutingHints = {
+      portPositions: new Map(),
+      edgeRoutes: new Map(),
+      labelSpace: new Map(),
+      orthogonal: false, // dagre emits a polyline, not an orthogonal route
+    };
+
+    links.forEach((link) => {
+      if (!link.sourceNodeId || !link.targetNodeId) return;
+
+      const edge = g.edge({ v: link.sourceNodeId, w: link.targetNodeId, name: link.id }) as
+        | { points?: Array<{ x: number; y: number }> }
+        | undefined;
+      const points = edge?.points ?? [];
+      if (points.length >= 2) {
+        routing.edgeRoutes.set(link.id, {
+          start: { x: points[0].x, y: points[0].y },
+          end: { x: points[points.length - 1].x, y: points[points.length - 1].y },
+          bends: points.slice(1, -1).map((p) => ({ x: p.x, y: p.y })),
+        });
+      }
+
+      const box = labelAware ? linkLabelBox(link) : undefined;
+      if (box) routing.labelSpace.set(link.id, { width: box.width, height: box.height });
     });
 
     // Apply layout constraints if provided
@@ -317,11 +375,13 @@ export class DagreLayoutAdapter implements LayoutAdapter {
         nodeCount: nodes.length,
         linkCount: links.length,
         nodeRanks,  // NEW: Include hierarchical ranks for port assignment
+        labelledEdges: routing.labelSpace.size,
       },
       quality,
       portAware,
       subgraph,
       edgeBundling,
+      routing,
     };
   }
 
