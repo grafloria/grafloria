@@ -67,6 +67,11 @@ export * from './layout.service';
 export * from './layout-registry'; // Wave 7 Card 0
 export * from './rng'; // Wave 7 Card 0
 
+// Wave 7 Card 7: port/label-aware layout + auto-algorithm selection
+export * from './port-label-bridge';
+export * from './layout-quality-extended';
+export * from './layout-auto-select';
+
 // Phase 3: Advanced layout features
 export * from './port-aware-layout.interface';
 export * from './subgraph-layout.interface';

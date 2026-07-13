@@ -59,6 +59,8 @@ import type { NodeBehavior } from '../types';
 // Wave 7 (Auto-layout) — Card 0: the unified layout entry point.
 import {
   LayoutRegistry,
+  createAutoLayout,
+  DEFAULT_LAYOUT_NAME,
   fromAdapter,
   createBuiltInLayoutAdapters,
   type UnifiedLayoutOptions,
@@ -2143,6 +2145,11 @@ export class DiagramEngine {
       for (const adapter of createBuiltInLayoutAdapters()) {
         registry.register(fromAdapter(adapter));
       }
+      // Wave 7 — Card 7b: the auto-selector is a registered layout like any other,
+      // so `engine.layout()` with no name runs a scored bake-off instead of a
+      // hard-coded guess. It takes the registry so its candidate pool includes
+      // anything an extension registered later.
+      registry.register(createAutoLayout(registry));
       this._layoutRegistry = registry;
     }
     return this._layoutRegistry;
@@ -2165,7 +2172,7 @@ export class DiagramEngine {
    * them would force a single-node placer to pretend it can lay out a graph.
    */
   async layout(
-    name = 'dagre',
+    name: string = DEFAULT_LAYOUT_NAME,
     options: UnifiedLayoutOptions = {}
   ): Promise<UnifiedLayoutResult> {
     if (!this.diagram) {

@@ -73,8 +73,11 @@ describe('Card 0 — the unified layout API', () => {
 
     it('every built-in adapter is registered and addressable by name', () => {
       const engine = new DiagramEngine();
+      // 'auto' joins the built-ins in Wave 7 Card 7b: the auto-selector is a
+      // REGISTERED LAYOUT like any other, not a second entry point beside the
+      // registry. It is the layout `engine.layout()` runs when given no name.
       expect(engine.getLayoutRegistry().names()).toEqual(
-        ['community', 'dagre', 'elk', 'force', 'spectral']
+        ['auto', 'community', 'dagre', 'elk', 'force', 'spectral']
       );
       engine.destroy();
     });
