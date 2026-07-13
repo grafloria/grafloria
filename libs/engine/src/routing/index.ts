@@ -9,6 +9,8 @@ export * from './PathSimplifier'; // Phase 2.2
 export * from './algorithms/StraightRouter';
 export * from './algorithms/OrthogonalRouter';
 export * from './algorithms/ManhattanRouter'; // Wave 5 Card 3
+export * from './global/GlobalRouteSolver'; // Wave 5 Card 7
+export * from './global/solver-host'; // Wave 5 Card 7
 export * from './algorithms/AStarRouter'; // Phase 1.6b
 export * from './algorithms/DijkstraRouter'; // Phase 1.6b
 export * from './algorithms/VisibilityGraphRouter'; // Phase 1.6b

@@ -144,6 +144,33 @@ describe('SVGRenderer — router × connector reachability (Wave 5, Card 0)', ()
     expect(last.x).toBeGreaterThanOrEqual(60);
   });
 
+  it('Card 2 parity: a SELF-LOOP bypasses whatever router the link names — avoid/manhattan included', () => {
+    // Every router excludes a link's own nodes from its obstacle set, so a
+    // self-loop routed through one degenerates into a stub buried inside the
+    // node body — which is why self-loops take the geometric path (wave 4).
+    // Card 0 introduced per-link routers; this pins that the bypass survives.
+    const n = new NodeModel({ type: 'basic', position: { x: 200, y: 200 }, size: { width: 120, height: 60 } });
+    n.addPort(new PortModel({ id: 'sl-out', type: 'output', side: 'right' }));
+    n.addPort(new PortModel({ id: 'sl-in', type: 'input', side: 'right' }));
+    diagram.addNode(n);
+
+    const routingEngine = engine.getRoutingEngine();
+    const spy = jest.spyOn(routingEngine, 'route');
+
+    const loop = new LinkModel('sl-out', 'sl-in', 'orthogonal');
+    loop.setRouter('manhattan');
+    diagram.addLink(loop);
+    render();
+
+    // the loop rendered as a real loop (points clear the node body)…
+    expect(loop.points.length).toBeGreaterThanOrEqual(4);
+    const nodeRight = 200 + 120;
+    expect(Math.max(...loop.points.map((p) => p.x))).toBeGreaterThan(nodeRight);
+    // …and the routing engine was never asked to route it
+    const routedIds = spy.mock.calls.length;
+    expect(routedIds).toBe(0);
+  });
+
   it('legacy byte-stability: setting router+connector to the DERIVED values emits the identical path', () => {
     const plain = link(['s1', 't1'], [100, 100], [500, 400]);
     const explicit = link(['s2', 't2'], [100, 100 + 600], [500, 400 + 600], (x) => {
