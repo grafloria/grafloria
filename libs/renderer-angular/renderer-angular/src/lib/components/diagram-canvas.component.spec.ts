@@ -20,7 +20,7 @@ describe('DiagramCanvasComponent', () => {
     // Create engine and diagram
     engine = new DiagramEngine();
     diagram = engine.createDiagram('Test Diagram');
-    component.engine = engine;
+    fixture.componentRef.setInput("engine", engine);
   });
 
   afterEach(() => {
@@ -33,7 +33,7 @@ describe('DiagramCanvasComponent', () => {
     });
 
     test('should require engine input', () => {
-      component.engine = null as any;
+      fixture.componentRef.setInput("engine", undefined);
       fixture.detectChanges();
 
       // Component should handle missing engine gracefully
@@ -43,33 +43,33 @@ describe('DiagramCanvasComponent', () => {
     test('should initialize with default viewport', () => {
       fixture.detectChanges();
 
-      expect(component.viewport).toBeDefined();
-      expect(component.viewport.width).toBeGreaterThan(0);
-      expect(component.viewport.height).toBeGreaterThan(0);
+      expect(component.viewport()).toBeDefined();
+      expect(component.viewport().width).toBeGreaterThan(0);
+      expect(component.viewport().height).toBeGreaterThan(0);
     });
 
     test('should initialize with light theme by default', () => {
       fixture.detectChanges();
 
-      expect(component.theme).toBeDefined();
-      expect(component.theme.name).toBe('Light');
+      expect(component.theme()).toBeDefined();
+      expect(component.theme().name).toBe('Light');
     });
 
     test('should accept custom theme input', () => {
-      component.theme = DARK_THEME;
+      fixture.componentRef.setInput("theme", DARK_THEME);
       fixture.detectChanges();
 
-      expect(component.theme.name).toBe('Dark');
+      expect(component.theme().name).toBe('Dark');
     });
 
     test('should use custom viewport if provided', () => {
-      component.viewport = { x: 100, y: 100, width: 1000, height: 800 };
+      fixture.componentRef.setInput("viewport", { x: 100, y: 100, width: 1000, height: 800 });
       fixture.detectChanges();
 
-      expect(component.viewport.x).toBe(100);
-      expect(component.viewport.y).toBe(100);
-      expect(component.viewport.width).toBe(1000);
-      expect(component.viewport.height).toBe(800);
+      expect(component.viewport().x).toBe(100);
+      expect(component.viewport().y).toBe(100);
+      expect(component.viewport().width).toBe(1000);
+      expect(component.viewport().height).toBe(800);
     });
   });
 
@@ -122,7 +122,7 @@ describe('DiagramCanvasComponent', () => {
     });
 
     test('should apply viewport dimensions to SVG', () => {
-      component.viewport = { x: 0, y: 0, width: 1200, height: 900 };
+      fixture.componentRef.setInput("viewport", { x: 0, y: 0, width: 1200, height: 900 });
       fixture.detectChanges();
 
       const svg = fixture.nativeElement.querySelector('svg');
@@ -132,7 +132,7 @@ describe('DiagramCanvasComponent', () => {
     });
 
     test('should include viewBox attribute', () => {
-      component.viewport = { x: 50, y: 50, width: 1000, height: 800 };
+      fixture.componentRef.setInput("viewport", { x: 50, y: 50, width: 1000, height: 800 });
       fixture.detectChanges();
 
       const svg = fixture.nativeElement.querySelector('svg');
@@ -144,34 +144,46 @@ describe('DiagramCanvasComponent', () => {
     test('should use default zoom level', () => {
       fixture.detectChanges();
 
-      expect(component.zoom).toBe(1.0);
+      expect(component.zoom()).toBe(1.0);
     });
 
     test('should accept custom zoom level', () => {
-      component.zoom = 1.5;
+      fixture.componentRef.setInput("zoom", 1.5);
       fixture.detectChanges();
 
-      expect(component.zoom).toBe(1.5);
+      expect(component.zoom()).toBe(1.5);
     });
 
     test('should schedule a re-render when zoom changes', () => {
       fixture.detectChanges();
 
-      // wave2/rendering: renders are frame-coalesced, so ngOnChanges schedules
-      // a frame rather than painting synchronously.
+      // wave2/rendering: renders are frame-coalesced, so a zoom change schedules a
+      // frame rather than painting synchronously.
+      // wave4/ngwrapper: ngOnChanges is GONE — the camera EFFECT reacts to the
+      // `zoom` signal, and setInput() is exactly what a real `[zoom]` binding does.
       const spy = jest.spyOn(component as any, 'scheduleRender');
 
-      component.zoom = 2.0;
-      component.ngOnChanges({
-        zoom: {
-          currentValue: 2.0,
-          previousValue: 1.0,
-          firstChange: false,
-          isFirstChange: () => false,
-        },
-      });
+      fixture.componentRef.setInput('zoom', 2.0);
+      fixture.detectChanges(); // flush effects
 
       expect(spy).toHaveBeenCalled();
+      expect(component.zoom()).toBe(2.0);
+    });
+
+    test('two-way [(zoom)]: an internal zoom change emits zoomChange AND zoomChanged', () => {
+      fixture.detectChanges();
+
+      const twoWay: number[] = [];
+      const legacy: number[] = [];
+      // A `model()` signal IS the two-way output (`ModelSignal extends OutputRef`),
+      // so `[(zoom)]` in a template subscribes to exactly this.
+      component.zoom.subscribe((z: number) => twoWay.push(z));
+      component.zoomChanged.subscribe((z: number) => legacy.push(z));
+
+      component.zoomIn();
+
+      expect(twoWay).toEqual([component.zoom()]);
+      expect(legacy).toEqual([component.zoom()]);
     });
   });
 
@@ -181,17 +193,11 @@ describe('DiagramCanvasComponent', () => {
 
       const spy = jest.spyOn(component as any, 'scheduleRender');
 
-      component.theme = DARK_THEME;
-      component.ngOnChanges({
-        theme: {
-          currentValue: DARK_THEME,
-          previousValue: LIGHT_THEME,
-          firstChange: false,
-          isFirstChange: () => false,
-        },
-      });
+      fixture.componentRef.setInput('theme', DARK_THEME);
+      fixture.detectChanges(); // flush effects
 
       expect(spy).toHaveBeenCalled();
+      expect(component.theme().name).toBe('Dark');
     });
   });
 
@@ -569,8 +575,8 @@ describe('DiagramCanvasComponent', () => {
       component.onWheel(new WheelEvent('wheel', { ...opts } as WheelEventInit));
 
     beforeEach(() => {
-      component.viewport = { x: 0, y: 0, width: 800, height: 600 };
-      component.zoom = 1;
+      fixture.componentRef.setInput("viewport", { x: 0, y: 0, width: 800, height: 600 });
+      fixture.componentRef.setInput("zoom", 1);
       fixture.detectChanges();
     });
 
@@ -579,7 +585,7 @@ describe('DiagramCanvasComponent', () => {
       const before = (component as any).clientToWorld(cursor.x, cursor.y);
 
       wheel({ clientX: cursor.x, clientY: cursor.y, deltaY: -100, ctrlKey: true }); // zoom IN
-      expect(component.zoom).toBeGreaterThan(1);
+      expect(component.zoom()).toBeGreaterThan(1);
 
       const after = (component as any).clientToWorld(cursor.x, cursor.y);
       expect(after.worldX).toBeCloseTo(before.worldX, 6);
@@ -608,7 +614,7 @@ describe('DiagramCanvasComponent', () => {
       // The renderer used to divide by zoom a SECOND time (the component had
       // already pre-divided), so the picture and the hit-testing disagreed at any
       // zoom != 1. Assert against the viewBox actually in the DOM.
-      component.zoom = 2;
+      fixture.componentRef.setInput("zoom", 2);
       paint();
 
       const vb = renderedViewBox();
@@ -634,11 +640,11 @@ describe('DiagramCanvasComponent', () => {
     });
 
     test('the HTML layer maps world → screen exactly like the SVG (no desync)', () => {
-      component.zoom = 2;
+      fixture.componentRef.setInput("zoom", 2);
       paint();
 
       const match = /translate\((-?[\d.]+)px, (-?[\d.]+)px\) scale\(([\d.]+)\)/.exec(
-        component.htmlLayerTransform
+        component.htmlLayerTransform()
       );
       expect(match).toBeTruthy();
       const [translateX, translateY, scale] = match!.slice(1).map(Number);
@@ -647,38 +653,38 @@ describe('DiagramCanvasComponent', () => {
       // The layer positions children at their WORLD coords, so a node at world w
       // lands at translate + scale·w — which must equal the SVG's (w − vb.origin)·zoom.
       const world = { x: 250, y: 175 };
-      expect(translateX + scale * world.x).toBeCloseTo((world.x - vb.x) * component.zoom, 6);
-      expect(translateY + scale * world.y).toBeCloseTo((world.y - vb.y) * component.zoom, 6);
-      expect(scale).toBe(component.zoom);
+      expect(translateX + scale * world.x).toBeCloseTo((world.x - vb.x) * component.zoom(), 6);
+      expect(translateY + scale * world.y).toBeCloseTo((world.y - vb.y) * component.zoom(), 6);
+      expect(scale).toBe(component.zoom());
     });
 
     test('a plain wheel SCROLLS (pans) instead of zooming; ctrl+wheel zooms', () => {
-      const zoomBefore = component.zoom;
-      const xBefore = component.viewport.x;
-      const yBefore = component.viewport.y;
+      const zoomBefore = component.zoom();
+      const xBefore = component.viewport().x;
+      const yBefore = component.viewport().y;
 
       wheel({ clientX: 400, clientY: 300, deltaX: 30, deltaY: 50 });
 
-      expect(component.zoom).toBe(zoomBefore); // NOT a zoom
-      expect(component.viewport.x).toBeCloseTo(xBefore + 30, 6);
-      expect(component.viewport.y).toBeCloseTo(yBefore + 50, 6);
+      expect(component.zoom()).toBe(zoomBefore); // NOT a zoom
+      expect(component.viewport().x).toBeCloseTo(xBefore + 30, 6);
+      expect(component.viewport().y).toBeCloseTo(yBefore + 50, 6);
 
       wheel({ clientX: 400, clientY: 300, deltaY: -100, ctrlKey: true });
-      expect(component.zoom).toBeGreaterThan(zoomBefore);
+      expect(component.zoom()).toBeGreaterThan(zoomBefore);
     });
 
     test('zoom is clamped to [minZoom, maxZoom]', () => {
       for (let i = 0; i < 100; i++) {
         wheel({ clientX: 100, clientY: 100, deltaY: -100, ctrlKey: true });
       }
-      expect(component.zoom).toBeLessThanOrEqual(component.maxZoom);
-      expect(component.zoom).toBe(component.maxZoom);
+      expect(component.zoom()).toBeLessThanOrEqual(component.maxZoom());
+      expect(component.zoom()).toBe(component.maxZoom());
 
       for (let i = 0; i < 200; i++) {
         wheel({ clientX: 100, clientY: 100, deltaY: 100, ctrlKey: true });
       }
-      expect(component.zoom).toBeGreaterThanOrEqual(component.minZoom);
-      expect(component.zoom).toBe(component.minZoom);
+      expect(component.zoom()).toBeGreaterThanOrEqual(component.minZoom());
+      expect(component.zoom()).toBe(component.minZoom());
     });
 
     test('emits zoomChanged and viewportChanged (the visible world rect)', () => {
@@ -690,24 +696,24 @@ describe('DiagramCanvasComponent', () => {
       wheel({ clientX: 200, clientY: 150, deltaY: -100, ctrlKey: true });
 
       expect(zooms.length).toBe(1);
-      expect(zooms[0]).toBe(component.zoom);
+      expect(zooms[0]).toBe(component.zoom());
       expect(viewports.length).toBe(1);
       // The emitted rect IS the visible world rect (= the viewBox).
-      expect(viewports[0].width).toBeCloseTo(800 / component.zoom, 6);
+      expect(viewports[0].width).toBeCloseTo(800 / component.zoom(), 6);
     });
 
     test('Ctrl+= zooms in, Ctrl+- zooms out, Ctrl+0 resets — around the canvas centre', () => {
       const centre = (component as any).clientToWorld(400, 300);
 
       component.onKeyDown(new KeyboardEvent('keydown', { key: '=', ctrlKey: true }));
-      expect(component.zoom).toBeGreaterThan(1);
+      expect(component.zoom()).toBeGreaterThan(1);
 
       component.onKeyDown(new KeyboardEvent('keydown', { key: '-', ctrlKey: true }));
-      expect(component.zoom).toBeCloseTo(1, 6);
+      expect(component.zoom()).toBeCloseTo(1, 6);
 
       component.onKeyDown(new KeyboardEvent('keydown', { key: '=', ctrlKey: true }));
       component.onKeyDown(new KeyboardEvent('keydown', { key: '0', ctrlKey: true }));
-      expect(component.zoom).toBe(1);
+      expect(component.zoom()).toBe(1);
 
       // The centre point never moved.
       const after = (component as any).clientToWorld(400, 300);
@@ -733,8 +739,8 @@ describe('DiagramCanvasComponent', () => {
       component.fitToContent(40);
       paint();
 
-      expect(component.zoom).toBeLessThan(1);
-      expect(component.zoom).toBeGreaterThanOrEqual(component.minZoom);
+      expect(component.zoom()).toBeLessThan(1);
+      expect(component.zoom()).toBeGreaterThanOrEqual(component.minZoom());
 
       const vb = renderedViewBox();
       // Every node's bbox is inside the rect that is actually drawn.
@@ -751,9 +757,9 @@ describe('DiagramCanvasComponent', () => {
     });
 
     test('fitToContent survives an empty diagram', () => {
-      const zoom = component.zoom;
+      const zoom = component.zoom();
       expect(() => component.fitToContent()).not.toThrow();
-      expect(component.zoom).toBe(zoom);
+      expect(component.zoom()).toBe(zoom);
     });
 
     test('zoomToSelection frames only the selected nodes', () => {
@@ -796,7 +802,7 @@ describe('DiagramCanvasComponent', () => {
       const nodeCount = () =>
         fixture.nativeElement.querySelector('svg.grafloria-diagram .nodes-layer')?.children.length ?? 0;
 
-      component.zoom = 0.5;
+      fixture.componentRef.setInput("zoom", 0.5);
       paint();
 
       const vb = renderedViewBox();

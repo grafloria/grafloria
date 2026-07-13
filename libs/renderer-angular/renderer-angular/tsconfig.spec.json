@@ -2,8 +2,12 @@
   "extends": "./tsconfig.json",
   "compilerOptions": {
     "outDir": "../../../dist/out-tsc",
+    // Jest needs CommonJS MODULES; it does not need a downlevelled TARGET.
     "module": "commonjs",
-    "target": "es2016",
+    // wave4/ngwrapper: was `es2016` — i.e. the tests compiled this library's
+    // classes with different class-field semantics than the published bundle
+    // (see the note in ./tsconfig.json). Aligned with the lib target.
+    "target": "es2022",
     "types": ["jest", "node"]
   },
   "files": ["src/test-setup.ts"],
