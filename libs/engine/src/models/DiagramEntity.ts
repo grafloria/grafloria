@@ -11,6 +11,50 @@ export interface ChangeEntry {
   newValue: any;
 }
 
+/**
+ * wave8/dirty — THE MUTATION EPOCH.
+ *
+ * A monotone counter bumped by `markDirty()`, which is the ONE funnel every
+ * model mutation already passes through: `trackChange()` calls it on every
+ * property write, and `DiagramModel` is itself a `DiagramEntity`, so adding or
+ * removing a node/link/group (`trackChange('nodes'|'links'|'groups', …)`) bumps
+ * it too. Nothing that can change the picture reaches the renderer without
+ * passing this line.
+ *
+ * That makes it an O(1), CONSERVATIVE answer to the only question an
+ * incremental renderer must answer before it can skip a frame: *has anything
+ * changed since the frame I already have on screen?* Scanning dirty FLAGS
+ * cannot answer it — the renderer marks an entity clean only when it renders
+ * one, so in a virtualized 10k-node scene the ~9,900 off-screen nodes are dirty
+ * forever and every dirty-count check returns "yes, something changed" for the
+ * life of the diagram. (That is not hypothetical: it is exactly why
+ * `createDiagram`'s idle-skip never fired on a big diagram — see
+ * `instance/create-diagram.ts`.)
+ *
+ * It is deliberately GLOBAL rather than per-diagram: an entity has no
+ * back-reference to its model in the base class, and the failure mode of a
+ * global counter (a mutation in diagram A makes diagram B redraw one extra
+ * frame) is a wasted frame, while the failure mode of an under-counting
+ * per-model one is a STALE PICTURE. Only ever err toward the wasted frame.
+ *
+ * `markClean()` does NOT bump it — cleaning is the renderer telling the model
+ * "I drew you", not the model changing.
+ */
+let mutationEpoch = 0;
+
+/** Read the current mutation epoch. Cheap enough to call every frame. */
+export function getMutationEpoch(): number {
+  return mutationEpoch;
+}
+
+/**
+ * Bump the epoch by hand, for a mutation that legitimately bypasses
+ * `markDirty()` (in-place `points` rewrites, say). Prefer `markDirty()`.
+ */
+export function bumpMutationEpoch(): number {
+  return ++mutationEpoch;
+}
+
 export abstract class DiagramEntity {
   readonly id: string;
   readonly uuid: string;
@@ -53,6 +97,13 @@ export abstract class DiagramEntity {
     this.assertNotDisposed(); // Phase 5.4: Prevent operations on disposed entities
 
     const wasDirty = this._isDirty;
+
+    // wave8/dirty: bump UNCONDITIONALLY — not inside the `!wasDirty` guard below.
+    // An already-dirty entity that changes again HAS changed again; a renderer
+    // that rendered it in between (and so left it dirty only because it is
+    // off-screen) must still be told. Counting only clean→dirty transitions
+    // would silently lose those, and a lost bump is a stale frame.
+    mutationEpoch++;
 
     this._isDirty = true;
     this._dirtyTimestamp = Date.now();

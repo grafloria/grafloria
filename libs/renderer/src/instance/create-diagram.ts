@@ -1,4 +1,4 @@
-import { DiagramEngine } from '@grafloria/engine';
+import { DiagramEngine, getMutationEpoch } from '@grafloria/engine';
 import type { DiagramModel, LinkModel, NodeModel } from '@grafloria/engine';
 import type { Theme } from '../types/theme.types';
 import type { Rectangle } from '../types/geometry.types';
@@ -124,6 +124,35 @@ export interface DiagramInstance {
   render(): void;
   /** Repaint synchronously — use when you must measure right after a change. */
   renderNow(): void;
+
+  /**
+   * wave8/dirty — Card 1: apply many mutations as ONE frame.
+   *
+   * ```ts
+   * diagram.batchUpdate((model) => {
+   *   for (const n of model.getNodes()) n.setPosition(n.position.x + 10, n.position.y);
+   * });
+   * ```
+   *
+   * Two distinct things are coalesced, and they are coalesced in two different
+   * places, which is worth being precise about:
+   *
+   *   - **Events.** `DiagramModel.beginBatch()` QUEUES its change events instead
+   *     of firing them, so a thousand `setPosition()` calls do not walk a
+   *     thousand listener chains on their way to the same rAF.
+   *   - **Frames.** `RenderScheduler` folds every `schedule()` in a tick into one
+   *     rAF callback, so the thousand mutations produce exactly one `render()`
+   *     and one `reconcile()` — one patch, not a thousand.
+   *
+   * Nesting is depth-counted (it bottoms out in `DiagramEntity`), so a batch
+   * inside a batch is still one frame. `mutate` throwing does not strand the
+   * model in batch mode.
+   *
+   * It never paints synchronously — that is the point. If you need the DOM to be
+   * correct before you measure it, follow with `renderNow()`.
+   */
+  batchUpdate(mutate: (model: DiagramModel) => void): void;
+
   dispose(): void;
 
   /**
@@ -276,6 +305,8 @@ export function createDiagram(
   // -- the frame --------------------------------------------------------------
   let lastViewportKey = '';
   let lastFrameHadPreview = false;
+  /** Mutation epoch as of the end of the last painted frame. See canSkipFrame(). */
+  let lastFrameEpoch = -1;
   let ready = false;
   let disposed = false;
 
@@ -307,33 +338,71 @@ export function createDiagram(
   };
 
   /**
-   * Idle-skip (same rule the Angular canvas uses): drop a queued frame only when
-   * nothing visible could have changed. The connection preview lives in
-   * interaction state, not in entity dirty flags, so we never skip while it is —
-   * or was, last frame — active, otherwise its removal would not repaint.
+   * Idle-skip: drop a queued frame only when nothing visible could have changed.
+   * The connection preview lives in interaction state, not in entity dirty flags,
+   * so we never skip while it is — or was, last frame — active, otherwise its
+   * removal would not repaint.
+   *
+   * wave8/dirty — BUG FIXED HERE. This used to sum `getDirtyNodes/Links/Groups`
+   * and skip only when the total was zero. On any diagram bigger than the
+   * viewport that total is NEVER zero, so the idle-skip never once fired:
+   *
+   *   the renderer marks an entity clean when it RENDERS it, and it renders only
+   *   what is visible. Open a 10,000-node diagram with 56 nodes on screen and the
+   *   other 9,944 stay dirty for the life of the canvas — they are never drawn,
+   *   so they are never cleaned. `dirty > 0` forever. `return false` forever.
+   *
+   * So the one guard whose entire job was "don't repaint an idle canvas" was
+   * dead exactly where idleness costs the most, and it charged three O(n) array
+   * scans per queued frame for the privilege of always saying no.
+   *
+   * The mutation epoch answers the real question — *has anything changed since
+   * the frame on screen?* — in O(1) and without caring whether the change was on
+   * screen. (Off-screen changes matter: an off-screen node is an obstacle the
+   * edge optimizer routes around, and its edge may well cross the viewport.)
    */
   const canSkipFrame = (): boolean => {
-    const diagram = engine.getDiagram();
-    if (!diagram) return false;
-    const dirty =
-      diagram.getDirtyNodes().length +
-      diagram.getDirtyLinks().length +
-      diagram.getDirtyGroups().length;
-    if (dirty > 0) return false;
+    if (!engine.getDiagram()) return false;
+    if (getMutationEpoch() !== lastFrameEpoch) return false;
     if (viewportKey() !== lastViewportKey) return false;
     if (isConnectionPreviewActive() || lastFrameHadPreview) return false;
     return true;
   };
 
+  /**
+   * THE FRAME — in three strictly ordered phases (wave8/dirty, Card 1).
+   *
+   *   READ    every DOM measurement, before any write.
+   *   COMPUTE pure VNode construction: no DOM in, no DOM out.
+   *   WRITE   every DOM mutation, with no read between them.
+   *
+   * The order is the whole point. A read after a write forces the browser to
+   * flush layout synchronously to answer it; do that inside a loop over N nodes
+   * and you have N forced layouts — layout thrash, and the classic way a canvas
+   * that is fast at 50 nodes dies at 500. Keeping the phases apart makes it
+   * structurally impossible rather than merely absent today. (`node-component.ts`
+   * had exactly this bug in its refresh loop; it now batches the same way.)
+   */
   const paint = (): void => {
-    layers.html.setAttribute('style', htmlLayerStyle(viewport.getHtmlLayerTransform()));
+    // -- READ ------------------------------------------------------------------
+    const renderViewport = viewport.getRenderViewport();
+    const zoom = viewport.getZoom();
+    const htmlTransform = viewport.getHtmlLayerTransform();
 
-    const vnode = renderer.render(viewport.getRenderViewport(), viewport.getZoom());
+    // -- COMPUTE ---------------------------------------------------------------
+    const vnode = renderer.render(renderViewport, zoom);
+
+    // -- WRITE -----------------------------------------------------------------
+    layers.html.setAttribute('style', htmlLayerStyle(htmlTransform));
     patcher.reconcile(layers.svg, vnode);
     syncCustomNodes();
 
     lastViewportKey = viewportKey();
     lastFrameHadPreview = isConnectionPreviewActive();
+    // AFTER the frame, not before: rendering legitimately dirties model entities
+    // (routed geometry, auto-sizing), and stamping on entry would record an epoch
+    // the frame itself then invalidates — the skip would never fire again.
+    lastFrameEpoch = getMutationEpoch();
 
     signalReady();
   };
@@ -348,6 +417,7 @@ export function createDiagram(
     syncCustomNodes();
     lastViewportKey = viewportKey();
     lastFrameHadPreview = isConnectionPreviewActive();
+    lastFrameEpoch = getMutationEpoch();
     signalReady();
   };
 
@@ -454,6 +524,23 @@ export function createDiagram(
 
     render: () => scheduler.schedule(),
     renderNow: () => scheduler.flush(),
+
+    batchUpdate(mutate) {
+      model.beginBatch();
+      try {
+        mutate(model);
+      } finally {
+        // `finally`: a throwing mutator must not leave the model batching
+        // forever — every subsequent change would be silently swallowed, and the
+        // canvas would simply stop updating with no error to explain it.
+        model.endBatch();
+      }
+      // endBatch() replays the queued events, and each of those already calls
+      // schedule(). This is for the batch that changed something the model does
+      // not emit for (or nothing at all): schedule() is idempotent within a tick,
+      // so an extra call costs one `coalesced` counter, never an extra frame.
+      scheduler.schedule();
+    },
 
     getDraggingNodeIds: () => binder.getDraggingNodeIds(),
 

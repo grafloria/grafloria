@@ -2,6 +2,9 @@ import type { DiagramEngine, DiagramModel, NodeModel, NodeStyle, LinkModel, Link
 // Value import: the ONE definition of "where does a label sit along the path"
 // (slot vs position), shared by the model, this renderer and the edge optimizer.
 import { linkLabelPosition, DiagramSerializer } from '@grafloria/engine';
+// wave8/dirty — the O(1) "has anything changed?" counter every model mutation
+// bumps. See the FRAME GATE in render().
+import { getMutationEpoch } from '@grafloria/engine';
 import type { DiagramDocumentEnvelope } from '@grafloria/engine';
 // Wave 5 Card 4: corridor separation for DIFFERENT-pair edges sharing a channel.
 import { computeChannelNudges, applyChannelNudges } from './channel-nudging';
@@ -377,6 +380,43 @@ export class SVGRenderer implements IRenderer {
   // the ROVING TABINDEX — exactly one element in the diagram carries tabindex=0.
   private a11yFocus: { type: 'node' | 'link'; id: string } | null = null;
 
+  // =========================================================================
+  // wave8/dirty — Card 0: the FRAME GATE.
+  //
+  // The per-entity VNode cache (`vnodeCache` + `entity.isDirty`) already makes
+  // an unchanged NODE free. What it never made free is the FRAME: `render()`
+  // still walked the scene, ran three whole-diagram geometry passes and rebuilt
+  // both layer VNodes on every call, even when literally nothing had changed.
+  // Measured at 10k nodes, an idle frame — a frame in which NOTHING moved — cost
+  // 130ms. That is the price the scene charged simply for existing.
+  //
+  // The gate below answers "is this frame identical to the one already on
+  // screen?" in O(1), and if so hands the patcher back the SAME VNode object it
+  // reconciled last time. The patcher's identity-skip then does nothing at all,
+  // which is the correct amount of work for a picture that did not change.
+  //
+  // Soundness rests on the frame being a pure function of exactly three inputs:
+  //   1. the MODEL          → covered by the mutation epoch (see DiagramEntity),
+  //   2. the VIEW           → viewport + zoom, in `frameSignature()`,
+  //   3. INTERACTION state  → connection/reconnection preview + a11y focus, ditto.
+  // Anything that does not funnel through those three trips `frameInvalidated`
+  // explicitly (topology events, style/theme invalidation). Two independent
+  // channels, both fail-open: when in doubt we render.
+  // =========================================================================
+
+  /** The root VNode of the last frame we actually built (null ⇒ nothing to reuse). */
+  private lastFrameRoot: VNode | null = null;
+  /** View + interaction signature of that frame (null ⇒ that frame was not cacheable). */
+  private lastFrameSig: string | null = null;
+  /** Mutation epoch AFTER that frame was built (render() itself dirties links). */
+  private lastFrameEpoch = -1;
+  /** Set by anything whose effect on the picture the epoch cannot see. */
+  private frameInvalidated = true;
+  /** Frames served straight from `lastFrameRoot`. A quiet canvas should be all of them. */
+  private framesSkipped = 0;
+  /** Frames actually built. */
+  private framesBuilt = 0;
+
   // Per-frame auto-route cache: filled by the pre-pass in renderLinksLayer so
   // every link's points are current before any link renders (jump detection
   // reads other links' points).
@@ -598,6 +638,26 @@ export class SVGRenderer implements IRenderer {
       return this.createEmptyDiagram(viewport);
     }
 
+    // wave8/dirty — Card 0: THE FRAME GATE. Everything below this line is the
+    // cost of a frame; this is the check that says we do not have to pay it.
+    // Returning the PREVIOUS root object (not a copy) is the whole point: the
+    // patcher short-circuits on identity, so an unchanged frame reconciles to
+    // exactly zero DOM operations.
+    const frameSig = this.frameSignature(viewport, zoom);
+    if (
+      this.config.enableCaching &&
+      frameSig !== null &&
+      !this.frameInvalidated &&
+      this.lastFrameRoot !== null &&
+      this.lastFrameSig === frameSig &&
+      this.lastFrameEpoch === getMutationEpoch()
+    ) {
+      this.framesSkipped++;
+      this.frameCount++;
+      this.lastRenderTime = performance.now() - startTime;
+      return this.lastFrameRoot;
+    }
+
     // Card 7 — content-aware auto-sizing MEASURE pass. Runs before the spatial
     // query so the grown bounds are the ones culled, indexed and routed against.
     // Opt-in (`metadata.sizing.auto`) and idempotent: a node already at its
@@ -687,11 +747,65 @@ export class SVGRenderer implements IRenderer {
       children: [linksLayer, nodesLayer, connectionPreviewLayer, defsNode],
     };
 
+    // wave8/dirty — arm the gate for the NEXT frame.
+    //
+    // The epoch is snapshotted HERE, at the end, not at the top: building a frame
+    // legitimately dirties model entities itself (markLinksWhoseFrameChanged
+    // re-dirties every link whose routed geometry moved; autoSizeNodes may resize
+    // one). Snapshotting on entry would record an epoch the frame then invalidates
+    // on its way out, and the gate would never once close.
+    this.lastFrameRoot = frameSig === null ? null : root;
+    this.lastFrameSig = frameSig;
+    this.lastFrameEpoch = getMutationEpoch();
+    this.frameInvalidated = false;
+    this.framesBuilt++;
+
     // Track render time
     this.lastRenderTime = performance.now() - startTime;
     this.frameCount++;
 
     return root;
+  }
+
+  /**
+   * wave8/dirty — everything a frame depends on that is NOT model state.
+   *
+   * Returns `null` for a frame that must never be reused: a live connection or
+   * reconnection drag paints a preview out of INTERACTION state, which no dirty
+   * flag and no epoch tracks. Rather than try to hash a drag (and get it subtly
+   * wrong once, which is a stuck ghost line on screen), we simply declare those
+   * frames uncacheable. They are, by definition, frames in which the user is
+   * moving the mouse — there was nothing to skip anyway.
+   */
+  private frameSignature(viewport: Rectangle, zoom: number): string | null {
+    const connection = this.engine.getConnectionStateManager?.()?.getState?.();
+    if (connection?.isConnecting) return null;
+    if (this.engine.getReconnectionPreview?.()) return null;
+
+    const focus = this.a11yFocus ? `${this.a11yFocus.type}:${this.a11yFocus.id}` : '-';
+    return `${viewport.x},${viewport.y},${viewport.width},${viewport.height}|${zoom}|${focus}`;
+  }
+
+  /**
+   * Drop the cached frame. Call from anything whose effect on the picture the
+   * mutation epoch cannot see — a topology event, a style/theme invalidation, a
+   * registry swap. Cheap and idempotent: the cost of calling it when you did not
+   * need to is one rebuilt frame; the cost of NOT calling it when you did is a
+   * stale picture, so when in doubt, call it.
+   */
+  invalidateFrame(): void {
+    this.frameInvalidated = true;
+    this.lastFrameRoot = null;
+    this.lastFrameSig = null;
+  }
+
+  /**
+   * wave8/dirty — the incrementality is only real if these move. `framesSkipped`
+   * counts frames served from the previous root (zero DOM work); `framesBuilt`
+   * counts frames actually walked. An idle canvas should build ONE.
+   */
+  getFrameStats(): { built: number; skipped: number } {
+    return { built: this.framesBuilt, skipped: this.framesSkipped };
   }
 
   /**
@@ -893,6 +1007,7 @@ export class SVGRenderer implements IRenderer {
    */
   private invalidateStyles(reason: string = 'styles-changed'): void {
     this.vnodeCache.clear();
+    this.invalidateFrame();
     this.themeBoundNodes.clear();
     this.themeBoundLinks.clear();
 
@@ -934,6 +1049,9 @@ export class SVGRenderer implements IRenderer {
 
   /** Cache keys are `<kind>-<id>-<lod>`; an entity owns one entry per LOD tier. */
   private dropCacheEntries(prefix: string): void {
+    // wave8/dirty: dropping ANY entity's VNode means the frame that embedded it
+    // is no longer the frame we would build now.
+    this.invalidateFrame();
     for (const key of this.vnodeCache.keys()) {
       if (key.startsWith(prefix)) this.vnodeCache.delete(key);
     }
@@ -1458,6 +1576,9 @@ export class SVGRenderer implements IRenderer {
 
     // Clear cache
     this.vnodeCache.clear();
+
+    // wave8/dirty: the cached frame holds the whole VNode tree of a dead diagram.
+    this.invalidateFrame();
 
     // Clear foreignObject tracking
     this.containerIds.clear();
@@ -5411,15 +5532,31 @@ export class SVGRenderer implements IRenderer {
     const diagram = this.engine.getDiagram();
     if (!diagram) return;
 
-    // Listen for entity changes to invalidate cache
-    diagram.on('node:added', () => this.vnodeCache.clear());
-    diagram.on('node:removed', () => this.vnodeCache.clear());
-    diagram.on('link:added', () => this.vnodeCache.clear());
-    diagram.on('link:removed', () => this.vnodeCache.clear());
+    // Listen for entity changes to invalidate cache.
+    //
+    // wave8/dirty: topology ALSO drops the cached frame. The mutation epoch would
+    // already catch these (DiagramModel is itself a DiagramEntity and trackChanges
+    // its own `nodes`/`links` maps), so this is the SECOND, independent channel —
+    // deliberately redundant, because a missed invalidation here is a picture that
+    // is wrong, and a spurious one is a frame we rebuild for nothing.
+    const dropFrame = () => {
+      this.vnodeCache.clear();
+      this.invalidateFrame();
+    };
+    diagram.on('node:added', dropFrame);
+    diagram.on('node:removed', dropFrame);
+    diagram.on('link:added', dropFrame);
+    diagram.on('link:removed', dropFrame);
+    diagram.on('group:added', dropFrame);
+    diagram.on('group:removed', dropFrame);
+    // (`link:path-changed` needs no listener here: LinkModel.generatePath() now
+    // markDirty()s the link, which is both more correct and bumps the epoch — see
+    // the note there. It used to rewrite `points` in place and tell no one.)
 
     // Listen for interaction config changes (port visibility, etc.)
     this.engine.eventBus.on('config:interaction-changed', () => {
       this.vnodeCache.clear();
+      this.invalidateFrame();
       // Mark all nodes dirty to ensure re-render with new config
       if (diagram) {
         diagram.getNodes().forEach(node => node.markDirty('config-changed'));
