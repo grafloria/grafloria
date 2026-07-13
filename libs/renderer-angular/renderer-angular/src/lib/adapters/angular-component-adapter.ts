@@ -68,6 +68,12 @@ export class AngularComponentAdapter implements ComponentAdapter {
    * @param component - Angular component class
    */
   registerComponent(nodeType: string, component: Type<any>): void {
+    // Framework-agnostic adapters use override semantics (see the React
+    // reference impl in ComponentAdapter). Replace any existing registration
+    // rather than throwing, while the underlying service stays strict.
+    if (this.componentRenderer.hasComponent(nodeType)) {
+      this.componentRenderer.unregisterComponent(nodeType);
+    }
     this.componentRenderer.registerComponent(nodeType, component);
   }
 

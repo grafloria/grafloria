@@ -4,7 +4,9 @@ import {
   Output,
   EventEmitter,
   OnInit,
+  OnChanges,
   OnDestroy,
+  SimpleChanges,
 } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
@@ -196,7 +198,7 @@ import {
     `,
     ]
 })
-export class RendererSwitcherComponent implements OnInit, OnDestroy {
+export class RendererSwitcherComponent implements OnInit, OnChanges, OnDestroy {
   /**
    * DOM container for renderers.
    * Required for renderer initialization.
@@ -275,6 +277,16 @@ export class RendererSwitcherComponent implements OnInit, OnDestroy {
 
     // Update recommendation
     if (this.showRecommendation) {
+      this.updateRecommendation();
+    }
+  }
+
+  ngOnChanges(changes: SimpleChanges): void {
+    // Keep the recommendation reactive to criteria/toggle changes after init.
+    if (
+      (changes['recommendationCriteria'] || changes['showRecommendation']) &&
+      this.showRecommendation
+    ) {
       this.updateRecommendation();
     }
   }

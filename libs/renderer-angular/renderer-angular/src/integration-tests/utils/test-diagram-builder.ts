@@ -70,8 +70,8 @@ export class TestDiagramBuilder {
                   fill: '#FFFFFF',
                   'font-size': 14,
                   'font-weight': 'bold',
+                  textContent: label,
                 },
-                children: [label],
               } as VNode,
             ]
           : []),
@@ -147,8 +147,8 @@ export class TestDiagramBuilder {
                   'text-anchor': 'middle',
                   fill: '#424242',
                   'font-size': 12,
+                  textContent: label,
                 },
-                children: [label],
               } as VNode,
             ]
           : []),
@@ -305,8 +305,8 @@ export class TestDiagramBuilder {
       type: 'svg',
       props: {
         xmlns: 'http://www.w3.org/2000/svg',
-        width: '100%',
-        height: '100%',
+        width: '100%' as unknown as number,
+        height: '100%' as unknown as number,
         viewBox: '0 0 1000 800',
         ...(Object.keys(this.metadata).length > 0 && {
           'data-metadata': JSON.stringify(this.metadata),

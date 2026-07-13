@@ -19,6 +19,7 @@ import {
   SimpleChanges,
   ViewContainerRef,
 } from '@angular/core';
+import { CommonModule } from '@angular/common';
 import { ComponentAdapter } from '@grafloria/engine';
 import { NodeModel } from '@grafloria/engine';
 import { AngularComponentAdapter } from './angular-component-adapter';
@@ -90,6 +91,7 @@ class TestNodeComponent implements OnInit, OnDestroy, OnChanges {
     </div>
   `,
   standalone: true,
+  imports: [CommonModule],
 })
 class ErdTableComponent {
   @Input() tableName = '';
@@ -715,7 +717,7 @@ describe('AngularComponentAdapter', () => {
 
       expect(() => {
         adapter.createComponentInstance(node, viewContainerRef);
-      }).toThrow(/component.*not registered/i);
+      }).toThrow(/no component registered/i);
     });
 
     it('should handle invalid node gracefully', () => {

@@ -12,7 +12,7 @@
             {{ selectedNodes[0]?.type }}
           </div>
           <div class="node-label" *ngIf="selectedNodes.length === 1" aria-label="Node label">
-            {{ selectedNodes[0].id }}
+            {{ selectedNodes[0].label || selectedNodes[0].id }}
           </div>
           <div class="node-count" *ngIf="selectedNodes.length > 1" aria-label="Selected nodes count">
             {{ selectedNodes.length }} nodes selected

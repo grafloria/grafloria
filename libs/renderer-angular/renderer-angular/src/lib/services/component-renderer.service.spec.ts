@@ -539,7 +539,7 @@ describe('ComponentRendererService', () => {
       expect(vnode.children).toBeTruthy();
       expect(vnode.children!.length).toBeGreaterThan(0);
       expect(vnode.children![0].type).toBe('div');
-      expect(vnode.children![0].props?.class).toBe(
+      expect(vnode.children![0].props?.['class']).toBe(
         'diagram-component-container'
       );
     });

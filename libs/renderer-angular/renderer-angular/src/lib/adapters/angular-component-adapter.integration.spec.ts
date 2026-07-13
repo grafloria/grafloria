@@ -412,7 +412,7 @@ describe('AngularComponentAdapter - End-to-End Integration', () => {
 
       expect(() => {
         adapter.createComponentInstance(node, viewContainerRef);
-      }).toThrow(/component.*not registered/i);
+      }).toThrow(/no component registered/i);
     });
 
     it('should handle destroying instance twice', () => {

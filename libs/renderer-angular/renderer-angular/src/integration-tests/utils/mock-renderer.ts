@@ -1,4 +1,4 @@
-import type { IRendererStrategy as IRenderer, RendererCapabilities, VNode } from '@grafloria/renderer';
+import type { IRendererStrategy as IRenderer, RendererCapabilities, VNode, NodeUpdate } from '@grafloria/renderer';
 
 /**
  * MockRenderer
@@ -20,6 +20,7 @@ export class MockRenderer implements IRenderer {
   // Configuration
   private renderDelay = 0;
   private shouldThrowOnRender = false;
+  private shouldThrowOnInitialize = false;
   private customRenderBehavior?: (vnode: VNode) => void | Promise<void>;
 
   constructor(
@@ -40,7 +41,9 @@ export class MockRenderer implements IRenderer {
   }
 
   initialize(): void {
-    // Mock initialization
+    if (this.shouldThrowOnInitialize) {
+      throw new Error('Mock initialization error');
+    }
   }
 
   async render(vnode: VNode): Promise<void> {
@@ -65,9 +68,8 @@ export class MockRenderer implements IRenderer {
     this.renderTimes.push(elapsed);
   }
 
-  async update(vnode: VNode): Promise<void> {
+  async update(_updates: NodeUpdate[]): Promise<void> {
     this.updateCount++;
-    this.lastVNode = vnode;
 
     if (this.renderDelay > 0) {
       await this.delay(this.renderDelay);
@@ -105,7 +107,10 @@ export class MockRenderer implements IRenderer {
   }
 
   destroy(): void {
-    this.reset();
+    // Release transient rendered content but retain tracking counters so tests
+    // can assert on what a renderer did before it was destroyed (e.g. during a
+    // renderer switch). Use reset() explicitly to clear counters.
+    this.lastVNode = null;
   }
 
   // Test utilities
@@ -123,6 +128,14 @@ export class MockRenderer implements IRenderer {
    */
   setShouldThrowOnRender(shouldThrow: boolean): this {
     this.shouldThrowOnRender = shouldThrow;
+    return this;
+  }
+
+  /**
+   * Make initialize() throw an error (simulates renderer init failure).
+   */
+  setShouldThrowOnInitialize(shouldThrow: boolean): this {
+    this.shouldThrowOnInitialize = shouldThrow;
     return this;
   }
 

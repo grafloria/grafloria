@@ -116,6 +116,18 @@ export class ComponentRendererService {
   }
 
   /**
+   * Unregister a component for a node type.
+   * No-op if the type was never registered. Enables override/replace flows
+   * (register a new component for an existing type) without loosening the
+   * strict duplicate check in {@link registerComponent}.
+   *
+   * @param nodeType - Node type identifier
+   */
+  unregisterComponent(nodeType: string): void {
+    this.componentRegistry.delete(nodeType);
+  }
+
+  /**
    * Check if component is registered for node type.
    *
    * @param nodeType - Node type identifier

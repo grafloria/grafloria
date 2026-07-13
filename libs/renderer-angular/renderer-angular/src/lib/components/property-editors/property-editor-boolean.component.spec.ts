@@ -34,7 +34,7 @@ describe('PropertyEditorBooleanComponent', () => {
       expect(label).toBeTruthy();
     });
 
-    it('should display current value as checked state', () => {
+    it('should display current value as checked state', async () => {
       component.property = {
         key: 'enabled',
         label: 'Enabled',
@@ -42,6 +42,8 @@ describe('PropertyEditorBooleanComponent', () => {
       };
       component.value = true;
       component.ngOnInit();
+      fixture.detectChanges();
+      await fixture.whenStable();
       fixture.detectChanges();
 
       const checkbox = fixture.nativeElement.querySelector('input[type="checkbox"]');
@@ -161,7 +163,7 @@ describe('PropertyEditorBooleanComponent', () => {
   });
 
   describe('Readonly Mode', () => {
-    it('should disable checkbox when readonly is true', () => {
+    it('should disable checkbox when readonly is true', async () => {
       component.property = {
         key: 'enabled',
         label: 'Enabled',
@@ -169,12 +171,14 @@ describe('PropertyEditorBooleanComponent', () => {
       };
       component.readonly = true;
       fixture.detectChanges();
+      await fixture.whenStable();
+      fixture.detectChanges();
 
       const checkbox = fixture.nativeElement.querySelector('input[type="checkbox"]');
       expect(checkbox.disabled).toBe(true);
     });
 
-    it('should disable toggle when readonly is true', () => {
+    it('should disable toggle when readonly is true', async () => {
       component.property = {
         key: 'enabled',
         label: 'Enabled',
@@ -184,6 +188,8 @@ describe('PropertyEditorBooleanComponent', () => {
         },
       };
       component.readonly = true;
+      fixture.detectChanges();
+      await fixture.whenStable();
       fixture.detectChanges();
 
       const toggle = fixture.nativeElement.querySelector('.toggle-input');

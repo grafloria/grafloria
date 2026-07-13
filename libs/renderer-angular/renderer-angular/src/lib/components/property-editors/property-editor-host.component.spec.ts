@@ -3,7 +3,7 @@ import { PropertyEditorHostComponent } from './property-editor-host.component';
 import { PropertyEditorRegistryService } from '../../services/property-editor-registry.service';
 import { Component, Input, Output, EventEmitter } from '@angular/core';
 import { PropertyEditorComponent } from './property-editor.interface';
-import { PropertyDefinition, ValidationError } from '@grafloria/renderer';
+import { PropertyDefinition, PropertyEditorType, ValidationError } from '@grafloria/renderer';
 
 // Mock editor for testing
 @Component({
@@ -85,7 +85,7 @@ describe('PropertyEditorHostComponent', () => {
       component.property = {
         key: 'custom',
         label: 'Custom',
-        editor: 'mock',
+        editor: 'mock' as PropertyEditorType,
       };
       component.value = 'test';
       component.ngOnInit();
@@ -101,7 +101,7 @@ describe('PropertyEditorHostComponent', () => {
       component.property = {
         key: 'unknown',
         label: 'Unknown',
-        editor: 'nonexistent',
+        editor: 'nonexistent' as PropertyEditorType,
       };
       component.ngOnInit();
       fixture.detectChanges();
@@ -120,7 +120,7 @@ describe('PropertyEditorHostComponent', () => {
       component.property = {
         key: 'test',
         label: 'Test',
-        editor: 'mock',
+        editor: 'mock' as PropertyEditorType,
       };
       component.value = 'test value';
       component.ngOnInit();
@@ -135,7 +135,7 @@ describe('PropertyEditorHostComponent', () => {
       const propertyDef: PropertyDefinition = {
         key: 'test',
         label: 'Test',
-        editor: 'mock',
+        editor: 'mock' as PropertyEditorType,
       };
 
       component.property = propertyDef;
@@ -152,7 +152,7 @@ describe('PropertyEditorHostComponent', () => {
       component.property = {
         key: 'test',
         label: 'Test',
-        editor: 'mock',
+        editor: 'mock' as PropertyEditorType,
       };
       component.value = 'test';
       component.readonly = true;
@@ -170,7 +170,7 @@ describe('PropertyEditorHostComponent', () => {
       component.property = {
         key: 'test',
         label: 'Test',
-        editor: 'mock',
+        editor: 'mock' as PropertyEditorType,
       };
       component.value = 'initial';
       component.ngOnInit();
@@ -191,7 +191,7 @@ describe('PropertyEditorHostComponent', () => {
       component.property = {
         key: 'test',
         label: 'Test',
-        editor: 'mock',
+        editor: 'mock' as PropertyEditorType,
       };
       component.ngOnInit();
       fixture.detectChanges();
@@ -225,7 +225,7 @@ describe('PropertyEditorHostComponent', () => {
       component.property = {
         key: 'test2',
         label: 'Test 2',
-        editor: 'mock',
+        editor: 'mock' as PropertyEditorType,
       };
       component.ngOnChanges({
         property: {
@@ -247,7 +247,7 @@ describe('PropertyEditorHostComponent', () => {
       component.property = {
         key: 'test',
         label: 'Test',
-        editor: 'mock',
+        editor: 'mock' as PropertyEditorType,
       };
       component.value = 'initial';
       component.ngOnInit();
@@ -277,7 +277,7 @@ describe('PropertyEditorHostComponent', () => {
       component.property = {
         key: 'test',
         label: 'Test',
-        editor: 'mock',
+        editor: 'mock' as PropertyEditorType,
       };
       component.ngOnInit();
       fixture.detectChanges();
