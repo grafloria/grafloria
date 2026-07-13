@@ -4,10 +4,21 @@ import {
   MacroCommand,
   MoveNodeCommand,
   LinkModel as LinkModelCtor,
+  NodeModel as NodeModelCtor,
   AddLinkCommand,
+  AddNodeCommand,
+  RemoveNodeCommand,
+  RemoveLinkCommand,
+  SetParentCommand,
 } from '@grafloria/engine';
 import type { Rectangle } from '../types/geometry.types';
 import { canConnectPorts } from './snapping';
+// wave6/a11y: the graph-aware half of navigation. Focus is a keyboard concern,
+// but "where can I go from here" is a TOPOLOGY question — so it is answered by
+// the a11y module's pure analysis, not re-derived here.
+import { diagramOf, sourceNodeIdOf, targetNodeIdOf } from '../a11y/semantics';
+import { incidentEdges, analyseTopology, type Incidence } from '../a11y/graph-topology';
+import { positionContext, buildOutline } from '../a11y/diagram-outline';
 
 /**
  * KeyboardNavigationController — a fully keyboard-operable, screen-reader-
@@ -305,6 +316,362 @@ export class KeyboardNavigationController {
 
     this.announceSelection(engine);
     return true;
+  }
+
+  // ==========================================================================
+  // wave6/a11y (card 2) — GRAPH-AWARE traversal.
+  //
+  // Wave 4 shipped SPATIAL arrow focus: "give me the nearest node to the right".
+  // That is geometry, not topology — and geometry is exactly the information a
+  // screen-reader user does not have. What they need is to walk the GRAPH:
+  // "from here, where can I go?" These methods follow real edges.
+  // ==========================================================================
+
+  /** The edges incident on the focused node, in a stable traversal order. */
+  incidentEdgesOfFocus(engine: DiagramEngine): Incidence[] {
+    const diagram = diagramOf(engine);
+    if (!diagram || this.focused?.type !== 'node') return [];
+    return incidentEdges(this.focused.id, diagram);
+  }
+
+  /**
+   * FOLLOW-EDGE NAVIGATION. From a focused node, step along its Nth incident
+   * edge to the node at the far end. From a focused EDGE, step to its endpoints.
+   *
+   * This is the move that makes a diagram traversable without sight: you are on
+   * "Is order valid?", you are told it has 2 outgoing edges, and you walk one.
+   */
+  followEdge(engine: DiagramEngine, index = 0): FocusTarget | null {
+    const diagram = diagramOf(engine);
+    if (!diagram || !this.focused) return this.getFocused();
+
+    // On an edge: hop to the node at its far end.
+    if (this.focused.type === 'link') {
+      const link = diagram.getLink(this.focused.id);
+      if (!link) return this.getFocused();
+      const targetId = index <= 0
+        ? targetNodeIdOf(link, diagram)
+        : sourceNodeIdOf(link, diagram);
+      if (!targetId || !diagram.getNode(targetId)) return this.getFocused();
+      return this.setFocus({ type: 'node', id: targetId }, engine);
+    }
+
+    const edges = incidentEdges(this.focused.id, diagram);
+    if (edges.length === 0) {
+      this.announce(
+        `${this.nodeName(diagram.getNode(this.focused.id)!)} has no connections`,
+        'polite'
+      );
+      return this.getFocused();
+    }
+
+    const edge = edges[Math.max(0, Math.min(index, edges.length - 1))]!;
+    const next = diagram.getNode(edge.otherId);
+    if (!next) return this.getFocused();
+
+    // Announce the EDGE we walked, then the node we landed on — otherwise the
+    // user teleports with no idea which of three branches they took.
+    this.announce(
+      `Following ${edge.direction} edge ${index + 1} of ${edges.length}. ` +
+        `${this.describe(engine, { type: 'node', id: next.id })}`
+    );
+    this.focused = { type: 'node', id: next.id };
+    return this.getFocused();
+  }
+
+  /** Walk to the Nth node this one points AT. */
+  followOutgoing(engine: DiagramEngine, index = 0): FocusTarget | null {
+    return this.followDirected(engine, 'outgoing', index);
+  }
+
+  /** Walk back to the Nth node that points at this one. */
+  followIncoming(engine: DiagramEngine, index = 0): FocusTarget | null {
+    return this.followDirected(engine, 'incoming', index);
+  }
+
+  protected followDirected(
+    engine: DiagramEngine,
+    direction: 'outgoing' | 'incoming',
+    index: number
+  ): FocusTarget | null {
+    const diagram = diagramOf(engine);
+    if (!diagram || this.focused?.type !== 'node') return this.getFocused();
+
+    const edges = incidentEdges(this.focused.id, diagram).filter(
+      (e) => e.direction === direction
+    );
+    if (edges.length === 0) {
+      const node = diagram.getNode(this.focused.id);
+      this.announce(
+        `${node ? this.nodeName(node) : 'Node'} has no ${direction} connections`
+      );
+      return this.getFocused();
+    }
+
+    const edge = edges[Math.max(0, Math.min(index, edges.length - 1))]!;
+    const next = diagram.getNode(edge.otherId);
+    if (!next) return this.getFocused();
+
+    this.announce(
+      `${direction} ${index + 1} of ${edges.length}. ` +
+        this.describe(engine, { type: 'node', id: next.id })
+    );
+    this.focused = { type: 'node', id: next.id };
+    return this.getFocused();
+  }
+
+  /** Focus the EDGE itself (rather than jumping over it) — so it can be deleted. */
+  focusIncidentEdge(engine: DiagramEngine, index = 0): FocusTarget | null {
+    const edges = this.incidentEdgesOfFocus(engine);
+    if (edges.length === 0) return this.getFocused();
+    const edge = edges[Math.max(0, Math.min(index, edges.length - 1))]!;
+    return this.setFocus({ type: 'link', id: edge.link.id }, engine);
+  }
+
+  /** Jump to the first entry point — "take me back to the start of the flow". */
+  focusEntryPoint(engine: DiagramEngine, index = 0): FocusTarget | null {
+    const diagram = diagramOf(engine);
+    if (!diagram) return this.getFocused();
+
+    const entries = analyseTopology(diagram).entryPoints;
+    if (entries.length === 0) return this.getFocused();
+
+    const node = entries[Math.max(0, Math.min(index, entries.length - 1))]!;
+    return this.setFocus({ type: 'node', id: node.id }, engine);
+  }
+
+  /**
+   * The POSITION CONTEXT for the focused node — "node 3 of 12, 2 incoming,
+   * 1 outgoing". The orientation a sighted user gets for free from the picture.
+   */
+  positionContextOfFocus(engine: DiagramEngine): string {
+    const diagram = diagramOf(engine);
+    if (!diagram || this.focused?.type !== 'node') return '';
+    return positionContext(this.focused.id, diagram);
+  }
+
+  /** Announce where we are in the graph. Bound to a key in the host. */
+  announcePosition(engine: DiagramEngine): Announcement | null {
+    const context = this.positionContextOfFocus(engine);
+    if (!context) return null;
+    const diagram = diagramOf(engine);
+    const node = diagram?.getNode(this.focused!.id);
+    return this.announce(`${node ? this.nodeName(node) : ''}, ${context}`);
+  }
+
+  /** The whole-diagram natural-language summary, announced on entry. */
+  announceSummary(engine: DiagramEngine): Announcement | null {
+    const diagram = diagramOf(engine);
+    if (!diagram) return null;
+    return this.announce(buildOutline(diagram).summary);
+  }
+
+  // ==========================================================================
+  // wave6/a11y (card 3) — keyboard-only EDITING.
+  //
+  // Wave 4 shipped move (nudge) and connect. The holes it left were delete,
+  // duplicate and reparent — so a keyboard-only user could build a graph but
+  // never restructure one. Each returns ONE undoable command; the host executes
+  // it, exactly as it already does for nudge and connect.
+  // ==========================================================================
+
+  /**
+   * Delete the selection (or, with nothing selected, the focused entity), as one
+   * undoable macro. Deleting a node takes its incident edges with it — leaving
+   * dangling links is how a keyboard user silently corrupts a diagram.
+   */
+  deleteCommand(engine: DiagramEngine): Command | null {
+    const diagram = diagramOf(engine);
+    if (!diagram) return null;
+
+    const nodes = (diagram.getNodes() as NodeModel[]).filter(
+      (n) => n.isSelected() && n.state?.locked !== true
+    );
+    const links = (diagram.getLinks() as LinkModel[]).filter((l) => l.state === 'selected');
+
+    // Nothing selected → act on focus, which is what the user is looking at.
+    if (nodes.length === 0 && links.length === 0 && this.focused) {
+      if (this.focused.type === 'node') {
+        const node = diagram.getNode(this.focused.id);
+        if (node && node.state?.locked !== true) nodes.push(node);
+      } else {
+        const link = diagram.getLink(this.focused.id);
+        if (link) links.push(link);
+      }
+    }
+
+    if (nodes.length === 0 && links.length === 0) return null;
+
+    const doomedNodeIds = new Set(nodes.map((n) => n.id));
+    const doomedLinkIds = new Set(links.map((l) => l.id));
+
+    // Any edge touching a doomed node dies with it.
+    for (const link of diagram.getLinks() as LinkModel[]) {
+      const s = sourceNodeIdOf(link, diagram);
+      const t = targetNodeIdOf(link, diagram);
+      if (doomedNodeIds.has(s) || doomedNodeIds.has(t)) doomedLinkIds.add(link.id);
+    }
+
+    const macro = new MacroCommand('Delete');
+    // Links FIRST — removing a node out from under its links can strand them.
+    for (const id of doomedLinkIds) macro.addSteps([new RemoveLinkCommand(id)]);
+    for (const id of doomedNodeIds) macro.addSteps([new RemoveNodeCommand(id)]);
+
+    const parts: string[] = [];
+    if (doomedNodeIds.size) parts.push(`${doomedNodeIds.size} node${doomedNodeIds.size === 1 ? '' : 's'}`);
+    if (doomedLinkIds.size) parts.push(`${doomedLinkIds.size} edge${doomedLinkIds.size === 1 ? '' : 's'}`);
+    this.announce(`Deleted ${parts.join(' and ')}`);
+
+    // Focus cannot stay on something that no longer exists.
+    if (
+      this.focused &&
+      ((this.focused.type === 'node' && doomedNodeIds.has(this.focused.id)) ||
+        (this.focused.type === 'link' && doomedLinkIds.has(this.focused.id)))
+    ) {
+      this.focused = null;
+    }
+
+    return macro;
+  }
+
+  /**
+   * Duplicate the focused/selected nodes at an offset, carrying any edge that
+   * runs BETWEEN two duplicated nodes (an edge to a node you did not copy has
+   * no meaningful counterpart, so it is dropped — the same rule the pointer
+   * duplicate uses).
+   */
+  duplicateCommand(engine: DiagramEngine, offset: Point = { x: 24, y: 24 }): Command | null {
+    const diagram = diagramOf(engine);
+    if (!diagram) return null;
+
+    let nodes = (diagram.getNodes() as NodeModel[]).filter((n) => n.isSelected());
+    if (nodes.length === 0 && this.focused?.type === 'node') {
+      const node = diagram.getNode(this.focused.id);
+      if (node) nodes = [node];
+    }
+    if (nodes.length === 0) return null;
+
+    const macro = new MacroCommand(`Duplicate ${nodes.length} node${nodes.length === 1 ? '' : 's'}`);
+    const idMap = new Map<string, NodeModel>();
+
+    for (const node of nodes) {
+      const clone = new NodeModelCtor({
+        type: node.type,
+        position: {
+          x: node.position.x + offset.x,
+          y: node.position.y + offset.y,
+          z: node.position.z,
+        },
+        size: { ...node.size },
+      });
+      // Carry the label and the author's metadata — a duplicate that loses its
+      // name is useless, and doubly so to someone who navigates BY name.
+      for (const [key, value] of node.metadata) {
+        clone.setMetadata(key, value);
+      }
+      clone.style = { ...node.style };
+      if (node.parentId) clone.parentId = node.parentId;
+
+      idMap.set(node.id, clone);
+      macro.addSteps([new AddNodeCommand(clone)]);
+    }
+
+    for (const link of diagram.getLinks() as LinkModel[]) {
+      const s = idMap.get(sourceNodeIdOf(link, diagram));
+      const t = idMap.get(targetNodeIdOf(link, diagram));
+      if (!s || !t) continue; // an edge leaving the copied set has no counterpart
+
+      const sourcePort = s.getPortBySide?.('right') ?? s.getPorts()[0];
+      const targetPort = t.getPortBySide?.('left') ?? t.getPorts()[0];
+      if (!sourcePort || !targetPort) continue;
+
+      const clone = new LinkModelCtor(sourcePort.id, targetPort.id);
+      clone.setSourcePort(sourcePort.id, s.id);
+      clone.setTargetPort(targetPort.id, t.id);
+      macro.addSteps([new AddLinkCommand(clone)]);
+    }
+
+    this.announce(`Duplicated ${nodes.length} node${nodes.length === 1 ? '' : 's'}`);
+    return macro;
+  }
+
+  /**
+   * REPARENT the focused node into (or out of) a container — the last thing that
+   * was pointer-only. `null` unparents.
+   *
+   * `SetParentCommand` already rejects a cycle; we catch it EARLY so the user
+   * gets an assertive "cannot" instead of an exception thrown into the void.
+   */
+  reparentCommand(engine: DiagramEngine, parentId: string | null): Command | null {
+    const diagram = diagramOf(engine);
+    if (!diagram || this.focused?.type !== 'node') return null;
+
+    const node = diagram.getNode(this.focused.id);
+    if (!node) return null;
+
+    if (parentId) {
+      const parent = diagram.getNode(parentId);
+      if (!parent) {
+        this.announce(`Cannot reparent: container not found`, 'assertive');
+        return null;
+      }
+      if (parentId === node.id) {
+        this.announce('Cannot reparent a node into itself', 'assertive');
+        return null;
+      }
+      // Would it create a cycle? (Is the prospective parent already OUR child?)
+      const descendants = new Set<string>();
+      const walk = (id: string): void => {
+        for (const candidate of diagram.getNodes() as NodeModel[]) {
+          if (candidate.parentId === id && !descendants.has(candidate.id)) {
+            descendants.add(candidate.id);
+            walk(candidate.id);
+          }
+        }
+      };
+      walk(node.id);
+      if (descendants.has(parentId)) {
+        this.announce(
+          `Cannot move ${this.nodeName(node)} into ${this.nodeName(parent)}: it would create a loop`,
+          'assertive'
+        );
+        return null;
+      }
+
+      this.announce(`Moved ${this.nodeName(node)} into ${this.nodeName(parent)}`);
+    } else {
+      if (!node.parentId) return null; // already top-level — nothing to do
+      this.announce(`Moved ${this.nodeName(node)} out of its container`);
+    }
+
+    return new SetParentCommand(node.id, parentId ?? undefined);
+  }
+
+  /**
+   * The containers the focused node could legally be reparented into — what a
+   * host puts in a "move to…" list. Excludes itself and its own descendants.
+   */
+  reparentCandidates(engine: DiagramEngine): NodeModel[] {
+    const diagram = diagramOf(engine);
+    if (!diagram || this.focused?.type !== 'node') return [];
+
+    const node = diagram.getNode(this.focused.id);
+    if (!node) return [];
+
+    const descendants = new Set<string>([node.id]);
+    const walk = (id: string): void => {
+      for (const candidate of diagram.getNodes() as NodeModel[]) {
+        if (candidate.parentId === id && !descendants.has(candidate.id)) {
+          descendants.add(candidate.id);
+          walk(candidate.id);
+        }
+      }
+    };
+    walk(node.id);
+
+    return (diagram.getNodes() as NodeModel[]).filter(
+      (n) => !descendants.has(n.id) && n.id !== node.parentId
+    );
   }
 
   // ==========================================================================

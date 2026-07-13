@@ -242,6 +242,21 @@ export interface PerformanceMetrics {
  */
 export interface SVGRendererConfig {
   /**
+   * wave6/a11y — the diagram's KIND, used for `aria-roledescription` on the SVG
+   * root ("Flowchart diagram", "Sequence diagram"). Purely semantic: it changes
+   * what a screen reader calls the canvas, nothing about how it is drawn.
+   * Default: undefined → "Diagram".
+   */
+  diagramType?: string;
+
+  /**
+   * wave6/a11y — a human title for this diagram, used as the head of the SVG
+   * root's accessible name ("Order flow, 12 nodes, 14 edges").
+   * Default: undefined → "Diagram".
+   */
+  diagramLabel?: string;
+
+  /**
    * Enable VNode caching for performance
    * Default: true
    */

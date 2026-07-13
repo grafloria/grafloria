@@ -31,6 +31,12 @@ export * from './canvas';
 // Wave 3: also exports the framework-agnostic InteractionController.
 export * from './interaction';
 
+// Wave 6: the ACCESSIBILITY layer. Semantics (roles/names emitted into the VNode
+// tree, so they survive SSR + export), graph topology, the AT-navigable outline
+// text mirror + natural-language summary, the managed aria-live region, and
+// focus containment (focus never rests on off-screen geometry).
+export * from './a11y';
+
 // Wave 3 (framework-agnostic instance API): the camera. Screen↔world conversion,
 // zoom clamping, pan, and the viewBox convention — the math every framework
 // wrapper otherwise re-implements.

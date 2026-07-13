@@ -47,4 +47,5 @@ Thumbs.db
 libs/renderer/e2e/out/
 libs/renderer/e2e/bundle.js
 libs/renderer/e2e/canvas-bundle.js
+libs/renderer/e2e/a11y-bundle.js
 libs/renderer/e2e/playground.bundle.js
