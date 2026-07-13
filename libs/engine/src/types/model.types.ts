@@ -47,6 +47,20 @@ export interface NodeBehavior {
 
 export interface NodeStyle {
   shape?: string; // Shape type (rectangle, circle, diamond, etc.)
+  /**
+   * Extra CSS class(es) put verbatim on the rendered element, alongside
+   * `diagram-node` and the state classes. Purely a hook for host CSS — the
+   * renderer never reads it back (React Flow's "className on every element").
+   */
+  className?: string;
+  /**
+   * Name(s) of NAMED STYLES to apply — the classDef / linkStyle equivalent.
+   * Space-separated (`'critical dashed'`, later names win). Defined with
+   * `defineStyle(name, style)` and resolved by the renderer's cascade:
+   *   theme < type-default < named-class < element-inline < state
+   * so an own property on this style object always beats the named style.
+   */
+  styleClass?: string;
   // Phase 4 (styling & theming): fill/stroke accept a paint-server SPEC OBJECT
   // (gradient/pattern) as well as a plain colour string. When an object is
   // supplied the renderer materialises a deduped <defs> entry and references it
@@ -102,6 +116,17 @@ export interface JumpPointConfig {
 }
 
 export interface LinkStyle {
+  /**
+   * Extra CSS class(es) put verbatim on the rendered path, alongside
+   * `diagram-link` and the state classes. Host-CSS hook; never read back.
+   */
+  className?: string;
+  /**
+   * Name(s) of NAMED STYLES to apply — the classDef / linkStyle equivalent.
+   * Space-separated (later names win). See NodeStyle.styleClass; identical
+   * cascade: theme < type-default < named-class < element-inline < state.
+   */
+  styleClass?: string;
   // Phase 4 (styling & theming): stroke accepts a paint-server SPEC OBJECT
   // (gradient/pattern) as well as a plain colour string — materialised as a
   // deduped <defs> entry and referenced via url(#…).
