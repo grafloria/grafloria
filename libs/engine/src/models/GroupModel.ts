@@ -76,8 +76,15 @@ export interface MembershipLeaf {
  * fitToContents.
  */
 export interface SubgraphGroupConfig {
-  /** Algorithm for THIS group's contents. 'inherit' uses the parent/default. */
-  algorithm?: 'dagre' | 'elk' | 'grid' | 'inherit';
+  /**
+   * Algorithm for THIS group's contents. 'inherit' uses the parent/default.
+   *
+   * Wave 7 Card 4: any name in the layout registry works here (force, spectral,
+   * community, or an extension-registered engine), not just the dagre|elk pair
+   * wave 5 hard-coded — nested layout resolves the name against the registry.
+   * An unknown name falls back to the built-in grid rather than throwing.
+   */
+  algorithm?: 'dagre' | 'elk' | 'grid' | 'inherit' | (string & {});
   /** Pinned: neither laid out internally nor moved by the parent layout. */
   fixed?: boolean;
   /** Opaque options forwarded to the chosen layout adapter. */
