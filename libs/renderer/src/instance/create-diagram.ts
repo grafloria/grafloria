@@ -158,8 +158,19 @@ export function createDiagram(
     );
   const model = engine.getDiagram() ?? engine.createDiagram('grafloria');
 
-  applyNodes(model, options.nodes ?? []);
-  applyEdges(model, options.edges ?? []);
+  // Wave 6 BUG FIX. This used to be `applyNodes(model, options.nodes ?? [])`.
+  //
+  // `applyNodes`/`applyEdges` are full RECONCILERS — anything not in the list is
+  // REMOVED. So passing no `nodes` reconciled against the EMPTY list and silently
+  // deleted every node already on the diagram. That made the documented
+  // "attach to an existing engine" path (`createDiagram(el, { engine })`) wipe
+  // the very diagram it was attaching to.
+  //
+  // Absent means "I am not managing this" — NOT "make it empty". A host that
+  // really wants to clear the diagram passes `nodes: []` explicitly, which still
+  // works.
+  if (options.nodes) applyNodes(model, options.nodes);
+  if (options.edges) applyEdges(model, options.edges);
 
   // -- camera -----------------------------------------------------------------
   const rect0 = container.getBoundingClientRect();

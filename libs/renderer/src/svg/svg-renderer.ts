@@ -73,7 +73,9 @@ import {
   getConnectionPoint,
   getConnector,
   hasConnector,
+  onLinkPipelineChange,
 } from '../ext/link-pipeline';
+import { onShapeRegistryChange } from './shape-registry';
 
 // Nodes & shapes foundation: unified shape registry / geometry contract.
 // The five shape switch sites below (renderNodeShape, renderSelectionHighlight,
@@ -358,6 +360,9 @@ export class SVGRenderer implements IRenderer {
 
   /** Unsubscribe from the edge-template registry (Card 5). */
   private unsubscribeEdgeTemplates?: () => void;
+  /** Wave 6 — Card 2/0: cache invalidation for the link pipeline + shape registry. */
+  private unsubscribeLinkPipeline?: () => void;
+  private unsubscribeShapeRegistry?: () => void;
 
   // Per-frame paint-server defs (Styling & theming — Card 2). Keyed by the
   // stable spec hash so identical gradient/pattern/shadow specs share ONE
@@ -496,6 +501,23 @@ export class SVGRenderer implements IRenderer {
     // invalidate the cache for exactly the same reason a named style does.
     this.unsubscribeEdgeTemplates = onEdgeTemplateChange(() =>
       this.invalidateStyles('edge-templates-changed')
+    );
+
+    // Wave 6 — Card 2: a connector's OUTPUT (the whole path `d`), an anchor's
+    // endpoint and a connection-point strategy's geometry are all baked into the
+    // cached link VNode, for exactly the same reason a link template's output is.
+    // Without this, UNLOADING an extension left its connector's path on screen —
+    // the registry was empty but the cache still held the picture it drew. Caught
+    // by the e2e (`node libs/renderer/e2e/ext-run.mjs`), not by any unit test.
+    this.unsubscribeLinkPipeline = onLinkPipelineChange(() =>
+      this.invalidateStyles('link-pipeline-changed')
+    );
+
+    // Wave 6: same argument for SHAPES. The shape registry had no change signal
+    // at all before this wave, so a shape registered (or unregistered) after a
+    // node was cached could not invalidate it.
+    this.unsubscribeShapeRegistry = onShapeRegistryChange(() =>
+      this.invalidateStyles('shape-registry-changed')
     );
 
     // Subscribe to engine events
@@ -1137,6 +1159,15 @@ export class SVGRenderer implements IRenderer {
     // …and for edge-template (re)definitions (Card 5)
     this.unsubscribeEdgeTemplates?.();
     this.unsubscribeEdgeTemplates = undefined;
+
+    // Wave 6: these are module-GLOBAL registries, so a renderer that failed to
+    // unsubscribe would keep a dead instance alive and repaint it forever —
+    // precisely the leak the "every register() returns a disposer" rule exists
+    // to prevent.
+    this.unsubscribeLinkPipeline?.();
+    this.unsubscribeLinkPipeline = undefined;
+    this.unsubscribeShapeRegistry?.();
+    this.unsubscribeShapeRegistry = undefined;
 
     // Stop following the OS colour scheme / contrast preferences.
     this.colorModeController?.dispose();
