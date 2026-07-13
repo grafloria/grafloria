@@ -83,6 +83,10 @@ import { createForeignObject, isForeignObject, getContainerId } from '../vnode/f
 import { LruCache } from '../utils/lru-cache';
 // SSR (Card 6): every `document` touch in this file goes through this guard.
 import { hasDocument } from '../platform';
+// Wave 8 (Card 3): the freeze / lazy-mount gate. Type-only — the renderer never
+// constructs one, so a host that does not use laziness does not link it in.
+import type { ViewLifecycle } from '../lazy/view-lifecycle';
+import type { EntityKind as LazyEntityKind } from '../lazy/types';
 
 // Import routing types
 import type { RoutedPath, RoutingAlgorithm } from '@grafloria/engine';
@@ -382,6 +386,25 @@ export class SVGRenderer implements IRenderer {
   // reads other links' points).
   private frameRoutes = new Map<string, RoutedPath>();
 
+  // --- Wave 8 — Card 3: deferred / lazy view instantiation -------------------
+
+  /** The gate between "culling says it is on screen" and "build its view". */
+  private viewLifecycle: ViewLifecycle | null = null;
+
+  /** What the gate held back on the last frame — the progressive mounter's work queue. */
+  private deferredThisFrame: Array<readonly [LazyEntityKind, string]> = [];
+
+  /**
+   * RAW routes (pre-nudge) captured during a progressive mount, so a later slice can
+   * replay a route instead of paying ~850ms to recompute it against 10k obstacles.
+   *
+   * It must be the RAW route, not `link.points`: channel nudging shifts the points
+   * it is given and writes them back, so replaying the SYNCED points would nudge an
+   * already-nudged path and the link would creep sideways one lane per slice.
+   * Lives only for the duration of a mount.
+   */
+  private mountRoutes = new Map<string, RoutedPath>();
+
   // Wave 6 — Card 5: per-frame multi-link spread lanes, keyed by PORT id. Every
   // link on a spreading port needs to know how many siblings it shares that port
   // with, so the lane assignment is computed once per port per frame rather than
@@ -632,7 +655,7 @@ export class SVGRenderer implements IRenderer {
     };
 
     // Get visible nodes using engine's SpatialIndex (viewport virtualization)
-    const visibleNodes = diagram.getVisibleNodes(visibleRect);
+    const culledNodes = diagram.getVisibleNodes(visibleRect);
 
     // Get visible links by GEOMETRY, through the engine's link SpatialIndex.
     // (This used to be "render the link only if BOTH endpoint nodes are visible",
@@ -643,7 +666,19 @@ export class SVGRenderer implements IRenderer {
     // argument: the two diverge once zoom != 1, and culling links against the
     // un-zoomed rect dropped on-screen links whenever the view was zoomed out
     // (which fit-to-content always does). Nodes above are culled the same way.
-    const visibleLinks = diagram.getVisibleLinks(this.expandForLinkCulling(visibleRect));
+    const culledLinks = diagram.getVisibleLinks(this.expandForLinkCulling(visibleRect));
+
+    // Wave 8 — Card 3: the MOUNT GATE. Culling has said what is on screen; the gate
+    // says what may have a VIEW. It can only ever subtract (a frozen entity, or one
+    // a progressive mount has not reached yet), never add — so the worst a gate can
+    // do is make something arrive a frame late, never draw something wrong.
+    //
+    // Everything it holds back is recorded, because that list IS the mounter's work
+    // queue: "what culling wanted and I did not give it".
+    const { nodes: visibleNodes, links: visibleLinks } = this.applyMountGate(
+      culledNodes,
+      culledLinks
+    );
 
     // Track counts
     this.lastNodeCount = visibleNodes.length;
@@ -937,6 +972,86 @@ export class SVGRenderer implements IRenderer {
     for (const key of this.vnodeCache.keys()) {
       if (key.startsWith(prefix)) this.vnodeCache.delete(key);
     }
+  }
+
+  // =========================================================================
+  // Wave 8 — Card 3: deferred / lazy view instantiation
+  // =========================================================================
+
+  /**
+   * Install the freeze / lazy-mount gate.
+   *
+   * With no lifecycle installed the renderer behaves exactly as it always has —
+   * every entity culling admits gets a view, on the frame it is admitted. That is
+   * the default, and it stays the default: laziness is something a host asks for.
+   */
+  setViewLifecycle(lifecycle: ViewLifecycle | null): void {
+    this.viewLifecycle?.setEvictHook(null);
+    this.viewLifecycle = lifecycle;
+    // A frozen entity must not keep a cached view — that is the whole point of
+    // freezing it, and a stale VNode in the LRU is exactly the leak autoFreeze
+    // exists to close.
+    lifecycle?.setEvictHook((kind, id) => this.dropCacheEntries(`${kind}-${id}`));
+  }
+
+  getViewLifecycle(): ViewLifecycle | null {
+    return this.viewLifecycle;
+  }
+
+  /**
+   * What culling admitted on the last frame and the gate held back.
+   *
+   * This is the progressive mounter's work queue, and it comes from the renderer
+   * rather than being recomputed by the mounter because the viewport→viewBox→cull
+   * maths (zoom, link margin) lives here and must not be reimplemented anywhere it
+   * could drift.
+   */
+  getDeferredEntities(): ReadonlyArray<readonly [LazyEntityKind, string]> {
+    return this.deferredThisFrame;
+  }
+
+  /**
+   * Subtract from what culling admitted: frozen entities, and — during a
+   * progressive mount — everything the mount has not reached yet.
+   */
+  private applyMountGate(
+    nodes: NodeModel[],
+    links: LinkModel[]
+  ): { nodes: NodeModel[]; links: LinkModel[] } {
+    const gate = this.viewLifecycle;
+    this.deferredThisFrame = [];
+
+    if (!gate) {
+      // The mount is over (or never happened): the replay cache is dead weight.
+      if (this.mountRoutes.size > 0) this.mountRoutes.clear();
+      return { nodes, links };
+    }
+
+    // autoFreeze diffs THIS frame's visible set against the last one, and drops the
+    // view of anything that left. Fed the CULLED sets — what is on screen — not the
+    // gated ones, or an entity deferred by a mount would look like it had left.
+    if (gate.isAutoFreeze()) {
+      const visible: Array<readonly ['node' | 'link', string]> = [];
+      for (const n of nodes) visible.push(['node', n.id]);
+      for (const l of links) visible.push(['link', l.id]);
+      gate.retainVisible(visible);
+    }
+
+    if (!gate.isDeferring() && this.mountRoutes.size > 0) this.mountRoutes.clear();
+
+    const admittedNodes: NodeModel[] = [];
+    for (const node of nodes) {
+      if (gate.admits('node', node.id)) admittedNodes.push(node);
+      else this.deferredThisFrame.push(['node', node.id] as const);
+    }
+
+    const admittedLinks: LinkModel[] = [];
+    for (const link of links) {
+      if (gate.admits('link', link.id)) admittedLinks.push(link);
+      else this.deferredThisFrame.push(['link', link.id] as const);
+    }
+
+    return { nodes: admittedNodes, links: admittedLinks };
   }
 
   /**
@@ -1516,13 +1631,39 @@ export class SVGRenderer implements IRenderer {
     // would visibly jump lanes as you pan.
     this.computeParallelSeparation();
 
+    const gate = this.viewLifecycle;
+    const mounting = gate?.isDeferring() === true;
+
     for (const link of sortedLinks) {
       if (this.linkHasManualWaypoints(link)) continue;
+
+      // Wave 8 — Card 3: a link routed by an EARLIER slice of the mount in progress
+      // replays that route instead of paying for it again. Without this, slice k
+      // re-routes everything slices 0..k-1 already routed and a 6.8s mount becomes a
+      // quadratic one — the progressive version would be SLOWER than the blocking one
+      // it replaced.
+      //
+      // Sound only while the scene holds still, and that is enforced, not assumed:
+      // any geometry event drops the seal (ProgressiveMounter → invalidateSettledRoutes)
+      // and these links are routed again from scratch on the next slice.
+      if (mounting && gate?.routeIsSettled?.(link.id)) {
+        const replay = this.mountRoutes.get(link.id);
+        if (replay) {
+          this.frameRoutes.set(link.id, replay);
+          this.syncLinkPoints(link, replay.points);
+          continue;
+        }
+      }
+
       const endpoints = this.getLinkEndpoints(link);
       if (!endpoints) continue;
       const routed = this.computeAutoRoute(link, endpoints);
       if (routed) {
         this.frameRoutes.set(link.id, routed);
+        // Keep the RAW route (channel nudging is applied after this pre-pass and
+        // writes its result back onto the link) so a replay re-nudges from the same
+        // starting geometry rather than compounding the nudge.
+        if (mounting) this.mountRoutes.set(link.id, routed);
         this.syncLinkPoints(link, routed.points);
       }
     }
