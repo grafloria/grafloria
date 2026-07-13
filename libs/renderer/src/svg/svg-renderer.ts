@@ -878,6 +878,32 @@ export class SVGRenderer implements IRenderer {
     return this.engine.getDiagram()?.shouldRender(feature, lod) ?? false;
   }
 
+  /**
+   * The node group's transform.
+   *
+   * wave4/interaction BUGFIX: `node.rotation` was DEAD in the renderer. The model
+   * had it (`setRotation`, `rotate`, it is serialized, and the hierarchy maths in
+   * `NodeModel.getGlobalPosition` factors it in), the canvas even branched on it
+   * (`hasTransformsInHierarchy`), but the SVG output only ever emitted
+   * `translate(x, y)` — so a rotated node rendered unrotated and the rotate tool
+   * would have had nothing to show. Rotation is about the box CENTRE, which is
+   * the convention `applyResizeToNode` (selection-tools) inverts when it resizes
+   * a rotated node.
+   */
+  private nodeTransform(node: NodeModel): string {
+    const translate = `translate(${node.position.x}, ${node.position.y})`;
+    const rotation = node.rotation || 0;
+    if (!rotation) return translate;
+    return `${translate} rotate(${rotation}, ${node.size.width / 2}, ${node.size.height / 2})`;
+  }
+
+  /** Accessible name of a node: its label, else "<type> node". */
+  private nodeAccessibleName(node: NodeModel): string {
+    const label = node.getMetadata('label');
+    if (typeof label === 'string' && label.trim().length > 0) return label;
+    return `${node.type} node`;
+  }
+
   private renderNode(node: NodeModel, lod: LODLevel): VNode {
     // PHASE 3: Skip HTML layer nodes entirely (React Flow style)
     // These nodes are rendered as HTML divs with handles in the HTML layer
@@ -931,10 +957,15 @@ export class SVGRenderer implements IRenderer {
       type: 'g',
       key: `node-${node.id}`,
       props: {
-        transform: `translate(${node.position.x}, ${node.position.y})`,
+        transform: this.nodeTransform(node),
         className: 'node-group',
         // Option 2: Add subtle transition effect
         style: isHovered ? { transition: 'all 0.2s ease' } : undefined,
+        // wave4/interaction (Card 7): the node is an accessible object, not
+        // decoration — a screen reader reads its name and selected state.
+        role: 'group',
+        'aria-label': this.nodeAccessibleName(node),
+        'aria-selected': isSelected ? 'true' : 'false',
       },
       children: [
         // Selection highlight (Phase 3.1: Shape-aware)
@@ -1061,9 +1092,12 @@ export class SVGRenderer implements IRenderer {
       type: 'g',
       key: `node-${node.id}`,
       props: {
-        transform: `translate(${node.position.x}, ${node.position.y})`,
+        transform: this.nodeTransform(node),
         className: 'node-group node-with-component',
         style: isHovered ? { transition: 'all 0.2s ease' } : undefined,
+        role: 'group',
+        'aria-label': this.nodeAccessibleName(node),
+        'aria-selected': isSelected ? 'true' : 'false',
       },
       children: [
         // Selection highlight (rendered behind foreignObject)
