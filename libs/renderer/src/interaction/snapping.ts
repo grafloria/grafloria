@@ -201,6 +201,26 @@ export class SnapController {
       if (typeof grid.snapToGrid === 'boolean') patch.snapToGrid = grid.snapToGrid;
       if (typeof grid.gridSize === 'number' && grid.gridSize > 0) patch.gridSize = grid.gridSize;
     }
+
+    // -------------------------------------------------------------------
+    // Wave 6 — the THIRD dead flag. `DiagramStore.snapEnabled` was declared,
+    // defaulted to `true`, and read by NOTHING (its siblings `gridEnabled` and
+    // `showMinimap` are now consumed by the Background and MiniMap components).
+    //
+    // It lives on DiagramStore, a DIFFERENT container from the InteractionConfig
+    // this method otherwise reads — which is exactly why nothing ever joined the
+    // two up. This is that join.
+    //
+    // SCOPE, precisely: it maps to `SnapConfig.enabled`, which gates the
+    // ALIGNMENT and EQUAL-SPACING guides (see computeSnap). GRID snap is a
+    // separate switch (`snapToGrid`, from the waypoint-editor config above) and
+    // is deliberately left alone — collapsing the two would silently change what
+    // `snapToGrid: true` means for every existing caller.
+    // -------------------------------------------------------------------
+    const store = engine?.getStore?.();
+    const snapEnabled = store?.get?.('snapEnabled');
+    if (typeof snapEnabled === 'boolean') patch.enabled = snapEnabled;
+
     this.updateConfig(patch);
   }
 
