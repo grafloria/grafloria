@@ -448,5 +448,30 @@ describe('LOD economics (wave8/culling — Card 4)', () => {
       expect(countType(low, 'text')).toBe(0);
       expect(countType(backToHigh, 'text')).toBeGreaterThan(0);
     });
+
+    // A coarse route is a STRAIGHT line, so it writes a SMALLER polyline into
+    // link.points than the real route did — which shrinks the link's bounding box
+    // in the spatial index. The frame you zoom back in on is culled against those
+    // shrunken bounds, before anything has re-routed. If that box were the whole
+    // story, a link whose real route detours outside its port-to-port box could
+    // blink out for one frame on zoom-in.
+    //
+    // It is not the whole story, and this pins both reasons: link bounds are the
+    // union of the points AND the live port endpoints (so the box is always
+    // anchored to where the edge really starts and ends), and the link query is
+    // padded by LINK_CULL_MARGIN. Belt and braces — an edge that vanishes for a
+    // frame is exactly the kind of "performance win" nobody wants.
+    test('no link is culled on the frame after zooming back in', () => {
+      let diagram: DiagramModel;
+      ({ engine, diagram } = scene(6));
+      renderer = new SVGRenderer(engine, { enableCaching: true }, LIGHT_THEME);
+
+      renderer.render(VIEWPORT, HIGH_ZOOM);
+      renderer.render(VIEWPORT, LOW_ZOOM); // coarse routes shrink every link's bounds
+      const backToHigh = renderer.render(VIEWPORT, HIGH_ZOOM);
+
+      const linksLayer = backToHigh.children![0];
+      expect(linksLayer.children!.length).toBe(diagram.getLinks().length);
+    });
   });
 });
