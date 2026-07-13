@@ -73,6 +73,17 @@ import { nudgePortLabels, portLabelGeometry, renderPortLabel } from './port-labe
 import { applySpread, assignSpreadLanes, resolveSpot } from './port-spots';
 import { portTypeColor, resolvePortConfig } from '@grafloria/engine';
 import type { ResolvedPortConfig } from '@grafloria/engine';
+// Wave 6 — Card 2: the link-pipeline extension seams (anchors, connection-point
+// strategies, connectors). The renderer CONSUMES these registries; it does not
+// own them. See ext/link-pipeline.ts for the contract.
+import {
+  getAnchor,
+  getConnectionPoint,
+  getConnector,
+  hasConnector,
+  onLinkPipelineChange,
+} from '../ext/link-pipeline';
+import { onShapeRegistryChange } from './shape-registry';
 
 // Nodes & shapes foundation: unified shape registry / geometry contract.
 // The five shape switch sites below (renderNodeShape, renderSelectionHighlight,
@@ -363,6 +374,9 @@ export class SVGRenderer implements IRenderer {
 
   /** Unsubscribe from the edge-template registry (Card 5). */
   private unsubscribeEdgeTemplates?: () => void;
+  /** Wave 6 — Card 2/0: cache invalidation for the link pipeline + shape registry. */
+  private unsubscribeLinkPipeline?: () => void;
+  private unsubscribeShapeRegistry?: () => void;
 
   // Per-frame paint-server defs (Styling & theming — Card 2). Keyed by the
   // stable spec hash so identical gradient/pattern/shadow specs share ONE
@@ -392,6 +406,9 @@ export class SVGRenderer implements IRenderer {
       useCSSMode: config.useCSSMode ?? true,
       linkHitAreaWidth: config.linkHitAreaWidth ?? 12,
       smartConnectionPoints: config.smartConnectionPoints ?? false,
+      // Wave 6 — Card 2: the registered connection-point strategy (supersedes,
+      // but does not break, the boolean above).
+      connectionPoint: config.connectionPoint,
       // Wave 4 (SSR): an explicit scope makes the root <svg> deterministic across
       // processes; without it the per-process counter would emit a different
       // `data-grafloria-instance` on the server than on the client.
@@ -498,6 +515,23 @@ export class SVGRenderer implements IRenderer {
     // invalidate the cache for exactly the same reason a named style does.
     this.unsubscribeEdgeTemplates = onEdgeTemplateChange(() =>
       this.invalidateStyles('edge-templates-changed')
+    );
+
+    // Wave 6 — Card 2: a connector's OUTPUT (the whole path `d`), an anchor's
+    // endpoint and a connection-point strategy's geometry are all baked into the
+    // cached link VNode, for exactly the same reason a link template's output is.
+    // Without this, UNLOADING an extension left its connector's path on screen —
+    // the registry was empty but the cache still held the picture it drew. Caught
+    // by the e2e (`node libs/renderer/e2e/ext-run.mjs`), not by any unit test.
+    this.unsubscribeLinkPipeline = onLinkPipelineChange(() =>
+      this.invalidateStyles('link-pipeline-changed')
+    );
+
+    // Wave 6: same argument for SHAPES. The shape registry had no change signal
+    // at all before this wave, so a shape registered (or unregistered) after a
+    // node was cached could not invalidate it.
+    this.unsubscribeShapeRegistry = onShapeRegistryChange(() =>
+      this.invalidateStyles('shape-registry-changed')
     );
 
     // Subscribe to engine events
@@ -1139,6 +1173,15 @@ export class SVGRenderer implements IRenderer {
     // …and for edge-template (re)definitions (Card 5)
     this.unsubscribeEdgeTemplates?.();
     this.unsubscribeEdgeTemplates = undefined;
+
+    // Wave 6: these are module-GLOBAL registries, so a renderer that failed to
+    // unsubscribe would keep a dead instance alive and repaint it forever —
+    // precisely the leak the "every register() returns a disposer" rule exists
+    // to prevent.
+    this.unsubscribeLinkPipeline?.();
+    this.unsubscribeLinkPipeline = undefined;
+    this.unsubscribeShapeRegistry?.();
+    this.unsubscribeShapeRegistry = undefined;
 
     // Stop following the OS colour scheme / contrast preferences.
     this.colorModeController?.dispose();
@@ -2864,113 +2907,150 @@ export class SVGRenderer implements IRenderer {
 
     if (!sourcePort || !targetPort) return null;
 
-    // Smart connection points (optional): FLOATING attachment, draw.io-style.
-    // The side is picked from the nodes' relative positions, and the exact
-    // attachment point SLIDES along that edge to line up with the other node —
-    // aligned nodes get a dead-straight line instead of a stair-step jog.
-    // Purely visual: the link's assigned ports are untouched and win again
-    // the moment the option is turned off.
-    if (this.config.smartConnectionPoints) {
-      const srcPos = sourceNode.getWorldPosition();
-      const tgtPos = targetNode.getWorldPosition();
-      const s = { x: srcPos.x, y: srcPos.y, w: sourceNode.size.width, h: sourceNode.size.height };
-      const t = { x: tgtPos.x, y: tgtPos.y, w: targetNode.size.width, h: targetNode.size.height };
-      const sc = { x: s.x + s.w / 2, y: s.y + s.h / 2 };
-      const tc = { x: t.x + t.w / 2, y: t.y + t.h / 2 };
-      const dx = tc.x - sc.x;
-      const dy = tc.y - sc.y;
-      const horizontal = Math.abs(dx) >= Math.abs(dy);
-      const srcSide: 'left' | 'right' | 'top' | 'bottom' = horizontal ? (dx >= 0 ? 'right' : 'left') : (dy >= 0 ? 'bottom' : 'top');
-      const tgtSide: 'left' | 'right' | 'top' | 'bottom' = horizontal ? (dx >= 0 ? 'left' : 'right') : (dy >= 0 ? 'top' : 'bottom');
-
-      const PAD = 10; // keep the attachment off the node corners
-      const clamp = (v: number, lo: number, hi: number) => Math.max(lo, Math.min(hi, v));
-
-      // Cross-axis coordinate for each end. When the two nodes' spans overlap
-      // on that axis, BOTH ends share one coordinate inside the overlap — that
-      // is what makes near-aligned nodes connect with a dead-straight line.
-      let srcCross: number;
-      let tgtCross: number;
-      if (horizontal) {
-        const lo = Math.max(s.y, t.y) + PAD;
-        const hi = Math.min(s.y + s.h, t.y + t.h) - PAD;
-        if (lo <= hi) {
-          srcCross = tgtCross = clamp((sc.y + tc.y) / 2, lo, hi);
-        } else {
-          srcCross = clamp(tc.y, s.y + PAD, s.y + s.h - PAD);
-          tgtCross = clamp(sc.y, t.y + PAD, t.y + t.h - PAD);
-        }
-      } else {
-        const lo = Math.max(s.x, t.x) + PAD;
-        const hi = Math.min(s.x + s.w, t.x + t.w) - PAD;
-        if (lo <= hi) {
-          srcCross = tgtCross = clamp((sc.x + tc.x) / 2, lo, hi);
-        } else {
-          srcCross = clamp(tc.x, s.x + PAD, s.x + s.w - PAD);
-          tgtCross = clamp(sc.x, t.x + PAD, t.x + t.w - PAD);
-        }
-      }
-
-      let start = this.shapeEdgePoint(sourceNode, s, srcSide, srcCross);
-      let end = this.shapeEdgePoint(targetNode, t, tgtSide, tgtCross);
-
-      // VISIBLE ports are the contract: when the node shows ports on the
-      // chosen side, snap to the closest one instead of floating freely.
-      // Floating attachment only applies while ports are hidden.
-      const srcSnap = this.nearestVisiblePort(sourceNode, srcSide, start);
-      const tgtSnap = this.nearestVisiblePort(targetNode, tgtSide, end);
-      if (srcSnap) start = srcSnap;
-      if (tgtSnap) end = tgtSnap;
-      // If only one end snapped, re-aim the floating end at the snapped point
-      // so aligned layouts still get a straight line
-      if (srcSnap && !tgtSnap) {
-        end = this.shapeEdgePoint(targetNode, t, tgtSide, horizontal
-          ? clamp(start.y, t.y + PAD, t.y + t.h - PAD)
-          : clamp(start.x, t.x + PAD, t.x + t.w - PAD));
-      } else if (tgtSnap && !srcSnap) {
-        start = this.shapeEdgePoint(sourceNode, s, srcSide, horizontal
-          ? clamp(end.y, s.y + PAD, s.y + s.h - PAD)
-          : clamp(end.x, s.x + PAD, s.x + s.w - PAD));
-      }
-
-      this.frameSmartSides.set(link.id, { source: srcSide, target: tgtSide });
-      return {
-        start,
-        end,
-        sourceDirection: srcSide,
-        targetDirection: tgtSide,
-      };
-    } else {
-      this.frameSmartSides.delete(link.id);
-    }
-
-    // CRITICAL FIX: Use getPortPositionForShape() for consistent positioning
-    // This ensures links connect to the same positions where ports are rendered
+    // ---------------------------------------------------------------------
+    // The DEFAULT (port-based) endpoints. Computed FIRST, because a
+    // connection-point strategy receives them as `defaults` — a strategy that
+    // only wants to nudge the default must not have to recompute it.
+    //
+    // CRITICAL FIX (unchanged): use getPortPositionForShape() for consistent
+    // positioning, so links connect exactly where the ports are rendered.
+    // ---------------------------------------------------------------------
     const sourceLocalPos = getPortPositionForShape(sourcePort, sourceNode);
     const targetLocalPos = getPortPositionForShape(targetPort, targetNode);
 
-    // Convert from local (node-relative) to world coordinates
-    // CRITICAL FIX: Use getWorldPosition() for child nodes to get correct absolute coordinates
     const sourceWorldPos = sourceNode.getWorldPosition();
     const targetWorldPos = targetNode.getWorldPosition();
 
-    const sourceAnchor = {
-      x: sourceWorldPos.x + sourceLocalPos.x,
-      y: sourceWorldPos.y + sourceLocalPos.y,
-    };
-    const targetAnchor = {
-      x: targetWorldPos.x + targetLocalPos.x,
-      y: targetWorldPos.y + targetLocalPos.y,
+    // =====================================================================
+    // Wave 6 MERGE — two concurrent tracks rewrote this function; both are
+    // required, so they are composed into ONE pipeline with explicit precedence:
+    //
+    //   1. CONNECTION-POINT STRATEGY (wave6/ext, Card 2) — a whole-link
+    //      strategy that decides both endpoints together (the draw.io-style
+    //      floating attachment used to be inlined here as a boolean; it is now
+    //      the registered 'smart' strategy, ported verbatim, and the boolean
+    //      merely selects it by name). A strategy that returns a result OWNS
+    //      both ends: it attaches to the shape OUTLINE, not to a port glyph, so
+    //      port spots/spread are meaningless there and are not applied.
+    //      Returning null = DECLINED → fall through.
+    //
+    //   2. per-end registered ANCHOR (wave6/ext, Card 2) — an explicit,
+    //      per-link override of where ONE end attaches. Being explicit and
+    //      per-link, it outranks the port's own attachment config.
+    //
+    //   3. port ATTACHMENT: fromSpot/toSpot + multi-link SPREAD (wave6/ports,
+    //      Card 5) — how THIS port hands out its attachment points when the
+    //      link has not overridden them.
+    //
+    // With nothing configured, every branch collapses to the port's plain anchor
+    // and side: the exact pre-wave-6 endpoints, to the bit.
+    // =====================================================================
+    const defaults = {
+      start: {
+        x: sourceWorldPos.x + sourceLocalPos.x,
+        y: sourceWorldPos.y + sourceLocalPos.y,
+      },
+      end: {
+        x: targetWorldPos.x + targetLocalPos.x,
+        y: targetWorldPos.y + targetLocalPos.y,
+      },
+      sourceDirection: sourcePort.alignment.side,
+      targetDirection: targetPort.alignment.side,
     };
 
-    // Wave 6 (Card 5): attachment SPOTS and multi-link SPREADING.
-    //
-    // This is the seam the routers already consume — we hand them a `start`, an
-    // `end` and two directions, exactly as before. No router is touched: the
-    // renderer decides WHERE a link touches a port, the routing engine decides
-    // how it gets there.
-    const source = this.portAttachment(link, sourcePort, sourceNode, sourceAnchor, 'source');
-    const target = this.portAttachment(link, targetPort, targetNode, targetAnchor, 'target');
+    const sourceRect = {
+      x: sourceWorldPos.x,
+      y: sourceWorldPos.y,
+      w: sourceNode.size.width,
+      h: sourceNode.size.height,
+    };
+    const targetRect = {
+      x: targetWorldPos.x,
+      y: targetWorldPos.y,
+      w: targetNode.size.width,
+      h: targetNode.size.height,
+    };
+
+    // ---- 1. connection-point strategy (owns BOTH ends when it accepts) ----
+    const strategyName =
+      (typeof link.getMetadata === 'function'
+        ? (link.getMetadata('connectionPoint') as string | undefined)
+        : undefined) ??
+      this.config.connectionPoint ??
+      (this.config.smartConnectionPoints ? 'smart' : undefined);
+
+    const strategy = strategyName ? getConnectionPoint(strategyName) : undefined;
+
+    if (strategy) {
+      const result = strategy({
+        link,
+        source: { node: sourceNode, port: sourcePort, rect: sourceRect },
+        target: { node: targetNode, port: targetPort, rect: targetRect },
+        defaults,
+        boundaryPoint: (node, rect, side, cross) => this.shapeEdgePoint(node, rect, side, cross),
+        nearestVisiblePort: (node, side, near) => this.nearestVisiblePort(node, side, near),
+      });
+
+      // `null` = the strategy DECLINED (what the built-in 'port' strategy does).
+      if (result) {
+        this.frameSmartSides.set(link.id, {
+          source: result.sourceDirection ?? defaults.sourceDirection,
+          target: result.targetDirection ?? defaults.targetDirection,
+        });
+        return {
+          start: result.start,
+          end: result.end,
+          sourceDirection: result.sourceDirection ?? defaults.sourceDirection,
+          targetDirection: result.targetDirection ?? defaults.targetDirection,
+        };
+      }
+    }
+
+    this.frameSmartSides.delete(link.id);
+
+    // ---- 2. per-end registered anchor (explicit per-link override) ----
+    const applyAnchor = (
+      which: 'source' | 'target'
+    ): { point: { x: number; y: number }; side?: 'left' | 'right' | 'top' | 'bottom' } | null => {
+      if (typeof link.getMetadata !== 'function') return null;
+      const name = link.getMetadata(which === 'source' ? 'sourceAnchor' : 'targetAnchor') as
+        | string
+        | undefined;
+      if (!name) return null;
+      const anchor = getAnchor(name);
+      if (!anchor) return null;
+
+      const self =
+        which === 'source'
+          ? { node: sourceNode, port: sourcePort, rect: sourceRect }
+          : { node: targetNode, port: targetPort, rect: targetRect };
+      const other =
+        which === 'source'
+          ? { node: targetNode, port: targetPort, rect: targetRect }
+          : { node: sourceNode, port: sourcePort, rect: sourceRect };
+
+      return anchor({
+        end: self,
+        other,
+        link,
+        defaultPoint: which === 'source' ? defaults.start : defaults.end,
+        args:
+          (link.getMetadata(
+            which === 'source' ? 'sourceAnchorArgs' : 'targetAnchorArgs'
+          ) as Record<string, unknown> | undefined) ?? {},
+      });
+    };
+
+    const sourceAnchored = applyAnchor('source');
+    const targetAnchored = applyAnchor('target');
+
+    // ---- 3. port attachment: spots + spread (only where 2 did not override) ----
+    const source = sourceAnchored
+      ? { point: sourceAnchored.point, direction: sourceAnchored.side ?? defaults.sourceDirection }
+      : this.portAttachment(link, sourcePort, sourceNode, defaults.start, 'source');
+    const target = targetAnchored
+      ? { point: targetAnchored.point, direction: targetAnchored.side ?? defaults.targetDirection }
+      : this.portAttachment(link, targetPort, targetNode, defaults.end, 'target');
 
     return {
       start: source.point,
@@ -2981,8 +3061,8 @@ export class SVGRenderer implements IRenderer {
   }
 
   /**
-   * Wave 6 (Card 5): resolve where `link` attaches to `port`, and which way it
-   * travels there.
+   * Wave 6 (ports, Card 5): resolve where `link` attaches to `port`, and which way
+   * it travels there.
    *
    * Two effects compose:
    *   * the port's `fromSpot`/`toSpot` moves the attachment onto a named point of
@@ -3094,11 +3174,42 @@ export class SVGRenderer implements IRenderer {
       case 'avoid':
         return 'a-star';
       default:
-        // 'manhattan', 'elk', and any custom registration resolve by NAME
-        // against the RoutingEngine registry; an unknown name falls back to
-        // the engine's default inside route(), not here.
-        return router as RoutingAlgorithm;
+        // 'manhattan' and any CUSTOM registration resolve by NAME against the
+        // RoutingEngine registry.
+        //
+        // Wave 6 BUG FIX. This comment used to claim "an unknown name falls back
+        // to the engine's default inside route()". It does not: `route()` THROWS
+        // (`Router 'x' not found`), and it throws a SECOND way for 'elk' ("ELK
+        // router is async. Use routeAsync()") — even though 'elk' is an
+        // advertised value of the public `LinkRouterName` union. The renderer has
+        // zero try/catch, so `router: 'elk'`, or any typo, took the whole render
+        // loop down. The fallback the comment promised is now real, and it lives
+        // HERE, where we can still choose a sane algorithm.
+        return this.resolveRouterName(router);
     }
+  }
+
+  /**
+   * Wave 6: validate a router NAME against the live RoutingEngine registry.
+   * Unknown names — and the async-only 'elk' — degrade to 'orthogonal' instead
+   * of throwing out of the render loop. A diagram with one bad router name must
+   * still draw; it must not blank the canvas.
+   */
+  private resolveRouterName(router: string): RoutingAlgorithm {
+    // ELK is async-only: `route()` (the synchronous path the renderer uses)
+    // throws on it by design. Render the elbow geometry instead of dying; a host
+    // that wants true ELK geometry pre-computes it via routeAsync().
+    if (router === 'elk') return 'orthogonal';
+
+    try {
+      const available = this.engine.getRoutingEngine?.()?.getAvailableAlgorithms?.();
+      if (Array.isArray(available) && available.length > 0 && !available.includes(router)) {
+        return 'orthogonal';
+      }
+    } catch {
+      // Engine did not expose the registry — fall through and trust the name.
+    }
+    return router as RoutingAlgorithm;
   }
 
   /**
@@ -3111,6 +3222,41 @@ export class SVGRenderer implements IRenderer {
   private isOrthogonalRouting(link: LinkModel): boolean {
     const algo = this.routerForLink(link);
     return algo === 'orthogonal' || algo === 'manhattan' || algo === 'a-star' || algo === 'dijkstra';
+  }
+
+  /**
+   * Wave 6 — Card 2. If this link names a REGISTERED connector, let it draw the
+   * whole path; otherwise return null and the built-in branches run untouched.
+   *
+   * ONE implementation, called from BOTH places a link's `d` is produced (the
+   * auto-routed branch via `convertRoutedPathToSVG`, and the manual-waypoint
+   * branch via `generatePathData`) — so a custom connector cannot work on one
+   * kind of link and silently not the other.
+   *
+   * The four BUILT-IN connector names never reach the registry: they are the
+   * renderer's own branches and stay exactly as they were.
+   */
+  private customConnectorPath(
+    link: LinkModel,
+    points: Array<{ x: number; y: number }>,
+    style?: Partial<LinkStyle>,
+    pathType?: string
+  ): string | null {
+    if (typeof link.effectiveConnector !== 'function') return null;
+    if (points.length < 2) return null;
+
+    const name = link.effectiveConnector();
+    if (!name || !hasConnector(name)) return null;
+
+    const connector = getConnector(name);
+    if (!connector) return null;
+
+    return connector({
+      points,
+      link,
+      style: style ?? link.style,
+      cornerRadius: this.resolveCornerRadius(style ?? link.style, pathType ?? link.pathType),
+    });
   }
 
   /**
@@ -3418,14 +3564,21 @@ export class SVGRenderer implements IRenderer {
 
       if (routedPath) {
         points = routedPath.points;
-        pathData = this.convertRoutedPathToSVG(
-          routedPath,
-          this.renderPathType(link),   // Card 0: the CONNECTOR draws the polyline
-          endpoints.sourceDirection,
-          endpoints.targetDirection,
-          this.linkOwnNodes(link),
-          link.style           // Wave 3: per-link cornerRadius / curvature
-        );
+        // Wave 6 — Card 2: a REGISTERED connector owns the polyline → `d` step.
+        // This is the MAIN link path (auto-routed, no manual waypoints), so the
+        // hook has to live here as well as in generatePathData — that one only
+        // serves the manual-waypoint branch, and a connector that worked for
+        // dragged links but not for ordinary ones would be worse than none.
+        pathData =
+          this.customConnectorPath(link, points) ??
+          this.convertRoutedPathToSVG(
+            routedPath,
+            this.renderPathType(link),   // Card 0: the CONNECTOR draws the polyline
+            endpoints.sourceDirection,
+            endpoints.targetDirection,
+            this.linkOwnNodes(link),
+            link.style           // Wave 3: per-link cornerRadius / curvature
+          );
         this.syncLinkPoints(link, points);
       } else {
         // All routing strategies failed: hide invalid connection
@@ -3532,11 +3685,13 @@ export class SVGRenderer implements IRenderer {
         }
 
         points = allRoutedPoints;
-        pathData = this.generatePathData(allRoutedPoints, link.segments, this.renderPathType(link), link.style);
+        // Wave 6: `link` is passed so a REGISTERED connector can claim the
+        // polyline → `d` step (see generatePathData).
+        pathData = this.generatePathData(allRoutedPoints, link.segments, this.renderPathType(link), link.style, link);
       } else {
         // For non-orthogonal paths or no waypoints, use the (endpoint-refreshed)
         // points as-is
-        pathData = this.generatePathData(points, link.segments, this.renderPathType(link), link.style);
+        pathData = this.generatePathData(points, link.segments, this.renderPathType(link), link.style, link);
       }
     }
 
@@ -4202,10 +4357,27 @@ export class SVGRenderer implements IRenderer {
     points: Array<{ x: number; y: number }>,
     segments?: any[],
     pathType?: string,
-    style?: Partial<LinkStyle>
+    style?: Partial<LinkStyle>,
+    link?: LinkModel
   ): string {
     if (points.length === 0) return '';
     if (points.length === 1) return `M ${points[0].x} ${points[0].y}`;
+
+    // -----------------------------------------------------------------------
+    // Wave 6 — Card 2: a REGISTERED CONNECTOR owns the polyline → `d` step.
+    //
+    // `LinkConnectorName` is `'straight' | 'rounded' | 'smooth' | 'bezier' |
+    // (string & {})` — that last arm publicly advertises custom connectors, but
+    // the renderer's switch silently fell through to `link.pathType` for any
+    // name it did not recognise. Setting `connector: 'my-connector'` produced no
+    // error and no effect. It is a real registry now, consulted by name.
+    //
+    // The four BUILT-IN names are deliberately NOT in the registry: they remain
+    // the renderer's own branches below, untouched, so nothing that already
+    // worked changes.
+    // -----------------------------------------------------------------------
+    const custom = link ? this.customConnectorPath(link, points, style, pathType) : null;
+    if (custom !== null) return custom;
 
     // If segments exist and contain curve information, use them
     if (segments && segments.length > 0 && segments[0].type === 'curve') {

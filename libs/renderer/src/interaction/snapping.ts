@@ -8,8 +8,11 @@ import {
   evaluatePortConnection,
 } from '@grafloria/engine';
 import type { Rectangle } from '../types/geometry.types';
-// Wave 6: THE port-position function — what the renderer actually draws.
+// Wave 6 (ports): THE port-position function — what the renderer actually draws.
 import { portWorldPosition } from '../svg/port-positioning';
+// Wave 6 (extensibility) — Card 5: the host's connection-validation hook. Consumed
+// by canConnectPorts below, the one gate every renderer connect path shares.
+import { isValidConnection } from '../ext/tools';
 
 /**
  * SnapController — alignment snaplines, equal-spacing guides, grid snap,
@@ -136,13 +139,36 @@ export function canConnectPorts(
   engine: DiagramEngine,
   diagram: { getLinks(): LinkModel[] }
 ): boolean {
-  return evaluatePortConnection(a, b, {
+  // Wave 6 MERGE of two concurrent tracks, composed rather than picked:
+  //
+  //   • wave6/ports made evaluatePortConnection() the ONE authority on the
+  //     ENGINE's rules (direction, type, maxConnections/from-to limits,
+  //     duplicates, self-link, connection groups). Before it, three code paths
+  //     disagreed: the drag never checked maxConnections, snapping never heard
+  //     of it, only snapping knew about duplicates.
+  //   • wave6/ext added the HOST's `isValidConnection` hook — no engine rule can
+  //     express a DOMAIN rule ("an Order may not connect straight to an
+  //     Invoice"), and a host had no way to inject one.
+  //
+  // Both are required, and the order matters: engine rules first (they are the
+  // cheap, total ones and they produce the REASON the invalid cue displays),
+  // then the host's veto. A host hook cannot resurrect a connection the engine
+  // forbids — it can only refuse one the engine would have allowed.
+  const engineVerdict = evaluatePortConnection(a, b, {
     sourceNode: nodeA,
     targetNode: nodeB,
     links: diagram.getLinks(),
     rejectDuplicatesByDefault: true,
     validators: [(source, target) => isConnectionAllowedByGroup(source, target, engine)],
-  }).ok;
+  });
+  if (!engineVerdict.ok) return false;
+
+  return isValidConnection({
+    sourceNode: nodeA,
+    sourcePort: a,
+    targetNode: nodeB,
+    targetPort: b,
+  }).valid;
 }
 
 const edgesOf = (r: Rectangle) => ({
@@ -192,6 +218,26 @@ export class SnapController {
       if (typeof grid.snapToGrid === 'boolean') patch.snapToGrid = grid.snapToGrid;
       if (typeof grid.gridSize === 'number' && grid.gridSize > 0) patch.gridSize = grid.gridSize;
     }
+
+    // -------------------------------------------------------------------
+    // Wave 6 — the THIRD dead flag. `DiagramStore.snapEnabled` was declared,
+    // defaulted to `true`, and read by NOTHING (its siblings `gridEnabled` and
+    // `showMinimap` are now consumed by the Background and MiniMap components).
+    //
+    // It lives on DiagramStore, a DIFFERENT container from the InteractionConfig
+    // this method otherwise reads — which is exactly why nothing ever joined the
+    // two up. This is that join.
+    //
+    // SCOPE, precisely: it maps to `SnapConfig.enabled`, which gates the
+    // ALIGNMENT and EQUAL-SPACING guides (see computeSnap). GRID snap is a
+    // separate switch (`snapToGrid`, from the waypoint-editor config above) and
+    // is deliberately left alone — collapsing the two would silently change what
+    // `snapToGrid: true` means for every existing caller.
+    // -------------------------------------------------------------------
+    const store = engine?.getStore?.();
+    const snapEnabled = store?.get?.('snapEnabled');
+    if (typeof snapEnabled === 'boolean') patch.enabled = snapEnabled;
+
     this.updateConfig(patch);
   }
 
