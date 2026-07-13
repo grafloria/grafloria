@@ -66,6 +66,16 @@ import {
 } from '../layout/layout-registry';
 import { DEFAULT_LAYOUT_SEED } from '../layout/rng';
 import { createLayeredLayout } from '../layout/sugiyama/layered-layout';
+import {
+  alignToPrevious,
+  constraintsForStrategy,
+  measureMovement,
+  planTween,
+  type IncrementalOptions,
+  type MovementReport,
+  type Positions,
+  type TweenPlan,
+} from '../layout/incremental/mental-map';
 // Wave 7 — Card 4: nested container / subgraph layout.
 import { CompoundLayoutService } from '../layout/CompoundLayoutService';
 import type { LayoutType, LayoutConfig, FlexItemConfig, GridItemConfig } from '../types/layout.types'; // Phase 1.7
@@ -2233,6 +2243,96 @@ export class DiagramEngine {
     }
 
     return { ...result, algorithm: name, seed };
+  }
+
+  /**
+   * Wave 7 — Card 6: mental-map-preserving incremental layout.
+   *
+   * Re-lay-out after an edit while moving as little as possible.
+   *
+   *     await engine.layoutIncremental({ changed: [newNode.id], budget: { maxPerNode: 60 } });
+   *
+   * Mermaid re-renders the whole diagram from scratch on every edit and destroys the
+   * user's spatial memory of their own diagram. This does the opposite, in three
+   * steps (see layout/incremental/mental-map.ts):
+   *
+   *   1. everything outside the affected region becomes a Card-5 ANCHOR — an
+   *      immovable obstacle the layout works AROUND (impossible before Card 5, when
+   *      "constraints" were positions clamped after an unconstrained run);
+   *   2. the result is RE-ALIGNED onto the previous layout by matching centroids,
+   *      which is exactly the translation that minimises squared displacement — a
+   *      layered layout is only defined up to translation, so one new node widening
+   *      a rank can shift the whole drawing sideways and make every node "move"
+   *      while the picture is unchanged;
+   *   3. movement is MEASURED against an explicit budget and reported.
+   *
+   * Returns a tween PLAN rather than animating: the engine says where things go at
+   * time t, the host drives t. That is what keeps this runnable in a worker, in SSR,
+   * and in a test.
+   */
+  async layoutIncremental(
+    options: IncrementalOptions & { name?: string } & UnifiedLayoutOptions = {}
+  ): Promise<UnifiedLayoutResult & { movement: MovementReport; tween: TweenPlan }> {
+    if (!this.diagram) throw new Error('No diagram loaded');
+
+    // The baseline EXCLUDES the nodes the caller just added/changed.
+    //
+    // A node the user has only now created has no meaningful "previous position" —
+    // it is sitting at wherever the model defaulted it (usually 0,0). Counting it
+    // is not merely a cosmetic error in the movement report: it drags the CENTROID,
+    // so the re-alignment translates the entire diagram to accommodate a position
+    // that never meant anything. (Caught by the pin-existing test: the anchors held
+    // perfectly, and then my own alignment shifted all three pinned nodes by
+    // (-37.5, -32.5).)
+    const changed = new Set(options.changed ?? []);
+    const before: Positions = new Map(
+      this.diagram
+        .getNodes()
+        .filter((n) => !changed.has(n.id))
+        .map((n) => [n.id, { x: n.position.x, y: n.position.y }])
+    );
+
+    const semantic = constraintsForStrategy(this.diagram, before, options);
+
+    const result = await this.layout(options.name ?? 'layered', {
+      ...options,
+      semantic,
+    } as UnifiedLayoutOptions);
+
+    // Re-align onto the previous picture — but ONLY when the layout was free.
+    //
+    // Alignment exists to cancel the ARBITRARY translation of a free layout: a
+    // layered drawing is defined only up to translation, so one new node widening a
+    // rank slides the whole picture sideways and every node "moves" although nothing
+    // changed. Matching centroids removes exactly that.
+    //
+    // But if ANY node is anchored, the frame of reference is already pinned to the
+    // previous layout — and translating on top of that DRAGS THE ANCHORED NODES,
+    // which is the one thing they exist to prevent. (Found by the region test: `a`
+    // legitimately moved, which shifted the centroid, and the alignment then pulled
+    // the three frozen nodes 32.5px along with it.) Anchored layouts are already
+    // aligned by construction; aligning them again is double-correcting.
+    const raw = new Map(result.nodePositions);
+    const anchored = Object.keys(semantic.anchors ?? {}).length > 0;
+
+    const naive = measureMovement(before, raw, options.budget);
+    const aligned = anchored ? raw : alignToPrevious(raw, before).positions;
+    const settled = measureMovement(before, aligned, options.budget);
+    const movement: MovementReport = {
+      ...settled,
+      savedByAlignment: Math.max(0, naive.total - settled.total),
+    };
+
+    for (const [id, p] of aligned) {
+      this.diagram.getNode(id)?.setPosition(p.x, p.y);
+    }
+
+    return {
+      ...result,
+      nodePositions: aligned,
+      movement,
+      tween: planTween(before, aligned),
+    };
   }
 
   /**

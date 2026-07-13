@@ -667,13 +667,34 @@ export function sugiyama(
     height: vertical ? n.height : n.width,
   }));
 
+  // ANCHORS LIVE IN WORLD SPACE; the pipeline runs in TB space.
+  //
+  // The algorithm has exactly one free axis — the IN-LAYER coordinate — because the
+  // other one IS the rank, and rank comes from the graph, not from the caller. In TB
+  // the in-layer axis is world-x; in LR it is world-y. Handing `anchor.x` straight to
+  // the coordinate pass therefore pins the wrong axis the moment direction inference
+  // picks LR — and it does that for exactly the graphs (long chains) where a user is
+  // most likely to be nudging nodes around. Caught by the region test: the x anchors
+  // held perfectly and every node still slid 385px down the page.
+  const tbConstraints: SemanticConstraints | undefined = constraints
+    ? {
+        ...constraints,
+        anchors: Object.fromEntries(
+          Object.entries(constraints.anchors ?? {}).map(([id, a]) => [
+            id,
+            vertical ? { x: a.x, y: a.y } : { x: a.y, y: a.x },
+          ])
+        ),
+      }
+    : undefined;
+
   const g = buildGraph(measured, edges);
   const reversed = breakCycles(g);
-  const ranks = assignRanks(g, constraints);
+  const ranks = assignRanks(g, tbConstraints);
   const { layers, chains } = normalise(g, ranks, edges);
   const adj = layerAdjacency(g, ranks, edges, chains);
-  const { layers: ordered, crossings } = orderLayers(layers, adj, constraints, iterations);
-  const xs = assignCoordinates(ordered, adj, nodeSpacing, constraints, iterations);
+  const { layers: ordered, crossings } = orderLayers(layers, adj, tbConstraints, iterations);
+  const xs = assignCoordinates(ordered, adj, nodeSpacing, tbConstraints, iterations);
 
   // rank -> y (TB space): stacked by the tallest node in each layer
   const layerY: number[] = [];

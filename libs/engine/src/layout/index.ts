@@ -66,6 +66,9 @@ export * from './elk-layout-adapter';
 export * from './layout.service';
 export * from './layout-registry'; // Wave 7 Card 0
 export * from './rng'; // Wave 7 Card 0
+export * from './sugiyama/sugiyama'; // Wave 7 Cards 1 & 5
+export * from './sugiyama/layered-layout'; // Wave 7 Cards 1 & 5
+export * from './incremental/mental-map'; // Wave 7 Card 6
 
 // Phase 3: Advanced layout features
 export * from './port-aware-layout.interface';
