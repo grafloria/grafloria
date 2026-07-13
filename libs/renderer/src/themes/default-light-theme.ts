@@ -25,7 +25,7 @@ export const LIGHT_THEME: Theme = {
     node: {
       default: {
         fill: '#ffffff',
-        stroke: '#d1d5db',
+        stroke: '#6b7280',
       },
       selected: {
         fill: '#eff6ff',
@@ -33,7 +33,7 @@ export const LIGHT_THEME: Theme = {
       },
       highlighted: {
         fill: '#fef3c7',
-        stroke: '#f59e0b',
+        stroke: '#b45309',
       },
       hovered: {
         fill: '#f9fafb',
@@ -50,16 +50,16 @@ export const LIGHT_THEME: Theme = {
     },
 
     link: {
-      default: '#9ca3af',
+      default: '#6b7280',
       selected: '#2563eb',
-      highlighted: '#f59e0b',
+      highlighted: '#b45309',
       hovered: '#6b7280',
       disabled: '#d1d5db',
     },
 
     port: {
-      input: '#10b981',
-      output: '#f59e0b',
+      input: '#059669',
+      output: '#b45309',
       bi: '#8b5cf6',
     },
 
@@ -127,7 +127,7 @@ export const LIGHT_THEME: Theme = {
   nodes: {
     default: {
       fill: '#ffffff',
-      stroke: '#d1d5db',
+      stroke: '#6b7280',
       strokeWidth: 1,
       borderRadius: 4,
       shadow: false,
@@ -137,7 +137,7 @@ export const LIGHT_THEME: Theme = {
 
   links: {
     default: {
-      stroke: '#9ca3af',
+      stroke: '#6b7280',
       strokeWidth: 2,
       opacity: 1,
     },
@@ -147,8 +147,8 @@ export const LIGHT_THEME: Theme = {
     size: 8,
     strokeWidth: 2,
     colors: {
-      input: '#10b981',
-      output: '#f59e0b',
+      input: '#059669',
+      output: '#b45309',
       bi: '#8b5cf6',
     },
   },

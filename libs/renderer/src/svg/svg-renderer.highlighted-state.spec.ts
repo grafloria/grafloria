@@ -10,7 +10,7 @@
 
 import { SVGRenderer, GRAFLORIA_BASE_STYLE_ID } from './svg-renderer';
 import { DiagramEngine, DiagramModel, NodeModel, LinkModel, PortModel } from '@grafloria/engine';
-import { GRAFLORIA_INSTANCE_ATTR, DARK_THEME } from '../themes';
+import { GRAFLORIA_INSTANCE_ATTR, DARK_THEME, LIGHT_THEME } from '../themes';
 import type { VNode } from '../types';
 
 const VIEWPORT = { x: 0, y: 0, width: 800, height: 600 };
@@ -157,7 +157,7 @@ describe('SVGRenderer - highlighted state end-to-end', () => {
       expect(themeCSS()).toContain('.diagram-link.highlighted {');
       // The rule is written in variables; resolved against this instance's block
       // it still paints the theme's highlight token.
-      expect(resolvedDecl('.diagram-link.highlighted', 'stroke')).toBe('#f59e0b');
+      expect(resolvedDecl('.diagram-link.highlighted', 'stroke')).toBe(LIGHT_THEME.colors.link.highlighted);
       expect(resolvedDecl('.diagram-link.highlighted', 'stroke-width')).toBe('3px');
     });
   });
@@ -181,7 +181,7 @@ describe('SVGRenderer - highlighted state end-to-end', () => {
     it('injects a `.diagram-node.highlighted` rule carrying the theme token', () => {
       addNode(120, 120);
       expect(themeCSS()).toContain('.diagram-node.highlighted {');
-      expect(resolvedDecl('.diagram-node.highlighted', 'stroke')).toBe('#f59e0b');
+      expect(resolvedDecl('.diagram-node.highlighted', 'stroke')).toBe(LIGHT_THEME.colors.node.highlighted.stroke);
     });
 
     it('SELECTED wins over HIGHLIGHTED: both classes emit, but the .selected rule is authored last', () => {
@@ -212,13 +212,13 @@ describe('SVGRenderer - highlighted state end-to-end', () => {
     it('paints a highlighted link with the highlighted theme token', () => {
       const link = addLink();
       link.setState('highlighted');
-      expect(strokesOf(linkGroup(link))).toContain('#f59e0b');
+      expect(strokesOf(linkGroup(link))).toContain(LIGHT_THEME.colors.link.highlighted);
     });
 
     it('paints a highlighted node with the highlighted theme token', () => {
       const node = addNode(120, 120);
       node.setHighlighted(true);
-      expect(strokesOf(nodeGroup(node))).toContain('#f59e0b'); // light node.highlighted.stroke
+      expect(strokesOf(nodeGroup(node))).toContain(LIGHT_THEME.colors.node.highlighted.stroke);
     });
 
     it('selection still wins over highlight (no amber painted when both set)', () => {
@@ -227,7 +227,7 @@ describe('SVGRenderer - highlighted state end-to-end', () => {
       node.setSelected(true);
       const strokes = strokesOf(nodeGroup(node));
       expect(strokes).toContain('#2563eb'); // light node.selected.stroke
-      expect(strokes).not.toContain('#f59e0b'); // highlight was NOT applied to the body
+      expect(strokes).not.toContain(LIGHT_THEME.colors.node.highlighted.stroke); // highlight was NOT applied to the body
     });
   });
 

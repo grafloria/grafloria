@@ -136,44 +136,49 @@ describe('auditThemeContrast', () => {
   });
 
   // -------------------------------------------------------------------------
-  // A CHARACTERISATION test, not an aspiration.
+  // ENFORCEMENT, not characterisation.
   //
-  // The default light/dark themes shipped in earlier waves DO NOT meet WCAG
-  // 1.4.11 (3:1 for non-text UI) on several borders/links/ports — their palette
-  // is the Tailwind grey ramp, chosen to look right rather than to measure right.
-  // That is precisely why this card ships a validated high-contrast pair and
-  // auto-upgrades to it on `prefers-contrast`.
+  // These used to be characterisation tests: the default light/dark themes were
+  // the Tailwind grey ramp — chosen to look right rather than to measure right —
+  // and they failed WCAG 1.4.11 (3:1 for non-text UI) on 6 and 3 pairs: node
+  // borders, link lines, ports, and some state strokes against their own fills.
+  // Text always passed AA; it was the LINES that were invisible.
   //
-  // The exact failing set is pinned so it cannot silently GROW. Changing the
-  // default palettes is a visual change to shipped themes and is deliberately
-  // out of this card's scope.
+  // That was a real conformance gap, not a theoretical one: 1.4.11 is a Level AA
+  // criterion, and AA is what Section 508 / EN 301 549 procurement asks for — an
+  // awkward thing to fail while shipping a keyboard-and-screen-reader canvas as a
+  // differentiator. The default palettes were recoloured (each token moved along
+  // its OWN Tailwind ramp, so the palette stays coherent: gray-300/400 -> gray-500
+  // for borders and links, amber-500 -> amber-700 for the highlight family,
+  // emerald-500 -> emerald-600 for input ports; and in dark, strokes moved LIGHTER
+  // — gray-600 -> gray-500, blue-500 -> blue-400, red-500 -> red-400).
+  //
+  // So the assertion is now the strong one: the shipped defaults CONFORM.
   // -------------------------------------------------------------------------
-  it('finds the known non-text gaps in the DEFAULT light theme (pinned, must not grow)', () => {
+  it('the DEFAULT light theme meets WCAG 1.4.11 — no non-text contrast failures', () => {
     const report = auditThemeContrast(LIGHT_THEME);
-    expect(report.failures.map(f => f.id).sort()).toEqual(
-      [
-        'link.default on background',
-        'link.highlighted on background',
-        'node.default.stroke on background',
-        'node.highlighted.stroke on node.highlighted.fill',
-        'port.input on port fill',
-        'port.output on port fill',
-      ].sort()
-    );
-    // TEXT, at least, is compliant in both default themes.
+    expect(report.failures.map(f => f.id)).toEqual([]);
     expect(report.checks.filter(c => c.kind === 'text' && !c.exempt).every(c => c.passes)).toBe(true);
   });
 
-  it('finds the known non-text gaps in the DEFAULT dark theme (pinned, must not grow)', () => {
+  it('the DEFAULT dark theme meets WCAG 1.4.11 — no non-text contrast failures', () => {
     const report = auditThemeContrast(DARK_THEME);
-    expect(report.failures.map(f => f.id).sort()).toEqual(
-      [
-        'node.default.stroke on background',
-        'node.error.stroke on node.error.fill',
-        'node.selected.stroke on node.selected.fill',
-      ].sort()
-    );
+    expect(report.failures.map(f => f.id)).toEqual([]);
     expect(report.checks.filter(c => c.kind === 'text' && !c.exempt).every(c => c.passes)).toBe(true);
+  });
+
+  // The audit has to be doing real work for the two tests above to mean anything:
+  // a report with no checks would also have no failures.
+  it.each([
+    ['light', LIGHT_THEME],
+    ['dark', DARK_THEME],
+  ])('the %s audit actually checks the non-text UI it claims to', (_n, theme) => {
+    const report = auditThemeContrast(theme);
+    const kinds = new Set(report.checks.filter(c => !c.exempt).map(c => c.kind));
+    expect(kinds).toContain('link');
+    expect(kinds).toContain('port');
+    expect(kinds).toContain('state');
+    expect(report.checks.filter(c => c.required === WCAG.AA_NON_TEXT).length).toBeGreaterThan(5);
   });
 });
 

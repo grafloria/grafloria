@@ -45,7 +45,7 @@ describe('Light Theme', () => {
       const defaultNode = LIGHT_THEME.nodes.default;
 
       expect(defaultNode.fill).toBe('#ffffff');
-      expect(defaultNode.stroke).toBe('#d1d5db');
+      expect(defaultNode.stroke).toBe('#6b7280'); // gray-500: 4.83:1 on white (WCAG 1.4.11)
       expect(defaultNode.strokeWidth).toBe(1);
       expect(defaultNode.borderRadius).toBe(4);
       expect(defaultNode.shadow).toBe(false);
@@ -57,7 +57,7 @@ describe('Light Theme', () => {
     test('should have default link styles', () => {
       const defaultLink = LIGHT_THEME.links.default;
 
-      expect(defaultLink.stroke).toBe('#9ca3af');
+      expect(defaultLink.stroke).toBe('#6b7280'); // gray-500: 4.83:1 on white (WCAG 1.4.11)
       expect(defaultLink.strokeWidth).toBe(2);
       expect(defaultLink.opacity).toBe(1);
     });
@@ -66,8 +66,8 @@ describe('Light Theme', () => {
   describe('Port Configuration', () => {
     test('should have port configuration', () => {
       expect(LIGHT_THEME.ports.size).toBe(8);
-      expect(LIGHT_THEME.ports.colors.input).toBe('#10b981');
-      expect(LIGHT_THEME.ports.colors.output).toBe('#f59e0b');
+      expect(LIGHT_THEME.ports.colors.input).toBe('#059669'); // emerald-600: 3.61:1 (WCAG 1.4.11)
+      expect(LIGHT_THEME.ports.colors.output).toBe('#b45309'); // amber-700: 4.81:1 (WCAG 1.4.11)
     });
   });
 });

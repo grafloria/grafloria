@@ -26,11 +26,11 @@ export const DARK_THEME: Theme = {
     node: {
       default: {
         fill: '#1f2937',
-        stroke: '#4b5563',
+        stroke: '#6b7280',
       },
       selected: {
         fill: '#1e3a8a',
-        stroke: '#3b82f6',
+        stroke: '#60a5fa',
       },
       highlighted: {
         fill: '#78350f',
@@ -46,7 +46,7 @@ export const DARK_THEME: Theme = {
       },
       error: {
         fill: '#7f1d1d',
-        stroke: '#ef4444',
+        stroke: '#f87171',
       },
     },
 
@@ -92,7 +92,7 @@ export const DARK_THEME: Theme = {
   nodes: {
     default: {
       fill: '#1f2937',
-      stroke: '#4b5563',
+      stroke: '#6b7280',
       strokeWidth: 1,
       borderRadius: 4,
       shadow: false,

@@ -19,7 +19,7 @@ describe('Dark Theme', () => {
 
     test('should have dark node state colors', () => {
       expect(DARK_THEME.colors.node.default.fill).toBe('#1f2937');
-      expect(DARK_THEME.colors.node.selected.stroke).toBe('#3b82f6');
+      expect(DARK_THEME.colors.node.selected.stroke).toBe('#60a5fa'); // blue-400: 4.07:1 on its fill (WCAG 1.4.11)
     });
 
     test('should have semantic colors', () => {
@@ -50,7 +50,7 @@ describe('Dark Theme', () => {
       const defaultNode = DARK_THEME.nodes.default;
 
       expect(defaultNode.fill).toBe('#1f2937');
-      expect(defaultNode.stroke).toBe('#4b5563');
+      expect(defaultNode.stroke).toBe('#6b7280'); // gray-500: 3.67:1 on the dark bg (WCAG 1.4.11)
     });
   });
 

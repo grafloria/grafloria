@@ -263,7 +263,7 @@ describe('SVGRenderer.export()', () => {
       expect(exportSvg(tree, { theme: LIGHT_THEME }).svg).toBe(
         '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 50" width="100" height="50" class="grafloria-diagram">' +
           '<g transform="translate(0, 0)" class="node-group">' +
-          '<rect width="100" height="50" rx="4" class="diagram-node" fill="#ffffff" stroke="#d1d5db" stroke-width="1px"/>' +
+          '<rect width="100" height="50" rx="4" class="diagram-node" fill="#ffffff" stroke="#6b7280" stroke-width="1px"/>' +
           '<text x="50" y="25" text-anchor="middle" class="diagram-label" ' +
           'font-family="Inter, system-ui, -apple-system, BlinkMacSystemFont, sans-serif" ' +
           'font-size="14px" fill="#111827">A</text>' +
