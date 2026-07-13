@@ -8,9 +8,9 @@
 //   - precedence: `selected` wins over `highlighted` (CSS source order in
 //     CSS mode; the state switch order in programmatic/Canvas mode)
 
-import { SVGRenderer } from './svg-renderer';
+import { SVGRenderer, GRAFLORIA_BASE_STYLE_ID } from './svg-renderer';
 import { DiagramEngine, DiagramModel, NodeModel, LinkModel, PortModel } from '@grafloria/engine';
-import { DARK_THEME } from '../themes';
+import { GRAFLORIA_INSTANCE_ATTR, DARK_THEME } from '../themes';
 import type { VNode } from '../types';
 
 const VIEWPORT = { x: 0, y: 0, width: 800, height: 600 };
@@ -75,9 +75,35 @@ describe('SVGRenderer - highlighted state end-to-end', () => {
     engine.destroy();
   });
 
+  /**
+   * The SHARED rules (theme-independent, written in var(--grafloria-*)). Since the
+   * scoped-theme card, the theme's hex values no longer live in the rules — they
+   * live in this renderer's variable block — so a rule is checked by RESOLVING it
+   * (see `resolvedDecl`), which is what a browser does.
+   */
   function themeCSS(): string {
-    const name = renderer.getTheme().name;
-    return document.getElementById(`grafloria-renderer-theme-${name}`)?.textContent || '';
+    return document.getElementById(GRAFLORIA_BASE_STYLE_ID)?.textContent || '';
+  }
+
+  /** This instance's `--grafloria-*` variable block. */
+  function varsCSS(): string {
+    return document.getElementById(renderer.getStyleElementId())?.textContent || '';
+  }
+
+  /** The value a browser would paint for `selector { prop }` in THIS diagram. */
+  function resolvedDecl(selector: string, prop: string): string | undefined {
+    const rule = new RegExp(
+      `\\[${GRAFLORIA_INSTANCE_ATTR}\\]\\s+${selector.replace(/[.]/g, '\\.')}\\s*\\{([^}]*)\\}`
+    ).exec(themeCSS());
+    if (!rule) return undefined;
+
+    const decl = new RegExp(`(?:^|;)\\s*${prop}\\s*:\\s*([^;]+)`).exec(rule[1]);
+    if (!decl) return undefined;
+
+    return decl[1].trim().replace(/var\((--[\w-]+)\)/g, (_, name: string) => {
+      const value = new RegExp(`${name}\\s*:\\s*([^;]+)`).exec(varsCSS());
+      return value ? value[1].trim() : '';
+    });
   }
 
   function addNode(x: number, y: number): NodeModel {
@@ -128,10 +154,11 @@ describe('SVGRenderer - highlighted state end-to-end', () => {
 
     it('injects a `.diagram-link.highlighted` rule carrying the theme token', () => {
       addLink();
-      const css = themeCSS();
-      expect(css).toContain('.diagram-link.highlighted {');
-      expect(css).toMatch(/\.diagram-link\.highlighted\s*\{[^}]*stroke:\s*#f59e0b/);
-      expect(css).toMatch(/\.diagram-link\.highlighted\s*\{[^}]*stroke-width:\s*3px/);
+      expect(themeCSS()).toContain('.diagram-link.highlighted {');
+      // The rule is written in variables; resolved against this instance's block
+      // it still paints the theme's highlight token.
+      expect(resolvedDecl('.diagram-link.highlighted', 'stroke')).toBe('#f59e0b');
+      expect(resolvedDecl('.diagram-link.highlighted', 'stroke-width')).toBe('3px');
     });
   });
 
@@ -153,9 +180,8 @@ describe('SVGRenderer - highlighted state end-to-end', () => {
 
     it('injects a `.diagram-node.highlighted` rule carrying the theme token', () => {
       addNode(120, 120);
-      const css = themeCSS();
-      expect(css).toContain('.diagram-node.highlighted {');
-      expect(css).toMatch(/\.diagram-node\.highlighted\s*\{[^}]*stroke:\s*#f59e0b/);
+      expect(themeCSS()).toContain('.diagram-node.highlighted {');
+      expect(resolvedDecl('.diagram-node.highlighted', 'stroke')).toBe('#f59e0b');
     });
 
     it('SELECTED wins over HIGHLIGHTED: both classes emit, but the .selected rule is authored last', () => {
@@ -226,9 +252,9 @@ describe('SVGRenderer - highlighted state end-to-end', () => {
       renderer.dispose();
       renderer = new SVGRenderer(engine, {}, DARK_THEME);
       addNode(10, 10);
-      const css = themeCSS();
-      expect(css).toContain('.diagram-node.highlighted {');
-      expect(css).toMatch(/\.diagram-node\.highlighted\s*\{[^}]*fill:\s*#78350f/); // dark node.highlighted.fill
+      expect(themeCSS()).toContain('.diagram-node.highlighted {');
+      // Same shared rule, this instance's variables → the DARK token.
+      expect(resolvedDecl('.diagram-node.highlighted', 'fill')).toBe('#78350f');
     });
   });
 });

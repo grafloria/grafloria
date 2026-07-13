@@ -1,4 +1,4 @@
-import { SVGRenderer } from './svg-renderer';
+import { SVGRenderer, GRAFLORIA_BASE_STYLE_ID } from './svg-renderer';
 import { DiagramEngine, DiagramModel, NodeModel, LinkModel, PortModel } from '@grafloria/engine';
 import type { LODFeature } from '@grafloria/engine';
 import { LIGHT_THEME, DARK_THEME } from '../themes';
@@ -42,17 +42,21 @@ describe('SVGRenderer', () => {
     test('should enable CSS mode by default', () => {
       renderer = new SVGRenderer(engine, {});
 
-      // CSS mode is default - should inject style element
-      const styleElement = document.getElementById(`grafloria-renderer-theme-${LIGHT_THEME.name}`);
+      // CSS mode is default - should inject this instance's variable block, plus
+      // the shared (theme-independent) rules. The element id is PER-INSTANCE, so
+      // two diagrams can no longer overwrite each other's stylesheet.
+      const styleElement = document.getElementById(renderer.getStyleElementId());
       expect(styleElement).toBeTruthy();
+      expect(styleElement!.id).toContain(renderer.getInstanceId());
+      expect(document.getElementById(GRAFLORIA_BASE_STYLE_ID)).toBeTruthy();
     });
 
     test('should support programmatic mode', () => {
       renderer = new SVGRenderer(engine, { useCSSMode: false });
 
-      // Programmatic mode - no style injection
-      const styleElement = document.getElementById(`grafloria-renderer-theme-${LIGHT_THEME.name}`);
-      expect(styleElement).toBeNull();
+      // Programmatic mode - no style injection at all
+      expect(document.getElementById(renderer.getStyleElementId())).toBeNull();
+      expect(document.getElementById(GRAFLORIA_BASE_STYLE_ID)).toBeNull();
     });
   });
 
@@ -490,14 +494,15 @@ describe('SVGRenderer', () => {
     test('should clean up resources on dispose', () => {
       renderer = new SVGRenderer(engine, { useCSSMode: true }, LIGHT_THEME);
 
-      const styleElement = document.getElementById(`grafloria-renderer-theme-${LIGHT_THEME.name}`);
-      expect(styleElement).toBeTruthy();
+      const styleId = renderer.getStyleElementId();
+      expect(document.getElementById(styleId)).toBeTruthy();
 
       renderer.dispose();
 
-      // Style element should be removed
-      const styleElementAfter = document.getElementById(`grafloria-renderer-theme-${LIGHT_THEME.name}`);
-      expect(styleElementAfter).toBeNull();
+      // This instance's variable block is removed. (The SHARED rules outlive it
+      // while any other renderer is still mounted — that lifecycle is pinned in
+      // svg-renderer.scoped-theme.spec.ts.)
+      expect(document.getElementById(styleId)).toBeNull();
     });
 
     test('should not throw when disposing twice', () => {

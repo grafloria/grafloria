@@ -1,4 +1,4 @@
-import type { DiagramEngine, NodeModel, LinkModel, PortModel, InteractionConfig, ReconnectionPreview, LODLevel, LODFeature, Shadow } from '@grafloria/engine';
+import type { DiagramEngine, NodeModel, NodeStyle, LinkModel, LinkStyle, PortModel, InteractionConfig, ReconnectionPreview, LODLevel, LODFeature, Shadow } from '@grafloria/engine';
 import type { IRenderer, PerformanceMetrics, SVGRendererConfig, VNode, Theme, Rectangle } from '../types';
 import {
   type PaintSpec,
@@ -9,6 +9,17 @@ import {
   paintDefId,
 } from './paint-servers';
 import { LIGHT_THEME } from '../themes';
+// Styling & theming — instance-scoped CSS variables + the named-style cascade.
+// The theme→var table, the stylesheet generators, the style registry and the
+// cascade all live in ../themes; this file only EMITS what they resolve.
+import {
+  GRAFLORIA_INSTANCE_ATTR,
+  generateBaseStyleSheet,
+  generateInstanceVarBlock,
+  onStyleRegistryChange,
+  resolveLinkStyle,
+  resolveNodeStyle,
+} from '../themes';
 import { createForeignObject, isForeignObject, getContainerId } from '../vnode/foreign-object';
 import { LruCache } from '../utils/lru-cache';
 
@@ -56,12 +67,56 @@ import { AnimationService } from '../services/animation.service';
 // `string` tier name (wave2/rendering), so custom tiers flow through unchanged.
 
 /**
+ * Id of the SHARED stylesheet: the theme-independent, `var(--grafloria-*)`-based
+ * rules. Identical for every renderer on the page, so it is injected once and
+ * deduped by this id — instances only own their tiny variable block.
+ */
+export const GRAFLORIA_BASE_STYLE_ID = 'grafloria-renderer-styles';
+
+/** Prefix of a renderer's own `<style>` element id (one per instance). */
+export const GRAFLORIA_INSTANCE_STYLE_PREFIX = 'grafloria-renderer-theme-';
+
+/** Monotonic per-document instance ids: `grafloria-1`, `grafloria-2`, … */
+let instanceCounter = 0;
+function nextInstanceId(): string {
+  return `grafloria-${++instanceCounter}`;
+}
+
+/**
+ * Marker classes for the named styles applied to an entity:
+ * `styleClass: 'critical dashed'` → `grafloria-style-critical grafloria-style-dashed`.
+ *
+ * The named style's VALUES are resolved by the cascade (style-cascade.ts) — these
+ * classes exist so hosts can hang extra CSS off a named style and so tests/tools
+ * can see which ones landed. Names that aren't valid CSS identifiers are skipped.
+ */
+function styleClassTokens(styleClass: string | undefined): string[] {
+  if (!styleClass) return [];
+  return styleClass
+    .trim()
+    .split(/\s+/)
+    .filter(name => /^[A-Za-z_-][\w-]*$/.test(name))
+    .map(name => `grafloria-style-${name}`);
+}
+
+/**
  * SVG Renderer
  * Renders diagram to VNode tree for framework-agnostic consumption
  * Integrates with engine's performance features (SpatialIndex, dirty marking, LOD)
  */
 export class SVGRenderer implements IRenderer {
   readonly mode = 'svg' as const;
+
+  /**
+   * This renderer's scope. Stamped on the root `<svg>` as
+   * `data-grafloria-instance` and used to scope BOTH the injected variable block
+   * and this instance's `<style>` element id — so two diagrams with different
+   * themes on one page no longer clobber each other's stylesheet.
+   */
+  private readonly instanceId: string = nextInstanceId();
+
+  /** Unsubscribe from the named-style registry (see the constructor). */
+  private unsubscribeStyleRegistry?: () => void;
 
   private theme: Theme;
   private config: Required<SVGRendererConfig>;
@@ -185,6 +240,10 @@ export class SVGRenderer implements IRenderer {
     // This ensures animation styles override any duplicate definitions in theme CSS
     this.animationService.injectCSS();
 
+    // Named styles are resolved INTO the emitted VNodes (see style-cascade.ts),
+    // so a (re)definition after nodes were cached must invalidate them.
+    this.unsubscribeStyleRegistry = onStyleRegistryChange(() => this.invalidateStyles());
+
     // Subscribe to engine events
     this.subscribeToEngineEvents();
 
@@ -250,6 +309,10 @@ export class SVGRenderer implements IRenderer {
       props: {
         viewBox: `${viewBoxX} ${viewBoxY} ${viewBoxWidth} ${viewBoxHeight}`,
         className: 'grafloria-diagram',
+        // Instance scope: carries this diagram's --grafloria-* variables and gates
+        // every rule in the shared stylesheet. Without it on the REAL render
+        // root (not just the empty one) the scoped rules silently don't apply.
+        ...this.instanceScopeProps(),
       },
       children: [linksLayer, nodesLayer, connectionPreviewLayer, defsNode],
     };
@@ -274,23 +337,70 @@ export class SVGRenderer implements IRenderer {
   setTheme(theme: Theme): void {
     this.theme = theme;
 
-    // Re-inject CSS if in CSS mode
+    // Re-inject CSS if in CSS mode. Only THIS instance's variable block is
+    // rewritten — the shared rules are theme-independent, and other diagrams'
+    // variable blocks are untouched.
     if (this.config.useCSSMode) {
       this.injectThemeCSS();
     }
 
     // Clear cache to force re-render with new theme
-    this.vnodeCache.clear();
-
-    // Mark all entities dirty
-    const diagram = this.engine.getDiagram();
-    if (diagram) {
-      diagram.getNodes().forEach(node => node.markDirty('theme-changed'));
-      diagram.getLinks().forEach(link => link.markDirty('theme-changed'));
-    }
+    this.invalidateStyles('theme-changed');
 
     // Emit theme changed event
     this.engine.eventBus.emit('renderer:theme-changed', theme);
+  }
+
+  /**
+   * This renderer's instance id (`grafloria-3`). It is the value of the
+   * `data-grafloria-instance` attribute on the root `<svg>`, the scope of this
+   * diagram's CSS variables, and the suffix of its `<style>` element id.
+   */
+  getInstanceId(): string {
+    return this.instanceId;
+  }
+
+  /** Id of the `<style>` element holding THIS renderer's theme variables. */
+  getStyleElementId(): string {
+    return `${GRAFLORIA_INSTANCE_STYLE_PREFIX}${this.instanceId}`;
+  }
+
+  /**
+   * Put this diagram's scope on a host element.
+   *
+   * The root `<svg>` carries it automatically, and `foreignObject` content
+   * inherits from it (it lives inside the SVG). Nodes rendered on an HTML LAYER
+   * (`metadata.useHTMLLayer`) do NOT — they are siblings of the SVG. Call this
+   * with the element that wraps BOTH layers (the canvas host) so those nodes
+   * inherit the `--grafloria-*` variables and match the scoped rules too.
+   */
+  applyInstanceScope(element: Element | null | undefined): void {
+    if (!element || !this.config.useCSSMode) return;
+    element.setAttribute(GRAFLORIA_INSTANCE_ATTR, this.instanceId);
+  }
+
+  /**
+   * The instance-scope prop for a root VNode. Emitted in CSS mode only:
+   * programmatic mode injects no stylesheet, so scoping it would make its
+   * elements match ANOTHER instance's shared rules with no variables defined.
+   */
+  private instanceScopeProps(): Record<string, string> {
+    return this.config.useCSSMode ? { [GRAFLORIA_INSTANCE_ATTR]: this.instanceId } : {};
+  }
+
+  /**
+   * Drop cached VNodes and mark every entity dirty. Anything that changes how a
+   * style RESOLVES (theme swap, named-style (re)definition) must call this,
+   * because the cascade is resolved into the emitted VNode.
+   */
+  private invalidateStyles(reason: string = 'styles-changed'): void {
+    this.vnodeCache.clear();
+
+    const diagram = this.engine.getDiagram();
+    if (diagram) {
+      diagram.getNodes().forEach(node => node.markDirty(reason));
+      diagram.getLinks().forEach(link => link.markDirty(reason));
+    }
   }
 
   /**
@@ -315,10 +425,17 @@ export class SVGRenderer implements IRenderer {
 
     this.disposed = true;
 
-    // Remove injected CSS
+    // Stop listening for named-style (re)definitions
+    this.unsubscribeStyleRegistry?.();
+    this.unsubscribeStyleRegistry = undefined;
+
+    // Remove THIS instance's variable block (its id is per-instance, so this can
+    // no longer take another diagram's stylesheet down with it), then drop the
+    // shared rules once the last renderer on the page is gone.
     if (this.styleElement) {
       this.styleElement.remove();
       this.styleElement = undefined;
+      this.releaseBaseStyleSheet();
     }
 
     // Clear cache
@@ -2138,34 +2255,69 @@ export class SVGRenderer implements IRenderer {
   }
 
   /**
-   * A node/link whose style references a paint server must NOT be served from
-   * (or written to) the vnode cache: the cached VNode carries the url(#…)
-   * reference, but the matching `<defs>` entry is only registered while the
-   * style is (re)computed — a cache hit would skip that and orphan the ref.
+   * A node/link whose RESOLVED style references a paint server must NOT be
+   * served from (or written to) the vnode cache: the cached VNode carries the
+   * url(#…) reference, but the matching `<defs>` entry is only registered while
+   * the style is (re)computed — a cache hit would skip that and orphan the ref.
+   *
+   * RESOLVED, not raw: a gradient/pattern/shadow can now also arrive from a
+   * named style or a theme type-default, not just from the entity's own style.
    */
   private nodeUsesPaintServer(node: NodeModel): boolean {
-    const s = node.style;
+    const s = this.resolvedNodeStyle(node);
     return isPaintSpec(s.fill) || isPaintSpec(s.stroke) || isShadowSpec(s.shadow);
   }
 
   private linkUsesPaintServer(link: LinkModel): boolean {
-    const s = link.style;
+    const s = this.resolvedLinkStyle(link);
     return isPaintSpec(s.stroke) || isShadowSpec(s.shadow);
+  }
+
+  // =========================================================================
+  // The style cascade (themes/style-cascade.ts):
+  //     theme  <  type-default  <  named-class  <  element-inline  <  state
+  //
+  // CSS mode leaves the THEME layer to the injected stylesheet — its values come
+  // from this instance's `--grafloria-*` variables, so an unset property still falls
+  // back to the theme (and a theme swap repaints it) instead of being frozen
+  // into the VNode. Programmatic (Canvas) mode has no stylesheet, so the theme
+  // joins the SAME ordered spread. One cascade, two emission targets.
+  // =========================================================================
+
+  private resolvedNodeStyle(node: NodeModel): Partial<NodeStyle> {
+    return resolveNodeStyle(node, this.theme, { includeThemeBase: !this.config.useCSSMode });
+  }
+
+  private resolvedLinkStyle(link: LinkModel): Partial<LinkStyle> {
+    return resolveLinkStyle(link, this.theme, { includeThemeBase: !this.config.useCSSMode });
   }
 
   /**
    * Compute node styles for CSS mode
    */
   private computeNodeStylesCSS(node: NodeModel): any {
+    const style = this.resolvedNodeStyle(node);
     const classes = ['diagram-node'];
 
     if (node.state.selected) classes.push('selected');
-    // Attention emphasis (Card 1). Emitted alongside `selected`; the injected
-    // theme CSS orders `.highlighted` BEFORE `.selected` so selected wins.
+    // Attention emphasis (Card 1). Emitted alongside `selected`; selection wins
+    // — in the cascade's state layer, and in the stylesheet fallback (where the
+    // `.highlighted` rule is authored BEFORE `.selected`).
     if (node.state.highlighted) classes.push('highlighted');
     if (node.state.hovered) classes.push('hovered');
     if (!node.state.enabled) classes.push('disabled');
     if (node.state.error) classes.push('error');
+
+    // Named styles (classDef): a marker class per applied name so hosts/tests can
+    // see which ones landed. Their VALUES were already resolved into `style`.
+    classes.push(...styleClassTokens(node.style.styleClass));
+
+    // Free-form host classes ("className on every element")
+    if (node.style.className) classes.push(node.style.className);
+
+    // The model's own class set (NodeModel.addClass) — it has always existed and
+    // was never rendered.
+    if (node.classes?.size) classes.push(...node.classes);
 
     // Phase 1: Add animation classes
     // Use SVG-specific animations if node doesn't use foreignObject
@@ -2179,30 +2331,31 @@ export class SVGRenderer implements IRenderer {
 
     // CRITICAL: Don't apply strokeWidth as inline style if border animation is active
     // Inline styles override CSS animations, breaking animated stroke-width and stroke-dasharray
-    const hasActiveBorderAnimation = node.style?.animatedBorder &&
-                                     node.style?.borderAnimationType !== 'none';
+    const hasActiveBorderAnimation = style.animatedBorder && style.borderAnimationType !== 'none';
 
     // Card 2: fill/stroke may be a gradient/pattern spec object → url(#…);
     // shadow may be a Shadow spec → a drop-shadow filter reference.
-    const resolvedFill = this.resolveFill(node.style.fill);
-    const resolvedStroke = this.resolveStroke(node.style.stroke);
-    const shadowFilter = this.resolveShadowFilter(node.style.shadow);
+    const resolvedFill = this.resolveFill(style.fill);
+    const resolvedStroke = this.resolveStroke(style.stroke);
+    const shadowFilter = this.resolveShadowFilter(style.shadow);
 
     return {
       className: finalClassName,
-      // Entity-specific overrides (if any)
+      // Everything the cascade resolved ABOVE the theme layer. Emitted on the
+      // element (the shape registry hoists fill/stroke/strokeWidth into an inline
+      // `style` string), which is what makes it beat the theme stylesheet.
       ...(resolvedFill && { fill: resolvedFill }),
       // Always apply stroke color (it doesn't interfere with animations)
       ...(resolvedStroke && { stroke: resolvedStroke }),
       // Only apply strokeWidth if no border animation is active
-      ...(node.style.strokeWidth !== undefined && !hasActiveBorderAnimation && { strokeWidth: node.style.strokeWidth }),
+      ...(style.strokeWidth !== undefined && !hasActiveBorderAnimation && { strokeWidth: style.strokeWidth }),
       // Per-element opacity + corner radius survive in CSS mode too (previously
       // dropped, so translucent/rounded nodes fell back to theme defaults). No
       // `.diagram-node` stylesheet rule sets rx/opacity for normal nodes, so a
-      // presentation attribute is enough; emit only when explicitly set so unset
-      // props still fall back to theme defaults.
-      ...(node.style.opacity !== undefined && { opacity: node.style.opacity }),
-      ...(node.style.borderRadius !== undefined && { rx: node.style.borderRadius }),
+      // presentation attribute is enough; emit only when a layer actually set it,
+      // so untouched props still fall back to the theme.
+      ...(style.opacity !== undefined && { opacity: style.opacity }),
+      ...(style.borderRadius !== undefined && { rx: style.borderRadius }),
       ...(shadowFilter && { filter: shadowFilter }),
     };
   }
@@ -2211,32 +2364,21 @@ export class SVGRenderer implements IRenderer {
    * Compute node styles for programmatic mode
    */
   private computeNodeStylesProgrammatic(node: NodeModel): any {
-    // Get state-based colors from theme. `selected` is checked before
-    // `highlighted` so selection wins when a node is both (Card 1 precedence).
-    let stateColors = this.theme.colors.node.default;
-    if (node.state.selected) {
-      stateColors = this.theme.colors.node.selected;
-    } else if (node.state.highlighted) {
-      stateColors = this.theme.colors.node.highlighted;
-    } else if (node.state.hovered) {
-      stateColors = this.theme.colors.node.hovered;
-    } else if (!node.state.enabled) {
-      stateColors = this.theme.colors.node.disabled;
-    } else if (node.state.error) {
-      stateColors = this.theme.colors.node.error;
-    }
-
+    // Same cascade, theme layer included (no stylesheet in this mode). State is
+    // the top layer here too, so a selected node paints its selection colours
+    // even when it carries its own fill — exactly as in CSS mode.
+    const style = this.resolvedNodeStyle(node);
     const themeDefaults = this.theme.nodes.default;
 
     // Card 2: gradient/pattern fill/stroke → url(#…); Shadow spec → filter ref.
-    const shadowFilter = this.resolveShadowFilter(node.style.shadow);
+    const shadowFilter = this.resolveShadowFilter(style.shadow);
 
     return {
-      fill: this.resolveFill(node.style.fill) || stateColors.fill || themeDefaults.fill,
-      stroke: this.resolveStroke(node.style.stroke) || stateColors.stroke || themeDefaults.stroke,
-      strokeWidth: node.style.strokeWidth ?? themeDefaults.strokeWidth,
-      rx: node.style.borderRadius ?? themeDefaults.borderRadius,
-      opacity: node.style.opacity ?? (node.state.enabled ? themeDefaults.opacity : this.theme.effects.opacity.disabled),
+      fill: this.resolveFill(style.fill) || themeDefaults.fill,
+      stroke: this.resolveStroke(style.stroke) || themeDefaults.stroke,
+      strokeWidth: style.strokeWidth ?? themeDefaults.strokeWidth,
+      rx: style.borderRadius ?? themeDefaults.borderRadius,
+      opacity: style.opacity ?? themeDefaults.opacity,
       ...(shadowFilter && { filter: shadowFilter }),
     };
   }
@@ -2245,14 +2387,18 @@ export class SVGRenderer implements IRenderer {
    * Compute link styles for CSS mode
    */
   private computeLinkStylesCSS(link: LinkModel): any {
+    const style = this.resolvedLinkStyle(link);
     const classes = ['diagram-link'];
 
     if (link.state === 'selected') classes.push('selected');
     // Attention emphasis (Card 1). Link state is exclusive, so this can't
-    // co-occur with `selected`; the `.diagram-link.highlighted` theme rule
-    // supplies its stroke colour.
+    // co-occur with `selected`.
     if (link.state === 'highlighted') classes.push('highlighted');
     if (link.state === 'hovered') classes.push('hovered');
+
+    // Named styles (classDef) + free-form host classes — see computeNodeStylesCSS.
+    classes.push(...styleClassTokens(link.style.styleClass));
+    if (link.style.className) classes.push(link.style.className);
 
     // Phase 1: Add animation classes
     const animationClasses = this.animationService.getEdgeAnimationClass(link);
@@ -2260,21 +2406,22 @@ export class SVGRenderer implements IRenderer {
       classes.push(animationClasses);
     }
 
-    // Per-element inline overrides must WIN over the injected `.diagram-link`
-    // stylesheet rule (e.g. `.diagram-link { stroke-width }`). A presentation
-    // attribute like stroke-width="3" loses to a stylesheet rule, but an inline
-    // `style` attribute beats stylesheet rules — so emit per-link strokeWidth,
-    // strokeDasharray and opacity inline. Only when explicitly set, so unset
-    // props still fall back to the theme CSS defaults.
-    const inlineStyle = [
-      link.style.strokeWidth !== undefined ? `stroke-width: ${link.style.strokeWidth}` : '',
-      link.style.strokeDasharray !== undefined ? `stroke-dasharray: ${link.style.strokeDasharray}` : '',
-      link.style.opacity !== undefined ? `opacity: ${link.style.opacity}` : '',
-    ].filter(Boolean).join('; ');
-
     // Card 2: gradient/pattern stroke → url(#…); Shadow spec → filter ref.
-    const resolvedStroke = this.resolveStroke(link.style.stroke);
-    const shadowFilter = this.resolveShadowFilter(link.style.shadow);
+    const resolvedStroke = this.resolveStroke(style.stroke);
+    const shadowFilter = this.resolveShadowFilter(style.shadow);
+
+    // Everything the cascade resolved must WIN over the injected `.diagram-link`
+    // rule. A presentation attribute (stroke="red", stroke-width="3") LOSES to
+    // any stylesheet rule, so the resolved values ride an inline `style` string,
+    // which beats it. `stroke` is ALSO kept as a prop for consumers that read
+    // props.stroke (and for Canvas parity). Only properties a layer actually set
+    // are emitted, so untouched props still fall back to the theme.
+    const inlineStyle = [
+      resolvedStroke !== undefined ? `stroke: ${resolvedStroke}` : '',
+      style.strokeWidth !== undefined ? `stroke-width: ${style.strokeWidth}` : '',
+      style.strokeDasharray !== undefined ? `stroke-dasharray: ${style.strokeDasharray}` : '',
+      style.opacity !== undefined ? `opacity: ${style.opacity}` : '',
+    ].filter(Boolean).join('; ');
 
     return {
       className: classes.join(' '),
@@ -2288,25 +2435,17 @@ export class SVGRenderer implements IRenderer {
    * Compute link styles for programmatic mode
    */
   private computeLinkStylesProgrammatic(link: LinkModel): any {
-    let stateColor = this.theme.colors.link.default;
-    if (link.state === 'selected') {
-      stateColor = this.theme.colors.link.selected;
-    } else if (link.state === 'highlighted') {
-      stateColor = this.theme.colors.link.highlighted;
-    } else if (link.state === 'hovered') {
-      stateColor = this.theme.colors.link.hovered;
-    }
-
+    const style = this.resolvedLinkStyle(link);
     const themeDefaults = this.theme.links.default;
 
     // Card 2: gradient/pattern stroke → url(#…); Shadow spec → filter ref.
-    const shadowFilter = this.resolveShadowFilter(link.style.shadow);
+    const shadowFilter = this.resolveShadowFilter(style.shadow);
 
     return {
-      stroke: this.resolveStroke(link.style.stroke) || stateColor || themeDefaults.stroke,
-      strokeWidth: link.style.strokeWidth ?? themeDefaults.strokeWidth,
-      strokeDasharray: link.style.strokeDasharray ?? themeDefaults.strokeDasharray,
-      opacity: link.style.opacity ?? themeDefaults.opacity,
+      stroke: this.resolveStroke(style.stroke) || themeDefaults.stroke,
+      strokeWidth: style.strokeWidth ?? themeDefaults.strokeWidth,
+      strokeDasharray: style.strokeDasharray ?? themeDefaults.strokeDasharray,
+      opacity: style.opacity ?? themeDefaults.opacity,
       ...(shadowFilter && { filter: shadowFilter }),
     };
   }
@@ -2396,6 +2535,9 @@ export class SVGRenderer implements IRenderer {
         width: viewport.width,
         height: viewport.height,
         className: 'grafloria-diagram',
+        // Same instance scope as the real render root — an empty diagram that
+        // later gains nodes must not swap its scoping attribute mid-flight.
+        ...this.instanceScopeProps(),
       },
       children: [
         {
@@ -2418,216 +2560,75 @@ export class SVGRenderer implements IRenderer {
   }
 
   /**
-   * Inject theme CSS into document
+   * Inject this renderer's CSS.
+   *
+   * TWO stylesheets, deliberately:
+   *   1. the SHARED rules (`generateBaseStyleSheet()` + the animation CSS) —
+   *      theme-INDEPENDENT, written in `var(--grafloria-*)`, injected once per
+   *      document and deduped by `GRAFLORIA_BASE_STYLE_ID`;
+   *   2. this instance's VARIABLE BLOCK — `[data-grafloria-instance="grafloria-3"] { … }`
+   *      in a `<style>` element whose id carries the instance id.
+   *
+   * That split is the fix: the old scheme keyed the element by THEME NAME and
+   * re-emitted every rule with hex literals, so a second diagram with a second
+   * theme repainted the first one, and disposing either renderer could remove
+   * the other's stylesheet.
    */
   private injectThemeCSS(): void {
-    const styleId = `grafloria-renderer-theme-${this.theme.name}`;
+    this.ensureBaseStyleSheet();
 
-    // Remove old style element (from this instance)
+    // Replace this instance's block (setTheme re-injects) — never another's.
     if (this.styleElement) {
       this.styleElement.remove();
       this.styleElement = undefined;
     }
 
-    // Remove any existing style element with the same ID from DOM
-    const existingStyle = document.getElementById(styleId);
-    if (existingStyle) {
-      existingStyle.remove();
-    }
+    const styleId = this.getStyleElementId();
+    document.getElementById(styleId)?.remove();
 
-    // Create new style element
     this.styleElement = document.createElement('style');
     this.styleElement.id = styleId;
+    this.styleElement.textContent = this.generateThemeCSS();
 
-    // Generate CSS content (including animations)
-    this.styleElement.textContent = this.generateThemeCSS() + '\n\n' + this.generateAnimationCSS();
-
-    // Append to document
     document.head.appendChild(this.styleElement);
   }
 
   /**
-   * Generate theme CSS
+   * Inject the shared, theme-independent rules once per document. Every
+   * renderer feeds the same rules from its own variable block.
+   */
+  private ensureBaseStyleSheet(): void {
+    if (document.getElementById(GRAFLORIA_BASE_STYLE_ID)) return;
+
+    const base = document.createElement('style');
+    base.id = GRAFLORIA_BASE_STYLE_ID;
+    // Theme rules first, animations second: animation declarations must still
+    // win over any same-property theme declaration (unchanged from the old sheet).
+    base.textContent = generateBaseStyleSheet() + '\n\n' + this.generateAnimationCSS();
+    document.head.appendChild(base);
+  }
+
+  /** Drop the shared rules once the LAST instance's variable block is gone. */
+  private releaseBaseStyleSheet(): void {
+    const remaining = document.querySelectorAll(
+      `style[id^="${GRAFLORIA_INSTANCE_STYLE_PREFIX}"]`
+    ).length;
+
+    if (remaining === 0) {
+      document.getElementById(GRAFLORIA_BASE_STYLE_ID)?.remove();
+    }
+  }
+
+  /**
+   * This renderer's theme CSS: the VARIABLE BLOCK, and nothing else.
+   *
+   * The rules that consume these variables are theme-independent and live in
+   * the shared stylesheet (theme-css.ts). This block is the ONLY place a
+   * theme's values are written, and it is scoped to this diagram's root — which
+   * is what lets two diagrams with different themes coexist on one page.
    */
   private generateThemeCSS(): string {
-    const t = this.theme;
-    return `
-/* Grafloria Renderer Theme: ${t.name} */
-
-/* Node Styles */
-.diagram-node {
-  fill: ${t.colors.node.default.fill};
-  stroke: ${t.colors.node.default.stroke};
-  stroke-width: ${t.nodes.default.strokeWidth}px;
-}
-
-/* Authored before the selected rule so that, at equal specificity, selection
-   wins the cascade when a node is both highlighted and selected. */
-.diagram-node.highlighted {
-  fill: ${t.colors.node.highlighted.fill};
-  stroke: ${t.colors.node.highlighted.stroke};
-  stroke-width: 2px;
-}
-
-.diagram-node.selected {
-  fill: ${t.colors.node.selected.fill};
-  stroke: ${t.colors.node.selected.stroke};
-  stroke-width: 2px;
-}
-
-.diagram-node.hovered {
-  fill: ${t.colors.node.hovered.fill};
-  stroke: ${t.colors.node.hovered.stroke};
-}
-
-.diagram-node.disabled {
-  fill: ${t.colors.node.disabled.fill};
-  stroke: ${t.colors.node.disabled.stroke};
-  opacity: ${t.effects.opacity.disabled};
-}
-
-.diagram-node.error {
-  fill: ${t.colors.node.error.fill};
-  stroke: ${t.colors.node.error.stroke};
-}
-
-/* Link Styles */
-.diagram-link {
-  stroke: ${t.colors.link.default};
-  stroke-width: ${t.links.default.strokeWidth}px;
-  fill: none;
-}
-
-.diagram-link.selected {
-  stroke: ${t.colors.link.selected};
-  stroke-width: 3px;
-}
-
-.diagram-link.highlighted {
-  stroke: ${t.colors.link.highlighted};
-  stroke-width: 3px;
-}
-
-.diagram-link.hovered {
-  stroke: ${t.colors.link.hovered};
-}
-
-/* Label Styles */
-.diagram-label {
-  font-family: ${t.typography.fontFamily.default};
-  font-size: ${t.typography.fontSize.md}px;
-  fill: ${t.colors.text.primary};
-}
-
-/* Link Path - Disable transitions for performance and visual correctness */
-.link-group path {
-  transition: none !important;
-}
-
-/* Phase 2: Port Styles */
-.port {
-  transition: all 0.2s ease;
-  cursor: crosshair;
-}
-
-.port-input {
-  fill: ${t.colors.background.surface};
-  stroke: ${t.colors.port.input};
-  stroke-width: ${t.ports.strokeWidth}px;
-}
-
-.port-output {
-  fill: ${t.colors.background.surface};
-  stroke: ${t.colors.port.output};
-  stroke-width: ${t.ports.strokeWidth}px;
-}
-
-.port-bi {
-  fill: ${t.colors.background.surface};
-  stroke: ${t.colors.port.bi};
-  stroke-width: ${t.ports.strokeWidth}px;
-}
-
-.port-hovered {
-  stroke-width: 3px;
-  cursor: pointer;
-}
-
-.port-highlighted {
-  stroke-width: 3px;
-  opacity: 1;
-}
-
-.port-input.port-highlighted {
-  fill: ${t.colors.port.input};
-}
-
-.port-output.port-highlighted {
-  fill: ${t.colors.port.output};
-}
-
-.port-bi.port-highlighted {
-  fill: ${t.colors.port.bi};
-}
-
-/* Phase 2: Connection Preview Styles */
-.connection-preview-line {
-  pointer-events: none;
-  transition: stroke 0.2s ease;
-}
-
-@keyframes dash {
-  to {
-    stroke-dashoffset: -10;
-  }
-}
-
-/* Phase 2: Connection Target Highlight */
-.connection-target-highlight {
-  transition: all 0.2s ease;
-  pointer-events: none;
-}
-
-/* Phase 2: Link Endpoint Handles */
-.link-endpoint-handle {
-  cursor: move;
-  transition: all 0.2s ease;
-}
-
-.link-endpoint-handle:hover {
-  r: 8;
-  stroke-width: 3px;
-}
-
-/* Phase 2.3a: Waypoint Handles */
-.waypoint-handle {
-  cursor: move;
-  transition: all 0.2s ease;
-  pointer-events: all;
-}
-
-.waypoint-handle:hover {
-  r: 7;
-  stroke-width: 3px;
-}
-
-/* Phase 2.3b: Control Point Handles */
-.control-point-handle {
-  cursor: move;
-  transition: all 0.2s ease;
-  pointer-events: all;
-}
-
-.control-point-handle:hover {
-  r: 8;
-  stroke-width: 3px;
-}
-
-.control-line {
-  pointer-events: none;
-  transition: opacity 0.2s ease;
-}
-    `.trim();
+    return generateInstanceVarBlock(this.theme, this.instanceId);
   }
 
   /**
