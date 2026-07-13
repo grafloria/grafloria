@@ -155,6 +155,22 @@ describe('Card 5 — composes with any base shape through the real renderer', ()
     // … and the panel header text.
     expect(flat).toContain('DB');
   });
+
+  it('a panel node opted into auto-size GROWS through the renderer to fit header + rows', () => {
+    const engine = new DiagramEngine();
+    engine.createDiagram();
+    const node = new NodeModel({ type: 'default', position: { x: 0, y: 0 }, size: { width: 40, height: 20 } });
+    node.setMetadata('label', 'Users table');
+    node.setMetadata('panel', { header: { text: 'USERS' }, rows: [{ text: 'id: int' }, { text: 'name: text' }] });
+    node.setMetadata('sizing', { auto: true });
+    engine.getDiagram()!.addNode(node);
+
+    // The renderer's Card 7 measure pass feeds Card 5's panel reserve into
+    // node.setSize — so the node grows to clear header(22) + 2 rows(36) + label.
+    new SVGRenderer(engine).render({ x: -100, y: -100, width: 600, height: 600 }, 1);
+    expect(node.size.height).toBeGreaterThan(60);
+    expect(node.size.width).toBeGreaterThan(40);
+  });
 });
 
 describe('Card 5 — degrades sanely in Canvas mode', () => {
