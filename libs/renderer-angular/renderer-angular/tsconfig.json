@@ -1,6 +1,20 @@
 {
   "compilerOptions": {
     "target": "es2022",
+    // wave4/ngwrapper — THE TS-TARGET BUG.
+    //
+    // `useDefineForClassFields` defaults to TRUE at target >= ES2022 and FALSE
+    // below it. This library was COMPILED at es2022 (=> true) while its tests were
+    // compiled at es2016 (=> false; see tsconfig.spec.json), so every class here
+    // was TESTED with `[[Set]]` class-field semantics and SHIPPED with `[[Define]]`
+    // semantics. Under `[[Define]]` a bare field declaration installs an own
+    // property that SHADOWS an inherited accessor and clobbers whatever a base
+    // constructor assigned; under `[[Set]]` it does not. The tests could never see
+    // that class of bug.
+    //
+    // Both sides are es2022 now, and the flag is pinned to `false` — exactly what
+    // the Angular CLI writes into every tsconfig it generates.
+    "useDefineForClassFields": false,
     "forceConsistentCasingInFileNames": true,
     "strict": true,
     "noImplicitOverride": true,

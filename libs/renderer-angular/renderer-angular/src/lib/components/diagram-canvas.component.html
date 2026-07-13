@@ -3,29 +3,31 @@
   <div #svgLayer class="grafloria-svg-layer"></div>
 
   <!-- Wave-2 Interaction: live marquee (rubber-band) selection overlay.
-       Rendered in SCREEN space (px, container-relative) so it needs no viewBox. -->
-  @if (marquee) {
+       Rendered in SCREEN space (px, container-relative) so it needs no viewBox.
+       wave4/ngwrapper: every binding below reads a SIGNAL — that is what lets the
+       zoneless scheduler refresh this view with no zone tick. -->
+  @if (marquee(); as rect) {
     <svg class="grafloria-marquee-overlay">
       <rect
         class="grafloria-marquee-rect"
-        [attr.x]="marquee.x"
-        [attr.y]="marquee.y"
-        [attr.width]="marquee.width"
-        [attr.height]="marquee.height"></rect>
+        [attr.x]="rect.x"
+        [attr.y]="rect.y"
+        [attr.width]="rect.width"
+        [attr.height]="rect.height"></rect>
     </svg>
   }
 
   <!-- Wave 3 (Edges & links): floating, path-anchored edge toolbar. Appears on
        link hover/selection and stays glued to a fraction along the RENDERED
        route (see LinkToolbarComponent / RenderedLinkPath). -->
-  @if (enableLinkToolbar && linkToolbarTarget) {
+  @if (enableLinkToolbar() && linkToolbarTarget() && activeEngine()) {
     <grafloria-link-toolbar
-      [link]="linkToolbarTarget"
-      [engine]="engine"
+      [link]="linkToolbarTarget()!"
+      [engine]="activeEngine()!"
       [canvasElement]="containerRef.nativeElement"
-      [viewport]="viewport"
-      [zoom]="zoom"
-      [anchor]="linkToolbarAnchor"
+      [viewport]="viewport()"
+      [zoom]="zoom()"
+      [anchor]="linkToolbarAnchor()"
       [actions]="effectiveLinkToolbarActions"
       (pointerOverChange)="onLinkToolbarPointerOver($event)">
     </grafloria-link-toolbar>
@@ -33,9 +35,9 @@
 
   <!-- HTML Layer: NEW - HTML nodes rendered outside SVG (React Flow style) -->
   <!-- CRITICAL FIX: Use declarative rendering like React Flow, not imperative createComponent() -->
-  <div #htmlLayer class="grafloria-html-layer" [style.transform]="htmlLayerTransform">
+  <div #htmlLayer class="grafloria-html-layer" [style.transform]="htmlLayerTransform()">
     <!-- Render all HTML nodes declaratively with @for (React Flow pattern) -->
-    @for (node of htmlNodes; track node.id) {
+    @for (node of htmlNodes(); track node.id) {
       <div class="html-node-wrapper"
            [attr.data-node-id]="node.id"
            [attr.data-parent-id]="node.parent || ''"
@@ -47,7 +49,7 @@
            [style.z-index]="node.getMetadata('z') || 1">
         <!-- Dynamically render component using directive -->
         <!-- Support both NodeModel (node.type) and GroupModel (metadata.type) -->
-        <ng-container [htmlNodeRenderer]="node" [nodeType]="node.type || node.getMetadata('type')" [engine]="engine"></ng-container>
+        <ng-container [htmlNodeRenderer]="node" [nodeType]="node.type || node.getMetadata('type')" [engine]="activeEngine()!"></ng-container>
 
         <!-- Render HTML handles for nodes with ports (React Flow style) -->
         @for (port of node.ports.values(); track port.id) {
