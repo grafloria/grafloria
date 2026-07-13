@@ -10,6 +10,42 @@ import type {
   PathSegment,
 } from '../types';
 
+/**
+ * Wave 4 (Edges & links), Card 5 — where each of the three edge label SLOTS sits
+ * along the path.
+ *
+ * Pulled IN from the endpoints on purpose: at exactly 0 and 1 a slot label would
+ * land under the arrowhead and on top of the port. 0.12 / 0.88 clears both while
+ * still reading as "at the start / at the end of this edge".
+ *
+ * ONE definition, shared by the model (LinkModel.addLabel), the renderer
+ * (LabelRenderer) and the edge optimizer — three places that must never disagree
+ * about where a label actually is.
+ */
+export const LINK_LABEL_SLOT_POSITIONS: Record<'start' | 'center' | 'end', number> = {
+  start: 0.12,
+  center: 0.5,
+  end: 0.88,
+};
+
+/**
+ * The position along the path (0-1) a label resolves to.
+ *
+ * `slot` WINS over `position`. Naming a slot is an explicit act; `position` is a
+ * required field that most slot users only fill in to satisfy the type, so
+ * letting it win would make `slot` silently do nothing.
+ */
+export function linkLabelPosition(
+  label: Pick<LinkLabel, 'position' | 'slot'>
+): number {
+  if (label.slot && label.slot in LINK_LABEL_SLOT_POSITIONS) {
+    return LINK_LABEL_SLOT_POSITIONS[label.slot];
+  }
+  return typeof label.position === 'number' && isFinite(label.position)
+    ? label.position
+    : 0.5;
+}
+
 export interface SerializedLink extends SerializedEntity {
   sourcePortId: string;
   targetPortId: string;
@@ -74,6 +110,36 @@ export class LinkModel extends DiagramEntity {
     if (pathType) {
       this.pathType = pathType;
     }
+  }
+
+  /**
+   * Wave 4 (Edges & links) — Card 4: is this link a SELF-LOOP, i.e. do both
+   * ends live on the same node?
+   *
+   * Reads the cached owning-node ids, which `DiagramModel.installLink` backfills
+   * for every link that reaches a diagram (including ones built with
+   * `new LinkModel()` + `addLink`, which carry no ids of their own). A link that
+   * has never been installed has no ids and is — correctly — not a self-loop as
+   * far as anything can tell.
+   *
+   * A self-loop between two DIFFERENT ports of the same node counts, and so does
+   * one that starts and ends on the SAME port.
+   */
+  isSelfLoop(): boolean {
+    return !!this.sourceNodeId && this.sourceNodeId === this.targetNodeId;
+  }
+
+  /**
+   * Wave 4 — Card 4: the unordered node pair this link connects, as a stable
+   * key. UNORDERED on purpose: A→B and B→A are the same visual bundle and must
+   * fan out together, or a bidirectional pair would draw both links on the same
+   * centre line. Returns null when the owning nodes are unknown.
+   */
+  getNodePairKey(): string | null {
+    if (!this.sourceNodeId || !this.targetNodeId) return null;
+    return this.sourceNodeId <= this.targetNodeId
+      ? `${this.sourceNodeId}|${this.targetNodeId}`
+      : `${this.targetNodeId}|${this.sourceNodeId}`;
   }
 
   /**
@@ -425,12 +491,24 @@ export class LinkModel extends DiagramEntity {
 
   /**
    * Add label
+   *
+   * Wave 4 (Card 5): `position` is no longer required when the label names a
+   * `slot` — and every other LinkLabel field (html, template, slot, autoOffset,
+   * rotation…) is now carried through instead of being silently dropped. The old
+   * body hand-copied five fields, so a label created here could not be an HTML
+   * label, could not auto-rotate and could not opt into auto-placement.
    */
-  addLabel(label: Partial<LinkLabel> & { text: string; position: number }): void {
+  addLabel(
+    label: Partial<LinkLabel> & { text: string } & (
+        | { position: number }
+        | { slot: NonNullable<LinkLabel['slot']> }
+      )
+  ): void {
     const fullLabel: LinkLabel = {
+      ...label,
       id: label.id || generateId(),
       text: label.text,
-      position: label.position,
+      position: linkLabelPosition(label as LinkLabel),
       offset: label.offset || { x: 0, y: 0 },
       style: label.style,
     };

@@ -158,12 +158,82 @@ export interface LinkStyle {
   cornerRadius?: number;
   // Phase 1.3: Jump points
   jumpPoints?: JumpPointConfig;
+  /**
+   * Wave 4 (Edges & links) — Card 4: how THIS link behaves when it is one of
+   * several links between the same pair of nodes. Per-link override of the
+   * renderer-wide `parallelLinks` config.
+   */
+  parallel?: ParallelLinkConfig;
+  /**
+   * Wave 4 (Edges & links) — Card 4: how THIS link is drawn when it is a
+   * SELF-LOOP (source node === target node). Ignored on ordinary links.
+   */
+  selfLoop?: SelfLoopConfig;
+  /**
+   * Wave 4 (Edges & links) — Card 5: name of a registered LINK TEMPLATE
+   * (`registerLinkTemplate` in @grafloria/renderer). The template replaces the
+   * link's default visuals (path + arrows + labels) with whatever VNodes it
+   * returns — arbitrary SVG, or HTML through a `foreignObject`. The hit area
+   * and the `data-link-id` group are still emitted by the renderer, so hit
+   * testing, selection and the edge toolbar keep working unchanged.
+   *
+   * Deliberately a NAME, not a function: LinkStyle is serializable model state
+   * and the engine must not depend on the renderer's VNode type. Same shape as
+   * `styleClass` → the named-style registry.
+   */
+  template?: string;
   // Phase 4: Advanced styling
   gradient?: LinearGradient | RadialGradient;
   pattern?: Pattern;
   shadow?: Shadow;
   animation?: LinkAnimation;
   markers?: Marker[];  // Markers along the path
+}
+
+/**
+ * Wave 4 — Card 4: auto-separation of PARALLEL links (two or more links between
+ * the same pair of nodes). Without it, ERD / BPMN / state-machine diagrams stack
+ * every relationship between the same two entities on top of each other.
+ *
+ * The links in a pair are fanned out symmetrically around the un-separated
+ * route: with 2 links and spacing 16 the offsets are -8 and +8; with 3 they are
+ * -16, 0, +16. Direction of the fan is the left/right normal of the source →
+ * target vector, so both directions of a bidirectional pair fan consistently.
+ */
+export interface ParallelLinkConfig {
+  /** Turn separation off for this link (it stays on the un-separated route). */
+  enabled?: boolean;
+  /** Distance between adjacent links in the group, in px. Default 16. */
+  spacing?: number;
+  /**
+   * Extra offset added on top of the computed fan offset (px, signed). Lets an
+   * author nudge one member of a bundle without touching the others.
+   */
+  offset?: number;
+}
+
+/**
+ * Wave 4 — Card 4: SELF-LOOP geometry (source node === target node). The loop
+ * leaves the source port, bulges away from the node body and re-enters at the
+ * target port. Several self-loops on the same node nest concentrically
+ * (`size + i * spacing`), so each keeps its own label slot.
+ */
+export interface SelfLoopConfig {
+  /** How far the loop bulges away from the node body (px). Default 40. */
+  size?: number;
+  /**
+   * Lateral span of the loop along the node's side (px). Only used when the
+   * source and target attachment points coincide (or nearly do) — the two ends
+   * are spread by this much so the loop has a body. Default = `size`.
+   */
+  width?: number;
+  /** Extra size added per additional self-loop on the same node (px). Default 18. */
+  spacing?: number;
+  /**
+   * Force the side the loop bulges out of. `'auto'` (default) uses the source
+   * port's own side.
+   */
+  side?: 'auto' | 'top' | 'right' | 'bottom' | 'left';
 }
 
 // Phase 4: Gradient types
@@ -244,14 +314,53 @@ export interface ArrowStyle {
     | 'cross'               // X mark
     | 'bar'                 // Perpendicular line (⊥)
     | 'dot'                 // Simple dot
-    | 'oval';               // Oval shape
+    | 'oval'                // Oval shape
+    // Wave 4 (Edges & links) — Card 5: half-arrowheads (Mermaid 11.13)
+    | 'half-arrow-left'     // Only the left barb (relative to direction of travel)
+    | 'half-arrow-right'    // Only the right barb
+    // Wave 4 — Card 5: author-defined marker. Either `path` (raw SVG path data,
+    // drawn in the marker's local frame with the tip toward +x) or `marker`
+    // (the name of a marker registered with `registerMarker` in @grafloria/renderer).
+    | 'custom'
+    // …and any other registered marker name. Keeps literal autocompletion for
+    // the built-ins while letting `registerMarker('my-thing', …)` be used by
+    // name, so the catalogue is no longer a closed enum.
+    | (string & {});
   size: number;
   filled: boolean;
   // Phase 4: Advanced arrow properties
   width?: number;           // Arrow width (independent of size)
   offset?: number;          // Distance from node edge
   color?: string;           // Override link color
+  /**
+   * Wave 4 — Card 5: raw SVG path data for a `type: 'custom'` marker. Drawn in
+   * the marker's LOCAL frame: the origin is the anchor the renderer pulls back
+   * from the endpoint, +x is the direction of travel. Scale it yourself (or
+   * read `size` when you build the string).
+   */
+  path?: string;
+  /**
+   * Wave 4 — Card 5: name of a marker registered via `registerMarker`. Set it
+   * with `type: 'custom'` (or simply put the registered name in `type`).
+   */
+  marker?: string;
+  /**
+   * Wave 4 — Card 5: distance from the custom marker's local origin to its
+   * visual TIP, in the +x direction. The renderer pulls the marker back from
+   * the path endpoint by exactly this much so the tip lands on the port.
+   * Registered markers supply their own default; this overrides it. Default 0
+   * for an unregistered `path` marker (i.e. the tip is at the origin).
+   */
+  tipOffset?: number;
 }
+
+/**
+ * Wave 4 — Card 5: the three label SLOTS along an edge (ngx-vflow ships exactly
+ * these). A slot is shorthand for a `position`: start = 0.12, center = 0.5,
+ * end = 0.88 — pulled off the very endpoints so a slot label never sits under
+ * an arrowhead. An explicit `position` still wins.
+ */
+export type LinkLabelSlot = 'start' | 'center' | 'end';
 
 export interface LinkLabel {
   id: string;
@@ -267,8 +376,36 @@ export interface LinkLabel {
   textBaseline?: 'top' | 'middle' | 'bottom';  // Vertical alignment
   textWrap?: boolean;                // Enable multi-line wrapping
   maxWidth?: number;                 // Maximum width before wrapping
-  autoOffset?: boolean;              // Auto-position to avoid overlaps
+  /**
+   * Auto-position this label so it does not overlap nodes, other labels or
+   * links. Handled by the diagram-wide edge optimizer (Card 7): `offset` is the
+   * label's PREFERRED placement and the optimizer searches outward from it only
+   * when it collides. Was declared-but-dead until Wave 4.
+   */
+  autoOffset?: boolean;
   segmentIndex?: number;             // Place on specific segment
+  /**
+   * Wave 4 — Card 5: one of the three edge slots. Shorthand for `position`;
+   * ignored when the label carries an explicit `position` (see LinkLabelSlot).
+   */
+  slot?: LinkLabelSlot;
+  /**
+   * Wave 4 — Card 5: render this label as ARBITRARY HTML inside a
+   * `foreignObject` instead of SVG text. The string is injected verbatim, so it
+   * is the author's job to keep it trusted/escaped — exactly like any
+   * `innerHTML` seam.
+   */
+  html?: string;
+  /**
+   * Wave 4 — Card 5: name of a label template registered with
+   * `registerLabelTemplate` (@grafloria/renderer). The template returns VNodes, so
+   * it can emit SVG or a `foreignObject` full of HTML. Wins over `html`.
+   */
+  template?: string;
+  /** Width of the HTML/template label's box (px). Default 120. */
+  width?: number;
+  /** Height of the HTML/template label's box (px). Default 28. */
+  height?: number;
 }
 
 export interface LabelStyle {

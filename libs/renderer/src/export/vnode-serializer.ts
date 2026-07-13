@@ -181,7 +181,7 @@ export function serializeVNode(vnode: VNode, options: SerializeOptions = {}): st
     return serializeForeignObject(vnode, { ...options, warnings, extraDefs }, foMode);
   }
 
-  const { attrs, text } = elementAttrs(vnode, options, extraDefs, options.html === true);
+  const { attrs, text, raw } = elementAttrs(vnode, options, extraDefs, options.html === true);
   const children = (vnode.children ?? []).filter(isRenderable);
 
   // A standalone file needs the namespace declared; an SSR snapshot needs it too,
@@ -200,6 +200,12 @@ export function serializeVNode(vnode: VNode, options: SerializeOptions = {}): st
   // elements that render through the prop never also declare children.
   if (text !== undefined) {
     return `${open}>${escapeText(text)}</${vnode.type}>`;
+  }
+
+  // Markup, emitted verbatim (see `innerHTML` above). Escaping it would print the
+  // tags instead of rendering them.
+  if (raw !== undefined) {
+    return `${open}>${raw}</${vnode.type}>`;
   }
 
   if (children.length === 0) {
@@ -348,10 +354,11 @@ function elementAttrs(
   options: SerializeOptions,
   extraDefs: Map<string, string>,
   html: boolean
-): { attrs: Map<string, string>; text?: string } {
+): { attrs: Map<string, string>; text?: string; raw?: string } {
   const props = vnode.props ?? {};
   const attrs = new Map<string, string>();
   let text: string | undefined;
+  let raw: string | undefined;
   let inline: Record<string, string> = {};
 
   // 'dom': describe the DOM the patcher would build, verbatim. No dropping, no
@@ -374,6 +381,16 @@ function elementAttrs(
 
     if (key === 'textContent') {
       text = String(value);
+      continue;
+    }
+
+    // `innerHTML` OWNS the element's content — the patcher assigns it to
+    // `el.innerHTML`, so it is MARKUP, not an attribute value (HTML edge labels,
+    // Card 5). Kebab-casing it like any other prop would emit
+    // `inner-h-t-m-l="&lt;b&gt;…"`: an escaped attribute nobody reads, and an empty
+    // label in every exported file and every server render.
+    if (key === 'innerHTML') {
+      raw = String(value);
       continue;
     }
 
@@ -403,12 +420,12 @@ function elementAttrs(
     if (vnode.key !== undefined && vnode.key !== null) {
       attrs.set('data-vnode-key', String(vnode.key));
     }
-    return { attrs, text };
+    return { attrs, text, raw };
   }
 
   // Inside a foreignObject the host's CSS owns the content — we neither know nor
   // flatten it.
-  if (html) return { attrs, text };
+  if (html) return { attrs, text, raw };
 
   // (2) the stylesheet layer, flattened
   const resolver = options.classStyles;
@@ -424,7 +441,7 @@ function elementAttrs(
     attrs.set(prop, prop === 'filter' ? translateBlurFilter(value, extraDefs) : value);
   }
 
-  return { attrs, text };
+  return { attrs, text, raw };
 }
 
 function renderAttrs(attrs: Map<string, string>): string {

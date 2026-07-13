@@ -317,12 +317,13 @@ export class VNodePatcher {
       return el;
     }
 
-    // `textContent` OWNS the element's content: setting it creates a text node
-    // that is not in `children`. Diffing children here would see an empty child
-    // list, decide that text node is a stray, and delete it — every <text> label
-    // would go blank on the second render. Elements that render through the prop
-    // (text, tspan) never also declare children.
-    if (hasTextContentProp(newVNode)) {
+    // `textContent` / `innerHTML` OWN the element's content: setting either
+    // creates DOM that is not in `children`. Diffing children here would see an
+    // empty child list, decide that content is stray, and delete it — every
+    // <text> label would go blank on the second render, and every HTML edge
+    // label would empty out. Elements that render through these props never also
+    // declare children.
+    if (hasTextContentProp(newVNode) || hasInnerHTMLProp(newVNode)) {
       return el;
     }
 
@@ -537,6 +538,17 @@ export class VNodePatcher {
       return;
     }
 
+    // Wave 4 (Edges & links) — Card 5: the HTML seam. An edge label (or any
+    // author template) that wants real HTML returns a `foreignObject` whose
+    // child div carries `innerHTML`. Without this branch the prop would be
+    // kebab-cased into a meaningless `inner-h-t-m-l` ATTRIBUTE and the label
+    // would render blank. Content is injected verbatim — the author owns its
+    // safety, exactly like any innerHTML seam.
+    if (key === 'innerHTML') {
+      (el as HTMLElement).innerHTML = String(value);
+      return;
+    }
+
     if (key === 'className') {
       el.setAttribute('class', String(value));
       return;
@@ -557,6 +569,10 @@ export class VNodePatcher {
   private removeProp(el: Element, key: string): void {
     if (key === 'textContent') {
       el.textContent = '';
+      return;
+    }
+    if (key === 'innerHTML') {
+      (el as HTMLElement).innerHTML = '';
       return;
     }
     if (key === 'className') {
@@ -590,6 +606,12 @@ function normalizeChildren(children: VNodeChild[] | undefined): VNodeChild[] {
 function hasTextContentProp(vnode: VNode): boolean {
   const text = vnode.props?.textContent;
   return text !== undefined && text !== null;
+}
+
+/** Does this VNode render its content through the `innerHTML` prop? (Card 5) */
+function hasInnerHTMLProp(vnode: VNode): boolean {
+  const html = vnode.props?.['innerHTML'];
+  return html !== undefined && html !== null;
 }
 
 /** The key of a child slot, or undefined for keyless / text children. */

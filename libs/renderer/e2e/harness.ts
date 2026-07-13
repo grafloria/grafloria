@@ -18,6 +18,9 @@ import {
   JumpPointRenderer,
   getPortPositionForShape,
   createDomElement,
+  // Wave 4 (Edges & links) — Card 5: the author-extensibility seams
+  registerLinkTemplate,
+  registerMarker,
 } from '@grafloria/renderer';
 
 import { InteractionHandlerService } from '@grafloria/interaction-handler';
@@ -1794,6 +1797,524 @@ function a15_smartShapesAndPathTypes() {
 }
 
 // ===========================================================================
+// W1: Wave 4 / Card 4 — PARALLEL links between the same node pair must fan out
+// ===========================================================================
+function w1_parallelLinks() {
+  const probe: any = {};
+
+  for (const pathType of ['direct', 'smooth', 'orthogonal'] as const) {
+    const engine = makeEngine();
+    const diagram = engine.createDiagram(`w1-${pathType}`);
+    const a = addNode(diagram, 'A', 40, 140, {
+      w: 110, h: 56, fill: '#fef3c7',
+      ports: [{ id: `w1-${pathType}-a1`, side: 'right', type: 'output' }],
+    });
+    const b = addNode(diagram, 'B', 460, 140, {
+      w: 110, h: 56,
+      ports: [{ id: `w1-${pathType}-b1`, side: 'left', type: 'input' }],
+    });
+
+    // THREE links between the SAME pair of ports. Pre-Wave-4 these drew exactly
+    // on top of each other — one visible line where the author put three.
+    const links = [0, 1, 2].map(() =>
+      makeLink(diagram, `w1-${pathType}-a1`, `w1-${pathType}-b1`, pathType, {
+        arrowHead: { type: 'arrow', size: 10, filled: true, color: '#475569' },
+      })
+    );
+
+    const stage = cell(`w1-${pathType}`, `W1 — 3 parallel ${pathType} links fan out (spacing 16)`);
+    const svg = renderTwice(engine, stage, 620, 340);
+
+    // Sample each path at its midpoint and check the three are separated.
+    const mids = links.map(l => {
+      const g = svg.querySelector(`[data-vnode-key="link-${l.id}"]`);
+      const p = g?.querySelector('path') as SVGPathElement | null;
+      if (!p) return null;
+      const m = p.getPointAtLength(p.getTotalLength() / 2);
+      overlayDot(svg, m.x, m.y, '#dc2626', 3);
+      return { x: +m.x.toFixed(1), y: +m.y.toFixed(1) };
+    });
+
+    const gaps: number[] = [];
+    for (let i = 0; i < mids.length; i++) {
+      for (let j = i + 1; j < mids.length; j++) {
+        if (mids[i] && mids[j]) gaps.push(Math.hypot(mids[i]!.x - mids[j]!.x, mids[i]!.y - mids[j]!.y));
+      }
+    }
+    const minGap = Math.min(...gaps);
+
+    expectThat(`W1 ${pathType}: 3 parallel links do not overlap at the midpoint`,
+      minGap >= 8, `mids=${JSON.stringify(mids)} minGap=${minGap.toFixed(1)}`);
+
+    // …and they still meet their ports. A fan that pulled the line off the port
+    // would be worse than the overlap it fixes.
+    const pa = portWorld(a, `w1-${pathType}-a1`);
+    const pb = portWorld(b, `w1-${pathType}-b1`);
+    const onPorts = links.every(l => {
+      const ends = pathEndpoints(svg, l.id);
+      if (!ends) return false;
+      return Math.hypot(ends.start.x - pa.x, ends.start.y - pa.y) <= 1.5 &&
+             Math.hypot(ends.end.x - pb.x, ends.end.y - pb.y) <= 1.5;
+    });
+    expectThat(`W1 ${pathType}: every parallel link still meets both ports`, onPorts,
+      `port A=(${pa.x},${pa.y}) port B=(${pb.x},${pb.y})`);
+
+    probe[pathType] = { mids, minGap: +minGap.toFixed(1) };
+  }
+
+  // --- a LONE link between a pair must NOT move (the no-regression guarantee) ---
+  {
+    const engine = makeEngine();
+    const diagram = engine.createDiagram('w1-solo');
+    addNode(diagram, 'A', 40, 60, { w: 110, h: 56, ports: [{ id: 'w1s-a', side: 'right', type: 'output' }] });
+    const b = addNode(diagram, 'B', 460, 60, { w: 110, h: 56, ports: [{ id: 'w1s-b', side: 'left', type: 'input' }] });
+    const solo = makeLink(diagram, 'w1s-a', 'w1s-b', 'direct');
+    const stage = cell('w1-solo', 'W1 — a LONE link between a pair keeps a dead-straight path (offset 0)');
+    const svg = renderTwice(engine, stage, 620, 180);
+    const ends = pathEndpoints(svg, solo.id)!;
+    const mid = (() => {
+      const p = svg.querySelector(`[data-vnode-key="link-${solo.id}"] path`) as SVGPathElement;
+      return p.getPointAtLength(p.getTotalLength() / 2);
+    })();
+    const chordMid = { x: (ends.start.x + ends.end.x) / 2, y: (ends.start.y + ends.end.y) / 2 };
+    expectThat('W1 solo: single link between a pair is not displaced',
+      Math.hypot(mid.x - chordMid.x, mid.y - chordMid.y) <= 0.5,
+      `mid=(${mid.x.toFixed(1)},${mid.y.toFixed(1)}) chordMid=(${chordMid.x.toFixed(1)},${chordMid.y.toFixed(1)})`);
+    void b;
+  }
+
+  PROBES.w1_parallelLinks = probe;
+}
+
+// ===========================================================================
+// W2: Wave 4 / Card 4 — a BIDIRECTIONAL pair (A→B and B→A) is one bundle
+// ===========================================================================
+function w2_bidirectionalPair() {
+  const engine = makeEngine();
+  const diagram = engine.createDiagram('w2');
+  addNode(diagram, 'A', 40, 60, {
+    w: 110, h: 56, fill: '#fef3c7',
+    ports: [
+      { id: 'w2-a-out', side: 'right', type: 'output' },
+      { id: 'w2-a-in', side: 'right', type: 'input', index: 1 },
+    ],
+  });
+  addNode(diagram, 'B', 440, 60, {
+    w: 110, h: 56,
+    ports: [
+      { id: 'w2-b-in', side: 'left', type: 'input' },
+      { id: 'w2-b-out', side: 'left', type: 'output', index: 1 },
+    ],
+  });
+
+  // Same PORTS both ways, so the only thing that can separate them is the fan.
+  const ab = makeLink(diagram, 'w2-a-out', 'w2-b-in', 'direct', {
+    stroke: '#0f766e', arrowHead: { type: 'arrow', size: 10, filled: true, color: '#0f766e' },
+  });
+  const ba = makeLink(diagram, 'w2-b-in', 'w2-a-out', 'direct', {
+    stroke: '#b91c1c', arrowHead: { type: 'arrow', size: 10, filled: true, color: '#b91c1c' },
+  });
+
+  const stage = cell('w2', 'W2 — bidirectional A→B / B→A: ONE bundle, opposite lanes (not stacked)');
+  const svg = renderTwice(engine, stage, 620, 180);
+
+  const midOf = (id: string) => {
+    const p = svg.querySelector(`[data-vnode-key="link-${id}"] path`) as SVGPathElement;
+    const m = p.getPointAtLength(p.getTotalLength() / 2);
+    overlayDot(svg, m.x, m.y, '#dc2626', 3);
+    return m;
+  };
+  const m1 = midOf(ab.id);
+  const m2 = midOf(ba.id);
+  const gap = Math.hypot(m1.x - m2.x, m1.y - m2.y);
+
+  // THE bug this guards: both directions compute their own source→target normal,
+  // their opposite lane offsets cancel, and the two links land back on top of
+  // each other. The bundle normal has to be canonical for the PAIR.
+  expectThat('W2 bidirectional pair separates (canonical bundle normal)',
+    gap >= 8, `midAB=(${m1.x.toFixed(1)},${m1.y.toFixed(1)}) midBA=(${m2.x.toFixed(1)},${m2.y.toFixed(1)}) gap=${gap.toFixed(1)}`);
+
+  PROBES.w2_bidirectionalPair = { gap: +gap.toFixed(1) };
+}
+
+// ===========================================================================
+// W3: Wave 4 / Card 4 — SELF-LOOPS (source node === target node)
+// ===========================================================================
+function w3_selfLoops() {
+  const probe: any = {};
+
+  const cases: Array<{ id: string; ports: PortSpec[]; src: string; dst: string; title: string }> = [
+    { id: 'same-port', title: 'same port', src: 'p', dst: 'p',
+      ports: [{ id: 'p', side: 'right', type: 'output' }] },
+    { id: 'same-side', title: 'two ports, same side', src: 'p1', dst: 'p2',
+      ports: [{ id: 'p1', side: 'right', type: 'output' }, { id: 'p2', side: 'right', type: 'input', index: 1 }] },
+    { id: 'perp', title: 'perpendicular sides (right → top)', src: 'p1', dst: 'p2',
+      ports: [{ id: 'p1', side: 'right', type: 'output' }, { id: 'p2', side: 'top', type: 'input' }] },
+    { id: 'opposite', title: 'opposite sides (right → left)', src: 'p1', dst: 'p2',
+      ports: [{ id: 'p1', side: 'right', type: 'output' }, { id: 'p2', side: 'left', type: 'input' }] },
+  ];
+
+  for (const c of cases) {
+    for (const pathType of ['orthogonal', 'smooth'] as const) {
+      const cid = `w3-${c.id}-${pathType}`;
+      const engine = makeEngine();
+      const diagram = engine.createDiagram(cid);
+      const node = addNode(diagram, 'N', 180, 130, {
+        w: 120, h: 60, fill: '#dcfce7',
+        ports: c.ports.map(p => ({ ...p, id: `${cid}-${p.id}` })),
+      });
+      const link = makeLink(diagram, `${cid}-${c.src}`, `${cid}-${c.dst}`, pathType, {
+        arrowHead: { type: 'arrow', size: 10, filled: true, color: '#475569' },
+      });
+
+      const stage = cell(cid, `W3 — self-loop, ${c.title} (${pathType})`);
+      const svg = renderTwice(engine, stage, 480, 320);
+
+      // The link IS recognised as a self-loop by the model.
+      expectThat(`W3 ${c.id}/${pathType}: model reports a self-loop`, link.isSelfLoop() === true,
+        `src=${link.sourceNodeId} dst=${link.targetNodeId}`);
+
+      const p = svg.querySelector(`[data-vnode-key="link-${link.id}"] path`) as SVGPathElement | null;
+      const total = p ? p.getTotalLength() : 0;
+
+      // A loop has to actually LOOP: long enough to leave the node and come back.
+      expectThat(`W3 ${c.id}/${pathType}: loop has real length`, total > 60,
+        `len=${total.toFixed(1)}`);
+
+      // …and it must not be a stub buried in the node body (the pre-Wave-4 result).
+      const pen = pathPenetration(svg, link.id, [node])!;
+      const inside = pen.perNode[0].insidePx;
+      expectThat(`W3 ${c.id}/${pathType}: loop does not tunnel through its own node`,
+        inside <= 6, `insidePx=${inside} of len=${pen.pathLength}`);
+
+      // The loop reaches clear of the node body at its furthest point.
+      let maxOut = 0;
+      if (p) {
+        for (let d = 0; d <= total; d += 2) {
+          const pt = p.getPointAtLength(d);
+          const dx = Math.max(node.position.x - pt.x, pt.x - (node.position.x + node.size.width), 0);
+          const dy = Math.max(node.position.y - pt.y, pt.y - (node.position.y + node.size.height), 0);
+          maxOut = Math.max(maxOut, Math.hypot(dx, dy));
+        }
+      }
+      expectThat(`W3 ${c.id}/${pathType}: loop bulges away from the node`, maxOut >= 20,
+        `maxOut=${maxOut.toFixed(1)}`);
+
+      probe[cid] = { length: +total.toFixed(1), insidePx: inside, maxOut: +maxOut.toFixed(1) };
+    }
+  }
+
+  // --- several self-loops on ONE node must NEST, not coincide -----------------
+  {
+    const engine = makeEngine();
+    const diagram = engine.createDiagram('w3-nest');
+    const node = addNode(diagram, 'N', 200, 150, {
+      w: 120, h: 60, fill: '#dcfce7',
+      ports: [{ id: 'w3n-p', side: 'right', type: 'output' }],
+    });
+    const loops = [0, 1, 2].map(() =>
+      makeLink(diagram, 'w3n-p', 'w3n-p', 'orthogonal', {
+        arrowHead: { type: 'arrow', size: 9, filled: true, color: '#475569' },
+      })
+    );
+    const stage = cell('w3-nest', 'W3 — 3 self-loops on one node NEST (size + i * spacing)');
+    const svg = renderTwice(engine, stage, 480, 360);
+
+    const reach = loops.map(l => {
+      const p = svg.querySelector(`[data-vnode-key="link-${l.id}"] path`) as SVGPathElement;
+      let far = 0;
+      for (let d = 0; d <= p.getTotalLength(); d += 2) {
+        far = Math.max(far, p.getPointAtLength(d).x);
+      }
+      return +far.toFixed(1);
+    });
+
+    const strictlyNested = reach[0] < reach[1] - 5 && reach[1] < reach[2] - 5;
+    expectThat('W3 nest: 3 self-loops bulge to 3 different distances', strictlyNested,
+      `rightmost x per loop = ${JSON.stringify(reach)}`);
+    probe.nest = reach;
+    void node;
+  }
+
+  PROBES.w3_selfLoops = probe;
+}
+
+// ===========================================================================
+// W4: Wave 4 / Card 5 — HTML edge labels in the 3 slots, + a label template
+// ===========================================================================
+function w4_htmlLabels() {
+  const engine = makeEngine();
+  const diagram = engine.createDiagram('w4');
+  addNode(diagram, 'A', 30, 90, { w: 100, h: 50, ports: [{ id: 'w4-a', side: 'right', type: 'output' }] });
+  addNode(diagram, 'B', 520, 90, { w: 100, h: 50, ports: [{ id: 'w4-b', side: 'left', type: 'input' }] });
+  const link = makeLink(diagram, 'w4-a', 'w4-b', 'direct');
+
+  // One HTML label per slot. `slot` is the shorthand for `position`.
+  link.addLabel({ slot: 'start', text: 'start', html: '<b style="color:#0f766e">start</b>', width: 70, height: 22 });
+  link.addLabel({ slot: 'center', text: 'center', html: '<span style="background:#fde68a;padding:2px 6px;border-radius:4px">center</span>', width: 80, height: 22 });
+  link.addLabel({ slot: 'end', text: 'end', html: '<i style="color:#b91c1c">end</i>', width: 60, height: 22 });
+
+  const stage = cell('w4', 'W4 — HTML edge labels (foreignObject) in the start / center / end slots');
+  const svg = renderTwice(engine, stage, 660, 240);
+
+  const g = svg.querySelector(`[data-vnode-key="link-${link.id}"]`)!;
+  const fos = Array.from(g.querySelectorAll('foreignObject'));
+  expectThat('W4: three HTML labels render as foreignObjects', fos.length === 3,
+    `found ${fos.length}`);
+
+  // Real HTML made it into the DOM (not an escaped string, not a kebab-cased attr).
+  const bold = g.querySelector('foreignObject b');
+  expectThat('W4: raw HTML is materialised (a real <b> element exists)', !!bold,
+    bold ? (bold.textContent ?? '') : 'none');
+
+  // The three slots land at three DIFFERENT points along the edge, in order.
+  const xs = fos
+    .map(fo => +(fo.getAttribute('x') ?? '0'))
+    .sort((a, b) => a - b);
+  const ordered = xs.length === 3 && xs[0] < xs[1] - 20 && xs[1] < xs[2] - 20;
+  expectThat('W4: start / center / end sit at three distinct points along the edge', ordered,
+    `x = ${JSON.stringify(xs.map(v => +v.toFixed(1)))}`);
+
+  PROBES.w4_htmlLabels = { count: fos.length, xs: xs.map(v => +v.toFixed(1)) };
+}
+
+// ===========================================================================
+// W5: Wave 4 / Card 5 — custom markers (half-arrow, raw path, registered)
+// ===========================================================================
+function w5_customMarkers() {
+  registerMarker('e2e-chevron', {
+    tipOffset: style => style.size,
+    render: ctx => ({
+      type: 'path',
+      props: {
+        d: `M0,${-ctx.size / 2} L${ctx.size},0 L0,${ctx.size / 2}`,
+        fill: 'none',
+        stroke: ctx.color,
+        strokeWidth: 2,
+        transform: ctx.transform,
+        className: 'arrow arrow-e2e-chevron',
+      },
+    }),
+  });
+
+  const specs: Array<{ id: string; head: any; expect: string }> = [
+    { id: 'half-left', head: { type: 'half-arrow-left', size: 12, filled: true, color: '#475569' }, expect: 'polygon.arrow-half-left' },
+    { id: 'half-right', head: { type: 'half-arrow-right', size: 12, filled: true, color: '#475569' }, expect: 'polygon.arrow-half-right' },
+    { id: 'raw-path', head: { type: 'custom', size: 12, filled: false, color: '#b91c1c', path: 'M0,-6 L0,6 M0,0 L-10,0', tipOffset: 0 }, expect: 'path.arrow-custom' },
+    { id: 'registered', head: { type: 'e2e-chevron', size: 14, filled: false, color: '#7c3aed' }, expect: 'path.arrow-e2e-chevron' },
+  ];
+
+  const engine = makeEngine();
+  const diagram = engine.createDiagram('w5');
+  const stage = cell('w5', 'W5 — half-arrowheads, a raw-path marker and a REGISTERED custom marker');
+
+  const links: Record<string, any> = {};
+  specs.forEach((spec, i) => {
+    const y = 20 + i * 70;
+    addNode(diagram, spec.id, 20, y, { w: 130, h: 44, ports: [{ id: `w5-${spec.id}-a`, side: 'right', type: 'output' }] });
+    addNode(diagram, '', 420, y, { w: 90, h: 44, ports: [{ id: `w5-${spec.id}-b`, side: 'left', type: 'input' }] });
+    links[spec.id] = makeLink(diagram, `w5-${spec.id}-a`, `w5-${spec.id}-b`, 'direct', { arrowHead: spec.head });
+  });
+
+  const svg = renderTwice(engine, stage, 560, 20 + specs.length * 70 + 30);
+
+  for (const spec of specs) {
+    const g = svg.querySelector(`[data-vnode-key="link-${links[spec.id].id}"]`)!;
+    const el = g.querySelector(spec.expect);
+    expectThat(`W5 ${spec.id}: marker renders (${spec.expect})`, !!el,
+      el ? 'ok' : `group had: ${Array.from(g.children).map(c => c.tagName + '.' + c.getAttribute('class')).join(', ')}`);
+  }
+
+  // A registered marker's own tipOffset is honoured, so its tip lands on the port
+  // (the whole reason tipOffset exists).
+  const chevronLink = links['registered'];
+  const ends = pathEndpoints(svg, chevronLink.id)!;
+  const chevron = svg.querySelector(`[data-vnode-key="link-${chevronLink.id}"] path.arrow-e2e-chevron`) as SVGGraphicsElement | null;
+  if (chevron) {
+    const bb = worldBBox(svg, chevron);
+    expectThat('W5 registered: custom marker tip anchors on the target port',
+      Math.abs(bb.maxX - ends.end.x) <= 3,
+      `markerMaxX=${bb.maxX.toFixed(1)} pathEnd=${ends.end.x.toFixed(1)}`);
+  }
+}
+
+// ===========================================================================
+// W6: Wave 4 / Card 5 — a per-link TEMPLATE replaces the link's visuals
+// ===========================================================================
+function w6_linkTemplate() {
+  registerLinkTemplate('e2e-double-line', ctx => [
+    { type: 'path', props: { d: ctx.pathData, fill: 'none', stroke: '#1d4ed8', strokeWidth: 6, className: 'tpl-under' } },
+    { type: 'path', props: { d: ctx.pathData, fill: 'none', stroke: '#dbeafe', strokeWidth: 2, className: 'tpl-over' } },
+  ]);
+
+  const engine = makeEngine();
+  const diagram = engine.createDiagram('w6');
+  addNode(diagram, 'A', 30, 60, { w: 100, h: 50, ports: [{ id: 'w6-a', side: 'right', type: 'output' }] });
+  addNode(diagram, 'B', 420, 60, { w: 100, h: 50, ports: [{ id: 'w6-b', side: 'left', type: 'input' }] });
+  const link = makeLink(diagram, 'w6-a', 'w6-b', 'smooth', { template: 'e2e-double-line' });
+
+  const stage = cell('w6', 'W6 — per-link template: author VNodes replace the default path + arrows');
+  const svg = renderTwice(engine, stage, 560, 180);
+
+  const g = svg.querySelector(`[data-vnode-key="link-${link.id}"]`)!;
+  expectThat('W6: template output is rendered', !!g.querySelector('path.tpl-under') && !!g.querySelector('path.tpl-over'));
+  expectThat('W6: the templated group is still identifiable as this link',
+    g.getAttribute('data-link-id') === link.id, g.getAttribute('data-link-id') ?? 'none');
+  // The renderer keeps the hit area: a template must not be able to break
+  // selection / hover / the edge toolbar.
+  expectThat('W6: the hit-area stroke survives a template override',
+    !!g.querySelector('path.link-hit-area'));
+}
+
+// ===========================================================================
+// W7: Wave 4 / Card 7 — autoOffset labels dodge nodes; the optimizer is
+//     incremental (a frame in which nothing moved does no work)
+// ===========================================================================
+function w7_edgeOptimizer() {
+  const engine = makeEngine();
+  const diagram = engine.createDiagram('w7');
+  addNode(diagram, 'A', 30, 150, { w: 90, h: 50, ports: [{ id: 'w7-a', side: 'right', type: 'output' }] });
+  addNode(diagram, 'B', 520, 150, { w: 90, h: 50, ports: [{ id: 'w7-b', side: 'left', type: 'input' }] });
+  // An obstacle sitting exactly where the mid-path label wants to be.
+  const blocker = addNode(diagram, 'blocker', 250, 150, { w: 130, h: 50, fill: '#fecaca', ports: [] });
+
+  // Two links between the SAME pair so they fan; the top one's label opts in.
+  const pinned = makeLink(diagram, 'w7-a', 'w7-b', 'direct', { stroke: '#94a3b8' });
+  const auto = makeLink(diagram, 'w7-a', 'w7-b', 'direct', { stroke: '#0f766e' });
+
+  pinned.addLabel({ position: 0.5, text: 'pinned', offset: { x: 0, y: 0 },
+    style: { fontSize: 12, background: '#e2e8f0' } });
+  auto.addLabel({ position: 0.5, text: 'auto', offset: { x: 0, y: 0 }, autoOffset: true,
+    style: { fontSize: 12, background: '#ccfbf1' } });
+
+  const stage = cell('w7', 'W7 — autoOffset label dodges the node under the path; pinned one does not');
+  const svg = renderTwice(engine, stage, 660, 340);
+
+  const blockRect = {
+    minX: blocker.position.x, minY: blocker.position.y,
+    maxX: blocker.position.x + blocker.size.width, maxY: blocker.position.y + blocker.size.height,
+  };
+  overlayLine(svg, blockRect.minX, blockRect.minY, blockRect.maxX, blockRect.minY, '#dc2626');
+
+  const labelBox = (linkId: string) => {
+    const t = svg.querySelector(`[data-vnode-key="link-${linkId}"] text`) as SVGGraphicsElement | null;
+    return t ? worldBBox(svg, t) : null;
+  };
+  const overlaps = (b: ReturnType<typeof worldBBox>) =>
+    b.minX < blockRect.maxX && b.maxX > blockRect.minX &&
+    b.minY < blockRect.maxY && b.maxY > blockRect.minY;
+
+  const autoBox = labelBox(auto.id);
+  const pinnedBox = labelBox(pinned.id);
+
+  expectThat('W7: autoOffset label is placed clear of the node under the path',
+    !!autoBox && !overlaps(autoBox),
+    autoBox ? `auto label box=(${autoBox.minX.toFixed(0)},${autoBox.minY.toFixed(0)})-(${autoBox.maxX.toFixed(0)},${autoBox.maxY.toFixed(0)})` : 'no label');
+
+  // …and a label that did NOT opt in is left exactly where the author put it —
+  // right on top of the blocker. This is the guarantee that no existing diagram
+  // moves.
+  expectThat('W7: a label WITHOUT autoOffset is not moved by the optimizer',
+    !!pinnedBox && overlaps(pinnedBox),
+    pinnedBox ? `pinned label box=(${pinnedBox.minX.toFixed(0)},${pinnedBox.minY.toFixed(0)})-(${pinnedBox.maxX.toFixed(0)},${pinnedBox.maxY.toFixed(0)})` : 'no label');
+
+  // Assert the MECHANISM, not just the outcome: measure each label against the
+  // anchor the renderer placed it from (its own link's point at t=0.5). Both
+  // labels were authored with offset {0,0}, so a label that has NOT been moved
+  // must sit exactly on its anchor.
+  const displacement = (link: any, box: ReturnType<typeof worldBBox> | null) => {
+    if (!box) return null;
+    const anchor = link.getPointAtPosition(0.5)!;
+    overlayDot(svg, anchor.x, anchor.y, '#7c3aed', 3);
+    return Math.hypot((box.minX + box.maxX) / 2 - anchor.x, (box.minY + box.maxY) / 2 - anchor.y);
+  };
+  const autoShift = displacement(auto, autoBox);
+  const pinnedShift = displacement(pinned, pinnedBox);
+
+  expectThat('W7: the optimizer actually DISPLACED the autoOffset label from its anchor',
+    autoShift !== null && autoShift > 10, `autoShift=${autoShift?.toFixed(1)}px`);
+  expectThat('W7: the pinned label sits exactly on its anchor (offset {0,0} honoured)',
+    pinnedShift !== null && pinnedShift <= 2, `pinnedShift=${pinnedShift?.toFixed(1)}px`);
+
+  PROBES.w7_edgeOptimizer = {
+    autoBox: autoBox && { x: +autoBox.minX.toFixed(1), y: +autoBox.minY.toFixed(1) },
+    pinnedBox: pinnedBox && { x: +pinnedBox.minX.toFixed(1), y: +pinnedBox.minY.toFixed(1) },
+    autoShift: autoShift && +autoShift.toFixed(1),
+    pinnedShift: pinnedShift && +pinnedShift.toFixed(1),
+  };
+}
+
+// ===========================================================================
+// W8: Wave 4 / Card 7 — INCREMENTALITY, driven through the real renderer.
+//     Frame 1 does the work; an identical frame 2 must do none; moving ONE node
+//     must not re-test the links on the far side of the diagram.
+// ===========================================================================
+function w8_optimizerIncremental() {
+  const engine = makeEngine();
+  const diagram = engine.createDiagram('w8');
+
+  // Two INDEPENDENT crossing clusters, far apart. Moving a node in the left
+  // cluster must not cost anything in the right one.
+  const mkCluster = (tag: string, x0: number) => {
+    addNode(diagram, 'A', x0, 120, { w: 70, h: 40, ports: [{ id: `${tag}-a`, side: 'right', type: 'output' }] });
+    addNode(diagram, 'B', x0 + 260, 120, { w: 70, h: 40, ports: [{ id: `${tag}-b`, side: 'left', type: 'input' }] });
+    const top = addNode(diagram, '', x0 + 130, 20, { w: 50, h: 30, ports: [{ id: `${tag}-c`, side: 'bottom', type: 'output' }] });
+    addNode(diagram, '', x0 + 130, 220, { w: 50, h: 30, ports: [{ id: `${tag}-d`, side: 'top', type: 'input' }] });
+    const main = makeLink(diagram, `${tag}-a`, `${tag}-b`, 'direct', {
+      jumpPoints: { enabled: true, size: 12, style: 'arc', detectMode: 'all', threshold: 45 },
+    });
+    makeLink(diagram, `${tag}-c`, `${tag}-d`, 'direct', { stroke: '#0891b2' });
+    return { main, top };
+  };
+  const left = mkCluster('w8l', 40);
+  mkCluster('w8r', 420);
+
+  const stage = cell('w8', 'W8 — optimizer incrementality: a quiet frame does zero work');
+  const renderer = new SVGRenderer(engine, { enableCaching: false, useCSSMode: false }, LIGHT_THEME);
+  const view = { x: 0, y: 0, width: 800, height: 300 };
+
+  const optimizer = (renderer as any).edgeOptimizer;
+
+  renderer.render(view, 1.0); // frame 1 — cold: everything is new
+  const cold = { ...optimizer.stats };
+
+  renderer.render(view, 1.0); // frame 2 — IDENTICAL: nothing may be recomputed
+  const quiet = { ...optimizer.stats };
+
+  // frame 3 — move ONE node in the left cluster
+  left.top.setPosition(150, 30);
+  renderer.render(view, 1.0);
+  const moved = { ...optimizer.stats };
+
+  const vnode = renderer.render(view, 1.0);
+  const settled = { ...optimizer.stats };
+  const dom = vnodeToDom(vnode) as SVGSVGElement;
+  dom.setAttribute('width', '800'); dom.setAttribute('height', '300');
+  stage.appendChild(dom);
+
+  expectThat('W8 cold frame: the optimizer actually did the work',
+    cold.jumpsRecomputed >= 2 && cold.segmentTests > 0, JSON.stringify(cold));
+
+  // THE point of the card: an unchanged frame is free. The per-link scan this
+  // replaces re-tested every link against every other link, every frame.
+  expectThat('W8 quiet frame: nothing moved ⇒ zero segment tests, zero recomputes',
+    quiet.segmentTests === 0 && quiet.jumpsRecomputed === 0 && quiet.dirtyLinks === 0,
+    JSON.stringify(quiet));
+
+  expectThat('W8 quiet frame: jump sets are served from cache',
+    quiet.jumpsReused >= 2, JSON.stringify(quiet));
+
+  // Moving one node dirties only ITS links — not the far cluster's.
+  expectThat('W8 node move: only the links that actually moved are re-tested',
+    moved.dirtyLinks >= 1 && moved.dirtyLinks <= 2, JSON.stringify(moved));
+
+  expectThat('W8: the diagram settles back to zero work once the move is absorbed',
+    settled.segmentTests === 0, JSON.stringify(settled));
+
+  PROBES.w8_optimizerIncremental = { cold, quiet, moved, settled };
+}
+
+// ===========================================================================
 // run all
 // ===========================================================================
 const failures: any[] = [];
@@ -1807,6 +2328,10 @@ for (const [name, fn] of Object.entries({
   a5_jumpNearCorner, a6_jumpNearArrow, a7_labels, a8_dashedJumps,
   a9_diagonalArrows, a10_lod, a11_orthoAxisAligned, a12_penetrationSweep, a13_dragKeepsLineIdentity, a14_hitAreaAndSmartPorts,
   a15_smartShapesAndPathTypes,
+  // Wave 4 (Edges & links)
+  w1_parallelLinks, w2_bidirectionalPair, w3_selfLoops,
+  w4_htmlLabels, w5_customMarkers, w6_linkTemplate,
+  w7_edgeOptimizer, w8_optimizerIncremental,
 })) {
   try {
     (fn as any)();
