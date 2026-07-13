@@ -12,6 +12,7 @@
  *            or REPARENT. You could build a diagram and never restructure one.
  */
 import { DiagramEngine, DiagramModel, NodeModel, LinkModel } from '@grafloria/engine';
+import type { Command } from '@grafloria/engine';
 import { KeyboardNavigationController } from './keyboard-navigation';
 
 describe('wave6 — keyboard navigation, cards 2 & 3', () => {
@@ -51,10 +52,17 @@ describe('wave6 — keyboard navigation, cards 2 & 3', () => {
     return link;
   }
 
-  /** Run a command the way the host does. */
-  function run(command: { execute: (ctx: unknown) => void } | null): void {
+  /**
+   * Run a command the way the host does.
+   *
+   * MUST be awaited: `MacroCommand.execute` is async (it awaits each step so a
+   * macro can carry delays), so a synchronous call returns a pending promise and
+   * the model is untouched until the microtasks drain. Asserting straight after
+   * a bare `.execute()` tests nothing at all.
+   */
+  async function run(command: Command | null): Promise<void> {
     expect(command).not.toBeNull();
-    command!.execute({ diagram, store: undefined } as never);
+    await command!.execute({ diagram } as never);
   }
 
   // ==========================================================================
@@ -162,13 +170,13 @@ describe('wave6 — keyboard navigation, cards 2 & 3', () => {
   // ==========================================================================
 
   describe('card 3 — delete', () => {
-    test('deleting a node takes its edges with it (no dangling links)', () => {
+    test('deleting a node takes its edges with it (no dangling links)', async () => {
       const a = addNode(0, 0, 'A');
       const b = addNode(300, 0, 'B');
       linkBetween(a, b);
 
       nav.setFocus({ type: 'node', id: a.id }, engine);
-      run(nav.deleteCommand(engine));
+      await run(nav.deleteCommand(engine));
 
       expect(diagram.getNode(a.id)).toBeUndefined();
       expect(diagram.getLinks()).toHaveLength(0);
@@ -183,48 +191,49 @@ describe('wave6 — keyboard navigation, cards 2 & 3', () => {
       expect(nav.deleteCommand(engine)).toBeNull();
     });
 
-    test('deleting clears focus — it must not rest on something that is gone', () => {
+    test('deleting clears focus — it must not rest on something that is gone', async () => {
       const a = addNode(0, 0, 'A');
       nav.setFocus({ type: 'node', id: a.id }, engine);
 
-      run(nav.deleteCommand(engine));
+      await run(nav.deleteCommand(engine));
       expect(nav.getFocused()).toBeNull();
     });
 
-    test('a focused EDGE alone can be deleted, leaving its nodes', () => {
+    test('a focused EDGE alone can be deleted, leaving its nodes', async () => {
       const a = addNode(0, 0, 'A');
       const b = addNode(300, 0, 'B');
       const link = linkBetween(a, b);
 
       nav.setFocus({ type: 'link', id: link.id }, engine);
-      run(nav.deleteCommand(engine));
+      await run(nav.deleteCommand(engine));
 
       expect(diagram.getLink(link.id)).toBeUndefined();
       expect(diagram.getNodes()).toHaveLength(2);
     });
 
-    test('is undoable as ONE command', () => {
+    test('is undoable as ONE command', async () => {
       const a = addNode(0, 0, 'A');
       const b = addNode(300, 0, 'B');
       linkBetween(a, b);
 
       nav.setFocus({ type: 'node', id: a.id }, engine);
       const command = nav.deleteCommand(engine)!;
-      command.execute({ diagram } as never);
+      await command.execute({ diagram } as never);
       expect(diagram.getNodes()).toHaveLength(1);
 
-      command.undo({ diagram } as never);
+      // One press of Delete, one press of Undo — the node AND its edge come back.
+      await command.undo({ diagram } as never);
       expect(diagram.getNodes()).toHaveLength(2);
       expect(diagram.getLinks()).toHaveLength(1);
     });
   });
 
   describe('card 3 — duplicate', () => {
-    test('duplicates the focused node at an offset, keeping its label', () => {
+    test('duplicates the focused node at an offset, keeping its label', async () => {
       const a = addNode(10, 20, 'Review');
 
       nav.setFocus({ type: 'node', id: a.id }, engine);
-      run(nav.duplicateCommand(engine, { x: 24, y: 24 }));
+      await run(nav.duplicateCommand(engine, { x: 24, y: 24 }));
 
       expect(diagram.getNodes()).toHaveLength(2);
       const copy = diagram.getNodes().find((n) => n.id !== a.id)!;
@@ -232,26 +241,26 @@ describe('wave6 — keyboard navigation, cards 2 & 3', () => {
       expect(copy.position).toMatchObject({ x: 34, y: 44 });
     });
 
-    test('an edge BETWEEN two duplicated nodes is duplicated too', () => {
+    test('an edge BETWEEN two duplicated nodes is duplicated too', async () => {
       const a = addNode(0, 0, 'A');
       const b = addNode(300, 0, 'B');
       linkBetween(a, b);
       diagram.selectNode(a);
       diagram.toggleNodeSelection(b);
 
-      run(nav.duplicateCommand(engine));
+      await run(nav.duplicateCommand(engine));
 
       expect(diagram.getNodes()).toHaveLength(4);
       expect(diagram.getLinks()).toHaveLength(2);
     });
 
-    test('an edge leaving the copied set is NOT duplicated (it has no counterpart)', () => {
+    test('an edge leaving the copied set is NOT duplicated (it has no counterpart)', async () => {
       const a = addNode(0, 0, 'A');
       const outside = addNode(300, 0, 'Outside');
       linkBetween(a, outside);
 
       nav.setFocus({ type: 'node', id: a.id }, engine);
-      run(nav.duplicateCommand(engine));
+      await run(nav.duplicateCommand(engine));
 
       expect(diagram.getNodes()).toHaveLength(3);
       expect(diagram.getLinks()).toHaveLength(1); // still just the original
@@ -259,31 +268,31 @@ describe('wave6 — keyboard navigation, cards 2 & 3', () => {
   });
 
   describe('card 3 — reparent', () => {
-    test('moves the focused node into a container', () => {
+    test('moves the focused node into a container', async () => {
       const container = addNode(0, 0, 'Group', 'container');
       const child = addNode(400, 0, 'Child');
 
       nav.setFocus({ type: 'node', id: child.id }, engine);
-      run(nav.reparentCommand(engine, container.id));
+      await run(nav.reparentCommand(engine, container.id));
 
       expect(diagram.getNode(child.id)!.parentId).toBe(container.id);
     });
 
-    test('unparents back to the top level', () => {
+    test('unparents back to the top level', async () => {
       const container = addNode(0, 0, 'Group', 'container');
       const child = addNode(400, 0, 'Child');
       nav.setFocus({ type: 'node', id: child.id }, engine);
-      run(nav.reparentCommand(engine, container.id));
+      await run(nav.reparentCommand(engine, container.id));
 
-      run(nav.reparentCommand(engine, null));
+      await run(nav.reparentCommand(engine, null));
       expect(diagram.getNode(child.id)!.parentId).toBeUndefined();
     });
 
-    test('REFUSES a cycle, assertively — instead of throwing into the void', () => {
+    test('REFUSES a cycle, assertively — instead of throwing into the void', async () => {
       const parent = addNode(0, 0, 'Parent', 'container');
       const child = addNode(400, 0, 'Child');
       nav.setFocus({ type: 'node', id: child.id }, engine);
-      run(nav.reparentCommand(engine, parent.id));
+      await run(nav.reparentCommand(engine, parent.id));
 
       // Now try to put the PARENT inside its own child.
       nav.setFocus({ type: 'node', id: parent.id }, engine);
@@ -302,12 +311,12 @@ describe('wave6 — keyboard navigation, cards 2 & 3', () => {
       expect(nav.getLastAnnouncement()?.message).toBe('Cannot reparent a node into itself');
     });
 
-    test('candidate containers exclude the node itself and its descendants', () => {
+    test('candidate containers exclude the node itself and its descendants', async () => {
       const parent = addNode(0, 0, 'Parent', 'container');
       const child = addNode(400, 0, 'Child');
       const other = addNode(800, 0, 'Other');
       nav.setFocus({ type: 'node', id: child.id }, engine);
-      run(nav.reparentCommand(engine, parent.id));
+      await run(nav.reparentCommand(engine, parent.id));
 
       nav.setFocus({ type: 'node', id: parent.id }, engine);
       const candidates = nav.reparentCandidates(engine).map((n) => n.id);

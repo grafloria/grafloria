@@ -55,7 +55,14 @@ export class LiveRegionController {
   private readonly cancel: (handle: unknown) => void;
 
   private lastMessage: Record<Politeness, string> = { polite: '', assertive: '' };
-  private lastAt = 0;
+  /**
+   * When the last message was spoken. `-Infinity`, NOT 0 — with 0, the very
+   * first announcement of the session looks like it arrived inside the coalesce
+   * window of a previous announcement that never happened, so it gets deferred
+   * instead of spoken. (An injected clock starting at 0 makes this obvious; a
+   * `Date.now()` clock hides it, which is exactly why the tests inject one.)
+   */
+  private lastAt = -Infinity;
   private pending: { message: string; politeness: Politeness } | null = null;
   private timer: unknown = null;
   private speakCount = 0;
