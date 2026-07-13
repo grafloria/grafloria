@@ -1,7 +1,10 @@
 // DiagramSerializer - Handles diagram serialization/deserialization
 
 import { DiagramModel } from '../models/DiagramModel';
-import type { SerializedDiagram as DiagramSerializedData } from '../models/DiagramModel';
+import type {
+  SerializedDiagram as DiagramSerializedData,
+  DiagramLoadOptions,
+} from '../models/DiagramModel';
 import type { DiagramMode } from '../engine/DiagramMode';
 
 // Serializer's output type with string version for format version
@@ -30,13 +33,13 @@ export class DiagramSerializer {
   /**
    * Deserialize diagram from plain object
    */
-  deserialize(data: SerializedDiagram): DiagramModel {
+  deserialize(data: SerializedDiagram, options?: DiagramLoadOptions): DiagramModel {
     // Convert back to diagram format
     const diagramData: DiagramSerializedData = {
       ...data,
       version: data.diagramVersion || 1,
     };
-    // Use static fromJSON method
-    return DiagramModel.fromJSON(diagramData);
+    // Use static fromJSON method (migrations + optional validation run there)
+    return DiagramModel.fromJSON(diagramData, options);
   }
 }

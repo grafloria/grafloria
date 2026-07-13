@@ -33,6 +33,21 @@ export * from './engine';
 // Serialization
 export { DiagramSerializer } from './serialization/Serializer';
 export type { SerializedDiagram as SerializedDiagramData } from './serialization/Serializer';
+export {
+  DIAGRAM_SCHEMA_VERSION,
+  registerDiagramMigration,
+  getDiagramMigrations,
+  runDiagramMigrations,
+} from './serialization/DiagramMigrations';
+export type { DiagramMigration } from './serialization/DiagramMigrations';
+export {
+  validateSerializedDiagram,
+  DiagramValidationError,
+} from './serialization/DiagramValidator';
+export type {
+  DiagramValidationFinding,
+  DiagramValidationReport,
+} from './serialization/DiagramValidator';
 
 // Performance
 export * from './performance';

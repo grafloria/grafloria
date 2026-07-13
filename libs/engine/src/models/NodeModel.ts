@@ -1314,10 +1314,19 @@ export class NodeModel extends DiagramEntity {
       node.metadata.set(key, value);
     }
 
-    // Restore ports
-    for (const portData of data.ports) {
-      const port = PortModel.fromJSON(portData);
-      node.ports.set(port.id, port);
+    // Restore ports. The SAVED port set is authoritative: the constructor
+    // auto-creates default ports (Phase 0.5.1), and appending the serialized
+    // ports on top of them made every save/load cycle GROW the set (4 defaults
+    // + 4 restored = 8, then 12, …). Clear the auto-created defaults first so
+    // a restored node has exactly the ports it was saved with — including
+    // zero, if they were all removed. Legacy payloads with no `ports` field
+    // keep the constructor defaults.
+    if (Array.isArray(data.ports)) {
+      node.ports.clear();
+      for (const portData of data.ports) {
+        const port = PortModel.fromJSON(portData);
+        node.ports.set(port.id, port);
+      }
     }
 
     // Restore behavior overrides
@@ -1345,6 +1354,10 @@ export class NodeModel extends DiagramEntity {
     if ((data as any).connectionGroup) {
       node.connectionGroup = (data as any).connectionGroup;
     }
+
+    // Last: restore persisted identity (uuid) and mutation counter (version)
+    // so a loaded node is indistinguishable from the one that was saved.
+    node.restoreIdentity(data);
 
     return node;
   }

@@ -19,8 +19,20 @@ import { createDefaultLODConfig } from '../types/performance.types'; // wave2/re
 import { LayoutManager } from '../layout/LayoutManager'; // Layout system
 import type { LayoutAlgorithmType, LayoutConfiguration } from '../layout/types';
 import { isPointInShape } from '../utils/geometry'; // Phase 3.3
+import { runDiagramMigrations, DIAGRAM_SCHEMA_VERSION } from '../serialization/DiagramMigrations';
+import {
+  validateSerializedDiagram,
+  DiagramValidationError,
+  type DiagramValidationReport,
+} from '../serialization/DiagramValidator';
 
 export interface SerializedDiagram extends SerializedEntity {
+  /**
+   * Document schema version (shape of THIS payload), distinct from the
+   * per-entity mutation counter `version`. Absent on pre-versioning
+   * documents, which are treated as schemaVersion 1 and migrated on load.
+   */
+  schemaVersion?: number;
   name: string;
   nodes: SerializedNode[];
   links: SerializedLink[];
@@ -32,6 +44,16 @@ export interface SerializedDiagram extends SerializedEntity {
     height: number;  // Phase 0.5 - Viewport-aware layout
     zoom: number;
   };
+}
+
+export interface DiagramLoadOptions {
+  /**
+   * Structural integrity policy for the incoming document:
+   *  - 'off'    (default) skip validation
+   *  - 'warn'   validate and console.warn a one-line summary with the report
+   *  - 'strict' validate and throw DiagramValidationError on any error
+   */
+  validate?: 'off' | 'warn' | 'strict';
 }
 
 export class DiagramModel extends DiagramEntity {
@@ -72,8 +94,13 @@ export class DiagramModel extends DiagramEntity {
   // not a per-call sort. Kept in sync whenever _lodConfig changes.
   private _lodTiersDesc: LODTier[] = [];
 
-  constructor(name?: string, options?: { lodConfig?: LODConfig }) {
-    super();
+  constructor(
+    name?: string,
+    options?: { lodConfig?: LODConfig; id?: string; uuid?: string }
+  ) {
+    // id/uuid pass-through exists so deserialization can reproduce the SAVED
+    // diagram identity instead of minting a new one (lossless round-trip).
+    super(options?.id, options?.uuid);
     if (name) this.name = name;
 
     // wave2/rendering: install the LOD policy (custom or default).
@@ -138,6 +165,17 @@ export class DiagramModel extends DiagramEntity {
       throw new Error(`Node with id ${node.id} already exists`);
     }
 
+    this.installNode(node);
+  }
+
+  /**
+   * THE single per-node install path — every route a node takes into the
+   * diagram (interactive addNode, undo restoreNode, document fromJSON) runs
+   * through here, so a restored node is wired IDENTICALLY to an authored one:
+   * diagram back-reference, change tracking, events, port index, spatial
+   * index, and change-forwarding listeners.
+   */
+  private installNode(node: NodeModel): void {
     // Set diagram reference (Phase 1.6a)
     node.diagram = this;
 
@@ -199,35 +237,7 @@ export class DiagramModel extends DiagramEntity {
   restoreNode(data: any): NodeModel | undefined {
     try {
       const node = NodeModel.fromJSON(data);
-      node.diagram = this;
-      this.nodes.set(node.id, node);
-      this.trackChange('nodes', null, node);
-      this.emitOrQueue('node:added', node);
-
-      // Maintain O(1) port -> node index for restored nodes too
-      this.indexNodePorts(node);
-
-      // Phase 5.1: Add to spatial index and listen - AFTER trackChange
-      this.nodeSpatialIndex.add(node);
-      const updateSpatialIndex = () => this.nodeSpatialIndex.update(node);
-      node.on('change:position', updateSpatialIndex);
-      node.on('change:size', updateSpatialIndex);
-
-      // Phase 0.2: Forward position and size changes as diagram-level events
-      node.on('change:position', () => {
-        this.emitOrQueue('node:moved', { nodeId: node.id, position: node.position });
-      });
-      node.on('change:size', () => {
-        this.emitOrQueue('node:resized', { nodeId: node.id, size: node.size });
-      });
-      node.on('change:rotation', updateSpatialIndex);
-      node.on('change:scale', updateSpatialIndex);
-
-      // Listen for any node changes and forward as diagram-level 'node:changed' event
-      node.on('change', () => {
-        this.emitOrQueue('node:changed', node);
-      });
-
+      this.installNode(node);
       return node;
     } catch (error) {
       console.error('Failed to restore node:', error);
@@ -322,6 +332,15 @@ export class DiagramModel extends DiagramEntity {
       throw new Error(`Link with id ${link.id} already exists`);
     }
 
+    this.installLink(link);
+  }
+
+  /**
+   * THE single per-link install path (see installNode) — interactive add,
+   * undo restore, and document load all wire links identically, including
+   * the owning-node-id backfill renderers resolve port sides through.
+   */
+  private installLink(link: LinkModel): void {
     // Cache the owning node ids (renderers resolve port sides through them —
     // without this, links built via `new LinkModel()` + addLink never resolve
     // port direction, unlike connectNodes() which sets the ids itself)
@@ -369,19 +388,7 @@ export class DiagramModel extends DiagramEntity {
   restoreLink(data: any): LinkModel | undefined {
     try {
       const link = LinkModel.fromJSON(data);
-      this.links.set(link.id, link);
-      this.trackChange('links', null, link);
-      this.emitOrQueue('link:added', link);
-
-      // Phase 5.1: Add to spatial index and listen - AFTER trackChange
-      this.linkSpatialIndex.add(link);
-      link.on('change:points', () => this.linkSpatialIndex.update(link));
-
-      // Listen for any link changes and forward as diagram-level 'link:changed' event
-      link.on('change', () => {
-        this.emitOrQueue('link:changed', link);
-      });
-
+      this.installLink(link);
       return link;
     } catch (error) {
       console.error('Failed to restore link:', error);
@@ -630,8 +637,22 @@ export class DiagramModel extends DiagramEntity {
       throw new Error(`Group with id ${group.id} already exists`);
     }
 
-    // Store diagram reference for layout operations
-    group.setMetadata('diagram', this);
+    this.installGroup(group);
+  }
+
+  /**
+   * THE single per-group install path (see installNode). The diagram
+   * back-reference is RUNTIME wiring: GroupModel.serialize() deliberately
+   * excludes it from payloads, and this re-stashes it on every install so a
+   * loaded group can resolve its diagram exactly like an authored one.
+   */
+  private installGroup(group: GroupModel): void {
+    // Store diagram reference for layout operations. Written to the map
+    // DIRECTLY (not setMetadata): this is runtime wiring, not a user
+    // mutation — it must not bump the group's version or land in its change
+    // log, or a loaded group would report a different version than it was
+    // saved with (and every install would count as an edit).
+    group.metadata.set('diagram', this);
 
     this.groups.set(group.id, group);
     this.trackChange('groups', null, group);
@@ -657,9 +678,7 @@ export class DiagramModel extends DiagramEntity {
   restoreGroup(data: any): GroupModel | undefined {
     try {
       const group = GroupModel.fromJSON(data);
-      this.groups.set(group.id, group);
-      this.trackChange('groups', null, group);
-      this.emitOrQueue('group:added', group);
+      this.installGroup(group);
       return group;
     } catch (error) {
       console.error('Failed to restore group:', error);
@@ -1608,6 +1627,7 @@ export class DiagramModel extends DiagramEntity {
    */
   serialize(): SerializedDiagram {
     return {
+      schemaVersion: DIAGRAM_SCHEMA_VERSION,
       id: this.id,
       uuid: this.uuid,
       type: 'diagram',
@@ -1622,46 +1642,138 @@ export class DiagramModel extends DiagramEntity {
   }
 
   /**
-   * Deserialize from JSON
+   * Rebuild the derived port-connection registries from the diagram's links.
+   *
+   * `PortModel.currentConnections` is DERIVED state (which links touch this
+   * port). It is never serialized; instead it is reconstructed
+   * deterministically here so `canConnect()` / `maxConnections` enforcement
+   * survive save/load. Runs inside fromJSON, and is safe to re-run at any
+   * time — existing registries are reset first, so the result is always
+   * exactly the current links.
+   *
+   * A self-loop (source === target port) registers once — the Set dedupes —
+   * so it counts as ONE connection on that port.
+   *
+   * @returns endpoints that resolve to no known port (corrupt/dangling links),
+   *          for callers that want to surface them.
    */
-  static fromJSON(data: SerializedDiagram): DiagramModel {
-    const diagram = new DiagramModel(data.name);
-
-    // Restore viewport with backward compatibility
-    diagram.viewport = {
-      x: data.viewport.x,
-      y: data.viewport.y,
-      width: data.viewport.width || 1200,   // Default for old diagrams
-      height: data.viewport.height || 800,  // Default for old diagrams
-      zoom: data.viewport.zoom
-    };
-
-    // Restore nodes
-    for (const nodeData of data.nodes) {
-      const node = NodeModel.fromJSON(nodeData);
-      diagram.nodes.set(node.id, node);
-      // Keep the O(1) port index consistent for deserialized diagrams
-      diagram.indexNodePorts(node);
+  reconcilePortConnections(): Array<{ linkId: string; portId: string; end: 'source' | 'target' }> {
+    // Reset: the registry must be exactly what the links imply, not a merge
+    // of stale + current.
+    for (const { port } of this.portIndex.values()) {
+      port.currentConnections.clear();
     }
 
-    // Restore links
-    for (const linkData of data.links) {
-      const link = LinkModel.fromJSON(linkData);
-      diagram.links.set(link.id, link);
+    const dangling: Array<{ linkId: string; portId: string; end: 'source' | 'target' }> = [];
+    for (const link of this.links.values()) {
+      for (const [end, portId] of [
+        ['source', link.sourcePortId],
+        ['target', link.targetPortId],
+      ] as const) {
+        const entry = this.portIndex.get(portId);
+        if (entry) {
+          entry.port.restoreConnection(link.id);
+        } else {
+          dangling.push({ linkId: link.id, portId, end });
+        }
+      }
     }
+    return dangling;
+  }
 
-    // Restore groups (Phase 1.6c)
-    if (data.groups) {
-      for (const groupData of data.groups) {
-        const group = GroupModel.fromJSON(groupData);
-        diagram.groups.set(group.id, group);
+  /**
+   * Deserialize from JSON — THE document load path.
+   *
+   * Contract: a loaded diagram behaves identically to an authored one.
+   * Every entity is installed through the same install* wiring as
+   * interactive creation (diagram back-refs, spatial indices, port index,
+   * change-forwarding listeners), port registries are reconciled, and the
+   * document is migrated to the current schema first. The load itself is
+   * NOT a user mutation: per-entity events queued during the restore are
+   * dropped, the change log ends empty, and `version` reports the SAVED
+   * counter — then a single 'diagram:loaded' event fires.
+   */
+  static fromJSON(data: SerializedDiagram, options?: DiagramLoadOptions): DiagramModel {
+    // 1) Upgrade older documents (throws on newer-than-runtime or a gap).
+    const doc = runDiagramMigrations(data);
+
+    // 2) Optional structural validation with caller-chosen policy.
+    let report: DiagramValidationReport | undefined;
+    const policy = options?.validate ?? 'off';
+    if (policy !== 'off') {
+      report = validateSerializedDiagram(doc);
+      if (policy === 'strict' && !report.ok) {
+        throw new DiagramValidationError(report);
+      }
+      if (policy === 'warn' && (report.errors.length || report.warnings.length)) {
+        console.warn(
+          `Diagram '${doc.name}' loaded with ${report.errors.length} integrity error(s) ` +
+            `and ${report.warnings.length} warning(s)`,
+          report
+        );
       }
     }
 
-    // Restore metadata
-    for (const [key, value] of Object.entries(data.metadata)) {
-      diagram.metadata.set(key, value);
+    // 3) Reproduce the saved identity — a load must not mint a new diagram.
+    const diagram = new DiagramModel(doc.name, { id: doc.id, uuid: doc.uuid });
+
+    // Restore viewport with backward compatibility
+    diagram.viewport = {
+      x: doc.viewport.x,
+      y: doc.viewport.y,
+      width: doc.viewport.width || 1200,   // Default for old diagrams
+      height: doc.viewport.height || 800,  // Default for old diagrams
+      zoom: doc.viewport.zoom
+    };
+
+    // 4) Install every entity through the SAME wiring as interactive
+    //    creation, inside a batch window so the restore doesn't fire an
+    //    O(entities) event storm. Nodes go first so link node-id backfill
+    //    and port resolution work; groups after links (members reference
+    //    both).
+    diagram.beginBatch();
+    try {
+      for (const nodeData of doc.nodes) {
+        diagram.restoreNode(nodeData);
+      }
+      for (const linkData of doc.links) {
+        diagram.restoreLink(linkData);
+      }
+      if (doc.groups) {
+        for (const groupData of doc.groups) {
+          diagram.restoreGroup(groupData);
+        }
+      }
+
+      // Restore metadata
+      for (const [key, value] of Object.entries(doc.metadata)) {
+        diagram.metadata.set(key, value);
+      }
+
+      // 5) Rebuild derived state (port connection registries).
+      diagram.reconcilePortConnections();
+    } finally {
+      // A load is not N user mutations: drop the queued per-entity events
+      // (node:added × N, …) instead of firing them, then close the batch.
+      diagram._pendingEvents = [];
+      diagram.endBatch();
     }
+
+    // 6) Version parity + clean change state: the loaded model reports the
+    //    SAVED mutation counter and an empty change log, exactly like the
+    //    diagram that was serialized. (Render-dirty state is untouched — a
+    //    fresh load must still paint.)
+    diagram.changeLog.length = 0;
+    diagram.version = doc.version ?? 1;
+
+    // 7) One document-level event replaces the storm.
+    diagram.emitter.emit('diagram:loaded', {
+      nodeCount: diagram.nodes.size,
+      linkCount: diagram.links.size,
+      groupCount: diagram.groups.size,
+      schemaVersion: doc.schemaVersion ?? DIAGRAM_SCHEMA_VERSION,
+      validation: report,
+    });
 
     return diagram;
   }

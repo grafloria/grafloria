@@ -907,9 +907,10 @@ export class LinkModel extends DiagramEntity {
       data.pathType
     );
 
-    // Restore ID and UUID
-    (link as any).id = data.id;
-    (link as any).uuid = data.uuid;
+    // Restore ID (no constructor param exists for it) and persisted
+    // identity/version via the sanctioned entity helper.
+    (link as unknown as { id: string }).id = data.id;
+    link.restoreIdentity(data);
 
     link.sourceNodeId = data.sourceNodeId;
     link.targetNodeId = data.targetNodeId;

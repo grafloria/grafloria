@@ -651,12 +651,20 @@ export class GroupModel extends DiagramEntity {
    * Serialize to JSON
    */
   serialize(): SerializedGroup {
+    // The 'diagram' metadata key is RUNTIME wiring (a live DiagramModel
+    // back-reference stashed by DiagramModel.addGroup/installGroup). It must
+    // never reach the payload: serializing it embeds the entire live model
+    // into the JSON (circular reference — JSON.stringify throws). The install
+    // path re-stashes it on load.
+    const metadata = Object.fromEntries(
+      Array.from(this.metadata).filter(([key]) => key !== 'diagram')
+    );
     return {
       id: this.id,
       uuid: this.uuid,
       type: 'group',
       version: this.version,
-      metadata: Object.fromEntries(this.metadata),
+      metadata,
       name: this.name,
       members: Array.from(this.members),
       isCollapsed: this.isCollapsed,
@@ -713,6 +721,9 @@ export class GroupModel extends DiagramEntity {
     for (const [key, value] of Object.entries(data.metadata)) {
       group.metadata.set(key, value);
     }
+
+    // Last: restore persisted identity (uuid) and mutation counter (version).
+    group.restoreIdentity(data);
 
     return group;
   }

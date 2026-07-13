@@ -18,7 +18,7 @@ export interface SerializedPort extends SerializedEntity {
   alignment: PortAlignment;
   offset: Point;
   index: number; // NEW: For multiple ports per side
-  maxConnections: number;
+  maxConnections: number | null; // null = unlimited (Infinity is not JSON-representable)
   allowedTypes: string[];
   visible: boolean;
   style: Record<string, any>;
@@ -104,7 +104,7 @@ export class PortModel extends DiagramEntity {
       this.index = config.index;
     }
 
-    if (config.maxConnections !== undefined) {
+    if (config.maxConnections != null) {
       this.maxConnections = config.maxConnections;
     }
   }
@@ -196,6 +196,18 @@ export class PortModel extends DiagramEntity {
       this.currentConnections.add(linkId);
       this.trackChange('connections', null, linkId);
     }
+  }
+
+  /**
+   * Load-time reconcile: register a connection WITHOUT the maxConnections
+   * guard or change tracking. The connection registry is derived state that
+   * is rebuilt deterministically from the diagram's links on load — a
+   * persisted graph may legitimately exceed a since-tightened maxConnections,
+   * so enforcement applies to NEW interactive connections (addConnection),
+   * never to reloading saved state.
+   */
+  restoreConnection(linkId: string): void {
+    this.currentConnections.add(linkId);
   }
 
   /**
@@ -440,7 +452,9 @@ export class PortModel extends DiagramEntity {
       alignment: { ...this.alignment },
       offset: { ...this.offset },
       index: this.index, // NEW: Serialize index
-      maxConnections: this.maxConnections,
+      // Infinity is not JSON-representable (stringify silently yields null);
+      // emit null as the EXPLICIT "unlimited" sentinel so payloads round-trip.
+      maxConnections: Number.isFinite(this.maxConnections) ? this.maxConnections : null,
       allowedTypes: Array.from(this.allowedTypes),
       visible: this.visible,
       style: { ...this.style },
@@ -466,7 +480,7 @@ export class PortModel extends DiagramEntity {
       position: data.position,
       alignment: data.alignment,
       index: data.index, // NEW: Restore index (will be undefined for old diagrams)
-      maxConnections: data.maxConnections,
+      maxConnections: data.maxConnections ?? undefined, // null sentinel -> unlimited
     });
 
     port.nodeId = data.nodeId;
@@ -491,6 +505,9 @@ export class PortModel extends DiagramEntity {
     for (const [key, value] of Object.entries(data.metadata)) {
       port.metadata.set(key, value);
     }
+
+    // Last: restore persisted identity (uuid) and mutation counter (version).
+    port.restoreIdentity(data);
 
     return port;
   }

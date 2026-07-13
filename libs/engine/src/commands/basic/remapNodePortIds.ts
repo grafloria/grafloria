@@ -1,7 +1,7 @@
 // Shared port-id remapping for clone operations (Paste / Duplicate)
 
 import type { NodeModel } from '../../models/NodeModel';
-import { generateId } from '../../utils/id';
+import { generateId, generateUUID } from '../../utils/id';
 
 /**
  * Re-assign fresh ids to every port on a freshly-cloned node.
@@ -29,6 +29,11 @@ export function remapNodePortIds(
   newNodeId: string,
   portIdMap: Map<string, string>,
 ): void {
+  // A clone is a NEW entity: since fromJSON now restores the SAVED uuid
+  // (lossless load), paste/duplicate must mint fresh uuids or two live
+  // entities would share one identity.
+  (node as unknown as { uuid: string }).uuid = generateUUID();
+
   // Snapshot first — we are about to rewrite the very Map we would iterate.
   const ports = node.getPorts();
   node.ports.clear();
@@ -40,6 +45,7 @@ export function remapNodePortIds(
 
     // `id` is readonly on DiagramEntity — same override pattern used for groups.
     (port as unknown as { id: string }).id = newPortId;
+    (port as unknown as { uuid: string }).uuid = generateUUID();
     port.nodeId = newNodeId;
 
     node.ports.set(newPortId, port);
