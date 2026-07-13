@@ -233,6 +233,24 @@ export interface ExportOptions {
 
   /** Prepend the `<?xml …?>` prolog to an SVG export. Default false. */
   xmlDeclaration?: boolean;
+
+  /**
+   * Carry the source model INSIDE the exported artifact, so it can be re-imported and
+   * edited losslessly (`importDiagram`). An SVG gets it in `<metadata>`; a PNG gets an
+   * `iTXt` chunk.
+   *
+   * PNG ONLY among the rasters. JPEG and WebP have no text chunk that reliably survives
+   * their encoders, so an `embedModel` there would be a promise we could not keep — it
+   * is ignored rather than silently half-working.
+   */
+  embedModel?: boolean;
+
+  /**
+   * The embedded envelope's `createdAt`. Supply it to keep an `embedModel` export
+   * DETERMINISTIC — otherwise the envelope is stamped with the wall clock and two
+   * exports of the same diagram differ in their bytes.
+   */
+  embedModelCreatedAt?: string;
 }
 
 /**

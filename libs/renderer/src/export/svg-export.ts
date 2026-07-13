@@ -27,6 +27,8 @@ import { createClassStyleResolver } from './style-flattener';
 import { serializeVNode, escapeAttr, type ForeignObjectMode } from './vnode-serializer';
 import { clampOutputSize, DEFAULT_MAX_OUTPUT_SIZE, padRect, vnodeBounds } from './bounds';
 import { filterTreeByIds } from './scope';
+import { embedModelInSvg } from './round-trip';
+import type { DiagramDocumentEnvelope } from '@grafloria/engine';
 
 export const SVG_XMLNS = 'http://www.w3.org/2000/svg';
 
@@ -101,6 +103,17 @@ export interface SvgExportOptions {
 
   /** Prepend the `<?xml …?>` prolog. Default false (an inline `<svg>` must not have one). */
   xmlDeclaration?: boolean;
+
+  /**
+   * Embed this document envelope in the SVG's `<metadata>`, making the exported file
+   * an EDITABLE artifact: re-import it and get the diagram back, losslessly.
+   *
+   * Takes the envelope rather than building one, because an envelope carries a
+   * `createdAt` — and minting a timestamp in here would make the export
+   * non-deterministic, which is a guarantee this module does not get to break.
+   * `SVGRenderer.export` builds it for you (see `ExportOptions.embedModel`).
+   */
+  embedModel?: DiagramDocumentEnvelope;
 }
 
 export interface SvgExportResult {
@@ -213,7 +226,7 @@ export function exportSvg(root: VNode, options: SvgExportOptions = {}): SvgExpor
 
   const prolog = options.xmlDeclaration ? XML_DECLARATION : '';
 
-  const svg =
+  let svg =
     prolog +
     `<svg xmlns="${SVG_XMLNS}" ` +
     `viewBox="${viewBox.x} ${viewBox.y} ${viewBox.width} ${viewBox.height}" ` +
@@ -222,6 +235,12 @@ export function exportSvg(root: VNode, options: SvgExportOptions = {}): SvgExpor
     background +
     children +
     `</svg>`;
+
+  // The source model, carried inside the picture (Card 7). Injected AFTER composition
+  // so it cannot disturb the serializer's byte layout when it is absent.
+  if (options.embedModel) {
+    svg = embedModelInSvg(svg, options.embedModel);
+  }
 
   return { svg, width, height, viewBox, warnings };
 }

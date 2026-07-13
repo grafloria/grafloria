@@ -1,7 +1,8 @@
 import type { DiagramEngine, DiagramModel, NodeModel, NodeStyle, LinkModel, LinkStyle, PortModel, InteractionConfig, ReconnectionPreview, LODLevel, LODFeature, Shadow } from '@grafloria/engine';
 // Value import: the ONE definition of "where does a label sit along the path"
 // (slot vs position), shared by the model, this renderer and the edge optimizer.
-import { linkLabelPosition } from '@grafloria/engine';
+import { linkLabelPosition, DiagramSerializer } from '@grafloria/engine';
+import type { DiagramDocumentEnvelope } from '@grafloria/engine';
 // Wave 5 Card 4: corridor separation for DIFFERENT-pair edges sharing a channel.
 import { computeChannelNudges, applyChannelNudges } from './channel-nudging';
 import type {
@@ -21,6 +22,7 @@ import type {
 import { exportSvg, type SvgExportResult } from '../export/svg-export';
 import { mimeTypeForFormat, resolveRasterBackend } from '../export/raster';
 import { DEFAULT_MAX_OUTPUT_SIZE } from '../export/bounds';
+import { bytesToDataUrl, dataUrlToBytes, embedModelInPng } from '../export/round-trip';
 import {
   type PaintSpec,
   isPaintSpec,
@@ -1052,12 +1054,43 @@ export class SVGRenderer implements IRenderer {
     });
 
     const backend = resolveRasterBackend(options.rasterBackend);
-    return backend.rasterize({
+    const url = await backend.rasterize({
       svg: result.svg,
       width: result.width,
       height: result.height,
       mimeType: mimeTypeForFormat(format),
       quality: options.quality ?? 0.92,
+    });
+
+    // Card 7: carry the source model in the PNG itself, so the exported image can be
+    // re-opened and edited. PNG ONLY — JPEG and WebP have no equivalent of a text
+    // chunk that survives their encoders, so promising it there would be a lie.
+    if (options.embedModel && format === 'png') {
+      const envelope = this.modelEnvelope(options);
+      if (envelope) {
+        const withModel = embedModelInPng(dataUrlToBytes(url), envelope);
+        return bytesToDataUrl(withModel, 'image/png');
+      }
+    }
+
+    return url;
+  }
+
+  /**
+   * The document envelope to embed — the ENGINE's own, so the artifact carries exactly
+   * the format the engine already round-trips losslessly and checksums.
+   *
+   * `createdAt` is the one field that would otherwise make an export non-deterministic,
+   * so a caller who needs byte-identical output passes it in.
+   */
+  private modelEnvelope(options: ExportOptions): DiagramDocumentEnvelope | undefined {
+    if (!options.embedModel) return undefined;
+    const diagram = this.engine.getDiagram();
+    if (!diagram) return undefined;
+
+    return new DiagramSerializer().serializeEnvelope(diagram, {
+      generator: '@grafloria/renderer',
+      createdAt: options.embedModelCreatedAt,
     });
   }
 
@@ -1113,6 +1146,7 @@ export class SVGRenderer implements IRenderer {
       maxSize: options.maxSize,
       minSize: options.minSize,
       xmlDeclaration: options.xmlDeclaration,
+      embedModel: this.modelEnvelope(options),
     });
   }
 

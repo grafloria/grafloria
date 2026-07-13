@@ -13,5 +13,7 @@
 export * from './style-flattener';
 export * from './vnode-serializer';
 export * from './bounds';
+export * from './scope';
+export * from './round-trip';
 export * from './svg-export';
 export * from './raster';
