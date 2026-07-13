@@ -9,6 +9,7 @@
 
 import { DiagramEngine, LinkModel, NodeModel, PortModel } from '@grafloria/engine';
 import { SVGRenderer } from '../svg/svg-renderer';
+import { DARK_THEME } from '../themes';
 import { ProgressiveMounter } from './progressive-mounter';
 import { ViewLifecycle } from './view-lifecycle';
 import type { EntityKind } from './types';
@@ -155,6 +156,141 @@ describe('ViewLifecycle — autoFreeze', () => {
     expect(lifecycle.isAutoFreeze()).toBe(false);
     lifecycle.retainVisible([['node', 'n0']]);
     expect(lifecycle.retainedCount()).toBe(0); // not even tracked
+  });
+});
+
+// =========================================================================
+// THE HAZARD: a view that is not mounted can still go WRONG.
+//
+// Merging routing into culling produced a bug neither branch's tests could catch — a
+// route memo keyed on endpoints served a coarse far-zoom path forever, because zooming
+// back in did not change the key. The lesson generalises, and it points straight at this
+// card: an entity with no view is an entity nothing is watching. Ask what can change
+// about it that the state you key on cannot see.
+//
+// For a frozen/deferred entity the answer is EVERYTHING — it has no cached VNode and no
+// dirty flag anyone consults. So the only safe rule is the one these pin: a view that
+// comes back is REBUILT FROM THE MODEL, never resurrected from what it used to look like.
+// =========================================================================
+describe('freeze × the world changing underneath it', () => {
+  it('a node that MOVES while frozen off-screen comes back at its NEW position', () => {
+    const { engine, diagram } = scene(12);
+    const renderer = new SVGRenderer(engine, { enableCaching: true });
+    const lifecycle = new ViewLifecycle({ autoFreeze: true });
+    renderer.setViewLifecycle(lifecycle);
+
+    const near = { x: 0, y: 0, width: 500, height: 400 };
+    const far = { x: 1800, y: 0, width: 500, height: 400 };
+
+    const nodeX = (tree: any, id: string): number | undefined => {
+      let found: number | undefined;
+      const walk = (v: any) => {
+        if (!v || typeof v !== 'object') return;
+        if (v.key === `node-${id}` && typeof v.props?.transform === 'string') {
+          const m = /translate\(([-\d.]+)/.exec(v.props.transform);
+          if (m) found = parseFloat(m[1]);
+        }
+        for (const c of v.children ?? []) walk(c);
+      };
+      walk(tree);
+      return found;
+    };
+
+    expect(nodeX(renderer.render(near, 1), 'n0')).toBe(0);
+
+    // n0 leaves the viewport: autoFreeze drops its view.
+    renderer.render(far, 1);
+    expect(lifecycle.isFrozen('node', 'n0')).toBe(true);
+
+    // It MOVES while nobody is drawing it. Nothing marks a view dirty that does not exist.
+    diagram.getNode('n0')!.setPosition(120, 0);
+
+    // Come back. If the view were resurrected from its cache it would be drawn at x=0 —
+    // stale, and exactly the class of bug that the merge found in the route memo.
+    expect(nodeX(renderer.render(near, 1), 'n0')).toBe(120);
+
+    renderer.dispose();
+    engine.destroy();
+  });
+
+  it('a node frozen across a THEME SWAP comes back in the new theme', () => {
+    const { engine } = scene(3);
+    // useCSSMode: false so the theme's COLOURS are baked into the VNode as literals. In
+    // CSS-variable mode a theme swap rebinds a var() and never touches the VNode, so a
+    // stale VNode would be re-themed for free — and this hazard could not exist. Baked
+    // literals are the case where a view that "hasn't changed" genuinely IS wrong.
+    const renderer = new SVGRenderer(engine, { enableCaching: true, useCSSMode: false });
+    const lifecycle = new ViewLifecycle();
+    renderer.setViewLifecycle(lifecycle);
+
+    const findByKey = (v: any, key: string): any => {
+      if (!v || typeof v !== 'object') return null;
+      if (v.key === key) return v;
+      for (const c of v.children ?? []) {
+        const hit = findByKey(c, key);
+        if (hit) return hit;
+      }
+      return null;
+    };
+
+    /**
+     * EVERY paint prop under this node's group, in order.
+     *
+     * Not "the first fill" — the first fill belongs to the drop SHADOW, which is a
+     * hardcoded #000 in both themes. A test that read it would have compared a constant
+     * to itself and passed no matter what the code did.
+     */
+    const paint = (tree: any, id: string): string => {
+      const node = findByKey(tree, `node-${id}`);
+      const parts: string[] = [];
+      const walk = (v: any) => {
+        if (!v || typeof v !== 'object') return;
+        for (const key of ['fill', 'stroke', 'color']) {
+          const value = v.props?.[key];
+          if (typeof value === 'string') parts.push(`${key}=${value}`);
+        }
+        for (const c of v.children ?? []) walk(c);
+      };
+      if (node) walk(node);
+      return parts.join('|');
+    };
+
+    // SELECT it. This is the case where the hazard is real: a plain node resolves its
+    // colours through CSS (so a stale VNode would be re-themed for free and there would be
+    // nothing to get wrong), but a SELECTED node has the theme's selection colours BAKED
+    // into its VNode as literals — which is exactly why the renderer keeps a
+    // `themeBoundNodes` set and a surgical `invalidateThemeBoundStyles()` for them.
+    //
+    // A frozen node is not in that set: it has no VNode to be theme-bound. So nothing the
+    // theme swap does can reach it, and the only thing standing between the user and a
+    // stale colour is that a returning view is REBUILT rather than resurrected.
+    engine.getDiagram()!.getNode('n1')!.setState({ selected: true });
+    engine.getDiagram()!.getNode('n2')!.setState({ selected: true });
+
+    const light = paint(renderer.render(VIEWPORT, 1), 'n1');
+    expect(light).not.toBe(''); // the test is worthless if it is reading nothing
+
+    // Freeze it, THEN swap the theme. The frozen node has no view to invalidate — a theme
+    // swap cannot mark dirty a VNode that does not exist.
+    lifecycle.freeze('node', 'n1');
+    renderer.render(VIEWPORT, 1);
+    renderer.setTheme(DARK_THEME);
+    renderer.render(VIEWPORT, 1);
+
+    // Unfreeze. It must come back wearing the theme that is CURRENT, not the one it had on
+    // when it went away.
+    lifecycle.unfreeze('node', 'n1');
+    const afterDark = paint(renderer.render(VIEWPORT, 1), 'n1');
+    const darkReference = paint(renderer.render(VIEWPORT, 1), 'n2'); // never frozen
+
+    // It matches a node that was never frozen, and it is NOT what it looked like before
+    // the swap. Both halves matter: the first says it is right, the second says the test
+    // would have noticed if it were not.
+    expect(afterDark).toBe(darkReference);
+    expect(afterDark).not.toBe(light);
+
+    renderer.dispose();
+    engine.destroy();
   });
 });
 
