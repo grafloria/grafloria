@@ -108,3 +108,5 @@ export type {
   AnimationStep,
   SequenceState,
 } from './services/animation-sequencer';
+// Wave 8 (Performance & scale) — Card 7: the adaptive quality governor + perf HUD.
+export * from './perf';
