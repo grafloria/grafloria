@@ -80,3 +80,6 @@ export * from './worker-layout-adapter';
 export * from './force-layout-adapter';
 export * from './spectral-layout-adapter';
 export * from './community-layout-adapter';
+
+// Wave-5 Card 5: per-group recursive (compound) layout orchestrator
+export * from './CompoundLayoutService';
