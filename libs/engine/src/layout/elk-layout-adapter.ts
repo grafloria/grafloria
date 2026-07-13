@@ -11,7 +11,13 @@
 import ElkConstructor, { ElkNode, ElkExtendedEdge, ELK } from 'elkjs/lib/elk.bundled';
 import { NodeModel } from '../models/NodeModel';
 import { LinkModel } from '../models/LinkModel';
-import { LayoutAdapter, LayoutOptions, LayoutResult } from './layout-adapter.interface';
+import {
+  LayoutAdapter,
+  LayoutOptions,
+  LayoutResult,
+  LayoutRoutingHints,
+  Point,
+} from './layout-adapter.interface';
 import { ConstraintManager } from './layout-constraints.interface';
 import {
   IncrementalLayoutOptions,
@@ -19,9 +25,16 @@ import {
   IncrementalLayoutManager,
 } from './incremental-layout.interface';
 import { LayoutQualityMetrics } from './layout-quality-metrics';
-import { PortAwareLayoutManager, PortInfo } from './port-aware-layout.interface';
+import { PortAwareLayoutManager, PortInfo, PortSide } from './port-aware-layout.interface';
 import { SubgraphLayoutManager } from './subgraph-layout.interface';
 import { EdgeBundlingManager, EdgeInfo } from './edge-bundling.interface';
+import {
+  derivePortInfos,
+  declaredPorts,
+  linkLabelBox,
+  resolvePortConstraint,
+  toElkPortSide,
+} from './port-label-bridge';
 
 /**
  * ELK layout algorithms
@@ -50,6 +63,8 @@ export interface ELKLayoutOptions extends LayoutOptions {
   'elk.spacing.edgeNode'?: number;
   /** Spacing between edges */
   'elk.spacing.edgeEdge'?: number;
+  /** Spacing between an edge and its label (Wave 7 — Card 7) */
+  'elk.spacing.edgeLabel'?: number;
 
   // Layered algorithm specific options
   /** Spacing between nodes in different layers */
@@ -97,6 +112,16 @@ const DEFAULT_ELK_OPTIONS: Partial<ELKLayoutOptions> = {
 };
 
 /**
+ * The footprint a port occupies in ELK's model. Grafloria's ports are drawn as small
+ * handles on the node border; ELK only needs a non-zero box to reason about
+ * spacing and ordering along a side.
+ */
+const ELK_PORT_SIZE = 8;
+
+/** Default gap between an edge and its label. */
+const DEFAULT_EDGE_LABEL_SPACING = 6;
+
+/**
  * ELK Layout Adapter
  *
  * Provides advanced layout algorithms using the Eclipse Layout Kernel.
@@ -131,22 +156,91 @@ export class ELKLayoutAdapter implements LayoutAdapter {
       ...options,
     };
 
-    // Build ELK graph structure
-    const elkGraph: ElkNode = {
-      id: 'root',
-      layoutOptions: this.buildLayoutOptions(elkOptions),
-      children: nodes.map((node) => ({
+    // -----------------------------------------------------------------------
+    // Wave 7 — Card 7: build a PORT- and LABEL-AWARE ELK graph.
+    //
+    // THE BUG THIS CLOSES. The old builder sent ELK a graph of bare boxes:
+    // children carried nothing but {id, width, height}, and edges were
+    // node-to-node (`sources: [link.sourceNodeId]`). ELK is one of the very few
+    // engines that does REAL port-aware layered layout with orthogonal edge
+    // routing — and we were neither giving it the ports nor reading back the
+    // routes. It was being asked a question about boxes and answering one, and
+    // then we threw away the half of the answer we never asked for.
+    //
+    // Now: declared ports go in WITH their sides, edges attach to those PORTS,
+    // and labelled edges carry the box their label needs so ELK's layered
+    // algorithm makes room for it (it inserts label dummy nodes in the ranking —
+    // which is precisely "reserve space at layout time").
+    // -----------------------------------------------------------------------
+    const portMode = elkOptions.portConstraints ?? 'auto';
+    const labelAware = elkOptions.labelAware !== false;
+
+    // Ports the caller hand-authored still win (back-compat with the old
+    // `options.portAware.ports`); otherwise they come from the real model.
+    const portInfos: PortInfo[] =
+      elkOptions.portAware?.ports ?? (portMode === 'free' ? [] : derivePortInfos(nodes));
+    const portInfoById = new Map(portInfos.map((p) => [p.id, p]));
+
+    const elkChildren: ElkNode[] = nodes.map((node) => {
+      const nodePorts = portInfos.filter((p) => p.nodeId === node.id);
+      const constraint = resolvePortConstraint(node, portMode);
+
+      const child: ElkNode = {
         id: node.id,
         width: node.size.width || 150,
         height: node.size.height || 50,
-      })),
-      edges: links
-        .filter((link) => link.sourceNodeId && link.targetNodeId)
-        .map((link) => ({
+      };
+
+      // Only constrain a node that actually declares ports. A node with none is
+      // left FREE, so ELK keeps every degree of freedom it had before.
+      if (nodePorts.length > 0 && constraint !== 'FREE') {
+        child.layoutOptions = { 'elk.portConstraints': constraint };
+        child.ports = nodePorts.map((port, i) => ({
+          id: port.id,
+          width: ELK_PORT_SIZE,
+          height: ELK_PORT_SIZE,
+          layoutOptions: {
+            'elk.port.side': toElkPortSide(port.preferredSide ?? 'right'),
+            'elk.port.index': String(port.priority ?? i),
+          },
+        }));
+      }
+
+      return child;
+    });
+
+    // An edge may only reference a port ELK actually knows about — i.e. one we
+    // emitted above. A link hanging off an auto-created DEFAULT port falls back
+    // to the node id, which is what the old code always did.
+    const emittedPortIds = new Set(elkChildren.flatMap((c) => (c.ports ?? []).map((p) => p.id)));
+    const endpoint = (portId: string | undefined, nodeId: string): string =>
+      portId && emittedPortIds.has(portId) ? portId : nodeId;
+
+    const elkEdges: ElkExtendedEdge[] = links
+      .filter((link) => link.sourceNodeId && link.targetNodeId)
+      .map((link) => {
+        const edge: ElkExtendedEdge = {
           id: link.id,
-          sources: [link.sourceNodeId!],
-          targets: [link.targetNodeId!],
-        })),
+          sources: [endpoint(link.sourcePortId, link.sourceNodeId!)],
+          targets: [endpoint(link.targetPortId, link.targetNodeId!)],
+        } as ElkExtendedEdge;
+
+        // Label-aware: hand ELK the box the label needs. This is a RESERVATION,
+        // not a placement — the renderer's edge optimizer still decides where the
+        // label finally sits; it just now has somewhere to put it.
+        const box = labelAware ? linkLabelBox(link) : undefined;
+        if (box) {
+          edge.labels = [{ id: box.id, text: box.text, width: box.width, height: box.height }];
+        }
+
+        return edge;
+      });
+
+    const elkGraph: ElkNode = {
+      id: 'root',
+      layoutOptions: this.buildLayoutOptions(elkOptions, labelAware),
+      children: elkChildren,
+      edges: elkEdges,
     };
 
     // Run ELK layout algorithm
@@ -163,6 +257,18 @@ export class ELKLayoutAdapter implements LayoutAdapter {
         });
       }
     });
+
+    // -----------------------------------------------------------------------
+    // Read back the half of ELK's answer that used to go in the bin: where it
+    // put each port, and the orthogonal route it found for each edge.
+    // -----------------------------------------------------------------------
+    const routing = this.extractRoutingHints(
+      layoutedGraph,
+      links,
+      portInfoById,
+      labelAware,
+      elkOptions.edgeRouting ?? (elkOptions.orthogonalRouting === false ? 'POLYLINE' : 'ORTHOGONAL')
+    );
 
     // Apply layout constraints if provided
     if (options.constraints) {
@@ -328,11 +434,83 @@ export class ELKLayoutAdapter implements LayoutAdapter {
         executionTime: endTime - startTime,
         nodeCount: nodes.length,
         linkCount: links.length,
+        portConstrainedNodes: elkChildren.filter((c) => c.ports?.length).length,
+        labelledEdges: elkEdges.filter((e) => e.labels?.length).length,
       },
       quality,
       portAware,
       subgraph,
       edgeBundling,
+      routing,
+    };
+  }
+
+  /**
+   * Wave 7 — Card 7: harvest ELK's port positions and edge routes.
+   *
+   * ELK returns each port's coordinates RELATIVE to its owning node, and each
+   * edge as a list of `sections` (start point, end point, optional bend points).
+   * The old adapter read neither. These are advisory hints — the wave-5 routing
+   * engine still owns the final path — but they are no longer thrown away, and a
+   * router can seed from them.
+   */
+  private extractRoutingHints(
+    graph: ElkNode,
+    links: LinkModel[],
+    portInfoById: Map<string, PortInfo>,
+    labelAware: boolean,
+    edgeRouting: string
+  ): LayoutRoutingHints {
+    const portPositions = new Map<string, { x: number; y: number; side: PortSide }>();
+    const edgeRoutes = new Map<string, { start: Point; end: Point; bends: Point[] }>();
+    const labelSpace = new Map<string, { width: number; height: number }>();
+
+    // Ports come back relative to the node — lift them into diagram space.
+    graph.children?.forEach((child) => {
+      const nodeX = child.x ?? 0;
+      const nodeY = child.y ?? 0;
+      child.ports?.forEach((port) => {
+        if (port.x === undefined || port.y === undefined) return;
+        portPositions.set(port.id, {
+          x: nodeX + port.x,
+          y: nodeY + port.y,
+          side: portInfoById.get(port.id)?.preferredSide ?? 'right',
+        });
+      });
+    });
+
+    // Edge sections: the orthogonal route ELK computed.
+    const edges = (graph.edges ?? []) as ElkExtendedEdge[];
+    for (const edge of edges) {
+      const sections = edge.sections ?? [];
+      if (sections.length === 0) continue;
+
+      const first = sections[0];
+      const last = sections[sections.length - 1];
+      const bends: Point[] = [];
+      for (const section of sections) {
+        for (const bend of section.bendPoints ?? []) bends.push({ x: bend.x, y: bend.y });
+      }
+
+      edgeRoutes.set(edge.id, {
+        start: { x: first.startPoint.x, y: first.startPoint.y },
+        end: { x: last.endPoint.x, y: last.endPoint.y },
+        bends,
+      });
+    }
+
+    if (labelAware) {
+      for (const link of links) {
+        const box = linkLabelBox(link);
+        if (box) labelSpace.set(link.id, { width: box.width, height: box.height });
+      }
+    }
+
+    return {
+      portPositions,
+      edgeRoutes,
+      labelSpace,
+      orthogonal: edgeRouting === 'ORTHOGONAL',
     };
   }
 
@@ -344,10 +522,32 @@ export class ELKLayoutAdapter implements LayoutAdapter {
    * @param options - Our layout options
    * @returns ELK layout options object
    */
-  private buildLayoutOptions(options: Partial<ELKLayoutOptions>): Record<string, string> {
+  private buildLayoutOptions(
+    options: Partial<ELKLayoutOptions>,
+    labelAware = true
+  ): Record<string, string> {
     const elkOptions: Record<string, string> = {
       'elk.algorithm': options.algorithm || 'layered',
     };
+
+    // Wave 7 — Card 7. Orthogonal by default: it is what Grafloria's ManhattanRouter
+    // draws, so asking ELK for anything else would have layout optimise for a
+    // picture the renderer never draws. `orthogonalRouting: false` opts out.
+    if (!options.edgeRouting && options.orthogonalRouting !== false) {
+      elkOptions['elk.edgeRouting'] = 'ORTHOGONAL';
+    }
+
+    // Label-aware: tell ELK to keep edge labels off the nodes and off each other.
+    // ELK's layered algorithm turns a label box into a dummy node in the ranking,
+    // so this genuinely reserves space rather than just nudging the label after
+    // the fact.
+    if (labelAware) {
+      elkOptions['elk.edgeLabels.placement'] = 'CENTER';
+      elkOptions['elk.edgeLabels.inline'] = 'false';
+      if (options['elk.spacing.edgeLabel'] === undefined) {
+        elkOptions['elk.spacing.edgeLabel'] = String(DEFAULT_EDGE_LABEL_SPACING);
+      }
+    }
 
     // Map direction option
     if (options['elk.direction']) {

@@ -15,9 +15,10 @@ import {
   IncrementalLayoutManager,
 } from './incremental-layout.interface';
 import { LayoutQualityResult } from './layout-quality-metrics';
-import { PortAwareLayoutOptions, PortAwareLayoutResult } from './port-aware-layout.interface';
+import { PortAwareLayoutOptions, PortAwareLayoutResult, PortSide } from './port-aware-layout.interface';
 import { SubgraphLayoutOptions, SubgraphLayoutResult } from './subgraph-layout.interface';
 import { EdgeBundlingOptions, EdgeBundlingResult } from './edge-bundling.interface';
+import { PortConstraintMode } from './port-label-bridge';
 
 /**
  * Base options for all layout adapters
@@ -43,6 +44,74 @@ export interface LayoutOptions {
   subgraph?: SubgraphLayoutOptions;
   /** Edge bundling options (Phase 4) */
   edgeBundling?: EdgeBundlingOptions;
+
+  // --- Wave 7 (Auto-layout) — Card 7: port- and label-aware layout. ---------
+  //
+  // Both default to ON, which is only safe because both are NO-OPS on a graph
+  // that does not use the feature: `portConstraints: 'auto'` constrains a node
+  // only if its author DECLARED ports (the four auto-created default ports do
+  // not count — see port-label-bridge.ts), and label reservation reserves
+  // nothing when no edge carries a label. A bare graph lays out byte-identically
+  // to before.
+
+  /**
+   * How much freedom the layout engine has over declared ports.
+   * `'auto'` (default): FIXED_SIDE for nodes with author-declared ports, FREE
+   * for the rest. So an edge leaving a `right` port will not force the layout to
+   * put the target on the left.
+   */
+  portConstraints?: PortConstraintMode;
+
+  /**
+   * Reserve space for edge labels at LAYOUT time (default true).
+   *
+   * This is a reservation, NOT a placement: the renderer's edge optimizer (wave
+   * 4/5) does collision-aware label placement, but it cannot invent space that
+   * layout never left. This gives it room to work in.
+   */
+  labelAware?: boolean;
+
+  /**
+   * Ask the layout engine for orthogonal edge routes (default true for ELK).
+   * The routes come back as HINTS (see `LayoutResult.routing`) — the wave-5
+   * routing engine stays authoritative.
+   */
+  orthogonalRouting?: boolean;
+}
+
+/**
+ * Wave 7 — Card 7: what the layout engine worked out about EDGES and PORTS,
+ * which until now was computed and then thrown in the bin.
+ *
+ * ELK does genuine port-aware layered layout with orthogonal edge routing. The
+ * old adapter read back `child.x` / `child.y` and NOTHING else — every port
+ * position and every edge section ELK produced was discarded. These are those
+ * results.
+ *
+ * They are HINTS, deliberately. The boundary wave 5 established still holds: the
+ * renderer computes endpoints and hands them to the routing engine
+ * (ManhattanRouter / GlobalRouteSolver), which owns the final path. Layout's job
+ * is to place nodes so a good route EXISTS and to say where it thinks that route
+ * runs — not to draw it.
+ */
+export interface LayoutRoutingHints {
+  /** Absolute position of each declared port, as the layout engine placed it. */
+  portPositions: Map<string, { x: number; y: number; side: PortSide }>;
+
+  /** The route the layout engine found for each link: endpoints + bend points. */
+  edgeRoutes: Map<string, { start: Point; end: Point; bends: Point[] }>;
+
+  /** The box reserved for each labelled link (keyed by link id). */
+  labelSpace: Map<string, { width: number; height: number }>;
+
+  /** Whether the engine routed orthogonally. */
+  orthogonal: boolean;
+}
+
+/** A point in diagram space. */
+export interface Point {
+  x: number;
+  y: number;
 }
 
 /**
@@ -72,6 +141,12 @@ export interface LayoutResult {
   subgraph?: SubgraphLayoutResult;
   /** Edge bundling result (if edgeBundling was enabled) */
   edgeBundling?: EdgeBundlingResult;
+  /**
+   * Wave 7 — Card 7: the port positions and edge routes the layout engine
+   * computed. Present when the engine produces them (ELK does); previously
+   * computed and discarded.
+   */
+  routing?: LayoutRoutingHints;
 }
 
 /**
