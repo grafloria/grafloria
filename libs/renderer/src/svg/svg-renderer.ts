@@ -421,8 +421,8 @@ export class SVGRenderer implements IRenderer {
   /** Set by anything whose effect on the picture the epoch cannot see. */
   private frameInvalidated = true;
   /**
-   * Did the frame being built MOVE any link? If so it has not reached a fixed
-   * point and must not arm the gate.
+   * Did the frame being built move any link's FINAL geometry? If so it has not
+   * reached a fixed point and must not arm the gate.
    *
    * `render()` is not quite a pure function, and this is the one place it shows.
    * The link cull query (`getVisibleLinks`) runs BEFORE the routing pre-pass, so
@@ -435,9 +435,13 @@ export class SVGRenderer implements IRenderer {
    * still spans the old route").
    *
    * Skipping that second frame leaves a link that should have been culled in the
-   * tree forever. So the gate closes only on a frame that changed nothing —
-   * a genuine fixed point — and geometry settles in the same two frames it always
+   * tree forever. So the gate closes only on a frame that changed nothing — a
+   * genuine fixed point — and geometry settles in the same two frames it always
    * did.
+   *
+   * Set ONLY by markLinksWhoseFrameChanged, which is the only pass that sees a
+   * link's final geometry (three separate writers rewrite it during a frame; an
+   * intermediate difference is not a change). See the note there.
    */
   private frameChangedGeometry = false;
   /** Frames served straight from `lastFrameRoot`. A quiet canvas should be all of them. */
@@ -2045,7 +2049,28 @@ export class SVGRenderer implements IRenderer {
       this.solverBridge = new RouteSolverBridge({
         port: this.config.routeSolverPort,
         solver: this.config.routeSolverOptions,
-        onRoutesReady: this.config.onRoutesRefined,
+        // wave8/dirty × wave8/routing — THE MERGE SEAM. This bug is in neither
+        // branch alone, which is why both were green.
+        //
+        // When the worker answers, NOTHING IN THE MODEL HAS CHANGED. No node
+        // moved, no link changed, no entity was dirtied, so the mutation epoch
+        // did not move — and the viewport did not move either. Every input the
+        // frame gate keys on says "identical frame", so the gate answers the
+        // host's repaint request from cache and the globally-optimised routes we
+        // just paid a worker to compute are dropped on the floor. Permanently:
+        // nothing will reopen the gate until some unrelated edit happens to.
+        //
+        // The picture is not corrupt, so nothing screams. The feature just
+        // silently does not work.
+        //
+        // The general rule, and the one to apply to the NEXT thing that lands
+        // here: ask what can change about the picture that is not in the state
+        // you key on. "A better answer arrived asynchronously" is such a thing.
+        // It is not in the model and it is not in the view, so it must say so.
+        onRoutesReady: () => {
+          this.invalidateFrame();
+          this.config.onRoutesRefined?.();
+        },
       });
     }
 
@@ -2433,6 +2458,25 @@ export class SVGRenderer implements IRenderer {
       if (this.frameLinkSigs.get(link.id) !== sig) {
         this.frameLinkSigs.set(link.id, sig);
         link.markDirty('frame-geometry');
+
+        // wave8/dirty: THIS is the frame gate's "did anything actually move?"
+        // verdict, and this is the only place that can honestly give it.
+        //
+        // It runs after every writer of link geometry (the local router, the
+        // global solver, channel nudging, the edge optimizer's jumps and label
+        // placements) and it compares the frame's FINAL picture of a link against
+        // the previous frame's final picture. Anywhere earlier and you are
+        // comparing against an intermediate value — which is how the first cut of
+        // this got it wrong: the local router rewrites a link, the global solver
+        // immediately puts its own route back, and a per-write check declared
+        // "geometry moved!" on every single frame forever. The gate never
+        // re-armed, and an idle canvas never became free.
+        //
+        // A frame that moves geometry must not arm the gate: the link cull query
+        // ran BEFORE this, so the re-indexed geometry only reaches the culler on
+        // the NEXT frame, which can therefore legitimately draw something
+        // different from the same model and viewport.
+        this.frameChangedGeometry = true;
       }
     }
   }
@@ -6645,14 +6689,16 @@ export class SVGRenderer implements IRenderer {
    * the link had when it was added, and a detoured link could be culled.
    */
   private syncLinkPoints(link: LinkModel, points: Array<{ x: number; y: number }>): void {
-    // wave8/dirty: did this actually MOVE the link? The answer arms (or refuses
-    // to arm) the frame gate — see `frameChangedGeometry` and the fixed-point
-    // argument in render(). Comparing values, not array identity: this method
-    // allocates a fresh array every frame, so identity always differs.
-    if (!samePoints(link.points, points)) {
-      this.frameChangedGeometry = true;
-    }
-
+    // NOTE (wave8/dirty): deliberately does NOT decide whether the frame "moved
+    // geometry". THREE writers call this within a single frame — the local
+    // router, the global solver, and channel nudging — and each overwrites the
+    // last. An intermediate write that differs from the previous frame's FINAL
+    // points is not a change; it is a step on the way to the same answer. Keying
+    // the frame gate on it meant the gate never re-armed once the global solver
+    // was in play (the local router rewrites the link, then the solver puts its
+    // own route straight back), so the canvas churned forever and an idle frame
+    // never became free. That verdict belongs to markLinksWhoseFrameChanged,
+    // which runs after every writer and compares NET change.
     link.points = points.map(p => ({ ...p }));
     this.engine.getDiagram()?.refreshLinkBounds(link);
   }
@@ -7409,25 +7455,4 @@ export class SVGRenderer implements IRenderer {
       t0 < t1;
     return hit ? { t0, t1 } : null;
   }
-}
-
-/**
- * wave8/dirty — do two polylines describe the same path?
- *
- * Exact equality, not an epsilon: the caller (`syncLinkPoints`) is comparing a
- * route against the route the SAME deterministic router produced from the SAME
- * inputs last frame, so "unchanged" means bit-identical. A tolerance here would
- * only let a genuinely-moved link slip through the frame gate and freeze on
- * screen — and the cost of being wrong in that direction is a stale picture,
- * while the cost of being wrong in the other is one rebuilt frame.
- */
-function samePoints(
-  a: ReadonlyArray<{ x: number; y: number }> | undefined,
-  b: ReadonlyArray<{ x: number; y: number }>
-): boolean {
-  if (!a || a.length !== b.length) return false;
-  for (let i = 0; i < a.length; i++) {
-    if (a[i].x !== b[i].x || a[i].y !== b[i].y) return false;
-  }
-  return true;
 }
