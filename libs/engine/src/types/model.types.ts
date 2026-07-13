@@ -146,6 +146,15 @@ export interface LinkStyle {
    */
   curvature?: number;
   /**
+   * Wave 5 (Edge routing) — Card 1. Minimum port-anchor stub (px): the route
+   * leaves the source and enters the target perpendicular to the port side for
+   * at least this length before the first bend — GUARANTEED, not best-effort
+   * (the router enforces it on whichever routing branch produced the path).
+   * Unset = the legacy 20px best-effort stub, byte-for-byte.
+   */
+  jetty?: number;
+
+  /**
    * Wave 3 (Edges & links): PER-LINK orthogonal corner radius (px). Defaults to
    * the renderer's built-ins (5px for `orthogonal`, 12px for the rounded
    * fallback a `smooth` detour falls back to). `0` gives hard 90° corners.

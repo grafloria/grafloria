@@ -124,6 +124,26 @@ describe('SVGRenderer — router × connector reachability (Wave 5, Card 0)', ()
     expect((dHard.match(/L/g) ?? []).length).toBeGreaterThanOrEqual(2);
   });
 
+  it('LinkStyle.jetty reaches the router: the rendered path leaves the port with the full stub', () => {
+    // Ports at (200,125)→right and (500,425)→left; a 60px jetty must survive
+    // into the drawn geometry (the legacy best-effort stub is 20px).
+    const l = link(['s1', 't1'], [100, 100], [500, 400], (x) => {
+      x.style.jetty = 60;
+    });
+    render();
+    // the link's synced points carry the routed geometry
+    const pts = l.points;
+    expect(pts.length).toBeGreaterThanOrEqual(2);
+    const first = { x: pts[1].x - pts[0].x, y: pts[1].y - pts[0].y };
+    // source port faces right: first segment horizontal, ≥ 60 to the right
+    expect(first.y).toBe(0);
+    expect(first.x).toBeGreaterThanOrEqual(60);
+    const last = { x: pts[pts.length - 1].x - pts[pts.length - 2].x, y: pts[pts.length - 1].y - pts[pts.length - 2].y };
+    // target port faces left: final segment horizontal, arriving from ≥ 60 out
+    expect(last.y).toBe(0);
+    expect(last.x).toBeGreaterThanOrEqual(60);
+  });
+
   it('legacy byte-stability: setting router+connector to the DERIVED values emits the identical path', () => {
     const plain = link(['s1', 't1'], [100, 100], [500, 400]);
     const explicit = link(['s2', 't2'], [100, 100 + 600], [500, 400 + 600], (x) => {

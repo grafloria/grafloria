@@ -86,6 +86,18 @@ export interface RoutingOptions {
   };
   /** Maximum iterations for pathfinding */
   maxIterations?: number;
+  /**
+   * Wave 5 (Edge routing) — Card 1. Minimum port-anchor stub: the route must
+   * leave the source and enter the target PERPENDICULAR to the port side for at
+   * least this many px before the first bend. When set it also replaces the
+   * built-in 20px breathing-room offset, and a link with FLOATING (direction-
+   * less) anchors derives its exit sides from the relative geometry instead of
+   * taking the stub-less midline fallback.
+   *
+   * Unset = legacy behaviour, byte-for-byte: best-effort 20px stubs that can
+   * shrink on short links, midline routing for undirected anchors.
+   */
+  jetty?: number;
   /** Phase 2.2: Simplify path to reduce waypoint count */
   simplifyPath?: boolean;
   /** Phase 2.2: Simplification tolerance (epsilon) - higher values = more aggressive */

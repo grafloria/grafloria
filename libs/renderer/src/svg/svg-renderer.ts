@@ -4823,7 +4823,13 @@ export class SVGRenderer implements IRenderer {
         sourceDirection: endpoints.sourceDirection,
         targetDirection: endpoints.targetDirection,
         obstacles,
-        options: { algorithm: algo, avoidObstacles: avoid, gridSize: 10 },
+        options: {
+          algorithm: algo,
+          avoidObstacles: avoid,
+          gridSize: 10,
+          // Card 1: per-link guaranteed port stub (undefined = legacy 20px best-effort)
+          jetty: link.style.jetty,
+        },
       });
 
     let routedPath = routeWith(algorithm, true);

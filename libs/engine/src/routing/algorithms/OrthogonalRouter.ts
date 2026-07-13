@@ -28,12 +28,28 @@ export class OrthogonalRouter implements IRouter {
 
     const bendCost = options.costs?.bends ?? 10;
 
+    // Card 1: an explicit jetty upgrades the stub contract from best-effort to
+    // GUARANTEED — and lets floating (direction-less) anchors derive exit sides
+    // from the geometry instead of taking the stub-less midline fallback.
+    const jetty = options.jetty;
+    let srcDir = sourceDirection;
+    let tgtDir = targetDirection;
+    if (jetty !== undefined) {
+      if (!srcDir) srcDir = OrthogonalRouter.deriveExitSide(start, end);
+      if (!tgtDir) tgtDir = OrthogonalRouter.deriveExitSide(end, start);
+    }
+
+    // The jetty guarantee holds on WHICHEVER branch produced the route: simple,
+    // A*-avoidance, or the collision fallback.
+    const withJetty = (path: RoutedPath): RoutedPath =>
+      jetty !== undefined ? this.enforceJetty(path, start, end, srcDir, tgtDir, jetty, bendCost) : path;
+
     // SMART ROUTING: Always calculate a simple orthogonal path first
-    const simplePath = this.simpleOrthogonalRoute(start, end, options.gridSize, bendCost, sourceDirection, targetDirection);
+    const simplePath = this.simpleOrthogonalRoute(start, end, options.gridSize, bendCost, srcDir, tgtDir, jetty);
 
     // If no obstacles provided, return the simple path
     if (obstacles.length === 0) {
-      return simplePath;
+      return withJetty(simplePath);
     }
 
     // Check if the simple path intersects any obstacles
@@ -41,20 +57,121 @@ export class OrthogonalRouter implements IRouter {
 
     if (!hasCollision) {
       // Path is clear, use the simple routing
-      return simplePath;
+      return withJetty(simplePath);
     }
 
     // Path has collisions - use A* pathfinding for obstacle avoidance
     if (options.avoidObstacles) {
-      const avoidancePath = this.avoidObstaclesRoute(start, end, obstacles, options, sourceDirection, targetDirection);
+      const avoidancePath = this.avoidObstaclesRoute(start, end, obstacles, options, srcDir, tgtDir);
       if (avoidancePath) {
-        return avoidancePath;
+        return withJetty(avoidancePath);
       }
     }
 
     // Fallback: return simple path even with collisions
     // (visual indicator that routing needs manual waypoints)
-    return simplePath;
+    return withJetty(simplePath);
+  }
+
+  /**
+   * Card 1: the exit side a FLOATING anchor should use, derived from where the
+   * other endpoint is — dominant axis first, ties break horizontal (matching
+   * the midline fallback's own axis choice, so the derived route agrees with
+   * what the undirected route would have preferred).
+   */
+  static deriveExitSide(from: Point, toward: Point): 'left' | 'right' | 'top' | 'bottom' {
+    const dx = toward.x - from.x;
+    const dy = toward.y - from.y;
+    if (Math.abs(dx) >= Math.abs(dy)) return dx >= 0 ? 'right' : 'left';
+    return dy >= 0 ? 'bottom' : 'top';
+  }
+
+  /**
+   * Card 1: guarantee the route leaves/enters PERPENDICULAR to the port side
+   * for at least `jetty` px before the first/after the last bend.
+   *
+   * The simple route's gap logic shrinks stubs on short links (its gapOffset
+   * clamp), and the A* grid can snap the first elbow closer than the stub — so
+   * the guarantee is enforced as a post-pass: if the first segment along the
+   * port direction is shorter than the jetty (or points the wrong way), a stub
+   * point is inserted at start + dir·jetty and the joint is re-orthogonalised
+   * by routing the old interior through the stub's far ordinate. Same for the
+   * target end, mirrored.
+   */
+  private enforceJetty(
+    path: RoutedPath,
+    start: Point,
+    end: Point,
+    sourceDirection: 'left' | 'right' | 'top' | 'bottom' | undefined,
+    targetDirection: 'left' | 'right' | 'top' | 'bottom' | undefined,
+    jetty: number,
+    bendCost: number
+  ): RoutedPath {
+    if (jetty <= 0 || path.points.length < 2) return path;
+
+    const fixEnd = (
+      pts: Point[],
+      anchor: Point,
+      dir: 'left' | 'right' | 'top' | 'bottom' | undefined
+    ): Point[] => {
+      if (!dir || pts.length < 2) return pts;
+      const v = dir === 'left' ? { x: -1, y: 0 }
+        : dir === 'right' ? { x: 1, y: 0 }
+        : dir === 'top' ? { x: 0, y: -1 }
+        : { x: 0, y: 1 };
+      const stub: Point = { x: anchor.x + v.x * jetty, y: anchor.y + v.y * jetty };
+      const first = pts[0];
+      const second = pts[1];
+
+      // Does the existing first segment already satisfy the contract?
+      const seg = { x: second.x - first.x, y: second.y - first.y };
+      const along = seg.x * v.x + seg.y * v.y; // signed length along the port normal
+      const perpendicular = v.x !== 0 ? seg.y === 0 : seg.x === 0;
+      if (perpendicular && along >= jetty) return pts;
+
+      // Insert the stub, then re-orthogonalise the joint. Points of the old
+      // route lying ON the anchor→stub segment are SUBSUMED by the stub, not
+      // detoured around — otherwise a collinear-but-short stub would rebuild as
+      // an out-and-back run on the same line, which the collinear merge then
+      // collapses straight back to the too-short original (the exact failure
+      // mode the obstacle-avoidance test caught: A* grid-snaps its last elbow
+      // inside the jetty window).
+      let rest = pts.slice(1);
+      const onStubSegment = (q: Point): boolean => {
+        if (v.x !== 0) {
+          if (q.y !== anchor.y) return false;
+          const t = (q.x - anchor.x) * v.x; // signed distance along the stub
+          return t >= 0 && t <= jetty;
+        }
+        if (q.x !== anchor.x) return false;
+        const t = (q.y - anchor.y) * v.y;
+        return t >= 0 && t <= jetty;
+      };
+      // never subsume the far anchor itself — a fully-collinear straight link
+      // must keep its endpoint.
+      while (rest.length > 1 && onStubSegment(rest[0])) rest = rest.slice(1);
+
+      const joint: Point = v.x !== 0
+        ? { x: stub.x, y: rest[0].y }   // horizontal stub: drop vertically to the old route
+        : { x: rest[0].x, y: stub.y };  // vertical stub: run horizontally to the old route
+      const rebuilt = [first, stub, joint, ...rest];
+
+      // Collapse duplicates/collinear runs the insertion may have created.
+      return this.mergeCollinearPoints(this.removeDuplicatePoints(rebuilt));
+    };
+
+    let pts = fixEnd(path.points.map((p) => ({ ...p })), start, sourceDirection);
+    pts = fixEnd(pts.slice().reverse(), end, targetDirection).reverse();
+
+    const totalLength = this.calculatePathLength(pts);
+    const bendCount = Math.max(0, pts.length - 2);
+    return {
+      points: pts,
+      totalLength,
+      bendCount,
+      cost: totalLength + bendCount * bendCost,
+      segments: this.calculateSegments(pts),
+    };
   }
 
   /**
@@ -71,7 +188,8 @@ export class OrthogonalRouter implements IRouter {
     gridSize?: number,
     bendCost = 10,
     sourceDirection?: 'left' | 'right' | 'top' | 'bottom',
-    targetDirection?: 'left' | 'right' | 'top' | 'bottom'
+    targetDirection?: 'left' | 'right' | 'top' | 'bottom',
+    jetty?: number
   ): RoutedPath {
     // No port directions at all: route through the midline (classic HVH/VHV,
     // the React Flow default for undirected points). The gap-point logic below
@@ -109,8 +227,9 @@ export class OrthogonalRouter implements IRouter {
     }
 
     // CRITICAL OFFSET: This determines the "breathing room" around nodes
-    // Match React Flow's exact offset value for visual consistency
-    const offset = 20;
+    // Match React Flow's exact offset value for visual consistency.
+    // Card 1: an explicit jetty replaces it (enforceJetty then GUARANTEES it).
+    const offset = jetty ?? 20;
 
     // Get direction vectors for source and target
     const sourceDir = this.getDirectionVector(sourceDirection);
