@@ -273,6 +273,17 @@ export class VNodePainter {
       return;
     }
 
+    // <image>: raster content (a composite panel's image/icon slot, Card 5). The
+    // retained-mode backend has no async image cache, so it REPORTS images as
+    // unpaintable — the host may overlay them, exactly like foreignObject —
+    // rather than dropping them silently. The rest of the panel (header band,
+    // rows, badges) is ordinary rect/text and paints natively, so a composite
+    // node still reads correctly in Canvas mode minus the bitmap.
+    if (vnode.type === 'image') {
+      state.unpaintableNodes.push(vnode);
+      return;
+    }
+
     const props = vnode.props ?? {};
     const style = this.resolver.resolve(props, inherited);
 

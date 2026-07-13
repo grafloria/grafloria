@@ -7,6 +7,9 @@ export * from './port-positioning'; // Phase 3.2 - Shape-aware port positioning
 export * from './link-hit-test'; // Wave 1 - Part-aware link hit-testing
 export * from './shape-registry'; // Nodes & shapes - unified shape registry + registerShape API
 export * from './path-outline'; // Wave 5 Card 2 - arbitrary SVG-path outline sampling
+export * from './node-sizing'; // Wave 5 Card 6/7 - per-node sizing constraints
+export * from './auto-size'; // Wave 5 Card 7 - content-aware auto-sizing
+export * from './panel'; // Wave 5 Card 5 - composite / panel node model
 export * from './text-block'; // Node/link label engine - wrap / multi-line / ellipsis / shape-fit
 export * from './link-fanout'; // Wave 4 Card 4 - parallel-link separation + self-loop routing
 export * from './edge-optimizer'; // Wave 4 Card 7 - diagram-wide incremental label/jump/bundle pass
