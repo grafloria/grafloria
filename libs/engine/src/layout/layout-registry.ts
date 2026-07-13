@@ -96,6 +96,16 @@ export interface UnifiedLayoutOptions extends Partial<LayoutOptions> {
   /** Target width/height of the packed result. 1.6 ≈ a landscape screen. */
   aspectRatio?: number;
 
+  /**
+   * Push nodes apart if the algorithm left them overlapping. Default true.
+   *
+   * A no-op for every layout that does not overlap (dagre, ELK, tree, grid,
+   * circular, radial) — but force and community lay out DIMENSIONLESS POINTS and
+   * genuinely do return intersecting boxes. See overlap-removal.ts. Opt out only
+   * if you want the algorithm's raw output.
+   */
+  removeOverlaps?: boolean;
+
   /** grid: number of columns. Defaults to ceil(sqrt(n)). */
   columns?: number;
 

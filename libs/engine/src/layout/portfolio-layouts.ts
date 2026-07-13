@@ -33,6 +33,7 @@ import type { UnifiedLayoutOptions } from './layout-registry';
 import { nodeSize } from './component-packing';
 import { inStableOrder } from './rng';
 import { ForceLayoutAdapter } from './force-layout-adapter';
+import { pickRoot } from './tree-layout';
 
 const DEFAULT_NODE_SPACING = 50;
 const DEFAULT_RANK_SPACING = 70;
@@ -48,7 +49,7 @@ export interface CircularLayoutOptions extends UnifiedLayoutOptions {
 }
 
 export interface RadialLayoutOptions extends UnifiedLayoutOptions {
-  /** Centre of the rings. Defaults to the hub (highest degree, lowest id). */
+  /** Centre of the rings. Defaults to a source node, else the hub. See pickRoot. */
   rootId?: string;
 }
 
@@ -295,15 +296,20 @@ export function radialLayout(
   const adjacency = adjacencyOf(ordered, links);
   const byId = new Map(ordered.map((n) => [n.id, n]));
 
-  // Hub: the caller's node, else the highest-degree one (ties on lowest id).
-  // Degree, not in-degree — a radial layout is for hub-and-spoke graphs, where
-  // "the middle" means "the most connected", not "the source".
-  const root =
-    options.rootId && byId.has(options.rootId)
-      ? options.rootId
-      : ordered.reduce((best, n) =>
-          (adjacency.get(n.id)?.length ?? 0) > (adjacency.get(best.id)?.length ?? 0) ? n : best
-        ).id;
+  // Centre: the caller's node, else a SOURCE, else the highest-degree hub. Shared
+  // with the tree layout (pickRoot) because getting this wrong is the same bug in
+  // both: a pure highest-degree rule centres an org chart on a middle manager,
+  // because a manager with four reports out-degrees the CEO with two.
+  const inDegree = new Map(ordered.map((n) => [n.id, 0]));
+  const degree = new Map(ordered.map((n) => [n.id, adjacency.get(n.id)?.length ?? 0]));
+  const ids = new Set(ordered.map((n) => n.id));
+  for (const link of inStableOrder(links)) {
+    const s = link.sourceNodeId;
+    const t = link.targetNodeId;
+    if (!s || !t || !ids.has(s) || !ids.has(t) || s === t) continue;
+    inDegree.set(t, inDegree.get(t)! + 1);
+  }
+  const root = pickRoot(ordered, inDegree, degree, options.rootId);
 
   // BFS tree.
   const depth = new Map<string, number>([[root, 0]]);

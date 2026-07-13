@@ -71,6 +71,7 @@ export * from './rng'; // Wave 7 Card 0
 export * from './component-packing';
 export * from './portfolio-layouts';
 export * from './tree-layout';
+export * from './overlap-removal';
 
 // Phase 3: Advanced layout features
 export * from './port-aware-layout.interface';

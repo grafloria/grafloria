@@ -58,6 +58,7 @@ import type { LayoutResult } from './layout-adapter.interface';
 // which imports this module for real. Type imports are erased, so no cycle.
 import type { UnifiedLayoutOptions } from './layout-registry';
 import { inStableOrder } from './rng';
+import { removeOverlaps } from './overlap-removal';
 
 /** Dagre's fallbacks, reused so every layout agrees on what an unsized node is. */
 export const DEFAULT_NODE_WIDTH = 150;
@@ -279,11 +280,30 @@ export async function layoutWithComponentPacking(
     };
   }
 
+  /**
+   * Lay one component out, then separate any nodes the algorithm left on top of
+   * each other.
+   *
+   * The overlap pass is here, not in the five algorithms, for the same reason
+   * packing is: force and community lay out DIMENSIONLESS POINTS and happily
+   * return boxes that intersect (see overlap-removal.ts). For every layout that
+   * does not overlap — dagre, ELK, tree, grid, circular, radial — it is a
+   * no-op, so it costs them one comparison pass and nothing else.
+   */
+  const solve = async (component: GraphComponent): Promise<LayoutResult> => {
+    const result = await fn(component.nodes, component.links, options);
+    if (options.removeOverlaps === false) return result;
+    removeOverlaps(component.nodes, result.nodePositions, {
+      spacing: options.nodeSpacing ?? DEFAULT_COMPONENT_SPACING / 3,
+    });
+    return result;
+  };
+
   // THE NO-OP GUARANTEE. One component ⇒ the layout's own output IS the packing.
   // Delegate untouched (note this passes the FILTERED link list, so a dangling
   // link can no longer conjure a phantom dagre node).
   if (components.length === 1) {
-    const result = await fn(components[0].nodes, components[0].links, options);
+    const result = await solve(components[0]);
     return {
       ...result,
       metadata: { ...(result.metadata ?? { algorithm: name, executionTime: 0 }), components: 1 },
@@ -296,7 +316,7 @@ export async function layoutWithComponentPacking(
   const laidOut: Array<{ box: PackBox; positions: Map<string, { x: number; y: number }> }> = [];
 
   for (const component of components) {
-    const result = await fn(component.nodes, component.links, options);
+    const result = await solve(component);
 
     // The component's extent is measured from the POSITIONS, not from
     // `result.bounds` — adapters disagree about bounds (force adds 50px of

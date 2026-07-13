@@ -68,6 +68,38 @@ const DEFAULT_RANK_SPACING = 70;
 const isVertical = (d: FlowDirection): boolean => d === 'TB' || d === 'BT';
 
 /**
+ * Choose the node a tree hangs from — or a radial layout centres on.
+ *
+ * SOURCE FIRST (in-degree 0), hub second (highest degree). The order matters and
+ * "highest degree" alone is a real bug, which Card 2's own radial test caught:
+ * in the tree
+ *
+ *     hub → mid1 → leaf1, leaf2
+ *     hub → mid2 → leaf3
+ *
+ * the CEO ('hub') has degree 2 and the middle manager ('mid1') has degree 3. A
+ * pure highest-degree rule centres the picture on the middle manager and hangs
+ * the CEO off the side — the org chart drawn upside down. Sources win; the
+ * degree rule is the fallback for a graph that HAS no source (a cycle, an
+ * undirected network), which is exactly where "the hub" is the right answer.
+ *
+ * Every tie breaks on the lowest id, so the root never depends on insertion order.
+ */
+export function pickRoot(
+  ordered: readonly NodeModel[],
+  inDegree: Map<string, number>,
+  degree: Map<string, number>,
+  rootId?: string
+): string {
+  if (rootId && ordered.some((n) => n.id === rootId)) return rootId;
+
+  const sources = ordered.filter((n) => inDegree.get(n.id) === 0);
+  if (sources.length > 0) return sources[0].id;
+
+  return ordered.reduce((best, n) => (degree.get(n.id)! > degree.get(best.id)! ? n : best)).id;
+}
+
+/**
  * Build a spanning tree over one connected component.
  *
  * Edge direction is respected FIRST (an org chart's edges point at subordinates,
@@ -109,20 +141,7 @@ function buildSpanningTree(
   for (const list of out.values()) list.sort();
   for (const list of undirected.values()) list.sort();
 
-  // Root: the caller's choice, else a source (in-degree 0), else the hub (highest
-  // degree). Every tie breaks on the lowest id, so the root never depends on
-  // insertion order.
-  let root = rootId && ids.has(rootId) ? rootId : undefined;
-  if (!root) {
-    const sources = ordered.filter((n) => inDegree.get(n.id) === 0);
-    if (sources.length > 0) {
-      root = sources[0].id;
-    } else {
-      root = ordered.reduce((best, n) =>
-        degree.get(n.id)! > degree.get(best.id)! ? n : best
-      ).id;
-    }
-  }
+  const root = pickRoot(ordered, inDegree, degree, rootId);
 
   const children = new Map<string, string[]>();
   for (const id of ids) children.set(id, []);
@@ -269,25 +288,41 @@ function layoutSubtree(
     }
 
     // --- attach the group to the parent's side ---
-    // The parent is centred on the group across the breadth axis (the org-chart
-    // look) and the group is pushed clear of the parent along the flow axis.
+    //
+    // The parent is centred BETWEEN ITS FIRST AND LAST CHILD along the breadth
+    // axis, and the group is pushed clear of the parent along the flow axis.
+    //
+    // "Between the first and last CHILD" — not "on the centre of the group's
+    // bounding box", which is what this shipped with and which is subtly wrong:
+    // the bounding box includes the GRANDchildren. Give a CEO one VP with four
+    // reports and one VP with a single report, and the bbox centre drags the CEO
+    // toward the bushy side, visibly off-centre between its own two VPs. It only
+    // looks right when every subtree happens to be symmetric, which is exactly
+    // when nobody would notice. This is the Reingold-Tilford rule.
+    const first = childBlocks[0];
+    const last = childBlocks[childBlocks.length - 1];
+    const firstSize = ctx.sizes.get(members[0])!;
+    const lastSize = ctx.sizes.get(members[members.length - 1])!;
+
     const parentCentreX = size.width / 2;
     const parentCentreY = size.height / 2;
-    const groupCentreX = (group.minX + group.maxX) / 2;
-    const groupCentreY = (group.minY + group.maxY) / 2;
+    const childSpanCentreX =
+      (first.rootX + firstSize.width / 2 + (last.rootX + lastSize.width / 2)) / 2;
+    const childSpanCentreY =
+      (first.rootY + firstSize.height / 2 + (last.rootY + lastSize.height / 2)) / 2;
 
     switch (side) {
       case 'TB':
-        translate(group, parentCentreX - groupCentreX, size.height + ctx.rankSpacing - group.minY);
+        translate(group, parentCentreX - childSpanCentreX, size.height + ctx.rankSpacing - group.minY);
         break;
       case 'BT':
-        translate(group, parentCentreX - groupCentreX, -ctx.rankSpacing - group.maxY);
+        translate(group, parentCentreX - childSpanCentreX, -ctx.rankSpacing - group.maxY);
         break;
       case 'LR':
-        translate(group, size.width + ctx.rankSpacing - group.minX, parentCentreY - groupCentreY);
+        translate(group, size.width + ctx.rankSpacing - group.minX, parentCentreY - childSpanCentreY);
         break;
       case 'RL':
-        translate(group, -ctx.rankSpacing - group.maxX, parentCentreY - groupCentreY);
+        translate(group, -ctx.rankSpacing - group.maxX, parentCentreY - childSpanCentreY);
         break;
     }
 
