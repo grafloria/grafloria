@@ -6,6 +6,7 @@ import type { Rectangle } from './geometry.types';
 import type { ForeignObjectMode } from '../export/vnode-serializer';
 import type { RasterBackend } from '../export/raster';
 import type { ExportScope } from '../export/bounds';
+import type { PdfExportOptions } from '../export/pdf/pdf-export';
 // Styling & theming (Wave 4): colorMode + the design-token bridge are RENDERER
 // CONFIG, so their types belong on the config contract. Type-only imports — no
 // runtime dependency from the types barrel into the themes barrel.
@@ -148,7 +149,13 @@ export interface BoundingBox {
  * had room for. SVG and the raster formats are real; PDF is not implemented, and
  * is not pretended to be.
  */
-export type ExportFormat = 'png' | 'svg' | 'jpeg' | 'webp';
+/**
+ * `'pdf'` is a TRUE VECTOR pdf (selectable, searchable text), written directly from the
+ * VNode tree — see `export/pdf/`. Because `IRenderer.export` returns a string, it comes
+ * back as a `data:application/pdf;base64,…` URL; `SVGRenderer.exportPdf()` hands you the
+ * bytes and the fidelity warnings instead.
+ */
+export type ExportFormat = 'png' | 'svg' | 'jpeg' | 'webp' | 'pdf';
 
 /**
  * Export options.
@@ -251,6 +258,9 @@ export interface ExportOptions {
    * exports of the same diagram differ in their bytes.
    */
   embedModelCreatedAt?: string;
+
+  /** Page size, orientation, margins and document metadata for `export('pdf')`. */
+  pdf?: PdfExportOptions;
 }
 
 /**

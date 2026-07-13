@@ -23,6 +23,8 @@ import { exportSvg, type SvgExportResult } from '../export/svg-export';
 import { mimeTypeForFormat, resolveRasterBackend } from '../export/raster';
 import { DEFAULT_MAX_OUTPUT_SIZE } from '../export/bounds';
 import { bytesToDataUrl, dataUrlToBytes, embedModelInPng } from '../export/round-trip';
+import { filterTreeByIds } from '../export/scope';
+import { exportPdf, type PdfExportResult } from '../export/pdf/pdf-export';
 import {
   type PaintSpec,
   isPaintSpec,
@@ -1039,6 +1041,12 @@ export class SVGRenderer implements IRenderer {
       return this.exportSvgString(options).svg;
     }
 
+    if (format === 'pdf') {
+      // A PDF is bytes, and this contract returns a string — so hand back a data: URL.
+      // `exportPdf()` gives you the bytes and the warnings.
+      return bytesToDataUrl(this.exportPdf(options).pdf, 'application/pdf');
+    }
+
     // RASTER pixels are allocated, and every browser has a hard canvas ceiling it
     // enforces SILENTLY — over it, `toDataURL` hands back a blank image rather than
     // throwing. So the raster path always carries a cap; the scale is reduced to fit.
@@ -1147,6 +1155,35 @@ export class SVGRenderer implements IRenderer {
       minSize: options.minSize,
       xmlDeclaration: options.xmlDeclaration,
       embedModel: this.modelEnvelope(options),
+    });
+  }
+
+  /**
+   * A TRUE VECTOR PDF: paths stay paths and text stays text, so it is selectable,
+   * searchable and scales without pixelation.
+   *
+   * Painted straight from the VNode tree — the same tree the screen gets — so there is no
+   * SVG→DOM→PDF round trip and no second rendering path. See `export/pdf/` for the
+   * dependency decision (we do NOT use svg2pdf.js + jsPDF, and why) and for the honest
+   * list of what a base-14-font PDF cannot do.
+   */
+  exportPdf(options: ExportOptions = {}): PdfExportResult {
+    const padding = options.padding ?? 20;
+    const ids = options.scope === 'selection' ? this.selectedIds() : options.includeIds;
+
+    const renderViewport = options.viewport ?? this.contentViewport(padding + CONTENT_RENDER_SLACK);
+    let tree = this.render(renderViewport, 1);
+    if (ids !== undefined) tree = filterTreeByIds(tree, ids);
+
+    return exportPdf(tree, {
+      // The renderer's LIVE theme. Without it the PDF resolves the cascade against the
+      // default light theme — or, in CSS mode, against nothing at all, and every link
+      // loses its stroke and every node its fill.
+      theme: this.theme,
+      padding,
+      viewBox: options.viewport,
+      backgroundColor: options.backgroundColor,
+      ...options.pdf,
     });
   }
 
