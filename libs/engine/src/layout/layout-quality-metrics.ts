@@ -148,10 +148,17 @@ export class LayoutQualityMetrics {
     weight: number,
     includeSuggestions?: boolean
   ): QualityMetric {
+    // BUG FIXED (Wave 7, Card 7): this used each node's top-left CORNER as the
+    // edge endpoint. An edge is drawn between node CENTRES, and for nodes of
+    // differing size the corner-to-corner segment is not even parallel to the one
+    // that gets drawn — so the crossing count described a picture nobody sees.
+    // It matters now: the auto-selector picks an algorithm partly on this number.
     const nodePositions = new Map<string, { x: number; y: number }>();
     nodes.forEach(node => {
-      const pos = node.position;
-      nodePositions.set(node.id, pos);
+      nodePositions.set(node.id, {
+        x: node.position.x + (node.size.width || 150) / 2,
+        y: node.position.y + (node.size.height || 50) / 2,
+      });
     });
 
     let crossingCount = 0;
@@ -595,11 +602,15 @@ export class LayoutQualityMetrics {
     const width2 = size2.width || 150;
     const height2 = size2.height || 50;
 
+    // BUG FIXED (Wave 7, Card 7): these were `<`, so two nodes whose edges exactly
+    // TOUCH — node A ending at x=100, node B starting at x=100 — shared no area at
+    // all and were still counted as overlapping. A tidily-packed grid got marked
+    // down for being tidy. Touching is not overlapping.
     return !(
-      pos1.x + width1 < pos2.x ||
-      pos2.x + width2 < pos1.x ||
-      pos1.y + height1 < pos2.y ||
-      pos2.y + height2 < pos1.y
+      pos1.x + width1 <= pos2.x ||
+      pos2.x + width2 <= pos1.x ||
+      pos1.y + height1 <= pos2.y ||
+      pos2.y + height2 <= pos1.y
     );
   }
 }

@@ -228,7 +228,8 @@ export class PortAwareLayoutManager {
           portAssignments,
           nodePositions,
           links,
-          options
+          options,
+          ports // the WHOLE port list: a partner port lives on another node
         );
         ordering.set(nodeId, ordered);
       } else {
@@ -256,7 +257,8 @@ export class PortAwareLayoutManager {
     portAssignments: Map<string, PortSide>,
     nodePositions: Map<string, { x: number; y: number }>,
     links: Array<{ sourcePortId?: string; targetPortId?: string }>,
-    options: PortAwareLayoutOptions
+    options: PortAwareLayoutOptions,
+    allPorts: PortInfo[]
   ): string[] {
     // Group ports by side
     const portsBySide = new Map<PortSide, PortInfo[]>();
@@ -275,9 +277,9 @@ export class PortAwareLayoutManager {
       let sideOrder: PortInfo[];
 
       if (options.orderingStrategy === 'minimize-crossings') {
-        sideOrder = this.orderByMinimizingCrossings(ports, links, nodePositions, side);
+        sideOrder = this.orderByMinimizingCrossings(ports, links, nodePositions, side, allPorts);
       } else if (options.orderingStrategy === 'connection-based') {
-        sideOrder = this.orderByConnections(ports, links, nodePositions, side);
+        sideOrder = this.orderByConnections(ports, links, nodePositions, side, allPorts);
       } else if (options.orderingStrategy === 'group-based') {
         sideOrder = this.orderByGroups(ports);
       } else {
@@ -292,50 +294,58 @@ export class PortAwareLayoutManager {
   }
 
   /**
-   * Order ports to minimize edge crossings
+   * Order ports to minimize edge crossings (barycentre method).
+   *
+   * BUG FIXED (Wave 7, Card 7): the connected port was looked up in `ports` — the
+   * ports on ONE SIDE of ONE node, i.e. the very list being sorted. But a port is
+   * connected to ports on OTHER nodes, which are never in that list, so the lookup
+   * missed every time, every barycentre came out 0, and the sort was a no-op.
+   * `minimize-crossings` ordering had never reordered anything in its life.
+   *
+   * The fix needs the WHOLE port list (`allPorts`) to resolve a partner port back
+   * to its node.
    */
   private static orderByMinimizingCrossings(
     ports: PortInfo[],
     links: Array<{ sourcePortId?: string; targetPortId?: string }>,
     nodePositions: Map<string, { x: number; y: number }>,
-    side: PortSide
+    side: PortSide,
+    allPorts: PortInfo[]
   ): PortInfo[] {
-    // Use barycenter method for crossing minimization
+    const portsById = new Map(allPorts.map((p) => [p.id, p]));
     const barycenters = new Map<string, number>();
 
     for (const port of ports) {
-      // Calculate average position of connected ports
       const connectedPorts = this.getConnectedPorts(port.id, links);
-      if (connectedPorts.length === 0) {
-        barycenters.set(port.id, 0);
-        continue;
-      }
 
+      // A port that connects to nothing has no barycentre to speak of. Give it
+      // -Infinity's opposite: keep it stable at its declared position by scoring
+      // it 0 only when nothing else scored either — otherwise an unconnected port
+      // would jump to the top of the side.
       let sum = 0;
+      let counted = 0;
+
       for (const connectedPortId of connectedPorts) {
-        // Get position based on side
-        const portInfo = ports.find((p) => p.id === connectedPortId);
-        if (portInfo) {
-          const nodePos = nodePositions.get(portInfo.nodeId);
-          if (nodePos) {
-            // Use the appropriate coordinate based on side
-            if (side === 'left' || side === 'right') {
-              sum += nodePos.y;
-            } else {
-              sum += nodePos.x;
-            }
-          }
-        }
+        const partner = portsById.get(connectedPortId);
+        if (!partner) continue;
+
+        const nodePos = nodePositions.get(partner.nodeId);
+        if (!nodePos) continue;
+
+        // Ports on a vertical side are ordered by the partner's Y; on a horizontal
+        // side, by its X.
+        sum += side === 'left' || side === 'right' ? nodePos.y : nodePos.x;
+        counted++;
       }
 
-      barycenters.set(port.id, sum / connectedPorts.length);
+      barycenters.set(port.id, counted > 0 ? sum / counted : 0);
     }
 
-    // Sort by barycenter
-    return ports.sort((a, b) => {
-      const bcA = barycenters.get(a.id) || 0;
-      const bcB = barycenters.get(b.id) || 0;
-      return bcA - bcB;
+    // Sort by barycentre, breaking ties on id so the order is total and stable.
+    return [...ports].sort((a, b) => {
+      const bcA = barycenters.get(a.id) ?? 0;
+      const bcB = barycenters.get(b.id) ?? 0;
+      return bcA - bcB || a.id.localeCompare(b.id);
     });
   }
 
@@ -346,10 +356,11 @@ export class PortAwareLayoutManager {
     ports: PortInfo[],
     links: Array<{ sourcePortId?: string; targetPortId?: string }>,
     nodePositions: Map<string, { x: number; y: number }>,
-    side: PortSide
+    side: PortSide,
+    allPorts: PortInfo[]
   ): PortInfo[] {
     // Similar to crossing minimization but considers connectivity strength
-    return this.orderByMinimizingCrossings(ports, links, nodePositions, side);
+    return this.orderByMinimizingCrossings(ports, links, nodePositions, side, allPorts);
   }
 
   /**
@@ -508,19 +519,34 @@ export class PortAwareLayoutManager {
   }
 
   /**
-   * Count edge crossings for a given port configuration
+   * Count edge crossings for a given port configuration.
+   *
+   * BUG FIXED (Wave 7, Card 7): this took `nodePositions` and never used it. Port
+   * coordinates are RELATIVE to their own node, so every node's ports were being
+   * compared around a shared origin — two edges on opposite ends of a large canvas
+   * could be counted as crossing, and two that genuinely crossed could be missed.
+   * The old `getLinkEndpoint` even said so in a comment ("In real implementation,
+   * this should be absolute") and returned the relative point anyway. Every
+   * `edgeCrossings` number this module has ever reported was therefore noise.
+   *
+   * `ports` is what makes the fix possible: it maps a port back to its node, so
+   * the port's offset can be added to the node's origin. It is optional only for
+   * source compatibility — without it we cannot resolve the frame, so we fall back
+   * to the relative comparison rather than silently inventing a node position.
    */
   static countEdgeCrossings(
     portPositions: Map<string, { x: number; y: number; side: PortSide }>,
     nodePositions: Map<string, { x: number; y: number }>,
-    links: Array<{ sourcePortId?: string; targetPortId?: string }>
+    links: Array<{ sourcePortId?: string; targetPortId?: string }>,
+    ports?: PortInfo[]
   ): number {
+    const nodeIdByPort = new Map((ports ?? []).map((p) => [p.id, p.nodeId]));
     let crossings = 0;
 
     // Check each pair of links
     for (let i = 0; i < links.length; i++) {
       for (let j = i + 1; j < links.length; j++) {
-        if (this.linksIntersect(links[i], links[j], portPositions, nodePositions)) {
+        if (this.linksIntersect(links[i], links[j], portPositions, nodePositions, nodeIdByPort)) {
           crossings++;
         }
       }
@@ -536,12 +562,16 @@ export class PortAwareLayoutManager {
     link1: { sourcePortId?: string; targetPortId?: string },
     link2: { sourcePortId?: string; targetPortId?: string },
     portPositions: Map<string, { x: number; y: number; side: PortSide }>,
-    nodePositions: Map<string, { x: number; y: number }>
+    nodePositions: Map<string, { x: number; y: number }>,
+    nodeIdByPort: Map<string, string>
   ): boolean {
-    const l1Start = this.getLinkEndpoint(link1, 'source', portPositions, nodePositions);
-    const l1End = this.getLinkEndpoint(link1, 'target', portPositions, nodePositions);
-    const l2Start = this.getLinkEndpoint(link2, 'source', portPositions, nodePositions);
-    const l2End = this.getLinkEndpoint(link2, 'target', portPositions, nodePositions);
+    const at = (link: { sourcePortId?: string; targetPortId?: string }, end: 'source' | 'target') =>
+      this.getLinkEndpoint(link, end, portPositions, nodePositions, nodeIdByPort);
+
+    const l1Start = at(link1, 'source');
+    const l1End = at(link1, 'target');
+    const l2Start = at(link2, 'source');
+    const l2End = at(link2, 'target');
 
     if (!l1Start || !l1End || !l2Start || !l2End) {
       return false;
@@ -551,30 +581,30 @@ export class PortAwareLayoutManager {
   }
 
   /**
-   * Get absolute position of link endpoint (port or node center)
+   * The ABSOLUTE position of a link endpoint: the port's offset within its node,
+   * plus that node's origin. (It used to return the raw relative offset.)
    */
   private static getLinkEndpoint(
     link: { sourcePortId?: string; targetPortId?: string },
     end: 'source' | 'target',
     portPositions: Map<string, { x: number; y: number; side: PortSide }>,
-    nodePositions: Map<string, { x: number; y: number }>
+    nodePositions: Map<string, { x: number; y: number }>,
+    nodeIdByPort: Map<string, string>
   ): { x: number; y: number } | null {
     const portId = end === 'source' ? link.sourcePortId : link.targetPortId;
+    if (!portId) return null;
 
-    if (!portId) {
-      return null;
-    }
-
-    // Try to get port position
     const portPos = portPositions.get(portId);
-    if (portPos) {
-      // Find the node this port belongs to
-      // For now, return the port's relative position
-      // In real implementation, this should be absolute
-      return { x: portPos.x, y: portPos.y };
-    }
+    if (!portPos) return null;
 
-    return null;
+    const nodeId = nodeIdByPort.get(portId);
+    const nodePos = nodeId ? nodePositions.get(nodeId) : undefined;
+
+    // Without the port->node mapping we cannot lift this into diagram space, so
+    // stay in the relative frame rather than pretending the node sits at (0,0).
+    if (!nodePos) return { x: portPos.x, y: portPos.y };
+
+    return { x: nodePos.x + portPos.x, y: nodePos.y + portPos.y };
   }
 
   /**
@@ -619,7 +649,7 @@ export class PortAwareLayoutManager {
     );
 
     // Count crossings
-    const edgeCrossings = this.countEdgeCrossings(portPositions, nodePositions, links);
+    const edgeCrossings = this.countEdgeCrossings(portPositions, nodePositions, links, ports);
 
     // Track what was auto-assigned/ordered
     const autoAssignedPorts = options.autoAssignSides
