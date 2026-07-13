@@ -7,6 +7,15 @@
 
 import { DEFAULT_TIER_POLICY, decideTier, resolveTierPolicy, type TierInput } from './tier-policy';
 
+/** Thresholds a host has explicitly opted into. The DEFAULTS never step down — see below. */
+const OPTED_IN = {
+  ...DEFAULT_TIER_POLICY,
+  canvasAboveElements: 2000,
+  svgBelowElements: 1500,
+  canvasBelowZoom: 0.35,
+  svgAboveZoom: 0.5,
+};
+
 const base = (over: Partial<TierInput> = {}): TierInput => ({
   current: 'svg',
   elements: 100,
@@ -15,11 +24,32 @@ const base = (over: Partial<TierInput> = {}): TierInput => ({
   focusInside: false,
   hasForeignObject: false,
   pinned: null,
-  policy: DEFAULT_TIER_POLICY,
+  policy: OPTED_IN,
   ...over,
 });
 
-describe('decideTier — thresholds', () => {
+describe('decideTier — the DEFAULT policy never steps down', () => {
+  // Not timidity — measurement. `tier-run.mjs` says the canvas consumer is 8.9x SLOWER
+  // than the DOM patcher at 23,730 VNodes, because the patcher diffs and canvas repaints
+  // (twice: once for the screen, once for the hit canvas). A default that silently made a
+  // host 8.9x slower on a big diagram would be a lie told with a feature flag.
+  const def = (over: Partial<TierInput> = {}) =>
+    decideTier(base({ policy: DEFAULT_TIER_POLICY, ...over }));
+
+  it('holds SVG at any element count', () => {
+    expect(def({ elements: 1_000_000 }).mode).toBe('svg');
+  });
+
+  it('holds SVG at any zoom', () => {
+    expect(def({ zoom: 0.001 }).mode).toBe('svg');
+  });
+
+  it('still steps UP to svg if something put us on canvas', () => {
+    expect(def({ current: 'canvas', elements: 10, zoom: 1 }).mode).toBe('svg');
+  });
+});
+
+describe('decideTier — thresholds (a host that opted in with its own numbers)', () => {
   it('stays on SVG for a small, near-zoom scene', () => {
     const d = decideTier(base());
     expect(d.mode).toBe('svg');
@@ -80,7 +110,7 @@ describe('decideTier — the guards (canvas is a lesser surface)', () => {
   });
 
   it('honours respectAccessibility: false — but only when a host asks for it explicitly', () => {
-    const policy = { ...DEFAULT_TIER_POLICY, respectAccessibility: false };
+    const policy = { ...OPTED_IN, respectAccessibility: false };
     const d = decideTier(base({ elements: 5000, a11yEngaged: true, policy }));
     expect(d.mode).toBe('canvas');
   });

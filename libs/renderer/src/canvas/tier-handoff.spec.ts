@@ -9,6 +9,16 @@ import { DiagramRenderBackend } from './render-backend';
 import { VIEWPORT, buildScene, portOn } from './test-scene';
 import { NodeModel } from '@grafloria/engine';
 
+/**
+ * Thresholds a host has explicitly measured and opted into.
+ *
+ * The SHIPPED default never steps down to canvas — `tier-run.mjs` measures the canvas
+ * consumer at 8.9x SLOWER than the DOM patcher, so shipping a step-down default would
+ * hand every host a regression. These specs drive the MECHANISM, so they supply the
+ * numbers a host would.
+ */
+const TUNED = { canvasAboveElements: 2000, svgBelowElements: 1500, canvasBelowZoom: 0.35, svgAboveZoom: 0.5 };
+
 /** A scene with enough elements to trip the element-count threshold. */
 function bigScene(count: number) {
   const scene = buildScene([{ name: 'a', x: 10, y: 10 }], false);
@@ -81,7 +91,7 @@ describe('DiagramRenderBackend — automatic tier handoff', () => {
     const scene = buildScene([{ name: 'a', x: 100, y: 100 }], false);
     const backend = new DiagramRenderBackend(scene.engine, host, {
       mode: 'svg',
-      autoTier: true,
+      autoTier: TUNED,
     });
 
     backend.render(VIEWPORT, 1);
@@ -105,7 +115,7 @@ describe('DiagramRenderBackend — automatic tier handoff', () => {
     const scene = buildScene([{ name: 'a', x: 100, y: 100, width: 120, height: 60 }], false);
     const backend = new DiagramRenderBackend(scene.engine, host, {
       mode: 'svg',
-      autoTier: true,
+      autoTier: TUNED,
     });
 
     backend.render(VIEWPORT, 1);
@@ -126,7 +136,7 @@ describe('DiagramRenderBackend — automatic tier handoff', () => {
     const scene = buildScene([{ name: 'a', x: 100, y: 100 }], false);
     const backend = new DiagramRenderBackend(scene.engine, host, {
       mode: 'svg',
-      autoTier: true,
+      autoTier: TUNED,
     });
 
     scene.nodes['a'].setState({ selected: true });
@@ -218,7 +228,7 @@ describe('DiagramRenderBackend — automatic tier handoff', () => {
     const scene = buildScene([{ name: 'a', x: 100, y: 100 }], false);
     const backend = new DiagramRenderBackend(scene.engine, host, {
       mode: 'svg',
-      autoTier: true,
+      autoTier: TUNED,
     });
 
     backend.pinMode('canvas');

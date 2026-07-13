@@ -45,14 +45,45 @@ export interface TierPolicy {
   respectAccessibility: boolean;
 }
 
+/**
+ * THE DEFAULT IS: NEVER STEP DOWN. And that is a measurement, not a hedge.
+ *
+ * `node libs/renderer/e2e/tier-run.mjs`, on the links-free isolation scene (which strips
+ * out the router so the two CONSUMERS can actually be compared):
+ *
+ *     vnodes    svg mount   svg repatch   canvas paint
+ *      5,005       10.1ms         0.0ms          0.0ms
+ *     23,080       48.7ms        13.8ms        115.5ms     <- SVG 8.4x faster
+ *     23,730       44.5ms        13.7ms        121.8ms     <- SVG 8.9x faster
+ *
+ * The canvas tier is SLOWER than the DOM at every count we can measure, and the reason is
+ * structural, not a tuning problem:
+ *
+ *   - The VNode patcher DIFFS. A steady frame touches only what actually changed, so the
+ *     DOM's per-frame cost is a function of the CHANGE, not of the scene.
+ *   - The canvas backend REPAINTS. Every frame, the whole scene — and then a second time
+ *     into the colour-keyed hit canvas that buys its O(1) picking. Two full paints, every
+ *     frame, whatever changed.
+ *
+ * Canvas is not therefore worthless: it wins where the diff is as expensive as a repaint
+ * (continuous zoom/pan, where every element moves), and 1 canvas element beats 40,000 DOM
+ * nodes for memory and GC. But those are not the case the thresholds below fire on, and a
+ * default that silently made every host 8.9x slower on a big diagram would be a lie told
+ * with a feature flag.
+ *
+ * So: the mechanism ships, guarded and tested, and it steps down only when a host gives it
+ * a number IT has measured on ITS scenes:
+ *
+ *     autoTier: { canvasAboveElements: 20000, svgBelowElements: 15000 }
+ *
+ * Re-measure and revisit these defaults when (a) the router stops dominating the frame
+ * (wave8/routing) and (b) the hit-canvas repaint becomes conditional — with both fixed,
+ * the comparison changes and this comment should stop being true.
+ */
 export const DEFAULT_TIER_POLICY: TierPolicy = {
-  // A DOM patch of ~2k elements is where SVG starts to cost more than a canvas repaint
-  // on the machines we measured. The gap between the two element thresholds is the
-  // hysteresis band: without it, a diagram parked exactly on the boundary rebuilds its
-  // entire backend every frame, which is far worse than either tier.
-  canvasAboveElements: 2000,
+  canvasAboveElements: Number.POSITIVE_INFINITY,
   svgBelowElements: 1500,
-  canvasBelowZoom: 0.35,
+  canvasBelowZoom: 0,
   svgAboveZoom: 0.5,
   respectAccessibility: true,
 };
