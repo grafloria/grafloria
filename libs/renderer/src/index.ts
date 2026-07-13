@@ -40,7 +40,17 @@ export * from './canvas';
 export * from './hybrid';
 
 // Phase 2.3: Interactive link editing tools
+// Wave 3: also exports the framework-agnostic InteractionController.
 export * from './interaction';
+
+// Wave 3 (framework-agnostic instance API): the camera. Screen↔world conversion,
+// zoom clamping, pan, and the viewBox convention — the math every framework
+// wrapper otherwise re-implements.
+export * from './viewport';
+
+// Wave 3: the headless instance CONTRACT (types) a future createDiagram()
+// implements. See ./instance/diagram-instance.ts for what still blocks it.
+export * from './instance';
 
 // Phase 1: Animation system
 export { AnimationService } from './services/animation.service';
