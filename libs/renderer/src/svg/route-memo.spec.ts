@@ -13,6 +13,7 @@
 
 import { SVGRenderer } from './svg-renderer';
 import { RouteMemo, coalesce, inflate, type Rect } from './route-memo';
+import { applyChannelNudges } from './channel-nudging';
 import { DiagramEngine, DiagramModel, NodeModel, LinkModel, PortModel } from '@grafloria/engine';
 import type { Rectangle } from '../types';
 
@@ -164,6 +165,34 @@ describe('RouteMemo (unit)', () => {
   });
 });
 
+describe('the invariant the route memo rests on: nothing downstream mutates a cached route', () => {
+  // Before this card, every route was thrown away and recomputed each frame, so
+  // it did not matter whether the passes that run AFTER routing — channel
+  // nudging, parallel fan-out, the edge optimizer — adjusted the route in place
+  // or on a copy. It matters now: a cached route that gets nudged IN PLACE is
+  // re-nudged from its own output on the next frame, and every frame after, so
+  // the link slides a few pixels sideways forever while `routed: 0` is reported
+  // the entire time. Nothing else in this suite would see it — the route is
+  // "unchanged" by every measure except the picture.
+  //
+  // So the contract is pinned here, at the seam, rather than left as a property
+  // that happens to hold.
+  it('applyChannelNudges returns a new array and leaves its input alone', () => {
+    const input = Object.freeze([
+      Object.freeze({ x: 0, y: 0 }),
+      Object.freeze({ x: 100, y: 0 }),
+      Object.freeze({ x: 100, y: 100 }),
+    ]) as ReadonlyArray<{ x: number; y: number }>;
+
+    const out = applyChannelNudges(input as never, new Map([[0, 12]]));
+
+    expect(out).not.toBe(input); // a copy, not the same array
+    expect(out[0]).not.toBe(input[0]); // …and copies of the POINTS, not aliases
+    expect(input[0]).toEqual({ x: 0, y: 0 }); // (frozen: an in-place write would have thrown)
+    expect(out[0].y).toBe(12); // and it really did apply the nudge
+  });
+});
+
 describe('incremental routing is invisible (differential vs a cold renderer)', () => {
   // The scene: A —— B with a clear corridor between them, and a loose node C
   // parked well out of the way, which we will later drive INTO the corridor.
@@ -256,6 +285,24 @@ describe('the cache actually caches (a silently-dead cache is just a slow one)',
   it('a pan re-routes nothing — the world did not move, the camera did', () => {
     renderer.render(VIEWPORT, 1);
     renderer.render({ ...VIEWPORT, x: VIEWPORT.x + 120 }, 1);
+    expect(renderer.getRoutingStats().routed).toBe(0);
+  });
+
+  it('an idle frame is IDEMPOTENT — a cached route must never be re-nudged into drift', () => {
+    // The hazard: the passes that run AFTER routing (channel nudging, parallel
+    // fan-out, the edge optimizer) take the frame's routes and adjust them. They
+    // copy before they mutate — today. If one of them ever adjusts a cached route
+    // IN PLACE, it would re-apply its own offset to its own output on every
+    // subsequent frame, and the links would slide a few pixels further sideways
+    // forever, with `routed: 0` reported the whole time. Nothing else in the suite
+    // would notice: the routes are "unchanged" by every measure except the picture.
+    renderer.render(VIEWPORT, 1);
+    const first = geometry(diagram);
+
+    for (let i = 0; i < 6; i++) {
+      renderer.render(VIEWPORT, 1);
+      expect(geometry(diagram)).toEqual(first);
+    }
     expect(renderer.getRoutingStats().routed).toBe(0);
   });
 
