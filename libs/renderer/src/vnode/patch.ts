@@ -46,8 +46,14 @@ export const XHTML_NS = 'http://www.w3.org/1999/xhtml';
  * SVG attributes whose genuinely-camelCase names must be preserved verbatim.
  * camelCase→kebab-case would corrupt them (`gradientUnits` → `gradient-units`),
  * silently breaking the paint-server defs (gradients / patterns / drop shadows).
+ *
+ * Exported because the headless SVG SERIALIZER (`export/vnode-serializer.ts`) is
+ * this patcher's DOM-less sibling and must map a VNode prop to an attribute name
+ * exactly the same way — a second copy of this list is a divergence waiting to
+ * happen (the two would disagree about `gradientUnits` and only one of the two
+ * outputs would break).
  */
-const VERBATIM_ATTRS = new Set([
+export const VERBATIM_ATTRS = new Set([
   'viewBox',
   'preserveAspectRatio',
   'gradientUnits',
@@ -105,6 +111,18 @@ const emptyStats = (): PatchStats => ({
 /** camelCase → kebab-case (`strokeWidth` → `stroke-width`). */
 export function camelToKebab(str: string): string {
   return str.replace(/([a-z0-9])([A-Z])/g, '$1-$2').toLowerCase();
+}
+
+/**
+ * The attribute name a VNode prop is written to: `className` → `class`,
+ * `gradientUnits` → `gradientUnits` (verbatim), everything else kebab-cased.
+ *
+ * THE single mapping, shared by the DOM patcher and the headless serializer.
+ */
+export function attrNameForProp(key: string): string {
+  if (key === 'className') return 'class';
+  if (VERBATIM_ATTRS.has(key)) return key;
+  return camelToKebab(key);
 }
 
 /**
@@ -499,12 +517,9 @@ export class VNodePatcher {
       return;
     }
 
-    if (VERBATIM_ATTRS.has(key)) {
-      el.setAttribute(key, String(value));
-      return;
-    }
-
-    el.setAttribute(camelToKebab(key), String(value));
+    // className/style/textContent are handled above; everything else goes through
+    // THE shared prop → attribute mapping (also used by the headless serializer).
+    el.setAttribute(attrNameForProp(key), String(value));
   }
 
   private removeProp(el: Element, key: string): void {
@@ -520,11 +535,7 @@ export class VNodePatcher {
       el.removeAttribute('style');
       return;
     }
-    if (VERBATIM_ATTRS.has(key)) {
-      el.removeAttribute(key);
-      return;
-    }
-    el.removeAttribute(camelToKebab(key));
+    el.removeAttribute(attrNameForProp(key));
   }
 }
 

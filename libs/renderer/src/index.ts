@@ -18,6 +18,10 @@ export * from './themes';
 // Export renderers
 export * from './svg';
 
+// Wave 4: deterministic headless export — VNode → standalone, styles-inlined SVG
+// (pure, zero-DOM) → PNG/JPEG/WebP. Same VNode contract the live patcher consumes.
+export * from './export';
+
 // Phase 2.3: Interactive link editing tools
 // Wave 3: also exports the framework-agnostic InteractionController.
 export * from './interaction';

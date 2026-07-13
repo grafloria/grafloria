@@ -994,7 +994,27 @@ export function buildShapeBody(
   const spec = def.outline(width, height, { radius: cornerRadius, radiusY: true });
 
   if (def.styleMode === 'spread') {
-    return { type: spec.el, props: { ...styles, ...spec.geom } };
+    // BUG (fixed): 'spread' shapes emitted the resolved fill/stroke/stroke-width
+    // as PRESENTATION ATTRIBUTES only — and a presentation attribute loses to any
+    // author stylesheet rule. So `[data-grafloria-instance] .diagram-node { fill:
+    // var(--grafloria-node-fill) }` beat `fill="#e8f5e9"`, and in CSS mode an
+    // ellipse/hexagon (and every 'spread' figure) silently rendered the THEME fill
+    // instead of its own. The 'inline' shapes never had the bug because they hoist
+    // the same values into an inline `style`, which does beat the stylesheet — the
+    // two style modes simply disagreed about the cascade.
+    //
+    // Fix: hoist here too. The presentation attributes are KEPT (Canvas/programmatic
+    // consumers and existing tests read props.fill), and the inline style carries the
+    // same values at the priority the cascade documents (element-inline > stylesheet).
+    const inlineStyle = composeInlineStyle(styles);
+    return {
+      type: spec.el,
+      props: {
+        ...styles,
+        ...(inlineStyle ? { style: mergeInlineStyle(styles.style, inlineStyle) } : {}),
+        ...spec.geom,
+      },
+    };
   }
 
   // Split geometry into pre/post so deferred keys (rect rx/ry) win over any
@@ -1009,13 +1029,7 @@ export function buildShapeBody(
   const { fill, stroke, strokeWidth, className, ...rest } = styles;
   for (const k of def.bodyStripKeys ?? []) delete rest[k];
 
-  const inlineStyle = [
-    fill ? `fill: ${fill}` : '',
-    stroke ? `stroke: ${stroke}` : '',
-    strokeWidth !== undefined ? `stroke-width: ${strokeWidth}` : '',
-  ]
-    .filter(Boolean)
-    .join('; ');
+  const inlineStyle = composeInlineStyle({ fill, stroke, strokeWidth });
 
   return {
     type: spec.el,
@@ -1027,6 +1041,36 @@ export function buildShapeBody(
       ...post,
     },
   };
+}
+
+/**
+ * The paint values a node body must carry as an INLINE style, so they beat the
+ * themed `.diagram-node` stylesheet rule (a presentation attribute would not).
+ * Returns '' when no layer above the theme set anything — which is what lets an
+ * untouched node still fall back to the theme.
+ */
+function composeInlineStyle(styles: {
+  fill?: unknown;
+  stroke?: unknown;
+  strokeWidth?: unknown;
+}): string {
+  return [
+    styles.fill ? `fill: ${styles.fill}` : '',
+    styles.stroke ? `stroke: ${styles.stroke}` : '',
+    styles.strokeWidth !== undefined ? `stroke-width: ${styles.strokeWidth}` : '',
+  ]
+    .filter(Boolean)
+    .join('; ');
+}
+
+/** Append the hoisted paint to a style the caller already had (string or object form). */
+function mergeInlineStyle(existing: unknown, hoisted: string): string {
+  if (existing === null || existing === undefined || existing === '') return hoisted;
+  if (typeof existing === 'string') return `${existing}; ${hoisted}`;
+  const parts = Object.entries(existing as Record<string, unknown>)
+    .filter(([, v]) => v !== null && v !== undefined)
+    .map(([k, v]) => `${k.replace(/([a-z0-9])([A-Z])/g, '$1-$2').toLowerCase()}: ${v}`);
+  return [...parts, hoisted].join('; ');
 }
 
 /** Selection-highlight VNode: the outline grown by `padding`, plus baseProps. */

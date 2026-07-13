@@ -1,5 +1,10 @@
 import type { VNode } from './vnode.types';
 import type { Rectangle } from './geometry.types';
+// Type-only (erased at runtime, so no import cycle): the export seam below is
+// declared in terms of the real export module's contracts rather than a second,
+// drifting copy of them.
+import type { ForeignObjectMode } from '../export/vnode-serializer';
+import type { RasterBackend } from '../export/raster';
 
 /**
  * Renderer interface — the contract for a DIAGRAM renderer: it turns the model
@@ -61,6 +66,13 @@ export interface IRenderer {
 
   /**
    * Optional: export the rendered diagram as an image or SVG string.
+   *
+   * `'svg'` returns a STANDALONE, styles-inlined SVG document (no `var(--…)`, no
+   * external references) — pure, deterministic and DOM-free, so it runs on a
+   * server. The raster formats return a `data:` URL and need a rasterizer (see
+   * {@link ExportOptions.rasterBackend}).
+   *
+   * Implemented by `SVGRenderer` (see `export/`).
    */
   export?(format: ExportFormat, options?: ExportOptions): Promise<string>;
 }
@@ -124,11 +136,21 @@ export interface BoundingBox {
 
 /**
  * Export format types.
+ *
+ * PDF is deliberately absent: a faithful vector PDF needs a font/glyph pipeline
+ * (embedding + subsetting, or text→paths), which is a bigger lift than this card
+ * had room for. SVG and the raster formats are real; PDF is not implemented, and
+ * is not pretended to be.
  */
 export type ExportFormat = 'png' | 'svg' | 'jpeg' | 'webp';
 
 /**
  * Export options.
+ *
+ * The first three are the original contract. The rest were added when the seam
+ * was actually implemented (`export/`), and every one of them is optional — the
+ * zero-argument call `renderer.export()` produces a standalone, styles-inlined
+ * SVG of the whole diagram.
  */
 export interface ExportOptions {
   /** Image scale (default: 1) */
@@ -139,6 +161,40 @@ export interface ExportOptions {
 
   /** Background color (default: transparent) */
   backgroundColor?: string;
+
+  /**
+   * World-space rectangle to export. Default: the diagram's content bounds — i.e.
+   * the whole diagram, not whatever the user happens to be looking at.
+   */
+  viewport?: Rectangle;
+
+  /** Margin (world units) around the content bounds. Default 20. Ignored with an explicit `viewport`. */
+  padding?: number;
+
+  /** How to serialize `<foreignObject>` (HTML-in-SVG) nodes. Default `'serialize'`. */
+  foreignObject?: ForeignObjectMode;
+
+  /**
+   * Supply the live HTML mounted inside a foreignObject. The VNode tree does not
+   * contain it (the patcher treats those subtrees as opaque), so a headless
+   * exporter cannot know it — a browser-side caller can hand it back here.
+   */
+  captureForeignObject?: (vnode: VNode) => string | undefined;
+
+  /**
+   * CSS injected verbatim into the exported SVG's `<defs>`. The font seam: an
+   * `@font-face` with a `data:` URI `src` makes the file carry its own glyphs.
+   * We declare font families; we do not embed or subset fonts for you.
+   */
+  embedFontCss?: string;
+
+  /**
+   * Rasterizer for `png` / `jpeg` / `webp`. Defaults to a canvas-based backend
+   * when one exists (browser main thread or worker via OffscreenCanvas). In plain
+   * Node there is no SVG engine, so raster export THROWS unless you pass one
+   * (resvg-js / sharp / puppeteer). SVG export never needs this.
+   */
+  rasterBackend?: RasterBackend;
 }
 
 /**

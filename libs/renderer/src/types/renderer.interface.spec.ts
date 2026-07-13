@@ -257,7 +257,11 @@ describe('IRenderer Interface', () => {
       expect(options.scale).toBe(2);
     });
 
-    test('the optional members really are optional (SVGRenderer does not implement them)', () => {
+    // Wave 4 filled the `export` seam in: SVGRenderer now implements `export()` and
+    // declares `capabilities` (see export/svg-export.spec.ts). The members stay
+    // OPTIONAL on the interface — a renderer that cannot export must still be a
+    // valid IRenderer, which is what this pins.
+    test('the optional members really are optional (a renderer may implement none of them)', () => {
       const minimal: IRenderer = {
         mode: 'svg',
         render: jest.fn(),
@@ -267,6 +271,7 @@ describe('IRenderer Interface', () => {
 
       expect(minimal.capabilities).toBeUndefined();
       expect(minimal.hitTest).toBeUndefined();
+      expect(minimal.export).toBeUndefined();
     });
   });
 });
