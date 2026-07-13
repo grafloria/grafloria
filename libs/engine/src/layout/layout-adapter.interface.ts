@@ -8,6 +8,11 @@
 
 import { NodeModel } from '../models/NodeModel';
 import { LinkModel } from '../models/LinkModel';
+// The model's own Point — NOT a local redeclaration. Declaring a rival `Point`
+// here compiles fine inside the engine but makes `export * from './layout'`
+// ambiguous against `export * from './types'` at the barrel, which breaks every
+// downstream consumer (TS2308) while the engine's own suite stays green.
+import type { Point } from '../types/geometry.types';
 import { LayoutConstraints } from './layout-constraints.interface';
 import {
   IncrementalLayoutOptions,
@@ -106,12 +111,6 @@ export interface LayoutRoutingHints {
 
   /** Whether the engine routed orthogonally. */
   orthogonal: boolean;
-}
-
-/** A point in diagram space. */
-export interface Point {
-  x: number;
-  y: number;
 }
 
 /**

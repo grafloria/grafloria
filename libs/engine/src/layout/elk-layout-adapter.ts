@@ -16,8 +16,8 @@ import {
   LayoutOptions,
   LayoutResult,
   LayoutRoutingHints,
-  Point,
 } from './layout-adapter.interface';
+import type { Point } from '../types/geometry.types';
 import { ConstraintManager } from './layout-constraints.interface';
 import {
   IncrementalLayoutOptions,
@@ -30,7 +30,6 @@ import { SubgraphLayoutManager } from './subgraph-layout.interface';
 import { EdgeBundlingManager, EdgeInfo } from './edge-bundling.interface';
 import {
   derivePortInfos,
-  declaredPorts,
   linkLabelBox,
   resolvePortConstraint,
   toElkPortSide,
