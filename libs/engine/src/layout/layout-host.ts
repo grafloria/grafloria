@@ -44,7 +44,7 @@
 import type { LayoutAdapter, LayoutOptions, LayoutResult } from './layout-adapter.interface';
 import { isSteppable } from './steppable-layout';
 import { reviveGraph, type LayoutGraph } from './layout-graph';
-import { createBuiltInLayoutAdapters } from './layout-registry';
+import { createBuiltInLayoutFactories } from './layout-registry';
 import { LayoutQualityMetrics } from './layout-quality-metrics';
 
 // ---------------------------------------------------------------------------
@@ -194,11 +194,34 @@ export interface ServeLayoutDeps {
   now?: () => number;
 }
 
+/**
+ * The worker's own resolver: build an adapter the first time it is named, and
+ * never build one that is not.
+ *
+ * LAZY ON PURPOSE. Eagerly constructing the built-ins means constructing ELK,
+ * and elkjs's constructor spawns its own nested Worker — which inside a Worker
+ * throws `_Worker is not a constructor` and kills the layout worker on the very
+ * line that starts it. See createBuiltInLayoutFactories().
+ *
+ * (ELK therefore remains a main-thread algorithm in practice — no great loss:
+ * elkjs already offloads itself to a worker of its own, so it never blocked the
+ * main thread the way dagre and force do.)
+ */
 function defaultResolver(): (name: string) => LayoutAdapter | undefined {
-  const adapters = new Map(
-    createBuiltInLayoutAdapters().map((adapter) => [adapter.name, adapter])
-  );
-  return (name) => adapters.get(name);
+  const factories = createBuiltInLayoutFactories();
+  const built = new Map<string, LayoutAdapter>();
+
+  return (name) => {
+    const existing = built.get(name);
+    if (existing) return existing;
+
+    const make = factories.get(name);
+    if (!make) return undefined;
+
+    const adapter = make();
+    built.set(name, adapter);
+    return adapter;
+  };
 }
 
 /**
@@ -231,7 +254,27 @@ export function serveLayout(port: LayoutServePort, deps: ServeLayoutDeps = {}): 
     const { seq } = request;
 
     try {
-      const adapter = resolve(request.algorithm);
+      // Resolution can THROW, not merely return undefined: an adapter is
+      // constructed here, and construction can fail for reasons peculiar to the
+      // thread we are on (ELK's does, inside a Worker). A bare rethrow would
+      // surface as "_Worker is not a constructor" with no clue which layout or
+      // why — so name it.
+      let adapter: LayoutAdapter | undefined;
+      try {
+        adapter = resolve(request.algorithm);
+      } catch (constructionError) {
+        const detail =
+          constructionError instanceof Error
+            ? constructionError.message
+            : String(constructionError);
+        port.postMessage({
+          seq,
+          kind: 'error',
+          message: `Layout '${request.algorithm}' could not be constructed in this context: ${detail}`,
+        });
+        return;
+      }
+
       if (!adapter) {
         port.postMessage({
           seq,

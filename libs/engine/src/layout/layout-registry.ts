@@ -265,11 +265,32 @@ export function translateOptions(
  * even though it resolves asynchronously; the adapter already handles that.
  */
 export function createBuiltInLayoutAdapters(): LayoutAdapter[] {
-  return [
-    new DagreLayoutAdapter(),
-    new ELKLayoutAdapter(),
-    new ForceLayoutAdapter(),
-    new SpectralLayoutAdapter(),
-    new CommunityLayoutAdapter(),
-  ];
+  return [...createBuiltInLayoutFactories().values()].map((make) => make());
+}
+
+/**
+ * The same built-ins, as FACTORIES — construct one only when it is asked for.
+ *
+ * Wave 7 Card 3, and this is not a micro-optimisation: it is a crash fix that
+ * only a live run could have found. Constructing every adapter up-front means
+ * constructing ELK, and `new ELKLayoutAdapter()` calls `new ElkConstructor()`,
+ * which tries to spawn elkjs's OWN nested Worker. Inside a Web Worker that
+ * throws `_Worker is not a constructor` — so the layout worker died on the line
+ * that started it, before it had read a single message, and every request to it
+ * hung forever.
+ *
+ * Nothing caught it because in Node (where the unit tests live) elkjs constructs
+ * happily. It reproduced the instant a real Worker ran in a real browser.
+ *
+ * Laziness makes the worker pay only for the algorithm actually requested, so
+ * asking for `force` no longer detonates on ELK's behalf.
+ */
+export function createBuiltInLayoutFactories(): Map<string, () => LayoutAdapter> {
+  return new Map<string, () => LayoutAdapter>([
+    ['dagre', () => new DagreLayoutAdapter()],
+    ['elk', () => new ELKLayoutAdapter()],
+    ['force', () => new ForceLayoutAdapter()],
+    ['spectral', () => new SpectralLayoutAdapter()],
+    ['community', () => new CommunityLayoutAdapter()],
+  ]);
 }
