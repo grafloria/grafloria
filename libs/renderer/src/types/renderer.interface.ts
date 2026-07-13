@@ -317,6 +317,21 @@ export interface SVGRendererConfig {
   parallelSpacing?: number;
 
   /**
+   * Wave 5 (Edge routing) — Card 4. Channel nudging: orthogonal segments of
+   * DIFFERENT links that share a corridor (closer than ~4px — i.e. visually on
+   * top of each other) are separated onto parallel lanes, spaced by
+   * `parallelSpacing`, with lane ORDER chosen by each member's exit side so
+   * corridor-mates stop crossing at the corridor mouth. Port stubs never move
+   * (the jetty guarantee outranks lane separation); a corridor that cannot be
+   * separated safely is left alone rather than half-moved.
+   *
+   * Same-pair bundles are Wave 4's fan-out, not this: fanned members sit a full
+   * `parallelSpacing` apart and therefore never trigger the nudge.
+   * Default: true
+   */
+  channelNudging?: boolean;
+
+  /**
    * Wave 4 — Card 7. Run the diagram-wide edge optimizer: ONE incremental pass
    * that computes jump-overs for every link and auto-places the labels that opted
    * in via `LinkLabel.autoOffset`.

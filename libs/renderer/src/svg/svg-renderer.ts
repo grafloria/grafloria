@@ -2,6 +2,8 @@ import type { DiagramEngine, NodeModel, NodeStyle, LinkModel, LinkStyle, PortMod
 // Value import: the ONE definition of "where does a label sit along the path"
 // (slot vs position), shared by the model, this renderer and the edge optimizer.
 import { linkLabelPosition } from '@grafloria/engine';
+// Wave 5 Card 4: corridor separation for DIFFERENT-pair edges sharing a channel.
+import { computeChannelNudges, applyChannelNudges } from './channel-nudging';
 import type {
   IRenderer,
   PerformanceMetrics,
@@ -172,6 +174,13 @@ function styleClassTokens(styleClass: string | undefined): string[] {
 }
 
 /** Arc length of a polyline — RoutedPath carries one, and self-loops need to too. */
+/**
+ * Wave 5 Card 4: segments closer than this (px) count as ONE corridor and get
+ * separated. Deliberately small — the pass fixes what is visually stacked, and
+ * must never grab a deliberate 16px-apart parallel run (a wave-4 fanned bundle).
+ */
+const CHANNEL_NUDGE_TRIGGER = 4;
+
 function polylineLength(points: Array<{ x: number; y: number }>): number {
   let total = 0;
   for (let i = 0; i < points.length - 1; i++) {
@@ -356,6 +365,8 @@ export class SVGRenderer implements IRenderer {
       parallelLinks: config.parallelLinks ?? true,
       parallelSpacing: config.parallelSpacing ?? DEFAULT_PARALLEL_SPACING,
       edgeOptimizer: config.edgeOptimizer ?? true,
+      // Wave 5 (Edge routing)
+      channelNudging: config.channelNudging ?? true,
       // Wave 4 (Styling). `colorMode` is OPT-IN: unset means "use the theme I was
       // given and watch nothing", which is exactly the pre-Wave-4 behaviour.
       colorMode: config.colorMode ?? undefined,
@@ -1168,6 +1179,13 @@ export class SVGRenderer implements IRenderer {
       }
     }
 
+    // Wave 5 — Card 4: corridor separation. Runs AFTER routing (it needs the
+    // final polylines) and BEFORE the optimizer (jumps and labels must see the
+    // nudged geometry, not the stacked one). Computed among the frame's routed
+    // links: a corridor-mate scrolled off-screen doesn't hold its lane — the
+    // separation is a legibility pass, not a persistent assignment.
+    this.applyChannelNudging(sortedLinks);
+
     // Wave 4 — Card 7: THE diagram-wide edge pass. Runs once, after every link's
     // geometry is final and before any link builds its VNode, because both of its
     // outputs (jump-overs, label placements) are functions of the WHOLE picture.
@@ -1195,6 +1213,45 @@ export class SVGRenderer implements IRenderer {
   // =========================================================================
   // Wave 4 (Edges & links) — Card 4: parallel bundles
   // =========================================================================
+
+  /**
+   * Wave 5 — Card 4: separate corridor-sharing segments of DIFFERENT links onto
+   * parallel lanes. Only orthogonal-geometry links participate (a diagonal
+   * smooth line has no corridor to share); only interior segments move; a
+   * member whose slide would shrink or reverse an adjacent segment pins its
+   * lane, and an unsatisfiable corridor is skipped whole.
+   */
+  private applyChannelNudging(links: LinkModel[]): void {
+    if (!this.config.channelNudging || this.frameRoutes.size < 2) return;
+
+    const byId = new Map(links.map((l) => [l.id, l] as const));
+    const routesIn = new Map<string, ReadonlyArray<{ x: number; y: number }>>();
+    for (const [id, routed] of this.frameRoutes) {
+      const link = byId.get(id);
+      if (!link || !this.isOrthogonalRouting(link)) continue;
+      routesIn.set(id, routed.points);
+    }
+    if (routesIn.size < 2) return;
+
+    const { deltas } = computeChannelNudges(routesIn, {
+      trigger: CHANNEL_NUDGE_TRIGGER,
+      spacing: this.config.parallelSpacing,
+    });
+
+    for (const [linkId, perSegment] of deltas) {
+      const routed = this.frameRoutes.get(linkId);
+      const link = byId.get(linkId);
+      if (!routed || !link) continue;
+      const nudged = applyChannelNudges(routed.points, perSegment);
+      this.frameRoutes.set(linkId, {
+        ...routed,
+        points: nudged,
+        totalLength: polylineLength(nudged),
+        bendCount: Math.max(0, nudged.length - 2),
+      });
+      this.syncLinkPoints(link, nudged);
+    }
+  }
 
   /**
    * Group every link in the diagram by the (unordered) node pair it connects and

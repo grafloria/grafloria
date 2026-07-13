@@ -2474,6 +2474,70 @@ function s21_themingLive() {
 }
 
 // ===========================================================================
+// r1 — Wave 5 routing: DIFFERENT-pair links sharing a corridor get nudged apart
+// ===========================================================================
+function r1_channelNudging() {
+  const engine = makeEngine();
+  const diagram = engine.createDiagram('r1-nudge');
+
+  // Two INDEPENDENT pairs, stacked vertically, whose orthogonal routes both run
+  // through the same horizontal corridor at y=175: A(40,60)→B(460,240) and
+  // C(40,240)→D(460,60) cross the middle band in opposite directions. Their
+  // interior horizontal runs coincide; pre-Wave-5 they drew on top of each other.
+  addNode(diagram, 'A', 40, 40, { w: 100, h: 50, ports: [{ id: 'r1-a', side: 'right', type: 'output' }] });
+  addNode(diagram, 'B', 460, 260, { w: 100, h: 50, ports: [{ id: 'r1-b', side: 'left', type: 'input' }] });
+  addNode(diagram, 'C', 40, 260, { w: 100, h: 50, ports: [{ id: 'r1-c', side: 'right', type: 'output' }] });
+  addNode(diagram, 'D', 460, 40, { w: 100, h: 50, ports: [{ id: 'r1-d', side: 'left', type: 'input' }] });
+
+  const l1 = makeLink(diagram, 'r1-a', 'r1-b', 'orthogonal');
+  const l2 = makeLink(diagram, 'r1-c', 'r1-d', 'orthogonal');
+
+  const stage = cell('r1', 'R1 — different-pair links sharing a corridor separate into lanes');
+  const svg = renderTwice(engine, stage, 620, 360);
+
+  // The shared corridor is the interior VERTICAL run each route makes on its
+  // way across the band (both would sit at x=430 without the nudge — measured:
+  // they rendered exactly there, stacked, before this card). Assert on the
+  // route geometry itself; a path-midpoint sample lands on the long horizontals
+  // and misses the corridor entirely (the first version of this scenario did
+  // exactly that and failed for the wrong reason).
+  const verticalX = (l: any): number | null => {
+    const pts = l.points as Array<{ x: number; y: number }>;
+    for (let i = 1; i < pts.length - 1; i++) {
+      if (Math.abs(pts[i].x - pts[i + 1]?.x) < 0.01 && Math.abs(pts[i].y - pts[i + 1].y) > 50) {
+        overlayDot(svg, pts[i].x, (pts[i].y + pts[i + 1].y) / 2, '#dc2626', 3);
+        return pts[i].x;
+      }
+    }
+    return null;
+  };
+  const x1 = verticalX(l1);
+  const x2 = verticalX(l2);
+
+  expectThat('R1: both links have an interior vertical corridor run', x1 !== null && x2 !== null,
+    JSON.stringify({ x1, x2, l1pts: l1.points, l2pts: l2.points }));
+  if (x1 !== null && x2 !== null) {
+    const gap = Math.abs(x1 - x2);
+    expectThat('R1: corridor-mates sit exactly one lane apart (16px), not stacked',
+      Math.abs(gap - 16) < 0.5, `x1=${x1} x2=${x2} gap=${gap.toFixed(1)}`);
+    expectThat('R1: the ladder is centred on the original corridor (mean ≈ 430)',
+      Math.abs((x1 + x2) / 2 - 430) < 2, `centre=${((x1 + x2) / 2).toFixed(1)}`);
+  }
+
+  // The jetty invariant survives nudging: first segment of each link leaves the
+  // port horizontally (right side), never vertically.
+  for (const l of [l1, l2]) {
+    const pts = l.points;
+    if (pts.length >= 2) {
+      expectThat(`R1: ${l.id} still leaves its port horizontally after the nudge`,
+        Math.abs(pts[1].y - pts[0].y) < 0.5, JSON.stringify(pts.slice(0, 2)));
+    }
+  }
+
+  PROBES.r1_channelNudging = { x1, x2 };
+}
+
+// ===========================================================================
 // run all
 // ===========================================================================
 const failures: any[] = [];
@@ -2492,6 +2556,8 @@ for (const [name, fn] of Object.entries({
   w4_htmlLabels, w5_customMarkers, w6_linkTemplate,
   w7_edgeOptimizer, w8_optimizerIncremental,
   s21_themingLive,
+  // Wave 5 (Edge routing)
+  r1_channelNudging,
 })) {
   try {
     (fn as any)();
