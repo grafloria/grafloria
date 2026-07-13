@@ -309,6 +309,8 @@ export class SVGRenderer implements IRenderer {
   // detection and collision-aware label placement for the WHOLE diagram, and
   // keeps its own dirty state across frames — so it is a renderer-lifetime
   // object, not a per-frame one.
+  // Card 5: ownership is per-renderer config; the optimizer is rebuilt in the
+  // constructor once the merged config is known.
   private edgeOptimizer = new EdgeOptimizer();
 
   // Per-frame outputs of the optimizer, keyed by link id.
@@ -367,12 +369,18 @@ export class SVGRenderer implements IRenderer {
       edgeOptimizer: config.edgeOptimizer ?? true,
       // Wave 5 (Edge routing)
       channelNudging: config.channelNudging ?? true,
+      jumpOwnership: config.jumpOwnership ?? 'both',
       // Wave 4 (Styling). `colorMode` is OPT-IN: unset means "use the theme I was
       // given and watch nothing", which is exactly the pre-Wave-4 behaviour.
       colorMode: config.colorMode ?? undefined,
       themes: config.themes ?? DEFAULT_THEME_SET,
       tokenBridge: config.tokenBridge ?? undefined,
     } as Required<SVGRendererConfig>;
+
+    // Card 5: the optimizer's jump-ownership mode comes from renderer config.
+    if (this.config.jumpOwnership !== 'both') {
+      this.edgeOptimizer = new EdgeOptimizer({ jumpOwnership: this.config.jumpOwnership });
+    }
 
     this.instanceId = config.instanceId || nextInstanceId();
 

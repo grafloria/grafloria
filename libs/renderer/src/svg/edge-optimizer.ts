@@ -93,6 +93,20 @@ export interface OptimizerFrame {
 
 export interface EdgeOptimizerOptions {
   /**
+   * Wave 5 (Edge routing) — Card 5. Who draws the arc when two jump-drawing
+   * links cross:
+   *   'both'   — legacy: each link bridges the other (a double bridge).
+   *   'single' — exactly ONE deterministic owner per intersection: the link
+   *              whose crossing segment is HORIZONTAL arcs over the vertical
+   *              (the classic drafting convention); when neither or both are
+   *              horizontal, the smaller link id owns. A crossing with a link
+   *              that draws no jumps at all is always kept — someone must
+   *              bridge it.
+   * Default 'both', because wave-4's regression contract pins the optimizer's
+   * crossings byte-identical to the legacy detector.
+   */
+  jumpOwnership?: 'both' | 'single';
+  /**
    * Uniform-grid cell size (world px) for the link broad phase. Should be on the
    * order of a typical node — too small and long links occupy hundreds of cells,
    * too large and the broad phase stops filtering.
@@ -124,6 +138,7 @@ const DEFAULTS = {
   cellSize: 120,
   labelSearchSteps: 6,
   labelStep: 14,
+  jumpOwnership: 'both' as 'both' | 'single',
 };
 
 /** Cost weights. Nodes hurt most, then labels, then link bodies. */
@@ -142,6 +157,8 @@ export class EdgeOptimizer {
   private linkSig = new Map<string, string>();
   /** linkId → its polyline (kept so a removed link can be pulled out of the grid). */
   private linkPoints = new Map<string, Point[]>();
+  /** linkId → does it draw jumps at all (Card 5: ownership needs to know). */
+  private linkDrawsJumps = new Map<string, boolean>();
   /** linkId → the grid cells it occupies. */
   private linkCells = new Map<string, string[]>();
   /** cell → link ids in it. */
@@ -166,6 +183,7 @@ export class EdgeOptimizer {
       cellSize: options.cellSize ?? DEFAULTS.cellSize,
       labelSearchSteps: options.labelSearchSteps ?? DEFAULTS.labelSearchSteps,
       labelStep: options.labelStep ?? DEFAULTS.labelStep,
+      jumpOwnership: options.jumpOwnership ?? DEFAULTS.jumpOwnership,
     };
   }
 
@@ -212,6 +230,7 @@ export class EdgeOptimizer {
 
       this.linkSig.set(link.id, sig);
       this.linkPoints.set(link.id, link.points);
+      this.linkDrawsJumps.set(link.id, !!link.jumps);
       this.linkCells.set(link.id, cells);
     }
 
@@ -224,6 +243,7 @@ export class EdgeOptimizer {
       }
       this.linkSig.delete(id);
       this.linkPoints.delete(id);
+      this.linkDrawsJumps.delete(id);
       this.linkCells.delete(id);
       this.jumpCache.delete(id);
       for (const key of Array.from(this.labelCache.keys())) {
@@ -287,6 +307,7 @@ export class EdgeOptimizer {
   reset(): void {
     this.linkSig.clear();
     this.linkPoints.clear();
+    this.linkDrawsJumps.clear();
     this.linkCells.clear();
     this.grid.clear();
     this.jumpCache.clear();
@@ -309,6 +330,29 @@ export class EdgeOptimizer {
    * only WHICH links are tested: the grid narrows the candidate set from "every
    * link in the diagram" to "links sharing a cell with one of my segments".
    */
+  /**
+   * Card 5: does `myId` own the crossing between MY segment (a→b) and the
+   * other link's segment (c→d)? Horizontal arcs over vertical — the classic
+   * drafting convention (an arc on a horizontal line reads as "this line jumps
+   * that one"; an arc on a vertical reads as a kink). Neither-or-both
+   * horizontal ties break on the smaller link id. Pure and symmetric: for any
+   * crossing exactly one of the two links returns true.
+   */
+  private ownsCrossing(
+    myId: string,
+    a: Point,
+    b: Point,
+    c: Point,
+    d: Point,
+    otherId: string
+  ): boolean {
+    const EPS = 1e-6;
+    const mineHorizontal = Math.abs(a.y - b.y) < EPS && Math.abs(a.x - b.x) > EPS;
+    const otherHorizontal = Math.abs(c.y - d.y) < EPS && Math.abs(c.x - d.x) > EPS;
+    if (mineHorizontal !== otherHorizontal) return mineHorizontal;
+    return myId < otherId;
+  }
+
   private computeJumps(link: OptimizerLink): Intersection[] {
     const config = link.jumps;
     if (!config || link.points.length < 2) return [];
@@ -353,6 +397,16 @@ export class EdgeOptimizer {
           if (touchesOwnEndpoint || touchesOtherEndpoint) continue;
 
           if (!includeByMode(hit.angle, config.mode, config.threshold)) continue;
+
+          // Card 5: consistent jumpovers. Under 'single' ownership a crossing
+          // between two jump-drawing links belongs to exactly one of them.
+          if (
+            this.options.jumpOwnership === 'single' &&
+            this.linkDrawsJumps.get(otherId) &&
+            !this.ownsCrossing(link.id, a, b, other[j], other[j + 1], otherId)
+          ) {
+            continue;
+          }
 
           out.push({ ...hit, linkId: otherId, segmentIndex: i });
         }

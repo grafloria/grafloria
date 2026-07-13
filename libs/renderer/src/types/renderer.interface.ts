@@ -332,6 +332,14 @@ export interface SVGRendererConfig {
   channelNudging?: boolean;
 
   /**
+   * Wave 5 (Edge routing) — Card 5. Who draws the arc when two jump-drawing
+   * links cross: 'both' (legacy double bridge, default) or 'single' — exactly
+   * one deterministic owner per intersection (horizontal arcs over vertical;
+   * ties break on link id). See EdgeOptimizerOptions.jumpOwnership.
+   */
+  jumpOwnership?: 'both' | 'single';
+
+  /**
    * Wave 4 — Card 7. Run the diagram-wide edge optimizer: ONE incremental pass
    * that computes jump-overs for every link and auto-places the labels that opted
    * in via `LinkLabel.autoOffset`.
