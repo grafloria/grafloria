@@ -1,4 +1,4 @@
-import type { DiagramEngine, NodeModel, LinkModel, PortModel, InteractionConfig, ReconnectionPreview, LODLevel, LODFeature, Shadow } from '@grafloria/engine';
+import type { DiagramEngine, NodeModel, LinkModel, LinkStyle, PortModel, InteractionConfig, ReconnectionPreview, LODLevel, LODFeature, Shadow } from '@grafloria/engine';
 import type { IRenderer, PerformanceMetrics, SVGRendererConfig, VNode, Theme, Rectangle } from '../types';
 import {
   type PaintSpec,
@@ -1547,15 +1547,60 @@ export class SVGRenderer implements IRenderer {
     return path;
   }
 
+  // ==========================================================================
+  // Wave 3 (Edges & links) — per-link path-shape knobs.
+  //
+  // Two LinkStyle fields drive path GEOMETRY (as opposed to paint):
+  //   • cornerRadius — orthogonal bend radius, was a hardcoded 5 / 12
+  //   • curvature    — smooth/bezier control-point tightness, was DEAD
+  // Both are resolved here so every path-emitting site (auto route, manual
+  // waypoints, jump path) reads exactly one definition of the default.
+  // ==========================================================================
+
+  /** Built-in bend radius per path type (React Flow's smoothstep default = 5). */
+  private defaultCornerRadius(pathType: string): number {
+    return pathType === 'orthogonal' ? 5 : 12;
+  }
+
+  /**
+   * The bend radius a link asks for. Unset (or non-finite/negative) → the
+   * built-in default for its path type, so untouched links render byte-identical
+   * to before this knob existed. `getBend` clamps every corner to half the
+   * shorter adjacent segment, so any radius is geometrically safe.
+   */
+  private resolveCornerRadius(style: Partial<LinkStyle> | undefined, pathType: string): number {
+    const r = style?.cornerRadius;
+    return typeof r === 'number' && isFinite(r) && r >= 0
+      ? r
+      : this.defaultCornerRadius(pathType);
+  }
+
+  /**
+   * Smooth/bezier control-point offset, honouring `style.curvature` (a
+   * multiplier of the endpoint distance; default 0.5 = the legacy factor).
+   * The historical 100px cap scales with the multiplier so curvature 0.5 is
+   * exactly the old `Math.min(distance / 2, 100)`.
+   */
+  private controlDistanceFor(distance: number, style?: Partial<LinkStyle>): number {
+    const c = style?.curvature;
+    const curvature = typeof c === 'number' && isFinite(c) && c >= 0 ? c : 0.5;
+    return Math.min(distance / 2, 100) * (curvature / 0.5);
+  }
+
   /**
    * Convert RoutedPath to SVG path string
+   *
+   * Wave 3: `style` carries the link's per-link path-shape knobs (cornerRadius,
+   * curvature). Omitted by the connection/reconnection previews, which have no
+   * link style yet — they keep the built-in defaults.
    */
   private convertRoutedPathToSVG(
     routedPath: RoutedPath,
     pathType: string,
     sourceDirection?: string,
     targetDirection?: string,
-    avoidNodes?: NodeModel[]
+    avoidNodes?: NodeModel[],
+    style?: Partial<LinkStyle>
   ): string {
     if (!routedPath || routedPath.points.length === 0) return '';
 
@@ -1572,7 +1617,7 @@ export class SVGRenderer implements IRenderer {
         const dx = points[1].x - points[0].x;
         const dy = points[1].y - points[0].y;
         const distance = Math.sqrt(dx * dx + dy * dy);
-        const controlDistance = Math.min(distance / 2, 100);
+        const controlDistance = this.controlDistanceFor(distance, style);
 
         // ENHANCED: Direction-aware control points (ReactFlow style)
         // Control points extend from the port in the direction it faces
@@ -1641,7 +1686,9 @@ export class SVGRenderer implements IRenderer {
             this.penetrationLength(this.sampleCatmullRom(points, 8), avoid) <= 2) {
           return spline;
         }
-        return this.convertOrthogonalPathWithBends(points, 12);
+        // Rounded-corner fallback for a detour that would clip its own nodes.
+        // Default radius here is 12 (tighter corners read as "still a curve").
+        return this.convertOrthogonalPathWithBends(points, this.resolveCornerRadius(style, pathType));
       }
 
       return path;
@@ -1656,9 +1703,10 @@ export class SVGRenderer implements IRenderer {
       return path;
     }
 
-    // For orthogonal with rounded corners (React Flow smoothstep style)
+    // For orthogonal with rounded corners (React Flow smoothstep style).
+    // Wave 3: radius is per-link (`style.cornerRadius`), default 5.
     if (pathType === 'orthogonal') {
-      return this.convertOrthogonalPathWithBends(points, 5); // Default borderRadius = 5 (React Flow default)
+      return this.convertOrthogonalPathWithBends(points, this.resolveCornerRadius(style, pathType));
     }
 
     // Fallback
@@ -1718,7 +1766,8 @@ export class SVGRenderer implements IRenderer {
           link.pathType,
           endpoints.sourceDirection,
           endpoints.targetDirection,
-          this.linkOwnNodes(link)
+          this.linkOwnNodes(link),
+          link.style           // Wave 3: per-link cornerRadius / curvature
         );
         this.syncLinkPoints(link, points);
       } else {
@@ -1826,11 +1875,11 @@ export class SVGRenderer implements IRenderer {
         }
 
         points = allRoutedPoints;
-        pathData = this.generatePathData(allRoutedPoints, link.segments, link.pathType);
+        pathData = this.generatePathData(allRoutedPoints, link.segments, link.pathType, link.style);
       } else {
         // For non-orthogonal paths or no waypoints, use the (endpoint-refreshed)
         // points as-is
-        pathData = this.generatePathData(points, link.segments, link.pathType);
+        pathData = this.generatePathData(points, link.segments, link.pathType, link.style);
       }
     }
 
@@ -1912,7 +1961,8 @@ export class SVGRenderer implements IRenderer {
           ? this.arrowRenderer.getTipOffset(arrowHeadStyle) + 2 : 0;
         const tailReserve = arrowTailStyle && arrowTailStyle.type !== 'none'
           ? this.arrowRenderer.getTipOffset(arrowTailStyle) + 2 : 0;
-        jumpPathData = this.buildPathWithJumps(points, intersections, jumpConfig, link.pathType, tailReserve, headReserve);
+        jumpPathData = this.buildPathWithJumps(
+          points, intersections, jumpConfig, link.pathType, tailReserve, headReserve, link.style);
       }
     }
 
@@ -1950,6 +2000,12 @@ export class SVGRenderer implements IRenderer {
       key: `link-${link.id}`,
       props: {
         className: 'link-group',
+        // Wave 3 (Edges & links): identify the link in the DOM. VNode `key` is
+        // a VDOM-reconciliation concept and is NOT emitted as an attribute, so
+        // without this there is no way to find a link's RENDERED <path> — which
+        // is what the edge toolbar anchors to (the model's `segments` go stale;
+        // the rendered path is the truth, curves and rounded corners included).
+        'data-link-id': link.id,
       },
       children: [
         ...(hitAreaVNode ? [hitAreaVNode] : []),
@@ -2314,8 +2370,17 @@ export class SVGRenderer implements IRenderer {
   /**
    * Generate SVG path data from points and segments
    * Supports both straight lines and bezier curves
+   *
+   * Wave 3: takes the link's `style` so a MANUAL-WAYPOINT path honours the same
+   * per-link cornerRadius as an auto-routed one (the two path-emitting branches
+   * of renderLink must not disagree about a link's corners).
    */
-  private generatePathData(points: Array<{ x: number; y: number }>, segments?: any[], pathType?: string): string {
+  private generatePathData(
+    points: Array<{ x: number; y: number }>,
+    segments?: any[],
+    pathType?: string,
+    style?: Partial<LinkStyle>
+  ): string {
     if (points.length === 0) return '';
     if (points.length === 1) return `M ${points[0].x} ${points[0].y}`;
 
@@ -2337,7 +2402,7 @@ export class SVGRenderer implements IRenderer {
 
     // For orthogonal paths, use rounded corners (React Flow smoothstep style)
     if (pathType === 'orthogonal') {
-      return this.convertOrthogonalPathWithBends(points, 5);
+      return this.convertOrthogonalPathWithBends(points, this.resolveCornerRadius(style, pathType));
     }
 
     // Smooth/bezier with manual waypoints: keep the curved identity
@@ -3255,6 +3320,59 @@ export class SVGRenderer implements IRenderer {
   }
 
   /**
+   * Wave 3 (Edges & links) — "jumps win over an oversized corner radius".
+   *
+   * buildPathWithJumps derives each segment's legal cut window from the corner
+   * bends: `lo = bendPrev + 1`, `hi = segLen - bendNext - 1`. A big per-link
+   * cornerRadius eats that window from both ends, so a jump-carrying segment
+   * could silently lose its jump (`hi - lo < 3`).
+   *
+   * So: on segments that actually host a crossing, cap the radius at the value
+   * that still leaves a full `size`-wide window —
+   *   bendPrev + bendNext <= 2R  ⇒  R <= (segLen - 2 - reserves - size) / 2
+   * — and NEVER tighten below the built-in default. Consequences:
+   *   • a link at (or below) the default radius is bit-for-bit unchanged;
+   *   • a large radius degrades toward the default only as far as the jumps
+   *     need, instead of dropping arcs;
+   *   • a segment too short for any jump at the DEFAULT radius keeps today's
+   *     behaviour (the `hi - lo < 3` guard drops that one cut).
+   */
+  private cornerRadiusForJumps(
+    points: Array<{ x: number; y: number }>,
+    intersections: Array<{ t1: number; segmentIndex?: number }>,
+    size: number,
+    pathType: string,
+    linkStyle: Partial<LinkStyle> | undefined,
+    startReserve: number,
+    endReserve: number
+  ): number {
+    const fallback = this.defaultCornerRadius(pathType);
+    const requested = this.resolveCornerRadius(linkStyle, pathType);
+
+    // A radius at/below the default can only WIDEN the window — nothing to clamp.
+    if (requested <= fallback) {
+      return requested;
+    }
+
+    const n = points.length;
+    let limit = requested;
+
+    for (let i = 0; i < n - 1; i++) {
+      const hosts = intersections.some(
+        it => (it.segmentIndex ?? 0) === i && it.t1 > 0 && it.t1 < 1
+      );
+      if (!hosts) continue;
+
+      const segLen = this.distance(points[i], points[i + 1]);
+      const reserves =
+        (i === 0 ? startReserve : 0) + (i === n - 2 ? endReserve : 0);
+      limit = Math.min(limit, (segLen - 2 - reserves - size) / 2);
+    }
+
+    return Math.max(fallback, Math.min(requested, limit));
+  }
+
+  /**
    * Build the link path from its polyline with jump geometry inserted.
    *
    * Works on the SAME point array the detector indexed (never re-parses the
@@ -3269,13 +3387,21 @@ export class SVGRenderer implements IRenderer {
     config: { size?: number; style?: 'arc' | 'gap' | 'bridge' },
     pathType: string,
     startReserve = 0,
-    endReserve = 0
+    endReserve = 0,
+    linkStyle?: Partial<LinkStyle>
   ): string {
     const size = config.size ?? 10;
     const style = config.style ?? 'arc';
     const half = size / 2;
     const useBends = pathType === 'orthogonal' || pathType === 'smooth' || pathType === 'bezier';
-    const cornerRadius = pathType === 'orthogonal' ? 5 : 12;
+    // Wave 3: per-link corner radius, clamped so the jump arcs keep a legal
+    // window (see cornerRadiusForJumps). MUST stay a link-wide constant: the
+    // bend at each corner is computed twice (as segment i's bendNext and
+    // segment i+1's bendPrev) and the two have to agree, so it cannot be
+    // varied per segment.
+    const cornerRadius = this.cornerRadiusForJumps(
+      points, intersections, size, pathType, linkStyle, startReserve, endReserve
+    );
     const n = points.length;
     const fmt = (v: number) => +v.toFixed(3);
     let d = `M ${fmt(points[0].x)} ${fmt(points[0].y)}`;

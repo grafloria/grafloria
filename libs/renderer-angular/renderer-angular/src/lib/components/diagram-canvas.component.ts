@@ -37,6 +37,15 @@ import {
   MarqueeSelection,
   ToolInteractionMode,
 } from '../interaction';
+// Wave 3 (Edges & links): path-anchored edge toolbar. The canvas only HOSTS it
+// (picks the target link, forwards viewport/zoom) — all toolbar logic lives in
+// the component.
+import {
+  LinkToolbarComponent,
+  LinkToolbarAction,
+  createDefaultLinkActions,
+} from './link-toolbar';
+import type { LinkModel } from '@grafloria/engine';
 
 /**
  * DiagramCanvasComponent
@@ -56,7 +65,7 @@ import {
  */
 @Component({
     selector: 'grafloria-diagram-canvas',
-    imports: [CommonModule, HtmlNodeRendererDirective, GrafloriaHandleDirective],
+    imports: [CommonModule, HtmlNodeRendererDirective, GrafloriaHandleDirective, LinkToolbarComponent],
     templateUrl: './diagram-canvas.component.html',
     styleUrls: ['./diagram-canvas.component.css'],
     changeDetection: ChangeDetectionStrategy.OnPush
@@ -122,6 +131,79 @@ export class DiagramCanvasComponent implements OnInit, AfterViewInit, OnChanges,
    * Emit zoom changes (Phase 0.5 - Option B)
    */
   @Output() zoomChanged = new EventEmitter<number>();
+
+  // ==========================================================================
+  // Wave 3 (Edges & links) — edge toolbar host.
+  // The canvas' ONLY jobs here: pick the target link (READ-ONLY from the
+  // interaction handler + link state) and forward viewport/zoom. Everything
+  // else — anchoring, screen maths, actions, undo — lives in LinkToolbar.
+  // ==========================================================================
+
+  /** Show the floating edge toolbar on link hover/selection. */
+  @Input() enableLinkToolbar = true;
+
+  /** Buttons on the edge toolbar. Defaults to delete + insert-node-on-edge. */
+  @Input() linkToolbarActions?: LinkToolbarAction[];
+
+  /** Fraction along the link the toolbar is glued to (0.5 = midpoint). */
+  @Input() linkToolbarAnchor = 0.5;
+
+  /** Link the edge toolbar is currently attached to (null = no toolbar). */
+  linkToolbarTarget: LinkModel | null = null;
+
+  /** True while the pointer is inside the toolbar itself. */
+  private linkToolbarHovered = false;
+
+  /** Memoised default actions (rebuilding per frame would churn the buttons). */
+  private defaultLinkActions?: LinkToolbarAction[];
+
+  get effectiveLinkToolbarActions(): LinkToolbarAction[] {
+    if (this.linkToolbarActions) {
+      return this.linkToolbarActions;
+    }
+    if (!this.defaultLinkActions && this.engine) {
+      this.defaultLinkActions = createDefaultLinkActions(this.engine);
+    }
+    return this.defaultLinkActions ?? [];
+  }
+
+  /**
+   * Pick the link the toolbar should hang off, consuming existing state
+   * READ-ONLY: a selected link wins over a merely hovered one (the renderer's
+   * own state precedence), and the toolbar survives the pointer leaving the
+   * stroke to reach for a button.
+   */
+  private updateLinkToolbarTarget(): void {
+    if (!this.enableLinkToolbar || !this.engine) {
+      this.linkToolbarTarget = null;
+      return;
+    }
+
+    const diagram = this.engine.getDiagram();
+    if (!diagram) {
+      this.linkToolbarTarget = null;
+      return;
+    }
+
+    const selected = diagram.getLinks().find((l: LinkModel) => l.state === 'selected') ?? null;
+    const hovered = this.interactionHandler.getState().hoveredLink ?? null;
+    const next = selected ?? hovered;
+
+    // Keep the current toolbar alive while the pointer is on it (otherwise it
+    // vanishes the instant you move off the line to click a button).
+    if (!next && this.linkToolbarHovered && this.linkToolbarTarget) {
+      return;
+    }
+    this.linkToolbarTarget = next;
+  }
+
+  onLinkToolbarPointerOver(isOver: boolean): void {
+    this.linkToolbarHovered = isOver;
+    if (!isOver) {
+      this.updateLinkToolbarTarget();
+      this.cdr.markForCheck();
+    }
+  }
 
   /**
    * Main container reference
@@ -812,6 +894,10 @@ export class DiagramCanvasComponent implements OnInit, AfterViewInit, OnChanges,
     // Phase 1: Render HTML nodes to htmlLayer div
     // This renders nodes with metadata.useHTMLLayer = true
     this.renderHTMLNodes();
+
+    // Wave 3 (Edges & links): re-pick the edge-toolbar target from the state
+    // this frame was drawn with (hover/selection changes come through here).
+    this.updateLinkToolbarTarget();
   }
 
   /**

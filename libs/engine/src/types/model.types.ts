@@ -111,7 +111,26 @@ export interface LinkStyle {
   opacity?: number;
   arrowHead?: ArrowStyle;
   arrowTail?: ArrowStyle;
+  /**
+   * Wave 3 (Edges & links): smooth/bezier curve TIGHTNESS, as a multiplier of
+   * the endpoint distance for the control-point offset. Default `0.5`
+   * (unchanged legacy behaviour); `0` collapses the curve onto its chord,
+   * larger values bulge harder. Honoured by both LinkModel.generateSmoothPath
+   * and the SVG renderer's control-point maths, so a link looks the same
+   * however its path was produced.
+   */
   curvature?: number;
+  /**
+   * Wave 3 (Edges & links): PER-LINK orthogonal corner radius (px). Defaults to
+   * the renderer's built-ins (5px for `orthogonal`, 12px for the rounded
+   * fallback a `smooth` detour falls back to). `0` gives hard 90° corners.
+   *
+   * Safe at any size: every bend is clamped to half the shorter adjacent
+   * segment. When the link also draws jump points, the radius is additionally
+   * clamped (never below the built-in default) so the jump arcs keep a legal
+   * window clear of the corners — jumps win over an oversized radius.
+   */
+  cornerRadius?: number;
   // Phase 1.3: Jump points
   jumpPoints?: JumpPointConfig;
   // Phase 4: Advanced styling

@@ -5,6 +5,8 @@ export * from './lib/components/property-panel/property-panel.component';
 export * from './lib/components/property-panel/property-editor.component';
 export * from './lib/components/renderer-switcher/renderer-switcher.component';
 export * from './lib/components/node-toolbar';
+// Wave 3 (Edges & links): path-anchored edge toolbar + rendered-route geometry
+export * from './lib/components/link-toolbar';
 
 // Export directives
 export * from './lib/directives/grafloria-handle.directive';
