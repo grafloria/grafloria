@@ -1,5 +1,20 @@
 import type { DiagramEngine, NodeModel, NodeStyle, LinkModel, LinkStyle, PortModel, InteractionConfig, ReconnectionPreview, LODLevel, LODFeature, Shadow } from '@grafloria/engine';
-import type { IRenderer, PerformanceMetrics, SVGRendererConfig, VNode, Theme, Rectangle } from '../types';
+import type {
+  IRenderer,
+  PerformanceMetrics,
+  SVGRendererConfig,
+  VNode,
+  Theme,
+  Rectangle,
+  RendererCapabilities,
+  ExportFormat,
+  ExportOptions,
+} from '../types';
+// Deterministic headless export (VNode → standalone SVG → PNG/JPEG/WebP). The
+// serializer is the DOM-less sibling of vnode/patch.ts and consumes the very same
+// VNode tree this renderer hands the live pipeline — one contract, two consumers.
+import { exportSvg, type SvgExportResult } from '../export/svg-export';
+import { mimeTypeForFormat, resolveRasterBackend } from '../export/raster';
 import {
   type PaintSpec,
   isPaintSpec,
@@ -108,6 +123,23 @@ export class SVGRenderer implements IRenderer {
   readonly mode = 'svg' as const;
 
   /**
+   * What this renderer can actually do — so callers can ask instead of assuming.
+   * `supportsExport` is now TRUE (see `export()` below); hit-testing and text
+   * measurement still are not implemented here, and saying so is the point.
+   */
+  readonly capabilities: RendererCapabilities = {
+    supportsHitTest: false,
+    supportsBatching: false,
+    supportsExport: true,
+    supportsMeasurement: false,
+    supportsForeignObject: true,
+    supportsFilters: true,
+    // Raster export needs a canvas; there is only one where the environment has
+    // one (browser / worker), so this is an environment probe, not a wish.
+    supportsOffscreen: typeof (globalThis as any).OffscreenCanvas === 'function',
+  };
+
+  /**
    * This renderer's scope. Stamped on the root `<svg>` as
    * `data-grafloria-instance` and used to scope BOTH the injected variable block
    * and this instance's `<style>` element id — so two diagrams with different
@@ -177,6 +209,8 @@ export class SVGRenderer implements IRenderer {
   private renderTimestamp = 0;
   private frameCount = 0;
   private fps = 0;
+  /** Handle of the 1s FPS sampler, so dispose() can actually stop it. */
+  private fpsTimer?: ReturnType<typeof setInterval>;
 
   constructor(
     private engine: DiagramEngine,
@@ -447,6 +481,108 @@ export class SVGRenderer implements IRenderer {
     };
   }
 
+  // =========================================================================
+  // Deterministic headless export (Rendering — Card 7)
+  //
+  // The picture the export produces is built from the SAME `render()` call the
+  // live pipeline uses — the tree goes to the DOM patcher in a browser and to the
+  // string serializer on a server. There is no second rendering path to drift.
+  // =========================================================================
+
+  /**
+   * Export the diagram.
+   *
+   * - `'svg'` → a STANDALONE, styles-inlined SVG document. Pure, deterministic,
+   *   and DOM-free: it runs in plain Node (an SSR pass, a thumbnail worker).
+   * - `'png' | 'jpeg' | 'webp'` → a `data:` URL. Needs an SVG rasterizer: a
+   *   canvas one is used automatically in a browser/worker; in bare Node you must
+   *   pass `options.rasterBackend` (and you get a clear error if you don't).
+   *
+   * Defaults to the whole diagram (content bounds + 20px), not the current
+   * viewport — a thumbnail of the visible slice is rarely what anyone means.
+   */
+  async export(format: ExportFormat = 'svg', options: ExportOptions = {}): Promise<string> {
+    const result = this.exportSvgString(options);
+
+    if (format === 'svg') return result.svg;
+
+    const backend = resolveRasterBackend(options.rasterBackend);
+    return backend.rasterize({
+      svg: result.svg,
+      width: result.width,
+      height: result.height,
+      mimeType: mimeTypeForFormat(format),
+      quality: options.quality ?? 0.92,
+    });
+  }
+
+  /**
+   * The synchronous, fully headless SVG path — what `export('svg')` returns, plus
+   * the fidelity `warnings` (foreignObject, unresolved theme vars) that the
+   * string-only `IRenderer.export` signature has nowhere to put.
+   */
+  exportSvgString(options: ExportOptions = {}): SvgExportResult {
+    const viewport = options.viewport ?? this.contentViewport(options.padding ?? 20);
+
+    // zoom 1: the SVG stays vector, and `scale` multiplies the intrinsic
+    // width/height instead of the viewBox — so a 2x PNG is 2x pixels of the
+    // identical picture, not a differently-culled render.
+    const root = this.render(viewport, 1);
+
+    return exportSvg(root, {
+      theme: this.theme,
+      scale: options.scale,
+      backgroundColor: options.backgroundColor,
+      foreignObject: options.foreignObject,
+      captureForeignObject: options.captureForeignObject,
+      embedFontCss: options.embedFontCss,
+    });
+  }
+
+  /**
+   * The world rectangle that contains the whole diagram, padded.
+   *
+   * Nodes' bounding boxes plus any routed link points (a link can bulge outside
+   * its endpoints' union). An empty diagram exports a small, still-valid square
+   * rather than a zero-area document a rasterizer would reject.
+   */
+  private contentViewport(padding: number): Rectangle {
+    const diagram = this.engine.getDiagram();
+    let minX = Infinity;
+    let minY = Infinity;
+    let maxX = -Infinity;
+    let maxY = -Infinity;
+
+    if (diagram) {
+      for (const node of diagram.getNodes()) {
+        minX = Math.min(minX, node.position.x);
+        minY = Math.min(minY, node.position.y);
+        maxX = Math.max(maxX, node.position.x + node.size.width);
+        maxY = Math.max(maxY, node.position.y + node.size.height);
+      }
+      for (const link of diagram.getLinks()) {
+        for (const point of link.points ?? []) {
+          minX = Math.min(minX, point.x);
+          minY = Math.min(minY, point.y);
+          maxX = Math.max(maxX, point.x);
+          maxY = Math.max(maxY, point.y);
+        }
+      }
+    }
+
+    if (!Number.isFinite(minX) || !Number.isFinite(minY)) {
+      const side = Math.max(1, padding * 2);
+      return { x: 0, y: 0, width: side, height: side };
+    }
+
+    return {
+      x: minX - padding,
+      y: minY - padding,
+      width: maxX - minX + padding * 2,
+      height: maxY - minY + padding * 2,
+    };
+  }
+
   /**
    * Dispose renderer and clean up resources
    */
@@ -454,6 +590,15 @@ export class SVGRenderer implements IRenderer {
     if (this.disposed) return;
 
     this.disposed = true;
+
+    // Stop the FPS sampler. It used to run FOREVER: `startFPSTracking` opened a
+    // 1s interval in the constructor that nothing ever cleared, so every disposed
+    // renderer leaked a live timer — which in Node (a thumbnail service creating a
+    // renderer per export) also keeps the process alive forever.
+    if (this.fpsTimer !== undefined) {
+      clearInterval(this.fpsTimer);
+      this.fpsTimer = undefined;
+    }
 
     // Stop listening for named-style (re)definitions
     this.unsubscribeStyleRegistry?.();
@@ -2662,6 +2807,15 @@ export class SVGRenderer implements IRenderer {
    * the other's stylesheet.
    */
   private injectThemeCSS(): void {
+    // HEADLESS: no document, nothing to inject. The renderer itself is pure
+    // (model + viewport → VNode tree) and the stylesheet is a browser-only
+    // delivery mechanism for the theme — so refusing to construct without a DOM
+    // was a bug, not a safeguard: it made server-side rendering and export
+    // impossible in the one library that advertises being framework-agnostic.
+    // (Headless consumers get the theme through `export/`, which RESOLVES the
+    // same variables into the output instead of referencing them.)
+    if (typeof document === 'undefined') return;
+
     this.ensureBaseStyleSheet();
 
     // Replace this instance's block (setTheme re-injects) — never another's.
@@ -2685,6 +2839,7 @@ export class SVGRenderer implements IRenderer {
    * renderer feeds the same rules from its own variable block.
    */
   private ensureBaseStyleSheet(): void {
+    if (typeof document === 'undefined') return;
     if (document.getElementById(GRAFLORIA_BASE_STYLE_ID)) return;
 
     const base = document.createElement('style');
@@ -2697,6 +2852,8 @@ export class SVGRenderer implements IRenderer {
 
   /** Drop the shared rules once the LAST instance's variable block is gone. */
   private releaseBaseStyleSheet(): void {
+    if (typeof document === 'undefined') return;
+
     const remaining = document.querySelectorAll(
       `style[id^="${GRAFLORIA_INSTANCE_STYLE_PREFIX}"]`
     ).length;
@@ -3011,13 +3168,18 @@ export class SVGRenderer implements IRenderer {
    */
   private startFPSTracking(): void {
     this.renderTimestamp = performance.now();
-    setInterval(() => {
+    this.fpsTimer = setInterval(() => {
       const now = performance.now();
       const elapsed = (now - this.renderTimestamp) / 1000;
       this.fps = Math.round(this.frameCount / elapsed);
       this.frameCount = 0;
       this.renderTimestamp = now;
     }, 1000);
+
+    // Node: an un-unref'd interval keeps the event loop alive, so a headless
+    // export script would hang instead of exiting. The sampler is telemetry — it
+    // must never be the reason a process stays up.
+    (this.fpsTimer as unknown as { unref?: () => void }).unref?.();
   }
 
   /**
