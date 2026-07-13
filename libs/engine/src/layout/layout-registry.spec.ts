@@ -74,8 +74,16 @@ describe('Card 0 — the unified layout API', () => {
     it('every built-in adapter is registered and addressable by name', () => {
       const engine = new DiagramEngine();
       expect(engine.getLayoutRegistry().names()).toEqual(
-        ['community', 'dagre', 'elk', 'force', 'spectral']
+        ['community', 'dagre', 'elk', 'force', 'layered', 'spectral']
       );
+      engine.destroy();
+    });
+
+    it('Card 1: engine.layout() with NO name runs the layered default', async () => {
+      const engine = new DiagramEngine();
+      buildGraph(engine, ['a', 'b', 'c']);
+      const result = await engine.layout();
+      expect(result.algorithm).toBe('layered');
       engine.destroy();
     });
 

@@ -65,6 +65,7 @@ import {
   type UnifiedLayoutResult,
 } from '../layout/layout-registry';
 import { DEFAULT_LAYOUT_SEED } from '../layout/rng';
+import { createLayeredLayout } from '../layout/sugiyama/layered-layout';
 // Wave 7 — Card 4: nested container / subgraph layout.
 import { CompoundLayoutService } from '../layout/CompoundLayoutService';
 import type { LayoutType, LayoutConfig, FlexItemConfig, GridItemConfig } from '../types/layout.types'; // Phase 1.7
@@ -2145,6 +2146,11 @@ export class DiagramEngine {
       for (const adapter of createBuiltInLayoutAdapters()) {
         registry.register(fromAdapter(adapter));
       }
+      // Card 1: the zero-config layered default. Registered LAST so it is the one
+      // `engine.layout()` reaches for by name — and the only engine that can honour
+      // Card 5's semantic constraints, which are decisions taken during ranking and
+      // ordering rather than corrections applied to finished coordinates.
+      registry.register(createLayeredLayout('layered'));
       this._layoutRegistry = registry;
     }
     return this._layoutRegistry;
@@ -2167,7 +2173,7 @@ export class DiagramEngine {
    * them would force a single-node placer to pretend it can lay out a graph.
    */
   async layout(
-    name = 'dagre',
+    name = 'layered',
     options: UnifiedLayoutOptions = {}
   ): Promise<UnifiedLayoutResult> {
     if (!this.diagram) {
