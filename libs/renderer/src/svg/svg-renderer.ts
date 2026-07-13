@@ -5,6 +5,8 @@ import { linkLabelPosition, DiagramSerializer } from '@grafloria/engine';
 import type { DiagramDocumentEnvelope } from '@grafloria/engine';
 // Wave 5 Card 4: corridor separation for DIFFERENT-pair edges sharing a channel.
 import { computeChannelNudges, applyChannelNudges } from './channel-nudging';
+// Wave 8 (Performance & scale) — Card 6: incremental routing.
+import { RouteMemo, coalesce, inflate, ROUTE_INFLUENCE_PAD, type Rect } from './route-memo';
 import type {
   IRenderer,
   PerformanceMetrics,
@@ -381,6 +383,23 @@ export class SVGRenderer implements IRenderer {
   // every link's points are current before any link renders (jump detection
   // reads other links' points).
   private frameRoutes = new Map<string, RoutedPath>();
+
+  // Wave 8 — Card 6: the frame's obstacle arrays (see frameObstacles()). Cleared
+  // at the top of every links pass; rebuilt lazily on first use.
+  private frameObstacleCache: {
+    nodes: NodeModel[];
+    routing: Array<{ id: string; x: number; y: number; width: number; height: number }>;
+    all: Array<{ id: string; x: number; y: number; width: number; height: number }>;
+    blockIds: Set<string>;
+  } | null = null;
+
+  // Wave 8 — Card 6: routes that SURVIVE the frame. The per-frame map above is
+  // rebuilt from scratch every render; this one remembers what each link was
+  // routed to and why, so an unchanged link is never re-routed. See route-memo.ts
+  // for what "unchanged" has to mean (it is not "its endpoints didn't move").
+  private routeMemo = new RouteMemo();
+  /** Set true to force the next frame to re-route everything (first frame, config changes). */
+  private routeMemoDirty = true;
 
   // Wave 6 — Card 5: per-frame multi-link spread lanes, keyed by PORT id. Every
   // link on a spreading port needs to know how many siblings it shares that port
@@ -1410,6 +1429,12 @@ export class SVGRenderer implements IRenderer {
 
     this.disposed = true;
 
+    // Wave 8 — Card 6: the route memo outlives the frame by design, so it must
+    // not outlive the renderer. (It holds a routed polyline per link plus a rect
+    // per node — on a 10k diagram that is real memory to hand back.)
+    this.routeMemo.clear();
+    this.frameObstacleCache = null;
+
     // Stop the FPS sampler. It used to run FOREVER: `startFPSTracking` opened a
     // 1s interval in the constructor that nothing ever cleared, so every disposed
     // renderer leaked a live timer — which in Node (a thumbnail service creating a
@@ -1516,11 +1541,35 @@ export class SVGRenderer implements IRenderer {
     // would visibly jump lanes as you pan.
     this.computeParallelSeparation();
 
+    // Wave 8 — Card 6: work out what actually changed BEFORE routing anything.
+    // Diffs the node rects against last frame, asks the engine's link spatial
+    // index which links' corridors those changes touched, and forgets exactly
+    // those routes. Everything else is served from the previous frame.
+    this.invalidateStaleRoutes();
+
     for (const link of sortedLinks) {
       if (this.linkHasManualWaypoints(link)) continue;
       const endpoints = this.getLinkEndpoints(link);
       if (!endpoints) continue;
-      const routed = this.computeAutoRoute(link, endpoints);
+
+      // The key IS the routing inputs. An endpoint that moved changes the key by
+      // construction — no separate "did my node move?" check, and no way for one
+      // to be forgotten. What the key CANNOT see is a third-party obstacle moving
+      // into this link's path; that is what invalidateStaleRoutes() above is for.
+      const key = this.routeKey(link, endpoints);
+      let routed = this.routeMemo.lookup(link.id, key);
+
+      if (!routed) {
+        const fresh = this.computeAutoRoute(link, endpoints);
+        if (fresh) {
+          this.routeMemo.store(link.id, key, fresh);
+          routed = fresh;
+        } else {
+          // No route: make sure a previous frame's answer cannot linger.
+          this.routeMemo.drop(link.id);
+        }
+      }
+
       if (routed) {
         this.frameRoutes.set(link.id, routed);
         this.syncLinkPoints(link, routed.points);
@@ -1556,6 +1605,149 @@ export class SVGRenderer implements IRenderer {
       },
       children,
     };
+  }
+
+  // =========================================================================
+  // Wave 8 (Performance & scale) — Card 6: incremental routing
+  // =========================================================================
+
+  /**
+   * Everything that determines a link's route, as a string.
+   *
+   * If two frames produce the same key then `computeAutoRoute` — a pure function
+   * of these inputs and the obstacle set — would produce the same polyline, so we
+   * serve the old one. Which means: anything computeAutoRoute reads MUST be in
+   * here, or the cache serves a stale route. The obstacle set is the single input
+   * deliberately left out (it is the whole diagram); it is handled instead by
+   * invalidateStaleRoutes(), which evicts on obstacle MOTION.
+   *
+   * Endpoints are quantised to 1/100 unit. They are derived from node positions
+   * and port layouts in floating point, and an endpoint that is unchanged in
+   * every way that matters can still differ in the last mantissa bit; keying on
+   * the raw float would miss forever and quietly hand back the O(scene)
+   * behaviour this card exists to delete — a cache that never hits looks exactly
+   * like no cache at all, and says nothing while it does it.
+   */
+  private routeKey(
+    link: LinkModel,
+    endpoints: NonNullable<ReturnType<SVGRenderer['getLinkEndpoints']>>
+  ): string {
+    const q = (v: number) => Math.round(v * 100);
+    const sep = this.frameSeparation.get(link.id) ?? 0;
+    const jetty = link.style?.jetty ?? '-';
+    const isLoop = link.isSelfLoop();
+
+    return [
+      q(endpoints.start.x),
+      q(endpoints.start.y),
+      q(endpoints.end.x),
+      q(endpoints.end.y),
+      endpoints.sourceDirection ?? '-',
+      endpoints.targetDirection ?? '-',
+      this.routerForLink(link),
+      link.pathType ?? '-',
+      jetty,
+      sep,
+      // a self-loop is routed from the node's BOX, not just from its two ports
+      isLoop ? this.selfLoopBoxKey(link) : '-',
+    ].join('|');
+  }
+
+  /** The source node's box — the extra input a self-loop's route depends on. */
+  private selfLoopBoxKey(link: LinkModel): string {
+    const id = (link as any).sourceNodeId || (link as any).source;
+    const node = id ? this.engine.getDiagram()?.getNode(id) : undefined;
+    if (!node) return 'loop';
+    return `loop:${Math.round(node.position.x)},${Math.round(node.position.y)},${Math.round(
+      node.size.width
+    )},${Math.round(node.size.height)}`;
+  }
+
+  /**
+   * Forget the routes that the world just invalidated — and ONLY those.
+   *
+   * A link needs re-routing if one of its endpoint nodes moved (the route key
+   * catches that by itself, because the endpoints ARE the key) OR if some OTHER
+   * node moved into or out of the corridor it runs through. The second case is
+   * the one that matters and the one that is easy to miss: the link did not
+   * change, its own nodes did not change, and yet a wall just appeared across
+   * its path. "Re-route the links whose endpoints moved" is fast and wrong.
+   *
+   * So: diff the node rects against last frame; every node that moved, resized,
+   * appeared or vanished contributes both the rect it VACATED and the rect it now
+   * OCCUPIES; ask the engine's link spatial index — which is keyed on each link's
+   * routed bounding box, because syncLinkPoints refreshes it — which links run
+   * through those regions once the routing clearance is added; evict exactly them.
+   */
+  private invalidateStaleRoutes(): void {
+    const diagram = this.engine.getDiagram();
+    if (!diagram) return;
+
+    // A config change (or the very first frame) means we cannot trust anything
+    // we cached. Drop it and re-derive from the world as it is now.
+    if (this.routeMemoDirty) {
+      this.routeMemo.clear();
+      this.frameObstacleCache = null;
+      this.routeMemoDirty = false;
+    }
+
+    const rects = new Map<string, Rect>();
+    for (const node of diagram.getNodes()) {
+      rects.set(node.id, {
+        x: node.position.x,
+        y: node.position.y,
+        width: node.size.width,
+        height: node.size.height,
+      });
+    }
+
+    // Anything that changes the obstacle set WITHOUT moving a node rect — a group
+    // collapsing hides its members and raises a block — drops the cache whole.
+    // Rare, and reasoning about which links a collapse touched is how you ship a
+    // stale route.
+    const dirty = this.routeMemo.beginFrame(rects, this.obstacleEpoch(diagram));
+
+    if (dirty.length === 0) {
+      // Nothing moved: the obstacle arrays from last frame still describe the
+      // world exactly. KEEPING them (identity and all) is what makes an idle or
+      // pan frame free — the engine memoises its merged obstacle set and spatial
+      // index on that array's identity, so a fresh array every frame would
+      // rebuild both for a world that did not change.
+      return;
+    }
+
+    // The world moved, so the obstacle arrays are stale. A NEW array (not a
+    // mutated one) is required: its identity is the engine's memo key.
+    this.frameObstacleCache = null;
+
+    const stale = new Set<string>();
+    for (const region of coalesce(dirty)) {
+      for (const link of diagram.getVisibleLinks(inflate(region, ROUTE_INFLUENCE_PAD))) {
+        stale.add(link.id);
+      }
+    }
+    this.routeMemo.invalidate(stale);
+  }
+
+  /**
+   * A fingerprint of the obstacle facts that are NOT node rectangles: which
+   * groups are collapsed, and where their blocks sit. Node motion is tracked
+   * precisely; this only has to notice that GROUP state moved.
+   */
+  private obstacleEpoch(diagram: NonNullable<ReturnType<DiagramEngine['getDiagram']>>): string {
+    const groups = (diagram as any).getGroups?.() ?? [];
+    if (groups.length === 0) return '';
+    const parts: string[] = [];
+    for (const g of groups as any[]) {
+      if (!g.isCollapsed) continue;
+      const r = g.size
+        ? `${g.position.x},${g.position.y},${g.size.width},${g.size.height}`
+        : g.bounds
+          ? `${g.bounds.x},${g.bounds.y},${g.bounds.width},${g.bounds.height}`
+          : 'x';
+      parts.push(`${g.id}:${r}:${g.members?.size ?? 0}`);
+    }
+    return parts.sort().join(';');
   }
 
   // =========================================================================
@@ -6047,6 +6239,98 @@ export class SVGRenderer implements IRenderer {
     return { hiddenByCollapse, groupBlocks, container };
   }
 
+  /**
+   * Wave 8 — Card 6: the frame's obstacle arrays, built ONCE.
+   *
+   * `computeAutoRoute` used to rebuild these per link: `getNodes()`, a filter, a
+   * map — O(nodes) allocations for every link it routed, every frame. On the 10k
+   * benchmark that is 10,000 objects × ~700 visible links = 7 million throwaway
+   * rects per frame, before any routing happened at all.
+   *
+   * Two arrays, because the router needs two different sets:
+   *   `routing` — what a link routes AGAINST (minus collapsed-away members);
+   *   `all`     — every node, used by the own-node penetration fallback.
+   *
+   * The ARRAY IDENTITY matters as much as the contents: `RoutingEngine` memoises
+   * its merged obstacle set and spatial index on it, so handing every link the
+   * same array is what collapses N index builds into one.
+   *
+   * NOTE ON THE SOURCE/TARGET EXCLUSION — read before "fixing" this. The old
+   * per-link build filtered the link's own two nodes out of the obstacle array.
+   * That filter never did anything: `RoutingEngine.route()` unions the request's
+   * obstacles with its GLOBAL obstacle map, and `DiagramEngine` registers every
+   * node in that map, so both endpoint nodes came straight back in. Dropping the
+   * filter is therefore behaviour-preserving (the union is identical), which is
+   * why the 225-assertion line harness does not move.
+   *
+   * It is also a LATENT BUG, and a big one: because a link's own endpoints are
+   * obstacles, the straight port-to-port path "collides" for essentially every
+   * link, so essentially every link falls through to A* obstacle avoidance —
+   * measured at 72/72 links on the benchmark scene. Making the exclusion real
+   * would move routes across the whole product and is a routing-semantics
+   * decision, not a performance one. Left as found, and now documented.
+   */
+  private frameObstacles(diagram: ReturnType<DiagramEngine['getDiagram']>): {
+    nodes: NodeModel[];
+    routing: Array<{ id: string; x: number; y: number; width: number; height: number }>;
+    all: Array<{ id: string; x: number; y: number; width: number; height: number }>;
+    blockIds: Set<string>;
+  } {
+    if (this.frameObstacleCache) return this.frameObstacleCache;
+
+    const nodes: NodeModel[] = diagram ? diagram.getNodes() : [];
+    const group = this.collectGroupRouting(diagram, undefined, undefined);
+
+    const all: Array<{ id: string; x: number; y: number; width: number; height: number }> = [];
+    const routing: Array<{ id: string; x: number; y: number; width: number; height: number }> = [];
+    for (const node of nodes) {
+      const rect = {
+        id: node.id,
+        x: node.position.x,
+        y: node.position.y,
+        width: node.size.width,
+        height: node.size.height,
+      };
+      all.push(rect);
+      if (!group.hiddenByCollapse.has(node.id)) routing.push(rect);
+    }
+    for (const block of group.groupBlocks) routing.push(block);
+
+    this.frameObstacleCache = {
+      nodes,
+      routing,
+      all,
+      blockIds: new Set(group.groupBlocks.map((b) => b.id)),
+    };
+    return this.frameObstacleCache;
+  }
+
+  /**
+   * The obstacle array this link routes against — the frame's shared array in
+   * the overwhelming majority of cases.
+   *
+   * The one link that cannot use it is a PROXY LINK whose endpoint IS a collapsed
+   * group: that link must not treat its own group block as a wall. Rare enough
+   * to pay for a private array, and the group-block exclusion (unlike the node
+   * one above) is worth preserving because a block is not necessarily in the
+   * engine's global map.
+   */
+  private obstaclesForLink(
+    frame: ReturnType<SVGRenderer['frameObstacles']>,
+    groupInfo: ReturnType<SVGRenderer['collectGroupRouting']>,
+    sourceNodeId: string | undefined,
+    targetNodeId: string | undefined
+  ): Array<{ id: string; x: number; y: number; width: number; height: number }> {
+    const touchesBlock =
+      (sourceNodeId !== undefined && frame.blockIds.has(sourceNodeId)) ||
+      (targetNodeId !== undefined && frame.blockIds.has(targetNodeId));
+    if (!touchesBlock) return frame.routing;
+
+    return frame.routing.filter(
+      (o) => !frame.blockIds.has(o.id) || (o.id !== sourceNodeId && o.id !== targetNodeId)
+    );
+  }
+
   private computeAutoRoute(
     link: LinkModel,
     endpoints: NonNullable<ReturnType<SVGRenderer['getLinkEndpoints']>>
@@ -6061,11 +6345,9 @@ export class SVGRenderer implements IRenderer {
     const routingEngine = this.engine.getRoutingEngine();
     const algorithm = this.routerForLink(link) || routingEngine.getDefaultAlgorithm();
 
-    // Collect obstacle rects (all nodes except source and target)
     const currentDiagram = this.engine.getDiagram();
     const sourceNodeId = (link as any).sourceNodeId || (link as any).source;
     const targetNodeId = (link as any).targetNodeId || (link as any).target;
-    const allNodes: NodeModel[] = currentDiagram ? currentDiagram.getNodes() : [];
 
     // Wave 5 — Card 6: group-aware obstacles.
     //   hiddenByCollapse — members of a collapsed group (any depth) are not
@@ -6075,17 +6357,14 @@ export class SVGRenderer implements IRenderer {
     //     to stay inside (soft, via the Manhattan container penalty).
     const groupInfo = this.collectGroupRouting(currentDiagram, sourceNodeId, targetNodeId);
 
-    const obstacles = allNodes
-      .filter((node: NodeModel) => node.id !== sourceNodeId && node.id !== targetNodeId)
-      .filter((node: NodeModel) => !groupInfo.hiddenByCollapse.has(node.id))
-      .map((node: NodeModel) => ({
-        id: node.id,
-        x: node.position.x,
-        y: node.position.y,
-        width: node.size.width,
-        height: node.size.height,
-      }))
-      .concat(groupInfo.groupBlocks);
+    // Wave 8 — Card 6: the obstacle ARRAY is built once per frame, not once per
+    // link. It used to be a filter+map over every node in the diagram, per link,
+    // per frame — 10k allocations × 700 visible links on the 10k benchmark — and
+    // the array's identity is also what lets the engine memoise its spatial index
+    // instead of rebuilding one per link.
+    const frame = this.frameObstacles(currentDiagram);
+    const allNodes = frame.nodes;
+    const obstacles = this.obstaclesForLink(frame, groupInfo, sourceNodeId, targetNodeId);
 
     let usedOrthogonal = algorithm === 'orthogonal';
     const routeWith = (algo: RoutingAlgorithm, avoid: boolean): RoutedPath | null =>
@@ -6137,15 +6416,21 @@ export class SVGRenderer implements IRenderer {
     // keep whichever route penetrates less. When the two node bodies overlap
     // each other, some penetration is geometrically unavoidable — this keeps
     // it minimal instead of slashing straight through.
-    const ownNodes = allNodes.filter(
-      (n: NodeModel) => n.id === sourceNodeId || n.id === targetNodeId
-    );
+    //
+    // Wave 8: was `allNodes.filter(...)` — a scan of the whole diagram, per link,
+    // to find at most two nodes we already have ids for.
+    const ownNodes: NodeModel[] = [];
+    const srcNode = sourceNodeId ? currentDiagram?.getNode(sourceNodeId) : undefined;
+    const tgtNode = targetNodeId ? currentDiagram?.getNode(targetNodeId) : undefined;
+    if (srcNode) ownNodes.push(srcNode);
+    if (tgtNode && tgtNode !== srcNode) ownNodes.push(tgtNode);
+
     if (routedPath && ownNodes.length > 0) {
       let bestPen = this.penetrationLength(routedPath.points, ownNodes);
       if (bestPen > 0) {
-        const allObstacles = allNodes.map((n: NodeModel) => ({
-          id: n.id, x: n.position.x, y: n.position.y, width: n.size.width, height: n.size.height,
-        }));
+        // Wave 8: also hoisted — "every node as an obstacle" is the same array
+        // for every link in the frame.
+        const allObstacles = frame.all;
 
         const consider = (candidate: RoutedPath | null) => {
           if (!candidate) return;

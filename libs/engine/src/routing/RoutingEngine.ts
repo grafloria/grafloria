@@ -8,6 +8,7 @@ import type {
   RoutingAlgorithm,
 } from './types';
 import { ObstacleMap } from './ObstacleMap';
+import { ObstacleIndex, mergeObstacles } from './ObstacleIndex'; // Wave 8 Card 6
 import { PathSimplifier } from './PathSimplifier'; // Phase 2.2
 import { StraightRouter } from './algorithms/StraightRouter';
 import { OrthogonalRouter } from './algorithms/OrthogonalRouter';
@@ -160,6 +161,35 @@ export class RoutingEngine {
   private defaultAlgorithm: RoutingAlgorithm = 'straight';
   private pathSimplifier: PathSimplifier; // Phase 2.2: Path simplification
 
+  // ---------------------------------------------------------------------------
+  // Wave 8 (Performance & scale) — Card 6: the obstacle set, resolved once.
+  //
+  // `route()` merged the global obstacles with the request's on EVERY call:
+  //
+  //     const allObstacles = [...this.getAllGlobalObstacles(), ...request.obstacles];
+  //
+  // On a 5,000-node diagram that allocated a 9,998-entry array per link per
+  // frame — and every entry of it was then linearly scanned by the router's
+  // collision test, once per grid cell A* looked at. (It is 9,998 and not 4,998
+  // because the two sets OVERLAP: the engine registers every node globally, and
+  // the renderer passes the same nodes again. Both copies were scanned.)
+  //
+  // Now the merge is deduplicated and MEMOISED — on the global obstacle version
+  // and the identity of the request's array — and it carries a spatial index
+  // built alongside it. A frame that routes 700 links against one obstacle set
+  // builds that set, and its index, exactly once.
+  // ---------------------------------------------------------------------------
+
+  /** Bumped whenever the global obstacle set changes; invalidates the caches below. */
+  private obstacleVersion = 0;
+  private globalResolved: { version: number; obstacles: Obstacle[]; index: ObstacleIndex } | null = null;
+  private resolvedCache = new WeakMap<
+    readonly Obstacle[],
+    { version: number; obstacles: Obstacle[]; index: ObstacleIndex }
+  >();
+  /** Memoised obstacle-id signature for the LRU key (a sort+join of 10k ids is not free). */
+  private cacheKeySigs = new WeakMap<readonly Obstacle[], string>();
+
   constructor() {
     // Phase 5.3: Initialize LRU cache with capacity of 1000 routes
     // This prevents unbounded memory growth while maintaining good hit rate
@@ -229,6 +259,7 @@ export class RoutingEngine {
   addObstacle(obstacle: Obstacle): void {
     this.obstacleMap.add(obstacle);
     this.globalObstacles.push(obstacle);
+    this.obstacleVersion++;
     this.clearCache(); // Invalidate cache when obstacles change
   }
 
@@ -239,6 +270,7 @@ export class RoutingEngine {
     const removed = this.obstacleMap.remove(id);
     if (removed) {
       this.globalObstacles = this.globalObstacles.filter((o) => o.id !== id);
+      this.obstacleVersion++;
       this.clearCache();
     }
     return removed;
@@ -262,6 +294,7 @@ export class RoutingEngine {
       this.globalObstacles.push(obstacle);
     }
 
+    this.obstacleVersion++;
     this.clearCache(); // Invalidate cache when obstacles change
   }
 
@@ -283,7 +316,50 @@ export class RoutingEngine {
   clearObstacles(): void {
     this.obstacleMap.clear();
     this.globalObstacles = [];
+    this.obstacleVersion++;
     this.clearCache();
+  }
+
+  /**
+   * Wave 8 — Card 6: the effective obstacle set for a request (globals ∪ the
+   * request's own), deduplicated, with a spatial index over exactly it.
+   *
+   * Memoised twice over:
+   *   - the globals-only answer, invalidated by `obstacleVersion`;
+   *   - the merged answer, keyed on the IDENTITY of the request's array — so a
+   *     renderer that hands every link in a frame the same obstacle array pays
+   *     for the merge and the index once, not once per link.
+   *
+   * A caller that builds a fresh array per link still gets a correct answer; it
+   * just pays for it, exactly as it did before this existed.
+   */
+  private resolveObstacles(
+    requestObstacles: Obstacle[] | undefined
+  ): { obstacles: Obstacle[]; index: ObstacleIndex } {
+    if (!this.globalResolved || this.globalResolved.version !== this.obstacleVersion) {
+      const obstacles = this.getAllGlobalObstacles();
+      this.globalResolved = {
+        version: this.obstacleVersion,
+        obstacles,
+        index: new ObstacleIndex(obstacles),
+      };
+    }
+
+    if (!requestObstacles || requestObstacles.length === 0) {
+      return this.globalResolved;
+    }
+
+    const hit = this.resolvedCache.get(requestObstacles);
+    if (hit && hit.version === this.obstacleVersion) return hit;
+
+    const obstacles = mergeObstacles(this.globalResolved.obstacles, requestObstacles);
+    const resolved = {
+      version: this.obstacleVersion,
+      obstacles,
+      index: new ObstacleIndex(obstacles),
+    };
+    this.resolvedCache.set(requestObstacles, resolved);
+    return resolved;
   }
 
   /**
@@ -343,16 +419,14 @@ export class RoutingEngine {
       throw new Error(`Router '${algorithm}' not found`);
     }
 
-    // Merge global and request obstacles
-    const allObstacles = [
-      ...this.getAllGlobalObstacles(),
-      ...(request.obstacles ?? []),
-    ];
+    // Wave 8 — Card 6: globals ∪ request, deduplicated and indexed, memoised.
+    const resolved = this.resolveObstacles(request.obstacles);
 
     // Create enhanced request with all obstacles
     const enhancedRequest: RouteRequest = {
       ...request,
-      obstacles: allObstacles,
+      obstacles: resolved.obstacles,
+      obstacleIndex: resolved.index,
     };
 
     // Perform routing (must be sync)
@@ -444,16 +518,14 @@ export class RoutingEngine {
       throw new Error(`Router '${algorithm}' not found`);
     }
 
-    // Merge global and request obstacles
-    const allObstacles = [
-      ...this.getAllGlobalObstacles(),
-      ...(request.obstacles ?? []),
-    ];
+    // Wave 8 — Card 6: globals ∪ request, deduplicated and indexed, memoised.
+    const resolved = this.resolveObstacles(request.obstacles);
 
     // Create enhanced request with all obstacles
     const enhancedRequest: RouteRequest = {
       ...request,
-      obstacles: allObstacles,
+      obstacles: resolved.obstacles,
+      obstacleIndex: resolved.index,
     };
 
     // Perform routing (await in case router is async like ELK)
@@ -526,12 +598,31 @@ export class RoutingEngine {
     const algo = request.options?.algorithm ?? this.defaultAlgorithm;
     const simplify = request.options?.simplifyPath ?? false;
     const epsilon = request.options?.simplificationEpsilon ?? 1.0;
-    const obstacleIds = (request.obstacles ?? [])
-      .map((o) => o.id)
-      .sort()
-      .join(',');
+    const obstacleIds = this.obstacleSignature(request.obstacles);
 
     // Phase 2.2: Include simplification options in cache key to prevent incorrect cache hits
     return `${request.start.x},${request.start.y}|${request.end.x},${request.end.y}|${algo}|${obstacleIds}|${simplify}|${epsilon}`;
+  }
+
+  /**
+   * Wave 8 — Card 6: the obstacle-id part of the LRU key.
+   *
+   * This used to `.map().sort().join()` the request's obstacle array on EVERY
+   * route call — an O(n log n) sort and an ~80KB string per link on a 10k-node
+   * diagram, purely to look up a cache. Memoised on the array's identity: the
+   * ids of an array cannot change without a new array (the renderer rebuilds
+   * one per frame), and any change to the GLOBAL obstacles already clears the
+   * whole cache, so a stale signature cannot outlive the entry it keys.
+   */
+  private obstacleSignature(obstacles: Obstacle[] | undefined): string {
+    if (!obstacles || obstacles.length === 0) return '';
+    const hit = this.cacheKeySigs.get(obstacles);
+    if (hit !== undefined) return hit;
+    const sig = obstacles
+      .map((o) => o.id)
+      .sort()
+      .join(',');
+    this.cacheKeySigs.set(obstacles, sig);
+    return sig;
   }
 }

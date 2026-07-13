@@ -1,6 +1,7 @@
 // Routing Types - Core types for smart routing system
 
 import type { Point, Rectangle as GeometryRectangle } from '../types';
+import type { ObstacleIndex } from './ObstacleIndex';
 
 // Re-export Rectangle for backward compatibility
 export type { GeometryRectangle as Rectangle };
@@ -144,6 +145,17 @@ export interface RouteRequest {
   sourceDirection?: PortDirection;
   /** Direction the target port points (for orthogonal routing) */
   targetDirection?: PortDirection;
+  /**
+   * Wave 8 — Card 6: a prebuilt spatial index over EXACTLY `obstacles`.
+   *
+   * An optimisation, never a semantic input: a router that ignores it and scans
+   * `obstacles` linearly gets the same answer, just slower. RoutingEngine builds
+   * one per obstacle set and reuses it across every link in a frame, so the A*
+   * inner loop stops paying O(scene) per cell it looks at. If you set this by
+   * hand it MUST describe the same obstacles as `obstacles`, or the two will
+   * disagree and the router will believe whichever one it asked.
+   */
+  obstacleIndex?: ObstacleIndex;
 }
 
 /**
