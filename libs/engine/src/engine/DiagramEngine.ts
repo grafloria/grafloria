@@ -15,6 +15,9 @@ import { PortModel } from '../models/PortModel';
 import { GroupModel } from '../models/GroupModel'; // Phase 1.6c
 import { AddNodeCommand } from '../commands/basic/AddNodeCommand';
 import { RemoveNodeCommand } from '../commands/basic/RemoveNodeCommand';
+// Wave 6 (Card 7): dynamic auto-ports — spawned/retired through the command layer.
+import type { Command } from '../commands/Command';
+import { buildDynamicPortCommands } from '../ports/dynamic-ports';
 import { AddLinkCommand } from '../commands/basic/AddLinkCommand';
 import { RemoveLinkCommand } from '../commands/basic/RemoveLinkCommand';
 import { AddGroupCommand, RemoveGroupCommand, AddToGroupCommand, RemoveFromGroupCommand, ExpandGroupCommand, CollapseGroupCommand } from '../commands/basic'; // Phase 1.6c
@@ -126,6 +129,9 @@ export class DiagramEngine {
   // Phase 1: Interaction configuration and state
   private interactionConfig: InteractionConfig;
   private connectionStateManager: ConnectionStateManager;
+
+  // Wave 6 (Card 7): re-entry guard for the dynamic-port allocator.
+  private reconcilingDynamicPorts = false;
 
   // Wave 2 (Edges & links): transient endpoint-reconnection preview (see type).
   private reconnectionPreview: ReconnectionPreview | null = null;
@@ -486,6 +492,65 @@ export class DiagramEngine {
 
     const command = new RemoveNodeCommand(nodeId);
     this.commandManager.execute(command);
+  }
+
+  /**
+   * Wave 6 (Card 7): top up (or trim) the dynamic port groups on the nodes at
+   * either end of `link`.
+   *
+   * Runs through the COMMAND layer, so a spawned port is undoable and arrives
+   * with the same events and dirty-tracking as any other model change. Guarded
+   * against re-entry: an AddPortCommand does not itself add a link, but a host
+   * validator could, and a self-feeding allocator would be a delightful way to
+   * hang the app.
+   */
+  private reconcileDynamicPorts(nodeIds: Iterable<string>): void {
+    if (this.reconcilingDynamicPorts || !this.diagram) return;
+
+    // The LINKS are the source of truth for "is this port free" — the port's
+    // own connection registry is derived state that `addLink()` never updates.
+    const links = this.diagram.getLinks();
+
+    const commands: Command[] = [];
+    for (const nodeId of new Set(nodeIds)) {
+      const node = this.diagram.getNode(nodeId);
+      if (node) commands.push(...buildDynamicPortCommands(node, links));
+    }
+    if (commands.length === 0) return;
+
+    this.reconcilingDynamicPorts = true;
+    try {
+      for (const command of commands) {
+        // Port add/remove is synchronous; `execute` returns a promise only
+        // because the Command contract allows async ones. Nothing here awaits it,
+        // so the port is on the node by the time this returns — which is what the
+        // renderer, mid-frame, is entitled to assume.
+        void this.commandManager.execute(command);
+      }
+    } finally {
+      this.reconcilingDynamicPorts = false;
+    }
+  }
+
+  /** The nodes a link touches — resolved by id, or by searching for its ports. */
+  private reconcileDynamicPortsFor(link: LinkModel): void {
+    const diagram = this.diagram;
+    if (!diagram) return;
+
+    const nodeIds: string[] = [];
+    for (const [nodeId, portId] of [
+      [link.sourceNodeId, link.sourcePortId],
+      [link.targetNodeId, link.targetPortId],
+    ] as const) {
+      if (nodeId) {
+        nodeIds.push(nodeId);
+      } else if (portId) {
+        const owner = diagram.getNodeByPortId?.(portId);
+        if (owner) nodeIds.push(owner.id);
+      }
+    }
+
+    this.reconcileDynamicPorts(nodeIds);
   }
 
   /**
@@ -1736,6 +1801,10 @@ export class DiagramEngine {
     this.diagramDisposers.push(
       diagram.on('link:added', (link: LinkModel) => {
         this.eventBus.emit('link:added', link);
+        // Wave 6 (Card 7): wiring up the last free port in a dynamic group must
+        // conjure the next one. This is the whole feature — a `dynamic` group
+        // whose allocator never runs is just a group.
+        this.reconcileDynamicPortsFor(link);
       })
     );
 
@@ -1764,6 +1833,9 @@ export class DiagramEngine {
     this.diagramDisposers.push(
       diagram.on('link:removed', (link: LinkModel) => {
         this.eventBus.emit('link:removed', link);
+        // Unwiring frees a port, which may leave the group with a SURPLUS of
+        // spares — the allocator retires the ones it spawned.
+        this.reconcileDynamicPortsFor(link);
       })
     );
 

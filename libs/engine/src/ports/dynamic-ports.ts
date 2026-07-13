@@ -14,6 +14,7 @@
 import { AddPortCommand, RemovePortCommand } from '../commands/basic/PortCommands';
 import type { Command } from '../commands/Command';
 import type { DiagramModel } from '../models/DiagramModel';
+import type { LinkModel } from '../models/LinkModel';
 import type { NodeModel } from '../models/NodeModel';
 import { PortModel } from '../models/PortModel';
 import { findPortGroup } from './port-groups';
@@ -51,6 +52,20 @@ function membersOf(node: NodeModel, groupId: string): PortModel[] {
 }
 
 /**
+ * Is this port wired?
+ *
+ * When `links` is supplied it is the SOURCE OF TRUTH — because it is. The port's
+ * `currentConnections` registry is DERIVED state that `DiagramModel.addLink()`
+ * does not maintain (only the load-time `reconcilePortConnections()` rebuilds
+ * it), so an allocator that trusted the registry would look at a port the user
+ * just wired and cheerfully report it free. Ask the links.
+ */
+function isPortUsed(port: PortModel, links: LinkModel[] | undefined): boolean {
+  if (!links) return port.getConnectionCount() > 0;
+  return links.some((link) => link.sourcePortId === port.id || link.targetPortId === port.id);
+}
+
+/**
  * What must change so every dynamic group on `node` offers exactly `spare` free
  * ports? Idempotent: run it on a settled node and it returns an empty plan.
  *
@@ -58,7 +73,7 @@ function membersOf(node: NodeModel, groupId: string): PortModel[] {
  * spawned (`dynamic: true`) are ever REMOVED — an authored port the user simply
  * hasn't wired yet is not surplus, it is the design.
  */
-export function planDynamicPorts(node: NodeModel): DynamicPortPlan {
+export function planDynamicPorts(node: NodeModel, links?: LinkModel[]): DynamicPortPlan {
   const groups = groupsOnNode(node);
   if (groups.size === 0) return EMPTY_PLAN;
 
@@ -71,7 +86,7 @@ export function planDynamicPorts(node: NodeModel): DynamicPortPlan {
     const spare = Math.max(0, spec.spare ?? 1);
     const cap = spec.max && spec.max > 0 ? spec.max : Infinity;
     const members = membersOf(node, groupId);
-    const free = members.filter((port) => port.getConnectionCount() === 0);
+    const free = members.filter((port) => !isPortUsed(port, links));
 
     if (free.length < spare) {
       const prefix = spec.idPrefix ?? `${groupId}-`;
@@ -95,12 +110,15 @@ export function planDynamicPorts(node: NodeModel): DynamicPortPlan {
         );
       }
     } else if (free.length > spare) {
-      // Retire surplus spares — but only the ones WE spawned, newest first, so
-      // the port ids the user has been looking at stay put.
-      const surplus = free
-        .filter((port) => port.dynamic === true)
-        .sort((a, b) => (b.index || 0) - (a.index || 0))
-        .slice(0, free.length - spare);
+      // Retire surplus spares — but only the ones WE spawned, and the NEWEST
+      // first, so the port ids the user has been looking at stay put.
+      //
+      // "Newest" is the tail of the group's stable order (index, then declaration
+      // order) — NOT a sort on `index` alone, which ties at 0 for every port
+      // whose index was never set and would then retire the OLDEST.
+      const freeDynamic = free.filter((port) => port.dynamic === true);
+      const removeCount = Math.min(free.length - spare, freeDynamic.length);
+      const surplus = freeDynamic.slice(freeDynamic.length - removeCount);
       plan.remove.push(...surplus.map((port) => port.id));
     }
   }
@@ -112,8 +130,8 @@ export function planDynamicPorts(node: NodeModel): DynamicPortPlan {
  * The plan, as undoable commands. Empty array when nothing is due — so a caller
  * can drive this on every link change without polluting the undo stack.
  */
-export function buildDynamicPortCommands(node: NodeModel): Command[] {
-  const plan = planDynamicPorts(node);
+export function buildDynamicPortCommands(node: NodeModel, links?: LinkModel[]): Command[] {
+  const plan = planDynamicPorts(node, links);
   const commands: Command[] = [];
   for (const port of plan.add) commands.push(new AddPortCommand(node.id, port));
   for (const portId of plan.remove) commands.push(new RemovePortCommand(node.id, portId));
@@ -122,9 +140,10 @@ export function buildDynamicPortCommands(node: NodeModel): Command[] {
 
 /** Every node in the diagram that owes the allocator work. */
 export function buildDynamicPortCommandsForDiagram(diagram: DiagramModel): Command[] {
+  const links = diagram.getLinks();
   const commands: Command[] = [];
   for (const node of diagram.getNodes()) {
-    commands.push(...buildDynamicPortCommands(node));
+    commands.push(...buildDynamicPortCommands(node, links));
   }
   return commands;
 }

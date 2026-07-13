@@ -9,6 +9,10 @@ import {
   LinkModel,
   InteractionMode,
   PortVisibilityStrategy,
+  // Wave 6 (Ports & connections)
+  setNodePortGroups,
+  portTypeRegistry,
+  evaluatePortConnection,
 } from '@grafloria/engine';
 import {
   SVGRenderer,
@@ -2538,6 +2542,392 @@ function r1_channelNudging() {
 }
 
 // ===========================================================================
+// Wave 6 (Ports & connections)
+// ===========================================================================
+
+// W6-1: non-circle glyphs, per-port style, and `visible:false` — the three
+// things that were dead config. Driven through the REAL SVGRenderer.
+function p1_glyphsAndStyle() {
+  const stage = cell('p1', 'P1 — Wave 6 Card 0: port glyphs (circle / square / diamond / triangle / custom path), per-port style, visible:false');
+  const engine = makeEngine();
+  const diagram = engine.createDiagram('p1');
+
+  const node = new NodeModel({ type: 'rect', position: { x: 60, y: 50 }, size: { width: 180, height: 110 } } as any);
+  node.ports.clear();
+  node.setMetadata('shape', { type: 'rect', fill: '#dbeafe', stroke: '#334155', strokeWidth: 1.5, cornerRadius: 4 });
+  node.setMetadata('label', 'glyphs');
+  node.addPort(new PortModel({ id: 'p1-circle', type: 'output', side: 'right', index: 0 } as any));
+  node.addPort(new PortModel({ id: 'p1-square', type: 'output', side: 'right', index: 1, shape: { shape: 'square', size: 12 } } as any));
+  node.addPort(new PortModel({ id: 'p1-diamond', type: 'output', side: 'right', index: 2, shape: { shape: 'diamond', size: 14 } } as any));
+  node.addPort(new PortModel({ id: 'p1-triangle', type: 'input', side: 'left', index: 0, shape: { shape: 'triangle', size: 12, rotation: 90 } } as any));
+  node.addPort(new PortModel({ id: 'p1-path', type: 'input', side: 'left', index: 1, shape: { shape: 'path', path: 'M -6 -6 L 6 0 L -6 6 Z' } } as any));
+  // Per-port style override — `PortModel.style`, dead since it was written.
+  node.addPort(new PortModel({ id: 'p1-styled', type: 'input', side: 'left', index: 2, style: { fill: '#f97316', stroke: '#7c2d12', strokeWidth: 3 } } as any));
+  // The hard OFF switch — `PortModel.visible`, also dead.
+  node.addPort(new PortModel({ id: 'p1-hidden', type: 'output', side: 'top', visible: false } as any));
+  diagram.addNode(node);
+
+  const svg = renderInto(engine, stage, 560, 220);
+  const el = (id: string) => svg.querySelector(`[data-port-id="${id}"]`);
+
+  expectThat('P1 default port is still a <circle>', el('p1-circle')?.tagName === 'circle', String(el('p1-circle')?.tagName));
+  expectThat('P1 square port renders a <rect>', el('p1-square')?.tagName === 'rect', String(el('p1-square')?.tagName));
+  expectThat('P1 diamond port renders a <polygon>', el('p1-diamond')?.tagName === 'polygon', String(el('p1-diamond')?.tagName));
+  expectThat('P1 triangle port renders a rotated <polygon>',
+    el('p1-triangle')?.tagName === 'polygon' && (el('p1-triangle')?.getAttribute('transform') || '').includes('rotate(90'),
+    String(el('p1-triangle')?.getAttribute('transform')));
+  expectThat('P1 custom-path port renders a translated <path>',
+    el('p1-path')?.tagName === 'path' && el('p1-path')?.getAttribute('d') === 'M -6 -6 L 6 0 L -6 6 Z',
+    String(el('p1-path')?.getAttribute('d')));
+  expectThat('P1 per-port style reaches the DOM (was dead config)',
+    el('p1-styled')?.getAttribute('fill') === '#f97316' && el('p1-styled')?.getAttribute('stroke-width') === '3',
+    `${el('p1-styled')?.getAttribute('fill')} / ${el('p1-styled')?.getAttribute('stroke-width')}`);
+  expectThat('P1 visible:false actually hides the port (was dead config)', el('p1-hidden') === null);
+
+  PROBES.p1_glyphs = {
+    circle: el('p1-circle')?.tagName, square: el('p1-square')?.tagName,
+    diamond: el('p1-diamond')?.tagName, triangle: el('p1-triangle')?.tagName,
+    path: el('p1-path')?.tagName, hidden: el('p1-hidden') === null,
+  };
+}
+
+// W6-2: port labels through the SHARED text-block engine, with layout modes and
+// collision nudging.
+function p2_portLabels() {
+  const stage = cell('p2', 'P2 — Wave 6 Card 1: port labels (outside / inside / orthogonal / radial) + collision nudging on a crowded column');
+  const engine = makeEngine();
+  const diagram = engine.createDiagram('p2');
+
+  const node = new NodeModel({ type: 'rect', position: { x: 200, y: 40 }, size: { width: 140, height: 120 } } as any);
+  node.ports.clear();
+  node.setMetadata('shape', { type: 'rect', fill: '#dcfce7', stroke: '#334155', strokeWidth: 1.5, cornerRadius: 4 });
+  node.setMetadata('label', 'labels');
+  node.addPort(new PortModel({ id: 'p2-out', type: 'output', side: 'right', label: { text: 'result' } } as any));
+  node.addPort(new PortModel({ id: 'p2-in-a', type: 'input', side: 'left', index: 0, label: { text: 'alpha' } } as any));
+  node.addPort(new PortModel({ id: 'p2-in-b', type: 'input', side: 'left', index: 1, label: { text: 'beta' } } as any));
+  node.addPort(new PortModel({ id: 'p2-in-c', type: 'input', side: 'left', index: 2, label: { text: 'gamma' } } as any));
+  node.addPort(new PortModel({ id: 'p2-top', type: 'bi', side: 'top', label: { text: 'inside', layout: 'inside' } } as any));
+  node.addPort(new PortModel({ id: 'p2-bottom', type: 'bi', side: 'bottom', label: { text: 'angled', angle: 170 } } as any));
+  diagram.addNode(node);
+
+  const svg = renderInto(engine, stage, 560, 240);
+  const label = (id: string) => svg.querySelector(`[data-vnode-key="port-label-${id}"]`);
+
+  const out = label('p2-out');
+  expectThat('P2 a labelled port emits a <text>', out?.tagName === 'text', String(out?.tagName));
+  expectThat('P2 label text reaches the DOM', out?.textContent === 'result', String(out?.textContent));
+  expectThat('P2 an outside label on a right port is start-anchored (grows away from the node)',
+    out?.getAttribute('text-anchor') === 'start', String(out?.getAttribute('text-anchor')));
+  expectThat('P2 a label never intercepts the pointer', out?.getAttribute('pointer-events') === 'none');
+
+  // The three left-edge labels must not overlap after nudging.
+  const ys = ['p2-in-a', 'p2-in-b', 'p2-in-c'].map(id => parseFloat(label(id)?.getAttribute('y') || 'NaN'));
+  const sorted = [...ys].sort((a, b) => a - b);
+  const gaps = [sorted[1] - sorted[0], sorted[2] - sorted[1]];
+  expectThat('P2 crowded left-column labels are all placed', ys.every(y => Number.isFinite(y)), JSON.stringify(ys));
+  expectThat('P2 nudging keeps every adjacent label pair clear of its neighbour',
+    gaps.every(g => g >= 12), JSON.stringify(gaps));
+
+  // keep-upright: 170° would read upside-down, so it is flipped to -10°.
+  const angled = label('p2-bottom');
+  const transform = angled?.getAttribute('transform') || (angled?.parentElement?.getAttribute('transform') || '');
+  expectThat('P2 keep-upright flips a 170° label to -10° so it never reads upside-down',
+    transform.includes('rotate(-10'), transform);
+
+  const inside = label('p2-top');
+  const insideY = parseFloat(inside?.getAttribute('y') || 'NaN');
+  expectThat('P2 an inside label on a top port is pulled DOWN into the node body',
+    insideY > 0, String(insideY));
+
+  PROBES.p2_labels = { leftYs: ys, gaps, angledTransform: transform };
+}
+
+// W6-3: the pluggable layout engine — a group laying eight ports down one edge,
+// and an ellipseSpread ring. Shape-aware anchors must still win by default.
+function p3_layoutEngine() {
+  const stage = cell('p3', 'P3 — Wave 6 Cards 3+4: named port GROUPS + layout strategies (sideLinear column, ellipseSpread ring)');
+  const engine = makeEngine();
+  const diagram = engine.createDiagram('p3');
+
+  const rack = new NodeModel({ type: 'rect', position: { x: 40, y: 40 }, size: { width: 120, height: 160 } } as any);
+  rack.ports.clear();
+  rack.setMetadata('shape', { type: 'rect', fill: '#ede9fe', stroke: '#334155', strokeWidth: 1.5, cornerRadius: 4 });
+  rack.setMetadata('label', 'sideLinear');
+  // ONE group definition; every member overrides nothing but its id.
+  setNodePortGroups(rack, {
+    in: {
+      id: 'in',
+      side: 'left',
+      type: 'input',
+      layout: { strategy: 'sideLinear', args: { padding: 14 } },
+      shape: { shape: 'square', size: 9 },
+    },
+  });
+  for (let i = 0; i < 6; i++) {
+    rack.addPort(new PortModel({ id: `p3-in-${i}`, type: 'input', group: 'in', index: i } as any));
+  }
+  diagram.addNode(rack);
+
+  const ring = new NodeModel({ type: 'rect', position: { x: 300, y: 50 }, size: { width: 120, height: 120 } } as any);
+  ring.ports.clear();
+  ring.setMetadata('shape', { type: 'circle', fill: '#fee2e2', stroke: '#334155', strokeWidth: 1.5 });
+  ring.setMetadata('label', 'ring');
+  setNodePortGroups(ring, {
+    dial: {
+      id: 'dial',
+      side: 'right',
+      type: 'bi',
+      layout: { strategy: 'ellipseSpread', args: { angle: 0, sweep: 360 } },
+      shape: { shape: 'diamond', size: 10 },
+    },
+  });
+  for (let i = 0; i < 8; i++) {
+    ring.addPort(new PortModel({ id: `p3-ring-${i}`, type: 'bi', group: 'dial', index: i } as any));
+  }
+  diagram.addNode(ring);
+
+  const svg = renderInto(engine, stage, 560, 240);
+
+  // The group's six ports march down the left edge, evenly, inside the padding.
+  const column = [0, 1, 2, 3, 4, 5].map(i => getPortPositionForShape(rack.getPort(`p3-in-${i}`), rack));
+  const xs = new Set(column.map(p => +p.x.toFixed(3)));
+  const steps = column.slice(1).map((p, i) => +(p.y - column[i].y).toFixed(3));
+  expectThat('P3 sideLinear keeps the whole group on one edge (x is constant)', xs.size === 1 && xs.has(0), JSON.stringify([...xs]));
+  expectThat('P3 sideLinear spaces the group evenly', new Set(steps).size === 1, JSON.stringify(steps));
+  expectThat('P3 sideLinear honours padding (first port is inset from the corner)',
+    column[0].y > 14 && column[5].y < 160 - 14, `${column[0].y} .. ${column[5].y}`);
+  expectThat('P3 the group\'s shape is inherited by every member (square glyphs)',
+    [0, 1, 2].every(i => svg.querySelector(`[data-port-id="p3-in-${i}"]`)?.tagName === 'rect'));
+  expectThat('P3 the group\'s SIDE is inherited — no member declares one',
+    rack.getPort('p3-in-0').alignment.side === 'right' && column[0].x === 0,
+    'ctor default is still `right`; the resolved side comes from the group');
+
+  // The ring's eight ports sit on the circle, equally spaced, none coincident.
+  const ringPts = [0, 1, 2, 3, 4, 5, 6, 7].map(i => getPortPositionForShape(ring.getPort(`p3-ring-${i}`), ring));
+  const radii = ringPts.map(p => +Math.hypot(p.x - 60, p.y - 60).toFixed(2));
+  const unique = new Set(ringPts.map(p => `${p.x.toFixed(1)},${p.y.toFixed(1)}`));
+  expectThat('P3 ellipseSpread puts every port on the same radius', new Set(radii).size === 1, JSON.stringify(radii));
+  expectThat('P3 ellipseSpread never stacks two ports on one point (full ring divides by count)',
+    unique.size === 8, String(unique.size));
+
+  for (const p of column) overlayDot(svg, rack.position.x + p.x, rack.position.y + p.y, '#dc2626', 2);
+  for (const p of ringPts) overlayDot(svg, ring.position.x + p.x, ring.position.y + p.y, '#dc2626', 2);
+
+  PROBES.p3_layout = { column, radii, uniqueRingPoints: unique.size };
+}
+
+// W6-4: multi-link spreading — three links into ONE port. Without spread they
+// pile on the same coordinate; with it they fan along the port's edge.
+function p4_linkSpreading() {
+  const stage = cell('p4', 'P4 — Wave 6 Card 5: three links into ONE port. Left: piled on the centre point. Right: spread along the port edge.');
+
+  const build = (spread: boolean, idPrefix: string, x: number) => {
+    const engine = makeEngine();
+    const diagram = engine.createDiagram(idPrefix);
+
+    const hub = new NodeModel({ type: 'rect', position: { x: x + 300, y: 90 }, size: { width: 90, height: 50 } } as any);
+    hub.ports.clear();
+    hub.setMetadata('shape', { type: 'rect', fill: '#fef3c7', stroke: '#334155', strokeWidth: 1.5, cornerRadius: 4 });
+    hub.setMetadata('label', 'hub');
+    hub.addPort(new PortModel({
+      id: `${idPrefix}-in`, type: 'input', side: 'left',
+      ...(spread ? { spread: { enabled: true, spacing: 14 } } : {}),
+    } as any));
+    diagram.addNode(hub);
+
+    const links: any[] = [];
+    for (let i = 0; i < 3; i++) {
+      const src = new NodeModel({ type: 'rect', position: { x: x + 40, y: 30 + i * 70 }, size: { width: 80, height: 40 } } as any);
+      src.ports.clear();
+      src.setMetadata('shape', { type: 'rect', fill: '#dbeafe', stroke: '#334155', strokeWidth: 1.5, cornerRadius: 4 });
+      src.setMetadata('label', `s${i}`);
+      src.addPort(new PortModel({ id: `${idPrefix}-out-${i}`, type: 'output', side: 'right' } as any));
+      diagram.addNode(src);
+      links.push(makeLink(diagram, `${idPrefix}-out-${i}`, `${idPrefix}-in`, 'direct'));
+    }
+
+    const svg = renderInto(engine, stage, 500, 240);
+    // The last point of each path is where that link LANDS on the hub port.
+    const ends = links.map(l => {
+      const d = pathD(svg, l.id) || '';
+      const nums = d.match(/-?\d+(\.\d+)?/g) || [];
+      return { x: +nums[nums.length - 2], y: +nums[nums.length - 1] };
+    });
+    return ends;
+  };
+
+  const piled = build(false, 'p4a', 0);
+  const spread = build(true, 'p4b', 0);
+
+  const piledYs = new Set(piled.map(p => p.y.toFixed(2)));
+  const spreadYs = spread.map(p => +p.y.toFixed(2));
+  const uniqueSpread = new Set(spreadYs);
+
+  expectThat('P4 WITHOUT spread all three links land on the SAME point (the old behaviour, preserved)',
+    piledYs.size === 1, JSON.stringify([...piledYs]));
+  expectThat('P4 WITH spread the three links land on three DISTINCT points',
+    uniqueSpread.size === 3, JSON.stringify(spreadYs));
+
+  const sorted = [...spreadYs].sort((a, b) => a - b);
+  const gaps = [+(sorted[1] - sorted[0]).toFixed(2), +(sorted[2] - sorted[1]).toFixed(2)];
+  expectThat('P4 the fan is evenly spaced at the configured pitch (14px)',
+    gaps.every(g => Math.abs(g - 14) < 0.01), JSON.stringify(gaps));
+  expectThat('P4 the fan slides along the port EDGE — x is unchanged, so links still touch the node',
+    new Set(spread.map(p => p.x.toFixed(2))).size === 1, JSON.stringify(spread.map(p => p.x)));
+  expectThat('P4 the fan stays CENTRED on the port (mean lane offset is 0)',
+    Math.abs((sorted[0] + sorted[2]) / 2 - sorted[1]) < 0.01, JSON.stringify(sorted));
+
+  PROBES.p4_spread = { piled: piled.map(p => p.y), spread: spreadYs, gaps };
+}
+
+// W6-5: typed data-flow ports — colour by type, and an incompatible target
+// rejected by the SHARED validator.
+function p5_typedPorts() {
+  const stage = cell('p5', 'P5 — Wave 6 Card 7: typed ports — glyph colour derives from dataType; incompatible types cannot connect');
+  const engine = makeEngine();
+  const diagram = engine.createDiagram('p5');
+
+  portTypeRegistry.clear();
+  portTypeRegistry.register({ name: 'number', color: '#2563eb' });
+  portTypeRegistry.register({ name: 'string', color: '#16a34a' });
+  portTypeRegistry.register({ name: 'int', color: '#9333ea', compatibleWith: ['number'] });
+
+  const src = new NodeModel({ type: 'rect', position: { x: 50, y: 60 }, size: { width: 110, height: 90 } } as any);
+  src.ports.clear();
+  src.setMetadata('shape', { type: 'rect', fill: '#f1f5f9', stroke: '#334155', strokeWidth: 1.5, cornerRadius: 4 });
+  src.setMetadata('label', 'source');
+  src.addPort(new PortModel({ id: 'p5-num', type: 'output', side: 'right', index: 0, dataType: 'number', label: { text: 'number' } } as any));
+  src.addPort(new PortModel({ id: 'p5-int', type: 'output', side: 'right', index: 1, dataType: 'int', label: { text: 'int' } } as any));
+  diagram.addNode(src);
+
+  const dst = new NodeModel({ type: 'rect', position: { x: 330, y: 60 }, size: { width: 110, height: 90 } } as any);
+  dst.ports.clear();
+  dst.setMetadata('shape', { type: 'rect', fill: '#f1f5f9', stroke: '#334155', strokeWidth: 1.5, cornerRadius: 4 });
+  dst.setMetadata('label', 'sink');
+  dst.addPort(new PortModel({ id: 'p5-innum', type: 'input', side: 'left', index: 0, dataType: 'number', label: { text: 'number' } } as any));
+  dst.addPort(new PortModel({ id: 'p5-instr', type: 'input', side: 'left', index: 1, dataType: 'string', label: { text: 'string' } } as any));
+  diagram.addNode(dst);
+
+  const svg = renderInto(engine, stage, 560, 220);
+  const el = (id: string) => svg.querySelector(`[data-port-id="${id}"]`);
+
+  expectThat('P5 a number port wears the registered number colour',
+    el('p5-num')?.getAttribute('stroke') === '#2563eb', String(el('p5-num')?.getAttribute('stroke')));
+  expectThat('P5 a string port wears the registered string colour',
+    el('p5-instr')?.getAttribute('stroke') === '#16a34a', String(el('p5-instr')?.getAttribute('stroke')));
+  expectThat('P5 the dataType is exposed on the element for CSS/testing',
+    el('p5-int')?.getAttribute('data-port-data-type') === 'int');
+
+  const num = src.getPort('p5-num'), int = src.getPort('p5-int');
+  const inNum = dst.getPort('p5-innum'), inStr = dst.getPort('p5-instr');
+
+  const verdict = (a: any, b: any) => evaluatePortConnection(a, b, {
+    sourceNode: src, targetNode: dst, links: diagram.getLinks(),
+  });
+
+  expectThat('P5 number → number connects', verdict(num, inNum).ok);
+  expectThat('P5 number → string is REJECTED, with a reason',
+    verdict(num, inStr).ok === false && verdict(num, inStr).reason === 'data-type',
+    JSON.stringify(verdict(num, inStr)));
+  expectThat('P5 int → number connects (a declared widening)', verdict(int, inNum).ok);
+  expectThat('P5 compatibility is DIRECTIONAL — number → int is not implied',
+    evaluatePortConnection(inNum as any, int as any, { sourceNode: dst, targetNode: src }).ok === false);
+
+  PROBES.p5_typed = {
+    numberStroke: el('p5-num')?.getAttribute('stroke'),
+    stringStroke: el('p5-instr')?.getAttribute('stroke'),
+    rejectReason: verdict(num, inStr).reason,
+  };
+  portTypeRegistry.clear();
+}
+
+// W6-6: directional gating + live valid-target highlighting. The two features
+// that were declared-but-dead: `validTargetPorts` was never populated and
+// `highlightValidTargets` was never read.
+function p6_gatingAndHighlight() {
+  const stage = cell('p6', 'P6 — Wave 6 Cards 2+6: directional gating (fromMaxLinks / isConnectableEnd) + EVERY valid target highlighted during a drag');
+  const engine = makeEngine();
+  const diagram = engine.createDiagram('p6');
+
+  const src = new NodeModel({ type: 'rect', position: { x: 40, y: 80 }, size: { width: 100, height: 50 } } as any);
+  src.ports.clear();
+  src.setMetadata('shape', { type: 'rect', fill: '#dbeafe', stroke: '#334155', strokeWidth: 1.5, cornerRadius: 4 });
+  src.setMetadata('label', 'src');
+  src.addPort(new PortModel({ id: 'p6-out', type: 'output', side: 'right' } as any));
+  diagram.addNode(src);
+
+  // A legal target.
+  const ok = new NodeModel({ type: 'rect', position: { x: 260, y: 20 }, size: { width: 100, height: 50 } } as any);
+  ok.ports.clear();
+  ok.setMetadata('shape', { type: 'rect', fill: '#dcfce7', stroke: '#334155', strokeWidth: 1.5, cornerRadius: 4 });
+  ok.setMetadata('label', 'valid');
+  ok.addPort(new PortModel({ id: 'p6-ok', type: 'input', side: 'left' } as any));
+  diagram.addNode(ok);
+
+  // A target that refuses to be the END of a link.
+  const closed = new NodeModel({ type: 'rect', position: { x: 260, y: 90 }, size: { width: 100, height: 50 } } as any);
+  closed.ports.clear();
+  closed.setMetadata('shape', { type: 'rect', fill: '#fee2e2', stroke: '#334155', strokeWidth: 1.5, cornerRadius: 4 });
+  closed.setMetadata('label', 'no-end');
+  closed.addPort(new PortModel({ id: 'p6-closed', type: 'input', side: 'left', isConnectableEnd: false } as any));
+  diagram.addNode(closed);
+
+  // A target already at its incoming cap.
+  const full = new NodeModel({ type: 'rect', position: { x: 260, y: 160 }, size: { width: 100, height: 50 } } as any);
+  full.ports.clear();
+  full.setMetadata('shape', { type: 'rect', fill: '#fee2e2', stroke: '#334155', strokeWidth: 1.5, cornerRadius: 4 });
+  full.setMetadata('label', 'full');
+  full.addPort(new PortModel({ id: 'p6-full', type: 'input', side: 'left', toMaxLinks: 1 } as any));
+  diagram.addNode(full);
+
+  const feeder = new NodeModel({ type: 'rect', position: { x: 420, y: 160 }, size: { width: 60, height: 40 } } as any);
+  feeder.ports.clear();
+  feeder.setMetadata('shape', { type: 'rect', fill: '#f1f5f9', stroke: '#334155', strokeWidth: 1 });
+  feeder.addPort(new PortModel({ id: 'p6-feed', type: 'output', side: 'left' } as any));
+  diagram.addNode(feeder);
+  makeLink(diagram, 'p6-feed', 'p6-full', 'direct'); // eats the only incoming slot
+  diagram.reconcilePortConnections();
+
+  // Start a real connection drag from the source port.
+  const csm = engine.getConnectionStateManager();
+  csm.startConnection(src.getPort('p6-out'), { x: 140, y: 105 });
+  const drag = csm.getState();
+
+  expectThat('P6 the drag lights up the LEGAL target (validTargetPorts was NEVER populated before wave 6)',
+    drag.validTargetPorts.has('p6-ok'), JSON.stringify([...drag.validTargetPorts]));
+  expectThat('P6 a port that refuses to END a link is not a valid target',
+    !drag.validTargetPorts.has('p6-closed') && drag.invalidTargetPorts.get('p6-closed') === 'not-connectable-end',
+    String(drag.invalidTargetPorts.get('p6-closed')));
+  expectThat('P6 a port at its toMaxLinks cap is not a valid target',
+    !drag.validTargetPorts.has('p6-full') && drag.invalidTargetPorts.get('p6-full') === 'to-max-links',
+    String(drag.invalidTargetPorts.get('p6-full')));
+  expectThat('P6 an output port is not offered as the end of another output',
+    !drag.validTargetPorts.has('p6-feed') && drag.invalidTargetPorts.get('p6-feed') === 'direction',
+    String(drag.invalidTargetPorts.get('p6-feed')));
+
+  // Paint the highlight the way InteractionController does, then render.
+  drag.validTargetPorts.forEach((id: string) => {
+    const p = diagram.getPortById(id);
+    if (p) { p.isValidTarget = true; }
+  });
+  const svg = renderInto(engine, stage, 560, 240);
+
+  const okEl = svg.querySelector('[data-port-id="p6-ok"]');
+  const closedEl = svg.querySelector('[data-port-id="p6-closed"]');
+  expectThat('P6 the valid target renders in its highlighted state',
+    okEl?.getAttribute('stroke-width') === '3', String(okEl?.getAttribute('stroke-width')));
+  expectThat('P6 an unreachable port is DIMMED during the drag',
+    parseFloat(closedEl?.getAttribute('opacity') || '1') < 0.5, String(closedEl?.getAttribute('opacity')));
+
+  csm.cancelConnection();
+
+  PROBES.p6_gating = {
+    valid: [...drag.validTargetPorts],
+    invalid: Object.fromEntries(drag.invalidTargetPorts),
+  };
+}
+
+// ===========================================================================
 // run all
 // ===========================================================================
 const failures: any[] = [];
@@ -2558,6 +2948,9 @@ for (const [name, fn] of Object.entries({
   s21_themingLive,
   // Wave 5 (Edge routing)
   r1_channelNudging,
+  // Wave 6 (Ports & connections)
+  p1_glyphsAndStyle, p2_portLabels, p3_layoutEngine, p4_linkSpreading,
+  p5_typedPorts, p6_gatingAndHighlight,
 })) {
   try {
     (fn as any)();
