@@ -239,6 +239,49 @@ describe('Geometry - Shape-Aware Hit Detection (Phase 3.3)', () => {
       expect(isPointInShape(0, 60, bounds, shape)).toBe(false);
       expect(isPointInShape(100, 60, bounds, shape)).toBe(false);
     });
+
+    /**
+     * REGRESSION (Wave 4, found by the canvas hit-parity sweep).
+     *
+     * The hit region used to be a hexagon rotated 90 degrees from the one the
+     * renderer draws (points at top/bottom instead of left/right). The tests
+     * above could not see it: the centre is inside BOTH hexagons and the bbox
+     * corners are outside both. These points are inside exactly ONE of them, so
+     * they pin the hit region to the SHAPE ON SCREEN.
+     *
+     * The rendered hexagon (`hexagonVerts`, renderer/src/svg/shape-registry.ts)
+     * for a 100x60 box has vertices:
+     *   (25,0) (75,0) (100,30) (75,60) (25,60) (0,30)
+     */
+    it('hit-tests the hexagon the renderer actually draws (flat top, points L/R)', () => {
+      const shape: ShapeConfig = { type: 'hexagon' };
+      const bounds: BoundingBox = {
+        left: 0,
+        top: 0,
+        right: 100,
+        bottom: 60,
+        width: 100,
+        height: 60,
+      };
+
+      // ON the drawn top edge (y=0 spans x 25..75). The old pointy-top hexagon
+      // said "outside" here — you could click the shape and miss it.
+      expect(isPointInShape(30, 2, bounds, shape)).toBe(true);
+      expect(isPointInShape(70, 2, bounds, shape)).toBe(true);
+
+      // OUTSIDE the drawn shape, near the left point's upper slope. The old
+      // hexagon said "inside" — you could click ~16px off the shape and select it.
+      expect(isPointInShape(5, 18, bounds, shape)).toBe(false);
+      expect(isPointInShape(5, 42, bounds, shape)).toBe(false);
+
+      // The left/right points sit on the outline at mid-height.
+      expect(isPointInShape(1, 30, bounds, shape)).toBe(true);
+      expect(isPointInShape(99, 30, bounds, shape)).toBe(true);
+
+      // ...and just above/below them is off the shape.
+      expect(isPointInShape(1, 5, bounds, shape)).toBe(false);
+      expect(isPointInShape(99, 55, bounds, shape)).toBe(false);
+    });
   });
 
   describe('Offset Bounds', () => {

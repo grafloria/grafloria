@@ -9,7 +9,7 @@ import { PortModel, isConnectionAllowedByGroup } from '@grafloria/engine';
 import { WaypointEditor } from './WaypointEditor';
 import { ControlPointEditor } from './ControlPointEditor';
 import { ArrowRenderer } from '../svg/ArrowRenderer';
-import { hitTestLink } from '../svg/link-hit-test';
+import { DEFAULT_LINK_HIT_TOLERANCE, hitTestLink } from '../svg/link-hit-test';
 import type { LinkHitTestOptions, LinkPart } from '../svg/link-hit-test';
 
 /**
@@ -1134,7 +1134,10 @@ export class InteractionController {
     worldY: number,
     diagram: any
   ): LinkPartHit | null {
-    const hitThreshold = 5; // 5px tolerance for clicking links
+    // The cross-backend link grab distance. Canvas mode strokes each link's
+    // colour-key pick region with exactly 2x this, so both backends resolve the
+    // same link at the same world point.
+    const hitThreshold = DEFAULT_LINK_HIT_TOLERANCE;
     const query: Point = { x: worldX, y: worldY };
 
     for (const link of diagram.getLinks()) {

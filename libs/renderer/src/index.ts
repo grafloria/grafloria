@@ -18,6 +18,11 @@ export * from './themes';
 // Export renderers
 export * from './svg';
 
+// Wave 4: the Canvas 2D backend — the SECOND consumer of the same VNode tree
+// (retained-mode painting, colour-keyed hit canvas, devicePixelRatio scaling,
+// dirty-rectangle partial redraw), plus the per-diagram SVG⇄Canvas switch.
+export * from './canvas';
+
 // Phase 2.3: Interactive link editing tools
 // Wave 3: also exports the framework-agnostic InteractionController.
 export * from './interaction';
