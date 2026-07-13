@@ -165,3 +165,6 @@ export {
   isClassDef,
 } from './dsl';
 export * from './dsl/sync';
+
+// Wave 6 (Ports & connections): groups, typed data-flow, the connection validator
+export * from './ports';

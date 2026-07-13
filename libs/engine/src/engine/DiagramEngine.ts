@@ -198,8 +198,8 @@ export class DiagramEngine {
           link.targetNodeId = targetNode.id;
 
           // Register connections in ports
-          sourcePort.addConnection(link.id);
-          targetPort.addConnection(link.id);
+          sourcePort.addConnection(link.id, 'source');
+          targetPort.addConnection(link.id, 'target');
 
           // Calculate initial path using RoutingEngine
           const sourcePos = sourcePort.getAbsolutePosition(sourceNode.getBoundingBox());
@@ -391,6 +391,12 @@ export class DiagramEngine {
 
     // Update selection manager diagram reference (Phase 1.8a)
     this.selectionManager.setDiagram(diagram);
+
+    // Wave 6 (Card 6): the connection manager needs the graph to work out which
+    // ports are valid targets. Without this its `calculateValidTargets()` has
+    // nothing to walk — which is exactly why that method was a no-op stub and
+    // `validTargetPorts` was empty for the whole life of the feature.
+    this.connectionStateManager.setDiagram(diagram);
   }
 
   /**

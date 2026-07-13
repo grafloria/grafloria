@@ -3,8 +3,18 @@
 
 import type { PortModel } from '../models/PortModel';
 import type { LinkModel } from '../models/LinkModel';
+import type { NodeModel } from '../models/NodeModel';
+import type { DiagramModel } from '../models/DiagramModel';
 import type { Point } from '../types';
 import type { EventBus } from '../events/EventBus';
+// Wave 6 (Card 2 + Card 6): THE connection validator. This class used to carry
+// its own private copy of the input/output rules — one that silently skipped the
+// capacity check the rest of the engine enforced.
+import {
+  evaluatePortConnection,
+  type ConnectionRejectionReason,
+  type ConnectionVerdict,
+} from '../ports/connection-rules';
 
 /**
  * Connection drag state
@@ -50,6 +60,21 @@ export interface ConnectionDragState {
    * Whether current hover position is over a valid target
    */
   isOverValidTarget: boolean;
+
+  /**
+   * Wave 6 (Card 6): every port the drag has REJECTED, and why.
+   *
+   * The renderer draws an explicit "no" cue on a rejected target and dims ports
+   * whose data type is incompatible — it can only do that if the rejection is
+   * data, not a silently-swallowed `false`. Populated alongside
+   * `validTargetPorts` at drag start.
+   */
+  invalidTargetPorts: Map<string, ConnectionRejectionReason>;
+
+  /** Why the CURRENT hover was rejected (undefined when it is valid). */
+  rejectionReason?: ConnectionRejectionReason;
+  /** Human-readable form of {@link rejectionReason}. */
+  rejectionMessage?: string;
 }
 
 /**
@@ -69,9 +94,28 @@ export class ConnectionStateManager {
   private eventBus: EventBus;
   private validators: ConnectionValidator[] = [];
 
-  constructor(eventBus: EventBus) {
+  /**
+   * Wave 6 (Card 6): the diagram the drag is happening in.
+   *
+   * `calculateValidTargets()` was a comment-only stub — "DiagramEngine will call
+   * setValidTargets() after analyzing the diagram" — and NOTHING in the tree ever
+   * called `setValidTargets()`. So `validTargetPorts` was permanently empty, and
+   * `InteractionController.updatePortHighlights()`, which loops over it to paint
+   * the valid targets, painted nothing. The "highlight every valid target" feature
+   * has never worked. Giving the manager the diagram is what finally lets it
+   * answer its own question.
+   */
+  private diagram: DiagramModel | null = null;
+
+  constructor(eventBus: EventBus, diagram: DiagramModel | null = null) {
     this.eventBus = eventBus;
+    this.diagram = diagram;
     this.state = this.createInitialState();
+  }
+
+  /** Point the manager at the live diagram (DiagramEngine calls this on load). */
+  setDiagram(diagram: DiagramModel | null): void {
+    this.diagram = diagram;
   }
 
   /**
@@ -86,7 +130,10 @@ export class ConnectionStateManager {
       previewPath: null,
       validTargetNodes: new Set(),
       validTargetPorts: new Set(),
+      invalidTargetPorts: new Map(),
       isOverValidTarget: false,
+      rejectionReason: undefined,
+      rejectionMessage: undefined,
     };
   }
 
@@ -95,14 +142,11 @@ export class ConnectionStateManager {
    */
   startConnection(sourcePort: PortModel, startPoint: Point): void {
     this.state = {
+      ...this.createInitialState(),
       isConnecting: true,
       sourcePort,
-      targetPort: null,
       currentMousePosition: startPoint,
       previewPath: [startPoint],
-      validTargetNodes: new Set(),
-      validTargetPorts: new Set(),
-      isOverValidTarget: false,
     };
 
     // Calculate valid targets based on port type and connection rules
@@ -132,17 +176,22 @@ export class ConnectionStateManager {
     // Get source port absolute position (will be calculated by renderer)
     this.state.previewPath = [currentPoint]; // Renderer will add source point
 
-    // Check if over valid target
-    const wasOverValid = this.state.isOverValidTarget;
-    this.state.isOverValidTarget = hoveredPort
-      ? this.isValidConnection(hoveredPort)
-      : false;
+    // Check if over valid target. The VERDICT, not just the boolean — a rejected
+    // target has to be able to say why (Card 6's invalid cue).
+    const verdict: ConnectionVerdict = hoveredPort
+      ? this.evaluate(hoveredPort)
+      : { ok: false };
+    this.state.isOverValidTarget = verdict.ok;
+    this.state.rejectionReason = verdict.ok ? undefined : verdict.reason;
+    this.state.rejectionMessage = verdict.ok ? undefined : verdict.message;
 
     // Emit update event
     this.eventBus.emit('connection:update', {
       currentPoint,
       targetPort: hoveredPort,
       isValid: this.state.isOverValidTarget,
+      rejectionReason: this.state.rejectionReason,
+      rejectionMessage: this.state.rejectionMessage,
       previousTargetPort,
     });
 
@@ -157,6 +206,8 @@ export class ConnectionStateManager {
         this.eventBus.emit('connection:port-enter', {
           port: hoveredPort,
           isValid: this.state.isOverValidTarget,
+          rejectionReason: this.state.rejectionReason,
+          rejectionMessage: this.state.rejectionMessage,
         });
       }
     }
@@ -207,73 +258,107 @@ export class ConnectionStateManager {
   }
 
   /**
-   * Check if connection to target port is valid
+   * The full verdict for a candidate target — the ONE place this class decides
+   * what is legal. It delegates to `evaluatePortConnection`, the validator the
+   * whole engine now shares.
+   *
+   * This used to be a private re-implementation of the input/output rules that
+   * (a) never checked `maxConnections` — so an interactive drag would happily
+   * overfill a port the rest of the engine considered full — and (b) disagreed
+   * with the proximity-connect magnet about duplicates.
    */
-  private isValidConnection(targetPort: PortModel): boolean {
-    if (!this.state.sourcePort) {
-      return false;
-    }
-
+  private evaluate(targetPort: PortModel): ConnectionVerdict {
     const sourcePort = this.state.sourcePort;
+    if (!sourcePort) return { ok: false };
 
-    // Can't connect to same port
-    if (sourcePort.id === targetPort.id) {
-      return false;
-    }
+    const verdict = evaluatePortConnection(sourcePort, targetPort, {
+      sourceNode: this.nodeOf(sourcePort),
+      targetNode: this.nodeOf(targetPort),
+      links: this.diagram?.getLinks(),
+      validators: this.validators,
+    });
+    if (!verdict.ok) return verdict;
 
-    // Can't connect to same node
-    if (sourcePort.nodeId === targetPort.nodeId) {
-      return false;
-    }
-
-    // CRITICAL FIX: Check port types (input can't connect to input, output can't connect to output)
-    // Bidirectional ('bi') ports can connect to anything
-    const isBidirectional = (port: PortModel) => port.type === 'bi';
-
-    // If either port is bidirectional, allow the connection (type-wise)
-    if (!isBidirectional(sourcePort) && !isBidirectional(targetPort)) {
-      // Both ports are directional (input/output), check compatibility
-      if (sourcePort.type === 'input' && targetPort.type === 'input') {
-        return false;
-      }
-      if (sourcePort.type === 'output' && targetPort.type === 'output') {
-        return false;
-      }
-    }
-    // If either is bidirectional, we allow the connection (skip type check)
-
-    // CRITICAL FIX: Only check validTargetPorts if it has been populated by DiagramEngine
-    // If the set is empty, it means DiagramEngine hasn't set up validation yet, so skip this check
+    // A host that explicitly narrowed the target set (setValidTargets) still wins.
+    // Kept as a post-filter, and still only consulted when non-empty, so a host
+    // that never calls it is unaffected.
     if (this.state.validTargetPorts.size > 0 && !this.state.validTargetPorts.has(targetPort.id)) {
-      return false;
+      return { ok: false, reason: 'custom', message: 'This connection is not allowed.' };
     }
 
-    // Run custom validators
-    for (const validator of this.validators) {
-      if (!validator(sourcePort, targetPort)) {
-        return false;
-      }
-    }
+    return verdict;
+  }
 
-    return true;
+  /** Legacy boolean facade — kept because callers and tests rely on it. */
+  private isValidConnection(targetPort: PortModel): boolean {
+    return this.evaluate(targetPort).ok;
+  }
+
+  private nodeOf(port: PortModel): NodeModel | undefined {
+    if (!this.diagram) return undefined;
+    if (port.nodeId) {
+      const byId = this.diagram.getNode(port.nodeId);
+      if (byId) return byId;
+    }
+    return this.diagram.getNodeByPortId?.(port.id) ?? undefined;
   }
 
   /**
-   * Calculate valid connection targets based on source port
+   * Wave 6 (Card 6): partition EVERY port in the diagram into valid targets and
+   * rejected ones (with a reason), so the renderer can light up the whole graph
+   * the moment a drag starts.
+   *
+   * This was a comment-only stub. Nothing called `setValidTargets()`, so the set
+   * it promised to fill stayed empty forever and every downstream consumer —
+   * `InteractionController.updatePortHighlights()`, the `connection:start` event
+   * payload, the renderer's `isValidTarget` styling — silently had nothing to do.
    */
   private calculateValidTargets(sourcePort: PortModel): void {
-    // This will be populated by DiagramEngine based on:
-    // 1. Type registry rules
-    // 2. Port types (input/output/bi)
-    // 3. Port max connections
-    // 4. Custom validation rules
+    const validNodes = new Set<string>();
+    const validPorts = new Set<string>();
+    const invalidPorts = new Map<string, ConnectionRejectionReason>();
 
-    // For now, we just mark that calculation is needed
-    // DiagramEngine will call setValidTargets() after analyzing the diagram
+    const diagram = this.diagram;
+    if (!diagram) {
+      // No diagram wired in: leave the sets EMPTY, which the post-filter above
+      // reads as "unconstrained". Same behaviour as before this method worked.
+      this.state.validTargetNodes = validNodes;
+      this.state.validTargetPorts = validPorts;
+      this.state.invalidTargetPorts = invalidPorts;
+      return;
+    }
+
+    const links = diagram.getLinks();
+    const sourceNode = this.nodeOf(sourcePort);
+
+    for (const node of diagram.getNodes()) {
+      for (const port of node.getPorts()) {
+        if (port.id === sourcePort.id) continue;
+
+        const verdict = evaluatePortConnection(sourcePort, port, {
+          sourceNode,
+          targetNode: node,
+          links,
+          validators: this.validators,
+        });
+
+        if (verdict.ok) {
+          validPorts.add(port.id);
+          validNodes.add(node.id);
+        } else {
+          invalidPorts.set(port.id, verdict.reason ?? 'custom');
+        }
+      }
+    }
+
+    this.state.validTargetNodes = validNodes;
+    this.state.validTargetPorts = validPorts;
+    this.state.invalidTargetPorts = invalidPorts;
   }
 
   /**
-   * Set valid target ports (called by DiagramEngine)
+   * Set valid target ports (called by a host that wants to narrow the set
+   * further than the rules do — e.g. a wizard that only permits one legal move).
    */
   setValidTargets(nodeIds: Set<string>, portIds: Set<string>): void {
     this.state.validTargetNodes = nodeIds;
@@ -312,6 +397,7 @@ export class ConnectionStateManager {
       ...this.state,
       validTargetNodes: new Set(this.state.validTargetNodes),
       validTargetPorts: new Set(this.state.validTargetPorts),
+      invalidTargetPorts: new Map(this.state.invalidTargetPorts),
     };
   }
 

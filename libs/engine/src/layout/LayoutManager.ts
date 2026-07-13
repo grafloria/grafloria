@@ -622,8 +622,8 @@ export class LayoutManager {
           link.setTargetPort(targetPort.id, targetNode.id);
 
           // Add connection to new ports
-          sourcePort.addConnection(link.id);
-          targetPort.addConnection(link.id);
+          sourcePort.addConnection(link.id, 'source');
+          targetPort.addConnection(link.id, 'target');
 
           optimized++;
         }

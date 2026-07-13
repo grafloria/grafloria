@@ -32,3 +32,5 @@ export * from './RotateNodeCommand'; // wave4/interaction (rotate handle)
 export * from './SetNodeLabelCommand'; // wave4/interaction (in-place text editing)
 export * from './SetLinkPointsCommand'; // wave4/interaction (vertex tools)
 export * from './SetLinkLabelCommand'; // wave4/interaction (in-place text editing)
+
+export * from './PortCommands'; // wave6/ports (dynamic auto-ports)

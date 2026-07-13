@@ -529,8 +529,8 @@ export class DiagramModel extends DiagramEntity {
     link.targetNodeId = targetNode.id;
 
     // Register connections in ports
-    sourcePort.addConnection(link.id);
-    targetPort.addConnection(link.id);
+    sourcePort.addConnection(link.id, 'source');
+    targetPort.addConnection(link.id, 'target');
 
     // Calculate initial path
     const sourceBounds = sourceNode.getBoundingBox();
@@ -1745,6 +1745,9 @@ export class DiagramModel extends DiagramEntity {
     // of stale + current.
     for (const { port } of this.portIndex.values()) {
       port.currentConnections.clear();
+      // Wave 6: the DIRECTIONAL registry is derived state too — rebuilt here, or
+      // `fromMaxLinks`/`toMaxLinks` would count stale roles after a reload.
+      port.linkRoles.clear();
     }
 
     const dangling: Array<{ linkId: string; portId: string; end: 'source' | 'target' }> = [];
@@ -1755,7 +1758,7 @@ export class DiagramModel extends DiagramEntity {
       ] as const) {
         const entry = this.portIndex.get(portId);
         if (entry) {
-          entry.port.restoreConnection(link.id);
+          entry.port.restoreConnection(link.id, end);
         } else {
           dangling.push({ linkId: link.id, portId, end });
         }
