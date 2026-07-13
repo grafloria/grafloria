@@ -31,9 +31,19 @@ export * from './interaction';
 // wrapper otherwise re-implements.
 export * from './viewport';
 
-// Wave 3: the headless instance CONTRACT (types) a future createDiagram()
-// implements. See ./instance/diagram-instance.ts for what still blocks it.
+// Wave 3 declared the headless instance contract; Wave 4 IMPLEMENTS it:
+// createDiagram() + the DomEventBinder / RenderScheduler / custom-node host that
+// were its four blockers. This is what every framework wrapper binds to.
 export * from './instance';
+
+// Wave 4 (Card 6): SSR-safe render + hydration. renderToStaticSVG() runs the
+// real renderer in Node with no DOM; createDiagram({ hydrate }) adopts the DOM
+// it produced instead of rebuilding it.
+export * from './ssr';
+
+// Wave 4: browser/server guards. Every DOM, measurement and animation touch in
+// this library goes through these.
+export * from './platform';
 
 // Phase 1: Animation system
 export { AnimationService } from './services/animation.service';

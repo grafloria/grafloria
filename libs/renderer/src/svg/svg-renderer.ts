@@ -37,6 +37,8 @@ import {
 } from '../themes';
 import { createForeignObject, isForeignObject, getContainerId } from '../vnode/foreign-object';
 import { LruCache } from '../utils/lru-cache';
+// SSR (Card 6): every `document` touch in this file goes through this guard.
+import { hasDocument } from '../platform';
 
 // Import routing types
 import type { RoutedPath, RoutingAlgorithm } from '@grafloria/engine';
@@ -145,7 +147,7 @@ export class SVGRenderer implements IRenderer {
    * and this instance's `<style>` element id — so two diagrams with different
    * themes on one page no longer clobber each other's stylesheet.
    */
-  private readonly instanceId: string = nextInstanceId();
+  private readonly instanceId: string;
 
   /** Unsubscribe from the named-style registry (see the constructor). */
   private unsubscribeStyleRegistry?: () => void;
@@ -209,8 +211,8 @@ export class SVGRenderer implements IRenderer {
   private renderTimestamp = 0;
   private frameCount = 0;
   private fps = 0;
-  /** Handle of the 1s FPS sampler, so dispose() can actually stop it. */
-  private fpsTimer?: ReturnType<typeof setInterval>;
+  /** Handle of the 1 Hz FPS sampler — cleared in dispose() (see startFPSTracking). */
+  private fpsInterval?: ReturnType<typeof setInterval>;
 
   constructor(
     private engine: DiagramEngine,
@@ -224,7 +226,13 @@ export class SVGRenderer implements IRenderer {
       useCSSMode: config.useCSSMode ?? true,
       linkHitAreaWidth: config.linkHitAreaWidth ?? 12,
       smartConnectionPoints: config.smartConnectionPoints ?? false,
+      // Wave 4 (SSR): an explicit scope makes the root <svg> deterministic across
+      // processes; without it the per-process counter would emit a different
+      // `data-grafloria-instance` on the server than on the client.
+      instanceId: config.instanceId ?? '',
     };
+
+    this.instanceId = config.instanceId || nextInstanceId();
 
     // Bounded LRU vnode cache (evicts least-recently-used past maxCacheSize)
     this.vnodeCache = new LruCache<string, VNode>(Math.max(1, this.config.maxCacheSize));
@@ -430,6 +438,29 @@ export class SVGRenderer implements IRenderer {
   }
 
   /**
+   * The complete stylesheet this renderer would inject into `<head>`: the shared
+   * theme-independent rules, the animation rules, and THIS instance's
+   * `--grafloria-*` variable block.
+   *
+   * Needed by the SSR path (Card 6). In CSS mode the theme lives entirely in CSS
+   * variables, so the emitted SVG is theme-INDEPENDENT — which is exactly what
+   * makes hydration cheap, but it also means a server-rendered diagram is
+   * unstyled until some stylesheet arrives. `renderToStaticSVG()` returns this
+   * string so the server can ship it in a `<style>` tag; the client renderer then
+   * re-injects byte-identical content under the same ids, so hydration is still a
+   * no-op visually.
+   */
+  getStyleSheet(): string {
+    return (
+      generateBaseStyleSheet() +
+      '\n\n' +
+      this.generateAnimationCSS() +
+      '\n\n' +
+      this.generateThemeCSS()
+    );
+  }
+
+  /**
    * Put this diagram's scope on a host element.
    *
    * The root `<svg>` carries it automatically, and `foreignObject` content
@@ -595,9 +626,9 @@ export class SVGRenderer implements IRenderer {
     // 1s interval in the constructor that nothing ever cleared, so every disposed
     // renderer leaked a live timer — which in Node (a thumbnail service creating a
     // renderer per export) also keeps the process alive forever.
-    if (this.fpsTimer !== undefined) {
-      clearInterval(this.fpsTimer);
-      this.fpsTimer = undefined;
+    if (this.fpsInterval !== undefined) {
+      clearInterval(this.fpsInterval);
+      this.fpsInterval = undefined;
     }
 
     // Stop listening for named-style (re)definitions
@@ -2807,14 +2838,17 @@ export class SVGRenderer implements IRenderer {
    * the other's stylesheet.
    */
   private injectThemeCSS(): void {
-    // HEADLESS: no document, nothing to inject. The renderer itself is pure
-    // (model + viewport → VNode tree) and the stylesheet is a browser-only
-    // delivery mechanism for the theme — so refusing to construct without a DOM
-    // was a bug, not a safeguard: it made server-side rendering and export
-    // impossible in the one library that advertises being framework-agnostic.
-    // (Headless consumers get the theme through `export/`, which RESOLVES the
-    // same variables into the output instead of referencing them.)
-    if (typeof document === 'undefined') return;
+    // HEADLESS: no document, nothing to inject. This used to reach straight for
+    // `document` and throw `ReferenceError` the moment an SVGRenderer was built in
+    // Node — so SSR and export were impossible in the one library that advertises
+    // being framework-agnostic. (AnimationService.injectCSS() already guarded; this
+    // did not.) The renderer is pure (model + viewport → VNode tree) and the
+    // stylesheet is only a browser delivery mechanism for the theme, so a server
+    // render simply carries no <style> block — the VNode tree is identical either
+    // way, because the styles are variables, not geometry. Headless consumers get
+    // the theme through `export/`, which RESOLVES those variables into the output
+    // instead of referencing them.
+    if (!hasDocument()) return;
 
     this.ensureBaseStyleSheet();
 
@@ -3168,7 +3202,14 @@ export class SVGRenderer implements IRenderer {
    */
   private startFPSTracking(): void {
     this.renderTimestamp = performance.now();
-    this.fpsTimer = setInterval(() => {
+
+    // BUGFIX (wave 4): the interval handle was never stored and never cleared,
+    // so EVERY SVGRenderer ever constructed leaked a 1 Hz timer holding a strong
+    // reference to the renderer (and through it the engine + the whole VNode
+    // cache) for the life of the page — disposing the renderer did not stop it.
+    // In Node it also keeps the event loop alive forever, which is why the
+    // headless/SSR and export paths could not be added without fixing this first.
+    this.fpsInterval = setInterval(() => {
       const now = performance.now();
       const elapsed = (now - this.renderTimestamp) / 1000;
       this.fps = Math.round(this.frameCount / elapsed);
@@ -3179,7 +3220,7 @@ export class SVGRenderer implements IRenderer {
     // Node: an un-unref'd interval keeps the event loop alive, so a headless
     // export script would hang instead of exiting. The sampler is telemetry — it
     // must never be the reason a process stays up.
-    (this.fpsTimer as unknown as { unref?: () => void }).unref?.();
+    (this.fpsInterval as unknown as { unref?: () => void })?.unref?.();
   }
 
   /**

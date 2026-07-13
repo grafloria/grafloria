@@ -212,6 +212,38 @@ export class VNodePatcher {
     return el;
   }
 
+  /**
+   * ADOPT the DOM already inside `container` as the materialization of `vnode`,
+   * without creating, moving or removing a single node.
+   *
+   * This is the client half of SSR hydration (Card 6). The server emitted the
+   * serialization of this exact VNode tree into the HTML; re-mounting it would
+   * mean tearing that DOM down and rebuilding it — the "hydration flash" every
+   * flow library ships with. Instead we simply register the existing root as our
+   * mount, so the NEXT `reconcile()` diffs against `vnode` and touches only what
+   * genuinely changed.
+   *
+   * The adopt is only taken when the existing root plausibly IS this tree (same
+   * tag name); otherwise we fall back to a normal mount, which is always correct
+   * (just not flash-free). Assert with `stats`: a real hydration reports
+   * `created: 0, removed: 0`.
+   *
+   * @returns the adopted (or freshly mounted) root element.
+   */
+  hydrate(container: Element, vnode: VNode): Element {
+    this._stats = emptyStats();
+
+    const existing = container.firstElementChild;
+    if (!existing || existing.tagName.toLowerCase() !== vnode.type.toLowerCase()) {
+      // Server markup missing or not ours → mount normally (correct, not silent).
+      return this.reconcile(container, vnode);
+    }
+
+    this.mounts.set(container, { vnode, el: existing });
+    this._stats.reused++;
+    return existing;
+  }
+
   /** The root element currently mounted in `container`, if any. */
   getMountedElement(container: Element): Element | undefined {
     return this.mounts.get(container)?.el;

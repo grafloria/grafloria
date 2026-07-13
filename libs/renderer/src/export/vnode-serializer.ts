@@ -36,11 +36,36 @@
 // is kept verbatim.)
 
 import type { VNode } from '../types/vnode.types';
-import { attrNameForProp, serializeStyle } from '../vnode/patch';
+import { attrNameForProp, serializeStyle, SVG_NS } from '../vnode/patch';
 import type { ClassStyleResolver } from './style-flattener';
 
 /** What the serializer does with a `<foreignObject>` (HTML-in-SVG) subtree. */
 export type ForeignObjectMode = 'serialize' | 'placeholder' | 'omit';
+
+/**
+ * WHO is going to read this string — the only axis on which the two callers differ.
+ *
+ *   'file' (default)  A standalone `.svg` a rasterizer / Inkscape / an email client
+ *                     will read. It has no stylesheet, so the cascade is FLATTENED
+ *                     into presentation attributes; live-pipeline attributes minted
+ *                     from process-global counters are DROPPED (they mean nothing in
+ *                     a file and would destroy determinism); CSS `filter: blur()` is
+ *                     translated into a real `<filter>` def.
+ *
+ *   'dom'             An SSR snapshot the client's VNodePatcher will ADOPT. Here the
+ *                     string must describe exactly the DOM the patcher would have
+ *                     built from the same tree — otherwise hydration sees a different
+ *                     attribute set, tears the node down and rebuilds it, and the
+ *                     diagram flashes. So: `style` is kept verbatim, nothing is
+ *                     dropped, no cascade flattening, and the patcher's `data-vnode-key`
+ *                     mirror is reproduced.
+ *
+ * ONE traversal serves both. Keeping two would have meant two copies of the
+ * prop→attribute rules, and the moment one learned a new verbatim attribute and the
+ * other did not, exported files and hydrated pages would quietly disagree about what
+ * the diagram looks like.
+ */
+export type SerializeFidelity = 'file' | 'dom';
 
 /**
  * Props that address the LIVE pipeline, not the picture. Both are minted from
@@ -53,10 +78,17 @@ const DROPPED_PROPS = new Set(['containerId', 'data-grafloria-instance']);
 const CSS_BLUR = /^blur\(\s*([\d.]+)(?:px)?\s*\)$/;
 
 export interface SerializeOptions {
+  /** Who reads the output. Default `'file'`. See {@link SerializeFidelity}. */
+  fidelity?: SerializeFidelity;
+
+  /** Stamp `xmlns` on the root element (needed for a standalone `.svg` file). */
+  standalone?: boolean;
+
   /**
    * Resolves an element's classes to the presentation attributes the renderer's
    * stylesheet would have painted. Omit for a tree rendered in programmatic mode
    * (there is no stylesheet there — every value is already on the element).
+   * Ignored under `fidelity: 'dom'` — the client has the real stylesheet.
    */
   classStyles?: ClassStyleResolver;
 
@@ -143,6 +175,7 @@ export function serializeVNode(vnode: VNode, options: SerializeOptions = {}): st
   const warnings = options.warnings ?? [];
   const extraDefs = options.extraDefs ?? new Map<string, string>();
   const foMode = options.foreignObject ?? 'serialize';
+  const dom = options.fidelity === 'dom';
 
   if (vnode.type === 'foreignObject') {
     return serializeForeignObject(vnode, { ...options, warnings, extraDefs }, foMode);
@@ -150,6 +183,16 @@ export function serializeVNode(vnode: VNode, options: SerializeOptions = {}): st
 
   const { attrs, text } = elementAttrs(vnode, options, extraDefs, options.html === true);
   const children = (vnode.children ?? []).filter(isRenderable);
+
+  // A standalone file needs the namespace declared; an SSR snapshot needs it too,
+  // because the client parses the markup before the patcher adopts it.
+  if (options.standalone && !attrs.has('xmlns') && !options.html) {
+    attrs.set('xmlns', SVG_NS);
+  }
+
+  // Children are serialized as SVG unless we have crossed into a foreignObject.
+  // `standalone` is a ROOT-only concern — never inherit it.
+  const childOpts: SerializeOptions = { ...options, warnings, extraDefs, standalone: false };
 
   const open = `<${vnode.type}${renderAttrs(attrs)}`;
 
@@ -160,13 +203,15 @@ export function serializeVNode(vnode: VNode, options: SerializeOptions = {}): st
   }
 
   if (children.length === 0) {
-    return `${open}/>`;
+    // Under 'dom' fidelity always write the long form: the patcher builds
+    // `<g></g>`, and the snapshot the client parses should read the same.
+    return dom ? `${open}></${vnode.type}>` : `${open}/>`;
   }
 
   const inner = children
     .map(child =>
       isVNodeChild(child)
-        ? serializeVNode(child as VNode, { ...options, warnings, extraDefs })
+        ? serializeVNode(child as VNode, childOpts)
         : escapeText(String(child))
     )
     .join('');
@@ -309,6 +354,11 @@ function elementAttrs(
   let text: string | undefined;
   let inline: Record<string, string> = {};
 
+  // 'dom': describe the DOM the patcher would build, verbatim. No dropping, no
+  // flattening, no filter translation — the client HAS the stylesheet, and any
+  // difference here is a hydration mismatch (torn-down + rebuilt nodes = a flash).
+  const dom = options.fidelity === 'dom';
+
   for (const key of Object.keys(props)) {
     const value = props[key];
 
@@ -316,7 +366,11 @@ function elementAttrs(
     // Event handlers are not attributes. Stringifying a function into the output
     // would emit a JS source dump as an attribute value.
     if (typeof value === 'function') continue;
-    if (DROPPED_PROPS.has(key)) continue;
+    // Live-pipeline attributes: meaningless in a file, and minted from process-global
+    // counters, so keeping them would make the bytes depend on how many renderers the
+    // process happened to build first. In a DOM snapshot they must SURVIVE — the CSS
+    // scope (`data-grafloria-instance`) and the component-mount handle both depend on them.
+    if (!dom && DROPPED_PROPS.has(key)) continue;
 
     if (key === 'textContent') {
       text = String(value);
@@ -325,7 +379,8 @@ function elementAttrs(
 
     if (key === 'style') {
       // HTML has no presentation attributes: keep the style attribute verbatim.
-      if (html) {
+      // Same for a DOM snapshot — the patcher writes `style`, so we must too.
+      if (html || dom) {
         const serialized = serializeStyle(value);
         if (serialized) attrs.set('style', serialized);
       } else {
@@ -334,12 +389,21 @@ function elementAttrs(
       continue;
     }
 
-    if (key === 'filter') {
+    if (key === 'filter' && !dom) {
       attrs.set('filter', translateBlurFilter(String(value), extraDefs));
       continue;
     }
 
     attrs.set(attrNameForProp(key), String(value));
+  }
+
+  if (dom) {
+    // The patcher mirrors the VNode key into the DOM as `data-vnode-key`; a snapshot
+    // that omitted it would present a different attribute set on every keyed element.
+    if (vnode.key !== undefined && vnode.key !== null) {
+      attrs.set('data-vnode-key', String(vnode.key));
+    }
+    return { attrs, text };
   }
 
   // Inside a foreignObject the host's CSS owns the content — we neither know nor
