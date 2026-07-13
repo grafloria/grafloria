@@ -7,37 +7,16 @@ export * from './vnode';
 // Export themes
 export * from './themes';
 
-// Export core renderer strategy interfaces (used by Angular service)
-export type {
-  IRenderer as IRendererStrategy,
-  RendererCapabilities,
-  RendererConfig,
-  SVGRendererConfig as SVGRendererStrategyConfig,
-  CanvasRendererConfig as CanvasRendererStrategyConfig,
-  RenderOptions,
-  NodeUpdate,
-  TextStyle,
-  TextMetrics,
-  BoundingBox,
-  ExportFormat,
-  ExportOptions,
-  RendererConstructor,
-} from './core/renderer.interface';
-
-// Export core services
-export { RendererFactory } from './core/renderer-factory';
-export {
-  RendererStrategyManager,
-  type RendererChangeEvent,
-  type RendererChangeCallback,
-} from './core/renderer-strategy-manager';
+// NOTE: the second `IRenderer` (core/renderer.interface) and its consumer stack
+// — SVGRendererV2, the Canvas stub, HybridRenderer, RendererFactory,
+// RendererStrategyManager — are gone. Nothing in production ever used them: the
+// live pipeline is SVGRenderer (diagram → VNode) + the VNode patcher
+// (VNode → DOM). The vocabulary worth keeping (RendererCapabilities, hitTest,
+// export, text measurement) now lives on the surviving contract in
+// types/renderer.interface.ts.
 
 // Export renderers
 export * from './svg';
-export * from './canvas';
-
-// Hybrid rendering (Phase 3.5)
-export * from './hybrid';
 
 // Phase 2.3: Interactive link editing tools
 export * from './interaction';

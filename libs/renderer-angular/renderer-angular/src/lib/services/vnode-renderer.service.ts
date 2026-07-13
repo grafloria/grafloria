@@ -1,164 +1,72 @@
 import { Injectable } from '@angular/core';
+import { VNodePatcher, type PatchStats } from '@grafloria/renderer';
 import type { VNode } from '@grafloria/renderer';
 
 /**
  * VNodeRendererService
- * Converts framework-agnostic VNode trees to actual DOM/SVG elements
+ *
+ * Angular-facing wrapper around the framework-agnostic VNode → DOM patcher
+ * (`VNodePatcher` in `@grafloria/renderer`). This service holds NO rendering logic
+ * of its own: the diff/patch rules live in one place so the Angular canvas, the
+ * e2e harness and any headless consumer all materialize VNodes identically.
+ *
+ * `render()` used to wipe the container (`innerHTML = ''`) and rebuild the whole
+ * DOM on every frame, which destroyed focus, text selection, running CSS
+ * animations and anything mounted inside a `<foreignObject>`. It now reconciles:
+ * existing DOM elements are reused, reordered by key, and only genuinely-changed
+ * attributes are written.
  */
 @Injectable({
   providedIn: 'root',
 })
 export class VNodeRendererService {
-  private readonly SVG_NAMESPACE = 'http://www.w3.org/2000/svg';
+  private readonly patcher = new VNodePatcher();
 
   /**
-   * Render a VNode to a DOM element
-   */
-  renderVNode(vnode: VNode): Element {
-    // Create element based on type
-    const element = this.createElement(vnode.type);
-
-    // Apply properties
-    this.applyProps(element, vnode.props);
-
-    // Render children
-    if (vnode.children && vnode.children.length > 0) {
-      for (const child of vnode.children) {
-        const childElement = this.renderVNode(child);
-        element.appendChild(childElement);
-      }
-    }
-
-    return element;
-  }
-
-  /**
-   * Update an existing element with new VNode properties
-   */
-  updateVNode(element: Element, oldVNode: VNode, newVNode: VNode): void {
-    // Get old and new props
-    const oldProps = oldVNode.props || {};
-    const newProps = newVNode.props || {};
-
-    // Remove old props that don't exist in new props
-    for (const key in oldProps) {
-      if (!(key in newProps)) {
-        this.removeProp(element, key);
-      }
-    }
-
-    // Add/update new props
-    for (const key in newProps) {
-      if (oldProps[key] !== newProps[key]) {
-        this.setProp(element, key, newProps[key]);
-      }
-    }
-
-    // TODO: Handle children updates (for now, full re-render is used)
-  }
-
-  /**
-   * Render VNode tree into a container
+   * Render (or re-render) a VNode tree into a container, reusing the DOM that is
+   * already there. This is the hot path — it runs once per frame.
+   *
+   * @returns the root DOM element for the tree
    */
   render(vnode: VNode, container: HTMLElement): void {
-    // Clear container
-    container.innerHTML = '';
-
-    // Render root element
-    const element = this.renderVNode(vnode);
-
-    // Append to container
-    container.appendChild(element);
+    this.patcher.reconcile(container, vnode);
   }
 
   /**
-   * Create an element based on type
+   * Reconcile a VNode tree into a container and hand back the root element.
+   * Same as {@link render}, for callers that want the element.
    */
-  private createElement(type: string): Element {
-    return document.createElementNS(this.SVG_NAMESPACE, type);
+  reconcile(container: HTMLElement, vnode: VNode): Element {
+    return this.patcher.reconcile(container, vnode);
   }
 
   /**
-   * Apply properties to an element
+   * Build a fresh, detached DOM element for a VNode (deep).
+   * Used for one-shot materialization; `render()` is what you want for a canvas.
    */
-  private applyProps(element: Element, props: Record<string, any>): void {
-    for (const key in props) {
-      this.setProp(element, key, props[key]);
-    }
+  renderVNode(vnode: VNode): Element {
+    return this.patcher.createElement(vnode);
   }
 
   /**
-   * Set a single property on an element
+   * Diff two VNodes onto an existing element: props AND children.
+   * (The old implementation only diffed props and left a "TODO: handle children"
+   * behind — children are now reconciled by key.)
    */
-  private setProp(element: Element, key: string, value: any): void {
-    // CRITICAL: Skip undefined and null values to prevent overriding CSS
-    // Setting stroke-width="undefined" as a string would override CSS animations
-    if (value === undefined || value === null) {
-      return;
-    }
+  updateVNode(element: Element, oldVNode: VNode, newVNode: VNode): void {
+    this.patcher.patchElement(element, oldVNode, newVNode);
+  }
 
-    if (key === 'textContent') {
-      element.textContent = value;
-      return;
-    }
-
-    if (key === 'className') {
-      element.setAttribute('class', value);
-      return;
-    }
-
-    // Special SVG attributes that preserve their casing. camelToKebab would
-    // corrupt these genuinely-camelCase SVG attribute names (e.g. gradientUnits
-    // → gradient-units), so they're set verbatim. The paint-server defs
-    // (gradients/patterns/drop-shadow filters) rely on this list.
-    const svgSpecialAttrs = [
-      'viewBox',
-      'preserveAspectRatio',
-      'gradientUnits',
-      'gradientTransform',
-      'spreadMethod',
-      'patternUnits',
-      'patternContentUnits',
-      'patternTransform',
-      'stdDeviation',
-    ];
-    if (svgSpecialAttrs.includes(key)) {
-      element.setAttribute(key, String(value));
-      return;
-    }
-
-    // Convert camelCase to kebab-case for SVG attributes
-    const attrName = this.camelToKebab(key);
-
-    // Set attribute
-    element.setAttribute(attrName, String(value));
+  /** Remove the tree this service mounted in `container` and forget it. */
+  unmount(container: HTMLElement): void {
+    this.patcher.unmount(container);
   }
 
   /**
-   * Remove a property from an element
+   * Work done by the last `render()` — created / reused / moved / removed /
+   * skipped node counts. A steady-state frame should create ~nothing.
    */
-  private removeProp(element: Element, key: string): void {
-    if (key === 'textContent') {
-      element.textContent = '';
-      return;
-    }
-
-    if (key === 'className') {
-      element.removeAttribute('class');
-      return;
-    }
-
-    // Convert camelCase to kebab-case
-    const attrName = this.camelToKebab(key);
-
-    // Remove attribute
-    element.removeAttribute(attrName);
-  }
-
-  /**
-   * Convert camelCase to kebab-case
-   */
-  private camelToKebab(str: string): string {
-    return str.replace(/([a-z0-9])([A-Z])/g, '$1-$2').toLowerCase();
+  getLastPatchStats(): Readonly<PatchStats> {
+    return this.patcher.stats;
   }
 }

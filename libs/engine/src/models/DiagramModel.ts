@@ -128,32 +128,80 @@ export class DiagramModel extends DiagramEntity {
 
     this.linkSpatialIndex = new SpatialIndex<LinkModel>({
       cellSize: 100,
-      getBounds: (link) => {
-        // Calculate bounding box from points
-        if (link.points.length === 0) {
-          return { x: 0, y: 0, width: 0, height: 0 };
-        }
-
-        let minX = Infinity;
-        let minY = Infinity;
-        let maxX = -Infinity;
-        let maxY = -Infinity;
-
-        for (const point of link.points) {
-          minX = Math.min(minX, point.x);
-          minY = Math.min(minY, point.y);
-          maxX = Math.max(maxX, point.x);
-          maxY = Math.max(maxY, point.y);
-        }
-
-        return {
-          x: minX,
-          y: minY,
-          width: maxX - minX,
-          height: maxY - minY,
-        };
-      },
+      getBounds: (link) => this.computeLinkBounds(link),
     });
+  }
+
+  /**
+   * Bounding box of a link, for viewport culling (`getVisibleLinks`).
+   *
+   * It is the union of TWO things, and it needs both:
+   *
+   *  - `link.points` — the routed path (including orthogonal detours). Renderers
+   *    write this back per frame, so for anything that has been drawn it is the
+   *    real geometry.
+   *  - the LIVE endpoints, resolved O(1) through the port index. Points alone are
+   *    not trustworthy: a link built with `new LinkModel()` + `addLink()` has NO
+   *    points until something routes it (it would otherwise be indexed as a
+   *    zero-size box at the world origin and get culled everywhere except there),
+   *    and points go stale the moment a node moves without a reroute. The drawn
+   *    path always runs between the live ports, so folding them in keeps the box
+   *    a correct SUPERSET of what will actually be painted.
+   *
+   * Being a superset is the safe direction: culling too little costs a few
+   * VNodes, culling too much makes edges vanish off-screen.
+   */
+  private computeLinkBounds(link: LinkModel): Rectangle {
+    let minX = Infinity;
+    let minY = Infinity;
+    let maxX = -Infinity;
+    let maxY = -Infinity;
+
+    const include = (point: Point) => {
+      minX = Math.min(minX, point.x);
+      minY = Math.min(minY, point.y);
+      maxX = Math.max(maxX, point.x);
+      maxY = Math.max(maxY, point.y);
+    };
+
+    for (const point of link.points) {
+      include(point);
+    }
+
+    const source = this.portIndex.get(link.sourcePortId);
+    if (source) {
+      include(source.port.getAbsolutePosition(source.node.getBoundingBox()));
+    }
+    const target = this.portIndex.get(link.targetPortId);
+    if (target) {
+      include(target.port.getAbsolutePosition(target.node.getBoundingBox()));
+    }
+
+    if (minX === Infinity) {
+      // Nothing to go on (no points, no resolvable ports).
+      return { x: 0, y: 0, width: 0, height: 0 };
+    }
+
+    return {
+      x: minX,
+      y: minY,
+      width: maxX - minX,
+      height: maxY - minY,
+    };
+  }
+
+  /**
+   * Re-index a link after its geometry changed WITHOUT a `change:points` event.
+   *
+   * Renderers route links per frame and assign `link.points` directly (using
+   * `setPoints()` would emit `change` → `link:changed` → another render, i.e. a
+   * render loop). The spatial index therefore never hears about the routed path,
+   * and its grid cells would keep pointing at the geometry the link had when it
+   * was added. Call this after writing points directly.
+   */
+  refreshLinkBounds(link: LinkModel): void {
+    if (!this.links.has(link.id)) return;
+    this.linkSpatialIndex.update(link);
   }
 
   /**
@@ -359,6 +407,10 @@ export class DiagramModel extends DiagramEntity {
     // Phase 5.1: Add to spatial index and listen - AFTER trackChange
     this.linkSpatialIndex.add(link);
     link.on('change:points', () => this.linkSpatialIndex.update(link));
+    // generatePath() (layout, live-rerouting, node drag) rewrites `points` in
+    // place and only emits 'link:path-changed' — without this the index keeps the
+    // grid cells the link had when it was added and viewport culling loses it.
+    link.on('link:path-changed', () => this.linkSpatialIndex.update(link));
 
     // Listen for any link changes and forward as diagram-level 'link:changed' event
     link.on('change', () => {

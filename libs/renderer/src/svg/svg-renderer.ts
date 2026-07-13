@@ -63,6 +63,15 @@ import { AnimationService } from '../services/animation.service';
 export class SVGRenderer implements IRenderer {
   readonly mode = 'svg' as const;
 
+  /**
+   * World-space margin added around the viewport when querying the engine's link
+   * SpatialIndex (see expandForLinkCulling). Covers routed detours that have not
+   * been written back into `link.points` yet — an orthogonal detour around a node
+   * stays well inside this, and the cost of an over-wide query is only a few
+   * extra VNodes.
+   */
+  private static readonly LINK_CULL_MARGIN = 250;
+
   private theme: Theme;
   private config: Required<SVGRendererConfig>;
   // Bounded LRU so the cache honors config.maxCacheSize instead of growing
@@ -209,8 +218,11 @@ export class SVGRenderer implements IRenderer {
     // Get visible nodes using engine's SpatialIndex (viewport virtualization)
     const visibleNodes = diagram.getVisibleNodes(viewport);
 
-    // Get visible links (only render if both endpoints are visible)
-    const visibleLinks = this.getVisibleLinks(diagram, viewport);
+    // Get visible links by GEOMETRY, through the engine's link SpatialIndex.
+    // (This used to be "render the link only if BOTH endpoint nodes are visible",
+    // which made a long edge disappear the moment its nodes scrolled off-screen —
+    // even while the edge itself crossed the middle of the viewport.)
+    const visibleLinks = diagram.getVisibleLinks(this.expandForLinkCulling(viewport));
 
     // Track counts
     this.lastNodeCount = visibleNodes.length;
@@ -2354,35 +2366,27 @@ export class SVGRenderer implements IRenderer {
   }
 
   /**
-   * Get visible links (only if both endpoints are visible)
+   * Grow the viewport before asking the engine which links intersect it.
+   *
+   * The link SpatialIndex is indexed on the link's straight-line endpoints plus
+   * whatever route was last written back to `link.points`. A link that has never
+   * been drawn (or that was re-routed around a new obstacle this very frame) can
+   * bulge OUTSIDE that box: the detour lives in this renderer's per-frame
+   * `frameRoutes` map and only lands in `link.points` once the link renders.
+   *
+   * Padding the query region by a margin makes the query a superset, so a link
+   * whose detour swings into view is never culled a frame too early. Culling a
+   * little too little costs a handful of VNodes; culling too much makes edges
+   * blink out of existence.
    */
-  private getVisibleLinks(diagram: any, viewport: Rectangle): LinkModel[] {
-    const visibleNodes = new Set(diagram.getVisibleNodes(viewport).map((n: NodeModel) => n.id));
-    const allLinks = diagram.getLinks();
-
-    return allLinks.filter((link: LinkModel) => {
-      // Check if both source and target nodes are visible
-      const sourceNode = this.getNodeForPort(link.sourcePortId);
-      const targetNode = this.getNodeForPort(link.targetPortId);
-
-      return (
-        sourceNode &&
-        targetNode &&
-        visibleNodes.has(sourceNode.id) &&
-        visibleNodes.has(targetNode.id)
-      );
-    });
-  }
-
-  /**
-   * Get node that owns a port.
-   * Uses the diagram's O(1) portIndex instead of an O(nodes×ports) scan —
-   * this runs once per link per frame inside getVisibleLinks().
-   */
-  private getNodeForPort(portId: string): NodeModel | undefined {
-    const diagram = this.engine.getDiagram();
-    if (!diagram) return undefined;
-    return diagram.getNodeByPortId(portId);
+  private expandForLinkCulling(viewport: Rectangle): Rectangle {
+    const margin = SVGRenderer.LINK_CULL_MARGIN;
+    return {
+      x: viewport.x - margin,
+      y: viewport.y - margin,
+      width: viewport.width + margin * 2,
+      height: viewport.height + margin * 2,
+    };
   }
 
   /**
@@ -3374,9 +3378,15 @@ export class SVGRenderer implements IRenderer {
    * Keep link.points in sync with the rendered route on every frame so hit
    * testing and jump-point detection see current geometry. Direct assignment
    * (no setPoints) to avoid emitting link:changed and re-render loops.
+   *
+   * That silence is also why we re-index the link by hand: the diagram's link
+   * SpatialIndex — which now drives viewport culling — only hears about geometry
+   * through events, so without this its grid cells would still describe the route
+   * the link had when it was added, and a detoured link could be culled.
    */
   private syncLinkPoints(link: LinkModel, points: Array<{ x: number; y: number }>): void {
     link.points = points.map(p => ({ ...p }));
+    this.engine.getDiagram()?.refreshLinkBounds(link);
   }
 
   /**

@@ -3,23 +3,26 @@ import { Component, ViewChild, ElementRef } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { VNodeRendererService } from '../../lib/services/vnode-renderer.service';
 import { ComponentRendererService } from '../../lib/services/component-renderer.service';
-import { TestDiagramBuilder, MockRenderer } from '../utils';
 import type { VNode } from '@grafloria/renderer';
 
 /**
  * Component Rendering Integration Tests
  *
- * Tests the complete component rendering workflow including:
- * - VNode to component mapping
- * - Dynamic component creation
- * - Component lifecycle management
- * - Rendering performance
- * - Memory management
- * - Edge cases
+ * The VNode → DOM half of the pipeline, end to end in a real Angular fixture:
+ * `VNodeRendererService` reconciling a VNode tree into a live container, next to
+ * `ComponentRendererService`, which mounts Angular components into the
+ * `<foreignObject>` containers that tree produces.
+ *
+ * This suite previously drove a `MockRenderer` through a `render(vnode, container,
+ * renderer)` overload that the service never had — it had not compiled (TS2554)
+ * and contributed zero tests. It has been retargeted at the real API, and at the
+ * behaviour that actually matters here: re-rendering must REUSE the DOM, because
+ * anything mounted inside a foreignObject dies with the element that held it.
  */
 
 @Component({
   selector: 'test-diagram-host',
+  standalone: false,
   template: `<div #container class="diagram-container"></div>`,
   styles: ['.diagram-container { width: 800px; height: 600px; }'],
 })
@@ -31,16 +34,22 @@ class TestHostComponent {
   }
 }
 
+@Component({
+  selector: 'test-embedded',
+  standalone: false,
+  template: `<span class="embedded">embedded</span>`,
+})
+class EmbeddedComponent {}
+
 describe('Component Rendering Integration Tests', () => {
   let hostComponent: TestHostComponent;
   let fixture: ComponentFixture<TestHostComponent>;
   let vnodeService: VNodeRendererService;
   let componentService: ComponentRendererService;
-  let mockRenderer: MockRenderer;
 
   beforeEach(async () => {
     await TestBed.configureTestingModule({
-      declarations: [TestHostComponent],
+      declarations: [TestHostComponent, EmbeddedComponent],
       imports: [CommonModule],
       providers: [VNodeRendererService, ComponentRendererService],
     }).compileComponents();
@@ -49,287 +58,223 @@ describe('Component Rendering Integration Tests', () => {
     hostComponent = fixture.componentInstance;
     vnodeService = TestBed.inject(VNodeRendererService);
     componentService = TestBed.inject(ComponentRendererService);
-    mockRenderer = new MockRenderer('svg');
 
     fixture.detectChanges();
   });
 
   afterEach(() => {
-    mockRenderer.destroy();
+    vnodeService.unmount(hostComponent.container);
   });
 
-  describe('Scenario 1: Basic VNode Rendering', () => {
-    it('should render a simple VNode tree', async () => {
-      const vnode: VNode = {
+  /** A diagram-shaped tree: root svg → nodes layer → keyed node groups. */
+  const diagramTree = (nodes: Array<{ id: string; x: number }>): VNode => ({
+    type: 'svg',
+    key: 'diagram-root',
+    props: { className: 'grafloria-diagram' },
+    children: [
+      {
         type: 'g',
-        props: { id: 'root' },
-        children: [
-          {
-            type: 'rect',
-            props: { x: 0, y: 0, width: 100, height: 100, fill: '#FF0000' },
-          },
-        ],
-      };
+        key: 'nodes-layer',
+        props: { className: 'nodes-layer' },
+        children: nodes.map(({ id, x }) => ({
+          type: 'g',
+          key: `node-${id}`,
+          props: { transform: `translate(${x}, 0)` },
+          children: [{ type: 'rect', props: { width: 100, height: 50 } }],
+        })),
+      },
+    ],
+  });
 
-      await vnodeService.render(vnode, hostComponent.container, mockRenderer);
+  describe('Scenario 1: VNode rendering into a live container', () => {
+    it('should render a VNode tree to real DOM', () => {
+      vnodeService.render(diagramTree([{ id: 'a', x: 0 }]), hostComponent.container);
 
-      expect(mockRenderer.renderCount).toBe(1);
-      expect(mockRenderer.lastVNode).toBe(vnode);
+      const svg = hostComponent.container.querySelector('svg');
+      expect(svg).toBeTruthy();
+      expect(svg!.getAttribute('class')).toBe('grafloria-diagram');
+      expect(hostComponent.container.querySelectorAll('rect').length).toBe(1);
     });
 
-    it('should render complex diagram structure', async () => {
-      const diagram = TestDiagramBuilder.createSimpleFlowchart().build();
+    it('should keep exactly one root across repeated renders', () => {
+      vnodeService.render(diagramTree([{ id: 'a', x: 0 }]), hostComponent.container);
+      vnodeService.render(diagramTree([{ id: 'a', x: 10 }]), hostComponent.container);
+      vnodeService.render(diagramTree([{ id: 'a', x: 20 }]), hostComponent.container);
 
-      const start = performance.now();
-      await vnodeService.render(diagram, hostComponent.container, mockRenderer);
-      const elapsed = performance.now() - start;
-
-      expect(mockRenderer.renderCount).toBe(1);
-      expect(elapsed).toBeLessThan(50); // Should be fast
+      expect(hostComponent.container.children.length).toBe(1);
     });
   });
 
-  describe('Scenario 2: Dynamic Component Creation', () => {
-    it('should create Angular components from VNodes', async () => {
-      // Register a custom component renderer
-      componentService.registerComponentType('custom-node', {
-        component: TestHostComponent,
-        inputs: ['data'],
-      });
+  describe('Scenario 2: re-render reuses DOM instead of rebuilding it', () => {
+    it('should keep the same element objects and just patch them', () => {
+      vnodeService.render(diagramTree([{ id: 'a', x: 0 }]), hostComponent.container);
+      const nodeGroup = hostComponent.container.querySelector('[data-vnode-key="node-a"]')!;
 
-      const vnode: VNode = {
-        type: 'custom-node',
-        props: { data: { id: 'node1', label: 'Test' } },
-      };
+      vnodeService.render(diagramTree([{ id: 'a', x: 250 }]), hostComponent.container);
 
-      const componentRef = await componentService.createComponent(
-        'custom-node',
+      const after = hostComponent.container.querySelector('[data-vnode-key="node-a"]')!;
+      expect(after).toBe(nodeGroup); // same object — not torn down and rebuilt
+      expect(after.getAttribute('transform')).toBe('translate(250, 0)');
+      expect(vnodeService.getLastPatchStats().created).toBe(0);
+    });
+
+    it('should add and remove nodes without disturbing the survivors', () => {
+      vnodeService.render(
+        diagramTree([{ id: 'a', x: 0 }, { id: 'b', x: 100 }]),
+        hostComponent.container
+      );
+      const a = hostComponent.container.querySelector('[data-vnode-key="node-a"]')!;
+
+      vnodeService.render(
+        diagramTree([{ id: 'a', x: 0 }, { id: 'c', x: 200 }]),
         hostComponent.container
       );
 
-      expect(componentRef).toBeTruthy();
-      expect(componentService.getComponentCount()).toBe(1);
+      expect(hostComponent.container.querySelector('[data-vnode-key="node-a"]')).toBe(a);
+      expect(hostComponent.container.querySelector('[data-vnode-key="node-b"]')).toBeNull();
+      expect(hostComponent.container.querySelector('[data-vnode-key="node-c"]')).toBeTruthy();
     });
 
-    it('should handle multiple component instances', async () => {
-      componentService.registerComponentType('node', {
-        component: TestHostComponent,
-        inputs: ['id'],
+    it('should preserve DOM state a full rebuild would destroy (focus)', () => {
+      // A rebuilt element cannot hold focus, selection or a running animation.
+      const tree = (x: number): VNode => ({
+        type: 'svg',
+        key: 'diagram-root',
+        props: {},
+        children: [
+          {
+            type: 'foreignObject',
+            key: 'fo-node-a',
+            props: { x, y: 0, width: 200, height: 100 },
+            children: [{ type: 'div', props: { id: 'live-container' } }],
+          },
+        ],
       });
 
-      const componentRefs = [];
-      for (let i = 0; i < 10; i++) {
-        const ref = await componentService.createComponent('node', hostComponent.container);
-        componentRefs.push(ref);
-      }
+      vnodeService.render(tree(0), hostComponent.container);
+      const mount = hostComponent.container.querySelector('#live-container')!;
 
-      expect(componentService.getComponentCount()).toBe(10);
+      const input = document.createElement('input');
+      mount.appendChild(input);
+      input.focus();
+      input.value = 'half-typed';
 
-      // Cleanup
-      componentRefs.forEach(ref => componentService.destroyComponent(ref));
-      expect(componentService.getComponentCount()).toBe(0);
+      vnodeService.render(tree(40), hostComponent.container);
+
+      const stillThere = hostComponent.container.querySelector('#live-container')!
+        .firstElementChild as HTMLInputElement;
+      expect(stillThere).toBe(input);
+      expect(stillThere.value).toBe('half-typed');
+      expect(document.activeElement).toBe(input);
+      // The foreignObject's own geometry still updated.
+      expect(
+        hostComponent.container.querySelector('foreignObject')!.getAttribute('x')
+      ).toBe('40');
     });
   });
 
-  describe('Scenario 3: Incremental Rendering and Updates', () => {
-    it('should efficiently update existing VNodes', async () => {
-      const initialVNode: VNode = {
-        type: 'g',
-        props: { id: 'root' },
-        children: [
-          {
-            type: 'rect',
-            props: { x: 0, y: 0, width: 100, height: 100, fill: '#FF0000' },
-          },
-        ],
-      };
+  describe('Scenario 3: components mounted in foreignObject containers', () => {
+    it('should mount an Angular component into the foreignObject container and survive re-renders', () => {
+      componentService.registerComponent('custom-node', EmbeddedComponent);
+      expect(componentService.hasComponent('custom-node')).toBe(true);
 
-      await vnodeService.render(initialVNode, hostComponent.container, mockRenderer);
-      expect(mockRenderer.renderCount).toBe(1);
+      const node = { id: 'node-a', type: 'custom-node' } as any;
+      const foVNode = componentService.createForeignObjectVNode(node, {
+        x: 0,
+        y: 0,
+        width: 200,
+        height: 100,
+      });
+      const containerId = componentService.getContainerId('node-a')!;
+      expect(containerId).toBeTruthy();
 
-      // Update properties
-      const updatedVNode: VNode = {
-        type: 'g',
-        props: { id: 'root' },
-        children: [
-          {
-            type: 'rect',
-            props: { x: 0, y: 0, width: 100, height: 100, fill: '#00FF00' },
-          },
-        ],
-      };
-
-      await vnodeService.update(updatedVNode, hostComponent.container, mockRenderer);
-      expect(mockRenderer.updateCount).toBe(1);
-    });
-
-    it('should handle partial tree updates', async () => {
-      const builder = TestDiagramBuilder.createSimpleFlowchart();
-      const diagram = builder.build();
-
-      await vnodeService.render(diagram, hostComponent.container, mockRenderer);
-      const initialRenderCount = mockRenderer.renderCount;
-
-      // Update one node
-      builder.addNode('extra', { x: 100, y: 350, width: 120, height: 60, label: 'Extra' });
-      const updated = builder.build();
-
-      await vnodeService.update(updated, hostComponent.container, mockRenderer);
-      expect(mockRenderer.updateCount).toBeGreaterThan(0);
-    });
-  });
-
-  describe('Scenario 4: Large Diagram Rendering Performance', () => {
-    it('should render large diagrams efficiently', async () => {
-      const largeD diagram = TestDiagramBuilder.createLargeDiagram(500).build();
-
-      const start = performance.now();
-      await vnodeService.render(diagram, hostComponent.container, mockRenderer);
-      const elapsed = performance.now() - start;
-
-      expect(mockRenderer.renderCount).toBe(1);
-      expect(elapsed).toBeLessThan(500); // Should complete in reasonable time
-    });
-
-    it('should handle very large diagrams (1000+ nodes)', async () => {
-      const hugeDiagram = TestDiagramBuilder.createLargeDiagram(1000).build();
-
-      const start = performance.now();
-      await vnodeService.render(hugeDiagram, hostComponent.container, mockRenderer);
-      const elapsed = performance.now() - start;
-
-      expect(mockRenderer.renderCount).toBe(1);
-      // Should still be reasonable, though slower
-      expect(elapsed).toBeLessThan(2000);
-    });
-  });
-
-  describe('Scenario 5: Memory Management and Cleanup', () => {
-    it('should properly cleanup components on destroy', async () => {
-      const diagram = TestDiagramBuilder.createSimpleFlowchart().build();
-      await vnodeService.render(diagram, hostComponent.container, mockRenderer);
-
-      const initialCount = componentService.getComponentCount();
-
-      // Clear
-      vnodeService.clear(hostComponent.container);
-
-      // All components should be destroyed
-      expect(componentService.getComponentCount()).toBe(0);
-    });
-
-    it('should not leak memory on repeated renders', async () => {
-      const diagram = TestDiagramBuilder.createSimpleFlowchart().build();
-
-      // Render many times
-      for (let i = 0; i < 100; i++) {
-        await vnodeService.render(diagram, hostComponent.container, mockRenderer);
-        vnodeService.clear(hostComponent.container);
-      }
-
-      // No components should remain
-      expect(componentService.getComponentCount()).toBe(0);
-    });
-  });
-
-  describe('Scenario 6: Error Handling and Resilience', () => {
-    it('should handle malformed VNodes gracefully', async () => {
-      const malformedVNode: any = {
-        // Missing 'type'
-        props: { id: 'bad' },
-      };
-
-      await expect(
-        vnodeService.render(malformedVNode, hostComponent.container, mockRenderer)
-      ).resolves.not.toThrow();
-    });
-
-    it('should recover from rendering errors', async () => {
-      // Setup renderer to throw error
-      mockRenderer.setShouldThrowOnRender(true);
-
-      const vnode: VNode = {
-        type: 'g',
+      const tree = (x: number): VNode => ({
+        type: 'svg',
+        key: 'diagram-root',
         props: {},
-        children: [],
-      };
+        children: [{ ...foVNode, key: 'fo-node-a', props: { ...foVNode.props, x } }],
+      });
 
-      await expect(
-        vnodeService.render(vnode, hostComponent.container, mockRenderer)
-      ).rejects.toThrow();
+      vnodeService.render(tree(0), hostComponent.container);
 
-      // Reset and try again
-      mockRenderer.setShouldThrowOnRender(false);
+      // The component's mount point exists in the real DOM...
+      const mountPoint = hostComponent.container.querySelector(`#${containerId}`);
+      expect(mountPoint).toBeTruthy();
 
-      await expect(
-        vnodeService.render(vnode, hostComponent.container, mockRenderer)
-      ).resolves.not.toThrow();
+      // ...simulate the component's view landing inside it.
+      const view = document.createElement('test-embedded');
+      mountPoint!.appendChild(view);
+
+      vnodeService.render(tree(30), hostComponent.container);
+
+      // Still the same mount point holding the same view: the foreignObject
+      // subtree is opaque to the reconciler.
+      expect(hostComponent.container.querySelector(`#${containerId}`)).toBe(mountPoint);
+      expect(mountPoint!.firstElementChild).toBe(view);
     });
 
-    it('should handle missing container gracefully', async () => {
-      const vnode: VNode = { type: 'g', props: {}, children: [] };
+    it('should give each node its own stable container id', () => {
+      const a = componentService.createForeignObjectVNode({ id: 'n1', type: 't' } as any, {
+        x: 0,
+        y: 0,
+        width: 10,
+        height: 10,
+      });
+      const b = componentService.createForeignObjectVNode({ id: 'n2', type: 't' } as any, {
+        x: 0,
+        y: 0,
+        width: 10,
+        height: 10,
+      });
 
-      await expect(vnodeService.render(vnode, null as any, mockRenderer)).rejects.toThrow();
+      expect(a.props.containerId).not.toBe(b.props.containerId);
+      // Stable across calls for the same node.
+      const aAgain = componentService.createForeignObjectVNode({ id: 'n1', type: 't' } as any, {
+        x: 0,
+        y: 0,
+        width: 10,
+        height: 10,
+      });
+      expect(aAgain.props.containerId).toBe(a.props.containerId);
     });
   });
 
-  describe('Scenario 7: Nested Component Hierarchies', () => {
-    it('should render deeply nested VNode trees', async () => {
-      // Create deeply nested structure
-      let current: VNode = { type: 'text', props: {}, children: ['Leaf'] };
-      for (let i = 0; i < 20; i++) {
-        current = {
-          type: 'g',
-          props: { id: `level-${i}` },
-          children: [current],
-        };
-      }
+  describe('Scenario 4: larger trees', () => {
+    it('should render many nodes and then re-render them without rebuilding', () => {
+      const many = Array.from({ length: 100 }, (_, i) => ({ id: `n${i}`, x: i * 10 }));
 
-      await vnodeService.render(current, hostComponent.container, mockRenderer);
-      expect(mockRenderer.renderCount).toBe(1);
+      vnodeService.render(diagramTree(many), hostComponent.container);
+      expect(hostComponent.container.querySelectorAll('[data-vnode-key^="node-"]').length).toBe(100);
+
+      const first = hostComponent.container.querySelector('[data-vnode-key="node-n0"]')!;
+
+      vnodeService.render(
+        diagramTree(many.map((n) => ({ ...n, x: n.x + 5 }))),
+        hostComponent.container
+      );
+
+      expect(hostComponent.container.querySelector('[data-vnode-key="node-n0"]')).toBe(first);
+      expect(vnodeService.getLastPatchStats().created).toBe(0);
     });
 
-    it('should handle complex branching structures', async () => {
-      const complex = TestDiagramBuilder.createComplexDiagram().build();
+    it('should reorder keyed nodes by moving them, not recreating them', () => {
+      const nodes = [
+        { id: 'a', x: 0 },
+        { id: 'b', x: 100 },
+        { id: 'c', x: 200 },
+      ];
+      vnodeService.render(diagramTree(nodes), hostComponent.container);
+      const layer = hostComponent.container.querySelector('[data-vnode-key="nodes-layer"]')!;
+      const [a, b, c] = Array.from(layer.children);
 
-      await vnodeService.render(complex, hostComponent.container, mockRenderer);
-      expect(mockRenderer.renderCount).toBe(1);
-    });
-  });
+      // Selection reorders links/nodes so the selected one paints on top.
+      vnodeService.render(
+        diagramTree([nodes[2], nodes[0], nodes[1]]),
+        hostComponent.container
+      );
 
-  describe('Scenario 8: Rendering with Different Renderers', () => {
-    it('should work with SVG renderer', async () => {
-      const svgRenderer = new MockRenderer('svg', { supportsForeignObject: true });
-      const diagram = TestDiagramBuilder.createSimpleFlowchart().build();
-
-      await vnodeService.render(diagram, hostComponent.container, svgRenderer);
-
-      expect(svgRenderer.renderCount).toBe(1);
-      expect(svgRenderer.type).toBe('svg');
-    });
-
-    it('should work with Canvas renderer', async () => {
-      const canvasRenderer = new MockRenderer('canvas', { supportsForeignObject: false });
-      const diagram = TestDiagramBuilder.createSimpleFlowchart().build();
-
-      await vnodeService.render(diagram, hostComponent.container, canvasRenderer);
-
-      expect(canvasRenderer.renderCount).toBe(1);
-      expect(canvasRenderer.type).toBe('canvas');
-    });
-
-    it('should switch between renderers', async () => {
-      const svgRenderer = new MockRenderer('svg');
-      const canvasRenderer = new MockRenderer('canvas');
-      const diagram = TestDiagramBuilder.createSimpleFlowchart().build();
-
-      // Render with SVG
-      await vnodeService.render(diagram, hostComponent.container, svgRenderer);
-      expect(svgRenderer.renderCount).toBe(1);
-
-      // Switch to Canvas
-      await vnodeService.render(diagram, hostComponent.container, canvasRenderer);
-      expect(canvasRenderer.renderCount).toBe(1);
+      expect(Array.from(layer.children)).toEqual([c, a, b]);
+      expect(vnodeService.getLastPatchStats().created).toBe(0);
     });
   });
 });

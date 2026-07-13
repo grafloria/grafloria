@@ -144,33 +144,132 @@ describe('SVGRenderer', () => {
       expect(nodesLayer.children).toHaveLength(3);
     });
 
-    test('should render only links with visible endpoints', () => {
+    test('should cull links whose geometry misses the viewport entirely', () => {
       const node1 = new NodeModel({ type: 'basic', position: { x: 100, y: 100 } });
       const node2 = new NodeModel({ type: 'basic', position: { x: 200, y: 200 } });
-      const node3 = new NodeModel({ type: 'basic', position: { x: -500, y: -500 } }); // Outside
+      // Both far off-screen: the link between them never touches the viewport.
+      const far1 = new NodeModel({ type: 'basic', position: { x: -5000, y: -5000 } });
+      const far2 = new NodeModel({ type: 'basic', position: { x: -4800, y: -4800 } });
 
       node1.addPort(new PortModel({ id: 'port1', type: 'output', side: 'right' }));
       node2.addPort(new PortModel({ id: 'port2', type: 'input', side: 'left' }));
-      node3.addPort(new PortModel({ id: 'port3', type: 'output', side: 'right' }));
+      far1.addPort(new PortModel({ id: 'far1-out', type: 'output', side: 'right' }));
+      far2.addPort(new PortModel({ id: 'far2-in', type: 'input', side: 'left' }));
 
       diagram.addNode(node1);
       diagram.addNode(node2);
-      diagram.addNode(node3);
+      diagram.addNode(far1);
+      diagram.addNode(far2);
 
       const visibleLink = new LinkModel('port1', 'port2');
-      const outsideLink = new LinkModel('port1', 'port3');
+      const offscreenLink = new LinkModel('far1-out', 'far2-in');
 
       diagram.addLink(visibleLink);
-      diagram.addLink(outsideLink);
+      diagram.addLink(offscreenLink);
 
       const viewport = { x: 0, y: 0, width: 800, height: 600 };
       const vnode = renderer.render(viewport, 1.0) as VNode;
 
       const linksLayer = vnode.children![0];
 
-      // Only visibleLink should be rendered (both endpoints visible)
       expect(linksLayer.children).toHaveLength(1);
       expect(linksLayer.children![0].key).toBe(`link-${visibleLink.id}`);
+    });
+
+    /**
+     * Culling is geometric, not "are both endpoint nodes visible?".
+     *
+     * A long edge crossing the screen used to VANISH as soon as its two nodes
+     * scrolled off — the renderer culled links whose endpoint nodes were not in
+     * the viewport, which is exactly the wrong test for an edge that spans it.
+     */
+    test('should render a link whose endpoints are BOTH off-screen but whose path crosses the viewport', () => {
+      // Viewport is (0,0)-(800,600). Both nodes sit outside it, left and right,
+      // but the edge between them runs straight through the middle of the screen.
+      const left = new NodeModel({
+        type: 'basic',
+        position: { x: -900, y: 300 },
+        size: { width: 100, height: 50 },
+      });
+      const right = new NodeModel({
+        type: 'basic',
+        position: { x: 1600, y: 300 },
+        size: { width: 100, height: 50 },
+      });
+
+      left.addPort(new PortModel({ id: 'left-out', type: 'output', side: 'right' }));
+      right.addPort(new PortModel({ id: 'right-in', type: 'input', side: 'left' }));
+
+      diagram.addNode(left);
+      diagram.addNode(right);
+
+      const crossingLink = new LinkModel('left-out', 'right-in');
+      diagram.addLink(crossingLink);
+
+      const viewport = { x: 0, y: 0, width: 800, height: 600 };
+
+      // Neither endpoint node is visible...
+      expect(diagram.getVisibleNodes(viewport)).toHaveLength(0);
+
+      // ...but the edge crosses the viewport, so it must still be drawn.
+      const vnode = renderer.render(viewport, 1.0) as VNode;
+      const linksLayer = vnode.children![0];
+
+      expect(linksLayer.children).toHaveLength(1);
+      expect(linksLayer.children![0].key).toBe(`link-${crossingLink.id}`);
+    });
+
+    test('should render a link with only ONE endpoint on-screen', () => {
+      const onScreen = new NodeModel({ type: 'basic', position: { x: 100, y: 100 } });
+      const offScreen = new NodeModel({ type: 'basic', position: { x: -900, y: -900 } });
+
+      onScreen.addPort(new PortModel({ id: 'on-out', type: 'output', side: 'right' }));
+      offScreen.addPort(new PortModel({ id: 'off-in', type: 'input', side: 'left' }));
+
+      diagram.addNode(onScreen);
+      diagram.addNode(offScreen);
+
+      const link = new LinkModel('on-out', 'off-in');
+      diagram.addLink(link);
+
+      const vnode = renderer.render({ x: 0, y: 0, width: 800, height: 600 }, 1.0) as VNode;
+
+      // The stub leaving the visible node must be drawn, not culled with its node.
+      expect(vnode.children![0].children).toHaveLength(1);
+      expect(vnode.children![0].children![0].key).toBe(`link-${link.id}`);
+    });
+
+    test('should keep culling correct after a node moves (index is not stale)', () => {
+      const a = new NodeModel({ type: 'basic', position: { x: 100, y: 100 } });
+      const b = new NodeModel({ type: 'basic', position: { x: 300, y: 100 } });
+      a.addPort(new PortModel({ id: 'a-out', type: 'output', side: 'right' }));
+      b.addPort(new PortModel({ id: 'b-in', type: 'input', side: 'left' }));
+      diagram.addNode(a);
+      diagram.addNode(b);
+      const link = new LinkModel('a-out', 'b-in');
+      diagram.addLink(link);
+
+      const viewport = { x: 0, y: 0, width: 800, height: 600 };
+      const linkCount = (vp: typeof viewport) =>
+        (renderer.render(vp, 1.0) as VNode).children![0].children!.length;
+
+      expect(linkCount(viewport)).toBe(1);
+
+      // Move both nodes far away.
+      a.setPosition(5000, 5000);
+      b.setPosition(5200, 5000);
+
+      // The link's cull box is the union of its LIVE endpoints and its last routed
+      // points, so for one frame it still spans the old route → it is drawn (the
+      // safe direction: an over-wide box over-renders, an under-wide one makes
+      // edges vanish). Rendering it re-routes it, which re-indexes it...
+      renderer.render(viewport, 1.0);
+
+      // ...so from the next frame on it is correctly culled.
+      expect(linkCount(viewport)).toBe(0);
+
+      // And it reappears when the viewport follows the nodes.
+      expect(linkCount({ x: 4800, y: 4800, width: 800, height: 600 })).toBe(1);
     });
   });
 

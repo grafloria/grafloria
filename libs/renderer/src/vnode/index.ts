@@ -62,3 +62,21 @@ export {
   getContainerId,
   type ForeignObjectOptions
 } from './foreign-object';
+
+// VNode → DOM patcher: the framework-agnostic keyed reconciler that every DOM
+// consumer (Angular VNodeRendererService, e2e harness, headless instances)
+// materializes VNode trees through.
+export {
+  VNodePatcher,
+  defaultPatcher,
+  reconcile,
+  createDomElement,
+  isOpaqueVNode,
+  serializeStyle,
+  camelToKebab,
+  SVG_NS,
+  XHTML_NS,
+  type VNodePatcherOptions,
+  type VNodeChild,
+  type PatchStats,
+} from './patch';
