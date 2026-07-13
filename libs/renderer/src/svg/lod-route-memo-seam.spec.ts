@@ -26,8 +26,20 @@ import type { Rectangle } from '../types';
 
 const VIEWPORT: Rectangle = { x: -200, y: -200, width: 1600, height: 1200 };
 
-/** Zooms that straddle the routing tier: 0.3 renders coarse, 1 renders routed. */
-const FAR = 0.3;
+/**
+ * Zooms that straddle the routing tier.
+ *
+ * 0.15 is in 'low' (below 0.2) — a node is under 24px wide, an edge is a hairline,
+ * and the detour around a node body is sub-pixel, so routes collapse to straight
+ * lines. 1 is 'high' and routes properly.
+ *
+ * NOTE 0.3 IS DELIBERATELY NOT USED HERE. It is in 'sketch', which KEEPS routing —
+ * text and chrome are unreadable at that zoom but the shape of the graph is not.
+ * An earlier draft of this file used 0.3 and had to be moved, which is the tier
+ * boundary doing its job: routes now survive the whole [0.2, 0.5) band that a
+ * cost-driven breakpoint had been quietly flattening.
+ */
+const FAR = 0.15;
 const NEAR = 1;
 
 function addNode(diagram: DiagramModel, id: string, x: number, y: number): NodeModel {
@@ -74,6 +86,53 @@ function render(zoom: number): { renderer: SVGRenderer; engine: DiagramEngine; d
   renderer.render(VIEWPORT, zoom);
   return { renderer, engine, diagram };
 }
+
+describe('the sketch tier: perception picks the tier, measurement decides the cost', () => {
+  it('a small diagram at zoom 0.3 KEEPS its real routes', () => {
+    // The regression this tier exists to prevent. When routing was gated at zoom
+    // 0.5 to rescue a 63-second 10k frame, every diagram paid for it: a 3-node
+    // flowchart that renders in 3ms had its edges snap from an orthogonal path to
+    // a straight diagonal the moment you zoomed past 0.5. That is a fidelity tax
+    // charged to scenes with no performance problem, to solve a cost problem that
+    // belongs to the governor.
+    const { renderer, engine, diagram } = render(0.3);
+    const points = diagram.getLinks()[0].points ?? [];
+
+    expect(points.length).toBeGreaterThan(2); // still bent around the blocker
+    expect(geometry(diagram)).toEqual(
+      (() => {
+        const near = render(NEAR);
+        const truth = geometry(near.diagram);
+        near.renderer.dispose();
+        near.engine.destroy();
+        return truth;
+      })()
+    );
+
+    renderer.dispose();
+    engine.destroy();
+  });
+
+  it('…but the unreadable chrome is gone, which is what the tier is FOR', () => {
+    // If 'sketch' kept everything, it would just be 'medium' with extra steps. The
+    // point is that it drops what a 3.6px label can't say while keeping what a
+    // 36px-wide node's edges plainly can.
+    const engine = new DiagramEngine();
+    const diagram = engine.createDiagram('d')!;
+    buildBlockedScene(diagram);
+
+    const config = diagram.getLODConfig();
+    const sketch = config.tiers.find((t) => t.name === 'sketch')!;
+
+    expect(sketch.features.has('routing')).toBe(true);
+    expect(sketch.features.has('link-detail')).toBe(true);
+    expect(sketch.features.has('labels')).toBe(false);
+    expect(sketch.features.has('ports')).toBe(false);
+    expect(sketch.features.has('handles')).toBe(false);
+
+    engine.destroy();
+  });
+});
 
 describe('LOD routing gate × route memo (the wave-8 merge seam)', () => {
   it('THE PREMISE: the two tiers genuinely disagree about this link', () => {

@@ -28,10 +28,33 @@ import type { VNode } from '../types';
 
 const VIEWPORT = { x: 0, y: 0, width: 1600, height: 900 };
 
-/** Zooms that resolve to each default tier. 0.25 is what fit-to-content lands on. */
+/**
+ * Zooms that resolve to each default tier.
+ *
+ * LOW_ZOOM WAS 0.25 AND IS NOW 0.12, and that is not a test tweak — it is the
+ * design being corrected underneath these tests. 0.25 is the zoom fit-to-content
+ * lands on for a large diagram, and it is now 'sketch': text and chrome are gone
+ * (a 12px label is 3.6px there) but the graph's SHAPE — its routed edges — is
+ * still perfectly legible, so it stays.
+ *
+ * Dropping routing at 0.25 made every diagram snap its edge shapes on crossing a
+ * zoom threshold, and charged that to 30-node flowcharts with no performance
+ * problem at all, purely to rescue 10k ones. That is a COST problem being solved
+ * with a PERCEPTUAL lever, and the two do not line up. Cost is now the quality
+ * governor's job: it measures the frame and steps a scene down when — and only
+ * when — that scene on that machine cannot afford what the zoom asked for.
+ *
+ * So 'low' now means what it says: below 0.2, where a node is under 24px wide, an
+ * edge is a hairline, and a routing detour around a node body really is sub-pixel.
+ * Everything these tests claim about 'low' is still true OF 'low'. They were just
+ * pointing at the wrong zoom.
+ */
 const HIGH_ZOOM = 1.0;
 const MEDIUM_ZOOM = 0.6;
-const LOW_ZOOM = 0.25;
+/** [0.2, 0.5): unreadable text, readable topology. Routes are KEPT. */
+const SKETCH_ZOOM = 0.25;
+/** < 0.2: the detour is sub-pixel. Routes collapse to straight lines. */
+const LOW_ZOOM = 0.12;
 
 /**
  * A scene that fits INSIDE the viewport at zoom 1.
@@ -166,6 +189,61 @@ describe('LOD economics (wave8/culling — Card 4)', () => {
       renderer.render(VIEWPORT, MEDIUM_ZOOM);
 
       expect(routes()).toBeGreaterThanOrEqual(19);
+    });
+
+    // …AND SO DOES SKETCH, which is the correction to this card. A 20-node scene at
+    // zoom 0.25 renders in single-digit milliseconds and has no performance problem
+    // to solve. Flattening its routes bought nothing and cost fidelity: you could
+    // watch the edges change shape as you crossed a zoom threshold.
+    //
+    // The governor is off here, deliberately — the point of this test is that the
+    // TIER routes at 0.25. Whether a given scene can AFFORD to is measured at
+    // runtime, per machine, and is a different question with a different mechanism.
+    test('still routes at SKETCH zoom — a small diagram keeps its shape', () => {
+      ({ engine } = scene(20));
+      const routes = countRoutes(engine);
+      renderer = new SVGRenderer(
+        engine,
+        { enableCaching: false, qualityGovernor: false },
+        LIGHT_THEME
+      );
+
+      renderer.render(VIEWPORT, SKETCH_ZOOM);
+
+      expect(routes()).toBeGreaterThanOrEqual(19);
+    });
+
+    // The mirror, and the reason 'sketch' is safe to ship: a scene that CANNOT
+    // afford its tier does not keep it. The governor watches the frame, and a
+    // catastrophically over-budget one drops the tier within three frames — so the
+    // 10k scene still gets the cheap picture that made the 63-second frame a 124ms
+    // one, without every small diagram paying for its rescue.
+    test('…but the governor takes it away from a scene that cannot afford it', () => {
+      ({ engine } = scene(20));
+      renderer = new SVGRenderer(
+        engine,
+        // A budget of 0 means every frame is catastrophically over it. This stands in
+        // for "10,000 nodes on a laptop" without needing 10,000 nodes in a unit test:
+        // the governor's input is frame time, and this is the honest way to say the
+        // frames are too slow.
+        { enableCaching: false, qualityGovernor: { budgetMs: 0 } },
+        LIGHT_THEME
+      );
+
+      renderer.render(VIEWPORT, SKETCH_ZOOM);
+      renderer.render(VIEWPORT, SKETCH_ZOOM);
+      renderer.render(VIEWPORT, SKETCH_ZOOM); // three strikes → escalate
+      expect(renderer.getQualityState().governor?.lastDecision).toBe('escalated');
+
+      // The decision lands on the NEXT frame, not the one that provoked it — a
+      // frame's tier is chosen before the frame is timed, so the earliest a verdict
+      // can be acted on is the frame after it. `getQualityState().tier` therefore
+      // reports the tier LAST RENDERED, which is what a HUD wants to display.
+      const routes = countRoutes(engine);
+      renderer.render(VIEWPORT, SKETCH_ZOOM);
+
+      expect(renderer.getQualityState().tier).not.toBe('sketch'); // stepped down
+      expect(routes()).toBe(0); // and at the cheaper tier, nothing routes
     });
 
     // The claim under the whole card: far-zoom cost stops depending on scene size.

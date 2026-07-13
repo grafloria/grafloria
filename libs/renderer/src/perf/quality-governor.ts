@@ -56,6 +56,21 @@ export interface GovernorOptions {
   recoveryWindows?: number;
   /** Worst tier the governor may impose. */
   maxBias?: QualityBias;
+  /**
+   * ESCALATION. A frame this many times over budget is not a slow frame, it is a
+   * structurally wrong one — and waiting a full window to notice means 12 frames
+   * of a visibly locked-up canvas. Default 4× (≈67ms: a third of a second of
+   * these and the user is already reaching for the tab close button).
+   */
+  panicFactor?: number;
+  /**
+   * How many frames the escalation path looks at. THREE, NOT ONE — and that is the
+   * whole subtlety. Reacting to a single catastrophic frame would make one GC pause
+   * indistinguishable from a scene the machine genuinely cannot draw. A median over
+   * three still rejects a lone spike (two of the three must be bad for the median to
+   * be bad) while reacting 4× sooner than the main window.
+   */
+  panicWindow?: number;
 }
 
 const DEFAULTS: Required<GovernorOptions> = {
@@ -65,6 +80,8 @@ const DEFAULTS: Required<GovernorOptions> = {
   window: 12,
   recoveryWindows: 3,
   maxBias: 2,
+  panicFactor: 4,
+  panicWindow: 3,
 };
 
 export interface GovernorState {
@@ -77,7 +94,7 @@ export interface GovernorState {
   recoveryStreak: number;
   /** Why the governor last changed its mind — surfaced in the HUD, because an
    *  invisible governor is indistinguishable from a bug. */
-  lastDecision: 'steady' | 'stepped-down' | 'stepped-up';
+  lastDecision: 'steady' | 'stepped-down' | 'stepped-up' | 'escalated';
 }
 
 export class QualityGovernor {
@@ -95,6 +112,24 @@ export class QualityGovernor {
   /** Feed the governor one frame time (ms). Returns the bias to render the NEXT frame at. */
   record(frameMs: number): QualityBias {
     this.frames.push(frameMs);
+
+    // ESCALATION, checked before the main window. A scene rendering at 300ms/frame
+    // must not have to sit through nine more of them to be noticed — by the time a
+    // full window has elapsed the user has watched the canvas hang for two seconds.
+    // Median-of-three, so one GC pause still cannot trigger it.
+    const { panicFactor, panicWindow, budgetMs, maxBias } = this.options;
+    if (this.frames.length >= panicWindow && this.bias < maxBias) {
+      const recent = this.frames.slice(-panicWindow);
+      if (medianOf(recent) > budgetMs * panicFactor) {
+        this.lastMedian = medianOf(recent);
+        this.frames = [];
+        this.bias = (this.bias + 1) as QualityBias;
+        this.recoveryStreak = 0;
+        this.lastDecision = 'escalated';
+        return this.bias;
+      }
+    }
+
     if (this.frames.length < this.options.window) {
       this.lastDecision = 'steady';
       return this.bias;
@@ -104,7 +139,7 @@ export class QualityGovernor {
     this.lastMedian = median;
     this.frames = [];
 
-    const { budgetMs, downFactor, upFactor, maxBias, recoveryWindows } = this.options;
+    const { downFactor, upFactor, recoveryWindows } = this.options;
 
     if (median > budgetMs * downFactor && this.bias < maxBias) {
       // Suffering NOW. Drop a tier immediately, and reset any progress toward

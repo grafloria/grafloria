@@ -111,11 +111,18 @@ export interface LODConfig {
  * obstacle. It was the far view that was expensive: 63 SECONDS for one 10k-node
  * frame, against 124ms for the near view. LOD had breakpoints but no economics.
  *
- * 0.5 is where the detail stops being legible rather than where it stops being
- * cheap: the theme's 12px label is 6px at 0.5 and 3px at 0.25, and a port glyph
- * is under a pixel. Zooms in [0.5, 1.0) render EXACTLY as they did — 'medium'
- * gained the three economic features precisely so that band is untouched. Only
- * [0.2, 0.5), which used to claim full detail it could not display, is now 'low'.
+ * Each breakpoint is now set where the DETAIL STOPS BEING LEGIBLE, not where it
+ * stops being cheap — the theme's 12px label is 6px at 0.5 zoom and 3px at 0.25,
+ * and a port glyph is under a pixel. Zooms in [0.5, 1.0) render exactly as they
+ * always have. [0.2, 0.5) is 'sketch': text and chrome go (they are unreadable),
+ * the graph's SHAPE stays (it is not). Below 0.2, everything goes.
+ *
+ * Cost is deliberately NOT a factor in these numbers, because it cannot be: the
+ * same zoom is cheap for 30 nodes and ruinous for 10,000, and a constant chosen
+ * here would either tax the small diagram or fail to save the large one. That is
+ * the quality governor's job — it measures the frame and steps the tier down on
+ * the scenes and machines that need it. Perception picks the tier; measurement
+ * decides whether you can afford it.
  *
  * Fresh `Set`s are created per call so no two diagrams share mutable state.
  */
@@ -144,8 +151,44 @@ export function createDefaultLODConfig(): LODConfig {
         ]),
       },
       {
+        // ---------------------------------------------------------------------
+        // 'sketch' — [0.2, 0.5). THE TIER THAT SEPARATES PERCEPTION FROM COST.
+        // ---------------------------------------------------------------------
+        // At zoom 0.3 a 120x60 node is 36x18 CSS px. A 12px label on it renders at
+        // 3.6px and is not text, it is a grey smear — so labels, ports, handles and
+        // decorations genuinely have nothing to say here, and dropping them costs
+        // the viewer nothing.
+        //
+        // But the LINKS are still perfectly legible at that size, and an orthogonal
+        // route is plainly distinguishable from a straight diagonal. Collapsing
+        // routes here — as this band briefly did, when 'low' started at 0.5 — makes
+        // every diagram visibly snap its edge shapes as you cross a zoom threshold,
+        // and it charges that to a 30-node flowchart that renders in 3ms and has no
+        // performance problem whatsoever.
+        //
+        // That was a COST problem (10k scenes) being solved with a PERCEPTUAL lever
+        // (what the zoom can display), and the two do not line up. Cost is what the
+        // quality governor is for: it measures the frame and biases the tier down on
+        // the machines and scenes that actually need it, so a big scene at 0.3 zoom
+        // still lands in 'low' within three frames while a small one keeps its
+        // routes. Perception decides the tier; measurement decides whether you can
+        // afford it.
+        name: 'sketch',
+        minZoom: 0.2,
+        features: new Set<LODFeature>([
+          'borders',
+          // The shape of the graph IS the content at this zoom. Keep it.
+          'routing',
+          'link-detail',
+        ]),
+      },
+      {
         name: 'low',
-        // Floor tier: every zoom is >= -Infinity, so this always matches last.
+        // Floor tier: every zoom is >= -Infinity, so this always matches last. Below
+        // 0.2 a node is under 24px wide and an edge is a hairline — the routing
+        // detour around a node body is now genuinely sub-pixel, and this is where
+        // dropping it is free. It is also where the governor parks a scene too big
+        // to draw at any zoom.
         features: new Set<LODFeature>(),
         minZoom: Number.NEGATIVE_INFINITY,
       },

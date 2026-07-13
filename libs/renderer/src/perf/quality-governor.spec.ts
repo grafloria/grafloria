@@ -32,12 +32,16 @@ describe('QualityGovernor (Wave 8, Card 7)', () => {
   });
 
   it('keeps stepping down while it keeps hurting, up to maxBias', () => {
+    // 20ms: over the 16.7ms budget, but not the 4x that trips escalation. This is
+    // the SLOW path — a scene that is merely missing 60fps, noticed a window at a
+    // time. (A 90ms frame no longer reaches this code at all: it escalates in three.
+    // That is deliberate, and it is why this test feeds 20 and not 90.)
     const g = new QualityGovernor({ budgetMs: 16.7, window: 12, maxBias: 2 });
-    feed(g, 90, 12);
+    feed(g, 20, 12);
     expect(g.getBias()).toBe(1);
-    feed(g, 90, 12);
+    feed(g, 20, 12);
     expect(g.getBias()).toBe(2);
-    feed(g, 90, 36); // …and no further: the floor is the floor
+    feed(g, 20, 36); // …and no further: the floor is the floor
     expect(g.getBias()).toBe(2);
     expect(g.effectiveTier('high', TIERS)).toBe('low');
   });
@@ -90,6 +94,69 @@ describe('QualityGovernor (Wave 8, Card 7)', () => {
       for (let i = 0; i < 11; i++) g.record(6);
       g.record(300); // one catastrophic frame
       // the MEDIAN is still 6ms: one pause is not a trend
+      expect(g.getBias()).toBe(0);
+    });
+  });
+
+  describe('escalation: a 300ms frame must not wait a full window to be noticed', () => {
+    // The main window is the right instrument for "this is a bit slow". It is the
+    // WRONG instrument for "this is catastrophically slow": at 300ms/frame, twelve
+    // frames is nearly four seconds of a canvas that looks frozen. The escalation
+    // path exists so the governor reacts in three frames instead of twelve — while
+    // still being unable to confuse a GC pause for a structural problem.
+
+    it('steps down after THREE catastrophic frames, not twelve', () => {
+      const g = new QualityGovernor({ budgetMs: 16.7, window: 12, panicFactor: 4 });
+      g.record(300);
+      expect(g.getBias()).toBe(0); // one frame proves nothing
+      g.record(300);
+      expect(g.getBias()).toBe(0); // two could still be a hiccup
+      g.record(300);
+      expect(g.getBias()).toBe(1); // three is a trend
+      expect(g.getState().lastDecision).toBe('escalated');
+    });
+
+    it('THE POINT: median-of-three still rejects a lone spike', () => {
+      // This is the whole reason the escalation window is 3 and not 1. Reacting to a
+      // single frame would make one GC pause indistinguishable from a scene the
+      // machine genuinely cannot render — and would drop the user's detail for a
+      // second every time the collector ran.
+      const g = new QualityGovernor({ budgetMs: 16.7, window: 12, panicFactor: 4 });
+      g.record(5);
+      g.record(400); // a monstrous pause, surrounded by healthy frames
+      g.record(5);
+      expect(g.getBias()).toBe(0);
+      expect(g.getState().lastDecision).not.toBe('escalated');
+    });
+
+    it('escalates repeatedly down to the floor, then stops', () => {
+      const g = new QualityGovernor({ budgetMs: 16.7, window: 12, maxBias: 2 });
+      feed(g, 300, 3);
+      expect(g.getBias()).toBe(1);
+      feed(g, 300, 3);
+      expect(g.getBias()).toBe(2);
+      feed(g, 300, 30); // the floor is the floor, however bad it gets
+      expect(g.getBias()).toBe(2);
+    });
+
+    it('does not fire for a merely-over-budget frame — that is the main window\'s job', () => {
+      // 25ms is over the 16.7ms budget but nowhere near 4x it. Escalating here would
+      // make the governor hair-trigger and undo the anti-oscillation work above.
+      const g = new QualityGovernor({ budgetMs: 16.7, window: 12, panicFactor: 4 });
+      feed(g, 25, 3);
+      expect(g.getBias()).toBe(0);
+      feed(g, 25, 9); // …and the main window picks it up in its own time
+      expect(g.getBias()).toBe(1);
+      expect(g.getState().lastDecision).toBe('stepped-down');
+    });
+
+    it('recovery is still patient after an escalation — it does not bounce straight back', () => {
+      const g = new QualityGovernor({ budgetMs: 16.7, window: 12, recoveryWindows: 3 });
+      feed(g, 300, 3);
+      expect(g.getBias()).toBe(1);
+      feed(g, 5, 12);
+      expect(g.getBias()).toBe(1); // one fast window is not enough, escalation or not
+      feed(g, 5, 24);
       expect(g.getBias()).toBe(0);
     });
   });

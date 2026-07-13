@@ -8,6 +8,7 @@ import { computeChannelNudges, applyChannelNudges } from './channel-nudging';
 // Wave 8 (Performance & scale) — Card 6: incremental routing, and the off-thread
 // global solver the render loop now actually drives.
 import { RouteMemo, coalesce, inflate, ROUTE_INFLUENCE_PAD, type Rect } from './route-memo';
+import { QualityGovernor, type GovernorState } from '../perf/quality-governor';
 import { RouteSolverBridge, type RouteSolverStats } from './route-solver-bridge';
 import type {
   IRenderer,
@@ -407,6 +408,14 @@ export class SVGRenderer implements IRenderer {
   /** Set true to force the next frame to re-route everything (first frame, config changes). */
   private routeMemoDirty = true;
 
+  /**
+   * Wave 8 — Card 7. Watches frame time and biases the LOD tier down when this
+   * machine cannot afford what the zoom asked for. `null` when disabled, in which
+   * case the tier is exactly what the zoom says and rendering is deterministic —
+   * which is what screenshot tests and print need.
+   */
+  private governor: QualityGovernor | null = null;
+
   // Wave 8 — Card 6: the OFF-THREAD global solver (opt-in; see config.globalRouting).
   // Created lazily so a renderer that never asks for it never constructs a host.
   private solverBridge: RouteSolverBridge | null = null;
@@ -531,6 +540,11 @@ export class SVGRenderer implements IRenderer {
       // one-at-a-time router, so switching it on globally would move every route
       // in every existing diagram.
       globalRouting: config.globalRouting ?? false,
+      // Wave 8 — Card 7: the quality governor, ON unless explicitly refused. See
+      // the option docs for why this one defaults on when everything else here
+      // defaults off: the alternative is zoom breakpoints pessimistic enough to
+      // protect a 10k scene, imposed on a 30-node one that never needed them.
+      qualityGovernor: config.qualityGovernor ?? true,
       routeSolverPort: config.routeSolverPort,
       routeSolverOptions: config.routeSolverOptions,
       onRoutesRefined: config.onRoutesRefined,
@@ -544,6 +558,14 @@ export class SVGRenderer implements IRenderer {
     // Card 5: the optimizer's jump-ownership mode comes from renderer config.
     if (this.config.jumpOwnership !== 'both') {
       this.edgeOptimizer = new EdgeOptimizer({ jumpOwnership: this.config.jumpOwnership });
+    }
+
+    // Card 7. `true` takes the defaults; an object tunes them; `false` leaves the
+    // governor null and the tier purely zoom-derived (deterministic — what a
+    // screenshot test or a print job wants).
+    const gov = this.config.qualityGovernor;
+    if (gov) {
+      this.governor = new QualityGovernor(typeof gov === 'object' ? gov : {});
     }
 
     this.instanceId = config.instanceId || nextInstanceId();
@@ -673,8 +695,24 @@ export class SVGRenderer implements IRenderer {
     // changes go through node.setSize() → change:size → spatial index + routing.
     this.autoSizeNodes(diagram);
 
-    // Get LOD level from engine
-    const lod = diagram.getLODLevel(zoom);
+    // The tier the ZOOM asks for — what the picture NEEDS.
+    const zoomTier = diagram.getLODLevel(zoom);
+
+    // …and the tier this MACHINE can afford. Card 7. The zoom knows how big a node
+    // is on screen; it has no idea whether the last twelve frames took 4ms or 400.
+    // The governor watches frame time and biases the tier down when the budget is
+    // being blown — and it can only ever simplify, never enrich.
+    //
+    // This is the lever that lets the ZOOM breakpoints stay honest about PERCEPTION
+    // ("a 3px label is unreadable") instead of being bent to solve COST ("routing is
+    // slow at 10k, so nobody may have routes below 0.5 zoom"). A 30-node flowchart at
+    // zoom 0.4 renders at 3ms and keeps every route; a 10k scene at the same zoom
+    // blows the budget, escalates within three frames, and drops to the cheap tier.
+    // Same policy, different machines, different scenes — decided by measurement
+    // rather than by a constant someone once chose against a 10k benchmark.
+    const lod = this.governor
+      ? this.governor.effectiveTier(zoomTier, this.lodTierNames(diagram))
+      : zoomTier;
 
     // wave8/culling: publish the tier for the parts of the pipeline the `lod`
     // argument never reaches (the style cascade and the cache-eligibility
@@ -768,7 +806,46 @@ export class SVGRenderer implements IRenderer {
     this.lastRenderTime = performance.now() - startTime;
     this.frameCount++;
 
+    // Feed the governor the frame it just paid for. This is the ONLY place frame
+    // time enters the quality decision, and it is measured, not modelled — no
+    // heuristic about node counts, no guess about the machine.
+    //
+    // Note this measures the VNode build, not the browser's paint. It is the part we
+    // control and the part that has been pathological (a 63-second zoom-out frame was
+    // 99% route computation, zero percent paint), and it is the only part we can
+    // attribute. A renderer that blamed the compositor for its own O(n²) loop would
+    // be worse than no governor at all.
+    this.governor?.record(this.lastRenderTime);
+
     return root;
+  }
+
+  /**
+   * The tier actually rendered last frame, and the governor's reasoning for it.
+   *
+   * Exposed because an invisible governor is indistinguishable from a bug: if the
+   * picture silently simplifies, the only honest thing to do is be able to say WHY.
+   * The perf HUD reads this; so can an application that wants to tell the user "this
+   * diagram is being drawn at reduced detail to stay responsive".
+   */
+  getQualityState(): { tier: LODLevel; governor?: GovernorState } {
+    return {
+      tier: this.frameLod,
+      governor: this.governor?.getState(),
+    };
+  }
+
+  /**
+   * Tier names richest → poorest, which is the order the governor's bias walks.
+   *
+   * Derived from the diagram's LIVE config rather than a hard-coded triple, because
+   * `registerLODTier`/`setLODConfig` are public API — a governor that walked a
+   * stale list would step a custom tier into one that no longer exists.
+   */
+  private lodTierNames(diagram: DiagramModel): string[] {
+    return [...diagram.getLODConfig().tiers]
+      .sort((a, b) => b.minZoom - a.minZoom)
+      .map((t) => t.name);
   }
 
   /**

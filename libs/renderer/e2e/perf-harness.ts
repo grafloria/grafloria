@@ -36,6 +36,10 @@ export interface PerfSample {
   worstMs?: number;
   /** frames measured */
   frames?: number;
+  /** the LOD tier actually rendered — NOT necessarily the one the zoom asked for */
+  tier?: string;
+  /** the governor's last verdict, so a fast number can be explained rather than assumed */
+  governor?: string;
 }
 
 const results: PerfSample[] = [];
@@ -142,6 +146,18 @@ export function runPerfSuite(container: HTMLElement, counts: number[]): PerfSamp
       patcher.reconcile(svg as unknown as Element, vnode);
       zoomFrames.push(now() - t);
     }
+    // WHAT DID THE GOVERNOR ACTUALLY DO? The zoom-out number above is only
+    // trustworthy if we know WHY it is fast, and the two possible reasons are very
+    // different: either the tier was cheap enough to begin with, or the governor
+    // watched three catastrophic frames and stepped the scene down. Recording the
+    // verdict is what keeps "the governor rescues the 10k scene" an OBSERVATION
+    // rather than a story told over a number that happens to look right.
+    //
+    // At 0.25 zoom the tier the ZOOM asks for is always 'sketch' (which routes).
+    // A small scene affords it and stays there; a large one blows the budget by 4x
+    // and lands in 'low' within three frames. Same policy, different outcomes,
+    // decided by measurement.
+    const quality = renderer.getQualityState();
     record({
       scenario: 'zoom-out-frame',
       nodes: count,
@@ -149,6 +165,8 @@ export function runPerfSuite(container: HTMLElement, counts: number[]): PerfSamp
       ms: median(zoomFrames),
       worstMs: Math.max(...zoomFrames),
       frames: zoomFrames.length,
+      tier: quality.tier,
+      governor: quality.governor?.lastDecision,
     });
 
     // ------------------------------------------------------------- one drag

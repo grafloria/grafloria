@@ -33,15 +33,27 @@ describe('DiagramModel - Level of Detail (Phase 5.3)', () => {
       expect(diagram.getLODLevel(0.5)).toBe('medium');
     });
 
-    // wave8/culling: the medium/low breakpoint MOVED, 0.2 -> 0.5. 0.3 used to be
-    // 'medium' and therefore claimed labels, ports and obstacle-aware routing at a
-    // zoom where a 12px label is 3.6px and a routing detour is sub-pixel. That is
-    // what made a far-zoom frame 500x more expensive than the near view.
-    it('should return LOW detail for zoom < 0.5 (wave8: was <= 0.2)', () => {
-      expect(diagram.getLODLevel(0.49)).toBe('low');
-      expect(diagram.getLODLevel(0.3)).toBe('low');
-      expect(diagram.getLODLevel(0.25)).toBe('low');
-      expect(diagram.getLODLevel(0.2)).toBe('low');
+    // Each breakpoint marks where DETAIL STOPS BEING LEGIBLE — not where it stops
+    // being cheap. That distinction is the whole design:
+    //
+    //   [0.5, 1)   'medium' — a 12px label is 6px: small, but still text.
+    //   [0.2, 0.5) 'sketch' — a 12px label is 3px (a smear) but a node is still
+    //                         36px wide and its edges are plainly readable. Text
+    //                         and chrome go; the SHAPE of the graph stays.
+    //   < 0.2      'low'    — a node is under 24px, an edge is a hairline, and a
+    //                         routing detour around a node body is sub-pixel.
+    //
+    // These numbers say nothing about COST, and they must not: the same zoom is
+    // cheap for 30 nodes and ruinous for 10,000, so any constant chosen here would
+    // either tax the small diagram or fail to save the large one. Cost is the
+    // quality governor's job — it measures the frame and steps the tier down on the
+    // scenes that actually need it.
+    it('returns SKETCH in [0.2, 0.5) and LOW below it', () => {
+      expect(diagram.getLODLevel(0.49)).toBe('sketch');
+      expect(diagram.getLODLevel(0.3)).toBe('sketch');
+      expect(diagram.getLODLevel(0.25)).toBe('sketch');
+      expect(diagram.getLODLevel(0.2)).toBe('sketch');
+      expect(diagram.getLODLevel(0.19)).toBe('low');
       expect(diagram.getLODLevel(0.15)).toBe('low');
       expect(diagram.getLODLevel(0.1)).toBe('low');
     });
@@ -84,12 +96,28 @@ describe('DiagramModel - Level of Detail (Phase 5.3)', () => {
       expect(diagram.shouldRender('gradients', 'low')).toBe(false);
     });
 
-    it('drops the economic features at the zoom fit-to-content actually uses', () => {
+    it('SKETCH keeps the graph\'s shape and drops the unreadable chrome', () => {
+      // 0.25 is the zoom fit-to-content lands on for anything large. What can a
+      // viewer actually see here? A 36px-wide node — so its label (3.6px) and its
+      // port glyphs (sub-pixel) say nothing, and go. Its EDGES, though, are as
+      // legible as ever, and an orthogonal route is plainly distinguishable from a
+      // straight diagonal. So routing stays.
+      //
+      // This tier used to be 'low', which dropped routing too — and that made every
+      // diagram visibly snap its edge shapes on crossing zoom 0.5, charging a
+      // fidelity tax to 30-node flowcharts that render in 3ms, in order to rescue a
+      // 10k scene. Wrong lever: that is a cost problem, and cost is measured, not
+      // guessed from the zoom.
       const lod = diagram.getLODLevel(0.25);
-      expect(diagram.shouldRender('routing', lod)).toBe(false);
-      expect(diagram.shouldRender('link-detail', lod)).toBe(false);
+      expect(lod).toBe('sketch');
+
+      expect(diagram.shouldRender('routing', lod)).toBe(true);
+      expect(diagram.shouldRender('link-detail', lod)).toBe(true);
+
       expect(diagram.shouldRender('labels', lod)).toBe(false);
       expect(diagram.shouldRender('ports', lod)).toBe(false);
+      expect(diagram.shouldRender('handles', lod)).toBe(false);
+      expect(diagram.shouldRender('decorations', lod)).toBe(false);
     });
 
     // The policy is DATA. An app that wants obstacle-aware routing all the way
@@ -352,19 +380,22 @@ describe('DiagramModel - Level of Detail (Phase 5.3)', () => {
       'handles',
     ];
 
-    describe('default config keeps the three tier NAMES (wave8: the medium/low breakpoint moved)', () => {
-      it('picks the same tier names across the breakpoints', () => {
+    describe('the default tier ladder', () => {
+      it('picks the right tier name at every breakpoint', () => {
         // >= 1.0 -> high
         expect(diagram.getLODLevel(10)).toBe('high');
         expect(diagram.getLODLevel(1.5)).toBe('high');
         expect(diagram.getLODLevel(1.0)).toBe('high');
-        // 0.5 <= zoom < 1.0 -> medium
+        // [0.5, 1.0) -> medium: a 12px label is 6px. Small, but still text.
         expect(diagram.getLODLevel(0.99)).toBe('medium');
         expect(diagram.getLODLevel(0.5)).toBe('medium');
-        // wave8/culling: < 0.5 -> low. Was 0.2. 0.3 claimed full detail at a zoom
-        // that cannot display it, and paid O(nodes)-per-edge for the privilege.
-        expect(diagram.getLODLevel(0.3)).toBe('low');
-        expect(diagram.getLODLevel(0.2)).toBe('low');
+        // [0.2, 0.5) -> sketch: the label is a 3px smear, but the node is 36px wide
+        // and the shape of the graph is still exactly what you are looking at.
+        expect(diagram.getLODLevel(0.49)).toBe('sketch');
+        expect(diagram.getLODLevel(0.3)).toBe('sketch');
+        expect(diagram.getLODLevel(0.2)).toBe('sketch');
+        // < 0.2 -> low: a node is under 24px and an edge is a hairline.
+        expect(diagram.getLODLevel(0.19)).toBe('low');
         expect(diagram.getLODLevel(0.15)).toBe('low');
         expect(diagram.getLODLevel(0)).toBe('low');
       });

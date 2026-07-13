@@ -14,6 +14,7 @@ import type { SolverPort, SolverOptions } from '@grafloria/engine';
 // Styling & theming (Wave 4): colorMode + the design-token bridge are RENDERER
 // CONFIG, so their types belong on the config contract. Type-only imports — no
 // runtime dependency from the types barrel into the themes barrel.
+import type { GovernorOptions } from '../perf/quality-governor';
 import type { ColorMode, ThemeSet } from '../themes/color-mode';
 import type { TokenBridge } from '../themes/token-bridge';
 
@@ -463,6 +464,33 @@ export interface SVGRendererConfig {
    * Default: false
    */
   globalRouting?: boolean;
+
+  /**
+   * Wave 8 — Card 7. The ADAPTIVE QUALITY GOVERNOR.
+   *
+   * The LOD tiers pick a level of detail from the ZOOM, which is the right primary
+   * signal — a node 4px tall does not need its label — but it is blind to the thing
+   * that actually hurts: the frame budget. The same scene is cheap on a workstation
+   * and painful on a laptop, and the zoom level knows nothing about either.
+   *
+   * With the governor on, the renderer measures each frame and steps the tier DOWN
+   * when the budget is being blown (fast — within three frames if the frame is
+   * catastrophically over), and back UP only after a patient run of comfortably fast
+   * ones. It can only ever make the picture SIMPLER than the zoom asked for, never
+   * richer: a governor with spare budget must not start drawing labels on 4px nodes
+   * to fill it.
+   *
+   * ON by default. That is a deliberate reversal of this codebase's usual "new
+   * behaviour is opt-in" rule, and the reason is that the alternative default is
+   * *worse*: without it, the zoom breakpoints have to be set pessimistically enough
+   * to protect the largest scene anyone might load, which taxes every small diagram
+   * with detail loss it never needed. Measurement lets small scenes keep their
+   * fidelity and large ones stay interactive. Pass `false` for a fully deterministic
+   * tier (tests, screenshot diffing, print), or an object to tune the budget.
+   *
+   * Default: true
+   */
+  qualityGovernor?: boolean | GovernorOptions;
 
   /**
    * The port the global route solver runs on — a real `Worker`, typically

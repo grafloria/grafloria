@@ -88,6 +88,23 @@ for (const [scenario, rows] of Object.entries(byScenario)) {
 }
 console.log('');
 
+// WHY the zoom-out number is what it is. A fast frame proves nothing on its own —
+// it could be a cheap tier, or it could be the governor having quietly rescued a
+// scene that blew the budget 4x. Printing the verdict is the difference between
+// measuring the governor and merely believing in it.
+const zoom = (byScenario['zoom-out-frame'] ?? []).filter((s) => s.tier);
+if (zoom.length) {
+  console.log('zoom-out @0.25 — the zoom asks for `sketch` (which routes); who could afford it:');
+  for (const s of zoom) {
+    const verdict =
+      s.tier === 'sketch'
+        ? 'afforded it — routes kept'
+        : `governor stepped it down to '${s.tier}' (${s.governor})`;
+    console.log(`  ${String(s.nodes).padStart(6)} nodes  →  ${verdict}`);
+  }
+  console.log('');
+}
+
 // ---- budgets ----------------------------------------------------------------
 //
 // A frame budget of 16.7ms is 60fps. These fences sit well above the numbers we
