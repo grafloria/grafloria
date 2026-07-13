@@ -4,6 +4,7 @@ import { Command, CommandContext, SerializedCommand } from '../Command';
 import type { SerializedNode } from '../../models/NodeModel';
 import type { SerializedLink } from '../../models/LinkModel';
 import type { SerializedGroup } from '../../models/GroupModel';
+import { resolveLinkNodeIds } from './resolveLinkNodeIds';
 
 /**
  * DeleteSelectionCommand deletes selected entities from diagram
@@ -68,10 +69,17 @@ export class DeleteSelectionCommand extends Command {
     if (deleteLinks && nodeIdsToDelete.size > 0) {
       const allLinks = diagram.getLinks();
       for (const link of allLinks) {
-        const sourceNodeId = link.sourcePortId.split(':')[0];
-        const targetNodeId = link.targetPortId.split(':')[0];
+        // Endpoints are PORT ids (nanoids), so the owning nodes must be resolved
+        // through the port index. Splitting on ':' resolved NOTHING for links
+        // made by connectNodes()/the interactive connect path, which left orphan
+        // links behind whenever their nodes were deleted (removeNode() does not
+        // cascade). See resolveLinkNodeIds().
+        const { sourceNodeId, targetNodeId } = resolveLinkNodeIds(diagram, link);
 
-        if (nodeIdsToDelete.has(sourceNodeId) || nodeIdsToDelete.has(targetNodeId)) {
+        if (
+          (sourceNodeId && nodeIdsToDelete.has(sourceNodeId)) ||
+          (targetNodeId && nodeIdsToDelete.has(targetNodeId))
+        ) {
           this.deletedLinks.push(link.serialize());
           diagram.removeLink(link.id);
         }
@@ -181,6 +189,63 @@ export class DeleteSelectionCommand extends Command {
       if (!link) {
         console.warn(`Failed to restore link ${linkData.id}`);
       }
+    }
+  }
+
+  /**
+   * Redo re-applies the RECORDED deletion instead of re-running execute().
+   *
+   * The default `Command.redo()` calls `execute()`, which reads the LIVE
+   * selection — but `undo()` restores the entities WITHOUT restoring the
+   * selection, so a redo would find an empty selection and throw
+   * `No entities selected`. Redo therefore removes exactly the entities this
+   * command removed the first time. The recorded arrays are left intact, so the
+   * command can be undone again afterwards (undo/redo/undo/redo all work).
+   */
+  override redo(context: CommandContext): void {
+    const diagram = context.diagram;
+    if (!diagram) {
+      throw new Error('Diagram not found in context');
+    }
+
+    // Never executed yet (redo before execute) → nothing recorded, use the
+    // normal selection-driven path.
+    if (
+      this.deletedNodes.length === 0 &&
+      this.deletedLinks.length === 0 &&
+      this.deletedGroups.length === 0
+    ) {
+      this.execute(context);
+      return;
+    }
+
+    // Same order as execute(): links → group memberships → groups → nodes.
+    for (const linkData of this.deletedLinks) {
+      diagram.removeLink(linkData.id);
+    }
+
+    for (const [groupId, memberIds] of this.affectedGroups.entries()) {
+      const group = diagram.getGroup(groupId);
+      if (group) {
+        for (const memberId of memberIds) {
+          group.removeMember(memberId);
+        }
+      }
+    }
+
+    for (const groupData of this.deletedGroups) {
+      diagram.removeGroup(groupData.id);
+    }
+
+    // `deletedNodes` was recorded deepest-first, so children go before parents.
+    for (const nodeData of this.deletedNodes) {
+      diagram.removeNode(nodeData.id);
+    }
+
+    if (context.store) {
+      context.store.set('selectedNodes', new Set());
+      context.store.set('selectedLinks', new Set());
+      context.eventBus?.emit('selection:cleared');
     }
   }
 

@@ -21,7 +21,23 @@ import {
 } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import type { DiagramEngine } from '@grafloria/engine';
-import { PortModel, NodeModel, DiagramModel } from '@grafloria/engine';
+import {
+  PortModel,
+  NodeModel,
+  LinkModel,
+  GroupModel,
+  DiagramModel,
+  // wave3/interaction: the canvas commits every direct-manipulation edit as a
+  // Command, so gestures become undoable (they never were).
+  type Command,
+  type Point,
+  MacroCommand,
+  MoveNodeCommand,
+  CopyCommand,
+  CutCommand,
+  PasteCommand,
+  DeleteSelectionCommand,
+} from '@grafloria/engine';
 import { SVGRenderer, LIGHT_THEME, type Theme, type Rectangle, type SVGRendererConfig, getPortPositionForShape } from '@grafloria/renderer';
 import { VNodeRendererService } from '../services/vnode-renderer.service';
 import { InteractionHandlerService } from '../services/interaction-handler.service';
@@ -240,9 +256,27 @@ export class DiagramCanvasComponent implements OnInit, AfterViewInit, OnChanges,
 
   /**
    * Node drag state (Option 1: Node Interaction)
+   *
+   * wave3/interaction: the start position captured here is also the `oldPosition`
+   * of the MoveNodeCommand committed at pointer-UP — the live drag keeps mutating
+   * the model directly (for smoothness), and ONE command per gesture is what makes
+   * it undoable.
    */
   private isDraggingNode = false;
-  private draggedNodes: Map<string, { startX: number; startY: number }> = new Map();
+  private draggedNodes: Map<string, { startX: number; startY: number; startZ?: number }> =
+    new Map();
+
+  /**
+   * wave3/interaction: the last command dispatched by a gesture/keybinding.
+   * CommandManager.execute() is async; tests await this to observe the result.
+   */
+  private pendingCommand: Promise<void> | null = null;
+
+  /**
+   * wave3/interaction: last pointer position in CLIENT coords, so paste can drop
+   * the clipboard at the cursor. Null until the pointer has moved over the canvas.
+   */
+  private lastPointerClient: { x: number; y: number } | null = null;
 
   /**
    * Wave-2 Interaction: single-active-tool arbitration.
@@ -477,7 +511,11 @@ export class DiagramCanvasComponent implements OnInit, AfterViewInit, OnChanges,
     this.draggedNodes.clear();
     diagram.getSelectedNodes().forEach((node) => {
       if (node.isDraggable()) {
-        this.draggedNodes.set(node.id, { startX: node.position.x, startY: node.position.y });
+        this.draggedNodes.set(node.id, {
+          startX: node.position.x,
+          startY: node.position.y,
+          startZ: node.position.z,
+        });
       }
     });
     if (this.containerRef?.nativeElement) {
@@ -503,11 +541,333 @@ export class DiagramCanvasComponent implements OnInit, AfterViewInit, OnChanges,
     this.cdr.markForCheck();
   }
 
+  /**
+   * wave3/interaction: COMMIT the drag as exactly ONE undo step.
+   *
+   * The live drag mutated node positions directly (smooth, no command churn), so
+   * by the time we get here the nodes already sit at their final positions. We
+   * therefore build the command(s) from `start → current` and execute them: the
+   * execute() is a no-op on the model (it re-applies the position the node is
+   * already at) but it is what puts the gesture on the undo stack.
+   *
+   * - one node  → one MoveNodeCommand (mergeable:false, so two quick drags of the
+   *   same node do NOT collapse into a single undo step inside CommandManager's
+   *   500ms merge window)
+   * - many nodes → ONE MacroCommand wrapping one MoveNodeCommand per node.
+   *   NOTE: CommandManager.beginBatch/endBatch does NOT build an undoable batch —
+   *   it just re-executes sequentially — so a MacroCommand is the only way to get
+   *   multi-node drag to undo as one step.
+   *
+   * A gesture that ends where it started adds nothing to the history.
+   */
   private endNodeDrag(): void {
+    const diagram = this.engine?.getDiagram();
+    const moves: Array<{ nodeId: string; from: Point; to: Point }> = [];
+
+    if (diagram) {
+      this.draggedNodes.forEach((start, nodeId) => {
+        const node = diagram.getNode(nodeId);
+        if (!node) return;
+        const to: Point = { x: node.position.x, y: node.position.y, z: node.position.z };
+        const from: Point = { x: start.startX, y: start.startY, z: start.startZ };
+        if (from.x !== to.x || from.y !== to.y) {
+          moves.push({ nodeId, from, to });
+        }
+      });
+    }
+
     this.isDraggingNode = false;
     this.draggedNodes.clear();
     if (this.containerRef?.nativeElement) {
       this.containerRef.nativeElement.style.cursor = this.spaceKeyPressed ? 'grab' : 'default';
+    }
+
+    if (moves.length === 0) {
+      return; // click, or a drag that returned to its origin → no history entry
+    }
+
+    const command: Command =
+      moves.length === 1
+        ? this.buildMoveCommand(moves[0])
+        : this.buildMoveMacro(moves);
+
+    this.executeCommand(command);
+  }
+
+  /** One node's gesture-committed move (opts out of CommandManager merging). */
+  private buildMoveCommand(move: { nodeId: string; from: Point; to: Point }): MoveNodeCommand {
+    return new MoveNodeCommand(move.nodeId, move.to, move.from, { mergeable: false });
+  }
+
+  /** Multi-node gesture → ONE MacroCommand = ONE undo step. */
+  private buildMoveMacro(moves: Array<{ nodeId: string; from: Point; to: Point }>): MacroCommand {
+    const macro = new MacroCommand(`Move ${moves.length} Nodes`);
+    moves.forEach((move) => macro.addStep(this.buildMoveCommand(move)));
+    return macro;
+  }
+
+  // ==========================================================================
+  // wave3/interaction — Card A: transactional edits (gestures → commands)
+  //
+  // Everything the user does by direct manipulation now goes through the
+  // engine's CommandManager, which is what makes it undoable. The commands all
+  // existed; the canvas simply never invoked them.
+  // ==========================================================================
+
+  /**
+   * Dispatch a command on the engine's CommandManager.
+   *
+   * CommandManager.execute() is async and REJECTS when canExecute() is false, so
+   * every call site funnels through here: the promise is kept (tests await it)
+   * and failures are logged instead of surfacing as unhandled rejections.
+   */
+  private executeCommand(command: Command): Promise<void> {
+    const engine = this.engine;
+    if (!engine) {
+      return Promise.resolve();
+    }
+
+    const done = engine.commandManager
+      .execute(command)
+      .then(() => {
+        this.scheduleRender();
+        this.cdr.markForCheck();
+      })
+      .catch((error: unknown) => {
+        console.warn(`[DiagramCanvas] command "${command.name}" failed:`, error);
+      });
+
+    this.pendingCommand = done;
+    return done;
+  }
+
+  /**
+   * Bridge the two selection worlds before running a selection-driven command.
+   *
+   * The canvas selects through the MODEL (`diagram.selectNode()` →
+   * `node.state.selected`, `link.state === 'selected'`) — which is what the
+   * renderer draws — while CopyCommand / CutCommand / DeleteSelectionCommand read
+   * the ENGINE STORE (`selectedNodes` / `selectedLinks`). Only the marquee path
+   * (SelectionManager) writes the store, so a plain click-selected node was
+   * invisible to the commands ("No nodes selected"). Syncing store ← model right
+   * before dispatch makes every selection path work, whoever produced it.
+   */
+  private syncSelectionToStore(): void {
+    const diagram = this.engine?.getDiagram();
+    if (!diagram) return;
+
+    const store = this.engine.getStore();
+    store.set(
+      'selectedNodes',
+      new Set(diagram.getSelectedNodes().map((node: NodeModel) => node.id))
+    );
+    store.set(
+      'selectedLinks',
+      new Set(
+        diagram
+          .getLinks()
+          .filter((link: any) => link.state === 'selected')
+          .map((link: any) => link.id)
+      )
+    );
+  }
+
+  /** True when at least one node or link is selected (store-backed). */
+  private hasSelection(): boolean {
+    const store = this.engine.getStore();
+    const nodes = (store.get('selectedNodes') as Set<string>) ?? new Set();
+    const links = (store.get('selectedLinks') as Set<string>) ?? new Set();
+    return nodes.size > 0 || links.size > 0;
+  }
+
+  /** Undo the last command (Ctrl/Cmd+Z). */
+  undo(): Promise<void> {
+    if (!this.engine?.canUndo()) {
+      return Promise.resolve();
+    }
+    const done = this.engine
+      .undo()
+      .then(() => {
+        this.scheduleRender();
+        this.cdr.markForCheck();
+      })
+      .catch((error: unknown) => console.warn('[DiagramCanvas] undo failed:', error));
+    this.pendingCommand = done;
+    return done;
+  }
+
+  /** Redo the last undone command (Ctrl/Cmd+Shift+Z or Ctrl+Y). */
+  redo(): Promise<void> {
+    if (!this.engine?.canRedo()) {
+      return Promise.resolve();
+    }
+    const done = this.engine
+      .redo()
+      .then(() => {
+        this.scheduleRender();
+        this.cdr.markForCheck();
+      })
+      .catch((error: unknown) => console.warn('[DiagramCanvas] redo failed:', error));
+    this.pendingCommand = done;
+    return done;
+  }
+
+  /** Copy the selection to the clipboard (Ctrl/Cmd+C). */
+  copySelection(): Promise<void> {
+    this.syncSelectionToStore();
+    if (!this.hasSelection()) {
+      return Promise.resolve();
+    }
+    const done = this.executeCommand(new CopyCommand(this.engine.clipboardManager));
+    void this.writeClipboardToOS();
+    return done;
+  }
+
+  /** Cut the selection: clipboard + delete, as ONE undo step (Ctrl/Cmd+X). */
+  cutSelection(): Promise<void> {
+    this.syncSelectionToStore();
+    if (!this.hasSelection()) {
+      return Promise.resolve();
+    }
+    const done = this.executeCommand(new CutCommand(this.engine.clipboardManager));
+    void done.then(() => this.writeClipboardToOS());
+    return done;
+  }
+
+  /** Delete the selection as ONE undo step (Delete / Backspace). */
+  deleteSelection(): Promise<void> {
+    this.syncSelectionToStore();
+    if (!this.hasSelection()) {
+      return Promise.resolve();
+    }
+    return this.executeCommand(new DeleteSelectionCommand());
+  }
+
+  /**
+   * Paste the clipboard, dropping it under the cursor (Ctrl/Cmd+V).
+   *
+   * PasteCommand's `offset` is a DELTA added to every pasted node's stored
+   * position, so "paste at the cursor" = cursor − centre of the copied bbox. With
+   * no known cursor (never moved over the canvas) we fall back to a small nudge so
+   * repeated pastes still stack visibly instead of landing on top of the source.
+   *
+   * The pasted link endpoints stay valid because PasteCommand re-ids every port
+   * via remapNodePortIds() and remaps the links through that map (verified by
+   * CutCommand.spec + ClipboardCommands.spec).
+   */
+  pasteClipboard(): Promise<void> {
+    const done = this.pasteInternal();
+    this.pendingCommand = done;
+    return done;
+  }
+
+  private async pasteInternal(): Promise<void> {
+    if (!this.engine) {
+      return;
+    }
+    // Cross-tab paste: adopt a Grafloria payload from the OS clipboard if there is
+    // one, otherwise keep whatever the in-app clipboard holds.
+    await this.readClipboardFromOS();
+    if (!this.engine.hasClipboardData()) {
+      return;
+    }
+    await this.executeCommand(
+      new PasteCommand(this.engine.clipboardManager, { offset: this.pasteOffset() })
+    );
+  }
+
+  /** Delta that lands the clipboard's bounding-box centre under the cursor. */
+  private pasteOffset(): Point {
+    const data = this.engine.getClipboardData();
+    if (!data || data.nodes.length === 0 || !this.lastPointerClient) {
+      return { x: 20, y: 20 };
+    }
+
+    let left = Infinity;
+    let top = Infinity;
+    let right = -Infinity;
+    let bottom = -Infinity;
+    for (const node of data.nodes) {
+      const { x, y } = node.position ?? { x: 0, y: 0 };
+      const width = node.size?.width ?? 0;
+      const height = node.size?.height ?? 0;
+      left = Math.min(left, x);
+      top = Math.min(top, y);
+      right = Math.max(right, x + width);
+      bottom = Math.max(bottom, y + height);
+    }
+    if (!isFinite(left) || !isFinite(top)) {
+      return { x: 20, y: 20 };
+    }
+
+    const { worldX, worldY } = this.clientToWorld(
+      this.lastPointerClient.x,
+      this.lastPointerClient.y
+    );
+    return {
+      x: worldX - (left + right) / 2,
+      y: worldY - (top + bottom) / 2,
+    };
+  }
+
+  /**
+   * Nice-to-have: mirror the clipboard payload onto the OS clipboard so the
+   * selection can be pasted into another tab/app. Guarded because the async
+   * Clipboard API is absent in jsdom and requires a secure context + permission
+   * in the browser — a rejection here must never break the in-app copy.
+   */
+  private async writeClipboardToOS(): Promise<void> {
+    const data = this.engine?.getClipboardData();
+    const clipboard = (globalThis as any)?.navigator?.clipboard;
+    if (!data || !clipboard?.writeText) {
+      return;
+    }
+    try {
+      await clipboard.writeText(
+        JSON.stringify({ __grafloriaClipboard: 1, ...data })
+      );
+    } catch {
+      // Denied / insecure context / no focus — the in-app clipboard still holds it.
+    }
+  }
+
+  /**
+   * Nice-to-have companion of {@link writeClipboardToOS}: adopt a Grafloria payload
+   * pasted from another tab. Returns true when the OS clipboard replaced the
+   * in-app one, false when there is nothing usable (so paste falls back to it).
+   */
+  private async readClipboardFromOS(): Promise<boolean> {
+    const clipboard = (globalThis as any)?.navigator?.clipboard;
+    if (!clipboard?.readText) {
+      return false;
+    }
+    try {
+      const text = await clipboard.readText();
+      if (!text) return false;
+      const parsed = JSON.parse(text);
+      if (!parsed || parsed.__grafloriaClipboard !== 1 || !Array.isArray(parsed.nodes)) {
+        return false;
+      }
+      if (parsed.nodes.length === 0) {
+        return false;
+      }
+
+      // Rehydrate through the models and re-copy: ClipboardManager.copy() is the
+      // only public way in, and it re-serializes what we hand it — so the payload
+      // lands in exactly the shape PasteCommand expects.
+      this.engine.clipboardManager.copy({
+        nodes: parsed.nodes.map((n: any) => NodeModel.fromJSON(n)),
+        links: (Array.isArray(parsed.links) ? parsed.links : []).map((l: any) =>
+          LinkModel.fromJSON(l)
+        ),
+        groups: (Array.isArray(parsed.groups) ? parsed.groups : []).map((g: any) =>
+          GroupModel.fromJSON(g)
+        ),
+        sourceDiagramId: parsed.sourceDiagramId,
+      });
+      return true;
+    } catch {
+      return false;
     }
   }
 
@@ -590,10 +950,20 @@ export class DiagramCanvasComponent implements OnInit, AfterViewInit, OnChanges,
    * This keeps HTML nodes visually aligned with SVG edges
    */
   private updateHTMLLayerTransform(): void {
-    // Calculate transform: translate by negative viewport position scaled by zoom
-    // This mirrors how React Flow syncs their HTML viewport with panning
-    const translateX = -this.viewport.x * this.zoom;
-    const translateY = -this.viewport.y * this.zoom;
+    // wave3/interaction: the HTML layer must implement the SAME world→screen map
+    // as the SVG viewBox, or HTML/foreignObject nodes drift away from the SVG
+    // edges at any zoom ≠ 1:
+    //
+    //     screen = (world − viewBox.origin) · zoom
+    //
+    // The layer has transform-origin 0 0 and its children are positioned at their
+    // WORLD coordinates (see getNodeX/getNodeY), so `scale(zoom)` contributes the
+    // ·zoom and the translate contributes the −origin·zoom. Translating by
+    // viewport.x/y (as before) only matches the viewBox origin at zoom 1 — that
+    // was the desync.
+    const viewBox = this.getViewBox();
+    const translateX = -viewBox.x * this.zoom;
+    const translateY = -viewBox.y * this.zoom;
 
     this.htmlLayerTransform = `translate(${translateX}px, ${translateY}px) scale(${this.zoom})`;
   }
@@ -900,34 +1270,73 @@ export class DiagramCanvasComponent implements OnInit, AfterViewInit, OnChanges,
     this.updateLinkToolbarTarget();
   }
 
+  // ==========================================================================
+  // wave3/interaction — Card B: ONE viewport convention, shared by the SVG
+  // viewBox, the HTML layer and every hit-test.
+  //
+  // CONVENTION (fixed by SVGRenderer.render(), which is the renderer's contract):
+  //   Given the rect handed to the renderer — `x/y` = world position of the
+  //   canvas' top-left AT ZOOM 1, `width/height` = the canvas size in CSS px —
+  //   the renderer builds a CENTER-ANCHORED viewBox:
+  //
+  //     centre  = (x + w/2, y + h/2)                 ← invariant under zoom
+  //     size    = (w/zoom, h/zoom)
+  //     origin  = centre − size/2
+  //
+  //   The <svg> fills the container (CSS 100%), so the on-screen scale is
+  //   canvasPx / viewBoxSize = zoom, giving the two maps everything else uses:
+  //
+  //     screen = (world − origin) · zoom
+  //     world  = centre + (screen − canvasCentre) / zoom      ← clientToWorld
+  //
+  // The renderer divides by zoom ITSELF, so calculateActualViewport() must hand it
+  // the canvas PIXEL size. It used to pass px/zoom, so the renderer divided twice:
+  // the drawn scale was zoom² while hit-testing assumed zoom, and the HTML layer
+  // assumed a top-left anchor — three different mappings that only agreed at
+  // zoom 1. That is why zoom "drifted" and HTML nodes desynced.
+  // ==========================================================================
+
+  /** Canvas size in CSS px (falls back to the declared viewport when unlaid-out, e.g. jsdom). */
+  private canvasPixelSize(): { width: number; height: number } {
+    const container = this.containerRef?.nativeElement;
+    const rect = container?.getBoundingClientRect();
+    return {
+      width: rect?.width || this.viewport.width,
+      height: rect?.height || this.viewport.height,
+    };
+  }
+
   /**
-   * Calculate the actual viewport in world-space coordinates
-   * The viewport dimensions must scale with zoom level:
-   * - At zoom = 1.0, viewport = canvas pixel dimensions
-   * - At zoom = 0.5 (zoomed out), viewport = 2x canvas dimensions (see more)
-   * - At zoom = 2.0 (zoomed in), viewport = 0.5x canvas dimensions (see less)
+   * The world-space rect actually visible right now — i.e. exactly the viewBox
+   * SVGRenderer will emit for the current viewport + zoom. The single source of
+   * truth for clientToWorld(), the HTML layer transform and the zoom anchor.
+   */
+  private getViewBox(): Rectangle {
+    const { width: pxW, height: pxH } = this.canvasPixelSize();
+    const centreX = this.viewport.x + pxW / 2;
+    const centreY = this.viewport.y + pxH / 2;
+    const width = pxW / this.zoom;
+    const height = pxH / this.zoom;
+    return {
+      x: centreX - width / 2,
+      y: centreY - height / 2,
+      width,
+      height,
+    };
+  }
+
+  /**
+   * Rect handed to SVGRenderer.render(): world origin + the canvas PIXEL size.
+   * The renderer re-derives the center-anchored viewBox from it (dividing by zoom
+   * itself), so this must NOT be pre-divided — see the convention block above.
    */
   private calculateActualViewport(): Rectangle {
-    const container = this.containerRef?.nativeElement;
-    if (!container) {
-      return this.viewport;
-    }
-
-    // Get actual canvas pixel dimensions
-    const rect = container.getBoundingClientRect();
-    const canvasWidth = rect.width || this.viewport.width;
-    const canvasHeight = rect.height || this.viewport.height;
-
-    // Calculate world-space dimensions based on zoom
-    // worldWidth = pixelWidth / zoom
-    const worldWidth = canvasWidth / this.zoom;
-    const worldHeight = canvasHeight / this.zoom;
-
+    const { width, height } = this.canvasPixelSize();
     return {
       x: this.viewport.x,
       y: this.viewport.y,
-      width: worldWidth,
-      height: worldHeight
+      width,
+      height,
     };
   }
 
@@ -1031,37 +1440,246 @@ export class DiagramCanvasComponent implements OnInit, AfterViewInit, OnChanges,
   }
 
   /**
-   * Handle mouse wheel for zooming (Phase 0.5 - Option B)
+   * Wheel: ctrl/⌘ (and trackpad pinch, which the browser reports as ctrl+wheel)
+   * ZOOMS at the cursor; a plain wheel SCROLLS the canvas (shift → horizontal).
+   * This is the Figma/Miro/VS Code convention — the previous behaviour zoomed on
+   * every wheel event around the viewport CENTRE, which is the "feels wrong"
+   * competitors were compared against.
    */
   @HostListener('wheel', ['$event'])
   onWheel(event: WheelEvent): void {
-    if (!this.enableMouseWheelZoom || !this.engine) {
+    if (!this.engine || !this.engine.getDiagram()) {
       return;
     }
 
-    event.preventDefault();
+    const wantsZoom = event.ctrlKey || event.metaKey;
 
-    const diagram = this.engine.getDiagram();
+    if (wantsZoom) {
+      if (!this.enableMouseWheelZoom) {
+        return;
+      }
+      event.preventDefault();
+
+      // Multiplicative steps: a wheel notch is a constant RELATIVE change, so a
+      // step feels the same at 0.2× and at 3× (a linear ±sensitivity does not).
+      const factor = 1 + this.zoomSensitivity;
+      const target = event.deltaY > 0 ? this.zoom / factor : this.zoom * factor;
+      this.zoomAtClient(target, event.clientX, event.clientY);
+      return;
+    }
+
+    // Scroll-to-pan.
+    if (!this.enablePan) {
+      return;
+    }
+    event.preventDefault();
+    const [dxPx, dyPx] = event.shiftKey
+      ? [event.deltaY || event.deltaX, 0] // shift → horizontal scroll
+      : [event.deltaX, event.deltaY];
+    this.panByScreen(dxPx, dyPx);
+  }
+
+  // ==========================================================================
+  // wave3/interaction — Card B: zoom + pan API (cursor-anchored)
+  // ==========================================================================
+
+  /**
+   * Zoom to `targetZoom` keeping the world point under (clientX, clientY) pinned
+   * to that same screen pixel.
+   *
+   * DERIVATION against the center-anchored convention (see the block above
+   * calculateActualViewport). With `s` the cursor's screen offset from the canvas'
+   * LEFT edge, `W` the canvas px width and `c = viewport.x + W/2` the world-space
+   * centre (which is what the viewBox is anchored on):
+   *
+   *     world(s) = c + (s − W/2) / zoom
+   *
+   * Pinning world(s) across z0 → z1 means solving for the new centre c₁:
+   *
+   *     c₁ = world − (s − W/2) / z₁
+   *   ⇒ viewport.x₁ = world − (s − W/2)/z₁ − W/2
+   *
+   * (`W` does not change with zoom, so the centre is the only free variable.)
+   * Zooming at the exact canvas centre leaves viewport.x/y untouched — which is
+   * precisely the old behaviour, now a special case rather than the only one.
+   */
+  zoomAtClient(targetZoom: number, clientX: number, clientY: number): void {
+    const diagram = this.engine?.getDiagram();
     if (!diagram) {
       return;
     }
 
-    // Calculate zoom delta based on wheel direction
-    const delta = event.deltaY > 0 ? -this.zoomSensitivity : this.zoomSensitivity;
-    const newZoom = Math.max(this.minZoom, Math.min(this.maxZoom, this.zoom + delta));
+    const newZoom = this.clampZoom(targetZoom);
+    if (newZoom === this.zoom) {
+      return;
+    }
 
-    // Update local zoom
+    // The world point under the cursor BEFORE the zoom — the thing we pin.
+    const { worldX, worldY } = this.clientToWorld(clientX, clientY);
+    const { screenX, screenY } = this.clientToScreen(clientX, clientY);
+    const { width: pxW, height: pxH } = this.canvasPixelSize();
+
     this.zoom = newZoom;
 
-    // Update diagram zoom
+    this.setViewportOrigin(
+      worldX - (screenX - pxW / 2) / newZoom - pxW / 2,
+      worldY - (screenY - pxH / 2) / newZoom - pxH / 2
+    );
+
     diagram.setZoom(newZoom);
-
-    // Emit zoom change event
     this.zoomChanged.emit(newZoom);
+    this.emitViewportChanged();
 
-    // Trigger re-render with updated viewport dimensions
     this.scheduleRender();
     this.cdr.markForCheck();
+  }
+
+  /** Zoom keeping the canvas centre fixed (keyboard zoom, toolbar buttons). */
+  zoomBy(factor: number): void {
+    const { width, height } = this.canvasPixelSize();
+    const rect = this.containerRef?.nativeElement?.getBoundingClientRect();
+    this.zoomAtClient(
+      this.zoom * factor,
+      (rect?.left ?? 0) + width / 2,
+      (rect?.top ?? 0) + height / 2
+    );
+  }
+
+  /** Ctrl/⌘ + '=' */
+  zoomIn(): void {
+    this.zoomBy(1 + this.zoomSensitivity);
+  }
+
+  /** Ctrl/⌘ + '-' */
+  zoomOut(): void {
+    this.zoomBy(1 / (1 + this.zoomSensitivity));
+  }
+
+  /** Ctrl/⌘ + '0' — back to 100%, canvas centre unchanged. */
+  resetZoom(): void {
+    this.zoomBy(1 / this.zoom);
+  }
+
+  /**
+   * Fit every node in the diagram into view (Shift+1).
+   * Picks the largest zoom (within [minZoom, maxZoom]) at which the content's
+   * bounding box fits inside the canvas with `padding` screen px to spare, then
+   * centres the viewport on that box.
+   */
+  fitToContent(padding = 40): void {
+    const diagram = this.engine?.getDiagram();
+    if (!diagram) return;
+    this.fitBounds(this.boundsOf(diagram.getNodes()), padding);
+  }
+
+  /** Fit the CURRENT SELECTION into view (Shift+2); falls back to everything. */
+  zoomToSelection(padding = 40): void {
+    const diagram = this.engine?.getDiagram();
+    if (!diagram) return;
+    const selected = diagram.getSelectedNodes();
+    this.fitBounds(
+      this.boundsOf(selected.length > 0 ? selected : diagram.getNodes()),
+      padding
+    );
+  }
+
+  /** World bounding box of a set of nodes (null when there is nothing to fit). */
+  private boundsOf(
+    nodes: NodeModel[]
+  ): { left: number; top: number; right: number; bottom: number } | null {
+    if (!nodes || nodes.length === 0) {
+      return null;
+    }
+    let left = Infinity;
+    let top = Infinity;
+    let right = -Infinity;
+    let bottom = -Infinity;
+
+    for (const node of nodes) {
+      if (node.state?.visible === false) continue;
+      const x = this.getAbsoluteX(node);
+      const y = this.getAbsoluteY(node);
+      left = Math.min(left, x);
+      top = Math.min(top, y);
+      right = Math.max(right, x + (node.size?.width ?? 0));
+      bottom = Math.max(bottom, y + (node.size?.height ?? 0));
+    }
+
+    return isFinite(left) && isFinite(top) ? { left, top, right, bottom } : null;
+  }
+
+  /** Centre + scale the viewport on a world box, honouring the zoom clamp. */
+  private fitBounds(
+    bounds: { left: number; top: number; right: number; bottom: number } | null,
+    padding: number
+  ): void {
+    const diagram = this.engine?.getDiagram();
+    if (!diagram || !bounds) {
+      return;
+    }
+
+    const { width: pxW, height: pxH } = this.canvasPixelSize();
+    const boxWidth = Math.max(bounds.right - bounds.left, 1);
+    const boxHeight = Math.max(bounds.bottom - bounds.top, 1);
+
+    // Available screen px after padding, converted into a scale: at zoom z the box
+    // occupies boxWidth·z px, and it must fit in (pxW − 2·padding).
+    const availableW = Math.max(pxW - padding * 2, 1);
+    const availableH = Math.max(pxH - padding * 2, 1);
+    const newZoom = this.clampZoom(Math.min(availableW / boxWidth, availableH / boxHeight));
+
+    this.zoom = newZoom;
+
+    // Centre the viewport on the box: the visible world rect is centred on
+    // (viewport.x + pxW/2, viewport.y + pxH/2), so put THAT at the box centre.
+    this.setViewportOrigin(
+      (bounds.left + bounds.right) / 2 - pxW / 2,
+      (bounds.top + bounds.bottom) / 2 - pxH / 2
+    );
+
+    diagram.setZoom(newZoom);
+    this.zoomChanged.emit(newZoom);
+    this.emitViewportChanged();
+
+    this.scheduleRender();
+    this.cdr.markForCheck();
+  }
+
+  /** Pan by a SCREEN-px delta (wheel scroll); world delta = px / zoom. */
+  private panByScreen(dxPx: number, dyPx: number): void {
+    if (!dxPx && !dyPx) {
+      return;
+    }
+    const diagram = this.engine?.getDiagram();
+    if (!diagram) return;
+
+    const dx = dxPx / this.zoom;
+    const dy = dyPx / this.zoom;
+
+    this.setViewportOrigin(this.viewport.x + dx, this.viewport.y + dy);
+    diagram.pan(dx, dy);
+    this.emitViewportChanged();
+
+    this.scheduleRender();
+    this.cdr.markForCheck();
+  }
+
+  /** Move the viewport origin, keeping the object identity churn in one place. */
+  private setViewportOrigin(x: number, y: number): void {
+    this.viewport = { ...this.viewport, x, y };
+  }
+
+  private clampZoom(zoom: number): number {
+    return Math.max(this.minZoom, Math.min(this.maxZoom, zoom));
+  }
+
+  /**
+   * Emit the world rect currently VISIBLE (i.e. the SVG viewBox). Previously this
+   * emitted the raw renderer input, whose origin was the un-zoomed viewport corner
+   * — not a rect the host could actually use for a minimap/overview.
+   */
+  private emitViewportChanged(): void {
+    this.viewportChanged.emit(this.getViewBox());
   }
 
   /**
@@ -1397,6 +2015,9 @@ export class DiagramCanvasComponent implements OnInit, AfterViewInit, OnChanges,
       return;
     }
 
+    // wave3/interaction: remember the cursor so paste can drop at it.
+    this.lastPointerClient = { x: event.clientX, y: event.clientY };
+
     // Handle panning
     if (this.isPanning) {
       // Calculate pan delta in world-space coordinates
@@ -1417,9 +2038,8 @@ export class DiagramCanvasComponent implements OnInit, AfterViewInit, OnChanges,
       this.lastPanX = event.clientX;
       this.lastPanY = event.clientY;
 
-      // Emit viewport change event with calculated viewport
-      const actualViewport = this.calculateActualViewport();
-      this.viewportChanged.emit(actualViewport);
+      // Emit the world rect now visible (wave3/interaction: one meaning everywhere)
+      this.emitViewportChanged();
 
       // Trigger re-render
       this.scheduleRender();
@@ -1837,36 +2457,51 @@ export class DiagramCanvasComponent implements OnInit, AfterViewInit, OnChanges,
   }
 
   /**
-   * CRITICAL FIX: Convert client coordinates to world coordinates
-   * This must match the viewBox calculation in SVGRenderer which zooms around viewport center
+   * CRITICAL: Convert client coordinates to world coordinates.
+   * MUST match the viewBox SVGRenderer emits — it is derived from the very same
+   * getViewBox(), so the two can no longer drift apart:
+   *
+   *     world = viewBox.origin + screen / zoom
    */
   private clientToWorld(clientX: number, clientY: number): { worldX: number; worldY: number } {
+    const { screenX, screenY } = this.clientToScreen(clientX, clientY);
+    const viewBox = this.getViewBox();
+
+    return {
+      worldX: viewBox.x + screenX / this.zoom,
+      worldY: viewBox.y + screenY / this.zoom,
+    };
+  }
+
+  /** Client (page) coords → canvas-local screen px. */
+  private clientToScreen(clientX: number, clientY: number): { screenX: number; screenY: number } {
     const rect = this.containerRef.nativeElement.getBoundingClientRect();
-    const localX = clientX - rect.left;
-    const localY = clientY - rect.top;
+    return { screenX: clientX - rect.left, screenY: clientY - rect.top };
+  }
 
-    // SVGRenderer zooms around the viewport center, so we must calculate viewBox the same way
-    const centerX = this.viewport.x + this.viewport.width / 2;
-    const centerY = this.viewport.y + this.viewport.height / 2;
-
-    const viewBoxWidth = this.viewport.width / this.zoom;
-    const viewBoxHeight = this.viewport.height / this.zoom;
-    const viewBoxX = centerX - viewBoxWidth / 2;
-    const viewBoxY = centerY - viewBoxHeight / 2;
-
-    // Convert local canvas coordinates to world coordinates using viewBox
-    const worldX = viewBoxX + (localX / this.zoom);
-    const worldY = viewBoxY + (localY / this.zoom);
-
-    return { worldX, worldY };
+  /**
+   * Inverse of {@link clientToWorld}: world → canvas-local screen px.
+   * Exposed (public) because it is the invariant the cursor-anchored zoom is
+   * defined by, and the zoom tests assert on it.
+   */
+  worldToScreen(worldX: number, worldY: number): { screenX: number; screenY: number } {
+    const viewBox = this.getViewBox();
+    return {
+      screenX: (worldX - viewBox.x) * this.zoom,
+      screenY: (worldY - viewBox.y) * this.zoom,
+    };
   }
 
   /**
    * Handle keyboard events (Option 1: Node Interaction)
    * - Space: Pan mode cursor
-   * - Delete/Backspace: Delete selected nodes
+   * - Delete/Backspace: Delete selection (undoable)
    * - Escape: Clear selection
    * - Ctrl+A: Select all
+   * wave3/interaction adds:
+   * - Ctrl/⌘+Z undo, Ctrl/⌘+Shift+Z or Ctrl+Y redo
+   * - Ctrl/⌘+X / +C / +V cut / copy / paste-at-cursor
+   * - Ctrl/⌘ +'=' / '-' / '0' zoom in / out / reset; Shift+1 fit, Shift+2 fit selection
    */
   @HostListener('window:keydown', ['$event'])
   onKeyDown(event: KeyboardEvent): void {
@@ -1888,44 +2523,48 @@ export class DiagramCanvasComponent implements OnInit, AfterViewInit, OnChanges,
       return;
     }
 
+    // Never steal keys from a text field (incl. the inline link-label editor).
+    if (this.isTextInput(event.target)) {
+      return;
+    }
+
+    // wave3/interaction: history + clipboard + zoom keybindings.
+    if (this.handleShortcut(event)) {
+      return;
+    }
+
     // Handle Delete key (Phase 3: Also delete links, Phase 2.3a: Also delete waypoints)
     if (event.key === 'Delete' || event.key === 'Backspace') {
-      // Don't delete if user is typing in an input field
-      const target = event.target as HTMLElement;
-      if (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA') {
-        return;
-      }
-
       // Phase 2.3a: Try deleting hovered waypoint first (highest priority)
       const config = this.engine.getInteractionConfig();
       if (config.enableWaypointEditing) {
         const waypointDeleted = this.interactionHandler.deleteHoveredWaypoint();
         if (waypointDeleted) {
           event.preventDefault();
-          console.log('🗑️ Deleted waypoint');
           this.scheduleRender();
           this.cdr.markForCheck();
           return;
         }
       }
 
-      // Try deleting selected link
-      const linkDeleted = this.interactionHandler.deleteSelectedLink(this.engine);
-      if (linkDeleted) {
+      // wave3/interaction: nodes AND links now go through DeleteSelectionCommand,
+      // so a deletion is ONE undoable step (it used to call
+      // diagram.deleteSelected() / removeLink() directly — unrecoverable).
+      this.syncSelectionToStore();
+      if (this.hasSelection()) {
         event.preventDefault();
-        console.log('🗑️ Deleted selected link');
-        this.scheduleRender();
-        this.cdr.markForCheck();
+        this.deleteSelection();
         return;
       }
 
-      // Otherwise delete selected nodes
-      const deletedCount = diagram.deleteSelected();
-      if (deletedCount > 0) {
+      // Fallback: a link the interaction handler considers selected but that the
+      // model-level sync above could not see.
+      const linkDeleted = this.interactionHandler.deleteSelectedLink(this.engine);
+      if (linkDeleted) {
         event.preventDefault();
-        console.log(`🗑️ Deleted ${deletedCount} selected node(s)`);
         this.scheduleRender();
         this.cdr.markForCheck();
+        return;
       }
     }
 
@@ -1954,12 +2593,107 @@ export class DiagramCanvasComponent implements OnInit, AfterViewInit, OnChanges,
     }
 
     // Handle Ctrl+A - select all
-    if ((event.ctrlKey || event.metaKey) && event.key === 'a') {
+    if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 'a') {
       event.preventDefault();
       diagram.selectAll();
       this.scheduleRender();
       this.cdr.markForCheck();
     }
+  }
+
+  /**
+   * wave3/interaction: history / clipboard / zoom shortcuts.
+   * @returns true when the key was consumed (the caller must stop).
+   */
+  private handleShortcut(event: KeyboardEvent): boolean {
+    const accel = event.ctrlKey || event.metaKey;
+    const key = event.key.toLowerCase();
+
+    if (accel) {
+      switch (key) {
+        case 'z':
+          event.preventDefault();
+          // Ctrl+Shift+Z = redo (the Windows/Linux + macOS convention).
+          if (event.shiftKey) {
+            this.redo();
+          } else {
+            this.undo();
+          }
+          return true;
+
+        case 'y':
+          event.preventDefault();
+          this.redo();
+          return true;
+
+        case 'x':
+          event.preventDefault();
+          this.cutSelection();
+          return true;
+
+        case 'c':
+          event.preventDefault();
+          this.copySelection();
+          return true;
+
+        case 'v':
+          event.preventDefault();
+          this.pasteClipboard();
+          return true;
+
+        // '=' and '+' share a key; accept both, plus the numpad names.
+        case '=':
+        case '+':
+        case 'add':
+          event.preventDefault();
+          this.zoomIn();
+          return true;
+
+        case '-':
+        case '_':
+        case 'subtract':
+          event.preventDefault();
+          this.zoomOut();
+          return true;
+
+        case '0':
+          event.preventDefault();
+          this.resetZoom();
+          return true;
+
+        default:
+          return false;
+      }
+    }
+
+    // Figma-style view shortcuts (no accelerator).
+    if (event.shiftKey && key === '1') {
+      event.preventDefault();
+      this.fitToContent();
+      return true;
+    }
+    if (event.shiftKey && key === '2') {
+      event.preventDefault();
+      this.zoomToSelection();
+      return true;
+    }
+
+    return false;
+  }
+
+  /** True when the event targets a text-entry element (never steal its keys). */
+  private isTextInput(target: EventTarget | null): boolean {
+    const element = target as HTMLElement | null;
+    if (!element || !element.tagName) {
+      return false;
+    }
+    const tag = element.tagName.toUpperCase();
+    return (
+      tag === 'INPUT' ||
+      tag === 'TEXTAREA' ||
+      tag === 'SELECT' ||
+      element.isContentEditable === true
+    );
   }
 
   /**
@@ -2084,29 +2818,23 @@ export class DiagramCanvasComponent implements OnInit, AfterViewInit, OnChanges,
   }
 
   /**
-   * Get node X position for HTML rendering
-   * Accounts for parent chain and zoom transform on HTML layer
+   * Get node X position for HTML rendering — in WORLD units.
+   *
+   * wave3/interaction: the HTML layer's transform is
+   * `translate(−viewBox.origin·zoom) scale(zoom)`, so a child positioned at its
+   * world coordinate lands at (world − origin)·zoom — byte-for-byte the SVG map.
+   * The old `/ zoom` cancelled the layer's scale, which pinned HTML nodes to a
+   * zoom-independent offset while the SVG around them scaled: the desync.
    */
   getNodeX(node: any): number {
-    // Get world coordinate
-    const worldX = this.getAbsoluteX(node);
-
-    // Divide by zoom because HTML layer has scale(zoom) applied
-    // This prevents double scaling: node position gets multiplied by layer scale
-    return worldX / this.zoom;
+    return this.getAbsoluteX(node);
   }
 
   /**
-   * Get node Y position for HTML rendering
-   * Accounts for parent chain and zoom transform on HTML layer
+   * Get node Y position for HTML rendering — in WORLD units (see getNodeX).
    */
   getNodeY(node: any): number {
-    // Get world coordinate
-    const worldY = this.getAbsoluteY(node);
-
-    // Divide by zoom because HTML layer has scale(zoom) applied
-    // This prevents double scaling: node position gets multiplied by layer scale
-    return worldY / this.zoom;
+    return this.getAbsoluteY(node);
   }
 
   /**

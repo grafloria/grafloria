@@ -2,6 +2,7 @@
 
 import { Command, CommandContext, SerializedCommand } from '../Command';
 import type { ClipboardManager } from '../../clipboard/ClipboardManager';
+import { resolveLinkNodeIds } from './resolveLinkNodeIds';
 
 /**
  * CopyCommand copies selected entities to clipboard
@@ -53,13 +54,14 @@ export class CopyCommand extends Command {
       const allLinks = diagram.getLinks();
 
       for (const link of allLinks) {
-        // Include link if both source and target nodes are selected
-        const sourceNode = diagram.getNode(link.sourcePortId.split(':')[0]);
-        const targetNode = diagram.getNode(link.targetPortId.split(':')[0]);
+        // Include link if both source and target nodes are selected.
+        // Endpoints are PORT ids (nanoids), so the owning nodes must be resolved
+        // through the port index — see resolveLinkNodeIds().
+        const { sourceNodeId, targetNodeId } = resolveLinkNodeIds(diagram, link);
 
-        if (sourceNode && targetNode &&
-            nodeIdSet.has(sourceNode.id) &&
-            nodeIdSet.has(targetNode.id)) {
+        if (sourceNodeId && targetNodeId &&
+            nodeIdSet.has(sourceNodeId) &&
+            nodeIdSet.has(targetNodeId)) {
           links.push(link);
           this.copiedLinkIds.push(link.id);
         }
