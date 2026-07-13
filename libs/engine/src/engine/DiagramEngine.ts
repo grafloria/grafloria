@@ -59,12 +59,11 @@ import type { NodeBehavior } from '../types';
 // Wave 7 (Auto-layout) — Card 0: the unified layout entry point.
 import {
   LayoutRegistry,
-  fromAdapter,
-  createBuiltInLayoutAdapters,
+  createDefaultLayoutRegistry,
+  runLayout,
   type UnifiedLayoutOptions,
   type UnifiedLayoutResult,
 } from '../layout/layout-registry';
-import { DEFAULT_LAYOUT_SEED } from '../layout/rng';
 import type { LayoutType, LayoutConfig, FlexItemConfig, GridItemConfig } from '../types/layout.types'; // Phase 1.7
 
 export interface DiagramEngineConfig {
@@ -2139,11 +2138,10 @@ export class DiagramEngine {
    */
   getLayoutRegistry(): LayoutRegistry {
     if (!this._layoutRegistry) {
-      const registry = new LayoutRegistry();
-      for (const adapter of createBuiltInLayoutAdapters()) {
-        registry.register(fromAdapter(adapter));
-      }
-      this._layoutRegistry = registry;
+      // Card 2: the adapters PLUS the first-class portfolio (tree, grid,
+      // circular, radial, force), every one of them behind the component-packing
+      // wrapper so a forest never comes out as a pile.
+      this._layoutRegistry = createDefaultLayoutRegistry();
     }
     return this._layoutRegistry;
   }
@@ -2172,24 +2170,10 @@ export class DiagramEngine {
       throw new Error('No diagram loaded');
     }
 
-    const engine = this.getLayoutRegistry().get(name);
-    if (!engine) {
-      const available = this.getLayoutRegistry().names().join(', ');
-      throw new Error(`Unknown layout '${name}'. Registered layouts: ${available}`);
-    }
-
-    const seed = options.seed ?? DEFAULT_LAYOUT_SEED;
-    const result = await engine.apply(this.diagram, { ...options, seed });
-
-    // Commit the positions. setPosition (not a raw write) so the spatial index,
-    // the routing obstacle map and the renderer all see the move — the wave-5
-    // lesson: a subscription to an event nobody emits is a subscription to
-    // nothing.
-    for (const [nodeId, position] of result.nodePositions) {
-      this.diagram.getNode(nodeId)?.setPosition(position.x, position.y);
-    }
-
-    return { ...result, algorithm: name, seed };
+    // runLayout is the shared apply-and-commit path (it is what makes the preset
+    // applicator real too — see LayoutApplicator). It commits with setPosition(),
+    // so the spatial index and the routing obstacle map see the move.
+    return runLayout(this.getLayoutRegistry(), this.diagram, name, options);
   }
 
   /**

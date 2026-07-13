@@ -67,6 +67,11 @@ export * from './layout.service';
 export * from './layout-registry'; // Wave 7 Card 0
 export * from './rng'; // Wave 7 Card 0
 
+// Wave 7 Card 2: the first-class layout portfolio + disconnected-component packing
+export * from './component-packing';
+export * from './portfolio-layouts';
+export * from './tree-layout';
+
 // Phase 3: Advanced layout features
 export * from './port-aware-layout.interface';
 export * from './subgraph-layout.interface';

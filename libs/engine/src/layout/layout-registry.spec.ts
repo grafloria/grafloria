@@ -73,8 +73,11 @@ describe('Card 0 — the unified layout API', () => {
 
     it('every built-in adapter is registered and addressable by name', () => {
       const engine = new DiagramEngine();
+      // Card 0 registered the five adapters; Card 2 added the portfolio
+      // (tree/grid/circular/radial) and promoted force from a raw adapter
+      // passthrough to a first-class layout that overrides it.
       expect(engine.getLayoutRegistry().names()).toEqual(
-        ['community', 'dagre', 'elk', 'force', 'spectral']
+        ['circular', 'community', 'dagre', 'elk', 'force', 'grid', 'radial', 'spectral', 'tree']
       );
       engine.destroy();
     });

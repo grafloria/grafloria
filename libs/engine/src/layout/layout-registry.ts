@@ -46,12 +46,16 @@
 
 import type { DiagramModel } from '../models/DiagramModel';
 import type { LayoutAdapter, LayoutOptions, LayoutResult } from './layout-adapter.interface';
-import { DEFAULT_LAYOUT_SEED } from './rng';
+import { DEFAULT_LAYOUT_SEED, inStableOrder } from './rng';
 import { DagreLayoutAdapter } from './dagre-layout-adapter';
 import { ELKLayoutAdapter } from './elk-layout-adapter';
 import { ForceLayoutAdapter } from './force-layout-adapter';
 import { SpectralLayoutAdapter } from './spectral-layout-adapter';
 import { CommunityLayoutAdapter } from './community-layout-adapter';
+// Wave 7 Card 2: the portfolio, and the packing wrapper every layout goes through.
+import { layoutWithComponentPacking, type GraphLayoutFn } from './component-packing';
+import { circularLayout, forceLayout, gridLayout, radialLayout } from './portfolio-layouts';
+import { treeLayout, type FlowDirection } from './tree-layout';
 
 /**
  * The one options schema. Adapter-specific knobs still ride in `options`, but
@@ -71,13 +75,39 @@ export interface UnifiedLayoutOptions extends Partial<LayoutOptions> {
    * ELK calls it `elk.direction`, and the two disagree about spelling. Callers
    * say `direction` and the registry translates.
    */
-  direction?: 'TB' | 'BT' | 'LR' | 'RL';
+  direction?: FlowDirection;
 
   /** Space between nodes in the same rank/row. */
   nodeSpacing?: number;
 
   /** Space between ranks/layers. */
   rankSpacing?: number;
+
+  // --- Card 2: shared across the whole portfolio -----------------------------
+
+  /**
+   * Gap between packed disconnected components. Defaults to `nodeSpacing`.
+   * See component-packing.ts — this applies to EVERY layout, not just the new
+   * ones, because "lay out a forest and the trees land on top of each other" is
+   * an adapter-agnostic bug.
+   */
+  componentSpacing?: number;
+
+  /** Target width/height of the packed result. 1.6 ≈ a landscape screen. */
+  aspectRatio?: number;
+
+  /** grid: number of columns. Defaults to ceil(sqrt(n)). */
+  columns?: number;
+
+  /** tree/radial: the node to root the tree / centre the rings on. */
+  rootId?: string;
+
+  /**
+   * tree: per-branch direction. The subtree rooted at each listed node flows its
+   * own way instead of the tree's `direction` — a mind map is
+   * `{ 'left-branch': 'RL', 'right-branch': 'LR' }`.
+   */
+  branchDirections?: Record<string, FlowDirection>;
 }
 
 /** What a registered layout engine must be able to do. */
@@ -147,13 +177,35 @@ export class LayoutRegistry {
  *      translated into whatever the adapter calls them.
  */
 export function fromAdapter(adapter: LayoutAdapter): RegisteredLayout {
-  return {
-    name: adapter.name,
-    async apply(diagram: DiagramModel, options: UnifiedLayoutOptions): Promise<LayoutResult> {
-      const nodes = [...diagram.getNodes()].sort((a, b) => (a.id < b.id ? -1 : a.id > b.id ? 1 : 0));
-      const links = [...diagram.getLinks()].sort((a, b) => (a.id < b.id ? -1 : a.id > b.id ? 1 : 0));
+  return createLayout(adapter.name, (nodes, links, options) =>
+    adapter.apply(nodes, links, translateOptions(adapter.name, options))
+  );
+}
 
-      return adapter.apply(nodes, links, translateOptions(adapter.name, options));
+/**
+ * Turn a raw graph-layout function into a registered layout.
+ *
+ * The two things EVERY layout in the engine gets here, whether it is a wrapped
+ * third-party adapter or one of Card 2's own:
+ *
+ *   1. CANONICAL INPUT ORDER (Card 0) — sorted by id, so the same graph laid out
+ *      after a save/load round-trip produces the same coordinates.
+ *   2. COMPONENT PACKING (Card 2) — a disconnected graph is split, laid out
+ *      component by component, and the boxes are packed. Implemented ONCE, here,
+ *      rather than five times in five algorithms. It is a no-op for a connected
+ *      graph, so it cannot regress an existing layout.
+ */
+export function createLayout(name: string, fn: GraphLayoutFn): RegisteredLayout {
+  return {
+    name,
+    apply(diagram: DiagramModel, options: UnifiedLayoutOptions): Promise<LayoutResult> {
+      return layoutWithComponentPacking(
+        name,
+        fn,
+        inStableOrder(diagram.getNodes()),
+        inStableOrder(diagram.getLinks()),
+        options
+      );
     },
   };
 }
@@ -207,4 +259,67 @@ export function createBuiltInLayoutAdapters(): LayoutAdapter[] {
     new SpectralLayoutAdapter(),
     new CommunityLayoutAdapter(),
   ];
+}
+
+/**
+ * Card 2's portfolio: the diagram shapes a serious engine has to be able to draw.
+ *
+ * `force` is in here as well as in the adapter list, and it deliberately WINS —
+ * it is registered second. The adapter's physics is reused unchanged (see
+ * portfolio-layouts.ts); what the portfolio version adds is component packing and
+ * the shared options vocabulary, which is the difference between "we expose a
+ * force adapter" and "force is a first-class layout".
+ */
+export function createPortfolioLayouts(): RegisteredLayout[] {
+  return [
+    createLayout('tree', (nodes, links, options) => treeLayout(nodes, links, options)),
+    createLayout('grid', (nodes, links, options) => gridLayout(nodes, links, options)),
+    createLayout('circular', (nodes, links, options) => circularLayout(nodes, links, options)),
+    createLayout('radial', (nodes, links, options) => radialLayout(nodes, links, options)),
+    createLayout('force', (nodes, links, options) => forceLayout(nodes, links, options)),
+  ];
+}
+
+/** The registry `engine.layout()` runs against: adapters, then the portfolio. */
+export function createDefaultLayoutRegistry(): LayoutRegistry {
+  const registry = new LayoutRegistry();
+  for (const adapter of createBuiltInLayoutAdapters()) {
+    registry.register(fromAdapter(adapter));
+  }
+  for (const layout of createPortfolioLayouts()) {
+    registry.register(layout);
+  }
+  return registry;
+}
+
+/**
+ * Run a named layout against a diagram and COMMIT the result.
+ *
+ * The single place positions are written back, shared by `DiagramEngine.layout()`
+ * and by the preset applicator. `setPosition()` — never a raw write to
+ * `node.position` — because the spatial index, the routing obstacle map and the
+ * renderer all hang off the change event it emits. (Wave 5 lost a day to the
+ * mirror image of this: the engine subscribed to `node.on('position')` while the
+ * model emits `change:position`, so the obstacle map never updated and routes were
+ * computed against stale geometry.)
+ */
+export async function runLayout(
+  registry: LayoutRegistry,
+  diagram: DiagramModel,
+  name: string,
+  options: UnifiedLayoutOptions = {}
+): Promise<UnifiedLayoutResult> {
+  const layout = registry.get(name);
+  if (!layout) {
+    throw new Error(`Unknown layout '${name}'. Registered layouts: ${registry.names().join(', ')}`);
+  }
+
+  const seed = options.seed ?? DEFAULT_LAYOUT_SEED;
+  const result = await layout.apply(diagram, { ...options, seed });
+
+  for (const [nodeId, position] of result.nodePositions) {
+    diagram.getNode(nodeId)?.setPosition(position.x, position.y);
+  }
+
+  return { ...result, algorithm: name, seed };
 }
