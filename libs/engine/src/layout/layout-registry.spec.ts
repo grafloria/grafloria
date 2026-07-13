@@ -73,12 +73,15 @@ describe('Card 0 — the unified layout API', () => {
 
     it('every built-in adapter is registered and addressable by name', () => {
       const engine = new DiagramEngine();
-      // 'auto' joins the built-ins in Wave 7 Card 7b: the auto-selector is a
-      // REGISTERED LAYOUT like any other, not a second entry point beside the
-      // registry. It is the layout `engine.layout()` runs when given no name.
-      expect(engine.getLayoutRegistry().names()).toEqual(
-        ['auto', 'community', 'dagre', 'elk', 'force', 'layered', 'spectral']
-      );
+      // The full portfolio after Wave 7: the five legacy adapters (Card 0 made them
+      // reachable), the Card-2 portfolio (tree/grid/circular/radial, and a `force`
+      // that overrides the raw adapter), our layered Sugiyama engine (Cards 1 & 5),
+      // and the `auto` bake-off (Card 7b) — which is a REGISTERED LAYOUT, not a
+      // second entry point beside the registry.
+      expect(engine.getLayoutRegistry().names()).toEqual([
+        'auto', 'circular', 'community', 'dagre', 'elk', 'force',
+        'grid', 'layered', 'radial', 'spectral', 'tree',
+      ]);
       engine.destroy();
     });
 

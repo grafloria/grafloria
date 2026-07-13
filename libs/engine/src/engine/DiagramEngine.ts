@@ -65,6 +65,8 @@ import {
   createBuiltInLayoutAdapters,
   type UnifiedLayoutOptions,
   type UnifiedLayoutResult,
+  createDefaultLayoutRegistry,
+  runLayout,
 } from '../layout/layout-registry';
 import { DEFAULT_LAYOUT_SEED } from '../layout/rng';
 import { createLayeredLayout } from '../layout/sugiyama/layered-layout';
@@ -2154,21 +2156,10 @@ export class DiagramEngine {
    */
   getLayoutRegistry(): LayoutRegistry {
     if (!this._layoutRegistry) {
-      const registry = new LayoutRegistry();
-      for (const adapter of createBuiltInLayoutAdapters()) {
-        registry.register(fromAdapter(adapter));
-      }
-      // Card 1: our own layered (Sugiyama) engine. It is the ONLY engine that can
-      // honour Card 5's semantic constraints — those are decisions taken during
-      // ranking and ordering, not corrections applied to finished coordinates — so
-      // the incremental/mental-map path (Card 6) always routes through it.
-      registry.register(createLayeredLayout('layered'));
-
-      // Card 7b: the auto-selector is a registered layout like any other, so
-      // `engine.layout()` with no name runs a scored BAKE-OFF rather than a
-      // hard-coded guess. Registered after `layered` so the bake-off can pick it.
-      registry.register(createAutoLayout(registry));
-      this._layoutRegistry = registry;
+      // ONE factory, shared with the preset applicator: adapters, then the Card-2
+      // portfolio, then our layered engine, then the auto-selector (which takes the
+      // registry, so its candidate pool is whatever is actually registered).
+      this._layoutRegistry = createDefaultLayoutRegistry();
     }
     return this._layoutRegistry;
   }
@@ -2239,17 +2230,12 @@ export class DiagramEngine {
       };
     }
 
-    const result = await engine.apply(this.diagram, { ...options, seed });
-
-    // Commit the positions. setPosition (not a raw write) so the spatial index,
-    // the routing obstacle map and the renderer all see the move — the wave-5
-    // lesson: a subscription to an event nobody emits is a subscription to
-    // nothing.
-    for (const [nodeId, position] of result.nodePositions) {
-      this.diagram.getNode(nodeId)?.setPosition(position.x, position.y);
-    }
-
-    return { ...result, algorithm: name, seed };
+    // The flat path goes through runLayout — the ONE apply-and-commit path, shared
+    // with the preset applicator. It commits via setPosition(), so the spatial index
+    // and the routing obstacle map see the move (wave 5 lost a day to the mirror
+    // image of this: the engine subscribed to `node.on('position')` while the model
+    // emits `change:position`, so the obstacle map never updated).
+    return runLayout(this.getLayoutRegistry(), this.diagram, name, options);
   }
 
   /**
