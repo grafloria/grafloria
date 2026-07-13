@@ -5,6 +5,9 @@ import type { Rectangle } from './geometry.types';
 // drifting copy of them.
 import type { ForeignObjectMode } from '../export/vnode-serializer';
 import type { RasterBackend } from '../export/raster';
+import type { ExportScope } from '../export/bounds';
+import type { PdfExportOptions } from '../export/pdf/pdf-export';
+import type { FontSource } from '../export/assets';
 // Styling & theming (Wave 4): colorMode + the design-token bridge are RENDERER
 // CONFIG, so their types belong on the config contract. Type-only imports — no
 // runtime dependency from the types barrel into the themes barrel.
@@ -142,12 +145,18 @@ export interface BoundingBox {
 /**
  * Export format types.
  *
- * PDF is deliberately absent: a faithful vector PDF needs a font/glyph pipeline
- * (embedding + subsetting, or text→paths), which is a bigger lift than this card
- * had room for. SVG and the raster formats are real; PDF is not implemented, and
- * is not pretended to be.
+ * (Wave 6 note: this used to say "PDF is deliberately absent — it needs a glyph pipeline".
+ * It is no longer absent. It IS a true vector PDF — paths stay paths and text stays text,
+ * so it is selectable and searchable — written directly from the VNode tree, with no
+ * dependency; see `export/pdf/` for how, and for the honest list of what a base-14-font
+ * PDF cannot do. The glyph pipeline was sidestepped by using the fonts every PDF reader
+ * already has, rather than embedding one.)
+ *
+ * Because `IRenderer.export` is string-typed, `'pdf'` comes back as a
+ * `data:application/pdf;base64,…` URL. `SVGRenderer.exportPdf()` hands you the bytes and
+ * the fidelity warnings instead.
  */
-export type ExportFormat = 'png' | 'svg' | 'jpeg' | 'webp';
+export type ExportFormat = 'png' | 'svg' | 'jpeg' | 'webp' | 'pdf';
 
 /**
  * Export options.
@@ -200,6 +209,69 @@ export interface ExportOptions {
    * (resvg-js / sharp / puppeteer). SVG export never needs this.
    */
   rasterBackend?: RasterBackend;
+
+  /**
+   * WHAT to export.
+   *
+   *   'content'    (default) the whole diagram, tight around everything DRAWN
+   *   'viewport'   an exact slice — you must also pass `viewport`, because the
+   *                renderer does not retain one
+   *   'selection'  only the currently-selected nodes/links
+   */
+  scope?: ExportScope;
+
+  /**
+   * Export only these node/link ids. The tree is PRUNED to them, so an un-selected
+   * node's markup (and its labels) is not merely cropped out of view — it is not in
+   * the file. Overridden by `scope: 'selection'`, which reads the live selection.
+   */
+  includeIds?: Iterable<string>;
+
+  /**
+   * Cap on the exported image's size per side, in px. Default 4000.
+   *
+   * Over the cap the SCALE is reduced to fit — the picture is never cropped. This
+   * exists because browsers refuse very large canvases and do it SILENTLY: a 3x
+   * export of a big diagram comes back blank rather than throwing.
+   */
+  maxSize?: number;
+
+  /** Floor on the exported image's size per side, in px. Default 1. */
+  minSize?: number;
+
+  /** Prepend the `<?xml …?>` prolog to an SVG export. Default false. */
+  xmlDeclaration?: boolean;
+
+  /**
+   * Carry the source model INSIDE the exported artifact, so it can be re-imported and
+   * edited losslessly (`importDiagram`). An SVG gets it in `<metadata>`; a PNG gets an
+   * `iTXt` chunk.
+   *
+   * PNG ONLY among the rasters. JPEG and WebP have no text chunk that reliably survives
+   * their encoders, so an `embedModel` there would be a promise we could not keep — it
+   * is ignored rather than silently half-working.
+   */
+  embedModel?: boolean;
+
+  /**
+   * The embedded envelope's `createdAt`. Supply it to keep an `embedModel` export
+   * DETERMINISTIC — otherwise the envelope is stamped with the wall clock and two
+   * exports of the same diagram differ in their bytes.
+   */
+  embedModelCreatedAt?: string;
+
+  /** Page size, orientation, margins and document metadata for `export('pdf')`. */
+  pdf?: PdfExportOptions;
+
+  /**
+   * Fonts to EMBED, as `@font-face` rules with base64 `data:` URIs — so the file renders in
+   * the right typeface on a machine that has never heard of it.
+   *
+   * Build them with `fetchFont()`, or hand over bytes you already have. This is the built
+   * form of the raw `embedFontCss` seam; both are honoured, and `embedFontCss` is appended
+   * after these.
+   */
+  embedFonts?: FontSource[];
 }
 
 /**

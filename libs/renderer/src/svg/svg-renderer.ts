@@ -1,7 +1,8 @@
 import type { DiagramEngine, DiagramModel, NodeModel, NodeStyle, LinkModel, LinkStyle, PortModel, InteractionConfig, ReconnectionPreview, LODLevel, LODFeature, Shadow } from '@grafloria/engine';
 // Value import: the ONE definition of "where does a label sit along the path"
 // (slot vs position), shared by the model, this renderer and the edge optimizer.
-import { linkLabelPosition } from '@grafloria/engine';
+import { linkLabelPosition, DiagramSerializer } from '@grafloria/engine';
+import type { DiagramDocumentEnvelope } from '@grafloria/engine';
 // Wave 5 Card 4: corridor separation for DIFFERENT-pair edges sharing a channel.
 import { computeChannelNudges, applyChannelNudges } from './channel-nudging';
 import type {
@@ -20,6 +21,19 @@ import type {
 // VNode tree this renderer hands the live pipeline — one contract, two consumers.
 import { exportSvg, type SvgExportResult } from '../export/svg-export';
 import { mimeTypeForFormat, resolveRasterBackend } from '../export/raster';
+import { DEFAULT_MAX_OUTPUT_SIZE } from '../export/bounds';
+import { bytesToDataUrl, dataUrlToBytes, embedModelInPng } from '../export/round-trip';
+import { filterTreeByIds } from '../export/scope';
+import { exportPdf, type PdfExportResult } from '../export/pdf/pdf-export';
+import { paginate, type Page, type PaginationOptions } from '../export/pagination';
+
+/** One paginated tile: its grid position, its world window, and the SVG for it. */
+export interface PagedSvgResult {
+  pages: Array<Page & { svg: string }>;
+  columns: number;
+  rows: number;
+  warnings: string[];
+}
 import {
   type PaintSpec,
   isPaintSpec,
@@ -218,6 +232,17 @@ function styleClassTokens(styleClass: string | undefined): string[] {
  * must never grab a deliberate 16px-apart parallel run (a wave-4 fanned bundle).
  */
 const CHANNEL_NUDGE_TRIGGER = 4;
+
+/**
+ * Extra world-units the EXPORT render pass sees beyond the model's content bounds.
+ *
+ * The render pass culls to its viewport; the exported viewBox is then re-fitted to
+ * the resulting tree. Anything culled is therefore invisible to the fit — so the
+ * render viewport must be a little larger than the model bounds, or a label that
+ * overhangs its node (the very thing the tree-derived box exists to capture) would
+ * be culled before it could widen the box.
+ */
+const CONTENT_RENDER_SLACK = 200;
 
 function polylineLength(points: Array<{ x: number; y: number }>): number {
   let total = 0;
@@ -1068,17 +1093,69 @@ export class SVGRenderer implements IRenderer {
    * viewport — a thumbnail of the visible slice is rarely what anyone means.
    */
   async export(format: ExportFormat = 'svg', options: ExportOptions = {}): Promise<string> {
-    const result = this.exportSvgString(options);
+    if (format === 'svg') {
+      // Vector: no canvas, so no size cap unless the caller asks for one.
+      return this.exportSvgString(options).svg;
+    }
 
-    if (format === 'svg') return result.svg;
+    if (format === 'pdf') {
+      // A PDF is bytes, and this contract returns a string — so hand back a data: URL.
+      // `exportPdf()` gives you the bytes and the warnings.
+      return bytesToDataUrl(this.exportPdf(options).pdf, 'application/pdf');
+    }
+
+    // RASTER pixels are allocated, and every browser has a hard canvas ceiling it
+    // enforces SILENTLY — over it, `toDataURL` hands back a blank image rather than
+    // throwing. So the raster path always carries a cap; the scale is reduced to fit.
+    //
+    // JPEG HAS NO ALPHA CHANNEL. Rasterizing a transparent SVG into it yields a BLACK
+    // background in every browser (the undefined RGB under alpha=0 reads as 0,0,0) —
+    // the classic "why is my exported JPEG black" bug. So an opaque format gets an
+    // opaque backdrop, painted INTO the SVG, unless the caller chose a colour.
+    const result = this.exportSvgString({
+      ...options,
+      maxSize: options.maxSize ?? DEFAULT_MAX_OUTPUT_SIZE,
+      backgroundColor: options.backgroundColor ?? (format === 'jpeg' ? '#ffffff' : undefined),
+    });
 
     const backend = resolveRasterBackend(options.rasterBackend);
-    return backend.rasterize({
+    const url = await backend.rasterize({
       svg: result.svg,
       width: result.width,
       height: result.height,
       mimeType: mimeTypeForFormat(format),
       quality: options.quality ?? 0.92,
+    });
+
+    // Card 7: carry the source model in the PNG itself, so the exported image can be
+    // re-opened and edited. PNG ONLY — JPEG and WebP have no equivalent of a text
+    // chunk that survives their encoders, so promising it there would be a lie.
+    if (options.embedModel && format === 'png') {
+      const envelope = this.modelEnvelope(options);
+      if (envelope) {
+        const withModel = embedModelInPng(dataUrlToBytes(url), envelope);
+        return bytesToDataUrl(withModel, 'image/png');
+      }
+    }
+
+    return url;
+  }
+
+  /**
+   * The document envelope to embed — the ENGINE's own, so the artifact carries exactly
+   * the format the engine already round-trips losslessly and checksums.
+   *
+   * `createdAt` is the one field that would otherwise make an export non-deterministic,
+   * so a caller who needs byte-identical output passes it in.
+   */
+  private modelEnvelope(options: ExportOptions): DiagramDocumentEnvelope | undefined {
+    if (!options.embedModel) return undefined;
+    const diagram = this.engine.getDiagram();
+    if (!diagram) return undefined;
+
+    return new DiagramSerializer().serializeEnvelope(diagram, {
+      generator: '@grafloria/renderer',
+      createdAt: options.embedModelCreatedAt,
     });
   }
 
@@ -1088,12 +1165,36 @@ export class SVGRenderer implements IRenderer {
    * string-only `IRenderer.export` signature has nowhere to put.
    */
   exportSvgString(options: ExportOptions = {}): SvgExportResult {
-    const viewport = options.viewport ?? this.contentViewport(options.padding ?? 20);
+    const padding = options.padding ?? 20;
+
+    // scope 'viewport' needs the caller to SAY which rectangle. The renderer does not
+    // retain one — the viewport is an argument to `render()`, never a field — so it
+    // genuinely cannot know what is on screen. Failing loudly beats quietly exporting
+    // the content bounds and calling it "the viewport".
+    if (options.scope === 'viewport' && !options.viewport) {
+      throw new Error(
+        "[grafloria/export] scope: 'viewport' requires options.viewport. The renderer does not " +
+          'retain the viewport (it is an argument to render(), not state), so it cannot know which ' +
+          'slice is on screen — pass the same rectangle you render with.'
+      );
+    }
+
+    // An explicit rectangle is the caller saying "this exact slice". Everything else
+    // fits the box to the content.
+    const explicit = options.viewport;
+
+    const ids = options.scope === 'selection' ? this.selectedIds() : options.includeIds;
+
+    // THE RENDER PASS culls to its viewport, so it must see everything we intend to
+    // box. It is NOT the viewBox: that is recomputed from the resulting tree (which
+    // is what lets labels and arrowheads outside the model bounds survive).
+    // The extra slack keeps a label that overhangs the model bounds from being culled.
+    const renderViewport = explicit ?? this.contentViewport(padding + CONTENT_RENDER_SLACK);
 
     // zoom 1: the SVG stays vector, and `scale` multiplies the intrinsic
     // width/height instead of the viewBox — so a 2x PNG is 2x pixels of the
     // identical picture, not a differently-culled render.
-    const root = this.render(viewport, 1);
+    const root = this.render(renderViewport, 1);
 
     return exportSvg(root, {
       theme: this.theme,
@@ -1102,8 +1203,133 @@ export class SVGRenderer implements IRenderer {
       foreignObject: options.foreignObject,
       captureForeignObject: options.captureForeignObject,
       embedFontCss: options.embedFontCss,
+      embedFonts: options.embedFonts,
+      // An explicit rectangle wins and is used verbatim; otherwise fit the content.
+      viewBox: explicit,
+      fitToContent: explicit === undefined,
+      padding,
+      includeIds: ids,
+      maxSize: options.maxSize,
+      minSize: options.minSize,
+      xmlDeclaration: options.xmlDeclaration,
+      embedModel: this.modelEnvelope(options),
     });
   }
+
+  /**
+   * A TRUE VECTOR PDF: paths stay paths and text stays text, so it is selectable,
+   * searchable and scales without pixelation.
+   *
+   * Painted straight from the VNode tree — the same tree the screen gets — so there is no
+   * SVG→DOM→PDF round trip and no second rendering path. See `export/pdf/` for the
+   * dependency decision (we do NOT use svg2pdf.js + jsPDF, and why) and for the honest
+   * list of what a base-14-font PDF cannot do.
+   */
+  exportPdf(options: ExportOptions = {}): PdfExportResult {
+    const padding = options.padding ?? 20;
+    const ids = options.scope === 'selection' ? this.selectedIds() : options.includeIds;
+
+    const renderViewport = options.viewport ?? this.contentViewport(padding + CONTENT_RENDER_SLACK);
+    let tree = this.render(renderViewport, 1);
+    if (ids !== undefined) tree = filterTreeByIds(tree, ids);
+
+    return exportPdf(tree, {
+      // The renderer's LIVE theme. Without it the PDF resolves the cascade against the
+      // default light theme — or, in CSS mode, against nothing at all, and every link
+      // loses its stroke and every node its fill.
+      theme: this.theme,
+      padding,
+      viewBox: options.viewport,
+      backgroundColor: options.backgroundColor,
+      ...options.pdf,
+    });
+  }
+
+  /**
+   * Slice the diagram into pages (Card 5).
+   *
+   * Returns one standalone SVG per page — a tile grid you can print, or lay out as a poster.
+   * Breaks are snapped so they do not cut a node in half; see `export/pagination.ts`.
+   */
+  exportPages(pagination: PaginationOptions, options: ExportOptions = {}): PagedSvgResult {
+    const padding = options.padding ?? 20;
+    const ids = options.scope === 'selection' ? this.selectedIds() : options.includeIds;
+
+    let tree = this.render(this.contentViewport(padding + CONTENT_RENDER_SLACK), 1);
+    if (ids !== undefined) tree = filterTreeByIds(tree, ids);
+
+    const layout = paginate(tree, { padding, ...pagination });
+    const warnings = [...layout.warnings];
+
+    const pages = layout.pages.map(page => {
+      // The page's WINDOW is the viewBox (so every tile is at the same scale); the clip is
+      // handled by the viewBox itself here — an SVG tile simply shows less content when its
+      // clip is narrower, which is the same white space the PDF path leaves.
+      const result = exportSvg(tree, {
+        theme: this.theme,
+        viewBox: page.rect,
+        fitToContent: false,
+        scale: options.scale,
+        backgroundColor: options.backgroundColor,
+        foreignObject: options.foreignObject,
+        captureForeignObject: options.captureForeignObject,
+        embedFontCss: options.embedFontCss,
+      });
+      warnings.push(...result.warnings);
+      return { ...page, svg: result.svg };
+    });
+
+    return { pages, columns: layout.columns, rows: layout.rows, warnings: [...new Set(warnings)] };
+  }
+
+  /**
+   * A multi-page PDF of a diagram too big for one sheet.
+   *
+   * The paginator supplies the page grid; the PDF writer honours each page's `clip`, so a
+   * break pulled back to spare a node leaves white space rather than half a box.
+   */
+  exportPaginatedPdf(pagination: PaginationOptions, options: ExportOptions = {}): PdfExportResult {
+    const padding = options.padding ?? 20;
+    const ids = options.scope === 'selection' ? this.selectedIds() : options.includeIds;
+
+    let tree = this.render(this.contentViewport(padding + CONTENT_RENDER_SLACK), 1);
+    if (ids !== undefined) tree = filterTreeByIds(tree, ids);
+
+    const layout = paginate(tree, { padding, ...pagination });
+
+    const result = exportPdf(tree, {
+      theme: this.theme,
+      padding,
+      backgroundColor: options.backgroundColor,
+      pageNumbers: true,
+      ...options.pdf,
+      pages: layout.pages,
+    });
+
+    return { ...result, warnings: [...new Set([...layout.warnings, ...result.warnings])] };
+  }
+
+  /**
+   * The ids currently selected — what `scope: 'selection'` exports.
+   *
+   * Selection is MODEL state (`node.state.selected`, `link.state === 'selected'`),
+   * which is the same place the renderer reads it from to paint the selection
+   * colours. There is no separate selection registry to consult.
+   */
+  private selectedIds(): string[] {
+    const diagram = this.engine.getDiagram();
+    if (!diagram) return [];
+
+    const ids: string[] = [];
+    for (const node of diagram.getNodes()) {
+      if (node.state?.selected) ids.push(node.id);
+    }
+    for (const link of diagram.getLinks()) {
+      if (link.state === 'selected') ids.push(link.id);
+    }
+    return ids;
+  }
+
 
   /**
    * The world rectangle that contains the whole diagram, padded.

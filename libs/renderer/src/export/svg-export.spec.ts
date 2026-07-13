@@ -81,8 +81,12 @@ describe('SVGRenderer.export()', () => {
 
       expect(out.startsWith('<svg xmlns="http://www.w3.org/2000/svg"')).toBe(true);
       expect(out.endsWith('</svg>')).toBe(true);
-      expect(out).toMatch(/viewBox="80 80 140 90"/); // content bounds + 20px padding
-      expect(out).toMatch(/width="140" height="90"/);
+      // The box is fitted to what the tree DRAWS, + 20px padding. A 100×50 node at
+      // (100,100) also draws a drop shadow — an offset rect at +3,+3 with a 4px blur
+      // — so the ink runs to (207, 157), not (200, 150). The old model-derived box
+      // did not know the shadow existed and cropped it at tight paddings.
+      expect(out).toMatch(/viewBox="79 79 148 98"/);
+      expect(out).toMatch(/width="148" height="98"/);
     });
 
     it('contains NO unresolved CSS variables', async () => {
@@ -134,7 +138,7 @@ describe('SVGRenderer.export()', () => {
     it('paints a background rect when asked, and nothing when not', async () => {
       addNode('n1');
       expect(await svg({ backgroundColor: '#fafafa' })).toContain(
-        '<rect x="-20" y="-20" width="140" height="90" fill="#fafafa"/>'
+        '<rect x="-21" y="-21" width="148" height="98" fill="#fafafa"/>'
       );
       expect(await svg()).not.toContain('#fafafa');
     });
@@ -142,8 +146,8 @@ describe('SVGRenderer.export()', () => {
     it('scale multiplies the intrinsic size but never the viewBox (same picture, more pixels)', async () => {
       addNode('n1');
       const out = await svg({ scale: 2 });
-      expect(out).toContain('viewBox="-20 -20 140 90"');
-      expect(out).toContain('width="280" height="180"');
+      expect(out).toContain('viewBox="-21 -21 148 98"');
+      expect(out).toContain('width="296" height="196"');
     });
 
     it('embedFontCss is the font seam — verbatim CSS in <defs>, CDATA-wrapped', async () => {
@@ -260,7 +264,9 @@ describe('SVGRenderer.export()', () => {
         ],
       };
 
-      expect(exportSvg(tree, { theme: LIGHT_THEME }).svg).toBe(
+      // fitToContent: false — this test pins the SERIALIZER's bytes, so it keeps the
+      // tree's own viewBox rather than re-fitting the box (which bounds.spec covers).
+      expect(exportSvg(tree, { theme: LIGHT_THEME, fitToContent: false }).svg).toBe(
         '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 50" width="100" height="50" class="grafloria-diagram">' +
           '<g transform="translate(0, 0)" class="node-group">' +
           '<rect width="100" height="50" rx="4" class="diagram-node" fill="#ffffff" stroke="#6b7280" stroke-width="1px"/>' +
@@ -379,8 +385,8 @@ describe('SVGRenderer.export()', () => {
 
       expect(url).toBe('data:image/png;base64,FAKE');
       expect(seen?.mimeType).toBe('image/png');
-      expect(seen?.width).toBe(280); // 140 × 2
-      expect(seen?.height).toBe(180);
+      expect(seen?.width).toBe(296); // 148 × 2
+      expect(seen?.height).toBe(196);
       expect(seen?.svg).toContain('<svg xmlns=');
       expect(seen?.svg).not.toContain('var(--');
     });
@@ -415,7 +421,7 @@ describe('SVGRenderer.export()', () => {
     addNode('n2', 5000, 4000); // far off any plausible screen
     const out = await svg();
 
-    expect(out).toContain('viewBox="-20 -20 5140 4090"');
+    expect(out).toContain('viewBox="-21 -21 5148 4098"');
     expect(out.match(/class="node-group"/g)).toHaveLength(2);
   });
 
@@ -444,5 +450,135 @@ describe('SVGRenderer.export()', () => {
     expect(out).toContain('class="link-group"');
     expect(out).toContain('<path');
     expect(out).toContain(LIGHT_THEME.colors.link.default);
+  });
+
+  // -------------------------------------------------------------------------
+  // Wave 6 — Card 0: the standalone DOCUMENT
+  // -------------------------------------------------------------------------
+
+  describe('the XML prolog', () => {
+    it('is absent by default (an inline <svg> in HTML must not carry one)', async () => {
+      addNode('n1');
+      expect(await svg()).not.toContain('<?xml');
+    });
+
+    it('is emitted on request, before the root element', async () => {
+      addNode('n1');
+      const out = await svg({ xmlDeclaration: true });
+      expect(out.startsWith('<?xml version="1.0" encoding="UTF-8" standalone="no"?><svg')).toBe(true);
+    });
+  });
+
+  // -------------------------------------------------------------------------
+  // Wave 6 — Card 3: scope, region & size clamping
+  // -------------------------------------------------------------------------
+
+  describe('export scope', () => {
+    it("scope 'selection' exports only the selected node — and PRUNES the rest out of the bytes", async () => {
+      addNode('keep', 0, 0).setSelected(true);
+      addNode('drop', 900, 900);
+
+      const out = await svg({ scope: 'selection' });
+
+      // Only one node survives; the other's markup is GONE, not merely cropped.
+      expect(out.match(/class="node-group"/g)).toHaveLength(1);
+      // …and the box is tight around what is left, nowhere near (900, 900).
+      // A SELECTED node also paints its selection ring (a -3,-3 rect with a 3px
+      // stroke), which is ink and so widens the box past the plain-node 148×98.
+      expect(out).toContain('viewBox="-24.5 -24.5 151.5 101.5"');
+    });
+
+    it('includeIds does the same thing explicitly', async () => {
+      addNode('a', 0, 0);
+      addNode('b', 900, 900);
+      const out = await svg({ includeIds: ['a'] });
+      expect(out.match(/class="node-group"/g)).toHaveLength(1);
+    });
+
+    it("scope 'viewport' REFUSES to guess — the renderer keeps no viewport, so it must be told", async () => {
+      addNode('n1');
+      await expect(svg({ scope: 'viewport' })).rejects.toThrow(/requires options\.viewport/);
+    });
+
+    it("scope 'viewport' works when given the rectangle", async () => {
+      addNode('n1');
+      const out = await svg({ scope: 'viewport', viewport: { x: 0, y: 0, width: 640, height: 480 } });
+      expect(out).toContain('viewBox="0 0 640 480"');
+    });
+
+    it('an empty selection yields a valid document and says so, rather than a zero-area one', async () => {
+      addNode('a', 0, 0);
+      const result = renderer.exportSvgString({ includeIds: ['nope'] });
+      expect(result.width).toBeGreaterThan(0);
+      expect(result.warnings.join(' ')).toContain('no element matched');
+    });
+  });
+
+  describe('output-size clamping', () => {
+    it('SVG is NOT capped by default — it is vector, and allocates no canvas', async () => {
+      addNode('a', 0, 0);
+      addNode('b', 9000, 0);
+      const out = await svg();
+      expect(out).toContain('width="9148"');
+    });
+
+    it('RASTER is capped: the scale is reduced to fit, so the picture is whole and the canvas is legal', async () => {
+      addNode('a', 0, 0);
+      addNode('b', 9000, 0);
+
+      let seen: RasterizeRequest | undefined;
+      const backend: RasterBackend = {
+        rasterize: async r => {
+          seen = r;
+          return 'data:image/png;base64,X';
+        },
+      };
+      await renderer.export('png', { scale: 3, rasterBackend: backend });
+
+      // 9148 × 3 = 27444px — a canvas every browser refuses, silently. Capped to 4000.
+      expect(Math.max(seen!.width, seen!.height)).toBeCloseTo(4000, 0);
+    });
+
+    it('honours an explicit maxSize', async () => {
+      addNode('a', 0, 0);
+      const result = renderer.exportSvgString({ maxSize: 50 });
+      expect(Math.max(result.width, result.height)).toBeCloseTo(50);
+      expect(result.warnings.join(' ')).toContain('exceeds the 50px cap');
+    });
+  });
+
+  describe('JPEG has no alpha', () => {
+    const capture = () => {
+      const seen: RasterizeRequest[] = [];
+      const backend: RasterBackend = {
+        rasterize: async r => {
+          seen.push(r);
+          return 'data:x';
+        },
+      };
+      return { seen, backend };
+    };
+
+    it('gets an OPAQUE backdrop by default — a transparent JPEG rasterizes BLACK', async () => {
+      addNode('n1');
+      const { seen, backend } = capture();
+      await renderer.export('jpeg', { rasterBackend: backend });
+      expect(seen[0].svg).toContain('fill="#ffffff"');
+    });
+
+    it('still honours an explicit background colour', async () => {
+      addNode('n1');
+      const { seen, backend } = capture();
+      await renderer.export('jpeg', { backgroundColor: '#ff0000', rasterBackend: backend });
+      expect(seen[0].svg).toContain('fill="#ff0000"');
+      expect(seen[0].svg).not.toContain('fill="#ffffff"/><g');
+    });
+
+    it('PNG keeps its transparency (it HAS an alpha channel)', async () => {
+      addNode('n1');
+      const { seen, backend } = capture();
+      await renderer.export('png', { rasterBackend: backend });
+      expect(seen[0].svg).not.toContain('fill="#ffffff"/><g');
+    });
   });
 });
