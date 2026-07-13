@@ -15,6 +15,7 @@ export * from './vnode-serializer';
 export * from './bounds';
 export * from './scope';
 export * from './round-trip';
+export * from './assets';
 export * from './svg-export';
 export * from './raster';
 export * from './node-raster';

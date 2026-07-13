@@ -7,6 +7,7 @@ import type { ForeignObjectMode } from '../export/vnode-serializer';
 import type { RasterBackend } from '../export/raster';
 import type { ExportScope } from '../export/bounds';
 import type { PdfExportOptions } from '../export/pdf/pdf-export';
+import type { FontSource } from '../export/assets';
 // Styling & theming (Wave 4): colorMode + the design-token bridge are RENDERER
 // CONFIG, so their types belong on the config contract. Type-only imports — no
 // runtime dependency from the types barrel into the themes barrel.
@@ -144,16 +145,16 @@ export interface BoundingBox {
 /**
  * Export format types.
  *
- * PDF is deliberately absent: a faithful vector PDF needs a font/glyph pipeline
- * (embedding + subsetting, or text→paths), which is a bigger lift than this card
- * had room for. SVG and the raster formats are real; PDF is not implemented, and
- * is not pretended to be.
- */
-/**
- * `'pdf'` is a TRUE VECTOR pdf (selectable, searchable text), written directly from the
- * VNode tree — see `export/pdf/`. Because `IRenderer.export` returns a string, it comes
- * back as a `data:application/pdf;base64,…` URL; `SVGRenderer.exportPdf()` hands you the
- * bytes and the fidelity warnings instead.
+ * (Wave 6 note: this used to say "PDF is deliberately absent — it needs a glyph pipeline".
+ * It is no longer absent. It IS a true vector PDF — paths stay paths and text stays text,
+ * so it is selectable and searchable — written directly from the VNode tree, with no
+ * dependency; see `export/pdf/` for how, and for the honest list of what a base-14-font
+ * PDF cannot do. The glyph pipeline was sidestepped by using the fonts every PDF reader
+ * already has, rather than embedding one.)
+ *
+ * Because `IRenderer.export` is string-typed, `'pdf'` comes back as a
+ * `data:application/pdf;base64,…` URL. `SVGRenderer.exportPdf()` hands you the bytes and
+ * the fidelity warnings instead.
  */
 export type ExportFormat = 'png' | 'svg' | 'jpeg' | 'webp' | 'pdf';
 
@@ -261,6 +262,16 @@ export interface ExportOptions {
 
   /** Page size, orientation, margins and document metadata for `export('pdf')`. */
   pdf?: PdfExportOptions;
+
+  /**
+   * Fonts to EMBED, as `@font-face` rules with base64 `data:` URIs — so the file renders in
+   * the right typeface on a machine that has never heard of it.
+   *
+   * Build them with `fetchFont()`, or hand over bytes you already have. This is the built
+   * form of the raw `embedFontCss` seam; both are honoured, and `embedFontCss` is appended
+   * after these.
+   */
+  embedFonts?: FontSource[];
 }
 
 /**

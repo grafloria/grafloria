@@ -28,6 +28,7 @@ import { serializeVNode, escapeAttr, type ForeignObjectMode } from './vnode-seri
 import { clampOutputSize, DEFAULT_MAX_OUTPUT_SIZE, padRect, vnodeBounds } from './bounds';
 import { filterTreeByIds } from './scope';
 import { embedModelInSvg } from './round-trip';
+import { fontFaceCss, type FontSource } from './assets';
 import type { DiagramDocumentEnvelope } from '@grafloria/engine';
 
 export const SVG_XMLNS = 'http://www.w3.org/2000/svg';
@@ -66,6 +67,12 @@ export interface SvgExportOptions {
    * deliberate boundary, not an oversight.
    */
   embedFontCss?: string;
+
+  /**
+   * Fonts to EMBED as base64 `@font-face` rules — the built form of the `embedFontCss` seam.
+   * Both are honoured; `embedFontCss` is appended after these.
+   */
+  embedFonts?: FontSource[];
 
   /**
    * Fit the viewBox to the CONTENT — the union box of everything the tree actually
@@ -217,9 +224,9 @@ export function exportSvg(root: VNode, options: SvgExportOptions = {}): SvgExpor
 
   // The font seam. CDATA-wrapped so a `>` or `&` in the caller's CSS cannot
   // break the document.
-  const fontDefs = options.embedFontCss
-    ? `<style type="text/css"><![CDATA[\n${options.embedFontCss}\n]]></style>`
-    : '';
+  const embedded = options.embedFonts?.length ? fontFaceCss(options.embedFonts) : '';
+  const fontCss = [embedded, options.embedFontCss].filter(Boolean).join('\n');
+  const fontDefs = fontCss ? `<style type="text/css"><![CDATA[\n${fontCss}\n]]></style>` : '';
 
   const synthesized = Array.from(extraDefs.values()).join('');
   const defs = fontDefs || synthesized ? `<defs>${fontDefs}${synthesized}</defs>` : '';

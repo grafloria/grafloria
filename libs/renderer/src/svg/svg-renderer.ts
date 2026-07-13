@@ -1155,6 +1155,7 @@ export class SVGRenderer implements IRenderer {
       foreignObject: options.foreignObject,
       captureForeignObject: options.captureForeignObject,
       embedFontCss: options.embedFontCss,
+      embedFonts: options.embedFonts,
       // An explicit rectangle wins and is used verbatim; otherwise fit the content.
       viewBox: explicit,
       fitToContent: explicit === undefined,
