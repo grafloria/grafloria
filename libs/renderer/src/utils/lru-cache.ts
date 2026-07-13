@@ -56,6 +56,17 @@ export class LruCache<K, V> {
     return this.map.delete(key);
   }
 
+  /**
+   * A SNAPSHOT of the current keys, oldest first.
+   *
+   * Snapshot, not the live Map iterator: the only caller (the renderer's
+   * theme-swap invalidation) deletes while it walks, and mutating a Map during
+   * its own iteration is how you skip entries.
+   */
+  keys(): K[] {
+    return Array.from(this.map.keys());
+  }
+
   clear(): void {
     this.map.clear();
   }

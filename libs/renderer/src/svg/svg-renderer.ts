@@ -16,9 +16,24 @@ import {
   GRAFLORIA_INSTANCE_ATTR,
   generateBaseStyleSheet,
   generateInstanceVarBlock,
+  linkTypeKey,
   onStyleRegistryChange,
   resolveLinkStyle,
   resolveNodeStyle,
+} from '../themes';
+// Wave 4 — colorMode (system auto-detection + hot-swap), theme-bound properties,
+// and the design-token / a11y bridge.
+import {
+  ColorModeController,
+  DEFAULT_THEME_SET,
+  generateInstanceOverrideCSS,
+  isThemeRef,
+  resolveThemeRef,
+  themeRefCssValue,
+  themeRefToken,
+  type ColorMode,
+  type ThemeSet,
+  type TokenBridge,
 } from '../themes';
 import { createForeignObject, isForeignObject, getContainerId } from '../vnode/foreign-object';
 import { LruCache } from '../utils/lru-cache';
@@ -75,6 +90,18 @@ export const GRAFLORIA_BASE_STYLE_ID = 'grafloria-renderer-styles';
 
 /** Prefix of a renderer's own `<style>` element id (one per instance). */
 export const GRAFLORIA_INSTANCE_STYLE_PREFIX = 'grafloria-renderer-theme-';
+
+/**
+ * Prefix of a renderer's OVERRIDE `<style>` element — the design-token bridge and
+ * the accessibility media queries (Wave 4, Card "token bridge + a11y theming").
+ *
+ * A SEPARATE element from the theme block, and always inserted after it, because
+ * the cascade inside the variables is the whole mechanism:
+ *   theme values  <  host design tokens  <  prefers-contrast  <  forced-colors
+ * Same selector, same specificity — so only SOURCE ORDER decides, and source
+ * order is only guaranteed if we own it.
+ */
+export const GRAFLORIA_INSTANCE_OVERRIDE_PREFIX = 'grafloria-renderer-overrides-';
 
 /** Monotonic per-document instance ids: `grafloria-1`, `grafloria-2`, … */
 let instanceCounter = 0;
@@ -136,6 +163,40 @@ export class SVGRenderer implements IRenderer {
   private styleElement?: HTMLStyleElement;
   private disposed = false;
 
+  // --- Wave 4: colorMode + token bridge -------------------------------------
+
+  /** Watches the OS media queries. Only created when `colorMode` is configured. */
+  private colorModeController?: ColorModeController;
+
+  /** The host design system's tokens, mapped onto ours. */
+  private tokenBridge?: TokenBridge;
+
+  /** `<style>` holding the bridge + the a11y media queries (after the theme block). */
+  private overrideElement?: HTMLStyleElement;
+
+  /**
+   * Entities whose LAST rendered VNode froze a theme value into itself, and which
+   * therefore cannot be re-themed by rewriting a CSS variable.
+   *
+   * This is the ledger that makes the hot-swap honest. In CSS mode most of the
+   * theme is painted by the stylesheet through `var(--grafloria-*)`, so rebinding the
+   * variables re-themes those elements with no VNode work at all. But three
+   * things are still resolved to LITERALS in the emitted VNode:
+   *
+   *   - the STATE layer (a selected node carries the theme's selection colours),
+   *   - `theme.nodes[type]` / `theme.links[type]` type-defaults,
+   *   - a `themeRef` on a property that is emitted as an SVG PRESENTATION
+   *     ATTRIBUTE (arrowheads, `rx`, node `opacity`) — attributes cannot hold
+   *     `var()`, so those must be baked.
+   *
+   * Rather than guess, the style computation RECORDS which entities that happened
+   * to. A theme swap then dirties exactly those and nothing else: a diagram with
+   * nothing selected and no bound attributes re-themes with zero restyled VNodes,
+   * and the ones that do need it are found, not assumed.
+   */
+  private themeBoundNodes = new Set<string>();
+  private themeBoundLinks = new Set<string>();
+
   // foreignObject support
   private containerIds = new Map<string, string>(); // nodeId -> containerId mapping
   private foreignObjectNodes = new Set<string>(); // Track which nodes use foreignObject
@@ -190,12 +251,32 @@ export class SVGRenderer implements IRenderer {
       useCSSMode: config.useCSSMode ?? true,
       linkHitAreaWidth: config.linkHitAreaWidth ?? 12,
       smartConnectionPoints: config.smartConnectionPoints ?? false,
-    };
+      // Wave 4. `colorMode` is OPT-IN: unset means "use the theme I was given and
+      // watch nothing", which is exactly the pre-Wave-4 behaviour.
+      colorMode: config.colorMode ?? undefined,
+      themes: config.themes ?? DEFAULT_THEME_SET,
+      tokenBridge: config.tokenBridge ?? undefined,
+    } as Required<SVGRendererConfig>;
 
     // Bounded LRU vnode cache (evicts least-recently-used past maxCacheSize)
     this.vnodeCache = new LruCache<string, VNode>(Math.max(1, this.config.maxCacheSize));
 
+    this.tokenBridge = config.tokenBridge;
+
+    // The theme: either the one handed in, or — when a colorMode was requested —
+    // whatever that mode plus the OS's current preferences resolve to.
     this.theme = theme || LIGHT_THEME;
+    if (this.config.colorMode) {
+      this.colorModeController = new ColorModeController(
+        this.config.colorMode,
+        this.config.themes,
+        next => this.applyThemeVariables(next)
+      );
+      this.theme = this.colorModeController.resolve();
+      // Tell the controller what we already have, so its first OS event only
+      // fires when the answer actually CHANGES.
+      this.colorModeController.prime(this.theme);
+    }
 
     // Phase 1.1: Initialize arrow renderer
     this.arrowRenderer = new ArrowRenderer();
@@ -377,8 +458,108 @@ export class SVGRenderer implements IRenderer {
     // Clear cache to force re-render with new theme
     this.invalidateStyles('theme-changed');
 
+    // A manual setTheme() overrides whatever the OS was saying; keep the
+    // controller in step so its next event compares against what is really live
+    // (otherwise the first OS flip after a manual override could be swallowed as
+    // a no-op).
+    this.colorModeController?.prime(theme);
+
     // Emit theme changed event
     this.engine.eventBus.emit('renderer:theme-changed', theme);
+  }
+
+  // =========================================================================
+  // Wave 4 — Card "colorMode with system auto-detection and live hot-swap"
+  // =========================================================================
+
+  /**
+   * THE HOT-SWAP. Re-theme by rewriting this instance's `--grafloria-*` variables.
+   *
+   * In CSS mode every value the built-in stylesheet paints resolves through those
+   * variables, and every `themeRef`-bound property that lands in an inline CSS
+   * style string is emitted as `var(--grafloria-…)`. So for all of them, *this one
+   * string write IS the re-theme*: no VNode is rebuilt, no element is touched,
+   * the browser simply recomputes.
+   *
+   * What it cannot cover, it does not pretend to: the entities recorded in
+   * `themeBoundNodes` / `themeBoundLinks` (see the field docs) baked a theme
+   * literal into their VNode, so they — and only they — are marked dirty and
+   * re-resolve on the next frame. An idle diagram re-themes with zero restyles;
+   * a diagram with three selected nodes restyles three nodes.
+   *
+   * Programmatic (Canvas) mode has no stylesheet at all, so there is nothing to
+   * rebind and the full invalidation is the only correct answer.
+   */
+  applyThemeVariables(theme: Theme): void {
+    if (this.theme === theme) return;
+    this.theme = theme;
+    this.colorModeController?.prime(theme);
+
+    if (!this.config.useCSSMode) {
+      this.invalidateStyles('theme-changed');
+      this.engine.eventBus.emit('renderer:theme-changed', theme);
+      return;
+    }
+
+    // Rewrite the variables in place — the element itself is not recreated, so
+    // the shared stylesheet and the override block keep their positions.
+    if (this.styleElement) {
+      this.styleElement.textContent = this.generateThemeCSS();
+    } else {
+      this.injectThemeCSS();
+    }
+
+    this.invalidateThemeBoundStyles();
+    this.engine.eventBus.emit('renderer:theme-changed', theme);
+  }
+
+  /** The colorMode in force, or undefined when the host never asked for one. */
+  getColorMode(): ColorMode | undefined {
+    return this.colorModeController?.getMode();
+  }
+
+  /**
+   * Switch colour mode at runtime. `'system'` starts following the OS; the other
+   * two pin it. Creates the media-query subscription on first use, so a host can
+   * opt in after construction.
+   */
+  setColorMode(mode: ColorMode, themes?: ThemeSet): void {
+    if (themes) this.config.themes = themes;
+
+    if (!this.colorModeController) {
+      this.colorModeController = new ColorModeController(mode, this.config.themes, next =>
+        this.applyThemeVariables(next)
+      );
+      this.colorModeController.prime(this.theme);
+      this.colorModeController.emit(); // apply the mode we were just given
+      return;
+    }
+
+    if (themes) this.colorModeController.setThemes(themes);
+    this.colorModeController.setMode(mode);
+  }
+
+  // =========================================================================
+  // Wave 4 — Card "design-token bridge"
+  // =========================================================================
+
+  /**
+   * Point this diagram's variables at the host design system's tokens
+   * (`shadcnBridge()`, `muiBridge()`, `tailwindBridge()`, or a hand-written map).
+   * `null` removes the bridge.
+   *
+   * Pure CSS: the values are the host's own `var(--…)` expressions, so when the
+   * host app flips ITS theme, this diagram follows with no code at all — and no
+   * VNode is rebuilt here either, for exactly the reason the hot-swap works.
+   */
+  setTokenBridge(bridge: TokenBridge | null | undefined): void {
+    this.tokenBridge = bridge ?? undefined;
+    if (this.config.useCSSMode) this.injectOverrideCSS();
+  }
+
+  /** The bridge currently applied, if any. */
+  getTokenBridge(): TokenBridge | undefined {
+    return this.tokenBridge;
   }
 
   /**
@@ -393,6 +574,11 @@ export class SVGRenderer implements IRenderer {
   /** Id of the `<style>` element holding THIS renderer's theme variables. */
   getStyleElementId(): string {
     return `${GRAFLORIA_INSTANCE_STYLE_PREFIX}${this.instanceId}`;
+  }
+
+  /** Id of the `<style>` element holding THIS renderer's bridge + a11y overrides. */
+  getOverrideElementId(): string {
+    return `${GRAFLORIA_INSTANCE_OVERRIDE_PREFIX}${this.instanceId}`;
   }
 
   /**
@@ -425,12 +611,196 @@ export class SVGRenderer implements IRenderer {
    */
   private invalidateStyles(reason: string = 'styles-changed'): void {
     this.vnodeCache.clear();
+    this.themeBoundNodes.clear();
+    this.themeBoundLinks.clear();
 
     const diagram = this.engine.getDiagram();
     if (diagram) {
       diagram.getNodes().forEach(node => node.markDirty(reason));
       diagram.getLinks().forEach(link => link.markDirty(reason));
     }
+  }
+
+  /**
+   * The SURGICAL counterpart of `invalidateStyles`, used by the colorMode
+   * hot-swap: dirty ONLY the entities that baked a theme literal into their last
+   * VNode. Everything else re-themes through the rebound CSS variables, untouched.
+   *
+   * Cache entries are dropped by id rather than by clearing the whole cache, so a
+   * clean node's VNode survives — that is the point; a cleared cache would mean
+   * rebuilding the very frames we set out not to rebuild.
+   */
+  private invalidateThemeBoundStyles(): void {
+    const diagram = this.engine.getDiagram();
+    if (!diagram) return;
+
+    for (const node of diagram.getNodes()) {
+      if (!this.themeBoundNodes.has(node.id)) continue;
+      node.markDirty('theme-changed');
+      this.dropCacheEntries(`node-${node.id}-`);
+    }
+    for (const link of diagram.getLinks()) {
+      if (!this.themeBoundLinks.has(link.id)) continue;
+      link.markDirty('theme-changed');
+      this.dropCacheEntries(`link-${link.id}-`);
+    }
+
+    // They will be re-recorded as the dirty entities re-render.
+    this.themeBoundNodes.clear();
+    this.themeBoundLinks.clear();
+  }
+
+  /** Cache keys are `<kind>-<id>-<lod>`; an entity owns one entry per LOD tier. */
+  private dropCacheEntries(prefix: string): void {
+    for (const key of this.vnodeCache.keys()) {
+      if (key.startsWith(prefix)) this.vnodeCache.delete(key);
+    }
+  }
+
+  /**
+   * How many entities the NEXT theme swap would have to restyle. Zero means the
+   * swap is a pure variable rebind. Exposed because "no restyle of every VNode"
+   * is a claim that should be measurable, not taken on trust — the tests assert
+   * on it, and so can a host.
+   */
+  getThemeBoundEntityCount(): number {
+    return this.themeBoundNodes.size + this.themeBoundLinks.size;
+  }
+
+  // =========================================================================
+  // Wave 4 — Card "Theme-bound properties": themeRef → an emitted value
+  // =========================================================================
+
+  /** Node properties this renderer emits through an inline CSS `style` string. */
+  private static readonly NODE_VAR_SAFE: ReadonlySet<string> = new Set(['fill', 'stroke', 'strokeWidth']);
+
+  /** Link properties this renderer emits through an inline CSS `style` string. */
+  private static readonly LINK_VAR_SAFE: ReadonlySet<string> = new Set([
+    'stroke',
+    'strokeWidth',
+    'strokeDasharray',
+    'opacity',
+  ]);
+
+  /**
+   * Replace every `themeRef(...)` in a resolved style with something the DOM can
+   * paint, and report whether doing so froze a theme literal into the VNode.
+   *
+   * TWO emissions, and the difference is not cosmetic:
+   *
+   *   `var(--grafloria-…, literal)` — when the property's value ends up inside an
+   *       inline CSS `style` string. Re-theming is then just rebinding the
+   *       variable, so the element never needs to be rebuilt.
+   *
+   *   the LITERAL — everywhere else. SVG PRESENTATION ATTRIBUTES cannot hold
+   *       `var()` (`fill="var(--x)"` is simply invalid and the shape paints
+   *       black), and programmatic/Canvas mode has no CSS at all. The entity is
+   *       recorded as theme-bound so the next theme swap re-resolves it.
+   *
+   * `varSafe` is therefore not a preference — it is the exact set of properties
+   * this renderer is known to emit through a style string. Adding a property to
+   * it without also routing its emission through `style` would paint black.
+   */
+  private materializeThemeRefs<T extends object>(
+    style: Partial<T>,
+    varSafe: ReadonlySet<string>
+  ): { style: Partial<T>; themeBound: boolean } {
+    let themeBound = false;
+    let out: Partial<T> | undefined;
+
+    for (const [key, value] of Object.entries(style)) {
+      if (!isThemeRef(value)) continue;
+
+      out ??= { ...style };
+      const token = themeRefToken(value);
+      const asVar =
+        this.config.useCSSMode && varSafe.has(key) ? themeRefCssValue(token, this.theme) : undefined;
+
+      if (asVar !== undefined) {
+        (out as Record<string, unknown>)[key] = asVar;
+        continue;
+      }
+
+      const literal = resolveThemeRef(token, this.theme);
+      if (literal === undefined) {
+        // The active theme does not define this token. Drop the property rather
+        // than paint `undefined`: the cascade layer beneath it — or the theme
+        // stylesheet — is then what shows, which is the correct fallback.
+        delete (out as Record<string, unknown>)[key];
+      } else {
+        (out as Record<string, unknown>)[key] = literal;
+      }
+      themeBound = true;
+    }
+
+    return { style: out ?? style, themeBound };
+  }
+
+  /**
+   * A paint value safe to put in an SVG PRESENTATION ATTRIBUTE.
+   *
+   * `var(--x)` is not: the attribute is invalid, the browser ignores it, and the
+   * element falls back to whatever the stylesheet says (or black). Everything
+   * else — a literal, a `url(#gradient)` paint-server reference — is fine.
+   */
+  private attributeSafePaint(
+    value: string | undefined,
+    literal: () => string | undefined
+  ): string | undefined {
+    if (typeof value === 'string' && value.startsWith('var(')) return literal();
+    return value;
+  }
+
+  /** Did a theme LAYER (state / type-default) contribute a literal to this node? */
+  private drawsThemeLiteral(node: NodeModel): boolean {
+    if (!this.config.useCSSMode) return true; // no stylesheet: everything is baked
+    const state = node.state;
+    if (state.selected || state.highlighted || state.hovered || !state.enabled || state.error) {
+      return true;
+    }
+    return this.hasTypeDefaults(this.theme.nodes, node.type);
+  }
+
+  private linkDrawsThemeLiteral(link: LinkModel): boolean {
+    if (!this.config.useCSSMode) return true;
+    if (link.state === 'selected' || link.state === 'highlighted' || link.state === 'hovered') {
+      return true;
+    }
+    return this.hasTypeDefaults(this.theme.links, linkTypeKey(link));
+  }
+
+  /** `theme.nodes[type]` / `theme.links[type]` — `default` is the BASE layer, not a type. */
+  private hasTypeDefaults(map: Record<string, unknown>, type: string | undefined): boolean {
+    if (!type || type === 'default') return false;
+    const entry = map[type];
+    return !!entry && Object.keys(entry).length > 0;
+  }
+
+  /**
+   * A link's stroke and stroke-width as LITERALS — never a `var()` string.
+   *
+   * Needed by the two consumers that cannot take a CSS variable:
+   *   - the ARROWHEAD, which paints through presentation attributes;
+   *   - the hit-area width, which does ARITHMETIC on the stroke width
+   *     (`Number('var(--x)') + 8` is NaN, and a NaN-wide hit area is unclickable).
+   */
+  private linkPaintLiterals(link: LinkModel): { stroke?: string; strokeWidth: number } {
+    const resolved = resolveLinkStyle(link, this.theme, {
+      includeThemeBase: !this.config.useCSSMode,
+    });
+
+    const literal = (value: unknown): string | number | undefined => {
+      if (isThemeRef(value)) return resolveThemeRef(themeRefToken(value), this.theme);
+      return value as string | number | undefined;
+    };
+
+    const stroke = literal(resolved.stroke);
+    const width = literal(resolved.strokeWidth);
+
+    return {
+      stroke: typeof stroke === 'string' ? stroke : undefined,
+      strokeWidth: typeof width === 'number' && Number.isFinite(width) ? width : 2,
+    };
   }
 
   /**
@@ -458,6 +828,17 @@ export class SVGRenderer implements IRenderer {
     // Stop listening for named-style (re)definitions
     this.unsubscribeStyleRegistry?.();
     this.unsubscribeStyleRegistry = undefined;
+
+    // Stop following the OS colour scheme / contrast preferences.
+    this.colorModeController?.dispose();
+    this.colorModeController = undefined;
+
+    // This instance's bridge + a11y block goes with its theme block.
+    this.overrideElement?.remove();
+    this.overrideElement = undefined;
+
+    this.themeBoundNodes.clear();
+    this.themeBoundLinks.clear();
 
     // Remove THIS instance's variable block (its id is per-instance, so this can
     // no longer take another diagram's stylesheet down with it), then drop the
@@ -1394,14 +1775,18 @@ export class SVGRenderer implements IRenderer {
       styles = stylesWithoutStrokeWidth;
     }
 
-    // Apply shape-specific fill/stroke if provided
-    const shapeStyles = {
-      ...styles,
-      ...(shapeConfig.fill ? { fill: shapeConfig.fill } : {}),
-      ...(shapeConfig.stroke ? { stroke: shapeConfig.stroke } : {}),
-      ...(shapeConfig.strokeWidth !== undefined && !hasActiveBorderAnimation ? { strokeWidth: shapeConfig.strokeWidth } : {}),
-      ...(shapeConfig.opacity !== undefined ? { opacity: shapeConfig.opacity } : {}),
-    };
+    // The shape config's PAINTS (fill/stroke/strokeWidth/opacity) are no longer
+    // spread on top of `styles` here.
+    //
+    // They used to be — which quietly put them above EVERY layer of the cascade,
+    // `state` included, so a selected node carrying a shape-config fill never
+    // showed its selection colour. They are now resolved inside the cascade's
+    // element-inline layer (see themes/style-cascade.ts → shapeMetadataStyle),
+    // so `styles` already contains them, at the right precedence.
+    //
+    // What stays here is what is genuinely the shape's and not a paint: its TYPE
+    // and its corner radius.
+    const shapeStyles = { ...styles };
 
     // Enhanced hover effect
     if (isHovered && !this.config.useCSSMode) {
@@ -2043,11 +2428,17 @@ export class SVGRenderer implements IRenderer {
 
     // CRITICAL FIX: Get arrow styles FIRST to use actual arrow size for position calculation
     // Get arrow styles from link (with defaults)
+    // The arrow's colour must be a LITERAL: ArrowRenderer paints through SVG
+    // presentation attributes (`fill="…"`), which cannot hold a CSS variable — so
+    // `styles.stroke` is the wrong source now that it may be `var(--grafloria-…)` for
+    // a theme-bound link. `linkPaintLiterals()` resolves the same cascade to real
+    // values, and the link is recorded as theme-bound so a theme swap re-renders it.
+    const linkLiterals = this.linkPaintLiterals(link);
     const arrowHeadStyle = link.style.arrowHead || {
       type: 'arrow',
       size: 10,
       filled: true,
-      color: styles.stroke || this.theme.colors.link.default
+      color: linkLiterals.stroke || this.theme.colors.link.default
     };
 
     const arrowTailStyle = link.style.arrowTail;
@@ -2124,9 +2515,12 @@ export class SVGRenderer implements IRenderer {
 
     // Invisible wide stroke under the link so thin lines are easy to click
     // and hover (classic diagram-tool "interaction stroke")
+    // Sized from the LITERAL stroke width, never from `styles.strokeWidth`: that
+    // can now be `var(--grafloria-numbers-emphasis, 3)` for a theme-bound link, and
+    // `Number('var(…)')` is NaN — which would silently produce an unclickable link.
     const hitAreaWidth = Math.max(
       this.config.linkHitAreaWidth,
-      Number(styles.strokeWidth ?? 2) + 8
+      linkLiterals.strokeWidth + 8
     );
     const hitAreaVNode: VNode | null = this.config.linkHitAreaWidth > 0
       ? {
@@ -2370,12 +2764,54 @@ export class SVGRenderer implements IRenderer {
   // joins the SAME ordered spread. One cascade, two emission targets.
   // =========================================================================
 
+  /**
+   * The cascade's answer for a node, with every `themeRef` turned into something
+   * paintable and the entity's theme-boundness recorded.
+   *
+   * A node is theme-BOUND (i.e. a theme swap must restyle it) when it froze a
+   * theme literal into its VNode. Three sources, all detected here rather than
+   * assumed:
+   *   - `theme.nodes[type]` supplied a type-default,
+   *   - the STATE layer painted it (selected/highlighted/hovered/disabled/error),
+   *   - a `themeRef` had to be baked to a literal (see materializeThemeRefs).
+   */
   private resolvedNodeStyle(node: NodeModel): Partial<NodeStyle> {
-    return resolveNodeStyle(node, this.theme, { includeThemeBase: !this.config.useCSSMode });
+    const resolved = resolveNodeStyle(node, this.theme, {
+      includeThemeBase: !this.config.useCSSMode,
+    });
+    const { style, themeBound } = this.materializeThemeRefs<NodeStyle>(
+      resolved,
+      SVGRenderer.NODE_VAR_SAFE
+    );
+
+    if (themeBound || this.drawsThemeLiteral(node)) {
+      this.themeBoundNodes.add(node.id);
+    } else {
+      this.themeBoundNodes.delete(node.id);
+    }
+    return style;
   }
 
   private resolvedLinkStyle(link: LinkModel): Partial<LinkStyle> {
-    return resolveLinkStyle(link, this.theme, { includeThemeBase: !this.config.useCSSMode });
+    const resolved = resolveLinkStyle(link, this.theme, {
+      includeThemeBase: !this.config.useCSSMode,
+    });
+    const { style, themeBound } = this.materializeThemeRefs<LinkStyle>(
+      resolved,
+      SVGRenderer.LINK_VAR_SAFE
+    );
+
+    // A link's ARROWHEAD is painted with presentation attributes and takes its
+    // colour from the theme when the link sets no stroke of its own — so any link
+    // that draws one is theme-bound, `themeRef` or not. (Found by reading the
+    // arrow path, not by assuming: `color: styles.stroke || theme.colors.link.default`.)
+    const drawsArrow = link.style.arrowHead?.type !== 'none' || !!link.style.arrowTail;
+    if (themeBound || drawsArrow || this.linkDrawsThemeLiteral(link)) {
+      this.themeBoundLinks.add(link.id);
+    } else {
+      this.themeBoundLinks.delete(link.id);
+    }
+    return style;
   }
 
   /**
@@ -2509,9 +2945,23 @@ export class SVGRenderer implements IRenderer {
       style.opacity !== undefined ? `opacity: ${style.opacity}` : '',
     ].filter(Boolean).join('; ');
 
+    // …but the PROP becomes an ATTRIBUTE (`stroke="…"`), and an attribute cannot
+    // hold a CSS variable. A theme-bound stroke resolves to `var(--grafloria-…)` for
+    // the style string above; the attribute gets the LITERAL instead, so it stays
+    // valid and remains usable by consumers that read `props.stroke`. The inline
+    // style wins the cascade regardless, so the paint is still var-driven.
+    const strokeAttr = this.attributeSafePaint(
+      resolvedStroke,
+      () => this.linkPaintLiterals(link).stroke
+    );
+    if (strokeAttr !== resolvedStroke) {
+      // A literal was baked into the VNode → a theme swap has to re-render it.
+      this.themeBoundLinks.add(link.id);
+    }
+
     return {
       className: classes.join(' '),
-      ...(resolvedStroke && { stroke: resolvedStroke }),
+      ...(strokeAttr && { stroke: strokeAttr }),
       ...(shadowFilter && { filter: shadowFilter }),
       ...(inlineStyle ? { style: inlineStyle } : {}),
     };
@@ -2678,6 +3128,32 @@ export class SVGRenderer implements IRenderer {
     this.styleElement.textContent = this.generateThemeCSS();
 
     document.head.appendChild(this.styleElement);
+
+    // The override block (token bridge + a11y media queries) must stay AFTER the
+    // theme block — same selector, same specificity, so source order is the only
+    // thing that decides. Re-appending it here is what keeps that true across a
+    // re-injection, which moves the theme element to the end of <head>.
+    this.injectOverrideCSS();
+  }
+
+  /**
+   * This instance's OVERRIDE block: the host's design tokens, then the
+   * accessibility media queries. Always present in CSS mode — even with no
+   * bridge, because `prefers-contrast` and `forced-colors` are the FLOOR every
+   * diagram gets, not an opt-in.
+   */
+  private injectOverrideCSS(): void {
+    if (!this.config.useCSSMode) return;
+
+    const overrideId = this.getOverrideElementId();
+    this.overrideElement?.remove();
+    document.getElementById(overrideId)?.remove();
+
+    this.overrideElement = document.createElement('style');
+    this.overrideElement.id = overrideId;
+    this.overrideElement.textContent = generateInstanceOverrideCSS(this.tokenBridge, this.instanceId);
+
+    document.head.appendChild(this.overrideElement);
   }
 
   /**

@@ -38,7 +38,17 @@ import {
   PasteCommand,
   DeleteSelectionCommand,
 } from '@grafloria/engine';
-import { SVGRenderer, LIGHT_THEME, type Theme, type Rectangle, type SVGRendererConfig, getPortPositionForShape } from '@grafloria/renderer';
+import {
+  SVGRenderer,
+  LIGHT_THEME,
+  getPortPositionForShape,
+  type ColorMode,
+  type Rectangle,
+  type SVGRendererConfig,
+  type Theme,
+  type ThemeSet,
+  type TokenBridge,
+} from '@grafloria/renderer';
 import { VNodeRendererService } from '../services/vnode-renderer.service';
 import { InteractionHandlerService } from '../services/interaction-handler.service';
 import { ComponentRendererService } from '../services/component-renderer.service';
@@ -102,9 +112,36 @@ export class DiagramCanvasComponent implements OnInit, AfterViewInit, OnChanges,
   @Input() zoom = 1.0;
 
   /**
-   * Theme configuration
+   * Theme configuration.
+   *
+   * Ignored as a SOURCE once `colorMode` is set — the mode plus the OS's
+   * preferences then decide which of `themes` is active.
    */
   @Input() theme: Theme = LIGHT_THEME;
+
+  /**
+   * Wave 4 (styling) — Card "colorMode".
+   *
+   * `'light' | 'dark' | 'system'`. `'system'` follows `prefers-color-scheme` and
+   * re-themes LIVE when the OS flips, by rebinding this diagram's CSS variables.
+   * A `prefers-contrast: more` / forced-colors preference upgrades to the
+   * high-contrast theme on top of whichever mode is in force.
+   *
+   * Leave unset for the pre-Wave-4 behaviour (`[theme]` is used verbatim).
+   */
+  @Input() colorMode?: ColorMode;
+
+  /** The themes `colorMode` chooses between. Defaults to the built-in set. */
+  @Input() themes?: ThemeSet;
+
+  /**
+   * Wave 4 (styling) — Card "design-token bridge".
+   *
+   * Map the host design system's tokens onto Grafloria's CSS variables:
+   *   `[tokenBridge]="shadcnBridge()"` — and the whole diagram adopts the app's
+   * palette, live, with no node template touched.
+   */
+  @Input() tokenBridge?: TokenBridge;
 
   /**
    * Extra SVGRenderer options (e.g. smartConnectionPoints, linkHitAreaWidth).
@@ -382,10 +419,30 @@ export class DiagramCanvasComponent implements OnInit, AfterViewInit, OnChanges,
     }
 
     if (changes['theme'] && !changes['theme'].firstChange) {
-      if (this.renderer) {
+      // A colorMode is in force: the OS + the theme SET decide, and a stray
+      // [theme] binding must not fight them.
+      if (this.renderer && !this.colorMode) {
         this.renderer.setTheme(this.theme);
         this.scheduleRender();
       }
+    }
+
+    // Wave 4: colour mode / theme set. Handled WITHOUT recreating the renderer —
+    // the whole point of the card is that a mode flip is a variable rebind.
+    if ((changes['colorMode'] || changes['themes']) && this.renderer && this.colorMode) {
+      const firstColorMode = changes['colorMode']?.firstChange ?? true;
+      const firstThemes = changes['themes']?.firstChange ?? true;
+      if (!firstColorMode || !firstThemes) {
+        this.renderer.setColorMode(this.colorMode, this.themes);
+        this.scheduleRender();
+      }
+    }
+
+    // Wave 4: design-token bridge. Pure CSS — no re-render needed, but schedule
+    // one anyway so a host that ALSO changed something else sees one frame.
+    if (changes['tokenBridge'] && !changes['tokenBridge'].firstChange && this.renderer) {
+      this.renderer.setTokenBridge(this.tokenBridge);
+      this.scheduleRender();
     }
 
     if (changes['rendererConfig'] && !changes['rendererConfig'].firstChange) {
@@ -424,10 +481,24 @@ export class DiagramCanvasComponent implements OnInit, AfterViewInit, OnChanges,
       {
         enableCaching: true,
         useCSSMode: true, // CRITICAL: Required for animations to work (CSS classes)
+        // Wave 4 (styling): colorMode / theme set / design-token bridge. Passed
+        // through to the renderer, which owns ALL of the logic — this wrapper
+        // only forwards Angular inputs.
+        ...(this.colorMode ? { colorMode: this.colorMode } : {}),
+        ...(this.themes ? { themes: this.themes } : {}),
+        ...(this.tokenBridge ? { tokenBridge: this.tokenBridge } : {}),
         ...this.rendererConfig,
       },
       this.theme
     );
+
+    // LATENT BUG (Wave 4): `applyInstanceScope()` existed since the scoped-theme
+    // card and NOTHING ever called it. The root <svg> carries the instance scope
+    // itself, and foreignObject content inherits from it — but nodes on the HTML
+    // LAYER (`metadata.useHTMLLayer`) are SIBLINGS of the svg, so they inherited
+    // no `--grafloria-*` variables and matched none of the scoped rules. Scoping the
+    // container, which wraps BOTH layers, is what the method was written for.
+    this.renderer.applyInstanceScope(this.containerRef?.nativeElement);
   }
 
   /**

@@ -57,6 +57,64 @@ export interface Theme {
    * Port configuration
    */
   ports: PortThemeConfig;
+
+  /**
+   * SEMANTIC / CATEGORY PALETTE — the caller's OWN vocabulary of colours.
+   *
+   * Styling & theming, Card "Theme-bound properties". The palettes above are the
+   * renderer's CHROME (what a node's default fill is, what selection looks like).
+   * This one is the HOST's: "critical", "warning", "deprecated", "team-a" — the
+   * meanings the caller assigns to its own nodes and links.
+   *
+   * Bind a property to one with `themeRef('category.critical')`; the value is
+   * resolved against the ACTIVE theme, so a theme swap recolours it. Without
+   * this a theme swap only repaints chrome and every semantic colour in the
+   * caller's diagram stays frozen at whatever literal it was authored with.
+   *
+   * Every key is also published as `--grafloria-category-<key>` on the instance root.
+   */
+  categories?: SemanticPalette;
+
+  /**
+   * NAMED NUMERIC SCALE — the numeric analogue of {@link categories}.
+   *
+   * `themeRef('numbers.emphasis')` on a `strokeWidth` binds the weight to the
+   * theme, so a high-contrast theme can thicken every emphasised stroke without
+   * the caller touching a single element. Published as `--grafloria-numbers-<key>`.
+   */
+  numbers?: NumberScale;
+}
+
+/**
+ * The host's semantic colour vocabulary (see {@link Theme.categories}).
+ * Open-ended: the built-in themes ship the names below, and callers add theirs.
+ */
+export interface SemanticPalette {
+  /** Blocking / fatal — the strongest attention colour. */
+  critical?: string;
+  /** Non-blocking problem. */
+  warning?: string;
+  /** Healthy / passing. */
+  success?: string;
+  /** Neutral information. */
+  info?: string;
+  /** De-emphasised / inactive. */
+  neutral?: string;
+  /** The host's brand accent. */
+  accent?: string;
+  [category: string]: string | undefined;
+}
+
+/**
+ * A named numeric scale (see {@link Theme.numbers}). Values are unitless — they
+ * are consumed as SVG lengths (`stroke-width`), which accept plain numbers.
+ */
+export interface NumberScale {
+  hairline?: number;
+  regular?: number;
+  emphasis?: number;
+  heavy?: number;
+  [name: string]: number | undefined;
 }
 
 /**

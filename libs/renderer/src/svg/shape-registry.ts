@@ -982,6 +982,42 @@ for (const [alias, def] of Object.entries(SHAPE_ALIASES)) {
  *  - 'spread' shapes (ellipse/hexagon) spread node styles as presentation
  *    attributes with geometry merged last.
  */
+/** CSS property name for each paint key that may carry a `var()` reference. */
+const CSS_PAINT_PROPS: Record<string, string> = {
+  fill: 'fill',
+  stroke: 'stroke',
+  strokeWidth: 'stroke-width',
+};
+
+/**
+ * Pull any paint whose value is a `var(--…)` reference out of the attribute bag
+ * and into an inline CSS style string (where variables are legal).
+ *
+ * `hoisted` is `''` when nothing needed moving — the overwhelmingly common case,
+ * and the caller then emits the original props untouched.
+ */
+function hoistCssVarPaints(styles: any): { hoisted: string; rest: Record<string, any> } {
+  const rest: Record<string, any> = { ...styles };
+  const decls: string[] = [];
+
+  for (const [key, cssProp] of Object.entries(CSS_PAINT_PROPS)) {
+    const value = rest[key];
+    if (typeof value === 'string' && value.includes('var(')) {
+      decls.push(`${cssProp}: ${value}`);
+      delete rest[key];
+    }
+  }
+
+  if (decls.length === 0) return { hoisted: '', rest };
+
+  // Preserve an existing style string, with the hoisted paints appended so they
+  // still win over anything the caller had already put there.
+  const existing = typeof rest['style'] === 'string' ? rest['style'] : '';
+  delete rest['style'];
+
+  return { hoisted: [existing, decls.join('; ')].filter(Boolean).join('; '), rest };
+}
+
 export function buildShapeBody(
   def: ShapeDefinition,
   width: number,
@@ -994,6 +1030,19 @@ export function buildShapeBody(
   const spec = def.outline(width, height, { radius: cornerRadius, radiusY: true });
 
   if (def.styleMode === 'spread') {
+    // Spread shapes paint through PRESENTATION ATTRIBUTES — and an attribute
+    // cannot hold a CSS variable: `fill="var(--grafloria-category-critical)"` is
+    // invalid, the attribute is dropped, and the shape paints BLACK.
+    //
+    // Wave 4 made that reachable: a theme-bound property (`themeRef(...)`) emits
+    // exactly such a var() reference. So any paint that IS one is hoisted into an
+    // inline style string, where var() is legal. Literals are untouched, so every
+    // existing spread shape emits byte-for-byte what it always did.
+    const { hoisted, rest } = hoistCssVarPaints(styles);
+    if (hoisted) {
+      const props: Record<string, any> = { ...rest, style: hoisted, ...spec.geom };
+      return { type: spec.el, props };
+    }
     return { type: spec.el, props: { ...styles, ...spec.geom } };
   }
 
