@@ -46,6 +46,10 @@
 
 import type { DiagramModel } from '../models/DiagramModel';
 import type { LayoutAdapter, LayoutOptions, LayoutResult } from './layout-adapter.interface';
+// Type-only: the run controls (signal/onProgress/timeBudgetMs) belong to the
+// worker seam, and importing them as types keeps the module graph acyclic at
+// runtime even though layout-host imports the built-ins from here.
+import type { LayoutRunOptions, LayoutStopReason } from './layout-host';
 import { DEFAULT_LAYOUT_SEED, inStableOrder } from './rng';
 import { DagreLayoutAdapter } from './dagre-layout-adapter';
 import { ELKLayoutAdapter } from './elk-layout-adapter';
@@ -69,7 +73,18 @@ import { createLayeredLayout } from './sugiyama/layered-layout';
  * everything that is common to all layouts is named here so callers do not have
  * to learn five different vocabularies.
  */
-export interface UnifiedLayoutOptions extends Partial<LayoutOptions> {
+export interface UnifiedLayoutOptions extends Partial<LayoutOptions>, LayoutRunOptions {
+  /**
+   * Adapter-specific knobs (`iterations`, `repulsion`, `align`, …) ride along here.
+   *
+   * Card 0's comment PROMISED this — "adapter-specific knobs still ride in
+   * `options`" — but the type did not allow it, so `engine.layout('force',
+   * { iterations: 500 })` was a compile error and the only way to reach half of
+   * force's own options was a cast. A vocabulary that cannot say what its
+   * engines can do is not a unified vocabulary; this is the promise made good.
+   */
+  [key: string]: unknown;
+
   /**
    * Seed for any algorithm that uses randomness (force, spectral, community).
    * Defaults to a FIXED constant — so an author who never thinks about seeds
@@ -157,14 +172,22 @@ export interface RegisteredLayout {
   apply(diagram: DiagramModel, options: UnifiedLayoutOptions): Promise<LayoutResult>;
 
   /**
-   * Wave 7 Card 4: the underlying node/link adapter, when the engine has one.
+   * The underlying node/link algorithm, when the engine has one.
    *
-   * Nested layout arranges the contents of ONE container at a time, so it needs
-   * an engine it can hand a node/link SUBSET to — `RegisteredLayout.apply()`
-   * takes a whole DiagramModel and cannot express "just these nodes". Exposing
-   * the adapter is what lets a container be laid out by any registered
-   * adapter-backed engine (including one an extension registered), instead of
-   * the closed dagre|elk pair the wave-5 service hard-coded.
+   * TWO cards landed on this one field, for two reasons that turn out to be the
+   * same reason — a `LayoutAdapter` is a pure function of (nodes, links), and a
+   * `RegisteredLayout` is an opaque closure over a whole DiagramModel:
+   *
+   *   • Card 4 (nested) arranges the contents of ONE container at a time, so it
+   *     needs an engine it can hand a node/link SUBSET to. `apply(diagram)` cannot
+   *     express "just these nodes". Exposing the adapter is what lets a container
+   *     be laid out by ANY registered engine — including an extension's — instead
+   *     of the closed dagre|elk pair the wave-5 service hard-coded.
+   *
+   *   • Card 3 (worker) needs an algorithm it can SHIP ACROSS A THREAD BOUNDARY.
+   *     A closure cannot be posted anywhere, so layouts registered that way run
+   *     inline — by physics, not by policy. Exposing the adapter is what lets the
+   *     host tell the two apart instead of guessing.
    */
   readonly adapter?: LayoutAdapter;
 }
@@ -181,6 +204,29 @@ export interface UnifiedLayoutResult extends LayoutResult {
    * its working is a support ticket.
    */
   selection?: LayoutSelectionReport;
+
+  // -- Wave 7 Card 3 -------------------------------------------------------
+
+  /**
+   * True when the run was cut short (cancelled, or out of time budget) and this
+   * is the BEST-SO-FAR answer rather than a finished one.
+   *
+   * Flagged rather than thrown away: a force layout stopped at 200 of 300
+   * iterations is a perfectly usable picture, and discarding it is the
+   * difference between a tool that feels alive and one that feels broken. But
+   * the caller has to be able to TELL — silently returning a partial layout as
+   * if it were final is how a "finished" diagram ends up half-settled.
+   */
+  partial: boolean;
+
+  /** Why it stopped early, when it did. */
+  reason?: LayoutStopReason;
+
+  /** Iterations actually completed. */
+  iteration: number;
+
+  /** Iterations the algorithm would have run, left alone. */
+  totalIterations: number;
 }
 
 /**
@@ -258,11 +304,26 @@ export function fromAdapter(adapter: LayoutAdapter): RegisteredLayout {
   // the canonical-ordering + option-translation Card 0 established. The `adapter`
   // field is kept because Card 7's auto-selector reads it to tell whether a
   // candidate engine is port-aware.
+  // The EXPOSED adapter is packing-wrapped too, and that is load-bearing.
+  //
+  // Two resolvers hand algorithms to the layout host: the engine's inline one reads
+  // `registry.get(name).adapter` (so a runtime-registered layout is honoured), and
+  // the worker's builds by name from the factories (functions cannot cross
+  // postMessage). If only one of them packs, the SAME layout behaves differently on
+  // the two paths — and it did: a disconnected graph laid its components on top of
+  // each other whenever the engine resolved through the registry. Card 2's forest
+  // tests caught it the moment these branches met.
+  //
+  // Object.create, not a spread: spreading a class instance copies only its OWN
+  // properties, so step()/snapshot() — prototype methods — vanish and a steppable
+  // algorithm silently stops being cancellable.
+  const packed = packAdapter(adapter);
+
   return {
     ...createLayout(adapter.name, (nodes, links, options) =>
       adapter.apply(nodes, links, translateOptions(adapter.name, options))
     ),
-    adapter,
+    adapter: packed,
   };
 }
 
@@ -334,6 +395,15 @@ export function translateOptions(
   const out: Record<string, unknown> = { ...options };
   out['seed'] = options.seed ?? DEFAULT_LAYOUT_SEED;
 
+  // Card 3: the run controls are the HOST's business, not the algorithm's, and
+  // `signal`/`onProgress` are not structured-clone-safe — posting one to a real
+  // Worker throws DataCloneError. They must not reach the wire.
+  delete out['signal'];
+  delete out['onProgress'];
+  delete out['timeBudgetMs'];
+  delete out['sliceMs'];
+  delete out['stopAfterIteration'];
+
   const { direction, nodeSpacing, rankSpacing } = options;
 
   if (engine === 'dagre') {
@@ -364,13 +434,34 @@ export function translateOptions(
  * even though it resolves asynchronously; the adapter already handles that.
  */
 export function createBuiltInLayoutAdapters(): LayoutAdapter[] {
-  return [
-    new DagreLayoutAdapter(),
-    new ELKLayoutAdapter(),
-    new ForceLayoutAdapter(),
-    new SpectralLayoutAdapter(),
-    new CommunityLayoutAdapter(),
-  ];
+  return [...createBuiltInLayoutFactories().values()].map((make) => make());
+}
+
+/**
+ * The same built-ins, as FACTORIES — construct one only when it is asked for.
+ *
+ * Wave 7 Card 3, and this is not a micro-optimisation: it is a crash fix that
+ * only a live run could have found. Constructing every adapter up-front means
+ * constructing ELK, and `new ELKLayoutAdapter()` calls `new ElkConstructor()`,
+ * which tries to spawn elkjs's OWN nested Worker. Inside a Web Worker that
+ * throws `_Worker is not a constructor` — so the layout worker died on the line
+ * that started it, before it had read a single message, and every request to it
+ * hung forever.
+ *
+ * Nothing caught it because in Node (where the unit tests live) elkjs constructs
+ * happily. It reproduced the instant a real Worker ran in a real browser.
+ *
+ * Laziness makes the worker pay only for the algorithm actually requested, so
+ * asking for `force` no longer detonates on ELK's behalf.
+ */
+export function createBuiltInLayoutFactories(): Map<string, () => LayoutAdapter> {
+  return new Map<string, () => LayoutAdapter>([
+    ['dagre', () => new DagreLayoutAdapter()],
+    ['elk', () => new ELKLayoutAdapter()],
+    ['force', () => new ForceLayoutAdapter()],
+    ['spectral', () => new SpectralLayoutAdapter()],
+    ['community', () => new CommunityLayoutAdapter()],
+  ]);
 }
 
 /**
@@ -410,13 +501,45 @@ export function createAutoLayout(registry: LayoutRegistry): RegisteredLayout {
  * the shared options vocabulary, which is the difference between "we expose a
  * force adapter" and "force is a first-class layout".
  */
+/**
+ * Component-packing wrapper, preserving the algorithm underneath.
+ *
+ * Object.create, not a spread: spreading a class instance copies only its OWN
+ * properties, so `step()`/`snapshot()` — which live on the prototype — vanish,
+ * `isSteppable()` goes false, and a long-running algorithm silently stops being
+ * cancellable. Delegating through the prototype keeps it whole and overrides only
+ * `apply`, which is the one thing packing needs to intercept.
+ */
+export function packAdapter(adapter: LayoutAdapter): LayoutAdapter {
+  const packed: LayoutAdapter = Object.create(adapter);
+  packed.apply = (nodes, links, options) =>
+    layoutWithComponentPacking(
+      adapter.name,
+      (n, l, o) => adapter.apply(n, l, translateOptions(adapter.name, o)),
+      nodes,
+      links,
+      (options ?? {}) as UnifiedLayoutOptions
+    );
+  return packed;
+}
+
 export function createPortfolioLayouts(): RegisteredLayout[] {
+  // Card 2's `force` overrides the raw adapter — but it must keep the adapter's
+  // STEPPABLE physics reachable, or Card 3 loses progress, cancellation and partial
+  // results on the one algorithm that can actually be interrupted mid-run. (The
+  // portfolio version delegates to exactly this simulation; what it adds is packing
+  // and the shared options vocabulary.)
+  const steppableForce = packAdapter(new ForceLayoutAdapter());
+
   return [
     createLayout('tree', (nodes, links, options) => treeLayout(nodes, links, options)),
     createLayout('grid', (nodes, links, options) => gridLayout(nodes, links, options)),
     createLayout('circular', (nodes, links, options) => circularLayout(nodes, links, options)),
     createLayout('radial', (nodes, links, options) => radialLayout(nodes, links, options)),
-    createLayout('force', (nodes, links, options) => forceLayout(nodes, links, options)),
+    {
+      ...createLayout('force', (nodes, links, options) => forceLayout(nodes, links, options)),
+      adapter: steppableForce,
+    },
   ];
 }
 
@@ -480,5 +603,8 @@ export async function runLayout(
     diagram.getNode(nodeId)?.setPosition(position.x, position.y);
   }
 
-  return { ...result, algorithm: name, seed };
+  // Card 3's run-status fields. runLayout is the SYNCHRONOUS apply-and-commit path
+  // (the preset applicator's route); it runs an algorithm to completion on this
+  // thread, so it is never partial. The worker/host path reports the real numbers.
+  return { ...result, algorithm: name, seed, partial: false, iteration: 1, totalIterations: 1 };
 }

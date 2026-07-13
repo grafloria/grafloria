@@ -50,3 +50,5 @@ libs/renderer/e2e/canvas-bundle.js
 libs/renderer/e2e/ext-bundle.js
 libs/renderer/e2e/a11y-bundle.js
 libs/renderer/e2e/playground.bundle.js
+libs/engine/e2e/layout.worker.bundle.js
+libs/engine/e2e/worker-layout.bundle.js

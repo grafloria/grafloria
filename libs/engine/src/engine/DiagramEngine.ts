@@ -63,6 +63,7 @@ import {
   DEFAULT_LAYOUT_NAME,
   fromAdapter,
   createBuiltInLayoutAdapters,
+  translateOptions,
   type UnifiedLayoutOptions,
   type UnifiedLayoutResult,
   createDefaultLayoutRegistry,
@@ -82,6 +83,9 @@ import {
 } from '../layout/incremental/mental-map';
 // Wave 7 — Card 4: nested container / subgraph layout.
 import { CompoundLayoutService } from '../layout/CompoundLayoutService';
+// Wave 7 — Card 3: off-main-thread layout.
+import { LayoutHost, type LayoutPort } from '../layout/layout-host';
+import { serializeGraph } from '../layout/layout-graph';
 import type { LayoutType, LayoutConfig, FlexItemConfig, GridItemConfig } from '../types/layout.types'; // Phase 1.7
 
 export interface DiagramEngineConfig {
@@ -2188,8 +2192,8 @@ export class DiagramEngine {
       throw new Error('No diagram loaded');
     }
 
-    const engine = this.getLayoutRegistry().get(name);
-    if (!engine) {
+    const registered = this.getLayoutRegistry().get(name);
+    if (!registered) {
       const available = this.getLayoutRegistry().names().join(', ');
       throw new Error(`Unknown layout '${name}'. Registered layouts: ${available}`);
     }
@@ -2227,65 +2231,103 @@ export class DiagramEngine {
         },
         algorithm: name,
         seed,
+        // Card 3's run-status fields. A nested layout is a complete, synchronous
+        // walk of the container tree — it is never cut short, so it reports itself
+        // honestly as a finished single-pass run rather than leaving the caller to
+        // guess from `undefined`.
+        partial: false,
+        iteration: 1,
+        totalIterations: 1,
       };
     }
 
-    // The flat path goes through runLayout — the ONE apply-and-commit path, shared
-    // with the preset applicator. It commits via setPosition(), so the spatial index
-    // and the routing obstacle map see the move (wave 5 lost a day to the mirror
-    // image of this: the engine subscribed to `node.on('position')` while the model
-    // emits `change:position`, so the obstacle map never updated).
-    return runLayout(this.getLayoutRegistry(), this.diagram, name, options);
+    // ---- the flat path -----------------------------------------------------
+    //
+    // Card 3 routes it through the layout HOST, which runs the algorithm inline
+    // through the very same message loop a worker would run — so there is no second
+    // code path to drift, and a test proves the two produce byte-identical
+    // coordinates. (This replaces the direct runLayout() call: runLayout remains the
+    // shared apply-and-commit path used by the preset applicator, and the host
+    // commits through the same setPosition() route.)
+    // A hand-rolled RegisteredLayout is an opaque closure over a DiagramModel.
+    // A closure cannot cross a thread boundary, so it runs inline — not a
+    // policy, just physics. Every built-in exposes its adapter and takes the
+    // worker path below.
+    if (!registered.adapter) {
+      const result = await registered.apply(this.diagram, { ...options, seed });
+      this.commitLayoutPositions(result.nodePositions);
+      return {
+        ...result,
+        algorithm: name,
+        seed,
+        partial: false,
+        iteration: 1,
+        totalIterations: 1,
+      };
+    }
+
+    // Wave 7 Card 3: ONE path, whether or not a worker port is attached. The
+    // host runs the algorithm inline through the very same message loop the
+    // worker would run, so there is no second code path to drift — and a test
+    // proves the two produce byte-identical coordinates.
+    const graph = serializeGraph(this.diagram.getNodes(), this.diagram.getLinks());
+    const result = await this.getLayoutHost().run(
+      name,
+      graph,
+      translateOptions(name, { ...options, seed }),
+      {
+        signal: options.signal,
+        onProgress: options.onProgress,
+        timeBudgetMs: options.timeBudgetMs,
+        sliceMs: options.sliceMs,
+        stopAfterIteration: options.stopAfterIteration,
+      }
+    );
+
+    this.commitLayoutPositions(result.nodePositions);
+
+    return { ...result, algorithm: name, seed };
   }
 
   /**
    * Wave 7 — Card 6: mental-map-preserving incremental layout.
    *
-   * Re-lay-out after an edit while moving as little as possible.
-   *
    *     await engine.layoutIncremental({ changed: [newNode.id], budget: { maxPerNode: 60 } });
    *
    * Mermaid re-renders the whole diagram from scratch on every edit and destroys the
-   * user's spatial memory of their own diagram. This does the opposite, in three
-   * steps (see layout/incremental/mental-map.ts):
+   * user's spatial memory of their own diagram. This does the opposite:
    *
    *   1. everything outside the affected region becomes a Card-5 ANCHOR — an
    *      immovable obstacle the layout works AROUND (impossible before Card 5, when
    *      "constraints" were positions clamped after an unconstrained run);
-   *   2. the result is RE-ALIGNED onto the previous layout by matching centroids,
-   *      which is exactly the translation that minimises squared displacement — a
-   *      layered layout is only defined up to translation, so one new node widening
-   *      a rank can shift the whole drawing sideways and make every node "move"
-   *      while the picture is unchanged;
+   *   2. the result is RE-ALIGNED onto the previous layout by matching centroids —
+   *      exactly the translation that minimises squared displacement, because a
+   *      layered layout is defined only up to translation, so one new node widening
+   *      a rank slides the whole picture sideways and makes every node "move" while
+   *      the drawing is unchanged;
    *   3. movement is MEASURED against an explicit budget and reported.
    *
    * Returns a tween PLAN rather than animating: the engine says where things go at
-   * time t, the host drives t. That is what keeps this runnable in a worker, in SSR,
-   * and in a test.
+   * time t, the host drives t — which is what keeps this runnable in a worker, in
+   * SSR and in a test.
    *
    * ONE SEMANTIC, STATED PLAINLY. This runs the `layered` engine, because it is the
-   * only one that honours anchors DURING coordinate assignment. So if the diagram's
-   * current positions came from a DIFFERENT engine (dagre, ELK, or the auto
-   * bake-off's pick), the first incremental pass necessarily re-draws it — and that
-   * is not a bug to be papered over: "move as little as possible" is ill-posed
-   * across engines, because there is no meaningful small move between two engines'
-   * idea of the same graph. Lay out with `layered` if you intend to edit
-   * incrementally; after the first pass it is stable.
+   * only one that honours anchors DURING coordinate assignment. If the diagram's
+   * current positions came from a DIFFERENT engine, the first incremental pass
+   * necessarily re-draws it — and that is not a bug to paper over: "move as little
+   * as possible" is ill-posed across engines, because there is no meaningful small
+   * move between two engines' idea of the same graph.
    */
   async layoutIncremental(
     options: IncrementalOptions & { name?: string } & UnifiedLayoutOptions = {}
   ): Promise<UnifiedLayoutResult & { movement: MovementReport; tween: TweenPlan }> {
     if (!this.diagram) throw new Error('No diagram loaded');
 
-    // The baseline EXCLUDES the nodes the caller just added/changed.
-    //
-    // A node the user has only now created has no meaningful "previous position" —
-    // it is sitting at wherever the model defaulted it (usually 0,0). Counting it
-    // is not merely a cosmetic error in the movement report: it drags the CENTROID,
-    // so the re-alignment translates the entire diagram to accommodate a position
-    // that never meant anything. (Caught by the pin-existing test: the anchors held
-    // perfectly, and then my own alignment shifted all three pinned nodes by
-    // (-37.5, -32.5).)
+    // The baseline EXCLUDES the just-added nodes. A node the user has only now
+    // created has no meaningful "previous position" — it sits wherever the model
+    // defaulted it (usually 0,0). Counting it is not a cosmetic error in the report:
+    // it DRAGS THE CENTROID, so the re-alignment translates the whole diagram to
+    // accommodate a position that never meant anything.
     const changed = new Set(options.changed ?? []);
     const before: Positions = new Map(
       this.diagram
@@ -2296,29 +2338,15 @@ export class DiagramEngine {
 
     const semantic = constraintsForStrategy(this.diagram, before, options);
 
-    // Card 6 pins the engine to `layered` on purpose: it is the only one that
-    // honours Card-5 anchors DURING coordinate assignment. Routing this through the
-    // auto-selector would hand the graph to whichever engine scored best on a
-    // FRESH layout — and a fresh layout is exactly what mental-map preservation is
-    // trying not to do. (A caller can still name another engine explicitly.)
     const result = await this.layout(options.name ?? 'layered', {
       ...options,
       semantic,
     } as UnifiedLayoutOptions);
 
-    // Re-align onto the previous picture — but ONLY when the layout was free.
-    //
-    // Alignment exists to cancel the ARBITRARY translation of a free layout: a
-    // layered drawing is defined only up to translation, so one new node widening a
-    // rank slides the whole picture sideways and every node "moves" although nothing
-    // changed. Matching centroids removes exactly that.
-    //
-    // But if ANY node is anchored, the frame of reference is already pinned to the
-    // previous layout — and translating on top of that DRAGS THE ANCHORED NODES,
-    // which is the one thing they exist to prevent. (Found by the region test: `a`
-    // legitimately moved, which shifted the centroid, and the alignment then pulled
-    // the three frozen nodes 32.5px along with it.) Anchored layouts are already
-    // aligned by construction; aligning them again is double-correcting.
+    // Re-align onto the previous picture — but ONLY when the layout was FREE.
+    // Alignment cancels the arbitrary translation of a free layout; if a node is
+    // anchored the frame of reference is already pinned, and translating on top of
+    // that DRAGS THE ANCHORED NODES, which is the one thing they exist to prevent.
     const raw = new Map(result.nodePositions);
     const anchored = Object.keys(semantic.anchors ?? {}).length > 0;
 
@@ -2340,6 +2368,59 @@ export class DiagramEngine {
       movement,
       tween: planTween(before, aligned),
     };
+  }
+
+  /**
+   * Commit computed positions onto the real nodes.
+   *
+   * `setPosition()` rather than a raw write, so the spatial index, the routing
+   * obstacle map and the renderer all see the move — the wave-5 lesson: a
+   * subscription to an event nobody emits is a subscription to nothing.
+   *
+   * This is also the reason a partial result is USEFUL rather than merely
+   * honest: the best-so-far positions land on the diagram exactly like final
+   * ones, so a cancelled layout leaves a real, coherent picture behind.
+   */
+  private commitLayoutPositions(
+    nodePositions: Map<string, { x: number; y: number }>
+  ): void {
+    for (const [nodeId, position] of nodePositions) {
+      this.diagram?.getNode(nodeId)?.setPosition(position.x, position.y);
+    }
+  }
+
+  /**
+   * Run layout off the main thread.
+   *
+   * The engine does NOT construct the Worker — that would bake one bundler's URL
+   * scheme into the engine, which is exactly what the old (never-instantiated)
+   * `LayoutWorkerPool` did with its hardcoded `/assets/workers/layout.worker.js`.
+   * The caller builds the worker however its toolchain likes and hands it in:
+   *
+   *     const worker = new Worker(new URL('./layout.worker', import.meta.url),
+   *                               { type: 'module' });
+   *     engine.setLayoutPort(worker as unknown as LayoutPort);
+   *
+   * Pass `undefined` to go back to running inline.
+   */
+  setLayoutPort(port?: LayoutPort): void {
+    this.layoutPort = port;
+    this.layoutHost = undefined; // rebuilt lazily against the new port
+  }
+
+  private layoutPort?: LayoutPort;
+  private layoutHost?: LayoutHost;
+
+  private getLayoutHost(): LayoutHost {
+    if (!this.layoutHost) {
+      this.layoutHost = new LayoutHost(this.layoutPort, {
+        // Inline runs resolve against the LIVE registry, so a layout registered
+        // at runtime (or a built-in that a host has replaced) is honoured. A
+        // real worker cannot: functions do not survive postMessage.
+        resolve: (layoutName) => this.getLayoutRegistry().get(layoutName)?.adapter,
+      });
+    }
+    return this.layoutHost;
   }
 
   /**
