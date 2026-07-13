@@ -45,7 +45,12 @@ export type DeferredQuery = () => ReadonlyArray<readonly [EntityKind, string]>;
 export interface ProgressiveMountOptions {
   /** Target ms per slice. The chunk size adapts to hit it. Default 8 (half a 60fps frame). */
   sliceMs?: number;
-  /** Links admitted by the first link slice, before there is anything to adapt from. Default 24. */
+  /**
+   * Links admitted by the FIRST link slice — the one slice with no measurement to adapt
+   * from. Default 4, deliberately timid: link costs are wildly skewed (a typical link
+   * routes in 3ms, a long one against 10k obstacles in 850ms), so a big opening chunk is
+   * a coin-flip on a multi-second stall. It ramps up fast from here when links are cheap.
+   */
   initialChunk?: number;
   /** Hard cap on slices, so a pathological scene still terminates. Default 500. */
   maxSlices?: number;
@@ -108,7 +113,7 @@ export class ProgressiveMounter {
   mount(viewport: Rectangle, zoom: number, options: ProgressiveMountOptions = {}): Promise<MountStats> {
     const sliceMs = options.sliceMs ?? 8;
     const maxSlices = options.maxSlices ?? 500;
-    let chunk = Math.max(1, options.initialChunk ?? 24);
+    let chunk = Math.max(1, options.initialChunk ?? 4);
 
     this.cancel();
     this.running = true;
@@ -208,10 +213,18 @@ export class ProgressiveMounter {
         stats.worstSliceMs = Math.max(stats.worstSliceMs, sliceMsActual);
         options.onSlice?.(stats);
 
-        // Adapt: aim at `sliceMs`. A single link can cost 850ms on its own, so the
-        // floor is 1 — we cannot pre-empt a router mid-path, and pretending we can
-        // would just make the chunking dishonest.
-        chunk = clamp(Math.round((chunk * sliceMs) / Math.max(sliceMsActual, 0.1)), 1, 512);
+        // Adapt towards `sliceMs`.
+        //
+        // Shrink as hard as the measurement says (one bad slice should immediately back
+        // off), but GROW no more than 4x at a time. Link costs are skewed by two orders
+        // of magnitude, so a run of cheap 3ms links would otherwise ramp the chunk into
+        // the hundreds and the next expensive link would arrive in a batch of 200.
+        //
+        // The floor is 1: a router cannot be pre-empted mid-path, so a single 850ms link
+        // IS an 850ms slice. Chunking cannot fix that and should not pretend to — what it
+        // can do is make sure such a link stalls the mount alone, and never in company.
+        const ratio = sliceMs / Math.max(sliceMsActual, 0.1);
+        chunk = clamp(Math.round(chunk * Math.min(ratio, 4)), 1, 256);
 
         this.handle = requestFrame(step);
       };
