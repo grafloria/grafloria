@@ -9,8 +9,8 @@ import { DiagramEngine, DiagramModel, LinkModel, NodeModel, PortModel } from '@g
 import { SVGRenderer } from '../../svg/svg-renderer';
 import type { VNode } from '../../types/vnode.types';
 import { exportPdf } from './pdf-export';
-import { encodeWinAnsi, measureBaseFont, PAGE_SIZES, parseColor, pageDimensions, pickBaseFont } from './pdf-primitives';
-import { arcToCubics, svgPathToPdf } from './pdf-path';
+import { encodeWinAnsi, measureBaseFont, PAGE_SIZES, parsePdfColor, pageDimensions, pickBaseFont } from './pdf-primitives';
+import { svgPathToPdf } from './pdf-path';
 import { utf8 } from '../round-trip';
 
 /**
@@ -66,7 +66,7 @@ const el = (type: string, props: Record<string, unknown>): VNode => ({ type, pro
 const tree = (children: VNode[]): VNode => ({ type: 'svg', key: 'diagram-root', props: {}, children } as VNode);
 
 describe('pdf-primitives', () => {
-  describe('parseColor', () => {
+  describe('parsePdfColor', () => {
     it.each([
       ['#ff0000', { r: 1, g: 0, b: 0 }],
       ['#00ff00', { r: 0, g: 1, b: 0 }],
@@ -74,7 +74,7 @@ describe('pdf-primitives', () => {
       ['rgb(255, 0, 0)', { r: 1, g: 0, b: 0 }],
       ['white', { r: 1, g: 1, b: 1 }],
     ])('parses %s', (input, expected) => {
-      const rgb = parseColor(input)!;
+      const rgb = parsePdfColor(input)!;
       expect(rgb.r).toBeCloseTo(expected.r);
       expect(rgb.g).toBeCloseTo(expected.g);
       expect(rgb.b).toBeCloseTo(expected.b);
@@ -82,10 +82,11 @@ describe('pdf-primitives', () => {
 
     it('returns null for "none"/unknown rather than guessing black', () => {
       // Guessing black would turn an unrecognised value into a solid black node.
-      expect(parseColor('none')).toBeNull();
-      expect(parseColor('url(#grad)')).toBeNull();
-      expect(parseColor('chartreuse-ish')).toBeNull();
-      expect(parseColor(undefined)).toBeNull();
+      expect(parsePdfColor('none')).toBeNull();
+      expect(parsePdfColor('transparent')).toBeNull();
+      expect(parsePdfColor('url(#grad)')).toBeNull();
+      expect(parsePdfColor('chartreuse-ish')).toBeNull();
+      expect(parsePdfColor(undefined)).toBeNull();
     });
   });
 
@@ -179,22 +180,13 @@ describe('svgPathToPdf', () => {
       expect(last.endsWith('140 100 c')).toBe(true);
     });
 
-    it('splits a big sweep into ≤90° pieces (one bezier cannot be a half-circle)', () => {
-      const cubics = arcToCubics({ x: 0, y: 0 }, { x: 0, y: 20 }, 10, 10, 0, true, true);
-      expect(cubics.length).toBeGreaterThanOrEqual(2);
-    });
-
-    it('lands on the endpoint for a semicircle', () => {
-      const cubics = arcToCubics({ x: 0, y: 0 }, { x: 20, y: 0 }, 10, 10, 0, false, true);
-      const [, , end] = cubics[cubics.length - 1];
-      expect(end.x).toBeCloseTo(20);
-      expect(end.y).toBeCloseTo(0);
+    it('splits a big sweep into several cubics (one bezier cannot be a half-circle)', () => {
+      const ops = svgPathToPdf('M 0 0 A 10 10 0 1 1 0 20');
+      expect(ops.filter(op => op.endsWith(' c')).length).toBeGreaterThanOrEqual(2);
     });
 
     it('a zero radius degenerates to a straight line, per the spec', () => {
-      const cubics = arcToCubics({ x: 0, y: 0 }, { x: 10, y: 0 }, 0, 0, 0, false, true);
-      expect(cubics).toHaveLength(1);
-      expect(cubics[0][2]).toEqual({ x: 10, y: 0 });
+      expect(svgPathToPdf('M 0 0 A 0 0 0 0 1 10 0')).toEqual(['0 0 m', '10 0 l']);
     });
   });
 });

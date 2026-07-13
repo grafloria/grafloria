@@ -5,6 +5,7 @@
 // speaks to PDF only through here.
 
 import { utf8 } from '../round-trip';
+import { parseColor as parseThemeColor } from '../../themes/contrast';
 
 // ---------------------------------------------------------------------------
 // Numbers
@@ -28,7 +29,8 @@ export function num(value: number): string {
 // Colour
 // ---------------------------------------------------------------------------
 
-export interface Rgb {
+/** PDF paints in 0–1 channels, not 0–255. Named `PdfRgb` so it cannot be confused with the theme's `Rgb` (which is 0–255). */
+export interface PdfRgb {
   r: number;
   g: number;
   b: number;
@@ -43,51 +45,34 @@ const NAMED: Record<string, string> = {
   blue: '#0000ff',
   gray: '#808080',
   grey: '#808080',
-  transparent: 'none',
 };
 
 /**
- * Parse a CSS colour to PDF's 0–1 RGB. `null` means "do not paint" — `none`, an empty
- * value, or something we do not understand (better to skip a fill than to guess black,
- * which would turn an unrecognised value into a solid black node).
+ * Parse a CSS colour to PDF's 0–1 RGB.
+ *
+ * The hex / rgb() parsing is NOT re-implemented: `themes/contrast.ts` already owns the
+ * "parse the colour forms a theme can actually hold" job (#rgb, #rgba, #rrggbb, #rrggbbaa,
+ * rgb(), rgba()) and has its own tests. This adds only what is PDF-specific — the 0–255 →
+ * 0–1 rescale, the `none`/`transparent`/`url(#…)` cases, and a few CSS keywords.
+ *
+ * `null` means DO NOT PAINT. Not black: guessing black for a value we could not read would
+ * turn one unrecognised colour into a solid black node, which is far worse than a missing
+ * fill.
  */
-export function parseColor(value: unknown): Rgb | null {
+export function parsePdfColor(value: unknown): PdfRgb | null {
   if (typeof value !== 'string') return null;
-  let text = value.trim().toLowerCase();
-  if (text === '' || text === 'none') return null;
 
-  if (NAMED[text]) {
-    text = NAMED[text];
-    if (text === 'none') return null;
-  }
+  const text = value.trim().toLowerCase();
+  if (text === '' || text === 'none' || text === 'transparent') return null;
 
-  // url(#gradient) — PDF shadings are a different beast; the painter warns and the
-  // caller gets the gradient's first stop instead. Not this function's problem.
+  // url(#gradient): PDF axial shadings are a different beast. The painter resolves the
+  // gradient's first stop and warns; that is not this function's job.
   if (text.startsWith('url(')) return null;
 
-  if (text.startsWith('#')) {
-    let hex = text.slice(1);
-    // #abc → #aabbcc
-    if (hex.length === 3 || hex.length === 4) {
-      hex = hex
-        .split('')
-        .map(c => c + c)
-        .join('');
-    }
-    if (hex.length !== 6 && hex.length !== 8) return null;
-    const int = Number.parseInt(hex.slice(0, 6), 16);
-    if (!Number.isFinite(int)) return null;
-    return { r: ((int >> 16) & 255) / 255, g: ((int >> 8) & 255) / 255, b: (int & 255) / 255 };
-  }
+  const rgb255 = parseThemeColor(NAMED[text] ?? text);
+  if (!rgb255) return null;
 
-  const rgb = /^rgba?\(([^)]+)\)$/.exec(text);
-  if (rgb) {
-    const parts = rgb[1].split(/[\s,/]+/).filter(Boolean).map(Number);
-    if (parts.length < 3 || parts.slice(0, 3).some(n => !Number.isFinite(n))) return null;
-    return { r: parts[0] / 255, g: parts[1] / 255, b: parts[2] / 255 };
-  }
-
-  return null;
+  return { r: rgb255.r / 255, g: rgb255.g / 255, b: rgb255.b / 255 };
 }
 
 /** The alpha of an `rgba()` / `#rrggbbaa`, or 1. Multiplied into the element's opacity. */

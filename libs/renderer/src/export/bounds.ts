@@ -24,112 +24,30 @@
 // label backgrounds. Sharing the estimator means the box we reserve and the box the
 // renderer reserved cannot disagree; both are approximations of the same thing.
 //
+// Every other shape is EXACT: paths go through the shared `parsePath` + `pathBounds`,
+// which flatten the curves rather than guessing from control points.
+//
 // Everything here is pure: no DOM, no clock, no randomness.
 
 import type { VNode } from '../types/vnode.types';
 import type { Rectangle } from '../types/geometry.types';
 import { selectionKeys } from './scope';
-
-/** A 2-D affine transform, in SVG's own `matrix(a b c d e f)` order. */
-export interface Matrix {
-  a: number;
-  b: number;
-  c: number;
-  d: number;
-  e: number;
-  f: number;
-}
-
-export const IDENTITY: Matrix = { a: 1, b: 0, c: 0, d: 1, e: 0, f: 0 };
-
-/** `m` then `n` — i.e. apply `n` in the coordinate space `m` establishes. */
-export function multiply(m: Matrix, n: Matrix): Matrix {
-  return {
-    a: m.a * n.a + m.c * n.b,
-    b: m.b * n.a + m.d * n.b,
-    c: m.a * n.c + m.c * n.d,
-    d: m.b * n.c + m.d * n.d,
-    e: m.a * n.e + m.c * n.f + m.e,
-    f: m.b * n.e + m.d * n.f + m.f,
-  };
-}
-
-export function applyMatrix(m: Matrix, x: number, y: number): { x: number; y: number } {
-  return { x: m.a * x + m.c * y + m.e, y: m.b * x + m.d * y + m.f };
-}
-
-const TRANSFORM_FN = /([a-zA-Z]+)\s*\(([^)]*)\)/g;
-
-/**
- * Parse an SVG `transform` attribute into a matrix.
- *
- * Supports the forms the renderer actually emits — `translate`, `rotate` (both the
- * 1-arg and the 3-arg about-a-point form), `scale`, `matrix` — plus `skewX`/`skewY`
- * for completeness. An unknown function is IGNORED rather than throwing: a bbox that
- * is slightly wrong beats an export that dies.
- */
-export function parseTransform(transform: string | undefined): Matrix {
-  if (!transform) return IDENTITY;
-
-  let out = IDENTITY;
-  TRANSFORM_FN.lastIndex = 0;
-  let match: RegExpExecArray | null;
-
-  while ((match = TRANSFORM_FN.exec(transform)) !== null) {
-    const fn = match[1];
-    const args = match[2]
-      .split(/[\s,]+/)
-      .map(part => Number(part))
-      .filter(n => Number.isFinite(n));
-
-    out = multiply(out, matrixFor(fn, args));
-  }
-  return out;
-}
-
-function matrixFor(fn: string, args: number[]): Matrix {
-  switch (fn) {
-    case 'translate':
-      return { ...IDENTITY, e: args[0] ?? 0, f: args[1] ?? 0 };
-
-    case 'scale': {
-      const sx = args[0] ?? 1;
-      // `scale(2)` is uniform — the y factor defaults to the x factor, not to 1.
-      const sy = args.length > 1 ? args[1] : sx;
-      return { ...IDENTITY, a: sx, d: sy };
-    }
-
-    case 'rotate': {
-      const rad = ((args[0] ?? 0) * Math.PI) / 180;
-      const cos = Math.cos(rad);
-      const sin = Math.sin(rad);
-      const rotation: Matrix = { a: cos, b: sin, c: -sin, d: cos, e: 0, f: 0 };
-      // The 3-arg form rotates about (cx, cy): translate → rotate → translate back.
-      if (args.length >= 3) {
-        const cx = args[1];
-        const cy = args[2];
-        return multiply(
-          multiply({ ...IDENTITY, e: cx, f: cy }, rotation),
-          { ...IDENTITY, e: -cx, f: -cy }
-        );
-      }
-      return rotation;
-    }
-
-    case 'matrix':
-      if (args.length < 6) return IDENTITY;
-      return { a: args[0], b: args[1], c: args[2], d: args[3], e: args[4], f: args[5] };
-
-    case 'skewX':
-      return { ...IDENTITY, c: Math.tan(((args[0] ?? 0) * Math.PI) / 180) };
-
-    case 'skewY':
-      return { ...IDENTITY, b: Math.tan(((args[0] ?? 0) * Math.PI) / 180) };
-
-    default:
-      return IDENTITY;
-  }
-}
+// THE geometry module for this codebase. `canvas/path-geometry.ts` already owns the SVG
+// geometry model — matrices, `parseTransform`, `parsePath` (every command, relative forms,
+// the S/T reflection, and A→cubics), the primitive builders, and `pathBounds`, which
+// FLATTENS curves rather than approximating them by their control points. The canvas
+// renderer draws through it and it has its own suite. Re-deriving any of it here would be a
+// second copy of some very fiddly maths, drifting, with only one copy tested.
+import {
+  applyMatrix,
+  IDENTITY,
+  multiply,
+  parsePath,
+  parseTransform,
+  pathBounds,
+  transformCmds,
+  type Matrix,
+} from '../canvas/path-geometry';
 
 /** A growable min/max box. `null`-ish until the first point lands in it. */
 class BoxAccumulator {
@@ -140,7 +58,7 @@ class BoxAccumulator {
 
   addPoint(m: Matrix, x: number, y: number): void {
     if (!Number.isFinite(x) || !Number.isFinite(y)) return;
-    const p = applyMatrix(m, x, y);
+    const p = applyMatrix(m, { x, y });
     if (!Number.isFinite(p.x) || !Number.isFinite(p.y)) return;
     this.minX = Math.min(this.minX, p.x);
     this.minY = Math.min(this.minY, p.y);
@@ -202,90 +120,6 @@ function parsePoints(points: unknown): Array<[number, number]> {
     .filter(n => Number.isFinite(n));
   const out: Array<[number, number]> = [];
   for (let i = 0; i + 1 < nums.length; i += 2) out.push([nums[i], nums[i + 1]]);
-  return out;
-}
-
-/**
- * The coordinates of a path `d`.
- *
- * DELIBERATELY an over-approximation: every numeric pair in the data is treated as
- * a point, including Bézier CONTROL points. A cubic's control points lie outside the
- * curve they describe, so the box we return can be slightly LARGER than the true
- * ink — never smaller. For an export bbox that is the correct direction to be wrong
- * in: a little extra margin, versus a clipped link. Computing exact Bézier extrema
- * would buy a few pixels of tightness for a lot of code.
- *
- * Arc flags are the one place this bites: in `A rx ry rot large sweep x y` the two
- * flags are 0/1 and would be read as a coordinate pair. Arcs are parsed explicitly
- * so their flags never enter the box.
- */
-export function pathPoints(d: unknown): Array<[number, number]> {
-  if (typeof d !== 'string') return [];
-  const out: Array<[number, number]> = [];
-
-  // Split into commands: a letter followed by its argument run.
-  const commands = d.match(/[a-zA-Z][^a-zA-Z]*/g);
-  if (!commands) return out;
-
-  let cx = 0;
-  let cy = 0;
-
-  for (const command of commands) {
-    const code = command[0];
-    const upper = code.toUpperCase();
-    const relative = code !== upper;
-    const args = command
-      .slice(1)
-      .trim()
-      .split(/[\s,]+/)
-      .map(Number)
-      .filter(n => Number.isFinite(n));
-
-    if (upper === 'Z') continue;
-
-    // Arc: consume 7 args at a time and take ONLY the endpoint. The 4th and 5th are
-    // boolean flags, not coordinates — reading them as a point is a classic bbox bug.
-    if (upper === 'A') {
-      for (let i = 0; i + 6 < args.length; i += 7) {
-        const ex = args[i + 5];
-        const ey = args[i + 6];
-        cx = relative ? cx + ex : ex;
-        cy = relative ? cy + ey : ey;
-        out.push([cx, cy]);
-      }
-      continue;
-    }
-
-    // Single-axis commands carry one coordinate each.
-    if (upper === 'H') {
-      for (const x of args) {
-        cx = relative ? cx + x : x;
-        out.push([cx, cy]);
-      }
-      continue;
-    }
-    if (upper === 'V') {
-      for (const y of args) {
-        cy = relative ? cy + y : y;
-        out.push([cx, cy]);
-      }
-      continue;
-    }
-
-    // Everything else (M L T C S Q) is a run of x,y pairs. For the curve commands
-    // that includes control points — see the over-approximation note above.
-    for (let i = 0; i + 1 < args.length; i += 2) {
-      const x = relative ? cx + args[i] : args[i];
-      const y = relative ? cy + args[i + 1] : args[i + 1];
-      out.push([x, y]);
-      // The pen ends at the LAST pair of the run; intermediate pairs are controls.
-      if (i + 3 >= args.length) {
-        cx = x;
-        cy = y;
-      }
-    }
-  }
-
   return out;
 }
 
@@ -477,8 +311,17 @@ function addGeometry(vnode: VNode, m: Matrix, box: BoxAccumulator): void {
     }
 
     case 'path': {
-      for (const [x, y] of pathPoints(props['d'])) {
-        box.addBox(m, x - pad, y - pad, pad * 2, pad * 2);
+      const d = props['d'];
+      if (typeof d !== 'string' || d.trim() === '') break;
+      // parsePath turns arcs into cubics and resolves the smooth shorthands; pathBounds
+      // then FLATTENS the curves, so this is the true ink box — not a control-point
+      // over-approximation. (An arc's `large`/`sweep` flags are 0/1, and a naive pairwise
+      // scan of `d` reads them as the point (1,0) and drags the box to the origin. Using
+      // the real parser is what makes that class of bug impossible here.)
+      const bounds = pathBounds(transformCmds(parsePath(d), m));
+      if (bounds) {
+        box.addPoint(IDENTITY, bounds.minX - pad, bounds.minY - pad);
+        box.addPoint(IDENTITY, bounds.maxX + pad, bounds.maxY + pad);
       }
       break;
     }

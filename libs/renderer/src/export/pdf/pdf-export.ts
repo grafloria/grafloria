@@ -47,7 +47,7 @@ import {
   measureBaseFont,
   num,
   pageDimensions,
-  parseColor,
+  parsePdfColor,
   parseColorAlpha,
   pdfString,
   pickBaseFont,
@@ -55,10 +55,12 @@ import {
   type BaseFont,
   type Orientation,
   type PageSize,
-  type Rgb,
+  type PdfRgb,
 } from './pdf-primitives';
-import { ellipsePath, linePath, polygonPath, rectPath, svgPathToPdf, type PathOps } from './pdf-path';
-import { parseTransform, vnodeBounds, type Matrix } from '../bounds';
+import { pdfCircle, pdfEllipse, pdfLine, pdfPoly, pdfRect, svgPathToPdf, type PathOps } from './pdf-path';
+import { vnodeBounds } from '../bounds';
+// The shared geometry module — see pdf-path.ts.
+import { parseTransform, type Matrix } from '../../canvas/path-geometry';
 import { createClassStyleResolver, type ClassStyleResolver } from '../style-flattener';
 import { attrNameForProp, serializeStyle } from '../../vnode/patch';
 import { LIGHT_THEME } from '../../themes/default-light-theme';
@@ -157,14 +159,14 @@ class ContentStream {
     this.state = { fill: null, stroke: null, lineWidth: null, dash: null, alpha: null, font: null };
   }
 
-  setFill(rgb: Rgb): void {
+  setFill(rgb: PdfRgb): void {
     const op = `${num(rgb.r)} ${num(rgb.g)} ${num(rgb.b)} rg`;
     if (this.state.fill === op) return;
     this.state.fill = op;
     this.ops.push(op);
   }
 
-  setStroke(rgb: Rgb): void {
+  setStroke(rgb: PdfRgb): void {
     const op = `${num(rgb.r)} ${num(rgb.g)} ${num(rgb.b)} RG`;
     if (this.state.stroke === op) return;
     this.state.stroke = op;
@@ -292,7 +294,7 @@ export function exportPdf(root: VNode, options: PdfExportOptions = {}): PdfExpor
     const offsetY = margins.bottom + (boxHeight - drawHeight) / 2;
 
     if (options.backgroundColor) {
-      const bg = parseColor(options.backgroundColor);
+      const bg = parsePdfColor(options.backgroundColor);
       if (bg) {
         stream.save();
         stream.setFill(bg);
@@ -425,7 +427,7 @@ function toPdfDate(iso: string): string {
 // ---------------------------------------------------------------------------
 
 interface PaintContext {
-  gradients: Map<string, Rgb>;
+  gradients: Map<string, PdfRgb>;
   warnings: string[];
   classStyles: ClassStyleResolver;
 }
@@ -479,8 +481,8 @@ function resolved(vnode: VNode, ctx: PaintContext): Record<string, string> {
 }
 
 /** A gradient's FIRST stop — what a gradient fill degrades to. See the header. */
-function collectGradientStops(root: VNode): Map<string, Rgb> {
-  const out = new Map<string, Rgb>();
+function collectGradientStops(root: VNode): Map<string, PdfRgb> {
+  const out = new Map<string, PdfRgb>();
 
   const walk = (vnode: VNode): void => {
     if (!vnode || typeof vnode !== 'object') return;
@@ -488,7 +490,7 @@ function collectGradientStops(root: VNode): Map<string, Rgb> {
     if (vnode.type === 'linearGradient' || vnode.type === 'radialGradient') {
       const id = vnode.props?.['id'];
       const firstStop = (vnode.children ?? []).find(c => c?.type === 'stop');
-      const color = parseColor(firstStop?.props?.['stopColor'] ?? firstStop?.props?.['stop-color']);
+      const color = parsePdfColor(firstStop?.props?.['stopColor'] ?? firstStop?.props?.['stop-color']);
       if (typeof id === 'string' && color) out.set(id, color);
     }
 
@@ -555,7 +557,7 @@ function isIdentity(m: Matrix): boolean {
 }
 
 /** Resolve a paint value, following `url(#grad)` into the collected stops. */
-function resolvePaint(value: unknown, ctx: PaintContext): Rgb | null {
+function resolvePaint(value: unknown, ctx: PaintContext): PdfRgb | null {
   if (typeof value === 'string') {
     const ref = /^url\(#([^)]+)\)$/.exec(value.trim());
     if (ref) {
@@ -569,7 +571,7 @@ function resolvePaint(value: unknown, ctx: PaintContext): Rgb | null {
       return null;
     }
   }
-  return parseColor(value);
+  return parsePdfColor(value);
 }
 
 function drawElement(
@@ -642,7 +644,7 @@ function normaliseDash(value: unknown): string | null {
 function geometryOps(vnode: VNode, style: Record<string, string>): PathOps | null {
   switch (vnode.type) {
     case 'rect':
-      return rectPath(
+      return pdfRect(
         len(style['x']),
         len(style['y']),
         len(style['width']),
@@ -653,18 +655,18 @@ function geometryOps(vnode: VNode, style: Record<string, string>): PathOps | nul
 
     case 'circle': {
       const r = len(style['r']);
-      return r > 0 ? ellipsePath(len(style['cx']), len(style['cy']), r, r) : null;
+      return r > 0 ? pdfCircle(len(style['cx']), len(style['cy']), r) : null;
     }
 
     case 'ellipse':
-      return ellipsePath(len(style['cx']), len(style['cy']), len(style['rx']), len(style['ry']));
+      return pdfEllipse(len(style['cx']), len(style['cy']), len(style['rx']), len(style['ry']));
 
     case 'line':
-      return linePath(len(style['x1']), len(style['y1']), len(style['x2']), len(style['y2']));
+      return pdfLine(len(style['x1']), len(style['y1']), len(style['x2']), len(style['y2']));
 
     case 'polygon':
     case 'polyline':
-      return polygonPath(parsePoints(style['points']), vnode.type === 'polygon');
+      return pdfPoly(style['points'], vnode.type === 'polygon');
 
     case 'path': {
       const d = style['d'];

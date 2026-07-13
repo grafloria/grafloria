@@ -1,115 +1,32 @@
 import type { VNode } from '../types/vnode.types';
-import {
-  applyMatrix,
-  clampOutputSize,
-  DEFAULT_MAX_OUTPUT_SIZE,
-  IDENTITY,
-  padRect,
-  parseTransform,
-  pathPoints,
-  scopeKeysFor,
-  vnodeBounds,
-} from './bounds';
+import { clampOutputSize, DEFAULT_MAX_OUTPUT_SIZE, padRect, scopeKeysFor, vnodeBounds } from './bounds';
 
 const g = (key: string | undefined, props: Record<string, unknown>, children: VNode[] = []): VNode =>
   ({ type: 'g', key, props, children }) as VNode;
 
 const el = (type: string, props: Record<string, unknown>): VNode => ({ type, props } as VNode);
 
-describe('parseTransform', () => {
-  it('parses translate', () => {
-    expect(parseTransform('translate(10, 20)')).toEqual({ a: 1, b: 0, c: 0, d: 1, e: 10, f: 20 });
-  });
-
-  it('treats scale(2) as UNIFORM — the y factor defaults to x, not to 1', () => {
-    const m = parseTransform('scale(2)');
-    expect(m.a).toBe(2);
-    expect(m.d).toBe(2);
-  });
-
-  it('parses a non-uniform scale', () => {
-    const m = parseTransform('scale(2, 3)');
-    expect(m.a).toBe(2);
-    expect(m.d).toBe(3);
-  });
-
-  it('rotates about a point (the 3-arg form) — the centre stays put', () => {
-    const m = parseTransform('rotate(90, 100, 100)');
-    const centre = applyMatrix(m, 100, 100);
-    expect(centre.x).toBeCloseTo(100);
-    expect(centre.y).toBeCloseTo(100);
-  });
-
-  it('composes a chain left-to-right, like SVG does', () => {
-    // translate then rotate: the rotation happens in the translated space.
-    const m = parseTransform('translate(100, 200) rotate(90)');
-    const p = applyMatrix(m, 10, 0);
-    expect(p.x).toBeCloseTo(100);
-    expect(p.y).toBeCloseTo(210);
-  });
-
-  it('parses a raw matrix', () => {
-    expect(parseTransform('matrix(1 2 3 4 5 6)')).toEqual({ a: 1, b: 2, c: 3, d: 4, e: 5, f: 6 });
-  });
-
-  it('ignores an unknown function rather than throwing', () => {
-    expect(parseTransform('wobble(3) translate(5, 5)').e).toBe(5);
-  });
-
-  it('is identity for undefined/empty', () => {
-    expect(parseTransform(undefined)).toEqual(IDENTITY);
-    expect(parseTransform('')).toEqual(IDENTITY);
-  });
-});
-
-describe('pathPoints', () => {
-  it('reads absolute move/line points', () => {
-    expect(pathPoints('M 10 20 L 30 40')).toEqual([
-      [10, 20],
-      [30, 40],
-    ]);
-  });
-
-  it('accumulates relative commands from the pen position', () => {
-    expect(pathPoints('M 10 10 l 5 5')).toEqual([
-      [10, 10],
-      [15, 15],
-    ]);
-  });
-
-  it('handles H and V, which carry ONE coordinate each', () => {
-    expect(pathPoints('M 0 0 H 50 V 25')).toEqual([
-      [0, 0],
-      [50, 0],
-      [50, 25],
-    ]);
-  });
-
-  it('does NOT read an arc\'s boolean flags as a coordinate pair', () => {
-    // A rx ry rot large-arc sweep x y — the `1 0` in the middle are FLAGS. A naive
-    // pair-wise scan reads them as the point (1, 0) and drags the bbox to the origin.
-    const points = pathPoints('M 100 100 A 20 20 0 1 0 140 100');
-    expect(points).toEqual([
-      [100, 100],
-      [140, 100],
-    ]);
-    expect(points).not.toContainEqual([1, 0]);
-  });
-
-  it('includes Bezier control points (a deliberate over-approximation)', () => {
-    const points = pathPoints('M 0 0 C 10 50 20 50 30 0');
-    expect(points).toContainEqual([10, 50]);
-    expect(points).toContainEqual([30, 0]);
-  });
-
-  it('is empty for a non-string', () => {
-    expect(pathPoints(undefined)).toEqual([]);
-  });
-});
-
 describe('vnodeBounds', () => {
   it('is null for a tree that paints nothing', () => {
     expect(vnodeBounds(g('root', {}, []))).toBeNull();
+  });
+
+  it("an ARC's boolean flags never enter the box (a naive pairwise scan of `d` reads them as a point)", () => {
+    // `A rx ry rot large sweep x y` — the `1 0` in the middle are FLAGS. Reading them as
+    // the point (1, 0) drags the box to the origin. The shared parsePath makes that
+    // impossible; this pins the outcome at the bounds layer.
+    const root = g('root', {}, [el('path', { d: 'M 100 100 A 20 20 0 1 0 140 100' })]);
+    const box = vnodeBounds(root)!;
+    expect(box.x).toBeGreaterThan(50); // nowhere near the origin
+  });
+
+  it('boxes a CURVE by its real ink, not by its control points', () => {
+    // The control points sit at y=50, but a cubic never reaches them — it peaks at y≈37.5.
+    // pathBounds flattens the curve, so the box is the true one.
+    const root = g('root', {}, [el('path', { d: 'M 0 0 C 10 50 20 50 30 0' })]);
+    const box = vnodeBounds(root)!;
+    expect(box.height).toBeLessThan(50);
+    expect(box.height).toBeGreaterThan(30);
   });
 
   it('boxes a rect', () => {
