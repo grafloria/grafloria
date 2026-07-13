@@ -79,6 +79,8 @@ import {
   ViewportController,
   FocusContainmentController,
   boundsOfPoints,
+  // wave6/a11y (card 6): the screen-reader text mirror of the graph topology.
+  DiagramOutlineView,
   type FocusRing,
   type Announcement,
   InPlaceTextEditor,
@@ -439,6 +441,9 @@ export class DiagramCanvasComponent implements AfterViewInit, OnDestroy {
 
   /** Unsubscribe for the announcement stream. */
   private announcementSub?: () => void;
+
+  /** wave6/a11y (card 6): the hidden, AT-navigable outline of the graph. */
+  private outlineView?: DiagramOutlineView;
 
   /**
    * Main container reference
@@ -2047,6 +2052,13 @@ export class DiagramCanvasComponent implements AfterViewInit, OnDestroy {
     // returns when nothing changed, so this costs nothing on a quiet frame.
     this.renderer.setAccessibleFocus(this.keyboardNav.getFocused());
 
+    // wave6/a11y (card 6): keep the screen-reader text mirror in step with the
+    // model. Safe to call every frame — `update()` diffs a topology SIGNATURE
+    // (ids/names/states/endpoints, deliberately NOT geometry) and returns having
+    // touched no DOM when it is unchanged. Dragging a node therefore rebuilds
+    // nothing: the picture moved, the topology did not.
+    this.syncOutline();
+
     const start = this.now();
     this.renderDiagram();
     this.cdr.detectChanges();
@@ -2598,6 +2610,34 @@ export class DiagramCanvasComponent implements AfterViewInit, OnDestroy {
   /** Move the viewport origin, keeping the object identity churn in one place. */
   private setViewportOrigin(x: number, y: number): void {
     this.viewport.set({ ...this.viewport(), x, y });
+  }
+
+  /**
+   * wave6/a11y (card 6) — the DIAGRAM OUTLINE. A hidden, semantically-structured
+   * tree (entry points, each node with what it leads to, loops, groups) plus a
+   * natural-language summary, which a screen-reader user browses with their
+   * ordinary virtual cursor. It is the only way an AT user can get the TOPOLOGY
+   * of a diagram, which is the entire thing a diagram exists to convey.
+   *
+   * Mounted lazily on first render (the container must exist) and torn down with
+   * the component.
+   */
+  private syncOutline(): void {
+    if (!this.enableKeyboardNavigation()) return;
+
+    const host = this.containerRef?.nativeElement;
+    if (!host || !this.eng) return;
+
+    if (!this.outlineView) {
+      this.outlineView = new DiagramOutlineView(host, {
+        label: 'Diagram outline',
+      });
+    }
+
+    const diagram = this.eng.getDiagram();
+    if (diagram) {
+      this.outlineView.update(diagram as never);
+    }
   }
 
   /**
@@ -4074,6 +4114,10 @@ export class DiagramCanvasComponent implements AfterViewInit, OnDestroy {
     this.announcementSub = undefined;
     this.keyboardNav.dispose();
     this.inPlaceEditor.cancel();
+
+    // wave6/a11y (card 6): the outline mirror owns DOM inside our container.
+    this.outlineView?.dispose();
+    this.outlineView = undefined;
 
     // wave2/rendering: cancel any queued animation frame so no render fires
     // after the component is gone.
