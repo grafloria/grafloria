@@ -129,6 +129,24 @@ export abstract class DiagramEntity {
   }
 
   /**
+   * Restore persisted identity onto a freshly-constructed entity during
+   * deserialization. A load must reproduce the SAVED identity (uuid) and
+   * mutation counter (version) rather than mint new ones — otherwise
+   * save/load is lossy and anything anchored to uuids (ops, comments,
+   * collaboration) breaks across a round-trip. `uuid` is readonly at the
+   * type level; this is the one sanctioned place it is written after
+   * construction.
+   */
+  protected restoreIdentity(data: { uuid?: string; version?: number }): void {
+    if (data.uuid) {
+      (this as { uuid: string }).uuid = data.uuid;
+    }
+    if (typeof data.version === 'number') {
+      this.version = data.version;
+    }
+  }
+
+  /**
    * Track property changes for undo/redo and events
    */
   protected trackChange(

@@ -1156,8 +1156,8 @@ export class DiagramEngine {
   /**
    * Deserialize diagram (with mode)
    */
-  deserialize(data: SerializedDiagram): DiagramModel {
-    const diagram = this.serializer.deserialize(data);
+  deserialize(data: SerializedDiagram, options?: import('../models/DiagramModel').DiagramLoadOptions): DiagramModel {
+    const diagram = this.serializer.deserialize(data, options);
     this.setDiagram(diagram);
 
     // Restore mode if present
@@ -1169,9 +1169,12 @@ export class DiagramEngine {
   /**
    * Load diagram from JSON (with mode)
    */
-  loadFromJSON(json: string | SerializedDiagram): DiagramModel {
+  loadFromJSON(
+    json: string | SerializedDiagram,
+    options?: import('../models/DiagramModel').DiagramLoadOptions
+  ): DiagramModel {
     const data = typeof json === 'string' ? JSON.parse(json) : json;
-    return this.deserialize(data);
+    return this.deserialize(data, options);
   }
 
   /**
