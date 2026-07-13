@@ -6,6 +6,8 @@ import type {
   ArrowStyle,
 } from '@grafloria/engine';
 import { PortModel, isConnectionAllowedByGroup } from '@grafloria/engine';
+// Wave 6: THE port-position function — hit-test and magnet where you DRAW.
+import { portWorldPosition } from '../svg/port-positioning';
 import { WaypointEditor } from './WaypointEditor';
 import { ControlPointEditor } from './ControlPointEditor';
 import { ArrowRenderer } from '../svg/ArrowRenderer';
@@ -351,7 +353,14 @@ export class InteractionController {
 
     try {
       const connectionStateManager = engine.getConnectionStateManager();
-      const hoveredPort = this.hoveredPort;
+
+      // Wave 6 (Card 6): MAGNET SNAP. Fall back from "the port under the cursor"
+      // to "the nearest VALID port within the magnet radius", so a drag latches
+      // on before the pointer is precisely over a 6px circle. The radius is the
+      // engine's `snapToPortRadius`, and the candidate set is the SAME
+      // valid-target set the highlight paints — the thing you can snap to is
+      // exactly the thing lit up as snappable, which is the whole contract.
+      const hoveredPort = this.hoveredPort ?? this.findMagnetPort(worldX, worldY, engine);
 
       // Update connection state with current mouse position and hovered port
       connectionStateManager.updateConnection(
@@ -1082,8 +1091,13 @@ export class InteractionController {
         const ports: PortModel[] = Array.from((portsMap as Map<string, PortModel>).values());
 
         for (const port of ports) {
-          // Get absolute port position
-          const portPos = port.getAbsolutePosition(nodeBounds);
+          // Wave 6 BUG FIX: this used `port.getAbsolutePosition(nodeBounds)`,
+          // which walks the BOUNDING BOX and lands on an edge midpoint — while
+          // the renderer draws the port with `getPortPositionForShape`. On any
+          // non-rect shape, and on any side with more than one port, the hit
+          // circle sat several pixels away from the glyph: you clicked the port
+          // you could see and hit nothing. Hit-test where you DRAW.
+          const portPos = portWorldPosition(port, node);
 
           // Check if mouse is within port radius
           const dx = worldX - portPos.x;
@@ -1200,12 +1214,64 @@ export class InteractionController {
   }
 
   /**
-   * Update port highlight states during connection
+   * Wave 6 (Card 6): the nearest VALID target port within the magnet radius.
+   *
+   * "Valid" means the connection manager's valid-target set — the same set the
+   * highlight paints — so the magnet can never latch onto a port the drop would
+   * then reject. Returns null when nothing is in reach, leaving the drag free.
+   */
+  protected findMagnetPort(
+    worldX: number,
+    worldY: number,
+    engine: DiagramEngine
+  ): PortModel | null {
+    const diagram = engine.getDiagram();
+    if (!diagram) return null;
+
+    const config = engine.getInteractionConfig();
+    const radius = config.snapToPortRadius;
+    if (!radius || radius <= 0) return null;
+
+    const dragState = engine.getConnectionStateManager().getState();
+    if (!dragState.isConnecting || dragState.validTargetPorts.size === 0) return null;
+
+    let best: PortModel | null = null;
+    let bestDistance = Infinity;
+
+    for (const node of diagram.getNodes()) {
+      if (node.state?.visible === false) continue;
+      for (const port of node.getPorts()) {
+        if (!dragState.validTargetPorts.has(port.id)) continue;
+
+        const position = portWorldPosition(port, node);
+        const distance = Math.hypot(worldX - position.x, worldY - position.y);
+        if (distance <= radius && distance < bestDistance) {
+          bestDistance = distance;
+          best = port;
+        }
+      }
+    }
+
+    return best;
+  }
+
+  /**
+   * Update port highlight states during connection.
+   *
+   * Wave 6 (Card 6): this method was already correct — and already dead. It
+   * loops over `dragState.validTargetPorts`, a set that NOTHING ever filled:
+   * `ConnectionStateManager.calculateValidTargets()` was a comment-only stub and
+   * `setValidTargets()` had no production caller. So the loop ran zero times,
+   * every frame, and only the hovered port ever lit up. The manager now computes
+   * the set for real, which is what finally brings this to life — plus the
+   * `highlightValidTargets` config flag, itself dead config until now (declared,
+   * defaulted true, written by the config panel, read by nobody).
    */
   protected updatePortHighlights(engine: DiagramEngine): void {
     const diagram = engine.getDiagram();
     if (!diagram) return;
 
+    const config = engine.getInteractionConfig();
     const dragState = engine.getConnectionStateManager().getState();
 
     // Clear all highlights first
@@ -1217,12 +1283,19 @@ export class InteractionController {
     });
 
     // Highlight valid target ports
-    dragState.validTargetPorts.forEach((portId) => {
-      const port = this.findPortById(portId, diagram);
-      if (port) {
-        port.isValidTarget = true;
-      }
-    });
+    if (config.highlightValidTargets !== false) {
+      dragState.validTargetPorts.forEach((portId) => {
+        const port = this.findPortById(portId, diagram);
+        if (port) {
+          port.isValidTarget = true;
+          // A hidden port that is a live target must SURFACE — that is what the
+          // 'on-hover' / 'never' visibility modes key off, and it is the whole
+          // point of highlighting: you cannot drop on a port you cannot see.
+          const owner = diagram.getNodeByPortId?.(portId);
+          owner?.markDirty?.('port-highlight');
+        }
+      });
+    }
 
     // Highlight currently hovered port
     if (this.hoveredPort && dragState.isOverValidTarget) {

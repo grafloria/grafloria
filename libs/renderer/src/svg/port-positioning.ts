@@ -1,11 +1,32 @@
 // Shape-Aware Port Positioning Utility (Phase 3.2)
+//
+// Wave 6 (Ports & connections), Card 4: this is now the front door to the
+// PLUGGABLE port-layout engine (see `port-layout.ts`), not just to the shape
+// registry.
+//
+//   port/group declares no layout → strategy `shape` → the shape registry's
+//                                   `portAnchor`, exactly as before. The
+//                                   geometry-true anchors (cylinder rim seam,
+//                                   actor hands, hexagon flats) still win and the
+//                                   emitted geometry is byte-identical.
+//   port/group declares a layout   → that named strategy runs instead.
+//
+// It is also THE port-position function. It has a rival:
+// `PortModel.getAbsolutePosition()` walks the BOUNDING BOX (edge midpoints,
+// blind to the silhouette and to how many ports share a side) and that is what
+// the port hit-test and the magnet were snapping to, while THIS is what actually
+// gets drawn. On any non-rect shape, or any side with more than one port, you
+// were clicking several pixels away from the circle you could see. See
+// `portWorldPosition` — the one true answer, which those call sites now use.
 
-import type { NodeModel, PortModel } from '@grafloria/engine';
+import type { BoundingBox, NodeModel, PortModel } from '@grafloria/engine';
+import { resolvePortConfig } from '@grafloria/engine';
 
 // Nodes & shapes foundation: shape-specific anchor geometry lives in the shape
-// registry (getShape(type).portAnchor). This module keeps only the port-ranking
-// logic (how many ports share a side, and this port's rank among them).
-import { getShape } from './shape-registry';
+// registry (getShape(type).portAnchor). This module keeps the port-RANKING logic
+// (how many ports share a layout scope, and this port's rank among them) and
+// hands the geometry to the layout engine.
+import { runPortLayout } from './port-layout';
 
 /**
  * Calculate port position based on node shape
@@ -27,12 +48,20 @@ export function getPortPositionForShape(
 ): { x: number; y: number } {
   const shapeConfig = node.getMetadata('shape') || { type: 'rect' };
   const { width, height } = node.size;
-  const side = port.alignment.side;
-  const { rank, count } = getSideRank(port, node, side);
 
-  // The shape registry owns the anchor geometry; unknown types fall back to
-  // rectangle positioning (getShape returns the rect definition).
-  const position = getShape(shapeConfig.type).portAnchor(width, height, side, rank, count);
+  const config = resolvePortConfig(port, node);
+  const side = config.side;
+  const { rank, count } = getLayoutRank(port, node, side, config.groupId);
+
+  const position = runPortLayout(config.layout, {
+    width,
+    height,
+    side,
+    rank,
+    count,
+    shapeType: shapeConfig.type,
+    rotation: (node as unknown as { rotation?: number }).rotation,
+  });
 
   // Apply port offset
   return {
@@ -42,20 +71,50 @@ export function getPortPositionForShape(
 }
 
 /**
- * Rank of this port among the ports sharing its side (stable order: by
- * `index`, ties by declaration order), plus how many ports share the side.
+ * The port's WORLD position — for hit-testing, magnets and link endpoints alike.
+ * Everything that needs "where is this port on screen" comes through here, so
+ * what you click is always what you see.
  */
-function getSideRank(
+export function portWorldPosition(port: PortModel, node: NodeModel): { x: number; y: number } {
+  const local = getPortPositionForShape(port, node);
+  const world = node.getWorldPosition();
+  return { x: world.x + local.x, y: world.y + local.y };
+}
+
+/** Same answer, for callers that already hold the node's bounding box. */
+export function portPositionInBounds(
   port: PortModel,
   node: NodeModel,
-  side: 'left' | 'right' | 'top' | 'bottom'
+  bounds: BoundingBox
+): { x: number; y: number } {
+  const local = getPortPositionForShape(port, node);
+  return { x: bounds.left + local.x, y: bounds.top + local.y };
+}
+
+/**
+ * Rank of this port among the ports sharing its LAYOUT SCOPE, plus the size of
+ * that scope. Stable order: by `index`, ties by declaration order.
+ *
+ * The scope is the port's GROUP when it has one (Card 3 — a group is precisely
+ * "the set of ports laid out together", so five inputs in group `in` spread
+ * across five slots even if an ungrouped port also sits on the left edge), and
+ * otherwise its SIDE, which is the pre-wave-6 scope and is what keeps every
+ * existing diagram's port geometry identical.
+ */
+function getLayoutRank(
+  port: PortModel,
+  node: NodeModel,
+  side: 'left' | 'right' | 'top' | 'bottom',
+  groupId: string | undefined
 ): { rank: number; count: number } {
-  const sameSide = node
+  const inScope = node
     .getPorts()
-    .filter((p) => p.alignment?.side === side)
+    .filter((p) =>
+      groupId ? p.group === groupId : !p.group && p.alignment?.side === side
+    )
     .map((p, declarationOrder) => ({ p, declarationOrder }))
     .sort((a, b) => (a.p.index || 0) - (b.p.index || 0) || a.declarationOrder - b.declarationOrder);
 
-  const rank = sameSide.findIndex((entry) => entry.p.id === port.id);
-  return { rank: rank < 0 ? 0 : rank, count: Math.max(1, sameSide.length) };
+  const rank = inScope.findIndex((entry) => entry.p.id === port.id);
+  return { rank: rank < 0 ? 0 : rank, count: Math.max(1, inScope.length) };
 }

@@ -64,7 +64,15 @@ import { hasDocument } from '../platform';
 import type { RoutedPath, RoutingAlgorithm } from '@grafloria/engine';
 
 // Phase 3.2: Shape-aware port positioning
+// Wave 6 (Ports & connections): the port seam — group resolution (Card 3), the
+// glyph builder (Card 0), the label engine (Card 1), attachment spots and
+// multi-link spreading (Card 5), and colour-by-data-type (Card 7).
 import { getPortPositionForShape } from './port-positioning';
+import { glyphHalfExtents, renderPortGlyph } from './port-glyph';
+import { nudgePortLabels, portLabelGeometry, renderPortLabel } from './port-label';
+import { applySpread, assignSpreadLanes, resolveSpot } from './port-spots';
+import { portTypeColor, resolvePortConfig } from '@grafloria/engine';
+import type { ResolvedPortConfig } from '@grafloria/engine';
 
 // Nodes & shapes foundation: unified shape registry / geometry contract.
 // The five shape switch sites below (renderNodeShape, renderSelectionHighlight,
@@ -323,6 +331,12 @@ export class SVGRenderer implements IRenderer {
   // every link's points are current before any link renders (jump detection
   // reads other links' points).
   private frameRoutes = new Map<string, RoutedPath>();
+
+  // Wave 6 — Card 5: per-frame multi-link spread lanes, keyed by PORT id. Every
+  // link on a spreading port needs to know how many siblings it shares that port
+  // with, so the lane assignment is computed once per port per frame rather than
+  // once per link (which would be O(links²) on a hub node).
+  private frameSpreadLanes = new Map<string, Map<string, number>>();
 
   // Wave 4 — Card 7: the diagram-wide incremental edge pass. Owns jump-over
   // detection and collision-aware label placement for the WHOLE diagram, and
@@ -1155,6 +1169,7 @@ export class SVGRenderer implements IRenderer {
 
     // Clear per-frame smart-connection state
     this.frameSmartSides.clear();
+    this.frameSpreadLanes.clear();
 
     // Wave 4: drop the optimizer's cross-frame state (grid, dirty tracking,
     // cached jumps/label placements) — it outlives a single frame, so leaking it
@@ -1186,6 +1201,9 @@ export class SVGRenderer implements IRenderer {
     // so without this the first frame has no jumps and later frames use stale
     // geometry after nodes move.
     this.frameRoutes.clear();
+    // Wave 6: lane assignments are geometry, so they die with the frame — a link
+    // added or removed between frames changes how many siblings a port has.
+    this.frameSpreadLanes.clear();
     // Drop smart-side entries for links that no longer exist (getLinkEndpoints
     // only ever touches the entry of the link it renders)
     if (this.frameSmartSides.size > 0) {
@@ -2290,6 +2308,10 @@ export class SVGRenderer implements IRenderer {
 
   /**
    * Phase 2: Render ports for a node
+   *
+   * Wave 6 (Card 1): also resolves LABEL COLLISIONS, which is why the labels
+   * cannot be built inside `renderPort` — nudging a crowded label needs to see
+   * its neighbours, and a single port can't.
    */
   private renderPorts(node: NodeModel, lod: LODLevel): VNode[] {
     // Skip port rendering when this LOD tier doesn't render ports
@@ -2300,9 +2322,101 @@ export class SVGRenderer implements IRenderer {
     const interactionConfig = this.engine.getInteractionConfig();
     const ports = Array.from(node.getPorts().values());
 
-    return ports
+    const glyphs = ports
       .map(port => this.renderPort(port, node, interactionConfig, lod))
       .filter(Boolean) as VNode[];
+
+    const labels = this.renderPortLabels(ports, node, interactionConfig);
+
+    // Labels AFTER glyphs: a label must never paint over the port you are
+    // trying to grab (it is pointer-events:none, but z-order still decides what
+    // the eye reads as "on top").
+    return labels.length ? [...glyphs, ...labels] : glyphs;
+  }
+
+  /**
+   * Wave 6 (Card 1): the port labels for one node, with collision-aware nudging.
+   *
+   * Labels are resolved per SIDE, because that is the axis they actually crowd
+   * on: a column of inputs down the left edge whose labels overlap vertically.
+   * Ports with no label cost nothing — a node with no labelled ports returns an
+   * empty array and emits not a single extra VNode.
+   */
+  private renderPortLabels(
+    ports: PortModel[],
+    node: NodeModel,
+    config: InteractionConfig
+  ): VNode[] {
+    const labelled = ports
+      .map((port) => ({ port, resolved: resolvePortConfig(port, node) }))
+      .filter((entry) => !!entry.resolved.label && this.shouldRenderPort(entry.port, node, config));
+
+    if (labelled.length === 0) return [];
+
+    const fontSize = this.theme.typography.fontSize.sm as number;
+    const lineHeight = fontSize * 1.2;
+
+    // Group by side, then nudge within each side.
+    const bySide = new Map<string, typeof labelled>();
+    for (const entry of labelled) {
+      const side = entry.resolved.side;
+      const bucket = bySide.get(side);
+      if (bucket) bucket.push(entry);
+      else bySide.set(side, [entry]);
+    }
+
+    const out: VNode[] = [];
+
+    for (const bucket of bySide.values()) {
+      const geometries = bucket.map((entry) => {
+        const position = getPortPositionForShape(entry.port, node);
+        const { hw, hh } = glyphHalfExtents(entry.resolved.shape, config.portDefaultRadius);
+        return { entry, position, hw, hh };
+      });
+
+      // The unnudged label centres, on the axis this side stacks along.
+      const nudgeable = geometries.filter((g) => g.entry.resolved.label!.noNudge !== true);
+      const centres = nudgeable.map((g) =>
+        portLabelGeometry({
+          spec: g.entry.resolved.label!,
+          x: g.position.x,
+          y: g.position.y,
+          hw: g.hw,
+          hh: g.hh,
+          side: g.entry.resolved.side,
+          width: node.size.width,
+          height: node.size.height,
+          fontSize,
+        }).y
+      );
+      const heights = nudgeable.map(() => lineHeight);
+      const nudges = nudgePortLabels(centres, heights);
+      const nudgeByPortId = new Map<string, number>();
+      nudgeable.forEach((g, i) => nudgeByPortId.set(g.entry.port.id, nudges[i] ?? 0));
+
+      for (const g of geometries) {
+        const port = g.entry.port;
+        const resolved = g.entry.resolved;
+        const label = renderPortLabel({
+          spec: resolved.label!,
+          x: g.position.x,
+          y: g.position.y,
+          hw: g.hw,
+          hh: g.hh,
+          side: resolved.side,
+          width: node.size.width,
+          height: node.size.height,
+          nudge: nudgeByPortId.get(port.id) ?? 0,
+          fontSize,
+          fontFamily: this.theme.typography.fontFamily.default,
+          color: this.config.useCSSMode ? undefined : (this.theme.colors.text.secondary as string),
+          className: this.config.useCSSMode ? 'port-label' : undefined,
+        });
+        out.push({ ...label, key: `port-label-${port.id}` } as VNode);
+      }
+    }
+
+    return out;
   }
 
   /**
@@ -2333,39 +2447,98 @@ export class SVGRenderer implements IRenderer {
       ? baseRadius * config.portHoverScaleFactor
       : baseRadius;
 
-    // Get port color based on type
-    const portColor = this.getPortColor(port);
+    // Wave 6: fold the port's GROUP into its own config (Card 3). Everything
+    // below reads the resolved view, never the raw port fields.
+    const resolved = resolvePortConfig(port, node);
+
+    // Get port color based on type — or, when the port declares a `dataType`,
+    // the colour registered for THAT (Card 7: affordance derives from the type).
+    const portColor = this.getPortColor(port, resolved.dataType);
 
     // Determine if port is highlighted (valid target during connection)
     const isHighlighted = port.isHighlighted || port.isValidTarget;
 
-    return {
-      type: 'circle',
-      key: `port-${port.id}`,
-      props: {
-        cx: portPos.x,
-        cy: portPos.y,
-        r: radius,
-        fill: isHighlighted ? portColor : this.theme.colors.background.surface,
-        stroke: portColor,
-        strokeWidth: isHighlighted ? 3 : this.theme.ports.strokeWidth,
-        className: this.config.useCSSMode
-          ? `port port-${port.type}${port.isHovered ? ' port-hovered' : ''}${isHighlighted ? ' port-highlighted' : ''}`
-          : undefined,
-        // CRITICAL FIX: Ensure ports capture pointer events and have proper cursor
-        // pointer-events: all ensures the port intercepts mouse events even when overlapping the node
-        style: {
-          transition: 'all 0.2s ease',
-          cursor: port.isHovered || isHighlighted ? 'pointer' : 'crosshair',
-          pointerEvents: 'all'
-        },
-        opacity: isHighlighted ? 1 : 0.9,
-        // CRITICAL FIX: Add data attribute for debugging
-        'data-port-id': port.id,
-        'data-port-type': port.type,
-        'data-port-side': port.side,
+    // Wave 6 (Card 6): the two NEW drag states. `invalid` is an explicitly
+    // rejected target (with a reason); `dimmed` is a port the drag can never
+    // reach — most often a type mismatch — which is what makes a typed graph
+    // legible mid-drag instead of a wall of identical circles.
+    const drag = this.portDragState(port);
+
+    const className = this.config.useCSSMode
+      ? `port port-${port.type}` +
+        (port.isHovered ? ' port-hovered' : '') +
+        (isHighlighted ? ' port-highlighted' : '') +
+        (drag.invalid ? ' port-invalid' : '') +
+        (drag.dimmed ? ' port-dimmed' : '') +
+        (resolved.dataType ? ` port-type-${resolved.dataType}` : '')
+      : undefined;
+
+    const invalidColor = this.theme.colors.error ?? '#dc2626';
+
+    // Base presentation. Identical to the pre-wave-6 prop set when the port
+    // declares no style, no shape and no data type — same keys, same order.
+    const props: Record<string, unknown> = {
+      fill: drag.invalid ? invalidColor : isHighlighted ? portColor : this.theme.colors.background.surface,
+      stroke: drag.invalid ? invalidColor : portColor,
+      strokeWidth: isHighlighted ? 3 : this.theme.ports.strokeWidth,
+      className,
+      // CRITICAL FIX: Ensure ports capture pointer events and have proper cursor
+      // pointer-events: all ensures the port intercepts mouse events even when overlapping the node
+      style: {
+        transition: 'all 0.2s ease',
+        cursor: drag.invalid ? 'not-allowed' : port.isHovered || isHighlighted ? 'pointer' : 'crosshair',
+        pointerEvents: 'all'
       },
+      opacity: drag.dimmed ? 0.25 : isHighlighted ? 1 : 0.9,
+      // CRITICAL FIX: Add data attribute for debugging
+      'data-port-id': port.id,
+      'data-port-type': port.type,
+      'data-port-side': resolved.side,
     };
+
+    // The port's OWN style overrides win last (Card 0). This was dead config:
+    // `PortModel.style` round-tripped through serialization and was never read
+    // by anything. Group style is already folded in by resolvePortConfig.
+    if (resolved.dataType) props['data-port-data-type'] = resolved.dataType;
+    if (drag.invalid) props['data-port-invalid'] = drag.reason ?? 'invalid';
+    Object.assign(props, resolved.style);
+
+    // Non-circle glyphs (Card 0). An unshaped port still emits the exact
+    // `<circle cx cy r …>` it always did.
+    const glyph = renderPortGlyph({
+      x: portPos.x,
+      y: portPos.y,
+      shape: resolved.shape,
+      radius,
+      props,
+    });
+
+    return { ...glyph, key: `port-${port.id}` };
+  }
+
+  /**
+   * Wave 6 (Card 6): this port's role in the CURRENT connection drag.
+   *
+   * Reads the drag state's `invalidTargetPorts` — the map the connection manager
+   * now populates with a REASON per rejected port. Before wave 6 there was no
+   * such map, `validTargetPorts` was never filled either, and the renderer had
+   * literally no way to tell a legal target from an illegal one.
+   */
+  private portDragState(port: PortModel): { invalid: boolean; dimmed: boolean; reason?: string } {
+    const config = this.engine.getInteractionConfig();
+    if (!config.highlightValidTargets) return { invalid: false, dimmed: false };
+
+    const drag = this.engine.getConnectionStateManager().getState();
+    if (!drag.isConnecting || !drag.sourcePort) return { invalid: false, dimmed: false };
+    if (drag.sourcePort.id === port.id) return { invalid: false, dimmed: false };
+
+    const reason = drag.invalidTargetPorts?.get(port.id);
+    if (!reason) return { invalid: false, dimmed: false };
+
+    // The port the pointer is actually ON gets the loud "no"; every other
+    // unreachable port just recedes.
+    const isHovered = drag.targetPort?.id === port.id;
+    return { invalid: isHovered, dimmed: !isHovered, reason };
   }
 
   /**
@@ -2388,6 +2561,16 @@ export class SVGRenderer implements IRenderer {
     node: NodeModel,
     config: InteractionConfig
   ): boolean {
+    // Wave 6 (Card 0): `PortModel.visible` was DEAD CONFIG — serialized,
+    // deserialized, and never once consulted, so `port.visible = false` drew the
+    // port anyway. It is a hard OFF switch: a port hidden by the author stays
+    // hidden even mid-drag, which is what distinguishes it from the `never`
+    // visibility MODE (that one still surfaces the port when it is a live
+    // connection target).
+    if (port.visible === false) {
+      return false;
+    }
+
     // Phase 3: Check port rendering mode first
     // If port is configured for HTML rendering, skip SVG rendering
     const renderingConfig = port.getRenderingConfig?.();
@@ -2409,9 +2592,14 @@ export class SVGRenderer implements IRenderer {
     }
 
     // Phase 3: Use effective visibility (port > node > global config)
-    // Try to get effective visibility from port
+    // Wave 6 (Card 3): the port's GROUP slots into that chain, between the port's
+    // own config and the node's metadata — resolvePortConfig() already folded it
+    // in, so `resolved.visibility` IS "port config, else group config".
     let visibilityStr: string;
-    if (port.getEffectiveVisibility && typeof port.getEffectiveVisibility === 'function') {
+    const resolvedVisibility = resolvePortConfig(port, node).visibility;
+    if (resolvedVisibility) {
+      visibilityStr = String(resolvedVisibility).toLowerCase();
+    } else if (port.getEffectiveVisibility && typeof port.getEffectiveVisibility === 'function') {
       const effectiveVisibility = port.getEffectiveVisibility(
         node,
         String(config.portVisibility).toLowerCase() as any
@@ -2460,8 +2648,17 @@ export class SVGRenderer implements IRenderer {
 
   /**
    * Phase 2: Get port color based on type
+   *
+   * Wave 6 (Card 7): a port that declares a `dataType` wears THAT type's colour,
+   * if one was registered. Colour-by-type is the affordance that makes a typed
+   * graph readable at a glance — you can see that a `number` output will not
+   * mate with a `string` input before you even start the drag. Falls straight
+   * back to the direction colours, so an untyped port is unchanged.
    */
-  private getPortColor(port: PortModel): string {
+  private getPortColor(port: PortModel, dataType?: string): string {
+    const typed = portTypeColor(dataType ?? port.dataType);
+    if (typed) return typed;
+
     switch (port.type) {
       case 'input':
         return this.theme.colors.port.input;
@@ -2757,20 +2954,107 @@ export class SVGRenderer implements IRenderer {
     const sourceWorldPos = sourceNode.getWorldPosition();
     const targetWorldPos = targetNode.getWorldPosition();
 
-    const start = {
+    const sourceAnchor = {
       x: sourceWorldPos.x + sourceLocalPos.x,
       y: sourceWorldPos.y + sourceLocalPos.y,
     };
-    const end = {
+    const targetAnchor = {
       x: targetWorldPos.x + targetLocalPos.x,
       y: targetWorldPos.y + targetLocalPos.y,
     };
 
-    // Get port directions (for orthogonal routing)
-    const sourceDirection = sourcePort.alignment.side;
-    const targetDirection = targetPort.alignment.side;
+    // Wave 6 (Card 5): attachment SPOTS and multi-link SPREADING.
+    //
+    // This is the seam the routers already consume — we hand them a `start`, an
+    // `end` and two directions, exactly as before. No router is touched: the
+    // renderer decides WHERE a link touches a port, the routing engine decides
+    // how it gets there.
+    const source = this.portAttachment(link, sourcePort, sourceNode, sourceAnchor, 'source');
+    const target = this.portAttachment(link, targetPort, targetNode, targetAnchor, 'target');
 
-    return { start, end, sourceDirection, targetDirection };
+    return {
+      start: source.point,
+      end: target.point,
+      sourceDirection: source.direction,
+      targetDirection: target.direction,
+    };
+  }
+
+  /**
+   * Wave 6 (Card 5): resolve where `link` attaches to `port`, and which way it
+   * travels there.
+   *
+   * Two effects compose:
+   *   * the port's `fromSpot`/`toSpot` moves the attachment onto a named point of
+   *     the GLYPH (its corner, its far edge) and can aim the link somewhere other
+   *     than the port's outward normal;
+   *   * `spread` fans the links SHARING this port along the port's edge, so five
+   *     links into one input arrive as five strokes instead of one overdrawn pile.
+   *
+   * With neither configured this returns the port's plain anchor point and its
+   * side — the exact pre-wave-6 endpoint, to the bit. A port with a single link
+   * never moves even WITH spread enabled (a one-lane spread has offset 0).
+   */
+  private portAttachment(
+    link: LinkModel,
+    port: PortModel,
+    node: NodeModel,
+    anchor: { x: number; y: number },
+    end: 'source' | 'target'
+  ): { point: { x: number; y: number }; direction: 'left' | 'right' | 'top' | 'bottom' } {
+    const resolved = resolvePortConfig(port, node);
+    const spot = end === 'source' ? resolved.fromSpot : resolved.toSpot;
+    const spread = resolved.spread;
+
+    // Fast path: nothing configured → the anchor and the side, untouched.
+    if (!spot && !spread?.enabled) {
+      return { point: anchor, direction: resolved.side };
+    }
+
+    const config = this.engine.getInteractionConfig();
+    const { hw, hh } = glyphHalfExtents(resolved.shape, config.portDefaultRadius);
+
+    const { point, direction } = resolveSpot(spot, {
+      x: anchor.x,
+      y: anchor.y,
+      hw,
+      hh,
+      side: resolved.side,
+    });
+
+    if (!spread?.enabled) {
+      return { point, direction };
+    }
+
+    const lanes = this.portSpreadLanes(port, spread);
+    return { point: applySpread(point, direction, lanes.get(link.id) ?? 0), direction };
+  }
+
+  /**
+   * The lane offset of every link sharing `port`, memoised for the frame.
+   *
+   * Lanes are keyed on the OTHER endpoint's port id so the fan is stable: adding
+   * an unrelated link, or reloading the diagram, must not reshuffle the strokes
+   * a user is already looking at.
+   */
+  private portSpreadLanes(port: PortModel, spread: NonNullable<ResolvedPortConfig['spread']>): Map<string, number> {
+    const cached = this.frameSpreadLanes.get(port.id);
+    if (cached) return cached;
+
+    const diagram = this.engine.getDiagram();
+    const entries: Array<{ linkId: string; sortKey: string }> = [];
+
+    for (const candidate of diagram?.getLinks() ?? []) {
+      if (candidate.sourcePortId === port.id) {
+        entries.push({ linkId: candidate.id, sortKey: candidate.targetPortId ?? '' });
+      } else if (candidate.targetPortId === port.id) {
+        entries.push({ linkId: candidate.id, sortKey: candidate.sourcePortId ?? '' });
+      }
+    }
+
+    const lanes = assignSpreadLanes(entries, spread);
+    this.frameSpreadLanes.set(port.id, lanes);
+    return lanes;
   }
 
   /**

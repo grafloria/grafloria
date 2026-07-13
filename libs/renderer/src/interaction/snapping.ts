@@ -6,6 +6,8 @@ import {
   isConnectionAllowedByGroup,
 } from '@grafloria/engine';
 import type { Rectangle } from '../types/geometry.types';
+// Wave 6: THE port-position function — what the renderer actually draws.
+import { portWorldPosition } from '../svg/port-positioning';
 
 /**
  * SnapController — alignment snaplines, equal-spacing guides, grid snap,
@@ -517,9 +519,19 @@ export class SnapController {
   // Magnetic ports + proximity connect
   // ==========================================================================
 
-  /** World position of a port (its owning node's box drives it). */
+  /**
+   * World position of a port — THE one the port is actually drawn at.
+   *
+   * BUG (wave 6): this used `port.getAbsolutePosition(node.getBoundingBox())`,
+   * which walks the BOUNDING BOX and lands on an edge midpoint — blind to the
+   * node's silhouette and to how many ports share the side. The renderer draws
+   * ports with `getPortPositionForShape`. So on a circle, a diamond, a hexagon,
+   * a cylinder — or ANY side carrying more than one port — the magnet was
+   * snapping to a point several pixels away from the port you could see, and
+   * proximity-connect measured its radius from the wrong place.
+   */
   portPosition(node: NodeModel, port: PortModel): Point {
-    return port.getAbsolutePosition(node.getBoundingBox());
+    return portWorldPosition(port, node);
   }
 
   /**
