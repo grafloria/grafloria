@@ -17,3 +17,5 @@ export * from './scope';
 export * from './round-trip';
 export * from './svg-export';
 export * from './raster';
+export * from './node-raster';
+export * from './batch';
