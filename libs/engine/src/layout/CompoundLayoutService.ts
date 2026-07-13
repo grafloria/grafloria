@@ -221,6 +221,7 @@ export class CompoundLayoutService {
         // A fixed group is still fitted so parents see a correct box, unless it
         // already has an explicit frame.
         if (!group.size) {
+          this.applyDefaultPadding(group);
           group.fitToContents(this.diagram);
         }
         result.groupBounds.set(group.id, group.getOuterBounds());
@@ -228,6 +229,7 @@ export class CompoundLayoutService {
       }
 
       await this.arrangeLevel(this.buildLevel(group));
+      this.applyDefaultPadding(group);
       group.fitToContents(this.diagram);
       result.laidOut.push(group.id);
       result.groupBounds.set(group.id, group.getOuterBounds());
@@ -617,6 +619,21 @@ export class CompoundLayoutService {
 
   private isFixed(group: GroupModel): boolean {
     return this.override(group)?.fixed ?? group.subgraphLayout?.fixed ?? false;
+  }
+
+  /**
+   * Fallback inner padding for a container that carries none of its own.
+   *
+   * `defaultPadding` was DECLARED AND NEVER READ — wave 5 shipped the option and
+   * no consumption site, so it was the same "declared but never consumed" shape
+   * as `GroupInfo.padding` before it. Padding is Card 3's (`GroupModel.padding`,
+   * which `fitToContents` reads), so the fallback has to be established ON the
+   * group before the fit, not smuggled into a parallel padding path.
+   */
+  private applyDefaultPadding(group: GroupModel): void {
+    const fallback = this.options.defaultPadding;
+    if (fallback === undefined || group.padding !== undefined) return;
+    group.padding = fallback;
   }
 
   /** Is this group inside a container that is currently collapsed? */

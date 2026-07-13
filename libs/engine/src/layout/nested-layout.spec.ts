@@ -614,6 +614,31 @@ describe('Card 4 — nested container layout', () => {
       expect(result.metadata?.['containersLaidOut']).toContain('G');
     });
 
+    it('containerPadding actually reaches the geometry (it was declared and never read)', async () => {
+      const engine = new DiagramEngine();
+      const diagram = engine.createDiagram('padding')!;
+      const G = group(diagram, 'G'); // no padding of its own
+      const H = group(diagram, 'H');
+      H.padding = 3; // an explicit padding must WIN over the fallback
+      node(diagram, 'a');
+      G.addMember('a', diagram);
+      node(diagram, 'h');
+      H.addMember('h', diagram);
+
+      await engine.layout('dagre', { containerPadding: 24 });
+
+      // `defaultPadding` was an option with no consumption site — wave 5 shipped
+      // the knob and nothing read it, so this silently did nothing.
+      const a = diagram.getNode('a')!.getGlobalBounds();
+      const g = G.getOuterBounds();
+      expect(a.left - g.x).toBe(24);
+      expect(g.x + g.width - a.right).toBe(24);
+
+      const h = diagram.getNode('h')!.getGlobalBounds();
+      const hb = H.getOuterBounds();
+      expect(h.left - hb.x).toBe(3);
+    });
+
     it('an unknown container algorithm falls back to the grid rather than throwing', async () => {
       const engine = new DiagramEngine();
       const diagram = engine.createDiagram('unknown-engine')!;
