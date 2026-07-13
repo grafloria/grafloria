@@ -15,6 +15,18 @@ import {
   generateId,
 } from '@grafloria/engine';
 import type { Rectangle } from '../types/geometry.types';
+import {
+  getNodeSizing,
+  resolveAspectRatio,
+  clampSizeToConstraints,
+  type NodeSizing,
+} from '../svg/node-sizing';
+import {
+  resolveToolbar,
+  toolbarAllows,
+  haloAllows,
+  type ToolbarResolver,
+} from '../svg/node-toolbar';
 
 /**
  * SelectionToolsController — the floating tool layer (Card 5, wave4/interaction).
@@ -128,6 +140,12 @@ export interface SelectionToolsConfig {
   minHeight: number;
   /** Rotation snap while a modifier is held, in degrees. */
   rotationSnapDegrees: number;
+  /**
+   * Per-TYPE toolbar policy (Card 6). Layered on top of each node's own
+   * `metadata.toolbar`; lets a host decide which tools a node type exposes
+   * without touching per-node data. Omit for "every tool, every node".
+   */
+  resolveNodeToolbar?: ToolbarResolver;
 }
 
 export const DEFAULT_SELECTION_TOOLS_CONFIG: SelectionToolsConfig = {
@@ -202,17 +220,25 @@ export function rotatePoint(point: Point, center: Point, deg: number): Point {
 export interface ResizeOptions {
   minWidth?: number;
   minHeight?: number;
+  /** Upper bound on the dragged size, clamped DURING the gesture. Default ∞. */
+  maxWidth?: number;
+  maxHeight?: number;
   /** Preserve the starting aspect ratio (corner handles only). */
   keepAspect?: boolean;
+  /**
+   * Explicit width÷height ratio to lock to (corner handles only). Set by a
+   * per-node aspect lock; overrides the start ratio and implies keepAspect.
+   */
+  aspect?: number;
 }
 
 /**
  * Apply a resize drag to a box, in the box's OWN frame.
  *
  * `dx/dy` is the pointer delta since the drag began (same frame as the box). The
- * dragged edge(s) follow the pointer; the opposite edge stays put. Minimums clamp
- * the dragged edge, never the anchored one — so a runaway drag can't flip or
- * shrink the box past the minimum.
+ * dragged edge(s) follow the pointer; the opposite edge stays put. Min/max clamp
+ * the DRAGGED edge, never the anchored one — so a runaway drag can neither flip
+ * nor shrink past the minimum nor grow past the maximum, all mid-gesture.
  */
 export function resizeBox(
   start: Rectangle,
@@ -223,6 +249,8 @@ export function resizeBox(
 ): Rectangle {
   const minWidth = Math.max(1, options.minWidth ?? 1);
   const minHeight = Math.max(1, options.minHeight ?? 1);
+  const maxWidth = Math.max(minWidth, options.maxWidth ?? Infinity);
+  const maxHeight = Math.max(minHeight, options.maxHeight ?? Infinity);
 
   const movesLeft = handle === 'nw' || handle === 'w' || handle === 'sw';
   const movesRight = handle === 'ne' || handle === 'e' || handle === 'se';
@@ -234,29 +262,43 @@ export function resizeBox(
   let top = start.y;
   let bottom = start.y + start.height;
 
-  if (movesLeft) left = Math.min(start.x + dx, right - minWidth);
-  if (movesRight) right = Math.max(start.x + start.width + dx, left + minWidth);
-  if (movesTop) top = Math.min(start.y + dy, bottom - minHeight);
-  if (movesBottom) bottom = Math.max(start.y + start.height + dy, top + minHeight);
+  // Clamp the dragged edge into [min, max] relative to the anchored edge.
+  if (movesLeft) left = clampEdge(start.x + dx, right - maxWidth, right - minWidth);
+  if (movesRight) right = clampEdge(start.x + start.width + dx, left + minWidth, left + maxWidth);
+  if (movesTop) top = clampEdge(start.y + dy, bottom - maxHeight, bottom - minHeight);
+  if (movesBottom) bottom = clampEdge(start.y + start.height + dy, top + minHeight, top + maxHeight);
 
   let width = right - left;
   let height = bottom - top;
 
   // Aspect lock: only meaningful on corners (an edge handle has one free axis).
   const isCorner = (movesLeft || movesRight) && (movesTop || movesBottom);
-  if (options.keepAspect && isCorner && start.width > 0 && start.height > 0) {
-    const aspect = start.width / start.height;
-    // Grow along the dominant axis so the box always contains the pointer.
-    if (width / height > aspect) {
-      height = Math.max(minHeight, width / aspect);
+  const lockRatio =
+    options.aspect && options.aspect > 0
+      ? options.aspect
+      : options.keepAspect && start.width > 0 && start.height > 0
+      ? start.width / start.height
+      : 0;
+  if (lockRatio > 0 && isCorner) {
+    // Grow along the dominant axis so the box always contains the pointer, then
+    // re-clamp so the locked axis still honors its own min/max.
+    if (width / height > lockRatio) {
+      height = clampEdge(width / lockRatio, minHeight, maxHeight);
+      width = clampEdge(height * lockRatio, minWidth, maxWidth);
     } else {
-      width = Math.max(minWidth, height * aspect);
+      width = clampEdge(height * lockRatio, minWidth, maxWidth);
+      height = clampEdge(width / lockRatio, minHeight, maxHeight);
     }
     if (movesLeft) left = right - width;
     if (movesTop) top = bottom - height;
   }
 
   return { x: left, y: top, width, height };
+}
+
+/** Clamp `v` into [lo, hi], tolerating hi < lo (min wins). */
+function clampEdge(v: number, lo: number, hi: number): number {
+  return Math.max(lo, Math.min(hi, v));
 }
 
 /**
@@ -341,6 +383,13 @@ interface ResizeGesture {
   startPosition: Point;
   startSize: { width: number; height: number };
   startRotation: number;
+  /** The node's sizing config at gesture start (min/max/aspect), read once. */
+  sizing: NodeSizing;
+  /**
+   * The `sizing.auto` flag before the gesture pinned it off, so cancel can
+   * restore it. `undefined` when the node was not auto-sized.
+   */
+  pinnedAuto?: boolean;
 }
 
 interface RotateGesture {
@@ -450,10 +499,15 @@ export class SelectionToolsController {
 
     const hitRadius = (this.config.handleSize * scale) / 2 + 2 * scale;
 
+    // Card 6 — per-node toolbar policy (node metadata + host resolver). A single
+    // node's tools are filtered by it; a multi-selection uses the global default.
+    const toolbar = single ? resolveToolbar(single, this.config.resolveNodeToolbar) : {};
+
     // 8 resize handles — single node, resizable, unlocked.
     if (
       single &&
       this.config.showResizeHandles &&
+      toolbarAllows(toolbar, 'resize') &&
       single.behavior?.resizable !== false &&
       !single.state?.locked
     ) {
@@ -476,6 +530,7 @@ export class SelectionToolsController {
     if (
       single &&
       this.config.showRotateHandle &&
+      toolbarAllows(toolbar, 'rotate') &&
       single.behavior?.rotatable === true &&
       !single.state?.locked
     ) {
@@ -495,7 +550,7 @@ export class SelectionToolsController {
     }
 
     // Remove button: just outside the top-right corner.
-    if (this.config.showRemoveButton) {
+    if (this.config.showRemoveButton && (!single || toolbarAllows(toolbar, 'remove'))) {
       const raw = {
         x: bounds.x + bounds.width + this.config.haloGap * scale * 0.5,
         y: bounds.y - this.config.haloGap * scale * 0.5,
@@ -518,6 +573,8 @@ export class SelectionToolsController {
       HALO_ORDER.forEach((action, i) => {
         // `connect` and `fork` need a source node — hide them for multi-select.
         if (!single && (action === 'connect' || action === 'fork')) return;
+        // Card 6 — per-node halo policy (halo:false or an action allow-list).
+        if (single && !haloAllows(toolbar, action)) return;
         handles.push({
           id: `halo-${action}`,
           kind: 'halo',
@@ -689,6 +746,18 @@ export class SelectionToolsController {
     const node = handle.nodeId ? engine.getDiagram()?.getNode(handle.nodeId) : undefined;
     if (!node || !handle.handleId) return false;
 
+    const sizing = getNodeSizing(node);
+
+    // Card 6 — resize an AUTO-SIZED node sensibly: a manual drag takes control, so
+    // PIN the node (turn auto off) for the duration; otherwise the next auto-size
+    // pass would immediately fight the drag and the box would snap back. The prior
+    // flag is remembered so cancelGesture can restore it.
+    let pinnedAuto: boolean | undefined;
+    if (sizing.auto) {
+      pinnedAuto = true;
+      node.setMetadata('sizing', { ...sizing, auto: false });
+    }
+
     this.gesture = {
       kind: 'resize',
       nodeId: node.id,
@@ -697,6 +766,8 @@ export class SelectionToolsController {
       startPosition: { x: node.position.x, y: node.position.y },
       startSize: { width: node.size.width, height: node.size.height },
       startRotation: node.rotation || 0,
+      sizing,
+      pinnedAuto,
     };
     return true;
   }
@@ -720,6 +791,14 @@ export class SelectionToolsController {
     const node = engine.getDiagram()?.getNode(gesture.nodeId);
     if (!node) return false;
 
+    // Card 6 — per-node constraints, clamped DURING the gesture (not after): the
+    // node's own min/max win, with the controller minimum as the floor; a
+    // per-node aspect lock forces the ratio even without Shift.
+    const sizing = gesture.sizing;
+    const minWidth = Math.max(this.config.minWidth, sizing.minWidth ?? 0);
+    const minHeight = Math.max(this.config.minHeight, sizing.minHeight ?? 0);
+    const lockedAspect = resolveAspectRatio(sizing, gesture.startSize);
+
     const next = applyResizeToNode(
       {
         position: gesture.startPosition,
@@ -730,9 +809,12 @@ export class SelectionToolsController {
       worldX - gesture.startPointer.x,
       worldY - gesture.startPointer.y,
       {
-        minWidth: this.config.minWidth,
-        minHeight: this.config.minHeight,
+        minWidth,
+        minHeight,
+        maxWidth: sizing.maxWidth,
+        maxHeight: sizing.maxHeight,
         keepAspect: modifiers.shift === true,
+        aspect: lockedAspect ?? undefined,
       }
     );
 
@@ -748,11 +830,13 @@ export class SelectionToolsController {
       box = snap(box);
     }
 
+    // Final clamp so a snap can't push the box outside the node's min/max.
+    const clamped = clampSizeToConstraints(box.width, box.height, sizing, {
+      floorWidth: this.config.minWidth,
+      floorHeight: this.config.minHeight,
+    });
     node.setPosition(box.x, box.y, node.position.z);
-    node.setSize(
-      Math.max(this.config.minWidth, box.width),
-      Math.max(this.config.minHeight, box.height)
-    );
+    node.setSize(clamped.width, clamped.height);
     node.markDirty('resized');
     return true;
   }
@@ -924,6 +1008,10 @@ export class SelectionToolsController {
       const node = diagram.getNode(gesture.nodeId);
       node?.setPosition(gesture.startPosition.x, gesture.startPosition.y, node.position.z);
       node?.setSize(gesture.startSize.width, gesture.startSize.height);
+      // Restore the auto-size flag the gesture pinned off (Card 6).
+      if (node && gesture.pinnedAuto) {
+        node.setMetadata('sizing', { ...getNodeSizing(node), auto: true });
+      }
       node?.markDirty('resize-cancelled');
     } else if (gesture.kind === 'rotate') {
       const node = diagram.getNode(gesture.nodeId);

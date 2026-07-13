@@ -28,6 +28,14 @@
 // this is a structural refactor, not a visual change.
 
 import type { VNode, VNodeType } from '../types';
+import {
+  fitCmdsToBox,
+  translateCmds,
+  serializePathCmds,
+  sampleOutlinePoints,
+  type PathViewBox,
+} from './path-outline';
+import { parsePath, type PathCmd } from '../canvas/path-geometry';
 
 export type ShapeSide = 'left' | 'right' | 'top' | 'bottom';
 export interface ShapePoint {
@@ -471,6 +479,11 @@ function r3(n: number): number {
   return Math.round(n * 1000) / 1000;
 }
 
+/** Clamp a scalar into [lo, hi]. */
+function clampN(v: number, lo: number, hi: number): number {
+  return Math.max(lo, Math.min(hi, v));
+}
+
 /**
  * Port anchor on a polygon's REAL edge: intersect the outline with the center
  * line at the even edge-fraction; fall back to the box edge at a vertex tangent.
@@ -725,25 +738,66 @@ const DocumentShape = pathShape(
   { innerRect: (w, h) => ({ x: 0.08 * w, y: 0.08 * h, w: 0.84 * w, h: 0.72 * h }) }
 );
 
-const CylinderShape = pathShape(
-  'cylinder',
-  (b) => {
-    const { x0, y0, w, h } = b;
-    const rx = w / 2;
-    const ry = Math.min(h / 2, rx / (2.5 + w / h)); // classic DB rim curvature
-    const body = h - 2 * ry;
-    // full top ellipse (two arcs) + body sides + front bottom arc
-    return (
-      `M ${r3(x0)},${r3(y0 + ry)} ` +
-      `a ${r3(rx)},${r3(ry)} 0 0 0 ${r3(w)} 0 ` +
-      `a ${r3(rx)},${r3(ry)} 0 0 0 ${r3(-w)} 0 ` +
-      `l 0 ${r3(body)} ` +
-      `a ${r3(rx)},${r3(ry)} 0 0 0 ${r3(w)} 0 ` +
-      `l 0 ${r3(-body)}`
-    );
+/** Classic DB-cylinder rim radius (must match the outline generator exactly). */
+function cylinderRy(w: number, h: number): number {
+  return Math.min(h / 2, w / 2 / (2.5 + w / h));
+}
+
+const CylinderShape: ShapeDefinition = {
+  ...pathShape(
+    'cylinder',
+    (b) => {
+      const { x0, y0, w, h } = b;
+      const rx = w / 2;
+      const ry = cylinderRy(w, h); // classic DB rim curvature
+      const body = h - 2 * ry;
+      // full top ellipse (two arcs) + body sides + front bottom arc
+      return (
+        `M ${r3(x0)},${r3(y0 + ry)} ` +
+        `a ${r3(rx)},${r3(ry)} 0 0 0 ${r3(w)} 0 ` +
+        `a ${r3(rx)},${r3(ry)} 0 0 0 ${r3(-w)} 0 ` +
+        `l 0 ${r3(body)} ` +
+        `a ${r3(rx)},${r3(ry)} 0 0 0 ${r3(w)} 0 ` +
+        `l 0 ${r3(-body)}`
+      );
+    },
+    { innerRect: (w, h) => ({ x: 0.1 * w, y: 0.28 * h, w: 0.8 * w, h: 0.5 * h }) }
+  ),
+  // Card 7 — geometry-true anchors. Ports ride the cylinder's real geometry: the
+  // top port sits on the FRONT RIM SEAM (the visible top edge of the body, at
+  // y = 2·ry), the bottom on the front base arc, and the sides on the vertical
+  // body seam — not the bounding box.
+  portAnchor(width, height, side, rank, count) {
+    const ry = cylinderRy(width, height);
+    const rx = width / 2;
+    const cx = width / 2;
+    const f = edgeFraction(rank, count);
+    if (side === 'left' || side === 'right') {
+      return { x: side === 'left' ? 0 : width, y: ry + (height - 2 * ry) * f };
+    }
+    const x = Math.max(0, Math.min(width, cx + (f - 0.5) * rx * 1.6));
+    const dx = rx > 0 ? (x - cx) / rx : 0;
+    const off = ry * Math.sqrt(Math.max(0, 1 - dx * dx));
+    // front rim seam (top) / front base arc (bottom)
+    return side === 'top' ? { x, y: ry + off } : { x, y: height - ry + off };
   },
-  { innerRect: (w, h) => ({ x: 0.1 * w, y: 0.28 * h, w: 0.8 * w, h: 0.5 * h }) }
-);
+  // Smart-connection boundary: project onto the SILHOUETTE — the top/bottom rim
+  // curves and the vertical sides — instead of the bounding box.
+  boundaryPoint(rect, side, cross) {
+    const ry = cylinderRy(rect.w, rect.h);
+    const rx = rect.w / 2;
+    const cx = rect.x + rect.w / 2;
+    if (side === 'left') return { x: rect.x, y: clampN(cross, rect.y + ry, rect.y + rect.h - ry) };
+    if (side === 'right')
+      return { x: rect.x + rect.w, y: clampN(cross, rect.y + ry, rect.y + rect.h - ry) };
+    const px = clampN(cross, rect.x, rect.x + rect.w);
+    const dx = rx > 0 ? (px - cx) / rx : 0;
+    const off = ry * Math.sqrt(Math.max(0, 1 - dx * dx));
+    return side === 'top'
+      ? { x: px, y: rect.y + ry - off } // upper half of the top rim
+      : { x: px, y: rect.y + rect.h - ry + off }; // lower half of the base
+  },
+};
 
 const CloudShape = pathShape(
   'cloud',
@@ -872,7 +926,25 @@ const ActorShape: ShapeDefinition = {
   boundaryPoint() {
     return null;
   },
-  portAnchor: boxPortAnchor,
+  // Card 7 — geometry-true anchors: the side ports attach to the actor's HANDS
+  // (the ends of the arm line at 40% height), the top to the head crown, and the
+  // bottom between the feet. Multiple ports on a side fan slightly so they don't
+  // stack on the same hand.
+  portAnchor(width, height, side, rank, count) {
+    const armY = height * 0.4;
+    const spread = (rank - (count - 1) / 2) * height * 0.12;
+    switch (side) {
+      case 'left':
+        return { x: width * 0.18, y: clampN(armY + spread, 0, height) };
+      case 'right':
+        return { x: width * 0.82, y: clampN(armY + spread, 0, height) };
+      case 'top':
+        return { x: width / 2, y: 0 };
+      case 'bottom':
+      default:
+        return { x: width * (0.2 + 0.6 * edgeFraction(rank, count)), y: height };
+    }
+  },
 };
 
 // ---------------------------------------------------------------------------
@@ -888,6 +960,109 @@ const registry = new Map<string, ShapeDefinition>();
  */
 export function registerShape(type: string, def: Omit<ShapeDefinition, 'type'> & { type?: string }): void {
   registry.set(type, { ...def, type });
+}
+
+/**
+ * A static SVG path string, or a parametric generator that returns the path `d`
+ * for a specific `width × height` box (0,0 at top-left). The generator form is
+ * preferred for shapes whose detail should NOT scale uniformly (rounded corners,
+ * fixed-radius notches); the static form is the quickest way to drop in a figure
+ * authored in a design tool.
+ */
+export type PathGeometry = string | ((width: number, height: number) => string);
+
+/**
+ * Options for {@link registerPathShape}.
+ *
+ * By default the boundary point (smart-connection attachment) and the port
+ * anchors are DERIVED from the path outline by sampling — so a custom silhouette
+ * attaches links to its real edge, not its bounding box. Supply `portAnchor` /
+ * `boundaryPoint` to override the sampled geometry with exact analytic anchors
+ * (the same override seam the built-in triangle uses for its apex/base points).
+ */
+export interface PathShapeOptions {
+  /** Reference box for a STATIC path string (default `0 0 1 1` — unit box). */
+  viewBox?: PathViewBox;
+  /** Exact port anchors, bypassing outline sampling. */
+  portAnchor?: ShapeDefinition['portAnchor'];
+  /** Exact smart-connection boundary, bypassing outline sampling. */
+  boundaryPoint?: ShapeDefinition['boundaryPoint'];
+  /** Label box; defaults to the padded bounding box. */
+  innerRect?: ShapeDefinition['innerRect'];
+  /** Curve subdivision when sampling the outline (default 24). */
+  sampleSteps?: number;
+}
+
+/**
+ * Register an arbitrary SVG-path shape (Card 2). This is the payoff of the
+ * geometry contract: a userland caller adds a brand-new silhouette in ONE call
+ * and it works everywhere the built-ins do — node body, selection highlight,
+ * drop shadow, smart-connection boundary and geometry-true port anchors — with
+ * NO core-team switch edits.
+ *
+ * ```ts
+ * // Parametric — a 5-point star that fills any box.
+ * registerPathShape('star', (w, h) => starPath(w, h));
+ * // Static — a chevron authored in a 24×24 art box.
+ * registerPathShape('chevron', 'M2,4 L14,4 L22,12 L14,20 L2,20 L10,12 Z',
+ *   { viewBox: { x: 0, y: 0, w: 24, h: 24 } });
+ * ```
+ */
+export function registerPathShape(
+  type: string,
+  path: PathGeometry,
+  opts: PathShapeOptions = {}
+): void {
+  const steps = opts.sampleSteps ?? 24;
+  const viewBox = opts.viewBox ?? { x: 0, y: 0, w: 1, h: 1 };
+
+  // Commands for a natural (origin-anchored) `width × height` box. Static strings
+  // are parsed ONCE and rescaled per size; generators re-parse their output.
+  const staticCmds = typeof path === 'string' ? parsePath(path) : null;
+  const cmdsForSize = (width: number, height: number): PathCmd[] =>
+    staticCmds
+      ? fitCmdsToBox(staticCmds, viewBox, width, height)
+      : parsePath((path as (w: number, h: number) => string)(width, height));
+
+  // One-slot memo for the sampled outline — port positions are recomputed every
+  // frame per port, so re-flattening the path each call would be wasteful.
+  let sampleKey = '';
+  let sampleCache: ShapePoint[] = [];
+  const outlinePoints = (width: number, height: number): ShapePoint[] => {
+    const key = `${width}x${height}`;
+    if (key !== sampleKey) {
+      sampleKey = key;
+      sampleCache = sampleOutlinePoints(cmdsForSize(width, height), steps);
+    }
+    return sampleCache;
+  };
+
+  registry.set(type, {
+    type,
+    styleMode: 'inline',
+    outline(width, height, t = {}) {
+      const box = boxOf(width, height, t);
+      // Draw at the (grown) box size, then translate to the box origin so grow
+      // (selection padding) and dx/dy (shadow offset) compose exactly as they do
+      // for every other shape.
+      const cmds = translateCmds(cmdsForSize(box.w, box.h), box.x0, box.y0);
+      return { el: 'path', geom: { d: serializePathCmds(cmds) } };
+    },
+    boundaryPoint(rect, side, cross) {
+      if (opts.boundaryPoint) return opts.boundaryPoint(rect, side, cross);
+      const local = outlinePoints(rect.w, rect.h);
+      if (local.length < 3) return null; // degenerate → caller uses bbox edge
+      const world = local.map((v) => ({ x: v.x + rect.x, y: v.y + rect.y }));
+      return polygonBoundaryPoint(world, side, cross);
+    },
+    portAnchor(width, height, side, rank, count) {
+      if (opts.portAnchor) return opts.portAnchor(width, height, side, rank, count);
+      const verts = outlinePoints(width, height);
+      if (verts.length < 3) return boxPortAnchor(width, height, side, rank, count);
+      return polygonPortAnchor(verts, width, height, side, rank, count);
+    },
+    innerRect: opts.innerRect,
+  });
 }
 
 /** The rect shape is the default fallback for unknown / unset shape types. */

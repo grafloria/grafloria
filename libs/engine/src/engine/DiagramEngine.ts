@@ -1669,13 +1669,13 @@ export class DiagramEngine {
     };
     this.routingEngine.updateObstacle(obstacle);
 
-    // Mark all links as dirty so they recalculate their paths
-    // This enables dynamic rerouting when nodes move through paths
-    if (this.diagram) {
-      this.diagram.getLinks().forEach(link => {
-        link.markDirty();
-      });
-    }
+    // NOTE: this method used to also mark EVERY link dirty "so they recalculate"
+    // — a sledgehammer that was dead code while the subscription bug hid it
+    // (see attachDiagram) and became a live perf regression the moment the fix
+    // woke it up: one node move invalidated every link VNode in the diagram.
+    // Link invalidation is owned by the renderer's per-frame route pre-pass +
+    // markLinksWhoseFrameChanged (wave 4), which re-renders exactly the links
+    // whose GEOMETRY actually changed.
   }
 
   /**
@@ -1700,12 +1700,19 @@ export class DiagramEngine {
 
         // Listen for node position/size changes
         this.diagramDisposers.push(
-          node.on('position', () => {
+          // BUGFIX (wave 5, found by the nodes agent): NodeModel emits
+          // `change:position` (via trackChange) — never bare `position`. This
+          // listener had NEVER fired, so the shared ObstacleMap went stale on
+          // every node move; only the renderer's per-request obstacle list kept
+          // visible routing honest, while the a-star/dijkstra/visibility
+          // adapters — which read the SHARED map — routed around yesterday's
+          // positions.
+          node.on('change:position', () => {
             this.updateNodeObstacle(node);
           })
         );
         this.diagramDisposers.push(
-          node.on('size', () => {
+          node.on('change:size', () => {
             this.updateNodeObstacle(node);
           })
         );
@@ -1760,12 +1767,12 @@ export class DiagramEngine {
 
       // Listen for node position/size changes
       this.diagramDisposers.push(
-        node.on('position', () => {
+        node.on('change:position', () => {
           this.updateNodeObstacle(node);
         })
       );
       this.diagramDisposers.push(
-        node.on('size', () => {
+        node.on('change:size', () => {
           this.updateNodeObstacle(node);
         })
       );

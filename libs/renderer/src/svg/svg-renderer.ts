@@ -1,4 +1,4 @@
-import type { DiagramEngine, NodeModel, NodeStyle, LinkModel, LinkStyle, PortModel, InteractionConfig, ReconnectionPreview, LODLevel, LODFeature, Shadow } from '@grafloria/engine';
+import type { DiagramEngine, DiagramModel, NodeModel, NodeStyle, LinkModel, LinkStyle, PortModel, InteractionConfig, ReconnectionPreview, LODLevel, LODFeature, Shadow } from '@grafloria/engine';
 // Value import: the ONE definition of "where does a label sit along the path"
 // (slot vs position), shared by the model, this renderer and the edge optimizer.
 import { linkLabelPosition } from '@grafloria/engine';
@@ -80,6 +80,25 @@ import {
 // Node label engine: shared, link-agnostic text-block core (wrap / multi-line /
 // ellipsis / shape-fit) — the same code path link labels render through.
 import { renderTextBlock } from './text-block';
+
+// Wave 5 Card 7: content-aware auto-sizing (opt-in via metadata.sizing.auto).
+import { autoSizeNode, type AutoSizeOptions } from './auto-size';
+import { isAutoSized } from './node-sizing';
+
+// Wave 5 Card 5: composite / panel node model (header band, image/icon slots,
+// badges, ERD/UML rows) — overlaid on any base shape via the registry.
+import {
+  renderNodePanel,
+  measurePanelReserve,
+  panelAdjustedInnerRect,
+  hasPanel,
+  type PanelRenderContext,
+} from './panel';
+
+// Wave 5 Card 4: HTML / foreignObject rich-content nodes — a sanitized HTML body
+// sized to node.size, participating in selection / hit-test / rotation like any
+// shape (rendered on top of the shape background inside the node's <g>).
+import { buildHtmlForeignObject, hasHtmlContent } from './html-node';
 
 // Phase 1.1: Arrow type rendering
 import { ArrowRenderer } from './ArrowRenderer';
@@ -484,6 +503,13 @@ export class SVGRenderer implements IRenderer {
     if (!diagram) {
       return this.createEmptyDiagram(viewport);
     }
+
+    // Card 7 — content-aware auto-sizing MEASURE pass. Runs before the spatial
+    // query so the grown bounds are the ones culled, indexed and routed against.
+    // Opt-in (`metadata.sizing.auto`) and idempotent: a node already at its
+    // target size mutates nothing, so this cannot spin the render loop. Bounds
+    // changes go through node.setSize() → change:size → spatial index + routing.
+    this.autoSizeNodes(diagram);
 
     // Get LOD level from engine
     const lod = diagram.getLODLevel(zoom);
@@ -1545,6 +1571,69 @@ export class SVGRenderer implements IRenderer {
   }
 
   /**
+   * Card 7 — auto-size every opted-in node before culling/rendering. Uses the
+   * theme's label font size for measurement so the reserved box matches the text
+   * the label engine will actually lay out, and feeds each node its composite
+   * panel reserve (Card 5 header band / image / badge row) so the shape grows to
+   * fit the WHOLE body, not just the label.
+   */
+  private autoSizeNodes(diagram: DiagramModel): void {
+    const fontSize = this.theme.typography.fontSize.md as number;
+    for (const node of diagram.getNodes()) {
+      if (!isAutoSized(node)) continue;
+      const opts: AutoSizeOptions = {
+        fontSize,
+        floorWidth: 16,
+        floorHeight: 16,
+        reserve: this.panelReserve(node),
+      };
+      autoSizeNode(node, opts);
+    }
+  }
+
+  /**
+   * The extra content space a node's composite panel (Card 5) reserves around
+   * its label, so auto-sizing (Card 7) grows the shape to fit the WHOLE body.
+   * Returns undefined for a plain (label-only) node.
+   */
+  private panelReserve(node: NodeModel): AutoSizeOptions['reserve'] {
+    return measurePanelReserve(node);
+  }
+
+  /**
+   * Card 5 — the composite panel overlay for a node (header band, image/icon
+   * slots, badges, ERD/UML rows). Built through the framework-agnostic `panel`
+   * module and themed from the active theme; text goes out via `textContent`
+   * and image hrefs are sanitized (see panel.ts). Empty for a plain node.
+   */
+  private renderPanelOverlay(node: NodeModel): VNode[] {
+    if (!hasPanel(node)) return [];
+    const { width, height } = node.size;
+    const ctx: PanelRenderContext = {
+      nodeId: node.id,
+      fontSize: (this.theme.typography.fontSize.sm as number) ?? 12,
+      headerFill: this.theme.colors.primary as string,
+      headerTextColor: '#ffffff',
+      bodyTextColor: this.theme.colors.text.primary as string,
+      badgeFill: (this.theme.colors.warning as string) || '#ef4444',
+      badgeTextColor: '#ffffff',
+    };
+    return renderNodePanel(node, width, height, ctx);
+  }
+
+  /**
+   * Card 4 — the HTML / foreignObject body for a node (sanitized rich content
+   * sized to node.size). Empty for a non-HTML node. The FO is keyed by a content
+   * hash so a data change replaces the opaque subtree while hover/selection
+   * leaves it intact (see html-node.ts).
+   */
+  private renderHtmlBody(node: NodeModel): VNode[] {
+    if (!hasHtmlContent(node)) return [];
+    const fo = buildHtmlForeignObject(node, node.size.width, node.size.height);
+    return fo ? [fo] : [];
+  }
+
+  /**
    * Render nodes layer
    */
   private renderNodesLayer(nodes: NodeModel[], lod: LODLevel): VNode {
@@ -2021,11 +2110,18 @@ export class SVGRenderer implements IRenderer {
         ...(this.lodAllows('shadows', lod) ? [this.renderShadow(node, isHovered)] : []),
         // Node shape (Phase 3.1: Shape-based rendering)
         this.renderNodeShape(node, styles, isHovered),
+        // Card 5: composite panel overlay (header band / image / rows / badges /
+        // icon), drawn ON TOP of the base shape so it composes with any silhouette.
+        ...(this.lodAllows('decorations', lod) ? this.renderPanelOverlay(node) : []),
         // Label (if LOD allows and label exists) — shape-fit wrap + ellipsis,
         // clipped to the shape's inner rect (see renderNodeLabel).
         ...(diagram.shouldRenderLabels(lod) && node.getMetadata('label')
           ? this.renderNodeLabel(node)
           : []),
+        // Card 4: HTML / foreignObject body (sanitized) on top of the shape
+        // background, so it rotates + hit-tests + selects like any shape. Skipped
+        // at LODs that drop decorations (a far-zoom node is just its silhouette).
+        ...(this.lodAllows('decorations', lod) ? this.renderHtmlBody(node) : []),
         // Option 3: Lock/pin indicator for locked nodes
         ...(node.state.locked && this.lodAllows('decorations', lod)
           ? [
@@ -2398,7 +2494,14 @@ export class SVGRenderer implements IRenderer {
   private renderNodeLabel(node: NodeModel): VNode[] {
     const shapeConfig = node.getMetadata('shape') || { type: 'rect' };
     const { width, height } = node.size;
-    const inner = getInnerRect(getShape(shapeConfig.type), width, height);
+    // Card 5: when the node carries a composite panel, keep the label out of the
+    // panel's header/image (top) and row (bottom) bands.
+    const inner = panelAdjustedInnerRect(
+      node,
+      getInnerRect(getShape(shapeConfig.type), width, height),
+      width,
+      height
+    );
 
     const fontSize = this.theme.typography.fontSize.md as number;
     const lineHeight = fontSize * 1.2;

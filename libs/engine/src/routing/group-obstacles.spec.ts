@@ -133,3 +133,22 @@ describe('group-aware obstacles (Wave 5, Card 6)', () => {
     });
   });
 });
+
+describe('obstacle map staleness (wave-5 bugfix, found by the nodes agent)', () => {
+  it('moving or resizing a node UPDATES its shared-map obstacle (the listeners used to never fire)', () => {
+    const engine = new DiagramEngine();
+    const diagram = engine.createDiagram('stale')!;
+    const n = new NodeModel({ type: 'basic', position: { x: 10, y: 10 }, size: { width: 50, height: 30 } });
+    diagram.addNode(n);
+
+    n.setPosition(200, 300);
+    n.setSize(80, 60);
+
+    const obstacle = engine.getRoutingEngine().getObstacles().find((o) => o.id === n.id)!;
+    // Before the fix these still read (10, 10, 50, 30): NodeModel emits
+    // change:position/change:size, and the engine subscribed to bare
+    // position/size — a subscription to an event that does not exist.
+    expect(obstacle).toMatchObject({ x: 200, y: 300, width: 80, height: 60 });
+    engine.destroy();
+  });
+});
