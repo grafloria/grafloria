@@ -74,16 +74,26 @@ export * from './subgraph-layout.interface';
 // Phase 4: Edge bundling
 export * from './edge-bundling.interface';
 
-// Phase 5: Web Workers
-export * from './layout-worker.interface';
-export * from './worker-layout-adapter';
-
-// Wave 7 Card 3: off-main-thread layout — the worker seam that is actually
-// wired up. `engine.layout(name, { signal, onProgress, timeBudgetMs })` runs
-// through LayoutHost, inline by default and off-thread once a port is attached
-// via `engine.setLayoutPort()`. NOTE: the layout.worker.ts module is NOT
-// re-exported here — it calls `serveLayout(self)` at import time, which is
-// correct inside a Worker and wrong everywhere else.
+// Wave 7 Card 3: off-main-thread layout.
+//
+// This REPLACES the old "Phase 5: Web Workers" exports (`layout-worker.interface`
+// / `worker-layout-adapter`), which are deleted. They were scaffolding that had
+// never been reachable: nothing in the codebase instantiated `LayoutWorkerPool`,
+// it built its Worker from a hardcoded `/assets/workers/layout.worker.js` that no
+// build has ever produced, its progress callback was declared but never wired to
+// anything, and cancelling REJECTED the promise — discarding a perfectly usable
+// part-finished layout. Every test in its spec forced `useWorker: false`, so the
+// worker path was never once exercised. It is also now unfixable in place: the
+// worker script it depended on speaks this new protocol, so the old pool speaks
+// one that nothing implements.
+//
+// The replacement: `engine.layout(name, { signal, onProgress, timeBudgetMs })`
+// runs through LayoutHost — inline by default, off-thread once a port is attached
+// with `engine.setLayoutPort()`, and byte-identical either way.
+//
+// NOTE: layout.worker.ts is deliberately NOT re-exported — it calls
+// `serveLayout(self)` at import time, which is right inside a Worker and wrong
+// everywhere else.
 export * from './layout-host';
 export * from './layout-graph';
 export * from './steppable-layout';
