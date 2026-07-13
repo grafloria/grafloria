@@ -1406,8 +1406,9 @@ export class SVGRenderer implements IRenderer {
     const config = link.style.jumpPoints;
     if (!config?.enabled || (config.size ?? 10) <= 0 || points.length < 2) return undefined;
 
+    const renderType = this.renderPathType(link);
     const isTwoPointCurve =
-      (link.pathType === 'smooth' || link.pathType === 'bezier') && points.length === 2;
+      (renderType === 'smooth' || renderType === 'bezier') && points.length === 2;
     if (isTwoPointCurve) return undefined;
 
     return {
@@ -1727,9 +1728,9 @@ export class SVGRenderer implements IRenderer {
     const start = { x: fixedEnd.x, y: fixedEnd.y };
     const end = preview.mousePoint;
 
-    const pathType = link.pathType;
+    const pathType = this.renderPathType(link);
     const routingEngine = this.engine.getRoutingEngine();
-    const algorithm = this.mapPathTypeToAlgorithm(pathType) || routingEngine.getDefaultAlgorithm();
+    const algorithm = this.routerForLink(link) || routingEngine.getDefaultAlgorithm();
 
     // Best-effort routing direction from the fixed port.
     const fixedPortId = preview.endpoint === 'source' ? link.targetPortId : link.sourcePortId;
@@ -2609,6 +2610,65 @@ export class SVGRenderer implements IRenderer {
   }
 
   /**
+   * Wave 5 (Edge routing) — Card 0. The routing algorithm for a link: its
+   * explicit `router` when set, else the legacy pathType derivation. This is
+   * the seam that finally makes the registered obstacle routers REACHABLE —
+   * mapPathTypeToAlgorithm could only ever produce straight/orthogonal, so
+   * a-star/dijkstra/visibility-graph were registered but unaddressable.
+   */
+  private routerForLink(link: LinkModel): RoutingAlgorithm {
+    // effectiveRouter() folds the legacy derivation in: a link with no explicit
+    // router yields exactly what mapPathTypeToAlgorithm(pathType) always did.
+    const router = typeof link.effectiveRouter === 'function'
+      ? link.effectiveRouter()
+      : this.mapPathTypeToAlgorithm(link.pathType);
+    switch (router) {
+      case 'straight':
+        return 'straight';
+      case 'orthogonal':
+        return 'orthogonal';
+      case 'avoid':
+        return 'a-star';
+      default:
+        // 'manhattan', 'elk', and any custom registration resolve by NAME
+        // against the RoutingEngine registry; an unknown name falls back to
+        // the engine's default inside route(), not here.
+        return router as RoutingAlgorithm;
+    }
+  }
+
+  /**
+   * Card 0: does this link's ROUTER produce orthogonal (axis-aligned) geometry?
+   * The waypoint editor, arrow-angle maths and parallel-lane fan-out all branch
+   * on "is this an elbow route" — which is a property of the router, not of the
+   * pathType shorthand (an explicit manhattan/avoid router routes in elbows even
+   * when the legacy pathType says 'smooth').
+   */
+  private isOrthogonalRouting(link: LinkModel): boolean {
+    const algo = this.routerForLink(link);
+    return algo === 'orthogonal' || algo === 'manhattan' || algo === 'a-star' || algo === 'dijkstra';
+  }
+
+  /**
+   * Card 0: the CONNECTOR expressed in the renderer's legacy vocabulary, so the
+   * existing rendering branches (which all read a pathType-shaped string) apply
+   * unchanged: 'rounded' rides the orthogonal branch (that IS the rounded-corner
+   * code path), 'straight' rides direct. A link with no explicit connector
+   * renders byte-identically to before.
+   */
+  private renderPathType(link: LinkModel): 'direct' | 'orthogonal' | 'smooth' | 'bezier' {
+    const connector = link.effectiveConnector?.() ?? undefined;
+    if (connector === undefined) return link.pathType;
+    switch (connector) {
+      case 'straight': return 'direct';
+      case 'rounded': return 'orthogonal';
+      case 'smooth': return 'smooth';
+      case 'bezier': return 'bezier';
+      default: return link.pathType;
+    }
+  }
+
+  /**
    * Calculate distance between two points
    */
   private distance(a: { x: number; y: number }, b: { x: number; y: number }): number {
@@ -2896,7 +2956,7 @@ export class SVGRenderer implements IRenderer {
         points = routedPath.points;
         pathData = this.convertRoutedPathToSVG(
           routedPath,
-          link.pathType,
+          this.renderPathType(link),   // Card 0: the CONNECTOR draws the polyline
           endpoints.sourceDirection,
           endpoints.targetDirection,
           this.linkOwnNodes(link),
@@ -2930,7 +2990,7 @@ export class SVGRenderer implements IRenderer {
       // ✅ HIGH-PERFORMANCE: For orthogonal paths with manual waypoints
       // Use fast direct orthogonal calculation for waypoint segments
       // Only use routing engine for port connections (first/last segments)
-      if (link.pathType === 'orthogonal' && hasManualWaypoints) {
+      if (this.isOrthogonalRouting(link) && hasManualWaypoints) {
         const routingEngine = this.engine.getRoutingEngine();
         const allRoutedPoints: Array<{ x: number; y: number }> = [];
 
@@ -3008,11 +3068,11 @@ export class SVGRenderer implements IRenderer {
         }
 
         points = allRoutedPoints;
-        pathData = this.generatePathData(allRoutedPoints, link.segments, link.pathType, link.style);
+        pathData = this.generatePathData(allRoutedPoints, link.segments, this.renderPathType(link), link.style);
       } else {
         // For non-orthogonal paths or no waypoints, use the (endpoint-refreshed)
         // points as-is
-        pathData = this.generatePathData(points, link.segments, link.pathType, link.style);
+        pathData = this.generatePathData(points, link.segments, this.renderPathType(link), link.style);
       }
     }
 
@@ -3077,8 +3137,9 @@ export class SVGRenderer implements IRenderer {
     // both misplace the jump and destroy the bezier.
     let linkPathVNode: VNode;
     const jumpConfig = link.style.jumpPoints;
+    const renderTypeForCurve = this.renderPathType(link);
     const isTwoPointCurve =
-      (link.pathType === 'smooth' || link.pathType === 'bezier') && points.length === 2;
+      (renderTypeForCurve === 'smooth' || renderTypeForCurve === 'bezier') && points.length === 2;
     let jumpPathData: string | null = null;
 
     if (jumpConfig?.enabled && (jumpConfig.size ?? 10) > 0 && !isTwoPointCurve && points.length >= 2) {
@@ -3109,7 +3170,7 @@ export class SVGRenderer implements IRenderer {
         const tailReserve = arrowTailStyle && arrowTailStyle.type !== 'none'
           ? this.arrowRenderer.getTipOffset(arrowTailStyle) + 2 : 0;
         jumpPathData = this.buildPathWithJumps(
-          points, intersections, jumpConfig, link.pathType, tailReserve, headReserve, link.style);
+          points, intersections, jumpConfig, this.renderPathType(link), tailReserve, headReserve, link.style);
       }
     }
 
@@ -4340,7 +4401,7 @@ export class SVGRenderer implements IRenderer {
    * @returns Angle in degrees
    */
   private calculateArrowDirection(
-    algorithm: 'straight' | 'orthogonal' | 'elk' | 'a-star' | 'dijkstra' | 'visibility-graph' | 'custom',
+    algorithm: RoutingAlgorithm,
     pathType: string,
     points: Array<{ x: number; y: number }>,
     portSide?: 'left' | 'right' | 'top' | 'bottom'
@@ -4441,8 +4502,8 @@ export class SVGRenderer implements IRenderer {
       }
     }
 
-    // Map path type to algorithm
-    const algorithm = this.mapPathTypeToAlgorithm(link.pathType);
+    // Card 0: the arrow's approach angle depends on the routed GEOMETRY.
+    const algorithm = this.routerForLink(link);
 
     // Calculate arrow direction based on algorithm
     let pointsToUse = points;
@@ -4453,7 +4514,7 @@ export class SVGRenderer implements IRenderer {
 
     const angle = this.calculateArrowDirection(
       algorithm,
-      link.pathType,
+      this.renderPathType(link),   // Card 0: curve-tangent handling follows the CONNECTOR
       pointsToUse,
       portSide
     );
@@ -4737,7 +4798,7 @@ export class SVGRenderer implements IRenderer {
     }
 
     const routingEngine = this.engine.getRoutingEngine();
-    const algorithm = this.mapPathTypeToAlgorithm(link.pathType) || routingEngine.getDefaultAlgorithm();
+    const algorithm = this.routerForLink(link) || routingEngine.getDefaultAlgorithm();
 
     // Collect obstacle rects (all nodes except source and target)
     const currentDiagram = this.engine.getDiagram();
@@ -4857,7 +4918,9 @@ export class SVGRenderer implements IRenderer {
         routedPath.points,
         offset,
         this.bundleNormalFor(link),
-        link.pathType
+        // Card 0: lane separation slides interior segments along their normals
+        // only for elbow GEOMETRY — a property of the router, not the shorthand.
+        this.isOrthogonalRouting(link) ? 'orthogonal' : this.renderPathType(link)
       );
       routedPath = {
         ...routedPath,

@@ -46,12 +46,41 @@ export function linkLabelPosition(
     : 0.5;
 }
 
+/**
+ * Wave 5 (Edge routing) — Card 0. `pathType` conflated two independent choices:
+ * WHERE the line goes (routing geometry) and HOW the polyline is drawn
+ * (connector rendering). They are now two orthogonal, per-link, serializable
+ * settings, with `pathType` kept as the back-compat shorthand that derives both
+ * when the explicit fields are absent.
+ *
+ * Router names resolve against the engine's RoutingEngine registry, so a custom
+ * registered router is addressable per link by its registration name.
+ */
+export type LinkRouterName =
+  | 'straight'      // endpoint-to-endpoint, ignores obstacles
+  | 'orthogonal'    // HVH/VHV elbows honouring port sides
+  | 'manhattan'     // grid search with obstacle avoidance + direction-change cost
+  | 'avoid'         // A* obstacle-avoiding router
+  | 'elk'           // delegate geometry to ELK's edge router
+  | (string & {});  // any custom router registered on the RoutingEngine
+
+export type LinkConnectorName =
+  | 'straight'      // straight segments, hard corners
+  | 'rounded'       // straight segments, cornerRadius arcs (the orthogonal look)
+  | 'smooth'        // catmull-rom-style smoothing through the points
+  | 'bezier'        // cubic bezier between endpoints
+  | (string & {});
+
 export interface SerializedLink extends SerializedEntity {
   sourcePortId: string;
   targetPortId: string;
   sourceNodeId?: string;
   targetNodeId?: string;
   pathType: 'direct' | 'orthogonal' | 'smooth' | 'bezier';
+  /** Card 0: explicit routing geometry; absent = derived from pathType. */
+  router?: LinkRouterName;
+  /** Card 0: explicit polyline rendering; absent = derived from pathType. */
+  connector?: LinkConnectorName;
   points: Point[];
   segments: PathSegment[];
   labels: LinkLabel[];
@@ -69,6 +98,14 @@ export class LinkModel extends DiagramEntity {
 
   // Path
   pathType: 'direct' | 'orthogonal' | 'smooth' | 'bezier' = 'smooth';
+  /**
+   * Card 0: WHERE the line goes. When unset, derived from pathType — see
+   * {@link effectiveRouter}. Setting it does NOT touch pathType, so legacy
+   * consumers keep working; the explicit field simply wins.
+   */
+  router?: LinkRouterName;
+  /** Card 0: HOW the polyline is drawn. Unset = derived from pathType. */
+  connector?: LinkConnectorName;
   points: Point[] = [];
   segments: PathSegment[] = [];
 
@@ -180,6 +217,57 @@ export class LinkModel extends DiagramEntity {
       this.setMetadata('hasManualWaypoints', false);
     }
     this.trackChange('pathType', oldType, pathType);
+  }
+
+  /**
+   * Card 0: set the routing geometry explicitly. Clears the cached route the
+   * same way setPathType does — the old polyline belongs to the old router.
+   */
+  setRouter(router: LinkRouterName | undefined): void {
+    const old = this.router;
+    if (old === router) return;
+    this.router = router;
+    this.points = [];
+    this.segments = [];
+    this.setMetadata('hasManualWaypoints', false);
+    this.trackChange('router', old, router);
+  }
+
+  /** Card 0: set the polyline rendering explicitly. Pure re-render; the routed
+   * points are still valid, so the cache is NOT cleared. */
+  setConnector(connector: LinkConnectorName | undefined): void {
+    const old = this.connector;
+    if (old === connector) return;
+    this.connector = connector;
+    this.trackChange('connector', old, connector);
+  }
+
+  /**
+   * The router actually in force: the explicit field, else derived from
+   * pathType exactly as the renderer always derived it (direct → straight,
+   * orthogonal → orthogonal, smooth/bezier → straight-with-curved-rendering).
+   */
+  effectiveRouter(): LinkRouterName {
+    if (this.router) return this.router;
+    switch (this.pathType) {
+      case 'orthogonal': return 'orthogonal';
+      case 'direct':
+      case 'smooth':
+      case 'bezier':
+      default: return 'straight';
+    }
+  }
+
+  /** The connector actually in force: explicit field, else derived from pathType. */
+  effectiveConnector(): LinkConnectorName {
+    if (this.connector) return this.connector;
+    switch (this.pathType) {
+      case 'direct': return 'straight';
+      case 'orthogonal': return 'rounded';
+      case 'bezier': return 'bezier';
+      case 'smooth':
+      default: return 'smooth';
+    }
   }
 
   /**
@@ -985,6 +1073,10 @@ export class LinkModel extends DiagramEntity {
       sourceNodeId: this.sourceNodeId,
       targetNodeId: this.targetNodeId,
       pathType: this.pathType,
+      // Card 0: only when explicitly set — legacy documents stay byte-identical,
+      // which the round-trip invariant enforces.
+      ...(this.router !== undefined ? { router: this.router } : {}),
+      ...(this.connector !== undefined ? { connector: this.connector } : {}),
       points: this.points.map((p) => ({ ...p })),
       segments: this.segments.map((s) => ({ ...s })),
       labels: this.labels.map((l) => ({ ...l })),
@@ -1011,6 +1103,8 @@ export class LinkModel extends DiagramEntity {
 
     link.sourceNodeId = data.sourceNodeId;
     link.targetNodeId = data.targetNodeId;
+    if (data.router !== undefined) link.router = data.router;
+    if (data.connector !== undefined) link.connector = data.connector;
     link.points = data.points.map((p) => ({ ...p }));
     link.segments = data.segments.map((s) => ({ ...s }));
     link.labels = data.labels.map((l) => ({ ...l }));

@@ -57,6 +57,7 @@ export interface Obstacle extends GeometryRectangle {
 export type RoutingAlgorithm =
   | 'straight'
   | 'orthogonal'
+  | 'manhattan'      // Wave 5 Card 3: grid router with JointJS+-parity knobs
   | 'elk'
   | 'a-star'
   | 'dijkstra'
