@@ -22,6 +22,8 @@ import {
 } from '../themes';
 import { createForeignObject, isForeignObject, getContainerId } from '../vnode/foreign-object';
 import { LruCache } from '../utils/lru-cache';
+// SSR (Card 6): every `document` touch in this file goes through this guard.
+import { hasDocument } from '../platform';
 
 // Import routing types
 import type { RoutedPath, RoutingAlgorithm } from '@grafloria/engine';
@@ -113,7 +115,7 @@ export class SVGRenderer implements IRenderer {
    * and this instance's `<style>` element id — so two diagrams with different
    * themes on one page no longer clobber each other's stylesheet.
    */
-  private readonly instanceId: string = nextInstanceId();
+  private readonly instanceId: string;
 
   /** Unsubscribe from the named-style registry (see the constructor). */
   private unsubscribeStyleRegistry?: () => void;
@@ -177,6 +179,8 @@ export class SVGRenderer implements IRenderer {
   private renderTimestamp = 0;
   private frameCount = 0;
   private fps = 0;
+  /** Handle of the 1 Hz FPS sampler — cleared in dispose() (see startFPSTracking). */
+  private fpsInterval?: ReturnType<typeof setInterval>;
 
   constructor(
     private engine: DiagramEngine,
@@ -190,7 +194,13 @@ export class SVGRenderer implements IRenderer {
       useCSSMode: config.useCSSMode ?? true,
       linkHitAreaWidth: config.linkHitAreaWidth ?? 12,
       smartConnectionPoints: config.smartConnectionPoints ?? false,
+      // Wave 4 (SSR): an explicit scope makes the root <svg> deterministic across
+      // processes; without it the per-process counter would emit a different
+      // `data-grafloria-instance` on the server than on the client.
+      instanceId: config.instanceId ?? '',
     };
+
+    this.instanceId = config.instanceId || nextInstanceId();
 
     // Bounded LRU vnode cache (evicts least-recently-used past maxCacheSize)
     this.vnodeCache = new LruCache<string, VNode>(Math.max(1, this.config.maxCacheSize));
@@ -396,6 +406,29 @@ export class SVGRenderer implements IRenderer {
   }
 
   /**
+   * The complete stylesheet this renderer would inject into `<head>`: the shared
+   * theme-independent rules, the animation rules, and THIS instance's
+   * `--grafloria-*` variable block.
+   *
+   * Needed by the SSR path (Card 6). In CSS mode the theme lives entirely in CSS
+   * variables, so the emitted SVG is theme-INDEPENDENT — which is exactly what
+   * makes hydration cheap, but it also means a server-rendered diagram is
+   * unstyled until some stylesheet arrives. `renderToStaticSVG()` returns this
+   * string so the server can ship it in a `<style>` tag; the client renderer then
+   * re-injects byte-identical content under the same ids, so hydration is still a
+   * no-op visually.
+   */
+  getStyleSheet(): string {
+    return (
+      generateBaseStyleSheet() +
+      '\n\n' +
+      this.generateAnimationCSS() +
+      '\n\n' +
+      this.generateThemeCSS()
+    );
+  }
+
+  /**
    * Put this diagram's scope on a host element.
    *
    * The root `<svg>` carries it automatically, and `foreignObject` content
@@ -454,6 +487,12 @@ export class SVGRenderer implements IRenderer {
     if (this.disposed) return;
 
     this.disposed = true;
+
+    // Stop the FPS sampler (see startFPSTracking — this used to leak).
+    if (this.fpsInterval !== undefined) {
+      clearInterval(this.fpsInterval);
+      this.fpsInterval = undefined;
+    }
 
     // Stop listening for named-style (re)definitions
     this.unsubscribeStyleRegistry?.();
@@ -2662,6 +2701,15 @@ export class SVGRenderer implements IRenderer {
    * the other's stylesheet.
    */
   private injectThemeCSS(): void {
+    // BUGFIX (wave 4, SSR): this reached straight for `document` and threw
+    // `ReferenceError: document is not defined` the moment an SVGRenderer was
+    // constructed in Node — i.e. importing @grafloria/renderer into any SSR/export/
+    // test-in-node path was impossible unless you remembered to pass
+    // `useCSSMode: false`. AnimationService.injectCSS() already guarded; this
+    // did not. Server renders simply carry no <style> block (the VNode tree is
+    // identical either way — the styles are variables, not geometry).
+    if (!hasDocument()) return;
+
     this.ensureBaseStyleSheet();
 
     // Replace this instance's block (setTheme re-injects) — never another's.
@@ -3011,13 +3059,23 @@ export class SVGRenderer implements IRenderer {
    */
   private startFPSTracking(): void {
     this.renderTimestamp = performance.now();
-    setInterval(() => {
+
+    // BUGFIX (wave 4): the interval handle was never stored and never cleared,
+    // so EVERY SVGRenderer ever constructed leaked a 1 Hz timer holding a strong
+    // reference to the renderer (and through it the engine + the whole VNode
+    // cache) for the life of the page — disposing the renderer did not stop it.
+    // In Node it also keeps the event loop alive forever, which is why the
+    // headless/SSR path could not be added without fixing this first.
+    this.fpsInterval = setInterval(() => {
       const now = performance.now();
       const elapsed = (now - this.renderTimestamp) / 1000;
       this.fps = Math.round(this.frameCount / elapsed);
       this.frameCount = 0;
       this.renderTimestamp = now;
     }, 1000);
+
+    // Don't hold a Node process open just to compute FPS nobody is reading.
+    (this.fpsInterval as unknown as { unref?: () => void })?.unref?.();
   }
 
   /**

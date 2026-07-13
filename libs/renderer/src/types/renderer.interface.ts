@@ -218,6 +218,21 @@ export interface SVGRendererConfig {
    * Default: false
    */
   smartConnectionPoints?: boolean;
+
+  /**
+   * Force this renderer's instance scope (`data-grafloria-instance`, and the id of
+   * its `<style>` block) instead of taking the next value from the per-process
+   * counter.
+   *
+   * REQUIRED for SSR hydration (Card 6): the counter starts at 0 in every
+   * process, so a server render is `grafloria-1` while the browser — which may
+   * already have mounted other diagrams — would pick `grafloria-4`. The root `<svg>`
+   * attribute would then differ between the server HTML and the first client
+   * VNode, and the patcher would rewrite it: a flash. `renderToStaticSVG()`
+   * returns the id it used in its snapshot; `createDiagram({ hydrate })` passes
+   * it straight back in here.
+   */
+  instanceId?: string;
 }
 
 /**

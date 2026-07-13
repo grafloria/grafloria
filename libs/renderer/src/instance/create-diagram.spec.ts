@@ -1,0 +1,282 @@
+import { DiagramEngine } from '@grafloria/engine';
+import type { NodeModel } from '@grafloria/engine';
+import { createDiagram } from './create-diagram';
+import type { DiagramInstance } from './create-diagram';
+import { HTML_LAYER_CLASS, ROOT_CLASS, SVG_LAYER_CLASS } from './layers';
+import { DARK_THEME } from '../themes';
+import type { NodeSpec } from './model-input';
+
+const WIDTH = 800;
+const HEIGHT = 600;
+
+/** jsdom lays nothing out — give the container a real rect. */
+function makeContainer(): HTMLElement {
+  const el = document.createElement('div');
+  el.getBoundingClientRect = () =>
+    ({ left: 0, top: 0, width: WIDTH, height: HEIGHT, right: WIDTH, bottom: HEIGHT }) as DOMRect;
+  document.body.appendChild(el);
+  return el;
+}
+
+const NODES: NodeSpec[] = [
+  { id: 'a', position: { x: 100, y: 100 }, size: { width: 120, height: 60 }, label: 'A' },
+  { id: 'b', position: { x: 400, y: 100 }, size: { width: 120, height: 60 }, label: 'B' },
+];
+
+describe('createDiagram — the headless instance', () => {
+  let container: HTMLElement;
+  let diagram: DiagramInstance | undefined;
+
+  beforeEach(() => {
+    container = makeContainer();
+  });
+
+  afterEach(() => {
+    diagram?.dispose();
+    diagram = undefined;
+    container.remove();
+  });
+
+  it('mounts the layer skeleton and paints synchronously on create', () => {
+    diagram = createDiagram(container, { nodes: NODES, edges: [{ source: 'a', target: 'b' }] });
+
+    const root = container.querySelector(`.${ROOT_CLASS}`)!;
+    expect(root).toBeTruthy();
+    expect(root.querySelector(`.${SVG_LAYER_CLASS}`)).toBeTruthy();
+    expect(root.querySelector(`.${HTML_LAYER_CLASS}`)).toBeTruthy();
+
+    // The picture exists BEFORE any rAF has run (no empty first frame).
+    const svg = container.querySelector('svg')!;
+    expect(svg).toBeTruthy();
+    expect(svg.querySelector('[data-vnode-key="node-a"]')).toBeTruthy();
+    expect(svg.querySelector('[data-vnode-key="node-b"]')).toBeTruthy();
+    expect(svg.querySelector('[data-vnode-key="link-edge-0"]')).toBeTruthy();
+  });
+
+  it('emits ready ONCE, on a microtask, so a handler attached right after create still sees it', async () => {
+    diagram = createDiagram(container, { nodes: NODES });
+    const ready = jest.fn();
+
+    // The mount paint already happened (synchronously, inside createDiagram) —
+    // an inline emit would have been unobservable from here.
+    diagram.on('ready', ready);
+    await Promise.resolve();
+    expect(ready).toHaveBeenCalledTimes(1);
+
+    diagram.renderNow();
+    await Promise.resolve();
+    expect(ready).toHaveBeenCalledTimes(1); // one-shot
+  });
+
+  it('gives the root the renderer instance scope', () => {
+    diagram = createDiagram(container, { nodes: NODES, instanceId: 'grafloria-test' });
+    const root = container.querySelector(`.${ROOT_CLASS}`)!;
+    expect(root.getAttribute('data-grafloria-instance')).toBe('grafloria-test');
+    expect(container.querySelector('svg')!.getAttribute('data-grafloria-instance')).toBe(
+      'grafloria-test'
+    );
+  });
+
+  describe('setNodes / setEdges', () => {
+    it('reconciles into the live model and repaints', () => {
+      diagram = createDiagram(container, { nodes: NODES });
+
+      diagram.setNodes([...NODES, { id: 'c', position: { x: 700, y: 300 } }]);
+      diagram.renderNow();
+
+      expect(diagram.getModel().getNodes().map((n) => n.id)).toEqual(['a', 'b', 'c']);
+      expect(container.querySelector('[data-vnode-key="node-c"]')).toBeTruthy();
+    });
+
+    it('REUSES the DOM element of an unchanged node across a setNodes()', () => {
+      diagram = createDiagram(container, { nodes: NODES });
+      const before = container.querySelector('[data-vnode-key="node-a"]');
+
+      diagram.setNodes([...NODES, { id: 'c', position: { x: 700, y: 300 } }]);
+      diagram.renderNow();
+
+      expect(container.querySelector('[data-vnode-key="node-a"]')).toBe(before);
+    });
+
+    it('removes a node that disappeared from the list', () => {
+      diagram = createDiagram(container, { nodes: NODES });
+      diagram.setNodes([NODES[0]]);
+      diagram.renderNow();
+
+      expect(container.querySelector('[data-vnode-key="node-b"]')).toBeNull();
+    });
+  });
+
+  describe('events', () => {
+    it('on() returns an unsubscribe, and off() also works', () => {
+      diagram = createDiagram(container, { nodes: NODES });
+      const handler = jest.fn();
+
+      const off = diagram.on('nodes:change', handler);
+      diagram.setNodes([...NODES, { id: 'c', position: { x: 0, y: 0 } }]);
+      expect(handler).toHaveBeenCalledTimes(1);
+
+      off();
+      diagram.setNodes(NODES);
+      expect(handler).toHaveBeenCalledTimes(1);
+
+      diagram.on('nodes:change', handler);
+      diagram.off('nodes:change', handler);
+      diagram.setNodes([...NODES, { id: 'd', position: { x: 0, y: 0 } }]);
+      expect(handler).toHaveBeenCalledTimes(1);
+    });
+
+    it('emits selection:change when the model selection changes', () => {
+      diagram = createDiagram(container, { nodes: NODES });
+      const handler = jest.fn();
+      diagram.on('selection:change', handler);
+
+      diagram.getModel().selectNode(diagram.getModel().getNode('a')!);
+
+      expect(handler).toHaveBeenCalledWith(
+        expect.objectContaining({ nodes: [expect.objectContaining({ id: 'a' })] })
+      );
+    });
+
+    it('emits viewport:change on camera moves', () => {
+      diagram = createDiagram(container, { nodes: NODES });
+      const handler = jest.fn();
+      diagram.on('viewport:change', handler);
+
+      diagram.viewport.pan(50, 0);
+
+      expect(handler).toHaveBeenCalledWith(
+        expect.objectContaining({ viewport: expect.objectContaining({ x: 50 }) })
+      );
+    });
+  });
+
+  describe('custom (HTML-layer) nodes — blocker #4', () => {
+    it('calls renderCustomNode with a positioned host element', () => {
+      const rendered: Array<{ id: string; el: HTMLElement }> = [];
+      diagram = createDiagram(container, {
+        nodes: [{ id: 'custom', position: { x: 30, y: 40 }, size: { width: 200, height: 80 }, custom: true }],
+        renderCustomNode: (node: NodeModel, el: HTMLElement) => {
+          rendered.push({ id: node.id, el });
+          el.textContent = `custom:${node.id}`;
+        },
+      });
+
+      expect(rendered).toHaveLength(1);
+      expect(rendered[0].id).toBe('custom');
+
+      const host = container.querySelector('[data-node-id="custom"]') as HTMLElement;
+      expect(host).toBe(rendered[0].el);
+      expect(host.textContent).toBe('custom:custom');
+      expect(host.getAttribute('style')).toContain('left:30px');
+      expect(host.getAttribute('style')).toContain('top:40px');
+      expect(host.getAttribute('style')).toContain('width:200px');
+      // The host lives in the HTML layer, not inside the SVG.
+      expect(host.parentElement?.className).toBe(HTML_LAYER_CLASS);
+    });
+
+    it('mounts each custom node exactly once, then only repositions it', () => {
+      const renderCustomNode = jest.fn();
+      diagram = createDiagram(container, {
+        nodes: [{ id: 'c', position: { x: 0, y: 0 }, custom: true }],
+        renderCustomNode,
+      });
+
+      diagram.setNodes([{ id: 'c', position: { x: 90, y: 90 }, custom: true }]);
+      diagram.renderNow();
+
+      expect(renderCustomNode).toHaveBeenCalledTimes(1); // NOT re-created
+      const host = container.querySelector('[data-node-id="c"]') as HTMLElement;
+      expect(host.getAttribute('style')).toContain('left:90px');
+    });
+
+    it('calls removeCustomNode and detaches the host when the node goes away', () => {
+      const removeCustomNode = jest.fn();
+      diagram = createDiagram(container, {
+        nodes: [{ id: 'c', position: { x: 0, y: 0 }, custom: true }],
+        renderCustomNode: () => undefined,
+        removeCustomNode,
+      });
+
+      diagram.setNodes([]);
+      diagram.renderNow();
+
+      expect(removeCustomNode).toHaveBeenCalledWith('c', expect.any(HTMLElement));
+      expect(container.querySelector('[data-node-id="c"]')).toBeNull();
+    });
+
+    it('keeps the HTML layer registered with the camera', () => {
+      diagram = createDiagram(container, {
+        nodes: [{ id: 'c', position: { x: 0, y: 0 }, custom: true }],
+        renderCustomNode: () => undefined,
+      });
+
+      diagram.viewport.setZoom(2);
+      diagram.viewport.pan(10, 20);
+      diagram.renderNow();
+
+      const layer = container.querySelector(`.${HTML_LAYER_CLASS}`) as HTMLElement;
+      expect(layer.getAttribute('style')).toContain('scale(2)');
+      expect(layer.getAttribute('style')).toContain('translate(-20px, -40px)');
+    });
+  });
+
+  it('fitView frames the content', () => {
+    diagram = createDiagram(container, { nodes: NODES, fitView: true });
+
+    const box = diagram.viewport.getViewBox();
+    // Content spans x 100..520, y 100..160 — the camera must contain it.
+    expect(box.x).toBeLessThanOrEqual(100);
+    expect(box.x + box.width).toBeGreaterThanOrEqual(520);
+  });
+
+  it('setTheme repaints through the same renderer instance', () => {
+    diagram = createDiagram(container, { nodes: NODES, instanceId: 'grafloria-theme' });
+    const svgBefore = container.querySelector('svg');
+
+    diagram.setTheme(DARK_THEME);
+    diagram.renderNow();
+
+    // Same root element (a theme swap is a patch, not a remount).
+    expect(container.querySelector('svg')).toBe(svgBefore);
+  });
+
+  describe('dispose', () => {
+    it('removes the DOM, stops listening and is idempotent', () => {
+      const d = createDiagram(container, { nodes: NODES });
+      const handler = jest.fn();
+      d.on('nodes:change', handler);
+
+      d.dispose();
+      d.dispose(); // idempotent
+
+      expect(container.querySelector(`.${ROOT_CLASS}`)).toBeNull();
+      expect(container.children).toHaveLength(0);
+    });
+
+    it('unmounts custom nodes on dispose', () => {
+      const removeCustomNode = jest.fn();
+      const d = createDiagram(container, {
+        nodes: [{ id: 'c', position: { x: 0, y: 0 }, custom: true }],
+        renderCustomNode: () => undefined,
+        removeCustomNode,
+      });
+
+      d.dispose();
+
+      expect(removeCustomNode).toHaveBeenCalledWith('c', expect.any(HTMLElement));
+    });
+
+    it('leaves a CALLER-SUPPLIED engine alive (it is not ours to destroy)', () => {
+      const engine = new DiagramEngine();
+      engine.createDiagram('mine');
+
+      const d = createDiagram(container, { engine, nodes: NODES });
+      d.dispose();
+
+      expect(engine.getDiagram()).toBeTruthy();
+      expect(engine.getDiagram()!.getNodes()).toHaveLength(2);
+      engine.destroy();
+    });
+  });
+});
