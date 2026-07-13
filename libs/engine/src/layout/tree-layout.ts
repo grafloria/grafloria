@@ -196,20 +196,72 @@ function translate(block: Block, dx: number, dy: number): void {
 const overlaps = (a: Block, b: Block): boolean =>
   a.minX < b.maxX && b.minX < a.maxX && a.minY < b.maxY && b.minY < a.maxY;
 
+interface TreeContext {
+  sizes: Map<string, { width: number; height: number }>;
+  children: Map<string, string[]>;
+  branchDirections: Record<string, FlowDirection>;
+  nodeSpacing: number;
+  rankSpacing: number;
+}
+
 /**
- * Lay the subtree rooted at `id` out in direction `dir`, in local coordinates
- * with the root node's top-left at (0, 0).
+ * Lay the whole tree out, bottom-up, WITHOUT RECURSION.
+ *
+ * The natural expression of a tidy tree is recursive, and that is how this
+ * shipped — and it threw `RangeError: Maximum call stack size exceeded` at a
+ * depth of about 1,000. Not a theoretical limit: a long process chain laid out
+ * with `direction: 'LR'` IS a 1,000-deep tree, and a crash is a much worse
+ * failure than an ugly picture.
+ *
+ * So the traversal is an explicit stack. Two iterative passes:
+ *
+ *   1. PRE-ORDER, to resolve each node's effective direction (a node inherits its
+ *      parent's unless `branchDirections` overrides it).
+ *   2. POST-ORDER, to compose each node's block from its children's — which are
+ *      guaranteed to be finished by the time the parent is visited.
+ *
+ * The per-node composition below is unchanged; only the plumbing that reaches it
+ * is. Measured: a 5,000-deep chain now lays out instead of throwing.
  */
-function layoutSubtree(
+function layoutTree(root: string, rootDir: FlowDirection, ctx: TreeContext): Block {
+  // --- pass 1: effective direction, pre-order ---
+  const effectiveDir = new Map<string, FlowDirection>([[root, rootDir]]);
+  const postOrder: string[] = [];
+  const stack: string[] = [root];
+
+  while (stack.length > 0) {
+    const id = stack.pop()!;
+    postOrder.push(id);
+    const dir = effectiveDir.get(id)!;
+    for (const kid of ctx.children.get(id) ?? []) {
+      effectiveDir.set(kid, ctx.branchDirections[kid] ?? dir);
+      stack.push(kid);
+    }
+  }
+  // A reversed pre-order visits every node after all of its descendants, which is
+  // all the composition needs — it is not a true post-order, but the guarantee
+  // ("children first") is identical and it costs one reverse instead of a
+  // second traversal with a visited-flag.
+  postOrder.reverse();
+
+  // --- pass 2: compose blocks, children first ---
+  const blockOf = new Map<string, Block>();
+  for (const id of postOrder) {
+    blockOf.set(id, composeBlock(id, effectiveDir.get(id)!, ctx, blockOf));
+  }
+
+  return blockOf.get(root)!;
+}
+
+/**
+ * Build one node's block from its (already-composed) children's blocks, in local
+ * coordinates with the node's top-left at (0, 0).
+ */
+function composeBlock(
   id: string,
   dir: FlowDirection,
-  ctx: {
-    sizes: Map<string, { width: number; height: number }>;
-    children: Map<string, string[]>;
-    branchDirections: Record<string, FlowDirection>;
-    nodeSpacing: number;
-    rankSpacing: number;
-  }
+  ctx: TreeContext,
+  blockOf: Map<string, Block>
 ): Block {
   const size = ctx.sizes.get(id)!;
   const block: Block = {
@@ -257,7 +309,8 @@ function layoutSubtree(
     if (!members || members.length === 0) continue;
 
     // --- pack this group's child blocks along the side's BREADTH axis ---
-    const childBlocks = members.map((kid) => layoutSubtree(kid, side, ctx));
+    // Already composed (post-order), so this is a lookup, not a descent.
+    const childBlocks = members.map((kid) => blockOf.get(kid)!);
     const vertical = isVertical(side);
 
     const group: Block = {
@@ -391,7 +444,7 @@ export function treeLayout(
 
   const sizes = new Map(inStableOrder(nodes).map((n) => [n.id, nodeSize(n)]));
 
-  const block = layoutSubtree(root, options.branchDirections?.[root] ?? direction, {
+  const block = layoutTree(root, options.branchDirections?.[root] ?? direction, {
     sizes,
     children,
     branchDirections: options.branchDirections ?? {},

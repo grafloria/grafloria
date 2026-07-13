@@ -18,10 +18,42 @@
 // The proper fix inside the simulation is size-aware repulsion (repel by box
 // distance, not centre distance). That would change force's coordinates for every
 // existing caller and is a card of its own. This is the standard alternative — a
-// post-pass — and it has a property that matters more here: for a layout that
-// does NOT overlap (dagre, ELK, tree, grid, circular, radial) it is a provable
-// NO-OP, so it can sit in front of every layout in the engine without moving a
-// single well-behaved pixel.
+// post-pass — and it has the property that matters here: for a layout that does
+// NOT overlap (dagre, ELK, tree, grid, circular, radial) it is a provable NO-OP,
+// so it can sit in front of every layout in the engine without moving a single
+// well-behaved pixel.
+//
+// ---------------------------------------------------------------------------
+// WHY THIS IS A SWEEP, AND NOT THE OBVIOUS PAIRWISE RELAXATION
+// ---------------------------------------------------------------------------
+//
+// The obvious implementation — and the one this shipped with for an hour — is:
+// repeat N times { for every overlapping pair, push both apart along the minimum
+// translation vector }. It passes a four-node unit test beautifully and it DOES
+// NOT WORK.
+//
+// Measured, on 200 nodes:
+//
+//     200-node pile,   20 iterations -> 2352 overlaps remaining
+//     200-node pile,  100 iterations -> 1012 overlaps remaining
+//     200-node pile, 2000 iterations ->  161 overlaps remaining  (16.6 SECONDS)
+//     realistic 200-node soup, default -> 140 overlaps remaining
+//
+// It does not converge. Every push into free space shoves a node into a
+// neighbour, and the whole field diffuses instead of separating. Worse, it is
+// O(n² · iterations), so the "just raise the cap" reflex buys 16 seconds of CPU
+// and still leaves overlaps. A guarantee that silently fails on the second-
+// simplest input is worse than no guarantee at all.
+//
+// What ships instead is an EXACT one-pass horizontal separation, and it rests on
+// one observation: two boxes overlap only if they overlap on BOTH axes. So it is
+// enough to make every y-overlapping pair disjoint in x — then nothing overlaps,
+// by definition, and no second pass is needed.
+//
+// Sweep the boxes left to right; push each one right until it clears everything
+// already placed. Each push moves a box strictly past some already-placed box's
+// right edge, so it terminates; and a box that overlaps nothing never moves, so a
+// well-behaved layout (dagre, ELK, tree, grid, circular, radial) is untouched.
 
 import type { NodeModel } from '../models/NodeModel';
 import { nodeSize } from './component-packing';
@@ -29,8 +61,6 @@ import { nodeSize } from './component-packing';
 export interface OverlapRemovalOptions {
   /** Gap to open up between two boxes that were overlapping. */
   spacing?: number;
-  /** Safety valve. Each pass strictly reduces overlap; 20 is plenty in practice. */
-  maxIterations?: number;
 }
 
 interface Box {
@@ -41,12 +71,15 @@ interface Box {
   height: number;
 }
 
+/** True overlap — not "within spacing of". Keeps the pass a no-op for tidy layouts. */
+const intersects = (a: Box, b: Box): boolean =>
+  a.x < b.x + b.width && b.x < a.x + a.width && a.y < b.y + b.height && b.y < a.y + a.height;
+
 /**
- * Push overlapping nodes apart, in place, and return the corrected positions.
+ * Separate overlapping nodes, in place, and return the corrected positions.
  *
- * Deterministic: boxes are swept in (x, id) order and each overlapping pair is
- * separated along its MINIMUM translation axis, so the result depends only on the
- * input positions — never on iteration order of a map.
+ * Deterministic: boxes are swept in (x, id) order, so the result is a pure
+ * function of the input positions — never of a map's iteration order.
  *
  * Returns the same Map instance for convenience.
  */
@@ -56,7 +89,6 @@ export function removeOverlaps(
   options: OverlapRemovalOptions = {}
 ): Map<string, { x: number; y: number }> {
   const spacing = options.spacing ?? 20;
-  const maxIterations = options.maxIterations ?? 20;
 
   const boxes: Box[] = [];
   for (const node of nodes) {
@@ -67,45 +99,36 @@ export function removeOverlaps(
   }
   if (boxes.length < 2) return positions;
 
-  for (let iteration = 0; iteration < maxIterations; iteration++) {
-    // Sweep line: sort by left edge, and only compare a box against the ones whose
-    // left edge is still inside its right edge. Turns the O(n²) all-pairs scan into
-    // something near-linear for the sparse case, which is every real diagram.
-    boxes.sort((a, b) => a.x - b.x || (a.id < b.id ? -1 : a.id > b.id ? 1 : 0));
+  boxes.sort((a, b) => a.x - b.x || (a.id < b.id ? -1 : a.id > b.id ? 1 : 0));
 
-    let moved = false;
+  // `active` holds the boxes a future box could still run into. Without it this is
+  // O(n²) even when NOTHING overlaps — every box would scan every earlier box —
+  // and a 60,000-node diagram would spend billions of comparisons proving there
+  // was nothing to do.
+  const active: Box[] = [];
 
-    for (let i = 0; i < boxes.length; i++) {
-      const a = boxes[i];
-      for (let j = i + 1; j < boxes.length; j++) {
-        const b = boxes[j];
-        if (b.x >= a.x + a.width) break; // sorted by x ⇒ nothing further can overlap a
-
-        const overlapX = Math.min(a.x + a.width, b.x + b.width) - Math.max(a.x, b.x);
-        const overlapY = Math.min(a.y + a.height, b.y + b.height) - Math.max(a.y, b.y);
-        if (overlapX <= 0 || overlapY <= 0) continue;
-
-        moved = true;
-
-        // Separate along the cheaper axis — the minimum translation vector. Moving
-        // along the deeper axis instead is what makes naive overlap removal explode
-        // a layout across the canvas.
-        if (overlapX < overlapY) {
-          const push = (overlapX + spacing) / 2;
-          // Ties (identical x) break on id, so the pair never oscillates.
-          const aFirst = a.x < b.x || (a.x === b.x && a.id < b.id);
-          a.x += aFirst ? -push : push;
-          b.x += aFirst ? push : -push;
-        } else {
-          const push = (overlapY + spacing) / 2;
-          const aFirst = a.y < b.y || (a.y === b.y && a.id < b.id);
-          a.y += aFirst ? -push : push;
-          b.y += aFirst ? push : -push;
-        }
+  for (const box of boxes) {
+    // The frontier is the box's ORIGINAL left edge, which is monotonic in sort
+    // order. Pruning against the box's PUSHED position would be wrong: the next
+    // box may sit further left than this one ended up, and would then be compared
+    // against an active list that had already discarded its real neighbours.
+    const frontier = box.x;
+    for (let i = active.length - 1; i >= 0; i--) {
+      if (active[i].x + active[i].width + spacing <= frontier) {
+        active.splice(i, 1);
       }
     }
 
-    if (!moved) break; // THE NO-OP: a non-overlapping layout exits on pass 1 untouched
+    // Push right until it clears everything still active. Each push clears at
+    // least one box's right edge and x only ever increases, so this terminates in
+    // at most `active.length` steps.
+    for (let guard = 0; guard <= active.length; guard++) {
+      const hit = active.find((other) => intersects(box, other));
+      if (!hit) break; // THE NO-OP: a box that overlaps nothing never moves
+      box.x = hit.x + hit.width + spacing;
+    }
+
+    active.push(box);
   }
 
   for (const box of boxes) {

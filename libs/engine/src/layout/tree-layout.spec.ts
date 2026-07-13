@@ -379,6 +379,24 @@ describe('Card 2 — TREE: graphs that are not tidy trees', () => {
     expect(overlaps(nodes, result.nodePositions)).toEqual([]);
   });
 
+  it('A DEEP CHAIN DOES NOT BLOW THE STACK', () => {
+    // The recursive tidy-tree this shipped with threw `RangeError: Maximum call
+    // stack size exceeded` at a depth of ~1,000. That is not a theoretical input:
+    // a 5,000-step process flow laid out with direction 'LR' IS a 5,000-deep tree,
+    // and crashing is a much worse failure than an ugly picture. The traversal is
+    // an explicit stack now.
+    const depth = 5000;
+    const nodes = Array.from({ length: depth }, (_, i) => makeNode(`n${String(i).padStart(6, '0')}`));
+    const links = Array.from({ length: depth - 1 }, (_, i) =>
+      makeLink(`n${String(i).padStart(6, '0')}`, `n${String(i + 1).padStart(6, '0')}`)
+    );
+
+    const result = treeLayout(nodes, links, { direction: 'LR' });
+
+    expect(result.nodePositions.size).toBe(depth);
+    expect(result.metadata?.['depth']).toBe(depth - 1);
+  });
+
   it('a single node lays out at the origin', () => {
     const result = treeLayout([makeNode('only')], [], {});
     expect(result.nodePositions.get('only')).toEqual({ x: 0, y: 0 });

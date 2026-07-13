@@ -326,15 +326,22 @@ export function radialLayout(
     }
   }
 
+  // A BFS order is a valid topological order of the BFS tree, so walking it
+  // BACKWARDS visits every node after its descendants. That gives leaf counts and
+  // wedge assignment without recursion — a 1,000-deep chain is a plausible graph
+  // and a RangeError is a much worse failure than an ugly picture.
+  const bfsOrder = [...depth.keys()];
+
   // Leaf counts drive the wedge widths.
   const leaves = new Map<string, number>();
-  const countLeaves = (id: string): number => {
+  for (let i = bfsOrder.length - 1; i >= 0; i--) {
+    const id = bfsOrder[i];
     const kids = children.get(id) ?? [];
-    const total = kids.length === 0 ? 1 : kids.reduce((sum, kid) => sum + countLeaves(kid), 0);
-    leaves.set(id, total);
-    return total;
-  };
-  countLeaves(root);
+    leaves.set(
+      id,
+      kids.length === 0 ? 1 : kids.reduce((sum, kid) => sum + (leaves.get(kid) ?? 1), 0)
+    );
+  }
 
   // Ring radii: monotone in depth, and wide enough for what sits on them.
   const perDepth = new Map<number, NodeModel[]>();
@@ -358,21 +365,28 @@ export function radialLayout(
     previous = radius + tallest / 2;
   }
 
-  // Wedge allocation: a node's children split its slice by leaf count.
-  const angles = new Map<string, number>([[root, 0]]);
-  const assign = (id: string, start: number, end: number): void => {
+  // Wedge allocation: a node's children split its slice by leaf count. Pre-order,
+  // on an explicit stack, for the same reason as above.
+  const angles = new Map<string, number>();
+  const wedges: Array<{ id: string; start: number; end: number }> = [
+    { id: root, start: -Math.PI / 2, end: -Math.PI / 2 + 2 * Math.PI },
+  ];
+
+  while (wedges.length > 0) {
+    const { id, start, end } = wedges.pop()!;
     angles.set(id, (start + end) / 2);
+
     const kids = children.get(id) ?? [];
-    if (kids.length === 0) return;
+    if (kids.length === 0) continue;
+
     const total = kids.reduce((sum, kid) => sum + (leaves.get(kid) ?? 1), 0);
     let cursor = start;
     for (const kid of kids) {
       const share = ((leaves.get(kid) ?? 1) / total) * (end - start);
-      assign(kid, cursor, cursor + share);
+      wedges.push({ id: kid, start: cursor, end: cursor + share });
       cursor += share;
     }
-  };
-  assign(root, -Math.PI / 2, -Math.PI / 2 + 2 * Math.PI);
+  }
 
   const nodePositions = new Map<string, { x: number; y: number }>();
   for (const node of ordered) {
