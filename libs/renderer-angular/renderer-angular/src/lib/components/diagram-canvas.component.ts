@@ -61,7 +61,6 @@ import {
   LinkToolbarAction,
   createDefaultLinkActions,
 } from './link-toolbar';
-import type { LinkModel } from '@grafloria/engine';
 
 /**
  * DiagramCanvasComponent
