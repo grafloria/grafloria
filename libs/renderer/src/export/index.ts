@@ -9,7 +9,9 @@
 //   serializeVNode(vnode, opts) the VNode → XML primitive underneath it
 //   resolveRasterBackend(…)     the PNG/JPEG/WebP seam (browser canvas by default)
 //   SVGRenderer.export(fmt)     the wired IRenderer.export contract
+//   vnodeBounds(root)           the content-tight bbox of what is actually DRAWN
 export * from './style-flattener';
 export * from './vnode-serializer';
+export * from './bounds';
 export * from './svg-export';
 export * from './raster';
