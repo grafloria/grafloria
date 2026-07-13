@@ -4,6 +4,8 @@ import {
   LinkModel as LinkModelCtor,
   AddLinkCommand,
   isConnectionAllowedByGroup,
+  // Wave 6: THE connection validator. This module used to own a rival copy.
+  evaluatePortConnection,
 } from '@grafloria/engine';
 import type { Rectangle } from '../types/geometry.types';
 // Wave 6: THE port-position function — what the renderer actually draws.
@@ -108,9 +110,23 @@ export interface ProximityCandidate {
  * Can ports `a` (on `nodeA`) and `b` (on `nodeB`) be linked?
  *
  * The ONE rule shared by proximity connect (Card 6) and keyboard connect
- * (Card 7), so the two can never disagree about what is legal: different nodes,
- * both connectable, direction-compatible (`output`↔`input`, or a `bi` port on
- * either side), allowed by the connection groups, and not already wired.
+ * (Card 7), so the two can never disagree about what is legal.
+ *
+ * Wave 6: it no longer OWNS that rule — it delegates to
+ * `evaluatePortConnection`, the engine-side validator the connection drag also
+ * runs through. Before wave 6 this function was one of THREE disagreeing copies
+ * (the others: `PortModel.canConnectTo` and
+ * `ConnectionStateManager.isValidConnection`), and the drift was real: this one
+ * rejected duplicates and honoured `node.behavior.connectable`, the drag checked
+ * neither; the drag ignored `maxConnections`, this one never heard of it. A port
+ * you could legally drag to was one the magnet refused to snap to.
+ *
+ * `rejectDuplicatesByDefault` preserves this call site's own historical stance:
+ * auto-linking a duplicate because a node drifted near is never what the user
+ * meant, whatever the port's `allowDuplicateLinks` says.
+ *
+ * Note the argument order: `a` is the SOURCE. The rule is directional, and the
+ * proximity search calls it once per orientation.
  */
 export function canConnectPorts(
   a: PortModel,
@@ -120,19 +136,13 @@ export function canConnectPorts(
   engine: DiagramEngine,
   diagram: { getLinks(): LinkModel[] }
 ): boolean {
-  if (nodeA.id === nodeB.id) return false;
-  if (nodeA.behavior?.connectable === false || nodeB.behavior?.connectable === false) return false;
-
-  const isBi = (p: PortModel) => p.type === 'bi';
-  if (!isBi(a) && !isBi(b) && a.type === b.type) return false;
-  if (!isConnectionAllowedByGroup(a, b, engine)) return false;
-
-  // Already wired (either direction) → nothing to add.
-  return !diagram.getLinks().some(
-    (link: LinkModel) =>
-      (link.sourcePortId === a.id && link.targetPortId === b.id) ||
-      (link.sourcePortId === b.id && link.targetPortId === a.id)
-  );
+  return evaluatePortConnection(a, b, {
+    sourceNode: nodeA,
+    targetNode: nodeB,
+    links: diagram.getLinks(),
+    rejectDuplicatesByDefault: true,
+    validators: [(source, target) => isConnectionAllowedByGroup(source, target, engine)],
+  }).ok;
 }
 
 const edgesOf = (r: Rectangle) => ({
@@ -600,8 +610,18 @@ export class SnapController {
       const hit = this.findPortMagnet(engine, from.x, from.y, {
         excludeNodeId: node.id,
         radius: reach,
-        filter: (candidate, owner) =>
-          this.canConnect(myPort, candidate, node, owner, engine, diagram),
+        // ORIENT FIRST, then validate. The rule is directional (wave 6:
+        // `isConnectableStart` gates the source end, `isConnectableEnd` the
+        // target end), so asking "may myPort connect to candidate?" when the link
+        // will actually be built candidate→myPort asks the wrong question — and
+        // would reject a perfectly legal output→input link the moment an author
+        // marked their inputs `isConnectableStart: false`.
+        filter: (candidate, owner) => {
+          const forward = myPort.type === 'output' || (myPort.type === 'bi' && candidate.type === 'input');
+          return forward
+            ? this.canConnect(myPort, candidate, node, owner, engine, diagram)
+            : this.canConnect(candidate, myPort, owner, node, engine, diagram);
+        },
       });
       if (!hit) continue;
 

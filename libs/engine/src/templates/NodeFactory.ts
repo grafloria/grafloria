@@ -15,7 +15,10 @@
  * - Creates ports following port configuration
  */
 
-import { NodeTemplate, NodeStructureDefinition } from './NodeTemplate';
+import { NodeTemplate, NodeStructureDefinition, PortGroupSpec, PortRenderingConfig } from './NodeTemplate';
+// Wave 6 (Card 3): named port groups.
+import { setNodePortGroups } from '../ports/port-groups';
+import type { PortGroupDefinition } from '../ports/port-types';
 import { TemplateRegistry } from './TemplateRegistry';
 import { DiagramModel } from '../models/DiagramModel';
 import { NodeModel } from '../models/NodeModel';
@@ -200,6 +203,16 @@ export class NodeFactory {
       return;
     }
 
+    // Wave 6 (Card 3): NAMED GROUPS. The four-side model below can express
+    // "a port on the left" and nothing else — not "eight typed, labelled inputs
+    // down the left edge", which is what a real node editor is made of. A
+    // template that declares `groups` gets the full port vocabulary; one that
+    // doesn't falls through to the legacy sides, unchanged.
+    if (structure.ports.groups?.length) {
+      this.createGroupedPorts(node, structure.ports.groups, structure.ports.rendering);
+      return;
+    }
+
     // If custom port configuration provided, clear defaults first
     const hasCustomConfig =
       structure.ports.top ||
@@ -236,6 +249,54 @@ export class NodeFactory {
 
           node.addPort(port);
         }
+      });
+    }
+  }
+
+  /**
+   * Wave 6 (Card 3): build a node's ports from NAMED GROUPS.
+   *
+   * The group definitions are stashed on the node (so they serialize with the
+   * diagram and `resolvePortConfig` can find them), and each member is created
+   * declaring only what it OVERRIDES — side, shape, label config, gating and
+   * data type all flow down from the group.
+   */
+  private createGroupedPorts(
+    node: NodeModel,
+    groups: PortGroupSpec[],
+    rendering?: PortRenderingConfig
+  ): void {
+    node.ports.clear();
+
+    const definitions: Record<string, PortGroupDefinition> = {};
+    for (const group of groups) {
+      definitions[group.id] = group;
+    }
+    setNodePortGroups(node, definitions);
+
+    for (const group of groups) {
+      const members = group.ports ?? [];
+      members.forEach((member, index) => {
+        const port = new PortModel({
+          id: member.id,
+          // The group's `type` is the default; a member may still override it.
+          type: member.type ?? group.type ?? 'bi',
+          index: member.index ?? index,
+          group: group.id,
+          // Only what the MEMBER declares — everything else resolves from the
+          // group at read time, so changing the group changes every member.
+          ...(member.side ? { side: member.side } : {}),
+          ...(member.label ? { label: member.label } : {}),
+          ...(member.shape ? { shape: member.shape } : {}),
+          ...(member.dataType ? { dataType: member.dataType } : {}),
+          ...(member.style ? { style: member.style } : {}),
+        } as any);
+
+        if (rendering) {
+          (port as any).renderingConfig = rendering;
+        }
+
+        node.addPort(port);
       });
     }
   }

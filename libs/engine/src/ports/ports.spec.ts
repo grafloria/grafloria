@@ -9,6 +9,9 @@ import { DiagramModel } from '../models/DiagramModel';
 import { LinkModel } from '../models/LinkModel';
 import { NodeModel } from '../models/NodeModel';
 import { PortModel } from '../models/PortModel';
+import { EventBus } from '../events/EventBus';
+import { NodeFactory } from '../templates/NodeFactory';
+import { TemplateRegistry } from '../templates/TemplateRegistry';
 import {
   DEFAULT_PORT_GATING,
   buildDynamicPortCommands,
@@ -146,6 +149,115 @@ describe('port groups (Card 3)', () => {
     node.addPort(port);
 
     expect(resolvePortConfig(port, node).style).toEqual({ fill: 'blue', stroke: 'black' });
+  });
+});
+
+describe('port groups from a TEMPLATE (Card 3 replaces the four-side model)', () => {
+  it('builds a whole labelled, typed input column that the old PortsConfig could not express', () => {
+    const diagram = new DiagramModel();
+    const registry = new TemplateRegistry(new EventBus());
+    registry.register({
+      id: 'adder',
+      name: 'Adder',
+      version: '1.0.0',
+      structure: {
+        type: 'rect',
+        size: { width: 140, height: 120 },
+        ports: {
+          groups: [
+            {
+              id: 'in',
+              side: 'left',
+              type: 'input',
+              layout: { strategy: 'sideLinear', args: { padding: 10 } },
+              shape: { shape: 'square', size: 9 },
+              label: { layout: 'outside', offset: 6 },
+              gating: { toMaxLinks: 1, isConnectableStart: false },
+              dataType: 'number',
+              ports: [
+                { id: 'a', label: { text: 'a' } },
+                { id: 'b', label: { text: 'b' } },
+                { id: 'c', label: { text: 'c' }, dataType: 'int' }, // overrides only this
+              ],
+            },
+            {
+              id: 'out',
+              side: 'right',
+              type: 'output',
+              dataType: 'number',
+              ports: [{ id: 'sum', label: { text: 'sum' } }],
+            },
+          ],
+        },
+      },
+    } as any);
+
+    const node = new NodeFactory(registry, diagram).createFromTemplate('adder', {}, { x: 0, y: 0 });
+
+    expect(node.getPorts()).toHaveLength(4); // the template's ports REPLACE the defaults
+
+    const a = node.getPort('a')!;
+    const resolvedA = resolvePortConfig(a, node);
+    expect(resolvedA.side).toBe('left');
+    expect(a.type).toBe('input'); // the group's `type` is the member's default
+    expect(resolvedA.shape).toEqual({ shape: 'square', size: 9 });
+    expect(resolvedA.label).toEqual({ text: 'a', layout: 'outside', offset: 6 });
+    expect(resolvedA.gating.toMaxLinks).toBe(1);
+    expect(resolvedA.gating.isConnectableStart).toBe(false);
+    expect(resolvedA.dataType).toBe('number');
+
+    // The member that overrode its dataType keeps everything ELSE from the group.
+    const resolvedC = resolvePortConfig(node.getPort('c')!, node);
+    expect(resolvedC.dataType).toBe('int');
+    expect(resolvedC.shape).toEqual({ shape: 'square', size: 9 });
+    expect(resolvedC.side).toBe('left');
+
+    const resolvedSum = resolvePortConfig(node.getPort('sum')!, node);
+    expect(resolvedSum.side).toBe('right');
+    expect(node.getPort('sum')!.type).toBe('output');
+
+    // The gating is LIVE, not decorative: the group's inputs may not START a link.
+    // (Target a DIFFERENT node — otherwise `self-link` fires first, correctly.)
+    const other = makeNode('other');
+    const otherIn = makePort('other-in', { type: 'input' });
+    other.addPort(otherIn);
+
+    expect(
+      evaluatePortConnection(a, otherIn, { sourceNode: node, targetNode: other }).reason
+    ).toBe('not-connectable-start');
+
+    // …and its incoming cap is real too.
+    const feeder = makeNode('feeder');
+    const feedOut = makePort('feed-out', { type: 'output', dataType: 'number' });
+    feeder.addPort(feedOut);
+
+    expect(evaluatePortConnection(feedOut, a, { sourceNode: feeder, targetNode: node }).ok).toBe(true);
+    a.addConnection('some-link', 'target'); // now at toMaxLinks: 1
+    expect(evaluatePortConnection(feedOut, a, { sourceNode: feeder, targetNode: node }).reason).toBe(
+      'to-max-links'
+    );
+  });
+
+  it('a template with no groups still uses the legacy four-side config, unchanged', () => {
+    const diagram = new DiagramModel();
+    const registry = new TemplateRegistry(new EventBus());
+    registry.register({
+      id: 'legacy',
+      name: 'Legacy',
+      version: '1.0.0',
+      structure: {
+        type: 'rect',
+        size: { width: 100, height: 60 },
+        ports: { left: { enabled: true, type: 'input' }, right: { enabled: true, type: 'output' } },
+      },
+    } as any);
+
+    const node = new NodeFactory(registry, diagram).createFromTemplate('legacy', {}, { x: 0, y: 0 });
+    const ports = node.getPorts();
+
+    expect(ports).toHaveLength(2);
+    expect(ports.map((p) => p.alignment.side).sort()).toEqual(['left', 'right']);
+    expect(ports.every((p) => p.group === undefined)).toBe(true);
   });
 });
 

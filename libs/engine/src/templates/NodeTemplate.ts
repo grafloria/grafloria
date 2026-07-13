@@ -13,6 +13,8 @@
 import type { PositioningMode } from '../models/NodeModel';
 import type { ValidationResult } from '../types/model.types';
 import type { ConnectionValidator } from '../state/ConnectionStateManager';
+// Wave 6 (Ports & connections): the declarative port vocabulary.
+import type { PortGroupDefinition, PortLabelSpec, PortShapeSpec } from '../ports/port-types';
 import type {
   FlexboxLayoutConfig,
   GridLayoutConfig,
@@ -188,10 +190,40 @@ export interface DragHandlerConfig {
 /**
  * Ports configuration
  */
+/**
+ * Wave 6 (Card 3): one member of a named port group. It declares its id and
+ * ONLY the fields that differ from the group — side, shape, label config,
+ * gating and data type all inherit.
+ */
+export interface PortGroupMemberSpec {
+  id: string;
+  index?: number;
+  type?: 'input' | 'output' | 'bi';
+  side?: 'left' | 'right' | 'top' | 'bottom';
+  label?: PortLabelSpec;
+  shape?: PortShapeSpec;
+  dataType?: string;
+  style?: Record<string, unknown>;
+}
+
+/**
+ * A named port group on a template, plus its members.
+ *
+ * This is what replaces the four `top`/`right`/`bottom`/`left` slots below —
+ * those could say "there is a port on the left" and nothing more, so the shape
+ * every real node editor needs ("eight typed, labelled inputs down the left
+ * edge, each capped at one incoming link") was simply not expressible.
+ */
+export interface PortGroupSpec extends PortGroupDefinition {
+  ports?: PortGroupMemberSpec[];
+}
+
 export interface PortsConfig {
   enabled?: boolean;
   defaultVisibility?: PortVisibility;
   rendering?: PortRenderingConfig;
+  /** Wave 6 (Card 3). When present, the four side slots below are not consulted. */
+  groups?: PortGroupSpec[];
   top?: PortConfig;
   right?: PortConfig;
   bottom?: PortConfig;
