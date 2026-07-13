@@ -78,12 +78,49 @@ export interface UnifiedLayoutOptions extends Partial<LayoutOptions> {
 
   /** Space between ranks/layers. */
   rankSpacing?: number;
+
+  // -------------------------------------------------------------------------
+  // Wave 7 — Card 4: nested container / subgraph layout.
+  // -------------------------------------------------------------------------
+
+  /**
+   * Lay groups out as CONTAINERS: each group's contents are arranged
+   * recursively (deepest first), the container is auto-sized to fit them, and
+   * the parent level then arranges containers as COMPOUND NODES — with edges
+   * that cross a container boundary induced onto the compound nodes so the
+   * containers land next to the things they actually connect to.
+   *
+   * Defaults to TRUE whenever the diagram has groups, because the flat path is
+   * not merely less good on a grouped diagram — it is WRONG: it interleaves
+   * members of different groups and never updates a single group frame, so the
+   * containers stay behind, pointing at where their members used to be.
+   * Pass `nested: false` for the old flat behaviour.
+   */
+  nested?: boolean;
+
+  /** Fallback inner padding for containers that carry no `padding` of their own. */
+  containerPadding?: number;
+
+  /** Gap between compound units when a level falls back to the built-in grid. */
+  groupSpacing?: number;
 }
 
 /** What a registered layout engine must be able to do. */
 export interface RegisteredLayout {
   readonly name: string;
   apply(diagram: DiagramModel, options: UnifiedLayoutOptions): Promise<LayoutResult>;
+
+  /**
+   * Wave 7 Card 4: the underlying node/link adapter, when the engine has one.
+   *
+   * Nested layout arranges the contents of ONE container at a time, so it needs
+   * an engine it can hand a node/link SUBSET to — `RegisteredLayout.apply()`
+   * takes a whole DiagramModel and cannot express "just these nodes". Exposing
+   * the adapter is what lets a container be laid out by any registered
+   * adapter-backed engine (including one an extension registered), instead of
+   * the closed dagre|elk pair the wave-5 service hard-coded.
+   */
+  readonly adapter?: LayoutAdapter;
 }
 
 /** How a layout engine reports back. */
@@ -127,6 +164,23 @@ export class LayoutRegistry {
   names(): string[] {
     return [...this.engines.keys()].sort();
   }
+
+  /**
+   * Wave 7 Card 4: name → adapter, for every registered engine that exposes one.
+   *
+   * This is what nested (compound) layout resolves a container's algorithm
+   * against — so `group.subgraphLayout = { algorithm: 'force' }` works, and so
+   * does an algorithm an extension registered, rather than only the hard-coded
+   * dagre|elk pair.
+   */
+  adapters(): Record<string, LayoutAdapter> {
+    const out: Record<string, LayoutAdapter> = {};
+    for (const name of this.names()) {
+      const adapter = this.engines.get(name)?.adapter;
+      if (adapter) out[name] = adapter;
+    }
+    return out;
+  }
 }
 
 /**
@@ -149,6 +203,7 @@ export class LayoutRegistry {
 export function fromAdapter(adapter: LayoutAdapter): RegisteredLayout {
   return {
     name: adapter.name,
+    adapter,
     async apply(diagram: DiagramModel, options: UnifiedLayoutOptions): Promise<LayoutResult> {
       const nodes = [...diagram.getNodes()].sort((a, b) => (a.id < b.id ? -1 : a.id > b.id ? 1 : 0));
       const links = [...diagram.getLinks()].sort((a, b) => (a.id < b.id ? -1 : a.id > b.id ? 1 : 0));
@@ -165,8 +220,16 @@ export function fromAdapter(adapter: LayoutAdapter): RegisteredLayout {
  * `nodesep`, `ranksep`; ELK says `elk.direction` with words instead of letters.
  * Making callers know which engine they are talking to is exactly the "you cannot
  * be best-in-class with inconsistent options" problem Card 0 names.
+ *
+ * Exported for Card 4: nested layout runs a DIFFERENT engine per container
+ * (`group.subgraphLayout.algorithm`), so it has to translate the one vocabulary
+ * per level rather than once up front. Reusing this is what stops the nested
+ * path from quietly forking the options schema.
  */
-function translateOptions(engine: string, options: UnifiedLayoutOptions): Partial<LayoutOptions> {
+export function translateOptions(
+  engine: string,
+  options: UnifiedLayoutOptions
+): Partial<LayoutOptions> {
   const out: Record<string, unknown> = { ...options };
   out['seed'] = options.seed ?? DEFAULT_LAYOUT_SEED;
 

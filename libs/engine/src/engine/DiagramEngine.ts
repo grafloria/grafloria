@@ -65,6 +65,8 @@ import {
   type UnifiedLayoutResult,
 } from '../layout/layout-registry';
 import { DEFAULT_LAYOUT_SEED } from '../layout/rng';
+// Wave 7 — Card 4: nested container / subgraph layout.
+import { CompoundLayoutService } from '../layout/CompoundLayoutService';
 import type { LayoutType, LayoutConfig, FlexItemConfig, GridItemConfig } from '../types/layout.types'; // Phase 1.7
 
 export interface DiagramEngineConfig {
@@ -2179,6 +2181,41 @@ export class DiagramEngine {
     }
 
     const seed = options.seed ?? DEFAULT_LAYOUT_SEED;
+
+    // Wave 7 Card 4 — nested container layout. On by default whenever the
+    // diagram has containers, because the flat path is not just worse there, it
+    // is WRONG: it interleaves members of different groups and never updates a
+    // single group frame, so every container is left behind pointing at where
+    // its members used to be. Opt out with `nested: false`.
+    const hasGroups = this.diagram.getGroups().length > 0;
+    if ((options.nested ?? hasGroups) && hasGroups) {
+      const result = await new CompoundLayoutService(this.diagram, {
+        defaultAlgorithm: name,
+        adapters: this.getLayoutRegistry().adapters(),
+        layoutTopLevel: true,
+        defaultPadding: options.containerPadding,
+        gridGap: options.groupSpacing,
+        layoutOptions: { ...options, seed },
+      }).layout();
+
+      // CompoundLayoutService commits through setPosition/setFrame as it goes
+      // (it has to — each level reads the geometry the level below produced).
+      return {
+        nodePositions: result.nodePositions,
+        bounds: result.bounds,
+        metadata: {
+          algorithm: name,
+          executionTime: 0,
+          nested: true,
+          containersLaidOut: result.laidOut,
+          containersSkipped: result.skipped,
+          containersCollapsed: result.collapsed,
+        },
+        algorithm: name,
+        seed,
+      };
+    }
+
     const result = await engine.apply(this.diagram, { ...options, seed });
 
     // Commit the positions. setPosition (not a raw write) so the spatial index,
