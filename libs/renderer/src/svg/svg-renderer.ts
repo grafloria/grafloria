@@ -5,8 +5,10 @@ import { linkLabelPosition, DiagramSerializer } from '@grafloria/engine';
 import type { DiagramDocumentEnvelope } from '@grafloria/engine';
 // Wave 5 Card 4: corridor separation for DIFFERENT-pair edges sharing a channel.
 import { computeChannelNudges, applyChannelNudges } from './channel-nudging';
-// Wave 8 (Performance & scale) — Card 6: incremental routing.
+// Wave 8 (Performance & scale) — Card 6: incremental routing, and the off-thread
+// global solver the render loop now actually drives.
 import { RouteMemo, coalesce, inflate, ROUTE_INFLUENCE_PAD, type Rect } from './route-memo';
+import { RouteSolverBridge, type RouteSolverStats } from './route-solver-bridge';
 import type {
   IRenderer,
   PerformanceMetrics,
@@ -87,7 +89,7 @@ import { LruCache } from '../utils/lru-cache';
 import { hasDocument } from '../platform';
 
 // Import routing types
-import type { RoutedPath, RoutingAlgorithm } from '@grafloria/engine';
+import type { RoutedPath, RoutingAlgorithm, SolverEdge } from '@grafloria/engine';
 
 // Phase 3.2: Shape-aware port positioning
 // Wave 6 (Ports & connections): the port seam — group resolution (Card 3), the
@@ -401,6 +403,18 @@ export class SVGRenderer implements IRenderer {
   /** Set true to force the next frame to re-route everything (first frame, config changes). */
   private routeMemoDirty = true;
 
+  // Wave 8 — Card 6: the OFF-THREAD global solver (opt-in; see config.globalRouting).
+  // Created lazily so a renderer that never asks for it never constructs a host.
+  private solverBridge: RouteSolverBridge | null = null;
+  /**
+   * Monotonic id of "the world the obstacles describe". Bumped whenever a node
+   * rect or the group state changes. This is what lets an ASYNC solver answer be
+   * matched to the world it was computed for — and discarded if that world is
+   * gone. Without it, a solve that lands one frame late paints links through
+   * nodes that have since moved.
+   */
+  private worldVersion = 0;
+
   // Wave 6 — Card 5: per-frame multi-link spread lanes, keyed by PORT id. Every
   // link on a spreading port needs to know how many siblings it shares that port
   // with, so the lane assignment is computed once per port per frame rather than
@@ -485,6 +499,14 @@ export class SVGRenderer implements IRenderer {
       // Wave 5 (Edge routing)
       channelNudging: config.channelNudging ?? true,
       jumpOwnership: config.jumpOwnership ?? 'both',
+      // Wave 8 (Performance & scale) — Card 6: the global, off-thread route
+      // solver. OFF by default: its geometry is deliberately different from the
+      // one-at-a-time router, so switching it on globally would move every route
+      // in every existing diagram.
+      globalRouting: config.globalRouting ?? false,
+      routeSolverPort: config.routeSolverPort,
+      routeSolverOptions: config.routeSolverOptions,
+      onRoutesRefined: config.onRoutesRefined,
       // Wave 4 (Styling). `colorMode` is OPT-IN: unset means "use the theme I was
       // given and watch nothing", which is exactly the pre-Wave-4 behaviour.
       colorMode: config.colorMode ?? undefined,
@@ -1446,6 +1468,8 @@ export class SVGRenderer implements IRenderer {
     // per node — on a 10k diagram that is real memory to hand back.)
     this.routeMemo.clear();
     this.frameObstacleCache = null;
+    this.solverBridge?.dispose();
+    this.solverBridge = null;
 
     // Stop the FPS sampler. It used to run FOREVER: `startFPSTracking` opened a
     // 1s interval in the constructor that nothing ever cleared, so every disposed
@@ -1588,6 +1612,12 @@ export class SVGRenderer implements IRenderer {
       }
     }
 
+    // Wave 8 — Card 6: the OFF-THREAD global solver. Runs after the synchronous
+    // routes are in hand, never instead of them: `render()` cannot await a
+    // worker, so the sync routes are what gets painted THIS frame, and the
+    // solver's better answer is adopted on a later one. Opt-in.
+    this.applyGlobalSolver(sortedLinks);
+
     // Wave 5 — Card 4: corridor separation. Runs AFTER routing (it needs the
     // final polylines) and BEFORE the optimizer (jumps and labels must see the
     // nudged geometry, not the stacked one). Computed among the frame's routed
@@ -1701,6 +1731,7 @@ export class SVGRenderer implements IRenderer {
       this.routeMemo.clear();
       this.frameObstacleCache = null;
       this.routeMemoDirty = false;
+      this.worldVersion++;
     }
 
     const rects = new Map<string, Rect>();
@@ -1731,6 +1762,7 @@ export class SVGRenderer implements IRenderer {
     // The world moved, so the obstacle arrays are stale. A NEW array (not a
     // mutated one) is required: its identity is the engine's memo key.
     this.frameObstacleCache = null;
+    this.worldVersion++;
 
     const stale = new Set<string>();
     for (const region of coalesce(dirty)) {
@@ -1739,6 +1771,78 @@ export class SVGRenderer implements IRenderer {
       }
     }
     this.routeMemo.invalidate(stale);
+  }
+
+  /**
+   * Wave 8 — Card 6: drive the global penalty-field solver, and adopt its answer
+   * when (and only when) it describes the world we are actually drawing.
+   *
+   * Order of events across frames, which is the whole design:
+   *
+   *   frame N   — the sync router paints correct routes; we hand the solver this
+   *               world (edges + obstacles + version) and carry on. Nothing waits.
+   *   frame N+k — the solve lands. If the world is still version N, its routes are
+   *               adopted and `onRoutesRefined` asks the host for a re-render. If
+   *               the world has MOVED, the answer is dropped on the floor: it was
+   *               computed against obstacles that are not there any more, and
+   *               painting it would run links through nodes.
+   *
+   * So a link's geometry is always either "correct, one-at-a-time" or "correct,
+   * globally optimised" — never "optimised for a diagram that no longer exists".
+   */
+  private applyGlobalSolver(links: LinkModel[]): void {
+    if (!this.config.globalRouting) return;
+
+    const diagram = this.engine.getDiagram();
+    if (!diagram) return;
+
+    if (!this.solverBridge) {
+      this.solverBridge = new RouteSolverBridge({
+        port: this.config.routeSolverPort,
+        solver: this.config.routeSolverOptions,
+        onRoutesReady: this.config.onRoutesRefined,
+      });
+    }
+
+    const version = this.worldVersion;
+
+    // Already solved for this world? Take the good routes.
+    if (this.solverBridge.hasRoutesFor(version)) {
+      for (const link of links) {
+        if (this.linkHasManualWaypoints(link)) continue;
+        if (link.isSelfLoop()) continue; // a self-loop has no corridor to share
+        const solved = this.solverBridge.routeFor(link.id, version);
+        if (!solved) continue;
+        this.frameRoutes.set(link.id, solved);
+        this.syncLinkPoints(link, solved.points);
+      }
+      return;
+    }
+
+    // Not solved yet — describe this world and ask. Idempotent per version, so
+    // calling it every frame costs nothing.
+    const edges: SolverEdge[] = [];
+    for (const link of links) {
+      if (this.linkHasManualWaypoints(link) || link.isSelfLoop()) continue;
+      const endpoints = this.getLinkEndpoints(link);
+      if (!endpoints) continue;
+      edges.push({
+        id: link.id,
+        start: { x: endpoints.start.x, y: endpoints.start.y },
+        end: { x: endpoints.end.x, y: endpoints.end.y },
+        sourceDirection: endpoints.sourceDirection,
+        targetDirection: endpoints.targetDirection,
+        jetty: link.style?.jetty,
+      });
+    }
+    if (edges.length === 0) return;
+
+    this.solverBridge.submit(version, edges, this.frameObstacles(diagram).routing);
+  }
+
+  /** Wave 8 — Card 6: what the off-thread solver has been doing. */
+  getRouteSolverStats(): RouteSolverStats | null {
+    return this.solverBridge ? { ...this.solverBridge.stats } : null;
   }
 
   /**
