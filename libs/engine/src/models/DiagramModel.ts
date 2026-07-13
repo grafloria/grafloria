@@ -27,6 +27,40 @@ import {
 } from '../serialization/DiagramValidator';
 import { INCREMENTAL_FORMAT, type DiagramIncremental } from '../serialization/Incremental';
 
+/**
+ * How near a port must be to a point for {@link DiagramModel.findNearestPort} to
+ * consider it, in world units. Roughly a fingertip at 100% zoom.
+ */
+export const DEFAULT_PORT_SNAP_RADIUS = 24;
+
+/**
+ * Slack added to the node-candidate search in {@link DiagramModel.findNearestPort},
+ * to cover ports pushed off their node's bounding box by `port.offset`.
+ */
+const PORT_OFFSET_PAD = 64;
+
+/** Options for {@link DiagramModel.findNearestPort}. */
+export interface NearestPortOptions {
+  /** Maximum distance, in world units (default {@link DEFAULT_PORT_SNAP_RADIUS}). */
+  radius?: number;
+  /** Consider only the ports this accepts (e.g. valid targets for the dragged link). */
+  filter?: (port: PortModel, node: NodeModel) => boolean;
+  /**
+   * Where a port actually IS. Defaults to the bounding-box edge midpoint. Callers
+   * inside a renderer must pass the SHAPE-AWARE resolver (`portWorldPosition`) —
+   * see the note on `findNearestPort`.
+   */
+  portPosition?: (port: PortModel, node: NodeModel) => Point;
+}
+
+/** What {@link DiagramModel.findNearestPort} found. */
+export interface NearestPortHit {
+  port: PortModel;
+  node: NodeModel;
+  /** Distance from the query point to the port, in world units. */
+  distance: number;
+}
+
 export interface SerializedDiagram extends SerializedEntity {
   /**
    * Document schema version (shape of THIS payload), distinct from the
@@ -1308,6 +1342,71 @@ export class DiagramModel extends DiagramEntity {
   }
 
   /**
+   * The nearest port to a world point, served BY THE SPATIAL INDEX.
+   *
+   * wave8/culling — Card 2. This is the query a link drag makes on every
+   * pointermove, so it is the one query that must never be a scan: the existing
+   * answer (`PortModel.findNearestPort`) could only search ONE node — the one the
+   * pointer happened to be over — because searching more would have meant walking
+   * every node in the diagram. The index turns "which port am I near" into a
+   * bounded region query, so a drag can snap to a port it is merely NEAR, not one
+   * it is already on top of, without paying O(nodes) sixty times a second.
+   *
+   * `portPosition` is injectable because THE ENGINE DOES NOT KNOW WHERE PORTS ARE.
+   * Its default (`getAbsolutePosition`) walks the bounding box — edge midpoints,
+   * blind to the silhouette and to how many ports share a side — while the
+   * renderer draws them shape-aware (`portWorldPosition`). Wave 6 fixed exactly
+   * this divergence for the port hit-test and the magnet, and it is why callers
+   * inside the renderer MUST pass the shape-aware resolver: otherwise you snap to
+   * a point several pixels from the circle you can see.
+   *
+   * @param point   World-space point (usually the drag position).
+   * @param options radius (default 24 world units), an optional port filter, and
+   *                the port-position resolver described above.
+   */
+  findNearestPort(
+    point: Point,
+    options?: NearestPortOptions
+  ): NearestPortHit | null {
+    const radius = options?.radius ?? DEFAULT_PORT_SNAP_RADIUS;
+    const positionOf =
+      options?.portPosition ??
+      ((port: PortModel, node: NodeModel) =>
+        port.getAbsolutePosition(node.getBoundingBox()));
+
+    // A port normally sits ON its node's bounding box, so any port within
+    // `radius` belongs to a node whose box is within `radius`. `port.offset` can
+    // push it outside, though, so the CANDIDATE search is padded — a few extra
+    // candidate nodes cost nothing (they fail the real distance test below),
+    // whereas missing one silently loses a snap target.
+    const candidates = this.nodeSpatialIndex.queryNear(
+      point,
+      radius + PORT_OFFSET_PAD,
+      { filter: (node) => node.state.visible !== false }
+    );
+
+    let best: NearestPortHit | null = null;
+
+    for (const node of candidates) {
+      for (const port of node.getPorts()) {
+        if (options?.filter && !options.filter(port, node)) continue;
+
+        const p = positionOf(port, node);
+        const dx = point.x - p.x;
+        const dy = point.y - p.y;
+        const distance = Math.sqrt(dx * dx + dy * dy);
+
+        if (distance > radius) continue;
+        if (!best || distance < best.distance) {
+          best = { port, node, distance };
+        }
+      }
+    }
+
+    return best;
+  }
+
+  /**
    * Get bounding box of all visible entities (Phase 5.1)
    * Useful for "fit to viewport" operations
    *
@@ -1462,8 +1561,11 @@ export class DiagramModel extends DiagramEntity {
    * tier whose `minZoom` the zoom crosses — tiers are pre-sorted highest-first,
    * so the first match wins. With the default config this is exactly:
    *   zoom >= 1.0        -> 'high'
-   *   0.2 < zoom < 1.0   -> 'medium'
-   *   zoom <= 0.2        -> 'low'
+   *   0.5 <= zoom < 1.0  -> 'medium'
+   *   zoom <  0.5        -> 'low'
+   *
+   * (wave8/culling moved the medium/low breakpoint 0.2 → 0.5 — see
+   * {@link createDefaultLODConfig} for why.)
    *
    * @param zoom - Current zoom level
    * @returns Tier name (default policy: 'high' | 'medium' | 'low')
