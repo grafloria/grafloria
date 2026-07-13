@@ -129,7 +129,7 @@ export class MockHttpServer {
    * Get requests matching a filter.
    */
   getRequestsMatching(filter: Partial<MockRequest>): MockRequest[] {
-    return this.requests.filter(req => {
+    return this.requests.filter((req: MockRequest) => {
       if (filter.method && req.method !== filter.method) return false;
       if (filter.path && req.path !== filter.path) return false;
       return true;
@@ -223,7 +223,7 @@ export class MockResource {
     this.server.onGet(this.basePath, () => Array.from(this.data.values()));
 
     // GET /resource/:id - get by id
-    this.server.onGet(`${this.basePath}/:id`, req => {
+    this.server.onGet(`${this.basePath}/:id`, (req: MockRequest) => {
       const id = this.extractId(req.path);
       const item = this.data.get(id);
       if (!item) {
@@ -233,7 +233,7 @@ export class MockResource {
     });
 
     // POST /resource - create
-    this.server.onPost(this.basePath, req => {
+    this.server.onPost(this.basePath, (req: MockRequest) => {
       const id = this.nextId++;
       const item = { ...req.body, id };
       this.data.set(id, item);
@@ -241,7 +241,7 @@ export class MockResource {
     });
 
     // PUT /resource/:id - update
-    this.server.onPut(`${this.basePath}/:id`, req => {
+    this.server.onPut(`${this.basePath}/:id`, (req: MockRequest) => {
       const id = this.extractId(req.path);
       const item = this.data.get(id);
       if (!item) {
@@ -253,7 +253,7 @@ export class MockResource {
     });
 
     // DELETE /resource/:id - delete
-    this.server.onDelete(`${this.basePath}/:id`, req => {
+    this.server.onDelete(`${this.basePath}/:id`, (req: MockRequest) => {
       const id = this.extractId(req.path);
       this.data.delete(id);
       return null;

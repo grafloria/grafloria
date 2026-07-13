@@ -6,14 +6,15 @@ import { NodeModel, DiagramEngine, DiagramModel } from '@grafloria/engine';
 describe('NodeToolbarComponent', () => {
   let component: NodeToolbarComponent;
   let fixture: ComponentFixture<NodeToolbarComponent>;
-  let mockEngine: jasmine.SpyObj<DiagramEngine>;
+  let mockEngine: DiagramEngine;
   let mockNode: NodeModel;
 
   beforeEach(async () => {
     // Create mock engine with event bus
-    mockEngine = jasmine.createSpyObj('DiagramEngine', ['getModel'], {
-      eventBus: jasmine.createSpyObj('EventBus', ['on', 'emit', 'off'])
-    });
+    mockEngine = {
+      getModel: jest.fn(),
+      eventBus: { on: jest.fn(), emit: jest.fn(), off: jest.fn() },
+    } as unknown as DiagramEngine;
 
     await TestBed.configureTestingModule({
       imports: [NodeToolbarComponent],
@@ -101,10 +102,10 @@ describe('NodeToolbarComponent', () => {
     const action: ToolbarAction = {
       id: 'test',
       label: 'Test',
-      onClick: jasmine.createSpy('onClick'),
+      onClick: jest.fn(),
     };
 
-    spyOn(component.actionClicked, 'emit');
+    jest.spyOn(component.actionClicked, 'emit');
 
     component.handleActionClick(action);
 
@@ -120,10 +121,10 @@ describe('NodeToolbarComponent', () => {
       id: 'test',
       label: 'Test',
       disabled: true,
-      onClick: jasmine.createSpy('onClick'),
+      onClick: jest.fn(),
     };
 
-    spyOn(component.actionClicked, 'emit');
+    jest.spyOn(component.actionClicked, 'emit');
 
     component.handleActionClick(action);
 
@@ -135,7 +136,7 @@ describe('NodeToolbarComponent', () => {
     component.ngOnInit();
     expect(mockEngine.eventBus.on).toHaveBeenCalledWith(
       'canvas:zoom',
-      jasmine.any(Function)
+      expect.any(Function)
     );
   });
 
@@ -143,7 +144,7 @@ describe('NodeToolbarComponent', () => {
     component.ngOnInit();
     expect(mockEngine.eventBus.on).toHaveBeenCalledWith(
       'canvas:pan',
-      jasmine.any(Function)
+      expect.any(Function)
     );
   });
 
@@ -151,7 +152,7 @@ describe('NodeToolbarComponent', () => {
     component.ngOnInit();
     expect(mockEngine.eventBus.on).toHaveBeenCalledWith(
       'node:moved',
-      jasmine.any(Function)
+      expect.any(Function)
     );
   });
 
@@ -159,14 +160,14 @@ describe('NodeToolbarComponent', () => {
     component.ngOnInit();
     expect(mockEngine.eventBus.on).toHaveBeenCalledWith(
       'node:resized',
-      jasmine.any(Function)
+      expect.any(Function)
     );
   });
 
   it('should clean up on destroy', () => {
     component.ngOnInit();
-    const destroySpy = spyOn(component['destroy$'], 'next');
-    const completeSpy = spyOn(component['destroy$'], 'complete');
+    const destroySpy = jest.spyOn(component['destroy$'], 'next');
+    const completeSpy = jest.spyOn(component['destroy$'], 'complete');
 
     component.ngOnDestroy();
 
@@ -211,7 +212,7 @@ describe('NodeToolbarComponent', () => {
   });
 
   it('should apply visible class when isVisible is true', () => {
-    component.isVisible = true;
+    component.visible = true;
     fixture.detectChanges();
 
     const toolbar = fixture.nativeElement.querySelector('.grafloria-node-toolbar');
@@ -219,7 +220,7 @@ describe('NodeToolbarComponent', () => {
   });
 
   it('should not apply visible class when isVisible is false', () => {
-    component.isVisible = false;
+    component.visible = false;
     fixture.detectChanges();
 
     const toolbar = fixture.nativeElement.querySelector('.grafloria-node-toolbar');
@@ -256,7 +257,7 @@ describe('NodeToolbarComponent', () => {
     // Mock toolbar element
     if (component.toolbarRef) {
       const toolbarEl = component.toolbarRef.nativeElement;
-      spyOn(toolbarEl, 'getBoundingClientRect').and.returnValue({
+      jest.spyOn(toolbarEl, 'getBoundingClientRect').mockReturnValue({
         width: 200,
         height: 40,
         left: 0,

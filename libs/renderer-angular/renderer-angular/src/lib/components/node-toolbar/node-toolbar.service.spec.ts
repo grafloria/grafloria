@@ -15,7 +15,7 @@ describe('NodeToolbarService', () => {
   let fixture: ComponentFixture<TestHostComponent>;
   let viewContainerRef: ViewContainerRef;
   let environmentInjector: EnvironmentInjector;
-  let mockEngine: jasmine.SpyObj<DiagramEngine>;
+  let mockEngine: DiagramEngine;
   let mockNode: NodeModel;
 
   beforeEach(() => {
@@ -30,9 +30,10 @@ describe('NodeToolbarService', () => {
     environmentInjector = TestBed.inject(EnvironmentInjector);
 
     // Create mock engine
-    mockEngine = jasmine.createSpyObj('DiagramEngine', ['getModel'], {
-      eventBus: jasmine.createSpyObj('EventBus', ['on', 'emit', 'off'])
-    });
+    mockEngine = {
+      getModel: jest.fn(),
+      eventBus: { on: jest.fn(), emit: jest.fn(), off: jest.fn() },
+    } as unknown as DiagramEngine;
 
     // Create mock node
     mockNode = new NodeModel({
@@ -137,7 +138,7 @@ describe('NodeToolbarService', () => {
 
   it('should update toolbar position', () => {
     const componentRef = service.show(mockNode, mockEngine);
-    spyOn(componentRef.instance, 'updatePosition');
+    jest.spyOn(componentRef.instance, 'updatePosition');
 
     service.updatePosition(mockNode.id);
 
@@ -157,8 +158,8 @@ describe('NodeToolbarService', () => {
     const componentRef1 = service.show(node1, mockEngine);
     const componentRef2 = service.show(node2, mockEngine);
 
-    spyOn(componentRef1.instance, 'updatePosition');
-    spyOn(componentRef2.instance, 'updatePosition');
+    jest.spyOn(componentRef1.instance, 'updatePosition');
+    jest.spyOn(componentRef2.instance, 'updatePosition');
 
     service.updateAllPositions();
 
@@ -291,8 +292,8 @@ describe('NodeToolbarService', () => {
     const componentRef1 = service.show(node1, mockEngine);
     const componentRef2 = service.show(node2, mockEngine);
 
-    spyOn(componentRef1.instance, 'updatePosition');
-    spyOn(componentRef2.instance, 'updatePosition');
+    jest.spyOn(componentRef1.instance, 'updatePosition');
+    jest.spyOn(componentRef2.instance, 'updatePosition');
 
     const mockCanvas = document.createElement('div');
     service.setCanvasElement(mockCanvas);

@@ -59,24 +59,22 @@ describe('NodeToolbar Integration Tests', () => {
 
     // Create engine and model
     engine = new DiagramEngine();
+    engine.createDiagram();
     component.engine = engine;
 
-    const model = engine.getDiagram();
-    if (model) {
-      node1 = model.addNode({
-        type: 'default',
-        data: { label: 'Node 1' },
-        position: { x: 100, y: 100 },
-        size: { width: 150, height: 50 },
-      });
+    node1 = await engine.addNode({
+      type: 'default',
+      data: { label: 'Node 1' },
+      position: { x: 100, y: 100 },
+      size: { width: 150, height: 50 },
+    });
 
-      node2 = model.addNode({
-        type: 'default',
-        data: { label: 'Node 2' },
-        position: { x: 300, y: 100 },
-        size: { width: 150, height: 50 },
-      });
-    }
+    node2 = await engine.addNode({
+      type: 'default',
+      data: { label: 'Node 2' },
+      position: { x: 300, y: 100 },
+      size: { width: 150, height: 50 },
+    });
 
     component.actions = createStandardActions(engine);
 
@@ -131,6 +129,7 @@ describe('NodeToolbar Integration Tests', () => {
     it('should hide toolbar when multiple nodes are selected (default behavior)', (done) => {
       // Create toolbar for node1 with default config (hideOnMultiSelect: true)
       const toolbarRef = toolbarService.show(node1, engine);
+      fixture.detectChanges();
 
       setTimeout(() => {
         // Initially, only node1 is selected, toolbar should be visible
@@ -153,6 +152,7 @@ describe('NodeToolbar Integration Tests', () => {
 
     it('should show toolbar when only one node is selected again', (done) => {
       const toolbarRef = toolbarService.show(node1, engine);
+      fixture.detectChanges();
 
       setTimeout(() => {
         // Select multiple nodes first
@@ -175,6 +175,7 @@ describe('NodeToolbar Integration Tests', () => {
 
     it('should hide toolbar when node is deselected', (done) => {
       const toolbarRef = toolbarService.show(node1, engine);
+      fixture.detectChanges();
 
       setTimeout(() => {
         // Select node1
@@ -268,14 +269,15 @@ describe('NodeToolbar Integration Tests', () => {
       }
 
       // Create a third node
-      const node3 = model.addNode({
+      const node3 = new NodeModel({
         type: 'default',
-        data: { label: 'Node 3' },
         position: { x: 500, y: 100 },
         size: { width: 150, height: 50 },
       });
+      model.addNode(node3);
 
       const toolbarRef = toolbarService.show(node1, engine);
+      fixture.detectChanges();
 
       setTimeout(() => {
         // Select all three nodes
@@ -520,12 +522,12 @@ describe('NodeToolbar Integration Tests', () => {
 
       // Create 25 nodes
       for (let i = 0; i < 25; i++) {
-        const node = model!.addNode({
+        const node = new NodeModel({
           type: 'default',
-          data: { label: `Node ${i}` },
           position: { x: (i % 5) * 200, y: Math.floor(i / 5) * 100 },
           size: { width: 150, height: 50 },
         });
+        model!.addNode(node);
         nodes.push(node);
       }
 

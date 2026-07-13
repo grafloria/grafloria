@@ -48,7 +48,9 @@ class MockRenderer implements IRenderer {
       [recommendationCriteria]="criteria"
       (rendererChanged)="onRendererChanged($event)">
     </grafloria-renderer-switcher>
-  `
+  `,
+  standalone: true,
+  imports: [RendererSwitcherComponent]
 })
 class TestHostComponent {
   @ViewChild(RendererSwitcherComponent) switcher!: RendererSwitcherComponent;
@@ -82,8 +84,7 @@ describe('RendererSwitcher Integration Tests', () => {
 
   beforeEach(async () => {
     await TestBed.configureTestingModule({
-      declarations: [TestHostComponent],
-      imports: [CommonModule, FormsModule, RendererSwitcherComponent],
+      imports: [CommonModule, FormsModule, RendererSwitcherComponent, TestHostComponent],
       providers: [DiagramRendererService],
     }).compileComponents();
 

@@ -75,7 +75,7 @@ describe('InteractionConfigPanelComponent', () => {
     component.engine = mockEngine;
     component.ngOnInit();
 
-    spyOn(component.configChanged, 'emit');
+    jest.spyOn(component.configChanged, 'emit');
 
     component.onModeChange('smart');
 
@@ -92,7 +92,7 @@ describe('InteractionConfigPanelComponent', () => {
     component.engine = mockEngine;
     component.ngOnInit();
 
-    spyOn(component.configChanged, 'emit');
+    jest.spyOn(component.configChanged, 'emit');
 
     component.onToggleChange('showConnectionPreview', false);
 

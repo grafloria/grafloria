@@ -33,7 +33,7 @@ describe('AutoToolbarDirective', () => {
   let fixture: ComponentFixture<TestHostComponent>;
   let directive: AutoToolbarDirective;
   let toolbarService: NodeToolbarService;
-  let mockEngine: jasmine.SpyObj<DiagramEngine>;
+  let mockEngine: DiagramEngine;
   let mockNode: NodeModel;
   let eventBusCallbacks: Map<string, Function>;
 
@@ -41,15 +41,16 @@ describe('AutoToolbarDirective', () => {
     eventBusCallbacks = new Map();
 
     // Create mock engine with event bus
-    mockEngine = jasmine.createSpyObj('DiagramEngine', ['getModel'], {
+    mockEngine = {
+      getModel: jest.fn(),
       eventBus: {
         on: (event: string, callback: Function) => {
           eventBusCallbacks.set(event, callback);
         },
-        emit: jasmine.createSpy('emit'),
-        off: jasmine.createSpy('off'),
-      }
-    });
+        emit: jest.fn(),
+        off: jest.fn(),
+      },
+    } as unknown as DiagramEngine;
 
     await TestBed.configureTestingModule({
       imports: [TestHostComponent, AutoToolbarDirective],
@@ -84,35 +85,35 @@ describe('AutoToolbarDirective', () => {
   });
 
   it('should initialize toolbar service with view container', () => {
-    spyOn(toolbarService, 'setViewContainer');
+    jest.spyOn(toolbarService, 'setViewContainer');
     fixture.detectChanges();
 
     expect(toolbarService.setViewContainer).toHaveBeenCalled();
   });
 
   it('should initialize toolbar service with environment injector', () => {
-    spyOn(toolbarService, 'setEnvironmentInjector');
+    jest.spyOn(toolbarService, 'setEnvironmentInjector');
     fixture.detectChanges();
 
     expect(toolbarService.setEnvironmentInjector).toHaveBeenCalled();
   });
 
   it('should set canvas element on toolbar service', () => {
-    spyOn(toolbarService, 'setCanvasElement');
+    jest.spyOn(toolbarService, 'setCanvasElement');
     fixture.detectChanges();
 
     expect(toolbarService.setCanvasElement).toHaveBeenCalled();
   });
 
   it('should set initial viewport', () => {
-    spyOn(toolbarService, 'setViewport');
+    jest.spyOn(toolbarService, 'setViewport');
     fixture.detectChanges();
 
     expect(toolbarService.setViewport).toHaveBeenCalledWith(component.viewport);
   });
 
   it('should set initial zoom', () => {
-    spyOn(toolbarService, 'setZoom');
+    jest.spyOn(toolbarService, 'setZoom');
     fixture.detectChanges();
 
     expect(toolbarService.setZoom).toHaveBeenCalledWith(component.zoom);
@@ -139,7 +140,7 @@ describe('AutoToolbarDirective', () => {
   });
 
   it('should show toolbar when node is selected', () => {
-    spyOn(toolbarService, 'show');
+    jest.spyOn(toolbarService, 'show');
     fixture.detectChanges();
 
     const callback = eventBusCallbacks.get('node:selected');
@@ -150,7 +151,7 @@ describe('AutoToolbarDirective', () => {
     expect(toolbarService.show).toHaveBeenCalledWith(
       mockNode,
       mockEngine,
-      jasmine.objectContaining({
+      expect.objectContaining({
         position: component.toolbarPosition,
         actions: component.toolbarActions,
       })
@@ -158,7 +159,7 @@ describe('AutoToolbarDirective', () => {
   });
 
   it('should hide toolbar when node is deselected', () => {
-    spyOn(toolbarService, 'hide');
+    jest.spyOn(toolbarService, 'hide');
     fixture.detectChanges();
 
     const callback = eventBusCallbacks.get('node:deselected');
@@ -170,7 +171,7 @@ describe('AutoToolbarDirective', () => {
   });
 
   it('should update zoom when canvas:zoom event is emitted', () => {
-    spyOn(toolbarService, 'setZoom');
+    jest.spyOn(toolbarService, 'setZoom');
     fixture.detectChanges();
 
     const callback = eventBusCallbacks.get('canvas:zoom');
@@ -182,7 +183,7 @@ describe('AutoToolbarDirective', () => {
   });
 
   it('should update viewport when canvas:pan event is emitted', () => {
-    spyOn(toolbarService, 'setViewport');
+    jest.spyOn(toolbarService, 'setViewport');
     fixture.detectChanges();
 
     const callback = eventBusCallbacks.get('canvas:pan');
@@ -195,7 +196,7 @@ describe('AutoToolbarDirective', () => {
   });
 
   it('should update position when node is moved', () => {
-    spyOn(toolbarService, 'updatePosition');
+    jest.spyOn(toolbarService, 'updatePosition');
     fixture.detectChanges();
 
     const callback = eventBusCallbacks.get('node:moved');
@@ -207,7 +208,7 @@ describe('AutoToolbarDirective', () => {
   });
 
   it('should update position when node is resized', () => {
-    spyOn(toolbarService, 'updatePosition');
+    jest.spyOn(toolbarService, 'updatePosition');
     fixture.detectChanges();
 
     const callback = eventBusCallbacks.get('node:resized');
@@ -219,7 +220,7 @@ describe('AutoToolbarDirective', () => {
   });
 
   it('should hide all toolbars when diagram is cleared', () => {
-    spyOn(toolbarService, 'hideAll');
+    jest.spyOn(toolbarService, 'hideAll');
     fixture.detectChanges();
 
     const callback = eventBusCallbacks.get('diagram:cleared');
@@ -231,7 +232,7 @@ describe('AutoToolbarDirective', () => {
   });
 
   it('should hide all toolbars on destroy', () => {
-    spyOn(toolbarService, 'hideAll');
+    jest.spyOn(toolbarService, 'hideAll');
     fixture.detectChanges();
 
     directive.ngOnDestroy();
@@ -240,7 +241,7 @@ describe('AutoToolbarDirective', () => {
   });
 
   it('should update viewport programmatically', () => {
-    spyOn(toolbarService, 'setViewport');
+    jest.spyOn(toolbarService, 'setViewport');
     fixture.detectChanges();
 
     const newViewport = { x: 50, y: 60, width: 1000, height: 800 };
@@ -251,7 +252,7 @@ describe('AutoToolbarDirective', () => {
   });
 
   it('should update zoom programmatically', () => {
-    spyOn(toolbarService, 'setZoom');
+    jest.spyOn(toolbarService, 'setZoom');
     fixture.detectChanges();
 
     directive.updateZoom(2.0);
@@ -261,7 +262,7 @@ describe('AutoToolbarDirective', () => {
   });
 
   it('should warn when engine is not provided', () => {
-    spyOn(console, 'warn');
+    jest.spyOn(console, 'warn');
     component.engine = undefined as any;
     fixture.detectChanges();
 
@@ -278,7 +279,7 @@ describe('AutoToolbarDirective', () => {
     ];
 
     component.toolbarActions = customActions;
-    spyOn(toolbarService, 'show');
+    jest.spyOn(toolbarService, 'show');
     fixture.detectChanges();
 
     const callback = eventBusCallbacks.get('node:selected');
@@ -287,7 +288,7 @@ describe('AutoToolbarDirective', () => {
     expect(toolbarService.show).toHaveBeenCalledWith(
       mockNode,
       mockEngine,
-      jasmine.objectContaining({
+      expect.objectContaining({
         actions: customActions,
       })
     );
@@ -295,7 +296,7 @@ describe('AutoToolbarDirective', () => {
 
   it('should pass custom toolbar position to service', () => {
     component.toolbarPosition = 'bottom';
-    spyOn(toolbarService, 'show');
+    jest.spyOn(toolbarService, 'show');
     fixture.detectChanges();
 
     const callback = eventBusCallbacks.get('node:selected');
@@ -304,7 +305,7 @@ describe('AutoToolbarDirective', () => {
     expect(toolbarService.show).toHaveBeenCalledWith(
       mockNode,
       mockEngine,
-      jasmine.objectContaining({
+      expect.objectContaining({
         position: 'bottom',
       })
     );

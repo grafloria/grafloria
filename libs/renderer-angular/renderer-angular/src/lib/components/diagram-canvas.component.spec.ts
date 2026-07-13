@@ -126,8 +126,9 @@ describe('DiagramCanvasComponent', () => {
       fixture.detectChanges();
 
       const svg = fixture.nativeElement.querySelector('svg');
-      expect(svg.getAttribute('width')).toBe('1200');
-      expect(svg.getAttribute('height')).toBe('900');
+      // The SVGRenderer deliberately omits width/height attributes (sized to 100%
+      // via CSS) and applies the viewport dimensions through the viewBox instead.
+      expect(svg.getAttribute('viewBox')).toBe('0 0 1200 900');
     });
 
     test('should include viewBox attribute', () => {

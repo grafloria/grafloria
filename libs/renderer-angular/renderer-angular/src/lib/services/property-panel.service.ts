@@ -17,6 +17,8 @@ import type {
 export interface PropertyDiagramNode {
   id: string;
   type: string;
+  /** Optional human-readable label shown in the panel header (falls back to id) */
+  label?: string;
   data: Record<string, any>;
 }
 

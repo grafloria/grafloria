@@ -32,7 +32,7 @@ describe('PropertyEditorNumberComponent', () => {
       expect(input).toBeTruthy();
     });
 
-    it('should display current value', () => {
+    it('should display current value', async () => {
       component.property = {
         key: 'age',
         label: 'Age',
@@ -40,6 +40,8 @@ describe('PropertyEditorNumberComponent', () => {
       };
       component.value = 25;
       component.ngOnInit();
+      fixture.detectChanges();
+      await fixture.whenStable();
       fixture.detectChanges();
 
       const input = fixture.nativeElement.querySelector('input[type="number"]');

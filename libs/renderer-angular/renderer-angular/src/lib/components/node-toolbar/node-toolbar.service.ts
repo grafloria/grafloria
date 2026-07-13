@@ -1,6 +1,6 @@
 import { Injectable, ComponentRef, ViewContainerRef, TemplateRef, createComponent, EnvironmentInjector, inject } from '@angular/core';
 import { NodeModel, DiagramEngine } from '@grafloria/engine';
-import { NodeToolbarComponent, ToolbarAction, ToolbarPosition, ToolbarAlignment } from './node-toolbar.component';
+import { NodeToolbarComponent, ToolbarAction, ToolbarPosition, ToolbarAlignment, ToolbarBehaviorConfig, ToolbarStyleConfig } from './node-toolbar.component';
 
 export interface ToolbarConfig {
   position?: ToolbarPosition;
@@ -11,6 +11,8 @@ export interface ToolbarConfig {
   canvasElement?: HTMLElement;
   viewport?: { x: number; y: number; width: number; height: number };
   zoom?: number;
+  behavior?: ToolbarBehaviorConfig;
+  style?: ToolbarStyleConfig;
 }
 
 /**
@@ -128,6 +130,15 @@ export class NodeToolbarService {
     componentRef.instance.canvasElement = config.canvasElement || this.globalCanvasElement;
     componentRef.instance.viewport = config.viewport || this.globalViewport;
     componentRef.instance.zoom = config.zoom ?? this.globalZoom;
+    if (config.style) {
+      componentRef.instance.styleConfig = config.style;
+    }
+    if (config.behavior) {
+      componentRef.instance.config = {
+        ...(componentRef.instance.config || {}),
+        behavior: config.behavior,
+      };
+    }
 
     // Store reference
     this.toolbars.set(node.id, componentRef);
