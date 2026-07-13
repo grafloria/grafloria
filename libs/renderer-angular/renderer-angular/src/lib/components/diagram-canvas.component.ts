@@ -568,6 +568,8 @@ export class DiagramCanvasComponent implements AfterViewInit, OnDestroy {
   private lastFrameHadConnectionPreview = false;
   /** wave8/dirty: mutation epoch as of the END of the last painted frame. */
   private lastRenderedEpoch = -1;
+  /** wave8/dirty: the RENDERER's invalidation epoch as of that same frame. */
+  private lastRendererInvalidation = -1;
   /** Ring buffer of recent frame END timestamps (ms) → rolling FPS. */
   private frameTimestamps: number[] = [];
   /** Ring buffer of recent frame render DURATIONS (ms) → rolling frame-time. */
@@ -2079,6 +2081,7 @@ export class DiagramCanvasComponent implements AfterViewInit, OnDestroy {
     // renderDiagram() would be one the frame itself invalidates on the way out —
     // and the idle-skip would never fire again.
     this.lastRenderedEpoch = getMutationEpoch();
+    this.lastRendererInvalidation = this.renderer?.getInvalidationEpoch() ?? -1;
 
     // Real metrics: one sample per ACTUALLY-rendered frame (skips add nothing).
     const duration = end - start;
@@ -2184,6 +2187,14 @@ export class DiagramCanvasComponent implements AfterViewInit, OnDestroy {
     // node is still an obstacle the edge optimizer routes around, and its edge
     // may well cross the middle of the viewport).
     if (getMutationEpoch() !== this.lastRenderedEpoch) {
+      return false;
+    }
+    // …and the RENDERER's own picture must not have gone stale. The model epoch
+    // answers "did the world change"; this answers "did my picture of it change".
+    // The off-thread route solver moves the second WITHOUT moving the first — it
+    // improves the routes without touching a single entity — so a skip keyed only
+    // on the model would silently bin the repaint that paints them.
+    if ((this.renderer?.getInvalidationEpoch() ?? -1) !== this.lastRendererInvalidation) {
       return false;
     }
     if (this.viewportKey() !== this.lastRenderedViewportKey) {

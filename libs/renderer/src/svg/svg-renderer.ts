@@ -420,6 +420,8 @@ export class SVGRenderer implements IRenderer {
   private lastFrameEpoch = -1;
   /** Set by anything whose effect on the picture the epoch cannot see. */
   private frameInvalidated = true;
+  /** Monotone count of invalidateFrame() calls — a HOST's idle-skip keys on this. */
+  private invalidationEpoch = 0;
   /**
    * Did the frame being built move any link's FINAL geometry? If so it has not
    * reached a fixed point and must not arm the gate.
@@ -905,8 +907,28 @@ export class SVGRenderer implements IRenderer {
    */
   invalidateFrame(): void {
     this.frameInvalidated = true;
+    this.invalidationEpoch++;
     this.lastFrameRoot = null;
     this.lastFrameSig = null;
+  }
+
+  /**
+   * How many times this renderer has been told "the picture you have is no longer
+   * the picture you would draw".
+   *
+   * A HOST'S idle-skip must consult this, not just the model's mutation epoch.
+   * The two are not the same, and the gap between them is a real bug: when the
+   * off-thread route solver answers, the MODEL has not changed — the epoch does
+   * not move — but the renderer's own answer about it has improved. A scheduler
+   * keyed only on the model would drop that repaint before `render()` was ever
+   * called, and the refined routes would never reach the screen. The renderer's
+   * internal gate cannot save you there; it never gets asked.
+   *
+   * So: model epoch says "did the world change", this says "did MY picture of it
+   * change". Skip a frame only when both say no.
+   */
+  getInvalidationEpoch(): number {
+    return this.invalidationEpoch;
   }
 
   /**

@@ -307,6 +307,8 @@ export function createDiagram(
   let lastFrameHadPreview = false;
   /** Mutation epoch as of the end of the last painted frame. See canSkipFrame(). */
   let lastFrameEpoch = -1;
+  /** Renderer invalidation epoch as of the end of the last painted frame. */
+  let lastRendererEpoch = -1;
   let ready = false;
   let disposed = false;
 
@@ -364,6 +366,14 @@ export function createDiagram(
   const canSkipFrame = (): boolean => {
     if (!engine.getDiagram()) return false;
     if (getMutationEpoch() !== lastFrameEpoch) return false;
+    // …and the RENDERER's own picture must not have gone stale either. The model
+    // epoch answers "did the world change"; this answers "did my picture of it
+    // change". They are not the same question, and the gap is a real bug: when
+    // the off-thread route solver answers, the model has not changed — the epoch
+    // does not move — but the routes have improved. Keyed only on the model, this
+    // would drop that repaint before render() was ever called, and the refined
+    // routes we paid a worker for would never reach the screen.
+    if (renderer.getInvalidationEpoch() !== lastRendererEpoch) return false;
     if (viewportKey() !== lastViewportKey) return false;
     if (isConnectionPreviewActive() || lastFrameHadPreview) return false;
     return true;
@@ -403,6 +413,7 @@ export function createDiagram(
     // (routed geometry, auto-sizing), and stamping on entry would record an epoch
     // the frame itself then invalidates — the skip would never fire again.
     lastFrameEpoch = getMutationEpoch();
+    lastRendererEpoch = renderer.getInvalidationEpoch();
 
     signalReady();
   };
@@ -418,6 +429,7 @@ export function createDiagram(
     lastViewportKey = viewportKey();
     lastFrameHadPreview = isConnectionPreviewActive();
     lastFrameEpoch = getMutationEpoch();
+    lastRendererEpoch = renderer.getInvalidationEpoch();
     signalReady();
   };
 

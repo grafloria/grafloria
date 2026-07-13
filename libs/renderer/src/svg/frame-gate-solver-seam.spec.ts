@@ -143,6 +143,29 @@ describe('frame gate × off-thread route solver (the merge seam)', () => {
     renderer.dispose();
   });
 
+  it('tells a HOST that its cached picture is stale, even though the model epoch did not move', async () => {
+    // The same seam, one layer up — and the reason `getInvalidationEpoch()` is
+    // public. A host scheduler (createDiagram, the Angular canvas) runs its own
+    // idle-skip BEFORE it calls render(); the renderer's internal gate cannot
+    // save it, because it never gets asked. A skip keyed only on the MODEL sees
+    // nothing change when the solver answers, drops the frame, and the refined
+    // routes never reach the screen — with the renderer's gate working perfectly.
+    const port = new DeferredPort();
+    const { renderer } = scene(port);
+
+    renderer.render(VIEWPORT, 1);
+    renderer.render(VIEWPORT, 1);
+    renderer.render(VIEWPORT, 1);
+
+    const before = renderer.getInvalidationEpoch();
+
+    port.flushAll();
+    await settle();
+
+    expect(renderer.getInvalidationEpoch()).not.toBe(before);
+    renderer.dispose();
+  });
+
   it('once the refined routes are painted, the gate closes again (no permanent churn)', async () => {
     const port = new DeferredPort();
     const { renderer } = scene(port);
