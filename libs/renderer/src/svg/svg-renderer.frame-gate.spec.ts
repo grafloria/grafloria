@@ -219,6 +219,41 @@ describe('SVGRenderer — frame gate (wave8/dirty, Card 0)', () => {
     });
   });
 
+  describe('the gate closes only on a FIXED POINT', () => {
+    // render() is not quite pure, and this is where it shows. The link cull query
+    // runs BEFORE the routing pre-pass, so a frame that re-routes a link writes
+    // the new geometry into the spatial index only after it has already decided
+    // what to draw. The NEXT frame therefore culls against a different index and
+    // can honestly produce a different picture from the same model and the same
+    // viewport. A gate that closed on the first frame after a change would skip
+    // that settling frame and leave a link on screen that should have been culled.
+    //
+    // Caught by the culling suite, not by any test I wrote first. Kept here so it
+    // cannot come back.
+    it('does not arm on a frame that moved geometry', () => {
+      const { diagram, renderer } = scene();
+      warm(renderer);
+
+      // Move both nodes far outside the viewport.
+      diagram.getNode('a')!.setPosition(5000, 5000);
+      diagram.getNode('b')!.setPosition(5200, 5000);
+
+      // Frame 1: still draws the link — its cull box is the union of its live
+      // endpoints and its LAST routed points. Rendering re-routes and re-indexes.
+      const settling = renderer.render(VIEWPORT, 1) as VNode;
+      expect((settling.children![0] as VNode).children!.length).toBe(1);
+
+      // Frame 2 must NOT be served from the gate, or the link never gets culled.
+      const settled = renderer.render(VIEWPORT, 1) as VNode;
+      expect(settled).not.toBe(settling);
+      expect((settled.children![0] as VNode).children!.length).toBe(0);
+
+      // Now geometry is stable — and only now does the gate close.
+      expect(renderer.render(VIEWPORT, 1)).toBe(settled);
+      renderer.dispose();
+    });
+  });
+
   describe('the returned frame is not merely a different object — it is CORRECT', () => {
     it('a moved node renders at its new transform', () => {
       const { diagram, renderer } = scene();

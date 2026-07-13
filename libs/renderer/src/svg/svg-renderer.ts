@@ -412,6 +412,26 @@ export class SVGRenderer implements IRenderer {
   private lastFrameEpoch = -1;
   /** Set by anything whose effect on the picture the epoch cannot see. */
   private frameInvalidated = true;
+  /**
+   * Did the frame being built MOVE any link? If so it has not reached a fixed
+   * point and must not arm the gate.
+   *
+   * `render()` is not quite a pure function, and this is the one place it shows.
+   * The link cull query (`getVisibleLinks`) runs BEFORE the routing pre-pass, so
+   * a frame that re-routes a link writes its new geometry into the spatial index
+   * only AFTER that frame has already decided what to draw. The next frame
+   * therefore culls against a different index and can legitimately produce a
+   * different picture from identical model + view — which is precisely the
+   * two-frame settle the culling suite documents ("the link's cull box is the
+   * union of its LIVE endpoints and its last routed points, so for ONE frame it
+   * still spans the old route").
+   *
+   * Skipping that second frame leaves a link that should have been culled in the
+   * tree forever. So the gate closes only on a frame that changed nothing —
+   * a genuine fixed point — and geometry settles in the same two frames it always
+   * did.
+   */
+  private frameChangedGeometry = false;
   /** Frames served straight from `lastFrameRoot`. A quiet canvas should be all of them. */
   private framesSkipped = 0;
   /** Frames actually built. */
@@ -658,6 +678,9 @@ export class SVGRenderer implements IRenderer {
       return this.lastFrameRoot;
     }
 
+    // Nothing has moved yet; the routing pre-pass will say otherwise if it does.
+    this.frameChangedGeometry = false;
+
     // Card 7 — content-aware auto-sizing MEASURE pass. Runs before the spatial
     // query so the grown bounds are the ones culled, indexed and routed against.
     // Opt-in (`metadata.sizing.auto`) and idempotent: a node already at its
@@ -754,8 +777,14 @@ export class SVGRenderer implements IRenderer {
     // re-dirties every link whose routed geometry moved; autoSizeNodes may resize
     // one). Snapshotting on entry would record an epoch the frame then invalidates
     // on its way out, and the gate would never once close.
-    this.lastFrameRoot = frameSig === null ? null : root;
-    this.lastFrameSig = frameSig;
+    //
+    // …but arm it ONLY on a frame that reached a fixed point. A frame that moved
+    // a link re-indexed it AFTER culling, so the next frame can honestly draw
+    // something different from the same model and the same viewport. See
+    // `frameChangedGeometry`.
+    const settled = !this.frameChangedGeometry;
+    this.lastFrameRoot = frameSig === null || !settled ? null : root;
+    this.lastFrameSig = settled ? frameSig : null;
     this.lastFrameEpoch = getMutationEpoch();
     this.frameInvalidated = false;
     this.framesBuilt++;
@@ -6100,6 +6129,14 @@ export class SVGRenderer implements IRenderer {
    * the link had when it was added, and a detoured link could be culled.
    */
   private syncLinkPoints(link: LinkModel, points: Array<{ x: number; y: number }>): void {
+    // wave8/dirty: did this actually MOVE the link? The answer arms (or refuses
+    // to arm) the frame gate — see `frameChangedGeometry` and the fixed-point
+    // argument in render(). Comparing values, not array identity: this method
+    // allocates a fresh array every frame, so identity always differs.
+    if (!samePoints(link.points, points)) {
+      this.frameChangedGeometry = true;
+    }
+
     link.points = points.map(p => ({ ...p }));
     this.engine.getDiagram()?.refreshLinkBounds(link);
   }
@@ -6707,4 +6744,25 @@ export class SVGRenderer implements IRenderer {
       t0 < t1;
     return hit ? { t0, t1 } : null;
   }
+}
+
+/**
+ * wave8/dirty — do two polylines describe the same path?
+ *
+ * Exact equality, not an epsilon: the caller (`syncLinkPoints`) is comparing a
+ * route against the route the SAME deterministic router produced from the SAME
+ * inputs last frame, so "unchanged" means bit-identical. A tolerance here would
+ * only let a genuinely-moved link slip through the frame gate and freeze on
+ * screen — and the cost of being wrong in that direction is a stale picture,
+ * while the cost of being wrong in the other is one rebuilt frame.
+ */
+function samePoints(
+  a: ReadonlyArray<{ x: number; y: number }> | undefined,
+  b: ReadonlyArray<{ x: number; y: number }>
+): boolean {
+  if (!a || a.length !== b.length) return false;
+  for (let i = 0; i < a.length; i++) {
+    if (a[i].x !== b[i].x || a[i].y !== b[i].y) return false;
+  }
+  return true;
 }
