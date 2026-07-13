@@ -340,4 +340,472 @@ describe('DiagramCanvasComponent', () => {
       expect(cancelSpy).toHaveBeenCalled();
     });
   });
+
+  // ==========================================================================
+  // wave3/interaction — Card A: transactional edits (gestures → commands)
+  // ==========================================================================
+  describe('Undo/redo, cut/copy/paste (wave3/interaction, Card A)', () => {
+    /** Drain the microtask queue so async CommandManager.execute() has settled. */
+    const settle = () => new Promise<void>((resolve) => setTimeout(resolve, 0));
+
+    const addNode = (x: number, y: number) => {
+      const node = new NodeModel({
+        type: 'basic',
+        position: { x, y },
+        size: { width: 100, height: 60 },
+      });
+      diagram.addNode(node);
+      return node;
+    };
+
+    /** Simulate a full press-drag-release. jsdom's rect is all-zeros, so with the
+     *  default 800x600 viewport at zoom 1, client coords ARE world coords. */
+    const drag = (fromX: number, fromY: number, toX: number, toY: number) => {
+      component.onMouseDown(
+        new MouseEvent('mousedown', { clientX: fromX, clientY: fromY, button: 0 })
+      );
+      component.onMouseMove(
+        new MouseEvent('mousemove', { clientX: toX, clientY: toY, buttons: 1 })
+      );
+      component.onMouseUp(new MouseEvent('mouseup', { clientX: toX, clientY: toY, button: 0 }));
+    };
+
+    const press = (key: string, opts: Partial<KeyboardEventInit> = {}) =>
+      component.onKeyDown(new KeyboardEvent('keydown', { key, ...opts }));
+
+    beforeEach(() => {
+      fixture.detectChanges();
+    });
+
+    test('a node drag produces exactly ONE undo step that restores the original position', async () => {
+      const node = addNode(100, 100);
+      diagram.selectNode(node);
+
+      drag(150, 130, 250, 230); // +100, +100
+      await settle();
+
+      expect(node.position.x).toBe(200);
+      expect(node.position.y).toBe(200);
+
+      // ONE gesture → ONE history entry.
+      expect(engine.commandManager.getHistory().length).toBe(1);
+
+      await engine.undo();
+      expect(node.position.x).toBe(100);
+      expect(node.position.y).toBe(100);
+
+      await engine.redo();
+      expect(node.position.x).toBe(200);
+      expect(node.position.y).toBe(200);
+    });
+
+    test('a click (no movement past the threshold) records NO history entry', async () => {
+      const node = addNode(100, 100);
+      diagram.selectNode(node);
+
+      component.onMouseDown(
+        new MouseEvent('mousedown', { clientX: 150, clientY: 130, button: 0 })
+      );
+      component.onMouseUp(new MouseEvent('mouseup', { clientX: 150, clientY: 130, button: 0 }));
+      await settle();
+
+      expect(engine.commandManager.getHistory().length).toBe(0);
+      expect(node.position.x).toBe(100);
+    });
+
+    test('a multi-node drag undoes as ONE step (MacroCommand)', async () => {
+      const node1 = addNode(100, 100);
+      const node2 = addNode(300, 100);
+      diagram.selectNode(node1);
+      diagram.toggleNodeSelection(node2); // both selected
+
+      drag(150, 130, 200, 180); // +50, +50 on the grabbed node → both move
+
+      await settle();
+
+      expect(node1.position.x).toBe(150);
+      expect(node2.position.x).toBe(350);
+      expect(engine.commandManager.getHistory().length).toBe(1); // ONE step, not two
+
+      await engine.undo();
+      expect(node1.position.x).toBe(100);
+      expect(node1.position.y).toBe(100);
+      expect(node2.position.x).toBe(300);
+      expect(node2.position.y).toBe(100);
+    });
+
+    test('Ctrl+Z undoes and Ctrl+Y / Ctrl+Shift+Z redo', async () => {
+      const node = addNode(100, 100);
+      diagram.selectNode(node);
+      drag(150, 130, 250, 230);
+      await settle();
+
+      press('z', { ctrlKey: true });
+      await settle();
+      expect(node.position.x).toBe(100);
+
+      press('y', { ctrlKey: true });
+      await settle();
+      expect(node.position.x).toBe(200);
+
+      press('z', { ctrlKey: true });
+      await settle();
+      expect(node.position.x).toBe(100);
+
+      press('Z', { ctrlKey: true, shiftKey: true }); // Ctrl+Shift+Z = redo
+      await settle();
+      expect(node.position.x).toBe(200);
+    });
+
+    test('Ctrl+C copies the click-selected node (model selection reaches the store)', async () => {
+      const node = addNode(100, 100);
+      diagram.selectNode(node); // model-level selection, as a click makes
+      expect(engine.hasClipboardData()).toBe(false);
+
+      press('c', { ctrlKey: true });
+      await settle();
+
+      expect(engine.hasClipboardData()).toBe(true);
+      expect(engine.getClipboardData()!.nodes.length).toBe(1);
+      expect(diagram.getNodes().length).toBe(1); // copy is non-destructive
+    });
+
+    test('Ctrl+X cuts: node removed, clipboard holds it, ONE undo brings it back', async () => {
+      const node = addNode(100, 100);
+      diagram.selectNode(node);
+
+      press('x', { ctrlKey: true });
+      await settle();
+
+      expect(diagram.getNodes().length).toBe(0);
+      expect(engine.hasClipboardData()).toBe(true);
+      expect(engine.commandManager.getHistory().length).toBe(1);
+
+      await engine.undo();
+      expect(diagram.getNodes().length).toBe(1);
+    });
+
+    test('Ctrl+V pastes, re-creating nodes with VALID link endpoints', async () => {
+      const node1 = addNode(0, 0);
+      const node2 = addNode(200, 0);
+      expect(diagram.connectNodes(node1, node2)).toBe(true);
+      diagram.selectNode(node1);
+      diagram.toggleNodeSelection(node2);
+
+      press('x', { ctrlKey: true }); // cut both + the link
+      await settle();
+      expect(diagram.getNodes().length).toBe(0);
+      expect(diagram.getLinks().length).toBe(0);
+
+      press('v', { ctrlKey: true });
+      await (component as any).pendingCommand;
+      await settle();
+
+      const nodes = diagram.getNodes();
+      const links = diagram.getLinks();
+      expect(nodes.length).toBe(2);
+      expect(links.length).toBe(1);
+
+      // The pasted link's endpoints resolve to REAL ports on the PASTED nodes
+      // (remapNodePortIds still holds).
+      const portIds = new Set(nodes.flatMap((n) => n.getPorts().map((p) => p.id)));
+      expect(portIds.has(links[0].sourcePortId)).toBe(true);
+      expect(portIds.has(links[0].targetPortId)).toBe(true);
+      expect(diagram.getNodeByPortId(links[0].sourcePortId)).toBeDefined();
+      expect(diagram.getNodeByPortId(links[0].targetPortId)).toBeDefined();
+    });
+
+    test('Delete is undoable and takes connected links with the nodes', async () => {
+      const node1 = addNode(0, 0);
+      const node2 = addNode(200, 0);
+      expect(diagram.connectNodes(node1, node2)).toBe(true);
+      diagram.selectNode(node1);
+      diagram.toggleNodeSelection(node2);
+
+      press('Delete');
+      await settle();
+
+      expect(diagram.getNodes().length).toBe(0);
+      expect(diagram.getLinks().length).toBe(0); // no orphan link left behind
+
+      await engine.undo();
+      expect(diagram.getNodes().length).toBe(2);
+      expect(diagram.getLinks().length).toBe(1);
+    });
+
+    test('does not steal shortcuts from a text input', async () => {
+      const node = addNode(100, 100);
+      diagram.selectNode(node);
+
+      const input = document.createElement('input');
+      document.body.appendChild(input);
+      const event = new KeyboardEvent('keydown', { key: 'x', ctrlKey: true });
+      Object.defineProperty(event, 'target', { value: input });
+      component.onKeyDown(event);
+      await settle();
+
+      expect(diagram.getNodes().length).toBe(1); // not cut
+      input.remove();
+    });
+  });
+
+  // ==========================================================================
+  // wave3/interaction — Card B: cursor-anchored zoom & pan/scroll surface
+  // ==========================================================================
+  describe('Cursor-anchored zoom & pan (wave3/interaction, Card B)', () => {
+    /** Force a synchronous paint (scheduleRender is rAF-coalesced). */
+    const paint = () => (component as any).renderNow();
+
+    /** The viewBox the SVGRenderer ACTUALLY emitted, straight from the DOM. */
+    const renderedViewBox = () => {
+      const svg = fixture.nativeElement.querySelector('svg.grafloria-diagram');
+      const [x, y, width, height] = (svg.getAttribute('viewBox') as string)
+        .split(/\s+/)
+        .map(Number);
+      return { x, y, width, height };
+    };
+
+    const wheel = (opts: Partial<WheelEventInit> & { clientX: number; clientY: number }) =>
+      component.onWheel(new WheelEvent('wheel', { ...opts } as WheelEventInit));
+
+    beforeEach(() => {
+      component.viewport = { x: 0, y: 0, width: 800, height: 600 };
+      component.zoom = 1;
+      fixture.detectChanges();
+    });
+
+    test('THE INVARIANT: the world point under the cursor is unchanged across a zoom step', () => {
+      const cursor = { x: 200, y: 150 }; // deliberately NOT the canvas centre
+      const before = (component as any).clientToWorld(cursor.x, cursor.y);
+
+      wheel({ clientX: cursor.x, clientY: cursor.y, deltaY: -100, ctrlKey: true }); // zoom IN
+      expect(component.zoom).toBeGreaterThan(1);
+
+      const after = (component as any).clientToWorld(cursor.x, cursor.y);
+      expect(after.worldX).toBeCloseTo(before.worldX, 6);
+      expect(after.worldY).toBeCloseTo(before.worldY, 6);
+
+      // ...and still after zooming back OUT through a different factor.
+      wheel({ clientX: cursor.x, clientY: cursor.y, deltaY: 100, ctrlKey: true });
+      wheel({ clientX: cursor.x, clientY: cursor.y, deltaY: 100, ctrlKey: true });
+      const after2 = (component as any).clientToWorld(cursor.x, cursor.y);
+      expect(after2.worldX).toBeCloseTo(before.worldX, 6);
+      expect(after2.worldY).toBeCloseTo(before.worldY, 6);
+    });
+
+    test('the world point under the cursor keeps its SCREEN position (worldToScreen)', () => {
+      const cursor = { x: 640, y: 480 };
+      const world = (component as any).clientToWorld(cursor.x, cursor.y);
+
+      wheel({ clientX: cursor.x, clientY: cursor.y, deltaY: -100, ctrlKey: true });
+
+      const screen = component.worldToScreen(world.worldX, world.worldY);
+      expect(screen.screenX).toBeCloseTo(cursor.x, 6);
+      expect(screen.screenY).toBeCloseTo(cursor.y, 6);
+    });
+
+    test('REGRESSION: the RENDERED viewBox and clientToWorld agree at zoom !== 1', () => {
+      // The renderer used to divide by zoom a SECOND time (the component had
+      // already pre-divided), so the picture and the hit-testing disagreed at any
+      // zoom != 1. Assert against the viewBox actually in the DOM.
+      component.zoom = 2;
+      paint();
+
+      const vb = renderedViewBox();
+      const pxW = 800; // jsdom has no layout → canvasPixelSize falls back to the viewport
+      const pxH = 600;
+
+      // Center-anchored: centre invariant, size = px/zoom.
+      expect(vb.width).toBeCloseTo(pxW / 2, 6);
+      expect(vb.height).toBeCloseTo(pxH / 2, 6);
+      expect(vb.x + vb.width / 2).toBeCloseTo(400, 6);
+      expect(vb.y + vb.height / 2).toBeCloseTo(300, 6);
+
+      // clientToWorld must invert the SAME map: world = vb.origin + screen/zoom.
+      for (const [cx, cy] of [
+        [0, 0],
+        [400, 300],
+        [800, 600],
+      ]) {
+        const world = (component as any).clientToWorld(cx, cy);
+        expect(world.worldX).toBeCloseTo(vb.x + (cx / pxW) * vb.width, 6);
+        expect(world.worldY).toBeCloseTo(vb.y + (cy / pxH) * vb.height, 6);
+      }
+    });
+
+    test('the HTML layer maps world → screen exactly like the SVG (no desync)', () => {
+      component.zoom = 2;
+      paint();
+
+      const match = /translate\((-?[\d.]+)px, (-?[\d.]+)px\) scale\(([\d.]+)\)/.exec(
+        component.htmlLayerTransform
+      );
+      expect(match).toBeTruthy();
+      const [translateX, translateY, scale] = match!.slice(1).map(Number);
+
+      const vb = renderedViewBox();
+      // The layer positions children at their WORLD coords, so a node at world w
+      // lands at translate + scale·w — which must equal the SVG's (w − vb.origin)·zoom.
+      const world = { x: 250, y: 175 };
+      expect(translateX + scale * world.x).toBeCloseTo((world.x - vb.x) * component.zoom, 6);
+      expect(translateY + scale * world.y).toBeCloseTo((world.y - vb.y) * component.zoom, 6);
+      expect(scale).toBe(component.zoom);
+    });
+
+    test('a plain wheel SCROLLS (pans) instead of zooming; ctrl+wheel zooms', () => {
+      const zoomBefore = component.zoom;
+      const xBefore = component.viewport.x;
+      const yBefore = component.viewport.y;
+
+      wheel({ clientX: 400, clientY: 300, deltaX: 30, deltaY: 50 });
+
+      expect(component.zoom).toBe(zoomBefore); // NOT a zoom
+      expect(component.viewport.x).toBeCloseTo(xBefore + 30, 6);
+      expect(component.viewport.y).toBeCloseTo(yBefore + 50, 6);
+
+      wheel({ clientX: 400, clientY: 300, deltaY: -100, ctrlKey: true });
+      expect(component.zoom).toBeGreaterThan(zoomBefore);
+    });
+
+    test('zoom is clamped to [minZoom, maxZoom]', () => {
+      for (let i = 0; i < 100; i++) {
+        wheel({ clientX: 100, clientY: 100, deltaY: -100, ctrlKey: true });
+      }
+      expect(component.zoom).toBeLessThanOrEqual(component.maxZoom);
+      expect(component.zoom).toBe(component.maxZoom);
+
+      for (let i = 0; i < 200; i++) {
+        wheel({ clientX: 100, clientY: 100, deltaY: 100, ctrlKey: true });
+      }
+      expect(component.zoom).toBeGreaterThanOrEqual(component.minZoom);
+      expect(component.zoom).toBe(component.minZoom);
+    });
+
+    test('emits zoomChanged and viewportChanged (the visible world rect)', () => {
+      const zooms: number[] = [];
+      const viewports: any[] = [];
+      component.zoomChanged.subscribe((z) => zooms.push(z));
+      component.viewportChanged.subscribe((v) => viewports.push(v));
+
+      wheel({ clientX: 200, clientY: 150, deltaY: -100, ctrlKey: true });
+
+      expect(zooms.length).toBe(1);
+      expect(zooms[0]).toBe(component.zoom);
+      expect(viewports.length).toBe(1);
+      // The emitted rect IS the visible world rect (= the viewBox).
+      expect(viewports[0].width).toBeCloseTo(800 / component.zoom, 6);
+    });
+
+    test('Ctrl+= zooms in, Ctrl+- zooms out, Ctrl+0 resets — around the canvas centre', () => {
+      const centre = (component as any).clientToWorld(400, 300);
+
+      component.onKeyDown(new KeyboardEvent('keydown', { key: '=', ctrlKey: true }));
+      expect(component.zoom).toBeGreaterThan(1);
+
+      component.onKeyDown(new KeyboardEvent('keydown', { key: '-', ctrlKey: true }));
+      expect(component.zoom).toBeCloseTo(1, 6);
+
+      component.onKeyDown(new KeyboardEvent('keydown', { key: '=', ctrlKey: true }));
+      component.onKeyDown(new KeyboardEvent('keydown', { key: '0', ctrlKey: true }));
+      expect(component.zoom).toBe(1);
+
+      // The centre point never moved.
+      const after = (component as any).clientToWorld(400, 300);
+      expect(after.worldX).toBeCloseTo(centre.worldX, 6);
+      expect(after.worldY).toBeCloseTo(centre.worldY, 6);
+    });
+
+    test('fitToContent frames every node inside the visible world rect', () => {
+      // Content far bigger than the canvas → must zoom OUT to fit.
+      const a = new NodeModel({
+        type: 'basic',
+        position: { x: -500, y: -400 },
+        size: { width: 200, height: 100 },
+      });
+      const b = new NodeModel({
+        type: 'basic',
+        position: { x: 1500, y: 1200 },
+        size: { width: 200, height: 100 },
+      });
+      diagram.addNode(a);
+      diagram.addNode(b);
+
+      component.fitToContent(40);
+      paint();
+
+      expect(component.zoom).toBeLessThan(1);
+      expect(component.zoom).toBeGreaterThanOrEqual(component.minZoom);
+
+      const vb = renderedViewBox();
+      // Every node's bbox is inside the rect that is actually drawn.
+      for (const node of [a, b]) {
+        expect(node.position.x).toBeGreaterThanOrEqual(vb.x);
+        expect(node.position.y).toBeGreaterThanOrEqual(vb.y);
+        expect(node.position.x + node.size.width).toBeLessThanOrEqual(vb.x + vb.width);
+        expect(node.position.y + node.size.height).toBeLessThanOrEqual(vb.y + vb.height);
+      }
+
+      // ...and the content is centred in it.
+      expect(vb.x + vb.width / 2).toBeCloseTo(600, 6); // (-500 + 1700) / 2
+      expect(vb.y + vb.height / 2).toBeCloseTo(450, 6); // (-400 + 1300) / 2
+    });
+
+    test('fitToContent survives an empty diagram', () => {
+      const zoom = component.zoom;
+      expect(() => component.fitToContent()).not.toThrow();
+      expect(component.zoom).toBe(zoom);
+    });
+
+    test('zoomToSelection frames only the selected nodes', () => {
+      const a = new NodeModel({
+        type: 'basic',
+        position: { x: 0, y: 0 },
+        size: { width: 100, height: 100 },
+      });
+      const far = new NodeModel({
+        type: 'basic',
+        position: { x: 5000, y: 5000 },
+        size: { width: 100, height: 100 },
+      });
+      diagram.addNode(a);
+      diagram.addNode(far);
+      diagram.selectNode(a);
+
+      component.zoomToSelection(40);
+      paint();
+
+      const vb = renderedViewBox();
+      // Centred on the SELECTED node, not on the pair.
+      expect(vb.x + vb.width / 2).toBeCloseTo(50, 6);
+      expect(vb.y + vb.height / 2).toBeCloseTo(50, 6);
+      // The far node is nowhere near the view.
+      expect(vb.x + vb.width).toBeLessThan(5000);
+    });
+
+    test('nodes stay visible when zoomed OUT (culling uses the real viewBox)', () => {
+      // Regression: the renderer culled against the un-zoomed `viewport` rect, so
+      // zooming out (which fit-to-content always does) dropped nodes that are
+      // genuinely on screen. Culling now uses the rect it actually draws.
+      const node = new NodeModel({
+        type: 'basic',
+        position: { x: 900, y: 100 }, // outside the 800x600 rect; INSIDE the viewBox at zoom 0.5
+        size: { width: 100, height: 100 },
+      });
+      diagram.addNode(node);
+
+      const nodeCount = () =>
+        fixture.nativeElement.querySelector('svg.grafloria-diagram .nodes-layer')?.children.length ?? 0;
+
+      component.zoom = 0.5;
+      paint();
+
+      const vb = renderedViewBox();
+      expect(vb.width).toBe(1600);
+      // Genuinely inside the drawn rect...
+      expect(node.position.x).toBeGreaterThanOrEqual(vb.x);
+      expect(node.position.x + node.size.width).toBeLessThanOrEqual(vb.x + vb.width);
+      // ...so it must actually be painted.
+      expect(nodeCount()).toBe(1);
+    });
+  });
 });

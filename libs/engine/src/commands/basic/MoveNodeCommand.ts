@@ -3,20 +3,37 @@
 import { Command, CommandContext, SerializedCommand } from '../Command';
 import { Point } from '../../types';
 
+export interface MoveNodeCommandOptions {
+  /**
+   * Whether CommandManager may MERGE this move into the previous one for the
+   * same node (default: true, preserving the historic behaviour).
+   *
+   * Merging exists for callers that stream many small moves (e.g. one command
+   * per pointer-move). A caller that already commits ONE command per completed
+   * gesture must opt OUT: otherwise two separate drags of the same node landing
+   * inside CommandManager's merge window (500ms) collapse into a single undo
+   * step, and one Ctrl+Z would rewind BOTH gestures.
+   */
+  mergeable?: boolean;
+}
+
 export class MoveNodeCommand extends Command {
   private oldPosition?: Point;
   private newPosition: Point;
+  private readonly mergeable: boolean;
 
   constructor(
     private nodeId: string,
     newPosition: Point,
-    oldPosition?: Point
+    oldPosition?: Point,
+    options: MoveNodeCommandOptions = {}
   ) {
     super('Move Node');
     this.newPosition = { ...newPosition };
     if (oldPosition) {
       this.oldPosition = { ...oldPosition };
     }
+    this.mergeable = options.mergeable !== false;
   }
 
   override execute(context: CommandContext): void {
@@ -67,6 +84,12 @@ export class MoveNodeCommand extends Command {
       return false;
     }
 
+    // A gesture-committed move opts out of merging (see MoveNodeCommandOptions):
+    // one gesture must stay one undo step.
+    if (!this.mergeable || !other.mergeable) {
+      return false;
+    }
+
     // Can merge if same node
     return this.nodeId === other.nodeId;
   }
@@ -80,7 +103,8 @@ export class MoveNodeCommand extends Command {
     return new MoveNodeCommand(
       this.nodeId,
       other.newPosition,
-      this.oldPosition // Keep original start position
+      this.oldPosition, // Keep original start position
+      { mergeable: this.mergeable }
     );
   }
 

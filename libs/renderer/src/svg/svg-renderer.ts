@@ -206,11 +206,34 @@ export class SVGRenderer implements IRenderer {
     // Get LOD level from engine
     const lod = diagram.getLODLevel(zoom);
 
+    // Apply zoom to viewBox (zoom around center point)
+    // The center point should remain constant regardless of zoom level
+    const centerX = viewport.x + viewport.width / 2;
+    const centerY = viewport.y + viewport.height / 2;
+
+    const viewBoxWidth = viewport.width / zoom;
+    const viewBoxHeight = viewport.height / zoom;
+    const viewBoxX = centerX - viewBoxWidth / 2;
+    const viewBoxY = centerY - viewBoxHeight / 2;
+
+    // Cull against the rect that is ACTUALLY VISIBLE — the viewBox — not the raw
+    // `viewport` argument. They are concentric and identical at zoom 1, but when
+    // zoomed OUT (zoom < 1) the viewBox is strictly larger, so culling by
+    // `viewport` dropped entities that are on screen (fit-to-content, which zooms
+    // out to frame the whole diagram, hit this every time). Zoomed IN it merely
+    // over-included, which is why this stayed invisible for so long.
+    const visibleRect: Rectangle = {
+      x: viewBoxX,
+      y: viewBoxY,
+      width: viewBoxWidth,
+      height: viewBoxHeight,
+    };
+
     // Get visible nodes using engine's SpatialIndex (viewport virtualization)
-    const visibleNodes = diagram.getVisibleNodes(viewport);
+    const visibleNodes = diagram.getVisibleNodes(visibleRect);
 
     // Get visible links (only render if both endpoints are visible)
-    const visibleLinks = this.getVisibleLinks(diagram, viewport);
+    const visibleLinks = this.getVisibleLinks(diagram, visibleRect);
 
     // Track counts
     this.lastNodeCount = visibleNodes.length;
@@ -225,16 +248,6 @@ export class SVGRenderer implements IRenderer {
     const linksLayer = this.renderLinksLayer(visibleLinks, lod);
     const nodesLayer = this.renderNodesLayer(visibleNodes, lod);
     const connectionPreviewLayer = this.renderConnectionPreviewLayer();
-
-    // Apply zoom to viewBox (zoom around center point)
-    // The center point should remain constant regardless of zoom level
-    const centerX = viewport.x + viewport.width / 2;
-    const centerY = viewport.y + viewport.height / 2;
-
-    const viewBoxWidth = viewport.width / zoom;
-    const viewBoxHeight = viewport.height / zoom;
-    const viewBoxX = centerX - viewBoxWidth / 2;
-    const viewBoxY = centerY - viewBoxHeight / 2;
 
     // Card 2: assemble the deduped paint-server `<defs>` populated while the
     // layers rendered. Appended LAST (not prepended) so existing positional
