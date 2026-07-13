@@ -21,8 +21,6 @@ import {
   type Point,
 } from '../canvas/path-geometry';
 
-export type { Point };
-
 /** Round to 3dp so serialized path strings stay compact and diff-stable. */
 function round3(n: number): number {
   return Math.round(n * 1000) / 1000;
