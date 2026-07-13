@@ -23,6 +23,18 @@ import { EdgeBundlingOptions, EdgeBundlingResult } from './edge-bundling.interfa
  * Base options for all layout adapters
  */
 export interface LayoutOptions {
+  /**
+   * Seed for any algorithm that uses randomness (force, spectral, community).
+   *
+   * Wave 7 Card 3: this was already load-bearing — Card 0 made three adapters
+   * read it — but it lived nowhere in the type, so `force-layout-adapter` had to
+   * launder it through `(options as { seed?: number }).seed`. A cast is not a
+   * contract: it meant `seed` could not survive a typed hop across the worker
+   * boundary, where the options bag really is `Partial<LayoutOptions>` and
+   * anything not named there is dropped. Named here, it crosses.
+   */
+  seed?: number;
+
   /** Whether to animate to new positions */
   animate?: boolean;
   /** Animation duration in milliseconds */

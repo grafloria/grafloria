@@ -61,10 +61,14 @@ import {
   LayoutRegistry,
   fromAdapter,
   createBuiltInLayoutAdapters,
+  translateOptions,
   type UnifiedLayoutOptions,
   type UnifiedLayoutResult,
 } from '../layout/layout-registry';
 import { DEFAULT_LAYOUT_SEED } from '../layout/rng';
+// Wave 7 (Auto-layout) — Card 3: off-main-thread layout.
+import { LayoutHost, type LayoutPort } from '../layout/layout-host';
+import { serializeGraph } from '../layout/layout-graph';
 import type { LayoutType, LayoutConfig, FlexItemConfig, GridItemConfig } from '../types/layout.types'; // Phase 1.7
 
 export interface DiagramEngineConfig {
@@ -2172,24 +2176,105 @@ export class DiagramEngine {
       throw new Error('No diagram loaded');
     }
 
-    const engine = this.getLayoutRegistry().get(name);
-    if (!engine) {
+    const registered = this.getLayoutRegistry().get(name);
+    if (!registered) {
       const available = this.getLayoutRegistry().names().join(', ');
       throw new Error(`Unknown layout '${name}'. Registered layouts: ${available}`);
     }
 
     const seed = options.seed ?? DEFAULT_LAYOUT_SEED;
-    const result = await engine.apply(this.diagram, { ...options, seed });
 
-    // Commit the positions. setPosition (not a raw write) so the spatial index,
-    // the routing obstacle map and the renderer all see the move — the wave-5
-    // lesson: a subscription to an event nobody emits is a subscription to
-    // nothing.
-    for (const [nodeId, position] of result.nodePositions) {
-      this.diagram.getNode(nodeId)?.setPosition(position.x, position.y);
+    // A hand-rolled RegisteredLayout is an opaque closure over a DiagramModel.
+    // A closure cannot cross a thread boundary, so it runs inline — not a
+    // policy, just physics. Every built-in exposes its adapter and takes the
+    // worker path below.
+    if (!registered.adapter) {
+      const result = await registered.apply(this.diagram, { ...options, seed });
+      this.commitLayoutPositions(result.nodePositions);
+      return {
+        ...result,
+        algorithm: name,
+        seed,
+        partial: false,
+        iteration: 1,
+        totalIterations: 1,
+      };
     }
 
+    // Wave 7 Card 3: ONE path, whether or not a worker port is attached. The
+    // host runs the algorithm inline through the very same message loop the
+    // worker would run, so there is no second code path to drift — and a test
+    // proves the two produce byte-identical coordinates.
+    const graph = serializeGraph(this.diagram.getNodes(), this.diagram.getLinks());
+    const result = await this.getLayoutHost().run(
+      name,
+      graph,
+      translateOptions(name, { ...options, seed }),
+      {
+        signal: options.signal,
+        onProgress: options.onProgress,
+        timeBudgetMs: options.timeBudgetMs,
+        sliceMs: options.sliceMs,
+        stopAfterIteration: options.stopAfterIteration,
+      }
+    );
+
+    this.commitLayoutPositions(result.nodePositions);
+
     return { ...result, algorithm: name, seed };
+  }
+
+  /**
+   * Commit computed positions onto the real nodes.
+   *
+   * `setPosition()` rather than a raw write, so the spatial index, the routing
+   * obstacle map and the renderer all see the move — the wave-5 lesson: a
+   * subscription to an event nobody emits is a subscription to nothing.
+   *
+   * This is also the reason a partial result is USEFUL rather than merely
+   * honest: the best-so-far positions land on the diagram exactly like final
+   * ones, so a cancelled layout leaves a real, coherent picture behind.
+   */
+  private commitLayoutPositions(
+    nodePositions: Map<string, { x: number; y: number }>
+  ): void {
+    for (const [nodeId, position] of nodePositions) {
+      this.diagram?.getNode(nodeId)?.setPosition(position.x, position.y);
+    }
+  }
+
+  /**
+   * Run layout off the main thread.
+   *
+   * The engine does NOT construct the Worker — that would bake one bundler's URL
+   * scheme into the engine, which is exactly what the old (never-instantiated)
+   * `LayoutWorkerPool` did with its hardcoded `/assets/workers/layout.worker.js`.
+   * The caller builds the worker however its toolchain likes and hands it in:
+   *
+   *     const worker = new Worker(new URL('./layout.worker', import.meta.url),
+   *                               { type: 'module' });
+   *     engine.setLayoutPort(worker as unknown as LayoutPort);
+   *
+   * Pass `undefined` to go back to running inline.
+   */
+  setLayoutPort(port?: LayoutPort): void {
+    this.layoutPort = port;
+    this.layoutHost = undefined; // rebuilt lazily against the new port
+  }
+
+  private layoutPort?: LayoutPort;
+  private layoutHost?: LayoutHost;
+
+  private getLayoutHost(): LayoutHost {
+    if (!this.layoutHost) {
+      this.layoutHost = new LayoutHost(this.layoutPort, {
+        // Inline runs resolve against the LIVE registry, so a layout registered
+        // at runtime (or a built-in that a host has replaced) is honoured. A
+        // real worker cannot: functions do not survive postMessage.
+        resolve: (layoutName) => this.getLayoutRegistry().get(layoutName)?.adapter,
+      });
+    }
+    return this.layoutHost;
   }
 
   /**

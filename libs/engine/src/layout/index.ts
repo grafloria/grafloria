@@ -78,6 +78,16 @@ export * from './edge-bundling.interface';
 export * from './layout-worker.interface';
 export * from './worker-layout-adapter';
 
+// Wave 7 Card 3: off-main-thread layout — the worker seam that is actually
+// wired up. `engine.layout(name, { signal, onProgress, timeBudgetMs })` runs
+// through LayoutHost, inline by default and off-thread once a port is attached
+// via `engine.setLayoutPort()`. NOTE: the layout.worker.ts module is NOT
+// re-exported here — it calls `serveLayout(self)` at import time, which is
+// correct inside a Worker and wrong everywhere else.
+export * from './layout-host';
+export * from './layout-graph';
+export * from './steppable-layout';
+
 // Phase 6: Advanced Algorithms
 export * from './force-layout-adapter';
 export * from './spectral-layout-adapter';

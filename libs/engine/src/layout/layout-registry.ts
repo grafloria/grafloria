@@ -46,6 +46,10 @@
 
 import type { DiagramModel } from '../models/DiagramModel';
 import type { LayoutAdapter, LayoutOptions, LayoutResult } from './layout-adapter.interface';
+// Type-only: the run controls (signal/onProgress/timeBudgetMs) belong to the
+// worker seam, and importing them as types keeps the module graph acyclic at
+// runtime even though layout-host imports the built-ins from here.
+import type { LayoutRunOptions, LayoutStopReason } from './layout-host';
 import { DEFAULT_LAYOUT_SEED } from './rng';
 import { DagreLayoutAdapter } from './dagre-layout-adapter';
 import { ELKLayoutAdapter } from './elk-layout-adapter';
@@ -58,7 +62,18 @@ import { CommunityLayoutAdapter } from './community-layout-adapter';
  * everything that is common to all layouts is named here so callers do not have
  * to learn five different vocabularies.
  */
-export interface UnifiedLayoutOptions extends Partial<LayoutOptions> {
+export interface UnifiedLayoutOptions extends Partial<LayoutOptions>, LayoutRunOptions {
+  /**
+   * Adapter-specific knobs (`iterations`, `repulsion`, `align`, …) ride along here.
+   *
+   * Card 0's comment PROMISED this — "adapter-specific knobs still ride in
+   * `options`" — but the type did not allow it, so `engine.layout('force',
+   * { iterations: 500 })` was a compile error and the only way to reach half of
+   * force's own options was a cast. A vocabulary that cannot say what its
+   * engines can do is not a unified vocabulary; this is the promise made good.
+   */
+  [key: string]: unknown;
+
   /**
    * Seed for any algorithm that uses randomness (force, spectral, community).
    * Defaults to a FIXED constant — so an author who never thinks about seeds
@@ -84,6 +99,18 @@ export interface UnifiedLayoutOptions extends Partial<LayoutOptions> {
 export interface RegisteredLayout {
   readonly name: string;
   apply(diagram: DiagramModel, options: UnifiedLayoutOptions): Promise<LayoutResult>;
+
+  /**
+   * Wave 7 Card 3 — the underlying algorithm, when there is one.
+   *
+   * A `LayoutAdapter` is a pure function of (nodes, links) and can therefore be
+   * shipped across a thread boundary and run in a worker. A hand-rolled
+   * `RegisteredLayout` is an opaque closure over a whole DiagramModel, and a
+   * closure cannot be posted anywhere — so layouts registered that way run
+   * inline, by physics rather than by policy. Exposing the adapter is what lets
+   * the host tell the two apart instead of guessing.
+   */
+  readonly adapter?: LayoutAdapter;
 }
 
 /** How a layout engine reports back. */
@@ -92,6 +119,29 @@ export interface UnifiedLayoutResult extends LayoutResult {
   algorithm: string;
   /** The seed used — so a pleasing random layout can be reproduced on demand. */
   seed: number;
+
+  // -- Wave 7 Card 3 -------------------------------------------------------
+
+  /**
+   * True when the run was cut short (cancelled, or out of time budget) and this
+   * is the BEST-SO-FAR answer rather than a finished one.
+   *
+   * Flagged rather than thrown away: a force layout stopped at 200 of 300
+   * iterations is a perfectly usable picture, and discarding it is the
+   * difference between a tool that feels alive and one that feels broken. But
+   * the caller has to be able to TELL — silently returning a partial layout as
+   * if it were final is how a "finished" diagram ends up half-settled.
+   */
+  partial: boolean;
+
+  /** Why it stopped early, when it did. */
+  reason?: LayoutStopReason;
+
+  /** Iterations actually completed. */
+  iteration: number;
+
+  /** Iterations the algorithm would have run, left alone. */
+  totalIterations: number;
 }
 
 /**
@@ -149,6 +199,9 @@ export class LayoutRegistry {
 export function fromAdapter(adapter: LayoutAdapter): RegisteredLayout {
   return {
     name: adapter.name,
+    // Card 3: kept reachable, so `engine.layout()` can run this algorithm behind
+    // a worker port instead of on the main thread.
+    adapter,
     async apply(diagram: DiagramModel, options: UnifiedLayoutOptions): Promise<LayoutResult> {
       const nodes = [...diagram.getNodes()].sort((a, b) => (a.id < b.id ? -1 : a.id > b.id ? 1 : 0));
       const links = [...diagram.getLinks()].sort((a, b) => (a.id < b.id ? -1 : a.id > b.id ? 1 : 0));
@@ -166,9 +219,21 @@ export function fromAdapter(adapter: LayoutAdapter): RegisteredLayout {
  * Making callers know which engine they are talking to is exactly the "you cannot
  * be best-in-class with inconsistent options" problem Card 0 names.
  */
-function translateOptions(engine: string, options: UnifiedLayoutOptions): Partial<LayoutOptions> {
+export function translateOptions(
+  engine: string,
+  options: UnifiedLayoutOptions
+): Partial<LayoutOptions> {
   const out: Record<string, unknown> = { ...options };
   out['seed'] = options.seed ?? DEFAULT_LAYOUT_SEED;
+
+  // Card 3: the run controls are the HOST's business, not the algorithm's, and
+  // `signal`/`onProgress` are not structured-clone-safe — posting one to a real
+  // Worker throws DataCloneError. They must not reach the wire.
+  delete out['signal'];
+  delete out['onProgress'];
+  delete out['timeBudgetMs'];
+  delete out['sliceMs'];
+  delete out['stopAfterIteration'];
 
   const { direction, nodeSpacing, rankSpacing } = options;
 

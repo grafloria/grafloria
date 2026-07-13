@@ -19,8 +19,8 @@ import { NodeModel } from '../models/NodeModel';
 import { createLayoutRng } from './rng';
 import { LinkModel } from '../models/LinkModel';
 import { LayoutAdapter, LayoutOptions, LayoutResult } from './layout-adapter.interface';
-import { ConstraintManager } from './layout-constraints.interface';
 import { LayoutQualityMetrics } from './layout-quality-metrics';
+import type { LayoutRun, SteppableLayoutAdapter } from './steppable-layout';
 
 /**
  * Force-directed layout options
@@ -103,19 +103,31 @@ interface QuadTreeNode {
  *
  * Implements Fruchterman-Reingold algorithm with Barnes-Hut optimization.
  */
-export class ForceLayoutAdapter implements LayoutAdapter {
+export class ForceLayoutAdapter implements SteppableLayoutAdapter {
   readonly name = 'force';
 
   /**
-   * Apply force-directed layout
+   * Wave 7 Card 3 — the simulation, exposed one iteration at a time.
+   *
+   * This is where the physics lives, and it is the ONLY place it lives: `apply()`
+   * below is now just "drive this to convergence". Splitting the loop out (rather
+   * than copying it into a worker-flavoured twin) is what keeps the off-thread
+   * path honest — the worker and the main thread run the same arithmetic in the
+   * same order, so they cannot drift.
+   *
+   * Pure and synchronous: no clock, no DOM, and randomness only through the
+   * seeded generator. Those three abstinences are the whole reason a worker run
+   * and an inline run produce byte-identical coordinates.
+   *
+   * `snapshot()` is meaningful after ANY number of steps, which is what makes a
+   * cancelled force layout return the 200-iteration picture it already has
+   * instead of throwing it away.
    */
-  async apply(
+  createRun(
     nodes: NodeModel[],
     links: LinkModel[],
     options: Partial<ForceLayoutOptions> = {}
-  ): Promise<LayoutResult> {
-    const startTime = performance.now();
-
+  ): LayoutRun {
     // Merge with defaults
     const opts: ForceLayoutOptions = {
       repulsion: options.repulsion ?? 100,
@@ -147,7 +159,6 @@ export class ForceLayoutAdapter implements LayoutAdapter {
 
     // Apply constraints (pin nodes)
     if (options.constraints) {
-      const constraintManager = new ConstraintManager(options.constraints);
       forceNodes.forEach(node => {
         const constraints = options.constraints!.constraints.filter(c => c.nodeId === node.id);
         if (constraints.length > 0) {
@@ -161,57 +172,104 @@ export class ForceLayoutAdapter implements LayoutAdapter {
       });
     }
 
-    // Run simulation
+    const adapter = this;
     let temperature = opts.temperature!;
     let iteration = 0;
     let maxMovement = Infinity;
 
-    while (iteration < opts.iterations! && maxMovement > opts.threshold!) {
-      // Reset forces
-      forceNodes.forEach(node => {
-        node.fx = 0;
-        node.fy = 0;
-      });
+    // Exactly the original `while` condition, hoisted so `step()` can consult it
+    // both before doing work (so a zero-iteration run does none) and after (so
+    // the caller learns there is no more).
+    const shouldContinue = (): boolean =>
+      iteration < opts.iterations! && maxMovement > opts.threshold!;
 
-      // Repulsion forces (using Barnes-Hut if enabled)
-      if (opts.useBarnesHut && forceNodes.length > 50) {
-        this.applyBarnesHutRepulsion(forceNodes, opts);
-      } else {
-        this.applyRepulsion(forceNodes, opts);
-      }
+    return {
+      get iteration() {
+        return iteration;
+      },
+      get totalIterations() {
+        return opts.iterations!;
+      },
 
-      // Attraction forces along edges
-      this.applyAttraction(edges, opts);
+      step(): boolean {
+        if (!shouldContinue()) return false;
 
-      // Gravity to center
-      this.applyGravity(forceNodes, opts);
+        // Reset forces
+        forceNodes.forEach(node => {
+          node.fx = 0;
+          node.fy = 0;
+        });
 
-      // Update positions
-      maxMovement = this.updatePositions(forceNodes, temperature);
+        // Repulsion forces (using Barnes-Hut if enabled)
+        if (opts.useBarnesHut && forceNodes.length > 50) {
+          adapter.applyBarnesHutRepulsion(forceNodes, opts);
+        } else {
+          adapter.applyRepulsion(forceNodes, opts);
+        }
 
-      // Cool down
-      temperature *= opts.cooling!;
-      iteration++;
+        // Attraction forces along edges
+        adapter.applyAttraction(edges, opts);
+
+        // Gravity to center
+        adapter.applyGravity(forceNodes, opts);
+
+        // Update positions
+        maxMovement = adapter.updatePositions(forceNodes, temperature);
+
+        // Cool down
+        temperature *= opts.cooling!;
+        iteration++;
+
+        return shouldContinue();
+      },
+
+      snapshot(): LayoutResult {
+        const nodePositions = new Map<string, { x: number; y: number }>();
+        forceNodes.forEach(node => {
+          nodePositions.set(node.id, { x: node.x, y: node.y });
+        });
+
+        return {
+          nodePositions,
+          bounds: adapter.calculateBounds(forceNodes),
+          metadata: {
+            algorithm: 'force',
+            iterations: iteration,
+            finalTemperature: temperature,
+            // The clock is the caller's business, not the simulation's: a run
+            // that timed itself could not produce identical output twice.
+            executionTime: 0,
+            nodeCount: nodes.length,
+            linkCount: links.length,
+          },
+        };
+      },
+    };
+  }
+
+  /**
+   * Apply force-directed layout (run the simulation to convergence).
+   */
+  async apply(
+    nodes: NodeModel[],
+    links: LinkModel[],
+    options: Partial<ForceLayoutOptions> = {}
+  ): Promise<LayoutResult> {
+    const startTime = performance.now();
+
+    const run = this.createRun(nodes, links, options);
+    while (run.step()) {
+      // run to convergence or the iteration cap, whichever comes first
     }
-
-    // Extract positions
-    const nodePositions = new Map<string, { x: number; y: number }>();
-    forceNodes.forEach(node => {
-      nodePositions.set(node.id, { x: node.x, y: node.y });
-    });
+    const result = run.snapshot();
 
     // Apply positions to nodes
     nodes.forEach(node => {
-      const position = nodePositions.get(node.id);
+      const position = result.nodePositions.get(node.id);
       if (position) {
         node.setPosition(position.x, position.y);
       }
     });
-
-    // Calculate bounds
-    const bounds = this.calculateBounds(forceNodes);
-
-    const endTime = performance.now();
 
     // Calculate quality metrics if requested
     let quality = undefined;
@@ -223,15 +281,11 @@ export class ForceLayoutAdapter implements LayoutAdapter {
     }
 
     return {
-      nodePositions,
-      bounds,
+      ...result,
       metadata: {
+        ...result.metadata,
         algorithm: 'force',
-        iterations: iteration,
-        finalTemperature: temperature,
-        executionTime: endTime - startTime,
-        nodeCount: nodes.length,
-        linkCount: links.length,
+        executionTime: performance.now() - startTime,
       },
       quality,
     };
