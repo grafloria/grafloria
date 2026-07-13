@@ -2,6 +2,10 @@ import type { DiagramEngine, LinkModel, NodeModel } from '@grafloria/engine';
 import type { InteractionController } from '../interaction/interaction-controller';
 import type { CanvasRect, ViewportController } from '../viewport/viewport-controller';
 import { isBrowser } from '../platform';
+// Wave 6 — Card 5: the pluggable tool registry. The binder CONSUMES it; a
+// registered tool gets first refusal on every gesture (see onMouseDown).
+import { resolveTool } from '../ext/tools';
+import type { CanvasTool, ToolHitContext, ToolPointerEvent } from '../ext/tools';
 
 /**
  * DomEventBinder — the framework-agnostic DOM ⇄ interaction seam.
@@ -94,6 +98,14 @@ export class DomEventBinder {
   // `removeEventListener(this.onX.bind(this))` allocates a new function and
   // silently removes nothing (the classic listener leak).
   private readonly boundWheel = (e: WheelEvent) => this.onWheel(e);
+  /**
+   * Wave 6 — Card 5. The registered tool that CLAIMED the current gesture, if
+   * any. Exactly one tool owns a gesture end-to-end (the same single-active-tool
+   * rule the Angular ToolManager enforces).
+   */
+  private activeTool?: CanvasTool;
+  private activeToolHit?: ToolHitContext;
+
   private readonly boundMouseDown = (e: MouseEvent) => this.onMouseDown(e);
   private readonly boundMouseMove = (e: MouseEvent) => this.onMouseMove(e);
   private readonly boundMouseUp = (e: MouseEvent) => this.onMouseUp(e);
@@ -196,6 +208,45 @@ export class DomEventBinder {
   // Mouse down — the priority ladder.
   // ==========================================================================
 
+  /** Wave 6 — Card 5: adapt a DOM event to the framework-free tool contract. */
+  private toToolEvent(
+    type: 'down' | 'move' | 'up' | 'cancel',
+    event: MouseEvent,
+    worldX: number,
+    worldY: number
+  ): ToolPointerEvent {
+    const rect = this.host.getRect();
+    return {
+      type,
+      world: { x: worldX, y: worldY },
+      screen: { x: event.clientX - rect.left, y: event.clientY - rect.top },
+      modifiers: {
+        shift: event.shiftKey,
+        ctrl: event.ctrlKey,
+        alt: event.altKey,
+        meta: event.metaKey,
+      },
+      source: event,
+    };
+  }
+
+  /** What the gesture landed on. Resolved ONCE, on pointerdown. */
+  private toToolHit(worldX: number, worldY: number): ToolHitContext {
+    const diagram = this.engine()?.getDiagram();
+    const state = this.host.interaction.getState();
+    const node = diagram?.getNodeAtPosition(worldX, worldY) ?? undefined;
+
+    return {
+      node: node ?? undefined,
+      link: state.hoveredLink ?? undefined,
+      port: state.hoveredPort ?? undefined,
+      empty: !node && !state.hoveredLink && !state.hoveredPort,
+      // DELIBERATE mode's rule: a node only becomes draggable if it was ALREADY
+      // selected before this gesture. Captured here, before selection changes.
+      nodeWasSelected: node ? node.state?.selected === true : false,
+    };
+  }
+
   onMouseDown(event: MouseEvent): void {
     const engine = this.engine();
     const diagram = engine?.getDiagram();
@@ -217,6 +268,32 @@ export class DomEventBinder {
     const { x: worldX, y: worldY } = this.toWorld(event);
     const config = engine.getInteractionConfig();
     const state = this.host.interaction.getState();
+
+    // ------------------------------------------------------------------
+    // Wave 6 — Card 5: REGISTERED TOOLS get first refusal on the gesture.
+    //
+    // The five built-in behaviours below are a hardcoded priority ladder. A host
+    // that wanted to replace one — a custom lasso, a different node-drag — had
+    // no seam to do it through. Now a registered tool may CLAIM the gesture on
+    // pointerdown, and if it does it owns the whole thing (move/up/cancel) and
+    // none of the ladder runs.
+    //
+    // With NO tools registered `resolveTool` returns undefined and everything
+    // below is byte-identical to before — which is why this is additive.
+    // ------------------------------------------------------------------
+    if (!this.options.readonly) {
+      const toolEvent = this.toToolEvent('down', event, worldX, worldY);
+      const toolHit = this.toToolHit(worldX, worldY);
+      const tool = resolveTool(toolEvent, toolHit);
+      if (tool) {
+        event.preventDefault();
+        this.activeTool = tool;
+        this.activeToolHit = toolHit;
+        tool.onPointerDown?.(toolEvent, toolHit);
+        this.host.requestRender();
+        return;
+      }
+    }
 
     if (!this.options.readonly) {
       // 2. Port → start a connection drag.
@@ -340,6 +417,18 @@ export class DomEventBinder {
     const engine = this.engine();
     if (!engine || !engine.getDiagram()) return;
 
+    // Wave 6 — Card 5: a tool that CLAIMED this gesture owns every subsequent
+    // move until pointerup. Checked before panning so a tool can pan itself.
+    if (this.activeTool) {
+      const { x, y } = this.toWorld(event);
+      this.activeTool.onPointerMove?.(
+        this.toToolEvent('move', event, x, y),
+        this.activeToolHit ?? { empty: true }
+      );
+      this.host.requestRender();
+      return;
+    }
+
     if (this.isPanning) {
       // Drag RIGHT ⇒ camera LEFT, so the content follows the cursor.
       this.host.viewport.panByScreenDelta(
@@ -424,6 +513,23 @@ export class DomEventBinder {
     const engine = this.engine();
     if (!engine) return;
     if (event.button !== 0 && event.button !== 1) return;
+
+    // Wave 6 — Card 5: hand the gesture's end to the tool that claimed it, then
+    // release it. Released in a `finally` so a throwing tool cannot wedge the
+    // canvas into a state where every future gesture is swallowed.
+    if (this.activeTool) {
+      const tool = this.activeTool;
+      const hit = this.activeToolHit ?? { empty: true };
+      const { x, y } = this.toWorld(event);
+      try {
+        tool.onPointerUp?.(this.toToolEvent('up', event, x, y), hit);
+      } finally {
+        this.activeTool = undefined;
+        this.activeToolHit = undefined;
+        this.host.requestRender();
+      }
+      return;
+    }
 
     const state = this.host.interaction.getState();
 

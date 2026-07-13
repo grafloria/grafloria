@@ -6,6 +6,9 @@ import {
   isConnectionAllowedByGroup,
 } from '@grafloria/engine';
 import type { Rectangle } from '../types/geometry.types';
+// Wave 6 — Card 5: the host's connection-validation hook. Consumed by
+// canConnectPorts below, the one gate every renderer connect path shares.
+import { isValidConnection } from '../ext/tools';
 
 /**
  * SnapController — alignment snaplines, equal-spacing guides, grid snap,
@@ -126,11 +129,29 @@ export function canConnectPorts(
   if (!isConnectionAllowedByGroup(a, b, engine)) return false;
 
   // Already wired (either direction) → nothing to add.
-  return !diagram.getLinks().some(
+  const alreadyWired = diagram.getLinks().some(
     (link: LinkModel) =>
       (link.sourcePortId === a.id && link.targetPortId === b.id) ||
       (link.sourcePortId === b.id && link.targetPortId === a.id)
   );
+  if (alreadyWired) return false;
+
+  // ---------------------------------------------------------------------
+  // Wave 6 — Card 5: the HOST's `isValidConnection` hook.
+  //
+  // Every rule above is a rule the ENGINE knows (port direction, connection
+  // groups, duplicates). None of them can express a DOMAIN rule — "an Order may
+  // not connect straight to an Invoice" — and a host had no way to inject one.
+  // Validators registered via `registerConnectionValidator` are consulted here,
+  // which is the one gate proximity-connect and keyboard-connect share, so a
+  // host rule cannot apply to one path and not the other.
+  // ---------------------------------------------------------------------
+  return isValidConnection({
+    sourceNode: nodeA,
+    sourcePort: a,
+    targetNode: nodeB,
+    targetPort: b,
+  }).valid;
 }
 
 const edgesOf = (r: Rectangle) => ({

@@ -2904,6 +2904,41 @@ export class SVGRenderer implements IRenderer {
   }
 
   /**
+   * Wave 6 — Card 2. If this link names a REGISTERED connector, let it draw the
+   * whole path; otherwise return null and the built-in branches run untouched.
+   *
+   * ONE implementation, called from BOTH places a link's `d` is produced (the
+   * auto-routed branch via `convertRoutedPathToSVG`, and the manual-waypoint
+   * branch via `generatePathData`) — so a custom connector cannot work on one
+   * kind of link and silently not the other.
+   *
+   * The four BUILT-IN connector names never reach the registry: they are the
+   * renderer's own branches and stay exactly as they were.
+   */
+  private customConnectorPath(
+    link: LinkModel,
+    points: Array<{ x: number; y: number }>,
+    style?: Partial<LinkStyle>,
+    pathType?: string
+  ): string | null {
+    if (typeof link.effectiveConnector !== 'function') return null;
+    if (points.length < 2) return null;
+
+    const name = link.effectiveConnector();
+    if (!name || !hasConnector(name)) return null;
+
+    const connector = getConnector(name);
+    if (!connector) return null;
+
+    return connector({
+      points,
+      link,
+      style: style ?? link.style,
+      cornerRadius: this.resolveCornerRadius(style ?? link.style, pathType ?? link.pathType),
+    });
+  }
+
+  /**
    * Card 0: the CONNECTOR expressed in the renderer's legacy vocabulary, so the
    * existing rendering branches (which all read a pathType-shaped string) apply
    * unchanged: 'rounded' rides the orthogonal branch (that IS the rounded-corner
@@ -3208,14 +3243,21 @@ export class SVGRenderer implements IRenderer {
 
       if (routedPath) {
         points = routedPath.points;
-        pathData = this.convertRoutedPathToSVG(
-          routedPath,
-          this.renderPathType(link),   // Card 0: the CONNECTOR draws the polyline
-          endpoints.sourceDirection,
-          endpoints.targetDirection,
-          this.linkOwnNodes(link),
-          link.style           // Wave 3: per-link cornerRadius / curvature
-        );
+        // Wave 6 — Card 2: a REGISTERED connector owns the polyline → `d` step.
+        // This is the MAIN link path (auto-routed, no manual waypoints), so the
+        // hook has to live here as well as in generatePathData — that one only
+        // serves the manual-waypoint branch, and a connector that worked for
+        // dragged links but not for ordinary ones would be worse than none.
+        pathData =
+          this.customConnectorPath(link, points) ??
+          this.convertRoutedPathToSVG(
+            routedPath,
+            this.renderPathType(link),   // Card 0: the CONNECTOR draws the polyline
+            endpoints.sourceDirection,
+            endpoints.targetDirection,
+            this.linkOwnNodes(link),
+            link.style           // Wave 3: per-link cornerRadius / curvature
+          );
         this.syncLinkPoints(link, points);
       } else {
         // All routing strategies failed: hide invalid connection
@@ -4013,20 +4055,8 @@ export class SVGRenderer implements IRenderer {
     // the renderer's own branches below, untouched, so nothing that already
     // worked changes.
     // -----------------------------------------------------------------------
-    if (link && typeof link.effectiveConnector === 'function') {
-      const connectorName = link.effectiveConnector();
-      if (connectorName && hasConnector(connectorName)) {
-        const connector = getConnector(connectorName);
-        if (connector) {
-          return connector({
-            points,
-            link,
-            style,
-            cornerRadius: this.resolveCornerRadius(style, pathType ?? link.pathType),
-          });
-        }
-      }
-    }
+    const custom = link ? this.customConnectorPath(link, points, style, pathType) : null;
+    if (custom !== null) return custom;
 
     // If segments exist and contain curve information, use them
     if (segments && segments.length > 0 && segments[0].type === 'curve') {
