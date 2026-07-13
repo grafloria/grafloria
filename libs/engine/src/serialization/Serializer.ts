@@ -6,6 +6,13 @@ import type {
   DiagramLoadOptions,
 } from '../models/DiagramModel';
 import type { DiagramMode } from '../engine/DiagramMode';
+import {
+  wrapDiagramDocument,
+  unwrapDiagramDocument,
+  isDiagramDocumentEnvelope,
+  type DiagramDocumentEnvelope,
+  type WrapOptions,
+} from './DocumentEnvelope';
 
 // Serializer's output type with string version for format version
 export interface SerializedDiagram extends Omit<DiagramSerializedData, 'version'> {
@@ -31,13 +38,32 @@ export class DiagramSerializer {
   }
 
   /**
-   * Deserialize diagram from plain object
+   * Serialize wrapped in the portable document envelope (generator identity,
+   * createdAt, integrity checksum). The envelope is the recommended shape for
+   * NEW persistence; deserialize() accepts both it and the legacy flat form.
    */
-  deserialize(data: SerializedDiagram, options?: DiagramLoadOptions): DiagramModel {
-    // Convert back to diagram format
+  serializeEnvelope(diagram: DiagramModel, options?: WrapOptions): DiagramDocumentEnvelope {
+    return wrapDiagramDocument(diagram.serialize(), options);
+  }
+
+  /**
+   * Deserialize diagram from plain object — accepts the enveloped document,
+   * the legacy Serializer flat form, or a raw DiagramModel.serialize payload.
+   * Envelope checksums are verified (mismatch throws — corruption must never
+   * load silently).
+   */
+  deserialize(
+    data: SerializedDiagram | DiagramDocumentEnvelope,
+    options?: DiagramLoadOptions
+  ): DiagramModel {
+    if (isDiagramDocumentEnvelope(data)) {
+      const { document } = unwrapDiagramDocument(data);
+      return DiagramModel.fromJSON(document, options);
+    }
+    // Legacy flat form: convert back to diagram format
     const diagramData: DiagramSerializedData = {
       ...data,
-      version: data.diagramVersion || 1,
+      version: data.diagramVersion || Number(data.version) || 1,
     };
     // Use static fromJSON method (migrations + optional validation run there)
     return DiagramModel.fromJSON(diagramData, options);

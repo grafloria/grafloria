@@ -3,7 +3,7 @@
 import { DiagramEntity } from './DiagramEntity';
 import { NodeModel, SerializedNode } from './NodeModel';
 import { LinkModel, SerializedLink } from './LinkModel';
-import type { PortModel } from './PortModel';
+import { PortModel } from './PortModel';
 import { GroupModel, SerializedGroup } from './GroupModel'; // Phase 1.6c
 import type { SerializedEntity, Point } from '../types';
 import { SpatialIndex } from '../performance/SpatialIndex'; // Phase 5.1
@@ -25,6 +25,7 @@ import {
   DiagramValidationError,
   type DiagramValidationReport,
 } from '../serialization/DiagramValidator';
+import { INCREMENTAL_FORMAT, type DiagramIncremental } from '../serialization/Incremental';
 
 export interface SerializedDiagram extends SerializedEntity {
   /**
@@ -1679,6 +1680,166 @@ export class DiagramModel extends DiagramEntity {
       }
     }
     return dangling;
+  }
+
+  /**
+   * Apply an incremental patch (see serialization/Incremental.ts) — the
+   * receive side of toIncremental/apply. Added entities are installed through
+   * the SAME unified restore path as document load (fully wired); modified
+   * entities are updated IN PLACE so object identity is preserved for
+   * renderers holding references; normal change events fire (an applied
+   * patch IS a mutation, unlike a document load).
+   */
+  applyIncremental(patch: DiagramIncremental): void {
+    this.assertNotDisposed();
+    if (patch.format !== INCREMENTAL_FORMAT) {
+      throw new Error(`Not an incremental patch (format '${(patch as any)?.format}')`);
+    }
+    if (patch.schemaVersion > DIAGRAM_SCHEMA_VERSION) {
+      throw new Error(
+        `Incremental patch has schemaVersion ${patch.schemaVersion}, newer than this ` +
+          `runtime (${DIAGRAM_SCHEMA_VERSION}) — refusing to apply.`
+      );
+    }
+
+    this.beginBatch();
+    try {
+      // Removals first — links before the nodes they reference.
+      for (const id of patch.removed.links) this.removeLink(id);
+      for (const id of patch.removed.nodes) this.removeNode(id);
+      for (const id of patch.removed.groups) this.removeGroup(id);
+
+      // Additions through the unified restore path (fully wired entities).
+      for (const nodeData of patch.added.nodes) this.restoreNode(nodeData);
+      for (const linkData of patch.added.links) this.restoreLink(linkData);
+      for (const groupData of patch.added.groups) this.restoreGroup(groupData);
+
+      // In-place modifications (a modified-but-locally-missing entity is
+      // treated as an add — patches may arrive against divergent replicas).
+      for (const nodeData of patch.modified.nodes) this.applySerializedNode(nodeData);
+      for (const linkData of patch.modified.links) this.applySerializedLink(linkData);
+      for (const groupData of patch.modified.groups) this.applySerializedGroup(groupData);
+
+      if (patch.diagram) {
+        if (patch.diagram.name !== undefined) this.name = patch.diagram.name;
+        if (patch.diagram.viewport) this.viewport = { ...patch.diagram.viewport };
+        if (patch.diagram.metadata) {
+          this.metadata = new Map(Object.entries(patch.diagram.metadata));
+        }
+      }
+
+      // Derived state follows the links.
+      this.reconcilePortConnections();
+    } finally {
+      this.endBatch(); // queued events flush here — normal mutation semantics
+    }
+
+    // Converge the mutation counter to the SOURCE's — the replica must
+    // serialize identically to the diagram the patch came from, and apply's
+    // own internal trackChange bumps are implementation noise, not edits.
+    if (typeof patch.targetVersion === 'number') {
+      this.version = patch.targetVersion;
+    }
+
+    this.emitter.emit('diagram:incremental-applied', {
+      added: patch.added.nodes.length + patch.added.links.length + patch.added.groups.length,
+      removed:
+        patch.removed.nodes.length + patch.removed.links.length + patch.removed.groups.length,
+      modified:
+        patch.modified.nodes.length + patch.modified.links.length + patch.modified.groups.length,
+    });
+  }
+
+  /** In-place node update from serialized data (identity preserved). */
+  private applySerializedNode(data: any): void {
+    const node = this.nodes.get(data.id);
+    if (!node) {
+      this.restoreNode(data);
+      return;
+    }
+    node.position = { ...data.position };
+    node.size = { ...data.size };
+    node.rotation = data.rotation;
+    node.scale = data.scale;
+    node.parentId = data.parentId;
+    node.children = new Set(data.children);
+    node.state = data.state;
+    node.behavior = data.behavior;
+    node.style = data.style;
+    node.data = data.data;
+    node.positionMode = data.positionMode || 'absolute';
+    node.transformOrigin = data.transformOrigin || { x: 0.5, y: 0.5 };
+    node.metadata = new Map(Object.entries(data.metadata ?? {}));
+
+    // Replace ports, keeping the O(1) index exact WITHOUT re-running
+    // indexNodePorts (which would stack another pair of port listeners).
+    if (Array.isArray(data.ports)) {
+      for (const port of node.getPorts()) {
+        const entry = this.portIndex.get(port.id);
+        if (entry?.node === node) this.portIndex.delete(port.id);
+      }
+      node.ports.clear();
+      for (const portData of data.ports) {
+        const port = PortModel.fromJSON(portData);
+        node.ports.set(port.id, port);
+        this.portIndex.set(port.id, { node, port });
+      }
+    }
+
+    if (typeof data.version === 'number') node.version = data.version;
+    this.nodeSpatialIndex.update(node);
+    node.markDirty('incremental');
+    this.emitOrQueue('node:changed', node);
+    this.emitOrQueue('node:moved', { nodeId: node.id, position: node.position });
+  }
+
+  /** In-place link update from serialized data (identity preserved). */
+  private applySerializedLink(data: any): void {
+    const link = this.links.get(data.id);
+    if (!link) {
+      this.restoreLink(data);
+      return;
+    }
+    link.sourcePortId = data.sourcePortId;
+    link.targetPortId = data.targetPortId;
+    link.sourceNodeId = data.sourceNodeId ?? this.getNodeByPortId(data.sourcePortId)?.id;
+    link.targetNodeId = data.targetNodeId ?? this.getNodeByPortId(data.targetPortId)?.id;
+    link.pathType = data.pathType;
+    link.points = (data.points ?? []).map((point: any) => ({ ...point }));
+    link.segments = (data.segments ?? []).map((segment: any) => ({ ...segment }));
+    link.labels = (data.labels ?? []).map((label: any) => ({ ...label }));
+    link.state = data.state;
+    link.style = data.style;
+    link.data = data.data;
+    link.metadata = new Map(Object.entries(data.metadata ?? {}));
+    if (typeof data.version === 'number') link.version = data.version;
+    this.linkSpatialIndex.update(link);
+    link.markDirty('incremental');
+    this.emitOrQueue('link:changed', link);
+  }
+
+  /** In-place group update from serialized data (identity preserved). */
+  private applySerializedGroup(data: any): void {
+    const group = this.groups.get(data.id);
+    if (!group) {
+      this.restoreGroup(data);
+      return;
+    }
+    group.name = data.name;
+    group.members = new Set(data.members ?? []);
+    group.isCollapsed = data.isCollapsed;
+    group.bounds = data.bounds;
+    if (data.layoutType) group.layoutType = data.layoutType;
+    if (data.layoutConfig) group.layoutConfig = data.layoutConfig;
+    if (data.position) group.position = { x: data.position.x, y: data.position.y };
+    if (data.size) group.size = { ...data.size };
+    group.parentGroupId = data.parentGroupId;
+    // Replace metadata CONTENT but keep the runtime diagram back-ref wired.
+    group.metadata = new Map(Object.entries(data.metadata ?? {}));
+    group.metadata.set('diagram', this);
+    if (typeof data.version === 'number') group.version = data.version;
+    group.markDirty('incremental');
+    this.emitOrQueue('group:changed', group);
   }
 
   /**

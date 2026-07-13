@@ -15,6 +15,8 @@ export interface ClipboardData {
   links: SerializedLink[];
   groups: SerializedGroup[];
   timestamp: number;
+  sourceDiagramId?: string;
+  /** @deprecated misspelling kept for payload back-compat — use sourceDiagramId */
   sourceDigramId?: string;
 }
 
@@ -47,7 +49,8 @@ export class ClipboardManager {
       links: data.links.map(l => l.serialize()),
       groups: data.groups.map(g => g.serialize()),
       timestamp: Date.now(),
-      sourceDigramId: data.sourceDiagramId,
+      sourceDiagramId: data.sourceDiagramId,
+      sourceDigramId: data.sourceDiagramId, // deprecated alias (back-compat)
     };
 
     // Store in clipboard
@@ -92,7 +95,9 @@ export class ClipboardManager {
    * Check if clipboard contains nodes from a specific diagram
    */
   isFromDiagram(diagramId: string): boolean {
-    return this.clipboard?.sourceDigramId === diagramId;
+    return (
+      (this.clipboard?.sourceDiagramId ?? this.clipboard?.sourceDigramId) === diagramId
+    );
   }
 
   /**

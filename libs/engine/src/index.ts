@@ -44,6 +44,50 @@ export {
   validateSerializedDiagram,
   DiagramValidationError,
 } from './serialization/DiagramValidator';
+export {
+  DIAGRAM_ENVELOPE_FORMAT,
+  DIAGRAM_ENVELOPE_VERSION,
+  wrapDiagramDocument,
+  unwrapDiagramDocument,
+  isDiagramDocumentEnvelope,
+  canonicalStringify,
+  checksumOf,
+  DiagramChecksumError,
+} from './serialization/DocumentEnvelope';
+export type {
+  DiagramDocumentEnvelope,
+  WrapOptions,
+  UnwrapResult,
+} from './serialization/DocumentEnvelope';
+export {
+  SUBGRAPH_FORMAT,
+  serializeSubgraph,
+  deserializeSubgraphInto,
+} from './serialization/Subgraph';
+export type {
+  SerializedSubgraph,
+  SubgraphSelection,
+  DeserializeSubgraphOptions,
+  DeserializedSubgraph,
+} from './serialization/Subgraph';
+export {
+  INCREMENTAL_FORMAT,
+  IncrementalCapture,
+  beginIncrementalCapture,
+} from './serialization/Incremental';
+export type { DiagramIncremental } from './serialization/Incremental';
+export {
+  exportDiagramText,
+  importDiagramText,
+  stripGrafloriaSidecar,
+  GRAFLORIA_DOC_PREFIX,
+  GRAFLORIA_HASH_PREFIX,
+} from './serialization/TextFormat';
+export type {
+  ExportTextOptions,
+  ImportTextOptions,
+  ImportTextResult,
+} from './serialization/TextFormat';
 export type {
   DiagramValidationFinding,
   DiagramValidationReport,
