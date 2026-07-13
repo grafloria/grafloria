@@ -61,6 +61,22 @@ import {
   toEdgeSpec,
   type NodeSpec,
   type EdgeSpec,
+  // wave4/interaction — every bit of tool/snap/keyboard LOGIC lives in
+  // @grafloria/renderer (framework-agnostic). This component only routes DOM events
+  // into it, draws the geometry it returns, and dispatches the commands it builds.
+  SelectionToolsController,
+  type SelectionToolLayer,
+  type ToolHandle,
+  SnapController,
+  type AlignmentGuide,
+  type SpacingGuide,
+  type ProximityCandidate,
+  HighlighterController,
+  type Highlighter,
+  KeyboardNavigationController,
+  type FocusRing,
+  type Announcement,
+  InPlaceTextEditor,
 } from '@grafloria/renderer';
 import { VNodeRendererService } from '../services/vnode-renderer.service';
 import { InteractionHandlerService } from '../services/interaction-handler.service';
@@ -319,6 +335,72 @@ export class DiagramCanvasComponent implements AfterViewInit, OnDestroy {
     }
   }
 
+  // ==========================================================================
+  // wave4/interaction — Cards 5-7. The canvas is a THIN host: it owns the DOM
+  // events and the overlay markup; the controllers below (all in @grafloria/renderer)
+  // own the geometry, the gesture state machines and the undo commands.
+  // ==========================================================================
+
+  /** Card 5: resize/rotate handles, Halo, link endpoint + vertex tools. */
+  readonly enableSelectionTools = input(true);
+
+  /** Card 6: alignment snaplines, equal spacing, grid snap, keep-in-bounds. */
+  readonly enableSnapping = input(true);
+
+  /** Card 6: drop a node near a compatible port → auto-link it. */
+  readonly enableProximityConnect = input(true);
+
+  /** Card 7: Tab/arrow focus, nudge, keyboard connect, ARIA announcements. */
+  readonly enableKeyboardNavigation = input(true);
+
+  /** Card 6: world rectangle nodes may not be dragged outside of (null = free). */
+  /**
+   * wave4/interaction — keep-in-bounds for dragging. A signal input, not @Input:
+   * ngOnChanges no longer exists (wave4/ngwrapper made this component zoneless),
+   * so a plain @Input would be read once and never react to a rebind. The effect
+   * below pushes every change into the SnapController.
+   */
+  readonly canvasBounds = input<Rectangle | null>(null);
+
+  /** Card 5: double-click a node to edit its label in place. */
+  readonly enableInPlaceEditing = input(true);
+
+  private readonly selectionTools = new SelectionToolsController();
+  private readonly snapController = new SnapController();
+  private readonly highlighterController = new HighlighterController();
+  private readonly keyboardNav = new KeyboardNavigationController();
+  private readonly inPlaceEditor = new InPlaceTextEditor();
+
+  /** Live tool layer for the current selection (template-bound). */
+  toolLayer: SelectionToolLayer = {
+    bounds: null,
+    rotation: 0,
+    center: null,
+    nodeIds: [],
+    linkIds: [],
+    handles: [],
+  };
+
+  /** Hover / selection / validation / drop-target decorations (template-bound). */
+  highlighters: Highlighter[] = [];
+
+  /** Live alignment snaplines + equal-spacing guides during a drag/resize. */
+  alignmentGuides: AlignmentGuide[] = [];
+  spacingGuides: SpacingGuide[] = [];
+
+  /** Card 7: the visible focus ring (keyboard focus ≠ selection). */
+  focusRing: FocusRing | null = null;
+
+  /** Card 7: text of the ARIA live region. */
+  liveMessage = '';
+  livePoliteness: 'polite' | 'assertive' = 'polite';
+
+  /** The proximity-connect candidate under the dragged node (Card 6). */
+  private proximityCandidate: ProximityCandidate | null = null;
+
+  /** Unsubscribe for the announcement stream. */
+  private announcementSub?: () => void;
+
   /**
    * Main container reference
    */
@@ -488,6 +570,13 @@ export class DiagramCanvasComponent implements AfterViewInit, OnDestroy {
 
   constructor() {
     // --- engine lifecycle: renderer + tools + subscriptions follow the engine ---
+    // wave4/interaction: keep-in-bounds is a live input — push every change into
+    // the SnapController (ngOnChanges used to do this).
+    effect(() => {
+      const bounds = this.canvasBounds();
+      untracked(() => this.snapController.updateConfig({ keepInBounds: bounds ?? null }));
+    });
+
     effect(() => {
       const engine = this.activeEngine();
       untracked(() => this.attachEngine(engine));
@@ -720,6 +809,11 @@ export class DiagramCanvasComponent implements AfterViewInit, OnDestroy {
 
     this.initializeRenderer();
     this.initializeToolManager();
+    // wave4/interaction: selection tools / snapping / highlighters / keyboard nav.
+    // Their previous call sites (ngAfterViewInit + ngOnChanges) were deleted by the
+    // signal rewrite, so attachEngine — the single place an engine is wired — owns
+    // them now, and they are re-initialised on every [engine] swap.
+    this.initializeWave4Controllers();
     this.subscribeToEngineEvents();
 
     const diagram = engine.getDiagram();
@@ -795,6 +889,318 @@ export class DiagramCanvasComponent implements AfterViewInit, OnDestroy {
     );
   }
 
+  // ==========================================================================
+  // wave4/interaction — Cards 5-7 wiring
+  // ==========================================================================
+
+  /** Screen-px slack for an alignment snap (converted to world units per zoom). */
+  private static readonly SNAP_PX = 6;
+
+  /** The vertex handle a pointer went down on (a click with no drag removes it). */
+  private pendingVertexHandle: ToolHandle | null = null;
+
+  /**
+   * Bring the framework-agnostic controllers up on the current engine.
+   *
+   * This is also where `InteractionConfig.snapToPortRadius` finally gets CONSUMED:
+   * it has been in the config (and in the config panel's UI) since the first
+   * interaction phase with no reader anywhere in the codebase.
+   */
+  private initializeWave4Controllers(): void {
+    if (!this.eng) {
+      return;
+    }
+    this.snapController.syncWithEngineConfig(this.eng);
+    this.snapController.updateConfig({
+      keepInBounds: this.canvasBounds() ?? null,
+      snapThreshold: DiagramCanvasComponent.SNAP_PX / Math.max(this.zoom(), 0.01),
+    });
+    this.highlighterController.refreshValidation(this.eng);
+
+    this.announcementSub?.();
+    this.announcementSub = this.keyboardNav.onAnnounce((announcement: Announcement) => {
+      this.liveMessage = announcement.message;
+      this.livePoliteness = announcement.politeness;
+      this.cdr.markForCheck();
+    });
+  }
+
+  /** Keep the snap slack a constant NUMBER OF SCREEN PIXELS at any zoom. */
+  private syncSnapScale(): void {
+    this.snapController.updateConfig({
+      snapThreshold: DiagramCanvasComponent.SNAP_PX / Math.max(this.zoom(), 0.01),
+    });
+  }
+
+  /**
+   * Recompute the overlay geometry for the frame that was just painted: the tool
+   * layer, the highlighters and the focus ring. Called from renderDiagram() so
+   * the overlays can never disagree with the picture underneath them.
+   */
+  private updateOverlays(): void {
+    if (!this.eng) {
+      return;
+    }
+
+    this.toolLayer =
+      this.enableSelectionTools() && !this.isDraggingNode
+        ? this.selectionTools.computeLayer(this.eng, this.zoom())
+        : { bounds: null, rotation: 0, center: null, nodeIds: [], linkIds: [], handles: [] };
+
+    this.highlighters = this.highlighterController.compute(this.eng);
+    this.focusRing = this.enableKeyboardNavigation()
+      ? this.keyboardNav.getFocusRing(this.eng)
+      : null;
+  }
+
+  /** viewBox for the world-space overlay <svg> — identical to the renderer's. */
+  get overlayViewBox(): string {
+    const box = this.getViewBox();
+    return `${box.x} ${box.y} ${box.width} ${box.height}`;
+  }
+
+  /** Stroke width that stays 1 CSS px in a world-space overlay. */
+  get overlayStroke(): number {
+    return 1 / Math.max(this.zoom(), 0.01);
+  }
+
+  /** Square side of a tool handle in world units (constant on screen). */
+  handleSide(handle: ToolHandle): number {
+    return handle.hitRadius * 2;
+  }
+
+  /** Font size for overlay glyphs/labels, constant on screen. */
+  get overlayFontSize(): number {
+    return 11 / Math.max(this.zoom(), 0.01);
+  }
+
+  /** Glyph drawn inside a click-tool button. */
+  toolGlyph(handle: ToolHandle): string {
+    if (handle.kind === 'remove') return '✕';
+    if (handle.kind === 'vertex-add') return '+';
+    if (handle.kind === 'vertex-remove') return '−';
+    switch (handle.action) {
+      case 'connect':
+        return '⇢';
+      case 'clone':
+        return '⧉';
+      case 'fork':
+        return '⑂';
+      case 'delete':
+        return '✕';
+      default:
+        return '';
+    }
+  }
+
+  /** SVG transform that rotates the selection frame with a rotated node. */
+  get toolFrameTransform(): string | null {
+    const layer = this.toolLayer;
+    if (!layer.center || !layer.rotation) return null;
+    return `rotate(${layer.rotation}, ${layer.center.x}, ${layer.center.y})`;
+  }
+
+  /** Rotation transform for one highlighter box (rotated nodes). */
+  highlighterTransform(h: Highlighter): string | null {
+    if (!h.bounds || !h.rotation) return null;
+    const cx = h.bounds.x + h.bounds.width / 2;
+    const cy = h.bounds.y + h.bounds.height / 2;
+    return `rotate(${h.rotation}, ${cx}, ${cy})`;
+  }
+
+  /** Polyline `points` attribute for a link highlighter / focus ring. */
+  pointsAttr(points?: Point[]): string {
+    return (points ?? []).map((p) => `${p.x},${p.y}`).join(' ');
+  }
+
+  /** Midpoint of a spacing segment (where its distance label is drawn). */
+  spacingLabelX(segment: { x1: number; x2: number }): number {
+    return (segment.x1 + segment.x2) / 2;
+  }
+
+  spacingLabelY(segment: { y1: number; y2: number }): number {
+    return (segment.y1 + segment.y2) / 2;
+  }
+
+  // --- Card 5: tool-layer pointer routing ------------------------------------
+
+  /**
+   * A tool handle was pressed. Drag tools (resize / rotate / vertex) arm a
+   * gesture that the mousemove/mouseup handlers drive; click tools dispatch
+   * their command immediately. Every one of them is undoable.
+   */
+  private onToolHandleDown(handle: ToolHandle, worldX: number, worldY: number): void {
+    this.pendingVertexHandle = null;
+
+    switch (handle.kind) {
+      case 'resize':
+        this.syncSnapScale();
+        this.selectionTools.beginResize(handle, this.eng, worldX, worldY);
+        return;
+
+      case 'rotate':
+        this.selectionTools.beginRotate(handle, this.eng, worldX, worldY);
+        return;
+
+      case 'vertex-remove':
+        // Drag = move the vertex; a click that never moves = remove it (the
+        // no-op gesture at mouseup is what tells the two apart).
+        this.pendingVertexHandle = handle;
+        this.selectionTools.beginVertexDrag(handle, this.eng);
+        return;
+
+      case 'vertex-add': {
+        const command = this.selectionTools.addVertexCommand(handle, this.eng);
+        if (command) this.executeCommand(command);
+        return;
+      }
+
+      case 'remove': {
+        const command = this.selectionTools.removeSelectionCommand(this.eng);
+        if (command) this.executeCommand(command);
+        return;
+      }
+
+      case 'halo':
+        this.onHaloAction(handle);
+        return;
+
+      case 'link-endpoint': {
+        const link = handle.linkId ? this.eng.getDiagram()?.getLink(handle.linkId) : undefined;
+        if (link && handle.endpoint) {
+          this.interactionHandler.startLinkReconnection(
+            link,
+            handle.endpoint,
+            worldX,
+            worldY,
+            this.eng
+          );
+          this.renderDiagram();
+        }
+        return;
+      }
+    }
+  }
+
+  /** Halo (context toolbar): connect / clone / fork / delete. */
+  private onHaloAction(handle: ToolHandle): void {
+    const diagram = this.eng.getDiagram();
+    if (!diagram) return;
+
+    switch (handle.action) {
+      case 'connect': {
+        const node = handle.nodeId ? diagram.getNode(handle.nodeId) : undefined;
+        const port = node?.getPorts().find((p) => p.type === 'output' || p.type === 'bi');
+        if (!node || !port) return;
+        // Start the SAME connection drag a port press starts — the halo is just
+        // another way in, so the drop/validation rules are automatically shared.
+        const at = port.getAbsolutePosition(node.getBoundingBox());
+        this.interactionHandler.startConnection(port, at.x, at.y, this.eng);
+        this.scheduleRender();
+        return;
+      }
+
+      case 'clone': {
+        if (!handle.nodeId) return;
+        const command = this.selectionTools.cloneNodeCommand(this.eng, handle.nodeId);
+        if (command) this.executeCommand(command);
+        return;
+      }
+
+      case 'fork': {
+        if (!handle.nodeId) return;
+        const command = this.selectionTools.forkNodeCommand(this.eng, handle.nodeId);
+        if (command) this.executeCommand(command);
+        return;
+      }
+
+      case 'delete': {
+        const command = this.selectionTools.removeSelectionCommand(this.eng);
+        if (command) this.executeCommand(command);
+        return;
+      }
+    }
+  }
+
+  /** Drive the in-flight resize / rotate / vertex gesture. */
+  private updateToolGesture(event: MouseEvent): void {
+    const { worldX, worldY } = this.clientToWorld(event.clientX, event.clientY);
+    const modifiers = {
+      shift: event.shiftKey,
+      alt: event.altKey,
+      ctrl: event.ctrlKey,
+      meta: event.metaKey,
+    };
+
+    let changed = false;
+    switch (this.selectionTools.activeGesture()) {
+      case 'resize':
+        changed = this.selectionTools.updateResize(this.eng, worldX, worldY, modifiers, (box) =>
+          this.snapBox(box, this.toolLayer.nodeIds)
+        );
+        break;
+      case 'rotate':
+        changed = this.selectionTools.updateRotate(this.eng, worldX, worldY, modifiers);
+        break;
+      case 'vertex':
+        changed = this.selectionTools.updateVertexDrag(this.eng, worldX, worldY, (p) =>
+          this.snapController.snapPointToGrid(p)
+        );
+        break;
+    }
+
+    if (changed) {
+      const diagram = this.eng.getDiagram();
+      if (diagram && this.toolLayer.nodeIds.length > 0) {
+        this.recalculateLinkPathsForNodes(diagram, this.toolLayer.nodeIds);
+      }
+      this.renderDiagram();
+      this.cdr.markForCheck();
+    }
+  }
+
+  /** Commit the gesture as ONE undo step (or remove the vertex that never moved). */
+  private endToolGesture(): void {
+    const command = this.selectionTools.endGesture(this.eng);
+    if (command) {
+      this.executeCommand(command);
+    } else if (this.pendingVertexHandle) {
+      const remove = this.selectionTools.removeVertexCommand(this.pendingVertexHandle, this.eng);
+      if (remove) this.executeCommand(remove);
+    }
+    this.pendingVertexHandle = null;
+    this.clearGuides();
+    this.scheduleRender();
+    this.cdr.markForCheck();
+  }
+
+  // --- Card 6: snapping ------------------------------------------------------
+
+  /** Snap a world box against its siblings, remembering the guides to draw. */
+  private snapBox(box: Rectangle, excludeIds: string[]): Rectangle {
+    if (!this.enableSnapping()) {
+      return box;
+    }
+    const result = this.snapController.computeSnap(
+      box,
+      this.snapController.siblingBoxes(this.eng, excludeIds)
+    );
+    this.alignmentGuides = result.guides;
+    this.spacingGuides = result.spacing;
+    return result.box;
+  }
+
+  private clearGuides(): void {
+    if (this.alignmentGuides.length || this.spacingGuides.length) {
+      this.alignmentGuides = [];
+      this.spacingGuides = [];
+    }
+    if (this.proximityCandidate) {
+      this.snapController.highlightProximityTarget(this.eng, null);
+      this.proximityCandidate = null;
+    }
+  }
+
   /** Map the engine's InteractionMode enum value onto the ToolManager's mode. */
   private toToolMode(mode: unknown): ToolInteractionMode {
     return (mode as string) === 'deliberate'
@@ -847,6 +1253,7 @@ export class DiagramCanvasComponent implements AfterViewInit, OnDestroy {
     const diagram = this.eng.getDiagram();
     if (!diagram) return;
     this.isDraggingNode = true;
+    this.syncSnapScale(); // snap slack is screen-px, so it depends on the zoom
     this.draggedNodes.clear();
     diagram.getSelectedNodes().forEach((node) => {
       if (node.isDraggable()) {
@@ -867,15 +1274,50 @@ export class DiagramCanvasComponent implements AfterViewInit, OnDestroy {
     if (!diagram) return;
     // World-space delta measured from the DOWN point so there is no jump when
     // the drag finally commits at the threshold.
-    const dx = current.worldX - down.worldX;
-    const dy = current.worldY - down.worldY;
+    let dx = current.worldX - down.worldX;
+    let dy = current.worldY - down.worldY;
+
+    // wave4/interaction (Card 6): snap the PRIMARY dragged node — alignment
+    // snaplines / equal spacing / grid / keep-in-bounds — and shift the whole
+    // selection by the same correction so a multi-drag keeps its shape.
+    const draggedIds = Array.from(this.draggedNodes.keys());
+    const primaryId = draggedIds[0];
+    const primary = primaryId ? diagram.getNode(primaryId) : undefined;
+    const start = primaryId ? this.draggedNodes.get(primaryId) : undefined;
+
+    if (this.enableSnapping() && primary && start) {
+      const snapped = this.snapBox(
+        {
+          x: start.startX + dx,
+          y: start.startY + dy,
+          width: primary.size.width,
+          height: primary.size.height,
+        },
+        draggedIds
+      );
+      dx = snapped.x - start.startX;
+      dy = snapped.y - start.startY;
+    }
+
     this.draggedNodes.forEach((initialPos, nodeId) => {
       const node = diagram.getNode(nodeId);
       if (node) {
         node.setPosition(initialPos.startX + dx, initialPos.startY + dy);
       }
     });
-    this.recalculateLinkPathsForNodes(diagram, Array.from(this.draggedNodes.keys()));
+
+    // Card 6: proximity connect — is a port of the dragged node close enough to a
+    // compatible port to auto-link on drop? Highlight it so the user can see it
+    // BEFORE releasing (React Flow's "drop near a node to connect" affordance).
+    if (this.enableProximityConnect() && primaryId) {
+      this.proximityCandidate = this.snapController.findProximityConnection(
+        this.eng,
+        primaryId
+      );
+      this.snapController.highlightProximityTarget(this.eng, this.proximityCandidate);
+    }
+
+    this.recalculateLinkPathsForNodes(diagram, draggedIds);
     this.renderDiagram();
     this.cdr.markForCheck();
   }
@@ -921,14 +1363,33 @@ export class DiagramCanvasComponent implements AfterViewInit, OnDestroy {
       this.containerRef.nativeElement.style.cursor = this.spaceKeyPressed ? 'grab' : 'default';
     }
 
-    if (moves.length === 0) {
+    // wave4/interaction (Card 6): the node was dropped next to a compatible port
+    // → create the link. It belongs to the SAME gesture, so it goes into the same
+    // undo step as the move: one Ctrl+Z takes back both.
+    const candidate = this.proximityCandidate;
+    this.proximityCandidate = null;
+    this.snapController.highlightProximityTarget(this.eng, null);
+    this.clearGuides();
+
+    const linkCommand =
+      candidate && this.enableProximityConnect()
+        ? this.snapController.buildProximityLinkCommand(candidate)
+        : null;
+
+    if (moves.length === 0 && !linkCommand) {
       return; // click, or a drag that returned to its origin → no history entry
     }
 
-    const command: Command =
-      moves.length === 1
-        ? this.buildMoveCommand(moves[0])
-        : this.buildMoveMacro(moves);
+    let command: Command;
+    if (moves.length === 0 && linkCommand) {
+      command = linkCommand;
+    } else if (moves.length === 1 && !linkCommand) {
+      command = this.buildMoveCommand(moves[0]);
+    } else {
+      const macro = this.buildMoveMacro(moves);
+      if (linkCommand) macro.addStep(linkCommand);
+      command = macro;
+    }
 
     this.executeCommand(command);
   }
@@ -969,6 +1430,16 @@ export class DiagramCanvasComponent implements AfterViewInit, OnDestroy {
     const done = engine.commandManager
       .execute(command)
       .then(() => {
+        // wave4/interaction (Cards 5+7): a command that changed the STRUCTURE
+        // invalidates the validation highlighters and is worth announcing to a
+        // screen reader. Pure transforms (move/resize/rotate) announce themselves
+        // where the gesture happens, and can't change validity.
+        if (this.isStructuralCommand(command)) {
+          this.highlighterController.refreshValidation(engine);
+          if (this.enableKeyboardNavigation()) {
+            this.keyboardNav.announceStructure(engine, command.name);
+          }
+        }
         this.scheduleRender();
         this.cdr.markForCheck();
       })
@@ -978,6 +1449,11 @@ export class DiagramCanvasComponent implements AfterViewInit, OnDestroy {
 
     this.pendingCommand = done;
     return done;
+  }
+
+  /** Does this command add/remove/rewire entities (vs. just move them)? */
+  private isStructuralCommand(command: Command): boolean {
+    return /add|remove|delete|paste|cut|fork|duplicate|link/i.test(command.name);
   }
 
   /**
@@ -1257,6 +1733,11 @@ export class DiagramCanvasComponent implements AfterViewInit, OnDestroy {
       const diagram = this.eng.getDiagram();
       if (diagram && this.lastMarquee) {
         this.applyMarqueeSelection(this.lastMarquee);
+      }
+      // wave4/interaction (Card 7): a screen-reader user must learn what a
+      // rubber-band sweep actually selected.
+      if (this.enableKeyboardNavigation()) {
+        this.keyboardNav.announceSelection(this.eng);
       }
     }
     this.marquee.set(null);
@@ -1612,6 +2093,11 @@ export class DiagramCanvasComponent implements AfterViewInit, OnDestroy {
     // Wave 3 (Edges & links): re-pick the edge-toolbar target from the state
     // this frame was drawn with (hover/selection changes come through here).
     this.updateLinkToolbarTarget();
+
+    // wave4/interaction (Cards 5-7): recompute the floating tool layer, the
+    // highlighters and the focus ring from the SAME state this frame drew, so an
+    // overlay can never lag the picture underneath it by a frame.
+    this.updateOverlays();
   }
 
   // ==========================================================================
@@ -2074,6 +2560,19 @@ export class DiagramCanvasComponent implements AfterViewInit, OnDestroy {
       // Convert client coordinates to world coordinates
       const { worldX, worldY } = this.clientToWorld(event.clientX, event.clientY);
 
+      // wave4/interaction (Card 5): the floating tool layer is drawn ON TOP of
+      // everything, so it gets the first look at the press — otherwise a resize
+      // handle sitting over a port would start a connection instead of a resize.
+      if (this.enableSelectionTools()) {
+        const toolHit = this.selectionTools.hitTest(this.toolLayer, worldX, worldY);
+        if (toolHit) {
+          event.preventDefault();
+          this.onToolHandleDown(toolHit, worldX, worldY);
+          this.cdr.markForCheck();
+          return;
+        }
+      }
+
       // Phase 3: Check for HTML handle click (Phase 2 integration - HIGHEST PRIORITY)
       // HTML handles need to be checked before SVG ports
       console.log('🔍 [Phase 3 Debug] Checking for HTML handle at:', {
@@ -2302,6 +2801,13 @@ export class DiagramCanvasComponent implements AfterViewInit, OnDestroy {
         }
         // If clicking an already-selected node without Ctrl: Keep all selections for multi-drag
 
+        // wave4/interaction (Card 7): pointer selection is announced too, and the
+        // keyboard focus follows the pointer — so Tab resumes from what you clicked.
+        if (this.enableKeyboardNavigation()) {
+          this.keyboardNav.setFocus({ type: 'node', id: clickedNode.id });
+          this.keyboardNav.announceSelection(this.eng);
+        }
+
         // Force immediate render to show selection highlight instantly
         this.scheduleRender();
 
@@ -2393,6 +2899,12 @@ export class DiagramCanvasComponent implements AfterViewInit, OnDestroy {
       // Trigger re-render
       this.scheduleRender();
       this.cdr.markForCheck();
+      return;
+    }
+
+    // wave4/interaction (Card 5): a resize / rotate / vertex gesture owns the move.
+    if (this.selectionTools.isActive()) {
+      this.updateToolGesture(event);
       return;
     }
 
@@ -2505,6 +3017,14 @@ export class DiagramCanvasComponent implements AfterViewInit, OnDestroy {
   @HostListener('mouseup', ['$event'])
   onMouseUp(event: MouseEvent): void {
     if (event.button === 1 || event.button === 0) {
+      // wave4/interaction (Card 5): commit a resize / rotate / vertex gesture as
+      // ONE undo entry.
+      if (this.selectionTools.isActive()) {
+        event.preventDefault();
+        this.endToolGesture();
+        return;
+      }
+
       // Phase 2.3b: End control point drag if in progress
       const interactionState = this.interactionHandler.getState();
       if (interactionState.isDraggingControlPoint) {
@@ -2582,6 +3102,14 @@ export class DiagramCanvasComponent implements AfterViewInit, OnDestroy {
   onMouseLeave(): void {
     this.isPanning = false;
 
+    // wave4/interaction: abandon an in-flight tool gesture (restoring the model)
+    // so a resize/rotate can't "stick" when the pointer leaves the canvas.
+    if (this.selectionTools.isActive()) {
+      this.selectionTools.cancelGesture(this.eng);
+      this.pendingVertexHandle = null;
+    }
+    this.clearGuides();
+
     // Wave-2 Interaction: abort any in-flight gesture so a drag/marquee doesn't
     // "stick" when the pointer leaves the canvas.
     if (this.toolManager?.hasGesture) {
@@ -2626,6 +3154,12 @@ export class DiagramCanvasComponent implements AfterViewInit, OnDestroy {
     const { worldX, worldY } = this.clientToWorld(event.clientX, event.clientY);
     const edgeHit = this.interactionHandler.getLinkHitAtPosition(worldX, worldY, this.eng);
     if (!edgeHit) {
+      // wave4/interaction (Card 5): double-click a NODE → edit its label in place.
+      const node = diagram.getNodeAtPosition(worldX, worldY);
+      if (node && this.enableInPlaceEditing()) {
+        event.preventDefault();
+        this.openNodeLabelEditor(node.id);
+      }
       return;
     }
 
@@ -2651,37 +3185,64 @@ export class DiagramCanvasComponent implements AfterViewInit, OnDestroy {
   private activeLabelEditor?: HTMLInputElement;
 
   /**
-   * Wave 2: open a transient <input> over a link label to edit its text in
-   * place. Commits on Enter/blur via LinkModel.updateLabel; cancels on Escape.
-   * Positioned at the double-click point (which the hit-test placed on the
-   * label) in the container's screen space.
+   * Wave 2 → wave4/interaction: edit a link label in place.
+   *
+   * The geometry and the COMMIT now come from the framework-agnostic
+   * {@link InPlaceTextEditor}: this used to call `link.updateLabel()` directly,
+   * which meant an edited edge label could NOT be undone — the last direct
+   * manipulation still outside the command layer. It now commits a
+   * SetLinkLabelCommand like everything else.
    */
   private openLinkLabelEditor(
     link: any,
     labelIndex: number,
-    clientX: number,
-    clientY: number
+    _clientX?: number,
+    _clientY?: number
   ): void {
+    const session = this.inPlaceEditor.begin(this.eng, {
+      type: 'link-label',
+      linkId: link.id,
+      labelIndex,
+    });
+    if (session) {
+      this.openTextEditor(session.value, session.center, session.multiline);
+    }
+  }
+
+  /** wave4/interaction (Card 5): edit a NODE's label in place (double-click / Enter). */
+  private openNodeLabelEditor(nodeId: string): void {
+    const session = this.inPlaceEditor.begin(this.eng, { type: 'node', nodeId });
+    if (session) {
+      this.openTextEditor(session.value, session.center, session.multiline);
+    }
+  }
+
+  /**
+   * The transient text widget. This is the ONLY part of in-place editing that is
+   * framework/DOM-specific: where it goes and what committing MEANS both come
+   * from the session the InPlaceTextEditor opened.
+   *
+   * The editor is positioned by mapping the session's WORLD anchor through the
+   * canvas' world→screen map, so it lands on the text at any zoom (the old code
+   * used the raw double-click point, which drifted from the label).
+   */
+  private openTextEditor(value: string, worldCenter: Point, multiline: boolean): void {
     const container = this.containerRef?.nativeElement;
     if (!container) {
-      return;
-    }
-    const label = link.labels?.[labelIndex];
-    if (!label) {
+      this.inPlaceEditor.cancel();
       return;
     }
 
-    // Only one editor at a time.
     this.closeLabelEditor();
 
-    const rect = container.getBoundingClientRect();
+    const { screenX, screenY } = this.worldToScreen(worldCenter.x, worldCenter.y);
     const input = document.createElement('input');
     input.type = 'text';
-    input.value = label.text ?? '';
-    input.className = 'grafloria-link-label-editor';
+    input.value = value;
+    input.className = multiline ? 'grafloria-node-label-editor' : 'grafloria-link-label-editor';
     input.style.position = 'absolute';
-    input.style.left = `${clientX - rect.left}px`;
-    input.style.top = `${clientY - rect.top}px`;
+    input.style.left = `${screenX}px`;
+    input.style.top = `${screenY}px`;
     input.style.transform = 'translate(-50%, -50%)';
     input.style.zIndex = '1000';
     input.style.font = '12px sans-serif';
@@ -2689,7 +3250,7 @@ export class DiagramCanvasComponent implements AfterViewInit, OnDestroy {
     input.style.minWidth = '40px';
     input.style.padding = '1px 4px';
 
-    let committed = false;
+    let settled = false;
     const cleanup = () => {
       input.removeEventListener('keydown', onKeyDown);
       input.removeEventListener('blur', commit);
@@ -2701,21 +3262,20 @@ export class DiagramCanvasComponent implements AfterViewInit, OnDestroy {
       }
     };
     const commit = () => {
-      if (committed) {
-        return;
-      }
-      committed = true;
-      link.updateLabel(labelIndex, { text: input.value });
-      link.markDirty('label-edited');
+      if (settled) return;
+      settled = true;
+      const command = this.inPlaceEditor.commit(this.eng, input.value);
       cleanup();
+      if (command) {
+        this.executeCommand(command);
+      }
       this.renderDiagram();
       this.cdr.markForCheck();
     };
     const cancel = () => {
-      if (committed) {
-        return;
-      }
-      committed = true;
+      if (settled) return;
+      settled = true;
+      this.inPlaceEditor.cancel();
       cleanup();
     };
     const onKeyDown = (e: KeyboardEvent) => {
@@ -2882,6 +3442,13 @@ export class DiagramCanvasComponent implements AfterViewInit, OnDestroy {
       return;
     }
 
+    // wave4/interaction (Card 7): Tab/arrow focus, nudge, Enter-to-edit and the
+    // keyboard connect flow. Runs after the accelerators so Ctrl+A etc. keep
+    // their meaning, and before Delete/Escape so a connect flow can absorb Escape.
+    if (this.enableKeyboardNavigation() && this.handleKeyboardNavigation(event)) {
+      return;
+    }
+
     // Handle Delete key (Phase 3: Also delete links, Phase 2.3a: Also delete waypoints)
     if (event.key === 'Delete' || event.key === 'Backspace') {
       // Phase 2.3a: Try deleting hovered waypoint first (highest priority)
@@ -2948,6 +3515,130 @@ export class DiagramCanvasComponent implements AfterViewInit, OnDestroy {
       this.scheduleRender();
       this.cdr.markForCheck();
     }
+  }
+
+  /**
+   * wave4/interaction — Card 7: the keyboard-first canvas.
+   *
+   *   Tab / Shift+Tab   move the FOCUS ring across nodes then links
+   *   Arrows            nudge the SELECTION (Shift = coarse step);
+   *                     with nothing selected they move focus spatially
+   *   Enter             select the focused entity; on a node, open its label editor
+   *   C                 start a keyboard connection from the focused node
+   *                     (Arrows pick the port, Tab the target node, Enter commits,
+   *                      Escape cancels)
+   *
+   * Every model change goes through the command layer, so a nudge or a
+   * keyboard-built link is exactly as undoable as its pointer equivalent.
+   *
+   * @returns true when the key was consumed.
+   */
+  private handleKeyboardNavigation(event: KeyboardEvent): boolean {
+    // Accelerated combos belong to handleShortcut(); never shadow them.
+    if (event.ctrlKey || event.metaKey || event.altKey) {
+      return false;
+    }
+
+    const diagram = this.eng.getDiagram();
+    if (!diagram) {
+      return false;
+    }
+
+    const key = event.key;
+
+    if (key === 'Tab') {
+      event.preventDefault();
+      if (this.keyboardNav.isConnecting()) {
+        this.keyboardNav.cycleTargetNode(this.eng, event.shiftKey ? -1 : 1);
+      } else if (event.shiftKey) {
+        this.keyboardNav.focusPrevious(this.eng);
+      } else {
+        this.keyboardNav.focusNext(this.eng);
+      }
+      this.scheduleRender();
+      this.cdr.markForCheck();
+      return true;
+    }
+
+    if (key === 'Escape' && this.keyboardNav.isConnecting()) {
+      event.preventDefault();
+      this.keyboardNav.cancelConnect();
+      this.cdr.markForCheck();
+      return true;
+    }
+
+    if (key === 'Enter') {
+      if (this.keyboardNav.isConnecting()) {
+        event.preventDefault();
+        const command = this.keyboardNav.confirmConnect(this.eng);
+        if (command) {
+          this.executeCommand(command);
+        }
+        this.cdr.markForCheck();
+        return true;
+      }
+
+      const focused = this.keyboardNav.getFocused();
+      if (focused) {
+        event.preventDefault();
+        this.keyboardNav.selectFocused(this.eng);
+        if (focused.type === 'node' && this.enableInPlaceEditing()) {
+          this.openNodeLabelEditor(focused.id);
+        }
+        this.scheduleRender();
+        this.cdr.markForCheck();
+        return true;
+      }
+      return false;
+    }
+
+    if ((key === 'c' || key === 'C') && !this.keyboardNav.isConnecting()) {
+      if (this.keyboardNav.getFocused()?.type !== 'node') {
+        return false;
+      }
+      event.preventDefault();
+      this.keyboardNav.beginConnect(this.eng);
+      this.cdr.markForCheck();
+      return true;
+    }
+
+    const nudge = this.keyboardNav.nudgeDelta(key, event.shiftKey);
+    if (!nudge) {
+      return false;
+    }
+    event.preventDefault();
+
+    // While connecting, the arrows pick the port instead of moving anything.
+    if (this.keyboardNav.isConnecting()) {
+      this.keyboardNav.cyclePort(
+        this.eng,
+        key === 'ArrowRight' || key === 'ArrowDown' ? 1 : -1
+      );
+      this.cdr.markForCheck();
+      return true;
+    }
+
+    if (diagram.getSelectedNodes().length > 0) {
+      const command = this.keyboardNav.nudgeCommand(this.eng, nudge.x, nudge.y);
+      if (command) {
+        this.executeCommand(command);
+      }
+      return true;
+    }
+
+    // Nothing selected → the arrows move the focus ring instead.
+    const direction =
+      key === 'ArrowLeft'
+        ? 'left'
+        : key === 'ArrowRight'
+        ? 'right'
+        : key === 'ArrowUp'
+        ? 'up'
+        : 'down';
+    this.keyboardNav.focusDirection(this.eng, direction);
+    this.scheduleRender();
+    this.cdr.markForCheck();
+    return true;
   }
 
   /**
@@ -3235,6 +3926,13 @@ export class DiagramCanvasComponent implements AfterViewInit, OnDestroy {
   private cleanup(): void {
     // Wave 2: tear down any open inline label editor
     this.closeLabelEditor();
+
+    // wave4/interaction: drop the announcement subscription and the keyboard
+    // controller's listeners (a leaked listener would keep the component alive).
+    this.announcementSub?.();
+    this.announcementSub = undefined;
+    this.keyboardNav.dispose();
+    this.inPlaceEditor.cancel();
 
     // wave2/rendering: cancel any queued animation frame so no render fires
     // after the component is gone.

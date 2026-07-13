@@ -1,6 +1,159 @@
-<div #container class="diagram-canvas-container">
+<div #container class="diagram-canvas-container" role="application" aria-label="Diagram canvas" tabindex="0">
   <!-- SVG Layer: Existing rendering (edges, pure SVG nodes, ports) -->
   <div #svgLayer class="grafloria-svg-layer"></div>
+
+  <!-- ======================================================================
+       wave4/interaction — the world-space overlay.
+       Shares the renderer's viewBox, so every coordinate below is a WORLD
+       coordinate straight off the controllers in @grafloria/renderer. Sizes are
+       already divided by zoom there, so handles stay a constant on-screen size.
+       ====================================================================== -->
+  <svg class="grafloria-tool-overlay" [attr.viewBox]="overlayViewBox" preserveAspectRatio="none">
+    <!-- Card 5: highlighters (hover / selection / validation / drop-target) -->
+    @for (h of highlighters; track h.id) {
+      @if (h.bounds) {
+        <rect
+          [class]="h.className"
+          [attr.x]="h.bounds.x"
+          [attr.y]="h.bounds.y"
+          [attr.width]="h.bounds.width"
+          [attr.height]="h.bounds.height"
+          [attr.transform]="highlighterTransform(h)"
+          [attr.stroke-width]="overlayStroke * 2"
+          [attr.data-severity]="h.severity || null">
+          @if (h.message) {
+            <title>{{ h.message }}</title>
+          }
+        </rect>
+      } @else if (h.points) {
+        <polyline
+          [class]="h.className"
+          [attr.points]="pointsAttr(h.points)"
+          [attr.stroke-width]="overlayStroke * 6"
+          fill="none"
+          [attr.data-severity]="h.severity || null">
+          @if (h.message) {
+            <title>{{ h.message }}</title>
+          }
+        </polyline>
+      }
+    }
+
+    <!-- Card 6: alignment snaplines -->
+    @for (guide of alignmentGuides; track $index) {
+      <line
+        class="grafloria-snapline"
+        [class.grafloria-snapline-center]="guide.kind === 'center'"
+        [attr.x1]="guide.orientation === 'vertical' ? guide.position : guide.from"
+        [attr.y1]="guide.orientation === 'vertical' ? guide.from : guide.position"
+        [attr.x2]="guide.orientation === 'vertical' ? guide.position : guide.to"
+        [attr.y2]="guide.orientation === 'vertical' ? guide.to : guide.position"
+        [attr.stroke-width]="overlayStroke"></line>
+    }
+
+    <!-- Card 6: equal-spacing guides, with live distance labels -->
+    @for (spacing of spacingGuides; track $index) {
+      @for (segment of spacing.segments; track $index) {
+        <line
+          class="grafloria-spacing-guide"
+          [attr.x1]="segment.x1"
+          [attr.y1]="segment.y1"
+          [attr.x2]="segment.x2"
+          [attr.y2]="segment.y2"
+          [attr.stroke-width]="overlayStroke"></line>
+        <text
+          class="grafloria-spacing-label"
+          [attr.x]="spacingLabelX(segment)"
+          [attr.y]="spacingLabelY(segment)"
+          [attr.font-size]="overlayFontSize"
+          text-anchor="middle"
+          dominant-baseline="middle">{{ spacing.label }}</text>
+      }
+    }
+
+    <!-- Card 7: the visible focus ring (focus ≠ selection) -->
+    @if (focusRing) {
+      @if (focusRing.bounds) {
+        <rect
+          class="grafloria-focus-ring"
+          [attr.x]="focusRing.bounds.x"
+          [attr.y]="focusRing.bounds.y"
+          [attr.width]="focusRing.bounds.width"
+          [attr.height]="focusRing.bounds.height"
+          [attr.stroke-width]="overlayStroke * 2">
+          <title>{{ focusRing.label }}</title>
+        </rect>
+      } @else if (focusRing.points) {
+        <polyline
+          class="grafloria-focus-ring"
+          fill="none"
+          [attr.points]="pointsAttr(focusRing.points)"
+          [attr.stroke-width]="overlayStroke * 4">
+          <title>{{ focusRing.label }}</title>
+        </polyline>
+      }
+    }
+
+    <!-- Card 5: the selection frame + the tool handles -->
+    @if (enableSelectionTools()) {
+      @if (toolLayer.bounds) {
+        <rect
+          class="grafloria-selection-frame"
+          [attr.x]="toolLayer.bounds.x"
+          [attr.y]="toolLayer.bounds.y"
+          [attr.width]="toolLayer.bounds.width"
+          [attr.height]="toolLayer.bounds.height"
+          [attr.transform]="toolFrameTransform"
+          [attr.stroke-width]="overlayStroke"></rect>
+      }
+
+      @for (handle of toolLayer.handles; track handle.id) {
+        @if (handle.kind === 'resize') {
+          <rect
+            class="grafloria-tool grafloria-tool-resize"
+            [attr.data-tool]="handle.handleId"
+            [attr.x]="handle.world.x - handle.hitRadius"
+            [attr.y]="handle.world.y - handle.hitRadius"
+            [attr.width]="handleSide(handle)"
+            [attr.height]="handleSide(handle)"
+            [attr.stroke-width]="overlayStroke"
+            [style.cursor]="handle.cursor">
+            <title>{{ handle.label }}</title>
+          </rect>
+        } @else {
+          <g class="grafloria-tool-group" [attr.data-tool]="handle.kind" [style.cursor]="handle.cursor">
+            <circle
+              [class]="'grafloria-tool grafloria-tool-' + handle.kind"
+              [attr.cx]="handle.world.x"
+              [attr.cy]="handle.world.y"
+              [attr.r]="handle.hitRadius"
+              [attr.stroke-width]="overlayStroke">
+              <title>{{ handle.label }}</title>
+            </circle>
+            @if (toolGlyph(handle)) {
+              <text
+                class="grafloria-tool-glyph"
+                [attr.x]="handle.world.x"
+                [attr.y]="handle.world.y"
+                [attr.font-size]="overlayFontSize"
+                text-anchor="middle"
+                dominant-baseline="central"
+                pointer-events="none">{{ toolGlyph(handle) }}</text>
+            }
+          </g>
+        }
+      }
+    }
+  </svg>
+
+  <!-- Card 7: ARIA live region — selection + structure changes are ANNOUNCED.
+       Visually hidden, never focusable; the only screen-reader channel the
+       canvas has. -->
+  <div
+    class="grafloria-live-region"
+    role="status"
+    [attr.aria-live]="livePoliteness"
+    aria-atomic="true">{{ liveMessage }}</div>
 
   <!-- Wave-2 Interaction: live marquee (rubber-band) selection overlay.
        Rendered in SCREEN space (px, container-relative) so it needs no viewBox.
