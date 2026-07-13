@@ -218,6 +218,39 @@ export interface SVGRendererConfig {
    * Default: false
    */
   smartConnectionPoints?: boolean;
+
+  /**
+   * Wave 4 (Edges & links) — Card 4. Fan out PARALLEL links: two or more links
+   * between the same pair of nodes are pushed onto separate lanes instead of
+   * being drawn on top of one another. Self-loops (source node === target node)
+   * are always routed as loops regardless of this flag — a self-loop has no
+   * sensible un-looped rendering.
+   *
+   * On by default: a stack of identical lines is never what anyone wanted, and a
+   * lone link between a pair NEVER moves (its lane offset is exactly 0), so no
+   * existing single-link diagram shifts by a pixel.
+   * Default: true
+   */
+  parallelLinks?: boolean;
+
+  /**
+   * Distance between adjacent lanes of a parallel bundle, in px. Per-link
+   * override: `LinkStyle.parallel.spacing`.
+   * Default: 16
+   */
+  parallelSpacing?: number;
+
+  /**
+   * Wave 4 — Card 7. Run the diagram-wide edge optimizer: ONE incremental pass
+   * that computes jump-overs for every link and auto-places the labels that opted
+   * in via `LinkLabel.autoOffset`.
+   *
+   * On by default, and it is also the FASTER path — the jump scan it replaces
+   * re-tested every link against every other link on every frame; this one only
+   * re-tests what moved. Turn it off to fall back to the per-link scan.
+   * Default: true
+   */
+  edgeOptimizer?: boolean;
 }
 
 /**

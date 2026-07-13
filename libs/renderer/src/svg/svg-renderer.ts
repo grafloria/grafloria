@@ -1,4 +1,7 @@
 import type { DiagramEngine, NodeModel, NodeStyle, LinkModel, LinkStyle, PortModel, InteractionConfig, ReconnectionPreview, LODLevel, LODFeature, Shadow } from '@grafloria/engine';
+// Value import: the ONE definition of "where does a label sit along the path"
+// (slot vs position), shared by the model, this renderer and the edge optimizer.
+import { linkLabelPosition } from '@grafloria/engine';
 import type { IRenderer, PerformanceMetrics, SVGRendererConfig, VNode, Theme, Rectangle } from '../types';
 import {
   type PaintSpec,
@@ -54,6 +57,31 @@ import { LabelRenderer } from './LabelRenderer';
 import { JumpPointDetector } from './JumpPointDetector';
 import { JumpPointRenderer } from './JumpPointRenderer';
 
+// Wave 4 (Edges & links) — Card 4: parallel-link separation + self-loop routing.
+// Pure geometry; this file only decides WHEN to call it.
+import {
+  DEFAULT_PARALLEL_SPACING,
+  DEFAULT_SELF_LOOP_SIZE,
+  DEFAULT_SELF_LOOP_SPACING,
+  buildSelfLoopPoints,
+  bundleNormal,
+  parallelOffsets,
+  separateParallelRoute,
+  type FanoutPoint,
+  type FanoutSide,
+} from './link-fanout';
+
+// Wave 4 — Card 7: THE diagram-wide, incremental edge pass (jumps + labels +
+// bundles). Replaces the per-link O(L²) jump scan that ran every frame.
+import { EdgeOptimizer, type OptimizerLabel, type OptimizerLink } from './edge-optimizer';
+
+// Wave 4 — Card 5: author-extensible link templates / label templates / markers.
+import {
+  getLinkTemplate,
+  onEdgeTemplateChange,
+  type LinkTemplateContext,
+} from './edge-templates';
+
 // Phase 2.3a: Waypoint editing
 import { WaypointEditor } from '../interaction/WaypointEditor';
 
@@ -97,6 +125,15 @@ function styleClassTokens(styleClass: string | undefined): string[] {
     .split(/\s+/)
     .filter(name => /^[A-Za-z_-][\w-]*$/.test(name))
     .map(name => `grafloria-style-${name}`);
+}
+
+/** Arc length of a polyline — RoutedPath carries one, and self-loops need to too. */
+function polylineLength(points: Array<{ x: number; y: number }>): number {
+  let total = 0;
+  for (let i = 0; i < points.length - 1; i++) {
+    total += Math.hypot(points[i + 1].x - points[i].x, points[i + 1].y - points[i].y);
+  }
+  return total;
 }
 
 /**
@@ -164,6 +201,30 @@ export class SVGRenderer implements IRenderer {
   // reads other links' points).
   private frameRoutes = new Map<string, RoutedPath>();
 
+  // Wave 4 — Card 7: the diagram-wide incremental edge pass. Owns jump-over
+  // detection and collision-aware label placement for the WHOLE diagram, and
+  // keeps its own dirty state across frames — so it is a renderer-lifetime
+  // object, not a per-frame one.
+  private edgeOptimizer = new EdgeOptimizer();
+
+  // Per-frame outputs of the optimizer, keyed by link id.
+  private frameJumps = new Map<string, Array<{ t1: number; segmentIndex?: number }>>();
+  private frameLabelOffsets = new Map<string, { x: number; y: number }>(); // `${linkId}::${labelId}`
+
+  // Wave 4 — Card 4: the lane offset each link was assigned this frame (0 when
+  // it is the only link between its pair). Kept so renderLink and the arrow
+  // maths agree with the pre-pass.
+  private frameSeparation = new Map<string, number>();
+
+  // Wave 4: signature of everything that affects a link's RENDERED output but
+  // does not live on the link (its routed points, its jumps, its optimizer label
+  // offsets). See markLinksWhoseFrameChanged — this is what makes the link VNode
+  // cache sound.
+  private frameLinkSigs = new Map<string, string>();
+
+  /** Unsubscribe from the edge-template registry (Card 5). */
+  private unsubscribeEdgeTemplates?: () => void;
+
   // Per-frame paint-server defs (Styling & theming — Card 2). Keyed by the
   // stable spec hash so identical gradient/pattern/shadow specs share ONE
   // `<defs>` entry. Cleared at the top of every render() and materialised into
@@ -190,6 +251,10 @@ export class SVGRenderer implements IRenderer {
       useCSSMode: config.useCSSMode ?? true,
       linkHitAreaWidth: config.linkHitAreaWidth ?? 12,
       smartConnectionPoints: config.smartConnectionPoints ?? false,
+      // Wave 4 (Edges & links)
+      parallelLinks: config.parallelLinks ?? true,
+      parallelSpacing: config.parallelSpacing ?? DEFAULT_PARALLEL_SPACING,
+      edgeOptimizer: config.edgeOptimizer ?? true,
     };
 
     // Bounded LRU vnode cache (evicts least-recently-used past maxCacheSize)
@@ -252,6 +317,13 @@ export class SVGRenderer implements IRenderer {
     // Named styles are resolved INTO the emitted VNodes (see style-cascade.ts),
     // so a (re)definition after nodes were cached must invalidate them.
     this.unsubscribeStyleRegistry = onStyleRegistryChange(() => this.invalidateStyles());
+
+    // Card 5: a link/label template's OUTPUT is baked into the cached VNode, and
+    // a custom marker's geometry into the arrow — so redefining one has to
+    // invalidate the cache for exactly the same reason a named style does.
+    this.unsubscribeEdgeTemplates = onEdgeTemplateChange(() =>
+      this.invalidateStyles('edge-templates-changed')
+    );
 
     // Subscribe to engine events
     this.subscribeToEngineEvents();
@@ -459,6 +531,10 @@ export class SVGRenderer implements IRenderer {
     this.unsubscribeStyleRegistry?.();
     this.unsubscribeStyleRegistry = undefined;
 
+    // …and for edge-template (re)definitions (Card 5)
+    this.unsubscribeEdgeTemplates?.();
+    this.unsubscribeEdgeTemplates = undefined;
+
     // Remove THIS instance's variable block (its id is per-instance, so this can
     // no longer take another diagram's stylesheet down with it), then drop the
     // shared rules once the last renderer on the page is gone.
@@ -477,6 +553,15 @@ export class SVGRenderer implements IRenderer {
 
     // Clear per-frame smart-connection state
     this.frameSmartSides.clear();
+
+    // Wave 4: drop the optimizer's cross-frame state (grid, dirty tracking,
+    // cached jumps/label placements) — it outlives a single frame, so leaking it
+    // past disposal would pin every link and node of a dead diagram.
+    this.edgeOptimizer.reset();
+    this.frameJumps.clear();
+    this.frameLabelOffsets.clear();
+    this.frameSeparation.clear();
+    this.frameLinkSigs.clear();
 
     // Unsubscribe from engine events
     // (EventBus will handle cleanup on engine destroy)
@@ -507,6 +592,14 @@ export class SVGRenderer implements IRenderer {
         if (!liveIds.has(id)) this.frameSmartSides.delete(id);
       }
     }
+
+    // Wave 4 — Card 4: assign each link its lane in its parallel bundle BEFORE
+    // routing, so the route can be separated in the same pass. Computed over the
+    // WHOLE diagram, not just the visible links: a bundle whose other members are
+    // scrolled off-screen must still keep this one on its own lane, or links
+    // would visibly jump lanes as you pan.
+    this.computeParallelSeparation();
+
     for (const link of sortedLinks) {
       if (this.linkHasManualWaypoints(link)) continue;
       const endpoints = this.getLinkEndpoints(link);
@@ -518,6 +611,18 @@ export class SVGRenderer implements IRenderer {
       }
     }
 
+    // Wave 4 — Card 7: THE diagram-wide edge pass. Runs once, after every link's
+    // geometry is final and before any link builds its VNode, because both of its
+    // outputs (jump-overs, label placements) are functions of the WHOLE picture.
+    this.runEdgeOptimizer();
+
+    // The link VNode cache keys off `link.isDirty`, but a link's rendered output
+    // also depends on things that are NOT on the link — where its nodes moved to,
+    // which links now cross it, where the optimizer put its labels. Without this
+    // a clean link would serve a stale VNode after a neighbour moved. (Latent
+    // bug: jump arcs already had exactly this problem before Wave 4.)
+    this.markLinksWhoseFrameChanged(sortedLinks);
+
     const children = sortedLinks.map(link => this.renderLink(link, lod));
 
     return {
@@ -528,6 +633,292 @@ export class SVGRenderer implements IRenderer {
       },
       children,
     };
+  }
+
+  // =========================================================================
+  // Wave 4 (Edges & links) — Card 4: parallel bundles
+  // =========================================================================
+
+  /**
+   * Group every link in the diagram by the (unordered) node pair it connects and
+   * hand each member of a multi-link group its lane offset.
+   *
+   * UNORDERED pairs: A→B and B→A are one visual bundle. Ordering them separately
+   * would give each a group of one, an offset of 0, and put both back on the same
+   * centre line — which is the bug this card exists to kill.
+   *
+   * A pair with exactly ONE link gets offset 0 and is therefore untouched, which
+   * is what keeps every existing diagram pixel-identical.
+   */
+  private computeParallelSeparation(): void {
+    this.frameSeparation.clear();
+    if (!this.config.parallelLinks) return;
+
+    const diagram = this.engine.getDiagram();
+    if (!diagram) return;
+
+    const groups = new Map<string, LinkModel[]>();
+    for (const link of diagram.getLinks()) {
+      // Self-loops are not a "bundle" — they nest concentrically instead (see
+      // selfLoopIndex), so they must not consume lanes in the pair map.
+      if (link.isSelfLoop()) continue;
+      const key = link.getNodePairKey();
+      if (!key) continue;
+      const bucket = groups.get(key);
+      if (bucket) bucket.push(link);
+      else groups.set(key, [link]);
+    }
+
+    for (const [, members] of groups) {
+      if (members.length < 2) continue;
+
+      // Per-link spacing overrides the renderer default; the FIRST member that
+      // asks decides for the bundle, because a bundle with two different spacings
+      // is not a bundle.
+      const spacing =
+        members.find(l => typeof l.style.parallel?.spacing === 'number')?.style.parallel
+          ?.spacing ?? this.config.parallelSpacing;
+
+      const offsets = parallelOffsets(members.length, spacing);
+      members.forEach((link, i) => {
+        if (link.style.parallel?.enabled === false) return;
+        const extra = link.style.parallel?.offset ?? 0;
+        this.frameSeparation.set(link.id, offsets[i] + extra);
+      });
+    }
+  }
+
+  /**
+   * The unit normal a link's bundle fans along.
+   *
+   * Derived from the bundle's CANONICAL node order (lower id → higher id), NOT
+   * from this link's own source → target. Otherwise the two halves of a
+   * bidirectional pair compute opposite normals, their opposite lane offsets
+   * cancel, and both links land back on top of each other.
+   */
+  private bundleNormalFor(link: LinkModel): FanoutPoint {
+    const diagram = this.engine.getDiagram();
+    const s = link.sourceNodeId ? diagram?.getNode(link.sourceNodeId) : null;
+    const t = link.targetNodeId ? diagram?.getNode(link.targetNodeId) : null;
+    if (!s || !t) return { x: 0, y: -1 };
+
+    const centre = (n: NodeModel) => {
+      const p = n.getWorldPosition();
+      return { x: p.x + n.size.width / 2, y: p.y + n.size.height / 2 };
+    };
+
+    // Canonical order by node id, so both directions of the pair agree.
+    const [a, b] =
+      (link.sourceNodeId as string) <= (link.targetNodeId as string)
+        ? [centre(s), centre(t)]
+        : [centre(t), centre(s)];
+    return bundleNormal(a, b);
+  }
+
+  // =========================================================================
+  // Wave 4 — Card 4: self-loops
+  // =========================================================================
+
+  /**
+   * Route a self-loop (source node === target node) as a loop away from the node.
+   *
+   * Never goes near the routing engine: the routers exclude a link's own nodes
+   * from their obstacle set, so a "route" from a node back to itself came out as
+   * a degenerate stub buried in the node body. The loop is built geometrically
+   * instead, as a polyline, which the existing path emitters then draw in the
+   * link's own idiom (rounded rectangle for `orthogonal`, a spline for `smooth`,
+   * a hard polygon for `direct`).
+   */
+  private computeSelfLoopRoute(
+    link: LinkModel,
+    endpoints: NonNullable<ReturnType<SVGRenderer['getLinkEndpoints']>>
+  ): RoutedPath | null {
+    const diagram = this.engine.getDiagram();
+    const node = link.sourceNodeId ? diagram?.getNode(link.sourceNodeId) : null;
+    if (!node) return null;
+
+    const config = link.style.selfLoop ?? {};
+    const index = this.selfLoopIndex(link);
+    const spacing = config.spacing ?? DEFAULT_SELF_LOOP_SPACING;
+    // Several loops on one node NEST: each is `spacing` further out than the one
+    // before, so every loop keeps a clear body and its own label slot.
+    const size = (config.size ?? DEFAULT_SELF_LOOP_SIZE) + index * spacing;
+    const width = (config.width ?? config.size ?? DEFAULT_SELF_LOOP_SIZE) + index * spacing;
+
+    const forced = config.side && config.side !== 'auto' ? (config.side as FanoutSide) : undefined;
+    const sourceSide = forced ?? (endpoints.sourceDirection as FanoutSide) ?? 'right';
+    const targetSide = forced ?? (endpoints.targetDirection as FanoutSide) ?? sourceSide;
+
+    const world = node.getWorldPosition();
+    const points = buildSelfLoopPoints({
+      rect: { x: world.x, y: world.y, width: node.size.width, height: node.size.height },
+      start: endpoints.start,
+      end: endpoints.end,
+      sourceSide,
+      targetSide,
+      size,
+      width,
+    });
+
+    return {
+      points,
+      totalLength: polylineLength(points),
+      bendCount: Math.max(0, points.length - 2),
+    };
+  }
+
+  /**
+   * Which self-loop this is on its node (0 = the first). Stable across frames
+   * because it reads the diagram's own link order.
+   */
+  private selfLoopIndex(link: LinkModel): number {
+    const diagram = this.engine.getDiagram();
+    if (!diagram || !link.sourceNodeId) return 0;
+    const siblings = diagram
+      .getLinks()
+      .filter(l => l.isSelfLoop() && l.sourceNodeId === link.sourceNodeId);
+    const index = siblings.findIndex(l => l.id === link.id);
+    return index < 0 ? 0 : index;
+  }
+
+  // =========================================================================
+  // Wave 4 — Card 7: the diagram-wide edge pass
+  // =========================================================================
+
+  /**
+   * Feed the whole diagram to the edge optimizer and cache what it decided for
+   * this frame.
+   *
+   * ALL links go in, not just the visible ones: a link scrolled off the left edge
+   * still crosses the one you can see, and its label still occupies space. Only
+   * VISIBLE links have been re-routed this frame — the rest carry the points they
+   * last had, exactly as the old per-link scan read them.
+   */
+  private runEdgeOptimizer(): void {
+    this.frameJumps.clear();
+    this.frameLabelOffsets.clear();
+
+    const diagram = this.engine.getDiagram();
+    if (!diagram || !this.config.edgeOptimizer) return;
+
+    const links: OptimizerLink[] = [];
+    for (const link of diagram.getLinks()) {
+      const points = link.points ?? [];
+      links.push({
+        id: link.id,
+        points,
+        jumps: this.jumpConfigFor(link, points),
+        labels: this.optimizerLabelsFor(link, points),
+      });
+    }
+
+    const nodes = diagram.getNodes().map(node => {
+      const world = node.getWorldPosition();
+      return {
+        id: node.id,
+        rect: { x: world.x, y: world.y, width: node.size.width, height: node.size.height },
+      };
+    });
+
+    this.edgeOptimizer.update({ nodes, links });
+
+    for (const link of links) {
+      if (link.jumps) {
+        this.frameJumps.set(link.id, this.edgeOptimizer.getJumps(link.id));
+      }
+      for (const label of link.labels) {
+        this.frameLabelOffsets.set(
+          `${link.id}::${label.id}`,
+          this.edgeOptimizer.getLabelOffset(link.id, label.id, label.offset)
+        );
+      }
+    }
+  }
+
+  /**
+   * The jump config for a link, or undefined when it draws no jumps.
+   *
+   * Same gate the per-link scan applied: enabled, non-zero size, at least two
+   * points, and NOT a 2-point curve (a chord-based jump would both misplace the
+   * arc and destroy the bezier).
+   */
+  private jumpConfigFor(
+    link: LinkModel,
+    points: Array<{ x: number; y: number }>
+  ): { mode: 'all' | 'perpendicular' | 'threshold'; threshold: number } | undefined {
+    const config = link.style.jumpPoints;
+    if (!config?.enabled || (config.size ?? 10) <= 0 || points.length < 2) return undefined;
+
+    const isTwoPointCurve =
+      (link.pathType === 'smooth' || link.pathType === 'bezier') && points.length === 2;
+    if (isTwoPointCurve) return undefined;
+
+    return {
+      mode: config.detectMode ?? 'all',
+      threshold: config.threshold ?? 45,
+    };
+  }
+
+  /** The link's labels, described for the optimizer (anchor, box, path normal). */
+  private optimizerLabelsFor(
+    link: LinkModel,
+    points: Array<{ x: number; y: number }>
+  ): OptimizerLabel[] {
+    if (!link.labels?.length || points.length < 2) return [];
+
+    return link.labels.map(label => {
+      const position = linkLabelPosition(label);
+      const anchor = link.getPointAtPosition(position) ?? points[0];
+      const normal = link.getNormalAt(position) ?? { x: 0, y: -1 };
+      const box = this.labelRenderer.labelBox(label);
+      return {
+        id: label.id,
+        anchor,
+        offset: label.offset ?? { x: 0, y: 0 },
+        width: box.width,
+        height: box.height,
+        // THE latent-bug fix: `autoOffset` has been on the model since Phase 4
+        // and was read by nobody. This is the one place it means something.
+        autoOffset: label.autoOffset === true,
+        normal,
+      };
+    });
+  }
+
+  /**
+   * Mark a link dirty when anything OUTSIDE the link changed the way it renders.
+   *
+   * `renderLink` serves a cached VNode for any link that is not dirty — but a
+   * link's drawing depends on its routed points (which change when a NODE moves),
+   * on the crossings other links make with it, and on where the optimizer put its
+   * labels. None of those mark the link dirty. Comparing a per-frame signature
+   * closes that hole; it also fixes the pre-existing version of this bug, where a
+   * cached link kept drawing yesterday's jump arcs.
+   */
+  private markLinksWhoseFrameChanged(links: LinkModel[]): void {
+    if (!this.config.enableCaching) return;
+
+    for (const link of links) {
+      const parts: string[] = [];
+      for (const p of link.points ?? []) {
+        parts.push(`${Math.round(p.x * 10)},${Math.round(p.y * 10)}`);
+      }
+      parts.push('|');
+      for (const jump of this.frameJumps.get(link.id) ?? []) {
+        parts.push(`${jump.segmentIndex ?? 0}:${Math.round(jump.t1 * 1000)}`);
+      }
+      parts.push('|');
+      for (const label of link.labels ?? []) {
+        const offset = this.frameLabelOffsets.get(`${link.id}::${label.id}`);
+        if (offset) parts.push(`${label.id}@${Math.round(offset.x)},${Math.round(offset.y)}`);
+      }
+
+      const sig = parts.join(';');
+      if (this.frameLinkSigs.get(link.id) !== sig) {
+        this.frameLinkSigs.set(link.id, sig);
+        link.markDirty('frame-geometry');
+      }
+    }
   }
 
   /**
@@ -2090,16 +2481,24 @@ export class SVGRenderer implements IRenderer {
     let jumpPathData: string | null = null;
 
     if (jumpConfig?.enabled && (jumpConfig.size ?? 10) > 0 && !isTwoPointCurve && points.length >= 2) {
-      const diagram = this.engine.getDiagram();
-      const allLinks = diagram ? diagram.getLinks() : [];
-      const otherLinks = allLinks.filter(l => l.id !== link.id);
-
-      const intersections = this.jumpPointDetector.detectIntersections(
-        { id: link.id, points },
-        otherLinks.map(l => ({ id: l.id, points: l.points })),
-        jumpConfig.detectMode,
-        jumpConfig.threshold
-      );
+      // Wave 4 — Card 7: the crossings come from the ONE diagram-wide pass, which
+      // computed them for every link before any link rendered. The fallback below
+      // is the old per-link scan, kept for `edgeOptimizer: false` — it re-tested
+      // this link against EVERY other link in the diagram, every frame, whether or
+      // not anything had moved.
+      const intersections = this.config.edgeOptimizer
+        ? this.frameJumps.get(link.id) ?? []
+        : (() => {
+            const diagram = this.engine.getDiagram();
+            const allLinks = diagram ? diagram.getLinks() : [];
+            const otherLinks = allLinks.filter(l => l.id !== link.id);
+            return this.jumpPointDetector.detectIntersections(
+              { id: link.id, points },
+              otherLinks.map(l => ({ id: l.id, points: l.points })),
+              jumpConfig.detectMode,
+              jumpConfig.threshold
+            );
+          })();
 
       if (intersections.length > 0) {
         // Keep jumps clear of the arrow markers: reserve the marker's tip
@@ -2142,6 +2541,32 @@ export class SVGRenderer implements IRenderer {
         }
       : null;
 
+    // Wave 4 (Edges & links) — Card 5: a LINK TEMPLATE replaces the link's
+    // visuals wholesale (path, arrows, labels) with whatever the author's
+    // template returns — arbitrary SVG, or HTML through a foreignObject.
+    //
+    // What it does NOT replace: the `<g data-link-id>` wrapper and the invisible
+    // hit-area stroke. Those are the renderer's contract with the rest of the
+    // system (hit testing, selection, the edge toolbar, the reconnection
+    // handles), and a template that dropped them would silently break all four.
+    const templateVNodes = this.renderLinkTemplate(link, points, jumpPathData ?? pathData, styles, lod);
+    if (templateVNodes) {
+      const templated: VNode = {
+        type: 'g',
+        key: `link-${link.id}`,
+        props: {
+          className: 'link-group link-group-templated',
+          'data-link-id': link.id,
+        },
+        children: [...(hitAreaVNode ? [hitAreaVNode] : []), ...templateVNodes],
+      };
+      if (this.config.enableCaching && !usesPaintServer) {
+        this.vnodeCache.set(cacheKey, templated);
+        link.markClean();
+      }
+      return templated;
+    }
+
     const vnode: VNode = {
       type: 'g',
       key: `link-${link.id}`,
@@ -2166,7 +2591,9 @@ export class SVGRenderer implements IRenderer {
               // Render arrow head (at target end)
               if (arrowHeadStyle && arrowHeadStyle.type !== 'none') {
                 const transform = `translate(${arrowTipPosition.x}, ${arrowTipPosition.y}) rotate(${angle})`;
-                const arrowHeadVNode = this.arrowRenderer.renderArrow(arrowHeadStyle, transform, this.theme.colors.background.default);
+                // Card 5: `'target'` tells a CUSTOM marker which end it is on —
+                // an asymmetric marker (a half-arrow, a crow's foot) has to know.
+                const arrowHeadVNode = this.arrowRenderer.renderArrow(arrowHeadStyle, transform, this.theme.colors.background.default, 'target');
                 if (arrowHeadVNode) {
                   arrows.push(arrowHeadVNode);
                 }
@@ -2177,7 +2604,7 @@ export class SVGRenderer implements IRenderer {
                 // Calculate arrow tail position and angle (at source end)
                 const tailArrowData = this.calculateArrowPositionAndAngle(link, points, false, this.arrowRenderer.getTipOffset(arrowTailStyle));
                 const tailTransform = `translate(${tailArrowData.position.x}, ${tailArrowData.position.y}) rotate(${tailArrowData.angle})`;
-                const arrowTailVNode = this.arrowRenderer.renderArrow(arrowTailStyle, tailTransform, this.theme.colors.background.default);
+                const arrowTailVNode = this.arrowRenderer.renderArrow(arrowTailStyle, tailTransform, this.theme.colors.background.default, 'source');
                 if (arrowTailVNode) {
                   arrows.push(arrowTailVNode);
                 }
@@ -2194,7 +2621,14 @@ export class SVGRenderer implements IRenderer {
               // Render labels from link.labels array
               if (link.labels && link.labels.length > 0) {
                 link.labels.forEach(label => {
-                  const labelVNode = this.labelRenderer.renderLabel(label, link);
+                  // Wave 4 — Card 7: the optimizer's placement, when it placed
+                  // this one. For a label that did not opt into `autoOffset` this
+                  // IS the author's offset, so nothing moves.
+                  const offset = this.frameLabelOffsets.get(`${link.id}::${label.id}`);
+                  const labelVNode = this.labelRenderer.renderLabel(label, link, {
+                    offset,
+                    theme: this.theme,
+                  });
                   if (labelVNode) {
                     labelVNodes.push(labelVNode);
                   }
@@ -2281,6 +2715,41 @@ export class SVGRenderer implements IRenderer {
     }
 
     return vnode;
+  }
+
+  /**
+   * Wave 4 (Edges & links) — Card 5: run this link's registered template, if it
+   * named one. Returns null when the link has no template, when the name is not
+   * registered, or when the template opted out by returning null — in every one
+   * of those cases the link falls back to the built-in rendering rather than
+   * vanishing.
+   */
+  private renderLinkTemplate(
+    link: LinkModel,
+    points: Array<{ x: number; y: number }>,
+    pathData: string,
+    styles: Record<string, unknown>,
+    lod: LODLevel
+  ): VNode[] | null {
+    const name = link.style.template;
+    if (!name) return null;
+
+    const template = getLinkTemplate(name);
+    if (!template) return null;
+
+    const ctx: LinkTemplateContext = {
+      link,
+      points,
+      pathData,
+      styles,
+      theme: this.theme,
+      lod: String(lod),
+      selected: link.state === 'selected',
+    };
+
+    const produced = template(ctx);
+    if (!produced) return null;
+    return Array.isArray(produced) ? produced : [produced];
   }
 
   // =========================================================================
@@ -3547,6 +4016,13 @@ export class SVGRenderer implements IRenderer {
     link: LinkModel,
     endpoints: NonNullable<ReturnType<SVGRenderer['getLinkEndpoints']>>
   ): RoutedPath | null {
+    // Wave 4 — Card 4: a SELF-LOOP never touches the routing engine. Every router
+    // excludes the link's own nodes from its obstacle set, so a route from a node
+    // back to itself degenerated into a stub inside the node body.
+    if (link.isSelfLoop()) {
+      return this.computeSelfLoopRoute(link, endpoints);
+    }
+
     const routingEngine = this.engine.getRoutingEngine();
     const algorithm = this.mapPathTypeToAlgorithm(link.pathType) || routingEngine.getDefaultAlgorithm();
 
@@ -3656,6 +4132,26 @@ export class SVGRenderer implements IRenderer {
           });
         }
       }
+    }
+
+    // Wave 4 — Card 4: push the finished route onto its lane in the parallel
+    // bundle. LAST, so separation applies to whatever the router (and every
+    // detour/penetration fallback above) actually settled on. The endpoints are
+    // never moved — only the interior — so the link still meets its ports.
+    const offset = this.frameSeparation.get(link.id) ?? 0;
+    if (routedPath && offset !== 0) {
+      const separated = separateParallelRoute(
+        routedPath.points,
+        offset,
+        this.bundleNormalFor(link),
+        link.pathType
+      );
+      routedPath = {
+        ...routedPath,
+        points: separated,
+        totalLength: polylineLength(separated),
+        bendCount: Math.max(0, separated.length - 2),
+      };
     }
 
     return routedPath;

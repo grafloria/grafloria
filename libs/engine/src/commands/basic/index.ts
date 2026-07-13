@@ -22,3 +22,5 @@ export * from './DuplicateCommand'; // Phase 1.8
 export * from './DeleteSelectionCommand'; // Phase 1.8
 export * from './CutCommand'; // wave3/interaction
 export * from './resolveLinkNodeIds'; // wave3/interaction
+export * from './UpdateLinkStyleCommand'; // wave4/edges
+export * from './SetLinkLabelsCommand'; // wave4/edges

@@ -3,6 +3,7 @@
 
 import type { ArrowStyle } from '@grafloria/engine';
 import type { VNode } from '../types/vnode.types';
+import { getMarker, markerTipOffset, type MarkerContext } from './edge-templates';
 
 /**
  * ArrowRenderer generates SVG VNodes for different arrow types.
@@ -12,6 +13,9 @@ import type { VNode } from '../types/vnode.types';
  * - ERD arrows (crow-foot, one, zero-or-one, zero-or-many, one-or-many)
  * - UML arrows (hollow-diamond, filled-diamond, generalization, open-arrow, double-arrow)
  * - Additional arrows (cross, bar, dot, oval)
+ * - Half-arrowheads (Mermaid 11.13) — `half-arrow-left` / `half-arrow-right`
+ * - AUTHOR-DEFINED markers (Wave 4, Card 5): a raw SVG `path`, or anything
+ *   registered with `registerMarker` — the catalogue is no longer a closed enum.
  *
  * @example
  * ```typescript
@@ -22,6 +26,15 @@ import type { VNode } from '../types/vnode.types';
  *   filled: false,
  *   color: '#000'
  * }, 'translate(100, 50) rotate(45)');
+ * ```
+ *
+ * @example A custom marker
+ * ```typescript
+ * registerMarker('feather', {
+ *   tipOffset: style => style.size,
+ *   render: ctx => ({ type: 'path', props: { d: `M0,0 L${ctx.size},0`, stroke: ctx.color, transform: ctx.transform } }),
+ * });
+ * link.updateStyle({ arrowHead: { type: 'feather', size: 12, filled: true } });
  * ```
  */
 export class ArrowRenderer {
@@ -36,12 +49,37 @@ export class ArrowRenderer {
    * the path endpoint by exactly this amount so every tip lands ON the port —
    * a uniform offset only fits the triangle family and left circles/diamonds
    * floating off the node.
+   *
+   * Wave 4 (Card 5): a custom marker declares its own. Precedence is
+   * `style.tipOffset` (explicit) > the registered marker's > 0 (a raw `path`
+   * marker is assumed to be drawn with its tip at the origin).
    */
   getTipOffset(style: ArrowStyle): number {
     const size = Math.max(0, style.size);
     if (size === 0 || style.type === 'none') return 0;
 
+    // An explicit tipOffset always wins, whatever the type — it is the escape
+    // hatch for a marker whose tip the renderer cannot possibly know about.
+    if (typeof style.tipOffset === 'number' && isFinite(style.tipOffset)) {
+      return style.tipOffset;
+    }
+
+    const custom = this.resolveMarker(style);
+    if (custom) {
+      return markerTipOffset(custom, style);
+    }
+    if (style.type === 'custom') {
+      // A raw `path` with no registration and no declared tip: origin IS the tip.
+      return 0;
+    }
+
     switch (style.type) {
+      // Wave 4 — Card 5: half-arrowheads. Same barb geometry as `arrow`, one
+      // side only, so the same tip offset.
+      case 'half-arrow-left':
+      case 'half-arrow-right':
+        return size;
+
       // Tip at local +size
       case 'arrow':
       case 'open-arrow':
@@ -83,7 +121,12 @@ export class ArrowRenderer {
    *   background so hollow arrows don't glare white on dark themes
    * @returns VNode representing the arrow, or null if type is 'none'
    */
-  renderArrow(style: ArrowStyle, transform: string, backgroundColor: string = 'white'): VNode | null {
+  renderArrow(
+    style: ArrowStyle,
+    transform: string,
+    backgroundColor: string = 'white',
+    end: 'source' | 'target' = 'target'
+  ): VNode | null {
     // Handle none type
     if (style.type === 'none') {
       return null;
@@ -99,8 +142,38 @@ export class ArrowRenderer {
     const color = style.color || this.defaultColor;
     const width = style.width || this.defaultStrokeWidth;
 
+    // Wave 4 (Card 5): a REGISTERED marker wins over everything. Checked before
+    // the switch so an author can also register a name that reads like a
+    // built-in without the switch swallowing it.
+    const custom = this.resolveMarker(style);
+    if (custom) {
+      const ctx: MarkerContext = {
+        style,
+        size,
+        color,
+        width,
+        transform,
+        backgroundColor,
+        end,
+      };
+      return custom.render(ctx);
+    }
+
+    // Wave 4 (Card 5): raw SVG path data, no registration needed.
+    if (style.type === 'custom') {
+      return style.path
+        ? this.renderCustomPath(style.path, style.filled, color, width, transform, backgroundColor)
+        : null;
+    }
+
     // Route to appropriate renderer based on type
     switch (style.type) {
+      // Wave 4 — Card 5: half-arrowheads (Mermaid 11.13)
+      case 'half-arrow-left':
+        return this.renderHalfArrow(size, -1, style.filled, color, width, transform, backgroundColor);
+      case 'half-arrow-right':
+        return this.renderHalfArrow(size, 1, style.filled, color, width, transform, backgroundColor);
+
       // Basic arrows
       case 'arrow':
         return this.renderTriangleArrow(size, style.filled, color, width, transform, backgroundColor);
@@ -150,6 +223,80 @@ export class ArrowRenderer {
         console.warn(`Unknown arrow type: ${style.type}, falling back to basic arrow`);
         return this.renderTriangleArrow(size, style.filled, color, width, transform, backgroundColor);
     }
+  }
+
+  // =========================================================================
+  // Wave 4 (Edges & links), Card 5 — author-extensible markers
+  // =========================================================================
+
+  /**
+   * The registered marker this style refers to, if any.
+   *
+   * Two ways to name one, because both read naturally:
+   *   { type: 'custom', marker: 'feather' }   — explicit
+   *   { type: 'feather' }                     — the registered name AS the type
+   *
+   * A registered name never shadows a built-in accidentally: the built-in switch
+   * only runs when nothing is registered under that name.
+   */
+  private resolveMarker(style: ArrowStyle) {
+    const name = style.marker ?? (style.type === 'custom' ? undefined : style.type);
+    return name ? getMarker(name) : undefined;
+  }
+
+  /**
+   * A marker from raw SVG path data (`{ type: 'custom', path: 'M0,0 …' }`).
+   * Drawn in the marker's local frame — origin at the anchor, +x forward.
+   */
+  private renderCustomPath(
+    d: string,
+    filled: boolean,
+    color: string,
+    width: number,
+    transform: string,
+    bg: string
+  ): VNode {
+    return {
+      type: 'path',
+      props: {
+        d,
+        fill: filled ? color : bg,
+        stroke: color,
+        strokeWidth: width,
+        transform,
+        className: 'arrow arrow-custom',
+      },
+    };
+  }
+
+  /**
+   * Half-arrowhead (Mermaid 11.13): one barb of the triangle, on the given side
+   * of the direction of travel. `side` is +1 for the RIGHT barb (screen-down
+   * when travelling right) and -1 for the LEFT one.
+   *
+   * The shaft point (size, 0) is the tip, exactly as for the full triangle, so a
+   * half arrow anchors on the port identically.
+   */
+  private renderHalfArrow(
+    size: number,
+    side: 1 | -1,
+    filled: boolean,
+    color: string,
+    width: number,
+    transform: string,
+    bg: string
+  ): VNode {
+    return {
+      type: 'polygon',
+      props: {
+        points: `0,0 ${size},0 0,${(size / 2) * side}`,
+        fill: filled ? color : bg,
+        stroke: color,
+        strokeWidth: width,
+        transform,
+        className: `arrow arrow-half arrow-half-${side === 1 ? 'right' : 'left'}`,
+      },
+    };
   }
 
   /**
