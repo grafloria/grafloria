@@ -56,6 +56,12 @@ export * from './ssr';
 // this library goes through these.
 export * from './platform';
 
+// Wave 8 (Card 3): DEFERRED / LAZY view instantiation. freeze()/unfreeze(), an
+// autoFreeze mode that drops the view of anything that leaves the viewport, and a
+// time-sliced async mount that yields to rAF so opening a huge graph paints in
+// milliseconds instead of blocking the tab until every link has been routed.
+export * from './lazy';
+
 // Wave 6 (Cards 0/2/5/6/7): the EXTENSION API. One capability-scoped host over
 // the registries that already existed (shapes, edge templates/markers, routers,
 // node templates, animations), the link-pipeline seams that did NOT (anchors,

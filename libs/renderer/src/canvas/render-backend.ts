@@ -35,6 +35,16 @@ import { CanvasStyleResolver, readCssVarOverrides } from './style-resolution';
 import { NULL_CONTEXT } from './canvas-context';
 import { VNodePainter, type HitRecord } from './vnode-painter';
 import { IDENTITY, distanceToPath, pointInPath } from './path-geometry';
+import {
+  canvasSafety,
+  explainHazards,
+  type CanvasHazard,
+  type CanvasSafety,
+} from './tier-policy';
+// The SAME predicate the painter uses to decide a node is unpaintable — so the guard
+// that refuses to step down and the painter that would have dropped the node cannot
+// disagree about what a foreignObject is.
+import { isForeignObject } from '../vnode/foreign-object';
 
 export type BackendMode = 'svg' | 'canvas';
 
@@ -47,6 +57,25 @@ export interface RenderBackendOptions {
   devicePixelRatio?: number;
   enableHitDetection?: boolean;
   enableDirtyRegions?: boolean;
+
+  /**
+   * Wave 8 — Card 5: REFUSE a switch to canvas that would take something away.
+   *
+   * Canvas mode has no accessibility semantics, cannot paint HTML nodes, and drops DOM
+   * focus when it swaps the element out. Since wave 4, `setMode('canvas')` has done all
+   * three silently. With this on (the default), it refuses instead, and says why.
+   *
+   * `setMode(mode, { force: true })` overrides — a host that means it can still have it.
+   */
+  guardCanvas?: boolean;
+
+  /** Told when the backend refuses a canvas switch, and what it would have cost. */
+  onCanvasRefused?: (event: CanvasRefusedEvent) => void;
+}
+
+export interface CanvasRefusedEvent {
+  hazards: readonly CanvasHazard[];
+  explanation: string;
 }
 
 /**
@@ -84,12 +113,25 @@ export class DiagramRenderBackend {
   private lastZoom = 1;
   private disposed = false;
 
+  // --- Wave 8 — Card 5: the canvas safety guard ------------------------------
+
+  /** Refuse a canvas switch that would cost this diagram its a11y, focus or HTML nodes. */
+  private readonly guardCanvas: boolean;
+
+  /**
+   * The host has declared an assistive-technology surface live for this diagram.
+   * Explicit, and additionally AUTO-DETECTED from the outline view's DOM marker.
+   */
+  private a11yActive = false;
+
   constructor(engine: DiagramEngine, container: Element, options: RenderBackendOptions = {}) {
     this.engine = engine;
     this.container = container;
     this.options = options;
     this.mode = options.mode ?? 'svg';
     this.theme = options.theme ?? LIGHT_THEME;
+
+    this.guardCanvas = options.guardCanvas ?? true;
 
     this.producer = new SVGRenderer(engine, options.producerConfig, this.theme);
 
@@ -120,9 +162,32 @@ export class DiagramRenderBackend {
    * Switch backend on a LIVE diagram. The producer, the engine, the theme and
    * the camera all survive; only the paint target changes. The next `render()`
    * repaints from scratch into the new target.
+   *
+   * Wave 8 — Card 5: a switch TO canvas is now REFUSED when it would take something away
+   * (an AT surface is live, focus is inside the diagram, or the scene has HTML nodes
+   * canvas cannot paint). Returns whether the switch happened. Going back to SVG is never
+   * refused — that direction can only ever restore what canvas lacks.
+   *
+   * `setMode('canvas', { force: true })` overrides the guard. A host that has taken the
+   * decision knowingly can still have it; what it cannot do is take it by accident.
    */
-  setMode(mode: BackendMode): void {
-    if (mode === this.mode || this.disposed) return;
+  setMode(mode: BackendMode, options: { force?: boolean } = {}): boolean {
+    if (mode === this.mode || this.disposed) return false;
+
+    if (mode === 'canvas' && this.guardCanvas && !options.force) {
+      const safety = this.canvasSafety();
+      if (!safety.safe) {
+        const explanation = explainHazards(safety.hazards);
+        this.options.onCanvasRefused?.({ hazards: safety.hazards, explanation });
+        // Loud, because the alternative is a screen-reader user silently losing their
+        // diagram and nobody finding out.
+        console.warn(
+          `[grafloria] refusing to switch to the canvas backend: ${explanation}. ` +
+            `Pass { force: true } to override.`
+        );
+        return false;
+      }
+    }
 
     this.unmount();
     this.mode = mode;
@@ -134,6 +199,7 @@ export class DiagramRenderBackend {
     if (this.lastViewport.width > 0) {
       this.render(this.lastViewport, this.lastZoom);
     }
+    return true;
   }
 
   render(viewport: Rectangle, zoom: number): VNode {
@@ -155,12 +221,82 @@ export class DiagramRenderBackend {
     return tree;
   }
 
+  // =========================================================================
+  // Wave 8 — Card 5: the canvas SAFETY guard
+  //
+  // Not a performance feature. The automatic far-zoom tier this card asked for was built,
+  // measured and deleted — see the header of `tier-policy.ts` for the numbers that killed
+  // it. What is left is the thing the measurement did NOT excuse: since wave 4 this class
+  // has let a host switch to canvas and silently take away a screen-reader user's entire
+  // diagram. That was true before this card and would have stayed true after it.
+  // =========================================================================
+
+  /** What canvas mode would cost this diagram right now. `safe` iff it would cost nothing. */
+  canvasSafety(): CanvasSafety {
+    return canvasSafety({
+      a11yActive: this.isA11yEngaged(),
+      focusInside: this.isFocusInside(),
+      hasForeignObject: this.hasForeignObject(),
+    });
+  }
+
   /**
-   * The entity at a WORLD coordinate — the same answer in both modes.
+   * Tell the backend an assistive-technology surface is live for this diagram (an outline
+   * view, a live region, keyboard navigation).
    *
-   * Canvas mode uses the colour-keyed hit canvas when it has one (O(1)); both
-   * modes otherwise walk the shared hit records geometrically.
+   * While it is, `setMode('canvas')` is refused — and if we are ALREADY on canvas, this
+   * immediately returns the diagram to SVG rather than waiting for the next frame. A
+   * screen reader that arrives mid-session gets its semantics back at once.
    */
+  setAccessibilityActive(active: boolean): void {
+    this.a11yActive = active;
+    if (active && this.guardCanvas && this.mode === 'canvas') {
+      // Going back to SVG can lose nothing, so it is never guarded and never refused.
+      this.unmount();
+      this.mode = 'svg';
+      this.mount();
+      if (this.lastViewport.width > 0) this.render(this.lastViewport, this.lastZoom);
+    }
+  }
+
+  /**
+   * Is an AT surface live — declared by the host, or detected in the DOM?
+   *
+   * Detected as well as declared, deliberately. The wave-6 outline view marks its hidden
+   * AT mirror with `[data-grafloria-outline]`; if one exists, somebody is reading this diagram
+   * with assistive technology whether or not the host remembered to say so. The failure
+   * mode here is a screen-reader user silently losing their diagram, which is not a thing
+   * to leave to a host's memory.
+   */
+  private isA11yEngaged(): boolean {
+    if (this.a11yActive) return true;
+    const scope = this.container.parentElement ?? this.container;
+    return !!scope.querySelector?.('[data-grafloria-outline]');
+  }
+
+  /** Does DOM focus currently sit inside the diagram? */
+  private isFocusInside(): boolean {
+    const doc = this.container.ownerDocument;
+    const active = doc?.activeElement;
+    if (!active || active === doc?.body) return false;
+    return this.container.contains(active);
+  }
+
+  /**
+   * Does the scene contain nodes the canvas backend cannot paint?
+   *
+   * Canvas has no way to rasterise a DOM subtree, so an HTML/foreignObject node simply
+   * stops being drawn. Switching with one on screen would silently delete content.
+   *
+   * Asked of the last VNODE TREE rather than of `CanvasRenderer.getUnpaintableNodes()`,
+   * because that list only exists once canvas mode has ALREADY painted — by which point
+   * the HTML node has already been dropped for a frame. The question has to be answerable
+   * from SVG mode, BEFORE we switch.
+   */
+  private hasForeignObject(): boolean {
+    return this.lastTree ? treeHasForeignObject(this.lastTree) : false;
+  }
+
   hitTest(worldX: number, worldY: number): CanvasPick | null {
     if (this.mode === 'canvas' && this.canvasRenderer) {
       return this.canvasRenderer.pick(worldX, worldY);
@@ -270,4 +406,18 @@ export class DiagramRenderBackend {
     }
     return null;
   }
+}
+
+/**
+ * Is there a foreignObject anywhere in this tree?
+ *
+ * Short-circuits on the first hit: one unpaintable node is enough to veto canvas, and
+ * this runs on every frame that auto-tiering is enabled.
+ */
+function treeHasForeignObject(vnode: VNode): boolean {
+  if (isForeignObject(vnode)) return true;
+  for (const child of vnode.children ?? []) {
+    if (child && typeof child === 'object' && treeHasForeignObject(child as VNode)) return true;
+  }
+  return false;
 }

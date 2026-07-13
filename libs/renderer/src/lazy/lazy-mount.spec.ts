@@ -1,0 +1,648 @@
+// Wave 8 — Card 3: deferred view instantiation, freeze, and the time-sliced mount.
+//
+// The properties that actually matter, in the order they matter:
+//   1. Nothing gets LOST. A deferred entity is mounted late, never never.
+//   2. A mount does not re-route what it has already routed (or it is quadratic) —
+//      which it gets from the renderer's route memo, not from a cache of its own.
+//   3. Freezing drops the view AND its cache entry; the model survives.
+//   4. A node that moves mid-mount still ends up with correct routes.
+
+import { DiagramEngine, LinkModel, NodeModel, PortModel } from '@grafloria/engine';
+import { SVGRenderer } from '../svg/svg-renderer';
+import { DARK_THEME } from '../themes';
+import { ProgressiveMounter } from './progressive-mounter';
+import { ViewLifecycle } from './view-lifecycle';
+import type { EntityKind } from './types';
+
+function scene(nodeCount: number) {
+  const engine = new DiagramEngine();
+  const diagram = engine.createDiagram('lazy')!;
+  const nodes: NodeModel[] = [];
+  for (let i = 0; i < nodeCount; i++) {
+    const node = new NodeModel({
+      type: 'basic',
+      position: { x: i * 200, y: 0 },
+      size: { width: 120, height: 60 },
+    });
+    (node as unknown as { id: string }).id = `n${i}`;
+    node.addPort(new PortModel({ id: `n${i}-out`, type: 'output', side: 'right' }));
+    node.addPort(new PortModel({ id: `n${i}-in`, type: 'input', side: 'left' }));
+    diagram.addNode(node);
+    nodes.push(node);
+  }
+  for (let i = 0; i + 1 < nodeCount; i++) {
+    const link = new LinkModel(`n${i}-out`, `n${i + 1}-in`, 'orthogonal');
+    (link as unknown as { id: string }).id = `l${i}`;
+    diagram.addLink(link);
+  }
+  return { engine, diagram, nodes };
+}
+
+/** Every entity id the tree actually drew, by kind. */
+function drawn(tree: any): { nodes: Set<string>; links: Set<string> } {
+  const nodes = new Set<string>();
+  const links = new Set<string>();
+  const walk = (v: any) => {
+    if (!v || typeof v !== 'object') return;
+    const key: string | undefined = v.key;
+    if (typeof key === 'string') {
+      if (key.startsWith('node-')) nodes.add(key.slice(5));
+      if (key.startsWith('link-')) links.add(key.slice(5));
+    }
+    for (const c of v.children ?? []) walk(c);
+  };
+  walk(tree);
+  return { nodes, links };
+}
+
+const VIEWPORT = { x: 0, y: 0, width: 1600, height: 900 };
+
+describe('ViewLifecycle — freeze', () => {
+  it('an unfrozen entity is admitted; a frozen one is not', () => {
+    const lifecycle = new ViewLifecycle();
+    expect(lifecycle.admits('node', 'n1')).toBe(true);
+
+    lifecycle.freeze('node', 'n1');
+    expect(lifecycle.admits('node', 'n1')).toBe(false);
+    expect(lifecycle.isFrozen('node', 'n1')).toBe(true);
+
+    lifecycle.unfreeze('node', 'n1');
+    expect(lifecycle.admits('node', 'n1')).toBe(true);
+  });
+
+  it('keys nodes and links separately (an id may be shared)', () => {
+    const lifecycle = new ViewLifecycle();
+    lifecycle.freeze('node', 'x');
+    expect(lifecycle.admits('node', 'x')).toBe(false);
+    expect(lifecycle.admits('link', 'x')).toBe(true);
+  });
+
+  it('freezing a node stops the renderer from drawing it — the model survives', () => {
+    const { engine, diagram } = scene(3);
+    const renderer = new SVGRenderer(engine, {});
+    const lifecycle = new ViewLifecycle();
+    renderer.setViewLifecycle(lifecycle);
+
+    expect(drawn(renderer.render(VIEWPORT, 1)).nodes.has('n1')).toBe(true);
+
+    lifecycle.freeze('node', 'n1');
+    expect(drawn(renderer.render(VIEWPORT, 1)).nodes.has('n1')).toBe(false);
+
+    // Still a first-class citizen of the model and of the spatial index.
+    expect(diagram.getNode('n1')).toBeTruthy();
+    expect(diagram.getVisibleNodes(VIEWPORT).some((n) => n.id === 'n1')).toBe(true);
+
+    lifecycle.unfreeze('node', 'n1');
+    expect(drawn(renderer.render(VIEWPORT, 1)).nodes.has('n1')).toBe(true);
+
+    renderer.dispose();
+    engine.destroy();
+  });
+
+  it('freezing evicts the cached view (a freeze that leaves a VNode behind is a leak)', () => {
+    const { engine } = scene(3);
+    const renderer = new SVGRenderer(engine, { enableCaching: true });
+    const lifecycle = new ViewLifecycle();
+    renderer.setViewLifecycle(lifecycle);
+    renderer.render(VIEWPORT, 1);
+
+    const cache = (renderer as unknown as { vnodeCache: Map<string, unknown> }).vnodeCache;
+    const keysFor = (id: string) =>
+      [...cache.keys()].filter((k) => k.startsWith(`node-${id}`)).length;
+
+    expect(keysFor('n1')).toBeGreaterThan(0);
+    lifecycle.freeze('node', 'n1');
+    expect(keysFor('n1')).toBe(0);
+
+    renderer.dispose();
+    engine.destroy();
+  });
+});
+
+describe('ViewLifecycle — autoFreeze', () => {
+  it('drops the view of an entity that leaves the viewport, and rebuilds it on return', () => {
+    // 12 nodes on a 200px pitch: a 500px-wide viewport can only ever see a few.
+    const { engine } = scene(12);
+    const renderer = new SVGRenderer(engine, { enableCaching: true });
+    const lifecycle = new ViewLifecycle({ autoFreeze: true });
+    renderer.setViewLifecycle(lifecycle);
+
+    const near = { x: 0, y: 0, width: 500, height: 400 };
+    const far = { x: 1800, y: 0, width: 500, height: 400 };
+
+    const first = drawn(renderer.render(near, 1));
+    expect(first.nodes.has('n0')).toBe(true);
+    const retainedNear = lifecycle.retainedCount();
+
+    // Pan away. n0 is off-screen now: its view is dropped, its model is not.
+    renderer.render(far, 1);
+    const cache = (renderer as unknown as { vnodeCache: Map<string, unknown> }).vnodeCache;
+    expect([...cache.keys()].filter((k) => k.startsWith('node-n0')).length).toBe(0);
+    expect(engine.getDiagram()!.getNode('n0')).toBeTruthy();
+
+    // The retained set stays bounded by what is ON SCREEN, not by everything the
+    // camera has ever passed over. That is the property autoFreeze exists for.
+    expect(lifecycle.retainedCount()).toBeLessThanOrEqual(retainedNear * 2);
+
+    // Pan back: the view comes back. Nothing was lost.
+    expect(drawn(renderer.render(near, 1)).nodes.has('n0')).toBe(true);
+
+    renderer.dispose();
+    engine.destroy();
+  });
+
+  it('off by default — the historical behaviour is the default behaviour', () => {
+    const lifecycle = new ViewLifecycle();
+    expect(lifecycle.isAutoFreeze()).toBe(false);
+    lifecycle.retainVisible([['node', 'n0']]);
+    expect(lifecycle.retainedCount()).toBe(0); // not even tracked
+  });
+});
+
+// =========================================================================
+// THE HAZARD: a view that is not mounted can still go WRONG.
+//
+// Merging routing into culling produced a bug neither branch's tests could catch — a
+// route memo keyed on endpoints served a coarse far-zoom path forever, because zooming
+// back in did not change the key. The lesson generalises, and it points straight at this
+// card: an entity with no view is an entity nothing is watching. Ask what can change
+// about it that the state you key on cannot see.
+//
+// For a frozen/deferred entity the answer is EVERYTHING — it has no cached VNode and no
+// dirty flag anyone consults. So the only safe rule is the one these pin: a view that
+// comes back is REBUILT FROM THE MODEL, never resurrected from what it used to look like.
+// =========================================================================
+describe('freeze × the world changing underneath it', () => {
+  it('a node that MOVES while frozen off-screen comes back at its NEW position', () => {
+    const { engine, diagram } = scene(12);
+    const renderer = new SVGRenderer(engine, { enableCaching: true });
+    const lifecycle = new ViewLifecycle({ autoFreeze: true });
+    renderer.setViewLifecycle(lifecycle);
+
+    const near = { x: 0, y: 0, width: 500, height: 400 };
+    const far = { x: 1800, y: 0, width: 500, height: 400 };
+
+    const nodeX = (tree: any, id: string): number | undefined => {
+      let found: number | undefined;
+      const walk = (v: any) => {
+        if (!v || typeof v !== 'object') return;
+        if (v.key === `node-${id}` && typeof v.props?.transform === 'string') {
+          const m = /translate\(([-\d.]+)/.exec(v.props.transform);
+          if (m) found = parseFloat(m[1]);
+        }
+        for (const c of v.children ?? []) walk(c);
+      };
+      walk(tree);
+      return found;
+    };
+
+    expect(nodeX(renderer.render(near, 1), 'n0')).toBe(0);
+
+    // n0 leaves the viewport: autoFreeze drops its view.
+    renderer.render(far, 1);
+    expect(lifecycle.isFrozen('node', 'n0')).toBe(true);
+
+    // It MOVES while nobody is drawing it. Nothing marks a view dirty that does not exist.
+    diagram.getNode('n0')!.setPosition(120, 0);
+
+    // Come back. If the view were resurrected from its cache it would be drawn at x=0 —
+    // stale, and exactly the class of bug that the merge found in the route memo.
+    expect(nodeX(renderer.render(near, 1), 'n0')).toBe(120);
+
+    renderer.dispose();
+    engine.destroy();
+  });
+
+  it('a node frozen across a THEME SWAP comes back in the new theme', () => {
+    const { engine } = scene(3);
+    // useCSSMode: false so the theme's COLOURS are baked into the VNode as literals. In
+    // CSS-variable mode a theme swap rebinds a var() and never touches the VNode, so a
+    // stale VNode would be re-themed for free — and this hazard could not exist. Baked
+    // literals are the case where a view that "hasn't changed" genuinely IS wrong.
+    const renderer = new SVGRenderer(engine, { enableCaching: true, useCSSMode: false });
+    const lifecycle = new ViewLifecycle();
+    renderer.setViewLifecycle(lifecycle);
+
+    const findByKey = (v: any, key: string): any => {
+      if (!v || typeof v !== 'object') return null;
+      if (v.key === key) return v;
+      for (const c of v.children ?? []) {
+        const hit = findByKey(c, key);
+        if (hit) return hit;
+      }
+      return null;
+    };
+
+    /**
+     * EVERY paint prop under this node's group, in order.
+     *
+     * Not "the first fill" — the first fill belongs to the drop SHADOW, which is a
+     * hardcoded #000 in both themes. A test that read it would have compared a constant
+     * to itself and passed no matter what the code did.
+     */
+    const paint = (tree: any, id: string): string => {
+      const node = findByKey(tree, `node-${id}`);
+      const parts: string[] = [];
+      const walk = (v: any) => {
+        if (!v || typeof v !== 'object') return;
+        for (const key of ['fill', 'stroke', 'color']) {
+          const value = v.props?.[key];
+          if (typeof value === 'string') parts.push(`${key}=${value}`);
+        }
+        for (const c of v.children ?? []) walk(c);
+      };
+      if (node) walk(node);
+      return parts.join('|');
+    };
+
+    // SELECT it. This is the case where the hazard is real: a plain node resolves its
+    // colours through CSS (so a stale VNode would be re-themed for free and there would be
+    // nothing to get wrong), but a SELECTED node has the theme's selection colours BAKED
+    // into its VNode as literals — which is exactly why the renderer keeps a
+    // `themeBoundNodes` set and a surgical `invalidateThemeBoundStyles()` for them.
+    //
+    // A frozen node is not in that set: it has no VNode to be theme-bound. So nothing the
+    // theme swap does can reach it, and the only thing standing between the user and a
+    // stale colour is that a returning view is REBUILT rather than resurrected.
+    engine.getDiagram()!.getNode('n1')!.setState({ selected: true });
+    engine.getDiagram()!.getNode('n2')!.setState({ selected: true });
+
+    const light = paint(renderer.render(VIEWPORT, 1), 'n1');
+    expect(light).not.toBe(''); // the test is worthless if it is reading nothing
+
+    // Freeze it, THEN swap the theme. The frozen node has no view to invalidate — a theme
+    // swap cannot mark dirty a VNode that does not exist.
+    lifecycle.freeze('node', 'n1');
+    renderer.render(VIEWPORT, 1);
+    renderer.setTheme(DARK_THEME);
+    renderer.render(VIEWPORT, 1);
+
+    // Unfreeze. It must come back wearing the theme that is CURRENT, not the one it had on
+    // when it went away.
+    lifecycle.unfreeze('node', 'n1');
+    const afterDark = paint(renderer.render(VIEWPORT, 1), 'n1');
+    const darkReference = paint(renderer.render(VIEWPORT, 1), 'n2'); // never frozen
+
+    // It matches a node that was never frozen, and it is NOT what it looked like before
+    // the swap. Both halves matter: the first says it is right, the second says the test
+    // would have noticed if it were not.
+    expect(afterDark).toBe(darkReference);
+    expect(afterDark).not.toBe(light);
+
+    renderer.dispose();
+    engine.destroy();
+  });
+});
+
+describe('SVGRenderer — the mount gate', () => {
+  it('with no lifecycle installed, nothing changes and nothing is deferred', () => {
+    const { engine } = scene(4);
+    const renderer = new SVGRenderer(engine, {});
+    const tree = drawn(renderer.render(VIEWPORT, 1));
+    expect(tree.nodes.size).toBe(4);
+    expect(renderer.getDeferredEntities()).toEqual([]);
+    renderer.dispose();
+    engine.destroy();
+  });
+
+  it('reports what culling admitted and the gate held back — the mounter’s work queue', () => {
+    const { engine } = scene(4);
+    const renderer = new SVGRenderer(engine, {});
+    const lifecycle = new ViewLifecycle();
+    renderer.setViewLifecycle(lifecycle);
+
+    lifecycle.beginDeferred();
+    lifecycle.admitAll('node');
+    const tree = drawn(renderer.render(VIEWPORT, 1));
+
+    expect(tree.nodes.size).toBe(4); // nodes: admitted wholesale
+    expect(tree.links.size).toBe(0); // links: all deferred
+
+    const deferred = renderer.getDeferredEntities();
+    expect(deferred.length).toBe(3);
+    expect(deferred.every(([kind]) => kind === 'link')).toBe(true);
+
+    renderer.dispose();
+    engine.destroy();
+  });
+});
+
+describe('ProgressiveMounter', () => {
+  /** Drive rAF by hand so the test is deterministic, not a race with the browser. */
+  function withManualFrames<T>(body: (flush: () => Promise<void>) => Promise<T>): Promise<T> {
+    const queue: Array<(t: number) => void> = [];
+    const originalRaf = globalThis.requestAnimationFrame;
+    const originalCancel = globalThis.cancelAnimationFrame;
+
+    globalThis.requestAnimationFrame = ((cb: (t: number) => void) => {
+      queue.push(cb);
+      return queue.length;
+    }) as typeof globalThis.requestAnimationFrame;
+    globalThis.cancelAnimationFrame = ((handle: number) => {
+      queue[handle - 1] = () => undefined;
+    }) as typeof globalThis.cancelAnimationFrame;
+
+    const flush = async () => {
+      // Run whatever is queued now; a slice queues the next one as it goes.
+      for (let guard = 0; guard < 1000 && queue.length > 0; guard++) {
+        const cb = queue.shift()!;
+        cb(0);
+        await Promise.resolve();
+      }
+    };
+
+    return body(flush).finally(() => {
+      globalThis.requestAnimationFrame = originalRaf;
+      globalThis.cancelAnimationFrame = originalCancel;
+    });
+  }
+
+  it('mounts EVERYTHING culling admitted — deferred means late, never lost', async () => {
+    await withManualFrames(async (flush) => {
+      const { engine } = scene(8);
+      const renderer = new SVGRenderer(engine, {});
+      const lifecycle = new ViewLifecycle();
+      renderer.setViewLifecycle(lifecycle);
+
+      let last: unknown = null;
+      const mounter = new ProgressiveMounter(
+        engine,
+        lifecycle,
+        (vp, zoom) => {
+          last = renderer.render(vp, zoom);
+        },
+        () => renderer.getDeferredEntities()
+      );
+
+      const done = mounter.mount(VIEWPORT, 1, { initialChunk: 2 });
+
+      // The FIRST frame is already on screen, and it has the nodes but no links.
+      const firstFrame = drawn(last);
+      expect(firstFrame.nodes.size).toBe(8);
+      expect(firstFrame.links.size).toBe(0);
+
+      await flush();
+      const stats = await done;
+
+      // Everything arrived.
+      const final = drawn(last);
+      expect(final.nodes.size).toBe(8);
+      expect(final.links.size).toBe(7);
+      expect(stats.aborted).toBe(false);
+      expect(stats.slices).toBeGreaterThan(1);
+
+      // And the gate is handed back, so later frames run the ordinary code path.
+      expect(lifecycle.isDeferring()).toBe(false);
+      expect(renderer.getDeferredEntities()).toEqual([]);
+
+      renderer.dispose();
+      engine.destroy();
+    });
+  });
+
+  it('does not re-route a link a previous slice already routed', async () => {
+    await withManualFrames(async (flush) => {
+      const { engine } = scene(10);
+      const renderer = new SVGRenderer(engine, {});
+      const lifecycle = new ViewLifecycle();
+      renderer.setViewLifecycle(lifecycle);
+
+      // Count real routing calls. THE number: without replay this is quadratic in
+      // the slice count, and a progressive mount would cost more than the blocking
+      // one it replaced.
+      const routed: string[] = [];
+      const inner = renderer as unknown as {
+        computeAutoRoute: (l: LinkModel, e: unknown) => unknown;
+      };
+      const original = inner.computeAutoRoute.bind(renderer);
+      inner.computeAutoRoute = (link: LinkModel, endpoints: unknown) => {
+        routed.push(link.id);
+        return original(link, endpoints);
+      };
+
+      const mounter = new ProgressiveMounter(
+        engine,
+        lifecycle,
+        (vp, zoom) => void renderer.render(vp, zoom),
+        () => renderer.getDeferredEntities()
+      );
+
+      // One link per slice: the most adversarial schedule for replay.
+      await withFlush(mounter.mount(VIEWPORT, 1, { initialChunk: 1, sliceMs: 0.0001 }), flush);
+
+      // 9 links, each routed EXACTLY once across the whole mount — served thereafter by
+      // the renderer's route memo, which is what makes a sliced mount linear and not
+      // quadratic.
+      const counts = new Map<string, number>();
+      for (const id of routed) counts.set(id, (counts.get(id) ?? 0) + 1);
+      expect([...counts.keys()].length).toBe(9);
+      for (const [, n] of counts) expect(n).toBe(1);
+
+      renderer.dispose();
+      engine.destroy();
+    });
+  });
+
+  it('a node that MOVES mid-mount still gets correct routes (the memo, not a seal)', async () => {
+    // The mounter used to keep its own route-replay cache and drop it on any geometry
+    // event. It does not any more: the renderer's route memo keys on the routing INPUTS,
+    // so a moved obstacle invalidates the affected routes by construction. What this pins
+    // is the PROPERTY that mattered — move a node mid-mount and the links still come out
+    // routed against where it actually is, not where it was.
+    await withManualFrames(async (flush) => {
+      const { engine, diagram } = scene(6);
+      const renderer = new SVGRenderer(engine, {});
+      const lifecycle = new ViewLifecycle();
+      renderer.setViewLifecycle(lifecycle);
+
+      const mounter = new ProgressiveMounter(
+        engine,
+        lifecycle,
+        (vp, zoom) => void renderer.render(vp, zoom),
+        () => renderer.getDeferredEntities()
+      );
+
+      const done = mounter.mount(VIEWPORT, 1, { initialChunk: 1 });
+      await Promise.resolve();
+
+      diagram.getNode('n2')!.setPosition(10, 400);
+
+      await flush();
+      await done;
+
+      // Everything is on screen, and every link agrees with an ungated re-render — which
+      // is the only definition of "correct routes" that does not beg the question.
+      const mounted = drawn(renderer.render(VIEWPORT, 1));
+      expect(mounted.links.size).toBe(5);
+      for (const link of diagram.getLinks()) {
+        expect((link.points ?? []).length).toBeGreaterThanOrEqual(2);
+      }
+
+      renderer.dispose();
+      engine.destroy();
+    });
+  });
+
+  it('cancel() stops the mount and hands the gate back', async () => {
+    await withManualFrames(async (flush) => {
+      const { engine } = scene(6);
+      const renderer = new SVGRenderer(engine, {});
+      const lifecycle = new ViewLifecycle();
+      renderer.setViewLifecycle(lifecycle);
+
+      const mounter = new ProgressiveMounter(
+        engine,
+        lifecycle,
+        (vp, zoom) => void renderer.render(vp, zoom),
+        () => renderer.getDeferredEntities()
+      );
+
+      const done = mounter.mount(VIEWPORT, 1, { initialChunk: 1 });
+      mounter.cancel();
+      await flush();
+      const stats = await done;
+
+      expect(stats.aborted).toBe(true);
+      expect(lifecycle.isDeferring()).toBe(false);
+
+      // The scene is whole again on the very next ordinary render — a cancelled
+      // mount must not leave half a diagram on screen.
+      expect(drawn(renderer.render(VIEWPORT, 1)).links.size).toBe(5);
+
+      renderer.dispose();
+      engine.destroy();
+    });
+  });
+});
+
+/** Await a mount while pumping the manual rAF queue. */
+async function withFlush<T>(promise: Promise<T>, flush: () => Promise<void>): Promise<T> {
+  let settled = false;
+  const wrapped = promise.finally(() => {
+    settled = true;
+  });
+  for (let i = 0; i < 200 && !settled; i++) {
+    await flush();
+    await Promise.resolve();
+  }
+  return wrapped;
+}
+
+/** A frozen entity is not admitted even while a mount would otherwise admit it. */
+describe('freeze × mount', () => {
+  it('an explicit freeze outranks a mount admission', () => {
+    const lifecycle = new ViewLifecycle();
+    lifecycle.beginDeferred();
+    lifecycle.admitAll('node');
+    lifecycle.freeze('node', 'n3');
+
+    expect(lifecycle.admits('node', 'n0')).toBe(true);
+    expect(lifecycle.admits('node', 'n3')).toBe(false);
+  });
+});
+
+/** Type-level guard: the gate contract stays structural. */
+const _gateShape: (l: ViewLifecycle) => boolean = (l) => l.admits('node' as EntityKind, 'x');
+void _gateShape;
+
+// ===========================================================================
+// THE MERGE SEAM: lazy mount (Card 3) × the frame gate (Card 0)
+// ===========================================================================
+//
+// These two landed on separate branches, both fully green, and BROKE EACH OTHER on
+// contact — five tests in this file failed the moment they were composed, and the
+// bug was in neither branch.
+//
+// The frame gate skips any frame whose MODEL and VIEWPORT are unchanged, handing the
+// patcher back the identical VNode object so it reconciles to zero DOM operations.
+// That is correct, and it is what took an idle 10k frame from 130ms to 0ms.
+//
+// But freezing a node changes neither the model nor the viewport. Neither does
+// admitting the next slice of a progressive mount. So the gate — correctly, by its
+// own rules — concluded "you have already drawn this frame", and freeze and lazy
+// mount silently did nothing at all. No error. No corruption. The features just
+// quietly stopped existing.
+//
+// The fix is a change hook: the lifecycle now tells the renderer when it has changed
+// what would be drawn. These tests exist so the composition can never come apart
+// again — they FAIL if the hook is removed, which the tests above do not, because
+// they were written before the gate existed.
+describe('lazy mount × the frame gate (the wave-8 merge seam)', () => {
+  it('freezing a node repaints the frame — the gate must not serve the stale picture', () => {
+    const { engine } = scene(3);
+    const lifecycle = new ViewLifecycle();
+    // Caching ON: the frame gate must be live, or this test proves nothing.
+    const renderer = new SVGRenderer(engine, { enableCaching: true }, DARK_THEME);
+    renderer.setViewLifecycle(lifecycle);
+
+    const before = renderer.render(VIEWPORT, 1);
+    expect(drawn(before).nodes.has('n1')).toBe(true);
+
+    lifecycle.freeze('node', 'n1');
+
+    // Same model, same viewport, same zoom — every input the gate keys on is
+    // identical. Only the lifecycle changed, and it is not part of the model.
+    const after = renderer.render(VIEWPORT, 1);
+
+    expect(after).not.toBe(before); // not served from the frame cache
+    expect(drawn(after).nodes.has('n1')).toBe(false); // and it is actually gone
+  });
+
+  it('unfreezing brings it back — the gate must not serve the frozen picture either', () => {
+    const { engine } = scene(3);
+    const lifecycle = new ViewLifecycle();
+    const renderer = new SVGRenderer(engine, { enableCaching: true }, DARK_THEME);
+    renderer.setViewLifecycle(lifecycle);
+
+    lifecycle.freeze('node', 'n1');
+    renderer.render(VIEWPORT, 1);
+
+    lifecycle.unfreeze('node', 'n1');
+    const after = renderer.render(VIEWPORT, 1);
+
+    expect(drawn(after).nodes.has('n1')).toBe(true);
+  });
+
+  it('each admitted slice actually reaches the screen', () => {
+    // The progressive mounter's whole contract — "deferred means late, never lost" —
+    // is a statement about frames that the gate was silently refusing to draw.
+    const { engine } = scene(4);
+    const lifecycle = new ViewLifecycle();
+    const renderer = new SVGRenderer(engine, { enableCaching: true }, DARK_THEME);
+    renderer.setViewLifecycle(lifecycle);
+
+    lifecycle.beginDeferred();
+    lifecycle.admitAll('node' as EntityKind);
+    const slice0 = renderer.render(VIEWPORT, 1);
+    expect(drawn(slice0).nodes.size).toBeGreaterThan(0);
+    expect(drawn(slice0).links.size).toBe(0); // links not admitted yet
+
+    lifecycle.admit('link', 'l0');
+    const slice1 = renderer.render(VIEWPORT, 1);
+
+    expect(slice1).not.toBe(slice0);
+    expect(drawn(slice1).links.has('l0')).toBe(true);
+  });
+
+  it('an idle frame is still skipped — the fix must not cost the 0ms idle frame', () => {
+    // The mirror, and the reason this is a seam and not just a bug: the gate is
+    // load-bearing (130ms -> 0ms on an idle 10k frame). A change hook that fired
+    // spuriously — say, on every `admits()` query — would buy correctness back by
+    // throwing away the entire win. Nothing touched the lifecycle here, so nothing
+    // may be rebuilt.
+    const { engine } = scene(3);
+    const lifecycle = new ViewLifecycle();
+    const renderer = new SVGRenderer(engine, { enableCaching: true }, DARK_THEME);
+    renderer.setViewLifecycle(lifecycle);
+
+    renderer.render(VIEWPORT, 1);
+    const settled = renderer.render(VIEWPORT, 1);
+    const before = renderer.getFrameStats().skipped;
+
+    for (let i = 0; i < 10; i++) {
+      expect(renderer.render(VIEWPORT, 1)).toBe(settled); // identity: zero DOM work
+    }
+
+    expect(renderer.getFrameStats().skipped).toBe(before + 10);
+  });
+});

@@ -45,8 +45,15 @@ export interface PerfSample {
 const results: PerfSample[] = [];
 (globalThis as unknown as { PERF: PerfSample[] }).PERF = results;
 
-/** A grid of nodes wired into a chain — dense enough to be honest, regular enough to be reproducible. */
-function buildScene(nodeCount: number): { engine: DiagramEngine; diagram: DiagramModel } {
+/**
+ * A grid of nodes wired into a chain — dense enough to be honest, regular enough to be
+ * reproducible.
+ *
+ * Exported so the lazy-mount benchmark (`lazy-harness.ts`) measures the SAME scene this
+ * baseline was taken on. A "before/after" across two different scene builders is not a
+ * comparison, it is a coincidence.
+ */
+export function buildScene(nodeCount: number): { engine: DiagramEngine; diagram: DiagramModel } {
   const engine = new DiagramEngine();
   const diagram = engine.createDiagram(`perf-${nodeCount}`)!;
 

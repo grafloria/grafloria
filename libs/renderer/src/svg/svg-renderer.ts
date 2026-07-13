@@ -92,6 +92,10 @@ import { createForeignObject, isForeignObject, getContainerId } from '../vnode/f
 import { LruCache } from '../utils/lru-cache';
 // SSR (Card 6): every `document` touch in this file goes through this guard.
 import { hasDocument } from '../platform';
+// Wave 8 (Card 3): the freeze / lazy-mount gate. Type-only — the renderer never
+// constructs one, so a host that does not use laziness does not link it in.
+import type { ViewLifecycle } from '../lazy/view-lifecycle';
+import type { EntityKind as LazyEntityKind } from '../lazy/types';
 
 // Import routing types
 import type { RoutedPath, RoutingAlgorithm, SolverEdge } from '@grafloria/engine';
@@ -456,6 +460,14 @@ export class SVGRenderer implements IRenderer {
   // every link's points are current before any link renders (jump detection
   // reads other links' points).
   private frameRoutes = new Map<string, RoutedPath>();
+
+  // --- Wave 8 — Card 3: deferred / lazy view instantiation -------------------
+
+  /** The gate between "culling says it is on screen" and "build its view". */
+  private viewLifecycle: ViewLifecycle | null = null;
+
+  /** What the gate held back on the last frame — the progressive mounter's work queue. */
+  private deferredThisFrame: Array<readonly [LazyEntityKind, string]> = [];
 
   // Wave 8 — Card 6: the frame's obstacle arrays (see frameObstacles()). Cleared
   // at the top of every links pass; rebuilt lazily on first use.
@@ -844,7 +856,7 @@ export class SVGRenderer implements IRenderer {
     };
 
     // Get visible nodes using engine's SpatialIndex (viewport virtualization)
-    const visibleNodes = diagram.getVisibleNodes(visibleRect);
+    const culledNodes = diagram.getVisibleNodes(visibleRect);
 
     // Get visible links by GEOMETRY, through the engine's link SpatialIndex.
     // (This used to be "render the link only if BOTH endpoint nodes are visible",
@@ -855,7 +867,19 @@ export class SVGRenderer implements IRenderer {
     // argument: the two diverge once zoom != 1, and culling links against the
     // un-zoomed rect dropped on-screen links whenever the view was zoomed out
     // (which fit-to-content always does). Nodes above are culled the same way.
-    const visibleLinks = diagram.getVisibleLinks(this.expandForLinkCulling(visibleRect));
+    const culledLinks = diagram.getVisibleLinks(this.expandForLinkCulling(visibleRect));
+
+    // Wave 8 — Card 3: the MOUNT GATE. Culling has said what is on screen; the gate
+    // says what may have a VIEW. It can only ever subtract (a frozen entity, or one
+    // a progressive mount has not reached yet), never add — so the worst a gate can
+    // do is make something arrive a frame late, never draw something wrong.
+    //
+    // Everything it holds back is recorded, because that list IS the mounter's work
+    // queue: "what culling wanted and I did not give it".
+    const { nodes: visibleNodes, links: visibleLinks } = this.applyMountGate(
+      culledNodes,
+      culledLinks
+    );
 
     // Track counts
     this.lastNodeCount = visibleNodes.length;
@@ -1292,6 +1316,97 @@ export class SVGRenderer implements IRenderer {
     for (const key of this.vnodeCache.keys()) {
       if (key.startsWith(prefix)) this.vnodeCache.delete(key);
     }
+  }
+
+  // =========================================================================
+  // Wave 8 — Card 3: deferred / lazy view instantiation
+  // =========================================================================
+
+  /**
+   * Install the freeze / lazy-mount gate.
+   *
+   * With no lifecycle installed the renderer behaves exactly as it always has —
+   * every entity culling admits gets a view, on the frame it is admitted. That is
+   * the default, and it stays the default: laziness is something a host asks for.
+   */
+  setViewLifecycle(lifecycle: ViewLifecycle | null): void {
+    this.viewLifecycle?.setEvictHook(null);
+    this.viewLifecycle?.setChangeHook(null);
+    this.viewLifecycle = lifecycle;
+    // A frozen entity must not keep a cached view — that is the whole point of
+    // freezing it, and a stale VNode in the LRU is exactly the leak autoFreeze
+    // exists to close.
+    lifecycle?.setEvictHook((kind, id) => this.dropCacheEntries(`${kind}-${id}`));
+
+    // …and the FRAME must be rebuilt, not just the entity's cache entry. Freezing a
+    // node changes neither the model nor the viewport, so the frame gate would
+    // otherwise hand back the previous picture — with the frozen node still in it —
+    // and freeze would silently do nothing. Same for every slice a progressive mount
+    // admits. Both branches were green in isolation; the composition was broken.
+    lifecycle?.setChangeHook(() => this.invalidateFrame());
+
+    // Installing or removing the lifecycle is itself such a change.
+    this.invalidateFrame();
+  }
+
+  getViewLifecycle(): ViewLifecycle | null {
+    return this.viewLifecycle;
+  }
+
+  /**
+   * What culling admitted on the last frame and the gate held back.
+   *
+   * This is the progressive mounter's work queue, and it comes from the renderer
+   * rather than being recomputed by the mounter because the viewport→viewBox→cull
+   * maths (zoom, link margin) lives here and must not be reimplemented anywhere it
+   * could drift.
+   */
+  getDeferredEntities(): ReadonlyArray<readonly [LazyEntityKind, string]> {
+    return this.deferredThisFrame;
+  }
+
+  /**
+   * Subtract from what culling admitted: frozen entities, and — during a
+   * progressive mount — everything the mount has not reached yet.
+   */
+  private applyMountGate(
+    nodes: NodeModel[],
+    links: LinkModel[]
+  ): { nodes: NodeModel[]; links: LinkModel[] } {
+    const gate = this.viewLifecycle;
+
+    if (!gate) {
+      // Nothing installed: the historical path, and it must cost nothing. Reuse the empty
+      // array rather than allocating a fresh one every frame for a host that never asks.
+      if (this.deferredThisFrame.length > 0) this.deferredThisFrame = [];
+      return { nodes, links };
+    }
+
+    this.deferredThisFrame = [];
+
+    // autoFreeze diffs THIS frame's visible set against the last one, and drops the
+    // view of anything that left. Fed the CULLED sets — what is on screen — not the
+    // gated ones, or an entity deferred by a mount would look like it had left.
+    if (gate.isAutoFreeze()) {
+      const visible: Array<readonly ['node' | 'link', string]> = [];
+      for (const n of nodes) visible.push(['node', n.id]);
+      for (const l of links) visible.push(['link', l.id]);
+      gate.retainVisible(visible);
+    }
+
+    const admittedNodes: NodeModel[] = [];
+    for (const node of nodes) {
+      if (gate.admits('node', node.id)) admittedNodes.push(node);
+      else this.deferredThisFrame.push(['node', node.id] as const);
+    }
+
+    const admittedLinks: LinkModel[] = [];
+    for (const link of links) {
+      if (gate.admits('link', link.id)) admittedLinks.push(link);
+      else this.deferredThisFrame.push(['link', link.id] as const);
+    }
+
+    return { nodes: admittedNodes, links: admittedLinks };
   }
 
   /**
@@ -1933,8 +2048,26 @@ export class SVGRenderer implements IRenderer {
     // those routes. Everything else is served from the previous frame.
     this.invalidateStaleRoutes();
 
+    // Wave 8 — Card 3 (progressive mount) vs Card 6 (route memo).
+    //
+    // A time-sliced mount MUST NOT re-route, on every slice, what the previous slices
+    // already routed — that turns one pass over the scene into a quadratic one, and the
+    // progressive mount would end up slower than the blocking render it replaced.
+    //
+    // This branch used to carry its own replay cache to prevent that (`mountRoutes`,
+    // keyed on link id + a "this slice is sealed" flag). The route memo below now does
+    // the same job properly, and the memo's key is STRICTLY STRONGER than mine was: it
+    // keys on the routing INPUTS (endpoints + routing LOD), so it cannot serve a route
+    // that the world has since invalidated, and `invalidateStaleRoutes()` forgets any
+    // route whose corridor a third party moved into. My key could see neither.
+    //
+    // So the replay cache is gone and the mount rides the memo: a link routed by slice k
+    // is a memo HIT for slice k+1, at full correctness. Two caches for one job, where one
+    // of them is weaker, is how you get a route that "hasn't changed" and is wrong anyway.
+    // The spec still counts routes per link across a whole mount and pins it at one.
     for (const link of sortedLinks) {
       if (this.linkHasManualWaypoints(link)) continue;
+
       const endpoints = this.getLinkEndpoints(link);
       if (!endpoints) continue;
 
