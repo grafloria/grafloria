@@ -163,6 +163,36 @@ export function listMarkers(): string[] {
   return Array.from(markers.keys());
 }
 
+// ---------------------------------------------------------------------------
+// Wave 6 — Card 0: per-name removal.
+//
+// `clearEdgeTemplates()` was all-or-nothing, which is useless as an extension
+// disposer: tearing down ONE extension would have wiped every OTHER extension's
+// templates too. These remove exactly one registration, which is what the
+// ExtensionHost's `links.registerTemplate()` disposer needs.
+// ---------------------------------------------------------------------------
+
+/** Remove one link template. Returns false when it was not registered. */
+export function unregisterLinkTemplate(name: string): boolean {
+  const existed = linkTemplates.delete(name);
+  if (existed) bump();
+  return existed;
+}
+
+/** Remove one label template. Returns false when it was not registered. */
+export function unregisterLabelTemplate(name: string): boolean {
+  const existed = labelTemplates.delete(name);
+  if (existed) bump();
+  return existed;
+}
+
+/** Remove one marker. Returns false when it was not registered. */
+export function unregisterMarker(name: string): boolean {
+  const existed = markers.delete(name);
+  if (existed) bump();
+  return existed;
+}
+
 /** Drop every registration (tests, hosts tearing a document down). */
 export function clearEdgeTemplates(): void {
   if (linkTemplates.size === 0 && labelTemplates.size === 0 && markers.size === 0) return;

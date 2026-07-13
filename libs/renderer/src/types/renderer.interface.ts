@@ -281,6 +281,20 @@ export interface SVGRendererConfig {
   smartConnectionPoints?: boolean;
 
   /**
+   * Wave 6 — Card 2. The diagram-wide CONNECTION-POINT STRATEGY, by registered
+   * name (`registerConnectionPoint`). Built-ins: `'port'` (the default —
+   * attach at the assigned port), `'smart'` (draw.io-style floating attachment)
+   * and `'boundary'` (attach on each node's outline, aimed at the other node).
+   *
+   * This supersedes the boolean `smartConnectionPoints` above, which is kept
+   * working and is exactly equivalent to `connectionPoint: 'smart'`. A per-link
+   * `metadata.connectionPoint` overrides this.
+   *
+   * Default: undefined (⇒ port-based endpoints).
+   */
+  connectionPoint?: string;
+
+  /**
    * Force this renderer's instance scope (`data-grafloria-instance`, and the id of
    * its `<style>` block) instead of taking the next value from the per-process
    * counter.

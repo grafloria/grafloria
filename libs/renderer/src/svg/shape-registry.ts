@@ -960,6 +960,9 @@ const registry = new Map<string, ShapeDefinition>();
  */
 export function registerShape(type: string, def: Omit<ShapeDefinition, 'type'> & { type?: string }): void {
   registry.set(type, { ...def, type });
+  // Wave 6: participate in the version/notify protocol (see `unregisterShape`
+  // below) so cached renders invalidate and ExtensionHost disposers are exact.
+  notifyShapeRegistered();
 }
 
 /**
@@ -1063,6 +1066,10 @@ export function registerPathShape(
     },
     innerRect: opts.innerRect,
   });
+  // Wave 6: path shapes bypass `registerShape` (they build the definition here),
+  // so they must bump the version themselves or an extension that contributes a
+  // path shape would be invisible to cache invalidation and to its own disposer.
+  notifyShapeRegistered();
 }
 
 /** The rect shape is the default fallback for unknown / unset shape types. */
@@ -1078,6 +1085,64 @@ export function hasShape(type: string): boolean {
 /** All registered shape type names (built-ins + extended library + aliases). */
 export function listShapes(): string[] {
   return [...registry.keys()];
+}
+
+// ---------------------------------------------------------------------------
+// Wave 6 — Card 0: removal + invalidation.
+//
+// The registry previously had NO removal path and NO change signal, which made
+// a leak-free `ExtensionHost` disposer impossible to synthesize: an extension
+// could add a shape but never take it back, so tearing an extension down left
+// its shapes live forever. These are PURELY ADDITIVE — `registerShape` and the
+// lookup path above are untouched — and they are what `shapes.register()` on the
+// ExtensionHost returns its disposer against.
+//
+// The version counter mirrors the one edge-templates and the style registry
+// already expose, so a renderer can invalidate a cached VNode when the shape
+// catalogue changes underneath it.
+// ---------------------------------------------------------------------------
+
+let shapeVersion = 0;
+const shapeListeners = new Set<() => void>();
+
+function bumpShapes(): void {
+  shapeVersion++;
+  for (const listener of [...shapeListeners]) listener();
+}
+
+/** Remove a registered shape. Returns false when the type was not registered. */
+export function unregisterShape(type: string): boolean {
+  const existed = registry.delete(type);
+  if (existed) bumpShapes();
+  return existed;
+}
+
+/**
+ * Snapshot the current catalogue, so a caller can restore it later. Used by the
+ * ExtensionHost to give a scoped extension an exact "undo" even when it OVERWROTE
+ * an existing shape rather than adding a new one.
+ */
+export function getShapeDefinition(type: string): ShapeDefinition | undefined {
+  return registry.get(type);
+}
+
+/**
+ * Monotonic counter, incremented on every add/remove. Cheap cache key.
+ * NOTE: `registerShape` itself bumps it — see the wrapper installed below.
+ */
+export function getShapeRegistryVersion(): number {
+  return shapeVersion;
+}
+
+/** Subscribe to catalogue changes. Returns a disposer. */
+export function onShapeRegistryChange(listener: () => void): () => void {
+  shapeListeners.add(listener);
+  return () => shapeListeners.delete(listener);
+}
+
+/** Internal: let `registerShape` participate in the version/notify protocol. */
+export function notifyShapeRegistered(): void {
+  bumpShapes();
 }
 
 /**

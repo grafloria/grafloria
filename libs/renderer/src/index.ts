@@ -50,6 +50,13 @@ export * from './ssr';
 // this library goes through these.
 export * from './platform';
 
+// Wave 6 (Cards 0/2/5/6/7): the EXTENSION API. One capability-scoped host over
+// the registries that already existed (shapes, edge templates/markers, routers,
+// node templates, animations), the link-pipeline seams that did NOT (anchors,
+// connection points, connectors), a pluggable tool + connection-validation
+// registry, and the portal/Background/MiniMap/Controls components.
+export * from './ext';
+
 // Phase 1: Animation system
 export { AnimationService } from './services/animation.service';
 export type { AnimationConfig } from './services/animation.service';
