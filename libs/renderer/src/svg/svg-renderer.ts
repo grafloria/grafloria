@@ -93,6 +93,11 @@ import {
   type PanelRenderContext,
 } from './panel';
 
+// Wave 5 Card 4: HTML / foreignObject rich-content nodes — a sanitized HTML body
+// sized to node.size, participating in selection / hit-test / rotation like any
+// shape (rendered on top of the shape background inside the node's <g>).
+import { buildHtmlForeignObject, hasHtmlContent } from './html-node';
+
 // Phase 1.1: Arrow type rendering
 import { ArrowRenderer } from './ArrowRenderer';
 
@@ -1551,6 +1556,18 @@ export class SVGRenderer implements IRenderer {
   }
 
   /**
+   * Card 4 — the HTML / foreignObject body for a node (sanitized rich content
+   * sized to node.size). Empty for a non-HTML node. The FO is keyed by a content
+   * hash so a data change replaces the opaque subtree while hover/selection
+   * leaves it intact (see html-node.ts).
+   */
+  private renderHtmlBody(node: NodeModel): VNode[] {
+    if (!hasHtmlContent(node)) return [];
+    const fo = buildHtmlForeignObject(node, node.size.width, node.size.height);
+    return fo ? [fo] : [];
+  }
+
+  /**
    * Render nodes layer
    */
   private renderNodesLayer(nodes: NodeModel[], lod: LODLevel): VNode {
@@ -2023,6 +2040,10 @@ export class SVGRenderer implements IRenderer {
         ...(diagram.shouldRenderLabels(lod) && node.getMetadata('label')
           ? this.renderNodeLabel(node)
           : []),
+        // Card 4: HTML / foreignObject body (sanitized) on top of the shape
+        // background, so it rotates + hit-tests + selects like any shape. Skipped
+        // at LODs that drop decorations (a far-zoom node is just its silhouette).
+        ...(this.lodAllows('decorations', lod) ? this.renderHtmlBody(node) : []),
         // Option 3: Lock/pin indicator for locked nodes
         ...(node.state.locked && this.lodAllows('decorations', lod)
           ? [
