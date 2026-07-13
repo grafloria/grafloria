@@ -1580,8 +1580,78 @@ export class DiagramEngine {
       height: node.size.height,
     };
     this.routingEngine.addObstacle(obstacle);
-    console.log(`🚧 Registered obstacle: ${node.data?.['label'] || node.id} at (${obstacle.x}, ${obstacle.y}) size ${obstacle.width}x${obstacle.height}`);
-    console.log(`   Total obstacles: ${this.routingEngine.getObstacleCount()}`);
+  }
+
+  /**
+   * Wave 5 (Edge routing) — Card 6: reconcile the shared ObstacleMap with the
+   * diagram's GROUP state, idempotently:
+   *
+   *   - a COLLAPSED group (with geometry) is ONE solid obstacle;
+   *   - members hidden under a collapsed group (at any depth) are NOT obstacles
+   *     — they are not visible, and routing around invisible things produces
+   *     inexplicable detours;
+   *   - expanding restores the members and removes the group block.
+   *
+   * Runs on every group add/remove/collapse/expand. Public so the grouping
+   * feature (which owns collapse SEMANTICS but not the ObstacleMap) can force a
+   * reconcile after batch operations.
+   */
+  refreshGroupObstacles(): void {
+    if (!this.diagram) return;
+    const groups = this.diagram.getGroups();
+
+    // ids of members hidden under a collapsed group at any depth
+    const hidden = new Set<string>();
+    for (const g of groups) {
+      // a group's members are hidden if IT or any of its ancestors is collapsed
+      let cur: GroupModel | undefined = g;
+      let effectiveCollapsed = false;
+      const guard = new Set<string>();
+      while (cur && !guard.has(cur.id)) {
+        guard.add(cur.id);
+        if (cur.isCollapsed) { effectiveCollapsed = true; break; }
+        cur = cur.parentGroupId ? this.diagram.getGroup(cur.parentGroupId) : undefined;
+      }
+      if (!effectiveCollapsed) continue;
+      for (const memberId of g.members) hidden.add(memberId);
+    }
+
+    // hidden members: out of the map; visible ones: (re)registered
+    for (const node of this.diagram.getNodes()) {
+      if (hidden.has(node.id)) {
+        this.routingEngine.removeObstacle(node.id);
+      } else {
+        this.routingEngine.updateObstacle({
+          id: node.id,
+          x: node.position.x,
+          y: node.position.y,
+          width: node.size.width,
+          height: node.size.height,
+          kind: 'node',
+        });
+      }
+    }
+
+    // group blocks: only VISIBLE collapsed groups block (a collapsed group
+    // nested inside another collapsed group is itself hidden)
+    for (const g of groups) {
+      const rect = this.groupObstacleRect(g);
+      if (g.isCollapsed && !hidden.has(g.id) && rect) {
+        this.routingEngine.updateObstacle({ id: g.id, ...rect, kind: 'group' });
+      } else {
+        this.routingEngine.removeObstacle(g.id);
+      }
+    }
+  }
+
+  private groupObstacleRect(
+    g: GroupModel
+  ): { x: number; y: number; width: number; height: number } | null {
+    if (g.size) {
+      return { x: g.position.x, y: g.position.y, width: g.size.width, height: g.size.height };
+    }
+    if (g.bounds) return { ...g.bounds };
+    return null;
   }
 
   /**
@@ -1654,6 +1724,28 @@ export class DiagramEngine {
         this.eventBus.emit('link:added', link);
       })
     );
+
+    // Wave 5 — Card 6: group state drives the obstacle map. `group:added` also
+    // subscribes to that group's own collapse/expand emitter (DiagramModel does
+    // not forward those); existing groups are wired below.
+    const wireGroup = (group: GroupModel) => {
+      this.diagramDisposers.push(group.on('collapsed', () => this.refreshGroupObstacles()));
+      this.diagramDisposers.push(group.on('expanded', () => this.refreshGroupObstacles()));
+    };
+    this.diagramDisposers.push(
+      diagram.on('group:added', (group: GroupModel) => {
+        wireGroup(group);
+        this.refreshGroupObstacles();
+      })
+    );
+    this.diagramDisposers.push(
+      diagram.on('group:removed', () => this.refreshGroupObstacles())
+    );
+    this.diagramDisposers.push(
+      diagram.on('group:changed', () => this.refreshGroupObstacles())
+    );
+    diagram.getGroups().forEach(wireGroup);
+    if (diagram.getGroups().length > 0) this.refreshGroupObstacles();
 
     this.diagramDisposers.push(
       diagram.on('link:removed', (link: LinkModel) => {

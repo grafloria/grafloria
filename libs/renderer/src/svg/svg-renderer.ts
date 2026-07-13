@@ -4851,6 +4851,77 @@ export class SVGRenderer implements IRenderer {
    * back to the orthogonal router, which respects port directions and A*
    * obstacle avoidance — links must never run through node bodies.
    */
+  /**
+   * Wave 5 — Card 6: the group facts a route needs. Pure derivation from the
+   * diagram's group state; feature-tolerant (a diagram with no groups pays one
+   * empty array read).
+   */
+  private collectGroupRouting(
+    diagram: ReturnType<DiagramEngine['getDiagram']>,
+    sourceNodeId: string | undefined,
+    targetNodeId: string | undefined
+  ): {
+    hiddenByCollapse: Set<string>;
+    groupBlocks: Array<{ id: string; x: number; y: number; width: number; height: number }>;
+    container?: { x: number; y: number; width: number; height: number };
+  } {
+    const hiddenByCollapse = new Set<string>();
+    const groupBlocks: Array<{ id: string; x: number; y: number; width: number; height: number }> = [];
+    let container: { x: number; y: number; width: number; height: number } | undefined;
+
+    const groups = diagram?.getGroups?.() ?? [];
+    if (groups.length === 0) return { hiddenByCollapse, groupBlocks, container };
+
+    const groupById = new Map(groups.map((g: any) => [g.id, g] as const));
+    const isEffectivelyCollapsed = (g: any): boolean => {
+      const guard = new Set<string>();
+      let cur: any = g;
+      while (cur && !guard.has(cur.id)) {
+        guard.add(cur.id);
+        if (cur.isCollapsed) return true;
+        cur = cur.parentGroupId ? groupById.get(cur.parentGroupId) : undefined;
+      }
+      return false;
+    };
+    const rectOf = (g: any) =>
+      g.size
+        ? { x: g.position.x, y: g.position.y, width: g.size.width, height: g.size.height }
+        : g.bounds
+          ? { ...g.bounds }
+          : null;
+
+    for (const g of groups as any[]) {
+      const collapsed = isEffectivelyCollapsed(g);
+      if (collapsed) {
+        for (const memberId of g.members ?? []) hiddenByCollapse.add(memberId);
+        // only VISIBLE collapsed groups block (nested-collapsed are hidden too);
+        // and never block the link's own endpoint (a proxy link attaches to the
+        // collapsed group exactly like a node).
+        const rect = rectOf(g);
+        if (g.isCollapsed && rect && g.id !== sourceNodeId && g.id !== targetNodeId) {
+          groupBlocks.push({ id: g.id, ...rect });
+        }
+        continue;
+      }
+      // EXPANDED group containing both endpoints → soft containment. The
+      // DEEPEST such group wins (rect area as the depth proxy — a child's rect
+      // is smaller than its parent's).
+      if (
+        sourceNodeId && targetNodeId &&
+        g.members?.has?.(sourceNodeId) && g.members?.has?.(targetNodeId)
+      ) {
+        const rect = rectOf(g);
+        if (rect && (!container || rect.width * rect.height < container.width * container.height)) {
+          container = rect;
+        }
+      }
+    }
+
+    // a hidden collapsed group's own block never made it in; also hide nested
+    // group ids that appear as members
+    return { hiddenByCollapse, groupBlocks, container };
+  }
+
   private computeAutoRoute(
     link: LinkModel,
     endpoints: NonNullable<ReturnType<SVGRenderer['getLinkEndpoints']>>
@@ -4870,15 +4941,26 @@ export class SVGRenderer implements IRenderer {
     const sourceNodeId = (link as any).sourceNodeId || (link as any).source;
     const targetNodeId = (link as any).targetNodeId || (link as any).target;
     const allNodes: NodeModel[] = currentDiagram ? currentDiagram.getNodes() : [];
+
+    // Wave 5 — Card 6: group-aware obstacles.
+    //   hiddenByCollapse — members of a collapsed group (any depth) are not
+    //     visible, so routing around them produces inexplicable detours;
+    //   groupBlocks — a visible collapsed group is ONE solid obstacle;
+    //   container — both endpoints in the same expanded group biases the route
+    //     to stay inside (soft, via the Manhattan container penalty).
+    const groupInfo = this.collectGroupRouting(currentDiagram, sourceNodeId, targetNodeId);
+
     const obstacles = allNodes
       .filter((node: NodeModel) => node.id !== sourceNodeId && node.id !== targetNodeId)
+      .filter((node: NodeModel) => !groupInfo.hiddenByCollapse.has(node.id))
       .map((node: NodeModel) => ({
         id: node.id,
         x: node.position.x,
         y: node.position.y,
         width: node.size.width,
         height: node.size.height,
-      }));
+      }))
+      .concat(groupInfo.groupBlocks);
 
     let usedOrthogonal = algorithm === 'orthogonal';
     const routeWith = (algo: RoutingAlgorithm, avoid: boolean): RoutedPath | null =>
@@ -4894,6 +4976,8 @@ export class SVGRenderer implements IRenderer {
           gridSize: 10,
           // Card 1: per-link guaranteed port stub (undefined = legacy 20px best-effort)
           jetty: link.style.jetty,
+          // Card 6: soft same-group containment (Manhattan honours it)
+          container: groupInfo.container,
         },
       });
 

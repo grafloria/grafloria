@@ -268,6 +268,11 @@ export class RoutingEngine {
   /**
    * Get number of global obstacles
    */
+  /** All registered obstacles — the map's own array accessor, passed through. */
+  getObstacles(): Obstacle[] {
+    return this.obstacleMap.getObstacles();
+  }
+
   getObstacleCount(): number {
     return this.globalObstacles.length;
   }

@@ -77,7 +77,15 @@ export class ManhattanRouter implements IRouter {
 
     const inflated = obstacles.map((o) => this.inflate(o, padding));
 
-    const gridPath = this.search(sStub, tStub, srcSide, inflated, step, bendCost, maxLoops);
+    // Card 6: soft containment — steps OUTSIDE the container cost extra, so a
+    // sibling edge stays inside its group when an inside route exists, without
+    // making escape impossible when obstacles force it.
+    const container = options.container;
+    const containerPenalty = options.containerPenalty ?? 2 * step;
+
+    const gridPath = this.search(
+      sStub, tStub, srcSide, inflated, step, bendCost, maxLoops, container, containerPenalty
+    );
     if (!gridPath) return null;
 
     // anchor → stub → (orthogonal joins) grid path (orthogonal joins) → stub → anchor
@@ -112,7 +120,9 @@ export class ManhattanRouter implements IRouter {
     obstacles: Obstacle[],
     step: number,
     bendCost: number,
-    maxLoops: number
+    maxLoops: number,
+    container?: { x: number; y: number; width: number; height: number },
+    containerPenalty = 0
   ): Point[] | null {
     const sx = Math.round(from.x / step);
     const sy = Math.round(from.y / step);
@@ -165,7 +175,14 @@ export class ManhattanRouter implements IRouter {
         if (!(nx === tx && ny === ty) && this.blocked(wx, wy, obstacles)) continue;
 
         const turn = node.move >= 0 && mi !== node.move ? bendCost : 0;
-        const g = node.g + step + turn;
+        // Card 6: leaving the container is allowed but costs.
+        const outside =
+          container !== undefined &&
+          (wx < container.x || wx > container.x + container.width ||
+           wy < container.y || wy > container.y + container.height)
+            ? containerPenalty
+            : 0;
+        const g = node.g + step + turn + outside;
         const key = `${nx},${ny},${mi}`;
         const known = best.get(key);
         if (known !== undefined && known <= g) continue;

@@ -49,6 +49,15 @@ export interface Obstacle extends GeometryRectangle {
   id: string;
   /** Optional padding/margin around obstacle */
   margin?: number;
+  /**
+   * Wave 5 (Edge routing) — Card 6: containment. Obstacles are no longer a flat
+   * set — a group obstacle knows it is one, and a node obstacle can carry its
+   * containing group, so routers can treat "inside the same container" and
+   * "collapsed group = one solid block" as first-class facts.
+   */
+  kind?: 'node' | 'group';
+  /** The containing group's id, when the obstacle lives inside one. */
+  parentId?: string;
 }
 
 /**
@@ -98,6 +107,16 @@ export interface RoutingOptions {
    * shrink on short links, midline routing for undirected anchors.
    */
   jetty?: number;
+  /**
+   * Wave 5 — Card 6: soft containment. When both endpoints live in the same
+   * group, the renderer passes that group's bounds here; grid routers charge
+   * `containerPenalty` per step OUTSIDE the container, so sibling edges stay
+   * within their container when an inside route exists — without making escape
+   * impossible when obstacles force it.
+   */
+  container?: GeometryRectangle;
+  /** Extra cost per grid step outside `container`. Default: 2 × gridSize. */
+  containerPenalty?: number;
   /** Phase 2.2: Simplify path to reduce waypoint count */
   simplifyPath?: boolean;
   /** Phase 2.2: Simplification tolerance (epsilon) - higher values = more aggressive */
