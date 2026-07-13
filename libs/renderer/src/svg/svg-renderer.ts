@@ -20,6 +20,7 @@ import type {
 // VNode tree this renderer hands the live pipeline — one contract, two consumers.
 import { exportSvg, type SvgExportResult } from '../export/svg-export';
 import { mimeTypeForFormat, resolveRasterBackend } from '../export/raster';
+import { DEFAULT_MAX_OUTPUT_SIZE } from '../export/bounds';
 import {
   type PaintSpec,
   isPaintSpec,
@@ -199,6 +200,17 @@ function styleClassTokens(styleClass: string | undefined): string[] {
  * must never grab a deliberate 16px-apart parallel run (a wave-4 fanned bundle).
  */
 const CHANNEL_NUDGE_TRIGGER = 4;
+
+/**
+ * Extra world-units the EXPORT render pass sees beyond the model's content bounds.
+ *
+ * The render pass culls to its viewport; the exported viewBox is then re-fitted to
+ * the resulting tree. Anything culled is therefore invisible to the fit — so the
+ * render viewport must be a little larger than the model bounds, or a label that
+ * overhangs its node (the very thing the tree-derived box exists to capture) would
+ * be culled before it could widen the box.
+ */
+const CONTENT_RENDER_SLACK = 200;
 
 function polylineLength(points: Array<{ x: number; y: number }>): number {
   let total = 0;
@@ -1020,9 +1032,24 @@ export class SVGRenderer implements IRenderer {
    * viewport — a thumbnail of the visible slice is rarely what anyone means.
    */
   async export(format: ExportFormat = 'svg', options: ExportOptions = {}): Promise<string> {
-    const result = this.exportSvgString(options);
+    if (format === 'svg') {
+      // Vector: no canvas, so no size cap unless the caller asks for one.
+      return this.exportSvgString(options).svg;
+    }
 
-    if (format === 'svg') return result.svg;
+    // RASTER pixels are allocated, and every browser has a hard canvas ceiling it
+    // enforces SILENTLY — over it, `toDataURL` hands back a blank image rather than
+    // throwing. So the raster path always carries a cap; the scale is reduced to fit.
+    //
+    // JPEG HAS NO ALPHA CHANNEL. Rasterizing a transparent SVG into it yields a BLACK
+    // background in every browser (the undefined RGB under alpha=0 reads as 0,0,0) —
+    // the classic "why is my exported JPEG black" bug. So an opaque format gets an
+    // opaque backdrop, painted INTO the SVG, unless the caller chose a colour.
+    const result = this.exportSvgString({
+      ...options,
+      maxSize: options.maxSize ?? DEFAULT_MAX_OUTPUT_SIZE,
+      backgroundColor: options.backgroundColor ?? (format === 'jpeg' ? '#ffffff' : undefined),
+    });
 
     const backend = resolveRasterBackend(options.rasterBackend);
     return backend.rasterize({
@@ -1040,12 +1067,36 @@ export class SVGRenderer implements IRenderer {
    * string-only `IRenderer.export` signature has nowhere to put.
    */
   exportSvgString(options: ExportOptions = {}): SvgExportResult {
-    const viewport = options.viewport ?? this.contentViewport(options.padding ?? 20);
+    const padding = options.padding ?? 20;
+
+    // scope 'viewport' needs the caller to SAY which rectangle. The renderer does not
+    // retain one — the viewport is an argument to `render()`, never a field — so it
+    // genuinely cannot know what is on screen. Failing loudly beats quietly exporting
+    // the content bounds and calling it "the viewport".
+    if (options.scope === 'viewport' && !options.viewport) {
+      throw new Error(
+        "[grafloria/export] scope: 'viewport' requires options.viewport. The renderer does not " +
+          'retain the viewport (it is an argument to render(), not state), so it cannot know which ' +
+          'slice is on screen — pass the same rectangle you render with.'
+      );
+    }
+
+    // An explicit rectangle is the caller saying "this exact slice". Everything else
+    // fits the box to the content.
+    const explicit = options.viewport;
+
+    const ids = options.scope === 'selection' ? this.selectedIds() : options.includeIds;
+
+    // THE RENDER PASS culls to its viewport, so it must see everything we intend to
+    // box. It is NOT the viewBox: that is recomputed from the resulting tree (which
+    // is what lets labels and arrowheads outside the model bounds survive).
+    // The extra slack keeps a label that overhangs the model bounds from being culled.
+    const renderViewport = explicit ?? this.contentViewport(padding + CONTENT_RENDER_SLACK);
 
     // zoom 1: the SVG stays vector, and `scale` multiplies the intrinsic
     // width/height instead of the viewBox — so a 2x PNG is 2x pixels of the
     // identical picture, not a differently-culled render.
-    const root = this.render(viewport, 1);
+    const root = this.render(renderViewport, 1);
 
     return exportSvg(root, {
       theme: this.theme,
@@ -1054,8 +1105,38 @@ export class SVGRenderer implements IRenderer {
       foreignObject: options.foreignObject,
       captureForeignObject: options.captureForeignObject,
       embedFontCss: options.embedFontCss,
+      // An explicit rectangle wins and is used verbatim; otherwise fit the content.
+      viewBox: explicit,
+      fitToContent: explicit === undefined,
+      padding,
+      includeIds: ids,
+      maxSize: options.maxSize,
+      minSize: options.minSize,
+      xmlDeclaration: options.xmlDeclaration,
     });
   }
+
+  /**
+   * The ids currently selected — what `scope: 'selection'` exports.
+   *
+   * Selection is MODEL state (`node.state.selected`, `link.state === 'selected'`),
+   * which is the same place the renderer reads it from to paint the selection
+   * colours. There is no separate selection registry to consult.
+   */
+  private selectedIds(): string[] {
+    const diagram = this.engine.getDiagram();
+    if (!diagram) return [];
+
+    const ids: string[] = [];
+    for (const node of diagram.getNodes()) {
+      if (node.state?.selected) ids.push(node.id);
+    }
+    for (const link of diagram.getLinks()) {
+      if (link.state === 'selected') ids.push(link.id);
+    }
+    return ids;
+  }
+
 
   /**
    * The world rectangle that contains the whole diagram, padded.

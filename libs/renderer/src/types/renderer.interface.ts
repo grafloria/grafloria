@@ -5,6 +5,7 @@ import type { Rectangle } from './geometry.types';
 // drifting copy of them.
 import type { ForeignObjectMode } from '../export/vnode-serializer';
 import type { RasterBackend } from '../export/raster';
+import type { ExportScope } from '../export/bounds';
 // Styling & theming (Wave 4): colorMode + the design-token bridge are RENDERER
 // CONFIG, so their types belong on the config contract. Type-only imports — no
 // runtime dependency from the types barrel into the themes barrel.
@@ -200,6 +201,38 @@ export interface ExportOptions {
    * (resvg-js / sharp / puppeteer). SVG export never needs this.
    */
   rasterBackend?: RasterBackend;
+
+  /**
+   * WHAT to export.
+   *
+   *   'content'    (default) the whole diagram, tight around everything DRAWN
+   *   'viewport'   an exact slice — you must also pass `viewport`, because the
+   *                renderer does not retain one
+   *   'selection'  only the currently-selected nodes/links
+   */
+  scope?: ExportScope;
+
+  /**
+   * Export only these node/link ids. The tree is PRUNED to them, so an un-selected
+   * node's markup (and its labels) is not merely cropped out of view — it is not in
+   * the file. Overridden by `scope: 'selection'`, which reads the live selection.
+   */
+  includeIds?: Iterable<string>;
+
+  /**
+   * Cap on the exported image's size per side, in px. Default 4000.
+   *
+   * Over the cap the SCALE is reduced to fit — the picture is never cropped. This
+   * exists because browsers refuse very large canvases and do it SILENTLY: a 3x
+   * export of a big diagram comes back blank rather than throwing.
+   */
+  maxSize?: number;
+
+  /** Floor on the exported image's size per side, in px. Default 1. */
+  minSize?: number;
+
+  /** Prepend the `<?xml …?>` prolog to an SVG export. Default false. */
+  xmlDeclaration?: boolean;
 }
 
 /**

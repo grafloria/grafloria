@@ -21,11 +21,17 @@
 
 import type { VNode } from '../types/vnode.types';
 import type { Theme } from '../types/theme.types';
+import type { Rectangle } from '../types/geometry.types';
 import { LIGHT_THEME } from '../themes/default-light-theme';
 import { createClassStyleResolver } from './style-flattener';
 import { serializeVNode, escapeAttr, type ForeignObjectMode } from './vnode-serializer';
+import { clampOutputSize, DEFAULT_MAX_OUTPUT_SIZE, padRect, vnodeBounds } from './bounds';
+import { filterTreeByIds } from './scope';
 
 export const SVG_XMLNS = 'http://www.w3.org/2000/svg';
+
+/** The XML prolog. Required by strict XML parsers and by most SVG→PDF toolchains. */
+export const XML_DECLARATION = '<?xml version="1.0" encoding="UTF-8" standalone="no"?>';
 
 export interface SvgExportOptions {
   /**
@@ -58,16 +64,55 @@ export interface SvgExportOptions {
    * deliberate boundary, not an oversight.
    */
   embedFontCss?: string;
+
+  /**
+   * Fit the viewBox to the CONTENT — the union box of everything the tree actually
+   * draws (labels, ports and arrowheads included), not the root's own viewBox.
+   *
+   * The root `<svg>`'s viewBox is the live VIEWPORT: it is scoped to what the user
+   * is looking at, and at any zoom but 1 it is not even the same rectangle. A file
+   * wants the diagram, so this defaults to ON. Turn it off to keep the tree's own
+   * viewBox verbatim (that is what a pagination tile does — it has already chosen
+   * its rectangle).
+   */
+  fitToContent?: boolean;
+
+  /** Margin around the fitted content box, in world units. Default 20. */
+  padding?: number;
+
+  /**
+   * Export ONLY these node/link ids. The tree is pruned to them (not merely cropped
+   * — an un-selected node outside the viewBox is invisible but its markup, and its
+   * labels, would still be in the bytes) and the box is fitted around them.
+   */
+  includeIds?: Iterable<string>;
+
+  /** Use this exact viewBox and fit nothing. Wins over `fitToContent`. */
+  viewBox?: Rectangle;
+
+  /**
+   * Cap on the output's intrinsic size, per side, in px. Default 4000. The scale is
+   * REDUCED to fit rather than the picture being cropped — see `clampOutputSize`.
+   */
+  maxSize?: number;
+
+  /** Floor on the output's intrinsic size, per side, in px. Default 1. */
+  minSize?: number;
+
+  /** Prepend the `<?xml …?>` prolog. Default false (an inline `<svg>` must not have one). */
+  xmlDeclaration?: boolean;
 }
 
 export interface SvgExportResult {
   /** The standalone SVG document. */
   svg: string;
-  /** Intrinsic width in px (viewBox width × scale). */
+  /** Intrinsic width in px (viewBox width × the CLAMPED scale). */
   width: number;
   /** Intrinsic height in px. */
   height: number;
-  /** Fidelity caveats hit during this export (foreignObject, unresolved vars, …). */
+  /** The world rectangle the document actually covers — what pagination and PDF page off. */
+  viewBox: ViewBox;
+  /** Fidelity caveats hit during this export (foreignObject, unresolved vars, size clamp, …). */
   warnings: string[];
 }
 
@@ -100,12 +145,37 @@ function readViewBox(root: VNode): ViewBox {
  */
 export function exportSvg(root: VNode, options: SvgExportOptions = {}): SvgExportResult {
   const theme = options.theme ?? LIGHT_THEME;
-  const scale = options.scale && options.scale > 0 ? options.scale : 1;
+  const requestedScale = options.scale && options.scale > 0 ? options.scale : 1;
   const warnings: string[] = [];
 
-  const viewBox = readViewBox(root);
-  const width = viewBox.width * scale;
-  const height = viewBox.height * scale;
+  // (1) SCOPE — prune before anything else, so the box is fitted to what survives.
+  const tree = options.includeIds !== undefined ? filterTreeByIds(root, options.includeIds) : root;
+
+  // (2) THE BOX. Priority: an explicit viewBox, else the content fit (the default —
+  // the root's own viewBox is the live viewport, which is not what a file wants),
+  // else the tree's viewBox verbatim.
+  const viewBox = resolveViewBox(tree, options, warnings);
+
+  // (3) SIZE, capped.
+  //
+  // NO CAP BY DEFAULT HERE. The cap exists to stop a canvas request the browser will
+  // silently refuse — and an SVG allocates no canvas. It is a VECTOR document: a
+  // 9000px-wide intrinsic size costs nothing and still renders sharp at any size, so
+  // clamping it would shrink a perfectly good file for no reason.
+  //
+  // The raster path (`SVGRenderer.export('png'|…)`) therefore passes the real cap in
+  // explicitly. A caller who wants an SVG capped too can pass `maxSize`.
+  const clamped = clampOutputSize(
+    viewBox.width,
+    viewBox.height,
+    requestedScale,
+    options.maxSize ?? Infinity,
+    options.minSize ?? 1
+  );
+  if (clamped.warning) warnings.push(clamped.warning);
+
+  const width = clamped.width;
+  const height = clamped.height;
 
   const classStyles = createClassStyleResolver(theme, warnings);
 
@@ -113,7 +183,7 @@ export function exportSvg(root: VNode, options: SvgExportOptions = {}): SvgExpor
   // emitted after it — hence children are serialized BEFORE the document is composed.
   const extraDefs = new Map<string, string>();
 
-  const children = (root.children ?? [])
+  const children = (tree.children ?? [])
     .filter(child => child !== null && child !== undefined)
     .map(child =>
       serializeVNode(child, {
@@ -141,7 +211,10 @@ export function exportSvg(root: VNode, options: SvgExportOptions = {}): SvgExpor
   const synthesized = Array.from(extraDefs.values()).join('');
   const defs = fontDefs || synthesized ? `<defs>${fontDefs}${synthesized}</defs>` : '';
 
+  const prolog = options.xmlDeclaration ? XML_DECLARATION : '';
+
   const svg =
+    prolog +
     `<svg xmlns="${SVG_XMLNS}" ` +
     `viewBox="${viewBox.x} ${viewBox.y} ${viewBox.width} ${viewBox.height}" ` +
     `width="${width}" height="${height}" class="grafloria-diagram">` +
@@ -150,5 +223,34 @@ export function exportSvg(root: VNode, options: SvgExportOptions = {}): SvgExpor
     children +
     `</svg>`;
 
-  return { svg, width, height, warnings };
+  return { svg, width, height, viewBox, warnings };
+}
+
+/**
+ * The rectangle the file covers.
+ *
+ * DEFAULT: fit the content. The root `<svg>`'s own viewBox is the LIVE VIEWPORT —
+ * scoped to what the user happens to be looking at, and at any zoom ≠ 1 not even the
+ * same rectangle. Exporting it is how a "download PNG" button produces a picture of
+ * the user's scroll position instead of a picture of the diagram.
+ */
+function resolveViewBox(tree: VNode, options: SvgExportOptions, warnings: string[]): ViewBox {
+  if (options.viewBox) return options.viewBox;
+
+  if (options.fitToContent !== false) {
+    const content = vnodeBounds(tree, {
+      includeIds: options.includeIds ? new Set(options.includeIds) : undefined,
+    });
+    if (content) return padRect(content, options.padding ?? 20);
+
+    // Nothing is drawn. A zero-area document is rejected by rasterizers, so emit a
+    // small valid square instead of a degenerate one.
+    if (options.includeIds !== undefined) {
+      warnings.push('nothing to export: no element matched the requested ids');
+    }
+    const side = Math.max(1, (options.padding ?? 20) * 2);
+    return { x: 0, y: 0, width: side, height: side };
+  }
+
+  return readViewBox(tree);
 }

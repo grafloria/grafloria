@@ -135,6 +135,14 @@ describe('vnodeBounds', () => {
     expect(vnodeBounds(root)).toEqual({ x: -2, y: -2, width: 14, height: 14 });
   });
 
+  it('expands for a BLUR — the node shadow paints outside its rect, and a tight crop used to shave it', () => {
+    const root = g('root', {}, [
+      el('rect', { x: 3, y: 3, width: 100, height: 50, filter: 'blur(4px)', className: 'node-shadow' }),
+    ]);
+    // The shadow rect runs to (103, 53); its 4px blur tails out to (107, 57).
+    expect(vnodeBounds(root)).toEqual({ x: -1, y: -1, width: 108, height: 58 });
+  });
+
   it('ignores stroke-width when there is no stroke', () => {
     const root = g('root', {}, [
       el('rect', { x: 0, y: 0, width: 10, height: 10, stroke: 'none', strokeWidth: 4 }),
@@ -238,8 +246,8 @@ describe('vnodeBounds', () => {
     });
   });
 
-  it('scopeKeysFor builds the renderer\'s real key shapes', () => {
-    expect(scopeKeysFor(['a'])).toEqual(new Set(['node-a', 'link-a']));
+  it('scopeKeysFor builds every key shape the renderer can mint (incl. the html-layer variant)', () => {
+    expect(scopeKeysFor(['a'])).toEqual(new Set(['node-a', 'node-a-html-layer', 'link-a']));
   });
 });
 

@@ -28,6 +28,7 @@
 
 import type { VNode } from '../types/vnode.types';
 import type { Rectangle } from '../types/geometry.types';
+import { selectionKeys } from './scope';
 
 /** A 2-D affine transform, in SVG's own `matrix(a b c d e f)` order. */
 export interface Matrix {
@@ -353,15 +354,12 @@ export interface BoundsOptions {
  * filter written against it would have matched nothing and silently exported an
  * empty box, which is precisely the "config declared but never consumed" failure
  * this codebase keeps producing.
+ *
+ * ONE definition of the key shapes, shared with the tree prune in `scope.ts`: if the
+ * box and the prune ever disagreed about what a selection IS, an export would crop
+ * to a different set of elements than it contains.
  */
-export function scopeKeysFor(ids: Iterable<string>): Set<string> {
-  const keys = new Set<string>();
-  for (const id of ids) {
-    keys.add(`node-${id}`);
-    keys.add(`link-${id}`);
-  }
-  return keys;
-}
+export { selectionKeys as scopeKeysFor } from './scope';
 
 /**
  * The union box of everything a VNode tree paints, in the tree's own user space.
@@ -371,7 +369,7 @@ export function scopeKeysFor(ids: Iterable<string>): Set<string> {
  */
 export function vnodeBounds(root: VNode, options: BoundsOptions = {}): Rectangle | null {
   const box = new BoxAccumulator();
-  const scopeKeys = options.includeIds ? scopeKeysFor(options.includeIds) : undefined;
+  const scopeKeys = options.includeIds ? selectionKeys(options.includeIds) : undefined;
   // With no filter every element is in scope from the root down.
   walk(root, IDENTITY, box, scopeKeys, scopeKeys === undefined);
   return box.toRect();
@@ -416,6 +414,13 @@ function walk(
   }
 }
 
+/** `blur(4px)` → 4. The renderer's node shadow declares its blur this way. */
+function blurRadius(filter: unknown): number {
+  if (typeof filter !== 'string') return 0;
+  const match = /blur\(\s*([\d.]+)/.exec(filter);
+  return match ? Number(match[1]) : 0;
+}
+
 /** Union THIS element's own geometry (not its children's) into the box. */
 function addGeometry(vnode: VNode, m: Matrix, box: BoxAccumulator): void {
   const props = vnode.props ?? {};
@@ -423,7 +428,13 @@ function addGeometry(vnode: VNode, m: Matrix, box: BoxAccumulator): void {
   // A stroke straddles the path: half of it lies outside the geometry. Ignoring it
   // shaves half a stroke off every edge of the export.
   const strokeWidth = props['stroke'] && props['stroke'] !== 'none' ? num(props['strokeWidth'] ?? props['stroke-width'], 0) : 0;
-  const pad = strokeWidth / 2;
+
+  // A BLUR paints outside its geometry — that is what a blur is. The node shadow is
+  // `filter: blur(4px)` on an offset rect, so a tight crop that ignored the blur
+  // would shave the soft edge off the shadow on the right and bottom of the diagram.
+  // Expanding by the radius is a slight over-estimate (the visible tail is shorter),
+  // which is the safe direction for an export box.
+  const pad = strokeWidth / 2 + blurRadius(props['filter']);
 
   switch (vnode.type) {
     case 'rect': {
