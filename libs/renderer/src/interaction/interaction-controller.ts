@@ -437,29 +437,32 @@ export class InteractionController {
       const connectionStateManager = engine.getConnectionStateManager();
       let targetPort = this.hoveredPort;
 
-    // Smart mode: Auto-connect to nearest port if dropping on node body
-    if (config.mode === 'smart' && config.enableSmartAutoConnect) {
-      if (!targetPort && this.hoveredNode) {
-        // Find nearest port on hovered node
-        const diagram = engine.getDiagram();
-        if (diagram) {
-          const dragState = connectionStateManager.getState();
-          if (dragState.currentMousePosition) {
-            const nodeBounds = this.hoveredNode.getBoundingBox();
-            const portsData = this.hoveredNode.getPorts();
-            // Convert array/iterable to Map if needed
-            const portsMap = portsData instanceof Map
-              ? portsData
-              : new Map<string, PortModel>(
-                  Array.from(portsData as Iterable<PortModel>).map((p) => [p.id, p])
-                );
-            targetPort = PortModel.findNearestPort(
-              dragState.currentMousePosition,
-              portsMap,
-              nodeBounds
-            );
-          }
-        }
+    // Smart mode: Auto-connect to nearest port if dropping on (or near) a node.
+    //
+    // wave8/culling — Card 2. This used to call `PortModel.findNearestPort`, and
+    // it had TWO defects, both of which the spatial index fixes:
+    //
+    //  1. It searched exactly ONE node — `this.hoveredNode` — because searching
+    //     more meant walking every node in the diagram. So a drop that landed
+    //     NEAR a node instead of ON it connected to nothing. `findNearestPort`
+    //     asks the index, so the search is bounded by the snap radius rather than
+    //     by the scene, and a near miss now snaps.
+    //
+    //  2. It measured to the BOUNDING-BOX EDGE MIDPOINT (`getEdgePosition`) while
+    //     the renderer draws ports shape-aware. On any non-rect silhouette, or any
+    //     side carrying more than one port, it was snapping to a point several
+    //     pixels away from the circle the user could see. Wave 6 fixed exactly
+    //     this divergence for the port hit-test and the magnet — this path was
+    //     missed. Passing `portWorldPosition` is that fix: hit-test where we draw.
+    if (config.mode === 'smart' && config.enableSmartAutoConnect && !targetPort) {
+      const diagram = engine.getDiagram();
+      const dragState = connectionStateManager.getState();
+
+      if (diagram && dragState.currentMousePosition) {
+        const hit = diagram.findNearestPort(dragState.currentMousePosition, {
+          portPosition: (port, node) => portWorldPosition(port, node),
+        });
+        targetPort = hit?.port ?? null;
       }
     }
 

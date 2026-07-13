@@ -52,9 +52,6 @@ export class ViewLifecycle implements MountGate {
   /** Kinds admitted wholesale — nodes are cheap, so slice 0 takes all of them. */
   private readonly openKinds = new Set<EntityKind>();
 
-  /** Links routed by a slice that has already been sealed — safe to replay. */
-  private readonly settled = new Set<string>();
-
   /**
    * Called when an entity's view is dropped, so the renderer can evict its cache
    * entry. Set by `SVGRenderer.setViewLifecycle`.
@@ -164,7 +161,6 @@ export class ViewLifecycle implements MountGate {
     this.deferring = true;
     this.admitted.clear();
     this.openKinds.clear();
-    this.settled.clear();
   }
 
   /** Let this entity's view be built from now on. */
@@ -181,32 +177,11 @@ export class ViewLifecycle implements MountGate {
     this.openKinds.add(kind);
   }
 
-  /**
-   * A route is replayable only while the obstacles it was computed against hold
-   * still. Something moved: drop the seal, and let the next slice route those
-   * links again from scratch. Slower, never stale.
-   */
-  invalidateSettledRoutes(): void {
-    this.settled.clear();
-  }
-
-  /**
-   * Close the current slice: everything admitted so far has now been through a
-   * full render, so its route is on the model and can be replayed rather than
-   * recomputed.
-   */
-  sealSlice(): void {
-    for (const key of this.admitted) {
-      if (key.startsWith('link:')) this.settled.add(key.slice(5));
-    }
-  }
-
   /** The mount is over (finished, cancelled, or pre-empted). Gate opens fully. */
   endDeferred(): void {
     this.deferring = false;
     this.admitted.clear();
     this.openKinds.clear();
-    this.settled.clear();
   }
 
   // =========================================================================
@@ -224,10 +199,6 @@ export class ViewLifecycle implements MountGate {
 
   isDeferring(): boolean {
     return this.deferring;
-  }
-
-  routeIsSettled(linkId: string): boolean {
-    return this.deferring && this.settled.has(linkId);
   }
 
   // =========================================================================

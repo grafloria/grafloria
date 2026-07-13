@@ -381,4 +381,163 @@ describe('SpatialIndex (Phase 5.1 - Viewport Virtualization)', () => {
       expect(visible.length).toBe(1);
     });
   });
+
+  // =========================================================================
+  // wave8/culling — Card 2. Culling has to stay O(k) at 10k entities, and a
+  // query the size of the world has to stay CORRECT and stay CHEAP.
+  //
+  // These are correctness tests with a complexity claim attached, not wall-clock
+  // tests: they count how much of the index a query is forced to touch, which is
+  // the thing that actually degrades, and unlike a timing assertion it does not
+  // flake on a loaded CI box.
+  // =========================================================================
+  describe('Scale + degradation (wave8/culling)', () => {
+    /** A 100x100 grid of 10k entities — the Wave-8 benchmark's scene size. */
+    const build10k = () => {
+      const index = new SpatialIndex<TestEntity>({
+        cellSize: 100,
+        getBounds: (e) => ({ x: e.x, y: e.y, width: e.width, height: e.height }),
+      });
+      for (let i = 0; i < 10000; i++) {
+        index.add({
+          id: `e${i}`,
+          x: (i % 100) * 220,
+          y: Math.floor(i / 100) * 140,
+          width: 140,
+          height: 70,
+        });
+      }
+      return index;
+    };
+
+    it('returns only what a screen-sized viewport touches, out of 10k', () => {
+      const index = build10k();
+      const viewport: Rectangle = { x: 0, y: 0, width: 1600, height: 900 };
+      const visible = index.queryRegion(viewport);
+
+      // 8 columns x 7 rows of the 220x140 grid intersect a 1600x900 box.
+      expect(visible.length).toBeGreaterThan(0);
+      expect(visible.length).toBeLessThan(100);
+
+      // Correct, not merely small: every returned entity really does intersect,
+      // and nothing that intersects was dropped. A cull that loses an on-screen
+      // entity is the one bug that must never ship.
+      const intersects = (e: TestEntity) =>
+        e.x < viewport.x + viewport.width &&
+        e.x + e.width > viewport.x &&
+        e.y < viewport.y + viewport.height &&
+        e.y + e.height > viewport.y;
+
+      expect(visible.every(intersects)).toBe(true);
+      expect(visible.length).toBe(index.getAllEntities().filter(intersects).length);
+    });
+
+    // THE far-zoom case, and the reason this describe block exists. At 0.25 zoom
+    // the culled rect is the viewport / zoom — 16x the world area — and for any
+    // realistic diagram that is the WHOLE SCENE. Culling correctly returns
+    // everything; what it must not do is cost more than the scan it replaced.
+    // Before wave8 this walked ~37,000 grid cells (a string allocation each) to
+    // return the 10,000 entities it was always going to return.
+    it('does not walk more grid cells than there are entities (fit-to-content)', () => {
+      const index = build10k();
+
+      let cellLookups = 0;
+      const grid: Map<string, Set<string>> = (index as unknown as {
+        grid: Map<string, Set<string>>;
+      }).grid;
+      const realGet = grid.get.bind(grid);
+      grid.get = (key: string) => {
+        cellLookups++;
+        return realGet(key);
+      };
+
+      // The whole 22000 x 14000 world, which is what fit-to-content frames.
+      const all = index.queryRegion({ x: -1000, y: -1000, width: 26000, height: 16000 });
+
+      expect(all.length).toBe(10000);
+      expect(cellLookups).toBeLessThanOrEqual(10000);
+    });
+
+    it('still uses the grid for an ordinary viewport (it has not just become a scan)', () => {
+      const index = build10k();
+
+      let cellLookups = 0;
+      const grid: Map<string, Set<string>> = (index as unknown as {
+        grid: Map<string, Set<string>>;
+      }).grid;
+      const realGet = grid.get.bind(grid);
+      grid.get = (key: string) => {
+        cellLookups++;
+        return realGet(key);
+      };
+
+      const visible = index.queryRegion({ x: 0, y: 0, width: 1600, height: 900 });
+
+      // A 1600x900 region at cellSize 100 is 17x10 = 170 cells: the grid is
+      // walked, and it is walked instead of touching 10,000 entities.
+      expect(cellLookups).toBeGreaterThan(0);
+      expect(cellLookups).toBeLessThan(300);
+      expect(visible.length).toBeGreaterThan(0);
+    });
+
+    it('honours limit and filter on the linear-scan path too', () => {
+      const index = build10k();
+      const world: Rectangle = { x: -1000, y: -1000, width: 26000, height: 16000 };
+
+      expect(index.queryRegion(world, { limit: 5 }).length).toBe(5);
+
+      const filtered = index.queryRegion(world, {
+        filter: (e) => e.id === 'e0' || e.id === 'e1',
+      });
+      expect(filtered.map((e) => e.id).sort()).toEqual(['e0', 'e1']);
+    });
+
+    it('survives a degenerate viewport without enumerating the universe', () => {
+      const index = build10k();
+      // An un-laid-out container reports 0x0; a NaN viewport is what a
+      // divide-by-zero zoom produces. Neither may become a multi-million-cell walk.
+      expect(index.queryRegion({ x: 0, y: 0, width: 0, height: 0 }).length).toBeLessThanOrEqual(1);
+      expect(() =>
+        index.queryRegion({ x: NaN, y: NaN, width: NaN, height: NaN })
+      ).not.toThrow();
+    });
+  });
+
+  // =========================================================================
+  // wave8/culling — Card 2: the index serves interactive hit-testing, so a
+  // link drag can ask "what is near me" without scanning the scene.
+  // =========================================================================
+  describe('queryNear (wave8/culling)', () => {
+    beforeEach(() => {
+      spatialIndex.add({ id: 'near', x: 100, y: 100, width: 20, height: 20 });
+      spatialIndex.add({ id: 'mid', x: 160, y: 100, width: 20, height: 20 });
+      spatialIndex.add({ id: 'far', x: 900, y: 900, width: 20, height: 20 });
+    });
+
+    it('returns entities within the radius, nearest first', () => {
+      const hits = spatialIndex.queryNear({ x: 105, y: 105 }, 80);
+      expect(hits.map((h) => h.id)).toEqual(['near', 'mid']);
+    });
+
+    it('excludes entities outside the radius', () => {
+      const hits = spatialIndex.queryNear({ x: 105, y: 105 }, 20);
+      expect(hits.map((h) => h.id)).toEqual(['near']);
+    });
+
+    // Distance is to the BOX, not to its centre: "am I pointing at it" is a
+    // question about the shape, and a point inside an entity is at distance 0.
+    it('measures distance to the bounding box, so a point inside scores 0', () => {
+      const hits = spatialIndex.queryNear({ x: 110, y: 110 }, 1);
+      expect(hits.map((h) => h.id)).toEqual(['near']);
+    });
+
+    it('respects limit', () => {
+      const hits = spatialIndex.queryNear({ x: 105, y: 105 }, 500, { limit: 1 });
+      expect(hits.map((h) => h.id)).toEqual(['near']);
+    });
+
+    it('finds nothing when nothing is near', () => {
+      expect(spatialIndex.queryNear({ x: 5000, y: 5000 }, 50)).toEqual([]);
+    });
+  });
 });

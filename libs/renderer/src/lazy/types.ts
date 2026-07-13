@@ -29,16 +29,6 @@ export interface MountGate {
    * is being brought up in slices and is not yet whole.
    */
   isDeferring?(): boolean;
-
-  /**
-   * True when this link was routed by an EARLIER slice of the mount currently in
-   * progress, so the renderer may replay that route instead of paying for it again.
-   *
-   * This is sound only because a progressive mount runs over a STATIC scene: the
-   * mounter tears the deferral down the instant the model changes underneath it
-   * (see `ProgressiveMounter`), so a replayed route can never be a stale one.
-   */
-  routeIsSettled?(linkId: string): boolean;
 }
 
 /** What one `mount()` actually did — the numbers the claim lives on. */

@@ -2,9 +2,10 @@
 //
 // The properties that actually matter, in the order they matter:
 //   1. Nothing gets LOST. A deferred entity is mounted late, never never.
-//   2. A mount does not re-route what it has already routed (or it is quadratic).
+//   2. A mount does not re-route what it has already routed (or it is quadratic) —
+//      which it gets from the renderer's route memo, not from a cache of its own.
 //   3. Freezing drops the view AND its cache entry; the model survives.
-//   4. Route replay is abandoned the moment the geometry it assumed moves.
+//   4. A node that moves mid-mount still ends up with correct routes.
 
 import { DiagramEngine, LinkModel, NodeModel, PortModel } from '@grafloria/engine';
 import { SVGRenderer } from '../svg/svg-renderer';
@@ -293,7 +294,9 @@ describe('ProgressiveMounter', () => {
       // One link per slice: the most adversarial schedule for replay.
       await withFlush(mounter.mount(VIEWPORT, 1, { initialChunk: 1, sliceMs: 0.0001 }), flush);
 
-      // 9 links, each routed EXACTLY once across the whole mount.
+      // 9 links, each routed EXACTLY once across the whole mount — served thereafter by
+      // the renderer's route memo, which is what makes a sliced mount linear and not
+      // quadratic.
       const counts = new Map<string, number>();
       for (const id of routed) counts.set(id, (counts.get(id) ?? 0) + 1);
       expect([...counts.keys()].length).toBe(9);
@@ -304,7 +307,12 @@ describe('ProgressiveMounter', () => {
     });
   });
 
-  it('drops the route seal when the geometry it assumed moves', async () => {
+  it('a node that MOVES mid-mount still gets correct routes (the memo, not a seal)', async () => {
+    // The mounter used to keep its own route-replay cache and drop it on any geometry
+    // event. It does not any more: the renderer's route memo keys on the routing INPUTS,
+    // so a moved obstacle invalidates the affected routes by construction. What this pins
+    // is the PROPERTY that mattered — move a node mid-mount and the links still come out
+    // routed against where it actually is, not where it was.
     await withManualFrames(async (flush) => {
       const { engine, diagram } = scene(6);
       const renderer = new SVGRenderer(engine, {});
@@ -321,19 +329,18 @@ describe('ProgressiveMounter', () => {
       const done = mounter.mount(VIEWPORT, 1, { initialChunk: 1 });
       await Promise.resolve();
 
-      // A slice admitted l0 and rendered it; sealing it means "its route is on the
-      // model, replay it rather than pay for it again".
-      lifecycle.admit('link', 'l0');
-      lifecycle.sealSlice();
-      expect(lifecycle.routeIsSettled('l0')).toBe(true);
-
-      // Now a node moves. Every route computed against it as an obstacle is suspect,
-      // so the seal must come off — replaying here would draw a stale path.
       diagram.getNode('n2')!.setPosition(10, 400);
-      expect(lifecycle.routeIsSettled('l0')).toBe(false);
 
       await flush();
       await done;
+
+      // Everything is on screen, and every link agrees with an ungated re-render — which
+      // is the only definition of "correct routes" that does not beg the question.
+      const mounted = drawn(renderer.render(VIEWPORT, 1));
+      expect(mounted.links.size).toBe(5);
+      for (const link of diagram.getLinks()) {
+        expect((link.points ?? []).length).toBeGreaterThanOrEqual(2);
+      }
 
       renderer.dispose();
       engine.destroy();

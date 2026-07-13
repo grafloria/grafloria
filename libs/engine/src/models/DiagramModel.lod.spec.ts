@@ -26,15 +26,21 @@ describe('DiagramModel - Level of Detail (Phase 5.3)', () => {
       expect(diagram.getLODLevel(1.0)).toBe('high');
     });
 
-    it('should return MEDIUM detail for 0.2 < zoom < 1.0', () => {
+    it('should return MEDIUM detail for 0.5 <= zoom < 1.0', () => {
       expect(diagram.getLODLevel(0.99)).toBe('medium');
       expect(diagram.getLODLevel(0.75)).toBe('medium');
       expect(diagram.getLODLevel(0.6)).toBe('medium');
       expect(diagram.getLODLevel(0.5)).toBe('medium');
-      expect(diagram.getLODLevel(0.3)).toBe('medium');
     });
 
-    it('should return LOW detail for zoom <= 0.2', () => {
+    // wave8/culling: the medium/low breakpoint MOVED, 0.2 -> 0.5. 0.3 used to be
+    // 'medium' and therefore claimed labels, ports and obstacle-aware routing at a
+    // zoom where a 12px label is 3.6px and a routing detour is sub-pixel. That is
+    // what made a far-zoom frame 500x more expensive than the near view.
+    it('should return LOW detail for zoom < 0.5 (wave8: was <= 0.2)', () => {
+      expect(diagram.getLODLevel(0.49)).toBe('low');
+      expect(diagram.getLODLevel(0.3)).toBe('low');
+      expect(diagram.getLODLevel(0.25)).toBe('low');
       expect(diagram.getLODLevel(0.2)).toBe('low');
       expect(diagram.getLODLevel(0.15)).toBe('low');
       expect(diagram.getLODLevel(0.1)).toBe('low');
@@ -43,6 +49,59 @@ describe('DiagramModel - Level of Detail (Phase 5.3)', () => {
     it('should handle edge cases', () => {
       expect(diagram.getLODLevel(0)).toBe('low');
       expect(diagram.getLODLevel(10)).toBe('high');
+    });
+  });
+
+  // =========================================================================
+  // wave8/culling — Card 4: LOD must be ECONOMIC, not cosmetic.
+  //
+  // These are the gates that make a far-zoom frame cheap. They live on the model
+  // (not the renderer) because the whole point of LODConfig is that an app can
+  // move them; a renderer that hardcoded the breakpoints would make the policy a
+  // lie. If any of these flip, the renderer starts doing O(nodes)-per-edge work
+  // at a zoom where it cannot be seen.
+  // =========================================================================
+  describe('Economic LOD features (wave8/culling)', () => {
+    it('renders everything at HIGH', () => {
+      expect(diagram.shouldRender('routing', 'high')).toBe(true);
+      expect(diagram.shouldRender('link-detail', 'high')).toBe(true);
+      expect(diagram.shouldRender('gradients', 'high')).toBe(true);
+    });
+
+    // The [0.5, 1.0) band must be byte-identical to its pre-wave8 rendering, and
+    // that is exactly what this pins: medium keeps every economic feature.
+    it('keeps the economic features at MEDIUM so 0.5-1.0 renders unchanged', () => {
+      expect(diagram.shouldRender('routing', 'medium')).toBe(true);
+      expect(diagram.shouldRender('link-detail', 'medium')).toBe(true);
+      expect(diagram.shouldRender('gradients', 'medium')).toBe(true);
+      expect(diagram.shouldRender('labels', 'medium')).toBe(true);
+      expect(diagram.shouldRender('ports', 'medium')).toBe(true);
+    });
+
+    it('drops the economic features at LOW — this is where the 63 seconds went', () => {
+      expect(diagram.shouldRender('routing', 'low')).toBe(false);
+      expect(diagram.shouldRender('link-detail', 'low')).toBe(false);
+      expect(diagram.shouldRender('gradients', 'low')).toBe(false);
+    });
+
+    it('drops the economic features at the zoom fit-to-content actually uses', () => {
+      const lod = diagram.getLODLevel(0.25);
+      expect(diagram.shouldRender('routing', lod)).toBe(false);
+      expect(diagram.shouldRender('link-detail', lod)).toBe(false);
+      expect(diagram.shouldRender('labels', lod)).toBe(false);
+      expect(diagram.shouldRender('ports', lod)).toBe(false);
+    });
+
+    // The policy is DATA. An app that wants obstacle-aware routing all the way
+    // down must be able to say so and pay for it — otherwise the "declarative
+    // LOD policy" is decoration on a hardcoded rule.
+    it('lets an app buy routing back at low zoom', () => {
+      const custom = createDefaultLODConfig();
+      custom.tiers.find((t) => t.name === 'low')!.features.add('routing');
+      diagram.setLODConfig(custom);
+
+      expect(diagram.shouldRender('routing', diagram.getLODLevel(0.25))).toBe(true);
+      expect(diagram.shouldRender('labels', diagram.getLODLevel(0.25))).toBe(false);
     });
   });
 
@@ -293,17 +352,18 @@ describe('DiagramModel - Level of Detail (Phase 5.3)', () => {
       'handles',
     ];
 
-    describe('default config reproduces the old three tiers exactly', () => {
-      it('picks the same tier names across the historical breakpoints', () => {
+    describe('default config keeps the three tier NAMES (wave8: the medium/low breakpoint moved)', () => {
+      it('picks the same tier names across the breakpoints', () => {
         // >= 1.0 -> high
         expect(diagram.getLODLevel(10)).toBe('high');
         expect(diagram.getLODLevel(1.5)).toBe('high');
         expect(diagram.getLODLevel(1.0)).toBe('high');
-        // 0.2 < zoom < 1.0 -> medium
+        // 0.5 <= zoom < 1.0 -> medium
         expect(diagram.getLODLevel(0.99)).toBe('medium');
         expect(diagram.getLODLevel(0.5)).toBe('medium');
-        expect(diagram.getLODLevel(0.3)).toBe('medium');
-        // <= 0.2 -> low (0.2 exclusive from medium, exactly as before)
+        // wave8/culling: < 0.5 -> low. Was 0.2. 0.3 claimed full detail at a zoom
+        // that cannot display it, and paid O(nodes)-per-edge for the privilege.
+        expect(diagram.getLODLevel(0.3)).toBe('low');
         expect(diagram.getLODLevel(0.2)).toBe('low');
         expect(diagram.getLODLevel(0.15)).toBe('low');
         expect(diagram.getLODLevel(0)).toBe('low');

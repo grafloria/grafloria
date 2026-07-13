@@ -19,12 +19,15 @@
 // the diagram fills in visibly instead of arriving all at once, late.
 //
 // The one thing that would ruin it: re-routing, on every slice, the links the
-// PREVIOUS slices already routed — that turns a 6.8s mount into a quadratic one.
-// So a slice that has been through a full render is SEALED, and its links replay
-// the route already on the model instead of recomputing it. That is sound only
-// while the scene is static, which is exactly what a cold mount is; the moment the
-// model's geometry moves underneath us, the seal is dropped and those links are
-// routed again from scratch (`invalidateSettledRoutes`). Late, never wrong.
+// PREVIOUS slices already routed — that turns the mount into a quadratic one, and the
+// progressive version ends up slower than the blocking render it replaced.
+//
+// The renderer's ROUTE MEMO (wave8/routing, Card 6) is what prevents that. A link routed
+// by slice k is a memo hit for slice k+1, keyed on the routing INPUTS (endpoints + routing
+// LOD) and invalidated when a third party moves into its corridor. This mounter used to
+// carry its own replay cache for the job; the memo's key is strictly stronger, so the
+// weaker one is gone. Two caches for one job, where one of them cannot see everything that
+// invalidates it, is how you get a route that "hasn't changed" and is wrong anyway.
 
 import type { DiagramEngine } from '@grafloria/engine';
 import type { Rectangle } from '../types/geometry.types';
@@ -58,19 +61,6 @@ export interface ProgressiveMountOptions {
   onSlice?: (stats: Readonly<MountStats>) => void;
 }
 
-/** The geometry events that invalidate a route. NOT `link:changed` — see below. */
-const GEOMETRY_EVENTS = [
-  'node:moved',
-  'node:resized',
-  'node:added',
-  'node:removed',
-  'link:added',
-  'link:removed',
-  'nodes:cleared',
-  'links:cleared',
-  'diagram:cleared',
-] as const;
-
 export class ProgressiveMounter {
   private readonly engine: DiagramEngine;
   private readonly lifecycle: ViewLifecycle;
@@ -79,7 +69,6 @@ export class ProgressiveMounter {
 
   private handle: number | null = null;
   private running = false;
-  private unsubscribers: Array<() => void> = [];
 
   /**
    * Settles the mount currently in flight.
@@ -129,16 +118,6 @@ export class ProgressiveMounter {
     };
 
     const t0 = now();
-
-    // A route computed against 10k obstacles is only replayable while those
-    // obstacles hold still. If any of them moves, the seal comes off and the
-    // affected links are routed again on the next slice.
-    //
-    // `link:changed` is deliberately NOT in this list: the renderer writes every
-    // route it computes back onto the model (`syncLinkPoints`), which emits it. A
-    // mounter that listened for it would invalidate its own work, every slice,
-    // forever.
-    this.subscribeToGeometry();
 
     // ---- slice 0: the nodes. No routing, no links — this is the frame that
     // decides whether the tool feels like it can hold the graph at all.
@@ -193,10 +172,6 @@ export class ProgressiveMounter {
           return finish(false);
         }
 
-        // Everything admitted so far has now survived a full render, so its route
-        // is on the model and the next slice can replay rather than recompute it.
-        this.lifecycle.sealSlice();
-
         const take = Math.min(chunk, pending.length);
         for (let i = 0; i < take; i++) {
           const [kind, id] = pending[i];
@@ -246,7 +221,6 @@ export class ProgressiveMounter {
       this.handle = null;
     }
     this.lifecycle.endDeferred();
-    this.unsubscribeAll();
     // Settle the caller's `await mount()`. Cancelling the rAF killed the only other
     // thing that would have.
     this.settle?.(true);
@@ -261,23 +235,6 @@ export class ProgressiveMounter {
   private teardown(): void {
     this.running = false;
     this.handle = null;
-    this.unsubscribeAll();
-  }
-
-  private subscribeToGeometry(): void {
-    const diagram = this.engine.getDiagram();
-    if (!diagram) return;
-
-    const onGeometry = () => this.lifecycle.invalidateSettledRoutes();
-    for (const event of GEOMETRY_EVENTS) {
-      // `on()` hands back its own unsubscribe — there is no `off()` on the model.
-      this.unsubscribers.push(diagram.on(event, onGeometry));
-    }
-  }
-
-  private unsubscribeAll(): void {
-    for (const off of this.unsubscribers) off();
-    this.unsubscribers = [];
   }
 
   private mountedNodeCount(): number {

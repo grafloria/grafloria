@@ -149,13 +149,44 @@ export class SpatialIndex<T extends { id: string }> {
   }
 
   /**
-   * Query entities in rectangular region (viewport)
-   * This is the key method for viewport virtualization
+   * Query entities in rectangular region (viewport).
+   * This is the key method for viewport virtualization.
    *
-   * Time complexity: O(k) where k = entities in viewport
-   * Instead of: O(n) where n = all entities
+   * Cost: O(cells(region) + k), where k = entities the region touches — EXCEPT
+   * that the grid walk is skipped entirely when it would be the slower half (see
+   * `shouldScanLinearly`), so the true bound is O(min(cells, n) + k).
    */
   queryRegion(region: Rectangle, options?: QueryOptions<T>): T[] {
+    const results: T[] = [];
+    let count = 0;
+
+    // The one job of the grid is to answer without looking at every entity. When
+    // the region is big enough that walking its cells costs MORE than looking at
+    // every entity, the grid has stopped being an index and is just an expensive
+    // way to enumerate the scene — so don't walk it.
+    //
+    // wave8/culling: this is not hypothetical. A viewport at 0.25 zoom is 16x the
+    // world area, and at cellSize 100 a fit-to-content view of a 10k-node diagram
+    // enumerates ~37,000 cell keys (allocating a string for each) to return the
+    // 10,000 entities it was always going to return. A query that returns
+    // everything is not a query, and it must not cost more than the scan it
+    // replaced.
+    const emit = (entity: T): boolean => {
+      const bounds = this.getBounds(entity);
+      if (!this.rectanglesIntersect(region, bounds)) return true;
+      if (options?.filter && !options.filter(entity)) return true;
+      results.push(entity);
+      count++;
+      return !(options?.limit && count >= options.limit);
+    };
+
+    if (this.shouldScanLinearly(region)) {
+      for (const entity of this.entities.values()) {
+        if (!emit(entity)) break;
+      }
+      return results;
+    }
+
     const cells = this.getOverlappingCells(region);
     const candidates = new Set<string>();
 
@@ -167,28 +198,78 @@ export class SpatialIndex<T extends { id: string }> {
       }
     }
 
-    // Filter to entities that actually intersect the region
-    const results: T[] = [];
-    let count = 0;
-
     for (const id of candidates) {
       const entity = this.entities.get(id);
       if (!entity) continue;
-
-      const bounds = this.getBounds(entity);
-      if (!this.rectanglesIntersect(region, bounds)) continue;
-
-      // Apply custom filter if provided
-      if (options?.filter && !options.filter(entity)) continue;
-
-      results.push(entity);
-      count++;
-
-      // Apply limit if provided
-      if (options?.limit && count >= options.limit) break;
+      if (!emit(entity)) break;
     }
 
     return results;
+  }
+
+  /**
+   * All entities whose bounds fall within `radius` of `point`, nearest first.
+   *
+   * wave8/culling — Card 2. Exists so interactive hit-testing (the nearest PORT
+   * to a dragged link end, the node under the cursor) is served by the index
+   * instead of a linear scan of the scene: a drag is a per-pointermove query, so
+   * an O(n) answer is O(n) sixty times a second.
+   *
+   * Distance is measured to the entity's bounding box (0 when the point is
+   * inside it), which is the right metric for "what am I pointing at" and lets
+   * a big entity win over a small distant one.
+   */
+  queryNear(point: { x: number; y: number }, radius: number, options?: QueryOptions<T>): T[] {
+    const region: Rectangle = {
+      x: point.x - radius,
+      y: point.y - radius,
+      width: radius * 2,
+      height: radius * 2,
+    };
+
+    const scored: Array<{ entity: T; d: number }> = [];
+    for (const entity of this.queryRegion(region, { filter: options?.filter })) {
+      const d = this.distanceToBounds(point, this.getBounds(entity));
+      if (d <= radius) scored.push({ entity, d });
+    }
+
+    scored.sort((a, b) => a.d - b.d);
+    const limit = options?.limit ?? scored.length;
+    return scored.slice(0, limit).map((s) => s.entity);
+  }
+
+  /**
+   * True when walking the region's cells would touch more cells than the index
+   * holds entities — i.e. when the grid has stopped paying for itself.
+   *
+   * Counted, never materialised: building the key array to measure it would be
+   * the very cost we are avoiding.
+   */
+  private shouldScanLinearly(region: Rectangle): boolean {
+    const n = this.entities.size;
+    if (n === 0) return true;
+
+    const cols =
+      Math.floor((region.x + region.width) / this.cellSize) -
+      Math.floor(region.x / this.cellSize) +
+      1;
+    const rows =
+      Math.floor((region.y + region.height) / this.cellSize) -
+      Math.floor(region.y / this.cellSize) +
+      1;
+
+    // A degenerate/NaN region (an un-laid-out viewport) must not become a
+    // multi-million-cell walk; treat it as a scan.
+    if (!Number.isFinite(cols) || !Number.isFinite(rows)) return true;
+
+    return cols * rows > n;
+  }
+
+  /** Distance from a point to a rectangle; 0 when the point is inside it. */
+  private distanceToBounds(point: { x: number; y: number }, b: Rectangle): number {
+    const dx = Math.max(b.x - point.x, 0, point.x - (b.x + b.width));
+    const dy = Math.max(b.y - point.y, 0, point.y - (b.y + b.height));
+    return Math.sqrt(dx * dx + dy * dy);
   }
 
   /**

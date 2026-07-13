@@ -2,18 +2,53 @@
 
 import type { IRouter, RouteRequest, RoutedPath, RoutePoint, Obstacle } from '../types';
 import type { Point } from '../../types';
+import { ObstacleIndex } from '../ObstacleIndex';
+
+/**
+ * Wave 8 — Card 6. Below this many obstacles a linear scan beats a hash lookup,
+ * and building an index would cost more than it saves. Above it, the scan is
+ * what made a one-node drag take 5.5 seconds.
+ */
+const INDEX_THRESHOLD = 24;
 
 /**
  * OrthogonalRouter creates paths with only 90-degree angles
  * Supports obstacle avoidance using A* on a grid
  */
 export class OrthogonalRouter implements IRouter {
+  /**
+   * Wave 8 — Card 6: indexes memoised on the obstacle ARRAY's identity, so the
+   * whole frame's links share one index instead of rebuilding it per link.
+   * Weak, so an obstacle set dies with the frame that made it.
+   */
+  private static readonly indexCache = new WeakMap<readonly Obstacle[], ObstacleIndex>();
+
+  /**
+   * The index for this obstacle set: the caller's if it prepared one (the
+   * engine does), otherwise ours. Returns null for a set small enough that
+   * scanning it is genuinely cheaper.
+   */
+  private static indexFor(
+    obstacles: readonly Obstacle[],
+    provided?: ObstacleIndex
+  ): ObstacleIndex | null {
+    if (provided) return provided;
+    if (obstacles.length < INDEX_THRESHOLD) return null;
+    let idx = OrthogonalRouter.indexCache.get(obstacles);
+    if (!idx) {
+      idx = new ObstacleIndex(obstacles);
+      OrthogonalRouter.indexCache.set(obstacles, idx);
+    }
+    return idx;
+  }
+
   getName(): string {
     return 'orthogonal';
   }
 
   route(request: RouteRequest): RoutedPath | null {
     const { start, end, obstacles = [], options = {}, sourceDirection, targetDirection } = request;
+    const index = OrthogonalRouter.indexFor(obstacles, request.obstacleIndex);
 
     // Handle same start and end point
     if (start.x === end.x && start.y === end.y) {
@@ -53,7 +88,7 @@ export class OrthogonalRouter implements IRouter {
     }
 
     // Check if the simple path intersects any obstacles
-    const hasCollision = this.pathIntersectsObstacles(simplePath.points, obstacles);
+    const hasCollision = this.pathIntersectsObstacles(simplePath.points, obstacles, index);
 
     if (!hasCollision) {
       // Path is clear, use the simple routing
@@ -62,7 +97,7 @@ export class OrthogonalRouter implements IRouter {
 
     // Path has collisions - use A* pathfinding for obstacle avoidance
     if (options.avoidObstacles) {
-      const avoidancePath = this.avoidObstaclesRoute(start, end, obstacles, options, srcDir, tgtDir);
+      const avoidancePath = this.avoidObstaclesRoute(start, end, obstacles, options, srcDir, tgtDir, index);
       if (avoidancePath) {
         return withJetty(avoidancePath);
       }
@@ -778,7 +813,8 @@ export class OrthogonalRouter implements IRouter {
     obstacles: Obstacle[],
     options: any,
     sourceDirection?: 'left' | 'right' | 'top' | 'bottom',
-    targetDirection?: 'left' | 'right' | 'top' | 'bottom'
+    targetDirection?: 'left' | 'right' | 'top' | 'bottom',
+    index?: ObstacleIndex | null
   ): RoutedPath | null {
     const gridSize = options.gridSize ?? 10;
     const margin = options.obstacleMargin ?? 20; // Margin around obstacles
@@ -796,13 +832,13 @@ export class OrthogonalRouter implements IRouter {
 
     // CRITICAL FIX: Validate start/end points are not inside obstacles
     // If grid snapping moved them into an obstacle, adjust outward
-    if (this.collidesWithObstacles(gridStart, obstacles, margin)) {
+    if (this.collidesWithObstacles(gridStart, obstacles, margin, index)) {
       console.warn(`⚠️ Grid start point inside obstacle, adjusting...`);
-      gridStart = this.findNearestValidPoint(gridStart, sourceDirection, obstacles, margin, gridSize);
+      gridStart = this.findNearestValidPoint(gridStart, sourceDirection, obstacles, margin, gridSize, index);
     }
-    if (this.collidesWithObstacles(gridEnd, obstacles, margin)) {
+    if (this.collidesWithObstacles(gridEnd, obstacles, margin, index)) {
       console.warn(`⚠️ Grid end point inside obstacle, adjusting...`);
-      gridEnd = this.findNearestValidPoint(gridEnd, targetDirection, obstacles, margin, gridSize);
+      gridEnd = this.findNearestValidPoint(gridEnd, targetDirection, obstacles, margin, gridSize, index);
     }
 
     // Use A* to find path between offset points
@@ -812,7 +848,8 @@ export class OrthogonalRouter implements IRouter {
       obstacles,
       gridSize,
       margin,
-      maxIterations
+      maxIterations,
+      index
     );
 
     if (!path || path.length === 0) {
@@ -863,7 +900,8 @@ export class OrthogonalRouter implements IRouter {
     obstacles: Obstacle[],
     gridSize: number,
     margin: number,
-    maxIterations: number
+    maxIterations: number,
+    index?: ObstacleIndex | null
   ): RoutePoint[] | null {
     const openSet = new Set<string>();
     const closedSet = new Set<string>();
@@ -917,7 +955,7 @@ export class OrthogonalRouter implements IRouter {
         if (closedSet.has(neighborKey)) continue;
 
         // Check if neighbor collides with obstacle
-        if (this.collidesWithObstacles(neighbor, obstacles, margin)) {
+        if (this.collidesWithObstacles(neighbor, obstacles, margin, index)) {
           closedSet.add(neighborKey);
           continue;
         }
@@ -995,8 +1033,15 @@ export class OrthogonalRouter implements IRouter {
   private collidesWithObstacles(
     point: Point,
     obstacles: Obstacle[],
-    margin: number
+    margin: number,
+    index?: ObstacleIndex | null
   ): boolean {
+    // Wave 8 — Card 6: THE hot path. A* asks this once per neighbour of every
+    // cell it expands, and the linear scan below made that O(scene) — 1.87
+    // BILLION aabb tests in one measured 5k-node drag frame. The index answers
+    // with the identical predicate, looking only at obstacles near the point.
+    if (index) return index.collides(point.x, point.y, margin);
+
     for (const obstacle of obstacles) {
       // Expand obstacle boundaries by margin to create safe zone around obstacles
       const minX = obstacle.x - margin;
@@ -1022,7 +1067,11 @@ export class OrthogonalRouter implements IRouter {
    * Check if any segment of the path intersects with obstacles
    * This determines if we need to use A* pathfinding
    */
-  private pathIntersectsObstacles(points: Point[], obstacles: Obstacle[]): boolean {
+  private pathIntersectsObstacles(
+    points: Point[],
+    obstacles: Obstacle[],
+    index?: ObstacleIndex | null
+  ): boolean {
     if (obstacles.length === 0) return false;
 
     // Check each line segment of the path
@@ -1030,8 +1079,21 @@ export class OrthogonalRouter implements IRouter {
       const p1 = points[i - 1];
       const p2 = points[i];
 
+      // Wave 8 — Card 6: only obstacles whose rect can reach this segment's
+      // bounding box are candidates; the exact test below is unchanged, so the
+      // answer is unchanged. (A segment can only meet a rect inside the
+      // segment's own bbox, so the narrowing loses nothing.)
+      const candidates = index
+        ? index.queryBox(
+            Math.min(p1.x, p2.x),
+            Math.min(p1.y, p2.y),
+            Math.max(p1.x, p2.x),
+            Math.max(p1.y, p2.y)
+          )
+        : obstacles;
+
       // Check if this segment intersects any obstacle
-      for (const obstacle of obstacles) {
+      for (const obstacle of candidates) {
         const rect = {
           x: obstacle.x,
           y: obstacle.y,
@@ -1125,7 +1187,8 @@ export class OrthogonalRouter implements IRouter {
     direction: 'left' | 'right' | 'top' | 'bottom' | undefined,
     obstacles: Obstacle[],
     margin: number,
-    gridSize: number
+    gridSize: number,
+    index?: ObstacleIndex | null
   ): Point {
     // Try moving outward in the port direction to find a valid point
     const maxAttempts = 10;
@@ -1156,7 +1219,7 @@ export class OrthogonalRouter implements IRouter {
           ];
 
           for (const candidate of candidates) {
-            if (!this.collidesWithObstacles(candidate, obstacles, margin)) {
+            if (!this.collidesWithObstacles(candidate, obstacles, margin, index)) {
               return candidate;
             }
           }
@@ -1164,7 +1227,7 @@ export class OrthogonalRouter implements IRouter {
       }
 
       // Check if this position is valid
-      if (!this.collidesWithObstacles(current, obstacles, margin)) {
+      if (!this.collidesWithObstacles(current, obstacles, margin, index)) {
         return current;
       }
     }
