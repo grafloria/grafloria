@@ -103,6 +103,22 @@ export class UndoStack {
   /** Ops of mine that are currently undone. Excluded when resolving what a register held. */
   private readonly undone = new Set<string>();
 
+  /**
+   * Ops that MY OWN undo/redo emitted. Not authored edits — machinery.
+   *
+   * They have to be excluded when resolving what a register held, and the reason is a bug
+   * that only shows up on the SECOND press of Ctrl-Z. Undoing my move emits a fresh `set`
+   * with a fresh (therefore highest) clock. Ask "what is the newest write to this register"
+   * again, to undo the move BEFORE it, and the answer is that undo op — newer than the op
+   * being undone — so the supersession rule fires and the second Ctrl-Z silently does
+   * nothing. The user is stuck one step from where they wanted to be, for no visible reason.
+   *
+   * ONLY my own. Another peer's undo op is, to me, an ordinary write by another peer — I
+   * cannot tell it was an undo and I must not treat it as one. That asymmetry is the whole
+   * point: undo is local, ops are global.
+   */
+  private readonly machinery = new Set<string>();
+
   /** Open transaction: ops land here instead of becoming one entry each. */
   private txn: Record[] | null = null;
 
@@ -201,7 +217,10 @@ export class UndoStack {
         const before = this.log.size;
         this.apply(inverse);
         rec.undoOp = this.lastLogged(before);
-        if (rec.undoOp) emitted.push(rec.undoOp);
+        if (rec.undoOp) {
+          this.machinery.add(opId(rec.undoOp));
+          emitted.push(rec.undoOp);
+        }
       }
     } finally {
       this.replaying = false;
@@ -226,7 +245,10 @@ export class UndoStack {
         const before = this.log.size;
         this.apply(forward);
         const op = this.lastLogged(before);
-        if (op) emitted.push(op);
+        if (op) {
+          this.machinery.add(opId(op));
+          emitted.push(op);
+        }
       }
     } finally {
       this.replaying = false;
@@ -270,14 +292,30 @@ export class UndoStack {
         // The newest surviving write BELOW mine is what the register should hold. Falling
         // back to the captured `before` covers the case the log cannot answer — a peer that
         // joined from a snapshot has no op for a register nobody has touched since.
+        if (before.kind !== 'value') return undefined;
         const value: OpValue | undefined =
-          survivor && survivor.op === 'set'
-            ? survivor.value
-            : before.kind === 'value'
-              ? before.value
-              : undefined;
-        if (value === undefined) return undefined;
-        return { ...stub, op: 'set', target: op.target, id: op.id, path: op.path, value };
+          survivor && survivor.op === 'set' ? survivor.value : before.value;
+
+        // `undefined` means THE REGISTER WAS EMPTY, and that is a value to restore, not a
+        // failure to find one. Bail out here and you cannot undo the FIRST label you ever
+        // put on a node — the commonest undo there is — because there was nothing there
+        // before it. The op carries undefined, JSON.stringify drops the key, the receiving
+        // peer reads `value` back as undefined, and setMetadata(k, undefined) empties the
+        // register on both sides: getMetadata() answers undefined and serialize() omits the
+        // key, so the two peers agree byte for byte.
+        //
+        // (`OpValue` does not admit undefined, and has been quietly lying about it since
+        // Card 0 — capture has always emitted it whenever a user CLEARED a metadata key.
+        // Widening the shared type mid-wave would break the three siblings compiling
+        // against it, so the cast is here and the type stays put. Flagged, not smuggled.)
+        return {
+          ...stub,
+          op: 'set',
+          target: op.target,
+          id: op.id,
+          path: op.path,
+          value: value as OpValue,
+        };
       }
     }
   }
@@ -323,6 +361,7 @@ export class UndoStack {
       const id = opId(candidate);
       if (id === self || id === skip) continue;
       if (this.undone.has(id)) continue; // an undone op is not a surviving write
+      if (this.machinery.has(id)) continue; // …and neither is my own undo of one
       if (registerOf(candidate) !== reg) continue;
       if (!best || compareOps(candidate, best) > 0) best = candidate;
     }
