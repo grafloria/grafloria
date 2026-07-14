@@ -13,6 +13,9 @@ import { ControlPointEditor } from './ControlPointEditor';
 import { ArrowRenderer } from '../svg/ArrowRenderer';
 import { DEFAULT_LINK_HIT_TOLERANCE, hitTestLink } from '../svg/link-hit-test';
 import type { LinkHitTestOptions, LinkPart } from '../svg/link-hit-test';
+// wave10/gallery: the HOST's connection-veto registry. See
+// installHostConnectionValidatorBridge() — the drag path never asked it.
+import { isValidConnection } from '../ext/tools';
 
 /**
  * Part-aware link hit result: a link plus WHICH sub-part of it was hit
@@ -1539,6 +1542,57 @@ export class InteractionController {
     if (config.controlPointEditor) {
       this.updateControlPointEditorConfig(config.controlPointEditor);
     }
+
+    this.installHostConnectionValidatorBridge(engine);
+  }
+
+  /**
+   * ==========================================================================
+   * wave10/gallery BUG FIX — `registerConnectionValidator` did not veto a DRAG.
+   * ==========================================================================
+   *
+   * `ext/tools.ts` documents its registry as: "Validators registered here are
+   * consulted wherever the renderer offers a connection", and its whole reason
+   * for existing is that "a HOST had no way to inject 'an Order may not connect
+   * to an Invoice'".
+   *
+   * It was consulted in exactly ONE place: `canConnectPorts()` in snapping.ts —
+   * i.e. proximity-connect and keyboard-connect. The MOUSE DRAG, which is how
+   * essentially every connection in every diagram ever made actually gets made,
+   * never asked. You could register a validator that rejected every connection
+   * in the graph, drag from a port to a port, and get the link.
+   *
+   * The engine has its own validator list on `ConnectionStateManager` — which
+   * the drag DOES consult, and which also feeds `calculateValidTargets()`, so a
+   * veto registered there also dims the invalid ports during the drag. So the
+   * fix is a bridge, not a second enforcement point: forward the host registry
+   * into the engine's list, once per engine. With no validators registered
+   * `isValidConnection()` returns `{ valid: true }`, so the bridge costs a
+   * function call on a path that is already doing a hit-test.
+   */
+  private validatorBridgedEngines = new WeakSet<DiagramEngine>();
+
+  private installHostConnectionValidatorBridge(engine: DiagramEngine): void {
+    if (this.validatorBridgedEngines.has(engine)) return;
+
+    const manager = engine.getConnectionStateManager?.();
+    if (!manager?.addValidator) return;
+
+    this.validatorBridgedEngines.add(engine);
+
+    manager.addValidator((source: PortModel, target: PortModel) => {
+      const diagram = engine.getDiagram();
+      const sourceNode = diagram?.getNodeByPortId(source.id);
+      const targetNode = diagram?.getNodeByPortId(target.id);
+      if (!sourceNode || !targetNode) return true;
+
+      return isValidConnection({
+        sourceNode,
+        sourcePort: source,
+        targetNode,
+        targetPort: target,
+      }).valid;
+    });
   }
 
   /**

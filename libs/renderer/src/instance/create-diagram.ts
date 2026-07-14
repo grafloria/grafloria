@@ -1,6 +1,7 @@
 import { DiagramEngine, getMutationEpoch } from '@grafloria/engine';
 import type { DiagramModel, LinkModel, NodeModel } from '@grafloria/engine';
 import type { Theme } from '../types/theme.types';
+import type { SVGRendererConfig } from '../types/renderer.interface';
 import type { Rectangle } from '../types/geometry.types';
 import { SVGRenderer } from '../svg/svg-renderer';
 import { VNodePatcher } from '../vnode/patch';
@@ -68,6 +69,24 @@ export interface CreateDiagramOptions extends DomEventBinderOptions {
   nodes?: NodeInput[];
   edges?: EdgeInput[];
   theme?: Theme;
+
+  /**
+   * wave10/gallery BUG FIX — the RENDERER's own config was unreachable.
+   *
+   * `createDiagram()` constructed the renderer as
+   * `new SVGRenderer(engine, { instanceId }, theme)`, so every knob on
+   * `SVGRendererConfig` — `connectionPoint` / `smartConnectionPoints` (floating
+   * edges), `parallelLinks` + `parallelSpacing`, `channelNudging`,
+   * `jumpOwnership`, `globalRouting`, `linkHitAreaWidth`, `colorMode` — was
+   * settable by NOBODY. Not from `Grafloria.render()`, not from `<grafloria-flow>`, not
+   * from React. The type existed, was documented per-field, and every field of
+   * it was consumed by the renderer; the one factory that builds a renderer for
+   * a host simply never passed it on.
+   *
+   * `instanceId` is still resolved by the factory (hydration owns it), so it is
+   * omitted here rather than being a second, losing, way to set the same thing.
+   */
+  renderer?: Omit<SVGRendererConfig, 'instanceId'>;
 
   zoom?: number;
   minZoom?: number;
@@ -230,7 +249,10 @@ export function createDiagram(
   // -- renderer + patcher -----------------------------------------------------
   const renderer = new SVGRenderer(
     engine,
-    { instanceId: hydration?.instanceId ?? options.instanceId },
+    {
+      ...(options.renderer ?? {}),
+      instanceId: hydration?.instanceId ?? options.instanceId,
+    },
     options.theme
   );
   renderer.applyInstanceScope(layers.root);

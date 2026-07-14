@@ -5,6 +5,7 @@ import {
   buildNode,
   defaultPortId,
   resolvePortId,
+  toEdgeSpec,
 } from './model-input';
 import type { EdgeSpec, NodeSpec } from './model-input';
 
@@ -169,6 +170,167 @@ describe('model-input — spec → model', () => {
       const link = new LinkModel('a__right', 'b__left', 'direct');
       applyEdges(model, [link]);
       expect(model.getLink(link.id)).toBe(link);
+    });
+  });
+
+  // =========================================================================
+  // wave10/gallery — REACHABILITY. Every field below is declared on the model,
+  // consumed by the renderer/validator, and was DROPPED by this translator.
+  // These tests exist because a unit test on PortModel proves PortModel works;
+  // it never proves that anything a host can call ever builds one.
+  // =========================================================================
+  describe('wave10 — the wave-6 port vocabulary survives the spec layer', () => {
+    it('carries glyph / label / layout / dataType / group onto the PortModel', () => {
+      const { model } = freshDiagram();
+      applyNodes(model, [
+        {
+          id: 'n',
+          position: { x: 0, y: 0 },
+          size: { width: 120, height: 80 },
+          metadata: {
+            portGroups: {
+              in: { id: 'in', side: 'left', layout: { strategy: 'sideLinear' } },
+            },
+          },
+          ports: [
+            {
+              id: 'p1',
+              group: 'in',
+              type: 'input',
+              shape: { shape: 'diamond', size: 14 },
+              label: { text: 'amount', layout: 'outside' },
+              layout: { strategy: 'sideLinear', args: { padding: 8 } },
+              dataType: 'number',
+              spread: { enabled: true, spacing: 12 },
+              style: { fill: '#f0f' },
+            },
+          ],
+        },
+      ]);
+
+      const port = model.getNode('n')!.getPort('p1')!;
+      expect(port.shape).toEqual({ shape: 'diamond', size: 14 });
+      expect(port.label).toEqual({ text: 'amount', layout: 'outside' });
+      expect(port.layout).toEqual({ strategy: 'sideLinear', args: { padding: 8 } });
+      expect(port.dataType).toBe('number');
+      expect(port.group).toBe('in');
+      expect(port.spread).toEqual({ enabled: true, spacing: 12 });
+      expect(port.style).toEqual({ fill: '#f0f' });
+    });
+
+    it('a port with a group but no side does NOT claim an explicit side', () => {
+      // explicitSide exists so a group's side is not clobbered by the model's
+      // `right` default. Passing `side: undefined` through would have set it.
+      const { model } = freshDiagram();
+      applyNodes(model, [
+        {
+          id: 'n',
+          position: { x: 0, y: 0 },
+          size: { width: 100, height: 50 },
+          ports: [{ id: 'p', group: 'in', type: 'input' }],
+        },
+      ]);
+      expect(model.getNode('n')!.getPort('p')!.explicitSide).toBe(false);
+    });
+
+    it('a port that DOES declare a side keeps explicitSide true', () => {
+      const { model } = freshDiagram();
+      applyNodes(model, [
+        {
+          id: 'n',
+          position: { x: 0, y: 0 },
+          size: { width: 100, height: 50 },
+          ports: [{ id: 'p', side: 'top', type: 'input' }],
+        },
+      ]);
+      const port = model.getNode('n')!.getPort('p')!;
+      expect(port.explicitSide).toBe(true);
+      expect(port.side).toBe('top');
+    });
+
+    it('carries directional gating so a full port can actually refuse a link', () => {
+      const { model } = freshDiagram();
+      applyNodes(model, [
+        {
+          id: 'n',
+          position: { x: 0, y: 0 },
+          size: { width: 100, height: 50 },
+          ports: [
+            {
+              id: 'only-one',
+              side: 'left',
+              type: 'input',
+              gating: {
+                isConnectableStart: false,
+                toMaxLinks: 1,
+                allowedTypes: ['number'],
+              },
+            },
+          ],
+        },
+      ]);
+
+      const port = model.getNode('n')!.getPort('only-one')!;
+      expect(port.isConnectableStart).toBe(false);
+      expect(port.toMaxLinks).toBe(1);
+      expect([...port.allowedTypes]).toEqual(['number']);
+    });
+  });
+
+  describe('wave10 — router / connector / metadata / points survive the spec layer', () => {
+    it('sets the explicit router and connector (wave-5 Card 0 split fields)', () => {
+      const { model } = freshDiagram();
+      applyNodes(model, [A, B]);
+      applyEdges(model, [
+        { id: 'e', source: 'a', target: 'b', router: 'avoid', connector: 'rounded' },
+      ]);
+
+      const link = model.getLink('e')!;
+      expect(link.router).toBe('avoid');
+      expect(link.connector).toBe('rounded');
+      expect(link.effectiveRouter()).toBe('avoid');
+      expect(link.effectiveConnector()).toBe('rounded');
+    });
+
+    it('carries metadata — which is how floating edges are named per link', () => {
+      const { model } = freshDiagram();
+      applyNodes(model, [A, B]);
+      applyEdges(model, [
+        {
+          id: 'e',
+          source: 'a',
+          target: 'b',
+          metadata: { connectionPoint: 'smart', sourceAnchor: 'perimeter' },
+        },
+      ]);
+
+      const link = model.getLink('e')!;
+      expect(link.getMetadata('connectionPoint')).toBe('smart');
+      expect(link.getMetadata('sourceAnchor')).toBe('perimeter');
+    });
+
+    it('carries explicit waypoints', () => {
+      const { model } = freshDiagram();
+      applyNodes(model, [A, B]);
+      applyEdges(model, [
+        { id: 'e', source: 'a', target: 'b', points: [{ x: 0, y: 0 }, { x: 50, y: 90 }, { x: 300, y: 0 }] },
+      ]);
+      expect(model.getLink('e')!.points).toHaveLength(3);
+    });
+
+    it('round-trips router/connector back out through toEdgeSpec', () => {
+      const { model } = freshDiagram();
+      applyNodes(model, [A, B]);
+      applyEdges(model, [{ id: 'e', source: 'a', target: 'b', router: 'manhattan' }]);
+      expect(toEdgeSpec(model.getLink('e')!).router).toBe('manhattan');
+    });
+
+    it('updating an existing edge switches its router (the reconcile path)', () => {
+      const { model } = freshDiagram();
+      applyNodes(model, [A, B]);
+      applyEdges(model, [{ id: 'e', source: 'a', target: 'b', router: 'orthogonal' }]);
+      applyEdges(model, [{ id: 'e', source: 'a', target: 'b', router: 'avoid' }]);
+      expect(model.getLink('e')!.effectiveRouter()).toBe('avoid');
     });
   });
 });
