@@ -23,8 +23,8 @@
 // The numbers are reported, not asserted, on the first run: this run establishes the
 // baseline. `perf-run.mjs` then gates against budgets so a regression fails CI.
 
-import { DiagramEngine, DiagramModel, NodeModel, LinkModel, PortModel } from '@grafloria/engine';
-import { SVGRenderer, VNodePatcher } from '@grafloria/renderer';
+import { DiagramEngine, DiagramModel, NodeModel, LinkModel, PortModel, CommentStore } from '@grafloria/engine';
+import { SVGRenderer, VNodePatcher, CommentOverlayController } from '@grafloria/renderer';
 
 export interface PerfSample {
   scenario: string;
@@ -229,6 +229,62 @@ export function runPerfSuite(container: HTMLElement, counts: number[]): PerfSamp
       worstMs: Math.max(...idleFrames),
       frames: idleFrames.length,
     });
+
+    // ------------------------------------------------- wave9/comments (Card 6)
+    // THE CLAIM UNDER TEST: putting 200 anchored comment threads on this scene does not
+    // cost the scene anything when nobody is doing anything.
+    //
+    // This is the number that matters, and it is the one an overlay usually gets wrong.
+    // The frame gate skips an idle frame outright — but ONLY if the overlay's state is
+    // visible to it. An overlay that lives outside the model either (a) never redraws,
+    // which is the bug, or (b) "fixes" that by invalidating the frame on a timer/every
+    // frame, which silently DISARMS THE GATE and turns a 0.0ms idle frame back into a
+    // 130ms one for the whole scene. Both failures are invisible to a functional test and
+    // both show up right here.
+    const commentStore = new CommentStore(diagram, { viewer: 'perf' });
+    const nodesForComments = diagram.getNodes();
+    for (let i = 0; i < 200; i++) {
+      const target = nodesForComments[(i * 37) % nodesForComments.length];
+      const tid = commentStore.createThread({ kind: 'node', id: target.id }, `thread ${i}`);
+      if (i % 3 === 0) commentStore.reply(tid, 'and another thing');
+    }
+    const overlay = new CommentOverlayController(commentStore, renderer);
+
+    const cPan: number[] = [];
+    for (let f = 0; f < 30; f++) {
+      const vp = { ...viewport, x: viewport.x + f * 40, y: viewport.y + f * 12 };
+      const t = now();
+      const vnode = renderer.render(vp, 1) as never;
+      patcher.reconcile(svg as unknown as Element, vnode);
+      cPan.push(now() - t);
+    }
+    record({
+      scenario: 'pan-frame+200-comments',
+      nodes: count,
+      links: linkCount,
+      ms: median(cPan),
+      worstMs: Math.max(...cPan),
+      frames: cPan.length,
+    });
+
+    const cIdle: number[] = [];
+    for (let f = 0; f < 20; f++) {
+      const t = now();
+      const vnode = renderer.render(viewport, 1) as never;
+      patcher.reconcile(svg as unknown as Element, vnode);
+      cIdle.push(now() - t);
+    }
+    record({
+      scenario: 'idle-frame+200-comments',
+      nodes: count,
+      links: linkCount,
+      ms: median(cIdle),
+      worstMs: Math.max(...cIdle),
+      frames: cIdle.length,
+    });
+
+    overlay.dispose();
+    commentStore.dispose();
 
     renderer.dispose();
     engine.destroy();

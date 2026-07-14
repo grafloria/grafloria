@@ -13,6 +13,9 @@ import {
   setNodePortGroups,
   portTypeRegistry,
   evaluatePortConnection,
+  // Wave 9 (Collaboration) — Card 0 substrate + Card 6 comments
+  Replica,
+  CommentStore,
 } from '@grafloria/engine';
 import {
   SVGRenderer,
@@ -26,6 +29,9 @@ import {
   registerLinkTemplate,
   registerMarker,
   themeRef,
+  // Wave 9 (Collaboration) — Card 6
+  CommentOverlayController,
+  CommentPanelView,
 } from '@grafloria/renderer';
 
 import { InteractionHandlerService } from '@grafloria/interaction-handler';
@@ -2928,6 +2934,158 @@ function p6_gatingAndHighlight() {
 }
 
 // ===========================================================================
+// Wave 9 (Collaboration) — Card 6: anchored comments, LIVE.
+//
+// Everything the unit suites claim, driven through the REAL renderer, in a REAL browser,
+// with TWO REAL REPLICAS talking to each other. The point of this scenario is the one
+// thing a unit test cannot show you: that a comment on a node someone else deletes is
+// still ON THE SCREEN, in the right place, saying what it was about.
+// ===========================================================================
+function c1_anchoredComments() {
+  const stage = cell('c1', 'C1 — Wave 9 Card 6: comments anchored to a node (follows it), to a free region (world coords), and to a node a PEER DELETED (survives, detached)');
+
+  // --- peer A -------------------------------------------------------------
+  const engine = makeEngine();
+  const diagram = engine.createDiagram('c1');
+  const gateway = addNode(diagram, 'Payment gateway', 60, 60, { ports: [{ id: 'c1-out', side: 'right', type: 'output' }] });
+  const ledger = addNode(diagram, 'Ledger', 300, 60, { ports: [{ id: 'c1-in', side: 'left', type: 'input' }] });
+  const cache = addNode(diagram, 'Deprecated cache', 300, 200, { fill: '#fee2e2', ports: [{ id: 'c1-cache', side: 'left', type: 'input' }] });
+  const link = new LinkModel('c1-out', 'c1-in', 'orthogonal' as any);
+  link.setSourcePort('c1-out', gateway.id);
+  link.setTargetPort('c1-in', ledger.id);
+  diagram.addLink(link);
+
+  const outbox: any[] = [];
+  const replicaA = new Replica(diagram, { actor: 'ada', onLocalOp: (op: any) => outbox.push(op) });
+  const storeA = new CommentStore(diagram, { viewer: 'ada' });
+
+  const tNode = storeA.createThread({ kind: 'node', id: gateway.id }, 'Is this the retry path?');
+  storeA.reply(tNode, 'No — the fallback. cc @[Ben](u_ben)');
+  const tRegion = storeA.createThread({ kind: 'region', x: 430, y: 250 }, 'This whole area needs a rethink');
+  const tDoomed = storeA.createThread({ kind: 'node', id: cache.id }, 'We cut this in March, no?');
+
+  // --- peer B: a second replica of the same document ----------------------
+  const engineB = makeEngine();
+  const diagramB = engineB.createDiagram('c1');
+  const replicaB = new Replica(diagramB, { actor: 'ben' });
+  // Ben joins from the snapshot + the op tail, exactly as a real peer does.
+  for (const n of diagram.getNodes()) diagramB.restoreNode(n.serialize());
+  for (const l of diagram.getLinks()) diagramB.restoreLink(l.serialize());
+  const mentions: any[] = [];
+  const storeB = new CommentStore(diagramB, {
+    viewer: 'ben',
+    notifier: { notify: (e: any) => mentions.push(e) },
+  });
+  replicaB.receive(outbox.splice(0));
+
+  expectThat('C1 the comment threads REPLICATED to the second peer, whole',
+    storeB.threads().length === 3 &&
+      storeB.thread(tNode)?.messages.map((m: any) => m.body).join('|') ===
+        'Is this the retry path?|No — the fallback. cc @[Ben](u_ben)',
+    JSON.stringify(storeB.threads().map((t: any) => t.messages.length)));
+
+  expectThat('C1 the @mention fired ONCE on the receiving peer, with a key identical on every peer',
+    mentions.length === 1 && mentions[0].mentioned.join() === 'u_ben' &&
+      mentions[0].key === `${tNode}:${storeB.thread(tNode)!.messages[1].id}`,
+    JSON.stringify(mentions.map((m) => ({ k: m.key, who: m.mentioned }))));
+
+  expectThat('C1 the unread badge is PERSONAL — 2 unread for ben, 0 for the author',
+    storeB.thread(tNode)!.unread === 2 && storeA.thread(tNode)!.unread === 0,
+    `ben=${storeB.thread(tNode)!.unread} ada=${storeA.thread(tNode)!.unread}`);
+
+  // --- BEN DELETES THE NODE ADA IS COMMENTING ON --------------------------
+  // The moment the whole card exists for.
+  diagramB.removeNode(cache.id);
+  diagram.removeNode(cache.id); // …and it replicates back to ada
+
+  // --- render peer A's canvas, with the pins ------------------------------
+  const renderer = new SVGRenderer(engine, { enableCaching: true, useCSSMode: false }, LIGHT_THEME);
+  const overlay = new CommentOverlayController(storeA, renderer);
+  const svg = vnodeToDom(renderer.render({ x: 0, y: 0, width: 560, height: 340 }, 1)) as SVGSVGElement;
+  svg.setAttribute('width', '560');
+  svg.setAttribute('height', '340');
+  stage.appendChild(svg);
+
+  const pinFor = (id: string) => svg.querySelector(`[data-comment-thread-id="${id}"]`);
+  const xy = (id: string) => {
+    const m = /translate\(([-\d.]+),\s*([-\d.]+)\)/.exec(pinFor(id)?.getAttribute('transform') ?? '');
+    return m ? { x: +m[1], y: +m[2] } : null;
+  };
+
+  expectThat('C1 all three pins are on the canvas — including the one whose node is GONE',
+    svg.querySelectorAll('[data-comment-thread-id]').length === 3,
+    String(svg.querySelectorAll('[data-comment-thread-id]').length));
+
+  expectThat('C1 the node pin sits on its node (top-right corner), in WORLD coordinates',
+    JSON.stringify(xy(tNode)) === JSON.stringify({ x: 170, y: 60 }),
+    JSON.stringify(xy(tNode)));
+
+  expectThat('C1 the region pin sits at the WORLD point it was dropped at',
+    JSON.stringify(xy(tRegion)) === JSON.stringify({ x: 430, y: 250 }),
+    JSON.stringify(xy(tRegion)));
+
+  expectThat('C1 THE ORPHAN: the node was deleted and the conversation is STILL THERE, detached, where the node was',
+    pinFor(tDoomed)?.getAttribute('data-comment-attached') === 'false' &&
+      JSON.stringify(xy(tDoomed)) === JSON.stringify({ x: 410, y: 200 }) &&
+      storeA.thread(tDoomed)!.messages.length === 1,
+    `attached=${pinFor(tDoomed)?.getAttribute('data-comment-attached')} at=${JSON.stringify(xy(tDoomed))}`);
+
+  expectThat('C1 the orphan pin SAYS it is detached, and says what it was about',
+    pinFor(tDoomed)?.getAttribute('aria-label') ===
+      'Comment thread on a deleted node, Deprecated cache, 0 replies, detached',
+    String(pinFor(tDoomed)?.getAttribute('aria-label')));
+
+  // --- the node MOVES: the pin follows, and syncs nothing ------------------
+  const opsBefore = outbox.length;
+  gateway.setPosition(60, 240);
+  const moved = vnodeToDom(renderer.render({ x: 0, y: 0, width: 560, height: 340 }, 1)) as SVGSVGElement;
+  const movedPin = moved.querySelector(`[data-comment-thread-id="${tNode}"]`);
+  const commentOpsDuringMove = outbox.slice(opsBefore).filter((o) => String(o.path ?? '').startsWith('comments'));
+
+  expectThat('C1 dragging the node MOVES the pin — and emits ZERO comment ops (position is derived, never synced)',
+    (movedPin?.getAttribute('transform') ?? '').includes('translate(170, 240)') &&
+      commentOpsDuringMove.length === 0,
+    `${movedPin?.getAttribute('transform')} / ${commentOpsDuringMove.length} comment ops`);
+
+  // --- the frame gate is still armed --------------------------------------
+  renderer.render({ x: 0, y: 0, width: 560, height: 340 }, 1);
+  const before = renderer.getFrameStats();
+  const f1 = renderer.render({ x: 0, y: 0, width: 560, height: 340 }, 1);
+  const f2 = renderer.render({ x: 0, y: 0, width: 560, height: 340 }, 1);
+  const afterIdle = renderer.getFrameStats();
+  expectThat('C1 an IDLE frame with comments on screen is still SKIPPED (the wave-8 frame gate is not disarmed)',
+    f1 === f2 && afterIdle.built === before.built && afterIdle.skipped === before.skipped + 2,
+    `built ${before.built}→${afterIdle.built}, skipped ${before.skipped}→${afterIdle.skipped}`);
+
+  // …and READING a thread — which changes nothing in the model — still redraws.
+  overlay.select(tNode);
+  const afterRead = vnodeToDom(renderer.render({ x: 0, y: 0, width: 560, height: 340 }, 1)) as SVGSVGElement;
+  expectThat('C1 marking a thread READ redraws the pin, even though the model did not change',
+    afterRead.querySelector(`[data-comment-thread-id="${tNode}"]`)?.getAttribute('data-comment-unread') === '0',
+    String(afterRead.querySelector(`[data-comment-thread-id="${tNode}"]`)?.getAttribute('data-comment-unread')));
+
+  // --- the panel, mounted for real ----------------------------------------
+  const panelHost = document.createElement('div');
+  panelHost.style.cssText = 'font:13px system-ui;max-width:520px;margin-top:8px';
+  stage.appendChild(panelHost);
+  const panel = new CommentPanelView(panelHost, storeA, { formatTime: () => '12:00' });
+  panel.select(tDoomed);
+  expectThat('C1 the panel explains the detached thread in prose, and keeps the conversation',
+    (panelHost.textContent ?? '').includes('has been deleted. The conversation is kept.') &&
+      (panelHost.textContent ?? '').includes('We cut this in March, no?'),
+    (panelHost.textContent ?? '').slice(0, 120));
+
+  PROBES.c1_comments = {
+    threadsOnA: storeA.threads().length,
+    threadsOnB: storeB.threads().length,
+    orphans: storeA.orphans().map((t: any) => t.resolvedAnchor.targetLabel),
+    pins: { node: xy(tNode), region: xy(tRegion), orphan: xy(tDoomed) },
+    mentionKeys: mentions.map((m) => m.key),
+    frames: renderer.getFrameStats(),
+  };
+}
+
+// ===========================================================================
 // run all
 // ===========================================================================
 const failures: any[] = [];
@@ -2951,6 +3109,8 @@ for (const [name, fn] of Object.entries({
   // Wave 6 (Ports & connections)
   p1_glyphsAndStyle, p2_portLabels, p3_layoutEngine, p4_linkSpreading,
   p5_typedPorts, p6_gatingAndHighlight,
+  // Wave 9 (Collaboration) — Card 6: anchored comments
+  c1_anchoredComments,
 })) {
   try {
     (fn as any)();

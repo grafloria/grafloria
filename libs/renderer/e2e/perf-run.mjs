@@ -118,6 +118,12 @@ const BUDGETS = [
   { scenario: 'one-node-drag-frame', nodes: 1000,  maxMs: 60 },
   { scenario: 'one-node-drag-frame', nodes: 10000, maxMs: 600 },
   { scenario: 'idle-frame',          nodes: 10000, maxMs: 600 },
+  // wave9/comments (Card 6). 200 anchored threads on the scene must not cost the scene
+  // anything when nothing is happening. An overlay that keeps itself fresh by invalidating
+  // every frame would silently disarm the frame gate — a 0.0ms idle frame would become a
+  // whole-scene rebuild, and no functional test anywhere would notice. This fence does.
+  { scenario: 'idle-frame+200-comments', nodes: 10000, maxMs: 1 },
+  { scenario: 'pan-frame+200-comments',  nodes: 10000, maxMs: 600 },
 ];
 
 const failures = [];
