@@ -124,6 +124,17 @@ const BUDGETS = [
   // whole-scene rebuild, and no functional test anywhere would notice. This fence does.
   { scenario: 'idle-frame+200-comments', nodes: 10000, maxMs: 1 },
   { scenario: 'pan-frame+200-comments',  nodes: 10000, maxMs: 600 },
+  // wave9/sync (Card 5). An idle diagram with FOUR remote cursors moving at 60Hz over it
+  // must cost the DIAGRAM exactly what an idle diagram with nobody on it costs. The
+  // presence overlay is a separate DOM layer that never enters the VNode tree, so the
+  // frame gate stays shut.
+  //
+  // BUDGET TIGHTENED 600ms -> 1ms AT MERGE, and the original number would have made this
+  // fence useless: presence invalidating every frame costs a whole-scene rebuild, which is
+  // ~15ms at 10k — comfortably INSIDE a 600ms budget. The fence would have passed while
+  // the exact regression it exists to catch was happening. A gate that cannot fail is not
+  // a gate. (wave9/comments got this right independently, with the same 1ms reasoning.)
+  { scenario: 'idle-frame-presence', nodes: 10000, maxMs: 1 },
 ];
 
 const failures = [];

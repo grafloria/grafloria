@@ -187,3 +187,8 @@ export * from './collab';
 
 // Wave 9 (Collaboration) — Card 6: anchored comments, annotations & @mentions.
 export * from './comments';
+
+// Wave 9 (Collaboration) — the transport layer (Card 5): a transport-agnostic SyncAdapter
+// (catch-up, causal readiness, batching, mesh relay), three real transports, and the
+// awareness channel — which is separate from the op log, and must stay that way.
+export * from './sync';

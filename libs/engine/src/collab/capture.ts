@@ -73,6 +73,59 @@ const STRUCTURAL = new Set(['nodes', 'links', 'groups']);
  */
 const DERIVED = new Set(['points']);
 
+/**
+ * ---------------------------------------------------------------------------
+ * EPHEMERAL VIEWER STATE — THE BUG THIS SET EXISTS TO CLOSE
+ * ---------------------------------------------------------------------------
+ *
+ * `NodeState` mixes two completely different kinds of fact in one object:
+ *
+ *     DURABLE (about the DOCUMENT):  visible, locked, expanded, enabled, error, status
+ *     EPHEMERAL (about a VIEWER):    selected, hovered, highlighted, focused
+ *
+ * …and this capture layer used to sync the whole object as a single register. The
+ * consequences, found by wave9/sync driving a real two-peer session:
+ *
+ *   • MOVING YOUR MOUSE ACROSS A NODE WROTE TWO PERMANENT OPS INTO THE SHARED DOCUMENT
+ *     (hover on, hover off) — and the peer APPLIED them, so a node lit up on my screen
+ *     because your cursor was somewhere near it.
+ *   • YOUR CLICK DESELECTED MY NODE. Selection is not a property of the diagram; it is a
+ *     property of a person looking at it.
+ *   • And every one of those ops went into the replayable, persisted, totally-ordered log
+ *     FOREVER. A five-minute session would bury the actual edit history under thousands
+ *     of hover events.
+ *
+ * `LinkModel.state` is worse still: its ONLY values are 'default' | 'selected' | 'hovered'
+ * | 'highlighted'. It is ephemeral in its entirety, so a link's state is never synced at
+ * all.
+ *
+ * This is the same distinction wave9/comments drew for read-markers ("Ada read this" is a
+ * fact about Ada, not about the document) and the same one that keeps live cursors out of
+ * the op log. Presence belongs on the awareness channel — ephemeral, per-peer, expiring —
+ * and NEVER in the document.
+ */
+const EPHEMERAL_NODE_STATE = new Set(['selected', 'hovered', 'highlighted', 'focused']);
+
+/** A link's `state` is view state, top to bottom. Never synced. */
+const EPHEMERAL_BY_TARGET: Record<string, Set<string>> = {
+  link: new Set(['state']),
+};
+
+/** Strip the viewer-local keys out of a node/group `state` object. */
+function durableState(value: unknown): Record<string, unknown> | undefined {
+  if (value === null || typeof value !== 'object') return undefined;
+  const out: Record<string, unknown> = {};
+  for (const [k, v] of Object.entries(value as Record<string, unknown>)) {
+    if (!EPHEMERAL_NODE_STATE.has(k)) out[k] = v;
+  }
+  return out;
+}
+
+/** Structural equality, so a hover that changes nothing durable emits nothing. */
+function sameJson(a: unknown, b: unknown): boolean {
+  return JSON.stringify(a) === JSON.stringify(b);
+}
+
 export interface OpCaptureOptions {
   /** Who this peer is. Must be unique across peers; used for the total-order tiebreak. */
   actor: ActorId;
@@ -193,15 +246,32 @@ export class OpCapture {
   private watchEntity(target: 'node' | 'link' | 'group', entity: Entity): void {
     if (this.entitySubs.has(entity.id)) return;
 
-    const onChange = (entry: { property: string; newValue: unknown }) => {
+    const onChange = (entry: { property: string; oldValue: unknown; newValue: unknown }) => {
       if (DERIVED.has(entry.property)) return;
-      this.emit({
-        op: 'set',
-        target,
-        id: entity.id,
-        path: entry.property,
-        value: entry.newValue as OpValue,
-      });
+
+      // Wholly-ephemeral registers never reach the wire at all (a link's `state` is
+      // 'default' | 'selected' | 'hovered' | 'highlighted' — view state, top to bottom).
+      if (EPHEMERAL_BY_TARGET[target]?.has(entry.property)) return;
+
+      let value = entry.newValue as OpValue;
+
+      if (entry.property === 'state') {
+        // `state` is a MIXED register: durable document facts (visible, locked, expanded)
+        // sitting in the same object as per-viewer ephemera (selected, hovered, focused).
+        // Project it, and — critically — emit NOTHING when only the ephemera moved.
+        //
+        // Without the second half of that, hovering a node still puts an op on the wire
+        // and in the permanent log on every mouse-over. The receiver's redundant-write
+        // guard would drop it, so the DOCUMENT would look fine and the bug would be
+        // invisible to every convergence test — while the op log filled with thousands of
+        // hover events that outlive the session.
+        const next = durableState(entry.newValue);
+        const prev = durableState(entry.oldValue);
+        if (sameJson(next, prev)) return;
+        value = next as OpValue;
+      }
+
+      this.emit({ op: 'set', target, id: entity.id, path: entry.property, value });
     };
 
     this.entitySubs.set(entity.id, entity.on('change', onChange as never));

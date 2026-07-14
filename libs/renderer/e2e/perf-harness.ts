@@ -24,7 +24,13 @@
 // baseline. `perf-run.mjs` then gates against budgets so a regression fails CI.
 
 import { DiagramEngine, DiagramModel, NodeModel, LinkModel, PortModel, CommentStore } from '@grafloria/engine';
-import { SVGRenderer, VNodePatcher, CommentOverlayController } from '@grafloria/renderer';
+import {
+  SVGRenderer,
+  VNodePatcher,
+  CommentOverlayController,
+  PresenceOverlay,
+  ViewportController,
+} from '@grafloria/renderer';
 
 export interface PerfSample {
   scenario: string;
@@ -285,6 +291,113 @@ export function runPerfSuite(container: HTMLElement, counts: number[]): PerfSamp
 
     overlay.dispose();
     commentStore.dispose();
+
+    // ------------------------------------------- idle frame, WITH LIVE PRESENCE
+    // =========================================================================
+    // Wave 9 (Collaboration), Card 5. THE NUMBER THIS CARD LIVES OR DIES ON.
+    //
+    // The claim being tested is not "presence is fast". It is: FOUR REMOTE CURSORS MOVING AT
+    // 60Hz OVER A 10,000-NODE DIAGRAM COST THE DIAGRAM NOTHING AT ALL.
+    //
+    // That claim is only true because the presence overlay is a separate DOM layer that
+    // never enters the VNode tree. Had the cursors been VNodes, the frame gate — which
+    // cannot see them, since neither the model nor the viewport changed — would have SKIPPED
+    // the frame and frozen them; and the honest fix for that, `invalidateFrame()`, would
+    // instead force a full VNode rebuild + reconcile of a 10k-node scene 240 times a second
+    // to move a 12-pixel arrow. Either way the previous wave's headline result is gone.
+    //
+    // So: mount the real overlay on the real scene, drive four cursors through 20 real
+    // interpolation frames, and then measure the DIAGRAM's idle frame. It must still be
+    // 0.0ms. If this row ever diverges from `idle-frame` above, presence has started paying
+    // for itself out of the renderer's budget, and that is exactly the regression the fence
+    // below exists to catch.
+    // =========================================================================
+    const presenceRoot = document.createElement('div');
+    presenceRoot.style.position = 'relative';
+    host.appendChild(presenceRoot);
+
+    const camera = new ViewportController({ viewport, zoom: 1 });
+    const presenceOverlay = new PresenceOverlay({
+      root: presenceRoot,
+      viewport: camera,
+      smoothing: 0.4,
+      // SYNCHRONOUS frames, and this is the difference between a measurement and a lie.
+      //
+      // The presenceOverlay's interpolation runs on rAF. This benchmark loop is synchronous, so with
+      // the real rAF the cursor callbacks would be QUEUED and never run — every DOM write the
+      // presenceOverlay does would happen after the last measurement, and `idle-frame-presence` would
+      // report 0.0ms because the presenceOverlay had done NOTHING. A green number measuring an
+      // presenceOverlay that never drew anything is worse than no number at all.
+      //
+      // Driving the frames inline means the transform writes, the element creation and the
+      // selection-outline restyle all land BETWEEN the measured renders — so the 0.0ms below
+      // means "the presenceOverlay did all of its real work and the diagram still paid nothing",
+      // which is the claim.
+      requestFrame: (cb) => {
+        cb();
+        return 0;
+      },
+      cancelFrame: () => undefined,
+      getBounds: (id) => {
+        const n = diagram.getNode(id);
+        return n
+          ? { x: n.position.x, y: n.position.y, width: n.size.width, height: n.size.height }
+          : null;
+      },
+    });
+
+    const cursorPeers = ['ana', 'bo', 'cy', 'dee'];
+    const presenceIdleFrames: number[] = [];
+    const presenceOverlayFrames: number[] = [];
+
+    for (let f = 0; f < 20; f++) {
+      // Every peer's cursor moves, every frame. The worst realistic case: four people sweeping
+      // the canvas at once, which is also exactly when the machine is busiest.
+      const tOverlay = now();
+      presenceOverlay.setPeers(
+        cursorPeers.map((actor, i) => ({
+          actor,
+          name: actor,
+          cursor: { x: 200 + f * 17 + i * 90, y: 150 + f * 9 + i * 40 },
+          selection: i === 0 ? ['n0'] : undefined,
+        }))
+      );
+      presenceOverlayFrames.push(now() - tOverlay);
+
+      // …and NOW time the DIAGRAM's frame. Nothing in the model or the viewport moved, so the
+      // gate must still close and hand the patcher back the identical VNode object.
+      const t = now();
+      const vnode = renderer.render(viewport, 1) as never;
+      patcher.reconcile(svg as unknown as Element, vnode);
+      presenceIdleFrames.push(now() - t);
+    }
+
+    record({
+      scenario: 'idle-frame-presence',
+      nodes: count,
+      links: linkCount,
+      ms: median(presenceIdleFrames),
+      worstMs: Math.max(...presenceIdleFrames),
+      frames: presenceIdleFrames.length,
+    });
+
+    // WHAT PRESENCE ITSELF COSTS. Reported so the 0.0ms above cannot be read as "the presenceOverlay
+    // did nothing" — `framesRun` proves the interpolation loop really ran, and this row is
+    // the price of four cursors, four badges and a selection outline, per frame, INDEPENDENT
+    // of scene size (it is four divs; the 10k nodes are not in this number and that is the
+    // whole point).
+    record({
+      scenario: 'presence-overlay-frame',
+      nodes: count,
+      links: linkCount,
+      ms: median(presenceOverlayFrames),
+      worstMs: Math.max(...presenceOverlayFrames),
+      frames: presenceOverlay.framesRun,
+    });
+
+    presenceOverlay.dispose();
+    presenceRoot.remove();
+
 
     renderer.dispose();
     engine.destroy();

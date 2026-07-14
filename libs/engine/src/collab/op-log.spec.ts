@@ -32,6 +32,47 @@ function bytes(d: DiagramModel): string {
 }
 
 /**
+ * Keys that are NOT part of the shared document, and therefore cannot appear in any
+ * document-equality oracle.
+ *
+ *   `version`  — a count of how many times THIS REPLICA mutated the entity. When two peers
+ *                race a register the winner applies two writes and the loser applies one
+ *                (its remote is refused, which is what makes them converge), so the
+ *                counters legitimately differ. A per-replica mutation count is a local
+ *                quantity, like a vector-clock component.
+ *
+ *   selected / hovered / highlighted / focused
+ *              — VIEWER state. These live inside NodeState next to durable facts like
+ *                `locked`, and the capture layer used to sync the whole object — so moving
+ *                your mouse wrote permanent ops into the document and your click
+ *                deselected my node. They are now stripped at capture (see capture.ts), so
+ *                by construction they never travel, and a replica will not have them.
+ *                Demanding they match would be demanding that the bug come back.
+ *
+ * The safeguard that keeps this honest: every test below that strips these ALSO asserts
+ * that nothing else in the entire document differs. We are not deleting fields until the
+ * suite goes green; we are stating exactly what is local and proving everything else is
+ * shared.
+ */
+const NOT_DOCUMENT = new Set(['version', 'selected', 'hovered', 'highlighted', 'focused']);
+
+/** The shared document: everything a peer is entitled to see, and nothing local. */
+function documentBytes(d: DiagramModel): string {
+  const strip = (v: unknown): unknown => {
+    if (Array.isArray(v)) return v.map(strip);
+    if (v && typeof v === 'object') {
+      return Object.fromEntries(
+        Object.entries(v as Record<string, unknown>)
+          .filter(([k]) => !NOT_DOCUMENT.has(k))
+          .map(([k, val]) => [k, strip(val)])
+      );
+    }
+    return v;
+  };
+  return JSON.stringify(strip(d.serialize()));
+}
+
+/**
  * The CONTENT of a diagram — everything except the per-entity `version` counter.
  *
  * ---------------------------------------------------------------------------
@@ -304,8 +345,16 @@ describe('THE CONTRACT: a real editing session replays byte-identically', () => 
     const replica = joiningPeer(diagram);
     replay(replica, ops);
 
-    // The oracle. Not "looks the same" — the same BYTES.
-    expect(bytes(replica)).toEqual(bytes(diagram));
+    // The oracle: the same DOCUMENT, byte for byte. Viewer-local state is excluded because
+    // it is not in the log BY DESIGN — the session below selects a node, and that selection
+    // must NOT travel (see the assertion two lines down, and ephemeral-state.spec.ts).
+    expect(documentBytes(replica)).toEqual(documentBytes(diagram));
+
+    // …and the proof that the exclusion is real rather than convenient: Alice selected
+    // node 'a', and the replica did not inherit her selection.
+    expect(diagram.getNode('a')!.state.selected).toBe(true);
+    expect(replica.getNode('a')!.state.selected).toBe(false);
+
     engine.destroy();
   });
 
@@ -327,11 +376,11 @@ describe('THE CONTRACT: a real editing session replays byte-identically', () => 
 
     const peer = new Replica(joiningPeer(diagram), { actor: 'bob' });
     expect(peer.receive(ops)).toHaveLength(ops.length); // all new
-    const once = bytes(peer.diagram);
+    const once = documentBytes(peer.diagram);
 
     expect(peer.receive(ops)).toHaveLength(0); // …and now none of it is
-    expect(bytes(peer.diagram)).toEqual(once);
-    expect(once).toEqual(bytes(diagram));
+    expect(documentBytes(peer.diagram)).toEqual(once);
+    expect(once).toEqual(documentBytes(diagram));
 
     peer.dispose();
     engine.destroy();
@@ -353,7 +402,7 @@ describe('THE CONTRACT: a real editing session replays byte-identically', () => 
     const replica = joiningPeer(diagram);
     replay(replica, shuffled);
 
-    expect(bytes(replica)).toEqual(bytes(diagram));
+    expect(documentBytes(replica)).toEqual(documentBytes(diagram));
     engine.destroy();
   });
 
@@ -538,10 +587,12 @@ describe('TWO PEERS: concurrent editing converges', () => {
       A.receive(shuffle([...bOps, ...aOps]));
       B.receive(shuffle([...aOps, ...bOps]));
 
-      // THE CONTENT CONVERGED — every position, label, size, state and structural fact.
-      expect({ trial, doc: contentBytes(A.diagram) }).toEqual({
+      // THE DOCUMENT CONVERGED — every position, label, size, lock and structural fact.
+      // (The fuzz deliberately keeps 'select' among its random actions: selection must not
+      // break convergence, and it must not travel. Both are asserted.)
+      expect({ trial, doc: documentBytes(A.diagram) }).toEqual({
         trial,
-        doc: contentBytes(B.diagram),
+        doc: documentBytes(B.diagram),
       });
 
       // …AND NOTHING BUT `version` IS PERMITTED TO DIFFER. This is what stops the line
@@ -552,10 +603,10 @@ describe('TWO PEERS: concurrent editing converges', () => {
       const fa = flatten(JSON.parse(bytes(A.diagram)));
       const fb = flatten(JSON.parse(bytes(B.diagram)));
       const differing = Object.keys(fa).filter((k) => fa[k] !== fb[k]);
-      expect({ trial, differing: differing.filter((k) => !k.endsWith('.version')) }).toEqual({
-        trial,
-        differing: [],
-      });
+      const unexpected = differing.filter(
+        (k) => ![...NOT_DOCUMENT].some((local) => k.endsWith(`.${local}`))
+      );
+      expect({ trial, differing: unexpected }).toEqual({ trial, differing: [] });
 
       [A, B, S].forEach((p) => p.dispose());
     }
