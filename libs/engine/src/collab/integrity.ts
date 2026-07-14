@@ -92,6 +92,21 @@ export class ReferentialIntegrity {
    */
   private readonly portOwner = new Map<string, string>();
 
+  /**
+   * Is the entity order possibly WRONG, and what is the newest presence stamp in each
+   * collection?
+   *
+   * canonicalize() is O(n) even when it changes nothing, and it used to run on every structural
+   * op — which is the other half of what made a bulk load quadratic. But order can only break
+   * one way: an entity APPENDED with a presence stamp OLDER than one already in the collection.
+   * Adds in the ordinary course of events arrive with ever-increasing clocks, so the collection
+   * stays sorted for free and the scan is pure waste. Removals cannot unsort anything.
+   *
+   * So: watch for a stamp that goes backwards, and only then pay for the sort.
+   */
+  private orderDirty = false;
+  private readonly maxPresence = new Map<string, Stamp>();
+
   constructor(
     private readonly diagram: DiagramModel,
     private readonly lww: LwwRegistry
@@ -129,11 +144,24 @@ export class ReferentialIntegrity {
     const link = this.quarantine.get(id);
     if (!link) return;
     this.quarantine.delete(id);
+    this.orderDirty = true; // re-inserting APPENDS — see canonicalizeIfDirty()
     this.diagram.addLink(link);
   }
 
-  /** Keep the port map current with the ops that change a node's structure. */
+  /** Keep the port map and the order watermark current with the ops that change structure. */
   note(op: Op): void {
+    // An `add` APPENDS to its collection. If its stamp is older than one already in there, the
+    // collection is no longer in canonical order and must be re-sorted — but only then.
+    if (op.op === 'add') {
+      const max = this.maxPresence.get(op.target);
+      const stamp: Stamp = { clock: op.clock, actor: op.actor };
+      if (max && (max.clock > stamp.clock || (max.clock === stamp.clock && max.actor > stamp.actor))) {
+        this.orderDirty = true;
+      } else {
+        this.maxPresence.set(op.target, stamp);
+      }
+    }
+
     if (op.target !== 'node') return;
     if (op.op === 'add' || (op.op === 'set' && op.path === 'ports')) {
       this.indexPorts(op.id);
@@ -174,26 +202,86 @@ export class ReferentialIntegrity {
   }
 
   /**
-   * Re-evaluate the invariant over the whole document.
+   * The INCREMENTAL invariant check: only what THIS op could possibly have broken.
    *
-   * Called ONCE PER BATCH of ops rather than once per op — it is O(links + quarantine), and
-   * a 10k-op replay that swept after every op would be quadratic. Batching is safe because
-   * the invariant is a function of the FINAL state of the batch, not of the path taken
-   * through it: a link that is orphaned mid-batch and re-parented by the end was never
-   * really orphaned.
+   * A full sweep after every local edit is O(links), and a local edit stream is n ops long, so
+   * a bulk load — importing a document into a live session — was O(n²). Measured: 2,000 nodes
+   * and 2,000 links took 8.5 SECONDS through a Replica, against ~90ms without one. Nothing
+   * caught it, because no perf gate in this repo drives a Replica. That is the shape of defect
+   * this codebase keeps shipping, and I very nearly shipped another one.
+   *
+   * So each op pays only for what it can actually affect:
+   *
+   *   add node      → only a QUARANTINED link can become live. The quarantine is almost always
+   *                   empty, so this is free. (A live link cannot break when a node ARRIVES.)
+   *   add link      → that one link. O(1).
+   *   remove link   → drop it from the quarantine. O(1).
+   *   remove node   → live links attached to it can be orphaned. O(links) — but deleting a node
+   *                   is a human action, not a loop.
+   *   set ports     → same as removing a node: an endpoint may have vanished.
+   *   set endpoints → that one link. O(1).
+   *
+   * A bulk load is all adds, so it is linear again.
+   */
+  settle(op: Op): void {
+    switch (op.op) {
+      case 'add':
+        if (op.target === 'node') this.releaseResolvable();
+        else if (op.target === 'link') this.checkLink(op.id);
+        break;
+
+      case 'remove':
+        if (op.target === 'node') {
+          this.evictOrphans();
+          this.releaseResolvable();
+        } else if (op.target === 'link') {
+          this.quarantine.delete(op.id);
+        }
+        break;
+
+      case 'set':
+        if (op.target === 'node' && op.path === 'ports') {
+          // A port can VANISH from under a link — the same wound as deleting the node, and
+          // the reason this is not just an add-path concern.
+          this.evictOrphans();
+          this.releaseResolvable();
+        } else if (
+          op.target === 'link' &&
+          (op.path === 'sourcePortId' || op.path === 'targetPortId')
+        ) {
+          this.checkLink(op.id);
+        }
+        break;
+    }
+    this.canonicalizeIfDirty();
+  }
+
+  /**
+   * Re-evaluate the invariant over the WHOLE document.
+   *
+   * Once per BATCH of remote ops, and once at the end of a replay — where the invariant is a
+   * function of the batch's final state, not of the path through it (a link orphaned mid-batch
+   * and re-parented by the end of it was never really orphaned).
    */
   reconcile(): void {
-    // 1. Evict links that have lost an endpoint — and, for the survivors, RE-RESOLVE the
-    //    cached endpoint node ids.
-    //
-    //    That re-resolution is not housekeeping, it is a bug fix. installLink() backfills
-    //    sourceNodeId/targetNodeId from the port index exactly once, at install, and only
-    //    if they are unset. A link applied BEFORE its node arrived (which the network is
-    //    entitled to do, and which a mesh does routinely) indexes nothing and keeps
-    //    `undefined` node ids forever. They are in serialize(), so the peers' documents
-    //    differ — and the renderer resolves port SIDES through them, so the link is drawn
-    //    wrong on one peer and right on the other. Deriving them here makes them a function
-    //    of state, like everything else in this file, and the arrival order stops mattering.
+    this.evictOrphans();
+    this.releaseResolvable();
+    this.canonicalizeIfDirty();
+  }
+
+  /**
+   * Evict links that have lost an endpoint — and RE-RESOLVE the cached endpoint node ids of
+   * the survivors.
+   *
+   * That re-resolution is not housekeeping, it is a bug fix. installLink() backfills
+   * sourceNodeId/targetNodeId from the port index exactly once, at install, and only if they
+   * are unset. A link applied BEFORE its node arrived (which the network is entitled to do,
+   * and which a mesh does routinely) indexes nothing and keeps `undefined` node ids FOREVER.
+   * They are in serialize(), so the peers' documents differ — and the renderer resolves port
+   * SIDES through them, so the link is drawn wrong on one peer and right on the other.
+   * Deriving them makes them a function of state, and the arrival order stops mattering.
+   */
+  private evictOrphans(): void {
     for (const link of this.diagram.getLinks()) {
       if (this.endpointsResolve(link)) {
         this.resolveEndpoints(link);
@@ -202,52 +290,75 @@ export class ReferentialIntegrity {
         this.quarantine.set(link.id, link);
       }
     }
+  }
 
-    // 2. Release links whose endpoints have come back. Repeat until stable: releasing a
-    //    link cannot revive a node, so one pass suffices — but a link released into the
-    //    document must have its endpoints resolved BEFORE it is installed, because
-    //    installLink only backfills ids it finds unset.
+  /** Give back the links whose endpoints have come home. */
+  private releaseResolvable(): void {
     for (const [id, link] of [...this.quarantine]) {
       if (!this.endpointsResolve(link)) continue;
       this.quarantine.delete(id);
+      // Endpoints resolved BEFORE it is installed: installLink only backfills ids it finds
+      // unset, so a link released with stale ids would keep them.
       this.resolveEndpoints(link);
+      // A released link is APPENDED, wherever its presence stamp says it belongs — so the
+      // collection may no longer be in canonical order. No `add` op passes through note() on
+      // this path, so nothing else would notice. (The 3-peer fuzz noticed: two peers holding
+      // the same two links in opposite order, which is the same document painted differently.)
+      this.orderDirty = true;
       this.diagram.addLink(link);
     }
+  }
 
-    // 3. And put the entities in a CANONICAL ORDER.
-    this.canonicalize();
+  /** One link, either way. */
+  private checkLink(id: string): void {
+    const live = this.diagram.getLink(id);
+    if (live) {
+      if (this.endpointsResolve(live)) this.resolveEndpoints(live);
+      else {
+        this.diagram.removeLink(id);
+        this.quarantine.set(id, live);
+      }
+      return;
+    }
+    const held = this.quarantine.get(id);
+    if (held && this.endpointsResolve(held)) {
+      this.quarantine.delete(id);
+      this.resolveEndpoints(held);
+      this.orderDirty = true; // appended — see canonicalizeIfDirty()
+      this.diagram.addLink(held);
+    }
   }
 
   /**
    * ORDER IS PART OF THE DOCUMENT, and the fuzz is what proved it.
    *
    * `serialize()` writes `nodes` as `Array.from(this.nodes.values())` — Map INSERTION order.
-   * And the SVG renderer sorts nodes by `zIndex` with a STABLE sort, so when zIndex ties
-   * (the overwhelmingly common case: nobody sets it, everything is 0) THE ARRAY ORDER IS THE
-   * PAINT ORDER. It decides which of two overlapping nodes is on top.
+   * And the SVG renderer sorts nodes by `zIndex` with a STABLE sort, so when zIndex ties (the
+   * overwhelmingly common case: nobody sets it, everything is 0) THE ARRAY ORDER IS THE PAINT
+   * ORDER. It decides which of two overlapping nodes is on top.
    *
    * Insertion order is a function of the path a peer took, not of the state it arrived at:
    *
    *     Alice deletes node `a` and undoes → `a` is re-inserted, so it moves to the END.
-   *     Bob receives the re-add BEFORE the delete → the delete is then refused as
-   *     superseded, Bob never removed anything, and `a` never moves.
+   *     Bob receives the re-add BEFORE the delete → the delete is then refused as superseded,
+   *     Bob never removed anything, and `a` never moves.
    *
    * Same ops. Same content, field for field. Different `nodes` array. The two of them paint
-   * overlapping nodes in a different order and save byte-different files. The fuzz caught it
-   * on trial 2 and it would never have occurred to me.
+   * overlapping nodes in a different order and save byte-different files. The fuzz caught it on
+   * trial 2 and it would never have occurred to me.
    *
    * The fix is the same shape as everything else in this file: DERIVE the order from the
    * converged state instead of inheriting it from the delivery path. An entity's rank is the
-   * stamp of the write that established its CURRENT INCARNATION — the winning presence op.
-   * That is identical on every peer, and in the ordinary case (add a, add b, add c, no
-   * deletes) it reproduces insertion order exactly, so nothing that was not already broken
-   * changes.
+   * stamp of the write that established its CURRENT INCARNATION. That is identical on every
+   * peer, and in the ordinary case (add a, add b, add c) it reproduces insertion order exactly,
+   * so nothing that was not already broken changes.
    *
-   * Entities with no presence stamp — a document loaded from a snapshot, whose creating ops
-   * are long compacted — predate the log and keep their relative order, which is what a
-   * stable sort gives for free.
+   * Gated on `orderDirty`, because the sort is O(n) even when it changes nothing and adds
+   * normally arrive with ever-increasing clocks — see the field's comment.
    */
-  private canonicalize(): void {
+  private canonicalizeIfDirty(): void {
+    if (!this.orderDirty) return;
+    this.orderDirty = false;
     this.order(this.diagram.nodes, 'node');
     this.order(this.diagram.links, 'link');
     this.order(this.diagram.groups, 'group');
@@ -265,17 +376,7 @@ export class ReferentialIntegrity {
       return a.actor < b.actor ? -1 : a.actor > b.actor ? 1 : 0;
     };
 
-    // The fast path, and it is the one taken essentially always: a peer that has not had a
-    // resurrection or an out-of-order presence op is ALREADY in canonical order, so this is
-    // an O(n) scan that touches nothing. Rebuilding a 10k-entry Map on every batch to change
-    // nothing would be a real cost paid for a rare correction.
     const entries = [...map.entries()];
-    let ordered = true;
-    for (let i = 1; i < entries.length && ordered; i++) {
-      if (cmp(rank(entries[i - 1][0]), rank(entries[i][0])) > 0) ordered = false;
-    }
-    if (ordered) return;
-
     entries.sort((a, b) => cmp(rank(a[0]), rank(b[0])));
     map.clear();
     for (const [k, v] of entries) map.set(k, v);

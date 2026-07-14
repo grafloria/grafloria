@@ -244,9 +244,10 @@ export class Replica {
     //
     // NOT for property writes: those cannot orphan anything, and reconciling on every one
     // would put an O(links) sweep inside the drag loop.
-    if (op.op === 'add' || op.op === 'remove') {
-      this.capture.silently(() => this.integrity.reconcile());
-    }
+    // INCREMENTAL, not a full sweep: settle() pays only for what this op could have broken.
+    // A sweep here is O(links), and a bulk load is n ops long — 2,000 nodes took 8.5 SECONDS
+    // through a Replica before this, and no perf gate in the repo drives one.
+    this.capture.silently(() => this.integrity.settle(op));
   }
 
   /**

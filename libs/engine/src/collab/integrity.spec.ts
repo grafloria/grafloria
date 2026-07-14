@@ -275,6 +275,37 @@ describe('referential integrity holds under replay, not just under receive()', (
   });
 });
 
+describe('the invariant is checked INCREMENTALLY, or the engine stops being usable', () => {
+  it('a bulk load through a Replica stays LINEAR — it was quadratic, and nothing was watching', () => {
+    // The invariant check began life as a full O(links) sweep after every structural op. A
+    // bulk load — importing a document into a live session — is n structural ops, so it was
+    // O(n²): MEASURED AT 8.5 SECONDS for 2,000 nodes and 2,000 links, against ~90ms for the
+    // same work with no Replica attached.
+    //
+    // Not one gate in this repo noticed, because no perf harness drives a Replica. I found it
+    // by measuring on a hunch, which is not a system. So the gate exists now.
+    //
+    // The budget is deliberately loose — a factor of ~8 over the measured 250ms — because a
+    // wall-clock assertion that is tight is a flaky test. It does not need to be tight: the
+    // failure it exists to catch is a 34× regression, and quadratic growth blows through any
+    // budget you like as soon as the diagram is real.
+    const N = 2000;
+    const r = new Replica(new DiagramModel('bulk'), { actor: 'importer' });
+
+    const started = performance.now();
+    for (let i = 0; i < N; i++) r.diagram.addNode(node(`n${i}`, i * 10, 0));
+    for (let i = 1; i < N; i++) r.diagram.addLink(link(`l${i}`, `n${i - 1}`, `n${i}`));
+    const elapsed = performance.now() - started;
+
+    expect(r.diagram.getNodes()).toHaveLength(N);
+    expect(r.diagram.getLinks()).toHaveLength(N - 1); // …and every link is LIVE, not quarantined
+    expect(r.quarantinedLinks).toEqual([]);
+    expect(elapsed).toBeLessThan(2000);
+
+    r.dispose();
+  });
+});
+
 describe('the LOCAL editor is held to the same rule', () => {
   it('a local removeNode() takes its links with it — RemoveNodeCommand never did', () => {
     // DiagramModel.removeNode() does not touch links, and RemoveNodeCommand (the single-
