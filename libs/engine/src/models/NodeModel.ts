@@ -2,6 +2,7 @@
 // Layout item configuration storage added in Phase 1.7
 
 import { DiagramEntity } from './DiagramEntity';
+import { writeBlocked } from './readonly-lock'; // Wave 9 — Card 7
 import type { DiagramModel } from './DiagramModel';
 import { PortModel, SerializedPort } from './PortModel';
 import type {
@@ -62,6 +63,16 @@ export interface SerializedNode extends SerializedEntity {
 export class NodeModel extends DiagramEntity {
   // Diagram reference (Phase 1.6a) - Non-enumerable to prevent circular cloning
   diagram?: DiagramModel;
+
+  /**
+   * Wave 9 — Card 7. Is a DOCUMENT write to this node forbidden right now?
+   * True only while the owning diagram is read-only and we are not inside a
+   * system write (auto-size / measurement). A detached node — one not yet added
+   * to any diagram — is freely mutable; `DiagramModel.addNode` is what refuses.
+   */
+  private writeBlocked(): boolean {
+    return writeBlocked(this.diagram);
+  }
 
   // Position & Transform
   position: Point;
@@ -192,6 +203,7 @@ export class NodeModel extends DiagramEntity {
    * Set position
    */
   setPosition(x: number, y: number, z?: number): void {
+    if (this.writeBlocked()) return;
     const oldPosition = { ...this.position };
     this.position = { x, y, z };
     this.trackChange('position', oldPosition, this.position);
@@ -204,6 +216,7 @@ export class NodeModel extends DiagramEntity {
    * Move by delta
    */
   move(dx: number, dy: number, dz?: number): void {
+    if (this.writeBlocked()) return;
     this.setPosition(
       this.position.x + dx,
       this.position.y + dy,
@@ -217,6 +230,7 @@ export class NodeModel extends DiagramEntity {
    * Set size
    */
   setSize(width: number, height: number, depth?: number): void {
+    if (this.writeBlocked()) return;
     const oldSize = { ...this.size };
     this.size = { width, height, depth };
     this.trackChange('size', oldSize, this.size);
@@ -226,6 +240,7 @@ export class NodeModel extends DiagramEntity {
    * Resize by delta
    */
   resize(dw: number, dh: number, dd?: number): void {
+    if (this.writeBlocked()) return;
     this.setSize(
       this.size.width + dw,
       this.size.height + dh,
@@ -239,6 +254,7 @@ export class NodeModel extends DiagramEntity {
    * Set rotation
    */
   setRotation(degrees: number): void {
+    if (this.writeBlocked()) return;
     const oldRotation = this.rotation;
     this.rotation = degrees % 360;
     this.trackChange('rotation', oldRotation, this.rotation);
@@ -251,6 +267,7 @@ export class NodeModel extends DiagramEntity {
    * Rotate by delta
    */
   rotate(degrees: number): void {
+    if (this.writeBlocked()) return;
     this.setRotation(this.rotation + degrees);
   }
 
@@ -258,6 +275,7 @@ export class NodeModel extends DiagramEntity {
    * Set scale
    */
   setScale(x: number, y: number): void {
+    if (this.writeBlocked()) return;
     const oldScale = { ...this.scale };
     this.scale = { x, y };
     this.trackChange('scale', oldScale, this.scale);
@@ -270,6 +288,7 @@ export class NodeModel extends DiagramEntity {
    * Add port
    */
   addPort(port: PortModel): void {
+    if (this.writeBlocked()) return;
     if (this.ports.has(port.id)) {
       throw new Error(`Port with id ${port.id} already exists`);
     }
@@ -284,6 +303,7 @@ export class NodeModel extends DiagramEntity {
    * Remove port
    */
   removePort(portId: string): PortModel | undefined {
+    if (this.writeBlocked()) return undefined;
     const port = this.ports.get(portId);
     if (port) {
       this.ports.delete(portId);
@@ -388,8 +408,30 @@ export class NodeModel extends DiagramEntity {
    * Set state property
    */
   setState(state: Partial<NodeState>): void {
+    // Wave 9 — Card 7. A read-only document still needs EPHEMERAL view state:
+    // selection, hover, highlight and a11y focus are how a viewer reads the
+    // diagram, and the Wave-6 screen-reader layer depends on them. So read-only
+    // filters setState to the view keys instead of refusing it — refusing
+    // outright would have made a presentation-mode diagram unnavigable and
+    // silently broken the roving-tabindex contract.
+    //
+    // Everything else on NodeState (locked, visible, expanded, enabled, error,
+    // warning, status) is DOCUMENT state and is dropped while locked. `visible`
+    // and `expanded` in particular are written by group collapse/expand, which
+    // is an edit.
+    let incoming = state;
+    if (this.writeBlocked()) {
+      const view: Partial<NodeState> = {};
+      if ('selected' in state) view.selected = state.selected;
+      if ('hovered' in state) view.hovered = state.hovered;
+      if ('highlighted' in state) view.highlighted = state.highlighted;
+      if ('focused' in state) view.focused = state.focused;
+      if (Object.keys(view).length === 0) return;
+      incoming = view;
+    }
+
     const oldState = { ...this.state };
-    this.state = { ...this.state, ...state };
+    this.state = { ...this.state, ...incoming };
     this.trackChange('state', oldState, this.state);
   }
 
@@ -397,6 +439,7 @@ export class NodeModel extends DiagramEntity {
    * Set behavior property
    */
   setBehavior(behavior: Partial<NodeBehavior>): void {
+    if (this.writeBlocked()) return;
     const oldBehavior = { ...this.behavior };
     this.behavior = { ...this.behavior, ...behavior };
     this.trackChange('behavior', oldBehavior, this.behavior);
@@ -473,6 +516,7 @@ export class NodeModel extends DiagramEntity {
    * Set style property
    */
   setStyle(style: Partial<NodeStyle>): void {
+    if (this.writeBlocked()) return;
     const oldStyle = { ...this.style };
     this.style = { ...this.style, ...style };
     this.trackChange('style', oldStyle, this.style);
@@ -482,6 +526,7 @@ export class NodeModel extends DiagramEntity {
    * Add CSS class
    */
   addClass(className: string): void {
+    if (this.writeBlocked()) return;
     if (!this.classes.has(className)) {
       this.classes.add(className);
       this.trackChange('classes', null, className);
@@ -492,6 +537,7 @@ export class NodeModel extends DiagramEntity {
    * Remove CSS class
    */
   removeClass(className: string): void {
+    if (this.writeBlocked()) return;
     if (this.classes.has(className)) {
       this.classes.delete(className);
       this.trackChange('classes', className, null);
@@ -502,6 +548,7 @@ export class NodeModel extends DiagramEntity {
    * Set data property
    */
   setData(key: string, value: any): void {
+    if (this.writeBlocked()) return;
     const oldValue = this.data[key];
     this.data[key] = value;
     this.trackChange(`data.${key}`, oldValue, value);
@@ -623,6 +670,7 @@ export class NodeModel extends DiagramEntity {
    * Set parent
    */
   setParent(parentId: string | undefined): void {
+    if (this.writeBlocked()) return;
     const oldParent = this.parentId;
     this.parentId = parentId;
     this.trackChange('parentId', oldParent, parentId);
@@ -632,6 +680,7 @@ export class NodeModel extends DiagramEntity {
    * Add child
    */
   addChild(childId: string): void {
+    if (this.writeBlocked()) return;
     if (!this.children.has(childId)) {
       this.children.add(childId);
       this.trackChange('children', null, childId);
@@ -642,6 +691,7 @@ export class NodeModel extends DiagramEntity {
    * Remove child
    */
   removeChild(childId: string): void {
+    if (this.writeBlocked()) return;
     if (this.children.has(childId)) {
       this.children.delete(childId);
       this.trackChange('children', childId, null);

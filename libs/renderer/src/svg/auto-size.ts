@@ -164,7 +164,13 @@ export function autoSizeNode(node: NodeModel, opts: AutoSizeOptions = {}): boole
     return false;
   }
 
-  node.setSize(width, height, node.size.depth);
+  // Wave 9 — Card 7: a SYSTEM write. Auto-sizing measures the node's own content
+  // and writes the size the document ALREADY implies — it is not a user edit. A
+  // read-only/presentation diagram must still auto-size or it renders at the wrong
+  // dimensions, so this write is explicitly exempted from the read-only lock.
+  // (Detached nodes have no `diagram`; they are unlocked anyway.)
+  const write = () => node.setSize(width, height, node.size.depth);
+  node.diagram ? node.diagram.runSystemWrite(write) : write();
   node.markDirty('auto-sized');
   return true;
 }

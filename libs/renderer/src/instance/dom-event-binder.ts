@@ -6,6 +6,9 @@ import { isBrowser } from '../platform';
 // registered tool gets first refusal on every gesture (see onMouseDown).
 import { resolveTool } from '../ext/tools';
 import type { CanvasTool, ToolHitContext, ToolPointerEvent } from '../ext/tools';
+// Wave 9 — Card 2: the touch/mobile gesture set (pan, pinch, tap, long-press,
+// drag-to-connect). Nothing in the framework-free renderer handled touch before.
+import { TouchGestureController } from '../interaction/touch-gestures';
 
 /**
  * DomEventBinder — the framework-agnostic DOM ⇄ interaction seam.
@@ -98,6 +101,44 @@ export class DomEventBinder {
   // `removeEventListener(this.onX.bind(this))` allocates a new function and
   // silently removes nothing (the classic listener leak).
   private readonly boundWheel = (e: WheelEvent) => this.onWheel(e);
+
+  /**
+   * Wave 9 — Card 2. The touch pipeline.
+   *
+   * The binder used to listen for `mousedown`/`mousemove`/`mouseup` — MouseEvent,
+   * mouse only. A touch reached it only as a browser-synthesized "compatibility"
+   * mouse event: no pinch, no two-finger pan, no long-press, a 300ms delay, and
+   * nothing at all once the browser decided the gesture was a scroll.
+   *
+   * Now the binder listens for POINTER events and forks on `pointerType`:
+   *   - touch  → TouchGestureController (multi-touch, gesture-aware)
+   *   - mouse/pen → the existing ladder below, unchanged (PointerEvent IS a
+   *     MouseEvent, so onMouseDown/Move/Up take it as-is)
+   */
+  private readonly touch: TouchGestureController;
+
+  /**
+   * Have we ever seen a real PointerEvent?
+   *
+   * The mouse listeners are kept as a LEGACY FALLBACK and auto-disable the instant
+   * a pointer event arrives. Why: every real browser fires `pointerdown` before the
+   * compatibility `mousedown`, so in a browser the pointer path wins and the mouse
+   * path goes dead — no double-handling. But jsdom implements NO PointerEvent at
+   * all, and this renderer's unit suites drive the binder by dispatching real
+   * `MouseEvent`s at the container. Feature-detecting instead of hard-switching
+   * keeps those suites (and any host that synthesizes mouse events) working exactly
+   * as before, while real hardware gets the pointer pipeline.
+   */
+  private sawPointerEvent = false;
+
+  /** The container's own touch-action, restored on detach. */
+  private previousTouchAction: string | null = null;
+
+  private readonly boundPointerDown = (e: PointerEvent) => this.onPointerDown(e);
+  private readonly boundPointerMove = (e: PointerEvent) => this.onPointerMove(e);
+  private readonly boundPointerUp = (e: PointerEvent) => this.onPointerUp(e);
+  private readonly boundPointerCancel = (e: PointerEvent) => this.onPointerCancel(e);
+  private readonly boundContextMenu = (e: MouseEvent) => this.onContextMenu(e);
   /**
    * Wave 6 — Card 5. The registered tool that CLAIMED the current gesture, if
    * any. Exactly one tool owns a gesture end-to-end (the same single-active-tool
@@ -119,9 +160,26 @@ export class DomEventBinder {
     return this.nodeDrag?.committed ? [...this.nodeDrag.nodeIds] : [];
   }
 
-  private readonly boundMouseDown = (e: MouseEvent) => this.onMouseDown(e);
-  private readonly boundMouseMove = (e: MouseEvent) => this.onMouseMove(e);
-  private readonly boundMouseUp = (e: MouseEvent) => this.onMouseUp(e);
+  // The legacy mouse listeners are GATED on `sawPointerEvent`: once the environment
+  // has proved it delivers PointerEvents, the pointer pipeline owns everything and
+  // these must go silent, or every mouse gesture would be handled twice (once as
+  // pointerdown, once as the compatibility mousedown that follows it).
+  //
+  // Gated on the LISTENER, not on onMouseDown() itself — the pointer fork calls
+  // onMouseDown() directly for mouse/pen, so gating the method would deafen the
+  // very path that replaces these.
+  private readonly boundMouseDown = (e: MouseEvent) => {
+    if (this.sawPointerEvent) return;
+    this.onMouseDown(e);
+  };
+  private readonly boundMouseMove = (e: MouseEvent) => {
+    if (this.sawPointerEvent) return;
+    this.onMouseMove(e);
+  };
+  private readonly boundMouseUp = (e: MouseEvent) => {
+    if (this.sawPointerEvent) return;
+    this.onMouseUp(e);
+  };
   private readonly boundMouseLeave = () => this.onMouseLeave();
   private readonly boundDblClick = (e: MouseEvent) => this.onDoubleClick(e);
   private readonly boundKeyDown = (e: KeyboardEvent) => this.onKeyDown(e);
@@ -139,6 +197,39 @@ export class DomEventBinder {
       dragThreshold: options.dragThreshold ?? 4,
       readonly: options.readonly ?? false,
     };
+
+    this.touch = new TouchGestureController(
+      {
+        getEngine: () => this.host.getEngine(),
+        viewport: this.host.viewport,
+        interaction: this.host.interaction,
+        getRect: () => this.host.getRect(),
+        requestRender: () => this.host.requestRender(),
+        emit: (event, payload) => this.host.emit(event, payload),
+        isReadonly: () => this.isReadonly(),
+      },
+      {
+        enablePan: this.options.enablePan,
+        enableZoom: this.options.enableZoom,
+      }
+    );
+  }
+
+  /**
+   * Wave 9 — Card 7. Is editing forbidden RIGHT NOW?
+   *
+   * Was: `this.options.readonly` — a static constructor flag. Which meant
+   * `engine.setMode(PRESENTATION)` — the engine's own read-only mode — did not
+   * reach the event binder AT ALL. You could put the engine in presentation mode
+   * and still drag nodes with the mouse.
+   *
+   * Now the binder asks the DOCUMENT, every time, so the mode is live: flip the
+   * engine to VIEW/PRESENTATION on a mounted canvas and the very next gesture is
+   * refused. The constructor option still forces read-only for a host that has no
+   * mode concept.
+   */
+  private isReadonly(): boolean {
+    return this.options.readonly || this.host.getEngine()?.getDiagram()?.isReadonly() === true;
   }
 
   /** Bind DOM listeners. No-op on the server and no-op if already attached. */
@@ -146,7 +237,38 @@ export class DomEventBinder {
     if (this.attached || !isBrowser()) return;
     this.attached = true;
 
+    // ------------------------------------------------------------------------
+    // Wave 9 — Card 2. `touch-action: none`.
+    //
+    // THE line that makes touch work, and it did not exist anywhere in this
+    // repository. Without it the browser owns the gesture: it decides a one-finger
+    // drag is a page scroll and a two-finger spread is a page zoom, and it STOPS
+    // DELIVERING pointermove to us mid-gesture. Every handler below can be
+    // perfectly correct and the canvas still will not pan — the events never
+    // arrive. This is the difference between "touch code exists" and "touch works".
+    //
+    // Set imperatively rather than in a stylesheet because the renderer is
+    // framework-free and ships no CSS; the container belongs to the host.
+    // ------------------------------------------------------------------------
+    this.previousTouchAction = this.container.style.touchAction ?? '';
+    this.container.style.touchAction = 'none';
+
     this.container.addEventListener('wheel', this.boundWheel, { passive: false });
+
+    // Pointer events: the primary pipeline (mouse, pen AND touch).
+    this.container.addEventListener('pointerdown', this.boundPointerDown);
+    this.container.addEventListener('pointermove', this.boundPointerMove);
+    this.container.addEventListener('pointerup', this.boundPointerUp);
+    this.container.addEventListener('pointercancel', this.boundPointerCancel);
+
+    // Suppress the OS long-press menu on touch; we emit our own `contextmenu`
+    // payload from the gesture controller (with the node/edge under the finger).
+    this.container.addEventListener('contextmenu', this.boundContextMenu);
+
+    // Legacy mouse listeners. Auto-disabled the moment a real PointerEvent shows
+    // up (see `sawPointerEvent`), so in a browser these are dead and there is no
+    // double-handling — but jsdom has no PointerEvent, and the unit suites drive
+    // this binder with dispatched MouseEvents.
     this.container.addEventListener('mousedown', this.boundMouseDown);
     this.container.addEventListener('mousemove', this.boundMouseMove);
     this.container.addEventListener('mouseup', this.boundMouseUp);
@@ -162,6 +284,11 @@ export class DomEventBinder {
     this.attached = false;
 
     this.container.removeEventListener('wheel', this.boundWheel);
+    this.container.removeEventListener('pointerdown', this.boundPointerDown);
+    this.container.removeEventListener('pointermove', this.boundPointerMove);
+    this.container.removeEventListener('pointerup', this.boundPointerUp);
+    this.container.removeEventListener('pointercancel', this.boundPointerCancel);
+    this.container.removeEventListener('contextmenu', this.boundContextMenu);
     this.container.removeEventListener('mousedown', this.boundMouseDown);
     this.container.removeEventListener('mousemove', this.boundMouseMove);
     this.container.removeEventListener('mouseup', this.boundMouseUp);
@@ -172,9 +299,76 @@ export class DomEventBinder {
       window.removeEventListener('keyup', this.boundKeyUp);
     }
 
+    // Give the container its touch-action back — the binder must leave no trace.
+    if (this.previousTouchAction !== null) {
+      this.container.style.touchAction = this.previousTouchAction;
+      this.previousTouchAction = null;
+    }
+
+    this.touch.reset();
     this.isPanning = false;
     this.nodeDrag = null;
     this.spaceKeyPressed = false;
+  }
+
+  // ==========================================================================
+  // Pointer events — the fork. Touch goes to the gesture controller; mouse and
+  // pen fall through to the ladder below (a PointerEvent IS a MouseEvent).
+  // ==========================================================================
+
+  private onPointerDown(event: PointerEvent): void {
+    this.sawPointerEvent = true;
+    if (event.pointerType === 'touch') {
+      // Claim the gesture: suppresses the synthesized compatibility mouse events
+      // (which would otherwise run the whole mouse ladder a second time for every
+      // tap) and the OS text-selection/callout.
+      event.preventDefault();
+      // Capture, so a finger that slides off the canvas keeps delivering move/up.
+      // Without it a drag that leaves the element silently stops mid-gesture.
+      this.container.setPointerCapture?.(event.pointerId);
+      this.touch.onPointerDown(event);
+      return;
+    }
+    this.onMouseDown(event);
+  }
+
+  private onPointerMove(event: PointerEvent): void {
+    this.sawPointerEvent = true;
+    if (event.pointerType === 'touch') {
+      this.touch.onPointerMove(event);
+      return;
+    }
+    this.onMouseMove(event);
+  }
+
+  private onPointerUp(event: PointerEvent): void {
+    this.sawPointerEvent = true;
+    if (event.pointerType === 'touch') {
+      this.container.releasePointerCapture?.(event.pointerId);
+      this.touch.onPointerUp(event);
+      return;
+    }
+    this.onMouseUp(event);
+  }
+
+  private onPointerCancel(event: PointerEvent): void {
+    if (event.pointerType === 'touch') {
+      this.container.releasePointerCapture?.(event.pointerId);
+      this.touch.onPointerCancel(event);
+      return;
+    }
+    this.onMouseLeave();
+  }
+
+  /**
+   * The native context menu. On touch the long-press already emitted our own
+   * `contextmenu` payload, so the OS menu here would be a duplicate on top of it.
+   */
+  private onContextMenu(event: MouseEvent): void {
+    const pointerType = (event as PointerEvent).pointerType;
+    if (pointerType === 'touch' || this.touch.activePointerCount > 0) {
+      event.preventDefault();
+    }
   }
 
   get isAttached(): boolean {
@@ -294,7 +488,7 @@ export class DomEventBinder {
     // With NO tools registered `resolveTool` returns undefined and everything
     // below is byte-identical to before — which is why this is additive.
     // ------------------------------------------------------------------
-    if (!this.options.readonly) {
+    if (!this.isReadonly()) {
       const toolEvent = this.toToolEvent('down', event, worldX, worldY);
       const toolHit = this.toToolHit(worldX, worldY);
       const tool = resolveTool(toolEvent, toolHit);
@@ -308,7 +502,7 @@ export class DomEventBinder {
       }
     }
 
-    if (!this.options.readonly) {
+    if (!this.isReadonly()) {
       // 2. Port → start a connection drag.
       if (state.hoveredPort) {
         event.preventDefault();
@@ -622,7 +816,7 @@ export class DomEventBinder {
   /** Double-click on a link body inserts a waypoint there (label editing is a host concern). */
   onDoubleClick(event: MouseEvent): void {
     const engine = this.engine();
-    if (!engine || this.options.readonly) return;
+    if (!engine || this.isReadonly()) return;
 
     const { x: worldX, y: worldY } = this.toWorld(event);
     const hit = this.host.interaction.getLinkHitAtPosition(worldX, worldY, engine);
@@ -672,7 +866,7 @@ export class DomEventBinder {
       return;
     }
 
-    if ((event.key === 'Delete' || event.key === 'Backspace') && !this.options.readonly) {
+    if ((event.key === 'Delete' || event.key === 'Backspace') && !this.isReadonly()) {
       const removedWaypoint = this.host.interaction.deleteHoveredWaypoint();
       const removedLink = this.host.interaction.deleteSelectedLink(engine);
       const selectedNodes = diagram.getSelectedNodes();
@@ -730,7 +924,7 @@ export class DomEventBinder {
     this.host.requestRender();
     this.emitSelectionChange();
 
-    if (this.options.readonly || !node.isDraggable() || !node.isSelected()) return;
+    if (this.isReadonly() || !node.isDraggable() || !node.isSelected()) return;
 
     const mode = this.engine()?.getInteractionConfig().mode;
     if (mode === 'deliberate' && !wasSelected) return; // first click only selects

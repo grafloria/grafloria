@@ -27,9 +27,34 @@ export class CommandManager {
   ) {}
 
   /**
+   * Wave 9 — Card 7. Is the document locked against edits?
+   *
+   * THE choke point for every command-shaped mutation. It matters far more than it
+   * looks, because these all funnel through here:
+   *   - clipboard: Paste / Cut / Duplicate commands (and `engine.paste()` etc.)
+   *   - the Wave-6 a11y keyboard layer, which is a pure COMMAND FACTORY — it
+   *     returns `Command | null` and never executes, so refusing here refuses
+   *     keyboard delete / nudge / duplicate / connect in one place
+   *   - `ext/public-api.ts`, the extension escape hatch
+   *
+   * `context.diagram` is typed `any` on CommandContext, hence the defensive probe.
+   */
+  private isReadonly(): boolean {
+    return this.context?.diagram?.blocksDocumentWrite?.() === true;
+  }
+
+  /**
    * Execute a command
    */
   async execute(command: Command): Promise<void> {
+    // Refused BEFORE canExecute so a command cannot mutate anything in its own
+    // permission check, and before the merge path below — a merged command
+    // re-executes, which would otherwise be a hole straight through the lock.
+    if (this.isReadonly()) {
+      this.eventBus.emit('command:refused', { command, reason: 'readonly' });
+      return;
+    }
+
     if (!command.canExecute(this.context)) {
       throw new Error(`Cannot execute command: ${command.name}`);
     }
@@ -106,6 +131,14 @@ export class CommandManager {
    * Undo last command
    */
   async undo(): Promise<void> {
+    // Undo is a MUTATION and it bypasses executeCommand() entirely (it calls
+    // command.undo() directly), so it needs its own guard — gating execute()
+    // alone would leave undo/redo as a wide-open door into a locked document.
+    if (this.isReadonly()) {
+      this.eventBus.emit('command:refused', { reason: 'readonly', phase: 'undo' });
+      return;
+    }
+
     if (!this.canUndo()) {
       return;
     }
@@ -145,6 +178,11 @@ export class CommandManager {
    * Redo command
    */
   async redo(): Promise<void> {
+    if (this.isReadonly()) {
+      this.eventBus.emit('command:refused', { reason: 'readonly', phase: 'redo' });
+      return;
+    }
+
     if (!this.canRedo()) {
       return;
     }
@@ -190,6 +228,15 @@ export class CommandManager {
    */
   async endBatch(name: string = 'Batch Operation'): Promise<void> {
     this.batchMode = false;
+
+    // endBatch calls executeCommand() DIRECTLY, so it needs its own guard: a batch
+    // opened before the document was locked and flushed after would otherwise
+    // replay every queued command straight through the lock.
+    if (this.isReadonly()) {
+      this.batchCommands = [];
+      this.eventBus.emit('command:refused', { reason: 'readonly', phase: 'batch' });
+      return;
+    }
 
     if (this.batchCommands.length === 0) {
       return;

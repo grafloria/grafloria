@@ -202,7 +202,14 @@ export function mountNodeComponents(
     // -- WRITE-BACK PHASE ----------------------------------------------------
     const batch = (instance as Partial<DiagramInstance>).batchUpdate;
     const apply = (): void => {
-      for (const { node, width, height } of sizes) node.setSize(width, height);
+      // Wave 9 — Card 7: a SYSTEM write, for the same reason as svg/auto-size.ts —
+      // this is the MEASURED size of the component the document already declares,
+      // not an edit to the document. Exempt from the read-only lock so a custom
+      // node still sizes correctly in presentation mode.
+      for (const { node, width, height } of sizes) {
+        const write = () => node.setSize(width, height);
+        node.diagram ? node.diagram.runSystemWrite(write) : write();
+      }
     };
     // `batchUpdate` is the wave8 entry point; tolerate an older instance shape
     // (tests build partial fakes) by falling back to the plain path.

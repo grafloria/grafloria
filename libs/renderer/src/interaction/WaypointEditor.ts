@@ -122,12 +122,18 @@ export class WaypointEditor {
    * Hit test for clicking on a waypoint handle
    * Optimized to avoid allocations on hot path (mousemove)
    */
-  hitTestWaypoint(mouseX: number, mouseY: number, points: Point[]): WaypointHitResult | null {
+  hitTestWaypoint(
+    mouseX: number,
+    mouseY: number,
+    points: Point[],
+    /** Wave 9 — Card 2: extra world-space radius for a touch pointer. 0 for mouse. */
+    hitSlop = 0
+  ): WaypointHitResult | null {
     // Fast path: no waypoints if less than 3 points
     if (points.length < 3) return null;
 
     const mousePoint = { x: mouseX, y: mouseY };
-    const hitRadius = this.config.handleRadius + 5;
+    const hitRadius = this.config.handleRadius + 5 + hitSlop;
 
     // Direct iteration - no intermediate allocations
     for (let i = 1; i < points.length - 1; i++) {
@@ -152,12 +158,18 @@ export class WaypointEditor {
   /**
    * Hit test for clicking on a path segment (to add waypoint)
    */
-  hitTestPath(mouseX: number, mouseY: number, points: Point[]): PathHitResult | null {
+  hitTestPath(
+    mouseX: number,
+    mouseY: number,
+    points: Point[],
+    /** Wave 9 — Card 2: extra world-space radius for a touch pointer. */
+    hitSlop = 0
+  ): PathHitResult | null {
     if (points.length < 2) return null;
 
     const mousePoint = { x: mouseX, y: mouseY };
     let closestHit: PathHitResult | null = null;
-    let closestDistance = this.config.clickDetectionRadius;
+    let closestDistance = this.config.clickDetectionRadius + hitSlop;
 
     // Check each segment
     for (let i = 0; i < points.length - 1; i++) {
