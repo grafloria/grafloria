@@ -237,6 +237,34 @@ describe('CommentStore — comments ride the op log', () => {
     expect(m.editedAt).toBeGreaterThan(0);
   });
 
+  it('two messages posted in the SAME MILLISECOND still read in the order they were written', () => {
+    // A real bug, found by a frozen clock — which is the only way a millisecond collision
+    // is reliably reproducible, and which is exactly what a paste or a scripted reply
+    // produces in the wild.
+    //
+    // `messageOrder` is (createdAt, author, id). When two messages share a millisecond AND
+    // an author, the ID is the whole tiebreak — so if the id is random-first, the order of
+    // the conversation is decided by a coin toss. Every peer agrees on the coin toss (so it
+    // converges, and a convergence test would stay green), and every peer reads the
+    // conversation backwards. The id now carries a zero-padded per-session counter ahead of
+    // its random suffix, so the tiebreak is authoring order.
+    //
+    // Repeated, because "it passed once" is what a random id looks like half the time.
+    for (let trial = 0; trial < 200; trial++) {
+      const frozen = new DiagramModel('d');
+      const store = new CommentStore(frozen, { viewer: 'ada', now: () => 1_700_000_000_000 });
+      const tid = store.createThread({ kind: 'region', x: 0, y: 0 }, 'first');
+      store.reply(tid, 'second');
+      store.reply(tid, 'third');
+      expect(store.thread(tid)!.messages.map((m) => m.body)).toEqual([
+        'first',
+        'second',
+        'third',
+      ]);
+      store.dispose();
+    }
+  });
+
   it('the messages of a thread read in the SAME order on every peer', () => {
     const tid = A.store.createThread({ kind: 'node', id: 'n1' }, 'a');
     deliver(A, B);

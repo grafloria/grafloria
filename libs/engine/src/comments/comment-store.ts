@@ -580,13 +580,23 @@ export class CommentStore {
    *
    * A per-session counter alone would be a disaster: restart the tab and it restarts at
    * 1, so `alice-m1` collides with a message alice wrote yesterday, whose register it
-   * would then silently OVERWRITE. Hence time + randomness + a counter, and an
+   * would then silently OVERWRITE. Hence time + a counter + randomness, and an
    * `idFactory` seam so tests can be deterministic without the production path pretending
    * to be.
+   *
+   * THE COUNTER SITS BEFORE THE RANDOM SUFFIX, AND THAT ORDERING IS LOAD-BEARING. The id
+   * is the LAST tiebreak in `messageOrder` — (createdAt, author, id) — so it decides the
+   * order of two messages written by the same person in the same MILLISECOND. Put the
+   * random part first and that decision is a coin toss: paste two comments in quick
+   * succession and they can read back in the wrong order. (Found by a test with a frozen
+   * clock, which is the only way a millisecond collision is reliably reproducible.) With
+   * the zero-padded counter in front, same-millisecond messages sort in the order they
+   * were actually written — on every peer, forever, because the id travels in the op.
    */
   private mintId(prefix: string): string {
     if (this.opts.idFactory) return this.opts.idFactory();
+    const seq = (this.counter++).toString(36).padStart(4, '0');
     const rand = Math.random().toString(36).slice(2, 8);
-    return `${prefix}_${Date.now().toString(36)}_${rand}${(this.counter++).toString(36)}`;
+    return `${prefix}_${Date.now().toString(36)}_${seq}_${rand}`;
   }
 }
