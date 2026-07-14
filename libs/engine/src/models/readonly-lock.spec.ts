@@ -246,6 +246,43 @@ describe('read-only lock — the enforcement boundary', () => {
     });
   });
 
+  describe('DEFENCE IN DEPTH: the model refuses even when the CommandManager is bypassed', () => {
+    it('a command executed DIRECTLY (not via CommandManager) is still refused', async () => {
+      // This is why enforcement lives at the MODEL and not only at the choke point.
+      // The Wave-6 a11y keyboard layer is a command FACTORY — it hands the host a
+      // `Command` and the host decides how to run it. A host that calls
+      // `command.execute(ctx)` itself would sail straight past CommandManager's
+      // guard. The model guard underneath is what makes that a no-op instead of an
+      // edit, so read-only is a property of the DOCUMENT, not of one code path.
+      const engine = new DiagramEngine();
+      const diagram = new DiagramModel();
+      const a = mkNode('a', 0, 0);
+      diagram.addNode(a);
+      engine.setDiagram(diagram);
+      diagram.setReadonly(true);
+
+      const command = new MoveNodeCommand('a', { x: 500, y: 500 });
+      await command.execute({
+        diagram,
+        eventBus: (engine as unknown as { eventBus: unknown }).eventBus,
+      } as never);
+
+      expect(a.position).toMatchObject({ x: 0, y: 0 });
+    });
+
+    it('a raw model write from ANY caller is refused (no privileged path)', () => {
+      const { diagram, a, link } = lockedDiagram();
+      // Whatever the caller — a plugin, a host, a stray setTimeout — the document
+      // is inert.
+      a.setPosition(1, 1);
+      link.setPoints([{ x: 9, y: 9 }]);
+      diagram.deleteSelected();
+
+      expect(a.position).toMatchObject({ x: 0, y: 0 });
+      expect(diagram.getNodes()).toHaveLength(2);
+    });
+  });
+
   describe('DiagramMode is finally WIRED (it gated nothing before this wave)', () => {
     it('setMode(PRESENTATION) locks the document; DESIGNER unlocks it', () => {
       const engine = new DiagramEngine();
