@@ -29,9 +29,11 @@ import { DiagramModel } from '../models/DiagramModel';
 import { NodeModel } from '../models/NodeModel';
 import { LinkModel } from '../models/LinkModel';
 import { GroupModel } from '../models/GroupModel';
+import { PortModel } from '../models/PortModel';
 import type { SerializedNode } from '../models/NodeModel';
 import type { SerializedLink } from '../models/LinkModel';
 import type { SerializedGroup } from '../models/GroupModel';
+import type { SerializedPort } from '../models/PortModel';
 import type { Op, OpValue } from './op';
 
 /** Thrown only for a MALFORMED op — never for a merely-losing one. */
@@ -153,8 +155,30 @@ function applySet(diagram: DiagramModel, op: Extract<Op, { op: 'set' }>): boolea
   // Dropping the write is correct under remove-wins (see CONVERGENCE in op-log.ts):
   // resurrecting an entity from a stray property write would be far worse than losing
   // one property write on a node that no longer exists.
+  //
+  // Card 4 note: "dropped" is right for a REMOVED entity and WRONG for one that has
+  // merely not arrived yet, or that referential integrity is holding in quarantine. Those
+  // two cases are caught ABOVE this function, by the Replica — see integrity.ts. applyOp
+  // itself stays a pure function of (model, op) and keeps no memory of its own.
   if (!entity) return false;
 
+  return applyEntitySet(entity, path, value);
+}
+
+/**
+ * Write one property register of an entity that is ALREADY RESOLVED.
+ *
+ * Split out of applySet so that referential integrity can drive the identical write into
+ * an entity it is holding OUTSIDE the diagram (a link quarantined because its endpoint
+ * node is gone, see integrity.ts). Same mutators, same idempotence guard, same everything —
+ * a quarantined entity that took a DIFFERENT write path would drift from a live one, and
+ * that drift would only surface on resurrection, long after the cause.
+ */
+export function applyEntitySet(
+  entity: NodeModel | LinkModel | GroupModel,
+  path: string,
+  value: OpValue
+): boolean {
   // A WRITE THAT CHANGES NOTHING MUST DO NOTHING. This is not an optimisation, it is
   // what makes applyOp IDEMPOTENT, and idempotence is not optional here: redundant sets
   // are ROUTINE traffic (a duplicate delivery, a reconnect replaying the log, a peer
@@ -172,10 +196,22 @@ function applySet(diagram: DiagramModel, op: Extract<Op, { op: 'set' }>): boolea
   return setEntityProp(entity, path, value);
 }
 
+/** Read the register an op path names. Exported for undo, which needs the value a
+ *  register held before an op overwrote it. */
+export function readProp(entity: NodeModel | LinkModel | GroupModel, path: string): unknown {
+  return readEntityProp(entity, path);
+}
+
 /** Read the register an op path names, so we can tell a real write from a redundant one. */
 function readEntityProp(entity: NodeModel | LinkModel | GroupModel, path: string): unknown {
   if (path.startsWith('metadata.')) {
     return entity.getMetadata(path.slice('metadata.'.length));
+  }
+  // `ports` is held as a Map but travels as a serialized array — compare like with like, or
+  // the idempotence guard never fires and every duplicate delivery rebuilds the collection
+  // and bumps `version`, which the byte-identical replay oracle would then catch.
+  if (path === 'ports' && entity instanceof NodeModel) {
+    return entity.getPorts().map((p) => p.serialize());
   }
   let cur: unknown = entity;
   for (const part of path.split('.')) {
@@ -239,6 +275,23 @@ function setEntityProp(
 
   if (entity instanceof NodeModel) {
     switch (path) {
+      case 'ports': {
+        // PORTS ARE A Map, exactly like metadata, and exactly as dangerous. There is no
+        // setPorts() mutator, so writeGeneric would fall through to a direct assignment and
+        // REPLACE THE Map WITH A PLAIN OBJECT — after which getPorts() returns nothing and
+        // serialize() throws on ports.values(). Rebuild it the way fromJSON does.
+        const incoming = (Array.isArray(value) ? value : []) as unknown as SerializedPort[];
+        const next = new Map<string, PortModel>();
+        for (const p of incoming) {
+          // Reuse the LIVE PortModel where the id already exists: ports carry connection
+          // state and identity that a rebuilt instance would drop on the floor.
+          const existing = entity.ports.get(p.id);
+          next.set(p.id, existing ?? PortModel.fromJSON(p));
+        }
+        entity.ports.clear();
+        for (const [id, p] of next) entity.ports.set(id, p);
+        return true;
+      }
       case 'position': {
         const p = value as { x: number; y: number; z?: number };
         entity.setPosition(p.x, p.y, p.z);

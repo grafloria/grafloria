@@ -16,12 +16,17 @@
 export { LamportClock, compareOps, opId } from './op';
 export type { ActorId, Op, AddOp, RemoveOp, SetOp, OpPath, OpTarget, OpValue } from './op';
 
-export { applyOp, OpApplyError } from './apply-op';
+export { applyOp, applyEntitySet, OpApplyError } from './apply-op';
 export { OpLog, replay } from './op-log';
 export { OpCapture } from './capture';
-export type { OpCaptureOptions } from './capture';
+export type { OpCaptureOptions, OpBefore } from './capture';
 
 export { Replica } from './replica';
 export type { ReplicaOptions } from './replica';
 export { LwwRegistry } from './lww';
 export type { Stamp } from './lww';
+
+// Card 4. The one invariant a diagram cannot survive breaking, and the undo that knows it
+// is not alone in the room.
+export { ReferentialIntegrity } from './integrity';
+export { UndoStack } from './undo';
