@@ -120,10 +120,12 @@ export class ControlPointEditor {
   hitTestControlPoint(
     mouseX: number,
     mouseY: number,
-    segments: PathSegment[]
+    segments: PathSegment[],
+    /** Wave 9 — Card 2: extra world-space radius for a touch pointer. 0 for mouse. */
+    hitSlop = 0
   ): ControlPointHitResult | null {
     let closestPoint: ControlPointHitResult | null = null;
-    let closestDistance = this.config.clickDetectionRadius;
+    let closestDistance = this.config.clickDetectionRadius + hitSlop;
 
     const mousePoint = { x: mouseX, y: mouseY };
 

@@ -67,6 +67,46 @@ export class InteractionController {
   protected readonly arrowRenderer = new ArrowRenderer();
 
   /**
+   * Wave 9 — Card 2. Extra hit radius in WORLD units, granted while a TOUCH
+   * pointer owns the gesture (the binder sets it on touch down and clears it on
+   * up). A 5px port is not hittable with a fingertip; this is what makes ports,
+   * waypoints and control-point handles touch-sized without changing how any of
+   * them RENDER — the visual stays crisp, only the catchment grows.
+   *
+   * World, not screen: every hit test here is world-space, so a screen-px slop
+   * would shrink to nothing exactly when you are zoomed out and the targets are
+   * already smallest.
+   */
+  private hitSlop = 0;
+
+  /**
+   * Wave 9 — Card 7. Is the document locked?
+   *
+   * The InteractionController is the LAST place a read-only bypass could hide,
+   * because it is the one layer that mutates the model DIRECTLY — it never touches
+   * the CommandManager. Most of its writes now hit the model-level guards anyway,
+   * but `moveControlPoint` writes `link.segments` as a RAW PUBLIC FIELD, which no
+   * model guard can see. So the refusal has to be here as well.
+   */
+  private isReadonlyEngine(engine?: DiagramEngine | null): boolean {
+    return engine?.getDiagram()?.isReadonly() === true;
+  }
+
+  /** Read-only probe for the methods that are handed a link but no engine. */
+  private isReadonlyLink(link?: LinkModel | null): boolean {
+    return (link as unknown as { diagram?: { isReadonly(): boolean } })?.diagram?.isReadonly() === true;
+  }
+
+  /** Grow every hit target by `world` units (0 = mouse-precision, the default). */
+  setHitSlop(world: number): void {
+    this.hitSlop = Math.max(0, world);
+  }
+
+  getHitSlop(): number {
+    return this.hitSlop;
+  }
+
+  /**
    * Current hover state
    */
   protected hoveredNode: NodeModel | null = null;
@@ -389,6 +429,7 @@ export class InteractionController {
    * CRITICAL FIX: Added detailed logging
    */
   startConnection(port: PortModel, worldX: number, worldY: number, engine: DiagramEngine): void {
+    if (this.isReadonlyEngine(engine)) return;
     // Phase 5: Validate inputs
     if (!port || !engine || !isFinite(worldX) || !isFinite(worldY)) {
       console.warn('❌ Invalid inputs for startConnection:', { port: !!port, engine: !!engine, worldX, worldY });
@@ -421,6 +462,7 @@ export class InteractionController {
    * Phase 5: Enhanced with validation and error handling
    */
   completeConnection(engine: DiagramEngine): boolean {
+    if (this.isReadonlyEngine(engine)) return false;
     // Phase 5: Validate state
     if (!this.isConnecting || !this.connectionSourcePort) {
       return false;
@@ -659,6 +701,7 @@ export class InteractionController {
    * fails {@link isValidReconnectionTarget}.
    */
   completeLinkReconnection(engine: DiagramEngine): boolean {
+    if (this.isReadonlyEngine(engine)) return false;
     if (!this.isReconnectingLink || !this.reconnectingLink || !this.reconnectingEndpoint) {
       return false;
     }
@@ -859,6 +902,7 @@ export class InteractionController {
    * Returns true when a re-render is warranted.
    */
   moveLabelDrag(worldX: number, worldY: number): boolean {
+    if (this.isReadonlyLink(this.editingLabelLink)) return false;
     if (!this.isDraggingLabel || !this.editingLabelLink || this.editingLabelIndex === null) {
       return false;
     }
@@ -920,6 +964,7 @@ export class InteractionController {
    * Phase 3: Delete selected link
    */
   deleteSelectedLink(engine: DiagramEngine): boolean {
+    if (this.isReadonlyEngine(engine)) return false;
     const diagram = engine.getDiagram();
     if (!diagram) return false;
 
@@ -1057,7 +1102,8 @@ export class InteractionController {
     try {
       const config = engine.getInteractionConfig();
       const portRadius = config.portDefaultRadius * config.portHoverScaleFactor;
-      const hitRadius = portRadius + 2; // Add 2px tolerance
+      // + hitSlop: touch-sized targets (Wave 9 Card 2). 0 for a mouse.
+      const hitRadius = portRadius + 2 + this.hitSlop; // Add 2px tolerance
 
       // Phase 5: Optimization - early exit if no nodes
       const nodes = diagram.getNodes();
@@ -1154,7 +1200,7 @@ export class InteractionController {
     // The cross-backend link grab distance. Canvas mode strokes each link's
     // colour-key pick region with exactly 2x this, so both backends resolve the
     // same link at the same world point.
-    const hitThreshold = DEFAULT_LINK_HIT_TOLERANCE;
+    const hitThreshold = DEFAULT_LINK_HIT_TOLERANCE + this.hitSlop;
     const query: Point = { x: worldX, y: worldY };
 
     for (const link of diagram.getLinks()) {
@@ -1359,7 +1405,7 @@ export class InteractionController {
       return null;
     }
 
-    const hit = this.waypointEditor.hitTestWaypoint(mouseX, mouseY, link.points);
+    const hit = this.waypointEditor.hitTestWaypoint(mouseX, mouseY, link.points, this.hitSlop);
     return hit ? hit.waypointIndex : null;
   }
 
@@ -1371,7 +1417,7 @@ export class InteractionController {
       return false;
     }
 
-    const hit = this.waypointEditor.hitTestPath(mouseX, mouseY, link.points);
+    const hit = this.waypointEditor.hitTestPath(mouseX, mouseY, link.points, this.hitSlop);
     return hit !== null;
   }
 
@@ -1390,6 +1436,7 @@ export class InteractionController {
    * The waypoint is just moved, orthogonal routing happens during rendering
    */
   moveWaypoint(worldX: number, worldY: number, engine: DiagramEngine): boolean {
+    if (this.isReadonlyEngine(engine)) return false;
     if (!this.isDraggingWaypoint || !this.editingLink || this.editingWaypointIndex === null || !this.waypointEditor) {
       return false;
     }
@@ -1429,6 +1476,7 @@ export class InteractionController {
    * Add waypoint at click position on path
    */
   addWaypoint(clickX: number, clickY: number, link: LinkModel): boolean {
+    if (this.isReadonlyLink(link)) return false;
     if (!this.waypointEditor) {
       return false;
     }
@@ -1449,6 +1497,7 @@ export class InteractionController {
    * Remove waypoint at index
    */
   removeWaypoint(waypointIndex: number, link: LinkModel): boolean {
+    if (this.isReadonlyLink(link)) return false;
     if (!this.waypointEditor) {
       return false;
     }
@@ -1512,6 +1561,7 @@ export class InteractionController {
    * Delete currently hovered waypoint (for Delete key)
    */
   deleteHoveredWaypoint(): boolean {
+    if (this.isReadonlyLink(this.hoveredLink)) return false;
     if (this.hoveredWaypointIndex !== null && this.hoveredWaypointLink) {
       const removed = this.removeWaypoint(this.hoveredWaypointIndex, this.hoveredWaypointLink);
       if (removed) {
@@ -1540,7 +1590,7 @@ export class InteractionController {
       return null;
     }
 
-    const hit = this.controlPointEditor.hitTestControlPoint(mouseX, mouseY, link.segments);
+    const hit = this.controlPointEditor.hitTestControlPoint(mouseX, mouseY, link.segments, this.hitSlop);
     if (hit) {
       return {
         segmentIndex: hit.segmentIndex,
@@ -1569,6 +1619,7 @@ export class InteractionController {
    * Move control point during drag
    */
   moveControlPoint(worldX: number, worldY: number, engine: DiagramEngine): boolean {
+    if (this.isReadonlyEngine(engine)) return false; // RAW segments write below — no model guard can see it
     if (
       !this.isDraggingControlPoint ||
       !this.editingControlPointLink ||
