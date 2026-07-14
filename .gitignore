@@ -53,3 +53,4 @@ libs/renderer/e2e/playground.bundle.js
 libs/engine/e2e/layout.worker.bundle.js
 libs/engine/e2e/worker-layout.bundle.js
 libs/renderer/e2e/perf-bundle.js
+libs/renderer/e2e/sync-bundle.js
