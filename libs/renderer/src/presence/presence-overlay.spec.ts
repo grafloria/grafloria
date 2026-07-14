@@ -3,7 +3,13 @@
 // The first describe is the one that guards Wave 8's headline result. The rest is the
 // feature.
 
-import { PresenceOverlay, actorColor, actorInitials, PRESENCE_LAYER_CLASS } from './presence-overlay';
+import {
+  PresenceOverlay,
+  actorColor,
+  actorInitials,
+  contrastingTextColor,
+  PRESENCE_LAYER_CLASS,
+} from './presence-overlay';
 import { ViewportController } from '../viewport/viewport-controller';
 
 /** A hand-cranked rAF: the test decides when a frame happens, so nothing races. */
@@ -257,6 +263,94 @@ describe('identity', () => {
 
     overlay.setPeers([{ actor: 'a1b2', cursor: { x: 0, y: 0 } }]);
     expect(root.querySelector('.grafloria-presence-label')!.textContent).toBe('a1b2');
+    overlay.dispose();
+  });
+});
+
+describe('the NAME BADGE is readable — a bug axe found after every unit test was green', () => {
+  // ---------------------------------------------------------------------------
+  // The badge was white text on the peer's colour. Fine for a blue actor; for a GREEN one —
+  // `hsl(124, 72%, 52%)` — it is white on light green at about 2:1, and a user with low
+  // vision cannot read whose cursor it is. Which actor gets which hue is decided by a hash
+  // of their id, so it works on your machine, for your account, every time you test it.
+  //
+  // No unit test here could have caught it: they assert `aria-hidden`, which is about
+  // ASSISTIVE TECH, and this is not an AT problem at all — it is a problem for someone
+  // looking straight at the screen. Only the real axe audit over real badges found it.
+  //
+  // So this test is the generalisation of what axe found on two hues: EVERY hue, checked.
+  // ---------------------------------------------------------------------------
+
+  /** WCAG contrast ratio between two sRGB colours. */
+  function contrast(a: [number, number, number], b: [number, number, number]): number {
+    const lum = ([r, g, bl]: [number, number, number]) => {
+      const ch = (c: number) => {
+        const s = c / 255;
+        return s <= 0.03928 ? s / 12.92 : Math.pow((s + 0.055) / 1.055, 2.4);
+      };
+      return 0.2126 * ch(r) + 0.7152 * ch(g) + 0.0722 * ch(bl);
+    };
+    const [hi, lo] = [lum(a), lum(b)].sort((x, y) => y - x);
+    return (hi + 0.05) / (lo + 0.05);
+  }
+
+  function hslToRgb(h: number, s: number, l: number): [number, number, number] {
+    const c = (1 - Math.abs(2 * l - 1)) * s;
+    const hp = (((h % 360) + 360) % 360) / 60;
+    const x = c * (1 - Math.abs((hp % 2) - 1));
+    const m = l - c / 2;
+    const [r, g, b] =
+      hp < 1 ? [c, x, 0] : hp < 2 ? [x, c, 0] : hp < 3 ? [0, c, x]
+      : hp < 4 ? [0, x, c] : hp < 5 ? [x, 0, c] : [c, 0, x];
+    return [Math.round((r + m) * 255), Math.round((g + m) * 255), Math.round((b + m) * 255)];
+  }
+
+  it('EVERY hue the palette can produce clears WCAG AA (4.5:1) — not just the ones axe saw', () => {
+    let worst = Infinity;
+    let worstHue = -1;
+
+    for (let hue = 0; hue < 360; hue++) {
+      const bg = `hsl(${hue}, 72%, 52%)`;
+      const fg = contrastingTextColor(bg);
+      const ratio = contrast(
+        hslToRgb(hue, 0.72, 0.52),
+        fg === '#fff' ? [255, 255, 255] : [0, 0, 0]
+      );
+      if (ratio < worst) {
+        worst = ratio;
+        worstHue = hue;
+      }
+    }
+
+    // The two curves (white-on-bg and black-on-bg) cross at ~4.58:1, so picking the better of
+    // the two is guaranteed to clear 4.5 for every hue — this asserts the guarantee rather
+    // than spot-checking the hues that happened to break.
+    expect(worst).toBeGreaterThanOrEqual(4.5);
+    expect(worstHue).toBeGreaterThanOrEqual(0);
+  });
+
+  it('the specific hue axe caught — green — now gets BLACK text, not white', () => {
+    expect(contrastingTextColor('hsl(124, 72%, 52%)')).toBe('#000');
+  });
+
+  it('…and a dark hue still gets WHITE text', () => {
+    expect(contrastingTextColor('hsl(240, 72%, 40%)')).toBe('#fff');
+  });
+
+  it('parses the colour forms a caller plausibly passes, and never throws on one it cannot', () => {
+    expect(contrastingTextColor('#ffff00')).toBe('#000'); // yellow
+    expect(contrastingTextColor('#003366')).toBe('#fff'); // navy
+    expect(contrastingTextColor('rgb(255, 255, 0)')).toBe('#000');
+    expect(contrastingTextColor('var(--brand)')).toBe('#fff'); // unparseable → safe default
+  });
+
+  it('the badge actually USES it — the fix is wired, not merely available', () => {
+    const { root, overlay } = scene();
+    // A colour that MUST take black text, or the badge is unreadable.
+    overlay.setPeers([{ actor: 'x', name: 'Zoe', color: 'hsl(124, 72%, 52%)', cursor: { x: 0, y: 0 } }]);
+
+    const label = root.querySelector('.grafloria-presence-label') as HTMLElement;
+    expect(label.style.color).toBe('rgb(0, 0, 0)');
     overlay.dispose();
   });
 });

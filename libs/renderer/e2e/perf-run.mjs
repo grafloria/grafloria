@@ -118,6 +118,12 @@ const BUDGETS = [
   { scenario: 'one-node-drag-frame', nodes: 1000,  maxMs: 60 },
   { scenario: 'one-node-drag-frame', nodes: 10000, maxMs: 600 },
   { scenario: 'idle-frame',          nodes: 10000, maxMs: 600 },
+  // Wave 9, Card 5. An idle diagram with FOUR remote cursors moving at 60Hz over it must
+  // cost the DIAGRAM the same as an idle diagram with nobody on it. The overlay is a
+  // separate DOM layer and never enters the VNode tree, so the frame gate stays shut; if
+  // this fence ever trips, presence has started paying for itself out of the renderer's
+  // budget and Wave 8's headline result (an idle 10k frame at 0.0ms) is gone.
+  { scenario: 'idle-frame-presence', nodes: 10000, maxMs: 600 },
 ];
 
 const failures = [];

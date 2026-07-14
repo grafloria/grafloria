@@ -25,6 +25,9 @@ import {
   KeyboardNavigationController,
   ensureMotionPreferenceStyles,
   MOTION_PREFERENCE_STYLE_ID,
+  // Wave 9 (Collaboration) — Card 5: the live-presence overlay.
+  PresenceOverlay,
+  PRESENCE_LAYER_CLASS,
 } from '@grafloria/renderer';
 
 const EXPECT: Array<{ name: string; pass: boolean; detail: string }> = [];
@@ -111,6 +114,68 @@ svgEl.setAttribute('width', '900');
 svgEl.setAttribute('height', '460');
 main.appendChild(svgEl);
 (window as any).__SVG__ = svgEl;
+
+// ---------------------------------------------------------------------------
+// WAVE 9 (Collaboration), Card 5 — LIVE PRESENCE, MOUNTED INSIDE THE CELL AXE SCANS.
+//
+// The gate says remote cursors must not pollute the a11y tree, and a unit test asserting
+// `aria-hidden="true"` is NOT that proof — it asserts the attribute I wrote is the attribute
+// I wrote. The proof is axe auditing a page with real cursors, real name badges and a real
+// selection outline on it, and still reporting zero violations.
+//
+// A remote cursor is not content: it is a 60Hz decoration describing someone else's mouse,
+// it changes faster than a screen reader can read it, and it is not the user's own pointer,
+// so it is not even actionable. It belongs OUT of the a11y tree — and the useful signal
+// ("Bo has joined") belongs in the live region above, which is a different card's job.
+// ---------------------------------------------------------------------------
+main.style.position = 'relative';
+const presenceCamera = new ViewportController({
+  viewport: { x: 0, y: 0, width: 900, height: 460 },
+  zoom: 1,
+});
+const presence = new PresenceOverlay({
+  root: main,
+  viewport: presenceCamera,
+  requestFrame: (cb) => { cb(); return 0; },   // synchronous, so the cursors are really drawn
+  cancelFrame: () => undefined,
+  getBounds: (id) => {
+    const n = diagram.getNode(id);
+    return n ? { x: n.position.x, y: n.position.y, width: n.size.width, height: n.size.height } : null;
+  },
+});
+presence.setPeers([
+  { actor: 'ana', name: 'Ana Silva', cursor: { x: 220, y: 140 }, selection: [check.id] },
+  { actor: 'bo', name: 'Bo', cursor: { x: 480, y: 260 } },
+]);
+
+const presenceLayer = main.querySelector(`.${PRESENCE_LAYER_CLASS}`) as HTMLElement;
+
+expectThat(
+  'wave9-sync: the presence layer is really mounted, with real cursors (or this proves nothing)',
+  !!presenceLayer &&
+    presenceLayer.querySelectorAll('.grafloria-presence-cursor').length === 2 &&
+    presenceLayer.querySelectorAll('.grafloria-presence-selection').length === 1,
+  `cursors=${presenceLayer?.querySelectorAll('.grafloria-presence-cursor').length} ` +
+    `outlines=${presenceLayer?.querySelectorAll('.grafloria-presence-selection').length}`
+);
+
+expectThat(
+  'wave9-sync: remote cursors are HIDDEN from assistive tech (aria-hidden on the whole layer)',
+  presenceLayer?.getAttribute('aria-hidden') === 'true',
+  `aria-hidden=${presenceLayer?.getAttribute('aria-hidden')}`
+);
+
+expectThat(
+  'wave9-sync: the presence layer cannot eat a click meant for the diagram underneath',
+  (presenceLayer?.getAttribute('style') ?? '').includes('pointer-events:none'),
+  presenceLayer?.getAttribute('style') ?? ''
+);
+
+expectThat(
+  'wave9-sync: cursors are OUTSIDE the SVG — so they can never enter the VNode tree or the frame gate',
+  !!presenceLayer && presenceLayer.closest('svg') === null && !svgEl.contains(presenceLayer),
+  ''
+);
 
 // The AT-navigable text mirror + the live region, mounted for real.
 const outline = new DiagramOutlineView(main, { diagramType: 'flowchart' });

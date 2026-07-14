@@ -5,7 +5,13 @@
 // and an idle canvas with presence mounted still costs 0.0ms. See `presence-overlay.ts` for
 // why `invalidateFrame()` is the obvious fix and the wrong one.
 
-export { PresenceOverlay, PRESENCE_LAYER_CLASS, actorColor, actorInitials } from './presence-overlay';
+export {
+  PresenceOverlay,
+  PRESENCE_LAYER_CLASS,
+  actorColor,
+  actorInitials,
+  contrastingTextColor,
+} from './presence-overlay';
 export type { PresencePeer, PresenceOverlayOptions, BoundsLookup } from './presence-overlay';
 
 export { bindPresence } from './bind-presence';

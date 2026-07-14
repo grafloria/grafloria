@@ -56,8 +56,9 @@
 // else's mouse — announcing it to a screen reader would flood the buffer with noise that
 // changes faster than it can be read, and it is not the user's own pointer, so it is not
 // even actionable. The layer is `aria-hidden="true"` and `pointer-events: none`, so it is
-// invisible to AT and to hit-testing alike. (The a11y gate — 25/25, 0 axe violations —
-// stays green with presence mounted; there is a test.)
+// invisible to AT and to hit-testing alike. The overlay is MOUNTED INSIDE the cell axe
+// scans in `a11y-harness.ts`, so this is audited rather than asserted — and that audit
+// immediately found a real bug the unit tests could not (see `contrastingTextColor`).
 //
 // The USEFUL a11y signal — "Bob has joined", "Bob selected 3 nodes" — is a job for the
 // existing aria-live region and belongs with the comments/roster card, not with a mouse
@@ -107,6 +108,95 @@ export function actorColor(actor: string): string {
   // Golden-angle hues spread adjacent hashes far apart, so two peers rarely collide.
   const hue = Math.abs(hash * 137.508) % 360;
   return `hsl(${hue.toFixed(0)}, 72%, 52%)`;
+}
+
+/**
+ * Black or white — whichever is actually READABLE on `background`.
+ *
+ * ---------------------------------------------------------------------------
+ * FOUND BY AXE, IN THE a11y GATE, AFTER THE UNIT TESTS WERE ALL GREEN
+ * ---------------------------------------------------------------------------
+ * The name badge was white text on the peer's colour. For a blue or purple actor that is
+ * fine. For a green or yellow one — `hsl(124, 72%, 52%)` — it is white on light green, a
+ * contrast ratio of about 2:1, and a user with low vision simply cannot read whose cursor
+ * it is. It is a coin flip decided by a hash of the actor id, which is the worst kind of
+ * accessibility bug: it works on your machine, for your account, every time you test it.
+ *
+ * The unit tests could not have caught this. They assert `aria-hidden="true"`, which is
+ * about ASSISTIVE TECH — and this is not an AT problem at all. It is a problem for someone
+ * looking straight at the screen with their eyes. Only the real axe audit over a real page
+ * with real badges on it could find it, which is the entire argument for that gate existing.
+ *
+ * (Note that `aria-hidden` does NOT excuse it, and axe is right to say so: hiding text from
+ * a screen reader does not hide it from a sighted user with poor contrast sensitivity.)
+ *
+ * THE MATH. Pick whichever of pure black and pure white contrasts better. The two curves
+ * cross at a background luminance of ~0.179, where BOTH give 4.58:1 — above the 4.5:1 WCAG
+ * AA threshold for normal text. So this choice is guaranteed to pass for EVERY hue, not
+ * merely for the ones I happened to look at.
+ */
+export function contrastingTextColor(background: string): string {
+  const rgb = parseColor(background);
+  if (!rgb) return '#fff'; // unparseable custom colour: keep the old behaviour, do not throw
+
+  const lum = relativeLuminance(rgb);
+  const onWhite = 1.05 / (lum + 0.05); // contrast against #fff
+  const onBlack = (lum + 0.05) / 0.05; // contrast against #000
+  return onWhite >= onBlack ? '#fff' : '#000';
+}
+
+/** WCAG relative luminance. */
+function relativeLuminance([r, g, b]: [number, number, number]): number {
+  const channel = (c: number): number => {
+    const s = c / 255;
+    return s <= 0.03928 ? s / 12.92 : Math.pow((s + 0.055) / 1.055, 2.4);
+  };
+  return 0.2126 * channel(r) + 0.7152 * channel(g) + 0.0722 * channel(b);
+}
+
+/** `#rgb`, `#rrggbb`, `rgb(...)` and `hsl(...)` — the forms a caller plausibly passes. */
+function parseColor(css: string): [number, number, number] | null {
+  const s = css.trim().toLowerCase();
+
+  const hex = /^#([0-9a-f]{3}|[0-9a-f]{6})$/.exec(s);
+  if (hex) {
+    const h = hex[1];
+    const full = h.length === 3 ? h.split('').map((c) => c + c).join('') : h;
+    return [
+      parseInt(full.slice(0, 2), 16),
+      parseInt(full.slice(2, 4), 16),
+      parseInt(full.slice(4, 6), 16),
+    ];
+  }
+
+  const rgb = /^rgba?\(\s*(\d+)[\s,]+(\d+)[\s,]+(\d+)/.exec(s);
+  if (rgb) return [Number(rgb[1]), Number(rgb[2]), Number(rgb[3])];
+
+  const hsl = /^hsla?\(\s*([\d.]+)[\s,]+([\d.]+)%[\s,]+([\d.]+)%/.exec(s);
+  if (hsl) return hslToRgb(Number(hsl[1]), Number(hsl[2]) / 100, Number(hsl[3]) / 100);
+
+  return null;
+}
+
+function hslToRgb(h: number, s: number, l: number): [number, number, number] {
+  const c = (1 - Math.abs(2 * l - 1)) * s;
+  const hp = (((h % 360) + 360) % 360) / 60;
+  const x = c * (1 - Math.abs((hp % 2) - 1));
+  const m = l - c / 2;
+
+  const [r, g, b] =
+    hp < 1 ? [c, x, 0]
+    : hp < 2 ? [x, c, 0]
+    : hp < 3 ? [0, c, x]
+    : hp < 4 ? [0, x, c]
+    : hp < 5 ? [x, 0, c]
+    : [c, 0, x];
+
+  return [
+    Math.round((r + m) * 255),
+    Math.round((g + m) * 255),
+    Math.round((b + m) * 255),
+  ];
 }
 
 export function actorInitials(name: string): string {
@@ -292,7 +382,7 @@ export class PresenceOverlay {
       `<path d="M1 1 L1 15 L4.7 11.5 L7.2 17.5 L9.8 16.4 L7.3 10.6 L12.4 10.4 Z" fill="${color}" stroke="#fff" stroke-width="1"/>` +
       `</svg>` +
       `<span class="grafloria-presence-label" style="position:absolute;left:13px;top:16px;` +
-      `background:${color};color:#fff;font:600 11px/1.4 system-ui,sans-serif;` +
+      `background:${color};color:${contrastingTextColor(color)};font:600 11px/1.4 system-ui,sans-serif;` +
       `padding:1px 6px;border-radius:9px;white-space:nowrap"></span>`;
 
     const label = el.querySelector('.grafloria-presence-label') as HTMLElement;
