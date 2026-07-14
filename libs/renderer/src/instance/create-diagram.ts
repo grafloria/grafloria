@@ -1,7 +1,13 @@
 import { DiagramEngine, getMutationEpoch } from '@grafloria/engine';
-import type { DiagramModel, LinkModel, NodeModel } from '@grafloria/engine';
+import type { DiagramModel, LinkModel, LODLevel, NodeModel } from '@grafloria/engine';
 import type { Theme } from '../types/theme.types';
 import type { Rectangle } from '../types/geometry.types';
+import type { ExportFormat, ExportOptions } from '../types/renderer.interface';
+import type { ColorMode, ThemeSet } from '../themes/color-mode';
+import type { TokenBridge } from '../themes/token-bridge';
+import type { GovernorState } from '../perf/quality-governor';
+import type { SvgExportResult } from '../export/svg-export';
+import type { PdfExportResult } from '../export/pdf/pdf-export';
 import { SVGRenderer } from '../svg/svg-renderer';
 import { VNodePatcher } from '../vnode/patch';
 import { InteractionController } from '../interaction/interaction-controller';
@@ -69,6 +75,19 @@ export interface CreateDiagramOptions extends DomEventBinderOptions {
   edges?: EdgeInput[];
   theme?: Theme;
 
+  /**
+   * Follow the OS colour scheme instead of pinning `theme`.
+   *
+   * `'system'` upgrades to the high-contrast theme under `prefers-contrast: more`
+   * or forced-colors, rather than flashing a light canvas at someone who asked
+   * the operating system for neither.
+   */
+  colorMode?: ColorMode;
+  /** The themes `colorMode` switches between. Defaults to `DEFAULT_THEME_SET`. */
+  themes?: ThemeSet;
+  /** Drive Grafloria's variables from the host's design tokens (shadcn/MUI/Tailwind). */
+  tokenBridge?: TokenBridge;
+
   zoom?: number;
   minZoom?: number;
   maxZoom?: number;
@@ -117,6 +136,35 @@ export interface DiagramInstance {
 
   /** Theme swap (re-injects this instance's CSS variable block only). */
   setTheme(theme: Theme): void;
+
+  /**
+   * Follow the OS colour scheme (`'system'`), or pin light/dark.
+   *
+   * `'system'` also honours `prefers-contrast: more` and forced-colors by
+   * upgrading to the high-contrast theme — an accessibility preference outranks
+   * an aesthetic one.
+   */
+  setColorMode(mode: ColorMode, themes?: ThemeSet): void;
+  getColorMode(): ColorMode | undefined;
+  /** Re-point Grafloria's CSS variables at the host design system's tokens. */
+  setTokenBridge(bridge: TokenBridge | null | undefined): void;
+
+  /**
+   * Export the CURRENT view. `'svg'` returns SVG source; `'png' | 'jpeg' |
+   * 'webp' | 'pdf'` return a `data:` URL.
+   *
+   * Pass `{ embedModel: true }` (PNG and SVG) and the diagram model rides inside
+   * the artifact — the exported file re-opens as an editable diagram.
+   */
+  export(format?: ExportFormat, options?: ExportOptions): Promise<string>;
+  /** Synchronous, DOM-free, deterministic. Carries `warnings`. */
+  exportSvgString(options?: ExportOptions): SvgExportResult;
+  /** A real vector PDF: paths stay paths, text stays selectable text. */
+  exportPdf(options?: ExportOptions): PdfExportResult;
+
+  /** The LOD tier actually rendered, and the adaptive governor's last verdict. */
+  getQualityState(): { tier: LODLevel; governor?: GovernorState };
+
   /** Frame all content. */
   fitView(padding?: number): void;
 
@@ -228,9 +276,28 @@ export function createDiagram(
   const layers = ensureLayers(container, doc, hydration);
 
   // -- renderer + patcher -----------------------------------------------------
+  // Wave 10 BUG FIX. This used to forward `instanceId` and NOTHING ELSE.
+  //
+  // `SVGRendererConfig` has carried `colorMode`, `themes` and `tokenBridge` for
+  // two waves. `createDiagram()` is the ONLY way a host builds a renderer — so
+  // dropping them here made all three unreachable, and with them:
+  //
+  //   - `colorMode: 'system'`, i.e. following the OS colour scheme at all, and
+  //     the a11y upgrade where `prefers-contrast: more` / forced-colors promotes
+  //     you to the high-contrast theme instead of flashing light at the user.
+  //     The themes existed. The controller existed. Nothing could switch them on.
+  //   - the shadcn / MUI / Tailwind design-token bridge — the whole point of
+  //     which is that a HOST re-points Grafloria's variables at its own tokens.
+  //
+  // Three features, fully built and fully tested, lost in a five-line literal.
   const renderer = new SVGRenderer(
     engine,
-    { instanceId: hydration?.instanceId ?? options.instanceId },
+    {
+      instanceId: hydration?.instanceId ?? options.instanceId,
+      colorMode: options.colorMode,
+      themes: options.themes,
+      tokenBridge: options.tokenBridge,
+    },
     options.theme
   );
   renderer.applyInstanceScope(layers.root);
@@ -532,6 +599,29 @@ export function createDiagram(
       renderer.setTheme(theme);
       scheduler.schedule();
     },
+
+    // Wave 10: the renderer could already do all of this. The instance — the only
+    // handle a host is given — exposed none of it, and did not expose the renderer
+    // either, so `SVGRenderer.export()` was unreachable from an embed. The library
+    // shipped PNG, JPEG, WebP, a real vector PDF and a deterministic zero-DOM SVG
+    // serializer that an embedder had no way to call.
+    setColorMode(mode, themes) {
+      renderer.setColorMode(mode, themes);
+      scheduler.schedule();
+    },
+    getColorMode: () => renderer.getColorMode(),
+    setTokenBridge(bridge) {
+      renderer.setTokenBridge(bridge);
+      scheduler.schedule();
+    },
+
+    export: (format, exportOptions) => renderer.export(format, exportOptions),
+    exportSvgString: (exportOptions) => renderer.exportSvgString(exportOptions),
+    exportPdf: (exportOptions) => renderer.exportPdf(exportOptions),
+
+    /** The LOD tier actually rendered, and the governor's last verdict. */
+    getQualityState: () => renderer.getQualityState(),
+
     fitView,
 
     render: () => scheduler.schedule(),
