@@ -168,3 +168,6 @@ export * from './dsl/sync';
 
 // Wave 6 (Ports & connections): groups, typed data-flow, the connection validator
 export * from './ports';
+
+// Wave 9 (Collaboration) — the op-log substrate (Card 0).
+export * from './collab';
