@@ -1,0 +1,203 @@
+<meta charset="utf-8">
+<title>Theme-bound properties — Grafloria</title>
+<link rel="stylesheet" href="../shell/demo.css">
+<style>
+  .bar { display: flex; gap: 8px; align-items: center; padding: 10px 24px; border-bottom: 1px solid rgba(127,127,127,.25); flex-wrap: wrap; }
+  .bar button { padding: 6px 14px; border-radius: 6px; border: 1px solid rgba(127,127,127,.4); background: transparent; color: inherit; cursor: pointer; font: inherit; }
+  .bar button[aria-pressed="true"] { background: #2563eb; border-color: #2563eb; color: #fff; }
+  .bar strong { font-size: 12px; }
+  .note { font-size: 12px; opacity: .75; margin-left: auto; max-width: 46ch; }
+  code { background: rgba(127,127,127,.15); padding: 1px 5px; border-radius: 4px; }
+  #canvas { height: calc(100vh - 190px); }
+</style>
+<header id="demo-head"></header>
+<div class="bar">
+  <strong>theme:</strong>
+  <button id="t-light" aria-pressed="true">light</button>
+  <button id="t-dark"  aria-pressed="false">dark</button>
+  <button id="t-hc"    aria-pressed="false">high contrast</button>
+  <span class="note">
+    These nodes never name a colour. They say <code>themeRef('category.critical')</code>.
+    The theme owns what "critical" <em>means</em> — so a theme swap recolours the
+    <strong>caller's own semantics</strong>, not merely the chrome.
+  </span>
+</div>
+<div id="canvas"></div>
+<script type="module">
+import {
+  render, themeRef, isThemeRef, resolveThemeRef,
+  LIGHT_THEME, DARK_THEME, HIGH_CONTRAST_LIGHT_THEME,
+} from '../shell/grafloria.js';
+import { defineDemo, check, checkChanged } from '../shell/demo.js';
+
+// ---------------------------------------------------------------------------
+// THE DIMENSION WHERE GoJS LED US.
+//
+// Every library lets you swap the CHROME theme: the default node fill, the grid,
+// the selection halo. Almost none let the CALLER'S OWN semantic vocabulary ride
+// the theme. So an app that paints "critical" red hard-codes #b91c1c, and in dark
+// mode that red is now a vibrating, illegible mess — and the app author has to
+// maintain a parallel palette by hand, per theme, forever.
+//
+// `themeRef('category.critical')` inverts it. The node declares a MEANING. The
+// theme decides what that meaning looks like. Swap the theme and every "critical"
+// thing in the diagram re-tints itself, correctly, including for contrast.
+//
+// The numeric scale works the same way: `strokeWidth: themeRef('numbers.emphasis')`
+// thickens under the high-contrast theme without the caller knowing it exists.
+// ---------------------------------------------------------------------------
+
+const SEVERITY = [
+  ['critical', 'Disk failure',    60],
+  ['warning',  'Latency spike',   250],
+  ['success',  'Backup complete', 440],
+  ['info',     'Config reloaded', 630],
+];
+
+const SPEC = {
+  nodes: [
+    ...SEVERITY.map(([cat, label, x]) => ({
+      id: cat,
+      position: { x, y: 90 },
+      size: { width: 170, height: 76 },
+      data: { label },
+      style: {
+        // No colour anywhere in this file. A MEANING.
+        fill: themeRef(`category.${cat}`),
+        stroke: themeRef(`category.${cat}`),
+        strokeWidth: themeRef('numbers.emphasis'),
+      },
+    })),
+    { id: 'sink', position: { x: 340, y: 280 }, size: { width: 200, height: 76 }, data: { label: 'Incident queue' } },
+  ],
+  edges: SEVERITY.map(([cat]) => ({
+    id: `e-${cat}`,
+    source: cat,
+    target: 'sink',
+    style: { stroke: themeRef(`category.${cat}`), strokeWidth: themeRef('numbers.regular') },
+  })),
+};
+
+const THEMES = { light: LIGHT_THEME, dark: DARK_THEME, hc: HIGH_CONTRAST_LIGHT_THEME };
+
+/** What the browser actually painted for a given severity node. */
+const fillOf = (host, id) =>
+  getComputedStyle(host.querySelector(`[data-node-id="${id}"] rect.diagram-node`)).fill;
+const strokeWidthOf = (host, id) =>
+  getComputedStyle(host.querySelector(`[data-node-id="${id}"] rect.diagram-node`)).strokeWidth;
+
+/** #rrggbb -> "rgb(r, g, b)", the shape getComputedStyle gives back. */
+function hexToRgb(hex) {
+  const n = parseInt(hex.slice(1), 16);
+  return `rgb(${(n >> 16) & 255}, ${(n >> 8) & 255}, ${n & 255})`;
+}
+
+defineDemo({
+  name: 'Theme-bound properties',
+  blurb: "themeRef('category.critical') — a theme swap recolours the CALLER's semantic colours, not just the chrome. The one dimension where GoJS clearly led us.",
+  reactflow: null,
+
+  async setup(ctx) {
+    const api = render(SPEC, ctx.host, { theme: LIGHT_THEME });
+    ctx.instance = api;
+    ctx.diagram = api.getModel();
+
+    const buttons = {
+      light: document.getElementById('t-light'),
+      dark: document.getElementById('t-dark'),
+      hc: document.getElementById('t-hc'),
+    };
+    ctx.setTheme = (key) => {
+      api.setTheme(THEMES[key]);
+      for (const [k, b] of Object.entries(buttons)) b.setAttribute('aria-pressed', String(k === key));
+      api.renderNow();
+    };
+    for (const [k, b] of Object.entries(buttons)) b.onclick = () => ctx.setTheme(k);
+
+    await ctx.tick();
+  },
+
+  async assert(ctx) {
+    // 0. themeRef() produces a real, recognisable marker — not a string that
+    //    happened to look like a colour and got painted verbatim.
+    const ref = themeRef('category.critical');
+    check(isThemeRef(ref), 'themeRef() did not produce a value isThemeRef() recognises');
+    check(
+      resolveThemeRef('category.critical', LIGHT_THEME) === '#b91c1c',
+      'resolveThemeRef did not read the light theme\'s critical colour'
+    );
+
+    // 1. The caller's semantics are painted from the LIGHT theme.
+    ctx.setTheme('light');
+    await ctx.tick();
+    const lightCritical = fillOf(ctx.host, 'critical');
+    check(
+      lightCritical === hexToRgb(LIGHT_THEME.categories.critical),
+      `'critical' should paint the light theme's ${LIGHT_THEME.categories.critical}, got ${lightCritical}`
+    );
+    const lightSuccess = fillOf(ctx.host, 'success');
+    check(
+      lightSuccess === hexToRgb(LIGHT_THEME.categories.success),
+      `'success' should paint ${LIGHT_THEME.categories.success}, got ${lightSuccess}`
+    );
+
+    // 2. THE ONE THAT MATTERS. Swap the theme. We touch NO node, NO style, NO
+    //    colour. Every node that declared a MEANING re-tints itself.
+    ctx.setTheme('dark');
+    await ctx.tick();
+    const darkCritical = fillOf(ctx.host, 'critical');
+
+    checkChanged(
+      lightCritical,
+      darkCritical,
+      "a theme swap did not recolour the CALLER's `category.critical`.\n" +
+      "    This is the whole feature: without it, an app hard-codes #b91c1c and\n" +
+      "    that red is illegible in dark mode, forever, by hand."
+    );
+    check(
+      darkCritical === hexToRgb(DARK_THEME.categories.critical),
+      `dark 'critical' should be the dark theme's ${DARK_THEME.categories.critical}, got ${darkCritical}`
+    );
+
+    // Every category, not just the one we looked at.
+    for (const [cat] of SEVERITY) {
+      const got = fillOf(ctx.host, cat);
+      const want = hexToRgb(DARK_THEME.categories[cat]);
+      check(got === want, `dark theme: '${cat}' should be ${want}, got ${got}`);
+    }
+
+    // 3. The NUMERIC scale binds too — high contrast thickens every emphasised
+    //    stroke, and the caller never learns that high contrast exists.
+    ctx.setTheme('light');
+    await ctx.tick();
+    const lightWidth = parseFloat(strokeWidthOf(ctx.host, 'critical'));
+    check(
+      lightWidth === LIGHT_THEME.numbers.emphasis,
+      `strokeWidth: themeRef('numbers.emphasis') should be ${LIGHT_THEME.numbers.emphasis}px, got ${lightWidth}`
+    );
+
+    ctx.setTheme('hc');
+    await ctx.tick();
+    const hcWidth = parseFloat(strokeWidthOf(ctx.host, 'critical'));
+    check(
+      hcWidth === HIGH_CONTRAST_LIGHT_THEME.numbers.emphasis,
+      `high contrast should thicken the bound stroke to ` +
+      `${HIGH_CONTRAST_LIGHT_THEME.numbers.emphasis}px, got ${hcWidth}`
+    );
+    check(
+      hcWidth > lightWidth,
+      `the high-contrast theme must THICKEN an emphasised stroke (${lightWidth}px -> ${hcWidth}px)`
+    );
+
+    // 4. And high contrast picks a darker, WCAG-safe critical rather than the
+    //    same red at a different weight.
+    const hcCritical = fillOf(ctx.host, 'critical');
+    check(
+      hcCritical === hexToRgb(HIGH_CONTRAST_LIGHT_THEME.categories.critical),
+      `high-contrast 'critical' should be ${HIGH_CONTRAST_LIGHT_THEME.categories.critical}, got ${hcCritical}`
+    );
+
+    ctx.setTheme('light');
+  },
+});
+</script>

@@ -1,0 +1,243 @@
+<meta charset="utf-8">
+<title>Themes &amp; design tokens — Grafloria</title>
+<link rel="stylesheet" href="../shell/demo.css">
+<style>
+  /* ---------------------------------------------------------------------
+     THIS is the host application's design system. Not Grafloria's.
+     These are shadcn/ui's own tokens, in shadcn's own format (bare HSL
+     components, wrapped at the use site as `hsl(var(--card))`).
+     Grafloria is about to render itself entirely out of THESE.
+     --------------------------------------------------------------------- */
+  #app {
+    --background: 0 0% 100%;
+    --card: 0 0% 100%;
+    --card-foreground: 222.2 84% 4.9%;
+    --border: 214.3 31.8% 91.4%;
+    --primary: 221.2 83.2% 53.3%;
+    --secondary: 210 40% 96.1%;
+    --accent: 210 40% 96.1%;
+    --muted: 210 40% 96.1%;
+    --muted-foreground: 215.4 16.3% 46.9%;
+    --destructive: 0 84.2% 60.2%;
+    --ring: 221.2 83.2% 53.3%;
+    --font-sans: system-ui, sans-serif;
+  }
+  #app.dark {
+    --background: 222.2 84% 4.9%;
+    --card: 222.2 47% 11%;
+    --card-foreground: 210 40% 98%;
+    --border: 217.2 32.6% 25%;
+    --primary: 217.2 91.2% 59.8%;
+    --secondary: 217.2 32.6% 17.5%;
+    --accent: 217.2 32.6% 17.5%;
+    --muted: 217.2 32.6% 17.5%;
+    --muted-foreground: 215 20.2% 65.1%;
+    --destructive: 0 62.8% 30.6%;
+    --ring: 224.3 76.3% 48%;
+  }
+  /* MUI publishes --mui-palette-*; Tailwind, a numeric scale. Same idea. */
+  #app {
+    --mui-palette-background-paper: #fffbf2;
+    --mui-palette-divider: #b8860b;
+    --mui-palette-primary-main: #6750a4;
+    --mui-palette-text-primary: #1c1b1f;
+    --mui-palette-action-selected: #eaddff;
+    --mui-palette-action-hover: #f7f2fa;
+    --mui-palette-action-disabled: #e7e0ec;
+    --mui-palette-error-main: #b3261e;
+    --mui-palette-secondary-main: #625b71;
+  }
+  .bar { display: flex; gap: 8px; align-items: center; padding: 10px 24px; border-bottom: 1px solid rgba(127,127,127,.25); flex-wrap: wrap; }
+  .bar button { padding: 6px 14px; border-radius: 6px; border: 1px solid rgba(127,127,127,.4); background: transparent; color: inherit; cursor: pointer; font: inherit; }
+  .bar button[aria-pressed="true"] { background: #2563eb; border-color: #2563eb; color: #fff; }
+  .bar strong { font-size: 12px; }
+  #canvas { height: 340px; }
+  #audit { padding: 12px 24px; font: 12px/1.6 ui-monospace, SFMono-Regular, Menlo, monospace; border-top: 1px solid rgba(127,127,127,.25); max-height: 200px; overflow: auto; }
+  .pass { color: #047857; } .fail { color: #b91c1c; font-weight: 700; }
+  #app { padding-bottom: 1px; }
+</style>
+<header id="demo-head"></header>
+<div id="app">
+  <div class="bar">
+    <strong>drive Grafloria from:</strong>
+    <button id="b-none"     aria-pressed="true">Grafloria's own theme</button>
+    <button id="b-shadcn"   aria-pressed="false">shadcn tokens</button>
+    <button id="b-mui"      aria-pressed="false">MUI tokens</button>
+    <button id="b-tailwind" aria-pressed="false">Tailwind tokens</button>
+    <button id="b-flip" style="margin-left:16px">flip the HOST palette (.dark)</button>
+  </div>
+  <div id="canvas"></div>
+  <div id="audit">loading…</div>
+</div>
+<script type="module">
+import {
+  render, LIGHT_THEME, DARK_THEME,
+  shadcnBridge, muiBridge, tailwindBridge,
+  deriveTheme, auditThemeContrast, contrastRatio, WCAG,
+} from '../shell/grafloria.js';
+import { defineDemo, check, checkChanged } from '../shell/demo.js';
+
+const SPEC = {
+  nodes: [
+    { id: 'a', position: { x: 70,  y: 60 }, size: { width: 180, height: 72 }, data: { label: 'Order' } },
+    { id: 'b', position: { x: 380, y: 60 }, size: { width: 180, height: 72 }, data: { label: 'Payment' } },
+    { id: 'c', position: { x: 690, y: 60 }, size: { width: 180, height: 72 }, data: { label: 'Fulfil' } },
+    { id: 'd', position: { x: 380, y: 190 }, size: { width: 180, height: 72 }, data: { label: 'Refund' } },
+  ],
+  edges: [
+    { id: 'e1', source: 'a', target: 'b' },
+    { id: 'e2', source: 'b', target: 'c' },
+    { id: 'e3', source: 'b', target: 'd' },
+  ],
+};
+
+const BRIDGES = {
+  none: null,
+  shadcn: shadcnBridge(),        // hsl(var(--card)) — the classic shadcn setup
+  mui: muiBridge(),              // var(--mui-palette-background-paper)
+  tailwind: tailwindBridge(),    // a numeric Tailwind scale
+};
+
+const nodeFill = (host) => getComputedStyle(host.querySelector('rect.diagram-node')).fill;
+
+defineDemo({
+  name: 'Themes & design tokens',
+  blurb: "A design-token bridge: the HOST's shadcn / MUI / Tailwind variables paint the diagram — and deriveTheme() audits its own output against WCAG.",
+  reactflow: 'Theming',
+
+  async setup(ctx) {
+    const api = render(SPEC, ctx.host, { theme: LIGHT_THEME });
+    ctx.instance = api;
+    ctx.diagram = api.getModel();
+
+    const app = document.getElementById('app');
+    const buttons = {
+      none: document.getElementById('b-none'),
+      shadcn: document.getElementById('b-shadcn'),
+      mui: document.getElementById('b-mui'),
+      tailwind: document.getElementById('b-tailwind'),
+    };
+
+    ctx.useBridge = (which) => {
+      // ONE call. The whole engine re-skins, without touching a node template.
+      api.setTokenBridge(BRIDGES[which]);
+      for (const [k, b] of Object.entries(buttons)) b.setAttribute('aria-pressed', String(k === which));
+      api.renderNow();
+    };
+    ctx.flipHost = () => {
+      // Note what this does NOT do: it does not talk to Grafloria at all. It flips
+      // the HOST's own class. If the bridge is real, the diagram follows.
+      app.classList.toggle('dark');
+      api.renderNow();
+    };
+
+    for (const [k, b] of Object.entries(buttons)) b.onclick = () => ctx.useBridge(k);
+    document.getElementById('b-flip').onclick = ctx.flipHost;
+
+    // ---- the audit panel ---------------------------------------------------
+    // deriveTheme() does not just emit colours and hope. It CHECKS them.
+    const derivedHC = deriveTheme({ from: LIGHT_THEME, mode: 'high-contrast' });
+    const derivedDark = deriveTheme({ from: LIGHT_THEME, mode: 'dark' });
+    ctx.derivedHC = derivedHC;
+    ctx.derivedDark = derivedDark;
+
+    const report = (label, theme) => {
+      const r = auditThemeContrast(theme);
+      const cls = r.failures.length === 0 ? 'pass' : 'fail';
+      return `<div class="${cls}">${label.padEnd(28)} ${r.passes} pass, ${r.failures.length} fail` +
+        (r.failures.length
+          ? `<br>&nbsp;&nbsp;&nbsp;&nbsp;worst: ${r.failures
+              .slice(0, 3)
+              .map((f) => `${f.id} ${f.ratio?.toFixed(2)}:1 &lt; ${f.required}`)
+              .join(', ')}`
+          : '') +
+        `</div>`;
+    };
+
+    document.getElementById('audit').innerHTML =
+      `<div><strong>WCAG audit — every theme checks its own output</strong></div>` +
+      report('LIGHT_THEME', LIGHT_THEME) +
+      report('DARK_THEME', DARK_THEME) +
+      report("deriveTheme('dark')", derivedDark) +
+      report("deriveTheme('high-contrast')", derivedHC) +
+      `<div style="margin-top:6px;opacity:.7">black on white = ${contrastRatio('#000000', '#ffffff').toFixed(2)}:1 ` +
+      `(AA text needs ${WCAG.AA_TEXT}:1, AAA needs ${WCAG.AAA_TEXT}:1, non-text ${WCAG.AA_NON_TEXT}:1)</div>`;
+
+    await ctx.tick();
+  },
+
+  async assert(ctx) {
+    // ---- 1. the bridge actually paints -------------------------------------
+    ctx.useBridge('none');
+    await ctx.tick();
+    const own = nodeFill(ctx.host);
+
+    ctx.useBridge('mui');
+    await ctx.tick();
+    const mui = nodeFill(ctx.host);
+    // MUI's paper is #fffbf2 — a warm off-white nothing in Grafloria's palette uses.
+    check(mui === 'rgb(255, 251, 242)', `the MUI bridge did not repaint the node from --mui-palette-background-paper (got ${mui})`);
+    checkChanged(own, mui, 'switching to the MUI token bridge changed nothing');
+
+    ctx.useBridge('shadcn');
+    await ctx.tick();
+    const shadcnLight = nodeFill(ctx.host);
+    check(shadcnLight === 'rgb(255, 255, 255)', `shadcn --card (0 0% 100%) should paint white, got ${shadcnLight}`);
+
+    // ---- 2. THE ONE THAT MATTERS -------------------------------------------
+    // Flip the HOST's palette. We do not call setTheme(). We do not call any
+    // Grafloria API at all — we toggle a class on the host's own wrapper. If the
+    // bridge is genuinely wired, the diagram re-skins itself.
+    ctx.flipHost();
+    await ctx.tick();
+    const shadcnDark = nodeFill(ctx.host);
+
+    checkChanged(
+      shadcnLight,
+      shadcnDark,
+      "the HOST flipped its own design tokens to dark and the diagram did not follow.\n" +
+      "    That is the entire promise of the token bridge: the host's design system\n" +
+      "    drives the engine, not the other way round."
+    );
+    // shadcn dark --card is 222.2 47% 11% — a very dark blue-grey.
+    const [r, g, b] = shadcnDark.match(/\d+/g).map(Number);
+    check(r + g + b < 150, `the host's dark --card should be dark; got ${shadcnDark}`);
+
+    ctx.flipHost(); // put it back
+    await ctx.tick();
+
+    // ---- 3. deriveTheme() audits its own output ----------------------------
+    const hc = auditThemeContrast(ctx.derivedHC);
+    check(
+      hc.failures.length === 0,
+      `deriveTheme('high-contrast') emitted a theme that FAILS its own WCAG audit on ` +
+      `${hc.failures.length} pair(s): ${hc.failures.map((f) => `${f.id} ${f.ratio?.toFixed(2)}:1 < ${f.required}`).join(', ')}`
+    );
+    check(hc.passes > 0, 'the audit checked nothing at all');
+
+    const dk = auditThemeContrast(ctx.derivedDark);
+    check(
+      dk.failures.length === 0,
+      `deriveTheme('dark') FAILS its own audit on ${dk.failures.length} pair(s): ` +
+      dk.failures.map((f) => `${f.id} ${f.ratio?.toFixed(2)}:1 < ${f.required}`).join(', ')
+    );
+
+    // ---- 4. the maths is real, not decorative ------------------------------
+    const max = contrastRatio('#000000', '#ffffff');
+    check(Math.abs(max - 21) < 0.01, `black-on-white must be 21:1 by definition, got ${max}`);
+    const none = contrastRatio('#777777', '#777777');
+    check(Math.abs(none - 1) < 0.01, `a colour against itself must be 1:1, got ${none}`);
+
+    // ---- 5. the SHIPPED defaults must pass too ------------------------------
+    // This is the assertion that would have caught the nine failing pairs.
+    for (const [name, theme] of [['LIGHT_THEME', LIGHT_THEME], ['DARK_THEME', DARK_THEME]]) {
+      const r = auditThemeContrast(theme);
+      check(
+        r.failures.length === 0,
+        `${name} — the theme we SHIP by default — fails WCAG on ${r.failures.length} pair(s):\n    ` +
+        r.failures.map((f) => `${f.id}: ${f.foreground} on ${f.background} = ${f.ratio?.toFixed(2)}:1, needs ${f.required}`).join('\n    ')
+      );
+    }
+  },
+});
+</script>
