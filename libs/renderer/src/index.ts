@@ -18,6 +18,10 @@ export * from './themes';
 // Export renderers
 export * from './svg';
 
+// Wave 9 (Collaboration) — Card 6: anchored comment pins (world-space, in the viewBox),
+// the HTML conversation panel, and the controller that keeps the frame gate honest.
+export * from './comments';
+
 // Wave 4: deterministic headless export — VNode → standalone, styles-inlined SVG
 // (pure, zero-DOM) → PNG/JPEG/WebP. Same VNode contract the live patcher consumes.
 export * from './export';

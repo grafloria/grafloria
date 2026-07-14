@@ -13,7 +13,7 @@
 // that axe STILL catches it. If someone silently weakens the ruleset, that
 // control goes green-when-it-should-be-red and the run fails.
 
-import { DiagramEngine, NodeModel, LinkModel } from '@grafloria/engine';
+import { DiagramEngine, NodeModel, LinkModel, CommentStore } from '@grafloria/engine';
 import {
   SVGRenderer,
   LIGHT_THEME,
@@ -25,6 +25,9 @@ import {
   KeyboardNavigationController,
   ensureMotionPreferenceStyles,
   MOTION_PREFERENCE_STYLE_ID,
+  // wave9/comments (card 6)
+  CommentOverlayController,
+  CommentPanelView,
 } from '@grafloria/renderer';
 
 const EXPECT: Array<{ name: string; pass: boolean; detail: string }> = [];
@@ -105,6 +108,35 @@ const renderer = new SVGRenderer(engine, {
   diagramType: 'flowchart',
   diagramLabel: 'Order flow',
 });
+
+// ---------------------------------------------------------------------------
+// wave9/comments (card 6): a REAL comment system on the REAL diagram, mounted BEFORE the
+// first render so the pins are in the very SVG axe scans — and so the roving-tabindex
+// assertions above are made against a canvas that has comment pins in it. A comment is
+// text written by a human for a human; if it is not reachable, it is not shipped.
+//
+// The third thread is anchored to a node that is then DELETED, so axe (and the assertions
+// below) see an ORPHANED thread — the state this whole card is built around.
+const comments = new CommentStore(diagram, { viewer: 'ada' });
+const tPin = comments.createThread({ kind: 'node', id: check.id }, 'Should this be a gateway?');
+comments.reply(tPin, 'Probably — ask @[Ben](u_ben)');
+comments.createThread({ kind: 'region', x: 700, y: 300 }, 'This whole area needs a rethink');
+
+// A node that gets DELETED out from under its thread. The diagram is left exactly as it
+// was (5 nodes, 4 edges) so every assertion above still describes the same flow — but the
+// conversation about the deleted box is still here, which is the entire point of the card.
+const doomed = new NodeModel({
+  type: 'process',
+  position: { x: 700, y: 320 },
+  size: { width: 140, height: 60, depth: 0 },
+});
+doomed.setMetadata('label', 'Deprecated cache');
+diagram.addNode(doomed);
+const tOrphan = comments.createThread({ kind: 'node', id: doomed.id }, 'We cut this in March, no?');
+diagram.removeNode(doomed.id);
+
+const overlay = new CommentOverlayController(comments, renderer);
+
 const vnode = renderer.render({ x: 0, y: 0, width: 900, height: 460 }, 1);
 const svgEl = createDomElement(vnode) as SVGElement;
 svgEl.setAttribute('width', '900');
@@ -323,6 +355,119 @@ expectThat(
   'card4: focus landing off-screen is PANNED into view (it used to just sit there, clipped)',
   !visibleBefore && containment.isFullyVisible(orphanRect),
   `before=${visibleBefore} after=${containment.isFullyVisible(orphanRect)}`
+);
+
+// ---- wave9/comments (card 6): the comments are REACHABLE -------------------
+//
+// A comment system is text content. A pin that is an unlabelled `<circle>` hides a
+// conversation from the people most dependent on being able to find it. Everything below
+// is scanned by axe as part of `#a11y-main`, in the real SVG, in a real browser.
+
+const pinEls = Array.from(svgEl.querySelectorAll('[data-comment-thread-id]'));
+expectThat(
+  'wave9/comments: every comment pin is a NAMED button, not an anonymous circle',
+  pinEls.length === 3 &&
+    pinEls.every(
+      (p) => p.getAttribute('role') === 'button' && !!p.getAttribute('aria-label')
+    ),
+  pinEls.map((p) => `${p.getAttribute('role')}:${p.getAttribute('aria-label')}`).join(' | ')
+);
+
+const pinOnNode = svgEl.querySelector(`[data-comment-thread-id="${tPin}"]`);
+expectThat(
+  'wave9/comments: the pin NAMES what it is about, and how much of it you have not read',
+  pinOnNode?.getAttribute('aria-label') ===
+    'Comment thread on Is order valid?, 1 reply',
+  String(pinOnNode?.getAttribute('aria-label'))
+);
+
+const orphanPin = svgEl.querySelector(`[data-comment-thread-id="${tOrphan}"]`);
+expectThat(
+  'wave9/comments: a thread whose NODE WAS DELETED survives, and says "detached" IN WORDS',
+  orphanPin?.getAttribute('aria-label') ===
+    'Comment thread on a deleted node, Deprecated cache, 0 replies, detached' &&
+    orphanPin?.getAttribute('data-comment-attached') === 'false',
+  String(orphanPin?.getAttribute('aria-label'))
+);
+expectThat(
+  'wave9/comments/1.4.1: detached is ALSO a non-colour visual cue (a broken ring)',
+  !!orphanPin?.querySelector('circle[stroke-dasharray]'),
+  'colour alone fails 1.4.1 and vanishes entirely in forced-colors mode'
+);
+
+expectThat(
+  'wave9/comments: pins JOIN the roving tabindex — they are not extra tab stops',
+  pinEls.every((p) => p.getAttribute('tabindex') === '-1'),
+  pinEls.map((p) => p.getAttribute('tabindex')).join(',')
+);
+
+// Focus a PIN through the same roving-tabindex machinery a node uses. Exactly one
+// tabindex=0 must exist in the whole canvas — the pin — and the root must yield to it.
+renderer.setAccessibleFocus({ type: 'comment', id: tPin });
+const pinFocusSvg = createDomElement(
+  renderer.render({ x: 0, y: 0, width: 900, height: 460 }, 1)
+) as SVGElement;
+const pinStops = Array.from(pinFocusSvg.querySelectorAll('[tabindex="0"]'));
+expectThat(
+  'wave9/comments: a FOCUSED pin is the diagram\'s single tab stop, and the root yields',
+  pinStops.length === 1 &&
+    pinStops[0].getAttribute('data-comment-thread-id') === tPin &&
+    pinFocusSvg.getAttribute('tabindex') === '-1',
+  `${pinStops.length} stops, root=${pinFocusSvg.getAttribute('tabindex')}`
+);
+renderer.setAccessibleFocus(null);
+
+// The conversation ITSELF — real HTML, mounted in the same cell, scanned by the same axe
+// run. This is where a screen-reader user actually READS the comments.
+const panel = new CommentPanelView(main, comments, {
+  onSelect: (id) => overlay.select(id),
+  formatTime: () => '12:00',
+});
+panel.select(tPin);
+
+const panelEl = panel.getElement();
+const replyBox = panelEl.querySelector('textarea')!;
+const replyLabel = panelEl.querySelector(`label[for="${replyBox.id}"]`);
+expectThat(
+  'wave9/comments: the panel is a named landmark whose reply box has a real, associated label',
+  panelEl.getAttribute('role') === 'complementary' &&
+    panelEl.getAttribute('aria-label') === 'Comments' &&
+    !!replyLabel,
+  `role=${panelEl.getAttribute('role')} label=${replyLabel?.textContent}`
+);
+expectThat(
+  'wave9/comments: opening a thread MOVES focus onto the conversation (no hunting for it)',
+  document.activeElement === panelEl.querySelector(`[data-thread-heading="${tPin}"]`),
+  String((document.activeElement as HTMLElement)?.getAttribute?.('data-thread-heading'))
+);
+expectThat(
+  'wave9/comments: the DETACHED thread explains itself in the panel, in prose',
+  (panelEl.querySelector('.grafloria-comment-thread__detached')?.textContent ?? '').includes(
+    'has been deleted. The conversation is kept.'
+  ),
+  panelEl.querySelector('.grafloria-comment-thread__detached')?.textContent ?? '(missing)'
+);
+expectThat(
+  'wave9/comments: ESCAPE leaves the panel — it is not a keyboard trap (WCAG 2.1.2)',
+  (() => {
+    let dismissed = false;
+    const p2 = new CommentPanelView(main, comments, { onDismiss: () => (dismissed = true) });
+    p2.getElement().dispatchEvent(
+      new KeyboardEvent('keydown', { key: 'Escape', bubbles: true })
+    );
+    p2.dispose();
+    return dismissed;
+  })(),
+  ''
+);
+
+// THRASH PROOF, same standard as the outline mirror: a quiet frame does zero DOM work.
+const panelRebuilds = panel.getRebuildCount();
+for (let i = 0; i < 30; i++) panel.update();
+expectThat(
+  'wave9/comments: THRASH PROOF — 30 quiet frames rebuild the panel zero times',
+  panel.getRebuildCount() === panelRebuilds,
+  `${panel.getRebuildCount()} vs ${panelRebuilds}`
 );
 
 // ===========================================================================

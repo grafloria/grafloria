@@ -95,6 +95,9 @@ import { hasDocument } from '../platform';
 // Wave 8 (Card 3): the freeze / lazy-mount gate. Type-only — the renderer never
 // constructs one, so a host that does not use laziness does not link it in.
 import type { ViewLifecycle } from '../lazy/view-lifecycle';
+// wave9/comments (Card 6): anchored comment pins, drawn in WORLD space inside the viewBox.
+import { renderCommentPins } from '../comments/comment-pins';
+import type { CommentSource } from '../comments/comment-overlay';
 import type { EntityKind as LazyEntityKind } from '../lazy/types';
 
 // Import routing types
@@ -391,7 +394,19 @@ export class SVGRenderer implements IRenderer {
 
   // wave6/a11y (card 1): which entity the keyboard controller has focused. Drives
   // the ROVING TABINDEX — exactly one element in the diagram carries tabindex=0.
-  private a11yFocus: { type: 'node' | 'link'; id: string } | null = null;
+  //
+  // wave9/comments (card 6): a comment PIN is a third kind of focusable thing in the same
+  // one-tab-stop widget, so it belongs in the SAME roving scheme rather than a parallel
+  // one. Two authorities for "what is focused" is precisely how a canvas ends up with two
+  // elements carrying tabindex=0 — i.e. how the roving tabindex quietly stops being one.
+  private a11yFocus: { type: 'node' | 'link' | 'comment'; id: string } | null = null;
+
+  /**
+   * wave9/comments (card 6): where the comment pins come from, or null for a canvas with
+   * no comment system attached — in which case NO layer is built and NO query is made, so
+   * an idle 10k-node frame is exactly as cheap as it was before this card existed.
+   */
+  private commentSource: CommentSource | null = null;
 
   // =========================================================================
   // wave8/dirty — Card 0: the FRAME GATE.
@@ -895,6 +910,10 @@ export class SVGRenderer implements IRenderer {
     const nodesLayer = this.renderNodesLayer(visibleNodes, lod);
     const connectionPreviewLayer = this.renderConnectionPreviewLayer();
 
+    // wave9/comments (Card 6): the pins. Null unless a comment source is attached, so a
+    // canvas with no comment system pays literally nothing — not a layer, not a query.
+    const commentsLayer = this.renderCommentsLayer(visibleRect, zoom);
+
     // Card 2: assemble the deduped paint-server `<defs>` populated while the
     // layers rendered. Appended LAST (not prepended) so existing positional
     // children[0]=links / children[1]=nodes contracts stay intact; SVG resolves
@@ -920,7 +939,13 @@ export class SVGRenderer implements IRenderer {
         // rather than an N-stop tab trap.
         ...this.rootAriaProps(),
       },
-      children: [linksLayer, nodesLayer, connectionPreviewLayer, defsNode],
+      // wave9/comments: the pin layer is APPENDED, never inserted — children[0]=links and
+      // children[1]=nodes are a documented positional contract that other code reads. It
+      // is last in document order, which in SVG means it paints ON TOP: a pin that a node
+      // could cover is a pin nobody can click.
+      children: commentsLayer
+        ? [linksLayer, nodesLayer, connectionPreviewLayer, defsNode, commentsLayer]
+        : [linksLayer, nodesLayer, connectionPreviewLayer, defsNode],
     };
 
     // wave8/dirty — arm the gate for the NEXT frame.
@@ -3302,7 +3327,7 @@ export class SVGRenderer implements IRenderer {
    * Marks only the OLD and NEW focus targets dirty — moving focus must not
    * invalidate the whole diagram.
    */
-  setAccessibleFocus(target: { type: 'node' | 'link'; id: string } | null): void {
+  setAccessibleFocus(target: { type: 'node' | 'link' | 'comment'; id: string } | null): void {
     const previous = this.a11yFocus;
     if (
       previous?.type === target?.type &&
@@ -3318,6 +3343,11 @@ export class SVGRenderer implements IRenderer {
 
     for (const entry of [previous, this.a11yFocus]) {
       if (!entry) continue;
+      // wave9/comments: a comment pin is not an ENTITY — there is nothing to mark dirty
+      // and nothing in the VNode cache. It does not need to be: `frameSignature()` already
+      // includes the focus target, so moving focus onto or off a pin changes the signature
+      // and the gate opens on its own.
+      if (entry.type === 'comment') continue;
       if (entry.type === 'node') diagram.getNode(entry.id)?.markDirty?.();
       else diagram.getLink(entry.id)?.markDirty?.();
       // The VNode cache is keyed per entity — evict just those two.
@@ -3328,8 +3358,45 @@ export class SVGRenderer implements IRenderer {
     }
   }
 
-  getAccessibleFocus(): { type: 'node' | 'link'; id: string } | null {
+  getAccessibleFocus(): { type: 'node' | 'link' | 'comment'; id: string } | null {
     return this.a11yFocus ? { ...this.a11yFocus } : null;
+  }
+
+  /**
+   * wave9/comments (Card 6): attach (or detach) the source of comment pins.
+   *
+   * Installing a source CHANGES THE PICTURE while moving nothing the frame gate watches —
+   * not the model epoch, not the viewport. Without the explicit invalidation the gate would
+   * keep serving back the last frame, which has no pins in it, forever. This is the trap
+   * this wave was warned about, and it is one line.
+   */
+  setCommentSource(source: CommentSource | null): void {
+    if (this.commentSource === source) return;
+    this.commentSource = source;
+    this.invalidateFrame();
+  }
+
+  getCommentSource(): CommentSource | null {
+    return this.commentSource;
+  }
+
+  /**
+   * The comment pin layer for this frame, or null when nothing is attached.
+   *
+   * Culled against the same world rect the nodes are, so a diagram with 4,000 comments
+   * costs what the ones ON SCREEN cost. Drawn in WORLD coordinates inside the viewBox, so
+   * pan and zoom carry the pins with the diagram without a line of code.
+   */
+  private renderCommentsLayer(visibleRect: Rectangle, zoom: number): VNode | null {
+    if (!this.commentSource) return null;
+    const focus = this.a11yFocus;
+    return renderCommentPins(this.commentSource.getThreads(), {
+      ...this.commentSource.getPinOptions(),
+      visibleRect,
+      zoom,
+      // The ROVING TABINDEX, from the one authority that owns it.
+      focusedThreadId: focus?.type === 'comment' ? focus.id : null,
+    });
   }
 
   /** The canvas's own semantics. */
