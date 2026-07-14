@@ -35,6 +35,13 @@
  * the only one that keeps hit-testing correct.
  */
 
+// Reuse the renderer's existing Unsubscribe rather than declaring a second one:
+// two identical types with the same name in one barrel is an ambiguous re-export
+// and breaks every downstream package that does `export * from '@grafloria/renderer'`.
+import type { Unsubscribe } from '../viewport/viewport-controller';
+
+export type { Unsubscribe };
+
 /** What a presenter broadcasts. Centre + zoom, deliberately NOT a camera rect. */
 export interface PresenterViewport {
   /** World X of the centre of the presenter's view. */
@@ -46,8 +53,6 @@ export interface PresenterViewport {
   /** Who is presenting. Lets a follower ignore its own echo, and label the UI. */
   presenterId?: string;
 }
-
-export type Unsubscribe = () => void;
 
 /**
  * The transport seam. Two methods, no lifecycle, no assumptions about the wire.

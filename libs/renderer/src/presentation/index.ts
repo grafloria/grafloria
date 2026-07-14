@@ -4,5 +4,6 @@
 // the CommandManager (libs/engine/src/models/readonly-lock.ts), because that is
 // where mutation actually happens. This module is the presentation layer on top:
 // locking, and the follow-presenter transport seam.
-export * from './viewport-channel';
+export { InMemoryViewportChannel } from './viewport-channel';
+export type { PresenterViewport, ViewportChannel } from './viewport-channel';
 export * from './presentation';
