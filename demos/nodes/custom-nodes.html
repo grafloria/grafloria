@@ -1,0 +1,56 @@
+<meta charset="utf-8">
+<title>Custom nodes — Grafloria</title>
+<link rel="stylesheet" href="../shell/demo.css">
+<header id="demo-head"></header>
+<div id="canvas"></div>
+<script type="module">
+import { render } from '../shell/grafloria.js';
+import { defineDemo, check, checkChanged } from '../shell/demo.js';
+
+defineDemo({
+  name: 'Custom nodes',
+  blurb: 'Arbitrary content inside a node — and the node still hit-tests, routes and serialises like any other.',
+  reactflow: 'Custom Nodes',
+
+  async setup(ctx) {
+    // NOTE the signature: render(SPEC, TARGET) — spec first, Mermaid-shaped. Getting this
+    // wrong was the gallery's first catch, on its very first page.
+    const api = render({
+      nodes: [
+        { id: 'a', position: { x: 60, y: 80 },  size: { width: 180, height: 80 }, data: { label: 'Ingest' } },
+        { id: 'b', position: { x: 380, y: 80 }, size: { width: 180, height: 80 }, data: { label: 'Transform' } },
+        { id: 'c', position: { x: 700, y: 80 }, size: { width: 180, height: 80 }, data: { label: 'Publish' } },
+      ],
+      edges: [
+        { id: 'e1', source: 'a', target: 'b' },
+        { id: 'e2', source: 'b', target: 'c' },
+      ],
+    }, ctx.host);
+    ctx.instance = api;
+    ctx.diagram = api.getModel();
+    await ctx.tick();
+  },
+
+  async assert(ctx) {
+    // 1. It actually PAINTED. Three nodes, two edges, in the real DOM.
+    const nodes = ctx.host.querySelectorAll('[data-node-id]');
+    check(nodes.length === 3, `expected 3 nodes in the DOM, found ${nodes.length}`);
+
+    const paths = ctx.host.querySelectorAll('path');
+    check(paths.length >= 2, `expected at least 2 link paths, found ${paths.length}`);
+
+    // 2. THE ASSERTION WITH TEETH: the edge must be attached to the node, not merely drawn
+    //    near it. Move the node and the edge geometry must follow. A demo that only checks
+    //    "an SVG appeared" would pass with a completely dead engine — this repository has
+    //    shipped exactly that kind of test before.
+    const link = ctx.diagram.getLinks()[0];
+    const before = JSON.stringify(link.points ?? []);
+
+    ctx.diagram.getNode('a').setPosition(60, 420);
+    await ctx.tick();
+
+    const after = JSON.stringify(ctx.diagram.getLinks()[0].points ?? []);
+    checkChanged(before, after, 'moving a node did not move the edge attached to it');
+  },
+});
+</script>
