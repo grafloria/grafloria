@@ -394,8 +394,21 @@ describe('comment convergence — MUTATION CONTROLS (break it and watch it go re
     });
 
     // The same four ops. Two arrival orders — which is all a network ever promises.
-    A.replica.receive([head, anchor, resolve, whole]);
-    B.replica.receive([head, anchor, whole, resolve]);
+    //
+    // DELIVERED ONE BATCH AT A TIME, and that detail is now load-bearing. wave9/crdt made
+    // `Replica.receive()` sort each batch into total order before applying it — a real
+    // improvement, and it quietly made the original version of this control VACUOUS: all
+    // four ops went in a single receive(), so the sort lined them up and the two peers
+    // agreed. The control stopped reproducing the hazard while still claiming to guard it,
+    // which is the most dangerous state a test can be in.
+    //
+    // The hazard is entirely undiminished, because a network does not deliver a session in
+    // one batch. Sorting WITHIN a batch cannot order two registers that LWW has no way to
+    // order ACROSS batches — and `comments.t9` is a strict prefix of `comments.t9.status`,
+    // so LWW has nothing to say about which of them is authoritative. Arrival order decides,
+    // exactly as it always did.
+    for (const op of [head, anchor, resolve, whole]) A.replica.receive([op]);
+    for (const op of [head, anchor, whole, resolve]) B.replica.receive([op]);
 
     // The LWW gate admitted every one of them, correctly: `comments.t9` and
     // `comments.t9.status` are DIFFERENT registers, so it has nothing to order them by.

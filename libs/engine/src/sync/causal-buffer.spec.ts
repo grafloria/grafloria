@@ -29,29 +29,36 @@ const setOp = (id: string, clock: number, x: number, y: number): Op =>
     actor: 'alice',
   }) as Op;
 
-describe('WHAT HAPPENS WITHOUT THE BUFFER — and why it is unrecoverable', () => {
-  it('a `set` that overtakes its `add` is lost FOREVER, and re-delivery cannot save it', () => {
-    // This is the raw Replica, fed a reordered stream directly — i.e. the code path that
-    // existed before this card. Card 0's own header flags it and hands it to Card 5.
+// FIXED AT MERGE by wave9/crdt, and this test is INVERTED to guard the fix.
+//
+// It was written to characterise a real, unrecoverable defect: a reordered `set` overtaking
+// its `add` was logged, STAMPED ITS LWW REGISTER, and then evaporated in applyOp because the
+// entity did not exist yet. Both recovery routes were then already spent — the log dedupes a
+// re-delivery, and the register refuses the op as superseded BY ITSELF. One reordered packet,
+// one node stuck at its birth position for the life of the document, no error anywhere.
+//
+// wave9/crdt closed it from the other end: an `add` now ESTABLISHES AN INCARNATION and
+// REPAIRS the entity from the log — replaying every write newer than the add. So the raw
+// Replica survives a reordered stream on its own, and the causal buffer became provably
+// redundant (its own mutation test showed it could be deleted with everything still green).
+describe('a reordered stream is survivable on the RAW Replica — no buffer required', () => {
+  it('a `set` that overtakes its `add` is REPAIRED FROM THE LOG, not lost', () => {
     const bob = new Replica(new DiagramModel('d'), { actor: 'bob' });
 
     const add = addOp('n7', 1, 0, 0);
     const move = setOp('n7', 2, 900, 900);
 
-    // The transport reorders. The `set` lands first.
-    bob.receive([move]); // logged · LWW register STAMPED · applied to nothing (no such node)
-    bob.receive([add]); // the node appears — at its ORIGINAL position
-
-    expect(bob.diagram.getNode('n7')!.position).toMatchObject({ x: 0, y: 0 }); // ← the edit evaporated
-
-    // And it is gone for good. Both recovery mechanisms have already been consumed:
-    //   • the LOG has seen it, so a re-delivery de-duplicates to nothing…
+    // The transport reorders. The `set` lands first, against a node that does not exist.
     bob.receive([move]);
-    expect(bob.diagram.getNode('n7')!.position).toMatchObject({ x: 0, y: 0 });
+    bob.receive([add]); // …and the add repairs the entity from the log as it lands
 
-    //   • …and the LWW register it stamped now REFUSES it as superseded — by itself.
-    // One reordered packet. One node stuck at its birth position for the life of the
-    // document. No error, on any layer, ever.
+    // The edit SURVIVED. This is the assertion that used to read {x: 0, y: 0}.
+    expect(bob.diagram.getNode('n7')!.position).toMatchObject({ x: 900, y: 900 });
+
+    // …and re-delivery still changes nothing, because idempotence is the log's job.
+    bob.receive([move]);
+    expect(bob.diagram.getNode('n7')!.position).toMatchObject({ x: 900, y: 900 });
+
     bob.dispose();
   });
 

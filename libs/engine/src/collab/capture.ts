@@ -36,6 +36,9 @@ import { DiagramModel } from '../models/DiagramModel';
 import { NodeModel } from '../models/NodeModel';
 import { LinkModel } from '../models/LinkModel';
 import { GroupModel } from '../models/GroupModel';
+import type { SerializedNode } from '../models/NodeModel';
+import type { SerializedLink } from '../models/LinkModel';
+import type { SerializedGroup } from '../models/GroupModel';
 import { LamportClock, type ActorId, type Op, type OpValue } from './op';
 
 type Entity = NodeModel | LinkModel | GroupModel;
@@ -126,11 +129,34 @@ function sameJson(a: unknown, b: unknown): boolean {
   return JSON.stringify(a) === JSON.stringify(b);
 }
 
+/**
+ * What the register held BEFORE the op overwrote it.
+ *
+ * Card 4 (undo) needs it and nothing else does, so it is handed to the capture callback
+ * ALONGSIDE the op rather than being put INSIDE it. An op is a wire format: it crosses a
+ * network and a disk, it is broadcast to every peer, and a peer does not need — and must
+ * not be trusted with — the sender's idea of the previous value. Undo is a LOCAL concern.
+ * Widening the op to carry it would have doubled the traffic to serve one machine.
+ */
+export type OpBefore =
+  /** A `set`: the value the register held. `undefined` = the register was empty. */
+  | { kind: 'value'; value: OpValue | undefined }
+  /** A `remove`: the entity's full state at the moment it was removed. */
+  | { kind: 'entity'; data: SerializedNode | SerializedLink | SerializedGroup }
+  /** An `add`: there was nothing before it. */
+  | { kind: 'none' };
+
+
 export interface OpCaptureOptions {
   /** Who this peer is. Must be unique across peers; used for the total-order tiebreak. */
   actor: ActorId;
-  /** Called for each captured op — hand it to a sync adapter, an autosave, a test. */
-  onOp: (op: Op) => void;
+  /**
+   * Called for each captured op — hand it to a sync adapter, an autosave, a test.
+   *
+   * `before` is the value the op displaced, for the local undo stack. It is NOT part of
+   * the op and never goes on the wire.
+   */
+  onOp: (op: Op, before: OpBefore) => void;
   /** Resume a clock across sessions (e.g. from a persisted op-log tail). */
   startClock?: number;
 }
@@ -145,9 +171,11 @@ export interface OpCaptureOptions {
  */
 export class OpCapture {
   private readonly clock: LamportClock;
-  private readonly onOp: (op: Op) => void;
+  private readonly onOp: (op: Op, before: OpBefore) => void;
   private readonly unsubs: Unsubscribe[] = [];
   private readonly entitySubs = new Map<string, Unsubscribe>();
+  /** Last ports collection emitted per node — see the 'ports' branch of watchEntity. */
+  private readonly lastPorts = new Map<string, OpValue>();
 
   /** True while we are applying a REMOTE op: everything the model emits is an echo. */
   private applying = false;
@@ -181,17 +209,36 @@ export class OpCapture {
    * not merely within one.
    */
   applyRemote(ops: readonly Op[], apply: (op: Op) => void): void {
-    this.applying = true;
-    try {
+    this.silently(() => {
       for (const op of ops) {
         this.clock.observe(op.clock);
         apply(op);
       }
+    });
+  }
+
+  /**
+   * Run `fn` with capture SUPPRESSED — the model mutations it makes emit no ops.
+   *
+   * For work that is DERIVED rather than authored: referential integrity moving an
+   * orphaned link out of the document and back again is a function of state that every
+   * peer computes for itself, so broadcasting it would put a redundant op on the wire that
+   * races with the ops it was derived from. Deriving it locally is not just cheaper, it is
+   * the only thing that converges.
+   *
+   * Re-entrant: nesting must not clear the flag early (integrity reconciles INSIDE
+   * applyRemote), or a remote op's mutations would start echoing back mid-batch.
+   */
+  silently(fn: () => void): void {
+    const was = this.applying;
+    this.applying = true;
+    try {
+      fn();
     } finally {
-      // finally, not a trailing assignment: if apply() throws, a stuck `applying` flag
-      // would silently disable capture for the rest of the session — every subsequent
-      // local edit lost, with no error anywhere.
-      this.applying = false;
+      // finally, not a trailing assignment: if fn() throws, a stuck `applying` flag would
+      // silently disable capture for the rest of the session — every subsequent local edit
+      // lost, with no error anywhere.
+      this.applying = was;
     }
   }
 
@@ -205,13 +252,16 @@ export class OpCapture {
 
   // -------------------------------------------------------------------------
 
-  private emit(op: OpDraft): void {
+  private emit(op: OpDraft, before: OpBefore): void {
     if (this.applying || this.stopped) return;
-    this.onOp({
-      ...(op as Op),
-      clock: this.clock.tick(),
-      actor: this.clock.actorId,
-    } as Op);
+    this.onOp(
+      {
+        ...(op as Op),
+        clock: this.clock.tick(),
+        actor: this.clock.actorId,
+      } as Op,
+      before
+    );
   }
 
   private watchDiagram(): void {
@@ -223,11 +273,17 @@ export class OpCapture {
         const target = property === 'nodes' ? 'node' : property === 'links' ? 'link' : 'group';
         if (newValue && !oldValue) {
           const e = newValue as Entity;
-          this.emit({ op: 'add', target, id: e.id, data: e.serialize() as never });
+          this.emit({ op: 'add', target, id: e.id, data: e.serialize() as never }, { kind: 'none' });
           this.watchEntity(target, e);
         } else if (oldValue && !newValue) {
+          // The entity's FULL STATE at the moment it was removed — the only thing that can
+          // undo a delete. (deepClone hands class instances through untouched, so this is
+          // the live model, and serialize() on it is exact rather than a stale snapshot.)
           const e = oldValue as Entity;
-          this.emit({ op: 'remove', target, id: e.id });
+          this.emit(
+            { op: 'remove', target, id: e.id },
+            { kind: 'entity', data: e.serialize() as never }
+          );
           this.unwatchEntity(e.id);
         }
         return;
@@ -235,7 +291,10 @@ export class OpCapture {
 
       // A property of the diagram itself (name, viewport, …).
       if (!DERIVED.has(property)) {
-        this.emit({ op: 'set', target: 'diagram', id: '', path: property, value: newValue as OpValue });
+        this.emit(
+          { op: 'set', target: 'diagram', id: '', path: property, value: newValue as OpValue },
+          { kind: 'value', value: oldValue as OpValue }
+        );
       }
     };
 
@@ -246,32 +305,91 @@ export class OpCapture {
   private watchEntity(target: 'node' | 'link' | 'group', entity: Entity): void {
     if (this.entitySubs.has(entity.id)) return;
 
+    // SEED the ports shadow with what the node ALREADY has.
+    //
+    // Without this, `before` for the node's FIRST port change is undefined — and undo reads
+    // that as "the register was empty", so undoing the first port a user ever adds to a node
+    // DELETES EVERY PORT IT HAS, including the ones it was born with. The node survives with
+    // nothing to connect to and every link into it is orphaned. The fuzz found it as a node
+    // with an empty ports array on one peer.
+    if (entity instanceof NodeModel) {
+      this.lastPorts.set(
+        entity.id,
+        entity.getPorts().map((p) => p.serialize()) as unknown as OpValue
+      );
+    }
+
     const onChange = (entry: { property: string; oldValue: unknown; newValue: unknown }) => {
       if (DERIVED.has(entry.property)) return;
 
-      // Wholly-ephemeral registers never reach the wire at all (a link's `state` is
-      // 'default' | 'selected' | 'hovered' | 'highlighted' — view state, top to bottom).
+      // Wholly-ephemeral registers never reach the wire at all. A link's `state` is
+      // 'default' | 'selected' | 'hovered' | 'highlighted' — view state, top to bottom.
       if (EPHEMERAL_BY_TARGET[target]?.has(entry.property)) return;
 
+      // PORTS ARE NOT AN ORDINARY REGISTER, and taking them for one puts a LIVE CLASS
+      // INSTANCE on the wire.
+      //
+      // NodeModel.addPort() emits trackChange('ports', null, <PortModel>) — the new PORT,
+      // not the ports collection — and deepClone hands class instances through untouched.
+      // Captured naively, the op's `value` is a PortModel: not JSON-safe (its prototype
+      // does not survive the wire), and semantically a single port claiming to be the whole
+      // `ports` register. On the receiving peer applyOp finds no setPorts() mutator, falls
+      // back to a direct assignment, and REPLACES node.ports — a Map — WITH A PLAIN OBJECT.
+      // Every getPorts() after that returns nothing and serialize() throws.
+      //
+      // Nothing caught it because a port is almost always added BEFORE its node joins the
+      // diagram (so capture is not watching yet). AddPortCommand adds one AFTER, and that
+      // is the reachable path.
+      //
+      // A node's ports are structure, not a property: send the whole SERIALIZED collection
+      // and let the reducer rebuild the Map. Whole-collection LWW is the cost — two peers
+      // adding a different port to the same node concurrently, and one loses — which is the
+      // right trade for a register that a user changes rarely and never by dragging.
+      if (entry.property === 'ports') {
+        const ports = (entity as NodeModel).getPorts().map((p) => p.serialize()) as unknown as OpValue;
+        // The register's PREVIOUS contents, so undo has something to restore. trackChange
+        // reports the one port that changed, not the collection it changed, so the
+        // collection's prior value has to be remembered here — there is nowhere else to
+        // read it from once the Map has been mutated.
+        const was = this.lastPorts.get(entity.id);
+        this.lastPorts.set(entity.id, ports);
+        this.emit(
+          { op: 'set', target, id: entity.id, path: 'ports', value: ports },
+          { kind: 'value', value: was }
+        );
+        return;
+      }
+
       let value = entry.newValue as OpValue;
+      let before = entry.oldValue as OpValue;
 
       if (entry.property === 'state') {
         // `state` is a MIXED register: durable document facts (visible, locked, expanded)
         // sitting in the same object as per-viewer ephemera (selected, hovered, focused).
-        // Project it, and — critically — emit NOTHING when only the ephemera moved.
+        // Project BOTH sides — and emit NOTHING when only the ephemera moved.
         //
-        // Without the second half of that, hovering a node still puts an op on the wire
-        // and in the permanent log on every mouse-over. The receiver's redundant-write
-        // guard would drop it, so the DOCUMENT would look fine and the bug would be
-        // invisible to every convergence test — while the op log filled with thousands of
-        // hover events that outlive the session.
+        // Without the second half of that, hovering a node still puts an op on the wire and
+        // in the permanent log on every mouse-over. The receiver's redundant-write guard
+        // would drop it, so the DOCUMENT would look correct and the bug would be invisible
+        // to every convergence test — while the log filled with hover events that outlive
+        // the session. (Found by wave9/sync, in two real browser tabs. jsdom does not hover.)
+        //
+        // `before` is projected TOO, and that is not symmetry for its own sake: undo
+        // restores `before`, so an unprojected one would put the undoing user's stale
+        // selection back onto every peer's screen — reintroducing the very bug through the
+        // undo path.
         const next = durableState(entry.newValue);
         const prev = durableState(entry.oldValue);
         if (sameJson(next, prev)) return;
         value = next as OpValue;
+        before = prev as OpValue;
       }
 
-      this.emit({ op: 'set', target, id: entity.id, path: entry.property, value });
+      this.emit(
+        { op: 'set', target, id: entity.id, path: entry.property, value },
+        { kind: 'value', value: before }
+      );
+
     };
 
     this.entitySubs.set(entity.id, entity.on('change', onChange as never));

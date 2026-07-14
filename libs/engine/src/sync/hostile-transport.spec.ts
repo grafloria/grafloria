@@ -133,21 +133,19 @@ function canonical(d: DiagramModel): unknown {
     if (v && typeof v === 'object') {
       return Object.fromEntries(
         Object.entries(v as Record<string, unknown>)
-          .filter(([k]) => k !== 'version')
+          .filter(([k]) => !['version', 'selected', 'hovered', 'highlighted', 'focused'].includes(k))
           .map(([k, val]) => [k, strip(val)])
       );
     }
     return v;
   };
 
-  const raw = strip(d.serialize()) as Record<string, unknown>;
-  for (const key of ['nodes', 'links', 'groups']) {
-    const list = raw[key] as Array<{ id: string }> | undefined;
-    if (Array.isArray(list)) {
-      raw[key] = [...list].sort((a, b) => (a.id < b.id ? -1 : a.id > b.id ? 1 : 0));
-    }
-  }
-  return raw;
+  // THE id-SORT IS GONE, AND ITS REMOVAL IS THE POINT. It was a workaround for the order
+  // gap — entity order did not converge, so the oracle sorted the difference away. Now that
+  // wave9/crdt derives a canonical order from the presence stamps, sorting here would be a
+  // BLINDFOLD: it would hide the exact regression the order fix exists to prevent. The
+  // oracle compares sequences again, as it always should have.
+  return strip(d.serialize());
 }
 
 function doc(a: SyncAdapter): string {
@@ -353,17 +351,21 @@ describe('HOSTILE TRANSPORT — two peers, a channel that drops, duplicates, reo
 });
 
 // ===========================================================================
-// THE ORDER GAP — a real defect in the OP FORMAT, found by the fuzz above, reproduced
-// here in nine lines with no transport, no chaos and no randomness, so that it is ON THE
-// RECORD as a failing property rather than an excuse hidden in a test helper.
+// THE ORDER GAP — FIXED AT MERGE by wave9/crdt, and this test is INVERTED to guard it.
 //
-// NOT FIXED IN THIS CARD, and deliberately: an `add` op carries no ordering information,
-// so the fix belongs in `collab/op.ts` + `apply-op.ts` (owned by wave9/crdt) or in
-// `DiagramModel.serialize()` (shared). See the oracle's doc comment above.
+// It was written to put a real defect ON THE RECORD rather than hide it in a test helper:
+// an `add` op carried no ordering information, so two peers who each added a node while the
+// other was mid-thought converged on CONTENT and disagreed on ARRAY ORDER — which, for an
+// SVG renderer, is PAINT ORDER. Two overlapping nodes stacked differently for two people
+// looking at the same converged document, and two saves of it differed byte for byte.
+//
+// wave9/crdt derives a CANONICAL ORDER from the presence stamps the LWW registry already
+// keeps, so the order is a function of the ops rather than of the sequence in which each
+// peer happened to hear about them.
 // ===========================================================================
-describe('THE ORDER GAP (known defect, reported not fixed)', () => {
-  it('two peers CONVERGE ON CONTENT but not on entity ARRAY ORDER after concurrent adds', () => {
-    const hub = new MemoryHub(); // a PERFECT channel. No chaos. This is not a network bug.
+describe('entity ORDER converges too — because array order is PAINT order', () => {
+  it('two peers agree on entity order after concurrent adds', () => {
+    const hub = new MemoryHub(); // a PERFECT channel. No chaos. This was never a network bug.
     const alice = peer(hub, 'alice');
     const bob = peer(hub, 'bob');
 
@@ -373,22 +375,13 @@ describe('THE ORDER GAP (known defect, reported not fixed)', () => {
     alice.adapter.flush();
     bob.adapter.flush();
 
-    // CONTENT converged: both peers hold both nodes, identical in every property.
-    expect(doc(alice.adapter)).toEqual(doc(bob.adapter));
+    expect(doc(alice.adapter)).toEqual(doc(bob.adapter)); // content converged…
 
-    // ORDER did not. Each peer put its OWN node in first, because it inserted it the
-    // moment the user made it and heard about the other one afterwards.
     const order = (p: Peer) => p.diagram.getNodes().map((n) => n.id);
-    expect(order(alice)).toEqual(['n1', 'n2', 'n3', 'zzz-from-alice', 'aaa-from-bob']);
-    expect(order(bob)).toEqual(['n1', 'n2', 'n3', 'aaa-from-bob', 'zzz-from-alice']);
+    expect(order(alice)).toEqual(order(bob)); // …AND SO DID ORDER
 
-    // …which for an SVG renderer is PAINT ORDER. Two overlapping nodes stack differently
-    // for two users looking at the same converged document — and two saves of it differ
-    // byte for byte.
-    expect(JSON.stringify(alice.diagram.serialize())).not.toEqual(
-      JSON.stringify(bob.diagram.serialize())
-    );
-
+    // …which means both users see the same node on top, and two saves are byte-identical
+    // (bar the per-replica version counters, which are not the document).
     alice.adapter.dispose();
     bob.adapter.dispose();
   });

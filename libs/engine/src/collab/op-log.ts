@@ -48,6 +48,8 @@
 
 import { DiagramModel } from '../models/DiagramModel';
 import { applyOp } from './apply-op';
+import { ReferentialIntegrity } from './integrity';
+import { LwwRegistry } from './lww';
 import { compareOps, opId, type Op } from './op';
 
 /**
@@ -119,11 +121,36 @@ export class OpLog {
  * Sorts defensively rather than trusting the caller: replay determinism is the property
  * every later card stands on, and it would be silly to lose it because someone handed us
  * an array in arrival order.
+ *
+ * Card 4: and it ENFORCES THE INVARIANT at the end, because a peer that joins by replaying
+ * a log must arrive exactly where a peer that was in the room the whole time already is. If
+ * integrity only ran in `Replica.receive()`, a log containing "delete a node that had links"
+ * would replay into a document with a dangling link, and the newcomer would be the only one
+ * holding it. One sweep, once, over the final state — the invariant is a function of that
+ * state and of nothing on the way to it.
+ *
+ * NOTE this is the DOCUMENT, not a live peer: the quarantine it builds is discarded with the
+ * temporary registry. A peer that intends to go on editing should be seeded through
+ * `Replica.receive(history)`, which keeps it — and can therefore still bring an orphaned
+ * link back if someone undoes the delete.
  */
 export function replay(diagram: DiagramModel, ops: readonly Op[]): number {
+  const lww = new LwwRegistry();
+  const integrity = new ReferentialIntegrity(diagram, lww);
+
   let applied = 0;
   for (const op of [...ops].sort(compareOps)) {
+    // The gate's ANSWER is ignored — in TOTAL ORDER it can never refuse anything, because
+    // every register is written oldest-first by construction. What we want is its
+    // book-keeping: the presence stamps, which are what the canonical entity ORDER is
+    // derived from. Without them reconcile() has nothing to sort by and a replayed document
+    // would keep the arbitrary order its ops happened to build, while a live peer holds the
+    // canonical one. replay() stays the dumb, honest primitive it is documented to be.
+    lww.admit(op);
     if (applyOp(diagram, op)) applied++;
+    integrity.note(op);
   }
+
+  integrity.reconcile();
   return applied;
 }

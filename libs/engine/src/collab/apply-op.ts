@@ -29,9 +29,11 @@ import { DiagramModel } from '../models/DiagramModel';
 import { NodeModel } from '../models/NodeModel';
 import { LinkModel } from '../models/LinkModel';
 import { GroupModel } from '../models/GroupModel';
+import { PortModel } from '../models/PortModel';
 import type { SerializedNode } from '../models/NodeModel';
 import type { SerializedLink } from '../models/LinkModel';
 import type { SerializedGroup } from '../models/GroupModel';
+import type { SerializedPort } from '../models/PortModel';
 import type { Op, OpValue } from './op';
 
 /** Thrown only for a MALFORMED op — never for a merely-losing one. */
@@ -100,24 +102,77 @@ function applyAdd(
 
   switch (target) {
     case 'node': {
-      if (diagram.getNode(id)) return false; // already here: duplicate delivery
-      const node = NodeModel.fromJSON(data as SerializedNode);
-      diagram.addNode(node);
+      const existing = diagram.getNode(id);
+      if (existing) {
+        if (sameContent(existing.serialize(), data)) return false; // duplicate delivery
+        diagram.removeNode(id); // a NEW INCARNATION — see reincarnate() below
+      }
+      diagram.addNode(NodeModel.fromJSON(data as SerializedNode));
       return true;
     }
     case 'link': {
-      if (diagram.getLink(id)) return false;
-      const link = LinkModel.fromJSON(data as SerializedLink);
-      diagram.addLink(link);
+      const existing = diagram.getLink(id);
+      if (existing) {
+        if (sameContent(existing.serialize(), data)) return false;
+        diagram.removeLink(id);
+      }
+      diagram.addLink(LinkModel.fromJSON(data as SerializedLink));
       return true;
     }
     case 'group': {
-      if (diagram.getGroup(id)) return false;
-      const group = GroupModel.fromJSON(data as SerializedGroup);
-      diagram.addGroup(group);
+      const existing = diagram.getGroup(id);
+      if (existing) {
+        if (sameContent(existing.serialize(), data)) return false;
+        diagram.removeGroup(id);
+      }
+      diagram.addGroup(GroupModel.fromJSON(data as SerializedGroup));
       return true;
     }
   }
+}
+
+/**
+ * WHY AN `add` FOR AN ENTITY THAT ALREADY EXISTS REPLACES IT INSTEAD OF BEING IGNORED.
+ *
+ * The fuzz found this one and it is the subtlest bug in the wave. It needs a resurrection
+ * and an out-of-order delivery, which is to say: a Tuesday.
+ *
+ *     Alice deletes node C            → remove C @X
+ *     Alice presses Ctrl-Z            → add C @Y, carrying her SNAPSHOT of C
+ *     Bob receives the ADD before the REMOVE (partial delivery — entirely normal)
+ *
+ * Bob still has C. The old reducer said "already here: duplicate delivery" and returned
+ * false, THROWING THE SNAPSHOT AWAY. The gate, meanwhile, had admitted the add and moved
+ * C's presence stamp to Y — so the presence barrier then refused every write older than Y,
+ * and Bob's C was frozen in whatever state Bob happened to have it in. When the remove @X
+ * finally arrived it was refused as superseded, so Bob never rebuilt C either.
+ *
+ * Result: Alice's C is her snapshot, Bob's C is a state that exists nowhere else in the
+ * system, both peers have seen every op, and nothing anywhere reports a problem.
+ *
+ * An `add` is not "create if absent". It ESTABLISHES AN INCARNATION: after it, the entity is
+ * exactly `data`, and (by the presence barrier) every write older than it is void. That is
+ * the only reading under which the barrier is coherent, and it is order-independent, which
+ * is the property that actually matters.
+ *
+ * Identical content is still a no-op, because a duplicate delivery must not bump `version`
+ * or fire a re-render — and `version` is precisely what must be ignored when comparing, since
+ * it is a per-replica mutation counter and two peers legitimately disagree about it.
+ */
+function sameContent(a: unknown, b: unknown): boolean {
+  return deepEqual(stripVersion(a), stripVersion(b));
+}
+
+function stripVersion(v: unknown): unknown {
+  if (Array.isArray(v)) return v.map(stripVersion);
+  if (v && typeof v === 'object') {
+    return Object.fromEntries(
+      Object.entries(v as Record<string, unknown>)
+        .filter(([k]) => k !== 'version')
+        .map(([k, val]) => [k, stripVersion(val)])
+    );
+  }
+  return v;
 }
 
 function applyRemove(
@@ -158,8 +213,30 @@ function applySet(diagram: DiagramModel, op: Extract<Op, { op: 'set' }>): boolea
   // Dropping the write is correct under remove-wins (see CONVERGENCE in op-log.ts):
   // resurrecting an entity from a stray property write would be far worse than losing
   // one property write on a node that no longer exists.
+  //
+  // Card 4 note: "dropped" is right for a REMOVED entity and WRONG for one that has
+  // merely not arrived yet, or that referential integrity is holding in quarantine. Those
+  // two cases are caught ABOVE this function, by the Replica — see integrity.ts. applyOp
+  // itself stays a pure function of (model, op) and keeps no memory of its own.
   if (!entity) return false;
 
+  return applyEntitySet(entity, path, value);
+}
+
+/**
+ * Write one property register of an entity that is ALREADY RESOLVED.
+ *
+ * Split out of applySet so that referential integrity can drive the identical write into
+ * an entity it is holding OUTSIDE the diagram (a link quarantined because its endpoint
+ * node is gone, see integrity.ts). Same mutators, same idempotence guard, same everything —
+ * a quarantined entity that took a DIFFERENT write path would drift from a live one, and
+ * that drift would only surface on resurrection, long after the cause.
+ */
+export function applyEntitySet(
+  entity: NodeModel | LinkModel | GroupModel,
+  path: string,
+  value: OpValue
+): boolean {
   // A WRITE THAT CHANGES NOTHING MUST DO NOTHING. This is not an optimisation, it is
   // what makes applyOp IDEMPOTENT, and idempotence is not optional here: redundant sets
   // are ROUTINE traffic (a duplicate delivery, a reconnect replaying the log, a peer
@@ -177,10 +254,22 @@ function applySet(diagram: DiagramModel, op: Extract<Op, { op: 'set' }>): boolea
   return setEntityProp(entity, path, value);
 }
 
+/** Read the register an op path names. Exported for undo, which needs the value a
+ *  register held before an op overwrote it. */
+export function readProp(entity: NodeModel | LinkModel | GroupModel, path: string): unknown {
+  return readEntityProp(entity, path);
+}
+
 /** Read the register an op path names, so we can tell a real write from a redundant one. */
 function readEntityProp(entity: NodeModel | LinkModel | GroupModel, path: string): unknown {
   if (path.startsWith('metadata.')) {
     return entity.getMetadata(path.slice('metadata.'.length));
+  }
+  // `ports` is held as a Map but travels as a serialized array — compare like with like, or
+  // the idempotence guard never fires and every duplicate delivery rebuilds the collection
+  // and bumps `version`, which the byte-identical replay oracle would then catch.
+  if (path === 'ports' && entity instanceof NodeModel) {
+    return entity.getPorts().map((p) => p.serialize());
   }
   let cur: unknown = entity;
   for (const part of path.split('.')) {
@@ -244,6 +333,60 @@ function setEntityProp(
 
   if (entity instanceof NodeModel) {
     switch (path) {
+      case 'ports': {
+        // PORTS ARE A Map, exactly like metadata, and exactly as dangerous. There is no
+        // setPorts() mutator, so writeGeneric would fall through to a direct assignment and
+        // REPLACE THE Map WITH A PLAIN OBJECT — after which getPorts() returns nothing and
+        // serialize() throws on ports.values(). Rebuild it the way fromJSON does.
+        //
+        // A non-array is REFUSED rather than read as "no ports". `ports` always serializes as
+        // an array, so a missing value means a bug upstream, and the cost of guessing is a
+        // node stripped of every port it has and every link into it orphaned — which is
+        // exactly what an undo of the first port-add used to do.
+        if (!Array.isArray(value)) return false;
+        const incoming = value as unknown as SerializedPort[];
+        const wanted = new Map(incoming.map((p) => [p.id, p]));
+
+        // THROUGH THE REAL MUTATORS — addPort/removePort — and NOT by rewriting the Map.
+        //
+        // This file's own header says property writes must go through the model's mutators,
+        // and the first version of this branch broke that rule and paid for it. Rewriting
+        // `entity.ports` directly produces a node that serializes perfectly and is invisible
+        // to trackChange — which is to say invisible to CAPTURE. So a peer UNDOING its own
+        // port-add reverted its screen and BROADCAST NOTHING: every other peer kept the port
+        // forever. Two documents, identical logs, no error. The fuzz found it as a node with
+        // seven ports on one peer and six on the other.
+        //
+        // Live PortModels are kept where the id already exists: a port carries connection
+        // state and identity that a rebuilt instance would drop on the floor.
+        let changed = false;
+        for (const p of entity.getPorts()) {
+          if (!wanted.has(p.id)) {
+            entity.removePort(p.id);
+            changed = true;
+          }
+        }
+        for (const p of incoming) {
+          if (!entity.ports.has(p.id)) {
+            entity.addPort(PortModel.fromJSON(p));
+            changed = true;
+          }
+        }
+
+        // Same SET, possibly a different ORDER — and order is in serialize(). Align it with
+        // the incoming collection, which every peer has. No mutator, and none wanted: this
+        // reorders nothing the model considers a change.
+        if (entity.ports.size === incoming.length) {
+          const reordered = incoming
+            .map((p) => entity.ports.get(p.id))
+            .filter((p): p is PortModel => p !== undefined);
+          if (reordered.length === incoming.length) {
+            entity.ports.clear();
+            for (const p of reordered) entity.ports.set(p.id, p);
+          }
+        }
+        return changed;
+      }
       case 'position': {
         const p = value as { x: number; y: number; z?: number };
         entity.setPosition(p.x, p.y, p.z);
