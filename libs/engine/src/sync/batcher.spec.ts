@@ -23,10 +23,15 @@ describe('coalesce', () => {
     // errors. This test is named after that bug.
     const drag = [0, 1, 2, 3, 4].map((i) => set('n1', 'position', { x: i * 10, y: 0 }, i + 1));
 
-    const out = coalesce(drag);
+    const { kept: out, dropped } = coalesce(drag);
 
     expect(out).toHaveLength(1);
     expect((out[0] as { value: unknown }).value).toEqual({ x: 40, y: 0 }); // the LAST, not the first
+
+    // The four superseded ops are REPORTED, not merely discarded — the adapter has to know
+    // exactly which ops it is never going to send, or its frontier advertises history no
+    // peer can ever obtain. See `SyncAdapter.sharedHistory()`.
+    expect(dropped.map((o) => o.clock)).toEqual([1, 2, 3, 4]);
   });
 
   it('does NOT coalesce across DIFFERENT registers — a move and a rename both survive', () => {
@@ -35,7 +40,7 @@ describe('coalesce', () => {
       set('n1', 'metadata.label', 'hello', 2),
       set('n1', 'position', { x: 2, y: 2 }, 3),
     ];
-    const out = coalesce(ops);
+    const { kept: out } = coalesce(ops);
 
     expect(out).toHaveLength(2);
     expect(out.map((o) => (o as { path: string }).path)).toEqual(['metadata.label', 'position']);
@@ -53,7 +58,7 @@ describe('coalesce', () => {
       set('n7', 'position', { x: 9, y: 9 }, 3),
       set('n1', 'position', { x: 5, y: 5 }, 4),
     ];
-    const out = coalesce(ops);
+    const { kept: out } = coalesce(ops);
 
     // n1's first position is dropped (superseded); everything else keeps its place.
     expect(out.map((o) => `${o.op}:${o.id}@${o.clock}`)).toEqual([
@@ -65,7 +70,8 @@ describe('coalesce', () => {
 
   it('never drops an `add` or a `remove` — they are events, not register writes', () => {
     const ops = [add('n1', 1), remove('n1', 2), add('n1', 3)];
-    expect(coalesce(ops)).toEqual(ops);
+    expect(coalesce(ops).kept).toEqual(ops);
+    expect(coalesce(ops).dropped).toEqual([]);
   });
 
   it('a set before a remove-and-re-add is still safely dropped', () => {
@@ -78,7 +84,7 @@ describe('coalesce', () => {
       add('n1', 3),
       set('n1', 'position', { x: 2, y: 2 }, 4),
     ];
-    const out = coalesce(ops);
+    const { kept: out } = coalesce(ops);
     expect(out.map((o) => `${o.op}@${o.clock}`)).toEqual(['remove@2', 'add@3', 'set@4']);
   });
 });

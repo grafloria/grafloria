@@ -37,7 +37,7 @@
 
 import type { DiagramModel } from '../models/DiagramModel';
 import { Replica } from '../collab/replica';
-import type { ActorId, Op } from '../collab/op';
+import { opId, type ActorId, type Op } from '../collab/op';
 import { Awareness, type AwarenessState } from './awareness';
 import { OpBatcher, type OpBatcherOptions } from './batcher';
 import { CausalBuffer } from './causal-buffer';
@@ -120,6 +120,16 @@ export class SyncAdapter {
 
   private readonly buffer: CausalBuffer;
   private readonly vv = new VersionVector();
+
+  /**
+   * Ops we COALESCED AWAY and will therefore never transmit — to anyone, ever.
+   *
+   * They are in our LOG (they really happened) but not in the history we SHARE, so they must
+   * not appear in our frontier or in any catch-up delta we serve. See `sharedHistory()` for
+   * the bug this prevents; it is the difference between "one op per drag" and "the entire
+   * document history, resent on every sync round, forever".
+   */
+  private readonly suppressed = new Set<string>();
   private readonly batcher: OpBatcher | null;
   private readonly unsubs: Unsubscribe[] = [];
 
@@ -183,7 +193,16 @@ export class SyncAdapter {
         ? null
         : new OpBatcher({
             ...(options.batch ?? {}),
-            onFlush: (ops) => this.sendOps(ops),
+            onFlush: (kept, dropped) => {
+              // Ops coalesced away are ops we will NEVER put on the wire. Record them, or
+              // our frontier advertises history no peer can ever obtain. See `suppressed`.
+              for (const op of dropped) this.suppressed.add(opId(op));
+              // The frontier advances HERE — at the moment ops actually go out — and not in
+              // `publish()`, because at publish time we do not yet know which of them will
+              // survive coalescing.
+              this.vv.observeAll(kept);
+              this.sendOps(kept);
+            },
             setTimer: options.setTimer,
             clearTimer: options.clearTimer,
           });
@@ -211,14 +230,18 @@ export class SyncAdapter {
    * THE INVARIANT, and it is worth stating as one because it is the whole correctness
    * condition of this layer in a single line:
    *
-   *     frontier() === VersionVector.fromOps(replica.history())     — ALWAYS.
+   *     frontier() === VersionVector.fromOps(sharedHistory())     — ALWAYS.
    *
-   * The frontier is a CACHE of the log's own summary, maintained incrementally so we do not
-   * rescan the history on every sync. A cache that disagrees with its source is not a
-   * performance detail; it is a peer lying to the network about what it holds. Claim too
-   * much and you never receive the op you are missing (silent data loss); claim too little
-   * and every round resends an actor's entire history (a silent O(history) amplifier on the
-   * flakiest connections, which is precisely where you can least afford it).
+   * SHARED history, not the local log — an op coalescing withheld is not part of the history
+   * we share with anyone, and advertising it would make every peer chase a hole that can
+   * never be filled. That distinction IS the bug documented on `sharedHistory()`.
+   *
+   * The frontier is a CACHE of that summary, maintained incrementally so we do not rescan
+   * the history on every sync. A cache that disagrees with its source is not a performance
+   * detail; it is a peer lying to the network about what it holds. Claim too much and you
+   * never receive the op you are missing (silent data loss); claim too little and every
+   * round resends an actor's entire history (a silent O(history) amplifier on the flakiest
+   * connections, which is precisely where you can least afford it).
    *
    * `sync-adapter.spec.ts` asserts this equality after a full hostile session, which is what
    * makes it a checked invariant rather than a comment.
@@ -319,9 +342,51 @@ export class SyncAdapter {
     // there is: someone moving someone else's node.
     this.buffer.noteLocal(op);
 
+    if (this.batcher) {
+      // NOTE what is NOT here: `this.vv.observe(op)`. The frontier advances when the op is
+      // SENT, not when it is made — because coalescing may yet decide never to send it, and
+      // advertising an op we will never transmit is what makes a peer chase a hole forever.
+      this.batcher.push(op);
+      return;
+    }
+
+    // Un-batched: every op goes out, so nothing is ever suppressed and the frontier can
+    // advance immediately.
     this.vv.observe(op);
-    if (this.batcher) this.batcher.push(op);
-    else this.sendOps([op]);
+    this.sendOps([op]);
+  }
+
+  /**
+   * THE LOG AS THE NETWORK SEES IT — our history, minus everything coalescing withheld.
+   *
+   * ---------------------------------------------------------------------------
+   * THE BUG THIS EXISTS TO FIX, WHICH WAS MINE, AND WHICH ONLY THE BROWSER FOUND
+   * ---------------------------------------------------------------------------
+   * A 20-frame drag puts ONE op on the wire and leaves TWENTY in the local log — that is
+   * coalescing working exactly as designed, and the two peers' documents agree perfectly.
+   *
+   * But anti-entropy compares FRONTIERS DERIVED FROM LOGS. So on the next sync round my
+   * frontier said "I hold 20 ops from alice" and the peer's said "I hold 1", and the digest
+   * — which cannot tell a withheld op from a lost one — declared a HOLE and repaired it by
+   * resending my entire history. Measured: `opsSent` went from 1 to 21 on the first sync
+   * after a single drag. And it never settles, because the peer can NEVER obtain the 19 ops
+   * I have deliberately decided never to send. Every sync round, forever, for the rest of
+   * the session, on the most common interaction in the product.
+   *
+   * It is invisible to a convergence oracle — the document is perfectly correct throughout —
+   * and it was invisible to my own frontier-invariant test, which flushed after every single
+   * op and therefore never once coalesced anything while syncing. It took driving a real drag
+   * through a real browser to compose the two.
+   *
+   * THE FIX is a definition, not a patch: THE FRONTIER DESCRIBES THE SHARED LOG. An op we
+   * chose never to transmit is not part of the history we share with anyone, so it is not in
+   * our frontier and it is not in the catch-up delta we serve — to ANY peer, including one
+   * that joins tomorrow. Every peer therefore holds the same shared set, every digest agrees,
+   * and the fast path stays fast.
+   */
+  sharedHistory(): Op[] {
+    if (this.suppressed.size === 0) return [...this.replica.history()];
+    return this.replica.history().filter((op) => !this.suppressed.has(opId(op)));
   }
 
   // -- awareness -------------------------------------------------------------
@@ -471,7 +536,10 @@ export class SyncAdapter {
 
   /** Ship a peer exactly the ops its frontier says it does not have. */
   private answer(remoteVv: VersionVectorJSON): void {
-    const { ops, repairedActors } = deltaFor(this.replica.history(), remoteVv);
+    // `sharedHistory()`, NOT `history()`. Serving the raw log would hand a joining peer the
+    // 19 drag samples we withheld from everyone else — so IT would hold ops no other peer
+    // has, and the two of them would then repair each other forever.
+    const { ops, repairedActors } = deltaFor(this.sharedHistory(), remoteVv);
     if (repairedActors.length > 0) this.stats.repairs++;
     if (ops.length > 0) this.sendOps(ops);
   }

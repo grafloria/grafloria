@@ -260,11 +260,101 @@ describe('THE FRONTIER INVARIANT — the cache must not lie about the log it cac
     expect(alice.stats.opsDuplicate + bob.stats.opsDuplicate).toBeGreaterThan(0);
 
     for (const p of [alice, bob]) {
-      expect(p.frontier()).toEqual(VersionVector.fromOps(p.replica.history()).toJSON());
+      expect(p.frontier()).toEqual(VersionVector.fromOps(p.sharedHistory()).toJSON());
     }
 
     alice.dispose();
     bob.dispose();
+  });
+
+  it('THE DRAG THAT RESENT THE DOCUMENT: coalescing must not make anti-entropy repair forever', () => {
+    // ---------------------------------------------------------------------------
+    // A REGRESSION TEST FOR MY OWN BUG, AND THE ONE I AM LEAST PROUD OF, BECAUSE THE
+    // MACHINERY TO CATCH IT WAS ALREADY THERE AND I HAD NOT COMPOSED IT.
+    //
+    // A 20-frame drag puts ONE op on the wire and leaves TWENTY in the local log. That is
+    // coalescing working perfectly, and the two documents agree perfectly.
+    //
+    // But anti-entropy compares FRONTIERS DERIVED FROM LOGS. So the next sync round saw "I
+    // hold 20 ops from alice" against "I hold 1", could not tell a WITHHELD op from a LOST
+    // one, declared a hole, and repaired it by resending alice's entire history. Measured:
+    // `opsSent` went 1 → 21 on the first sync after a single drag. And it never settled,
+    // because bob can never obtain 19 ops that alice has decided never to send — so it fired
+    // again on the next round, and the next, for the life of the session, on the single most
+    // common interaction in the product.
+    //
+    // NOTHING I HAD WOULD HAVE CAUGHT IT:
+    //   • the convergence oracles are all perfectly green — the document is CORRECT throughout;
+    //   • the fuzz EXPECTS repairs (that is its whole point), so a spurious one is invisible;
+    //   • my own frontier-invariant test flushed after every op, so it never once coalesced
+    //     anything while syncing.
+    // It took driving a real drag through a real browser to compose batching with
+    // anti-entropy, which are two features I built and tested separately.
+    //
+    // THE FIX IS A DEFINITION: the frontier describes the SHARED log — the history we
+    // actually put on the wire — not the local one. See `SyncAdapter.sharedHistory()`.
+    // ---------------------------------------------------------------------------
+    const hub = new MemoryHub();
+    const alice = peer(hub, 'alice');
+    const bob = peer(hub, 'bob');
+
+    // ONE drag: 20 pointermove ops on the same register, ONE flush.
+    const n = alice.diagram.getNode('n1')!;
+    for (let i = 1; i <= 20; i++) n.setPosition(i * 5, 0);
+    alice.flush();
+
+    // Coalescing did its job: 20 ops logged, ONE on the wire, and bob has the LAST position.
+    expect(alice.replica.history()).toHaveLength(20);
+    expect(alice.stats.opsSent).toBe(1);
+    expect(bob.replica.history()).toHaveLength(1);
+    expect(bob.diagram.getNode('n1')!.position).toMatchObject({ x: 100, y: 0 });
+
+    // Now the periodic anti-entropy every real session runs.
+    const sentBefore = alice.stats.opsSent;
+    for (let r = 0; r < 5; r++) {
+      alice.sync();
+      bob.sync();
+    }
+
+    // NOT ONE REPAIR, and NOT ONE extra op. Before the fix: 1 repair and 20 more ops on the
+    // wire, on the first round, and again on every round after it.
+    expect(alice.stats.repairs).toBe(0);
+    expect(bob.stats.repairs).toBe(0);
+    expect(alice.stats.opsSent).toBe(sentBefore);
+
+    // …because the 19 withheld ops are not in the history alice SHARES.
+    expect(alice.sharedHistory()).toHaveLength(1);
+    expect(alice.frontier()).toEqual(VersionVector.fromOps(alice.sharedHistory()).toJSON());
+
+    alice.dispose();
+    bob.dispose();
+  });
+
+  it('a peer joining LATE gets the SHARED history — not the drag samples nobody else has', () => {
+    // The subtle half. If catch-up served the raw log, a peer joining tomorrow would receive
+    // the 19 coalesced-away ops — and would then hold ops NO OTHER PEER HAS. It and bob would
+    // then repair each other forever, which is the same bug wearing a different hat.
+    const hub = new MemoryHub();
+    const alice = peer(hub, 'alice');
+    const bob = peer(hub, 'bob');
+
+    const n = alice.diagram.getNode('n1')!;
+    for (let i = 1; i <= 20; i++) n.setPosition(i * 5, 0);
+    alice.flush();
+
+    const carol = peer(hub, 'carol'); // joins now, and is caught up by alice
+
+    expect(carol.diagram.getNode('n1')!.position).toMatchObject({ x: 100, y: 0 });
+    expect(carol.replica.history()).toHaveLength(1); // the SAME one op bob got
+
+    for (let r = 0; r < 3; r++) {
+      alice.sync();
+      bob.sync();
+      carol.sync();
+    }
+    expect(alice.stats.repairs + bob.stats.repairs + carol.stats.repairs).toBe(0);
+
+    [alice, bob, carol].forEach((p) => p.dispose());
   });
 });
 

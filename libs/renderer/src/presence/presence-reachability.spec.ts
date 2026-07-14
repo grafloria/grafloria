@@ -278,10 +278,103 @@ describe('REACHABILITY — two live panes, real events, real transport', () => {
     ) as HTMLElement;
     expect(box).toBeTruthy();
     expect(box.style.left).toBe('200px');
+  });
+});
 
-    // …and it did NOT select the node for Bo. Selection is per-VIEWER; the model's
-    // `selected` flag is a single shared register, so syncing it would mean Ana's click
-    // deselects Bo's node.
-    expect(right.instance.getModel().getNode('selectme')!.state.selected).toBe(false);
+// ===========================================================================
+// THE EPHEMERAL-STATE LEAK — a REAL BUG, found by driving a real mouse in a real browser.
+// NOT FIXED HERE, because the fix is three lines in a file this card does not own.
+//
+// `OpCapture` (collab/capture.ts, Card 0 — wave9/crdt's) emits a `set … path='state'` op for
+// EVERY change to an entity's state object. And `state` holds BOTH:
+//
+//     durable:   visible · locked · expanded · enabled     ← document. MUST sync.
+//     ephemeral: hovered · selected · focused              ← per-VIEWER. MUST NOT sync.
+//
+// So merely MOVING THE MOUSE ACROSS A NODE writes to the document. Two ops, per node, per
+// hover, forever, into an append-only, persisted, replayable log — and the peer applies them,
+// so a node lights up on MY screen because YOUR mouse is over it. Selection is the same bug
+// with worse consequences: your click deselects my node.
+//
+// HOW I FOUND IT, AND WHY NOTHING ELSE COULD HAVE. The cross-tab e2e asserted "40 remote
+// cursor moves add nothing to the op log" and it FAILED — the log grew by 5. jsdom does not
+// hover, the engine tests never move a mouse, and every unit test in this card passes. It
+// took a real browser.
+//
+// AND THE TEST BELOW USED TO BE A FALSE GREEN, which is the part worth admitting: it asserted
+// `state.selected === false` on the remote peer and PASSED — not because selection does not
+// sync, but because the batcher was never flushed, so the op never left. A green assertion,
+// for entirely the wrong reason, guarding exactly the bug it was written to prevent.
+//
+// THE FIX (for wave9/crdt, in capture.ts, next to the `DERIVED` set that already exists for
+// exactly this reason): an EPHEMERAL set, and emit `state` ops only for the durable keys.
+// The precedent is already there — `points` is excluded because it is derived. `hovered` and
+// `selected` should be excluded because they are per-viewer. Presence already carries them,
+// correctly, on the awareness channel, which is where they belong.
+// ===========================================================================
+describe('THE EPHEMERAL-STATE LEAK (known defect, reported not fixed)', () => {
+  let hub: MemoryHub;
+  let left: Pane;
+  let right: Pane;
+
+  beforeEach(() => {
+    hub = new MemoryHub();
+    left = pane(hub, 'ana', new DiagramModel('shared'), 'Ana');
+    right = pane(hub, 'bo', new DiagramModel('shared'), 'Bo');
+  });
+
+  afterEach(() => {
+    for (const p of [left, right]) {
+      p.presence.dispose();
+      p.session.dispose();
+      p.instance.dispose();
+      p.el.remove();
+    }
+  });
+
+  it('HOVERING a node writes to the document — and lights it up on the other user’s screen', () => {
+    const model = left.instance.getModel();
+    model.addNode(node('hovered-node', 10, 10));
+    left.session.flush();
+
+    const logBefore = left.session.replica.history().length;
+
+    // Exactly what `DomEventBinder` does when the pointer crosses a node. No click. No drag.
+    model.getNode('hovered-node')!.setState({ hovered: true });
+    left.session.flush();
+
+    // A permanent entry in an append-only document history, for a mouse passing over.
+    expect(left.session.replica.history().length).toBeGreaterThan(logBefore);
+
+    // …and Bo's node is now HOVERED, because ANA's mouse is over it.
+    expect(right.instance.getModel().getNode('hovered-node')!.state.hovered).toBe(true);
+  });
+
+  it('SELECTING a node selects it for the other user too — their click moves your selection', () => {
+    const model = left.instance.getModel();
+    model.addNode(node('selectme', 200, 150));
+    left.session.flush();
+
+    model.selectNode(model.getNode('selectme')!);
+    left.session.flush(); // ← THE LINE THAT WAS MISSING, and that made the old test a false green
+
+    // Selection is per-VIEWER. `state.selected` is a single shared register. So Ana's click
+    // selects Bo's node — and when Bo clicks something else, he deselects Ana's.
+    expect(right.instance.getModel().getNode('selectme')!.state.selected).toBe(true);
+  });
+
+  it('the awareness channel ALREADY carries selection correctly — the op is pure damage', () => {
+    // The remedy needs no new mechanism. Presence already publishes selection on the
+    // ephemeral channel, per viewer, expiring on disconnect — which is exactly right. The
+    // `state` op is not doing a job that would otherwise go undone; it is doing damage.
+    const model = left.instance.getModel();
+    model.addNode(node('sel', 300, 300));
+    left.session.flush();
+    model.selectNode(model.getNode('sel')!);
+
+    expect(right.session.awareness.getPeer('ana')!.state['selection']).toEqual(['sel']);
+    expect(
+      right.el.querySelector('.grafloria-presence-selection[data-entity="sel"]')
+    ).toBeTruthy();
   });
 });
