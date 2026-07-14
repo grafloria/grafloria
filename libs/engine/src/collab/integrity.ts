@@ -111,6 +111,13 @@ export class ReferentialIntegrity {
     private readonly diagram: DiagramModel,
     private readonly lww: LwwRegistry
   ) {
+    // Wave 10. `DiagramModel.removeNode()` now cascades its links — the single-user
+    // document had no owner for that invariant at all, and left them dangling on screen.
+    // THIS class is the better owner, for the reasons argued at the top of this file, so
+    // take the cascade off: an orphaned link must reach the quarantine (reversibly), not
+    // the bin (permanently).
+    diagram.linkIntegrityOwner = 'external';
+
     // A Replica is routinely attached to a diagram that already has content.
     for (const n of diagram.getNodes()) this.indexPorts(n.id);
   }

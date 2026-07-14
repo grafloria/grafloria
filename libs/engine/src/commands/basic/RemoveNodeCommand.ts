@@ -2,10 +2,21 @@
 
 import { Command, CommandContext, SerializedCommand } from '../Command';
 import { NodeModel, SerializedNode } from '../../models/NodeModel';
+import { LinkModel, SerializedLink } from '../../models/LinkModel';
 
 export class RemoveNodeCommand extends Command {
   private nodeData?: SerializedNode;
   private descendantsData?: SerializedNode[]; // Phase 1.6a Part 5
+  /**
+   * Wave 10: the links `DiagramModel.removeNode()` now CASCADES.
+   *
+   * Removing a node used to leave its links dangling in the diagram, so undo happened to
+   * come back whole — the links had never left. Now that the cascade is correct, undo has
+   * to put them back itself, or every delete/undo cycle would silently strip the node's
+   * edges. Saved for the node AND its descendants, deduped: one link can touch two of
+   * them.
+   */
+  private linksData?: SerializedLink[];
 
   constructor(private nodeId: string) {
     super('Remove Node');
@@ -29,6 +40,13 @@ export class RemoveNodeCommand extends Command {
     const descendants = node.getDescendants();
     this.descendantsData = descendants.map((d: NodeModel) => d.serialize());
 
+    // Save every link about to be cascaded — this node's and its descendants'.
+    const doomed = new Map<string, LinkModel>();
+    for (const id of [this.nodeId, ...descendants.map((d: NodeModel) => d.id)]) {
+      for (const link of diagram.getLinksForNode(id)) doomed.set(link.id, link);
+    }
+    this.linksData = [...doomed.values()].map((l) => l.serialize());
+
     // Clean up hierarchy with parent (Phase 1.6a Part 5)
     if (node.parentId) {
       const parent = diagram.getNode(node.parentId);
@@ -42,7 +60,7 @@ export class RemoveNodeCommand extends Command {
       diagram.removeNode(descendant.id);
     }
 
-    // Remove node
+    // Remove node (cascades its remaining links)
     diagram.removeNode(this.nodeId);
   }
 
@@ -77,6 +95,14 @@ export class RemoveNodeCommand extends Command {
             parent.addChild(descendant.id);
           }
         }
+      }
+    }
+
+    // Put the cascaded links back — AFTER every node is in, or their endpoints would not
+    // resolve. addLink() re-registers them on their ports (wave 10).
+    for (const linkData of this.linksData ?? []) {
+      if (!diagram.getLink(linkData.id)) {
+        diagram.addLink(LinkModel.fromJSON(linkData));
       }
     }
   }
