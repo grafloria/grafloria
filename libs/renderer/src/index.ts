@@ -62,6 +62,12 @@ export * from './platform';
 // milliseconds instead of blocking the tab until every link has been routed.
 export * from './lazy';
 
+// Wave 9 (Collaboration) — Card 5, Part B: LIVE PRESENCE. Remote cursors, remote
+// selections and name badges, as a SEPARATE DOM LAYER that never enters the VNode
+// tree — a cursor moving at 60fps must not dirty a 10k-node diagram's frame, and an
+// idle canvas with presence mounted still costs 0.0ms.
+export * from './presence';
+
 // Wave 6 (Cards 0/2/5/6/7): the EXTENSION API. One capability-scoped host over
 // the registries that already existed (shapes, edge templates/markers, routers,
 // node templates, animations), the link-pipeline seams that did NOT (anchors,
