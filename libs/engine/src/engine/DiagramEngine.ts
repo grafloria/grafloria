@@ -417,6 +417,11 @@ export class DiagramEngine {
 
     if (diagram) {
       this.attachDiagram(diagram);
+      // Wave 9 — Card 7: a diagram attached to an engine that is ALREADY in
+      // VIEW/PRESENTATION mode must come up LOCKED. Without this, read-only would
+      // depend on whether the host happened to call setMode() before or after
+      // loading the document — a race the host cannot see.
+      this.syncReadonlyLock();
     }
 
     this.store.set('diagram', diagram);
@@ -1341,6 +1346,24 @@ export class DiagramEngine {
    */
   setMode(mode: DiagramMode): void {
     this.modeManager.setMode(mode);
+    this.syncReadonlyLock();
+  }
+
+  /**
+   * Wave 9 — Card 7. Push the mode's read-only verdict down onto the DOCUMENT.
+   *
+   * Before this wave `DiagramMode.VIEW` / `PRESENTATION` and `isReadOnlyMode()`
+   * existed, were documented as "all editing disabled" — and gated NOTHING. Not a
+   * command, not a model mutator, not the event binder. They were a boolean nobody
+   * asked. This is the line that makes the mode real: the model holds the lock, and
+   * the model is where mutation actually happens.
+   *
+   * Call it after any mode change, and whenever a diagram is attached (a diagram
+   * loaded into an engine that is ALREADY in presentation mode must come up locked,
+   * or read-only would depend on the order the host happened to call things in).
+   */
+  private syncReadonlyLock(): void {
+    this.diagram?.setReadonly(this.modeManager.isReadOnlyMode());
   }
 
   /**
@@ -2112,9 +2135,15 @@ export class DiagramEngine {
       }
     });
 
-    // Set the link points from the routed path
+    // Set the link points from the routed path.
+    // Wave 9 — Card 7: a SYSTEM write. These points are DERIVED from geometry the
+    // document already has; a read-only diagram must still route its links or it
+    // renders with no path at all. Not reachable from user input.
     if (routedPath && routedPath.points.length > 0) {
-      link.setPoints(routedPath.points);
+      const points = routedPath.points;
+      this.diagram
+        ? this.diagram.runSystemWrite(() => link.setPoints(points))
+        : link.setPoints(points);
     } else {
       // Fallback to simple path generation if routing failed
       link.generatePath(sourcePos, targetPos, sourceDirection, targetDirection);

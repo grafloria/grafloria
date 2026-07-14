@@ -1,6 +1,7 @@
 // DiagramModel - Root container for all diagram entities
 
 import { DiagramEntity } from './DiagramEntity';
+import { ReadonlyLock } from './readonly-lock'; // Wave 9 — Card 7
 import { NodeModel, SerializedNode } from './NodeModel';
 import { LinkModel, SerializedLink } from './LinkModel';
 import { PortModel } from './PortModel';
@@ -96,6 +97,19 @@ export class DiagramModel extends DiagramEntity {
   nodes: Map<string, NodeModel> = new Map();
   links: Map<string, LinkModel> = new Map();
   groups: Map<string, GroupModel> = new Map(); // Phase 1.6c
+
+  /**
+   * Wave 9 — Card 7. The read-only lock. THE enforcement point for
+   * `DiagramMode.VIEW` / `PRESENTATION`, which before this wave were advisory flags
+   * that gated nothing at all (see ./readonly-lock.ts).
+   *
+   * Kept on the model rather than the engine because the model is what the mutators
+   * live on, and a lock the mutator cannot see is not a lock. `NodeModel` reaches it
+   * via its `diagram` back-reference; `LinkModel` via the one this wave added
+   * (`installLink`), without which every waypoint / label / reconnect edit — all of
+   * which are `LinkModel` methods — would have been an unguardable hole.
+   */
+  private readonlyLock = new ReadonlyLock();
 
   // O(1) port -> owning node/port lookup. Maintained whenever nodes or ports
   // are added/removed so callers (renderer per-frame link resolution, routing,
@@ -241,8 +255,43 @@ export class DiagramModel extends DiagramEntity {
   /**
    * Add node to diagram
    */
+  // ==========================================================================
+  // Wave 9 — Card 7: the read-only lock (see ./readonly-lock.ts).
+  // ==========================================================================
+
+  /** Is this document locked against edits? */
+  isReadonly(): boolean {
+    return this.readonlyLock.isReadonly();
+  }
+
+  /**
+   * Lock / unlock the document. Normally driven by `DiagramEngine.setMode()` —
+   * VIEW and PRESENTATION lock, DESIGNER unlocks — so `DiagramMode` finally means
+   * something. Can also be set directly for a host that has no mode concept.
+   */
+  setReadonly(value: boolean): void {
+    if (this.readonlyLock.isReadonly() === value) return;
+    this.readonlyLock.setReadonly(value);
+    this.emitOrQueue('readonly:change', value);
+  }
+
+  /** True when a document mutation must be refused right now. */
+  blocksDocumentWrite(): boolean {
+    return this.readonlyLock.blocksDocumentWrite();
+  }
+
+  /**
+   * Run a SYSTEM write — a derived/measured value (auto-size, portal placement)
+   * the engine needs in order to render the document as it already is. Permitted
+   * even while locked. NOT reachable from user input; see readonly-lock.ts.
+   */
+  runSystemWrite<T>(fn: () => T): T {
+    return this.readonlyLock.runSystemWrite(fn);
+  }
+
   addNode(node: NodeModel): void {
     this.assertNotDisposed(); // Phase 5.4
+    if (this.blocksDocumentWrite()) return;
 
     if (this.nodes.has(node.id)) {
       throw new Error(`Node with id ${node.id} already exists`);
@@ -298,6 +347,7 @@ export class DiagramModel extends DiagramEntity {
    * Remove node from diagram
    */
   removeNode(nodeId: string): NodeModel | undefined {
+    if (this.blocksDocumentWrite()) return undefined;
     const node = this.nodes.get(nodeId);
     if (node) {
       this.nodes.delete(nodeId);
@@ -400,6 +450,7 @@ export class DiagramModel extends DiagramEntity {
    * Clear all nodes
    */
   clearNodes(): void {
+    if (this.blocksDocumentWrite()) return;
     this.nodes.clear();
     this.portIndex.clear();
     this.emitOrQueue('nodes:cleared');
@@ -410,6 +461,7 @@ export class DiagramModel extends DiagramEntity {
    */
   addLink(link: LinkModel): void {
     this.assertNotDisposed(); // Phase 5.4
+    if (this.blocksDocumentWrite()) return;
 
     if (this.links.has(link.id)) {
       throw new Error(`Link with id ${link.id} already exists`);
@@ -424,6 +476,12 @@ export class DiagramModel extends DiagramEntity {
    * the owning-node-id backfill renderers resolve port sides through.
    */
   private installLink(link: LinkModel): void {
+    // Wave 9 — Card 7. The diagram back-reference. NodeModel has had one since
+    // Phase 1.6a; LinkModel never did — which meant every waypoint, control-point,
+    // label and reconnect edit (all LinkModel methods) could not see a read-only
+    // lock and was therefore unguardable. Symmetric with installNode.
+    link.diagram = this;
+
     // Cache the owning node ids (renderers resolve port sides through them —
     // without this, links built via `new LinkModel()` + addLink never resolve
     // port direction, unlike connectNodes() which sets the ids itself)
@@ -456,6 +514,7 @@ export class DiagramModel extends DiagramEntity {
    * Remove link from diagram
    */
   removeLink(linkId: string): LinkModel | undefined {
+    if (this.blocksDocumentWrite()) return undefined;
     const link = this.links.get(linkId);
     if (link) {
       this.links.delete(linkId);
@@ -510,6 +569,7 @@ export class DiagramModel extends DiagramEntity {
    * Clear all links
    */
   clearLinks(): void {
+    if (this.blocksDocumentWrite()) return;
     this.links.clear();
     this.emitOrQueue('links:cleared');
   }
@@ -718,6 +778,7 @@ export class DiagramModel extends DiagramEntity {
    * Add group (Phase 1.6c)
    */
   addGroup(group: GroupModel): void {
+    if (this.blocksDocumentWrite()) return;
     this.assertNotDisposed(); // Phase 5.4
 
     if (this.groups.has(group.id)) {
@@ -750,6 +811,7 @@ export class DiagramModel extends DiagramEntity {
    * Remove group (Phase 1.6c)
    */
   removeGroup(groupId: string): GroupModel | undefined {
+    if (this.blocksDocumentWrite()) return undefined;
     const group = this.groups.get(groupId);
     if (group) {
       this.groups.delete(groupId);
@@ -1011,6 +1073,7 @@ export class DiagramModel extends DiagramEntity {
    * @returns Number of nodes deleted
    */
   deleteSelected(): number {
+    if (this.blocksDocumentWrite()) return 0;
     const selectedNodes = this.getSelectedNodes();
     if (selectedNodes.length === 0) {
       return 0;

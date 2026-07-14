@@ -1,6 +1,8 @@
 // LinkModel - Represents a connection between two ports
 
 import { DiagramEntity } from './DiagramEntity';
+import { writeBlocked } from './readonly-lock'; // Wave 9 — Card 7
+import type { DiagramModel } from './DiagramModel';
 import { generateId } from '../utils';
 import type {
   Point,
@@ -90,6 +92,20 @@ export interface SerializedLink extends SerializedEntity {
 }
 
 export class LinkModel extends DiagramEntity {
+  /**
+   * Wave 9 — Card 7. Back-reference to the owning diagram, set by
+   * `DiagramModel.installLink`. NodeModel has had one since Phase 1.6a; LinkModel
+   * did not, so a LinkModel mutator could not see the document's read-only lock —
+   * and waypoints, control points, labels and reconnection are ALL LinkModel
+   * mutators. Without this, read-only would have been unenforceable on exactly the
+   * edits the interaction controller performs most.
+   *
+   * NON-ENUMERABLE (defined in the constructor, mirroring NodeModel): an enumerable
+   * back-reference to the diagram would make every LinkModel a circular object and
+   * blow up deep-clone and JSON serialization.
+   */
+  diagram?: DiagramModel;
+
   // Connection
   sourcePortId: string;
   targetPortId: string;
@@ -144,9 +160,29 @@ export class LinkModel extends DiagramEntity {
     this.sourcePortId = sourcePortId;
     this.targetPortId = targetPortId;
 
+    // Non-enumerable so the diagram back-reference never enters serialization or
+    // deep-clone (the circular-reference trap NodeModel already avoids this way).
+    Object.defineProperty(this, 'diagram', {
+      value: undefined,
+      writable: true,
+      enumerable: false,
+      configurable: true,
+    });
+
     if (pathType) {
       this.pathType = pathType;
     }
+  }
+
+  /**
+   * Wave 9 — Card 7. Is a document write to this link forbidden right now?
+   * True only when the link belongs to a diagram that is locked (read-only) and we
+   * are not inside a system write. A detached link (not yet added to any diagram)
+   * is freely mutable — you must be able to BUILD a link before adding it, and
+   * `DiagramModel.addLink` is what refuses.
+   */
+  private writeBlocked(): boolean {
+    return writeBlocked(this.diagram);
   }
 
   /**
@@ -183,6 +219,7 @@ export class LinkModel extends DiagramEntity {
    * Set source port
    */
   setSourcePort(portId: string, nodeId?: string): void {
+    if (this.writeBlocked()) return;
     const oldPortId = this.sourcePortId;
     this.sourcePortId = portId;
     if (nodeId) {
@@ -195,6 +232,7 @@ export class LinkModel extends DiagramEntity {
    * Set target port
    */
   setTargetPort(portId: string, nodeId?: string): void {
+    if (this.writeBlocked()) return;
     const oldPortId = this.targetPortId;
     this.targetPortId = portId;
     if (nodeId) {
@@ -207,6 +245,7 @@ export class LinkModel extends DiagramEntity {
    * Set path type
    */
   setPathType(pathType: 'direct' | 'orthogonal' | 'smooth' | 'bezier'): void {
+    if (this.writeBlocked()) return;
     const oldType = this.pathType;
     this.pathType = pathType;
     // The cached route belongs to the old path type; clear it so the renderer
@@ -224,6 +263,7 @@ export class LinkModel extends DiagramEntity {
    * same way setPathType does — the old polyline belongs to the old router.
    */
   setRouter(router: LinkRouterName | undefined): void {
+    if (this.writeBlocked()) return;
     const old = this.router;
     if (old === router) return;
     this.router = router;
@@ -236,6 +276,7 @@ export class LinkModel extends DiagramEntity {
   /** Card 0: set the polyline rendering explicitly. Pure re-render; the routed
    * points are still valid, so the cache is NOT cleared. */
   setConnector(connector: LinkConnectorName | undefined): void {
+    if (this.writeBlocked()) return;
     const old = this.connector;
     if (old === connector) return;
     this.connector = connector;
@@ -274,6 +315,7 @@ export class LinkModel extends DiagramEntity {
    * Set points for custom path
    */
   setPoints(points: Point[]): void {
+    if (this.writeBlocked()) return;
     const oldPoints = [...this.points];
     this.points = points.map((p) => ({ ...p }));
     this.trackChange('points', oldPoints, this.points);
@@ -284,6 +326,7 @@ export class LinkModel extends DiagramEntity {
    * Add point to path
    */
   addPoint(point: Point, index?: number): void {
+    if (this.writeBlocked()) return;
     const actualIndex = index !== undefined ? index : this.points.length;
     if (index !== undefined) {
       this.points.splice(index, 0, { ...point });
@@ -299,6 +342,7 @@ export class LinkModel extends DiagramEntity {
    * Remove point from path
    */
   removePoint(index: number): Point | undefined {
+    if (this.writeBlocked()) return undefined;
     if (index >= 0 && index < this.points.length) {
       const point = this.points.splice(index, 1)[0];
       this.trackChange('points', point, null);
@@ -603,6 +647,7 @@ export class LinkModel extends DiagramEntity {
         | { slot: NonNullable<LinkLabel['slot']> }
       )
   ): void {
+    if (this.writeBlocked()) return;
     const fullLabel: LinkLabel = {
       ...label,
       id: label.id || generateId(),
@@ -620,6 +665,7 @@ export class LinkModel extends DiagramEntity {
    * Remove label by ID
    */
   removeLabel(labelId: string): LinkLabel | undefined {
+    if (this.writeBlocked()) return undefined;
     const index = this.labels.findIndex((l) => l.id === labelId);
     if (index !== -1) {
       const label = this.labels.splice(index, 1)[0];
@@ -634,6 +680,7 @@ export class LinkModel extends DiagramEntity {
    * Remove label by index
    */
   removeLabelAt(index: number): LinkLabel | undefined {
+    if (this.writeBlocked()) return undefined;
     if (index >= 0 && index < this.labels.length) {
       const label = this.labels.splice(index, 1)[0];
       this.trackChange('labels', label, null);
@@ -647,6 +694,7 @@ export class LinkModel extends DiagramEntity {
    * Update label by index
    */
   updateLabel(index: number, updates: Partial<LinkLabel>): void {
+    if (this.writeBlocked()) return;
     const label = this.labels[index];
     if (label) {
       const oldLabel = { ...label };
@@ -677,6 +725,7 @@ export class LinkModel extends DiagramEntity {
    * Update style
    */
   updateStyle(style: Partial<LinkStyle>): void {
+    if (this.writeBlocked()) return;
     const oldStyle = { ...this.style };
     this.style = { ...this.style, ...style };
     this.trackChange('style', oldStyle, this.style);
@@ -687,6 +736,7 @@ export class LinkModel extends DiagramEntity {
    * Set data property
    */
   setData(key: string, value: any): void {
+    if (this.writeBlocked()) return;
     const oldValue = this.data[key];
     this.data[key] = value;
     this.trackChange(`data.${key}`, oldValue, value);
@@ -704,6 +754,7 @@ export class LinkModel extends DiagramEntity {
    * Used for link reconnection workflow
    */
   reconnectSource(newPortId: string, newNodeId?: string): void {
+    if (this.writeBlocked()) return;
     const oldPortId = this.sourcePortId;
     const oldNodeId = this.sourceNodeId;
 
@@ -731,6 +782,7 @@ export class LinkModel extends DiagramEntity {
    * Used for link reconnection workflow
    */
   reconnectTarget(newPortId: string, newNodeId?: string): void {
+    if (this.writeBlocked()) return;
     const oldPortId = this.targetPortId;
     const oldNodeId = this.targetNodeId;
 
