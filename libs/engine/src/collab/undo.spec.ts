@@ -15,7 +15,7 @@
 import { DiagramModel } from '../models/DiagramModel';
 import { Replica } from './replica';
 import type { Op } from './op';
-import { expectConverged, link, node, peer } from './testing';
+import { expectConverged, link, node, peer } from './test-helpers';
 
 /** Two peers on the same document, each with their ops collected. */
 function pair(): {

@@ -68,7 +68,7 @@ import { DiagramModel } from '../models/DiagramModel';
 import { Replica } from './replica';
 import { replay } from './op-log';
 import type { Op } from './op';
-import { bytes, expectConverged, link, node, peer } from './testing';
+import { bytes, expectConverged, link, node, peer } from './test-helpers';
 
 describe('referential integrity: a link whose node is gone', () => {
   it('THE ONE THAT MATTERS: deleting a node while a colleague links to it leaves NO dangling link', () => {

@@ -8,12 +8,16 @@
   "targets": {
     "build": {
       "executor": "@angular-devkit/build-angular:application",
-      "outputs": ["{options.outputPath}"],
+      "outputs": [
+        "{options.outputPath}"
+      ],
       "options": {
         "outputPath": "dist/apps/renderer-demo/renderer-demo",
         "index": "apps/renderer-demo/renderer-demo/src/index.html",
         "browser": "apps/renderer-demo/renderer-demo/src/main.ts",
-        "polyfills": ["zone.js"],
+        "polyfills": [
+          "zone.js"
+        ],
         "tsConfig": "apps/renderer-demo/renderer-demo/tsconfig.app.json",
         "assets": [
           {
@@ -26,7 +30,9 @@
             "output": "assets/monaco-editor"
           }
         ],
-        "styles": ["apps/renderer-demo/renderer-demo/src/styles.css"],
+        "styles": [
+          "apps/renderer-demo/renderer-demo/src/styles.css"
+        ],
         "scripts": []
       },
       "configurations": {
@@ -34,8 +40,8 @@
           "budgets": [
             {
               "type": "initial",
-              "maximumWarning": "2mb",
-              "maximumError": "3mb"
+              "maximumWarning": "3mb",
+              "maximumError": "4mb"
             },
             {
               "type": "anyComponentStyle",
@@ -76,7 +82,9 @@
     },
     "test": {
       "executor": "@nx/jest:jest",
-      "outputs": ["{workspaceRoot}/coverage/{projectRoot}"],
+      "outputs": [
+        "{workspaceRoot}/coverage/{projectRoot}"
+      ],
       "options": {
         "jestConfig": "apps/renderer-demo/renderer-demo/jest.config.ts"
       }

@@ -37,7 +37,7 @@ import { DiagramModel } from '../models/DiagramModel';
 import { PortModel } from '../models/PortModel';
 import { Replica } from './replica';
 import type { Op } from './op';
-import { expectConverged, link, node, peer, rng } from './testing';
+import { expectConverged, link, node, peer, rng } from './test-helpers';
 
 /** No peer may hold a link whose endpoint node does not exist. Checked against the ENGINE's
  *  port index, not our own — an independent witness. */
