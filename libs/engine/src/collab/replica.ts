@@ -269,9 +269,10 @@ export class Replica {
 
   /** A remote op: buffer it, gate it, apply it, repair what it displaced. */
   private applyRemote(op: Op): void {
-    // BEFORE the gate. A write that has to wait for its entity has not been applied, so it
-    // must not claim its register yet — claiming it would refuse the very re-delivery, and
-    // the very flush, that are supposed to repair it.
+    // A write to a link that integrity is HOLDING goes to the held instance, not to the
+    // document it is not in. (There used to be a second job here — buffering writes that
+    // outran their own entity — and repair() below turned out to subsume it entirely. The
+    // buffer was deleted rather than left in to be admired.)
     if (this.integrity.divert(op)) return;
 
     // THE CONVERGENCE GATE. An op that is SUPERSEDED — a newer write already owns its
@@ -284,7 +285,6 @@ export class Replica {
     applyOp(this.diagram, op);
     this.integrity.note(op);
     this.integrity.forget(op); // a removed link is not coming back from quarantine
-    this.integrity.flush(op); // …and an arrived entity takes delivery of its held writes
 
     if (op.op === 'add') this.repair(op);
   }

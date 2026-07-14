@@ -53,7 +53,7 @@ import { DiagramModel } from '../models/DiagramModel';
 import { LinkModel } from '../models/LinkModel';
 import { applyEntitySet } from './apply-op';
 import type { LwwRegistry, Stamp } from './lww';
-import { compareOps, type Op, type SetOp } from './op';
+import type { Op } from './op';
 
 /**
  * Holds the diagram to its one hard invariant, and buffers the ops that cannot be applied
@@ -66,9 +66,6 @@ import { compareOps, type Op, type SetOp } from './op';
 export class ReferentialIntegrity {
   /** Links that logically exist but whose endpoints do not resolve. Held, not destroyed. */
   private readonly quarantine = new Map<string, LinkModel>();
-
-  /** Property writes whose entity has never been seen. Flushed when its `add` arrives. */
-  private readonly pending = new Map<string, SetOp[]>();
 
   /**
    * portId → nodeId. OUR OWN, not the engine's.
@@ -159,72 +156,21 @@ export class ReferentialIntegrity {
   /**
    * Can this op be applied to the document right now?
    *
-   * Returns `false` when the op was diverted — buffered for later, or written into a held
-   * instance — in which case the caller must NOT hand it to applyOp.
+   * Returns `true` when the op was DIVERTED — written into a link this class is holding out
+   * of the document — in which case the caller must not also hand it to applyOp.
    *
-   * NOTE this runs BEFORE the LWW gate for the buffering case, deliberately. A write that
-   * is buffered has not been applied, so it must not yet claim its register: claiming it
-   * would refuse the very re-delivery that is meant to be harmless, and would refuse the
-   * flush too.
+   * A held link still takes its property writes, through the SAME mutators a live one uses.
+   * An entity that took a different write path in quarantine would drift from a live one, and
+   * the drift would only surface on release, long after anything could point at the cause.
    */
   divert(op: Op): boolean {
-    if (op.op !== 'set' || op.target === 'diagram') return false;
+    if (op.op !== 'set' || op.target !== 'link') return false;
 
-    // A held link still takes its property writes — through the SAME mutators a live one
-    // uses (applyEntitySet), because an entity that took a different write path in
-    // quarantine would drift from a live one, and the drift would only surface on
-    // resurrection, long after anything could point at the cause.
     const held = this.quarantine.get(op.id);
-    if (held && op.target === 'link') {
-      if (this.lww.admit(op)) applyEntitySet(held, op.path, op.value);
-      return true;
-    }
+    if (!held) return false;
 
-    // Never seen: hold the write until the entity that owns it arrives.
-    const present =
-      op.target === 'node'
-        ? this.diagram.getNode(op.id)
-        : op.target === 'link'
-          ? this.diagram.getLink(op.id)
-          : this.diagram.getGroup(op.id);
-    if (!present && !this.lww.knowsPresence(op.target, op.id)) {
-      const key = `${op.target} ${op.id}`;
-      const buf = this.pending.get(key) ?? [];
-      buf.push(op);
-      this.pending.set(key, buf);
-      return true;
-    }
-
-    return false;
-  }
-
-  /**
-   * Flush any writes that were waiting for this entity to exist.
-   *
-   * In TOTAL ORDER, not arrival order — they are being applied as if they had arrived in
-   * the sequence every peer agrees on, which is the only sequence that converges. Each one
-   * still goes through the LWW gate (and thus the presence barrier: a buffered write that
-   * predates the `add` that finally arrived is not a write to this incarnation).
-   */
-  flush(op: Op): void {
-    if (op.op !== 'add') return;
-    const key = `${op.target} ${op.id}`;
-    const buf = this.pending.get(key);
-    if (!buf) return;
-    this.pending.delete(key);
-
-    for (const s of [...buf].sort(compareOps)) {
-      if (!this.lww.admit(s)) continue;
-      const held = this.quarantine.get(s.id);
-      const entity =
-        held ??
-        (s.target === 'node'
-          ? this.diagram.getNode(s.id)
-          : s.target === 'link'
-            ? this.diagram.getLink(s.id)
-            : this.diagram.getGroup(s.id));
-      if (entity) applyEntitySet(entity, s.path, s.value);
-    }
+    if (this.lww.admit(op)) applyEntitySet(held, op.path, op.value);
+    return true;
   }
 
   /**

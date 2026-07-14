@@ -161,10 +161,15 @@ export class UndoStack {
     if (this.replaying) return;
 
     // Any NEW work invalidates the redo branch — the same rule a single-player editor has.
-    if (this.redoable.length > 0) {
-      for (const e of this.redoable) for (const r of e.records) this.undone.delete(opId(r.op));
-      this.redoable.length = 0;
-    }
+    //
+    // The entries are dropped; the ops in them STAY MARKED UNDONE. Losing the ability to redo
+    // an op is not the same as the op coming back into force: its effect was reversed by an
+    // undo op that is in the log and is never going away. Clearing the marks (which is what I
+    // wrote first) makes a discarded op count as a "surviving write" again, and the next undo
+    // of that register restores ITS value — a value the user already took back. You get it by
+    // undoing a move, typing anything at all, moving again, and undoing: the node jumps to the
+    // position you undid two steps ago.
+    this.redoable.length = 0;
 
     if (this.txn) {
       this.txn.push({ op, before });
@@ -280,10 +285,41 @@ export class UndoStack {
     const stub = { clock: 0, actor: this.actor };
 
     switch (op.op) {
-      case 'add':
+      case 'add': {
+        // If an OLDER `add` survives — I replaced an earlier incarnation of this entity —
+        // then undoing mine should restore THAT one, not delete the entity outright.
+        if (survivor && survivor.op === 'add') {
+          return { ...stub, op: 'add', target: op.target, id: op.id, data: survivor.data };
+        }
         return { ...stub, op: 'remove', target: op.target, id: op.id };
+      }
 
       case 'remove': {
+        // TWO PEOPLE DELETE THE SAME NODE, AND ONE PRESSES CTRL-Z. This is the case that made
+        // me change the rule, and it is worth the paragraph.
+        //
+        // The tempting rule is "a colleague's delete is still standing, so the node stays
+        // gone" — recompute LWW presence excluding my undone op, and both removes vote
+        // delete. It is convergent, and it is a terrible editor: each peer only knows about
+        // its OWN undos, so BOTH users press Ctrl-Z, BOTH undos decline, and the node is gone
+        // for good with two people staring at it wondering why undo is broken. To fix that
+        // properly, an undo would have to be a first-class op that TOMBSTONES the op it
+        // undoes, so peers could recompute — a much bigger machine than this card.
+        //
+        // The rule that works is the simple one, and it is already written above: an undo is
+        // skipped IFF MY OP IS SUPERSEDED. Whoever's delete is currently IN FORCE can take it
+        // back, and the node returns. The other person's undo then finds a newer `add` on the
+        // register, sees that its own delete no longer decides anything, and correctly says
+        // nothing. One rule, both users get sane behaviour, and it converges.
+        //
+        // The `if (survivor && compareOps(...) > 0)` above is therefore LOAD-BEARING HERE and
+        // nowhere else: without it, the superseded peer re-adds ITS OWN STALE SNAPSHOT over
+        // the live incarnation, and a colleague's work vanishes.
+        //
+        // Restore the entity as it was AT THE MOMENT I DELETED IT — not as it was born. The
+        // snapshot carries every property edit it had accumulated, and because the resurrect
+        // op gets a fresh (highest) clock, the presence barrier voids every older write to
+        // it: the entity comes back exactly as the snapshot says, on every peer.
         if (before.kind !== 'entity') return undefined; // nothing to restore it from
         return { ...stub, op: 'add', target: op.target, id: op.id, data: before.data };
       }

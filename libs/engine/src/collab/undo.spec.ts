@@ -176,6 +176,83 @@ describe('undo must not resurrect stale state', () => {
     dispose();
   });
 
+  it('WE BOTH DELETE THE SAME NODE: the one whose delete is in force can take it back — and the other\'s undo says nothing', () => {
+    // Found by MUTATION-TESTING: deleting the supersession check left the whole suite green,
+    // which is what an untested gate looks like from the outside. Closing the gap forced a
+    // real semantics decision, and my first answer was wrong.
+    //
+    // Two people select the same node and press Delete. Not exotic — Tuesday.
+    //
+    // My first rule was "a colleague's delete is still standing, so it stays gone" (recompute
+    // presence excluding my undone op; both removes vote delete). Convergent, and a TERRIBLE
+    // EDITOR: a peer only knows about its OWN undos, so BOTH users press Ctrl-Z, BOTH undos
+    // decline, and the node is gone forever with two people wondering why undo is broken.
+    //
+    // The rule that works is the one already there: skip IFF MY OP IS SUPERSEDED. Whoever's
+    // delete is currently IN FORCE takes it back and the node returns; the other's undo then
+    // finds a newer `add` on the register and correctly says nothing.
+    //
+    // Bob renames the node before deleting it, so his snapshot differs from Alice's. That is
+    // what makes the second half of this test bite: if Alice's superseded undo fired, it would
+    // re-add HER snapshot and Bob's label — live on both screens — would silently vanish.
+    const { alice, bob, sync, seed, dispose } = pair();
+    seed((d) => d.addNode(node('n1', 0, 0)));
+
+    bob.diagram.getNode('n1')!.setMetadata('label', "Bob's");
+    bob.diagram.removeNode('n1');
+    alice.diagram.removeNode('n1'); // concurrent, and blind to the rename
+    sync();
+    for (const p of [alice, bob]) expect(p.diagram.getNode('n1')).toBeUndefined();
+
+    // Bob's delete is the one in force (it sorts last). He takes it back; the node returns,
+    // exactly as it was when HE deleted it.
+    expect(bob.undo()).toHaveLength(1);
+    sync();
+    for (const p of [alice, bob]) {
+      expect(p.diagram.getNode('n1')!.getMetadata('label')).toBe("Bob's");
+    }
+
+    // Alice presses Ctrl-Z on her own, now-superseded, delete.
+    const emitted = alice.undo();
+
+    expect(emitted).toEqual([]); // it decides nothing, so it says nothing
+    for (const p of [alice, bob]) {
+      expect(p.diagram.getNode('n1')).toBeDefined();
+      expect(p.diagram.getNode('n1')!.getMetadata('label')).toBe("Bob's"); // NOT clobbered
+    }
+
+    sync();
+    expectConverged(alice.diagram, bob.diagram);
+    dispose();
+  });
+
+  it('an op I undid stays undone even after the redo branch is discarded', () => {
+    // A bug I found by reasoning about the mutation results, not by seeing it fail.
+    //
+    // New work discards the redo branch — right. It was ALSO un-marking those ops as undone —
+    // wrong. Losing the ability to REDO an op is not the same as the op coming back into
+    // force: its effect was reversed by an undo op that is in the log and is not going away.
+    //
+    // Un-marked, the op counts as a "surviving write" again, and the next undo of that
+    // register restores ITS value — a value the user already took back. Undo a move, type
+    // anything, move again, undo: the node jumps to the position you undid two steps ago.
+    const { alice, seed, dispose } = pair();
+    seed((d) => d.addNode(node('n1', 0, 0)));
+    const n = alice.diagram.getNode('n1')!;
+
+    n.setPosition(100, 100);
+    n.setPosition(200, 200);
+    alice.undo(); // back to (100,100); the (200,200) op is undone
+    expect(n.position).toMatchObject({ x: 100, y: 100 });
+
+    n.setMetadata('label', 'anything'); // new work → the redo branch is discarded
+    n.setPosition(300, 300);
+    alice.undo(); // …and this must go back to (100,100), NOT to the undone (200,200)
+
+    expect(n.position).toMatchObject({ x: 100, y: 100 });
+    dispose();
+  });
+
   it('two of my own edits in a row undo one at a time, back to the start', () => {
     // The supersession rule must not fire on MY OWN later writes, or a second Ctrl-Z would
     // be swallowed and the user would be stuck.

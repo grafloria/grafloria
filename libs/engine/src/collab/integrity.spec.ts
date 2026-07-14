@@ -214,11 +214,19 @@ describe('referential integrity: endpoint resolution is not arrival-order depend
     [seeder, inOrder, backwards].forEach((p) => p.dispose());
   });
 
-  it('a property write that arrives BEFORE its entity is BUFFERED, not dropped', () => {
-    // applyOp drops a `set` on an entity that is not there — correct, and Card 0 flagged
-    // the consequence honestly: under an unreliable transport the op must be BUFFERED
-    // until its dependency lands, or the write is lost while the LWW gate still records
-    // it as the register's winner (so re-delivery cannot repair it either).
+  it('a property write that arrives BEFORE its entity is not lost — it lands when the entity does', () => {
+    // applyOp drops a `set` on an entity that is not there. Correct — there is nothing to
+    // write to — and Card 0 flagged the consequence honestly: the write is gone, while the LWW
+    // gate has already recorded it as the register's winner, so not even a re-delivery can
+    // repair it.
+    //
+    // I first fixed this with a BUFFER: hold the write aside, flush it when the `add` lands.
+    // Then MUTATION-TESTING showed the buffer could be deleted with the whole suite still
+    // green — because Replica.repair() had made it redundant. An entity's state is its `add`
+    // data plus every log write NEWER than the add, replayed in total order; a write that
+    // outran its own entity is simply one of those. So the buffer WAS DELETED rather than left
+    // in the tree to be admired. This test now pins the mechanism that actually carries the
+    // weight: disable repair() and it goes red.
     const seedOps: Op[] = [];
     const seeder = peer('seed', undefined, seedOps);
     seeder.diagram.addNode(node('n1', 0, 0));

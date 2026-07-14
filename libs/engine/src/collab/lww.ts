@@ -164,21 +164,6 @@ export class LwwRegistry {
     return this.stamps.get(LwwRegistry.key(op));
   }
 
-  /**
-   * Has this entity's existence ever been decided — by an `add` or by a `remove`?
-   *
-   * This is the difference between "the entity is GONE" (a remove won: DROP writes to it)
-   * and "the entity has NOT ARRIVED YET" (nothing is known: BUFFER writes to it until its
-   * `add` lands). applyOp cannot tell those apart — it sees only an absent entity — and
-   * collapsing the second into the first silently loses every write that outran its own
-   * creation, while the gate still records it as the register's winner, so not even a
-   * re-delivery can repair it.
-   */
-  knowsPresence(target: Op['target'], id: string): boolean {
-    if (target === 'diagram') return true;
-    return this.stamps.has(LwwRegistry.presenceKey(target, id));
-  }
-
   /** The stamp that decided whether an entity exists. Undefined if never seen. */
   presenceOf(target: Op['target'], id: string): Stamp | undefined {
     if (target === 'diagram') return undefined;
