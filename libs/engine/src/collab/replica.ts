@@ -39,7 +39,10 @@
 // told, which is what you want from the piece everything else is tested against.
 
 import { DiagramModel } from '../models/DiagramModel';
-import { applyOp } from './apply-op';
+import type { NodeModel } from '../models/NodeModel';
+import type { LinkModel } from '../models/LinkModel';
+import type { GroupModel } from '../models/GroupModel';
+import { applyOp, applyEntitySet } from './apply-op';
 import { OpCapture, type OpBefore } from './capture';
 import { ReferentialIntegrity } from './integrity';
 import { LwwRegistry } from './lww';
@@ -74,6 +77,15 @@ export class Replica {
   private readonly capture: OpCapture;
   private readonly integrity: ReferentialIntegrity;
   private readonly undoStack: UndoStack;
+
+  /**
+   * Per entity, the highest clock of any `set` the log holds for it.
+   *
+   * The O(1) question "could an `add` that just landed have clobbered a write NEWER than
+   * itself?" — see repair(). Without it the answer costs a scan of the whole log on every
+   * single `add`, which is a per-node cost paid for a case that almost never arises.
+   */
+  private readonly newestSet = new Map<string, number>();
 
   constructor(
     readonly diagram: DiagramModel,
@@ -132,6 +144,12 @@ export class Replica {
     // a batch in the one order every peer agrees on costs a sort and removes a whole class
     // of order-dependence at the source.
     fresh.sort(compareOps);
+
+    // BEFORE any of them is applied: the repair check asks whether the log holds a write
+    // NEWER than an `add` that is about to land, and the answer must account for the ops in
+    // this very batch — the resurrection and the writes it displaces routinely arrive
+    // together.
+    for (const op of fresh) this.note(op);
 
     // Suppressed capture: applying these must not re-emit them as OUR edits, or two peers
     // relay the same op back and forth forever.
@@ -199,8 +217,17 @@ export class Replica {
 
   // -------------------------------------------------------------------------
 
+  /** Track the newest `set` the log holds per entity. See repair(). */
+  private note(op: Op): void {
+    if (op.op !== 'set' || op.target === 'diagram') return;
+    const key = `${op.target}\0${op.id}`;
+    const seen = this.newestSet.get(key) ?? -1;
+    if (op.clock > seen) this.newestSet.set(key, op.clock);
+  }
+
   /** A local edit: gate it, log it, remember it for undo, broadcast it. */
   private onLocalOp(op: Op, before: OpBefore): void {
+    this.note(op);
     // A LOCAL op goes through the same gate as a remote one. It always wins (its clock is
     // fresh, so it is newer than anything it could be racing), but claiming the register
     // here is what lets a LATE remote write with an older stamp be refused afterwards. Skip
@@ -240,7 +267,7 @@ export class Replica {
     applyOp(this.diagram, op);
   }
 
-  /** A remote op: buffer it, gate it, apply it. */
+  /** A remote op: buffer it, gate it, apply it, repair what it displaced. */
   private applyRemote(op: Op): void {
     // BEFORE the gate. A write that has to wait for its entity has not been applied, so it
     // must not claim its register yet — claiming it would refuse the very re-delivery, and
@@ -258,5 +285,72 @@ export class Replica {
     this.integrity.note(op);
     this.integrity.forget(op); // a removed link is not coming back from quarantine
     this.integrity.flush(op); // …and an arrived entity takes delivery of its held writes
+
+    if (op.op === 'add') this.repair(op);
+  }
+
+  /**
+   * REBUILD AN ENTITY'S REGISTERS FROM THE LOG.
+   *
+   * An entity's state is not "whatever we applied in the order it arrived". It is:
+   *
+   *     the data of the newest `add` (its current INCARNATION)
+   *       + every `set` on it that is NEWER than that add
+   *
+   * Applied in total order that is the same on every peer, whatever the network did — which
+   * is the entire claim being made. Applying ops AS THEY ARRIVE computes it correctly only if
+   * nothing was lost on the way, and an `add` that lands LATE loses things:
+   *
+   *     Bob holds node C and has been editing it: ports@14, size@15, position@16.
+   *     Alice, elsewhere, deleted C and pressed Ctrl-Z — remove@10, then add@11 carrying her
+   *     snapshot of it.
+   *     Those two reach Bob together, LONG after his own edits.
+   *
+   * Sorted, Bob applies remove@10 (C goes) then add@11 (C returns, as Alice's snapshot). His
+   * own writes at 14, 15, 16 are NEWER than the incarnation — they are not superseded, they
+   * are the truth — but they were applied to a C that no longer exists, and their registers
+   * are already CLAIMED, so re-delivering them changes nothing. Bob is left holding a C that
+   * exists nowhere else in the system, with a log identical to Alice's, and nothing anywhere
+   * reports a problem.
+   *
+   * So after an `add`, the entity is REBUILT: its data, plus every write in the log that is
+   * newer than it, in total order. Both peers then compute the same thing from the same log,
+   * which is what "converges" was supposed to mean all along.
+   *
+   * (My first attempt at this only repaired when the add REPLACED a live entity. The fuzz
+   * kept failing: in the trace above the remove is applied first, so by the time the add
+   * lands there is nothing to replace, and the condition never fired. The question is not
+   * "did I overwrite something" — it is "does the log contain writes newer than this
+   * incarnation".)
+   *
+   * Bounded, not blanket: `newestSet` answers that in O(1), so an `add` for something
+   * genuinely new — every add, essentially always — costs one map lookup.
+   */
+  private repair(add: Extract<Op, { op: 'add' }>): void {
+    // Nothing in the log writes this entity later than the incarnation that just landed, so
+    // there is nothing it could have clobbered. This is the case essentially every time.
+    if ((this.newestSet.get(`${add.target}\0${add.id}`) ?? -1) < add.clock) return;
+
+    const entity = this.find(add.target, add.id);
+    if (!entity) return;
+
+    for (const o of this.log.toArray()) {
+      // toArray() is in TOTAL ORDER, so a superseded write is simply overwritten by the one
+      // that beat it, and the last one standing is the register's rightful owner.
+      if (o.op !== 'set' || o.id !== add.id || o.target !== add.target) continue;
+      if (compareOps(o, add) <= 0) continue; // older than this incarnation: void, by the barrier
+      applyEntitySet(entity, o.path, o.value);
+    }
+  }
+
+  /** An entity of the document, or one integrity is holding aside. */
+  private find(
+    target: Op['target'],
+    id: string
+  ): NodeModel | LinkModel | GroupModel | undefined {
+    if (target === 'link') return this.diagram.getLink(id) ?? this.integrity.held(id);
+    if (target === 'node') return this.diagram.getNode(id);
+    if (target === 'group') return this.diagram.getGroup(id);
+    return undefined;
   }
 }

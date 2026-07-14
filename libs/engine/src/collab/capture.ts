@@ -251,6 +251,20 @@ export class OpCapture {
   private watchEntity(target: 'node' | 'link' | 'group', entity: Entity): void {
     if (this.entitySubs.has(entity.id)) return;
 
+    // SEED the ports shadow with what the node ALREADY has.
+    //
+    // Without this, `before` for the node's FIRST port change is undefined — and undo reads
+    // that as "the register was empty", so undoing the first port a user ever adds to a node
+    // DELETES EVERY PORT IT HAS, including the ones it was born with. The node survives with
+    // nothing to connect to and every link into it is orphaned. The fuzz found it as a node
+    // with an empty ports array on one peer.
+    if (entity instanceof NodeModel) {
+      this.lastPorts.set(
+        entity.id,
+        entity.getPorts().map((p) => p.serialize()) as unknown as OpValue
+      );
+    }
+
     const onChange = (entry: { property: string; oldValue: unknown; newValue: unknown }) => {
       if (DERIVED.has(entry.property)) return;
 

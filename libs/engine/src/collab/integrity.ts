@@ -52,7 +52,7 @@
 import { DiagramModel } from '../models/DiagramModel';
 import { LinkModel } from '../models/LinkModel';
 import { applyEntitySet } from './apply-op';
-import type { LwwRegistry } from './lww';
+import type { LwwRegistry, Stamp } from './lww';
 import { compareOps, type Op, type SetOp } from './op';
 
 /**
@@ -111,6 +111,11 @@ export class ReferentialIntegrity {
   /** Is this link being held out of the document? */
   isHeld(id: string): boolean {
     return this.quarantine.has(id);
+  }
+
+  /** The held instance, so a write can still reach a link that is out of the document. */
+  held(id: string): LinkModel | undefined {
+    return this.quarantine.get(id);
   }
 
   /**
@@ -262,6 +267,72 @@ export class ReferentialIntegrity {
       this.resolveEndpoints(link);
       this.diagram.addLink(link);
     }
+
+    // 3. And put the entities in a CANONICAL ORDER.
+    this.canonicalize();
+  }
+
+  /**
+   * ORDER IS PART OF THE DOCUMENT, and the fuzz is what proved it.
+   *
+   * `serialize()` writes `nodes` as `Array.from(this.nodes.values())` — Map INSERTION order.
+   * And the SVG renderer sorts nodes by `zIndex` with a STABLE sort, so when zIndex ties
+   * (the overwhelmingly common case: nobody sets it, everything is 0) THE ARRAY ORDER IS THE
+   * PAINT ORDER. It decides which of two overlapping nodes is on top.
+   *
+   * Insertion order is a function of the path a peer took, not of the state it arrived at:
+   *
+   *     Alice deletes node `a` and undoes → `a` is re-inserted, so it moves to the END.
+   *     Bob receives the re-add BEFORE the delete → the delete is then refused as
+   *     superseded, Bob never removed anything, and `a` never moves.
+   *
+   * Same ops. Same content, field for field. Different `nodes` array. The two of them paint
+   * overlapping nodes in a different order and save byte-different files. The fuzz caught it
+   * on trial 2 and it would never have occurred to me.
+   *
+   * The fix is the same shape as everything else in this file: DERIVE the order from the
+   * converged state instead of inheriting it from the delivery path. An entity's rank is the
+   * stamp of the write that established its CURRENT INCARNATION — the winning presence op.
+   * That is identical on every peer, and in the ordinary case (add a, add b, add c, no
+   * deletes) it reproduces insertion order exactly, so nothing that was not already broken
+   * changes.
+   *
+   * Entities with no presence stamp — a document loaded from a snapshot, whose creating ops
+   * are long compacted — predate the log and keep their relative order, which is what a
+   * stable sort gives for free.
+   */
+  private canonicalize(): void {
+    this.order(this.diagram.nodes, 'node');
+    this.order(this.diagram.links, 'link');
+    this.order(this.diagram.groups, 'group');
+  }
+
+  private order(map: Map<string, unknown>, target: 'node' | 'link' | 'group'): void {
+    if (map.size < 2) return;
+
+    const rank = (id: string): Stamp | undefined => this.lww.presenceOf(target, id);
+    const cmp = (a: Stamp | undefined, b: Stamp | undefined): number => {
+      if (!a && !b) return 0; // both predate the log — a stable sort keeps them put
+      if (!a) return -1;
+      if (!b) return 1;
+      if (a.clock !== b.clock) return a.clock - b.clock;
+      return a.actor < b.actor ? -1 : a.actor > b.actor ? 1 : 0;
+    };
+
+    // The fast path, and it is the one taken essentially always: a peer that has not had a
+    // resurrection or an out-of-order presence op is ALREADY in canonical order, so this is
+    // an O(n) scan that touches nothing. Rebuilding a 10k-entry Map on every batch to change
+    // nothing would be a real cost paid for a rare correction.
+    const entries = [...map.entries()];
+    let ordered = true;
+    for (let i = 1; i < entries.length && ordered; i++) {
+      if (cmp(rank(entries[i - 1][0]), rank(entries[i][0])) > 0) ordered = false;
+    }
+    if (ordered) return;
+
+    entries.sort((a, b) => cmp(rank(a[0]), rank(b[0])));
+    map.clear();
+    for (const [k, v] of entries) map.set(k, v);
   }
 
   /** Drop a link from quarantine for good — its presence register says it is gone. */

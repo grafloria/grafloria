@@ -135,10 +135,22 @@ export class OpLog {
  * link back if someone undoes the delete.
  */
 export function replay(diagram: DiagramModel, ops: readonly Op[]): number {
+  const lww = new LwwRegistry();
+  const integrity = new ReferentialIntegrity(diagram, lww);
+
   let applied = 0;
   for (const op of [...ops].sort(compareOps)) {
+    // The gate's ANSWER is ignored — in TOTAL ORDER it can never refuse anything, because
+    // every register is written oldest-first by construction. What we want is its
+    // book-keeping: the presence stamps, which are what the canonical entity ORDER is
+    // derived from. Without them reconcile() has nothing to sort by and a replayed document
+    // would keep the arbitrary order its ops happened to build, while a live peer holds the
+    // canonical one. replay() stays the dumb, honest primitive it is documented to be.
+    lww.admit(op);
     if (applyOp(diagram, op)) applied++;
+    integrity.note(op);
   }
-  new ReferentialIntegrity(diagram, new LwwRegistry()).reconcile();
+
+  integrity.reconcile();
   return applied;
 }

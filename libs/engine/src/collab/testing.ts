@@ -62,16 +62,22 @@ export function flatten(
  * Any other divergence — one field, one node, anywhere — still fails.
  */
 export function expectConverged(a: DiagramModel, b: DiagramModel, context: unknown = {}): void {
+  // The NAMED-FIELD check runs first, purely so a failure is readable: it reports
+  // `nodes.3.position.x` rather than two 3KB JSON blobs that a human has to diff by eye. The
+  // whole-document check below is still the one that decides, and it is strictly stronger —
+  // it catches a field PRESENT on one side and ABSENT on the other, key order, everything.
+  const fa = flatten(JSON.parse(bytes(a)));
+  const fb = flatten(JSON.parse(bytes(b)));
+  const keys = new Set([...Object.keys(fa), ...Object.keys(fb)]);
+  const differing = [...keys]
+    .filter((k) => fa[k] !== fb[k] && !k.endsWith('.version'))
+    .map((k) => `${k}: ${fa[k]} != ${fb[k]}`);
+  expect({ ...(context as object), differing }).toEqual({ ...(context as object), differing: [] });
+
   expect({ ...(context as object), doc: contentBytes(a) }).toEqual({
     ...(context as object),
     doc: contentBytes(b),
   });
-
-  const fa = flatten(JSON.parse(bytes(a)));
-  const fb = flatten(JSON.parse(bytes(b)));
-  const keys = new Set([...Object.keys(fa), ...Object.keys(fb)]);
-  const differing = [...keys].filter((k) => fa[k] !== fb[k] && !k.endsWith('.version'));
-  expect({ ...(context as object), differing }).toEqual({ ...(context as object), differing: [] });
 }
 
 /** A node with an in port and an out port, at a known id. */
