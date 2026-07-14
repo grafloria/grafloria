@@ -211,6 +211,29 @@ export class Replica {
     return this.log.toArray();
   }
 
+  /**
+   * Card 1: adopt a persisted op-log tail whose EFFECTS ARE ALREADY IN THE MODEL.
+   *
+   * This is `receive()`'s quiet twin, and the difference is the whole point. `receive()` is
+   * for ops the model has not seen: it applies them. `adopt()` is for reopening a saved
+   * document, where the snapshot ALREADY CONTAINS everything the ops did — so it seeds the
+   * log (so a duplicate re-delivery is recognised), the LWW stamps (so a straggling older
+   * write is still refused after a reload) and the repair index, and applies NOTHING.
+   *
+   * Re-applying them would be harmless for content — the reducer's redundant-write guard
+   * would drop every one — but it would bump every version counter and fire a full repaint
+   * for a document that has not changed. Worse, it would make opening a file look like an
+   * edit to anyone watching the model's change events.
+   */
+  adopt(ops: readonly Op[]): void {
+    for (const op of [...ops].sort(compareOps)) {
+      this.log.append(op);
+      this.lww.admit(op);
+      this.note(op);
+      this.integrity.note(op);
+    }
+  }
+
   dispose(): void {
     this.capture.stop();
   }
