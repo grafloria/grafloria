@@ -171,3 +171,6 @@ export * from './ports';
 
 // Wave 9 (Collaboration) — the op-log substrate (Card 0).
 export * from './collab';
+
+// Wave 9 (Collaboration) — Card 6: anchored comments, annotations & @mentions.
+export * from './comments';

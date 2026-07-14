@@ -26,6 +26,10 @@ import {
   type DiagramValidationReport,
 } from '../serialization/DiagramValidator';
 import { INCREMENTAL_FORMAT, type DiagramIncremental } from '../serialization/Incremental';
+import { deepClone, deepEqual } from '../utils/deep-clone';
+// wave9/comments (Card 6): the comment register namespace. Types only — the policy
+// (anchors, threads, convergence) lives in `../comments`, which depends on this file.
+import type { CommentRegisterTree } from '../comments/types';
 
 /**
  * How near a port must be to a point for {@link DiagramModel.findNearestPort} to
@@ -79,6 +83,18 @@ export interface SerializedDiagram extends SerializedEntity {
     height: number;  // Phase 0.5 - Viewport-aware layout
     zoom: number;
   };
+  /**
+   * wave9/comments (Card 6): anchored comment threads. Document data, saved with the
+   * document — a comment that does not survive a save is a comment that does not exist.
+   *
+   * OMITTED when there are none, rather than written as `{}`. Two reasons, one of them
+   * load-bearing: a diagram with no comments serializes to EXACTLY the bytes it did
+   * before this card (no churn in any existing document, snapshot or golden file), and
+   * the op log's byte-identical replay oracle keeps comparing the same bytes it always
+   * compared. An always-present empty object would have quietly rewritten every
+   * serialized diagram in the world to say nothing.
+   */
+  comments?: CommentRegisterTree;
 }
 
 export interface DiagramLoadOptions {
@@ -101,6 +117,106 @@ export class DiagramModel extends DiagramEntity {
   // are added/removed so callers (renderer per-frame link resolution, routing,
   // connection validation) never linear-scan every node's ports.
   private portIndex: Map<string, { node: NodeModel; port: PortModel }> = new Map();
+
+  // =========================================================================
+  // wave9/comments — Card 6: THE COMMENT REGISTER NAMESPACE.
+  //
+  // Comment threads are DOCUMENT DATA and they live here, on the model, as a plain
+  // JSON tree — so that they ride the Card 0 op log exactly like a node's position
+  // does, and inherit its convergence, transport, persistence and undo without a
+  // single line of parallel machinery. `libs/engine/src/comments` owns the shape;
+  // this class owns only the storage and the change funnel.
+  //
+  // WHY AN ACCESSOR PAIR AND NOT A PLAIN FIELD — this is the load-bearing part, and
+  // it is not obvious:
+  //
+  //   A remote comment op is applied by `applyOp` → `setDiagramProp`, whose generic
+  //   branch ends in `holder['comments'] = next`, a RAW ASSIGNMENT. A raw assignment
+  //   to a plain field mutates the model INVISIBLY: no trackChange, no version bump,
+  //   no markDirty, and therefore no bump of the renderer's global mutation epoch.
+  //   And the renderer's frame gate (wave 8) skips a frame outright when the epoch
+  //   and the viewport are unchanged. A teammate's comment would land in the model
+  //   and NEVER BE DRAWN — the exact class of bug the frame gate has already caused
+  //   on three branches.
+  //
+  //   Making `comments` an accessor turns that raw assignment into the model's own
+  //   change funnel. The op lands, trackChange fires, the epoch moves, the gate opens,
+  //   the pin appears. No renderer-side special case, no `invalidateFrame()` sprinkled
+  //   at call sites that will be forgotten — the mechanism that already exists is made
+  //   to see the write.
+  // =========================================================================
+  private _comments: CommentRegisterTree = {};
+
+  /** The comment register tree. Read-only in spirit: write through writeCommentRegister. */
+  get comments(): CommentRegisterTree {
+    return this._comments;
+  }
+
+  /**
+   * The landing pad for `applyOp`'s whole-tree write (remote ops, replay, load).
+   *
+   * Coarse ON PURPOSE at this level: applyOp hands us the rebuilt tree, and all we owe
+   * the world is "the comments changed". The FINE-grained registers — the thing that
+   * decides whether two concurrent replies both survive — are cut in the OPS, not here
+   * (see writeCommentRegister and comments/types.ts).
+   */
+  set comments(next: CommentRegisterTree) {
+    const old = this._comments;
+    if (old === next) return;
+    this._comments = next ?? {};
+    this.trackChange('comments', old, this._comments);
+  }
+
+  /**
+   * Write ONE comment register — `t1.status`, `t1.messages.m3` — and nothing else.
+   *
+   * This is the LOCAL authoring path, and the granularity here becomes the granularity
+   * of the emitted op (OpCapture turns `trackChange('comments.t1.messages.m3')` into
+   * `set(diagram, path='comments.t1.messages.m3')`), which becomes the granularity of
+   * the LWW register, which is what decides whether your colleague's simultaneous reply
+   * survives. The dotted path is not a convenience. It is the concurrency semantics.
+   *
+   * Returns false when the write changes nothing — so a redundant resolve is not an op,
+   * not a broadcast, and not a frame.
+   */
+  writeCommentRegister(path: string, value: unknown): boolean {
+    const parts = path.split('.');
+    if (parts.length < 2 || parts.some((p) => !p)) {
+      throw new Error(`invalid comment register path: '${path}'`);
+    }
+
+    // A WRITE THAT CHANGES NOTHING MUST DO NOTHING — the same discipline applySet keeps,
+    // and for the same reason: a redundant register write would otherwise mint an op,
+    // broadcast it, bump the version and force a frame, forever, on every duplicate
+    // delivery and every re-resolve of an already-resolved thread.
+    const cur = this.readCommentRegister(path);
+    const cloned = value === undefined ? undefined : deepClone(value);
+    if (deepEqual(cur, cloned)) return false;
+
+    let holder: Record<string, unknown> = this._comments as Record<string, unknown>;
+    for (let i = 0; i < parts.length - 1; i++) {
+      const k = parts[i];
+      const child = holder[k];
+      holder[k] =
+        typeof child === 'object' && child !== null && !Array.isArray(child) ? child : {};
+      holder = holder[k] as Record<string, unknown>;
+    }
+    holder[parts[parts.length - 1]] = cloned;
+
+    // The funnel. `comments.<path>` is exactly the op path OpCapture will emit.
+    this.trackChange(`comments.${path}`, cur, cloned);
+    return true;
+  }
+
+  /** Read one register. Returns undefined for any missing segment — never throws. */
+  readCommentRegister(path: string): unknown {
+    let cur: unknown = this._comments;
+    for (const part of path.split('.')) {
+      if (typeof cur !== 'object' || cur === null) return undefined;
+      cur = (cur as Record<string, unknown>)[part];
+    }
+    return cur;
+  }
 
   viewport = {
     x: 0,
@@ -1811,7 +1927,7 @@ export class DiagramModel extends DiagramEntity {
    * Serialize to JSON
    */
   serialize(): SerializedDiagram {
-    return {
+    const doc: SerializedDiagram = {
       schemaVersion: DIAGRAM_SCHEMA_VERSION,
       id: this.id,
       uuid: this.uuid,
@@ -1824,6 +1940,11 @@ export class DiagramModel extends DiagramEntity {
       groups: Array.from(this.groups.values()).map((g) => g.serialize()), // Phase 1.6c
       viewport: { ...this.viewport },
     };
+    // wave9/comments: present only when there are comments — see SerializedDiagram.
+    if (Object.keys(this._comments).length > 0) {
+      doc.comments = deepClone(this._comments);
+    }
+    return doc;
   }
 
   /**
@@ -2089,6 +2210,19 @@ export class DiagramModel extends DiagramEntity {
       height: doc.viewport.height || 800,  // Default for old diagrams
       zoom: doc.viewport.zoom
     };
+
+    // wave9/comments: threads outlive everything they point at, including the entities
+    // in this very document — so they are restored WITHOUT reference to whether their
+    // anchor still resolves. A thread whose node was deleted before the save comes back
+    // orphaned, which is exactly what it was. Assigned to the private field rather than
+    // through the accessor: a LOAD is not a CHANGE, and firing trackChange here would
+    // make OpCapture (if one is attached to this fresh model) broadcast the entire
+    // comment tree as a local edit.
+    if (doc.comments) {
+      (diagram as unknown as { _comments: CommentRegisterTree })._comments = deepClone(
+        doc.comments
+      );
+    }
 
     // 4) Install every entity through the SAME wiring as interactive
     //    creation, inside a batch window so the restore doesn't fire an
