@@ -139,6 +139,11 @@ function applySet(diagram: DiagramModel, op: Extract<Op, { op: 'set' }>): boolea
   const { target, id, path, value } = op;
 
   if (target === 'diagram') {
+    // The redundant-write guard applies HERE TOO. It did not, and that was a bug: this
+    // branch used to return before ever reaching the check below, which made the diagram
+    // the one object in the system where re-applying an identical op still bumped the
+    // version counter and fired a spurious repaint on every duplicate packet.
+    if (deepEqual(readDiagramProp(diagram, path), value)) return false;
     return setDiagramProp(diagram, path, value);
   }
 
@@ -315,7 +320,31 @@ function writeGeneric(
   return true;
 }
 
+/** Read a diagram-level register, so a redundant write can be recognised as one. */
+function readDiagramProp(diagram: DiagramModel, path: string): unknown {
+  if (path.startsWith('metadata.')) {
+    return diagram.getMetadata(path.slice('metadata.'.length));
+  }
+  let cur: unknown = diagram;
+  for (const part of path.split('.')) {
+    if (cur === null || typeof cur !== 'object') return undefined;
+    cur = (cur as Record<string, unknown>)[part];
+  }
+  return cur;
+}
+
 function setDiagramProp(diagram: DiagramModel, path: string, value: OpValue): boolean {
+  // THE DIAGRAM'S metadata IS A Map TOO — and I wrote the comment above warning about
+  // exactly this, fixed it for entities, and left the identical bug six lines away. The
+  // generic branch below would replace the Map with a plain object: getMetadata() returns
+  // undefined forever after, and serialize()'s Object.fromEntries(this.metadata) breaks.
+  // Silent, permanent, and it only bites the peer RECEIVING the edit — the one place a
+  // single-process test can never look.
+  if (path.startsWith('metadata.')) {
+    diagram.setMetadata(path.slice('metadata.'.length), structuredClone(value));
+    return true;
+  }
+
   switch (path) {
     case 'name':
       diagram.name = String(value);
