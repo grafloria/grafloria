@@ -10,6 +10,7 @@ import { NodeModel } from './NodeModel';
 import { PortModel } from './PortModel';
 import { LinkModel } from './LinkModel';
 import { GroupModel } from './GroupModel';
+import { StrokeModel } from './StrokeModel';
 import { DiagramSerializer } from '../serialization/Serializer';
 import { DiagramValidationError } from '../serialization/DiagramValidator';
 import { DIAGRAM_SCHEMA_VERSION } from '../serialization/DiagramMigrations';
@@ -77,6 +78,38 @@ function buildRichDiagram(): { diagram: DiagramModel; linkId: string } {
   outer.addMember('g-inner', diagram); // nested group (containment tree)
   inner.addMember('node-b', diagram);
 
+  // wave10/whiteboard — INK IN THE FIXTURE, and this is the point of putting it here
+  // rather than in a spec of its own.
+  //
+  // The round-trip invariant above is a whole-payload deep-equal over THIS fixture. It
+  // iterates over nothing; it asserts on what it is given. So a new entity kind that
+  // round-trips losslessly and a new entity kind that is DROPPED ENTIRELY ON LOAD both
+  // pass it — vacuously — unless the fixture actually contains one. That is precisely
+  // the shape of bug this repository keeps shipping, and a "lossless serialization"
+  // suite that cannot see strokes is exactly a test wired to nothing.
+  //
+  // Both flavours, because they serialize down different branches:
+  const pen = new StrokeModel(
+    [
+      { x: 10, y: 10 },
+      { x: 40, y: 65 },
+      { x: 90, y: 20 },
+    ],
+    { color: '#dc2626', width: 3, opacity: 0.9 },
+    { id: 'stroke-pen', label: 'circled for review' } // labelled → in the a11y tree
+  );
+  const inked = new StrokeModel(
+    [
+      { x: 200, y: 10, pressure: 0.15 },
+      { x: 240, y: 40, pressure: 0.8 },
+      { x: 280, y: 12, pressure: 0.35 },
+    ],
+    { color: '#1f2933', width: 5 } // pressure-bearing, unlabelled → aria-hidden ink
+  );
+  inked.setMetadata('tool', 'pen');
+  diagram.addStroke(pen);
+  diagram.addStroke(inked);
+
   return { diagram, linkId: link.id };
 }
 
@@ -140,6 +173,50 @@ describe('DiagramModel round-trip (unified load path)', () => {
     expect(restored.getPortById('a-out')!.uuid).toBe(diagram.getPortById('a-out')!.uuid);
     expect(restored.getLink(linkId)!.uuid).toBe(diagram.getLink(linkId)!.uuid);
     expect(restored.getGroup('g-outer')!.uuid).toBe(diagram.getGroup('g-outer')!.uuid);
+    expect(restored.getStroke('stroke-pen')!.uuid).toBe(diagram.getStroke('stroke-pen')!.uuid);
+  });
+
+  // wave10/whiteboard. The deep-equal above would catch a lossy stroke round-trip, but it
+  // would report it as "some object differs somewhere in a 400-line payload". These say
+  // which property, and they pin the two things most likely to be quietly lost.
+  it('round-trips stroke geometry, pressure, style and label exactly', () => {
+    const { diagram } = buildRichDiagram();
+    const restored = DiagramModel.fromJSON(throughJSON(diagram.serialize()));
+
+    const pen = restored.getStroke('stroke-pen')!;
+    expect(pen.getPoints()).toEqual(diagram.getStroke('stroke-pen')!.getPoints());
+    expect(pen.getStyle()).toEqual({ color: '#dc2626', width: 3, opacity: 0.9 });
+    expect(pen.getLabel()).toBe('circled for review');
+
+    // PRESSURE SURVIVES. It is optional and per-point, so it is exactly the kind of
+    // field a serializer drops without anyone noticing — and if it were dropped, the
+    // variable-width outline would silently flatten to a uniform line on reload.
+    const inked = restored.getStrokes().find((s) => s.getPoints().some((p) => p.pressure));
+    expect(inked!.getPoints().map((p) => p.pressure)).toEqual([0.15, 0.8, 0.35]);
+    expect(inked!.getMetadata('tool')).toBe('pen');
+
+    // …and the UNLABELLED stroke must come back unlabelled, not as `label: undefined`
+    // or `label: ''` — the a11y layer keys entirely off `label === undefined`.
+    expect(inked!.getLabel()).toBeUndefined();
+    expect('label' in inked!.serialize()).toBe(false);
+  });
+
+  it('a diagram with NO ink serializes to no `strokes` key at all', () => {
+    // Byte-stability for every document written before this wave: adding the ink
+    // capability must not rewrite a single existing document. (`strokes: []` would.)
+    const d = new DiagramModel('inkless');
+    d.addNode(new NodeModel({ id: 'n1', type: 'rect', position: { x: 0, y: 0 } }));
+    expect('strokes' in d.serialize()).toBe(false);
+  });
+
+  it('loads a pre-wave10 document (no `strokes` key) as a diagram with zero strokes', () => {
+    const { diagram } = buildRichDiagram();
+    const doc = throughJSON(diagram.serialize());
+    delete (doc as { strokes?: unknown }).strokes; // as an older writer would have left it
+
+    const restored = DiagramModel.fromJSON(doc);
+    expect(restored.getStrokes()).toEqual([]);
+    expect(restored.getNodes().length).toBe(2); // …and the rest of the document is fine
   });
 
   it('reports the SAVED version and an empty change log after load', () => {

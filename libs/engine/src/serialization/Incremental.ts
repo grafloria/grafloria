@@ -22,6 +22,7 @@ import type { DiagramModel } from '../models/DiagramModel';
 import type { SerializedNode } from '../models/NodeModel';
 import type { SerializedLink } from '../models/LinkModel';
 import type { SerializedGroup } from '../models/GroupModel';
+import type { SerializedStroke } from '../models/StrokeModel';
 import { DIAGRAM_SCHEMA_VERSION } from './DiagramMigrations';
 
 export const INCREMENTAL_FORMAT = 'grafloria-incremental' as const;
@@ -33,9 +34,23 @@ export interface DiagramIncremental {
   baseVersion: number;
   /** diagram.version at commit — apply converges the replica's counter to it. */
   targetVersion: number;
-  added: { nodes: SerializedNode[]; links: SerializedLink[]; groups: SerializedGroup[] };
-  removed: { nodes: string[]; links: string[]; groups: string[] };
-  modified: { nodes: SerializedNode[]; links: SerializedLink[]; groups: SerializedGroup[] };
+  // wave10/whiteboard: `strokes` is OPTIONAL on each side, unlike the three original
+  // collections. Not laziness — a patch is a hand-constructible value (the specs build
+  // them literally, and so do hosts), and making it required would break every existing
+  // caller for a key that is empty in almost every patch. Absent = "no ink changed".
+  added: {
+    nodes: SerializedNode[];
+    links: SerializedLink[];
+    groups: SerializedGroup[];
+    strokes?: SerializedStroke[];
+  };
+  removed: { nodes: string[]; links: string[]; groups: string[]; strokes?: string[] };
+  modified: {
+    nodes: SerializedNode[];
+    links: SerializedLink[];
+    groups: SerializedGroup[];
+    strokes?: SerializedStroke[];
+  };
   diagram?: {
     name?: string;
     viewport?: { x: number; y: number; width: number; height: number; zoom: number };
@@ -54,6 +69,7 @@ export class IncrementalCapture {
   private nodes: Ids = emptyIds();
   private links: Ids = emptyIds();
   private groups: Ids = emptyIds();
+  private strokes: Ids = emptyIds(); // wave10/whiteboard
   private baseVersion: number;
   private nameSnapshot: string;
   private viewportSnapshot: string;
@@ -97,8 +113,15 @@ export class IncrementalCapture {
     const n = track(this.nodes);
     const l = track(this.links);
     const g = track(this.groups);
+    const s = track(this.strokes); // wave10/whiteboard
 
     this.disposers.push(
+      // Ink. Strokes are immutable after commit (you draw one, you erase one — you do
+      // not edit one point-by-point), so unlike groups there is no per-entity change
+      // stream to watch. If stroke editing ever lands, it needs a watchStroke() exactly
+      // like watchGroup() below, or the edit will not reach this channel.
+      diagram.on('stroke:added', s.added),
+      diagram.on('stroke:removed', s.removed),
       diagram.on('node:added', n.added),
       diagram.on('node:removed', n.removed),
       diagram.on('node:changed', n.changed),
@@ -151,6 +174,7 @@ export class IncrementalCapture {
       any(this.nodes) ||
       any(this.links) ||
       any(this.groups) ||
+      any(this.strokes) ||
       this.diagramChanges() !== undefined
     );
   }
@@ -189,6 +213,10 @@ export class IncrementalCapture {
       [...ids]
         .map((id) => this.diagram.getGroup(id)?.serialize())
         .filter((d): d is SerializedGroup => !!d);
+    const serializeStrokes = (ids: Set<string>) =>
+      [...ids]
+        .map((id) => this.diagram.getStroke(id)?.serialize())
+        .filter((d): d is SerializedStroke => !!d);
 
     const patch: DiagramIncremental = {
       format: INCREMENTAL_FORMAT,
@@ -211,6 +239,15 @@ export class IncrementalCapture {
         groups: serializeGroups(this.groups.modified),
       },
     };
+    // wave10/whiteboard: written only when there IS ink in the window, so a patch from a
+    // diagram nobody has drawn on is byte-identical to the one this class emitted before
+    // this wave. (Same rule as the document's `strokes` key.)
+    if (this.strokes.added.size) patch.added.strokes = serializeStrokes(this.strokes.added);
+    if (this.strokes.removed.size) patch.removed.strokes = [...this.strokes.removed];
+    if (this.strokes.modified.size) {
+      patch.modified.strokes = serializeStrokes(this.strokes.modified);
+    }
+
     const diagramDelta = this.diagramChanges();
     if (diagramDelta) patch.diagram = diagramDelta;
 
@@ -225,6 +262,7 @@ export class IncrementalCapture {
     resetIds(this.nodes);
     resetIds(this.links);
     resetIds(this.groups);
+    resetIds(this.strokes);
     this.baseVersion = this.diagram.version;
     this.nameSnapshot = this.diagram.name;
     this.viewportSnapshot = JSON.stringify(this.diagram.viewport);
