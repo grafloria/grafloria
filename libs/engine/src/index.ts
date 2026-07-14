@@ -118,7 +118,20 @@ export * from './rendering';
 export * from './template-library';
 
 // Mobile Input (Phase 4)
-export * from './lib/input';
+// Wave 9 — Card 2: `./lib/input` (TouchHandler + MobileInteractionService +
+// MobileManagerService) was DELETED. It was a complete second touch stack —
+// pinch, rotate, swipe, an IMobileEngine — exported from this public barrel and
+// constructed by NOTHING. It could not have been wired even deliberately:
+// IMobileEngine demands getZoom()/getPan()/setPan(), and the real DiagramEngine
+// has none of them; TouchHandler bound legacy touch events with .bind(this) (so
+// its own removeEventListener could never match) and never set touch-action, so
+// the browser would have eaten the gestures anyway.
+//
+// It was worse than useless: it sat in the engine's public API exactly where the
+// next person would look for touch support, and it would never have worked. Real
+// touch now lives in the renderer, on the pipeline that actually runs:
+// libs/renderer/src/interaction/touch-gestures.ts (proved in a real browser by
+// libs/renderer/e2e/touch-run.mjs).
 
 // DSL (Phase 1.2)
 // Explicitly export DSL exports to avoid conflicts with Position and Direction from other modules
