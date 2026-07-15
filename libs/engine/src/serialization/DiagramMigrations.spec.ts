@@ -90,12 +90,23 @@ describe('runDiagramMigrations', () => {
           return { ...d, schemaVersion: 2 };
         },
       },
+      {
+        // wave13: DIAGRAM_SCHEMA_VERSION moved to 3 (positionMode-on-parents), so an
+        // override chain must reach it — stepwise is exactly what this test asserts.
+        from: 2,
+        to: 3,
+        description: 't2',
+        migrate: (d) => {
+          trail.push(2);
+          return { ...d, schemaVersion: 3 };
+        },
+      },
     ];
     const legacy = doc();
     delete (legacy as any).schemaVersion;
     const migrated = runDiagramMigrations(legacy, chain);
-    expect(trail).toEqual([1]);
-    expect(migrated.schemaVersion).toBe(2);
+    expect(trail).toEqual([1, 2]);
+    expect(migrated.schemaVersion).toBe(3);
   });
 });
 

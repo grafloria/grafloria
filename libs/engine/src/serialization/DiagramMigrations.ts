@@ -23,7 +23,7 @@ import type { SerializedDiagram } from '../models/DiagramModel';
  *       identical to v1 except: `schemaVersion` is stamped, `groups` is
  *       always present, and runtime-only metadata is never serialized.
  */
-export const DIAGRAM_SCHEMA_VERSION = 2;
+export const DIAGRAM_SCHEMA_VERSION = 3;
 
 export interface DiagramMigration {
   /** Source schema version this migration upgrades FROM. */
@@ -124,5 +124,27 @@ registerDiagramMigration({
       return g;
     });
     return { ...data, groups, schemaVersion: 2 };
+  },
+});
+
+registerDiagramMigration({
+  from: 2,
+  to: 3,
+  description:
+    'v2 → v3: a node with a parentId is RELATIVE unless it explicitly says otherwise. ' +
+    'Pre-v3 engines summed the parent chain in getWorldPosition() regardless of ' +
+    'positionMode, so a parented node whose mode was absent or the "absolute" default ' +
+    'was in fact rendered relatively. v3 makes getWorldPosition honour positionMode; ' +
+    're-labelling those nodes "relative" here is what keeps every legacy document ' +
+    'rendering BYTE-IDENTICALLY under the new, consistent semantics. ("layout" mode ' +
+    'is left alone — it was never part of the summation contract.)',
+  migrate(data) {
+    const nodes = (data.nodes ?? []).map((n) => {
+      if (n && n.parentId && (n.positionMode === undefined || n.positionMode === 'absolute')) {
+        return { ...n, positionMode: 'relative' as const };
+      }
+      return n;
+    });
+    return { ...data, nodes, schemaVersion: 3 };
   },
 });

@@ -55,6 +55,11 @@ export interface LayoutGraphNode {
   size: { width: number; height: number };
   /** Container membership — the nested-layout card needs it; harmless otherwise. */
   parentId?: string;
+  /**
+   * wave13: how `position` relates to the parent. Absent on pre-v3 payloads, which meant
+   * summation — i.e. 'relative'; the consumer below applies exactly that default.
+   */
+  positionMode?: 'absolute' | 'relative' | 'layout';
   ports?: LayoutGraphPort[];
 }
 
@@ -89,7 +94,9 @@ export function serializeGraph(nodes: NodeModel[], links: LinkModel[]): LayoutGr
       type: node.type,
       position: { x: node.position.x, y: node.position.y },
       size: { width: node.size.width, height: node.size.height },
-      ...(node.parentId ? { parentId: node.parentId } : {}),
+      ...(node.parentId
+        ? { parentId: node.parentId, positionMode: node.positionMode }
+        : {}),
       ports: node.getPorts().map((port) => ({
         id: port.id,
         type: port.type,
@@ -132,6 +139,12 @@ export function reviveGraph(graph: LayoutGraph): {
 
     if (serialized.parentId) {
       node.parentId = serialized.parentId;
+      // wave13: carry the positioning semantics with the relationship. A payload that
+      // predates positionMode-on-parents meant summation, i.e. 'relative' — the same
+      // default the v2→v3 document migration applies. Without this, the ephemeral layout
+      // copy would default to 'absolute' and getBoundingBox() would place parented nodes
+      // differently here than in the live model.
+      node.positionMode = serialized.positionMode ?? 'relative';
     }
 
     // Replace the four auto-created default ports with the real ones, ids

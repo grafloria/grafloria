@@ -113,7 +113,7 @@ describe('NodeModel — cyclic parent chains cannot hang the app', () => {
   test('a legitimate parent chain still accumulates world position', () => {
     const parent = addNode(100, 200);
     const child = addNode(10, 20);
-    child.parentId = parent.id;
+    child.setParent(parent.id); // wave13: the API declares relative semantics; a raw field poke does not
 
     expect(child.getWorldPosition()).toMatchObject({ x: 110, y: 220 });
     expect(child.getDepth()).toBe(1);
@@ -125,8 +125,8 @@ describe('NodeModel — cyclic parent chains cannot hang the app', () => {
     const grandparent = addNode(100, 100);
     const parent = addNode(10, 10);
     const child = addNode(1, 1);
-    parent.parentId = grandparent.id;
-    child.parentId = parent.id;
+    parent.setParent(grandparent.id); // wave13: use the API — it declares relative semantics
+    child.setParent(parent.id);
 
     expect(child.getWorldPosition()).toMatchObject({ x: 111, y: 111 });
     expect(child.getDepth()).toBe(2);

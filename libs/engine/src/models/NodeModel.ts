@@ -585,35 +585,35 @@ export class NodeModel extends DiagramEntity {
     let worldY = this.position.y;
     let worldZ = this.position.z || 0;
 
-    // Walk up parent chain.
+    // Walk up the parent chain, honouring positionMode.
     //
-    // wave6/a11y — CYCLE GUARD. This loop had no termination condition other
-    // than reaching a parentless node, so a cyclic `parentId` (a→b→a) span it
-    // forever. That is not academic: `getBoundingBox()` calls this, and the
-    // renderer calls `getBoundingBox()` on every node on every frame — so one
-    // corrupt parent link (a bad deserialize, a hand-set `parentId`, a buggy
-    // import) hangs the entire browser tab with no error, no stack, nothing.
+    // wave13: fold in a parent's position only while the CURRENT node is RELATIVE to it —
+    // an absolute node's stored position IS world coordinates, so it ends the walk. This
+    // used to sum unconditionally, which double-counted an absolute-mode child that carried
+    // a parentId, disagreeing with getGlobalPosition/getGlobalBounds. It is safe now because
+    // setParent() finally declares its semantics (it flips a default-'absolute' child to
+    // 'relative'), and a schema migration re-labels legacy documents the same way — so every
+    // node that RELIED on the summation is 'relative' by the time this runs, and the walk
+    // produces byte-identical results for all of them. Only the genuinely inconsistent case
+    // (explicitly absolute + parentId) changes: it now means what it says.
     //
-    // `SetParentCommand` tries to prevent cycles, but it checks by calling
-    // `getAncestors()` — which walks this same unguarded chain, so the very
-    // guard meant to keep cycles out would itself hang if one ever got in.
-    //
-    // Found by an a11y outline test that deliberately corrupts the parent chain.
+    // wave6/a11y — CYCLE GUARD, preserved. Without it a cyclic `parentId` (a→b→a) spins this
+    // loop forever, and `getBoundingBox()` calls this on every node on every frame — one
+    // corrupt parent link hangs the whole tab with no error. (`SetParentCommand`'s own cycle
+    // check walks this same chain via `getAncestors()`, so it would hang too.)
     const seen = new Set<string>([this.id]);
-    let currentParentId = this.parentId;
-    while (currentParentId && this.diagram) {
-      if (seen.has(currentParentId)) break; // cycle — stop, do not spin
-      seen.add(currentParentId);
+    let current: NodeModel = this;
+    while (current.positionMode !== 'absolute' && current.parentId && this.diagram) {
+      if (seen.has(current.parentId)) break; // cycle — stop, do not spin
+      seen.add(current.parentId);
 
-      const parentNode = this.diagram.getNode(currentParentId);
-      if (parentNode) {
-        worldX += parentNode.position.x;
-        worldY += parentNode.position.y;
-        worldZ += parentNode.position.z || 0;
-        currentParentId = parentNode.parentId;
-      } else {
-        break;
-      }
+      const parentNode = this.diagram.getNode(current.parentId);
+      if (!parentNode) break;
+
+      worldX += parentNode.position.x;
+      worldY += parentNode.position.y;
+      worldZ += parentNode.position.z || 0;
+      current = parentNode;
     }
 
     return { x: worldX, y: worldY, z: worldZ };
@@ -674,6 +674,21 @@ export class NodeModel extends DiagramEntity {
     const oldParent = this.parentId;
     this.parentId = parentId;
     this.trackChange('parentId', oldParent, parentId);
+
+    // wave13: gaining a parent through this API MEANS relative positioning — every consumer
+    // (ERD tables, nested nodes, the world-coordinates contract) treats the child's position
+    // as an offset from the parent, and getWorldPosition sums the chain on that assumption.
+    // The model just never SAID so: positionMode stayed at its 'absolute' default, which made
+    // it disagree with getGlobalPosition/getGlobalBounds (which honour positionMode) — an
+    // absolute-mode child with a parentId double-counted in one method and not the other.
+    // setLocalPosition/setGlobalPosition already set 'relative'; this was the odd one out.
+    // Clearing the parent leaves the mode alone: 'relative' with no parent behaves as
+    // absolute in every consumer, and flipping it back would lie about history.
+    if (parentId && this.positionMode === 'absolute') {
+      const oldMode = this.positionMode;
+      this.positionMode = 'relative';
+      this.trackChange('positionMode', oldMode, 'relative');
+    }
   }
 
   /**

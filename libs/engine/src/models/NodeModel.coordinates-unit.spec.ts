@@ -84,6 +84,9 @@ describe('NodeModel - Coordinate Space System (Unit Tests)', () => {
 
       // Set up hierarchy
       child.setParent(parent.id);
+      // wave13: setParent now DECLARES relative semantics (the default was a lie);
+      // this test is ABOUT explicit absolute mode, so it now says so explicitly.
+      child.positionMode = 'absolute';
       parent.addChild(child.id);
 
       // In absolute mode, position is relative to diagram, not parent
