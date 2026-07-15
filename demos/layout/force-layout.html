@@ -42,7 +42,7 @@ defineDemo({
     ctx.diagram = api.getModel();
     ctx.engine = api.getEngine();
     ctx.runLayout = async (seed) => {
-      const r = await ctx.engine.layout('force', { seed, nodeSpacing: 30 });
+      const r = await ctx.engine.layout('force', { seed, nodeSpacing: 55 });
       api.renderNow();
       api.fitView(40);
       const dEdge = meanEdgeDistance(ctx.diagram, PAIRS);

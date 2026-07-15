@@ -50,6 +50,16 @@ defineDemo({
     await ctx.tick();
   },
 
+  // Money shot: the constraint DOING something — the child parked where a
+  // runaway drag ended, clamped back inside the container's inner extent.
+  async showcase(ctx) {
+    const n = ctx.diagram.getNode('child');
+    ctx.g.addMember('child', ctx.diagram);
+    n.setPosition(ctx.frame.x + ctx.frame.width + 140, ctx.frame.y - 90); // way outside
+    ctx.g.clampChildToExtent('child', ctx.diagram);
+    ctx.instance.renderNow();
+  },
+
   async assert(ctx) {
     const m = ctx.diagram, g = ctx.g, frame = ctx.frame;
     const child = m.getNode('child');

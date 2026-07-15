@@ -19,13 +19,16 @@ import { overlaps, signature, layering, restack } from './_layout-lib.js';
 // ELK adapter had silently fallen back to dagre (the exact shape of bug where "we
 // support N layouts" secretly means one), the two signatures would match and this
 // page goes red.
+// Handles pinned bottom→top — a TB tree flows vertically, and React Flow's
+// own tree examples pin their handles the same way. (Bare edges float, which
+// is right generally but reads diagonal on the root fan-out of a tree.)
 const EDGES = [
-  { id: 'e1', source: 'ceo', target: 'eng' },
-  { id: 'e2', source: 'ceo', target: 'ops' },
-  { id: 'e3', source: 'eng', target: 'fe' },
-  { id: 'e4', source: 'eng', target: 'be' },
-  { id: 'e5', source: 'ops', target: 'sre' },
-  { id: 'e6', source: 'be', target: 'db' },
+  { id: 'e1', source: 'ceo', target: 'eng', sourceHandle: 'bottom', targetHandle: 'top' },
+  { id: 'e2', source: 'ceo', target: 'ops', sourceHandle: 'bottom', targetHandle: 'top' },
+  { id: 'e3', source: 'eng', target: 'fe', sourceHandle: 'bottom', targetHandle: 'top' },
+  { id: 'e4', source: 'eng', target: 'be', sourceHandle: 'bottom', targetHandle: 'top' },
+  { id: 'e5', source: 'ops', target: 'sre', sourceHandle: 'bottom', targetHandle: 'top' },
+  { id: 'e6', source: 'be', target: 'db', sourceHandle: 'bottom', targetHandle: 'top' },
 ];
 const NODES = ['ceo', 'eng', 'ops', 'fe', 'be', 'sre', 'db'].map((id) => ({
   id, position: { x: 0, y: 0 }, size: { width: 120, height: 48 }, label: id,

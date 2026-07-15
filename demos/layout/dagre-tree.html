@@ -17,12 +17,15 @@ import { overlaps, signature, layering, restack } from './_layout-lib.js';
 // STACKED at (0,0). If dagre were the no-op the engine's layout once was (it
 // required a setLayoutService() nothing ever called), all seven would render in
 // one pile and every assertion below would fail.
+// Handles pinned bottom→top — a TB tree flows vertically, and React Flow's
+// own tree examples pin their handles the same way. (Bare edges float, which
+// is right generally but reads diagonal on the root fan-out of a tree.)
 const EDGES = [
-  { id: 'e1', source: 'root', target: 'a' },
-  { id: 'e2', source: 'root', target: 'b' },
-  { id: 'e3', source: 'a', target: 'a1' },
-  { id: 'e4', source: 'a', target: 'a2' },
-  { id: 'e5', source: 'b', target: 'b1' },
+  { id: 'e1', source: 'root', target: 'a', sourceHandle: 'bottom', targetHandle: 'top' },
+  { id: 'e2', source: 'root', target: 'b', sourceHandle: 'bottom', targetHandle: 'top' },
+  { id: 'e3', source: 'a', target: 'a1', sourceHandle: 'bottom', targetHandle: 'top' },
+  { id: 'e4', source: 'a', target: 'a2', sourceHandle: 'bottom', targetHandle: 'top' },
+  { id: 'e5', source: 'b', target: 'b1', sourceHandle: 'bottom', targetHandle: 'top' },
 ];
 const NODES = ['root', 'a', 'b', 'a1', 'a2', 'b1', 'b2'].map((id) => ({
   id, position: { x: 0, y: 0 }, size: { width: 120, height: 48 }, label: id,
