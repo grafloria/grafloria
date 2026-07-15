@@ -70,6 +70,28 @@ mkdirSync(outDir, { recursive: true });
 const browser = await chromium.launch();
 const manifest = [];
 
+// A pixel-diff gate cannot chase a moving picture: an animated edge (marching
+// dashes) or a pulsing glow lands on a different phase every capture, so two
+// byte-identical builds "differ". Freeze every animation to a FIXED phase right
+// before shooting — the live demo still animates for a visitor; only the gate's
+// snapshot is stilled. CSS animations/transitions get zero duration + a paused
+// play-state (renders their end state, deterministically); SVG SMIL (<animate>)
+// is paused via the document timeline.
+async function freezeAnimations(tab) {
+  await tab.addStyleTag({
+    content: `*, *::before, *::after {
+      animation-duration: 0s !important;
+      animation-delay: 0s !important;
+      animation-play-state: paused !important;
+      transition-duration: 0s !important;
+      transition-delay: 0s !important;
+      caret-color: transparent !important;
+    }`,
+  });
+  await tab.evaluate(() => { try { document.documentElement.pauseAnimations?.(); document.getSVGDocument?.(); document.querySelectorAll('svg').forEach((s) => s.pauseAnimations && s.pauseAnimations()); } catch { /* not all engines expose it */ } });
+  await tab.waitForTimeout(30); // let the frozen frame settle
+}
+
 for (const page of pages) {
   const rel = relative(root, page);
   const slug = rel.replace(/[\\/]/g, '__').replace(/\.html$/, '');
@@ -82,6 +104,7 @@ for (const page of pages) {
   try {
     await tab.goto(origin + '/' + rel.split(sep).join('/'));
     await tab.waitForFunction(() => window.__demoReady === true, { timeout: 15000 });
+    await freezeAnimations(tab);
     const meta = await tab.evaluate(() => ({ reactflow: window.__demo.reactflow, pro: window.__demo.pro }));
     rec.reactflow = meta.reactflow; rec.pro = meta.pro;
 
@@ -104,6 +127,7 @@ for (const page of pages) {
     if (hasShowcase) {
       await tab.goto(origin + '/' + rel.split(sep).join('/'));
       await tab.waitForFunction(() => window.__demoReady === true, { timeout: 15000 });
+      await freezeAnimations(tab);
       await tab.evaluate(async () => { try { await window.__demo.showcase(); } catch { /* shot anyway */ } });
       await tab.waitForTimeout(50);
       const showcasePath = join(outDir, `${slug}.showcase.png`);
