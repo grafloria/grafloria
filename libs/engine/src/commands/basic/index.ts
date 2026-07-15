@@ -3,6 +3,7 @@
 export * from './AddNodeCommand';
 export * from './RemoveNodeCommand';
 export * from './MoveNodeCommand';
+export * from './MoveGroupCommand'; // wave12/connect-ergonomics (drag subflow → members follow)
 export * from './ResizeNodeCommand';
 export * from './AddLinkCommand';
 export * from './RemoveLinkCommand';

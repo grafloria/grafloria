@@ -1,4 +1,7 @@
-import type { DiagramEngine, LinkModel, NodeModel } from '@grafloria/engine';
+import type { DiagramEngine, LinkModel, NodeModel, GroupModel } from '@grafloria/engine';
+// wave12/connect-ergonomics (gap 1): the ONE undoable step a subflow drag commits.
+import { MoveGroupCommand } from '@grafloria/engine';
+import type { GroupFrameSnapshot, GroupNodeMove, GroupFrameMove } from '@grafloria/engine';
 import type { InteractionController } from '../interaction/interaction-controller';
 import type { CanvasRect, ViewportController } from '../viewport/viewport-controller';
 import { isBrowser } from '../platform';
@@ -85,6 +88,27 @@ interface NodeDragState {
   committed: boolean;
 }
 
+/**
+ * wave12/connect-ergonomics (gap 1): an armed-but-not-yet-committed GROUP drag.
+ *
+ * The engine stores absolute coordinates, so a group's members do not track the
+ * frame — the drag translates every member node (recursively through nested
+ * groups) and the frame(s) itself. `nodeFrom` / `frameFrom` are the drag-START
+ * snapshot so the whole gesture commits as ONE undoable {@link MoveGroupCommand}.
+ */
+interface GroupDragState {
+  groupId: string;
+  nodeIds: string[];
+  groupIds: string[];
+  startClientX: number;
+  startClientY: number;
+  lastWorldX: number;
+  lastWorldY: number;
+  committed: boolean;
+  nodeFrom: Map<string, { x: number; y: number; z?: number }>;
+  frameFrom: Map<string, GroupFrameSnapshot>;
+}
+
 export class DomEventBinder {
   private readonly options: Required<DomEventBinderOptions>;
 
@@ -96,6 +120,7 @@ export class DomEventBinder {
   private lastPanY = 0;
 
   private nodeDrag: NodeDragState | null = null;
+  private groupDrag: GroupDragState | null = null;
 
   // Bound once so removeEventListener gets the SAME function object it added —
   // `removeEventListener(this.onX.bind(this))` allocates a new function and
@@ -308,6 +333,7 @@ export class DomEventBinder {
     this.touch.reset();
     this.isPanning = false;
     this.nodeDrag = null;
+    this.groupDrag = null;
     this.spaceKeyPressed = false;
   }
 
@@ -628,6 +654,24 @@ export class DomEventBinder {
       return;
     }
 
+    // 8b. wave12 (gap 1) — Group frame → drag the whole subflow. Only reached
+    // when NO node/link/port was under the cursor (a member node wins the ladder
+    // above), so this is a press on the container's empty area / header. Opt-in
+    // via `enableGroupDrag`; off, this falls straight through to the clear below,
+    // byte-identical to the historic behaviour.
+    if (
+      !this.isReadonly() &&
+      config.enableGroupDrag &&
+      !(event.shiftKey || event.ctrlKey || event.metaKey || event.altKey)
+    ) {
+      const group = this.findGroupAtPoint(diagram, worldX, worldY);
+      if (group) {
+        event.preventDefault();
+        this.pressGroup(group, diagram, event, worldX, worldY);
+        return;
+      }
+    }
+
     // 9. Empty canvas → clear the selection (unless a modifier is extending it).
     const hasModifier = event.shiftKey || event.ctrlKey || event.metaKey || event.altKey;
     if (!hasModifier) {
@@ -669,6 +713,11 @@ export class DomEventBinder {
       this.lastPanX = event.clientX;
       this.lastPanY = event.clientY;
       this.host.requestRender();
+      return;
+    }
+
+    if (this.groupDrag) {
+      this.moveGroupDrag(event);
       return;
     }
 
@@ -808,6 +857,13 @@ export class DomEventBinder {
       return;
     }
 
+    if (this.groupDrag) {
+      event.preventDefault();
+      this.endGroupDrag(engine);
+      this.setCursor('default');
+      return;
+    }
+
     if (this.nodeDrag) {
       const moved = this.nodeDrag.committed;
       this.nodeDrag = null;
@@ -822,6 +878,11 @@ export class DomEventBinder {
   onMouseLeave(): void {
     const engine = this.engine();
     this.isPanning = false;
+
+    if (this.groupDrag) {
+      if (engine) this.endGroupDrag(engine);
+      else this.groupDrag = null;
+    }
 
     if (this.nodeDrag) {
       const moved = this.nodeDrag.committed;
@@ -883,7 +944,10 @@ export class DomEventBinder {
       const state = this.host.interaction.getState();
       if (state.isConnecting) this.host.interaction.cancelConnection(engine);
       if (state.isReconnectingLink) this.host.interaction.cancelLinkReconnection(engine);
+      // wave12 (gap 1): abandon an in-flight group drag WITHOUT restoring — matches
+      // node-drag Escape (which also leaves the node where the drag left it).
       this.nodeDrag = null;
+      this.groupDrag = null;
       diagram.clearSelection();
       this.host.requestRender();
       this.emitSelectionChange();
@@ -997,6 +1061,194 @@ export class DomEventBinder {
 
     // Node geometry moved ⇒ the port hit cache is stale.
     this.host.interaction.invalidatePortHitCache();
+    this.host.requestRender();
+  }
+
+  // ==========================================================================
+  // wave12/connect-ergonomics (gap 1) — Group drag: move a subflow container and
+  // ALL its contents by the same delta, as ONE undoable step.
+  // ==========================================================================
+
+  /**
+   * The innermost group whose outer frame contains the world point. "Innermost"
+   * (deepest nesting, then smallest area) so grabbing a nested sub-flow drags the
+   * sub-flow, not the pipeline around it. Skips groups with no drawable frame.
+   */
+  private findGroupAtPoint(
+    diagram: NonNullable<ReturnType<DiagramEngine['getDiagram']>>,
+    worldX: number,
+    worldY: number
+  ): GroupModel | undefined {
+    let best: GroupModel | undefined;
+    let bestDepth = -Infinity;
+    let bestArea = Infinity;
+
+    for (const group of diagram.getGroups()) {
+      if (group.isCollapsed) continue;
+      const r = group.getOuterBounds();
+      if (r.width <= 0 || r.height <= 0) continue;
+      if (worldX < r.x || worldX > r.x + r.width || worldY < r.y || worldY > r.y + r.height) {
+        continue;
+      }
+      const depth = diagram.getDepth(group.id);
+      const area = r.width * r.height;
+      if (depth > bestDepth || (depth === bestDepth && area < bestArea)) {
+        best = group;
+        bestDepth = depth;
+        bestArea = area;
+      }
+    }
+    return best;
+  }
+
+  /**
+   * Every member NODE (recursively through nested groups) and every group FRAME
+   * (this group + its descendant groups) that a drag of `group` must carry.
+   * Cycle-guarded so a corrupt membership loop can never spin.
+   */
+  private collectGroupContents(
+    diagram: NonNullable<ReturnType<DiagramEngine['getDiagram']>>,
+    group: GroupModel
+  ): { nodeIds: string[]; groupIds: string[] } {
+    const nodeIds = new Set<string>();
+    const groupIds = new Set<string>();
+    const stack: GroupModel[] = [group];
+
+    while (stack.length) {
+      const g = stack.pop()!;
+      if (groupIds.has(g.id)) continue;
+      groupIds.add(g.id);
+      for (const memberId of g.members) {
+        const node = diagram.getNode(memberId);
+        if (node) {
+          nodeIds.add(memberId);
+          continue;
+        }
+        const child = diagram.getGroup(memberId);
+        if (child && !groupIds.has(child.id)) stack.push(child);
+      }
+    }
+    return { nodeIds: [...nodeIds], groupIds: [...groupIds] };
+  }
+
+  /** Snapshot a group frame's restorable geometry (for undo). */
+  private snapshotFrame(group: GroupModel): GroupFrameSnapshot {
+    return {
+      position: { x: group.position.x, y: group.position.y },
+      size: group.size ? { ...group.size } : undefined,
+      bounds: group.bounds ? { ...group.bounds } : undefined,
+    };
+  }
+
+  /** Arm a group drag (threshold-gated, mirroring the node-drag arming). */
+  private pressGroup(
+    group: GroupModel,
+    diagram: NonNullable<ReturnType<DiagramEngine['getDiagram']>>,
+    event: MouseEvent,
+    worldX: number,
+    worldY: number
+  ): void {
+    const { nodeIds, groupIds } = this.collectGroupContents(diagram, group);
+
+    const nodeFrom = new Map<string, { x: number; y: number; z?: number }>();
+    for (const id of nodeIds) {
+      const node = diagram.getNode(id);
+      if (node && !node.state.locked) nodeFrom.set(id, { ...node.position });
+    }
+    const frameFrom = new Map<string, GroupFrameSnapshot>();
+    for (const id of groupIds) {
+      const g = diagram.getGroup(id);
+      if (g) frameFrom.set(id, this.snapshotFrame(g));
+    }
+
+    this.groupDrag = {
+      groupId: group.id,
+      nodeIds: [...nodeFrom.keys()],
+      groupIds: [...frameFrom.keys()],
+      startClientX: event.clientX,
+      startClientY: event.clientY,
+      lastWorldX: worldX,
+      lastWorldY: worldY,
+      committed: false,
+      nodeFrom,
+      frameFrom,
+    };
+    this.setCursor('move');
+  }
+
+  /** Translate the whole subflow live during a group drag (past the threshold). */
+  private moveGroupDrag(event: MouseEvent): void {
+    const drag = this.groupDrag;
+    const diagram = this.engine()?.getDiagram();
+    if (!drag || !diagram) return;
+
+    if (!drag.committed) {
+      const dx = event.clientX - drag.startClientX;
+      const dy = event.clientY - drag.startClientY;
+      if (Math.hypot(dx, dy) < this.options.dragThreshold) return;
+      drag.committed = true;
+    }
+
+    const { x: worldX, y: worldY } = this.toWorld(event);
+    const dx = worldX - drag.lastWorldX;
+    const dy = worldY - drag.lastWorldY;
+    drag.lastWorldX = worldX;
+    drag.lastWorldY = worldY;
+    if (!dx && !dy) return;
+
+    // Members: N absolute position sets (per-property LWW converges under collab).
+    for (const id of drag.nodeIds) {
+      const node = diagram.getNode(id);
+      if (!node || node.state.locked) continue;
+      node.setPosition(node.position.x + dx, node.position.y + dy);
+    }
+    // Frames: translate this group + nested group frames alongside their contents.
+    for (const id of drag.groupIds) {
+      const g = diagram.getGroup(id);
+      if (!g) continue;
+      const r = g.getOuterBounds();
+      g.setFrame({ x: r.x + dx, y: r.y + dy, width: r.width, height: r.height });
+    }
+
+    this.host.interaction.invalidatePortHitCache();
+    this.host.requestRender();
+  }
+
+  /**
+   * End a group drag: commit the whole gesture as ONE undoable MoveGroupCommand
+   * (drag-start snapshot → current), then emit change events. The live drag has
+   * already applied the final positions, so the command's execute() is a visual
+   * no-op that merely records the single history entry; undo restores the start.
+   */
+  private endGroupDrag(engine: DiagramEngine): void {
+    const drag = this.groupDrag;
+    this.groupDrag = null;
+    if (!drag) return;
+
+    if (!drag.committed) return; // a press with no drag — nothing moved
+
+    const diagram = engine.getDiagram();
+    if (!diagram) return;
+
+    const nodeMoves: GroupNodeMove[] = [];
+    for (const [id, from] of drag.nodeFrom) {
+      const node = diagram.getNode(id);
+      if (!node) continue;
+      nodeMoves.push({ nodeId: id, from, to: { ...node.position } });
+    }
+    const frameMoves: GroupFrameMove[] = [];
+    for (const [id, from] of drag.frameFrom) {
+      const g = diagram.getGroup(id);
+      if (!g) continue;
+      frameMoves.push({ groupId: id, from, to: this.snapshotFrame(g) });
+    }
+
+    const command = new MoveGroupCommand(nodeMoves, frameMoves);
+    if (!command.isNoop()) {
+      // Record on the undo stack. State is already at `to`, so this is idempotent.
+      void engine.commandManager.execute(command);
+      this.emitNodesChange();
+    }
     this.host.requestRender();
   }
 
