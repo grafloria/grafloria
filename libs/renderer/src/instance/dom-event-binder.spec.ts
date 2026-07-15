@@ -507,6 +507,44 @@ describe('DomEventBinder', () => {
       h.container.dispatchEvent(mouse('mouseup', { clientX: 150, clientY: 40 }));
     });
 
+    // Drag-handle semantics (live report: "I can drag from everywhere"). A node
+    // that declares a handle child is draggable ONLY via that handle: the body
+    // press selects without moving; the handle press moves the PARENT.
+    describe('drag-handle-only dragging', () => {
+      const withHandle = () => {
+        h = harness();
+        const { NodeModel } = require('@grafloria/engine');
+        const grip = new NodeModel({ id: 'grip', type: 'default', position: { x: 100, y: 72 }, size: { width: 100, height: 28 } });
+        h.model.addNode(grip);
+        grip.setParent('a');           // parent 'a' is at (100,100) 100×60
+        grip.setPosition(0, -28);      // title bar just above the body
+        grip.setBehavior({ dragHandler: { isDragHandler: true } });
+        return { win: h.model.getNode('a')!, grip };
+      };
+
+      it('a BODY press selects but does NOT drag', () => {
+        const { win } = withHandle();
+        const before = { ...win.position };
+        h.container.dispatchEvent(mouse('mousedown', { clientX: 150, clientY: 130 })); // body centre
+        h.container.dispatchEvent(mouse('mousemove', { clientX: 160, clientY: 130 }));
+        h.container.dispatchEvent(mouse('mousemove', { clientX: 260, clientY: 170 }));
+        h.container.dispatchEvent(mouse('mouseup',   { clientX: 260, clientY: 170 }));
+        expect(win.position).toEqual(before);
+        expect(win.isSelected()).toBe(true);
+      });
+
+      it('a HANDLE press drags the parent (redirect unaffected by the body rule)', () => {
+        const { win, grip } = withHandle();
+        const before = { ...win.position };
+        h.container.dispatchEvent(mouse('mousedown', { clientX: 150, clientY: 86 })); // grip centre (world 150,86)
+        h.container.dispatchEvent(mouse('mousemove', { clientX: 160, clientY: 86 }));
+        h.container.dispatchEvent(mouse('mousemove', { clientX: 250, clientY: 86 }));
+        h.container.dispatchEvent(mouse('mouseup',   { clientX: 250, clientY: 86 }));
+        expect(win.position.x).toBeCloseTo(before.x + 100);
+        expect(grip.position.x).toBeCloseTo(0); // the child's LOCAL offset is untouched
+      });
+    });
+
     it('an UNSELECTED node has no handle there — the press drags instead', () => {
       h = harness();
       const node = h.model.getNode('a')!;

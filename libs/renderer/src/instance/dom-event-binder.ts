@@ -1258,6 +1258,12 @@ export class DomEventBinder {
 
     if (this.isReadonly() || !node.isDraggable() || !node.isSelected()) return;
 
+    // Declaring a drag handle MEANS "drag me by the handle": once a node has
+    // one, its body press selects but no longer arms a drag — otherwise the
+    // handle is decoration (React Flow's dragHandle has the same semantics).
+    // A press that arrived here REDIRECTED FROM the handle still drags.
+    if (!this.pressViaDragHandle && this.hasDragHandlerChild(node, diagram)) return;
+
     const mode = this.engine()?.getInteractionConfig().mode;
     if (mode === 'deliberate' && !wasSelected) return; // first click only selects
 
@@ -1669,19 +1675,38 @@ export class DomEventBinder {
     worldY: number,
     event: MouseEvent
   ): NodeModel | undefined {
+    this.pressViaDragHandle = false;
     const hit = diagram.getNodeAtPosition(worldX, worldY);
-    if (hit) return this.dragTargetFor(hit, diagram);
+    if (hit) {
+      this.pressViaDragHandle = hit.behavior?.dragHandler?.isDragHandler === true;
+      return this.dragTargetFor(hit, diagram);
+    }
 
     let element = event.target as HTMLElement | null;
     while (element && element !== this.container) {
       const nodeId = element.getAttribute?.('data-node-id');
       if (nodeId) {
         const node = diagram.getNode(nodeId);
+        this.pressViaDragHandle = node?.behavior?.dragHandler?.isDragHandler === true;
         return node ? this.dragTargetFor(node, diagram) : undefined;
       }
       element = element.parentElement;
     }
     return undefined;
+  }
+
+  /** Did the press that resolveNode just handled land ON a drag handle? */
+  private pressViaDragHandle = false;
+
+  /** Does this node delegate its dragging to a designated handle child? */
+  private hasDragHandlerChild(
+    node: NodeModel,
+    diagram: NonNullable<ReturnType<DiagramEngine['getDiagram']>>
+  ): boolean {
+    for (const childId of node.children ?? []) {
+      if (diagram.getNode(childId)?.behavior?.dragHandler?.isDragHandler === true) return true;
+    }
+    return false;
   }
 
   /**

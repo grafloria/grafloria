@@ -1207,6 +1207,9 @@ export class InteractionController {
       }
 
       for (const node of nodes) {
+        // A drag-handle node is chrome: its ports are not hoverable, so a wire
+        // can never START there (the rules also refuse it as a TARGET).
+        if (node.behavior?.dragHandler?.isDragHandler === true) continue;
         // CRITICAL FIX: Always check for port hits regardless of visibility mode
         // Visibility affects RENDERING, not HIT DETECTION
         // This fixes the chicken-and-egg problem where ports couldn't be hovered

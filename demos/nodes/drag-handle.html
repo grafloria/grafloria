@@ -9,7 +9,7 @@ import { defineDemo, check, checkChanged } from '../shell/demo.js';
 
 defineDemo({
   name: 'Drag handle',
-  blurb: 'A designated grip drags its parent. Press the title bar and the window moves; the grip is a child node marked as a drag handler, so the press is redirected to the parent in the real drag pipeline.',
+  blurb: 'A designated grip drags its parent — and ONLY the grip: the body selects but no longer drags, and the handle is chrome (no ports, no wires). Press the title bar and the window moves through the real drag pipeline.',
   reactflow: 'Drag Handle',
 
   async setup(ctx) {
@@ -62,6 +62,38 @@ defineDemo({
     //    have moved the grip, not the window.
     check(grip.position.x === gripBefore.x && grip.position.y === gripBefore.y,
       `the grip itself should NOT have moved (was ${JSON.stringify(gripBefore)}, now ${JSON.stringify(grip.position)})`);
+
+    // 3. HANDLE-ONLY: declaring a handle MEANS "drag me by the handle". A press on
+    //    the BODY selects the window but must not move it (a live report: "I can
+    //    drag from everywhere — not sure that's intended". It wasn't.)
+    const afterGripDrag = { ...win.position };
+    const bodyCentre = { x: win.position.x + win.size.width / 2, y: win.position.y + win.size.height / 2 };
+    ctx.fire('mousedown', bodyCentre);
+    ctx.fire('mousemove', { x: bodyCentre.x + 10, y: bodyCentre.y });
+    ctx.fire('mousemove', { x: bodyCentre.x + 120, y: bodyCentre.y + 60 });
+    ctx.fire('mouseup',   { x: bodyCentre.x + 120, y: bodyCentre.y + 60 });
+    ctx.instance.renderNow();
+    check(win.position.x === afterGripDrag.x && win.position.y === afterGripDrag.y,
+      `a BODY press must not drag a node that has a drag handle (moved to ${JSON.stringify(win.position)})`);
+    check(win.isSelected(), 'the body press should still SELECT the window');
+
+    // 4. THE HANDLE IS CHROME: it sprouts no ports (a title bar with ports invited
+    //    "wire the window to itself"), cannot be hovered as a connection source,
+    //    and the rules refuse it as a target — so grip→window creates NO link.
+    const gw = grip.getWorldPosition();
+    ctx.fire('mousemove', { x: gw.x + grip.size.width, y: gw.y + grip.size.height / 2 });
+    ctx.instance.renderNow();
+    check(!ctx.instance.interaction.getState().hoveredPort,
+      'hovering the grip edge must not surface a port — the handle is chrome, not anatomy');
+    check(ctx.host.querySelectorAll('[data-node-id="grip"] [data-port-id]').length === 0,
+      'the grip must render no port glyphs');
+    const linksBefore = m.getLinks().length;
+    ctx.fire('mousedown', { x: gw.x + grip.size.width, y: gw.y + grip.size.height / 2 });
+    ctx.fire('mousemove', { x: win.position.x + win.size.width, y: win.position.y + win.size.height / 2 });
+    ctx.fire('mouseup',   { x: win.position.x + win.size.width, y: win.position.y + win.size.height / 2 });
+    ctx.instance.renderNow();
+    check(m.getLinks().length === linksBefore,
+      'dragging from the grip to the window must create NO link (visually that is "the node wired to itself")');
   },
 });
 </script>

@@ -43,6 +43,41 @@ afterEach(() => {
 // Card 3 — named groups with inheritance
 // ===========================================================================
 
+describe('drag handles are connection-inert (live-report fix)', () => {
+  // A window's title-bar grip is a real child NODE, so it used to sprout ports
+  // and accept wires — "I connected the node to itself", said the user, because
+  // to them grip + body ARE one window. Handles are chrome, not anatomy.
+  it('a wire may not START at a drag-handle node', () => {
+    const grip = makeNode('grip');
+    grip.setBehavior({ dragHandler: { isDragHandler: true } });
+    const win = makeNode('win');
+    const out = makePort('g-out', { type: 'output' });
+    const into = makePort('w-in', { type: 'input' });
+    const verdict = evaluatePortConnection(out, into, { sourceNode: grip, targetNode: win });
+    expect(verdict.ok).toBe(false);
+    expect(verdict.reason).toBe('node-not-connectable');
+  });
+
+  it('a wire may not END at a drag-handle node', () => {
+    const grip = makeNode('grip');
+    grip.setBehavior({ dragHandler: { isDragHandler: true } });
+    const win = makeNode('win');
+    const out = makePort('w-out', { type: 'output' });
+    const into = makePort('g-in', { type: 'input' });
+    const verdict = evaluatePortConnection(out, into, { sourceNode: win, targetNode: grip });
+    expect(verdict.ok).toBe(false);
+    expect(verdict.reason).toBe('node-not-connectable');
+  });
+
+  it('an ordinary child node still connects (the rule keys off the HANDLE flag)', () => {
+    const child = makeNode('child');
+    const win = makeNode('win');
+    const out = makePort('c-out', { type: 'output' });
+    const into = makePort('w-in', { type: 'input' });
+    expect(evaluatePortConnection(out, into, { sourceNode: child, targetNode: win }).ok).toBe(true);
+  });
+});
+
 describe('port groups (Card 3)', () => {
   it('a port with no group resolves to the pre-wave-6 defaults', () => {
     const node = makeNode('n1');

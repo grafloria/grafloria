@@ -264,9 +264,20 @@ export class TouchGestureController {
       return;
     }
 
-    // Node → drag it (if editable), else fall through to pan.
-    const node = diagram.getNodeAtPosition(worldX, worldY);
-    if (node && !this.host.isReadonly() && node.isDraggable()) {
+    // Node → drag it (if editable), else fall through to pan. Drag-handle
+    // semantics mirror the mouse ladder: a press ON the handle drags the
+    // PARENT; a body press on a node that HAS a handle child does not drag.
+    const rawHit = diagram.getNodeAtPosition(worldX, worldY);
+    const viaHandle = rawHit?.behavior?.dragHandler?.isDragHandler === true;
+    const node =
+      viaHandle && rawHit?.parentId ? (diagram.getNode(rawHit.parentId) ?? rawHit) : rawHit;
+    const handleOnly =
+      !viaHandle &&
+      node &&
+      [...(node.children ?? [])].some(
+        (id) => diagram.getNode(id)?.behavior?.dragHandler?.isDragHandler === true
+      );
+    if (node && !this.host.isReadonly() && node.isDraggable() && !handleOnly) {
       const selected = diagram
         .getSelectedNodes()
         .filter((n: NodeModel) => n.isDraggable());

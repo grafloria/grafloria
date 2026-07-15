@@ -4100,6 +4100,9 @@ export class SVGRenderer implements IRenderer {
    * its neighbours, and a single port can't.
    */
   private renderPorts(node: NodeModel, lod: LODLevel): VNode[] {
+    // Chrome sprouts no ports: a drag handle's glyphs would invite exactly the
+    // wires the connection rules refuse.
+    if (node.behavior?.dragHandler?.isDragHandler === true) return [];
     // Skip port rendering when this LOD tier doesn't render ports
     if (!this.lodAllows('ports', lod)) {
       return [];

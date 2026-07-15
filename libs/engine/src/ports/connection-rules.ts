@@ -107,6 +107,18 @@ export function evaluatePortConnection(
     return no('node-not-connectable', 'This node cannot be connected.');
   }
 
+  // --- drag handles are CHROME, not anatomy ---------------------------------
+  // A node that declares itself a drag handle exists to move its parent. To the
+  // user it IS part of the parent — wiring a window's title bar to the window's
+  // body reads as "I connected the node to itself" (a live report). Handles
+  // neither start nor receive links.
+  if (
+    sourceNode?.behavior?.dragHandler?.isDragHandler === true ||
+    targetNode?.behavior?.dragHandler?.isDragHandler === true
+  ) {
+    return no('node-not-connectable', 'A drag handle cannot be wired.');
+  }
+
   // --- directional connectability (Card 2) ---------------------------------
   if (!sourceGating.isConnectableStart) {
     return no('not-connectable-start', 'A link cannot start at this port.');
