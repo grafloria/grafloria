@@ -6,6 +6,10 @@ import type { CanvasRect, ViewportController } from '../viewport/viewport-contro
 // same single-active-tool rule as the DomEventBinder's mouse ladder.
 import { resolveTool } from '../ext/tools';
 import type { CanvasTool, ToolHitContext, ToolPointerEvent } from '../ext/tools';
+// wave12/node-resize: the same floating-tool controller the mouse ladder uses, so a
+// resize handle can be grabbed with a finger too (touch-run's resize gate). Shared,
+// not a second instance — one gesture, one owner.
+import type { SelectionToolsController, ToolHandle } from './selection-tools';
 
 /**
  * Touch & mobile gestures — Wave 9, Card 2.
@@ -118,6 +122,8 @@ type SingleAction =
   | { kind: 'connect' }
   // wave10/whiteboard: a registered tool (draw / rectangle / eraser) owns this finger.
   | { kind: 'tool'; tool: CanvasTool; hit: ToolHitContext }
+  // wave12/node-resize: a finger is dragging a resize handle.
+  | { kind: 'resize' }
   | { kind: 'pinch' };
 
 export class TouchGestureController {
@@ -138,7 +144,13 @@ export class TouchGestureController {
 
   constructor(
     private readonly host: TouchGestureHost,
-    options: TouchGestureOptions = {}
+    options: TouchGestureOptions = {},
+    /**
+     * wave12/node-resize. The SHARED tool controller (the binder owns it and hands
+     * the same instance to the mouse ladder). Optional so a host that builds a bare
+     * TouchGestureController still works — without it, touch simply offers no resize.
+     */
+    private readonly selectionTools?: SelectionToolsController
   ) {
     this.options = {
       enablePan: options.enablePan ?? true,
@@ -214,6 +226,21 @@ export class TouchGestureController {
         this.cancelLongPress();
         this.action = { kind: 'tool', tool, hit: toolHit };
         tool.onPointerDown?.(toolEvent, toolHit);
+        this.host.requestRender();
+        return;
+      }
+    }
+
+    // wave12/node-resize: a resize handle on the selected node — grabbed before the
+    // port/node branches for the same reason as the mouse ladder (a corner handle
+    // sits on the node's corner). A finger gets extra hit slop so a ~6px handle is
+    // actually reachable.
+    if (!this.host.isReadonly()) {
+      const handle = this.resizeHandleAt(worldX, worldY);
+      if (handle) {
+        this.cancelLongPress();
+        this.selectionTools!.beginResize(handle, engine, worldX, worldY);
+        this.action = { kind: 'resize' };
         this.host.requestRender();
         return;
       }
@@ -328,6 +355,24 @@ export class TouchGestureController {
         return;
       }
 
+      case 'resize': {
+        if (this.host.isReadonly()) return;
+        const { x, y } = this.toWorld(event);
+        // Clamp (min/max/aspect) is applied inside updateResize, every move.
+        if (
+          this.selectionTools!.updateResize(engine, x, y, {
+            shift: event.shiftKey,
+            alt: event.altKey,
+            ctrl: event.ctrlKey,
+            meta: event.metaKey,
+          })
+        ) {
+          this.host.interaction.invalidatePortHitCache();
+          this.host.requestRender();
+        }
+        return;
+      }
+
       default:
         return;
     }
@@ -375,6 +420,17 @@ export class TouchGestureController {
         this.host.interaction.completeConnection(engine);
         this.host.requestRender();
         break;
+
+      case 'resize': {
+        // Commit as ONE undoable command — the model already sits at its final size.
+        const command = this.selectionTools!.endGesture(engine);
+        if (command) {
+          void engine.commandManager.execute(command);
+          this.host.emit('nodes:change', { nodes: engine.getDiagram()?.getNodes() ?? [] });
+        }
+        this.host.requestRender();
+        break;
+      }
 
       case 'node':
         if (this.action.committed) {
@@ -571,8 +627,37 @@ export class TouchGestureController {
       // stroke rather than committing a half-line.
       this.action.tool.onCancel?.();
       this.host.requestRender();
+    } else if (this.action.kind === 'resize') {
+      // A second finger or an OS interruption mid-resize: abandon, restoring size.
+      this.selectionTools?.cancelGesture(engine);
+      this.host.requestRender();
     }
     this.action = { kind: 'none' };
+  }
+
+  /**
+   * wave12/node-resize: the resize handle under a world point, with touch slop.
+   *
+   * Handles are a constant ~6 screen px; a fingertip is far bigger, so the layer's
+   * own hit radius is grown by {@link TOUCH_HIT_SLOP_PX} (in world units) before the
+   * distance test. Returns only `kind: 'resize'` handles.
+   */
+  private resizeHandleAt(worldX: number, worldY: number): ToolHandle | null {
+    const engine = this.host.getEngine();
+    if (!engine || !this.selectionTools) return null;
+    const zoom = this.host.viewport.getZoom();
+    const layer = this.selectionTools.computeLayer(engine, zoom);
+    const slop = zoom > 0 ? TOUCH_HIT_SLOP_PX / zoom : TOUCH_HIT_SLOP_PX;
+
+    let best: ToolHandle | null = null;
+    for (const handle of layer.handles) {
+      if (handle.kind !== 'resize') continue;
+      const dx = worldX - handle.world.x;
+      const dy = worldY - handle.world.y;
+      const r = handle.hitRadius + slop;
+      if (dx * dx + dy * dy <= r * r) best = handle;
+    }
+    return best;
   }
 
   /** Adapt a touch PointerEvent to the framework-free tool contract. */
