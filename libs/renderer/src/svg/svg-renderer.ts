@@ -3264,7 +3264,13 @@ export class SVGRenderer implements IRenderer {
    * a rotated node.
    */
   private nodeTransform(node: NodeModel): string {
-    const translate = `translate(${node.position.x}, ${node.position.y})`;
+    // WORLD position, not raw: nodes are flat siblings in the SVG (no nested
+    // <g> per parent), so a parent-RELATIVE child's `position` is a local
+    // offset — emitting it verbatim painted the drag-handle demo's grip at the
+    // page origin while its model sat correctly under the window. The walk is
+    // positionMode-aware (wave13); absolute nodes pay one no-op parent check.
+    const world = node.getWorldPosition();
+    const translate = `translate(${world.x}, ${world.y})`;
     const rotation = node.rotation || 0;
     if (!rotation) return translate;
     return `${translate} rotate(${rotation}, ${node.size.width / 2}, ${node.size.height / 2})`;

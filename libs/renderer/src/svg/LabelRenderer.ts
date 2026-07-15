@@ -143,7 +143,13 @@ export class LabelRenderer {
     const fontSize = label.style?.fontSize ?? this.defaultFontSize;
     const fontFamily = label.style?.fontFamily;
     const color = label.style?.color ?? this.defaultColor;
-    const background = label.style?.background;
+    // A label rides ON the stroke — without a chip the line strikes straight
+    // through the text (the screenshot audit caught exactly that). Default to
+    // the theme's canvas surface so the chip reads as "the line passes behind";
+    // `background: 'none'` opts back out.
+    const themedSurface = (context.theme as Theme | undefined)?.colors.background.surface;
+    const rawBackground = label.style?.background ?? themedSurface;
+    const background = rawBackground === 'none' ? undefined : rawBackground;
     const padding = label.style?.padding ?? this.defaultPadding;
     const borderRadius = label.style?.borderRadius ?? 3;
 

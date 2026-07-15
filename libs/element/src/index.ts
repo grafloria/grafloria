@@ -122,6 +122,15 @@ export {
 } from '@grafloria/renderer';
 export type { TokenBridge } from '@grafloria/renderer';
 
+// Port data types — the registry the renderer reads for glyph colours and the
+// validator reads for connection compatibility. Same reachability hole as the
+// style classes below: read on every frame, and no embedder could WRITE to it —
+// the typed-ports demo could not colour its own types through the public API
+// (its glyphs silently fell back to direction colours, and the screenshot audit
+// read them as such).
+export { portTypeRegistry, arePortDataTypesCompatible, portTypeColor } from '@grafloria/engine';
+export type { PortDataTypeDefinition } from '@grafloria/engine';
+
 // Named style classes — the `named-class` layer of the cascade. The cascade read
 // this registry on every frame; nothing could WRITE to it.
 export {

@@ -20,7 +20,10 @@ defineDemo({
           label: 'a comfortably long label that will not fit in sixty pixels',
           metadata: { sizing: { auto: true, padding: 10 } } },
         // A fixed control that must NOT resize.
-        { id: 'b', position: { x: 520, y: 140 }, size: { width: 60, height: 36 },
+        // BELOW the auto node, not beside it: the auto node grows to whatever
+        // width its final label needs (the demo later sets an even longer one),
+        // and a neighbor on the same row ends up swallowed by the growth.
+        { id: 'b', position: { x: 120, y: 280 }, size: { width: 60, height: 36 },
           label: 'a comfortably long label that will not fit in sixty pixels' },
       ],
       edges: [],

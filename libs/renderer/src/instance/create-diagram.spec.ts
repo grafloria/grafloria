@@ -280,6 +280,47 @@ describe('createDiagram — the headless instance', () => {
     });
   });
 
+  // The audit's clipped drag-handle grip: a parent-RELATIVE child rendered at
+  // its raw local coordinates (translate(0,-28) → page top-left) because
+  // nodeTransform never composed the parent chain, and nothing forwarded the
+  // engine's transform-propagated event, so even a correct transform would have
+  // painted stale after a parent move.
+  describe('parent-relative children render at WORLD position', () => {
+    const tick = async () => {
+      await new Promise((r) => requestAnimationFrame(() => r(undefined)));
+      await new Promise((r) => setTimeout(r, 0));
+    };
+    const transformOf = (id: string) =>
+      container.querySelector(`[data-vnode-key="node-${id}"]`)?.getAttribute('transform');
+
+    async function withParented() {
+      diagram = createDiagram(container, {
+        nodes: [
+          { id: 'win', position: { x: 300, y: 200 }, size: { width: 240, height: 120 }, label: 'window' },
+          { id: 'grip', position: { x: 300, y: 172 }, size: { width: 240, height: 28 }, label: 'grip' },
+        ],
+      });
+      const model = diagram.getModel();
+      const grip = model.getNode('grip')!;
+      grip.setParent('win');
+      grip.setPosition(0, -28); // local → world (300, 172)
+      await tick();
+      return { model, grip };
+    }
+
+    it('composes the parent chain into the SVG transform', async () => {
+      await withParented();
+      expect(transformOf('grip')).toBe('translate(300, 172)');
+    });
+
+    it('a parent MOVE repaints its relative children (no touch on the child)', async () => {
+      const { model } = await withParented();
+      model.getNode('win')!.setPosition(500, 400);
+      await tick();
+      expect(transformOf('grip')).toBe('translate(500, 372)');
+    });
+  });
+
   // The audit's "empty white boxes": four demos declared labels the LEGACY way
   // (data.label) and the renderer gated its <text> on raw metadata — bypassing
   // the getLabel() canon whose whole purpose is that fallback. These drive the

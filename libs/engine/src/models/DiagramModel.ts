@@ -517,6 +517,24 @@ export class DiagramModel extends DiagramEntity {
     node.on('change', () => {
       this.emitOrQueue('node:changed', node);
     });
+
+    // A transform on a parent MOVES its relative children in the world without
+    // touching their own properties. The node already announces exactly who is
+    // affected ('transform-propagated', Phase 1.6a Part 4) — but nothing ever
+    // consumed it, so renderers kept stale child VNodes and the spatial index
+    // kept stale child bounds. markDirty (not trackChange: nothing on the child
+    // itself changed — no version bump, no change-log entry, no collab op)
+    // rebakes the picture; the index update and node:moved keep culling,
+    // hit-testing and live link rerouting truthful.
+    node.on('transform-propagated', (payload: { affectedNodes?: NodeModel[] }) => {
+      for (const desc of payload?.affectedNodes ?? []) {
+        if (desc === node) continue;
+        desc.markDirty('incremental');
+        this.nodeSpatialIndex.update(desc);
+        this.emitOrQueue('node:moved', { nodeId: desc.id, position: desc.getWorldPosition() });
+        this.emitOrQueue('node:changed', desc);
+      }
+    });
   }
 
   /**

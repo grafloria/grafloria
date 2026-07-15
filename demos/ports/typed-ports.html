@@ -9,8 +9,17 @@
 <div id="hint">Ports are coloured by data type. A number output connects to a number input, but the engine refuses to wire it to a string input.</div>
 <div id="canvas"></div>
 <script type="module">
-import { render } from '../shell/grafloria.js';
+import { render, portTypeRegistry } from '../shell/grafloria.js';
 import { defineDemo, check } from '../shell/demo.js';
+
+// Register the palette: a data type COLOURS its glyph only if someone says what
+// colour it is. This registry was unreachable from the embed until the audit
+// caught all three glyphs wearing direction colours under a caption claiming
+// type colours.
+portTypeRegistry.registerAll([
+  { name: 'number', color: '#2563eb', compatibleWith: ['number'] },
+  { name: 'string', color: '#9333ea', compatibleWith: ['string'] },
+]);
 
 // Data-flow ports: each carries a `dataType` that (1) COLOURS the glyph and (2)
 // drives connection VALIDITY natively — no host validator needed. A number output
@@ -64,6 +73,13 @@ defineDemo({
     check(classOf('nin').includes('port-type-number'), `the number input is not tagged by dataType: ${classOf('nin')}`);
     check(classOf('sin').includes('port-type-string'), `the string input is not tagged by dataType: ${classOf('sin')}`);
     check(!classOf('sin').includes('port-type-number'), 'the string port was tagged as a number — dataType is not driving the style');
+
+    //    ...and the REGISTERED colour actually lands on the glyph fill — class
+    //    tagging alone looked green while every glyph wore direction colours.
+    const strokeOf = (portId) => ctx.host.querySelector(`[data-port-id="${portId}"]`).getAttribute('stroke');
+    check(strokeOf('out') === '#2563eb', `number glyph should wear the registered blue, got ${strokeOf('out')}`);
+    check(strokeOf('sin') === '#9333ea', `string glyph should wear the registered purple, got ${strokeOf('sin')}`);
+    check(strokeOf('out') !== strokeOf('sin'), 'number and string glyphs are indistinguishable');
 
     // 2. number → number is ACCEPTED (link created, highlight offered mid-drag).
     const hlValid = await ctx.drag('out', 'nin');

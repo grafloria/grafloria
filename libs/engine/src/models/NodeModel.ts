@@ -721,6 +721,21 @@ export class NodeModel extends DiagramEntity {
     this.parentId = parentId;
     this.trackChange('parentId', oldParent, parentId);
 
+    // The hierarchy has TWO writers — `parentId` here, the parent's `children`
+    // Set in addChild/removeChild — and this method maintained only its own,
+    // so getChildren() (Set-based) answered [] for a setParent() child and
+    // transform propagation never saw it: the drag-handle grip stayed painted
+    // at the old spot when its window moved. Keep both sides agreeing on every
+    // path through here.
+    if (this.diagram) {
+      if (oldParent && oldParent !== parentId) {
+        this.diagram.getNode(oldParent)?.removeChild(this.id);
+      }
+      if (parentId) {
+        this.diagram.getNode(parentId)?.addChild(this.id);
+      }
+    }
+
     // wave13: gaining a parent through this API MEANS relative positioning — every consumer
     // (ERD tables, nested nodes, the world-coordinates contract) treats the child's position
     // as an offset from the parent, and getWorldPosition sums the chain on that assumption.

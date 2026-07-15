@@ -16,7 +16,9 @@ defineDemo({
     const api = render({
       nodes: [
         { id: 'a', position: { x: 80,  y: 90 }, size: { width: 200, height: 90 }, label: 'BEFORE' },
-        { id: 'b', position: { x: 400, y: 90 }, size: { width: 200, height: 90 }, label: 'Steady' },
+        // At x=480 the grown 320px-wide 'a' still leaves an 80px gap — flush
+        // contact makes the connecting edge degenerate to nothing.
+        { id: 'b', position: { x: 480, y: 90 }, size: { width: 200, height: 90 }, label: 'Steady' },
       ],
       edges: [{ id: 'e1', source: 'a', target: 'b' }],
     }, ctx.host);

@@ -299,9 +299,28 @@ export class LinkModel extends DiagramEntity {
     }
   }
 
-  /** The connector actually in force: explicit field, else derived from pathType. */
+  /**
+   * The connector actually in force: the explicit field, else implied by an
+   * explicitly axis-aligned ROUTER, else derived from pathType.
+   *
+   * The router rung exists because `{ router: 'orthogonal' }` with the default
+   * pathType used to draw a smooth SPLINE through Manhattan waypoints — the
+   * route was orthogonal, the picture was wavy (the screenshot audit caught the
+   * demo's own readout saying "orthogonal" over a curve). Asking for an
+   * axis-aligned router IS asking for axis-aligned rendering; rounded corners
+   * are that family's standard look. An explicit `connector` still overrides.
+   */
   effectiveConnector(): LinkConnectorName {
     if (this.connector) return this.connector;
+    switch (this.router) {
+      case 'orthogonal':
+      case 'manhattan':
+      case 'avoid':
+      case 'elk':
+        return 'rounded';
+      default:
+        break;
+    }
     switch (this.pathType) {
       case 'direct': return 'straight';
       case 'orthogonal': return 'rounded';

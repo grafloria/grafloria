@@ -21,13 +21,33 @@ describe('LinkModel — router × connector contract (Card 0)', () => {
       expect(link.effectiveConnector()).toBe(connector);
     });
 
-    it('an explicit router wins over the pathType derivation — and does NOT touch the connector', () => {
+    it('an explicitly axis-aligned router implies rounded rendering (screenshot-audit fix)', () => {
+      // The old contract kept the pathType connector, so `router: 'avoid'` on
+      // the default pathType drew a smooth SPLINE through Manhattan waypoints —
+      // a route that dodged the obstacle rendered as a curve that could re-cross
+      // it, under a readout saying "orthogonal". Asking for an axis-aligned
+      // router IS asking for axis-aligned rendering.
+      for (const router of ['orthogonal', 'manhattan', 'avoid', 'elk'] as const) {
+        const link = new LinkModel('p1', 'p2', 'smooth');
+        link.setRouter(router);
+        expect(link.effectiveRouter()).toBe(router);
+        expect(link.effectiveConnector()).toBe('rounded');
+        expect(link.pathType).toBe('smooth'); // untouched — the rung is resolution-only
+      }
+    });
+
+    it('a smooth line routed around obstacles is still expressible — with an explicit connector', () => {
       const link = new LinkModel('p1', 'p2', 'smooth');
       link.setRouter('avoid');
+      link.setConnector('smooth');
       expect(link.effectiveRouter()).toBe('avoid');
-      // rendering still follows pathType: a smooth line routed around obstacles
       expect(link.effectiveConnector()).toBe('smooth');
-      expect(link.pathType).toBe('smooth');
+    });
+
+    it('a custom router name does not imply a connector (falls through to pathType)', () => {
+      const link = new LinkModel('p1', 'p2', 'smooth');
+      link.setRouter('my-team-router');
+      expect(link.effectiveConnector()).toBe('smooth');
     });
 
     it('an explicit connector wins without touching the router', () => {

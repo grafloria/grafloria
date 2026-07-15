@@ -6,6 +6,11 @@
      renderer paints a selection outline but not the handles (only the Angular
      renderer does), so the demo draws them from the SAME geometry the binder
      hit-tests — a faithful picture of a live gesture, not a second source of truth. */
+  /* #canvas must be the positioning context: an absolute overlay inside an
+     UNPOSITIONED parent anchors to the page instead, painting every handle one
+     header-height above the node (the screenshot audit caught exactly that —
+     the gesture itself was fine, only this overlay was adrift). */
+  #canvas { position: relative; }
   #handles { position: absolute; inset: 0; pointer-events: none; }
   #handles .h {
     position: absolute; width: 10px; height: 10px; margin: -5px 0 0 -5px;

@@ -80,9 +80,12 @@ defineDemo({
       'the two pastes landed on the exact same spot — offset ignored');
 
     // 3. INDEPENDENCE. Move copy #1; the original and copy #2 must not budge.
+    // The destination stays INSIDE the viewport — this is also the final frame
+    // a visitor (and the screenshot audit) sees, and a node parked at 999,999
+    // reads as "the second paste never happened".
     const c2Before = { x: c2.position.x, y: c2.position.y };
     const origBefore = { x: orig.position.x, y: orig.position.y };
-    c1.setPosition(999, 999);
+    c1.setPosition(620, 300);
     check(c2.position.x === c2Before.x && c2.position.y === c2Before.y, 'moving copy #1 moved copy #2 — they share state');
     check(orig.position.x === origBefore.x && orig.position.y === origBefore.y, 'moving copy #1 moved the ORIGINAL — paste aliased it');
 

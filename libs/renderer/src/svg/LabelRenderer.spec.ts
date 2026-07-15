@@ -39,6 +39,33 @@ describe('LabelRenderer (Phase 1.2)', () => {
       expect(vnode!.children!.length).toBeGreaterThan(0);
     });
 
+    // The audit's strike-through: a bare label rides ON the stroke, so without a
+    // chip the line cuts straight through the text. The chip defaults to the
+    // theme surface; 'none' opts out; no theme (this legacy no-theme call path)
+    // keeps the old naked-text behavior.
+    it('defaults a background chip from the theme surface', () => {
+      const label: LinkLabel = { id: 'l', text: 'depends on', position: 0.5, offset: { x: 0, y: 0 } };
+      const mockLink = createMockLink([{ x: 0, y: 0 }, { x: 100, y: 0 }]);
+      const theme = { colors: { background: { surface: '#f8fafc' } } } as never;
+
+      const vnode = renderer.renderLabel(label, mockLink, { theme });
+      const bgRect = vnode!.children?.find((child) => child.type === 'rect');
+      expect(bgRect).toBeDefined();
+      expect(bgRect!.props.fill).toBe('#f8fafc');
+    });
+
+    it("background: 'none' opts out of the default chip", () => {
+      const label: LinkLabel = {
+        id: 'l', text: 'depends on', position: 0.5, offset: { x: 0, y: 0 },
+        style: { background: 'none' },
+      };
+      const mockLink = createMockLink([{ x: 0, y: 0 }, { x: 100, y: 0 }]);
+      const theme = { colors: { background: { surface: '#f8fafc' } } } as never;
+
+      const vnode = renderer.renderLabel(label, mockLink, { theme });
+      expect(vnode!.children?.find((child) => child.type === 'rect')).toBeUndefined();
+    });
+
     it('should render label with background', () => {
       const label: LinkLabel = {
         id: 'label-1',
