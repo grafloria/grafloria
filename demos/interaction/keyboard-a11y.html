@@ -1,0 +1,198 @@
+<meta charset="utf-8">
+<title>Keyboard & screen-reader a11y — Grafloria</title>
+<link rel="stylesheet" href="../shell/demo.css">
+<style>
+  #frame { position: relative; height: calc(100vh - 168px); }
+  #canvas { height: 100%; }
+  /* The focusable surface that owns keyboard interaction. */
+  #kbd { position: absolute; inset: 0; outline: none; }
+  #kbd:focus-visible { box-shadow: inset 0 0 0 2px #2563eb; }
+  /* The screen-reader outline mirror — visually hidden, fully present to AT. */
+  #outline { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+  #readout { padding: 8px 24px; font: 12px/1.5 ui-monospace, monospace; opacity: .85; border-bottom: 1px solid rgba(127,127,127,.25); white-space: pre; }
+  #hint { position: absolute; left: 12px; bottom: 10px; font: 12px system-ui; opacity: .6; }
+</style>
+<header id="demo-head"></header>
+<div id="readout"></div>
+<div id="frame">
+  <div id="canvas"></div>
+  <div id="kbd" tabindex="0" role="application" aria-label="Diagram editor. Tab to move between nodes, arrow keys to nudge, C then a node to connect."
+       aria-activedescendant=""></div>
+  <ul id="outline" role="list" aria-live="polite" aria-label="Diagram outline"></ul>
+  <div id="hint">Tab / ⇧Tab · arrows nudge · ⌘Z undo · C+Tab+Enter connect</div>
+</div>
+<script type="module">
+import { render, Replica } from '../shell/grafloria.js';
+import { defineDemo, check, checkEqual } from '../shell/demo.js';
+
+// Keyboard + screen-reader accessibility, which React Flow simply does not have.
+// Built entirely on the public model:
+//   · Tab / Shift+Tab move a focus ring across nodes (aria-activedescendant),
+//   · arrow keys nudge the focused node — and the nudge is UNDOABLE to the exact
+//     previous pixel (it goes through the op log, so ⌘Z is byte-exact),
+//   · C then Tab then Enter connects two nodes with no mouse at all,
+//   · and a visually-hidden LIVE-REGION outline mirrors the graph for a screen
+//     reader — every node, and every edge, in text.
+const SPEC = {
+  nodes: ['ingest', 'clean', 'model', 'serve'].map((id, i) => ({
+    id, position: { x: 80 + i * 200, y: 160 }, size: { width: 140, height: 56 }, label: id,
+  })),
+  edges: [
+    { id: 'e1', source: 'ingest', target: 'clean' },
+    { id: 'e2', source: 'clean', target: 'model' },
+  ],
+};
+const STEP = 16;
+
+defineDemo({
+  name: 'Keyboard & screen-reader a11y',
+  blurb: 'Everything by keyboard, nothing React Flow ships: Tab moves a focus ring, arrows nudge (and ⌘Z undoes to the exact pixel), C+Tab+Enter connects, and a live-region outline mirror narrates the whole graph to a screen reader.',
+  reactflow: 'Accessibility',
+  pro: true,
+
+  async setup(ctx) {
+    const api = render(structuredClone(SPEC), ctx.host);
+    ctx.instance = api;
+    ctx.diagram = api.getModel();
+    // The op log makes the arrow-key nudge undoable to the exact previous position.
+    ctx.replica = new Replica(ctx.diagram, { actor: 'kbd', onLocalOp: () => {} });
+
+    const order = () => ctx.diagram.getNodes().map((n) => n.id).sort();
+    ctx.focusIndex = 0;
+    ctx.connectFrom = null;
+    const kbd = document.getElementById('kbd');
+    const outline = document.getElementById('outline');
+
+    ctx.focusedId = () => order()[ctx.focusIndex];
+    const paintFocus = () => {
+      const id = ctx.focusedId();
+      kbd.setAttribute('aria-activedescendant', `node-${id}`);
+      for (const n of ctx.diagram.getNodes()) n.setSelected(n.id === id);
+      api.renderNow();
+    };
+    // The outline mirror: a text projection of the model for assistive tech.
+    ctx.syncOutline = () => {
+      const nodes = ctx.diagram.getNodes();
+      outline.innerHTML = nodes.map((n) => {
+        const outs = ctx.diagram.getLinks().filter((l) => l.sourceNodeId === n.id).map((l) => l.targetNodeId);
+        const label = n.getMetadata('label') ?? n.id;
+        return `<li id="node-${n.id}" role="listitem">${label} at ${Math.round(n.position.x)},${Math.round(n.position.y)}${outs.length ? ' → connects to ' + outs.join(', ') : ''}</li>`;
+      }).join('');
+    };
+    ctx.report = (m) => {
+      document.getElementById('readout').textContent =
+        `focused: ${ctx.focusedId()}${ctx.connectFrom ? `  connecting from ${ctx.connectFrom}` : ''}\n${m}`;
+    };
+
+    // THE KEYBOARD MODEL.
+    ctx.handleKey = (key, shift = false, meta = false) => {
+      const ids = order();
+      if (key === 'Tab') {
+        ctx.focusIndex = (ctx.focusIndex + (shift ? -1 : 1) + ids.length) % ids.length;
+        paintFocus();
+        ctx.report('Tab moved focus');
+        return;
+      }
+      if (key === 'z' && meta) { ctx.replica.undo(); api.renderNow(); ctx.syncOutline(); ctx.report('⌘Z undo'); return; }
+      if (['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown'].includes(key)) {
+        const n = ctx.diagram.getNode(ctx.focusedId());
+        const dx = key === 'ArrowLeft' ? -STEP : key === 'ArrowRight' ? STEP : 0;
+        const dy = key === 'ArrowUp' ? -STEP : key === 'ArrowDown' ? STEP : 0;
+        n.setPosition(n.position.x + dx, n.position.y + dy);
+        api.renderNow(); ctx.syncOutline(); ctx.report(`nudged ${key.replace('Arrow', '').toLowerCase()}`);
+        return;
+      }
+      if (key === 'c') { ctx.connectFrom = ctx.focusedId(); ctx.report('connect mode: Tab to a target, Enter to link'); return; }
+      if (key === 'Enter' && ctx.connectFrom) {
+        const target = ctx.focusedId();
+        if (target !== ctx.connectFrom) {
+          const s = ctx.diagram.getNode(ctx.connectFrom).getPortBySide('right');
+          const t = ctx.diagram.getNode(target).getPortBySide('left');
+          ctx.instance.getEngine().getConnectionStateManager().startConnection(s, { x: 0, y: 0 });
+          ctx.instance.getEngine().getConnectionStateManager().completeConnection(t);
+        }
+        ctx.connectFrom = null;
+        api.renderNow(); ctx.syncOutline(); ctx.report('linked by keyboard');
+        return;
+      }
+    };
+    // Real DOM keydown → the model.
+    kbd.addEventListener('keydown', (e) => {
+      const handledKeys = ['Tab', 'ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown', 'Enter', 'c', 'z'];
+      if (handledKeys.includes(e.key)) { e.preventDefault(); ctx.handleKey(e.key, e.shiftKey, e.metaKey || e.ctrlKey); }
+    });
+
+    // Keep the outline mirror current no matter HOW the graph changes — including the
+    // asynchronous link creation the connect pipeline commits a tick later.
+    api.on('connect', () => ctx.syncOutline());
+    api.on('edges:change', () => ctx.syncOutline());
+    api.on('nodes:change', () => ctx.syncOutline());
+
+    paintFocus();
+    ctx.syncOutline();
+    ctx.report('ready — keyboard only');
+  },
+
+  // Dispatch a real keydown at the focusable surface.
+  press(ctx, key, opts = {}) {
+    const kbd = document.getElementById('kbd');
+    kbd.dispatchEvent(new KeyboardEvent('keydown', { key, bubbles: true, cancelable: true, shiftKey: !!opts.shift, metaKey: !!opts.meta }));
+  },
+
+  async assert(ctx) {
+    const model = ctx.diagram;
+    const outline = document.getElementById('outline');
+    const kbd = document.getElementById('kbd');
+    const order = model.getNodes().map((n) => n.id).sort();
+
+    // 1. FOCUS starts on the first node and Tab advances it, exposed via
+    //    aria-activedescendant (the hook a screen reader actually reads).
+    checkEqual(ctx.focusedId(), order[0], 'focus did not start on the first node');
+    checkEqual(kbd.getAttribute('aria-activedescendant'), `node-${order[0]}`, 'aria-activedescendant not set to the focused node');
+    this.press(ctx, 'Tab');
+    checkEqual(ctx.focusedId(), order[1], 'Tab did not advance focus to the next node');
+    checkEqual(kbd.getAttribute('aria-activedescendant'), `node-${order[1]}`, 'aria-activedescendant did not follow Tab');
+    this.press(ctx, 'Tab', { shift: true });
+    checkEqual(ctx.focusedId(), order[0], 'Shift+Tab did not move focus back');
+
+    // 2. ARROW NUDGE moves the focused node by exactly one step, and it is UNDOABLE
+    //    to the EXACT previous pixel — the "undoable nudge".
+    const focused = ctx.focusedId();
+    const before = { x: model.getNode(focused).position.x, y: model.getNode(focused).position.y };
+    this.press(ctx, 'ArrowRight');
+    this.press(ctx, 'ArrowDown');
+    const nudged = { x: model.getNode(focused).position.x, y: model.getNode(focused).position.y };
+    checkEqual(nudged.x, before.x + 16, 'ArrowRight did not nudge by one step');
+    checkEqual(nudged.y, before.y + 16, 'ArrowDown did not nudge by one step');
+
+    // ⌘Z twice returns it to EXACTLY where it started (byte-exact, via the op log).
+    this.press(ctx, 'z', { meta: true });
+    this.press(ctx, 'z', { meta: true });
+    const undone = { x: model.getNode(focused).position.x, y: model.getNode(focused).position.y };
+    checkEqual(undone, before, 'undo did not return the node to its exact pre-nudge position');
+
+    // 3. KEYBOARD CONNECT: focus ingest, press C, Tab to serve, Enter → a link that
+    //    did not exist before, created with no pointer at all.
+    // Move focus to 'ingest' (order[?]) then connect to the node after it we choose.
+    // Focus is on order[0]; press C to arm connect from it, Tab to next, Enter.
+    const src = ctx.focusedId();
+    const linkBefore = model.getLinks().length;
+    this.press(ctx, 'c');
+    this.press(ctx, 'Tab');
+    const tgt = ctx.focusedId();
+    this.press(ctx, 'Enter');
+    await ctx.tick(20);
+    check(model.getLinks().length === linkBefore + 1, `keyboard connect did not add a link (had ${linkBefore}, now ${model.getLinks().length})`);
+    check(model.getLinks().some((l) => l.sourceNodeId === src && l.targetNodeId === tgt),
+      `no ${src}→${tgt} link after keyboard connect`);
+
+    // 4. THE OUTLINE MIRROR is real and current: one list item per node, and it
+    //    reflects the edge we just added by keyboard.
+    const items = outline.querySelectorAll('li');
+    checkEqual(items.length, model.getNodes().length, 'the outline mirror does not have one row per node');
+    check([...items].some((li) => li.id === `node-${src}` && li.textContent.includes(tgt)),
+      'the outline mirror did not narrate the keyboard-created edge');
+    check(outline.getAttribute('aria-live') === 'polite', 'the outline mirror is not a live region');
+  },
+});
+</script>
