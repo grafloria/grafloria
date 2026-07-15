@@ -1,0 +1,81 @@
+<meta charset="utf-8">
+<title>Edge labels — Grafloria</title>
+<link rel="stylesheet" href="../shell/demo.css">
+<style>
+  #hint { padding: 8px 24px; font: 13px/1.5 system-ui; opacity: .75; border-bottom: 1px solid rgba(127,127,127,.25); }
+  #canvas { height: calc(100vh - 190px); }
+</style>
+<header id="demo-head"></header>
+<div id="hint">A label rides ON the edge, can be dragged along it, and survives re-routing. Driven with real pointer events.</div>
+<div id="canvas"></div>
+<script type="module">
+import { render } from '../shell/grafloria.js';
+import { defineDemo, check } from '../shell/demo.js';
+
+// A label attached to the edge (link.addLabel) rather than floating free. It sits
+// on the path, is DRAGGABLE with a real pointer, and — because it is anchored by a
+// 0-1 position + offset rather than absolute coordinates — it FOLLOWS the edge
+// when the route changes.
+const NODES = [
+  { id: 'a', position: { x: 120, y: 120 }, size: { width: 120, height: 60 }, label: 'A' },
+  { id: 'b', position: { x: 640, y: 120 }, size: { width: 120, height: 60 }, label: 'B' },
+];
+
+const labelGroup = (host) => host.querySelector('.link-label-group');
+const xyOf = (g) => {
+  const m = /translate\(([-\d.]+),\s*([-\d.]+)\)/.exec(g.getAttribute('transform') || '');
+  return m ? { x: parseFloat(m[1]), y: parseFloat(m[2]) } : null;
+};
+
+defineDemo({
+  name: 'Edge labels',
+  blurb: 'A label anchored ON the edge — draggable with a real pointer, and re-anchored automatically when the edge re-routes.',
+  reactflow: 'Edge Label',
+
+  async setup(ctx) {
+    ctx.instance = render({ nodes: NODES, edges: [{ id: 'e1', source: 'a', target: 'b', type: 'direct' }] }, ctx.host);
+    ctx.diagram = ctx.instance.getModel();
+    ctx.diagram.getLink('e1').addLabel({ text: 'depends on', position: 0.5 });
+    ctx.instance.renderNow();
+
+    ctx.pointer = (type, wx, wy) => {
+      const c = ctx.instance.viewport.worldToClient(wx, wy, ctx.host.getBoundingClientRect());
+      ctx.host.dispatchEvent(new PointerEvent(type, {
+        clientX: c.x, clientY: c.y, bubbles: true, cancelable: true,
+        button: 0, buttons: type === 'pointerup' ? 0 : 1, pointerId: 1, pointerType: 'mouse',
+      }));
+    };
+    await ctx.tick();
+  },
+
+  async assert(ctx) {
+    // 1. The label rendered ON the edge, at its midpoint.
+    const g = labelGroup(ctx.host);
+    check(!!g, 'the edge label did not render');
+    check(g.textContent.includes('depends on'), `label text is wrong: "${g.textContent}"`);
+    const before = xyOf(g);
+    check(Math.abs(before.x - 440) < 20, `the label should sit at the edge midpoint (x≈440), got x=${before.x}`);
+
+    // 2. DRAG it with a real pointer — the label moves.
+    ctx.pointer('pointermove', before.x, before.y); await ctx.tick();
+    ctx.pointer('pointerdown', before.x, before.y); await ctx.tick();
+    check(ctx.instance.interaction.getState().isDraggingLabel, 'pressing the label did not begin a label drag');
+    ctx.pointer('pointermove', before.x, before.y - 60); await ctx.tick();
+    ctx.pointer('pointerup', before.x, before.y - 60); await ctx.tick();
+    const dragged = xyOf(labelGroup(ctx.host));
+    check(Math.abs(dragged.y - before.y) > 25, `the dragged label did not move (was y=${before.y}, now y=${dragged.y})`);
+
+    // 3. It is ANCHORED to the edge, not the canvas: move a node and the label
+    //    re-anchors onto the new route instead of staying put.
+    const anchored = xyOf(labelGroup(ctx.host));
+    ctx.diagram.getNode('b').setPosition(640, 430);
+    ctx.instance.renderNow();
+    await ctx.tick();
+    const followed = xyOf(labelGroup(ctx.host));
+    check(Math.abs(followed.y - anchored.y) > 40,
+      'the label did not follow the edge when the node moved — it is not anchored to the path');
+    ctx.diagram.getNode('b').setPosition(640, 120);
+    ctx.instance.renderNow();
+  },
+});
+</script>
