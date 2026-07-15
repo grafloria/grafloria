@@ -12,6 +12,10 @@ import type { CanvasTool, ToolHitContext, ToolPointerEvent } from '../ext/tools'
 // Wave 9 — Card 2: the touch/mobile gesture set (pan, pinch, tap, long-press,
 // drag-to-connect). Nothing in the framework-free renderer handled touch before.
 import { TouchGestureController } from '../interaction/touch-gestures';
+// wave12/connect-ergonomics (gap 2): the shipped proximity-connect engine, now
+// driven from the LIVE node drag instead of host glue.
+import { SnapController } from '../interaction/snapping';
+import type { ProximityCandidate } from '../interaction/snapping';
 
 /**
  * DomEventBinder — the framework-agnostic DOM ⇄ interaction seam.
@@ -121,6 +125,15 @@ export class DomEventBinder {
 
   private nodeDrag: NodeDragState | null = null;
   private groupDrag: GroupDragState | null = null;
+
+  /**
+   * wave12/connect-ergonomics (gap 2): the proximity-connect engine, lazily
+   * built the first time `enableProximityConnect` is used. Reused across drags so
+   * a highlight it painted can always be cleared by the same instance.
+   */
+  private snap?: SnapController;
+  /** The proximity candidate currently highlighted mid-drag (for commit on drop). */
+  private proximityCandidate: ProximityCandidate | null = null;
 
   // Bound once so removeEventListener gets the SAME function object it added —
   // `removeEventListener(this.onX.bind(this))` allocates a new function and
@@ -867,7 +880,10 @@ export class DomEventBinder {
     if (this.nodeDrag) {
       const moved = this.nodeDrag.committed;
       this.nodeDrag = null;
+      // wave12 (gap 2): a drag that ended near a compatible port auto-links on drop.
+      const connected = moved ? this.commitProximityConnection() : false;
       if (moved) this.emitNodesChange();
+      if (connected) this.emitEdgesChange();
     }
 
     this.isPanning = false;
@@ -887,6 +903,8 @@ export class DomEventBinder {
     if (this.nodeDrag) {
       const moved = this.nodeDrag.committed;
       this.nodeDrag = null;
+      // Pointer left mid-drag: abandon the gesture, do NOT auto-connect.
+      this.clearProximityPreview();
       if (moved) this.emitNodesChange();
     }
 
@@ -948,6 +966,7 @@ export class DomEventBinder {
       // node-drag Escape (which also leaves the node where the drag left it).
       this.nodeDrag = null;
       this.groupDrag = null;
+      this.clearProximityPreview(); // (gap 2) Escape never auto-connects
       diagram.clearSelection();
       this.host.requestRender();
       this.emitSelectionChange();
@@ -1061,7 +1080,82 @@ export class DomEventBinder {
 
     // Node geometry moved ⇒ the port hit cache is stale.
     this.host.interaction.invalidatePortHitCache();
+
+    // wave12 (gap 2): live proximity-connect preview — light up the port pair a
+    // drop would auto-link, and remember it for commit on mouseup.
+    this.updateProximityPreview(drag.nodeIds);
+
     this.host.requestRender();
+  }
+
+  // ==========================================================================
+  // wave12/connect-ergonomics (gap 2) — Proximity connect on the live node drag.
+  // ==========================================================================
+
+  /** The lazily-built proximity-connect engine (only when the feature is on). */
+  private snapController(): SnapController {
+    if (!this.snap) this.snap = new SnapController();
+    return this.snap;
+  }
+
+  /**
+   * While dragging, find the best proximity candidate for any dragged node and
+   * highlight its port pair (the SAME flags a connection drag paints). Stores it
+   * so {@link commitProximityConnection} can create the link on drop. No-op —
+   * and clears any prior highlight — when the feature is off or nothing is near.
+   */
+  private updateProximityPreview(draggedIds: string[]): void {
+    const engine = this.engine();
+    if (!engine) return;
+    if (!engine.getInteractionConfig().enableProximityConnect) return;
+
+    this.proximityCandidate = this.bestProximityCandidate(draggedIds);
+    this.snapController().highlightProximityTarget(engine, this.proximityCandidate);
+  }
+
+  /** The closest proximity candidate across all dragged nodes (or null). */
+  private bestProximityCandidate(draggedIds: string[]): ProximityCandidate | null {
+    const engine = this.engine();
+    if (!engine) return null;
+    const config = engine.getInteractionConfig();
+    const radius = config.proximityConnectRadius > 0 ? config.proximityConnectRadius : undefined;
+
+    let best: ProximityCandidate | null = null;
+    for (const id of draggedIds) {
+      const candidate = this.snapController().findProximityConnection(engine, id, radius);
+      if (candidate && (!best || candidate.distance < best.distance)) best = candidate;
+    }
+    return best;
+  }
+
+  /**
+   * Commit the highlighted proximity candidate as ONE undoable AddLinkCommand,
+   * then clear the highlight. Called on the node-drag mouseup. Returns true when
+   * a link was actually created.
+   */
+  private commitProximityConnection(): boolean {
+    const engine = this.engine();
+    if (!engine) return false;
+
+    const candidate = this.proximityCandidate;
+    this.proximityCandidate = null;
+    this.snapController().highlightProximityTarget(engine, null);
+
+    if (!candidate || engine.getInteractionConfig().enableProximityConnect !== true) return false;
+    if (this.isReadonly()) return false;
+
+    const command = this.snapController().buildProximityLinkCommand(candidate);
+    void engine.commandManager.execute(command);
+    return true;
+  }
+
+  /** Drop any live proximity highlight/candidate without committing. */
+  private clearProximityPreview(): void {
+    const engine = this.engine();
+    if (this.proximityCandidate && engine) {
+      this.snapController().highlightProximityTarget(engine, null);
+    }
+    this.proximityCandidate = null;
   }
 
   // ==========================================================================

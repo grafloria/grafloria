@@ -165,3 +165,61 @@ describe('wave12 gap 1 — group drag carries members', () => {
     void g;
   });
 });
+
+describe('wave12 gap 2 — proximity connect on the live node drag', () => {
+  let h: Harness;
+  afterEach(() => h?.destroy());
+
+  function twoNodes(proximity: boolean) {
+    h = harness();
+    if (proximity) h.engine.setInteractionConfig({ enableProximityConnect: true } as never);
+    applyNodes(h.model, [
+      { id: 'a', position: { x: 100, y: 100 }, size: { width: 100, height: 60 } },
+      { id: 'b', position: { x: 400, y: 100 }, size: { width: 100, height: 60 } },
+    ]);
+  }
+
+  // Drag A's centre (150,130) by +dx so its right edge approaches B's left edge (400).
+  const dragA = (h2: Harness, dx: number) => {
+    h2.container.dispatchEvent(mouse('mousedown', { clientX: 150, clientY: 130 }));
+    h2.container.dispatchEvent(mouse('mousemove', { clientX: 150 + 8, clientY: 130 }));
+    h2.container.dispatchEvent(mouse('mousemove', { clientX: 150 + dx, clientY: 130 }));
+    h2.container.dispatchEvent(mouse('mouseup', { clientX: 150 + dx, clientY: 130 }));
+  };
+
+  it('dropping A next to B auto-creates a link (the shipped SnapController, on the live drag)', async () => {
+    twoNodes(true);
+    expect(h.model.getLinks().length).toBe(0);
+    dragA(h, 200); // A.x 100→300; A right edge 400 == B left edge 400
+    await flush();
+
+    expect(h.model.getLinks().length).toBe(1);
+    const link = h.model.getLinks()[0]!;
+    const ends = [h.model.getNodeByPortId(link.sourcePortId)!.id, h.model.getNodeByPortId(link.targetPortId)!.id].sort().join(',');
+    expect(ends).toBe('a,b');
+    expect(h.events.some((e) => e.event === 'edges:change')).toBe(true);
+  });
+
+  it('OFF (default): the same drop creates NO link (RED without the flag)', async () => {
+    twoNodes(false);
+    dragA(h, 200);
+    await flush();
+    expect(h.model.getLinks().length).toBe(0);
+  });
+
+  it('a drop that stays far away proposes nothing', async () => {
+    twoNodes(true);
+    dragA(h, 40); // A right edge only reaches 240 — well outside the 60px radius of 400
+    await flush();
+    expect(h.model.getLinks().length).toBe(0);
+  });
+
+  it('is ONE undoable step — undo removes exactly the auto-created link', async () => {
+    twoNodes(true);
+    dragA(h, 200);
+    await flush();
+    expect(h.model.getLinks().length).toBe(1);
+    await h.engine.commandManager.undo();
+    expect(h.model.getLinks().length).toBe(0);
+  });
+});
