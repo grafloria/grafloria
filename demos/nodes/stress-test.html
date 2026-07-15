@@ -1,0 +1,85 @@
+<meta charset="utf-8">
+<title>Stress test — Grafloria</title>
+<link rel="stylesheet" href="../shell/demo.css">
+<style>
+  #readout { padding: 10px 24px; font: 12px/1.5 ui-monospace, monospace; border-bottom: 1px solid rgba(127,127,127,.25); }
+  #canvas { height: calc(100vh - 190px); }
+</style>
+<header id="demo-head"></header>
+<div id="readout">measuring…</div>
+<div id="canvas"></div>
+<script type="module">
+import { render } from '../shell/grafloria.js';
+import { defineDemo, check } from '../shell/demo.js';
+
+const N = 2000;              // nodes in the MODEL
+const COLS = 44;
+
+defineDemo({
+  name: 'Stress test',
+  blurb: 'Two thousand nodes in the model; only the visible slice is in the DOM (viewport culling), and a full-graph move repaints in single-digit-to-low-double-digit milliseconds — measured in the page, not claimed.',
+  reactflow: 'Stress Test',
+
+  async setup(ctx) {
+    const nodes = [];
+    for (let i = 0; i < N; i++) {
+      nodes.push({
+        id: 'n' + i,
+        position: { x: (i % COLS) * 220, y: Math.floor(i / COLS) * 140 },
+        size: { width: 150, height: 80 },
+        label: 'Node ' + i,
+      });
+    }
+    const edges = [];
+    for (let i = 1; i < N; i++) edges.push({ id: 'e' + i, source: 'n' + (i - 1), target: 'n' + i });
+
+    const api = render({ nodes, edges }, ctx.host);
+    ctx.instance = api;
+    ctx.diagram = api.getModel();
+    await ctx.tick();
+  },
+
+  async assert(ctx) {
+    const api = ctx.instance, m = ctx.diagram;
+
+    // 1. The model really holds N; the DOM does NOT. Viewport culling keeps only the
+    //    visible slice materialised — the whole reason 2k (or 10k) nodes stay smooth.
+    check(m.getNodes().length === N, `model should hold ${N} nodes, has ${m.getNodes().length}`);
+    const painted = ctx.host.querySelectorAll('[data-node-id]').length;
+    check(painted > 0, 'nothing painted at all');
+    check(painted < N / 3,
+      `expected viewport culling to paint far fewer than ${N} nodes; painted ${painted} — culling looks dead`);
+
+    // 2. MEASURE a frame: move the whole graph and repaint, timed with performance.now
+    //    in the page. Median of several frames so one GC pause does not decide it.
+    const times = [];
+    for (let f = 0; f < 7; f++) {
+      const t0 = performance.now();
+      api.batchUpdate((model) => {
+        for (const n of model.getNodes()) n.setPosition(n.position.x + 1, n.position.y);
+      });
+      api.renderNow();
+      times.push(performance.now() - t0);
+    }
+    times.sort((a, b) => a - b);
+    const median = times[Math.floor(times.length / 2)];
+    const worst = times[times.length - 1];
+
+    document.getElementById('readout').textContent =
+      `${N} nodes in model · ${painted} in DOM (culled) · frame median ${median.toFixed(1)}ms · worst ${worst.toFixed(1)}ms · painted tier ${api.getQualityState().tier}`;
+
+    // 3. THE MEASUREMENT HAS TEETH: it is a real, positive number, and it is fast.
+    //    A 2000-node full-graph move must not take a fifth of a second. (Budget is
+    //    generous for shared CI; it still fails a genuine O(n) blow-up.)
+    check(median > 0, 'frame time measured as zero — the clock or the paint is not real');
+    check(median < 120,
+      `a full-graph move of ${N} nodes took ${median.toFixed(1)}ms (median) — that is not smooth`);
+
+    // 4. And the repaint actually happened: a visible node's DOM position advanced.
+    const g = ctx.host.querySelector('[data-node-id="n0"]');
+    check(!!g, 'the top-left node fell out of the DOM — it should be on screen');
+    check((g.getAttribute('transform') || '').includes('translate(7'),
+      `n0 moved by 7px over 7 frames but its transform did not follow (was "${g.getAttribute('transform')}")`);
+  },
+});
+</script>

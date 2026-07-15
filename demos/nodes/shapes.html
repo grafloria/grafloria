@@ -1,0 +1,93 @@
+<meta charset="utf-8">
+<title>Shapes — Grafloria</title>
+<link rel="stylesheet" href="../shell/demo.css">
+<style>#canvas { height: calc(100vh - 120px); }</style>
+<header id="demo-head"></header>
+<div id="canvas"></div>
+<script type="module">
+import { render, registerPathShape, listShapes, hasShape } from '../shell/grafloria.js';
+import { defineDemo, check } from '../shell/demo.js';
+
+// The 21 built-in figures — flowchart / BPMN / UML / ERD — all pre-registered.
+const FIGURES = [
+  'rect', 'circle', 'ellipse', 'diamond', 'hexagon', 'parallelogram', 'parallelogram-top',
+  'trapezoid', 'trapezoid-bottom', 'triangle', 'triangle-down', 'package', 'cube',
+  'document', 'cylinder', 'cloud', 'predefined-process', 'component', 'note', 'terminal', 'actor',
+];
+
+// A five-point star, as a custom silhouette registered through the public API.
+const starPath = (w, h) => {
+  const cx = w / 2, cy = h / 2, R = Math.min(w, h) / 2, r = R * 0.42;
+  let d = '';
+  for (let i = 0; i < 10; i++) {
+    const rad = (i % 2 ? r : R), ang = -Math.PI / 2 + i * Math.PI / 5;
+    d += (i ? 'L' : 'M') + (cx + rad * Math.cos(ang)).toFixed(2) + ',' + (cy + rad * Math.sin(ang)).toFixed(2) + ' ';
+  }
+  return d + 'Z';
+};
+
+defineDemo({
+  name: 'Shapes',
+  blurb: '21 built-in figures, each a full ShapeDefinition — and registerPathShape() adds a custom silhouette whose links attach to its real edge. React Flow charges for its shape pack.',
+  reactflow: 'Shapes',
+  pro: true,
+
+  async setup(ctx) {
+    // Custom shape must be registered BEFORE the node that uses it paints.
+    registerPathShape('star', starPath);
+
+    const nodes = [...FIGURES, 'star'].map((type, i) => ({
+      id: type,
+      position: { x: 40 + (i % 6) * 200, y: 40 + Math.floor(i / 6) * 150 },
+      size: { width: 130, height: 90 },
+      label: type,
+      shape: { type, fill: '#dbeafe', stroke: '#2563eb' },
+    }));
+    const api = render({ nodes, edges: [] }, ctx.host);
+    ctx.instance = api;
+    ctx.diagram = api.getModel();
+    ctx.figures = FIGURES;
+    await ctx.tick();
+  },
+
+  async assert(ctx) {
+    const host = ctx.host;
+    const body = (id, tag) => host.querySelector(`[data-node-id="${id}"] ${tag}`);
+
+    // 1. All 21 built-ins are in the registry AND painted a node in the DOM.
+    const registered = listShapes();
+    for (const f of ctx.figures) {
+      check(registered.includes(f), `built-in figure "${f}" is missing from the shape registry`);
+      check(!!host.querySelector(`[data-node-id="${f}"]`), `figure "${f}" did not render a node`);
+    }
+    check(ctx.figures.length === 21, `expected 21 built-in figures, listed ${ctx.figures.length}`);
+
+    // 2. THE TEETH: the shape.type genuinely changes the geometry — these are not 21
+    //    identical rectangles. Each figure emits its characteristic SVG primitive.
+    // (Every node also carries a background/hit <rect>, so <rect>-presence is not a
+    //  discriminator — the shape-specific PRIMITIVE is. A diamond adds a <polygon>,
+    //  which a rect never does; that is the tell that shape.type truly took.)
+    check(!!body('circle', 'circle'),    'circle should render an SVG <circle>');
+    check(!!body('ellipse', 'ellipse'),  'ellipse should render an SVG <ellipse>');
+    check(!!body('diamond', 'polygon'),  'diamond should render an SVG <polygon>');
+    check(!body('rect', 'polygon'),      'a plain rect must NOT carry a polygon body');
+    check(!body('rect', 'circle'),       'a plain rect must NOT carry a circle body');
+    check(!!body('cylinder', 'path'),    'cylinder should render an SVG <path>');
+
+    // 3. The custom silhouette registered through registerPathShape() paints as a
+    //    <path> with a real, non-empty outline.
+    check(hasShape('star'), 'registerPathShape did not add "star" to the registry');
+    const star = body('star', 'path');
+    check(!!star, 'the custom star shape did not render a <path> body');
+    check((star.getAttribute('d') || '').length > 20, 'the custom star path has no real geometry');
+
+    // 4. Mutation: switch a node's figure and the primitive changes with it — proving
+    //    selection is live, keyed off metadata.shape.type.
+    const r = ctx.diagram.getNode('rect');
+    check(!!body('rect', 'rect') && !body('rect', 'polygon'), 'precondition: rect is a <rect>');
+    r.setMetadata('shape', { type: 'diamond', fill: '#dbeafe' });
+    ctx.instance.renderNow();
+    check(!!body('rect', 'polygon'), 'changing shape.type to diamond did not switch the body to a <polygon>');
+  },
+});
+</script>

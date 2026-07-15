@@ -1,0 +1,61 @@
+<meta charset="utf-8">
+<title>Delete a middle node — Grafloria</title>
+<link rel="stylesheet" href="../shell/demo.css">
+<header id="demo-head"></header>
+<div id="canvas"></div>
+<script type="module">
+import { render } from '../shell/grafloria.js';
+import { defineDemo, check, checkEqual } from '../shell/demo.js';
+
+defineDemo({
+  name: 'Delete the middle node',
+  blurb: 'Remove the node in the middle of A→B→C and its two links go WITH it — a cascade, not two dangling edges. This is the Wave-10 removeNode() fix, proved through the public API.',
+  reactflow: 'Delete Middle Node',
+
+  async setup(ctx) {
+    const api = render({
+      nodes: [
+        { id: 'a', position: { x: 60,  y: 120 }, size: { width: 160, height: 80 }, label: 'A' },
+        { id: 'b', position: { x: 340, y: 120 }, size: { width: 160, height: 80 }, label: 'B (middle)' },
+        { id: 'c', position: { x: 620, y: 120 }, size: { width: 160, height: 80 }, label: 'C' },
+      ],
+      edges: [
+        { id: 'ab', source: 'a', target: 'b' },
+        { id: 'bc', source: 'b', target: 'c' },
+      ],
+    }, ctx.host);
+    ctx.instance = api;
+    ctx.diagram = api.getModel();
+    await ctx.tick();
+  },
+
+  async assert(ctx) {
+    const m = ctx.diagram;
+
+    // Control: three nodes, two links, both attached to B.
+    checkEqual(m.getNodes().length, 3, 'expected 3 nodes to start');
+    checkEqual(m.getLinks().length, 2, 'expected 2 links to start');
+    checkEqual(m.getLinksForNode('b').length, 2, 'both links should touch B');
+    check(!!ctx.host.querySelector('[data-node-id="b"]'), 'B did not render');
+
+    // THE ACT: remove the middle node.
+    const removed = m.removeNode('b');
+    ctx.instance.renderNow();
+
+    // 1. B is gone — from the model AND the DOM.
+    check(!!removed && removed.id === 'b', 'removeNode did not return the removed node');
+    check(m.getNode('b') === undefined, 'B is still in the model after removeNode');
+    check(ctx.host.querySelector('[data-node-id="b"]') === null, 'B is still in the DOM after removeNode');
+
+    // 2. THE TEETH: its links went WITH it. A non-cascading remove would leave two
+    //    edges pointing at a node that no longer exists — the classic dangle. Both
+    //    ab and bc must be gone from the model.
+    checkEqual(m.getLinks().length, 0, 'the two links attached to B were NOT cascaded away');
+    check(m.getLink('ab') === undefined, 'link ab survived its endpoint being deleted');
+    check(m.getLink('bc') === undefined, 'link bc survived its endpoint being deleted');
+
+    // 3. The survivors A and C are untouched.
+    check(!!m.getNode('a') && !!m.getNode('c'), 'deleting B should not remove A or C');
+  },
+});
+</script>
