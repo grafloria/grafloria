@@ -320,12 +320,17 @@ function readEntityProp(entity: Entity, path: string): unknown {
 /**
  * Structural equality over JSON-shaped values.
  *
- * `undefined` and a missing key are the same thing here — an op that clears a metadata
- * key carries `undefined`, and the register genuinely holds nothing afterwards.
+ * `undefined` and `null` are NOT the same thing here, and the old `a == b` on the line
+ * below said they were. `undefined` means THE REGISTER IS EMPTY (a cleared metadata
+ * key, an absent port); `null` is a VALUE a user can store. Conflating them made the
+ * idempotence guard drop a peer's `set(metadata.note, null)` as "redundant" against an
+ * empty register — the value never landed, and only on the RECEIVING side, the one
+ * place a single-process test never looks. Storing null and clearing must stay
+ * distinguishable end to end (op.ts's clear is explicit for the same reason).
  */
 function deepEqual(a: unknown, b: unknown): boolean {
   if (a === b) return true;
-  if (a === undefined || b === undefined || a === null || b === null) return a == b;
+  if (a === undefined || b === undefined || a === null || b === null) return false;
   if (typeof a !== 'object' || typeof b !== 'object') return false;
 
   if (Array.isArray(a) !== Array.isArray(b)) return false;

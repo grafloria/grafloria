@@ -125,33 +125,50 @@ describe('DEFECT 1: ports are per-port registers, not one whole-collection regis
     // Both edits write the same `ports.a-out` register: the removal as a clear, the
     // property edit as a full-port value. Whichever stamp is newer wins on BOTH peers —
     // the answer does not depend on arrival order, and redelivery changes nothing.
-    const { alice, bob, aliceOps, bobOps, dispose } = twoPeers(false);
+    // Both directions are driven, because each exercises a different apply path: a
+    // clear landing over a live port (remove), and a value landing over an ABSENT port
+    // (the removal's peer re-establishes it from the register — the port comes back).
 
-    // bob edits the port FIRST (older stamp), alice removes it (newer stamp)
-    bob.diagram.getNode('a')!.getPort('a-out')!.setOffset({ x: 4, y: 4 });
-    alice.diagram.getNode('a')!.removePort('a-out');
+    // --- direction 1: the REMOVE is stamped newer — the port goes, everywhere -------
+    {
+      const { alice, bob, aliceOps, bobOps, dispose } = twoPeers();
+      bob.diagram.getNode('a')!.getPort('a-out')!.setOffset({ x: 4, y: 4 });
+      alice.receive([...bobOps]); // alice SEES the edit…
+      alice.diagram.getNode('a')!.removePort('a-out'); // …then cuts: her clear is newer
+      exchange(alice, bob, aliceOps, bobOps);
 
-    // Alice's clock must exceed Bob's for the intended stamp order; receiving his op
-    // first guarantees it and is also the realistic shape (she saw his edit, then cut).
-    const bobEdit = [...bobOps];
-    alice.receive(bobEdit);
-    // Her remove may have raced his edit either way in wall time; what the register
-    // sees is stamps, and hers is minted after observing his.
-    const aliceRemove = aliceOps.find(
-      (o) => o.op === 'set' && (o as SetOp).path === 'ports.a-out'
-    );
-    expect(aliceRemove).toBeDefined();
-
-    exchange(alice, bob, aliceOps, bobOps);
-
-    for (const [who, p] of [['alice', alice], ['bob', bob]] as const) {
-      expect({ who, port: p.diagram.getNode('a')!.getPort('a-out') }).toEqual({
-        who,
-        port: undefined,
-      });
+      for (const [who, p] of [['alice', alice], ['bob', bob]] as const) {
+        expect({ who, port: p.diagram.getNode('a')!.getPort('a-out')?.id }).toEqual({
+          who,
+          port: undefined,
+        });
+        // the link into the removed port is QUARANTINED — identically on both peers —
+        // so an undo of the removal can still bring it home
+        expect({ who, q: p.quarantinedLinks }).toEqual({ who, q: ['ab'] });
+      }
+      expectConverged(alice.diagram, bob.diagram, { direction: 'remove newer' });
+      dispose();
     }
-    expectConverged(alice.diagram, bob.diagram);
-    dispose();
+
+    // --- direction 2: truly CONCURRENT — same clock, so the actor tiebreak decides
+    // ('bob' > 'alice'), the EDIT wins the register, and the removal is void ----------
+    {
+      const { alice, bob, aliceOps, bobOps, dispose } = twoPeers();
+      bob.diagram.getNode('a')!.getPort('a-out')!.setOffset({ x: 4, y: 4 });
+      alice.diagram.getNode('a')!.removePort('a-out'); // blind to each other
+      expect(alice.quarantinedLinks).toEqual(['ab']); // her removal orphaned the link…
+      exchange(alice, bob, aliceOps, bobOps);
+
+      for (const [who, p] of [['alice', alice], ['bob', bob]] as const) {
+        const port = p.diagram.getNode('a')!.getPort('a-out');
+        expect({ who, offset: port?.offset }).toEqual({ who, offset: { x: 4, y: 4 } });
+        // …and the winning edit brought the port back, so the link came home too
+        expect({ who, q: p.quarantinedLinks }).toEqual({ who, q: [] });
+        expect({ who, ab: p.diagram.getLink('ab')?.id }).toEqual({ who, ab: 'ab' });
+      }
+      expectConverged(alice.diagram, bob.diagram, { direction: 'edit wins tiebreak' });
+      dispose();
+    }
   });
 
   it('undo of a port ADD takes back exactly that port; undo of a port REMOVE restores exactly that port, and its link comes home', () => {
