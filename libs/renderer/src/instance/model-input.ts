@@ -150,10 +150,12 @@ export interface EdgeSpec {
   target: string;
   /**
    * Port id, or a bare side name (`'right'`). Naming a handle PINS the edge to
-   * that port. When neither handle is named the edge floats: it attaches on
-   * whichever side faces its partner (the `'smart'` connection-point strategy),
-   * so a layouted tree connects bottom→top instead of looping out of a frozen
-   * right→left pick.
+   * that port. When neither handle is named the edge is PORT-FACING: it
+   * attaches to the node's real port on whichever side faces its partner (the
+   * `'port-facing'` strategy), so a layouted tree connects bottom→top instead
+   * of looping out of a frozen right→left pick — and the endpoint always sits
+   * on a port, never sliding along the perimeter. `metadata.connectionPoint =
+   * 'smart'` opts into true perimeter floating.
    */
   sourceHandle?: string;
   /** Port id, or a bare side name (`'left'`). See `sourceHandle` for the default. */

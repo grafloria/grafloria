@@ -72,7 +72,16 @@ const IN_PAGE = () => {
   const model = inst.getModel();
   const rectOf = () => host.getBoundingClientRect();
   const wc = (wx, wy) => inst.viewport.worldToClient(wx, wy, rectOf());
-  const fire = (t, cx, cy) => host.dispatchEvent(new PointerEvent(t, { clientX: cx, clientY: cy, bubbles: true, cancelable: true, button: 0, buttons: t === 'pointerup' ? 0 : 1, pointerId: 1, pointerType: 'mouse' }));
+  let buttonDown = false;
+  const fire = (t, cx, cy) => {
+    if (t === 'pointerdown') buttonDown = true;
+    // buttons must mirror REALITY: a browser never sends a pressed-button
+    // pointermove without a preceding pointerdown, and a phantom buttons=1
+    // move can arm drags/selections that pollute later checks on the page.
+    const buttons = t === 'pointerup' ? 0 : t === 'pointerdown' ? 1 : buttonDown ? 1 : 0;
+    if (t === 'pointerup') buttonDown = false;
+    host.dispatchEvent(new PointerEvent(t, { clientX: cx, clientY: cy, bubbles: true, cancelable: true, button: 0, buttons, pointerId: 1, pointerType: 'mouse' }));
+  };
   const raf2 = () => new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r)));
 
   // The VISIBLE link path (skip the transparent fat hit-area).
@@ -201,13 +210,55 @@ const IN_PAGE = () => {
       else out.checks.push({ name: 'RENDER-TRACK', ok: paintDrift <= 4, detail: `paint drifted ${Math.round(paintDrift)}px after the pointer stopped, model static (eased transform trails)` });
     }
 
+    // ---- PORT-WIRE: pressing a port on a SELECTED node draws a wire, never resizes ----
+    // The side resize handles sit at the edge midpoints — the exact anchors of
+    // the default side ports — and the resize rung used to win the press: a user
+    // aiming at the port glyph they could see got a 40px-wider node instead of a
+    // wire. Select, hover the side port, press, pull: the node's SIZE must not
+    // change and a connection must be live.
+    const wireNode = model.getNodes().find((n) => n.behavior?.draggable !== false && !n.state?.locked && n.getPortBySide && n.getPortBySide('right'));
+    if (!wireNode) out.skipped.push('PORT-WIRE (no node with a right port)');
+    else {
+      inst.viewport.setZoom(1);
+      if (inst.viewport.centerOn) { const wp = wireNode.getWorldPosition ? wireNode.getWorldPosition() : wireNode.position; inst.viewport.centerOn(wp.x + wireNode.size.width / 2, wp.y + wireNode.size.height / 2); }
+      inst.renderNow(); await raf2();
+      const wp = wireNode.getWorldPosition ? wireNode.getWorldPosition() : wireNode.position;
+      const centre = wc(wp.x + wireNode.size.width / 2, wp.y + wireNode.size.height / 2);
+      // select
+      fire('pointermove', centre.x, centre.y); fire('pointerdown', centre.x, centre.y); fire('pointerup', centre.x, centre.y); await raf2();
+      const sizeBefore = { w: wireNode.size.width, h: wireNode.size.height };
+      // hover the RIGHT port (edge midpoint), then press and pull away
+      const portC = wc(wp.x + wireNode.size.width, wp.y + wireNode.size.height / 2);
+      fire('pointermove', portC.x, portC.y); await raf2();
+      const hovered = !!inst.interaction.getState().hoveredPort;
+      if (!hovered || !wireNode.isSelected?.()) {
+        // Ports hidden/custom hit areas, or selection intercepted — can't stage
+        // the coincidence this check exists for.
+        fire('pointerup', portC.x, portC.y);
+        out.skipped.push('PORT-WIRE (could not stage selected-node + hovered-port)');
+      } else {
+        fire('pointerdown', portC.x, portC.y);
+        fire('pointermove', portC.x + 60, portC.y + 30); await raf2();
+        const connecting = !!inst.interaction.getState().isConnecting || !!inst.interaction.getState().isReconnectingLink;
+        const grewW = Math.abs(wireNode.size.width - sizeBefore.w);
+        const grewH = Math.abs(wireNode.size.height - sizeBefore.h);
+        fire('pointerup', portC.x + 60, portC.y + 30); await raf2();
+        // Whatever gesture won, it must NOT be a resize; and it should be a wire.
+        out.checks.push({ name: 'PORT-WIRE', ok: connecting && grewW < 1 && grewH < 1, detail: `connecting=${connecting} sizeΔ=${Math.round(grewW)}×${Math.round(grewH)} (a resize here means the side handle swallowed the port press)` });
+      }
+    }
+
     // ---- LINK-SELECT ----
     const link = links[0];
     if (!link) out.skipped.push('LINK-SELECT (no links)');
     else {
       const pathBefore = visiblePath(link.id);
       const swBefore = pathBefore ? parseFloat(getComputedStyle(pathBefore).strokeWidth) || 0 : 0;
-      const pathEl0 = visiblePath(link.id);
+      // Sample the SAME element before and after — selection INSERTS a casing
+      // path, which would shift a "first visible path" pick and corrupt the
+      // comparison. The core stroke is `.diagram-link`.
+      const corePath = () => host.querySelector(`[data-link-id="${link.id}"] path.diagram-link`) || visiblePath(link.id);
+      const pathEl0 = corePath();
       const styleSig = (el) => { if (!el) return ''; const s = getComputedStyle(el); return `${s.strokeWidth}|${s.stroke}|${s.strokeOpacity}|${s.strokeDasharray}`; };
       const sigBefore = styleSig(pathEl0);
       if (!pathEl0) out.skipped.push('LINK-SELECT (link has no drawable path)');
@@ -219,13 +270,23 @@ const IN_PAGE = () => {
         try { const L = pathEl0.getTotalLength(); pt = pathEl0.getPointAtLength(L / 2); } catch { pt = null; }
         // path coords are in the svg's viewBox (world) space → to client
         const c = pt ? wc(pt.x, pt.y) : null;
+        // Self-contained: earlier checks may have left ANY selection state
+        // behind; this check owns the default→selected transition.
+        if (link.state !== 'default') link.setState('default');
+        if (model.clearSelection) model.clearSelection();
+        inst.renderNow(); await raf2();
+        const stateBeforeClick = link.state;
         if (c) { fire('pointermove', c.x, c.y); fire('pointerdown', c.x, c.y); fire('pointerup', c.x, c.y); await raf2(); }
+        // This check judges the AFFORDANCE, not the scheduler (RENDER-TRACK owns
+        // timing) — force the paint so a coalesced frame can't fake "unchanged".
+        inst.renderNow(); await raf2();
         const selected = link.state === 'selected';
         if (!selected) {
           out.skipped.push('LINK-SELECT (click did not land on the link path — setup)');
         } else {
-          const pathAfter = visiblePath(link.id);
+          const pathAfter = corePath();
           const swAfter = pathAfter ? parseFloat(getComputedStyle(pathAfter).strokeWidth) || 0 : 0;
+          const casing = !!host.querySelector(`[data-link-id="${link.id}"] .link-state-casing-selected`);
           const ends = pathEnds(link.id);
           const linkW = ends ? Math.abs(ends.end.x - ends.start.x) : 0, linkH = ends ? Math.abs(ends.end.y - ends.start.y) : 0;
           // THE INVARIANT: a selected link highlights its own PATH, and no
@@ -242,8 +303,9 @@ const IN_PAGE = () => {
           // happen is "nothing changed" or "a rectangle appeared".
           const sigAfter = styleSig(pathAfter);
           const styleChanged = sigAfter !== sigBefore;
-          const hasAffordance = styleChanged || (pathAfter && /select/.test(pathAfter.getAttribute('class') || ''));
-          out.checks.push({ name: 'LINK-SELECT', ok: hasAffordance && !strayRect, detail: `sig ${styleChanged ? 'changed' : 'UNCHANGED'} (${sigBefore} → ${sigAfter}) strayRect=${strayRect}` });
+          const hasAffordance = styleChanged || casing || (pathAfter && /select/.test(pathAfter.getAttribute('class') || ''));
+          const dump = [...host.querySelectorAll(`[data-link-id="${link.id}"] path`)].map((e) => e.getAttribute('class')).join(' + ');
+          out.checks.push({ name: 'LINK-SELECT', ok: hasAffordance && !strayRect, detail: `sig ${styleChanged ? 'changed' : 'UNCHANGED'} casing=${casing} state=${stateBeforeClick}→${link.state} paths=[${dump}] (${sigBefore} → ${sigAfter})` });
         }
       }
     }

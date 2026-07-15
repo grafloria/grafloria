@@ -462,6 +462,51 @@ describe('DomEventBinder', () => {
       expect(h.events.some((e) => e.event === 'nodes:change')).toBe(true);
     });
 
+    // The four SIDE handles sit at the edge midpoints — exactly where the
+    // default side ports live. A user aiming at the PORT GLYPH they can see
+    // must get a wire, not a resize (the live audit caught a wire-draw turning
+    // into a +40px resize). Corners have no port and stay resize.
+    it('a press on the E side handle OVER THE PORT starts a wire, not a resize', () => {
+      h = harness();
+      selectA();
+      const node = h.model.getNode('a')!;
+      const E_PORT = { clientX: 200, clientY: 130 }; // right edge midpoint = a__right
+
+      // Hover first (as a real cursor does), then press and pull away.
+      h.container.dispatchEvent(mouse('mousemove', E_PORT));
+      expect(h.interaction.getState().hoveredPort?.id).toBe(
+        h.model.getNode('a')!.getPortBySide('right')!.id
+      );
+      h.container.dispatchEvent(mouse('mousedown', E_PORT));
+
+      expect(h.interaction.getState().isConnecting).toBe(true);
+      h.container.dispatchEvent(mouse('mousemove', { clientX: 260, clientY: 130 }));
+
+      // The node was NOT resized by the pull.
+      expect(node.size.width).toBeCloseTo(100);
+      expect(node.size.height).toBeCloseTo(60);
+
+      // Release on the void: no link either — the point is only WHICH gesture won.
+      h.container.dispatchEvent(mouse('mouseup', { clientX: 260, clientY: 130 }));
+      expect(node.size.width).toBeCloseTo(100);
+    });
+
+    it('the N side handle yields to the top port the same way', () => {
+      h = harness();
+      selectA();
+      const node = h.model.getNode('a')!;
+      const N_PORT = { clientX: 150, clientY: 100 }; // top edge midpoint = a__top
+
+      h.container.dispatchEvent(mouse('mousemove', N_PORT));
+      h.container.dispatchEvent(mouse('mousedown', N_PORT));
+      expect(h.interaction.getState().isConnecting).toBe(true);
+
+      h.container.dispatchEvent(mouse('mousemove', { clientX: 150, clientY: 40 }));
+      expect(node.size.height).toBeCloseTo(60); // a resize would have grown it upward
+
+      h.container.dispatchEvent(mouse('mouseup', { clientX: 150, clientY: 40 }));
+    });
+
     it('an UNSELECTED node has no handle there — the press drags instead', () => {
       h = harness();
       const node = h.model.getNode('a')!;

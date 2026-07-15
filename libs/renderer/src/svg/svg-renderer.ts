@@ -4738,12 +4738,15 @@ export class SVGRenderer implements IRenderer {
       (this.config.smartConnectionPoints ? 'smart' : undefined) ??
       // Lowest precedence: the spec layer stamps `autoConnectionPoint` on edges
       // that named no handle (see buildEdge). Anchoring left to us = the
-      // geometry-aware strategy, not a frozen right→left pick. Everything the
-      // user DID say — per-link strategy, diagram config, the boolean flag —
-      // resolves above this line; `connectionPoint: 'port'` at either level
-      // restores the pinned behaviour.
+      // geometry-aware strategy, not a frozen right→left pick. 'port-facing',
+      // not 'smart': the side follows the partner, but the attachment lands on
+      // the node's real PORT on that side — a perimeter point that slides while
+      // you drag reads as the line detaching from the ports the user can see.
+      // Everything the user DID say — per-link strategy, diagram config, the
+      // boolean flag — resolves above this line; `connectionPoint: 'port'` at
+      // either level restores fixed pinning, `'smart'` gives true floating.
       (typeof link.getMetadata === 'function' && link.getMetadata('autoConnectionPoint')
-        ? 'smart'
+        ? 'port-facing'
         : undefined);
 
     const strategy = strategyName ? getConnectionPoint(strategyName) : undefined;
@@ -4756,6 +4759,7 @@ export class SVGRenderer implements IRenderer {
         defaults,
         boundaryPoint: (node, rect, side, cross) => this.shapeEdgePoint(node, rect, side, cross),
         nearestVisiblePort: (node, side, near) => this.nearestVisiblePort(node, side, near),
+        nearestPort: (node, side, near) => this.nearestPortOnSide(node, side, near),
       });
 
       // `null` = the strategy DECLINED (what the built-in 'port' strategy does).
@@ -7794,6 +7798,33 @@ export class SVGRenderer implements IRenderer {
         ? String((port as any).getEffectiveVisibility(node, globalDefault)).toLowerCase()
         : globalDefault;
       if (vis !== 'always') continue;
+      const local = getPortPositionForShape(port, node);
+      const pos = { x: world.x + local.x, y: world.y + local.y };
+      const dist = Math.hypot(pos.x - ideal.x, pos.y - ideal.y);
+      if (dist < bestDist) {
+        bestDist = dist;
+        best = pos;
+      }
+    }
+    return best;
+  }
+
+  /**
+   * The nearest port on a side regardless of visibility — the 'port-facing'
+   * strategy's anchor source. Visibility must not steer ATTACHMENT: ports are
+   * the node's connection anatomy whether or not their glyphs are drawn, and an
+   * endpoint that jumps when a hover reveals them is worse than either state.
+   */
+  private nearestPortOnSide(
+    node: NodeModel,
+    side: 'left' | 'right' | 'top' | 'bottom',
+    ideal: { x: number; y: number }
+  ): { x: number; y: number } | null {
+    const world = node.getWorldPosition();
+    let best: { x: number; y: number } | null = null;
+    let bestDist = Infinity;
+    for (const port of node.getPorts()) {
+      if (port.alignment?.side !== side) continue;
       const local = getPortPositionForShape(port, node);
       const pos = { x: world.x + local.x, y: world.y + local.y };
       const dist = Math.hypot(pos.x - ideal.x, pos.y - ideal.y);

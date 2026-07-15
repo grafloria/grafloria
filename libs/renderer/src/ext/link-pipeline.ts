@@ -167,6 +167,14 @@ export interface ConnectionPointContext {
    * rule that visible ports win over free-floating attachment.
    */
   nearestVisiblePort(node: NodeModel, side: ExtSide, near: ExtPoint): ExtPoint | null;
+  /**
+   * The nearest port on a side REGARDLESS of visibility, or null. The
+   * 'port-facing' default uses it: a node's ports are its connection anatomy
+   * whether or not the glyphs are currently drawn, so attachment must not
+   * change when visibility does (an endpoint that jumps when you hover a node
+   * is worse than either behaviour it jumps between).
+   */
+  nearestPort(node: NodeModel, side: ExtSide, near: ExtPoint): ExtPoint | null;
 }
 
 export interface ConnectionPointResult {
@@ -463,6 +471,64 @@ function installBuiltinLinkPipeline(): void {
    * 'port'` is expressible and so `listConnectionPoints()` tells the truth.
    */
   connectionPoints.set('port', () => null);
+
+  /**
+   * `'port-facing'` — the AUTO default for spec edges that named no handle.
+   *
+   * Sides are chosen exactly like `'smart'` (whichever face the partner), but
+   * the attachment is the nearest PORT on that side — visible or not — never a
+   * free perimeter point. Rationale, from a user watching custom-nodes: "lines
+   * are normally connected to ports"; a perimeter point that slides along the
+   * edge while you drag reads as the line detaching from the node's anatomy.
+   * Ports are that anatomy whether or not the glyphs are currently drawn, and
+   * keying attachment off VISIBILITY would make endpoints jump the moment a
+   * hover reveals them — worse than either behaviour it jumps between. A side
+   * with no port falls back to the smart perimeter point for that end, so
+   * port-less custom nodes keep floating. True perimeter floating stays one
+   * opt-in away: `metadata.connectionPoint = 'smart'`.
+   */
+  connectionPoints.set('port-facing', (ctx) => {
+    const { source, target, boundaryPoint, nearestPort } = ctx;
+    const s = source.rect;
+    const t = target.rect;
+    const sc = centreOf(s);
+    const tc = centreOf(t);
+    const dx = tc.x - sc.x;
+    const dy = tc.y - sc.y;
+    const horizontal = Math.abs(dx) >= Math.abs(dy);
+    const srcSide: ExtSide = horizontal ? (dx >= 0 ? 'right' : 'left') : dy >= 0 ? 'bottom' : 'top';
+    const tgtSide: ExtSide = horizontal ? (dx >= 0 ? 'left' : 'right') : dy >= 0 ? 'top' : 'bottom';
+
+    // The smart cross-position — used as the "ideal" a multi-port side picks
+    // its nearest port against, and as the fallback perimeter point.
+    const PAD = 10;
+    let srcCross: number;
+    let tgtCross: number;
+    if (horizontal) {
+      const lo = Math.max(s.y, t.y) + PAD;
+      const hi = Math.min(s.y + s.h, t.y + t.h) - PAD;
+      if (lo <= hi) srcCross = tgtCross = clamp((sc.y + tc.y) / 2, lo, hi);
+      else {
+        srcCross = clamp(tc.y, s.y + PAD, s.y + s.h - PAD);
+        tgtCross = clamp(sc.y, t.y + PAD, t.y + t.h - PAD);
+      }
+    } else {
+      const lo = Math.max(s.x, t.x) + PAD;
+      const hi = Math.min(s.x + s.w, t.x + t.w) - PAD;
+      if (lo <= hi) srcCross = tgtCross = clamp((sc.x + tc.x) / 2, lo, hi);
+      else {
+        srcCross = clamp(tc.x, s.x + PAD, s.x + s.w - PAD);
+        tgtCross = clamp(sc.x, t.x + PAD, t.x + t.w - PAD);
+      }
+    }
+
+    const srcIdeal = boundaryPoint(source.node, s, srcSide, srcCross);
+    const tgtIdeal = boundaryPoint(target.node, t, tgtSide, tgtCross);
+    const start = nearestPort(source.node, srcSide, srcIdeal) ?? srcIdeal;
+    const end = nearestPort(target.node, tgtSide, tgtIdeal) ?? tgtIdeal;
+
+    return { start, end, sourceDirection: srcSide, targetDirection: tgtSide };
+  });
 
   /**
    * `'boundary'` — attach on each node's outline, aimed at the other node's

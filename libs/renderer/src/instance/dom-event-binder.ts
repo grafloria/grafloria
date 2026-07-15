@@ -647,14 +647,30 @@ export class DomEventBinder {
     // selected, resizable node (see SelectionToolsController.computeLayer), so this
     // is inert until the user has selected something — the first click selects, the
     // handle appears, the second grabs it.
+    //
+    // EXCEPT the four SIDE handles (n/e/s/w): they sit at the edge midpoints —
+    // the exact anchors of the default side ports — so on a selected node every
+    // press on a visible port glyph used to become a RESIZE (a user drew a wire
+    // and got a 40px-wider node instead; the port's hover hit radius fully
+    // contains the handle's, so the handle was unreachable-around anyway). When
+    // the pointer is on a hovered port OF THE SAME NODE, the PORT wins and the
+    // press falls through to the connection rung below. Corners never coincide
+    // with ports and stay resize; side-resize remains on nodes whose ports are
+    // hidden (no hover ⇒ no port claim).
     // ------------------------------------------------------------------
     if (!this.isReadonly()) {
       const handle = this.resizeHandleAt(worldX, worldY);
       if (handle) {
-        event.preventDefault();
-        this.selectionTools.beginResize(handle, engine, worldX, worldY);
-        this.host.requestRender();
-        return;
+        const sideHandle =
+          handle.kind === 'resize' && ['n', 'e', 's', 'w'].includes(String(handle.handleId));
+        const portClaims =
+          sideHandle && state.hoveredPort && state.hoveredPort.nodeId === handle.nodeId;
+        if (!portClaims) {
+          event.preventDefault();
+          this.selectionTools.beginResize(handle, engine, worldX, worldY);
+          this.host.requestRender();
+          return;
+        }
       }
     }
 

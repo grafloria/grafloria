@@ -321,6 +321,64 @@ describe('createDiagram — the headless instance', () => {
     });
   });
 
+  // "Lines are normally connected to ports" (the live audit, watching a bare
+  // edge slide along the node perimeter while dragging): a spec edge that names
+  // no handle attaches to the node's REAL PORT on the side facing its partner —
+  // never a free perimeter point — and switches ports when the facing side
+  // changes. True perimeter floating remains an explicit opt-in via
+  // metadata.connectionPoint = 'smart'.
+  describe('port-facing default attachment (bare edges land ON ports)', () => {
+    const linkStart = () => {
+      const d = container.querySelector('[data-link-id] path[d]')?.getAttribute('d') ?? '';
+      const n = (d.match(/-?\d+(?:\.\d+)?/g) || []).map(Number);
+      return { x: n[0], y: n[1] };
+    };
+
+    it('attaches to the facing side PORT even when the partner is offset (no perimeter slide)', () => {
+      diagram = createDiagram(container, {
+        nodes: [
+          { id: 'a', position: { x: 100, y: 100 }, size: { width: 120, height: 60 } },
+          // Partner to the right but 40px lower: 'smart' would slide the
+          // attachment 20px down the right edge; port-facing pins the port.
+          { id: 'b', position: { x: 400, y: 140 }, size: { width: 120, height: 60 } },
+        ],
+        edges: [{ id: 'e', source: 'a', target: 'b' }],
+      });
+      diagram.renderNow();
+      const s = linkStart();
+      expect(s.x).toBeCloseTo(220, 0); // right edge
+      expect(s.y).toBeCloseTo(130, 0); // the a__right PORT (edge midpoint), not 150
+    });
+
+    it('switches to the TOP port when the partner moves above', () => {
+      diagram = createDiagram(container, {
+        nodes: [
+          { id: 'a', position: { x: 100, y: 300 }, size: { width: 120, height: 60 } },
+          { id: 'b', position: { x: 130, y: 40 }, size: { width: 120, height: 60 } },
+        ],
+        edges: [{ id: 'e', source: 'a', target: 'b' }],
+      });
+      diagram.renderNow();
+      const s = linkStart();
+      expect(s.y).toBeCloseTo(300, 0); // top edge
+      expect(s.x).toBeCloseTo(160, 0); // the a__top PORT (edge midpoint)
+    });
+
+    it("metadata.connectionPoint = 'smart' still floats along the perimeter", () => {
+      diagram = createDiagram(container, {
+        nodes: [
+          { id: 'a', position: { x: 100, y: 100 }, size: { width: 120, height: 60 } },
+          { id: 'b', position: { x: 400, y: 140 }, size: { width: 120, height: 60 } },
+        ],
+        edges: [{ id: 'e', source: 'a', target: 'b', metadata: { connectionPoint: 'smart' } }],
+      });
+      diagram.renderNow();
+      const s = linkStart();
+      expect(s.x).toBeCloseTo(220, 0); // right edge…
+      expect(s.y).toBeGreaterThan(135); // …but slid toward the partner, off the port
+    });
+  });
+
   // The audit's "empty white boxes": four demos declared labels the LEGACY way
   // (data.label) and the renderer gated its <text> on raw metadata — bypassing
   // the getLabel() canon whose whole purpose is that fallback. These drive the

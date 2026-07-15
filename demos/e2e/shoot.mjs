@@ -77,6 +77,14 @@ const manifest = [];
 // snapshot is stilled. CSS animations/transitions get zero duration + a paused
 // play-state (renders their end state, deterministically); SVG SMIL (<animate>)
 // is paused via the document timeline.
+// Routing settles over TWO frames (the link cull query runs before the routing
+// pre-pass — see the renderer's frame-gate notes), so a fixed timer can catch
+// frame 1 and photograph a mid-settle picture that a re-run won't reproduce.
+// Wait on REAL frames instead: two rAFs, then one more paint's worth.
+async function settleFrames(tab) {
+  await tab.evaluate(() => new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(() => setTimeout(r, 30)))));
+}
+
 async function freezeAnimations(tab) {
   await tab.addStyleTag({
     content: `*, *::before, *::after {
@@ -129,7 +137,7 @@ for (const page of pages) {
 
     // Drive the demo's own interaction, then shoot the resulting state.
     await tab.evaluate(async () => { try { await window.__demo.run(); } catch { /* captured below */ } });
-    await tab.waitForTimeout(50); // let the last commit/render land
+    await settleFrames(tab);
     const afterPath = join(outDir, `${slug}.after.png`);
     await tab.screenshot({ path: afterPath });
     rec.after = afterPath;
@@ -144,7 +152,7 @@ for (const page of pages) {
       await tab.waitForFunction(() => window.__demoReady === true, { timeout: 15000 });
       await freezeAnimations(tab);
       await tab.evaluate(async () => { try { await window.__demo.showcase(); } catch { /* shot anyway */ } });
-      await tab.waitForTimeout(50);
+      await settleFrames(tab);
       const showcasePath = join(outDir, `${slug}.showcase.png`);
       await tab.screenshot({ path: showcasePath });
       rec.showcase = showcasePath;

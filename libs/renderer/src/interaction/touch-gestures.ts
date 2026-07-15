@@ -235,14 +235,24 @@ export class TouchGestureController {
     // port/node branches for the same reason as the mouse ladder (a corner handle
     // sits on the node's corner). A finger gets extra hit slop so a ~6px handle is
     // actually reachable.
+    //
+    // Same port-over-side-handle rule as the mouse ladder: the n/e/s/w handles
+    // sit exactly on the default side ports, and a finger on a visible port
+    // glyph must draw a wire, not resize. Corners stay resize.
     if (!this.host.isReadonly()) {
       const handle = this.resizeHandleAt(worldX, worldY);
       if (handle) {
-        this.cancelLongPress();
-        this.selectionTools!.beginResize(handle, engine, worldX, worldY);
-        this.action = { kind: 'resize' };
-        this.host.requestRender();
-        return;
+        const sideHandle =
+          handle.kind === 'resize' && ['n', 'e', 's', 'w'].includes(String(handle.handleId));
+        const portClaims =
+          sideHandle && state.hoveredPort && state.hoveredPort.nodeId === handle.nodeId;
+        if (!portClaims) {
+          this.cancelLongPress();
+          this.selectionTools!.beginResize(handle, engine, worldX, worldY);
+          this.action = { kind: 'resize' };
+          this.host.requestRender();
+          return;
+        }
       }
     }
 
