@@ -500,7 +500,13 @@ export class PresenceOverlay {
           // Snap when close enough. Without this, exponential easing never quite arrives and
           // the loop runs for the rest of the session, one frame at a time, forever — an
           // idle overlay burning 60 frames a second to move a cursor by 0.0001px.
-          if (Math.abs(dx) < 0.05 && Math.abs(dy) < 0.05) {
+          //
+          // `smoothing <= 0` ALSO snaps — the option is documented as "0 disables (jumps
+          // straight there)", but the easing step below is `drawn + delta * smoothing`, so a
+          // literal 0 multiplies the delta to nothing and FREEZES a cursor that has already
+          // appeared (only the first-frame `!drawn` branch ever moved it). A caller that asks
+          // for no interpolation must get an instant jump, not a stuck cursor. [wave11-fix]
+          if (this.smoothing <= 0 || (Math.abs(dx) < 0.05 && Math.abs(dy) < 0.05)) {
             view.drawn = { ...view.target };
           } else {
             view.drawn = {
