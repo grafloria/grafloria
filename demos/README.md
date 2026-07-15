@@ -53,6 +53,32 @@ different claims, so they have different gates:
 The tolerance floor is mutation-tested: an uppercased-labels mutation survived a 0.15%
 floor and is caught at 0.02% with zero false positives across the other 184 frames.
 
+## And a still frame is not enough: the INTERACTION gate
+
+A user dragged a node and reported "the line moves faster than the node." Nothing here
+would have caught that: gallery-run asserts a model *consequence*, visual-run compares a
+*static* frame — neither drives a live gesture and watches the *dynamics*. `interaction-run.mjs`
+does:
+
+- `node demos/e2e/interaction-run.mjs` drives REAL pointer gestures in headless Chromium and
+  waits for REAL animation frames between steps (the scheduler paints on rAF; a bare
+  `setTimeout` races it and reads a half-updated DOM — which is how a naive probe "sees" a
+  stale link a real user never does). Three invariants:
+  - **DRAG-ATTACH** — grab a node that owns a link endpoint, drag it, and the PAINTED link
+    endpoint must FOLLOW the node (≥50% of its displacement, projected) every frame. A link
+    that stays behind scores ~0%.
+  - **POINTER-TRACK** — the dragged node's on-screen centre moves 1:1 with the pointer, at
+    zoom 1 AND zoom 2 (a zoom-space bug shows here).
+  - **LINK-SELECT** — selecting a link changes its own PATH (width/colour/opacity/dash or a
+    select class) and must NOT spawn a rectangle the size of the link around it.
+- It **skips setup-misses loudly** rather than failing them: if a drag never grabbed the node
+  or a click missed a curved path, that's the harness's problem, not the demo's — a gate that
+  cries wolf buries the real wolf. After hardening: 148/148 real checks pass, ~40 setup-misses
+  skipped.
+- MUTATION-PROVEN: stubbing the "re-dirty a link when its node moves" line makes DRAG-ATTACH
+  go red on every edge demo ("endpoint followed 0% of the node's move") — exactly the reported
+  symptom. Reverted, it is green again.
+
 ## Layout
 
 ```
@@ -62,6 +88,7 @@ demos/
   nodes/  edges/  interaction/  layout/  styling/  grouping/  collab/  misc/
   e2e/gallery-run.mjs     drives EVERY demo and asserts it works   (the FUNCTIONAL gate)
   e2e/visual-run.mjs      pixel-diffs every frame vs its golden     (the VISUAL gate)
+  e2e/interaction-run.mjs drives live gestures, checks the dynamics (the INTERACTION gate)
   e2e/shoot.mjs           captures boot/after/showcase PNGs (used by visual-run)
   e2e/goldens/            blessed frames + jitter-derived tolerances.json
   e2e/probe-fit.mjs       one-off probe: content bounds vs visible viewBox
