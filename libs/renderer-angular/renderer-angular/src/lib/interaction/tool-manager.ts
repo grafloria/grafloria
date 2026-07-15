@@ -1,12 +1,25 @@
 /**
  * ToolManager — single-active-tool arbitration for canvas interaction.
  *
- * The unified {@link PointerInputController} turns raw device events into one
- * canonical stream. The ToolManager sits directly on top of it: for every
- * pointer gesture it HIT-TESTS the scene once (on down) and routes the whole
- * gesture to EXACTLY ONE tool — `select`, `node-drag`, `link-draw`, `marquee`
- * or `pan`. There is never more than one active tool, which is what prevents
- * the "everything fires at once" waterfall the canvas grew organically.
+ * WHO ACTUALLY FEEDS IT (wave14/ng-touch — this comment used to lie). This
+ * header once claimed a "unified PointerInputController" turned raw device
+ * events into the stream the ToolManager consumes. No such thing ever ran:
+ * `PointerInputController` was written, exported, unit-tested — and never
+ * constructed by anything. It has been deleted. The real inputs are:
+ *
+ *   - MOUSE / PEN: `DiagramCanvasComponent`'s pointer/mouse handlers build a
+ *     {@link ToolPointerEvent} per event (`toToolEvent`) and call
+ *     `pointerDown/Move/Up/Cancel` directly for the node-drag and marquee
+ *     branches of its ladder.
+ *   - TOUCH: does NOT come here at all. Touch gestures route to the shared
+ *     `TouchGestureController` from `@grafloria/renderer` (pan / pinch / tap /
+ *     long-press / drag / resize), which owns its own arbitration.
+ *
+ * For every pointer gesture the manager HIT-TESTS the scene once (on down) and
+ * routes the whole gesture to EXACTLY ONE tool — `select`, `node-drag`,
+ * `link-draw`, `marquee` or `pan`. There is never more than one active tool,
+ * which is what prevents the "everything fires at once" waterfall the canvas
+ * grew organically.
  *
  * Two correctness rules are baked in here (and unit-tested in isolation from
  * Angular / the DOM):
@@ -44,9 +57,8 @@ export interface ToolModifiers {
 }
 
 /**
- * Minimal pointer event the tools consume. This is a structural SUBSET of the
- * foundation's `PointerInputEvent`, so a `PointerInputEvent` is assignable to a
- * `ToolPointerEvent` with no adaptation — the two layers compose directly.
+ * Minimal pointer event the tools consume. Built per-event by the canvas'
+ * `toToolEvent()` from the native MouseEvent/PointerEvent.
  */
 export interface ToolPointerEvent {
   type: 'down' | 'move' | 'up' | 'cancel';
