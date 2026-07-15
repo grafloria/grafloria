@@ -5,7 +5,12 @@ import type {
   Point,
   ArrowStyle,
 } from '@grafloria/engine';
-import { PortModel, isConnectionAllowedByGroup, SetLinkPointsCommand } from '@grafloria/engine';
+import {
+  PortModel,
+  isConnectionAllowedByGroup,
+  SetLinkPointsCommand,
+  ReconnectLinkCommand,
+} from '@grafloria/engine';
 // Wave 6: THE port-position function — hit-test and magnet where you DRAW.
 import { portWorldPosition } from '../svg/port-positioning';
 import { WaypointEditor } from './WaypointEditor';
@@ -801,11 +806,38 @@ export class InteractionController {
       return false;
     }
 
-    // Reconnect the link
-    if (this.reconnectingEndpoint === 'source') {
+    // wave12: capture the OLD endpoint before mutating, so the reconnect is undoable. The
+    // link still holds its original endpoint here — the reconnect call is on the next line.
+    const endpoint = this.reconnectingEndpoint;
+    const oldPortId =
+      endpoint === 'source'
+        ? this.reconnectingLink.sourcePortId
+        : this.reconnectingLink.targetPortId;
+    const oldNodeId =
+      endpoint === 'source'
+        ? this.reconnectingLink.sourceNodeId
+        : this.reconnectingLink.targetNodeId;
+
+    // Reconnect the link (live).
+    if (endpoint === 'source') {
       this.reconnectingLink.reconnectSource(targetPort.id, targetNode.id);
     } else {
       this.reconnectingLink.reconnectTarget(targetPort.id, targetNode.id);
+    }
+
+    // …and record it as one undoable step. execute() re-applies the already-current new
+    // endpoint (a no-op); undo restores the old. Only when the endpoint actually changed.
+    if (oldPortId !== targetPort.id) {
+      void engine.commandManager.execute(
+        new ReconnectLinkCommand(
+          this.reconnectingLink.id,
+          endpoint,
+          targetPort.id,
+          targetNode.id,
+          oldPortId,
+          oldNodeId
+        )
+      );
     }
 
     // Recalculate link path

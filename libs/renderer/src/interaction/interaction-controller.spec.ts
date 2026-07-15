@@ -279,6 +279,28 @@ describe('InteractionController (framework-agnostic interaction brain)', () => {
       expect(link.targetPortId).toBe(originalTarget);
       expect(link.targetPortId).toBe(b.port.id);
     });
+
+    it('a reconnection is command-UNDOABLE (undo restores the original endpoint)', async () => {
+      const { link, b } = makeAToBLink();
+      const originalPort = link.targetPortId;
+      const originalNode = link.targetNodeId;
+      const cNode = addNode(600);
+      const cPort = sidePort(cNode, 'left');
+      const cAt = at(cNode, cPort);
+
+      controller.startLinkReconnection(link, 'target', 300, 25, engine);
+      controller.handleMouseMove(cAt.x, cAt.y, engine);
+      controller.updateLinkReconnection(cAt.x, cAt.y, engine);
+      expect(controller.completeLinkReconnection(engine)).toBe(true);
+      await new Promise((r) => setTimeout(r, 0)); // async command commit
+      expect(link.targetPortId).toBe(cPort.id);
+
+      // THE ASSERTION THAT WAS RED: undo puts the endpoint back on B.
+      await engine.undo();
+      expect(link.targetPortId).toBe(originalPort);
+      expect(link.targetPortId).toBe(b.port.id);
+      expect(link.targetNodeId).toBe(originalNode);
+    });
   });
 
   // ==========================================================================
