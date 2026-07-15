@@ -152,6 +152,9 @@ function node(id: string, x: number, y: number): NodeModel {
     size: { width: 120, height: 60 },
   });
   (n as unknown as { id: string }).id = id;
+  // The id rewrite is a test-only hack; restore the engine's own invariant that a
+  // port's nodeId is its owner's id (see test-helpers.ts for the full story).
+  for (const p of n.getPorts()) p.nodeId = id;
   n.addPort(new PortModel({ id: `${id}-out`, type: 'output', side: 'right' }));
   n.addPort(new PortModel({ id: `${id}-in`, type: 'input', side: 'left' }));
   return n;

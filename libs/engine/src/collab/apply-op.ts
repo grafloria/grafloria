@@ -400,6 +400,9 @@ function setEntityProp(
     const data = value as unknown as SerializedPort;
     const existing = entity.getPort(portId);
     if (!existing) {
+      // addPort() stamps fresh.nodeId with the owning node's id, and that stamp STANDS —
+      // see the nodeId note in updatePortInPlace for why apply never writes this field
+      // from the wire (the fuzz found both wrong answers: seeds 1062 and 33).
       entity.addPort(PortModel.fromJSON(structuredClone(data)));
       return true;
     }
@@ -619,9 +622,17 @@ function updatePortInPlace(port: PortModel, data: SerializedPort): boolean {
     (port as Record<K, unknown>)[key] = typeof want === 'object' && want !== null ? structuredClone(want) : want;
     changed = true;
   };
+  // `nodeId` is deliberately NOT written from the wire. It is STRUCTURAL — the engine's
+  // own invariant is that a port's nodeId is its owning node's id (addPort stamps it,
+  // initializeDefaultPorts stamps it), and the register path already names the owner.
+  // The fuzz proved both wrong answers: taking the wire value while the add path let
+  // addPort stamp the owner diverged the update-path peers from the add-path peers
+  // (seed 1062), and forcing the wire value onto the add path diverged the UNDO AUTHOR
+  // from everyone — capture serializes the op inside addPort's trackChange, i.e. AFTER
+  // the stamp, so the wire said "owner" while the author's model had been reset to the
+  // wire's stale value (seed 33). The stamp is deterministic on every path; let it stand.
   assign('type', data.type);
   assign('systemType', data.systemType);
-  assign('nodeId', data.nodeId);
   assign('index', data.index ?? 0);
   assign('visible', data.visible);
   assign('style', (data.style ?? {}) as PortModel['style']);

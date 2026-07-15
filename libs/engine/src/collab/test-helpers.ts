@@ -113,6 +113,13 @@ export function node(id: string, x: number, y: number): NodeModel {
     size: { width: 120, height: 60 },
   });
   (n as unknown as { id: string }).id = id;
+  // Rewriting the id above is a TEST-ONLY hack (NodeModel does not take an id), and it
+  // leaves the constructor's default ports pointing at the DISCARDED auto-generated id.
+  // The engine's invariant — a port's nodeId is its owning node's id, stamped by
+  // addPort() and initializeDefaultPorts() — must be restored, or the fuzz spends its
+  // trials chasing a document no real engine flow can produce (it did: wave14 seeds
+  // 1062/33 were this artifact wearing two different disguises).
+  for (const p of n.getPorts()) p.nodeId = id;
   n.addPort(new PortModel({ id: `${id}-out`, type: 'output', side: 'right' }));
   n.addPort(new PortModel({ id: `${id}-in`, type: 'input', side: 'left' }));
   return n;
