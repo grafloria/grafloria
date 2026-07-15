@@ -57,10 +57,52 @@ export interface WhiteboardHost {
   getEngine?(): DiagramEngine | null;
 }
 
+// ===========================================================================
+// ARBITRATION — explicit tool priorities (wave14, defect 2)
+// ===========================================================================
+//
+// All four tools used to share `priority = 1`, which resolved a double claim by
+// REGISTRATION ORDER — invisible, and wrong the day wave13 made the assumption
+// "hosts activate one tool at a time" half-false: StrokeEditTool is documented
+// to stay PERMANENTLY active alongside the others. Two tiers, stated plainly:
+//
+//   MODE tier (draw / rectangle / eraser): hitTest is POINT-AGNOSTIC — while
+//   active they claim every press. Activating one is a mode switch; hosts keep
+//   at most one active at a time (two active mode tools is a host bug no
+//   priority can repair — the tie then falls back to registration order).
+//
+//   INK tier (stroke edit): hitTest is POINT-SPECIFIC — it claims ONLY when ink
+//   is actually under the pointer (the safety property that lets it stay
+//   permanently active without eating the canvas). A specific claim outranks a
+//   broad one, so it sits strictly ABOVE the mode tier.
+//
+// CONSEQUENCE, chosen consciously: with a mode tool AND the edit tool both
+// active, a press ON INK edits (non-destructive) rather than drawing over or
+// erasing (destructive). A host that wants its eraser to consume ink while the
+// gesture is ambiguous must `setActive(false)` the edit tool for that mode —
+// the two genuinely conflict over the same press, and no ordering serves both.
+
+/**
+ * The point-agnostic MODE tools: draw, rectangle, eraser. Above the built-in
+ * ladder (0), below the ink-specific tier — see the arbitration header.
+ */
+export const WHITEBOARD_MODE_TOOL_PRIORITY = 1;
+
+/**
+ * The point-specific INK tools (stroke edit): only ever claims a press that
+ * actually lands on ink, so it must not lose that press to a mode tool that
+ * claims everything. See the arbitration header.
+ */
+export const WHITEBOARD_INK_TOOL_PRIORITY = 2;
+
 /** Common base: an overlay, an active flag, and the ROOT lookup. */
 abstract class WhiteboardTool {
   abstract readonly id: string;
-  readonly priority = 1;
+  /**
+   * Every whiteboard tool STATES its tier — see the arbitration header above.
+   * (wave14 defect 2: a shared default here let registration order decide.)
+   */
+  abstract readonly priority: number;
 
   /** When false, the tool declines every gesture — this is how a host switches tools. */
   protected active = true;
@@ -129,6 +171,7 @@ export interface DrawToolOptions {
 
 export class DrawTool extends WhiteboardTool implements CanvasTool {
   readonly id = 'whiteboard-draw';
+  readonly priority = WHITEBOARD_MODE_TOOL_PRIORITY;
   private raw: StrokePoint[] = [];
 
   constructor(host: WhiteboardHost, private readonly opts: DrawToolOptions = {}) {
@@ -203,6 +246,7 @@ export interface RectangleToolOptions {
 
 export class RectangleTool extends WhiteboardTool implements CanvasTool {
   readonly id = 'whiteboard-rectangle';
+  readonly priority = WHITEBOARD_MODE_TOOL_PRIORITY;
   private start: { x: number; y: number } | null = null;
 
   constructor(host: WhiteboardHost, private readonly opts: RectangleToolOptions = {}) {
@@ -282,6 +326,7 @@ export interface EraserToolOptions {
 
 export class EraserTool extends WhiteboardTool implements CanvasTool {
   readonly id = 'whiteboard-eraser';
+  readonly priority = WHITEBOARD_MODE_TOOL_PRIORITY;
   private last: { x: number; y: number } | null = null;
   private doomed = new Set<string>();
   private trail: Array<{ x: number; y: number }> = [];
@@ -372,7 +417,10 @@ export class EraserTool extends WhiteboardTool implements CanvasTool {
 // And because `hitTest()` here CLAIMS the gesture only when ink is actually under the
 // pointer, the tool can stay registered and active without eating the canvas: a press on a
 // node still selects the node, a drag on empty space still pans/marquees — the built-in
-// ladder runs whenever the pointer is not on ink.
+// ladder runs whenever the pointer is not on ink. Staying active ALONGSIDE another
+// whiteboard tool is what the WHITEBOARD_INK_TOOL_PRIORITY tier exists for (wave14,
+// defect 2): when both claim a press on ink, this tool's point-specific claim wins by
+// PRIORITY, not by whichever happened to register first.
 //
 // THE GESTURE: press selects (a highlight rides the overlay); drag translates — live
 // feedback is a ghost on the overlay, the MODEL IS NOT TOUCHED until pointerup; pointerup
@@ -391,6 +439,11 @@ export interface StrokeEditToolOptions {
 
 export class StrokeEditTool extends WhiteboardTool implements CanvasTool {
   readonly id = 'whiteboard-stroke-edit';
+  /**
+   * INK tier: outranks the mode tools, and is SAFE to because {@link hitTest}
+   * only ever claims a press that lands on ink — see the arbitration header.
+   */
+  readonly priority = WHITEBOARD_INK_TOOL_PRIORITY;
 
   private selected: StrokeModel | null = null;
   /** Gesture-start geometry — the FROM of the FROM→TO command. */
