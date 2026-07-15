@@ -62,8 +62,12 @@ export function estimateTextWidth(text: string, fontSize: number): number {
 
 /**
  * Break `text` into display lines: split on hard '\n', then greedily word-wrap
- * each paragraph to `maxWidth`. A single word wider than maxWidth is kept whole
- * (it is clipped, not broken) — matching the historical LabelRenderer behavior.
+ * each paragraph to `maxWidth`. A single word wider than maxWidth breaks at its
+ * HYPHENS first ("predefined-process" → "predefined-" + "process" — a hyphen is
+ * a legitimate break point; a centred clip eats BOTH ends of the word and reads
+ * as gibberish, which is exactly what the screenshot audit caught). A word with
+ * no hyphen is kept whole (clipped, not broken) — the historical LabelRenderer
+ * behavior for genuinely unbreakable runs.
  */
 export function wrapText(text: string, maxWidth: number | undefined, fontSize: number): string[] {
   const wrap = typeof maxWidth === 'number' && isFinite(maxWidth) && maxWidth > 0;
@@ -73,7 +77,10 @@ export function wrapText(text: string, maxWidth: number | undefined, fontSize: n
       lines.push(paragraph);
       continue;
     }
-    const words = paragraph.split(/\s+/).filter((w) => w.length > 0);
+    const words = paragraph
+      .split(/\s+/)
+      .filter((w) => w.length > 0)
+      .flatMap((w) => breakOversizedWord(w, maxWidth as number, fontSize));
     if (words.length === 0) {
       lines.push('');
       continue;
@@ -91,6 +98,33 @@ export function wrapText(text: string, maxWidth: number | undefined, fontSize: n
     if (current) lines.push(current);
   }
   return lines.length > 0 ? lines : [text];
+}
+
+/**
+ * Split a word that cannot fit `maxWidth` at its hyphens, greedily packing
+ * hyphen-terminated segments back together so we break as few times as
+ * possible. Fitting words — and unbreakable oversized ones — pass through
+ * unchanged. The greedy line-packer above treats the returned pieces as
+ * ordinary words; a piece already ends in '-', so no artificial hyphen is
+ * introduced.
+ */
+function breakOversizedWord(word: string, maxWidth: number, fontSize: number): string[] {
+  if (estimateTextWidth(word, fontSize) <= maxWidth || !word.includes('-')) return [word];
+  // "a-b-c" → ["a-", "b-", "c"], then greedily merge while they fit.
+  const segments = word.split(/(?<=-)/);
+  const pieces: string[] = [];
+  let current = '';
+  for (const seg of segments) {
+    const test = current + seg;
+    if (current && estimateTextWidth(test, fontSize) > maxWidth) {
+      pieces.push(current);
+      current = seg;
+    } else {
+      current = test;
+    }
+  }
+  if (current) pieces.push(current);
+  return pieces;
 }
 
 /**

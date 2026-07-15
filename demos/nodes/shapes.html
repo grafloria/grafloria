@@ -39,7 +39,9 @@ defineDemo({
     const nodes = [...FIGURES, 'star'].map((type, i) => ({
       id: type,
       position: { x: 40 + (i % 6) * 200, y: 40 + Math.floor(i / 6) * 150 },
-      size: { width: 130, height: 90 },
+      // The stadium ('terminal') squeezes its label into a much narrower inner
+      // rect than a rect of the same width — give it room for its own name.
+      size: { width: type === 'terminal' ? 170 : 130, height: 90 },
       label: type,
       shape: { type, fill: '#dbeafe', stroke: '#2563eb' },
     }));

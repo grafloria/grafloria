@@ -115,7 +115,7 @@ export function desiredNodeSize(
   const def = getShape((node.getMetadata('shape') || { type: 'rect' }).type);
 
   const pad = sizing.padding ?? 8;
-  const label = node.getMetadata('label');
+  const label = node.getLabel();
   const labelText = label === undefined || label === null ? '' : String(label);
 
   // Wrap width: if a max width is set, wrap the label to fit inside it.

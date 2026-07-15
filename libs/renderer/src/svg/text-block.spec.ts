@@ -25,8 +25,23 @@ describe('text-block engine (Card 2)', () => {
       ]);
     });
 
-    it('keeps an over-wide single word whole (clipped, not broken)', () => {
+    it('keeps an over-wide UNBREAKABLE word whole (clipped, not broken)', () => {
       expect(wrapText('supercalifragilistic', 40, 12)).toEqual(['supercalifragilistic']);
+    });
+
+    // The screenshot audit's "edefined-proce": a centred clip eats BOTH ends of
+    // an over-wide word. Hyphens are legitimate break points — break there.
+    it('breaks an over-wide word at its hyphens', () => {
+      expect(wrapText('predefined-process', 80, 12)).toEqual(['predefined-', 'process']);
+    });
+
+    it('packs hyphen segments greedily (fewest breaks that fit)', () => {
+      // "a-b-c-dddd": "a-b-c-" fits 50px (6 chars * 7.2), the tail starts fresh.
+      expect(wrapText('a-b-c-dddd', 50, 12)).toEqual(['a-b-c-', 'dddd']);
+    });
+
+    it('leaves a fitting hyphenated word alone', () => {
+      expect(wrapText('angle-down', 200, 12)).toEqual(['angle-down']);
     });
   });
 

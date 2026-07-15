@@ -1031,7 +1031,7 @@ export class KeyboardNavigationController {
 
   /** Human name of a node: its label, else its type + short id. */
   nodeName(node: NodeModel): string {
-    const label = node.getMetadata('label');
+    const label = node.getLabel();
     if (typeof label === 'string' && label.trim().length > 0) return label;
     return `${node.type} ${node.id.slice(0, 4)}`;
   }

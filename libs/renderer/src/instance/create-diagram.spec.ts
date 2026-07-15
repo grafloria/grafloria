@@ -280,6 +280,32 @@ describe('createDiagram — the headless instance', () => {
     });
   });
 
+  // The audit's "empty white boxes": four demos declared labels the LEGACY way
+  // (data.label) and the renderer gated its <text> on raw metadata — bypassing
+  // the getLabel() canon whose whole purpose is that fallback. These drive the
+  // public embed end-to-end.
+  describe('legacy data.label still renders', () => {
+    it('draws the label of a node that only carries data.label', () => {
+      diagram = createDiagram(container, {
+        nodes: [{ id: 'n', position: { x: 50, y: 50 }, size: { width: 160, height: 60 }, data: { label: 'Ingest' } }],
+      });
+      const nodeEl = container.querySelector('[data-vnode-key="node-n"]');
+      expect(nodeEl?.textContent).toContain('Ingest');
+    });
+
+    it('canonical metadata.label wins when both are present', () => {
+      diagram = createDiagram(container, {
+        nodes: [{
+          id: 'n', position: { x: 50, y: 50 }, size: { width: 160, height: 60 },
+          label: 'Canon', data: { label: 'Legacy' },
+        }],
+      });
+      const nodeEl = container.querySelector('[data-vnode-key="node-n"]');
+      expect(nodeEl?.textContent).toContain('Canon');
+      expect(nodeEl?.textContent).not.toContain('Legacy');
+    });
+  });
+
   // Also from the screenshot audit: "fit" was doing two wrong things at once —
   // magnifying small graphs wall-to-wall (8 nodes at 288% zoom), and measuring
   // only NODES, so routed edge arcs outside the node bbox got sliced off at the

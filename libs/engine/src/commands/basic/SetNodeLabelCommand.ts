@@ -42,7 +42,7 @@ export class SetNodeLabelCommand extends Command {
       this.oldLabel = node.getMetadata('label') ?? '';
     }
 
-    node.setMetadata('label', this.newLabel);
+    node.setLabel(this.newLabel);
     node.markDirty('label-edited');
   }
 
@@ -57,7 +57,7 @@ export class SetNodeLabelCommand extends Command {
       throw new Error(`Node ${this.nodeId} not found`);
     }
 
-    node.setMetadata('label', this.oldLabel);
+    node.setLabel(this.oldLabel);
     node.markDirty('label-edited');
   }
 

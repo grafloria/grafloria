@@ -76,7 +76,7 @@ export class InPlaceTextEditor {
       };
       this.session = {
         target: { ...target },
-        value: String(node.getMetadata('label') ?? ''),
+        value: String(node.getLabel() ?? ''),
         bounds,
         center: { x: bounds.x + bounds.width / 2, y: bounds.y + bounds.height / 2 },
         multiline: true,

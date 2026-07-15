@@ -460,7 +460,7 @@ export function toNodeSpec(node: NodeModel): NodeSpec {
   const data = node.data;
   if (data && Object.keys(data).length > 0) spec.data = { ...data };
 
-  const label = node.getMetadata('label');
+  const label = node.getLabel();
   if (label !== undefined) spec.label = label;
 
   const shape = node.getMetadata('shape');
@@ -488,7 +488,7 @@ export function toEdgeSpec(link: LinkModel): EdgeSpec {
   if (link.router !== undefined) spec.router = link.router;
   if (link.connector !== undefined) spec.connector = link.connector;
 
-  const label = link.getMetadata('label');
+  const label = link.getLabel();
   if (label !== undefined) spec.label = label;
   if (link.data && Object.keys(link.data).length > 0) spec.data = { ...link.data };
 

@@ -3272,7 +3272,7 @@ export class SVGRenderer implements IRenderer {
 
   /** Accessible name of a node: its label, else "<type> node". */
   private nodeAccessibleName(node: NodeModel): string {
-    const label = node.getMetadata('label');
+    const label = node.getLabel();
     if (typeof label === 'string' && label.trim().length > 0) return label;
     return `${node.type} node`;
   }
@@ -3558,14 +3558,25 @@ export class SVGRenderer implements IRenderer {
       },
     };
 
+    // A horizontal POOL (BPMN) reserves a strip at its LEFT (laneConfig
+    // headerSize), not a band on top — the screenshot audit caught "Delivery"
+    // clipped to "Deliv" because the horizontal label was crammed into that
+    // strip. Standard BPMN typography: rotate the pool title −90° and centre it
+    // in the strip. Vertical pools and plain groups keep the top band.
+    const lc = group.laneConfig;
+    const sideStrip =
+      !collapsed && lc?.role === 'pool' && lc.orientation === 'horizontal'
+        ? Math.min(lc.headerSize ?? 0, bounds.width)
+        : 0;
+
     const bandRect: VNode = {
       type: 'rect',
       key: `group-frame-band-${group.id}`,
       props: {
         x: bounds.x,
         y: bounds.y,
-        width: bounds.width,
-        height: bandHeight,
+        width: sideStrip > 0 ? sideStrip : bounds.width,
+        height: sideStrip > 0 ? bounds.height : bandHeight,
         rx: radius,
         ry: radius,
         fill: surface,
@@ -3576,24 +3587,44 @@ export class SVGRenderer implements IRenderer {
       },
     };
 
-    const label: VNode = {
-      type: 'text',
-      key: `group-frame-label-${group.id}`,
-      props: {
-        x: bounds.x + 8,
-        y: bounds.y + bandHeight / 2,
-        dominantBaseline: 'central',
-        fontSize,
-        fontFamily: this.theme.typography.fontFamily.default,
-        fontWeight: this.theme.typography.fontWeight.medium,
-        fill: c.text.primary,
-        className: 'group-frame-label',
-        textContent: group.name,
-        // The visible label; the accessible name is on the container, so hide
-        // this from AT to avoid announcing the name twice.
-        'aria-hidden': 'true',
-      },
-    };
+    const label: VNode =
+      sideStrip > 0
+        ? {
+            type: 'text',
+            key: `group-frame-label-${group.id}`,
+            props: {
+              x: bounds.x + sideStrip / 2,
+              y: bounds.y + bounds.height / 2,
+              transform: `rotate(-90, ${bounds.x + sideStrip / 2}, ${bounds.y + bounds.height / 2})`,
+              textAnchor: 'middle',
+              dominantBaseline: 'central',
+              fontSize,
+              fontFamily: this.theme.typography.fontFamily.default,
+              fontWeight: this.theme.typography.fontWeight.medium,
+              fill: c.text.primary,
+              className: 'group-frame-label group-frame-label-pool',
+              textContent: group.name,
+              'aria-hidden': 'true',
+            },
+          }
+        : {
+            type: 'text',
+            key: `group-frame-label-${group.id}`,
+            props: {
+              x: bounds.x + 8,
+              y: bounds.y + bandHeight / 2,
+              dominantBaseline: 'central',
+              fontSize,
+              fontFamily: this.theme.typography.fontFamily.default,
+              fontWeight: this.theme.typography.fontWeight.medium,
+              fill: c.text.primary,
+              className: 'group-frame-label',
+              textContent: group.name,
+              // The visible label; the accessible name is on the container, so hide
+              // this from AT to avoid announcing the name twice.
+              'aria-hidden': 'true',
+            },
+          };
 
     return {
       type: 'g',
@@ -3879,7 +3910,7 @@ export class SVGRenderer implements IRenderer {
         ...(this.lodAllows('decorations', lod) ? this.renderPanelOverlay(node) : []),
         // Label (if LOD allows and label exists) — shape-fit wrap + ellipsis,
         // clipped to the shape's inner rect (see renderNodeLabel).
-        ...(diagram.shouldRenderLabels(lod) && node.getMetadata('label')
+        ...(diagram.shouldRenderLabels(lod) && node.getLabel()
           ? this.renderNodeLabel(node)
           : []),
         // Card 4: HTML / foreignObject body (sanitized) on top of the shape
@@ -4462,7 +4493,7 @@ export class SVGRenderer implements IRenderer {
     };
 
     const text = renderTextBlock({
-      text: String(node.getMetadata('label')),
+      text: String(node.getLabel()),
       x: inner.x + inner.w / 2,
       y: inner.y + inner.h / 2,
       maxWidth: inner.w,
@@ -5502,7 +5533,7 @@ export class SVGRenderer implements IRenderer {
     // Calculate label position (middle of the link)
     const midIndex = Math.floor(points.length / 2);
     const labelPoint = points[midIndex];
-    const label = link.getMetadata('label');
+    const label = link.getLabel();
 
     // Store last point for endpoint handle rendering
     const lastPoint = points[points.length - 1];
