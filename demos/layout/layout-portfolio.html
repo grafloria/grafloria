@@ -1,0 +1,108 @@
+<meta charset="utf-8">
+<title>Layout portfolio — Grafloria</title>
+<link rel="stylesheet" href="../shell/demo.css">
+<style>
+  #bar { display: flex; gap: 8px; padding: 10px 24px; border-bottom: 1px solid rgba(127,127,127,.25); align-items: center; flex-wrap: wrap; }
+  #bar button { padding: 5px 12px; border-radius: 6px; border: 1px solid rgba(127,127,127,.4); background: transparent; color: inherit; cursor: pointer; font: inherit; }
+  #bar button[aria-pressed="true"] { background: #2563eb; border-color: #2563eb; color: #fff; }
+  #readout { margin-left: auto; font: 12px/1.4 ui-monospace, monospace; opacity: .8; }
+  #canvas { height: calc(100vh - 152px); }
+</style>
+<header id="demo-head"></header>
+<div id="bar">
+  <button data-layout="tree">tree</button>
+  <button data-layout="radial">radial</button>
+  <button data-layout="circular">circular</button>
+  <button data-layout="grid">grid</button>
+  <button data-layout="force">force</button>
+  <span id="readout"></span>
+</div>
+<div id="canvas"></div>
+<script type="module">
+import { render } from '../shell/grafloria.js';
+import { defineDemo, check, checkEqual } from '../shell/demo.js';
+import { overlaps, signature, restack, bbox, boxesIntersect } from './_layout-lib.js';
+
+// A connected graph for the five portfolio engines, PLUS a second disconnected
+// component so component packing has something to pack.
+const COMP_A = ['a0', 'a1', 'a2', 'a3', 'a4', 'a5'];
+const COMP_B = ['b0', 'b1', 'b2'];
+const NODES = [...COMP_A, ...COMP_B].map((id) => ({
+  id, position: { x: 0, y: 0 }, size: { width: 56, height: 56 }, label: id,
+}));
+const EDGES = [
+  { id: 'a01', source: 'a0', target: 'a1' },
+  { id: 'a02', source: 'a0', target: 'a2' },
+  { id: 'a13', source: 'a1', target: 'a3' },
+  { id: 'a14', source: 'a1', target: 'a4' },
+  { id: 'a25', source: 'a2', target: 'a5' },
+  // COMP_B is a separate triangle — no edge crosses between the components.
+  { id: 'b01', source: 'b0', target: 'b1' },
+  { id: 'b12', source: 'b1', target: 'b2' },
+];
+const ENGINES = ['tree', 'radial', 'circular', 'grid', 'force'];
+
+defineDemo({
+  name: 'Layout portfolio',
+  blurb: 'Five engines — tree, radial, circular, grid, force — over one graph, each a genuinely different picture, none overlapping. And a disconnected component is PACKED beside the rest, not laid on top of it.',
+  reactflow: 'Layout portfolio',
+
+  async setup(ctx) {
+    const api = render({ nodes: NODES, edges: EDGES }, ctx.host);
+    ctx.instance = api;
+    ctx.diagram = api.getModel();
+    ctx.engine = api.getEngine();
+    ctx.runLayout = async (name) => {
+      restack(ctx.diagram);
+      const r = await ctx.engine.layout(name, { nodeSpacing: 36, rankSpacing: 70 });
+      api.renderNow();
+      api.fitView(40);
+      for (const b of document.querySelectorAll('#bar button')) {
+        b.setAttribute('aria-pressed', String(b.dataset.layout === name));
+      }
+      document.getElementById('readout').textContent = `${name}: ${overlaps(ctx.diagram).length} overlaps`;
+      return r;
+    };
+    await ctx.runLayout('tree');
+  },
+
+  async assert(ctx) {
+    const model = ctx.diagram;
+    const sigs = new Map();
+
+    for (const name of ENGINES) {
+      const r = await ctx.runLayout(name);
+
+      // 1. Ran and committed a position for every node.
+      check(r.nodePositions.size === NODES.length, `${name}: ${r.nodePositions.size}/${NODES.length} positions`);
+      const stacked = model.getNodes().filter((n) => n.position.x === 0 && n.position.y === 0);
+      check(stacked.length <= 1, `${name}: ${stacked.length} nodes still stacked at (0,0)`);
+
+      // 2. No overlaps.
+      check(overlaps(model).length === 0, `${name}: overlaps — ${overlaps(model).slice(0, 4).join(', ')}`);
+
+      // 3. Distinct from every other engine — five engines, five pictures.
+      const sig = signature(model);
+      for (const [other, otherSig] of sigs) {
+        check(sig !== otherSig, `${name} produced the identical picture to ${other} — one engine is not really running`);
+      }
+      sigs.set(name, sig);
+
+      // 4. DETERMINISM per engine.
+      const rerun = await ctx.runLayout(name);
+      checkEqual(signature(model), sig, `${name}: two identical runs differ`);
+      void rerun;
+    }
+
+    // 5. COMPONENT PACKING. The two disconnected components must not sit on top of
+    //    each other — their bounding boxes are disjoint. (Without packing, a layout
+    //    lays every component at its own origin and they collide — the exact bug the
+    //    host's packing wrapper exists to kill.)
+    await ctx.runLayout('grid');
+    const boxA = bbox(model, COMP_A);
+    const boxB = bbox(model, COMP_B);
+    check(!boxesIntersect(boxA, boxB),
+      `the two disconnected components overlap — component packing did not run (A=${JSON.stringify(boxA)} B=${JSON.stringify(boxB)})`);
+  },
+});
+</script>
