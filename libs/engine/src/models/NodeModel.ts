@@ -79,7 +79,11 @@ export interface SerializedNode extends SerializedEntity {
   behavior: NodeBehavior;
   style: Partial<NodeStyle>;
   data: Record<string, any>;
-  behaviorOverrides?: Record<string, Partial<NodeBehavior>>; // Mode-specific behavior overrides
+  // wave14/model — `behaviorOverrides` DELETED. It was dead machinery: its only reader
+  // was DiagramEngine.getNodeBehaviorForMode, itself dead outside its own spec; the real
+  // read-only mechanism is the wave-9 ReadonlyLock. Legacy documents that still carry the
+  // key deserialize cleanly (fromJSON ignores unknown keys) and re-save WITHOUT it — see
+  // NodeModel.legacy-keys.spec.ts for why that does not break the round-trip invariant.
   positionMode?: PositioningMode; // Phase 1.6a: Positioning mode
   transformOrigin?: Point; // Phase 1.6a: Transform origin (normalized 0-1)
   flexConfig?: FlexItemConfig; // Phase 1.7: Flexbox item configuration
@@ -156,9 +160,6 @@ export class NodeModel extends DiagramEntity {
     groupable: true,
     cloneable: true,
   };
-
-  // Mode-specific behavior overrides
-  behaviorOverrides: Map<string, Partial<NodeBehavior>> = new Map();
 
   // Styling
   style: Partial<NodeStyle> = {};
@@ -756,37 +757,6 @@ export class NodeModel extends DiagramEntity {
       this.children.delete(childId);
       this.trackChange('children', childId, null);
     }
-  }
-
-  /**
-   * Set behavior override for specific mode
-   */
-  setBehaviorOverride(mode: string, behavior: Partial<NodeBehavior>): void {
-    this.behaviorOverrides.set(mode, behavior);
-    this.version++;
-  }
-
-  /**
-   * Clear behavior override for specific mode
-   */
-  clearBehaviorOverride(mode: string): void {
-    this.behaviorOverrides.delete(mode);
-    this.version++;
-  }
-
-  /**
-   * Get behavior override for specific mode
-   */
-  getBehaviorOverride(mode: string): Partial<NodeBehavior> | undefined {
-    return this.behaviorOverrides.get(mode);
-  }
-
-  /**
-   * Clear all behavior overrides
-   */
-  clearAllBehaviorOverrides(): void {
-    this.behaviorOverrides.clear();
-    this.version++;
   }
 
   /**
@@ -1447,11 +1417,6 @@ export class NodeModel extends DiagramEntity {
       transformOrigin: { ...this.transformOrigin }, // Phase 1.6a
     };
 
-    // Include behavior overrides if any exist
-    if (this.behaviorOverrides.size > 0) {
-      serialized.behaviorOverrides = Object.fromEntries(this.behaviorOverrides);
-    }
-
     // Phase 1.7: Include layout configs if they exist
     if (this.flexConfig) {
       serialized.flexConfig = { ...this.flexConfig };
@@ -1520,12 +1485,8 @@ export class NodeModel extends DiagramEntity {
       }
     }
 
-    // Restore behavior overrides
-    if (data.behaviorOverrides) {
-      for (const [mode, behavior] of Object.entries(data.behaviorOverrides)) {
-        node.behaviorOverrides.set(mode, behavior);
-      }
-    }
+    // (wave14/model — a legacy `behaviorOverrides` key, if present, is deliberately
+    // IGNORED here: unknown-key tolerance. See the note on SerializedNode.)
 
     // Restore Phase 1.7 layout configs
     if (data.flexConfig) {
