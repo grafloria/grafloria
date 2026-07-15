@@ -29,6 +29,30 @@ So: **a broken demo is a red gate.** `demos/e2e/gallery-run.mjs` loads every pag
 gallery in headless Chromium, drives it, and asserts it did something real. If a feature
 regresses, the demo that shows it off goes red, and CI fails.
 
+## And working is not enough: the VISUAL gate
+
+The 2026-07-15 screenshot audit found **47 visual defects sitting behind 89 green
+asserts** — fish-hook edges from a frozen default port pick, group frames hiding their
+own labels, a fit that magnified 8 nodes to 288% zoom, a blank canvas over three
+perfectly true status lines. "The feature works" and "the picture is right" are
+different claims, so they have different gates:
+
+- `node demos/e2e/shoot.mjs [--out dir] [category]` — captures every demo as
+  `boot` / `after` / (optional) `showcase` PNGs + a manifest. `showcase` is the money
+  shot a round-tripping assert can never photograph (helper lines lit mid-drag, the
+  collapsed group, the dark palette) — a demo declares one via `showcase(ctx)` in
+  `defineDemo`, and it runs on a fresh page load, never as a gate.
+- `node demos/e2e/visual-run.mjs` — re-captures all frames and pixel-diffs each against
+  its blessed golden in `demos/e2e/goldens/` (the diff runs inside headless Chromium —
+  zero added dependencies). Failures write a magenta `<name>.diff.png` next to the capture.
+- `node demos/e2e/visual-run.mjs --update` — re-bless after a DELIBERATE visual change:
+  captures twice, measures each frame's own run-to-run jitter, and derives its tolerance
+  from that evidence (`tolerances.json` records both). Frames jitterier than 5% are
+  excluded loudly, listed on every run. Goldens are per-platform (font rasterization).
+
+The tolerance floor is mutation-tested: an uppercased-labels mutation survived a 0.15%
+floor and is caught at 0.02% with zero false positives across the other 184 frames.
+
 ## Layout
 
 ```
@@ -36,7 +60,11 @@ demos/
   index.html              the gallery grid
   shell/                  shared page shell, styles, and the demo contract
   nodes/  edges/  interaction/  layout/  styling/  grouping/  collab/  misc/
-  e2e/gallery-run.mjs     drives EVERY demo and asserts it works
+  e2e/gallery-run.mjs     drives EVERY demo and asserts it works   (the FUNCTIONAL gate)
+  e2e/visual-run.mjs      pixel-diffs every frame vs its golden     (the VISUAL gate)
+  e2e/shoot.mjs           captures boot/after/showcase PNGs (used by visual-run)
+  e2e/goldens/            blessed frames + jitter-derived tolerances.json
+  e2e/probe-fit.mjs       one-off probe: content bounds vs visible viewBox
 ```
 
 ## The contract every demo must meet
@@ -57,5 +85,5 @@ demos/
 
 Stated here rather than left as a silent gap, and kept in step with `reactflow.dev/examples`:
 
-- Nothing currently. (Freehand draw / eraser / rectangle were React Flow's Whiteboard
-  category and are being built as their own wave; until they land, they are listed here.)
+- Nothing currently. (The whiteboard wave landed: freehand draw, eraser, rectangle and
+  stroke-edit are demos in `whiteboard/` with the same teeth as everything else.)
