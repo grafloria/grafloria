@@ -55,12 +55,14 @@ defineDemo({
     const ort = textNode(ctx.host, 'ORT');
     check(out && inl && ort, 'not all three port labels rendered');
 
-    // OUTSIDE sits left of the left glyph (negative x); INSIDE sits to its right
-    // (positive x, into the node); ORTHOGONAL is offset along the edge (small |x|).
+    // The node is 180px wide (local x range 0..180). OUTSIDE the LEFT port pushes
+    // the label past the left edge (x < 0); INSIDE the RIGHT port pulls it back
+    // into the body (x < 180, not beyond the right edge). Flipping either placement
+    // to 'outside' moves it to the wrong side of its edge.
+    const NODE_W = 180;
     const ox = +out.getAttribute('x'), ix = +inl.getAttribute('x');
-    check(ox < 0, `an 'outside' label on the left port should have x<0, got ${ox}`);
-    check(ix > 0, `an 'inside' label should be pulled toward the node body (x>0), got ${ix}`);
-    check(ox !== ix, 'inside and outside placements landed in the same spot');
+    check(ox < 0, `an 'outside' label on the LEFT port should sit past the left edge (x<0), got ${ox}`);
+    check(ix > 0 && ix < NODE_W, `an 'inside' label on the RIGHT port should be pulled INTO the body (0<x<${NODE_W}), got ${ix}`);
 
     // Orthogonal is a genuinely different placement from outside.
     const orx = +ort.getAttribute('x'), ory = +ort.getAttribute('y');

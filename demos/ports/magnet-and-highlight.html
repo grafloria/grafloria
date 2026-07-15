@@ -9,12 +9,12 @@
 <div id="hint">While you drag a connection, every VALID target lights up and the cursor snaps to the nearest one — even from 20px away.</div>
 <div id="canvas"></div>
 <script type="module">
-import { render, registerConnectionValidator, clearConnectionValidators } from '../shell/grafloria.js';
+import { render } from '../shell/grafloria.js';
 import { defineDemo, check } from '../shell/demo.js';
 
 // Two affordances that only work if the connection state manager is really running:
 //   HIGHLIGHT — every valid target port lights up the moment a drag starts, and an
-//               invalid one (here, another output) stays dark;
+//               invalid one (here, another OUTPUT — outputs are never targets) stays dark;
 //   MAGNET    — the drop snaps to the nearest valid port within snapToPortRadius
 //               (30px), so you don't have to hit a 13px glyph dead-centre.
 const NODES = [
@@ -34,10 +34,8 @@ defineDemo({
   reactflow: 'Connection Snapping',
 
   async setup(ctx) {
-    clearConnectionValidators();
-    registerConnectionValidator(({ sourcePort, targetPort }) =>
-      sourcePort && targetPort && sourcePort.type === 'output' && targetPort.type === 'output'
-        ? 'outputs are not targets' : true);
+    // No host validator: an output source's valid targets are the INPUT ports,
+    // decided by the engine's native connection rules. The stray output stays dark.
     ctx.instance = render({ nodes: NODES, edges: [] }, ctx.host, { interaction: { portVisibility: 'always' } });
     ctx.diagram = ctx.instance.getModel();
     ctx.pointer = (type, wx, wy) => {
