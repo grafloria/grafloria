@@ -1,0 +1,63 @@
+<meta charset="utf-8">
+<title>Rectangle tool — Grafloria</title>
+<link rel="stylesheet" href="../shell/demo.css">
+<header id="demo-head"></header>
+<div id="canvas"></div>
+<script type="module">
+import { render, registerTool, createRectangleTool } from '../shell/grafloria.js';
+import { defineDemo, check } from '../shell/demo.js';
+
+function gesture(host, from, to, steps) {
+  const rect = host.getBoundingClientRect();
+  const fire = (type, x, y, buttons) =>
+    host.dispatchEvent(new PointerEvent(type, {
+      pointerType: 'mouse', button: 0, buttons, bubbles: true,
+      clientX: rect.left + x, clientY: rect.top + y,
+    }));
+  fire('pointerdown', from.x, from.y, 1);
+  for (let i = 1; i <= steps; i++) {
+    const t = i / steps;
+    fire('pointermove', from.x + (to.x - from.x) * t, from.y + (to.y - from.y) * t, 1);
+  }
+  fire('pointerup', to.x, to.y, 0);
+}
+
+defineDemo({
+  name: 'Rectangle tool',
+  blurb: 'Drag out a rectangle. It becomes a real NODE — connectable, resizable, laid out — because a rectangle IS a box, unlike freehand ink.',
+  reactflow: 'Shapes',
+
+  async setup(ctx) {
+    const api = render({ nodes: [], edges: [] }, ctx.host);
+    ctx.instance = api;
+    ctx.diagram = api.getModel();
+    registerTool(createRectangleTool(api, { fill: '#dbeafe', stroke: '#2563eb', strokeWidth: 2, label: 'Box' }));
+    await ctx.tick();
+  },
+
+  async assert(ctx) {
+    check(ctx.diagram.getNodes().length === 0, 'expected a blank canvas to start');
+
+    // Drag a box from (120,100) to (420,280): a 300×180 rectangle.
+    gesture(ctx.host, { x: 120, y: 100 }, { x: 420, y: 280 }, 12);
+    await ctx.tick();
+
+    // 1. A NODE now exists — the rectangle tool creates a box, not ink. (Mutation test: make
+    //    RectangleTool.onPointerUp a no-op and this goes red.)
+    const nodes = ctx.diagram.getNodes();
+    check(nodes.length === 1, `expected 1 rectangle node, found ${nodes.length}`);
+
+    // 2. It is sized and placed to the drag, and carries the rectangle shape the cascade reads.
+    const node = nodes[0];
+    check(node.size.width === 300 && node.size.height === 180,
+      `expected 300×180, got ${node.size.width}×${node.size.height}`);
+    check(node.position.x === 120 && node.position.y === 100,
+      `expected origin (120,100), got (${node.position.x},${node.position.y})`);
+    check(node.style.shape === 'rectangle', `expected style.shape=rectangle, got ${node.style.shape}`);
+
+    // 3. Being a NODE, not ink, it is a real diagram participant: it painted with a node id.
+    const painted = ctx.host.querySelectorAll('[data-node-id]');
+    check(painted.length === 1, `expected 1 node in the DOM, found ${painted.length}`);
+  },
+});
+</script>

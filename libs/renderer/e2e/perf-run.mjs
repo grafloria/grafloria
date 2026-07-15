@@ -135,6 +135,14 @@ const BUDGETS = [
   // the exact regression it exists to catch was happening. A gate that cannot fail is not
   // a gate. (wave9/comments got this right independently, with the same 1ms reasoning.)
   { scenario: 'idle-frame-presence', nodes: 10000, maxMs: 1 },
+  // wave10/whiteboard. 500 committed ink strokes on a 10k-node scene must cost the IDLE frame
+  // nothing. Committed ink is in the VNode tree (it is content), so it is paid for ONCE when
+  // drawn and then, idle, the frame gate skips it exactly like everything else. 1ms — not
+  // 600 — for the same reason as the two fences above: at 600ms a disarmed gate rebuilding
+  // the whole scene (~15ms) would pass, and a fence that cannot fail protects nothing. The
+  // in-progress stroke is not measured here at all: it lives on the overlay and never touches
+  // a frame, which is the whole design.
+  { scenario: 'idle-frame+500-strokes', nodes: 10000, maxMs: 1 },
 ];
 
 const failures = [];

@@ -23,7 +23,7 @@
 // The numbers are reported, not asserted, on the first run: this run establishes the
 // baseline. `perf-run.mjs` then gates against budgets so a regression fails CI.
 
-import { DiagramEngine, DiagramModel, NodeModel, LinkModel, PortModel, CommentStore } from '@grafloria/engine';
+import { DiagramEngine, DiagramModel, NodeModel, LinkModel, PortModel, CommentStore, StrokeModel } from '@grafloria/engine';
 import {
   SVGRenderer,
   VNodePatcher,
@@ -398,6 +398,44 @@ export function runPerfSuite(container: HTMLElement, counts: number[]): PerfSamp
     presenceOverlay.dispose();
     presenceRoot.remove();
 
+    // ------------------------------------------- wave10/whiteboard (Card: perf fence)
+    // =========================================================================
+    // THE CLAIM: 500 committed ink strokes on a 10,000-node scene cost the IDLE frame
+    // nothing. Committed ink is document CONTENT (it is in the VNode tree, unlike the
+    // in-progress stroke, which lives on an overlay), so the moment it is added it moves the
+    // mutation epoch and the next frame pays to build 500 <path> elements — once. After that,
+    // idle, nothing has changed, and the frame gate MUST skip exactly as it does for a scene
+    // with no ink. If this row ever climbs off 0.0ms, either the gate has been disarmed or
+    // stroke culling has gone O(scene) — the same regressions the comment/presence fences
+    // above exist to catch, now for ink.
+    //
+    // 500 strokes, 12 samples each — a busy whiteboard, drawn all over the visible slice.
+    for (let i = 0; i < 500; i++) {
+      const ox = (i % 40) * 40;
+      const oy = Math.floor(i / 40) * 60;
+      const pts = [];
+      for (let k = 0; k < 12; k++) pts.push({ x: ox + k * 3, y: oy + Math.sin(k) * 5 });
+      diagram.addStroke(new StrokeModel(pts, { color: '#1f2933', width: 3 }));
+    }
+    // The paid frame that actually builds the 500 paths — NOT measured, it is the price of
+    // adding the ink, not of existing with it.
+    patcher.reconcile(svg as unknown as Element, renderer.render(viewport, 1) as never);
+
+    const strokeIdle: number[] = [];
+    for (let f = 0; f < 20; f++) {
+      const t = now();
+      const vnode = renderer.render(viewport, 1) as never;
+      patcher.reconcile(svg as unknown as Element, vnode);
+      strokeIdle.push(now() - t);
+    }
+    record({
+      scenario: 'idle-frame+500-strokes',
+      nodes: count,
+      links: linkCount,
+      ms: median(strokeIdle),
+      worstMs: Math.max(...strokeIdle),
+      frames: strokeIdle.length,
+    });
 
     renderer.dispose();
     engine.destroy();

@@ -13,7 +13,7 @@
 // that axe STILL catches it. If someone silently weakens the ruleset, that
 // control goes green-when-it-should-be-red and the run fails.
 
-import { DiagramEngine, NodeModel, LinkModel, CommentStore } from '@grafloria/engine';
+import { DiagramEngine, NodeModel, LinkModel, CommentStore, StrokeModel } from '@grafloria/engine';
 import {
   SVGRenderer,
   LIGHT_THEME,
@@ -140,12 +140,57 @@ diagram.removeNode(doomed.id);
 
 const overlay = new CommentOverlayController(comments, renderer);
 
+// wave10/whiteboard: REAL ink on the REAL diagram, so axe audits the a11y story for strokes
+// rather than us asserting it in a unit test. Two strokes, two treatments:
+//   • an ANONYMOUS scribble — a circle round the decision node — which is decorative and must
+//     be aria-hidden (announcing "graphics-object" for every doodle is noise, not access);
+//   • a NAMED annotation ("reject path") — content with meaning — exposed as role=img with
+//     that name. An unlabelled <path> left NAMELESS in the a11y tree is exactly what axe
+//     flags, which is why anonymous ink is hidden and naming is opt-in.
+diagram.addStroke(
+  new StrokeModel(
+    [
+      { x: 250, y: 30 }, { x: 360, y: 30 }, { x: 365, y: 90 }, { x: 250, y: 95 }, { x: 250, y: 30 },
+    ],
+    { color: '#e11d48', width: 3 }
+  )
+);
+diagram.addStroke(
+  new StrokeModel(
+    [{ x: 300, y: 210 }, { x: 380, y: 260 }, { x: 460, y: 250 }],
+    { color: '#2563eb', width: 4 },
+    { label: 'reject path' }
+  )
+);
+
 const vnode = renderer.render({ x: 0, y: 0, width: 900, height: 460 }, 1);
 const svgEl = createDomElement(vnode) as SVGElement;
 svgEl.setAttribute('width', '900');
 svgEl.setAttribute('height', '460');
 main.appendChild(svgEl);
 (window as any).__SVG__ = svgEl;
+
+// wave10/whiteboard a11y assertions — the ink story, checked against the rendered DOM.
+{
+  const inkPaths = Array.from(svgEl.querySelectorAll('.grafloria-stroke')) as SVGPathElement[];
+  expectThat(
+    'wave10/whiteboard: committed ink renders as <path> in the a11y-audited SVG',
+    inkPaths.length === 2,
+    `found ${inkPaths.length} stroke paths`
+  );
+  const anon = inkPaths.find((p) => p.getAttribute('aria-hidden') === 'true');
+  const named = inkPaths.find((p) => p.getAttribute('role') === 'img');
+  expectThat(
+    'wave10/whiteboard: anonymous ink is aria-hidden (decorative, not announced)',
+    !!anon && anon.getAttribute('role') === null,
+    anon ? 'ok' : 'no aria-hidden stroke found'
+  );
+  expectThat(
+    'wave10/whiteboard: NAMED ink is a role=img with its label as the accessible name',
+    !!named && named.getAttribute('aria-label') === 'reject path',
+    named ? named.getAttribute('aria-label') ?? '' : 'no named stroke found'
+  );
+}
 
 // ---------------------------------------------------------------------------
 // WAVE 9 (Collaboration), Card 5 — LIVE PRESENCE, MOUNTED INSIDE THE CELL AXE SCANS.

@@ -1,0 +1,72 @@
+<meta charset="utf-8">
+<title>Freehand draw — Grafloria</title>
+<link rel="stylesheet" href="../shell/demo.css">
+<header id="demo-head"></header>
+<div id="canvas"></div>
+<script type="module">
+import { render, registerTool, createDrawTool } from '../shell/grafloria.js';
+import { defineDemo, check } from '../shell/demo.js';
+
+// Dispatch ONE real pointer gesture at the canvas — down, N moves, up — in element-local
+// coordinates (viewport is at origin, zoom 1, so local px == world units).
+function gesture(host, from, to, steps) {
+  const rect = host.getBoundingClientRect();
+  const fire = (type, x, y, buttons) =>
+    host.dispatchEvent(new PointerEvent(type, {
+      pointerType: 'mouse', button: 0, buttons, bubbles: true,
+      clientX: rect.left + x, clientY: rect.top + y,
+    }));
+  fire('pointerdown', from.x, from.y, 1);
+  for (let i = 1; i <= steps; i++) {
+    const t = i / steps;
+    // a wavy line, so there is real shape to preserve AND real noise to simplify away
+    fire('pointermove', from.x + (to.x - from.x) * t, from.y + (to.y - from.y) * t + Math.sin(i) * 6, 1);
+  }
+  fire('pointerup', to.x, to.y, 0);
+  return steps + 1; // raw samples we fed in
+}
+
+defineDemo({
+  name: 'Freehand draw',
+  blurb: 'Draw ink with a pointer or a finger. The line commits as one simplified stroke entity — real vector ink, not a screenshot.',
+  reactflow: 'Freehand Draw',
+  pro: true, // React Flow ships freehand as a Pro/paid example; this is the last genuine gap.
+
+  async setup(ctx) {
+    const api = render({ nodes: [], edges: [] }, ctx.host);
+    ctx.instance = api;
+    ctx.diagram = api.getModel();
+    // Register the pencil against the live instance. hitTest claims every gesture while active.
+    registerTool(createDrawTool(api, { color: '#e11d48', width: 3, simplifyEpsilon: 0.8 }));
+    await ctx.tick();
+  },
+
+  async assert(ctx) {
+    check(ctx.diagram.getStrokes().length === 0, 'expected a blank canvas to start');
+
+    const raw = gesture(ctx.host, { x: 120, y: 120 }, { x: 620, y: 300 }, 40);
+    await ctx.tick();
+
+    // 1. A STROKE ENTITY now exists in the model — the consequence, not "an SVG appeared".
+    const strokes = ctx.diagram.getStrokes();
+    check(strokes.length === 1, `expected 1 committed stroke, found ${strokes.length}`);
+
+    // 2. IT WAS SIMPLIFIED. A 500-point trace that persists as 500 points is a bug; this asserts
+    //    the committed geometry has FEWER points than the raw samples we fed in. (Mutation test:
+    //    delete the fromRawPoints simplify call in StrokeModel and this line goes red.)
+    const committed = strokes[0].pointCount;
+    check(
+      committed > 1 && committed < raw,
+      `expected simplification: committed ${committed} points from ${raw} raw samples`
+    );
+
+    // 3. It actually PAINTED as vector ink in the real DOM.
+    const inkPaths = ctx.host.querySelectorAll('path.grafloria-stroke');
+    check(inkPaths.length === 1, `expected 1 ink <path> in the DOM, found ${inkPaths.length}`);
+    check(
+      inkPaths[0].getAttribute('aria-hidden') === 'true',
+      'anonymous ink must be aria-hidden (decorative, not announced to a screen reader)'
+    );
+  },
+});
+</script>

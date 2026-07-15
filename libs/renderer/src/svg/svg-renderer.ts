@@ -97,6 +97,8 @@ import { hasDocument } from '../platform';
 import type { ViewLifecycle } from '../lazy/view-lifecycle';
 // wave9/comments (Card 6): anchored comment pins, drawn in WORLD space inside the viewBox.
 import { renderCommentPins } from '../comments/comment-pins';
+// wave10/whiteboard: committed ink is document content and belongs in the VNode tree.
+import { renderStrokesLayer } from './stroke-layer';
 import type { CommentSource } from '../comments/comment-overlay';
 import type { EntityKind as LazyEntityKind } from '../lazy/types';
 
@@ -914,6 +916,15 @@ export class SVGRenderer implements IRenderer {
     // canvas with no comment system pays literally nothing — not a layer, not a query.
     const commentsLayer = this.renderCommentsLayer(visibleRect, zoom);
 
+    // wave10/whiteboard: committed ink. Null (and zero cost) on a canvas with no strokes.
+    // Culled by a linear bounds scan — strokes are rare (tens, not tens of thousands), so
+    // this is microseconds even at 500 strokes; the model documents where a SpatialIndex
+    // would go if that ever stops being true.
+    const strokesLayer =
+      diagram.strokes.size > 0
+        ? renderStrokesLayer(diagram.getVisibleStrokes(visibleRect))
+        : null;
+
     // Card 2: assemble the deduped paint-server `<defs>` populated while the
     // layers rendered. Appended LAST (not prepended) so existing positional
     // children[0]=links / children[1]=nodes contracts stay intact; SVG resolves
@@ -943,9 +954,20 @@ export class SVGRenderer implements IRenderer {
       // children[1]=nodes are a documented positional contract that other code reads. It
       // is last in document order, which in SVG means it paints ON TOP: a pin that a node
       // could cover is a pin nobody can click.
-      children: commentsLayer
-        ? [linksLayer, nodesLayer, connectionPreviewLayer, defsNode, commentsLayer]
-        : [linksLayer, nodesLayer, connectionPreviewLayer, defsNode],
+      //
+      // wave10/whiteboard: committed ink is appended too — after the diagram, before the
+      // comment pins — so ink paints OVER nodes and links (annotation you must be able to
+      // see) but UNDER the pins (which stay on top so they remain clickable). Nulls are
+      // filtered, so the [0]=links / [1]=nodes contract is untouched whenever there is no
+      // ink and no comment system.
+      children: [
+        linksLayer,
+        nodesLayer,
+        connectionPreviewLayer,
+        defsNode,
+        strokesLayer,
+        commentsLayer,
+      ].filter((c): c is VNode => c !== null),
     };
 
     // wave8/dirty — arm the gate for the NEXT frame.

@@ -1,6 +1,11 @@
 import type { DiagramEngine, LinkModel, NodeModel } from '@grafloria/engine';
 import type { InteractionController } from './interaction-controller';
 import type { CanvasRect, ViewportController } from '../viewport/viewport-controller';
+// wave10/whiteboard: touch must give a registered tool first refusal too, or drawing with a
+// finger is impossible — the whiteboard tools would only work with a mouse. Same registry,
+// same single-active-tool rule as the DomEventBinder's mouse ladder.
+import { resolveTool } from '../ext/tools';
+import type { CanvasTool, ToolHitContext, ToolPointerEvent } from '../ext/tools';
 
 /**
  * Touch & mobile gestures — Wave 9, Card 2.
@@ -111,6 +116,8 @@ type SingleAction =
   | { kind: 'pan'; lastX: number; lastY: number }
   | { kind: 'node'; nodeIds: string[]; lastWorldX: number; lastWorldY: number; committed: boolean }
   | { kind: 'connect' }
+  // wave10/whiteboard: a registered tool (draw / rectangle / eraser) owns this finger.
+  | { kind: 'tool'; tool: CanvasTool; hit: ToolHitContext }
   | { kind: 'pinch' };
 
 export class TouchGestureController {
@@ -194,6 +201,24 @@ export class TouchGestureController {
 
     this.armLongPress(event, worldX, worldY);
 
+    // wave10/whiteboard: a REGISTERED TOOL gets first refusal, exactly as on the mouse ladder
+    // — otherwise the whiteboard tools would only work with a mouse and touch-run's "drawing
+    // MUST work with a finger" gate could never pass. A claiming tool owns the whole gesture
+    // (move/up/cancel); the long-press-to-menu gesture is disarmed so a slow draw does not pop
+    // a context menu mid-line.
+    if (!this.host.isReadonly()) {
+      const toolEvent = this.toToolEvent('down', event, worldX, worldY);
+      const toolHit = this.toToolHit(worldX, worldY, engine);
+      const tool = resolveTool(toolEvent, toolHit);
+      if (tool) {
+        this.cancelLongPress();
+        this.action = { kind: 'tool', tool, hit: toolHit };
+        tool.onPointerDown?.(toolEvent, toolHit);
+        this.host.requestRender();
+        return;
+      }
+    }
+
     // Port → connection drag. Read-only refuses.
     if (!this.host.isReadonly() && state.hoveredPort) {
       this.host.interaction.startConnection(state.hoveredPort, worldX, worldY, engine);
@@ -252,6 +277,13 @@ export class TouchGestureController {
     }
 
     switch (this.action.kind) {
+      case 'tool': {
+        const { x, y } = this.toWorld(event);
+        this.action.tool.onPointerMove?.(this.toToolEvent('move', event, x, y), this.action.hit);
+        this.host.requestRender();
+        return;
+      }
+
       case 'pan': {
         // Drag RIGHT ⇒ camera LEFT, so content follows the finger.
         this.host.viewport.panByScreenDelta(
@@ -332,6 +364,13 @@ export class TouchGestureController {
       this.travelled(tracked) <= this.options.moveTolerancePx;
 
     switch (this.action.kind) {
+      case 'tool': {
+        const { x, y } = this.clientToWorld(event.clientX, event.clientY);
+        this.action.tool.onPointerUp?.(this.toToolEvent('up', event, x, y), this.action.hit);
+        this.host.requestRender();
+        break;
+      }
+
       case 'connect':
         this.host.interaction.completeConnection(engine);
         this.host.requestRender();
@@ -527,8 +566,49 @@ export class TouchGestureController {
     if (this.action.kind === 'connect') {
       this.host.interaction.cancelConnection(engine);
       this.host.requestRender();
+    } else if (this.action.kind === 'tool') {
+      // A second finger (pinch) or an OS interruption mid-draw: discard the in-progress
+      // stroke rather than committing a half-line.
+      this.action.tool.onCancel?.();
+      this.host.requestRender();
     }
     this.action = { kind: 'none' };
+  }
+
+  /** Adapt a touch PointerEvent to the framework-free tool contract. */
+  private toToolEvent(
+    type: 'down' | 'move' | 'up' | 'cancel',
+    event: PointerEvent,
+    worldX: number,
+    worldY: number
+  ): ToolPointerEvent {
+    const rect = this.host.getRect();
+    return {
+      type,
+      world: { x: worldX, y: worldY },
+      screen: { x: event.clientX - rect.left, y: event.clientY - rect.top },
+      modifiers: {
+        shift: event.shiftKey,
+        ctrl: event.ctrlKey,
+        alt: event.altKey,
+        meta: event.metaKey,
+      },
+      source: event,
+    };
+  }
+
+  /** What the finger landed on, resolved once on pointerdown. */
+  private toToolHit(worldX: number, worldY: number, engine: DiagramEngine): ToolHitContext {
+    const diagram = engine.getDiagram();
+    const state = this.host.interaction.getState();
+    const node = diagram?.getNodeAtPosition(worldX, worldY) ?? undefined;
+    return {
+      node: node ?? undefined,
+      link: state.hoveredLink ?? undefined,
+      port: state.hoveredPort ?? undefined,
+      empty: !node && !state.hoveredLink && !state.hoveredPort,
+      nodeWasSelected: node ? node.state?.selected === true : false,
+    };
   }
 
   private travelled(p: TrackedPointer): number {
