@@ -12,8 +12,8 @@
 // does not implement touch-action, and it will happily deliver a synthetic touch
 // sequence that a real browser would never produce.
 
-import { DiagramEngine, DiagramMode, NodeModel } from '@grafloria/engine';
-import { createDiagram, createDrawTool, registerTool } from '@grafloria/renderer';
+import { DiagramEngine, DiagramMode, NodeModel, StrokeModel } from '@grafloria/engine';
+import { createDiagram, createDrawTool, createStrokeEditTool, registerTool } from '@grafloria/renderer';
 // The renderer's own port geometry — the SAME function the hit test resolves
 // against. Computing port centres any other way in a test would be testing the
 // test. (Deep import: not on the public barrel.)
@@ -58,6 +58,12 @@ const instance = createDiagram(stage, {
 // proved through the real touch pipeline in a real browser.
 const drawTool = createDrawTool(instance, { active: false, simplifyEpsilon: 0.6 });
 registerTool(drawTool);
+
+// wave13/stroke-edit: the EDIT tool, same recipe — inactive until its scenario flips it on.
+// Unlike the draw tool it claims a gesture ONLY when the finger lands ON ink (geometric
+// hit-test against the model), so even while active it must not eat pan/tap elsewhere.
+const editTool = createStrokeEditTool(instance, { active: false, tolerance: 10 });
+registerTool(editTool);
 
 const events: Array<{ type: string; detail?: unknown }> = [];
 for (const name of ['node:click', 'edge:click', 'selection:change', 'contextmenu', 'nodes:change'] as const) {
@@ -208,6 +214,39 @@ for (const name of ['node:click', 'edge:click', 'selection:change', 'contextmenu
   lastStrokePointCount: () => {
     const strokes = instance.getModel().getStrokes();
     return strokes.length ? strokes[strokes.length - 1].pointCount : 0;
+  },
+
+  // wave13/stroke-edit — the finger-EDIT probes.
+  enableEdit: () => editTool.setActive(true),
+  disableEdit: () => editTool.setActive(false),
+  /** Seed one stroke with KNOWN geometry, away from the nodes, so a finger can aim at it. */
+  seedInk() {
+    const s = new StrokeModel(
+      [
+        { x: 200, y: 600 },
+        { x: 300, y: 600 },
+        { x: 400, y: 600 },
+      ],
+      { color: '#7c3aed', width: 5 },
+      { id: 'touch-ink' }
+    );
+    instance.getModel().addStroke(s);
+    instance.renderNow();
+  },
+  /** The seeded stroke's live geometry — the assertion reads the MODEL, never the DOM. */
+  inkPoints() {
+    const s = instance.getModel().getStroke('touch-ink');
+    return s ? s.getPoints().map((p) => ({ x: p.x, y: p.y })) : null;
+  },
+  /** World → client, same conversion the node probes use, for aiming the finger at ink. */
+  inkClient(x: number, y: number) {
+    const rect = stage.getBoundingClientRect();
+    return instance.viewport.worldToClient(x, y, {
+      left: rect.left,
+      top: rect.top,
+      width: rect.width,
+      height: rect.height,
+    });
   },
 };
 

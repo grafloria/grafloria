@@ -354,9 +354,12 @@ export {
   createDrawTool,
   createRectangleTool,
   createEraserTool,
+  // wave13/stroke-edit: select + move committed ink (the drawn/erased/EDITED triad closes).
+  createStrokeEditTool,
   DrawTool,
   RectangleTool,
   EraserTool,
+  StrokeEditTool,
   InkOverlay,
   INK_OVERLAY_CLASS,
 
@@ -389,6 +392,7 @@ export type {
   DrawToolOptions,
   RectangleToolOptions,
   EraserToolOptions,
+  StrokeEditToolOptions,
   InkPreviewStyle,
 } from '@grafloria/renderer';
 
