@@ -1,6 +1,7 @@
 import type { DiagramEngine, LinkModel, NodeModel, GroupModel } from '@grafloria/engine';
 // wave12/connect-ergonomics (gap 1): the ONE undoable step a subflow drag commits.
-import { MoveGroupCommand } from '@grafloria/engine';
+import { MoveGroupCommand, MoveNodeCommand, MacroCommand } from '@grafloria/engine';
+import type { Command } from '@grafloria/engine';
 import type { GroupFrameSnapshot, GroupNodeMove, GroupFrameMove } from '@grafloria/engine';
 import type { InteractionController } from '../interaction/interaction-controller';
 import type { CanvasRect, ViewportController } from '../viewport/viewport-controller';
@@ -95,6 +96,12 @@ interface NodeDragState {
   lastWorldX: number;
   lastWorldY: number;
   committed: boolean;
+  /**
+   * wave12: each dragged node's position when the drag first COMMITTED, captured so the
+   * whole gesture can commit as one undoable MoveNodeCommand (a FROM→TO snapshot — see
+   * commitNodeMove). Absent until the drag crosses the threshold.
+   */
+  startPositions?: Map<string, { x: number; y: number; z?: number }>;
 }
 
 /**
@@ -988,8 +995,11 @@ export class DomEventBinder {
     }
 
     if (this.nodeDrag) {
-      const moved = this.nodeDrag.committed;
+      const drag = this.nodeDrag;
+      const moved = drag.committed;
       this.nodeDrag = null;
+      // wave12: record the completed drag as one undoable step BEFORE anything else.
+      if (moved && engine) this.commitNodeMove(engine, drag);
       // wave12 (gap 2): a drag that ended near a compatible port auto-links on drop.
       const connected = moved ? this.commitProximityConnection() : false;
       if (moved) this.emitNodesChange();
@@ -1023,9 +1033,12 @@ export class DomEventBinder {
     }
 
     if (this.nodeDrag) {
-      const moved = this.nodeDrag.committed;
+      const drag = this.nodeDrag;
+      const moved = drag.committed;
       this.nodeDrag = null;
-      // Pointer left mid-drag: abandon the gesture, do NOT auto-connect.
+      // Pointer left mid-drag: keep the move (the node already looks moved; snapping it
+      // back would be worse) and STILL record it as one undoable step. Do not auto-connect.
+      if (moved && engine) this.commitNodeMove(engine, drag);
       this.clearProximityPreview();
       if (moved) this.emitNodesChange();
     }
@@ -1190,6 +1203,16 @@ export class DomEventBinder {
         return; // still a click, not a drag — do NOT touch any position
       }
       drag.committed = true;
+
+      // wave12: snapshot each node's pre-drag position, NOW — before the first
+      // setPosition below — so drag-end can commit an undoable FROM→TO move. Nothing
+      // has moved yet on this frame (the delta is applied after this block), so these
+      // are the true start positions.
+      drag.startPositions = new Map();
+      for (const id of drag.nodeIds) {
+        const n = diagram.getNode(id);
+        if (n) drag.startPositions.set(id, { x: n.position.x, y: n.position.y, z: n.position.z });
+      }
     }
 
     const { x: worldX, y: worldY } = this.toWorld(event);
@@ -1433,6 +1456,49 @@ export class DomEventBinder {
 
     this.host.interaction.invalidatePortHitCache();
     this.host.requestRender();
+  }
+
+  /**
+   * wave12: commit a finished node drag as ONE undoable step.
+   *
+   * The live drag mutated node positions directly for feedback and recorded NOTHING on
+   * the command history — so Ctrl+Z could not undo a drag (keyboard-nudge and resize both
+   * commit MoveNodeCommand; only the pointer drag skipped it). This is the same FROM→TO
+   * snapshot endGroupDrag uses: the state is already at `to`, so each MoveNodeCommand's
+   * execute() is a visual no-op that records one history entry, and undo restores `from`.
+   * A multi-node drag collapses into one MacroCommand — one gesture, one undo step.
+   */
+  private commitNodeMove(engine: DiagramEngine, drag: NodeDragState): void {
+    if (!drag.committed || !drag.startPositions) return;
+    const diagram = engine.getDiagram();
+    if (!diagram) return;
+
+    const steps: Command[] = [];
+    for (const id of drag.nodeIds) {
+      const node = diagram.getNode(id);
+      const from = drag.startPositions.get(id);
+      if (!node || !from) continue;
+      if (node.position.x === from.x && node.position.y === from.y) continue; // never moved
+      steps.push(
+        new MoveNodeCommand(
+          id,
+          { x: node.position.x, y: node.position.y, z: node.position.z },
+          { x: from.x, y: from.y, z: from.z },
+          { mergeable: false } // a completed gesture is its own step; do not merge into it
+        )
+      );
+    }
+    if (steps.length === 0) return;
+
+    let command: Command;
+    if (steps.length === 1) {
+      command = steps[0];
+    } else {
+      const macro = new MacroCommand('Move nodes');
+      for (const s of steps) macro.addStep(s);
+      command = macro;
+    }
+    void engine.commandManager.execute(command);
   }
 
   /**
