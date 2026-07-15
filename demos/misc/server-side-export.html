@@ -1,0 +1,92 @@
+<meta charset="utf-8">
+<title>Server-side export — Grafloria</title>
+<link rel="stylesheet" href="../shell/demo.css">
+<style>
+  .note { font-size: 12px; opacity: .8; padding: 10px 24px; border-bottom: 1px solid rgba(127,127,127,.25); line-height: 1.6; }
+  code { background: rgba(127,127,127,.15); padding: 1px 5px; border-radius: 4px; }
+  #canvas { padding: 16px 24px; overflow: auto; }
+  #preview { border: 1px solid rgba(127,127,127,.3); border-radius: 8px; display: inline-block; }
+  #hash { font: 12px ui-monospace, Menlo, monospace; margin-top: 12px; opacity: .8; }
+</style>
+<header id="demo-head"></header>
+<div class="note">
+  A <b>headless</b>, deterministic export: a pure spec → SVG with <b>zero DOM</b> — no
+  <code>createDiagram</code>, no mounting, no browser layout. Two independent renders of the
+  same spec are <b>byte-identical</b>, which is what makes it safe to run on a server, cache,
+  and diff. React Flow gates server-side export behind Pro.
+</div>
+<div id="canvas">
+  <div id="preview"></div>
+  <div id="hash"></div>
+</div>
+<script type="module">
+import { renderStatic } from '../shell/grafloria.js';
+import { defineDemo, check, checkChanged } from '../shell/demo.js';
+
+const SPEC = {
+  nodes: [
+    { id: 'a', label: 'Extract', position: { x: 40,  y: 40 }, size: { width: 150, height: 66 } },
+    { id: 'b', label: 'Load',    position: { x: 260, y: 40 }, size: { width: 150, height: 66 } },
+    { id: 'c', label: 'Model',   position: { x: 150, y: 170 }, size: { width: 150, height: 66 } },
+  ],
+  edges: [{ id: 'e1', source: 'a', target: 'b' }, { id: 'e2', source: 'a', target: 'c' }],
+};
+const OTHER = { nodes: [{ id: 'x', label: 'Different', position: { x: 10, y: 10 }, size: { width: 120, height: 60 } }], edges: [] };
+
+/** FNV-1a — a byte-level fingerprint, so "byte-identical" is a claim with a number behind it. */
+const fnv = (s) => { let h = 0x811c9dc5; for (let i = 0; i < s.length; i++) { h ^= s.charCodeAt(i); h = Math.imul(h, 0x01000193); } return (h >>> 0).toString(16); };
+
+const renderHeadless = (spec) => renderStatic({ nodes: spec.nodes, edges: spec.edges, width: 520, height: 300, standalone: true });
+/** Fold the stylesheet INTO the svg so the artifact stands alone — one self-contained file. */
+const inlineStyles = (r) => r.svg.replace(/^(<svg[^>]*>)/, `$1<style>${r.css}</style>`);
+
+defineDemo({
+  name: 'Server-side export',
+  blurb: 'Deterministic headless export: pure spec → styles-inlined SVG, zero DOM, byte-identical across independent renders. Provable in-page.',
+  reactflow: 'Server Side Rendering',
+  pro: true,
+
+  async setup(ctx) {
+    // No createDiagram anywhere. This is the whole point: nothing is mounted.
+    const r = renderHeadless(SPEC);
+    ctx.r = r;
+    document.getElementById('preview').innerHTML = `<style>${r.css}</style>${r.svg}`;
+    document.getElementById('hash').textContent = `standalone artifact fingerprint: ${fnv(inlineStyles(r))}`;
+    await ctx.tick();
+  },
+
+  async assert(ctx) {
+    // 1. It produced a real SVG with the actual content — headlessly.
+    const r1 = renderHeadless(SPEC);
+    check(r1.svg.includes('<svg'), 'renderStatic did not return an <svg>');
+    for (const label of ['Extract', 'Load', 'Model']) {
+      check(r1.svg.includes(label), `headless SVG is missing node label "${label}"`);
+    }
+
+    // 2. THE ONE THAT MATTERS: a SECOND, independent headless render of the SAME
+    //    spec is BYTE-IDENTICAL — both the svg and its stylesheet. No timestamps,
+    //    no random ids, no DOM-measurement drift. This is what makes it cacheable.
+    const r2 = renderHeadless(SPEC);
+    check(r1.svg === r2.svg, 'two headless renders of the same spec produced DIFFERENT svg — not deterministic');
+    check(r1.css === r2.css, 'two headless renders produced different stylesheets — not deterministic');
+    const a1 = inlineStyles(r1), a2 = inlineStyles(r2);
+    check(fnv(a1) === fnv(a2), `the self-contained artifacts differ: ${fnv(a1)} vs ${fnv(a2)}`);
+
+    // 3. NON-VACUOUS: a DIFFERENT spec must produce DIFFERENT bytes — otherwise
+    //    "identical" above would be meaningless.
+    const other = renderHeadless(OTHER);
+    checkChanged(fnv(a1), fnv(inlineStyles(other)), 'a completely different diagram hashed the same — the fingerprint is blind');
+
+    // 4. SELF-CONTAINED: the inlined artifact carries its own styles and refers to
+    //    NO external stylesheet — it is one file you can write to disk and open.
+    check(a1.includes('<style>'), 'the standalone artifact has no inlined <style>');
+    check(!/<link\b|href=/.test(a1), 'the artifact references an external resource — it is not self-contained');
+    check(a1.includes('Extract') && a1.includes('--grafloria-'), 'the artifact lost either its content or its theme variables');
+
+    // 5. ZERO DOM dependence: it works with the same result whether or not a
+    //    container exists — we never created one. (If renderStatic secretly needed
+    //    a mounted instance it would have thrown, not returned identical bytes.)
+    check(typeof r1.svg === 'string' && r1.svg.length > 100, 'headless render returned no substantive output');
+  },
+});
+</script>

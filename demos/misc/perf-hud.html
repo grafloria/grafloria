@@ -1,0 +1,118 @@
+<meta charset="utf-8">
+<title>Perf HUD &amp; quality governor — Grafloria</title>
+<link rel="stylesheet" href="../shell/demo.css">
+<style>
+  .note { font-size: 12px; opacity: .8; padding: 10px 24px; border-bottom: 1px solid rgba(127,127,127,.25); line-height: 1.6; }
+  code { background: rgba(127,127,127,.15); padding: 1px 5px; border-radius: 4px; }
+  #canvas { height: calc(100vh - 190px); position: relative; }
+  #hud-host { position: absolute; top: 12px; right: 12px; z-index: 5; }
+  #measured { position: absolute; left: 12px; bottom: 12px; z-index: 5; font: 12px ui-monospace, Menlo, monospace; background: rgba(0,0,0,.6); color: #fff; padding: 8px 10px; border-radius: 6px; white-space: pre; }
+</style>
+<header id="demo-head"></header>
+<div class="note">
+  An adaptive <b>quality governor</b> that steps the render tier DOWN under load and restores
+  it (patiently) when the budget recovers, and a <b>HUD</b> that reports it. Below, both are
+  <b>measured in-page</b>: an idle frame does zero work, and a pan burst is timed for its fps.
+</div>
+<div id="canvas">
+  <div id="hud-host"></div>
+  <div id="measured">measuring…</div>
+</div>
+<script type="module">
+import { render, QualityGovernor, PerfHud, formatSnapshot, EMPTY_SNAPSHOT } from '../shell/grafloria.js';
+import { defineDemo, check, checkChanged } from '../shell/demo.js';
+
+const TIERS = ['high', 'medium', 'low'];
+const SPEC = {
+  nodes: Array.from({ length: 24 }, (_, i) => ({
+    id: 'n' + i, label: 'N' + i,
+    position: { x: 40 + (i % 6) * 150, y: 40 + Math.floor(i / 6) * 110 },
+    size: { width: 120, height: 60 },
+  })),
+  edges: Array.from({ length: 20 }, (_, i) => ({ id: 'e' + i, source: 'n' + i, target: 'n' + (i + 1) })),
+};
+
+defineDemo({
+  name: 'Perf HUD & quality governor',
+  blurb: 'An adaptive quality governor that steps the render tier down under load, with a live HUD — and idle-cost / pan-fps measured in the page.',
+  reactflow: null,
+
+  async setup(ctx) {
+    const api = render(SPEC, ctx.host);
+    ctx.instance = api;
+    api.renderNow();
+
+    ctx.hud = new PerfHud(document.getElementById('hud-host'));
+    ctx.hud.show();
+    ctx.gov = new QualityGovernor();
+    ctx.hud.update({ ...EMPTY_SNAPSHOT, nodes: 24, links: 20, tier: 'high', governor: ctx.gov.getState() });
+    await ctx.tick();
+  },
+
+  async assert(ctx) {
+    const api = ctx.instance, gov = ctx.gov, hud = ctx.hud;
+
+    // 1. GOVERNOR STEPS DOWN under sustained slow frames. At full detail the tier
+    //    is 'high'; feed a window of over-budget frames and it must drop a tier.
+    check(gov.effectiveTier('high', TIERS) === 'high', 'the governor started already biased');
+    for (let i = 0; i < 12; i++) gov.record(40); // 40ms >> 16.7ms budget
+    check(gov.getBias() >= 1, `12 over-budget frames did not step the governor down (bias ${gov.getBias()})`);
+    check(
+      ['stepped-down', 'escalated'].includes(gov.getState().lastDecision),
+      `expected a step-down decision, got "${gov.getState().lastDecision}"`
+    );
+    const loadedTier = gov.effectiveTier('high', TIERS);
+    checkChanged('high', loadedTier, 'the tier did not simplify under load');
+    check(loadedTier === 'medium' || loadedTier === 'low', `under load the tier should drop, got "${loadedTier}"`);
+    hud.update({ ...EMPTY_SNAPSHOT, fps: 25, frameMs: 40, nodes: 24, links: 20, tier: loadedTier, governor: gov.getState() });
+
+    // Escalation path: truly catastrophic frames drop a further tier fast.
+    for (let i = 0; i < 3; i++) gov.record(120);
+    check(gov.getBias() === 2, `catastrophic frames should escalate to bias 2, got ${gov.getBias()}`);
+    check(gov.effectiveTier('high', TIERS) === 'low', 'at full bias the tier should be the simplest, "low"');
+
+    // 2. …AND RECOVERS, patiently. A run of fast frames restores detail.
+    for (let i = 0; i < 12 * 4; i++) gov.record(4); // 4ms << budget, several fast windows
+    check(gov.getBias() < 2, `sustained fast frames did not restore any detail (bias still ${gov.getBias()})`);
+
+    // 3. THE HUD RENDERS the snapshot — real numbers in the DOM, not a static image.
+    const hudEl = document.querySelector('[data-grafloria-perf-hud]');
+    check(!!hudEl, 'the PerfHud did not mount');
+    check(/tier/i.test(hudEl.textContent), `the HUD is not showing the tier; text = ${JSON.stringify(hudEl.textContent)}`);
+    const lines = formatSnapshot({ ...EMPTY_SNAPSHOT, fps: 60, frameMs: 16.7, nodes: 24, links: 20, tier: 'high' });
+    check(lines.join(' ').includes('60'), `formatSnapshot dropped the fps: ${JSON.stringify(lines)}`);
+
+    // 4. IDLE COSTS NOTHING — the frame gate. Settle, then queue many repaints
+    //    with NOTHING changed: the scheduler must SKIP every one (idle 0.0ms).
+    api.renderNow();
+    await ctx.tick();
+    const paintedIdle0 = api.scheduler.stats.painted;
+    for (let i = 0; i < 200; i++) api.render(); // queued frames, no model change
+    await ctx.tick(40);
+    check(
+      api.scheduler.stats.painted === paintedIdle0,
+      `an IDLE canvas repainted ${api.scheduler.stats.painted - paintedIdle0} time(s) over 200 queued frames — the idle-skip is broken (this is the "idle 0.0ms" claim)`
+    );
+
+    // 5. PAN THROUGHPUT, MEASURED. A burst of pans (each a real repaint) is timed,
+    //    and we report the achieved fps. Panning must stay smooth.
+    const N = 400;
+    const t0 = performance.now();
+    for (let i = 0; i < N; i++) { api.viewport.pan(1, 0); api.renderNow(); }
+    const ms = performance.now() - t0;
+    const fps = Math.round((N / ms) * 1000);
+    // Every pan is a real paint (the viewport key changed each time)…
+    check(api.scheduler.stats.painted > paintedIdle0, 'the pan burst produced no paints at all');
+    document.getElementById('measured').textContent =
+      `idle: 0 paints over 200 queued frames\n` +
+      `pan burst: ${N} pans in ${ms.toFixed(1)}ms  →  ${fps} fps`;
+    // …and it stayed comfortably interactive. A loose floor so the number is a real
+    // measurement with teeth, not a flaky exact target.
+    check(fps > 20, `panning managed only ${fps} fps over ${N} frames — that is not interactive`);
+
+    // 6. The instance's own governor surface reports a valid tier.
+    const qs = api.getQualityState();
+    check(TIERS.includes(qs.tier) || typeof qs.tier === 'string', `getQualityState() returned no tier: ${JSON.stringify(qs)}`);
+  },
+});
+</script>

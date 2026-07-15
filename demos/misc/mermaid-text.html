@@ -1,0 +1,119 @@
+<meta charset="utf-8">
+<title>Mermaid text — Grafloria</title>
+<link rel="stylesheet" href="../shell/demo.css">
+<style>
+  .note { font-size: 12px; opacity: .8; padding: 10px 24px; border-bottom: 1px solid rgba(127,127,127,.25); line-height: 1.6; }
+  code { background: rgba(127,127,127,.15); padding: 1px 5px; border-radius: 4px; }
+  #canvas { display: flex; height: calc(100vh - 190px); }
+  #stage { flex: 1; min-width: 0; }
+  #side { width: 380px; border-left: 1px solid rgba(127,127,127,.3); display: flex; flex-direction: column; }
+  #text { flex: 1; font: 12px ui-monospace, Menlo, monospace; border: 0; border-bottom: 1px solid rgba(127,127,127,.3); padding: 10px; resize: none; background: transparent; color: inherit; }
+  #side .foot { padding: 8px 10px; display: flex; gap: 8px; align-items: center; }
+  #side button { padding: 6px 12px; border-radius: 6px; border: 1px solid rgba(127,127,127,.4); background: transparent; color: inherit; cursor: pointer; }
+  #status { font-size: 12px; opacity: .8; }
+</style>
+<header id="demo-head"></header>
+<div class="note">
+  A <b>lossless</b>, Mermaid-compatible text form: the visible body is ordinary
+  <code>flowchart</code> a Mermaid renderer would draw, and the exact model rides in a
+  <code>%%</code> sidecar Mermaid ignores. <b>Hand-edit the text</b> and Grafloria detects it
+  (a body-hash mismatch) and rebuilds from your edit; leave it and the lossless sidecar wins.
+</div>
+<div id="canvas">
+  <div id="stage"></div>
+  <div id="side">
+    <textarea id="text" spellcheck="false"></textarea>
+    <div class="foot"><button id="apply">apply text → diagram</button><span id="status">—</span></div>
+  </div>
+</div>
+<script type="module">
+import { render, exportDiagramText, importDiagramText, stripGrafloriaSidecar, GRAFLORIA_DOC_PREFIX, GRAFLORIA_HASH_PREFIX } from '../shell/grafloria.js';
+import { defineDemo, check, checkChanged } from '../shell/demo.js';
+
+const SPEC = {
+  nodes: [
+    { id: 'plan',  label: 'Plan',  position: { x: 60,  y: 90 },  size: { width: 150, height: 66 } },
+    { id: 'build', label: 'Build', position: { x: 300, y: 90 },  size: { width: 150, height: 66 } },
+    { id: 'ship',  label: 'Ship',  position: { x: 540, y: 90 },  size: { width: 150, height: 66 } },
+  ],
+  edges: [{ id: 'e1', source: 'plan', target: 'build' }, { id: 'e2', source: 'build', target: 'ship' }],
+};
+
+// A label may live in metadata (sidecar path) or in data (text-parsed path).
+const labelOf = (n) => n.getMetadata('label') ?? (n.data && n.data.label);
+const modelToSpec = (model) => ({
+  nodes: model.getNodes().map((n) => ({ id: n.id, label: labelOf(n), position: { x: n.position.x, y: n.position.y }, size: { width: n.size.width, height: n.size.height } })),
+  edges: model.getLinks().map((l) => ({ id: l.id, source: l.sourceNodeId, target: l.targetNodeId })),
+});
+
+defineDemo({
+  name: 'Mermaid text',
+  blurb: 'Lossless, Mermaid-compatible text with a hidden model sidecar — and hand-edit detection: edit the text and the diagram rebuilds from your edit.',
+  reactflow: null,
+
+  async setup(ctx) {
+    const api = render(SPEC, document.getElementById('stage'));
+    ctx.instance = api;
+    api.renderNow();
+
+    const ta = document.getElementById('text');
+    const status = document.getElementById('status');
+    ta.value = exportDiagramText(api.getModel());
+
+    document.getElementById('apply').onclick = () => {
+      const r = importDiagramText(ta.value);
+      status.textContent = r.bodyEdited ? 'hand-edit detected → rebuilt from text' : 'unchanged → lossless sidecar';
+      api.setNodes(modelToSpec(r.diagram).nodes);
+      api.setEdges(modelToSpec(r.diagram).edges);
+      api.renderNow();
+    };
+    await ctx.tick();
+  },
+
+  async assert(ctx) {
+    const model = ctx.instance.getModel();
+
+    // 1. The exported text is Mermaid-shaped, with the model in a sidecar comment.
+    const text = exportDiagramText(model);
+    check(/flowchart|graph/.test(text), 'the exported text is not Mermaid-shaped (no flowchart/graph header)');
+    check(text.includes(GRAFLORIA_DOC_PREFIX), 'the lossless model sidecar is missing');
+    check(text.includes(GRAFLORIA_HASH_PREFIX), 'the body-hash line (hand-edit detector) is missing');
+    // The sidecar is a %% COMMENT — a Mermaid renderer ignores it, so the body alone renders.
+    const body = stripGrafloriaSidecar(text);
+    check(!body.includes(GRAFLORIA_DOC_PREFIX) && !body.includes(GRAFLORIA_HASH_PREFIX), 'stripGrafloriaSidecar left the sidecar behind');
+    check(/flowchart|graph/.test(body), 'stripping the sidecar destroyed the Mermaid body');
+
+    // 2. UNTOUCHED round-trip: lossless. The sidecar wins, labels survive exactly.
+    const clean = importDiagramText(text);
+    check(clean.bodyEdited === false, 'an untouched export was wrongly flagged as hand-edited');
+    check(clean.source === 'sidecar', `an untouched body should load from the sidecar, got source=${clean.source}`);
+    check(labelOf(clean.diagram.getNode('build')) === 'Build', `lossless round-trip lost a label: ${labelOf(clean.diagram.getNode('build'))}`);
+
+    // 3. THE ONE THAT MATTERS: HAND-EDIT the visible body. Grafloria must notice (the
+    //    body hash no longer matches) and rebuild the diagram from the TEXT.
+    check(text.includes('build[build]'), `unexpected body form; cannot locate the 'build' node token in:\n${body}`);
+    const edited = text.replace('build[build]', 'build[Verify]');
+    const handEdited = importDiagramText(edited);
+    check(handEdited.bodyEdited === true, 'a hand-edited body was NOT detected — the body-hash check is not working');
+    check(handEdited.source === 'text', `a hand-edited body must load from the TEXT, got source=${handEdited.source}`);
+    check(
+      labelOf(handEdited.diagram.getNode('build')) === 'Verify',
+      `the hand-edit did not reach the model: build label is "${labelOf(handEdited.diagram.getNode('build'))}"`
+    );
+
+    // 4. The edit round-trips BACK into the live diagram and repaints.
+    ctx.instance.setNodes(modelToSpec(handEdited.diagram).nodes);
+    ctx.instance.renderNow();
+    await ctx.tick();
+    check(ctx.instance.getModel().getNode('build').getMetadata('label') === 'Verify', 'the hand-edit did not update the live diagram');
+
+    // 5. NON-VACUOUS: re-exporting and re-importing the (now edited) diagram is
+    //    once again lossless — detection is about a MISMATCH, not always-true.
+    const reexport = exportDiagramText(ctx.instance.getModel());
+    const roundtrip = importDiagramText(reexport);
+    check(roundtrip.bodyEdited === false, 'a fresh export was reported hand-edited — the detector is stuck on true');
+    check(labelOf(roundtrip.diagram.getNode('build')) === 'Verify', 'the edited label did not persist across a fresh export');
+    checkChanged('Build', labelOf(roundtrip.diagram.getNode('build')), 'the edited label reverted to the original');
+  },
+});
+</script>
