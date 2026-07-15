@@ -313,12 +313,19 @@ describe('the invariant is checked INCREMENTALLY, or the engine stops being usab
 
     measure(200); // discarded warm-up: JIT/allocator noise must not inflate the small run
 
-    const small = measure(500);
-    const large = measure(2000); // 4× the entities
+    // MIN of three, per size: a ratio removes CONSTANT machine slowness, but parallel
+    // suite load FLUCTUATES between the two measurements, and a GC pause or a neighbour
+    // worker's spike can only ever ADD time — so the minimum is the estimator that
+    // converges on the true cost (a mean would average the spikes back in).
+    const best = (n: number): number => Math.min(measure(n), measure(n), measure(n));
+    const small = best(500);
+    const large = best(2000); // 4× the entities
 
-    // LINEAR ⇒ ~4×. Quadratic ⇒ ~16×. The floor keeps a sub-millisecond `small` (fast
-    // machine, tiny timer quantum) from turning the ratio into a noise amplifier.
-    expect(large).toBeLessThan(Math.max(small, 20) * 6);
+    // LINEAR ⇒ ~4×. Quadratic ⇒ ≥16× (the original bug measured 34×). 8× splits those
+    // decisively while absorbing residual noise. The floor keeps a sub-millisecond
+    // `small` (fast machine, tiny timer quantum) from turning the ratio into a noise
+    // amplifier.
+    expect(large).toBeLessThan(Math.max(small, 20) * 8);
     // Backstop, very loose on purpose: the regression this catches measured 8.5s.
     expect(large).toBeLessThan(8000);
   });
