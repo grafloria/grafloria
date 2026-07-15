@@ -44,8 +44,8 @@
   public embed with real pointer events and asserts a consequence; a broken demo fails CI.
   Where React Flow ships the same example only in its paid <b>Pro</b> tier, it is marked.</p>
   <div class="scoreboard">
-    <span class="stat"><b>82</b> demos</span>
-    <span class="stat pro"><b>27</b> are features React Flow charges for</span>
+    <span class="stat"><b>85</b> demos</span>
+    <span class="stat pro"><b>28</b> are features React Flow charges for</span>
     <span class="stat"><b>10</b> categories</span>
   </div>
 </header>
@@ -334,7 +334,7 @@
       </section>
 
       <section>
-        <h2>Interaction <span class="count">12</span></h2>
+        <h2>Interaction <span class="count">15</span></h2>
         <div class="grid">
         <a class="card pro" href="interaction/undo-redo.html">
           <div class="card-name">Collaboration-aware undo</div>
@@ -392,6 +392,14 @@
             
           </div>
         </a>
+        <a class="card" href="interaction/easy-connect-body.html">
+          <div class="card-name">Easy connect (body)</div>
+          <div class="card-blurb">Press anywhere on a node and release anywhere on another — they wire up, no aiming at a 6px port. Built into the engine drag path; the page only sets enableEasyConnect.</div>
+          <div class="card-foot">
+            <span class="rf">React Flow: Easy Connect</span>
+            
+          </div>
+        </a>
         <a class="card pro" href="interaction/helper-lines.html">
           <div class="card-name">Helper lines (snaplines)</div>
           <div class="card-blurb">Drag a node near another's left edge and it snaps into alignment with a guide; a genuine near-miss beyond the threshold does not. Equal-spacing guides appear when three nodes line up evenly.</div>
@@ -408,11 +416,27 @@
             <span class="badge" title="React Flow puts the equivalent behind its paywall">Pro / paid there</span>
           </div>
         </a>
+        <a class="card pro" href="interaction/parent-move.html">
+          <div class="card-name">Parent move</div>
+          <div class="card-blurb">Drag a subflow container by its frame and the whole graph inside it moves with it — members and frame together, as one undoable step. Nothing wires this host-side; the engine does it.</div>
+          <div class="card-foot">
+            <span class="rf">React Flow: Sub Flows</span>
+            <span class="badge" title="React Flow puts the equivalent behind its paywall">Pro / paid there</span>
+          </div>
+        </a>
         <a class="card" href="interaction/preventing-cycles.html">
           <div class="card-name">Preventing cycles</div>
           <div class="card-blurb">A DAG that stays acyclic: a connection whose target can already reach its source is refused, so a→b→c→d can never be closed into a loop. Driven through the real connect pipeline.</div>
           <div class="card-foot">
             <span class="rf">React Flow: Prevent Cycles</span>
+            
+          </div>
+        </a>
+        <a class="card" href="interaction/proximity-connect-live.html">
+          <div class="card-name">Proximity connect (live)</div>
+          <div class="card-blurb">Drag a node next to another and the wire proposes AND commits itself — driven by the engine’s own drag path, not host glue. The page only sets enableProximityConnect.</div>
+          <div class="card-foot">
+            <span class="rf">React Flow: Proximity Connect</span>
             
           </div>
         </a>
