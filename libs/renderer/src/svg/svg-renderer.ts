@@ -3875,8 +3875,11 @@ export class SVGRenderer implements IRenderer {
       props: {
         transform: this.nodeTransform(node),
         className: 'node-group',
-        // Option 2: Add subtle transition effect
-        style: isHovered ? { transition: 'all 0.2s ease' } : undefined,
+        // A hover polish that must NEVER include `transform`: the node's
+        // position lives in its transform, and `transition: all` eased it — so a
+        // dragged node smoothly TRAILED the cursor (model snapped, paint lagged
+        // 200ms). List only the visual props; the position stays immediate.
+        style: isHovered ? { transition: 'filter 0.15s ease, opacity 0.15s ease' } : undefined,
         // wave4/interaction (Card 7) named the node; wave6/a11y gives it a valid
         // graphics role, a shape roledescription, and the roving tabindex.
         ...this.nodeAriaProps(node),
@@ -4017,7 +4020,9 @@ export class SVGRenderer implements IRenderer {
       props: {
         transform: this.nodeTransform(node),
         className: 'node-group node-with-component',
-        style: isHovered ? { transition: 'all 0.2s ease' } : undefined,
+        // See the plain node path: never transition `transform`, or a dragged
+        // node trails the cursor by the transition duration.
+        style: isHovered ? { transition: 'filter 0.15s ease, opacity 0.15s ease' } : undefined,
         ...this.nodeAriaProps(node),
       },
       children: [

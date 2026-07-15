@@ -166,6 +166,41 @@ const IN_PAGE = () => {
       }
     }
 
+    // ---- RENDER-TRACK: the PAINT snaps to the pointer, it does not ease behind ----
+    // POINTER-TRACK reads the model, which snaps instantly even when the RENDER
+    // eases behind it: a `transition: all` on the node group made a dragged node
+    // smoothly TRAIL the cursor while every model number stayed perfect. Detect
+    // it coordinate-agnostically — after the pointer STOPS, an eased transform
+    // keeps sliding toward the model for the transition's duration, so the
+    // painted rect drifts while the model is static. (Physics/constraint demos
+    // whose MODEL keeps settling after release can't isolate easing → skipped.)
+    const dragNode = model.getNodes().find((n) => n.behavior?.draggable !== false && !n.state?.locked);
+    const gEl = dragNode && (host.querySelector(`[data-node-id="${dragNode.id}"]`) || host.querySelector(`[data-vnode-key="node-${dragNode.id}"]`));
+    if (!dragNode || !gEl) out.skipped.push('RENDER-TRACK (no draggable node element)');
+    else {
+      inst.viewport.setZoom(1);
+      const worldCentre = () => { const wp = dragNode.getWorldPosition ? dragNode.getWorldPosition() : dragNode.position; return { x: wp.x + dragNode.size.width / 2, y: wp.y + dragNode.size.height / 2 }; };
+      if (inst.viewport.centerOn) { const c = worldCentre(); inst.viewport.centerOn(c.x, c.y); }
+      inst.renderNow(); await raf2();
+      const paintedCentre = () => { const b = gEl.getBoundingClientRect(); return { x: b.left + b.width / 2, y: b.top + b.height / 2 }; };
+      const c0 = wc(worldCentre().x, worldCentre().y);
+      const cx = c0.x, cy = c0.y;
+      const p0 = dragNode.position.x;
+      fire('pointermove', cx, cy); fire('pointerdown', cx, cy);
+      fire('pointermove', cx + 8, cy); fire('pointermove', cx + 220, cy);
+      const nodeMoved = Math.abs(dragNode.position.x - p0);
+      fire('pointerup', cx + 220, cy); await raf2();
+      // Right after release, then again after a beat with NO input.
+      const paintA = paintedCentre(), modelA = dragNode.position.x;
+      await new Promise((r) => setTimeout(r, 260));
+      const paintB = paintedCentre(), modelB = dragNode.position.x;
+      const modelDrift = Math.abs(modelB - modelA);
+      const paintDrift = Math.hypot(paintB.x - paintA.x, paintB.y - paintA.y);
+      if (nodeMoved < 20) out.skipped.push(`RENDER-TRACK (drag did not move the node: ${Math.round(nodeMoved)}px)`);
+      else if (modelDrift > 3) out.skipped.push(`RENDER-TRACK (model still settling after release — physics/constraint, ${Math.round(modelDrift)}px)`);
+      else out.checks.push({ name: 'RENDER-TRACK', ok: paintDrift <= 4, detail: `paint drifted ${Math.round(paintDrift)}px after the pointer stopped, model static (eased transform trails)` });
+    }
+
     // ---- LINK-SELECT ----
     const link = links[0];
     if (!link) out.skipped.push('LINK-SELECT (no links)');
