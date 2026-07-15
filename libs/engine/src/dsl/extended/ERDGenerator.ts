@@ -68,7 +68,7 @@ export class ERDGenerator {
   private generateEntity(node: NodeModel, indent: string): string[] {
     const lines: string[] = [];
 
-    const name = node.data['name'] || node.data['label'] || node.id;
+    const name = node.data['name'] || node.getLabel() || node.id;
     lines.push(indent + name + ' {');
 
     // Generate fields
@@ -123,8 +123,8 @@ export class ERDGenerator {
 
     if (!sourceNode || !targetNode) return null;
 
-    const sourceName = sourceNode.data['name'] || sourceNode.data['label'] || sourceNode.id;
-    const targetName = targetNode.data['name'] || targetNode.data['label'] || targetNode.id;
+    const sourceName = sourceNode.data['name'] || sourceNode.getLabel() || sourceNode.id;
+    const targetName = targetNode.data['name'] || targetNode.getLabel() || targetNode.id;
 
     // Determine cardinality from link metadata
     const cardinality = link.getMetadata('cardinality') || {
@@ -138,7 +138,7 @@ export class ERDGenerator {
     let line = `${sourceName} ${fromSymbol}--${toSymbol} ${targetName}`;
 
     // Add label if present
-    const label = link.data['label'];
+    const label = link.getLabel(); // canonical read
     if (label) {
       line += ` : ${label}`;
     }

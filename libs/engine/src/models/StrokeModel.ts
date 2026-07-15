@@ -317,12 +317,16 @@ export class StrokeModel extends DiagramEntity {
     this.trackChange('style', prev, { ...this.style });
   }
 
-  /** The accessible name, when the author gave one. See the a11y note on the ink layer. */
-  getLabel(): string | undefined {
+  /**
+   * The accessible name, when the author gave one. See the a11y note on the
+   * ink layer. Overrides the DiagramEntity canon (metadata.label): a stroke's
+   * label lives in its own serialized `label` property, not the metadata bag.
+   */
+  override getLabel(): string | undefined {
     return this.label;
   }
 
-  setLabel(label: string | undefined): void {
+  override setLabel(label: string | undefined): void {
     const prev = this.label;
     this.label = label;
     this.trackChange('label', prev, label);

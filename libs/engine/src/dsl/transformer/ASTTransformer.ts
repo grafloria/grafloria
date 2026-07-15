@@ -135,9 +135,11 @@ export class ASTTransformer {
     // Check if node already exists
     let node = diagram.getNode(astNode.id);
     if (node) {
-      // Update existing node with new information
+      // Update existing node with new information. setLabel writes the CANON
+      // (metadata.label — what the renderer and a11y read) and mirrors the
+      // legacy data.label slot; see DiagramEntity.setLabel.
       if (astNode.label) {
-        node.data['label'] = astNode.label;
+        node.setLabel(astNode.label);
       }
       return node;
     }
@@ -164,8 +166,10 @@ export class ASTTransformer {
       size,
     });
 
-    // Set label
-    node.data['label'] = astNode.label || astNode.id;
+    // Set label through the canon (metadata.label + legacy mirror) — a parsed
+    // node must carry its label where the renderer reads it, or Mermaid-loaded
+    // diagrams draw unlabeled and read to screen readers as '<type> node'.
+    node.setLabel(astNode.label || astNode.id);
 
     // Store shape information for DSL
     node.setMetadata('dslShape', astNode.shape);
@@ -197,6 +201,13 @@ export class ASTTransformer {
   private createLink(astEdge: EdgeDefinitionNode, diagram: DiagramModel): LinkModel | null {
     // Get or create source node
     let sourceNode = diagram.getNode(astEdge.source);
+    if (sourceNode && astEdge.sourceLabel) {
+      // Mermaid is last-write-wins: `a[First]` then `a[Second] --> b` leaves
+      // the label "Second". An explicit label riding INSIDE an edge line must
+      // update an existing node just like a repeated node definition does —
+      // a bare reference (`a --> b`, no label) must NOT reset it to the id.
+      sourceNode.setLabel(astEdge.sourceLabel);
+    }
     if (!sourceNode) {
       // Create implicit node for source using shape/label from edge definition
       const sourceShape = astEdge.sourceShape || 'rectangle';
@@ -218,6 +229,10 @@ export class ASTTransformer {
 
     // Get or create target node
     let targetNode = diagram.getNode(astEdge.target);
+    if (targetNode && astEdge.targetLabel) {
+      // Same last-write-wins rule as the source side above.
+      targetNode.setLabel(astEdge.targetLabel);
+    }
     if (!targetNode) {
       // Create implicit node for target using shape/label from edge definition
       const targetShape = astEdge.targetShape || 'rectangle';
@@ -246,9 +261,10 @@ export class ASTTransformer {
       return null;
     }
 
-    // Set label if provided
+    // Set label if provided — canonical write, same reasoning as node labels
+    // (svg-renderer reads link.getMetadata('label') for the edge label).
     if (astEdge.label) {
-      link.data['label'] = astEdge.label;
+      link.setLabel(astEdge.label);
     }
 
     // Store link type information

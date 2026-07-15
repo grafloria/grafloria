@@ -504,7 +504,7 @@ export class DSL {
       });
 
       node.data['name'] = name;
-      node.data['label'] = name;
+      node.setLabel(name); // canonical write: metadata.label + legacy data mirror
       node.data['stereotype'] = umlClass.stereotype;
       node.data['attributes'] = umlClass.attributes;
       node.data['methods'] = umlClass.methods;
@@ -535,7 +535,7 @@ export class DSL {
         if (link) {
           link.setMetadata('umlRelationship', rel.type);
           if (rel.label) {
-            link.data['label'] = rel.label;
+            link.setLabel(rel.label);
           }
         }
       }

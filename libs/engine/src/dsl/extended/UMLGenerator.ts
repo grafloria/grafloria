@@ -68,7 +68,7 @@ export class UMLGenerator {
   private generateClass(node: NodeModel, indent: string): string[] {
     const lines: string[] = [];
 
-    const className = node.data['name'] || node.data['label'] || node.id;
+    const className = node.data['name'] || node.getLabel() || node.id;
     lines.push(indent + `class ${className} {`);
 
     // Stereotype
@@ -166,8 +166,8 @@ export class UMLGenerator {
 
     if (!sourceNode || !targetNode) return null;
 
-    const sourceName = sourceNode.data['name'] || sourceNode.data['label'] || sourceNode.id;
-    const targetName = targetNode.data['name'] || targetNode.data['label'] || targetNode.id;
+    const sourceName = sourceNode.data['name'] || sourceNode.getLabel() || sourceNode.id;
+    const targetName = targetNode.data['name'] || targetNode.getLabel() || targetNode.id;
 
     // Get relationship type from metadata
     const relType = link.getMetadata('umlRelationship') || 'association';
@@ -176,7 +176,7 @@ export class UMLGenerator {
     let line = `${sourceName} ${symbol} ${targetName}`;
 
     // Add label if present
-    const label = link.data['label'];
+    const label = link.getLabel(); // canonical read
     if (label) {
       line += ` : ${label}`;
     }

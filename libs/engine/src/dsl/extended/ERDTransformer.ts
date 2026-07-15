@@ -75,9 +75,9 @@ export class ERDTransformer {
           // Store cardinality metadata
           link.setMetadata('cardinality', relationship.cardinality);
 
-          // Set label
+          // Set label — canonical write (metadata.label + legacy mirror)
           if (relationship.label) {
-            link.data['label'] = relationship.label;
+            link.setLabel(relationship.label);
           }
 
           // Store relationship type
@@ -105,7 +105,7 @@ export class ERDTransformer {
 
     // Set entity data
     node.data['name'] = entity.name;
-    node.data['label'] = entity.name;
+    node.setLabel(entity.name); // canonical write: metadata.label + legacy mirror
     node.data['fields'] = entity.fields.map(field => ({
       name: field.name,
       type: field.type,
