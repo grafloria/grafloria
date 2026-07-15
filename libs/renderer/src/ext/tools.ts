@@ -153,6 +153,10 @@ export interface CanvasTool {
   /**
    * Higher wins when several tools claim the same gesture. Built-in-replacing
    * tools should use a priority > 0; the built-in ladder is effectively 0.
+   *
+   * See the ARBITRATION CONTRACT on {@link registerTool} — in particular: a
+   * missing priority defaults to 1, and a TIE resolves by registration order,
+   * which no tool should rely on.
    */
   readonly priority?: number;
   /** Claim this gesture? */
@@ -171,6 +175,24 @@ const tools = new Map<string, CanvasTool>();
  * Register (or replace) a canvas tool. Returns a disposer that RESTORES the
  * previous tool of the same id — so overriding `'node-drag'` and then unloading
  * the extension gives the original back rather than leaving a hole.
+ *
+ * ## The arbitration contract (wave14, defect 2)
+ *
+ * On every pointerdown, {@link resolveTool} asks EVERY registered tool
+ * `hitTest(event, hit)` and the gesture goes to the claiming tool with the
+ * HIGHEST `priority` (default 1; the built-in ladder is effectively 0). Ties
+ * resolve by registration order — first registered wins — and that is a
+ * fallback, NOT a contract: tools composed from different waves and extensions
+ * register in an order nobody designed. A tool that can ever be active at the
+ * same time as another MUST state an explicit priority.
+ *
+ * Choosing one: a POINT-SPECIFIC claim (hitTest inspects the point — "is there
+ * ink under the pointer?") should outrank a POINT-AGNOSTIC mode claim (hitTest
+ * is just "am I active?"), because the specific tool only fires where it means
+ * to and would otherwise be starved by the broad one everywhere it matters.
+ * The whiteboard tools are the worked example: draw/rectangle/eraser sit at
+ * `WHITEBOARD_MODE_TOOL_PRIORITY` (1), the ink-hit-only StrokeEditTool at
+ * `WHITEBOARD_INK_TOOL_PRIORITY` (2) — see whiteboard-tools.ts.
  */
 export function registerTool(tool: CanvasTool): Disposer {
   const previous = tools.get(tool.id);
@@ -203,7 +225,8 @@ export function clearTools(): void {
 }
 
 /**
- * The tool (if any) that claims this gesture, highest priority first.
+ * The tool (if any) that claims this gesture, highest priority first (ties:
+ * first registered — see the arbitration contract on {@link registerTool}).
  *
  * The DomEventBinder calls this FIRST on pointerdown. `undefined` means "no
  * registered tool wants it" — and then the built-in ladder runs untouched, which

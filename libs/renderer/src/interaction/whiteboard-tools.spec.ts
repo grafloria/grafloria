@@ -10,6 +10,7 @@ import {
   createStrokeEditTool,
   type WhiteboardHost,
 } from './whiteboard-tools';
+import { registerTool, resolveTool } from '../ext/tools';
 import type { ToolPointerEvent, ToolHitContext } from '../ext/tools';
 
 function makeHost(overrides: Partial<WhiteboardHost> = {}): {
@@ -331,5 +332,82 @@ describe('StrokeEditTool', () => {
 
     tool.getSelectedStroke()!.setStyle({ color: '#e11d48', width: 8 });
     expect(ink.getStyle()).toEqual({ color: '#e11d48', width: 8 });
+  });
+});
+
+// ===========================================================================
+// wave14 defect 2 — ARBITRATION. All whiteboard tools shared `priority = 1`, so
+// when TWO active tools claimed the same press the winner was whichever happened
+// to register first — and wave13's StrokeEditTool is documented to stay
+// PERMANENTLY active alongside the others, so the tie is a real composition, not
+// a hypothetical. These tests pin the contract: PRIORITY resolves the claim, and
+// registration order must not matter.
+//
+// REPRODUCE-FIRST: the both-orders test below was RED for the draw-registered-
+// first order while every tool still said `priority = 1`.
+// ===========================================================================
+
+describe('whiteboard tool arbitration — priority, not registration order (wave14)', () => {
+  const disposers: Array<() => void> = [];
+  afterEach(() => {
+    while (disposers.length) disposers.pop()!();
+  });
+
+  /** A host with one committed stroke along y=100 from x=100 to x=200. */
+  function inkedHost() {
+    const { host, model } = makeHost();
+    model.addStroke(
+      new StrokeModel(
+        [
+          { x: 100, y: 100 },
+          { x: 200, y: 100 },
+        ],
+        { color: '#111', width: 4 },
+        { id: 'ink' }
+      )
+    );
+    return { host, model };
+  }
+
+  it('press ON INK with draw AND edit both active: the EDIT tool wins in BOTH registration orders', () => {
+    for (const editRegisteredFirst of [true, false]) {
+      const { host } = inkedHost();
+      const draw = createDrawTool(host);
+      const edit = createStrokeEditTool(host);
+
+      const order = editRegisteredFirst ? [edit, draw] : [draw, edit];
+      const local = order.map((t) => registerTool(t));
+
+      const winner = resolveTool(pe('down', 150, 100), EMPTY_HIT);
+      expect(`${editRegisteredFirst ? 'edit-first' : 'draw-first'}:${winner?.id}`).toBe(
+        `${editRegisteredFirst ? 'edit-first' : 'draw-first'}:${edit.id}`
+      );
+
+      local.forEach((d) => d());
+    }
+  });
+
+  it('the SAFETY property survives: off the ink the edit tool declines, so the mode tool claims', () => {
+    const { host } = inkedHost();
+    const draw = createDrawTool(host);
+    const edit = createStrokeEditTool(host);
+    disposers.push(registerTool(edit), registerTool(draw));
+
+    const winner = resolveTool(pe('down', 500, 400), EMPTY_HIT);
+    expect(winner?.id).toBe(draw.id);
+  });
+
+  it('every whiteboard tool states an explicit rank: ink-specific edit outranks the mode tier', () => {
+    const { host } = inkedHost();
+    const draw = createDrawTool(host);
+    const rect = createRectangleTool(host);
+    const eraser = createEraserTool(host);
+    const edit = createStrokeEditTool(host);
+
+    // The three point-agnostic MODE tools share one tier…
+    expect(rect.priority).toBe(draw.priority);
+    expect(eraser.priority).toBe(draw.priority);
+    // …and the point-SPECIFIC edit tool sits strictly above it.
+    expect(edit.priority).toBeGreaterThan(draw.priority);
   });
 });
