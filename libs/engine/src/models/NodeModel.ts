@@ -35,6 +35,35 @@ import {
  */
 export type PositioningMode = 'absolute' | 'relative' | 'layout';
 
+/**
+ * wave14/model — the LAST-KNOWN ANCHOR of a node the diagram has REMOVED.
+ *
+ * A removed parent leaves soft refs behind by design (children's `parentId`, group
+ * `members`) — hard-clearing them would be irreversible under collab/undo, where the ref
+ * dangling and later RE-RESOLVING is exactly what makes undo-of-parent-delete restore
+ * children byte-identically (same argument as the link quarantine in collab/integrity.ts).
+ * The price of keeping the ref is that the position readers must TOLERATE it: without
+ * help, a relative child whose parent stopped resolving read its raw offset as world
+ * coordinates and visually JUMPED. This anchor is the help — everything the three parent
+ * frame readers (getWorldPosition / getGlobalPosition / getGlobalTransformMatrix) need to
+ * freeze an orphaned subtree exactly where the user last saw it. Captured by
+ * DiagramModel.removeNode() at the moment of removal; DERIVED, session-local, never
+ * serialized (a document loaded with a dangle has no anchor to freeze at — that is
+ * DiagramValidator's case, and the readers keep their deterministic raw-offset fallback).
+ */
+export interface DetachedParentAnchor {
+  /** getWorldPosition() at removal — the summed offset chain, world coords. */
+  world: Point;
+  /** getGlobalPosition() at removal — the transform-aware position. */
+  global: Point;
+  /** Local rotation at removal (getGlobalPosition composes against the parent's LOCAL rotation). */
+  rotation: number;
+  /** Local scale at removal (same reason). */
+  scale: Point;
+  /** getGlobalTransformMatrix() at removal — for getGlobalBounds and friends. */
+  matrix: TransformMatrix;
+}
+
 export interface SerializedNode extends SerializedEntity {
   position: Point;
   size: Size;
@@ -608,7 +637,23 @@ export class NodeModel extends DiagramEntity {
       seen.add(current.parentId);
 
       const parentNode = this.diagram.getNode(current.parentId);
-      if (!parentNode) break;
+      if (!parentNode) {
+        // wave14/model — TOLERANT READER. An unresolvable parent resolves to its
+        // LAST-KNOWN ANCHOR (see DetachedParentAnchor): the anchor IS the missing
+        // parent's accumulated world position at removal time, so it terminates the
+        // walk. Children of a deleted parent FREEZE where they were instead of
+        // jumping to their raw offsets; the ref itself stays dangling so an undo
+        // re-resolves it through the live node again. A parentId the diagram never
+        // held (a document loaded with a dangle) has no anchor and keeps the old
+        // deterministic raw-offset fallback — DiagramValidator owns flagging that.
+        const anchor = this.diagram.getDetachedAnchor(current.parentId);
+        if (anchor) {
+          worldX += anchor.world.x;
+          worldY += anchor.world.y;
+          worldZ += anchor.world.z || 0;
+        }
+        break;
+      }
 
       worldX += parentNode.position.x;
       worldY += parentNode.position.y;
@@ -792,21 +837,38 @@ export class NodeModel extends DiagramEntity {
     // In relative mode with parent: apply parent's hierarchy transform
     const parent = this.getParentNode();
     if (!parent) {
+      // wave14/model — TOLERANT READER (see getWorldPosition): a removed parent's
+      // frozen frame keeps the transform-aware reading in agreement with the walk.
+      const anchor = this.diagram?.getDetachedAnchor(this.parentId!);
+      if (anchor) {
+        return this.composeGlobalFromParentFrame(anchor.global, anchor.rotation, anchor.scale);
+      }
       return { ...this.position };
     }
 
-    // For hierarchical positioning, apply: scale -> rotate -> translate
-    // (without transform origin offsets which are for visual transforms)
-    const parentGlobalPos = parent.getGlobalPosition();
+    return this.composeGlobalFromParentFrame(
+      parent.getGlobalPosition(),
+      parent.rotation,
+      parent.scale
+    );
+  }
 
+  /**
+   * Compose this node's global position from a parent FRAME (global position +
+   * local rotation/scale). For hierarchical positioning, apply:
+   * scale -> rotate -> translate (without transform origin offsets, which are
+   * for visual transforms). Shared by the live-parent path and the
+   * detached-anchor path of getGlobalPosition so the two can never disagree.
+   */
+  private composeGlobalFromParentFrame(parentGlobalPos: Point, rotation: number, scale: Point): Point {
     // Scale child position by parent's scale
-    let x = this.position.x * parent.scale.x;
-    let y = this.position.y * parent.scale.y;
+    let x = this.position.x * scale.x;
+    let y = this.position.y * scale.y;
 
     // Rotate scaled position by parent's rotation
-    if (parent.rotation !== 0) {
-      const cos = Math.cos(parent.rotation);
-      const sin = Math.sin(parent.rotation);
+    if (rotation !== 0) {
+      const cos = Math.cos(rotation);
+      const sin = Math.sin(rotation);
       const rotatedX = x * cos - y * sin;
       const rotatedY = x * sin + y * cos;
       x = rotatedX;
@@ -842,22 +904,52 @@ export class NodeModel extends DiagramEntity {
 
     const parent = this.getParentNode();
     if (!parent) {
+      // wave14/model — the WRITER must share the readers' frame, or dragging an
+      // orphaned child teleports it: convert through the removed parent's frozen
+      // frame when one exists (see DetachedParentAnchor).
+      const anchor = this.diagram?.getDetachedAnchor(this.parentId);
+      if (anchor) {
+        this.positionMode = 'relative';
+        this.setPositionFromGlobalInParentFrame(anchor.global, anchor.rotation, anchor.scale, x, y, z);
+        return;
+      }
       this.setPosition(x, y, z);
       return;
     }
 
     // Convert global to local by inverting parent's hierarchy transform
     this.positionMode = 'relative';
-    const parentGlobalPos = parent.getGlobalPosition();
+    this.setPositionFromGlobalInParentFrame(
+      parent.getGlobalPosition(),
+      parent.rotation,
+      parent.scale,
+      x,
+      y,
+      z
+    );
+  }
 
+  /**
+   * Inverse of {@link composeGlobalFromParentFrame}: write a GLOBAL point as a
+   * local offset against a parent frame. Shared by the live-parent path and the
+   * detached-anchor path of setGlobalPosition.
+   */
+  private setPositionFromGlobalInParentFrame(
+    parentGlobalPos: Point,
+    rotation: number,
+    scale: Point,
+    x: number,
+    y: number,
+    z?: number
+  ): void {
     // Subtract parent's global position
     let localX = x - parentGlobalPos.x;
     let localY = y - parentGlobalPos.y;
 
     // Rotate by -parent.rotation
-    if (parent.rotation !== 0) {
-      const cos = Math.cos(-parent.rotation);
-      const sin = Math.sin(-parent.rotation);
+    if (rotation !== 0) {
+      const cos = Math.cos(-rotation);
+      const sin = Math.sin(-rotation);
       const rotatedX = localX * cos - localY * sin;
       const rotatedY = localX * sin + localY * cos;
       localX = rotatedX;
@@ -865,8 +957,8 @@ export class NodeModel extends DiagramEntity {
     }
 
     // Divide by parent's scale
-    localX /= parent.scale.x;
-    localY /= parent.scale.y;
+    localX /= scale.x;
+    localY /= scale.y;
 
     this.setPosition(localX, localY, z !== undefined ? z - (parentGlobalPos.z ?? 0) : undefined);
   }
@@ -903,6 +995,12 @@ export class NodeModel extends DiagramEntity {
 
     const parent = this.getParentNode();
     if (!parent) {
+      // wave14/model — TOLERANT READER (see getWorldPosition): compose against the
+      // removed parent's frozen global matrix so getGlobalBounds does not jump.
+      const anchor = this.diagram?.getDetachedAnchor(this.parentId!);
+      if (anchor) {
+        return composeMatrices(anchor.matrix, localMatrix);
+      }
       return localMatrix;
     }
 

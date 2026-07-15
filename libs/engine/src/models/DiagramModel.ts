@@ -2,7 +2,7 @@
 
 import { DiagramEntity } from './DiagramEntity';
 import { ReadonlyLock } from './readonly-lock'; // Wave 9 — Card 7
-import { NodeModel, SerializedNode } from './NodeModel';
+import { NodeModel, SerializedNode, type DetachedParentAnchor } from './NodeModel';
 import { LinkModel, SerializedLink } from './LinkModel';
 import { PortModel } from './PortModel';
 import { GroupModel, SerializedGroup } from './GroupModel'; // Phase 1.6c
@@ -145,6 +145,27 @@ export class DiagramModel extends DiagramEntity {
   // are added/removed so callers (renderer per-frame link resolution, routing,
   // connection validation) never linear-scan every node's ports.
   private portIndex: Map<string, { node: NodeModel; port: PortModel }> = new Map();
+
+  /**
+   * wave14/model — LAST-KNOWN ANCHORS of removed nodes. The tolerant-reader half of the
+   * soft-reference (quarantine) design; see {@link DetachedParentAnchor} for the shape and
+   * {@link removeNode} for the design argument.
+   *
+   * DERIVED, SESSION-LOCAL STATE — never serialized, never on the wire. In collab, each
+   * peer records the anchor when IT applies the removal; since the parent's registers are
+   * LWW-converged before either peer applies the remove, peers freeze orphans at the same
+   * spot. (The one divergence window: a move-parent op racing the delete-parent op can be
+   * applied on one peer and refused-as-late on another, so their anchors — a reading taken
+   * at apply time — can differ until the parent is restored. The DOCUMENT still converges;
+   * only the derived freeze can briefly disagree, the same tier of divergence as any other
+   * derived presentation state.)
+   *
+   * Lifecycle: written by removeNode (every removal path funnels through it — Delete key,
+   * setNodes diffs, collab remove ops, patches), erased by installNode the moment the id
+   * comes back (undo, redo, remote resurrect), cleared wholesale by clearNodes/dispose.
+   * Bounded by the number of distinct ids removed-and-not-restored in a session.
+   */
+  private detachedAnchors: Map<string, DetachedParentAnchor> = new Map();
 
   /**
    * Wave 10 — who owns the invariant "a link whose node is gone is not a link"?
@@ -462,6 +483,10 @@ export class DiagramModel extends DiagramEntity {
     // Set diagram reference (Phase 1.6a)
     node.diagram = this;
 
+    // wave14/model — the id is LIVE again (undo, redo, remote resurrect): drop its
+    // last-known anchor so parent chains resolve through the real node, not the freeze.
+    this.detachedAnchors.delete(node.id);
+
     this.nodes.set(node.id, node);
     this.trackChange('nodes', null, node);
     this.emitOrQueue('node:added', node);
@@ -519,6 +544,38 @@ export class DiagramModel extends DiagramEntity {
     if (this.blocksDocumentWrite()) return undefined;
     const node = this.nodes.get(nodeId);
     if (node) {
+      // wave14/model — record the LAST-KNOWN ANCHOR before any teardown, while the
+      // node can still resolve its own parent chain.
+      //
+      // Removal deliberately leaves soft refs dangling: children's `parentId` and the
+      // id inside `GroupModel.members` keep pointing here. THE DANGLE IS THE DESIGN,
+      // not an oversight — the two alternatives are both worse:
+      //
+      //   • HARD-CLEARING the refs at delete time is irreversible under collab/undo.
+      //     Undo-of-parent-delete restores children exactly BECAUSE the ref dangles
+      //     and re-resolves; clearing it would need a compensating write per child,
+      //     and a peer that never saw those writes diverges. It is the cascade trap
+      //     collab/integrity.ts documents for links, in parentId form.
+      //   • RE-ANCHORING children here via tracked position writes (position +=
+      //     parentWorld, parentId = undefined) mutates entities the user did not
+      //     touch: in collab each rewrite becomes an op that races a peer's real
+      //     concurrent drag of that child (LWW picks one whole write — either the
+      //     re-anchor clobbers the drag or the drag re-interprets its offset in a
+      //     frame that no longer exists), and undo of the delete is no longer one
+      //     inverse op but 1+N that nothing transacts across the remote/patch paths.
+      //
+      //   So: QUARANTINE the refs (keep them, derived readers tolerate them) — the
+      //   document is never touched, undo re-adds the parent and the chain re-resolves
+      //   byte-identically by construction. The anchor below is what the tolerant
+      //   readers freeze orphaned children at, so they stop jumping to raw offsets.
+      this.detachedAnchors.set(nodeId, {
+        world: node.getWorldPosition(),
+        global: node.getGlobalPosition(),
+        rotation: node.rotation,
+        scale: { ...node.scale },
+        matrix: node.getGlobalTransformMatrix(),
+      });
+
       // Links first, while the node's ports are still in the index — removeLink()
       // resolves them to release the ports' connection bookkeeping.
       if (this.linkIntegrityOwner === 'model') {
@@ -603,6 +660,18 @@ export class DiagramModel extends DiagramEntity {
   }
 
   /**
+   * wave14/model — the last-known anchor of a REMOVED node, or undefined if the id is
+   * live, was never here, or the anchor was wholesale-cleared. The tolerant readers in
+   * NodeModel (getWorldPosition / getGlobalPosition / getGlobalTransformMatrix /
+   * setGlobalPosition) resolve an unresolvable parent through this so orphaned relative
+   * children freeze in place instead of jumping to their raw offsets. See
+   * {@link detachedAnchors} and the design argument on {@link removeNode}.
+   */
+  getDetachedAnchor(nodeId: string): DetachedParentAnchor | undefined {
+    return this.detachedAnchors.get(nodeId);
+  }
+
+  /**
    * Index every current port of a node and keep the index current as ports are
    * added/removed on that node. Called from addNode/restoreNode/fromJSON.
    * Listeners are guarded so a removed node can never re-pollute the index.
@@ -646,6 +715,8 @@ export class DiagramModel extends DiagramEntity {
     if (this.blocksDocumentWrite()) return;
     this.nodes.clear();
     this.portIndex.clear();
+    // Wholesale reset: no nodes remain to read a frozen frame through.
+    this.detachedAnchors.clear();
     this.emitOrQueue('nodes:cleared');
   }
 
@@ -2626,6 +2697,7 @@ export class DiagramModel extends DiagramEntity {
     this.groups.clear();
     this.strokes.clear();
     this.portIndex.clear();
+    this.detachedAnchors.clear(); // wave14/model — nothing left to freeze against
 
     // Clear spatial indices (prevents memory leaks from indexed entities)
     this.nodeSpatialIndex.clear();
