@@ -31,9 +31,18 @@ export * from './lib/services/breakpoint-manager.service';
 // Phase 1.1: Animation service
 export * from './lib/services/angular-animation.service';
 
-// Interaction foundation: unified Pointer Events input pipeline
+// Interaction arbitration (ToolManager) for the canvas' mouse ladder.
+//
+// wave14/ng-touch — three DEAD exports removed from here, deliberately:
+//  - PointerInputController ("unified Pointer Events input pipeline"): written,
+//    exported, spec'd, never constructed by anything. Touch input now goes
+//    through the SHARED TouchGestureController from @grafloria/renderer, wired
+//    inside DiagramCanvasComponent.
+//  - MobileToolbarComponent + TouchResizeHandleComponent ("Phase 4: Mobile
+//    components"): referenced by nothing but their own specs. Touch resize is
+//    real now, but it comes from the shared SelectionToolsController driven by
+//    the touch controller — not from a dedicated handle component.
+// A green unit suite proves a unit works, never that anything calls it; these
+// shipped in the installable package looking like the touch story while the
+// canvas was mouse-only.
 export * from './lib/interaction';
-
-// Phase 4: Mobile components
-export * from './lib/components/mobile-toolbar/mobile-toolbar.component';
-export * from './lib/components/node-resize/touch-resize-handle.component';

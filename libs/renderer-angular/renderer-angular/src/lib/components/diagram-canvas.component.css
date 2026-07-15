@@ -10,6 +10,13 @@
   height: 100%;
   position: relative;
   overflow: hidden;
+  /* wave14/ng-touch — THE line that makes touch work (same as DomEventBinder's
+     imperative container.style.touchAction = 'none'). Without it the browser
+     claims every one-finger drag as a page scroll and every two-finger spread
+     as a page zoom, and STOPS DELIVERING pointermove mid-gesture: the pointer
+     handlers on the host are correct and simply never run. The browser harness
+     has a control that flips this to `auto` and asserts pan goes dead. */
+  touch-action: none;
 }
 
 /* SVG Layer: Existing rendering layer for edges and pure SVG nodes */

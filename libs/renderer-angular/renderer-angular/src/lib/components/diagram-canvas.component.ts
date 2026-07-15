@@ -93,7 +93,26 @@ import {
   type ColorMode,
   type ThemeSet,
   type TokenBridge,
+  // wave14/ng-touch: the camera-rect type the TouchGestureController's host
+  // contract speaks (getBoundingClientRect-shaped).
+  type CanvasRect,
 } from '@grafloria/renderer';
+// wave14/ng-touch: the SHARED touch gesture brain (wave 9) — the same class the
+// framework-free DomEventBinder instantiates, so Angular gets pan / pinch / tap /
+// long-press / drag-to-connect / touch-resize from ONE implementation instead of
+// growing a second one.
+//
+// DEEP RELATIVE IMPORT, deliberately: `@grafloria/renderer`'s barrel does not export
+// `touch-gestures` (DomEventBinder deep-imports it too), the tsconfig path alias
+// only maps the barrel, and `libs/renderer/src/**` is owned by sibling waves this
+// cycle so the export cannot be added from here. When a wave that owns the
+// renderer hoists TouchGestureController onto the public barrel, flip this to
+// `@grafloria/renderer` and delete this note.
+import {
+  TouchGestureController,
+  type TouchGestureHost,
+  type TouchGestureOptions,
+} from '../../../../../renderer/src/interaction/touch-gestures';
 import { VNodeRendererService } from '../services/vnode-renderer.service';
 import { InteractionHandlerService } from '../services/interaction-handler.service';
 import { ComponentRendererService } from '../services/component-renderer.service';
@@ -2734,6 +2753,322 @@ export class DiagramCanvasComponent implements AfterViewInit, OnDestroy {
     this.viewportChanged.emit(this.getViewBox());
   }
 
+  // ==========================================================================
+  // wave14/ng-touch — the Angular host's touch pipeline.
+  //
+  // Until this wave the component was MOUSE-ONLY: every listener above/below is a
+  // `mousedown`/`mousemove`/... @HostListener, so on a tablet the only thing that
+  // ever reached it was the browser's compatibility mouse events after a tap —
+  // no pan, no pinch, no drag, and a double-fire hazard the moment real pointer
+  // handling exists. The framework-free renderer fixed this in wave 9
+  // (DomEventBinder + TouchGestureController); this block mirrors that recipe:
+  //
+  //   1. `touch-action: none` on the container (see the component CSS) — without
+  //      it the browser claims the gesture for native scroll/zoom and simply
+  //      stops delivering pointermove; every handler here would be correct and
+  //      never run.
+  //   2. pointerdown/move/up/cancel listeners fork on `pointerType`: touch goes
+  //      to the SHARED TouchGestureController, mouse/pen falls through to the
+  //      existing mouse ladder (a PointerEvent IS a MouseEvent).
+  //   3. compat-mouse dedupe: the legacy mouse @HostListeners are kept — jsdom
+  //      has no PointerEvent and the unit suites drive the component with real
+  //      MouseEvents — but auto-disable the instant a real PointerEvent shows up
+  //      (`sawPointerEvent`), exactly like DomEventBinder's gated listeners.
+  //      `preventDefault()` on touch pointerdown additionally suppresses the
+  //      synthesized mousedown/mouseup/click after a tap.
+  //
+  // DELIBERATELY NOT a DomEventBinder swap. The binder owns the whole mouse
+  // ladder too; replacing this component's @HostListener pipeline with it is the
+  // intended END-STATE, but it is a migration of every mouse/keyboard branch in
+  // this 4000-line component (marquee overlay, ToolManager arbitration, HTML
+  // handles, wave4 tool layer...) — audited as its own wave. This block adds the
+  // missing INPUT MODALITY with the shared controller and leaves the ladder
+  // alone, so the future migration deletes code instead of reconciling two.
+  // ==========================================================================
+
+  /**
+   * True once a real PointerEvent has been observed. Real browsers fire
+   * `pointerdown` before the compatibility `mousedown`, so after the first
+   * pointer event the pointer pipeline owns everything and the legacy mouse
+   * listeners go silent — no double-handling. jsdom never constructs a
+   * PointerEvent, so under jest this stays false and the mouse listeners work
+   * exactly as before.
+   */
+  private sawPointerEvent = false;
+
+  /** The shared touch gesture controller (built lazily on first touch). */
+  private touchGestures: TouchGestureController | null = null;
+
+  /** Options the live controller was built with (rebuilt if inputs change). */
+  private touchGestureOptions: Required<Pick<TouchGestureOptions, 'enablePan' | 'enableZoom'>> | null =
+    null;
+
+  /**
+   * The camera the TouchGestureController drives. The controller mutates a
+   * framework-agnostic {@link ViewportController}; this component's camera is a
+   * pair of SIGNALS (`viewport` / `zoom`). Rather than reimplement the pinch
+   * maths against signals, the adapter SYNCS: signals → controller before every
+   * touch event, controller → signals after it (see {@link forwardTouchEvent}).
+   * The two share the same coordinate contract (centre-anchored viewBox, camera
+   * rect in CSS px — see the Card B convention block above), which is what makes
+   * the copy loss-free.
+   */
+  private touchCamera: ViewportController | null = null;
+
+  /** Build (or rebuild) the gesture controller against the current inputs. */
+  private ensureTouchGestures(): TouchGestureController {
+    const options = {
+      enablePan: this.enablePan(),
+      enableZoom: this.enableMouseWheelZoom(),
+    };
+    const stale =
+      this.touchGestures &&
+      this.touchGestures.activePointerCount === 0 &&
+      (this.touchGestureOptions?.enablePan !== options.enablePan ||
+        this.touchGestureOptions?.enableZoom !== options.enableZoom);
+    if (!this.touchGestures || stale) {
+      this.touchGestures = new TouchGestureController(
+        this.buildTouchHost(),
+        options,
+        // The SAME SelectionToolsController the mouse ladder uses, so a resize
+        // handle can be grabbed with a finger and the two input paths can never
+        // fight over one gesture (single-active-gesture is the rule).
+        this.selectionTools
+      );
+      this.touchGestureOptions = options;
+    }
+    return this.touchGestures;
+  }
+
+  /** The TouchGestureHost adapter — every capability read LIVE off the component. */
+  private buildTouchHost(): TouchGestureHost {
+    // eslint-disable-next-line @typescript-eslint/no-this-alias
+    const self = this;
+    return {
+      getEngine: () => untracked(() => this.activeEngine()) ?? null,
+      // A getter, not a snapshot: the camera object is recreated per event by
+      // touchCameraSyncIn() so min/max-zoom inputs are always honoured.
+      get viewport(): ViewportController {
+        return self.requireTouchCamera();
+      },
+      // InteractionHandlerService IS the framework-agnostic InteractionController
+      // (a thin @Injectable subclass) — the touch controller drives the same
+      // hover/connection/hit-slop state the mouse ladder reads.
+      interaction: this.interactionHandler,
+      getRect: (): CanvasRect => this.containerRef.nativeElement.getBoundingClientRect(),
+      requestRender: () => {
+        this.scheduleRender();
+        this.cdr.markForCheck();
+      },
+      emit: (event, payload) => this.onTouchControllerEvent(event, payload),
+      isReadonly: () => this.eng?.getDiagram()?.isReadonly() === true,
+    };
+  }
+
+  /** Camera sync IN: component signals → a fresh framework-agnostic camera. */
+  private touchCameraSyncIn(): void {
+    const { width, height } = this.canvasPixelSize();
+    this.touchCamera = new ViewportController({
+      viewport: { x: this.viewport().x, y: this.viewport().y, width, height },
+      zoom: this.zoom(),
+      minZoom: this.minZoom(),
+      maxZoom: this.maxZoom(),
+    });
+  }
+
+  private requireTouchCamera(): ViewportController {
+    if (!this.touchCamera) {
+      this.touchCameraSyncIn();
+    }
+    return this.touchCamera as ViewportController;
+  }
+
+  /**
+   * Camera sync OUT: whatever the gesture did to the framework-agnostic camera
+   * is applied back to the signals, with the SAME side-effect fan-out the mouse
+   * pan/zoom paths perform (diagram.pan/setZoom + the two outputs + a repaint).
+   */
+  private touchCameraSyncOut(): void {
+    const cam = this.touchCamera;
+    if (!cam) {
+      return;
+    }
+    const before = this.viewport();
+    const beforeZoom = this.zoom();
+    const after = cam.getViewport();
+    const afterZoom = cam.getZoom();
+    const moved = after.x !== before.x || after.y !== before.y;
+    const zoomed = afterZoom !== beforeZoom;
+    if (!moved && !zoomed) {
+      return;
+    }
+
+    const diagram = this.eng?.getDiagram();
+    if (zoomed) {
+      this.zoom.set(afterZoom);
+      diagram?.setZoom(afterZoom);
+      this.zoomChanged.emit(afterZoom);
+    }
+    if (moved) {
+      this.setViewportOrigin(after.x, after.y);
+      diagram?.pan(after.x - before.x, after.y - before.y);
+    }
+    this.emitViewportChanged();
+    this.scheduleRender();
+    this.cdr.markForCheck();
+  }
+
+  /** Route one touch pointer event through the shared controller (sync around it). */
+  private forwardTouchEvent(
+    phase: 'down' | 'move' | 'up' | 'cancel',
+    event: PointerEvent
+  ): void {
+    const touch = this.ensureTouchGestures();
+    this.touchCameraSyncIn();
+    switch (phase) {
+      case 'down':
+        touch.onPointerDown(event);
+        break;
+      case 'move':
+        touch.onPointerMove(event);
+        break;
+      case 'up':
+        touch.onPointerUp(event);
+        break;
+      case 'cancel':
+        touch.onPointerCancel(event);
+        break;
+    }
+    this.touchCameraSyncOut();
+  }
+
+  /**
+   * Events the shared controller emits. The framework-free instance surfaces
+   * these on its public event bus; this component has no equivalent outputs, so
+   * only the ones with an Angular-side consumer are wired:
+   *
+   * - `selection:change` → announce to AT (the mouse path does the same) + CD.
+   * - `node:click` / `edge:click` / `nodes:change` → deliberately dropped: the
+   *   model mutations behind them already flow out through the diagram event
+   *   subscriptions (`modelChange`, repaint), so handling them here would
+   *   double-emit.
+   * - `contextmenu` (long-press) → dropped for now — this component has no
+   *   context-menu output; the OS menu is still suppressed in onContextMenu so a
+   *   long-press does not pop the browser's own menu over the canvas.
+   */
+  private onTouchControllerEvent(event: string, _payload: unknown): void {
+    if (event === 'selection:change') {
+      if (this.enableKeyboardNavigation()) {
+        this.keyboardNav.announceSelection(this.eng);
+      }
+      this.scheduleRender();
+      this.cdr.markForCheck();
+    }
+  }
+
+  /**
+   * Pointer events — the primary pipeline (mouse, pen AND touch), mirroring
+   * DomEventBinder.onPointerDown/Move/Up/Cancel. Touch forks to the shared
+   * gesture controller; mouse/pen falls through to the existing ladder
+   * (a PointerEvent IS a MouseEvent, so the methods take it as-is).
+   */
+  @HostListener('pointerdown', ['$event'])
+  onPointerDown(event: PointerEvent): void {
+    this.sawPointerEvent = true;
+    if (event.pointerType === 'touch') {
+      // Claim the gesture: suppresses the compatibility mouse events a browser
+      // synthesizes after a tap (which would run the mouse ladder a second time)
+      // and the OS text-selection/callout.
+      event.preventDefault();
+      // Capture, so a finger sliding off the canvas keeps delivering move/up.
+      // Best-effort: setPointerCapture throws NotFoundError for synthetic or
+      // already-released pointers, and losing capture must not kill the gesture.
+      try {
+        this.containerRef?.nativeElement?.setPointerCapture?.(event.pointerId);
+      } catch {
+        /* capture is an optimisation, not a precondition */
+      }
+      this.forwardTouchEvent('down', event);
+      return;
+    }
+    this.onMouseDown(event);
+  }
+
+  @HostListener('pointermove', ['$event'])
+  onPointerMove(event: PointerEvent): void {
+    this.sawPointerEvent = true;
+    if (event.pointerType === 'touch') {
+      this.forwardTouchEvent('move', event);
+      return;
+    }
+    this.onMouseMove(event);
+  }
+
+  @HostListener('pointerup', ['$event'])
+  onPointerUp(event: PointerEvent): void {
+    this.sawPointerEvent = true;
+    if (event.pointerType === 'touch') {
+      try {
+        this.containerRef?.nativeElement?.releasePointerCapture?.(event.pointerId);
+      } catch {
+        /* nothing to release */
+      }
+      this.forwardTouchEvent('up', event);
+      return;
+    }
+    this.onMouseUp(event);
+  }
+
+  @HostListener('pointercancel', ['$event'])
+  onPointerCancel(event: PointerEvent): void {
+    if (event.pointerType === 'touch') {
+      try {
+        this.containerRef?.nativeElement?.releasePointerCapture?.(event.pointerId);
+      } catch {
+        /* nothing to release */
+      }
+      this.forwardTouchEvent('cancel', event);
+      return;
+    }
+    this.onMouseLeave();
+  }
+
+  /**
+   * The native context menu: on touch the long-press already produced our own
+   * gesture, so the OS menu would sit on top of the canvas mid-interaction.
+   */
+  @HostListener('contextmenu', ['$event'])
+  onContextMenu(event: MouseEvent): void {
+    const pointerType = (event as PointerEvent).pointerType;
+    if (pointerType === 'touch' || (this.touchGestures?.activePointerCount ?? 0) > 0) {
+      event.preventDefault();
+    }
+  }
+
+  // --- compat-mouse dedupe: the legacy mouse listeners -----------------------
+  // Gated on the LISTENER, not inside onMouseDown() itself: the pointer fork
+  // above calls onMouseDown() directly for mouse/pen, so gating the method would
+  // deafen the very path that replaces these. The un-gated methods also stay the
+  // public seam the unit suites drive (jsdom has no PointerEvent).
+
+  @HostListener('mousedown', ['$event'])
+  onCompatMouseDown(event: MouseEvent): void {
+    if (this.sawPointerEvent) return;
+    this.onMouseDown(event);
+  }
+
+  @HostListener('mousemove', ['$event'])
+  onCompatMouseMove(event: MouseEvent): void {
+    if (this.sawPointerEvent) return;
+    this.onMouseMove(event);
+  }
+
+  @HostListener('mouseup', ['$event'])
+  onCompatMouseUp(event: MouseEvent): void {
+    if (this.sawPointerEvent) return;
+    this.onMouseUp(event);
+  }
+
   /**
    * Handle mouse down for panning and node selection (Phase 0.5 - Option B + Option 1)
    * Supports:
@@ -2742,7 +3077,6 @@ export class DiagramCanvasComponent implements AfterViewInit, OnDestroy {
    * - Middle mouse button: Pan
    * - Space + Left click: Pan
    */
-  @HostListener('mousedown', ['$event'])
   onMouseDown(event: MouseEvent): void {
     if (!this.eng) {
       return;
@@ -3076,7 +3410,6 @@ export class DiagramCanvasComponent implements AfterViewInit, OnDestroy {
   /**
    * Handle mouse move for panning, node dragging, and hover (Phase 0.5 - Option B + Option 1 + Option 2)
    */
-  @HostListener('mousemove', ['$event'])
   onMouseMove(event: MouseEvent): void {
     if (!this.eng) {
       return;
@@ -3231,7 +3564,6 @@ export class DiagramCanvasComponent implements AfterViewInit, OnDestroy {
   /**
    * Handle mouse up to stop panning, node dragging, and connections (Phase 0.5 - Option B + Option 1 + Phase 3)
    */
-  @HostListener('mouseup', ['$event'])
   onMouseUp(event: MouseEvent): void {
     if (event.button === 1 || event.button === 0) {
       // wave4/interaction (Card 5): commit a resize / rotate / vertex gesture as
@@ -3313,9 +3645,20 @@ export class DiagramCanvasComponent implements AfterViewInit, OnDestroy {
   }
 
   /**
-   * Handle mouse leave to stop panning and node dragging (Phase 0.5 - Option B + Option 1)
+   * mouseleave stays UN-gated on `sawPointerEvent` (mirrors DomEventBinder: its
+   * cleanup is idempotent and there is no pointerleave twin wired), but it must
+   * never abort a live TOUCH gesture — the touch resize path drives the SAME
+   * SelectionToolsController this handler cancels.
    */
   @HostListener('mouseleave')
+  onCompatMouseLeave(): void {
+    if ((this.touchGestures?.activePointerCount ?? 0) > 0) return;
+    this.onMouseLeave();
+  }
+
+  /**
+   * Handle mouse leave to stop panning and node dragging (Phase 0.5 - Option B + Option 1)
+   */
   onMouseLeave(): void {
     this.isPanning = false;
 
@@ -4143,6 +4486,12 @@ export class DiagramCanvasComponent implements AfterViewInit, OnDestroy {
   private cleanup(): void {
     // Wave 2: tear down any open inline label editor
     this.closeLabelEditor();
+
+    // wave14/ng-touch: drop any in-flight touch gesture state (timers included —
+    // a pending long-press setTimeout must not fire into a destroyed component).
+    this.touchGestures?.reset();
+    this.touchGestures = null;
+    this.touchCamera = null;
 
     // wave4/interaction: drop the announcement subscription and the keyboard
     // controller's listeners (a leaked listener would keep the component alive).
