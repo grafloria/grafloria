@@ -33,7 +33,9 @@ defineDemo({
 
     // Build the container and move three nodes into it.
     const g = await ctx.engine.addGroup({ name: 'Pipeline' });
-    g.setFrame({ x: 380, y: 130, width: 320, height: 200 });
+    // Deliberately a TINY frame that does NOT yet enclose the members — only a real
+    // fitToContents() will grow it to wrap them, so the assertion has teeth.
+    g.setFrame({ x: 470, y: 190, width: 40, height: 40 });
     await ctx.engine.addToGroup(g.id, 'n1');
     await ctx.engine.addToGroup(g.id, 'n2');
     await ctx.engine.addToGroup(g.id, 'n3');
