@@ -32,6 +32,7 @@ export * from './remapNodePortIds';
 export * from './RotateNodeCommand'; // wave4/interaction (rotate handle)
 export * from './SetNodeLabelCommand'; // wave4/interaction (in-place text editing)
 export * from './SetLinkPointsCommand'; // wave4/interaction (vertex tools)
+export * from './SetStrokePointsCommand'; // wave13/stroke-edit (the edit tool's commit)
 export * from './ReconnectLinkCommand'; // wave12 (reconnect undo)
 export * from './SetLinkLabelCommand'; // wave4/interaction (in-place text editing)
 
