@@ -20,13 +20,35 @@ import { VisibilityGraphRouter } from './algorithms/VisibilityGraphRouter';
 import { LRUCache } from '../performance/LRUCache'; // Phase 5.3
 
 /**
+ * Point the map a graph-router queries AT THE REQUEST'S obstacles.
+ *
+ * THE BUG THIS FIXES: `AStarRouter`/`DijkstraRouter`/`VisibilityGraphRouter` all read the
+ * ObstacleMap they were handed at CONSTRUCTION. The adapters below used to pass the engine's
+ * shared global map and then route `(start, end)` — so `request.obstacles`, the set
+ * `RoutingEngine.route()` painstakingly resolves as globals ∪ request and hands over in
+ * `enhancedRequest`, was IGNORED. A link routed `avoid` drew straight THROUGH any obstacle
+ * that arrived via the request, because the router never saw it. (Orthogonal/manhattan honour
+ * request.obstacles; these three did not — a silent inconsistency across the router set.)
+ *
+ * Each adapter now owns a PRIVATE map (never the shared global one, which resolveObstacles
+ * still reads) and syncs it to the request's fully-resolved obstacle set per route. Costlier
+ * than a stale reference, but these are the opt-in `avoid`-family routers, guarded by the
+ * route cache above, and correctness is not optional.
+ */
+function syncObstacles(map: ObstacleMap, request: RouteRequest): void {
+  map.clear();
+  for (const o of request.obstacles ?? []) map.add(o);
+}
+
+/**
  * Adapter for A* Router to match IRouter interface
  */
 class AStarRouterAdapter implements IRouter {
+  private readonly obstacles = new ObstacleMap();
   private router: AStarRouter;
 
-  constructor(obstacleMap: ObstacleMap) {
-    this.router = new AStarRouter(obstacleMap);
+  constructor() {
+    this.router = new AStarRouter(this.obstacles);
   }
 
   getName(): string {
@@ -34,6 +56,7 @@ class AStarRouterAdapter implements IRouter {
   }
 
   route(request: RouteRequest): RoutedPath | null {
+    syncObstacles(this.obstacles, request);
     const points = this.router.route(request.start, request.end);
     if (points.length === 0) return null;
 
@@ -68,10 +91,11 @@ class AStarRouterAdapter implements IRouter {
  * Adapter for Dijkstra Router to match IRouter interface
  */
 class DijkstraRouterAdapter implements IRouter {
+  private readonly obstacles = new ObstacleMap();
   private router: DijkstraRouter;
 
-  constructor(obstacleMap: ObstacleMap) {
-    this.router = new DijkstraRouter(obstacleMap);
+  constructor() {
+    this.router = new DijkstraRouter(this.obstacles);
   }
 
   getName(): string {
@@ -79,6 +103,7 @@ class DijkstraRouterAdapter implements IRouter {
   }
 
   route(request: RouteRequest): RoutedPath | null {
+    syncObstacles(this.obstacles, request);
     const points = this.router.route(request.start, request.end);
     if (points.length === 0) return null;
 
@@ -111,10 +136,11 @@ class DijkstraRouterAdapter implements IRouter {
  * Adapter for Visibility Graph Router to match IRouter interface
  */
 class VisibilityGraphRouterAdapter implements IRouter {
+  private readonly obstacles = new ObstacleMap();
   private router: VisibilityGraphRouter;
 
-  constructor(obstacleMap: ObstacleMap) {
-    this.router = new VisibilityGraphRouter(obstacleMap);
+  constructor() {
+    this.router = new VisibilityGraphRouter(this.obstacles);
   }
 
   getName(): string {
@@ -122,6 +148,7 @@ class VisibilityGraphRouterAdapter implements IRouter {
   }
 
   route(request: RouteRequest): RoutedPath | null {
+    syncObstacles(this.obstacles, request);
     const points = this.router.route(request.start, request.end);
     if (points.length === 0) return null;
 
@@ -207,9 +234,9 @@ export class RoutingEngine {
     this.registerRouter('elk', new ElkRouter());
 
     // Register advanced routers with obstacle avoidance (using adapters)
-    this.registerRouter('a-star', new AStarRouterAdapter(this.obstacleMap));
-    this.registerRouter('dijkstra', new DijkstraRouterAdapter(this.obstacleMap));
-    this.registerRouter('visibility-graph', new VisibilityGraphRouterAdapter(this.obstacleMap));
+    this.registerRouter('a-star', new AStarRouterAdapter());
+    this.registerRouter('dijkstra', new DijkstraRouterAdapter());
+    this.registerRouter('visibility-graph', new VisibilityGraphRouterAdapter());
   }
 
   /**
