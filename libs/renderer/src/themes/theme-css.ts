@@ -171,6 +171,15 @@ export const BASE_STYLE_RULES: readonly StyleRule[] = [
  * cannot be scoped anyway.
  */
 const STATIC_CSS = `
+/* The diagram root is keyboard-focusable (tabindex=0, the a11y entry point).
+   The UA paints its focus ring on MOUSE focus too — so every click beside the
+   content drew "a rectangle around the whole canvas" (a live report). Keep the
+   ring for keyboard focus (:focus-visible — the a11y harness asserts it);
+   suppress it for pointer focus only. */
+svg.grafloria-diagram:focus:not(:focus-visible) {
+  outline: none;
+}
+
 /* Link Path - Disable transitions for performance and visual correctness */
 .link-group path {
   transition: none !important;
