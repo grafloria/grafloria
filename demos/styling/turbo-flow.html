@@ -1,0 +1,127 @@
+<meta charset="utf-8">
+<title>Turbo flow — Grafloria</title>
+<link rel="stylesheet" href="../shell/demo.css">
+<style>
+  .note { font-size: 12px; opacity: .8; padding: 10px 24px; border-bottom: 1px solid rgba(127,127,127,.25); line-height: 1.6; }
+  code { background: rgba(127,127,127,.15); padding: 1px 5px; border-radius: 4px; }
+  #canvas { height: calc(100vh - 190px); background: #0b1020; }
+</style>
+<header id="demo-head"></header>
+<div class="note">
+  React Flow's showpiece, matched: <b>glowing, animated gradient</b> edges and node borders.
+  Edges carry <code>style.animation</code> (a live CSS keyframe, not dead config), a
+  <b>gradient stroke</b> paint server, and a <b>drop-shadow glow</b>. Nodes carry an
+  <code>animatedBorder</code> that runs the SVG-variant keyframe on real <code>&lt;rect&gt;</code> strokes.
+</div>
+<div id="canvas"></div>
+<script type="module">
+import { render } from '../shell/grafloria.js';
+import { defineDemo, check } from '../shell/demo.js';
+
+const TURBO = { type: 'linear', x1: 0, y1: 0, x2: 1, y2: 0,
+  stops: [{ offset: 0, color: '#2a8af6' }, { offset: 0.5, color: '#a853ba' }, { offset: 1, color: '#e92a67' }] };
+const GLOW = { offsetX: 0, offsetY: 0, blur: 6, color: '#a853ba' };
+
+const node = (id, x, y, label) => ({
+  id, position: { x, y }, size: { width: 170, height: 72 }, data: { label },
+  style: {
+    fill: '#111528', stroke: '#2a8af6', strokeWidth: 2,
+    animatedBorder: true, borderAnimationType: 'gradient',   // -> node-border-gradient-svg
+    shadow: GLOW,
+  },
+});
+const edge = (id, s, t) => ({
+  id, source: s, target: t,
+  style: { stroke: TURBO, strokeWidth: 3, shadow: GLOW, animation: { type: 'dash-flow', speed: 'fast' } },
+});
+
+const SPEC = {
+  nodes: [ node('a', 60, 90, 'Source'), node('b', 380, 60, 'Turbo'), node('c', 380, 210, 'Boost'), node('d', 700, 130, 'Sink') ],
+  edges: [ edge('e1','a','b'), edge('e2','a','c'), edge('e3','b','d'), edge('e4','c','d') ],
+};
+
+const nodeRect = (host, id) => host.querySelector(`[data-node-id="${id}"] rect.diagram-node`);
+const linkPath = (host, id) => host.querySelector(`[data-link-id="${id}"] path.diagram-link`) || host.querySelector('path.diagram-link');
+const defIdIn = (s) => (String(s).match(/#(grafloria-def-[a-z0-9]+)/) || [])[1];
+
+defineDemo({
+  name: 'Turbo flow',
+  blurb: "React Flow's turbo showpiece, matched: glowing animated gradient edges and node borders, all through the public style API.",
+  reactflow: 'Turbo Flow',
+
+  async setup(ctx) {
+    const api = render(SPEC, ctx.host);
+    ctx.instance = api;
+    ctx.diagram = api.getModel();
+    api.renderNow();
+    await ctx.tick();
+  },
+
+  async assert(ctx) {
+    const host = ctx.host;
+    const defs = host.querySelector('defs');
+
+    // 1. The edge actually carries the animation CLASS — and the class runs a
+    //    LIVE keyframe. Dead animation config (a class with no stylesheet rule)
+    //    was a real bug in this repo; getComputedStyle proves the animation is on.
+    const path = linkPath(host, 'e1');
+    check(!!path, 'no diagram-link path rendered');
+    check(
+      path.classList.contains('link-animated-dash-flow'),
+      `the edge is missing its animation class; classes = "${path.className.baseVal || path.getAttribute('class')}"`
+    );
+    const animName = getComputedStyle(path).animationName;
+    check(
+      animName === 'dash-flow',
+      `the edge animation is DEAD config: getComputedStyle(...).animationName = "${animName}", expected "dash-flow".\n` +
+      `    A class with no @keyframes rule behind it is exactly the bug this asserts against.`
+    );
+    // 'fast' speed variant must actually shorten the duration.
+    const dur = getComputedStyle(path).animationDuration;
+    check(dur === '0.5s', `speed:'fast' should give a 0.5s animation-duration, got ${dur}`);
+
+    // 2. GLOWING GRADIENT: the edge stroke is a real gradient paint server, and
+    //    a real drop-shadow filter provides the glow.
+    const strokeRef = path.style.stroke || path.getAttribute('stroke');
+    const gradId = defIdIn(strokeRef);
+    check(!!gradId, `the edge stroke is not a gradient paint server: ${strokeRef}`);
+    const gradDef = defs.querySelector(`linearGradient[id="${gradId}"]`);
+    check(!!gradDef, 'the edge gradient <linearGradient> def is missing');
+    check(gradDef.querySelectorAll('stop').length === 3, 'the turbo gradient lost its 3 stops');
+    const filterRef = path.getAttribute('filter') || path.style.filter;
+    const filterId = defIdIn(filterRef);
+    check(!!filterId, `the edge has no glow filter reference: ${filterRef}`);
+    check(!!defs.querySelector(`filter[id="${filterId}"] feDropShadow`), 'the glow <feDropShadow> is missing');
+
+    // 3. NODE animated gradient border: the SVG variant class, running a live
+    //    keyframe on the real <rect> stroke.
+    const rect = nodeRect(host, 'a');
+    check(
+      rect.classList.contains('node-border-gradient-svg'),
+      `the node is missing its SVG border-animation class; classes = "${rect.getAttribute('class')}"`
+    );
+    const nodeAnim = getComputedStyle(rect).animationName;
+    check(
+      nodeAnim === 'svg-gradient-dash',
+      `the node border animation is dead: animationName = "${nodeAnim}", expected "svg-gradient-dash"`
+    );
+    // Node glow filter present too.
+    check(!!defIdIn(rect.getAttribute('filter') || ''), 'the node lost its glow filter');
+
+    // 4. CONTROL: turn the edge animation OFF and the class + live keyframe must
+    //    both disappear — proving the class is what drives the motion.
+    ctx.diagram.getLinks().find(l => l.id === 'e1' || true); // ensure links exist
+    const link = ctx.diagram.getLinks()[0];
+    link.updateStyle({ animation: { type: 'none' } });
+    ctx.instance.renderNow();
+    await ctx.tick();
+    const off = linkPath(host, 'e1');
+    check(!off.classList.contains('link-animated-dash-flow'), 'animation class survived turning animation off');
+    check(getComputedStyle(off).animationName === 'none', 'the edge is still animating after animation:none');
+
+    // put it back for the viewer
+    link.updateStyle({ animation: { type: 'dash-flow', speed: 'fast' } });
+    ctx.instance.renderNow();
+  },
+});
+</script>
