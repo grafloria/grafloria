@@ -517,37 +517,59 @@ describe('NodeToolbar Integration Tests', () => {
 
   describe('Performance', () => {
     it('should handle 20+ concurrent toolbars', (done) => {
+      // wave14/model — de-flaked. This used to assert one updateAllPositions() call over
+      // 25 toolbars in < 100ms of wall clock, which is a machine-speed lottery under
+      // parallel CI load. The REAL claim is that the update SCALES — 5× the toolbars
+      // costs about 5× the work, not 25× and not a cliff. So the budget is SELF-
+      // CALIBRATED in the same run: measure the identical operation over 5 toolbars,
+      // then over 25, and assert the multiple. Machine speed and load divide out of the
+      // ratio; a very loose absolute ceiling stays as the pathological backstop.
       const model = engine.getDiagram();
-      const nodes: NodeModel[] = [];
-
-      // Create 25 nodes
-      for (let i = 0; i < 25; i++) {
+      const mkNode = (i: number) => {
         const node = new NodeModel({
           type: 'default',
           position: { x: (i % 5) * 200, y: Math.floor(i / 5) * 100 },
           size: { width: 150, height: 50 },
         });
         model!.addNode(node);
-        nodes.push(node);
-      }
+        return node;
+      };
 
-      // Select all nodes
-      nodes.forEach(node => {
-        engine.eventBus.emit('node:selected', { node });
-      });
+      // Repetitions defeat the timer quantum: a single call on a fast box measures 0ms.
+      const REPS = 20;
+      const time = (): number => {
+        const start = performance.now();
+        for (let r = 0; r < REPS; r++) {
+          toolbarService.updateAllPositions();
+        }
+        return performance.now() - start;
+      };
+
+      // Phase 1: 5 toolbars — the baseline that calibrates the budget.
+      const firstBatch = Array.from({ length: 5 }, (_, i) => mkNode(i));
+      firstBatch.forEach(node => engine.eventBus.emit('node:selected', { node }));
 
       setTimeout(() => {
-        expect(toolbarService.getCount()).toBe(25);
+        expect(toolbarService.getCount()).toBe(5);
+        time(); // discarded warm-up (JIT, first-layout costs must not skew the baseline)
+        const baseline = time();
 
-        // Measure position update performance
-        const start = performance.now();
-        toolbarService.updateAllPositions();
-        const duration = performance.now() - start;
+        // Phase 2: 20 more — 25 concurrent toolbars, the original scenario.
+        const secondBatch = Array.from({ length: 20 }, (_, i) => mkNode(i + 5));
+        secondBatch.forEach(node => engine.eventBus.emit('node:selected', { node }));
 
-        // Should update all 25 toolbars in less than 100ms
-        expect(duration).toBeLessThan(100);
+        setTimeout(() => {
+          expect(toolbarService.getCount()).toBe(25);
+          const full = time();
 
-        done();
+          // 5× the toolbars ⇒ ~5× the time if linear; ×3 slack absorbs run-to-run noise.
+          // The floor keeps a sub-millisecond baseline from amplifying timer noise.
+          expect(full).toBeLessThan(Math.max(baseline, 5) * 5 * 3);
+          // Backstop: whatever the machine, 20 sweeps of 25 toolbars is not seconds.
+          expect(full).toBeLessThan(5000);
+
+          done();
+        }, 200);
       }, 200);
     });
 

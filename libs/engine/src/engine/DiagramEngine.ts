@@ -55,7 +55,6 @@ import type { Point, Size, Viewport } from '../types';
 import type { Plugin } from '../types';
 import type { ValidationResult } from '../validation/ValidationEngine';
 import type { NodeTypeDefinition, LinkTypeDefinition, PortTypeDefinition, GroupTypeDefinition } from '../validation/TypeRegistry'; // Phase 2
-import type { NodeBehavior } from '../types';
 // Wave 7 (Auto-layout) — Card 0: the unified layout entry point.
 import {
   LayoutRegistry,
@@ -1512,64 +1511,11 @@ export class DiagramEngine {
     return this.modeManager.afterModeChange(hook);
   }
 
-  /**
-   * Get node behavior adjusted for current mode (with per-node overrides)
-   */
-  getNodeBehaviorForMode(baseBehavior: Partial<NodeBehavior>, node?: NodeModel): NodeBehavior {
-    const defaults: NodeBehavior = {
-      selectable: true,
-      draggable: true,
-      resizable: true,
-      rotatable: true,
-      deletable: true,
-      editable: true,
-      connectable: true,
-      groupable: true,
-      cloneable: true,
-    };
-
-    // Merge base behavior with defaults
-    let merged = { ...defaults, ...baseBehavior };
-
-    // Check for per-node behavior override for current mode
-    if (node) {
-      const currentMode = this.modeManager.getMode();
-      const override = node.getBehaviorOverride(currentMode);
-      if (override) {
-        merged = { ...merged, ...override };
-        return merged; // Use override directly
-      }
-    }
-
-    // Apply mode restrictions (if no override)
-    const currentMode = this.modeManager.getMode();
-    switch (currentMode) {
-      case DiagramMode.DESIGNER:
-        // In designer mode, respect all base behavior settings
-        return merged;
-
-      case DiagramMode.RUNNING:
-      case DiagramMode.VIEW:
-      case DiagramMode.DEBUG:
-      case DiagramMode.PRESENTATION:
-        // In all other modes, disable editing capabilities
-        return {
-          ...merged,
-          draggable: false,
-          resizable: false,
-          rotatable: false,
-          deletable: false,
-          editable: false,
-          connectable: false,
-          groupable: false,
-          cloneable: false,
-          selectable: merged.selectable, // Keep selectable as-is
-        };
-
-      default:
-        return merged;
-    }
-  }
+  // wave14/model — `getNodeBehaviorForMode` DELETED along with NodeModel.behaviorOverrides.
+  // It had no caller outside its own spec; the real mode enforcement is the wave-9
+  // ReadonlyLock on the model (see models/readonly-lock.ts), which every mutator actually
+  // consults. (Its sibling getLinkBehaviorForMode below is equally caller-less — left in
+  // place because it is outside this card's chain, flagged for a future sweep.)
 
   /**
    * Get link behavior adjusted for current mode

@@ -285,24 +285,49 @@ describe('the invariant is checked INCREMENTALLY, or the engine stops being usab
     // Not one gate in this repo noticed, because no perf harness drives a Replica. I found it
     // by measuring on a hunch, which is not a system. So the gate exists now.
     //
-    // The budget is deliberately loose — a factor of ~8 over the measured 250ms — because a
-    // wall-clock assertion that is tight is a flaky test. It does not need to be tight: the
-    // failure it exists to catch is a 34× regression, and quadratic growth blows through any
-    // budget you like as soon as the diagram is real.
-    const N = 2000;
-    const r = new Replica(new DiagramModel('bulk'), { actor: 'importer' });
+    // wave14/model — HOW the gate asserts, revised. The original chose a deliberately loose
+    // absolute budget (~8× the measured 250ms) on the correct reasoning that a tight
+    // wall-clock assertion is a flaky test — and then flaked anyway, because under parallel
+    // machine load even 8× headroom is a coin toss and no constant is safe on every box.
+    // The test's REAL claim was never "under 2 seconds"; it is LINEARITY. So measure the
+    // claim: run two sizes in the same process and assert the RATIO. Linear work at 4×
+    // the size costs ~4×; the quadratic bug this gate exists to catch costs ~16× and blows
+    // through the 6× ceiling on any machine, however loaded — machine speed and parallel
+    // load divide OUT of a ratio taken in the same run. The original's loose-absolute
+    // instinct is preserved as a backstop generous enough to never flake, tight enough to
+    // catch the pathological (the bug as originally measured was 8.5s).
+    const measure = (n: number): number => {
+      const r = new Replica(new DiagramModel(`bulk-${n}`), { actor: 'importer' });
+      const started = performance.now();
+      for (let i = 0; i < n; i++) r.diagram.addNode(node(`n${i}`, i * 10, 0));
+      for (let i = 1; i < n; i++) r.diagram.addLink(link(`l${i}`, `n${i - 1}`, `n${i}`));
+      const elapsed = performance.now() - started;
 
-    const started = performance.now();
-    for (let i = 0; i < N; i++) r.diagram.addNode(node(`n${i}`, i * 10, 0));
-    for (let i = 1; i < N; i++) r.diagram.addLink(link(`l${i}`, `n${i - 1}`, `n${i}`));
-    const elapsed = performance.now() - started;
+      expect(r.diagram.getNodes()).toHaveLength(n);
+      expect(r.diagram.getLinks()).toHaveLength(n - 1); // …and every link is LIVE, not quarantined
+      expect(r.quarantinedLinks).toEqual([]);
 
-    expect(r.diagram.getNodes()).toHaveLength(N);
-    expect(r.diagram.getLinks()).toHaveLength(N - 1); // …and every link is LIVE, not quarantined
-    expect(r.quarantinedLinks).toEqual([]);
-    expect(elapsed).toBeLessThan(2000);
+      r.dispose();
+      return elapsed;
+    };
 
-    r.dispose();
+    measure(200); // discarded warm-up: JIT/allocator noise must not inflate the small run
+
+    // MIN of three, per size: a ratio removes CONSTANT machine slowness, but parallel
+    // suite load FLUCTUATES between the two measurements, and a GC pause or a neighbour
+    // worker's spike can only ever ADD time — so the minimum is the estimator that
+    // converges on the true cost (a mean would average the spikes back in).
+    const best = (n: number): number => Math.min(measure(n), measure(n), measure(n));
+    const small = best(500);
+    const large = best(2000); // 4× the entities
+
+    // LINEAR ⇒ ~4×. Quadratic ⇒ ≥16× (the original bug measured 34×). 8× splits those
+    // decisively while absorbing residual noise. The floor keeps a sub-millisecond
+    // `small` (fast machine, tiny timer quantum) from turning the ratio into a noise
+    // amplifier.
+    expect(large).toBeLessThan(Math.max(small, 20) * 8);
+    // Backstop, very loose on purpose: the regression this catches measured 8.5s.
+    expect(large).toBeLessThan(8000);
   });
 });
 

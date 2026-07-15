@@ -88,7 +88,11 @@ describe('Hierarchy Command Support (Phase 1.6a Part 5)', () => {
       command.undo(context);
 
       expect(diagram.getNode(child.id)).toBeDefined();
-      expect(child.getParent()?.id).toBe(parent.id);
+      // wave14/model — assert through the RESTORED node, not the pre-delete handle:
+      // undo rebuilds the node from its snapshot (fromJSON), so `child` is a detached
+      // stale instance. It used to resolve getParent() anyway only because removeNode
+      // leaked the `diagram` back-reference; that leak is fixed (mirror of installNode).
+      expect(diagram.getNode(child.id)!.getParent()?.id).toBe(parent.id);
       expect(parent.getChildren().map(c => c.id)).toContain(child.id);
     });
 
