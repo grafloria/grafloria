@@ -148,18 +148,28 @@ async function diffDirs(dirA, dirB, files, { wantDiffImage = false } = {}) {
 }
 
 if (update) {
-  // ---- BLESS: capture twice, measure jitter, derive tolerances ----
+  // ---- BLESS: capture THREE times, measure jitter across all pairs ----
+  // Two shots under-sample a frame that only occasionally wobbles (turbo-flow's
+  // glow filter renders identically most pairs, then differs ~0.04% on one) —
+  // so a 2-shot bless hands it the tight floor and it flakes at gate time. Three
+  // rounds and the MAX pairwise diff catch the real worst-case jitter, so an
+  // inherently noisy frame earns a realistic tolerance while stable frames keep
+  // the 0.02% floor.
   const runA = join(tmpdir(), 'grafloria-visual-a');
   const runB = join(tmpdir(), 'grafloria-visual-b');
-  console.log('capturing run 1/2…'); shoot(runA);
-  console.log('capturing run 2/2 (jitter measurement)…'); shoot(runB);
+  const runC = join(tmpdir(), 'grafloria-visual-c');
+  console.log('capturing run 1/3…'); shoot(runA);
+  console.log('capturing run 2/3 (jitter)…'); shoot(runB);
+  console.log('capturing run 3/3 (jitter)…'); shoot(runC);
 
   const files = pngsIn(runA);
-  const jitters = await diffDirs(runA, runB, files);
+  const [jAB, jAC, jBC] = await Promise.all([diffDirs(runA, runB, files), diffDirs(runA, runC, files), diffDirs(runB, runC, files)]);
+  const worstJitter = new Map();
+  for (const set of [jAB, jAC, jBC]) for (const { file, pct } of set) worstJitter.set(file, Math.max(worstJitter.get(file) ?? 0, pct));
 
   const tolerances = {};
   const excluded = [];
-  for (const { file, pct } of jitters) {
+  for (const [file, pct] of worstJitter) {
     if (pct > EXCLUDE_PCT) {
       tolerances[file] = { excluded: true, measuredJitterPct: +pct.toFixed(3) };
       excluded.push(`${file} (jitter ${pct.toFixed(2)}%)`);

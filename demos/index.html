@@ -168,7 +168,7 @@
         </a>
         <a class="card" href="nodes/stress-test.html">
           <div class="card-name">Stress test</div>
-          <div class="card-blurb">Two thousand nodes in the model; only the visible slice is in the DOM (viewport culling), and a full-graph move repaints in single-digit-to-low-double-digit milliseconds — measured in the page, not claimed.</div>
+          <div class="card-blurb">Two thousand nodes in the model; only the visible slice is in the DOM (viewport culling), and a full-graph move repaints inside the sub-100ms budget the page itself enforces — the banner prints the real median, not a claim.</div>
           <div class="card-foot">
             <span class="rf">React Flow: Stress Test</span>
             
@@ -306,6 +306,14 @@
             
           </div>
         </a>
+        <a class="card" href="ports/typed-ports.html">
+          <div class="card-name">number</div>
+          <div class="card-blurb">Ports coloured by data type, refusing a mismatched connection — number→number is allowed, number→string is rejected before it is made.</div>
+          <div class="card-foot">
+            <span class="rf">React Flow: Validation</span>
+            
+          </div>
+        </a>
         <a class="card" href="ports/port-groups-and-layouts.html">
           <div class="card-name">Port groups &amp; layouts</div>
           <div class="card-blurb">One group, one layout strategy, N ports: sideLinear column · line along a segment · ellipseSpread ring. Each arrangement asserted geometrically.</div>
@@ -327,14 +335,6 @@
           <div class="card-blurb">circle · square · diamond · triangle · custom path — five ports, five different SVG primitives. Asserted by element type, not by &quot;a port appeared&quot;.</div>
           <div class="card-foot">
             <span class="rf none">no React Flow equivalent</span>
-            
-          </div>
-        </a>
-        <a class="card" href="ports/typed-ports.html">
-          <div class="card-name">Typed ports</div>
-          <div class="card-blurb">Ports coloured by data type, refusing a mismatched connection — number→number is allowed, number→string is rejected before it is made.</div>
-          <div class="card-foot">
-            <span class="rf">React Flow: Validation</span>
             
           </div>
         </a>

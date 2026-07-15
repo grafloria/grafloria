@@ -80,15 +80,30 @@ const manifest = [];
 async function freezeAnimations(tab) {
   await tab.addStyleTag({
     content: `*, *::before, *::after {
-      animation-duration: 0s !important;
-      animation-delay: 0s !important;
-      animation-play-state: paused !important;
-      transition-duration: 0s !important;
-      transition-delay: 0s !important;
+      /* REMOVE animations, don't just pause them: a 0s-duration INFINITE loop
+         (dash-flow, pulse, marching-ants) renders at a browser-defined phase,
+         which flakes; 'none' snaps every element to its declared base state. */
+      animation: none !important;
+      transition: none !important;
       caret-color: transparent !important;
-    }`,
+    }
+    /* The side menu is shared gallery chrome, identical on every page — hide it
+       so goldens stay about the DEMO and keep the canvas full-width. */
+    #grafloria-nav, #grafloria-nav-toggle { display: none !important; }
+    body.nav-open { padding-left: 0 !important; }`,
   });
-  await tab.evaluate(() => { try { document.documentElement.pauseAnimations?.(); document.getSVGDocument?.(); document.querySelectorAll('svg').forEach((s) => s.pauseAnimations && s.pauseAnimations()); } catch { /* not all engines expose it */ } });
+  // SVG SMIL (<animate>, animated <rect> borders) ignores CSS animation props —
+  // pause it AND snap to t=0 so the phase is deterministic, not "wherever the
+  // clock happened to be when we paused" (turbo-flow's border flaked ~0.04% on
+  // that alone).
+  await tab.evaluate(() => {
+    try {
+      document.querySelectorAll('svg').forEach((s) => {
+        if (s.pauseAnimations) s.pauseAnimations();
+        if (s.setCurrentTime) s.setCurrentTime(0);
+      });
+    } catch { /* not all engines expose the SVG animation API */ }
+  });
   await tab.waitForTimeout(30); // let the frozen frame settle
 }
 

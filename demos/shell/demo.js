@@ -63,8 +63,110 @@ export function checkChanged(before, after, message) {
   );
 }
 
+/**
+ * The gallery side menu — one drawer, injected on every page from the generated
+ * manifest so it can never drift from the demos that exist. Switch demos without
+ * bouncing back to the index; the current page is highlighted; a filter box
+ * cuts 89 items down fast. Fixed + slide-in, so it overlays without disturbing
+ * the canvas; the screenshot tooling hides it, so goldens stay about the demo.
+ */
+async function buildNav() {
+  if (document.getElementById('grafloria-nav')) return;
+  // The menu is gallery CHROME, not part of any demo. Every gate drives these
+  // pages under automation (navigator.webdriver), and an open drawer shifts the
+  // canvas + its async build perturbs timing-sensitive asserts — so it must be
+  // invisible to the harness. A real visitor (webdriver false/undefined) always
+  // gets it. (A dedicated nav test can exercise it directly if it ever needs one.)
+  if (navigator.webdriver) return;
+  let mod;
+  try {
+    mod = await import('./demos-manifest.js');
+  } catch {
+    return; // no manifest (run index-gen) → page still works, just no menu
+  }
+  const { DEMOS, CATEGORY_LABEL, CATEGORY_ORDER } = mod;
+  const here = location.pathname.replace(/.*\/([^/]+\/[^/]+\.html)$/, '$1'); // <cat>/<file>.html
+
+  const byCat = new Map();
+  for (const d of DEMOS) {
+    if (!byCat.has(d.cat)) byCat.set(d.cat, []);
+    byCat.get(d.cat).push(d);
+  }
+  const cats = [...byCat.keys()].sort(
+    (a, b) => ((CATEGORY_ORDER.indexOf(a) + 1 || 99) - (CATEGORY_ORDER.indexOf(b) + 1 || 99))
+  );
+
+  const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c]);
+  const list = cats
+    .map((cat) => {
+      const items = byCat
+        .get(cat)
+        .map((d) => {
+          const current = d.rel === here;
+          return `<a class="an-item${current ? ' current' : ''}${d.pro ? ' pro' : ''}" href="../${esc(d.rel)}"${current ? ' aria-current="page"' : ''} data-name="${esc(d.name.toLowerCase())} ${esc((d.reactflow || '').toLowerCase())}">${esc(d.name)}${d.pro ? '<span class="an-pro" title="React Flow charges for this">Pro</span>' : ''}</a>`;
+        })
+        .join('');
+      return `<div class="an-group"><div class="an-cat">${esc(CATEGORY_LABEL[cat] ?? cat)}</div>${items}</div>`;
+    })
+    .join('');
+
+  const nav = document.createElement('nav');
+  nav.id = 'grafloria-nav';
+  nav.setAttribute('aria-label', 'Demo gallery');
+  nav.innerHTML =
+    `<div class="an-head"><a class="an-home" href="../index.html">◆ Grafloria demos</a>` +
+    `<button class="an-close" aria-label="Close menu" title="Close (Esc)">×</button></div>` +
+    `<input class="an-search" type="search" placeholder="Filter demos…  ( / )" aria-label="Filter demos" autocomplete="off">` +
+    `<div class="an-list">${list}</div>` +
+    `<div class="an-foot">${DEMOS.length} demos · <span class="an-pro-dot">Pro</span> = React Flow charges for it</div>`;
+
+  const toggle = document.createElement('button');
+  toggle.id = 'grafloria-nav-toggle';
+  toggle.setAttribute('aria-label', 'Open demo menu');
+  toggle.innerHTML = '☰';
+
+  document.body.append(toggle, nav);
+
+  const setOpen = (open) => {
+    document.body.classList.toggle('nav-open', open);
+    toggle.setAttribute('aria-expanded', String(open));
+    try { localStorage.setItem('grafloria-nav-open', open ? '1' : '0'); } catch { /* private mode */ }
+  };
+  const stored = (() => { try { return localStorage.getItem('grafloria-nav-open'); } catch { return null; } })();
+  setOpen(stored === null ? window.innerWidth >= 1100 : stored === '1');
+
+  toggle.addEventListener('click', () => setOpen(!document.body.classList.contains('nav-open')));
+  nav.querySelector('.an-close').addEventListener('click', () => setOpen(false));
+
+  const search = nav.querySelector('.an-search');
+  const applyFilter = () => {
+    const q = search.value.trim().toLowerCase();
+    for (const group of nav.querySelectorAll('.an-group')) {
+      let any = false;
+      for (const item of group.querySelectorAll('.an-item')) {
+        const hit = !q || item.dataset.name.includes(q);
+        item.style.display = hit ? '' : 'none';
+        any = any || hit;
+      }
+      group.style.display = any ? '' : 'none';
+    }
+  };
+  search.addEventListener('input', applyFilter);
+
+  // Scroll the current item into view so you land oriented.
+  nav.querySelector('.an-item.current')?.scrollIntoView({ block: 'center' });
+
+  document.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape') setOpen(false);
+    else if (e.key === '/' && document.activeElement !== search && !/^(INPUT|TEXTAREA)$/.test(document.activeElement?.tagName || '')) {
+      e.preventDefault(); setOpen(true); search.focus();
+    }
+  });
+}
+
 export function defineDemo(spec) {
   const boot = async () => {
+    buildNav(); // fire-and-forget: the menu must not block the demo booting
     const host = document.getElementById('canvas');
     const ctx = {
       host,
