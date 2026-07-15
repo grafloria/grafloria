@@ -556,6 +556,58 @@ async function pinch(center, startGap, endGap, steps = 14) {
 }
 
 // =============================================================================
+// 8.6 wave13/stroke-edit — EDITING MUST WORK WITH A FINGER.
+//
+// The edit tool goes through the same registry seam the draw tool proved, but its claim is
+// CONDITIONAL: it takes the gesture only when the finger lands ON ink (geometric hit-test
+// against the model — committed strokes are pointer-events:none in the DOM). So this
+// scenario proves three things at once: a finger-press selects committed ink, a finger-drag
+// TRANSLATES it in the MODEL (a consequence, not "something highlighted"), and while the
+// tool is active a finger elsewhere still pans — the conditional claim is real.
+// =============================================================================
+{
+  await reset();
+  await page.evaluate(() => window.__touch.seedInk());
+  const before = await page.evaluate(() => window.__touch.inkPoints());
+  await page.evaluate(() => window.__touch.enableEdit());
+
+  // Grab the ink at its middle sample and pull it +80,+50 (world == CSS px at zoom 1).
+  const grab = await page.evaluate(() => window.__touch.inkClient(300, 600));
+  const gx = Math.round(grab.x);
+  const gy = Math.round(grab.y);
+  await touchStart([{ x: gx, y: gy, id: 1 }]);
+  for (let i = 1; i <= 10; i++) {
+    await touchMove([{ x: gx + i * 8, y: gy + i * 5, id: 1 }]);
+  }
+  await touchEnd();
+  await page.waitForTimeout(40);
+
+  const after = await page.evaluate(() => window.__touch.inkPoints());
+  expectThat(
+    'wave13/stroke-edit: a ONE-FINGER drag on committed ink TRANSLATES the stroke in the model',
+    !!after &&
+      after.length === before.length &&
+      Math.abs(after[0].x - (before[0].x + 80)) <= 2 &&
+      Math.abs(after[0].y - (before[0].y + 50)) <= 2,
+    `point[0] ${JSON.stringify(before[0])} -> ${JSON.stringify(after ? after[0] : null)} (expected +80,+50)`
+  );
+
+  // The conditional claim: the tool is still ACTIVE, but a finger on EMPTY canvas must
+  // fall through to the built-in ladder and pan — an edit mode that confiscates the whole
+  // surface would be the pointer-events mistake by another road.
+  const panBefore = await state();
+  await oneFingerDrag({ x: 900, y: 200 }, { x: 780, y: 150 });
+  const panAfter = await state();
+  expectThat(
+    'wave13/stroke-edit: with the edit tool ACTIVE, a finger off the ink still PANS (conditional claim)',
+    Math.abs(panAfter.viewport.x - panBefore.viewport.x) > 30,
+    `viewport.x ${panBefore.viewport.x.toFixed(1)} -> ${panAfter.viewport.x.toFixed(1)}`
+  );
+
+  await page.evaluate(() => window.__touch.disableEdit());
+}
+
+// =============================================================================
 // 9. THE CONTROL — prove this harness is actually at the mercy of touch-action.
 //
 // Put touch-action back to `auto` and repeat the pan. The browser must now claim
