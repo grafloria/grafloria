@@ -92,6 +92,44 @@ describe('PropertyPanelService', () => {
       expect(types).toContain('BPMN.TASK');
       expect(types.length).toBe(2);
     });
+
+    test('should unregister a schema and allow re-registration', () => {
+      service.registerSchema('ERD.TABLE', {
+        properties: [{ key: 'name', label: 'Name', editor: 'string' }]
+      });
+
+      expect(service.unregisterSchema('ERD.TABLE')).toBe(true);
+      expect(service.hasSchema('ERD.TABLE')).toBe(false);
+
+      // Replacing a schema is now possible (registerSchema rejects duplicates)
+      const replacement: PropertySchema = {
+        properties: [
+          { key: 'name', label: 'Name', editor: 'string' },
+          { key: 'color', label: 'Color', editor: 'color' }
+        ]
+      };
+      service.registerSchema('ERD.TABLE', replacement);
+      expect(service.getSchema('ERD.TABLE')!.properties.length).toBe(2);
+    });
+
+    test('unregisterSchema should return false for unknown type', () => {
+      expect(service.unregisterSchema('NOPE')).toBe(false);
+    });
+
+    test('clearSchemas should remove all registered schemas', () => {
+      service.registerSchema('ERD.TABLE', {
+        properties: [{ key: 'name', label: 'Name', editor: 'string' }]
+      });
+      service.registerSchema('BPMN.TASK', {
+        properties: [{ key: 'task', label: 'Task', editor: 'string' }]
+      });
+
+      service.clearSchemas();
+
+      expect(service.getAllTypes()).toEqual([]);
+      expect(service.hasSchema('ERD.TABLE')).toBe(false);
+      expect(service.hasSchema('BPMN.TASK')).toBe(false);
+    });
   });
 
   describe('FR-PPS-002: Schema Extension', () => {

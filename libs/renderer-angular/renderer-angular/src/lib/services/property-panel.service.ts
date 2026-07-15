@@ -176,6 +176,30 @@ export class PropertyPanelService {
   }
 
   /**
+   * Unregister the schema for a node type.
+   * Since {@link registerSchema} rejects duplicates, this is the only way to
+   * replace a schema (e.g. hot-reloading schemas from a config source).
+   *
+   * @param nodeType - Node type identifier
+   * @returns True if a schema was removed, false if none was registered
+   *
+   * @example
+   * propertyPanel.unregisterSchema('ERD.TABLE');
+   * propertyPanel.registerSchema('ERD.TABLE', updatedSchema);
+   */
+  unregisterSchema(nodeType: string): boolean {
+    return this.schemaRegistry.delete(nodeType);
+  }
+
+  /**
+   * Remove all registered schemas.
+   * Useful when tearing down a diagram context or isolating test state.
+   */
+  clearSchemas(): void {
+    this.schemaRegistry.clear();
+  }
+
+  /**
    * Get property value from a node.
    * Supports nested property paths (e.g., 'style.fill.color').
    *
