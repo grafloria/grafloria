@@ -34,7 +34,11 @@ defineDemo({
   async setup(ctx) {
     // NOTE: waypoint editing is intentionally OFF — it would claim a press on the
     // path before the endpoint-reconnect branch could.
-    ctx.instance = render({ nodes: NODES, edges: [{ id: 'e1', source: 'a', target: 'b', type: 'direct' }] }, ctx.host);
+    // Handles are PINNED on purpose: this demo exercises the handle-over-port
+    // shadowing rung, which needs the endpoint to sit exactly ON a port. A bare
+    // edge would float (smart attachment) and the precondition below — hovering
+    // the handle also hovers the port under it — would never be set up.
+    ctx.instance = render({ nodes: NODES, edges: [{ id: 'e1', source: 'a', target: 'b', sourceHandle: 'right', targetHandle: 'left', type: 'direct' }] }, ctx.host);
     ctx.diagram = ctx.instance.getModel();
 
     const rect = () => ctx.host.getBoundingClientRect();

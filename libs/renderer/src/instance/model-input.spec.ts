@@ -100,6 +100,39 @@ describe('model-input — spec → model', () => {
       applyEdges(model, [{ id: 'e', source: 'a', target: 'ghost' }]);
       expect(model.getLinks()).toHaveLength(0);
     });
+
+    // The right→left fallback above is only a PORT-ID choice; it must not decide
+    // where the line visually attaches once layout moves the nodes. A bare edge
+    // is therefore stamped for floating attachment; saying ANYTHING about the
+    // anchoring — a handle, a strategy, per-end anchors, explicit waypoints —
+    // suppresses the stamp. This is what un-loops every layouted tree.
+    describe('floating-by-default (autoConnectionPoint stamp)', () => {
+      const stampOf = (spec: Record<string, unknown>) => {
+        const { model } = freshDiagram();
+        applyNodes(model, [A, B]);
+        applyEdges(model, [{ id: 'e', source: 'a', target: 'b', ...spec }]);
+        return model.getLink('e')!.getMetadata('autoConnectionPoint');
+      };
+
+      it('stamps a bare edge', () => {
+        expect(stampOf({})).toBe(true);
+      });
+
+      it.each([
+        ['sourceHandle', { sourceHandle: 'bottom' }],
+        ['targetHandle', { targetHandle: 'top' }],
+        ['metadata.connectionPoint', { metadata: { connectionPoint: 'boundary' } }],
+        ['metadata.sourceAnchor', { metadata: { sourceAnchor: 'center' } }],
+        ['metadata.targetAnchor', { metadata: { targetAnchor: 'center' } }],
+        ['explicit points', { points: [{ x: 10, y: 10 }] }],
+      ])('an explicit %s suppresses the stamp', (_what, spec) => {
+        expect(stampOf(spec)).toBeUndefined();
+      });
+
+      it('other metadata does not suppress it', () => {
+        expect(stampOf({ metadata: { label: 'hi' } })).toBe(true);
+      });
+    });
   });
 
   describe('reconciliation', () => {

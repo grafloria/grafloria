@@ -148,9 +148,15 @@ export interface EdgeSpec {
   source: string;
   /** Target NODE id. */
   target: string;
-  /** Port id, or a bare side name (`'right'`). Default: the source's right port. */
+  /**
+   * Port id, or a bare side name (`'right'`). Naming a handle PINS the edge to
+   * that port. When neither handle is named the edge floats: it attaches on
+   * whichever side faces its partner (the `'smart'` connection-point strategy),
+   * so a layouted tree connects bottom→top instead of looping out of a frozen
+   * right→left pick.
+   */
   sourceHandle?: string;
-  /** Port id, or a bare side name (`'left'`). Default: the target's left port. */
+  /** Port id, or a bare side name (`'left'`). See `sourceHandle` for the default. */
   targetHandle?: string;
   type?: 'direct' | 'smooth' | 'orthogonal' | 'bezier';
   /**
@@ -346,6 +352,26 @@ export function buildEdge(
   link.targetNodeId = diagram.getNodeByPortId(targetPortId)?.id;
 
   applyEdgeSpec(link, spec);
+
+  // An edge that names NO handle has expressed no opinion about sides — but the
+  // fallback above still had to pick ports, and that pick (right→left) froze at
+  // build time. Once a layout stacks the nodes vertically, every such edge exits
+  // the wrong side and loops back around its own node. So record the fact that
+  // the anchoring was left to us: the renderer resolves this stamp to the 'smart'
+  // (draw.io floating) strategy at the LOWEST precedence — an explicit
+  // `metadata.connectionPoint`, per-end anchors, a diagram-wide
+  // `connectionPoint` config, or explicit waypoints all still win, and naming
+  // either handle pins the edge exactly as before.
+  if (
+    !spec.sourceHandle &&
+    !spec.targetHandle &&
+    spec.points === undefined &&
+    spec.metadata?.['connectionPoint'] === undefined &&
+    spec.metadata?.['sourceAnchor'] === undefined &&
+    spec.metadata?.['targetAnchor'] === undefined
+  ) {
+    link.setMetadata('autoConnectionPoint', true);
+  }
   return link;
 }
 

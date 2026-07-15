@@ -4678,7 +4678,16 @@ export class SVGRenderer implements IRenderer {
         ? (link.getMetadata('connectionPoint') as string | undefined)
         : undefined) ??
       this.config.connectionPoint ??
-      (this.config.smartConnectionPoints ? 'smart' : undefined);
+      (this.config.smartConnectionPoints ? 'smart' : undefined) ??
+      // Lowest precedence: the spec layer stamps `autoConnectionPoint` on edges
+      // that named no handle (see buildEdge). Anchoring left to us = the
+      // geometry-aware strategy, not a frozen right→left pick. Everything the
+      // user DID say — per-link strategy, diagram config, the boolean flag —
+      // resolves above this line; `connectionPoint: 'port'` at either level
+      // restores the pinned behaviour.
+      (typeof link.getMetadata === 'function' && link.getMetadata('autoConnectionPoint')
+        ? 'smart'
+        : undefined);
 
     const strategy = strategyName ? getConnectionPoint(strategyName) : undefined;
 
