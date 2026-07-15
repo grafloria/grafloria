@@ -13,7 +13,7 @@
 // sequence that a real browser would never produce.
 
 import { DiagramEngine, DiagramMode, NodeModel } from '@grafloria/engine';
-import { createDiagram } from '@grafloria/renderer';
+import { createDiagram, createDrawTool, registerTool } from '@grafloria/renderer';
 // The renderer's own port geometry — the SAME function the hit test resolves
 // against. Computing port centres any other way in a test would be testing the
 // test. (Deep import: not on the public barrel.)
@@ -51,6 +51,14 @@ const instance = createDiagram(stage, {
 // Probes for the runner. Everything the assertions need, read straight off the
 // live model / viewport — never off our own bookkeeping.
 // ---------------------------------------------------------------------------
+// wave10/whiteboard: the freehand DRAW tool, registered against the SAME live instance the
+// binder drives — INACTIVE by default so the pan/tap/pinch/drag tests above are untouched.
+// The draw scenario in touch-run.mjs flips it on, draws a line with a finger, and asserts a
+// stroke entity now exists in the model. That is the "drawing MUST work with a finger" gate,
+// proved through the real touch pipeline in a real browser.
+const drawTool = createDrawTool(instance, { active: false, simplifyEpsilon: 0.6 });
+registerTool(drawTool);
+
 const events: Array<{ type: string; detail?: unknown }> = [];
 for (const name of ['node:click', 'edge:click', 'selection:change', 'contextmenu', 'nodes:change'] as const) {
   instance.on(name as never, ((payload: unknown) => {
@@ -170,6 +178,15 @@ for (const name of ['node:click', 'edge:click', 'selection:change', 'contextmenu
   },
 
   renderNow: () => instance.renderNow(),
+
+  // wave10/whiteboard — the finger-draw probes.
+  enableDraw: () => drawTool.setActive(true),
+  disableDraw: () => drawTool.setActive(false),
+  strokeCount: () => instance.getModel().getStrokes().length,
+  lastStrokePointCount: () => {
+    const strokes = instance.getModel().getStrokes();
+    return strokes.length ? strokes[strokes.length - 1].pointCount : 0;
+  },
 };
 
 (window as never as Record<string, unknown>)['__DONE__'] = true;

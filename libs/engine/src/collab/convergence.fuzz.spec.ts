@@ -37,7 +37,7 @@ import { DiagramModel } from '../models/DiagramModel';
 import { PortModel } from '../models/PortModel';
 import { Replica } from './replica';
 import type { Op } from './op';
-import { expectConverged, link, node, peer, rng } from './test-helpers';
+import { expectConverged, link, node, peer, rng, stroke } from './test-helpers';
 
 /** No peer may hold a link whose endpoint node does not exist. Checked against the ENGINE's
  *  port index, not our own — an independent witness. */
@@ -98,6 +98,7 @@ describe('FUZZ: convergence under concurrent editing, deletion, resurrection and
       const d = p.replica.diagram;
       const nodes = d.getNodes();
       const links = d.getLinks();
+      const strokes = d.getStrokes();
       const target = nodes.length > 0 ? pick(nodes) : undefined;
 
       switch (pick([
@@ -107,6 +108,10 @@ describe('FUZZ: convergence under concurrent editing, deletion, resurrection and
         'addPort',
         'undo', 'redo',
         'transactMove',
+        // wave10/whiteboard: ink is document content, and it must converge under exactly the
+        // same concurrent add/delete/undo storm as everything else — including an eraser
+        // SWEEP, which removes several strokes as ONE transacted step.
+        'drawStroke', 'eraseStroke', 'eraseSweep', 'restyleStroke',
       ] as const)) {
         case 'move':
           target?.setPosition(Math.floor(next() * 800), Math.floor(next() * 800));
@@ -160,6 +165,32 @@ describe('FUZZ: convergence under concurrent editing, deletion, resurrection and
             target?.setPosition(Math.floor(next() * 800), Math.floor(next() * 800));
             target?.setSize(60 + Math.floor(next() * 100), 60);
           });
+          break;
+        case 'drawStroke':
+          // One stroke, committed once — the draw tool's pointerup.
+          d.addStroke(stroke(freshId(p), Math.floor(next() * 800), Math.floor(next() * 800)));
+          break;
+        case 'eraseStroke':
+          if (strokes.length > 0) d.removeStroke(pick(strokes).id);
+          break;
+        case 'eraseSweep':
+          // The eraser wiping across several strokes: many removals, ONE transacted step, so
+          // one Ctrl-Z brings them all back. Two peers may sweep different sets and still
+          // converge — grouping is local, the removes are the ops.
+          if (strokes.length > 0) {
+            p.replica.transact(() => {
+              for (const s of strokes) if (next() < 0.5) d.removeStroke(s.id);
+            });
+          }
+          break;
+        case 'restyleStroke':
+          // A stroke property edit — proves a stroke's own registers travel (and that its
+          // `points` are NOT dropped as "derived" the way a link's are).
+          if (strokes.length > 0) {
+            const s = pick(strokes);
+            if (next() < 0.5) s.setStyle({ color: next() < 0.5 ? '#e11d48' : '#2563eb' });
+            else s.setPoints([{ x: Math.floor(next() * 800), y: Math.floor(next() * 800) }, { x: 5, y: 5 }]);
+          }
           break;
       }
     };

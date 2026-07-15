@@ -20,3 +20,8 @@ export * from './snapping';
 
 // Wave 4 — Card 7: keyboard-first + accessible canvas interaction.
 export * from './keyboard-navigation';
+
+// wave10/whiteboard: the freehand-draw / rectangle / eraser tools, and the separate
+// overlay layer the in-progress stroke draws on (the presence pattern, for the frame gate).
+export * from './whiteboard-tools';
+export * from './ink-overlay';

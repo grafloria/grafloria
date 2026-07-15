@@ -36,12 +36,14 @@ import { DiagramModel } from '../models/DiagramModel';
 import { NodeModel } from '../models/NodeModel';
 import { LinkModel } from '../models/LinkModel';
 import { GroupModel } from '../models/GroupModel';
+import { StrokeModel } from '../models/StrokeModel';
 import type { SerializedNode } from '../models/NodeModel';
 import type { SerializedLink } from '../models/LinkModel';
 import type { SerializedGroup } from '../models/GroupModel';
-import { LamportClock, type ActorId, type Op, type OpValue } from './op';
+import { LamportClock, type ActorId, type Op, type OpValue, type OpTarget } from './op';
 
-type Entity = NodeModel | LinkModel | GroupModel;
+type Entity = NodeModel | LinkModel | GroupModel | StrokeModel;
+type EntityTarget = Exclude<OpTarget, 'diagram'>;
 type Unsubscribe = () => void;
 
 /**
@@ -56,12 +58,20 @@ type Draft<T> = T extends unknown ? Omit<T, 'clock' | 'actor'> : never;
 type OpDraft = Draft<Op>;
 
 /** Property names that are structural (add/remove), not property registers. */
-const STRUCTURAL = new Set(['nodes', 'links', 'groups']);
+const STRUCTURAL = new Set(['nodes', 'links', 'groups', 'strokes']);
+
+/** The `trackChange` collection name → the op target it adds/removes. */
+const STRUCTURAL_TARGET: Record<string, EntityTarget> = {
+  nodes: 'node',
+  links: 'link',
+  groups: 'group',
+  strokes: 'stroke',
+};
 
 /**
- * Properties we do NOT put on the wire.
+ * Properties we do NOT put on the wire — SCOPED PER TARGET.
  *
- * `points` is a link's ROUTED geometry — it is DERIVED, recomputed by the renderer from
+ * `points` is a LINK's ROUTED geometry — it is DERIVED, recomputed by the renderer from
  * the node positions and the router on every frame that needs it. Broadcasting it would
  * (a) trade a 2-number node move for an N-point path on every drag frame, and (b) be
  * actively wrong: the receiving peer recomputes the route anyway, so the transmitted
@@ -73,8 +83,21 @@ const STRUCTURAL = new Set(['nodes', 'links', 'groups']);
  * `hasManualWaypoints` metadata flag, which IS synced (it is a metadata.* register).
  * So a manual reroute travels; an automatic one does not. That is the correct line, and
  * it is the model's own line, not one invented here.
+ *
+ * wave10/whiteboard: `points` ON A STROKE IS THE OPPOSITE — it is the authored content
+ * itself, nothing derives it, and a global `DERIVED = {points}` would drop the one thing a
+ * stroke edit changes, so editing a stroke's geometry would silently never reach a peer.
+ * (StrokeModel.setPoints documents exactly this trap.) Hence per-target: `points` is
+ * derived for a link and authored for a stroke.
  */
-const DERIVED = new Set(['points']);
+const DERIVED_BY_TARGET: Record<string, Set<string>> = {
+  link: new Set(['points']),
+  diagram: new Set(['points']),
+};
+
+function isDerived(target: OpTarget, property: string): boolean {
+  return DERIVED_BY_TARGET[target]?.has(property) ?? false;
+}
 
 /**
  * ---------------------------------------------------------------------------
@@ -194,6 +217,7 @@ export class OpCapture {
     for (const n of diagram.getNodes()) this.watchEntity('node', n);
     for (const l of diagram.getLinks()) this.watchEntity('link', l);
     for (const g of diagram.getGroups()) this.watchEntity('group', g);
+    for (const s of diagram.getStrokes()) this.watchEntity('stroke', s);
   }
 
   /** The Lamport clock this capture issues from — shared with the sync layer. */
@@ -270,7 +294,7 @@ export class OpCapture {
 
       if (STRUCTURAL.has(property)) {
         // trackChange('nodes', null, node) = add · trackChange('nodes', node, null) = remove
-        const target = property === 'nodes' ? 'node' : property === 'links' ? 'link' : 'group';
+        const target = STRUCTURAL_TARGET[property];
         if (newValue && !oldValue) {
           const e = newValue as Entity;
           this.emit({ op: 'add', target, id: e.id, data: e.serialize() as never }, { kind: 'none' });
@@ -290,7 +314,7 @@ export class OpCapture {
       }
 
       // A property of the diagram itself (name, viewport, …).
-      if (!DERIVED.has(property)) {
+      if (!isDerived('diagram', property)) {
         this.emit(
           { op: 'set', target: 'diagram', id: '', path: property, value: newValue as OpValue },
           { kind: 'value', value: oldValue as OpValue }
@@ -302,7 +326,7 @@ export class OpCapture {
     this.unsubs.push(this.diagram.on('change', onChange as never));
   }
 
-  private watchEntity(target: 'node' | 'link' | 'group', entity: Entity): void {
+  private watchEntity(target: EntityTarget, entity: Entity): void {
     if (this.entitySubs.has(entity.id)) return;
 
     // SEED the ports shadow with what the node ALREADY has.
@@ -320,7 +344,9 @@ export class OpCapture {
     }
 
     const onChange = (entry: { property: string; oldValue: unknown; newValue: unknown }) => {
-      if (DERIVED.has(entry.property)) return;
+      // Per-target: a LINK's `points` is derived and dropped; a STROKE's `points` is the
+      // authored content and must travel. See DERIVED_BY_TARGET.
+      if (isDerived(target, entry.property)) return;
 
       // Wholly-ephemeral registers never reach the wire at all. A link's `state` is
       // 'default' | 'selected' | 'hovered' | 'highlighted' — view state, top to bottom.

@@ -467,6 +467,55 @@ async function pinch(center, startGap, endGap, steps = 14) {
 }
 
 // =============================================================================
+// 8.5 wave10/whiteboard — DRAWING MUST WORK WITH A FINGER.
+//
+// The whiteboard draw tool goes through the tool registry, and touch had to be taught to give
+// a registered tool first refusal just like the mouse ladder does — otherwise ink would be a
+// mouse-only feature. Flip the tool on, draw a curve with ONE finger through real touch
+// events, and assert a STROKE ENTITY now exists in the model (a consequence, not "a path
+// appeared"), simplified from the many touchMove samples.
+// =============================================================================
+{
+  await reset();
+  const before = await page.evaluate(() => window.__touch.strokeCount());
+  await page.evaluate(() => window.__touch.enableDraw());
+
+  // A curved drag: 24 touchMove samples the tool must simplify down at commit.
+  await touchStart([{ x: 200, y: 200, id: 1 }]);
+  for (let i = 1; i <= 24; i++) {
+    await touchMove([{ x: 200 + i * 12, y: 200 + Math.round(Math.sin(i / 3) * 30), id: 1 }]);
+  }
+  await touchEnd();
+  await page.waitForTimeout(40);
+
+  const after = await page.evaluate(() => window.__touch.strokeCount());
+  const pts = await page.evaluate(() => window.__touch.lastStrokePointCount());
+  expectThat(
+    'wave10/whiteboard: a ONE-FINGER drag with the draw tool commits a STROKE to the model',
+    after === before + 1,
+    `strokes ${before} -> ${after}`
+  );
+  expectThat(
+    'wave10/whiteboard: the committed finger-stroke is SIMPLIFIED (fewer points than the 25 samples)',
+    pts > 1 && pts < 25,
+    `committed ${pts} points from 25 samples`
+  );
+
+  await page.evaluate(() => window.__touch.disableDraw());
+
+  // …and with the tool OFF again, one finger PANS — proving the tool truly released the
+  // gesture and did not leave touch drawing-locked.
+  const panBefore = await state();
+  await oneFingerDrag({ x: 850, y: 620 }, { x: 700, y: 500 });
+  const panAfter = await state();
+  expectThat(
+    'wave10/whiteboard: with the draw tool OFF, one finger pans again (the tool released touch)',
+    Math.abs(panAfter.viewport.x - panBefore.viewport.x) > 50,
+    `viewport.x ${panBefore.viewport.x.toFixed(1)} -> ${panAfter.viewport.x.toFixed(1)}`
+  );
+}
+
+// =============================================================================
 // 9. THE CONTROL — prove this harness is actually at the mercy of touch-action.
 //
 // Put touch-action back to `auto` and repeat the pan. The browser must now claim

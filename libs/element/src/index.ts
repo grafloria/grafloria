@@ -289,6 +289,11 @@ export type { ExportTextOptions, ImportTextOptions, ImportTextResult } from '@gr
 
 export { DiagramSerializer } from '@grafloria/engine';
 
+// wave10/whiteboard: ink as a first-class model entity — authors seed and inspect strokes
+// through this, the same class the draw tool commits.
+export { StrokeModel, DEFAULT_STROKE_STYLE } from '@grafloria/engine';
+export type { StrokePoint, StrokeStyle, SerializedStroke } from '@grafloria/engine';
+
 // ===========================================================================
 // wave10/gallery BUG FIX — the AUTHORING SEAMS were not on the public embed.
 //
@@ -343,6 +348,18 @@ export {
   registerTool,
   listTools,
 
+  // wave10/whiteboard: the freehand-draw / rectangle / eraser tools + the in-progress
+  // ink overlay. Register them through `registerTool` — an embed draws on its diagram
+  // with no second import, which is the whole promise of this package.
+  createDrawTool,
+  createRectangleTool,
+  createEraserTool,
+  DrawTool,
+  RectangleTool,
+  EraserTool,
+  InkOverlay,
+  INK_OVERLAY_CLASS,
+
   // Anchoring your own DOM to diagram geometry — how an edge toolbar is built.
   createPortal,
   createViewportPortal,
@@ -367,6 +384,12 @@ export type {
   CanvasTool,
   Portal,
   ViewportPortal,
+  // wave10/whiteboard tool option/host types.
+  WhiteboardHost,
+  DrawToolOptions,
+  RectangleToolOptions,
+  EraserToolOptions,
+  InkPreviewStyle,
 } from '@grafloria/renderer';
 
 // ===========================================================================

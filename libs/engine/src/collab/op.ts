@@ -44,12 +44,22 @@
 import type { SerializedNode } from '../models/NodeModel';
 import type { SerializedLink } from '../models/LinkModel';
 import type { SerializedGroup } from '../models/GroupModel';
+import type { SerializedStroke } from '../models/StrokeModel';
 
 /** Who made the edit. Stable for the lifetime of a session; distinct per peer. */
 export type ActorId = string;
 
-/** The three entity kinds a diagram is made of, plus the diagram itself. */
-export type OpTarget = 'node' | 'link' | 'group' | 'diagram';
+/**
+ * The entity kinds a diagram is made of, plus the diagram itself.
+ *
+ * wave10/whiteboard: `stroke` joins the list. Ink is DOCUMENT CONTENT — two people drawing
+ * on the same board must converge — so a stroke is a first-class op target, not annotation
+ * smuggled through a diagram-level `set`. (It very nearly WAS: `trackChange('strokes', …)`
+ * is a diagram-level change event, and without `stroke` in this union the capture layer's
+ * fall-through emitted `set(diagram, strokes, <live StrokeModel>)` — a class instance on the
+ * wire, claiming the whole collection. See capture.ts / apply-op.ts.)
+ */
+export type OpTarget = 'node' | 'link' | 'group' | 'stroke' | 'diagram';
 
 /**
  * A property path. Dot-separated for nested registers: 'position', 'size',
@@ -79,7 +89,7 @@ export interface AddOp extends OpBase {
   op: 'add';
   target: Exclude<OpTarget, 'diagram'>;
   id: string;
-  data: SerializedNode | SerializedLink | SerializedGroup;
+  data: SerializedNode | SerializedLink | SerializedGroup | SerializedStroke;
 }
 
 /** Remove an entity. */

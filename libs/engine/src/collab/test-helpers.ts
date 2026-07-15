@@ -13,6 +13,7 @@ import { DiagramModel } from '../models/DiagramModel';
 import { NodeModel } from '../models/NodeModel';
 import { LinkModel } from '../models/LinkModel';
 import { PortModel } from '../models/PortModel';
+import { StrokeModel } from '../models/StrokeModel';
 import { Replica } from './replica';
 import type { ActorId, Op } from './op';
 
@@ -122,6 +123,19 @@ export function link(id: string, from: string, to: string): LinkModel {
   const l = new LinkModel(`${from}-out`, `${to}-in`, 'orthogonal');
   (l as unknown as { id: string }).id = id;
   return l;
+}
+
+/** A short ink stroke at a known id — the whiteboard content the fuzz must converge on. */
+export function stroke(id: string, x: number, y: number): StrokeModel {
+  return new StrokeModel(
+    [
+      { x, y },
+      { x: x + 10, y: y + 4 },
+      { x: x + 22, y: y + 1 },
+    ],
+    { color: '#1f2933', width: 3 },
+    { id }
+  );
 }
 
 /**
