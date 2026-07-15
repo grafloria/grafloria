@@ -705,9 +705,22 @@ export class LinkModel extends DiagramEntity {
   }
 
   /**
-   * Get label by ID
+   * Overloaded label read.
+   *
+   * - `getLabel()` — no argument — is the CANONICAL display-label accessor
+   *   inherited from DiagramEntity (metadata.label, with the legacy
+   *   data['label'] fallback). It is what the DSL generator exports and what
+   *   feeds the renderer's simple edge label (svg-renderer reads
+   *   link.getMetadata('label')).
+   * - `getLabel(labelId)` is the pre-existing lookup into the POSITIONED
+   *   multi-label API (`labels: LinkLabel[]` / addLabel / updateLabel), a
+   *   different feature that happens to share the verb. The overload keeps
+   *   both callable without forking the canonical name.
    */
-  getLabel(labelId: string): LinkLabel | undefined {
+  override getLabel(): string | undefined;
+  override getLabel(labelId: string): LinkLabel | undefined;
+  override getLabel(labelId?: string): string | LinkLabel | undefined {
+    if (labelId === undefined) return super.getLabel();
     return this.labels.find((l) => l.id === labelId);
   }
 

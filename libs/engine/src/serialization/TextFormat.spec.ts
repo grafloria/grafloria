@@ -123,6 +123,55 @@ describe('exportDiagramText / importDiagramText', () => {
     expect(restored).toBeDefined();
   });
 
+  // wave14/labels — THE KILLER COMPOSITION: export → hand-edit → reimport.
+  //
+  // A hand-edited body discards the (now stale) sidecar and reparses the BODY.
+  // Before the label canon this composition destroyed EVERY label permanently:
+  // export read only data.label (editor diagrams keep labels in metadata.label,
+  // so the body carried raw ids), and reparse wrote only data.label (so nothing
+  // the renderer reads survived). One label edit cost every label in the file.
+  it('export → hand-edit ONE label → reimport: the edit takes, every OTHER label survives', () => {
+    // Editor-shaped diagram: labels in metadata.label, the canonical home.
+    const d = new DiagramModel('label-loss');
+    const mk = (id: string, label: string, x: number) => {
+      const n = new NodeModel({ id, type: 'flowchart:process', position: { x, y: 0 } });
+      n.setMetadata('label', label);
+      d.addNode(n);
+      return n;
+    };
+    const plan = mk('plan', 'Plan', 0);
+    const build = mk('build', 'Build', 250);
+    const ship = mk('ship', 'Ship', 500);
+    d.createSmartLink(plan, build, 'smooth');
+    const l2 = d.createSmartLink(build, ship, 'smooth')!;
+    l2.setMetadata('label', 'then');
+
+    const text = exportDiagramText(d);
+    const body = stripGrafloriaSidecar(text);
+    // Export must put LABELS in the body — a body of raw ids has nothing for a
+    // human to edit, which is how the wipe went unnoticed.
+    expect(body).toContain('Plan');
+    expect(body).toContain('Build');
+    expect(body).toContain('Ship');
+    expect(body).toContain('|then|');
+    expect(body).not.toContain('build[build]');
+
+    // The hand edit: one label changes in the BODY (first occurrence is in the
+    // body — the sidecar goes stale, exactly like a real editor session).
+    const edited = text.replace('Build', 'Verify');
+    const r = importDiagramText(edited);
+    expect(r.bodyEdited).toBe(true);
+    expect(r.source).toBe('text');
+
+    const label = (id: string) => r.diagram.getNode(id)!.getMetadata('label');
+    expect(label('build')).toBe('Verify'); // the edit TOOK
+    expect(label('plan')).toBe('Plan'); // and cost NOTHING else
+    expect(label('ship')).toBe('Ship');
+    const relabeled = r.diagram.getLinks().find((l) => l.getMetadata('label'));
+    expect(relabeled).toBeDefined();
+    expect(relabeled!.getMetadata('label')).toBe('then');
+  });
+
   it('sidecar loads go through the unified path: loaded diagram is fully wired', () => {
     const d = buildRich();
     const { diagram } = importDiagramText(exportDiagramText(d));

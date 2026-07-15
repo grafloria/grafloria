@@ -189,7 +189,10 @@ export class DSLGenerator {
    */
   private generateNodeDefinition(node: NodeModel, preserveIds: boolean): string | null {
     const nodeId = preserveIds ? this.sanitizeId(node.id) : this.generateShortId(node);
-    const label = node.data['label'] || node.id;
+    // getLabel() is the canonical read: metadata.label (editor/spec/command
+    // diagrams) with a legacy data.label fallback. Reading only data.label
+    // exported Mermaid bodies of raw ids — nothing human-readable to edit.
+    const label = node.getLabel() ?? node.id;
 
     // Get shape from metadata
     const shapeMetadata = this.analysis?.nodeMetadata.get(node.id);
@@ -223,8 +226,8 @@ export class DSLGenerator {
     const linkType = this.inferLinkType(link);
     const linkSyntax = this.getLinkSyntax(linkType);
 
-    // Add label if present
-    const label = link.data['label'];
+    // Add label if present (canonical read; see generateNodeDefinition)
+    const label = link.getLabel();
     if (label) {
       return `${sourceId} ${linkSyntax.split('>')[0]}>|${label}|${linkSyntax.split('>')[1] || ''} ${targetId}`;
     }
@@ -356,8 +359,8 @@ export class DSLGenerator {
    * Generate short ID for node
    */
   private generateShortId(node: NodeModel): string {
-    // Use first letter of label if available
-    const label = node.data['label'] || node.id;
+    // Use first letter of label if available (canonical read)
+    const label = node.getLabel() ?? node.id;
     const firstLetter = label.charAt(0).toUpperCase();
 
     // Add counter if needed (implementation detail)

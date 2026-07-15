@@ -273,6 +273,47 @@ export abstract class DiagramEntity {
     this.changeLog = [];
   }
 
+  // ==========================================================================
+  // wave14/labels — THE LABEL CANON.
+  //
+  // `metadata.label` is the ONE canonical home for an entity's display label.
+  // It is what the renderer reads (node label, link label, and the a11y
+  // accessible name), what the spec input layer writes (model-input.ts), what
+  // the label-edit command writes (SetNodeLabelCommand), and what the collab
+  // op-log addresses ('metadata.label'). `data['label']` is the legacy DSL-era
+  // location: the Mermaid parser/generator historically used it exclusively,
+  // which forked the field — text-parsed diagrams rendered UNLABELED and
+  // editor diagrams exported Mermaid bodies of raw ids. These two accessors
+  // exist so no writer can re-fork it: write through setLabel(), read through
+  // getLabel(), and both worlds always agree.
+  // ==========================================================================
+
+  /**
+   * CANONICAL label read. `metadata.label` wins; legacy `data['label']` (on
+   * subclasses that carry a data bag) is honoured as a fallback so pre-canon
+   * documents and third-party writers still surface their labels everywhere —
+   * rendering, a11y names, and Mermaid export alike.
+   */
+  getLabel(): string | undefined {
+    const canonical = this.metadata.get('label');
+    if (typeof canonical === 'string' && canonical.length > 0) return canonical;
+    const data = (this as { data?: Record<string, unknown> }).data;
+    const legacy = data?.['label'];
+    return typeof legacy === 'string' && legacy.length > 0 ? legacy : undefined;
+  }
+
+  /**
+   * CANONICAL label write. Writes `metadata.label` (tracked → dirty → repaint)
+   * and mirrors into the legacy `data['label']` slot when the entity has a
+   * data bag, so any reader still on the old field sees the same value. The
+   * mirror is a shadow: metadata is authoritative on every read path.
+   */
+  setLabel(label: string): void {
+    this.setMetadata('label', label);
+    const data = (this as { data?: Record<string, unknown> }).data;
+    if (data) data['label'] = label;
+  }
+
   /**
    * Set metadata value
    */
