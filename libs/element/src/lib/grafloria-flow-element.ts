@@ -57,7 +57,24 @@ export const GRAFLORIA_EVENTS = {
   viewportChange: 'grafloria-viewport-change',
 } as const;
 
-export class GrafloriaFlowElement extends HTMLElement {
+// wave11/gallery BUG FIX — worker-safe base class.
+//
+// `class GrafloriaFlowElement extends HTMLElement` evaluates `HTMLElement` at MODULE
+// LOAD, so merely IMPORTING this package threw `HTMLElement is not defined` in any
+// context without a DOM — a Web Worker, or Node. The package doc already promised
+// the import is "a no-op on the server", and `defineGrafloriaFlow()` guards
+// `customElements`; but the class declaration itself did not, so the promise was
+// only half true. It matters concretely: the off-thread-layout demo runs the
+// engine's `serveLayout` INSIDE a real Worker by importing this very bundle, which
+// is impossible if the top-level class reference throws. The element only ever
+// EXTENDS the real HTMLElement in a browser (a worker never instantiates it), so a
+// guarded base is behaviourally identical on the client and merely importable off it.
+const HTMLElementBase: typeof HTMLElement =
+  typeof HTMLElement !== 'undefined'
+    ? HTMLElement
+    : (class {} as unknown as typeof HTMLElement);
+
+export class GrafloriaFlowElement extends HTMLElementBase {
   static get observedAttributes(): string[] {
     return [
       'nodes',

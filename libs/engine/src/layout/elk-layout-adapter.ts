@@ -128,10 +128,26 @@ const DEFAULT_EDGE_LABEL_SPACING = 6;
  */
 export class ELKLayoutAdapter implements LayoutAdapter {
   readonly name = 'elk';
-  private elk: ELK;
 
-  constructor() {
-    this.elk = new ElkConstructor();
+  // wave11/gallery BUG FIX — construct ELK LAZILY, not in the constructor.
+  //
+  // `new ElkConstructor()` spawns elkjs's own nested Worker on the spot. That made
+  // merely CONSTRUCTING this adapter a side effect that throws
+  // `_Worker is not a constructor` inside a Web Worker — and the engine's public
+  // barrel builds one eagerly at module load (`export const layoutService = new
+  // LayoutService()` → `new ELKLayoutAdapter()`), so simply IMPORTING @grafloria/engine
+  // (or the @grafloria/element bundle that re-exports it) detonated inside any worker,
+  // before a line of user code ran. That is precisely what blocked running ANY
+  // layout off-thread through the public embed: the worker died on import.
+  //
+  // The registry already learned this lesson for its per-name factories
+  // (createBuiltInLayoutFactories is lazy for exactly this reason); the singleton
+  // adapter had not. Constructing an adapter must be inert — the Worker is created
+  // only when a layout is actually run, which never happens for ELK inside a worker
+  // (the host keeps ELK on the main thread), so the detonation site simply goes away.
+  private _elk?: ELK;
+  private get elk(): ELK {
+    return (this._elk ??= new ElkConstructor());
   }
 
   /**
