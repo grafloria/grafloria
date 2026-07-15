@@ -1,5 +1,18 @@
 import { LinkModel, NodeModel, PortModel } from '@grafloria/engine';
-import type { DiagramModel, LinkStyle, NodeStyle } from '@grafloria/engine';
+import type {
+  DiagramModel,
+  LinkConnectorName,
+  LinkRouterName,
+  LinkStyle,
+  NodeStyle,
+  Point,
+  PortGatingSpec,
+  PortLabelSpec,
+  PortLayoutSpec,
+  PortShapeSpec,
+  PortSpot,
+  PortSpreadSpec,
+} from '@grafloria/engine';
 
 /**
  * Spec → model: the input layer every wrapper shares.
@@ -25,12 +38,65 @@ import type { DiagramModel, LinkStyle, NodeStyle } from '@grafloria/engine';
  *    handle name (`sourceHandle: 'right'`) instead of an opaque generated id.
  */
 
-/** A port on a node. Omit `id` to get the deterministic `<nodeId>__<side>` name. */
+/**
+ * A port on a node. Omit `id` to get the deterministic `<nodeId>__<side>` name.
+ *
+ * ## wave10/gallery BUG FIX — the wave-6 port vocabulary was UNREACHABLE
+ *
+ * `PortSpec` used to be `{ id, side, type, index }` and `buildNode()` passed
+ * exactly those four fields to `new PortModel(...)`. Everything else Wave 6
+ * shipped — glyph shapes, port labels, the pluggable layout strategies, port
+ * groups, data types, directional gating, link spots, link spreading — is
+ * declared on `PortModel`, is accepted by its constructor, and is READ by the
+ * renderer and the connection validator… and was silently dropped on the floor
+ * by the one translator every host actually goes through.
+ *
+ * `Grafloria.render()`, `<grafloria-flow>` and `<GrafloriaFlow>` (React) ALL build their
+ * ports here. So an entire wave of feature work — square/diamond/triangle/path
+ * glyphs, `sideLinear`/`line`/`ellipse` layouts, typed data-flow ports, "this
+ * port accepts at most one link" — could not be expressed by any embedder, from
+ * any framework, through any public entry point. It had passing unit tests the
+ * whole time, because the unit tests construct `PortModel` directly.
+ *
+ * This is the demo gallery's canonical finding shape, and it is why the gallery
+ * exists: a unit test proves a unit works; it never proves anything CALLS it.
+ */
 export interface PortSpec {
   id?: string;
-  side: 'top' | 'right' | 'bottom' | 'left';
+  /**
+   * Which edge of the node the port sits on. Optional when the port names a
+   * `group` that declares one — `PortModel.explicitSide` exists precisely so an
+   * inherited side is not clobbered by a default.
+   */
+  side?: 'top' | 'right' | 'bottom' | 'left';
   type?: 'input' | 'output' | 'bi';
   index?: number;
+
+  // --- Wave 6 (Ports & connections). Every field is optional and "unset" is
+  // the pre-wave-6 behaviour, so an existing spec renders byte-identically.
+
+  /** Named port group. Config is inherited from it; these fields override. */
+  group?: string;
+  /** Glyph: square / diamond / triangle / a custom SVG path. Default: circle. */
+  shape?: PortShapeSpec;
+  /** Port label + its placement (inside / outside / orthogonal / radial). */
+  label?: PortLabelSpec;
+  /** Layout strategy (line / sideLinear / ellipse / …). Default: the shape anchor. */
+  layout?: PortLayoutSpec;
+  /** Directional connectability + link caps + allowed types. */
+  gating?: PortGatingSpec;
+  /** Data-flow type. Drives glyph colour AND connection validity. */
+  dataType?: string;
+  /** Where links leave / land on the glyph box. */
+  fromSpot?: PortSpot;
+  toSpot?: PortSpot;
+  /** Fan several links out along the port's edge instead of piling them. */
+  spread?: PortSpreadSpec;
+  /** Raw SVG presentation attributes merged onto the glyph. */
+  style?: Record<string, unknown>;
+  /** The legacy single cap. `gating` is the richer form. */
+  maxConnections?: number;
+  visible?: boolean;
 }
 
 /** A node, as a host hands it in. */
@@ -61,7 +127,21 @@ export interface NodeSpec {
   metadata?: Record<string, any>;
 }
 
-/** An edge, as a host hands it in. Node-to-node, like React Flow. */
+/**
+ * An edge, as a host hands it in. Node-to-node, like React Flow.
+ *
+ * ## wave10/gallery BUG FIX — `router`, `connector`, `metadata` and `points`
+ *
+ * Wave 5 Card 0 split `pathType` into two orthogonal, per-link, SERIALIZABLE
+ * settings — `router` (where the line goes) and `connector` (how it is drawn) —
+ * and Wave 6 Card 2 made the connector a real registry addressed by name. Both
+ * fields live on `LinkModel`, both round-trip through `serialize()`… and neither
+ * was on `EdgeSpec`. So the A* / manhattan obstacle routers, and every custom
+ * connector, were addressable only by reaching past the spec layer into the live
+ * model. Same for `metadata`, which is how a link names its anchor and its
+ * connection-point strategy (floating edges), and for `points`, which is how a
+ * host restores saved waypoints.
+ */
 export interface EdgeSpec {
   id?: string;
   /** Source NODE id (a port id also resolves, for full control). */
@@ -73,10 +153,29 @@ export interface EdgeSpec {
   /** Port id, or a bare side name (`'left'`). Default: the target's left port. */
   targetHandle?: string;
   type?: 'direct' | 'smooth' | 'orthogonal' | 'bezier';
+  /**
+   * WHERE the line goes: `straight` | `orthogonal` | `manhattan` | `avoid` |
+   * `elk`, or any router registered on the RoutingEngine. Unset = derived from
+   * `type`.
+   */
+  router?: LinkRouterName;
+  /**
+   * HOW the polyline is drawn: `straight` | `rounded` | `smooth` | `bezier`, or
+   * any name passed to `registerConnector`. Unset = derived from `type`.
+   */
+  connector?: LinkConnectorName;
   label?: string;
   style?: Partial<LinkStyle>;
   selected?: boolean;
   data?: Record<string, any>;
+  /**
+   * Link metadata. This is how a link names its `sourceAnchor` / `targetAnchor`
+   * and its `connectionPoint` strategy — i.e. how floating edges are turned on
+   * per link.
+   */
+  metadata?: Record<string, any>;
+  /** Explicit waypoints. Restores a user-edited route. */
+  points?: Point[];
 }
 
 export const PORT_SIDES = ['top', 'right', 'bottom', 'left'] as const;
@@ -121,19 +220,55 @@ export function buildNode(spec: NodeSpec, index: number): NodeModel {
   node.ports.clear();
   const ports: PortSpec[] =
     spec.ports ?? PORT_SIDES.map((side) => ({ side, type: 'bi' as const, index: 0 }));
-  for (const port of ports) {
-    node.addPort(
-      new PortModel({
-        id: port.id ?? defaultPortId(id, port.side),
-        type: port.type ?? 'bi',
-        side: port.side,
-        index: port.index ?? 0,
-      })
-    );
+  for (const [portIndex, port] of ports.entries()) {
+    node.addPort(buildPort(id, port, portIndex));
   }
 
   applyNodeSpec(node, spec);
   return node;
+}
+
+/**
+ * Spec → `PortModel`, carrying the WHOLE wave-6 vocabulary through.
+ *
+ * The gating spec is flattened onto the model's individual fields because that
+ * is the shape `resolvePortConfig()` reads; `PortSpec.gating` is only the
+ * ergonomic grouping of them.
+ *
+ * A port with no explicit `side` and no `group` still lands on `right` (the
+ * `PortModel` default) — but a port that names a group and no side is now built
+ * WITHOUT `side`, so `explicitSide` stays false and the group's side is
+ * inherited, which is the entire reason that flag exists.
+ */
+export function buildPort(nodeId: string, spec: PortSpec, index: number): PortModel {
+  const gating = spec.gating;
+  const id = spec.id ?? (spec.side ? defaultPortId(nodeId, spec.side) : `${nodeId}__p${index}`);
+
+  return new PortModel({
+    id,
+    type: spec.type ?? 'bi',
+    // Only pass `side` when the author actually declared one — see explicitSide.
+    ...(spec.side ? { side: spec.side } : {}),
+    index: spec.index ?? 0,
+    group: spec.group,
+    shape: spec.shape,
+    label: spec.label,
+    layout: spec.layout,
+    fromSpot: spec.fromSpot,
+    toSpot: spec.toSpot,
+    spread: spec.spread,
+    style: spec.style as Record<string, any> | undefined,
+    visible: spec.visible,
+    dataType: spec.dataType,
+    maxConnections: gating?.maxConnections ?? spec.maxConnections ?? undefined,
+    isConnectableStart: gating?.isConnectableStart,
+    isConnectableEnd: gating?.isConnectableEnd,
+    fromMaxLinks: gating?.fromMaxLinks,
+    toMaxLinks: gating?.toMaxLinks,
+    allowSelfLink: gating?.allowSelfLink,
+    allowDuplicateLinks: gating?.allowDuplicateLinks,
+    allowedTypes: gating?.allowedTypes,
+  });
 }
 
 /** Apply the mutable parts of a spec onto an existing node (the update path). */
@@ -217,9 +352,20 @@ export function buildEdge(
 /** Apply the mutable parts of an edge spec onto an existing link. */
 export function applyEdgeSpec(link: LinkModel, spec: EdgeSpec): void {
   if (spec.type && link.pathType !== spec.type) link.setPathType(spec.type);
+  // Router/connector go through the SETTERS, not assignment: `setRouter` drops
+  // the stale polyline (it belongs to the old router) and both track the change,
+  // which is what invalidates the link's cached VNode.
+  if (spec.router !== undefined && link.router !== spec.router) link.setRouter(spec.router);
+  if (spec.connector !== undefined && link.connector !== spec.connector) {
+    link.setConnector(spec.connector);
+  }
   if (spec.style) link.updateStyle(spec.style);
   if (spec.data) link.data = { ...spec.data };
   if (spec.label !== undefined) link.setMetadata('label', spec.label);
+  if (spec.metadata) {
+    for (const [key, value] of Object.entries(spec.metadata)) link.setMetadata(key, value);
+  }
+  if (spec.points) link.setPoints(spec.points);
   if (spec.selected !== undefined) {
     const want = spec.selected ? 'selected' : 'default';
     if (link.state !== want) link.setState(want);
@@ -310,6 +456,11 @@ export function toEdgeSpec(link: LinkModel): EdgeSpec {
     type: link.pathType,
     selected: link.state === 'selected',
   };
+
+  // Round-trip the wave-5 split fields, or a host that projects the model back
+  // into its own state would silently reset every custom router/connector.
+  if (link.router !== undefined) spec.router = link.router;
+  if (link.connector !== undefined) spec.connector = link.connector;
 
   const label = link.getMetadata('label');
   if (label !== undefined) spec.label = label;

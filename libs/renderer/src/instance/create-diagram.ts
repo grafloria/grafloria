@@ -1,6 +1,7 @@
 import { DiagramEngine, getMutationEpoch } from '@grafloria/engine';
 import type { DiagramModel, LinkModel, LODLevel, NodeModel } from '@grafloria/engine';
 import type { Theme } from '../types/theme.types';
+import type { SVGRendererConfig } from '../types/renderer.interface';
 import type { Rectangle } from '../types/geometry.types';
 import type { ExportFormat, ExportOptions } from '../types/renderer.interface';
 import type { ColorMode, ThemeSet } from '../themes/color-mode';
@@ -87,6 +88,16 @@ export interface CreateDiagramOptions extends DomEventBinderOptions {
   themes?: ThemeSet;
   /** Drive Grafloria's variables from the host's design tokens (shadcn/MUI/Tailwind). */
   tokenBridge?: TokenBridge;
+  /**
+   * The full renderer config, for every knob the ergonomic fields above do not
+   * name: `connectionPoint` / `smartConnectionPoints` (floating edges),
+   * `parallelLinks` + `parallelSpacing`, `channelNudging`, `jumpOwnership`,
+   * `globalRouting`, `linkHitAreaWidth`. Every field was documented, consumed by
+   * the renderer, and settable by NOBODY — the one factory that builds a renderer
+   * for a host never passed the config on. The named fields above win over
+   * anything set here, and `instanceId` is omitted because hydration owns it.
+   */
+  renderer?: Omit<SVGRendererConfig, 'instanceId'>;
 
   zoom?: number;
   minZoom?: number;
@@ -293,8 +304,11 @@ export function createDiagram(
   const renderer = new SVGRenderer(
     engine,
     {
+      // The general escape hatch first, so the ergonomic named fields below win over
+      // anything the host also set through `renderer`.
+      ...(options.renderer ?? {}),
       instanceId: hydration?.instanceId ?? options.instanceId,
-      colorMode: options.colorMode,
+      colorMode: options.colorMode ?? options.renderer?.colorMode,
       themes: options.themes,
       tokenBridge: options.tokenBridge,
     },
