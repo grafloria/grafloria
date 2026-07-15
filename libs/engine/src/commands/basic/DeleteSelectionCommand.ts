@@ -26,7 +26,17 @@ export class DeleteSelectionCommand extends Command {
   constructor(
     private options: {
       deleteChildren?: boolean; // Delete child nodes recursively (default: true)
-      deleteLinks?: boolean; // Delete connected links (default: true)
+      /**
+       * Proactively delete connected links in a first pass (default: true).
+       *
+       * Since wave 10, `DiagramModel.removeNode()` CASCADES the node's links —
+       * a link to nowhere is not a link — so `false` cannot keep a deleted
+       * node's links alive; they are removed either way. What `false` controls
+       * is only the removal ORDER (cascade instead of an explicit pre-pass).
+       * Every cascaded link is still recorded, so undo restores the diagram
+       * whole under both settings.
+       */
+      deleteLinks?: boolean;
     } = {}
   ) {
     super('Delete Selection');
@@ -135,7 +145,20 @@ export class DeleteSelectionCommand extends Command {
       return depthB - depthA;
     });
 
+    const recordedLinkIds = new Set(this.deletedLinks.map((l) => l.id));
     for (const node of nodesToDelete) {
+      // Record links about to CASCADE before they vanish (wave 14). With
+      // `deleteLinks: false`, Step 1 skipped them — but removeNode() cascades
+      // a node's links regardless, so undo silently lost every link the
+      // deleted nodes touched. Deduped: one link can touch two doomed nodes,
+      // and with `deleteLinks: true` Step 1 already recorded (and removed)
+      // all of these, so this records nothing new.
+      for (const link of diagram.getLinksForNode(node.id)) {
+        if (!recordedLinkIds.has(link.id)) {
+          recordedLinkIds.add(link.id);
+          this.deletedLinks.push(link.serialize());
+        }
+      }
       this.deletedNodes.push(node.serialize());
       diagram.removeNode(node.id);
     }
@@ -183,8 +206,10 @@ export class DeleteSelectionCommand extends Command {
       }
     }
 
-    // Step 4: Restore links
+    // Step 4: Restore links (guarded: restoreLink() would re-install over a
+    // live link, double-registering its port connections)
     for (const linkData of this.deletedLinks) {
+      if (diagram.getLink(linkData.id)) continue;
       const link = diagram.restoreLink(linkData);
       if (!link) {
         console.warn(`Failed to restore link ${linkData.id}`);
