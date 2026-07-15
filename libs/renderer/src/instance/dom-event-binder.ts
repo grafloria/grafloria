@@ -1094,6 +1094,20 @@ export class DomEventBinder {
     }
 
     if (event.key === 'Escape') {
+      // wave13/stroke-edit: a REGISTERED TOOL that claimed the current gesture gets
+      // cancelled too. Every whiteboard tool implements onCancel() (clear the overlay,
+      // drop the in-flight state), but until now only pointercancel ever reached it —
+      // Escape mid-drag left the tool live and still eating pointermoves. Released in
+      // a `finally` for the same reason onMouseUp does: a throwing tool must not wedge
+      // the canvas into a state where every future gesture is swallowed.
+      if (this.activeTool) {
+        try {
+          this.activeTool.onCancel?.();
+        } finally {
+          this.activeTool = undefined;
+          this.activeToolHit = undefined;
+        }
+      }
       const state = this.host.interaction.getState();
       if (state.isConnecting) this.host.interaction.cancelConnection(engine);
       if (state.isReconnectingLink) this.host.interaction.cancelLinkReconnection(engine);

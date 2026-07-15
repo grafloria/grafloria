@@ -9,13 +9,23 @@
 //   DRAW      freehand ink → ONE StrokeModel, simplified, committed at pointerup
 //   RECTANGLE a dragged box → a NODE (a rectangle IS a box: connectable, resizable, laid out)
 //   ERASER    wipe over ink → the swept strokes removed, as ONE undo step
+//   EDIT      select ink under the pointer, drag to translate it — ONE undoable command
+//             (wave13/stroke-edit: the gap where ink could be made and destroyed but not touched)
 //
 // The live feedback (the line as it grows, the rubber-band box, the eraser trail) is drawn on
 // a SEPARATE overlay layer (ink-overlay.ts), NOT through the VNode tree, so a stroke in
 // progress cannot dirty a 10k-node frame. Only the committed result — one add, or a batch of
 // removes — touches the model and the frame gate.
 
-import { StrokeModel, NodeModel, type DiagramModel, type StrokePoint, type StrokeStyle } from '@grafloria/engine';
+import {
+  StrokeModel,
+  NodeModel,
+  SetStrokePointsCommand,
+  type DiagramEngine,
+  type DiagramModel,
+  type StrokePoint,
+  type StrokeStyle,
+} from '@grafloria/engine';
 import type { ViewportController } from '../viewport/viewport-controller';
 import type { CanvasTool, ToolPointerEvent, ToolHitContext } from '../ext/tools';
 import { InkOverlay, type InkPreviewStyle } from './ink-overlay';
@@ -37,6 +47,14 @@ export interface WhiteboardHost {
    * one add / N removes are still atomic to the model either way).
    */
   batch?: (fn: () => void) => void;
+  /**
+   * wave13/stroke-edit: the command manager, when the host has one. `DiagramInstance`
+   * already exposes exactly this signature, so an embed keeps handing the instance over
+   * unchanged. The EDIT tool commits its translate through `engine.commandManager` so the
+   * gesture is Ctrl-Z-able; without an engine it falls back to a plain `setPoints` commit
+   * (still correct, still ONE op for collab — just not on an undo stack that doesn't exist).
+   */
+  getEngine?(): DiagramEngine | null;
 }
 
 /** Common base: an overlay, an active flag, and the ROOT lookup. */
@@ -332,6 +350,171 @@ export class EraserTool extends WhiteboardTool implements CanvasTool {
 }
 
 // ===========================================================================
+// EDIT — select ink, drag to move it (wave13/stroke-edit)
+// ===========================================================================
+//
+// THE HIT-TESTING DECISION, argued rather than assumed. Committed ink renders
+// `pointer-events:none` (stroke-layer.ts), and the OBVIOUS fix — flip that on so the DOM
+// hit-tests strokes — is wrong twice over:
+//
+//   1. Ink is annotation ON TOP of a diagram. A scribble circled around a node would swallow
+//      every click meant for the node under it, for every tool, all the time — not just while
+//      editing. The layer's own header says so, and it is right.
+//   2. A DOM hit on a 1px `<path>` is pixel-perfect and therefore un-hittable; you would then
+//      grow it with a fat transparent stroke-clone per path — a second DOM tree to keep in
+//      step, per frame, for a hit test the MODEL can already answer.
+//
+// So the edit tool hit-tests GEOMETRICALLY, against `diagram.getStrokes()` via
+// `StrokeModel.hitTest` — the same segment-distance primitive the eraser already trusts
+// (`getStrokesAlongSegment`). The picture and the interaction agree by construction: the
+// polyline the layer paints IS the segment chain the model measures.
+//
+// And because `hitTest()` here CLAIMS the gesture only when ink is actually under the
+// pointer, the tool can stay registered and active without eating the canvas: a press on a
+// node still selects the node, a drag on empty space still pans/marquees — the built-in
+// ladder runs whenever the pointer is not on ink.
+//
+// THE GESTURE: press selects (a highlight rides the overlay); drag translates — live
+// feedback is a ghost on the overlay, the MODEL IS NOT TOUCHED until pointerup; pointerup
+// commits ONE SetStrokePointsCommand (undoable) whose execute() calls setPoints ONCE (one
+// per-property op on the wire — never per-pointermove spam). Escape / pointercancel drops
+// the gesture with nothing committed, which is what "cancel" must mean when the live drag
+// never wrote to the model in the first place.
+
+export interface StrokeEditToolOptions {
+  /** Extra hit radius in world units around the ink. Default 6 — finger-friendly. */
+  tolerance?: number;
+  /** Highlight colour for the selected stroke's ghost. */
+  highlightColor?: string;
+  active?: boolean;
+}
+
+export class StrokeEditTool extends WhiteboardTool implements CanvasTool {
+  readonly id = 'whiteboard-stroke-edit';
+
+  private selected: StrokeModel | null = null;
+  /** Gesture-start geometry — the FROM of the FROM→TO command. */
+  private startPoints: StrokePoint[] | null = null;
+  private origin: { x: number; y: number } | null = null;
+  private delta = { x: 0, y: 0 };
+
+  constructor(host: WhiteboardHost, private readonly opts: StrokeEditToolOptions = {}) {
+    super(host);
+    if (opts.active === false) this.active = false;
+  }
+
+  private tolerance(): number {
+    return this.opts.tolerance ?? 6;
+  }
+
+  /** The stroke under `(x, y)` — the TOPMOST one, since later ink paints over earlier. */
+  private strokeAt(p: { x: number; y: number }): StrokeModel | null {
+    let top: StrokeModel | null = null;
+    for (const s of this.model().getStrokes()) {
+      if (s.hitTest(p.x, p.y, this.tolerance())) top = s;
+    }
+    return top;
+  }
+
+  /** What the tool considers selected — for hosts, tests, and a future style panel. */
+  getSelectedStroke(): StrokeModel | null {
+    return this.selected;
+  }
+
+  /**
+   * CLAIM the gesture only when ink is under the pointer. This is what lets the tool
+   * coexist with the whole built-in ladder instead of monopolising the canvas.
+   */
+  override hitTest(ev?: ToolPointerEvent): boolean {
+    if (!this.active) return false;
+    if (!ev) return false;
+    return this.strokeAt(ev.world) !== null;
+  }
+
+  private highlight(points: readonly StrokePoint[], width: number, dragging: boolean): void {
+    this.overlay().drawPolyline(points, {
+      color: this.opts.highlightColor ?? '#2563eb',
+      width: width + 4,
+      opacity: dragging ? 0.55 : 0.35,
+    });
+  }
+
+  onPointerDown(ev: ToolPointerEvent, _hit?: ToolHitContext): void {
+    const stroke = this.strokeAt(ev.world);
+    this.selected = stroke;
+    if (!stroke) {
+      this.overlay().clear();
+      return;
+    }
+    this.startPoints = stroke.getPoints().map((p) => ({ ...p }));
+    this.origin = { x: ev.world.x, y: ev.world.y };
+    this.delta = { x: 0, y: 0 };
+    this.highlight(this.startPoints, stroke.getStyle().width, false);
+  }
+
+  onPointerMove(ev: ToolPointerEvent, _hit?: ToolHitContext): void {
+    if (!this.selected || !this.origin || !this.startPoints) return;
+    this.delta = { x: ev.world.x - this.origin.x, y: ev.world.y - this.origin.y };
+    // Live feedback is the translated ghost on the overlay — ONE attribute write per move.
+    // The model (and therefore the frame gate, the epoch, and the wire) sees NOTHING yet.
+    const ghost = this.startPoints.map((p) => ({ x: p.x + this.delta.x, y: p.y + this.delta.y }));
+    this.highlight(ghost, this.selected.getStyle().width, true);
+  }
+
+  onPointerUp(ev: ToolPointerEvent, _hit?: ToolHitContext): void {
+    if (!this.selected || !this.origin || !this.startPoints) return;
+    const stroke = this.selected;
+    const from = this.startPoints;
+    const dx = ev.world.x - this.origin.x;
+    const dy = ev.world.y - this.origin.y;
+    this.origin = null;
+    this.startPoints = null;
+    this.delta = { x: 0, y: 0 };
+
+    // A press-and-release with no travel is a TAP: it selects, it moves nothing, and it
+    // must not put an empty step on the undo stack. (Sub-quantum travel — under the model's
+    // 2dp coordinate quantization — is the same non-event.)
+    if (Math.abs(dx) < 0.01 && Math.abs(dy) < 0.01) {
+      this.highlight(from, stroke.getStyle().width, false);
+      return;
+    }
+
+    const to = from.map((p) => ({ ...p, x: p.x + dx, y: p.y + dy }));
+
+    // ONE undoable command, ONE setPoints, at pointerup — the gesture-commit pattern
+    // (commitNodeMove / SetLinkPointsCommand). The FROM snapshot is the gesture start.
+    const engine = this.host.getEngine?.();
+    if (engine) {
+      void engine.commandManager.execute(new SetStrokePointsCommand(stroke.id, to, from));
+    } else {
+      this.commit(() => stroke.setPoints(to));
+    }
+
+    // The stroke stays selected where it now lies — a second drag picks it straight up.
+    this.highlight(to, stroke.getStyle().width, false);
+    this.host.render();
+  }
+
+  /** Escape / pointercancel: drop the gesture AND the selection. Nothing was committed. */
+  override onCancel(): void {
+    this.selected = null;
+    this.startPoints = null;
+    this.origin = null;
+    this.delta = { x: 0, y: 0 };
+    super.onCancel();
+  }
+
+  override setActive(active: boolean): void {
+    if (!active) {
+      this.selected = null;
+      this.startPoints = null;
+      this.origin = null;
+    }
+    super.setActive(active);
+  }
+}
+
+// ===========================================================================
 // Factories — the public seam
 // ===========================================================================
 
@@ -343,6 +526,12 @@ export function createRectangleTool(host: WhiteboardHost, options?: RectangleToo
 }
 export function createEraserTool(host: WhiteboardHost, options?: EraserToolOptions): EraserTool {
   return new EraserTool(host, options);
+}
+export function createStrokeEditTool(
+  host: WhiteboardHost,
+  options?: StrokeEditToolOptions
+): StrokeEditTool {
+  return new StrokeEditTool(host, options);
 }
 
 // ---------------------------------------------------------------------------

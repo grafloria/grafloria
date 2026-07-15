@@ -1,12 +1,13 @@
 // wave10/whiteboard — the tools drive the REAL model. Every assertion here is a CONSEQUENCE
 // (a stroke entity exists / is gone / has fewer points), never "an element appeared".
 
-import { DiagramModel, StrokeModel } from '@grafloria/engine';
+import { DiagramEngine, DiagramModel, StrokeModel } from '@grafloria/engine';
 import { ViewportController } from '../viewport/viewport-controller';
 import {
   createDrawTool,
   createRectangleTool,
   createEraserTool,
+  createStrokeEditTool,
   type WhiteboardHost,
 } from './whiteboard-tools';
 import type { ToolPointerEvent, ToolHitContext } from '../ext/tools';
@@ -204,3 +205,131 @@ function strokeAt(id: string, y: number): StrokeModel {
     { id }
   );
 }
+
+// ===========================================================================
+// wave13/stroke-edit — the EDIT tool. Ink could be drawn and erased but never
+// TOUCHED: no tool selected, moved, or restyled an existing stroke. Every
+// assertion is a consequence on the MODEL (points translated, count unchanged,
+// pressure preserved), never "an element appeared".
+// ===========================================================================
+
+describe('StrokeEditTool', () => {
+  const INK: ReadonlyArray<{ x: number; y: number; pressure?: number }> = [
+    { x: 100, y: 100, pressure: 0.3 },
+    { x: 150, y: 120, pressure: 0.7 },
+    { x: 200, y: 100, pressure: 0.9 },
+  ];
+
+  function seedInk(model: DiagramModel, id = 'ink'): StrokeModel {
+    const s = new StrokeModel(INK as never, { color: '#111', width: 4 }, { id });
+    model.addStroke(s);
+    return s;
+  }
+
+  it('claims the gesture ONLY over ink — a press elsewhere falls through to the built-in ladder', () => {
+    const { host, model } = makeHost();
+    seedInk(model);
+    const tool = createStrokeEditTool(host);
+
+    expect(tool.hitTest(pe('down', 150, 118))).toBe(true); // on the ink
+    expect(tool.hitTest(pe('down', 400, 400))).toBe(false); // empty canvas: NOT claimed
+    tool.setActive(false);
+    expect(tool.hitTest(pe('down', 150, 118))).toBe(false); // inactive tool declines
+  });
+
+  it('a tap SELECTS the stroke under the pointer, and moves nothing', () => {
+    const { host, model } = makeHost();
+    const ink = seedInk(model);
+    const tool = createStrokeEditTool(host);
+
+    tool.onPointerDown(pe('down', 150, 118), EMPTY_HIT);
+    tool.onPointerUp(pe('up', 150, 118), EMPTY_HIT);
+
+    expect(tool.getSelectedStroke()).toBe(ink);
+    expect(ink.getPoints()).toEqual(INK);
+  });
+
+  it('overlapping ink: the TOPMOST (later-drawn) stroke wins the press', () => {
+    const { host, model } = makeHost();
+    seedInk(model, 'under');
+    const over = seedInk(model, 'over'); // identical geometry, drawn later = painted on top
+    const tool = createStrokeEditTool(host);
+
+    tool.onPointerDown(pe('down', 150, 118), EMPTY_HIT);
+    expect(tool.getSelectedStroke()).toBe(over);
+  });
+
+  it('a drag TRANSLATES the whole stroke: same point count, same pressures, all points moved by the delta', () => {
+    const { host, model } = makeHost();
+    const ink = seedInk(model);
+    const tool = createStrokeEditTool(host);
+
+    tool.onPointerDown(pe('down', 150, 118), EMPTY_HIT);
+    tool.onPointerMove(pe('move', 170, 130), EMPTY_HIT);
+    // Mid-gesture the MODEL is untouched — feedback lives on the overlay only.
+    expect(ink.getPoints()).toEqual(INK);
+
+    tool.onPointerMove(pe('move', 250, 58), EMPTY_HIT);
+    tool.onPointerUp(pe('up', 250, 58), EMPTY_HIT); // delta = (+100, -60)
+
+    const after = ink.getPoints();
+    expect(after.length).toBe(INK.length);
+    after.forEach((p, i) => {
+      expect(p.x).toBeCloseTo(INK[i].x + 100, 1);
+      expect(p.y).toBeCloseTo(INK[i].y - 60, 1);
+      expect(p.pressure).toBe(INK[i].pressure); // a translate never touches pressure
+    });
+  });
+
+  it('with an engine host the translate is ONE undoable command — Ctrl-Z restores the start', async () => {
+    const { host, model } = makeHost();
+    const ink = seedInk(model);
+    const engine = new DiagramEngine();
+    engine.setDiagram(model);
+    host.getEngine = () => engine;
+    const tool = createStrokeEditTool(host);
+
+    tool.onPointerDown(pe('down', 150, 118), EMPTY_HIT);
+    tool.onPointerMove(pe('move', 190, 118), EMPTY_HIT);
+    tool.onPointerUp(pe('up', 190, 118), EMPTY_HIT); // delta = (+40, 0)
+
+    // The command commit is void-async — let it land on the history stack.
+    await new Promise((r) => setTimeout(r, 0));
+    expect(ink.getPoints()[0].x).toBeCloseTo(140, 1);
+
+    await engine.undo();
+    expect(ink.getPoints()).toEqual(INK);
+
+    await engine.redo();
+    expect(ink.getPoints()[0].x).toBeCloseTo(140, 1);
+  });
+
+  it('cancel (Escape / pointercancel) mid-drag commits NOTHING and drops the selection', () => {
+    const { host, model } = makeHost();
+    const ink = seedInk(model);
+    const tool = createStrokeEditTool(host);
+
+    tool.onPointerDown(pe('down', 150, 118), EMPTY_HIT);
+    tool.onPointerMove(pe('move', 300, 300), EMPTY_HIT);
+    tool.onCancel();
+
+    expect(ink.getPoints()).toEqual(INK);
+    expect(tool.getSelectedStroke()).toBeNull();
+
+    // The abandoned gesture's trailing pointerup must also be inert.
+    tool.onPointerUp(pe('up', 300, 300), EMPTY_HIT);
+    expect(ink.getPoints()).toEqual(INK);
+  });
+
+  it('restyle rides the same selection: setStyle on the selected stroke changes colour/width', () => {
+    const { host, model } = makeHost();
+    const ink = seedInk(model);
+    const tool = createStrokeEditTool(host);
+
+    tool.onPointerDown(pe('down', 150, 118), EMPTY_HIT);
+    tool.onPointerUp(pe('up', 150, 118), EMPTY_HIT);
+
+    tool.getSelectedStroke()!.setStyle({ color: '#e11d48', width: 8 });
+    expect(ink.getStyle()).toEqual({ color: '#e11d48', width: 8 });
+  });
+});
