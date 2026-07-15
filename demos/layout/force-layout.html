@@ -1,0 +1,89 @@
+<meta charset="utf-8">
+<title>Force layout — Grafloria</title>
+<link rel="stylesheet" href="../shell/demo.css">
+<style>
+  #readout { padding: 8px 24px; font: 12px/1.5 ui-monospace, monospace; opacity: .8; border-bottom: 1px solid rgba(127,127,127,.25); }
+  #canvas { height: calc(100vh - 150px); }
+</style>
+<header id="demo-head"></header>
+<div id="readout"></div>
+<div id="canvas"></div>
+<script type="module">
+import { render } from '../shell/grafloria.js';
+import { defineDemo, check, checkEqual } from '../shell/demo.js';
+import { overlaps, signature, restack, meanEdgeDistance, meanPairDistance } from './_layout-lib.js';
+
+// Two tight clusters joined by a single bridge. A force engine should pull each
+// cluster's own members close and push the clusters apart — so "connected pairs
+// are closer than the average pair" is a MEASURABLE consequence, not decoration.
+const CLUSTER_A = ['a0', 'a1', 'a2', 'a3'];
+const CLUSTER_B = ['b0', 'b1', 'b2', 'b3'];
+const NODES = [...CLUSTER_A, ...CLUSTER_B].map((id) => ({
+  id, position: { x: 0, y: 0 }, size: { width: 60, height: 60 }, label: id,
+}));
+// dense intra-cluster edges + one bridge a0—b0
+const PAIRS = [
+  ['a0', 'a1'], ['a1', 'a2'], ['a2', 'a3'], ['a3', 'a0'], ['a0', 'a2'],
+  ['b0', 'b1'], ['b1', 'b2'], ['b2', 'b3'], ['b3', 'b0'], ['b0', 'b2'],
+  ['a0', 'b0'],
+];
+const EDGES = PAIRS.map(([s, t], i) => ({ id: `e${i}`, source: s, target: t }));
+const SPEC = { nodes: NODES, edges: EDGES };
+
+defineDemo({
+  name: 'Force layout',
+  blurb: 'Force-directed placement, and the seed is REAL: same seed → byte-identical picture (three adapters here once drew from Math.random()); different seed → different picture; connected nodes end up closer than the average pair.',
+  reactflow: 'Force Layout',
+  pro: true,
+
+  async setup(ctx) {
+    const api = render(SPEC, ctx.host);
+    ctx.instance = api;
+    ctx.diagram = api.getModel();
+    ctx.engine = api.getEngine();
+    ctx.runLayout = async (seed) => {
+      const r = await ctx.engine.layout('force', { seed, nodeSpacing: 30 });
+      api.renderNow();
+      api.fitView(40);
+      const dEdge = meanEdgeDistance(ctx.diagram, PAIRS);
+      const dAll = meanPairDistance(ctx.diagram, [...CLUSTER_A, ...CLUSTER_B]);
+      document.getElementById('readout').textContent =
+        `force seed=${r.seed}  ${overlaps(ctx.diagram).length} overlaps  ` +
+        `mean edge=${dEdge.toFixed(1)}px  mean pair=${dAll.toFixed(1)}px`;
+      return r;
+    };
+    await ctx.runLayout(1);
+  },
+
+  async assert(ctx) {
+    // 1. IT RAN and committed positions for all 8 nodes.
+    restack(ctx.diagram);
+    const r = await ctx.runLayout(1);
+    check(r.nodePositions.size === 8, `expected 8 positions, got ${r.nodePositions.size}`);
+    const stacked = ctx.diagram.getNodes().filter((n) => n.position.x === 0 && n.position.y === 0);
+    check(stacked.length <= 1, `${stacked.length} nodes still stacked at (0,0)`);
+
+    // 2. NO OVERLAP.
+    check(overlaps(ctx.diagram).length === 0, `nodes overlap: ${overlaps(ctx.diagram).join(', ')}`);
+
+    // 3. DETERMINISM — the headline bug. Same seed twice must be byte-identical.
+    const sig1 = signature(ctx.diagram);
+    restack(ctx.diagram);
+    await ctx.runLayout(1);
+    checkEqual(signature(ctx.diagram), sig1, 'force with the SAME seed produced different positions — it is drawing from real randomness');
+
+    // 4. THE SEED IS LIVE. A different seed must produce a different picture, or the
+    //    "seed" is ignored and determinism above is a lie of omission.
+    restack(ctx.diagram);
+    await ctx.runLayout(999);
+    check(signature(ctx.diagram) !== sig1, 'a different seed produced the identical picture — the seed is not wired in');
+
+    // 5. FORCE ACTUALLY PULLS. Connected pairs must be closer than the average pair.
+    restack(ctx.diagram);
+    await ctx.runLayout(1);
+    const dEdge = meanEdgeDistance(ctx.diagram, PAIRS);
+    const dAll = meanPairDistance(ctx.diagram, [...CLUSTER_A, ...CLUSTER_B]);
+    check(dEdge < dAll, `edges are not shorter than average (edge ${dEdge.toFixed(1)} ≥ all ${dAll.toFixed(1)}) — no attraction`);
+  },
+});
+</script>

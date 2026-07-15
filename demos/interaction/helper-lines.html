@@ -1,0 +1,88 @@
+<meta charset="utf-8">
+<title>Helper lines (snaplines) — Grafloria</title>
+<link rel="stylesheet" href="../shell/demo.css">
+<style>
+  #readout { padding: 8px 24px; font: 12px/1.5 ui-monospace, monospace; opacity: .8; border-bottom: 1px solid rgba(127,127,127,.25); white-space: pre; }
+  #canvas { height: calc(100vh - 168px); }
+</style>
+<header id="demo-head"></header>
+<div id="readout"></div>
+<div id="canvas"></div>
+<script type="module">
+import { render, SnapController } from '../shell/grafloria.js';
+import { defineDemo, check } from '../shell/demo.js';
+
+// Snaplines: while you drag a node near another's edge/centre, the position SNAPS to
+// alignment and a guide is emitted; three evenly-placed nodes yield an equal-spacing
+// guide. SnapController.computeSnap(box, others) is the pure engine that does it — we
+// feed it a near-miss drag and assert it (a) corrected the position onto the align
+// line and (b) reported the guide. Then a near-miss that is TOO FAR must NOT snap.
+const SPEC = {
+  nodes: [
+    { id: 'anchor', position: { x: 200, y: 120 }, size: { width: 120, height: 60 }, label: 'anchor' },
+    { id: 'below',  position: { x: 200, y: 320 }, size: { width: 120, height: 60 }, label: 'below' },
+    { id: 'mover',  position: { x: 460, y: 500 }, size: { width: 120, height: 60 }, label: 'drag me' },
+  ],
+  edges: [],
+};
+
+defineDemo({
+  name: 'Helper lines (snaplines)',
+  blurb: 'Drag a node near another\'s left edge and it snaps into alignment with a guide; a genuine near-miss beyond the threshold does not. Equal-spacing guides appear when three nodes line up evenly.',
+  reactflow: 'Helper Lines',
+  pro: true,
+
+  async setup(ctx) {
+    const api = render(SPEC, ctx.host);
+    ctx.instance = api;
+    ctx.diagram = api.getModel();
+    ctx.engine = api.getEngine();
+    ctx.snap = new SnapController({ snapThreshold: 8, equalSpacing: true });
+    ctx.report = (m) => { document.getElementById('readout').textContent = m; };
+    ctx.report('SnapController ready (threshold 8px)');
+  },
+
+  async assert(ctx) {
+    const snap = ctx.snap;
+    const engine = ctx.engine;
+
+    // The other nodes' world boxes, straight from the model — the input the snap
+    // engine aligns against.
+    const others = snap.siblingBoxes(engine, ['mover']);
+    check(others.length === 2, `expected 2 sibling boxes, got ${others.length}`);
+
+    // 'anchor' has left edge x=200. Drag 'mover' to left edge x=205 — 5px shy, inside
+    // the 8px threshold. It must SNAP to x=200 and emit a vertical alignment guide.
+    const near = snap.computeSnap({ x: 205, y: 480, width: 120, height: 60 }, others);
+    ctx.report(`near miss (x=205): dx=${near.dx}, snapped x=${near.box.x}, guides=${near.guides.length}, spacing=${near.spacing.length}`);
+
+    check(near.box.x === 200, `did not snap to the alignment line: corrected x is ${near.box.x}, expected 200`);
+    check(near.dx === -5, `snap correction dx should be -5, got ${near.dx}`);
+    check(near.guides.length > 0, 'snapped but emitted no alignment guide');
+    check(near.guides.some((g) => g.orientation === 'vertical' && Math.abs(g.position - 200) < 0.001),
+      'no vertical guide at the x=200 alignment line');
+
+    // A guide must SPAN the boxes it aligns — it is drawable, not a bare number.
+    const vg = near.guides.find((g) => g.orientation === 'vertical');
+    check(typeof vg.from === 'number' && typeof vg.to === 'number' && vg.to !== vg.from, 'the alignment guide has no extent to draw');
+
+    // CONTROL: a genuine near-miss OUTSIDE the threshold must NOT snap. x=220 is 20px
+    // from the line (> 8px), so the position is left exactly where the drag put it.
+    const far = snap.computeSnap({ x: 220, y: 480, width: 120, height: 60 }, others);
+    check(far.box.x === 220 && far.dx === 0, `a 20px miss was wrongly snapped (x=${far.box.x}, dx=${far.dx})`);
+    check(!far.guides.some((g) => g.orientation === 'vertical' && Math.abs(g.position - 200) < 0.001),
+      'an out-of-threshold drag still drew the alignment guide');
+
+    // EQUAL SPACING: anchor (y=120) and below (y=320) are 200px apart on the same x.
+    // Dragging mover to x≈200, y≈520 continues the even ladder — the snap engine
+    // should surface an equal-spacing guide describing the 200px gap.
+    const ladder = snap.computeSnap({ x: 200, y: 520, width: 120, height: 60 }, others);
+    ctx.report(
+      `snap x=205 → ${near.box.x} (guide ✓); miss x=220 → ${far.box.x} (no guide ✓); ` +
+      `spacing guides on the ladder: ${ladder.spacing.length}`
+    );
+    check(ladder.spacing.length > 0, 'three evenly-stacked nodes produced no equal-spacing guide');
+    check(ladder.spacing.every((s) => Array.isArray(s.segments) && s.segments.length > 0), 'an equal-spacing guide had nothing to draw');
+  },
+});
+</script>

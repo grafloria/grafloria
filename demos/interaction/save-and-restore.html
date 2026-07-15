@@ -1,0 +1,102 @@
+<meta charset="utf-8">
+<title>Save & restore — Grafloria</title>
+<link rel="stylesheet" href="../shell/demo.css">
+<style>
+  #readout { padding: 8px 24px; font: 12px/1.5 ui-monospace, monospace; opacity: .85; border-bottom: 1px solid rgba(127,127,127,.25); white-space: pre; }
+  #canvas { height: calc(100vh - 168px); }
+</style>
+<header id="demo-head"></header>
+<div id="readout"></div>
+<div id="canvas"></div>
+<script type="module">
+import { render, Replica, DiagramSerializer } from '../shell/grafloria.js';
+import { defineDemo, check, checkEqual } from '../shell/demo.js';
+
+// A peer edits a document, then we SAVE it as (snapshot + op-log tail) and a fresh
+// peer RESTORES from that pair — the Wave 9 durable-collaboration round-trip. The
+// subtle, load-bearing part: the reloaded peer must RESUME its Lamport clock from the
+// tail, so its very next op sorts AFTER everything already saved instead of colliding
+// with a stamp that has already been used. We prove exactly that.
+const SPEC = {
+  nodes: [
+    { id: 'n1', position: { x: 80, y: 100 }, size: { width: 120, height: 48 }, label: 'n1' },
+    { id: 'n2', position: { x: 320, y: 100 }, size: { width: 120, height: 48 }, label: 'n2' },
+  ],
+  edges: [{ id: 'e', source: 'n1', target: 'n2' }],
+};
+
+defineDemo({
+  name: 'Save & restore',
+  blurb: 'Save a document as a snapshot + op-log tail, then restore it into a fresh peer that RESUMES its Lamport clock — its next edit stamps after everything saved, so a reloaded collaborator rejoins without clobbering history.',
+  reactflow: 'Save and Restore',
+  pro: true,
+
+  async setup(ctx) {
+    const api = render(structuredClone(SPEC), ctx.host);
+    ctx.instance = api;
+    ctx.diagram = api.getModel();
+    ctx.serializer = new DiagramSerializer();
+
+    // The live "session 1" peer, capturing its ops.
+    ctx.captured = [];
+    ctx.peer1 = new Replica(ctx.diagram, { actor: 'peer1', onLocalOp: (op) => ctx.captured.push(op) });
+    ctx.report = (m) => { document.getElementById('readout').textContent = m; };
+    ctx.report('peer1 live, capturing ops');
+  },
+
+  async assert(ctx) {
+    const serializer = ctx.serializer;
+
+    // Peer 1 makes a few real edits — these are the op-log tail we will carry.
+    ctx.diagram.getNode('n1').setPosition(80, 260);
+    ctx.diagram.getNode('n2').setPosition(360, 260);
+    ctx.diagram.getNode('n1').setPosition(120, 260);
+    ctx.instance.renderNow();
+
+    check(ctx.captured.length >= 3, `expected the tail to hold peer1's edits, got ${ctx.captured.length}`);
+
+    // --- SAVE: snapshot (document) + tail (causal history). ---
+    const saved = {
+      doc: serializer.serialize(ctx.diagram),
+      tail: [...ctx.peer1.history()],
+    };
+    const maxClock = saved.tail.reduce((m, o) => Math.max(m, o.clock), 0);
+    check(maxClock > 0, 'the saved tail carries no Lamport clock to resume from');
+
+    // --- RESTORE into a FRESH peer (as if after a reload). ---
+    const model2 = serializer.deserialize(saved.doc);
+    // The document state came back verbatim.
+    checkEqual(model2.getNode('n1').position.x, 120, 'restored document lost peer1\'s last edit to n1');
+    checkEqual(model2.getNode('n2').position.x, 360, 'restored document lost peer1\'s edit to n2');
+
+    const captured2 = [];
+    const peer2 = new Replica(model2, {
+      actor: 'peer2',
+      startClock: maxClock,           // <-- RESUME the clock from the tail
+      onLocalOp: (op) => captured2.push(op),
+    });
+    peer2.adopt(saved.tail);          // seed the log + LWW stamps; apply nothing (snapshot has the effects)
+
+    // 1. THE CLOCK RESUMED — the peer's clock is at the tail's max, not back at 0.
+    checkEqual(peer2.clock, maxClock, `restored peer clock is ${peer2.clock}, expected the saved max ${maxClock}`);
+
+    // 2. THE NEXT EDIT STAMPS AFTER EVERYTHING SAVED. If the clock had reset to 0,
+    //    this op would collide with an already-used stamp and lose to it under LWW —
+    //    the reloaded user's own edit would silently vanish.
+    model2.getNode('n2').setPosition(500, 260);
+    check(captured2.length === 1, `the restored peer's edit was not captured (${captured2.length})`);
+    check(captured2[0].clock === maxClock + 1,
+      `the next op stamped ${captured2[0].clock}, not ${maxClock + 1} — the clock did not resume, history would be clobbered`);
+    check(captured2[0].clock > maxClock, 'the restored peer reissued a stamp that is not strictly newer than the saved history');
+
+    // 3. The restored edit actually took effect on the restored document.
+    checkEqual(model2.getNode('n2').position.x, 500, 'the restored peer\'s edit did not apply');
+
+    ctx.report(
+      `saved: ${saved.tail.length} ops, max clock ${maxClock}\n` +
+      `restored peer2 resumed clock at ${peer2.clock}; next edit stamped ${captured2[0].clock} (= max+1)\n` +
+      `document round-tripped: n1.x=${model2.getNode('n1').position.x}, n2.x=${model2.getNode('n2').position.x}`
+    );
+  },
+});
+</script>

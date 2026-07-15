@@ -481,6 +481,42 @@ export type {
 export { SwimlaneService } from '@grafloria/engine';
 export type { Pool, LaneSpec, CreatePoolOptions, LaneOrientation } from '@grafloria/engine';
 
+// wave11/gallery BUG FIX — three more authoring seams were not on the embed.
+//
+// Writing the interaction + layout gallery surfaced three documented, unit-
+// tested features of the renderer/engine that no embedder could reach through
+// this package, exactly the shape wave 10 was cleaning up:
+//
+//   SnapController + its config/result types — the snapline / equal-spacing
+//     guide engine (libs/renderer/src/interaction/snapping.ts). It is a pure
+//     class a HOST constructs to draw alignment guides while dragging; the live
+//     pipeline never instantiates it, and it was on NO public entry point, so
+//     "helper lines" could not be built from any framework.
+//
+//   GroupModel + GroupCollapseService — the ONLY way to author a compound
+//     (nested-container) diagram or to collapse/expand one. `render()`'s spec
+//     has no group vocabulary, `DiagramModel.addGroup()` demands a GroupModel,
+//     and neither the model class nor the collapse service was re-exported —
+//     so nested containers and expand/collapse (both engine.layout() and the
+//     collapse snapshot are real and tested) were unreachable through the embed.
+// ===========================================================================
+// SnapController + DEFAULT_SNAP_CONFIG are already re-exported by the node-seams block
+// above (proximity-connect needs SnapController too); only the extra types are new here.
+export type { SnapResult, AlignmentGuide, SpacingGuide } from '@grafloria/renderer';
+
+export { GroupModel } from '@grafloria/engine';
+export { GroupCollapseService, PROXY_NODE_GROUP_KEY, PROXY_LINK_GROUP_KEY } from '@grafloria/engine';
+
+//   serveLayout — the worker body for OFF-THREAD layout. `engine.setLayoutPort()`
+//     takes any port; an app runs the layout in a real Worker by importing this
+//     package inside the worker and calling `serveLayout(self)`. It was exported
+//     from @grafloria/engine and reachable by NOBODY through the embed, so the whole
+//     off-thread-layout capability (progress streaming + mid-run cancellation with
+//     a retained partial result) could not be wired from the public package.
+export { serveLayout } from '@grafloria/engine';
+export type { LayoutPort, LayoutServePort, LayoutProgress } from '@grafloria/engine';
+
+
 // Side effect: define the element on import. This is what makes
 // `<script type="module" src="…/grafloria.js"></script>` + `<grafloria-flow>` in the
 // markup Just Work, which is the entire point of the card.

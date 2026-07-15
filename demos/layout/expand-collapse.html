@@ -1,0 +1,142 @@
+<meta charset="utf-8">
+<title>Expand / collapse — Grafloria</title>
+<link rel="stylesheet" href="../shell/demo.css">
+<style>
+  #bar { display: flex; gap: 8px; padding: 10px 24px; border-bottom: 1px solid rgba(127,127,127,.25); align-items: center; }
+  #bar button { padding: 5px 12px; border-radius: 6px; border: 1px solid rgba(127,127,127,.4); background: transparent; color: inherit; cursor: pointer; font: inherit; }
+  #readout { margin-left: auto; font: 12px/1.4 ui-monospace, monospace; opacity: .8; }
+  #canvas { height: calc(100vh - 152px); }
+</style>
+<header id="demo-head"></header>
+<div id="bar">
+  <button id="collapse">collapse</button>
+  <button id="expand">expand</button>
+  <span id="readout"></span>
+</div>
+<div id="canvas"></div>
+<script type="module">
+import { render, GroupModel, GroupCollapseService } from '../shell/grafloria.js';
+import { defineDemo, check, checkEqual } from '../shell/demo.js';
+
+// A container of three members, plus an external node wired to two of them across
+// the boundary. Collapse must: hide the members, shrink the group to a placeholder,
+// and re-home the boundary edges onto an aggregated proxy. Expand must restore ALL
+// of it — verbatim. The teeth: expand returns every member to the EXACT pixel it
+// held before collapse (lossless), and the collapse actually removed things (not a
+// flag that changed nothing).
+const NODES = [
+  { id: 'ext', position: { x: 480, y: 60 }, size: { width: 100, height: 44 }, label: 'external' },
+  { id: 'c1', position: { x: 60, y: 40 }, size: { width: 90, height: 40 }, label: 'c1' },
+  { id: 'c2', position: { x: 60, y: 110 }, size: { width: 90, height: 40 }, label: 'c2' },
+  { id: 'c3', position: { x: 60, y: 180 }, size: { width: 90, height: 40 }, label: 'c3' },
+];
+const EDGES = [
+  { id: 'e1', source: 'c1', target: 'c2' },   // internal
+  { id: 'e2', source: 'c1', target: 'ext' },  // crosses the boundary (out)
+  { id: 'e3', source: 'c2', target: 'ext' },  // crosses the boundary (out) — aggregates with e2
+  { id: 'e4', source: 'ext', target: 'c3' },  // crosses the boundary (in)
+];
+
+const posOf = (model, ids) => ids.map((id) => {
+  const n = model.getNode(id);
+  return `${id}:${n.position.x},${n.position.y}`;
+}).join('|');
+
+const visibleCount = (model) => model.getNodes().filter((n) => n.state.visible !== false).length;
+
+defineDemo({
+  name: 'Expand / collapse',
+  blurb: 'Collapse a container to a placeholder — members hide, boundary edges aggregate onto a proxy — then expand it back to the exact pixel it held. Lossless, and driven through the real GroupCollapseService.',
+  reactflow: 'Expand Collapse',
+  pro: true,
+
+  async setup(ctx) {
+    const api = render({ nodes: NODES, edges: EDGES }, ctx.host);
+    ctx.instance = api;
+    ctx.diagram = api.getModel();
+
+    const group = new GroupModel({ id: 'box', name: 'Service' });
+    ctx.diagram.addGroup(group);
+    group.padding = 14;
+    for (const id of ['c1', 'c2', 'c3']) group.addMember(id, ctx.diagram);
+    ctx.group = group;
+    ctx.collapser = new GroupCollapseService(ctx.diagram);
+
+    // Lay the compound diagram out once, so the container gets a real frame sized
+    // around its members (that is the box collapse shrinks away from).
+    ctx.engine = api.getEngine();
+    await ctx.engine.layout('dagre', { direction: 'TB', nodeSpacing: 30, rankSpacing: 50 });
+
+    const refresh = () => {
+      api.renderNow();
+      document.getElementById('readout').textContent =
+        `visible=${visibleCount(ctx.diagram)}  nodes=${ctx.diagram.getNodes().length}  ` +
+        `links=${ctx.diagram.getLinks().length}  collapsed=${group.isCollapsed}`;
+    };
+    document.getElementById('collapse').addEventListener('click', () => { ctx.collapser.collapse(group); refresh(); });
+    document.getElementById('expand').addEventListener('click', () => { ctx.collapser.expand(group); refresh(); });
+    refresh();
+  },
+
+  async assert(ctx) {
+    const model = ctx.diagram;
+    const group = ctx.group;
+    const MEMBERS = ['c1', 'c2', 'c3'];
+
+    // Baseline snapshot — the exact geometry we demand back after a round trip.
+    const beforePositions = posOf(model, MEMBERS);
+    const beforeVisible = visibleCount(model);
+    const beforeNodes = model.getNodes().length;
+    const beforeLinks = model.getLinks().length;
+    const beforeArea = () => {
+      const b = group.getOuterBounds();
+      return b.width * b.height;
+    };
+    const areaBefore = beforeArea();
+
+    // --- COLLAPSE ---
+    ctx.collapser.collapse(group);
+    ctx.instance.renderNow();
+
+    // 1. It is flagged collapsed and it actually DID something.
+    check(group.isCollapsed, 'group did not report collapsed');
+
+    // 2. THE MEMBERS ARE HIDDEN — visible count drops by the 3 members and rises by
+    //    the 1 visible placeholder proxy that stands in for the collapsed group.
+    check(visibleCount(model) === beforeVisible - MEMBERS.length + 1,
+      `expected ${beforeVisible - MEMBERS.length + 1} visible after collapse, got ${visibleCount(model)}`);
+    for (const id of MEMBERS) {
+      check(model.getNode(id).state.visible === false, `${id} is still visible after collapse`);
+    }
+
+    // 3. A PLACEHOLDER PROXY NODE appeared (the group-as-node the router treats as
+    //    an ordinary endpoint), so the total node count went UP by one.
+    check(model.getNodes().length === beforeNodes + 1, `expected a proxy node to be added (had ${beforeNodes}, now ${model.getNodes().length})`);
+
+    // 4. THE GROUP SHRANK to a placeholder box — strictly smaller than it was.
+    check(beforeArea() < areaBefore, `group did not shrink on collapse (area ${beforeArea()} ≥ ${areaBefore})`);
+
+    // 5. BOUNDARY EDGES RE-HOMED. No surviving link may still touch a hidden member:
+    //    the boundary crossings were re-pointed at the proxy, the internal edge was
+    //    removed. A link that still references a hidden endpoint means collapse only
+    //    hid the nodes and left the graph dangling.
+    for (const link of model.getLinks()) {
+      const s = link.sourceNodeId;
+      const t = link.targetNodeId;
+      check(!MEMBERS.includes(s) && !MEMBERS.includes(t),
+        `link ${link.id} still touches a collapsed member (${s}→${t}) — edges were not re-homed to the proxy`);
+    }
+
+    // --- EXPAND ---
+    ctx.collapser.expand(group);
+    ctx.instance.renderNow();
+
+    // 6. LOSSLESS. Every member is back, visible, at the EXACT pixel it held before.
+    check(!group.isCollapsed, 'group still collapsed after expand');
+    checkEqual(visibleCount(model), beforeVisible, 'visible node count did not return to its pre-collapse value');
+    checkEqual(model.getNodes().length, beforeNodes, 'node count did not return (proxy not removed?)');
+    checkEqual(model.getLinks().length, beforeLinks, 'link count did not return (re-homed edges not restored?)');
+    checkEqual(posOf(model, MEMBERS), beforePositions, 'a member did not return to its exact pre-collapse position — expand is not lossless');
+  },
+});
+</script>

@@ -325,7 +325,20 @@ export class DomEventBinder {
       event.preventDefault();
       // Capture, so a finger that slides off the canvas keeps delivering move/up.
       // Without it a drag that leaves the element silently stops mid-gesture.
-      this.container.setPointerCapture?.(event.pointerId);
+      //
+      // wave11/gallery BUG FIX — this can THROW. setPointerCapture raises
+      // NotFoundError ("no active pointer with the given id") when the pointer is not
+      // an active one — which happens for a synthetic PointerEvent (a test, an a11y
+      // tool, a programmatic gesture) and, in the wild, when the pointer has already
+      // been released by the time the handler runs. Optional chaining does not catch a
+      // throw, so an unguarded call turned a lost race into an uncaught error that
+      // aborted the whole gesture. Capture is an optimisation, not a precondition;
+      // failing to get it must not take the gesture down with it.
+      try {
+        this.container.setPointerCapture?.(event.pointerId);
+      } catch {
+        /* capture is best-effort; the gesture still works without it */
+      }
       this.touch.onPointerDown(event);
       return;
     }
@@ -344,7 +357,14 @@ export class DomEventBinder {
   private onPointerUp(event: PointerEvent): void {
     this.sawPointerEvent = true;
     if (event.pointerType === 'touch') {
-      this.container.releasePointerCapture?.(event.pointerId);
+      // Mirror of onPointerDown's guard — releasing a capture we never held (or that
+      // the browser already dropped) throws NotFoundError, which must not abort the
+      // gesture's own bookkeeping below.
+      try {
+        this.container.releasePointerCapture?.(event.pointerId);
+      } catch {
+        /* nothing to release; carry on */
+      }
       this.touch.onPointerUp(event);
       return;
     }
@@ -353,7 +373,11 @@ export class DomEventBinder {
 
   private onPointerCancel(event: PointerEvent): void {
     if (event.pointerType === 'touch') {
-      this.container.releasePointerCapture?.(event.pointerId);
+      try {
+        this.container.releasePointerCapture?.(event.pointerId);
+      } catch {
+        /* nothing to release */
+      }
       this.touch.onPointerCancel(event);
       return;
     }
