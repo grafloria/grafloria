@@ -46,10 +46,10 @@ import type { StrokeModel } from '../models/StrokeModel';
 import { applyOp, applyEntitySet } from './apply-op';
 import { OpCapture, type OpBefore } from './capture';
 import { ReferentialIntegrity } from './integrity';
-import { LwwRegistry } from './lww';
+import { LwwRegistry, type Stamp } from './lww';
 import { OpLog } from './op-log';
 import { UndoStack } from './undo';
-import { compareOps, type ActorId, type Op } from './op';
+import { compareOps, setValueOf, type ActorId, type Op } from './op';
 
 export interface ReplicaOptions {
   /** This peer's identity. MUST be unique across peers — the total order depends on it. */
@@ -88,12 +88,29 @@ export class Replica {
    */
   private readonly newestSet = new Map<string, number>();
 
+  /**
+   * nodeId → the port ids each node had BEFORE the log's first op — i.e. at the moment
+   * this replica attached (a snapshot load, or the live document collaboration started
+   * on).
+   *
+   * canonicalizePortOrder() needs it to tell a port ADD from a port UPDATE in the log: a
+   * `ports.<id>` value-write is an add only if the port was not already present, and
+   * presence has to be simulated from somewhere. For a node whose `add` op is in the log,
+   * the op's data is that starting point; for a node that predates the log, this is.
+   * Peers that join from the same snapshot record the same sets, so the derivation stays
+   * identical everywhere — which is the one property canonical order actually needs.
+   */
+  private readonly basePorts = new Map<string, Set<string>>();
+
   constructor(
     readonly diagram: DiagramModel,
     private readonly options: ReplicaOptions
   ) {
     this.lww = new LwwRegistry();
     this.integrity = new ReferentialIntegrity(diagram, this.lww);
+    for (const n of diagram.getNodes()) {
+      this.basePorts.set(n.id, new Set(n.getPorts().map((p) => p.id)));
+    }
     this.undoStack = new UndoStack(this.log, options.actor, (op) => this.applyLocalInverse(op));
 
     this.capture = new OpCapture(diagram, {
@@ -170,6 +187,20 @@ export class Replica {
     // computes it for itself — so putting any of it on the wire is not redundancy, it is a
     // race against the very ops it was derived from.
     this.capture.silently(() => this.integrity.reconcile());
+
+    // Ports have per-port registers (wave14), so their ORDER inside the node's Map — which
+    // is serialize() order, i.e. part of the document — is no longer carried by any single
+    // op. Derive it, exactly as integrity derives entity order. Only nodes this batch
+    // touched; local edits never de-canonicalize (a local op has the newest stamp this
+    // peer has seen, so its append position IS its canonical position).
+    const portNodes = new Set<string>();
+    for (const op of fresh) {
+      if (op.target !== 'node') continue;
+      if (op.op === 'add' || (op.op === 'set' && op.path.startsWith('ports'))) {
+        portNodes.add(op.id);
+      }
+    }
+    if (portNodes.size > 0) this.canonicalizePortOrder(portNodes);
 
     return fresh;
   }
@@ -312,6 +343,17 @@ export class Replica {
     this.integrity.forget(op); // a removed link is not coming back from quarantine
 
     if (op.op === 'add') this.repair(op);
+
+    // A LEGACY whole-collection `ports` write (pre-wave14 logs, or an old peer still in
+    // the room) rebuilds the ENTIRE collection — clobbering any port whose per-port
+    // register holds a write NEWER than the collection op. Those writes are not
+    // superseded; they are the truth, and only the log still knows it. Same shape as
+    // repair() for a late `add`, one level down. (The opposite direction — a per-port
+    // write older than the newest whole-collection write — is refused at the gate; see
+    // the ports-collection barrier in lww.ts.)
+    if (op.op === 'set' && op.target === 'node' && op.path === 'ports') {
+      this.repairPorts(op);
+    }
   }
 
   /**
@@ -364,7 +406,125 @@ export class Replica {
       // that beat it, and the last one standing is the register's rightful owner.
       if (o.op !== 'set' || o.id !== add.id || o.target !== add.target) continue;
       if (compareOps(o, add) <= 0) continue; // older than this incarnation: void, by the barrier
-      applyEntitySet(entity, o.path, o.value);
+      applyEntitySet(entity, o.path, setValueOf(o));
+    }
+  }
+
+  /**
+   * Re-apply the per-port writes a LEGACY whole-collection `ports` op just clobbered.
+   *
+   * The whole-collection op asserts every port at its own stamp, but a per-port register
+   * NEWER than it still owns its port. Applying the log's `ports.*` writes newer than the
+   * collection op, in total order, restores exactly those — an add comes back, a newer
+   * removal stays removed, a newer edit re-lands. Both delivery orders then compute the
+   * same collection, which is what the mixed-history spec drives.
+   */
+  private repairPorts(whole: Extract<Op, { op: 'set' }>): void {
+    const entity = this.find(whole.target, whole.id);
+    if (!entity) return;
+
+    for (const o of this.log.toArray()) {
+      if (o.op !== 'set' || o.id !== whole.id || o.target !== whole.target) continue;
+      if (!o.path.startsWith('ports.')) continue;
+      if (compareOps(o, whole) <= 0) continue; // superseded by the collection write: void
+      applyEntitySet(entity, o.path, setValueOf(o));
+    }
+  }
+
+  /**
+   * CANONICAL PORT ORDER — integrity.order()'s argument, one level down.
+   *
+   * serialize() writes a node's ports in Map insertion order, and order is part of the
+   * document (the byte oracle sees it; multi-port sides render by it). With per-port
+   * registers, insertion order is a function of ARRIVAL order: two peers that applied
+   * concurrent port adds in a different order hold the same ports in a different
+   * sequence — same content, byte-different files. So the order is DERIVED from the
+   * converged log instead: a port ranks by the stamp of the write that ESTABLISHED its
+   * current incarnation (the first surviving value-write after the last clear), which is
+   * identical on every peer. Ports that predate the log (the node's add op, a snapshot)
+   * have no rank and keep their existing relative order, first — the stable-sort trick
+   * integrity uses for the same problem.
+   *
+   * In the ordinary case — adds with ever-increasing clocks — this reproduces insertion
+   * order exactly and rewrites nothing.
+   */
+  private canonicalizePortOrder(nodeIds: Iterable<string>): void {
+    for (const nodeId of nodeIds) {
+      const node = this.diagram.getNode(nodeId);
+      if (!node || node.ports.size < 2) continue;
+
+      // Birth stamps, derived by SIMULATING MEMBERSHIP through the log in total order.
+      // A value-write is a port's birth only if the port was NOT already present — an
+      // UPDATE must never re-rank a port (the author edited it in place; a receiver that
+      // moved it would save a byte-different file). Membership starts from the node's
+      // ports at the moment the log began (basePorts / the add op's data), and each
+      // `add` op resets it: a new incarnation starts a new membership world, exactly as
+      // the presence barrier voids the old one's writes.
+      const birth = new Map<string, Stamp>();
+      let existing = new Set(this.basePorts.get(nodeId) ?? []);
+      for (const o of this.log.toArray()) {
+        if (o.target !== 'node' || o.id !== nodeId) continue;
+        if (o.op === 'add') {
+          const ports = (o.data as { ports?: Array<{ id?: string }> }).ports ?? [];
+          existing = new Set(ports.map((p) => p?.id).filter((x): x is string => !!x));
+          birth.clear();
+          continue;
+        }
+        if (o.op !== 'set') continue;
+        if (o.path === 'ports') {
+          // legacy whole-collection: every port it lists exists as of this stamp; every
+          // port it does not is gone
+          if (!Array.isArray(o.value)) continue;
+          const listed = new Set(
+            (o.value as Array<{ id?: string }>).map((p) => p?.id).filter((x): x is string => !!x)
+          );
+          for (const pid of [...existing]) {
+            if (!listed.has(pid)) {
+              existing.delete(pid);
+              birth.delete(pid);
+            }
+          }
+          for (const pid of listed) {
+            if (!existing.has(pid)) {
+              existing.add(pid);
+              birth.set(pid, { clock: o.clock, actor: o.actor });
+            }
+          }
+        } else if (o.path.startsWith('ports.')) {
+          const pid = o.path.slice('ports.'.length);
+          if (setValueOf(o) === undefined) {
+            existing.delete(pid);
+            birth.delete(pid);
+          } else if (!existing.has(pid)) {
+            existing.add(pid);
+            birth.set(pid, { clock: o.clock, actor: o.actor });
+          }
+        }
+      }
+
+      const cmp = (a: Stamp | undefined, b: Stamp | undefined): number => {
+        if (!a && !b) return 0; // both predate the log — stable sort keeps them put
+        if (!a) return -1;
+        if (!b) return 1;
+        if (a.clock !== b.clock) return a.clock - b.clock;
+        return a.actor < b.actor ? -1 : a.actor > b.actor ? 1 : 0;
+      };
+
+      const entries = [...node.ports.entries()];
+      entries.sort((a, b) => cmp(birth.get(a[0]), birth.get(b[0])));
+
+      let inPlace = true;
+      let i = 0;
+      for (const key of node.ports.keys()) {
+        if (entries[i++][0] !== key) {
+          inPlace = false;
+          break;
+        }
+      }
+      if (inPlace) continue;
+
+      node.ports.clear();
+      for (const [k, v] of entries) node.ports.set(k, v);
     }
   }
 

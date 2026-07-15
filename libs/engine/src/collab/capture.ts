@@ -37,6 +37,7 @@ import { NodeModel } from '../models/NodeModel';
 import { LinkModel } from '../models/LinkModel';
 import { GroupModel } from '../models/GroupModel';
 import { StrokeModel } from '../models/StrokeModel';
+import { PortModel } from '../models/PortModel';
 import type { SerializedNode } from '../models/NodeModel';
 import type { SerializedLink } from '../models/LinkModel';
 import type { SerializedGroup } from '../models/GroupModel';
@@ -153,6 +154,30 @@ function sameJson(a: unknown, b: unknown): boolean {
 }
 
 /**
+ * A port as it travels: the serialized form MINUS `version`.
+ *
+ * `version` is a per-replica mutation counter — a local quantity, like a vector-clock
+ * component; the convergence oracle already exempts it for exactly that reason. Keeping
+ * it in the register value would also defeat the coarse-per-port dedupe below: every
+ * derived-state twitch (a link registering a connection bumps the port's version and
+ * nothing else) would look like a fresh register value and go on the wire.
+ */
+function portWireValue(port: PortModel): OpValue {
+  const { version: _version, ...data } = port.serialize();
+  return data as unknown as OpValue;
+}
+
+/**
+ * Port properties that are DERIVED and must not re-emit the register.
+ *
+ * `connections` is rebuilt from the diagram's links on every peer (PortModel calls it
+ * derived state in so many words) — broadcasting it would race the link ops it is
+ * derived from. It is not in serialize() anyway; this skip just avoids doing the
+ * serialize-and-compare work on every link attach/detach.
+ */
+const PORT_DERIVED = new Set(['connections']);
+
+/**
  * What the register held BEFORE the op overwrote it.
  *
  * Card 4 (undo) needs it and nothing else does, so it is handed to the capture callback
@@ -197,8 +222,20 @@ export class OpCapture {
   private readonly onOp: (op: Op, before: OpBefore) => void;
   private readonly unsubs: Unsubscribe[] = [];
   private readonly entitySubs = new Map<string, Unsubscribe>();
-  /** Last ports collection emitted per node — see the 'ports' branch of watchEntity. */
-  private readonly lastPorts = new Map<string, OpValue>();
+  /**
+   * nodeId → (portId → the register value last emitted/seen for that port).
+   *
+   * The per-port `before` shadow for undo. trackChange('ports', …) reports the ONE port
+   * that changed, and a port's own change events report one property — so the register's
+   * prior value has to be remembered here; there is nowhere else to read it from once
+   * the model has been mutated. Seeded from the node's existing ports at watch time, so
+   * `before` for a port's first change is its REAL prior state, not "empty" — the old
+   * whole-collection shadow got that wrong once and undo stripped a node of every port
+   * it was born with.
+   */
+  private readonly portShadows = new Map<string, Map<string, OpValue>>();
+  /** portId → unsubscribe for the live-port watch (Defect 2: port edits must sync). */
+  private readonly portSubs = new Map<string, Unsubscribe>();
 
   /** True while we are applying a REMOTE op: everything the model emits is an echo. */
   private applying = false;
@@ -270,8 +307,11 @@ export class OpCapture {
     this.stopped = true;
     for (const u of this.unsubs) u();
     for (const u of this.entitySubs.values()) u();
+    for (const u of this.portSubs.values()) u();
     this.unsubs.length = 0;
     this.entitySubs.clear();
+    this.portSubs.clear();
+    this.portShadows.clear();
   }
 
   // -------------------------------------------------------------------------
@@ -286,6 +326,22 @@ export class OpCapture {
       } as Op,
       before
     );
+  }
+
+  /**
+   * A `set` draft, with clears made EXPLICIT (Defect 3).
+   *
+   * `undefined` is what the model funnel hands us when a register is being EMPTIED
+   * (deleteMetadata, clearFlexItem) — and `OpValue` forbids it. The old code emitted it
+   * anyway; it crossed the wire only because JSON.stringify drops an undefined key and
+   * the peer's apply read missing-as-undefined. Two accidents, both load-bearing. Now a
+   * clear says so: `clear: true`, no value key, JSON-exact round-trip. (NOT null — null
+   * is a legitimate stored value, and the suite proves the two stay distinct.)
+   */
+  private setDraft(target: OpTarget, id: string, path: string, value: OpValue | undefined): OpDraft {
+    return value === undefined
+      ? { op: 'set', target, id, path, clear: true }
+      : { op: 'set', target, id, path, value };
   }
 
   private watchDiagram(): void {
@@ -316,7 +372,7 @@ export class OpCapture {
       // A property of the diagram itself (name, viewport, …).
       if (!isDerived('diagram', property)) {
         this.emit(
-          { op: 'set', target: 'diagram', id: '', path: property, value: newValue as OpValue },
+          this.setDraft('diagram', '', property, newValue as OpValue | undefined),
           { kind: 'value', value: oldValue as OpValue }
         );
       }
@@ -329,18 +385,24 @@ export class OpCapture {
   private watchEntity(target: EntityTarget, entity: Entity): void {
     if (this.entitySubs.has(entity.id)) return;
 
-    // SEED the ports shadow with what the node ALREADY has.
+    // SEED the per-port shadows with what the node ALREADY has, and WATCH each port.
     //
-    // Without this, `before` for the node's FIRST port change is undefined — and undo reads
-    // that as "the register was empty", so undoing the first port a user ever adds to a node
-    // DELETES EVERY PORT IT HAS, including the ones it was born with. The node survives with
-    // nothing to connect to and every link into it is orphaned. The fuzz found it as a node
-    // with an empty ports array on one peer.
+    // The seed: without it, `before` for a port's first change is undefined — and undo
+    // reads that as "the register was empty", so undoing the first edit to a port the
+    // node was born with would DELETE that port. (The whole-collection ancestor of this
+    // bug once stripped a node of every port it had; the fuzz found it as a node with an
+    // empty ports array on one peer.)
+    //
+    // The watch is Defect 2's fix: PortModel is a DiagramEntity with trackChange calls of
+    // its own (position, alignment, offset, allowedTypes) that no one was listening to —
+    // editing a LIVE port silently never synced.
     if (entity instanceof NodeModel) {
-      this.lastPorts.set(
-        entity.id,
-        entity.getPorts().map((p) => p.serialize()) as unknown as OpValue
-      );
+      const shadows = new Map<string, OpValue>();
+      this.portShadows.set(entity.id, shadows);
+      for (const p of entity.getPorts()) {
+        shadows.set(p.id, portWireValue(p));
+        this.watchPort(entity, p);
+      }
     }
 
     const onChange = (entry: { property: string; oldValue: unknown; newValue: unknown }) => {
@@ -352,37 +414,51 @@ export class OpCapture {
       // 'default' | 'selected' | 'hovered' | 'highlighted' — view state, top to bottom.
       if (EPHEMERAL_BY_TARGET[target]?.has(entry.property)) return;
 
-      // PORTS ARE NOT AN ORDINARY REGISTER, and taking them for one puts a LIVE CLASS
-      // INSTANCE on the wire.
+      // PORTS: ONE REGISTER PER PORT — `ports.<portId>` — because the whole-collection
+      // register this used to be was Card 0's rejected design smuggled back in one level
+      // down. Two peers concurrently adding a DIFFERENT port to the same node raced one
+      // register; one collection write superseded the other, and the reconciling apply
+      // branch DELETED the losing port from its creator's own node — orphaning every
+      // link already attached to it. The user watched their work vanish, silently.
       //
-      // NodeModel.addPort() emits trackChange('ports', null, <PortModel>) — the new PORT,
-      // not the ports collection — and deepClone hands class instances through untouched.
-      // Captured naively, the op's `value` is a PortModel: not JSON-safe (its prototype
-      // does not survive the wire), and semantically a single port claiming to be the whole
-      // `ports` register. On the receiving peer applyOp finds no setPorts() mutator, falls
-      // back to a direct assignment, and REPLACES node.ports — a Map — WITH A PLAIN OBJECT.
-      // Every getPorts() after that returns nothing and serialize() throws.
+      // The path IS the register key (op.ts), so per-port needs no new op kind: an
+      // add/update is `set(node, 'ports.<id>', <serialized port>)` and a remove is the
+      // explicit clear of that register. COARSE per-port, deliberately: the value is the
+      // whole serialized port, never `ports.<id>.position` sub-registers — the register
+      // keyspace stays prefix-free (the comments-suite lesson), and a port is small.
       //
-      // Nothing caught it because a port is almost always added BEFORE its node joins the
-      // diagram (so capture is not watching yet). AddPortCommand adds one AFTER, and that
-      // is the reachable path.
-      //
-      // A node's ports are structure, not a property: send the whole SERIALIZED collection
-      // and let the reducer rebuild the Map. Whole-collection LWW is the cost — two peers
-      // adding a different port to the same node concurrently, and one loses — which is the
-      // right trade for a register that a user changes rarely and never by dragging.
-      if (entry.property === 'ports') {
-        const ports = (entity as NodeModel).getPorts().map((p) => p.serialize()) as unknown as OpValue;
-        // The register's PREVIOUS contents, so undo has something to restore. trackChange
-        // reports the one port that changed, not the collection it changed, so the
-        // collection's prior value has to be remembered here — there is nowhere else to
-        // read it from once the Map has been mutated.
-        const was = this.lastPorts.get(entity.id);
-        this.lastPorts.set(entity.id, ports);
-        this.emit(
-          { op: 'set', target, id: entity.id, path: 'ports', value: ports },
-          { kind: 'value', value: was }
-        );
+      // NodeModel.addPort() emits trackChange('ports', null, <the live PortModel>) and
+      // deepClone hands class instances through untouched — so entry.newValue here IS the
+      // port, and it must be SERIALIZED before it can be a value (a live instance on the
+      // wire is how the original Map-corruption bug happened; see apply-op.ts, which
+      // still refuses to write ports except through the real addPort/removePort).
+      if (entry.property === 'ports' && entity instanceof NodeModel) {
+        const shadows = this.portShadows.get(entity.id);
+        if (entry.newValue && !entry.oldValue) {
+          // add — watch it (bookkeeping runs even while applying a REMOTE op, exactly
+          // like watchEntity below: only EMISSION is suppressed, or a remotely-added
+          // port would be invisible to capture for the rest of the session)
+          const port = entry.newValue as PortModel;
+          const now = portWireValue(port);
+          const was = shadows?.get(port.id);
+          shadows?.set(port.id, now);
+          this.watchPort(entity, port);
+          this.emit(
+            this.setDraft(target, entity.id, `ports.${port.id}`, now),
+            { kind: 'value', value: was }
+          );
+        } else if (entry.oldValue && !entry.newValue) {
+          // remove — the clear of exactly one register, with the port's last state as
+          // `before` so undo restores exactly one port
+          const port = entry.oldValue as PortModel;
+          const was = shadows?.get(port.id) ?? portWireValue(port);
+          shadows?.delete(port.id);
+          this.unwatchPort(port.id);
+          this.emit(
+            this.setDraft(target, entity.id, `ports.${port.id}`, undefined),
+            { kind: 'value', value: was }
+          );
+        }
         return;
       }
 
@@ -412,7 +488,7 @@ export class OpCapture {
       }
 
       this.emit(
-        { op: 'set', target, id: entity.id, path: entry.property, value },
+        this.setDraft(target, entity.id, entry.property, value as OpValue | undefined),
         { kind: 'value', value: before }
       );
 
@@ -421,11 +497,57 @@ export class OpCapture {
     this.entitySubs.set(entity.id, entity.on('change', onChange as never));
   }
 
+  /**
+   * Watch ONE live port (Defect 2).
+   *
+   * Any real change re-emits the port's whole serialized form to its `ports.<id>`
+   * register — coarse-per-port. The wire-value dedupe below is what keeps derived
+   * twitches (a link registering a connection bumps `version` and nothing else) off
+   * the wire: if the register value did not change, nothing is emitted.
+   *
+   * Attached on every path a port can reach a live diagram by: capture attach,
+   * node add (watchEntity seeds and watches), port add (the ports branch above).
+   * Detached on port remove, node remove and stop().
+   */
+  private watchPort(node: NodeModel, port: PortModel): void {
+    if (this.portSubs.has(port.id)) return;
+
+    const onPortChange = (entry: { property: string }) => {
+      if (PORT_DERIVED.has(entry.property)) return;
+      const shadows = this.portShadows.get(node.id);
+      const now = portWireValue(port);
+      const was = shadows?.get(port.id);
+      if (sameJson(now, was)) return;
+      shadows?.set(port.id, now);
+      this.emit(
+        this.setDraft('node', node.id, `ports.${port.id}`, now),
+        { kind: 'value', value: was }
+      );
+    };
+
+    this.portSubs.set(port.id, port.on('change', onPortChange as never));
+  }
+
+  private unwatchPort(portId: string): void {
+    const un = this.portSubs.get(portId);
+    if (un) {
+      un();
+      this.portSubs.delete(portId);
+    }
+  }
+
   private unwatchEntity(id: string): void {
     const un = this.entitySubs.get(id);
     if (un) {
       un();
       this.entitySubs.delete(id);
+    }
+    // A removed NODE takes its port watches with it — the shadows too, or a node
+    // deleted and re-added (resurrection) would inherit stale `before` values.
+    const shadows = this.portShadows.get(id);
+    if (shadows) {
+      for (const portId of shadows.keys()) this.unwatchPort(portId);
+      this.portShadows.delete(id);
     }
   }
 }

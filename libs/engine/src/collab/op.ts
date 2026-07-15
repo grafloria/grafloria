@@ -106,10 +106,36 @@ export interface SetOp extends OpBase {
   /** '' for the diagram itself, which is a singleton. */
   id: string;
   path: OpPath;
-  value: OpValue;
+  /**
+   * The value the register now holds. ABSENT when the op is a clear.
+   *
+   * wave14: this used to be required, and clearing a register (deleteMetadata,
+   * clearFlexItem) emitted `value: undefined` — which this type forbids and which only
+   * crossed the wire because JSON.stringify silently DROPS an undefined key and the
+   * peer's apply happened to read missing-as-undefined. A load-bearing accident. Clears
+   * are now EXPLICIT (`clear: true`), and `undefined` never appears in an emitted op.
+   */
+  value?: OpValue;
+  /**
+   * Explicitly empty the register: the key is deleted, not set to anything. NOT null —
+   * null is a legitimate STORED value (a peer that stores null and a peer that cleared
+   * must not converge on the same document), so it cannot double as the clear sentinel.
+   */
+  clear?: true;
 }
 
 export type Op = AddOp | RemoveOp | SetOp;
+
+/**
+ * The value a `set` op writes, with clears normalised to `undefined`.
+ *
+ * BACK-COMPAT lives here and nowhere else: every log persisted before wave14 encodes a
+ * clear as an ABSENT value key (JSON dropped the `undefined`), so `value === undefined`
+ * must read as a clear forever — alongside the explicit `clear: true` new ops carry.
+ */
+export function setValueOf(op: SetOp): OpValue | undefined {
+  return op.clear === true ? undefined : op.value;
+}
 
 /**
  * TOTAL ORDER over ops. Every peer must sort the same log into the same sequence, or

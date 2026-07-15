@@ -53,7 +53,7 @@ import { DiagramModel } from '../models/DiagramModel';
 import { LinkModel } from '../models/LinkModel';
 import { applyEntitySet } from './apply-op';
 import type { LwwRegistry, Stamp } from './lww';
-import type { Op } from './op';
+import { setValueOf, type Op } from './op';
 
 /**
  * Holds the diagram to its one hard invariant, and buffers the ops that cannot be applied
@@ -170,7 +170,9 @@ export class ReferentialIntegrity {
     }
 
     if (op.target !== 'node') return;
-    if (op.op === 'add' || (op.op === 'set' && op.path === 'ports')) {
+    // Both port vocabularies re-index: the legacy whole-collection `ports` register and
+    // the wave14 per-port `ports.<id>` registers alike change which node owns a port.
+    if (op.op === 'add' || (op.op === 'set' && op.path.startsWith('ports'))) {
       this.indexPorts(op.id);
     } else if (op.op === 'remove') {
       for (const [port, owner] of this.portOwner) {
@@ -204,7 +206,7 @@ export class ReferentialIntegrity {
     const held = this.quarantine.get(op.id);
     if (!held) return false;
 
-    if (this.lww.admit(op)) applyEntitySet(held, op.path, op.value);
+    if (this.lww.admit(op)) applyEntitySet(held, op.path, setValueOf(op));
     return true;
   }
 
@@ -251,6 +253,15 @@ export class ReferentialIntegrity {
           // A port can VANISH from under a link — the same wound as deleting the node, and
           // the reason this is not just an add-path concern.
           this.evictOrphans();
+          this.releaseResolvable();
+        } else if (op.target === 'node' && op.path.startsWith('ports.')) {
+          // wave14 per-port register. A CLEAR removes one port — same wound as above. A
+          // VALUE can only add or edit a port, which can never orphan a link, so the
+          // eviction sweep is skipped: port edits are draggable (a stream of ops) and an
+          // O(links) sweep per drag frame is the quadratic-bulk-load bug reborn. Release
+          // is O(quarantine) — almost always empty — and a newly-arrived port may be
+          // exactly what a held link was waiting for.
+          if (setValueOf(op) === undefined) this.evictOrphans();
           this.releaseResolvable();
         } else if (
           op.target === 'link' &&

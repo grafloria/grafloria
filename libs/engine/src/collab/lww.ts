@@ -112,10 +112,14 @@ export class LwwRegistry {
     return `${target}${s}${id}${s}${s}presence`;
   }
 
-  private static key(op: Op): string {
+  private static pathKey(target: Op['target'], id: string, path: string): string {
     const s = LwwRegistry.SEP;
+    return `${target}${s}${id}${s}${path}`;
+  }
+
+  private static key(op: Op): string {
     return op.op === 'set'
-      ? `${op.target}${s}${op.id}${s}${op.path}`
+      ? LwwRegistry.pathKey(op.target, op.id, op.path)
       : LwwRegistry.presenceKey(op.target, op.id);
   }
 
@@ -150,6 +154,24 @@ export class LwwRegistry {
     if (op.op === 'set' && op.target !== 'diagram') {
       const presence = this.stamps.get(LwwRegistry.presenceKey(op.target, op.id));
       if (presence && newer(presence, incoming)) return false;
+    }
+
+    // THE PORTS-COLLECTION BARRIER (wave14). Ports are per-port registers now
+    // (`ports.<portId>`), but every log persisted before that — and any old peer still
+    // in the room mid-rollout — writes the LEGACY whole-collection `ports` register,
+    // which asserts the ENTIRE collection at its stamp: every port it lists, and the
+    // absence of every port it does not. So a per-port write OLDER than the newest
+    // whole-collection write is void — it is a write to a collection state that the
+    // whole-collection op has since replaced wholesale — exactly as the presence
+    // barrier above voids writes that predate an entity's incarnation. Without this,
+    // the two register families would be gated independently and a mixed history would
+    // converge to different documents depending on arrival order (the spec drives both
+    // orders). The other direction — a whole-collection write landing OVER newer
+    // per-port writes — cannot be refused here (it is one register claiming many) and
+    // is instead REPAIRED from the log after it applies; see Replica.applyRemote.
+    if (op.op === 'set' && op.path.startsWith('ports.')) {
+      const whole = this.stamps.get(LwwRegistry.pathKey(op.target, op.id, 'ports'));
+      if (whole && newer(whole, incoming)) return false;
     }
 
     const current = this.stamps.get(key);
