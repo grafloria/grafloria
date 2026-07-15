@@ -107,6 +107,41 @@ const DEFAULT_COMPONENT_SPACING = 60;
 const DEFAULT_ASPECT_RATIO = 1.6;
 
 /**
+ * THE OVERLAP PASS — one rule, one place, for every path that produces positions.
+ *
+ * It lives outside the five algorithms for the same reason packing does: force and
+ * community lay out DIMENSIONLESS POINTS and happily return boxes that intersect
+ * (see overlap-removal.ts). For every layout that does not overlap — dagre, ELK,
+ * tree, grid, circular, radial — it is a no-op, so it costs them one comparison
+ * pass and nothing else.
+ *
+ * wave10/gallery — WHY IT IS EXPORTED, which is the bug.
+ *
+ * It used to be a closure inside `layoutWithComponentPacking`, reachable only from
+ * `adapter.apply()`. But the layout HOST — the path `engine.layout()` actually
+ * takes — does not call `apply()` for a steppable algorithm: it drives
+ * `createRun()`/`step()`/`snapshot()` so the run can report progress and be
+ * cancelled. `snapshot()` was returned RAW.
+ *
+ * Force is the only steppable built-in. So the one algorithm that genuinely needs
+ * overlap removal was the one algorithm that never got it, and
+ * `engine.layout('force')` handed back overlapping node boxes — while every unit
+ * test stayed green, because they all go through `apply()`.
+ *
+ * A demo caught it in the first thirty seconds of being pointed at a real browser.
+ */
+export function separateOverlappingNodes(
+  nodes: readonly NodeModel[],
+  positions: Map<string, { x: number; y: number }>,
+  options: UnifiedLayoutOptions = {}
+): Map<string, { x: number; y: number }> {
+  if (options.removeOverlaps === false) return positions;
+  return removeOverlaps(nodes, positions, {
+    spacing: options.nodeSpacing ?? DEFAULT_COMPONENT_SPACING / 3,
+  });
+}
+
+/**
  * Split a graph into connected components.
  *
  * Connectivity is UNDIRECTED — an edge joins its endpoints regardless of which
@@ -280,22 +315,10 @@ export async function layoutWithComponentPacking(
     };
   }
 
-  /**
-   * Lay one component out, then separate any nodes the algorithm left on top of
-   * each other.
-   *
-   * The overlap pass is here, not in the five algorithms, for the same reason
-   * packing is: force and community lay out DIMENSIONLESS POINTS and happily
-   * return boxes that intersect (see overlap-removal.ts). For every layout that
-   * does not overlap — dagre, ELK, tree, grid, circular, radial — it is a
-   * no-op, so it costs them one comparison pass and nothing else.
-   */
+  /** Lay one component out, then separate any nodes the algorithm left stacked. */
   const solve = async (component: GraphComponent): Promise<LayoutResult> => {
     const result = await fn(component.nodes, component.links, options);
-    if (options.removeOverlaps === false) return result;
-    removeOverlaps(component.nodes, result.nodePositions, {
-      spacing: options.nodeSpacing ?? DEFAULT_COMPONENT_SPACING / 3,
-    });
+    separateOverlappingNodes(component.nodes, result.nodePositions, options);
     return result;
   };
 

@@ -608,3 +608,118 @@ describe('Card 3 — engine.layout() composes with it (no second entry point)', 
     expect(result.quality!.metrics.nodeOverlap).toBeDefined();
   });
 });
+
+// ---------------------------------------------------------------------------
+// wave10/gallery — the steppable path skipped the overlap pass.
+// ---------------------------------------------------------------------------
+//
+// Found by demos/layout/auto-layout.html, in a real browser, within a minute of
+// the gallery first driving `engine.layout()` through the PUBLIC entry point:
+// force came back with fifteen pairs of intersecting node boxes.
+//
+// The mechanism, and why nothing here caught it: the overlap pass lived inside
+// `layoutWithComponentPacking`, which is reached from `adapter.apply()`. The host's
+// steppable branch does NOT call `apply()` — it drives createRun()/step()/snapshot()
+// so the run can stream progress and be cancelled — and it returned `snapshot()`
+// raw. Force is the only steppable built-in, and force is the ONLY algorithm that
+// genuinely needs the pass (it lays out dimensionless points). So the one algorithm
+// that needed it took the one path that skipped it, and every existing test reached
+// force through apply().
+describe('wave10 — the steppable path separates overlapping boxes (regression)', () => {
+  /** Node boxes that intersect. A layout that returns any of these is not a layout. */
+  function overlappingPairs(engine: DiagramEngine): string[] {
+    const nodes = engine.getDiagram()!.getNodes();
+    const hits: string[] = [];
+    for (let i = 0; i < nodes.length; i++) {
+      for (let j = i + 1; j < nodes.length; j++) {
+        const a = nodes[i];
+        const b = nodes[j];
+        if (
+          a.position.x < b.position.x + b.size.width &&
+          b.position.x < a.position.x + a.size.width &&
+          a.position.y < b.position.y + b.size.height &&
+          b.position.y < a.position.y + a.size.height
+        ) {
+          hits.push(`${a.id}x${b.id}`);
+        }
+      }
+    }
+    return hits;
+  }
+
+  function engineWith(count: number): DiagramEngine {
+    const engine = new DiagramEngine();
+    const diagram = engine.createDiagram('overlap')!;
+    const { nodes, links } = buildNodes(count);
+    nodes.forEach((n) => diagram.addNode(n));
+    links.forEach((l) => diagram.addLink(l));
+    return engine;
+  }
+
+  it('engine.layout("force") leaves NO two node boxes intersecting', async () => {
+    const engine = engineWith(12);
+    await engine.layout('force', { seed: DEFAULT_LAYOUT_SEED, iterations: 120 });
+    expect(overlappingPairs(engine)).toEqual([]);
+  });
+
+  it('…and a CANCELLED force run still leaves a coherent picture, not a pile', async () => {
+    // The partial result is committed to the diagram (see the cancellation test
+    // above). "Usable partial" has to mean usable: separated boxes, not a stack.
+    const engine = engineWith(12);
+    const controller = new AbortController();
+
+    const running = engine.layout('force', {
+      seed: DEFAULT_LAYOUT_SEED,
+      iterations: 300,
+      signal: controller.signal,
+      sliceMs: 0,
+    });
+    controller.abort();
+
+    const result = await running;
+    expect(result.partial).toBe(true);
+    expect(overlappingPairs(engine)).toEqual([]);
+  });
+
+  it('the worker path separates them identically — one rule, both threads', async () => {
+    const inline = engineWith(12);
+    const viaWorker = engineWith(12);
+    viaWorker.setLayoutPort(createFakeWorker().port);
+
+    const a = await inline.layout('force', { seed: 9, iterations: 90 });
+    const b = await viaWorker.layout('force', { seed: 9, iterations: 90 });
+
+    expect(coords(b.nodePositions)).toBe(coords(a.nodePositions));
+    expect(overlappingPairs(viaWorker)).toEqual([]);
+  });
+
+  it('`removeOverlaps: false` still hands back the simulation\'s raw output', async () => {
+    // The escape hatch has to survive the fix, or "opt out for the algorithm's raw
+    // output" becomes a lie on the one algorithm anybody would want it for.
+    const engine = engineWith(12);
+    await engine.layout('force', {
+      seed: DEFAULT_LAYOUT_SEED,
+      iterations: 120,
+      removeOverlaps: false,
+    });
+    expect(overlappingPairs(engine).length).toBeGreaterThan(0);
+  });
+
+  it('reports bounds that actually CONTAIN the separated boxes', async () => {
+    // The pass MOVES boxes, so a `bounds` computed before it is stale — and a host
+    // that fits the camera to it would clip the diagram it just laid out.
+    const engine = engineWith(12);
+    const result = await engine.layout('force', { seed: DEFAULT_LAYOUT_SEED, iterations: 120 });
+
+    for (const node of engine.getDiagram()!.getNodes()) {
+      expect(node.position.x).toBeGreaterThanOrEqual(result.bounds.x);
+      expect(node.position.y).toBeGreaterThanOrEqual(result.bounds.y);
+      expect(node.position.x + node.size.width).toBeLessThanOrEqual(
+        result.bounds.x + result.bounds.width + 0.001
+      );
+      expect(node.position.y + node.size.height).toBeLessThanOrEqual(
+        result.bounds.y + result.bounds.height + 0.001
+      );
+    }
+  });
+});

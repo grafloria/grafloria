@@ -41,8 +41,13 @@
 // SharedArrayBuffer the loop polls — needs cross-origin isolation headers, so it
 // is not a default we can rely on.)
 
+import type { NodeModel } from '../models/NodeModel';
 import type { LayoutAdapter, LayoutOptions, LayoutResult } from './layout-adapter.interface';
-import { findConnectedComponents, layoutWithComponentPacking } from './component-packing';
+import {
+  findConnectedComponents,
+  layoutWithComponentPacking,
+  separateOverlappingNodes,
+} from './component-packing';
 import type { UnifiedLayoutOptions } from './layout-registry';
 import { isSteppable } from './steppable-layout';
 import { reviveGraph, type LayoutGraph } from './layout-graph';
@@ -428,6 +433,32 @@ export function serveLayout(port: LayoutServePort, deps: ServeLayoutDeps = {}): 
         // is the whole point: a cancelled run hands back what it has.
         const result = layoutRun.snapshot();
 
+        // ------------------------------------------------------------------
+        // wave10/gallery — BUG FIX. Separate the boxes the simulation left on
+        // top of each other.
+        //
+        // This branch bypasses `adapter.apply()` on purpose — it has to, because
+        // `apply()` is one opaque call and this path exists to step, report and
+        // cancel. But `apply()` is where the overlap pass lived, so bypassing it
+        // silently bypassed that too.
+        //
+        // FORCE IS THE ONLY STEPPABLE BUILT-IN. So the single algorithm that
+        // actually needs overlap removal — force lays out dimensionless POINTS —
+        // was the single algorithm that never received it, and
+        // `engine.layout('force')` returned intersecting node boxes. Every unit
+        // test stayed green: they all reach force through `apply()`.
+        //
+        // Applied to the PARTIAL result too, deliberately. A cancelled force run
+        // is meant to leave "a real, coherent picture" behind (see
+        // commitLayoutPositions) — a pile of stacked boxes is not one.
+        // ------------------------------------------------------------------
+        separateOverlappingNodes(
+          nodes,
+          result.nodePositions,
+          request.options as UnifiedLayoutOptions
+        );
+        result.bounds = boundsOfPositions(nodes, result.nodePositions);
+
         // `calculateQuality` must mean the same thing on both paths. The steppable
         // adapters compute it in `apply()`, which we bypass here, so compute it
         // the same way — against the positions we actually ended on, partial or
@@ -475,6 +506,35 @@ export function serveLayout(port: LayoutServePort, deps: ServeLayoutDeps = {}): 
       });
     }
   }
+}
+
+/**
+ * The bounding box of `positions`, using each node's real size.
+ *
+ * Needed because the overlap pass MOVES boxes: a `bounds` computed by the
+ * algorithm before separation is stale the moment anything is pushed apart, and a
+ * caller that fits the camera to it would clip the diagram it just laid out.
+ */
+function boundsOfPositions(
+  nodes: readonly NodeModel[],
+  positions: Map<string, { x: number; y: number }>
+): { x: number; y: number; width: number; height: number } {
+  let minX = Infinity;
+  let minY = Infinity;
+  let maxX = -Infinity;
+  let maxY = -Infinity;
+
+  for (const node of nodes) {
+    const p = positions.get(node.id);
+    if (!p) continue;
+    minX = Math.min(minX, p.x);
+    minY = Math.min(minY, p.y);
+    maxX = Math.max(maxX, p.x + (node.size?.width ?? 0));
+    maxY = Math.max(maxY, p.y + (node.size?.height ?? 0));
+  }
+
+  if (!Number.isFinite(minX)) return { x: 0, y: 0, width: 0, height: 0 };
+  return { x: minX, y: minY, width: maxX - minX, height: maxY - minY };
 }
 
 /** The identity layout: every node exactly where it already was. */
