@@ -254,23 +254,40 @@ describe('DiagramEngine', () => {
         position: { x: 0, y: 0 },
       });
 
-      engine.removeNode(node.id);
+      await engine.removeNode(node.id);
 
       expect(engine.getDiagram()?.getNode(node.id)).toBeUndefined();
     });
 
-    it('should throw error when removing non-existent node', async () => {
-      expect(() => {
-        engine.removeNode('non-existent-id');
-      }).toThrow('Node non-existent-id not found');
+    it('should reject when removing non-existent node', async () => {
+      await expect(engine.removeNode('non-existent-id')).rejects.toThrow(
+        'Node non-existent-id not found'
+      );
     });
 
-    it('should throw error when removing node without diagram', async () => {
+    it('should reject when removing node without diagram', async () => {
       engine.setDiagram(null);
 
-      expect(() => {
-        engine.removeNode('some-id');
-      }).toThrow('No diagram loaded');
+      await expect(engine.removeNode('some-id')).rejects.toThrow('No diagram loaded');
+    });
+
+    it('propagates command failure to the caller (no floating promise)', async () => {
+      // Wave 14: removeNode() used to fire commandManager.execute() WITHOUT
+      // awaiting it — a rejection became an unhandled rejection and callers
+      // could not sequence on completion (removeGroup always did this right).
+      const node = await engine.addNode({
+        type: 'test',
+        position: { x: 0, y: 0 },
+      });
+
+      const spy = jest
+        .spyOn(engine.commandManager, 'execute')
+        .mockRejectedValueOnce(new Error('command exploded'));
+      try {
+        await expect(engine.removeNode(node.id)).rejects.toThrow('command exploded');
+      } finally {
+        spy.mockRestore();
+      }
     });
   });
 
@@ -330,23 +347,38 @@ describe('DiagramEngine', () => {
         targetPortId: targetPort.id,
       });
 
-      engine.removeLink(link.id);
+      await engine.removeLink(link.id);
 
       expect(engine.getDiagram()?.getLink(link.id)).toBeUndefined();
     });
 
-    it('should throw error when removing non-existent link', async () => {
-      expect(() => {
-        engine.removeLink('non-existent-id');
-      }).toThrow('Link non-existent-id not found');
+    it('should reject when removing non-existent link', async () => {
+      await expect(engine.removeLink('non-existent-id')).rejects.toThrow(
+        'Link non-existent-id not found'
+      );
     });
 
-    it('should throw error when removing link without diagram', async () => {
+    it('should reject when removing link without diagram', async () => {
       engine.setDiagram(null);
 
-      expect(() => {
-        engine.removeLink('some-id');
-      }).toThrow('No diagram loaded');
+      await expect(engine.removeLink('some-id')).rejects.toThrow('No diagram loaded');
+    });
+
+    it('propagates command failure to the caller (no floating promise)', async () => {
+      // Wave 14: same floating-promise shape as removeNode() — see above.
+      const link = await engine.addLink({
+        sourcePortId: sourcePort.id,
+        targetPortId: targetPort.id,
+      });
+
+      const spy = jest
+        .spyOn(engine.commandManager, 'execute')
+        .mockRejectedValueOnce(new Error('command exploded'));
+      try {
+        await expect(engine.removeLink(link.id)).rejects.toThrow('command exploded');
+      } finally {
+        spy.mockRestore();
+      }
     });
   });
 

@@ -1,6 +1,7 @@
 // CommandManager - Manages command execution, undo, and redo
 
 import { Command, CommandContext } from './Command';
+import { BatchCommand } from './composite/BatchCommand';
 import { EventBus } from '../events/EventBus';
 import { DiagramEventTypes } from '../types/event.types';
 
@@ -8,6 +9,13 @@ export interface CommandHistoryEntry {
   command: Command;
   timestamp: number;
   duration: number;
+  /**
+   * Wave 14: history only ever records commands that EXECUTED successfully, so
+   * this is always `true` and `error` is never set. Both fields survive purely
+   * for API compatibility — a command that throws (or fails strict validation)
+   * no longer enters history at all, because canUndo()/undo() never consulted
+   * these flags and would happily "undo" a mutation that never happened.
+   */
   success: boolean;
   error?: Error;
 }
@@ -68,62 +76,114 @@ export class CommandManager {
     if (this.mergingEnabled && this.canMergeWithPrevious(command)) {
       const lastEntry = this.history[this.currentIndex];
       if (lastEntry) {
-        const merged = lastEntry.command.mergeWith(command);
-        lastEntry.command = merged;
-        lastEntry.timestamp = Date.now();
-
-        // Re-execute merged command
-        await this.executeCommand(merged);
-        this.eventBus.emit(DiagramEventTypes.COMMAND_MERGED, { command: merged });
+        await this.executeMerged(lastEntry, command);
         return;
       }
     }
 
     // Execute command
     const startTime = performance.now();
-    let success = false;
-    let error: Error | undefined;
 
     try {
       await this.executeCommand(command);
-      success = true;
-
-      // Real-time validation (Phase 1 - Critical Fixes)
-      if (success && this.context.engine) {
-        const engine = this.context.engine;
-        if (engine.isRealTimeValidationEnabled && engine.isRealTimeValidationEnabled()) {
-          const config = engine.getConfig && engine.getConfig();
-          const validationResult = engine.validateDiagram({ strict: config?.validation?.strict || false });
-
-          // If validation fails in strict mode, undo the command
-          if (!validationResult.valid && config?.validation?.strict) {
-            await this.undo();
-            throw new Error(`Command validation failed: ${validationResult.errors[0]?.message}`);
-          }
-        }
-      }
+      // Real-time validation (Phase 1 - Critical Fixes). In strict mode an
+      // invalid result reverts THIS command and throws — see assertResultValid.
+      await this.assertResultValid(() => command.undo(this.context));
     } catch (e) {
-      error = e as Error;
-      success = false;
+      this.eventBus.emit(DiagramEventTypes.COMMAND_FAILED, {
+        command,
+        duration: performance.now() - startTime,
+        error: e as Error,
+      });
       throw e;
-    } finally {
-      const duration = performance.now() - startTime;
+    }
 
-      // Add to history
-      this.addToHistory({
-        command,
-        timestamp: Date.now(),
-        duration,
-        success,
-        error,
-      });
+    const duration = performance.now() - startTime;
 
-      // Emit event
-      this.eventBus.emit(success ? DiagramEventTypes.COMMAND_EXECUTED : DiagramEventTypes.COMMAND_FAILED, {
-        command,
-        duration,
-        error,
+    // Only a command that EXECUTED (and validated) may enter history. A thrown
+    // execute() used to land here anyway — via a `finally` — leaving Ctrl+Z
+    // pointing at a mutation that never happened.
+    this.addToHistory({
+      command,
+      timestamp: Date.now(),
+      duration,
+      success: true,
+    });
+
+    this.eventBus.emit(DiagramEventTypes.COMMAND_EXECUTED, {
+      command,
+      duration,
+    });
+  }
+
+  /**
+   * Merge `incoming` into the previous history entry and re-execute (wave 14).
+   *
+   * Order matters: the merged command EXECUTES FIRST and only then replaces the
+   * entry's command — the old code overwrote the entry BEFORE re-executing, so
+   * a throwing merged execution left history claiming the merged command was
+   * applied.
+   *
+   * Strict validation applies here too — deliberately NOT skipped: had
+   * `incoming` not merged, the normal path would have validated this exact
+   * terminal state (mergeable commands are set-to-value, so executing the
+   * merged command lands exactly where executing `incoming` on top of
+   * `previous` would have). Merging is a history-compression detail and must
+   * not double as a validation bypass. The revert is two steps because a
+   * merged command keeps the ORIGINAL before-state (see MoveNodeCommand):
+   * merged.undo() rewinds PAST `previous`, so previous.redo() then re-applies
+   * the last valid state, leaving the history entry untouched.
+   */
+  private async executeMerged(lastEntry: CommandHistoryEntry, incoming: Command): Promise<void> {
+    const previous = lastEntry.command;
+    const merged = previous.mergeWith(incoming);
+
+    const startTime = performance.now();
+
+    try {
+      await this.executeCommand(merged);
+      await this.assertResultValid(async () => {
+        await merged.undo(this.context);
+        await previous.redo(this.context);
       });
+    } catch (e) {
+      // History untouched: the entry still describes `previous`, which IS
+      // what remains applied.
+      this.eventBus.emit(DiagramEventTypes.COMMAND_FAILED, {
+        command: merged,
+        duration: performance.now() - startTime,
+        error: e as Error,
+      });
+      throw e;
+    }
+
+    lastEntry.command = merged;
+    lastEntry.timestamp = Date.now();
+    this.eventBus.emit(DiagramEventTypes.COMMAND_MERGED, { command: merged });
+  }
+
+  /**
+   * Real-time validation of the diagram AFTER a command executed (wave 14).
+   *
+   * In strict mode an invalid diagram runs `revert` — which must undo exactly
+   * the just-executed command — and throws. It must NOT call this.undo(): the
+   * failing command is not in history (yet), so undo() would revert the
+   * PREVIOUS entry and decrement currentIndex, which is precisely the old
+   * triple corruption (previous good command reverted, then permanently erased
+   * by addToHistory's redo-truncation, failed command left as the undoable top).
+   */
+  private async assertResultValid(revert: () => void | Promise<void>): Promise<void> {
+    const engine = this.context.engine;
+    if (!engine) return;
+    if (!(engine.isRealTimeValidationEnabled && engine.isRealTimeValidationEnabled())) return;
+
+    const config = engine.getConfig && engine.getConfig();
+    const strict = config?.validation?.strict || false;
+    const validationResult = engine.validateDiagram({ strict });
+
+    if (!validationResult.valid && strict) {
+      await revert();
+      throw new Error(`Command validation failed: ${validationResult.errors[0]?.message}`);
     }
   }
 
@@ -224,14 +284,24 @@ export class CommandManager {
   }
 
   /**
-   * End batch mode and execute batched commands
+   * End batch mode: commit the queued commands as ONE BatchCommand through the
+   * normal execute() path (wave 14) — one history entry, one undo step (with
+   * reverse-order undo), and the same strict-validation gate as any other
+   * command. The old code looped executeCommand() directly, so a "batch"
+   * mutated the diagram while building NO history at all.
+   *
+   * Note BatchCommand's existing gate contract: its canExecute() checks every
+   * queued command against the CURRENT (pre-batch) state, so a queue whose
+   * later commands only become executable after earlier ones ran is refused
+   * up front rather than applied halfway.
    */
   async endBatch(name: string = 'Batch Operation'): Promise<void> {
     this.batchMode = false;
 
-    // endBatch calls executeCommand() DIRECTLY, so it needs its own guard: a batch
-    // opened before the document was locked and flushed after would otherwise
-    // replay every queued command straight through the lock.
+    // Guarded here as well as in execute(): the refusal must clear the queue
+    // and announce phase 'batch', which execute()'s generic guard would not.
+    // A batch opened before the document was locked and flushed after would
+    // otherwise replay every queued command straight through the lock.
     if (this.isReadonly()) {
       this.batchCommands = [];
       this.eventBus.emit('command:refused', { reason: 'readonly', phase: 'batch' });
@@ -242,14 +312,10 @@ export class CommandManager {
       return;
     }
 
-    // For now, execute commands sequentially
-    // Will implement BatchCommand in the composite commands phase
     const commands = [...this.batchCommands];
     this.batchCommands = [];
 
-    for (const cmd of commands) {
-      await this.executeCommand(cmd);
-    }
+    await this.execute(new BatchCommand(name, commands));
   }
 
   /**

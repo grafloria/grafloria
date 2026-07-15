@@ -514,8 +514,12 @@ export class DiagramEngine {
 
   /**
    * Remove node
+   *
+   * Wave 14: async + awaited, mirroring removeGroup(). The execute() promise
+   * used to float — a command failure became an unhandled rejection (fatal
+   * under Node), and callers could not sequence on the removal completing.
    */
-  removeNode(nodeId: string): void {
+  async removeNode(nodeId: string): Promise<void> {
     if (!this.diagram) {
       throw new Error('No diagram loaded');
     }
@@ -526,7 +530,7 @@ export class DiagramEngine {
     }
 
     const command = new RemoveNodeCommand(nodeId);
-    this.commandManager.execute(command);
+    await this.commandManager.execute(command);
   }
 
   /**
@@ -629,8 +633,10 @@ export class DiagramEngine {
 
   /**
    * Remove link
+   *
+   * Wave 14: async + awaited, mirroring removeGroup() — see removeNode().
    */
-  removeLink(linkId: string): void {
+  async removeLink(linkId: string): Promise<void> {
     if (!this.diagram) {
       throw new Error('No diagram loaded');
     }
@@ -641,7 +647,7 @@ export class DiagramEngine {
     }
 
     const command = new RemoveLinkCommand(linkId);
-    this.commandManager.execute(command);
+    await this.commandManager.execute(command);
   }
 
   /**
