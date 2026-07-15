@@ -110,6 +110,11 @@ defineDemo({
     // measurement with teeth, not a flaky exact target.
     check(fps > 20, `panning managed only ${fps} fps over ${N} frames — that is not interactive`);
 
+    // Land the camera back on the graph — the pan burst walked it half off-screen,
+    // and this after-state is also the certify shot.
+    api.fitView(60);
+    api.renderNow();
+
     // 6. The instance's own governor surface reports a valid tier.
     const qs = api.getQualityState();
     check(TIERS.includes(qs.tier) || typeof qs.tier === 'string', `getQualityState() returned no tier: ${JSON.stringify(qs)}`);

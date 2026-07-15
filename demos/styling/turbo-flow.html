@@ -15,7 +15,7 @@
 </div>
 <div id="canvas"></div>
 <script type="module">
-import { render } from '../shell/grafloria.js';
+import { render, DARK_THEME } from '../shell/grafloria.js';
 import { defineDemo, check } from '../shell/demo.js';
 
 const TURBO = { type: 'linear', x1: 0, y1: 0, x2: 1, y2: 0,
@@ -51,6 +51,10 @@ defineDemo({
 
   async setup(ctx) {
     const api = render(SPEC, ctx.host);
+    api.setTheme(DARK_THEME);
+    // The RF Turbo Flow is a dark showpiece: dark stage, glowing gradients,
+    // WHITE labels — on the light theme the labels were dark-on-dark.
+    ctx.host.style.background = '#0b1220';
     ctx.instance = api;
     ctx.diagram = api.getModel();
     api.renderNow();

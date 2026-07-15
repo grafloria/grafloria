@@ -76,9 +76,12 @@ defineDemo({
 
     //    ...and the REGISTERED colour actually lands on the glyph fill — class
     //    tagging alone looked green while every glyph wore direction colours.
-    const strokeOf = (portId) => ctx.host.querySelector(`[data-port-id="${portId}"]`).getAttribute('stroke');
-    check(strokeOf('out') === '#2563eb', `number glyph should wear the registered blue, got ${strokeOf('out')}`);
-    check(strokeOf('sin') === '#9333ea', `string glyph should wear the registered purple, got ${strokeOf('sin')}`);
+    //    COMPUTED, not the attribute: the theme stylesheet paints direction
+    //    strokes and CSS beats presentation attributes — an attribute check
+    //    stayed green here while every glyph painted teal.
+    const strokeOf = (portId) => getComputedStyle(ctx.host.querySelector(`[data-port-id="${portId}"]`)).stroke;
+    check(strokeOf('out') === 'rgb(37, 99, 235)', `number glyph should PAINT the registered blue, got ${strokeOf('out')}`);
+    check(strokeOf('sin') === 'rgb(147, 51, 234)', `string glyph should PAINT the registered purple, got ${strokeOf('sin')}`);
     check(strokeOf('out') !== strokeOf('sin'), 'number and string glyphs are indistinguishable');
 
     // 2. number → number is ACCEPTED (link created, highlight offered mid-drag).

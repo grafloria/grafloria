@@ -59,7 +59,7 @@ defineDemo({
 
     // 4. Content updates: change the model, the sanitized subtree is replaced.
     ctx.diagram.getNode('card').setMetadata('html', {
-      content: { tag: 'div', children: [{ tag: 'strong', text: 'Deployed ✓' }] },
+      content: { tag: 'div', children: [{ tag: 'strong', text: 'Deployed ✓' }, { tag: 'div', text: 'build #4213 · 12s · all checks green' }, { tag: 'em', text: 'rolled out to 3 regions' }] },
     });
     ctx.instance.renderNow();
     const s2 = ctx.host.querySelector(sel + ' .grafloria-html-node strong');

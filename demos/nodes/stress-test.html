@@ -17,7 +17,7 @@ const COLS = 44;
 
 defineDemo({
   name: 'Stress test',
-  blurb: 'Two thousand nodes in the model; only the visible slice is in the DOM (viewport culling), and a full-graph move repaints in single-digit-to-low-double-digit milliseconds — measured in the page, not claimed.',
+  blurb: 'Two thousand nodes in the model; only the visible slice is in the DOM (viewport culling), and a full-graph move repaints inside the sub-100ms budget the page itself enforces — the banner prints the real median, not a claim.',
   reactflow: 'Stress Test',
 
   async setup(ctx) {

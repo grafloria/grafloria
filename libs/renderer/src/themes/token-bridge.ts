@@ -210,10 +210,14 @@ export function shadcnBridge(options: { space?: 'hsl' | 'oklch' | 'raw' } = {}):
     'node.error.fill': ref('--card'),
     'node.error.stroke': ref('--destructive'),
 
-    'link.stroke': ref('--border'),
+    // Edges are CONTENT strokes, not card hairlines: shadcn's --border sits at
+    // ~91% lightness and edges painted with it vanish on white (the certify
+    // pass read the themed graph as broken contrast). --muted-foreground is
+    // shadcn's own "readable but muted line" token.
+    'link.stroke': ref('--muted-foreground'),
     'link.selected.stroke': ref('--ring'),
     'link.highlighted.stroke': ref('--primary'),
-    'link.hovered.stroke': ref('--muted-foreground'),
+    'link.hovered.stroke': ref('--foreground'),
 
     'label.color': ref('--card-foreground'),
     'label.fontFamily': 'var(--font-sans)',

@@ -43,6 +43,9 @@ defineDemo({
     const a = ctx.diagram.getNode('a');
     const b = ctx.diagram.getNode('b');
     a.setPosition(b.position.x - 40, b.position.y - 24);
+    // Paint what the spatial index knows — otherwise the overlap is invisible
+    // and the shot reads as "two nodes parked on each other".
+    for (const n of [a, b]) n.setMetadata('shape', { type: 'rect', fill: '#fde68a', stroke: '#b45309' });
     ctx.instance.renderNow();
   },
 

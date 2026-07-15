@@ -110,6 +110,12 @@ defineDemo({
     //    thing stopping it.
     lockDocument(B.getEngine(), false);
     check(!isDocumentLocked(B.getEngine()), 'unlock did not take');
+
+    // Leave both panes ON the graph — the camera checks above end panned into
+    // empty world space, which photographs as two blank panes.
+    ctx.A.fitView(80);
+    await ctx.tick(30);
+    ctx.A.renderNow(); ctx.B.renderNow();
     B.getModel().getNode('a').setPosition(555, 120);
     check(B.getModel().getNode('a').position.x === 555, 'the follower still could not edit after unlocking');
   },

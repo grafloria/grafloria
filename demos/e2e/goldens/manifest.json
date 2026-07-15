@@ -270,7 +270,8 @@
     "reactflow": "Zoom LOD",
     "pro": false,
     "pageErrors": [],
-    "error": null
+    "error": null,
+    "showcase": "/var/folders/pd/8g99tsp56714y1x3d39xqs180000gn/T/grafloria-visual-a/interaction__contextual-zoom.showcase.png"
   },
   {
     "rel": "interaction/copy-paste.html",

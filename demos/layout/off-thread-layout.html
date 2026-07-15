@@ -44,6 +44,7 @@ defineDemo({
 
   async setup(ctx) {
     const api = render({ nodes: NODES, edges: EDGES }, ctx.host);
+    api.fitView(40); // frame the boot grid — it sat flush top-left, first column sliced
     ctx.instance = api;
     ctx.diagram = api.getModel();
     ctx.engine = api.getEngine();

@@ -17,9 +17,12 @@ defineDemo({
     // wrong was the gallery's first catch, on its very first page.
     const api = render({
       nodes: [
-        { id: 'a', position: { x: 60, y: 80 },  size: { width: 180, height: 80 }, data: { label: 'Ingest' } },
-        { id: 'b', position: { x: 380, y: 80 }, size: { width: 180, height: 80 }, data: { label: 'Transform' } },
-        { id: 'c', position: { x: 700, y: 80 }, size: { width: 180, height: 80 }, data: { label: 'Publish' } },
+        { id: 'a', position: { x: 60, y: 80 },  size: { width: 180, height: 80 }, data: { label: 'Ingest' },
+          shape: { type: 'terminal', fill: '#ecfdf5', stroke: '#059669' } },
+        { id: 'b', position: { x: 380, y: 80 }, size: { width: 180, height: 80 }, data: { label: 'Transform' },
+          shape: { type: 'predefined-process', fill: '#eff6ff', stroke: '#2563eb' } },
+        { id: 'c', position: { x: 700, y: 80 }, size: { width: 180, height: 80 }, data: { label: 'Publish' },
+          shape: { type: 'document', fill: '#fdf4ff', stroke: '#9333ea' } },
       ],
       edges: [
         { id: 'e1', source: 'a', target: 'b' },

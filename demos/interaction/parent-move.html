@@ -94,8 +94,9 @@ defineDemo({
     // 4. A press on a MEMBER drags only that member (the node wins the frame).
     ctx.instance.renderNow();
     const before2 = ctx.pos('m2');
-    ctx.dragFrom({ x: ctx.pos('m1').x + 50, y: ctx.pos('m1').y + 25 }, 90, 0); // m1 centre
-    check(Math.abs(ctx.pos('m1').x - (b1.x + 90)) < 1, 'pressing a member should drag that member');
+    // Downward: +90 on x parked stage 1 ON TOP of stage 2 in the final frame.
+    ctx.dragFrom({ x: ctx.pos('m1').x + 50, y: ctx.pos('m1').y + 25 }, 0, 70); // m1 centre
+    check(Math.abs(ctx.pos('m1').y - (b1.y + 70)) < 1, 'pressing a member should drag that member');
     check(JSON.stringify(ctx.pos('m2')) === JSON.stringify(before2),
       'dragging one member must not drag its siblings');
   },

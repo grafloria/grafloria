@@ -4258,6 +4258,13 @@ export class SVGRenderer implements IRenderer {
 
     // Base presentation. Identical to the pre-wave-6 prop set when the port
     // declares no style, no shape and no data type — same keys, same order.
+    // A REGISTERED dataType colour is explicit author intent and must win the
+    // cascade: the theme stylesheet paints .port-input/.port-output strokes, and
+    // any CSS rule beats an SVG presentation attribute — the typed-ports demo
+    // asserted stroke="#2563eb" green while every glyph PAINTED direction teal.
+    // Inline style outranks the stylesheet; untyped ports stay CSS-themable.
+    const typedColor = portTypeColor(resolved.dataType ?? port.dataType);
+
     const props: Record<string, unknown> = {
       fill: drag.invalid ? invalidColor : isHighlighted ? portColor : this.theme.colors.background.surface,
       stroke: drag.invalid ? invalidColor : portColor,
@@ -4268,7 +4275,15 @@ export class SVGRenderer implements IRenderer {
       style: {
         transition: 'all 0.2s ease',
         cursor: drag.invalid ? 'not-allowed' : port.isHovered || isHighlighted ? 'pointer' : 'crosshair',
-        pointerEvents: 'all'
+        pointerEvents: 'all',
+        // A REGISTERED dataType colour must WIN THE CASCADE: the theme
+        // stylesheet paints .port-input/.port-output strokes and any CSS rule
+        // beats an SVG presentation attribute — the typed-ports demo asserted
+        // stroke="#2563eb" green while every glyph PAINTED direction teal.
+        // Inline style outranks the stylesheet; untyped ports stay themable.
+        ...(typedColor && !drag.invalid
+          ? { stroke: typedColor, ...(isHighlighted ? { fill: typedColor } : {}) }
+          : {}),
       },
       opacity: drag.dimmed ? 0.25 : isHighlighted ? 1 : 0.9,
       // CRITICAL FIX: Add data attribute for debugging

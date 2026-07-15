@@ -131,6 +131,10 @@ export function renderToStaticSVG(options: StaticRenderOptions = {}): StaticRend
   // the SAME tree the browser produces — which is the whole point.
   const renderer = new SVGRenderer(engine, { instanceId }, options.theme);
   const vnode = renderer.render(viewport.getRenderViewport(), viewport.getZoom());
+  // A static artifact must SIZE ITSELF: the live path leaves width/height to the
+  // host's CSS, but an email, a README or a bare <img> cannot add CSS — without
+  // these the svg renders 0×0 (the audit's "blank page with a stray dot").
+  vnode.props = { ...vnode.props, width: options.width ?? 800, height: options.height ?? 600 };
   // ONE serializer, in DOM fidelity: the snapshot must describe exactly the DOM the
   // client's VNodePatcher would build, or hydration rebuilds the tree and flashes.
   // (The same function in 'file' fidelity is what `export/` uses for standalone SVG.)

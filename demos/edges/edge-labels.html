@@ -60,10 +60,14 @@ defineDemo({
     ctx.pointer('pointermove', before.x, before.y); await ctx.tick();
     ctx.pointer('pointerdown', before.x, before.y); await ctx.tick();
     check(ctx.instance.interaction.getState().isDraggingLabel, 'pressing the label did not begin a label drag');
-    ctx.pointer('pointermove', before.x, before.y - 60); await ctx.tick();
-    ctx.pointer('pointerup', before.x, before.y - 60); await ctx.tick();
+    // ALONG the edge — the demo's own claim is "dragged along it"; a vertical
+    // drag parks the label floating above the wire, which is exactly how the
+    // certify pass read it.
+    ctx.pointer('pointermove', before.x - 90, before.y); await ctx.tick();
+    ctx.pointer('pointerup', before.x - 90, before.y); await ctx.tick();
     const dragged = xyOf(labelGroup(ctx.host));
-    check(Math.abs(dragged.y - before.y) > 25, `the dragged label did not move (was y=${before.y}, now y=${dragged.y})`);
+    check(Math.abs(dragged.x - before.x) > 25, `the dragged label did not move (was x=${before.x}, now x=${dragged.x})`);
+    check(Math.abs(dragged.y - before.y) < 14, `the label should still ride ON the edge (y≈${before.y}), got y=${dragged.y}`);
 
     // 3. It is ANCHORED to the edge, not the canvas: move a node and the label
     //    re-anchors onto the new route instead of staying put.

@@ -175,7 +175,10 @@ describe('SVGRenderer — design-token bridge', () => {
       const css = overrideCss(renderer);
 
       expect(css).toContain('--grafloria-node-fill: hsl(var(--card));');
-      expect(css).toContain('--grafloria-link-stroke: hsl(var(--border));');
+      // Edges are content strokes, not card hairlines: --border (~91% lightness)
+      // made every edge vanish on white. --muted-foreground is shadcn's own
+      // readable-muted-line token.
+      expect(css).toContain('--grafloria-link-stroke: hsl(var(--muted-foreground));');
       expect(css).toContain('--grafloria-label-color: hsl(var(--card-foreground));');
     });
   });

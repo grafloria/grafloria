@@ -106,6 +106,12 @@ defineDemo({
     // 4. The edge's geometry now actually ends on node C.
     const end = endpoint();
     check(end.y > 380, `the edge's endpoint should now be down at C (y>380), got y=${Math.round(end.y)}`);
+
+    // Routing settles over two frames; without this the selected link's endpoint
+    // handle photographs at the pre-reconnect position, floating in empty canvas.
+    ctx.instance.renderNow();
+    await ctx.tick();
+    ctx.instance.renderNow();
   },
 });
 </script>

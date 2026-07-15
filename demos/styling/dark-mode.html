@@ -120,6 +120,16 @@ defineDemo({
 
     ctx.setMode = (mode) => {
       api.setColorMode(mode, DEFAULT_THEME_SET);
+      // Flip the PANE with the mode — RF's dark example does this via a CSS
+      // class on the wrapper; the certify pass read dark-nodes-on-white as half
+      // a dark mode. Read the truth off the resolved theme vars.
+      requestAnimationFrame(() => {
+        const rect = ctx.host.querySelector('rect.diagram-node');
+        const fill = rect ? getComputedStyle(rect).fill : '';
+        const m = fill.match(/\d+/g);
+        const lum = m ? (0.299 * m[0] + 0.587 * m[1] + 0.114 * m[2]) : 255;
+        ctx.host.style.background = lum < 128 ? '#0b1220' : '';
+      });
       for (const [k, b] of Object.entries(modeButtons)) b.setAttribute('aria-pressed', String(k === mode));
       api.renderNow();
       paint();

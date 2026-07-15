@@ -16,7 +16,7 @@ const BUILTINS = ['arrow', 'open-arrow', 'circle', 'square', 'diamond', 'crow-fo
 
 // A custom marker: a raw feather glyph. This is the registerMarker seam — the
 // catalogue is not a closed enum. It tags itself so the test can find it.
-registerMarker('feather', {
+const FEATHER_DEF = {
   tipOffset: (style) => style.size,
   render: (mctx) => ({
     type: 'path',
@@ -26,7 +26,8 @@ registerMarker('feather', {
       transform: mctx.transform, className: 'arrow arrow-feather',
     },
   }),
-});
+};
+registerMarker('feather', FEATHER_DEF);
 
 const ROWS = [...BUILTINS, 'feather', 'none'];
 const NODES = [];
@@ -90,6 +91,12 @@ defineDemo({
     await ctx.tick();
     check(!ctx.host.querySelector('.arrow-feather'),
       'after unregisterMarker(), the feather glyph was still rendered — it was never really custom');
+
+    // Put the feather back: the catalog row still says "feather", and the final
+    // frame is the certify shot.
+    registerMarker('feather', FEATHER_DEF);
+    ctx.instance.renderNow();
+    await ctx.tick();
   },
 });
 </script>

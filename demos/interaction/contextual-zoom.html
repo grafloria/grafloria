@@ -63,6 +63,12 @@ defineDemo({
     ctx.tierAt(1.5);
   },
 
+  // Money shot: the SKETCH tier — assert cycles all four tiers and restores
+  // zoom 1.5, so boot and after photograph identical.
+  async showcase(ctx) {
+    ctx.tierAt(0.35);
+  },
+
   async assert(ctx) {
     const api = ctx.instance;
 

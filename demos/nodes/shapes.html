@@ -90,6 +90,10 @@ defineDemo({
     r.setMetadata('shape', { type: 'diamond', fill: '#dbeafe' });
     ctx.instance.renderNow();
     check(!!body('rect', 'polygon'), 'changing shape.type to diamond did not switch the body to a <polygon>');
+    // Swap it BACK: the tile still reads "rect", and a diamond under that label
+    // photographs as a mislabeled catalog.
+    r.setMetadata('shape', { type: 'rect', fill: '#dbeafe', stroke: '#2563eb' });
+    ctx.instance.renderNow();
   },
 });
 </script>
