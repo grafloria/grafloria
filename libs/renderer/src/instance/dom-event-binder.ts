@@ -564,6 +564,32 @@ export class DomEventBinder {
     return hit && hit.kind === 'resize' ? hit : null;
   }
 
+  /**
+   * wave14/interaction (defect 1): the reconnectable link ENDPOINT HANDLE under a
+   * world point, or null.
+   *
+   * Non-null only when the part-aware edge hit resolves to a source/target
+   * endpoint (8px grab radius) of a SELECTED link with reconnection enabled —
+   * i.e. exactly when the renderer draws a handle there. The mousedown ladder
+   * consults this INSIDE the hovered-port rung, because the handle is drawn on
+   * top of the port and a press inside its radius means the handle, not the port.
+   * Same gate as the rung-5/6 reconnect branch, so hover-then-press and
+   * press-without-hover start the identical gesture.
+   */
+  private reconnectableEndpointAt(
+    worldX: number,
+    worldY: number,
+    engine: DiagramEngine,
+    config: ReturnType<DiagramEngine['getInteractionConfig']>
+  ): { link: LinkModel; endpoint: 'source' | 'target' } | null {
+    if (!config.enableLinkReconnection) return null;
+    const hit = this.host.interaction.getLinkHitAtPosition(worldX, worldY, engine);
+    if (!hit || hit.link.state !== 'selected') return null;
+    if (hit.part === 'source-endpoint') return { link: hit.link, endpoint: 'source' };
+    if (hit.part === 'target-endpoint') return { link: hit.link, endpoint: 'target' };
+    return null;
+  }
+
   onMouseDown(event: MouseEvent): void {
     const engine = this.engine();
     const diagram = engine?.getDiagram();
@@ -633,9 +659,38 @@ export class DomEventBinder {
     }
 
     if (!this.isReadonly()) {
-      // 2. Port → start a connection drag.
+      // 2. Port → start a connection drag… UNLESS the press is on a link
+      // endpoint handle drawn ON that port.
+      //
+      // wave14/interaction DEFECT-1 FIX. A selected link's endpoint handle is
+      // rendered AT the port it connects to (the routed polyline ends on the
+      // port), and the pointermove that carries the mouse onto the handle sets
+      // `hoveredPort` (≈11px hit radius: portDefaultRadius 6 × hoverScale 1.5
+      // + 2px) — so this rung used to swallow the press and the natural
+      // reconnect gesture ALWAYS started a new connection instead. When the
+      // press point is inside the endpoint's own 8px grab radius
+      // (DEFAULT_ENDPOINT_RADIUS) on a selected, reconnectable link, the user
+      // is visibly touching the handle drawn on top: the ENDPOINT wins.
+      //
+      // Starting a fresh connection from that port stays possible: the annulus
+      // 8 < d ≤ 11 around the handle still belongs to the port (3px of ring for
+      // a mouse — thin but real, and it widens by `hitSlop` on touch), every
+      // OTHER port of the node is untouched, and an endpoint drag dropped on an
+      // invalid target reverts, so the worst mis-grab costs one Escape.
       if (state.hoveredPort) {
         event.preventDefault();
+        const endpointHit = this.reconnectableEndpointAt(worldX, worldY, engine, config);
+        if (endpointHit) {
+          this.host.interaction.startLinkReconnection(
+            endpointHit.link,
+            endpointHit.endpoint,
+            worldX,
+            worldY,
+            engine
+          );
+          this.host.requestRender();
+          return;
+        }
         this.host.interaction.startConnection(state.hoveredPort, worldX, worldY, engine);
         this.host.requestRender();
         return;

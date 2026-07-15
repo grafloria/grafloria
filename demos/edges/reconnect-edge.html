@@ -6,7 +6,7 @@
   #canvas { height: calc(100vh - 190px); }
 </style>
 <header id="demo-head"></header>
-<div id="hint">Select the edge, then drag its endpoint handle onto another node. Driven here with real pointer events.</div>
+<div id="hint">Select the edge, hover its endpoint handle, then drag it onto another node — the handle wins over the port it sits on. Driven here with real pointer events.</div>
 <div id="canvas"></div>
 <script type="module">
 import { render } from '../shell/grafloria.js';
@@ -14,9 +14,12 @@ import { defineDemo, check } from '../shell/demo.js';
 
 // Reconnecting an edge: grab an endpoint handle of a SELECTED edge and drop it on
 // a new node. Driven with REAL pointer events through the same DOM pipeline a user
-// hits — select (pointerdown/up on the body), then press the endpoint handle,
-// drag, and drop on the target port. The model must rewire and a `reconnect`
-// event must fire.
+// hits — select (pointerdown/up on the body), then the NATURAL gesture: move the
+// pointer ONTO the endpoint handle and press. The travel onto the handle hovers
+// the port underneath it (the handle is drawn ON the port), which is exactly the
+// wave14 defect-1 setup: the mousedown ladder used to check `hoveredPort` first
+// and swallow this press into a NEW connection. This demo goes RED if that
+// ordering ever regresses. The model must rewire and a `reconnect` event fire.
 const NODES = [
   { id: 'a', position: { x: 80,  y: 260 }, size: { width: 120, height: 60 }, label: 'A' },
   { id: 'b', position: { x: 660, y: 110 }, size: { width: 120, height: 60 }, label: 'B' },
@@ -61,13 +64,19 @@ defineDemo({
     ctx.pointer('pointerup', m.x, m.y); await ctx.tick();
     check(link().state === 'selected', 'clicking the edge body did not select it');
 
-    // 2. Press the target endpoint handle and drag it to C's left port (660,460),
-    //    passing over the port en route so the drop resolves a valid target.
+    // 2. The NATURAL gesture: move the pointer ONTO the endpoint handle, then
+    //    press, then drag to C's left port (660,460). The move hovers the port
+    //    the handle sits on — the precondition that used to shadow the grab.
     const e = endpoint();
     const cPort = { x: 660, y: 460 };
+    ctx.pointer('pointermove', e.x, e.y); await ctx.tick();
+    check(!!ctx.instance.interaction.getState().hoveredPort,
+      'precondition: hovering the endpoint handle should also hover the port under it — the shadowing setup is not being exercised');
     ctx.pointer('pointerdown', e.x, e.y); await ctx.tick();
     check(ctx.instance.interaction.getState().isReconnectingLink,
-      'pressing the endpoint handle did not start a reconnection — the endpoint grab is shadowed');
+      'pressing the hovered endpoint handle did not start a reconnection — the hovered-port rung swallowed it (wave14 defect-1 ladder ordering regressed)');
+    check(!ctx.instance.interaction.getState().isConnecting,
+      'the press started a NEW connection from the port instead of reconnecting the endpoint drawn on it');
 
     // Live preview: mid-drag the renderer paints a dashed ghost line to the
     // cursor. Its far end must sit at the pointer, proving the preview tracks live.
