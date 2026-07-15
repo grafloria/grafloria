@@ -952,7 +952,7 @@ export class DomEventBinder {
 
     if (state.isDraggingWaypoint) {
       event.preventDefault();
-      this.host.interaction.endWaypointDrag();
+      this.host.interaction.endWaypointDrag(engine);
       this.host.requestRender();
       return;
     }

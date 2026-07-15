@@ -5,7 +5,7 @@ import type {
   Point,
   ArrowStyle,
 } from '@grafloria/engine';
-import { PortModel, isConnectionAllowedByGroup } from '@grafloria/engine';
+import { PortModel, isConnectionAllowedByGroup, SetLinkPointsCommand } from '@grafloria/engine';
 // Wave 6: THE port-position function — hit-test and magnet where you DRAW.
 import { portWorldPosition } from '../svg/port-positioning';
 import { WaypointEditor } from './WaypointEditor';
@@ -146,6 +146,11 @@ export class InteractionController {
   protected isDraggingWaypoint = false;
   protected editingLink: LinkModel | null = null;
   protected editingWaypointIndex: number | null = null;
+  /**
+   * wave12: the link's points when a waypoint drag STARTED, so endWaypointDrag can commit
+   * the whole gesture as one undoable SetLinkPointsCommand (FROM→TO). Absent between drags.
+   */
+  protected waypointDragStartPoints: Point[] | null = null;
   protected waypointEditor: WaypointEditor | null = null;
   protected hoveredWaypointIndex: number | null = null;
   protected hoveredWaypointLink: LinkModel | null = null;
@@ -1486,6 +1491,8 @@ export class InteractionController {
     this.isDraggingWaypoint = true;
     this.editingLink = link;
     this.editingWaypointIndex = waypointIndex;
+    // wave12: snapshot the path BEFORE the drag so end can commit one undoable FROM→TO step.
+    this.waypointDragStartPoints = link.points.map((p) => ({ ...p }));
     console.log(`🔵 Started dragging waypoint ${waypointIndex} on link ${link.id}`);
   }
 
@@ -1521,13 +1528,31 @@ export class InteractionController {
   /**
    * End waypoint drag
    */
-  endWaypointDrag(): void {
+  endWaypointDrag(engine?: DiagramEngine): void {
     if (this.isDraggingWaypoint) {
       console.log(`🔵 Ended dragging waypoint ${this.editingWaypointIndex} on link ${this.editingLink?.id}`);
+
+      // wave12: commit the finished gesture as ONE undoable step. The live moveWaypoint
+      // already applied the final points, so SetLinkPointsCommand's execute() re-sets the
+      // already-current `to` (a no-op) and records one history entry; undo restores `from`.
+      // Same FROM→TO snapshot pattern as node-drag and group-drag. Only commit when the
+      // path actually changed — a click-with-no-drag must not litter the undo stack.
+      const link = this.editingLink;
+      const from = this.waypointDragStartPoints;
+      if (engine && link && from) {
+        const to = link.points.map((p) => ({ ...p }));
+        const changed =
+          to.length !== from.length ||
+          to.some((p, i) => p.x !== from[i].x || p.y !== from[i].y);
+        if (changed) {
+          void engine.commandManager.execute(new SetLinkPointsCommand(link.id, to, from));
+        }
+      }
     }
     this.isDraggingWaypoint = false;
     this.editingLink = null;
     this.editingWaypointIndex = null;
+    this.waypointDragStartPoints = null;
   }
 
   /**

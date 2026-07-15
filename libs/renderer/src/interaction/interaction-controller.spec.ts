@@ -352,6 +352,24 @@ describe('InteractionController (framework-agnostic interaction brain)', () => {
     it('moveWaypoint is a no-op when no drag is in flight', () => {
       expect(controller.moveWaypoint(10, 10, engine)).toBe(false);
     });
+
+    it('a waypoint drag is command-UNDOABLE (endWaypointDrag commits a FROM→TO step)', async () => {
+      const { link } = makeAToBLink('direct');
+      const mid = link.getPointAtPosition(0.5)!;
+      controller.addWaypoint(mid.x, mid.y, link);
+      const before = link.points.map((p) => ({ x: p.x, y: p.y }));
+
+      controller.startWaypointDrag(1, link);
+      controller.moveWaypoint(mid.x + 40, mid.y + 70, engine);
+      controller.endWaypointDrag(engine); // commit the gesture as one undoable step
+      await new Promise((r) => setTimeout(r, 0)); // let the async command reach the stack
+
+      expect(link.points[1]).toMatchObject({ x: mid.x + 40, y: mid.y + 70 });
+
+      // THE ASSERTION THAT WAS RED: undo restores the path to before the drag.
+      await engine.undo();
+      expect(link.points.map((p) => ({ x: p.x, y: p.y }))).toEqual(before);
+    });
   });
 
   // ==========================================================================
