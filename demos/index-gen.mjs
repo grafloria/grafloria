@@ -41,7 +41,17 @@ function collect() {
 
 /** Pull the four declared fields out of a page's defineDemo header. */
 function parse(file, rel) {
-  const src = readFileSync(file, 'utf8');
+  const full = readFileSync(file, 'utf8');
+  // SCOPE the parse to the defineDemo({...}) call. A page may declare `name:`
+  // BEFORE the demo header — typed-ports registers a `{ name: 'number' }` port
+  // data type — and a file-wide "first name:" grab reads that instead of the
+  // demo's, listing a demo called "number". The single source of truth is the
+  // demo header, so parse only from `defineDemo(` onward.
+  const at = full.indexOf('defineDemo(');
+  if (at === -1) {
+    throw new Error(`index-gen: ${rel} has no defineDemo() call`);
+  }
+  const src = full.slice(at);
   const str = (key) => {
     // name: 'x'  |  name: "x"  — the value is a single- or double-quoted literal.
     const m = src.match(new RegExp(`${key}\\s*:\\s*(['"])((?:\\\\.|(?!\\1).)*)\\1`));

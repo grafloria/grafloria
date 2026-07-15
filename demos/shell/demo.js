@@ -103,7 +103,10 @@ async function buildNav() {
         .get(cat)
         .map((d) => {
           const current = d.rel === here;
-          return `<a class="an-item${current ? ' current' : ''}${d.pro ? ' pro' : ''}" href="../${esc(d.rel)}"${current ? ' aria-current="page"' : ''} data-name="${esc(d.name.toLowerCase())} ${esc((d.reactflow || '').toLowerCase())}">${esc(d.name)}${d.pro ? '<span class="an-pro" title="React Flow charges for this">Pro</span>' : ''}</a>`;
+          // NB: no `pro` class on the item — demo.css has a global `.pro` (the
+          // page header's "Pro — paid" pill) that would paint the whole row. The
+          // Pro marker is the scoped `.an-pro` badge span only.
+          return `<a class="an-item${current ? ' current' : ''}" href="../${esc(d.rel)}"${current ? ' aria-current="page"' : ''} data-name="${esc(d.name.toLowerCase())} ${esc((d.reactflow || '').toLowerCase())}">${esc(d.name)}${d.pro ? '<span class="an-pro" title="React Flow charges for this">Pro</span>' : ''}</a>`;
         })
         .join('');
       return `<div class="an-group"><div class="an-cat">${esc(CATEGORY_LABEL[cat] ?? cat)}</div>${items}</div>`;
