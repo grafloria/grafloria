@@ -22,7 +22,7 @@ defineDemo({
       nodes: [
         { id: 'n1', position: { x: 400, y: 150 }, size: { width: 120, height: 60 }, label: 'stage 1' },
         { id: 'n2', position: { x: 560, y: 150 }, size: { width: 120, height: 60 }, label: 'stage 2' },
-        { id: 'n3', position: { x: 480, y: 250 }, size: { width: 120, height: 60 }, label: 'retry' },
+        { id: 'n3', position: { x: 480, y: 275 }, size: { width: 120, height: 60 }, label: 'retry' },
         { id: 'outside', position: { x: 80, y: 150 }, size: { width: 120, height: 60 }, label: 'outside' },
       ],
       edges: [{ id: 'e1', source: 'n1', target: 'n2' }, { id: 'e2', source: 'n1', target: 'n3' }],
@@ -33,9 +33,6 @@ defineDemo({
 
     // Build the container and move three nodes into it.
     const g = await ctx.engine.addGroup({ name: 'Pipeline' });
-    // Deliberately a TINY frame that does NOT yet enclose the members — only a real
-    // fitToContents() will grow it to wrap them, so the assertion has teeth.
-    g.setFrame({ x: 470, y: 190, width: 40, height: 40 });
     await ctx.engine.addToGroup(g.id, 'n1');
     await ctx.engine.addToGroup(g.id, 'n2');
     await ctx.engine.addToGroup(g.id, 'n3');
@@ -46,6 +43,13 @@ defineDemo({
     await ctx.engine.addToGroup(inner.id, 'n3');
     g.addMember(inner.id, ctx.diagram);   // nest the sub-group under the pipeline
     ctx.inner = inner;
+
+    // What a visitor should SEE from the first frame: both frames wrapping their
+    // members, inner first so the outer fits around the inner's own frame — the
+    // React Flow Sub Flows look. The assert below still proves fitToContents has
+    // teeth by shrinking the outer frame back down and watching it re-grow.
+    inner.fitToContents(ctx.diagram);
+    g.fitToContents(ctx.diagram);
     api.renderNow();
     await ctx.tick();
   },
@@ -61,8 +65,12 @@ defineDemo({
     check(!!ctx.host.querySelector('[data-node-id="n1"]'), 'a grouped node stopped rendering');
     check(m.getLinks().length === 2, 'grouping should not have dropped the edges');
 
-    // 2. THE TEETH: fit the frame to its contents and it wraps every member — a real
-    //    containment relationship, not a decorative rectangle.
+    // 2. THE TEETH: shrink the frame to a deliberately-wrong 40×40, then fit — it
+    //    must re-grow to wrap every member. A real containment relationship, not a
+    //    decorative rectangle (and not a frame that only LOOKS right because setup
+    //    happened to draw it there).
+    g.setFrame({ x: 470, y: 190, width: 40, height: 40 });
+    check(g.getOuterBounds().width === 40, 'precondition: the frame really was shrunk');
     g.fitToContents(m);
     const box = g.getOuterBounds();
     for (const id of ['n1', 'n2', 'n3']) {

@@ -1108,6 +1108,15 @@ export class DiagramModel extends DiagramEntity {
     this.groups.set(group.id, group);
     this.trackChange('groups', null, group);
     this.emitOrQueue('group:added', group);
+
+    // Mirror of installNode's 'change' forwarding. Without it a group mutation
+    // (setFrame/fitToContents, membership, collapse) was invisible at the
+    // diagram level: renderers subscribed to node:/link: events repainted on
+    // every node twitch but never on a group's — the screenshot audit caught a
+    // frame that stayed 40×40 on screen after fitToContents had grown it.
+    group.on('change', () => {
+      this.emitOrQueue('group:changed', group);
+    });
   }
 
   /**
@@ -2520,7 +2529,9 @@ export class DiagramModel extends DiagramEntity {
     group.parentGroupId = data.parentGroupId;
     // Wave-5 Card 3: keep the incremental in-place path lossless for the new
     // subflow geometry (absent keys reset to their defaults, matching fromJSON).
-    group.padding = data.padding;
+    // Absent keys pin to 0 (legacy engines wrote 0 as absence) — see fromJSON;
+    // leaving padding undefined would resolve to the authored default instead.
+    group.padding = data.padding ?? 0;
     group.headerHeight = typeof data.headerHeight === 'number' ? data.headerHeight : 0;
     group.zIndex = typeof data.zIndex === 'number' ? data.zIndex : 0;
     group.fitMode = data.fitMode ?? 'exact';

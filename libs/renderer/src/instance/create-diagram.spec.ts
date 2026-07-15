@@ -1,4 +1,4 @@
-import { DiagramEngine } from '@grafloria/engine';
+import { DiagramEngine, GroupModel } from '@grafloria/engine';
 import type { NodeModel } from '@grafloria/engine';
 import { createDiagram } from './create-diagram';
 import type { DiagramInstance } from './create-diagram';
@@ -277,6 +277,54 @@ describe('createDiagram — the headless instance', () => {
       expect(engine.getDiagram()).toBeTruthy();
       expect(engine.getDiagram()!.getNodes()).toHaveLength(2);
       engine.destroy();
+    });
+  });
+
+  // Found by the screenshot audit, not by any assert: a demo called
+  // group.fitToContents() and the SCREEN never changed. The instance subscribed
+  // to node/link/selection/viewport events but to NO group event, so group
+  // mutations scheduled nothing — the picture updated only when something
+  // unrelated happened to render. These pin the missing subscriptions; none of
+  // them may call renderNow().
+  describe('group mutations schedule a render on their own', () => {
+    // The scheduler flushes on rAF (jsdom runs rAF on a ~16ms cadence), so a
+    // bare setTimeout(0) races the frame. Await a real frame, then a macrotask.
+    const tick = async () => {
+      await new Promise((r) => requestAnimationFrame(() => r(undefined)));
+      await new Promise((r) => setTimeout(r, 0));
+    };
+    const frameOf = (id: string) => container.querySelector(`[data-group-id="${id}"]`);
+
+    async function withGroup() {
+      diagram = createDiagram(container, { nodes: NODES });
+      const model = diagram.getModel();
+      const group = new GroupModel({ name: 'G' });
+      model.addGroup(group);
+      group.addMember('a', model);
+      group.setFrame({ x: 80, y: 80, width: 200, height: 120 });
+      await tick();
+      return { model, group };
+    }
+
+    it('group:added paints the frame without renderNow', async () => {
+      const { group } = await withGroup();
+      expect(frameOf(String(group.id))).toBeTruthy();
+    });
+
+    it('a frame change (fitToContents/setFrame) repaints without renderNow', async () => {
+      const { group } = await withGroup();
+      group.setFrame({ x: 5, y: 5, width: 500, height: 400 });
+      await tick();
+      const rect = frameOf(String(group.id))!.querySelector('rect')!;
+      expect(Number(rect.getAttribute('width'))).toBe(500);
+      expect(Number(rect.getAttribute('height'))).toBe(400);
+    });
+
+    it('group:removed erases the frame without renderNow', async () => {
+      const { model, group } = await withGroup();
+      model.removeGroup(String(group.id));
+      await tick();
+      expect(frameOf(String(group.id))).toBeNull();
     });
   });
 });

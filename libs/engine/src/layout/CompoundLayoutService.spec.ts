@@ -45,6 +45,7 @@ describe('CompoundLayoutService (Wave-5 Card 5)', () => {
     const g = new GroupModel({ id: 'g', name: 'G' });
     diagram.addGroup(g);
     g.padding = 10;
+    g.headerHeight = 0; // subject: the grid arithmetic, not the title band
     [node('a'), node('b'), node('c'), node('d')].forEach((n) => {
       diagram.addNode(n);
       g.addMember(n.id, diagram);

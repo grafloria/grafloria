@@ -162,6 +162,16 @@ export type GroupPadding =
   | { top?: number; right?: number; bottom?: number; left?: number };
 
 /**
+ * Defaults for groups AUTHORED in code (constructor path). A fitted frame needs
+ * breathing room and a title band or its label lands under the first member.
+ * Loaded documents are exempt: restore assigns the stored values (padding
+ * verbatim — possibly undefined, which getPadding() resolves to 0 — and
+ * headerHeight number-or-0), so legacy geometry is byte-stable.
+ */
+export const DEFAULT_GROUP_PADDING = 16;
+export const DEFAULT_GROUP_HEADER_HEIGHT = 24;
+
+/**
  * Wave-5 Card 3: how {@link GroupModel.fitToContents} reconciles the freshly
  * computed content rectangle with the group's current rectangle.
  * - `exact`      — snap to the content rectangle (default).
@@ -232,8 +242,18 @@ export class GroupModel extends DiagramEntity {
   // `zIndex` — deterministic stacking (lower = further back); the model-level
   // fix for "stacking == Map insertion order". `fitMode` — default fit policy.
   // `constrainChildren` — clamp member drags to the inner extent when true.
+  // `padding` is TRI-STATE on purpose:
+  //   undefined      — the author never said; getPadding() resolves it to
+  //                    DEFAULT_GROUP_PADDING, and layout-level fallbacks
+  //                    (CompoundLayoutService.applyDefaultPadding) may claim it.
+  //   explicit value — pinned, including 0. Loaders pin absent keys to 0 so a
+  //                    legacy document keeps the geometry it was saved with.
+  // The default is non-zero because the renderer unconditionally draws a title
+  // band and a border: a group fitted flush hides its own label behind the
+  // first member — the screenshot audit caught exactly that, and no unit test
+  // ever could.
   padding?: GroupPadding;
-  headerHeight = 0;
+  headerHeight = DEFAULT_GROUP_HEADER_HEIGHT;
   zIndex = 0;
   fitMode: GroupFitMode = 'exact';
   constrainChildren = false;
@@ -636,11 +656,21 @@ export class GroupModel extends DiagramEntity {
   // Wave-5 Card 3 — Subflow geometry: auto-fit, extent clamping & z-order
   // ---------------------------------------------------------------------------
 
-  /** Resolve {@link padding} to a full four-sided rectangle (defaults to 0). */
+  /**
+   * Resolve {@link padding} to a full four-sided rectangle. `undefined` (the
+   * author never said) resolves to {@link DEFAULT_GROUP_PADDING}; an explicit
+   * value — including the 0 that loaders pin for legacy documents — is taken
+   * as written.
+   */
   getPadding(): { top: number; right: number; bottom: number; left: number } {
     const p = this.padding;
     if (p === undefined) {
-      return { top: 0, right: 0, bottom: 0, left: 0 };
+      return {
+        top: DEFAULT_GROUP_PADDING,
+        right: DEFAULT_GROUP_PADDING,
+        bottom: DEFAULT_GROUP_PADDING,
+        left: DEFAULT_GROUP_PADDING,
+      };
     }
     if (typeof p === 'number') {
       return { top: p, right: p, bottom: p, left: p };
@@ -1213,9 +1243,12 @@ export class GroupModel extends DiagramEntity {
         : undefined,
       // Wave-2: containment tree pointer (undefined for top-level groups).
       parentGroupId: this.parentGroupId,
-      // Wave-5 Card 3: only emit non-default subflow geometry so groups that
-      // never touch it round-trip byte-for-byte identical to before.
-      padding: this.padding,
+      // Wave-5 Card 3: padding is RESOLVED at save time — a document must mean
+      // what it meant, so an authored group pins today's default into the file
+      // (a future default change can never re-geometry it). headerHeight 0 is
+      // still omitted: loaders pin the absent key back to 0, which keeps legacy
+      // documents byte-stable through load→save.
+      padding: this.padding ?? DEFAULT_GROUP_PADDING,
       headerHeight: this.headerHeight !== 0 ? this.headerHeight : undefined,
       zIndex: this.zIndex !== 0 ? this.zIndex : undefined,
       fitMode: this.fitMode !== 'exact' ? this.fitMode : undefined,
@@ -1267,13 +1300,13 @@ export class GroupModel extends DiagramEntity {
       group.layoutConfig = data.layoutConfig;
     }
 
-    // Wave-5 Card 3: restore subflow geometry (defaults preserved when absent).
-    if (data.padding !== undefined) {
-      group.padding = data.padding;
-    }
-    if (typeof data.headerHeight === 'number') {
-      group.headerHeight = data.headerHeight;
-    }
+    // Wave-5 Card 3: restore subflow geometry. Absent keys PIN TO 0 — they were
+    // written by an engine whose values were 0, and a loaded document must mean
+    // what it meant when saved. Leaving padding `undefined` here would let
+    // getPadding() resolve it to the authored default and silently re-geometry
+    // every legacy fit.
+    group.padding = data.padding ?? 0;
+    group.headerHeight = typeof data.headerHeight === 'number' ? data.headerHeight : 0;
     if (typeof data.zIndex === 'number') {
       group.zIndex = data.zIndex;
     }

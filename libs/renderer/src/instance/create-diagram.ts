@@ -541,6 +541,11 @@ export function createDiagram(
     emit('edges:change', { edges: model.getLinks() });
   });
   onModel('link:changed', () => scheduler.schedule());
+  // Groups paint too (frames, lanes, collapse proxies) — leaving these out made
+  // fitToContents() invisible until an unrelated event happened to render.
+  onModel('group:added', () => scheduler.schedule());
+  onModel('group:removed', () => scheduler.schedule());
+  onModel('group:changed', () => scheduler.schedule());
   onModel('selection:changed', () => {
     scheduler.schedule();
     emit('selection:change', {

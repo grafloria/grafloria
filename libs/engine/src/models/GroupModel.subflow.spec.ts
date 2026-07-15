@@ -5,9 +5,16 @@
 // z-order (zIndex + bringToFront/sendToBack), and lossless round-trip of the
 // new geometry config.
 
-import { GroupModel } from './GroupModel';
+import { DEFAULT_GROUP_HEADER_HEIGHT, DEFAULT_GROUP_PADDING, GroupModel } from './GroupModel';
 import { DiagramModel } from './DiagramModel';
 import { NodeModel } from './NodeModel';
+
+/** Strip the authored defaults so a test about OTHER arithmetic stays readable. */
+function zeroed(group: GroupModel): GroupModel {
+  group.padding = 0;
+  group.headerHeight = 0;
+  return group;
+}
 
 function node(id: string, x: number, y: number, w = 40, h = 40): NodeModel {
   return new NodeModel({ id, type: 'default', position: { x, y }, size: { width: w, height: h } });
@@ -34,8 +41,27 @@ function buildGroupWithMembers(): { diagram: DiagramModel; group: GroupModel } {
 
 describe('GroupModel subflow geometry (Wave-5 Card 3)', () => {
   describe('padding resolution', () => {
-    it('defaults to zero on all sides', () => {
+    // The screenshot audit found every FITTED frame hugging its members with the
+    // label hidden behind the first node — because authored groups defaulted to
+    // 0/0. `padding` is tri-state now: undefined (author never said) resolves to
+    // the real default; an explicit value — including the 0 that loaders pin for
+    // legacy documents — is taken as written. The undefined state is also what
+    // lets CompoundLayoutService's containerPadding fallback claim the group.
+    it('authored groups (padding unset) resolve to real padding and a title band', () => {
       const g = new GroupModel({ name: 'G' });
+      expect(g.padding).toBeUndefined();
+      expect(g.getPadding()).toEqual({
+        top: DEFAULT_GROUP_PADDING,
+        right: DEFAULT_GROUP_PADDING,
+        bottom: DEFAULT_GROUP_PADDING,
+        left: DEFAULT_GROUP_PADDING,
+      });
+      expect(g.headerHeight).toBe(DEFAULT_GROUP_HEADER_HEIGHT);
+    });
+
+    it('an explicit 0 (how loaders pin legacy documents) resolves to zero on all sides', () => {
+      const g = new GroupModel({ name: 'G' });
+      g.padding = 0;
       expect(g.getPadding()).toEqual({ top: 0, right: 0, bottom: 0, left: 0 });
     });
 
@@ -53,14 +79,27 @@ describe('GroupModel subflow geometry (Wave-5 Card 3)', () => {
   });
 
   describe('fitToContents — the real padding/header consumer', () => {
-    it('fits the frame to the tight member bbox with zero padding/header', () => {
+    it('fits with the authored defaults: padding all around + the title band on top', () => {
       const { diagram, group } = buildGroupWithMembers();
       group.fitToContents(diagram);
+      // content bbox 0,0→140,90, padded by 16 on each side, band of 24 on top
+      expect(group.getOuterBounds()).toEqual({
+        x: -DEFAULT_GROUP_PADDING,
+        y: -DEFAULT_GROUP_PADDING - DEFAULT_GROUP_HEADER_HEIGHT,
+        width: 140 + 2 * DEFAULT_GROUP_PADDING,
+        height: 90 + 2 * DEFAULT_GROUP_PADDING + DEFAULT_GROUP_HEADER_HEIGHT,
+      });
+    });
+
+    it('fits the frame to the tight member bbox when padding/header are zeroed', () => {
+      const { diagram, group } = buildGroupWithMembers();
+      zeroed(group).fitToContents(diagram);
       expect(group.getOuterBounds()).toEqual({ x: 0, y: 0, width: 140, height: 90 });
     });
 
     it('adds per-side padding around the member bbox', () => {
       const { diagram, group } = buildGroupWithMembers();
+      group.headerHeight = 0; // subject here is the per-side padding only
       group.padding = { top: 10, right: 20, bottom: 30, left: 40 };
       group.fitToContents(diagram);
       // x shifts left by 40, y up by 10; width += 40+20, height += 10+30
@@ -69,6 +108,7 @@ describe('GroupModel subflow geometry (Wave-5 Card 3)', () => {
 
     it('reserves a header band at the top (children live below it)', () => {
       const { diagram, group } = buildGroupWithMembers();
+      group.padding = 0; // subject here is the band only
       group.headerHeight = 24;
       group.fitToContents(diagram);
       const outer = group.getOuterBounds();
@@ -80,6 +120,7 @@ describe('GroupModel subflow geometry (Wave-5 Card 3)', () => {
 
     it('writes position, size and bounds together', () => {
       const { diagram, group } = buildGroupWithMembers();
+      group.headerHeight = 0; // keep the arithmetic about the three writes
       group.padding = 5;
       group.fitToContents(diagram);
       expect(group.position).toEqual({ x: -5, y: -5 });
@@ -101,6 +142,7 @@ describe('GroupModel subflow geometry (Wave-5 Card 3)', () => {
       const child = new GroupModel({ id: 'child', name: 'Child' });
       diagram.addGroup(parent);
       diagram.addGroup(child);
+      zeroed(parent); // subject: the nested-frame contribution, not the padding
       child.setFrame({ x: 200, y: 200, width: 80, height: 60 });
       const n = node('n', 0, 0);
       diagram.addNode(n);
@@ -124,7 +166,7 @@ describe('GroupModel subflow geometry (Wave-5 Card 3)', () => {
 
     it('grow-only expands to swallow content beyond the current frame', () => {
       const { diagram, group } = buildGroupWithMembers();
-      group.setFrame({ x: 10, y: 10, width: 20, height: 20 });
+      zeroed(group).setFrame({ x: 10, y: 10, width: 20, height: 20 });
       group.fitToContents(diagram, { mode: 'grow-only' });
       // union of (10,10,30,30) and (0,0,140,90)
       expect(group.getOuterBounds()).toEqual({ x: 0, y: 0, width: 140, height: 90 });
@@ -156,6 +198,8 @@ describe('GroupModel subflow geometry (Wave-5 Card 3)', () => {
       const child = new GroupModel({ id: 'child', name: 'Child' });
       diagram.addGroup(parent);
       diagram.addGroup(child);
+      zeroed(parent);
+      zeroed(child);
       const inner = node('inner', 300, 300, 40, 40);
       diagram.addNode(inner);
       child.addMember('inner', diagram);
@@ -292,14 +336,43 @@ describe('GroupModel subflow geometry (Wave-5 Card 3)', () => {
       expect(restored.getOuterBounds()).toEqual({ x: 10, y: 20, width: 100, height: 80 });
     });
 
-    it('omits all subflow keys for a default group (byte-for-byte stable)', () => {
+    it('resolves the authored default into the payload at save time', () => {
+      // A saved document must mean what it meant: an authored group PINS
+      // today's default into the file so a future default change can never
+      // re-geometry it.
       const g = new GroupModel({ id: 'g', name: 'G' });
       const json = g.serialize();
-      expect(json.padding).toBeUndefined();
-      expect(json.headerHeight).toBeUndefined();
+      expect(json.padding).toBe(DEFAULT_GROUP_PADDING);
+      expect(json.headerHeight).toBe(DEFAULT_GROUP_HEADER_HEIGHT);
+      // Untouched non-geometry defaults are still omitted.
       expect(json.zIndex).toBeUndefined();
       expect(json.fitMode).toBeUndefined();
       expect(json.constrainChildren).toBeUndefined();
+
+      // A zeroed group (the legacy shape) writes padding 0 explicitly and omits
+      // the band — and 0 is what a loader pins for absent keys, so legacy
+      // documents survive load→save with their geometry intact.
+      const legacyShaped = zeroed(new GroupModel({ id: 'g0', name: 'G0' }));
+      const j0 = legacyShaped.serialize();
+      expect(j0.padding).toBe(0);
+      expect(j0.headerHeight).toBeUndefined();
+    });
+
+    it('a legacy payload (no padding/headerHeight keys) loads to zero, not to the authored defaults', () => {
+      const g = new GroupModel({ id: 'g', name: 'G' });
+      const json = g.serialize();
+      delete (json as { padding?: unknown }).padding;
+      delete (json as { headerHeight?: unknown }).headerHeight;
+      const restored = GroupModel.fromJSON(JSON.parse(JSON.stringify(json)));
+      expect(restored.getPadding()).toEqual({ top: 0, right: 0, bottom: 0, left: 0 });
+      expect(restored.headerHeight).toBe(0);
+    });
+
+    it('an authored group round-trips its padding and band', () => {
+      const g = new GroupModel({ id: 'g', name: 'G' });
+      const restored = GroupModel.fromJSON(JSON.parse(JSON.stringify(g.serialize())));
+      expect(restored.getPadding()).toEqual(g.getPadding());
+      expect(restored.headerHeight).toBe(DEFAULT_GROUP_HEADER_HEIGHT);
     });
   });
 });
