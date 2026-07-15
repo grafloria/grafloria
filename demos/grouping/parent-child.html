@@ -1,0 +1,80 @@
+<meta charset="utf-8">
+<title>Parent &amp; child — Grafloria</title>
+<link rel="stylesheet" href="../shell/demo.css">
+<header id="demo-head"></header>
+<div id="canvas"></div>
+<script type="module">
+import { render } from '../shell/grafloria.js';
+import { defineDemo, check } from '../shell/demo.js';
+
+const inside = (r, n) =>
+  n.position.x >= r.x - 1 && n.position.y >= r.y - 1 &&
+  n.position.x + n.size.width <= r.x + r.width + 1 &&
+  n.position.y + n.size.height <= r.y + r.height + 1;
+
+defineDemo({
+  name: 'Parent & child',
+  blurb: 'Attach a node to a container and it is CONSTRAINED to the container’s extent; detach it and it is free again. Membership is what binds the child — proven by dragging it in both states.',
+  reactflow: 'Dynamic Grouping',
+  pro: true,
+
+  async setup(ctx) {
+    const api = render({
+      nodes: [{ id: 'child', position: { x: 450, y: 200 }, size: { width: 100, height: 50 }, label: 'child' }],
+      edges: [],
+    }, ctx.host);
+    ctx.instance = api;
+    ctx.diagram = api.getModel();
+    ctx.engine = api.getEngine();
+
+    const g = await ctx.engine.addGroup({ name: 'Container' });
+    ctx.frame = { x: 400, y: 150, width: 320, height: 260 };
+    g.setFrame(ctx.frame);
+    g.constrainChildren = true;
+    ctx.g = g;
+
+    ctx.fire = (type, w) => {
+      const rect = ctx.host.getBoundingClientRect();
+      const c = api.viewport.worldToClient(w.x, w.y, rect);
+      ctx.host.dispatchEvent(new MouseEvent(type, { bubbles: true, clientX: c.x, clientY: c.y, button: 0 }));
+    };
+    ctx.centre = () => { const n = ctx.diagram.getNode('child'); return { x: n.position.x + n.size.width / 2, y: n.position.y + n.size.height / 2 }; };
+    ctx.dragChildTo = (wx, wy) => {
+      const c0 = ctx.centre();
+      ctx.fire('mousedown', c0);
+      ctx.fire('mousemove', { x: c0.x + 8, y: c0.y });
+      ctx.fire('mousemove', { x: wx, y: wy });
+      ctx.fire('mouseup',   { x: wx, y: wy });
+      api.renderNow();
+    };
+    await ctx.tick();
+  },
+
+  async assert(ctx) {
+    const m = ctx.diagram, g = ctx.g, frame = ctx.frame;
+    const child = m.getNode('child');
+
+    // ---- ATTACHED ----------------------------------------------------------
+    await ctx.engine.addToGroup(g.id, 'child');
+    check(g.members.has('child'), 'attach failed — child is not a member of the container');
+
+    // Drag the child WAY outside the container, then the container reels it back in.
+    ctx.dragChildTo(1050, 660);
+    check(!inside(frame, child), 'precondition: the drag should have taken the child outside the frame');
+    const clamped = g.clampChildToExtent('child', m);
+    check(clamped, 'an attached, constrained child dragged out of bounds should be clamped back');
+    check(inside(frame, child), `the attached child must be constrained inside the container, at ${JSON.stringify(child.position)}`);
+
+    // ---- DETACHED ----------------------------------------------------------
+    await ctx.engine.removeFromGroup(g.id, 'child');
+    check(!g.members.has('child'), 'detach failed — child is still a member');
+
+    // THE TEETH: now the SAME out-of-bounds drag sticks. Membership was the only
+    // thing binding it; with none, the container has no say.
+    ctx.dragChildTo(1050, 660);
+    const clampedNow = g.clampChildToExtent('child', m);
+    check(!clampedNow, 'a detached child must NOT be clamped by its former container');
+    check(!inside(frame, child), 'the detached child should be free to sit outside the former container');
+  },
+});
+</script>
