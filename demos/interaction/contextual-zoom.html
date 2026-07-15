@@ -1,0 +1,96 @@
+<meta charset="utf-8">
+<title>Contextual zoom (LOD) — Grafloria</title>
+<link rel="stylesheet" href="../shell/demo.css">
+<style>
+  #bar { display: flex; gap: 8px; padding: 10px 24px; border-bottom: 1px solid rgba(127,127,127,.25); align-items: center; }
+  #bar button { padding: 5px 12px; border-radius: 6px; border: 1px solid rgba(127,127,127,.4); background: transparent; color: inherit; cursor: pointer; font: inherit; }
+  #readout { margin-left: auto; font: 12px/1.4 ui-monospace, monospace; opacity: .85; }
+  #canvas { height: calc(100vh - 152px); }
+</style>
+<header id="demo-head"></header>
+<div id="bar">
+  <span>zoom:</span>
+  <button data-z="1.5">1.5× high</button>
+  <button data-z="0.7">0.7× medium</button>
+  <button data-z="0.3">0.3× sketch</button>
+  <button data-z="0.15">0.15× low</button>
+  <span id="readout"></span>
+</div>
+<div id="canvas"></div>
+<script type="module">
+import { render } from '../shell/grafloria.js';
+import { defineDemo, check } from '../shell/demo.js';
+
+// Level-of-detail: the tier the renderer draws is a function of zoom. Zoom in and
+// you get full detail (labels, port glyphs); zoom out and the renderer sheds detail
+// through medium → sketch → low. This once shipped as 17 presets that all drew the
+// IDENTICAL picture — so the assertion has to prove the tiers are REALLY different,
+// both in getQualityState().tier AND in what reaches the DOM.
+const NODES = Array.from({ length: 12 }, (_, i) => ({
+  id: `n${i}`, position: { x: (i % 4) * 200, y: Math.floor(i / 4) * 140 },
+  size: { width: 150, height: 70 }, label: `Node ${i}`,
+}));
+const EDGES = Array.from({ length: 11 }, (_, i) => ({ id: `e${i}`, source: `n${i}`, target: `n${i + 1}`, type: 'direct' }));
+
+const labelCount = (host) => host.querySelectorAll('svg text').length;
+
+defineDemo({
+  name: 'Contextual zoom (LOD)',
+  blurb: 'The detail tier follows the zoom: high → medium → sketch → low. Both the reported tier and the amount of text in the DOM drop as you zoom out — the tiers are genuinely different renders, not one picture with 17 names.',
+  reactflow: 'Zoom LOD',
+
+  async setup(ctx) {
+    // Governor OFF, so the tier is a pure function of zoom — otherwise the adaptive
+    // bias could shift it and the assertion would be flaky rather than exact.
+    const api = render({ nodes: NODES, edges: EDGES }, ctx.host, { renderer: { qualityGovernor: false } });
+    ctx.instance = api;
+    ctx.diagram = api.getModel();
+
+    ctx.tierAt = (z) => {
+      api.viewport.setZoom(z);
+      api.renderNow();
+      const tier = api.getQualityState().tier;
+      document.getElementById('readout').textContent = `zoom ${z}×  →  tier "${tier}"  (${labelCount(ctx.host)} text nodes)`;
+      return tier;
+    };
+    for (const b of document.querySelectorAll('#bar button')) {
+      b.addEventListener('click', () => ctx.tierAt(Number(b.dataset.z)));
+    }
+    ctx.tierAt(1.5);
+  },
+
+  async assert(ctx) {
+    const api = ctx.instance;
+
+    // 1. Each zoom band reports the tier the LOD policy says it should.
+    const high = ctx.tierAt(1.5);
+    const highText = ctx.host.querySelectorAll('svg text').length;
+    const medium = ctx.tierAt(0.7);
+    const sketch = ctx.tierAt(0.3);
+    const sketchText = ctx.host.querySelectorAll('svg text').length;
+    const low = ctx.tierAt(0.15);
+    const lowText = ctx.host.querySelectorAll('svg text').length;
+
+    check(high === 'high', `at 1.5× expected tier "high", got "${high}"`);
+    check(medium === 'medium', `at 0.7× expected tier "medium", got "${medium}"`);
+    check(sketch === 'sketch', `at 0.3× expected tier "sketch", got "${sketch}"`);
+    check(low === 'low', `at 0.15× expected tier "low", got "${low}"`);
+
+    // 2. THE TIERS ARE FOUR DIFFERENT THINGS — not four names for one render.
+    const tiers = new Set([high, medium, sketch, low]);
+    check(tiers.size === 4, `the four zoom bands produced only ${tiers.size} distinct tiers`);
+
+    // 3. TEETH IN THE DOM: detail actually falls away. At full zoom there is label
+    //    text; by the lowest tier the renderer has shed it. If every tier drew the
+    //    same picture (the 17-preset bug), these counts would be equal.
+    check(highText > 0, 'no label text even at the high-detail tier');
+    check(lowText < highText, `the low tier drew as much text (${lowText}) as the high tier (${highText}) — detail is not being shed`);
+    check(sketchText <= highText, 'the sketch tier drew MORE than high — LOD is inverted');
+
+    // 4. IT IS DRIVEN BY ZOOM, REVERSIBLY: zoom back in and full detail returns.
+    const backHigh = ctx.tierAt(1.5);
+    check(backHigh === 'high', `zooming back in did not restore the high tier (got "${backHigh}")`);
+    check(ctx.host.querySelectorAll('svg text').length === highText, 'restored high tier did not restore the label detail');
+  },
+});
+</script>
