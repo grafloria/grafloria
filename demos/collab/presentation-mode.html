@@ -51,6 +51,16 @@ defineDemo({
     await ctx.tick();
   },
 
+  // Money shot: the presenter mid-presentation — camera zoomed on content and
+  // the follower's pane showing the SAME world region (assert ends on an
+  // empty-space pan that reads as two blank panes).
+  async showcase(ctx) {
+    ctx.A.viewport.setZoom(1.35);
+    await ctx.tick(30);
+    ctx.A.renderNow();
+    ctx.B.renderNow();
+  },
+
   async assert(ctx) {
     const A = ctx.A, B = ctx.B;
 

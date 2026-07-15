@@ -42,6 +42,31 @@ defineDemo({
     ctx.report('SnapController ready (threshold 8px)');
   },
 
+  // Money shot: the near-miss snap APPLIED — mover aligned at x=200 with the
+  // returned guides drawn as dashed overlay lines (the assert only checks the
+  // numbers, and guides are data: nothing else ever paints them).
+  async showcase(ctx) {
+    const others = ctx.snap.siblingBoxes(ctx.engine, ['mover']);
+    const near = ctx.snap.computeSnap({ x: 205, y: 480, width: 120, height: 60 }, others);
+    ctx.diagram.getNode('mover').setPosition(near.box.x, near.box.y);
+    ctx.instance.renderNow();
+
+    const svg = ctx.host.querySelector('svg');
+    for (const g of near.guides) {
+      const line = document.createElementNS('http://www.w3.org/2000/svg', 'line');
+      const [x1, y1, x2, y2] = g.orientation === 'vertical'
+        ? [g.position, g.from, g.position, g.to]
+        : [g.from, g.position, g.to, g.position];
+      line.setAttribute('x1', x1); line.setAttribute('y1', y1);
+      line.setAttribute('x2', x2); line.setAttribute('y2', y2);
+      line.setAttribute('stroke', '#f43f5e');
+      line.setAttribute('stroke-width', '1.5');
+      line.setAttribute('stroke-dasharray', '5,4');
+      svg.appendChild(line);
+    }
+    ctx.report(`snapped to x=${near.box.x} — ${near.guides.length} guide(s) drawn`);
+  },
+
   async assert(ctx) {
     const snap = ctx.snap;
     const engine = ctx.engine;

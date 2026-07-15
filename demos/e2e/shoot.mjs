@@ -95,6 +95,21 @@ for (const page of pages) {
     const afterPath = join(outDir, `${slug}.after.png`);
     await tab.screenshot({ path: afterPath });
     rec.after = afterPath;
+
+    // Money shot, when the demo declares one: assert() round-trips, so for a
+    // mid-interaction feature boot == after. showcase() drives to the visual
+    // payoff and leaves it there — captured on a FRESH load so no assert
+    // residue leaks into the frame.
+    const hasShowcase = await tab.evaluate(() => !!window.__demo.showcase);
+    if (hasShowcase) {
+      await tab.goto(origin + '/' + rel.split(sep).join('/'));
+      await tab.waitForFunction(() => window.__demoReady === true, { timeout: 15000 });
+      await tab.evaluate(async () => { try { await window.__demo.showcase(); } catch { /* shot anyway */ } });
+      await tab.waitForTimeout(50);
+      const showcasePath = join(outDir, `${slug}.showcase.png`);
+      await tab.screenshot({ path: showcasePath });
+      rec.showcase = showcasePath;
+    }
   } catch (e) {
     rec.error = e.message;
   }

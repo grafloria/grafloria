@@ -48,6 +48,12 @@ defineDemo({
     await ctx.tick();
   },
 
+  // Money shot: B moved ABOVE — the endpoint has migrated to A's top edge,
+  // visibly different from boot's side attachment.
+  async showcase(ctx) {
+    ctx.place('above');
+  },
+
   async assert(ctx) {
     const aBox = { x1: A.position.x, y1: A.position.y, x2: A.position.x + A.size.width, y2: A.position.y + A.size.height };
     const start = () => ctx.diagram.getLinks()[0].points[0];

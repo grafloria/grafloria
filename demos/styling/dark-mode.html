@@ -140,6 +140,12 @@ defineDemo({
     paint();
   },
 
+  // Money shot: the DARK palette itself (assert round-trips back to light).
+  async showcase(ctx) {
+    ctx.setMode('dark');
+    ctx.instance.renderNow();
+  },
+
   async assert(ctx) {
     const api = ctx.instance;
 

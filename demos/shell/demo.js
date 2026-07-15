@@ -104,6 +104,13 @@ export function defineDemo(spec) {
         await spec.assert(ctx);
         return { ok: failures.length === 0, failures: [...failures] };
       },
+      // OPTIONAL money shot: drive the page to the state that shows the feature
+      // OFF — a held drag with helper lines lit, the collapsed group, the dark
+      // palette — and LEAVE it there. assert() round-trips (act, check, restore),
+      // which is right for a gate and useless for a camera: boot and after come
+      // out identical for any feature whose payoff is mid-interaction. The
+      // screenshot tooling calls this on a fresh page load; it is NOT a gate.
+      showcase: spec.showcase ? async () => spec.showcase(ctx) : null,
     };
     // Debug seam: probes (fit checks, screenshot tooling) reach the live
     // instance without each demo having to export it.

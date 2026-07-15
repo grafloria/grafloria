@@ -82,6 +82,14 @@ defineDemo({
     refresh();
   },
 
+  // Money shot: the COLLAPSED state — placeholder + aggregated boundary edges
+  // (assert restores the expanded picture, so boot/after never show it).
+  async showcase(ctx) {
+    ctx.collapser.collapse(ctx.group);
+    ctx.instance.renderNow();
+    ctx.instance.fitView(60);
+  },
+
   async assert(ctx) {
     const model = ctx.diagram;
     const group = ctx.group;

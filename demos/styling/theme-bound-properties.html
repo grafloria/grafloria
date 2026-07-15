@@ -117,6 +117,12 @@ defineDemo({
     await ctx.tick();
   },
 
+  // Money shot: the swapped theme recolouring the SEMANTIC nodes.
+  async showcase(ctx) {
+    ctx.setTheme('dark');
+    ctx.instance.renderNow();
+  },
+
   async assert(ctx) {
     // 0. themeRef() produces a real, recognisable marker — not a string that
     //    happened to look like a colour and got painted verbatim.

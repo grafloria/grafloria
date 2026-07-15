@@ -37,6 +37,15 @@ defineDemo({
     await ctx.tick();
   },
 
+  // Money shot: A dragged onto B with the overlap live (assert drags it clear
+  // again, so boot/after look identical).
+  async showcase(ctx) {
+    const a = ctx.diagram.getNode('a');
+    const b = ctx.diagram.getNode('b');
+    a.setPosition(b.position.x - 40, b.position.y - 24);
+    ctx.instance.renderNow();
+  },
+
   async assert(ctx) {
     const m = ctx.diagram;
 
