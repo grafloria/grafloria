@@ -1200,16 +1200,36 @@ export class DomEventBinder {
 
     if ((event.key === 'Delete' || event.key === 'Backspace') && !this.isReadonly()) {
       const removedWaypoint = this.host.interaction.deleteHoveredWaypoint();
-      const removedLink = this.host.interaction.deleteSelectedLink(engine);
+      const selectedLink = diagram
+        .getLinks()
+        .find((l: { state?: string }) => l.state === 'selected');
       const selectedNodes = diagram.getSelectedNodes();
-      const removedNodes = selectedNodes.length > 0 ? diagram.deleteSelected() : 0;
 
-      if (removedWaypoint || removedLink || removedNodes > 0) {
+      if (removedWaypoint || selectedLink || selectedNodes.length > 0) {
         event.preventDefault();
-        this.host.requestRender();
-        if (removedNodes > 0) this.emitNodesChange();
-        if (removedLink) this.emitEdgesChange();
-        this.emitSelectionChange();
+        // THROUGH THE COMMAND STACK, as ONE undoable step. The old handler
+        // mutated the model directly (diagram.deleteSelected / removeLink), so
+        // keyboard Delete could not be undone — and worse, the NEXT undo
+        // replayed whatever stale command sat on top of the stack, aimed at an
+        // entity that no longer existed (the sweep caught MoveNodeCommand.undo
+        // throwing exactly that way).
+        const nodeIds = selectedNodes.map((n: NodeModel) => n.id);
+        const linkId = selectedLink?.id;
+        void (async () => {
+          const cm = engine.commandManager;
+          const many = nodeIds.length + (linkId ? 1 : 0) > 1;
+          if (many) cm.beginBatch();
+          try {
+            if (linkId) await engine.removeLink(linkId);
+            for (const id of nodeIds) await engine.removeNode(id);
+          } finally {
+            if (many) await cm.endBatch('Delete Selection');
+          }
+          this.host.requestRender();
+          if (nodeIds.length > 0) this.emitNodesChange();
+          if (linkId) this.emitEdgesChange();
+          this.emitSelectionChange();
+        })();
       }
       return;
     }

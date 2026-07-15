@@ -66,7 +66,14 @@ const origin = `http://127.0.0.1:${server.address().port}`;
 // the rendered DOM together. Returns { checks:[{name,ok,detail}], skipped:[] }.
 const IN_PAGE = () => {
   const inst = window.__demoCtx && window.__demoCtx.instance;
-  const host = document.getElementById('canvas') || document.querySelector('[id^="pane"]') || document.body;
+  // The binder listens on the container the page passed to render() — which is
+  // NOT always #canvas (mermaid-text mounts into #stage inside it; comments
+  // splits canvas + panel). Derive the true container from the mounted svg:
+  // events dispatched anywhere else never reach the binder and every gesture
+  // silently no-ops.
+  const svgRoot = document.querySelector('svg.grafloria-diagram');
+  const host = (svgRoot && svgRoot.closest('.grafloria-diagram-root') && svgRoot.closest('.grafloria-diagram-root').parentElement)
+    || document.getElementById('canvas') || document.querySelector('[id^="pane"]') || document.body;
   const out = { checks: [], skipped: [] };
   if (!inst || !inst.getModel) { out.skipped.push('no __demoCtx.instance'); return Promise.resolve(out); }
   const model = inst.getModel();
@@ -309,6 +316,144 @@ const IN_PAGE = () => {
         }
       }
     }
+    // ---- ESC-CANCEL: Escape abandons a live connection drag ----
+    // The user's bug pattern is GESTURE LIFECYCLE: starting is tested everywhere,
+    // cancelling nowhere. A dangling preview line after Escape is the symptom.
+    {
+      const n = model.getNodes().find((x) => x.getPortBySide && x.getPortBySide('right') && x.behavior?.dragHandler?.isDragHandler !== true);
+      if (!n) out.skipped.push('ESC-CANCEL (no ported node)');
+      else {
+        const wp = n.getWorldPosition ? n.getWorldPosition() : n.position;
+        const pc = wc(wp.x + n.size.width, wp.y + n.size.height / 2);
+        const linksBefore = model.getLinks().length;
+        fire('pointermove', pc.x, pc.y); await raf2();
+        if (!inst.interaction.getState().hoveredPort) {
+          out.skipped.push('ESC-CANCEL (port not hoverable here)');
+        } else {
+          fire('pointerdown', pc.x, pc.y);
+          fire('pointermove', pc.x + 80, pc.y + 40); await raf2();
+          const wasConnecting = inst.interaction.getState().isConnecting;
+          window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+          await raf2(); inst.renderNow(); await raf2();
+          const stillConnecting = inst.interaction.getState().isConnecting;
+          const ghost = host.querySelector('.connection-preview-line');
+          fire('pointerup', pc.x + 80, pc.y + 40); await raf2();
+          const leaked = model.getLinks().length - linksBefore;
+          if (!wasConnecting) out.skipped.push('ESC-CANCEL (press did not start a connection)');
+          else out.checks.push({ name: 'ESC-CANCEL', ok: !stillConnecting && !ghost && leaked === 0, detail: `connecting after Esc=${stillConnecting} ghostPreview=${!!ghost} leakedLinks=${leaked}` });
+        }
+      }
+    }
+
+    // ---- HOVER-PORTS: on-hover visibility actually surfaces and hides ----
+    {
+      const cfgVis = String(inst.getEngine?.().getInteractionConfig?.().portVisibility ?? '').toLowerCase();
+      const candidates = model.getNodes().filter((x) => x.getPorts && x.getPorts().length > 0 && x.behavior?.dragHandler?.isDragHandler !== true).slice(0, 5);
+      if (candidates.length === 0 || (cfgVis && cfgVis !== 'on-hover' && cfgVis !== 'hover')) {
+        out.skipped.push(`HOVER-PORTS (visibility=${cfgVis || 'n/a'} or no ported node)`);
+      } else {
+        // Stage honestly: the node must actually BE hovered at its centre (in a
+        // dense cluster or under a frame, another element owns that pixel — a
+        // staging miss, not a product verdict).
+        let staged = null;
+        for (const n of candidates) {
+          if (inst.viewport.centerOn) { const wp0 = n.getWorldPosition ? n.getWorldPosition() : n.position; inst.viewport.centerOn(wp0.x + n.size.width / 2, wp0.y + n.size.height / 2); inst.renderNow(); await raf2(); }
+          const wp = n.getWorldPosition ? n.getWorldPosition() : n.position;
+          const c = wc(wp.x + n.size.width / 2, wp.y + n.size.height / 2);
+          const r = rectOf();
+          if (c.x < r.left + 5 || c.y < r.top + 5 || c.x > r.left + r.width - 5 || c.y > r.top + r.height - 5) continue;
+          fire('pointermove', c.x, c.y); await raf2(); inst.renderNow(); await raf2();
+          if (!n.state?.hovered) continue;
+          staged = n; break;
+        }
+        if (!staged) out.skipped.push('HOVER-PORTS (no candidate node was hoverable at its centre)');
+        else {
+          const shown = host.querySelectorAll(`[data-ports-for="${staged.id}"] [data-port-id]`).length;
+          // Unhover: a world point far from every node (query the model, not a guess).
+          const r = rectOf();
+          let off = { x: r.left + r.width - 6, y: r.top + r.height - 6 };
+          fire('pointermove', off.x, off.y); await raf2(); inst.renderNow(); await raf2();
+          const stillHovered = staged.state?.hovered === true;
+          const hidden = host.querySelectorAll(`[data-ports-for="${staged.id}"] [data-port-id]`).length;
+          if (stillHovered) out.skipped.push('HOVER-PORTS (could not unhover — canvas corner occupied)');
+          else out.checks.push({ name: 'HOVER-PORTS', ok: shown > 0 && hidden === 0, detail: `hover shows ${shown} glyphs, unhover leaves ${hidden}` });
+        }
+      }
+    }
+
+    // ---- WHEEL-ANCHOR: ctrl+wheel zooms around the CURSOR ----
+    {
+      const n = model.getNodes()[0];
+      if (!n) out.skipped.push('WHEEL-ANCHOR (no nodes)');
+      else {
+        inst.viewport.setZoom(1); inst.renderNow(); await raf2();
+        const wp = n.getWorldPosition ? n.getWorldPosition() : n.position;
+        const c0 = wc(wp.x + n.size.width / 2, wp.y + n.size.height / 2);
+        host.dispatchEvent(new WheelEvent('wheel', { clientX: c0.x, clientY: c0.y, deltaY: -100, ctrlKey: true, bubbles: true, cancelable: true }));
+        await raf2(); inst.renderNow(); await raf2();
+        const z = inst.viewport.getZoom();
+        const c1 = wc(wp.x + n.size.width / 2, wp.y + n.size.height / 2);
+        inst.viewport.setZoom(1); inst.renderNow();
+        if (z === 1) out.skipped.push('WHEEL-ANCHOR (ctrl+wheel zoom disabled here)');
+        else out.checks.push({ name: 'WHEEL-ANCHOR', ok: Math.hypot(c1.x - c0.x, c1.y - c0.y) <= 4, detail: `zoom ${z.toFixed(2)}, point under cursor drifted ${Math.round(Math.hypot(c1.x - c0.x, c1.y - c0.y))}px` });
+      }
+    }
+
+    // ---- EMPTY-DESELECT: clicking the void clears the selection ----
+    {
+      const n = model.getNodes().find((x) => x.behavior?.selectable !== false);
+      if (!n || !model.selectNode) out.skipped.push('EMPTY-DESELECT (no selectable node)');
+      else {
+        // Find a click point that is (a) empty in the MODEL and (b) actually the
+        // CANVAS under the pointer — side panels overlay the canvas on some
+        // pages, and a click eaten by a panel proves nothing.
+        const r = rectOf();
+        const candidates = [
+          { x: r.left + r.width - 8, y: r.top + r.height - 8 },
+          { x: r.left + 8, y: r.top + r.height - 8 },
+          { x: r.left + r.width - 8, y: r.top + 8 },
+          { x: r.left + r.width / 2, y: r.top + r.height - 8 },
+        ];
+        let spot = null;
+        for (const cnd of candidates) {
+          const el = document.elementFromPoint(cnd.x, cnd.y);
+          if (!el || !el.closest || !el.closest('svg.grafloria-diagram')) continue;
+          if (el.closest('[data-node-id]') || el.closest('[data-link-id]')) continue;
+          spot = cnd; break;
+        }
+        if (!spot) out.skipped.push('EMPTY-DESELECT (no reachable empty canvas point — panels cover it)');
+        else {
+          model.selectNode(n); inst.renderNow(); await raf2();
+          fire('pointermove', spot.x, spot.y); fire('pointerdown', spot.x, spot.y); fire('pointerup', spot.x, spot.y); await raf2();
+          const left = model.getSelectedNodes ? model.getSelectedNodes().length : -1;
+          out.checks.push({ name: 'EMPTY-DESELECT', ok: left === 0, detail: `selection after void click: ${left}` });
+        }
+      }
+    }
+
+    // ---- DEL-RESTORE: keyboard Delete removes, undo restores (runs LAST) ----
+    {
+      const cm = inst.getEngine?.().commandManager;
+      const n = model.getNodes().find((x) => x.behavior?.selectable !== false && !x.state?.locked && x.behavior?.dragHandler?.isDragHandler !== true);
+      if (!n || !cm) out.skipped.push('DEL-RESTORE (no deletable node or command manager)');
+      else {
+        const id = n.id;
+        const attached = model.getLinks().filter((l) => l.sourceNodeId === id || l.targetNodeId === id).length;
+        model.selectNode(n); inst.renderNow(); await raf2();
+        window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Delete', bubbles: true }));
+        // The delete commits through async commands — poll briefly for it to land.
+        let gone = false;
+        for (let i = 0; i < 20 && !gone; i++) { await new Promise((r2) => setTimeout(r2, 10)); gone = !model.getNode(id); }
+        await raf2();
+        const dangling = model.getLinks().filter((l) => l.sourceNodeId === id || l.targetNodeId === id).length;
+        let restored = false, undoError = '';
+        try {
+          if (gone && cm.canUndo()) { await cm.undo(); await raf2(); restored = !!model.getNode(id); }
+        } catch (e) { undoError = String(e && e.message || e); }
+        out.checks.push({ name: 'DEL-RESTORE', ok: gone && dangling === 0 && restored, detail: `deleted=${gone} danglingLinks=${dangling} (had ${attached}) undoRestored=${restored}${undoError ? ` undoThrew=${undoError}` : ''}` });
+      }
+    }
+
     return out;
   })();
 };

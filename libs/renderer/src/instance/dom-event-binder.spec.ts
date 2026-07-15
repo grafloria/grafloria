@@ -363,14 +363,26 @@ describe('DomEventBinder', () => {
   });
 
   describe('keyboard', () => {
-    it('Delete removes the selected nodes', () => {
+    it('Delete removes the selected nodes — as ONE undoable command', async () => {
       h = harness();
       h.model.selectNode(h.model.getNode('a')!);
 
       window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Delete' }));
+      // The delete now commits through the ASYNC command stack (the old direct
+      // mutation could never be undone — and the next undo replayed a stale
+      // command aimed at the deleted node, which threw).
+      await new Promise((r) => setTimeout(r, 0));
+      await new Promise((r) => setTimeout(r, 0));
 
       expect(h.model.getNode('a')).toBeUndefined();
+      // The cascade went with it: no link may dangle off a deleted node.
+      expect(h.model.getLinks().filter((l) => l.sourceNodeId === 'a' || l.targetNodeId === 'a')).toHaveLength(0);
       expect(h.events.some((e) => e.event === 'nodes:change')).toBe(true);
+
+      // …and it UNDOES: the node and its links come back.
+      expect(h.engine.commandManager.canUndo()).toBe(true);
+      await h.engine.commandManager.undo();
+      expect(h.model.getNode('a')).toBeDefined();
     });
 
     it('Ctrl+A selects everything', () => {
