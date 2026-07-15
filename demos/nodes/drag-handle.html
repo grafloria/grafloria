@@ -16,18 +16,22 @@ defineDemo({
     const api = render({
       nodes: [
         { id: 'win',  position: { x: 300, y: 200 }, size: { width: 240, height: 120 }, label: 'window body' },
-        { id: 'grip', position: { x: 300, y: 168 }, size: { width: 240, height: 28 },  label: '⠿ title bar (drag me)' },
+        { id: 'grip', position: { x: 300, y: 200 }, size: { width: 240, height: 28 },  label: '⠿ title bar (drag me)' },
       ],
       edges: [],
     }, ctx.host);
     ctx.instance = api;
     ctx.diagram = api.getModel();
 
-    // Make the grip a drag-handle child of the window. A child's position is
-    // RELATIVE to its parent, so pin the grip as a title bar 28px above the body.
+    // Make the grip a drag-handle child of the window — INSIDE the parent's
+    // top strip, like a real window's title bar. Chrome that lives inside the
+    // parent's silhouette leaves the OUTER rectangle to the parent, so the
+    // parent's ports sit on the composite's true boundary (the top port rides
+    // on top of the title bar, not buried at a seam between two stacked boxes —
+    // a live report caught the stacked version reading as "ports inside").
     const grip = ctx.diagram.getNode('grip');
     grip.setParent('win');
-    grip.setPosition(0, -28);           // local offset → world (300,172)
+    grip.setPosition(0, 0);             // local → covers the parent's top 28px
     grip.setBehavior({ dragHandler: { isDragHandler: true } });
     api.renderNow();
 
@@ -47,10 +51,10 @@ defineDemo({
 
     // 1. Press ON THE GRIP and drag +200px right. The press is redirected to the
     //    parent, so the WINDOW moves.
-    ctx.fire('mousedown', { x: 420, y: 186 });     // inside the grip (world y 172–200)
-    ctx.fire('mousemove', { x: 430, y: 186 });     // pass the drag threshold
-    ctx.fire('mousemove', { x: 620, y: 186 });     // +200 total
-    ctx.fire('mouseup',   { x: 620, y: 186 });
+    ctx.fire('mousedown', { x: 420, y: 214 });     // inside the grip (world y 200–228)
+    ctx.fire('mousemove', { x: 430, y: 214 });     // pass the drag threshold
+    ctx.fire('mousemove', { x: 620, y: 214 });     // +200 total
+    ctx.fire('mouseup',   { x: 620, y: 214 });
     ctx.instance.renderNow();
 
     checkChanged(winBefore, win.position, 'pressing the drag-handle grip did not move the parent window');
