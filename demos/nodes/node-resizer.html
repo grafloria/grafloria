@@ -1,0 +1,108 @@
+<meta charset="utf-8">
+<title>Node resizer — Grafloria</title>
+<link rel="stylesheet" href="../shell/demo.css">
+<header id="demo-head"></header>
+<div id="canvas"></div>
+<script type="module">
+import { render, registerTool, getNodeSizing, clampSizeToConstraints, resolveAspectRatio } from '../shell/grafloria.js';
+import { defineDemo, check } from '../shell/demo.js';
+
+// A corner-resize gesture, wired to real pointer events through the public tool
+// seam. The CLAMP is the shipped node-sizing contract (min/max/aspect), read off
+// the node's own metadata.sizing and applied on every move — DURING the gesture,
+// not fixed up at the end. That is the whole point: you cannot drag past the max.
+function installResizer(host, api) {
+  const FLOOR = { floorWidth: 20, floorHeight: 20 };
+  let g = null;
+  const se = (n) => ({ x: n.position.x + n.size.width, y: n.position.y + n.size.height });
+  registerTool({
+    id: 'demo-resize',
+    priority: 20,
+    hitTest: (e, hit) => {
+      if (!hit.node) return false;
+      const c = se(hit.node);
+      return Math.hypot(e.world.x - c.x, e.world.y - c.y) <= 22;   // near the SE corner
+    },
+    onPointerDown: (e, hit) => {
+      g = { node: hit.node, w0: hit.node.size.width, h0: hit.node.size.height, x0: e.world.x, y0: e.world.y };
+    },
+    onPointerMove: (e) => {
+      if (!g) return;
+      const sizing = getNodeSizing(g.node);
+      let { width, height } = clampSizeToConstraints(g.w0 + (e.world.x - g.x0), g.h0 + (e.world.y - g.y0), sizing, FLOOR);
+      const aspect = resolveAspectRatio(sizing, { width: g.w0, height: g.h0 });
+      if (aspect) height = width / aspect;
+      g.node.setSize(width, height);
+    },
+    onPointerUp: () => { g = null; },
+  });
+}
+
+defineDemo({
+  name: 'Node resizer',
+  blurb: 'Drag a corner to resize — and the min/max/aspect limits declared on the node clamp the size DURING the gesture. You cannot drag past the max; the aspect-locked node holds its ratio.',
+  reactflow: 'Node Resizer',
+
+  async setup(ctx) {
+    const api = render({
+      nodes: [
+        { id: 'clamp', position: { x: 120, y: 120 }, size: { width: 160, height: 100 }, label: '80–260 wide',
+          metadata: { sizing: { minWidth: 80, minHeight: 60, maxWidth: 260, maxHeight: 200 } } },
+        { id: 'ratio', position: { x: 560, y: 120 }, size: { width: 160, height: 100 }, label: 'aspect locked',
+          metadata: { sizing: { aspectLock: true } } },   // locks to 160/100 = 1.6
+      ],
+      edges: [],
+    }, ctx.host);
+    ctx.instance = api;
+    ctx.diagram = api.getModel();
+    installResizer(ctx.host, api);
+
+    ctx.fire = (type, w) => {
+      const rect = ctx.host.getBoundingClientRect();
+      const c = api.viewport.worldToClient(w.x, w.y, rect);
+      ctx.host.dispatchEvent(new MouseEvent(type, { bubbles: true, clientX: c.x, clientY: c.y, button: 0 }));
+    };
+    ctx.corner = (id) => { const n = ctx.diagram.getNode(id); return { x: n.position.x + n.size.width, y: n.position.y + n.size.height }; };
+    await ctx.tick();
+  },
+
+  async assert(ctx) {
+    const m = ctx.diagram;
+    const clamp = m.getNode('clamp');
+
+    // 1. MAX clamp DURING the gesture. Grab the SE corner and haul it 1000px right —
+    //    far past the 260 max. Assert the cap holds mid-drag, BEFORE releasing.
+    const c0 = ctx.corner('clamp');
+    ctx.fire('mousedown', { x: c0.x - 3, y: c0.y - 3 });
+    ctx.fire('mousemove', { x: c0.x + 1000, y: c0.y + 40 });     // still dragging
+    ctx.instance.renderNow();
+    check(clamp.size.width === 260,
+      `width should be clamped to its 260 max DURING the drag, is ${clamp.size.width}`);
+    check(clamp.size.height <= 200,
+      `height should be clamped to its 200 max, is ${clamp.size.height}`);
+    ctx.fire('mouseup', { x: c0.x + 1000, y: c0.y + 40 });
+
+    // 2. MIN clamp: drag the corner far into the node — width floors at 80, not 0/negative.
+    const c1 = ctx.corner('clamp');
+    ctx.fire('mousedown', { x: c1.x - 3, y: c1.y - 3 });
+    ctx.fire('mousemove', { x: clamp.position.x - 500, y: clamp.position.y - 500 });
+    ctx.instance.renderNow();
+    check(clamp.size.width === 80, `width should floor at its 80 min, is ${clamp.size.width}`);
+    check(clamp.size.height === 60, `height should floor at its 60 min, is ${clamp.size.height}`);
+    ctx.fire('mouseup', { x: clamp.position.x - 500, y: clamp.position.y - 500 });
+
+    // 3. ASPECT lock: resize the ratio node and its width/height ratio is preserved
+    //    (1.6), even though we only dragged the corner arbitrarily.
+    const ratio = m.getNode('ratio');
+    const r0 = ctx.corner('ratio');
+    ctx.fire('mousedown', { x: r0.x - 3, y: r0.y - 3 });
+    ctx.fire('mousemove', { x: r0.x + 120, y: r0.y + 8 });      // mostly wider, barely taller
+    ctx.instance.renderNow();
+    const ar = ratio.size.width / ratio.size.height;
+    check(Math.abs(ar - 1.6) < 0.02,
+      `aspect lock should hold the 1.6 ratio during resize, got ${ar.toFixed(3)}`);
+    check(ratio.size.width > 160, 'the aspect node should actually have grown');
+    ctx.fire('mouseup', { x: r0.x + 120, y: r0.y + 8 });
+  },
+});
+</script>

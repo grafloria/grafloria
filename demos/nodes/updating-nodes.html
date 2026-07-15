@@ -1,0 +1,66 @@
+<meta charset="utf-8">
+<title>Updating nodes — Grafloria</title>
+<link rel="stylesheet" href="../shell/demo.css">
+<header id="demo-head"></header>
+<div id="canvas"></div>
+<script type="module">
+import { render } from '../shell/grafloria.js';
+import { defineDemo, check, checkChanged } from '../shell/demo.js';
+
+defineDemo({
+  name: 'Updating nodes',
+  blurb: 'Mutate a live node — label, size, payload — and the canvas repaints. The tracked setters bump the mutation epoch; a raw field write would silently NOT repaint.',
+  reactflow: 'Updating Nodes',
+
+  async setup(ctx) {
+    const api = render({
+      nodes: [
+        { id: 'a', position: { x: 80,  y: 90 }, size: { width: 200, height: 90 }, label: 'BEFORE' },
+        { id: 'b', position: { x: 400, y: 90 }, size: { width: 200, height: 90 }, label: 'Steady' },
+      ],
+      edges: [{ id: 'e1', source: 'a', target: 'b' }],
+    }, ctx.host);
+    ctx.instance = api;
+    ctx.diagram = api.getModel();
+    await ctx.tick();
+  },
+
+  async assert(ctx) {
+    const api = ctx.instance;
+    const node = ctx.diagram.getNode('a');
+    const groupText = () => ctx.host.querySelector('[data-node-id="a"]').textContent;
+
+    // 1. LABEL. setMetadata('label') is tracked → repaint → the DOM text changes.
+    const before = groupText();
+    check(before.includes('BEFORE'), `label did not paint at all (was "${before}")`);
+
+    node.setMetadata('label', 'AFTER-EDIT');
+    api.renderNow();
+    const after = groupText();
+    checkChanged(before, after, 'setMetadata("label") did not repaint the node text');
+    check(after.includes('AFTER-EDIT'), `expected the new label in the DOM, got "${after}"`);
+
+    // 2. SIZE. setSize is tracked → the body rect grows in the DOM.
+    const bodyRect = () => ctx.host.querySelector('[data-node-id="a"] rect');
+    const w0 = Number(bodyRect().getAttribute('width'));
+    node.setSize(320, 90);
+    api.renderNow();
+    const w1 = Number(bodyRect().getAttribute('width'));
+    check(w1 > w0, `setSize did not widen the body rect (${w0} -> ${w1})`);
+    check(node.size.width === 320, `model width should be 320, is ${node.size.width}`);
+
+    // 3. THE TEETH: a RAW field assignment (node.data = {...}) bypasses trackChange,
+    //    so it must NOT be what a repaint depends on. We prove the tracked path is
+    //    the one that works by confirming the untracked one leaves the epoch alone:
+    //    the label from step 1 must survive a raw data write + renderNow untouched.
+    node.data = { note: 'raw-write' };          // untracked on purpose
+    api.renderNow();
+    check(groupText().includes('AFTER-EDIT'),
+      'a raw data write should not have disturbed the tracked label');
+
+    // 4. And the tracked payload setter DOES take, on the model.
+    node.setData('note', 'tracked-write');
+    check(node.data.note === 'tracked-write', 'setData did not update node.data');
+  },
+});
+</script>

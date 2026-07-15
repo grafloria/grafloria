@@ -369,6 +369,95 @@ export type {
   ViewportPortal,
 } from '@grafloria/renderer';
 
+// ===========================================================================
+// wave11/nodes GALLERY BUG FIX — the NODE authoring seams were not on the embed.
+//
+// Same finding shape as Wave 10, one layer down. This package re-exported the
+// EDGE/PORT authoring registries (Wave 10) and the whole collaboration/export
+// stack, but the NODE-shape and node-sizing seams — every one a documented,
+// unit-tested, `@grafloria/renderer`-exported extension point — were missing from
+// all fifteen-plus re-exports. An embedder taking the package at its word ("the
+// universal embed … an embed never needs a second import") could NOT:
+//
+//   - draw any of the 21 built-in figures' CUSTOM cousins, or register a custom
+//     silhouette: `registerShape` / `registerPathShape` / `listShapes` were
+//     reachable only past the package boundary. (The 21 built-ins render fine via
+//     `shape: { type }`, because the registry pre-registers them; a custom shape
+//     could not be added at all.)
+//   - read or reuse the per-node sizing contract the resizer AND the auto-sizer
+//     share (`getNodeSizing` / `clampSizeToConstraints` / `resolveAspectRatio`) —
+//     the min/max/aspect clamp math that a custom resize gesture (built on the
+//     public `registerTool` seam) needs to honour a node's declared limits.
+//   - measure a node from its content (`desiredNodeSize` / `measureLabelContent`
+//     / `autoSizeNode`), or build an in-node foreignObject / read its toolbar
+//     config, or drive proximity-connect from the shipped `SnapController`, or
+//     create SWIMLANES — `SwimlaneService`, a whole engine feature React Flow
+//     does not have, was reachable only via a second `@grafloria/engine` import.
+//
+// All re-exports, no new API. The registries are process-wide singletons in
+// @grafloria/renderer / @grafloria/engine, so registering through here is the exact
+// registration the renderer's own consumers read.
+// ===========================================================================
+
+export {
+  // The node figure registry (21 built-ins + custom silhouettes).
+  registerShape,
+  registerPathShape,
+  unregisterShape,
+  getShape,
+  hasShape,
+  listShapes,
+  getShapeDefinition,
+  getShapeRegistryVersion,
+  onShapeRegistryChange,
+
+  // Per-node sizing constraints — the min/max/aspect contract the resizer clamps
+  // to DURING a gesture and the auto-sizer floors/ceils to.
+  getNodeSizing,
+  isAutoSized,
+  resolveAspectRatio,
+  clampSizeToConstraints,
+  clampValue,
+
+  // Content-aware auto-sizing (a node grows to fit its label + panel).
+  measureLabelContent,
+  desiredNodeSize,
+  outerSizeForInner,
+  autoSizeNode,
+  autoSizeDiagram,
+
+  // Per-node toolbar config seam + in-node HTML (foreignObject) content.
+  getNodeToolbar,
+  resolveToolbar,
+  getHtmlContent,
+  hasHtmlContent,
+  buildHtmlForeignObject,
+
+  // Proximity-connect: the shipped reference implementation, addressable at last.
+  SnapController,
+  DEFAULT_SNAP_CONFIG,
+} from '@grafloria/renderer';
+
+export type {
+  ShapeDefinition,
+  PathShapeOptions,
+  PathGeometry,
+  NodeSizing,
+  ClampOptions,
+  ContentSize,
+  AutoSizeOptions,
+  NodeToolbarConfig,
+  HtmlNodeContent,
+  HtmlContentNode,
+  SnapConfig,
+  ProximityCandidate,
+} from '@grafloria/renderer';
+
+// Swimlanes / pools / lanes — a whole containment model in the ENGINE that the
+// package re-exported none of. React Flow has no equivalent.
+export { SwimlaneService } from '@grafloria/engine';
+export type { Pool, LaneSpec, CreatePoolOptions, LaneOrientation } from '@grafloria/engine';
+
 // Side effect: define the element on import. This is what makes
 // `<script type="module" src="…/grafloria.js"></script>` + `<grafloria-flow>` in the
 // markup Just Work, which is the entire point of the card.

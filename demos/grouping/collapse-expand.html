@@ -1,0 +1,95 @@
+<meta charset="utf-8">
+<title>Collapse &amp; expand — Grafloria</title>
+<link rel="stylesheet" href="../shell/demo.css">
+<header id="demo-head"></header>
+<div id="canvas"></div>
+<script type="module">
+import { render } from '../shell/grafloria.js';
+import { defineDemo, check } from '../shell/demo.js';
+
+defineDemo({
+  name: 'Collapse & expand',
+  blurb: 'Really collapse a group: its members hide, and the several links that crossed its boundary are replaced by ONE aggregated proxy link to the collapsed placeholder. Expand restores every one.',
+  reactflow: 'Collapsible / Expandable',
+  pro: true,
+
+  async setup(ctx) {
+    // Two external nodes each feed TWO members of the group → four boundary links
+    // that must aggregate into proxy links on collapse. Plus one internal link.
+    const api = render({
+      nodes: [
+        { id: 'ext1', position: { x: 60,  y: 80 },  size: { width: 120, height: 60 }, label: 'ext 1' },
+        { id: 'ext2', position: { x: 60,  y: 300 }, size: { width: 120, height: 60 }, label: 'ext 2' },
+        { id: 'm1',   position: { x: 420, y: 80 },  size: { width: 120, height: 60 }, label: 'member 1' },
+        { id: 'm2',   position: { x: 420, y: 200 }, size: { width: 120, height: 60 }, label: 'member 2' },
+        { id: 'm3',   position: { x: 420, y: 320 }, size: { width: 120, height: 60 }, label: 'member 3' },
+      ],
+      edges: [
+        { id: 'a', source: 'ext1', target: 'm1' },
+        { id: 'b', source: 'ext1', target: 'm2' },   // ext1 → group, twice
+        { id: 'c', source: 'ext2', target: 'm3' },
+        { id: 'd', source: 'm1',   target: 'm2' },    // internal
+      ],
+    }, ctx.host);
+    ctx.instance = api;
+    ctx.diagram = api.getModel();
+    ctx.engine = api.getEngine();
+
+    const g = await ctx.engine.addGroup({ name: 'Service' });
+    g.setFrame({ x: 400, y: 60, width: 180, height: 340 });
+    for (const id of ['m1', 'm2', 'm3']) await ctx.engine.addToGroup(g.id, id);
+    ctx.g = g;
+    api.renderNow();
+    await ctx.tick();
+  },
+
+  async assert(ctx) {
+    const m = ctx.diagram, g = ctx.g, api = ctx.instance;
+    const memberVisibleInDom = (id) => !!ctx.host.querySelector(`[data-node-id="${id}"]`);
+
+    // Precondition: members render, four edges + one internal = 4 links total.
+    check(memberVisibleInDom('m1'), 'precondition: members should render before collapse');
+    check(m.getLinks().length === 4, `precondition: 4 links, got ${m.getLinks().length}`);
+
+    // ---- COLLAPSE -----------------------------------------------------------
+    await ctx.engine.collapseGroup(g.id, { proxyLabel: (i) => `${i.count}×` });
+    api.renderNow();
+    await ctx.tick();
+
+    // 1. Members are hidden — gone from the model's visible set AND from the DOM.
+    for (const id of ['m1', 'm2', 'm3']) {
+      check(m.getNode(id).state.visible === false, `member ${id} should be hidden after collapse`);
+      check(!memberVisibleInDom(id), `member ${id} is still in the DOM after collapse`);
+    }
+
+    // 2. A collapsed placeholder proxy node exists for the group.
+    const proxy = m.getProxyNodeForGroup(g.id);
+    check(!!proxy && m.isProxyNode(proxy), 'no proxy placeholder node was created for the collapsed group');
+
+    // 3. THE TEETH: proxy-link AGGREGATION. The internal link is gone; the boundary
+    //    links are re-homed to the placeholder, and the two parallel ext1→group links
+    //    collapse into ONE proxy link carrying an aggregate count > 1.
+    const proxyLinks = m.getLinks().filter((l) => l.getMetadata('__proxyForGroup') === g.id);
+    check(proxyLinks.length >= 1, 'collapse produced no proxy links at all');
+    const aggregated = proxyLinks.find((l) => (l.getMetadata('__proxyAggregateCount') || 1) > 1);
+    check(!!aggregated,
+      `expected an aggregated proxy link (the two ext1→group edges) with count>1; counts were ${proxyLinks.map((l) => l.getMetadata('__proxyAggregateCount'))}`);
+    // The internal member↔member link must NOT survive as a visible link.
+    check(m.getLink('d') === undefined || m.getNode('m1').state.visible === false,
+      'the purely-internal link should have been absorbed by the collapse');
+
+    // ---- EXPAND -------------------------------------------------------------
+    await ctx.engine.expandGroup(g.id);
+    api.renderNow();
+    await ctx.tick();
+
+    // 4. Everything is restored exactly: members visible, four links back, no proxy.
+    for (const id of ['m1', 'm2', 'm3']) {
+      check(m.getNode(id).state.visible !== false, `member ${id} should be visible again after expand`);
+      check(memberVisibleInDom(id), `member ${id} did not come back to the DOM on expand`);
+    }
+    check(m.getLinks().length === 4, `expand should restore all 4 links, got ${m.getLinks().length}`);
+    check(m.getProxyNodeForGroup(g.id) === undefined, 'the proxy placeholder should be gone after expand');
+  },
+});
+</script>

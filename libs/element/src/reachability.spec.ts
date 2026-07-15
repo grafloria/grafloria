@@ -102,6 +102,34 @@ const REQUIRED: Record<string, readonly string[]> = {
     'lockDocument',
     'loadReadonlySnapshot',
   ],
+
+  // wave11/nodes — the NODE authoring seams. Same finding, one layer down: built,
+  // unit-tested, exported from @grafloria/renderer / @grafloria/engine, filtered out at
+  // the package boundary until now.
+  'nodes: the figure registry (21 built-ins + custom silhouettes)': [
+    'registerShape',
+    'registerPathShape',
+    'listShapes',
+    'hasShape',
+    'getShape',
+    'unregisterShape',
+  ],
+  'nodes: per-node sizing constraints (the resizer clamp)': [
+    'getNodeSizing',
+    'clampSizeToConstraints',
+    'resolveAspectRatio',
+    'isAutoSized',
+    'clampValue',
+  ],
+  'nodes: content-aware auto-sizing': ['autoSizeNode', 'desiredNodeSize', 'measureLabelContent'],
+  'nodes: toolbar config seam + in-node HTML': [
+    'getNodeToolbar',
+    'resolveToolbar',
+    'getHtmlContent',
+    'buildHtmlForeignObject',
+  ],
+  'nodes: proximity-connect reference implementation': ['SnapController', 'DEFAULT_SNAP_CONFIG'],
+  'grouping: swimlanes / pools / lanes (no React Flow equivalent)': ['SwimlaneService'],
 };
 
 describe('@grafloria/element is the front door — every advertised feature must fit through it', () => {

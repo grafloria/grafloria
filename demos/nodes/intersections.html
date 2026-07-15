@@ -1,0 +1,63 @@
+<meta charset="utf-8">
+<title>Intersections — Grafloria</title>
+<link rel="stylesheet" href="../shell/demo.css">
+<header id="demo-head"></header>
+<div id="canvas"></div>
+<script type="module">
+import { render } from '../shell/grafloria.js';
+import { defineDemo, check } from '../shell/demo.js';
+
+// Which OTHER nodes' boxes overlap this one — served by the model's spatial index
+// (getVisibleNodes is an AABB region query), not an O(n) scan the demo runs.
+const intersecting = (model, id) => {
+  const n = model.getNode(id);
+  return model
+    .getVisibleNodes({ x: n.position.x, y: n.position.y, width: n.size.width, height: n.size.height })
+    .filter((o) => o.id !== id)
+    .map((o) => o.id)
+    .sort();
+};
+
+defineDemo({
+  name: 'Intersections',
+  blurb: 'Which nodes overlap which — from the diagram’s spatial index. Drag a node onto another and the overlap set updates; drag it clear and it empties.',
+  reactflow: 'Intersections',
+
+  async setup(ctx) {
+    const api = render({
+      nodes: [
+        { id: 'a', position: { x: 120, y: 140 }, size: { width: 180, height: 110 }, label: 'A' },
+        { id: 'b', position: { x: 460, y: 140 }, size: { width: 180, height: 110 }, label: 'B' },
+        { id: 'c', position: { x: 800, y: 140 }, size: { width: 180, height: 110 }, label: 'C' },
+      ],
+      edges: [],
+    }, ctx.host);
+    ctx.instance = api;
+    ctx.diagram = api.getModel();
+    await ctx.tick();
+  },
+
+  async assert(ctx) {
+    const m = ctx.diagram;
+
+    // 1. Laid out apart, nothing intersects.
+    check(intersecting(m, 'a').length === 0, `A should start clear, hits: ${intersecting(m, 'a')}`);
+    check(intersecting(m, 'b').length === 0, `B should start clear, hits: ${intersecting(m, 'b')}`);
+
+    // 2. Slide A so its box overlaps B's box. The index must now report the overlap
+    //    — and report it BOTH ways (A sees B, B sees A).
+    m.getNode('a').setPosition(400, 150);   // A now straddles B (B.x=460)
+    ctx.instance.renderNow();
+    check(intersecting(m, 'a').includes('b'), `A moved onto B but the overlap was not detected (hits: ${intersecting(m, 'a')})`);
+    check(intersecting(m, 'b').includes('a'), 'overlap is not symmetric — B does not see A');
+    check(!intersecting(m, 'a').includes('c'), 'A should not intersect the far-away C');
+
+    // 3. THE TEETH: move A far clear and the overlap must DISAPPEAR. A stale spatial
+    //    index (never re-indexed on move) would keep reporting the phantom overlap.
+    m.getNode('a').setPosition(120, 140);
+    ctx.instance.renderNow();
+    check(intersecting(m, 'a').length === 0,
+      `A was dragged clear but still reports overlaps: ${intersecting(m, 'a')} — the index did not update`);
+  },
+});
+</script>
