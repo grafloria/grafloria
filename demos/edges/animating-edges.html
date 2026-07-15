@@ -1,0 +1,66 @@
+<meta charset="utf-8">
+<title>Animating edges — Grafloria</title>
+<link rel="stylesheet" href="../shell/demo.css">
+<style>#canvas { height: calc(100vh - 140px); }</style>
+<header id="demo-head"></header>
+<div id="canvas"></div>
+<script type="module">
+import { render } from '../shell/grafloria.js';
+import { defineDemo, check } from '../shell/demo.js';
+
+// Flowing edges: a CSS keyframe animation on the stroke conveys direction (data
+// moving A→B). Four presets — marching-ants, flow, pulse, dash-flow — each a
+// distinct class the stylesheet drives. We assert the class AND that the browser
+// actually resolved a running animation on the path, not merely that a class name
+// is present.
+const TYPES = ['marching-ants', 'flow', 'pulse', 'dash-flow'];
+const NODES = [];
+const EDGES = [];
+TYPES.forEach((type, i) => {
+  const y = 60 + i * 110;
+  NODES.push({ id: `a${i}`, position: { x: 120, y }, size: { width: 130, height: 56 }, label: type });
+  NODES.push({ id: `b${i}`, position: { x: 640, y }, size: { width: 130, height: 56 }, label: '' });
+  EDGES.push({ id: `e${i}`, source: `a${i}`, target: `b${i}`, style: { animation: { type, speed: 'normal' } } });
+});
+
+defineDemo({
+  name: 'Animating edges',
+  blurb: 'Four flow animations (marching-ants · flow · pulse · dash-flow) — asserted by the resolved CSS animation-name on the path, not just a class string.',
+  reactflow: 'Edge with animation',
+
+  async setup(ctx) {
+    ctx.instance = render({ nodes: NODES, edges: EDGES }, ctx.host);
+    ctx.diagram = ctx.instance.getModel();
+    await ctx.tick();
+  },
+
+  async assert(ctx) {
+    const pathOf = (id) => ctx.host.querySelector(`[data-link-id="${id}"] path.diagram-link`);
+
+    TYPES.forEach((type, i) => {
+      const p = pathOf(`e${i}`);
+      check(!!p, `link e${i} did not render`);
+      check(p.getAttribute('class').includes(`link-animated-${type}`),
+        `link e${i} is missing the link-animated-${type} class (got '${p.getAttribute('class')}')`);
+      // THE TEETH: the stylesheet is present and the browser resolved a real
+      // animation. A class with no live keyframe rule would return 'none'.
+      const anim = getComputedStyle(p).animationName;
+      check(anim && anim !== 'none',
+        `link e${i} (${type}) has the class but NO running CSS animation resolved (animation-name: ${anim})`);
+    });
+
+    // Turning animation OFF must actually stop it — proof the style drives it.
+    ctx.diagram.getLink('e0').updateStyle({ animation: { type: 'none' } });
+    ctx.instance.renderNow();
+    await ctx.tick();
+    const off = pathOf('e0');
+    check(!off.getAttribute('class').includes('link-animated-'),
+      "setting animation type 'none' left the animation class on the edge");
+    check(getComputedStyle(off).animationName === 'none',
+      'the edge is still animating after being turned off');
+
+    ctx.diagram.getLink('e0').updateStyle({ animation: { type: 'marching-ants' } });
+    ctx.instance.renderNow();
+  },
+});
+</script>

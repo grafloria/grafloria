@@ -1,0 +1,75 @@
+<meta charset="utf-8">
+<title>Parallel links & self-loops — Grafloria</title>
+<link rel="stylesheet" href="../shell/demo.css">
+<style>#canvas { height: calc(100vh - 140px); }</style>
+<header id="demo-head"></header>
+<div id="canvas"></div>
+<script type="module">
+import { render } from '../shell/grafloria.js';
+import { defineDemo, check } from '../shell/demo.js';
+
+// Two things React Flow does poorly or not at all:
+//   1. THREE links between the same pair auto-separate onto their own lanes
+//      instead of stacking into one line (parallelLinks).
+//   2. A link from a node to ITSELF routes as a real loop outside the node body,
+//      instead of degenerating into a stub buried inside it.
+const NODES = [
+  { id: 'a', position: { x: 140, y: 120 }, size: { width: 130, height: 60 }, label: 'A' },
+  { id: 'b', position: { x: 660, y: 120 }, size: { width: 130, height: 60 }, label: 'B' },
+  { id: 's', position: { x: 400, y: 380 }, size: { width: 130, height: 60 }, label: 'Self' },
+];
+const EDGES = [
+  { id: 'p1', source: 'a', target: 'b', type: 'direct' },
+  { id: 'p2', source: 'a', target: 'b', type: 'direct' },
+  { id: 'p3', source: 'a', target: 'b', type: 'direct' },
+  { id: 'loop', source: 's', target: 's' },
+];
+
+/** The midpoint of a routed polyline, by arc length (roughly). */
+const mid = (pts) => pts[Math.floor(pts.length / 2)];
+
+defineDemo({
+  name: 'Parallel links & self-loops',
+  blurb: 'Three links between the same pair fan onto separate lanes; a self-link routes as a real loop OUTSIDE its node. Both asserted geometrically.',
+
+  async setup(ctx) {
+    ctx.instance = render({ nodes: NODES, edges: EDGES }, ctx.host, { renderer: { parallelLinks: true, parallelSpacing: 18 } });
+    ctx.diagram = ctx.instance.getModel();
+    await ctx.tick();
+  },
+
+  async assert(ctx) {
+    // --- parallel separation ------------------------------------------------
+    const p = ['p1', 'p2', 'p3'].map((id) => ctx.diagram.getLink(id).points);
+    // Same endpoints for all three (they connect the same ports)...
+    check(
+      p.every((pts) => Math.abs(pts[0].x - p[0][0].x) < 1 && Math.abs(pts[0].y - p[0][0].y) < 1),
+      'the three parallel links do not share a start point — they are not really parallel'
+    );
+    // ...but DISTINCT interiors: their mid-lanes must be spread apart.
+    const ys = p.map((pts) => mid(pts).y);
+    const spread = Math.max(...ys) - Math.min(...ys);
+    check(spread > 20, `three parallel links stacked into one lane (mid-y spread only ${spread.toFixed(1)}px) — separation is dead`);
+    const laneKeys = new Set(ys.map((y) => Math.round(y)));
+    check(laneKeys.size === 3, `expected 3 distinct lanes, got ${laneKeys.size}`);
+
+    // --- self-loop ----------------------------------------------------------
+    const loop = ctx.diagram.getLink('loop');
+    check(loop.isSelfLoop(), 'the s→s link is not recognised as a self-loop');
+    const lp = loop.points;
+    check(lp.length >= 4, `a self-loop should be a multi-point loop, got ${lp.length} points`);
+
+    // It must LEAVE the node body: at least one waypoint sits outside node S's rect.
+    const S = NODES[2];
+    const box = { x1: S.position.x, y1: S.position.y, x2: S.position.x + S.size.width, y2: S.position.y + S.size.height };
+    const outside = lp.some((pt) => pt.x < box.x1 - 4 || pt.x > box.x2 + 4 || pt.y < box.y1 - 4 || pt.y > box.y2 + 4);
+    check(outside, 'the self-loop never leaves its own node body — it degenerated into a stub');
+
+    // And it must RETURN: first and last endpoints both lie on node S's perimeter.
+    const onPerimeter = (pt) =>
+      pt.x >= box.x1 - 2 && pt.x <= box.x2 + 2 && pt.y >= box.y1 - 2 && pt.y <= box.y2 + 2;
+    check(onPerimeter(lp[0]) && onPerimeter(lp[lp.length - 1]),
+      'the self-loop does not begin and end on its own node');
+  },
+});
+</script>

@@ -1,0 +1,83 @@
+<meta charset="utf-8">
+<title>Floating edges — Grafloria</title>
+<link rel="stylesheet" href="../shell/demo.css">
+<style>
+  #bar { display: flex; gap: 8px; padding: 10px 24px; border-bottom: 1px solid rgba(127,127,127,.25); align-items: center; flex-wrap: wrap; }
+  #bar button { padding: 5px 12px; border-radius: 6px; border: 1px solid rgba(127,127,127,.4); background: transparent; color: inherit; cursor: pointer; font: inherit; }
+  #canvas { height: calc(100vh - 200px); }
+</style>
+<header id="demo-head"></header>
+<div id="bar">
+  <span>put B:</span>
+  <button data-pos="right">right</button>
+  <button data-pos="above">above</button>
+  <button data-pos="left">left</button>
+</div>
+<div id="canvas"></div>
+<script type="module">
+import { render } from '../shell/grafloria.js';
+import { defineDemo, check } from '../shell/demo.js';
+
+// Floating edges (draw.io's strategy): the endpoints are not pinned to a fixed
+// port — they SLIDE around each node's perimeter to the point nearest the other
+// node. Turned on per link with metadata.connectionPoint = 'smart'. Move a node
+// and the attachment migrates to whichever side now faces its partner.
+const A = { id: 'a', position: { x: 380, y: 260 }, size: { width: 140, height: 90 }, label: 'A' };
+const POSITIONS = { right: { x: 760, y: 260 }, above: { x: 380, y: 30 }, left: { x: 40, y: 260 } };
+
+defineDemo({
+  name: 'Floating edges',
+  blurb: "Endpoints slide to the nearest point on each node's perimeter (draw.io strategy) — asserted by watching the attachment migrate to the side that faces the partner when a node moves.",
+  reactflow: 'Floating Edges',
+
+  async setup(ctx) {
+    ctx.instance = render({
+      nodes: [A, { id: 'b', position: { ...POSITIONS.right }, size: { width: 140, height: 90 }, label: 'B' }],
+      edges: [{ id: 'e1', source: 'a', target: 'b', type: 'direct', metadata: { connectionPoint: 'smart' } }],
+    }, ctx.host);
+    ctx.diagram = ctx.instance.getModel();
+    ctx.place = (pos) => {
+      ctx.diagram.getNode('b').setPosition(POSITIONS[pos].x, POSITIONS[pos].y);
+      ctx.instance.renderNow();
+      for (const btn of document.querySelectorAll('#bar button'))
+        btn.setAttribute('aria-pressed', String(btn.dataset.pos === pos));
+    };
+    for (const btn of document.querySelectorAll('#bar button'))
+      btn.addEventListener('click', () => ctx.place(btn.dataset.pos));
+    ctx.place('right');
+    await ctx.tick();
+  },
+
+  async assert(ctx) {
+    const aBox = { x1: A.position.x, y1: A.position.y, x2: A.position.x + A.size.width, y2: A.position.y + A.size.height };
+    const start = () => ctx.diagram.getLinks()[0].points[0];
+
+    // B to the RIGHT → A's endpoint is on A's RIGHT edge.
+    ctx.place('right');
+    await ctx.tick();
+    const right = { ...start() };
+    check(Math.abs(right.x - aBox.x2) < 2, `with B to the right, A's endpoint should be on A's right edge (x=${aBox.x2}), got x=${Math.round(right.x)}`);
+
+    // B ABOVE → the endpoint MIGRATES to A's TOP edge. Same link, no re-wiring.
+    ctx.place('above');
+    await ctx.tick();
+    const above = { ...start() };
+    check(Math.abs(above.y - aBox.y1) < 2, `with B above, A's endpoint should slide to A's top edge (y=${aBox.y1}), got y=${Math.round(above.y)}`);
+    check(Math.abs(above.x - right.x) > 20 || Math.abs(above.y - right.y) > 20,
+      'the endpoint did not move when the partner moved — it is pinned, not floating');
+
+    // B to the LEFT → endpoint on A's LEFT edge.
+    ctx.place('left');
+    await ctx.tick();
+    const left = { ...start() };
+    check(Math.abs(left.x - aBox.x1) < 2, `with B to the left, A's endpoint should be on A's left edge (x=${aBox.x1}), got x=${Math.round(left.x)}`);
+
+    // Three genuinely different attachment points.
+    const distinct = new Set([right, above, left].map((p) => `${Math.round(p.x)},${Math.round(p.y)}`));
+    check(distinct.size === 3, `expected three distinct attachment points, saw ${distinct.size}`);
+
+    ctx.place('right');
+    ctx.instance.renderNow();
+  },
+});
+</script>
