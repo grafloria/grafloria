@@ -1,4 +1,7 @@
-import type { DiagramEngine, LinkModel, NodeModel } from '@grafloria/engine';
+import type { DiagramEngine, LinkModel, NodeModel, GroupModel } from '@grafloria/engine';
+// wave12/connect-ergonomics (gap 1): the ONE undoable step a subflow drag commits.
+import { MoveGroupCommand } from '@grafloria/engine';
+import type { GroupFrameSnapshot, GroupNodeMove, GroupFrameMove } from '@grafloria/engine';
 import type { InteractionController } from '../interaction/interaction-controller';
 import type { CanvasRect, ViewportController } from '../viewport/viewport-controller';
 import { isBrowser } from '../platform';
@@ -14,6 +17,10 @@ import { TouchGestureController } from '../interaction/touch-gestures';
 // piece that was missing — the thing that actually GRABS one from a DOM pointer.
 import { SelectionToolsController } from '../interaction/selection-tools';
 import type { ToolHandle } from '../interaction/selection-tools';
+// wave12/connect-ergonomics (gap 2): the shipped proximity-connect engine, now
+// driven from the LIVE node drag instead of host glue.
+import { SnapController } from '../interaction/snapping';
+import type { ProximityCandidate } from '../interaction/snapping';
 
 /**
  * DomEventBinder — the framework-agnostic DOM ⇄ interaction seam.
@@ -90,6 +97,27 @@ interface NodeDragState {
   committed: boolean;
 }
 
+/**
+ * wave12/connect-ergonomics (gap 1): an armed-but-not-yet-committed GROUP drag.
+ *
+ * The engine stores absolute coordinates, so a group's members do not track the
+ * frame — the drag translates every member node (recursively through nested
+ * groups) and the frame(s) itself. `nodeFrom` / `frameFrom` are the drag-START
+ * snapshot so the whole gesture commits as ONE undoable {@link MoveGroupCommand}.
+ */
+interface GroupDragState {
+  groupId: string;
+  nodeIds: string[];
+  groupIds: string[];
+  startClientX: number;
+  startClientY: number;
+  lastWorldX: number;
+  lastWorldY: number;
+  committed: boolean;
+  nodeFrom: Map<string, { x: number; y: number; z?: number }>;
+  frameFrom: Map<string, GroupFrameSnapshot>;
+}
+
 export class DomEventBinder {
   private readonly options: Required<DomEventBinderOptions>;
 
@@ -101,6 +129,16 @@ export class DomEventBinder {
   private lastPanY = 0;
 
   private nodeDrag: NodeDragState | null = null;
+  private groupDrag: GroupDragState | null = null;
+
+  /**
+   * wave12/connect-ergonomics (gap 2): the proximity-connect engine, lazily
+   * built the first time `enableProximityConnect` is used. Reused across drags so
+   * a highlight it painted can always be cleared by the same instance.
+   */
+  private snap?: SnapController;
+  /** The proximity candidate currently highlighted mid-drag (for commit on drop). */
+  private proximityCandidate: ProximityCandidate | null = null;
 
   // Bound once so removeEventListener gets the SAME function object it added —
   // `removeEventListener(this.onX.bind(this))` allocates a new function and
@@ -332,6 +370,7 @@ export class DomEventBinder {
     this.touch.reset();
     this.isPanning = false;
     this.nodeDrag = null;
+    this.groupDrag = null;
     this.spaceKeyPressed = false;
   }
 
@@ -683,9 +722,42 @@ export class DomEventBinder {
     const node = this.resolveNode(diagram, worldX, worldY, event);
     if (node) {
       event.preventDefault();
+
+      // 8a. wave12 (gap 3) — Easy Connect: the whole node BODY is a handle. When
+      // on (and the configured modifier, if any, is held), a body press starts a
+      // CONNECTION from the node's nearest port instead of a move. A press ON a
+      // port already started a connection at step 2, so this only fires on the
+      // body. Off by default, so normal body-drag-to-move is untouched; a host
+      // that keeps move gates connect behind `easyConnectModifier` (e.g. shift).
+      if (!this.isReadonly() && config.enableEasyConnect && this.easyConnectModifierHeld(event, config)) {
+        // Select the node first (so a plain click still selects), THEN connect.
+        this.host.interaction.startNodeBodyConnection(node, worldX, worldY, engine);
+        this.host.requestRender();
+        this.host.emit('node:click', { node, world: { x: worldX, y: worldY } });
+        return;
+      }
+
       this.pressNode(node, diagram, event, worldX, worldY);
       this.host.emit('node:click', { node, world: { x: worldX, y: worldY } });
       return;
+    }
+
+    // 8b. wave12 (gap 1) — Group frame → drag the whole subflow. Only reached
+    // when NO node/link/port was under the cursor (a member node wins the ladder
+    // above), so this is a press on the container's empty area / header. Opt-in
+    // via `enableGroupDrag`; off, this falls straight through to the clear below,
+    // byte-identical to the historic behaviour.
+    if (
+      !this.isReadonly() &&
+      config.enableGroupDrag &&
+      !(event.shiftKey || event.ctrlKey || event.metaKey || event.altKey)
+    ) {
+      const group = this.findGroupAtPoint(diagram, worldX, worldY);
+      if (group) {
+        event.preventDefault();
+        this.pressGroup(group, diagram, event, worldX, worldY);
+        return;
+      }
     }
 
     // 9. Empty canvas → clear the selection (unless a modifier is extending it).
@@ -748,6 +820,11 @@ export class DomEventBinder {
       this.lastPanX = event.clientX;
       this.lastPanY = event.clientY;
       this.host.requestRender();
+      return;
+    }
+
+    if (this.groupDrag) {
+      this.moveGroupDrag(event);
       return;
     }
 
@@ -903,10 +980,20 @@ export class DomEventBinder {
       return;
     }
 
+    if (this.groupDrag) {
+      event.preventDefault();
+      this.endGroupDrag(engine);
+      this.setCursor('default');
+      return;
+    }
+
     if (this.nodeDrag) {
       const moved = this.nodeDrag.committed;
       this.nodeDrag = null;
+      // wave12 (gap 2): a drag that ended near a compatible port auto-links on drop.
+      const connected = moved ? this.commitProximityConnection() : false;
       if (moved) this.emitNodesChange();
+      if (connected) this.emitEdgesChange();
     }
 
     this.isPanning = false;
@@ -929,9 +1016,17 @@ export class DomEventBinder {
       this.host.requestRender();
     }
 
+    // wave12/connect-ergonomics (gap 1): the pointer left mid-group-drag → commit it.
+    if (this.groupDrag) {
+      if (engine) this.endGroupDrag(engine);
+      else this.groupDrag = null;
+    }
+
     if (this.nodeDrag) {
       const moved = this.nodeDrag.committed;
       this.nodeDrag = null;
+      // Pointer left mid-drag: abandon the gesture, do NOT auto-connect.
+      this.clearProximityPreview();
       if (moved) this.emitNodesChange();
     }
 
@@ -994,7 +1089,11 @@ export class DomEventBinder {
       if (this.selectionTools.activeGesture() === 'resize') {
         this.selectionTools.cancelGesture(engine);
       }
+      // wave12 (gap 1): abandon an in-flight group drag WITHOUT restoring — matches
+      // node-drag Escape (which also leaves the node where the drag left it).
       this.nodeDrag = null;
+      this.groupDrag = null;
+      this.clearProximityPreview(); // (gap 2) Escape never auto-connects
       diagram.clearSelection();
       this.host.requestRender();
       this.emitSelectionChange();
@@ -1108,6 +1207,269 @@ export class DomEventBinder {
 
     // Node geometry moved ⇒ the port hit cache is stale.
     this.host.interaction.invalidatePortHitCache();
+
+    // wave12 (gap 2): live proximity-connect preview — light up the port pair a
+    // drop would auto-link, and remember it for commit on mouseup.
+    this.updateProximityPreview(drag.nodeIds);
+
+    this.host.requestRender();
+  }
+
+  // ==========================================================================
+  // wave12/connect-ergonomics (gap 2) — Proximity connect on the live node drag.
+  // ==========================================================================
+
+  /** The lazily-built proximity-connect engine (only when the feature is on). */
+  private snapController(): SnapController {
+    if (!this.snap) this.snap = new SnapController();
+    return this.snap;
+  }
+
+  /**
+   * While dragging, find the best proximity candidate for any dragged node and
+   * highlight its port pair (the SAME flags a connection drag paints). Stores it
+   * so {@link commitProximityConnection} can create the link on drop. No-op —
+   * and clears any prior highlight — when the feature is off or nothing is near.
+   */
+  private updateProximityPreview(draggedIds: string[]): void {
+    const engine = this.engine();
+    if (!engine) return;
+    if (!engine.getInteractionConfig().enableProximityConnect) return;
+
+    this.proximityCandidate = this.bestProximityCandidate(draggedIds);
+    this.snapController().highlightProximityTarget(engine, this.proximityCandidate);
+  }
+
+  /** The closest proximity candidate across all dragged nodes (or null). */
+  private bestProximityCandidate(draggedIds: string[]): ProximityCandidate | null {
+    const engine = this.engine();
+    if (!engine) return null;
+    const config = engine.getInteractionConfig();
+    const radius = config.proximityConnectRadius > 0 ? config.proximityConnectRadius : undefined;
+
+    let best: ProximityCandidate | null = null;
+    for (const id of draggedIds) {
+      const candidate = this.snapController().findProximityConnection(engine, id, radius);
+      if (candidate && (!best || candidate.distance < best.distance)) best = candidate;
+    }
+    return best;
+  }
+
+  /**
+   * Commit the highlighted proximity candidate as ONE undoable AddLinkCommand,
+   * then clear the highlight. Called on the node-drag mouseup. Returns true when
+   * a link was actually created.
+   */
+  private commitProximityConnection(): boolean {
+    const engine = this.engine();
+    if (!engine) return false;
+
+    const candidate = this.proximityCandidate;
+    this.proximityCandidate = null;
+    this.snapController().highlightProximityTarget(engine, null);
+
+    if (!candidate || engine.getInteractionConfig().enableProximityConnect !== true) return false;
+    if (this.isReadonly()) return false;
+
+    const command = this.snapController().buildProximityLinkCommand(candidate);
+    void engine.commandManager.execute(command);
+    return true;
+  }
+
+  /** Drop any live proximity highlight/candidate without committing. */
+  private clearProximityPreview(): void {
+    const engine = this.engine();
+    if (this.proximityCandidate && engine) {
+      this.snapController().highlightProximityTarget(engine, null);
+    }
+    this.proximityCandidate = null;
+  }
+
+  // ==========================================================================
+  // wave12/connect-ergonomics (gap 1) — Group drag: move a subflow container and
+  // ALL its contents by the same delta, as ONE undoable step.
+  // ==========================================================================
+
+  /**
+   * The innermost group whose outer frame contains the world point. "Innermost"
+   * (deepest nesting, then smallest area) so grabbing a nested sub-flow drags the
+   * sub-flow, not the pipeline around it. Skips groups with no drawable frame.
+   */
+  private findGroupAtPoint(
+    diagram: NonNullable<ReturnType<DiagramEngine['getDiagram']>>,
+    worldX: number,
+    worldY: number
+  ): GroupModel | undefined {
+    let best: GroupModel | undefined;
+    let bestDepth = -Infinity;
+    let bestArea = Infinity;
+
+    for (const group of diagram.getGroups()) {
+      if (group.isCollapsed) continue;
+      const r = group.getOuterBounds();
+      if (r.width <= 0 || r.height <= 0) continue;
+      if (worldX < r.x || worldX > r.x + r.width || worldY < r.y || worldY > r.y + r.height) {
+        continue;
+      }
+      const depth = diagram.getDepth(group.id);
+      const area = r.width * r.height;
+      if (depth > bestDepth || (depth === bestDepth && area < bestArea)) {
+        best = group;
+        bestDepth = depth;
+        bestArea = area;
+      }
+    }
+    return best;
+  }
+
+  /**
+   * Every member NODE (recursively through nested groups) and every group FRAME
+   * (this group + its descendant groups) that a drag of `group` must carry.
+   * Cycle-guarded so a corrupt membership loop can never spin.
+   */
+  private collectGroupContents(
+    diagram: NonNullable<ReturnType<DiagramEngine['getDiagram']>>,
+    group: GroupModel
+  ): { nodeIds: string[]; groupIds: string[] } {
+    const nodeIds = new Set<string>();
+    const groupIds = new Set<string>();
+    const stack: GroupModel[] = [group];
+
+    while (stack.length) {
+      const g = stack.pop()!;
+      if (groupIds.has(g.id)) continue;
+      groupIds.add(g.id);
+      for (const memberId of g.members) {
+        const node = diagram.getNode(memberId);
+        if (node) {
+          nodeIds.add(memberId);
+          continue;
+        }
+        const child = diagram.getGroup(memberId);
+        if (child && !groupIds.has(child.id)) stack.push(child);
+      }
+    }
+    return { nodeIds: [...nodeIds], groupIds: [...groupIds] };
+  }
+
+  /** Snapshot a group frame's restorable geometry (for undo). */
+  private snapshotFrame(group: GroupModel): GroupFrameSnapshot {
+    return {
+      position: { x: group.position.x, y: group.position.y },
+      size: group.size ? { ...group.size } : undefined,
+      bounds: group.bounds ? { ...group.bounds } : undefined,
+    };
+  }
+
+  /** Arm a group drag (threshold-gated, mirroring the node-drag arming). */
+  private pressGroup(
+    group: GroupModel,
+    diagram: NonNullable<ReturnType<DiagramEngine['getDiagram']>>,
+    event: MouseEvent,
+    worldX: number,
+    worldY: number
+  ): void {
+    const { nodeIds, groupIds } = this.collectGroupContents(diagram, group);
+
+    const nodeFrom = new Map<string, { x: number; y: number; z?: number }>();
+    for (const id of nodeIds) {
+      const node = diagram.getNode(id);
+      if (node && !node.state.locked) nodeFrom.set(id, { ...node.position });
+    }
+    const frameFrom = new Map<string, GroupFrameSnapshot>();
+    for (const id of groupIds) {
+      const g = diagram.getGroup(id);
+      if (g) frameFrom.set(id, this.snapshotFrame(g));
+    }
+
+    this.groupDrag = {
+      groupId: group.id,
+      nodeIds: [...nodeFrom.keys()],
+      groupIds: [...frameFrom.keys()],
+      startClientX: event.clientX,
+      startClientY: event.clientY,
+      lastWorldX: worldX,
+      lastWorldY: worldY,
+      committed: false,
+      nodeFrom,
+      frameFrom,
+    };
+    this.setCursor('move');
+  }
+
+  /** Translate the whole subflow live during a group drag (past the threshold). */
+  private moveGroupDrag(event: MouseEvent): void {
+    const drag = this.groupDrag;
+    const diagram = this.engine()?.getDiagram();
+    if (!drag || !diagram) return;
+
+    if (!drag.committed) {
+      const dx = event.clientX - drag.startClientX;
+      const dy = event.clientY - drag.startClientY;
+      if (Math.hypot(dx, dy) < this.options.dragThreshold) return;
+      drag.committed = true;
+    }
+
+    const { x: worldX, y: worldY } = this.toWorld(event);
+    const dx = worldX - drag.lastWorldX;
+    const dy = worldY - drag.lastWorldY;
+    drag.lastWorldX = worldX;
+    drag.lastWorldY = worldY;
+    if (!dx && !dy) return;
+
+    // Members: N absolute position sets (per-property LWW converges under collab).
+    for (const id of drag.nodeIds) {
+      const node = diagram.getNode(id);
+      if (!node || node.state.locked) continue;
+      node.setPosition(node.position.x + dx, node.position.y + dy);
+    }
+    // Frames: translate this group + nested group frames alongside their contents.
+    for (const id of drag.groupIds) {
+      const g = diagram.getGroup(id);
+      if (!g) continue;
+      const r = g.getOuterBounds();
+      g.setFrame({ x: r.x + dx, y: r.y + dy, width: r.width, height: r.height });
+    }
+
+    this.host.interaction.invalidatePortHitCache();
+    this.host.requestRender();
+  }
+
+  /**
+   * End a group drag: commit the whole gesture as ONE undoable MoveGroupCommand
+   * (drag-start snapshot → current), then emit change events. The live drag has
+   * already applied the final positions, so the command's execute() is a visual
+   * no-op that merely records the single history entry; undo restores the start.
+   */
+  private endGroupDrag(engine: DiagramEngine): void {
+    const drag = this.groupDrag;
+    this.groupDrag = null;
+    if (!drag) return;
+
+    if (!drag.committed) return; // a press with no drag — nothing moved
+
+    const diagram = engine.getDiagram();
+    if (!diagram) return;
+
+    const nodeMoves: GroupNodeMove[] = [];
+    for (const [id, from] of drag.nodeFrom) {
+      const node = diagram.getNode(id);
+      if (!node) continue;
+      nodeMoves.push({ nodeId: id, from, to: { ...node.position } });
+    }
+    const frameMoves: GroupFrameMove[] = [];
+    for (const [id, from] of drag.frameFrom) {
+      const g = diagram.getGroup(id);
+      if (!g) continue;
+      frameMoves.push({ groupId: id, from, to: this.snapshotFrame(g) });
+    }
+
+    const command = new MoveGroupCommand(nodeMoves, frameMoves);
+    if (!command.isNoop()) {
+      // Record on the undo stack. State is already at `to`, so this is idempotent.
+      void engine.commandManager.execute(command);
+      this.emitNodesChange();
+    }
     this.host.requestRender();
   }
 
@@ -1117,6 +1479,27 @@ export class DomEventBinder {
 
   private engine(): DiagramEngine | null {
     return this.host.getEngine();
+  }
+
+  /**
+   * wave12 (gap 3): is the easy-connect gate satisfied for this press? With
+   * `easyConnectModifier: 'none'` (the default when the feature is on) any plain
+   * body press connects — the whole node is a handle and move is done via a drag
+   * handle / selection. A specific modifier lets a host KEEP body-drag-to-move
+   * and reserve connect for, say, a shift-drag.
+   */
+  private easyConnectModifierHeld(
+    event: MouseEvent,
+    config: ReturnType<DiagramEngine['getInteractionConfig']>
+  ): boolean {
+    switch (config.easyConnectModifier) {
+      case 'shift': return event.shiftKey;
+      case 'alt': return event.altKey;
+      case 'ctrl': return event.ctrlKey;
+      case 'meta': return event.metaKey;
+      case 'none':
+      default: return true;
+    }
   }
 
   private toWorld(event: MouseEvent): { x: number; y: number } {

@@ -44,15 +44,15 @@
   public embed with real pointer events and asserts a consequence; a broken demo fails CI.
   Where React Flow ships the same example only in its paid <b>Pro</b> tier, it is marked.</p>
   <div class="scoreboard">
-    <span class="stat"><b>82</b> demos</span>
-    <span class="stat pro"><b>27</b> are features React Flow charges for</span>
+    <span class="stat"><b>87</b> demos</span>
+    <span class="stat pro"><b>28</b> are features React Flow charges for</span>
     <span class="stat"><b>10</b> categories</span>
   </div>
 </header>
 <main>
 
       <section>
-        <h2>Nodes <span class="count">15</span></h2>
+        <h2>Nodes <span class="count">16</span></h2>
         <div class="grid">
         <a class="card" href="nodes/auto-sizing.html">
           <div class="card-name">Auto-sizing</div>
@@ -115,6 +115,14 @@
           <div class="card-blurb">Which nodes overlap which — from the diagram’s spatial index. Drag a node onto another and the overlap set updates; drag it clear and it empties.</div>
           <div class="card-foot">
             <span class="rf">React Flow: Intersections</span>
+            
+          </div>
+        </a>
+        <a class="card" href="nodes/node-resize-gesture.html">
+          <div class="card-name">Node resize gesture</div>
+          <div class="card-blurb">Select a node, then drag a resize handle — a REAL pointer drag through the default pipeline (no host wiring, no registerTool). The declared min/max/aspect clamp the size DURING the gesture, and one release is one undo step.</div>
+          <div class="card-foot">
+            <span class="rf">React Flow: Node Resizer</span>
             
           </div>
         </a>
@@ -334,7 +342,7 @@
       </section>
 
       <section>
-        <h2>Interaction <span class="count">12</span></h2>
+        <h2>Interaction <span class="count">15</span></h2>
         <div class="grid">
         <a class="card pro" href="interaction/undo-redo.html">
           <div class="card-name">Collaboration-aware undo</div>
@@ -392,6 +400,14 @@
             
           </div>
         </a>
+        <a class="card" href="interaction/easy-connect-body.html">
+          <div class="card-name">Easy connect (body)</div>
+          <div class="card-blurb">Press anywhere on a node and release anywhere on another — they wire up, no aiming at a 6px port. Built into the engine drag path; the page only sets enableEasyConnect.</div>
+          <div class="card-foot">
+            <span class="rf">React Flow: Easy Connect</span>
+            
+          </div>
+        </a>
         <a class="card pro" href="interaction/helper-lines.html">
           <div class="card-name">Helper lines (snaplines)</div>
           <div class="card-blurb">Drag a node near another's left edge and it snaps into alignment with a guide; a genuine near-miss beyond the threshold does not. Equal-spacing guides appear when three nodes line up evenly.</div>
@@ -408,11 +424,27 @@
             <span class="badge" title="React Flow puts the equivalent behind its paywall">Pro / paid there</span>
           </div>
         </a>
+        <a class="card pro" href="interaction/parent-move.html">
+          <div class="card-name">Parent move</div>
+          <div class="card-blurb">Drag a subflow container by its frame and the whole graph inside it moves with it — members and frame together, as one undoable step. Nothing wires this host-side; the engine does it.</div>
+          <div class="card-foot">
+            <span class="rf">React Flow: Sub Flows</span>
+            <span class="badge" title="React Flow puts the equivalent behind its paywall">Pro / paid there</span>
+          </div>
+        </a>
         <a class="card" href="interaction/preventing-cycles.html">
           <div class="card-name">Preventing cycles</div>
           <div class="card-blurb">A DAG that stays acyclic: a connection whose target can already reach its source is refused, so a→b→c→d can never be closed into a loop. Driven through the real connect pipeline.</div>
           <div class="card-foot">
             <span class="rf">React Flow: Prevent Cycles</span>
+            
+          </div>
+        </a>
+        <a class="card" href="interaction/proximity-connect-live.html">
+          <div class="card-name">Proximity connect (live)</div>
+          <div class="card-blurb">Drag a node next to another and the wire proposes AND commits itself — driven by the engine’s own drag path, not host glue. The page only sets enableProximityConnect.</div>
+          <div class="card-foot">
+            <span class="rf">React Flow: Proximity Connect</span>
             
           </div>
         </a>
@@ -514,7 +546,7 @@
       </section>
 
       <section>
-        <h2>Grouping &amp; subflows <span class="count">5</span></h2>
+        <h2>Grouping &amp; subflows <span class="count">6</span></h2>
         <div class="grid">
         <a class="card pro" href="grouping/collapse-expand.html">
           <div class="card-name">Collapse &amp; expand</div>
@@ -522,6 +554,14 @@
           <div class="card-foot">
             <span class="rf">React Flow: Collapsible / Expandable</span>
             <span class="badge" title="React Flow puts the equivalent behind its paywall">Pro / paid there</span>
+          </div>
+        </a>
+        <a class="card" href="grouping/group-frames.html">
+          <div class="card-name">Group frames</div>
+          <div class="card-blurb">Groups now draw a visible, labelled, themed frame — nested containers included. Was model-only since Wave 7.</div>
+          <div class="card-foot">
+            <span class="rf">React Flow: Sub Flow</span>
+            
           </div>
         </a>
         <a class="card pro" href="grouping/parent-child.html">

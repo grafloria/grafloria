@@ -173,6 +173,53 @@ export interface InteractionConfig {
    * Phase 2.3: Control point editor configuration
    */
   controlPointEditor?: ControlPointEditorConfig;
+
+  /**
+   * wave12/connect-ergonomics (gap 1) — Drag a group's frame to move the whole
+   * subflow: the container and every member node (recursively through nested
+   * groups) translate by the same delta, committed as ONE undoable step.
+   *
+   * Opt-in (default false) so steady-state is untouched: with it off, a press on
+   * a group's empty frame area still falls through to clear-selection exactly as
+   * before. A press on a MEMBER NODE always drags that node (the node wins the
+   * priority ladder) regardless of this flag.
+   */
+  enableGroupDrag: boolean;
+
+  /**
+   * wave12/connect-ergonomics (gap 2) — React-Flow "Proximity Connect": after a
+   * node drag, if one of its ports comes within `proximityConnectRadius` of a
+   * compatible port on another node, auto-create the link on drop (one undoable
+   * command). Drives the shipped `SnapController.findProximityConnection` from
+   * the LIVE drag path, not from host glue. Default false (opt-in).
+   */
+  enableProximityConnect: boolean;
+
+  /**
+   * wave12/connect-ergonomics (gap 2) — Auto-link radius in world units for
+   * {@link enableProximityConnect}. Defaults to `DEFAULT_SNAP_CONFIG`'s value
+   * when unset/0.
+   */
+  proximityConnectRadius: number;
+
+  /**
+   * wave12/connect-ergonomics (gap 3) — React-Flow "Easy Connect": make the
+   * whole node BODY a connection handle. A press on a node body (not over a
+   * specific port) starts a connection from the node's nearest/default port
+   * instead of a move. Default false (opt-in) so normal body-drag-to-move is
+   * preserved; when on, hold no modifier to connect and the configured
+   * {@link easyConnectModifier} (if any) still gates it.
+   */
+  enableEasyConnect: boolean;
+
+  /**
+   * wave12/connect-ergonomics (gap 3) — Optional modifier that must be held for
+   * an easy-connect body press to start a connection (e.g. 'shift'). When
+   * 'none' (the default) any plain body press connects while {@link
+   * enableEasyConnect} is on. Lets a host keep body-drag-to-move as the default
+   * gesture and gate connect behind a key.
+   */
+  easyConnectModifier: 'none' | 'shift' | 'alt' | 'ctrl' | 'meta';
 }
 
 /**
@@ -327,6 +374,12 @@ export const DEFAULT_INTERACTION_CONFIG: InteractionConfig = {
     showControlLines: true,
     symmetricControls: false,
   },
+  // wave12/connect-ergonomics — all three opt-in so steady-state is untouched.
+  enableGroupDrag: false,
+  enableProximityConnect: false,
+  proximityConnectRadius: 0, // 0 → fall back to DEFAULT_SNAP_CONFIG.proximityConnectRadius
+  enableEasyConnect: false,
+  easyConnectModifier: 'none',
 };
 
 /**

@@ -1,0 +1,83 @@
+<meta charset="utf-8">
+<title>Proximity connect (live) — Grafloria</title>
+<link rel="stylesheet" href="../shell/demo.css">
+<header id="demo-head"></header>
+<div id="canvas"></div>
+<script type="module">
+import { render } from '../shell/grafloria.js';
+import { defineDemo, check } from '../shell/demo.js';
+
+// Proximity connect, wired into the ENGINE. The sibling demo (nodes/proximity-
+// connect.html) drives SnapController.findProximityConnection from host code on
+// drop; THIS page imports no SnapController and calls nothing — it flips one
+// config flag and drags a node with real pointer events. The live drag path
+// proposes and commits the link itself. That is the difference between "the
+// helper exists" and "the product does it".
+
+defineDemo({
+  name: 'Proximity connect (live)',
+  blurb: 'Drag a node next to another and the wire proposes AND commits itself — driven by the engine’s own drag path, not host glue. The page only sets enableProximityConnect.',
+  reactflow: 'Proximity Connect',
+
+  async setup(ctx) {
+    const api = render({
+      nodes: [
+        { id: 'a', position: { x: 150, y: 150 }, size: { width: 150, height: 80 }, label: 'drag me →' },
+        { id: 'b', position: { x: 600, y: 150 }, size: { width: 150, height: 80 }, label: 'B' },
+      ],
+      edges: [],
+    }, ctx.host);
+    ctx.instance = api;
+    ctx.diagram = api.getModel();
+    ctx.engine = api.getEngine();
+
+    // The ONLY wiring: turn the built-in proximity connect on.
+    ctx.engine.setInteractionConfig({ enableProximityConnect: true });
+
+    ctx.fire = (type, w) => {
+      const rect = ctx.host.getBoundingClientRect();
+      const c = api.viewport.worldToClient(w.x, w.y, rect);
+      ctx.host.dispatchEvent(new MouseEvent(type, { bubbles: true, clientX: c.x, clientY: c.y, button: 0 }));
+    };
+    ctx.dragBody = (p0, p1) => {
+      ctx.fire('mousedown', p0);
+      ctx.fire('mousemove', { x: p0.x + 6, y: p0.y }); // pass the drag threshold
+      ctx.fire('mousemove', p1);
+      ctx.fire('mouseup',   p1);
+      api.renderNow();
+    };
+    ctx.centre = (id) => { const n = ctx.diagram.getNode(id); return { x: n.position.x + n.size.width / 2, y: n.position.y + n.size.height / 2 }; };
+    await ctx.tick();
+  },
+
+  async assert(ctx) {
+    const m = ctx.diagram;
+    check(m.getLinks().length === 0, 'should start with no links');
+
+    // 1. Drag A until its right edge nears B's left edge (600). A starts x=150
+    //    (right edge 300); move +280 so the edge (580) is ~20px from B — inside
+    //    the default 60px proximity radius. NO host-side snap call here.
+    const before = ctx.centre('a');
+    ctx.dragBody(before, { x: before.x + 280, y: before.y });
+    await ctx.tick();
+
+    // 2. THE TEETH: the engine created a real link between A and B on its own.
+    check(m.getLinks().length === 1, `the live drag should have auto-created one link, got ${m.getLinks().length}`);
+    const link = m.getLinks()[0];
+    const ends = [m.getNodeByPortId(link.sourcePortId).id, m.getNodeByPortId(link.targetPortId).id].sort().join(',');
+    check(ends === 'a,b', `the committed link should join A and B (${ends})`);
+
+    // 3. It is undoable as one step.
+    check(ctx.engine.commandManager.canUndo(), 'the auto-link should be undoable');
+    await ctx.engine.commandManager.undo();
+    check(m.getLinks().length === 0, 'undo should remove the auto-created link');
+
+    // 4. Redo it, then drag A clear again — a far drop proposes nothing new.
+    await ctx.engine.commandManager.redo();
+    check(m.getLinks().length === 1, 'redo should restore the link');
+    ctx.dragBody(ctx.centre('a'), { x: 220, y: 460 });
+    await ctx.tick();
+    check(m.getLinks().length === 1, `a drop clear of B must not add a link, got ${m.getLinks().length}`);
+  },
+});
+</script>
