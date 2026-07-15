@@ -1,0 +1,80 @@
+<meta charset="utf-8">
+<title>Easy connect (body) — Grafloria</title>
+<link rel="stylesheet" href="../shell/demo.css">
+<header id="demo-head"></header>
+<div id="canvas"></div>
+<script type="module">
+import { render } from '../shell/grafloria.js';
+import { defineDemo, check } from '../shell/demo.js';
+
+// Easy Connect, in the ENGINE. The sibling demo (nodes/easy-connect.html) makes
+// the whole node a handle by registering a custom tool host-side; THIS page
+// registers nothing — it flips `enableEasyConnect` and drags from a node body
+// with real pointer events. The built-in drag path starts the connection from
+// the node's nearest port and, on release over another node's body, links them.
+
+defineDemo({
+  name: 'Easy connect (body)',
+  blurb: 'Press anywhere on a node and release anywhere on another — they wire up, no aiming at a 6px port. Built into the engine drag path; the page only sets enableEasyConnect.',
+  reactflow: 'Easy Connect',
+
+  async setup(ctx) {
+    const api = render({
+      nodes: [
+        { id: 'a', position: { x: 100, y: 150 }, size: { width: 200, height: 120 }, label: 'A · press anywhere' },
+        { id: 'b', position: { x: 560, y: 150 }, size: { width: 200, height: 120 }, label: 'B · release anywhere' },
+      ],
+      edges: [],
+    }, ctx.host);
+    ctx.instance = api;
+    ctx.diagram = api.getModel();
+    ctx.engine = api.getEngine();
+
+    // The ONLY wiring: make the whole node body a connection handle.
+    ctx.engine.setInteractionConfig({ enableEasyConnect: true });
+
+    ctx.fire = (type, w) => {
+      const rect = ctx.host.getBoundingClientRect();
+      const c = api.viewport.worldToClient(w.x, w.y, rect);
+      ctx.host.dispatchEvent(new MouseEvent(type, { bubbles: true, clientX: c.x, clientY: c.y, button: 0 }));
+    };
+    ctx.centre = (id) => { const n = ctx.diagram.getNode(id); return { x: n.position.x + n.size.width / 2, y: n.position.y + n.size.height / 2 }; };
+    ctx.bodyDrag = (p0, p1) => {
+      ctx.fire('mousedown', p0);
+      ctx.fire('mousemove', { x: p0.x + 8, y: p0.y });
+      ctx.fire('mousemove', p1);
+      ctx.fire('mouseup', p1);
+      api.renderNow();
+    };
+    await ctx.tick();
+  },
+
+  async assert(ctx) {
+    const m = ctx.diagram;
+    check(m.getLinks().length === 0, 'should start with no links');
+
+    // The centres are far from every port glyph — so this only works if the whole
+    // BODY is a handle, not just the glyphs.
+    const a = m.getNode('a'), ca = ctx.centre('a');
+    const nearest = Math.min(...a.getPorts().map((p) => { const ap = p.getAbsolutePosition(a.getBoundingBox()); return Math.hypot(ap.x - ca.x, ap.y - ca.y); }));
+    check(nearest > 40, `precondition: A's centre must be well away from its ports (was ${nearest.toFixed(0)}px)`);
+
+    // 1. Press A's centre, release on B's centre → they connect.
+    ctx.bodyDrag(ctx.centre('a'), ctx.centre('b'));
+    await ctx.tick();
+    check(m.getLinks().length === 1, `press-A-release-B should create one link, got ${m.getLinks().length}`);
+    const link = m.getLinks()[0];
+    const ends = [m.getNodeByPortId(link.sourcePortId).id, m.getNodeByPortId(link.targetPortId).id].sort().join(',');
+    check(ends === 'a,b', `the link should join A and B (${ends})`);
+
+    // 2. A did NOT move — the body press connected, it did not drag.
+    check(a.position.x === 100 && a.position.y === 150, `A must not have moved, at ${JSON.stringify(a.position)}`);
+
+    // 3. THE TEETH: release on EMPTY canvas connects nothing — a node is a handle,
+    //    the void is not.
+    ctx.bodyDrag(ctx.centre('b'), { x: 1150, y: 620 });
+    await ctx.tick();
+    check(m.getLinks().length === 1, `a release on empty canvas must not connect, links=${m.getLinks().length}`);
+  },
+});
+</script>

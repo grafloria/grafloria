@@ -223,3 +223,70 @@ describe('wave12 gap 2 — proximity connect on the live node drag', () => {
     expect(h.model.getLinks().length).toBe(0);
   });
 });
+
+describe('wave12 gap 3 — easy connect from a node BODY', () => {
+  let h: Harness;
+  afterEach(() => h?.destroy());
+
+  function twoNodes(cfg?: Record<string, unknown>) {
+    h = harness();
+    if (cfg) h.engine.setInteractionConfig(cfg as never);
+    applyNodes(h.model, [
+      { id: 'a', position: { x: 100, y: 100 }, size: { width: 100, height: 60 } },
+      { id: 'b', position: { x: 400, y: 100 }, size: { width: 100, height: 60 } },
+    ]);
+  }
+
+  // A's centre (150,130) is well away from every port glyph; B's centre (450,130).
+  const A = { clientX: 150, clientY: 130 };
+  const B = { clientX: 450, clientY: 130 };
+  const bodyDrag = (h2: Harness, from: MouseEventInit, to: MouseEventInit, mods: MouseEventInit = {}) => {
+    h2.container.dispatchEvent(mouse('mousedown', { ...from, ...mods }));
+    h2.container.dispatchEvent(mouse('mousemove', { clientX: (from.clientX as number) + 8, clientY: from.clientY, ...mods }));
+    h2.container.dispatchEvent(mouse('mousemove', { ...to, ...mods }));
+    h2.container.dispatchEvent(mouse('mouseup', { ...to, ...mods }));
+  };
+
+  it('press A body, release on B body → they connect (no port aiming)', async () => {
+    twoNodes({ enableEasyConnect: true });
+    expect(h.model.getLinks().length).toBe(0);
+    bodyDrag(h, A, B);
+    await flush();
+
+    expect(h.model.getLinks().length).toBe(1);
+    const link = h.model.getLinks()[0]!;
+    const ends = [h.model.getNodeByPortId(link.sourcePortId)!.id, h.model.getNodeByPortId(link.targetPortId)!.id].sort().join(',');
+    expect(ends).toBe('a,b');
+    // A must NOT have moved — the body press connected, it did not drag.
+    expect(h.model.getNode('a')!.position).toEqual({ x: 100, y: 100 });
+  });
+
+  it('OFF (default): a body drag MOVES the node and creates no link (RED without the flag)', () => {
+    twoNodes(); // easy-connect off
+    bodyDrag(h, A, { clientX: 250, clientY: 130 });
+    expect(h.model.getLinks().length).toBe(0);
+    expect(h.model.getNode('a')!.position.x).toBeCloseTo(200); // moved +100
+  });
+
+  it('release on EMPTY canvas connects nothing (a node is a handle, the void is not)', async () => {
+    twoNodes({ enableEasyConnect: true });
+    bodyDrag(h, A, { clientX: 800, clientY: 500 });
+    await flush();
+    expect(h.model.getLinks().length).toBe(0);
+  });
+
+  it('modifier gate: with easyConnectModifier=shift, a plain drag MOVES, a shift-drag CONNECTS', async () => {
+    twoNodes({ enableEasyConnect: true, easyConnectModifier: 'shift' });
+
+    // Plain drag → move (body-drag-to-move preserved).
+    bodyDrag(h, A, { clientX: 220, clientY: 130 });
+    expect(h.model.getLinks().length).toBe(0);
+    expect(h.model.getNode('a')!.position.x).toBeCloseTo(170);
+
+    // Shift-drag from A (now at x=170, centre ~220,130) to B → connect.
+    const aCentre = { clientX: h.model.getNode('a')!.position.x + 50, clientY: 130 };
+    bodyDrag(h, aCentre, B, { shiftKey: true });
+    await flush();
+    expect(h.model.getLinks().length).toBe(1);
+  });
+});

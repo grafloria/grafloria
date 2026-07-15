@@ -461,6 +461,42 @@ export class InteractionController {
   }
 
   /**
+   * wave12/connect-ergonomics (gap 3) — Easy Connect: start a connection from a
+   * node BODY, not a port glyph. Picks the source port nearest the press point
+   * (so a drag off the right side starts from the right port) and begins the
+   * normal connection drag from it. Returns false when the node has no port to
+   * start from. The whole gesture then flows through the existing connection
+   * pipeline (preview on move, {@link completeConnection} on drop).
+   */
+  startNodeBodyConnection(
+    node: NodeModel,
+    worldX: number,
+    worldY: number,
+    engine: DiagramEngine
+  ): boolean {
+    if (this.isReadonlyEngine(engine)) return false;
+    const port = this.nearestPortOnNode(node, worldX, worldY);
+    if (!port) return false;
+    this.startConnection(port, worldX, worldY, engine);
+    return true;
+  }
+
+  /** The node's port whose drawn position is nearest `(worldX, worldY)`, or null. */
+  private nearestPortOnNode(node: NodeModel, worldX: number, worldY: number): PortModel | null {
+    let best: PortModel | null = null;
+    let bestDistance = Infinity;
+    for (const port of node.getPorts().values()) {
+      const p = portWorldPosition(port, node);
+      const distance = Math.hypot(worldX - p.x, worldY - p.y);
+      if (distance < bestDistance) {
+        bestDistance = distance;
+        best = port;
+      }
+    }
+    return best;
+  }
+
+  /**
    * Phase 3: Complete connection to target port
    * Phase 5: Enhanced with validation and error handling
    */
@@ -499,15 +535,34 @@ export class InteractionController {
     //     pixels away from the circle the user could see. Wave 6 fixed exactly
     //     this divergence for the port hit-test and the magnet — this path was
     //     missed. Passing `portWorldPosition` is that fix: hit-test where we draw.
-    if (config.mode === 'smart' && config.enableSmartAutoConnect && !targetPort) {
+    // wave12 (gap 3): Easy Connect makes the whole TARGET node a handle too. A
+    // release ANYWHERE over a node body — not just within the ~24px port-snap
+    // radius smart mode uses — resolves the node under the cursor and picks its
+    // nearest port. That is the difference from smart auto-connect: smart snaps
+    // to a port near the drop; easy-connect accepts the node's whole silhouette.
+    const smartAutoConnect = config.mode === 'smart' && config.enableSmartAutoConnect;
+    if (!targetPort && (smartAutoConnect || config.enableEasyConnect)) {
       const diagram = engine.getDiagram();
       const dragState = connectionStateManager.getState();
+      const pos = dragState.currentMousePosition;
 
-      if (diagram && dragState.currentMousePosition) {
-        const hit = diagram.findNearestPort(dragState.currentMousePosition, {
-          portPosition: (port, node) => portWorldPosition(port, node),
-        });
-        targetPort = hit?.port ?? null;
+      if (diagram && pos) {
+        if (config.enableEasyConnect) {
+          const sourceNode = this.connectionSourcePort
+            ? diagram.getNodeByPortId(this.connectionSourcePort.id)
+            : null;
+          const overNode = diagram.getNodeAtPosition(pos.x, pos.y);
+          if (overNode && overNode.id !== sourceNode?.id) {
+            targetPort = this.nearestPortOnNode(overNode, pos.x, pos.y);
+          }
+        }
+        // Smart-mode port snap (also the fallback when easy-connect found no node).
+        if (!targetPort && smartAutoConnect) {
+          const hit = diagram.findNearestPort(pos, {
+            portPosition: (port, node) => portWorldPosition(port, node),
+          });
+          targetPort = hit?.port ?? null;
+        }
       }
     }
 

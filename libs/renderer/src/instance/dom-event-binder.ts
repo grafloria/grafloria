@@ -662,6 +662,21 @@ export class DomEventBinder {
     const node = this.resolveNode(diagram, worldX, worldY, event);
     if (node) {
       event.preventDefault();
+
+      // 8a. wave12 (gap 3) — Easy Connect: the whole node BODY is a handle. When
+      // on (and the configured modifier, if any, is held), a body press starts a
+      // CONNECTION from the node's nearest port instead of a move. A press ON a
+      // port already started a connection at step 2, so this only fires on the
+      // body. Off by default, so normal body-drag-to-move is untouched; a host
+      // that keeps move gates connect behind `easyConnectModifier` (e.g. shift).
+      if (!this.isReadonly() && config.enableEasyConnect && this.easyConnectModifierHeld(event, config)) {
+        // Select the node first (so a plain click still selects), THEN connect.
+        this.host.interaction.startNodeBodyConnection(node, worldX, worldY, engine);
+        this.host.requestRender();
+        this.host.emit('node:click', { node, world: { x: worldX, y: worldY } });
+        return;
+      }
+
       this.pressNode(node, diagram, event, worldX, worldY);
       this.host.emit('node:click', { node, world: { x: worldX, y: worldY } });
       return;
@@ -1352,6 +1367,27 @@ export class DomEventBinder {
 
   private engine(): DiagramEngine | null {
     return this.host.getEngine();
+  }
+
+  /**
+   * wave12 (gap 3): is the easy-connect gate satisfied for this press? With
+   * `easyConnectModifier: 'none'` (the default when the feature is on) any plain
+   * body press connects — the whole node is a handle and move is done via a drag
+   * handle / selection. A specific modifier lets a host KEEP body-drag-to-move
+   * and reserve connect for, say, a shift-drag.
+   */
+  private easyConnectModifierHeld(
+    event: MouseEvent,
+    config: ReturnType<DiagramEngine['getInteractionConfig']>
+  ): boolean {
+    switch (config.easyConnectModifier) {
+      case 'shift': return event.shiftKey;
+      case 'alt': return event.altKey;
+      case 'ctrl': return event.ctrlKey;
+      case 'meta': return event.metaKey;
+      case 'none':
+      default: return true;
+    }
   }
 
   private toWorld(event: MouseEvent): { x: number; y: number } {
