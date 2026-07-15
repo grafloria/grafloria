@@ -280,6 +280,38 @@ describe('createDiagram — the headless instance', () => {
     });
   });
 
+  // "The port on the title is behind it": ports used to render inside their
+  // node's group, so overlapping chrome painted later (a title-bar child)
+  // covered the parent's port glyph. Ports are interaction targets — they paint
+  // in an overlay above every node body.
+  describe('port glyphs paint above overlapping nodes', () => {
+    it("a parent's port element follows its overlapping child in document order", () => {
+      diagram = createDiagram(container, {
+        nodes: [
+          { id: 'win', position: { x: 100, y: 100 }, size: { width: 200, height: 100 }, ports: [{ id: 'win-top', side: 'top', type: 'bi' }] },
+          { id: 'chrome', position: { x: 100, y: 100 }, size: { width: 200, height: 24 } },
+        ],
+        interaction: { portVisibility: 'always' },
+      } as never);
+      const model = diagram.getModel();
+      model.getNode('chrome')!.setParent('win');
+      model.getNode('chrome')!.setPosition(0, 0);
+      diagram.renderNow();
+
+      const port = container.querySelector('[data-port-id="win-top"]');
+      const chromeGroup = container.querySelector('[data-node-id="chrome"]');
+      expect(port).toBeTruthy();
+      expect(chromeGroup).toBeTruthy();
+      // DOCUMENT_POSITION_FOLLOWING = the port comes after (paints above) the chrome.
+      expect(chromeGroup!.compareDocumentPosition(port!) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+      // And it rides a transform identical to its node's, so placement is unchanged.
+      const overlay = port!.closest('[data-ports-for="win"]');
+      expect(overlay?.getAttribute('transform')).toBe(
+        container.querySelector('[data-vnode-key="node-win"]')?.getAttribute('transform')
+      );
+    });
+  });
+
   // The audit's clipped drag-handle grip: a parent-RELATIVE child rendered at
   // its raw local coordinates (translate(0,-28) → page top-left) because
   // nodeTransform never composed the parent chain, and nothing forwarded the

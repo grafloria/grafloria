@@ -91,6 +91,17 @@ defineDemo({
       'hovering the grip edge must not surface a port — the handle is chrome, not anatomy');
     check(ctx.host.querySelectorAll('[data-node-id="grip"] [data-port-id]').length === 0,
       'the grip must render no port glyphs');
+
+    //    …and the WINDOW's top port paints IN FRONT of the title bar, not behind
+    //    it (ports render in an overlay above every node body — a port you can
+    //    see but not quite see is a port you cannot aim at).
+    ctx.fire('mousemove', { x: win.position.x + win.size.width / 2, y: win.position.y });
+    ctx.instance.renderNow();
+    const topPort = ctx.host.querySelector(`[data-port-id="${win.getPortBySide('top').id}"]`);
+    const gripGroup = ctx.host.querySelector('[data-node-id="grip"]');
+    check(!!topPort, "hovering the title's top edge should surface the window's top port");
+    check(!!(gripGroup.compareDocumentPosition(topPort) & Node.DOCUMENT_POSITION_FOLLOWING),
+      'the top port must paint ABOVE the title bar (it painted behind it)');
     const linksBefore = m.getLinks().length;
     ctx.fire('mousedown', { x: gw.x + grip.size.width, y: gw.y + grip.size.height / 2 });
     ctx.fire('mousemove', { x: win.position.x + win.size.width, y: win.position.y + win.size.height / 2 });

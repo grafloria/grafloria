@@ -2890,6 +2890,29 @@ export class SVGRenderer implements IRenderer {
 
     const children = ordered.map(node => this.renderNode(node, lod));
 
+    // PORTS PAINT ABOVE EVERY NODE BODY. They used to render inside their own
+    // node's group, where any later-painted overlapping node covered them — a
+    // window's title-bar chrome (a child node, deliberately painted after its
+    // parent) sat ON TOP of the parent's top port ("the port on the title is
+    // behind it", a live report). A port is an interaction target; nothing may
+    // paint over it. Each node's glyphs keep node-local coordinates and ride an
+    // overlay group carrying the SAME transform as the node, so placement —
+    // including rotation — is identical, only the stacking changes.
+    for (const node of ordered) {
+      const glyphs = this.renderPorts(node, lod);
+      if (glyphs.length === 0) continue;
+      children.push({
+        type: 'g',
+        key: `node-ports-${node.id}`,
+        props: {
+          transform: this.nodeTransform(node),
+          className: 'node-ports-overlay',
+          'data-ports-for': node.id,
+        },
+        children: glyphs,
+      });
+    }
+
     return {
       type: 'g',
       key: 'nodes-layer',
@@ -3958,7 +3981,7 @@ export class SVGRenderer implements IRenderer {
             ]
           : []),
         // Phase 2: Render ports
-        ...this.renderPorts(node, lod),
+
       ],
     };
 
@@ -4071,7 +4094,7 @@ export class SVGRenderer implements IRenderer {
         // foreignObject for component embedding
         foreignObject,
         // Ports (rendered on top of foreignObject)
-        ...this.renderPorts(node, lod),
+
       ],
     };
 

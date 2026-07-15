@@ -318,11 +318,18 @@ export class InteractionController {
       });
     }
 
-    // Update node hover state
+    // Update node hover state. Hovering a node's CHROME (a drag-handle child)
+    // is hovering the node: without the propagation, a window whose title bar
+    // covers its top strip never reads as hovered there — so its hover-visible
+    // ports never surfaced ("the port on the title" report, second half).
+    const chromeParent =
+      nodeAtPosition?.behavior?.dragHandler?.isDragHandler === true && nodeAtPosition.parentId
+        ? diagram.getNode(nodeAtPosition.parentId)
+        : null;
     const allNodes = diagram.getNodes();
     allNodes.forEach((node) => {
       const wasHovered = node.state.hovered;
-      const isHovered = node === nodeAtPosition;
+      const isHovered = node === nodeAtPosition || node === chromeParent;
 
       if (wasHovered !== isHovered) {
         node.setState({ hovered: isHovered });
