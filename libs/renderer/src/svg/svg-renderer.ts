@@ -1,4 +1,4 @@
-import type { DiagramEngine, DiagramModel, NodeModel, NodeStyle, LinkModel, LinkStyle, PortModel, InteractionConfig, ReconnectionPreview, LODLevel, LODFeature, Shadow } from '@grafloria/engine';
+import type { DiagramEngine, DiagramModel, NodeModel, NodeStyle, LinkModel, LinkStyle, PortModel, InteractionConfig, ReconnectionPreview, LODLevel, LODFeature, Shadow, GroupModel } from '@grafloria/engine';
 // Value import: the ONE definition of "where does a label sit along the path"
 // (slot vs position), shared by the model, this renderer and the edge optimizer.
 import { linkLabelPosition, DiagramSerializer } from '@grafloria/engine';
@@ -925,6 +925,15 @@ export class SVGRenderer implements IRenderer {
         ? renderStrokesLayer(diagram.getVisibleStrokes(visibleRect))
         : null;
 
+    // wave12/group-visuals: the group FRAMES. Groups have driven layout, collapse
+    // and routing since Wave 7, but no frame was ever DRAWN — a subflow container
+    // was model-complete and invisible. This layer is PREPENDED (below) so it
+    // paints BEHIND links and nodes, and is null on any canvas with no groups, so
+    // the children[0]=links / children[1]=nodes contract is byte-identical
+    // whenever grouping is not in use — exactly like strokes/comments are null
+    // when absent. A linear bounds scan culls it (groups are tens, not thousands).
+    const groupsLayer = this.renderGroupsLayer(diagram, visibleRect);
+
     // Card 2: assemble the deduped paint-server `<defs>` populated while the
     // layers rendered. Appended LAST (not prepended) so existing positional
     // children[0]=links / children[1]=nodes contracts stay intact; SVG resolves
@@ -960,7 +969,19 @@ export class SVGRenderer implements IRenderer {
       // see) but UNDER the pins (which stay on top so they remain clickable). Nulls are
       // filtered, so the [0]=links / [1]=nodes contract is untouched whenever there is no
       // ink and no comment system.
+      //
+      // wave12/group-visuals: the groups layer is the ONE layer that PREPENDS rather than
+      // appends — a group frame is a container that must sit BEHIND the nodes and links it
+      // holds (SVG paints in document order, so "behind" means "first"). It is null on any
+      // canvas with no groups, so — exactly like the appended strokes/comments — this array
+      // is byte-identical whenever grouping is unused, and the positional contract
+      // (children[0]=links, children[1]=nodes) holds for every group-free diagram. When
+      // groups ARE present children[0] becomes the groups layer; the only two consumers that
+      // index links/nodes positionally (svg-renderer.cache-fixes / .frame-gate specs) render
+      // group-free scenes, and every other consumer finds layers by key/className
+      // (dirty-region.collectEntities, comment-overlay) — those are order-independent.
       children: [
+        groupsLayer,
         linksLayer,
         nodesLayer,
         connectionPreviewLayer,
@@ -3419,6 +3440,177 @@ export class SVGRenderer implements IRenderer {
       // The ROVING TABINDEX, from the one authority that owns it.
       focusedThreadId: focus?.type === 'comment' ? focus.id : null,
     });
+  }
+
+  /**
+   * wave12/group-visuals — the group FRAMES.
+   *
+   * One frame per group: a rounded `<rect>` at the group's outer bounds, a label
+   * band carrying its `name`, and — when collapsed — a visibly distinct treatment
+   * (dashed, opaque, marked `data-collapsed`). Returns null when the diagram has
+   * no groups, so a group-free canvas pays a single array read and the children[]
+   * positional contract is untouched (see the children assembly in `render`).
+   *
+   * PURE / READ-ONLY. It only reads group geometry (`getOuterBounds`) — it never
+   * mutates the model, so it cannot dirty an idle frame and disarm the frame gate.
+   *
+   * PAINT ORDER. Groups are sorted parent-behind-child (nesting depth first, then
+   * `zIndex`, then insertion order) so a nested sub-group draws ON TOP of the
+   * parent that contains it — otherwise the parent's fill would bury the child.
+   *
+   * CULLING. A linear intersect against the visible rect, matching how strokes are
+   * culled: groups number in the tens, so a spatial index would be theatre.
+   */
+  private renderGroupsLayer(
+    diagram: NonNullable<ReturnType<DiagramEngine['getDiagram']>>,
+    visibleRect: Rectangle
+  ): VNode | null {
+    const groups = diagram.getGroups?.() ?? [];
+    if (groups.length === 0) return null;
+
+    // Nesting depth (ancestor count), cycle-guarded exactly like the router's
+    // collapse walk — a corrupt parent chain must never spin.
+    const byId = new Map(groups.map((g) => [g.id, g] as const));
+    const depthOf = (g: GroupModel): number => {
+      let depth = 0;
+      const seen = new Set<string>();
+      let cur: GroupModel | undefined = g;
+      while (cur?.parentGroupId && !seen.has(cur.id)) {
+        seen.add(cur.id);
+        cur = byId.get(cur.parentGroupId);
+        depth++;
+      }
+      return depth;
+    };
+
+    const ordered = groups
+      .map((g, i) => ({ g, i, depth: depthOf(g) }))
+      .sort((a, b) => a.depth - b.depth || a.g.zIndex - b.g.zIndex || a.i - b.i);
+
+    const frames: VNode[] = [];
+    for (const { g } of ordered) {
+      const bounds = g.getOuterBounds();
+      // A group with no geometry yet (never framed, no members) has nothing to
+      // draw — skip it rather than emit a zero-size rect.
+      if (bounds.width <= 0 || bounds.height <= 0) continue;
+      // Cull: skip a frame that cannot touch the visible rect.
+      if (
+        bounds.x + bounds.width < visibleRect.x ||
+        bounds.y + bounds.height < visibleRect.y ||
+        bounds.x > visibleRect.x + visibleRect.width ||
+        bounds.y > visibleRect.y + visibleRect.height
+      ) {
+        continue;
+      }
+      frames.push(this.renderGroupFrame(g, bounds));
+    }
+
+    return {
+      type: 'g',
+      key: 'groups-layer',
+      props: {
+        className: 'groups-layer',
+        // A frame is a passive backdrop: it must never intercept a pointer meant
+        // for a node or link painted on top of it.
+        pointerEvents: 'none',
+      },
+      children: frames,
+    };
+  }
+
+  /** One group's frame + label band, themed and accessible. */
+  private renderGroupFrame(group: GroupModel, bounds: Rectangle): VNode {
+    const c = this.theme.colors;
+    const collapsed = group.isCollapsed;
+    const radius = this.theme.effects.borderRadius.md;
+
+    // Label band height: honour an authored header, else a readable default.
+    const bandHeight = Math.min(
+      group.headerHeight > 0 ? group.headerHeight : 24,
+      bounds.height
+    );
+    const fontSize = this.theme.typography.fontSize.sm;
+
+    // THEME TOKENS, not hard-coded colours: the frame borrows the node border and
+    // canvas surface so it re-themes with everything else on a setTheme() swap.
+    const stroke = c.node.default.stroke;
+    const surface = c.background.surface;
+
+    const frameRect: VNode = {
+      type: 'rect',
+      key: `group-frame-rect-${group.id}`,
+      props: {
+        x: bounds.x,
+        y: bounds.y,
+        width: bounds.width,
+        height: bounds.height,
+        rx: radius,
+        ry: radius,
+        fill: surface,
+        // Collapsed reads as denser and dashed; expanded is a faint wash.
+        fillOpacity: collapsed ? 0.85 : 0.32,
+        stroke,
+        strokeWidth: collapsed ? 2 : 1.5,
+        strokeDasharray: collapsed ? '6,4' : undefined,
+        className: 'group-frame-rect',
+        // Decorative: the name lives on the container's aria-label below.
+        'aria-hidden': 'true',
+      },
+    };
+
+    const bandRect: VNode = {
+      type: 'rect',
+      key: `group-frame-band-${group.id}`,
+      props: {
+        x: bounds.x,
+        y: bounds.y,
+        width: bounds.width,
+        height: bandHeight,
+        rx: radius,
+        ry: radius,
+        fill: surface,
+        fillOpacity: 0.9,
+        stroke: 'none',
+        className: 'group-frame-band',
+        'aria-hidden': 'true',
+      },
+    };
+
+    const label: VNode = {
+      type: 'text',
+      key: `group-frame-label-${group.id}`,
+      props: {
+        x: bounds.x + 8,
+        y: bounds.y + bandHeight / 2,
+        dominantBaseline: 'central',
+        fontSize,
+        fontFamily: this.theme.typography.fontFamily.default,
+        fontWeight: this.theme.typography.fontWeight.medium,
+        fill: c.text.primary,
+        className: 'group-frame-label',
+        textContent: group.name,
+        // The visible label; the accessible name is on the container, so hide
+        // this from AT to avoid announcing the name twice.
+        'aria-hidden': 'true',
+      },
+    };
+
+    return {
+      type: 'g',
+      key: `group-frame-${group.id}`,
+      props: {
+        className: collapsed ? 'group-frame group-frame-collapsed' : 'group-frame',
+        // A container of graphics symbols — the W3C Graphics ARIA role — named by
+        // the group, with a human roledescription (nodes use the same pattern:
+        // graphics-symbol + roledescription + label).
+        role: 'graphics-object',
+        'aria-roledescription': collapsed ? 'Collapsed group' : 'Group',
+        'aria-label': group.name,
+        'data-group-id': group.id,
+        'data-collapsed': collapsed ? 'true' : 'false',
+      },
+      children: [frameRect, bandRect, label],
+    };
   }
 
   /** The canvas's own semantics. */
