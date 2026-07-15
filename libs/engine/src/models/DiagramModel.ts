@@ -6,6 +6,7 @@ import { NodeModel, SerializedNode } from './NodeModel';
 import { LinkModel, SerializedLink } from './LinkModel';
 import { PortModel } from './PortModel';
 import { GroupModel, SerializedGroup } from './GroupModel'; // Phase 1.6c
+import { StrokeModel, SerializedStroke } from './StrokeModel'; // wave10/whiteboard
 import type { SerializedEntity, Point } from '../types';
 import { SpatialIndex } from '../performance/SpatialIndex'; // Phase 5.1
 import type { Rectangle } from '../types/geometry.types'; // Phase 5.1
@@ -77,6 +78,17 @@ export interface SerializedDiagram extends SerializedEntity {
   nodes: SerializedNode[];
   links: SerializedLink[];
   groups: SerializedGroup[]; // Phase 1.6c
+  /**
+   * wave10/whiteboard: freehand ink.
+   *
+   * OMITTED when there is none — the same rule (and for the same load-bearing reason)
+   * as `comments` below. A diagram with no ink serializes to EXACTLY the bytes it did
+   * before this wave: no churn in any existing document, snapshot or golden file, and
+   * the op log's byte-identical replay oracle keeps comparing the same bytes it always
+   * compared. An always-present `strokes: []` would have quietly rewritten every
+   * serialized diagram in the world to say nothing.
+   */
+  strokes?: SerializedStroke[];
   viewport: {
     x: number;
     y: number;
@@ -113,6 +125,8 @@ export class DiagramModel extends DiagramEntity {
   nodes: Map<string, NodeModel> = new Map();
   links: Map<string, LinkModel> = new Map();
   groups: Map<string, GroupModel> = new Map(); // Phase 1.6c
+  /** wave10/whiteboard: freehand ink strokes. See StrokeModel for why these are not nodes. */
+  strokes: Map<string, StrokeModel> = new Map();
 
   /**
    * Wave 9 — Card 7. The read-only lock. THE enforcement point for
@@ -1094,6 +1108,107 @@ export class DiagramModel extends DiagramEntity {
     this.emitOrQueue('groups:cleared');
   }
 
+  // =========================================================================
+  // wave10/whiteboard — INK
+  //
+  // Deliberately the THINNEST collection in this model. A stroke has no ports, no
+  // parent, no children, no layout participation and no obstacle registration — the
+  // four things that made "a stroke is just a node" the wrong answer (see StrokeModel).
+  // It is not spatially indexed either: strokes are annotation, they are rare compared
+  // to nodes (a busy whiteboard has tens, not tens of thousands), and the ink layer
+  // culls them with a linear bounds scan that costs microseconds at 500 strokes. If
+  // that ever stops being true, add a third SpatialIndex here — the seam is the same.
+  // =========================================================================
+
+  addStroke(stroke: StrokeModel): void {
+    if (this.blocksDocumentWrite()) return;
+    this.assertNotDisposed();
+
+    if (this.strokes.has(stroke.id)) {
+      throw new Error(`Stroke with id ${stroke.id} already exists`);
+    }
+    this.installStroke(stroke);
+  }
+
+  /** THE single per-stroke install path (see installNode) — authored, restored, or replayed. */
+  private installStroke(stroke: StrokeModel): void {
+    this.strokes.set(stroke.id, stroke);
+    // The op-capture funnel. `trackChange('strokes', null, stroke)` is what makes an
+    // added stroke reach OpCapture (which maps it to an `add` op), the mutation epoch
+    // (which makes the frame gate repaint), and the dirty tracker. All three for free,
+    // and all three ONLY because a stroke is a real DiagramEntity in a real collection.
+    this.trackChange('strokes', null, stroke);
+    this.emitOrQueue('stroke:added', stroke);
+  }
+
+  removeStroke(strokeId: string): StrokeModel | undefined {
+    if (this.blocksDocumentWrite()) return undefined;
+    const stroke = this.strokes.get(strokeId);
+    if (stroke) {
+      this.strokes.delete(strokeId);
+      this.trackChange('strokes', stroke, null);
+      this.emitOrQueue('stroke:removed', stroke);
+    }
+    return stroke;
+  }
+
+  restoreStroke(data: SerializedStroke): StrokeModel | undefined {
+    try {
+      const stroke = StrokeModel.fromJSON(data);
+      this.installStroke(stroke);
+      return stroke;
+    } catch (error) {
+      console.error('Failed to restore stroke:', error);
+      return undefined;
+    }
+  }
+
+  getStroke(strokeId: string): StrokeModel | undefined {
+    return this.strokes.get(strokeId);
+  }
+
+  getStrokes(): StrokeModel[] {
+    return Array.from(this.strokes.values());
+  }
+
+  clearStrokes(): void {
+    this.strokes.clear();
+    this.emitOrQueue('strokes:cleared');
+  }
+
+  /** Strokes whose bounds overlap `viewport`. The ink layer's culling query. */
+  getVisibleStrokes(viewport: Rectangle): StrokeModel[] {
+    const out: StrokeModel[] = [];
+    for (const stroke of this.strokes.values()) {
+      const b = stroke.getBounds();
+      if (
+        b.x <= viewport.x + viewport.width &&
+        b.x + b.width >= viewport.x &&
+        b.y <= viewport.y + viewport.height &&
+        b.y + b.height >= viewport.y
+      ) {
+        out.push(stroke);
+      }
+    }
+    return out;
+  }
+
+  /**
+   * Every stroke the pointer swept across travelling `a`→`b`. THE ERASER'S QUERY.
+   *
+   * Segment-based, not point-based: a fast flick puts 80px between two pointermove
+   * samples, and an eraser that only tested the samples would jump clean over a stroke
+   * it visibly wiped through. Ask what the pointer TRAVELLED THROUGH, not where it
+   * happened to land.
+   */
+  getStrokesAlongSegment(a: Point, b: Point, tolerance = 0): StrokeModel[] {
+    const out: StrokeModel[] = [];
+    for (const stroke of this.strokes.values()) {
+      if (stroke.intersectsSegment(a, b, tolerance)) out.push(stroke);
+    }
+    return out;
+  }
+
   /**
    * Compound-graph containment (Wave-2)
    *
@@ -1566,6 +1681,15 @@ export class DiagramModel extends DiagramEntity {
     const groupIds = Array.from(this.groups.keys());
     for (const groupId of groupIds) {
       this.removeGroup(groupId);
+    }
+
+    // wave10/whiteboard: ink is document content, so clear() clears it. Removed one by
+    // one (not `strokes.clear()`) so each emits its trackChange — otherwise clearing a
+    // collaborative document would wipe the ink locally and NOT tell the other peers,
+    // and their next edit would resurrect it all.
+    const strokeIds = Array.from(this.strokes.keys());
+    for (const strokeId of strokeIds) {
+      this.removeStroke(strokeId);
     }
 
     // Phase 5.1: Clear spatial indices
@@ -2094,6 +2218,10 @@ export class DiagramModel extends DiagramEntity {
       groups: Array.from(this.groups.values()).map((g) => g.serialize()), // Phase 1.6c
       viewport: { ...this.viewport },
     };
+    // wave10/whiteboard: present only when there is ink — see SerializedDiagram.strokes.
+    if (this.strokes.size > 0) {
+      doc.strokes = Array.from(this.strokes.values()).map((s) => s.serialize());
+    }
     // wave9/comments: present only when there are comments — see SerializedDiagram.
     if (Object.keys(this._comments).length > 0) {
       doc.comments = deepClone(this._comments);
@@ -2170,17 +2298,29 @@ export class DiagramModel extends DiagramEntity {
       for (const id of patch.removed.links) this.removeLink(id);
       for (const id of patch.removed.nodes) this.removeNode(id);
       for (const id of patch.removed.groups) this.removeGroup(id);
+      // wave10/whiteboard. Ink references nothing and nothing references it, so its
+      // position in this ordering is free — which is one of the quieter dividends of
+      // strokes not being nodes.
+      for (const id of patch.removed.strokes ?? []) this.removeStroke(id);
 
       // Additions through the unified restore path (fully wired entities).
       for (const nodeData of patch.added.nodes) this.restoreNode(nodeData);
       for (const linkData of patch.added.links) this.restoreLink(linkData);
       for (const groupData of patch.added.groups) this.restoreGroup(groupData);
+      for (const strokeData of patch.added.strokes ?? []) this.restoreStroke(strokeData);
 
       // In-place modifications (a modified-but-locally-missing entity is
       // treated as an add — patches may arrive against divergent replicas).
       for (const nodeData of patch.modified.nodes) this.applySerializedNode(nodeData);
       for (const linkData of patch.modified.links) this.applySerializedLink(linkData);
       for (const groupData of patch.modified.groups) this.applySerializedGroup(groupData);
+      // A stroke is immutable geometry: "modify" is remove-and-replace, which is also
+      // exactly what a REPLACE-semantics patch means. No in-place applySerializedStroke
+      // exists because nothing holds a reference to a stroke across a patch.
+      for (const strokeData of patch.modified.strokes ?? []) {
+        this.removeStroke(strokeData.id);
+        this.restoreStroke(strokeData);
+      }
 
       if (patch.diagram) {
         if (patch.diagram.name !== undefined) this.name = patch.diagram.name;
@@ -2396,6 +2536,18 @@ export class DiagramModel extends DiagramEntity {
           diagram.restoreGroup(groupData);
         }
       }
+      // wave10/whiteboard. Guarded exactly like `groups` above: an absent `strokes` key
+      // means a document written before this wave (or one with no ink), and it means
+      // zero strokes — NOT a broken document. That guard is the whole reason this
+      // capability needed no schema bump and no migration: bumping
+      // DIAGRAM_SCHEMA_VERSION would have made every newly-saved document unloadable
+      // by any older runtime (runDiagramMigrations throws on newer-than-runtime), which
+      // is a brutal price for a key that can simply be optional.
+      if (doc.strokes) {
+        for (const strokeData of doc.strokes) {
+          diagram.restoreStroke(strokeData);
+        }
+      }
 
       // Restore metadata
       for (const [key, value] of Object.entries(doc.metadata)) {
@@ -2461,10 +2613,18 @@ export class DiagramModel extends DiagramEntity {
       group.dispose();
     }
 
+    // wave10/whiteboard: strokes are DiagramEntities and hold an EventEmitter each —
+    // OpCapture subscribes to every one of them. Not disposing them leaks that listener
+    // for the life of the process.
+    for (const stroke of this.strokes.values()) {
+      stroke.dispose();
+    }
+
     // Clear collections
     this.nodes.clear();
     this.links.clear();
     this.groups.clear();
+    this.strokes.clear();
     this.portIndex.clear();
 
     // Clear spatial indices (prevents memory leaks from indexed entities)

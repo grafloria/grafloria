@@ -45,6 +45,7 @@ export function validateSerializedDiagram(data: SerializedDiagram): DiagramValid
   const nodes = data.nodes ?? [];
   const links = data.links ?? [];
   const groups = data.groups ?? [];
+  const strokes = data.strokes ?? []; // wave10/whiteboard
 
   // --- duplicate ids (within and across collections) -----------------------
   const seen = new Map<string, string>(); // id -> collection
@@ -63,6 +64,28 @@ export function validateSerializedDiagram(data: SerializedDiagram): DiagramValid
   nodes.forEach((n) => checkId(n?.id, 'node'));
   links.forEach((l) => checkId(l?.id, 'link'));
   groups.forEach((g) => checkId(g?.id, 'group'));
+  // wave10/whiteboard. Ink joins the CROSS-COLLECTION id check, which is the point: a
+  // stroke sharing an id with a node is exactly the corruption `applyOp` cannot survive
+  // (the op targets are per-kind, but undo's register key is `target id path`, and two
+  // kinds under one id make two different entities share one register).
+  strokes.forEach((s) => checkId(s?.id, 'stroke'));
+
+  // A stroke with no points draws nothing and hit-tests as nothing — it is invisible
+  // débris that can only be removed by an eraser that cannot find it. Not an error (the
+  // document is structurally sound), but the user should know it is there.
+  for (const s of strokes) {
+    if (!s) continue;
+    if (!Array.isArray(s.points) || s.points.length === 0) {
+      warning('empty-stroke', `Stroke '${s.id}' has no points and can never be seen`, s.id);
+    } else if (s.points.some((p) => !p || !isFinite(p.x) || !isFinite(p.y))) {
+      error(
+        'invalid-stroke-point',
+        `Stroke '${s.id}' has a non-finite point, which poisons its bounds to NaN and ` +
+          `culls it from every viewport query`,
+        s.id
+      );
+    }
+  }
 
   // --- port ownership map ---------------------------------------------------
   const portOwner = new Map<string, string>(); // portId -> nodeId
