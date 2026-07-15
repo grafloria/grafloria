@@ -1,0 +1,95 @@
+<meta charset="utf-8">
+<title>Connection validation — Grafloria</title>
+<link rel="stylesheet" href="../shell/demo.css">
+<style>
+  #readout { padding: 8px 24px; font: 12px/1.5 ui-monospace, monospace; opacity: .8; border-bottom: 1px solid rgba(127,127,127,.25); white-space: pre; }
+  #canvas { height: calc(100vh - 168px); }
+</style>
+<header id="demo-head"></header>
+<div id="readout"></div>
+<div id="canvas"></div>
+<script type="module">
+import { render, registerConnectionValidator, isValidConnection, clearConnectionValidators } from '../shell/grafloria.js';
+import { defineDemo, check } from '../shell/demo.js';
+
+// A typed graph: sources, transforms, sinks. The rule: a Sink may not be the SOURCE
+// of a connection (nothing flows out of a sink). We register a real connection
+// validator, then drive the actual connection pipeline — startConnection /
+// completeConnection — and prove the illegal connection is REFUSED and leaves no
+// link, while the legal one is accepted.
+const SPEC = {
+  nodes: [
+    { id: 'src',  position: { x: 80,  y: 80 },  size: { width: 120, height: 46 }, label: 'Source',  data: { role: 'source' } },
+    { id: 'xf',   position: { x: 320, y: 80 },  size: { width: 120, height: 46 }, label: 'Transform', data: { role: 'transform' } },
+    { id: 'sink', position: { x: 560, y: 80 },  size: { width: 120, height: 46 }, label: 'Sink',    data: { role: 'sink' } },
+  ],
+  edges: [],
+};
+
+const portOf = (node, side) => node.getPortBySide(side);
+
+defineDemo({
+  name: 'Connection validation',
+  blurb: 'A registered validator refuses an illegal connection (nothing flows OUT of a Sink). Driven through the real connect pipeline: the rejected drag creates no link; the legal one does.',
+  reactflow: 'Validation',
+
+  async setup(ctx) {
+    const api = render(SPEC, ctx.host);
+    ctx.instance = api;
+    ctx.diagram = api.getModel();
+    ctx.engine = api.getEngine();
+
+    clearConnectionValidators();
+    // THE RULE. A connection whose SOURCE node is a sink is invalid.
+    ctx.dispose = registerConnectionValidator(({ sourceNode }) => {
+      if (sourceNode?.data?.role === 'sink') return 'A Sink has no outputs';
+      return true;
+    });
+
+    ctx.report = (m) => { document.getElementById('readout').textContent = m; };
+    ctx.report('validator registered: a Sink may not be a connection source');
+  },
+
+  // A validated connection attempt: returns whether a link was created.
+  async tryConnect(ctx, sourceId, targetId) {
+    const csm = ctx.engine.getConnectionStateManager();
+    const s = portOf(ctx.diagram.getNode(sourceId), 'right');
+    const t = portOf(ctx.diagram.getNode(targetId), 'left');
+    const before = ctx.diagram.getLinks().length;
+    csm.startConnection(s, { x: 0, y: 0 });
+    const res = csm.completeConnection(t);
+    // A rejected connection is synchronous & mutates nothing; an accepted one creates
+    // the link asynchronously (routing is awaited), so let a frame pass either way.
+    await ctx.tick(20);
+    return { success: res.success, added: ctx.diagram.getLinks().length - before };
+  },
+
+  async assert(ctx) {
+    // 0. The standalone checker agrees with the rule, without any drag.
+    const sink = ctx.diagram.getNode('sink');
+    const xf = ctx.diagram.getNode('xf');
+    const verdictBad = isValidConnection({ sourceNode: sink, sourcePort: portOf(sink, 'right'), targetNode: xf, targetPort: portOf(xf, 'left') });
+    check(verdictBad.valid === false, 'isValidConnection allowed a Sink→Transform connection');
+    check(!!verdictBad.reason, 'a rejection carried no reason');
+
+    // 1. THE ILLEGAL DRAG is refused and creates NO link.
+    const bad = await this.tryConnect(ctx, 'sink', 'xf');
+    ctx.report(`Sink→Transform: success=${bad.success}, links added=${bad.added}`);
+    check(bad.success === false, 'the connect pipeline accepted an invalid connection');
+    check(bad.added === 0, `a refused connection still created ${bad.added} link(s)`);
+
+    // 2. THE LEGAL DRAG (Source→Transform) is accepted and creates exactly one link.
+    const good = await this.tryConnect(ctx, 'src', 'xf');
+    ctx.report(`Source→Transform: success=${good.success}, links added=${good.added}`);
+    check(good.success === true, 'the connect pipeline refused a VALID connection');
+    check(good.added === 1, `a valid connection created ${good.added} links, expected 1`);
+
+    // 3. CONTROL: remove the validator and the once-illegal connection now succeeds —
+    //    proving it was the VALIDATOR blocking it, not some unrelated failure.
+    ctx.dispose();
+    const nowOk = await this.tryConnect(ctx, 'sink', 'xf');
+    check(nowOk.success === true && nowOk.added === 1, 'with the validator gone, the Sink→Transform connection still failed — the block was not the validator');
+    ctx.report('control passed: removing the validator lets the once-illegal connection through');
+  },
+});
+</script>
