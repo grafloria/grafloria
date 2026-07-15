@@ -9,6 +9,11 @@ import type { CanvasTool, ToolHitContext, ToolPointerEvent } from '../ext/tools'
 // Wave 9 — Card 2: the touch/mobile gesture set (pan, pinch, tap, long-press,
 // drag-to-connect). Nothing in the framework-free renderer handled touch before.
 import { TouchGestureController } from '../interaction/touch-gestures';
+// wave12/node-resize: the floating tool layer (8 resize handles + the clamp math).
+// It answers "what tools exist and what does grabbing one DO"; the binder is the
+// piece that was missing — the thing that actually GRABS one from a DOM pointer.
+import { SelectionToolsController } from '../interaction/selection-tools';
+import type { ToolHandle } from '../interaction/selection-tools';
 
 /**
  * DomEventBinder — the framework-agnostic DOM ⇄ interaction seam.
@@ -118,6 +123,17 @@ export class DomEventBinder {
   private readonly touch: TouchGestureController;
 
   /**
+   * wave12/node-resize. The floating-tool controller, configured to expose ONLY
+   * the 8 resize handles (halo / rotate / remove / link tools stay off — those
+   * belong to the richer host renderers, not the framework-free default path).
+   *
+   * ONE instance is shared with {@link TouchGestureController} so a resize can be
+   * driven by a mouse OR a finger without two controllers ever fighting over the
+   * same gesture (they never run at once, and single-active-gesture is the rule).
+   */
+  private readonly selectionTools: SelectionToolsController;
+
+  /**
    * Have we ever seen a real PointerEvent?
    *
    * The mouse listeners are kept as a LEGACY FALLBACK and auto-disable the instant
@@ -198,6 +214,13 @@ export class DomEventBinder {
       readonly: options.readonly ?? false,
     };
 
+    this.selectionTools = new SelectionToolsController({
+      showHalo: false,
+      showRotateHandle: false,
+      showRemoveButton: false,
+      showLinkTools: false,
+    });
+
     this.touch = new TouchGestureController(
       {
         getEngine: () => this.host.getEngine(),
@@ -211,7 +234,8 @@ export class DomEventBinder {
       {
         enablePan: this.options.enablePan,
         enableZoom: this.options.enableZoom,
-      }
+      },
+      this.selectionTools
     );
   }
 
@@ -478,6 +502,22 @@ export class DomEventBinder {
     };
   }
 
+  /**
+   * wave12/node-resize: the resize handle (if any) under a world point.
+   *
+   * Recomputes the tool layer at the CURRENT zoom on every press — the handles are
+   * a constant screen size, so their world footprint changes with the camera, and a
+   * stale layer would hit-test against last frame's zoom. Only `kind: 'resize'`
+   * handles are returned; the controller is configured to emit no others.
+   */
+  private resizeHandleAt(worldX: number, worldY: number): ToolHandle | null {
+    const engine = this.engine();
+    if (!engine) return null;
+    const layer = this.selectionTools.computeLayer(engine, this.host.viewport.getZoom());
+    const hit = this.selectionTools.hitTest(layer, worldX, worldY);
+    return hit && hit.kind === 'resize' ? hit : null;
+  }
+
   onMouseDown(event: MouseEvent): void {
     const engine = this.engine();
     const diagram = engine?.getDiagram();
@@ -521,6 +561,26 @@ export class DomEventBinder {
         this.activeTool = tool;
         this.activeToolHit = toolHit;
         tool.onPointerDown?.(toolEvent, toolHit);
+        this.host.requestRender();
+        return;
+      }
+    }
+
+    // ------------------------------------------------------------------
+    // wave12/node-resize: a RESIZE HANDLE on the selected node.
+    //
+    // Checked BEFORE ports and before node selection/drag: a corner handle sits
+    // exactly on the node's corner, so if the node hit-test won here every attempt
+    // to resize would drag the node instead. Handles only exist for a single
+    // selected, resizable node (see SelectionToolsController.computeLayer), so this
+    // is inert until the user has selected something — the first click selects, the
+    // handle appears, the second grabs it.
+    // ------------------------------------------------------------------
+    if (!this.isReadonly()) {
+      const handle = this.resizeHandleAt(worldX, worldY);
+      if (handle) {
+        event.preventDefault();
+        this.selectionTools.beginResize(handle, engine, worldX, worldY);
         this.host.requestRender();
         return;
       }
@@ -660,6 +720,25 @@ export class DomEventBinder {
       return;
     }
 
+    // wave12/node-resize: an in-flight resize owns the pointer. The clamp
+    // (min/max/aspect) is applied INSIDE updateResize, every move — you cannot drag
+    // the box past its limits, it is not fixed up at the end.
+    if (this.selectionTools.activeGesture() === 'resize') {
+      const { x, y } = this.toWorld(event);
+      if (
+        this.selectionTools.updateResize(engine, x, y, {
+          shift: event.shiftKey,
+          alt: event.altKey,
+          ctrl: event.ctrlKey,
+          meta: event.metaKey,
+        })
+      ) {
+        this.host.interaction.invalidatePortHitCache();
+        this.host.requestRender();
+      }
+      return;
+    }
+
     if (this.isPanning) {
       // Drag RIGHT ⇒ camera LEFT, so the content follows the cursor.
       this.host.viewport.panByScreenDelta(
@@ -762,6 +841,22 @@ export class DomEventBinder {
       return;
     }
 
+    // wave12/node-resize: commit the resize as ONE undoable command. The model
+    // already sits at its final size (updateResize mutated it live); the command
+    // re-applies that (a no-op) and records the inverse — the wave-3 gesture-commit
+    // pattern. `void`: the manager's execute() is async, but the visible state is
+    // already correct, so we don't block the pointerup on it.
+    if (this.selectionTools.activeGesture() === 'resize') {
+      event.preventDefault();
+      const command = this.selectionTools.endGesture(engine);
+      if (command) {
+        void engine.commandManager.execute(command);
+        this.emitNodesChange();
+      }
+      this.host.requestRender();
+      return;
+    }
+
     const state = this.host.interaction.getState();
 
     if (state.isDraggingControlPoint) {
@@ -823,6 +918,17 @@ export class DomEventBinder {
     const engine = this.engine();
     this.isPanning = false;
 
+    // wave12/node-resize: the pointer left mid-resize → commit what we have (the
+    // node already looks right; abandoning would snap it back under the user).
+    if (engine && this.selectionTools.activeGesture() === 'resize') {
+      const command = this.selectionTools.endGesture(engine);
+      if (command) {
+        void engine.commandManager.execute(command);
+        this.emitNodesChange();
+      }
+      this.host.requestRender();
+    }
+
     if (this.nodeDrag) {
       const moved = this.nodeDrag.committed;
       this.nodeDrag = null;
@@ -883,6 +989,11 @@ export class DomEventBinder {
       const state = this.host.interaction.getState();
       if (state.isConnecting) this.host.interaction.cancelConnection(engine);
       if (state.isReconnectingLink) this.host.interaction.cancelLinkReconnection(engine);
+      // wave12/node-resize: Escape abandons an in-flight resize, restoring the
+      // node's pre-gesture size/position (SelectionToolsController.cancelGesture).
+      if (this.selectionTools.activeGesture() === 'resize') {
+        this.selectionTools.cancelGesture(engine);
+      }
       this.nodeDrag = null;
       diagram.clearSelection();
       this.host.requestRender();

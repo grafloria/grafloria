@@ -391,4 +391,87 @@ describe('DomEventBinder', () => {
       input.remove();
     });
   });
+
+  // ==========================================================================
+  // wave12/node-resize — dragging a resize handle must resize the node through
+  // the DEFAULT DOM pointer pipeline, not merely through a host-registered tool.
+  //
+  // Node `a` lives at (100,100) sized 100×60, so its SE corner is the world point
+  // (200,160). A resize handle sits there ONLY once the node is selected.
+  // ==========================================================================
+  describe('resize handle gesture', () => {
+    /** Select `a` so the tool layer paints its handles, without arming a drag. */
+    const selectA = () => {
+      h.container.dispatchEvent(mouse('mousedown', A_CENTER));
+      h.container.dispatchEvent(mouse('mouseup', A_CENTER));
+    };
+
+    it('a drag on the SE handle GROWS the node (does not drag it)', () => {
+      h = harness();
+      selectA();
+      const node = h.model.getNode('a')!;
+      const startPos = { ...node.position };
+
+      // Grab the SE corner handle and haul it +60 right, +40 down.
+      h.container.dispatchEvent(mouse('mousedown', { clientX: 200, clientY: 160 }));
+      h.container.dispatchEvent(mouse('mousemove', { clientX: 260, clientY: 200 }));
+      h.container.dispatchEvent(mouse('mouseup', { clientX: 260, clientY: 200 }));
+
+      // The node grew; its NW corner (the anchored edge) did NOT move.
+      expect(node.size.width).toBeCloseTo(160);
+      expect(node.size.height).toBeCloseTo(100);
+      expect(node.position.x).toBeCloseTo(startPos.x);
+      expect(node.position.y).toBeCloseTo(startPos.y);
+    });
+
+    it('clamps to the per-node max DURING the drag (cannot drag past it)', () => {
+      h = harness();
+      // Declare a 200-wide / 120-tall cap on `a`.
+      h.model.getNode('a')!.setMetadata('sizing', { maxWidth: 200, maxHeight: 120 });
+      selectA();
+      const node = h.model.getNode('a')!;
+
+      h.container.dispatchEvent(mouse('mousedown', { clientX: 200, clientY: 160 }));
+      // Haul 1000px past the cap — still mid-drag (no mouseup yet).
+      h.container.dispatchEvent(mouse('mousemove', { clientX: 1200, clientY: 1200 }));
+
+      expect(node.size.width).toBe(200);
+      expect(node.size.height).toBe(120);
+
+      h.container.dispatchEvent(mouse('mouseup', { clientX: 1200, clientY: 1200 }));
+    });
+
+    it('commits ONE undoable command (undo restores the original size)', async () => {
+      h = harness();
+      selectA();
+      const node = h.model.getNode('a')!;
+
+      h.container.dispatchEvent(mouse('mousedown', { clientX: 200, clientY: 160 }));
+      h.container.dispatchEvent(mouse('mousemove', { clientX: 260, clientY: 200 }));
+      h.container.dispatchEvent(mouse('mouseup', { clientX: 260, clientY: 200 }));
+
+      expect(node.size.width).toBeCloseTo(160);
+      // CommandManager.execute() is async; let the commit settle before asserting
+      // the undo stack, exactly as the Angular canvas's tests do.
+      await new Promise((resolve) => setTimeout(resolve, 0));
+      expect(h.engine.commandManager.canUndo()).toBe(true);
+
+      await h.engine.commandManager.undo();
+      expect(node.size.width).toBeCloseTo(100);
+      expect(node.size.height).toBeCloseTo(60);
+      expect(h.events.some((e) => e.event === 'nodes:change')).toBe(true);
+    });
+
+    it('an UNSELECTED node has no handle there — the press drags instead', () => {
+      h = harness();
+      const node = h.model.getNode('a')!;
+      // No selection ⇒ no handle at the corner ⇒ the press falls through to a drag.
+      h.container.dispatchEvent(mouse('mousedown', { clientX: 200, clientY: 160 }));
+      h.container.dispatchEvent(mouse('mousemove', { clientX: 240, clientY: 160 }));
+      h.container.dispatchEvent(mouse('mouseup', { clientX: 240, clientY: 160 }));
+
+      expect(node.size.width).toBeCloseTo(100); // never resized
+      expect(node.position.x).toBeCloseTo(140); // it moved instead
+    });
+  });
 });

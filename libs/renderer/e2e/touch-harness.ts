@@ -152,6 +152,28 @@ for (const name of ['node:click', 'edge:click', 'selection:change', 'contextmenu
     return { x: p.x, y: p.y, portId: port.id, world };
   },
 
+  /** A node's live size — the resize test reads it before/after the finger drag. */
+  nodeSize(id: string) {
+    const n = instance.getModel().getNode(id)!;
+    return { width: n.size.width, height: n.size.height };
+  },
+
+  /**
+   * Screen position of a resize handle, given its unit (u,v) anchor within the
+   * node box (SE corner = 1,1). The SAME anchors SelectionToolsController lays the
+   * handles out at, so a finger aimed here lands on the real, hittable handle.
+   */
+  nodeHandleClient(id: string, u: number, v: number) {
+    const n = instance.getModel().getNode(id)!;
+    const rect = stage.getBoundingClientRect();
+    const p = instance.viewport.worldToClient(
+      n.position.x + u * n.size.width,
+      n.position.y + v * n.size.height,
+      { left: rect.left, top: rect.top, width: rect.width, height: rect.height }
+    );
+    return { x: p.x, y: p.y };
+  },
+
   /** The engine's REAL screen->world, so the pinch-anchor assertion cannot lie. */
   clientToWorld(clientX: number, clientY: number) {
     const rect = stage.getBoundingClientRect();

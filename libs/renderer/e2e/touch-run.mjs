@@ -223,6 +223,46 @@ async function pinch(center, startGap, endGap, steps = 14) {
 }
 
 // =============================================================================
+// 3.5 wave12/node-resize — RESIZE MUST WORK WITH A FINGER.
+//
+// A resize handle appears once a node is selected (tap already proven). Then a
+// ONE-FINGER drag STARTING ON the SE corner handle must GROW the node — not pan,
+// not drag it — through the real touch pipeline. If the touch controller has no
+// resize branch (the state this wave fixes), the finger drags the node instead
+// and its SIZE never changes, so this goes red.
+// =============================================================================
+{
+  await reset();
+  // Select A with a tap so its handles exist.
+  const centerA = await nodeCenter('A');
+  await touchStart([{ ...centerA, id: 1 }]);
+  await page.waitForTimeout(60);
+  await touchEnd();
+  await page.waitForTimeout(40);
+
+  const sizeBefore = await page.evaluate(() => window.__touch.nodeSize('A'));
+  const posBefore = (await state()).a;
+  const se = await page.evaluate(() => window.__touch.nodeHandleClient('A', 1, 1));
+
+  // Drag the SE corner +120 right / +70 down.
+  await oneFingerDrag({ x: se.x, y: se.y }, { x: se.x + 120, y: se.y + 70 }, 14);
+
+  const sizeAfter = await page.evaluate(() => window.__touch.nodeSize('A'));
+  const posAfter = (await state()).a;
+
+  expectThat(
+    'wave12/node-resize: a ONE-FINGER drag on the SE handle GROWS the node',
+    sizeAfter.width - sizeBefore.width > 80 && sizeAfter.height - sizeBefore.height > 40,
+    `size ${sizeBefore.width}x${sizeBefore.height} -> ${sizeAfter.width}x${sizeAfter.height} (expected ~+120/+70)`
+  );
+  expectThat(
+    'wave12/node-resize: resizing does NOT move the anchored NW corner, and does NOT pan',
+    Math.abs(posAfter.x - posBefore.x) < 2 && Math.abs(posAfter.y - posBefore.y) < 2,
+    `node A ${JSON.stringify(posBefore)} -> ${JSON.stringify(posAfter)}`
+  );
+}
+
+// =============================================================================
 // 4. Two-finger pinch zoom (REAL multi-touch, via CDP)
 // =============================================================================
 {
