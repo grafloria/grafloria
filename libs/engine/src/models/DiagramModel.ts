@@ -132,6 +132,27 @@ export class DiagramModel extends DiagramEntity {
   // connection validation) never linear-scan every node's ports.
   private portIndex: Map<string, { node: NodeModel; port: PortModel }> = new Map();
 
+  /**
+   * Wave 10 — who owns the invariant "a link whose node is gone is not a link"?
+   *
+   * `'model'` (the default): {@link removeNode} CASCADES — it removes the links attached
+   * to the node it removes. This is the right answer for an ordinary single-user document,
+   * and its absence was a real bug: deleting a node left its edges in `getLinks()` and on
+   * the screen, through every removal path there is.
+   *
+   * `'external'`: something with a BETTER answer owns it, and the cascade must keep its
+   * hands off. Specifically {@link ReferentialIntegrity} (wave 9, collab), which derives
+   * liveness from the presence registers and QUARANTINES an orphaned link instead of
+   * destroying it — so undoing the node delete, or a peer resurrecting the node, brings the
+   * links back too, including links this peer never saw. A hard cascade there would be
+   * irreversible (a `remove link` op puts "removed" in the register for good), chatty (N
+   * derived ops on the wire), and still wrong in the only case that matters — the
+   * concurrent one, where it cannot see the link a colleague is drawing right now.
+   *
+   * The Replica sets this when it attaches. Nothing else should touch it.
+   */
+  linkIntegrityOwner: 'model' | 'external' = 'model';
+
   // =========================================================================
   // wave9/comments — Card 6: THE COMMENT REGISTER NAMESPACE.
   //
@@ -460,12 +481,38 @@ export class DiagramModel extends DiagramEntity {
   }
 
   /**
-   * Remove node from diagram
+   * Remove node from diagram — AND every link attached to it.
+   *
+   * Wave 10 BUG FIX. This used to delete the node and nothing else, so every link that
+   * touched it survived: still in `getLinks()`, still in the spatial index, and still
+   * PAINTED — two edges hanging off a node that no longer existed. `deleteSelected()`
+   * carried the comment "this will also trigger link cleanup via events"; nothing
+   * listened to `node:removed` for cleanup, so that cleanup never happened, anywhere.
+   *
+   * It matters because EVERY removal path funnels through here:
+   *   - `deleteSelected()` — what the Delete key calls;
+   *   - `applyNodes()` — what `setNodes()` calls, so dropping a node from a React-shaped
+   *     spec left the dangling links behind;
+   *   - `RemoveNodeCommand`.
+   *
+   * A link's endpoints are the invariant that makes it a link; a link to nowhere is not
+   * a link. So the cascade belongs at the choke point, not at each of the three call
+   * sites that would each have to remember it.
+   *
+   * UNLESS someone better owns that invariant — see {@link linkIntegrityOwner}.
    */
   removeNode(nodeId: string): NodeModel | undefined {
     if (this.blocksDocumentWrite()) return undefined;
     const node = this.nodes.get(nodeId);
     if (node) {
+      // Links first, while the node's ports are still in the index — removeLink()
+      // resolves them to release the ports' connection bookkeeping.
+      if (this.linkIntegrityOwner === 'model') {
+        for (const link of this.getLinksForNode(nodeId)) {
+          this.removeLink(link.id);
+        }
+      }
+
       this.nodes.delete(nodeId);
 
       // Drop this node's ports from the O(1) port index
@@ -478,6 +525,22 @@ export class DiagramModel extends DiagramEntity {
       this.emitOrQueue('node:removed', node);
     }
     return node;
+  }
+
+  /**
+   * Every link with an endpoint on `nodeId` (either end, including a self-loop).
+   *
+   * Resolved through the port index rather than the cached `sourceNodeId`/`targetNodeId`,
+   * because those are a backfill that can be absent on a link built by hand.
+   */
+  getLinksForNode(nodeId: string): LinkModel[] {
+    const out: LinkModel[] = [];
+    for (const link of this.links.values()) {
+      const source = this.getNodeByPortId(link.sourcePortId)?.id ?? link.sourceNodeId;
+      const target = this.getNodeByPortId(link.targetPortId)?.id ?? link.targetNodeId;
+      if (source === nodeId || target === nodeId) out.push(link);
+    }
+    return out;
   }
 
   /**
@@ -608,6 +671,28 @@ export class DiagramModel extends DiagramEntity {
       link.targetNodeId = this.getNodeByPortId(link.targetPortId)?.id;
     }
 
+    // Wave 10 BUG FIX — register the link on its PORTS.
+    //
+    // This is the single install path, and it was the ONE place that did not do the
+    // connection bookkeeping. `createSmartLink()`, `DiagramEngine`'s interactive connect
+    // and `LayoutManager` each called `port.addConnection()` by hand; a link built the
+    // ordinary way — `new LinkModel()` + `addLink()`, which is exactly what the public
+    // spec path (`setNodes`/`setEdges` → `applyEdges` → `buildEdge`) does — registered on
+    // neither port.
+    //
+    // So `port.getConnectionCount()` was 0 for every link in every spec-built diagram,
+    // and `maxConnections` — whose ONLY enforcement is `evaluatePortConnection()` reading
+    // that counter — could never fire. A port declared `maxConnections: 1` that already
+    // had its one link from the spec still believed it had none, and accepted a second.
+    //
+    // `restoreConnection`, not `addConnection`: registering an EXISTING link is a load,
+    // not a new connection, so it must not throw when a persisted graph legitimately
+    // exceeds a since-tightened limit (that is what the method was written for). It is
+    // Set-backed and therefore idempotent, so the hand-rolled call sites above — which
+    // register before calling addLink() — stay correct and do not double-count.
+    this.getPortById(link.sourcePortId)?.restoreConnection(link.id, 'source');
+    this.getPortById(link.targetPortId)?.restoreConnection(link.id, 'target');
+
     this.links.set(link.id, link);
     this.trackChange('links', null, link);
     this.emitOrQueue('link:added', link);
@@ -633,6 +718,12 @@ export class DiagramModel extends DiagramEntity {
     if (this.blocksDocumentWrite()) return undefined;
     const link = this.links.get(linkId);
     if (link) {
+      // Wave 10 — the mirror of installLink()'s registration. Without it a removed link
+      // would keep occupying its ports' connection budget forever, and a port with a
+      // maxConnections cap would silently jam after enough add/remove churn.
+      this.getPortById(link.sourcePortId)?.removeConnection(link.id);
+      this.getPortById(link.targetPortId)?.removeConnection(link.id);
+
       this.links.delete(linkId);
 
       // Phase 5.1: Remove from spatial index

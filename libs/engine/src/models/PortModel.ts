@@ -331,6 +331,17 @@ export class PortModel extends DiagramEntity {
    * Add connection
    */
   addConnection(linkId: string, role?: 'source' | 'target'): void {
+    // Wave 10 BUG FIX: the capacity guard used to run BEFORE the already-registered
+    // check, so re-registering a link this port ALREADY holds threw "reached max
+    // connections" — even though the Set below would have deduped it and the count
+    // would not have moved. Registering the same link twice is a no-op, never an
+    // overflow. (It surfaced the moment `installLink()` started doing the bookkeeping
+    // itself: every caller that also registered by hand, in either order, tripped it.)
+    if (this.currentConnections.has(linkId)) {
+      if (role) this.linkRoles.set(linkId, role);
+      return;
+    }
+
     if (this.currentConnections.size >= this.maxConnections) {
       throw new Error(
         `Port ${this.id} has reached max connections (${this.maxConnections})`
@@ -341,10 +352,8 @@ export class PortModel extends DiagramEntity {
       this.linkRoles.set(linkId, role);
     }
 
-    if (!this.currentConnections.has(linkId)) {
-      this.currentConnections.add(linkId);
-      this.trackChange('connections', null, linkId);
-    }
+    this.currentConnections.add(linkId);
+    this.trackChange('connections', null, linkId);
   }
 
   /**
