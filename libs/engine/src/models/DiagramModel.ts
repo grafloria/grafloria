@@ -594,6 +594,17 @@ export class DiagramModel extends DiagramEntity {
 
       this.trackChange('nodes', node, null);
       this.emitOrQueue('node:removed', node);
+
+      // wave14/model — mirror of installNode's `node.diagram = this` (dispose() already
+      // clears it; this was the one detach path that did not). Deliberately LAST:
+      // OpCapture serializes the node's full removal snapshot and unwatches it inside the
+      // trackChange emission above (capture.ts), and synchronous 'node:removed' listeners
+      // may still resolve through the owning diagram — so the ref must survive both.
+      // (Under batch mode the queued 'node:removed' flushes after this line and sees a
+      // detached node — correct by then: the node no longer belongs to any diagram.)
+      // Clearing restores the documented "detached node" status: freely mutable, no stale
+      // read-only lock, no strong ref pinning the whole diagram, re-addable anywhere.
+      node.diagram = undefined;
     }
     return node;
   }
