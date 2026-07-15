@@ -238,9 +238,23 @@ describe('DEFECT 1: ports are per-port registers, not one whole-collection regis
       const base = new DiagramModel('mixed');
       const one = new Replica(new DiagramModel(base.name, { id: base.id, uuid: base.uuid }), { actor: 'one' });
       const two = new Replica(new DiagramModel(base.name, { id: base.id, uuid: base.uuid }), { actor: 'two' });
+      const three = new Replica(new DiagramModel(base.name, { id: base.id, uuid: base.uuid }), { actor: 'three' });
 
-      one.receive([...ops]); // in-order delivery
-      two.receive([...ops].reverse()); // …and fully reversed
+      // ONE OP PER receive(), deliberately: a batch is sorted into total order before it
+      // is applied, which would quietly reduce "both delivery orders" to one order and
+      // never exercise the ports-collection barrier at all. (Mutation-testing the barrier
+      // out of lww.ts caught exactly that: this test stayed green. Per-op delivery is
+      // what a real network does anyway.)
+      for (const o of ops) one.receive([o]); // in-order delivery
+      for (const o of [...ops].reverse()) two.receive([o]); // …fully reversed…
+      // …and the LEGACY STRAGGLER: the whole-collection op lands LAST, after the add and
+      // the per-port write it races. This is the order that needs repairPorts — the
+      // stateless apply rebuilds the whole collection, clobbering the newer per-port
+      // register, and only the log knows what to put back. (Mutation-testing repairPorts
+      // out survived the first two orders; this one kills it.)
+      three.receive([ops[0]]);
+      three.receive([ops[2]]);
+      three.receive([ops[1]]);
 
       const ids = (r: Replica) => r.diagram.getNode('a')!.getPorts().map((p) => p.id);
       // the legacy collection landed either way
@@ -251,8 +265,9 @@ describe('DEFECT 1: ports are per-port registers, not one whole-collection regis
         label,
         newP: label === 'legacy older',
       });
-      expectConverged(one.diagram, two.diagram, { label });
-      [one, two].forEach((r) => r.dispose());
+      expectConverged(one.diagram, two.diagram, { label, pair: 'one~two' });
+      expectConverged(one.diagram, three.diagram, { label, pair: 'one~three' });
+      [one, two, three].forEach((r) => r.dispose());
     }
   });
 });
