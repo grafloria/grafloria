@@ -1,0 +1,112 @@
+<meta charset="utf-8">
+<title>Conflict resolution — Grafloria</title>
+<link rel="stylesheet" href="../shell/demo.css">
+<style>
+  .note { font-size: 12px; opacity: .8; padding: 10px 24px; border-bottom: 1px solid rgba(127,127,127,.25); line-height: 1.6; }
+  code { background: rgba(127,127,127,.15); padding: 1px 5px; border-radius: 4px; }
+  #canvas { display: flex; height: calc(100vh - 190px); }
+  .pane { flex: 1; min-width: 0; position: relative; }
+  .pane + .pane { border-left: 2px solid rgba(127,127,127,.35); }
+  .pane .tag { position: absolute; top: 8px; left: 8px; z-index: 2; font: 11px ui-monospace, Menlo, monospace; background: rgba(37,99,235,.85); color:#fff; padding: 2px 8px; border-radius: 4px; }
+</style>
+<header id="demo-head"></header>
+<div class="note">
+  Two peers edit the SAME node at the SAME time — one <b>moves</b> it, the other <b>renames</b>
+  it — offline from each other, then converge. <b>Both edits survive on both peers.</b> A
+  whole-entity last-writer-wins would keep one and silently throw the other away; a
+  <b>per-property</b> CRDT keeps both because position and label are different registers.
+</div>
+<div id="canvas">
+  <div class="pane"><span class="tag">peer A — moves it</span><div id="paneA" style="height:100%"></div></div>
+  <div class="pane"><span class="tag">peer B — renames it</span><div id="paneB" style="height:100%"></div></div>
+</div>
+<script type="module">
+import { render, createSyncSession, MemoryHub } from '../shell/grafloria.js';
+import { defineDemo, check } from '../shell/demo.js';
+
+const SPEC = () => ({
+  nodes: [{ id: 'n1', label: 'Draft', position: { x: 120, y: 120 }, size: { width: 160, height: 70 } }],
+  edges: [],
+});
+
+const hub = new MemoryHub();
+function peer(hostId, actor) {
+  const inst = render(SPEC(), document.getElementById(hostId));
+  // batch by hand so we can stage TRULY concurrent edits before either is sent.
+  const session = createSyncSession(inst.getModel(), hub.connect(actor), { actor, batch: { intervalMs: 1_000_000 } });
+  session.join();
+  return { inst, session };
+}
+
+const label = (inst) => inst.getModel().getNode('n1').getMetadata('label');
+const pos = (inst) => { const p = inst.getModel().getNode('n1').position; return { x: p.x, y: p.y }; };
+
+defineDemo({
+  name: 'Conflict resolution',
+  blurb: 'Concurrent move + rename of the SAME node: both survive on both peers. Whole-entity LWW would throw one away — a per-property CRDT does not.',
+  reactflow: 'Collaborative (Yjs)',
+  pro: true,
+
+  async setup(ctx) {
+    ctx.A = peer('paneA', 'ana');
+    ctx.B = peer('paneB', 'bo');
+    await ctx.tick();
+  },
+
+  async assert(ctx) {
+    const A = ctx.A.inst, B = ctx.B.inst;
+
+    // Baseline: both peers agree.
+    check(label(A) === 'Draft' && label(B) === 'Draft', 'peers did not start in agreement on the label');
+    check(pos(A).x === 120 && pos(B).x === 120, 'peers did not start in agreement on the position');
+
+    // ---- CONCURRENT, OFFLINE EDITS on the SAME node --------------------------
+    // Peer A MOVES n1. Peer B RENAMES n1. Neither has sent anything yet.
+    A.getModel().getNode('n1').setPosition(420, 260);
+    B.getModel().getNode('n1').setMetadata('label', 'Final');
+
+    // Locally, each peer sees only its own edit so far.
+    check(pos(A).x === 420 && label(A) === 'Draft', 'peer A did not apply its own move');
+    check(label(B) === 'Final' && pos(B).x === 120, 'peer B did not apply its own rename');
+
+    // ---- NOW they exchange. Each op crosses to the other peer. ---------------
+    ctx.A.session.flush();
+    ctx.B.session.flush();
+    await ctx.tick();
+
+    // ---- THE ASSERTION WITH TEETH -------------------------------------------
+    // BOTH edits must be present on BOTH peers. Move on the position register,
+    // rename on the metadata.label register — independent, so neither displaces
+    // the other.
+    for (const [name, inst] of [['A', A], ['B', B]]) {
+      check(
+        pos(inst).x === 420 && pos(inst).y === 260,
+        `peer ${name} lost the MOVE after convergence — position is ${JSON.stringify(pos(inst))}, expected {420,260}.\n` +
+        `    Whole-entity LWW would do exactly this: the rename's write clobbered the move.`
+      );
+      check(
+        label(inst) === 'Final',
+        `peer ${name} lost the RENAME after convergence — label is "${label(inst)}", expected "Final".\n` +
+        `    Whole-entity LWW would do exactly this: the move's write clobbered the rename.`
+      );
+    }
+
+    // And it PAINTED on both — the moved node is at its new position in both DOMs.
+    A.renderNow(); B.renderNow();
+    await ctx.tick();
+    check(!!document.querySelector('#paneA [data-node-id="n1"]'), "peer A's DOM lost the node");
+    check(!!document.querySelector('#paneB [data-node-id="n1"]'), "peer B's DOM lost the node");
+
+    // A further concurrent SIZE change (a third register) also coexists.
+    A.getModel().getNode('n1').setSize(220, 90);
+    B.getModel().getNode('n1').setMetadata('label', 'Final v2');
+    ctx.A.session.flush(); ctx.B.session.flush();
+    await ctx.tick();
+    for (const inst of [A, B]) {
+      check(inst.getModel().getNode('n1').size.width === 220, 'the size edit did not converge');
+      check(label(inst) === 'Final v2', 'the second rename did not converge');
+      check(pos(inst).x === 420, 'the earlier move was lost by a later edit on another register');
+    }
+  },
+});
+</script>

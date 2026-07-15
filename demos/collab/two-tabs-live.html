@@ -1,0 +1,109 @@
+<meta charset="utf-8">
+<title>Two tabs, live — Grafloria</title>
+<link rel="stylesheet" href="../shell/demo.css">
+<style>
+  .note { font-size: 12px; opacity: .8; padding: 10px 24px; border-bottom: 1px solid rgba(127,127,127,.25); line-height: 1.6; }
+  code { background: rgba(127,127,127,.15); padding: 1px 5px; border-radius: 4px; }
+  #canvas { display: flex; height: calc(100vh - 190px); }
+  .pane { flex: 1; min-width: 0; position: relative; }
+  .pane + .pane { border-left: 2px solid rgba(127,127,127,.35); }
+  .pane .tag { position: absolute; top: 8px; left: 8px; z-index: 2; font: 11px ui-monospace, Menlo, monospace; background: rgba(37,99,235,.85); color:#fff; padding: 2px 8px; border-radius: 4px; }
+</style>
+<header id="demo-head"></header>
+<div class="note">
+  Two independent Grafloria instances — think two browser tabs — wired over a
+  <code>BroadcastChannel</code> with <b>no server</b>. Edit the left pane; the right converges.
+  React Flow ships this only as a paid Yjs example; here it is core, and it REFUSED Yjs (the
+  per-property CRDT lives in the engine).
+</div>
+<div id="canvas">
+  <div class="pane"><span class="tag">tab A (you edit)</span><div id="paneA" style="height:100%"></div></div>
+  <div class="pane"><span class="tag">tab B (converges)</span><div id="paneB" style="height:100%"></div></div>
+</div>
+<script type="module">
+import { render, createSyncSession, BroadcastChannelTransport } from '../shell/grafloria.js';
+import { defineDemo, check } from '../shell/demo.js';
+
+const SPEC = () => ({
+  nodes: [
+    { id: 'a', label: 'Ingest',    position: { x: 60,  y: 80 },  size: { width: 150, height: 66 } },
+    { id: 'b', label: 'Transform', position: { x: 300, y: 80 },  size: { width: 150, height: 66 } },
+  ],
+  edges: [{ id: 'e1', source: 'a', target: 'b' }],
+});
+
+const ROOM = 'grafloria-demo-two-tabs-' + Math.random().toString(36).slice(2);
+const until = async (fn, ms = 3000) => {
+  const t0 = Date.now();
+  for (;;) {
+    const v = fn();
+    if (v) return v;
+    if (Date.now() - t0 > ms) return v;
+    await new Promise((r) => setTimeout(r, 16));
+  }
+};
+
+function peer(hostId, actor) {
+  const inst = render(SPEC(), document.getElementById(hostId));
+  const session = createSyncSession(
+    inst.getModel(),
+    new BroadcastChannelTransport({ name: ROOM, actor }),
+    { actor, batch: false }
+  );
+  session.join();
+  return { inst, session };
+}
+
+defineDemo({
+  name: 'Two tabs, live',
+  blurb: 'Real cross-tab multiplayer over BroadcastChannel — no server. Edit one instance, the other converges through a per-property CRDT.',
+  reactflow: 'Collaborative (Yjs)',
+  pro: true,
+
+  async setup(ctx) {
+    check(BroadcastChannelTransport.isSupported(), 'BroadcastChannel is unavailable in this environment');
+    ctx.A = peer('paneA', 'ana');
+    ctx.B = peer('paneB', 'bo');
+    // Let both announce/catch-up before we drive edits.
+    await ctx.tick(50);
+  },
+
+  async assert(ctx) {
+    const A = ctx.A.inst, B = ctx.B.inst;
+
+    // 1. A MOVE made in tab A must land in tab B's MODEL. This is the whole claim.
+    A.getModel().getNode('a').setPosition(80, 260);
+    const movedInB = await until(() => {
+      const n = B.getModel().getNode('a');
+      return n && n.position.x === 80 && n.position.y === 260 ? n : null;
+    });
+    check(!!movedInB, `tab B never received tab A's move of node 'a' (still at ${JSON.stringify(B.getModel().getNode('a').position)})`);
+
+    // 2. …and B actually REPAINTED it — a model that syncs but never redraws is a
+    //    different bug wearing the same coat.
+    B.renderNow();
+    await ctx.tick();
+    const rectB = document.querySelector('#paneB [data-node-id="a"]');
+    check(!!rectB, "tab B's DOM has no node 'a' at all");
+
+    // 3. A brand-new node CREATED in tab A must appear in tab B — the headline
+    //    assertion: "tab 2's model contains the node tab 1 created".
+    A.setNodes([
+      { id: 'a', label: 'Ingest',    position: A.getModel().getNode('a').position, size: { width: 150, height: 66 } },
+      { id: 'b', label: 'Transform', position: { x: 300, y: 80 }, size: { width: 150, height: 66 } },
+      { id: 'c', label: 'Publish',   position: { x: 300, y: 240 }, size: { width: 150, height: 66 } },
+    ]);
+    const createdInB = await until(() => B.getModel().getNode('c'));
+    check(!!createdInB, "the node tab A created ('c') never reached tab B's model");
+    check(createdInB.getMetadata('label') === 'Publish', `the created node reached B without its label: ${createdInB.getMetadata('label')}`);
+
+    // 4. SYMMETRY: an edit in tab B propagates back to tab A. Not a one-way pipe.
+    B.getModel().getNode('b').setPosition(540, 80);
+    const backInA = await until(() => {
+      const n = A.getModel().getNode('b');
+      return n && n.position.x === 540 ? n : null;
+    });
+    check(!!backInA, `tab A never received tab B's edit — sync is one-directional (A's 'b' at ${JSON.stringify(A.getModel().getNode('b').position)})`);
+  },
+});
+</script>

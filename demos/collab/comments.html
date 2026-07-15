@@ -1,0 +1,111 @@
+<meta charset="utf-8">
+<title>Threaded comments — Grafloria</title>
+<link rel="stylesheet" href="../shell/demo.css">
+<style>
+  .note { font-size: 12px; opacity: .8; padding: 10px 24px; border-bottom: 1px solid rgba(127,127,127,.25); line-height: 1.6; }
+  code { background: rgba(127,127,127,.15); padding: 1px 5px; border-radius: 4px; }
+  #canvas { display: flex; height: calc(100vh - 190px); }
+  #stage { flex: 1; min-width: 0; }
+  #panel { width: 320px; border-left: 1px solid rgba(127,127,127,.3); padding: 12px 14px; overflow: auto; font-size: 13px; }
+  .thread { border: 1px solid rgba(127,127,127,.3); border-radius: 8px; padding: 8px 10px; margin-bottom: 10px; }
+  .thread h4 { margin: 0 0 4px; font-size: 12px; }
+  .thread .msg { padding: 3px 0; border-top: 1px dashed rgba(127,127,127,.25); }
+  .badge { font-size: 10px; padding: 1px 6px; border-radius: 999px; }
+  .badge.attached { background: #dcfce7; color: #166534; }
+  .badge.orphan { background: #fee2e2; color: #991b1b; }
+</style>
+<header id="demo-head"></header>
+<div class="note">
+  Comment threads anchored to a node. Delete the node and the thread is <b>ORPHANED, not
+  destroyed</b> — it stays readable, replyable, and rescuable via <code>reanchor()</code>.
+  <code>attached</code> is derived from the live diagram on every read, never stored.
+</div>
+<div id="canvas">
+  <div id="stage"></div>
+  <div id="panel"><em>threads…</em></div>
+</div>
+<script type="module">
+import { render, CommentStore } from '../shell/grafloria.js';
+import { defineDemo, check } from '../shell/demo.js';
+
+const NODES = [
+  { id: 'a', label: 'Design',  position: { x: 60,  y: 90 },  size: { width: 150, height: 66 } },
+  { id: 'b', label: 'Review',  position: { x: 300, y: 90 },  size: { width: 150, height: 66 } },
+  { id: 'c', label: 'Ship',    position: { x: 540, y: 90 },  size: { width: 150, height: 66 } },
+];
+const SPEC = { nodes: NODES, edges: [{ id: 'e1', source: 'a', target: 'b' }, { id: 'e2', source: 'b', target: 'c' }] };
+
+const liveMsgs = (t) => t.messages.filter((m) => !m.deleted);
+
+defineDemo({
+  name: 'Threaded comments',
+  blurb: 'Threads anchored to a node — delete the node and the thread is orphaned, not destroyed. Concurrent replies both survive (one register per message).',
+  reactflow: 'Collaborative (Yjs)',
+  pro: true,
+
+  async setup(ctx) {
+    const api = render(SPEC, document.getElementById('stage'));
+    ctx.instance = api;
+    ctx.store = new CommentStore(api.getModel(), { viewer: 'ana' });
+
+    const panel = document.getElementById('panel');
+    const paint = () => {
+      const threads = ctx.store.threads({ includeResolved: true });
+      panel.innerHTML = threads.length ? threads.map((t) => {
+        const a = t.resolvedAnchor;
+        return `<div class="thread">
+          <h4>${a.targetLabel ?? '(region)'} <span class="badge ${a.attached ? 'attached' : 'orphan'}">${a.attached ? 'attached' : 'ORPHANED'}</span></h4>
+          ${liveMsgs(t).map((m) => `<div class="msg">${m.body}</div>`).join('')}
+        </div>`;
+      }).join('') : '<em>no threads yet</em>';
+    };
+    ctx.store.onChange(paint);
+    paint();
+    await ctx.tick();
+  },
+
+  async assert(ctx) {
+    const store = ctx.store;
+
+    // 1. Anchor a thread to node 'b' and reply twice. Each message is its OWN
+    //    register, which is what lets two concurrent replies both survive.
+    const tid = store.createThread({ kind: 'node', id: 'b' }, 'Is this the final copy?');
+    store.reply(tid, 'Yes — approved.');
+    store.reply(tid, 'Ship it.');
+
+    let t = store.thread(tid);
+    check(!!t, 'the thread was not created');
+    check(liveMsgs(t).length === 3, `expected 3 messages (1 + 2 replies), got ${liveMsgs(t).length}`);
+    check(t.resolvedAnchor.attached === true, 'a thread on a live node should be attached');
+    check(t.resolvedAnchor.targetLabel === 'Review', `the anchor should name node 'b' (Review), got ${t.resolvedAnchor.targetLabel}`);
+    check(store.orphans().length === 0, 'nothing should be orphaned yet');
+
+    // 2. THE ONE THAT MATTERS. Delete node 'b'. The thread must NOT be destroyed:
+    //    it stays readable, keeps all three messages, and becomes an ORPHAN.
+    ctx.instance.setNodes(NODES.filter((n) => n.id !== 'b'));
+    ctx.instance.renderNow();
+    await ctx.tick();
+    check(!ctx.instance.getModel().getNode('b'), "node 'b' was not actually removed");
+
+    t = store.thread(tid);
+    check(!!t, 'deleting the node DESTROYED the thread — comments must outlive their subject');
+    check(liveMsgs(t).length === 3, `the orphaned thread lost messages: ${liveMsgs(t).length} of 3 survive`);
+    check(t.resolvedAnchor.attached === false, 'a thread whose node is gone must report attached:false');
+    const orphans = store.orphans();
+    check(orphans.some((o) => o.id === tid), 'the thread is not listed among orphans()');
+
+    // 3. It is still REPLYABLE while orphaned — a real thread, not a tombstone.
+    store.reply(tid, 'Where did this node go?');
+    check(liveMsgs(store.thread(tid)).length === 4, 'could not reply to an orphaned thread');
+
+    // 4. RESCUE: reanchor the orphan onto another live node → attached again, with
+    //    every message intact.
+    check(store.reanchor(tid, { kind: 'node', id: 'c' }), 'reanchor() failed');
+    t = store.thread(tid);
+    check(t.resolvedAnchor.attached === true, 'reanchoring to a live node should re-attach the thread');
+    check(t.resolvedAnchor.targetLabel === 'Ship', `the rescued thread should now point at 'Ship', got ${t.resolvedAnchor.targetLabel}`);
+    check(liveMsgs(t).length === 4, 'the rescue lost messages');
+    check(store.orphans().length === 0, 'the thread should no longer be an orphan after rescue');
+  },
+});
+</script>

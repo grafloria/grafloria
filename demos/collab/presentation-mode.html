@@ -1,0 +1,107 @@
+<meta charset="utf-8">
+<title>Presentation mode — Grafloria</title>
+<link rel="stylesheet" href="../shell/demo.css">
+<style>
+  .note { font-size: 12px; opacity: .8; padding: 10px 24px; border-bottom: 1px solid rgba(127,127,127,.25); line-height: 1.6; }
+  code { background: rgba(127,127,127,.15); padding: 1px 5px; border-radius: 4px; }
+  #canvas { display: flex; height: calc(100vh - 190px); }
+  .pane { flex: 1; min-width: 0; position: relative; }
+  .pane + .pane { border-left: 2px solid rgba(127,127,127,.35); }
+  .pane .tag { position: absolute; top: 8px; left: 8px; z-index: 2; font: 11px ui-monospace, Menlo, monospace; padding: 2px 8px; border-radius: 4px; color:#fff; }
+  .tag.pres { background: rgba(220,38,38,.9); } .tag.fol { background: rgba(37,99,235,.85); }
+</style>
+<header id="demo-head"></header>
+<div class="note">
+  The presenter drives the camera; every follower's viewport <b>follows the presenter</b> —
+  the same world region at the same zoom, each keeping its own canvas size. Followers are
+  <b>read-only</b>: the document lock refuses edits (it drives the engine's real mode, not a
+  cosmetic flag).
+</div>
+<div id="canvas">
+  <div class="pane"><span class="tag pres">presenter</span><div id="paneA" style="height:100%"></div></div>
+  <div class="pane"><span class="tag fol">follower (read-only)</span><div id="paneB" style="height:100%"></div></div>
+</div>
+<script type="module">
+import { render, InMemoryViewportChannel, presentTo, followPresenter, lockDocument, isDocumentLocked } from '../shell/grafloria.js';
+import { defineDemo, check, checkChanged } from '../shell/demo.js';
+
+const SPEC = () => ({
+  nodes: [
+    { id: 'a', label: 'A', position: { x: 60,  y: 80 },  size: { width: 130, height: 60 } },
+    { id: 'b', label: 'B', position: { x: 320, y: 80 },  size: { width: 130, height: 60 } },
+    { id: 'c', label: 'C', position: { x: 190, y: 240 }, size: { width: 130, height: 60 } },
+  ],
+  edges: [{ id: 'e1', source: 'a', target: 'b' }, { id: 'e2', source: 'a', target: 'c' }],
+});
+
+const centerOf = (inst) => { const v = inst.viewport.getViewport(); return { x: v.x + v.width / 2, y: v.y + v.height / 2 }; };
+
+defineDemo({
+  name: 'Presentation mode',
+  blurb: 'Follow-the-presenter + a real read-only lock. Followers see the presenter\'s world region at their own screen size, and cannot edit.',
+  reactflow: 'Collaborative (Yjs)',
+  pro: true,
+
+  async setup(ctx) {
+    ctx.A = render(SPEC(), document.getElementById('paneA')); // presenter
+    ctx.B = render(SPEC(), document.getElementById('paneB')); // follower
+    ctx.channel = new InMemoryViewportChannel();
+    presentTo(ctx.A, ctx.channel, { presenterId: 'ana', throttleMs: 0 });
+    followPresenter(ctx.B, ctx.channel, { ignorePresenterId: 'bo' });
+    await ctx.tick();
+  },
+
+  async assert(ctx) {
+    const A = ctx.A, B = ctx.B;
+
+    // 1. FOLLOW: the presenter zooms and pans; the follower lands on the SAME
+    //    world centre at the SAME zoom.
+    const bCenter0 = centerOf(B);
+    A.viewport.setZoom(2);
+    A.viewport.pan(300, 150);
+    await ctx.tick();
+
+    check(B.viewport.getZoom() === 2, `the follower did not adopt the presenter's zoom (got ${B.viewport.getZoom()})`);
+    const aCenter = centerOf(A), bCenter = centerOf(B);
+    checkChanged(bCenter0, bCenter, 'the presenter moved and the follower did not follow at all');
+    check(
+      Math.abs(aCenter.x - bCenter.x) < 0.001 && Math.abs(aCenter.y - bCenter.y) < 0.001,
+      `follower centre ${JSON.stringify(bCenter)} != presenter centre ${JSON.stringify(aCenter)}`
+    );
+
+    // 2. THE TRAP: the follower keeps its OWN canvas size (it does not inherit the
+    //    presenter's rectangle wholesale — that would desync its own hit-testing).
+    const aVp = A.viewport.getViewport(), bVp = B.viewport.getViewport();
+    check(
+      bVp.width === B.container.getBoundingClientRect().width,
+      `the follower adopted the presenter's canvas width (${bVp.width}) instead of its own`
+    );
+
+    // 3. READ-ONLY LOCK with teeth: lock the follower, then attempt a document
+    //    edit — it must be REFUSED (a no-op), not merely discouraged.
+    lockDocument(B.getEngine(), true);
+    check(isDocumentLocked(B.getEngine()), 'lockDocument did not lock the follower');
+
+    const before = B.getModel().getNode('a').position.x;
+    B.getModel().getNode('a').setPosition(999, 999); // a document write on a locked doc
+    const after = B.getModel().getNode('a').position.x;
+    check(
+      after === before,
+      `a locked follower accepted an edit: node 'a' moved from ${before} to ${after}.\n` +
+      `    The lock must gate real mutators, not just hide a toolbar.`
+    );
+
+    // 4. …and the presenter is NOT locked — it still edits freely.
+    const pa = A.getModel().getNode('a').position.x;
+    A.getModel().getNode('a').setPosition(pa + 40, 80);
+    check(A.getModel().getNode('a').position.x === pa + 40, 'the presenter was wrongly locked too');
+
+    // 5. Unlock the follower and the same edit now lands — the lock was the only
+    //    thing stopping it.
+    lockDocument(B.getEngine(), false);
+    check(!isDocumentLocked(B.getEngine()), 'unlock did not take');
+    B.getModel().getNode('a').setPosition(555, 120);
+    check(B.getModel().getNode('a').position.x === 555, 'the follower still could not edit after unlocking');
+  },
+});
+</script>
