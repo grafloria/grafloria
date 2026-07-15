@@ -105,6 +105,9 @@ export function defineDemo(spec) {
         return { ok: failures.length === 0, failures: [...failures] };
       },
     };
+    // Debug seam: probes (fit checks, screenshot tooling) reach the live
+    // instance without each demo having to export it.
+    window.__demoCtx = ctx;
     window.__demoReady = true;
   };
 

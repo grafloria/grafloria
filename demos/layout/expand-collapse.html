@@ -66,6 +66,10 @@ defineDemo({
     // around its members (that is the box collapse shrinks away from).
     ctx.engine = api.getEngine();
     await ctx.engine.layout('dagre', { direction: 'TB', nodeSpacing: 30, rankSpacing: 50 });
+    // Frame the layouted compound once — without this the tree sits in the
+    // top-left quadrant of an otherwise empty canvas.
+    api.renderNow();
+    api.fitView(60);
 
     const refresh = () => {
       api.renderNow();

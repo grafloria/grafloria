@@ -1,6 +1,6 @@
 import { DiagramEngine, GroupModel } from '@grafloria/engine';
 import type { NodeModel } from '@grafloria/engine';
-import { createDiagram } from './create-diagram';
+import { contentBounds, createDiagram } from './create-diagram';
 import type { DiagramInstance } from './create-diagram';
 import { HTML_LAYER_CLASS, ROOT_CLASS, SVG_LAYER_CLASS } from './layers';
 import { DARK_THEME } from '../themes';
@@ -277,6 +277,45 @@ describe('createDiagram — the headless instance', () => {
       expect(engine.getDiagram()).toBeTruthy();
       expect(engine.getDiagram()!.getNodes()).toHaveLength(2);
       engine.destroy();
+    });
+  });
+
+  // Also from the screenshot audit: "fit" was doing two wrong things at once —
+  // magnifying small graphs wall-to-wall (8 nodes at 288% zoom), and measuring
+  // only NODES, so routed edge arcs outside the node bbox got sliced off at the
+  // viewport edge while everything reported "contained".
+  describe('fitView', () => {
+    it('never zooms IN past 1 to fit a small graph', () => {
+      diagram = createDiagram(container, { nodes: NODES });
+      diagram.fitView(40);
+      expect(diagram.viewport.getZoom()).toBe(1);
+    });
+
+    it('still zooms OUT to fit a large graph', () => {
+      diagram = createDiagram(container, {
+        nodes: [
+          { id: 'a', position: { x: 0, y: 0 }, size: { width: 100, height: 60 } },
+          { id: 'b', position: { x: 4000, y: 2000 }, size: { width: 100, height: 60 } },
+        ],
+      });
+      diagram.fitView(40);
+      expect(diagram.viewport.getZoom()).toBeLessThan(1);
+      const vb = diagram.viewport.getViewBox();
+      expect(vb.x).toBeLessThanOrEqual(0);
+      expect(vb.x + vb.width).toBeGreaterThanOrEqual(4100);
+    });
+
+    it('contentBounds unions routed link waypoints, not just node boxes', () => {
+      diagram = createDiagram(container, { nodes: NODES, edges: [{ id: 'e', source: 'a', target: 'b' }] });
+      const model = diagram.getModel();
+      // A detour far below every node — exactly the arc a router produces.
+      model.getLink('e')!.setPoints([
+        { x: 260, y: 130 },
+        { x: 300, y: 700 },
+        { x: 400, y: 130 },
+      ]);
+      const bounds = contentBounds(model)!;
+      expect(bounds.y + bounds.height).toBeGreaterThanOrEqual(700);
     });
   });
 

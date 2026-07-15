@@ -332,7 +332,7 @@ export class ViewportController {
    *
    * Returns the zoom actually applied.
    */
-  fitToBounds(bounds: Rectangle, padding = 40): number {
+  fitToBounds(bounds: Rectangle, padding = 40, options?: { maxZoom?: number }): number {
     const { width, height } = this.viewport;
     if (width <= 0 || height <= 0) return this.zoom;
     if (bounds.width <= 0 || bounds.height <= 0) return this.zoom;
@@ -340,9 +340,12 @@ export class ViewportController {
     const usableWidth = Math.max(1, width - padding * 2);
     const usableHeight = Math.max(1, height - padding * 2);
 
-    const next = this.clampZoom(
-      Math.min(usableWidth / bounds.width, usableHeight / bounds.height)
-    );
+    // `options.maxZoom` caps how far a fit may zoom IN (it never limits zooming
+    // out). Fitting a small graph without a cap magnifies it wall-to-wall —
+    // eight nodes at 288% look broken, and every routed edge fattens with them.
+    const raw = Math.min(usableWidth / bounds.width, usableHeight / bounds.height);
+    const capped = options?.maxZoom !== undefined ? Math.min(raw, options.maxZoom) : raw;
+    const next = this.clampZoom(capped);
 
     // Centre the content: choose the camera origin whose viewBox centre lands on
     // the bounds centre. The camera centre IS the viewBox centre (zoom is

@@ -45,6 +45,10 @@ defineDemo({
     const api = render({ nodes: NODES, edges: EDGES }, ctx.host, { renderer: { qualityGovernor: false } });
     ctx.instance = api;
     ctx.diagram = api.getModel();
+    // Centre the camera on the content BEFORE driving zoom levels: setZoom is
+    // centre-preserving, so zooming around the default (uncentred) camera slices
+    // the graph off at the left edge at every tier.
+    api.fitView(40);
 
     ctx.tierAt = (z) => {
       api.viewport.setZoom(z);

@@ -112,6 +112,11 @@ defineDemo({
     await engine.layout('layered', { direction: 'LR' });
     const afterFull = snapshot(model);
     const fullMovement = movementOf(before, afterFull, BASE_IDS);
+    // Leave the camera ON the final picture. Without this the graph lays out
+    // fine while the viewport still points at the old world rect — a white
+    // canvas over three perfectly true status lines (the audit's one blocker).
+    ctx.instance.renderNow();
+    ctx.instance.fitView(40);
 
     // 4. THE TEETH. Incremental must move the existing nodes strictly, and
     //    substantially, less than a from-scratch relayout does. If layoutIncremental

@@ -98,10 +98,10 @@ defineDemo({
     check(createdInB.getMetadata('label') === 'Publish', `the created node reached B without its label: ${createdInB.getMetadata('label')}`);
 
     // 4. SYMMETRY: an edit in tab B propagates back to tab A. Not a one-way pipe.
-    B.getModel().getNode('b').setPosition(540, 80);
+    B.getModel().getNode('b').setPosition(420, 80);
     const backInA = await until(() => {
       const n = A.getModel().getNode('b');
-      return n && n.position.x === 540 ? n : null;
+      return n && n.position.x === 420 ? n : null;
     });
     check(!!backInA, `tab A never received tab B's edit — sync is one-directional (A's 'b' at ${JSON.stringify(A.getModel().getNode('b').position)})`);
   },

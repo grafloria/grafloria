@@ -62,11 +62,11 @@ defineDemo({
 
     // ---- CONCURRENT, OFFLINE EDITS on the SAME node --------------------------
     // Peer A MOVES n1. Peer B RENAMES n1. Neither has sent anything yet.
-    A.getModel().getNode('n1').setPosition(420, 260);
+    A.getModel().getNode('n1').setPosition(380, 260);
     B.getModel().getNode('n1').setMetadata('label', 'Final');
 
     // Locally, each peer sees only its own edit so far.
-    check(pos(A).x === 420 && label(A) === 'Draft', 'peer A did not apply its own move');
+    check(pos(A).x === 380 && label(A) === 'Draft', 'peer A did not apply its own move');
     check(label(B) === 'Final' && pos(B).x === 120, 'peer B did not apply its own rename');
 
     // ---- NOW they exchange. Each op crosses to the other peer. ---------------
@@ -80,8 +80,8 @@ defineDemo({
     // the other.
     for (const [name, inst] of [['A', A], ['B', B]]) {
       check(
-        pos(inst).x === 420 && pos(inst).y === 260,
-        `peer ${name} lost the MOVE after convergence — position is ${JSON.stringify(pos(inst))}, expected {420,260}.\n` +
+        pos(inst).x === 380 && pos(inst).y === 260,
+        `peer ${name} lost the MOVE after convergence — position is ${JSON.stringify(pos(inst))}, expected {380,260}.\n` +
         `    Whole-entity LWW would do exactly this: the rename's write clobbered the move.`
       );
       check(
@@ -105,7 +105,7 @@ defineDemo({
     for (const inst of [A, B]) {
       check(inst.getModel().getNode('n1').size.width === 220, 'the size edit did not converge');
       check(label(inst) === 'Final v2', 'the second rename did not converge');
-      check(pos(inst).x === 420, 'the earlier move was lost by a later edit on another register');
+      check(pos(inst).x === 380, 'the earlier move was lost by a later edit on another register');
     }
   },
 });

@@ -585,7 +585,11 @@ export function createDiagram(
 
   function fitView(padding = 40): void {
     const bounds = contentBounds(model);
-    if (bounds) viewport.fitToBounds(bounds, padding);
+    // maxZoom 1: fitting means "show me everything", never "magnify a small
+    // graph until it fills the wall". Zooming out to fit is still unbounded
+    // (down to the controller's minZoom). Hosts wanting magnification can call
+    // viewport.fitToBounds directly.
+    if (bounds) viewport.fitToBounds(bounds, padding, { maxZoom: 1 });
   }
 
   const instance: DiagramInstance = {
@@ -717,6 +721,19 @@ export function contentBounds(model: DiagramModel): Rectangle | null {
     top = Math.min(top, node.position.y);
     right = Math.max(right, node.position.x + (node.size?.width ?? 0));
     bottom = Math.max(bottom, node.position.y + (node.size?.height ?? 0));
+  }
+
+  // Routed edges arc OUTSIDE the node bbox (a detour around an obstacle, a
+  // self-loop, a floating attachment's curve). Fitting to nodes alone left
+  // those arcs sliced off at the viewport edge — nodes "contained", picture
+  // clipped. Union in every routed waypoint the links carry.
+  for (const link of model.getLinks()) {
+    for (const p of link.points ?? []) {
+      left = Math.min(left, p.x);
+      top = Math.min(top, p.y);
+      right = Math.max(right, p.x);
+      bottom = Math.max(bottom, p.y);
+    }
   }
 
   if (!isFinite(left) || !isFinite(top)) return null;

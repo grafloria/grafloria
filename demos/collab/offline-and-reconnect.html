@@ -71,7 +71,7 @@ defineDemo({
     // ---- EDIT BOTH SIDES WHILE DISCONNECTED ---------------------------------
     // A moves 'b' and renames 'a'. B moves 'a' elsewhere-on-another-axis and
     // renames 'b'. None of this is on the wire yet.
-    A.getModel().getNode('b').setPosition(560, 90);
+    A.getModel().getNode('b').setPosition(430, 90);
     A.getModel().getNode('a').setMetadata('label', 'Alpha★');
     B.getModel().getNode('b').setMetadata('label', 'Beta★');
     await ctx.tick();
@@ -91,7 +91,7 @@ defineDemo({
 
     // ---- CONVERGENCE: every offline edit is present on BOTH peers ------------
     for (const [name, inst] of [['A', A], ['B', B]]) {
-      check(posX(inst, 'b') === 560, `peer ${name} is missing A's offline MOVE of 'b' (x=${posX(inst,'b')}, expected 560)`);
+      check(posX(inst, 'b') === 430, `peer ${name} is missing A's offline MOVE of 'b' (x=${posX(inst,'b')}, expected 430)`);
       check(label(inst, 'a') === 'Alpha★', `peer ${name} is missing A's offline RENAME of 'a' (got "${label(inst,'a')}")`);
       check(label(inst, 'b') === 'Beta★', `peer ${name} is missing B's offline RENAME of 'b' (got "${label(inst,'b')}")`);
       // the pre-offline edit is still intact too

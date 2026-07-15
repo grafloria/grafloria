@@ -119,6 +119,12 @@ defineDemo({
     // 3. THE MAIN THREAD STAYED RESPONSIVE — the counter kept advancing while a
     //    multi-thousand-iteration force sim ran. An inline layout would have starved it.
     check(mainThreadTicks >= 3, `main thread only ticked ${mainThreadTicks}× — it was blocked by the layout`);
+
+    // Leave the camera on the final (partial-cancel) picture — the cancelled run
+    // moved nodes after the last fit, and an unframed force cloud clips at the
+    // viewport bottom.
+    ctx.instance.renderNow();
+    ctx.instance.fitView(30);
   },
 });
 </script>
