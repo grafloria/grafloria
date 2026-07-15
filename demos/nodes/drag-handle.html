@@ -1,0 +1,67 @@
+<meta charset="utf-8">
+<title>Drag handle — Grafloria</title>
+<link rel="stylesheet" href="../shell/demo.css">
+<header id="demo-head"></header>
+<div id="canvas"></div>
+<script type="module">
+import { render } from '../shell/grafloria.js';
+import { defineDemo, check, checkChanged } from '../shell/demo.js';
+
+defineDemo({
+  name: 'Drag handle',
+  blurb: 'A designated grip drags its parent. Press the title bar and the window moves; the grip is a child node marked as a drag handler, so the press is redirected to the parent in the real drag pipeline.',
+  reactflow: 'Drag Handle',
+
+  async setup(ctx) {
+    const api = render({
+      nodes: [
+        { id: 'win',  position: { x: 300, y: 200 }, size: { width: 240, height: 120 }, label: 'window body' },
+        { id: 'grip', position: { x: 300, y: 168 }, size: { width: 240, height: 28 },  label: '⠿ title bar (drag me)' },
+      ],
+      edges: [],
+    }, ctx.host);
+    ctx.instance = api;
+    ctx.diagram = api.getModel();
+
+    // Make the grip a drag-handle child of the window. A child's position is
+    // RELATIVE to its parent, so pin the grip as a title bar 28px above the body.
+    const grip = ctx.diagram.getNode('grip');
+    grip.setParent('win');
+    grip.setPosition(0, -28);           // local offset → world (300,172)
+    grip.setBehavior({ dragHandler: { isDragHandler: true } });
+    api.renderNow();
+
+    ctx.fire = (type, w) => {
+      const rect = ctx.host.getBoundingClientRect();
+      const c = api.viewport.worldToClient(w.x, w.y, rect);
+      ctx.host.dispatchEvent(new MouseEvent(type, { bubbles: true, clientX: c.x, clientY: c.y, button: 0 }));
+    };
+    await ctx.tick();
+  },
+
+  async assert(ctx) {
+    const m = ctx.diagram;
+    const win = m.getNode('win'), grip = m.getNode('grip');
+    const winBefore = { ...win.position };
+    const gripBefore = { ...grip.position };
+
+    // 1. Press ON THE GRIP and drag +200px right. The press is redirected to the
+    //    parent, so the WINDOW moves.
+    ctx.fire('mousedown', { x: 420, y: 186 });     // inside the grip (world y 172–200)
+    ctx.fire('mousemove', { x: 430, y: 186 });     // pass the drag threshold
+    ctx.fire('mousemove', { x: 620, y: 186 });     // +200 total
+    ctx.fire('mouseup',   { x: 620, y: 186 });
+    ctx.instance.renderNow();
+
+    checkChanged(winBefore, win.position, 'pressing the drag-handle grip did not move the parent window');
+    check(Math.abs(win.position.x - (winBefore.x + 200)) < 6,
+      `the window should have followed the grip drag by ~200px (${winBefore.x} -> ${win.position.x})`);
+
+    // 2. THE TEETH: it was a REDIRECT, not a drag of the grip itself. The grip did
+    //    not move — the press on the child moved the parent. A plain node drag would
+    //    have moved the grip, not the window.
+    check(grip.position.x === gripBefore.x && grip.position.y === gripBefore.y,
+      `the grip itself should NOT have moved (was ${JSON.stringify(gripBefore)}, now ${JSON.stringify(grip.position)})`);
+  },
+});
+</script>

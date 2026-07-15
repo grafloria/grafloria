@@ -1,0 +1,84 @@
+<meta charset="utf-8">
+<title>Proximity connect — Grafloria</title>
+<link rel="stylesheet" href="../shell/demo.css">
+<header id="demo-head"></header>
+<div id="canvas"></div>
+<script type="module">
+import { render, SnapController, DEFAULT_SNAP_CONFIG } from '../shell/grafloria.js';
+import { defineDemo, check } from '../shell/demo.js';
+
+defineDemo({
+  name: 'Proximity connect',
+  blurb: 'Drag a node close to another and a wire proposes itself — the shipped SnapController.findProximityConnection, driven off a real node drag and committed on drop. No handles, no aiming.',
+  reactflow: 'Proximity Connect',
+
+  async setup(ctx) {
+    const api = render({
+      nodes: [
+        { id: 'a', position: { x: 150, y: 150 }, size: { width: 150, height: 80 }, label: 'drag me →' },
+        { id: 'b', position: { x: 600, y: 150 }, size: { width: 150, height: 80 }, label: 'B' },
+      ],
+      edges: [],
+    }, ctx.host);
+    ctx.instance = api;
+    ctx.diagram = api.getModel();
+    ctx.engine = api.getEngine();
+    ctx.snap = new SnapController();     // shipped reference implementation
+
+    const fire = (type, w) => {
+      const rect = ctx.host.getBoundingClientRect();
+      const c = api.viewport.worldToClient(w.x, w.y, rect);
+      ctx.host.dispatchEvent(new MouseEvent(type, { bubbles: true, clientX: c.x, clientY: c.y, button: 0 }));
+    };
+    // Drag node A's body from world p0 to p1 with real pointer events, then — the
+    // way a host wires proximity — evaluate proximity on drop and auto-link.
+    ctx.dragAndMaybeConnect = async (p0, p1) => {
+      fire('mousedown', p0);
+      fire('mousemove', { x: p0.x + 6, y: p0.y });   // pass the drag threshold
+      fire('mousemove', p1);
+      fire('mouseup',   p1);
+      await ctx.tick();
+      const cand = ctx.snap.findProximityConnection(ctx.engine, 'a');
+      if (cand) ctx.engine.commandManager.execute(ctx.snap.buildProximityLinkCommand(cand));
+      await ctx.tick();
+      return cand;
+    };
+    ctx.centre = (id) => { const n = ctx.diagram.getNode(id); return { x: n.position.x + n.size.width / 2, y: n.position.y + n.size.height / 2 }; };
+    await ctx.tick();
+  },
+
+  async assert(ctx) {
+    const m = ctx.diagram;
+    check(DEFAULT_SNAP_CONFIG.proximityConnectRadius > 0, 'no proximity radius configured');
+    check(m.getLinks().length === 0, 'should start with no links');
+
+    // 1. Far apart, there is no proposal.
+    check(ctx.snap.findProximityConnection(ctx.engine, 'a') === null,
+      'A is far from B but a proximity connection was proposed');
+
+    // 2. Drag A until its right edge is within the proximity radius of B's left edge.
+    //    A starts at x=150 (right edge 300); B's left edge is 600. Move A +280 so its
+    //    right edge (580) is ~20px from B (600) — inside the 60px radius.
+    const before = ctx.centre('a');
+    const cand = await ctx.dragAndMaybeConnect(before, { x: before.x + 280, y: before.y });
+
+    check(!!cand, 'dragging A next to B did not propose a proximity connection');
+    // Both default ports are bidirectional, so the ends are symmetric — the proposal
+    // must join A and B (in either orientation), and be within the radius.
+    const ends = [cand.sourceNodeId, cand.targetNodeId].sort().join(',');
+    check(ends === 'a,b', `the proposal should join A and B, was ${cand.sourceNodeId}→${cand.targetNodeId}`);
+    check(cand.distance <= 60, `proposal distance ${cand && cand.distance} should be within the radius`);
+
+    // 3. THE TEETH: a real link now exists between A and B.
+    check(m.getLinks().length === 1, `the proximity link was not committed, links=${m.getLinks().length}`);
+    const link = m.getLinks()[0];
+    const linkEnds = [m.getNodeByPortId(link.sourcePortId).id, m.getNodeByPortId(link.targetPortId).id].sort().join(',');
+    check(linkEnds === 'a,b', `the committed link does not join A and B (${linkEnds})`);
+
+    // 4. Drag A back far away — proximity yields nothing new (and does not duplicate).
+    const cand2 = await ctx.dragAndMaybeConnect(ctx.centre('a'), { x: 200, y: 400 });
+    check(cand2 === null, 'A dragged clear should propose nothing');
+    check(m.getLinks().length === 1, `no extra link should appear, links=${m.getLinks().length}`);
+  },
+});
+</script>

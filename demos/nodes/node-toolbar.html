@@ -1,0 +1,83 @@
+<meta charset="utf-8">
+<title>Node toolbar — Grafloria</title>
+<link rel="stylesheet" href="../shell/demo.css">
+<style>
+  .nt-toolbar { display: flex; gap: 6px; background: #111827; padding: 5px 6px; border-radius: 8px; box-shadow: 0 4px 14px rgba(0,0,0,.3); transform: translate(-50%, -120%); }
+  .nt-toolbar button { font: 12px system-ui; border: 0; border-radius: 5px; padding: 3px 9px; background: #374151; color: #fff; cursor: pointer; }
+</style>
+<header id="demo-head"></header>
+<div id="canvas"></div>
+<script type="module">
+import { render, createViewportPortal } from '../shell/grafloria.js';
+import { defineDemo, check } from '../shell/demo.js';
+
+defineDemo({
+  name: 'Node toolbar',
+  blurb: 'A floating toolbar anchored to a node’s geometry through the viewport portal seam — it pans and zooms WITH the node, follows it when it moves, and its buttons act on that node.',
+  reactflow: 'Node Toolbar',
+
+  async setup(ctx) {
+    const api = render({
+      nodes: [{ id: 'n', position: { x: 300, y: 220 }, size: { width: 200, height: 100 }, label: 'selected' }],
+      edges: [],
+    }, ctx.host);
+    ctx.instance = api;
+    ctx.diagram = api.getModel();
+
+    const layer = ctx.host.querySelector('.grafloria-html-layer');
+    const n = ctx.diagram.getNode('n');
+    const anchor = (node) => ({ x: node.position.x + node.size.width / 2, y: node.position.y });
+
+    // A world-anchored portal at the node's top-centre. It lives inside the
+    // camera-transformed HTML layer, so pan/zoom move it for free.
+    const portal = createViewportPortal(layer, anchor(n));
+    portal.element.className = 'nt-toolbar';
+    const mk = (label, onClick) => { const b = document.createElement('button'); b.textContent = label; b.className = 'nt-btn-' + label; b.onclick = onClick; portal.element.appendChild(b); return b; };
+    mk('duplicate', () => {
+      const src = ctx.diagram.getNode('n');
+      api.setNodes([...ctx.diagram.getNodes().map((x) => ({ id: x.id, position: { x: x.position.x, y: x.position.y }, size: { ...x.size }, label: x.getMetadata('label') })),
+        { id: 'n-copy', position: { x: src.position.x + 40, y: src.position.y + 40 }, size: { ...src.size }, label: 'copy' }]);
+    });
+    mk('delete', () => { ctx.diagram.removeNode('n'); portal.dispose(); api.renderNow(); });
+
+    ctx.portal = portal;
+    ctx.anchor = anchor;
+    // Keep the toolbar glued to the node when the node itself moves.
+    ctx.moveNode = (x, y) => { n.setPosition(x, y); portal.setPosition(...Object.values(anchor(n))); api.renderNow(); };
+    await ctx.tick();
+  },
+
+  async assert(ctx) {
+    const api = ctx.instance;
+    const nodeScreenX = () => ctx.host.querySelector('[data-node-id="n"]').getBoundingClientRect().x;
+    const barScreenX  = () => ctx.portal.element.getBoundingClientRect().x;
+
+    // 1. The toolbar is real and carries its buttons.
+    check(!!ctx.portal.element && ctx.portal.element.querySelectorAll('button').length === 2,
+      'the toolbar portal did not mount its two buttons');
+
+    // 2. IT TRACKS THE CAMERA. Pan the viewport; the toolbar shifts by the SAME
+    //    screen delta as the node it is pinned to — that is what "anchored" means.
+    const n0 = nodeScreenX(), b0 = barScreenX();
+    api.viewport.panByScreenDelta(-140, 0);   // pan the camera
+    api.renderNow();
+    const nodeDelta = nodeScreenX() - n0, barDelta = barScreenX() - b0;
+    check(Math.abs(nodeDelta) > 20, `precondition: the pan should have moved the node on screen (moved ${nodeDelta})`);
+    check(Math.abs(barDelta - nodeDelta) < 2,
+      `the toolbar did not track the node through a pan (node moved ${nodeDelta.toFixed(1)}, toolbar ${barDelta.toFixed(1)})`);
+
+    // 3. IT FOLLOWS THE NODE. Move the node; the toolbar follows via setPosition.
+    const b1 = barScreenX();
+    ctx.moveNode(520, 300);
+    const b2 = barScreenX();
+    check(Math.abs(b2 - b1) > 20, 'the toolbar did not follow the node when the node moved');
+
+    // 4. THE TEETH: its buttons ACT on the node. Click delete → the node is gone from
+    //    model and DOM, and the toolbar tears down with it.
+    check(!!ctx.diagram.getNode('n'), 'precondition: node exists before delete');
+    ctx.portal.element.querySelector('.nt-btn-delete').dispatchEvent(new MouseEvent('click', { bubbles: true }));
+    check(ctx.diagram.getNode('n') === undefined, 'the toolbar delete button did not remove the node');
+    check(ctx.host.querySelector('[data-node-id="n"]') === null, 'the deleted node is still in the DOM');
+  },
+});
+</script>
