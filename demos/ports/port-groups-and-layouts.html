@@ -1,0 +1,76 @@
+<meta charset="utf-8">
+<title>Port groups & layouts — Grafloria</title>
+<link rel="stylesheet" href="../shell/demo.css">
+<style>#canvas { height: calc(100vh - 140px); }</style>
+<header id="demo-head"></header>
+<div id="canvas"></div>
+<script type="module">
+import { render } from '../shell/grafloria.js';
+import { defineDemo, check } from '../shell/demo.js';
+
+// A port GROUP declares a layout once; its member ports inherit it. Three pluggable
+// strategies, each a real geometric arrangement:
+//   sideLinear — a column evenly down one edge (the node-editor workhorse);
+//   line       — evenly along an arbitrary node-local segment;
+//   ellipseSpread — fanned around the node's inscribed ellipse.
+// Each node below carries N ports in ONE group; the assertions check the strategy
+// actually placed them, not that "some ports exist".
+const ringPorts = (n) => Array.from({ length: n }, (_, i) => ({ id: `r${i}`, group: 'g', shape: { shape: 'circle', size: 10 } }));
+
+const NODES = [
+  { id: 'side', position: { x: 80, y: 200 }, size: { width: 130, height: 220 }, label: 'sideLinear',
+    metadata: { portGroups: { g: { id: 'g', side: 'left', layout: { strategy: 'sideLinear', args: { padding: 10 } } } } },
+    ports: Array.from({ length: 4 }, (_, i) => ({ id: `s${i}`, group: 'g', shape: { shape: 'circle', size: 10 } })) },
+  { id: 'line', position: { x: 330, y: 200 }, size: { width: 200, height: 220 }, label: 'line',
+    metadata: { portGroups: { g: { id: 'g', layout: { strategy: 'line', args: { start: { x: 0, y: 0 }, end: { x: 200, y: 220 } } } } } },
+    ports: Array.from({ length: 4 }, (_, i) => ({ id: `l${i}`, group: 'g', shape: { shape: 'circle', size: 10 } })) },
+  { id: 'ring', position: { x: 640, y: 190 }, size: { width: 200, height: 200 }, label: 'ellipseSpread',
+    metadata: { portGroups: { g: { id: 'g', layout: { strategy: 'ellipseSpread', args: { sweep: 360 } } } } },
+    ports: ringPorts(6) },
+];
+
+const local = (host, id) => {
+  const el = host.querySelector(`[data-port-id="${id}"]`);
+  return { x: +el.getAttribute('cx'), y: +el.getAttribute('cy') };
+};
+
+defineDemo({
+  name: 'Port groups & layouts',
+  blurb: 'One group, one layout strategy, N ports: sideLinear column · line along a segment · ellipseSpread ring. Each arrangement asserted geometrically.',
+
+  async setup(ctx) {
+    ctx.instance = render({ nodes: NODES, edges: [] }, ctx.host, { interaction: { portVisibility: 'always' } });
+    await ctx.tick();
+  },
+
+  async assert(ctx) {
+    // sideLinear: a column down the LEFT edge — every port at x≈0, ys strictly
+    // increasing and evenly spaced.
+    const side = [0, 1, 2, 3].map((i) => local(ctx.host, `s${i}`));
+    check(side.every((p) => Math.abs(p.x) < 1), `sideLinear ports should sit on the left edge (x≈0): ${JSON.stringify(side.map((p) => Math.round(p.x)))}`);
+    const ys = side.map((p) => p.y);
+    check(ys.every((y, i) => i === 0 || y > ys[i - 1]), `sideLinear ys should increase down the edge: ${ys.map(Math.round)}`);
+    const gaps = ys.slice(1).map((y, i) => y - ys[i]);
+    check(Math.max(...gaps) - Math.min(...gaps) < 2, `sideLinear spacing should be even, gaps were ${gaps.map((g) => g.toFixed(1))}`);
+
+    // line: four ports ON the segment (0,0)→(200,220) — i.e. y/x ≈ 220/200 = 1.1.
+    const line = [0, 1, 2, 3].map((i) => local(ctx.host, `l${i}`));
+    for (const p of line) {
+      if (p.x < 1) continue; // the point at the start corner
+      check(Math.abs(p.y / p.x - 1.1) < 0.15, `line port off the segment: (${Math.round(p.x)},${Math.round(p.y)}) has slope ${(p.y / p.x).toFixed(2)} ≠ 1.1`);
+    }
+    check(new Set(line.map((p) => `${Math.round(p.x)},${Math.round(p.y)}`)).size === 4, 'the four line ports are not at four distinct points');
+
+    // ellipseSpread: six ports fanned around the inscribed ellipse (rx=ry=100,
+    // centre (100,100)). Each must lie on the ellipse, and all six at distinct angles.
+    const cx = 100, cy = 100, rx = 100, ry = 100;
+    const ring = [0, 1, 2, 3, 4, 5].map((i) => local(ctx.host, `r${i}`));
+    for (const p of ring) {
+      const on = (p.x - cx) ** 2 / rx ** 2 + (p.y - cy) ** 2 / ry ** 2;
+      check(Math.abs(on - 1) < 0.05, `ring port not on the ellipse: (${Math.round(p.x)},${Math.round(p.y)}) → ${on.toFixed(2)} ≠ 1`);
+    }
+    const angles = new Set(ring.map((p) => Math.round((Math.atan2(p.y - cy, p.x - cx) * 180) / Math.PI)));
+    check(angles.size === 6, `expected six distinct angles around the ring, got ${angles.size}`);
+  },
+});
+</script>

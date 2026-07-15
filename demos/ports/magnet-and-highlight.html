@@ -1,0 +1,82 @@
+<meta charset="utf-8">
+<title>Magnet & highlight — Grafloria</title>
+<link rel="stylesheet" href="../shell/demo.css">
+<style>
+  #hint { padding: 8px 24px; font: 13px/1.5 system-ui; opacity: .75; border-bottom: 1px solid rgba(127,127,127,.25); }
+  #canvas { height: calc(100vh - 190px); }
+</style>
+<header id="demo-head"></header>
+<div id="hint">While you drag a connection, every VALID target lights up and the cursor snaps to the nearest one — even from 20px away.</div>
+<div id="canvas"></div>
+<script type="module">
+import { render } from '../shell/grafloria.js';
+import { defineDemo, check } from '../shell/demo.js';
+
+// Two affordances that only work if the connection state manager is really running:
+//   HIGHLIGHT — every valid target port lights up the moment a drag starts, and an
+//               invalid one (here, another OUTPUT — outputs are never targets) stays dark;
+//   MAGNET    — the drop snaps to the nearest valid port within snapToPortRadius
+//               (30px), so you don't have to hit a 13px glyph dead-centre.
+const NODES = [
+  { id: 'src', position: { x: 120, y: 280 }, size: { width: 120, height: 70 }, label: 'source',
+    ports: [{ id: 'o', side: 'right', type: 'output', shape: { shape: 'circle', size: 13 } }] },
+  { id: 't1', position: { x: 640, y: 120 }, size: { width: 120, height: 70 }, label: 'target 1',
+    ports: [{ id: 'i1', side: 'left', type: 'input', shape: { shape: 'circle', size: 13 } }] },
+  { id: 't2', position: { x: 640, y: 300 }, size: { width: 120, height: 70 }, label: 'target 2',
+    ports: [{ id: 'i2', side: 'left', type: 'input', shape: { shape: 'circle', size: 13 } }] },
+  { id: 'bad', position: { x: 640, y: 480 }, size: { width: 120, height: 70 }, label: 'not a target',
+    ports: [{ id: 'bo', side: 'left', type: 'output', shape: { shape: 'circle', size: 13 } }] },
+];
+
+defineDemo({
+  name: 'Magnet & highlight',
+  blurb: 'Valid targets highlight the instant a drag begins, and the drop snaps to the nearest port from 20px away. Both need the live connection-state manager.',
+  reactflow: 'Connection Snapping',
+
+  async setup(ctx) {
+    // No host validator: an output source's valid targets are the INPUT ports,
+    // decided by the engine's native connection rules. The stray output stays dark.
+    ctx.instance = render({ nodes: NODES, edges: [] }, ctx.host, { interaction: { portVisibility: 'always' } });
+    ctx.diagram = ctx.instance.getModel();
+    ctx.pointer = (type, wx, wy) => {
+      const c = ctx.instance.viewport.worldToClient(wx, wy, ctx.host.getBoundingClientRect());
+      ctx.host.dispatchEvent(new PointerEvent(type, { clientX: c.x, clientY: c.y, bubbles: true, cancelable: true, button: 0, buttons: type === 'pointerup' ? 0 : 1, pointerId: 1, pointerType: 'mouse' }));
+    };
+    ctx.portXY = (nodeId, portId) => {
+      const el = ctx.host.querySelector(`[data-port-id="${portId}"]`);
+      const n = ctx.diagram.getNode(nodeId);
+      return { x: n.position.x + parseFloat(el.getAttribute('cx')), y: n.position.y + parseFloat(el.getAttribute('cy')) };
+    };
+    ctx.portOf = (id) => ctx.diagram.getNodes().flatMap((n) => [...n.getPorts().values()]).find((p) => p.id === id);
+    await ctx.tick();
+  },
+
+  async assert(ctx) {
+    const src = ctx.portXY('src', 'o');
+
+    // Start the drag and move out into open space (over no port yet).
+    ctx.pointer('pointermove', src.x, src.y); await ctx.tick();
+    ctx.pointer('pointerdown', src.x, src.y); await ctx.tick();
+    ctx.pointer('pointermove', 400, 280); await ctx.tick();
+
+    // 1. HIGHLIGHT: both inputs are marked valid targets; the stray output is not.
+    check(ctx.portOf('i1').isValidTarget, 'valid target i1 did not highlight during the drag');
+    check(ctx.portOf('i2').isValidTarget, 'valid target i2 did not highlight during the drag');
+    check(!ctx.portOf('bo').isValidTarget, 'an output port lit up as a valid target — the validator is not filtering targets');
+
+    // 2. MAGNET: drop 20px SHORT of i1's centre — beyond the 13px glyph, inside the
+    //    30px snap radius. The connection must still land exactly on i1.
+    const i1 = ctx.portXY('t1', 'i1');
+    ctx.pointer('pointermove', i1.x - 20, i1.y - 12); await ctx.tick();
+    ctx.pointer('pointerup', i1.x - 20, i1.y - 12); await ctx.tick();
+
+    const links = ctx.diagram.getLinks();
+    check(links.length === 1, `the snapped drop should have made exactly one link, got ${links.length}`);
+    check(links[0].targetPortId === 'i1', `the drop should have snapped to i1, landed on ${links[0].targetPortId}`);
+    // The link really terminates at i1's centre, not at the off-centre drop point.
+    const end = links[0].points[links[0].points.length - 1];
+    check(Math.abs(end.x - i1.x) < 3 && Math.abs(end.y - i1.y) < 3,
+      `the link endpoint did not snap onto the port (ended ${Math.round(end.x)},${Math.round(end.y)}, port ${Math.round(i1.x)},${Math.round(i1.y)})`);
+  },
+});
+</script>

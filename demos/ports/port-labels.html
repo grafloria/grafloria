@@ -1,0 +1,80 @@
+<meta charset="utf-8">
+<title>Port labels — Grafloria</title>
+<link rel="stylesheet" href="../shell/demo.css">
+<style>#canvas { height: calc(100vh - 140px); }</style>
+<header id="demo-head"></header>
+<div id="canvas"></div>
+<script type="module">
+import { render } from '../shell/grafloria.js';
+import { defineDemo, check } from '../shell/demo.js';
+
+// Port labels: text next to a port, placed relative to the glyph — pulled INSIDE
+// the node, pushed OUTSIDE it, or set ORTHOGONAL (along the edge). Plus keep-upright:
+// a label whose rotation would leave it upside-down is auto-flipped so it still
+// reads left-to-right.
+const NODES = [
+  {
+    id: 'n', position: { x: 380, y: 220 }, size: { width: 180, height: 160 }, label: 'placements',
+    ports: [
+      { id: 'out', side: 'left',  shape: { shape: 'circle', size: 12 }, label: { text: 'OUT', layout: 'outside' } },
+      { id: 'in',  side: 'right', shape: { shape: 'circle', size: 12 }, label: { text: 'IN', layout: 'inside' } },
+      { id: 'ort', side: 'top',   shape: { shape: 'circle', size: 12 }, label: { text: 'ORT', layout: 'orthogonal' } },
+    ],
+  },
+  // Two identical angled labels — one keeps upright, one does not.
+  { id: 'flip', position: { x: 120, y: 250 }, size: { width: 120, height: 80 }, label: 'keepUpright',
+    ports: [{ id: 'up', side: 'left', shape: { shape: 'circle', size: 12 }, label: { text: 'up', layout: 'outside', angle: 160, keepUpright: true } }] },
+  { id: 'noflip', position: { x: 700, y: 250 }, size: { width: 120, height: 80 }, label: 'raw 160°',
+    ports: [{ id: 'raw', side: 'left', shape: { shape: 'circle', size: 12 }, label: { text: 'raw', layout: 'outside', angle: 160, keepUpright: false } }] },
+];
+
+const textNode = (host, s) => [...host.querySelectorAll('text')].find((t) => t.textContent === s);
+const rotationOf = (el) => {
+  // The rotate() may live on the text element or a wrapping <g> — walk up until found.
+  let node = el;
+  while (node) {
+    const m = /rotate\(\s*(-?[\d.]+)/.exec(node.getAttribute('transform') || '');
+    if (m) return parseFloat(m[1]);
+    node = node.parentElement;
+  }
+  return 0;
+};
+
+defineDemo({
+  name: 'Port labels',
+  blurb: 'Labels placed inside / outside / orthogonal to the glyph, and a keep-upright flip that rescues an upside-down label. All asserted by geometry.',
+
+  async setup(ctx) {
+    ctx.instance = render({ nodes: NODES, edges: [] }, ctx.host, { interaction: { portVisibility: 'always' } });
+    await ctx.tick();
+  },
+
+  async assert(ctx) {
+    const out = textNode(ctx.host, 'OUT');
+    const inl = textNode(ctx.host, 'IN');
+    const ort = textNode(ctx.host, 'ORT');
+    check(out && inl && ort, 'not all three port labels rendered');
+
+    // The node is 180px wide (local x range 0..180). OUTSIDE the LEFT port pushes
+    // the label past the left edge (x < 0); INSIDE the RIGHT port pulls it back
+    // into the body (x < 180, not beyond the right edge). Flipping either placement
+    // to 'outside' moves it to the wrong side of its edge.
+    const NODE_W = 180;
+    const ox = +out.getAttribute('x'), ix = +inl.getAttribute('x');
+    check(ox < 0, `an 'outside' label on the LEFT port should sit past the left edge (x<0), got ${ox}`);
+    check(ix > 0 && ix < NODE_W, `an 'inside' label on the RIGHT port should be pulled INTO the body (0<x<${NODE_W}), got ${ix}`);
+
+    // Orthogonal is a genuinely different placement from outside.
+    const orx = +ort.getAttribute('x'), ory = +ort.getAttribute('y');
+    check(!(orx === ox && ory === +out.getAttribute('y')), 'orthogonal placement matched outside — it is not distinct');
+
+    // keep-upright: raw 160° stays ~160° (upside down); the kept one is flipped to
+    // ~-20°, which reads upright (|angle| < 90).
+    const raw = rotationOf(textNode(ctx.host, 'raw'));
+    const kept = rotationOf(textNode(ctx.host, 'up'));
+    check(Math.abs(Math.abs(raw) - 160) < 1, `the raw label should be rotated ~160°, got ${raw}`);
+    check(Math.abs(kept) <= 90, `keepUpright should flip the label to read upright (|angle|<=90), got ${kept}`);
+    check(Math.abs(raw - kept) > 90, 'keepUpright did not actually change the label orientation');
+  },
+});
+</script>

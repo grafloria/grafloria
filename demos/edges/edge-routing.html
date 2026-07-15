@@ -1,0 +1,116 @@
+<meta charset="utf-8">
+<title>Edge routing (obstacle avoidance) — Grafloria</title>
+<link rel="stylesheet" href="../shell/demo.css">
+<style>
+  #bar { display: flex; gap: 8px; padding: 10px 24px; border-bottom: 1px solid rgba(127,127,127,.25); align-items: center; flex-wrap: wrap; }
+  #bar button { padding: 5px 12px; border-radius: 6px; border: 1px solid rgba(127,127,127,.4); background: transparent; color: inherit; cursor: pointer; font: inherit; }
+  #readout { margin-left: auto; font: 12px/1.4 ui-monospace, monospace; opacity: .8; }
+  #canvas { height: calc(100vh - 200px); }
+</style>
+<header id="demo-head"></header>
+<div id="bar">
+  <button id="toggle">remove the obstacle</button>
+  <span id="readout"></span>
+</div>
+<div id="canvas"></div>
+<script type="module">
+import { render } from '../shell/grafloria.js';
+import { defineDemo, check } from '../shell/demo.js';
+
+// React Flow puts obstacle-avoiding edge routing behind Pro (it wraps libavoid).
+// Ours is a Manhattan/orthogonal search: the link from A to B must get around the
+// wall O that sits squarely on the straight line between them. The assertions have
+// teeth precisely because a DEAD router would draw the straight line — straight
+// through O — and fail every one of them.
+const A = { id: 'a', position: { x: 80, y: 305 }, size: { width: 120, height: 60 }, label: 'A' };
+const B = { id: 'b', position: { x: 840, y: 305 }, size: { width: 120, height: 60 }, label: 'B' };
+const OBST = { id: 'o', position: { x: 430, y: 250 }, size: { width: 140, height: 170 }, label: 'obstacle' };
+const EDGES = [{ id: 'e1', source: 'a', target: 'b', router: 'orthogonal' }];
+
+const rectOf = (n) => ({ x1: n.position.x, y1: n.position.y, x2: n.position.x + n.size.width, y2: n.position.y + n.size.height });
+
+/** True when every segment of the polyline is horizontal or vertical. */
+const isOrthogonal = (pts) =>
+  pts.every((p, i) => i === 0 ||
+    Math.abs(p.x - pts[i - 1].x) < 0.5 || Math.abs(p.y - pts[i - 1].y) < 0.5);
+
+/** Does any segment of `pts` pass through the open interior of `r` (with margin)? */
+function crossesRect(pts, r, margin = 2) {
+  const x1 = r.x1 + margin, y1 = r.y1 + margin, x2 = r.x2 - margin, y2 = r.y2 - margin;
+  for (let i = 0; i < pts.length - 1; i++) {
+    const a = pts[i], b = pts[i + 1];
+    for (let t = 0; t <= 1; t += 0.02) {
+      const x = a.x + (b.x - a.x) * t, y = a.y + (b.y - a.y) * t;
+      if (x > x1 && x < x2 && y > y1 && y < y2) return { x, y };
+    }
+  }
+  return null;
+}
+
+defineDemo({
+  name: 'Edge routing',
+  blurb: 'A Manhattan route that dodges an obstacle: asserted to be orthogonal AND to never cross the obstacle rectangle. Re-routes live when the wall moves or vanishes.',
+  reactflow: 'Edge Routing',
+  pro: true,
+
+  async setup(ctx) {
+    ctx.instance = render({ nodes: [A, B, OBST], edges: EDGES }, ctx.host);
+    ctx.diagram = ctx.instance.getModel();
+    ctx.hasObstacle = true;
+    document.getElementById('toggle').addEventListener('click', () => {
+      ctx.hasObstacle = !ctx.hasObstacle;
+      ctx.instance.setNodes(ctx.hasObstacle ? [A, B, OBST] : [A, B]);
+      ctx.instance.renderNow();
+      report(ctx);
+      document.getElementById('toggle').textContent = ctx.hasObstacle ? 'remove the obstacle' : 'restore the obstacle';
+    });
+    report(ctx);
+    await ctx.tick();
+  },
+
+  async assert(ctx) {
+    // --- 1. WITH the wall: orthogonal, and never through the wall. ----------
+    const pts = ctx.diagram.getLinks()[0].points;
+    check(isOrthogonal(pts), `route is not orthogonal: ${JSON.stringify(pts.map((p) => [Math.round(p.x), Math.round(p.y)]))}`);
+
+    const wall = rectOf(OBST);
+    const straightHit = crossesRect([pts[0], pts[pts.length - 1]], wall);
+    check(!!straightHit, 'the obstacle is not actually on the straight line — the test would prove nothing');
+
+    const hit = crossesRect(pts, wall);
+    check(hit === null, `the route passes THROUGH the obstacle${hit ? ` at (${Math.round(hit.x)},${Math.round(hit.y)})` : ''} — routing is dead`);
+
+    // A real detour has a bend; a straight shot has two points.
+    check(pts.length >= 4, `expected the route to bend around the wall, got ${pts.length} points`);
+
+    // --- 2. Move the wall UP so it blocks a different corridor: re-routes. ---
+    ctx.diagram.getNode('o').setPosition(430, 130);
+    ctx.instance.renderNow();
+    await ctx.tick();
+    const movedWall = { x1: 430, y1: 130, x2: 570, y2: 300 };
+    const pts2 = ctx.diagram.getLinks()[0].points;
+    check(crossesRect(pts2, movedWall) === null, 'after the wall moved, the route now cuts through its new position — the route did not follow');
+    ctx.diagram.getNode('o').setPosition(OBST.position.x, OBST.position.y);
+    ctx.instance.renderNow();
+    await ctx.tick();
+
+    // --- 3. Remove the wall: the route is free to straighten. ---------------
+    ctx.instance.setNodes([A, B]);
+    ctx.instance.renderNow();
+    await ctx.tick();
+    const clear = ctx.diagram.getLinks()[0].points;
+    check(clear.length < pts.length, `with the obstacle gone the route should simplify (was ${pts.length} points, still ${clear.length})`);
+    check(crossesRect([clear[0], clear[clear.length - 1]], wall) !== null && clear.length === 2,
+      `a clear path should be a straight 2-point line, got ${clear.length} points`);
+
+    // restore for the viewer
+    ctx.instance.setNodes([A, B, OBST]);
+    ctx.instance.renderNow();
+  },
+});
+
+function report(ctx) {
+  const pts = ctx.diagram.getLinks()[0]?.points ?? [];
+  document.getElementById('readout').textContent = `${pts.length} points · ${isOrthogonal(pts) ? 'orthogonal' : 'DIAGONAL'}`;
+}
+</script>

@@ -1,0 +1,87 @@
+<meta charset="utf-8">
+<title>Custom edges — Grafloria</title>
+<link rel="stylesheet" href="../shell/demo.css">
+<style>
+  #bar { display: flex; gap: 8px; padding: 10px 24px; border-bottom: 1px solid rgba(127,127,127,.25); align-items: center; flex-wrap: wrap; }
+  #bar button { padding: 5px 12px; border-radius: 6px; border: 1px solid rgba(127,127,127,.4); background: transparent; color: inherit; cursor: pointer; font: inherit; }
+  #canvas { height: calc(100vh - 200px); }
+</style>
+<header id="demo-head"></header>
+<div id="bar">
+  <button data-tpl="pipe" aria-pressed="true">custom template</button>
+  <button data-tpl="">default edge</button>
+</div>
+<div id="canvas"></div>
+<script type="module">
+import { render, registerLinkTemplate } from '../shell/grafloria.js';
+import { defineDemo, check } from '../shell/demo.js';
+
+// registerLinkTemplate() is the seam for an entirely custom edge shape. The
+// template is handed the frame's ROUTED polyline (ctx.points) and the path string
+// the default renderer would have drawn — and returns whatever SVG it likes. Here
+// it draws a two-rail "pipe": a wide casing under a thin core, tagged so the test
+// can prove the template — not the default renderer — painted the edge.
+registerLinkTemplate('pipe', (ctx) => {
+  const d = ctx.pathData;
+  const stroke = ctx.selected ? '#2563eb' : '#0ea5e9';
+  return [
+    { type: 'path', props: { d, className: 'pipe-casing', fill: 'none', stroke, 'stroke-width': 10, 'stroke-opacity': 0.35, 'stroke-linecap': 'round' } },
+    { type: 'path', props: { d, className: 'pipe-core', fill: 'none', stroke, 'stroke-width': 2.5 } },
+  ];
+});
+
+const NODES = [
+  { id: 'a', position: { x: 120, y: 120 }, size: { width: 140, height: 64 }, label: 'Source' },
+  { id: 'b', position: { x: 680, y: 340 }, size: { width: 140, height: 64 }, label: 'Sink' },
+];
+
+defineDemo({
+  name: 'Custom edges',
+  blurb: 'An author-supplied edge template via registerLinkTemplate() — a two-rail pipe drawn from the routed polyline. Asserted to REPLACE the default edge, and to follow the route.',
+  reactflow: 'Custom Edges',
+
+  async setup(ctx) {
+    ctx.instance = render({ nodes: NODES, edges: [{ id: 'e1', source: 'a', target: 'b', type: 'smooth', style: { template: 'pipe' } }] }, ctx.host);
+    ctx.diagram = ctx.instance.getModel();
+    ctx.useTemplate = (name) => {
+      ctx.diagram.getLink('e1').updateStyle({ template: name || undefined });
+      ctx.instance.renderNow();
+      for (const btn of document.querySelectorAll('#bar button'))
+        btn.setAttribute('aria-pressed', String(btn.dataset.tpl === name));
+    };
+    for (const btn of document.querySelectorAll('#bar button'))
+      btn.addEventListener('click', () => ctx.useTemplate(btn.dataset.tpl));
+    await ctx.tick();
+  },
+
+  async assert(ctx) {
+    // 1. The custom template painted, and REPLACED the default edge path.
+    const group = ctx.host.querySelector('[data-link-id="e1"]');
+    check(group.classList.contains('link-group-templated'), 'the link group is not marked templated — the template did not take');
+    const core = ctx.host.querySelector('.pipe-core');
+    const casing = ctx.host.querySelector('.pipe-casing');
+    check(!!core && !!casing, 'the custom two-rail pipe did not render');
+    check(!ctx.host.querySelector('[data-link-id="e1"] path.diagram-link'),
+      'the DEFAULT edge path is still there — the template did not replace it');
+
+    // 2. It draws the REAL route: the pipe follows the node when it moves.
+    const before = core.getAttribute('d');
+    ctx.diagram.getNode('b').setPosition(680, 120);
+    ctx.instance.renderNow();
+    await ctx.tick();
+    const after = ctx.host.querySelector('.pipe-core').getAttribute('d');
+    check(before !== after, 'the custom edge did not re-draw when its node moved — it is not bound to the route');
+    ctx.diagram.getNode('b').setPosition(680, 340);
+    ctx.instance.renderNow();
+
+    // 3. Switching the template OFF restores the default edge — proof the registry
+    //    drove it. Then back on, so the gallery shows the custom one.
+    ctx.useTemplate('');
+    await ctx.tick();
+    check(!ctx.host.querySelector('.pipe-core'), 'removing the template left the custom pipe drawn');
+    check(!!ctx.host.querySelector('[data-link-id="e1"] path.diagram-link'),
+      'with no template the default edge path should return');
+    ctx.useTemplate('pipe');
+  },
+});
+</script>

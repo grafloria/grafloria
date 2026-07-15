@@ -1,0 +1,66 @@
+<meta charset="utf-8">
+<title>Jump-overs — Grafloria</title>
+<link rel="stylesheet" href="../shell/demo.css">
+<style>#canvas { height: calc(100vh - 140px); }</style>
+<header id="demo-head"></header>
+<div id="canvas"></div>
+<script type="module">
+import { render } from '../shell/grafloria.js';
+import { defineDemo, check } from '../shell/demo.js';
+
+// When two edges cross, one HOPS over the other with a little arc — the schematic
+// convention that tells a reader the wires do not connect. React Flow has nothing
+// for this. A→D and B→C form an X; the link that owns the crossing draws an SVG
+// arc (`A rx ry ...`) exactly where the two lines meet.
+const JP = { enabled: true, size: 10, detectMode: 'all' };
+const NODES = [
+  { id: 'a', position: { x: 80,  y: 90 },  size: { width: 100, height: 44 }, label: 'A' },
+  { id: 'b', position: { x: 80,  y: 430 }, size: { width: 100, height: 44 }, label: 'B' },
+  { id: 'c', position: { x: 760, y: 90 },  size: { width: 100, height: 44 }, label: 'C' },
+  { id: 'd', position: { x: 760, y: 430 }, size: { width: 100, height: 44 }, label: 'D' },
+];
+const EDGES = [
+  { id: 'ad', source: 'a', target: 'd', type: 'direct', style: { jumpPoints: JP } },
+  { id: 'bc', source: 'b', target: 'c', type: 'direct', style: { jumpPoints: JP } },
+];
+
+const arcCount = (d) => (d.match(/[Aa]/g) || []).length;
+
+defineDemo({
+  name: 'Jump-overs',
+  blurb: 'Crossing wires hop: the edge owning a crossing draws an arc over the other. Asserted by the arc command in the path — React Flow has no equivalent.',
+
+  async setup(ctx) {
+    ctx.instance = render({ nodes: NODES, edges: EDGES }, ctx.host);
+    ctx.diagram = ctx.instance.getModel();
+    await ctx.tick();
+  },
+
+  async assert(ctx) {
+    const dOf = (id) => ctx.host.querySelector(`[data-link-id="${id}"] path.diagram-link`).getAttribute('d');
+
+    // The two links cross once, so exactly one arc is drawn across the whole scene
+    // (jumpOwnership defaults to a single owner per crossing).
+    const totalArcs = arcCount(dOf('ad')) + arcCount(dOf('bc'));
+    check(totalArcs >= 1, 'two crossing edges produced NO jump arc — jump-overs are dead');
+
+    // Teeth: the arc sits AT the crossing (~centre of the X), not at an endpoint.
+    // Pull the coordinate the arc lands on (the 6-flag SVG arc: `A rx ry rot laf sf x y`).
+    const withArc = [dOf('ad'), dOf('bc')].find((d) => arcCount(d) > 0);
+    const nums = withArc.match(/A\s*[\d.]+[ ,]+[\d.]+[ ,]+\d+[ ,]+\d+[ ,]+\d+[ ,]+([\d.]+)[ ,]+([\d.]+)/);
+    const ax = nums ? parseFloat(nums[1]) : NaN;
+    check(!Number.isNaN(ax) && ax > 300 && ax < 560,
+      `the jump arc should land near the crossing (x≈430), landed at x=${ax}`);
+
+    // Move B out of the way so the lines no longer cross → the arc disappears.
+    ctx.diagram.getNode('b').setPosition(760, 660);
+    ctx.instance.renderNow();
+    await ctx.tick();
+    const after = arcCount(dOf('ad')) + arcCount(dOf('bc'));
+    check(after === 0, `uncrossing the wires should remove the jump arc, still ${after} arc(s)`);
+
+    ctx.diagram.getNode('b').setPosition(80, 430);
+    ctx.instance.renderNow();
+  },
+});
+</script>

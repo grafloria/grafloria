@@ -1,0 +1,98 @@
+<meta charset="utf-8">
+<title>Reconnect edge — Grafloria</title>
+<link rel="stylesheet" href="../shell/demo.css">
+<style>
+  #hint { padding: 8px 24px; font: 13px/1.5 system-ui; opacity: .75; border-bottom: 1px solid rgba(127,127,127,.25); }
+  #canvas { height: calc(100vh - 190px); }
+</style>
+<header id="demo-head"></header>
+<div id="hint">Select the edge, then drag its endpoint handle onto another node. Driven here with real pointer events.</div>
+<div id="canvas"></div>
+<script type="module">
+import { render } from '../shell/grafloria.js';
+import { defineDemo, check } from '../shell/demo.js';
+
+// Reconnecting an edge: grab an endpoint handle of a SELECTED edge and drop it on
+// a new node. Driven with REAL pointer events through the same DOM pipeline a user
+// hits — select (pointerdown/up on the body), then press the endpoint handle,
+// drag, and drop on the target port. The model must rewire and a `reconnect`
+// event must fire.
+const NODES = [
+  { id: 'a', position: { x: 80,  y: 260 }, size: { width: 120, height: 60 }, label: 'A' },
+  { id: 'b', position: { x: 660, y: 110 }, size: { width: 120, height: 60 }, label: 'B' },
+  { id: 'c', position: { x: 660, y: 430 }, size: { width: 120, height: 60 }, label: 'C' },
+];
+
+defineDemo({
+  name: 'Reconnect edge',
+  blurb: 'Drag an edge endpoint onto a different node — driven with real pointer events. Asserts the model rewired (A→B becomes A→C) and a reconnect event fired.',
+  reactflow: 'Reconnect Edge',
+
+  async setup(ctx) {
+    // NOTE: waypoint editing is intentionally OFF — it would claim a press on the
+    // path before the endpoint-reconnect branch could.
+    ctx.instance = render({ nodes: NODES, edges: [{ id: 'e1', source: 'a', target: 'b', type: 'direct' }] }, ctx.host);
+    ctx.diagram = ctx.instance.getModel();
+
+    const rect = () => ctx.host.getBoundingClientRect();
+    ctx.pointer = (type, wx, wy) => {
+      const c = ctx.instance.viewport.worldToClient(wx, wy, rect());
+      ctx.host.dispatchEvent(new PointerEvent(type, {
+        clientX: c.x, clientY: c.y, bubbles: true, cancelable: true,
+        button: 0, buttons: type === 'pointerup' ? 0 : 1, pointerId: 1, pointerType: 'mouse',
+      }));
+    };
+    ctx.reconnects = [];
+    ctx.instance.on('reconnect', (p) => ctx.reconnects.push({ endpoint: p.endpoint, target: p.link.targetNodeId }));
+    await ctx.tick();
+  },
+
+  async assert(ctx) {
+    const link = () => ctx.diagram.getLink('e1');
+    const endpoint = () => { const p = link().points; return p[p.length - 1]; };
+    const bodyMid = () => { const p = link().points; return { x: (p[0].x + p[p.length - 1].x) / 2, y: (p[0].y + p[p.length - 1].y) / 2 }; };
+
+    check(link().targetNodeId === 'b', `precondition: the edge should start at B, is at ${link().targetNodeId}`);
+
+    // 1. Select the edge (click its body — the last hover ends OFF any port).
+    const m = bodyMid();
+    ctx.pointer('pointermove', m.x, m.y); await ctx.tick();
+    ctx.pointer('pointerdown', m.x, m.y); await ctx.tick();
+    ctx.pointer('pointerup', m.x, m.y); await ctx.tick();
+    check(link().state === 'selected', 'clicking the edge body did not select it');
+
+    // 2. Press the target endpoint handle and drag it to C's left port (660,460),
+    //    passing over the port en route so the drop resolves a valid target.
+    const e = endpoint();
+    const cPort = { x: 660, y: 460 };
+    ctx.pointer('pointerdown', e.x, e.y); await ctx.tick();
+    check(ctx.instance.interaction.getState().isReconnectingLink,
+      'pressing the endpoint handle did not start a reconnection — the endpoint grab is shadowed');
+
+    // Live preview: mid-drag the renderer paints a dashed ghost line to the
+    // cursor. Its far end must sit at the pointer, proving the preview tracks live.
+    const drag1 = { x: (e.x + cPort.x) / 2, y: (e.y + cPort.y) / 2 };
+    ctx.pointer('pointermove', drag1.x, drag1.y); await ctx.tick();
+    ctx.instance.renderNow(); await ctx.tick();
+    const ghost = ctx.host.querySelector('.reconnection-preview-line');
+    check(!!ghost, 'no reconnection preview line was drawn during the drag');
+    const coords = (ghost.getAttribute('d').match(/-?\d+(?:\.\d+)?/g) || []).map(Number);
+    const endX = coords[coords.length - 2], endY = coords[coords.length - 1];
+    check(Math.abs(endX - drag1.x) < 4 && Math.abs(endY - drag1.y) < 4,
+      `the preview line's end did not follow the cursor (ended at ${Math.round(endX)},${Math.round(endY)}, cursor ${Math.round(drag1.x)},${Math.round(drag1.y)})`);
+
+    ctx.pointer('pointermove', cPort.x, cPort.y); await ctx.tick();
+    ctx.pointer('pointerup', cPort.x, cPort.y); await ctx.tick();
+
+    // 3. The model rewired and the event fired.
+    check(link().targetNodeId === 'c',
+      `the edge did not rewire to C — target is still ${link().targetNodeId}`);
+    check(ctx.reconnects.some((r) => r.endpoint === 'target' && r.target === 'c'),
+      `no reconnect event with target C fired (saw ${JSON.stringify(ctx.reconnects)})`);
+
+    // 4. The edge's geometry now actually ends on node C.
+    const end = endpoint();
+    check(end.y > 380, `the edge's endpoint should now be down at C (y>380), got y=${Math.round(end.y)}`);
+  },
+});
+</script>
