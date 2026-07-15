@@ -369,9 +369,14 @@ export class ReferentialIntegrity {
     this.order(this.diagram.nodes, 'node');
     this.order(this.diagram.links, 'link');
     this.order(this.diagram.groups, 'group');
+    // wave10/whiteboard: ink is ordered too. serialize() writes strokes in Map-insertion
+    // order and the renderer paints them in that order (later ink on top), so two peers that
+    // received the same stroke adds in a different order would paint and SAVE differently —
+    // the exact node/link bug this method exists to kill, now for a fourth collection.
+    this.order(this.diagram.strokes, 'stroke');
   }
 
-  private order(map: Map<string, unknown>, target: 'node' | 'link' | 'group'): void {
+  private order(map: Map<string, unknown>, target: 'node' | 'link' | 'group' | 'stroke'): void {
     if (map.size < 2) return;
 
     const rank = (id: string): Stamp | undefined => this.lww.presenceOf(target, id);

@@ -15,7 +15,7 @@
 import { DiagramModel } from '../models/DiagramModel';
 import { Replica } from './replica';
 import type { Op } from './op';
-import { expectConverged, link, node, peer } from './test-helpers';
+import { expectConverged, link, node, peer, stroke } from './test-helpers';
 
 /** Two peers on the same document, each with their ops collected. */
 function pair(): {
@@ -432,6 +432,82 @@ describe('undo across structure', () => {
     expect(alice.canUndo).toBe(false); // …and it was the only step
 
     sync();
+    expectConverged(alice.diagram, bob.diagram);
+    dispose();
+  });
+});
+
+// ===========================================================================
+// wave10/whiteboard — INK IS DOCUMENT CONTENT, AND UNDO TREATS IT AS SUCH.
+//
+// The two undo properties the brief pins for ink:
+//   • ONE stroke = ONE undo step. A freehand line is hundreds of points, but it is a single
+//     authored thing — it arrives as one `add` at pointerup, and it takes one Ctrl-Z away.
+//   • An ERASER SWEEP that removes five strokes = ONE undo step. The gesture is atomic to the
+//     user; grouping its N removes into one transacted step is what makes Ctrl-Z bring the
+//     whole swept set back at once.
+// ===========================================================================
+describe('undo across ink (wave10/whiteboard)', () => {
+  it('ONE stroke is ONE undo step, and the undo reaches the other peer', () => {
+    const { alice, bob, sync, dispose } = pair();
+
+    // The draw tool's pointerup: one addStroke → one `add` op → one undo entry.
+    alice.diagram.addStroke(stroke('ink-1', 100, 100));
+    expect(alice.diagram.getStrokes().length).toBe(1);
+    sync();
+    expect(bob.diagram.getStroke('ink-1')).toBeDefined(); // it reached Bob as content
+
+    alice.undo(); // ONE press
+    expect(alice.diagram.getStrokes().length).toBe(0);
+    expect(alice.canUndo).toBe(false);
+
+    sync();
+    expect(bob.diagram.getStroke('ink-1')).toBeUndefined(); // the undo reached Bob too
+    expectConverged(alice.diagram, bob.diagram);
+    dispose();
+  });
+
+  it('an ERASER SWEEP over 5 strokes is ONE undo step — one Ctrl-Z brings them all back', () => {
+    const { alice, bob, sync, seed, dispose } = pair();
+    seed((d) => {
+      for (let i = 0; i < 5; i++) d.addStroke(stroke(`s${i}`, i * 40, 0));
+    });
+    expect(alice.diagram.getStrokes().length).toBe(5);
+
+    // The eraser commit: every swept stroke removed inside ONE transact — the same seam a
+    // multi-op node delete uses. Five `remove` ops on the wire, one undo step in the stack.
+    alice.transact(() => {
+      for (const s of [...alice.diagram.getStrokes()]) alice.diagram.removeStroke(s.id);
+    });
+    expect(alice.diagram.getStrokes().length).toBe(0);
+
+    alice.undo(); // ONE press
+    expect(alice.diagram.getStrokes().length).toBe(5);
+    expect(alice.canUndo).toBe(false); // it was the only step after the seed
+
+    sync();
+    expect(bob.diagram.getStrokes().length).toBe(5);
+    expectConverged(alice.diagram, bob.diagram);
+    dispose();
+  });
+
+  it('undoing an erase that a colleague already re-drew over does NOT resurrect stale ink', () => {
+    // The supersession rule holds for ink exactly as for nodes: if my delete has been
+    // overtaken, taking it back must do nothing rather than clobber the newer incarnation.
+    const { alice, bob, sync, seed, dispose } = pair();
+    seed((d) => d.addStroke(stroke('s', 0, 0)));
+
+    alice.diagram.removeStroke('s'); // Alice erases
+    sync();
+    // Bob re-draws a stroke with the SAME id (a fresh incarnation), newer clock.
+    bob.diagram.addStroke(stroke('s', 500, 500));
+    sync();
+
+    alice.undo(); // undo Alice's erase — but Bob's newer draw owns the register now
+    sync();
+
+    // Both peers keep Bob's incarnation; Alice's undo was correctly a no-op on the document.
+    expect(alice.diagram.getStroke('s')).toBeDefined();
     expectConverged(alice.diagram, bob.diagram);
     dispose();
   });

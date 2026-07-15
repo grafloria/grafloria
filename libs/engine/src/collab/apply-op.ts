@@ -29,12 +29,18 @@ import { DiagramModel } from '../models/DiagramModel';
 import { NodeModel } from '../models/NodeModel';
 import { LinkModel } from '../models/LinkModel';
 import { GroupModel } from '../models/GroupModel';
+import { StrokeModel } from '../models/StrokeModel';
 import { PortModel } from '../models/PortModel';
 import type { SerializedNode } from '../models/NodeModel';
 import type { SerializedLink } from '../models/LinkModel';
 import type { SerializedGroup } from '../models/GroupModel';
+import type { SerializedStroke } from '../models/StrokeModel';
 import type { SerializedPort } from '../models/PortModel';
-import type { Op, OpValue } from './op';
+import type { Op, OpValue, OpTarget } from './op';
+
+/** Any entity an op can target (everything but the diagram singleton). */
+type Entity = NodeModel | LinkModel | GroupModel | StrokeModel;
+type EntityTarget = Exclude<OpTarget, 'diagram'>;
 
 /** Thrown only for a MALFORMED op — never for a merely-losing one. */
 export class OpApplyError extends Error {
@@ -93,9 +99,9 @@ export function applyOp(diagram: DiagramModel, op: Op): boolean {
 
 function applyAdd(
   diagram: DiagramModel,
-  target: 'node' | 'link' | 'group',
+  target: EntityTarget,
   id: string,
-  data: SerializedNode | SerializedLink | SerializedGroup
+  data: SerializedNode | SerializedLink | SerializedGroup | SerializedStroke
 ): boolean {
   if (!id) throw new OpApplyError('add op has no id', { op: 'add' } as Op);
   if (!data) throw new OpApplyError(`add op for ${target} ${id} has no data`, { op: 'add' } as Op);
@@ -126,6 +132,18 @@ function applyAdd(
         diagram.removeGroup(id);
       }
       diagram.addGroup(GroupModel.fromJSON(data as SerializedGroup));
+      return true;
+    }
+    case 'stroke': {
+      // wave10/whiteboard: a stroke `add` is the whole ink, minted once at pointerup. It is
+      // an INCARNATION like every other add — an already-present stroke is replaced, not
+      // ignored — so the presence barrier (older writes void) is coherent for ink too.
+      const existing = diagram.getStroke(id);
+      if (existing) {
+        if (sameContent(existing.serialize(), data)) return false;
+        diagram.removeStroke(id);
+      }
+      diagram.addStroke(StrokeModel.fromJSON(data as SerializedStroke));
       return true;
     }
   }
@@ -177,7 +195,7 @@ function stripVersion(v: unknown): unknown {
 
 function applyRemove(
   diagram: DiagramModel,
-  target: 'node' | 'link' | 'group',
+  target: EntityTarget,
   id: string
 ): boolean {
   switch (target) {
@@ -187,6 +205,8 @@ function applyRemove(
       return diagram.removeLink(id) !== undefined;
     case 'group':
       return diagram.removeGroup(id) !== undefined;
+    case 'stroke':
+      return diagram.removeStroke(id) !== undefined;
   }
 }
 
@@ -207,7 +227,9 @@ function applySet(diagram: DiagramModel, op: Extract<Op, { op: 'set' }>): boolea
       ? diagram.getNode(id)
       : target === 'link'
         ? diagram.getLink(id)
-        : diagram.getGroup(id);
+        : target === 'group'
+          ? diagram.getGroup(id)
+          : diagram.getStroke(id);
 
   // The entity is gone — a concurrent remove won, or this set arrived before its add.
   // Dropping the write is correct under remove-wins (see CONVERGENCE in op-log.ts):
@@ -233,7 +255,7 @@ function applySet(diagram: DiagramModel, op: Extract<Op, { op: 'set' }>): boolea
  * that drift would only surface on resurrection, long after the cause.
  */
 export function applyEntitySet(
-  entity: NodeModel | LinkModel | GroupModel,
+  entity: Entity,
   path: string,
   value: OpValue
 ): boolean {
@@ -256,12 +278,12 @@ export function applyEntitySet(
 
 /** Read the register an op path names. Exported for undo, which needs the value a
  *  register held before an op overwrote it. */
-export function readProp(entity: NodeModel | LinkModel | GroupModel, path: string): unknown {
+export function readProp(entity: Entity, path: string): unknown {
   return readEntityProp(entity, path);
 }
 
 /** Read the register an op path names, so we can tell a real write from a redundant one. */
-function readEntityProp(entity: NodeModel | LinkModel | GroupModel, path: string): unknown {
+function readEntityProp(entity: Entity, path: string): unknown {
   if (path.startsWith('metadata.')) {
     return entity.getMetadata(path.slice('metadata.'.length));
   }
@@ -316,7 +338,7 @@ function deepEqual(a: unknown, b: unknown): boolean {
  * screen.
  */
 function setEntityProp(
-  entity: NodeModel | LinkModel | GroupModel,
+  entity: Entity,
   path: string,
   value: OpValue
 ): boolean {
@@ -428,7 +450,7 @@ function setEntityProp(
  * almost impossible to find.
  */
 function writeGeneric(
-  entity: NodeModel | LinkModel | GroupModel,
+  entity: Entity,
   path: string,
   value: OpValue
 ): boolean {

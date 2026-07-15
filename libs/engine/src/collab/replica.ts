@@ -42,6 +42,7 @@ import { DiagramModel } from '../models/DiagramModel';
 import type { NodeModel } from '../models/NodeModel';
 import type { LinkModel } from '../models/LinkModel';
 import type { GroupModel } from '../models/GroupModel';
+import type { StrokeModel } from '../models/StrokeModel';
 import { applyOp, applyEntitySet } from './apply-op';
 import { OpCapture, type OpBefore } from './capture';
 import { ReferentialIntegrity } from './integrity';
@@ -371,10 +372,11 @@ export class Replica {
   private find(
     target: Op['target'],
     id: string
-  ): NodeModel | LinkModel | GroupModel | undefined {
+  ): NodeModel | LinkModel | GroupModel | StrokeModel | undefined {
     if (target === 'link') return this.diagram.getLink(id) ?? this.integrity.held(id);
     if (target === 'node') return this.diagram.getNode(id);
     if (target === 'group') return this.diagram.getGroup(id);
+    if (target === 'stroke') return this.diagram.getStroke(id);
     return undefined;
   }
 }
