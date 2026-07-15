@@ -36,7 +36,7 @@ import type { SerializedLink } from '../models/LinkModel';
 import type { SerializedGroup } from '../models/GroupModel';
 import type { SerializedStroke } from '../models/StrokeModel';
 import type { SerializedPort } from '../models/PortModel';
-import type { Op, OpValue, OpTarget } from './op';
+import { setValueOf, type Op, type OpValue, type OpTarget } from './op';
 
 /** Any entity an op can target (everything but the diagram singleton). */
 type Entity = NodeModel | LinkModel | GroupModel | StrokeModel;
@@ -211,7 +211,11 @@ function applyRemove(
 }
 
 function applySet(diagram: DiagramModel, op: Extract<Op, { op: 'set' }>): boolean {
-  const { target, id, path, value } = op;
+  const { target, id, path } = op;
+  // Clears are normalised to `undefined` HERE, in one place: an explicit `clear: true`
+  // (wave14) and an absent value key (every pre-wave14 log — JSON dropped the undefined)
+  // apply identically. See setValueOf.
+  const value = setValueOf(op);
 
   if (target === 'diagram') {
     // The redundant-write guard applies HERE TOO. It did not, and that was a bug: this
@@ -257,7 +261,7 @@ function applySet(diagram: DiagramModel, op: Extract<Op, { op: 'set' }>): boolea
 export function applyEntitySet(
   entity: Entity,
   path: string,
-  value: OpValue
+  value: OpValue | undefined
 ): boolean {
   // A WRITE THAT CHANGES NOTHING MUST DO NOTHING. This is not an optimisation, it is
   // what makes applyOp IDEMPOTENT, and idempotence is not optional here: redundant sets
@@ -287,9 +291,21 @@ function readEntityProp(entity: Entity, path: string): unknown {
   if (path.startsWith('metadata.')) {
     return entity.getMetadata(path.slice('metadata.'.length));
   }
-  // `ports` is held as a Map but travels as a serialized array — compare like with like, or
-  // the idempotence guard never fires and every duplicate delivery rebuilds the collection
-  // and bumps `version`, which the byte-identical replay oracle would then catch.
+  // A PER-PORT register (wave14): `ports.<portId>` holds one serialized port, minus
+  // `version` — which is a per-replica mutation counter, excluded from the wire value at
+  // capture for the same reason the convergence oracle exempts it. Strip it here too, or
+  // the idempotence guard would compare a local counter against a remote one and never
+  // fire. An absent port reads as undefined: the register is empty.
+  if (path.startsWith('ports.') && entity instanceof NodeModel) {
+    const port = entity.getPort(path.slice('ports.'.length));
+    if (!port) return undefined;
+    const { version: _version, ...data } = port.serialize();
+    return data;
+  }
+  // LEGACY: the whole-collection `ports` register. Held as a Map but travels as a
+  // serialized array — compare like with like, or the idempotence guard never fires and
+  // every duplicate delivery rebuilds the collection and bumps `version`, which the
+  // byte-identical replay oracle would then catch.
   if (path === 'ports' && entity instanceof NodeModel) {
     return entity.getPorts().map((p) => p.serialize());
   }
@@ -304,12 +320,17 @@ function readEntityProp(entity: Entity, path: string): unknown {
 /**
  * Structural equality over JSON-shaped values.
  *
- * `undefined` and a missing key are the same thing here — an op that clears a metadata
- * key carries `undefined`, and the register genuinely holds nothing afterwards.
+ * `undefined` and `null` are NOT the same thing here, and the old `a == b` on the line
+ * below said they were. `undefined` means THE REGISTER IS EMPTY (a cleared metadata
+ * key, an absent port); `null` is a VALUE a user can store. Conflating them made the
+ * idempotence guard drop a peer's `set(metadata.note, null)` as "redundant" against an
+ * empty register — the value never landed, and only on the RECEIVING side, the one
+ * place a single-process test never looks. Storing null and clearing must stay
+ * distinguishable end to end (op.ts's clear is explicit for the same reason).
  */
 function deepEqual(a: unknown, b: unknown): boolean {
   if (a === b) return true;
-  if (a === undefined || b === undefined || a === null || b === null) return a == b;
+  if (a === undefined || b === undefined || a === null || b === null) return false;
   if (typeof a !== 'object' || typeof b !== 'object') return false;
 
   if (Array.isArray(a) !== Array.isArray(b)) return false;
@@ -340,8 +361,16 @@ function deepEqual(a: unknown, b: unknown): boolean {
 function setEntityProp(
   entity: Entity,
   path: string,
-  value: OpValue
+  value: OpValue | undefined
 ): boolean {
+  // A CLEAR (value normalised to undefined — explicit `clear: true`, or the absent value
+  // key every old log encodes). The register is EMPTIED, not set to a value: the
+  // metadata KEY is deleted (a Map that keeps the key with an undefined value only looks
+  // identical until someone calls `has()` — the receiving side used to diverge exactly
+  // there), and a cleared port register means the port is REMOVED, through the real
+  // mutator.
+  if (value === undefined) return clearEntityProp(entity, path);
+
   // METADATA IS A Map, NOT AN OBJECT. This is the trap in this file. A generic
   // `entity.metadata = {...}` assignment produces a model that serializes correctly,
   // passes every replay test, and is quietly broken everywhere else — every
@@ -351,6 +380,33 @@ function setEntityProp(
   if (path.startsWith('metadata.')) {
     entity.setMetadata(path.slice('metadata.'.length), structuredClone(value));
     return true;
+  }
+
+  // A PER-PORT register (wave14): add if absent, update IN PLACE if present.
+  //
+  // THROUGH THE REAL MUTATORS, never a raw field write — node.ports is a Map and the
+  // original whole-collection bug replaced it with a plain object, after which
+  // getPorts() returned nothing and serialize() threw. addPort/removePort also emit
+  // port:added/port:removed, which is what keeps DiagramModel's portIndex current on
+  // the receiving peer.
+  //
+  // IN PLACE matters for a reason that is easy to miss: serialize() writes ports in Map
+  // insertion order, and order is part of the document. The AUTHOR of a port edit
+  // mutated the port where it stood; a receiver that did remove+add would move it to
+  // the end and the two would save byte-different files. (It would also drop the port's
+  // live connection state, which a rebuilt instance does not carry.)
+  if (path.startsWith('ports.') && entity instanceof NodeModel) {
+    const portId = path.slice('ports.'.length);
+    const data = value as unknown as SerializedPort;
+    const existing = entity.getPort(portId);
+    if (!existing) {
+      // addPort() stamps fresh.nodeId with the owning node's id, and that stamp STANDS —
+      // see the nodeId note in updatePortInPlace for why apply never writes this field
+      // from the wire (the fuzz found both wrong answers: seeds 1062 and 33).
+      entity.addPort(PortModel.fromJSON(structuredClone(data)));
+      return true;
+    }
+    return updatePortInPlace(existing, data);
   }
 
   if (entity instanceof NodeModel) {
@@ -437,6 +493,170 @@ function setEntityProp(
 }
 
 /**
+ * EMPTY a register — the apply half of an explicit clear (and of every old log's
+ * clear-by-omission).
+ */
+function clearEntityProp(entity: Entity, path: string): boolean {
+  // The KEY is deleted. setMetadata(key, undefined) — which is what the old
+  // missing-as-undefined accident amounted to — leaves the key in the Map holding
+  // undefined: serialize() happens to drop it (JSON), so every byte oracle stayed green,
+  // but `metadata.has(key)` answered true on the receiver and false on the author.
+  if (path.startsWith('metadata.')) {
+    entity.deleteMetadata(path.slice('metadata.'.length));
+    return true;
+  }
+
+  // A cleared per-port register is the port's REMOVAL — through the real mutator, which
+  // fires port:removed and keeps the diagram's portIndex honest.
+  if (path.startsWith('ports.') && entity instanceof NodeModel) {
+    return entity.removePort(path.slice('ports.'.length)) !== undefined;
+  }
+
+  // The legacy whole-collection register is never cleared — no version of capture ever
+  // emitted that — so a clear here is malformed traffic; refuse it rather than strip a
+  // node of every port it has on a guess.
+  if (path === 'ports' && entity instanceof NodeModel) return false;
+
+  // Generic: empty the slot the way the author's clear did (clearFlexItem assigns
+  // undefined and fires trackChange; there is no removeFlexConfig mutator to prefer).
+  const [head, ...rest] = path.split('.');
+  const holder = entity as unknown as Record<string, unknown>;
+  if (rest.length === 0) {
+    holder[head] = undefined;
+    return true;
+  }
+  const current = holder[head];
+  const next: Record<string, unknown> =
+    typeof current === 'object' && current !== null && !Array.isArray(current)
+      ? (structuredClone(current) as Record<string, unknown>)
+      : {};
+  setPath(next, rest.join('.'), undefined);
+  holder[head] = next;
+  return true;
+}
+
+/**
+ * Update a LIVE port from its register value, in place.
+ *
+ * The live instance is KEPT — it carries connection state and its position in the
+ * node's ports Map (which is serialize() order, i.e. part of the document) — and its
+ * fields are brought to the register value. Geometry goes through the port's REAL
+ * mutators (setPosition/setAlignment/setOffset fire trackChange, which is what lets a
+ * peer's capture re-emit when this runs under a LIVE capture — the undo path — and what
+ * keeps renderers listening on the port informed). Registry-backed fields go through
+ * their mutators for the same reason. The remaining declarative config is plain data
+ * with no mutator to prefer; it is assigned, cloned, exactly as fromJSON does.
+ *
+ * `version` is deliberately untouched: it is a per-replica counter, excluded from the
+ * wire value at capture, and the mutators below advance it as a real mutation should.
+ */
+function updatePortInPlace(port: PortModel, data: SerializedPort): boolean {
+  let changed = false;
+
+  if (!deepEqual({ ...port.position }, data.position)) {
+    port.setPosition(structuredClone(data.position));
+    changed = true;
+  }
+  if (!deepEqual({ ...port.alignment }, data.alignment)) {
+    port.setAlignment(structuredClone(data.alignment));
+    changed = true;
+  }
+  if (!deepEqual({ ...port.offset }, data.offset)) {
+    port.setOffset(structuredClone(data.offset));
+    changed = true;
+  }
+  // AFTER setAlignment, which forces explicitSide=true — the register value decides.
+  if (port.explicitSide !== (data.explicitSide === true)) {
+    port.explicitSide = data.explicitSide === true;
+    changed = true;
+  }
+
+  // allowedTypes is a Set; its mutators are the funnel (and they trackChange).
+  const wantTypes = new Set(data.allowedTypes ?? []);
+  for (const t of [...port.allowedTypes]) {
+    if (!wantTypes.has(t)) {
+      port.removeAllowedType(t);
+      changed = true;
+    }
+  }
+  for (const t of wantTypes) {
+    if (!port.allowedTypes.has(t)) {
+      port.addAllowedType(t);
+      changed = true;
+    }
+  }
+
+  // metadata is a Map — same discipline as every other Map in this file.
+  const wantMeta = (data.metadata ?? {}) as Record<string, unknown>;
+  for (const k of [...port.metadata.keys()]) {
+    if (!(k in wantMeta)) {
+      port.deleteMetadata(k);
+      changed = true;
+    }
+  }
+  for (const [k, v] of Object.entries(wantMeta)) {
+    if (!deepEqual(port.getMetadata(k), v)) {
+      port.setMetadata(k, structuredClone(v));
+      changed = true;
+    }
+  }
+
+  if (!deepEqual(port.renderingConfig, data.renderingConfig)) {
+    port.setRenderingConfig(structuredClone(data.renderingConfig));
+    changed = true;
+  }
+
+  // The serialize() sentinel: null means unlimited (Infinity is not JSON-representable).
+  const wantMax = data.maxConnections === null || data.maxConnections === undefined
+    ? Infinity
+    : data.maxConnections;
+  if (port.maxConnections !== wantMax) {
+    port.maxConnections = wantMax;
+    changed = true;
+  }
+
+  // Declarative config: plain values, assigned as fromJSON assigns them. `undefined`
+  // incoming means the author UNSET the field, and unset must travel too.
+  const assign = <K extends keyof PortModel>(key: K, want: PortModel[K]): void => {
+    if (deepEqual(port[key], want)) return;
+    (port as Record<K, unknown>)[key] = typeof want === 'object' && want !== null ? structuredClone(want) : want;
+    changed = true;
+  };
+  // `nodeId` is deliberately NOT written from the wire. It is STRUCTURAL — the engine's
+  // own invariant is that a port's nodeId is its owning node's id (addPort stamps it,
+  // initializeDefaultPorts stamps it), and the register path already names the owner.
+  // The fuzz proved both wrong answers: taking the wire value while the add path let
+  // addPort stamp the owner diverged the update-path peers from the add-path peers
+  // (seed 1062), and forcing the wire value onto the add path diverged the UNDO AUTHOR
+  // from everyone — capture serializes the op inside addPort's trackChange, i.e. AFTER
+  // the stamp, so the wire said "owner" while the author's model had been reset to the
+  // wire's stale value (seed 33). The stamp is deterministic on every path; let it stand.
+  assign('type', data.type);
+  assign('systemType', data.systemType);
+  assign('index', data.index ?? 0);
+  assign('visible', data.visible);
+  assign('style', (data.style ?? {}) as PortModel['style']);
+  assign('data', (data.data ?? {}) as PortModel['data']);
+  assign('group', data.group);
+  assign('shape', data.shape);
+  assign('label', data.label);
+  assign('layout', data.layout);
+  assign('fromSpot', data.fromSpot);
+  assign('toSpot', data.toSpot);
+  assign('spread', data.spread);
+  assign('dataType', data.dataType);
+  assign('isConnectableStart', data.isConnectableStart);
+  assign('isConnectableEnd', data.isConnectableEnd);
+  assign('fromMaxLinks', data.fromMaxLinks);
+  assign('toMaxLinks', data.toMaxLinks);
+  assign('allowSelfLink', data.allowSelfLink);
+  assign('allowDuplicateLinks', data.allowDuplicateLinks);
+  assign('dynamic', data.dynamic);
+
+  return changed;
+}
+
+/**
  * Anything without a dedicated mutator: `zIndex`, `router`, `pathType`, an author's
  * own field.
  *
@@ -452,7 +672,7 @@ function setEntityProp(
 function writeGeneric(
   entity: Entity,
   path: string,
-  value: OpValue
+  value: OpValue | undefined
 ): boolean {
   const [head, ...rest] = path.split('.');
   const holder = entity as unknown as Record<string, unknown>;
@@ -498,7 +718,7 @@ function readDiagramProp(diagram: DiagramModel, path: string): unknown {
   return cur;
 }
 
-function setDiagramProp(diagram: DiagramModel, path: string, value: OpValue): boolean {
+function setDiagramProp(diagram: DiagramModel, path: string, value: OpValue | undefined): boolean {
   // THE DIAGRAM'S metadata IS A Map TOO — and I wrote the comment above warning about
   // exactly this, fixed it for entities, and left the identical bug six lines away. The
   // generic branch below would replace the Map with a plain object: getMetadata() returns
@@ -506,12 +726,18 @@ function setDiagramProp(diagram: DiagramModel, path: string, value: OpValue): bo
   // Silent, permanent, and it only bites the peer RECEIVING the edit — the one place a
   // single-process test can never look.
   if (path.startsWith('metadata.')) {
-    diagram.setMetadata(path.slice('metadata.'.length), structuredClone(value));
+    // A clear DELETES the key (see clearEntityProp — the Map must not keep a key
+    // holding undefined); a value is stored through the mutator.
+    if (value === undefined) diagram.deleteMetadata(path.slice('metadata.'.length));
+    else diagram.setMetadata(path.slice('metadata.'.length), structuredClone(value));
     return true;
   }
 
   switch (path) {
     case 'name':
+      // A name is never cleared — no capture path emits that — so a clear here is
+      // malformed traffic; refuse it rather than store the string "undefined".
+      if (value === undefined) return false;
       diagram.name = String(value);
       return true;
     default: {

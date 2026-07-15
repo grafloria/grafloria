@@ -68,7 +68,7 @@
 
 import type { OpBefore } from './capture';
 import type { OpLog } from './op-log';
-import { compareOps, opId, type ActorId, type Op, type OpValue } from './op';
+import { compareOps, opId, setValueOf, type ActorId, type Op, type OpValue } from './op';
 
 /** One captured local edit: the op, and what it displaced. */
 interface Record {
@@ -330,28 +330,23 @@ export class UndoStack {
         // joined from a snapshot has no op for a register nobody has touched since.
         if (before.kind !== 'value') return undefined;
         const value: OpValue | undefined =
-          survivor && survivor.op === 'set' ? survivor.value : before.value;
+          survivor && survivor.op === 'set' ? setValueOf(survivor) : before.value;
 
-        // `undefined` means THE REGISTER WAS EMPTY, and that is a value to restore, not a
+        // `undefined` means THE REGISTER WAS EMPTY, and that is a state to restore, not a
         // failure to find one. Bail out here and you cannot undo the FIRST label you ever
         // put on a node — the commonest undo there is — because there was nothing there
-        // before it. The op carries undefined, JSON.stringify drops the key, the receiving
-        // peer reads `value` back as undefined, and setMetadata(k, undefined) empties the
-        // register on both sides: getMetadata() answers undefined and serialize() omits the
-        // key, so the two peers agree byte for byte.
+        // before it.
         //
-        // (`OpValue` does not admit undefined, and has been quietly lying about it since
-        // Card 0 — capture has always emitted it whenever a user CLEARED a metadata key.
-        // Widening the shared type mid-wave would break the three siblings compiling
-        // against it, so the cast is here and the type stays put. Flagged, not smuggled.)
-        return {
-          ...stub,
-          op: 'set',
-          target: op.target,
-          id: op.id,
-          path: op.path,
-          value: value as OpValue,
-        };
+        // wave14: restoring emptiness is an EXPLICIT, TYPED CLEAR now. This used to be a
+        // `value: undefined` cast past the OpValue type — it crossed the wire only because
+        // JSON.stringify drops an undefined key and the peer read missing-as-undefined.
+        // The lie Card 4 flagged is retired: a clear says `clear: true` and carries no
+        // value key at all. (A survivor that was itself a clear resolves to undefined via
+        // setValueOf and lands here too.)
+        if (value === undefined) {
+          return { ...stub, op: 'set', target: op.target, id: op.id, path: op.path, clear: true };
+        }
+        return { ...stub, op: 'set', target: op.target, id: op.id, path: op.path, value };
       }
     }
   }
@@ -376,7 +371,11 @@ export class UndoStack {
       case 'remove':
         return { ...stub, op: 'remove', target: op.target, id: op.id };
       case 'set':
-        return { ...stub, op: 'set', target: op.target, id: op.id, path: op.path, value: op.value };
+        // Re-issue the op's write as it was — a clear as an explicit clear (this also
+        // renormalises a pre-wave14 record whose value key an old JSON hop dropped).
+        return setValueOf(op) === undefined
+          ? { ...stub, op: 'set', target: op.target, id: op.id, path: op.path, clear: true }
+          : { ...stub, op: 'set', target: op.target, id: op.id, path: op.path, value: op.value };
     }
   }
 

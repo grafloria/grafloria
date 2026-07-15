@@ -112,6 +112,13 @@ describe('FUZZ: convergence under concurrent editing, deletion, resurrection and
         // same concurrent add/delete/undo storm as everything else — including an eraser
         // SWEEP, which removes several strokes as ONE transacted step.
         'drawStroke', 'eraseStroke', 'eraseSweep', 'restyleStroke',
+        // wave14: ports are per-port registers now, so the fuzz must race them the way it
+        // races everything else. movePort is the live-port mutation that used to emit NO
+        // op at all (Defect 2); removePort races adds, edits and links (a port vanishing
+        // from under a link is the same wound as deleting its node); clearMeta puts the
+        // EXPLICIT clear on the wire under fire, and nullMeta stores null — which must
+        // remain distinguishable from cleared on every peer forever.
+        'movePort', 'removePort', 'clearMeta', 'nullMeta',
       ] as const)) {
         case 'move':
           target?.setPosition(Math.floor(next() * 800), Math.floor(next() * 800));
@@ -152,6 +159,42 @@ describe('FUZZ: convergence under concurrent editing, deletion, resurrection and
               new PortModel({ id: `${freshId(p)}-p`, type: 'output', side: 'bottom' })
             );
           }
+          break;
+        case 'movePort': {
+          // A LIVE port's own registers — the edit that used to emit nothing (Defect 2).
+          if (!target) break;
+          const ports = target.getPorts();
+          if (ports.length === 0) break;
+          const port = pick(ports);
+          if (next() < 0.5) {
+            port.setAlignment({
+              side: pick(['left', 'right', 'top', 'bottom'] as const),
+              offset: Math.floor(next() * 20),
+            });
+          } else {
+            port.setOffset({ x: Math.floor(next() * 10), y: Math.floor(next() * 10) });
+          }
+          break;
+        }
+        case 'removePort': {
+          // Any port, including one a link is attached to RIGHT NOW — the same
+          // referential wound as deleting the node, and the add-vs-remove race on the
+          // same `ports.<id>` register when another peer is editing it concurrently.
+          if (!target) break;
+          const ports = target.getPorts();
+          if (ports.length === 0) break;
+          target.removePort(pick(ports).id);
+          break;
+        }
+        case 'clearMeta':
+          // deleteMetadata → the EXPLICIT clear op (Defect 3). Racing a concurrent
+          // rename of the same register is the point.
+          target?.deleteMetadata('label');
+          break;
+        case 'nullMeta':
+          // null is a STORED VALUE, not a clear — the two must never converge into
+          // each other, whatever the delivery order did.
+          target?.setMetadata('label', null);
           break;
         case 'undo':
           p.replica.undo();
@@ -292,14 +335,48 @@ describe('FUZZ: the ops themselves survive the wire', () => {
     for (let i = 0; i < 40; i++) {
       const n = pick(r.diagram.getNodes());
       if (!n) break;
-      switch (pick(['move', 'label', 'port', 'state'] as const)) {
+      switch (pick(['move', 'label', 'port', 'state', 'movePort', 'removePort', 'clear', 'null'] as const)) {
         case 'move': n.setPosition(Math.floor(next() * 500), Math.floor(next() * 500)); break;
         case 'label': n.setMetadata('label', `L${i}`); break;
         case 'port': n.addPort(new PortModel({ id: `p${i}`, type: 'input', side: 'top' })); break;
         case 'state': n.setState({ selected: next() < 0.5 }); break;
+        // wave14: the new vocabulary must be as JSON-safe as the old — a live-port edit
+        // (once emitted nothing), a port removal (an explicit register clear), a metadata
+        // clear, and a stored null (which is a VALUE and must survive as one).
+        case 'movePort': {
+          const ports = n.getPorts();
+          if (ports.length > 0) pick(ports).setOffset({ x: i, y: Math.floor(next() * 9) });
+          break;
+        }
+        case 'removePort': {
+          const ports = n.getPorts();
+          if (ports.length > 0) n.removePort(pick(ports).id);
+          break;
+        }
+        case 'clear': n.deleteMetadata('label'); break;
+        case 'null': n.setMetadata('label', null); break;
       }
     }
     expect(ops.length).toBeGreaterThan(20);
+
+    // EVERY op is EXPLICIT (wave14): a set either carries a real value or says
+    // `clear: true` — `undefined` never leaves capture. The old clear shape only
+    // survived the wire because JSON.stringify drops an undefined key; that accident is
+    // now a hard gate.
+    let clears = 0;
+    for (const op of ops) {
+      if (op.op !== 'set') continue;
+      if (op.clear === true) {
+        clears++;
+        expect({ path: op.path, hasValue: 'value' in op && op.value !== undefined }).toEqual({
+          path: op.path,
+          hasValue: false,
+        });
+      } else {
+        expect({ path: op.path, value: op.value }).not.toEqual({ path: op.path, value: undefined });
+      }
+    }
+    expect(clears).toBeGreaterThan(0); // the session really did clear registers
 
     // THE ROUND TRIP. Not "it stringifies" — that a peer fed the ops that came OFF the wire
     // lands in the same place as one fed the ops in memory.
@@ -307,6 +384,12 @@ describe('FUZZ: the ops themselves survive the wire', () => {
     for (const op of overTheWire) {
       expect(typeof op.clock).toBe('number');
       expect(typeof op.actor).toBe('string');
+    }
+    // …and the trip is EXACT: same keys, same values, nothing silently dropped. (This is
+    // the assertion the value:undefined lie could never pass.)
+    expect(overTheWire).toEqual(ops);
+    for (let i = 0; i < ops.length; i++) {
+      expect(Object.keys(overTheWire[i]).sort()).toEqual(Object.keys(ops[i]).sort());
     }
 
     const direct = new Replica(new DiagramModel(r.diagram.name, {
