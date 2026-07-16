@@ -16,7 +16,11 @@ import { portWorldPosition } from '../svg/port-positioning';
 import { WaypointEditor } from './WaypointEditor';
 import { ControlPointEditor } from './ControlPointEditor';
 import { ArrowRenderer } from '../svg/ArrowRenderer';
-import { DEFAULT_LINK_HIT_TOLERANCE, hitTestLink } from '../svg/link-hit-test';
+import {
+  DEFAULT_LINK_HIT_AREA_WIDTH,
+  hitTestLink,
+  linkBodyHitTolerance,
+} from '../svg/link-hit-test';
 import type { LinkHitTestOptions, LinkPart } from '../svg/link-hit-test';
 // wave10/gallery: the HOST's connection-veto registry. See
 // installHostConnectionValidatorBridge() — the drag path never asked it.
@@ -112,6 +116,18 @@ export class InteractionController {
 
   getHitSlop(): number {
     return this.hitSlop;
+  }
+
+  /**
+   * The renderer's configured interaction-stroke width (`linkHitAreaWidth`).
+   * The link grab distance derives from it so the painted invitation and the
+   * accepted press stay the SAME geometry — createDiagram syncs it whenever
+   * the host overrides the renderer default.
+   */
+  private linkHitAreaWidthConfig = DEFAULT_LINK_HIT_AREA_WIDTH;
+
+  setLinkHitAreaWidth(width: number): void {
+    this.linkHitAreaWidthConfig = Math.max(0, width);
   }
 
   /**
@@ -1302,16 +1318,21 @@ export class InteractionController {
     worldY: number,
     diagram: any
   ): LinkPartHit | null {
-    // The cross-backend link grab distance. Canvas mode strokes each link's
-    // colour-key pick region with exactly 2x this, so both backends resolve the
-    // same link at the same world point.
-    const hitThreshold = DEFAULT_LINK_HIT_TOLERANCE + this.hitSlop;
+    // The cross-backend link grab distance — PER LINK, derived from the same
+    // formula that sizes the painted hit-area stroke (max(config, stroke+8)/2,
+    // floored at DEFAULT_LINK_HIT_TOLERANCE). A flat 5 here left a dead ring
+    // between the DOM hit-area's edge and the accepted press: the cursor and
+    // native focus said "link", the press selected nothing (live report:
+    // "sometimes clicking around the line draws a rectangle").
     const query: Point = { x: worldX, y: worldY };
 
     for (const link of diagram.getLinks()) {
       const points = link.points;
       if (!points || points.length < 2) continue;
 
+      const hitThreshold =
+        linkBodyHitTolerance(this.literalLinkStrokeWidth(link), this.linkHitAreaWidthConfig) +
+        this.hitSlop;
       const hit = hitTestLink(this.buildLinkHitOptions(link), query, hitThreshold);
       if (hit) {
         return { link, ...hit };
@@ -1319,6 +1340,17 @@ export class InteractionController {
     }
 
     return null;
+  }
+
+  /**
+   * The link's resolved numeric stroke width, mirroring the SVG renderer's
+   * `linkPaintLiterals` fallback: a theme-bound `var(--…)` width is not a
+   * number, so it falls back to 2 (the theme default) rather than NaN-ing the
+   * grab distance.
+   */
+  private literalLinkStrokeWidth(link: LinkModel): number {
+    const width = (link.style as { strokeWidth?: unknown } | undefined)?.strokeWidth;
+    return typeof width === 'number' && Number.isFinite(width) ? width : 2;
   }
 
   /**

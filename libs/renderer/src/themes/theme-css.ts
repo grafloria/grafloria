@@ -171,12 +171,15 @@ export const BASE_STYLE_RULES: readonly StyleRule[] = [
  * cannot be scoped anyway.
  */
 const STATIC_CSS = `
-/* The diagram root is keyboard-focusable (tabindex=0, the a11y entry point).
-   The UA paints its focus ring on MOUSE focus too — so every click beside the
-   content drew "a rectangle around the whole canvas" (a live report). Keep the
-   ring for keyboard focus (:focus-visible — the a11y harness asserts it);
-   suppress it for pointer focus only. */
-svg.grafloria-diagram:focus:not(:focus-visible) {
+/* The diagram root is keyboard-focusable (tabindex=0, the a11y entry point),
+   and every node/link group carries tabindex=-1 for programmatic keyboard
+   navigation — which ALSO makes them mouse-focusable, so a click on a link's
+   hit area drew the UA focus ring as "a rectangle around the line" (two live
+   reports: the canvas-wide one, then the per-link one). Keep the ring for
+   keyboard focus (:focus-visible — the a11y harness asserts it); suppress it
+   for pointer focus only, on the root and on every focusable part inside. */
+svg.grafloria-diagram:focus:not(:focus-visible),
+svg.grafloria-diagram :focus:not(:focus-visible) {
   outline: none;
 }
 
@@ -185,9 +188,13 @@ svg.grafloria-diagram:focus:not(:focus-visible) {
   transition: none !important;
 }
 
-/* Phase 2: Port Styles */
+/* Phase 2: Port Styles
+   NEVER \`transition: all\` on anything whose geometry tracks the pointer —
+   \`all\` sweeps up cx/cy/transform and the element eases 200ms behind the
+   cursor (the wave15d node-drag lag; then the SAME bug on waypoint handles:
+   "the point is running after the line", live report). Paint-only lists. */
 .port {
-  transition: all 0.2s ease;
+  transition: fill 0.2s ease, stroke 0.2s ease, opacity 0.2s ease, r 0.15s ease;
   cursor: crosshair;
 }
 
@@ -203,16 +210,17 @@ svg.grafloria-diagram:focus:not(:focus-visible) {
   }
 }
 
-/* Phase 2: Connection Target Highlight */
+/* Phase 2: Connection Target Highlight — geometry re-anchors between nodes
+   while dragging a connection; easing it smears the highlight across the gap. */
 .connection-target-highlight {
-  transition: all 0.2s ease;
+  transition: opacity 0.2s ease, stroke 0.2s ease, fill 0.2s ease;
   pointer-events: none;
 }
 
-/* Phase 2: Link Endpoint Handles */
+/* Phase 2: Link Endpoint Handles — dragged directly (reconnect). */
 .link-endpoint-handle {
   cursor: move;
-  transition: all 0.2s ease;
+  transition: fill 0.2s ease, stroke 0.2s ease, stroke-width 0.15s ease, r 0.15s ease;
 }
 
 .link-endpoint-handle:hover {
@@ -220,10 +228,12 @@ svg.grafloria-diagram:focus:not(:focus-visible) {
   stroke-width: 3px;
 }
 
-/* Phase 2.3a: Waypoint Handles */
+/* Phase 2.3a: Waypoint Handles — dragged directly; cx/cy must NEVER ease
+   (the VNode side already knew: "No transition - causes flickering during
+   drag" — but this stylesheet rule was easing the handle anyway). */
 .waypoint-handle {
   cursor: move;
-  transition: all 0.2s ease;
+  transition: fill 0.2s ease, stroke 0.2s ease, stroke-width 0.15s ease, r 0.15s ease;
   pointer-events: all;
 }
 
@@ -232,10 +242,10 @@ svg.grafloria-diagram:focus:not(:focus-visible) {
   stroke-width: 3px;
 }
 
-/* Phase 2.3b: Control Point Handles */
+/* Phase 2.3b: Control Point Handles — dragged directly, same rule. */
 .control-point-handle {
   cursor: move;
-  transition: all 0.2s ease;
+  transition: fill 0.2s ease, stroke 0.2s ease, stroke-width 0.15s ease, r 0.15s ease;
   pointer-events: all;
 }
 

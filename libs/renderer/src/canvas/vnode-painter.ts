@@ -23,7 +23,7 @@
 //     and what `RendererCapabilities.supportsForeignObject: false` announces).
 
 import type { VNode, VNodeProps } from '../types/vnode.types';
-import { DEFAULT_LINK_HIT_TOLERANCE } from '../svg/link-hit-test';
+import { DEFAULT_LINK_HIT_TOLERANCE, linkBodyHitTolerance } from '../svg/link-hit-test';
 import {
   IDENTITY,
   type Bounds,
@@ -93,10 +93,11 @@ export interface HitRecord {
 /**
  * Link pick tolerance, in WORLD units.
  *
- * Not a new number — it IS the tolerance `InteractionController` applies in SVG
+ * Not a new number — it IS the floor `InteractionController` applies in SVG
  * mode, imported from the one place that owns it. Hit parity between the two
  * backends is therefore a property of the code, not a coincidence maintained by
- * two constants that happen to agree today.
+ * two constants that happen to agree today. (The full grab distance is per
+ * link — `linkBodyHitTolerance(strokeWidth)` — which both backends now use.)
  */
 export const CANVAS_LINK_HIT_TOLERANCE = DEFAULT_LINK_HIT_TOLERANCE;
 
@@ -532,7 +533,9 @@ export class VNodePainter {
       cmds: worldCmds,
       filled,
       tolerance:
-        !filled && isLink ? CANVAS_LINK_HIT_TOLERANCE : Math.max(style.strokeWidth / 2, 0.5),
+        !filled && isLink
+          ? linkBodyHitTolerance(style.strokeWidth)
+          : Math.max(style.strokeWidth / 2, 0.5),
       zIndex: state.hitRecords.length,
       vnode,
       colorKey: state.allocateColorKey(`${entity.key}#${ordinal}`),

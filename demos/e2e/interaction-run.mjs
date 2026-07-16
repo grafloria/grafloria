@@ -454,6 +454,51 @@ const IN_PAGE = () => {
       }
     }
 
+    // ---- HANDLE-TRACK: a dragged waypoint handle rides the pointer 1:1 ----
+    // The wave15d bug shape on a different element: a stylesheet
+    // `transition: all` on the handle eased its cx/cy 200ms behind the cursor
+    // — "the line moves, then the point runs after it" (live report). Runs
+    // LAST: it inserts a waypoint on an editable link and leaves the route
+    // bent, which is residue no earlier check may inherit.
+    {
+      const link = model.getLinks().find((l) => l.points && l.points.length >= 2);
+      if (!link) out.skipped.push('HANDLE-TRACK (no links)');
+      else {
+        link.setState('selected'); inst.renderNow(); await raf2();
+        let handle = host.querySelector('circle.waypoint-handle');
+        if (!handle) {
+          // Editable links grow a waypoint where the selected body is clicked.
+          const hitPath = host.querySelector(`[data-link-id="${link.id}"] path`);
+          let mid = null;
+          try { const L = hitPath.getTotalLength(); mid = hitPath.getPointAtLength(L / 2); } catch { /* no path */ }
+          if (mid) {
+            const c = wc(mid.x, mid.y);
+            fire('pointerdown', c.x, c.y); fire('pointerup', c.x, c.y); await raf2();
+            inst.renderNow(); await raf2();
+            handle = host.querySelector('circle.waypoint-handle');
+          }
+        }
+        if (!handle) out.skipped.push('HANDLE-TRACK (link is not waypoint-editable here)');
+        else {
+          const hb = handle.getBoundingClientRect();
+          const start = { x: hb.x + hb.width / 2, y: hb.y + hb.height / 2 };
+          const end = { x: start.x + 60, y: start.y + 40 };
+          fire('pointermove', start.x, start.y);
+          fire('pointerdown', start.x, start.y);
+          fire('pointermove', start.x + 10, start.y + 6);
+          fire('pointermove', end.x, end.y);
+          await raf2();
+          // Mid-drag, PAINTED handle centre vs the pointer — same element,
+          // client space both sides, so easing shows up as raw pixels.
+          const h2 = (host.querySelector('circle.waypoint-handle') || handle).getBoundingClientRect();
+          const gap = Math.hypot((h2.x + h2.width / 2) - end.x, (h2.y + h2.height / 2) - end.y);
+          fire('pointerup', end.x, end.y); await raf2();
+          if (!inst.interaction.getState || gap === null) out.skipped.push('HANDLE-TRACK (no interaction state)');
+          else out.checks.push({ name: 'HANDLE-TRACK', ok: gap <= 6, detail: `mid-drag the painted handle sat ${Math.round(gap)}px behind the pointer (an eased cx/cy trails the drag)` });
+        }
+      }
+    }
+
     return out;
   })();
 };
@@ -470,6 +515,70 @@ for (const page of pages) {
     await tab.waitForFunction(() => window.__demoReady === true, { timeout: 15000 });
     const r = await tab.evaluate(IN_PAGE);
     rec.checks = r.checks; rec.skipped = r.skipped;
+
+    // ---- FOCUS-RING (needs TRUSTED input — runs in the runner, not in-page) ----
+    // Node/link groups carry tabindex=-1 for keyboard nav, and browsers MOUSE-
+    // focus those on click: the UA then painted its focus ring around the
+    // group's bbox — "a rectangle around the line" (live report, twice: first
+    // the root svg, then the per-link group). Synthetic events are untrusted
+    // and never move native focus, so the in-page harness physically cannot
+    // see this; only a real Playwright click can. Keyboard focus must KEEP its
+    // ring — that is what :focus-visible is for — so a click whose focus reads
+    // keyboard-modality is skipped, never judged.
+    try {
+      const spots = await tab.evaluate(() => {
+        const svg = document.querySelector('svg.grafloria-diagram');
+        if (!svg) return [];
+        const spots = [];
+        const hit = svg.querySelector('path.link-hit-area') || svg.querySelector('[data-link-id] path');
+        if (hit) {
+          try {
+            const L = hit.getTotalLength(); const pt = hit.getPointAtLength(L / 2);
+            const m = hit.getScreenCTM();
+            spots.push({ kind: 'link', x: m.a * pt.x + m.c * pt.y + m.e, y: m.b * pt.x + m.d * pt.y + m.f });
+          } catch { /* zero-length path — nothing to click */ }
+        }
+        const ng = svg.querySelector('g.node-group[tabindex]');
+        if (ng) {
+          const bb = ng.getBoundingClientRect();
+          spots.push({ kind: 'node', x: bb.x + bb.width / 2, y: bb.y + bb.height / 2 });
+        }
+        // Empty canvas: the root svg is tabindex=0, and clicks the binder does
+        // NOT claim leave native focus on it — the original "rectangle around
+        // the whole canvas" report. Probe a few candidate points and keep one
+        // that genuinely hits the canvas background, not an entity.
+        const sb = svg.getBoundingClientRect();
+        for (const [fx, fy] of [[0.9, 0.9], [0.1, 0.9], [0.9, 0.1], [0.5, 0.92]]) {
+          const x = sb.x + sb.width * fx, y = sb.y + sb.height * fy;
+          const el = document.elementFromPoint(x, y);
+          if (el && el.closest('svg.grafloria-diagram') === svg && !el.closest('[data-node-id],[data-link-id]')) {
+            spots.push({ kind: 'canvas', x, y });
+            break;
+          }
+        }
+        return spots.filter((s) => s.x > 0 && s.y > 0 && s.x < innerWidth && s.y < innerHeight);
+      });
+      if (spots.length === 0) rec.skipped.push('FOCUS-RING (nothing clickable in-viewport)');
+      else {
+        const verdicts = [];
+        for (const spot of spots) {
+          await tab.mouse.click(spot.x, spot.y);
+          const v = await tab.evaluate((kind) => {
+            const ae = document.activeElement;
+            // Only judge diagram internals: a click that landed focus on a real
+            // form control (mermaid textarea, comment input) is out of scope.
+            if (!ae || !ae.closest('svg.grafloria-diagram')) return { kind, skip: 'focus not in diagram' };
+            if (ae.matches(':focus-visible')) return { kind, skip: 'keyboard modality' };
+            const cs = getComputedStyle(ae);
+            return { kind, ok: cs.outlineStyle === 'none', detail: `${ae.tagName.toLowerCase()}.${(ae.getAttribute('class') || '').split(' ')[0]} outline=${cs.outlineStyle} ${cs.outlineWidth}` };
+          }, spot.kind);
+          verdicts.push(v);
+        }
+        const judged = verdicts.filter((v) => !v.skip);
+        if (judged.length === 0) rec.skipped.push(`FOCUS-RING (${verdicts.map((v) => `${v.kind}: ${v.skip}`).join('; ')})`);
+        else rec.checks.push({ name: 'FOCUS-RING', ok: judged.every((v) => v.ok), detail: judged.map((v) => `${v.kind} click → ${v.detail}`).join('; ') });
+      }
+    } catch (e) { rec.skipped.push(`FOCUS-RING (harness: ${e.message})`); }
   } catch (e) { rec.error = e.message; }
   await tab.close();
   results.push(rec);
@@ -479,6 +588,9 @@ for (const page of pages) {
   const summary = rec.error ? `harness: ${rec.error}` : rec.checks.map((c) => `${c.ok ? '·' : '✗'}${c.name}`).join(' ');
   console.log(`${mark} ${rel}   ${summary}`);
   for (const c of failed) console.log(`      ${c.name}: ${c.detail}`);
+  // Skips are part of the contract ("skip loudly"): a check that silently
+  // stopped running looks exactly like a check that passes.
+  for (const s of rec.skipped) console.log(`      ~ skip ${s}`);
 }
 
 await browser.close();

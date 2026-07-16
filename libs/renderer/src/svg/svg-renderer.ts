@@ -173,6 +173,7 @@ import { LabelRenderer } from './LabelRenderer';
 // Phase 1.3: Jump point rendering
 import { JumpPointDetector } from './JumpPointDetector';
 import { JumpPointRenderer } from './JumpPointRenderer';
+import { DEFAULT_LINK_HIT_AREA_WIDTH, linkHitAreaWidth } from './link-hit-test';
 
 // Wave 4 (Edges & links) — Card 4: parallel-link separation + self-loop routing.
 // Pure geometry; this file only decides WHEN to call it.
@@ -614,7 +615,7 @@ export class SVGRenderer implements IRenderer {
       enableCaching: config.enableCaching ?? true,
       maxCacheSize: config.maxCacheSize ?? 1000,
       useCSSMode: config.useCSSMode ?? true,
-      linkHitAreaWidth: config.linkHitAreaWidth ?? 12,
+      linkHitAreaWidth: config.linkHitAreaWidth ?? DEFAULT_LINK_HIT_AREA_WIDTH,
       smartConnectionPoints: config.smartConnectionPoints ?? false,
       // Wave 6 — Card 2: the registered connection-point strategy (supersedes,
       // but does not break, the boolean above).
@@ -5661,9 +5662,11 @@ export class SVGRenderer implements IRenderer {
     // Sized from the LITERAL stroke width, never from `styles.strokeWidth`: that
     // can now be `var(--grafloria-numbers-emphasis, 3)` for a theme-bound link, and
     // `Number('var(…)')` is NaN — which would silently produce an unclickable link.
-    const hitAreaWidth = Math.max(
-      this.config.linkHitAreaWidth,
-      linkLiterals.strokeWidth + 8
+    // Shared formula with the interaction layer's grab distance — the painted
+    // invitation and the accepted press must be the same geometry.
+    const hitAreaWidth = linkHitAreaWidth(
+      linkLiterals.strokeWidth,
+      this.config.linkHitAreaWidth
     );
     const hitAreaVNode: VNode | null = this.config.linkHitAreaWidth > 0
       ? {

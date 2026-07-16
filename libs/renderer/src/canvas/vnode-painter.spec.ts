@@ -7,6 +7,7 @@
 // of these fails with a readable diff.
 
 import { SVGRenderer } from '../svg/svg-renderer';
+import { linkBodyHitTolerance } from '../svg/link-hit-test';
 import { LIGHT_THEME } from '../themes';
 import type { VNode } from '../types/vnode.types';
 import { RecordingContext2D, type DrawCall } from './canvas-context';
@@ -345,7 +346,10 @@ describe('VNodePainter — hit records', () => {
       kind: 'link',
       id: 'l1',
       filled: false,
-      tolerance: 5,
+      // The per-link grab distance, NOT a flat constant: same formula the SVG
+      // hit-area stroke is painted with (max(12, stroke+8)/2 → 6 for a 2px
+      // stroke), so canvas picking matches SVG's painted invitation.
+      tolerance: linkBodyHitTolerance(2),
     });
   });
 

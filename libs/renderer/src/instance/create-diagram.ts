@@ -329,6 +329,12 @@ export function createDiagram(
   // -- interaction ------------------------------------------------------------
   const interaction = new InteractionController();
   interaction.syncWithEngineConfig(engine);
+  // The link grab distance derives from the renderer's interaction-stroke
+  // width; a host override must reach BOTH sides or the painted hit-area and
+  // the accepted press drift apart again.
+  if (options.renderer?.linkHitAreaWidth !== undefined) {
+    interaction.setLinkHitAreaWidth(options.renderer.linkHitAreaWidth);
+  }
 
   const getRect = (): CanvasRect => container.getBoundingClientRect();
 

@@ -5,8 +5,11 @@ import type { Point } from '@grafloria/engine';
 import {
   hitTestLink,
   pointAtPositionOnPolyline,
+  linkBodyHitTolerance,
+  linkHitAreaWidth,
   DEFAULT_ENDPOINT_RADIUS,
   DEFAULT_ARROW_RADIUS,
+  DEFAULT_LINK_HIT_TOLERANCE,
   type LinkHitTestOptions,
 } from './link-hit-test';
 
@@ -194,6 +197,35 @@ describe('link-hit-test (Wave 1 — part-aware link hit-testing)', () => {
     it('exposes sane default radii', () => {
       expect(DEFAULT_ENDPOINT_RADIUS).toBeGreaterThan(0);
       expect(DEFAULT_ARROW_RADIUS).toBeGreaterThan(0);
+    });
+  });
+
+  // The painted invitation and the accepted press must be the SAME geometry.
+  // The SVG renderer strokes a transparent hit-area `linkHitAreaWidth(sw)`
+  // wide; the interaction layer used to accept only a flat 5 — the ring in
+  // between was DEAD: the DOM caught the pointer (cursor change, native focus
+  // → "a rectangle around the line", live report) while the press selected
+  // nothing. One formula now feeds both.
+  describe('linkBodyHitTolerance — grab distance == painted hit-area reach', () => {
+    it('default link (2px stroke): tolerance is half the 12px hit-area, not the 5px floor', () => {
+      expect(linkHitAreaWidth(2)).toBe(12);
+      expect(linkBodyHitTolerance(2)).toBe(6);
+    });
+
+    it('fat stroke: the +8 grab margin scales the reach with it', () => {
+      expect(linkHitAreaWidth(10)).toBe(18);
+      expect(linkBodyHitTolerance(10)).toBe(9);
+    });
+
+    it('never drops below the cross-backend floor', () => {
+      expect(linkBodyHitTolerance(0, 0)).toBe(DEFAULT_LINK_HIT_TOLERANCE);
+    });
+
+    it('a press inside the painted hit-area but past the old flat floor NOW hits the body', () => {
+      const points = [{ x: 0, y: 0 }, { x: 100, y: 0 }];
+      const query = { x: 50, y: 5.9 }; // inside 6 (painted reach), outside 5 (old floor)
+      expect(hitTestLink({ points }, query, DEFAULT_LINK_HIT_TOLERANCE)).toBeNull();
+      expect(hitTestLink({ points }, query, linkBodyHitTolerance(2))?.part).toBe('body');
     });
   });
 });

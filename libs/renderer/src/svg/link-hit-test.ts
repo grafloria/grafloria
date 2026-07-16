@@ -89,8 +89,53 @@ export const DEFAULT_LABEL_HEIGHT = 18;
  * exactly `2 x` this width on the colour-keyed hit canvas. If the two ever
  * disagreed, switching backend would change which link is under the cursor.
  * (It was previously a bare `5` inlined in the controller.)
+ *
+ * This is the FLOOR, not the whole contract — see {@link linkBodyHitTolerance}.
  */
 export const DEFAULT_LINK_HIT_TOLERANCE = 5;
+
+/** Default width of the SVG renderer's transparent interaction stroke. */
+export const DEFAULT_LINK_HIT_AREA_WIDTH = 12;
+
+/**
+ * Width of the invisible "interaction stroke" painted along a link.
+ *
+ * Sized from the LITERAL stroke width, never a `var(--…)` expression — the
+ * renderer resolves its literals before calling this. The `+ 8` keeps a grab
+ * margin around fat strokes (a 10px casing would otherwise be pixel-hunting).
+ */
+export function linkHitAreaWidth(
+  literalStrokeWidth: number,
+  configWidth: number = DEFAULT_LINK_HIT_AREA_WIDTH
+): number {
+  return Math.max(configWidth, literalStrokeWidth + 8);
+}
+
+/**
+ * The grab distance for a link BODY — the one number the painted invitation
+ * and the accepted press must both derive from.
+ *
+ * The SVG renderer paints a transparent hit-area stroke `linkHitAreaWidth`
+ * wide, but the interaction layer used to accept only the flat 5px floor: the
+ * ring between them was DEAD — the DOM caught the pointer (cursor, native
+ * focus — the "rectangle around the line" report) while the press selected
+ * nothing. Every consumer of "how close is close enough to a link" now calls
+ * this: the interaction controller (SVG mode), the canvas pick-buffer stroke,
+ * and the hit-area painter (at exactly `2 x` this, minus slop).
+ *
+ * `literalStrokeWidth` must be the resolved numeric width (fall back to 2 for
+ * theme-bound `var(--…)` widths, matching the renderer's own literal
+ * fallback).
+ */
+export function linkBodyHitTolerance(
+  literalStrokeWidth: number,
+  configWidth: number = DEFAULT_LINK_HIT_AREA_WIDTH
+): number {
+  return Math.max(
+    DEFAULT_LINK_HIT_TOLERANCE,
+    linkHitAreaWidth(literalStrokeWidth, configWidth) / 2
+  );
+}
 
 /**
  * Arc-length interpolation of a point at position `t` (0-1) along a polyline.
