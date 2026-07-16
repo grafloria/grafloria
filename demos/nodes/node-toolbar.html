@@ -42,8 +42,22 @@ defineDemo({
 
     ctx.portal = portal;
     ctx.anchor = anchor;
-    // Keep the toolbar glued to the node when the node itself moves.
-    ctx.moveNode = (x, y) => { n.setPosition(x, y); portal.setPosition(...Object.values(anchor(n))); api.renderNow(); };
+    // THE GLUE, on the node's REAL event — not a helper only this page calls. A
+    // live pointer drag moves the node through the binder's setPosition, which
+    // never passes through any demo helper: subscribing to change:position is
+    // what makes the toolbar follow EVERY move (drag, keyboard, programmatic).
+    // (A live report caught the old version: anchored at boot, left behind by
+    // the first real drag — the assert only ever exercised its own helper.)
+    n.on('change:position', () => portal.setPosition(anchor(n).x, anchor(n).y));
+    ctx.moveNode = (x, y) => { n.setPosition(x, y); api.renderNow(); };
+    ctx.fire = (type, w) => {
+      const rect = ctx.host.getBoundingClientRect();
+      const c = api.viewport.worldToClient(w.x, w.y, rect);
+      ctx.host.dispatchEvent(new PointerEvent(type, {
+        clientX: c.x, clientY: c.y, bubbles: true, cancelable: true,
+        button: 0, buttons: type === 'pointerup' ? 0 : 1, pointerId: 1, pointerType: 'mouse',
+      }));
+    };
     await ctx.tick();
   },
 
@@ -71,6 +85,22 @@ defineDemo({
     ctx.moveNode(520, 300);
     const b2 = barScreenX();
     check(Math.abs(b2 - b1) > 20, 'the toolbar did not follow the node when the node moved');
+
+    // 3b. IT FOLLOWS A REAL DRAG — the path a user actually takes, which never
+    //     goes through any page helper. Mid-drag AND after release, the bar's
+    //     centre must track the node's centre.
+    const n2 = ctx.diagram.getNode('n');
+    const centre = { x: n2.position.x + n2.size.width / 2, y: n2.position.y + n2.size.height / 2 };
+    ctx.fire('pointerdown', centre);
+    ctx.fire('pointermove', { x: centre.x + 8, y: centre.y });
+    ctx.fire('pointermove', { x: centre.x + 120, y: centre.y + 60 });
+    ctx.instance.renderNow();
+    const gapMid = Math.abs(
+      (ctx.portal.element.getBoundingClientRect().x + ctx.portal.element.getBoundingClientRect().width / 2) -
+      (ctx.host.querySelector('[data-node-id="n"]').getBoundingClientRect().x + n2.size.width / 2));
+    ctx.fire('pointerup', { x: centre.x + 120, y: centre.y + 60 });
+    ctx.instance.renderNow();
+    check(gapMid < 4, `mid-drag the toolbar must ride the node (centre gap ${gapMid.toFixed(1)}px)`);
 
     // 4. THE TEETH: its buttons ACT on the node. Click delete → the node is gone from
     //    model and DOM, and the toolbar tears down with it.

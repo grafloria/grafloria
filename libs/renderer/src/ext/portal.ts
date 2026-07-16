@@ -75,7 +75,14 @@ export interface PortalOptions {
 }
 
 export interface Portal {
-  /** The element you render into. Already in the DOM. */
+  /**
+   * The element you render into. Already in the DOM.
+   *
+   * The portal owns ONLY its positioning chrome (placement / world position and
+   * its marker class). Classes and inline styles the HOST puts on this element
+   * survive `update()`/`setPosition()` — a toolbar that sets its own class at
+   * mount keeps it through every reposition.
+   */
   readonly element: HTMLElement;
   /** Re-pin (after changing placement/offset). */
   update(options?: PortalOptions): void;
@@ -106,6 +113,43 @@ export function ensureScreenLayer(root: HTMLElement): HTMLElement {
   );
   root.appendChild(layer);
   return layer;
+}
+
+/**
+ * Apply a raw `"prop:value;prop:value"` options string as individual property
+ * writes. Property writes are the whole trick of non-destructive chrome: they
+ * update the style attribute WITHOUT rebuilding it, so host-authored inline
+ * styles on the same element survive. (Values with semicolons inside url(...)
+ * or data: URIs are not supported here — portal chrome is simple by design.)
+ */
+function applyStyleString(element: HTMLElement, style: string): string[] {
+  const written: string[] = [];
+  for (const decl of style.split(';')) {
+    const at = decl.indexOf(':');
+    if (at <= 0) continue;
+    const prop = decl.slice(0, at).trim();
+    const value = decl.slice(at + 1).trim();
+    if (prop && value) {
+      element.style.setProperty(prop, value);
+      written.push(prop);
+    }
+  }
+  return written;
+}
+
+/**
+ * Swap the portal-OWNED classes without touching host-added ones. classList
+ * add/remove is what keeps a caller's `element.className += ...` or
+ * `classList.add(...)` intact across update()/setPosition().
+ */
+function swapOwnedClasses(element: HTMLElement, prev: string[], next: string[]): string[] {
+  for (const c of prev) if (!next.includes(c)) element.classList.remove(c);
+  for (const c of next) element.classList.add(c);
+  return next;
+}
+
+function classTokens(className: string | undefined): string[] {
+  return className ? className.split(/\s+/).filter(Boolean) : [];
 }
 
 function placementStyle(placement: PortalPlacement, offset: number): string {
@@ -145,13 +189,23 @@ export function createPortal(root: HTMLElement, options: PortalOptions = {}): Po
   const element = doc.createElement('div');
 
   let current: PortalOptions = { placement: 'top-left', offset: 12, ...options };
+  // What the portal wrote LAST time, so re-applies replace exactly that and
+  // nothing else. Host-owned classes/styles never appear in these lists, which
+  // is what makes update()/setPosition() non-destructive (a host toolbar that
+  // set its own class at mount used to lose it on the first reposition).
+  let ownedClasses: string[] = [];
+  let ownedProps: string[] = [];
 
   const apply = (): void => {
     const placement = current.placement ?? 'top-left';
     const offset = current.offset ?? 12;
-    element.className = [PORTAL_CLASS, current.className].filter(Boolean).join(' ');
-    element.setAttribute(
-      'style',
+    ownedClasses = swapOwnedClasses(element, ownedClasses, [
+      PORTAL_CLASS,
+      ...classTokens(current.className),
+    ]);
+    for (const p of ownedProps) element.style.removeProperty(p);
+    ownedProps = applyStyleString(
+      element,
       'position:absolute;pointer-events:auto;' +
         placementStyle(placement, offset) +
         (current.zIndex !== undefined ? `z-index:${current.zIndex};` : '') +
@@ -199,11 +253,20 @@ export function createViewportPortal(
 
   let x = options.x ?? 0;
   let y = options.y ?? 0;
+  // Same non-destructive discipline as createPortal: setPosition runs on EVERY
+  // node move, and rebuilding className/style wholesale there is exactly how a
+  // host's toolbar class got wiped on the first drag.
+  let ownedClasses: string[] = [];
+  let ownedProps: string[] = [];
 
   const apply = (): void => {
-    element.className = [WORLD_PORTAL_CLASS, options.className].filter(Boolean).join(' ');
-    element.setAttribute(
-      'style',
+    ownedClasses = swapOwnedClasses(element, ownedClasses, [
+      WORLD_PORTAL_CLASS,
+      ...classTokens(options.className),
+    ]);
+    for (const p of ownedProps) element.style.removeProperty(p);
+    ownedProps = applyStyleString(
+      element,
       `position:absolute;left:${x}px;top:${y}px;pointer-events:auto;` + (options.style ?? '')
     );
   };

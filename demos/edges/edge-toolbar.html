@@ -62,8 +62,10 @@ defineDemo({
 
   async assert(ctx) {
     const worldPos = () => {
-      const s = ctx.portal.element.getAttribute('style');
-      return { x: parseFloat(/left:([-\d.]+)px/.exec(s)[1]), y: parseFloat(/top:([-\d.]+)px/.exec(s)[1]) };
+      // Read the CSSOM properties, not the raw attribute string — how the
+      // portal serializes its style is an implementation detail.
+      const s = ctx.portal.element.style;
+      return { x: parseFloat(s.left), y: parseFloat(s.top) };
     };
 
     // 1. The toolbar is real DOM, anchored at the edge midpoint (in world space).
