@@ -3636,7 +3636,9 @@ export class SVGRenderer implements IRenderer {
       ) {
         continue;
       }
-      frames.push(this.renderGroupFrame(g, bounds));
+      frames.push(
+        this.renderGroupFrame(g, bounds, g.parentGroupId ? byId.get(g.parentGroupId) : undefined)
+      );
     }
 
     return {
@@ -3653,10 +3655,21 @@ export class SVGRenderer implements IRenderer {
   }
 
   /** One group's frame + label band, themed and accessible. */
-  private renderGroupFrame(group: GroupModel, bounds: Rectangle): VNode {
+  private renderGroupFrame(group: GroupModel, bounds: Rectangle, parent?: GroupModel): VNode {
     const c = this.theme.colors;
     const collapsed = group.isCollapsed;
-    const radius = this.theme.effects.borderRadius.md;
+
+    // A LANE is an internal band of its pool, not an independent framed group.
+    // Giving each lane its own full 1.5px rounded outline stacked TWO strokes on
+    // every seam (lane↔lane, lane↔pool edge — the pool's right border ran under
+    // three coincident strokes) and the rx-rounded corners left lens-shaped
+    // notches where bands are supposed to tile (live report: "borders coming on
+    // top of each other, some borders thicker than others"). Lanes now draw NO
+    // outline of their own — the pool owns the border — and tile with square
+    // corners; a single 1px separator marks each lane boundary exactly once
+    // (leading edge of every lane after the first).
+    const laneRole = !collapsed && group.laneConfig?.role === 'lane' && parent ? group.laneConfig : null;
+    const radius = laneRole ? 0 : this.theme.effects.borderRadius.md;
 
     // Label band height: honour an authored header, else a readable default.
     const bandHeight = Math.min(
@@ -3683,7 +3696,7 @@ export class SVGRenderer implements IRenderer {
         fill: surface,
         // Collapsed reads as denser and dashed; expanded is a faint wash.
         fillOpacity: collapsed ? 0.85 : 0.32,
-        stroke,
+        stroke: laneRole ? 'none' : stroke,
         strokeWidth: collapsed ? 2 : 1.5,
         strokeDasharray: collapsed ? '6,4' : undefined,
         className: 'group-frame-rect',
@@ -3691,6 +3704,32 @@ export class SVGRenderer implements IRenderer {
         'aria-hidden': 'true',
       },
     };
+
+    // The lane's single boundary line — on its leading edge (top for horizontal
+    // pools, left for vertical), skipped for the first lane whose leading edge
+    // IS the pool's own border.
+    let laneSeparator: VNode | null = null;
+    if (laneRole && parent) {
+      const pb = parent.getOuterBounds();
+      const horizontal = laneRole.orientation !== 'vertical';
+      const leading = horizontal ? bounds.y > pb.y + 1 : bounds.x > pb.x + 1;
+      if (leading) {
+        laneSeparator = {
+          type: 'line',
+          key: `group-frame-separator-${group.id}`,
+          props: {
+            x1: bounds.x,
+            y1: bounds.y,
+            x2: horizontal ? bounds.x + bounds.width : bounds.x,
+            y2: horizontal ? bounds.y : bounds.y + bounds.height,
+            stroke,
+            strokeWidth: 1,
+            className: 'group-frame-separator',
+            'aria-hidden': 'true',
+          },
+        };
+      }
+    }
 
     // A horizontal POOL (BPMN) reserves a strip at its LEFT (laneConfig
     // headerSize), not a band on top — the screenshot audit caught "Delivery"
@@ -3774,7 +3813,7 @@ export class SVGRenderer implements IRenderer {
         'data-group-id': group.id,
         'data-collapsed': collapsed ? 'true' : 'false',
       },
-      children: [frameRect, bandRect, label],
+      children: [frameRect, ...(laneSeparator ? [laneSeparator] : []), bandRect, label],
     };
   }
 

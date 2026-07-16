@@ -183,4 +183,86 @@ describe('wave12/group-visuals — the SVG renderer draws a frame for every grou
     // And no empty groups-layer is emitted when there are no groups.
     expect(findLayer(root, 'groups-layer')).toBeUndefined();
   });
+
+  // Lanes TILE their pool. Rendering each lane as an independent framed group
+  // stacked two 1.5px strokes on every seam (and THREE along the pool's far
+  // edge), and their rounded corners left lens-shaped notches where bands are
+  // supposed to butt ("borders coming on top of each other, some borders
+  // thicker than others" — live report on the swimlanes demo). The contract:
+  // the POOL owns the outline; lanes are square-cornered strokeless bands with
+  // exactly one 1px separator on the leading edge of every lane AFTER the first.
+  describe('swimlanes — lanes are internal bands, not stacked frames', () => {
+    function addPoolWithLanes(orientation: 'horizontal' | 'vertical') {
+      const pool = addGroup('pool', 'Delivery', { x: 60, y: 60, width: 1000, height: 480 });
+      pool.laneConfig = { role: 'pool', orientation, headerSize: 40 };
+      const laneRects =
+        orientation === 'horizontal'
+          ? [
+              { x: 100, y: 60, width: 960, height: 120 },
+              { x: 100, y: 180, width: 960, height: 240 },
+              { x: 100, y: 420, width: 960, height: 120 },
+            ]
+          : [
+              { x: 60, y: 100, width: 300, height: 440 },
+              { x: 360, y: 100, width: 400, height: 440 },
+              { x: 760, y: 100, width: 300, height: 440 },
+            ];
+      const lanes = laneRects.map((r, i) => {
+        const lane = new GroupModel({ id: `lane${i}`, name: `Lane ${i}` });
+        diagram.addGroup(lane);
+        lane.setFrame(r);
+        lane.laneConfig = { role: 'lane', orientation };
+        pool.addMember(lane.id, diagram);
+        return lane;
+      });
+      return { pool, lanes };
+    }
+
+    const linesUnder = (v: VNode | undefined, out: VNode[] = []): VNode[] => {
+      if (!v || typeof v !== 'object') return out;
+      if (v.type === 'line') out.push(v);
+      for (const c of (v.children ?? []) as VNode[]) linesUnder(c, out);
+      return out;
+    };
+
+    it('lanes draw NO outline of their own and tile with square corners', () => {
+      addPoolWithLanes('horizontal');
+      const root = renderer.render(FULL_VIEW, 1) as VNode;
+
+      const poolRect = rectsUnder(findGroupFrame(root, 'pool'))[0];
+      expect((poolRect.props as any).stroke).not.toBe('none'); // the pool still owns a border
+
+      for (const id of ['lane0', 'lane1', 'lane2']) {
+        const rect = rectsUnder(findGroupFrame(root, id))[0];
+        expect((rect.props as any).stroke).toBe('none');
+        expect((rect.props as any).rx).toBe(0);
+      }
+    });
+
+    it('exactly one 1px separator per seam — leading edges only, first lane exempt', () => {
+      addPoolWithLanes('horizontal');
+      const root = renderer.render(FULL_VIEW, 1) as VNode;
+
+      expect(linesUnder(findGroupFrame(root, 'lane0'))).toHaveLength(0); // its top IS the pool border
+      const sep1 = linesUnder(findGroupFrame(root, 'lane1'));
+      const sep2 = linesUnder(findGroupFrame(root, 'lane2'));
+      expect(sep1).toHaveLength(1);
+      expect(sep2).toHaveLength(1);
+      // Horizontal pool → the separator runs along the lane's TOP edge.
+      expect((sep1[0].props as any).y1).toBe(180);
+      expect((sep1[0].props as any).y2).toBe(180);
+      expect((sep1[0].props as any).strokeWidth).toBe(1);
+    });
+
+    it('vertical pools separate along the LEFT edge instead', () => {
+      addPoolWithLanes('vertical');
+      const root = renderer.render(FULL_VIEW, 1) as VNode;
+
+      expect(linesUnder(findGroupFrame(root, 'lane0'))).toHaveLength(0);
+      const sep = linesUnder(findGroupFrame(root, 'lane1'));
+      expect(sep).toHaveLength(1);
+      expect((sep[0].props as any).x1).toBe(360);
+      expect((sep[0].props as any).x2).toBe(360);
+    });
+  });
 });
