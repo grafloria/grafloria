@@ -232,8 +232,8 @@
   "measuredJitterPct": 0
  },
  "interaction__copy-paste.after.png": {
-  "tolerancePct": 0.25,
-  "measuredJitterPct": 0.0834
+  "tolerancePct": 0.247,
+  "measuredJitterPct": 0.0822
  },
  "interaction__copy-paste.boot.png": {
   "tolerancePct": 0.02,
@@ -380,8 +380,8 @@
   "measuredJitterPct": 0
  },
  "layout__expand-collapse.showcase.png": {
-  "tolerancePct": 0.02,
-  "measuredJitterPct": 0
+  "tolerancePct": 0.303,
+  "measuredJitterPct": 0.101
  },
  "layout__force-layout.after.png": {
   "tolerancePct": 0.02,
@@ -432,12 +432,12 @@
   "measuredJitterPct": 0
  },
  "misc__mermaid-text.after.png": {
-  "tolerancePct": 0.832,
-  "measuredJitterPct": 0.2774
+  "tolerancePct": 1.564,
+  "measuredJitterPct": 0.5215
  },
  "misc__mermaid-text.boot.png": {
-  "tolerancePct": 0.832,
-  "measuredJitterPct": 0.2774
+  "tolerancePct": 1.564,
+  "measuredJitterPct": 0.5215
  },
  "misc__minimap-and-controls.after.png": {
   "tolerancePct": 0.02,
@@ -456,8 +456,8 @@
   "measuredJitterPct": 0
  },
  "misc__perf-hud.after.png": {
-  "tolerancePct": 0.047,
-  "measuredJitterPct": 0.0155
+  "tolerancePct": 0.052,
+  "measuredJitterPct": 0.0174
  },
  "misc__perf-hud.boot.png": {
   "tolerancePct": 0.02,
@@ -588,8 +588,8 @@
   "measuredJitterPct": 0
  },
  "nodes__stress-test.after.png": {
-  "tolerancePct": 0.289,
-  "measuredJitterPct": 0.0963
+  "tolerancePct": 0.023,
+  "measuredJitterPct": 0.0075
  },
  "nodes__stress-test.boot.png": {
   "tolerancePct": 0.02,

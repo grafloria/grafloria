@@ -264,5 +264,24 @@ describe('wave12/group-visuals — the SVG renderer draws a frame for every grou
       expect((sep[0].props as any).x1).toBe(360);
       expect((sep[0].props as any).x2).toBe(360);
     });
+
+    it('the pool draws its own header divider — the title strip must not melt into the lanes', () => {
+      // The strip's boundary used to be painted BY ACCIDENT by the lanes' (since
+      // removed) own borders; when those went, the rotated pool title floated in
+      // open space ("destroyed more now" — the follow-up live report). The pool
+      // owns this line now, so it cannot disappear with someone else's stroke.
+      addPoolWithLanes('horizontal');
+      const root = renderer.render(FULL_VIEW, 1) as VNode;
+
+      const divider = linesUnder(findGroupFrame(root, 'pool')).filter(
+        (l) => (l.props as any).className === 'group-frame-header-divider'
+      );
+      expect(divider).toHaveLength(1);
+      // headerSize 40 → the divider runs at x = 60 + 40, spanning the full pool height.
+      expect((divider[0].props as any).x1).toBe(100);
+      expect((divider[0].props as any).x2).toBe(100);
+      expect((divider[0].props as any).y1).toBe(60);
+      expect((divider[0].props as any).y2).toBe(540);
+    });
   });
 });

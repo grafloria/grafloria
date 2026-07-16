@@ -3742,6 +3742,31 @@ export class SVGRenderer implements IRenderer {
         ? Math.min(lc.headerSize ?? 0, bounds.width)
         : 0;
 
+    // A pool's title strip needs its OWN divider against the lane area. It used
+    // to get one by accident — the lanes' (since removed) left borders ran along
+    // that edge — and without it the rotated pool title floats in open space and
+    // the strip melts into the first lane (live report: "destroyed more now",
+    // caught on the full-page visitor view the seam close-ups missed).
+    let poolHeaderDivider: VNode | null = null;
+    if (!collapsed && lc?.role === 'pool') {
+      const horizontal = lc.orientation === 'horizontal';
+      const at = horizontal ? bounds.x + sideStrip : bounds.y + Math.min(lc.headerSize ?? bandHeight, bounds.height);
+      poolHeaderDivider = {
+        type: 'line',
+        key: `group-frame-header-divider-${group.id}`,
+        props: {
+          x1: horizontal ? at : bounds.x,
+          y1: horizontal ? bounds.y : at,
+          x2: horizontal ? at : bounds.x + bounds.width,
+          y2: horizontal ? bounds.y + bounds.height : at,
+          stroke,
+          strokeWidth: 1,
+          className: 'group-frame-header-divider',
+          'aria-hidden': 'true',
+        },
+      };
+    }
+
     const bandRect: VNode = {
       type: 'rect',
       key: `group-frame-band-${group.id}`,
@@ -3813,7 +3838,13 @@ export class SVGRenderer implements IRenderer {
         'data-group-id': group.id,
         'data-collapsed': collapsed ? 'true' : 'false',
       },
-      children: [frameRect, ...(laneSeparator ? [laneSeparator] : []), bandRect, label],
+      children: [
+        frameRect,
+        ...(laneSeparator ? [laneSeparator] : []),
+        bandRect,
+        ...(poolHeaderDivider ? [poolHeaderDivider] : []),
+        label,
+      ],
     };
   }
 
