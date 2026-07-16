@@ -28,6 +28,12 @@ import { defineDemo, check } from '../shell/demo.js';
 defineDemo({
   name: 'Context menu',
   blurb: 'Right-click a node for Rename / Duplicate / Delete — driven by a real contextmenu event, and every item actually mutates the model it names.',
+  howTo: [
+    'Right-click the Alpha node — a menu opens at the pointer with Rename, Duplicate and Delete.',
+    'Click Rename: Alpha\'s label changes to RENAMED, and Beta is untouched.',
+    'Right-click Beta and click Duplicate — a "Beta copy" node appears just below it.',
+    'Right-click any node and click Delete — that node vanishes, and the menu closes after every action.',
+  ],
   reactflow: 'Context Menu',
 
   async setup(ctx) {

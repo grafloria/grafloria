@@ -91,6 +91,54 @@ const IN_PAGE = () => {
   };
   const raf2 = () => new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r)));
 
+  // ---- PAINT-CONSISTENT sampler (verdict reported at the end) ----
+  // Every painted frame, every node the MODEL says intersects the viewport must
+  // have a painted DOM group — judged against the PAINTED camera (the layer's
+  // own CTM), never live viewport state: reading the model's newer camera
+  // against the previous paint manufactures phantom misses (that skew fooled
+  // the first live-report probe). One missing frame is legal — a model
+  // mutation paints on the NEXT scheduled frame — so only a node missing on
+  // 2+ CONSECUTIVE painted frames while on-screen is a defect ("nodes
+  // disappear and come back while scrolling", live report).
+  const sampler = { frames: 0, hits: [], stop: false, streaks: new Map() };
+  if ((model.getNodes?.() || []).length > 120) {
+    sampler.skip = 'PAINT-CONSISTENT (>120 nodes — per-frame sampling too heavy)';
+  } else {
+    const tick = () => {
+      if (sampler.stop) return;
+      sampler.frames++;
+      try {
+        const svg = host.querySelector('svg.grafloria-diagram');
+        const layer = svg && (svg.querySelector('g.nodes-layer') || svg.querySelector('g'));
+        const m = layer && layer.getScreenCTM && layer.getScreenCTM();
+        if (svg && m) {
+          const rect = svg.getBoundingClientRect();
+          for (const n of model.getNodes()) {
+            // Model-sanctioned invisibility (collapsed-group members set
+            // state.visible=false) is not a paint defect.
+            if (n.state && n.state.visible === false) { sampler.streaks.set(n.id, 0); continue; }
+            const xs = [m.a * n.position.x + m.c * n.position.y + m.e,
+                        m.a * (n.position.x + n.size.width) + m.c * (n.position.y + n.size.height) + m.e];
+            const ys = [m.b * n.position.x + m.d * n.position.y + m.f,
+                        m.b * (n.position.x + n.size.width) + m.d * (n.position.y + n.size.height) + m.f];
+            const on = Math.max(...xs) > rect.x + 6 && Math.min(...xs) < rect.x + rect.width - 6
+                    && Math.max(...ys) > rect.y + 6 && Math.min(...ys) < rect.y + rect.height - 6;
+            if (!on) { sampler.streaks.set(n.id, 0); continue; }
+            const el = host.querySelector(`[data-node-id="${n.id}"]`);
+            const painted = el && getComputedStyle(el).display !== 'none';
+            if (!painted) {
+              const c = (sampler.streaks.get(n.id) || 0) + 1;
+              sampler.streaks.set(n.id, c);
+              if (c === 2 && sampler.hits.length < 8) sampler.hits.push(`${n.id}@f${sampler.frames}`);
+            } else sampler.streaks.set(n.id, 0);
+          }
+        }
+      } catch { /* a mid-mutation frame must not kill the sampler */ }
+      requestAnimationFrame(tick);
+    };
+    requestAnimationFrame(tick);
+  }
+
   // The VISIBLE link path (skip the transparent fat hit-area).
   const visiblePath = (linkId) => {
     const paths = [...host.querySelectorAll(`[data-link-id="${linkId}"] path[d]`)];
@@ -497,6 +545,44 @@ const IN_PAGE = () => {
           else out.checks.push({ name: 'HANDLE-TRACK', ok: gap <= 6, detail: `mid-drag the painted handle sat ${Math.round(gap)}px behind the pointer (an eased cx/cy trails the drag)` });
         }
       }
+    }
+
+    // ---- DEAD-BUTTON: every page button must DO something when clicked ----
+    // layout-portfolio rendered five layout buttons and wired NONE of them (the
+    // assert drove its own helper — live report: "i can't switch between the
+    // options"). A button is judged by consequence: within a few frames of a
+    // real click, SOMETHING observable changes (DOM mutation anywhere, or a
+    // model change). Buttons that navigate or open pickers can opt out with
+    // data-gate-inert.
+    {
+      const buttons = [...document.querySelectorAll('button')]
+        .filter((b) => !b.closest('#grafloria-nav') && !b.closest('svg') && !b.hasAttribute('data-gate-inert'))
+        .filter((b) => b.offsetParent !== null); // visible only
+      if (buttons.length === 0) out.skipped.push('DEAD-BUTTON (no page buttons)');
+      else {
+        const dead = [];
+        for (const b of buttons.slice(0, 12)) {
+          let mutated = false;
+          const mo = new MutationObserver(() => { mutated = true; });
+          mo.observe(document.body, { childList: true, subtree: true, attributes: true, characterData: true });
+          const modelSig = JSON.stringify([model.getNodes().length, model.getLinks().length]);
+          b.click();
+          for (let i = 0; i < 20 && !mutated; i++) await new Promise((r) => setTimeout(r, 15));
+          await raf2();
+          mo.disconnect();
+          const modelChanged = JSON.stringify([model.getNodes().length, model.getLinks().length]) !== modelSig;
+          if (!mutated && !modelChanged) dead.push(b.textContent.trim().slice(0, 20) || '(unlabelled)');
+        }
+        out.checks.push({ name: 'DEAD-BUTTON', ok: dead.length === 0, detail: dead.length ? `buttons with no observable effect: ${dead.join(', ')}` : `${Math.min(buttons.length, 12)} buttons all cause a change` });
+      }
+    }
+
+    // ---- PAINT-CONSISTENT: collect the sampler's verdict (covers ALL checks) ----
+    {
+      sampler.stop = true;
+      if (sampler.skip) out.skipped.push(sampler.skip);
+      else if (sampler.frames < 30) out.skipped.push(`PAINT-CONSISTENT (only ${sampler.frames} frames sampled)`);
+      else out.checks.push({ name: 'PAINT-CONSISTENT', ok: sampler.hits.length === 0, detail: sampler.hits.length ? `on-screen nodes unpainted 2+ consecutive frames: ${sampler.hits.join(', ')} (${sampler.frames} frames)` : `${sampler.frames} frames clean` });
     }
 
     return out;

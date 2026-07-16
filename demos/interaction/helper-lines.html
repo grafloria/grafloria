@@ -29,6 +29,13 @@ const SPEC = {
 defineDemo({
   name: 'Helper lines (snaplines)',
   blurb: 'Drag a node near another\'s left edge and it snaps into alignment with a guide; a genuine near-miss beyond the threshold does not. Equal-spacing guides appear when three nodes line up evenly.',
+  howTo: [
+    'Drag the "drag me" node (lower right) slowly toward the two stacked nodes on the left.',
+    'As its left edge comes within a few pixels of theirs, a dashed guide paints down the alignment line and the node snaps onto it.',
+    'Release — the guide clears the moment the drag ends.',
+    'Drag it clearly wide of any edge — no guide, no snap: outside the 8px threshold the node stays exactly where you put it.',
+    'Press ⌘Z / Ctrl+Z — the whole drag, snap included, is one undo step.',
+  ],
   reactflow: 'Helper Lines',
   pro: true,
 
@@ -38,8 +45,13 @@ defineDemo({
     ctx.diagram = api.getModel();
     ctx.engine = api.getEngine();
     ctx.snap = new SnapController({ snapThreshold: 8, equalSpacing: true });
+    // LIVE helper lines: the pure engine below is also wired into the real drag
+    // path now — drag any node near another's edge and the dashed guide paints
+    // (live report: "no matter what i try doesn't look like something is
+    // happening" — computeSnap existed while nothing drove it from a drag).
+    ctx.engine.setInteractionConfig({ enableHelperLines: true });
     ctx.report = (m) => { document.getElementById('readout').textContent = m; };
-    ctx.report('SnapController ready (threshold 8px)');
+    ctx.report('drag the lower-right node toward the others — dashed guides appear as edges align');
   },
 
   // Money shot: the near-miss snap APPLIED — mover aligned at x=200 with the
@@ -108,6 +120,29 @@ defineDemo({
     );
     check(ladder.spacing.length > 0, 'three evenly-stacked nodes produced no equal-spacing guide');
     check(ladder.spacing.every((s) => Array.isArray(s.segments) && s.segments.length > 0), 'an equal-spacing guide had nothing to draw');
+
+    // THE LIVE PATH. A real pointer drag toward alignment must PAINT the guide
+    // mid-drag and SNAP the node — the pure math above proved the engine; this
+    // proves a visitor's actual drag reaches it (the gap the live report hit).
+    const mover = ctx.diagram.getNode('mover');
+    const rect = () => ctx.host.getBoundingClientRect();
+    const wc = (wx, wy) => ctx.instance.viewport.worldToClient(wx, wy, rect());
+    const fire = (type, c, buttons) => ctx.host.dispatchEvent(new PointerEvent(type, {
+      clientX: c.x, clientY: c.y, bubbles: true, cancelable: true, button: 0, buttons, pointerId: 7, pointerType: 'mouse',
+    }));
+    const grab = wc(mover.position.x + 60, mover.position.y + 30);
+    fire('pointerdown', grab, 1);
+    fire('pointermove', wc(mover.position.x + 66, mover.position.y + 30), 1); // cross the threshold
+    // Head for x=205 (5px shy of anchor's left edge at 200): must snap to 200.
+    const target = wc(205 + 60, 480 + 30);
+    fire('pointermove', target, 1);
+    ctx.instance.renderNow(); await ctx.tick();
+    const guideMidDrag = ctx.host.querySelector('.snap-guide-line');
+    check(!!guideMidDrag, 'mid-drag near alignment, no snap guide is painted');
+    check(mover.position.x === 200, `the live drag did not snap to x=200 (at ${mover.position.x})`);
+    fire('pointerup', target, 0);
+    ctx.instance.renderNow(); await ctx.tick();
+    check(!ctx.host.querySelector('.snap-guide-line'), 'the guide must clear when the drag ends');
   },
 });
 </script>

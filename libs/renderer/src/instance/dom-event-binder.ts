@@ -102,6 +102,14 @@ interface NodeDragState {
    * commitNodeMove). Absent until the drag crosses the threshold.
    */
   startPositions?: Map<string, { x: number; y: number; z?: number }>;
+  /**
+   * Pointer world position at the press, kept so helper-line snapping can track
+   * the VIRTUAL (unsnapped) position: virtual = start + (pointerNow − anchor).
+   * Correcting the model per-move and then deriving the next move from the
+   * corrected position would drift by every past correction; the virtual
+   * position makes leaving a snapline land exactly back under the pointer.
+   */
+  snapAnchor?: { x: number; y: number };
 }
 
 /**
@@ -379,6 +387,7 @@ export class DomEventBinder {
     this.nodeDrag = null;
     this.groupDrag = null;
     this.spaceKeyPressed = false;
+    this.engine()?.setSnapGuides(null);
   }
 
   // ==========================================================================
@@ -1239,6 +1248,51 @@ export class DomEventBinder {
       diagram.selectAll();
       this.host.requestRender();
       this.emitSelectionChange();
+      return;
+    }
+
+    // Standard editor keys. The engine has ALWAYS had the command stack and the
+    // clipboard — but no default binding reached them, so on a live page ⌘Z /
+    // Ctrl+Z did nothing (live report: "undo isn't working", "copy paste not
+    // working" — the demos proved the APIs while no keyboard path existed).
+    // ctrlKey OR metaKey throughout: a Ctrl-only chord is dead on every Mac.
+    if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 'z') {
+      event.preventDefault();
+      if (this.isReadonly()) return;
+      void (event.shiftKey ? engine.redo() : engine.undo()).then(() => {
+        this.host.requestRender();
+        this.emitNodesChange();
+        this.emitEdgesChange();
+        this.emitSelectionChange();
+      });
+      return;
+    }
+    if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 'y') {
+      event.preventDefault();
+      if (this.isReadonly()) return;
+      void engine.redo().then(() => {
+        this.host.requestRender();
+        this.emitNodesChange();
+        this.emitEdgesChange();
+        this.emitSelectionChange();
+      });
+      return;
+    }
+    if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 'c') {
+      // Copying mutates nothing — allowed even in readonly.
+      void engine.copy();
+      return;
+    }
+    if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 'v') {
+      if (this.isReadonly() || !engine.hasClipboardData()) return;
+      event.preventDefault();
+      void engine.paste().then(() => {
+        this.host.requestRender();
+        this.emitNodesChange();
+        this.emitEdgesChange();
+        this.emitSelectionChange();
+      });
+      return;
     }
   }
 
@@ -1299,6 +1353,7 @@ export class DomEventBinder {
       lastWorldX: worldX,
       lastWorldY: worldY,
       committed: false,
+      snapAnchor: { x: worldX, y: worldY },
     };
   }
 
@@ -1333,10 +1388,18 @@ export class DomEventBinder {
     drag.lastWorldY = worldY;
     if (!dx && !dy) return;
 
-    for (const id of drag.nodeIds) {
-      const node = diagram.getNode(id);
-      if (!node || node.state.locked) continue;
-      node.setPosition(node.position.x + dx, node.position.y + dy);
+    // wave15/helper-lines: opt-in live snaplines. `computeSnap` existed as a
+    // pure engine while NOTHING called it from a real drag (live report: "no
+    // matter what i try doesn't look like something is happening"). Single
+    // top-level node drags snap against sibling boxes and publish the guides
+    // the renderer draws; everything else keeps the raw delta path.
+    const snapped = this.applyHelperLineSnap(drag, diagram, worldX, worldY);
+    if (!snapped) {
+      for (const id of drag.nodeIds) {
+        const node = diagram.getNode(id);
+        if (!node || node.state.locked) continue;
+        node.setPosition(node.position.x + dx, node.position.y + dy);
+      }
     }
 
     // Node geometry moved ⇒ the port hit cache is stale.
@@ -1372,6 +1435,65 @@ export class DomEventBinder {
 
     this.proximityCandidate = this.bestProximityCandidate(draggedIds);
     this.snapController().highlightProximityTarget(engine, this.proximityCandidate);
+    // The renderer draws the proposal as a live dashed wire — port glyphs alone
+    // read as "nothing is happening" (live report: "the wire isn't showing").
+    engine.setProximityPreview(
+      this.proximityCandidate
+        ? {
+            sourceNodeId: this.proximityCandidate.sourceNodeId,
+            sourcePortId: this.proximityCandidate.sourcePort.id,
+            targetNodeId: this.proximityCandidate.targetNodeId,
+            targetPortId: this.proximityCandidate.targetPort.id,
+          }
+        : null
+    );
+  }
+
+  /**
+   * wave15/helper-lines: snap a SINGLE top-level dragged node to sibling
+   * alignments/equal-spacing and publish the guide segments for the renderer.
+   * Returns true when it owned the position write (the caller then skips the
+   * raw delta loop). Tracks the VIRTUAL position from {@link NodeDragState.snapAnchor}
+   * so corrections never accumulate into pointer drift.
+   */
+  private applyHelperLineSnap(
+    drag: NodeDragState,
+    diagram: NonNullable<ReturnType<DiagramEngine['getDiagram']>>,
+    worldX: number,
+    worldY: number
+  ): boolean {
+    const engine = this.engine();
+    if (!engine || engine.getInteractionConfig().enableHelperLines !== true) return false;
+    if (drag.nodeIds.length !== 1 || !drag.snapAnchor || !drag.startPositions) return false;
+
+    const id = drag.nodeIds[0];
+    const node = diagram.getNode(id);
+    const start = drag.startPositions.get(id);
+    if (!node || !start || node.state.locked || node.parentId) return false;
+
+    const virtualX = start.x + (worldX - drag.snapAnchor.x);
+    const virtualY = start.y + (worldY - drag.snapAnchor.y);
+
+    const snap = this.snapController();
+    snap.syncWithEngineConfig(engine);
+    const result = snap.computeSnap(
+      { x: virtualX, y: virtualY, width: node.size.width, height: node.size.height },
+      snap.siblingBoxes(engine, [id])
+    );
+    node.setPosition(result.box.x, result.box.y);
+
+    const segments = [
+      ...result.guides.map((g) =>
+        g.orientation === 'vertical'
+          ? { x1: g.position, y1: g.from, x2: g.position, y2: g.to, kind: 'alignment' as const }
+          : { x1: g.from, y1: g.position, x2: g.to, y2: g.position, kind: 'alignment' as const }
+      ),
+      ...result.spacing.flatMap((s) =>
+        s.segments.map((seg) => ({ ...seg, kind: 'spacing' as const, label: s.label }))
+      ),
+    ];
+    engine.setSnapGuides(segments.length > 0 ? segments : null);
+    return true;
   }
 
   /** The closest proximity candidate across all dragged nodes (or null). */
@@ -1401,6 +1523,8 @@ export class DomEventBinder {
     const candidate = this.proximityCandidate;
     this.proximityCandidate = null;
     this.snapController().highlightProximityTarget(engine, null);
+    engine.setProximityPreview(null);
+    engine.setSnapGuides(null); // helper lines end with the drag
 
     if (!candidate || engine.getInteractionConfig().enableProximityConnect !== true) return false;
     if (this.isReadonly()) return false;
@@ -1415,7 +1539,9 @@ export class DomEventBinder {
     const engine = this.engine();
     if (this.proximityCandidate && engine) {
       this.snapController().highlightProximityTarget(engine, null);
+      engine.setProximityPreview(null);
     }
+    engine?.setSnapGuides(null); // helper lines end with the drag
     this.proximityCandidate = null;
   }
 

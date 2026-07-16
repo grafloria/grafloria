@@ -10,6 +10,12 @@ import { defineDemo, check, checkChanged } from '../shell/demo.js';
 defineDemo({
   name: 'Drag handle',
   blurb: 'A designated grip drags its parent — and ONLY the grip: the body selects but no longer drags, and the handle is chrome (no ports, no wires). Press the title bar and the window moves through the real drag pipeline.',
+  howTo: [
+    'Press the "⠿ title bar (drag me)" strip and drag: the WHOLE window moves — the handle redirects the drag to its parent.',
+    'Press the window body and drag: it does not move, it only selects. Declaring a drag handle means "drag me by the handle" — the body stops being a grip.',
+    'Press ⌘Z / Ctrl+Z to undo the title-bar move.',
+    'Hover along the title bar: no port glyphs surface on it — the handle is chrome, not anatomy. Hover the window\'s top edge (which runs through the title bar) and the WINDOW\'s own top port appears, painted in front of the bar so you can aim at it.',
+  ],
   reactflow: 'Drag Handle',
 
   async setup(ctx) {

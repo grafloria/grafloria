@@ -103,6 +103,12 @@ const nodeFill = (host) => getComputedStyle(host.querySelector('rect.diagram-nod
 defineDemo({
   name: 'Themes & design tokens',
   blurb: "A design-token bridge: the HOST's shadcn / MUI / Tailwind variables paint the diagram — and deriveTheme() audits its own output against WCAG.",
+  howTo: [
+    'Click "MUI tokens" — one setTokenBridge() call re-skins the diagram from the host\'s --mui-palette-* variables (a warm off-white paper fill).',
+    'Click "shadcn tokens", then "flip the HOST palette (.dark)": the page only toggles its own .dark class — no Grafloria call — and the diagram follows the host\'s tokens. Flip again to return.',
+    'Try "Tailwind tokens" and "Grafloria\'s own theme" — the same diagram, four design systems.',
+    'Read the WCAG audit at the bottom: every theme, shipped or deriveTheme()-derived, checks its own contrast and reports pass/fail with ratios.',
+  ],
   reactflow: 'Theming',
 
   async setup(ctx) {

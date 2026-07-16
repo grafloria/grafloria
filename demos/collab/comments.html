@@ -40,6 +40,14 @@ const liveMsgs = (t) => t.messages.filter((m) => !m.deleted);
 defineDemo({
   name: 'Threaded comments',
   blurb: 'Threads anchored to a node — delete the node and the thread is orphaned, not destroyed. Concurrent replies both survive (one register per message).',
+  howTo: [
+    'Open the DevTools console — this page has no comment toolbar; the right-hand panel just mirrors the comment store live.',
+    'Create a thread anchored to the Review node: const tid = __demoCtx.store.createThread({ kind: \'node\', id: \'b\' }, \'Is this final?\') — a card appears in the panel with a green "attached" badge naming Review.',
+    'Reply to it: __demoCtx.store.reply(tid, \'Ship it.\') — the message joins the card.',
+    'Click the Review node on the canvas and press Delete — the node vanishes.',
+    'Reply once more (any text): the card repaints with a red ORPHANED badge and every message intact — the thread outlived its node, still readable and replyable.',
+    'Rescue it: __demoCtx.store.reanchor(tid, { kind: \'node\', id: \'c\' }) — the badge flips back to "attached", now naming Ship.',
+  ],
   reactflow: 'Collaborative (Yjs)',
   pro: true,
 

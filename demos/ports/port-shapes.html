@@ -31,6 +31,11 @@ const EXPECT = { circle: 'circle', square: 'rect', diamond: 'polygon', triangle:
 defineDemo({
   name: 'Port shapes',
   blurb: 'circle · square · diamond · triangle · custom path — five ports, five different SVG primitives. Asserted by element type, not by "a port appeared".',
+  howTo: [
+    'Read the five nodes left to right — each wears the port glyph it is named after: circle, square, diamond, triangle, and a custom double-diamond from an author-supplied SVG path.',
+    'Ctrl/cmd + wheel to zoom in close: five genuinely different SVG primitives (a real square, a 4-point diamond, a 3-point triangle…), not one dot restyled.',
+    'Press on any glyph and drag — it is a live port: a connection wire follows your cursor. Press Escape to cancel the drag.',
+  ],
 
   async setup(ctx) {
     ctx.instance = render({ nodes: NODES, edges: [] }, ctx.host, { interaction: { portVisibility: 'always' } });

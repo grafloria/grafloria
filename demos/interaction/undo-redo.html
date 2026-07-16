@@ -36,6 +36,12 @@ const SPEC = {
 defineDemo({
   name: 'Collaboration-aware undo',
   blurb: 'Two peers share an op log. ⌘Z on peer A undoes A\'s OWN last move, not the move peer B made afterwards — the thing single-buffer undo gets wrong in every collaborative editor.',
+  howTo: [
+    'Drag a node on Peer A\'s canvas — the same node glides on Peer B\'s canvas: two live diagrams, one shared op log.',
+    'Drag a different node on Peer B\'s side — it mirrors back onto A the same way.',
+    'Press ⌘Z / Ctrl+Z — the moves walk back and both canvases converge again (on this one page both peers hear your keyboard, and each only ever undoes its OWN edits).',
+    'Press ⇧⌘Z / Ctrl+Y — the moves replay, still in lockstep on both canvases.',
+  ],
   reactflow: 'Undo / Redo',
   pro: true,
 

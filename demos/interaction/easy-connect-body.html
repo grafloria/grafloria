@@ -16,6 +16,13 @@ import { defineDemo, check } from '../shell/demo.js';
 defineDemo({
   name: 'Easy connect (body)',
   blurb: 'Press anywhere on a node and release anywhere on another — they wire up, no aiming at a 6px port. Built into the engine drag path; the page only sets enableEasyConnect.',
+  howTo: [
+    'Press anywhere on node A\'s body — not a port glyph — and drag toward B.',
+    'Release anywhere on B\'s body: a wire appears between them, joined at their nearest ports.',
+    'Notice A never moved — with easy connect on, a body press starts a connection, not a node drag.',
+    'Drag from B and release over empty canvas — nothing connects: a node is a handle, the void is not.',
+    'Press Escape mid-drag to abandon a connection.',
+  ],
   reactflow: 'Easy Connect',
 
   async setup(ctx) {

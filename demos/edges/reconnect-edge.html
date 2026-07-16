@@ -29,6 +29,12 @@ const NODES = [
 defineDemo({
   name: 'Reconnect edge',
   blurb: 'Drag an edge endpoint onto a different node — driven with real pointer events. Asserts the model rewired (A→B becomes A→C) and a reconnect event fired.',
+  howTo: [
+    'Click the wire between A and B — it selects, and its endpoint handles show at each end.',
+    'Move onto the endpoint handle at B and press: even though the handle sits right ON B\'s port, the press grabs the EXISTING edge — it does not start a new connection from that port.',
+    'Drag toward C — a dashed ghost line follows your cursor 1:1.',
+    'Drop on C: the edge rewires — A→B has become A→C, and the wire now lands on C.',
+  ],
   reactflow: 'Reconnect Edge',
 
   async setup(ctx) {

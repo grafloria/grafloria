@@ -38,6 +38,12 @@ const NODES = [
 defineDemo({
   name: 'Custom edges',
   blurb: 'An author-supplied edge template via registerLinkTemplate() — a two-rail pipe drawn from the routed polyline. Asserted to REPLACE the default edge, and to follow the route.',
+  howTo: [
+    'Look at the wire between Source and Sink: a two-rail "pipe" — a wide translucent casing under a thin core — drawn by a custom template, not the default stroke.',
+    'Click "default edge" in the bar: the pipe is swapped for the ordinary single-line edge. Click "custom template" to bring it back.',
+    'Drag the Sink node around — the pipe re-draws along the live route, because the template is handed the routed path, not a fixed picture.',
+    'Click the pipe to select it — both rails recolor to a deeper selection blue (the template is told about selection state).',
+  ],
   reactflow: 'Custom Edges',
 
   async setup(ctx) {

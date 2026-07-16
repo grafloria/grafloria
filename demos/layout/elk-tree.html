@@ -38,6 +38,12 @@ const SPEC = { nodes: NODES, edges: EDGES };
 defineDemo({
   name: 'ELK tree',
   blurb: 'The layered ELK engine on the same tree the dagre page uses — and the two pictures are provably different, so neither is a secret alias of the other.',
+  howTo: [
+    'On load ELK lays the org chart out top-down: ceo above eng and ops, fe/be/sre on the next rank, db at the bottom.',
+    'Read the readout: "0 overlaps" and "6/6 edges downward" — every report line is measured from the live model.',
+    'Reload the page — the identical picture returns: the ELK run is deterministic.',
+    'Open the DevTools console and run `await __demo.run()`: the same tree is re-laid with dagre and the page proves the two engines\' pictures differ — watch the arrangement visibly change (the readout ends on the dagre run).',
+  ],
   reactflow: 'ELK Tree',
 
   async setup(ctx) {

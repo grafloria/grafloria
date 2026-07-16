@@ -51,6 +51,12 @@ const strokeWidthOf = (host, id) => parseFloat(getComputedStyle(rectOf(host, id)
 defineDemo({
   name: 'Named style classes',
   blurb: 'defineStyle() + style.styleClass — one deterministic cascade: theme < type-default < named-class < element-inline < state.',
+  howTo: [
+    'Compare "styleClass: warn" (orange — the named class) with "no class (theme)": the class layer overrides the theme default.',
+    'Look at "warn + inline fill" — it is GREEN: the element\'s own inline fill outranks the class it also names.',
+    'Compare borders: "warn bold" stacks two classes and the later name wins the conflict — a 6px stroke against warn\'s 2px.',
+    'Click the orange node: the selection highlight repaints it — STATE tops the cascade, so a named class can never suppress it.',
+  ],
   reactflow: null,
 
   async setup(ctx) {

@@ -40,6 +40,11 @@ const nodeFill = (host) => getComputedStyle(host.querySelector('rect.diagram-nod
 defineDemo({
   name: 'Instance-scoped CSS variables',
   blurb: 'Two diagrams with different themes on ONE page do not clobber each other — each writes only its own [data-grafloria-instance]-scoped variable block.',
+  howTo: [
+    'Compare the panes: the same three-node graph renders LIGHT in instance A and DARK in instance B — one page, one shared stylesheet, nothing clobbered.',
+    'Open devtools and inspect each pane\'s diagram root: each carries its own distinct data-grafloria-instance id.',
+    'Find the injected variable rules: every block is scoped as [data-grafloria-instance="…"] { --grafloria-node-fill: … } — there is no global theme-name rule for the last inject to win.',
+  ],
   reactflow: null,
 
   async setup(ctx) {

@@ -2,6 +2,13 @@
 <title>Stroke edit — Grafloria</title>
 <link rel="stylesheet" href="../shell/demo.css">
 <header id="demo-head"></header>
+<div id="bar" style="display:flex;gap:8px;padding:10px 24px;border-bottom:1px solid rgba(127,127,127,.25)">
+  <span>tool:</span>
+  <button id="btn-draw" aria-pressed="true">draw</button>
+  <button id="btn-edit" aria-pressed="false">edit</button>
+</div>
+<style>#bar button[aria-pressed="true"] { background: #0f766e; border-color: #0f766e; color: #fff; }
+  #bar button { padding: 4px 12px; border-radius: 6px; border: 1px solid rgba(127,127,127,.4); background: transparent; color: inherit; cursor: pointer; font: inherit; }</style>
 <div id="canvas"></div>
 <script type="module">
 import { render, registerTool, createDrawTool, createStrokeEditTool } from '../shell/grafloria.js';
@@ -31,6 +38,13 @@ function gesture(host, from, to, steps) {
 defineDemo({
   name: 'Stroke edit',
   blurb: 'Select committed ink with the edit tool and drag it — the whole stroke translates, as one undoable step.',
+  howTo: [
+    'The pen is live on load: press on the blank canvas and drag — a teal stroke commits when you release.',
+    'Click the "edit" button in the tool bar to switch from drawing to editing.',
+    'Now press ON the ink and drag: the whole stroke travels with the pointer.',
+    'Press ⌘Z / Ctrl+Z — that drag was ONE undo step; the ink jumps back where it was.',
+    'Grab the ink again, drag, and hit Escape before releasing: the move is abandoned and nothing lands on the undo stack.',
+  ],
   reactflow: 'Freehand Draw',
   pro: true,
 
@@ -47,6 +61,17 @@ defineDemo({
     // host switches to it (setActive is the tool-switch seam, same as draw/eraser).
     ctx.editTool = createStrokeEditTool(api, { active: false });
     registerTool(ctx.editTool);
+
+    // The live tool switch — the seam a host app would put behind its toolbar
+    // (live report: pages need visible ways to test, not console commands).
+    const setTool = (edit) => {
+      ctx.drawTool.setActive(!edit);
+      ctx.editTool.setActive(edit);
+      document.getElementById('btn-draw').setAttribute('aria-pressed', String(!edit));
+      document.getElementById('btn-edit').setAttribute('aria-pressed', String(edit));
+    };
+    document.getElementById('btn-draw').addEventListener('click', () => setTool(false));
+    document.getElementById('btn-edit').addEventListener('click', () => setTool(true));
 
     // The async command commit — same settle as the drag-undo demo.
     ctx.settle = () => new Promise((r) => setTimeout(r, 0));

@@ -10,6 +10,12 @@ import { defineDemo, check, checkEqual } from '../shell/demo.js';
 defineDemo({
   name: 'Delete the middle node',
   blurb: 'Remove the node in the middle of A→B→C and its two links go WITH it — a cascade, not two dangling edges. This is the Wave-10 removeNode() fix, proved through the public API.',
+  howTo: [
+    'Click "B (middle)" to select it.',
+    'Press Delete (or Backspace): B vanishes — and BOTH wires vanish with it. A cascade, not two edges left dangling at a ghost node.',
+    'Check the survivors: A and C are still there, just no longer connected.',
+    'Press ⌘Z / Ctrl+Z: B comes back WITH both of its links — the delete was one undoable step.',
+  ],
   reactflow: 'Delete Middle Node',
 
   async setup(ctx) {

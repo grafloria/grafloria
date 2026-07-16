@@ -26,6 +26,11 @@ TYPES.forEach((type, i) => {
 defineDemo({
   name: 'Animating edges',
   blurb: 'Four flow animations (marching-ants · flow · pulse · dash-flow) — asserted by the resolved CSS animation-name on the path, not just a class string.',
+  howTo: [
+    'Just watch: each of the four wires runs its own flow animation — marching-ants, flow, pulse, dash-flow — named by the node on its left.',
+    'Drag any right-hand node somewhere else — the edge re-routes and the animation keeps playing along the new path.',
+    'Ctrl/cmd + wheel to zoom in on one wire and compare its motion against the row below — four genuinely different effects, not one effect renamed.',
+  ],
   reactflow: 'Edge with animation',
 
   async setup(ctx) {

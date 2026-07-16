@@ -10,6 +10,12 @@ import { defineDemo, check, checkChanged } from '../shell/demo.js';
 defineDemo({
   name: 'Updating nodes',
   blurb: 'Mutate a live node — label, size, payload — and the canvas repaints. The tracked setters bump the mutation epoch; a raw field write would silently NOT repaint.',
+  howTo: [
+    'Find the node labelled "BEFORE", wired to "Steady" — nothing on this page mutates until the check drives it.',
+    'Click "▶ run the scripted checks" in this panel: watch the left node live — its label flips to "AFTER-EDIT", then its body widens to 320px. Each tracked setter (setMetadata, setSize) bumps the mutation epoch and the canvas repaints.',
+    'Watch the edge too: it re-anchors to the growing body — link geometry follows tracked mutations.',
+    'The check also proves the negative: a RAW field write (node.data = {…}) is untracked and repaints nothing — the silent no-op that is exactly why the tracked setters exist.',
+  ],
   reactflow: 'Updating Nodes',
 
   async setup(ctx) {

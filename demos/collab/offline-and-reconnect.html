@@ -46,6 +46,13 @@ const label = (inst, id) => inst.getModel().getNode(id)?.getMetadata('label');
 defineDemo({
   name: 'Offline & reconnect',
   blurb: 'Disconnect, edit both sides, reconnect — anti-entropy ships each peer exactly what it missed and they converge. No lost edits.',
+  howTo: [
+    'Drag the Alpha node in peer A\'s pane — it moves in peer B\'s pane in real time: the replicas sync over an in-page hub.',
+    'Cut the wire from the DevTools console: __demoCtx.A.transport.disconnect(); __demoCtx.B.transport.disconnect()',
+    'Edit both sides while dark — drag Alpha in the left pane and Beta in the right: neither pane sees the other\'s change.',
+    'Reconnect and sync: __demoCtx.A.transport.connect(); __demoCtx.B.transport.connect(); __demoCtx.A.session.sync(); __demoCtx.B.session.sync() — the panes converge, and both offline edits survive on both sides.',
+    'Drag any node again — live sync has resumed.',
+  ],
   reactflow: 'Collaborative (Yjs)',
   pro: true,
 

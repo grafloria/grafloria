@@ -41,6 +41,13 @@ function installResizer(host, api) {
 defineDemo({
   name: 'Node resizer',
   blurb: 'Drag a corner to resize — and the min/max/aspect limits declared on the node clamp the size DURING the gesture. You cannot drag past the max; the aspect-locked node holds its ratio.',
+  howTo: [
+    'Press within ~20px of the bottom-right corner of the "80–260 wide" node and drag — the corner follows your pointer. (No handle glyphs here: the gesture is a tool registered through the public registerTool seam.)',
+    'Haul the corner far right and down: the size stops DEAD at 260×200 — min/max come off the node\'s own metadata.sizing and clamp DURING the gesture, not as a fix-up on release.',
+    'Drag the corner deep into the node: it floors at 80×60, never inverting.',
+    'Resize the "aspect locked" node by its corner: whatever path you drag, the box holds its 1.6 ratio.',
+    'Press anywhere else on a node and drag: that is still a plain move — only the corner zone resizes.',
+  ],
   reactflow: 'Node Resizer',
 
   async setup(ctx) {

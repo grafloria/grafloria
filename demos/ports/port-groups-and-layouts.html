@@ -37,6 +37,12 @@ const local = (host, id) => {
 defineDemo({
   name: 'Port groups & layouts',
   blurb: 'One group, one layout strategy, N ports: sideLinear column · line along a segment · ellipseSpread ring. Each arrangement asserted geometrically.',
+  howTo: [
+    'Look at the "sideLinear" node: its four ports form an evenly spaced column down its left edge — the layout is declared ONCE on the group and inherited by every member port.',
+    'Look at the "line" node: four ports spaced evenly along a diagonal segment from its top-left toward its bottom-right corner.',
+    'Look at the "ellipseSpread" node: six ports fanned all the way around its inscribed ellipse, each at its own angle.',
+    'Drag any node around — its whole port arrangement travels rigidly with it; ctrl/cmd + wheel to zoom in and check the spacing really is even.',
+  ],
 
   async setup(ctx) {
     ctx.instance = render({ nodes: NODES, edges: [] }, ctx.host, { interaction: { portVisibility: 'always' } });

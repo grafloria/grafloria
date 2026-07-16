@@ -89,6 +89,12 @@ const SPEC = {
 defineDemo({
   name: 'Auto layout',
   blurb: 'One graph, six engines, one call: engine.layout(name). All nine nodes start stacked at (0,0) — if layout were a no-op you would see it.',
+  howTo: [
+    'Click through the engine buttons — dagre, elk, layered, tree, force: the nine pipeline nodes (all authored stacked at 0,0) rearrange into a genuinely different picture per engine, and the view re-fits each time.',
+    'Watch the readout after every click: it names the algorithm that ran, its seed, and "0 overlaps".',
+    'Click "auto": it holds a bake-off across the engines and the readout adds "chose=…" — the algorithm it picked, by name.',
+    'After any switch, follow a few edges: every one re-routes to its nodes\' new positions — no stale routes left over from the previous layout.',
+  ],
   reactflow: 'Auto Layout',
   pro: true,
 
@@ -165,6 +171,25 @@ defineDemo({
       ctx.diagram.getNodes().forEach((n) => n.setPosition(0, 0));
       await ctx.run(name);
       checkEqual(signature(ctx.diagram), sig, `${name}: two identical runs produced different positions`);
+
+      // 6. THE PAINT AGREES. ctx.run ends in fitView, which flips the LOD tier —
+      //    the per-LOD VNode cache once served the PREVIOUS layout's routes there
+      //    (a single dirty flag guarded per-LOD entries), so every layout after
+      //    'force' painted spaghetti while the model was perfect ("the diagram is
+      //    destroyed", live report). Read the PAINTED d, not the model.
+      await ctx.tick(); await ctx.tick();
+      for (const l of ctx.diagram.getLinks()) {
+        const el = ctx.host.querySelector(`[data-link-id="${l.id}"] path.diagram-link`)
+          || ctx.host.querySelector(`[data-link-id="${l.id}"] path[d]`);
+        check(!!el, `${name}: link ${l.id} is not painted at all`);
+        if (!el) continue;
+        const nums = el.getAttribute('d').match(/-?[\d.]+/g).map(Number);
+        const s = ctx.diagram.getNode(l.sourceNodeId), t = ctx.diagram.getNode(l.targetNodeId);
+        const near = (px, py, n) => px > n.position.x - 30 && px < n.position.x + n.size.width + 30
+          && py > n.position.y - 30 && py < n.position.y + n.size.height + 30;
+        check(near(nums[0], nums[1], s) && near(nums[nums.length - 2], nums[nums.length - 1], t),
+          `${name}: painted edge ${l.id} does not touch its nodes — a stale route from a previous layout is on screen`);
+      }
     }
 
     // 6. `auto` must SHOW ITS WORKING — an auto-selector that cannot say why is a

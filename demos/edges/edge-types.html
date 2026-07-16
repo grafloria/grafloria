@@ -44,6 +44,13 @@ const isAxisAligned = (pts) =>
 defineDemo({
   name: 'Edge types',
   blurb: 'straight · step · smoothstep · bezier — one graph, four edge shapes, driven by EdgeSpec {router, connector}. The route geometry is asserted, not the pixels.',
+  howTo: [
+    'Click "straight": one diagonal line, corner to corner.',
+    'Click "step": same endpoints, but the route turns axis-aligned with sharp right-angle bends.',
+    'Click "smoothstep": the IDENTICAL orthogonal route, only the corners are now rounded — where the line goes (router) and how it is drawn (connector) are independent knobs.',
+    'Click "bezier": a single sweeping cubic curve. The active button stays highlighted blue.',
+    'In any mode, drag node B around — the route recomputes live in that style.',
+  ],
   reactflow: 'Edge Types',
 
   async setup(ctx) {

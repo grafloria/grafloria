@@ -33,6 +33,13 @@ const ANCHORS = [
 defineDemo({
   name: 'Node resize gesture',
   blurb: 'Select a node, then drag a resize handle — a REAL pointer drag through the default pipeline (no host wiring, no registerTool). The declared min/max/aspect clamp the size DURING the gesture, and one release is one undo step.',
+  howTo: [
+    'Click the "80–260 wide" node: 8 blue-and-white resize handles appear on its box (painted from the same geometry the engine hit-tests).',
+    'Grab the bottom-right handle and haul it far out: the node grows and stops DEAD at 260×200 — the max clamps mid-drag, you cannot pull past it — while the top-left corner stays anchored.',
+    'Drag the same handle back into the node: the size floors at 80×60 instead of inverting.',
+    'Click the "aspect 1.6" node and drag its corner along any path — the box holds its 1.6 width:height ratio the whole way.',
+    'Release, then press ⌘Z / Ctrl+Z: one release is ONE undo step — the whole resize reverts at once.',
+  ],
   reactflow: 'Node Resizer',
 
   async setup(ctx) {

@@ -10,6 +10,11 @@ import { defineDemo, check, checkChanged } from '../shell/demo.js';
 defineDemo({
   name: 'HTML nodes',
   blurb: 'Rich HTML inside a node via SVG foreignObject — sanitised (never innerHTML), and because it lives inside the node’s transformed group it rotates, pans and moves with the node.',
+  howTo: [
+    'Read the card: bold "Deploy #4213", a progress line and a "staging" badge — real HTML painted inside the node through an SVG foreignObject, built from a sanitised description (never innerHTML).',
+    'Drag the card around: the markup is welded to the node — it rides inside the node\'s transformed group, pixel-locked, not floated nearby.',
+    'Drag empty canvas to pan and ⌘+wheel / Ctrl+wheel to zoom: the HTML pans and scales with the diagram, because it lives in camera space.',
+  ],
   reactflow: 'Custom Nodes (HTML)',
 
   async setup(ctx) {

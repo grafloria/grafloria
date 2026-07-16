@@ -31,6 +31,12 @@ const portOf = (node, side) => node.getPortBySide(side);
 defineDemo({
   name: 'Connection validation',
   blurb: 'A registered validator refuses an illegal connection (nothing flows OUT of a Sink). Driven through the real connect pipeline: the rejected drag creates no link; the legal one does.',
+  howTo: [
+    'Drag a connection out of the Sink\'s right port and drop it on the Transform\'s left port — refused: no wire is created, because nothing flows OUT of a Sink.',
+    'Drag from the Source\'s right port to the Transform\'s left port — this one connects.',
+    'Drag from the Transform\'s right port onto the Sink\'s left port — flowing INTO a sink is fine; only flowing out is banned.',
+    'Press Escape mid-drag to abandon an attempt.',
+  ],
   reactflow: 'Validation',
 
   async setup(ctx) {

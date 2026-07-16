@@ -31,6 +31,12 @@ const NODES = [
 defineDemo({
   name: 'Magnet & highlight',
   blurb: 'Valid targets highlight the instant a drag begins, and the drop snaps to the nearest port from 20px away. Both need the live connection-state manager.',
+  howTo: [
+    'Press on the source node\'s right-hand port and drag into open space: the input ports on target 1 and target 2 light up instantly, while the "not a target" output port stays dark.',
+    'Keep dragging until the cursor is NEAR — not on — target 1\'s port, and release about 20px short of the glyph.',
+    'The drop still snaps: the wire lands dead-centre on the port, because a release within the 30px magnet radius is pulled onto the nearest valid port.',
+    'Drag out another wire and drop it in truly open canvas — nothing within snapping reach, so no link is made.',
+  ],
   reactflow: 'Connection Snapping',
 
   async setup(ctx) {

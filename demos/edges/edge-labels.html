@@ -30,6 +30,11 @@ const xyOf = (g) => {
 defineDemo({
   name: 'Edge labels',
   blurb: 'A label anchored ON the edge — draggable with a real pointer, and re-anchored automatically when the edge re-routes.',
+  howTo: [
+    'Find the "depends on" label chip riding at the midpoint of the wire between A and B.',
+    'Press on the label and drag left or right — it slides ALONG the edge, staying on the wire instead of floating off it.',
+    'Drag node B somewhere else — the edge re-routes and the label re-anchors onto the new path (it is pinned to a fraction of the route, not to canvas coordinates).',
+  ],
   reactflow: 'Edge Label',
 
   async setup(ctx) {

@@ -16,6 +16,12 @@ const rotateOf = (el) => {
 defineDemo({
   name: 'Rotatable node',
   blurb: 'A node carries a rotation the renderer bakes into its SVG transform. Set it directly, or spin it with a real pointer drag through the public registerTool seam.',
+  howTo: [
+    'Press anywhere on the "spin me" node and, holding, orbit your pointer around the node\'s centre — it rotates live, tracking your angle.',
+    'Try a quarter orbit: start due-right of the centre and drag around to due-below — the node picks up ~90°.',
+    'Watch the body, label and outline spin together about the box centre: the rotation is baked into the node\'s SVG transform as rotate(θ, cx, cy).',
+    'Note that on this page a press on the node ROTATES it rather than moves it — the spin gesture is a tool registered through the public registerTool seam, and a claiming tool owns the whole drag.',
+  ],
   reactflow: 'Node rotation',
 
   async setup(ctx) {

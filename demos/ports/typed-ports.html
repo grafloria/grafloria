@@ -37,6 +37,12 @@ const NODES = [
 defineDemo({
   name: 'Typed ports',
   blurb: 'Ports coloured by data type, refusing a mismatched connection — number→number is allowed, number→string is rejected before it is made.',
+  howTo: [
+    'Check the port colours: both number ports ("number src", "number in") paint blue, the string port on "string in" paints purple — each glyph wears its registered data-type colour.',
+    'Press on the blue output of "number src" and drag toward "number in": the matching blue input highlights as a valid target — drop on it and the wire is created.',
+    'Drag from the same output down to "string in": the purple port never highlights, and dropping on it is refused — no link, the declared types simply do not match.',
+    'Note there is no validator code on this page — compatibility comes entirely from the registered types (number is only compatibleWith number).',
+  ],
   reactflow: 'Validation',
   pro: false,
 

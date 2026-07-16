@@ -45,6 +45,12 @@ const ENGINES = ['tree', 'radial', 'circular', 'grid', 'force'];
 defineDemo({
   name: 'Layout portfolio',
   blurb: 'Five engines — tree, radial, circular, grid, force — over one graph, each a genuinely different picture, none overlapping. And a disconnected component is PACKED beside the rest, not laid on top of it.',
+  howTo: [
+    'Click each engine button — tree, radial, circular, grid, force: the same nine nodes redraw as five genuinely different pictures, and the pressed button stays highlighted.',
+    'Watch the disconnected triangle b0–b1–b2: every engine packs it BESIDE the main component, never on top of it.',
+    'Click the same engine twice: the picture is identical both times — each run restacks the nodes at (0,0) first, so that is real determinism.',
+    'Check the readout after every click: "0 overlaps" for each engine, and the edges re-route to the new positions.',
+  ],
   reactflow: 'Layout portfolio',
 
   async setup(ctx) {
@@ -63,6 +69,12 @@ defineDemo({
       document.getElementById('readout').textContent = `${name}: ${overlaps(ctx.diagram).length} overlaps`;
       return r;
     };
+    // The LIVE wiring — the assert exercising ctx.runLayout is not a substitute
+    // for the buttons doing anything (live report: "i can't switch between the
+    // options"; the bar rendered five dead buttons).
+    for (const b of document.querySelectorAll('#bar button')) {
+      b.addEventListener('click', () => ctx.runLayout(b.dataset.layout));
+    }
     await ctx.runLayout('tree');
   },
 

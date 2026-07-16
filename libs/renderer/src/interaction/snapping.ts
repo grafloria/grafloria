@@ -56,7 +56,10 @@ export const DEFAULT_SNAP_CONFIG: SnapConfig = {
   equalSpacing: true,
   keepInBounds: null,
   snapToPortRadius: 30,
-  proximityConnectRadius: 60,
+  // Port-to-port reach. 60 forced nodes almost into contact before the
+  // proposal appeared ("i need to be so close", live report); 120 matches the
+  // feel of React Flow's proximity example (150 centre-to-centre).
+  proximityConnectRadius: 120,
 };
 
 /** A single alignment snapline. `position` is the aligned coordinate. */

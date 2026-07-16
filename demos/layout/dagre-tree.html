@@ -36,6 +36,12 @@ const SPEC = { nodes: NODES, edges: EDGES };
 defineDemo({
   name: 'Dagre tree',
   blurb: 'Hierarchical top-down layout via engine.layout("dagre"). Seven nodes start stacked at (0,0); after one call the tree is layered and no two boxes touch.',
+  howTo: [
+    'On load the seven nodes — authored stacked at (0,0) — appear as a top-down tree: root above a and b, their children on the rank below.',
+    'Read the readout: "0 overlaps" and "5/5 edges point downward" — every parent sits strictly above its child.',
+    'Find b2: it has no edges at all, yet dagre parked it clear of the tree instead of leaving it on the pile.',
+    'Reload the page — the picture comes back pixel-identical: the layout is seeded, not random.',
+  ],
   reactflow: 'Dagre Tree',
 
   async setup(ctx) {

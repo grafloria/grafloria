@@ -2,6 +2,10 @@
 <title>Collapse &amp; expand — Grafloria</title>
 <link rel="stylesheet" href="../shell/demo.css">
 <header id="demo-head"></header>
+<div id="bar" style="display:flex;gap:8px;padding:10px 24px;border-bottom:1px solid rgba(127,127,127,.25)">
+  <button id="btn-collapse">collapse group</button>
+  <button id="btn-expand">expand group</button>
+</div>
 <div id="canvas"></div>
 <script type="module">
 import { render } from '../shell/grafloria.js';
@@ -10,6 +14,12 @@ import { defineDemo, check } from '../shell/demo.js';
 defineDemo({
   name: 'Collapse & expand',
   blurb: 'Really collapse a group: its members hide, and the several links that crossed its boundary are replaced by ONE aggregated proxy link to the collapsed placeholder. Expand restores every one.',
+  howTo: [
+    'Click "collapse group": the three members vanish and a small collapsed placeholder stands in for the group.',
+    'Look at the links: the three edges that crossed the boundary re-home onto the placeholder, and the two parallel links from ext 1 merge into ONE proxy link labelled "2×".',
+    'Click "expand group": all three members come back and the aggregated proxy unrolls into the original four links.',
+    'Toggle a few more times — the round trip is lossless every time.',
+  ],
   reactflow: 'Collapsible / Expandable',
   pro: true,
 
@@ -39,6 +49,18 @@ defineDemo({
     g.setFrame({ x: 400, y: 60, width: 180, height: 340 });
     for (const id of ['m1', 'm2', 'm3']) await ctx.engine.addToGroup(g.id, id);
     ctx.g = g;
+
+    // LIVE affordances (live report: "it's not clear how can i expand and
+    // collapse the group") — same engine calls the assert proves.
+    document.getElementById('btn-collapse').addEventListener('click', async () => {
+      await ctx.engine.collapseGroup(g.id, { proxyLabel: (i) => `${i.count}×` });
+      api.renderNow();
+    });
+    document.getElementById('btn-expand').addEventListener('click', async () => {
+      await ctx.engine.expandGroup(g.id);
+      api.renderNow();
+    });
+
     api.renderNow();
     await ctx.tick();
   },

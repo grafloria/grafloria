@@ -28,6 +28,13 @@ const SPEC = {
 defineDemo({
   name: 'Touch device',
   blurb: 'Pan, pinch-zoom, tap-to-select and one-finger node drag — all from real touch PointerEvents through the same pipeline a phone uses. touch-action:none is what keeps the browser from eating the gesture.',
+  howTo: [
+    'Open this page on a touch screen (or in DevTools device emulation) — touch-action: none keeps the browser from eating the gestures.',
+    'Drag one finger across empty canvas: the camera pans.',
+    'Pinch with two fingers: spreading them zooms in around your fingers.',
+    'Tap node A — exactly the node under your finger becomes selected.',
+    'Put a finger on a node and drag — the node travels with your finger while the camera stays put.',
+  ],
   reactflow: 'Touch Device',
   pro: true,
 

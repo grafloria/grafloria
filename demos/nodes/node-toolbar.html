@@ -14,6 +14,13 @@ import { defineDemo, check } from '../shell/demo.js';
 defineDemo({
   name: 'Node toolbar',
   blurb: 'A floating toolbar anchored to a node’s geometry through the viewport portal seam — it pans and zooms WITH the node, follows it when it moves, and its buttons act on that node.',
+  howTo: [
+    'Note the dark toolbar floating above the node — a viewport portal anchored to the node\'s top-centre, not absolutely-positioned page chrome.',
+    'Drag the node around: the toolbar rides it, mid-drag and after release.',
+    'Drag empty canvas to pan and ⌘+wheel / Ctrl+wheel to zoom: the toolbar tracks the node through every camera move, because it lives in the camera-transformed layer.',
+    'Click "duplicate": a copy appears offset down-right of the original.',
+    'Click "delete": the node vanishes and the toolbar tears down with it.',
+  ],
   reactflow: 'Node Toolbar',
 
   async setup(ctx) {

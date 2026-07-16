@@ -25,6 +25,12 @@ function gesture(host, from, to, steps) {
 defineDemo({
   name: 'Rectangle tool',
   blurb: 'Drag out a rectangle. It becomes a real NODE — connectable, resizable, laid out — because a rectangle IS a box, unlike freehand ink.',
+  howTo: [
+    'Press on the empty canvas and drag corner-to-corner, then release.',
+    'A real node labelled \'Box\' appears, sized and placed exactly to your drag.',
+    'Drag out a few more boxes at different sizes.',
+    'Unlike freehand ink, every box is a first-class diagram node (style.shape: rectangle) — the same entity the connect, resize and layout demos operate on.',
+  ],
   reactflow: 'Shapes',
 
   async setup(ctx) {

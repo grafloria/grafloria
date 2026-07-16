@@ -15,6 +15,12 @@ const encloses = (r, n) =>
 defineDemo({
   name: 'Selection grouping',
   blurb: 'Marquee/ctrl-click a set of nodes, then bundle exactly that selection into a container — the group holds what you picked and nothing you did not.',
+  howTo: [
+    'Click "n1" — it becomes the selection.',
+    'Hold Ctrl and click "n2": both nodes are now selected; the far-off "n3 (leave out)" stays unselected.',
+    'Open the DevTools console and run `await __demo.run()`: it rebuilds that exact selection with real pointer events and bundles it into a container — a fitted frame wraps n1 and n2.',
+    'Check the result: the group holds exactly {n1, n2} — the never-selected n3 is out, and the frame stops short of it.',
+  ],
   reactflow: 'Selection Grouping',
   pro: true,
 

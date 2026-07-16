@@ -47,6 +47,12 @@ const movementOf = (before, after, ids) => {
 defineDemo({
   name: 'Dynamic layouting',
   blurb: 'Mental-map-preserving incremental layout: add a node and the rest barely move. The page measures total movement two ways and asserts the incremental pass is a fraction of a from-scratch relayout.',
+  howTo: [
+    'On load the chain n0 → n5 is laid out left-to-right. Memorise the shape — the point of this page is how little it changes.',
+    'Open the DevTools console and run `await __demo.run()`: a new "inserted" node is wired into the middle (n2 → inserted → n4) and an incremental pass places it.',
+    'Read the readout: it prints how many pixels the existing nodes moved under the incremental pass versus how far a from-scratch relayout moves them — the first number is a clear fraction of the second.',
+    'Both numbers are measured live on this page (the run really performs the from-scratch relayout too), so the mental-map claim is demonstrated, not asserted on faith.',
+  ],
   reactflow: 'Dynamic Layouting',
   pro: true,
 

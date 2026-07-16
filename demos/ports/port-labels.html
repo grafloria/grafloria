@@ -43,6 +43,12 @@ const rotationOf = (el) => {
 defineDemo({
   name: 'Port labels',
   blurb: 'Labels placed inside / outside / orthogonal to the glyph, and a keep-upright flip that rescues an upside-down label. All asserted by geometry.',
+  howTo: [
+    'On the centre "placements" node: the left port\'s OUT label sits OUTSIDE the node body, the right port\'s IN label is pulled INSIDE it, and the top port\'s ORT label takes a third, visibly different orthogonal placement.',
+    'Compare the two outer nodes — both labels are declared at the same 160° angle: "raw 160°" reads upside-down, while the keepUpright node\'s label is auto-flipped so it still reads left-to-right.',
+    'Ctrl/cmd + wheel to zoom in on that pair: same angle on both, one legible, one inverted — the flip is the feature.',
+    'Drag either node around — every label travels with its port, keeping its placement and orientation.',
+  ],
 
   async setup(ctx) {
     ctx.instance = render({ nodes: NODES, edges: [] }, ctx.host, { interaction: { portVisibility: 'always' } });

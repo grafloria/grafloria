@@ -39,6 +39,13 @@ const centerOf = (inst) => { const v = inst.viewport.getViewport(); return { x: 
 defineDemo({
   name: 'Presentation mode',
   blurb: 'Follow-the-presenter + a real read-only lock. Followers see the presenter\'s world region at their own screen size, and cannot edit.',
+  howTo: [
+    'Pan the LEFT (presenter) pane by dragging empty canvas — the follower\'s camera moves to the same world region.',
+    'Zoom the presenter with ctrl/cmd + wheel — the follower adopts the same zoom and centre while keeping its own canvas size.',
+    'Pan the FOLLOWER pane somewhere else, then move the presenter again — the follower snaps back to following.',
+    'Drag a node in the presenter — it does NOT move in the follower: this page shares only the camera, not the document.',
+    'The read-only lock has teeth, not a toolbar: click "▶ run the scripted checks" in this panel — they lock the follower, prove a real edit is refused, and unlock it again.',
+  ],
   reactflow: 'Collaborative (Yjs)',
   pro: true,
 

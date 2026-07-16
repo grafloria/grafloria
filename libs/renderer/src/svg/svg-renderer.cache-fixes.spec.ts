@@ -135,4 +135,71 @@ describe('SVGRenderer - cache-correctness fixes', () => {
       expect(cacheSize).toBeLessThanOrEqual(maxCacheSize);
     });
   });
+
+  // FIX 3: FIX 1 keyed the cache per LOD, but a SINGLE dirty flag guarded all
+  // of an entity's per-LOD entries: rebuilding one tier and marking the entity
+  // clean left every OTHER tier's entry stale, so a geometry change resurfaced
+  // its PRE-change picture on the next LOD flip. Live report: "click force
+  // then dagre — the diagram is destroyed" — the painted edges after each
+  // layout+fitView (fitView flips the LOD tier) were the PREVIOUS layout's
+  // routes. The cache write now evicts the entity's whole key set whenever it
+  // rebuilds a dirty entity.
+  describe('FIX 3 — a dirty rebuild evicts the entity across ALL LOD tiers', () => {
+    const dOf = (linkVNode: VNode): string => {
+      const walk = (vn: VNode): string | null => {
+        if (vn.props?.d && String(vn.props.className ?? '').includes('diagram-link')) return vn.props.d as string;
+        for (const c of vn.children ?? []) { const hit = walk(c); if (hit) return hit; }
+        return null;
+      };
+      return walk(linkVNode) ?? '';
+    };
+
+    test('a moved link does not resurface its old geometry on an LOD flip', () => {
+      renderer = new SVGRenderer(engine, { enableCaching: true });
+      const link = addConnectedPair();
+
+      // Populate BOTH tiers' cache entries at the original geometry.
+      const highBefore = dOf(linkVNodeFrom(renderer.render(VIEWPORT, 1.5) as VNode));
+      const lowBefore = dOf(linkVNodeFrom(renderer.render(VIEWPORT, 0.15) as VNode));
+
+      // Move the target node far enough that every tier's route must change.
+      diagram.getNode(link.targetNodeId!)!.setPosition(600, 400);
+
+      // Rebuild at ONE tier (this cleans the link)…
+      const highAfter = dOf(linkVNodeFrom(renderer.render(VIEWPORT, 1.5) as VNode));
+      expect(highAfter).not.toBe(highBefore);
+      expect(link.isDirty).toBe(false);
+
+      // …then flip tiers while CLEAN: the old code served lowBefore verbatim
+      // (the stale pre-move route); the eviction makes this a rebuild.
+      const lowAfter = dOf(linkVNodeFrom(renderer.render(VIEWPORT, 0.15) as VNode));
+      expect(lowAfter).not.toEqual(lowBefore);
+    });
+
+    test('a moved node does not resurface its old geometry on an LOD flip', () => {
+      renderer = new SVGRenderer(engine, { enableCaching: true });
+      const node = new NodeModel({ type: 'basic', position: { x: 100, y: 100 }, size: { width: 100, height: 60 } });
+      diagram.addNode(node);
+
+      const nodeVNodeFrom = (root: VNode): VNode => {
+        const walk = (vn: VNode): VNode | null => {
+          if (String(vn.key ?? '').startsWith('node-')) return vn;
+          for (const c of vn.children ?? []) { const hit = walk(c); if (hit) return hit; }
+          return null;
+        };
+        return walk(root)!;
+      };
+      const transformOf = (vn: VNode): string => String(vn.props?.transform ?? '');
+
+      renderer.render(VIEWPORT, 1.5);
+      const lowBefore = transformOf(nodeVNodeFrom(renderer.render(VIEWPORT, 0.15) as VNode));
+
+      node.setPosition(500, 300);
+      renderer.render(VIEWPORT, 1.5); // rebuild at high, cleans the node
+
+      const lowAfter = transformOf(nodeVNodeFrom(renderer.render(VIEWPORT, 0.15) as VNode));
+      expect(lowAfter).not.toEqual(lowBefore);
+      expect(lowAfter).toContain('500');
+    });
+  });
 });

@@ -34,6 +34,12 @@ function ink(id, y) {
 defineDemo({
   name: 'Eraser',
   blurb: 'Wipe over ink to remove it. Whole-stroke delete; a sweep across several strokes is one undo step.',
+  howTo: [
+    'Three parallel ink lines are seeded and the eraser is live. Press and sweep across the middle line — the WHOLE stroke vanishes, not a pixel-wide gap.',
+    'Note the two lines you never crossed survive — the eraser takes exactly what it touched.',
+    'Drag one vertical sweep down through BOTH remaining lines — both disappear in the one gesture.',
+    'Press ⌘Z / Ctrl+Z once: that sweep was ONE undo step — both lines come back together.',
+  ],
   reactflow: 'Freehand Draw',
   pro: true,
 

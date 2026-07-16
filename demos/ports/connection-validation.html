@@ -28,6 +28,12 @@ const NODES = [
 defineDemo({
   name: 'Connection validation',
   blurb: 'A registered validator vetoes an invalid connection before it is made — output→output is rejected (with a reason), output→input is allowed.',
+  howTo: [
+    'Press on A\'s triangle port (an output) and drag: a wire follows your cursor, B\'s round input port lights up as a valid target, and C\'s output port stays dark.',
+    'Drop on C\'s port anyway: the connection is refused — the wire evaporates and no edge is created, because the registered validator vetoes output→output (with a reason the API surfaces).',
+    'Drag from A\'s port again and drop on B\'s input: this one lands — the validator vetoes bad pairs, it does not block everything.',
+    'Press Escape mid-drag to abandon a connection without dropping it.',
+  ],
   reactflow: 'Validation',
 
   async setup(ctx) {

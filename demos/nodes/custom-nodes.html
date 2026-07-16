@@ -10,6 +10,12 @@ import { defineDemo, check, checkChanged } from '../shell/demo.js';
 defineDemo({
   name: 'Custom nodes',
   blurb: 'Arbitrary content inside a node — and the node still hit-tests, routes and serialises like any other.',
+  howTo: [
+    'Look at the three stages: a terminal, a predefined-process and a document silhouette, each with its own fill and stroke — declared per node in the spec, not painted on afterwards.',
+    'Drag "Ingest" somewhere else: the wire to "Transform" stays glued to the moving body, because a custom-shaped node still hit-tests and routes like a stock one.',
+    'Hover a node\'s edge to surface a port and drag a wire onto a neighbour — custom bodies connect too. Escape mid-drag cancels the wire.',
+    'Click a node to select it, click empty canvas to deselect, drag empty canvas to pan.',
+  ],
   reactflow: 'Custom Nodes',
 
   async setup(ctx) {

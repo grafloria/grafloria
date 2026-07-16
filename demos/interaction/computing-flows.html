@@ -44,6 +44,12 @@ const SPEC = {
 defineDemo({
   name: 'Computing flows',
   blurb: 'Typed input/output ports carry values along the real link topology. Change the input and every downstream node recomputes; cut a link and the flow stops past the cut. Grafloria owns the graph; the app owns the arithmetic.',
+  howTo: [
+    'Read the strip above the canvas: input=2 → ×3=6 → +10=16 — the sink\'s number is computed through the real links, not painted on.',
+    'Trace the wires left to right: each stage\'s output port feeds the next stage\'s input port, and both ports are typed (number).',
+    'Drag any stage around — the wires stay attached to its ports and the numbers in the strip do not change: topology carries the data, not position.',
+    'Drag on empty canvas to pan — the flow itself is untouched.',
+  ],
   reactflow: 'Computing Flows',
 
   async setup(ctx) {

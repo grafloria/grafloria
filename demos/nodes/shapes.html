@@ -29,6 +29,12 @@ const starPath = (w, h) => {
 defineDemo({
   name: 'Shapes',
   blurb: '21 built-in figures, each a full ShapeDefinition — and registerPathShape() adds a custom silhouette whose links attach to its real edge. React Flow charges for its shape pack.',
+  howTo: [
+    'Scan the catalog: the 21 built-in figures — flowchart, BPMN, UML, ERD — plus a custom five-point "star" at the end, registered at runtime through registerPathShape().',
+    'Drag any figure around: each is a full ShapeDefinition on a live node — it selects, drags and connects like any rect.',
+    'Hover a figure\'s edge to surface a port and drag a wire to a neighbour — try wiring the star: the link attaches to its real outline, not to a bounding box around it.',
+    '⌘+wheel / Ctrl+wheel to zoom in: the figures are genuine SVG geometry, crisp at any scale.',
+  ],
   reactflow: 'Shapes',
   pro: true,
 

@@ -38,6 +38,13 @@ const midpoint = (pts) => {
 defineDemo({
   name: 'Edge toolbar',
   blurb: 'A floating toolbar anchored to the edge via createViewportPortal() — sits at the path midpoint and re-anchors when the route moves.',
+  howTo: [
+    'Spot the small dark toolbar (✎ 🗑) floating exactly at the midpoint of the wire between A and B.',
+    'Drag node B anywhere — the toolbar glides continuously so it always sits on the path\'s midpoint; it re-anchors every frame, not just after the drop.',
+    'Drag empty canvas to pan and ctrl/cmd + wheel to zoom — the toolbar is real HTML living in the world layer (createViewportPortal), so it travels with the scene instead of sticking to the screen.',
+    'Click ✎ — the wire toggles dashed and back: the toolbar acts on the edge it is anchored to.',
+    'Click 🗑 — the edge is deleted and the toolbar tears down with it; ⌘Z / Ctrl+Z brings the edge back (re-load the page to get the toolbar again).',
+  ],
   reactflow: 'Edge Toolbar',
 
   async setup(ctx) {
@@ -46,7 +53,25 @@ defineDemo({
 
     const htmlLayer = ctx.host.querySelector('.grafloria-html-layer');
     ctx.portal = createViewportPortal(htmlLayer, { className: 'edge-tb' });
-    ctx.portal.element.innerHTML = '<button title="edit">✎</button><button title="delete">🗑</button>';
+    ctx.portal.element.innerHTML = '<button title="toggle dashed">✎</button><button title="delete edge">🗑</button>';
+
+    // The toolbar's buttons ACT on the edge it is anchored to — an edge toolbar
+    // whose buttons do nothing is decoration (the DEAD-BUTTON gate agrees).
+    const [editBtn, deleteBtn] = ctx.portal.element.querySelectorAll('button');
+    editBtn.addEventListener('click', () => {
+      const link = ctx.diagram.getLink('e1');
+      if (!link) return;
+      const dashed = link.style?.strokeDasharray;
+      link.updateStyle({ strokeDasharray: dashed ? undefined : '8 5' });
+      ctx.instance.renderNow();
+    });
+    deleteBtn.addEventListener('click', async () => {
+      if (!ctx.diagram.getLink('e1')) return;
+      await ctx.instance.getEngine().removeLink('e1');
+      cancelAnimationFrame(ctx._raf);
+      ctx.portal.dispose();
+      ctx.instance.renderNow();
+    });
 
     ctx.reanchor = () => {
       const m = midpoint(ctx.diagram.getLink('e1').points);

@@ -32,6 +32,13 @@ const miniNodeCount = (mini) => mini.element.querySelectorAll('rect[data-node-id
 defineDemo({
   name: 'Minimap & controls',
   blurb: 'A live minimap that mirrors the diagram, plus zoom/fit controls and a dotted background — all from one attachCanvasPlugins() call.',
+  howTo: [
+    'Find the minimap in the bottom-right corner: one rect per node plus a tinted camera rectangle.',
+    'Drag a node — its rect in the minimap tracks the move live.',
+    'Click (or drag) inside the minimap — the camera centres where you point and the main canvas follows.',
+    'Use the control strip bottom-left (hover the buttons for names): "Zoom in" / "Zoom out" zoom the canvas, and the minimap\'s camera rectangle resizes to match.',
+    'Drag empty canvas to pan far off the content, then click "Fit view" — the camera flies back to frame the whole diagram.',
+  ],
   reactflow: 'MiniMap / Controls',
 
   async setup(ctx) {

@@ -10,6 +10,11 @@ import { defineDemo, check } from '../shell/demo.js';
 defineDemo({
   name: 'Auto-sizing',
   blurb: 'Opt a node into content-aware sizing (metadata.sizing.auto) and it grows to fit its label on the very next frame — no manual measuring, and it re-fits when the text changes.',
+  howTo: [
+    'Compare the two nodes: both were DECLARED 60px wide with the same long label. The top one opted in via metadata.sizing.auto and has already grown to fit its text; the bottom control is still squeezed into its 60px — growth is opt-in, per node.',
+    'Drag the top node around — the fitted size travels with it like any hand-set size.',
+    'Click "▶ run the scripted checks" in this panel: the check hands the auto node an even LONGER label and you can watch it widen again to fit (it also verifies the width matches the pure measurer, and that the control never left 60px).',
+  ],
   reactflow: 'Auto-sizing nodes',
 
   async setup(ctx) {

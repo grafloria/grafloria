@@ -39,6 +39,13 @@ const log = (s) => { lines.push(s); document.getElementById('readout').textConte
 defineDemo({
   name: 'Off-thread layout',
   blurb: 'Force layout in a REAL Worker via engine.setLayoutPort(): progress streams from the other thread, a cancel lands mid-run and keeps the partial result, and the main thread keeps ticking the whole time.',
+  howTo: [
+    'On load the 45 nodes sit in a rigid 9×5 grid — no layout has run yet; a real module Worker is standing by.',
+    'Open the DevTools console and run `await __demo.run()`: the grid melts into a force-directed cloud, computed entirely off the main thread.',
+    'Watch the readout log: a monotonically increasing stream of progress events arrives from the worker and reaches 1.',
+    'Then a 4000-iteration run is cancelled mid-flight — "cancelled at iteration …, reason=cancelled, partial=true" — and the partial picture is KEPT on screen, not thrown away.',
+    'The last line counts how often the main thread ticked while the sim ran: the page never froze.',
+  ],
   reactflow: 'Web Worker',
   pro: true,
 

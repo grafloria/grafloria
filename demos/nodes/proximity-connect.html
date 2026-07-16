@@ -10,6 +10,12 @@ import { defineDemo, check } from '../shell/demo.js';
 defineDemo({
   name: 'Proximity connect',
   blurb: 'Drag a node close to another and a wire proposes itself — the shipped SnapController.findProximityConnection, driven off a real node drag and committed on drop. No handles, no aiming.',
+  howTo: [
+    'See the layout first: "drag me →" (A) sits far from B with no wires — at this distance the snap logic proposes nothing.',
+    'Proximity is drop-time HOST GLUE, and this page wires that glue inside its own check — so straight after load, click "▶ run the scripted checks" in this panel.',
+    'Watch A drag itself toward B: the moment its edge comes inside the 60px radius, a wire commits on the drop — no aiming at ports; the shipped SnapController proposed the pair.',
+    'The run then drags A far away again: no new proposal, no duplicate — the single wire survives, stretched across the canvas. Drag A by hand afterwards: the link stays glued like any other edge.',
+  ],
   reactflow: 'Proximity Connect',
 
   async setup(ctx) {

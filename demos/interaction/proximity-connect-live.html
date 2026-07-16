@@ -17,6 +17,12 @@ import { defineDemo, check } from '../shell/demo.js';
 defineDemo({
   name: 'Proximity connect (live)',
   blurb: 'Drag a node next to another and the wire proposes AND commits itself — driven by the engine’s own drag path, not host glue. The page only sets enableProximityConnect.',
+  howTo: [
+    'Drag the "drag me →" node toward B. As it comes inside the radius, a dashed proposal wire appears between their closest ports.',
+    'Drop it there — the proposal commits itself as a real link; you never touched a port.',
+    'Press ⌘Z / Ctrl+Z — the auto-created link is undone; ⇧⌘Z / Ctrl+Y restores it.',
+    'Drag A well clear of B — outside the radius no proposal paints, and dropping adds nothing.',
+  ],
   reactflow: 'Proximity Connect',
 
   async setup(ctx) {
@@ -55,11 +61,23 @@ defineDemo({
     check(m.getLinks().length === 0, 'should start with no links');
 
     // 1. Drag A until its right edge nears B's left edge (600). A starts x=150
-    //    (right edge 300); move +280 so the edge (580) is ~20px from B — inside
-    //    the default 60px proximity radius. NO host-side snap call here.
+    //    (right edge 300); move +280 so the edge (580) is ~20px from B — well
+    //    inside the default 120px proximity radius. NO host-side snap call here.
+    //    MID-DRAG, the proposal must be VISIBLE as a dashed wire — highlighting
+    //    only the port glyphs read as "nothing is happening" (live report:
+    //    "the wire isn't showing").
     const before = ctx.centre('a');
-    ctx.dragBody(before, { x: before.x + 280, y: before.y });
+    ctx.fire('mousedown', before);
+    ctx.fire('mousemove', { x: before.x + 6, y: before.y });
+    ctx.fire('mousemove', { x: before.x + 280, y: before.y });
+    ctx.instance.renderNow(); await ctx.tick();
+    const wire = ctx.host.querySelector('.proximity-preview-line');
+    check(!!wire, 'mid-drag inside the radius, the proposal wire is not painted');
+    ctx.fire('mouseup', { x: before.x + 280, y: before.y });
+    ctx.instance.renderNow();
     await ctx.tick();
+    check(!ctx.host.querySelector('.proximity-preview-line'),
+      'the proposal wire must clear once the drop commits');
 
     // 2. THE TEETH: the engine created a real link between A and B on its own.
     check(m.getLinks().length === 1, `the live drag should have auto-created one link, got ${m.getLinks().length}`);

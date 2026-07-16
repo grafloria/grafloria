@@ -46,6 +46,12 @@ const modelToSpec = (model) => ({
 defineDemo({
   name: 'Editable round-trip',
   blurb: 'The diagram model is embedded in the exported SVG/PNG; re-opening the file gives back an EDITABLE diagram, not a flat image.',
+  howTo: [
+    'Drag the nodes in the LEFT ("original") pane — this live model is what rides inside the exported file.',
+    'Click "▶ run the scripted checks" in this panel (once per page load) — the page exports the left diagram as SVG and PNG with the model embedded, then re-imports both from the file bytes alone.',
+    'Watch the RIGHT pane fill: that diagram was re-opened from the exported SVG — live and editable; the checks even move its Author node to prove it.',
+    'The readout shows "✓ all checks passed": labels and positions survived both round-trips, and a plain export WITHOUT embedModel correctly refuses to re-open — flat picture in, flat picture out.',
+  ],
   reactflow: null,
 
   async setup(ctx) {

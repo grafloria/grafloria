@@ -52,6 +52,12 @@ const modelToSpec = (model) => ({
 defineDemo({
   name: 'Mermaid text',
   blurb: 'Lossless, Mermaid-compatible text with a hidden model sidecar — and hand-edit detection: edit the text and the diagram rebuilds from your edit.',
+  howTo: [
+    'Read the text pane on the right: an ordinary Mermaid flowchart body, then %% sidecar comments carrying the exact model (any Mermaid renderer ignores them).',
+    'Click "apply text → diagram" without editing — the status reads "unchanged → lossless sidecar": the byte-exact model wins.',
+    'Hand-edit the body: change build[Build] to build[Verify] and click apply — the status flips to "hand-edit detected → rebuilt from text" and the middle node now reads Verify.',
+    'Check the neighbours: Plan and Ship survived your edit untouched — a hand-edit rebuilds from the text without wiping the labels you didn\'t touch.',
+  ],
   reactflow: null,
 
   async setup(ctx) {

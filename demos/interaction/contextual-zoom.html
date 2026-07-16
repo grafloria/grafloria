@@ -37,6 +37,12 @@ const labelCount = (host) => host.querySelectorAll('svg text').length;
 defineDemo({
   name: 'Contextual zoom (LOD)',
   blurb: 'The detail tier follows the zoom: high → medium → sketch → low. Both the reported tier and the amount of text in the DOM drop as you zoom out — the tiers are genuinely different renders, not one picture with 17 names.',
+  howTo: [
+    'Click "1.5× high" — full detail: labels everywhere, and the readout on the right reports the tier plus how much text is in the DOM.',
+    'Click "0.7× medium", then "0.3× sketch" — each click zooms out a band, the readout names the new tier, and detail visibly falls away.',
+    'Click "0.15× low" — the text-node count in the readout drops furthest: the renderer is really shedding detail, not renaming one picture.',
+    'Click "1.5× high" again — every label returns; the tier is a pure function of zoom, in both directions.',
+  ],
   reactflow: 'Zoom LOD',
 
   async setup(ctx) {

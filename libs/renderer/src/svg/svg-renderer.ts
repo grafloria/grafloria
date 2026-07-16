@@ -1,4 +1,4 @@
-import type { DiagramEngine, DiagramModel, NodeModel, NodeStyle, LinkModel, LinkStyle, PortModel, InteractionConfig, ReconnectionPreview, LODLevel, LODFeature, Shadow, GroupModel } from '@grafloria/engine';
+import type { DiagramEngine, DiagramModel, NodeModel, NodeStyle, LinkModel, LinkStyle, PortModel, InteractionConfig, ReconnectionPreview, ProximityPreview, LODLevel, LODFeature, Shadow, GroupModel } from '@grafloria/engine';
 // Value import: the ONE definition of "where does a label sit along the path"
 // (slot vs position), shared by the model, this renderer and the edge optimizer.
 import { linkLabelPosition, DiagramSerializer } from '@grafloria/engine';
@@ -912,6 +912,7 @@ export class SVGRenderer implements IRenderer {
     const linksLayer = this.renderLinksLayer(visibleLinks, lod);
     const nodesLayer = this.renderNodesLayer(visibleNodes, lod);
     const connectionPreviewLayer = this.renderConnectionPreviewLayer();
+    const snapGuidesLayer = this.renderSnapGuidesLayer();
 
     // wave9/comments (Card 6): the pins. Null unless a comment source is attached, so a
     // canvas with no comment system pays literally nothing — not a layer, not a query.
@@ -986,6 +987,7 @@ export class SVGRenderer implements IRenderer {
         linksLayer,
         nodesLayer,
         connectionPreviewLayer,
+        snapGuidesLayer,
         defsNode,
         strokesLayer,
         commentsLayer,
@@ -2956,6 +2958,19 @@ export class SVGRenderer implements IRenderer {
           children.push(ghost);
         }
       }
+
+      // wave12/connect-ergonomics: the proximity-connect PROPOSAL, drawn as a
+      // live dashed wire between the two ports a drop would link. Highlighting
+      // only the port glyphs left the proposal nearly invisible mid-drag (live
+      // report: "the wire isn't showing"). A node drag never coexists with a
+      // connection drag, so this shares the !isConnecting branch.
+      const proximity = this.engine.getProximityPreview?.();
+      if (proximity) {
+        const wire = this.renderProximityPreview(proximity);
+        if (wire) {
+          children.push(wire);
+        }
+      }
     }
 
     return {
@@ -3138,6 +3153,95 @@ export class SVGRenderer implements IRenderer {
    * connection preview uses so the ghost matches the link's routing algorithm.
    * Colour reflects drop validity (success vs default link colour).
    */
+  /**
+   * wave15/helper-lines: the live snap guides a node drag publishes
+   * (engine.getSnapGuides) as dashed overlay lines; spacing segments carry
+   * their gap label at the midpoint. Null (no layer at all) when idle, so a
+   * diagram that never snaps pays nothing.
+   */
+  private renderSnapGuidesLayer(): VNode | null {
+    const guides = this.engine.getSnapGuides?.();
+    if (!guides || guides.length === 0) return null;
+
+    const accent = this.theme.colors.link.highlighted ?? this.theme.colors.link.default;
+    const children: VNode[] = guides.map((g, i) => ({
+      type: 'line',
+      key: `snap-guide-${i}`,
+      props: {
+        x1: g.x1, y1: g.y1, x2: g.x2, y2: g.y2,
+        stroke: accent,
+        strokeWidth: 1,
+        strokeDasharray: g.kind === 'alignment' ? '5 4' : '2 3',
+        opacity: 0.9,
+        pointerEvents: 'none',
+        className: `snap-guide-line snap-guide-${g.kind}`,
+      },
+    }));
+    for (const [i, g] of guides.entries()) {
+      if (!g.label) continue;
+      children.push({
+        type: 'text',
+        key: `snap-guide-label-${i}`,
+        props: {
+          x: (g.x1 + g.x2) / 2,
+          y: (g.y1 + g.y2) / 2 - 4,
+          fill: accent,
+          fontSize: 10,
+          textAnchor: 'middle',
+          pointerEvents: 'none',
+          className: 'snap-guide-label',
+          textContent: g.label,
+        },
+      });
+    }
+
+    return {
+      type: 'g',
+      key: 'snap-guides-layer',
+      props: { className: 'snap-guides-layer', pointerEvents: 'none' },
+      children,
+    };
+  }
+
+  /**
+   * The proximity-connect proposal wire: a dashed line between the two port
+   * anchors a drop would link. Port anchors resolve through the SAME helpers
+   * the port glyphs render with (getPortPositionForShape + getWorldPosition),
+   * so the wire lands exactly on the highlighted glyphs.
+   */
+  private renderProximityPreview(preview: ProximityPreview): VNode | null {
+    const diagram = this.engine.getDiagram();
+    if (!diagram) return null;
+
+    const anchor = (nodeId: string, portId: string): { x: number; y: number } | null => {
+      const node = diagram.getNode(nodeId);
+      const port = node?.getPort(portId);
+      if (!node || !port) return null;
+      const local = getPortPositionForShape(port, node);
+      const world = node.getWorldPosition();
+      return { x: world.x + local.x, y: world.y + local.y };
+    };
+
+    const from = anchor(preview.sourceNodeId, preview.sourcePortId);
+    const to = anchor(preview.targetNodeId, preview.targetPortId);
+    if (!from || !to) return null;
+
+    return {
+      type: 'path',
+      key: 'proximity-preview',
+      props: {
+        d: `M ${from.x} ${from.y} L ${to.x} ${to.y}`,
+        fill: 'none',
+        stroke: this.theme.colors.link.highlighted ?? this.theme.colors.link.default,
+        strokeWidth: 2,
+        strokeDasharray: '6 4',
+        opacity: 0.85,
+        pointerEvents: 'none',
+        className: 'proximity-preview-line',
+      },
+    };
+  }
+
   private renderReconnectionPreview(preview: ReconnectionPreview): VNode | null {
     const config = this.engine.getInteractionConfig();
     if (!config.showConnectionPreview) {
@@ -3989,11 +4093,46 @@ export class SVGRenderer implements IRenderer {
     // Cache if enabled (use LOD-specific cache key). Never cache paint-server
     // nodes — see the cache-read note above.
     if (this.config.enableCaching && !usesPaintServer) {
-      this.vnodeCache.set(cacheKey, vnode);
-      node.markClean();
+      this.cacheEntityVNode('node', node.id, cacheKey, vnode, node);
     }
 
     return vnode;
+  }
+
+  /**
+   * Every VNode-cache key an entity currently occupies — one per LOD tier it
+   * has been rendered at since its last change.
+   *
+   * A SINGLE dirty flag guards a PER-LOD cache: rebuilding one tier's entry
+   * and calling markClean() left every OTHER tier's cached entry stale, so a
+   * layout that moved geometry resurfaced its PRE-layout picture on the next
+   * zoom/fitView LOD flip (live report: "click force then dagre — the diagram
+   * is destroyed"; the painted edges were the previous layout's routes).
+   * Evicting the entity's whole key set on the dirty rebuild is what makes
+   * markClean() safe again — and it tracks keys rather than hard-coding the
+   * tier vocabulary, so custom governor tiers stay covered.
+   */
+  private entityCacheKeys = new Map<string, string[]>();
+
+  private cacheEntityVNode(
+    kind: 'node' | 'link',
+    id: string,
+    cacheKey: string,
+    vnode: VNode,
+    entity: { isDirty: boolean; markClean(): void }
+  ): void {
+    const entityKey = `${kind}-${id}`;
+    if (entity.isDirty) {
+      for (const stale of this.entityCacheKeys.get(entityKey) ?? []) {
+        if (stale !== cacheKey) this.vnodeCache.delete(stale);
+      }
+      this.entityCacheKeys.set(entityKey, []);
+    }
+    this.vnodeCache.set(cacheKey, vnode);
+    const keys = this.entityCacheKeys.get(entityKey) ?? [];
+    if (!keys.includes(cacheKey)) keys.push(cacheKey);
+    this.entityCacheKeys.set(entityKey, keys);
+    entity.markClean();
   }
 
   /**
@@ -4643,7 +4782,13 @@ export class SVGRenderer implements IRenderer {
     const baseProps = {
       fill: '#000',
       opacity: isHovered ? 0.15 : 0.1,
-      filter: 'blur(4px)',
+      // Blur through the CSS property, NOT the SVG `filter` attribute: the
+      // attribute only honours url(#…) references in practice, so the "blur"
+      // silently never applied and the shadow painted as a crisp black rect
+      // offset (3,3) — a hard second border along every node's bottom/right
+      // (live report: "borders coming on top of each other, some borders
+      // thicker than others").
+      style: { filter: 'blur(4px)' },
       className: 'node-shadow',
     };
 
@@ -5706,8 +5851,7 @@ export class SVGRenderer implements IRenderer {
         children: [...(hitAreaVNode ? [hitAreaVNode] : []), ...templateVNodes],
       };
       if (this.config.enableCaching && !usesPaintServer) {
-        this.vnodeCache.set(cacheKey, templated);
-        link.markClean();
+        this.cacheEntityVNode('link', link.id, cacheKey, templated, link);
       }
       return templated;
     }
@@ -5861,8 +6005,7 @@ export class SVGRenderer implements IRenderer {
     // Cache if enabled (use LOD-specific cache key to match the lookup above).
     // Never cache paint-server links — see the cache-read note above.
     if (this.config.enableCaching && !usesPaintServer) {
-      this.vnodeCache.set(cacheKey, vnode);
-      link.markClean();
+      this.cacheEntityVNode('link', link.id, cacheKey, vnode, link);
     }
 
     return vnode;

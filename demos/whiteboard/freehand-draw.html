@@ -29,6 +29,12 @@ function gesture(host, from, to, steps) {
 defineDemo({
   name: 'Freehand draw',
   blurb: 'Draw ink with a pointer or a finger. The line commits as one simplified stroke entity — real vector ink, not a screenshot.',
+  howTo: [
+    'The pen is live on load: press anywhere on the blank canvas and drag a wavy line — red ink follows the pointer.',
+    'Release: the trace commits as ONE simplified stroke entity — real vector ink, not a screenshot.',
+    'Zoom your browser in (⌘+ / Ctrl++): the ink stays perfectly crisp, because it is an SVG path.',
+    'Press ⌘Z / Ctrl+Z: the whole stroke vanishes in one step — one gesture, one undo entry.',
+  ],
   reactflow: 'Freehand Draw',
   pro: true, // React Flow ships freehand as a Pro/paid example; this is the last genuine gap.
 

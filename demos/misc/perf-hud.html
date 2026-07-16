@@ -35,6 +35,13 @@ const SPEC = {
 defineDemo({
   name: 'Perf HUD & quality governor',
   blurb: 'An adaptive quality governor that steps the render tier down under load, with a live HUD — and idle-cost / pan-fps measured in the page.',
+  howTo: [
+    'Read the HUD in the top-right: fps, ms/frame, visible node/link counts and the current render tier for this 24-node scene.',
+    'Pan (drag empty canvas) and zoom (ctrl/cmd + wheel) — every pan is a real repaint, and it stays smooth.',
+    'Click "▶ run the scripted checks" in this panel (once per page load) — it feeds the governor slow frames (the tier steps down), catastrophic ones (it escalates), then fast ones (detail returns, patiently), and finally times a 400-pan burst.',
+    'Watch the bottom-left box replace "measuring…" with the measured truth: an idle canvas does 0 paints over 200 queued frames, plus the pan burst\'s achieved fps.',
+    'The HUD now shows the under-load snapshot the governor produced (25 fps, stepped-down tier) — live numbers in the DOM, not a mock-up.',
+  ],
   reactflow: null,
 
   async setup(ctx) {

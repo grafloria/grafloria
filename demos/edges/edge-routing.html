@@ -50,6 +50,12 @@ function crossesRect(pts, r, margin = 2) {
 defineDemo({
   name: 'Edge routing',
   blurb: 'A Manhattan route that dodges an obstacle: asserted to be orthogonal AND to never cross the obstacle rectangle. Re-routes live when the wall moves or vanishes.',
+  howTo: [
+    'Follow the wire from A to B: it bends in right-angle segments around the "obstacle" wall — a straight line would cut right through it.',
+    'Drag the obstacle up and down across the corridor — the route re-computes live and keeps dodging the wall wherever you drop it.',
+    'Click "remove the obstacle": with nothing in the way, the wire snaps straight and the readout drops to "2 points".',
+    'Click "restore the obstacle" — the Manhattan detour comes back.',
+  ],
   reactflow: 'Edge Routing',
   pro: true,
 

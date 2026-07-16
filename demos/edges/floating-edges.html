@@ -28,6 +28,11 @@ const POSITIONS = { right: { x: 760, y: 260 }, above: { x: 380, y: 30 }, left: {
 defineDemo({
   name: 'Floating edges',
   blurb: "Endpoints slide to the nearest point on each node's perimeter (draw.io strategy) — asserted by watching the attachment migrate to the side that faces the partner when a node moves.",
+  howTo: [
+    'Click "above" in the bar: B jumps over A, and the edge\'s endpoint slides from A\'s right side to A\'s top — same link, nothing re-wired.',
+    'Click "left" and "right" — each time, the attachment migrates to whichever side of A now faces B.',
+    'Drag B slowly in a circle around A: both endpoints slide continuously around the node perimeters to stay at the nearest facing points — neither end is pinned to a fixed port.',
+  ],
   reactflow: 'Floating Edges',
 
   async setup(ctx) {

@@ -14,6 +14,12 @@ import { defineDemo, check } from '../shell/demo.js';
 defineDemo({
   name: 'Group frames',
   blurb: 'Groups now draw a visible, labelled, themed frame — nested containers included. Was model-only since Wave 7.',
+  howTo: [
+    'Look at the canvas: the "Pipeline" group draws a real, labelled frame around its three nodes — containers used to be model-only and invisible.',
+    'Find the nested "Retry handler" frame INSIDE the pipeline, wrapping just the retry node: frames nest.',
+    'Drag any node, say "ingest" — it responds normally: frames paint BEHIND the nodes and never steal their clicks.',
+    'Note both frames carry their names — a container you cannot name is chrome, not a group.',
+  ],
   reactflow: 'Sub Flow',
 
   async setup(ctx) {

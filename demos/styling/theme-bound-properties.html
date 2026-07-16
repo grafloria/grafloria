@@ -95,6 +95,12 @@ function hexToRgb(hex) {
 defineDemo({
   name: 'Theme-bound properties',
   blurb: "themeRef('category.critical') — a theme swap recolours the CALLER's semantic colours, not just the chrome. The one dimension where GoJS clearly led us.",
+  howTo: [
+    'Read the four severity nodes — the spec never names a colour; every fill and stroke is themeRef(\'category.critical\') and friends.',
+    'Click "dark": every severity node AND its edge re-tints to the dark theme\'s idea of that meaning — the caller\'s semantics ride the theme, not just the chrome.',
+    'Click "high contrast": critical becomes a darker WCAG-safe red and every emphasised border visibly THICKENS — the numeric scale (numbers.emphasis) is theme-bound too.',
+    'Click "light" to come back — at no point did any node learn what colour it is.',
+  ],
   reactflow: null,
 
   async setup(ctx) {

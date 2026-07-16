@@ -24,6 +24,12 @@ const NODES = [
 defineDemo({
   name: 'Editable edge',
   blurb: 'Click an edge to drop a waypoint, then drag it — the route bends to follow. Driven with real pointer events; React Flow charges for editable edges.',
+  howTo: [
+    'Click the wire between A and B — its stroke highlights to show it is selected.',
+    'Click the selected edge\'s body where you want a bend — a waypoint handle appears right under the click, and the route now passes through it.',
+    'Drag that waypoint anywhere — the wire bends to follow while both ends stay pinned to A and B, and dashed guides track your pointer 1:1 during the drag.',
+    'Click other spots on the selected edge to drop more waypoints and sculpt a multi-bend route.',
+  ],
   reactflow: 'Editable Edge',
   pro: true,
 

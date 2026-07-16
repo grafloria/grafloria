@@ -47,6 +47,12 @@ const visibleCount = (model) => model.getNodes().filter((n) => n.state.visible !
 defineDemo({
   name: 'Expand / collapse',
   blurb: 'Collapse a container to a placeholder — members hide, boundary edges aggregate onto a proxy — then expand it back to the exact pixel it held. Lossless, and driven through the real GroupCollapseService.',
+  howTo: [
+    'Click "collapse": the three members vanish and the container shrinks to a small placeholder; the edges that crossed the boundary re-home onto it (the two same-direction ones aggregate into one).',
+    'Watch the readout: visible drops from 4 to 2, nodes rises by one (the placeholder proxy), collapsed=true.',
+    'Click "expand": every member returns — to the exact pixel it held before — and the readout goes back to its original numbers.',
+    'Round-trip collapse/expand a few times: it is lossless every time.',
+  ],
   reactflow: 'Expand Collapse',
   pro: true,
 

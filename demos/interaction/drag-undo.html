@@ -14,6 +14,12 @@ import { defineDemo, check } from '../shell/demo.js';
 defineDemo({
   name: 'Drag is undoable',
   blurb: 'Drag a node, press Ctrl+Z — it returns to where the drag began. The drag now commits one undoable step.',
+  howTo: [
+    'Drag the "drag me" node somewhere else and release.',
+    'Press ⌘Z / Ctrl+Z — the node snaps back to exactly where the drag began: one gesture, one undo step.',
+    'Press ⇧⌘Z / Ctrl+Y — redo puts it back where you dropped it.',
+    'Drag both nodes, then undo twice — each drag is its own history step, unwound in order.',
+  ],
   reactflow: 'Undo and Redo',
   pro: true, // React Flow's undo/redo is a Pro example
 
@@ -61,19 +67,29 @@ defineDemo({
     check(moved.x === start.x + 180 && moved.y === start.y + 100,
       `drag did not move the node: ${JSON.stringify(start)} -> ${JSON.stringify(moved)}`);
 
-    // 2. THE ASSERTION THAT WAS RED: undo returns it to where the drag BEGAN.
-    await ctx.engine.undo();
-    await ctx.tick();
+    // 2. THE ASSERTION THAT WAS RED: undo returns it to where the drag BEGAN —
+    //    driven through the REAL keyboard chord (⌘Z), not engine.undo(). The
+    //    engine API always worked while NO key binding reached it, so a live
+    //    visitor pressing undo got nothing (live report, on a Mac — which is
+    //    also why this dispatches metaKey, the chord Ctrl-only handlers drop).
+    window.dispatchEvent(new KeyboardEvent('keydown', { key: 'z', metaKey: true, bubbles: true, cancelable: true }));
+    // The chord routes through an async command — poll briefly for it to land.
+    for (let i = 0; i < 30 && ctx.pos('n1').x !== start.x; i++) await new Promise((r) => setTimeout(r, 10));
     const undone = ctx.pos('n1');
     check(undone.x === start.x && undone.y === start.y,
-      `undo did not restore the drag start: expected ${JSON.stringify(start)}, got ${JSON.stringify(undone)}`);
+      `keyboard undo (⌘Z) did not restore the drag start: expected ${JSON.stringify(start)}, got ${JSON.stringify(undone)}`);
 
     // 3. Redo re-applies it — one gesture is one clean, reversible history step.
-    await ctx.engine.redo();
-    await ctx.tick();
+    //    Ctrl+Shift+Z, so both modifier flavours are exercised end-to-end.
+    // The position lands mid-pipeline; give the command manager a beat to
+    // finish the undo before the next chord, or the redo is refused as
+    // re-entrant and silently dropped.
+    await new Promise((r) => setTimeout(r, 40));
+    window.dispatchEvent(new KeyboardEvent('keydown', { key: 'z', ctrlKey: true, shiftKey: true, bubbles: true, cancelable: true }));
+    for (let i = 0; i < 30 && ctx.pos('n1').x !== moved.x; i++) await new Promise((r) => setTimeout(r, 10));
     const redone = ctx.pos('n1');
     check(redone.x === moved.x && redone.y === moved.y,
-      `redo did not re-apply the drag: expected ${JSON.stringify(moved)}, got ${JSON.stringify(redone)}`);
+      `keyboard redo (Ctrl+Shift+Z) did not re-apply the drag: expected ${JSON.stringify(moved)}, got ${JSON.stringify(redone)}`);
   },
 });
 </script>

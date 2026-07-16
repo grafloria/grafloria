@@ -39,6 +39,13 @@ function installEasyConnect(model, engine) {
 defineDemo({
   name: 'Easy connect',
   blurb: 'The whole node is a connection handle: press anywhere on one node, release anywhere on another, and they wire up — no need to hit a tiny port. Real pointer drag; a real link.',
+  howTo: [
+    'Press anywhere on node A\'s body — dead centre is fine; there is no port to aim at.',
+    'Keep the button down, cross to node B, and release anywhere on it: a wire appears joining A to B.',
+    'Press ⌘Z / Ctrl+Z to unwind it — the tool commits the link through the command stack.',
+    'Press on B and release over empty canvas: nothing connects. A node is a handle; the void is not.',
+    'Note the trade this page makes: with the whole body a connect handle, a body-press no longer MOVES a node — the registered tool owns the gesture.',
+  ],
   reactflow: 'Easy Connect',
 
   async setup(ctx) {

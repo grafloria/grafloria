@@ -51,6 +51,13 @@ const defIdIn = (s) => (String(s).match(/#(grafloria-def-[a-z0-9]+)/) || [])[1];
 defineDemo({
   name: 'Paint servers',
   blurb: 'Gradient & pattern fills and drop-shadow filters — each a real, deduped <defs> paint server referenced by url(#…), not a flattened approximation.',
+  howTo: [
+    'Compare the six nodes: a linear gradient (and its twin), a radial gradient, a dots pattern, a drop shadow, and the flat control.',
+    'Zoom your browser in (⌘+ / Ctrl++) — gradients and dots stay perfectly crisp: real SVG paint servers, not baked bitmaps.',
+    'Inspect the "linear" node in devtools: the rect\'s inline fill is url(#grafloria-def-…), pointing at a real <linearGradient> in the page\'s single <defs>.',
+    'Check "linear (twin)": it references the SAME def id — two identical specs dedup to one shared paint server.',
+    'Note "flat (control)" keeps a bare colour — no def is minted for a plain fill.',
+  ],
   reactflow: null,
 
   async setup(ctx) {

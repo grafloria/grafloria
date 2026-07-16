@@ -51,6 +51,12 @@ const portOf = (node, side) => node.getPortBySide(side);
 defineDemo({
   name: 'Preventing cycles',
   blurb: 'A DAG that stays acyclic: a connection whose target can already reach its source is refused, so a→b→c→d can never be closed into a loop. Driven through the real connect pipeline.',
+  howTo: [
+    'The pipeline runs A→B→C→D. Try to close the loop: drag from D\'s right port and drop on A\'s left port — the connection is refused, no wire appears.',
+    'Try the shortcut C→A the same way — also refused: A already reaches C, so that edge would cycle too.',
+    'Drag from A\'s right port to D\'s left port — a legal forward edge, and it connects.',
+    'Drag the nodes around freely — legality is reachability through the wires, never where the boxes sit.',
+  ],
   reactflow: 'Prevent Cycles',
 
   async setup(ctx) {

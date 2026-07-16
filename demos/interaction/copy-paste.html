@@ -28,6 +28,13 @@ const SPEC = {
 defineDemo({
   name: 'Copy / paste',
   blurb: 'Copy a node, paste it twice — two independent copies, each with its own id and position, and mutating one touches neither the other nor the original.',
+  howTo: [
+    'Click the Original node to select it, then press ⌘C / Ctrl+C to copy it.',
+    'Press ⌘V / Ctrl+V — an independent copy appears, offset from the original.',
+    'Press ⌘V / Ctrl+V again — a second copy, with its own id and position.',
+    'Drag one copy somewhere else — the other copy and the Original stay put; the pastes share nothing.',
+    'Select a copy and press Delete — it disappears; ⌘Z / Ctrl+Z brings it back.',
+  ],
   reactflow: 'Copy Paste',
   pro: true,
 
@@ -89,7 +96,18 @@ defineDemo({
     check(c2.position.x === c2Before.x && c2.position.y === c2Before.y, 'moving copy #1 moved copy #2 — they share state');
     check(orig.position.x === origBefore.x && orig.position.y === origBefore.y, 'moving copy #1 moved the ORIGINAL — paste aliased it');
 
-    ctx.report(`orig=${orig.id}  copy1=${c1.id}  copy2=${c2.id}  (3 independent nodes)`);
+    // 4. THE KEYBOARD PATH. ⌘C then ⌘V must work live — the engine clipboard
+    //    always did, while NO key binding reached it (live report: "copy paste
+    //    not working"; metaKey deliberately, the flavour Ctrl-only chords drop).
+    engine.selectNodes(['orig']);
+    window.dispatchEvent(new KeyboardEvent('keydown', { key: 'c', metaKey: true, bubbles: true, cancelable: true }));
+    for (let i = 0; i < 30 && !engine.hasClipboardData(); i++) await new Promise((r) => setTimeout(r, 10));
+    window.dispatchEvent(new KeyboardEvent('keydown', { key: 'v', metaKey: true, bubbles: true, cancelable: true }));
+    for (let i = 0; i < 30 && model.getNodes().length < 4; i++) await new Promise((r) => setTimeout(r, 10));
+    check(model.getNodes().length === 4,
+      `⌘C/⌘V did not paste a 4th node live (have ${model.getNodes().length})`);
+
+    ctx.report(`orig=${orig.id}  copy1=${c1.id}  copy2=${c2.id}  (+1 via ⌘C/⌘V = 4 independent nodes)`);
   },
 });
 </script>

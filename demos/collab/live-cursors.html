@@ -44,6 +44,13 @@ function peer(hostId, actor, name) {
 defineDemo({
   name: 'Live cursors',
   blurb: "Remote presence cursors on a separate DOM layer — 60Hz cursor traffic never repaints the diagram and never touches the op log.",
+  howTo: [
+    'Sweep your pointer across the LEFT pane — a cursor labelled "Ana" tracks it live in the RIGHT pane.',
+    'Move out of the pane and the remote cursor disappears — presence clears on pointer-leave.',
+    'It\'s symmetric: move over the RIGHT pane and a "Bo" cursor appears in the LEFT one.',
+    'Click a node in one pane — the OTHER pane outlines it: selection is shared presence too.',
+    'Drag a node in either pane — that move syncs across as a document op; cursor traffic, by contrast, never repaints the diagram and never enters the op log.',
+  ],
   reactflow: 'Collaborative (Yjs)',
   pro: true,
 

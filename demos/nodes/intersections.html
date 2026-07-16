@@ -21,6 +21,11 @@ const intersecting = (model, id) => {
 defineDemo({
   name: 'Intersections',
   blurb: 'Which nodes overlap which — from the diagram’s spatial index. Drag a node onto another and the overlap set updates; drag it clear and it empties.',
+  howTo: [
+    'Drag node A rightwards onto node B — the canvas allows free overlap, nothing snaps them apart. The model\'s spatial index (an AABB region query) re-indexes on every move, so the overlap set fills and empties as you drag.',
+    'Drag A well clear again — a stale index would keep reporting the phantom overlap; this one empties.',
+    'To watch the index interrogated live: reload the page (the check needs the boot layout), then click "▶ run the scripted checks" in this panel — A jumps onto B and back while the page\'s assertions confirm the overlap is reported BOTH ways while touching, and gone once clear.',
+  ],
   reactflow: 'Intersections',
 
   async setup(ctx) {

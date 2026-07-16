@@ -50,14 +50,22 @@ async function pixelsOf(dataUrl) {
 defineDemo({
   name: 'Download image',
   blurb: 'PNG and SVG straight from the VNode tree — labels, arrowheads and shadows included — and the raster is provably not blank and not black.',
+  howTo: [
+    'Click "download PNG" — diagram.png downloads at 2× scale. Open it: node labels, arrowheads and the Transform node\'s drop shadow are all in the image, which is neither blank nor black.',
+    'Click "download SVG" and open diagram.svg in a text editor — the labels are real <text>, the arrowhead a <marker>, the shadow a filter: the VNode tree serialized, not a screenshot.',
+    'Drag a node somewhere else and download again — the exports track the live model.',
+  ],
   reactflow: 'Download Image',
 
   async setup(ctx) {
     const api = render(SPEC, ctx.host);
     ctx.instance = api;
     api.renderNow();
-    document.getElementById('dl-png').onclick = async () => download(await api.export('png', { scale: 2 }), 'diagram.png');
-    document.getElementById('dl-svg').onclick = async () => download('data:image/svg+xml;charset=utf-8,' + encodeURIComponent(await api.export('svg')), 'diagram.svg');
+    // Feedback beside the buttons: a download alone leaves the PAGE unchanged,
+    // which reads as "nothing happened" (and the DEAD-BUTTON gate agrees).
+    const note = (m) => { let el = document.getElementById('dl-note'); if (!el) { el = document.createElement('span'); el.id = 'dl-note'; el.style.cssText = 'font:12px ui-monospace,monospace;opacity:.8;margin-left:8px'; document.getElementById('dl-png').parentElement.appendChild(el); } el.textContent = m; };
+    document.getElementById('dl-png').onclick = async () => { const d = await api.export('png', { scale: 2 }); download(d, 'diagram.png'); note(`diagram.png saved (${Math.round(d.length * 3 / 4 / 1024)} KB)`); };
+    document.getElementById('dl-svg').onclick = async () => { const svg = await api.export('svg'); download('data:image/svg+xml;charset=utf-8,' + encodeURIComponent(svg), 'diagram.svg'); note(`diagram.svg saved (${Math.round(svg.length / 1024)} KB)`); };
     await ctx.tick();
   },
 

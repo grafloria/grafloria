@@ -57,6 +57,12 @@ function peer(hostId, actor) {
 defineDemo({
   name: 'Two tabs, live',
   blurb: 'Real cross-tab multiplayer over BroadcastChannel — no server. Edit one instance, the other converges through a per-property CRDT.',
+  howTo: [
+    'Drag the Ingest node in tab A (left pane) — the same node moves in tab B (right pane): the op crossed a BroadcastChannel, no server anywhere.',
+    'Drag any node in tab B — it propagates back into tab A: a symmetric pipe, not one-way.',
+    'Watch a drag mid-flight: the remote pane follows continuously, not on mouse-up — ops stream per change, unbatched, in this demo.',
+    'Pan or zoom a single pane (drag empty canvas; ctrl/cmd + wheel) — cameras stay per-tab: only document edits sync, not viewports.',
+  ],
   reactflow: 'Collaborative (Yjs)',
   pro: true,
 

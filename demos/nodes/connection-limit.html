@@ -10,6 +10,11 @@ import { defineDemo, check } from '../shell/demo.js';
 defineDemo({
   name: 'Connection limit',
   blurb: 'A port declares maxConnections:1 and REFUSES a second wire — vetoed inside the real drag, not by disabling the UI. Drawn with genuine pointer events; the refusal leaves the model untouched.',
+  howTo: [
+    'Hover the right edge of "Source 1" so its port glyph surfaces, press on it, drag a wire to the port on the LEFT edge of "Target (1 max)" and release: the wire lands. (Escape mid-drag cancels a connection.)',
+    'Draw the same wire from "Source 2" to that SAME left port and release: nothing lands — the port declares maxConnections:1, so the drop is vetoed inside the drag. The first wire is untouched.',
+    'Drag from "Source 2" to the port on the target\'s RIGHT edge instead: it connects. The cap is per-port, not per-node — only the full port refuses.',
+  ],
   reactflow: 'Connection Limit',
 
   async setup(ctx) {

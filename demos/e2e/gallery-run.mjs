@@ -101,6 +101,7 @@ for (const page of pages) {
       name: window.__demo.name,
       reactflow: window.__demo.reactflow,
       pro: window.__demo.pro,
+      howToSteps: window.__demo.howToSteps ?? 0,
     }));
     result.reactflow = meta.reactflow;
     result.pro = meta.pro;
@@ -116,6 +117,13 @@ for (const page of pages) {
 
     result.ok = run.ok && pageErrors.length === 0;
     result.failures = run.failures ?? [];
+    // A feature a visitor cannot FIND is a feature that does not work for them:
+    // every page must carry "How to test" steps (rendered as the right-side
+    // panel; live report asked for it on every example page).
+    if (meta.howToSteps < 3) {
+      result.ok = false;
+      result.failures.push(`declares ${meta.howToSteps} howTo steps — every demo needs at least 3 ("How to test" panel)`);
+    }
   } catch (e) {
     result.failures = [`harness: ${e.message}`];
   }

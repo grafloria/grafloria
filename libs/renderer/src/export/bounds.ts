@@ -268,7 +268,11 @@ function addGeometry(vnode: VNode, m: Matrix, box: BoxAccumulator): void {
   // would shave the soft edge off the shadow on the right and bottom of the diagram.
   // Expanding by the radius is a slight over-estimate (the visible tail is shorter),
   // which is the safe direction for an export box.
-  const pad = strokeWidth / 2 + blurRadius(props['filter']);
+  // The blur may arrive as the SVG attribute OR inside the style object — the
+  // renderer moved the node shadow to `style.filter` (the attribute form never
+  // actually blurred in browsers; only url(#…) applies there).
+  const styleFilter = (props['style'] as Record<string, unknown> | undefined)?.['filter'];
+  const pad = strokeWidth / 2 + Math.max(blurRadius(props['filter']), blurRadius(styleFilter));
 
   switch (vnode.type) {
     case 'rect': {

@@ -15,6 +15,12 @@ const encloses = (r, n) =>
 defineDemo({
   name: 'Sub-flow',
   blurb: 'A container that holds a nested graph: nodes become members, the frame fits itself around them, and a sub-group nests inside — a real parent/child group hierarchy.',
+  howTo: [
+    'See the "Pipeline" frame fitted snugly around stage 1, stage 2 and retry, with the nested "Retry handler" frame inside it around retry — while "outside" sits beyond both.',
+    'Drag "stage 1" around — members stay ordinary draggable nodes, and dragging one out of the frame does NOT detach it: membership is explicit, not geometric.',
+    'Open the DevTools console and run `await __demo.run()`: the frame is shrunk to a deliberately-wrong 40×40 box, then fitToContents re-grows it to enclose every member — and still not "outside".',
+    'Note the hierarchy is real: the "Retry handler" sub-group is itself a member of the pipeline and points back to its parent.',
+  ],
   reactflow: 'Sub Flows',
 
   async setup(ctx) {

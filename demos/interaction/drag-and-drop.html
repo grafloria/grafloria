@@ -28,6 +28,12 @@ import { defineDemo, check } from '../shell/demo.js';
 defineDemo({
   name: 'Drag & drop',
   blurb: 'Drag a node type from a palette and drop it on the canvas. It is created at the drop point in WORLD space, and a second drop makes a second, independent node.',
+  howTo: [
+    'Drag the "Filter" chip out of the left palette and drop it on the canvas — a filter node is created exactly where you dropped it.',
+    'Drop a "Sink" chip somewhere else — the counter in the top-right of the canvas ticks up; each drop is a new, independent node.',
+    'Drag on empty canvas to pan, then drop another chip — it still lands under your cursor: the drop point maps through the live viewport into world space.',
+    'Drag the created nodes around — moving one never moves another.',
+  ],
   reactflow: 'Drag and Drop',
 
   async setup(ctx) {

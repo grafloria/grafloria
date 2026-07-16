@@ -15,6 +15,12 @@ const inside = (r, n) =>
 defineDemo({
   name: 'Parent & child',
   blurb: 'Attach a node to a container and it is CONSTRAINED to the container’s extent; detach it and it is free again. Membership is what binds the child — proven by dragging it in both states.',
+  howTo: [
+    'On load a "Container" frame holds a lone "child" node — but the child is NOT yet a member; it merely sits there.',
+    'Drag the child anywhere, even far outside the frame: geometry never binds it — membership is explicit.',
+    'Open the DevTools console and run `await __demo.run()`: the page attaches the child, drags it way out of bounds, and the container clamps it back inside its extent.',
+    'The same run then detaches the child and repeats the identical drag — this time it sticks: the child ends parked outside, because membership was the only thing binding it.',
+  ],
   reactflow: 'Dynamic Grouping',
   pro: true,
 

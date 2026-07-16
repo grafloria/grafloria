@@ -47,6 +47,12 @@ const defIdIn = (s) => (String(s).match(/#(grafloria-def-[a-z0-9]+)/) || [])[1];
 defineDemo({
   name: 'Turbo flow',
   blurb: "React Flow's turbo showpiece, matched: glowing animated gradient edges and node borders, all through the public style API.",
+  howTo: [
+    'Watch the edges: the dash pattern streams along each glowing gradient stroke — a live dash-flow keyframe at the \'fast\' 0.5s, not a video.',
+    'Watch the node borders: an SVG keyframe animates each rect\'s stroke — the animatedBorder gradient variant.',
+    'Drag a node around — the glowing gradient edges re-route live and keep animating.',
+    'Inspect an edge path in devtools: its stroke is url(#grafloria-def-…) → a real 3-stop <linearGradient>, and the glow is a real <feDropShadow> filter — nothing is baked.',
+  ],
   reactflow: 'Turbo Flow',
 
   async setup(ctx) {

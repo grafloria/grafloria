@@ -59,3 +59,25 @@ body.nav-open #grafloria-nav { transform: none; }
 @media (min-width: 1100px) {
   body.nav-open { padding-left: 264px; }
 }
+
+/* ---- "How to test" panel (right side) — gallery chrome like the nav ---- */
+#grafloria-howto { position: fixed; top: 16px; right: 16px; z-index: 50; width: 280px; max-height: calc(100vh - 32px);
+  overflow-y: auto; background: var(--an-bg, #fff); border: 1px solid var(--an-line, rgba(127,127,127,.3));
+  border-radius: 12px; box-shadow: 0 8px 28px rgba(0,0,0,.14); font-size: 13px; color: var(--an-fg, inherit); }
+#grafloria-howto .ht-head { display: flex; align-items: center; justify-content: space-between; padding: 10px 14px;
+  border-bottom: 1px solid var(--an-line, rgba(127,127,127,.25)); font-weight: 700; font-size: 12px;
+  text-transform: uppercase; letter-spacing: .06em; }
+#grafloria-howto .ht-head button { border: 0; background: none; font-size: 18px; line-height: 1; cursor: pointer;
+  color: inherit; opacity: .6; padding: 0 2px; }
+#grafloria-howto .ht-head button:hover { opacity: 1; }
+#grafloria-howto ol { margin: 8px 0 12px; padding-left: 30px; }
+#grafloria-howto li { margin: 7px 8px 7px 0; line-height: 1.45; }
+#grafloria-howto-open { position: fixed; top: 16px; right: 16px; z-index: 50; width: 34px; height: 34px;
+  border-radius: 50%; border: 1px solid var(--an-line, rgba(127,127,127,.3)); background: var(--an-bg, #fff);
+  color: inherit; font-weight: 700; cursor: pointer; box-shadow: 0 4px 14px rgba(0,0,0,.12); }
+#grafloria-howto-open:hover { transform: scale(1.06); }
+#grafloria-howto .ht-run { display: flex; align-items: center; gap: 8px; padding: 10px 14px; border-top: 1px solid var(--an-line, rgba(127,127,127,.25)); }
+#grafloria-howto .ht-run button { border: 1px solid var(--an-line, rgba(127,127,127,.35)); background: rgba(127,127,127,.08);
+  color: inherit; font: inherit; font-size: 12px; padding: 5px 10px; border-radius: 7px; cursor: pointer; }
+#grafloria-howto .ht-run button:hover { background: rgba(127,127,127,.16); }
+#grafloria-howto .ht-run span { font-size: 12px; opacity: .85; }

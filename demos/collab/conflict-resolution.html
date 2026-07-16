@@ -44,6 +44,12 @@ const pos = (inst) => { const p = inst.getModel().getNode('n1').position; return
 defineDemo({
   name: 'Conflict resolution',
   blurb: 'Concurrent move + rename of the SAME node: both survive on both peers. Whole-entity LWW would throw one away — a per-property CRDT does not.',
+  howTo: [
+    'Drag the Draft node in peer A\'s pane — peer B\'s copy stays put: each replica batches its ops here, so the peers are deliberately offline from each other until they exchange.',
+    'Stage the concurrent rename from the DevTools console: __demoCtx.B.inst.getModel().getNode(\'n1\').setMetadata(\'label\', \'Final\') — only peer B\'s pane shows the new label.',
+    'Exchange: __demoCtx.A.session.flush(); __demoCtx.B.session.flush() — both panes converge with YOUR move AND the rename: position and label are separate registers, so neither edit clobbered the other.',
+    'Try the true same-register conflict: drag the node to a different spot in EACH pane, flush both again — the panes still converge, agreeing on one deterministic winner for the position.',
+  ],
   reactflow: 'Collaborative (Yjs)',
   pro: true,
 

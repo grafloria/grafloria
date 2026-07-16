@@ -47,6 +47,13 @@ const STEP = 16;
 defineDemo({
   name: 'Keyboard & screen-reader a11y',
   blurb: 'Everything by keyboard, nothing React Flow ships: Tab moves a focus ring, arrows nudge (and ⌘Z undoes to the exact pixel), C+Tab+Enter connects, and a live-region outline mirror narrates the whole graph to a screen reader.',
+  howTo: [
+    'Click the canvas once (or Tab to it) so the keyboard surface has focus.',
+    'Press Tab / ⇧Tab — focus walks node to node: the highlight moves and the readout names the focused one.',
+    'Press the arrow keys — the focused node nudges 16px per press; ⌘Z / Ctrl+Z undoes each nudge to the exact pixel.',
+    'Press C, then Tab to another node, then Enter — a new edge appears, drawn with no mouse at all (the legend bottom-left recaps the keys).',
+    'Turn on a screen reader (e.g. VoiceOver) — a hidden live-region outline narrates every node, position and edge as you edit.',
+  ],
   reactflow: 'Accessibility',
   pro: true,
 

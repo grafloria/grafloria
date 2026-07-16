@@ -31,6 +31,12 @@ const mid = (pts) => pts[Math.floor(pts.length / 2)];
 defineDemo({
   name: 'Parallel links & self-loops',
   blurb: 'Three links between the same pair fan onto separate lanes; a self-link routes as a real loop OUTSIDE its node. Both asserted geometrically.',
+  howTo: [
+    'Count the wires between A and B: three separate lanes with even spacing — not one line stacked on itself.',
+    'Click one of the three lanes — only that edge\'s stroke highlights: they are three real, individually selectable links.',
+    'Drag B up or down — the bundle re-routes and the lanes stay apart the whole way.',
+    'Look at the "Self" node: its self-link leaves the body, loops around OUTSIDE it, and returns to its own perimeter — drag the node and the loop travels with it.',
+  ],
 
   async setup(ctx) {
     ctx.instance = render({ nodes: NODES, edges: EDGES }, ctx.host, { renderer: { parallelLinks: true, parallelSpacing: 18 } });

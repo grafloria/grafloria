@@ -90,6 +90,13 @@ const nodeStroke = (host) =>
 defineDemo({
   name: 'Dark mode',
   blurb: 'Light, dark — and system, where an OS accessibility preference upgrades us to high-contrast instead of flashing light at the user.',
+  howTo: [
+    'Click "dark" in the colour-mode bar — the palette flips, and the "resolved:" readout reports the fill/stroke the browser actually painted.',
+    'Click "system" with the pretend-OS row on "nothing": you get the light theme.',
+    'Still on system, click "prefers-color-scheme: dark" — the diagram goes dark without you touching the mode.',
+    'Click "prefers-contrast: more" — an accessibility ask: the theme upgrades to HIGH CONTRAST (pure black node strokes), not plain light.',
+    'Now click "light" in the mode bar: an explicit choice beats whatever the OS says.',
+  ],
   reactflow: 'Dark Mode',
 
   async setup(ctx) {

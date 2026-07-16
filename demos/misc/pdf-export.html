@@ -33,6 +33,12 @@ const bytesToLatin1 = (u8) => { let s = ''; for (let i = 0; i < u8.length; i++) 
 defineDemo({
   name: 'PDF export',
   blurb: 'A real vector PDF — selectable text and true paths, not a rasterized screenshot — built with zero new dependencies.',
+  howTo: [
+    'Click "download PDF" — diagram.pdf downloads.',
+    'Open it and drag-select the labels: Requirements, Design and Ship highlight and copy out as REAL text — vector glyphs, not pixels.',
+    'Zoom deep into the page — node borders and edges stay razor-sharp: true path operators, and the file embeds no raster image at all.',
+    'Drag a node on the canvas and download again — the PDF tracks the live diagram (an unchanged view exports deterministically).',
+  ],
   reactflow: 'Download Image',
 
   async setup(ctx) {
@@ -40,10 +46,16 @@ defineDemo({
     ctx.instance = api;
     api.renderNow();
     document.getElementById('dl-pdf').onclick = async () => {
+      const href = await api.export('pdf');
       const a = document.createElement('a');
-      a.href = await api.export('pdf');
+      a.href = href;
       a.download = 'diagram.pdf';
       a.click();
+      // On-page feedback: a download alone leaves the page unchanged and reads
+      // as a dead button.
+      let el = document.getElementById('dl-note');
+      if (!el) { el = document.createElement('span'); el.id = 'dl-note'; el.style.cssText = 'font:12px ui-monospace,monospace;opacity:.8;margin-left:8px'; document.getElementById('dl-pdf').parentElement.appendChild(el); }
+      el.textContent = `diagram.pdf saved (${Math.round(href.length * 3 / 4 / 1024)} KB)`;
     };
     await ctx.tick();
   },

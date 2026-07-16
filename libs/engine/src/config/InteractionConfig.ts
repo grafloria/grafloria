@@ -203,6 +203,15 @@ export interface InteractionConfig {
   proximityConnectRadius: number;
 
   /**
+   * wave15/helper-lines — React-Flow "Helper Lines": while dragging a single
+   * top-level node, snap it to sibling edge/centre alignments and equal
+   * spacing, and draw the guides as dashed overlay lines. The SnapController
+   * always could compute this; nothing drove it from a live drag until now.
+   * Default false (opt-in) so the stock drag feel is unchanged.
+   */
+  enableHelperLines: boolean;
+
+  /**
    * wave12/connect-ergonomics (gap 3) — React-Flow "Easy Connect": make the
    * whole node BODY a connection handle. A press on a node body (not over a
    * specific port) starts a connection from the node's nearest/default port
@@ -378,6 +387,7 @@ export const DEFAULT_INTERACTION_CONFIG: InteractionConfig = {
   enableGroupDrag: false,
   enableProximityConnect: false,
   proximityConnectRadius: 0, // 0 → fall back to DEFAULT_SNAP_CONFIG.proximityConnectRadius
+  enableHelperLines: false,
   enableEasyConnect: false,
   easyConnectModifier: 'none',
 };

@@ -167,6 +167,66 @@ async function buildNav() {
   });
 }
 
+/**
+ * The right-hand "How to test" panel — the steps a HUMAN follows to see the
+ * feature with their own hands (live report: "every example page should have
+ * a side bar that describes what is there and how we can test it in steps").
+ * Chrome like the nav: invisible to the gates (navigator.webdriver), always
+ * there for a visitor. Collapsible; remembers its state per browser.
+ */
+function buildHowTo(spec) {
+  if (navigator.webdriver) return;
+  if (!Array.isArray(spec.howTo) || spec.howTo.length === 0) return;
+  if (document.getElementById('grafloria-howto')) return;
+
+  const panel = document.createElement('aside');
+  panel.id = 'grafloria-howto';
+  panel.innerHTML = `
+    <div class="ht-head">
+      <span>How to test</span>
+      <button id="grafloria-howto-toggle" title="collapse">×</button>
+    </div>
+    <ol>${spec.howTo.map((s) => `<li>${escapeHtml(s)}</li>`).join('')}</ol>
+    <div class="ht-run">
+      <button id="grafloria-howto-run">▶ run the scripted checks</button>
+      <span id="grafloria-howto-run-out"></span>
+    </div>`;
+  document.body.appendChild(panel);
+
+  // Every page ships an in-page assertion suite (the same one the gallery gate
+  // drives). Surfacing it as a button gives EVERY demo a visible action — some
+  // features' payoff only shows under the scripted gestures.
+  panel.querySelector('#grafloria-howto-run').addEventListener('click', async () => {
+    const out = panel.querySelector('#grafloria-howto-run-out');
+    out.textContent = 'running…';
+    try {
+      const r = await window.__demo.run();
+      out.textContent = r.ok ? '✓ all checks passed' : `✗ ${r.failures.length} failed`;
+      out.title = r.failures.join('\n');
+    } catch (e) {
+      out.textContent = '✗ threw';
+      out.title = String(e && e.message || e);
+    }
+  });
+
+  const opener = document.createElement('button');
+  opener.id = 'grafloria-howto-open';
+  opener.textContent = '?';
+  opener.title = 'How to test this page';
+  document.body.appendChild(opener);
+
+  const setOpen = (open) => {
+    panel.style.display = open ? '' : 'none';
+    opener.style.display = open ? 'none' : '';
+    try { localStorage.setItem('grafloria-howto-open', open ? '1' : '0'); } catch { /* private mode */ }
+  };
+  panel.querySelector('#grafloria-howto-toggle').addEventListener('click', () => setOpen(false));
+  opener.addEventListener('click', () => setOpen(true));
+  let open = true;
+  try { open = localStorage.getItem('grafloria-howto-open') !== '0'; } catch { /* private mode */ }
+  setOpen(open);
+}
+
 export function defineDemo(spec) {
   const boot = async () => {
     buildNav(); // fire-and-forget: the menu must not block the demo booting
@@ -195,6 +255,8 @@ export function defineDemo(spec) {
         }`;
     }
 
+    buildHowTo(spec); // right-side "how to test" panel (skipped under webdriver)
+
     await spec.setup(ctx);
 
     // THE HANDLE THE HARNESS PULLS. Exposed on window so Playwright can call it in-page —
@@ -204,6 +266,9 @@ export function defineDemo(spec) {
       name: spec.name,
       reactflow: spec.reactflow ?? null,
       pro: !!spec.pro,
+      // Coverage handle for the gallery gate: a page without "How to test"
+      // steps is a feature a visitor cannot find (live report).
+      howToSteps: Array.isArray(spec.howTo) ? spec.howTo.length : 0,
       run: async () => {
         failures.length = 0;
         await spec.assert(ctx);

@@ -6,6 +6,10 @@
   #canvas { height: calc(100vh - 168px); }
 </style>
 <header id="demo-head"></header>
+<div id="bar" style="display:flex;gap:8px;padding:10px 24px;border-bottom:1px solid rgba(127,127,127,.25)">
+  <button id="btn-save">save</button>
+  <button id="btn-restore">restore into fresh peer</button>
+</div>
 <div id="readout"></div>
 <div id="canvas"></div>
 <script type="module">
@@ -28,6 +32,12 @@ const SPEC = {
 defineDemo({
   name: 'Save & restore',
   blurb: 'Save a document as a snapshot + op-log tail, then restore it into a fresh peer that RESUMES its Lamport clock — its next edit stamps after everything saved, so a reloaded collaborator rejoins without clobbering history.',
+  howTo: [
+    'Drag a node somewhere new — the live peer captures every edit as an op.',
+    'Click "save" — the readout reports the snapshot plus the op-log tail it just captured.',
+    'Move a node again: an edit made AFTER the save.',
+    'Click "restore into fresh peer" — the canvas snaps back to the saved state, and the readout confirms the post-save edit is gone.',
+  ],
   reactflow: 'Save and Restore',
   pro: true,
 
@@ -41,7 +51,26 @@ defineDemo({
     ctx.captured = [];
     ctx.peer1 = new Replica(ctx.diagram, { actor: 'peer1', onLocalOp: (op) => ctx.captured.push(op) });
     ctx.report = (m) => { document.getElementById('readout').textContent = m; };
-    ctx.report('peer1 live, capturing ops');
+
+    // LIVE affordances — the assert proves the machinery; these buttons let a
+    // visitor drive the same save/restore path by hand (live report: "there is
+    // no save and restore action buttons so not sure how to test").
+    ctx.saved = null;
+    document.getElementById('btn-save').addEventListener('click', () => {
+      ctx.saved = { doc: ctx.serializer.serialize(ctx.diagram), tail: [...ctx.peer1.history()] };
+      ctx.report(`saved: ${ctx.diagram.getNodes().length} nodes + ${ctx.saved.tail.length} ops in the tail\nnow move a node, then restore`);
+    });
+    document.getElementById('btn-restore').addEventListener('click', () => {
+      if (!ctx.saved) { ctx.report('nothing saved yet — click save first'); return; }
+      const doc = ctx.serializer.deserialize(structuredClone(ctx.saved.doc));
+      ctx.instance.setNodes(doc.getNodes().map((n) => ({
+        id: n.id, position: { x: n.position.x, y: n.position.y }, size: { ...n.size }, label: n.getLabel?.() ?? n.getMetadata('label'),
+      })));
+      ctx.instance.renderNow();
+      ctx.report(`restored the saved snapshot (${doc.getNodes().length} nodes) — edits after save are gone`);
+    });
+
+    ctx.report('peer1 live, capturing ops — drag a node, save, drag again, restore');
   },
 
   async assert(ctx) {

@@ -125,6 +125,37 @@ export interface ReconnectionPreview {
   isValid: boolean;
 }
 
+/**
+ * wave12/connect-ergonomics: the port pair a proximity-connect DROP would link,
+ * while a node drag is inside the radius. The renderer reads this to draw the
+ * proposed wire itself — highlighting only the two ports left the proposal
+ * nearly invisible (live report: "the wire isn't showing"). Same seam shape as
+ * {@link ReconnectionPreview}: interaction layer writes, renderer reads,
+ * cleared on drop/cancel.
+ */
+export interface ProximityPreview {
+  sourceNodeId: string;
+  sourcePortId: string;
+  targetNodeId: string;
+  targetPortId: string;
+}
+
+/**
+ * wave15/helper-lines: one drawable snap-guide segment, in world coordinates.
+ * The interaction layer computes alignment / equal-spacing guides during a
+ * node drag and publishes them here; the renderer draws them as dashed
+ * overlay lines (spacing segments may carry a gap label). Cleared (null) when
+ * the drag ends or nothing is within snapping distance.
+ */
+export interface SnapGuideSegment {
+  x1: number;
+  y1: number;
+  x2: number;
+  y2: number;
+  kind: 'alignment' | 'spacing';
+  label?: string;
+}
+
 export class DiagramEngine {
   // Core systems
   readonly eventBus: EventBus;
@@ -164,6 +195,8 @@ export class DiagramEngine {
 
   // Wave 2 (Edges & links): transient endpoint-reconnection preview (see type).
   private reconnectionPreview: ReconnectionPreview | null = null;
+  private proximityPreview: ProximityPreview | null = null;
+  private snapGuides: SnapGuideSegment[] | null = null;
 
   // State
   private initialized: boolean = false;
@@ -357,6 +390,28 @@ export class DiagramEngine {
    */
   setReconnectionPreview(preview: ReconnectionPreview | null): void {
     this.reconnectionPreview = preview;
+  }
+
+  /** The proximity-connect proposal the renderer draws as a live wire, or null. */
+  getProximityPreview(): ProximityPreview | null {
+    return this.proximityPreview;
+  }
+
+  /** Set (or clear, with null) the proximity-connect proposal. Does not emit —
+   *  the node drag that drives it already triggers re-renders. */
+  setProximityPreview(preview: ProximityPreview | null): void {
+    this.proximityPreview = preview;
+  }
+
+  /** The live snap-guide segments a node drag is showing, or null. */
+  getSnapGuides(): SnapGuideSegment[] | null {
+    return this.snapGuides;
+  }
+
+  /** Set (or clear, with null) the live snap guides. Does not emit — the node
+   *  drag that drives them already triggers re-renders. */
+  setSnapGuides(guides: SnapGuideSegment[] | null): void {
+    this.snapGuides = guides;
   }
 
   /**

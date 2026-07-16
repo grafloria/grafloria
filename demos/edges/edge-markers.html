@@ -42,6 +42,11 @@ ROWS.forEach((type, i) => {
 defineDemo({
   name: 'Edge markers',
   blurb: 'Eight built-in arrowheads + a custom one via registerMarker() + explicit none — each asserted to render the exact head it asked for.',
+  howTo: [
+    'Scan the ten rows — each left node names the head its wire wears: eight built-ins (arrow, open-arrow, circle, square, diamond, crow-foot, hollow-diamond, one-or-many), a custom "feather", and "none" with no head at all.',
+    'Ctrl/cmd + wheel to zoom in on the right-hand ends and compare the glyphs — crow-foot and one-or-many are true ERD heads; the feather is an author-registered marker, not a built-in.',
+    'Drag any right-hand node around — the head stays glued to the endpoint and rotates to match the wire\'s new approach angle.',
+  ],
   reactflow: 'Markers',
 
   async setup(ctx) {

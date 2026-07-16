@@ -10,6 +10,12 @@ import { defineDemo, check } from '../shell/demo.js';
 defineDemo({
   name: 'Swimlanes',
   blurb: 'Pools and weighted lanes that tile a frame and keep their nodes in-lane — a whole containment model React Flow does not have. Reachable now that SwimlaneService is on the public embed.',
+  howTo: [
+    'See the "Delivery" pool tiled into three labelled lanes — Backlog, In progress, Done — with no gaps: each band starts exactly where the previous one ends.',
+    'Compare the bands: the weight-2 "In progress" lane is exactly twice as tall as the two weight-1 lanes.',
+    'Find the "ticket" node floating to the right of the pool, outside every lane.',
+    'Open the DevTools console and run `await __demo.run()`: the ticket is added to the "In progress" lane and clamped into that band — it ends up inside the middle lane.',
+  ],
   reactflow: null,
 
   async setup(ctx) {
