@@ -98,7 +98,13 @@ async function freezeAnimations(tab) {
     /* The side menu is shared gallery chrome, identical on every page — hide it
        so goldens stay about the DEMO and keep the canvas full-width. */
     #grafloria-nav, #grafloria-nav-toggle { display: none !important; }
-    body.nav-open { padding-left: 0 !important; }`,
+    body.nav-open { padding-left: 0 !important; }
+    /* MEASURED NUMBERS (medians, fps, timings) legitimately differ per run — a
+       pixel gate cannot gate non-deterministic text, and their goldens re-rolled
+       on every full bless. Pages mark exactly those elements; their CORRECTNESS
+       is asserted by the gallery checks, their pixels are excluded here.
+       visibility (not display) so the layout around them cannot shift. */
+    [data-capture-hide] { visibility: hidden !important; }`,
   });
   // SVG SMIL (<animate>, animated <rect> borders) ignores CSS animation props —
   // pause it AND snap to t=0 so the phase is deterministic, not "wherever the

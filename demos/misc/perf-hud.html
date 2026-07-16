@@ -15,8 +15,8 @@
   <b>measured in-page</b>: an idle frame does zero work, and a pan burst is timed for its fps.
 </div>
 <div id="canvas">
-  <div id="hud-host"></div>
-  <div id="measured">measuring…</div>
+  <div id="hud-host" data-capture-hide></div>
+  <div id="measured" data-capture-hide>measuring…</div>
 </div>
 <script type="module">
 import { render, QualityGovernor, PerfHud, formatSnapshot, EMPTY_SNAPSHOT } from '../shell/grafloria.js';

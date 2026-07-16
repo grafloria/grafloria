@@ -192,9 +192,40 @@ export function generateInstanceOverrideCSS(
  * full colour values. `space` picks which — that one flag is the whole difference
  * between the generations, so a host never has to hand-write the map.
  */
+/**
+ * shadcn's default LIGHT palette, as the raw HSL triplets its docs ship.
+ * Every bridge value carries its token's canonical default as the var()
+ * FALLBACK: on a host that never defined the variable, an unresolved var()
+ * makes the declaration invalid at computed-value time and SVG's initial
+ * fill — BLACK — wins (live report: the Tailwind bridge painted every node
+ * solid black on a page without Tailwind variables). A design-token bridge
+ * must fail soft to its framework's stock palette, never to a black diagram.
+ */
+const SHADCN_DEFAULTS: Record<string, { hsl: string; hex: string }> = {
+  '--background': { hsl: '0 0% 100%', hex: '#ffffff' },
+  '--foreground': { hsl: '222.2 84% 4.9%', hex: '#020817' },
+  '--card': { hsl: '0 0% 100%', hex: '#ffffff' },
+  '--card-foreground': { hsl: '222.2 84% 4.9%', hex: '#020817' },
+  '--primary': { hsl: '222.2 47.4% 11.2%', hex: '#0f172a' },
+  '--secondary': { hsl: '210 40% 96.1%', hex: '#f1f5f9' },
+  '--muted': { hsl: '210 40% 96.1%', hex: '#f1f5f9' },
+  '--muted-foreground': { hsl: '215.4 16.3% 46.9%', hex: '#64748b' },
+  '--accent': { hsl: '210 40% 96.1%', hex: '#f1f5f9' },
+  '--destructive': { hsl: '0 84.2% 60.2%', hex: '#ef4444' },
+  '--border': { hsl: '214.3 31.8% 91.4%', hex: '#e2e8f0' },
+  '--ring': { hsl: '222.2 84% 4.9%', hex: '#020817' },
+};
+
 export function shadcnBridge(options: { space?: 'hsl' | 'oklch' | 'raw' } = {}): TokenBridge {
   const space = options.space ?? 'hsl';
-  const ref = (token: string): string => (space === 'raw' ? `var(${token})` : `${space}(var(${token}))`);
+  const ref = (token: string): string => {
+    const fallback = SHADCN_DEFAULTS[token];
+    // oklch hosts opted in explicitly and define their own variables — an HSL
+    // triplet fallback would be invalid inside oklch(), so none is emitted.
+    if (space === 'oklch') return `oklch(var(${token}))`;
+    if (space === 'raw') return fallback ? `var(${token}, ${fallback.hex})` : `var(${token})`;
+    return fallback ? `hsl(var(${token}, ${fallback.hsl}))` : `hsl(var(${token}))`;
+  };
 
   return {
     'node.fill': ref('--card'),
@@ -220,7 +251,7 @@ export function shadcnBridge(options: { space?: 'hsl' | 'oklch' | 'raw' } = {}):
     'link.hovered.stroke': ref('--foreground'),
 
     'label.color': ref('--card-foreground'),
-    'label.fontFamily': 'var(--font-sans)',
+    'label.fontFamily': 'var(--font-sans, ui-sans-serif, system-ui, sans-serif)',
 
     'port.fill': ref('--background'),
     'port.input': ref('--primary'),
@@ -234,32 +265,56 @@ export function shadcnBridge(options: { space?: 'hsl' | 'oklch' | 'raw' } = {}):
  * (`extendTheme` / `CssVarsProvider`, which publishes `--mui-palette-*`).
  */
 export function muiBridge(prefix = '--mui'): TokenBridge {
+  // Material's default LIGHT palette, as the var() fallbacks — see the note on
+  // SHADCN_DEFAULTS: a host without CssVarsProvider must degrade to stock
+  // Material, not to a black diagram.
+  const MUI: Record<string, string> = {
+    'palette-background-paper': '#ffffff',
+    'palette-background-default': '#ffffff',
+    'palette-divider': 'rgba(0, 0, 0, 0.12)',
+    'palette-primary-main': '#1976d2',
+    'palette-secondary-main': '#9c27b0',
+    'palette-text-primary': 'rgba(0, 0, 0, 0.87)',
+    'palette-text-secondary': 'rgba(0, 0, 0, 0.6)',
+    'palette-action-selected': 'rgba(0, 0, 0, 0.08)',
+    'palette-action-hover': 'rgba(0, 0, 0, 0.04)',
+    'palette-action-disabledBackground': 'rgba(0, 0, 0, 0.12)',
+    'palette-action-disabled': 'rgba(0, 0, 0, 0.26)',
+    'palette-error-light': '#ef5350',
+    'palette-error-main': '#d32f2f',
+    'palette-warning-main': '#ed6c02',
+    'palette-success-main': '#2e7d32',
+    'palette-info-main': '#0288d1',
+    'font-body1': 'Roboto, Helvetica, Arial, sans-serif',
+  };
+  const v = (token: string): string => `var(${prefix}-${token}, ${MUI[token]})`;
+
   return {
-    'node.fill': `var(${prefix}-palette-background-paper)`,
-    'node.stroke': `var(${prefix}-palette-divider)`,
-    'node.selected.fill': `var(${prefix}-palette-action-selected)`,
-    'node.selected.stroke': `var(${prefix}-palette-primary-main)`,
-    'node.highlighted.fill': `var(${prefix}-palette-action-hover)`,
-    'node.highlighted.stroke': `var(${prefix}-palette-warning-main)`,
-    'node.hovered.fill': `var(${prefix}-palette-action-hover)`,
-    'node.hovered.stroke': `var(${prefix}-palette-text-secondary)`,
-    'node.disabled.fill': `var(${prefix}-palette-action-disabledBackground)`,
-    'node.disabled.stroke': `var(${prefix}-palette-action-disabled)`,
-    'node.error.fill': `var(${prefix}-palette-error-light)`,
-    'node.error.stroke': `var(${prefix}-palette-error-main)`,
+    'node.fill': v('palette-background-paper'),
+    'node.stroke': v('palette-divider'),
+    'node.selected.fill': v('palette-action-selected'),
+    'node.selected.stroke': v('palette-primary-main'),
+    'node.highlighted.fill': v('palette-action-hover'),
+    'node.highlighted.stroke': v('palette-warning-main'),
+    'node.hovered.fill': v('palette-action-hover'),
+    'node.hovered.stroke': v('palette-text-secondary'),
+    'node.disabled.fill': v('palette-action-disabledBackground'),
+    'node.disabled.stroke': v('palette-action-disabled'),
+    'node.error.fill': v('palette-error-light'),
+    'node.error.stroke': v('palette-error-main'),
 
-    'link.stroke': `var(${prefix}-palette-divider)`,
-    'link.selected.stroke': `var(${prefix}-palette-primary-main)`,
-    'link.highlighted.stroke': `var(${prefix}-palette-warning-main)`,
-    'link.hovered.stroke': `var(${prefix}-palette-text-secondary)`,
+    'link.stroke': v('palette-divider'),
+    'link.selected.stroke': v('palette-primary-main'),
+    'link.highlighted.stroke': v('palette-warning-main'),
+    'link.hovered.stroke': v('palette-text-secondary'),
 
-    'label.color': `var(${prefix}-palette-text-primary)`,
-    'label.fontFamily': `var(${prefix}-font-body1)`,
+    'label.color': v('palette-text-primary'),
+    'label.fontFamily': v('font-body1'),
 
-    'port.fill': `var(${prefix}-palette-background-default)`,
-    'port.input': `var(${prefix}-palette-success-main)`,
-    'port.output': `var(${prefix}-palette-warning-main)`,
-    'port.bi': `var(${prefix}-palette-info-main)`,
+    'port.fill': v('palette-background-default'),
+    'port.input': v('palette-success-main'),
+    'port.output': v('palette-warning-main'),
+    'port.bi': v('palette-info-main'),
   };
 }
 
@@ -270,32 +325,64 @@ export function muiBridge(prefix = '--mui'): TokenBridge {
 export function tailwindBridge(options: { scale?: string; accent?: string } = {}): TokenBridge {
   const n = options.scale ?? 'slate';
   const a = options.accent ?? 'blue';
+
+  // Tailwind's stock palette, as the var() fallbacks — see SHADCN_DEFAULTS for
+  // why: a host WITHOUT Tailwind v4's `--color-*` theme variables (v3 has none
+  // at runtime at all) must degrade to the stock ramp, not to a black diagram.
+  const TW: Record<string, string> = {
+    'white': '#ffffff',
+    'slate-50': '#f8fafc', 'slate-100': '#f1f5f9', 'slate-200': '#e2e8f0', 'slate-300': '#cbd5e1',
+    'slate-400': '#94a3b8', 'slate-500': '#64748b', 'slate-900': '#0f172a',
+    'gray-50': '#f9fafb', 'gray-100': '#f3f4f6', 'gray-200': '#e5e7eb', 'gray-300': '#d1d5db',
+    'gray-400': '#9ca3af', 'gray-500': '#6b7280', 'gray-900': '#111827',
+    'zinc-50': '#fafafa', 'zinc-100': '#f4f4f5', 'zinc-200': '#e4e4e7', 'zinc-300': '#d4d4d8',
+    'zinc-400': '#a1a1aa', 'zinc-500': '#71717a', 'zinc-900': '#18181b',
+    'neutral-50': '#fafafa', 'neutral-100': '#f5f5f5', 'neutral-200': '#e5e5e5', 'neutral-300': '#d4d4d4',
+    'neutral-400': '#a3a3a3', 'neutral-500': '#737373', 'neutral-900': '#171717',
+    'stone-50': '#fafaf9', 'stone-100': '#f5f5f4', 'stone-200': '#e7e5e4', 'stone-300': '#d6d3d1',
+    'stone-400': '#a8a29e', 'stone-500': '#78716c', 'stone-900': '#1c1917',
+    'blue-50': '#eff6ff', 'blue-600': '#2563eb',
+    'indigo-50': '#eef2ff', 'indigo-600': '#4f46e5',
+    'violet-50': '#f5f3ff', 'violet-500': '#8b5cf6', 'violet-600': '#7c3aed',
+    'emerald-50': '#ecfdf5', 'emerald-500': '#10b981', 'emerald-600': '#059669',
+    'rose-50': '#fff1f2', 'rose-600': '#e11d48',
+    'amber-100': '#fef3c7', 'amber-500': '#f59e0b',
+    'red-100': '#fee2e2', 'red-500': '#ef4444',
+  };
+  // A custom ramp we do not carry hexes for falls back to slate/blue at the
+  // same step — a neutral approximation, never black.
+  const tw = (name: string): string => {
+    const fallback =
+      TW[name] ?? TW[name.replace(/^[a-z]+-(?=\d)/, 'slate-')] ?? TW[name.replace(/^[a-z]+-(?=\d)/, 'blue-')];
+    return fallback ? `var(--color-${name}, ${fallback})` : `var(--color-${name})`;
+  };
+
   return {
-    'node.fill': 'var(--color-white)',
-    'node.stroke': `var(--color-${n}-300)`,
-    'node.selected.fill': `var(--color-${a}-50)`,
-    'node.selected.stroke': `var(--color-${a}-600)`,
-    'node.highlighted.fill': 'var(--color-amber-100)',
-    'node.highlighted.stroke': 'var(--color-amber-500)',
-    'node.hovered.fill': `var(--color-${n}-50)`,
-    'node.hovered.stroke': `var(--color-${n}-400)`,
-    'node.disabled.fill': `var(--color-${n}-100)`,
-    'node.disabled.stroke': `var(--color-${n}-200)`,
-    'node.error.fill': 'var(--color-red-100)',
-    'node.error.stroke': 'var(--color-red-500)',
+    'node.fill': tw('white'),
+    'node.stroke': tw(`${n}-300`),
+    'node.selected.fill': tw(`${a}-50`),
+    'node.selected.stroke': tw(`${a}-600`),
+    'node.highlighted.fill': tw('amber-100'),
+    'node.highlighted.stroke': tw('amber-500'),
+    'node.hovered.fill': tw(`${n}-50`),
+    'node.hovered.stroke': tw(`${n}-400`),
+    'node.disabled.fill': tw(`${n}-100`),
+    'node.disabled.stroke': tw(`${n}-200`),
+    'node.error.fill': tw('red-100'),
+    'node.error.stroke': tw('red-500'),
 
-    'link.stroke': `var(--color-${n}-400)`,
-    'link.selected.stroke': `var(--color-${a}-600)`,
-    'link.highlighted.stroke': 'var(--color-amber-500)',
-    'link.hovered.stroke': `var(--color-${n}-500)`,
+    'link.stroke': tw(`${n}-400`),
+    'link.selected.stroke': tw(`${a}-600`),
+    'link.highlighted.stroke': tw('amber-500'),
+    'link.hovered.stroke': tw(`${n}-500`),
 
-    'label.color': `var(--color-${n}-900)`,
-    'label.fontFamily': 'var(--font-sans)',
+    'label.color': tw(`${n}-900`),
+    'label.fontFamily': 'var(--font-sans, ui-sans-serif, system-ui, sans-serif)',
 
-    'port.fill': 'var(--color-white)',
-    'port.input': 'var(--color-emerald-500)',
-    'port.output': 'var(--color-amber-500)',
-    'port.bi': 'var(--color-violet-500)',
+    'port.fill': tw('white'),
+    'port.input': tw('emerald-500'),
+    'port.output': tw('amber-500'),
+    'port.bi': tw('violet-500'),
   };
 }
 

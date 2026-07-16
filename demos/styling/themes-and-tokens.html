@@ -47,6 +47,29 @@
     --mui-palette-error-main: #b3261e;
     --mui-palette-secondary-main: #625b71;
   }
+  /* Tailwind v4 publishes its theme as --color-* variables. This host runs a
+     TUNED slate ramp (a bluer 300/400 — hosts customise ramps, that is the
+     point) so the assert can prove the HOST's value beats the bridge's stock
+     fallback. The bridge itself now works on variable-less hosts too — it
+     falls back to Tailwind's stock hexes instead of painting black. */
+  #app {
+    --color-white: #ffffff;
+    --color-slate-50: #f8fafc;
+    --color-slate-100: #f1f5f9;
+    --color-slate-200: #e2e8f0;
+    --color-slate-300: #a5b4c8;
+    --color-slate-400: #7b8fa8;
+    --color-slate-500: #64748b;
+    --color-slate-900: #0f172a;
+    --color-blue-50: #eff6ff;
+    --color-blue-600: #2563eb;
+    --color-amber-100: #fef3c7;
+    --color-amber-500: #f59e0b;
+    --color-red-100: #fee2e2;
+    --color-red-500: #ef4444;
+    --color-emerald-500: #10b981;
+    --color-violet-500: #8b5cf6;
+  }
   .bar { display: flex; gap: 8px; align-items: center; padding: 10px 24px; border-bottom: 1px solid rgba(127,127,127,.25); flex-wrap: wrap; }
   .bar button { padding: 6px 14px; border-radius: 6px; border: 1px solid rgba(127,127,127,.4); background: transparent; color: inherit; cursor: pointer; font: inherit; }
   .bar button[aria-pressed="true"] { background: #2563eb; border-color: #2563eb; color: #fff; }
@@ -189,6 +212,31 @@ defineDemo({
     await ctx.tick();
     const shadcnLight = nodeFill(ctx.host);
     check(shadcnLight === 'rgb(255, 255, 255)', `shadcn --card (0 0% 100%) should paint white, got ${shadcnLight}`);
+
+    // Tailwind — THE BUTTON THE LIVE REPORT CAUGHT. The assert covered MUI and
+    // shadcn and never clicked this one; on a page without --color-* variables
+    // every var() went unresolved and SVG's initial fill painted the whole
+    // diagram BLACK. Two teeth: the host's TUNED --color-slate-300 must win
+    // (proving the variable path), and nothing may paint black (proving the
+    // fallback path can never regress to the reported state).
+    ctx.useBridge('tailwind');
+    await ctx.tick();
+    const twFill = nodeFill(ctx.host);
+    check(twFill === 'rgb(255, 255, 255)', `Tailwind --color-white should paint the node white, got ${twFill}`);
+    const twStroke = getComputedStyle(ctx.host.querySelector('rect.diagram-node')).stroke;
+    check(twStroke === 'rgb(165, 180, 200)',
+      `the HOST's tuned --color-slate-300 (#a5b4c8) must drive the node border, got ${twStroke}`);
+    for (const which of ['none', 'shadcn', 'mui', 'tailwind']) {
+      ctx.useBridge(which);
+      await ctx.tick();
+      const fill = nodeFill(ctx.host);
+      const label = getComputedStyle(ctx.host.querySelector('text.diagram-label')).fill;
+      check(fill !== 'rgb(0, 0, 0)', `${which}: node fill painted BLACK — an unresolved bridge var()`);
+      check(label !== 'rgb(255, 255, 255)' || which !== 'tailwind', `${which}: label lost against the fill`);
+      check(fill !== label, `${which}: label paints the same colour as the node fill — invisible text`);
+    }
+    ctx.useBridge('shadcn');
+    await ctx.tick();
 
     // ---- 2. THE ONE THAT MATTERS -------------------------------------------
     // Flip the HOST's palette. We do not call setTheme(). We do not call any

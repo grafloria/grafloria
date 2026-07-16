@@ -165,21 +165,23 @@ describe('SVGRenderer — design-token bridge', () => {
     });
 
     it('shadcn wraps its bare colour components for the generation in use', () => {
-      expect(shadcnBridge()['node.fill']).toBe('hsl(var(--card))');
+      // Every reference carries shadcn's stock value as the var() FALLBACK —
+      // an unresolved var() paints SVG-initial BLACK (see token-bridge.spec).
+      expect(shadcnBridge()['node.fill']).toBe('hsl(var(--card, 0 0% 100%))');
       expect(shadcnBridge({ space: 'oklch' })['node.fill']).toBe('oklch(var(--card))');
-      expect(shadcnBridge({ space: 'raw' })['node.fill']).toBe('var(--card)');
+      expect(shadcnBridge({ space: 'raw' })['node.fill']).toBe('var(--card, #ffffff)');
     });
 
     it('a preset reaches the DOM as real declarations', () => {
       renderer = new SVGRenderer(engine, { tokenBridge: shadcnBridge() }, LIGHT_THEME);
       const css = overrideCss(renderer);
 
-      expect(css).toContain('--grafloria-node-fill: hsl(var(--card));');
+      expect(css).toContain('--grafloria-node-fill: hsl(var(--card, 0 0% 100%));');
       // Edges are content strokes, not card hairlines: --border (~91% lightness)
       // made every edge vanish on white. --muted-foreground is shadcn's own
       // readable-muted-line token.
-      expect(css).toContain('--grafloria-link-stroke: hsl(var(--muted-foreground));');
-      expect(css).toContain('--grafloria-label-color: hsl(var(--card-foreground));');
+      expect(css).toContain('--grafloria-link-stroke: hsl(var(--muted-foreground, 215.4 16.3% 46.9%));');
+      expect(css).toContain('--grafloria-label-color: hsl(var(--card-foreground, 222.2 84% 4.9%));');
     });
   });
 
@@ -210,7 +212,7 @@ describe('SVGRenderer — design-token bridge', () => {
       renderer = new SVGRenderer(engine, { tokenBridge: shadcnBridge() }, LIGHT_THEME);
       const css = overrideCss(renderer);
 
-      const bridgeAt = css.indexOf('hsl(var(--card))');
+      const bridgeAt = css.indexOf('hsl(var(--card,');
       const contrastAt = css.indexOf('@media (prefers-contrast: more)');
       const forcedAt = css.indexOf('@media (forced-colors: active)');
 
