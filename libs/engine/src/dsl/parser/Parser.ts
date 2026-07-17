@@ -39,6 +39,20 @@ const DIRECTIVE_KEYWORDS = new Set([
   'style', 'classDef', 'class', 'linkStyle', 'click', 'direction',
 ]);
 
+/** Mermaid v11 `@{ shape: … }` names → our NodeShape. Unknowns fall to rect. */
+const V11_SHAPE_MAP: Record<string, NodeShape> = {
+  rect: 'rectangle', rectangle: 'rectangle', process: 'rectangle',
+  rounded: 'rounded-rectangle', 'rounded-rect': 'rounded-rectangle',
+  stadium: 'stadium', pill: 'stadium', terminal: 'stadium',
+  subroutine: 'subroutine', subprocess: 'subroutine', 'framed-rectangle': 'subroutine',
+  cylinder: 'cylindrical', database: 'cylindrical', db: 'cylindrical', 'lin-cyl': 'cylindrical',
+  circle: 'circle', circ: 'circle',
+  diamond: 'rhombus', decision: 'rhombus', rhombus: 'rhombus', question: 'rhombus',
+  hexagon: 'hexagon', hex: 'hexagon', prepare: 'hexagon',
+  trapezoid: 'trapezoid', 'trap-b': 'trapezoid', 'manual-input': 'trapezoid',
+  'trapezoid-alt': 'trapezoid-alt', 'trap-t': 'trapezoid-alt',
+};
+
 export class Parser {
   private tokens: Token[] = [];
   private current: number = 0;
@@ -144,39 +158,145 @@ export class Parser {
       return null;
     }
 
-    // Node or Edge definition
+    // A statement is a NODE GROUP (one or more refs joined by `&`) optionally
+    // followed by an edge chain. `a & b --> c & d` and `a --> b --> c` both
+    // start here.
     const start = this.currentToken();
-    const firstId = this.parseNodeId();
+    const firstGroup = this.parseNodeGroup();
 
-    if (!firstId) {
+    if (firstGroup.length === 0) {
       // Not a node/edge start — skip the whole line rather than a single token,
       // so partial debris cannot leak into the model.
       this.skipLine();
       return null;
     }
 
-    // Check for source node shape
-    let sourceShape: NodeShape | undefined;
-    let sourceLabel: string | undefined;
-    if (this.isNodeShapeStart()) {
-      const shapeInfo = this.parseNodeShape();
-      sourceShape = shapeInfo.shape;
-      sourceLabel = shapeInfo.label;
+    if (this.isLinkToken()) {
+      return this.parseEdgeChain(firstGroup, start);
     }
 
-    // Check if this is an edge or just a node
-    if (this.isLinkToken()) {
-      return this.parseEdge(firstId, start, sourceShape, sourceLabel);
-    } else {
-      // This is just a node definition
-      return {
-        type: 'NodeDefinition',
-        id: firstId,
-        label: sourceLabel || firstId,
-        shape: sourceShape || 'rectangle',
-        location: this.getLocation(start, this.previous()),
-      };
+    // Bare node group: one NodeDefinition per ref (usually one; `a & b` gives two).
+    return firstGroup.map((ref) => ({
+      type: 'NodeDefinition' as const,
+      id: ref.id,
+      label: ref.label || ref.id,
+      shape: ref.shape || 'rectangle',
+      location: this.getLocation(start, this.previous()),
+    }));
+  }
+
+  /**
+   * A single node reference: an id, then an optional shape (`[A]`, `([A])`, …)
+   * or a v11 metadata block (`@{ shape: rect, label: "Hi" }`).
+   */
+  private parseNodeRef(): { id: string; shape?: NodeShape; label?: string } | null {
+    const id = this.parseNodeId();
+    if (!id) return null;
+
+    if (this.check(TokenType.AT)) {
+      const meta = this.parseNodeMetadata();
+      return { id, shape: meta.shape, label: meta.label };
     }
+    if (this.isNodeShapeStart()) {
+      const info = this.parseNodeShape();
+      return { id, shape: info.shape, label: info.label };
+    }
+    return { id };
+  }
+
+  /** One or more node refs joined by `&` (Mermaid multi-node syntax). */
+  private parseNodeGroup(): Array<{ id: string; shape?: NodeShape; label?: string }> {
+    const group: Array<{ id: string; shape?: NodeShape; label?: string }> = [];
+    const first = this.parseNodeRef();
+    if (first) group.push(first);
+    while (this.check(TokenType.AMPERSAND)) {
+      this.advance();
+      const ref = this.parseNodeRef();
+      if (ref) group.push(ref);
+    }
+    return group;
+  }
+
+  /**
+   * An edge chain: node-group (link [label] node-group)+. Each link produces the
+   * FULL CROSS PRODUCT of the previous group and the next (so `a & b --> c & d`
+   * is four edges), and the chain continues so `a --> b --> c` is two.
+   */
+  private parseEdgeChain(
+    firstGroup: Array<{ id: string; shape?: NodeShape; label?: string }>,
+    start: Token
+  ): EdgeDefinitionNode[] {
+    const edges: EdgeDefinitionNode[] = [];
+    let prevGroup = firstGroup;
+
+    while (this.isLinkToken()) {
+      const linkToken = this.advance();
+      const linkType = this.getLinkType(linkToken.type);
+
+      let label: string | undefined;
+      if (this.match(TokenType.PIPE)) {
+        label = this.parseTextUntil(TokenType.PIPE);
+        this.consume(TokenType.PIPE, 'Expected closing "|"');
+      }
+
+      const nextGroup = this.parseNodeGroup();
+      if (nextGroup.length === 0) {
+        throw new ParseError(
+          'Expected target node after link',
+          this.currentToken(),
+          this.currentToken().line,
+          this.currentToken().column
+        );
+      }
+
+      for (const source of prevGroup) {
+        for (const target of nextGroup) {
+          edges.push({
+            type: 'EdgeDefinition',
+            source: source.id,
+            target: target.id,
+            linkType,
+            label,
+            sourceShape: source.shape,
+            sourceLabel: source.label,
+            targetShape: target.shape,
+            targetLabel: target.label,
+            location: this.getLocation(start, this.previous()),
+          });
+        }
+      }
+      prevGroup = nextGroup;
+    }
+
+    return edges;
+  }
+
+  /**
+   * v11 node metadata block: `@{ shape: rect, label: "Hi", icon: … }`. We read
+   * the keys we model (shape, label) and ignore the rest for forward-compat.
+   * `{`/`}` lex as RHOMBUS_OPEN/CLOSE.
+   */
+  private parseNodeMetadata(): { shape?: NodeShape; label?: string } {
+    this.consume(TokenType.AT, 'Expected "@"');
+    this.consume(TokenType.RHOMBUS_OPEN, 'Expected "{" after "@"');
+
+    let shape: NodeShape | undefined;
+    let label: string | undefined;
+
+    while (!this.check(TokenType.RHOMBUS_CLOSE) && !this.isAtEnd()) {
+      if (!this.check(TokenType.IDENTIFIER)) {
+        this.advance(); // skip commas / stray tokens
+        continue;
+      }
+      const key = this.advance().value;
+      this.consume(TokenType.COLON, 'Expected ":" in node metadata');
+      const value = this.advance().value.replace(/#quot;/g, '"');
+      if (key === 'label') label = value;
+      else if (key === 'shape') shape = V11_SHAPE_MAP[value.toLowerCase()] ?? 'rectangle';
+    }
+
+    this.consume(TokenType.RHOMBUS_CLOSE, 'Expected "}" to close node metadata');
+    return { shape, label };
   }
 
   /**
@@ -241,59 +361,6 @@ export class Parser {
       label,
       direction,
       statements,
-      location: this.getLocation(start, this.previous()),
-    };
-  }
-
-  /**
-   * Parse edge definition: A --> B
-   */
-  private parseEdge(
-    sourceId: string,
-    start: Token,
-    sourceShape?: NodeShape,
-    sourceLabel?: string
-  ): EdgeDefinitionNode {
-    const linkToken = this.advance();
-    const linkType = this.getLinkType(linkToken.type);
-
-    // Parse optional label
-    let label: string | undefined;
-    if (this.match(TokenType.PIPE)) {
-      label = this.parseTextUntil(TokenType.PIPE);
-      this.consume(TokenType.PIPE, 'Expected closing "|"');
-    }
-
-    // Parse target node
-    const targetId = this.parseNodeId();
-    if (!targetId) {
-      throw new ParseError(
-        'Expected target node ID',
-        this.currentToken(),
-        this.currentToken().line,
-        this.currentToken().column
-      );
-    }
-
-    // Check for target node shape and capture it
-    let targetShape: NodeShape | undefined;
-    let targetLabel: string | undefined;
-    if (this.isNodeShapeStart()) {
-      const shapeInfo = this.parseNodeShape();
-      targetShape = shapeInfo.shape;
-      targetLabel = shapeInfo.label;
-    }
-
-    return {
-      type: 'EdgeDefinition',
-      source: sourceId,
-      target: targetId,
-      linkType,
-      label,
-      sourceShape,
-      sourceLabel,
-      targetShape,
-      targetLabel,
       location: this.getLocation(start, this.previous()),
     };
   }

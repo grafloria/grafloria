@@ -10,6 +10,7 @@
  * because that is what a visitor pasting Mermaid actually hits.
  */
 import { importDiagramText } from '../serialization/TextFormat';
+import { DSL } from './DSL';
 
 const imp = (text: string) => importDiagramText(text);
 const nodeIds = (d: ReturnType<typeof imp>['diagram']) => d.getNodes().map((n) => n.id).sort();
@@ -64,7 +65,7 @@ describe('Mermaid compat — Phase 0: safe failure (never garbage)', () => {
   });
 });
 
-describe.skip('Mermaid compat — Phase 1: flowchart base (WIP)', () => {
+describe('Mermaid compat — Phase 1: flowchart base', () => {
   it('glued arrows: a-->b (no spaces) parses', () => {
     const r = imp('flowchart LR\n  a-->b');
     expect(nodeIds(r.diagram)).toEqual(['a', 'b']);
@@ -162,5 +163,32 @@ describe.skip('Mermaid compat — Phase 1: flowchart base (WIP)', () => {
     expect(r.diagram.getNode('a')).toBeTruthy();
     expect(r.diagram.getNode('a')!.getLabel()).toBe('Hi');
     expect(linkPairs(r.diagram)).toEqual(['a->b']);
+  });
+});
+
+describe('Mermaid compat — generator symmetry (body round-trips)', () => {
+  // What the generator emits must parse back through the strengthened parser:
+  // every shape's compound brackets (`([])`, `[[]]`, `[/…/]`) are now readable,
+  // so a Mermaid body is lossless through the BODY, not only via the sidecar.
+  it('parse → generate → re-parse preserves structure and shapes', () => {
+    const source =
+      'flowchart TD\n' +
+      '  Start([Start]) --> Load[(Load)]\n' +
+      '  Load --> Check{OK?}\n' +
+      '  Check --> Sub[[Work]] --> Done((Done))\n' +
+      '  Check --> Alt[/Alt/]';
+    const first = imp(source).diagram;
+
+    const dsl = new DSL({ autoLayout: false });
+    const body = dsl.generate(first, { preserveIds: true, includeComments: false });
+    const second = dsl.parse(body);
+
+    expect(second.getNodes().map((n) => n.id).sort()).toEqual(first.getNodes().map((n) => n.id).sort());
+    expect(
+      second.getLinks().map((l) => `${l.sourceNodeId}->${l.targetNodeId}`).sort()
+    ).toEqual(first.getLinks().map((l) => `${l.sourceNodeId}->${l.targetNodeId}`).sort());
+    for (const id of ['Start', 'Load', 'Sub', 'Done', 'Alt', 'Check']) {
+      expect(second.getNode(id)!.getMetadata('dslShape')).toBe(first.getNode(id)!.getMetadata('dslShape'));
+    }
   });
 });

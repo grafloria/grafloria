@@ -68,6 +68,7 @@ export enum TokenType {
   COMMA = 'COMMA',
   PIPE = 'PIPE',
   AMPERSAND = 'AMPERSAND',
+  AT = 'AT',                             // @ (v11 node metadata)
 
   // Special
   NEWLINE = 'NEWLINE',

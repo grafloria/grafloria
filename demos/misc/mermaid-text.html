@@ -72,10 +72,26 @@ defineDemo({
 
     document.getElementById('apply').onclick = () => {
       const r = importDiagramText(ta.value);
-      status.textContent = r.bodyEdited ? (r.sidecarMerged ? 'hand-edit detected → edit applied onto the sidecar model' : 'hand-edit detected → rebuilt from text') : 'unchanged → lossless sidecar';
+      // Phase 0: a recognised-but-unsupported Mermaid type (sequence, gantt, …)
+      // reports itself and leaves the current diagram intact — never a silent
+      // blank or a garbage flowchart.
+      if (r.unsupported) {
+        status.textContent = `unsupported diagram type: ${r.unsupported} — flowchart only for now`;
+        return;
+      }
+      // Honest source label: the sidecar path, a hand-edit merge, or a plain
+      // parse of pasted Mermaid text (no sidecar).
+      status.textContent =
+        r.source === 'sidecar'
+          ? 'unchanged → lossless sidecar'
+          : r.sidecarMerged
+            ? 'hand-edit detected → edit applied onto the sidecar model'
+            : 'parsed from Mermaid text';
       api.setNodes(modelToSpec(r.diagram).nodes);
       api.setEdges(modelToSpec(r.diagram).edges);
       api.renderNow();
+      // Frame whatever we parsed (pasted text has naive auto-positions).
+      api.fitView?.(40);
     };
     await ctx.tick();
   },

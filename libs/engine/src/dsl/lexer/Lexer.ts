@@ -90,7 +90,7 @@ export class Lexer {
         break;
 
       case ']':
-        this.addToken(TokenType.SQUARE_CLOSE, char, start, this.position);
+        this.scanSquareClose(start);
         break;
 
       case '(':
@@ -115,6 +115,28 @@ export class Lexer {
 
       case '<':
         this.scanLessThan(start, startColumn);
+        break;
+
+      case '/':
+        if (this.peek() === ']') {
+          this.advance();
+          this.addToken(TokenType.TRAPEZOID_CLOSE, '/]', start, this.position);
+        } else {
+          this.addToken(TokenType.UNKNOWN, '/', start, this.position);
+        }
+        break;
+
+      case '\\':
+        if (this.peek() === ']') {
+          this.advance();
+          this.addToken(TokenType.TRAPEZOID_CLOSE, '\\]', start, this.position);
+        } else {
+          this.addToken(TokenType.UNKNOWN, '\\', start, this.position);
+        }
+        break;
+
+      case '@':
+        this.addToken(TokenType.AT, '@', start, this.position);
         break;
 
       case '-':
@@ -171,6 +193,25 @@ export class Lexer {
     } else {
       // Regular square: [
       this.addToken(TokenType.SQUARE_OPEN, '[', start, this.position);
+    }
+  }
+
+  /**
+   * Scan the closing of a square-bracket shape. A ']' can close a rectangle
+   * ([x]), a stadium ([x] inside ([...]) → close is `])`), or a subroutine
+   * ([[x]] → close is `]]`). The lexer never emitted the compound closes, so
+   * stadium/subroutine parsing walked to EOF and threw.
+   */
+  private scanSquareClose(start: number): void {
+    const next = this.peek();
+    if (next === ')') {
+      this.advance();
+      this.addToken(TokenType.STADIUM_CLOSE, '])', start, this.position);
+    } else if (next === ']') {
+      this.advance();
+      this.addToken(TokenType.SUBROUTINE_CLOSE, ']]', start, this.position);
+    } else {
+      this.addToken(TokenType.SQUARE_CLOSE, ']', start, this.position);
     }
   }
 
@@ -268,51 +309,36 @@ export class Lexer {
   /**
    * Scan dash combinations: -->, ---, -.->, -.-
    */
-  private scanDash(start: number, startColumn: number): void {
-    const next1 = this.peek();
-    const next2 = this.peekNext();
-
-    if (next1 === '-') {
-      this.advance(); // second -
-
-      if (next2 === '-') {
-        // Three dashes: ---
-        this.advance(); // third -
-        this.addToken(TokenType.LINE, '---', start, this.position);
-      } else if (next2 === '>') {
-        // Arrow: -->
-        this.advance(); // >
-        this.addToken(TokenType.ARROW, '-->', start, this.position);
-      } else if (next2 === 'o') {
-        // Circle edge: --o
-        this.advance(); // o
-        this.addToken(TokenType.CIRCLE_EDGE, '--o', start, this.position);
-      } else if (next2 === 'x') {
-        // Cross edge: --x
-        this.advance(); // x
-        this.addToken(TokenType.CROSS_EDGE, '--x', start, this.position);
+  private scanDash(start: number, _startColumn: number): void {
+    if (this.peek() === '-') {
+      // Solid edge, ANY length: --, ---, ----, … Mermaid uses extra dashes to
+      // ask for a longer edge; the semantics are identical, so one token type
+      // covers them all. (Old code hard-coded exactly two/three dashes, so
+      // `--->` broke into LINE + `->`.)
+      while (this.peek() === '-') this.advance();
+      const terminator = this.peek();
+      if (terminator === '>') {
+        this.advance();
+        this.addToken(TokenType.ARROW, this.input.substring(start, this.position), start, this.position);
+      } else if (terminator === 'o') {
+        this.advance();
+        this.addToken(TokenType.CIRCLE_EDGE, this.input.substring(start, this.position), start, this.position);
+      } else if (terminator === 'x') {
+        this.advance();
+        this.addToken(TokenType.CROSS_EDGE, this.input.substring(start, this.position), start, this.position);
       } else {
-        // Just -- (not standard)
-        this.addToken(TokenType.UNKNOWN, '--', start, this.position);
+        this.addToken(TokenType.LINE, this.input.substring(start, this.position), start, this.position);
       }
-    } else if (next1 === '.') {
-      // Dotted line: -.-
-      this.advance(); // .
-      if (this.peek() === '-') {
-        this.advance(); // -
-        if (this.peek() === '>') {
-          // Dotted arrow: -.->
-          this.advance(); // >
-          this.addToken(TokenType.DOTTED_ARROW, '-.->',start, this.position);
-        } else {
-          // Dotted line: -.-
-          this.addToken(TokenType.DOTTED_LINE, '-.-', start, this.position);
-        }
+    } else if (this.peek() === '.') {
+      // Dotted edge, ANY length: -.-, -.->, -..-> (extra dots lengthen it).
+      while (this.peek() === '.' || this.peek() === '-') this.advance();
+      if (this.peek() === '>') {
+        this.advance();
+        this.addToken(TokenType.DOTTED_ARROW, this.input.substring(start, this.position), start, this.position);
       } else {
-        this.addToken(TokenType.UNKNOWN, '-.', start, this.position);
+        this.addToken(TokenType.DOTTED_LINE, this.input.substring(start, this.position), start, this.position);
       }
     } else {
-      // Single dash (unknown)
       this.addToken(TokenType.UNKNOWN, '-', start, this.position);
     }
   }
@@ -396,7 +422,15 @@ export class Lexer {
    * Scan identifier or keyword
    */
   private scanIdentifier(start: number, startColumn: number): void {
-    while (this.isAlphaNumeric(this.peek()) || this.peek() === '_' || this.peek() === '-') {
+    // A '-' belongs to the identifier ONLY when a letter/digit follows it
+    // (hyphenated ids like `my-node`). A '-' before another '-' or a '.'
+    // begins an edge (`-->`, `-.->`) and must end the identifier — this is
+    // the glued-arrow fix: `a-->b` was lexing `a--` as one identifier.
+    while (
+      this.isAlphaNumeric(this.peek()) ||
+      this.peek() === '_' ||
+      (this.peek() === '-' && this.isAlphaNumeric(this.peekNext()))
+    ) {
       this.advance();
     }
 

@@ -8,6 +8,7 @@
 import { DiagramModel } from '../../models/DiagramModel';
 import { NodeModel } from '../../models/NodeModel';
 import { LinkModel } from '../../models/LinkModel';
+import { GroupModel } from '../../models/GroupModel';
 import {
   DiagramNode,
   StatementNode,
@@ -280,7 +281,9 @@ export class ASTTransformer {
   }
 
   /**
-   * Create subgraph (using GroupModel)
+   * Create a subgraph as a real GroupModel whose members are the nodes defined
+   * inside it. Mermaid's `subgraph … end` is a container; mapping it to a group
+   * is what makes "collapse the subgraph" and drop-to-assign work downstream.
    */
   private createSubgraph(
     astSubgraph: SubgraphNode,
@@ -288,20 +291,49 @@ export class ASTTransformer {
     defaultNodeSize: { width: number; height: number },
     autoPosition: boolean
   ): void {
-    // Process subgraph statements
-    // For now, we'll just process the nodes inside the subgraph
-    // Group support will be added in Phase 2
-
+    // Nodes (and nested subgraphs) first, so inner edges have endpoints…
     for (const statement of astSubgraph.statements) {
       this.processStatement(statement, diagram, defaultNodeSize, autoPosition);
     }
+    // …then the subgraph's OWN edges. The transformer's top-level edge pass
+    // only walks `ast.statements`, so without this a `subgraph { a --> b }`
+    // drew its nodes but never its wire.
+    for (const statement of astSubgraph.statements) {
+      if (statement.type === 'EdgeDefinition') {
+        this.createLink(statement as EdgeDefinitionNode, diagram);
+      }
+    }
 
-    // TODO: Create GroupModel when fully implemented in Phase 2
-    // const group = new GroupModel({
-    //   id: astSubgraph.id || generateId(),
-    //   label: astSubgraph.label,
-    // });
-    // diagram.addGroup(group);
+    // The group and its membership.
+    const groupId = astSubgraph.id || `subgraph-${diagram.getGroups().length + 1}`;
+    const group = new GroupModel({ id: groupId, name: astSubgraph.label || astSubgraph.id || groupId });
+    diagram.addGroup(group);
+
+    const memberIds = new Set<string>();
+    this.collectDirectNodeIds(astSubgraph.statements, memberIds);
+    for (const id of memberIds) {
+      if (diagram.getNode(id)) group.addMember(id, diagram);
+    }
+
+    if (astSubgraph.direction) {
+      group.setMetadata('direction', astSubgraph.direction);
+    }
+  }
+
+  /**
+   * Node ids defined AT THIS subgraph level (its own node defs + edge
+   * endpoints). Nested subgraphs form their own groups, so their nodes are not
+   * pulled into the parent's membership.
+   */
+  private collectDirectNodeIds(statements: StatementNode[], into: Set<string>): void {
+    for (const statement of statements) {
+      if (statement.type === 'NodeDefinition') {
+        into.add((statement as NodeDefinitionNode).id);
+      } else if (statement.type === 'EdgeDefinition') {
+        into.add((statement as EdgeDefinitionNode).source);
+        into.add((statement as EdgeDefinitionNode).target);
+      }
+    }
   }
 
   /**
