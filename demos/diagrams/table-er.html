@@ -16,6 +16,12 @@
   #canvas .row .col { flex: 1; color: #0f172a; }
   #canvas .row .ty { color: #64748b; font-size: 11px; }
   #canvas .row.pk .col { font-weight: 600; }
+  /* Selection highlights the CARD, not a detached rectangle. The default
+     selection outline (drawn a few px OUTSIDE the node) reads as a second box
+     around a card that already has its own border — hide it and ring the card. */
+  #canvas .selection-highlight { display: none; }
+  #canvas g.node-group[data-selected="true"] .entity {
+    border-color: #2563eb; box-shadow: 0 0 0 2px rgba(37, 99, 235, .45); }
   @media (prefers-color-scheme: dark) {
     #canvas .entity { background: #1e293b; border-color: #475569; }
     #canvas .row { border-top-color: #334155; }

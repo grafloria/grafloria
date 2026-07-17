@@ -11,6 +11,10 @@
   #canvas .uml-comp { border-top: 1px solid #475569; padding: 3px 0; }
   #canvas .uml-comp .member { padding: 1px 10px; font: 11px/1.5 ui-monospace, Menlo, monospace; color: #0f172a; white-space: nowrap; }
   #canvas .uml-comp.empty { min-height: 8px; }
+  /* Selection rings the class box itself, not a detached outline. */
+  #canvas .selection-highlight { display: none; }
+  #canvas g.node-group[data-selected="true"] .uml {
+    border-color: #4f46e5; box-shadow: 0 0 0 2px rgba(79, 70, 229, .45); }
   @media (prefers-color-scheme: dark) {
     #canvas .uml { background: #1e293b; border-color: #64748b; }
     #canvas .uml-name { background: #312e81; color: #e0e7ff; }
