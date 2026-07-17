@@ -748,14 +748,46 @@ export class AnimationService {
    STATUS ANIMATIONS
    ============================================================================ */
 
-/* Running Status */
-@keyframes running {
+/* ---- Node execution statuses --------------------------------------------
+   Each status paints a STATIC affordance (stroke/opacity) with the animation
+   layered ON TOP: a status conveyed only by animation is invisible to
+   reduced-motion and battery-saver users, and to any frozen capture — the
+   execute-flow page's mid-run money shot proved it (every status looked
+   identical with animations stilled). */
+.node-status-running, .node-status-running-svg {
+  stroke: #3498db !important;
+  stroke-width: 2.5px !important;
+  filter: drop-shadow(0 0 4px rgba(52, 152, 219, 0.55));
+}
+.node-status-completed, .node-status-completed-svg {
+  stroke: #10b981 !important;
+  stroke-width: 2px !important;
+}
+.node-status-error, .node-status-error-svg {
+  stroke: #ef4444 !important;
+  stroke-width: 2.5px !important;
+  filter: drop-shadow(0 0 4px rgba(239, 68, 68, 0.5));
+}
+.node-status-warning, .node-status-warning-svg {
+  stroke: #f59e0b !important;
+  stroke-width: 2px !important;
+}
+.node-status-pending, .node-status-pending-svg {
+  opacity: 0.55;
+}
+
+/* Running Status.
+   NB: the keyframes MUST NOT be named "running" — in the animation
+   shorthand that identifier parses as the reserved play-state keyword, the
+   animation-name computes to none, and the status pulse silently never
+   animated anywhere (found while auditing the execute-flow feature). */
+@keyframes status-node-running {
   0%, 100% { opacity: 1; transform: scale(1); }
   50% { opacity: 0.7; transform: scale(1.1); }
 }
 
 .node-status-running {
-  animation: running 1.5s ease-in-out infinite;
+  animation: status-node-running 1.5s ease-in-out infinite;
   will-change: opacity, transform;
 }
 
@@ -806,7 +838,7 @@ export class AnimationService {
 
 /* SVG Status Variants */
 .node-status-running-svg {
-  animation: running 1.5s ease-in-out infinite;
+  animation: status-node-running 1.5s ease-in-out infinite;
   transform-origin: center center;
   transform-box: fill-box;
   will-change: opacity, transform;

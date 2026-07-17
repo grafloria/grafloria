@@ -232,8 +232,8 @@
   "measuredJitterPct": 0
  },
  "interaction__copy-paste.after.png": {
-  "tolerancePct": 0.263,
-  "measuredJitterPct": 0.0877
+  "tolerancePct": 0.253,
+  "measuredJitterPct": 0.0842
  },
  "interaction__copy-paste.boot.png": {
   "tolerancePct": 0.02,
@@ -260,6 +260,18 @@
   "measuredJitterPct": 0
  },
  "interaction__easy-connect-body.boot.png": {
+  "tolerancePct": 0.02,
+  "measuredJitterPct": 0
+ },
+ "interaction__execute-flow.after.png": {
+  "tolerancePct": 1.409,
+  "measuredJitterPct": 0.4697
+ },
+ "interaction__execute-flow.boot.png": {
+  "tolerancePct": 0.02,
+  "measuredJitterPct": 0
+ },
+ "interaction__execute-flow.showcase.png": {
   "tolerancePct": 0.02,
   "measuredJitterPct": 0
  },
@@ -408,8 +420,8 @@
   "measuredJitterPct": 0
  },
  "layout__off-thread-layout.after.png": {
-  "tolerancePct": 0.03,
-  "measuredJitterPct": 0.0101
+  "tolerancePct": 0.021,
+  "measuredJitterPct": 0.0069
  },
  "layout__off-thread-layout.boot.png": {
   "tolerancePct": 0.02,
@@ -432,12 +444,12 @@
   "measuredJitterPct": 0
  },
  "misc__mermaid-text.after.png": {
-  "tolerancePct": 1.584,
-  "measuredJitterPct": 0.528
+  "tolerancePct": 1.593,
+  "measuredJitterPct": 0.5311
  },
  "misc__mermaid-text.boot.png": {
-  "tolerancePct": 1.584,
-  "measuredJitterPct": 0.528
+  "tolerancePct": 1.593,
+  "measuredJitterPct": 0.5311
  },
  "misc__minimap-and-controls.after.png": {
   "tolerancePct": 0.02,

@@ -44,7 +44,7 @@
   public embed with real pointer events and asserts a consequence; a broken demo fails CI.
   Where React Flow ships the same example only in its paid <b>Pro</b> tier, it is marked.</p>
   <div class="scoreboard">
-    <span class="stat"><b>89</b> demos</span>
+    <span class="stat"><b>90</b> demos</span>
     <span class="stat pro"><b>30</b> are features React Flow charges for</span>
     <span class="stat"><b>10</b> categories</span>
   </div>
@@ -88,7 +88,7 @@
         </a>
         <a class="card" href="nodes/drag-handle.html">
           <div class="card-name">Drag handle</div>
-          <div class="card-blurb">A designated grip drags its parent. Press the title bar and the window moves; the grip is a child node marked as a drag handler, so the press is redirected to the parent in the real drag pipeline.</div>
+          <div class="card-blurb">A designated grip drags its parent — and ONLY the grip: the body selects but no longer drags, and the handle is chrome (no ports, no wires). Press the title bar and the window moves through the real drag pipeline.</div>
           <div class="card-foot">
             <span class="rf">React Flow: Drag Handle</span>
             
@@ -342,7 +342,7 @@
       </section>
 
       <section>
-        <h2>Interaction <span class="count">16</span></h2>
+        <h2>Interaction <span class="count">17</span></h2>
         <div class="grid">
         <a class="card pro" href="interaction/undo-redo.html">
           <div class="card-name">Collaboration-aware undo</div>
@@ -413,6 +413,14 @@
           <div class="card-blurb">Press anywhere on a node and release anywhere on another — they wire up, no aiming at a 6px port. Built into the engine drag path; the page only sets enableEasyConnect.</div>
           <div class="card-foot">
             <span class="rf">React Flow: Easy Connect</span>
+            
+          </div>
+        </a>
+        <a class="card" href="interaction/execute-flow.html">
+          <div class="card-name">Execute flow (node statuses)</div>
+          <div class="card-blurb">Run the workflow like n8n: each node lights up running (a pulsing highlight), its incoming edge animates, then it completes — or fails and halts the flow. Built on the engine's node.state.status machinery.</div>
+          <div class="card-foot">
+            <span class="rf none">no React Flow equivalent</span>
             
           </div>
         </a>

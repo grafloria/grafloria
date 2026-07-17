@@ -1,0 +1,196 @@
+<meta charset="utf-8">
+<title>Execute flow (node statuses) — Grafloria</title>
+<link rel="stylesheet" href="../shell/demo.css">
+<style>
+  #bar { display: flex; gap: 8px; padding: 10px 24px; border-bottom: 1px solid rgba(127,127,127,.25); align-items: center; }
+  #bar button { padding: 5px 12px; border-radius: 6px; border: 1px solid rgba(127,127,127,.4); background: transparent; color: inherit; cursor: pointer; font: inherit; }
+  #bar button:disabled { opacity: .5; cursor: default; }
+  #readout { margin-left: auto; font: 12px/1.4 ui-monospace, monospace; opacity: .8; }
+  #canvas { height: calc(100vh - 152px); }
+</style>
+<header id="demo-head"></header>
+<div id="bar">
+  <button id="btn-run">▶ execute flow</button>
+  <button id="btn-fail">execute with a failure</button>
+  <button id="btn-reset">reset</button>
+  <span id="readout">idle</span>
+</div>
+<div id="canvas"></div>
+<script type="module">
+import { render } from '../shell/grafloria.js';
+import { defineDemo, check } from '../shell/demo.js';
+
+// n8n-style flow execution over the SHIPPED status machinery: every node
+// carries `state.status` ('idle' | 'pending' | 'running' | 'completed' |
+// 'error' | 'warning') and `state.animateStatus`; the renderer turns them into
+// `node-status-*` classes with a pulsing highlight for 'running'. The feature
+// was fully built and had ZERO reachability proof — and its 'running' pulse
+// had never actually animated: the keyframes were named "running", which the
+// CSS `animation` shorthand parses as the reserved play-state keyword, so the
+// animation-name computed to `none` everywhere. This page is the proof it
+// works now, driven the way a workflow runner would drive it.
+const SPEC = {
+  nodes: [
+    { id: 'trigger',   position: { x: 60,  y: 180 }, size: { width: 130, height: 54 }, label: 'Trigger' },
+    { id: 'fetch',     position: { x: 260, y: 180 }, size: { width: 130, height: 54 }, label: 'Fetch data' },
+    { id: 'transform', position: { x: 460, y: 180 }, size: { width: 130, height: 54 }, label: 'Transform' },
+    { id: 'validate',  position: { x: 660, y: 100 }, size: { width: 130, height: 54 }, label: 'Validate' },
+    { id: 'enrich',    position: { x: 660, y: 260 }, size: { width: 130, height: 54 }, label: 'Enrich' },
+    { id: 'save',      position: { x: 860, y: 180 }, size: { width: 130, height: 54 }, label: 'Save' },
+    { id: 'notify',    position: { x: 1060, y: 180 }, size: { width: 130, height: 54 }, label: 'Notify' },
+  ],
+  edges: [
+    { id: 'e1', source: 'trigger',   target: 'fetch' },
+    { id: 'e2', source: 'fetch',     target: 'transform' },
+    { id: 'e3', source: 'transform', target: 'validate' },
+    { id: 'e4', source: 'transform', target: 'enrich' },
+    { id: 'e5', source: 'validate',  target: 'save' },
+    { id: 'e6', source: 'enrich',    target: 'save' },
+    { id: 'e7', source: 'save',      target: 'notify' },
+  ],
+};
+
+/** Execution order: a topological wave walk (parents before children). */
+const ORDER = ['trigger', 'fetch', 'transform', 'validate', 'enrich', 'save', 'notify'];
+
+defineDemo({
+  name: 'Execute flow (node statuses)',
+  blurb: 'Run the workflow like n8n: each node lights up running (a pulsing highlight), its incoming edge animates, then it completes — or fails and halts the flow. Built on the engine\'s node.state.status machinery.',
+  howTo: [
+    'Click "▶ execute flow": the run sweeps left to right — each node pulses blue while running (its incoming wire animates as marching ants), then settles as completed; the readout tracks every step.',
+    'Click "execute with a failure": the run halts at Transform — it shakes and holds the red error state, and everything downstream stays pending (dimmed), exactly like a failed n8n run.',
+    'Click "reset" and run again — statuses are plain node state (state.status), so a host can drive them from any real executor.',
+    'Read the wiring: the page only calls setState({ status, animateStatus }) per node and toggles the edge\'s animated flag — the classes, colours and pulses are the shipped renderer machinery.',
+  ],
+
+  async setup(ctx) {
+    const api = render(SPEC, ctx.host);
+    ctx.instance = api;
+    ctx.diagram = api.getModel();
+    // This page ASSERTS running animations — battery saver off (see
+    // animating-edges; an unplugged laptop under 20% would kill the pulse).
+    api.animations.updateConfig({ respectBatteryStatus: false, batterySavingMode: false });
+
+    const readout = document.getElementById('readout');
+    const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+
+    ctx.setStatus = (id, status) => {
+      ctx.diagram.getNode(id).setState({ status, animateStatus: true });
+    };
+    ctx.setEdgeActive = (id, active) => {
+      const l = ctx.diagram.getLink(id);
+      l.updateStyle({ animated: active, animationType: 'marching-ants' });
+    };
+    ctx.reset = () => {
+      for (const id of ORDER) ctx.setStatus(id, 'idle');
+      for (const e of SPEC.edges) ctx.setEdgeActive(e.id, false);
+      api.renderNow();
+      readout.textContent = 'idle';
+    };
+
+    /**
+     * The executor — the ONLY thing a real workflow host adds. Walks the
+     * graph, drives per-node status + the incoming edge's animation.
+     * `failAt` halts the run n8n-style; `stepMs` lets the assert run at 0ms.
+     */
+    ctx.execute = async ({ failAt = null, stepMs = 550 } = {}) => {
+      ctx.reset();
+      for (const id of ORDER) ctx.setStatus(id, 'pending');
+      api.renderNow();
+
+      for (const id of ORDER) {
+        const incoming = SPEC.edges.filter((e) => e.target === id);
+        for (const e of incoming) ctx.setEdgeActive(e.id, true);
+        ctx.setStatus(id, 'running');
+        readout.textContent = `running: ${id}`;
+        api.renderNow();
+        await sleep(stepMs);
+
+        for (const e of incoming) ctx.setEdgeActive(e.id, false);
+        if (failAt === id) {
+          ctx.setStatus(id, 'error');
+          readout.textContent = `failed at: ${id} — downstream never ran`;
+          api.renderNow();
+          return { completed: ORDER.slice(0, ORDER.indexOf(id)), failed: id };
+        }
+        ctx.setStatus(id, 'completed');
+        api.renderNow();
+      }
+      readout.textContent = 'flow completed ✓';
+      return { completed: [...ORDER], failed: null };
+    };
+
+    const buttons = [...document.querySelectorAll('#bar button')];
+    const busy = async (fn) => {
+      buttons.forEach((b) => (b.disabled = true));
+      try { await fn(); } finally { buttons.forEach((b) => (b.disabled = false)); }
+    };
+    document.getElementById('btn-run').addEventListener('click', () => busy(() => ctx.execute()));
+    document.getElementById('btn-fail').addEventListener('click', () => busy(() => ctx.execute({ failAt: 'transform' })));
+    document.getElementById('btn-reset').addEventListener('click', () => ctx.reset());
+
+    await ctx.tick();
+  },
+
+  // Money shot: the run held mid-flight — Transform pulsing, its wire animated.
+  async showcase(ctx) {
+    ctx.reset();
+    for (const id of ORDER) ctx.setStatus(id, 'pending');
+    for (const id of ['trigger', 'fetch']) ctx.setStatus(id, 'completed');
+    ctx.setStatus('transform', 'running');
+    ctx.setEdgeActive('e2', true);
+    ctx.instance.renderNow();
+  },
+
+  async assert(ctx) {
+    const m = ctx.diagram;
+    const statusClass = (id) => {
+      const el = ctx.host.querySelector(`[data-node-id="${id}"] .diagram-node`);
+      return el ? (el.getAttribute('class') || '') : '';
+    };
+
+    // 1. Mid-run: exactly one node is RUNNING, painted with a live pulse.
+    const run = ctx.execute({ stepMs: 40 });
+    await new Promise((r) => setTimeout(r, 60)); // inside step 2 (fetch running)
+    const runningNow = ORDER.filter((id) => m.getNode(id).state.status === 'running');
+    check(runningNow.length === 1, `exactly one node should be running mid-flow, got [${runningNow}]`);
+    const cls = statusClass(runningNow[0]);
+    check(cls.includes('node-status-running'), `the running node must carry the status class, got "${cls}"`);
+    const el = ctx.host.querySelector(`[data-node-id="${runningNow[0]}"] .diagram-node`);
+    const anim = getComputedStyle(el).animationName;
+    check(anim !== 'none', 'the running status must ANIMATE (the "running" keyframes were reserved-word-dead for every SVG node until this page existed)');
+
+    // 2. The happy path completes every node, in order.
+    const result = await run;
+    check(result.failed === null, 'the happy path must not fail');
+    check(result.completed.length === ORDER.length, `all ${ORDER.length} nodes should complete, got ${result.completed.length}`);
+    for (const id of ORDER) {
+      check(m.getNode(id).state.status === 'completed', `${id} should be completed, is ${m.getNode(id).state.status}`);
+      check(statusClass(id).includes('node-status-completed'), `${id} should carry the completed class`);
+    }
+
+    // 3. A failure HALTS the flow: the failed node holds error, downstream stays pending.
+    const failed = await ctx.execute({ failAt: 'transform', stepMs: 0 });
+    check(failed.failed === 'transform', 'the run should fail at transform');
+    check(m.getNode('transform').state.status === 'error', 'transform should hold the error status');
+    check(statusClass('transform').includes('node-status-error'), 'transform should carry the error class');
+    for (const id of ['validate', 'enrich', 'save', 'notify']) {
+      check(m.getNode(id).state.status === 'pending', `${id} is downstream of the failure and must stay pending, is ${m.getNode(id).state.status}`);
+    }
+
+    // 3b. Statuses paint STATIC affordances (visible under reduced motion,
+    //     battery saver, and in frozen captures) — not animation alone.
+    const errStroke = getComputedStyle(ctx.host.querySelector('[data-node-id="transform"] .diagram-node')).stroke;
+    check(errStroke === 'rgb(239, 68, 68)', `the error status must paint a static red stroke, got ${errStroke}`);
+    const pendingOpacity = getComputedStyle(ctx.host.querySelector('[data-node-id="save"] .diagram-node')).opacity;
+    check(Number(pendingOpacity) < 0.9, `pending nodes must read dimmed without animation, opacity ${pendingOpacity}`);
+
+    // 4. Reset clears every status back to idle.
+    ctx.reset();
+    for (const id of ORDER) {
+      check(m.getNode(id).state.status === 'idle', `${id} should be idle after reset`);
+      check(!/node-status-/.test(statusClass(id)), `${id} should carry no status class after reset`);
+    }
+  },
+});
+</script>

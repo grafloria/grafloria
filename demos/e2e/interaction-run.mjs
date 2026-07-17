@@ -562,6 +562,9 @@ const IN_PAGE = () => {
       else {
         const dead = [];
         for (const b of buttons.slice(0, 12)) {
+          // A DISABLED button is an expected no-op (execute-flow disables its
+          // bar while a run is in flight) — skip, don't judge.
+          if (b.disabled) continue;
           let mutated = false;
           const mo = new MutationObserver(() => { mutated = true; });
           mo.observe(document.body, { childList: true, subtree: true, attributes: true, characterData: true });
