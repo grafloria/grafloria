@@ -1,9 +1,10 @@
 # Mermaid Compatibility — Gap Analysis & Plan (empirical)
 
 **Date:** 2026-07-17
-**Status:** Phase 0 ✅ (commit 5db5b4a88) and Phase 1 ✅ (commit 9528b1a57) are
-DONE — the parser now reads real hand-written flowcharts and fails safe on
-everything else. The §2/§3 matrices below record the pre-Phase-1 state (what was
+**Status:** Phases 0 ✅ (5db5b4a88), 1 ✅ (9528b1a57), 2 ✅ (0adc2f4a3) are
+DONE — the parser reads real hand-written flowcharts, fails safe on everything
+else, and the extension channel (styling + `%%grafloria:`) is live and validated
+against real Mermaid (demos/e2e/mermaid-oracle-run.mjs). The §2/§3 matrices below record the pre-Phase-1 state (what was
 broken); `mermaid-compat.spec.ts` is the living green version. Phases 2–4 remain.
 **Method:** every current-state claim below was produced by feeding real Mermaid
 syntax to `importDiagramText()` against the built engine and recording what
@@ -194,7 +195,7 @@ parse correctly, so the base (Phase 0–1) comes before the extension channel
   body**, not only through the sidecar.
 - Teeth: the §2 matrix, every row green, mutation-proven.
 
-### Phase 2 — Formalize the extension channel (3–5 days) — *the "extra features" work*
+### Phase 2 — Formalize the extension channel ✅ DONE (commit 0adc2f4a3)
 - Wire Tier-1 directives into the model: `style` / `classDef` / `:::` → node
   style bag; `linkStyle` → link style; `click`/`href` → node metadata; v11
   `@{ … }` → node metadata. (Ignore unknown keys, per invariant #1.)
