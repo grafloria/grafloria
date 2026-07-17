@@ -48,8 +48,14 @@ export class DeleteSelectionCommand extends Command {
       throw new Error('Diagram not found in context');
     }
 
-    const selectedNodeIds = context.store?.get('selectedNodes') as Set<string> | undefined;
-    const selectedLinkIds = context.store?.get('selectedLinks') as Set<string> | undefined;
+    // Diagram selection first — mouse selection never writes the store's sets
+    // (see CopyCommand).
+    const diagramNodeSel = diagram.getSelectedNodes().map((n: { id: string }) => n.id);
+    const diagramLinkSel = diagram.getLinks().filter((l: { state: string }) => l.state === 'selected').map((l: { id: string }) => l.id);
+    const storeNodeSel = context.store?.get('selectedNodes') as Set<string> | undefined;
+    const storeLinkSel = context.store?.get('selectedLinks') as Set<string> | undefined;
+    const selectedNodeIds = new Set<string>(diagramNodeSel.length > 0 ? diagramNodeSel : Array.from(storeNodeSel ?? []));
+    const selectedLinkIds = new Set<string>(diagramLinkSel.length > 0 ? diagramLinkSel : Array.from(storeLinkSel ?? []));
 
     if (
       (!selectedNodeIds || selectedNodeIds.size === 0) &&
@@ -278,6 +284,8 @@ export class DeleteSelectionCommand extends Command {
     const diagram = context.diagram;
     if (!diagram) return false;
 
+    if (diagram.getSelectedNodes().length > 0) return true;
+    if (diagram.getLinks().some((l: { state: string }) => l.state === 'selected')) return true;
     const selectedNodeIds = context.store?.get('selectedNodes') as Set<string> | undefined;
     const selectedLinkIds = context.store?.get('selectedLinks') as Set<string> | undefined;
 

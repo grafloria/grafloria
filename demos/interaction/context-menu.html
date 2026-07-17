@@ -79,6 +79,14 @@ defineDemo({
     };
     for (const btn of menu.querySelectorAll('button')) {
       btn.addEventListener('click', () => ctx.act(btn.dataset.act));
+    // Dismiss like every real context menu: click-away or Escape closes it
+    // (live audit: it floated open indefinitely until an action was chosen).
+    document.addEventListener('pointerdown', (e) => {
+      if (!menu.contains(e.target)) menu.classList.remove('open');
+    });
+    document.addEventListener('keydown', (e) => {
+      if (e.key === 'Escape') menu.classList.remove('open');
+    });
     }
   },
 
@@ -90,7 +98,7 @@ defineDemo({
       const el = ctx.host.querySelector(`[data-node-id="${id}"]`);
       check(!!el, `node ${id} is not in the DOM to right-click`);
       const r = el.getBoundingClientRect();
-      el.dispatchEvent(new MouseEvent('contextmenu', {
+      el.dispatchEvent(new PointerEvent('contextmenu', {
         bubbles: true, cancelable: true, clientX: r.left + r.width / 2, clientY: r.top + r.height / 2,
       }));
     };

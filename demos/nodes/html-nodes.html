@@ -1,6 +1,15 @@
 <meta charset="utf-8">
 <title>HTML nodes — Grafloria</title>
 <link rel="stylesheet" href="../shell/demo.css">
+<style>
+  /* The card's OWN look — the spec declares .badge/.progress and no CSS
+     existed anywhere, so the "staging badge" rendered as bare text (live
+     audit). Host CSS styling HTML nodes is exactly the feature. */
+  #canvas .badge { display: inline-block; background: #0ea5e9; color: #fff;
+    font: 10px/1.6 system-ui; padding: 0 8px; border-radius: 999px; }
+  #canvas .progress { display: block; height: 4px; border-radius: 2px;
+    background: linear-gradient(90deg, #10b981 0 64%, #e5e7eb 64%); margin-top: 6px; }
+</style>
 <header id="demo-head"></header>
 <div id="canvas"></div>
 <script type="module">

@@ -5,7 +5,7 @@
   .note { font-size: 12px; opacity: .8; padding: 10px 24px; border-bottom: 1px solid rgba(127,127,127,.25); line-height: 1.6; }
   code { background: rgba(127,127,127,.15); padding: 1px 5px; border-radius: 4px; }
   #canvas { height: calc(100vh - 190px); position: relative; }
-  #hud-host { position: absolute; top: 12px; right: 12px; z-index: 5; }
+  #hud-host { position: absolute; top: 12px; right: 12px; width: 280px; z-index: 5; }
   #measured { position: absolute; left: 12px; bottom: 12px; z-index: 5; font: 12px ui-monospace, Menlo, monospace; background: rgba(0,0,0,.6); color: #fff; padding: 8px 10px; border-radius: 6px; white-space: pre; }
 </style>
 <header id="demo-head"></header>
@@ -52,7 +52,18 @@ defineDemo({
     ctx.hud = new PerfHud(document.getElementById('hud-host'));
     ctx.hud.show();
     ctx.gov = new QualityGovernor();
-    ctx.hud.update({ ...EMPTY_SNAPSHOT, nodes: 24, links: 20, tier: 'high', governor: ctx.gov.getState() });
+    // REAL scene numbers, not mock zeros — the blurb promises "live numbers"
+    // (live audit: it showed "0/24 visible" over a canvas rendering all 24).
+    const model = api.getModel();
+    ctx.hud.update({
+      ...EMPTY_SNAPSHOT,
+      nodes: model.getNodes().length,
+      visibleNodes: ctx.host.querySelectorAll('[data-node-id]').length,
+      links: model.getLinks().length,
+      visibleLinks: ctx.host.querySelectorAll('[data-link-id]').length,
+      tier: 'high',
+      governor: ctx.gov.getState(),
+    });
     await ctx.tick();
   },
 

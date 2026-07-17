@@ -50,7 +50,10 @@ defineDemo({
   pro: true,
 
   async setup(ctx) {
-    const api = render({ nodes: NODES, edges: EDGES }, ctx.host);
+    const api = render({ nodes: NODES, edges: EDGES }, ctx.host, {
+      // anti-parallel neighbour links rendered exactly coincident (one hidden) (live audit) — the shipped separation fans them apart.
+      renderer: { parallelLinks: true },
+    });
     api.fitView(40); // frame the boot grid — it sat flush top-left, first column sliced
     ctx.instance = api;
     ctx.diagram = api.getModel();

@@ -20,6 +20,8 @@
 import {
   StrokeModel,
   NodeModel,
+  AddStrokeCommand,
+  RemoveStrokesCommand,
   SetStrokePointsCommand,
   type DiagramEngine,
   type DiagramModel,
@@ -220,7 +222,14 @@ export class DrawTool extends WhiteboardTool implements CanvasTool {
     // A degenerate stroke (all samples identical, simplified to <1 real point) is not ink.
     if (stroke.pointCount === 0) return;
 
-    this.commit(() => this.model().addStroke(stroke));
+    // Through the COMMAND STACK when the host has an engine — a drawn stroke
+    // must be one ⌘Z away, like every other gesture (live audit: it wasn't).
+    const engine = this.host.getEngine?.();
+    if (engine) {
+      void engine.commandManager.execute(new AddStrokeCommand(stroke));
+    } else {
+      this.commit(() => this.model().addStroke(stroke));
+    }
     this.host.render();
   }
 }
@@ -379,10 +388,17 @@ export class EraserTool extends WhiteboardTool implements CanvasTool {
     this.overlay().clear();
 
     if (ids.length === 0) return;
-    // ONE undo step for the whole sweep — see the header.
-    this.commit(() => {
-      for (const id of ids) this.model().removeStroke(id);
-    });
+    // ONE undo step for the whole sweep — see the header. Through the command
+    // stack when an engine exists (live audit: an erased stroke was gone for
+    // good; ⌘Z restored nothing).
+    const engine = this.host.getEngine?.();
+    if (engine) {
+      void engine.commandManager.execute(new RemoveStrokesCommand(ids));
+    } else {
+      this.commit(() => {
+        for (const id of ids) this.model().removeStroke(id);
+      });
+    }
     this.host.render();
   }
 
@@ -510,8 +526,17 @@ export class StrokeEditTool extends WhiteboardTool implements CanvasTool {
     this.delta = { x: ev.world.x - this.origin.x, y: ev.world.y - this.origin.y };
     // Live feedback is the translated ghost on the overlay — ONE attribute write per move.
     // The model (and therefore the frame gate, the epoch, and the wire) sees NOTHING yet.
+    // The ghost is a REPLICA of the ink (own colour, own width, near-opaque), not a thin
+    // blue outline: with the outline form, the ink looked frozen mid-drag and "teleported"
+    // on release (live audit) — the preview must read as the stroke itself moving.
     const ghost = this.startPoints.map((p) => ({ x: p.x + this.delta.x, y: p.y + this.delta.y }));
-    this.highlight(ghost, this.selected.getStyle().width, true);
+    const style = this.selected.getStyle();
+    this.overlay().clear();
+    this.overlay().drawPolyline(ghost, {
+      color: style.color,
+      width: style.width,
+      opacity: 0.9,
+    });
   }
 
   onPointerUp(ev: ToolPointerEvent, _hit?: ToolHitContext): void {

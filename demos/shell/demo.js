@@ -160,7 +160,10 @@ async function buildNav() {
   nav.querySelector('.an-item.current')?.scrollIntoView({ block: 'center' });
 
   document.addEventListener('keydown', (e) => {
-    if (e.key === 'Escape') setOpen(false);
+    // Escape is a CANVAS gesture too (cancel a connection, abandon a resize):
+    // only close the drawer when the user is actually IN it, or a visitor
+    // abandoning a wire loses their menu for every future page (live audit).
+    if (e.key === 'Escape' && nav.contains(document.activeElement)) setOpen(false);
     else if (e.key === '/' && document.activeElement !== search && !/^(INPUT|TEXTAREA)$/.test(document.activeElement?.tagName || '')) {
       e.preventDefault(); setOpen(true); search.focus();
     }
@@ -196,17 +199,16 @@ function buildHowTo(spec) {
   // Every page ships an in-page assertion suite (the same one the gallery gate
   // drives). Surfacing it as a button gives EVERY demo a visible action — some
   // features' payoff only shows under the scripted gestures.
-  panel.querySelector('#grafloria-howto-run').addEventListener('click', async () => {
-    const out = panel.querySelector('#grafloria-howto-run-out');
-    out.textContent = 'running…';
-    try {
-      const r = await window.__demo.run();
-      out.textContent = r.ok ? '✓ all checks passed' : `✗ ${r.failures.length} failed`;
-      out.title = r.failures.join('\n');
-    } catch (e) {
-      out.textContent = '✗ threw';
-      out.title = String(e && e.message || e);
-    }
+  //
+  // The button RELOADS with ?run=1 and the fresh page auto-runs: the checks
+  // assume the boot state, and running them over whatever the visitor already
+  // dragged/clicked produced false ✗s (live audit: named-style-classes red
+  // after following its own steps; a real pointer event also permanently mutes
+  // the synthetic-event path some pages' checks drive).
+  panel.querySelector('#grafloria-howto-run').addEventListener('click', () => {
+    const url = new URL(location.href);
+    url.searchParams.set('run', '1');
+    location.href = url.toString();
   });
 
   const opener = document.createElement('button');
@@ -218,6 +220,10 @@ function buildHowTo(spec) {
   const setOpen = (open) => {
     panel.style.display = open ? '' : 'none';
     opener.style.display = open ? 'none' : '';
+    // Reserve real layout space on wide screens (mirrors the nav drawer):
+    // an OVERLAY hid readouts, two-pane peers and whole side panels — and ate
+    // the very drags the steps described (live audit, 8+ pages).
+    document.body.classList.toggle('howto-open', open);
     try { localStorage.setItem('grafloria-howto-open', open ? '1' : '0'); } catch { /* private mode */ }
   };
   panel.querySelector('#grafloria-howto-toggle').addEventListener('click', () => setOpen(false));
@@ -255,6 +261,16 @@ export function defineDemo(spec) {
         }`;
     }
 
+    // Reserve the CHROME's layout space BEFORE the page fits itself: buildNav
+    // resolves its manifest asynchronously, and pages that fitView on mount
+    // were framed for the full width — then the drawer pushed in and clipped
+    // the right edge (live audit: swimlanes' ticket, dynamic-layouting's n5,
+    // a racy auto-layout boot). Same store, same default as buildNav's setOpen.
+    if (!navigator.webdriver) {
+      let navOpen = null;
+      try { navOpen = localStorage.getItem('grafloria-nav-open'); } catch { /* private mode */ }
+      document.body.classList.toggle('nav-open', navOpen === null ? window.innerWidth >= 1100 : navOpen === '1');
+    }
     buildHowTo(spec); // right-side "how to test" panel (skipped under webdriver)
 
     await spec.setup(ctx);
@@ -286,6 +302,22 @@ export function defineDemo(spec) {
     // instance without each demo having to export it.
     window.__demoCtx = ctx;
     window.__demoReady = true;
+
+    // ?run=1 (set by the How-to panel's ▶ button): run the scripted checks on
+    // this FRESH page and show the verdict where the button was pressed.
+    if (!navigator.webdriver && new URLSearchParams(location.search).get('run') === '1') {
+      const out = document.getElementById('grafloria-howto-run-out');
+      if (out) out.textContent = 'running…';
+      try {
+        const r = await window.__demo.run();
+        if (out) {
+          out.textContent = r.ok ? '✓ all checks passed' : `✗ ${r.failures.length} failed`;
+          out.title = r.failures.join('\n');
+        }
+      } catch (e) {
+        if (out) { out.textContent = '✗ threw'; out.title = String(e && e.message || e); }
+      }
+    }
   };
 
   if (document.readyState === 'loading') {

@@ -1,6 +1,7 @@
 // DiagramEngine - Main orchestrator for diagram functionality
 
 import { EventBus } from '../events/EventBus';
+import { bumpMutationEpoch } from '../models/DiagramEntity';
 import { DiagramStore } from '../state/DiagramStore';
 import { CommandManager } from '../commands/CommandManager';
 import { PluginManager } from '../plugins/PluginManager';
@@ -390,6 +391,11 @@ export class DiagramEngine {
    */
   setReconnectionPreview(preview: ReconnectionPreview | null): void {
     this.reconnectionPreview = preview;
+    // A bare field write bumps no epoch, and the renderer's frame-skip gate
+    // dropped every repaint during an endpoint drag — the ghost line froze at
+    // the grab point while the model tracked the cursor perfectly (live
+    // audit). Overlay state IS picture state; say so.
+    bumpMutationEpoch();
   }
 
   /** The proximity-connect proposal the renderer draws as a live wire, or null. */
@@ -401,6 +407,7 @@ export class DiagramEngine {
    *  the node drag that drives it already triggers re-renders. */
   setProximityPreview(preview: ProximityPreview | null): void {
     this.proximityPreview = preview;
+    bumpMutationEpoch(); // overlay state is picture state — see setReconnectionPreview
   }
 
   /** The live snap-guide segments a node drag is showing, or null. */
@@ -412,6 +419,7 @@ export class DiagramEngine {
    *  drag that drives them already triggers re-renders. */
   setSnapGuides(guides: SnapGuideSegment[] | null): void {
     this.snapGuides = guides;
+    bumpMutationEpoch(); // overlay state is picture state — see setReconnectionPreview
   }
 
   /**

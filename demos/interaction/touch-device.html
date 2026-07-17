@@ -47,7 +47,7 @@ defineDemo({
     let nextId = 1;
     const fire = (type, points) => {
       for (const p of points) {
-        const ev = new PointerEvent(type, {
+        const ev = new PointerEvent(({ mousedown: 'pointerdown', mousemove: 'pointermove', mouseup: 'pointerup' })[type] ?? type, {
           pointerId: p.id, pointerType: 'touch', isPrimary: p.id === 1,
           clientX: p.x, clientY: p.y, bubbles: true, cancelable: true, button: 0,
         });

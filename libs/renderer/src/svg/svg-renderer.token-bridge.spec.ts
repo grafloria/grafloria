@@ -6,7 +6,8 @@
 // the DOM rather than out of the generators.
 
 import { SVGRenderer } from './svg-renderer';
-import { DiagramEngine } from '@grafloria/engine';
+import type { VNode } from '../types/vnode.types';
+import { DiagramEngine, NodeModel, PortModel, LinkModel } from '@grafloria/engine';
 import {
   BRIDGEABLE_TOKENS,
   DARK_THEME,
@@ -170,6 +171,35 @@ describe('SVGRenderer — design-token bridge', () => {
       expect(shadcnBridge()['node.fill']).toBe('hsl(var(--card, 0 0% 100%))');
       expect(shadcnBridge({ space: 'oklch' })['node.fill']).toBe('oklch(var(--card))');
       expect(shadcnBridge({ space: 'raw' })['node.fill']).toBe('var(--card, #ffffff)');
+    });
+
+    it('arrow markers ride the SAME variable as the edge they cap', () => {
+      // The default arrow used to resolve its colour from THEME LITERALS, so a
+      // bridge that recoloured edges (MUI goldenrod dividers) left markers in
+      // theme grey — a visible mismatch at every arrowhead. In CSS mode the
+      // marker's paint is now style-carried var(--grafloria-link-stroke, literal):
+      // presentation attributes cannot hold var(), styles can.
+      renderer = new SVGRenderer(engine, {}, LIGHT_THEME);
+      const diagram = engine.getDiagram()!;
+      const a = new NodeModel({ id: 'a', type: 'basic', position: { x: 0, y: 0 }, size: { width: 100, height: 60 } });
+      const b = new NodeModel({ id: 'b', type: 'basic', position: { x: 300, y: 0 }, size: { width: 100, height: 60 } });
+      a.addPort(new PortModel({ id: 'out', type: 'output', side: 'right' }));
+      b.addPort(new PortModel({ id: 'in', type: 'input', side: 'left' }));
+      diagram.addNode(a);
+      diagram.addNode(b);
+      diagram.addLink(new LinkModel('out', 'in'));
+
+      const root = renderer.render({ x: 0, y: 0, width: 800, height: 600 }, 1) as VNode;
+      const arrows: VNode[] = [];
+      const walk = (v: VNode): void => {
+        if (String((v.props as Record<string, unknown>)?.['className'] ?? '').includes('arrow')) arrows.push(v);
+        for (const c of (v.children ?? []) as VNode[]) if (c && typeof c === 'object') walk(c);
+      };
+      walk(root);
+      expect(arrows.length).toBeGreaterThan(0);
+      const style = arrows[0].props['style'] as Record<string, unknown>;
+      expect(String(style['fill'])).toContain('var(--grafloria-link-stroke');
+      expect(String(style['stroke'])).toContain('var(--grafloria-link-stroke');
     });
 
     it('a preset reaches the DOM as real declarations', () => {

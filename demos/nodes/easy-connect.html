@@ -63,7 +63,7 @@ defineDemo({
     ctx.fire = (type, w) => {
       const rect = ctx.host.getBoundingClientRect();
       const c = api.viewport.worldToClient(w.x, w.y, rect);
-      ctx.host.dispatchEvent(new MouseEvent(type, { bubbles: true, clientX: c.x, clientY: c.y, button: 0 }));
+      ctx.host.dispatchEvent(new PointerEvent(({ mousedown: 'pointerdown', mousemove: 'pointermove', mouseup: 'pointerup' })[type] ?? type, { bubbles: true, pointerId: 1, pointerType: 'mouse', clientX: c.x, clientY: c.y, button: 0 }));
     };
     ctx.centre = (id) => { const n = ctx.diagram.getNode(id); return { x: n.position.x + n.size.width / 2, y: n.position.y + n.size.height / 2 }; };
     ctx.drag = async (p0, p1) => { ctx.fire('mousedown', p0); ctx.fire('mousemove', { x: p0.x + 8, y: p0.y }); ctx.fire('mousemove', p1); ctx.fire('mouseup', p1); await ctx.tick(); };

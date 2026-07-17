@@ -63,6 +63,9 @@ defineDemo({
     ctx.instance = render({ nodes: [A, B, OBST], edges: EDGES }, ctx.host);
     ctx.diagram = ctx.instance.getModel();
     ctx.hasObstacle = true;
+    // Live readout: the wire straightens DURING the obstacle drag, and the
+    // point-count text must follow (live audit: it sat stale on "6 points").
+    ctx.instance.on('nodes:change', () => report(ctx));
     document.getElementById('toggle').addEventListener('click', () => {
       ctx.hasObstacle = !ctx.hasObstacle;
       ctx.instance.setNodes(ctx.hasObstacle ? [A, B, OBST] : [A, B]);

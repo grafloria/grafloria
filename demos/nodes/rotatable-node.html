@@ -61,7 +61,7 @@ defineDemo({
     ctx.fire = (type, wx, wy) => {
       const rect = ctx.host.getBoundingClientRect();
       const c = api.viewport.worldToClient(wx, wy, rect);
-      ctx.host.dispatchEvent(new MouseEvent(type, { bubbles: true, clientX: c.x, clientY: c.y, button: 0 }));
+      ctx.host.dispatchEvent(new PointerEvent(({ mousedown: 'pointerdown', mousemove: 'pointermove', mouseup: 'pointerup' })[type] ?? type, { bubbles: true, pointerId: 1, pointerType: 'mouse', clientX: c.x, clientY: c.y, button: 0 }));
     };
     await ctx.tick();
   },

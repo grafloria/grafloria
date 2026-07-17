@@ -41,8 +41,12 @@ export class DuplicateCommand extends Command {
       throw new Error('Diagram not found in context');
     }
 
-    const selectedNodeIds = context.store?.get('selectedNodes') as Set<string> | undefined;
-    if (!selectedNodeIds || selectedNodeIds.size === 0) {
+    // Diagram selection first — a mouse click selects through
+    // diagram.selectNode() and never writes the store's set (see CopyCommand).
+    const diagramSel = diagram.getSelectedNodes().map((n: { id: string }) => n.id);
+    const storeSel = context.store?.get('selectedNodes') as Set<string> | undefined;
+    const selectedNodeIds = new Set(diagramSel.length > 0 ? diagramSel : Array.from(storeSel ?? []));
+    if (selectedNodeIds.size === 0) {
       throw new Error('No nodes selected');
     }
 
@@ -234,6 +238,7 @@ export class DuplicateCommand extends Command {
     const diagram = context.diagram;
     if (!diagram) return false;
 
+    if (diagram.getSelectedNodes().length > 0) return true;
     const selectedNodeIds = context.store?.get('selectedNodes') as Set<string> | undefined;
     return !!(selectedNodeIds && selectedNodeIds.size > 0);
   }

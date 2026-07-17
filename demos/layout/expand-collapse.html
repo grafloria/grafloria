@@ -57,7 +57,10 @@ defineDemo({
   pro: true,
 
   async setup(ctx) {
-    const api = render({ nodes: NODES, edges: EDGES }, ctx.host);
+    const api = render({ nodes: NODES, edges: EDGES }, ctx.host, {
+      // anti-parallel proxy links crossed each other twice while collapsed (live audit) — the shipped separation fans them apart.
+      renderer: { parallelLinks: true },
+    });
     ctx.instance = api;
     ctx.diagram = api.getModel();
 

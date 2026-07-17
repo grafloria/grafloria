@@ -43,8 +43,8 @@ defineDemo({
       const rect = ctx.host.getBoundingClientRect();
       const c = api.viewport.worldToClient(w.x, w.y, rect);
       const opts = { bubbles: true, clientX: c.x, clientY: c.y, button: 0, ctrlKey: !!additive };
-      ctx.host.dispatchEvent(new MouseEvent('mousedown', opts));
-      ctx.host.dispatchEvent(new MouseEvent('mouseup', opts));
+      ctx.host.dispatchEvent(new PointerEvent('mousedown', opts));
+      ctx.host.dispatchEvent(new PointerEvent('mouseup', opts));
     };
     // Bundle the CURRENT selection into a fresh container (what a "Group" button does).
     ctx.groupSelected = async () => {

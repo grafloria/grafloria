@@ -174,6 +174,7 @@ import { LabelRenderer } from './LabelRenderer';
 import { JumpPointDetector } from './JumpPointDetector';
 import { JumpPointRenderer } from './JumpPointRenderer';
 import { DEFAULT_LINK_HIT_AREA_WIDTH, linkHitAreaWidth } from './link-hit-test';
+import { THEME_VARS } from '../themes/theme-vars';
 
 // Wave 4 (Edges & links) — Card 4: parallel-link separation + self-loop routing.
 // Pure geometry; this file only decides WHEN to call it.
@@ -5784,11 +5785,19 @@ export class SVGRenderer implements IRenderer {
     // a theme-bound link. `linkPaintLiterals()` resolves the same cascade to real
     // values, and the link is recorded as theme-bound so a theme swap re-renders it.
     const linkLiterals = this.linkPaintLiterals(link);
+    // In CSS mode the marker rides the SAME variable the edge paints with, so a
+    // token bridge or theme swap re-colours arrowheads WITH their edge — the
+    // theme literal alone left goldenrod bridged edges capped by grey arrows
+    // (visible on the themes-and-tokens MUI palette). The literal stays as the
+    // var() fallback; markers now paint via style, which can hold var().
+    const arrowLiteral = linkLiterals.stroke || this.theme.colors.link.default;
     const arrowHeadStyle = link.style.arrowHead || {
       type: 'arrow',
       size: 10,
       filled: true,
-      color: linkLiterals.stroke || this.theme.colors.link.default
+      color: this.config.useCSSMode
+        ? `var(${THEME_VARS['link.stroke'].cssVar}, ${arrowLiteral})`
+        : arrowLiteral,
     };
 
     const arrowTailStyle = link.style.arrowTail;
@@ -6700,6 +6709,18 @@ export class SVGRenderer implements IRenderer {
    */
   private generateThemeCSS(): string {
     return generateInstanceVarBlock(this.theme, this.instanceId);
+  }
+
+  /**
+   * The animation service — global animation enable/speed, reduced-motion and
+   * battery-saver policy. Public because these are HOST decisions: the service
+   * existed with a full config surface and no accessor, so nothing outside
+   * this class could e.g. opt out of the battery auto-toggle
+   * (`respectBatteryStatus: false`) — a laptop under 20% silently killed every
+   * edge animation with no way back.
+   */
+  getAnimationService(): AnimationService {
+    return this.animationService;
   }
 
   /**

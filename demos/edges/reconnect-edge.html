@@ -50,7 +50,7 @@ defineDemo({
     const rect = () => ctx.host.getBoundingClientRect();
     ctx.pointer = (type, wx, wy) => {
       const c = ctx.instance.viewport.worldToClient(wx, wy, rect());
-      ctx.host.dispatchEvent(new PointerEvent(type, {
+      ctx.host.dispatchEvent(new PointerEvent(({ mousedown: 'pointerdown', mousemove: 'pointermove', mouseup: 'pointerup' })[type] ?? type, {
         clientX: c.x, clientY: c.y, bubbles: true, cancelable: true,
         button: 0, buttons: type === 'pointerup' ? 0 : 1, pointerId: 1, pointerType: 'mouse',
       }));

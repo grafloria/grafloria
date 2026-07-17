@@ -44,8 +44,8 @@ describe('ArrowRenderer (Phase 1.1)', () => {
       const vnode = renderer.renderArrow(style, '');
 
       expect(vnode).not.toBeNull();
-      expect(vnode!.props.fill).toBe('#ff0000');
-      expect(vnode!.props.stroke).toBe('#ff0000');
+      expect(((vnode!.props.style) as Record<string, any>)['fill']).toBe('#ff0000');
+      expect(((vnode!.props.style) as Record<string, any>)['stroke']).toBe('#ff0000');
     });
 
     it('should render hollow arrow correctly', () => {
@@ -58,8 +58,8 @@ describe('ArrowRenderer (Phase 1.1)', () => {
 
       const vnode = renderer.renderArrow(style, '');
 
-      expect(vnode!.props.fill).toBe('white');
-      expect(vnode!.props.stroke).toBe('#0000ff');
+      expect(((vnode!.props.style) as Record<string, any>)['fill']).toBe('white');
+      expect(((vnode!.props.style) as Record<string, any>)['stroke']).toBe('#0000ff');
     });
 
     it('should render circle arrow', () => {
@@ -145,7 +145,7 @@ describe('ArrowRenderer (Phase 1.1)', () => {
       const vnode = renderer.renderArrow(style, '');
 
       expect(vnode!.type).toBe('line');
-      expect(vnode!.props.strokeWidth).toBeGreaterThan(1); // Thick line
+      expect(((vnode!.props.style) as Record<string, any>)['strokeWidth']).toBeGreaterThan(1); // Thick line
     });
 
     it('should render zero-or-one arrow (circle + bar)', () => {
@@ -207,7 +207,7 @@ describe('ArrowRenderer (Phase 1.1)', () => {
       const vnode = renderer.renderArrow(style, '');
 
       expect(vnode!.type).toBe('polygon');
-      expect(vnode!.props.fill).toBe('white');
+      expect(((vnode!.props.style) as Record<string, any>)['fill']).toBe('white');
       expect(vnode!.props['points']).toBeDefined();
     });
 
@@ -221,7 +221,7 @@ describe('ArrowRenderer (Phase 1.1)', () => {
       const vnode = renderer.renderArrow(style, '');
 
       expect(vnode!.type).toBe('polygon');
-      expect(vnode!.props.fill).not.toBe('white');
+      expect(((vnode!.props.style) as Record<string, any>)['fill']).not.toBe('white');
       expect(vnode!.props['points']).toBeDefined();
     });
 
@@ -235,7 +235,7 @@ describe('ArrowRenderer (Phase 1.1)', () => {
       const vnode = renderer.renderArrow(style, '');
 
       expect(vnode!.type).toBe('polygon');
-      expect(vnode!.props.fill).toBe('white');
+      expect(((vnode!.props.style) as Record<string, any>)['fill']).toBe('white');
       // Triangle pointing backward
     });
 
@@ -249,7 +249,7 @@ describe('ArrowRenderer (Phase 1.1)', () => {
       const vnode = renderer.renderArrow(style, '');
 
       expect(vnode!.type).toBe('polyline');
-      expect(vnode!.props.fill).toBe('none');
+      expect(((vnode!.props.style) as Record<string, any>)['fill']).toBe('none');
     });
 
     it('should render double-arrow (bidirectional)', () => {
@@ -371,7 +371,7 @@ describe('ArrowRenderer (Phase 1.1)', () => {
 
       const vnode = renderer.renderArrow(style, '');
 
-      expect(vnode!.props.strokeWidth).toBe(3);
+      expect(((vnode!.props.style) as Record<string, any>)['strokeWidth']).toBe(3);
     });
   });
 
@@ -385,8 +385,8 @@ describe('ArrowRenderer (Phase 1.1)', () => {
 
       const vnode = renderer.renderArrow(style, '');
 
-      expect(vnode!.props.fill).toBeDefined();
-      expect(vnode!.props.stroke).toBeDefined();
+      expect(((vnode!.props.style) as Record<string, any>)['fill']).toBeDefined();
+      expect(((vnode!.props.style) as Record<string, any>)['stroke']).toBeDefined();
     });
 
     it('should use custom color', () => {
@@ -399,8 +399,8 @@ describe('ArrowRenderer (Phase 1.1)', () => {
 
       const vnode = renderer.renderArrow(style, '');
 
-      expect(vnode!.props.fill).toBe('#ff5733');
-      expect(vnode!.props.stroke).toBe('#ff5733');
+      expect(((vnode!.props.style) as Record<string, any>)['fill']).toBe('#ff5733');
+      expect(((vnode!.props.style) as Record<string, any>)['stroke']).toBe('#ff5733');
     });
 
     it('should override color for filled vs hollow', () => {
@@ -423,9 +423,9 @@ describe('ArrowRenderer (Phase 1.1)', () => {
 
       expect(filledVNode).not.toBeNull();
       expect(hollowVNode).not.toBeNull();
-      expect(filledVNode!.props.fill).toBe('#00ff00');
-      expect(hollowVNode!.props.fill).toBe('white');
-      expect(hollowVNode!.props.stroke).toBe('#00ff00');
+      expect(((filledVNode!.props.style) as Record<string, any>)['fill']).toBe('#00ff00');
+      expect(((hollowVNode!.props.style) as Record<string, any>)['fill']).toBe('white');
+      expect(((hollowVNode!.props.style) as Record<string, any>)['stroke']).toBe('#00ff00');
     });
   });
 
@@ -521,8 +521,8 @@ describe('ArrowRenderer (Phase 1.1)', () => {
 
       const vnode = renderer.renderArrow(style, '');
 
-      expect(vnode!.props.fill).toBeDefined();
-      expect(vnode!.props.stroke).toBeDefined();
+      expect(((vnode!.props.style) as Record<string, any>)['fill']).toBeDefined();
+      expect(((vnode!.props.style) as Record<string, any>)['stroke']).toBeDefined();
     });
 
     it('should handle invalid arrow type gracefully', () => {

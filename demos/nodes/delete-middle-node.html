@@ -44,12 +44,15 @@ defineDemo({
     checkEqual(m.getLinksForNode('b').length, 2, 'both links should touch B');
     check(!!ctx.host.querySelector('[data-node-id="b"]'), 'B did not render');
 
-    // THE ACT: remove the middle node.
-    const removed = m.removeNode('b');
+    // THE ACT: remove the middle node — through the ENGINE, so the removal
+    // lands on the undo stack and a visitor's ⌘Z after the run restores B
+    // (live audit: the direct model call left ⌘Z dead post-run).
+    const removedNode = m.getNode('b');
+    await ctx.instance.getEngine().removeNode('b');
     ctx.instance.renderNow();
 
     // 1. B is gone — from the model AND the DOM.
-    check(!!removed && removed.id === 'b', 'removeNode did not return the removed node');
+    check(!!removedNode && removedNode.id === 'b', 'B did not exist before removal');
     check(m.getNode('b') === undefined, 'B is still in the model after removeNode');
     check(ctx.host.querySelector('[data-node-id="b"]') === null, 'B is still in the DOM after removeNode');
 

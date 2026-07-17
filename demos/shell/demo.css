@@ -81,3 +81,10 @@ body.nav-open #grafloria-nav { transform: none; }
   color: inherit; font: inherit; font-size: 12px; padding: 5px 10px; border-radius: 7px; cursor: pointer; }
 #grafloria-howto .ht-run button:hover { background: rgba(127,127,127,.16); }
 #grafloria-howto .ht-run span { font-size: 12px; opacity: .85; }
+
+/* The How-to panel RESERVES space instead of overlaying content (live audit:
+   readouts, export notes and whole side panels rendered underneath it). */
+@media (min-width: 1100px) {
+  body.howto-open { padding-right: 312px; }
+}
+#grafloria-howto li { overflow-wrap: anywhere; }

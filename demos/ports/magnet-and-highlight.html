@@ -46,7 +46,7 @@ defineDemo({
     ctx.diagram = ctx.instance.getModel();
     ctx.pointer = (type, wx, wy) => {
       const c = ctx.instance.viewport.worldToClient(wx, wy, ctx.host.getBoundingClientRect());
-      ctx.host.dispatchEvent(new PointerEvent(type, { clientX: c.x, clientY: c.y, bubbles: true, cancelable: true, button: 0, buttons: type === 'pointerup' ? 0 : 1, pointerId: 1, pointerType: 'mouse' }));
+      ctx.host.dispatchEvent(new PointerEvent(({ mousedown: 'pointerdown', mousemove: 'pointermove', mouseup: 'pointerup' })[type] ?? type, { clientX: c.x, clientY: c.y, bubbles: true, cancelable: true, button: 0, buttons: type === 'pointerup' ? 0 : 1, pointerId: 1, pointerType: 'mouse' }));
     };
     ctx.portXY = (nodeId, portId) => {
       const el = ctx.host.querySelector(`[data-port-id="${portId}"]`);

@@ -271,7 +271,11 @@ export function createMiniMap(
   /** Cheap: one rect. Runs on every camera change. */
   const drawCamera = (): void => {
     if (!visible || !bounds) return;
-    const v = viewport.getViewport();
+    // getViewBox(), NOT getViewport(): the viewport's width/height are CSS-pixel
+    // spans, the VISIBLE WORLD rect divides them by zoom. Copying the raw
+    // viewport made the tinted camera rect zoom-blind — at zoom 1.44 it still
+    // claimed the whole scene while the canvas showed ~60% of it (live audit).
+    const v = viewport.getViewBox();
     cameraRect.setAttribute('x', String(v.x));
     cameraRect.setAttribute('y', String(v.y));
     cameraRect.setAttribute('width', String(Math.max(0, v.width)));
@@ -308,12 +312,15 @@ export function createMiniMap(
 
   /** Centre the canvas camera on a world point. */
   const centreOn = (world: { x: number; y: number }): void => {
-    const v = viewport.getViewport();
+    // World-rect maths — see drawCamera: spans must be the view box's, or the
+    // centring lands offset whenever zoom != 1.
+    const vp = viewport.getViewport();
+    const vb = viewport.getViewBox();
     viewport.setViewport({
-      x: world.x - v.width / 2,
-      y: world.y - v.height / 2,
-      width: v.width,
-      height: v.height,
+      x: world.x - vb.width / 2,
+      y: world.y - vb.height / 2,
+      width: vp.width,
+      height: vp.height,
     });
   };
 

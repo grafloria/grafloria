@@ -60,7 +60,7 @@ defineDemo({
     ctx.fire = (type, w) => {
       const rect = ctx.host.getBoundingClientRect();
       const c = api.viewport.worldToClient(w.x, w.y, rect);
-      ctx.host.dispatchEvent(new PointerEvent(type, {
+      ctx.host.dispatchEvent(new PointerEvent(({ mousedown: 'pointerdown', mousemove: 'pointermove', mouseup: 'pointerup' })[type] ?? type, {
         clientX: c.x, clientY: c.y, bubbles: true, cancelable: true,
         button: 0, buttons: type === 'pointerup' ? 0 : 1, pointerId: 1, pointerType: 'mouse',
       }));
@@ -112,7 +112,7 @@ defineDemo({
     // 4. THE TEETH: its buttons ACT on the node. Click delete → the node is gone from
     //    model and DOM, and the toolbar tears down with it.
     check(!!ctx.diagram.getNode('n'), 'precondition: node exists before delete');
-    ctx.portal.element.querySelector('.nt-btn-delete').dispatchEvent(new MouseEvent('click', { bubbles: true }));
+    ctx.portal.element.querySelector('.nt-btn-delete').dispatchEvent(new PointerEvent('click', { bubbles: true }));
     check(ctx.diagram.getNode('n') === undefined, 'the toolbar delete button did not remove the node');
     check(ctx.host.querySelector('[data-node-id="n"]') === null, 'the deleted node is still in the DOM');
   },

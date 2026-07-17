@@ -34,11 +34,11 @@ defineDemo({
   name: 'Node resize gesture',
   blurb: 'Select a node, then drag a resize handle — a REAL pointer drag through the default pipeline (no host wiring, no registerTool). The declared min/max/aspect clamp the size DURING the gesture, and one release is one undo step.',
   howTo: [
-    'Click the "80–260 wide" node: 8 blue-and-white resize handles appear on its box (painted from the same geometry the engine hit-tests).',
-    'Grab the bottom-right handle and haul it far out: the node grows and stops DEAD at 260×200 — the max clamps mid-drag, you cannot pull past it — while the top-left corner stays anchored.',
-    'Drag the same handle back into the node: the size floors at 80×60 instead of inverting.',
-    'Click the "aspect 1.6" node and drag its corner along any path — the box holds its 1.6 width:height ratio the whole way.',
-    'Release, then press ⌘Z / Ctrl+Z: one release is ONE undo step — the whole resize reverts at once.',
+    'Click the "80–260 wide" node to select it — the dashed selection outline marks it resizable (no visible handle glyphs: grab the invisible zones at the corners and edge midpoints, like node-resizer).',
+    'Press near the bottom-right corner and drag outward — the node resizes live, clamped to its 80–260 × 60–200 limits mid-drag, not fixed up afterwards.',
+    'Try to drag past the max: the box refuses to grow beyond 260×200 while the pointer keeps going.',
+    'Resize the second node — its aspect ratio stays locked at 1.6 whichever way you pull.',
+    'Press ⌘Z / Ctrl+Z — the whole resize gesture is ONE undo step.',
   ],
   reactflow: 'Node Resizer',
 
@@ -63,7 +63,7 @@ defineDemo({
     ctx.fire = (type, world, buttons = 1) => {
       const rect = ctx.host.getBoundingClientRect();
       const c = api.viewport.worldToClient(world.x, world.y, rect);
-      ctx.host.dispatchEvent(new PointerEvent(type, {
+      ctx.host.dispatchEvent(new PointerEvent(({ mousedown: 'pointerdown', mousemove: 'pointermove', mouseup: 'pointerup' })[type] ?? type, {
         bubbles: true, cancelable: true, pointerType: 'mouse', pointerId: 1,
         isPrimary: true, button: type === 'pointermove' ? -1 : 0,
         buttons: type === 'pointerup' ? 0 : buttons,

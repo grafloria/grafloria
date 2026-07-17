@@ -12,7 +12,7 @@ import { defineDemo, check } from '../shell/demo.js';
 function gesture(host, from, to, steps) {
   const rect = host.getBoundingClientRect();
   const fire = (type, x, y, buttons) =>
-    host.dispatchEvent(new PointerEvent(type, {
+    host.dispatchEvent(new PointerEvent(({ mousedown: 'pointerdown', mousemove: 'pointermove', mouseup: 'pointerup' })[type] ?? type, {
       pointerType: 'mouse', button: 0, buttons, bubbles: true,
       clientX: rect.left + x, clientY: rect.top + y,
     }));

@@ -479,7 +479,7 @@ export class InteractionController {
       const connectionStateManager = engine.getConnectionStateManager();
       connectionStateManager.startConnection(port, { x: worldX, y: worldY });
 
-      console.log('🔌 Connection started:', {
+      console.debug('🔌 Connection started:', {
         portId: port.id,
         portType: port.type,
         portSide: port.side,
@@ -586,7 +586,41 @@ export class InteractionController {
             : null;
           const overNode = diagram.getNodeAtPosition(pos.x, pos.y);
           if (overNode && overNode.id !== sourceNode?.id) {
-            targetPort = this.nearestPortOnNode(overNode, pos.x, pos.y);
+            // Body-to-body: neither end named a port, so pick the NEAREST PAIR
+            // across the two nodes — a centre press used to tie all four source
+            // ports and 'top' won by iteration order, wiring side-by-side nodes
+            // top→top as a long arc over both (live audit; the obvious wire is
+            // right→left). An explicit source press near a specific port still
+            // wins: we only re-seed when the pair's source genuinely differs.
+            if (sourceNode) {
+              let bestSource: PortModel | null = null;
+              let bestTarget: PortModel | null = null;
+              let bestDistance = Infinity;
+              for (const s of sourceNode.getPorts().values()) {
+                const sp = portWorldPosition(s, sourceNode);
+                for (const t of overNode.getPorts().values()) {
+                  const tp = portWorldPosition(t, overNode);
+                  const d = Math.hypot(sp.x - tp.x, sp.y - tp.y);
+                  if (d < bestDistance) {
+                    bestDistance = d;
+                    bestSource = s;
+                    bestTarget = t;
+                  }
+                }
+              }
+              if (bestSource && bestTarget) {
+                if (bestSource !== this.connectionSourcePort) {
+                  // Re-seed the in-flight connection from the pair's source so
+                  // validation and the committed link both use it.
+                  connectionStateManager.startConnection(bestSource, pos);
+                  this.connectionSourcePort = bestSource;
+                }
+                targetPort = bestTarget;
+              }
+            }
+            if (!targetPort) {
+              targetPort = this.nearestPortOnNode(overNode, pos.x, pos.y);
+            }
           }
         }
         // Smart-mode port snap (also the fallback when easy-connect found no node).
@@ -606,7 +640,7 @@ export class InteractionController {
       success = result.success;
 
       if (success) {
-        console.log('✅ Connection completed:', this.connectionSourcePort.id, '->', targetPort.id);
+        console.debug('✅ Connection completed:', this.connectionSourcePort.id, '->', targetPort.id);
       } else {
         console.log('❌ Connection failed: Invalid connection');
       }
@@ -641,7 +675,7 @@ export class InteractionController {
     // Clear port highlights
     this.clearPortHighlights(engine);
 
-    console.log('🚫 Connection cancelled');
+    console.debug('🚫 Connection cancelled');
   }
 
   /**
@@ -679,7 +713,7 @@ export class InteractionController {
     });
     this.updateReconnectPortHighlights(engine);
 
-    console.log(`🔗 Link reconnection started: ${endpoint} endpoint of link ${link.id}`);
+    console.debug(`🔗 Link reconnection started: ${endpoint} endpoint of link ${link.id}`);
   }
 
   /**
@@ -778,8 +812,12 @@ export class InteractionController {
           port,
           engine
         );
+        const highlighted = valid && port === this.hoveredPort;
+        if (port.isValidTarget !== valid || port.isHighlighted !== highlighted) {
+          node.markDirty('port-highlight');
+        }
         port.isValidTarget = valid;
-        port.isHighlighted = valid && port === this.hoveredPort;
+        port.isHighlighted = highlighted;
       });
     });
   }
@@ -802,7 +840,7 @@ export class InteractionController {
     // Reject: no drop target, or an invalid one → restore original connection.
     if (!targetPort ||
         !this.isValidReconnectionTarget(this.reconnectingLink, this.reconnectingEndpoint, targetPort, engine)) {
-      console.log('🚫 Link reconnection rejected: no valid target port');
+      console.debug('🚫 Link reconnection rejected: no valid target port');
       this.cancelLinkReconnection(engine);
       return false;
     }
@@ -885,7 +923,7 @@ export class InteractionController {
       }
     }
 
-    console.log(`✅ Link reconnected: ${this.reconnectingEndpoint} endpoint to port ${targetPort.id}`);
+    console.debug(`✅ Link reconnected: ${this.reconnectingEndpoint} endpoint to port ${targetPort.id}`);
 
     // Cleanup (clears preview + highlights + state)
     this.resetReconnectionState(engine);
@@ -900,7 +938,7 @@ export class InteractionController {
   cancelLinkReconnection(engine: DiagramEngine): void {
     if (!this.isReconnectingLink) return;
     this.resetReconnectionState(engine);
-    console.log('🚫 Link reconnection cancelled');
+    console.debug('🚫 Link reconnection cancelled');
   }
 
   /**
@@ -1071,10 +1109,10 @@ export class InteractionController {
     // Toggle or select this link
     if (multiSelect && link.state === 'selected') {
       link.setState('default');
-      console.log('🔗 Link deselected:', link.id);
+      console.debug('🔗 Link deselected:', link.id);
     } else {
       link.setState('selected');
-      console.log('🔗 Link selected:', link.id);
+      console.debug('🔗 Link selected:', link.id);
     }
   }
 
@@ -1497,10 +1535,16 @@ export class InteractionController {
     if (!diagram) return;
 
     diagram.getNodes().forEach((node: NodeModel) => {
+      let changed = false;
       node.getPorts().forEach((port: PortModel) => {
+        if (port.isHighlighted || port.isValidTarget) changed = true;
         port.isHighlighted = false;
         port.isValidTarget = false;
       });
+      // Bare flag writes bump no epoch — without this the teardown frame is
+      // skipped as idle and the green valid-target glow lingers after every
+      // Escape / invalid drop / empty drop (live audit, four ports pages).
+      if (changed) node.markDirty('port-highlight-clear');
     });
   }
 

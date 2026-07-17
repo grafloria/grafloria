@@ -62,6 +62,8 @@ defineDemo({
     // WHITE labels — on the light theme the labels were dark-on-dark.
     ctx.host.style.background = '#0b1220';
     ctx.instance = api;
+    // Asserts running animations — see animating-edges: battery saver off.
+    api.animations.updateConfig({ respectBatteryStatus: false, batterySavingMode: false });
     ctx.diagram = api.getModel();
     api.renderNow();
     await ctx.tick();

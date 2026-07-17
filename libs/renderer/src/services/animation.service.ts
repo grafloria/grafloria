@@ -53,6 +53,17 @@ export interface AnimationConfig {
   /** Battery saving mode (disables expensive animations) */
   batterySavingMode: boolean;
 
+  /**
+   * Auto-engage {@link batterySavingMode} from the (experimental) Battery
+   * Status API when the device is below 20% and not charging. Default true —
+   * but it is a HOST decision: with no off switch, a laptop dipping under 20%
+   * silently killed every edge animation (and turned the demo gallery's
+   * animation gates red on an unplugged machine — that is how this flag was
+   * born). Set false to never auto-toggle; an explicit `batterySavingMode`
+   * you set yourself is always honoured either way.
+   */
+  respectBatteryStatus: boolean;
+
   /** Lazy load CSS (only inject when first animation is used) */
   lazyLoadCSS: boolean;
 }
@@ -77,6 +88,7 @@ export class AnimationService {
     autoDetectMotionPreference: true,
     performanceMode: false,
     batterySavingMode: false,
+    respectBatteryStatus: true,
     lazyLoadCSS: false
   };
 
@@ -144,6 +156,7 @@ export class AnimationService {
    * (Experimental Battery Status API - may not be available in all browsers)
    */
   private async detectBatteryStatus(): Promise<void> {
+    if (!this.config.respectBatteryStatus) return;
     if (typeof navigator === 'undefined' || !(navigator as any).getBattery) {
       return;
     }
@@ -152,6 +165,9 @@ export class AnimationService {
       this.batteryManager = await (navigator as any).getBattery();
 
       const updateBatteryMode = () => {
+        // The host said no: never auto-toggle (a late levelchange event must
+        // not undo an explicit opt-out).
+        if (!this.config.respectBatteryStatus) return;
         const battery = this.batteryManager;
         // Enable battery saving when < 20% and not charging
         const shouldEnableBatterySaving = battery.level < 0.2 && !battery.charging;
@@ -469,6 +485,7 @@ export class AnimationService {
       autoDetectMotionPreference: true,
       performanceMode: false,
       batterySavingMode: false,
+      respectBatteryStatus: true,
       lazyLoadCSS: false
     };
 

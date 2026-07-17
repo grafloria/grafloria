@@ -188,6 +188,16 @@ svg.grafloria-diagram :focus:not(:focus-visible) {
   transition: none !important;
 }
 
+/* Diagram text is a LABEL, not copy: without this, any drag that sweeps
+   across a node leaves its <text> browser-selected and painted with the blue
+   selection highlight (live audit: "a…", "Ingest" left highlighted after
+   pans). Selection stays possible in in-place editors, which are real
+   inputs, not SVG text. */
+svg.grafloria-diagram text {
+  user-select: none;
+  -webkit-user-select: none;
+}
+
 /* Phase 2: Port Styles
    NEVER \`transition: all\` on anything whose geometry tracks the pointer —
    \`all\` sweeps up cx/cy/transform and the element eases 200ms behind the

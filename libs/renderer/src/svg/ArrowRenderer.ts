@@ -260,9 +260,11 @@ export class ArrowRenderer {
       type: 'path',
       props: {
         d,
-        fill: filled ? color : bg,
-        stroke: color,
-        strokeWidth: width,
+        // Paint through STYLE, not presentation attributes: the colour may be a
+        // var(--grafloria-link-stroke, …) reference so a token bridge or theme swap
+        // re-colours markers WITH the edge they cap — attributes cannot hold
+        // var() (they painted the theme literal and mismatched bridged edges).
+        style: { fill: filled ? color : bg, stroke: color, strokeWidth: width },
         transform,
         className: 'arrow arrow-custom',
       },
@@ -290,9 +292,11 @@ export class ArrowRenderer {
       type: 'polygon',
       props: {
         points: `0,0 ${size},0 0,${(size / 2) * side}`,
-        fill: filled ? color : bg,
-        stroke: color,
-        strokeWidth: width,
+        // Paint through STYLE, not presentation attributes: the colour may be a
+        // var(--grafloria-link-stroke, …) reference so a token bridge or theme swap
+        // re-colours markers WITH the edge they cap — attributes cannot hold
+        // var() (they painted the theme literal and mismatched bridged edges).
+        style: { fill: filled ? color : bg, stroke: color, strokeWidth: width },
         transform,
         className: `arrow arrow-half arrow-half-${side === 1 ? 'right' : 'left'}`,
       },
@@ -314,9 +318,11 @@ export class ArrowRenderer {
       type: 'polygon',
       props: {
         points: `0,${-size / 2} ${size},0 0,${size / 2}`,
-        fill: filled ? color : bg,
-        stroke: color,
-        strokeWidth: width,
+        // Paint through STYLE, not presentation attributes: the colour may be a
+        // var(--grafloria-link-stroke, …) reference so a token bridge or theme swap
+        // re-colours markers WITH the edge they cap — attributes cannot hold
+        // var() (they painted the theme literal and mismatched bridged edges).
+        style: { fill: filled ? color : bg, stroke: color, strokeWidth: width },
         transform,
         className: 'arrow arrow-triangle'
       }
@@ -341,9 +347,11 @@ export class ArrowRenderer {
         cx: 0,
         cy: 0,
         r: radius,
-        fill: filled ? color : bg,
-        stroke: color,
-        strokeWidth: width,
+        // Paint through STYLE, not presentation attributes: the colour may be a
+        // var(--grafloria-link-stroke, …) reference so a token bridge or theme swap
+        // re-colours markers WITH the edge they cap — attributes cannot hold
+        // var() (they painted the theme literal and mismatched bridged edges).
+        style: { fill: filled ? color : bg, stroke: color, strokeWidth: width },
         transform,
         className: 'arrow arrow-circle'
       }
@@ -368,9 +376,11 @@ export class ArrowRenderer {
         y: -size / 2,
         width: size,
         height: size,
-        fill: filled ? color : bg,
-        stroke: color,
-        strokeWidth: width,
+        // Paint through STYLE, not presentation attributes: the colour may be a
+        // var(--grafloria-link-stroke, …) reference so a token bridge or theme swap
+        // re-colours markers WITH the edge they cap — attributes cannot hold
+        // var() (they painted the theme literal and mismatched bridged edges).
+        style: { fill: filled ? color : bg, stroke: color, strokeWidth: width },
         transform,
         className: 'arrow arrow-square'
       }
@@ -393,9 +403,11 @@ export class ArrowRenderer {
       type: 'polygon',
       props: {
         points: `0,0 ${-size / 2},${-size / 2} ${-size},0 ${-size / 2},${size / 2}`,
-        fill: filled ? color : bg,
-        stroke: color,
-        strokeWidth: width,
+        // Paint through STYLE, not presentation attributes: the colour may be a
+        // var(--grafloria-link-stroke, …) reference so a token bridge or theme swap
+        // re-colours markers WITH the edge they cap — attributes cannot hold
+        // var() (they painted the theme literal and mismatched bridged edges).
+        style: { fill: filled ? color : bg, stroke: color, strokeWidth: width },
         transform,
         className: 'arrow arrow-diamond'
       }
@@ -425,8 +437,7 @@ export class ArrowRenderer {
             y1: -size,
             x2: size,
             y2: 0,
-            stroke: color,
-            strokeWidth: width
+            style: { stroke: color, strokeWidth: width }
           }
         },
         {
@@ -436,8 +447,7 @@ export class ArrowRenderer {
             y1: 0,
             x2: size,
             y2: 0,
-            stroke: color,
-            strokeWidth: width
+            style: { stroke: color, strokeWidth: width }
           }
         },
         {
@@ -447,8 +457,7 @@ export class ArrowRenderer {
             y1: size,
             x2: size,
             y2: 0,
-            stroke: color,
-            strokeWidth: width
+            style: { stroke: color, strokeWidth: width }
           }
         }
       ]
@@ -471,8 +480,7 @@ export class ArrowRenderer {
         y1: -size / 2,
         x2: 0,
         y2: size / 2,
-        stroke: color,
-        strokeWidth: width * 2, // Thicker line for emphasis
+        style: { stroke: color, strokeWidth: width * 2 }, // Thicker line for emphasis
         transform,
         className: 'arrow arrow-one'
       }
@@ -502,8 +510,7 @@ export class ArrowRenderer {
             cy: 0,
             r: size / 3,
             fill: 'none',
-            stroke: color,
-            strokeWidth: width
+            style: { stroke: color, strokeWidth: width }
           }
         },
         {
@@ -513,8 +520,7 @@ export class ArrowRenderer {
             y1: -size / 2,
             x2: 0,
             y2: size / 2,
-            stroke: color,
-            strokeWidth: width * 2
+            style: { stroke: color, strokeWidth: width * 2 }
           }
         }
       ]
@@ -544,8 +550,7 @@ export class ArrowRenderer {
             cy: 0,
             r: size / 3,
             fill: 'none',
-            stroke: color,
-            strokeWidth: width
+            style: { stroke: color, strokeWidth: width }
           }
         },
         {
@@ -555,8 +560,7 @@ export class ArrowRenderer {
             y1: -size,
             x2: size,
             y2: 0,
-            stroke: color,
-            strokeWidth: width
+            style: { stroke: color, strokeWidth: width }
           }
         },
         {
@@ -566,8 +570,7 @@ export class ArrowRenderer {
             y1: 0,
             x2: size,
             y2: 0,
-            stroke: color,
-            strokeWidth: width
+            style: { stroke: color, strokeWidth: width }
           }
         },
         {
@@ -577,8 +580,7 @@ export class ArrowRenderer {
             y1: size,
             x2: size,
             y2: 0,
-            stroke: color,
-            strokeWidth: width
+            style: { stroke: color, strokeWidth: width }
           }
         }
       ]
@@ -608,8 +610,7 @@ export class ArrowRenderer {
             y1: -size / 2,
             x2: -size,
             y2: size / 2,
-            stroke: color,
-            strokeWidth: width * 2
+            style: { stroke: color, strokeWidth: width * 2 }
           }
         },
         {
@@ -619,8 +620,7 @@ export class ArrowRenderer {
             y1: -size,
             x2: size,
             y2: 0,
-            stroke: color,
-            strokeWidth: width
+            style: { stroke: color, strokeWidth: width }
           }
         },
         {
@@ -630,8 +630,7 @@ export class ArrowRenderer {
             y1: 0,
             x2: size,
             y2: 0,
-            stroke: color,
-            strokeWidth: width
+            style: { stroke: color, strokeWidth: width }
           }
         },
         {
@@ -641,8 +640,7 @@ export class ArrowRenderer {
             y1: size,
             x2: size,
             y2: 0,
-            stroke: color,
-            strokeWidth: width
+            style: { stroke: color, strokeWidth: width }
           }
         }
       ]
@@ -663,9 +661,7 @@ export class ArrowRenderer {
       type: 'polygon',
       props: {
         points: `0,0 ${-size},${-size / 2} ${-size * 2},0 ${-size},${size / 2}`,
-        fill: bg,
-        stroke: color,
-        strokeWidth: width,
+        style: { fill: bg, stroke: color, strokeWidth: width },
         transform,
         className: 'arrow arrow-hollow-diamond'
       }
@@ -685,9 +681,7 @@ export class ArrowRenderer {
       type: 'polygon',
       props: {
         points: `0,0 ${-size},${-size / 2} ${-size * 2},0 ${-size},${size / 2}`,
-        fill: color,
-        stroke: color,
-        strokeWidth: width,
+        style: { fill: color, stroke: color, strokeWidth: width },
         transform,
         className: 'arrow arrow-filled-diamond'
       }
@@ -708,9 +702,7 @@ export class ArrowRenderer {
       type: 'polygon',
       props: {
         points: `0,0 ${-size},${-size / 2} ${-size},${size / 2}`,
-        fill: bg,
-        stroke: color,
-        strokeWidth: width,
+        style: { fill: bg, stroke: color, strokeWidth: width },
         transform,
         className: 'arrow arrow-generalization'
       }
@@ -730,9 +722,7 @@ export class ArrowRenderer {
       type: 'polyline',
       props: {
         points: `0,${-size / 2} ${size},0 0,${size / 2}`,
-        fill: 'none',
-        stroke: color,
-        strokeWidth: width,
+        style: { fill: 'none', stroke: color, strokeWidth: width },
         transform,
         className: 'arrow arrow-open'
       }
@@ -761,18 +751,14 @@ export class ArrowRenderer {
           type: 'polygon',
           props: {
             points: `0,${-size / 2} ${size},0 0,${size / 2}`,
-            fill: filled ? color : bg,
-            stroke: color,
-            strokeWidth: width
+            style: { fill: filled ? color : bg, stroke: color, strokeWidth: width }
           }
         },
         {
           type: 'polygon',
           props: {
             points: `${-size},${-size / 2} 0,0 ${-size},${size / 2}`,
-            fill: filled ? color : bg,
-            stroke: color,
-            strokeWidth: width
+            style: { fill: filled ? color : bg, stroke: color, strokeWidth: width }
           }
         }
       ]
@@ -802,8 +788,7 @@ export class ArrowRenderer {
             y1: -size / 2,
             x2: size / 2,
             y2: size / 2,
-            stroke: color,
-            strokeWidth: width
+            style: { stroke: color, strokeWidth: width }
           }
         },
         {
@@ -813,8 +798,7 @@ export class ArrowRenderer {
             y1: size / 2,
             x2: size / 2,
             y2: -size / 2,
-            stroke: color,
-            strokeWidth: width
+            style: { stroke: color, strokeWidth: width }
           }
         }
       ]
@@ -885,9 +869,11 @@ export class ArrowRenderer {
         cy: 0,
         rx: size / 2,
         ry: size / 3,
-        fill: filled ? color : bg,
-        stroke: color,
-        strokeWidth: width,
+        // Paint through STYLE, not presentation attributes: the colour may be a
+        // var(--grafloria-link-stroke, …) reference so a token bridge or theme swap
+        // re-colours markers WITH the edge they cap — attributes cannot hold
+        // var() (they painted the theme literal and mismatched bridged edges).
+        style: { fill: filled ? color : bg, stroke: color, strokeWidth: width },
         transform,
         className: 'arrow arrow-oval'
       }

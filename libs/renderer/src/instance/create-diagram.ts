@@ -7,6 +7,7 @@ import type { ExportFormat, ExportOptions } from '../types/renderer.interface';
 import type { ColorMode, ThemeSet } from '../themes/color-mode';
 import type { TokenBridge } from '../themes/token-bridge';
 import type { GovernorState } from '../perf/quality-governor';
+import type { AnimationService } from '../services/animation.service';
 import type { SvgExportResult } from '../export/svg-export';
 import type { PdfExportResult } from '../export/pdf/pdf-export';
 import { SVGRenderer } from '../svg/svg-renderer';
@@ -211,6 +212,14 @@ export interface DiagramInstance {
    * correct before you measure it, follow with `renderNow()`.
    */
   batchUpdate(mutate: (model: DiagramModel) => void): void;
+
+  /**
+   * The renderer's animation service. Host policy lives here: global
+   * enable/speed, reduced-motion overrides, and the battery-saver auto-toggle
+   * (`updateConfig({ respectBatteryStatus: false })` to opt out — on by
+   * default, and on a low unplugged battery it disables edge animations).
+   */
+  animations: AnimationService;
 
   dispose(): void;
 
@@ -650,6 +659,9 @@ export function createDiagram(
 
     /** The LOD tier actually rendered, and the governor's last verdict. */
     getQualityState: () => renderer.getQualityState(),
+
+    /** Animation policy (global toggle, speed, reduced-motion, battery-saver opt-out). */
+    animations: renderer.getAnimationService(),
 
     fitView,
 

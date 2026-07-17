@@ -41,7 +41,7 @@ defineDemo({
     const fire = (type, w) => {
       const rect = ctx.host.getBoundingClientRect();
       const c = api.viewport.worldToClient(w.x, w.y, rect);
-      ctx.host.dispatchEvent(new MouseEvent(type, { bubbles: true, clientX: c.x, clientY: c.y, button: 0 }));
+      ctx.host.dispatchEvent(new PointerEvent(({ mousedown: 'pointerdown', mousemove: 'pointermove', mouseup: 'pointerup' })[type] ?? type, { bubbles: true, pointerId: 1, pointerType: 'mouse', clientX: c.x, clientY: c.y, button: 0 }));
     };
     // Draw a wire from a source's right port to the target's left port, with the
     // real gesture: hover the source port, press, drag, release on the target port.

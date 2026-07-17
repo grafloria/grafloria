@@ -34,7 +34,7 @@ defineDemo({
   name: 'Force layout',
   blurb: 'Force-directed placement, and the seed is REAL: same seed → byte-identical picture (three adapters here once drew from Math.random()); different seed → different picture; connected nodes end up closer than the average pair.',
   howTo: [
-    'On load the eight nodes settle into two tight clusters (a0–a3 and b0–b3) joined by the single a0–b0 bridge edge.',
+    'On load the eight nodes settle into two connected clusters (a0–a3 and b0–b3) joined by the single a0–b0 bridge edge.',
     'Read the readout: seed=1, "0 overlaps", and the mean edge distance is smaller than the mean pair distance — connected nodes really are pulled together.',
     'Reload the page: the same seed reproduces the byte-identical picture — no hidden Math.random().',
     'Open the DevTools console and run `await __demo.run()`: the page re-runs seed 1 (identical), then seed 999 — a visibly different cloud — then finishes back on seed 1, returning ok: true.',

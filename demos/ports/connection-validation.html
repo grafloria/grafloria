@@ -45,7 +45,7 @@ defineDemo({
     });
     ctx.instance = render({ nodes: NODES, edges: [] }, ctx.host, { interaction: { portVisibility: 'always' } });
     ctx.diagram = ctx.instance.getModel();
-    ctx.pointer = (type, cx, cy) => ctx.host.dispatchEvent(new PointerEvent(type, { clientX: cx, clientY: cy, bubbles: true, cancelable: true, button: 0, buttons: type === 'pointerup' ? 0 : 1, pointerId: 1, pointerType: 'mouse' }));
+    ctx.pointer = (type, cx, cy) => ctx.host.dispatchEvent(new PointerEvent(({ mousedown: 'pointerdown', mousemove: 'pointermove', mouseup: 'pointerup' })[type] ?? type, { clientX: cx, clientY: cy, bubbles: true, cancelable: true, button: 0, buttons: type === 'pointerup' ? 0 : 1, pointerId: 1, pointerType: 'mouse' }));
     ctx.portC = (portId) => { const r = ctx.host.querySelector(`[data-port-id="${portId}"]`).getBoundingClientRect(); return { x: r.left + r.width / 2, y: r.top + r.height / 2 }; };
     ctx.candidate = (sN, sP, tN, tP) => ({
       sourceNode: ctx.diagram.getNode(sN), sourcePort: ctx.diagram.getNode(sN).getPort(sP),

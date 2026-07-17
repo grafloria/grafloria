@@ -62,7 +62,7 @@ defineDemo({
 
   async assert(ctx) {
     const A = ctx.A, B = ctx.B;
-    const move = (x, y) => A.el.dispatchEvent(new MouseEvent('pointermove', { clientX: x, clientY: y, bubbles: true }));
+    const move = (x, y) => A.el.dispatchEvent(new PointerEvent('pointermove', { clientX: x, clientY: y, bubbles: true }));
 
     // 1. A pointer move on Ana's canvas materialises a cursor in Bo's DOM, on the
     //    dedicated presence LAYER (not the SVG scene).

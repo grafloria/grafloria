@@ -37,7 +37,7 @@ defineDemo({
     ctx.fire = (type, w) => {
       const rect = ctx.host.getBoundingClientRect();
       const c = api.viewport.worldToClient(w.x, w.y, rect);
-      ctx.host.dispatchEvent(new MouseEvent(type, { bubbles: true, clientX: c.x, clientY: c.y, button: 0 }));
+      ctx.host.dispatchEvent(new PointerEvent(({ mousedown: 'pointerdown', mousemove: 'pointermove', mouseup: 'pointerup' })[type] ?? type, { bubbles: true, pointerId: 1, pointerType: 'mouse', clientX: c.x, clientY: c.y, button: 0 }));
     };
     // Select then drag: the ladder needs the node selected before a body-press drags it.
     // The binder commits the drag via `commandManager.execute()`, which is async (void).

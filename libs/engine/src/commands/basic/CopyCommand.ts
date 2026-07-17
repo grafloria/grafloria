@@ -34,13 +34,22 @@ export class CopyCommand extends Command {
       throw new Error('Diagram not found in context');
     }
 
-    // Get selected nodes
-    const selectedNodeIds = context.store?.get('selectedNodes') as Set<string> | undefined;
-    if (!selectedNodeIds || selectedNodeIds.size === 0) {
+    // Get selected nodes — from the DIAGRAM, the same source Delete and
+    // select-all use. The store's 'selectedNodes' set is only written by
+    // SelectionManager API calls; a MOUSE click selects through
+    // diagram.selectNode() and never touches it, so reading the store made
+    // ⌘C throw "No nodes selected" for anything a visitor clicked (live
+    // audit: copy-paste dead end-to-end while the API-driven demo assert
+    // stayed green — the click-vs-API seam). The store set is kept as a
+    // fallback for headless callers that only used the SelectionManager.
+    const diagramSelection = diagram.getSelectedNodes().map((n: { id: string }) => n.id);
+    const storeSelection = context.store?.get('selectedNodes') as Set<string> | undefined;
+    const selectedNodeIds = diagramSelection.length > 0 ? diagramSelection : Array.from(storeSelection ?? []);
+    if (selectedNodeIds.length === 0) {
       throw new Error('No nodes selected');
     }
 
-    this.copiedNodeIds = Array.from(selectedNodeIds);
+    this.copiedNodeIds = selectedNodeIds;
 
     // Get nodes
     const nodes = this.copiedNodeIds
@@ -104,6 +113,7 @@ export class CopyCommand extends Command {
   override canExecute(context: CommandContext): boolean {
     if (!context.diagram) return false;
 
+    if (context.diagram.getSelectedNodes().length > 0) return true;
     const selectedNodes = context.store?.get('selectedNodes') as Set<string> | undefined;
     return selectedNodes !== undefined && selectedNodes.size > 0;
   }

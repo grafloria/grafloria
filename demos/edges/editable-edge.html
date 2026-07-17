@@ -27,7 +27,7 @@ defineDemo({
   howTo: [
     'Click the wire between A and B — its stroke highlights to show it is selected.',
     'Click the selected edge\'s body where you want a bend — a waypoint handle appears right under the click, and the route now passes through it.',
-    'Drag that waypoint anywhere — the wire bends to follow while both ends stay pinned to A and B, and dashed guides track your pointer 1:1 during the drag.',
+    'Drag that waypoint anywhere — the handle rides your pointer 1:1 and the wire bends to follow, while both ends stay pinned to A and B.',
     'Click other spots on the selected edge to drop more waypoints and sculpt a multi-bend route.',
   ],
   reactflow: 'Editable Edge',
@@ -42,7 +42,7 @@ defineDemo({
     ctx.diagram = ctx.instance.getModel();
     ctx.pointer = (type, wx, wy) => {
       const c = ctx.instance.viewport.worldToClient(wx, wy, ctx.host.getBoundingClientRect());
-      ctx.host.dispatchEvent(new PointerEvent(type, {
+      ctx.host.dispatchEvent(new PointerEvent(({ mousedown: 'pointerdown', mousemove: 'pointermove', mouseup: 'pointerup' })[type] ?? type, {
         clientX: c.x, clientY: c.y, bubbles: true, cancelable: true,
         button: 0, buttons: type === 'pointerup' ? 0 : 1, pointerId: 1, pointerType: 'mouse',
       }));

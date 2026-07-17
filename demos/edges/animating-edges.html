@@ -35,6 +35,10 @@ defineDemo({
 
   async setup(ctx) {
     ctx.instance = render({ nodes: NODES, edges: EDGES }, ctx.host);
+    // This page ASSERTS animations run — opt out of the battery auto-saver, or
+    // an unplugged laptop under 20% silently kills every animation (a real
+    // product feature; a flaky gate).
+    ctx.instance.animations.updateConfig({ respectBatteryStatus: false, batterySavingMode: false });
     ctx.diagram = ctx.instance.getModel();
     await ctx.tick();
   },

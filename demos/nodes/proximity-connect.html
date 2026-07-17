@@ -12,7 +12,7 @@ defineDemo({
   blurb: 'Drag a node close to another and a wire proposes itself — the shipped SnapController.findProximityConnection, driven off a real node drag and committed on drop. No handles, no aiming.',
   howTo: [
     'See the layout first: "drag me →" (A) sits far from B with no wires — at this distance the snap logic proposes nothing.',
-    'Proximity is drop-time HOST GLUE, and this page wires that glue inside its own check — so straight after load, click "▶ run the scripted checks" in this panel.',
+    'Drag the "drag me →" node right up next to B and release — the drop-time glue proposes the pair and the wire commits itself.',
     'Watch A drag itself toward B: the moment its edge comes inside the 60px radius, a wire commits on the drop — no aiming at ports; the shipped SnapController proposed the pair.',
     'The run then drags A far away again: no new proposal, no duplicate — the single wire survives, stretched across the canvas. Drag A by hand afterwards: the link stays glued like any other edge.',
   ],
@@ -34,7 +34,7 @@ defineDemo({
     const fire = (type, w) => {
       const rect = ctx.host.getBoundingClientRect();
       const c = api.viewport.worldToClient(w.x, w.y, rect);
-      ctx.host.dispatchEvent(new MouseEvent(type, { bubbles: true, clientX: c.x, clientY: c.y, button: 0 }));
+      ctx.host.dispatchEvent(new PointerEvent(({ mousedown: 'pointerdown', mousemove: 'pointermove', mouseup: 'pointerup' })[type] ?? type, { bubbles: true, pointerId: 1, pointerType: 'mouse', clientX: c.x, clientY: c.y, button: 0 }));
     };
     // Drag node A's body from world p0 to p1 with real pointer events, then — the
     // way a host wires proximity — evaluate proximity on drop and auto-link.
@@ -45,11 +45,30 @@ defineDemo({
       fire('mouseup',   p1);
       await ctx.tick();
       const cand = ctx.snap.findProximityConnection(ctx.engine, 'a');
-      if (cand) ctx.engine.commandManager.execute(ctx.snap.buildProximityLinkCommand(cand));
+      // The page's LIVE glue (nodes:change) may already have committed this
+      // proposal — only execute when the link does not exist yet, or the
+      // scripted drag would create a duplicate.
+      if (cand && ctx.diagram.getLinks().length === 0) {
+        ctx.engine.commandManager.execute(ctx.snap.buildProximityLinkCommand(cand));
+      }
       await ctx.tick();
       return cand;
     };
     ctx.centre = (id) => { const n = ctx.diagram.getNode(id); return { x: n.position.x + n.size.width / 2, y: n.position.y + n.size.height / 2 }; };
+
+    // The SAME drop-glue, wired to LIVE drags: a visitor hand-dragging A next
+    // to B gets the auto-wire too, not only the scripted check (live audit:
+    // the page's own headline gesture did nothing by hand). nodes:change fires
+    // on drag-end commits — evaluate proximity for the moved node then.
+    ctx.instance.on('nodes:change', () => {
+      for (const n of ctx.diagram.getNodes()) {
+        const cand = ctx.snap.findProximityConnection(ctx.engine, n.id);
+        if (cand) {
+          ctx.engine.commandManager.execute(ctx.snap.buildProximityLinkCommand(cand));
+          break;
+        }
+      }
+    });
     await ctx.tick();
   },
 
@@ -73,7 +92,7 @@ defineDemo({
     // must join A and B (in either orientation), and be within the radius.
     const ends = [cand.sourceNodeId, cand.targetNodeId].sort().join(',');
     check(ends === 'a,b', `the proposal should join A and B, was ${cand.sourceNodeId}→${cand.targetNodeId}`);
-    check(cand.distance <= 60, `proposal distance ${cand && cand.distance} should be within the radius`);
+    check(cand.distance <= DEFAULT_SNAP_CONFIG.proximityConnectRadius, `proposal distance ${cand && cand.distance} should be within the radius (${DEFAULT_SNAP_CONFIG.proximityConnectRadius})`);
 
     // 3. THE TEETH: a real link now exists between A and B.
     check(m.getLinks().length === 1, `the proximity link was not committed, links=${m.getLinks().length}`);

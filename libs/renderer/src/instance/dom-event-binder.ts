@@ -140,6 +140,8 @@ export class DomEventBinder {
   private spaceKeyPressed = false;
 
   private isPanning = false;
+  /** Armed by an empty-canvas left press; becomes a real pan past the drag threshold. */
+  private pendingEmptyPan: { startX: number; startY: number } | null = null;
   private lastPanX = 0;
   private lastPanY = 0;
 
@@ -384,6 +386,7 @@ export class DomEventBinder {
 
     this.touch.reset();
     this.isPanning = false;
+    this.pendingEmptyPan = null;
     this.nodeDrag = null;
     this.groupDrag = null;
     this.spaceKeyPressed = false;
@@ -847,7 +850,12 @@ export class DomEventBinder {
       }
     }
 
-    // 9. Empty canvas → clear the selection (unless a modifier is extending it).
+    // 9. Empty canvas → clear the selection (unless a modifier is extending it),
+    //    and ARM a pan: dragging empty canvas is the industry-default pan
+    //    gesture (React Flow, Figma, tldraw), and six demo pages documented it
+    //    while the binder only panned on middle-button/Space (live audit: the
+    //    printed step was a silent no-op). A plain CLICK still only deselects —
+    //    the pan engages past the drag threshold in onMouseMove.
     const hasModifier = event.shiftKey || event.ctrlKey || event.metaKey || event.altKey;
     if (!hasModifier) {
       diagram.clearSelection();
@@ -856,6 +864,9 @@ export class DomEventBinder {
       });
       this.host.requestRender();
       this.emitSelectionChange();
+      if (this.options.enablePan) {
+        this.pendingEmptyPan = { startX: event.clientX, startY: event.clientY };
+      }
     }
   }
 
@@ -896,6 +907,23 @@ export class DomEventBinder {
         this.host.requestRender();
       }
       return;
+    }
+
+    if (this.pendingEmptyPan && !this.isPanning) {
+      // Only while the PRIMARY button is genuinely down: the armed state is
+      // also cleared on pointerup, but a hover move must never engage a pan.
+      if ((event.buttons & 1) === 0) {
+        this.pendingEmptyPan = null;
+      } else {
+      const dx = event.clientX - this.pendingEmptyPan.startX;
+      const dy = event.clientY - this.pendingEmptyPan.startY;
+      if (Math.hypot(dx, dy) >= this.options.dragThreshold) {
+        this.isPanning = true;
+        this.lastPanX = event.clientX;
+        this.lastPanY = event.clientY;
+        this.setCursor('grabbing');
+      }
+      }
     }
 
     if (this.isPanning) {
@@ -1087,6 +1115,7 @@ export class DomEventBinder {
     }
 
     this.isPanning = false;
+    this.pendingEmptyPan = null;
     this.setCursor(this.spaceKeyPressed ? 'grab' : 'default');
   }
 

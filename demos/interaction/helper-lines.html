@@ -127,7 +127,7 @@ defineDemo({
     const mover = ctx.diagram.getNode('mover');
     const rect = () => ctx.host.getBoundingClientRect();
     const wc = (wx, wy) => ctx.instance.viewport.worldToClient(wx, wy, rect());
-    const fire = (type, c, buttons) => ctx.host.dispatchEvent(new PointerEvent(type, {
+    const fire = (type, c, buttons) => ctx.host.dispatchEvent(new PointerEvent(({ mousedown: 'pointerdown', mousemove: 'pointermove', mouseup: 'pointerup' })[type] ?? type, {
       clientX: c.x, clientY: c.y, bubbles: true, cancelable: true, button: 0, buttons, pointerId: 7, pointerType: 'mouse',
     }));
     const grab = wc(mover.position.x + 60, mover.position.y + 30);
