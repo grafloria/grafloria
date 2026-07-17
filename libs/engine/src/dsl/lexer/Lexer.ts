@@ -66,7 +66,13 @@ export class Lexer {
         break;
 
       case ':':
-        this.addToken(TokenType.COLON, char, start, this.position);
+        if (this.peek() === ':' && this.peekNext() === ':') {
+          this.advance();
+          this.advance();
+          this.addToken(TokenType.TRIPLE_COLON, ':::', start, this.position);
+        } else {
+          this.addToken(TokenType.COLON, char, start, this.position);
+        }
         break;
 
       case ';':
@@ -83,6 +89,14 @@ export class Lexer {
 
       case '&':
         this.addToken(TokenType.AMPERSAND, char, start, this.position);
+        break;
+
+      case '#':
+        // Hex colour (#f9f, #ff0000, #333) — style/classDef values. Emitted as
+        // an IDENTIFIER carrying the leading '#' so the style parser reads it
+        // verbatim. Was UNKNOWN, which broke every `fill:#…`.
+        while (this.isAlphaNumeric(this.peek())) this.advance();
+        this.addToken(TokenType.IDENTIFIER, this.input.substring(start, this.position), start, this.position);
         break;
 
       case '[':

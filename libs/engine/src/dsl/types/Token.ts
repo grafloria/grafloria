@@ -64,6 +64,7 @@ export enum TokenType {
 
   // Operators
   COLON = 'COLON',
+  TRIPLE_COLON = 'TRIPLE_COLON',    // ::: (inline class)
   SEMICOLON = 'SEMICOLON',
   COMMA = 'COMMA',
   PIPE = 'PIPE',

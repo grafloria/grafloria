@@ -16,6 +16,11 @@ import {
   EdgeDefinitionNode,
   SubgraphNode,
   StyleNode,
+  ClassDefNode,
+  ClassApplicationNode,
+  LinkStyleNode,
+  ClickNode,
+  GrafloriaDirectiveNode,
   NodeShape,
   LinkType,
   StyleProperties,
@@ -76,17 +81,24 @@ export class ASTTransformer {
     diagram.setMetadata('diagramType', ast.diagramType);
     diagram.setMetadata('direction', ast.direction);
 
-    // Process statements
+    // Phase 1: structure — nodes, subgraphs→groups, and classDefs (stored so
+    // class applications in Phase 3 can resolve regardless of source order).
     for (const statement of ast.statements) {
       this.processStatement(statement, diagram, defaultNodeSize, autoPosition);
     }
 
-    // After all nodes are created, create links
+    // Phase 2: top-level links (subgraph-internal links are created in
+    // createSubgraph, before their group is formed).
     for (const statement of ast.statements) {
       if (statement.type === 'EdgeDefinition') {
         this.createLink(statement as EdgeDefinitionNode, diagram);
       }
     }
+
+    // Phase 3: the extension channel — Tier-1 directives (style/class/linkStyle/
+    // click) and Tier-2 %%grafloria: directives. Run last, over the FLATTENED tree,
+    // because they reference nodes/links/classDefs that must already exist.
+    this.applyDirectives(this.flattenStatements(ast.statements), diagram);
 
     return diagram;
   }
@@ -113,14 +125,99 @@ export class ASTTransformer {
         this.createSubgraph(statement as SubgraphNode, diagram, defaultNodeSize, autoPosition);
         break;
 
-      case 'Style':
-        this.applyStyle(statement as StyleNode, diagram);
+      case 'ClassDef':
+        // Stored now; class applications resolve against it in Phase 3.
+        this.storeClassDef(statement as ClassDefNode, diagram);
         break;
 
-      case 'ClassDef':
-        // ClassDef is handled by storing in diagram metadata
-        this.storeClassDef(statement, diagram);
+      // Deferred to Phase 3 (need nodes / links / classDefs in place first).
+      case 'Style':
+      case 'ClassApplication':
+      case 'LinkStyle':
+      case 'Click':
+      case 'GrafloriaDirective':
         break;
+    }
+  }
+
+  /** Depth-first flatten so directives inside subgraphs are applied too. */
+  private flattenStatements(statements: StatementNode[]): StatementNode[] {
+    const out: StatementNode[] = [];
+    for (const st of statements) {
+      out.push(st);
+      if (st.type === 'Subgraph') out.push(...this.flattenStatements((st as SubgraphNode).statements));
+    }
+    return out;
+  }
+
+  /**
+   * Phase 3 — apply the extension channel. Node-targeting directives first
+   * (style/class/click), then link-targeting ones (linkStyle/grafloria:edge) which
+   * depend on link order.
+   */
+  private applyDirectives(statements: StatementNode[], diagram: DiagramModel): void {
+    for (const st of statements) {
+      if (st.type === 'Style') this.applyStyle(st as StyleNode, diagram);
+      else if (st.type === 'ClassApplication') this.applyClass(st as ClassApplicationNode, diagram);
+      else if (st.type === 'Click') this.applyClick(st as ClickNode, diagram);
+      else if (st.type === 'GrafloriaDirective' && (st as GrafloriaDirectiveNode).target === 'node') {
+        this.applyGrafloriaNode(st as GrafloriaDirectiveNode, diagram);
+      }
+    }
+    for (const st of statements) {
+      if (st.type === 'LinkStyle') this.applyLinkStyle(st as LinkStyleNode, diagram);
+      else if (st.type === 'GrafloriaDirective' && (st as GrafloriaDirectiveNode).target === 'edge') {
+        this.applyGrafloriaEdge(st as GrafloriaDirectiveNode, diagram);
+      }
+    }
+  }
+
+  /** `class a,b hot` — resolve the classDef and apply it to each node. */
+  private applyClass(node: ClassApplicationNode, diagram: DiagramModel): void {
+    const classDefs = (diagram.getMetadata('classDefs') || {}) as Record<string, StyleProperties>;
+    const props = classDefs[node.className];
+    if (!props) return;
+    for (const id of node.ids) {
+      const target = diagram.getNode(id);
+      if (target) this.applyStyleToNode(target, props);
+    }
+  }
+
+  /** `linkStyle 0,2 …` — style links by insertion index (or 'default' = all). */
+  private applyLinkStyle(node: LinkStyleNode, diagram: DiagramModel): void {
+    const links = diagram.getLinks();
+    const targets = node.indices === 'default' ? links.map((_, i) => i) : node.indices;
+    for (const i of targets) {
+      if (links[i]) this.applyStyleToLink(links[i], node.properties);
+    }
+  }
+
+  /** `click a "url" "tip"` — the node's navigation target (metadata, not a node). */
+  private applyClick(node: ClickNode, diagram: DiagramModel): void {
+    const target = diagram.getNode(node.id);
+    if (!target) return;
+    if (node.href) target.setMetadata('href', node.href);
+    if (node.tooltip) target.setMetadata('tooltip', node.tooltip);
+  }
+
+  /** `%%grafloria:node a status:running` — Grafloria-only node state. */
+  private applyGrafloriaNode(node: GrafloriaDirectiveNode, diagram: DiagramModel): void {
+    const target = diagram.getNode(node.ids[0]);
+    if (!target) return;
+    if (node.properties['status']) {
+      target.setState({ status: node.properties['status'], animateStatus: true } as never);
+    }
+  }
+
+  /** `%%grafloria:edge a b animation:flow` — Grafloria-only edge animation. */
+  private applyGrafloriaEdge(node: GrafloriaDirectiveNode, diagram: DiagramModel): void {
+    const [source, target] = node.ids;
+    const link = diagram.getLinks().find((l) => l.sourceNodeId === source && l.targetNodeId === target);
+    if (!link) return;
+    if (node.properties['animation']) {
+      const anim: Record<string, string> = { type: node.properties['animation'] };
+      if (node.properties['speed']) anim['speed'] = node.properties['speed'];
+      link.updateStyle({ animation: anim } as never);
     }
   }
 
@@ -377,6 +474,19 @@ export class ASTTransformer {
     if (properties.strokeDasharray) {
       node.style.strokeDasharray = properties.strokeDasharray;
     }
+
+    // Paints must ALSO ride the shape-config metadata — that is where the SVG
+    // renderer reads fill/stroke for the shape (node.style alone renders
+    // nothing). Mirrors the inline-style path in createNode. node.style stays
+    // set too, which is what the generator's analyzer detects for round-trip.
+    const shapeConfig = { ...(node.getMetadata('shape') as Record<string, unknown> | undefined) };
+    if (properties.fill) shapeConfig['fill'] = properties.fill;
+    if (properties.stroke) shapeConfig['stroke'] = properties.stroke;
+    if (properties.strokeWidth !== undefined) shapeConfig['strokeWidth'] = properties.strokeWidth;
+    node.setMetadata('shape', shapeConfig);
+    // Mark it so the generator re-emits a `style` line (the analyzer's own
+    // hasCustomStyle heuristic wrongly treats fill/stroke as "not custom").
+    node.setMetadata('dslStyled', true);
   }
 
   /**

@@ -14,6 +14,10 @@ import {
   SubgraphNode,
   StyleNode,
   ClassDefNode,
+  ClassApplicationNode,
+  LinkStyleNode,
+  ClickNode,
+  GrafloriaDirectiveNode,
   Direction,
   DiagramType,
   NodeShape,
@@ -35,9 +39,12 @@ export class ParseError extends Error {
   }
 }
 
-const DIRECTIVE_KEYWORDS = new Set([
-  'style', 'classDef', 'class', 'linkStyle', 'click', 'direction',
-]);
+interface NodeRef {
+  id: string;
+  shape?: NodeShape;
+  label?: string;
+  cssClass?: string;
+}
 
 /** Mermaid v11 `@{ shape: … }` names → our NodeShape. Unknowns fall to rect. */
 const V11_SHAPE_MAP: Record<string, NodeShape> = {
@@ -63,7 +70,8 @@ export class Parser {
   parse(tokens: Token[]): DiagramNode {
     this.tokens = tokens.filter(t =>
       t.type !== TokenType.WHITESPACE &&
-      t.type !== TokenType.COMMENT
+      // Keep ONLY the Tier-2 extension comments; ordinary %% comments still drop.
+      (t.type !== TokenType.COMMENT || /^%%grafloria:(node|edge)\b/.test(t.value))
     );
     this.current = 0;
 
@@ -150,12 +158,22 @@ export class Parser {
       return this.parseSubgraph();
     }
 
-    // Directive lines (style / classDef / class / linkStyle / click / direction).
-    // These are the Phase-2 extension channel; Phase 0 recognises and SKIPS them
-    // so they neither throw nor turn `fill:#f9f` into a node called `f9f`.
-    if (this.check(TokenType.IDENTIFIER) && DIRECTIVE_KEYWORDS.has(this.peek().value)) {
-      this.skipLine();
-      return null;
+    // Tier-2 extension comment (%%grafloria:node / %%grafloria:edge).
+    if (this.check(TokenType.COMMENT)) {
+      return this.parseGrafloriaComment(this.advance().value);
+    }
+
+    // Tier-1 native directives — Phase 2 wires them to the model (Phase 0 only
+    // skipped them so they never threw or garbaged).
+    if (this.check(TokenType.IDENTIFIER)) {
+      switch (this.peek().value) {
+        case 'style': return this.parseStyle();
+        case 'classDef': return this.parseClassDef();
+        case 'class': return this.parseClassApplication();
+        case 'linkStyle': return this.parseLinkStyle();
+        case 'click': return this.parseClick();
+        case 'direction': this.skipLine(); return null;
+      }
     }
 
     // A statement is a NODE GROUP (one or more refs joined by `&`) optionally
@@ -176,37 +194,45 @@ export class Parser {
     }
 
     // Bare node group: one NodeDefinition per ref (usually one; `a & b` gives two).
-    return firstGroup.map((ref) => ({
+    const defs: StatementNode[] = firstGroup.map((ref) => ({
       type: 'NodeDefinition' as const,
       id: ref.id,
       label: ref.label || ref.id,
       shape: ref.shape || 'rectangle',
       location: this.getLocation(start, this.previous()),
     }));
+    return [...defs, ...this.classApps(firstGroup, start)];
   }
 
   /**
    * A single node reference: an id, then an optional shape (`[A]`, `([A])`, …)
    * or a v11 metadata block (`@{ shape: rect, label: "Hi" }`).
    */
-  private parseNodeRef(): { id: string; shape?: NodeShape; label?: string } | null {
+  private parseNodeRef(): NodeRef | null {
     const id = this.parseNodeId();
     if (!id) return null;
 
+    const ref: NodeRef = { id };
     if (this.check(TokenType.AT)) {
       const meta = this.parseNodeMetadata();
-      return { id, shape: meta.shape, label: meta.label };
-    }
-    if (this.isNodeShapeStart()) {
+      ref.shape = meta.shape;
+      ref.label = meta.label;
+    } else if (this.isNodeShapeStart()) {
       const info = this.parseNodeShape();
-      return { id, shape: info.shape, label: info.label };
+      ref.shape = info.shape;
+      ref.label = info.label;
     }
-    return { id };
+    // Inline class: a:::hot  (also a[Label]:::hot)
+    if (this.check(TokenType.TRIPLE_COLON)) {
+      this.advance();
+      if (this.check(TokenType.IDENTIFIER)) ref.cssClass = this.advance().value;
+    }
+    return ref;
   }
 
   /** One or more node refs joined by `&` (Mermaid multi-node syntax). */
-  private parseNodeGroup(): Array<{ id: string; shape?: NodeShape; label?: string }> {
-    const group: Array<{ id: string; shape?: NodeShape; label?: string }> = [];
+  private parseNodeGroup(): NodeRef[] {
+    const group: NodeRef[] = [];
     const first = this.parseNodeRef();
     if (first) group.push(first);
     while (this.check(TokenType.AMPERSAND)) {
@@ -217,16 +243,26 @@ export class Parser {
     return group;
   }
 
+  /** ClassApplication statements for any refs carrying an inline `:::class`. */
+  private classApps(refs: NodeRef[], start: Token): ClassApplicationNode[] {
+    return refs
+      .filter((r) => r.cssClass)
+      .map((r) => ({
+        type: 'ClassApplication' as const,
+        ids: [r.id],
+        className: r.cssClass!,
+        location: this.getLocation(start, this.previous()),
+      }));
+  }
+
   /**
    * An edge chain: node-group (link [label] node-group)+. Each link produces the
    * FULL CROSS PRODUCT of the previous group and the next (so `a & b --> c & d`
    * is four edges), and the chain continues so `a --> b --> c` is two.
    */
-  private parseEdgeChain(
-    firstGroup: Array<{ id: string; shape?: NodeShape; label?: string }>,
-    start: Token
-  ): EdgeDefinitionNode[] {
+  private parseEdgeChain(firstGroup: NodeRef[], start: Token): StatementNode[] {
     const edges: EdgeDefinitionNode[] = [];
+    const allRefs: NodeRef[] = [...firstGroup];
     let prevGroup = firstGroup;
 
     while (this.isLinkToken()) {
@@ -266,9 +302,10 @@ export class Parser {
         }
       }
       prevGroup = nextGroup;
+      allRefs.push(...nextGroup);
     }
 
-    return edges;
+    return [...edges, ...this.classApps(allRefs, start)];
   }
 
   /**
@@ -403,6 +440,85 @@ export class Parser {
       properties,
       location: this.getLocation(start, this.previous()),
     };
+  }
+
+  /**
+   * Parse `class a,b hot` — bind an existing classDef to one or more nodes.
+   */
+  private parseClassApplication(): ClassApplicationNode {
+    const start = this.currentToken();
+    this.consume(TokenType.IDENTIFIER, 'Expected "class"'); // class keyword
+    const ids: string[] = [this.consume(TokenType.IDENTIFIER, 'Expected node id').value];
+    while (this.match(TokenType.COMMA)) {
+      ids.push(this.consume(TokenType.IDENTIFIER, 'Expected node id').value);
+    }
+    const className = this.consume(TokenType.IDENTIFIER, 'Expected class name').value;
+    return { type: 'ClassApplication', ids, className, location: this.getLocation(start, this.previous()) };
+  }
+
+  /**
+   * Parse `linkStyle 0,2 stroke:#f00` — style links by index (or `default`).
+   */
+  private parseLinkStyle(): LinkStyleNode {
+    const start = this.currentToken();
+    this.consume(TokenType.IDENTIFIER, 'Expected "linkStyle"'); // linkStyle keyword
+
+    let indices: number[] | 'default';
+    if (this.check(TokenType.IDENTIFIER) && this.peek().value === 'default') {
+      this.advance();
+      indices = 'default';
+    } else {
+      indices = [parseInt(this.consume(TokenType.NUMBER, 'Expected link index').value, 10)];
+      while (this.match(TokenType.COMMA)) {
+        indices.push(parseInt(this.consume(TokenType.NUMBER, 'Expected link index').value, 10));
+      }
+    }
+    const properties = this.parseStyleProperties();
+    return { type: 'LinkStyle', indices, properties, location: this.getLocation(start, this.previous()) };
+  }
+
+  /**
+   * Parse `click a "https://…" "tooltip"` — a node's navigation target. The
+   * `href` keyword form and `call`/callback forms are intentionally not modeled
+   * (a callback name is not a document fact); those lines are still skipped.
+   */
+  private parseClick(): ClickNode | null {
+    const start = this.currentToken();
+    this.consume(TokenType.IDENTIFIER, 'Expected "click"'); // click keyword
+    const id = this.consume(TokenType.IDENTIFIER, 'Expected node id').value;
+
+    // Optional `href` keyword, then the URL string, then an optional tooltip.
+    if (this.check(TokenType.IDENTIFIER) && this.peek().value === 'href') this.advance();
+    let href: string | undefined;
+    let tooltip: string | undefined;
+    if (this.check(TokenType.STRING)) href = this.advance().value;
+    if (this.check(TokenType.STRING)) tooltip = this.advance().value;
+    this.skipLine(); // ignore any trailing target token (_blank etc.)
+    return { type: 'Click', id, href, tooltip, location: this.getLocation(start, this.previous()) };
+  }
+
+  /**
+   * Parse a Tier-2 extension comment into a GrafloriaDirective:
+   *   %%grafloria:node <id> <k>:<v>[,<k>:<v>]*
+   *   %%grafloria:edge <source> <target> <k>:<v>...
+   * Returns null for anything that is not a well-formed grafloria directive (a
+   * malformed one is simply ignored, never garbage).
+   */
+  private parseGrafloriaComment(value: string): GrafloriaDirectiveNode | null {
+    const m = value.match(/^%%grafloria:(node|edge)\s+(.+)$/);
+    if (!m) return null;
+    const target = m[1] as 'node' | 'edge';
+    const parts = m[2].trim().split(/\s+/);
+    const idCount = target === 'edge' ? 2 : 1;
+    if (parts.length < idCount) return null;
+    const ids = parts.slice(0, idCount);
+    const properties: Record<string, string> = {};
+    for (const pair of parts.slice(idCount).join(' ').split(',')) {
+      const idx = pair.indexOf(':');
+      if (idx <= 0) continue;
+      properties[pair.slice(0, idx).trim()] = pair.slice(idx + 1).trim();
+    }
+    return { type: 'GrafloriaDirective', target, ids, properties, location: this.getLocation(this.previous(), this.previous()) };
   }
 
   /**

@@ -1,0 +1,73 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Mermaid oracle harness</title>
+<style>
+  body { margin: 0; font: 13px system-ui, sans-serif; }
+  .row { display: flex; }
+  .col { flex: 1; min-width: 0; border-right: 1px solid #ccc; }
+  .col h3 { margin: 4px 8px; font: 11px ui-monospace, monospace; color: #555; }
+  #grafloria-stage { height: 460px; }
+  #mermaid-stage { padding: 8px; }
+  #mermaid-stage svg { max-width: 100%; }
+</style>
+<div class="row">
+  <div class="col"><h3>GRAFLORIA</h3><div id="grafloria-stage"></div></div>
+  <div class="col"><h3>MERMAID (oracle)</h3><div id="mermaid-stage"></div></div>
+</div>
+<!-- mermaid UMD: Playwright serves this from node_modules via route interception -->
+<script src="mermaid.min.js"></script>
+<script type="module">
+import { render, importDiagramText, exportDiagramText } from '../shell/grafloria.js';
+
+const mermaid = window.mermaid;
+mermaid.initialize({ startOnLoad: false, securityLevel: 'loose' });
+
+const labelOf = (n) => n.getMetadata('label');
+const modelToSpec = (model) => ({
+  nodes: model.getNodes().map((n) => ({
+    id: n.id, label: labelOf(n),
+    position: { x: n.position.x, y: n.position.y },
+    size: { width: n.size.width, height: n.size.height },
+    shape: n.getMetadata('shape'), style: n.style,
+  })),
+  edges: model.getLinks().map((l) => ({ id: l.id, source: l.sourceNodeId, target: l.targetNodeId })),
+});
+
+let api = null;
+window.oracle = {
+  /** Parse Mermaid text with Grafloria, render it, and return a structural summary. */
+  grafloriaRender(text) {
+    const r = importDiagramText(text);
+    const stage = document.getElementById('grafloria-stage');
+    stage.innerHTML = '';
+    api = render(modelToSpec(r.diagram), stage);
+    api.renderNow();
+    api.fitView?.(30);
+    return {
+      unsupported: r.unsupported ?? null,
+      nodes: r.diagram.getNodes().map((n) => n.id).sort(),
+      links: r.diagram.getLinks().map((l) => `${l.sourceNodeId}->${l.targetNodeId}`).sort(),
+      fills: Object.fromEntries(r.diagram.getNodes().map((n) => [n.id, (n.getMetadata('shape') || {}).fill || null])),
+    };
+  },
+  /** The lossless-off body Grafloria would export for this text. */
+  grafloriaExportBody(text) {
+    return exportDiagramText(importDiagramText(text).diagram, { lossless: false });
+  },
+  /** Does REAL Mermaid accept this text? Returns {valid, error}. */
+  async mermaidParse(text) {
+    try { await mermaid.parse(text); return { valid: true, error: null }; }
+    catch (e) { return { valid: false, error: String(e?.message ?? e).slice(0, 200) }; }
+  },
+  /** Render text with real Mermaid into the right pane. */
+  async mermaidRender(text) {
+    const stage = document.getElementById('mermaid-stage');
+    try {
+      const { svg } = await mermaid.render('mmr' + Math.floor(performance.now()), text);
+      stage.innerHTML = svg;
+      return { ok: true };
+    } catch (e) { stage.innerHTML = '<pre>' + String(e?.message ?? e) + '</pre>'; return { ok: false }; }
+  },
+};
+window.__oracleReady = true;
+</script>

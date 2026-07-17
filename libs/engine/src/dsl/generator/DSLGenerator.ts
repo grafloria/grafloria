@@ -90,6 +90,13 @@ export class DSLGenerator {
       }
     }
 
+    // Tier-2 %%grafloria: directives (node status, edge animation).
+    const grafloria = this.generateGrafloriaDirectives(diagram);
+    if (grafloria.length > 0) {
+      lines.push('');
+      lines.push(...grafloria);
+    }
+
     return lines.join('\n');
   }
 
@@ -263,16 +270,41 @@ export class DSLGenerator {
     const nodes = diagram.getNodes();
 
     for (const node of nodes) {
-      const metadata = this.analysis.nodeMetadata.get(node.id);
-      if (metadata?.hasCustomStyle && node.style) {
-        const nodeId = this.sanitizeId(node.id);
+      // Emit for nodes the DSL transformer actually styled — not the analyzer's
+      // hasCustomStyle flag, which treats fill/stroke as non-custom.
+      if (node.getMetadata('dslStyled') && node.style) {
         const styleProps = this.formatStyleProperties(node.style);
         if (styleProps) {
-          lines.push(`  style ${nodeId} ${styleProps}`);
+          lines.push(`  style ${this.sanitizeId(node.id)} ${styleProps}`);
         }
       }
     }
 
+    return lines;
+  }
+
+  /**
+   * Tier-2 extension directives (%%grafloria:node status / %%grafloria:edge animation)
+   * — Grafloria-only features carried in comments a Mermaid renderer ignores, so
+   * the visible body stays valid Mermaid. Always emitted (they are data, not
+   * decorative comments gated by includeComments).
+   */
+  private generateGrafloriaDirectives(diagram: DiagramModel): string[] {
+    const lines: string[] = [];
+    for (const node of diagram.getNodes()) {
+      const status = (node.state as { status?: string } | undefined)?.status;
+      if (status && status !== 'idle') {
+        lines.push(`%%grafloria:node ${this.sanitizeId(node.id)} status:${status}`);
+      }
+    }
+    for (const link of diagram.getLinks()) {
+      const anim = (link.style as { animation?: { type?: string; speed?: string } } | undefined)?.animation;
+      if (anim?.type && anim.type !== 'none') {
+        let line = `%%grafloria:edge ${link.sourceNodeId} ${link.targetNodeId} animation:${anim.type}`;
+        if (anim.speed) line += `,speed:${anim.speed}`;
+        lines.push(line);
+      }
+    }
     return lines;
   }
 

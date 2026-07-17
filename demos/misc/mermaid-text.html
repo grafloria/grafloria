@@ -45,7 +45,17 @@ const SPEC = {
 // here would mask the very fork this demo exists to catch.
 const labelOf = (n) => n.getMetadata('label');
 const modelToSpec = (model) => ({
-  nodes: model.getNodes().map((n) => ({ id: n.id, label: labelOf(n), position: { x: n.position.x, y: n.position.y }, size: { width: n.size.width, height: n.size.height } })),
+  // Carry shape (which holds the applied fill/stroke from `style`/`classDef`)
+  // and style, so pasted STYLED Mermaid renders with its colours — not just
+  // bare boxes. (Groups still don't survive this spec bridge; see the gap doc.)
+  nodes: model.getNodes().map((n) => ({
+    id: n.id,
+    label: labelOf(n),
+    position: { x: n.position.x, y: n.position.y },
+    size: { width: n.size.width, height: n.size.height },
+    shape: n.getMetadata('shape'),
+    style: n.style,
+  })),
   edges: model.getLinks().map((l) => ({ id: l.id, source: l.sourceNodeId, target: l.targetNodeId })),
 });
 

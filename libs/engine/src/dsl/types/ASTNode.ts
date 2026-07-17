@@ -78,7 +78,11 @@ export type StatementNode =
   | EdgeDefinitionNode
   | SubgraphNode
   | StyleNode
-  | ClassDefNode;
+  | ClassDefNode
+  | ClassApplicationNode
+  | LinkStyleNode
+  | ClickNode
+  | GrafloriaDirectiveNode;
 
 /**
  * Node definition: A[Label]
@@ -146,6 +150,40 @@ export interface ClassDefNode extends ASTNode {
   type: 'ClassDef';
   className: string;
   properties: StyleProperties;
+}
+
+/** `class a,b hot` — apply a classDef to one or more nodes. */
+export interface ClassApplicationNode extends ASTNode {
+  type: 'ClassApplication';
+  ids: string[];
+  className: string;
+}
+
+/** `linkStyle 0,2 stroke:#f00` — style links by index (or 'default'). */
+export interface LinkStyleNode extends ASTNode {
+  type: 'LinkStyle';
+  indices: number[] | 'default';
+  properties: StyleProperties;
+}
+
+/** `click a "https://…" "tooltip"` — a node's navigation target. */
+export interface ClickNode extends ASTNode {
+  type: 'Click';
+  id: string;
+  href?: string;
+  tooltip?: string;
+}
+
+/**
+ * `%%grafloria:node a status:running` / `%%grafloria:edge a b animation:flow`.
+ * The Tier-2 extension channel — Grafloria-only features with no Mermaid analog,
+ * hidden in a comment a Mermaid renderer ignores.
+ */
+export interface GrafloriaDirectiveNode extends ASTNode {
+  type: 'GrafloriaDirective';
+  target: 'node' | 'edge';
+  ids: string[];
+  properties: Record<string, string>;
 }
 
 /**
