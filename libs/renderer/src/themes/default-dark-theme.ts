@@ -37,8 +37,10 @@ export const DARK_THEME: Theme = {
         stroke: '#f59e0b',
       },
       hovered: {
+        // Mirror of the light theme's rule: hover emphasizes. Stroke was
+        // IDENTICAL to the default stroke (no border change at all).
         fill: '#374151',
-        stroke: '#6b7280',
+        stroke: '#9ca3af',
       },
       disabled: {
         fill: '#1f2937',

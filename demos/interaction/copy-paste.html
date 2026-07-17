@@ -31,7 +31,7 @@ defineDemo({
   howTo: [
     'Click the Original node to select it, then press ⌘C / Ctrl+C to copy it.',
     'Press ⌘V / Ctrl+V — an independent copy appears, offset from the original.',
-    'Press ⌘V / Ctrl+V again — a second copy, with its own id and position.',
+    'Keep pressing ⌘V / Ctrl+V — one copy was put on the clipboard, so every paste adds another, and each lands 20px further down-right (a cascade, never a hidden stack).',
     'Drag one copy somewhere else — the other copy and the Original stay put; the pastes share nothing.',
     'Select a copy and press Delete — it disappears; ⌘Z / Ctrl+Z brings it back.',
   ],
@@ -107,7 +107,19 @@ defineDemo({
     check(model.getNodes().length === 4,
       `⌘C/⌘V did not paste a 4th node live (have ${model.getNodes().length})`);
 
-    ctx.report(`orig=${orig.id}  copy1=${c1.id}  copy2=${c2.id}  (+1 via ⌘C/⌘V = 4 independent nodes)`);
+    // 5. REPEAT-PASTE CASCADES. One copy, many pastes: each default paste must
+    //    land somewhere NEW (live report: "copy paste works but for one time" —
+    //    every ⌘V worked, but they all stacked on the same pixels, so paste #2+
+    //    was invisible under paste #1).
+    window.dispatchEvent(new KeyboardEvent('keydown', { key: 'v', metaKey: true, bubbles: true, cancelable: true }));
+    for (let i = 0; i < 30 && model.getNodes().length < 5; i++) await new Promise((r) => setTimeout(r, 10));
+    check(model.getNodes().length === 5,
+      `a second ⌘V from the same copy did not paste (have ${model.getNodes().length})`);
+    const spots = model.getNodes().map((n) => `${n.position.x},${n.position.y}`);
+    check(new Set(spots).size === spots.length,
+      `repeat pastes stacked on the same spot — positions [${spots.join('  ')}]`);
+
+    ctx.report(`orig=${orig.id}  copy1=${c1.id}  copy2=${c2.id}  (+2 via ⌘C/⌘V ×2 = 5 nodes, all at distinct spots)`);
   },
 });
 </script>

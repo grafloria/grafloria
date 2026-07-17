@@ -109,7 +109,7 @@ import type { RoutedPath, RoutingAlgorithm, SolverEdge } from '@grafloria/engine
 // Wave 6 (Ports & connections): the port seam — group resolution (Card 3), the
 // glyph builder (Card 0), the label engine (Card 1), attachment spots and
 // multi-link spreading (Card 5), and colour-by-data-type (Card 7).
-import { getPortPositionForShape } from './port-positioning';
+import { getPortPositionForShape, portWorldPosition } from './port-positioning';
 import { glyphHalfExtents, renderPortGlyph } from './port-glyph';
 import { nudgePortLabels, portLabelGeometry, renderPortLabel } from './port-label';
 import { applySpread, assignSpreadLanes, resolveSpot } from './port-spots';
@@ -4595,6 +4595,26 @@ export class SVGRenderer implements IRenderer {
    * CRITICAL FIX: Added comprehensive debugging and proper string comparison
    */
   private shouldRenderPort(
+    port: PortModel,
+    node: NodeModel,
+    config: InteractionConfig
+  ): boolean {
+    if (!this.shouldRenderPortByMode(port, node, config)) return false;
+    // Occlusion veto, AFTER the (cheap) mode decision so only ports that would
+    // actually show pay for it: a port whose anchor is covered by a node above
+    // its owner is not part of the visible picture — pre-fix, hovering an
+    // overlapped node floated its buried port glyphs ON TOP of the covering
+    // node's body. The interaction controller applies the same rule to
+    // hover/press, so paint and input agree that the port does not exist.
+    const diagram = this.engine.getDiagram();
+    if (diagram && typeof diagram.isPointCoveredAbove === 'function') {
+      const anchor = portWorldPosition(port, node);
+      if (diagram.isPointCoveredAbove(anchor.x, anchor.y, node.id)) return false;
+    }
+    return true;
+  }
+
+  private shouldRenderPortByMode(
     port: PortModel,
     node: NodeModel,
     config: InteractionConfig

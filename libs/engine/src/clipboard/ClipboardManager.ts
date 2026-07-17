@@ -33,6 +33,7 @@ export class ClipboardManager {
   private clipboard: ClipboardData | null = null;
   private history: ClipboardData[] = [];
   private readonly maxHistorySize: number = 10;
+  private pasteSerial = 0;
 
   /**
    * Copy entities to clipboard
@@ -55,6 +56,8 @@ export class ClipboardManager {
 
     // Store in clipboard
     this.clipboard = clipboardData;
+    // A fresh copy starts a fresh paste cascade (see claimPasteSlot).
+    this.pasteSerial = 0;
 
     // Add to history
     this.history.unshift(clipboardData);
@@ -68,6 +71,19 @@ export class ClipboardManager {
    */
   get(): ClipboardData | null {
     return this.clipboard;
+  }
+
+  /**
+   * Claim the next paste slot for the CURRENT clipboard payload (1-based).
+   *
+   * Repeat-pasting the same copy must cascade — the clipboard's serialized
+   * positions are frozen at copy time, so a constant default offset lands
+   * every paste on the exact same pixels and "paste" appears to work only
+   * once (live report). Each PasteCommand claims its slot once (stable
+   * across redo); a new copy() resets the cascade.
+   */
+  claimPasteSlot(): number {
+    return ++this.pasteSerial;
   }
 
   /**

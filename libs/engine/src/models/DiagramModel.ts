@@ -1545,6 +1545,56 @@ export class DiagramModel extends DiagramEntity {
   }
 
   /**
+   * Is (x, y) inside any node ABOVE `nodeId` in z-order?
+   *
+   * Same z contract as {@link getNodeAtPosition} (array order, topmost last),
+   * same shape-aware containment. This is the occlusion oracle for PORTS: a
+   * port whose anchor a higher node covers must neither paint nor accept
+   * input — pre-fix, an overlapped node's port glyphs floated on top of the
+   * covering node's body, and its hidden ports still won the hover/press race
+   * through it (live report from stacked pasted nodes).
+   */
+  isPointCoveredAbove(x: number, y: number, nodeId: string): boolean {
+    const nodes = this.getNodes();
+    let ownerIndex = -1;
+    for (let i = nodes.length - 1; i >= 0; i--) {
+      if (nodes[i].id === nodeId) {
+        ownerIndex = i;
+        break;
+      }
+    }
+    if (ownerIndex < 0) return false;
+
+    for (let i = nodes.length - 1; i > ownerIndex; i--) {
+      const node = nodes[i];
+      // A node's own DESCENDANTS never occlude it: a composite's chrome (a
+      // title-bar child covering the parent's top strip) is part of the same
+      // widget, and the parent's ports deliberately ride above it — that is
+      // why ports paint in an overlay at all (see create-diagram.spec "port
+      // glyphs paint above overlapping nodes"). Only STRANGERS above cover.
+      if (this.hasAncestor(node, nodeId)) continue;
+      const bounds = node.getBoundingBox();
+      if (x < bounds.left || x > bounds.right || y < bounds.top || y > bounds.bottom) continue;
+      if (isPointInShape(x, y, bounds, node.getMetadata('shape'))) {
+        return true;
+      }
+    }
+    return false;
+  }
+
+  /** Is `ancestorId` anywhere up `node`'s parent chain? Cycle-guarded. */
+  private hasAncestor(node: NodeModel, ancestorId: string): boolean {
+    const seen = new Set<string>();
+    let parentId = node.parentId;
+    while (parentId && !seen.has(parentId)) {
+      if (parentId === ancestorId) return true;
+      seen.add(parentId);
+      parentId = this.getNode(parentId)?.parentId;
+    }
+    return false;
+  }
+
+  /**
    * Option 3: Lock/pin selected nodes
    * Locked nodes will not move during layout operations
    */

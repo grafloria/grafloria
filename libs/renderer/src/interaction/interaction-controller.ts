@@ -1314,6 +1314,15 @@ export class InteractionController {
 
           // Phase 5: Optimization - compare squared distances to avoid sqrt
           if (distanceSquared <= hitRadius * hitRadius) {
+            // Occlusion: a port whose anchor a higher node covers is not in
+            // the picture (the renderer hides it via the same oracle) — it
+            // must not win the hover/press race THROUGH the covering node.
+            if (
+              typeof diagram.isPointCoveredAbove === 'function' &&
+              diagram.isPointCoveredAbove(portPos.x, portPos.y, node.id)
+            ) {
+              continue;
+            }
             return port;
           }
         }

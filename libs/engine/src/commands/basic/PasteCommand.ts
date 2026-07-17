@@ -25,6 +25,7 @@ export class PasteCommand extends Command {
   private pastedGroupIds: string[] = [];
   private idMap: Map<string, string> = new Map(); // old node/group ID -> new ID
   private portIdMap: Map<string, string> = new Map(); // old port ID -> new port ID
+  private pasteSlot: number | null = null; // claimed once; stable across redo
 
   constructor(
     private clipboard: ClipboardManager,
@@ -54,7 +55,15 @@ export class PasteCommand extends Command {
     this.pastedLinkIds = [];
     this.pastedGroupIds = [];
 
-    const offset = this.options.offset || { x: 20, y: 20 };
+    // An EXPLICIT offset is honored exactly (API contract). The DEFAULT
+    // cascades per paste of the same copy — clipboard positions are frozen at
+    // copy time, so without the cascade every default paste stacks on the
+    // same pixels. The slot is claimed once per command: redo re-executes at
+    // the same spot instead of drifting further.
+    if (this.pasteSlot === null) {
+      this.pasteSlot = this.clipboard.claimPasteSlot();
+    }
+    const offset = this.options.offset || { x: 20 * this.pasteSlot, y: 20 * this.pasteSlot };
 
     // Step 1: Paste nodes with ID remapping
     for (const nodeData of clipboardData.nodes) {

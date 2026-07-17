@@ -36,8 +36,11 @@ export const LIGHT_THEME: Theme = {
         stroke: '#b45309',
       },
       hovered: {
-        fill: '#f9fafb',
-        stroke: '#9ca3af',
+        // Hover EMPHASIZES: tint the body and darken the border. The old pair
+        // (#f9fafb on white, stroke LIGHTER than default) was imperceptible —
+        // "no hover effect on the node shape" in live use.
+        fill: '#f3f4f6',
+        stroke: '#374151',
       },
       disabled: {
         fill: '#f3f4f6',

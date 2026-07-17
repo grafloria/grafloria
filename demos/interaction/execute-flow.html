@@ -2,18 +2,50 @@
 <title>Execute flow (node statuses) — Grafloria</title>
 <link rel="stylesheet" href="../shell/demo.css">
 <style>
-  #bar { display: flex; gap: 8px; padding: 10px 24px; border-bottom: 1px solid rgba(127,127,127,.25); align-items: center; }
+  #bar, #bar2 { display: flex; gap: 8px; padding: 8px 24px; border-bottom: 1px solid rgba(127,127,127,.25); align-items: center; flex-wrap: wrap; }
   #bar button { padding: 5px 12px; border-radius: 6px; border: 1px solid rgba(127,127,127,.4); background: transparent; color: inherit; cursor: pointer; font: inherit; }
   #bar button:disabled { opacity: .5; cursor: default; }
   #readout { margin-left: auto; font: 12px/1.4 ui-monospace, monospace; opacity: .8; }
-  #canvas { height: calc(100vh - 152px); }
+  #bar2 { padding-top: 6px; padding-bottom: 6px; }
+  #bar2 label { display: inline-flex; gap: 5px; align-items: center; font: 12px/1.6 inherit; opacity: .9; }
+  #bar2 select { font: inherit; color: inherit; background: transparent; border: 1px solid rgba(127,127,127,.4); border-radius: 5px; padding: 2px 4px; }
+  #bar2 .sep { width: 1px; align-self: stretch; background: rgba(127,127,127,.3); margin: 0 4px; }
+  #canvas { height: calc(100vh - 196px); }
 </style>
 <header id="demo-head"></header>
 <div id="bar">
   <button id="btn-run">▶ execute flow</button>
   <button id="btn-fail">execute with a failure</button>
+  <button id="btn-warn">execute with a warning</button>
+  <button id="btn-step">step ▸</button>
   <button id="btn-reset">reset</button>
   <span id="readout">idle</span>
+</div>
+<div id="bar2">
+  <label>wire
+    <select id="sel-type">
+      <option value="marching-ants" selected>marching ants</option>
+      <option value="flow">flow</option>
+      <option value="pulse">pulse</option>
+      <option value="dash-flow">dash flow</option>
+    </select>
+  </label>
+  <label>speed
+    <select id="sel-speed">
+      <option value="slow">slow</option>
+      <option value="normal">normal</option>
+      <option value="fast" selected>fast</option>
+    </select>
+  </label>
+  <label>direction
+    <select id="sel-dir">
+      <option value="forward" selected>forward</option>
+      <option value="reverse">reverse</option>
+    </select>
+  </label>
+  <span class="sep"></span>
+  <label><input type="checkbox" id="chk-pulse" checked> pulse the running node</label>
+  <label><input type="checkbox" id="chk-rm"> reduced motion (statics only)</label>
 </div>
 <div id="canvas"></div>
 <script type="module">
@@ -29,6 +61,16 @@ import { defineDemo, check } from '../shell/demo.js';
 // CSS `animation` shorthand parses as the reserved play-state keyword, so the
 // animation-name computed to `none` everywhere. This page is the proof it
 // works now, driven the way a workflow runner would drive it.
+//
+// The page now exercises the WHOLE wired option surface, not just the happy
+// path: all four edge animation types (`style.animation.type`: marching-ants /
+// flow / pulse / dash-flow) with `speed` (slow|normal|fast → link-speed-*) and
+// `direction` ('reverse' → link-direction-reverse); the non-fatal 'warning'
+// outcome; the per-node motion opt-out (`animateStatus: false` →
+// node-status-still, statics stay); a step-through runner; and the app-level
+// reduced-motion switch (animations.updateConfig({ reducedMotion }) →
+// body.reduced-motion — the wave-6 dead-config fix), under which every static
+// affordance must survive with every animation stilled.
 const SPEC = {
   nodes: [
     { id: 'trigger',   position: { x: 60,  y: 180 }, size: { width: 130, height: 54 }, label: 'Trigger' },
@@ -55,12 +97,16 @@ const ORDER = ['trigger', 'fetch', 'transform', 'validate', 'enrich', 'save', 'n
 
 defineDemo({
   name: 'Execute flow (node statuses)',
-  blurb: 'Run the workflow like n8n: each node lights up running (a pulsing highlight), its incoming edge animates, then it completes — or fails and halts the flow. Built on the engine\'s node.state.status machinery.',
+  blurb: 'Run the workflow like n8n: nodes pulse while running, the active wire animates in your chosen style (marching ants / flow / pulse / dash flow, any speed, either direction), a failure halts the run, a warning does not — and every status keeps a static affordance under reduced motion. All node.state.status + link style.animation machinery.',
   howTo: [
-    'Click "▶ execute flow": the run sweeps left to right — each node pulses blue while running (its incoming wire animates as marching ants), then settles as completed; the readout tracks every step.',
+    'Click "▶ execute flow": the run sweeps left to right — each node pulses blue while running, its incoming wire animates in the selected style, then it settles as completed; the readout tracks every step.',
+    'Change the "wire" / "speed" / "direction" selectors — mid-run, if you like: the ACTIVE wire restyles live (marching ants → flow → pulse → dash flow; slow / normal / fast cycles; reverse marches the dashes backwards).',
     'Click "execute with a failure": the run halts at Transform — it shakes and holds the red error state, and everything downstream stays pending (dimmed), exactly like a failed n8n run.',
-    'Click "reset" and run again — statuses are plain node state (state.status), so a host can drive them from any real executor.',
-    'Read the wiring: the page only calls setState({ status, animateStatus }) per node and toggles the edge\'s animated flag — the classes, colours and pulses are the shipped renderer machinery.',
+    'Click "execute with a warning": Enrich finishes amber (status \'warning\') but the flow KEEPS GOING — a warning is a non-fatal outcome, not a halt.',
+    'Click "step ▸" repeatedly to advance the run one node per click — same statuses, host-paced instead of timer-paced.',
+    'Untick "pulse the running node" (animateStatus: false): the running node holds a STILL blue highlight — the status paints, only the motion opts out.',
+    'Tick "reduced motion (statics only)": the app-level reduced-motion switch stills every animation, and every static affordance — colored strokes, dimmed pending — survives.',
+    'Read the wiring: the page only calls setState({ status, animateStatus }) per node and link.updateStyle({ animation: { type, speed, direction } }) per wire — the classes, colours and pulses are the shipped renderer machinery.',
   ],
 
   async setup(ctx) {
@@ -70,22 +116,59 @@ defineDemo({
     // This page ASSERTS running animations — battery saver off (see
     // animating-edges; an unplugged laptop under 20% would kill the pulse).
     api.animations.updateConfig({ respectBatteryStatus: false, batterySavingMode: false });
+    // Fit the whole pipeline into whatever width is LEFT once the gallery
+    // chrome (nav drawer + how-to panel) has reserved its space: for a real
+    // visitor the canvas is ~900px and Notify sat beyond the right edge, so
+    // the renderer culled it — and its status classes had no element to land
+    // on (the ?run=1 checks went red on exactly that).
+    api.fitView(40);
 
     const readout = document.getElementById('readout');
+    const selType = document.getElementById('sel-type');
+    const selSpeed = document.getElementById('sel-speed');
+    const selDir = document.getElementById('sel-dir');
+    const chkPulse = document.getElementById('chk-pulse');
+    const chkRm = document.getElementById('chk-rm');
     const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
+    /** The wire style, straight off the controls. This is the REAL channel:
+     *  style.animation {type, speed, direction} — the legacy-looking
+     *  {animated, animationType} flags are consumed by nothing (this page
+     *  shipped with them once and its marching ants never rendered; caught in
+     *  the deep audit of this feature). */
+    ctx.wireAnim = () => ({ type: selType.value, speed: selSpeed.value, direction: selDir.value });
+
+    /** Wires currently carrying a run — so the selectors can restyle them live. */
+    ctx.activeEdges = new Set();
+
     ctx.setStatus = (id, status) => {
-      ctx.diagram.getNode(id).setState({ status, animateStatus: true });
+      ctx.diagram.getNode(id).setState({ status, animateStatus: chkPulse.checked });
     };
     ctx.setEdgeActive = (id, active) => {
       const l = ctx.diagram.getLink(id);
-      // The REAL shape is style.animation: {type, speed} — the legacy-looking
-      // {animated, animationType} flags are consumed by nothing (this page
-      // shipped with them and its marching ants never rendered; caught in the
-      // deep audit of this feature).
-      l.updateStyle({ animation: active ? { type: 'marching-ants', speed: 'fast' } : { type: 'none' } });
+      if (active) {
+        ctx.activeEdges.add(id);
+        l.updateStyle({ animation: ctx.wireAnim() });
+      } else {
+        ctx.activeEdges.delete(id);
+        l.updateStyle({ animation: { type: 'none' } });
+      }
     };
+
+    /** One node begins: its incoming wires light up, it goes running. */
+    const beginNode = (id) => {
+      for (const e of SPEC.edges) if (e.target === id) ctx.setEdgeActive(e.id, true);
+      ctx.setStatus(id, 'running');
+    };
+    /** One node ends (completed | warning | error): wires quiet down. */
+    const endNode = (id, status) => {
+      for (const e of SPEC.edges) if (e.target === id) ctx.setEdgeActive(e.id, false);
+      ctx.setStatus(id, status);
+    };
+
+    ctx.stepIndex = -1; // -1 = not stepping
     ctx.reset = () => {
+      ctx.stepIndex = -1;
       for (const id of ORDER) ctx.setStatus(id, 'idle');
       for (const e of SPEC.edges) ctx.setEdgeActive(e.id, false);
       api.renderNow();
@@ -95,34 +178,87 @@ defineDemo({
     /**
      * The executor — the ONLY thing a real workflow host adds. Walks the
      * graph, drives per-node status + the incoming edge's animation.
-     * `failAt` halts the run n8n-style; `stepMs` lets the assert run at 0ms.
+     * `failAt` halts the run n8n-style; `warnAt` finishes that node amber and
+     * KEEPS GOING (a warning is an outcome, not a halt); `stepMs` lets the
+     * assert run at 0ms.
      */
-    ctx.execute = async ({ failAt = null, stepMs = 550 } = {}) => {
+    ctx.execute = async ({ failAt = null, warnAt = null, stepMs = 550 } = {}) => {
       ctx.reset();
       for (const id of ORDER) ctx.setStatus(id, 'pending');
       api.renderNow();
 
+      let warned = null;
       for (const id of ORDER) {
-        const incoming = SPEC.edges.filter((e) => e.target === id);
-        for (const e of incoming) ctx.setEdgeActive(e.id, true);
-        ctx.setStatus(id, 'running');
+        beginNode(id);
         readout.textContent = `running: ${id}`;
         api.renderNow();
         await sleep(stepMs);
 
-        for (const e of incoming) ctx.setEdgeActive(e.id, false);
         if (failAt === id) {
-          ctx.setStatus(id, 'error');
+          endNode(id, 'error');
           readout.textContent = `failed at: ${id} — downstream never ran`;
           api.renderNow();
-          return { completed: ORDER.slice(0, ORDER.indexOf(id)), failed: id };
+          return { completed: ORDER.slice(0, ORDER.indexOf(id)), failed: id, warned };
         }
-        ctx.setStatus(id, 'completed');
+        if (warnAt === id) {
+          warned = id;
+          endNode(id, 'warning');
+          readout.textContent = `warning at: ${id} — flow continues`;
+        } else {
+          endNode(id, 'completed');
+        }
         api.renderNow();
       }
-      readout.textContent = 'flow completed ✓';
-      return { completed: [...ORDER], failed: null };
+      readout.textContent = warned ? `flow completed with a warning at ${warned} ⚠` : 'flow completed ✓';
+      return { completed: ORDER.filter((id) => id !== warned), failed: null, warned };
     };
+
+    /** Step-through: the same walk, advanced one node per click. */
+    ctx.step = () => {
+      if (ctx.stepIndex < 0) {
+        ctx.reset();
+        for (const id of ORDER) ctx.setStatus(id, 'pending');
+        ctx.stepIndex = 0;
+        beginNode(ORDER[0]);
+        readout.textContent = `step 1/${ORDER.length}: running ${ORDER[0]}`;
+      } else {
+        endNode(ORDER[ctx.stepIndex], 'completed');
+        ctx.stepIndex += 1;
+        if (ctx.stepIndex < ORDER.length) {
+          beginNode(ORDER[ctx.stepIndex]);
+          readout.textContent = `step ${ctx.stepIndex + 1}/${ORDER.length}: running ${ORDER[ctx.stepIndex]}`;
+        } else {
+          ctx.stepIndex = -1;
+          readout.textContent = 'flow completed ✓';
+        }
+      }
+      api.renderNow();
+    };
+
+    // The selectors restyle any wire that is CURRENTLY active, live.
+    const applyWire = () => {
+      for (const id of ctx.activeEdges) ctx.diagram.getLink(id).updateStyle({ animation: ctx.wireAnim() });
+      if (ctx.activeEdges.size) api.renderNow();
+    };
+    selType.addEventListener('change', applyWire);
+    selSpeed.addEventListener('change', applyWire);
+    selDir.addEventListener('change', applyWire);
+
+    // animateStatus opt-out, applied to every node that currently shows a status.
+    chkPulse.addEventListener('change', () => {
+      for (const id of ORDER) {
+        const n = ctx.diagram.getNode(id);
+        if (n.state.status && n.state.status !== 'idle') n.setState({ animateStatus: chkPulse.checked });
+      }
+      api.renderNow();
+    });
+
+    // The APP's reduced-motion switch (not the OS one): AnimationService toggles
+    // body.reduced-motion and the injected motion-preference sheet stills every
+    // animation — while the status classes keep painting their statics.
+    chkRm.addEventListener('change', () => {
+      api.animations.updateConfig({ reducedMotion: chkRm.checked });
+    });
 
     const buttons = [...document.querySelectorAll('#bar button')];
     const busy = async (fn) => {
@@ -131,16 +267,21 @@ defineDemo({
     };
     document.getElementById('btn-run').addEventListener('click', () => busy(() => ctx.execute()));
     document.getElementById('btn-fail').addEventListener('click', () => busy(() => ctx.execute({ failAt: 'transform' })));
+    document.getElementById('btn-warn').addEventListener('click', () => busy(() => ctx.execute({ warnAt: 'enrich' })));
+    document.getElementById('btn-step').addEventListener('click', () => ctx.step());
     document.getElementById('btn-reset').addEventListener('click', () => ctx.reset());
 
     await ctx.tick();
   },
 
-  // Money shot: the run held mid-flight — Transform pulsing, its wire animated.
+  // Money shot: the run held mid-flight with the full affordance palette —
+  // Trigger completed (green), Fetch completed-with-warning (amber), Transform
+  // pulsing blue with its wire animating, everything downstream dimmed pending.
   async showcase(ctx) {
     ctx.reset();
     for (const id of ORDER) ctx.setStatus(id, 'pending');
-    for (const id of ['trigger', 'fetch']) ctx.setStatus(id, 'completed');
+    ctx.setStatus('trigger', 'completed');
+    ctx.setStatus('fetch', 'warning');
     ctx.setStatus('transform', 'running');
     ctx.setEdgeActive('e2', true);
     ctx.instance.renderNow();
@@ -152,6 +293,26 @@ defineDemo({
       const el = ctx.host.querySelector(`[data-node-id="${id}"] .diagram-node`);
       return el ? (el.getAttribute('class') || '') : '';
     };
+    const nodeEl = (id) => ctx.host.querySelector(`[data-node-id="${id}"] .diagram-node`);
+    const wireEl = (id) => ctx.host.querySelector(`[data-link-id="${id}"] .diagram-link`);
+    const setSel = (id, v) => {
+      const el = document.getElementById(id);
+      el.value = v;
+      el.dispatchEvent(new Event('change'));
+    };
+    const setChk = (id, on) => {
+      const el = document.getElementById(id);
+      el.checked = on;
+      el.dispatchEvent(new Event('change'));
+    };
+
+    // Boot-state controls (the checks assume them; ?run=1 reloads fresh, but a
+    // gate re-run inside one page must not inherit a twiddled panel).
+    setSel('sel-type', 'marching-ants');
+    setSel('sel-speed', 'fast');
+    setSel('sel-dir', 'forward');
+    setChk('chk-pulse', true);
+    setChk('chk-rm', false);
 
     // 1. Mid-run: exactly one node is RUNNING, painted with a live pulse.
     const run = ctx.execute({ stepMs: 40 });
@@ -193,7 +354,104 @@ defineDemo({
     const pendingOpacity = getComputedStyle(ctx.host.querySelector('[data-node-id="save"] .diagram-node')).opacity;
     check(Number(pendingOpacity) < 0.9, `pending nodes must read dimmed without animation, opacity ${pendingOpacity}`);
 
-    // 4. Reset clears every status back to idle.
+    // 4. A WARNING does NOT halt the flow (n8n: succeeded-with-warnings) — it
+    //    paints a static amber stroke and downstream still runs to completion.
+    const warnRun = await ctx.execute({ warnAt: 'enrich', stepMs: 0 });
+    check(warnRun.warned === 'enrich', `the warn run should report enrich, got ${warnRun.warned}`);
+    check(warnRun.failed === null, 'a warning is an outcome, not a failure');
+    check(m.getNode('enrich').state.status === 'warning', `enrich should hold the warning status, is ${m.getNode('enrich').state.status}`);
+    check(statusClass('enrich').includes('node-status-warning'), `enrich should carry the warning class, got "${statusClass('enrich')}"`);
+    const warnStroke = getComputedStyle(nodeEl('enrich')).stroke;
+    check(warnStroke === 'rgb(245, 158, 11)', `the warning status must paint a static amber stroke, got ${warnStroke}`);
+    for (const id of ['save', 'notify']) {
+      check(m.getNode(id).state.status === 'completed', `${id} is downstream of a WARNING and must still complete, is ${m.getNode(id).state.status}`);
+    }
+
+    // 5. The wire selectors drive the active wire's PAINTED animation through
+    //    style.animation: class, keyframes and the static dash pattern all flip.
+    ctx.reset();
+    ctx.setStatus('transform', 'running');
+    ctx.setEdgeActive('e2', true);
+    ctx.instance.renderNow();
+    const wireTable = [
+      ['marching-ants', 'marching-ants', '5px, 5px'],
+      ['flow',          'flow',          '10px, 5px'],
+      ['pulse',         'pulse-edge',    'none'],
+      ['dash-flow',     'dash-flow',     '8px, 12px'],
+    ];
+    for (const [type, keyframes, dash] of wireTable) {
+      setSel('sel-type', type);
+      const wcls = wireEl('e2').getAttribute('class') || '';
+      const wcs = getComputedStyle(wireEl('e2'));
+      check(wcls.includes(`link-animated-${type}`), `wire type ${type}: the active wire must carry link-animated-${type}, got "${wcls}"`);
+      check(wcs.animationName === keyframes, `wire type ${type} must run the "${keyframes}" keyframes, got ${wcs.animationName}`);
+      check(wcs.strokeDasharray === dash, `wire type ${type} must paint its static dash pattern (${dash}), got ${wcs.strokeDasharray}`);
+    }
+    // Speeds are painted cycle times, not config: slow 3s / normal 1s / fast 0.5s.
+    setSel('sel-type', 'marching-ants');
+    for (const [speed, dur, hasClass] of [['slow', '3s', true], ['normal', '1s', false], ['fast', '0.5s', true]]) {
+      setSel('sel-speed', speed);
+      const wcls = wireEl('e2').getAttribute('class') || '';
+      check(wcls.includes(`link-speed-${speed}`) === hasClass,
+        `speed ${speed}: link-speed-${speed} ${hasClass ? 'must' : 'must NOT (normal emits no class)'} be on the wire, got "${wcls}"`);
+      const d = getComputedStyle(wireEl('e2')).animationDuration;
+      check(d === dur, `speed ${speed} must compute a ${dur} animation cycle, got ${d}`);
+    }
+    // Direction reverses the march itself (computed animation-direction).
+    setSel('sel-dir', 'reverse');
+    check((wireEl('e2').getAttribute('class') || '').includes('link-direction-reverse'), 'direction reverse must add link-direction-reverse');
+    check(getComputedStyle(wireEl('e2')).animationDirection === 'reverse', 'direction reverse must COMPUTE animation-direction: reverse');
+    setSel('sel-dir', 'forward');
+    check(getComputedStyle(wireEl('e2')).animationDirection === 'normal', 'direction forward must compute animation-direction: normal');
+    setSel('sel-speed', 'fast');
+
+    // 6. animateStatus opt-out: the status keeps painting, only the motion stops.
+    setChk('chk-pulse', false);
+    check(statusClass('transform').includes('node-status-still'), `animateStatus:false must add node-status-still, got "${statusClass('transform')}"`);
+    check(statusClass('transform').includes('node-status-running'), 'the status class must SURVIVE the motion opt-out');
+    check(getComputedStyle(nodeEl('transform')).animationName === 'none', 'node-status-still must compute animation: none');
+    check(getComputedStyle(nodeEl('transform')).stroke === 'rgb(52, 152, 219)', 'the still running node must keep its static blue stroke');
+    setChk('chk-pulse', true);
+    check(getComputedStyle(nodeEl('transform')).animationName !== 'none', 're-ticking the box must bring the running pulse back');
+    check(!statusClass('transform').includes('node-status-still'), 'node-status-still must drop when the motion opt-out clears');
+
+    // 7. Step-through: one node per click of the real button.
+    ctx.reset();
+    const stepBtn = document.getElementById('btn-step');
+    const readoutEl = document.getElementById('readout');
+    stepBtn.click();
+    check(m.getNode('trigger').state.status === 'running', 'step 1 must set trigger running');
+    check(statusClass('trigger').includes('node-status-running'), 'step 1: trigger must carry the running class');
+    check(ORDER.filter((id) => m.getNode(id).state.status === 'running').length === 1, 'step mode must keep exactly one node running');
+    check(readoutEl.textContent === `step 1/${ORDER.length}: running trigger`, `the readout must announce the step, got "${readoutEl.textContent}"`);
+    stepBtn.click();
+    check(m.getNode('trigger').state.status === 'completed', 'step 2 must complete trigger');
+    check(m.getNode('fetch').state.status === 'running', 'step 2 must set fetch running');
+    check((wireEl('e1').getAttribute('class') || '').includes('link-animated-'), `step 2: fetch's incoming wire must animate, got "${wireEl('e1').getAttribute('class')}"`);
+    for (let i = 0; i < ORDER.length - 1; i++) stepBtn.click();
+    for (const id of ORDER) {
+      check(m.getNode(id).state.status === 'completed', `${id} should be completed after stepping through, is ${m.getNode(id).state.status}`);
+    }
+    check(readoutEl.textContent === 'flow completed ✓', `stepping to the end must finish the flow, readout "${readoutEl.textContent}"`);
+
+    // 8. The app's reduced-motion switch: every animation stills, every static
+    //    affordance survives. (body.reduced-motion — the JS-driven channel that
+    //    was dead config until the wave-6 fix injected its stylesheet.)
+    ctx.reset();
+    ctx.setStatus('transform', 'running');
+    ctx.setEdgeActive('e2', true);
+    ctx.instance.renderNow();
+    setChk('chk-rm', true);
+    check(document.body.classList.contains('reduced-motion'), 'the checkbox must set body.reduced-motion via animations.updateConfig');
+    check(getComputedStyle(nodeEl('transform')).animationName === 'none', 'reduced motion must still the running pulse');
+    check(getComputedStyle(nodeEl('transform')).stroke === 'rgb(52, 152, 219)', 'reduced motion must NOT strip the static blue running stroke');
+    check(statusClass('transform').includes('node-status-running'), 'reduced motion must not withhold the status class (statics ride on it)');
+    check(getComputedStyle(wireEl('e2')).animationName === 'none', 'reduced motion must still the wire animation');
+    setChk('chk-rm', false);
+    check(!document.body.classList.contains('reduced-motion'), 'unticking must clear body.reduced-motion');
+    check(getComputedStyle(nodeEl('transform')).animationName !== 'none', 'motion must come back when the switch clears');
+
+    // 9. Reset clears every status back to idle.
     ctx.reset();
     for (const id of ORDER) {
       check(m.getNode(id).state.status === 'idle', `${id} should be idle after reset`);

@@ -165,6 +165,30 @@ describe('InteractionController (framework-agnostic interaction brain)', () => {
       expect(controller.handleMouseMove(NaN, 0, engine)).toBe(false);
       expect(controller.handleMouseMove(0, Infinity, engine)).toBe(false);
     });
+
+    /**
+     * Occlusion (live report, stacked pasted nodes): a buried node's port must
+     * not win the hover race THROUGH the node covering it — the renderer hides
+     * that glyph via the same oracle, and an invisible port that still hovers
+     * (and would start a wire on press) is a ghost affordance.
+     */
+    it('a port covered by a higher node is not hoverable; the top node port wins', () => {
+      const under = addNode(0);
+      const top = new NodeModel({
+        type: 'test',
+        position: { x: 0, y: 0 },
+        size: { width: 100, height: 50, depth: 0 },
+      });
+      diagram.addNode(top); // exactly stacked, above `under`
+
+      // The shared right-side anchor (100, 25): both nodes have a port there.
+      controller.handleMouseMove(100, 25, engine);
+      const hovered = controller.getState().hoveredPort;
+      expect(hovered).not.toBeNull();
+      // …and it is the TOP node's port, never the buried one's.
+      expect(top.getPortBySide('right')!.id).toBe(hovered!.id);
+      expect(under.getPortBySide('right')!.id).not.toBe(hovered!.id);
+    });
   });
 
   // ==========================================================================

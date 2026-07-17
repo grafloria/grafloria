@@ -244,6 +244,76 @@ describe('Clipboard Commands (Phase 1.8)', () => {
       expect(pastedNode?.position.y).toBe(120);
     });
 
+    /**
+     * Repeat-paste must CASCADE (live report: "copy paste works but for one
+     * time"). The clipboard's serialized positions are frozen at copy time, so
+     * a constant default offset landed every paste of the same copy on the
+     * same pixels — paste #2+ was invisible under paste #1.
+     */
+    it('default-offset pastes of the SAME copy cascade instead of stacking', () => {
+      const node = new NodeModel({ type: 'rect', position: { x: 100, y: 100 } });
+      diagram.addNode(node);
+      clipboard.copy({ nodes: [node], links: [], groups: [] });
+
+      new PasteCommand(clipboard).execute(context);
+      new PasteCommand(clipboard).execute(context);
+      new PasteCommand(clipboard).execute(context);
+
+      const pasted = diagram.getNodes().filter((n) => n.id !== node.id);
+      const spots = pasted.map((n) => `${n.position.x},${n.position.y}`);
+      // Every paste lands somewhere NEW…
+      expect(new Set(spots).size).toBe(3);
+      // …on the standard 20px-per-paste diagonal from the copied position.
+      expect(spots.sort()).toEqual(['120,120', '140,140', '160,160']);
+    });
+
+    it('an EXPLICIT offset is honored exactly, not cascaded', () => {
+      const node = new NodeModel({ type: 'rect', position: { x: 100, y: 100 } });
+      diagram.addNode(node);
+      clipboard.copy({ nodes: [node], links: [], groups: [] });
+
+      new PasteCommand(clipboard, { offset: { x: 60, y: 60 } }).execute(context);
+      new PasteCommand(clipboard, { offset: { x: 60, y: 60 } }).execute(context);
+
+      const pasted = diagram.getNodes().filter((n) => n.id !== node.id);
+      for (const n of pasted) {
+        expect(n.position.x).toBe(160);
+        expect(n.position.y).toBe(160);
+      }
+    });
+
+    it('a fresh copy resets the cascade', () => {
+      const node = new NodeModel({ type: 'rect', position: { x: 100, y: 100 } });
+      diagram.addNode(node);
+      clipboard.copy({ nodes: [node], links: [], groups: [] });
+      new PasteCommand(clipboard).execute(context);
+      new PasteCommand(clipboard).execute(context);
+
+      clipboard.copy({ nodes: [node], links: [], groups: [] });
+      new PasteCommand(clipboard).execute(context);
+
+      const pasted = diagram.getNodes().filter((n) => n.id !== node.id);
+      const first = pasted[pasted.length - 1];
+      // Slot 1 again after re-copy: +20, not +60.
+      expect(first.position.x).toBe(120);
+      expect(first.position.y).toBe(120);
+    });
+
+    it('redo re-executes at the SAME slot instead of drifting further', () => {
+      const node = new NodeModel({ type: 'rect', position: { x: 100, y: 100 } });
+      diagram.addNode(node);
+      clipboard.copy({ nodes: [node], links: [], groups: [] });
+
+      const command = new PasteCommand(clipboard);
+      command.execute(context);
+      const firstPos = diagram.getNodes().find((n) => n.id !== node.id)!.position;
+      command.undo(context);
+      command.execute(context); // redo
+      const redonePos = diagram.getNodes().find((n) => n.id !== node.id)!.position;
+      expect(redonePos.x).toBe(firstPos.x);
+      expect(redonePos.y).toBe(firstPos.y);
+    });
+
     it('should paste links with valid remapped port IDs (production connect format)', () => {
       const node1 = new NodeModel({ type: 'rect', position: { x: 0, y: 0 } });
       const node2 = new NodeModel({ type: 'rect', position: { x: 200, y: 0 } });
