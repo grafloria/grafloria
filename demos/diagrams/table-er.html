@@ -22,6 +22,10 @@
   #canvas .selection-highlight { display: none; }
   #canvas g.node-group[data-selected="true"] .entity {
     border-color: #2563eb; box-shadow: 0 0 0 2px rgba(37, 99, 235, .45); }
+  /* Also suppress the node's OWN rect border on select (theme paints it blue,
+     overriding the transparent style) — that square rect is the box-around-it. */
+  #canvas g.node-group[data-selected="true"] rect.diagram-node {
+    stroke: transparent !important; fill: none !important; }
   @media (prefers-color-scheme: dark) {
     #canvas .entity { background: #1e293b; border-color: #475569; }
     #canvas .row { border-top-color: #334155; }
