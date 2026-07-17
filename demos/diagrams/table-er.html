@@ -1,0 +1,138 @@
+<meta charset="utf-8">
+<title>Table / ER diagram — Grafloria</title>
+<link rel="stylesheet" href="../shell/demo.css">
+<style>
+  /* Entity "table" cards, painted as HTML inside each node's foreignObject. */
+  #canvas .entity { font: 12px/1.5 system-ui, sans-serif; border: 1px solid #64748b;
+    border-radius: 6px; overflow: hidden; background: #fff; box-shadow: 0 1px 3px rgba(0,0,0,.12); }
+  #canvas .entity-head { background: #334155; color: #fff; font-weight: 600; letter-spacing: .3px;
+    padding: 5px 10px; text-transform: uppercase; font-size: 11px; }
+  #canvas .row { display: flex; align-items: center; gap: 8px; padding: 3px 10px; border-top: 1px solid #e2e8f0; }
+  #canvas .row .key { width: 22px; font-size: 9px; font-weight: 700; color: #b45309; }
+  #canvas .row .key.fk { color: #6d28d9; }
+  #canvas .row .col { flex: 1; color: #0f172a; }
+  #canvas .row .ty { color: #64748b; font-size: 11px; }
+  #canvas .row.pk .col { font-weight: 600; }
+  @media (prefers-color-scheme: dark) {
+    #canvas .entity { background: #1e293b; border-color: #475569; }
+    #canvas .row { border-top-color: #334155; }
+    #canvas .row .col { color: #e2e8f0; }
+  }
+</style>
+<header id="demo-head"></header>
+<div id="canvas"></div>
+<script type="module">
+import { render } from '../shell/grafloria.js';
+import { defineDemo, check } from '../shell/demo.js';
+
+// A database ER diagram, built natively in Grafloria: each entity is an HTML
+// "table" node (header + typed columns with PK/FK badges), and relationships
+// are edges carrying real ER crow's-foot cardinality markers (one → many).
+const ROW_H = 25, HEAD_H = 28;
+const entity = (name, cols) => ({
+  className: 'entity',
+  content: {
+    tag: 'div', className: 'entity',
+    children: [
+      { tag: 'div', className: 'entity-head', text: name },
+      ...cols.map((c) => ({
+        tag: 'div', className: 'row' + (c.pk ? ' pk' : ''),
+        children: [
+          { tag: 'span', className: 'key' + (c.fk ? ' fk' : ''), text: c.pk ? 'PK' : c.fk ? 'FK' : '' },
+          { tag: 'span', className: 'col', text: c.name },
+          { tag: 'span', className: 'ty', text: c.type },
+        ],
+      })),
+    ],
+  },
+});
+const node = (id, x, y, name, cols) => ({
+  id, position: { x, y }, size: { width: 190, height: HEAD_H + cols.length * ROW_H + 4 },
+  metadata: { html: entity(name, cols) },
+});
+
+// ER edge: "one" bar on the source, crow's-foot "many" on the target.
+const rel = (id, source, target, label) => ({
+  id, source, target, label,
+  style: {
+    stroke: '#64748b', strokeWidth: 1.5,
+    arrowTail: { type: 'one', size: 11, filled: false },
+    arrowHead: { type: 'crow-foot', size: 13, filled: false },
+  },
+});
+
+defineDemo({
+  name: 'Table / ER diagram',
+  blurb: 'A database entity-relationship diagram built natively in Grafloria: HTML "table" nodes with typed columns and PK/FK badges, joined by edges carrying real crow\'s-foot cardinality (one → many).',
+  howTo: [
+    'Read a table: a dark header names the entity, each row is a column with its type and a PK (primary key) or FK (foreign key) badge — real HTML inside the node.',
+    'Follow a relationship: the line from CUSTOMER to ORDER ends in a crow\'s-foot (many) and starts with a single bar (one) — "one customer places many orders". The edge label names the relation.',
+    'Drag a table around: the columns ride inside the node and the relationship lines re-route to follow it.',
+    'Trace the FKs: ORDER.customer_id (FK) points back to CUSTOMER, LINE_ITEM.order_id and product_id (FK) point to ORDER and PRODUCT — the crow\'s-foot ends land on the "many" side.',
+  ],
+  reactflow: 'Entity Relationship',
+  pro: true,
+
+  async setup(ctx) {
+    const api = render({
+      nodes: [
+        node('CUSTOMER', 60, 60, 'Customer', [
+          { pk: true, name: 'id', type: 'int' },
+          { name: 'name', type: 'varchar' },
+          { name: 'email', type: 'varchar' },
+        ]),
+        node('ORDER', 400, 40, 'Order', [
+          { pk: true, name: 'id', type: 'int' },
+          { fk: true, name: 'customer_id', type: 'int' },
+          { name: 'placed_at', type: 'date' },
+          { name: 'total', type: 'decimal' },
+        ]),
+        node('LINE_ITEM', 740, 30, 'Line Item', [
+          { pk: true, name: 'id', type: 'int' },
+          { fk: true, name: 'order_id', type: 'int' },
+          { fk: true, name: 'product_id', type: 'int' },
+          { name: 'qty', type: 'int' },
+        ]),
+        node('PRODUCT', 740, 330, 'Product', [
+          { pk: true, name: 'id', type: 'int' },
+          { name: 'sku', type: 'varchar' },
+          { name: 'price', type: 'decimal' },
+        ]),
+      ],
+      edges: [
+        rel('e1', 'CUSTOMER', 'ORDER', 'places'),
+        rel('e2', 'ORDER', 'LINE_ITEM', 'contains'),
+        rel('e3', 'PRODUCT', 'LINE_ITEM', 'appears in'),
+      ],
+    }, ctx.host);
+    ctx.instance = api;
+    ctx.diagram = api.getModel();
+    api.fitView?.(40);
+    await ctx.tick();
+  },
+
+  async assert(ctx) {
+    const host = ctx.host;
+    // 1. Entities render as HTML table cards with headers + column rows.
+    const cust = host.querySelector('[data-node-id="CUSTOMER"] foreignObject');
+    check(!!cust, 'CUSTOMER entity did not render as an HTML node');
+    check((cust.textContent || '').includes('email'), 'the Customer table should list its columns (email)');
+    const heads = [...host.querySelectorAll('.entity-head')].map((e) => e.textContent);
+    check(heads.length === 4, `expected 4 entity headers, got ${heads.length}: [${heads}]`);
+
+    // 2. PK/FK badges are present.
+    const badges = [...host.querySelectorAll('.entity .key')].map((e) => e.textContent).filter(Boolean);
+    check(badges.includes('PK') && badges.includes('FK'), `expected PK and FK badges, got [${[...new Set(badges)]}]`);
+
+    // 3. Relationships render as edges with crow's-foot markers.
+    const model = ctx.diagram;
+    check(model.getLinks().length === 3, `expected 3 relationships, got ${model.getLinks().length}`);
+    const crow = model.getLinks().every((l) => l.style?.arrowHead?.type === 'crow-foot');
+    check(crow, 'every relationship should carry a crow-foot (many) marker on its head');
+    // The crow's-foot (many) and the single bar (one) actually PAINT.
+    const crowFeet = host.querySelectorAll('.arrow-crow-foot');
+    check(crowFeet.length === 3, `expected 3 painted crow's-foot markers, got ${crowFeet.length}`);
+    check(host.querySelectorAll('.arrow-one').length === 3, 'each relationship should paint a "one" bar on its tail');
+  },
+});
+</script>

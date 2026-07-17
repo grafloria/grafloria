@@ -61,6 +61,26 @@
     "error": null
   },
   {
+    "rel": "diagrams/class-uml.html",
+    "slug": "diagrams__class-uml",
+    "boot": "/var/folders/pd/8g99tsp56714y1x3d39xqs180000gn/T/grafloria-visual-a/diagrams__class-uml.boot.png",
+    "after": "/var/folders/pd/8g99tsp56714y1x3d39xqs180000gn/T/grafloria-visual-a/diagrams__class-uml.after.png",
+    "reactflow": "Class Diagram",
+    "pro": true,
+    "pageErrors": [],
+    "error": null
+  },
+  {
+    "rel": "diagrams/table-er.html",
+    "slug": "diagrams__table-er",
+    "boot": "/var/folders/pd/8g99tsp56714y1x3d39xqs180000gn/T/grafloria-visual-a/diagrams__table-er.boot.png",
+    "after": "/var/folders/pd/8g99tsp56714y1x3d39xqs180000gn/T/grafloria-visual-a/diagrams__table-er.after.png",
+    "reactflow": "Entity Relationship",
+    "pro": true,
+    "pageErrors": [],
+    "error": null
+  },
+  {
     "rel": "edges/animating-edges.html",
     "slug": "edges__animating-edges",
     "boot": "/var/folders/pd/8g99tsp56714y1x3d39xqs180000gn/T/grafloria-visual-a/edges__animating-edges.boot.png",
@@ -531,6 +551,16 @@
     "slug": "misc__mermaid-text",
     "boot": "/var/folders/pd/8g99tsp56714y1x3d39xqs180000gn/T/grafloria-visual-a/misc__mermaid-text.boot.png",
     "after": "/var/folders/pd/8g99tsp56714y1x3d39xqs180000gn/T/grafloria-visual-a/misc__mermaid-text.after.png",
+    "reactflow": null,
+    "pro": false,
+    "pageErrors": [],
+    "error": null
+  },
+  {
+    "rel": "misc/mermaid-viewer.html",
+    "slug": "misc__mermaid-viewer",
+    "boot": "/var/folders/pd/8g99tsp56714y1x3d39xqs180000gn/T/grafloria-visual-a/misc__mermaid-viewer.boot.png",
+    "after": "/var/folders/pd/8g99tsp56714y1x3d39xqs180000gn/T/grafloria-visual-a/misc__mermaid-viewer.after.png",
     "reactflow": null,
     "pro": false,
     "pageErrors": [],
