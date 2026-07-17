@@ -2172,7 +2172,7 @@ export class SVGRenderer implements IRenderer {
 
       if (routed) {
         this.frameRoutes.set(link.id, routed);
-        this.syncLinkPoints(link, routed.points);
+        this.syncPaintedLinkPoints(link, routed.points, endpoints);
       }
     }
 
@@ -2416,7 +2416,7 @@ export class SVGRenderer implements IRenderer {
         const solved = this.solverBridge.routeFor(link.id, version);
         if (!solved) continue;
         this.frameRoutes.set(link.id, solved);
-        this.syncLinkPoints(link, solved.points);
+        this.syncPaintedLinkPoints(link, solved.points);
       }
       return;
     }
@@ -2507,7 +2507,7 @@ export class SVGRenderer implements IRenderer {
         totalLength: polylineLength(nudged),
         bendCount: Math.max(0, nudged.length - 2),
       });
-      this.syncLinkPoints(link, nudged);
+      this.syncPaintedLinkPoints(link, nudged);
     }
   }
 
@@ -5456,6 +5456,129 @@ export class SVGRenderer implements IRenderer {
     return Math.min(distance / 2, 100) * (curvature / 0.5);
   }
 
+  /** The 2-point smooth/bezier control arms — one implementation for the drawn
+   *  path AND the hit polyline. */
+  private smoothControlPoints(
+    p0: { x: number; y: number },
+    p1: { x: number; y: number },
+    controlDistance: number,
+    sourceDirection?: string,
+    targetDirection?: string
+  ): { cp1: { x: number; y: number }; cp2: { x: number; y: number } } {
+    let cp1 = { x: p0.x, y: p0.y };
+    let cp2 = { x: p1.x, y: p1.y };
+    if (sourceDirection && targetDirection) {
+      switch (sourceDirection) {
+        case 'right': cp1 = { x: p0.x + controlDistance, y: p0.y }; break;
+        case 'left': cp1 = { x: p0.x - controlDistance, y: p0.y }; break;
+        case 'bottom': cp1 = { x: p0.x, y: p0.y + controlDistance }; break;
+        case 'top': cp1 = { x: p0.x, y: p0.y - controlDistance }; break;
+      }
+      switch (targetDirection) {
+        case 'right': cp2 = { x: p1.x + controlDistance, y: p1.y }; break;
+        case 'left': cp2 = { x: p1.x - controlDistance, y: p1.y }; break;
+        case 'bottom': cp2 = { x: p1.x, y: p1.y + controlDistance }; break;
+        case 'top': cp2 = { x: p1.x, y: p1.y - controlDistance }; break;
+      }
+    } else {
+      cp1 = { x: p0.x + controlDistance, y: p0.y };
+      cp2 = { x: p1.x - controlDistance, y: p1.y };
+    }
+    return { cp1, cp2 };
+  }
+
+  /**
+   * The polyline the INTERACTION layer should measure — the PAINTED geometry,
+   * flattened.
+   *
+   * `link.points` used to hold the ROUTE (for a 2-point smooth link: the bare
+   * chord) while the drawn path is a direction-aware cubic that bows up to
+   * ~25 world units away from it. Every consumer of `link.points` — the body
+   * hit test, hover, label anchors, waypoint-insertion t, the edge toolbar's
+   * midpoint — was measuring a line the user cannot see: on dagre-tree's
+   * fan-out edges only ~12-20% of the painted length accepted a click, with
+   * a dead band at the apex wider than the stroke itself (live report:
+   * "not always so easy to select the line on all its points"; investigator-
+   * quantified). Flattening at 16 steps per cubic mirrors the Canvas
+   * backend's own pick flattening (path-geometry.flattenPath), which already
+   * measured the painted commands — the two backends now agree by
+   * construction.
+   */
+  /**
+   * Sync `link.points` from a ROUTE via the painted geometry, not the raw
+   * polyline. Every sync site must go through here: the routing pre-pass
+   * re-syncs every routed link EVERY frame, so a flatten done only in
+   * renderLink is overwritten right back to the chord on the next frame —
+   * which is exactly the bug this exists to prevent (smooth 2-point links
+   * bow ~25px off their chord; hit-testing, hover, labels, toolbars and
+   * bounds all measure link.points).
+   */
+  private syncPaintedLinkPoints(
+    link: LinkModel,
+    routePoints: Array<{ x: number; y: number }>,
+    endpoints?: {
+      sourceDirection?: 'left' | 'right' | 'top' | 'bottom';
+      targetDirection?: 'left' | 'right' | 'top' | 'bottom';
+    } | null
+  ): void {
+    const eps = endpoints ?? this.getLinkEndpoints(link);
+    if (!eps) {
+      this.syncLinkPoints(link, routePoints);
+      return;
+    }
+    this.syncLinkPoints(
+      link,
+      this.paintedHitPolyline(
+        routePoints,
+        this.pathTypeForLOD(link, this.frameLod),
+        eps.sourceDirection,
+        eps.targetDirection,
+        this.linkOwnNodes(link),
+        link.style
+      )
+    );
+  }
+
+  private paintedHitPolyline(
+    routePoints: Array<{ x: number; y: number }>,
+    pathType: string,
+    sourceDirection: string | undefined,
+    targetDirection: string | undefined,
+    avoidNodes: NodeModel[],
+    style?: Partial<LinkStyle>
+  ): Array<{ x: number; y: number }> {
+    if (pathType !== 'smooth' && pathType !== 'bezier') return routePoints;
+    if (routePoints.length === 2) {
+      const p0 = routePoints[0];
+      const p1 = routePoints[1];
+      const distance = Math.hypot(p1.x - p0.x, p1.y - p0.y);
+      if (distance < 1) return routePoints;
+      const { cp1, cp2 } = this.smoothControlPoints(
+        p0, p1, this.controlDistanceFor(distance, style), sourceDirection, targetDirection
+      );
+      const STEPS = 16;
+      const out: Array<{ x: number; y: number }> = [];
+      for (let i = 0; i <= STEPS; i++) {
+        const t = i / STEPS;
+        const u = 1 - t;
+        out.push({
+          x: u * u * u * p0.x + 3 * u * u * t * cp1.x + 3 * u * t * t * cp2.x + t * t * t * p1.x,
+          y: u * u * u * p0.y + 3 * u * u * t * cp1.y + 3 * u * t * t * cp2.y + t * t * t * p1.y,
+        });
+      }
+      return out;
+    }
+    // Multi-point smooth: mirror convertRoutedPathToSVG's choice — the
+    // catmull-rom spline unless its overshoot would clip the link's own nodes
+    // (then the drawn path is rounded corners, which hug the route within
+    // ~0.4 units — the route polyline is already an honest hit shape there).
+    const samples = this.sampleCatmullRom(routePoints, 8);
+    if (avoidNodes.length === 0 || this.penetrationLength(samples, avoidNodes) <= 2) {
+      return samples;
+    }
+    return routePoints;
+  }
+
   /**
    * Convert RoutedPath to SVG path string
    *
@@ -5489,61 +5612,14 @@ export class SVGRenderer implements IRenderer {
         const controlDistance = this.controlDistanceFor(distance, style);
 
         // ENHANCED: Direction-aware control points (ReactFlow style)
-        // Control points extend from the port in the direction it faces
-        let cp1x = points[0].x;
-        let cp1y = points[0].y;
-        let cp2x = points[1].x;
-        let cp2y = points[1].y;
+        // Control points extend from the port in the direction it faces.
+        // Shared with paintedHitPolyline — the hit test must flatten the SAME
+        // curve this draws (see that method's header).
+        const { cp1, cp2 } = this.smoothControlPoints(
+          points[0], points[1], controlDistance, sourceDirection, targetDirection
+        );
 
-        if (sourceDirection && targetDirection) {
-          // Calculate control point 1 based on source port direction
-          switch (sourceDirection) {
-            case 'right':
-              cp1x = points[0].x + controlDistance;
-              cp1y = points[0].y;
-              break;
-            case 'left':
-              cp1x = points[0].x - controlDistance;
-              cp1y = points[0].y;
-              break;
-            case 'bottom':
-              cp1x = points[0].x;
-              cp1y = points[0].y + controlDistance;
-              break;
-            case 'top':
-              cp1x = points[0].x;
-              cp1y = points[0].y - controlDistance;
-              break;
-          }
-
-          // Calculate control point 2 based on target port direction
-          switch (targetDirection) {
-            case 'right':
-              cp2x = points[1].x + controlDistance;
-              cp2y = points[1].y;
-              break;
-            case 'left':
-              cp2x = points[1].x - controlDistance;
-              cp2y = points[1].y;
-              break;
-            case 'bottom':
-              cp2x = points[1].x;
-              cp2y = points[1].y + controlDistance;
-              break;
-            case 'top':
-              cp2x = points[1].x;
-              cp2y = points[1].y - controlDistance;
-              break;
-          }
-        } else {
-          // Fallback to old horizontal-only behavior
-          cp1x = points[0].x + controlDistance;
-          cp1y = points[0].y;
-          cp2x = points[1].x - controlDistance;
-          cp2y = points[1].y;
-        }
-
-        path += ` C ${cp1x} ${cp1y}, ${cp2x} ${cp2y}, ${points[1].x} ${points[1].y}`;
+        path += ` C ${cp1.x} ${cp1.y}, ${cp2.x} ${cp2.y}, ${points[1].x} ${points[1].y}`;
       } else {
         // Multi-point route (e.g. a detour around a node): a smooth link must
         // KEEP ITS CURVED IDENTITY — fit a spline through the route points.
@@ -5650,7 +5726,8 @@ export class SVGRenderer implements IRenderer {
             this.linkOwnNodes(link),
             link.style           // Wave 3: per-link cornerRadius / curvature
           );
-        this.syncLinkPoints(link, points);
+        // Sync the PAINTED polyline, not the raw route — see paintedHitPolyline.
+        this.syncPaintedLinkPoints(link, points, endpoints);
       } else {
         // All routing strategies failed: hide invalid connection
         console.warn(`All routing strategies failed for link ${link.id} - hiding invalid preview`);

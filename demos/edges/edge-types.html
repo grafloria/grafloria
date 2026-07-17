@@ -99,9 +99,12 @@ defineDemo({
     check(JSON.stringify(st.pts) === JSON.stringify(ss.pts),
       'step and smoothstep should share the same route — only the corner drawing differs');
 
-    // bezier — a curved line, TWO points but drawn with a cubic curve.
+    // bezier — drawn with a cubic curve, and its hit polyline FOLLOWS the
+    // curve: link.points is the painted geometry (flattened cubic), not the
+    // 2-point chord. The chord was the dagre-tree bug — clicks along the
+    // visible curve measured distance to a line nobody could see.
     const bz = await read('bezier');
-    check(bz.pts.length === 2, `bezier should be a 2-point curve, got ${bz.pts.length}`);
+    check(bz.pts.length >= 10, `bezier hit polyline must follow the painted curve (>=10 samples), got ${bz.pts.length}`);
     check(bz.curved, `bezier must be drawn with a cubic curve (C command), got: ${bz.d}`);
 
     // All four are genuinely DISTINCT drawings.

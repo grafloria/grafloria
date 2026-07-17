@@ -20,6 +20,7 @@ import { SelectionToolsController } from '../interaction/selection-tools';
 import type { ToolHandle } from '../interaction/selection-tools';
 // wave12/connect-ergonomics (gap 2): the shipped proximity-connect engine, now
 // driven from the LIVE node drag instead of host glue.
+import { portWorldPosition } from '../svg/port-positioning';
 import { SnapController } from '../interaction/snapping';
 import type { ProximityCandidate } from '../interaction/snapping';
 
@@ -705,6 +706,36 @@ export class DomEventBinder {
       // a mouse — thin but real, and it widens by `hitSlop` on touch), every
       // OTHER port of the node is untouched, and an endpoint drag dropped on an
       // invalid target reverts, so the worst mis-grab costs one Escape.
+      if (state.hoveredPort) {
+        // Mode B of the link-selectability audit: the port's HOVER hit radius
+        // (~11: 6 × 1.5 + 2) is wider than its visible glyph, and this rung
+        // swallowed every press in that halo — including clicks squarely on a
+        // link's ARROWHEAD or stroke near its endpoint, which then dead-ended
+        // as an aborted wire-draw instead of selecting the edge. In the OUTER
+        // ring (beyond the port's base grab radius) a press that lands on link
+        // INK belongs to the link: fall through to the link rungs. Presses in
+        // the core (≤ base radius + 2) keep starting connections, so the
+        // PORT-WIRE gesture is untouched.
+        const hoverNode = diagram.getNode(state.hoveredPort.nodeId);
+        if (hoverNode) {
+          const anchor = portWorldPosition(state.hoveredPort, hoverNode);
+          const basePortRadius = (state.hoveredPort.style?.['radius'] as number | undefined) ?? 6;
+          const inOuterRing =
+            Math.hypot(worldX - anchor.x, worldY - anchor.y) > basePortRadius + 2;
+          if (inOuterRing) {
+            const inkHit = this.host.interaction.getLinkHitAtPosition(worldX, worldY, engine);
+            // ANY link part claims the press, not just 'body' — near a path
+            // end the nearest part IS the endpoint handle (its anchor sits on
+            // the path), and those presses are exactly the ones the port was
+            // stealing (unselected links were unclickable within ~11px of
+            // their ends).
+            if (inkHit) {
+              // Not this rung's press — the link-body rung below selects it.
+              state.hoveredPort = null;
+            }
+          }
+        }
+      }
       if (state.hoveredPort) {
         event.preventDefault();
         const endpointHit = this.reconnectableEndpointAt(worldX, worldY, engine, config);

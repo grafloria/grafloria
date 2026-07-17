@@ -364,6 +364,61 @@ const IN_PAGE = () => {
         }
       }
     }
+    // ---- LINK-SELECT-SPAN: the link is clickable along its RUN, not just at
+    // its midpoint. The dagre-tree report ("not always easy to select the line
+    // on all its points") survived every existing gate because LINK-SELECT
+    // sampled exactly one point — the arc midpoint, the one place a bowed
+    // smooth curve still touches its chord. Clicks at t≈0.3/0.7 on the PAINTED
+    // path must select the same link. Samples inside the port grab core
+    // (≤12px of the path ends) or under a node are setup, not defect → skipped.
+    if (link) {
+      // Resolved FRESH per sample: the first span click can re-render the page
+      // (LOD demos re-tier on interaction) and replace the path element — a
+      // stale element would sample the geometry of a picture no longer there.
+      const freshSpanPath = () => host.querySelector(`[data-link-id="${link.id}"] path.diagram-link`) || visiblePath(link.id);
+      if (!freshSpanPath()) out.skipped.push('LINK-SELECT-SPAN (no drawable path)');
+      else {
+        let L = 0;
+        try { L = freshSpanPath().getTotalLength(); } catch { L = 0; }
+        if (L < 60) out.skipped.push('LINK-SELECT-SPAN (link too short to span-sample)');
+        else {
+          const fails = [];
+          let sampled = 0;
+          for (const t of [0.3, 0.7]) {
+            const spanPath = freshSpanPath();
+            if (!spanPath) continue;
+            let pt;
+            try { L = spanPath.getTotalLength(); pt = spanPath.getPointAtLength(L * t); } catch { pt = null; }
+            if (!pt) continue;
+            const endA = spanPath.getPointAtLength(0), endB = spanPath.getPointAtLength(L);
+            const distEnd = Math.min(Math.hypot(pt.x - endA.x, pt.y - endA.y), Math.hypot(pt.x - endB.x, pt.y - endB.y));
+            if (distEnd <= 12) continue; // port grab core — wiring owns it by design
+            if (model.getNodeAtPosition && model.getNodeAtPosition(pt.x, pt.y)) continue; // occluded by a node
+            if (link.state !== 'default') link.setState('default');
+            if (model.clearSelection) model.clearSelection();
+            for (const l of model.getLinks()) if (l.state === 'selected') l.setState('default');
+            inst.renderNow(); await raf2();
+            const c = wc(pt.x, pt.y);
+            fire('pointermove', c.x, c.y);
+            // Earlier gate gestures may have MOVED nodes; if this sample now
+            // sits inside a port's hover halo, the press is (by design) wiring
+            // territory near the core — setup interference, not the defect
+            // this check hunts (mid-path unselectable ink has no hovered port).
+            if (inst.interaction.getState().hoveredPort) continue;
+            fire('pointerdown', c.x, c.y); fire('pointerup', c.x, c.y); await raf2();
+            sampled++;
+            if (link.state !== 'selected') {
+              const thief = model.getLinks().find((l) => l.id !== link.id && l.state === 'selected');
+              const hovered = inst.interaction.getState().hoveredLink?.id ?? 'none';
+              fails.push(`t=${t}@(${Math.round(pt.x)},${Math.round(pt.y)}): ${thief ? `sibling ${thief.id} stole the click` : `nothing selected (hoveredLink=${hovered})`}`);
+            }
+          }
+          if (!sampled) out.skipped.push('LINK-SELECT-SPAN (all span samples occluded/near ends)');
+          else out.checks.push({ name: 'LINK-SELECT-SPAN', ok: fails.length === 0, detail: fails.length ? fails.join('; ') : `${sampled} span clicks selected the link` });
+        }
+      }
+    }
+
     // ---- ESC-CANCEL: Escape abandons a live connection drag ----
     // The user's bug pattern is GESTURE LIFECYCLE: starting is tested everywhere,
     // cancelling nowhere. A dangling preview line after Escape is the symptom.

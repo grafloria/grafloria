@@ -1364,6 +1364,15 @@ export class InteractionController {
     // "sometimes clicking around the line draws a rectangle").
     const query: Point = { x: worldX, y: worldY };
 
+    // NEAREST link wins, not the first in model order. Fan-out siblings share
+    // an anchor and run close together near it: first-in-order let an earlier
+    // sibling take a press landing ON a later sibling's ink (live report:
+    // fan-out edges near the shared source selected their neighbour). Ranked
+    // by body distance (falling back to the part's own distance) because at a
+    // shared anchor every sibling's endpoint HANDLE is equidistant — only the
+    // link actually under the cursor has body distance ~0.
+    let best: LinkPartHit | null = null;
+    let bestScore = Infinity;
     for (const link of diagram.getLinks()) {
       const points = link.points;
       if (!points || points.length < 2) continue;
@@ -1372,12 +1381,15 @@ export class InteractionController {
         linkBodyHitTolerance(this.literalLinkStrokeWidth(link), this.linkHitAreaWidthConfig) +
         this.hitSlop;
       const hit = hitTestLink(this.buildLinkHitOptions(link), query, hitThreshold);
-      if (hit) {
-        return { link, ...hit };
+      if (!hit) continue;
+      const score = Math.min(hit.bodyDistance ?? Infinity, hit.distance ?? Infinity);
+      if (score < bestScore) {
+        bestScore = score;
+        best = { link, ...hit };
       }
     }
 
-    return null;
+    return best;
   }
 
   /**

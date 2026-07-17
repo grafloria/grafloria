@@ -411,6 +411,48 @@ describe('InteractionController (framework-agnostic interaction brain)', () => {
       makeAToBLink();
       expect(controller.getLinkHitAtPosition(9999, 9999, engine)).toBeNull();
     });
+
+    /**
+     * Fan-out steal (live report: near a shared source, clicking ON one edge's
+     * ink selected its earlier-added sibling). Resolution is NEAREST link, not
+     * first-in-model-order.
+     */
+    it('the NEAREST link wins, not the first in model order', () => {
+      // Two parallel horizontal links 4px apart — both within the ~6px body
+      // grab tolerance of a press on the SECOND one's ink.
+      const first = new LinkModel('pa1', 'pb1', 'direct');
+      diagram.addLink(first);
+      first.generatePath({ x: 0, y: 100 }, { x: 300, y: 100 }, 'right', 'left');
+      const second = new LinkModel('pa2', 'pb2', 'direct');
+      diagram.addLink(second);
+      second.generatePath({ x: 0, y: 104 }, { x: 300, y: 104 }, 'right', 'left');
+
+      const hit = controller.getLinkHitAtPosition(150, 104, engine);
+      expect(hit!.link).toBe(second);
+      // …and squarely on the first one, the first one still wins.
+      expect(controller.getLinkHitAtPosition(150, 100, engine)!.link).toBe(first);
+    });
+
+    /**
+     * At a SHARED anchor every sibling's endpoint handle is equidistant — the
+     * handle distance cannot break the tie. Body distance can: only the link
+     * actually under the cursor runs through the press point.
+     */
+    it('shared-anchor fan-outs resolve by BODY distance, not the endpoint-handle tie', () => {
+      const first = new LinkModel('pa1', 'pb1', 'direct');
+      diagram.addLink(first);
+      first.generatePath({ x: 0, y: 100 }, { x: 300, y: 100 }, 'right', 'left');
+      // Same start anchor, heading diagonally down.
+      const second = new LinkModel('pa2', 'pb2', 'direct');
+      diagram.addLink(second);
+      second.generatePath({ x: 0, y: 100 }, { x: 212, y: 312 }, 'right', 'left');
+
+      // ~8px along the SECOND link (on its ink; 45°): inside BOTH links'
+      // endpoint-handle radius around the shared anchor, and within body
+      // tolerance of both. Body distance: second = 0, first ≈ 5.7.
+      const hit = controller.getLinkHitAtPosition(5.66, 105.66, engine);
+      expect(hit!.link).toBe(second);
+    });
   });
 
   // ==========================================================================

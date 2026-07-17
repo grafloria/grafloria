@@ -36,6 +36,19 @@ export interface LinkHitResult {
    * an edge toolbar on the segment under the cursor.
    */
   t?: number;
+  /**
+   * Distance from the query to the winning part's own metric (handle centre,
+   * body path; 0 for inside a label box). For ranking hits ACROSS links.
+   */
+  distance?: number;
+  /**
+   * Distance from the query to this link's BODY path, present whenever the
+   * link has >= 2 points — even when a handle or label won the part. This is
+   * the cross-link tiebreaker: at a shared fan-out anchor every sibling's
+   * endpoint handle is equidistant, but only the link actually under the
+   * cursor has body distance ~0.
+   */
+  bodyDistance?: number;
 }
 
 /** A label placement, expressed independently of the model. */
@@ -204,6 +217,26 @@ export function hitTestLink(
 ): LinkHitResult | null {
   const { points } = options;
 
+  // Body distance first — it annotates EVERY hit (see LinkHitResult.bodyDistance).
+  let bodyDistance: number | undefined;
+  let bodyArcLength = 0;
+  let bodyTotalLength = 0;
+  if (points.length >= 2) {
+    let best = Infinity;
+    let cumulative = 0;
+    for (let i = 0; i < points.length - 1; i++) {
+      const segLen = Math.hypot(points[i + 1]!.x - points[i]!.x, points[i + 1]!.y - points[i]!.y);
+      const { distance, s } = projectOntoSegment(query, points[i]!, points[i + 1]!);
+      if (distance < best) {
+        best = distance;
+        bodyArcLength = cumulative + s * segLen;
+      }
+      cumulative += segLen;
+    }
+    bodyTotalLength = cumulative;
+    bodyDistance = best;
+  }
+
   const endpointRadius = options.endpointRadius ?? DEFAULT_ENDPOINT_RADIUS;
   const arrowRadius = options.arrowRadius ?? DEFAULT_ARROW_RADIUS;
   const labelW = options.defaultLabelWidth ?? DEFAULT_LABEL_WIDTH;
@@ -232,7 +265,7 @@ export function hitTestLink(
       bestHandle = { part: handle.part, distance };
     }
   }
-  if (bestHandle) return { part: bestHandle.part };
+  if (bestHandle) return { part: bestHandle.part, distance: bestHandle.distance, bodyDistance };
 
   // --- Tier 2: labels (bounding box, topmost-drawn first) ---
   if (options.labels && options.labels.length > 0) {
@@ -245,37 +278,15 @@ export function hitTestLink(
       const halfW = (label.width ?? labelW) / 2 + tolerance;
       const halfH = (label.height ?? labelH) / 2 + tolerance;
       if (Math.abs(query.x - cx) <= halfW && Math.abs(query.y - cy) <= halfH) {
-        return { part: 'label', labelIndex: i };
+        return { part: 'label', labelIndex: i, distance: 0, bodyDistance };
       }
     }
   }
 
-  // --- Tier 3: body (nearest point on the polyline) ---
-  if (points.length >= 2) {
-    const segLengths: number[] = [];
-    let totalLength = 0;
-    for (let i = 0; i < points.length - 1; i++) {
-      const len = Math.hypot(points[i + 1]!.x - points[i]!.x, points[i + 1]!.y - points[i]!.y);
-      segLengths.push(len);
-      totalLength += len;
-    }
-
-    let bestDistance = Infinity;
-    let bestArcLength = 0;
-    let cumulative = 0;
-    for (let i = 0; i < points.length - 1; i++) {
-      const { distance, s } = projectOntoSegment(query, points[i]!, points[i + 1]!);
-      if (distance < bestDistance) {
-        bestDistance = distance;
-        bestArcLength = cumulative + s * segLengths[i]!;
-      }
-      cumulative += segLengths[i]!;
-    }
-
-    if (bestDistance <= tolerance) {
-      const t = totalLength > 0 ? bestArcLength / totalLength : 0;
-      return { part: 'body', t };
-    }
+  // --- Tier 3: body (nearest point on the polyline; computed above) ---
+  if (bodyDistance !== undefined && bodyDistance <= tolerance) {
+    const t = bodyTotalLength > 0 ? bodyArcLength / bodyTotalLength : 0;
+    return { part: 'body', t, distance: bodyDistance, bodyDistance };
   }
 
   return null;
