@@ -1,0 +1,154 @@
+<meta charset="utf-8">
+<title>Mermaid viewer — Grafloria</title>
+<link rel="stylesheet" href="../shell/demo.css">
+<style>
+  #bar { display: flex; gap: 10px; padding: 8px 24px; border-bottom: 1px solid rgba(127,127,127,.25); align-items: center; flex-wrap: wrap; }
+  #bar select, #bar button { font: inherit; color: inherit; background: transparent; border: 1px solid rgba(127,127,127,.4); border-radius: 6px; padding: 4px 10px; cursor: pointer; }
+  #status { margin-left: auto; font: 12px ui-monospace, monospace; opacity: .8; }
+  #status.bad { color: #c0392b; opacity: 1; }
+  #split { display: flex; height: calc(100vh - 150px); }
+  #stage { flex: 1.4; min-width: 0; }
+  #src { flex: 1; min-width: 0; border-left: 1px solid rgba(127,127,127,.25); }
+  #src textarea { width: 100%; height: 100%; box-sizing: border-box; border: 0; padding: 10px 14px; font: 12px/1.5 ui-monospace, Menlo, monospace; resize: none; color: inherit; background: transparent; }
+</style>
+<header id="demo-head"></header>
+<div id="bar">
+  <label>diagram
+    <select id="type">
+      <option value="flowchart">Flowchart (shapes + style)</option>
+      <option value="flowchart-fancy">Flowchart (subgraph + status)</option>
+      <option value="er">Entity-Relationship</option>
+      <option value="class">Class diagram</option>
+      <option value="state">State diagram</option>
+      <option value="sequence">Sequence (unsupported)</option>
+    </select>
+  </label>
+  <button id="apply">apply text → diagram</button>
+  <span id="status">—</span>
+</div>
+<div id="split">
+  <div id="stage"></div>
+  <div id="src"><textarea id="text" spellcheck="false"></textarea></div>
+</div>
+<script type="module">
+import { render, importDiagramText } from '../shell/grafloria.js';
+import { defineDemo, check } from '../shell/demo.js';
+
+// A live viewer for Grafloria's Mermaid support: pick a diagram type, see how Grafloria
+// renders it, edit the source and re-apply. Honest about current coverage —
+// flowcharts (Phase 0-2) render fully; ER / class / state are the Phase-3 work
+// in progress, and unsupported types report themselves rather than blanking.
+const EXAMPLES = {
+  flowchart: `flowchart TD
+  Start([Start]) --> Load[(Fetch data)]
+  Load --> Check{Valid?}
+  Check -->|yes| Save[[Persist]]
+  Check -->|no| Start
+  Save --> Done((Done))
+  style Start fill:#c8e6c9,stroke:#2e7d32
+  style Done fill:#bbdefb,stroke:#1565c0
+  classDef warn fill:#ffe0b2,stroke:#e65100
+  class Check warn`,
+  'flowchart-fancy': `flowchart LR
+  subgraph pipeline
+    Extract --> Transform --> Load
+  end
+  Load --> Warehouse[(Warehouse)]
+  Trigger --> Extract
+  %%grafloria:node Transform status:running
+  %%grafloria:edge Transform Load animation:marching-ants`,
+  er: `erDiagram
+  CUSTOMER ||--o{ ORDER : places
+  ORDER ||--|{ LINE_ITEM : contains
+  CUSTOMER {
+    string name
+    string email
+  }`,
+  class: `classDiagram
+  class Animal {
+    +int age
+    +String name
+    +bark() void
+  }
+  class Dog
+  class Cat
+  Animal <|-- Dog
+  Animal <|-- Cat`,
+  state: `stateDiagram-v2
+  [*] --> Still
+  Still --> Moving
+  Moving --> Still
+  Moving --> Crash
+  Crash --> [*]`,
+  sequence: `sequenceDiagram
+  Alice->>Bob: Hello Bob
+  Bob-->>Alice: Hi Alice`,
+};
+
+const labelOf = (n) => n.getMetadata('label');
+const modelToSpec = (model) => ({
+  nodes: model.getNodes().map((n) => ({
+    id: n.id, label: labelOf(n),
+    position: { x: n.position.x, y: n.position.y },
+    size: { width: n.size.width, height: n.size.height },
+    shape: n.getMetadata('shape'), style: n.style,
+  })),
+  edges: model.getLinks().map((l) => ({ id: l.id, source: l.sourceNodeId, target: l.targetNodeId })),
+});
+
+defineDemo({
+  name: 'Mermaid viewer',
+  blurb: 'Paste or pick a Mermaid diagram and see how Grafloria renders it. Flowcharts render fully (shapes, colours, subgraphs, node status); ER / class / state are in progress; unsupported types report themselves instead of blanking.',
+  howTo: [
+    'Pick a diagram type from the dropdown — the source loads on the left-of-text and Grafloria renders it on the canvas.',
+    'Edit the Mermaid source in the text pane and click "apply text → diagram" to re-render your changes.',
+    'Try "Sequence (unsupported)": the status line names it as unsupported rather than drawing a broken diagram — that is the safe-failure guarantee.',
+    'Compare the Flowchart examples: shapes, style/classDef colours, subgraphs and %%grafloria node-status all render — this is the Mermaid compatibility built in Phases 0-2.',
+  ],
+
+  async setup(ctx) {
+    const stage = document.getElementById('stage');
+    const ta = document.getElementById('text');
+    const sel = document.getElementById('type');
+    const status = document.getElementById('status');
+    let api = null;
+
+    const renderText = (text) => {
+      const r = importDiagramText(text);
+      status.className = '';
+      if (r.unsupported) {
+        status.className = 'bad';
+        status.textContent = `unsupported diagram type: ${r.unsupported}`;
+        if (api) { api.setNodes([]); api.setEdges([]); api.renderNow(); }
+        return r;
+      }
+      const spec = modelToSpec(r.diagram);
+      if (!api) api = render(spec, stage);
+      else { api.setNodes(spec.nodes); api.setEdges(spec.edges); }
+      api.renderNow();
+      api.fitView?.(40);
+      status.textContent = `${r.diagram.getNodes().length} nodes · ${r.diagram.getLinks().length} links`;
+      return r;
+    };
+
+    const load = (key) => { ta.value = EXAMPLES[key]; renderText(ta.value); };
+    sel.addEventListener('change', () => load(sel.value));
+    document.getElementById('apply').addEventListener('click', () => renderText(ta.value));
+
+    ctx.renderText = renderText;
+    ctx.load = load;
+    load('flowchart');
+    await ctx.tick();
+  },
+
+  async assert(ctx) {
+    // The gate checks the WORKING path (flowchart) + the safe-failure guarantee.
+    const flow = ctx.renderText(EXAMPLES.flowchart);
+    check(flow.diagram.getNodes().length === 5, `flowchart should render 5 nodes, got ${flow.diagram.getNodes().length}`);
+    check(flow.diagram.getNode('Start')?.getMetadata('shape')?.fill === '#c8e6c9', 'the styled Start node should carry its fill');
+    const seq = ctx.renderText(EXAMPLES.sequence);
+    check(seq.unsupported === 'sequenceDiagram', 'an unsupported type must report itself, not blank silently');
+    ctx.renderText(EXAMPLES.flowchart); // leave it on the working example
+  },
+});
+</script>
