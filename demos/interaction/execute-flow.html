@@ -79,7 +79,11 @@ defineDemo({
     };
     ctx.setEdgeActive = (id, active) => {
       const l = ctx.diagram.getLink(id);
-      l.updateStyle({ animated: active, animationType: 'marching-ants' });
+      // The REAL shape is style.animation: {type, speed} — the legacy-looking
+      // {animated, animationType} flags are consumed by nothing (this page
+      // shipped with them and its marching ants never rendered; caught in the
+      // deep audit of this feature).
+      l.updateStyle({ animation: active ? { type: 'marching-ants', speed: 'fast' } : { type: 'none' } });
     };
     ctx.reset = () => {
       for (const id of ORDER) ctx.setStatus(id, 'idle');
@@ -156,6 +160,10 @@ defineDemo({
     check(runningNow.length === 1, `exactly one node should be running mid-flow, got [${runningNow}]`);
     const cls = statusClass(runningNow[0]);
     check(cls.includes('node-status-running'), `the running node must carry the status class, got "${cls}"`);
+    // The ACTIVE incoming edge animates as marching ants — through the real
+    // style.animation shape (the dead {animated} flags painted nothing).
+    const activeEdges = [...ctx.host.querySelectorAll('.link-animated-marching-ants')];
+    check(activeEdges.length >= 1, 'the running node\'s incoming edge must carry the marching-ants class mid-run');
     const el = ctx.host.querySelector(`[data-node-id="${runningNow[0]}"] .diagram-node`);
     const anim = getComputedStyle(el).animationName;
     check(anim !== 'none', 'the running status must ANIMATE (the "running" keyframes were reserved-word-dead for every SVG node until this page existed)');

@@ -234,9 +234,10 @@ export class AnimationService {
    * @returns Space-separated CSS class string
    */
   getEdgeAnimationClass(link: LinkModel): string {
-    if (this.shouldDisableAnimations()) {
-      return '';
-    }
+    // Classes always emit — see getNodeAnimationClass: the class also carries
+    // the static dash pattern, and the motion kill-switches live in CSS
+    // (a live audit on a low battery saw solid, motionless edges because the
+    // CLASS was withheld, not just the animation).
 
     // Phase 1.1: Lazy load CSS on first animation request
     if (this.config.lazyLoadCSS && !this.cssInjected) {
@@ -281,9 +282,14 @@ export class AnimationService {
    * @returns Space-separated CSS class string
    */
   getNodeAnimationClass(node: NodeModel, useSVGVariant: boolean = false): string {
-    if (this.shouldDisableAnimations()) {
-      return '';
-    }
+    // NO early return on shouldDisableAnimations(): the classes carry STATIC
+    // affordances too (a completed node's green stroke, an error's red), and
+    // withholding them made statuses invisible to exactly the users the
+    // statics exist for — reduced motion, battery saver, animations-disabled.
+    // MOTION suppression is CSS's job and already exists for every one of
+    // those modes (body.reduced-motion / body.battery-saving /
+    // .animations-disabled rules). Same reasoning as edge classes below,
+    // where withholding the class also deleted the static dash pattern.
 
     // Phase 1.1: Lazy load CSS on first animation request
     if (this.config.lazyLoadCSS && !this.cssInjected) {
@@ -314,12 +320,14 @@ export class AnimationService {
       }
     }
 
-    // Status animation
-    if (node.state?.animateStatus && node.state?.status) {
-      const status = node.state.status;
-
-      if (status !== 'idle') {
-        classes.push(`node-status-${status}${svgSuffix}`);
+    // Status affordance. The STATUS paints (statically) whenever set;
+    // `animateStatus: false` opts out of the MOTION only — gating the whole
+    // class on it meant a host setting status without the flag saw nothing
+    // at all (and the static affordances above never applied either).
+    if (node.state?.status && node.state.status !== 'idle') {
+      classes.push(`node-status-${node.state.status}${svgSuffix}`);
+      if (node.state.animateStatus === false) {
+        classes.push('node-status-still');
       }
     }
 
@@ -775,6 +783,8 @@ export class AnimationService {
 .node-status-pending, .node-status-pending-svg {
   opacity: 0.55;
 }
+/* animateStatus: false — the status paints, the motion does not. */
+.node-status-still { animation: none !important; }
 
 /* Running Status.
    NB: the keyframes MUST NOT be named "running" — in the animation
