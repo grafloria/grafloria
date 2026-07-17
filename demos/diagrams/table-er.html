@@ -6,7 +6,7 @@
      Fills the node exactly (box-sizing) so its border IS the table border —
      no second rectangle from the node's own shape. */
   #canvas .entity { font: 12px/1.5 system-ui, sans-serif; border: 1px solid #64748b;
-    border-radius: 6px; overflow: hidden; background: #fff; box-shadow: 0 1px 3px rgba(0,0,0,.12);
+    border-radius: 6px; overflow: hidden; background: #fff;
     width: 100%; height: 100%; box-sizing: border-box; }
   #canvas .entity-head { background: #334155; color: #fff; font-weight: 600; letter-spacing: .3px;
     padding: 5px 10px; text-transform: uppercase; font-size: 11px; }
@@ -59,7 +59,7 @@ const node = (id, x, y, name, cols) => ({
 
 // ER edge: "one" bar on the source, crow's-foot "many" on the target.
 const rel = (id, source, target, label) => ({
-  id, source, target, label,
+  id, source, target, label, type: 'orthogonal',
   style: {
     stroke: '#64748b', strokeWidth: 1.5,
     arrowTail: { type: 'one', size: 11, filled: false },

@@ -4,7 +4,7 @@
 <style>
   /* UML class boxes: name / attributes / methods compartments, as HTML. */
   #canvas .uml { font: 12px/1.5 system-ui, sans-serif; border: 1px solid #475569;
-    border-radius: 4px; overflow: hidden; background: #fff; box-shadow: 0 1px 3px rgba(0,0,0,.12);
+    border-radius: 4px; overflow: hidden; background: #fff;
     width: 100%; height: 100%; box-sizing: border-box; }
   #canvas .uml-name { text-align: center; font-weight: 700; padding: 5px 10px; background: #eef2ff; color: #1e1b4b; }
   #canvas .uml-name.abstract { font-style: italic; }
@@ -47,12 +47,12 @@ const node = (id, x, y, name, attrs, methods, opts) => ({
 const relBase = { stroke: '#475569', strokeWidth: 1.5 };
 // Dog --|> Animal : generalization (hollow triangle at the PARENT = head).
 const generalization = (id, child, parent) => ({
-  id, source: child, target: parent,
+  id, source: child, target: parent, type: 'orthogonal',
   style: { ...relBase, arrowHead: { type: 'generalization', size: 18, filled: false } },
 });
 // Owner o-- Pet : aggregation (hollow diamond at the WHOLE = tail, source).
 const aggregation = (id, whole, part, label) => ({
-  id, source: whole, target: part, label,
+  id, source: whole, target: part, label, type: 'orthogonal',
   style: { ...relBase, strokeDasharray: undefined,
     arrowTail: { type: 'hollow-diamond', size: 15, filled: false },
     arrowHead: { type: 'none', size: 0, filled: false } },
