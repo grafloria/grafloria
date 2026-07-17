@@ -1,6 +1,10 @@
 # Mermaid Compatibility — Gap Analysis & Plan (empirical)
 
 **Date:** 2026-07-17
+**Status:** Phase 0 ✅ (commit 5db5b4a88) and Phase 1 ✅ (commit 9528b1a57) are
+DONE — the parser now reads real hand-written flowcharts and fails safe on
+everything else. The §2/§3 matrices below record the pre-Phase-1 state (what was
+broken); `mermaid-compat.spec.ts` is the living green version. Phases 2–4 remain.
 **Method:** every current-state claim below was produced by feeding real Mermaid
 syntax to `importDiagramText()` against the built engine and recording what
 actually came back — node/link counts, throws, and garbage nodes. This
@@ -171,7 +175,7 @@ Sequenced by value-per-effort. You cannot safely extend a syntax you do not yet
 parse correctly, so the base (Phase 0–1) comes before the extension channel
 (Phase 2). Estimates are engineer-days, rough.
 
-### Phase 0 — Stop the corruption (2–3 days) — *do first*
+### Phase 0 — Stop the corruption ✅ DONE (commit 5db5b4a88)
 - Unrecognised diagram header (`sequenceDiagram`, `gantt`, …) → explicit
   `{ unsupported: '<type>' }` result, not the flowchart parser.
 - Un-parseable flowchart line → typed error with line/col, or lossless raw-text
@@ -180,7 +184,7 @@ parse correctly, so the base (Phase 0–1) comes before the extension channel
   signal, not garbage. (This discipline *is* invariant #1 of the extension
   model.)
 
-### Phase 1 — Make the flowchart BASE real (6–10 days) — *highest ROI*
+### Phase 1 — Make the flowchart BASE real ✅ DONE (commit 9528b1a57)
 - Lexer: glued arrows (`a-->b`), variable arrow length (`--->`), all edge ops.
 - Parser: **chains** (`a-->b-->c`), **multi-edge** (`a & b --> c & d`),
   self-loops, edge re-use from one source.
