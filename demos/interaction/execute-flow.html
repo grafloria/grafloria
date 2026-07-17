@@ -108,6 +108,7 @@ defineDemo({
     'Mid-run, click "⏸ pause": the run FREEZES on the current node (it keeps pulsing — it is still running). "step ▸" now advances exactly one node per click while staying paused; "▶ continue" resumes the timer pace; "reset" aborts the paused run outright.',
     'Untick "pulse the running node" (animateStatus: false): the running node holds a STILL blue highlight — the status paints, only the motion opts out.',
     'Tick "reduced motion (statics only)": the app-level reduced-motion switch stills every animation, and every static affordance — colored strokes, dimmed pending — survives.',
+    'Edit the graph and run again: select a wire (or node) and press Delete — the executor drives whatever still exists, so the run survives; a deleted wire simply does not animate. ⌘Z / Ctrl+Z brings it back.',
     'Read the wiring: the page only calls setState({ status, animateStatus }) per node and link.updateStyle({ animation: { type, speed, direction } }) per wire — the classes, colours and pulses are the shipped renderer machinery.',
   ],
 
@@ -143,11 +144,22 @@ defineDemo({
     /** Wires currently carrying a run — so the selectors can restyle them live. */
     ctx.activeEdges = new Set();
 
+    // NULL-SAFE against live editing: this is a real diagram — a visitor can
+    // select a wire (or a node) and press Delete. The executor drives whatever
+    // is STILL THERE; a missing wire simply doesn't animate, a missing node is
+    // skipped. (Live report: "i deleted one line then suddenly i can't execute
+    // any more" — the old direct .updateStyle threw on the deleted wire inside
+    // reset(), which killed every run before it began.)
     ctx.setStatus = (id, status) => {
-      ctx.diagram.getNode(id).setState({ status, animateStatus: chkPulse.checked });
+      const n = ctx.diagram.getNode(id);
+      if (n) n.setState({ status, animateStatus: chkPulse.checked });
     };
     ctx.setEdgeActive = (id, active) => {
       const l = ctx.diagram.getLink(id);
+      if (!l) {
+        ctx.activeEdges.delete(id);
+        return;
+      }
       if (active) {
         ctx.activeEdges.add(id);
         l.updateStyle({ animation: ctx.wireAnim() });
@@ -156,6 +168,8 @@ defineDemo({
         l.updateStyle({ animation: { type: 'none' } });
       }
     };
+    /** The walk order, restricted to nodes that still exist. */
+    ctx.aliveOrder = () => ORDER.filter((id) => ctx.diagram.getNode(id));
 
     /** One node begins: its incoming wires light up, it goes running. */
     const beginNode = (id) => {
@@ -258,11 +272,12 @@ defineDemo({
       ctx.runActive = true;
       syncPauseBtn();
       try {
-      for (const id of ORDER) ctx.setStatus(id, 'pending');
+      const walk = ctx.aliveOrder();
+      for (const id of walk) ctx.setStatus(id, 'pending');
       api.renderNow();
 
       let warned = null;
-      for (const id of ORDER) {
+      for (const id of walk) {
         beginNode(id);
         readout.textContent = ctx.paused ? `paused at: ${id} — ▶ continue or step ▸` : `running: ${id}`;
         api.renderNow();
@@ -276,7 +291,7 @@ defineDemo({
           endNode(id, 'error');
           readout.textContent = `failed at: ${id} — downstream never ran`;
           api.renderNow();
-          return { completed: ORDER.slice(0, ORDER.indexOf(id)), failed: id, warned };
+          return { completed: walk.slice(0, walk.indexOf(id)), failed: id, warned };
         }
         if (warnAt === id) {
           warned = id;
@@ -288,7 +303,7 @@ defineDemo({
         api.renderNow();
       }
       readout.textContent = warned ? `flow completed with a warning at ${warned} ⚠` : 'flow completed ✓';
-      return { completed: ORDER.filter((id) => id !== warned), failed: null, warned };
+      return { completed: walk.filter((id) => id !== warned), failed: null, warned };
       } finally {
         // Clean up only if this run still OWNS the world — an aborted run's
         // finally must not clobber the state of the newer run (or the reset)
@@ -303,18 +318,20 @@ defineDemo({
 
     /** Step-through: the same walk, advanced one node per click. */
     ctx.step = () => {
+      const walk = ctx.aliveOrder();
+      if (!walk.length) return;
       if (ctx.stepIndex < 0) {
         ctx.reset();
-        for (const id of ORDER) ctx.setStatus(id, 'pending');
+        for (const id of walk) ctx.setStatus(id, 'pending');
         ctx.stepIndex = 0;
-        beginNode(ORDER[0]);
-        readout.textContent = `step 1/${ORDER.length}: running ${ORDER[0]}`;
+        beginNode(walk[0]);
+        readout.textContent = `step 1/${walk.length}: running ${walk[0]}`;
       } else {
-        endNode(ORDER[ctx.stepIndex], 'completed');
+        endNode(walk[Math.min(ctx.stepIndex, walk.length - 1)], 'completed');
         ctx.stepIndex += 1;
-        if (ctx.stepIndex < ORDER.length) {
-          beginNode(ORDER[ctx.stepIndex]);
-          readout.textContent = `step ${ctx.stepIndex + 1}/${ORDER.length}: running ${ORDER[ctx.stepIndex]}`;
+        if (ctx.stepIndex < walk.length) {
+          beginNode(walk[ctx.stepIndex]);
+          readout.textContent = `step ${ctx.stepIndex + 1}/${walk.length}: running ${walk[ctx.stepIndex]}`;
         } else {
           ctx.stepIndex = -1;
           readout.textContent = 'flow completed ✓';
@@ -325,7 +342,7 @@ defineDemo({
 
     // The selectors restyle any wire that is CURRENTLY active, live.
     const applyWire = () => {
-      for (const id of ctx.activeEdges) ctx.diagram.getLink(id).updateStyle({ animation: ctx.wireAnim() });
+      for (const id of ctx.activeEdges) ctx.diagram.getLink(id)?.updateStyle({ animation: ctx.wireAnim() });
       if (ctx.activeEdges.size) api.renderNow();
     };
     selType.addEventListener('change', applyWire);
@@ -334,7 +351,7 @@ defineDemo({
 
     // animateStatus opt-out, applied to every node that currently shows a status.
     chkPulse.addEventListener('change', () => {
-      for (const id of ORDER) {
+      for (const id of ctx.aliveOrder()) {
         const n = ctx.diagram.getNode(id);
         if (n.state.status && n.state.status !== 'idle') n.setState({ animateStatus: chkPulse.checked });
       }
@@ -641,6 +658,32 @@ defineDemo({
     setChk('chk-rm', false);
     check(!document.body.classList.contains('reduced-motion'), 'unticking must clear body.reduced-motion');
     if (motionAllowed) check(getComputedStyle(nodeEl('transform')).animationName !== 'none', 'motion must come back when the switch clears');
+
+    // 8b. LIVE EDITING must not kill the runner (live report: "i deleted one
+    //     line then suddenly i can't execute any more" — the executor threw on
+    //     the deleted wire inside reset(), before any run could begin).
+    const savedWire = m.getLink('e3');
+    m.removeLink('e3');
+    const wireless = await ctx.execute({ stepMs: 0 });
+    check(wireless.failed === null, 'a run with a deleted wire must still complete');
+    check(wireless.completed.length === ORDER.length, `all ${ORDER.length} nodes must complete without the e3 wire, got ${wireless.completed.length}`);
+    m.addLink(savedWire);
+    check(!!m.getLink('e3'), 'restore: e3 back in the model');
+    // A deleted NODE is skipped, not fatal: capture it AND the links its
+    // removal cascades, run, then put everything back.
+    const savedNode = m.getNode('validate');
+    const cascaded = ['e3', 'e5'].map((id) => m.getLink(id));
+    m.removeNode('validate');
+    const nodeless = await ctx.execute({ stepMs: 0 });
+    check(nodeless.failed === null, 'a run with a deleted node must still complete');
+    check(nodeless.completed.length === ORDER.length - 1, `the walk must skip the deleted node (${ORDER.length - 1} nodes), got ${nodeless.completed.length}`);
+    check(!nodeless.completed.includes('validate'), 'the deleted node must not appear in the walk');
+    m.addNode(savedNode);
+    for (const l of cascaded) if (l && !m.getLink(l.id)) m.addLink(l);
+    ctx.instance.renderNow();
+    check(!!m.getNode('validate') && !!m.getLink('e3') && !!m.getLink('e5'), 'restore: validate + its wires back in the model');
+    const afterRestore = await ctx.execute({ stepMs: 0 });
+    check(afterRestore.completed.length === ORDER.length, 'the restored graph must run the FULL walk again');
 
     // 9. Reset clears every status back to idle.
     ctx.reset();
