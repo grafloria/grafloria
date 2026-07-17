@@ -17,6 +17,7 @@
   <button id="btn-run">▶ execute flow</button>
   <button id="btn-fail">execute with a failure</button>
   <button id="btn-warn">execute with a warning</button>
+  <button id="btn-pause" disabled>⏸ pause</button>
   <button id="btn-step">step ▸</button>
   <button id="btn-reset">reset</button>
   <span id="readout">idle</span>
@@ -97,13 +98,14 @@ const ORDER = ['trigger', 'fetch', 'transform', 'validate', 'enrich', 'save', 'n
 
 defineDemo({
   name: 'Execute flow (node statuses)',
-  blurb: 'Run the workflow like n8n: nodes pulse while running, the active wire animates in your chosen style (marching ants / flow / pulse / dash flow, any speed, either direction), a failure halts the run, a warning does not — and every status keeps a static affordance under reduced motion. All node.state.status + link style.animation machinery.',
+  blurb: 'Run the workflow like n8n: nodes pulse while running, the active wire animates in your chosen style (marching ants / flow / pulse / dash flow, any speed, either direction), a failure halts the run, a warning does not, a live run can be paused, stepped while paused, and continued — and every status keeps a static affordance under reduced motion. All node.state.status + link style.animation machinery.',
   howTo: [
     'Click "▶ execute flow": the run sweeps left to right — each node pulses blue while running, its incoming wire animates in the selected style, then it settles as completed; the readout tracks every step.',
     'Change the "wire" / "speed" / "direction" selectors — mid-run, if you like: the ACTIVE wire restyles live (marching ants → flow → pulse → dash flow; slow / normal / fast cycles; reverse marches the dashes backwards).',
     'Click "execute with a failure": the run halts at Transform — it shakes and holds the red error state, and everything downstream stays pending (dimmed), exactly like a failed n8n run.',
     'Click "execute with a warning": Enrich finishes amber (status \'warning\') but the flow KEEPS GOING — a warning is a non-fatal outcome, not a halt.',
     'Click "step ▸" repeatedly to advance the run one node per click — same statuses, host-paced instead of timer-paced.',
+    'Mid-run, click "⏸ pause": the run FREEZES on the current node (it keeps pulsing — it is still running). "step ▸" now advances exactly one node per click while staying paused; "▶ continue" resumes the timer pace; "reset" aborts the paused run outright.',
     'Untick "pulse the running node" (animateStatus: false): the running node holds a STILL blue highlight — the status paints, only the motion opts out.',
     'Tick "reduced motion (statics only)": the app-level reduced-motion switch stills every animation, and every static affordance — colored strokes, dimmed pending — survives.',
     'Read the wiring: the page only calls setState({ status, animateStatus }) per node and link.updateStyle({ animation: { type, speed, direction } }) per wire — the classes, colours and pulses are the shipped renderer machinery.',
@@ -167,7 +169,75 @@ defineDemo({
     };
 
     ctx.stepIndex = -1; // -1 = not stepping
+    ctx.runActive = false; // an auto-run (execute) is in flight
+    ctx.paused = false;
+    ctx.runToken = 0; // bumped by reset — a stale run sees it and aborts
+    let pauseWaiters = []; // resolvers parked at the gate while paused
+    const pauseBtn = document.getElementById('btn-pause');
+    const stepBtn = document.getElementById('btn-step');
+    const syncPauseBtn = () => {
+      pauseBtn.disabled = !ctx.runActive;
+      pauseBtn.textContent = ctx.paused ? '▶ continue' : '⏸ pause';
+      // step ▸ is live exactly when it DOES something: standalone stepping
+      // (no run) or advancing a PAUSED run. Enabled-but-inert is how buttons
+      // read as broken (and how DEAD-BUTTON reads them too).
+      stepBtn.disabled = ctx.runActive && !ctx.paused;
+    };
+    let pendingSteps = 0; // step ▸ clicks banked before the executor parks
+    let wakeSleep = null; // aborts the gate's CURRENT timer (step ▸ / reset)
+    const gateSleep = (ms) => new Promise((res) => {
+      const t = setTimeout(() => { wakeSleep = null; res(); }, ms);
+      wakeSleep = () => { clearTimeout(t); wakeSleep = null; res(); };
+    });
+    const pokeGate = () => { if (wakeSleep) wakeSleep(); };
+    /** Release ONE parked step (step ▸ while paused) or ALL (continue/reset). */
+    const releaseGate = (all) => {
+      if (all) {
+        pendingSteps = 0;
+        for (const res of pauseWaiters.splice(0)) res();
+        return;
+      }
+      const parked = pauseWaiters.splice(0, 1);
+      if (parked.length) parked[0]();
+      // Not parked yet — the held node's timer is still ticking. Bank the
+      // click AND abort the timer: a step must respond NOW, not up to a full
+      // step interval later (a step that lands late reads as a dead button —
+      // literally: DEAD-BUTTON caught the delayed version).
+      else {
+        pendingSteps += 1;
+        pokeGate();
+      }
+    };
+    /**
+     * The between-nodes gate: timer-paced normally; parked while paused. A
+     * pause lands BEFORE the current node completes, so the picture freezes
+     * with that node still running (it IS still running — n8n semantics).
+     */
+    const stepGate = async (stepMs) => {
+      if (!ctx.paused) await gateSleep(stepMs);
+      if (!ctx.paused) return; // normal pace (or continue beat the timer)
+      if (pendingSteps > 0) { pendingSteps -= 1; return; } // step ▸ — advance one
+      await new Promise((res) => pauseWaiters.push(res)); // parked: step/continue/reset
+    };
+    ctx.setPaused = (on) => {
+      if (!ctx.runActive) return;
+      ctx.paused = on;
+      syncPauseBtn();
+      const held = ORDER.find((id) => ctx.diagram.getNode(id).state.status === 'running');
+      if (on) readout.textContent = `paused at: ${held ?? '—'} — ▶ continue or step ▸`;
+      else {
+        if (held) readout.textContent = `running: ${held}`;
+        releaseGate(true);
+      }
+    };
+
     ctx.reset = () => {
+      ctx.runToken += 1; // any in-flight run aborts at its next gate
+      ctx.paused = false;
+      ctx.runActive = false;
+      syncPauseBtn();
+      releaseGate(true); // let a parked run wake up and see the stale token
+      pokeGate(); // and a SLEEPING one — reset must abort now, not next tick
       ctx.stepIndex = -1;
       for (const id of ORDER) ctx.setStatus(id, 'idle');
       for (const e of SPEC.edges) ctx.setEdgeActive(e.id, false);
@@ -184,15 +254,23 @@ defineDemo({
      */
     ctx.execute = async ({ failAt = null, warnAt = null, stepMs = 550 } = {}) => {
       ctx.reset();
+      const token = ctx.runToken; // reset() just bumped it; this run owns it
+      ctx.runActive = true;
+      syncPauseBtn();
+      try {
       for (const id of ORDER) ctx.setStatus(id, 'pending');
       api.renderNow();
 
       let warned = null;
       for (const id of ORDER) {
         beginNode(id);
-        readout.textContent = `running: ${id}`;
+        readout.textContent = ctx.paused ? `paused at: ${id} — ▶ continue or step ▸` : `running: ${id}`;
         api.renderNow();
-        await sleep(stepMs);
+        await stepGate(stepMs);
+        // reset() (or a newer run) invalidated this one while it slept/parked:
+        // stop dead — the world belongs to someone else now.
+        if (token !== ctx.runToken) return { completed: [], failed: null, warned: null, aborted: true };
+        if (ctx.paused) readout.textContent = `paused at: ${id} — ▶ continue or step ▸`;
 
         if (failAt === id) {
           endNode(id, 'error');
@@ -211,6 +289,16 @@ defineDemo({
       }
       readout.textContent = warned ? `flow completed with a warning at ${warned} ⚠` : 'flow completed ✓';
       return { completed: ORDER.filter((id) => id !== warned), failed: null, warned };
+      } finally {
+        // Clean up only if this run still OWNS the world — an aborted run's
+        // finally must not clobber the state of the newer run (or the reset)
+        // that displaced it.
+        if (token === ctx.runToken) {
+          ctx.runActive = false;
+          ctx.paused = false;
+          syncPauseBtn();
+        }
+      }
     };
 
     /** Step-through: the same walk, advanced one node per click. */
@@ -260,15 +348,24 @@ defineDemo({
       api.animations.updateConfig({ reducedMotion: chkRm.checked });
     });
 
-    const buttons = [...document.querySelectorAll('#bar button')];
+    // Only the LAUNCHERS lock during a run — pause/continue, step-while-paused
+    // and reset are precisely the buttons a live run needs.
+    const launchers = ['btn-run', 'btn-fail', 'btn-warn'].map((id) => document.getElementById(id));
     const busy = async (fn) => {
-      buttons.forEach((b) => (b.disabled = true));
-      try { await fn(); } finally { buttons.forEach((b) => (b.disabled = false)); }
+      launchers.forEach((b) => (b.disabled = true));
+      try { await fn(); } finally { launchers.forEach((b) => (b.disabled = false)); }
     };
     document.getElementById('btn-run').addEventListener('click', () => busy(() => ctx.execute()));
     document.getElementById('btn-fail').addEventListener('click', () => busy(() => ctx.execute({ failAt: 'transform' })));
     document.getElementById('btn-warn').addEventListener('click', () => busy(() => ctx.execute({ warnAt: 'enrich' })));
-    document.getElementById('btn-step').addEventListener('click', () => ctx.step());
+    pauseBtn.addEventListener('click', () => ctx.setPaused(!ctx.paused));
+    stepBtn.addEventListener('click', () => {
+      // Paused auto-run: advance exactly one node, stay paused. Standalone
+      // step-through otherwise (the button is disabled during an unpaused
+      // run — two pacemakers on one heart is how demos die).
+      if (ctx.runActive && ctx.paused) releaseGate(false);
+      else if (!ctx.runActive) ctx.step();
+    });
     document.getElementById('btn-reset').addEventListener('click', () => ctx.reset());
 
     await ctx.tick();
@@ -306,6 +403,22 @@ defineDemo({
       el.dispatchEvent(new Event('change'));
     };
 
+    // Can this environment animate AT ALL? The screenshot rig freezes every
+    // animation (`* { animation: none !important }`) to make pixels
+    // deterministic — under it, every "must animate" check is unsatisfiable
+    // and its throw used to LEAK the assert's live run into the after-frame
+    // (the golden was literally a photo of the leak). Positive-motion checks
+    // gate on this probe; classes, statics and model behavior stay
+    // unconditional, and the gallery gate (no freeze) enforces everything.
+    const motionAllowed = (() => {
+      const probe = document.createElement('div');
+      probe.style.cssText = 'position:absolute;width:1px;height:1px;animation: status-node-running 1s linear infinite;';
+      document.body.appendChild(probe);
+      const name = getComputedStyle(probe).animationName;
+      probe.remove();
+      return name !== 'none';
+    })();
+
     // Boot-state controls (the checks assume them; ?run=1 reloads fresh, but a
     // gate re-run inside one page must not inherit a twiddled panel).
     setSel('sel-type', 'marching-ants');
@@ -326,8 +439,10 @@ defineDemo({
     const activeEdges = [...ctx.host.querySelectorAll('.link-animated-marching-ants')];
     check(activeEdges.length >= 1, 'the running node\'s incoming edge must carry the marching-ants class mid-run');
     const el = ctx.host.querySelector(`[data-node-id="${runningNow[0]}"] .diagram-node`);
-    const anim = getComputedStyle(el).animationName;
-    check(anim !== 'none', 'the running status must ANIMATE (the "running" keyframes were reserved-word-dead for every SVG node until this page existed)');
+    if (motionAllowed) {
+      const anim = getComputedStyle(el).animationName;
+      check(anim !== 'none', 'the running status must ANIMATE (the "running" keyframes were reserved-word-dead for every SVG node until this page existed)');
+    }
 
     // 2. The happy path completes every node, in order.
     const result = await run;
@@ -384,7 +499,7 @@ defineDemo({
       const wcls = wireEl('e2').getAttribute('class') || '';
       const wcs = getComputedStyle(wireEl('e2'));
       check(wcls.includes(`link-animated-${type}`), `wire type ${type}: the active wire must carry link-animated-${type}, got "${wcls}"`);
-      check(wcs.animationName === keyframes, `wire type ${type} must run the "${keyframes}" keyframes, got ${wcs.animationName}`);
+      if (motionAllowed) check(wcs.animationName === keyframes, `wire type ${type} must run the "${keyframes}" keyframes, got ${wcs.animationName}`);
       check(wcs.strokeDasharray === dash, `wire type ${type} must paint its static dash pattern (${dash}), got ${wcs.strokeDasharray}`);
     }
     // Speeds are painted cycle times, not config: slow 3s / normal 1s / fast 0.5s.
@@ -394,15 +509,17 @@ defineDemo({
       const wcls = wireEl('e2').getAttribute('class') || '';
       check(wcls.includes(`link-speed-${speed}`) === hasClass,
         `speed ${speed}: link-speed-${speed} ${hasClass ? 'must' : 'must NOT (normal emits no class)'} be on the wire, got "${wcls}"`);
-      const d = getComputedStyle(wireEl('e2')).animationDuration;
-      check(d === dur, `speed ${speed} must compute a ${dur} animation cycle, got ${d}`);
+      if (motionAllowed) {
+        const d = getComputedStyle(wireEl('e2')).animationDuration;
+        check(d === dur, `speed ${speed} must compute a ${dur} animation cycle, got ${d}`);
+      }
     }
     // Direction reverses the march itself (computed animation-direction).
     setSel('sel-dir', 'reverse');
     check((wireEl('e2').getAttribute('class') || '').includes('link-direction-reverse'), 'direction reverse must add link-direction-reverse');
-    check(getComputedStyle(wireEl('e2')).animationDirection === 'reverse', 'direction reverse must COMPUTE animation-direction: reverse');
+    if (motionAllowed) check(getComputedStyle(wireEl('e2')).animationDirection === 'reverse', 'direction reverse must COMPUTE animation-direction: reverse');
     setSel('sel-dir', 'forward');
-    check(getComputedStyle(wireEl('e2')).animationDirection === 'normal', 'direction forward must compute animation-direction: normal');
+    if (motionAllowed) check(getComputedStyle(wireEl('e2')).animationDirection === 'normal', 'direction forward must compute animation-direction: normal');
     setSel('sel-speed', 'fast');
 
     // 6. animateStatus opt-out: the status keeps painting, only the motion stops.
@@ -412,7 +529,7 @@ defineDemo({
     check(getComputedStyle(nodeEl('transform')).animationName === 'none', 'node-status-still must compute animation: none');
     check(getComputedStyle(nodeEl('transform')).stroke === 'rgb(52, 152, 219)', 'the still running node must keep its static blue stroke');
     setChk('chk-pulse', true);
-    check(getComputedStyle(nodeEl('transform')).animationName !== 'none', 're-ticking the box must bring the running pulse back');
+    if (motionAllowed) check(getComputedStyle(nodeEl('transform')).animationName !== 'none', 're-ticking the box must bring the running pulse back');
     check(!statusClass('transform').includes('node-status-still'), 'node-status-still must drop when the motion opt-out clears');
 
     // 7. Step-through: one node per click of the real button.
@@ -434,6 +551,80 @@ defineDemo({
     }
     check(readoutEl.textContent === 'flow completed ✓', `stepping to the end must finish the flow, readout "${readoutEl.textContent}"`);
 
+    // 7b. PAUSE freezes a live run on the current node; step ▸ advances exactly
+    //     one node while staying paused; ▶ continue finishes the flow.
+    //     Entry points are STATE-based, not wall-clock — under gate/shoot load
+    //     timers stretch and a "wait 110ms" lands anywhere (a flaked check here
+    //     leaves the page mid-run, which the after-frame then photographs).
+    const until = async (cond, what) => {
+      for (let i = 0; i < 400 && !cond(); i++) await new Promise((r) => setTimeout(r, 10));
+      check(cond(), `timed out waiting for ${what}`);
+    };
+    const pauseBtn = document.getElementById('btn-pause');
+    check(pauseBtn.disabled, 'the pause button must be disabled while no run is active');
+    // Generous step interval: the pause must land while the run is LIVE even
+    // when a loaded gate stretches every timer. And the whole section reaps
+    // its run in `finally` — a failed check must never leave an un-awaited
+    // executor alive behind the assert (the screenshot rig photographs
+    // whatever the page is doing after run() resolves).
+    const pausedRun = ctx.execute({ stepMs: 400 });
+    try {
+    await until(() => m.getNode('trigger').state.status === 'completed', 'the run to pass its first node');
+    check(!pauseBtn.disabled, 'the pause button must arm while a run is active');
+    pauseBtn.click();
+    check(ctx.paused === true, 'clicking pause must pause the run');
+    check(pauseBtn.textContent === '▶ continue', `the pause button must flip to continue, got "${pauseBtn.textContent}"`);
+    await new Promise((r) => setTimeout(r, 240)); // > 3 step intervals
+    const frozenRunning = ORDER.filter((id) => m.getNode(id).state.status === 'running');
+    check(frozenRunning.length === 1, `a paused run must hold exactly one running node, got [${frozenRunning}]`);
+    const frozenAt = frozenRunning[0];
+    const doneBefore = ORDER.filter((id) => m.getNode(id).state.status === 'completed').length;
+    await new Promise((r) => setTimeout(r, 160));
+    check(m.getNode(frozenAt).state.status === 'running', 'the paused run must NOT advance past the held node');
+    check(ORDER.filter((id) => m.getNode(id).state.status === 'completed').length === doneBefore,
+      'no node may complete while the run is paused');
+    check(document.getElementById('readout').textContent.includes('paused at'), 'the readout must announce the pause');
+    // step ▸ while paused: exactly one node advances, the run STAYS paused.
+    document.getElementById('btn-step').click();
+    await until(() => m.getNode(frozenAt).state.status === 'completed', 'step-while-paused to complete the held node');
+    const nextIdx = ORDER.indexOf(frozenAt) + 1;
+    check(m.getNode(ORDER[nextIdx]).state.status === 'running', `step-while-paused must set ${ORDER[nextIdx]} running`);
+    check(ctx.paused === true, 'stepping must not unpause the run');
+    await new Promise((r) => setTimeout(r, 160));
+    check(m.getNode(ORDER[nextIdx]).state.status === 'running', 'after the single step the run must hold again');
+    // ▶ continue: the rest of the flow completes at timer pace.
+    pauseBtn.click();
+    check(ctx.paused === false, 'continue must unpause');
+    const pausedResult = await pausedRun;
+    check(pausedResult.failed === null && !pausedResult.aborted, 'the continued run must finish normally');
+    for (const id of ORDER) {
+      check(m.getNode(id).state.status === 'completed', `${id} must be completed after continue, is ${m.getNode(id).state.status}`);
+    }
+    check(pauseBtn.disabled && pauseBtn.textContent === '⏸ pause', 'the pause button must disarm after the run ends');
+    } finally {
+      ctx.reset(); // aborts the run if a check above threw mid-flight…
+      await pausedRun.catch(() => {}); // …and REAPS it: nothing may outlive the assert
+    }
+
+    // 7c. RESET aborts a paused run outright — nothing resumes behind its back.
+    const abortRun = ctx.execute({ stepMs: 400 });
+    try {
+    await until(() => m.getNode('trigger').state.status === 'completed', 'the abort-test run to pass its first node');
+    pauseBtn.click();
+    check(ctx.paused === true, 'setup: the abort-test run must be paused');
+    document.getElementById('btn-reset').click();
+    const aborted = await abortRun;
+    check(aborted.aborted === true, 'reset must ABORT the paused run (its promise reports aborted)');
+    await new Promise((r) => setTimeout(r, 200));
+    for (const id of ORDER) {
+      check(m.getNode(id).state.status === 'idle', `${id} must stay idle after the abort — the dead run must not resume, is ${m.getNode(id).state.status}`);
+    }
+    check(pauseBtn.disabled, 'the pause button must disarm after the abort');
+    } finally {
+      ctx.reset();
+      await abortRun.catch(() => {});
+    }
+
     // 8. The app's reduced-motion switch: every animation stills, every static
     //    affordance survives. (body.reduced-motion — the JS-driven channel that
     //    was dead config until the wave-6 fix injected its stylesheet.)
@@ -449,7 +640,7 @@ defineDemo({
     check(getComputedStyle(wireEl('e2')).animationName === 'none', 'reduced motion must still the wire animation');
     setChk('chk-rm', false);
     check(!document.body.classList.contains('reduced-motion'), 'unticking must clear body.reduced-motion');
-    check(getComputedStyle(nodeEl('transform')).animationName !== 'none', 'motion must come back when the switch clears');
+    if (motionAllowed) check(getComputedStyle(nodeEl('transform')).animationName !== 'none', 'motion must come back when the switch clears');
 
     // 9. Reset clears every status back to idle.
     ctx.reset();
