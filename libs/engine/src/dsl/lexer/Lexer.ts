@@ -496,7 +496,10 @@ export class Lexer {
    * Helper: Check if character is alphabetic
    */
   private isAlpha(char: string): boolean {
-    return (char >= 'a' && char <= 'z') || (char >= 'A' && char <= 'Z');
+    // Any Unicode letter — not ASCII-only. With the ASCII test every Arabic /
+    // CJK / Cyrillic character lexed as its own UNKNOWN token and labels came
+    // back through the parser one-character-at-a-time ("مرحبا" → "م ر ح ب ا").
+    return /\p{L}/u.test(char);
   }
 
   /**

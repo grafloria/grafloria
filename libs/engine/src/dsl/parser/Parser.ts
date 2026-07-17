@@ -447,14 +447,21 @@ export class Parser {
    */
   private parseTextUntil(endType: TokenType): string {
     let text = '';
-    let first = true;
+    let prevEnd = -1;
 
     while (!this.check(endType) && !this.isAtEnd()) {
-      if (!first) {
+      const token = this.advance();
+      // Join by SOURCE ADJACENCY, not with an unconditional space: tokens that
+      // touch in the input stay touching in the label. The unconditional join
+      // exploded any run of characters the lexer didn't recognise as one word.
+      if (prevEnd >= 0 && token.startIndex > prevEnd) {
         text += ' ';
       }
-      text += this.advance().value;
-      first = false;
+      // The quoted form: a["He said #quot;hi#quot; [brackets ok]"] — the whole
+      // string is ONE token (brackets inside quotes never reach the bracket
+      // matcher), and mermaid's #quot; entity decodes back to a double quote.
+      text += token.type === TokenType.STRING ? token.value.replace(/#quot;/g, '"') : token.value;
+      prevEnd = token.endIndex;
     }
 
     return text.trim();

@@ -10,9 +10,17 @@ import {
   importDiagramText,
   stripGrafloriaSidecar,
   GRAFLORIA_DOC_PREFIX,
+  GRAFLORIA_HASH_PREFIX,
+  sanitizeForSidecar,
 } from './TextFormat';
 
 const throughJSON = <T,>(v: T): T => JSON.parse(JSON.stringify(v));
+// Lossless is defined over the DOCUMENT view: ephemeral entity state
+// (selected/hovered/focused) and derived link polylines are deliberately not
+// part of the text form (see sanitizeForSidecar), exactly as the collab layer
+// excludes them from ops. Comparing raw serialize() would demand persisting a
+// viewer's selection and a renderer's routing — neither belongs in a file.
+const docView = (d: DiagramModel): unknown => throughJSON(sanitizeForSidecar(d.serialize()));
 
 function buildRich(): DiagramModel {
   const d = new DiagramModel('text-format-spec');
@@ -51,7 +59,7 @@ describe('exportDiagramText / importDiagramText', () => {
     const { diagram, source, bodyEdited } = importDiagramText(text);
     expect(source).toBe('sidecar');
     expect(bodyEdited).toBe(false);
-    expect(throughJSON(diagram.serialize())).toEqual(throughJSON(d.serialize()));
+    expect(docView(diagram)).toEqual(docView(d));
   });
 
   it('body stays human-readable Mermaid; sidecar is comment lines', () => {
@@ -91,7 +99,7 @@ describe('exportDiagramText / importDiagramText', () => {
 
     const sidecar = importDiagramText(edited, { prefer: 'sidecar' });
     expect(sidecar.source).toBe('sidecar');
-    expect(throughJSON(sidecar.diagram.serialize())).toEqual(throughJSON(d.serialize()));
+    expect(docView(sidecar.diagram)).toEqual(docView(d));
 
     const textWins = importDiagramText(text, { prefer: 'text' });
     expect(textWins.source).toBe('text');
@@ -170,6 +178,137 @@ describe('exportDiagramText / importDiagramText', () => {
     const relabeled = r.diagram.getLinks().find((l) => l.getMetadata('label'));
     expect(relabeled).toBeDefined();
     expect(relabeled!.getMetadata('label')).toBe('then');
+  });
+
+  // ==========================================================================
+  // THE HAND-EDIT MERGE (live report: "edit the text and the whole layout is
+  // gone"). The grammar carries structure and labels — NOTHING else. A
+  // hand-edited body therefore applies ON TOP of the sidecar document; it
+  // must not replace it.
+  // ==========================================================================
+  it('hand-edit MERGE: one label edit keeps every position, style, port and group', () => {
+    const d = buildRich();
+    const alphaPos = { ...d.getNode('alpha')!.position };
+    d.getNode('alpha')!.style = { fill: '#123456' } as never;
+    const text = exportDiagramText(d);
+    const edited = text
+      .split('\n')
+      .map((l) => (l.includes('%%grafloria') ? l : l.replace('Alpha', 'Renamed')))
+      .join('\n');
+
+    const r = importDiagramText(edited);
+    expect(r.source).toBe('text');
+    expect(r.sidecarMerged).toBe(true);
+    const alpha = r.diagram.getNode('alpha')!;
+    expect(alpha.getLabel()).toBe('Renamed'); // the edit took
+    expect(alpha.position.x).toBe(alphaPos.x); // and the LAYOUT survived
+    expect(alpha.position.y).toBe(alphaPos.y);
+    expect((alpha.style as { fill?: string }).fill).toBe('#123456');
+    // Ports and groups are invisible to the grammar — they must ride through.
+    expect(r.diagram.getPortById('alpha-out')).toBeTruthy();
+    expect(r.diagram.getGroups().length).toBe(d.getGroups().length);
+  });
+
+  it('hand-edit MERGE: adding a node/edge line keeps existing geometry; deleting one removes it', () => {
+    const d = buildRich();
+    const betaPos = { ...d.getNode('beta')!.position };
+    const text = exportDiagramText(d);
+
+    // ADD a line after the beta node definition.
+    const added = text
+      .split('\n')
+      .map((l) => (/^\s*beta\[/.test(l) ? l + '\n  beta --> gamma[Gamma]' : l))
+      .join('\n');
+    const ra = importDiagramText(added);
+    expect(ra.sidecarMerged).toBe(true);
+    expect(ra.diagram.getNode('gamma')).toBeTruthy(); // new node arrived
+    expect(ra.diagram.getNode('beta')!.position).toEqual(betaPos); // veterans untouched
+    expect(
+      ra.diagram.getLinks().some((l) => l.sourceNodeId === 'beta' && l.targetNodeId === 'gamma')
+    ).toBe(true);
+
+    // DELETE the alpha→beta edge line (keep both nodes).
+    const removed = text
+      .split('\n')
+      .filter((l) => !(l.includes('alpha') && l.includes('-->')))
+      .join('\n');
+    const rr = importDiagramText(removed);
+    expect(rr.diagram.getNode('alpha')).toBeTruthy();
+    expect(
+      rr.diagram.getLinks().some((l) => l.sourceNodeId === 'alpha' && l.targetNodeId === 'beta')
+    ).toBe(false);
+  });
+
+  it('CRLF line endings are transport, not a hand-edit: the sidecar still wins', () => {
+    const d = buildRich();
+    const text = exportDiagramText(d);
+    const crlf = text.replace(/\n/g, '\r\n');
+    const r = importDiagramText(crlf);
+    expect(r.bodyEdited).toBe(false);
+    expect(r.source).toBe('sidecar');
+    expect(r.diagram.getNode('alpha')!.position).toEqual(d.getNode('alpha')!.position);
+  });
+
+  it('a corrupted sidecar falls back to the text path instead of throwing', () => {
+    const d = buildRich();
+    const text = exportDiagramText(d);
+    const corrupted = text.replace(/(%%grafloria:document .{40}).*/, '$1');
+    const r = importDiagramText(corrupted);
+    expect(r.sidecarInvalid).toBe(true);
+    expect(r.source).toBe('text');
+    expect(r.diagram.getNodes().length).toBeGreaterThan(0);
+  });
+
+  it('the sidecar is a DOCUMENT: no viewer selection, no derived polylines', () => {
+    const d = buildRich();
+    d.selectNode(d.getNode('alpha')!);
+    const text = exportDiagramText(d);
+    const docLine = text
+      .split('\n')
+      .find((l) => l.trimStart().startsWith(GRAFLORIA_DOC_PREFIX))!
+      .trimStart()
+      .slice(GRAFLORIA_DOC_PREFIX.length);
+    const doc = JSON.parse(docLine);
+    const alpha = doc.nodes.find((n: { id: string }) => n.id === 'alpha');
+    expect(alpha.state?.selected).toBeUndefined();
+    expect(alpha.state?.hovered).toBeUndefined();
+    for (const link of doc.links) expect(link.points).toEqual([]);
+    // Link state is a STRING in the serialized form — the sanitizer must not
+    // explode it into a character map, and a selected link resets to default.
+    for (const link of doc.links) expect(typeof link.state).toBe('string');
+    d.getLinks()[0]!.setState('selected');
+    const doc2 = JSON.parse(
+      exportDiagramText(d)
+        .split('\n')
+        .find((l) => l.trimStart().startsWith(GRAFLORIA_DOC_PREFIX))!
+        .trimStart()
+        .slice(GRAFLORIA_DOC_PREFIX.length)
+    );
+    expect(doc2.links[0].state).toBe('default');
+    // …and reimporting does not resurrect the selection.
+    const r = importDiagramText(text);
+    expect(r.diagram.getNode('alpha')!.isSelected()).toBeFalsy();
+  });
+
+  it('labels with brackets, quotes and Arabic round-trip through the TEXT path', () => {
+    const d = new DiagramModel('intl');
+    const mk = (id: string, label: string, x: number) => {
+      const n = new NodeModel({ id, type: 'flowchart:process', position: { x, y: 0 } });
+      n.setLabel(label);
+      d.addNode(n);
+      return n;
+    };
+    const hard = 'He said "hi" [ok]';
+    const arabic = 'مرحبا بالعالم';
+    mk('a', hard, 0);
+    mk('b', arabic, 250);
+    d.createSmartLink(d.getNode('a')!, d.getNode('b')!, 'smooth');
+
+    // No sidecar: this exercises generator quoting + lexer/parser fidelity.
+    const body = exportDiagramText(d, { lossless: false });
+    const r = importDiagramText(body);
+    expect(r.diagram.getNode('a')!.getLabel()).toBe(hard);
+    expect(r.diagram.getNode('b')!.getLabel()).toBe(arabic);
   });
 
   it('sidecar loads go through the unified path: loaded diagram is fully wired', () => {

@@ -57,6 +57,7 @@ defineDemo({
     'Click "apply text → diagram" without editing — the status reads "unchanged → lossless sidecar": the byte-exact model wins.',
     'Hand-edit the body: change build[Build] to build[Verify] and click apply — the status flips to "hand-edit detected → rebuilt from text" and the middle node now reads Verify.',
     'Check the neighbours: Plan and Ship survived your edit untouched — a hand-edit rebuilds from the text without wiping the labels you didn\'t touch.',
+    'Positions survive too: the edited body is applied ON TOP of the sidecar document, so everything the Mermaid grammar cannot express — layout, styles, ports, groups — rides through a hand edit unchanged.',
   ],
   reactflow: null,
 
@@ -71,7 +72,7 @@ defineDemo({
 
     document.getElementById('apply').onclick = () => {
       const r = importDiagramText(ta.value);
-      status.textContent = r.bodyEdited ? 'hand-edit detected → rebuilt from text' : 'unchanged → lossless sidecar';
+      status.textContent = r.bodyEdited ? (r.sidecarMerged ? 'hand-edit detected → edit applied onto the sidecar model' : 'hand-edit detected → rebuilt from text') : 'unchanged → lossless sidecar';
       api.setNodes(modelToSpec(r.diagram).nodes);
       api.setEdges(modelToSpec(r.diagram).edges);
       api.renderNow();
@@ -121,6 +122,17 @@ defineDemo({
       `an UNEDITED label was destroyed by the round-trip: plan is "${labelOf(handEdited.diagram.getNode('plan'))}"`);
     check(labelOf(handEdited.diagram.getNode('ship')) === 'Ship',
       `an UNEDITED label was destroyed by the round-trip: ship is "${labelOf(handEdited.diagram.getNode('ship'))}"`);
+    // 3b. …and neither did the LAYOUT (live finding: one label edit used to
+    //     wipe every node position back to the parser's default grid — the
+    //     data-loss shape this feature is named for). The edited body applies
+    //     ON TOP of the sidecar document.
+    check(handEdited.sidecarMerged === true, 'a hand-edit with a sidecar present must MERGE, not replace');
+    for (const id of ['plan', 'build', 'ship']) {
+      const before = model.getNode(id).position;
+      const after = handEdited.diagram.getNode(id).position;
+      check(after.x === before.x && after.y === before.y,
+        `${id} lost its position to the hand-edit: (${before.x},${before.y}) → (${after.x},${after.y})`);
+    }
 
     // 4. The edit round-trips BACK into the live diagram and repaints.
     ctx.instance.setNodes(modelToSpec(handEdited.diagram).nodes);

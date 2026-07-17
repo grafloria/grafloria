@@ -201,7 +201,22 @@ export class DSLGenerator {
     // Generate shape brackets
     const { opening, closing } = this.getShapeBrackets(shape as NodeShape);
 
-    return `${nodeId}${opening}${label}${closing}`;
+    return `${nodeId}${opening}${this.escapeLabel(label, closing)}${closing}`;
+  }
+
+  /**
+   * Quote a label whose content would break the surrounding syntax — brackets,
+   * quotes, pipes, or the shape's own closing delimiter. Mermaid's quoted form:
+   * the label is wrapped in double quotes and inner quotes travel as #quot;.
+   * Plain labels pass through untouched, so existing bodies do not churn.
+   */
+  private escapeLabel(label: string, closing: string): string {
+    const needsQuoting =
+      /[[\](){}"|]/.test(label) ||
+      label !== label.trim() ||
+      (closing.length > 0 && label.includes(closing));
+    if (!needsQuoting) return label;
+    return `"${label.replace(/"/g, '#quot;')}"`;
   }
 
   /**
