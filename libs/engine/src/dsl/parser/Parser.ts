@@ -35,6 +35,10 @@ export class ParseError extends Error {
   }
 }
 
+const DIRECTIVE_KEYWORDS = new Set([
+  'style', 'classDef', 'class', 'linkStyle', 'click', 'direction',
+]);
+
 export class Parser {
   private tokens: Token[] = [];
   private current: number = 0;
@@ -90,10 +94,26 @@ export class Parser {
         continue;
       }
 
-      const statement = this.parseStatement();
-      if (statement) {
-        statements.push(statement);
+      const before = this.current;
+      try {
+        const statement = this.parseStatement();
+        if (statement) {
+          // parseStatement may yield ONE statement or a list (chains, multi-edge).
+          if (Array.isArray(statement)) statements.push(...statement);
+          else statements.push(statement);
+        }
+      } catch (error) {
+        // Line-level error recovery: one un-parseable line must not abort the
+        // whole diagram, and must not leave debris. Skip to the next newline.
+        // (docs/MERMAID-GAP-ANALYSIS.md Phase 0 — "never manufacture nodes".)
+        if (error instanceof ParseError) {
+          this.skipLine();
+        } else {
+          throw error;
+        }
       }
+      // Guard against a statement that consumed nothing (would loop forever).
+      if (this.current === before && !this.isAtEnd()) this.advance();
 
       this.consumeNewlines();
     }
@@ -110,20 +130,18 @@ export class Parser {
   /**
    * Parse a statement
    */
-  private parseStatement(): StatementNode | null {
+  private parseStatement(): StatementNode | StatementNode[] | null {
     // Subgraph
     if (this.check(TokenType.SUBGRAPH)) {
       return this.parseSubgraph();
     }
 
-    // Style definition
-    if (this.checkSequence(TokenType.IDENTIFIER) && this.peek().value === 'style') {
-      return this.parseStyle();
-    }
-
-    // Class definition
-    if (this.checkSequence(TokenType.IDENTIFIER) && this.peek().value === 'classDef') {
-      return this.parseClassDef();
+    // Directive lines (style / classDef / class / linkStyle / click / direction).
+    // These are the Phase-2 extension channel; Phase 0 recognises and SKIPS them
+    // so they neither throw nor turn `fill:#f9f` into a node called `f9f`.
+    if (this.check(TokenType.IDENTIFIER) && DIRECTIVE_KEYWORDS.has(this.peek().value)) {
+      this.skipLine();
+      return null;
     }
 
     // Node or Edge definition
@@ -131,10 +149,9 @@ export class Parser {
     const firstId = this.parseNodeId();
 
     if (!firstId) {
-      // Skip unknown tokens
-      if (!this.isAtEnd()) {
-        this.advance();
-      }
+      // Not a node/edge start — skip the whole line rather than a single token,
+      // so partial debris cannot leak into the model.
+      this.skipLine();
       return null;
     }
 
@@ -200,10 +217,18 @@ export class Parser {
         continue;
       }
 
-      const statement = this.parseStatement();
-      if (statement) {
-        statements.push(statement);
+      const before = this.current;
+      try {
+        const statement = this.parseStatement();
+        if (statement) {
+          if (Array.isArray(statement)) statements.push(...statement);
+          else statements.push(statement);
+        }
+      } catch (error) {
+        if (error instanceof ParseError) this.skipLine();
+        else throw error;
       }
+      if (this.current === before && !this.isAtEnd()) this.advance();
 
       this.consumeNewlines();
     }
@@ -583,6 +608,13 @@ export class Parser {
   private consumeNewlines(): void {
     while (this.match(TokenType.NEWLINE)) {
       // Keep consuming
+    }
+  }
+
+  /** Consume everything up to (not including) the next newline. */
+  private skipLine(): void {
+    while (!this.isAtEnd() && !this.check(TokenType.NEWLINE)) {
+      this.advance();
     }
   }
 

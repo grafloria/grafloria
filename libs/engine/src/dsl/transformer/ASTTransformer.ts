@@ -212,7 +212,6 @@ export class ASTTransformer {
       // Create implicit node for source using shape/label from edge definition
       const sourceShape = astEdge.sourceShape || 'rectangle';
       const sourceLabel = astEdge.sourceLabel || astEdge.source;
-      console.log(`[ASTTransformer] Creating implicit source node: ${astEdge.source} with shape=${sourceShape}, label=${sourceLabel}`);
       sourceNode = this.createNode(
         {
           type: 'NodeDefinition',
@@ -237,7 +236,6 @@ export class ASTTransformer {
       // Create implicit node for target using shape/label from edge definition
       const targetShape = astEdge.targetShape || 'rectangle';
       const targetLabel = astEdge.targetLabel || astEdge.target;
-      console.log(`[ASTTransformer] Creating implicit target node: ${astEdge.target} with shape=${targetShape}, label=${targetLabel}`);
       targetNode = this.createNode(
         {
           type: 'NodeDefinition',

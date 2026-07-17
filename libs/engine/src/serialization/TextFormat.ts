@@ -63,6 +63,12 @@ export interface ImportTextResult {
   sidecarMerged?: boolean;
   /** True when a sidecar line existed but its JSON would not parse. */
   sidecarInvalid?: boolean;
+  /**
+   * Set to the diagram-type name when the body is a Mermaid type we recognise
+   * but do not yet parse (sequenceDiagram, gantt, pie, …). The diagram is empty
+   * rather than a garbage flowchart. See docs/MERMAID-GAP-ANALYSIS.md Phase 0.
+   */
+  unsupported?: string;
 }
 
 /** The body without any %%grafloria sidecar lines (what a human reads/edits). */
@@ -197,6 +203,10 @@ export function importDiagramText(
   // an import must not silently rearrange whatever positions the DSL carries.
   const dsl = new DSL({ autoLayout: false });
   const parsed = dsl.parse(body);
+  const unsupported = parsed.getMetadata('unsupportedDiagramType') as string | undefined;
+  if (unsupported) {
+    return { diagram: parsed, source: 'text', bodyEdited, sidecarInvalid, unsupported };
+  }
 
   // THE MERGE. The grammar covers structure and labels — nothing else. Loading
   // the parsed body alone therefore wiped positions, sizes, styles, ports and

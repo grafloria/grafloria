@@ -90,6 +90,36 @@ export interface ParseResult {
 }
 
 export class DSL {
+  /** First-word (lowercased) → canonical Mermaid header, for the types we
+   *  recognise but do not yet parse. flowchart/graph/erDiagram/classDiagram are
+   *  handled directly in detectDiagramType and are intentionally absent here. */
+  private static readonly KNOWN_DIAGRAM_TYPES: Record<string, string> = {
+    sequencediagram: 'sequenceDiagram',
+    statediagram: 'stateDiagram',
+    'statediagram-v2': 'stateDiagram-v2',
+    journey: 'journey',
+    gantt: 'gantt',
+    pie: 'pie',
+    quadrantchart: 'quadrantChart',
+    requirementdiagram: 'requirementDiagram',
+    gitgraph: 'gitGraph',
+    mindmap: 'mindmap',
+    timeline: 'timeline',
+    zenuml: 'zenuml',
+    'sankey-beta': 'sankey-beta',
+    'xychart-beta': 'xychart-beta',
+    'block-beta': 'block-beta',
+    'packet-beta': 'packet-beta',
+    kanban: 'kanban',
+    'architecture-beta': 'architecture-beta',
+    radar: 'radar',
+    c4context: 'C4Context',
+    c4container: 'C4Container',
+    c4component: 'C4Component',
+    c4dynamic: 'C4Dynamic',
+    c4deployment: 'C4Deployment',
+  };
+
   private lexer: Lexer;
   private parser: Parser;
   private transformer: ASTTransformer;
@@ -145,6 +175,22 @@ export class DSL {
         return this.parseERDDetailed(text, startTime);
       } else if (diagramType === 'classDiagram') {
         return this.parseUMLDetailed(text, startTime);
+      }
+
+      // Recognised Mermaid type we do not yet parse (sequence, gantt, pie, …):
+      // return an EMPTY diagram tagged with the type, never garbage from the
+      // flowchart parser. The caller (importDiagramText) surfaces the tag as an
+      // explicit `unsupported` result. See docs/MERMAID-GAP-ANALYSIS.md Phase 0.
+      if (diagramType !== 'flowchart') {
+        const empty = new DiagramModel('Unsupported diagram');
+        empty.setMetadata('diagramType', diagramType);
+        empty.setMetadata('unsupportedDiagramType', diagramType);
+        return {
+          diagram: empty,
+          ast: { type: 'Diagram', diagramType: 'flowchart', direction: 'TD', statements: [] },
+          tokens: [],
+          stats: { nodeCount: 0, linkCount: 0, parseTime: performance.now() - startTime },
+        };
       }
 
       // Phase 4: Parse styles and templates first
@@ -656,11 +702,30 @@ export class DSL {
    * Detect diagram type from text
    */
   private detectDiagramType(text: string): string {
-    const firstLine = text.trim().split('\n')[0].toLowerCase();
-    if (firstLine.includes('erdiagram')) return 'erDiagram';
-    if (firstLine.includes('classdiagram')) return 'classDiagram';
-    if (firstLine.includes('flowchart') || firstLine.includes('graph')) return 'flowchart';
-    return 'flowchart'; // default
+    // The header is the first meaningful line — skip blanks, %% comments, %%{init}%%
+    // directives, and --- frontmatter --- so a configured diagram still detects.
+    let header = '';
+    let inFrontmatter = false;
+    for (const raw of text.split('\n')) {
+      const line = raw.trim();
+      if (!line) continue;
+      if (line === '---') { inFrontmatter = !inFrontmatter; continue; }
+      if (inFrontmatter) continue;
+      if (line.startsWith('%%')) continue;
+      header = line;
+      break;
+    }
+    const firstWord = header.split(/[\s:]/)[0];
+    const lower = firstWord.toLowerCase();
+    if (lower === 'flowchart' || lower === 'graph') return 'flowchart';
+    if (lower === 'erdiagram') return 'erDiagram';
+    if (lower === 'classdiagram') return 'classDiagram';
+    // Every other Mermaid header we recognise but do not yet parse. Returning
+    // the canonical name (not 'flowchart') is what lets the caller signal
+    // "unsupported" instead of feeding it to the flowchart parser as garbage.
+    const known = DSL.KNOWN_DIAGRAM_TYPES[lower];
+    if (known) return known;
+    return 'flowchart'; // best-effort default for an unlabelled body
   }
 
   /**
