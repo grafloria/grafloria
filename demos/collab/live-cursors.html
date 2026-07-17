@@ -50,6 +50,7 @@ defineDemo({
     'It\'s symmetric: move over the RIGHT pane and a "Bo" cursor appears in the LEFT one.',
     'Click a node in one pane — the OTHER pane outlines it: selection is shared presence too.',
     'Drag a node in either pane — that move syncs across as a document op; cursor traffic, by contrast, never repaints the diagram and never enters the op log.',
+    'Drag a node the OTHER user has selected: its coloured outline rides the node through the whole drag — in the pane you are dragging in, not just after you drop.',
   ],
   reactflow: 'Collaborative (Yjs)',
   pro: true,
@@ -111,6 +112,28 @@ defineDemo({
       `moving the mouse wrote to the document: A=${ctx.A.session.replica.history().length} ops, B=${ctx.B.session.replica.history().length} ops.\n` +
       `    A live cursor is a fact about a viewer, not an edit to the diagram.`
     );
+
+    // 4. A remote-selection outline RIDES a drag in the pane being dragged
+    //    (live report: "when dragging the rectangle the purple is somehow not
+    //    dragged" — it froze at the start position until mouseup). Ana selects
+    //    in her pane; Bo's pane outlines it; then the node MOVES in Bo's pane
+    //    the way a drag moves it — a raw position stream between commits — and
+    //    the outline must track every step.
+    A.inst.getModel().selectNode(A.inst.getModel().getNode('a'));
+    await ctx.tick(60);
+    const outlineB = B.el.querySelector('.grafloria-presence-selection[data-entity="a"]');
+    check(!!outlineB, "Ana's selection never outlined the node in Bo's pane");
+    const bNode = B.inst.getModel().getNode('a');
+    const home = { x: bNode.position.x, y: bNode.position.y };
+    bNode.setPosition(home.x + 60, home.y + 35);
+    const mid = outlineB.getAttribute('style');
+    check(mid.includes(`left:${home.x + 60}px`) && mid.includes(`top:${home.y + 35}px`),
+      `mid-drag the outline must sit ON the node (expected ${home.x + 60},${home.y + 35}), got "${mid.match(/left:[^;]+;top:[^;]+/)?.[0]}"`);
+    // restore the picture for the capture + later gates
+    bNode.setPosition(home.x, home.y);
+    A.inst.getModel().clearSelection();
+    await ctx.tick(60);
+    A.inst.renderNow(); B.inst.renderNow();
   },
 });
 </script>

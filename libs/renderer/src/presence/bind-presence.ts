@@ -173,6 +173,13 @@ export function bindPresence(
   // remote selection on it still costs nothing.
   const onModelChange = (): void => repaint();
   unsubs.push(instance.on('nodes:change', onModelChange));
+  // `nodes:change` covers add/remove — but a DRAG is a stream of raw model
+  // `node:changed` events with no public emission until the drop commits. The
+  // outline must ride the node THROUGH the drag (live report: "when dragging
+  // the rectangle, the purple is somehow not dragged" — it sat at the start
+  // position until mouseup, in exactly the pane doing the dragging; remote
+  // panes tracked fine because each synced op fired their model events).
+  unsubs.push(model.on('node:changed', onModelChange) as unknown as () => void);
 
   return {
     overlay,

@@ -279,6 +279,32 @@ describe('REACHABILITY — two live panes, real events, real transport', () => {
     expect(box).toBeTruthy();
     expect(box.style.left).toBe('200px');
   });
+
+  it('the outline RIDES a drag in the pane doing the dragging — mid-drag, not just at drop', () => {
+    // Live report: "when dragging the rectangle, the purple is somehow not
+    // dragged." Ana outlines a node in Bo's pane; Bo then drags that node. A
+    // drag is a stream of raw model `node:changed` events with NO public
+    // `nodes:change` until the drop commits — so the overlay in the DRAGGING
+    // pane sat at the start position for the whole gesture, while remote panes
+    // (fed per-op) tracked fine. bindPresence now rides `node:changed` too.
+    const model = left.instance.getModel();
+    model.addNode(node('ride', 100, 100));
+    left.session.flush();
+    model.selectNode(model.getNode('ride')!);
+
+    const box = right.el.querySelector(
+      '.grafloria-presence-selection[data-entity="ride"]'
+    ) as HTMLElement;
+    expect(box).toBeTruthy();
+    expect(box.style.left).toBe('100px');
+
+    // Bo moves the node locally, exactly the way the interaction layer does
+    // BETWEEN commits: raw setPosition, no command, no selection change.
+    right.instance.getModel().getNode('ride')!.setPosition(160, 130);
+
+    expect(box.style.left).toBe('160px');
+    expect(box.style.top).toBe('130px');
+  });
 });
 
 // ===========================================================================
