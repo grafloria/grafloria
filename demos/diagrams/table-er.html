@@ -2,9 +2,12 @@
 <title>Table / ER diagram — Grafloria</title>
 <link rel="stylesheet" href="../shell/demo.css">
 <style>
-  /* Entity "table" cards, painted as HTML inside each node's foreignObject. */
+  /* Entity "table" cards, painted as HTML inside each node's foreignObject.
+     Fills the node exactly (box-sizing) so its border IS the table border —
+     no second rectangle from the node's own shape. */
   #canvas .entity { font: 12px/1.5 system-ui, sans-serif; border: 1px solid #64748b;
-    border-radius: 6px; overflow: hidden; background: #fff; box-shadow: 0 1px 3px rgba(0,0,0,.12); }
+    border-radius: 6px; overflow: hidden; background: #fff; box-shadow: 0 1px 3px rgba(0,0,0,.12);
+    width: 100%; height: 100%; box-sizing: border-box; }
   #canvas .entity-head { background: #334155; color: #fff; font-weight: 600; letter-spacing: .3px;
     padding: 5px 10px; text-transform: uppercase; font-size: 11px; }
   #canvas .row { display: flex; align-items: center; gap: 8px; padding: 3px 10px; border-top: 1px solid #e2e8f0; }
@@ -30,7 +33,6 @@ import { defineDemo, check } from '../shell/demo.js';
 // are edges carrying real ER crow's-foot cardinality markers (one → many).
 const ROW_H = 25, HEAD_H = 28;
 const entity = (name, cols) => ({
-  className: 'entity',
   content: {
     tag: 'div', className: 'entity',
     children: [
@@ -49,6 +51,10 @@ const entity = (name, cols) => ({
 const node = (id, x, y, name, cols) => ({
   id, position: { x, y }, size: { width: 190, height: HEAD_H + cols.length * ROW_H + 4 },
   metadata: { html: entity(name, cols) },
+  // The HTML card draws its OWN border + shadow — hide the node's default
+  // rectangle so it doesn't wrap the table in a second box.
+  shape: { type: 'rect', fill: 'none', stroke: 'none' },
+  style: { fill: 'transparent', stroke: 'transparent', strokeWidth: 0 },
 });
 
 // ER edge: "one" bar on the source, crow's-foot "many" on the target.

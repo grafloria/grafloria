@@ -4,7 +4,8 @@
 <style>
   /* UML class boxes: name / attributes / methods compartments, as HTML. */
   #canvas .uml { font: 12px/1.5 system-ui, sans-serif; border: 1px solid #475569;
-    border-radius: 4px; overflow: hidden; background: #fff; box-shadow: 0 1px 3px rgba(0,0,0,.12); }
+    border-radius: 4px; overflow: hidden; background: #fff; box-shadow: 0 1px 3px rgba(0,0,0,.12);
+    width: 100%; height: 100%; box-sizing: border-box; }
   #canvas .uml-name { text-align: center; font-weight: 700; padding: 5px 10px; background: #eef2ff; color: #1e1b4b; }
   #canvas .uml-name.abstract { font-style: italic; }
   #canvas .uml-comp { border-top: 1px solid #475569; padding: 3px 0; }
@@ -38,6 +39,9 @@ const node = (id, x, y, name, attrs, methods, opts) => ({
   id, position: { x, y },
   size: { width: 200, height: NAME_H + (attrs.length + methods.length) * LINE_H + PAD * 2 + 6 },
   metadata: { html: { content: cls(name, attrs, methods, opts) } },
+  // The class box draws its own border — hide the node's default rectangle.
+  shape: { type: 'rect', fill: 'none', stroke: 'none' },
+  style: { fill: 'transparent', stroke: 'transparent', strokeWidth: 0 },
 });
 
 const relBase = { stroke: '#475569', strokeWidth: 1.5 };
