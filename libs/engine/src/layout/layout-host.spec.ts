@@ -696,13 +696,35 @@ describe('wave10 — the steppable path separates overlapping boxes (regression)
   it('`removeOverlaps: false` still hands back the simulation\'s raw output', async () => {
     // The escape hatch has to survive the fix, or "opt out for the algorithm's raw
     // output" becomes a lie on the one algorithm anybody would want it for.
+    //
+    // wave layout-cigar: the old proxy here — "raw output must contain
+    // overlapping boxes" — died with the fix, because the physics is now
+    // size-aware (box-gap repulsion, box-density initialisation) and its raw
+    // equilibrium simply has no overlaps to show. So assert the contract
+    // DIRECTLY: with the hatch thrown, the engine's answer is byte-identical
+    // to the adapter's own raw run — no host overlap pass, no snapshot-time
+    // cleanup, nothing touched the simulation's answer.
     const engine = engineWith(12);
     await engine.layout('force', {
       seed: DEFAULT_LAYOUT_SEED,
       iterations: 120,
       removeOverlaps: false,
     });
-    expect(overlappingPairs(engine).length).toBeGreaterThan(0);
+
+    const { nodes, links } = buildNodes(12);
+    const run = new ForceLayoutAdapter().createRun(nodes, links, {
+      seed: DEFAULT_LAYOUT_SEED,
+      iterations: 120,
+      removeOverlaps: false,
+    });
+    while (run.step()) {
+      // drive to the same stopping point the host reached
+    }
+    const raw = run.snapshot();
+
+    for (const node of engine.getDiagram()!.getNodes()) {
+      expect(node.position).toEqual(raw.nodePositions.get(node.id));
+    }
   });
 
   it('reports bounds that actually CONTAIN the separated boxes', async () => {

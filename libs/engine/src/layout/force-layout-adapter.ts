@@ -20,6 +20,7 @@ import { createLayoutRng } from './rng';
 import { LinkModel } from '../models/LinkModel';
 import { LayoutAdapter, LayoutOptions, LayoutResult } from './layout-adapter.interface';
 import { LayoutQualityMetrics } from './layout-quality-metrics';
+import { nodeSize } from './component-packing';
 import type { LayoutRun, SteppableLayoutAdapter } from './steppable-layout';
 
 /**
@@ -58,6 +59,14 @@ export interface ForceLayoutOptions extends LayoutOptions {
 
   /** Randomize initial positions (default: true) */
   randomize?: boolean;
+
+  /**
+   * The engine-wide "give me the algorithm's raw output" escape hatch
+   * (see UnifiedLayoutOptions in layout-registry.ts). `false` skips the
+   * adapter's snapshot-time residual-overlap cleanup too, so what comes back
+   * is literally the simulation state — same meaning as everywhere else.
+   */
+  removeOverlaps?: boolean;
 }
 
 /**
@@ -81,6 +90,11 @@ interface ForceNode {
   fy: number;
   mass: number;
   fixed: boolean;
+  /** The node's box, so the physics can keep BOXES apart, not just points. */
+  width: number;
+  height: number;
+  /** Half the box diagonal — the collision radius the forces reason about. */
+  radius: number;
 }
 
 /**
@@ -90,6 +104,9 @@ interface QuadTreeNode {
   x: number;
   y: number;
   mass: number;
+  /** Mass-weighted mean collision radius of everything in this cell, so the
+   *  far-field approximation stays size-aware (see applyBarnesHutRepulsion). */
+  radius: number;
   left: number;
   top: number;
   right: number;
@@ -224,14 +241,26 @@ export class ForceLayoutAdapter implements SteppableLayoutAdapter {
       },
 
       snapshot(): LayoutResult {
-        const nodePositions = new Map<string, { x: number; y: number }>();
-        forceNodes.forEach(node => {
-          nodePositions.set(node.id, { x: node.x, y: node.y });
-        });
+        // Hand over a picture whose BOXES do not overlap. The physics is
+        // size-aware, but a run can stop early (iteration cap, threshold,
+        // cancellation) with residue — and downstream overlap removal is an
+        // x-only sweep, so any residue it inherits becomes pure horizontal
+        // spread (the cigar). A uniform scale about the centroid clears it
+        // while preserving the layout's shape exactly. Pure: sim state is
+        // not mutated, so snapshot() stays valid mid-run.
+        //
+        // `removeOverlaps: false` is the caller saying "raw output, please" —
+        // honour it here exactly as component-packing honours it downstream,
+        // or the escape hatch would be a lie on the one algorithm anybody
+        // would want it for.
+        const nodePositions =
+          opts.removeOverlaps === false
+            ? new Map(forceNodes.map(n => [n.id, { x: n.x, y: n.y }]))
+            : adapter.resolveResidualOverlap(forceNodes);
 
         return {
           nodePositions,
-          bounds: adapter.calculateBounds(forceNodes),
+          bounds: adapter.calculateBounds([...nodePositions.values()]),
           metadata: {
             algorithm: 'force',
             iterations: iteration,
@@ -298,6 +327,30 @@ export class ForceLayoutAdapter implements SteppableLayoutAdapter {
     const forceNodes: ForceNode[] = [];
     const rng = createLayoutRng((options as { seed?: number }).seed);
 
+    // The cigar bug (wave: layout-cigar): initial positions must give the BOXES
+    // room. The old ±250 random square holds ~50 default-sized boxes; seed 2000
+    // nodes into it and the simulation freezes (the temperature schedule allows
+    // only ~2000px of total travel) long before repulsion can inflate the cloud
+    // to a viable density. The residue was a heavily box-overlapping blob, and
+    // the downstream x-only overlap sweep then converted ALL of that overlap
+    // into pure x-spread — the measured 6-7:1 horizontal cigar.
+    //
+    // So: start at the DENSITY THE BOXES NEED, not at a fixed size. A sunflower
+    // (phyllotaxis) spiral with the ring pitch set to the mean box diagonal
+    // packs n boxes into a disc with near-uniform, near-contact spacing — the
+    // physics then only has to refine locally, which fits the travel budget at
+    // every graph size. Seeded jitter keeps runs reproducible (Card 0) while
+    // different seeds still give genuinely different pictures.
+    let meanDiagonal = 0;
+    for (const node of nodes) {
+      const size = nodeSize(node);
+      meanDiagonal += Math.hypot(size.width, size.height);
+    }
+    meanDiagonal /= Math.max(nodes.length, 1);
+    const pitch = meanDiagonal + 16;
+    const GOLDEN_ANGLE = Math.PI * (3 - Math.sqrt(5));
+
+    let index = 0;
     for (const node of nodes) {
       let x: number, y: number;
 
@@ -306,14 +359,18 @@ export class ForceLayoutAdapter implements SteppableLayoutAdapter {
         // different picture on every run — untestable, unreproducible on reload,
         // and it makes the mental-map card undefinable (you cannot minimise
         // movement against a baseline that itself moves).
-        x = rng.between(-250, 250);
-        y = rng.between(-250, 250);
+        const r = pitch * Math.sqrt(index + 0.5);
+        const angle = index * GOLDEN_ANGLE;
+        x = r * Math.cos(angle) + rng.between(-0.3 * pitch, 0.3 * pitch);
+        y = r * Math.sin(angle) + rng.between(-0.3 * pitch, 0.3 * pitch);
       } else {
         // Use existing position
         x = node.position.x;
         y = node.position.y;
       }
+      index++;
 
+      const size = nodeSize(node);
       forceNodes.push({
         id: node.id,
         x,
@@ -324,6 +381,9 @@ export class ForceLayoutAdapter implements SteppableLayoutAdapter {
         fy: 0,
         mass: 1,
         fixed: false,
+        width: size.width,
+        height: size.height,
+        radius: Math.hypot(size.width, size.height) / 2,
       });
     }
 
@@ -346,8 +406,11 @@ export class ForceLayoutAdapter implements SteppableLayoutAdapter {
         const distSq = dx * dx + dy * dy + 0.01; // Avoid division by zero
         const dist = Math.sqrt(distSq);
 
-        // Repulsion force (inversely proportional to distance)
-        const force = (k * k) / distSq;
+        // Repulse by BOX GAP, not centre distance: the force diverges as the
+        // boxes approach contact, so the simulation itself keeps them apart
+        // instead of leaving a pile for a post-pass to shove sideways.
+        const gap = Math.max(dist - (n1.radius + n2.radius), 1);
+        const force = (k * k) / (gap * gap);
 
         const fx = (dx / dist) * force;
         const fy = (dy / dist) * force;
@@ -369,10 +432,57 @@ export class ForceLayoutAdapter implements SteppableLayoutAdapter {
 
     // Apply repulsion using quadtree
     const k = options.repulsion!;
+    const kk = k * k;
     const theta = options.theta!;
 
+    // Iterative traversal with one shared stack, hoisted locals, and a single
+    // division per visited cell — (dx/dist)·(k²m/gap²) is algebraically
+    // dx·k²m/(gap²·dist). This inner loop runs millions of times per layout
+    // (~64 cell visits × n nodes × iterations) and was ~90% of the
+    // simulation's wall time on a 900-node mesh; the flattening plus the
+    // merged division roughly halve it. Same visit set, same forces.
+    const stack: QuadTreeNode[] = [];
     for (const node of nodes) {
-      this.applyNodeRepulsion(node, quadtree, k, theta);
+      const nx = node.x;
+      const ny = node.y;
+      const nr = node.radius;
+      let fx = 0;
+      let fy = 0;
+      let top = 0;
+      stack[top++] = quadtree;
+
+      while (top > 0) {
+        const tree = stack[--top];
+        if (tree.mass === 0) continue;
+
+        const dx = tree.x - nx;
+        const dy = tree.y - ny;
+        const dist = Math.sqrt(dx * dx + dy * dy + 0.01);
+
+        if ((tree.right - tree.left) / dist < theta) {
+          // Far enough: treat the whole cell as one size-aware body
+          let gap = dist - nr - tree.radius;
+          if (gap < 1) gap = 1;
+          const f = (kk * tree.mass) / (gap * gap * dist);
+          fx -= dx * f;
+          fy -= dy * f;
+        } else if (tree.children) {
+          const children = tree.children;
+          stack[top++] = children[0];
+          stack[top++] = children[1];
+          stack[top++] = children[2];
+          stack[top++] = children[3];
+        } else if (tree.node && tree.node !== node) {
+          let gap = dist - nr - tree.node.radius;
+          if (gap < 1) gap = 1;
+          const f = kk / (gap * gap * dist);
+          fx -= dx * f;
+          fy -= dy * f;
+        }
+      }
+
+      node.fx += fx;
+      node.fy += fy;
     }
   }
 
@@ -385,6 +495,7 @@ export class ForceLayoutAdapter implements SteppableLayoutAdapter {
         x: 0,
         y: 0,
         mass: 0,
+        radius: 0,
         left: 0,
         top: 0,
         right: 0,
@@ -408,6 +519,7 @@ export class ForceLayoutAdapter implements SteppableLayoutAdapter {
       x: (minX + maxX) / 2,
       y: (minY + maxY) / 2,
       mass: 0,
+      radius: 0,
       left: minX,
       top: minY,
       right: maxX,
@@ -426,10 +538,11 @@ export class ForceLayoutAdapter implements SteppableLayoutAdapter {
    * Insert node into quadtree
    */
   private insertIntoQuadTree(tree: QuadTreeNode, node: ForceNode): void {
-    // Update mass and center of mass
+    // Update mass, center of mass, and mean collision radius
     const totalMass = tree.mass + node.mass;
     tree.x = (tree.x * tree.mass + node.x * node.mass) / totalMass;
     tree.y = (tree.y * tree.mass + node.y * node.mass) / totalMass;
+    tree.radius = (tree.radius * tree.mass + node.radius * node.mass) / totalMass;
     tree.mass = totalMass;
 
     // If this is a leaf, either store the node or subdivide
@@ -463,6 +576,7 @@ export class ForceLayoutAdapter implements SteppableLayoutAdapter {
         x: (tree.left + midX) / 2,
         y: (tree.top + midY) / 2,
         mass: 0,
+        radius: 0,
         left: tree.left,
         top: tree.top,
         right: midX,
@@ -473,6 +587,7 @@ export class ForceLayoutAdapter implements SteppableLayoutAdapter {
         x: (midX + tree.right) / 2,
         y: (tree.top + midY) / 2,
         mass: 0,
+        radius: 0,
         left: midX,
         top: tree.top,
         right: tree.right,
@@ -483,6 +598,7 @@ export class ForceLayoutAdapter implements SteppableLayoutAdapter {
         x: (tree.left + midX) / 2,
         y: (midY + tree.bottom) / 2,
         mass: 0,
+        radius: 0,
         left: tree.left,
         top: midY,
         right: midX,
@@ -493,6 +609,7 @@ export class ForceLayoutAdapter implements SteppableLayoutAdapter {
         x: (midX + tree.right) / 2,
         y: (midY + tree.bottom) / 2,
         mass: 0,
+        radius: 0,
         left: midX,
         top: midY,
         right: tree.right,
@@ -516,45 +633,6 @@ export class ForceLayoutAdapter implements SteppableLayoutAdapter {
   }
 
   /**
-   * Apply repulsion from quadtree to node
-   */
-  private applyNodeRepulsion(
-    node: ForceNode,
-    tree: QuadTreeNode,
-    k: number,
-    theta: number
-  ): void {
-    if (tree.mass === 0) {
-      return;
-    }
-
-    const dx = tree.x - node.x;
-    const dy = tree.y - node.y;
-    const distSq = dx * dx + dy * dy + 0.01;
-    const dist = Math.sqrt(distSq);
-
-    // Calculate width of quadrant
-    const width = tree.right - tree.left;
-
-    // If far enough, use approximation
-    if (width / dist < theta) {
-      const force = (k * k * tree.mass) / distSq;
-      node.fx -= (dx / dist) * force;
-      node.fy -= (dy / dist) * force;
-    } else if (tree.children) {
-      // Recurse into children
-      for (const child of tree.children) {
-        this.applyNodeRepulsion(node, child, k, theta);
-      }
-    } else if (tree.node && tree.node !== node) {
-      // Apply direct repulsion
-      const force = (k * k) / distSq;
-      node.fx -= (dx / dist) * force;
-      node.fy -= (dy / dist) * force;
-    }
-  }
-
-  /**
    * Apply attraction forces along edges
    */
   private applyAttraction(
@@ -562,14 +640,19 @@ export class ForceLayoutAdapter implements SteppableLayoutAdapter {
     options: ForceLayoutOptions
   ): void {
     const k = options.attraction!;
-    const idealLength = options.linkDistance!;
+    const baseLength = options.linkDistance!;
 
     for (const edge of edges) {
       const dx = edge.target.x - edge.source.x;
       const dy = edge.target.y - edge.source.y;
       const dist = Math.sqrt(dx * dx + dy * dy) + 0.01;
 
-      // Spring force (Hooke's law)
+      // Spring force (Hooke's law). `linkDistance` is the desired VISIBLE edge
+      // — the space between the boxes — so the spring's rest length adds the
+      // two collision radii. Without this, the default 100px rest length is
+      // shorter than two default boxes side by side, and every edge actively
+      // pulls its endpoints into overlap.
+      const idealLength = baseLength + edge.source.radius + edge.target.radius;
       const force = k * (dist - idealLength);
 
       const fx = (dx / dist) * force;
@@ -588,6 +671,15 @@ export class ForceLayoutAdapter implements SteppableLayoutAdapter {
   private applyGravity(nodes: ForceNode[], options: ForceLayoutOptions): void {
     const g = options.gravity!;
 
+    // A pull that grows linearly with distance forever is scale-dependent: on a
+    // 900-node graph the rim sits thousands of px out, gravity dwarfs every
+    // other force, and the graph is crushed into an overlapping blob (which the
+    // x-only downstream sweep then smears into the cigar). Saturate the pull
+    // beyond a couple of edge lengths — compact graphs (everything within
+    // `gravityRange` of the centre) are numerically UNCHANGED, big graphs keep
+    // a gentle, size-independent centring pressure.
+    const gravityRange = 2 * options.linkDistance!;
+
     // Calculate center
     let cx = 0, cy = 0;
     for (const node of nodes) {
@@ -601,9 +693,16 @@ export class ForceLayoutAdapter implements SteppableLayoutAdapter {
     for (const node of nodes) {
       const dx = cx - node.x;
       const dy = cy - node.y;
+      const dist = Math.hypot(dx, dy);
 
-      node.fx += dx * g;
-      node.fy += dy * g;
+      if (dist <= gravityRange || dist === 0) {
+        node.fx += dx * g;
+        node.fy += dy * g;
+      } else {
+        const saturated = (g * gravityRange) / dist;
+        node.fx += dx * saturated;
+        node.fy += dy * saturated;
+      }
     }
   }
 
@@ -646,22 +745,157 @@ export class ForceLayoutAdapter implements SteppableLayoutAdapter {
   }
 
   /**
+   * The last line of defence against the cigar (wave: layout-cigar).
+   *
+   * The size-aware forces keep boxes apart at equilibrium, but a run can stop
+   * before equilibrium (iteration cap, cooling, cancellation). Whatever box
+   * overlap remains would otherwise be resolved by overlap-removal.ts, whose
+   * sweep separates strictly along X — measured on a 15x15 mesh, that turned
+   * an aspect-1.0 force layout into an aspect-6.7 horizontal wedge. So the
+   * simulation cleans up after itself, axis-symmetrically:
+   *
+   *   1. ZOOM. If the field is BROADLY too dense, scale every position
+   *      uniformly about the centroid — a pure zoom preserves the layout's
+   *      shape exactly, and growing the scale never creates a new overlap.
+   *      The factor is what clears 90% of the overlapping pairs (capped):
+   *      chasing the single worst pair was measured to inflate a perfect
+   *      3950px mesh 4.5x for the sake of a couple of stragglers.
+   *   2. LOCAL PASSES. The stragglers are pushed apart pairwise along their
+   *      minimum-translation axis, both nodes moving symmetrically. Pairwise
+   *      relaxation famously does not converge on a PILE (see
+   *      overlap-removal.ts's header) — but after the physics and the zoom
+   *      there is no pile, only isolated collisions, which it resolves in a
+   *      pass or two. Anything truly pathological is left for the downstream
+   *      sweep, where a handful of x-only nudges cannot bend the aspect.
+   *
+   * Deterministic (stable orders, no randomness), pure with respect to the
+   * simulation state, and skipped when a node is pinned — a pin is a promise
+   * about absolute coordinates.
+   */
+  private resolveResidualOverlap(
+    forceNodes: ForceNode[]
+  ): Map<string, { x: number; y: number }> {
+    const positions = new Map<string, { x: number; y: number }>();
+    forceNodes.forEach(node => {
+      positions.set(node.id, { x: node.x, y: node.y });
+    });
+    if (forceNodes.length < 2 || forceNodes.some(n => n.fixed)) return positions;
+
+    // Clearance to open between boxes that were overlapping. Anything > 0
+    // makes the downstream sweep a no-op; a few px keeps boxes readable.
+    const margin = 8;
+
+    interface Box { id: string; x: number; y: number; width: number; height: number }
+    const boxes: Box[] = forceNodes.map(n => ({
+      id: n.id, x: n.x, y: n.y, width: n.width, height: n.height,
+    }));
+
+    // Overlapping pairs (within `margin`), via the same (x, id) sort-sweep
+    // overlap-removal.ts uses to stay near-linear on a mostly-separated field.
+    const overlappingPairs = (): Array<[Box, Box]> => {
+      const sorted = [...boxes].sort((a, b) => a.x - b.x || (a.id < b.id ? -1 : 1));
+      const pairs: Array<[Box, Box]> = [];
+      const active: Box[] = [];
+      for (const box of sorted) {
+        for (let i = active.length - 1; i >= 0; i--) {
+          if (active[i].x + active[i].width + margin <= box.x) active.splice(i, 1);
+        }
+        for (const other of active) {
+          if (
+            box.x < other.x + other.width + margin &&
+            other.x < box.x + box.width + margin &&
+            box.y < other.y + other.height + margin &&
+            other.y < box.y + box.height + margin
+          ) {
+            pairs.push([other, box]);
+          }
+        }
+        active.push(box);
+      }
+      return pairs;
+    };
+
+    // ------------------------------------------------------------------ zoom
+    const needs: number[] = [];
+    for (const [a, b] of overlappingPairs()) {
+      // After a zoom by s the delta between two positions is s·d, so clearing
+      // a pair on ONE axis needs s·|d| ≥ (leading box's extent + margin) on
+      // that axis; the pair needs its cheaper axis.
+      const dx = b.x - a.x; // ≥ 0: `a` entered the sweep first
+      const dy = b.y - a.y;
+      const sx = dx > 0 ? (a.width + margin) / dx : Infinity;
+      const sy =
+        dy > 0 ? (a.height + margin) / dy
+        : dy < 0 ? (b.height + margin) / -dy
+        : Infinity;
+      needs.push(Math.min(sx, sy));
+    }
+
+    if (needs.length > 0) {
+      needs.sort((a, b) => a - b);
+      const p90 = needs[Math.min(needs.length - 1, Math.ceil(needs.length * 0.9) - 1)];
+      const scale = Math.min(Math.max(p90, 1), 2);
+      if (scale > 1) {
+        let cx = 0, cy = 0;
+        for (const box of boxes) {
+          cx += box.x;
+          cy += box.y;
+        }
+        cx /= boxes.length;
+        cy /= boxes.length;
+        for (const box of boxes) {
+          box.x = cx + (box.x - cx) * scale;
+          box.y = cy + (box.y - cy) * scale;
+        }
+      }
+    }
+
+    // ---------------------------------------------------------- local passes
+    for (let pass = 0; pass < 4; pass++) {
+      const pairs = overlappingPairs();
+      if (pairs.length === 0) break;
+      for (const [a, b] of pairs) {
+        const overlapX = Math.min(a.x + a.width, b.x + b.width) + margin - Math.max(a.x, b.x);
+        const overlapY = Math.min(a.y + a.height, b.y + b.height) + margin - Math.max(a.y, b.y);
+        if (overlapX <= 0 || overlapY <= 0) continue; // an earlier push freed it
+
+        // Minimum-translation axis, split evenly so the pair's midpoint — and
+        // with it the picture's balance — stays put.
+        if (overlapX <= overlapY) {
+          const push = overlapX / 2;
+          if (a.x <= b.x) { a.x -= push; b.x += push; }
+          else { a.x += push; b.x -= push; }
+        } else {
+          const push = overlapY / 2;
+          if (a.y <= b.y) { a.y -= push; b.y += push; }
+          else { a.y += push; b.y -= push; }
+        }
+      }
+    }
+
+    for (const box of boxes) {
+      positions.set(box.id, { x: box.x, y: box.y });
+    }
+    return positions;
+  }
+
+  /**
    * Calculate bounding box
    */
-  private calculateBounds(nodes: ForceNode[]): {
+  private calculateBounds(points: Array<{ x: number; y: number }>): {
     x: number;
     y: number;
     width: number;
     height: number;
   } {
-    if (nodes.length === 0) {
+    if (points.length === 0) {
       return { x: 0, y: 0, width: 0, height: 0 };
     }
 
     let minX = Infinity, minY = Infinity;
     let maxX = -Infinity, maxY = -Infinity;
 
-    for (const node of nodes) {
+    for (const node of points) {
       minX = Math.min(minX, node.x);
       minY = Math.min(minY, node.y);
       maxX = Math.max(maxX, node.x);
