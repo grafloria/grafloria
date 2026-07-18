@@ -1,0 +1,164 @@
+<meta charset="utf-8">
+<title>Node position animation — Grafloria</title>
+<link rel="stylesheet" href="../shell/demo.css">
+<style>
+  #ctrl { display: flex; gap: 16px; align-items: center; padding: 10px 24px; font: 12px/1.5 system-ui, sans-serif; border-bottom: 1px solid rgba(127,127,127,.25); }
+  #btn-layout { font: 12px system-ui, sans-serif; padding: 4px 12px; border: 1px solid rgba(127,127,127,.5); border-radius: 6px; background: transparent; color: inherit; cursor: pointer; }
+  #btn-layout:hover { border-color: rgba(127,127,127,.9); }
+  #ctrl-readout { opacity: .7; }
+  #canvas { height: calc(100vh - 190px); }
+</style>
+<header id="demo-head"></header>
+<div id="ctrl">
+  <button id="btn-layout" type="button">▶ shuffle layout</button>
+  <span id="ctrl-readout">layout: grid</span>
+</div>
+<div id="canvas"></div>
+<script type="module">
+import { render } from '../shell/grafloria.js';
+import { defineDemo, check } from '../shell/demo.js';
+
+// The engine moves a node when you write node.position and repaint. To ANIMATE a
+// node between two layouts you drive that write every frame, easing the position
+// from where it is to where it should be — React Flow does exactly this in
+// userland (its useAnimatedNodes hook + d3-timer), because neither engine ships a
+// position-tween primitive. Here: eight nodes, a ring of edges, three layouts,
+// and an ease-out tween that the edges follow because they re-route to the nodes.
+
+const IDS = Array.from({ length: 8 }, (_, i) => `n${i}`);
+const SIZE = { width: 96, height: 40 };
+const HX = SIZE.width / 2, HY = SIZE.height / 2;
+const CX = 600, CY = 285;
+
+// Three target layouts, as {id: {x,y}} of the node's top-left (so subtract half
+// the box from each centre point).
+function circleLayout() { const o = {}; IDS.forEach((id, i) => { const a = (i / IDS.length) * 2 * Math.PI - Math.PI / 2; o[id] = { x: CX + 250 * Math.cos(a) - HX, y: CY + 205 * Math.sin(a) - HY }; }); return o; }
+function gridLayout()   { const o = {}; IDS.forEach((id, i) => { const c = i % 4, r = (i / 4) | 0; o[id] = { x: (315 + c * 190) - HX, y: (160 + r * 250) - HY }; }); return o; }
+function rowLayout()    { const o = {}; IDS.forEach((id, i) => { o[id] = { x: (90 + i * 145) - HX, y: CY - HY }; }); return o; }
+
+const LAYOUTS = { grid: gridLayout(), circle: circleLayout(), row: rowLayout() };
+const ORDER = ['grid', 'circle', 'row'];
+const EDGES = IDS.map((id, i) => ({ id: `e${i}`, source: id, target: IDS[(i + 1) % IDS.length] })); // a ring
+
+const easeOutCubic = (t) => 1 - Math.pow(1 - t, 3);
+const dist = (a, b) => Math.hypot(a.x - b.x, a.y - b.y);
+
+// Tween every node from its CURRENT model position (read live, so manual drags
+// are honoured as the start) to `targets`, ease-out, repainting each frame.
+function tweenTo(ctx, targets, duration = 900) {
+  return new Promise((resolve) => {
+    const model = ctx.diagram;
+    const starts = {};
+    for (const id of Object.keys(targets)) { const p = model.getNode(id).position; starts[id] = { x: p.x, y: p.y }; }
+    const t0 = performance.now();
+    const frame = (now) => {
+      const raw = Math.min(1, (now - t0) / duration);
+      const k = easeOutCubic(raw);
+      ctx.instance.batchUpdate((m) => {
+        for (const id of Object.keys(targets)) {
+          const s = starts[id], t = targets[id];
+          m.getNode(id).setPosition(s.x + (t.x - s.x) * k, s.y + (t.y - s.y) * k);
+        }
+      });
+      ctx.instance.renderNow();
+      if (raw < 1) requestAnimationFrame(frame); else resolve();
+    };
+    requestAnimationFrame(frame);
+  });
+}
+
+defineDemo({
+  name: 'Node position animation',
+  blurb: 'Eight nodes tween between layouts — grid · ring · row — by writing node.position every frame on an ease-out curve (React Flow\'s useAnimatedNodes, in userland). Proven by sampling a node mid-flight: it is between start and target, AHEAD of a linear curve, lands exactly on target, and both the node DOM and its edges follow.',
+  howTo: [
+    'Click "▶ shuffle layout" (top-left): all eight nodes glide to the next arrangement — grid → ring → row → grid — easing into place while their ring edges follow. Nothing teleports; every node tweens through the in-between positions.',
+    'Click "▶ run the scripted checks" in the right panel: it tweens the graph grid → ring, samples a node a third of the way through (proving it is genuinely mid-flight and ease-out — ahead of a linear curve), confirms every node lands on the ring, then returns them to the grid.',
+    'Drag any node somewhere, then shuffle: the tween starts from wherever that node now sits — it reads each node\'s LIVE position as the start — so your manual move is respected, not overwritten.',
+    '⌘/Ctrl + wheel to zoom, then shuffle — the tween runs in world space, so it animates correctly at any zoom.',
+  ],
+  reactflow: 'Node Position Animation',
+
+  async setup(ctx) {
+    const api = render({
+      nodes: IDS.map((id) => ({ id, position: { ...LAYOUTS.grid[id] }, size: SIZE, label: id.toUpperCase() })),
+      edges: EDGES,
+    }, ctx.host);
+    ctx.instance = api;
+    ctx.diagram = api.getModel();
+    ctx.current = 'grid';
+    ctx.tweenTo = (targets, dur) => tweenTo(ctx, targets, dur);
+
+    const readout = document.getElementById('ctrl-readout');
+    let busy = false;
+    ctx.go = async (name) => {
+      if (busy) return; busy = true;
+      ctx.current = name;
+      readout.textContent = `layout: ${name}`;
+      await tweenTo(ctx, LAYOUTS[name]);
+      busy = false;
+    };
+    document.getElementById('btn-layout').addEventListener('click', () => {
+      ctx.go(ORDER[(ORDER.indexOf(ctx.current) + 1) % ORDER.length]);
+    });
+
+    await ctx.tick();
+  },
+
+  async assert(ctx) {
+    const model = ctx.diagram;
+    const posOf = (id) => ({ ...model.getNode(id).position });
+    const nodeTransform = (id) => ctx.host.querySelector(`[data-node-id="${id}"]`)?.getAttribute('transform') || '';
+    const linkD = (id) => ctx.host.querySelector(`[data-link-id="${id}"] path.diagram-link`)?.getAttribute('d') || '';
+
+    // 0. Boot is the GRID layout.
+    for (const id of IDS) check(dist(posOf(id), LAYOUTS.grid[id]) < 1.5, `${id} did not boot at its grid position`);
+    const bootTransform = nodeTransform('n2');
+    const bootLinkD = linkD('e0');
+    check(!!bootTransform, 'n2 did not render into the DOM');
+
+    // 1. TWEEN grid → ring. Sample a third of the way through: the node must be
+    //    BETWEEN start and target (it animated through — did not jump) and AHEAD
+    //    of a linear curve (ease-out front-loads distance). rAF is NOT stopped by
+    //    the screenshot freeze, so this holds live and frozen — no gating needed.
+    const sample = 'n2';
+    const start = posOf(sample);
+    const target = LAYOUTS.circle[sample];
+    const span = dist(start, target);
+    const tween = ctx.tweenTo(LAYOUTS.circle, 900);
+    await ctx.tick(300);                                  // ~1/3 of the duration
+    const mid = posOf(sample);
+    const travelled = dist(start, mid) / span;
+    await tween;
+    const end = posOf(sample);
+
+    check(dist(start, mid) > 6, `no motion mid-tween: ${sample} moved only ${dist(start, mid).toFixed(1)}px`);
+    check(dist(mid, target) > 6, `${sample} jumped straight to the target instead of animating (already ${dist(mid, target).toFixed(1)}px away)`);
+    check(travelled > 0.5, `easing is not ease-out: only ${(travelled * 100).toFixed(0)}% covered at ~1/3 of the time (a linear tween would be ~33%)`);
+    check(travelled < 0.999, `${sample} was already at the target mid-tween (${(travelled * 100).toFixed(1)}%) — no animation observed`);
+
+    // 2. It LANDED on the ring layout — EVERY node, not just the sample.
+    for (const id of IDS) check(dist(posOf(id), LAYOUTS.circle[id]) < 1.5,
+      `${id} did not settle at its ring position (${dist(posOf(id), LAYOUTS.circle[id]).toFixed(1)}px off)`);
+    check(dist(end, target) < 1.5, `the sampled node overshot its target by ${dist(end, target).toFixed(1)}px`);
+
+    // 3. The RENDERER followed the model tween, not just the model: the node's DOM
+    //    transform moved and its edge re-routed to the tweened nodes.
+    check(nodeTransform('n2') !== bootTransform, 'the node DOM transform did not follow the tween — the model moved but the paint did not');
+    check(linkD('e0') !== bootLinkD, 'the ring edge did not re-route to the tweened nodes');
+
+    // 4. RESTORE to grid so the after-frame equals the boot-frame.
+    await ctx.tweenTo(LAYOUTS.grid, 600);
+    for (const id of IDS) check(dist(posOf(id), LAYOUTS.grid[id]) < 1.5, `${id} did not return to the grid`);
+    document.getElementById('ctrl-readout').textContent = 'layout: grid';
+    ctx.current = 'grid';
+  },
+
+  // Money shot: leave the graph in the ring layout (a fresh load drives this, so
+  // no assert residue leaks in). rAF completes under the freeze → deterministic.
+  async showcase(ctx) {
+    await ctx.tweenTo(LAYOUTS.circle, 700);
+    document.getElementById('ctrl-readout').textContent = 'layout: circle';
+    ctx.current = 'circle';
+  },
+});
+</script>
