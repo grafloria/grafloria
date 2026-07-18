@@ -44,7 +44,7 @@
   public embed with real pointer events and asserts a consequence; a broken demo fails CI.
   Where React Flow ships the same example only in its paid <b>Pro</b> tier, it is marked.</p>
   <div class="scoreboard">
-    <span class="stat"><b>97</b> demos</span>
+    <span class="stat"><b>100</b> demos</span>
     <span class="stat pro"><b>35</b> are features React Flow charges for</span>
     <span class="stat"><b>11</b> categories</span>
   </div>
@@ -52,7 +52,7 @@
 <main>
 
       <section>
-        <h2>Nodes <span class="count">16</span></h2>
+        <h2>Nodes <span class="count">17</span></h2>
         <div class="grid">
         <a class="card" href="nodes/auto-sizing.html">
           <div class="card-name">Auto-sizing</div>
@@ -80,7 +80,7 @@
         </a>
         <a class="card" href="nodes/delete-middle-node.html">
           <div class="card-name">Delete the middle node</div>
-          <div class="card-blurb">Remove the node in the middle of A→B→C and its two links go WITH it — a cascade, not two dangling edges. This is the Wave-10 removeNode() fix, proved through the public API.</div>
+          <div class="card-blurb">Delete B out of A→B→C and the chain HEALS: its two edges cascade away with it, and a fresh A→C wire bridges the gap. React Flow’s onNodesDelete reconnect — built here from getLinks() + the shipped link command, so the bridge is a real, undoable edge.</div>
           <div class="card-foot">
             <span class="rf">React Flow: Delete Middle Node</span>
             
@@ -112,15 +112,23 @@
         </a>
         <a class="card" href="nodes/intersections.html">
           <div class="card-name">Intersections</div>
-          <div class="card-blurb">Which nodes overlap which — from the diagram’s spatial index. Drag a node onto another and the overlap set updates; drag it clear and it empties.</div>
+          <div class="card-blurb">Drag a node and every node it overlaps lights up red, live — createDiagramApi(…).getIntersectingNodes on each move, with overlap vs full-containment (fully:true) both proven.</div>
           <div class="card-foot">
             <span class="rf">React Flow: Intersections</span>
             
           </div>
         </a>
+        <a class="card" href="nodes/node-position-animation.html">
+          <div class="card-name">Node position animation</div>
+          <div class="card-blurb">Eight nodes tween between layouts — grid · ring · row — by writing node.position every frame on an ease-out curve (React Flow's useAnimatedNodes, in userland). Proven by sampling a node mid-flight: it is between start and target, AHEAD of a linear curve, lands exactly on target, and both the node DOM and its edges follow.</div>
+          <div class="card-foot">
+            <span class="rf">React Flow: Node Position Animation</span>
+            
+          </div>
+        </a>
         <a class="card" href="nodes/node-resize-gesture.html">
           <div class="card-name">Node resize gesture</div>
-          <div class="card-blurb">Select a node, then drag a resize handle — a REAL pointer drag through the default pipeline (no host wiring, no registerTool). The declared min/max/aspect clamp the size DURING the gesture, and one release is one undo step.</div>
+          <div class="card-blurb">Select a node, then drag a resize handle — a REAL pointer drag through the default pipeline (no host wiring, no registerTool). Any corner resizes and pins the opposite one; the declared min/max/aspect clamp the size DURING the gesture, and one release is one undo step.</div>
           <div class="card-foot">
             <span class="rf">React Flow: Node Resizer</span>
             
@@ -136,7 +144,7 @@
         </a>
         <a class="card" href="nodes/node-toolbar.html">
           <div class="card-name">Node toolbar</div>
-          <div class="card-blurb">A floating toolbar anchored to a node’s geometry through the viewport portal seam — it pans and zooms WITH the node, follows it when it moves, and its buttons act on that node.</div>
+          <div class="card-blurb">A floating toolbar pinned to a node — shown only while the node is selected (or forced visible), placeable on any side with an alignment, and held at a CONSTANT on-screen size so its buttons stay legible at any zoom. It rides the node through pans, zooms and drags; its buttons act on that node.</div>
           <div class="card-foot">
             <span class="rf">React Flow: Node Toolbar</span>
             
@@ -144,7 +152,7 @@
         </a>
         <a class="card" href="nodes/proximity-connect.html">
           <div class="card-name">Proximity connect</div>
-          <div class="card-blurb">Drag a node close to another and a wire proposes itself — the shipped SnapController.findProximityConnection, driven off a real node drag and committed on drop. No handles, no aiming.</div>
+          <div class="card-blurb">Drag a node near another and a dashed wire proposes itself LIVE, then commits on drop — SnapController.findProximityConnection driven from host glue on node:moved, exactly React Flow's onNodeDrag/onNodeDragStop shape.</div>
           <div class="card-foot">
             <span class="rf">React Flow: Proximity Connect</span>
             
@@ -168,7 +176,7 @@
         </a>
         <a class="card" href="nodes/stress-test.html">
           <div class="card-name">Stress test</div>
-          <div class="card-blurb">Two thousand nodes in the model; only the visible slice is in the DOM (viewport culling), and a full-graph move repaints inside the sub-100ms budget the page itself enforces — the banner prints the real median, not a claim.</div>
+          <div class="card-blurb">Two thousand nodes in the model; only the visible slice is in the DOM (viewport culling), and a full-graph move repaints inside the sub-100ms budget the page itself enforces — the banner prints the real median, not a claim. &quot;Shuffle positions&quot; flings all 2,000 at once (React Flow’s &quot;change pos&quot;) and it stays smooth.</div>
           <div class="card-foot">
             <span class="rf">React Flow: Stress Test</span>
             
@@ -176,7 +184,7 @@
         </a>
         <a class="card" href="nodes/updating-nodes.html">
           <div class="card-name">Updating nodes</div>
-          <div class="card-blurb">Mutate a live node — label, size, payload — and the canvas repaints. The tracked setters bump the mutation epoch; a raw field write would silently NOT repaint.</div>
+          <div class="card-blurb">Edit a live node from OUTSIDE the canvas — type a label, pick a background, drag the width slider — and it re-renders on the spot. Each control calls a tracked setter (setMetadata, setSize) that bumps the mutation epoch; a raw field write would silently NOT repaint.</div>
           <div class="card-foot">
             <span class="rf">React Flow: Updating Nodes</span>
             
@@ -190,9 +198,9 @@
         <div class="grid">
         <a class="card" href="edges/animating-edges.html">
           <div class="card-name">Animating edges</div>
-          <div class="card-blurb">Four flow animations (marching-ants · flow · pulse · dash-flow) — asserted by the resolved CSS animation-name on the path, not just a class string.</div>
+          <div class="card-blurb">Two ways to show a wire carrying data: the STROKE animates (four CSS styles) AND a SHAPE rides the wire — a circle, a package, a train of dots travelling the exact painted edge path via &lt;animateMotion&gt;. Asserted by the resolved animation-name, by the token tracking the path geometry, and by real per-frame motion.</div>
           <div class="card-foot">
-            <span class="rf">React Flow: Edge with animation</span>
+            <span class="rf">React Flow: Animating Edges</span>
             
           </div>
         </a>
@@ -350,7 +358,7 @@
       </section>
 
       <section>
-        <h2>Interaction <span class="count">18</span></h2>
+        <h2>Interaction <span class="count">19</span></h2>
         <div class="grid">
         <a class="card pro" href="interaction/undo-redo.html">
           <div class="card-name">Collaboration-aware undo</div>
@@ -362,9 +370,17 @@
         </a>
         <a class="card" href="interaction/computing-flows.html">
           <div class="card-name">Computing flows</div>
-          <div class="card-blurb">Typed input/output ports carry values along the real link topology. Change the input and every downstream node recomputes; cut a link and the flow stops past the cut. Grafloria owns the graph; the app owns the arithmetic.</div>
+          <div class="card-blurb">Type a value into the source and it flows: every downstream node recomputes LIVE along the real link topology. Drop a wire and the result recomputes the instant it lands; cut a wire and the flow stops past the cut. Grafloria owns the graph and fires the change events; the app owns the arithmetic.</div>
           <div class="card-foot">
             <span class="rf">React Flow: Computing Flows</span>
+            
+          </div>
+        </a>
+        <a class="card" href="interaction/connection-events.html">
+          <div class="card-name">Connection events</div>
+          <div class="card-blurb">A live log of the connection lifecycle the engine fires as you drag a wire — start, per-move update, port enter/leave, then complete or cancel. React Flow logs onConnectStart/onConnect/onConnectEnd; Grafloria emits the same spine plus per-move detail, splitting the &quot;end&quot; into complete (valid) vs cancel (abandoned/refused).</div>
+          <div class="card-foot">
+            <span class="rf">React Flow: Connection Events</span>
             
           </div>
         </a>
@@ -598,7 +614,7 @@
         </a>
         <a class="card pro" href="grouping/parent-child.html">
           <div class="card-name">Parent &amp; child</div>
-          <div class="card-blurb">Attach a node to a container and it is CONSTRAINED to the container’s extent; detach it and it is free again. Membership is what binds the child — proven by dragging it in both states.</div>
+          <div class="card-blurb">Drop the child into the container to attach it. While attached, an out-of-bounds drag is reeled back to the container’s extent on release, and dragging the frame carries the child along. Detach, and the very same drag sticks — membership is the binding.</div>
           <div class="card-foot">
             <span class="rf">React Flow: Dynamic Grouping</span>
             <span class="badge" title="React Flow puts the equivalent behind its paywall">Pro / paid there</span>
@@ -856,11 +872,11 @@
       </section>
 
       <section>
-        <h2>diagrams <span class="count">4</span></h2>
+        <h2>diagrams <span class="count">5</span></h2>
         <div class="grid">
         <a class="card pro" href="diagrams/class-uml.html">
           <div class="card-name">Class diagram (UML)</div>
-          <div class="card-blurb">A UML class diagram built natively in Grafloria: class boxes with name / attributes / methods compartments, joined by real UML relationships — hollow-triangle inheritance and hollow-diamond aggregation.</div>
+          <div class="card-blurb">A UML class diagram from PURE DATA via the reusable umlDiagram() kit: class boxes with name / attributes / methods compartments, hollow-triangle inheritance and hollow-diamond aggregation — look, selection and routing all from the kit.</div>
           <div class="card-foot">
             <span class="rf">React Flow: Class Diagram</span>
             <span class="badge" title="React Flow puts the equivalent behind its paywall">Pro / paid there</span>
@@ -874,9 +890,17 @@
             <span class="badge" title="React Flow puts the equivalent behind its paywall">Pro / paid there</span>
           </div>
         </a>
+        <a class="card" href="diagrams/scrollable-cards.html">
+          <div class="card-name">Scrollable cards</div>
+          <div class="card-blurb">A table with 21 columns capped at a fixed height: the card body scrolls. The wheel belongs to the card while it can move (the binder delegates — card content is pointer-events:none), the canvas pans again at the end of the range, and ctrl/⌘-wheel always zooms.</div>
+          <div class="card-foot">
+            <span class="rf">React Flow: Custom nodes + nowheel class</span>
+            
+          </div>
+        </a>
         <a class="card pro" href="diagrams/table-er.html">
           <div class="card-name">Table / ER diagram</div>
-          <div class="card-blurb">A database entity-relationship diagram built natively in Grafloria: HTML &quot;table&quot; nodes with typed columns and PK/FK badges, joined by edges carrying real crow's-foot cardinality (one → many).</div>
+          <div class="card-blurb">A database entity-relationship diagram from PURE DATA via the reusable erDiagram() kit: HTML &quot;table&quot; nodes with typed columns and PK/FK badges, joined by crow's-foot cardinality — the look, selection and routing all come from the kit.</div>
           <div class="card-foot">
             <span class="rf">React Flow: Entity Relationship</span>
             <span class="badge" title="React Flow puts the equivalent behind its paywall">Pro / paid there</span>

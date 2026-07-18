@@ -81,6 +81,16 @@
     "error": null
   },
   {
+    "rel": "diagrams/scrollable-cards.html",
+    "slug": "diagrams__scrollable-cards",
+    "boot": "/var/folders/pd/8g99tsp56714y1x3d39xqs180000gn/T/grafloria-visual-a/diagrams__scrollable-cards.boot.png",
+    "after": "/var/folders/pd/8g99tsp56714y1x3d39xqs180000gn/T/grafloria-visual-a/diagrams__scrollable-cards.after.png",
+    "reactflow": "Custom nodes + nowheel class",
+    "pro": false,
+    "pageErrors": [],
+    "error": null
+  },
+  {
     "rel": "diagrams/table-er.html",
     "slug": "diagrams__table-er",
     "boot": "/var/folders/pd/8g99tsp56714y1x3d39xqs180000gn/T/grafloria-visual-a/diagrams__table-er.boot.png",
@@ -105,7 +115,7 @@
     "slug": "edges__animating-edges",
     "boot": "/var/folders/pd/8g99tsp56714y1x3d39xqs180000gn/T/grafloria-visual-a/edges__animating-edges.boot.png",
     "after": "/var/folders/pd/8g99tsp56714y1x3d39xqs180000gn/T/grafloria-visual-a/edges__animating-edges.after.png",
-    "reactflow": "Edge with animation",
+    "reactflow": "Animating Edges",
     "pro": false,
     "pageErrors": [],
     "error": null
@@ -298,6 +308,16 @@
     "boot": "/var/folders/pd/8g99tsp56714y1x3d39xqs180000gn/T/grafloria-visual-a/interaction__computing-flows.boot.png",
     "after": "/var/folders/pd/8g99tsp56714y1x3d39xqs180000gn/T/grafloria-visual-a/interaction__computing-flows.after.png",
     "reactflow": "Computing Flows",
+    "pro": false,
+    "pageErrors": [],
+    "error": null
+  },
+  {
+    "rel": "interaction/connection-events.html",
+    "slug": "interaction__connection-events",
+    "boot": "/var/folders/pd/8g99tsp56714y1x3d39xqs180000gn/T/grafloria-visual-a/interaction__connection-events.boot.png",
+    "after": "/var/folders/pd/8g99tsp56714y1x3d39xqs180000gn/T/grafloria-visual-a/interaction__connection-events.after.png",
+    "reactflow": "Connection Events",
     "pro": false,
     "pageErrors": [],
     "error": null
@@ -729,6 +749,17 @@
     "showcase": "/var/folders/pd/8g99tsp56714y1x3d39xqs180000gn/T/grafloria-visual-a/nodes__intersections.showcase.png"
   },
   {
+    "rel": "nodes/node-position-animation.html",
+    "slug": "nodes__node-position-animation",
+    "boot": "/var/folders/pd/8g99tsp56714y1x3d39xqs180000gn/T/grafloria-visual-a/nodes__node-position-animation.boot.png",
+    "after": "/var/folders/pd/8g99tsp56714y1x3d39xqs180000gn/T/grafloria-visual-a/nodes__node-position-animation.after.png",
+    "reactflow": "Node Position Animation",
+    "pro": false,
+    "pageErrors": [],
+    "error": null,
+    "showcase": "/var/folders/pd/8g99tsp56714y1x3d39xqs180000gn/T/grafloria-visual-a/nodes__node-position-animation.showcase.png"
+  },
+  {
     "rel": "nodes/node-resize-gesture.html",
     "slug": "nodes__node-resize-gesture",
     "boot": "/var/folders/pd/8g99tsp56714y1x3d39xqs180000gn/T/grafloria-visual-a/nodes__node-resize-gesture.boot.png",
@@ -766,7 +797,8 @@
     "reactflow": "Proximity Connect",
     "pro": false,
     "pageErrors": [],
-    "error": null
+    "error": null,
+    "showcase": "/var/folders/pd/8g99tsp56714y1x3d39xqs180000gn/T/grafloria-visual-a/nodes__proximity-connect.showcase.png"
   },
   {
     "rel": "nodes/rotatable-node.html",
