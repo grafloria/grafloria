@@ -1,0 +1,153 @@
+<meta charset="utf-8">
+<title>ERD editor — in-canvas editing — Grafloria</title>
+<link rel="stylesheet" href="../shell/demo.css">
+<header id="demo-head"></header>
+<div id="canvas"></div>
+<script type="module">
+import { render, erDiagram, erRowCenterY } from '../shell/grafloria.js';
+import { defineDemo, check } from '../shell/demo.js';
+
+// The SAME erDiagram() kit as table-er.html, but with `editable: true`. That one
+// flag turns the read-only schema into an in-canvas EDITOR: double-click a
+// header to rename the table, double-click a column to rename it, an "add
+// column" affordance and a per-row × to delete — every change routed through
+// the kit's updateEntity() as one undoable step, with the field ports and their
+// FK→PK edges reconciled so a rename/insert/delete never leaves an edge pointing
+// at the wrong row. (table-er.html stays the clean read-only showcase.)
+const SPEC = erDiagram({
+  editable: true,
+  entities: [
+    // PRODUCTS joins ORDERS at the TABLE level (a plain side handle, no field
+    // port) — so it keeps its hoverable/wireable default ports, the ordinary
+    // ER-card interaction surface.
+    { id: 'PRODUCTS', name: 'Products', position: { x: 80, y: 96 }, columns: [
+      { name: 'id', type: 'int', pk: true },
+      { name: 'sku', type: 'varchar' },
+      { name: 'price', type: 'decimal' },
+    ]},
+    { id: 'CUSTOMERS', name: 'Customers', position: { x: 80, y: 360 }, columns: [
+      { name: 'id', type: 'int', pk: true },
+      { name: 'name', type: 'varchar' },
+      { name: 'email', type: 'varchar' },
+    ]},
+    { id: 'ORDERS', name: 'Orders', position: { x: 500, y: 150 }, columns: [
+      { name: 'id', type: 'int', pk: true },
+      { name: 'status', type: 'varchar' },
+      { name: 'customer_id', type: 'int', fk: true },
+      { name: 'total', type: 'decimal' },
+    ]},
+  ],
+  relationships: [
+    // A field-level FK→PK edge — the one whose gluing this page proves.
+    { from: 'ORDERS.customer_id', to: 'CUSTOMERS.id', id: 'fk_customer', fromSide: 'left', toSide: 'right' },
+    // A table-level edge (side handles, no field ports on PRODUCTS).
+    { from: 'PRODUCTS', to: 'ORDERS', label: 'ordered as', fromSide: 'right', toSide: 'left' },
+  ],
+});
+
+defineDemo({
+  name: 'ERD editor (in-canvas editing)',
+  blurb: 'The erDiagram() kit with editable:true — rename tables & columns in place, add and delete columns, all as undoable edits. Field ports and FK→PK edges reconcile automatically, so an edge never comes unglued when the rows shift.',
+  howTo: [
+    'Double-click a table HEADER (e.g. "Customers"): an input opens over the title — type a new name and press Enter (Escape cancels). The header updates in place.',
+    'Double-click a COLUMN name: the same inline editor opens on that row — rename the field and press Enter.',
+    'Click "＋ add column" at the bottom of a card: a new column appears and its name opens for editing straight away. Type a name, press Enter.',
+    'Hover a column row and click the × on the right to DELETE that column. If a relationship was attached to it, the edge is dropped with it; otherwise every other edge stays glued to its row.',
+    'Click a column once (single click) to SELECT it — the kit still fires axk:row-select for a properties panel. Drag a table: the cards and the FK→PK edge move together.',
+    'Watch the FK edge: delete "status" from Orders (the row ABOVE customer_id) and the edge stays pinned to customer_id as it slides up a row — the ports track their columns, not a frozen y.',
+  ],
+  reactflow: 'Editable Entity Relationship',
+  pro: true,
+
+  async setup(ctx) {
+    const api = render(SPEC, ctx.host);
+    ctx.instance = api;
+    ctx.diagram = api.getModel();
+    api.fitView?.(40);
+    await ctx.tick();
+  },
+
+  async assert(ctx) {
+    const host = ctx.host;
+    const model = ctx.diagram;
+    const kit = (id) => model.getNode(id).getMetadata('kitEntity');
+    const rowsOf = (id) => [...host.querySelectorAll(`[data-node-id="${id}"] .axk-row`)];
+    const q = (sel) => host.querySelector(sel);
+
+    // 0. The editable chrome actually rendered.
+    check(!!q('[data-node-id="ORDERS"] .axk-entity-add'), 'an editable card shows the "add column" affordance');
+    check(host.querySelectorAll('.axk-col-del').length > 0, 'editable rows carry a delete (×) control');
+
+    // 1. SELECT A FIELD — single click still selects the row (properties-panel seam).
+    const events = [];
+    host.addEventListener('axk:row-select', (e) => events.push(e.detail));
+    const emailRow = rowsOf('CUSTOMERS').find((r) => (r.textContent || '').includes('email'));
+    check(!!emailRow, 'found the Customers.email row');
+    emailRow.querySelector('.axk-col').dispatchEvent(new MouseEvent('click', { bubbles: true }));
+    check(emailRow.classList.contains('axk-row-selected'), 'clicking a field selects that row');
+    check(events.at(-1)?.selected?.name === 'email', `axk:row-select carried the field name (got ${JSON.stringify(events.at(-1)?.selected)})`);
+    emailRow.querySelector('.axk-col').dispatchEvent(new MouseEvent('click', { bubbles: true })); // deselect
+    await ctx.tick(20);
+
+    // 2. RENAME THE TITLE — double-click the header → inline input → Enter.
+    q('[data-node-id="CUSTOMERS"] .axk-entity-head').dispatchEvent(new MouseEvent('dblclick', { bubbles: true }));
+    await ctx.tick(20);
+    let input = q('.axk-edit-input');
+    check(!!input, 'double-clicking the header opened an inline editor');
+    check(input.value === 'Customers', `the title editor is prefilled with the current name (got "${input.value}")`);
+    input.value = 'People';
+    input.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
+    await ctx.tick(40);
+    check(kit('CUSTOMERS').name === 'People', 'committing the title editor renamed the table in the model');
+    check((q('[data-node-id="CUSTOMERS"] .axk-entity-head').textContent || '') === 'People', 'the header TEXT changed in the DOM');
+
+    // 3. ADD A COLUMN — click the affordance → model + DOM grow → inline-name it.
+    const before = rowsOf('CUSTOMERS').length;
+    q('[data-node-id="CUSTOMERS"] .axk-entity-add').dispatchEvent(new MouseEvent('click', { bubbles: true }));
+    await ctx.tick(40);
+    check(rowsOf('CUSTOMERS').length === before + 1, `add column added a card row (${before} → ${rowsOf('CUSTOMERS').length})`);
+    check(kit('CUSTOMERS').columns.length === before + 1, 'add column added a column to the model');
+    input = q('.axk-edit-input');
+    check(!!input, 'adding a column opened an inline editor for its name');
+    input.value = 'phone';
+    input.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
+    await ctx.tick(40);
+    check(kit('CUSTOMERS').columns.some((c) => c.name === 'phone'), 'the new column was named via the inline edit');
+
+    // 4. RENAME A FIELD — double-click a column name → inline input → Enter.
+    const totalRow = rowsOf('ORDERS').find((r) => (r.textContent || '').includes('total'));
+    totalRow.querySelector('.axk-col').dispatchEvent(new MouseEvent('dblclick', { bubbles: true }));
+    await ctx.tick(20);
+    input = q('.axk-edit-input');
+    check(input && input.value === 'total', `the column editor is prefilled with the field name (got "${input && input.value}")`);
+    input.value = 'grand_total';
+    input.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
+    await ctx.tick(40);
+    check(kit('ORDERS').columns.some((c) => c.name === 'grand_total'), 'renaming a field updated the model');
+
+    // 5. EDGE STAYS GLUED — delete the row ABOVE the FK, its port tracks up.
+    //    THE MUTATION-PROOF assertion: a frozen port would keep the old y and the
+    //    edge would point a row too low; reconciliation moves it exactly one row.
+    const fkPortId = 'ORDERS__customer_id__left__0';
+    const idxBefore = kit('ORDERS').columns.findIndex((c) => c.name === 'customer_id');
+    const yBefore = model.getNode('ORDERS').getPort(fkPortId).layout.args.y;
+    check(yBefore === erRowCenterY(idxBefore), 'the FK port starts pinned to its row');
+    check(model.getLink('fk_customer')?.sourcePortId === fkPortId, 'the FK edge starts wired to that port');
+
+    const statusRow = rowsOf('ORDERS').find((r) => (r.textContent || '').includes('status'));
+    statusRow.querySelector('.axk-col-del').dispatchEvent(new MouseEvent('click', { bubbles: true }));
+    await ctx.tick(40);
+
+    const idxAfter = kit('ORDERS').columns.findIndex((c) => c.name === 'customer_id');
+    check(!kit('ORDERS').columns.some((c) => c.name === 'status'), 'deleting a column removed it from the model');
+    check(idxAfter === idxBefore - 1, 'the FK column slid up one row when the row above it was deleted');
+    const yAfter = model.getNode('ORDERS').getPort(fkPortId).layout.args.y;
+    check(yAfter === erRowCenterY(idxAfter), `the FK port TRACKED its column to the new row (${yBefore} → ${yAfter}, expected ${erRowCenterY(idxAfter)})`);
+    check(yAfter !== yBefore, 'the port did not stay frozen at the old row');
+    check(model.getLink('fk_customer')?.sourcePortId === fkPortId, 'the FK edge is STILL glued to the same (moved) port — never came unwired');
+
+    ctx.instance.getModel().clearSelection?.();
+    await ctx.tick();
+  },
+});
+</script>
