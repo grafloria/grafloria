@@ -47,7 +47,7 @@
   public embed with real pointer events and asserts a consequence; a broken demo fails CI.
   Where React Flow ships the same example only in its paid <b>Pro</b> tier, it is marked.</p>
   <div class="scoreboard">
-    <span class="stat"><b>100</b> demos</span>
+    <span class="stat"><b>101</b> demos</span>
     <span class="stat pro"><b>35</b> are features React Flow charges for</span>
     <span class="stat"><b>11</b> categories</span>
   </div>
@@ -131,7 +131,7 @@
         </a>
         <a class="card is-new" href="nodes/node-resize-gesture.html">
           <div class="card-name"><span class="badge new">New</span>Node resize gesture</div>
-          <div class="card-blurb">Select a node, then drag a resize handle — a REAL pointer drag through the default pipeline (no host wiring, no registerTool). Any corner resizes and pins the opposite one; the declared min/max/aspect clamp the size DURING the gesture, and one release is one undo step.</div>
+          <div class="card-blurb">Select a node and the renderer paints the React-Flow-style resizer: four corner dots and four edge lines, each with its own resize cursor, driven by a REAL pointer drag through the default pipeline. Corners resize both axes and pin the opposite corner; an edge line is grabbable ANYWHERE along the border and moves just that edge; the port keeps its glyph (that press draws a wire); min/max/aspect clamp DURING the gesture; one release is one undo step.</div>
           <div class="card-foot">
             <span class="rf">React Flow: Node Resizer</span>
             
@@ -139,7 +139,7 @@
         </a>
         <a class="card is-new" href="nodes/node-resizer.html">
           <div class="card-name"><span class="badge new">New</span>Node resizer</div>
-          <div class="card-blurb">Drag a corner to resize — and the min/max/aspect limits declared on the node clamp the size DURING the gesture. You cannot drag past the max; the aspect-locked node holds its ratio.</div>
+          <div class="card-blurb">Two resizers, like React Flow's pair: SELECT a node for the built-in one — painted corner dots + edge lines, per-handle cursors, every handle live — or grab the bottom-right corner WITHOUT selecting for a custom control registered through the public registerTool seam. Both clamp to the node's declared min/max/aspect DURING the gesture.</div>
           <div class="card-foot">
             <span class="rf">React Flow: Node Resizer</span>
             
@@ -179,7 +179,7 @@
         </a>
         <a class="card is-new" href="nodes/stress-test.html">
           <div class="card-name"><span class="badge new">New</span>Stress test</div>
-          <div class="card-blurb">Two thousand nodes in the model; only the visible slice is in the DOM (viewport culling), and a full-graph move repaints inside the sub-100ms budget the page itself enforces — the banner prints the real median, not a claim. &quot;Shuffle positions&quot; flings all 2,000 at once (React Flow’s &quot;change pos&quot;) and it stays smooth.</div>
+          <div class="card-blurb">A 900-node mesh. Only the visible slice is ever in the DOM (viewport culling), a full-graph move repaints inside a frame budget, and one call lays ALL 900 out with a real engine — layered / elk / dagre / force / auto, each spreading the mesh in 2D. The strip prints the real layout time, so you can see which engine scales.</div>
           <div class="card-foot">
             <span class="rf">React Flow: Stress Test</span>
             
@@ -361,7 +361,7 @@
       </section>
 
       <section>
-        <h2>Interaction <span class="count">19</span></h2>
+        <h2>Interaction <span class="count">20</span></h2>
         <div class="grid">
         <a class="card pro" href="interaction/undo-redo.html">
           <div class="card-name">Collaboration-aware undo</div>
@@ -472,6 +472,14 @@
           <div class="card-blurb">Drag a rubber-band box over empty canvas and every node it fully encloses is selected — the marquee tool the binder leaves to the host, assembled from the public registerTool + viewport + selection seams. Shift adds to the selection.</div>
           <div class="card-foot">
             <span class="rf">React Flow: Box Select</span>
+            
+          </div>
+        </a>
+        <a class="card is-new" href="interaction/n8n-workflow.html">
+          <div class="card-name"><span class="badge new">New</span>n8n workflow builder</div>
+          <div class="card-blurb">An interactive n8n-style workflow: a left-rounded Trigger, blue HTTP nodes, Set / Code / Merge and an orange branching If, plus a violet AI Agent whose Chat Model / Memory / Tool sub-nodes attach to its BOTTOM ports with a distinct dashed &quot;ai&quot; wire — while the main data flow runs left→right on gray bezier lines. Drag nodes, drag-connect ports, and add nodes from the palette, just like in n8n. HTML nodes + sided/absolute ports + two edge families in the Grafloria engine.</div>
+          <div class="card-foot">
+            <span class="rf none">no React Flow equivalent</span>
             
           </div>
         </a>
@@ -715,8 +723,8 @@
       <section>
         <h2>Collaboration <span class="count">6</span></h2>
         <div class="grid">
-        <a class="card pro" href="collab/conflict-resolution.html">
-          <div class="card-name">Conflict resolution</div>
+        <a class="card pro is-new" href="collab/conflict-resolution.html">
+          <div class="card-name"><span class="badge new">New</span>Conflict resolution</div>
           <div class="card-blurb">Concurrent move + rename of the SAME node: both survive on both peers. Whole-entity LWW would throw one away — a per-property CRDT does not.</div>
           <div class="card-foot">
             <span class="rf">React Flow: Collaborative (Yjs)</span>
@@ -895,7 +903,7 @@
         </a>
         <a class="card is-new" href="diagrams/scrollable-cards.html">
           <div class="card-name"><span class="badge new">New</span>Scrollable cards</div>
-          <div class="card-blurb">A table with 21 columns capped at a fixed height: the card body scrolls. The wheel belongs to the card (the binder delegates — card content is pointer-events:none) and is CONTAINED: at the end of the range the canvas does not pan, so reaching the bottom never jumps the whole diagram. ctrl/⌘-wheel always zooms.</div>
+          <div class="card-blurb">BOTH an ER table (21 columns) and a UML class (26 members) capped at a fixed height: each card body scrolls. The wheel belongs to the card (the binder delegates — card content is pointer-events:none) and is CONTAINED: at the end of the range the canvas does not pan, so reaching the bottom never jumps the whole diagram. ctrl/⌘-wheel always zooms.</div>
           <div class="card-foot">
             <span class="rf">React Flow: Custom nodes + nowheel class</span>
             

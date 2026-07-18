@@ -104,6 +104,8 @@ const NEW_DEMOS = new Set([
   'interaction/connection-events.html',
   'grouping/parent-child.html',
   'diagrams/scrollable-cards.html',
+  'interaction/n8n-workflow.html',
+  'collab/conflict-resolution.html',
 ]);
 const isNewDemo = (rel) => NEW_DEMOS.has(rel.split(sep).join('/'));
 

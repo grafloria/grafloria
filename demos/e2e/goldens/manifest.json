@@ -427,6 +427,17 @@
     "showcase": "/var/folders/pd/8g99tsp56714y1x3d39xqs180000gn/T/grafloria-visual-a/interaction__marquee-select.showcase.png"
   },
   {
+    "rel": "interaction/n8n-workflow.html",
+    "slug": "interaction__n8n-workflow",
+    "boot": "/var/folders/pd/8g99tsp56714y1x3d39xqs180000gn/T/grafloria-visual-a/interaction__n8n-workflow.boot.png",
+    "after": "/var/folders/pd/8g99tsp56714y1x3d39xqs180000gn/T/grafloria-visual-a/interaction__n8n-workflow.after.png",
+    "reactflow": null,
+    "pro": false,
+    "pageErrors": [],
+    "error": null,
+    "showcase": "/var/folders/pd/8g99tsp56714y1x3d39xqs180000gn/T/grafloria-visual-a/interaction__n8n-workflow.showcase.png"
+  },
+  {
     "rel": "interaction/parent-move.html",
     "slug": "interaction__parent-move",
     "boot": "/var/folders/pd/8g99tsp56714y1x3d39xqs180000gn/T/grafloria-visual-a/interaction__parent-move.boot.png",
