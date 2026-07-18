@@ -7,10 +7,17 @@
 import { render, registerTool, getNodeSizing, clampSizeToConstraints, resolveAspectRatio } from '../shell/grafloria.js';
 import { defineDemo, check } from '../shell/demo.js';
 
-// A corner-resize gesture, wired to real pointer events through the public tool
-// seam. The CLAMP is the shipped node-sizing contract (min/max/aspect), read off
-// the node's own metadata.sizing and applied on every move — DURING the gesture,
-// not fixed up at the end. That is the whole point: you cannot drag past the max.
+// TWO resizers on one page, mirroring React Flow's pair:
+//
+//   1. The BUILT-IN resizer (RF's <NodeResizer/>): select a node and the
+//      renderer paints 4 corner dots + 4 edge lines with per-handle cursors;
+//      every handle is live through the default pointer pipeline.
+//   2. A CUSTOM resize control (RF's <NodeResizeControl/>): a corner-resize
+//      gesture registered through the public `registerTool` seam — it works
+//      WITHOUT selecting, and demonstrates that a host can build its own grip.
+//      The CLAMP is the shipped node-sizing contract (min/max/aspect), read off
+//      the node's own metadata.sizing and applied on every move — DURING the
+//      gesture, not fixed up at the end.
 function installResizer(host, api) {
   const FLOOR = { floorWidth: 20, floorHeight: 20 };
   let g = null;
@@ -40,13 +47,15 @@ function installResizer(host, api) {
 
 defineDemo({
   name: 'Node resizer',
-  blurb: 'Drag a corner to resize — and the min/max/aspect limits declared on the node clamp the size DURING the gesture. You cannot drag past the max; the aspect-locked node holds its ratio.',
+  blurb: 'Two resizers, like React Flow\'s pair: SELECT a node for the built-in one — painted corner dots + edge lines, per-handle cursors, every handle live — or grab the bottom-right corner WITHOUT selecting for a custom control registered through the public registerTool seam. Both clamp to the node\'s declared min/max/aspect DURING the gesture.',
   howTo: [
-    'Press within ~20px of the bottom-right corner of the "80–260 wide" node and drag — the corner follows your pointer. (No handle glyphs here: the gesture is a tool registered through the public registerTool seam.)',
-    'Haul the corner far right and down: the size stops DEAD at 260×200 — min/max come off the node\'s own metadata.sizing and clamp DURING the gesture, not as a fix-up on release.',
+    'Click the "80–260 wide" node to select it: the renderer paints the full resizer — four white corner dots and four edge lines, each with its own resize cursor (nwse/nesw/ns/ew).',
+    'Drag ANY corner or edge: the box resizes from that side, the opposite side pinned, clamped to 80–260 × 60–200 mid-drag.',
+    'Now click empty canvas to deselect, and press within ~20px of the node\'s bottom-right corner: it STILL resizes — that gesture is a custom control on the public registerTool seam (React Flow\'s NodeResizeControl), no selection needed.',
+    'Haul the corner far right and down: the size stops DEAD at 260×200 — min/max come off the node\'s own metadata.sizing.',
     'Drag the corner deep into the node: it floors at 80×60, never inverting.',
-    'Resize the "aspect locked" node by its corner: whatever path you drag, the box holds its 1.6 ratio.',
-    'Press anywhere else on a node and drag: that is still a plain move — only the corner zone resizes.',
+    'Resize the "aspect locked" node: whatever path you drag, the box holds its 1.6 ratio.',
+    'Press anywhere else on a node and drag: that is still a plain move — only the corner zone (or a selected node\'s handles) resizes.',
   ],
   reactflow: 'Node Resizer',
 
@@ -77,8 +86,11 @@ defineDemo({
     const m = ctx.diagram;
     const clamp = m.getNode('clamp');
 
-    // 1. MAX clamp DURING the gesture. Grab the SE corner and haul it 1000px right —
-    //    far past the 260 max. Assert the cap holds mid-drag, BEFORE releasing.
+    // 1. MAX clamp DURING the gesture — through the CUSTOM registerTool control,
+    //    with NO selection (RF NodeResizeControl behaviour). Grab the SE corner
+    //    and haul it 1000px right — far past the 260 max. Assert the cap holds
+    //    mid-drag, BEFORE releasing.
+    check(!clamp.isSelected(), 'the custom-control asserts run unselected (selection is the built-in path)');
     const c0 = ctx.corner('clamp');
     ctx.fire('mousedown', { x: c0.x - 3, y: c0.y - 3 });
     ctx.fire('mousemove', { x: c0.x + 1000, y: c0.y + 40 });     // still dragging
@@ -110,6 +122,46 @@ defineDemo({
       `aspect lock should hold the 1.6 ratio during resize, got ${ar.toFixed(3)}`);
     check(ratio.size.width > 160, 'the aspect node should actually have grown');
     ctx.fire('mouseup', { x: r0.x + 120, y: r0.y + 8 });
+
+    // 4. THE BUILT-IN RESIZER (RF <NodeResizer/> parity): selecting the node
+    //    paints the tool layer — 4 corner dots + 4 edge lines — and EVERY
+    //    handle is live, not just the custom SE grip. Select, check the paint,
+    //    check a handle cursor, then drag the NW corner and prove the OPPOSITE
+    //    (SE) corner stays pinned.
+    {
+      const centre = { x: clamp.position.x + clamp.size.width / 2, y: clamp.position.y + clamp.size.height / 2 };
+      ctx.fire('mousedown', centre);
+      ctx.fire('mouseup', centre);
+      await ctx.tick();
+      check(clamp.isSelected(), 'clicking the node centre should select it');
+      ctx.instance.renderNow();
+      await ctx.tick();
+
+      const dots = ctx.host.querySelectorAll('.resize-tool-layer .resize-handle-dot');
+      const lines = ctx.host.querySelectorAll('.resize-tool-layer .resize-edge-line');
+      check(dots.length === 4, `selecting should paint 4 corner dots, found ${dots.length}`);
+      check(lines.length === 4, `selecting should paint 4 edge lines, found ${lines.length}`);
+
+      // Hovering the NW dot advertises the diagonal resize cursor.
+      ctx.fire('mousemove', { x: clamp.position.x, y: clamp.position.y });
+      check(ctx.host.style.cursor === 'nwse-resize',
+        `hovering the NW corner should show nwse-resize, host cursor is "${ctx.host.style.cursor}"`);
+
+      // NW drag through the DEFAULT pipeline: box grows from that corner,
+      // SE corner pinned (the node is at its 80×60 floor here).
+      const seFixed = { x: clamp.position.x + clamp.size.width, y: clamp.position.y + clamp.size.height };
+      const nw = { x: clamp.position.x, y: clamp.position.y };
+      ctx.fire('mousedown', nw);
+      ctx.fire('mousemove', { x: nw.x - 60, y: nw.y - 40 });
+      ctx.instance.renderNow();
+      check(clamp.size.width > 80 && clamp.size.height > 60,
+        `dragging the NW handle should grow the box (is ${clamp.size.width}×${clamp.size.height})`);
+      check(Math.abs((clamp.position.x + clamp.size.width) - seFixed.x) < 1 &&
+            Math.abs((clamp.position.y + clamp.size.height) - seFixed.y) < 1,
+        'the OPPOSITE (SE) corner must stay pinned during a NW drag');
+      ctx.fire('mouseup', { x: nw.x - 60, y: nw.y - 40 });
+      await ctx.tick();
+    }
   },
 });
 </script>
