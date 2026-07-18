@@ -558,6 +558,15 @@ export {
   umlDiagram,
   ensureDiagramKitStyles,
   DIAGRAM_KIT_STYLE_ID,
+  // In-canvas editing (P2–P4): live edits + the gesture binder.
+  updateEntity,
+  updateClass,
+  addColumnAt,
+  removeColumnAt,
+  renameColumnAt,
+  bindCardEditing,
+  matchColumns,
+  rowIndexFromY,
 } from './lib/diagram-kit';
 export type {
   ErColumn,
@@ -571,6 +580,9 @@ export type {
   UmlRelationKind,
   UmlSide,
   UmlDiagramOptions,
+  ErEntityDelta,
+  UmlClassDelta,
+  CardEditingHandle,
 } from './lib/diagram-kit';
 
 

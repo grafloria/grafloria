@@ -24,11 +24,9 @@
  */
 import { ensureDiagramKitStyles } from './styles';
 import { bindRowInteractions } from './rows';
+import { classCardContent, classAutoHeight } from './card';
+import { bindCardEditing } from './editing';
 
-const LINE_H = 19;
-const NAME_H = 30;
-const STEREO_H = 14;
-const PAD = 8;
 const DEFAULT_WIDTH = 200;
 
 export interface UmlClassSpec {
@@ -80,6 +78,13 @@ export interface UmlDiagramOptions {
    * container). Set false to opt out.
    */
   rowSelection?: boolean;
+  /**
+   * In-canvas editing (opt-in, default false). When true: double-click the
+   * class name to rename it, double-click a member to rename it, an "add"
+   * affordance per compartment and a per-member delete control — all routed
+   * through {@link updateClass} as one undoable step.
+   */
+  editable?: boolean;
 }
 
 interface EdgeStyle {
@@ -118,44 +123,6 @@ function edgeStyleFor(kind: UmlRelationKind): EdgeStyle {
   }
 }
 
-const classCard = (cls: UmlClassSpec) => {
-  const attrs = cls.attributes ?? [];
-  const methods = cls.methods ?? [];
-  const italic = cls.abstract || cls.stereotype === 'abstract' || cls.stereotype === 'interface';
-  return {
-    content: {
-      tag: 'div',
-      className: 'axk-uml',
-      children: [
-        {
-          tag: 'div',
-          className: 'axk-uml-name' + (italic ? ' axk-abstract' : ''),
-          children: [
-            ...(cls.stereotype ? [{ tag: 'span', className: 'axk-uml-stereo', text: `«${cls.stereotype}»` }] : []),
-            { tag: 'span', text: cls.name ?? cls.id },
-          ],
-        },
-        {
-          tag: 'div',
-          className: cls.height != null ? 'axk-uml-body axk-scroll' : 'axk-uml-body',
-          children: [
-            {
-              tag: 'div',
-              className: 'axk-uml-comp' + (attrs.length ? '' : ' axk-empty'),
-              children: attrs.map((a) => ({ tag: 'div', className: 'axk-member', text: a })),
-            },
-            {
-              tag: 'div',
-              className: 'axk-uml-comp' + (methods.length ? '' : ' axk-empty'),
-              children: methods.map((m) => ({ tag: 'div', className: 'axk-member', text: m })),
-            },
-          ],
-        },
-      ],
-    },
-  };
-};
-
 /** Multiplicity chip, positioned near an edge end. */
 const chip = (text: string, slot: 'start' | 'end') => ({
   text,
@@ -176,18 +143,19 @@ export function umlDiagram(options: UmlDiagramOptions): {
 } {
   ensureDiagramKitStyles();
 
+  const editable = options.editable === true;
   const nodes = options.classes.map((cls, i) => {
-    const attrs = cls.attributes ?? [];
-    const methods = cls.methods ?? [];
-    const height =
-      cls.height ?? NAME_H + (cls.stereotype ? STEREO_H : 0) + (attrs.length + methods.length) * LINE_H + PAD * 2 + 12; // + html wrapper padding & borders, measured live
     return {
       id: cls.id,
       position: cls.position ?? { x: 80 + (i % 3) * 320, y: 60 + Math.floor(i / 3) * 260 },
-      size: { width: cls.width ?? DEFAULT_WIDTH, height },
-      // interactive: members are real DOM targets (hover, row selection);
-      // node drag/select stay geometric in the binder.
-      metadata: { html: { ...classCard(cls), interactive: true }, kitClass: cls },
+      size: { width: cls.width ?? DEFAULT_WIDTH, height: classAutoHeight(cls, editable) },
+      // interactive: members are real DOM targets (hover, row selection, inline
+      // editing); node drag/select stay geometric in the binder.
+      metadata: {
+        html: { content: classCardContent(cls, editable), interactive: true },
+        kitClass: cls,
+        kitEditable: editable,
+      },
       shape: { type: 'rect', fill: 'none', stroke: 'none' },
       style: { fill: 'transparent', stroke: 'transparent', strokeWidth: 0 },
     };
@@ -220,6 +188,7 @@ export function umlDiagram(options: UmlDiagramOptions): {
       // is safe to run twice.
       if (a?.container) bindRowInteractions(a as never);
     }
+    if (editable && a0?.container) bindCardEditing(a0 as never);
     if (api && typeof api === 'object') {
       if (finalized.has(api)) return;
       finalized.add(api);

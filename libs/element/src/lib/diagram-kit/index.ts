@@ -20,3 +20,14 @@ export {
 } from './uml';
 export { ensureDiagramKitStyles, DIAGRAM_KIT_STYLE_ID } from './styles';
 export { bindRowInteractions, type RowRef, type RowInteractionsHandle } from './rows';
+export {
+  updateEntity,
+  updateClass,
+  addColumnAt,
+  removeColumnAt,
+  renameColumnAt,
+  type ErEntityDelta,
+  type UmlClassDelta,
+} from './update';
+export { bindCardEditing, type CardEditingHandle } from './editing';
+export { matchColumns, rowIndexFromY } from './card';

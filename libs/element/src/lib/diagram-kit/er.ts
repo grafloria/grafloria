@@ -22,17 +22,14 @@
  */
 import { ensureDiagramKitStyles } from './styles';
 import { bindRowInteractions } from './rows';
+import { entityCardContent, entityAutoHeight, erRowCenterY, ER_ROW_H, ER_HEAD_H } from './card';
+import { bindCardEditing } from './editing';
 
-/** Row height / header height of the entity card — sizing is derived from these. */
-export const ER_ROW_H = 25;
-export const ER_HEAD_H = 28;
-/**
- * Auto-height slack: the html wrapper's padding (8px) + the card's 1px
- * top/bottom borders + the head rendering slightly under ER_HEAD_H. Measured
- * live — with less, an auto-sized card overflows a few px, and the wheel
- * delegation would steal that much scroll on EVERY card.
- */
-const BORDER_SLACK = 9;
+// Layout constants + the row-centre helper live in card.ts now (the ONE source
+// of truth shared with update.ts). Re-exported here so `import … from './er'`
+// keeps working.
+export { erRowCenterY, ER_ROW_H, ER_HEAD_H };
+
 const DEFAULT_WIDTH = 190;
 
 export interface ErColumn {
@@ -88,6 +85,14 @@ export interface ErDiagramOptions {
    * container). Set false to opt out.
    */
   rowSelection?: boolean;
+  /**
+   * In-canvas editing (opt-in, default false — read-only diagrams are
+   * unchanged). When true the card grows editing chrome: double-click the
+   * header to rename the table, double-click a column name to rename it, an
+   * "add column" affordance and a per-row delete control. Every change routes
+   * through {@link updateEntity} as ONE undoable step.
+   */
+  editable?: boolean;
 }
 
 const CARDINALITY: Record<ErCardinality, { tail: string; head: string }> = {
@@ -97,36 +102,6 @@ const CARDINALITY: Record<ErCardinality, { tail: string; head: string }> = {
   'one-to-zero-or-many': { tail: 'one', head: 'zero-or-many' },
   'one-to-one-or-many': { tail: 'one', head: 'one-or-many' },
 };
-
-/** Node-local y of a row's centre (the +1 offsets past the card's top border). */
-export function erRowCenterY(rowIndex: number): number {
-  return ER_HEAD_H + rowIndex * ER_ROW_H + ER_ROW_H / 2 + 1;
-}
-
-const entityCard = (entity: ErEntitySpec) => ({
-  content: {
-    tag: 'div',
-    className: 'axk-entity',
-    children: [
-      { tag: 'div', className: 'axk-entity-head', text: entity.name ?? entity.id },
-      {
-        tag: 'div',
-        // Scroll is OPT-IN via an explicit height: an auto-sized card fits by
-        // construction and must never trap the wheel, not even by a pixel.
-        className: entity.height != null ? 'axk-entity-body axk-scroll' : 'axk-entity-body',
-        children: entity.columns.map((c) => ({
-          tag: 'div',
-          className: 'axk-row' + (c.pk ? ' axk-pk' : ''),
-          children: [
-            { tag: 'span', className: 'axk-key' + (c.fk ? ' axk-fk' : ''), text: c.pk ? 'PK' : c.fk ? 'FK' : '' },
-            { tag: 'span', className: 'axk-col', text: c.name },
-            { tag: 'span', className: 'axk-ty', text: c.type ?? '' },
-          ],
-        })),
-      },
-    ],
-  },
-});
 
 interface ParsedEnd {
   entity: ErEntitySpec;
@@ -228,13 +203,18 @@ export function erDiagram(options: ErDiagramOptions): {
     };
   });
 
+  const editable = options.editable === true;
   const nodes = options.entities.map((entity, i) => ({
     id: entity.id,
     position: entity.position ?? { x: 60 + (i % 3) * 340, y: 60 + Math.floor(i / 3) * 280 },
-    size: { width: width(entity), height: entity.height ?? ER_HEAD_H + entity.columns.length * ER_ROW_H + BORDER_SLACK },
-    // interactive: rows are real DOM targets (hover, row selection, later
-    // inline editing) — node drag/select stay geometric in the binder.
-    metadata: { html: { ...entityCard(entity), interactive: true }, kitEntity: entity },
+    size: { width: width(entity), height: entityAutoHeight(entity, editable) },
+    // interactive: rows are real DOM targets (hover, row selection, inline
+    // editing) — node drag/select stay geometric in the binder.
+    metadata: {
+      html: { content: entityCardContent(entity, editable), interactive: true },
+      kitEntity: entity,
+      kitEditable: editable,
+    },
     // The card draws its own border — the node's default rectangle is hidden
     // (and re-suppressed on selection by the kit stylesheet).
     shape: { type: 'rect', fill: 'none', stroke: 'none' },
@@ -253,6 +233,10 @@ export function erDiagram(options: ErDiagramOptions): {
       const model = a?.getModel?.();
       if (model) for (const e of options.entities) model.getNode?.(e.id)?.setBehavior?.({ resizable: false });
       if (options.rowSelection !== false && a?.container) bindRowInteractions(a as never);
+      // Editing chrome (dbl-click rename, add/delete column) — opt-in, and safe
+      // to run alongside row selection (it claims control clicks in the capture
+      // phase before the selection handler sees them).
+      if (editable && a?.container) bindCardEditing(a as never);
     },
   };
 }
