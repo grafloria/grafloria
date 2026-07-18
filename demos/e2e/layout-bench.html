@@ -1,0 +1,60 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Layout benchmark harness</title>
+<style>body { margin: 0; } #stage { width: 100vw; height: 100vh; }</style>
+<div id="stage"></div>
+<script type="module">
+// Parameterized graph builder for the layout benchmark gate (layout-bench-run.mjs).
+// ?shape=chain|tree|mesh|dag|star|components&n=<count>
+// mesh interprets n as a side (n x n grid). Everything else is n nodes.
+import { render } from '../shell/grafloria.js';
+
+const q = new URLSearchParams(location.search);
+const shape = q.get('shape') || 'mesh';
+const n = +(q.get('n') || 30);
+
+const nodes = [], edges = [];
+const add = (id, x, y) => nodes.push({ id, position: { x, y }, size: { width: 92, height: 46 }, label: id });
+
+if (shape === 'mesh') {
+  const R = n, C = n;
+  const id = (r, c) => 'n' + (r * C + c);
+  for (let r = 0; r < R; r++) for (let c = 0; c < C; c++) add(id(r, c), c * 120, r * 80);
+  for (let r = 0; r < R; r++) for (let c = 0; c < C; c++) {
+    if (c + 1 < C) edges.push({ id: 'h' + r + '_' + c, source: id(r, c), target: id(r, c + 1) });
+    if (r + 1 < R) edges.push({ id: 'v' + r + '_' + c, source: id(r, c), target: id(r + 1, c) });
+  }
+} else {
+  for (let i = 0; i < n; i++) add('n' + i, (i % 50) * 120, Math.floor(i / 50) * 80);
+  if (shape === 'chain') {
+    for (let i = 1; i < n; i++) edges.push({ id: 'e' + i, source: 'n' + (i - 1), target: 'n' + i });
+  } else if (shape === 'tree') {
+    for (let i = 1; i < n; i++) edges.push({ id: 'e' + i, source: 'n' + ((i - 1) >> 1), target: 'n' + i });
+  } else if (shape === 'dag') {
+    // The sparse DAG that killed layered: binary tree + a long-span edge every 4th node.
+    for (let i = 1; i < n; i++) edges.push({ id: 'e' + i, source: 'n' + ((i - 1) >> 1), target: 'n' + i });
+    for (let i = 4; i < n; i += 4) edges.push({ id: 'x' + i, source: 'n' + (i - 3), target: 'n' + i });
+  } else if (shape === 'star') {
+    for (let i = 1; i < n; i++) edges.push({ id: 'e' + i, source: 'n0', target: 'n' + i });
+  } else if (shape === 'components') {
+    // Disconnected: chains of 10.
+    for (let i = 1; i < n; i++) if (i % 10 !== 0) edges.push({ id: 'e' + i, source: 'n' + (i - 1), target: 'n' + i });
+  }
+}
+
+const api = render({ nodes, edges }, document.getElementById('stage'));
+window.__bench = {
+  api,
+  run: async (engineName, options = {}) => {
+    const t0 = performance.now();
+    await api.getEngine().layout(engineName, { direction: 'TB', nodeSpacing: 20, rankSpacing: 52, ...options });
+    const ms = Math.round(performance.now() - t0);
+    const ns = api.getModel().getNodes();
+    const xs = ns.map((nd) => nd.position.x), ys = ns.map((nd) => nd.position.y);
+    const w = Math.max(...xs) - Math.min(...xs), h = Math.max(...ys) - Math.min(...ys);
+    const distinct = new Set(ns.map((nd) => `${Math.round(nd.position.x)},${Math.round(nd.position.y)}`)).size;
+    return { ms, w: Math.round(w), h: Math.round(h), nodes: ns.length, distinct };
+  },
+};
+window.__ready = true;
+</script>
