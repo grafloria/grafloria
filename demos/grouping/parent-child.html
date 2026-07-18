@@ -1,11 +1,36 @@
 <meta charset="utf-8">
 <title>Parent &amp; child — Grafloria</title>
 <link rel="stylesheet" href="../shell/demo.css">
+<style>
+  #strip { display: flex; gap: 14px; align-items: center; padding: 8px 24px; font: 12px/1.5 ui-monospace, monospace; opacity: .9; border-bottom: 1px solid rgba(127,127,127,.25); white-space: pre; }
+  #pc-detach { font: 12px ui-monospace, monospace; padding: 3px 10px; border: 1px solid rgba(127,127,127,.5); border-radius: 5px; background: transparent; color: inherit; cursor: pointer; }
+  #pc-detach:hover { border-color: rgba(127,127,127,.9); }
+  #canvas { height: calc(100vh - 168px); }
+</style>
 <header id="demo-head"></header>
+<div id="strip"><button id="pc-detach">Detach child</button><span id="readout"></span></div>
 <div id="canvas"></div>
 <script type="module">
 import { render } from '../shell/grafloria.js';
 import { defineDemo, check } from '../shell/demo.js';
+
+// Dynamic grouping, hands-on — React Flow's parent-child story on Grafloria's
+// membership model. RF gives children a parentId and relative coordinates;
+// Grafloria stores ABSOLUTE coordinates and binds a child through explicit group
+// MEMBERSHIP. This page wires the three RF behaviours to real gestures using
+// only public API:
+//
+//   attach on drop   — release the child inside the container → addToGroup
+//   extent           — a member dragged out is clamped back on RELEASE
+//                      (clampChildToExtent on the engine's nodes:change).
+//                      LIB GAP vs RF: extent:'parent' clamps DURING the drag;
+//                      Grafloria has no during-drag constraint hook, so the child
+//                      can visit out-of-bounds mid-gesture and is reeled back
+//                      at the drop.
+//   parent carries   — enableGroupDrag: dragging the frame moves member + frame
+//
+// Detaching is a button, exactly like RF Pro's node-toolbar "detach": dragging
+// out cannot mean "leave" while the extent means "you cannot leave".
 
 const inside = (r, n) =>
   n.position.x >= r.x - 1 && n.position.y >= r.y - 1 &&
@@ -14,24 +39,27 @@ const inside = (r, n) =>
 
 defineDemo({
   name: 'Parent & child',
-  blurb: 'Attach a node to a container and it is CONSTRAINED to the container’s extent; detach it and it is free again. Membership is what binds the child — proven by dragging it in both states.',
+  blurb: 'Drop the child into the container to attach it. While attached, an out-of-bounds drag is reeled back to the container’s extent on release, and dragging the frame carries the child along. Detach, and the very same drag sticks — membership is the binding.',
   howTo: [
-    'On load a "Container" frame holds a lone "child" node — but the child is NOT yet a member; it merely sits there.',
-    'Drag the child anywhere, even far outside the frame: geometry never binds it — membership is explicit.',
-    'Open the DevTools console and run `await __demo.run()`: the page attaches the child, drags it way out of bounds, and the container clamps it back inside its extent.',
-    'The same run then detaches the child and repeats the identical drag — this time it sticks: the child ends parked outside, because membership was the only thing binding it.',
+    'The "child" starts OUTSIDE the container, free. Drag it into the container and release — the strip reports it ATTACHED: dropping into a group is what parents a node.',
+    'Now drag the child far outside and release — the container reels it back inside. While it is a member, the container’s extent constrains it (constrainChildren).',
+    'Press an empty spot of the container and drag: frame and child travel together — children move with their parent (enableGroupDrag).',
+    'Click "Detach child" and repeat the outward drag — this time it sticks. Same gesture, no membership, no constraint. Drop it back inside to re-attach.',
   ],
   reactflow: 'Dynamic Grouping',
   pro: true,
 
   async setup(ctx) {
     const api = render({
-      nodes: [{ id: 'child', position: { x: 450, y: 200 }, size: { width: 100, height: 50 }, label: 'child' }],
+      nodes: [{ id: 'child', position: { x: 120, y: 420 }, size: { width: 100, height: 50 }, label: 'child' }],
       edges: [],
     }, ctx.host);
     ctx.instance = api;
     ctx.diagram = api.getModel();
     ctx.engine = api.getEngine();
+
+    // Dragging the container's frame moves the whole subflow (see parent-move).
+    ctx.engine.setInteractionConfig({ enableGroupDrag: true });
 
     const g = await ctx.engine.addGroup({ name: 'Container' });
     ctx.frame = { x: 400, y: 150, width: 320, height: 260 };
@@ -39,12 +67,57 @@ defineDemo({
     g.constrainChildren = true;
     ctx.g = g;
 
+    const strip = document.getElementById('strip');
+    const m = ctx.diagram;
+    ctx.report = () => {
+      const member = g.members.has('child');
+      const n = m.getNode('child');
+      const where = n && inside(g.getOuterBounds(), n) ? 'inside' : 'outside';
+      document.getElementById('readout').textContent = member
+        ? `ATTACHED — the child is a member; drag it out and the container reels it back (${where})`
+        : `detached — the child is free (${where}); drop it inside the container to attach`;
+    };
+
+    // THE GLUE — dynamic grouping over public seams, the same division of labor
+    // as RF's Pro example (RF core gives parentId/extent; the app decides WHEN
+    // to parent). nodes:change fires when a drag commits:
+    //   not a member + released inside  → attach (addToGroup)
+    //   a member                        → clamp to the extent (reel it back)
+    // The clamp runs now AND next frame: the drag's MoveNodeCommand commits
+    // asynchronously with the release position and would otherwise re-apply it
+    // over the clamp.
+    const clampNow = () => { if (g.clampChildToExtent('child', m)) api.renderNow(); };
+    const settle = () => {
+      const n = m.getNode('child');
+      if (!n) return;
+      if (!g.members.has('child')) {
+        const b = g.getOuterBounds();
+        const cx = n.position.x + n.size.width / 2, cy = n.position.y + n.size.height / 2;
+        if (cx >= b.x && cx <= b.x + b.width && cy >= b.y && cy <= b.y + b.height) {
+          void ctx.engine.addToGroup(g.id, 'child').then(() => { clampNow(); ctx.report(); });
+        }
+      } else clampNow();
+      ctx.report();
+    };
+    api.on('nodes:change', () => {
+      settle();
+      requestAnimationFrame(() => { if (g.members.has('child')) clampNow(); ctx.report(); });
+    });
+
+    // Detach is an explicit action (RF Pro: a toolbar button), never a gesture.
+    document.getElementById('pc-detach').addEventListener('click', () => {
+      strip.dataset.clicks = String(1 + (+strip.dataset.clicks || 0)); // every click observable
+      if (g.members.has('child')) void ctx.engine.removeFromGroup(g.id, 'child').then(ctx.report);
+      else ctx.report();
+    });
+
     ctx.fire = (type, w) => {
       const rect = ctx.host.getBoundingClientRect();
       const c = api.viewport.worldToClient(w.x, w.y, rect);
       ctx.host.dispatchEvent(new PointerEvent(({ mousedown: 'pointerdown', mousemove: 'pointermove', mouseup: 'pointerup' })[type] ?? type, { bubbles: true, pointerId: 1, pointerType: 'mouse', clientX: c.x, clientY: c.y, button: 0 }));
     };
-    ctx.centre = () => { const n = ctx.diagram.getNode('child'); return { x: n.position.x + n.size.width / 2, y: n.position.y + n.size.height / 2 }; };
+    ctx.centre = () => { const n = m.getNode('child'); return { x: n.position.x + n.size.width / 2, y: n.position.y + n.size.height / 2 }; };
+    // Drag the CHILD so its centre lands on (wx,wy).
     ctx.dragChildTo = (wx, wy) => {
       const c0 = ctx.centre();
       ctx.fire('mousedown', c0);
@@ -53,6 +126,16 @@ defineDemo({
       ctx.fire('mouseup',   { x: wx, y: wy });
       api.renderNow();
     };
+    // Drag from an arbitrary point (used to grab the container's empty band).
+    ctx.dragFrom = (w, dx, dy) => {
+      ctx.fire('mousedown', w);
+      ctx.fire('mousemove', { x: w.x + 8, y: w.y });
+      ctx.fire('mousemove', { x: w.x + dx, y: w.y + dy });
+      ctx.fire('mouseup',   { x: w.x + dx, y: w.y + dy });
+      api.renderNow();
+    };
+    ctx.settleTicks = async (n = 6) => { for (let i = 0; i < n; i++) await ctx.tick(10); };
+    ctx.report();
     await ctx.tick();
   },
 
@@ -60,37 +143,65 @@ defineDemo({
   // runaway drag ended, clamped back inside the container's inner extent.
   async showcase(ctx) {
     const n = ctx.diagram.getNode('child');
-    ctx.g.addMember('child', ctx.diagram);
+    await ctx.engine.addToGroup(ctx.g.id, 'child');
     n.setPosition(ctx.frame.x + ctx.frame.width + 140, ctx.frame.y - 90); // way outside
     ctx.g.clampChildToExtent('child', ctx.diagram);
     ctx.instance.renderNow();
+    ctx.report();
   },
 
   async assert(ctx) {
-    const m = ctx.diagram, g = ctx.g, frame = ctx.frame;
+    const m = ctx.diagram, g = ctx.g;
     const child = m.getNode('child');
+    const frame = () => g.getOuterBounds();
 
-    // ---- ATTACHED ----------------------------------------------------------
-    await ctx.engine.addToGroup(g.id, 'child');
-    check(g.members.has('child'), 'attach failed — child is not a member of the container');
+    // 0. Boot: free and OUTSIDE — nothing has parented it yet.
+    check(!g.members.has('child'), 'the child must start detached');
+    check(!inside(frame(), child), 'the child must start outside the container');
 
-    // Drag the child WAY outside the container, then the container reels it back in.
+    // 1. ATTACH ON DROP: a real drag that RELEASES inside the container parents
+    //    the node — no API call from the test, the page's drop glue does it.
+    ctx.dragChildTo(frame().x + 160, frame().y + 80);
+    for (let i = 0; i < 30 && !g.members.has('child'); i++) await ctx.tick(10);
+    check(g.members.has('child'), 'releasing the child inside the container must attach it');
+    check(inside(frame(), child), `the attached child should sit inside, at ${JSON.stringify(child.position)}`);
+
+    // 2. THE EXTENT: drag the member far out of bounds and release — the
+    //    container reels it back in. (The drop target is well outside.)
+    const f2 = frame();
+    check(!(1050 >= f2.x && 1050 <= f2.x + f2.width && 660 >= f2.y && 660 <= f2.y + f2.height),
+      'precondition: the out-of-bounds drop target must be outside the frame');
     ctx.dragChildTo(1050, 660);
-    check(!inside(frame, child), 'precondition: the drag should have taken the child outside the frame');
-    const clamped = g.clampChildToExtent('child', m);
-    check(clamped, 'an attached, constrained child dragged out of bounds should be clamped back');
-    check(inside(frame, child), `the attached child must be constrained inside the container, at ${JSON.stringify(child.position)}`);
+    await ctx.settleTicks();
+    check(g.members.has('child'), 'an out-of-bounds drag must not silently detach the member');
+    check(inside(frame(), child),
+      `a member dragged out must be clamped back inside on release, at ${JSON.stringify(child.position)}`);
 
-    // ---- DETACHED ----------------------------------------------------------
-    await ctx.engine.removeFromGroup(g.id, 'child');
-    check(!g.members.has('child'), 'detach failed — child is still a member');
+    // 3. PARENT CARRIES CHILD: park the member at a known spot, then drag the
+    //    container's EMPTY band — frame and member travel by the same delta.
+    ctx.dragChildTo(frame().x + 160, frame().y + 80);
+    await ctx.settleTicks();
+    const b1 = { ...child.position };
+    const f0 = frame();
+    ctx.dragFrom({ x: f0.x + 40, y: f0.y + f0.height - 30 }, 120, 40); // empty corner, below the child
+    await ctx.settleTicks();
+    check(Math.abs(child.position.x - (b1.x + 120)) < 1 && Math.abs(child.position.y - (b1.y + 40)) < 1,
+      `dragging the frame must carry the child, at ${JSON.stringify(child.position)} (was ${JSON.stringify(b1)})`);
+    const f1 = frame();
+    check(Math.abs(f1.x - (f0.x + 120)) < 1 && Math.abs(f1.y - (f0.y + 40)) < 1,
+      `the frame itself must move, at ${JSON.stringify(f1)}`);
 
-    // THE TEETH: now the SAME out-of-bounds drag sticks. Membership was the only
-    // thing binding it; with none, the container has no say.
+    // 4. DETACH (the button — an explicit action, not a gesture), then THE
+    //    TEETH: the identical out-of-bounds drag now STICKS. Same gesture, no
+    //    membership, no constraint — membership was the only binding.
+    document.getElementById('pc-detach').click();
+    for (let i = 0; i < 30 && g.members.has('child'); i++) await ctx.tick(10);
+    check(!g.members.has('child'), 'the Detach button must remove membership');
     ctx.dragChildTo(1050, 660);
-    const clampedNow = g.clampChildToExtent('child', m);
-    check(!clampedNow, 'a detached child must NOT be clamped by its former container');
-    check(!inside(frame, child), 'the detached child should be free to sit outside the former container');
+    await ctx.settleTicks();
+    check(!g.members.has('child'), 'a drop OUTSIDE the container must not re-attach');
+    check(!inside(frame(), child),
+      `the detached child must be free to stay outside, at ${JSON.stringify(child.position)}`);
   },
 });
 </script>

@@ -1,0 +1,125 @@
+<meta charset="utf-8">
+<title>Scrollable cards — Grafloria</title>
+<link rel="stylesheet" href="../shell/demo.css">
+<header id="demo-head"></header>
+<div id="canvas"></div>
+<script type="module">
+import { render, erDiagram } from '../shell/grafloria.js';
+import { defineDemo, check } from '../shell/demo.js';
+
+// A table with far more columns than any card should stretch to. Give the
+// entity a fixed `height` and the kit body scrolls; the binder DELEGATES a
+// wheel over the card to that body (card content is pointer-events:none, so
+// native scroll could never reach it), and hands the wheel back to the canvas
+// at the end of the range. Same option on umlDiagram classes.
+const COLUMNS = [
+  { name: 'id', type: 'int', pk: true },
+  { name: 'sku', type: 'varchar' },
+  { name: 'name', type: 'varchar' },
+  { name: 'description', type: 'text' },
+  { name: 'category', type: 'varchar' },
+  { name: 'supplier_id', type: 'int', fk: true },
+  { name: 'unit_cost', type: 'decimal' },
+  { name: 'list_price', type: 'decimal' },
+  { name: 'currency', type: 'char(3)' },
+  { name: 'weight_kg', type: 'decimal' },
+  { name: 'width_cm', type: 'decimal' },
+  { name: 'height_cm', type: 'decimal' },
+  { name: 'depth_cm', type: 'decimal' },
+  { name: 'stock_on_hand', type: 'int' },
+  { name: 'stock_reserved', type: 'int' },
+  { name: 'reorder_level', type: 'int' },
+  { name: 'reorder_qty', type: 'int' },
+  { name: 'barcode', type: 'varchar' },
+  { name: 'is_active', type: 'bool' },
+  { name: 'created_at', type: 'timestamp' },
+  { name: 'updated_at', type: 'timestamp' },
+];
+
+const SPEC = erDiagram({
+  entities: [
+    // Small table, no height: sized to content, no scrollbar. On the left so
+    // "supplies" runs straight across into the tall card.
+    { id: 'SUPPLIER', name: 'Supplier', position: { x: 120, y: 150 }, columns: [
+      { name: 'id', type: 'int', pk: true },
+      { name: 'name', type: 'varchar' },
+    ]},
+    // 21 columns, capped at 260px — the body scrolls.
+    { id: 'ITEM', name: 'Warehouse Item', position: { x: 460, y: 90 }, height: 260, columns: COLUMNS },
+  ],
+  relationships: [{ from: 'SUPPLIER', to: 'ITEM', label: 'supplies' }],
+});
+
+defineDemo({
+  name: 'Scrollable cards',
+  blurb: 'A table with 21 columns capped at a fixed height: the card body scrolls. The wheel belongs to the card while it can move (the binder delegates — card content is pointer-events:none), the canvas pans again at the end of the range, and ctrl/⌘-wheel always zooms.',
+  howTo: [
+    'Put the cursor over the Warehouse Item rows and wheel: the ROWS scroll, the canvas does not move. Keep wheeling to the last row — once the card is exhausted, the same wheel pans the canvas again.',
+    'Hold ctrl (or ⌘) and wheel over the card: pinch-zoom always belongs to the canvas, never the rows.',
+    'Drag the card by its dark header to move the table; the relationship re-routes. Click it to select — the ring is on the card itself.',
+    'Read the source: one erDiagram() call; the tall entity just adds `height: 260`. The same option exists on umlDiagram classes with many members.',
+  ],
+  reactflow: 'Custom nodes + nowheel class',
+
+  async setup(ctx) {
+    const api = render(SPEC, ctx.host);
+    ctx.instance = api;
+    ctx.diagram = api.getModel();
+    api.fitView?.(40);
+    await ctx.tick();
+  },
+
+  async assert(ctx) {
+    const host = ctx.host;
+    const body = host.querySelector('[data-node-id="ITEM"] .axk-entity-body');
+    check(!!body, 'the tall entity should render a kit body element');
+
+    // 1. The fixed height binds and the body genuinely overflows.
+    const node = ctx.diagram.getNode('ITEM');
+    check(node.size.height === 260, `entity height option should bind (got ${node.size.height})`);
+    const range = body.scrollHeight - body.clientHeight;
+    check(range > 100, `21 rows in a 260px card must overflow (scroll range ${range}px)`);
+    const small = host.querySelector('[data-node-id="SUPPLIER"] .axk-entity-body');
+    check(small && small.scrollHeight <= small.clientHeight, 'the small table should NOT overflow');
+
+    // 2. A real wheel over the card scrolls the CARD, not the canvas. The
+    //    dispatch goes to the element the browser would actually hit
+    //    (the foreignObject — content is pointer-events:none) and bubbles to
+    //    the binder like a trusted wheel would.
+    const vb = () => JSON.stringify(ctx.instance.viewport.getViewBox());
+    const wheelOverBody = (init = {}) => {
+      const r = body.getBoundingClientRect();
+      const cx = r.x + r.width / 2, cy = r.y + Math.min(60, r.height / 2);
+      const target = document.elementFromPoint(cx, cy) || body;
+      target.dispatchEvent(new WheelEvent('wheel', {
+        deltaY: 120, clientX: cx, clientY: cy, bubbles: true, cancelable: true, ...init,
+      }));
+    };
+    body.scrollTop = 0;
+    const vb0 = vb();
+    wheelOverBody();
+    check(body.scrollTop > 0, 'a wheel over the card must scroll its rows');
+    check(vb() === vb0, 'while the card scrolls, the canvas must NOT pan');
+
+    // 3. At the end of the range the canvas takes the wheel back.
+    body.scrollTop = range;
+    wheelOverBody();
+    check(vb() !== vb0, 'once the card is exhausted, the wheel must pan the canvas');
+
+    // 4. ctrl-wheel is pinch-zoom — canvas, never the rows.
+    const scrolledAt = body.scrollTop = 40;
+    const vb1 = vb();
+    wheelOverBody({ ctrlKey: true, deltaY: -120 });
+    check(vb() !== vb1, 'ctrl-wheel over the card must zoom the canvas');
+    check(body.scrollTop === scrolledAt, 'ctrl-wheel must never scroll the card');
+
+    // 5. Kit stylesheet injected exactly once.
+    check(document.querySelectorAll('#grafloria-diagram-kit-styles').length === 1, 'the kit stylesheet should be injected once');
+
+    // Leave a deterministic frame for the visual gate.
+    body.scrollTop = 0;
+    ctx.instance.fitView?.(40);
+    await ctx.tick();
+  },
+});
+</script>
