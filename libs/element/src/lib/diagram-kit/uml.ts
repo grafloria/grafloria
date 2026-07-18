@@ -130,7 +130,7 @@ const classCard = (cls: UmlClassSpec) => {
         },
         {
           tag: 'div',
-          className: 'axk-uml-body',
+          className: cls.height != null ? 'axk-uml-body axk-scroll' : 'axk-uml-body',
           children: [
             {
               tag: 'div',
@@ -173,7 +173,7 @@ export function umlDiagram(options: UmlDiagramOptions): {
     const attrs = cls.attributes ?? [];
     const methods = cls.methods ?? [];
     const height =
-      cls.height ?? NAME_H + (cls.stereotype ? STEREO_H : 0) + (attrs.length + methods.length) * LINE_H + PAD * 2 + 6;
+      cls.height ?? NAME_H + (cls.stereotype ? STEREO_H : 0) + (attrs.length + methods.length) * LINE_H + PAD * 2 + 12; // + html wrapper padding & borders, measured live
     return {
       id: cls.id,
       position: cls.position ?? { x: 80 + (i % 3) * 320, y: 60 + Math.floor(i / 3) * 260 },

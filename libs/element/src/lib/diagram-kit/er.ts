@@ -25,8 +25,13 @@ import { ensureDiagramKitStyles } from './styles';
 /** Row height / header height of the entity card — sizing is derived from these. */
 export const ER_ROW_H = 25;
 export const ER_HEAD_H = 28;
-/** Border slack: the card's 1px top+bottom borders eat into height:100%. */
-const BORDER_SLACK = 4;
+/**
+ * Auto-height slack: the html wrapper's padding (8px) + the card's 1px
+ * top/bottom borders + the head rendering slightly under ER_HEAD_H. Measured
+ * live — with less, an auto-sized card overflows a few px, and the wheel
+ * delegation would steal that much scroll on EVERY card.
+ */
+const BORDER_SLACK = 9;
 const DEFAULT_WIDTH = 190;
 
 export interface ErColumn {
@@ -99,7 +104,9 @@ const entityCard = (entity: ErEntitySpec) => ({
       { tag: 'div', className: 'axk-entity-head', text: entity.name ?? entity.id },
       {
         tag: 'div',
-        className: 'axk-entity-body',
+        // Scroll is OPT-IN via an explicit height: an auto-sized card fits by
+        // construction and must never trap the wheel, not even by a pixel.
+        className: entity.height != null ? 'axk-entity-body axk-scroll' : 'axk-entity-body',
         children: entity.columns.map((c) => ({
           tag: 'div',
           className: 'axk-row' + (c.pk ? ' axk-pk' : ''),

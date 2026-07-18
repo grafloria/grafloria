@@ -56,9 +56,9 @@ describe('erDiagram — entities', () => {
     expect(text).toContain('axk-entity');
   });
 
-  it('sizes the card from its column count (the +4 border slack included)', () => {
+  it('sizes the card from its column count (slack covers wrapper padding + borders)', () => {
     const spec = erDiagram({ entities: [CUSTOMER] });
-    expect(findNode(spec, 'CUSTOMER').size.height).toBe(ER_HEAD_H + 3 * ER_ROW_H + 4);
+    expect(findNode(spec, 'CUSTOMER').size.height).toBe(ER_HEAD_H + 3 * ER_ROW_H + 9);
   });
 
   it("hides the node's own rectangle so the card's border is the only border", () => {
@@ -78,10 +78,14 @@ describe('erDiagram — entities', () => {
 });
 
 describe('scrollable cards (many fields + user resize)', () => {
-  it('wraps the entity rows in a scrollable body region', () => {
-    const spec = erDiagram({ entities: [CUSTOMER] });
-    const text = treeText(findNode(spec, 'CUSTOMER').metadata.html.content);
-    expect(text).toContain('axk-entity-body');
+  it('wraps the entity rows in a body region; scroll is OPT-IN via explicit height', () => {
+    const auto = erDiagram({ entities: [CUSTOMER] });
+    const autoText = treeText(findNode(auto, 'CUSTOMER').metadata.html.content);
+    expect(autoText).toContain('axk-entity-body');
+    // An auto-sized card fits by construction — it must never trap the wheel.
+    expect(autoText).not.toContain('axk-scroll');
+    const fixed = erDiagram({ entities: [{ ...CUSTOMER, height: 160 }] });
+    expect(treeText(findNode(fixed, 'CUSTOMER').metadata.html.content)).toContain('axk-scroll');
   });
 
   it('an explicit entity height wins over the computed one (fixed height → the body scrolls)', () => {
@@ -89,20 +93,27 @@ describe('scrollable cards (many fields + user resize)', () => {
     expect(findNode(spec, 'CUSTOMER').size.height).toBe(160);
   });
 
-  it('wraps the uml compartments in a scrollable body region, and honours explicit height', () => {
-    const spec = umlDiagram({
+  it('wraps the uml compartments in a body region, honours explicit height, and gates scroll on it', () => {
+    const fixed = umlDiagram({
       classes: [{ id: 'Big', attributes: ['+ a: int'], methods: ['+ m(): void'], height: 140 }],
       relationships: [],
     });
-    expect(treeText(findNode(spec, 'Big').metadata.html.content)).toContain('axk-uml-body');
-    expect(findNode(spec, 'Big').size.height).toBe(140);
+    const fixedText = treeText(findNode(fixed, 'Big').metadata.html.content);
+    expect(fixedText).toContain('axk-uml-body');
+    expect(fixedText).toContain('axk-scroll');
+    expect(findNode(fixed, 'Big').size.height).toBe(140);
+    const auto = umlDiagram({ classes: [{ id: 'Small', attributes: ['+ a: int'] }], relationships: [] });
+    expect(treeText(findNode(auto, 'Small').metadata.html.content)).not.toContain('axk-scroll');
   });
 
-  it('the kit stylesheet makes the body regions scroll (overflow-y auto)', () => {
+  it('the kit stylesheet scrolls ONLY the opted-in body regions', () => {
     ensureDiagramKitStyles();
     const css = document.getElementById(DIAGRAM_KIT_STYLE_ID)!.textContent || '';
-    expect(css).toMatch(/\.axk-entity-body[^}]*overflow-y:\s*auto/);
-    expect(css).toMatch(/\.axk-uml-body[^}]*overflow-y:\s*auto/);
+    expect(css).toMatch(/\.axk-entity-body\.axk-scroll[^}]*overflow-y:\s*auto/);
+    expect(css).toMatch(/\.axk-uml-body\.axk-scroll[^}]*overflow-y:\s*auto/);
+    // The un-opted body clips: auto-height cards never show a scrollbar.
+    expect(css).toMatch(/\.axk-entity-body\s*\{[^}]*overflow-y:\s*hidden/);
+    expect(css).toMatch(/\.axk-uml-body\s*\{[^}]*overflow-y:\s*hidden/);
   });
 });
 

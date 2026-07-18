@@ -22,7 +22,8 @@ const CSS = `
   border-radius: 6px; overflow: hidden; background: #fff;
   width: 100%; height: 100%; box-sizing: border-box;
   display: flex; flex-direction: column; }
-.axk-entity-body { flex: 1; min-height: 0; overflow-y: auto; scrollbar-width: thin; }
+.axk-entity-body { flex: 1; min-height: 0; overflow-y: hidden; }
+.axk-entity-body.axk-scroll { overflow-y: auto; scrollbar-width: thin; }
 .axk-entity-head { background: #334155; color: #fff; font-weight: 600;
   letter-spacing: .3px; padding: 5px 10px; text-transform: uppercase; font-size: 11px; }
 .axk-row { display: flex; align-items: center; gap: 8px; padding: 3px 10px;
@@ -38,7 +39,8 @@ const CSS = `
   border-radius: 4px; overflow: hidden; background: #fff;
   width: 100%; height: 100%; box-sizing: border-box;
   display: flex; flex-direction: column; }
-.axk-uml-body { flex: 1; min-height: 0; overflow-y: auto; scrollbar-width: thin; }
+.axk-uml-body { flex: 1; min-height: 0; overflow-y: hidden; }
+.axk-uml-body.axk-scroll { overflow-y: auto; scrollbar-width: thin; }
 .axk-uml-name { text-align: center; font-weight: 700; padding: 5px 10px;
   background: #eef2ff; color: #1e1b4b; }
 .axk-uml-name.axk-abstract { font-style: italic; }
