@@ -42,6 +42,8 @@ export interface UmlClassSpec {
   methods?: string[];
   position?: { x: number; y: number };
   width?: number;
+  /** Fixed card height — smaller than the content makes the compartments scroll. */
+  height?: number;
 }
 
 export type UmlRelationKind =
@@ -128,13 +130,19 @@ const classCard = (cls: UmlClassSpec) => {
         },
         {
           tag: 'div',
-          className: 'axk-uml-comp' + (attrs.length ? '' : ' axk-empty'),
-          children: attrs.map((a) => ({ tag: 'div', className: 'axk-member', text: a })),
-        },
-        {
-          tag: 'div',
-          className: 'axk-uml-comp' + (methods.length ? '' : ' axk-empty'),
-          children: methods.map((m) => ({ tag: 'div', className: 'axk-member', text: m })),
+          className: 'axk-uml-body',
+          children: [
+            {
+              tag: 'div',
+              className: 'axk-uml-comp' + (attrs.length ? '' : ' axk-empty'),
+              children: attrs.map((a) => ({ tag: 'div', className: 'axk-member', text: a })),
+            },
+            {
+              tag: 'div',
+              className: 'axk-uml-comp' + (methods.length ? '' : ' axk-empty'),
+              children: methods.map((m) => ({ tag: 'div', className: 'axk-member', text: m })),
+            },
+          ],
         },
       ],
     },
@@ -165,7 +173,7 @@ export function umlDiagram(options: UmlDiagramOptions): {
     const attrs = cls.attributes ?? [];
     const methods = cls.methods ?? [];
     const height =
-      NAME_H + (cls.stereotype ? STEREO_H : 0) + (attrs.length + methods.length) * LINE_H + PAD * 2 + 6;
+      cls.height ?? NAME_H + (cls.stereotype ? STEREO_H : 0) + (attrs.length + methods.length) * LINE_H + PAD * 2 + 6;
     return {
       id: cls.id,
       position: cls.position ?? { x: 80 + (i % 3) * 320, y: 60 + Math.floor(i / 3) * 260 },

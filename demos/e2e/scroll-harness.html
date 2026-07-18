@@ -1,0 +1,34 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Scrollable-card harness</title>
+<style>body { margin: 0; } #stage { width: 100vw; height: 100vh; }</style>
+<div id="stage"></div>
+<script type="module">
+import { render, erDiagram } from '../shell/grafloria.js';
+
+// A 20-column entity at a FIXED height — the many-fields-with-scrollbar case.
+const cols = Array.from({ length: 20 }, (_, i) => ({ name: `field_${i + 1}`, type: 'varchar', pk: i === 0 }));
+const api = render(erDiagram({
+  entities: [
+    { id: 'BIG', name: 'Big Table', position: { x: 120, y: 80 }, columns: cols, height: 220 },
+    { id: 'OTHER', name: 'Other', position: { x: 520, y: 80 }, columns: [{ name: 'id', type: 'int', pk: true }] },
+  ],
+  relationships: [{ from: 'BIG', to: 'OTHER', label: 'refs' }],
+}), document.getElementById('stage'));
+api.renderNow();
+window.harness = {
+  api,
+  body: () => document.querySelector('.axk-entity-body'),
+  state: () => {
+    const body = document.querySelector('.axk-entity-body');
+    const vb = api.viewport.getViewBox?.() ?? {};
+    return {
+      scrollTop: Math.round(body.scrollTop),
+      max: body.scrollHeight - body.clientHeight,
+      panX: Math.round(vb.x ?? 0),
+      panY: Math.round(vb.y ?? 0),
+    };
+  },
+};
+window.__harnessReady = true;
+</script>

@@ -77,6 +77,35 @@ describe('erDiagram — entities', () => {
   });
 });
 
+describe('scrollable cards (many fields + user resize)', () => {
+  it('wraps the entity rows in a scrollable body region', () => {
+    const spec = erDiagram({ entities: [CUSTOMER] });
+    const text = treeText(findNode(spec, 'CUSTOMER').metadata.html.content);
+    expect(text).toContain('axk-entity-body');
+  });
+
+  it('an explicit entity height wins over the computed one (fixed height → the body scrolls)', () => {
+    const spec = erDiagram({ entities: [{ ...CUSTOMER, height: 160 }] });
+    expect(findNode(spec, 'CUSTOMER').size.height).toBe(160);
+  });
+
+  it('wraps the uml compartments in a scrollable body region, and honours explicit height', () => {
+    const spec = umlDiagram({
+      classes: [{ id: 'Big', attributes: ['+ a: int'], methods: ['+ m(): void'], height: 140 }],
+      relationships: [],
+    });
+    expect(treeText(findNode(spec, 'Big').metadata.html.content)).toContain('axk-uml-body');
+    expect(findNode(spec, 'Big').size.height).toBe(140);
+  });
+
+  it('the kit stylesheet makes the body regions scroll (overflow-y auto)', () => {
+    ensureDiagramKitStyles();
+    const css = document.getElementById(DIAGRAM_KIT_STYLE_ID)!.textContent || '';
+    expect(css).toMatch(/\.axk-entity-body[^}]*overflow-y:\s*auto/);
+    expect(css).toMatch(/\.axk-uml-body[^}]*overflow-y:\s*auto/);
+  });
+});
+
 describe('erDiagram — relationships', () => {
   it('defaults to one-to-many: a "one" tail and a crow-foot head, orthogonal, side handles', () => {
     const spec = erDiagram({

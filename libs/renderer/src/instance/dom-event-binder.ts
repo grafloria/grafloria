@@ -21,6 +21,7 @@ import type { ToolHandle } from '../interaction/selection-tools';
 // wave12/connect-ergonomics (gap 2): the shipped proximity-connect engine, now
 // driven from the LIVE node drag instead of host glue.
 import { portWorldPosition } from '../svg/port-positioning';
+import { delegateWheelToScrollable } from './wheel-scroll-yield';
 import { SnapController } from '../interaction/snapping';
 import type { ProximityCandidate } from '../interaction/snapping';
 
@@ -507,6 +508,15 @@ export class DomEventBinder {
     }
 
     if (!this.options.enablePan) return;
+    // A wheel over scrollable HTML content inside a node (an ER table's rows,
+    // a class card's members) belongs to THAT element while it can still
+    // scroll. Card content is pointer-events:none (drag-through), so native
+    // scroll can never reach it — the delegate scrolls it programmatically.
+    // At the end of its range the canvas pans again.
+    if (delegateWheelToScrollable(event)) {
+      event.preventDefault();
+      return;
+    }
     event.preventDefault();
 
     const [dxPx, dyPx] = event.shiftKey

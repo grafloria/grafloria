@@ -43,6 +43,12 @@ export interface ErEntitySpec {
   columns: ErColumn[];
   position?: { x: number; y: number };
   width?: number;
+  /**
+   * Fixed card height. When smaller than the computed height the column list
+   * SCROLLS (the kit body is overflow-y:auto, and the canvas yields the wheel
+   * to it). Omit for auto-height from the column count.
+   */
+  height?: number;
 }
 
 export type ErCardinality =
@@ -91,15 +97,19 @@ const entityCard = (entity: ErEntitySpec) => ({
     className: 'axk-entity',
     children: [
       { tag: 'div', className: 'axk-entity-head', text: entity.name ?? entity.id },
-      ...entity.columns.map((c) => ({
+      {
         tag: 'div',
-        className: 'axk-row' + (c.pk ? ' axk-pk' : ''),
-        children: [
-          { tag: 'span', className: 'axk-key' + (c.fk ? ' axk-fk' : ''), text: c.pk ? 'PK' : c.fk ? 'FK' : '' },
-          { tag: 'span', className: 'axk-col', text: c.name },
-          { tag: 'span', className: 'axk-ty', text: c.type ?? '' },
-        ],
-      })),
+        className: 'axk-entity-body',
+        children: entity.columns.map((c) => ({
+          tag: 'div',
+          className: 'axk-row' + (c.pk ? ' axk-pk' : ''),
+          children: [
+            { tag: 'span', className: 'axk-key' + (c.fk ? ' axk-fk' : ''), text: c.pk ? 'PK' : c.fk ? 'FK' : '' },
+            { tag: 'span', className: 'axk-col', text: c.name },
+            { tag: 'span', className: 'axk-ty', text: c.type ?? '' },
+          ],
+        })),
+      },
     ],
   },
 });
@@ -207,7 +217,7 @@ export function erDiagram(options: ErDiagramOptions): {
   const nodes = options.entities.map((entity, i) => ({
     id: entity.id,
     position: entity.position ?? { x: 60 + (i % 3) * 340, y: 60 + Math.floor(i / 3) * 280 },
-    size: { width: width(entity), height: ER_HEAD_H + entity.columns.length * ER_ROW_H + BORDER_SLACK },
+    size: { width: width(entity), height: entity.height ?? ER_HEAD_H + entity.columns.length * ER_ROW_H + BORDER_SLACK },
     metadata: { html: entityCard(entity) },
     // The card draws its own border — the node's default rectangle is hidden
     // (and re-suppressed on selection by the kit stylesheet).
