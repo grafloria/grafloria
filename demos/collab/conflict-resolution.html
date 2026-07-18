@@ -4,21 +4,77 @@
 <style>
   .note { font-size: 12px; opacity: .8; padding: 10px 24px; border-bottom: 1px solid rgba(127,127,127,.25); line-height: 1.6; }
   code { background: rgba(127,127,127,.15); padding: 1px 5px; border-radius: 4px; }
-  #canvas { display: flex; height: calc(100vh - 190px); }
-  .pane { flex: 1; min-width: 0; position: relative; }
+
+  #canvas { display: flex; height: calc(100vh - 248px); }
+  .pane { flex: 1; min-width: 0; display: flex; flex-direction: column; }
   .pane + .pane { border-left: 2px solid rgba(127,127,127,.35); }
-  .pane .tag { position: absolute; top: 8px; left: 8px; z-index: 2; font: 11px ui-monospace, Menlo, monospace; background: rgba(37,99,235,.85); color:#fff; padding: 2px 8px; border-radius: 4px; }
+  .host { flex: 1; min-height: 0; }
+
+  /* Per-pane control strip — the pane's OWN edit lives here, no console. */
+  .ctrl { display: flex; align-items: center; flex-wrap: wrap; gap: 8px;
+    padding: 8px 10px; border-bottom: 1px solid rgba(127,127,127,.25); }
+  .tag { font: 11px ui-monospace, Menlo, monospace; background: rgba(37,99,235,.85);
+    color: #fff; padding: 2px 8px; border-radius: 4px; white-space: nowrap; }
+
+  button.act { padding: 5px 11px; border-radius: 6px; border: 1px solid rgba(127,127,127,.4);
+    background: transparent; color: inherit; cursor: pointer; font: inherit; font-size: 12px; white-space: nowrap; }
+  button.act:hover { background: rgba(127,127,127,.14); }
+  #nameB { font: inherit; font-size: 12px; padding: 4px 7px; width: 90px;
+    border: 1px solid rgba(127,127,127,.4); border-radius: 6px; background: transparent; color: inherit; }
+
+  /* Live per-pane readout — the whole point is that these two DISAGREE, then MATCH. */
+  .stat { font: 12px ui-monospace, Menlo, monospace; opacity: .85; margin-left: auto; }
+  .stat b { font-weight: 600; }
+  .stat .diff { color: #e0245e; }             /* a value the other peer disagrees with */
+  .stat.flash { animation: converge .8s ease; }
+  @keyframes converge {
+    0%   { background: rgba(22,163,74,.45); box-shadow: 0 0 0 6px rgba(22,163,74,.20); }
+    100% { background: transparent; box-shadow: 0 0 0 0 rgba(22,163,74,0); }
+  }
+
+  /* Shared bottom bar — exchange, reset, third-register, and the verdict line. */
+  #bar { display: flex; align-items: center; gap: 10px; padding: 9px 14px;
+    border-top: 1px solid rgba(127,127,127,.3); }
+  #exchange { font-weight: 600; border-color: rgba(37,99,235,.6); }
+  #verdict { margin-left: 8px; font-size: 13px; }
+  #verdict.ok   { color: #16a34a; font-weight: 600; }
+  #verdict.warn { color: #b45309; }
+  @media (prefers-color-scheme: dark) {
+    #verdict.ok { color: #4ade80; } #verdict.warn { color: #fbbf24; }
+  }
 </style>
 <header id="demo-head"></header>
 <div class="note">
-  Two peers edit the SAME node at the SAME time — one <b>moves</b> it, the other <b>renames</b>
-  it — offline from each other, then converge. <b>Both edits survive on both peers.</b> A
-  whole-entity last-writer-wins would keep one and silently throw the other away; a
+  Two peers edit the SAME node at the SAME time — one <b>moves</b> it (drag it, or ⤢ Move node,
+  in peer&nbsp;A), the other <b>renames</b> it (✎ Rename, in peer&nbsp;B) — offline from each other.
+  Their status chips <b>disagree</b>. Hit <b>⇄ Exchange</b> and both converge with <b>both edits
+  intact</b>. A whole-entity last-writer-wins would keep one and silently throw the other away; a
   <b>per-property</b> CRDT keeps both because position and label are different registers.
 </div>
 <div id="canvas">
-  <div class="pane"><span class="tag">peer A — moves it</span><div id="paneA" style="height:100%"></div></div>
-  <div class="pane"><span class="tag">peer B — renames it</span><div id="paneB" style="height:100%"></div></div>
+  <div class="pane">
+    <div class="ctrl">
+      <span class="tag">peer A — moves it</span>
+      <button class="act" id="moveA" title="Move n1 on peer A only (or just drag the node)">⤢ Move node</button>
+      <span class="stat" id="statA"></span>
+    </div>
+    <div id="paneA" class="host"></div>
+  </div>
+  <div class="pane">
+    <div class="ctrl">
+      <span class="tag">peer B — renames it</span>
+      <input id="nameB" value="Final" aria-label="New label for peer B" title="New label to apply on peer B">
+      <button class="act" id="renameB" title="Rename n1 on peer B only">✎ Rename</button>
+      <span class="stat" id="statB"></span>
+    </div>
+    <div id="paneB" class="host"></div>
+  </div>
+</div>
+<div id="bar">
+  <button class="act" id="exchange">⇄ Exchange / Sync</button>
+  <button class="act" id="reset" title="Re-stage the scenario from scratch">↺ Reset</button>
+  <button class="act" id="resize" title="Resize n1 on peer A — a third, independent register">＋ Resize n1</button>
+  <span id="verdict"></span>
 </div>
 <script type="module">
 import { render, createSyncSession, MemoryHub } from '../shell/grafloria.js';
@@ -38,17 +94,16 @@ function peer(hostId, actor) {
   return { inst, session };
 }
 
-const label = (inst) => inst.getModel().getNode('n1').getMetadata('label');
-const pos = (inst) => { const p = inst.getModel().getNode('n1').position; return { x: p.x, y: p.y }; };
+const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c]);
 
 defineDemo({
   name: 'Conflict resolution',
   blurb: 'Concurrent move + rename of the SAME node: both survive on both peers. Whole-entity LWW would throw one away — a per-property CRDT does not.',
   howTo: [
-    'Drag the Draft node in peer A\'s pane — peer B\'s copy stays put: each replica batches its ops here, so the peers are deliberately offline from each other until they exchange.',
-    'Stage the concurrent rename from the DevTools console: __demoCtx.B.inst.getModel().getNode(\'n1\').setMetadata(\'label\', \'Final\') — only peer B\'s pane shows the new label.',
-    'Exchange: __demoCtx.A.session.flush(); __demoCtx.B.session.flush() — both panes converge with YOUR move AND the rename: position and label are separate registers, so neither edit clobbered the other.',
-    'Try the true same-register conflict: drag the node to a different spot in EACH pane, flush both again — the panes still converge, agreeing on one deterministic winner for the position.',
+    'Drag the Draft node in peer A\'s left pane (or click ⤢ Move node) — only peer A\'s status chip changes its x; peer B stays at x 120. Each replica batches its ops, so the peers are deliberately offline until you exchange.',
+    'In peer B\'s right pane, click ✎ Rename — the node\'s label becomes "Final" on peer B ONLY (type a different name in the box first if you like). Peer A still reads "Draft". Watch the two status chips DISAGREE in red — that is the concurrent conflict, staged by hand.',
+    'Click ⇄ Exchange / Sync in the bottom bar. Both panes converge and both status chips flash green: YOUR move AND the rename survive on both peers — position and label are separate CRDT registers, so neither clobbered the other.',
+    'Prove a third register: click ＋ Resize n1 (peer A) and ✎ Rename again (peer B), then ⇄ Exchange — size, label and position all coexist. ↺ Reset re-stages the whole scenario from the top.',
   ],
   reactflow: 'Collaborative (Yjs)',
   pro: true,
@@ -56,28 +111,143 @@ defineDemo({
   async setup(ctx) {
     ctx.A = peer('paneA', 'ana');
     ctx.B = peer('paneB', 'bo');
+    // The interaction gate (and every generic live-gesture check) drives
+    // __demoCtx.instance — expose peer A so a visitor's real drag on n1 is the
+    // MOVE edit, and so DEAD-BUTTON judges the control strip's real buttons.
+    ctx.instance = ctx.A.inst;
+
+    const statA = document.getElementById('statA');
+    const statB = document.getElementById('statB');
+    const verdict = document.getElementById('verdict');
+    const nameInput = document.getElementById('nameB');
+
+    const nodeOf = (inst) => inst.getModel().getNode('n1');
+    const stateOf = (inst) => {
+      const n = nodeOf(inst);
+      return { label: n.getMetadata('label'), x: Math.round(n.position.x), w: n.size.width };
+    };
+    const renderStat = (el, s, d) => {
+      el.innerHTML =
+        `label <b class="k-label${d.lbl ? ' diff' : ''}">"${esc(s.label)}"</b> · ` +
+        `x <b class="k-x${d.x ? ' diff' : ''}">${s.x}</b> · ` +
+        `w <b class="k-w${d.w ? ' diff' : ''}">${s.w}</b>`;
+    };
+    const flash = () => {
+      for (const el of [statA, statB]) { el.classList.remove('flash'); void el.offsetWidth; el.classList.add('flash'); }
+    };
+
+    let wasConverged = true; // boot: both peers agree
+    // THE LIVE READOUT. Divergence is legible (red mismatched fields); the
+    // convergence moment is loud (green flash + ✓ verdict). Guarded so the
+    // interaction gate's DEL-RESTORE (which momentarily removes n1) can't throw.
+    const refresh = () => {
+      const nA = nodeOf(ctx.A.inst), nB = nodeOf(ctx.B.inst);
+      if (!nA || !nB) return;
+      const a = stateOf(ctx.A.inst), b = stateOf(ctx.B.inst);
+      const d = { lbl: a.label !== b.label, x: a.x !== b.x, w: a.w !== b.w };
+      renderStat(statA, a, d);
+      renderStat(statB, b, d);
+      const converged = !d.lbl && !d.x && !d.w;
+      const edited = !(a.label === 'Draft' && a.x === 120 && a.w === 160);
+      if (!converged) {
+        verdict.className = 'warn';
+        verdict.textContent = '● diverged — the peers hold different values until you ⇄ Exchange';
+      } else if (edited) {
+        verdict.className = 'ok';
+        verdict.textContent = '✓ converged — every edit survived on BOTH peers (move + rename + size are independent registers)';
+        if (!wasConverged) flash();
+      } else {
+        verdict.className = '';
+        verdict.textContent = 'in sync — both peers agree (boot state)';
+      }
+      wasConverged = converged;
+    };
+
+    // ---- THE UI HANDLERS. Each button/drag stages ONE edit on ONE peer; nothing
+    // crosses the wire until Exchange flushes both op logs. These are the exact
+    // functions the assert drives, so the gate exercises the real controls. ----
+
+    // Peer A MOVES n1 (local, unsent). The node is also draggable — a drag lands
+    // the identical kind of position op; this button is the deterministic path.
+    ctx.moveA = () => { nodeOf(ctx.A.inst).setPosition(360, 250); refresh(); };
+
+    // Peer B RENAMES n1 (local, unsent) to whatever is in the box (default "Final").
+    ctx.renameB = (name) => {
+      const v = ((name ?? nameInput.value) || '').trim() || 'Final';
+      nodeOf(ctx.B.inst).setMetadata('label', v);
+      refresh();
+      return v;
+    };
+
+    // Peer A RESIZES n1 — a THIRD independent register (local, unsent).
+    ctx.resizeA = () => { nodeOf(ctx.A.inst).setSize(220, 90); refresh(); };
+
+    // EXCHANGE: flush both op logs so each peer's ops cross to the other. The
+    // per-property CRDT merges them; both edits land on both peers.
+    ctx.exchange = () => {
+      ctx.A.session.flush();
+      ctx.B.session.flush();
+      requestAnimationFrame(() => { ctx.A.inst.renderNow(); ctx.B.inst.renderNow(); refresh(); });
+    };
+
+    // RESET: put both peers back to the boot node and re-sync, ready to re-stage.
+    ctx.resetAll = () => {
+      for (const p of [ctx.A, ctx.B]) {
+        const n = nodeOf(p.inst);
+        n.setPosition(120, 120); n.setSize(160, 70); n.setMetadata('label', 'Draft');
+      }
+      ctx.A.session.flush(); ctx.B.session.flush();
+      requestAnimationFrame(() => {
+        ctx.A.inst.renderNow(); ctx.B.inst.renderNow();
+        nameInput.value = 'Final'; wasConverged = true; refresh();
+      });
+    };
+
+    document.getElementById('moveA').addEventListener('click', () => ctx.moveA());
+    document.getElementById('renameB').addEventListener('click', () => ctx.renameB());
+    document.getElementById('exchange').addEventListener('click', () => ctx.exchange());
+    document.getElementById('reset').addEventListener('click', () => ctx.resetAll());
+    document.getElementById('resize').addEventListener('click', () => ctx.resizeA());
+    nameInput.addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); ctx.renameB(); } });
+
+    // Live status while you DRAG n1 on peer A: node:moved fires on every position
+    // change (dragged or programmatic); nodes:change on the commit / on convergence.
+    for (const p of [ctx.A, ctx.B]) {
+      p.inst.on('node:moved', refresh);
+      p.inst.on('nodes:change', refresh);
+    }
+
+    refresh();
     await ctx.tick();
   },
 
   async assert(ctx) {
     const A = ctx.A.inst, B = ctx.B.inst;
+    const label = (inst) => inst.getModel().getNode('n1').getMetadata('label');
+    const posX = (inst) => inst.getModel().getNode('n1').position.x;
+    const widthOf = (inst) => inst.getModel().getNode('n1').size.width;
 
-    // Baseline: both peers agree.
+    // Baseline: both peers agree (boot).
     check(label(A) === 'Draft' && label(B) === 'Draft', 'peers did not start in agreement on the label');
-    check(pos(A).x === 120 && pos(B).x === 120, 'peers did not start in agreement on the position');
+    check(posX(A) === 120 && posX(B) === 120, 'peers did not start in agreement on the position');
 
-    // ---- CONCURRENT, OFFLINE EDITS on the SAME node --------------------------
-    // Peer A MOVES n1. Peer B RENAMES n1. Neither has sent anything yet.
-    A.getModel().getNode('n1').setPosition(380, 260);
-    B.getModel().getNode('n1').setMetadata('label', 'Final');
+    // ---- CONCURRENT, OFFLINE EDITS, driven through the REAL UI handlers --------
+    // Peer A's ⤢ Move button MOVES n1. Peer B's ✎ Rename button RENAMES n1.
+    // Neither has flushed, so the peers are offline from each other.
+    ctx.moveA();
+    ctx.renameB('Final');
+    const movedX = posX(A);
+    check(movedX !== 120, 'the ⤢ Move handler did not move peer A');
 
-    // Locally, each peer sees only its own edit so far.
-    check(pos(A).x === 380 && label(A) === 'Draft', 'peer A did not apply its own move');
-    check(label(B) === 'Final' && pos(B).x === 120, 'peer B did not apply its own rename');
+    // Locally, each peer sees only its own edit so far — this is the divergence.
+    check(posX(A) === movedX && label(A) === 'Draft', 'peer A applied more/less than its own move');
+    check(label(B) === 'Final' && posX(B) === 120, 'peer B applied more/less than its own rename');
 
-    // ---- NOW they exchange. Each op crosses to the other peer. ---------------
-    ctx.A.session.flush();
-    ctx.B.session.flush();
+    // The on-panel readout must SHOW that divergence to a visitor (red-flagged).
+    check(/diff/.test(document.getElementById('statA').innerHTML), 'the status chips did not flag the pre-exchange divergence');
+
+    // ---- NOW they exchange, via the ⇄ Exchange button handler -----------------
+    ctx.exchange();
     await ctx.tick();
 
     // ---- THE ASSERTION WITH TEETH -------------------------------------------
@@ -86,8 +256,8 @@ defineDemo({
     // the other.
     for (const [name, inst] of [['A', A], ['B', B]]) {
       check(
-        pos(inst).x === 380 && pos(inst).y === 260,
-        `peer ${name} lost the MOVE after convergence — position is ${JSON.stringify(pos(inst))}, expected {380,260}.\n` +
+        posX(inst) === movedX,
+        `peer ${name} lost the MOVE after convergence — position.x is ${posX(inst)}, expected ${movedX}.\n` +
         `    Whole-entity LWW would do exactly this: the rename's write clobbered the move.`
       );
       check(
@@ -103,15 +273,22 @@ defineDemo({
     check(!!document.querySelector('#paneA [data-node-id="n1"]'), "peer A's DOM lost the node");
     check(!!document.querySelector('#paneB [data-node-id="n1"]'), "peer B's DOM lost the node");
 
-    // A further concurrent SIZE change (a third register) also coexists.
-    A.getModel().getNode('n1').setSize(220, 90);
-    B.getModel().getNode('n1').setMetadata('label', 'Final v2');
-    ctx.A.session.flush(); ctx.B.session.flush();
+    // The visitor-facing verdict must announce the win, and neither chip may still
+    // flag a divergence.
+    check(/converged/.test(document.getElementById('verdict').textContent), 'the on-screen verdict did not announce convergence');
+    check(!/diff/.test(document.getElementById('statA').innerHTML) && !/diff/.test(document.getElementById('statB').innerHTML),
+      'a status chip still flags a divergence after exchange');
+
+    // A further concurrent SIZE change (a third register) + a second rename also
+    // coexist — driven through ＋ Resize and ✎ Rename again, then ⇄ Exchange.
+    ctx.resizeA();
+    ctx.renameB('Final v2');
+    ctx.exchange();
     await ctx.tick();
     for (const inst of [A, B]) {
-      check(inst.getModel().getNode('n1').size.width === 220, 'the size edit did not converge');
+      check(widthOf(inst) === 220, 'the size edit did not converge');
       check(label(inst) === 'Final v2', 'the second rename did not converge');
-      check(pos(inst).x === 380, 'the earlier move was lost by a later edit on another register');
+      check(posX(inst) === movedX, 'the earlier move was lost by a later edit on another register');
     }
   },
 });
