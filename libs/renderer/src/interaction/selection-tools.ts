@@ -86,6 +86,16 @@ export interface ToolHandle {
   world: Point;
   /** Hit radius in WORLD units (= screen px / zoom). */
   hitRadius: number;
+  /**
+   * resize-ux: for the four SIDE resize handles (n/e/s/w), the full edge they
+   * own, as a WORLD segment (rotated with the node). React Flow's side
+   * affordance is the whole border line, not a midpoint dot — the live audit
+   * found the 6px dots unreachable (fully inside the port's hover halo), so a
+   * side handle hit-tests as a BAND around this segment: grab the border
+   * anywhere and that edge follows. `world` stays the midpoint for hosts that
+   * draw dots. Corner handles never carry a segment.
+   */
+  segment?: { a: Point; b: Point };
   /** CSS cursor a host should show over this handle. */
   cursor: string;
   /** Accessible name (also used for tooltips / ARIA). */
@@ -189,6 +199,49 @@ const RESIZE_ANCHORS: Record<ResizeHandleId, { u: number; v: number }> = {
 
 export const RESIZE_HANDLE_IDS: ResizeHandleId[] = ['nw', 'n', 'ne', 'e', 'se', 's', 'sw', 'w'];
 
+/** The full edge each SIDE handle owns, as unit-square corner anchors. */
+const SIDE_EDGE_CORNERS: Partial<
+  Record<ResizeHandleId, [{ u: number; v: number }, { u: number; v: number }]>
+> = {
+  n: [{ u: 0, v: 0 }, { u: 1, v: 0 }],
+  e: [{ u: 1, v: 0 }, { u: 1, v: 1 }],
+  s: [{ u: 0, v: 1 }, { u: 1, v: 1 }],
+  w: [{ u: 0, v: 0 }, { u: 0, v: 1 }],
+};
+
+/**
+ * resize-ux: the ONE side-handle-vs-port priority predicate.
+ *
+ * The four side handles live ON the node border, where the default side ports
+ * also live. React Flow resolves the coincidence by z-order: the port glyph
+ * (drawn on top of the resize line) wins its own core, the line wins the rest
+ * of the edge. Ours is the same rule expressed in hover state: when the pointer
+ * is inside a port's grab radius (`hoveredPort` is set) on the SAME node, the
+ * port claims the press/cursor; everywhere else along the band, resize does.
+ *
+ * Exported so the mouse ladder, the touch ladder AND the hover-cursor logic
+ * share one predicate — three private copies is how they drift.
+ */
+export function sideHandleYieldsToPort(
+  handle: ToolHandle,
+  hoveredPort: { nodeId?: string } | null | undefined
+): boolean {
+  if (handle.kind !== 'resize') return false;
+  if (!['n', 'e', 's', 'w'].includes(String(handle.handleId))) return false;
+  return !!hoveredPort && hoveredPort.nodeId === handle.nodeId;
+}
+
+/** Squared distance from `(px,py)` to the segment `a`→`b`. */
+function distToSegmentSq(px: number, py: number, a: Point, b: Point): number {
+  const abx = b.x - a.x;
+  const aby = b.y - a.y;
+  const lenSq = abx * abx + aby * aby;
+  const t = lenSq > 0 ? Math.max(0, Math.min(1, ((px - a.x) * abx + (py - a.y) * aby) / lenSq)) : 0;
+  const cx = a.x + t * abx;
+  const cy = a.y + t * aby;
+  return (px - cx) * (px - cx) + (py - cy) * (py - cy);
+}
+
 const HALO_ORDER: HaloAction[] = ['connect', 'clone', 'fork', 'delete'];
 
 const HALO_LABELS: Record<HaloAction, string> = {
@@ -291,6 +344,24 @@ export function resizeBox(
     }
     if (movesLeft) left = right - width;
     if (movesTop) top = bottom - height;
+  } else if (lockRatio > 0) {
+    // resize-ux: aspect lock on an EDGE handle (RF keepAspectRatio parity — a
+    // line control resizes BOTH axes there too). The dragged axis follows the
+    // pointer (already clamped above); the cross axis derives from the ratio and
+    // stays CENTRED, so the box grows symmetrically instead of drifting to one
+    // side. If the cross axis clamps, the dragged axis is re-derived — the ratio
+    // never breaks, exactly like the corner branch.
+    if (movesLeft || movesRight) {
+      height = clampEdge(width / lockRatio, minHeight, maxHeight);
+      width = clampEdge(height * lockRatio, minWidth, maxWidth);
+      top = start.y + start.height / 2 - height / 2;
+      if (movesLeft) left = right - width;
+    } else {
+      width = clampEdge(height * lockRatio, minWidth, maxWidth);
+      height = clampEdge(width / lockRatio, minHeight, maxHeight);
+      left = start.x + start.width / 2 - width / 2;
+      if (movesTop) top = bottom - height;
+    }
   }
 
   return { x: left, y: top, width, height };
@@ -513,6 +584,8 @@ export class SelectionToolsController {
     ) {
       for (const handleId of RESIZE_HANDLE_IDS) {
         const anchor = RESIZE_ANCHORS[handleId];
+        // resize-ux: side handles own their WHOLE edge (see ToolHandle.segment).
+        const edge = SIDE_EDGE_CORNERS[handleId];
         handles.push({
           id: `resize-${handleId}`,
           kind: 'resize',
@@ -522,6 +595,9 @@ export class SelectionToolsController {
           hitRadius,
           cursor: RESIZE_CURSORS[handleId],
           label: `Resize ${handleId}`,
+          ...(edge
+            ? { segment: { a: place(edge[0].u, edge[0].v), b: place(edge[1].u, edge[1].v) } }
+            : {}),
         });
       }
     }
@@ -700,17 +776,61 @@ export class SelectionToolsController {
    *
    * Later handles win ties, so the halo/remove buttons (emitted last) stay
    * clickable where they overlap a resize handle.
+   *
+   * resize-ux: a handle that carries a `segment` (the four side resize handles)
+   * hit-tests as a BAND around that segment — the whole edge is grabbable, the
+   * React Flow line behaviour. POINT handles always beat bands: the corner dots
+   * sit exactly where two bands end, and the dot must win its own pixel (RF
+   * draws the dots on top of the lines for the same reason). Halo/remove/rotate
+   * are point handles, so their priority over resize is unchanged.
    */
   hitTest(layer: SelectionToolLayer, worldX: number, worldY: number): ToolHandle | null {
-    let best: ToolHandle | null = null;
-    for (const handle of layer.handles) {
-      const dx = worldX - handle.world.x;
-      const dy = worldY - handle.world.y;
-      if (dx * dx + dy * dy <= handle.hitRadius * handle.hitRadius) {
-        best = handle;
+    return this.hitHandles(layer.handles, worldX, worldY, 0);
+  }
+
+  /**
+   * resize-ux: the RESIZE handle under a world point, with optional extra grab
+   * slop (world units). One entry point for the mouse ladder (slop 0) and the
+   * touch ladder (finger-sized slop), so bands and dots grow identically.
+   */
+  hitTestResize(
+    layer: SelectionToolLayer,
+    worldX: number,
+    worldY: number,
+    slop = 0
+  ): ToolHandle | null {
+    const hit = this.hitHandles(
+      layer.handles.filter((h) => h.kind === 'resize'),
+      worldX,
+      worldY,
+      slop
+    );
+    return hit && hit.kind === 'resize' ? hit : null;
+  }
+
+  private hitHandles(
+    handles: ToolHandle[],
+    worldX: number,
+    worldY: number,
+    slop: number
+  ): ToolHandle | null {
+    let bestPoint: ToolHandle | null = null;
+    let bestBand: ToolHandle | null = null;
+    for (const handle of handles) {
+      const r = handle.hitRadius + slop;
+      if (handle.segment) {
+        if (distToSegmentSq(worldX, worldY, handle.segment.a, handle.segment.b) <= r * r) {
+          bestBand = handle;
+        }
+      } else {
+        const dx = worldX - handle.world.x;
+        const dy = worldY - handle.world.y;
+        if (dx * dx + dy * dy <= r * r) {
+          bestPoint = handle;
+        }
       }
     }
-    return best;
+    return bestPoint ?? bestBand;
   }
 
   /** World bbox of a node set. */

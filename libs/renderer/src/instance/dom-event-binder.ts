@@ -16,7 +16,7 @@ import { TouchGestureController } from '../interaction/touch-gestures';
 // wave12/node-resize: the floating tool layer (8 resize handles + the clamp math).
 // It answers "what tools exist and what does grabbing one DO"; the binder is the
 // piece that was missing — the thing that actually GRABS one from a DOM pointer.
-import { SelectionToolsController } from '../interaction/selection-tools';
+import { SelectionToolsController, sideHandleYieldsToPort } from '../interaction/selection-tools';
 import type { ToolHandle } from '../interaction/selection-tools';
 // wave12/connect-ergonomics (gap 2): the shipped proximity-connect engine, now
 // driven from the LIVE node drag instead of host glue.
@@ -672,29 +672,27 @@ export class DomEventBinder {
     // is inert until the user has selected something — the first click selects, the
     // handle appears, the second grabs it.
     //
-    // EXCEPT the four SIDE handles (n/e/s/w): they sit at the edge midpoints —
-    // the exact anchors of the default side ports — so on a selected node every
-    // press on a visible port glyph used to become a RESIZE (a user drew a wire
-    // and got a 40px-wider node instead; the port's hover hit radius fully
-    // contains the handle's, so the handle was unreachable-around anyway). When
-    // the pointer is on a hovered port OF THE SAME NODE, the PORT wins and the
-    // press falls through to the connection rung below. Corners never coincide
-    // with ports and stay resize; side-resize remains on nodes whose ports are
-    // hidden (no hover ⇒ no port claim).
+    // resize-ux: the four SIDE handles are BANDS along the whole edge now (see
+    // ToolHandle.segment) — RF's line affordance — so side resize is reachable
+    // anywhere along the border. The port keeps its own core: when the pointer
+    // is on a hovered port OF THE SAME NODE (the port's grab radius), the PORT
+    // wins and the press falls through to the connection rung below — a user
+    // aiming at the glyph they can see draws a wire, never grows the node. One
+    // shared predicate (`sideHandleYieldsToPort`) makes the mouse ladder, the
+    // touch ladder and the hover cursor agree on that boundary. Corners never
+    // coincide with ports and always resize.
     // ------------------------------------------------------------------
     if (!this.isReadonly()) {
       const handle = this.resizeHandleAt(worldX, worldY);
-      if (handle) {
-        const sideHandle =
-          handle.kind === 'resize' && ['n', 'e', 's', 'w'].includes(String(handle.handleId));
-        const portClaims =
-          sideHandle && state.hoveredPort && state.hoveredPort.nodeId === handle.nodeId;
-        if (!portClaims) {
-          event.preventDefault();
-          this.selectionTools.beginResize(handle, engine, worldX, worldY);
-          this.host.requestRender();
-          return;
-        }
+      if (handle && !sideHandleYieldsToPort(handle, state.hoveredPort)) {
+        event.preventDefault();
+        this.selectionTools.beginResize(handle, engine, worldX, worldY);
+        // resize-ux: the in-flight-move branch returns before the cursor ladder,
+        // so the cursor set here is the one the WHOLE drag shows. Without it the
+        // drag kept whatever the last hover said ('pointer', over the node).
+        this.setCursor(handle.cursor);
+        this.host.requestRender();
+        return;
       }
     }
 
@@ -1044,7 +1042,20 @@ export class DomEventBinder {
       }
     }
 
-    this.setCursor(this.host.interaction.getCursor(engine));
+    // resize-ux (live audit): the cursor ladder knew port/link/node but not the
+    // resize handles, so hovering a handle showed 'pointer' and nothing ever
+    // advertised resizability — RF shows nwse/nesw/ns/ew-resize per handle. The
+    // override mirrors the PRESS ladder exactly (same hit, same port-yield
+    // predicate): wherever the press would resize, the cursor says resize;
+    // wherever the port would claim the press, the crosshair stands.
+    let toolCursor: string | null = null;
+    if (!this.isReadonly()) {
+      const handle = this.resizeHandleAt(worldX, worldY);
+      if (handle && !sideHandleYieldsToPort(handle, this.host.interaction.getState().hoveredPort)) {
+        toolCursor = handle.cursor;
+      }
+    }
+    this.setCursor(toolCursor ?? this.host.interaction.getCursor(engine));
 
     if (needsRender) this.host.requestRender();
   }

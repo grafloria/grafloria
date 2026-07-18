@@ -10,6 +10,7 @@ import type { CanvasTool, ToolHitContext, ToolPointerEvent } from '../ext/tools'
 // resize handle can be grabbed with a finger too (touch-run's resize gate). Shared,
 // not a second instance — one gesture, one owner.
 import type { SelectionToolsController, ToolHandle } from './selection-tools';
+import { sideHandleYieldsToPort } from './selection-tools';
 
 /**
  * Touch & mobile gestures — Wave 9, Card 2.
@@ -241,18 +242,12 @@ export class TouchGestureController {
     // glyph must draw a wire, not resize. Corners stay resize.
     if (!this.host.isReadonly()) {
       const handle = this.resizeHandleAt(worldX, worldY);
-      if (handle) {
-        const sideHandle =
-          handle.kind === 'resize' && ['n', 'e', 's', 'w'].includes(String(handle.handleId));
-        const portClaims =
-          sideHandle && state.hoveredPort && state.hoveredPort.nodeId === handle.nodeId;
-        if (!portClaims) {
-          this.cancelLongPress();
-          this.selectionTools!.beginResize(handle, engine, worldX, worldY);
-          this.action = { kind: 'resize' };
-          this.host.requestRender();
-          return;
-        }
+      if (handle && !sideHandleYieldsToPort(handle, state.hoveredPort)) {
+        this.cancelLongPress();
+        this.selectionTools!.beginResize(handle, engine, worldX, worldY);
+        this.action = { kind: 'resize' };
+        this.host.requestRender();
+        return;
       }
     }
 
@@ -669,16 +664,9 @@ export class TouchGestureController {
     const zoom = this.host.viewport.getZoom();
     const layer = this.selectionTools.computeLayer(engine, zoom);
     const slop = zoom > 0 ? TOUCH_HIT_SLOP_PX / zoom : TOUCH_HIT_SLOP_PX;
-
-    let best: ToolHandle | null = null;
-    for (const handle of layer.handles) {
-      if (handle.kind !== 'resize') continue;
-      const dx = worldX - handle.world.x;
-      const dy = worldY - handle.world.y;
-      const r = handle.hitRadius + slop;
-      if (dx * dx + dy * dy <= r * r) best = handle;
-    }
-    return best;
+    // resize-ux: one shared hit path with the mouse ladder — the side handles
+    // are edge BANDS now, and the finger slop must grow band and dot alike.
+    return this.selectionTools.hitTestResize(layer, worldX, worldY, slop);
   }
 
   /** Adapt a touch PointerEvent to the framework-free tool contract. */

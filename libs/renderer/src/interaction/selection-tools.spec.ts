@@ -239,12 +239,16 @@ describe('Card 5 — SelectionToolsController', () => {
       expect(box.height).toBe(16);
     });
 
-    test('keepAspect locks the ratio on a corner and is ignored on an edge', () => {
+    test('keepAspect locks the ratio on corners AND edges (RF keepAspectRatio parity)', () => {
       const box = resizeBox(start, 'se', 100, 0, { keepAspect: true });
       expect(box.width / box.height).toBeCloseTo(100 / 50, 6);
 
+      // resize-ux CONTRACT CHANGE: React Flow's keepAspectRatio applies to its
+      // line controls too, so an edge drag now scales both axes (cross axis
+      // centred — see selection-tools.resize-ux.spec.ts for the full pin).
       const edge = resizeBox(start, 'e', 100, 0, { keepAspect: true });
-      expect(edge.height).toBe(50); // untouched
+      expect(edge.width / edge.height).toBeCloseTo(100 / 50, 6);
+      expect(edge.width).toBe(200); // dragged edge still follows the pointer
     });
   });
 
