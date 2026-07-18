@@ -50,6 +50,15 @@ const CSS = `
 .axk-member { padding: 1px 10px; font: 11px/1.5 ui-monospace, Menlo, monospace;
   color: #0f172a; white-space: nowrap; }
 
+/* ===== Row interactivity (cards are interactive; drag stays geometric) ===== */
+.axk-entity, .axk-uml { user-select: none; -webkit-user-select: none; }
+.axk-row:hover { background: rgba(37, 99, 235, .07); }
+.axk-member:hover { background: rgba(79, 70, 229, .07); }
+.axk-row-selected, .axk-row-selected:hover { background: rgba(37, 99, 235, .16);
+  box-shadow: inset 2px 0 0 #2563eb; }
+.axk-member.axk-row-selected, .axk-member.axk-row-selected:hover {
+  background: rgba(79, 70, 229, .16); box-shadow: inset 2px 0 0 #4f46e5; }
+
 /* ===== Selection: ring the CARD, never a detached rectangle ===== */
 g.node-group:has(.axk-entity) .selection-highlight,
 g.node-group:has(.axk-uml) .selection-highlight { display: none; }

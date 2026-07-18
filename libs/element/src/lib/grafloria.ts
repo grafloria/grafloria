@@ -75,7 +75,7 @@ export function render(
 
   const parsed: DiagramSpec = typeof spec === 'string' ? parseSpec(spec) : spec;
 
-  return createDiagram(element, {
+  const instance = createDiagram(element, {
     ...options,
     nodes: parsed.nodes ?? [],
     edges: parsed.edges ?? [],
@@ -85,6 +85,21 @@ export function render(
       options.renderCustomNode ??
       ((node, host) => getNodeType(node.type)?.(node, host)),
   });
+
+  // Diagram-kit specs (erDiagram/umlDiagram) carry a `finalize(api)` for the
+  // post-render wiring that needs the LIVE instance — row interactions,
+  // multiplicity chips. Auto-run it so a kit diagram is fully wired from one
+  // render() call; finalize is idempotent, so a caller may still call it too.
+  const maybeFinalize = (spec as { finalize?: (api: unknown) => void }).finalize;
+  if (typeof maybeFinalize === 'function') {
+    try {
+      maybeFinalize(instance);
+    } catch {
+      /* a kit's finalize must never break the mount */
+    }
+  }
+
+  return instance;
 }
 
 /** Server-side render (Card 6). Re-exported so the tiny API is self-contained. */

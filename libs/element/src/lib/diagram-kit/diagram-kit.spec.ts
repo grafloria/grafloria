@@ -287,3 +287,179 @@ describe('kit stylesheet', () => {
     expect(document.getElementById(DIAGRAM_KIT_STYLE_ID)).toBeTruthy();
   });
 });
+
+describe('row selection (P1: select a column / field)', () => {
+  /** Build the DOM shape the renderer produces for a kit card, in jsdom. */
+  function mountCard(container: HTMLElement, nodeId: string, rows: string[][], kind: 'er' | 'uml' = 'er') {
+    const svg = container.querySelector('svg') ?? container.appendChild(document.createElementNS('http://www.w3.org/2000/svg', 'svg'));
+    const g = document.createElementNS('http://www.w3.org/2000/svg', 'g');
+    g.setAttribute('data-node-id', nodeId);
+    g.classList.add('node-group');
+    const fo = document.createElementNS('http://www.w3.org/2000/svg', 'foreignObject');
+    const wrapper = document.createElement('div');
+    const card = document.createElement('div');
+    card.className = kind === 'er' ? 'axk-entity' : 'axk-uml';
+    const body = document.createElement('div');
+    body.className = kind === 'er' ? 'axk-entity-body' : 'axk-uml-body';
+    for (const cells of rows) {
+      const row = document.createElement('div');
+      row.className = kind === 'er' ? 'axk-row' : 'axk-member';
+      for (const [cls, text] of cells.map((t, i) => [['axk-key', 'axk-col', 'axk-ty'][i] ?? 'axk-x', t] as const)) {
+        const span = document.createElement('span');
+        span.className = cls;
+        span.textContent = text;
+        row.appendChild(span);
+      }
+      body.appendChild(row);
+    }
+    card.appendChild(body);
+    wrapper.appendChild(card);
+    fo.appendChild(wrapper);
+    g.appendChild(fo);
+    svg.appendChild(g);
+    return { g, body };
+  }
+
+  const fakeApi = (container: HTMLElement, metaByNode: Record<string, Record<string, unknown>> = {}) => ({
+    container,
+    getModel: () => ({
+      getNode: (id: string) => (id in metaByNode ? { getMetadata: (k: string) => metaByNode[id][k] } : undefined),
+    }),
+  });
+
+  let container: HTMLElement;
+  beforeEach(() => {
+    container = document.createElement('div');
+    document.body.appendChild(container);
+  });
+
+  it('kit cards are interactive and carry their spec in metadata (rows can be real event targets)', () => {
+    const spec = erDiagram({ entities: [CUSTOMER] });
+    const node = findNode(spec, 'CUSTOMER') as any;
+    expect(node.metadata.html.interactive).toBe(true);
+    expect(node.metadata.kitEntity.columns.map((c: any) => c.name)).toEqual(['id', 'name', 'email']);
+    const uml = umlDiagram({ classes: [{ id: 'A', attributes: ['+ x: int'], methods: ['+ m(): void'] }], relationships: [] });
+    const cls = findNode(uml, 'A') as any;
+    expect(cls.metadata.html.interactive).toBe(true);
+    expect(cls.metadata.kitClass.attributes).toEqual(['+ x: int']);
+  });
+
+  it('clicking a row selects it: class applied, axk:row-select fired with node/row/name', async () => {
+    const { bindRowInteractions } = await import('./rows');
+    mountCard(container, 'ORDER', [['PK', 'id', 'int'], ['FK', 'customer_id', 'int']]);
+    const api = fakeApi(container, { ORDER: { kitEntity: { columns: [{ name: 'id' }, { name: 'customer_id' }] } } });
+    const events: any[] = [];
+    container.addEventListener('axk:row-select', (e: any) => events.push(e.detail));
+    const handle = bindRowInteractions(api as never);
+    const row1 = container.querySelectorAll('.axk-row')[1] as HTMLElement;
+    row1.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+    expect(row1.classList.contains('axk-row-selected')).toBe(true);
+    expect(handle.getSelected()).toMatchObject({ nodeId: 'ORDER', rowIndex: 1, name: 'customer_id' });
+    expect(events.at(-1).selected).toMatchObject({ nodeId: 'ORDER', rowIndex: 1, name: 'customer_id' });
+    handle.dispose();
+  });
+
+  it('clicking the selected row again, or empty canvas, deselects', async () => {
+    const { bindRowInteractions } = await import('./rows');
+    mountCard(container, 'ORDER', [['PK', 'id', 'int']]);
+    const api = fakeApi(container);
+    const handle = bindRowInteractions(api as never);
+    const row = container.querySelector('.axk-row') as HTMLElement;
+    row.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+    expect(handle.getSelected()).not.toBeNull();
+    row.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+    expect(handle.getSelected()).toBeNull();
+    expect(row.classList.contains('axk-row-selected')).toBe(false);
+    row.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+    container.dispatchEvent(new MouseEvent('click', { bubbles: true })); // empty canvas
+    expect(handle.getSelected()).toBeNull();
+    handle.dispose();
+  });
+
+  it('only one row is selected per diagram — selecting in another card moves the selection', async () => {
+    const { bindRowInteractions } = await import('./rows');
+    mountCard(container, 'A', [['PK', 'id', 'int']]);
+    mountCard(container, 'B', [['PK', 'id', 'int']]);
+    const handle = bindRowInteractions(fakeApi(container) as never);
+    const [rowA, rowB] = Array.from(container.querySelectorAll('.axk-row')) as HTMLElement[];
+    rowA.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+    rowB.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+    expect(rowA.classList.contains('axk-row-selected')).toBe(false);
+    expect(rowB.classList.contains('axk-row-selected')).toBe(true);
+    expect(handle.getSelected()?.nodeId).toBe('B');
+    handle.dispose();
+  });
+
+  it('uml members resolve with their section (attributes vs methods)', async () => {
+    const { bindRowInteractions } = await import('./rows');
+    // uml card: two compartments, members across both — rowIndex is global.
+    const svg = container.appendChild(document.createElementNS('http://www.w3.org/2000/svg', 'svg'));
+    const g = document.createElementNS('http://www.w3.org/2000/svg', 'g');
+    g.setAttribute('data-node-id', 'K');
+    const card = document.createElement('div');
+    card.className = 'axk-uml';
+    for (const members of [['+ a: int', '+ b: int'], ['+ m(): void']]) {
+      const comp = document.createElement('div');
+      comp.className = 'axk-uml-comp';
+      for (const text of members) {
+        const m = document.createElement('div');
+        m.className = 'axk-member';
+        m.textContent = text;
+        comp.appendChild(m);
+      }
+      card.appendChild(comp);
+    }
+    g.appendChild(card);
+    svg.appendChild(g);
+    const handle = bindRowInteractions(fakeApi(container, { K: { kitClass: { attributes: ['+ a: int', '+ b: int'], methods: ['+ m(): void'] } } }) as never);
+    const members = Array.from(container.querySelectorAll('.axk-member')) as HTMLElement[];
+    members[2].dispatchEvent(new MouseEvent('click', { bubbles: true }));
+    expect(handle.getSelected()).toMatchObject({ nodeId: 'K', rowIndex: 2, section: 'methods', name: '+ m(): void' });
+    handle.dispose();
+  });
+
+  it('selection survives a card re-render (the foreignObject subtree is replaced)', async () => {
+    const { bindRowInteractions } = await import('./rows');
+    const { g } = mountCard(container, 'ORDER', [['PK', 'id', 'int'], ['FK', 'customer_id', 'int']]);
+    const handle = bindRowInteractions(fakeApi(container) as never);
+    const row1 = container.querySelectorAll('.axk-row')[1] as HTMLElement;
+    row1.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+    // Simulate the renderer swapping the subtree (content-hash keyed re-render).
+    const fo = g.querySelector('foreignObject')!;
+    g.removeChild(fo);
+    mountCard(container, 'ORDER-tmp', [['x', 'x', 'x']]); // unrelated churn
+    g.appendChild(fo.cloneNode(true)); // fresh subtree, no classes... clone keeps class
+    (g.querySelectorAll('.axk-row')[1] as HTMLElement).classList.remove('axk-row-selected');
+    await new Promise((r) => setTimeout(r, 30)); // let the MutationObserver run
+    const fresh = g.querySelectorAll('.axk-row')[1] as HTMLElement;
+    expect(fresh.classList.contains('axk-row-selected')).toBe(true);
+    expect(handle.getSelected()).toMatchObject({ nodeId: 'ORDER', rowIndex: 1 });
+    handle.dispose();
+  });
+
+  it('the kit stylesheet ships row hover + selected styles and suppresses text selection', () => {
+    ensureDiagramKitStyles();
+    const css = document.getElementById(DIAGRAM_KIT_STYLE_ID)!.textContent || '';
+    expect(css).toMatch(/\.axk-row:hover/);
+    expect(css).toMatch(/\.axk-member:hover/);
+    expect(css).toMatch(/\.axk-row-selected/);
+    expect(css).toMatch(/user-select:\s*none/);
+  });
+
+  it('erDiagram finalize binds row interactions against a live-ish api (and rowSelection:false opts out)', async () => {
+    const spec = erDiagram({ entities: [CUSTOMER] });
+    mountCard(container, 'CUSTOMER', [['PK', 'id', 'int'], ['', 'name', 'varchar'], ['', 'email', 'varchar']]);
+    const api = { ...fakeApi(container, { CUSTOMER: { kitEntity: CUSTOMER } }), getModel: fakeApi(container, { CUSTOMER: { kitEntity: CUSTOMER } }).getModel };
+    spec.finalize(api as never);
+    const row = container.querySelectorAll('.axk-row')[2] as HTMLElement;
+    row.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+    expect(row.classList.contains('axk-row-selected')).toBe(true);
+    const off = erDiagram({ entities: [CUSTOMER], rowSelection: false });
+    const container2 = document.body.appendChild(document.createElement('div'));
+    mountCard(container2, 'CUSTOMER', [['PK', 'id', 'int']]);
+    off.finalize(fakeApi(container2, {}) as never);
+    const row2 = container2.querySelector('.axk-row') as HTMLElement;
+    row2.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+    expect(row2.classList.contains('axk-row-selected')).toBe(false);
+  });
+});

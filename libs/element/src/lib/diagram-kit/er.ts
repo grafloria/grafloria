@@ -21,6 +21,7 @@
  * ```
  */
 import { ensureDiagramKitStyles } from './styles';
+import { bindRowInteractions } from './rows';
 
 /** Row height / header height of the entity card — sizing is derived from these. */
 export const ER_ROW_H = 25;
@@ -81,6 +82,12 @@ export interface ErRelationshipSpec {
 export interface ErDiagramOptions {
   entities: ErEntitySpec[];
   relationships?: ErRelationshipSpec[];
+  /**
+   * Rows are selectable by default: click a column to select it (painted with
+   * .axk-row-selected; axk:row-click / axk:row-select CustomEvents fire on the
+   * container). Set false to opt out.
+   */
+  rowSelection?: boolean;
 }
 
 const CARDINALITY: Record<ErCardinality, { tail: string; head: string }> = {
@@ -225,7 +232,9 @@ export function erDiagram(options: ErDiagramOptions): {
     id: entity.id,
     position: entity.position ?? { x: 60 + (i % 3) * 340, y: 60 + Math.floor(i / 3) * 280 },
     size: { width: width(entity), height: entity.height ?? ER_HEAD_H + entity.columns.length * ER_ROW_H + BORDER_SLACK },
-    metadata: { html: entityCard(entity) },
+    // interactive: rows are real DOM targets (hover, row selection, later
+    // inline editing) — node drag/select stay geometric in the binder.
+    metadata: { html: { ...entityCard(entity), interactive: true }, kitEntity: entity },
     // The card draws its own border — the node's default rectangle is hidden
     // (and re-suppressed on selection by the kit stylesheet).
     shape: { type: 'rect', fill: 'none', stroke: 'none' },
@@ -233,5 +242,13 @@ export function erDiagram(options: ErDiagramOptions): {
     ...(portsByEntity.has(entity.id) ? { ports: portsByEntity.get(entity.id) } : {}),
   }));
 
-  return { nodes, edges, finalize: () => undefined };
+  return {
+    nodes,
+    edges,
+    finalize: (api: unknown) => {
+      if (options.rowSelection === false) return;
+      const a = api as { container?: HTMLElement };
+      if (a?.container) bindRowInteractions(a as never);
+    },
+  };
 }

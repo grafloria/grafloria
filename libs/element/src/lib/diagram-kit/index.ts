@@ -19,3 +19,4 @@ export {
   type UmlDiagramOptions,
 } from './uml';
 export { ensureDiagramKitStyles, DIAGRAM_KIT_STYLE_ID } from './styles';
+export { bindRowInteractions, type RowRef, type RowInteractionsHandle } from './rows';
