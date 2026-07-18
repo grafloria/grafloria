@@ -128,3 +128,8 @@ export type {
 export * from './perf';
 // Wave 9 (Collaboration) — Card 7: presentation, read-only share mode, follow-presenter seam.
 export * from './presentation';
+// The framework-agnostic convenience wrapper (React Flow-parity helpers:
+// getIntersectingNodes, snapshot selectors, flow traversal). Existed since
+// the ext/ wave but was never reachable from the package surface.
+export { createDiagramApi } from './ext/public-api';
+export type { DiagramApi, DiagramSnapshot, GetIntersectingOptions, FlowPoint, Selector } from './ext/public-api';

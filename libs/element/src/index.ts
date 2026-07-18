@@ -43,6 +43,10 @@ export type {
   Theme,
 } from '@grafloria/renderer';
 export { renderToStaticSVG, LIGHT_THEME, DARK_THEME } from '@grafloria/renderer';
+// React Flow-parity helper surface (getIntersectingNodes & friends) — an embed
+// gets the same convenience wrapper the frameworks get, from the same import.
+export { createDiagramApi } from '@grafloria/renderer';
+export type { DiagramApi, DiagramSnapshot, GetIntersectingOptions } from '@grafloria/renderer';
 
 /* ==========================================================================
  * WAVE 10 — THE REACHABILITY FIX.
