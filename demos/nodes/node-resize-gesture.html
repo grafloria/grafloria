@@ -32,10 +32,11 @@ const ANCHORS = [
 
 defineDemo({
   name: 'Node resize gesture',
-  blurb: 'Select a node, then drag a resize handle — a REAL pointer drag through the default pipeline (no host wiring, no registerTool). The declared min/max/aspect clamp the size DURING the gesture, and one release is one undo step.',
+  blurb: 'Select a node, then drag a resize handle — a REAL pointer drag through the default pipeline (no host wiring, no registerTool). Any corner resizes and pins the opposite one; the declared min/max/aspect clamp the size DURING the gesture, and one release is one undo step.',
   howTo: [
-    'Click the "80–260 wide" node to select it — the dashed selection outline marks it resizable (no visible handle glyphs: grab the invisible zones at the corners and edge midpoints, like node-resizer).',
-    'Press near the bottom-right corner and drag outward — the node resizes live, clamped to its 80–260 × 60–200 limits mid-drag, not fixed up afterwards.',
+    'Click the "80–260 wide" node to select it — a dashed outline plus eight resize handles (four corners, four edge midpoints) appear, painted from the exact geometry the binder hit-tests.',
+    'Press the bottom-right handle and drag outward — the node resizes live, clamped to its 80–260 × 60–200 limits mid-drag, not fixed up afterwards.',
+    'Grab the TOP-LEFT corner instead — it resizes from there too, and the OPPOSITE (bottom-right) corner stays pinned: every corner is a live handle, not just one.',
     'Try to drag past the max: the box refuses to grow beyond 260×200 while the pointer keeps going.',
     'Resize the second node — its aspect ratio stays locked at 1.6 whichever way you pull.',
     'Press ⌘Z / Ctrl+Z — the whole resize gesture is ONE undo step.',
@@ -74,6 +75,12 @@ defineDemo({
     ctx.handleSE = (id) => {
       const n = ctx.diagram.getNode(id);
       return { x: n.position.x + n.size.width, y: n.position.y + n.size.height };
+    };
+    // The NW (top-left) corner handle — dragging it resizes AND moves the origin,
+    // which is why RF corner-resize pins the opposite corner instead of the origin.
+    ctx.handleNW = (id) => {
+      const n = ctx.diagram.getNode(id);
+      return { x: n.position.x, y: n.position.y };
     };
     // Select a node WITHOUT resizing: press+release on its centre.
     ctx.select = async (id) => {
@@ -135,6 +142,24 @@ defineDemo({
     check(clamp.size.width === 80, `width should floor at its 80 min, is ${clamp.size.width}`);
     check(clamp.size.height === 60, `height should floor at its 60 min, is ${clamp.size.height}`);
     ctx.fire('pointerup', { x: clamp.position.x - 500, y: clamp.position.y - 500 });
+
+    // ---- 2b. EVERY CORNER is a handle: the NW corner resizes too, and pins the
+    //     OPPOSITE (SE) corner. RF's resizer isn't a single bottom-right grip —
+    //     grab any of the four corners and the box grows from there, the far
+    //     corner staying put. (Node is at its 80×60 floor, anchored at 140,130.)
+    const seFixed = { x: clamp.position.x + clamp.size.width, y: clamp.position.y + clamp.size.height }; // (220,190)
+    const nw = ctx.handleNW('clamp');
+    ctx.fire('pointerdown', { x: nw.x, y: nw.y });
+    ctx.fire('pointermove', { x: nw.x - 80, y: nw.y - 60 });   // haul the TOP-LEFT corner out
+    ctx.instance.renderNow();
+    check(clamp.size.width > 80 && clamp.size.height > 60,
+      `dragging the NW handle should grow the box from that corner (is ${clamp.size.width}×${clamp.size.height})`);
+    check(clamp.position.x < 140 && clamp.position.y < 130,
+      `the NW corner (and the node origin) should have moved up-left (pos ${clamp.position.x},${clamp.position.y})`);
+    check(Math.abs((clamp.position.x + clamp.size.width) - seFixed.x) < 1 &&
+          Math.abs((clamp.position.y + clamp.size.height) - seFixed.y) < 1,
+      `the OPPOSITE (SE) corner must stay pinned at ${seFixed.x},${seFixed.y} (is ${clamp.position.x + clamp.size.width},${clamp.position.y + clamp.size.height})`);
+    ctx.fire('pointerup', { x: nw.x - 80, y: nw.y - 60 });
 
     // ---- 3. ASPECT lock holds the ratio through an arbitrary corner drag --------
     await ctx.select('ratio');

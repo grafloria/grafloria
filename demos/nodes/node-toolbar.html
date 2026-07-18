@@ -2,61 +2,153 @@
 <title>Node toolbar — Grafloria</title>
 <link rel="stylesheet" href="../shell/demo.css">
 <style>
-  .nt-toolbar { display: flex; gap: 6px; background: #111827; padding: 5px 6px; border-radius: 8px; box-shadow: 0 4px 14px rgba(0,0,0,.3); transform: translate(-50%, -120%); }
+  /* #canvas is the positioning context for the toolbar overlay + control panel. */
+  #canvas { position: relative; }
+  .nt-toolbar { position: absolute; left: 0; top: 0; z-index: 4; display: flex; gap: 6px; background: #111827; padding: 5px 6px; border-radius: 8px; box-shadow: 0 4px 14px rgba(0,0,0,.3); white-space: nowrap; }
   .nt-toolbar button { font: 12px system-ui; border: 0; border-radius: 5px; padding: 3px 9px; background: #374151; color: #fff; cursor: pointer; }
+  /* Demo chrome: exercise the position / align / force-visible props live. */
+  #nt-controls { position: absolute; left: 16px; top: 16px; z-index: 5; display: flex; flex-direction: column; gap: 6px;
+    background: rgba(255,255,255,.94); border: 1px solid #e5e7eb; border-radius: 8px; padding: 8px 10px; font: 12px system-ui; box-shadow: 0 2px 10px rgba(0,0,0,.08); }
+  #nt-controls .row { display: flex; gap: 4px; align-items: center; }
+  #nt-controls .lbl { width: 52px; color: #6b7280; }
+  #nt-controls button { border: 1px solid #d1d5db; background: #fff; border-radius: 5px; padding: 2px 7px; cursor: pointer; font: 12px system-ui; color: #111827; }
+  #nt-controls button.on { background: #2563eb; border-color: #2563eb; color: #fff; }
+  #nt-readout { color: #374151; font-weight: 600; margin-top: 2px; }
 </style>
 <header id="demo-head"></header>
 <div id="canvas"></div>
 <script type="module">
-import { render, createViewportPortal } from '../shell/grafloria.js';
+import { render } from '../shell/grafloria.js';
 import { defineDemo, check } from '../shell/demo.js';
 
 defineDemo({
   name: 'Node toolbar',
-  blurb: 'A floating toolbar anchored to a node’s geometry through the viewport portal seam — it pans and zooms WITH the node, follows it when it moves, and its buttons act on that node.',
+  blurb: 'A floating toolbar pinned to a node — shown only while the node is selected (or forced visible), placeable on any side with an alignment, and held at a CONSTANT on-screen size so its buttons stay legible at any zoom. It rides the node through pans, zooms and drags; its buttons act on that node.',
   howTo: [
-    'Note the dark toolbar floating above the node — a viewport portal anchored to the node\'s top-centre, not absolutely-positioned page chrome.',
-    'Drag the node around: the toolbar rides it, mid-drag and after release.',
-    'Drag empty canvas to pan and ⌘+wheel / Ctrl+wheel to zoom: the toolbar tracks the node through every camera move, because it lives in the camera-transformed layer.',
-    'Click "duplicate": a copy appears offset down-right of the original.',
-    'Click "delete": the node vanishes and the toolbar tears down with it.',
+    'The node boots SELECTED, so its dark toolbar shows above it. Click empty canvas to deselect — the toolbar vanishes; click the node again — it returns. (Toggle "force" in the top-left panel to keep it up regardless, like React Flow\'s isVisible.)',
+    'Use the top-left panel to move the toolbar to any side — top / right / bottom / left — and change its alignment — start / center / end. It re-pins to the chosen edge of the node.',
+    'Zoom with ⌘+wheel / Ctrl+wheel: the node scales but the toolbar does NOT balloon — it holds a constant on-screen size (a screen-space overlay re-anchored each camera move) so the buttons stay clickable.',
+    'Drag the node around: the toolbar rides it, mid-drag and after release, and pans with it when you drag the empty canvas.',
+    'Click "duplicate": a copy appears offset down-right. Click "delete": the node vanishes and the toolbar tears down with it.',
   ],
   reactflow: 'Node Toolbar',
 
   async setup(ctx) {
     const api = render({
-      nodes: [{ id: 'n', position: { x: 300, y: 220 }, size: { width: 200, height: 100 }, label: 'selected' }],
+      nodes: [{ id: 'n', position: { x: 320, y: 230 }, size: { width: 200, height: 100 }, label: 'selected' }],
       edges: [],
     }, ctx.host);
     ctx.instance = api;
     ctx.diagram = api.getModel();
+    const model = ctx.diagram;
+    const n = model.getNode('n');
 
-    const layer = ctx.host.querySelector('.grafloria-html-layer');
-    const n = ctx.diagram.getNode('n');
-    const anchor = (node) => ({ x: node.position.x + node.size.width / 2, y: node.position.y });
+    // --- the toolbar's placement props (RF: position + align + offset) ----------
+    let position = 'top', align = 'center', forceVisible = false, disposed = false;
+    const OFFSET = 10;   // px gap between the node edge and the toolbar
+    // Given the current node box, return the WORLD anchor point on the chosen
+    // edge and the CSS transform that seats the bar against it with the right
+    // alignment. f is the cross-axis fraction the alignment selects.
+    const placement = () => {
+      const node = model.getNode('n') ?? n;
+      const { x, y } = node.position, w = node.size.width, h = node.size.height;
+      const f = align === 'start' ? 0 : align === 'end' ? 1 : 0.5;
+      switch (position) {
+        case 'bottom': return { ax: x + f * w, ay: y + h,     tf: `translate(${-f * 100}%, ${OFFSET}px)` };
+        case 'left':   return { ax: x,         ay: y + f * h, tf: `translate(calc(-100% - ${OFFSET}px), ${-f * 100}%)` };
+        case 'right':  return { ax: x + w,     ay: y + f * h, tf: `translate(${OFFSET}px, ${-f * 100}%)` };
+        default:       return { ax: x + f * w, ay: y,         tf: `translate(${-f * 100}%, calc(-100% - ${OFFSET}px))` };
+      }
+    };
 
-    // A world-anchored portal at the node's top-centre. It lives inside the
-    // camera-transformed HTML layer, so pan/zoom move it for free.
-    const portal = createViewportPortal(layer, anchor(n));
-    portal.element.className = 'nt-toolbar';
-    const mk = (label, onClick) => { const b = document.createElement('button'); b.textContent = label; b.className = 'nt-btn-' + label; b.onclick = onClick; portal.element.appendChild(b); return b; };
+    // A SCREEN-SPACE toolbar overlay. RF renders the toolbar OUTSIDE the
+    // camera-transformed layer and re-anchors it to the node's projected screen
+    // position each frame — so it pans/zooms WITH the node yet never scales, and
+    // its buttons stay a constant, legible, clickable size. (A camera-layer
+    // portal counter-scaled by 1/zoom held its size but drifted its position at
+    // zoom ≠ 1 — a live measurement caught the bar 640px off the node at 2×.)
+    const toolbar = document.createElement('div');
+    toolbar.className = 'nt-toolbar';
+    ctx.host.appendChild(toolbar);
+    ctx.bar = toolbar;
+
+    const mk = (label, onClick) => { const b = document.createElement('button'); b.textContent = label; b.className = 'nt-btn-' + label; b.onclick = onClick; toolbar.appendChild(b); return b; };
     mk('duplicate', () => {
-      const src = ctx.diagram.getNode('n');
-      api.setNodes([...ctx.diagram.getNodes().map((x) => ({ id: x.id, position: { x: x.position.x, y: x.position.y }, size: { ...x.size }, label: x.getMetadata('label') })),
-        { id: 'n-copy', position: { x: src.position.x + 40, y: src.position.y + 40 }, size: { ...src.size }, label: 'copy' }]);
+      const src = model.getNode('n'); if (!src) return;
+      api.setNodes([...model.getNodes().map((x) => ({ id: x.id, position: { x: x.position.x, y: x.position.y }, size: { ...x.size }, label: x.getMetadata('label') })),
+        { id: 'n-copy-' + Date.now().toString(36), position: { x: src.position.x + 40, y: src.position.y + 40 }, size: { ...src.size }, label: 'copy' }]);
     });
-    mk('delete', () => { ctx.diagram.removeNode('n'); portal.dispose(); api.renderNow(); });
 
-    ctx.portal = portal;
-    ctx.anchor = anchor;
-    // THE GLUE, on the node's REAL event — not a helper only this page calls. A
-    // live pointer drag moves the node through the binder's setPosition, which
-    // never passes through any demo helper: subscribing to change:position is
-    // what makes the toolbar follow EVERY move (drag, keyboard, programmatic).
-    // (A live report caught the old version: anchored at boot, left behind by
-    // the first real drag — the assert only ever exercised its own helper.)
-    n.on('change:position', () => portal.setPosition(anchor(n).x, anchor(n).y));
-    ctx.moveNode = (x, y) => { n.setPosition(x, y); api.renderNow(); };
+    // Re-anchor the bar to the node's current projected screen position.
+    const reposition = () => {
+      if (disposed) return;
+      const node = model.getNode('n'); if (!node) return;
+      const pl = placement();
+      const r = ctx.host.getBoundingClientRect();
+      const c = api.viewport.worldToClient(pl.ax, pl.ay, r);
+      toolbar.style.left = (c.x - r.left) + 'px';
+      toolbar.style.top = (c.y - r.top) + 'px';
+      toolbar.style.transform = pl.tf;
+    };
+    // SELECTION-GATED visibility (RF isVisible:false default = follow selection),
+    // with a force-visible override (RF isVisible:true).
+    const syncVisible = () => {
+      if (disposed) return;
+      const node = model.getNode('n');
+      toolbar.style.display = (node && (node.isSelected() || forceVisible)) ? '' : 'none';
+    };
+
+    const unsubs = [];
+    // THE GLUE, on the node's + camera's REAL events — not helpers only this page
+    // calls. A live pointer drag moves the node through the binder's setPosition
+    // (change:position); a real click selects/deselects it (selection:change);
+    // panning and zooming fire viewport:change. Subscribing to all of them is
+    // what makes the toolbar follow EVERY move the way a user's gestures do.
+    n.on('change:position', reposition);
+    n.on('change:size', reposition);
+    unsubs.push(api.on('selection:change', syncVisible));
+    unsubs.push(api.on('viewport:change', reposition));
+    unsubs.push(api.viewport.onChange(reposition));
+
+    mk('delete', () => { if (!model.getNode('n')) return; model.removeNode('n'); disposed = true; toolbar.remove(); for (const u of unsubs) try { u?.(); } catch { /* already gone */ } api.renderNow(); });
+
+    // --- live controls: the RF position / align / isVisible props, as chrome ----
+    const controls = document.createElement('div');
+    controls.id = 'nt-controls';
+    const ro = document.createElement('div'); ro.id = 'nt-readout';
+    const posBtns = {}, alignBtns = {};
+    let forceBtn;
+    const refresh = () => {
+      for (const k in posBtns) posBtns[k].classList.toggle('on', k === position);
+      for (const k in alignBtns) alignBtns[k].classList.toggle('on', k === align);
+      if (forceBtn) forceBtn.classList.toggle('on', forceVisible);
+      ro.textContent = `position: ${position} · align: ${align}${forceVisible ? ' · forced-visible' : ''}`;
+    };
+    const mkRow = (label, keys, store, onPick) => {
+      const row = document.createElement('div'); row.className = 'row';
+      const l = document.createElement('span'); l.className = 'lbl'; l.textContent = label; row.appendChild(l);
+      for (const k of keys) { const b = document.createElement('button'); b.textContent = k; b.onclick = () => onPick(k); store[k] = b; row.appendChild(b); }
+      controls.appendChild(row);
+    };
+    mkRow('position', ['top', 'right', 'bottom', 'left'], posBtns, (k) => { position = k; reposition(); refresh(); });
+    mkRow('align', ['start', 'center', 'end'], alignBtns, (k) => { align = k; reposition(); refresh(); });
+    const forceRow = document.createElement('div'); forceRow.className = 'row';
+    const fl = document.createElement('span'); fl.className = 'lbl'; fl.textContent = 'visible'; forceRow.appendChild(fl);
+    forceBtn = document.createElement('button'); forceBtn.textContent = 'force'; forceBtn.onclick = () => { forceVisible = !forceVisible; syncVisible(); refresh(); };
+    forceRow.appendChild(forceBtn); controls.appendChild(forceRow);
+    controls.appendChild(ro);
+    ctx.host.appendChild(controls);
+
+    // Boot the way RF shows it: the node is SELECTED, so its toolbar is visible.
+    model.selectNode(n);
+    api.renderNow();
+    reposition(); syncVisible(); refresh();
+
+    // Handles the asserts drive (each mirrors a real user path above).
+    ctx.setPlacement = (pos, al) => { if (pos) position = pos; if (al) align = al; reposition(); refresh(); };
+    ctx.setForce = (v) => { forceVisible = v; syncVisible(); refresh(); };
+    ctx.selectN = () => { const node = model.getNode('n'); if (node) { model.selectNode(node); api.renderNow(); } };
+    ctx.deselect = () => { model.clearSelection(); api.renderNow(); };
     ctx.fire = (type, w) => {
       const rect = ctx.host.getBoundingClientRect();
       const c = api.viewport.worldToClient(w.x, w.y, rect);
@@ -69,51 +161,96 @@ defineDemo({
   },
 
   async assert(ctx) {
-    const api = ctx.instance;
-    const nodeScreenX = () => ctx.host.querySelector('[data-node-id="n"]').getBoundingClientRect().x;
-    const barScreenX  = () => ctx.portal.element.getBoundingClientRect().x;
+    const api = ctx.instance, model = ctx.diagram, bar = ctx.bar;
+    const nodeEl = () => ctx.host.querySelector('[data-node-id="n"]');
+    const barRect = () => bar.getBoundingClientRect();
+    const nodeRect = () => nodeEl().getBoundingClientRect();
+    const visible = () => { const cs = getComputedStyle(bar); return cs.display !== 'none' && barRect().width > 0; };
+    const bCentreX = () => { const r = barRect(); return r.x + r.width / 2; };
+    const bCentreY = () => { const r = barRect(); return r.y + r.height / 2; };
+    const nCentreX = () => { const r = nodeRect(); return r.x + r.width / 2; };
 
-    // 1. The toolbar is real and carries its buttons.
-    check(!!ctx.portal.element && ctx.portal.element.querySelectorAll('button').length === 2,
-      'the toolbar portal did not mount its two buttons');
+    // boot state: node selected, toolbar top-center, not forced
+    ctx.selectN(); ctx.setPlacement('top', 'center'); ctx.setForce(false);
+    api.renderNow(); await ctx.tick();
 
-    // 2. IT TRACKS THE CAMERA. Pan the viewport; the toolbar shifts by the SAME
-    //    screen delta as the node it is pinned to — that is what "anchored" means.
-    const n0 = nodeScreenX(), b0 = barScreenX();
-    api.viewport.panByScreenDelta(-140, 0);   // pan the camera
-    api.renderNow();
-    const nodeDelta = nodeScreenX() - n0, barDelta = barScreenX() - b0;
-    check(Math.abs(nodeDelta) > 20, `precondition: the pan should have moved the node on screen (moved ${nodeDelta})`);
-    check(Math.abs(barDelta - nodeDelta) < 2,
-      `the toolbar did not track the node through a pan (node moved ${nodeDelta.toFixed(1)}, toolbar ${barDelta.toFixed(1)})`);
+    // 1. Mounted with its two action buttons, visible because the node is selected.
+    check(!!bar && bar.querySelectorAll('button').length === 2, 'the toolbar did not mount its two action buttons');
+    check(visible(), 'a selected node must show its toolbar');
 
-    // 3. IT FOLLOWS THE NODE. Move the node; the toolbar follows via setPosition.
-    const b1 = barScreenX();
-    ctx.moveNode(520, 300);
-    const b2 = barScreenX();
-    check(Math.abs(b2 - b1) > 20, 'the toolbar did not follow the node when the node moved');
+    // 2. SELECTION-GATED (RF isVisible:false default): deselect hides, reselect shows.
+    ctx.deselect(); api.renderNow(); await ctx.tick();
+    check(!visible(), 'deselecting the node must hide its toolbar (RF shows it only while selected)');
+    ctx.selectN(); api.renderNow(); await ctx.tick();
+    check(visible(), 're-selecting the node must bring the toolbar back');
 
-    // 3b. IT FOLLOWS A REAL DRAG — the path a user actually takes, which never
-    //     goes through any page helper. Mid-drag AND after release, the bar's
-    //     centre must track the node's centre.
-    const n2 = ctx.diagram.getNode('n');
-    const centre = { x: n2.position.x + n2.size.width / 2, y: n2.position.y + n2.size.height / 2 };
+    // 2b. FORCE-VISIBLE override (RF isVisible:true): shown even with nothing selected.
+    ctx.setForce(true); ctx.deselect(); api.renderNow(); await ctx.tick();
+    check(visible(), 'force-visible must keep the toolbar up while nothing is selected');
+    ctx.setForce(false); ctx.selectN(); api.renderNow(); await ctx.tick();
+    check(!!model.getNode('n').isSelected(), 'precondition: node reselected for the rest');
+
+    // 3. CONSTANT ON-SCREEN SIZE across zoom, AND it stays pinned to the node.
+    //    RF does NOT scale toolbar content, and it must not drift off the node.
+    api.viewport.setZoom(1); api.renderNow(); await ctx.tick();
+    const w1 = barRect().width;
+    api.viewport.setZoom(2); api.renderNow(); await ctx.tick();
+    const w2 = barRect().width;
+    const driftAtZoom = Math.abs(bCentreX() - nCentreX());   // top+center → same x as node
+    api.viewport.setZoom(1); api.renderNow(); await ctx.tick();
+    check(w1 > 0 && Math.abs(w2 - w1) <= 2,
+      `the toolbar must hold a constant on-screen size through zoom (z1 ${w1.toFixed(1)}px vs z2 ${w2.toFixed(1)}px)`);
+    check(driftAtZoom < 6,
+      `at 2× zoom the toolbar must stay pinned over the node, not drift (centre gap ${driftAtZoom.toFixed(0)}px)`);
+
+    // 4. POSITIONS + ALIGN: the toolbar attaches to the chosen side of the node.
+    ctx.setPlacement('top', 'center'); api.renderNow(); await ctx.tick();
+    check(bCentreY() < nodeRect().y, `top: the bar should sit above the node (bar cy ${bCentreY().toFixed(0)} vs node top ${nodeRect().y.toFixed(0)})`);
+    check(Math.abs(bCentreX() - nCentreX()) < 6, 'top+center: the bar should be horizontally centred on the node');
+
+    ctx.setPlacement('right', 'center'); api.renderNow(); await ctx.tick();
+    check(barRect().x > nodeRect().x + nodeRect().width - 2,
+      `right: the bar should sit past the node's right edge (bar left ${barRect().x.toFixed(0)} vs node right ${(nodeRect().x + nodeRect().width).toFixed(0)})`);
+
+    ctx.setPlacement('bottom', 'center'); api.renderNow(); await ctx.tick();
+    check(bCentreY() > nodeRect().y + nodeRect().height,
+      `bottom: the bar should sit below the node (bar cy ${bCentreY().toFixed(0)} vs node bottom ${(nodeRect().y + nodeRect().height).toFixed(0)})`);
+
+    const cxCenter = bCentreX();
+    ctx.setPlacement('bottom', 'end'); api.renderNow(); await ctx.tick();
+    check(bCentreX() > cxCenter + 4,
+      `align 'end' should shift the bar toward the node's far edge (center cx ${cxCenter.toFixed(0)} → end cx ${bCentreX().toFixed(0)})`);
+    ctx.setPlacement('top', 'center'); api.renderNow(); await ctx.tick();
+
+    // 5. IT TRACKS THE CAMERA. Pan the viewport; the bar shifts by the SAME screen
+    //    delta as the node it is pinned to.
+    const n0 = nCentreX(), b0 = bCentreX();
+    api.viewport.panByScreenDelta(-140, 0); api.renderNow(); await ctx.tick();
+    const nodeDelta = nCentreX() - n0, barDelta = bCentreX() - b0;
+    check(Math.abs(nodeDelta) > 20, `precondition: the pan should have moved the node on screen (moved ${nodeDelta.toFixed(0)})`);
+    check(Math.abs(barDelta - nodeDelta) < 3, `the bar did not track the node through a pan (node ${nodeDelta.toFixed(0)}, bar ${barDelta.toFixed(0)})`);
+    api.viewport.panByScreenDelta(140, 0); api.renderNow(); await ctx.tick();
+
+    // 5b. IT FOLLOWS A REAL DRAG — the path a user actually takes, which goes
+    //     through the binder's setPosition, not any page helper. Mid-drag the
+    //     bar's centre must track the node's centre.
+    ctx.selectN(); ctx.setPlacement('top', 'center'); api.renderNow(); await ctx.tick();
+    const nn = model.getNode('n');
+    const centre = { x: nn.position.x + nn.size.width / 2, y: nn.position.y + nn.size.height / 2 };
     ctx.fire('pointerdown', centre);
     ctx.fire('pointermove', { x: centre.x + 8, y: centre.y });
     ctx.fire('pointermove', { x: centre.x + 120, y: centre.y + 60 });
-    ctx.instance.renderNow();
-    const gapMid = Math.abs(
-      (ctx.portal.element.getBoundingClientRect().x + ctx.portal.element.getBoundingClientRect().width / 2) -
-      (ctx.host.querySelector('[data-node-id="n"]').getBoundingClientRect().x + n2.size.width / 2));
+    api.renderNow();
+    const gapMid = Math.abs(bCentreX() - nCentreX());
     ctx.fire('pointerup', { x: centre.x + 120, y: centre.y + 60 });
-    ctx.instance.renderNow();
-    check(gapMid < 4, `mid-drag the toolbar must ride the node (centre gap ${gapMid.toFixed(1)}px)`);
+    api.renderNow(); await ctx.tick();
+    check(gapMid < 6, `mid-drag the toolbar must ride the node (centre gap ${gapMid.toFixed(1)}px)`);
 
-    // 4. THE TEETH: its buttons ACT on the node. Click delete → the node is gone from
-    //    model and DOM, and the toolbar tears down with it.
-    check(!!ctx.diagram.getNode('n'), 'precondition: node exists before delete');
-    ctx.portal.element.querySelector('.nt-btn-delete').dispatchEvent(new PointerEvent('click', { bubbles: true }));
-    check(ctx.diagram.getNode('n') === undefined, 'the toolbar delete button did not remove the node');
+    // 6. THE TEETH: its buttons ACT on the node. Click delete → the node is gone
+    //    from model and DOM, and the toolbar tears down with it. (Runs LAST.)
+    check(!!model.getNode('n'), 'precondition: node exists before delete');
+    bar.querySelector('.nt-btn-delete').dispatchEvent(new PointerEvent('click', { bubbles: true }));
+    check(model.getNode('n') === undefined, 'the toolbar delete button did not remove the node');
     check(ctx.host.querySelector('[data-node-id="n"]') === null, 'the deleted node is still in the DOM');
   },
 });
