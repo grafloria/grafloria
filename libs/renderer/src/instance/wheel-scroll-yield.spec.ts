@@ -68,20 +68,25 @@ describe('delegateWheelToScrollable', () => {
     expect(box.scrollTop).toBe(120);
   });
 
-  it('scrolls up only when already scrolled down, and clamps at 0', () => {
+  it('absorbs an upward wheel even at the top (containment), and clamps at 0', () => {
     const box = scrollable('auto', { scrollHeight: 500, clientHeight: 200, scrollTop: 0 });
     document.body.appendChild(box);
-    expect(delegateWheelToScrollable(wheel(box, -120))).toBe(false);
+    // At the top, wheeling up is still the card's — it must not pan the canvas up.
+    expect(delegateWheelToScrollable(wheel(box, -120))).toBe(true);
+    expect(box.scrollTop).toBe(0);
     box.scrollTop = 50;
     expect(delegateWheelToScrollable(wheel(box, -120))).toBe(true);
     expect(box.scrollTop).toBe(0);
   });
 
-  it('hands BACK to the canvas at the end of the scroll range', () => {
+  it('CONTAINS the wheel at the end of the range — the canvas must NOT pan', () => {
+    // The reported bug: reaching the bottom of a card suddenly panned the whole
+    // diagram. Containment: while the cursor is over a scrollable card, the card
+    // absorbs the wheel even at its end (handled=true → caller does not pan).
     const box = scrollable('auto', { scrollHeight: 500, clientHeight: 200, scrollTop: 300 });
     document.body.appendChild(box);
-    expect(delegateWheelToScrollable(wheel(box, 120))).toBe(false); // at bottom — canvas pans
-    expect(box.scrollTop).toBe(300);
+    expect(delegateWheelToScrollable(wheel(box, 120))).toBe(true); // at bottom — still absorbed
+    expect(box.scrollTop).toBe(300); // clamped, but the wheel is consumed
   });
 
   it('clamps a large delta to the range end and still reports handled', () => {
@@ -133,7 +138,7 @@ describe('delegateWheelToScrollable', () => {
     expect(body.scrollTop).toBe(120);
   });
 
-  it('deepest scrollable under the cursor wins; outer takes over when inner is exhausted', () => {
+  it('deepest scrollable under the cursor owns the wheel and CONTAINS it (no chaining to outer)', () => {
     const outer = scrollable('auto', { scrollHeight: 800, clientHeight: 300, scrollTop: 0 }, { left: 0, top: 0, width: 300, height: 300 });
     const inner = scrollable('auto', { scrollHeight: 400, clientHeight: 100, scrollTop: 95 }, { left: 50, top: 50, width: 200, height: 100 });
     outer.appendChild(inner);
@@ -142,7 +147,8 @@ describe('delegateWheelToScrollable', () => {
     expect(inner.scrollTop).toBe(215); // inner scrolled, outer untouched
     expect(outer.scrollTop).toBe(0);
     inner.scrollTop = 300; // inner exhausted (400-100)
-    expect(delegateWheelToScrollable(wheel(fo, 120))).toBe(true);
-    expect(outer.scrollTop).toBe(120); // outer takes over
+    expect(delegateWheelToScrollable(wheel(fo, 120))).toBe(true); // still absorbed by inner
+    expect(inner.scrollTop).toBe(300); // inner clamped
+    expect(outer.scrollTop).toBe(0);  // containment: the wheel does NOT chain to the outer
   });
 });

@@ -12,7 +12,8 @@
  *   1. a fixed-height kit card with more rows than fit is scrollable;
  *   2. a plain wheel over it scrolls the CARD, not the canvas;
  *   3. the scroll clamps at the range end;
- *   4. one more wheel at the end pans the CANVAS (takeover);
+ *   4. CONTAINMENT: at the end, one more wheel does NOT pan the canvas — the
+ *      card absorbs it (reaching the bottom must never jump the whole diagram);
  *   5. ctrl/⌘-wheel over the card zooms the canvas, never scrolls the card.
  *
  * Run: node demos/e2e/scroll-run.mjs   (needs the demo server on :4321)
@@ -61,7 +62,8 @@ check('...still no pan while clamping', s2.panX === 0 && s2.panY === 0, `pan=${s
 await p.mouse.wheel(0, 240);
 await p.waitForTimeout(150);
 const s3 = await state();
-check('at range end the CANVAS takes over (pan)', s3.panY !== 0, `panY=${s3.panY}`);
+check('CONTAINMENT: at range end the canvas does NOT pan', s3.panX === 0 && s3.panY === 0, `pan=${s3.panX},${s3.panY}`);
+check('...and the card stays at its clamped end', s3.scrollTop === s3.max, `scrollTop=${s3.scrollTop}`);
 
 // Fresh page (the takeover pan moved the card off-screen), then prove
 // pinch-zoom always belongs to the canvas even over scrollable content.

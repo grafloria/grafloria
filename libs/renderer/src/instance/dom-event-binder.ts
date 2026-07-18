@@ -509,10 +509,11 @@ export class DomEventBinder {
 
     if (!this.options.enablePan) return;
     // A wheel over scrollable HTML content inside a node (an ER table's rows,
-    // a class card's members) belongs to THAT element while it can still
-    // scroll. Card content is pointer-events:none (drag-through), so native
-    // scroll can never reach it — the delegate scrolls it programmatically.
-    // At the end of its range the canvas pans again.
+    // a class card's members) belongs to THAT card. Card content is
+    // pointer-events:none (drag-through), so native scroll can never reach it —
+    // the delegate scrolls it programmatically. CONTAINMENT: while the cursor is
+    // over the card the wheel is absorbed even at the end of its range, so the
+    // canvas never pans out from under it (move off the card to pan).
     if (delegateWheelToScrollable(event)) {
       event.preventDefault();
       return;
