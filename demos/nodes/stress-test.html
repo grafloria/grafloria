@@ -2,11 +2,16 @@
 <title>Stress test — Grafloria</title>
 <link rel="stylesheet" href="../shell/demo.css">
 <style>
-  #readout { padding: 10px 24px; font: 12px/1.5 ui-monospace, monospace; border-bottom: 1px solid rgba(127,127,127,.25); }
+  #readbar { display: flex; gap: 16px; align-items: center; padding: 10px 24px; font: 12px/1.5 ui-monospace, monospace; border-bottom: 1px solid rgba(127,127,127,.25); }
+  #btn-shuffle { font: 12px system-ui, sans-serif; padding: 4px 12px; border: 1px solid rgba(127,127,127,.5); border-radius: 6px; background: transparent; color: inherit; cursor: pointer; }
+  #btn-shuffle:hover { border-color: rgba(127,127,127,.9); }
   #canvas { height: calc(100vh - 190px); }
 </style>
 <header id="demo-head"></header>
-<div id="readout" data-capture-hide>measuring…</div>
+<div id="readbar" data-capture-hide>
+  <span id="readout">measuring…</span>
+  <button id="btn-shuffle" type="button">shuffle positions</button>
+</div>
 <div id="canvas"></div>
 <script type="module">
 import { render } from '../shell/grafloria.js';
@@ -17,10 +22,11 @@ const COLS = 44;
 
 defineDemo({
   name: 'Stress test',
-  blurb: 'Two thousand nodes in the model; only the visible slice is in the DOM (viewport culling), and a full-graph move repaints inside the sub-100ms budget the page itself enforces — the banner prints the real median, not a claim.',
+  blurb: 'Two thousand nodes in the model; only the visible slice is in the DOM (viewport culling), and a full-graph move repaints inside the sub-100ms budget the page itself enforces — the banner prints the real median, not a claim. "Shuffle positions" flings all 2,000 at once (React Flow’s "change pos") and it stays smooth.',
   howTo: [
     'Before touching the camera, click "▶ run the scripted checks" in this panel: the page moves all 2,000 nodes seven times, timing every repaint, then swaps the "measuring…" strip for the real numbers — nodes in the model, nodes actually in the DOM, median frame time.',
-    'Now drag empty canvas to pan across the grid: only the visible slice is ever materialised (the strip just told you how few), and fresh tiles stream in at the edges as they enter the camera.',
+    'Click "shuffle positions" (top strip): every one of the 2,000 nodes jumps to a new spot at once — React Flow’s "change pos" button — and the grid re-tiles without a stutter. Only the nodes that land in view are ever materialised.',
+    'Drag empty canvas to pan across the grid: only the visible slice is ever materialised (the strip just told you how few), and fresh tiles stream in at the edges as they enter the camera.',
     '⌘+wheel / Ctrl+wheel to zoom out until thousands of tiles are in view, then back in — the DOM grows and shrinks with the viewport, which is why 2,000 nodes stay smooth.',
     'Drag any single node: an individual move repaints immediately, even with the full graph in the model.',
   ],
@@ -42,6 +48,18 @@ defineDemo({
     const api = render({ nodes, edges }, ctx.host);
     ctx.instance = api;
     ctx.diagram = api.getModel();
+
+    // React Flow's "change pos": fling ALL 2,000 nodes to fresh positions in one
+    // batched update, then repaint once — a live, user-driven bulk move that proves
+    // the same O(n) budget the scripted checks measure. One batchUpdate = one paint.
+    ctx.shuffle = () => {
+      api.batchUpdate((model) => {
+        for (const n of model.getNodes()) n.setPosition(Math.random() * 3000, Math.random() * 1800);
+      });
+      api.renderNow();
+    };
+    document.getElementById('btn-shuffle').addEventListener('click', ctx.shuffle);
+
     await ctx.tick();
   },
 
@@ -86,6 +104,18 @@ defineDemo({
     check(!!g, 'the top-left node fell out of the DOM — it should be on screen');
     check((g.getAttribute('transform') || '').includes('translate(7'),
       `n0 moved by 7px over 7 frames but its transform did not follow (was "${g.getAttribute('transform')}")`);
+
+    // 5. THE SHUFFLE HAS TEETH: React Flow's "change pos" must actually relocate the
+    //    whole model in one batch. Snapshot a sample of positions, fling them all,
+    //    and confirm they really moved (and the model still holds every node).
+    const sample = ['n0', 'n500', 'n1000', 'n1500', 'n1999'].map((id) => {
+      const n = m.getNode(id); return { id, x: n.position.x, y: n.position.y };
+    });
+    ctx.shuffle();
+    check(m.getNodes().length === N, `shuffle must not drop nodes (has ${m.getNodes().length})`);
+    const moved = sample.filter((s) => { const n = m.getNode(s.id); return n.position.x !== s.x || n.position.y !== s.y; });
+    check(moved.length === sample.length,
+      `shuffle should relocate every sampled node; only ${moved.length}/${sample.length} moved`);
   },
 });
 </script>

@@ -1,7 +1,20 @@
 <meta charset="utf-8">
 <title>Updating nodes — Grafloria</title>
 <link rel="stylesheet" href="../shell/demo.css">
+<style>
+  #bar { display: flex; gap: 18px; align-items: center; padding: 10px 24px; border-bottom: 1px solid rgba(127,127,127,.25); font: 13px system-ui, sans-serif; }
+  #bar label { display: flex; gap: 7px; align-items: center; }
+  #bar input[type=text] { font: inherit; padding: 3px 7px; border: 1px solid rgba(127,127,127,.5); border-radius: 5px; background: transparent; color: inherit; }
+  #bar input[type=color] { width: 34px; height: 26px; padding: 0; border: 1px solid rgba(127,127,127,.5); border-radius: 5px; background: transparent; }
+  #bar output { font: 12px ui-monospace, monospace; min-width: 32px; }
+  #canvas { height: calc(100vh - 150px); }
+</style>
 <header id="demo-head"></header>
+<div id="bar">
+  <label>Label <input id="ctl-label" type="text" value="BEFORE" autocomplete="off"></label>
+  <label>Background <input id="ctl-color" type="color" value="#eef2ff"></label>
+  <label>Width <input id="ctl-width" type="range" min="140" max="360" step="1" value="200"> <output id="ctl-width-val">200</output></label>
+</div>
 <div id="canvas"></div>
 <script type="module">
 import { render } from '../shell/grafloria.js';
@@ -9,64 +22,93 @@ import { defineDemo, check, checkChanged } from '../shell/demo.js';
 
 defineDemo({
   name: 'Updating nodes',
-  blurb: 'Mutate a live node — label, size, payload — and the canvas repaints. The tracked setters bump the mutation epoch; a raw field write would silently NOT repaint.',
+  blurb: 'Edit a live node from OUTSIDE the canvas — type a label, pick a background, drag the width slider — and it re-renders on the spot. Each control calls a tracked setter (setMetadata, setSize) that bumps the mutation epoch; a raw field write would silently NOT repaint.',
   howTo: [
-    'Find the node labelled "BEFORE", wired to "Steady" — nothing on this page mutates until the check drives it.',
-    'Click "▶ run the scripted checks" in this panel: watch the left node live — its label flips to "AFTER-EDIT", then its body widens to 320px. Each tracked setter (setMetadata, setSize) bumps the mutation epoch and the canvas repaints.',
-    'Watch the edge too: it re-anchors to the growing body — link geometry follows tracked mutations.',
-    'The check also proves the negative: a RAW field write (node.data = {…}) is untracked and repaints nothing — the silent no-op that is exactly why the tracked setters exist.',
+    'Type into the "Label" box: the left node’s text follows every keystroke — setMetadata(\'label\') is tracked, so each change repaints.',
+    'Pick a colour in "Background": the node’s body recolours immediately via setMetadata(\'shape\', { fill }).',
+    'Drag the "Width" slider: the node body grows/shrinks through setSize, and watch the edge re-anchor to the moving right side — link geometry follows tracked mutations.',
+    'The scripted checks also prove the negative: a RAW field write (node.data = {…}) is untracked and repaints nothing — the silent no-op that is exactly why the tracked setters exist.',
   ],
   reactflow: 'Updating Nodes',
 
   async setup(ctx) {
     const api = render({
       nodes: [
-        { id: 'a', position: { x: 80,  y: 90 }, size: { width: 200, height: 90 }, label: 'BEFORE' },
-        // At x=480 the grown 320px-wide 'a' still leaves an 80px gap — flush
+        // At x=480 the grown 360px-wide 'a' still leaves a gap before 'b' — flush
         // contact makes the connecting edge degenerate to nothing.
-        { id: 'b', position: { x: 480, y: 90 }, size: { width: 200, height: 90 }, label: 'Steady' },
+        { id: 'a', position: { x: 80,  y: 90 }, size: { width: 200, height: 90 }, label: 'BEFORE',
+          shape: { type: 'rect', fill: '#eef2ff', stroke: '#6366f1' } },
+        { id: 'b', position: { x: 560, y: 90 }, size: { width: 200, height: 90 }, label: 'Steady' },
       ],
       edges: [{ id: 'e1', source: 'a', target: 'b' }],
     }, ctx.host);
     ctx.instance = api;
     ctx.diagram = api.getModel();
+    const node = ctx.diagram.getNode('a');
+
+    // THE EXTERNAL CONTROLS — the whole point of this page. Each fires a TRACKED
+    // setter and repaints; a visitor drives them by hand, and the assert drives
+    // the very same inputs.
+    const label = document.getElementById('ctl-label');
+    const color = document.getElementById('ctl-color');
+    const width = document.getElementById('ctl-width');
+    const widthVal = document.getElementById('ctl-width-val');
+    label.addEventListener('input', () => { node.setMetadata('label', label.value); api.renderNow(); });
+    color.addEventListener('input', () => { node.setMetadata('shape', { type: 'rect', fill: color.value, stroke: '#334155' }); api.renderNow(); });
+    width.addEventListener('input', () => { widthVal.textContent = width.value; node.setSize(Number(width.value), node.size.height); api.renderNow(); });
+
     await ctx.tick();
   },
 
   async assert(ctx) {
-    const api = ctx.instance;
+    const host = ctx.host;
     const node = ctx.diagram.getNode('a');
-    const groupText = () => ctx.host.querySelector('[data-node-id="a"]').textContent;
+    const groupText = () => host.querySelector('[data-node-id="a"]').textContent;
+    // The painted body is the widest <rect> in the node group.
+    const bodyRect = () => [...host.querySelectorAll('[data-node-id="a"] rect')]
+      .sort((p, q) => Number(q.getAttribute('width')) - Number(p.getAttribute('width')))[0];
+    // Fire an external control the way a user does: set its value, emit 'input'.
+    const drive = (id, val) => { const el = document.getElementById(id); el.value = val; el.dispatchEvent(new Event('input', { bubbles: true })); };
+    const hexToRgb = (h) => { const n = parseInt(h.slice(1), 16); return `rgb(${(n >> 16) & 255}, ${(n >> 8) & 255}, ${n & 255})`; };
 
-    // 1. LABEL. setMetadata('label') is tracked → repaint → the DOM text changes.
+    // 1. LABEL via the external text box. The control is wired to setMetadata('label'),
+    //    which is tracked → repaint → the DOM text changes to what was typed.
     const before = groupText();
     check(before.includes('BEFORE'), `label did not paint at all (was "${before}")`);
-
-    node.setMetadata('label', 'AFTER-EDIT');
-    api.renderNow();
+    drive('ctl-label', 'AFTER-EDIT');
     const after = groupText();
-    checkChanged(before, after, 'setMetadata("label") did not repaint the node text');
-    check(after.includes('AFTER-EDIT'), `expected the new label in the DOM, got "${after}"`);
+    checkChanged(before, after, 'the Label control did not repaint the node text');
+    check(after.includes('AFTER-EDIT'), `expected the typed label in the DOM, got "${after}"`);
+    check(node.getMetadata('label') === 'AFTER-EDIT', 'the model label did not take the control value');
 
-    // 2. SIZE. setSize is tracked → the body rect grows in the DOM.
-    const bodyRect = () => ctx.host.querySelector('[data-node-id="a"] rect');
+    // 2. BACKGROUND via the external colour picker. setMetadata('shape',{fill}) is
+    //    tracked → the body rect actually repaints in the chosen colour.
+    const pick = '#e11d48';
+    drive('ctl-color', pick);
+    check(node.getMetadata('shape') && node.getMetadata('shape').fill === pick,
+      `the Background control did not set the shape fill (got ${JSON.stringify(node.getMetadata('shape'))})`);
+    const painted = [...host.querySelectorAll('[data-node-id="a"] rect, [data-node-id="a"] path')]
+      .some((el) => (getComputedStyle(el).fill) === hexToRgb(pick));
+    check(painted, `no part of the node painted the picked colour ${hexToRgb(pick)}`);
+
+    // 3. WIDTH via the external slider. setSize is tracked → the body rect grows and
+    //    the model width follows.
     const w0 = Number(bodyRect().getAttribute('width'));
-    node.setSize(320, 90);
-    api.renderNow();
+    drive('ctl-width', '340');
     const w1 = Number(bodyRect().getAttribute('width'));
-    check(w1 > w0, `setSize did not widen the body rect (${w0} -> ${w1})`);
-    check(node.size.width === 320, `model width should be 320, is ${node.size.width}`);
+    check(w1 > w0, `the Width slider did not widen the body rect (${w0} -> ${w1})`);
+    check(node.size.width === 340, `model width should be 340 after the slider, is ${node.size.width}`);
 
-    // 3. THE TEETH: a RAW field assignment (node.data = {...}) bypasses trackChange,
-    //    so it must NOT be what a repaint depends on. We prove the tracked path is
-    //    the one that works by confirming the untracked one leaves the epoch alone:
-    //    the label from step 1 must survive a raw data write + renderNow untouched.
+    // 4. THE TEETH: a RAW field assignment (node.data = {...}) bypasses trackChange,
+    //    so it must NOT be what a repaint depends on. Confirm the tracked path is the
+    //    one that works: the label from step 1 survives a raw data write + renderNow
+    //    untouched (the untracked write left the epoch alone).
     node.data = { note: 'raw-write' };          // untracked on purpose
-    api.renderNow();
+    ctx.instance.renderNow();
     check(groupText().includes('AFTER-EDIT'),
       'a raw data write should not have disturbed the tracked label');
 
-    // 4. And the tracked payload setter DOES take, on the model.
+    // 5. And the tracked payload setter DOES take, on the model.
     node.setData('note', 'tracked-write');
     check(node.data.note === 'tracked-write', 'setData did not update node.data');
   },

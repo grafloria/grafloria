@@ -4,17 +4,17 @@
 <header id="demo-head"></header>
 <div id="canvas"></div>
 <script type="module">
-import { render } from '../shell/grafloria.js';
+import { render, SnapController } from '../shell/grafloria.js';
 import { defineDemo, check, checkEqual } from '../shell/demo.js';
 
 defineDemo({
   name: 'Delete the middle node',
-  blurb: 'Remove the node in the middle of A→B→C and its two links go WITH it — a cascade, not two dangling edges. This is the Wave-10 removeNode() fix, proved through the public API.',
+  blurb: 'Delete B out of A→B→C and the chain HEALS: its two edges cascade away with it, and a fresh A→C wire bridges the gap. React Flow’s onNodesDelete reconnect — built here from getLinks() + the shipped link command, so the bridge is a real, undoable edge.',
   howTo: [
-    'Click "B (middle)" to select it.',
-    'Press Delete (or Backspace): B vanishes — and BOTH wires vanish with it. A cascade, not two edges left dangling at a ghost node.',
-    'Check the survivors: A and C are still there, just no longer connected.',
-    'Press ⌘Z / Ctrl+Z: B comes back WITH both of its links — the delete was one undoable step.',
+    'Click "B (middle)" to select it — its outline highlights.',
+    'Press Delete (or Backspace): B vanishes, its two edges (A→B, B→C) go with it, and in their place ONE new A→C wire appears. The predecessors reconnect to the successors across the gap.',
+    'Read the survivors: A and C are still there, now joined DIRECTLY by the bridge edge — not left stranded, and with no wire dangling at a ghost node.',
+    'Select an END node instead (A or C) and press Delete: no bridge appears. A span is only drawn when the deleted node had BOTH a predecessor and a successor — exactly getIncomers × getOutgoers.',
   ],
   reactflow: 'Delete Middle Node',
 
@@ -32,6 +32,50 @@ defineDemo({
     }, ctx.host);
     ctx.instance = api;
     ctx.diagram = api.getModel();
+    const eng = api.getEngine();
+    const m = ctx.diagram;
+    ctx.snap = new SnapController();
+
+    // The RECONNECT, exactly as React Flow's onNodesDelete does it: read the
+    // deleted node's predecessors (links that TARGET it) and successors (links
+    // that SOURCE from it) BEFORE removal — this is getIncomers × getOutgoers —
+    // then remove the node (which cascades its own edges away, no dangle), and
+    // draw one bridge from each predecessor to each successor. The bridge is a
+    // real link committed through the same command stack a hand-drawn wire uses,
+    // so it is undoable and its geometry is fully initialised (not a raw stub).
+    ctx.healDelete = async (id) => {
+      const links = m.getLinks();
+      const incomers = [...new Set(links.filter((l) => l.targetNodeId === id).map((l) => l.sourceNodeId))];
+      const outgoers = [...new Set(links.filter((l) => l.sourceNodeId === id).map((l) => l.targetNodeId))];
+      await eng.removeNode(id);                        // cascade + undoable
+      for (const s of incomers) for (const t of outgoers) {
+        if (s === t) continue;                          // never a self-loop bridge
+        const sn = m.getNode(s), tn = m.getNode(t);
+        if (!sn || !tn) continue;
+        if (m.getLinks().some((l) => l.sourceNodeId === s && l.targetNodeId === t)) continue; // already joined
+        const candidate = {
+          sourcePort: sn.getPortBySide('right') ?? sn.getPorts()[0],
+          targetPort: tn.getPortBySide('left') ?? tn.getPorts()[0],
+          sourceNodeId: s, targetNodeId: t, distance: 0,
+        };
+        eng.commandManager.execute(ctx.snap.buildProximityLinkCommand(candidate));
+      }
+      api.renderNow();
+    };
+
+    // The real gesture a visitor makes: select a node, press Delete. We own the
+    // key in the CAPTURE phase so the heal (remove-then-bridge) replaces the
+    // engine's plain cascade-delete — a trusted keypress lands here before the
+    // engine's own handler, and we stop it so the node is not removed twice.
+    window.addEventListener('keydown', (e) => {
+      if (e.key !== 'Delete' && e.key !== 'Backspace') return;
+      const sel = m.getSelectedNodes ? m.getSelectedNodes() : [];
+      if (!sel.length) return;
+      e.preventDefault();
+      e.stopImmediatePropagation();
+      (async () => { for (const n of sel) await ctx.healDelete(n.id); })();
+    }, true);
+
     await ctx.tick();
   },
 
@@ -44,26 +88,35 @@ defineDemo({
     checkEqual(m.getLinksForNode('b').length, 2, 'both links should touch B');
     check(!!ctx.host.querySelector('[data-node-id="b"]'), 'B did not render');
 
-    // THE ACT: remove the middle node — through the ENGINE, so the removal
-    // lands on the undo stack and a visitor's ⌘Z after the run restores B
-    // (live audit: the direct model call left ⌘Z dead post-run).
+    // THE ACT: heal-delete the middle node — the exact path the Delete key drives.
     const removedNode = m.getNode('b');
-    await ctx.instance.getEngine().removeNode('b');
-    ctx.instance.renderNow();
+    await ctx.healDelete('b');
 
     // 1. B is gone — from the model AND the DOM.
     check(!!removedNode && removedNode.id === 'b', 'B did not exist before removal');
-    check(m.getNode('b') === undefined, 'B is still in the model after removeNode');
-    check(ctx.host.querySelector('[data-node-id="b"]') === null, 'B is still in the DOM after removeNode');
+    check(m.getNode('b') === undefined, 'B is still in the model after the delete');
+    check(ctx.host.querySelector('[data-node-id="b"]') === null, 'B is still in the DOM after the delete');
 
-    // 2. THE TEETH: its links went WITH it. A non-cascading remove would leave two
-    //    edges pointing at a node that no longer exists — the classic dangle. Both
-    //    ab and bc must be gone from the model.
-    checkEqual(m.getLinks().length, 0, 'the two links attached to B were NOT cascaded away');
+    // 2. CASCADE (no dangle): the two edges that touched B are gone from the model.
+    //    A non-cascading remove would leave two edges pointing at a ghost node.
     check(m.getLink('ab') === undefined, 'link ab survived its endpoint being deleted');
     check(m.getLink('bc') === undefined, 'link bc survived its endpoint being deleted');
+    check(!m.getLinks().some((l) => l.sourceNodeId === 'b' || l.targetNodeId === 'b'),
+      'a link still references the deleted node B');
 
-    // 3. The survivors A and C are untouched.
+    // 3. THE TEETH: the chain RECONNECTED. Exactly ONE link remains, and it bridges
+    //    A→C — the predecessor now joined straight to the successor. This is the
+    //    behaviour React Flow's delete-middle-node exists to show; a plain cascade
+    //    delete would leave A and C stranded with zero links.
+    checkEqual(m.getLinks().length, 1, 'delete-middle should leave exactly one link (the A→C bridge)');
+    const bridge = m.getLinks()[0];
+    check(bridge.sourceNodeId === 'a' && bridge.targetNodeId === 'c',
+      `the surviving link should bridge A→C, was ${bridge.sourceNodeId}→${bridge.targetNodeId}`);
+    // The bridge is a real, painted edge (initialised geometry), not a raw stub.
+    check(Array.isArray(bridge.points), 'the bridge link has no points array — it was not properly created');
+    check(!!ctx.host.querySelector(`[data-link-id="${bridge.id}"] path[d]`), 'the A→C bridge did not paint a path');
+
+    // 4. The survivors A and C are untouched.
     check(!!m.getNode('a') && !!m.getNode('c'), 'deleting B should not remove A or C');
   },
 });
