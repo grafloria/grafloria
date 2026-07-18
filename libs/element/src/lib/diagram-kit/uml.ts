@@ -209,6 +209,11 @@ export function umlDiagram(options: UmlDiagramOptions): {
   // call it — chips must not be added twice.
   const finalized = new WeakSet<object>();
   const finalize = (api: unknown): void => {
+    const a0 = api as { container?: HTMLElement; getModel?: () => { getNode: (id: string) => { setBehavior?: (b: { resizable: boolean }) => void } | undefined } };
+    // Own card ring only — suppress the node resize handles on the live model
+    // (the render-input path does not honour a spec-level `behavior`).
+    const m0 = a0?.getModel?.();
+    if (m0) for (const cls of options.classes) m0.getNode?.(cls.id)?.setBehavior?.({ resizable: false });
     if (options.rowSelection !== false) {
       const a = api as { container?: HTMLElement };
       // bindRowInteractions disposes any prior binding for the container, so it

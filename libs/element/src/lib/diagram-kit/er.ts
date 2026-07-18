@@ -246,9 +246,13 @@ export function erDiagram(options: ErDiagramOptions): {
     nodes,
     edges,
     finalize: (api: unknown) => {
-      if (options.rowSelection === false) return;
-      const a = api as { container?: HTMLElement };
-      if (a?.container) bindRowInteractions(a as never);
+      const a = api as { container?: HTMLElement; getModel?: () => { getNode: (id: string) => { setBehavior?: (b: { resizable: boolean }) => void } | undefined } };
+      // The card draws its OWN selection ring — suppress the node resize handles
+      // on the live model (they'd frame the card in a SECOND rectangle). Set here
+      // because the render-input path does not honour a spec-level `behavior`.
+      const model = a?.getModel?.();
+      if (model) for (const e of options.entities) model.getNode?.(e.id)?.setBehavior?.({ resizable: false });
+      if (options.rowSelection !== false && a?.container) bindRowInteractions(a as never);
     },
   };
 }
