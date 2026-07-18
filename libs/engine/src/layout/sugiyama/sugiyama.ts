@@ -97,6 +97,30 @@ export interface SugiyamaResult {
   bends: Map<string, Array<{ x: number; y: number }>>;
   /** Crossings in the final ordering — the headline quality number. */
   crossings: number;
+  /** Deterministic work counters — regression tests bound these instead of wall clock. */
+  stats: SugiyamaStats;
+}
+
+/**
+ * Work counters, filled on every run. They exist because "it got slow" is only
+ * fixable when you can see WHERE the work went: a wide layer full of dummies made
+ * the old transpose recount every inter-layer crossing twice per candidate swap
+ * (O(width * E²) per pass), which is the difference between 40ms and being killed
+ * at 25s on the same node count. The counters are pure functions of the input —
+ * no wall clock — so CI can assert hard bounds without flaking.
+ */
+export interface SugiyamaStats {
+  dummyCount: number;
+  layerCount: number;
+  maxLayerWidth: number;
+  /** transpose() while-passes actually run (bounded by guard × ordering iterations). */
+  transposePasses: number;
+  /** adjacent pairs considered for swapping, across all passes */
+  transposeSwapsEvaluated: number;
+  /** swaps that were kept because they reduced crossings */
+  transposeSwapsApplied: number;
+  /** elements pushed through inversion counting in countCrossings, across the run */
+  crossingCountOps: number;
 }
 
 const DEFAULTS = {
@@ -371,11 +395,20 @@ function layerAdjacency(
   return adj;
 }
 
-/** Crossings between two adjacent layers, given their orders. */
+/**
+ * Crossings between two adjacent layers, given their orders.
+ *
+ * Inversion counting via a Fenwick tree — O(k log w) for k inter-layer edge
+ * endpoints. The obvious O(k²) double loop is exactly what melted down on the
+ * sparse-DAG benchmark: ~1000-wide layers put thousands of endpoints between a
+ * single pair of layers, and this function used to be called from inside the
+ * per-swap loop of transpose. The count is exact and identical to the naive one.
+ */
 function countCrossings(
   upper: LayerNode[],
   lower: LayerNode[],
-  adj: Map<string, string[]>
+  adj: Map<string, string[]>,
+  stats?: SugiyamaStats
 ): number {
   const posLower = new Map(lower.map((n, i) => [n.id, i]));
   const pairs: number[] = [];
@@ -386,19 +419,30 @@ function countCrossings(
       .sort((a, b) => a - b);
     pairs.push(...targets);
   }
-  // count inversions
+  if (stats) stats.crossingCountOps += pairs.length;
+  // count inversions: for each element, how many already-seen elements exceed it
+  const size = lower.length + 1;
+  const bit = new Array<number>(size + 1).fill(0);
   let crossings = 0;
-  for (let i = 0; i < pairs.length; i++) {
-    for (let j = i + 1; j < pairs.length; j++) {
-      if (pairs[i] > pairs[j]) crossings++;
-    }
+  let seen = 0;
+  for (const p of pairs) {
+    let leq = 0;
+    for (let idx = p + 1; idx > 0; idx -= idx & -idx) leq += bit[idx];
+    crossings += seen - leq;
+    seen++;
+    for (let idx = p + 1; idx <= size; idx += idx & -idx) bit[idx]++;
   }
   return crossings;
 }
 
-function totalCrossings(layers: LayerNode[][], adj: Map<string, string[]>): number {
+function totalCrossings(
+  layers: LayerNode[][],
+  adj: Map<string, string[]>,
+  stats?: SugiyamaStats
+): number {
   let total = 0;
-  for (let i = 0; i + 1 < layers.length; i++) total += countCrossings(layers[i], layers[i + 1], adj);
+  for (let i = 0; i + 1 < layers.length; i++)
+    total += countCrossings(layers[i], layers[i + 1], adj, stats);
   return total;
 }
 
@@ -414,11 +458,12 @@ function orderLayers(
   layers: LayerNode[][],
   adj: Map<string, string[]>,
   constraints: SemanticConstraints | undefined,
-  iterations: number
+  iterations: number,
+  stats: SugiyamaStats
 ): { layers: LayerNode[][]; crossings: number } {
   let best = layers.map((l) => [...l]);
   enforceOrdering(best, constraints);
-  let bestCount = totalCrossings(best, adj);
+  let bestCount = totalCrossings(best, adj, stats);
 
   let current = best.map((l) => [...l]);
 
@@ -448,10 +493,10 @@ function orderLayers(
       current[i] = keyed.map((k) => k.n);
     }
 
-    transpose(current, adj);
+    transpose(current, adj, stats);
     enforceOrdering(current, constraints);
 
-    const count = totalCrossings(current, adj);
+    const count = totalCrossings(current, adj, stats);
     if (count < bestCount) {
       bestCount = count;
       best = current.map((l) => [...l]);
@@ -462,19 +507,69 @@ function orderLayers(
   return { layers: best, crossings: bestCount };
 }
 
-/** Swap adjacent pairs while it reduces crossings — the cheap local fix the median misses. */
-function transpose(layers: LayerNode[][], adj: Map<string, string[]>): void {
+/**
+ * Swap adjacent pairs while it reduces crossings — the cheap local fix the median misses.
+ *
+ * The decision for each candidate swap is INCREMENTAL, and that is the fix that
+ * took the sparse-DAG benchmark from killed-at-25s to tens of milliseconds:
+ * swapping adjacent u,v within a layer changes no pair of edges except those
+ * between u's and v's own neighbours in the fixed lower layer, so
+ *
+ *   after - before = cross(v,u) - cross(u,v)
+ *
+ * where cross(a,b) = |{(p,q) : p ∈ pos(adj a), q ∈ pos(adj b), p > q}|. The old
+ * code recounted EVERY crossing between the two layers twice per candidate
+ * (O(E²) each, with E in the thousands on 1000-wide dummy-filled layers); this
+ * computes the same accept/reject decision from the two nodes' sorted neighbour
+ * positions in O(deg u + deg v). Same swaps, same final ordering, bounded work.
+ */
+function transpose(layers: LayerNode[][], adj: Map<string, string[]>, stats: SugiyamaStats): void {
   let improved = true;
   let guard = 0;
   while (improved && guard++ < 8) {
     improved = false;
+    stats.transposePasses++;
     for (let i = 0; i + 1 < layers.length; i++) {
-      for (let j = 0; j + 1 < layers[i].length; j++) {
-        const before = countCrossings(layers[i], layers[i + 1], adj);
-        [layers[i][j], layers[i][j + 1]] = [layers[i][j + 1], layers[i][j]];
-        const after = countCrossings(layers[i], layers[i + 1], adj);
-        if (after < before) improved = true;
-        else [layers[i][j], layers[i][j + 1]] = [layers[i][j + 1], layers[i][j]]; // undo
+      const upper = layers[i];
+      if (upper.length < 2) continue;
+      const lower = layers[i + 1];
+      const posLower = new Map(lower.map((n, idx) => [n.id, idx]));
+      // Sorted lower-layer positions per upper node. Computed once per pass over
+      // this pair: the lower layer does not move while the upper one is being
+      // transposed, and swapping within `upper` cannot change them.
+      const down = new Map<string, number[]>();
+      for (const u of upper) {
+        down.set(
+          u.id,
+          (adj.get(u.id) ?? [])
+            .filter((t) => posLower.has(t))
+            .map((t) => posLower.get(t)!)
+            .sort((a, b) => a - b)
+        );
+      }
+      for (let j = 0; j + 1 < upper.length; j++) {
+        stats.transposeSwapsEvaluated++;
+        const pu = down.get(upper[j].id)!;
+        const pv = down.get(upper[j + 1].id)!;
+        if (pu.length === 0 || pv.length === 0) continue; // swap cannot change crossings
+        // uv = crossings these two contribute with u left of v; vu = swapped.
+        // Two-pointer merge over the sorted position lists; ties (a shared
+        // neighbour) cross in neither order, exactly as in a full recount.
+        let uv = 0;
+        let vu = 0;
+        let below = 0; // pu entries strictly below the current q
+        let belowOrEq = 0; // pu entries at or below the current q
+        for (const q of pv) {
+          while (below < pu.length && pu[below] < q) below++;
+          while (belowOrEq < pu.length && pu[belowOrEq] <= q) belowOrEq++;
+          vu += below;
+          uv += pu.length - belowOrEq;
+        }
+        if (vu < uv) {
+          [upper[j], upper[j + 1]] = [upper[j + 1], upper[j]];
+          improved = true;
+          stats.transposeSwapsApplied++;
+        }
       }
     }
   }
@@ -574,6 +669,16 @@ function assignCoordinates(
     return (adj.get(n.id) ?? []).length; // then by degree
   };
 
+  // Layer ORDER is frozen in this phase (only x moves), so membership sets,
+  // in-layer indices and the priority order are computed once, not per sweep —
+  // the `some()`/`findIndex()` scans they replace were O(width²) per layer per
+  // iteration, which a 1000-wide dummy-filled layer turns into real seconds.
+  const idSet = layers.map((l) => new Set(l.map((n) => n.id)));
+  const indexIn = layers.map((l) => new Map(l.map((n, i) => [n.id, i])));
+  const byPriorityIn = layers.map((l) =>
+    [...l].sort((a, b) => priority(b) - priority(a) || (a.id < b.id ? -1 : 1))
+  );
+
   for (let iter = 0; iter < iterations; iter++) {
     const downward = iter % 2 === 0;
     const order = downward
@@ -582,12 +687,14 @@ function assignCoordinates(
 
     for (const li of order) {
       const layer = layers[li];
-      const neighbourLayer = downward ? layers[li - 1] : layers[li + 1];
+      const ni = downward ? li - 1 : li + 1;
+      const neighbourLayer = layers[ni];
       if (!neighbourLayer) continue;
+      const neighbourIds = idSet[ni];
 
       const desired = new Map<string, number>();
       for (const n of layer) {
-        const ns = (adj.get(n.id) ?? []).filter((m) => neighbourLayer.some((k) => k.id === m));
+        const ns = (adj.get(n.id) ?? []).filter((m) => neighbourIds.has(m));
         if (ns.length === 0) continue;
         const xs = ns.map((m) => x.get(m)!).sort((a, b) => a - b);
         const mid = xs.length >> 1;
@@ -596,7 +703,7 @@ function assignCoordinates(
 
       // Move nodes toward their desired x in priority order, never violating
       // non-overlap with already-placed (higher-priority) neighbours.
-      const byPriority = [...layer].sort((a, b) => priority(b) - priority(a) || (a.id < b.id ? -1 : 1));
+      const byPriority = byPriorityIn[li];
       const placed = new Set<string>();
       for (const n of byPriority) {
         placed.add(n.id);
@@ -604,7 +711,7 @@ function assignCoordinates(
         const want = desired.get(n.id);
         if (want === undefined) continue;
 
-        const idx = layer.findIndex((k) => k.id === n.id);
+        const idx = indexIn[li].get(n.id)!;
         // left bound: the nearest placed node to the left
         let lo = -Infinity;
         for (let k = idx - 1; k >= 0; k--) {
@@ -653,8 +760,18 @@ export function sugiyama(
   const iterations = options.iterations ?? DEFAULTS.iterations;
   const constraints = options.constraints;
 
+  const stats: SugiyamaStats = {
+    dummyCount: 0,
+    layerCount: 0,
+    maxLayerWidth: 0,
+    transposePasses: 0,
+    transposeSwapsEvaluated: 0,
+    transposeSwapsApplied: 0,
+    crossingCountOps: 0,
+  };
+
   if (nodes.length === 0) {
-    return { positions: new Map(), ranks: new Map(), bends: new Map(), crossings: 0 };
+    return { positions: new Map(), ranks: new Map(), bends: new Map(), crossings: 0, stats };
   }
 
   // In LR/RL the roles of the axes swap. Rather than write the algorithm twice,
@@ -693,7 +810,10 @@ export function sugiyama(
   const ranks = assignRanks(g, tbConstraints);
   const { layers, chains } = normalise(g, ranks, edges);
   const adj = layerAdjacency(g, ranks, edges, chains);
-  const { layers: ordered, crossings } = orderLayers(layers, adj, tbConstraints, iterations);
+  stats.dummyCount = [...chains.values()].reduce((s, c) => s + c.length, 0);
+  stats.layerCount = layers.length;
+  stats.maxLayerWidth = Math.max(0, ...layers.map((l) => l.length));
+  const { layers: ordered, crossings } = orderLayers(layers, adj, tbConstraints, iterations, stats);
   const xs = assignCoordinates(ordered, adj, nodeSpacing, tbConstraints, iterations);
 
   // rank -> y (TB space).
@@ -754,6 +874,9 @@ export function sugiyama(
     }
   };
 
+  // first-match maps, mirroring the .find() semantics they replace
+  const nodeById = new Map<string, SugiyamaNode>();
+  for (const n of nodes) if (!nodeById.has(n.id)) nodeById.set(n.id, n);
   ordered.forEach((layer, li) => {
     for (const n of layer) {
       const p = place(n.id, xs.get(n.id)!, layerY[li]);
@@ -762,7 +885,7 @@ export function sugiyama(
         list.push(p);
         bends.set(n.edgeId!, list);
       } else {
-        const original = nodes.find((k) => k.id === n.id)!;
+        const original = nodeById.get(n.id)!;
         // positions are TOP-LEFT (the model's convention), not centres
         positions.set(n.id, { x: p.x - original.width / 2, y: p.y - original.height / 2 });
       }
@@ -771,12 +894,14 @@ export function sugiyama(
 
   // Restore the edges we reversed for cycle-breaking, so bend chains read in the
   // author's direction rather than the algorithm's.
+  const edgeById = new Map<string, SugiyamaEdge>();
+  for (const e of edges) if (!edgeById.has(e.id)) edgeById.set(e.id, e);
   for (const [edgeId, list] of bends) {
-    const e = edges.find((k) => k.id === edgeId);
+    const e = edgeById.get(edgeId);
     if (e && reversed.has(`${e.target}->${e.source}`)) bends.set(edgeId, [...list].reverse());
   }
 
-  return { positions, ranks, bends, crossings };
+  return { positions, ranks, bends, crossings, stats };
 }
 
 /**
