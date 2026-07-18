@@ -71,11 +71,31 @@
     "error": null
   },
   {
+    "rel": "diagrams/er-advanced.html",
+    "slug": "diagrams__er-advanced",
+    "boot": "/var/folders/pd/8g99tsp56714y1x3d39xqs180000gn/T/grafloria-visual-a/diagrams__er-advanced.boot.png",
+    "after": "/var/folders/pd/8g99tsp56714y1x3d39xqs180000gn/T/grafloria-visual-a/diagrams__er-advanced.after.png",
+    "reactflow": "Entity Relationship",
+    "pro": true,
+    "pageErrors": [],
+    "error": null
+  },
+  {
     "rel": "diagrams/table-er.html",
     "slug": "diagrams__table-er",
     "boot": "/var/folders/pd/8g99tsp56714y1x3d39xqs180000gn/T/grafloria-visual-a/diagrams__table-er.boot.png",
     "after": "/var/folders/pd/8g99tsp56714y1x3d39xqs180000gn/T/grafloria-visual-a/diagrams__table-er.after.png",
     "reactflow": "Entity Relationship",
+    "pro": true,
+    "pageErrors": [],
+    "error": null
+  },
+  {
+    "rel": "diagrams/uml-relationships.html",
+    "slug": "diagrams__uml-relationships",
+    "boot": "/var/folders/pd/8g99tsp56714y1x3d39xqs180000gn/T/grafloria-visual-a/diagrams__uml-relationships.boot.png",
+    "after": "/var/folders/pd/8g99tsp56714y1x3d39xqs180000gn/T/grafloria-visual-a/diagrams__uml-relationships.after.png",
+    "reactflow": "Class Diagram",
     "pro": true,
     "pageErrors": [],
     "error": null
@@ -198,6 +218,16 @@
     "after": "/var/folders/pd/8g99tsp56714y1x3d39xqs180000gn/T/grafloria-visual-a/edges__reconnect-edge.after.png",
     "reactflow": "Reconnect Edge",
     "pro": false,
+    "pageErrors": [],
+    "error": null
+  },
+  {
+    "rel": "edges/routing-algorithms.html",
+    "slug": "edges__routing-algorithms",
+    "boot": "/var/folders/pd/8g99tsp56714y1x3d39xqs180000gn/T/grafloria-visual-a/edges__routing-algorithms.boot.png",
+    "after": "/var/folders/pd/8g99tsp56714y1x3d39xqs180000gn/T/grafloria-visual-a/edges__routing-algorithms.after.png",
+    "reactflow": "Edge Routing",
+    "pro": true,
     "pageErrors": [],
     "error": null
   },
@@ -364,6 +394,17 @@
     "pro": true,
     "pageErrors": [],
     "error": null
+  },
+  {
+    "rel": "interaction/marquee-select.html",
+    "slug": "interaction__marquee-select",
+    "boot": "/var/folders/pd/8g99tsp56714y1x3d39xqs180000gn/T/grafloria-visual-a/interaction__marquee-select.boot.png",
+    "after": "/var/folders/pd/8g99tsp56714y1x3d39xqs180000gn/T/grafloria-visual-a/interaction__marquee-select.after.png",
+    "reactflow": "Box Select",
+    "pro": false,
+    "pageErrors": [],
+    "error": null,
+    "showcase": "/var/folders/pd/8g99tsp56714y1x3d39xqs180000gn/T/grafloria-visual-a/interaction__marquee-select.showcase.png"
   },
   {
     "rel": "interaction/parent-move.html",

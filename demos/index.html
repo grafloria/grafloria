@@ -44,9 +44,9 @@
   public embed with real pointer events and asserts a consequence; a broken demo fails CI.
   Where React Flow ships the same example only in its paid <b>Pro</b> tier, it is marked.</p>
   <div class="scoreboard">
-    <span class="stat"><b>90</b> demos</span>
-    <span class="stat pro"><b>30</b> are features React Flow charges for</span>
-    <span class="stat"><b>10</b> categories</span>
+    <span class="stat"><b>97</b> demos</span>
+    <span class="stat pro"><b>35</b> are features React Flow charges for</span>
+    <span class="stat"><b>11</b> categories</span>
   </div>
 </header>
 <main>
@@ -186,7 +186,7 @@
       </section>
 
       <section>
-        <h2>Edges <span class="count">12</span></h2>
+        <h2>Edges <span class="count">13</span></h2>
         <div class="grid">
         <a class="card" href="edges/animating-edges.html">
           <div class="card-name">Animating edges</div>
@@ -284,6 +284,14 @@
             
           </div>
         </a>
+        <a class="card pro" href="edges/routing-algorithms.html">
+          <div class="card-name">Routing algorithms</div>
+          <div class="card-blurb">One corridor, one wall, three routers chosen per-link via EdgeSpec.router — orthogonal, manhattan (grid) and elk (ELK edge router). Each is asserted to clear a wall that sits squarely on its straight line, and manhattan is asserted to take a geometrically different route from orthogonal — proof the per-link knob dispatches to genuinely separate solvers.</div>
+          <div class="card-foot">
+            <span class="rf">React Flow: Edge Routing</span>
+            <span class="badge" title="React Flow puts the equivalent behind its paywall">Pro / paid there</span>
+          </div>
+        </a>
         </div>
       </section>
 
@@ -342,7 +350,7 @@
       </section>
 
       <section>
-        <h2>Interaction <span class="count">17</span></h2>
+        <h2>Interaction <span class="count">18</span></h2>
         <div class="grid">
         <a class="card pro" href="interaction/undo-redo.html">
           <div class="card-name">Collaboration-aware undo</div>
@@ -418,7 +426,7 @@
         </a>
         <a class="card" href="interaction/execute-flow.html">
           <div class="card-name">Execute flow (node statuses)</div>
-          <div class="card-blurb">Run the workflow like n8n: each node lights up running (a pulsing highlight), its incoming edge animates, then it completes — or fails and halts the flow. Built on the engine's node.state.status machinery.</div>
+          <div class="card-blurb">Run the workflow like n8n: nodes pulse while running, the active wire animates in your chosen style (marching ants / flow / pulse / dash flow, any speed, either direction), a failure halts the run, a warning does not, a live run can be paused, stepped while paused, and continued — and every status keeps a static affordance under reduced motion. All node.state.status + link style.animation machinery.</div>
           <div class="card-foot">
             <span class="rf none">no React Flow equivalent</span>
             
@@ -438,6 +446,14 @@
           <div class="card-foot">
             <span class="rf">React Flow: Accessibility</span>
             <span class="badge" title="React Flow puts the equivalent behind its paywall">Pro / paid there</span>
+          </div>
+        </a>
+        <a class="card" href="interaction/marquee-select.html">
+          <div class="card-name">Marquee selection</div>
+          <div class="card-blurb">Drag a rubber-band box over empty canvas and every node it fully encloses is selected — the marquee tool the binder leaves to the host, assembled from the public registerTool + viewport + selection seams. Shift adds to the selection.</div>
+          <div class="card-foot">
+            <span class="rf">React Flow: Box Select</span>
+            
           </div>
         </a>
         <a class="card pro" href="interaction/parent-move.html">
@@ -714,7 +730,7 @@
         </a>
         <a class="card pro" href="collab/comments.html">
           <div class="card-name">Threaded comments</div>
-          <div class="card-blurb">Threads anchored to a node — delete the node and the thread is orphaned, not destroyed. Concurrent replies both survive (one register per message).</div>
+          <div class="card-blurb">Write a comment on any node and reply in-thread — then delete the node and the thread is orphaned, not destroyed. Concurrent replies both survive (one register per message).</div>
           <div class="card-foot">
             <span class="rf">React Flow: Collaborative (Yjs)</span>
             <span class="badge" title="React Flow puts the equivalent behind its paywall">Pro / paid there</span>
@@ -770,7 +786,7 @@
       </section>
 
       <section>
-        <h2>Export &amp; misc <span class="count">7</span></h2>
+        <h2>Export &amp; misc <span class="count">8</span></h2>
         <div class="grid">
         <a class="card" href="misc/download-image.html">
           <div class="card-name">Download image</div>
@@ -791,6 +807,14 @@
         <a class="card" href="misc/mermaid-text.html">
           <div class="card-name">Mermaid text</div>
           <div class="card-blurb">Lossless, Mermaid-compatible text with a hidden model sidecar — and hand-edit detection: edit the text and the diagram rebuilds from your edit.</div>
+          <div class="card-foot">
+            <span class="rf none">no React Flow equivalent</span>
+            
+          </div>
+        </a>
+        <a class="card" href="misc/mermaid-viewer.html">
+          <div class="card-name">Mermaid viewer</div>
+          <div class="card-blurb">Paste or pick a Mermaid diagram and see how Grafloria renders it. Flowcharts render fully (shapes, colours, subgraphs, node status); ER / class / state are in progress; unsupported types report themselves instead of blanking.</div>
           <div class="card-foot">
             <span class="rf none">no React Flow equivalent</span>
             
@@ -825,6 +849,44 @@
           <div class="card-blurb">Deterministic headless export: pure spec → styles-inlined SVG, zero DOM, byte-identical across independent renders. Provable in-page.</div>
           <div class="card-foot">
             <span class="rf">React Flow: Server Side Rendering</span>
+            <span class="badge" title="React Flow puts the equivalent behind its paywall">Pro / paid there</span>
+          </div>
+        </a>
+        </div>
+      </section>
+
+      <section>
+        <h2>diagrams <span class="count">4</span></h2>
+        <div class="grid">
+        <a class="card pro" href="diagrams/class-uml.html">
+          <div class="card-name">Class diagram (UML)</div>
+          <div class="card-blurb">A UML class diagram built natively in Grafloria: class boxes with name / attributes / methods compartments, joined by real UML relationships — hollow-triangle inheritance and hollow-diamond aggregation.</div>
+          <div class="card-foot">
+            <span class="rf">React Flow: Class Diagram</span>
+            <span class="badge" title="React Flow puts the equivalent behind its paywall">Pro / paid there</span>
+          </div>
+        </a>
+        <a class="card pro" href="diagrams/er-advanced.html">
+          <div class="card-name">ER diagram — advanced</div>
+          <div class="card-blurb">The entity-relationship shapes a real schema throws at you: two relationships between the SAME pair of tables on different FK columns, a self-reference, a many-to-many through a junction table, and optional-vs-mandatory crow's-foot cardinality — every line attached to the specific FK and PK ROW it joins.</div>
+          <div class="card-foot">
+            <span class="rf">React Flow: Entity Relationship</span>
+            <span class="badge" title="React Flow puts the equivalent behind its paywall">Pro / paid there</span>
+          </div>
+        </a>
+        <a class="card pro" href="diagrams/table-er.html">
+          <div class="card-name">Table / ER diagram</div>
+          <div class="card-blurb">A database entity-relationship diagram built natively in Grafloria: HTML &quot;table&quot; nodes with typed columns and PK/FK badges, joined by edges carrying real crow's-foot cardinality (one → many).</div>
+          <div class="card-foot">
+            <span class="rf">React Flow: Entity Relationship</span>
+            <span class="badge" title="React Flow puts the equivalent behind its paywall">Pro / paid there</span>
+          </div>
+        </a>
+        <a class="card pro" href="diagrams/uml-relationships.html">
+          <div class="card-name">UML relationships</div>
+          <div class="card-blurb">The FULL UML class-relationship vocabulary in one native Grafloria diagram: generalization, realization, association (with multiplicities), directed association, aggregation, composition, dependency and a self-association — each drawn with its real UML arrowhead and clearly labelled.</div>
+          <div class="card-foot">
+            <span class="rf">React Flow: Class Diagram</span>
             <span class="badge" title="React Flow puts the equivalent behind its paywall">Pro / paid there</span>
           </div>
         </a>
