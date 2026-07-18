@@ -116,6 +116,18 @@ defineDemo({
     const moved = sample.filter((s) => { const n = m.getNode(s.id); return n.position.x !== s.x || n.position.y !== s.y; });
     check(moved.length === sample.length,
       `shuffle should relocate every sampled node; only ${moved.length}/${sample.length} moved`);
+
+    // The shuffle scatters to RANDOM positions — restore the deterministic grid so
+    // the visual gate's after-frame is stable (the shuffle's teeth are the checks
+    // above, not the final picture).
+    api.batchUpdate((model) => {
+      for (const n of model.getNodes()) {
+        const i = +n.id.slice(1);
+        n.setPosition((i % COLS) * 220, Math.floor(i / COLS) * 140);
+      }
+    });
+    api.renderNow();
+    await ctx.tick();
   },
 });
 </script>
