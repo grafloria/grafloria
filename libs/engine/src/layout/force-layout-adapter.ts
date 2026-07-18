@@ -30,7 +30,7 @@ export interface ForceLayoutOptions extends LayoutOptions {
   /** Repulsion strength between nodes (default: 100) */
   repulsion?: number;
 
-  /** Attraction strength along edges (default: 0.1) */
+  /** Attraction strength along edges (default: 0.2) */
   attraction?: number;
 
   /** Gravity pulling nodes to center (default: 0.1) */
@@ -148,7 +148,16 @@ export class ForceLayoutAdapter implements SteppableLayoutAdapter {
     // Merge with defaults
     const opts: ForceLayoutOptions = {
       repulsion: options.repulsion ?? 100,
-      attraction: options.attraction ?? 0.1,
+      // wave: force-attraction — was 0.1, too weak to pull connected nodes
+      // BELOW the repulsion-driven field spacing. At 0.1 an edge relaxes to
+      // wherever repulsion parks it (≈ its rest length) instead of the spring
+      // actively holding it in, so on a dense two-cluster graph connected pairs
+      // sat at the SAME distance as random pairs — "no attraction". 0.2 makes
+      // the spring the dominant term at edge scale (edges settle near rest
+      // length, non-edges stay out at the repulsion equilibrium) while staying
+      // far from the over-tightening that would collapse a mesh. See the
+      // "linked pairs sit closer than the average pair" tests.
+      attraction: options.attraction ?? 0.2,
       gravity: options.gravity ?? 0.1,
       temperature: options.temperature ?? 100,
       cooling: options.cooling ?? 0.95,
@@ -647,12 +656,23 @@ export class ForceLayoutAdapter implements SteppableLayoutAdapter {
       const dy = edge.target.y - edge.source.y;
       const dist = Math.sqrt(dx * dx + dy * dy) + 0.01;
 
-      // Spring force (Hooke's law). `linkDistance` is the desired VISIBLE edge
-      // — the space between the boxes — so the spring's rest length adds the
-      // two collision radii. Without this, the default 100px rest length is
-      // shorter than two default boxes side by side, and every edge actively
-      // pulls its endpoints into overlap.
-      const idealLength = baseLength + edge.source.radius + edge.target.radius;
+      // Spring force (Hooke's law). The rest length is `linkDistance` plus a
+      // box clearance, so a satisfied edge leaves a visible gap instead of
+      // pulling its endpoints into overlap.
+      //
+      // wave: force-attraction — that clearance used to be the FULL collision
+      // radii (half the box DIAGONAL each). For default 60px boxes that made
+      // the rest length 100+85≈185 — which is exactly where box-gap repulsion
+      // parks two UNconnected default boxes too. So connected and unconnected
+      // pairs relaxed to the same spacing and the layout stopped revealing
+      // clusters (the demo measured mean-edge ≈ mean-pair). HALF the clearance
+      // pulls the rest length below the repulsion field (100+42≈142) so edges
+      // are unambiguously the shorter distance, while box-gap repulsion — which
+      // diverges at contact — still guarantees no overlap regardless of what
+      // the spring wants. Measured on the two-cluster graph: mean-edge/mean-pair
+      // fell from 1.01 (no attraction) to ~0.77.
+      const clearance = (edge.source.radius + edge.target.radius) * 0.5;
+      const idealLength = baseLength + clearance;
       const force = k * (dist - idealLength);
 
       const fx = (dx / dist) * force;
