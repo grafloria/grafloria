@@ -1,0 +1,452 @@
+<meta charset="utf-8">
+<title>n8n-style workflow builder — Grafloria</title>
+<link rel="stylesheet" href="../shell/demo.css">
+<style>
+  /* ---- the n8n canvas: a dotted grid ground ------------------------------ */
+  #stage { display: grid; grid-template-columns: 188px 1fr; height: calc(100vh - 150px); min-height: 460px; }
+  #palette { border-right: 1px solid rgba(127,127,127,.2); padding: 12px 12px 16px; overflow-y: auto;
+    background: #fafbfd; }
+  .pal-title { font: 600 10px/1.4 system-ui, sans-serif; letter-spacing: .8px; text-transform: uppercase;
+    color: #8a91a2; margin: 2px 2px 10px; }
+  .pal-item { display: flex; align-items: center; gap: 9px; width: 100%; margin: 0 0 8px; padding: 7px 9px;
+    border: 1px solid #e4e7ee; border-radius: 9px; background: #fff; cursor: pointer; text-align: left;
+    font: 500 12.5px/1.2 system-ui, sans-serif; color: #2d2e3a; box-shadow: 0 1px 1px rgba(16,24,40,.04); }
+  .pal-item:hover { border-color: #c7ccd8; background: #f7f8fb; }
+  .pal-dot { width: 24px; height: 24px; border-radius: 6px; flex: none; display: flex; align-items: center;
+    justify-content: center; font-size: 14px; color: #fff; }
+  .pal-dot.mono { font: 700 12px/1 ui-monospace, monospace; }
+  #canvas { height: 100%; position: relative; overflow: hidden;
+    background-color: #f4f5f8;
+    background-image: radial-gradient(circle, #d5d9e2 1.1px, transparent 1.1px);
+    background-size: 22px 22px; }
+
+  /* ---- the node card painted inside each node's foreignObject ------------- */
+  #canvas .n8n-card { display: flex; align-items: center; gap: 10px; width: 100%; height: 100%;
+    box-sizing: border-box; padding: 0 12px; background: #fff; color: #2d2e3a;
+    border: 1px solid #dfe2ea; border-left-width: 3px; border-radius: 9px;
+    box-shadow: 0 1px 2px rgba(16,24,40,.06), 0 1px 3px rgba(16,24,40,.05); font-family: system-ui, sans-serif; }
+  #canvas .n8n-badge { width: 34px; height: 34px; border-radius: 8px; flex: none; display: flex;
+    align-items: center; justify-content: center; font-size: 19px; line-height: 1; color: #fff; background: #667; }
+  #canvas .n8n-badge.mono { font: 700 15px/1 ui-monospace, monospace; }
+  #canvas .n8n-body { min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+  #canvas .n8n-title { font-weight: 600; font-size: 13.5px; line-height: 1.15; color: #262a35;
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  #canvas .n8n-sub { font-size: 10px; letter-spacing: .4px; text-transform: uppercase; color: #8a91a2;
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+
+  /* Trigger nodes: the signature n8n left-rounded "start" pill. */
+  #canvas .n8n-card.cat-trigger { border-radius: 28px 9px 9px 28px; padding-left: 15px; }
+
+  /* A half-wired "next step" node — dashed, inviting you to connect it. */
+  #canvas .n8n-card.dangling { border-style: dashed; border-color: #b794f4; background: #fbf8ff; }
+  #canvas .n8n-card.dangling .n8n-sub { color: #9b6bd6; }
+
+  /* Category accents: coloured icon badge + left border, n8n-style. */
+  #canvas .cat-trigger .n8n-badge { background: #10b981; } #canvas .cat-trigger { border-left-color: #10b981; }
+  #canvas .cat-http    .n8n-badge { background: #0ea5e9; } #canvas .cat-http    { border-left-color: #0ea5e9; }
+  #canvas .cat-set     .n8n-badge { background: #6366f1; } #canvas .cat-set     { border-left-color: #6366f1; }
+  #canvas .cat-code    .n8n-badge { background: #475569; } #canvas .cat-code    { border-left-color: #475569; }
+  #canvas .cat-merge   .n8n-badge { background: #06b6d4; } #canvas .cat-merge   { border-left-color: #06b6d4; }
+  #canvas .cat-if      .n8n-badge { background: #f97316; } #canvas .cat-if      { border-left-color: #f97316; }
+  #canvas .cat-ai      .n8n-badge { background: #8b5cf6; } #canvas .cat-ai      { border-left-color: #8b5cf6; }
+  #canvas .cat-sheet   .n8n-badge { background: #22a565; } #canvas .cat-sheet   { border-left-color: #22a565; }
+  #canvas .cat-notify  .n8n-badge { background: #ec4899; } #canvas .cat-notify  { border-left-color: #ec4899; }
+
+  /* HUD + legend — plain chrome, overlaid on the canvas (no model entities). */
+  #hud { position: absolute; right: 12px; top: 10px; z-index: 4; font: 12px/1.3 ui-monospace, monospace;
+    color: #5b6273; background: rgba(255,255,255,.86); border: 1px solid #dfe2ea; border-radius: 8px;
+    padding: 5px 10px; pointer-events: none; }
+  #legend { position: absolute; left: 12px; bottom: 12px; z-index: 4; pointer-events: none;
+    font: 11px/1.5 system-ui, sans-serif; color: #4b5162; background: rgba(255,255,255,.92);
+    border: 1px solid #dfe2ea; border-radius: 9px; padding: 9px 12px; box-shadow: 0 4px 14px rgba(15,23,42,.1); }
+  #legend b { display: block; font: 600 9.5px/1.4 system-ui; letter-spacing: .6px; text-transform: uppercase;
+    color: #8a91a2; margin-bottom: 5px; }
+  #legend .row { display: flex; align-items: center; gap: 8px; margin: 2px 0; }
+  #legend .swatch { width: 30px; height: 0; flex: none; }
+  #legend .main  { border-top: 2.5px solid #9aa2b1; }
+  #legend .ai    { border-top: 2.5px dashed #8b5cf6; }
+  #legend .yes   { border-top: 2.5px solid #16a34a; }
+  #legend .no    { border-top: 2.5px solid #dc2626; }
+
+  @media (prefers-color-scheme: dark) {
+    #palette { background: #191a22; border-right-color: rgba(255,255,255,.08); }
+    .pal-item { background: #23242f; border-color: #33353f; color: #e7e9f0; }
+    .pal-item:hover { background: #2b2c39; border-color: #45485a; }
+    .pal-title { color: #7b8194; }
+    #canvas { background-color: #16171d; background-image: radial-gradient(circle, #2a2c38 1.1px, transparent 1.1px); }
+    #canvas .n8n-card { background: #262733; color: #e7e9f0; border-color: #363845; }
+    #canvas .n8n-title { color: #eceef4; }
+    #canvas .n8n-sub { color: #9298ab; }
+    #canvas .n8n-card.dangling { background: #241d33; border-color: #6d4fa0; }
+    #hud, #legend { background: rgba(30,31,42,.9); border-color: #363845; color: #b9becd; }
+    #legend b { color: #838aa0; }
+  }
+</style>
+<header id="demo-head"></header>
+<div id="stage">
+  <div id="palette">
+    <div class="pal-title">Add node</div>
+    <button class="pal-item" data-kind="http"><span class="pal-dot" style="background:#0ea5e9">🌐</span>HTTP Request</button>
+    <button class="pal-item" data-kind="set"><span class="pal-dot" style="background:#6366f1">✏️</span>Edit Fields</button>
+    <button class="pal-item" data-kind="code"><span class="pal-dot mono" style="background:#475569">{}</span>Code</button>
+    <button class="pal-item" data-kind="if"><span class="pal-dot" style="background:#f97316">⋔</span>If</button>
+    <button class="pal-item" data-kind="merge"><span class="pal-dot" style="background:#06b6d4">🔀</span>Merge</button>
+    <button class="pal-item" data-kind="ai"><span class="pal-dot" style="background:#8b5cf6">🤖</span>AI Agent</button>
+  </div>
+  <div id="canvas"></div>
+</div>
+<script type="module">
+import { render } from '../shell/grafloria.js';
+import { defineDemo, check } from '../shell/demo.js';
+
+// An interactive n8n workflow, rebuilt on the Grafloria engine. It reproduces the
+// real visual + interaction language of the n8n editor, straight off two of the
+// user's own workflow exports (an IT-ops HTTP/AI pipeline and a langchain AI
+// agent):
+//
+//   • NODE TYPES with distinct looks — a left-rounded green TRIGGER pill; blue
+//     HTTP Request cards; a Set/"Edit Fields", a Code, a Merge, an orange
+//     branching If; a violet AI Agent — each a rounded card with a coloured
+//     ICON BADGE + name + type, the n8n signature. (HTML nodes: metadata.html,
+//     the node's own SVG rect hidden so the card's border IS the border.)
+//   • AI SUB-NODES — the agent's Chat Model / Memory / Tool hang off ports on
+//     the BOTTOM of the node (side:'bottom', pinned with the absolute port
+//     layout) and attach with a visually DISTINCT wire (dashed + violet — the
+//     `ai_*` connection family), while the main data flow runs left→right on the
+//     sides.
+//   • TWO LINE FAMILIES — main = smooth gray bezier with an arrowhead; AI =
+//     dashed violet, no head. The If node has TWO labelled outputs: a green
+//     "true" and a red "false".
+//   • BUILD IT — ports are always visible; press an OUTPUT dot and drag to an
+//     INPUT dot to wire nodes (real connect-by-drag through the engine); add new
+//     nodes from the left palette; drag nodes to reposition and the wires
+//     re-route live.
+
+// ---- palette / node-type catalogue ---------------------------------------
+const PALETTE = {
+  trigger: { glyph: '▶',  sub: 'Trigger' },
+  http:    { glyph: '🌐', sub: 'HTTP Request' },
+  set:     { glyph: '✏️', sub: 'Edit Fields' },
+  code:    { glyph: '{}', sub: 'Code', mono: true },
+  merge:   { glyph: '🔀', sub: 'Merge' },
+  if:      { glyph: '⋔',  sub: 'If' },
+  ai:      { glyph: '🤖', sub: 'AI Agent' },
+  sheet:   { glyph: '📊', sub: 'Spreadsheet File' },
+  notify:  { glyph: '🔔', sub: 'Send Message' },
+};
+
+// A node's HTML body: icon badge + title + type subtitle — the n8n card.
+const card = (cat, glyph, title, sub, opts = {}) => ({
+  tag: 'div', className: 'n8n-card cat-' + cat + (opts.dangling ? ' dangling' : ''),
+  children: [
+    { tag: 'div', className: 'n8n-badge' + (opts.mono ? ' mono' : ''), text: glyph },
+    { tag: 'div', className: 'n8n-body', children: [
+      { tag: 'div', className: 'n8n-title', text: title },
+      { tag: 'div', className: 'n8n-sub', text: sub },
+    ] },
+  ],
+});
+
+// The node factory: a transparent SVG rect (so the HTML card's border is the
+// only border) carrying the card in its foreignObject, plus explicit ports.
+const N = (id, x, y, w, h, cat, glyph, title, sub, ports, opts = {}) => ({
+  id, position: { x, y }, size: { width: w, height: h },
+  metadata: { html: { content: card(cat, glyph, title, sub, opts), padding: 0 } },
+  shape: { type: 'rect', fill: 'none', stroke: 'none' },
+  style: { fill: 'transparent', stroke: 'transparent', strokeWidth: 0 },
+  ports,
+});
+
+const PORT = { shape: 'circle', size: 10 };
+const inPort  = (id) => ({ id: id + '_in',  side: 'left',  type: 'input',  shape: PORT });
+const outPort = (id) => ({ id: id + '_out', side: 'right', type: 'output', shape: PORT });
+// A port pinned to an exact node-local pixel (the FK→PK / bottom-AI pattern).
+const absPort = (id, side, x, y, type, label) => ({
+  id, side, type, shape: PORT,
+  layout: { strategy: 'absolute', args: { units: 'px', x, y } },
+  ...(label ? { label: { text: label, layout: 'outside' } } : {}),
+});
+
+// ---- the two line families + the branch colours --------------------------
+const MAIN = '#9aa2b1';   // gray solid — the main data flow
+const AI   = '#8b5cf6';   // violet dashed — the ai_* sub-node connections
+const YES  = '#16a34a';   // if → true
+const NO   = '#dc2626';   // if → false
+
+const mainStyle = () => ({ stroke: MAIN, strokeWidth: 2, arrowHead: { type: 'arrow', size: 8, filled: true } });
+const aiStyle   = () => ({ stroke: AI,   strokeWidth: 2, strokeDasharray: '2 5', arrowHead: { type: 'none' } });
+
+const mE = (id, s, sh, t, th) => ({ id, source: s, target: t, sourceHandle: sh, targetHandle: th, type: 'bezier', style: mainStyle() });
+const aE = (id, s, sh, t, th) => ({ id, source: s, target: t, sourceHandle: sh, targetHandle: th, type: 'bezier', style: aiStyle() });
+const bE = (id, sh, t, th, color, label) => ({ id, source: 'ifNode', target: t, sourceHandle: sh, targetHandle: th, type: 'bezier', label, style: { stroke: color, strokeWidth: 2, arrowHead: { type: 'arrow', size: 8, filled: true } } });
+
+const SPEC = {
+  nodes: [
+    N('start',       40, 180, 180, 64, 'trigger', '▶',  'On Start',            'Trigger',          [outPort('start')]),
+    N('login',      280, 180, 200, 64, 'http',    '🌐', 'Login to PAMS',       'HTTP Request',     [inPort('login'), outPort('login')]),
+    N('setToken',   540, 180, 200, 64, 'set',     '✏️', 'Set Bearer Token',    'Edit Fields',      [inPort('setToken'), outPort('setToken')]),
+    N('getBranches', 800, 80, 200, 64, 'http',    '🌐', 'Get Branches',        'HTTP Request',     [inPort('getBranches'), outPort('getBranches')]),
+    N('getVendors', 800, 290, 200, 64, 'http',    '🌐', 'Get Vendors',         'HTTP Request',     [inPort('getVendors'), outPort('getVendors')]),
+    N('merge',     1070, 180, 180, 64, 'merge',   '🔀', 'Merge Lookups',       'Merge', [
+      absPort('merge_in1', 'left', 0, 20, 'input'),
+      absPort('merge_in2', 'left', 0, 44, 'input'),
+      outPort('merge'),
+    ]),
+    N('store',     1310, 180, 200, 64, 'code',    '{}', 'Store Lookup Data',   'Code', [inPort('store'), outPort('store')], { mono: true }),
+    N('agent',     1570, 168, 210, 88, 'ai',      '🤖', 'AI Quality Agent',    'AI Agent', [
+      inPort('agent'), outPort('agent'),
+      absPort('agent_model',  'bottom', 46,  88, 'input', 'Model'),
+      absPort('agent_memory', 'bottom', 105, 88, 'input', 'Memory'),
+      absPort('agent_tool',   'bottom', 164, 88, 'input', 'Tool'),
+    ]),
+    N('model',     1450, 390, 168, 58, 'ai',      '🧠', 'Azure OpenAI',        'Chat Model',       [absPort('model_aiout',  'top', 84, 0, 'output')]),
+    N('memory',    1628, 390, 168, 58, 'ai',      '💾', 'MongoDB Memory',      'Memory',           [absPort('memory_aiout', 'top', 84, 0, 'output')]),
+    N('tool',      1806, 390, 168, 58, 'ai',      '🔧', 'Calendar Tool',       'Tool',             [absPort('tool_aiout',   'top', 84, 0, 'output')]),
+    N('ifNode',    1840, 180, 180, 64, 'if',      '⋔',  'All Inquiries Done?', 'If', [
+      inPort('ifNode'),
+      absPort('if_true',  'right', 180, 20, 'output'),
+      absPort('if_false', 'right', 180, 44, 'output'),
+    ]),
+    N('excel',     2090, 80, 200, 64, 'sheet',    '📊', 'Write Summary',       'Spreadsheet File', [inPort('excel'), outPort('excel')]),
+    N('wait',      2090, 290, 200, 64, 'set',     '⏳', 'Wait & Retry',        'No-Op',            [inPort('wait')]),
+    N('slack',     2350, 80, 200, 64, 'notify',   '🔔', 'Send Slack Alert',    'drag a wire to me', [inPort('slack'), outPort('slack')], { dangling: true }),
+  ],
+  edges: [
+    mE('e_start_login',    'start',       'start_out',       'login',       'login_in'),
+    mE('e_login_set',      'login',       'login_out',       'setToken',    'setToken_in'),
+    mE('e_set_branches',   'setToken',    'setToken_out',    'getBranches', 'getBranches_in'),
+    mE('e_set_vendors',    'setToken',    'setToken_out',    'getVendors',  'getVendors_in'),
+    mE('e_branches_merge', 'getBranches', 'getBranches_out', 'merge',       'merge_in1'),
+    mE('e_vendors_merge',  'getVendors',  'getVendors_out',  'merge',       'merge_in2'),
+    mE('e_merge_store',    'merge',       'merge_out',       'store',       'store_in'),
+    mE('e_store_agent',    'store',       'store_out',       'agent',       'agent_in'),
+    mE('e_agent_if',       'agent',       'agent_out',       'ifNode',      'ifNode_in'),
+    // IF branches — two labelled, colour-coded outputs.
+    bE('if_true_excel',  'if_true',  'excel', 'excel_in', YES, 'true'),
+    bE('if_false_wait',  'if_false', 'wait',  'wait_in',  NO,  'false'),
+    // AI sub-node connections — the distinct dashed violet family, on the bottom.
+    aE('ai_model',  'model',  'model_aiout',  'agent', 'agent_model'),
+    aE('ai_memory', 'memory', 'memory_aiout', 'agent', 'agent_memory'),
+    aE('ai_tool',   'tool',   'tool_aiout',   'agent', 'agent_tool'),
+  ],
+};
+
+defineDemo({
+  name: 'n8n workflow builder',
+  blurb: 'An interactive n8n-style workflow: a left-rounded Trigger, blue HTTP nodes, Set / Code / Merge and an orange branching If, plus a violet AI Agent whose Chat Model / Memory / Tool sub-nodes attach to its BOTTOM ports with a distinct dashed "ai" wire — while the main data flow runs left→right on gray bezier lines. Drag nodes, drag-connect ports, and add nodes from the palette, just like in n8n. HTML nodes + sided/absolute ports + two edge families in the Grafloria engine.',
+  howTo: [
+    'Read the node cards: a green left-rounded Trigger (▶) starts the run, blue HTTP Request cards (🌐) fetch data, an indigo Edit Fields (✏️) and slate Code ({}) transform it, a cyan Merge (🔀) joins the two branches — each family carries its own icon badge and accent colour, exactly like n8n.',
+    'Find the violet AI Quality Agent (🤖): three sub-nodes hang off its BOTTOM ports — Chat Model (🧠), Memory (💾) and Tool (🔧) — wired with the distinct DASHED VIOLET "ai" lines, while the main data flow runs left→right on gray solid lines with arrowheads (see the legend, bottom-left).',
+    'Look at the orange If node ("All Inquiries Done?"): it has TWO outputs — a green "true" branch to Write Summary and a red "false" branch to Wait & Retry — the branch node\'s signature.',
+    'Build like in n8n: the connection dots are always shown — press an OUTPUT dot on the right of a node and drag a wire to another node\'s INPUT dot, then release to connect. Try wiring "Write Summary" → the dashed "Send Slack Alert" node waiting on the right.',
+    'Add nodes from the left palette: click "HTTP Request", "Code", "If" or "AI Agent" and a fresh card drops onto the canvas — then drag it into place and wire it up.',
+    'Drag any node to reposition it and its wires re-route live; drag empty canvas to pan and Ctrl/⌘ + wheel to zoom — the n8n editor feel.',
+  ],
+
+  async setup(ctx) {
+    const api = render(SPEC, ctx.host, { interaction: { portVisibility: 'always' } });
+    ctx.instance = api;
+    ctx.diagram = api.getModel();
+    ctx.engine = api.getEngine();
+    const model = ctx.diagram, engine = ctx.engine;
+
+    // Keep the n8n CARDS painted at every zoom. By default the HTML body
+    // (a "decorations" LOD feature) is dropped below zoom 0.5, so a fitted view
+    // of a wide flow would show bare wires. Widen every LOD tier to the full
+    // feature set — 15 nodes is trivial to draw in full detail, and n8n shows
+    // its cards zoomed-out too.
+    try {
+      const cfg = model.getLODConfig();
+      const full = new Set();
+      for (const t of cfg.tiers) for (const f of t.features) full.add(f);
+      for (const t of cfg.tiers) for (const f of full) t.features.add(f);
+      model.setLODConfig(cfg);
+    } catch { /* older engine without LOD config — the demo still runs */ }
+
+    // Put a world point at the canvas centre at a chosen zoom (the instance has
+    // no centerOn; setViewport takes the world top-left + the canvas pixel box).
+    ctx.centerView = (cx, cy, z) => {
+      const vp = api.viewport;
+      const zz = vp.setZoom(z);
+      const cur = vp.getViewport(); // width/height = canvas pixels
+      vp.setViewport({ x: cx - cur.width / zz / 2, y: cy - cur.height / zz / 2, width: cur.width, height: cur.height });
+      api.renderNow();
+    };
+    // Boot showing the WHOLE workflow (every node on-screen, cards still painted
+    // thanks to the LOD widening above) — the n8n "fit to screen" view.
+    ctx.initialFrame = () => { api.fitView(46); api.renderNow(); };
+    ctx.initialFrame();
+
+    // ---- HUD + legend (plain chrome, overlaid on #canvas) ------------------
+    const hud = document.createElement('div');
+    hud.id = 'hud';
+    ctx.host.appendChild(hud);
+    ctx.updateHud = () => { hud.textContent = `${model.getNodes().length} nodes · ${model.getLinks().length} wires`; };
+    ctx.updateHud();
+
+    if (!ctx.host.querySelector('#legend')) {
+      const legend = document.createElement('div');
+      legend.id = 'legend';
+      legend.innerHTML =
+        '<b>Connections</b>' +
+        '<div class="row"><span class="swatch main"></span>data flow (main)</div>' +
+        '<div class="row"><span class="swatch ai"></span>ai · model / memory / tool</div>' +
+        '<div class="row"><span class="swatch yes"></span>if → true</div>' +
+        '<div class="row"><span class="swatch no"></span>if → false</div>';
+      ctx.host.appendChild(legend);
+    }
+
+    // ---- restyle any wire by the ports it joins (idempotent) ---------------
+    // A wire the visitor draws to an agent bottom port becomes a dashed violet
+    // "ai" line; anything else becomes a gray main line — so BUILDING produces
+    // correctly-styled wires, the way n8n auto-styles by connection type.
+    ctx.restyleLinks = () => {
+      for (const l of model.getLinks()) {
+        const ids = `${l.sourcePortId} ${l.targetPortId}`;
+        if (/if_true|if_false/.test(ids)) continue;              // keep green/red branches
+        if (/agent_(model|memory|tool)|_aiout/.test(ids)) l.updateStyle(aiStyle());
+        else l.updateStyle(mainStyle());
+      }
+      api.renderNow();
+    };
+    // The engine creates a link asynchronously from a completed drag — restyle
+    // on the next tick, then refresh the counter.
+    api.on('connect', () => setTimeout(() => { ctx.restyleLinks(); ctx.updateHud(); }, 0));
+
+    // ---- palette: click a chip → drop a fresh node on the canvas -----------
+    let added = 0;
+    ctx.addNode = async (kind) => {
+      const meta = PALETTE[kind];
+      const x = 60 + (added % 3) * 46, y = 470 + Math.floor(added / 3) * 24;
+      added++;
+      const node = await engine.addNode({ type: 'rect', position: { x, y }, size: { width: 200, height: 64 } });
+      node.setMetadata('html', { content: card(kind, meta.glyph, meta.sub, meta.sub, { mono: meta.mono }), padding: 0 });
+      node.setMetadata('shape', { type: 'rect', fill: 'none', stroke: 'none' });
+      api.renderNow();
+      ctx.updateHud();
+      return node;
+    };
+    for (const btn of document.querySelectorAll('.pal-item'))
+      btn.addEventListener('click', () => ctx.addNode(btn.dataset.kind));
+
+    await ctx.tick();
+  },
+
+  // Money shot: zoom onto the AI-agent cluster — the richest, most legible slice
+  // (Code → AI Agent with its Model/Memory/Tool sub-nodes on dashed "ai" wires →
+  // the branching If → Spreadsheet), reading crisply.
+  async showcase(ctx) {
+    ctx.centerView(1560, 300, 0.82);
+  },
+
+  async assert(ctx) {
+    const host = ctx.host, model = ctx.diagram, api = ctx.instance;
+
+    // Bring every node on-screen so glyph-based (port) checks can find their
+    // elements — off-screen nodes are culled from the DOM.
+    api.fitView(50); api.renderNow(); await ctx.tick();
+
+    const linkPath = (id) => host.querySelector(`[data-link-id="${id}"] path.diagram-link`);
+    const strokeOf = (id) => { const p = linkPath(id); return p ? getComputedStyle(p).stroke : ''; };
+    const dashOf   = (id) => { const p = linkPath(id); return p ? getComputedStyle(p).strokeDasharray : ''; };
+    const portC = (portId) => { const el = host.querySelector(`[data-port-id="${portId}"]`); if (!el) return null; const r = el.getBoundingClientRect(); return { x: r.left + r.width / 2, y: r.top + r.height / 2 }; };
+    const portsOf = (id) => { const ps = model.getNode(id).getPorts(); return Array.isArray(ps) ? ps : [...ps.values()]; };
+
+    // 1. NODE-TYPE VARIETY — the canvas carries the distinct n8n node families,
+    //    each an HTML card with its own accent class.
+    const cats = ['trigger', 'http', 'set', 'code', 'merge', 'if', 'ai', 'sheet', 'notify'];
+    const present = cats.filter((c) => host.querySelector(`.n8n-card.cat-${c}`));
+    check(present.length >= 8, `expected the n8n node-type variety (>=8 families), got ${present.length}: [${present}]`);
+    // The AI cluster is 4 violet cards (agent + model + memory + tool).
+    check(host.querySelectorAll('.n8n-card.cat-ai').length === 4, `the AI cluster should be 4 violet cards, got ${host.querySelectorAll('.n8n-card.cat-ai').length}`);
+    // The trigger reads as the left-rounded n8n "start" pill.
+    const trig = host.querySelector('[data-node-id="start"] .n8n-card');
+    const pill = parseFloat(getComputedStyle(trig).borderTopLeftRadius);
+    check(pill >= 20, `the trigger card should be a left-rounded pill (border-radius>=20), got ${pill}`);
+    // A real icon badge painted its category colour (not a bare glyph).
+    const httpBadge = host.querySelector('[data-node-id="login"] .n8n-badge');
+    check(getComputedStyle(httpBadge).backgroundColor === 'rgb(14, 165, 233)', `the HTTP icon badge should paint its accent colour, got ${getComputedStyle(httpBadge).backgroundColor}`);
+
+    // 2. TWO LINE FAMILIES are genuinely distinct: main = solid gray, AI = dashed violet.
+    const mainDash = dashOf('e_start_login'), aiDash = dashOf('ai_model');
+    const mainCol = strokeOf('e_start_login'), aiCol = strokeOf('ai_model');
+    check(mainDash === 'none', `a main wire must be solid (dash=none), got "${mainDash}"`);
+    check(aiDash && aiDash !== 'none', `an AI wire must be dashed, got "${aiDash}"`);
+    check(aiCol !== mainCol, `the AI wire colour must differ from the main wire (ai=${aiCol}, main=${mainCol})`);
+    // The three AI wires attach to the agent's BOTTOM ports — the n8n sub-node dock.
+    const agentRect = host.querySelector('[data-node-id="agent"] .n8n-card').getBoundingClientRect();
+    const agentMidY = agentRect.top + agentRect.height / 2;
+    for (const pid of ['agent_model', 'agent_memory', 'agent_tool']) {
+      const pc = portC(pid);
+      check(pc && pc.y > agentMidY, `AI dock port ${pid} must sit on the BOTTOM of the agent, y=${pc && pc.y.toFixed(0)} vs mid ${agentMidY.toFixed(0)}`);
+    }
+    check(['ai_model', 'ai_memory', 'ai_tool'].every((id) => linkPath(id)), 'all three AI sub-node wires should render');
+
+    // 3. The IF node is a BRANCH node: two labelled, colour-coded outputs.
+    const ifOuts = portsOf('ifNode').filter((p) => p.type === 'output');
+    check(ifOuts.length === 2, `the If node must have 2 outputs (true/false), got ${ifOuts.length}`);
+    check(!!linkPath('if_true_excel') && !!linkPath('if_false_wait'), 'both If branches should render a wire');
+    check(strokeOf('if_true_excel') !== strokeOf('if_false_wait'), 'the true/false branches must be colour-coded differently');
+    const trueTxt = host.querySelector('[data-link-id="if_true_excel"]')?.textContent || '';
+    const falseTxt = host.querySelector('[data-link-id="if_false_wait"]')?.textContent || '';
+    check(/true/i.test(trueTxt), `the true branch should be labelled "true", DOM text was "${trueTxt}"`);
+    check(/false/i.test(falseTxt), `the false branch should be labelled "false", DOM text was "${falseTxt}"`);
+
+    // 4. CONNECT-BY-DRAG actually wires a new edge, with a real pointer gesture.
+    let btnDown = false;
+    const fireP = (type, x, y) => {
+      if (type === 'pointerdown') btnDown = true;
+      const buttons = type === 'pointerup' ? 0 : (type === 'pointerdown' ? 1 : (btnDown ? 1 : 0));
+      if (type === 'pointerup') btnDown = false;
+      host.dispatchEvent(new PointerEvent(type, { clientX: x, clientY: y, bubbles: true, cancelable: true, button: 0, buttons, pointerId: 1, pointerType: 'mouse' }));
+    };
+    const dragTo = async (fromPort, x, y) => {
+      const a = portC(fromPort);
+      fireP('pointermove', a.x, a.y); fireP('pointerdown', a.x, a.y);
+      fireP('pointermove', (a.x + x) / 2, (a.y + y) / 2); fireP('pointermove', x, y);
+      fireP('pointerup', x, y);
+      await new Promise((r) => setTimeout(r, 0)); await ctx.tick();
+    };
+    const joins = (l, a, b) => {
+      const s = model.getNodeByPortId(l.sourcePortId)?.id, t = model.getNodeByPortId(l.targetPortId)?.id;
+      return (s === a && t === b) || (s === b && t === a);
+    };
+    check(!model.getLinks().some((l) => joins(l, 'excel', 'slack')), 'precondition: Write Summary → Send Slack Alert should start UNWIRED (the dangling node)');
+    const before = model.getLinks().length;
+    const target = portC('slack_in');
+    await dragTo('excel_out', target.x, target.y);
+    check(model.getLinks().length === before + 1, `connect-by-drag should add exactly one wire (was ${before}, now ${model.getLinks().length})`);
+    const made = model.getLinks().find((l) => joins(l, 'excel', 'slack'));
+    check(!!made, 'the drawn wire should join Write Summary → Send Slack Alert');
+
+    // 4b. TEETH — a release on EMPTY canvas connects nothing.
+    const before2 = model.getLinks().length;
+    const r = host.getBoundingClientRect();
+    await dragTo('excel_out', r.left + 24, r.top + 24); // top-left corner is empty at fit
+    check(model.getLinks().length === before2, `a release on empty canvas must not connect (links ${before2}→${model.getLinks().length})`);
+    // Restore the dangling node for the gallery frame.
+    model.removeLink(made.id); api.renderNow();
+    check(!model.getLinks().some((l) => joins(l, 'excel', 'slack')), 'restore: Send Slack Alert is dangling again');
+
+    // 5. MUTATION PROOF — the two line families are distinct by DESIGN, not luck.
+    //    Break it: repaint an AI wire as a solid gray main line and the "dashed"
+    //    + "distinct-colour" checks above go RED; restore it and they pass again.
+    const ai = model.getLink('ai_model');
+    ai.updateStyle({ stroke: MAIN, strokeDasharray: undefined }); api.renderNow();
+    check(dashOf('ai_model') === 'none', 'MUTATION: with its dash removed the AI wire is now (wrongly) solid — the dash check has teeth');
+    check(strokeOf('ai_model') === strokeOf('e_start_login'), 'MUTATION: recoloured to main-gray, the AI wire is now indistinguishable from a main wire — the distinction check has teeth');
+    ai.updateStyle(aiStyle()); api.renderNow();
+    check(dashOf('ai_model') !== 'none', 'restore: the AI wire is dashed again');
+    check(strokeOf('ai_model') !== strokeOf('e_start_login'), 'restore: the AI wire is visually distinct again');
+
+    // 6. The palette BUILDS: clicking a chip drops a fresh, real node.
+    const n0 = model.getNodes().length;
+    await ctx.addNode('code');
+    check(model.getNodes().length === n0 + 1, `clicking a palette chip should add a node (${n0}→${model.getNodes().length})`);
+    check(!!host.querySelector('.n8n-card.cat-code'), 'the palette-added Code node should paint its card');
+
+    // Leave the page framed the way a visitor first meets it.
+    ctx.initialFrame();
+  },
+});
+</script>
