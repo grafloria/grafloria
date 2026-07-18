@@ -1,0 +1,145 @@
+<meta charset="utf-8">
+<title>Routing algorithms — Grafloria</title>
+<link rel="stylesheet" href="../shell/demo.css">
+<style>
+  #bar { display: flex; gap: 8px; padding: 10px 24px; border-bottom: 1px solid rgba(127,127,127,.25); align-items: center; }
+  #bar button { padding: 5px 12px; border-radius: 6px; border: 1px solid rgba(127,127,127,.4); background: transparent; color: inherit; cursor: pointer; font: inherit; }
+  #readout { margin-left: auto; font: 12px/1.4 ui-monospace, monospace; opacity: .8; }
+  #canvas { height: calc(100vh - 210px); }
+</style>
+<header id="demo-head"></header>
+<div id="bar">
+  <button id="shuffle">move the walls</button>
+  <span id="readout"></span>
+</div>
+<div id="canvas"></div>
+<script type="module">
+import { render } from '../shell/grafloria.js';
+import { defineDemo, check } from '../shell/demo.js';
+
+// The SAME A→B corridor, blocked by the SAME kind of wall, solved by THREE different
+// routers — each picked per-link through EdgeSpec.router, the string the engine's
+// RoutingEngine resolves to a registered algorithm. The sibling "Edge routing" demo proves
+// ONE orthogonal route; this proves the router is a real per-link knob with distinct
+// algorithms behind it: `manhattan` (grid search) and `elk` (ELK's own edge router) are
+// each separate solvers no other demo reaches, and each draws a visibly different path.
+const LANES = [
+  ['orthogonal', 'orthogonal — HVH elbows',   '#2563eb'],
+  ['manhattan',  'manhattan — grid search',   '#059669'],
+  ['elk',        'elk — ELK edge router',     '#7c3aed'],
+];
+const ROW_GAP = 150, TOP = 110;
+const AX = 70, BX = 760, OW = 100, OH = 84;
+
+function build(dy = 0) {
+  const nodes = [], edges = [];
+  LANES.forEach(([id, label, color], i) => {
+    const yc = TOP + i * ROW_GAP + (i === 1 ? dy : 0);
+    nodes.push({ id: `a${i}`, position: { x: AX, y: yc - 24 }, size: { width: 108, height: 48 }, label: 'A' });
+    nodes.push({ id: `b${i}`, position: { x: BX, y: yc - 24 }, size: { width: 108, height: 48 }, label: 'B' });
+    nodes.push({ id: `o${i}`, position: { x: 410, y: yc - OH / 2 }, size: { width: OW, height: OH },
+      label, style: { fill: '#fde68a', stroke: '#d97706' } });
+    edges.push({ id: `e${i}`, source: `a${i}`, target: `b${i}`, router: id,
+      style: { stroke: color, strokeWidth: 2.5 } });
+  });
+  return { nodes, edges };
+}
+
+const wallOf = (n) => ({ x1: n.position.x, y1: n.position.y, x2: n.position.x + n.size.width, y2: n.position.y + n.size.height });
+
+/** Does the polyline pass through the open interior of wall `r` (with a margin)? */
+function crossesWall(pts, r, margin = 3) {
+  const x1 = r.x1 + margin, y1 = r.y1 + margin, x2 = r.x2 - margin, y2 = r.y2 - margin;
+  for (let i = 0; i < pts.length - 1; i++) {
+    const a = pts[i], b = pts[i + 1];
+    for (let t = 0; t <= 1; t += 0.02) {
+      const x = a.x + (b.x - a.x) * t, y = a.y + (b.y - a.y) * t;
+      if (x > x1 && x < x2 && y > y1 && y < y2) return { x, y };
+    }
+  }
+  return null;
+}
+
+defineDemo({
+  name: 'Routing algorithms',
+  blurb: 'One corridor, one wall, three routers chosen per-link via EdgeSpec.router — orthogonal, manhattan (grid) and elk (ELK edge router). Each is asserted to clear a wall that sits squarely on its straight line, and manhattan is asserted to take a geometrically different route from orthogonal — proof the per-link knob dispatches to genuinely separate solvers.',
+  howTo: [
+    'Scan the three lanes: each yellow wall names the router steering the coloured wire that meets it, and every wall sits dead on the straight A→B line.',
+    'No wire runs through its wall. Orthogonal (blue) and ELK (purple) converge on the same tidy detour; manhattan’s grid search (green) takes a visibly different one — the router really is swapped per link.',
+    'Click "move the walls": the middle (manhattan) lane’s wall slides and its route re-solves live around the new position.',
+    'Open DevTools and run `await __demo.run()`: it asserts each router clears its wall, that the straight line really would have hit it, and that manhattan’s route shape differs from orthogonal’s.',
+  ],
+  reactflow: 'Edge Routing',
+  pro: true,
+
+  async setup(ctx) {
+    ctx.instance = render(build(0), ctx.host);
+    ctx.diagram = ctx.instance.getModel();
+    ctx.shifted = false;
+    const report = () => {
+      document.getElementById('readout').textContent = LANES
+        .map(([id], i) => `${id}:${ctx.diagram.getLink(`e${i}`)?.points.length ?? '?'}pts`).join('  ·  ');
+    };
+    document.getElementById('shuffle').addEventListener('click', () => {
+      ctx.shifted = !ctx.shifted;
+      ctx.instance.setNodes(build(ctx.shifted ? 46 : 0).nodes);
+      ctx.instance.renderNow();
+      report();
+    });
+    ctx.report = report;
+    report();
+    await ctx.tick();
+  },
+
+  async assert(ctx) {
+    // A route's SHAPE, translation-normalised (first point → origin), so two lanes at
+    // different heights compare by geometry rather than absolute position.
+    const shapeOf = (pts) => { const f = pts[0]; return JSON.stringify(pts.map((p) => [Math.round(p.x - f.x), Math.round(p.y - f.y)])); };
+
+    const cleared = [];
+    const shapes = {};
+    for (let i = 0; i < LANES.length; i++) {
+      const [id] = LANES[i];
+      const link = ctx.diagram.getLink(`e${i}`);
+      check(!!link, `lane ${i} (${id}) has no link`);
+      // The router string genuinely took on the model, per-link.
+      check(link.router === id, `lane ${i} expected router "${id}", model has "${link.router}"`);
+      const pts = link.points;
+      check(Array.isArray(pts) && pts.length >= 2, `router "${id}" produced no route`);
+      shapes[id] = shapeOf(pts);
+      const wall = wallOf(ctx.diagram.getNode(`o${i}`));
+
+      // Sanity: the straight line between endpoints WOULD hit the wall — otherwise
+      // "the router cleared it" proves nothing (same guard the Edge routing demo uses).
+      check(crossesWall([pts[0], pts[pts.length - 1]], wall) !== null,
+        `lane ${i} (${id}): the wall is not on the direct line — no test`);
+
+      // THE TEETH: the actual route does NOT pass through the wall, and it bends to do it.
+      const hit = crossesWall(pts, wall);
+      check(hit === null,
+        `router "${id}" ran THROUGH its wall at (${hit ? Math.round(hit.x) + ',' + Math.round(hit.y) : ''}) — it did not route`);
+      check(pts.length >= 3, `router "${id}" should bend around the wall, got ${pts.length} points`);
+      cleared.push(id);
+    }
+
+    // The point of the demo: MORE than the one orthogonal route the sibling proves —
+    // three distinct registered routers are reachable per-link and each solves the corridor.
+    check(cleared.length === 3, `all three routers should clear their wall, only {${cleared}} did`);
+    // manhattan is a genuinely different algorithm from orthogonal, not the knob being a
+    // no-op — its grid search bends around the same wall on a different path.
+    check(shapes.manhattan !== shapes.orthogonal,
+      `manhattan and orthogonal produced the IDENTICAL route shape ${shapes.orthogonal} — the router knob is a no-op`);
+
+    // Live re-route: slide the middle wall and its route must re-solve and still clear.
+    ctx.instance.setNodes(build(46).nodes);
+    ctx.instance.renderNow();
+    await ctx.tick();
+    const midWall = wallOf(ctx.diagram.getNode('o1'));
+    check(crossesWall(ctx.diagram.getLink('e1').points, midWall) === null,
+      'after the wall moved, the manhattan route no longer clears it — it did not follow');
+    ctx.instance.setNodes(build(0).nodes);
+    ctx.instance.renderNow();
+    ctx.report();
+  },
+});
+</script>
