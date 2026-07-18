@@ -6,23 +6,54 @@
   code { background: rgba(127,127,127,.15); padding: 1px 5px; border-radius: 4px; }
   #canvas { display: flex; height: calc(100vh - 190px); }
   #stage { flex: 1; min-width: 0; }
-  #panel { width: 320px; border-left: 1px solid rgba(127,127,127,.3); padding: 12px 14px; overflow: auto; font-size: 13px; }
+  #panel { width: 340px; border-left: 1px solid rgba(127,127,127,.3); padding: 12px 14px; overflow: auto; font-size: 13px; }
+
+  /* The composer — the thing that was missing: a visitor writes a comment here. */
+  #composer { border: 1px solid rgba(127,127,127,.3); border-radius: 8px; padding: 9px 11px; margin-bottom: 12px; background: rgba(127,127,127,.05); }
+  #composer .who { font-size: 11px; opacity: .65; margin-bottom: 5px; }
+  #composer .who b { opacity: .9; }
+  #target { font-size: 12px; margin-bottom: 6px; }
+  #target b { color: #2563eb; }
+  @media (prefers-color-scheme: dark){ #target b { color: #6ea8ff; } }
+  #target .pick { opacity: .55; }
+  #new-body { width: 100%; box-sizing: border-box; font: inherit; font-size: 13px; padding: 6px 8px;
+    border: 1px solid rgba(127,127,127,.4); border-radius: 6px; background: transparent; color: inherit; resize: vertical; }
+  #add { margin-top: 7px; padding: 6px 13px; border-radius: 6px; border: 1px solid rgba(127,127,127,.4);
+    background: transparent; color: inherit; cursor: pointer; font: inherit; }
+  #add:hover { background: rgba(127,127,127,.14); }
+
   .thread { border: 1px solid rgba(127,127,127,.3); border-radius: 8px; padding: 8px 10px; margin-bottom: 10px; }
   .thread h4 { margin: 0 0 4px; font-size: 12px; }
   .thread .msg { padding: 3px 0; border-top: 1px dashed rgba(127,127,127,.25); }
+  .thread .msg .by { font-size: 11px; font-weight: 600; opacity: .7; margin-right: 5px; }
   .badge { font-size: 10px; padding: 1px 6px; border-radius: 999px; }
   .badge.attached { background: #dcfce7; color: #166534; }
   .badge.orphan { background: #fee2e2; color: #991b1b; }
+  .reply { display: flex; gap: 6px; margin-top: 7px; }
+  .reply-body { flex: 1; min-width: 0; font: inherit; font-size: 12px; padding: 4px 7px;
+    border: 1px solid rgba(127,127,127,.35); border-radius: 6px; background: transparent; color: inherit; }
+  .reply-btn { padding: 4px 10px; border-radius: 6px; border: 1px solid rgba(127,127,127,.4);
+    background: transparent; color: inherit; cursor: pointer; font: inherit; font-size: 12px; white-space: nowrap; }
+  .reply-btn:hover { background: rgba(127,127,127,.14); }
 </style>
 <header id="demo-head"></header>
 <div class="note">
-  Comment threads anchored to a node. Delete the node and the thread is <b>ORPHANED, not
-  destroyed</b> — it stays readable, replyable, and rescuable via <code>reanchor()</code>.
-  <code>attached</code> is derived from the live diagram on every read, never stored.
+  Comment threads anchored to a node. Write one in the panel, reply in-thread, then delete the
+  node and the thread is <b>ORPHANED, not destroyed</b> — it stays readable, replyable, and
+  rescuable via <code>reanchor()</code>. <code>attached</code> is derived from the live diagram
+  on every read, never stored.
 </div>
 <div id="canvas">
   <div id="stage"></div>
-  <div id="panel"><em>threads…</em></div>
+  <div id="panel">
+    <div id="composer">
+      <div class="who">You are <b>Ana</b> · comments sync as ops on the shared model</div>
+      <div id="target">Commenting on <b id="target-label">Review</b> <span class="pick">— click any node to re-target</span></div>
+      <textarea id="new-body" rows="2" placeholder="Write a comment…  (⌘/Ctrl+Enter to post)" aria-label="Write a comment"></textarea>
+      <button id="add" aria-label="Add comment">＋ Add comment</button>
+    </div>
+    <div id="threads"><em>threads…</em></div>
+  </div>
 </div>
 <script type="module">
 import { render, CommentStore } from '../shell/grafloria.js';
@@ -36,17 +67,18 @@ const NODES = [
 const SPEC = { nodes: NODES, edges: [{ id: 'e1', source: 'a', target: 'b' }, { id: 'e2', source: 'b', target: 'c' }] };
 
 const liveMsgs = (t) => t.messages.filter((m) => !m.deleted);
+const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c]);
 
 defineDemo({
   name: 'Threaded comments',
-  blurb: 'Threads anchored to a node — delete the node and the thread is orphaned, not destroyed. Concurrent replies both survive (one register per message).',
+  blurb: 'Write a comment on any node and reply in-thread — then delete the node and the thread is orphaned, not destroyed. Concurrent replies both survive (one register per message).',
   howTo: [
-    'Open the DevTools console — this page has no comment toolbar; the right-hand panel just mirrors the comment store live.',
-    'Create a thread anchored to the Review node: const tid = __demoCtx.store.createThread({ kind: \'node\', id: \'b\' }, \'Is this final?\') — a card appears in the panel with a green "attached" badge naming Review.',
-    'Reply to it: __demoCtx.store.reply(tid, \'Ship it.\') — the message joins the card.',
-    'Click the Review node on the canvas and press Delete — the node vanishes.',
-    'Reply once more (any text): the card repaints with a red ORPHANED badge and every message intact — the thread outlived its node, still readable and replyable.',
-    'Rescue it: __demoCtx.store.reanchor(tid, { kind: \'node\', id: \'c\' }) — the badge flips back to "attached", now naming Ship.',
+    'The right panel is a live comment thread. It already shows a conversation your teammate Ben started on the Design node — you are signed in as Ana.',
+    'Add your own: the composer is aimed at the Review node by default. Type a message in the box and click "＋ Add comment" (or press ⌘/Ctrl+Enter) — a new thread card appears instantly with your text.',
+    'Re-aim first if you like: click any node on the canvas (Design / Review / Ship) and the composer retargets to it ("Commenting on …"), so the next comment anchors there.',
+    'Reply in-thread: every card has a reply box at the bottom. Type and click "Reply" (or press Enter) and your message joins that thread.',
+    'Watch a thread outlive its node: click the Review node and press Delete — the node vanishes but its thread stays, now flagged ORPHANED. It is still readable and you can still reply to it.',
+    'Rescue the orphan onto a live node with __demoCtx.store.reanchor(tid, { kind: \'node\', id: \'c\' }) — the badge flips back to "attached", now naming Ship, every message intact.',
   ],
   reactflow: 'Collaborative (Yjs)',
   pro: true,
@@ -56,64 +88,199 @@ defineDemo({
     ctx.instance = api;
     ctx.store = new CommentStore(api.getModel(), { viewer: 'ana' });
 
-    const panel = document.getElementById('panel');
+    // Land the visitor IN a collaborative conversation, not a blank panel: a
+    // teammate (Ben) already opened a thread on Design, and Ana answered. Both
+    // authors write to the SAME model — this is exactly how two peers' comments
+    // converge (one register per message, so neither reply can clobber the other).
+    // Ben's opener is stamped a minute earlier than Ana's reply so the thread
+    // reads in the order it happened — messageOrder is (createdAt, author, id),
+    // and back-to-back writes in the same millisecond would otherwise sort by
+    // author, floating Ana's reply above the question it answers.
+    const ben = new CommentStore(api.getModel(), { viewer: 'ben', now: () => Date.now() - 60_000 });
+    const seed = ben.createThread({ kind: 'node', id: 'a' }, 'Can we tighten the hero copy?');
+    ctx.store.reply(seed, 'On it — draft by Friday.');
+    ben.dispose();
+
+    // WHERE THE NEXT COMMENT LANDS. Defaults to Review; a node click re-points it.
+    ctx.target = { kind: 'node', id: 'b' };
+    const targetLabel = document.getElementById('target-label');
+    ctx.setTarget = (id) => {
+      const node = api.getModel().getNode(id);
+      if (!node) return;
+      ctx.target = { kind: 'node', id };
+      targetLabel.textContent = node.getMetadata('label') ?? id;
+    };
+
+    // THE ADD-COMMENT FLOW. Read the box, start a thread on the current target.
+    const body = document.getElementById('new-body');
+    ctx.addComment = () => {
+      const text = body.value.trim();
+      if (!text) { body.focus(); return null; }
+      const tid = ctx.store.createThread(ctx.target, text);
+      body.value = '';
+      return tid;
+    };
+    document.getElementById('add').addEventListener('click', () => ctx.addComment());
+    body.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) { e.preventDefault(); ctx.addComment(); }
+    });
+
+    // Click a node on the canvas → the composer re-targets to it. Capture phase so
+    // we OBSERVE the click regardless of any handler the renderer runs on the node.
+    document.getElementById('stage').addEventListener('click', (e) => {
+      const el = e.target.closest?.('[data-node-id]');
+      if (el) ctx.setTarget(el.getAttribute('data-node-id'));
+    }, true);
+
+    // REPLY, by delegation — the thread list is re-rendered on every change, so the
+    // handler lives on the container and reads the card it was fired inside.
+    const threadsEl = document.getElementById('threads');
+    ctx.replyTo = (tid, text) => {
+      const t = text.trim();
+      if (t) ctx.store.reply(tid, t);
+    };
+    const submitReply = (card) => {
+      const input = card.querySelector('.reply-body');
+      if (!input.value.trim()) { input.focus(); return; }
+      ctx.replyTo(card.getAttribute('data-tid'), input.value);
+      // paint() re-renders and clears the box — no need to touch it here.
+    };
+    threadsEl.addEventListener('click', (e) => {
+      const btn = e.target.closest('.reply-btn');
+      if (btn) submitReply(btn.closest('.thread'));
+    });
+    threadsEl.addEventListener('keydown', (e) => {
+      if (e.key !== 'Enter' || e.shiftKey) return;
+      const input = e.target.closest('.reply-body');
+      if (!input) return;
+      e.preventDefault();
+      submitReply(input.closest('.thread'));
+    });
+
     const paint = () => {
       const threads = ctx.store.threads({ includeResolved: true });
-      panel.innerHTML = threads.length ? threads.map((t) => {
+      threadsEl.innerHTML = threads.length ? threads.map((t) => {
         const a = t.resolvedAnchor;
-        return `<div class="thread">
-          <h4>${a.targetLabel ?? '(region)'} <span class="badge ${a.attached ? 'attached' : 'orphan'}">${a.attached ? 'attached' : 'ORPHANED'}</span></h4>
-          ${liveMsgs(t).map((m) => `<div class="msg">${m.body}</div>`).join('')}
+        return `<div class="thread" data-tid="${esc(t.id)}">
+          <h4>${esc(a.targetLabel ?? '(region)')} <span class="badge ${a.attached ? 'attached' : 'orphan'}">${a.attached ? 'attached' : 'ORPHANED'}</span></h4>
+          ${liveMsgs(t).map((m) => `<div class="msg"><span class="by">${esc(m.author)}</span>${esc(m.body)}</div>`).join('')}
+          <div class="reply">
+            <input class="reply-body" placeholder="Reply…" aria-label="Reply to this thread">
+            <button class="reply-btn">Reply</button>
+          </div>
         </div>`;
-      }).join('') : '<em>no threads yet</em>';
+      }).join('') : '<em>no threads yet — write one above</em>';
     };
     ctx.store.onChange(paint);
+    // `attached` is DERIVED from the live diagram, so the panel must repaint when
+    // the TOPOLOGY changes too — delete a node and its thread flips to ORPHANED in
+    // place. Comment writes are already covered by store.onChange above; this is the
+    // node add/remove channel (never fires for comment ops).
+    api.on('nodes:change', paint);
     paint();
     await ctx.tick();
   },
 
   async assert(ctx) {
     const store = ctx.store;
+    const threadsEl = document.getElementById('threads');
+    const stage = document.getElementById('stage');
 
-    // 1. Anchor a thread to node 'b' and reply twice. Each message is its OWN
-    //    register, which is what lets two concurrent replies both survive.
-    const tid = store.createThread({ kind: 'node', id: 'b' }, 'Is this the final copy?');
-    store.reply(tid, 'Yes — approved.');
-    store.reply(tid, 'Ship it.');
+    // Real gestures, the way a visitor drives the page: a pointer click on a node,
+    // typed text into a field (with an input event), a button click.
+    const clickNode = (id) => {
+      const el = stage.querySelector(`[data-node-id="${id}"]`);
+      check(!!el, `node ${id} is not in the DOM to click`);
+      const r = el.getBoundingClientRect();
+      el.dispatchEvent(new PointerEvent('click', {
+        bubbles: true, cancelable: true, clientX: r.left + r.width / 2, clientY: r.top + r.height / 2,
+      }));
+    };
+    const type = (el, text) => {
+      el.focus();
+      el.value = text;
+      el.dispatchEvent(new Event('input', { bubbles: true }));
+    };
 
-    let t = store.thread(tid);
-    check(!!t, 'the thread was not created');
-    check(liveMsgs(t).length === 3, `expected 3 messages (1 + 2 replies), got ${liveMsgs(t).length}`);
-    check(t.resolvedAnchor.attached === true, 'a thread on a live node should be attached');
-    check(t.resolvedAnchor.targetLabel === 'Review', `the anchor should name node 'b' (Review), got ${t.resolvedAnchor.targetLabel}`);
-    check(store.orphans().length === 0, 'nothing should be orphaned yet');
+    // 0. The seeded collaborative thread (Ben on Design, Ana replied) is on screen.
+    const seeded = store.threadsFor('node', 'a');
+    check(seeded.length === 1, `the seeded thread on Design should exist, got ${seeded.length}`);
+    check(seeded[0].messages.some((m) => m.author === 'ben'), 'the seed should carry a message from another author (ben)');
 
-    // 2. THE ONE THAT MATTERS. Delete node 'b'. The thread must NOT be destroyed:
-    //    it stays readable, keeps all three messages, and becomes an ORPHAN.
+    // 1. CLICK a node to re-target the composer — a real pointer event on the SVG.
+    const targetLabel = document.getElementById('target-label');
+    clickNode('c');
+    check(targetLabel.textContent === 'Ship', `clicking Ship must re-target the composer, got "${targetLabel.textContent}"`);
+    clickNode('b');
+    check(targetLabel.textContent === 'Review', `clicking Review must re-target the composer, got "${targetLabel.textContent}"`);
+
+    // 2. THE WHOLE POINT: type a comment and click Add. It must land in the STORE
+    //    (the model) AND paint a card in the DOM (the thread).
+    const box = document.getElementById('new-body');
+    type(box, 'Is this the final copy?');
+    document.getElementById('add').click();
+    await ctx.tick();
+
+    const onReview = store.threadsFor('node', 'b');
+    check(onReview.length === 1, `Add should create exactly one thread on Review, got ${onReview.length}`);
+    const tid = onReview[0].id;
+    check(liveMsgs(store.thread(tid))[0].body === 'Is this the final copy?', 'the typed comment did not reach the comment store');
+    check(box.value === '', 'the composer box should clear after posting');
+
+    let card = threadsEl.querySelector(`[data-tid="${tid}"]`);
+    check(!!card, 'no thread card was rendered for the comment just added');
+    check(card.textContent.includes('Is this the final copy?'), 'the added comment text is not visible in the DOM');
+    check(/Review/.test(card.querySelector('h4').textContent), 'the new card does not name the Review node');
+    check(/attached/.test(card.querySelector('.badge').textContent), 'a thread on a live node should read "attached"');
+
+    // 3. REPLY through the card's own box + button — real events again. Two replies
+    //    to prove more than one message rides the thread.
+    const reply = (text) => {
+      const c = threadsEl.querySelector(`[data-tid="${tid}"]`);
+      type(c.querySelector('.reply-body'), text);
+      c.querySelector('.reply-btn').click();
+    };
+    reply('Yes — approved.');
+    await ctx.tick();
+    reply('Ship it.');
+    await ctx.tick();
+    check(liveMsgs(store.thread(tid)).length === 3, `two replies should make 3 messages, got ${liveMsgs(store.thread(tid)).length}`);
+    card = threadsEl.querySelector(`[data-tid="${tid}"]`);
+    check(card.textContent.includes('Yes — approved.') && card.textContent.includes('Ship it.'), 'the replies are not visible in the DOM');
+
+    // 4. THE ONE THAT MATTERS. Delete the Review node. The thread must NOT be
+    //    destroyed: it survives, keeps every message, and becomes an ORPHAN.
     ctx.instance.setNodes(NODES.filter((n) => n.id !== 'b'));
     ctx.instance.renderNow();
     await ctx.tick();
     check(!ctx.instance.getModel().getNode('b'), "node 'b' was not actually removed");
 
-    t = store.thread(tid);
+    let t = store.thread(tid);
     check(!!t, 'deleting the node DESTROYED the thread — comments must outlive their subject');
     check(liveMsgs(t).length === 3, `the orphaned thread lost messages: ${liveMsgs(t).length} of 3 survive`);
     check(t.resolvedAnchor.attached === false, 'a thread whose node is gone must report attached:false');
-    const orphans = store.orphans();
-    check(orphans.some((o) => o.id === tid), 'the thread is not listed among orphans()');
+    check(store.orphans().some((o) => o.id === tid), 'the thread is not listed among orphans()');
+    const orphanCard = threadsEl.querySelector(`[data-tid="${tid}"]`);
+    check(!!orphanCard, 'the orphaned thread vanished from the panel — it must stay readable');
+    check(/ORPHANED/.test(orphanCard.textContent), 'the card must show the ORPHANED badge once its node is gone');
 
-    // 3. It is still REPLYABLE while orphaned — a real thread, not a tombstone.
-    store.reply(tid, 'Where did this node go?');
-    check(liveMsgs(store.thread(tid)).length === 4, 'could not reply to an orphaned thread');
+    // 5. It is still REPLYABLE while orphaned — a real conversation, not a tombstone
+    //    (driven through the UI: type + click on the orphaned card).
+    reply('Where did this node go?');
+    await ctx.tick();
+    check(liveMsgs(store.thread(tid)).length === 4, 'could not reply to an orphaned thread through the UI');
 
-    // 4. RESCUE: reanchor the orphan onto another live node → attached again, with
-    //    every message intact.
+    // 6. RESCUE: reanchor the orphan onto Ship → attached again, every message intact.
     check(store.reanchor(tid, { kind: 'node', id: 'c' }), 'reanchor() failed');
+    await ctx.tick();
     t = store.thread(tid);
     check(t.resolvedAnchor.attached === true, 'reanchoring to a live node should re-attach the thread');
-    check(t.resolvedAnchor.targetLabel === 'Ship', `the rescued thread should now point at 'Ship', got ${t.resolvedAnchor.targetLabel}`);
+    check(t.resolvedAnchor.targetLabel === 'Ship', `the rescued thread should now name Ship, got ${t.resolvedAnchor.targetLabel}`);
     check(liveMsgs(t).length === 4, 'the rescue lost messages');
-    check(store.orphans().length === 0, 'the thread should no longer be an orphan after rescue');
+    check(store.orphans().length === 0, 'nothing should be orphaned after the rescue');
+    const rescuedCard = threadsEl.querySelector(`[data-tid="${tid}"]`);
+    check(/Ship/.test(rescuedCard.querySelector('h4').textContent), 'the rescued card should name Ship');
+    check(/attached/.test(rescuedCard.querySelector('.badge').textContent), 'the rescued card should read "attached" again');
   },
 });
 </script>
