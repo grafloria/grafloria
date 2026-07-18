@@ -81,6 +81,16 @@
     "error": null
   },
   {
+    "rel": "diagrams/erd-editor.html",
+    "slug": "diagrams__erd-editor",
+    "boot": "/var/folders/pd/8g99tsp56714y1x3d39xqs180000gn/T/grafloria-visual-a/diagrams__erd-editor.boot.png",
+    "after": "/var/folders/pd/8g99tsp56714y1x3d39xqs180000gn/T/grafloria-visual-a/diagrams__erd-editor.after.png",
+    "reactflow": "Editable Entity Relationship",
+    "pro": true,
+    "pageErrors": [],
+    "error": null
+  },
+  {
     "rel": "diagrams/scrollable-cards.html",
     "slug": "diagrams__scrollable-cards",
     "boot": "/var/folders/pd/8g99tsp56714y1x3d39xqs180000gn/T/grafloria-visual-a/diagrams__scrollable-cards.boot.png",

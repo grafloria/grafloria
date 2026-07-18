@@ -67,6 +67,14 @@
   "tolerancePct": 0.02,
   "measuredJitterPct": 0
  },
+ "diagrams__erd-editor.after.png": {
+  "tolerancePct": 0.02,
+  "measuredJitterPct": 0
+ },
+ "diagrams__erd-editor.boot.png": {
+  "tolerancePct": 0.02,
+  "measuredJitterPct": 0
+ },
  "diagrams__scrollable-cards.after.png": {
   "tolerancePct": 0.02,
   "measuredJitterPct": 0
@@ -288,8 +296,8 @@
   "measuredJitterPct": 0
  },
  "interaction__copy-paste.after.png": {
-  "tolerancePct": 0.241,
-  "measuredJitterPct": 0.0802
+  "tolerancePct": 0.246,
+  "measuredJitterPct": 0.0821
  },
  "interaction__copy-paste.boot.png": {
   "tolerancePct": 0.02,
@@ -472,8 +480,8 @@
   "measuredJitterPct": 0
  },
  "layout__expand-collapse.showcase.png": {
-  "tolerancePct": 0.02,
-  "measuredJitterPct": 0
+  "tolerancePct": 0.293,
+  "measuredJitterPct": 0.0978
  },
  "layout__force-layout.after.png": {
   "tolerancePct": 0.02,
@@ -500,8 +508,8 @@
   "measuredJitterPct": 0
  },
  "layout__off-thread-layout.after.png": {
-  "tolerancePct": 0.02,
-  "measuredJitterPct": 0
+  "tolerancePct": 0.339,
+  "measuredJitterPct": 0.1129
  },
  "layout__off-thread-layout.boot.png": {
   "tolerancePct": 0.02,
@@ -524,12 +532,12 @@
   "measuredJitterPct": 0
  },
  "misc__mermaid-text.after.png": {
-  "tolerancePct": 1.011,
-  "measuredJitterPct": 0.3369
+  "tolerancePct": 1.334,
+  "measuredJitterPct": 0.4448
  },
  "misc__mermaid-text.boot.png": {
-  "tolerancePct": 1.011,
-  "measuredJitterPct": 0.3369
+  "tolerancePct": 1.334,
+  "measuredJitterPct": 0.4448
  },
  "misc__mermaid-viewer.after.png": {
   "tolerancePct": 0.02,
@@ -641,7 +649,7 @@
  },
  "nodes__node-position-animation.after.png": {
   "tolerancePct": 0.02,
-  "measuredJitterPct": 0
+  "measuredJitterPct": 0.0008
  },
  "nodes__node-position-animation.boot.png": {
   "tolerancePct": 0.02,
