@@ -1,0 +1,253 @@
+<meta charset="utf-8">
+<title>UML relationships — Grafloria</title>
+<link rel="stylesheet" href="../shell/demo.css">
+<style>
+  /* UML class boxes: name / attributes / methods compartments, as HTML.
+     Same card pattern as the class-uml demo — the card FILLS the node and
+     draws its own border, so the node's own rectangle is hidden. */
+  #canvas .uml { font: 12px/1.5 system-ui, sans-serif; border: 1px solid #475569;
+    border-radius: 4px; overflow: hidden; background: #fff;
+    width: 100%; height: 100%; box-sizing: border-box; }
+  #canvas .uml-name { text-align: center; font-weight: 700; padding: 4px 10px; background: #eef2ff; color: #1e1b4b; }
+  #canvas .uml-cls-name { display: block; }
+  /* Interface / abstract names are italic — but the «stereotype» line above stays upright. */
+  #canvas .uml-name.italic .uml-cls-name { font-style: italic; }
+  #canvas .uml-stereo { display: block; font-weight: 400; font-style: normal;
+    font-size: 10px; letter-spacing: .02em; opacity: .72; }
+  #canvas .uml-comp { border-top: 1px solid #475569; padding: 3px 0; }
+  #canvas .uml-comp .member { padding: 1px 10px; font: 11px/1.5 ui-monospace, Menlo, monospace; color: #0f172a; white-space: nowrap; }
+  #canvas .uml-comp.empty { min-height: 8px; }
+  /* Selection rings the class box itself, not a detached outline. */
+  #canvas .selection-highlight { display: none; }
+  #canvas g.node-group[data-selected="true"] .uml {
+    border-color: #4f46e5; box-shadow: 0 0 0 2px rgba(79, 70, 229, .45); }
+  #canvas g.node-group[data-selected="true"] rect.diagram-node {
+    stroke: transparent !important; fill: none !important; }
+  @media (prefers-color-scheme: dark) {
+    #canvas .uml { background: #1e293b; border-color: #64748b; }
+    #canvas .uml-name { background: #312e81; color: #e0e7ff; }
+    #canvas .uml-comp { border-top-color: #64748b; }
+    #canvas .uml-comp .member { color: #e2e8f0; }
+  }
+</style>
+<header id="demo-head"></header>
+<div id="canvas"></div>
+<script type="module">
+import { render } from '../shell/grafloria.js';
+import { defineDemo, check } from '../shell/demo.js';
+
+// ---- class boxes ---------------------------------------------------------
+const LINE_H = 19, NAME_H = 30, STEREO_H = 15, PAD = 8, W = 190;
+
+// Height a box needs for its compartments (+ a taller header when it carries a «stereotype»).
+const clsHeight = (attrs, methods, opts = {}) =>
+  NAME_H + (opts.stereotype ? STEREO_H : 0) + (attrs.length + methods.length) * LINE_H + PAD * 2 + 6;
+
+// A three-compartment class box as HTML: «stereotype» (optional) + name, then attributes, then methods.
+const cls = (name, attrs, methods, { stereotype = null, italic = false } = {}) => ({
+  tag: 'div', className: 'uml',
+  children: [
+    { tag: 'div', className: 'uml-name' + (italic ? ' italic' : ''),
+      children: [
+        ...(stereotype ? [{ tag: 'div', className: 'uml-stereo', text: '«' + stereotype + '»' }] : []),
+        { tag: 'div', className: 'uml-cls-name', text: name },
+      ] },
+    { tag: 'div', className: 'uml-comp' + (attrs.length ? '' : ' empty'),
+      children: attrs.map((a) => ({ tag: 'div', className: 'member', text: a })) },
+    { tag: 'div', className: 'uml-comp' + (methods.length ? '' : ' empty'),
+      children: methods.map((m) => ({ tag: 'div', className: 'member', text: m })) },
+  ],
+});
+
+// Place a class box by its CENTRE — the discipline that keeps relationship lines
+// straight: two boxes sharing a centre X (or Y) let the orthogonal line run dead
+// straight into a perpendicular marker, with no last-pixel jog ("broken arrow").
+const nodeC = (id, cx, cy, name, attrs, methods, opts) => {
+  const h = clsHeight(attrs, methods, opts);
+  return {
+    id, position: { x: Math.round(cx - W / 2), y: Math.round(cy - h / 2) },
+    size: { width: W, height: h },
+    metadata: { html: { content: cls(name, attrs, methods, opts) } },
+    // The card draws its own border — hide the node's default rectangle.
+    shape: { type: 'rect', fill: 'none', stroke: 'none' },
+    style: { fill: 'transparent', stroke: 'transparent', strokeWidth: 0 },
+  };
+};
+
+// ---- relationships -------------------------------------------------------
+const REL = '#64748b';
+const base = { stroke: REL, strokeWidth: 1.5 };
+const DASH = '6,4';
+const tri  = { type: 'generalization', size: 18, filled: false, color: REL };  // hollow triangle
+const openA = { type: 'open-arrow', size: 13, filled: false, color: REL };      // open (line) arrow
+const noHead = { type: 'none', size: 0, filled: false };
+
+// Solid line + hollow triangle at the PARENT (target): "child IS-A parent".
+const generalization = (id, child, parent) => ({
+  id, source: child, target: parent, type: 'orthogonal', sourceHandle: 'top', targetHandle: 'bottom',
+  label: 'generalization', style: { ...base, arrowHead: tri },
+});
+// DASHED line + hollow triangle at the «interface» (target): "class REALIZES interface".
+const realization = (id, impl, iface) => ({
+  id, source: impl, target: iface, type: 'orthogonal', sourceHandle: 'top', targetHandle: 'bottom',
+  label: 'realization', style: { ...base, strokeDasharray: DASH, arrowHead: tri },
+});
+// Plain solid line, NO heads — a symmetric association. The renderer draws a
+// default arrowhead unless it is explicitly suppressed, so `none` is required.
+// Multiplicities are added at the ends post-render.
+const association = (id, a, b) => ({
+  id, source: a, target: b, type: 'orthogonal', sourceHandle: 'right', targetHandle: 'left',
+  style: { ...base, arrowHead: noHead },
+});
+// Solid line + open arrow at the target — navigable ONE way.
+const directed = (id, a, b) => ({
+  id, source: a, target: b, type: 'orthogonal', sourceHandle: 'right', targetHandle: 'left',
+  style: { ...base, arrowHead: openA },
+});
+// Hollow diamond at the WHOLE (source / tail) — shared whole-part.
+const aggregation = (id, whole, part) => ({
+  id, source: whole, target: part, type: 'orthogonal', sourceHandle: 'bottom', targetHandle: 'top',
+  label: 'aggregation', style: { ...base, arrowTail: { type: 'hollow-diamond', size: 15, filled: false, color: REL }, arrowHead: noHead },
+});
+// FILLED diamond at the WHOLE (source / tail) — owned whole-part.
+const composition = (id, whole, part) => ({
+  id, source: whole, target: part, type: 'orthogonal', sourceHandle: 'bottom', targetHandle: 'top',
+  label: 'composition', style: { ...base, arrowTail: { type: 'filled-diamond', size: 15, filled: true, color: REL }, arrowHead: noHead },
+});
+// DASHED line + open arrow at the target — a «uses» dependency.
+const dependency = (id, a, b) => ({
+  id, source: a, target: b, type: 'orthogonal', sourceHandle: 'right', targetHandle: 'left',
+  label: '«uses»', style: { ...base, strokeDasharray: DASH, arrowHead: openA },
+});
+// A class associated with ITSELF, routed as a clean loop out of and back into the
+// top edge. A single centred `manages` label reads the self-relationship.
+const selfAssoc = (id, node) => ({
+  id, source: node, target: node, type: 'orthogonal', sourceHandle: 'top', targetHandle: 'top',
+  label: 'manages', style: { ...base, selfLoop: { side: 'top', size: 52, width: 96 }, arrowHead: openA },
+});
+
+// A small multiplicity / role chip that reads over a line.
+const chip = (text, slot) => ({ text, slot, offset: { x: 0, y: -7 },
+  style: { fontSize: 11, fontWeight: '600', color: '#0f172a', background: '#ffffffdd', padding: 1, borderRadius: 2 } });
+
+defineDemo({
+  name: 'UML relationships',
+  blurb: 'The FULL UML class-relationship vocabulary in one native Grafloria diagram: generalization, realization, association (with multiplicities), directed association, aggregation, composition, dependency and a self-association — each drawn with its real UML arrowhead and clearly labelled.',
+  howTo: [
+    'Generalization (inheritance): a SOLID line with a hollow triangle at the parent (Circle → Shape). Read the triangle as "is-a". Shape is «abstract» — italic name.',
+    'Realization: a DASHED line with the same hollow triangle, pointing at an «interface» (Button ⇢ Drawable). Read it as "implements". The interface name is italic with a «interface» stereotype header.',
+    'Association: a plain SOLID line, no arrowhead (Student — Course). Read the "1" / "0..*" chips at each end as multiplicity — how many objects take part.',
+    'Directed association: a solid line with an OPEN arrow (Order → Product) — the same association, but navigable only in the arrow\'s direction.',
+    'Aggregation: a HOLLOW diamond at the whole (Playlist ◇— Song) — a shared "has-a" whole-part; the parts can outlive the whole.',
+    'Composition: a FILLED diamond at the whole (Window ◆— TitleBar) — an owned whole-part; the parts die with the whole. Compare the two diamonds side by side.',
+    'Dependency: a DASHED line with an open arrow and a «uses» label (OrderService ⇢ Logger) — a transient "depends-on", weaker than an association.',
+    'Self-association: Employee loops back to Employee with a "manages" label — a class related to its own kind.',
+    'Drag any class: every relationship re-routes and its arrowhead re-enters the box cleanly.',
+  ],
+  reactflow: 'Class Diagram',
+  pro: true,
+
+  async setup(ctx) {
+    // Centre-aligned clusters: vertical pairs share a centre X, horizontal pairs
+    // share a centre Y, so every orthogonal line runs dead straight.
+    const nodes = [
+      // Band 1 — vertical pairs (parent/whole on top, child/part below).
+      nodeC('Shape', 170, 110, 'Shape', ['# x: float', '# y: float'], ['+ area(): float', '+ draw(): void'], { stereotype: 'abstract', italic: true }),
+      nodeC('Circle', 170, 440, 'Circle', ['+ radius: float'], ['+ area(): float']),
+
+      nodeC('Drawable', 560, 110, 'Drawable', [], ['+ render(): void', '+ bounds(): Rect'], { stereotype: 'interface', italic: true }),
+      nodeC('Button', 560, 440, 'Button', ['+ label: String'], ['+ render(): void']),
+
+      nodeC('Playlist', 950, 110, 'Playlist', ['+ name: String'], ['+ add(s): void']),
+      nodeC('Song', 950, 440, 'Song', ['+ title: String', '+ seconds: int'], []),
+
+      nodeC('Window', 1340, 110, 'Window', ['+ title: String'], ['+ close(): void']),
+      nodeC('TitleBar', 1340, 440, 'TitleBar', ['+ text: String'], []),
+
+      // Band 2 — horizontal pairs.
+      nodeC('Student', 170, 720, 'Student', ['+ name: String'], []),
+      nodeC('Course', 480, 720, 'Course', ['+ code: String'], []),
+
+      nodeC('Order', 830, 720, 'Order', ['+ id: int'], ['+ total(): Money']),
+      nodeC('Product', 1140, 720, 'Product', ['+ sku: String', '+ price: Money'], []),
+
+      // Band 3 — dependency pair + the self-association.
+      nodeC('OrderService', 170, 1000, 'OrderService', [], ['+ checkout(o): void']),
+      nodeC('Logger', 480, 1000, 'Logger', [], ['+ log(msg): void']),
+
+      nodeC('Employee', 900, 1000, 'Employee', ['+ name: String'], ['+ manage(e): void']),
+    ];
+
+    const edges = [
+      generalization('gen', 'Circle', 'Shape'),
+      realization('real', 'Button', 'Drawable'),
+      aggregation('agg', 'Playlist', 'Song'),
+      composition('comp', 'Window', 'TitleBar'),
+      association('assoc', 'Student', 'Course'),
+      directed('dir', 'Order', 'Product'),
+      dependency('dep', 'OrderService', 'Logger'),
+      selfAssoc('self', 'Employee'),
+    ];
+
+    const api = render({ nodes, edges }, ctx.host);
+    ctx.instance = api;
+    ctx.diagram = api.getModel();
+
+    // Multiplicity / role chips at the ENDS of the associations — two labels on
+    // one edge, which only the positioned-label API (link.addLabel) can express.
+    const model = api.getModel();
+    const label = (id, ...chips) => { const l = model.getLink(id); if (l) chips.forEach((c) => l.addLabel(c)); };
+    label('assoc', chip('0..*', 'start'), chip('1..*', 'end'));   // Student 0..* — 1..* Course
+    label('dir', chip('1', 'start'), chip('0..*', 'end'));        // Order 1 → 0..* Product
+    // 'self' keeps its single centred `manages` label (set on the edge spec) — a
+    // positioned label array would suppress it, and one word reads the loop best.
+
+    api.renderNow?.();       // flush the label mutations into this frame
+    api.fitView?.(50);
+    await ctx.tick();
+    await ctx.tick();
+  },
+
+  async assert(ctx) {
+    const host = ctx.host;
+
+    // 1. Every class renders as a three-compartment HTML box.
+    const names = [...host.querySelectorAll('.uml-cls-name')].map((e) => e.textContent);
+    check(names.length === 15, `expected 15 class boxes, got ${names.length}: [${names}]`);
+    check(!!host.querySelector('[data-node-id="Shape"] foreignObject'), 'Shape should render as an HTML node');
+    const shapeComps = host.querySelectorAll('[data-node-id="Shape"] .uml-comp');
+    check(shapeComps.length === 2, `Shape should have attribute + method compartments, got ${shapeComps.length}`);
+
+    // 2. Stereotype headers: «interface» and «abstract», with italic names.
+    const stereos = [...host.querySelectorAll('.uml-stereo')].map((e) => e.textContent);
+    check(stereos.some((s) => s.includes('interface')), 'the «interface» stereotype should render in the header');
+    check(stereos.some((s) => s.includes('abstract')), 'the «abstract» stereotype should render in the header');
+    check(!!host.querySelector('.uml-name.italic .uml-cls-name'), 'the interface / abstract class name should render italic');
+
+    // 3. All eight relationships exist.
+    check(ctx.diagram.getLinks().length === 8, `expected 8 relationships, got ${ctx.diagram.getLinks().length}`);
+
+    // 4. The real UML markers PAINT. Two hollow triangles: inheritance + the
+    //    dashed realization. One hollow diamond, one filled diamond (aggregation
+    //    vs composition). Open arrows for directed assoc + dependency + self.
+    check(host.querySelectorAll('.arrow-generalization').length >= 2,
+      `expected >=2 hollow-triangle markers (generalization + realization), got ${host.querySelectorAll('.arrow-generalization').length}`);
+    check(host.querySelectorAll('.arrow-hollow-diamond').length >= 1, 'expected an aggregation (hollow-diamond) marker');
+    check(host.querySelectorAll('.arrow-filled-diamond').length >= 1, 'expected a composition (filled-diamond) marker');
+    // NB: the renderer paints the open (dependency/navigable) arrow as `.arrow-open`.
+    check(host.querySelectorAll('.arrow-open').length >= 3,
+      `expected >=3 open-arrow markers (directed assoc + dependency + self), got ${host.querySelectorAll('.arrow-open').length}`);
+
+    // 5. Realization + dependency are DASHED (the two "weaker" relationships).
+    const dashed = [...host.querySelectorAll('path')].filter((p) => {
+      const a = p.getAttribute('stroke-dasharray') || (p.style && p.style.strokeDasharray) || '';
+      return /6\D+4/.test(a);
+    });
+    check(dashed.length >= 2, `expected >=2 dashed relationship lines (realization + dependency), got ${dashed.length}`);
+
+    // 6. Multiplicity chips render at the association ends.
+    const txt = host.textContent || '';
+    check(txt.includes('0..*') && txt.includes('1..*'), 'multiplicity chips (0..*, 1..*) should render at association ends');
+  },
+});
+</script>
