@@ -196,8 +196,20 @@ export class ELKLayoutAdapter implements LayoutAdapter {
       elkOptions.portAware?.ports ?? (portMode === 'free' ? [] : derivePortInfos(nodes));
     const portInfoById = new Map(portInfos.map((p) => [p.id, p]));
 
+    // Group ports by owning node ONCE. The old per-node `portInfos.filter(...)`
+    // was O(nodes × ports) — a quadratic translation cost on port-heavy graphs
+    // (900 nodes × 1800 ports = 1.6M predicate calls before ELK even ran).
+    // `portInfos` is canonically sorted (nodeId, side, priority, id), so pushing
+    // in order preserves the exact per-node port order the filter produced.
+    const portsByNode = new Map<string, PortInfo[]>();
+    for (const p of portInfos) {
+      const list = portsByNode.get(p.nodeId);
+      if (list) list.push(p);
+      else portsByNode.set(p.nodeId, [p]);
+    }
+
     const elkChildren: ElkNode[] = nodes.map((node) => {
-      const nodePorts = portInfos.filter((p) => p.nodeId === node.id);
+      const nodePorts = portsByNode.get(node.id) ?? [];
       const constraint = resolvePortConstraint(node, portMode);
 
       const child: ElkNode = {
@@ -231,6 +243,15 @@ export class ELKLayoutAdapter implements LayoutAdapter {
     const endpoint = (portId: string | undefined, nodeId: string): string =>
       portId && emittedPortIds.has(portId) ? portId : nodeId;
 
+    // Size every link's label box ONCE — it is needed twice (as the ELK edge
+    // label below, and again as `labelSpace` in the routing hints), and the old
+    // code ran the estimate/word-wrap pass both times. Computed for ALL links,
+    // exactly as extractRoutingHints always did, so the hint output is unchanged.
+    const labelBoxByLink = new Map<string, ReturnType<typeof linkLabelBox>>();
+    if (labelAware) {
+      for (const link of links) labelBoxByLink.set(link.id, linkLabelBox(link));
+    }
+
     const elkEdges: ElkExtendedEdge[] = links
       .filter((link) => link.sourceNodeId && link.targetNodeId)
       .map((link) => {
@@ -243,7 +264,7 @@ export class ELKLayoutAdapter implements LayoutAdapter {
         // Label-aware: hand ELK the box the label needs. This is a RESERVATION,
         // not a placement — the renderer's edge optimizer still decides where the
         // label finally sits; it just now has somewhere to put it.
-        const box = labelAware ? linkLabelBox(link) : undefined;
+        const box = labelBoxByLink.get(link.id);
         if (box) {
           edge.labels = [{ id: box.id, text: box.text, width: box.width, height: box.height }];
         }
@@ -279,9 +300,8 @@ export class ELKLayoutAdapter implements LayoutAdapter {
     // -----------------------------------------------------------------------
     const routing = this.extractRoutingHints(
       layoutedGraph,
-      links,
+      labelBoxByLink,
       portInfoById,
-      labelAware,
       elkOptions.edgeRouting ?? (elkOptions.orthogonalRouting === false ? 'POLYLINE' : 'ORTHOGONAL')
     );
 
@@ -471,9 +491,8 @@ export class ELKLayoutAdapter implements LayoutAdapter {
    */
   private extractRoutingHints(
     graph: ElkNode,
-    links: LinkModel[],
+    labelBoxByLink: Map<string, ReturnType<typeof linkLabelBox>>,
     portInfoById: Map<string, PortInfo>,
-    labelAware: boolean,
     edgeRouting: string
   ): LayoutRoutingHints {
     const portPositions = new Map<string, { x: number; y: number; side: PortSide }>();
@@ -514,11 +533,9 @@ export class ELKLayoutAdapter implements LayoutAdapter {
       });
     }
 
-    if (labelAware) {
-      for (const link of links) {
-        const box = linkLabelBox(link);
-        if (box) labelSpace.set(link.id, { width: box.width, height: box.height });
-      }
+    // Boxes were sized once in apply() (empty map when label-awareness is off).
+    for (const [linkId, box] of labelBoxByLink) {
+      if (box) labelSpace.set(linkId, { width: box.width, height: box.height });
     }
 
     return {
