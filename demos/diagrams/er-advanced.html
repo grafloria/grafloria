@@ -1,0 +1,313 @@
+<meta charset="utf-8">
+<title>ER diagram — advanced — Grafloria</title>
+<link rel="stylesheet" href="../shell/demo.css">
+<style>
+  /* Same entity "table" card as demos/diagrams/table-er.html — HTML painted into
+     each node's foreignObject, filling the node exactly so its border IS the
+     table border (no second rectangle from the node's own shape). */
+  #canvas .entity { font: 12px/1.5 system-ui, sans-serif; border: 1px solid #64748b;
+    border-radius: 6px; overflow: hidden; background: #fff;
+    width: 100%; height: 100%; box-sizing: border-box; }
+  #canvas .entity-head { background: #334155; color: #fff; font-weight: 600; letter-spacing: .3px;
+    padding: 5px 10px; text-transform: uppercase; font-size: 11px;
+    /* PIN the header + row heights so the field-level ports (which are placed at
+       exact node-local pixel offsets) land dead-on the row they name. With
+       box-sizing:border-box a row is exactly ROW_H px and a header exactly
+       HEAD_H px, so rowCenterY(i) below is exact, not an estimate. */
+    height: 28px; box-sizing: border-box; }
+  #canvas .row { display: flex; align-items: center; gap: 8px; padding: 3px 10px;
+    border-top: 1px solid #e2e8f0; height: 25px; box-sizing: border-box; }
+  #canvas .row .key { width: 22px; font-size: 9px; font-weight: 700; color: #b45309; }
+  #canvas .row .key.fk { color: #6d28d9; }
+  #canvas .row .col { flex: 1; color: #0f172a; }
+  #canvas .row .ty { color: #64748b; font-size: 11px; }
+  #canvas .row.pk .col { font-weight: 600; }
+  /* Highlight the two FK rows the headline pair of relationships hangs off, so a
+     reader's eye lands on "two FKs → one PK" without hunting. */
+  #canvas .row.fkrow { background: #faf5ff; }
+  @media (prefers-color-scheme: dark) { #canvas .row.fkrow { background: #2a2140; } }
+  /* Selection rings the CARD, not a detached rectangle (see table-er.html). */
+  #canvas .selection-highlight { display: none; }
+  #canvas g.node-group[data-selected="true"] .entity {
+    border-color: #2563eb; box-shadow: 0 0 0 2px rgba(37, 99, 235, .45); }
+  #canvas g.node-group[data-selected="true"] rect.diagram-node {
+    stroke: transparent !important; fill: none !important; }
+  @media (prefers-color-scheme: dark) {
+    #canvas .entity { background: #1e293b; border-color: #475569; }
+    #canvas .row { border-top-color: #334155; }
+    #canvas .row .col { color: #e2e8f0; }
+  }
+  /* A small cardinality legend, pinned to the corner. Plain chrome — it is not
+     part of the diagram model, so it never perturbs an assert. */
+  .er-legend { position: fixed; left: 14px; bottom: 14px; z-index: 5;
+    font: 11px/1.4 system-ui, sans-serif; background: rgba(255,255,255,.94);
+    border: 1px solid #cbd5e1; border-radius: 8px; padding: 8px 11px;
+    box-shadow: 0 4px 14px rgba(15,23,42,.12); color: #334155; }
+  .er-legend b { display: block; margin-bottom: 5px; font-size: 10px; letter-spacing: .4px;
+    text-transform: uppercase; color: #64748b; }
+  .er-legend div { display: flex; align-items: center; gap: 7px; margin: 2px 0; }
+  .er-legend svg { flex: none; }
+  @media (prefers-color-scheme: dark) {
+    .er-legend { background: rgba(30,41,59,.94); border-color: #475569; color: #e2e8f0; }
+    .er-legend b { color: #94a3b8; }
+  }
+</style>
+<header id="demo-head"></header>
+<div id="canvas"></div>
+<script type="module">
+import { render } from '../shell/grafloria.js';
+import { defineDemo, check } from '../shell/demo.js';
+
+// An ADVANCED entity-relationship diagram, built natively in Grafloria. Where
+// demos/diagrams/table-er.html shows the basics (one table → many rows via a
+// crow's-foot), this page shows the shapes a real schema throws at you:
+//
+//   1. TWO relationships between the SAME pair of tables, on different FK
+//      columns (Shipment.from_warehouse_id AND Shipment.to_warehouse_id, both
+//      → Warehouse) — the classic "which arrow is which?" trap.
+//   2. A SELF-REFERENCE (Employee.manager_id → Employee), routed as a clean
+//      corner loop out of the node and back into its own manager_id row.
+//   3. A MANY-TO-MANY resolved through a junction table
+//      (Student —< Enrollment >— Course), the FK columns marked.
+//   4. OPTIONAL vs MANDATORY cardinality, using the real ER arrow vocabulary
+//      (zero-or-many = optional, one-or-many = mandatory), named in a legend.
+//
+// FIELD-LEVEL PORTS — the relationship lines attach to a SPECIFIC ROW of the
+// card (the FK column and the PK column it references), not just table-to-table.
+// This is reachable straight from the public render() spec: a port carries a
+// `layout` (renderer/src/instance/model-input.ts → buildPort passes it through),
+// and the `absolute` layout strategy (renderer/src/svg/port-layout.ts) pins the
+// port to an exact node-local pixel — `{x, y, units:'px'}`. The link endpoint is
+// that port's painted position and the exit direction is the port's `side`
+// (svg-renderer.ts getLinkEndpoints: `defaults.start` = getPortPositionForShape,
+// `defaults.sourceDirection` = port.alignment.side). Naming the port id as the
+// edge handle pins the edge to the row and, crucially, does NOT trigger the
+// floating-attachment fallback (buildEdge only stamps that when NEITHER handle
+// is named). So the crow's-foot lands on the FK row, straight along the axis.
+
+const ROW_H = 25, HEAD_H = 28, W = 210;
+// Vertical CENTRE (node-local px) of column `i`. Header is HEAD_H, each row ROW_H,
+// both pinned in CSS so this is exact; the +1 is the card's own 1px top border,
+// which offsets the content box down by a pixel.
+const rowCenterY = (i) => 1 + HEAD_H + i * ROW_H + ROW_H / 2;
+
+const entity = (name, cols) => ({
+  content: {
+    tag: 'div', className: 'entity',
+    children: [
+      { tag: 'div', className: 'entity-head', text: name },
+      ...cols.map((c) => ({
+        tag: 'div', className: 'row' + (c.pk ? ' pk' : '') + (c.hot ? ' fkrow' : ''),
+        children: [
+          { tag: 'span', className: 'key' + (c.fk ? ' fk' : ''), text: c.pk ? 'PK' : c.fk ? 'FK' : '' },
+          { tag: 'span', className: 'col', text: c.name },
+          { tag: 'span', className: 'ty', text: c.type },
+        ],
+      })),
+    ],
+  },
+});
+
+// A FIELD-LEVEL port: pinned to the exact pixel of the row it belongs to via the
+// `absolute` layout strategy. `side` fixes the exit direction; `dy` nudges two
+// ports that share a row (the Warehouse PK is referenced by both FKs) apart.
+const fieldPort = (id, side, rowIndex, dy = 0) => ({
+  id, side, visible: false,
+  layout: {
+    strategy: 'absolute',
+    args: { units: 'px', x: side === 'right' ? W : side === 'left' ? 0 : W / 2,
+            y: rowCenterY(rowIndex), dy },
+  },
+});
+// A port on the top edge (for the self-loop's PK end).
+const topPort = (id, xFrac = 0.7) => ({
+  id, side: 'top', visible: false,
+  layout: { strategy: 'absolute', args: { units: 'px', x: W * xFrac, y: 0 } },
+});
+
+const node = (id, x, y, name, cols, ports) => ({
+  // +4: the card draws its own 1px top+bottom border INSIDE height:100%
+  // (box-sizing), so the node must be a few px taller than the raw content or the
+  // last row is clipped (matches table-er.html's slack).
+  id, position: { x, y }, size: { width: W, height: HEAD_H + cols.length * ROW_H + 4 },
+  metadata: { html: entity(name, cols) },
+  ports,
+  // The HTML card draws its own border — hide the node's own rectangle so it does
+  // not wrap the table in a second box.
+  shape: { type: 'rect', fill: 'none', stroke: 'none' },
+  style: { fill: 'transparent', stroke: 'transparent', strokeWidth: 0 },
+});
+
+// An ER edge. Head/tail carry real crow's-foot cardinality; `sides` is unused
+// here because every edge names field-level port handles directly.
+const rel = (id, source, sourceHandle, target, targetHandle, label, opts = {}) => ({
+  id, source, target, sourceHandle, targetHandle, label, type: 'orthogonal',
+  style: {
+    stroke: opts.stroke || '#64748b', strokeWidth: 1.5,
+    arrowTail: { type: 'one', size: 11, filled: false },
+    arrowHead: { type: opts.head || 'crow-foot', size: 13, filled: false },
+  },
+});
+
+defineDemo({
+  name: 'ER diagram — advanced',
+  blurb: 'The entity-relationship shapes a real schema throws at you: two relationships between the SAME pair of tables on different FK columns, a self-reference, a many-to-many through a junction table, and optional-vs-mandatory crow\'s-foot cardinality — every line attached to the specific FK and PK ROW it joins.',
+  howTo: [
+    'Read the headline pair (top-left): SHIPMENT has TWO foreign keys into WAREHOUSE — from_warehouse_id and to_warehouse_id (both highlighted). That is TWO separate relationships between the same two tables: the teal line ("ships from") leaves the from_warehouse_id row, the amber line ("ships to") leaves the to_warehouse_id row, and both crow\'s-feet land back on Warehouse.id — you can tell them apart because each attaches to its OWN column, not just "somewhere on the table".',
+    'Follow the self-reference (top-right): EMPLOYEE.manager_id points back to EMPLOYEE.id — the "reports to" line loops out of the top and returns into the manager_id row of the same card. One employee is managed by one manager; a manager has many reports (the crow\'s-foot).',
+    'Trace the many-to-many (bottom): STUDENT and COURSE are joined through the ENROLLMENT junction — one student HAS many enrollments, one course is FOR many enrollments, and the two FK columns (student_id, course_id) carry the crow\'s-feet.',
+    'Read the cardinality legend (bottom-left): "has" ends in zero-or-many (a circle + crow\'s-foot = OPTIONAL — a student may have no enrollments yet), "for" ends in one-or-many (a bar + crow\'s-foot = MANDATORY — a live course has at least one). Drag any table: the columns ride inside it and every line re-routes to the same rows.',
+  ],
+  reactflow: 'Entity Relationship',
+  pro: true,
+
+  async setup(ctx) {
+    const api = render({
+      nodes: [
+        // --- Headline: two FK relationships between the SAME pair -------------
+        node('WAREHOUSE', 80, 70, 'Warehouse', [
+          { pk: true, name: 'id', type: 'int' },
+          { name: 'code', type: 'varchar' },
+          { name: 'city', type: 'varchar' },
+        ], [
+          // Both FKs reference Warehouse.id (row 0); split the two tails apart.
+          fieldPort('wh_pk_from', 'right', 0, -6),
+          fieldPort('wh_pk_to', 'right', 0, 6),
+        ]),
+        node('SHIPMENT', 400, 70, 'Shipment', [
+          { pk: true, name: 'id', type: 'int' },
+          { fk: true, hot: true, name: 'from_warehouse_id', type: 'int' },
+          { fk: true, hot: true, name: 'to_warehouse_id', type: 'int' },
+          { name: 'shipped_at', type: 'date' },
+        ], [
+          fieldPort('ship_from', 'left', 1), // from_warehouse_id row
+          fieldPort('ship_to', 'left', 2),   // to_warehouse_id row
+        ]),
+
+        // --- Self-reference ---------------------------------------------------
+        node('EMPLOYEE', 850, 90, 'Employee', [
+          { pk: true, name: 'id', type: 'int' },
+          { name: 'name', type: 'varchar' },
+          { fk: true, hot: true, name: 'manager_id', type: 'int' },
+        ], [
+          topPort('emp_pk_top', 0.72),      // id (PK) end, out of the top
+          fieldPort('emp_mgr', 'right', 2), // manager_id (FK) row, on the right
+        ]),
+
+        // --- Many-to-many through a junction ---------------------------------
+        node('STUDENT', 80, 360, 'Student', [
+          { pk: true, name: 'id', type: 'int' },
+          { name: 'name', type: 'varchar' },
+          { name: 'email', type: 'varchar' },
+        ], [ fieldPort('stu_pk', 'right', 0) ]),
+        node('ENROLLMENT', 430, 345, 'Enrollment', [
+          { pk: true, name: 'id', type: 'int' },
+          { fk: true, hot: true, name: 'student_id', type: 'int' },
+          { fk: true, hot: true, name: 'course_id', type: 'int' },
+          { name: 'grade', type: 'varchar' },
+        ], [
+          fieldPort('enr_student', 'left', 1),  // student_id row
+          fieldPort('enr_course', 'right', 2),  // course_id row
+        ]),
+        node('COURSE', 800, 360, 'Course', [
+          { pk: true, name: 'id', type: 'int' },
+          { name: 'title', type: 'varchar' },
+          { name: 'credits', type: 'int' },
+        ], [ fieldPort('crs_pk', 'left', 0) ]),
+      ],
+      edges: [
+        // TWO relationships, SAME pair, different FK columns — the headline.
+        rel('ships-from', 'WAREHOUSE', 'wh_pk_from', 'SHIPMENT', 'ship_from', 'ships from', { stroke: '#0d9488' }),
+        rel('ships-to', 'WAREHOUSE', 'wh_pk_to', 'SHIPMENT', 'ship_to', 'ships to', { stroke: '#d97706' }),
+        // Self-reference: manager_id → id, on the same table.
+        rel('reports-to', 'EMPLOYEE', 'emp_pk_top', 'EMPLOYEE', 'emp_mgr', 'reports to'),
+        // Junction: optional (zero-or-many) vs mandatory (one-or-many).
+        rel('has', 'STUDENT', 'stu_pk', 'ENROLLMENT', 'enr_student', 'has', { head: 'zero-or-many' }),
+        rel('for', 'COURSE', 'crs_pk', 'ENROLLMENT', 'enr_course', 'for', { head: 'one-or-many' }),
+      ],
+    }, ctx.host);
+    ctx.instance = api;
+    ctx.diagram = api.getModel();
+    api.fitView?.(48);
+    await ctx.tick();
+
+    // Cardinality legend — plain chrome, appended to the body (skipped by no
+    // assert, harmless under the harness).
+    if (!document.querySelector('.er-legend')) {
+      const S = '#64748b';
+      const icon = (paths) => `<svg width="42" height="18" viewBox="0 0 42 18" fill="none" stroke="${S}" stroke-width="1.4">${paths}</svg>`;
+      const legend = document.createElement('div');
+      legend.className = 'er-legend';
+      legend.innerHTML =
+        '<b>Cardinality</b>' +
+        `<div>${icon('<line x1="2" y1="9" x2="30" y2="9"/><line x1="24" y1="4" x2="24" y2="14"/>')}exactly one</div>` +
+        `<div>${icon('<line x1="2" y1="9" x2="26" y2="9"/><line x1="26" y1="9" x2="40" y2="3"/><line x1="26" y1="9" x2="40" y2="9"/><line x1="26" y1="9" x2="40" y2="15"/>')}many (crow&#39;s-foot)</div>` +
+        `<div>${icon('<circle cx="7" cy="9" r="4"/><line x1="11" y1="9" x2="26" y2="9"/><line x1="26" y1="9" x2="40" y2="3"/><line x1="26" y1="9" x2="40" y2="9"/><line x1="26" y1="9" x2="40" y2="15"/>')}zero-or-many &mdash; optional</div>` +
+        `<div>${icon('<line x1="2" y1="9" x2="26" y2="9"/><line x1="9" y1="4" x2="9" y2="14"/><line x1="26" y1="9" x2="40" y2="3"/><line x1="26" y1="9" x2="40" y2="9"/><line x1="26" y1="9" x2="40" y2="15"/>')}one-or-many &mdash; mandatory</div>`;
+      document.body.appendChild(legend);
+    }
+  },
+
+  async assert(ctx) {
+    const host = ctx.host;
+    const model = ctx.diagram;
+
+    // 1. Six entity tables render as HTML cards with headers + typed columns.
+    const heads = [...host.querySelectorAll('.entity-head')].map((e) => (e.textContent || '').trim());
+    check(heads.length === 6, `expected 6 entity headers, got ${heads.length}: [${heads}]`);
+    for (const name of ['Warehouse', 'Shipment', 'Employee', 'Student', 'Enrollment', 'Course']) {
+      check(heads.some((h) => h.toUpperCase() === name.toUpperCase()), `missing entity table "${name}"`);
+    }
+    const ship = host.querySelector('[data-node-id="SHIPMENT"] foreignObject');
+    check(!!ship && (ship.textContent || '').includes('from_warehouse_id') && (ship.textContent || '').includes('to_warehouse_id'),
+      'Shipment should list BOTH foreign-key columns (from_warehouse_id, to_warehouse_id)');
+
+    // 2. PK/FK badges present.
+    const badges = [...host.querySelectorAll('.entity .key')].map((e) => e.textContent).filter(Boolean);
+    check(badges.includes('PK') && badges.includes('FK'), `expected PK and FK badges, got [${[...new Set(badges)]}]`);
+
+    // 3. Exactly five relationships.
+    const links = model.getLinks();
+    check(links.length === 5, `expected 5 relationships, got ${links.length}`);
+
+    // 4. HEADLINE — exactly TWO relationships between the SAME pair of tables.
+    const pair = links.filter((l) => {
+      const s = l.sourceNodeId, t = l.targetNodeId;
+      return (s === 'WAREHOUSE' && t === 'SHIPMENT') || (s === 'SHIPMENT' && t === 'WAREHOUSE');
+    });
+    check(pair.length === 2, `expected 2 relationships between WAREHOUSE and SHIPMENT (the headline), got ${pair.length}`);
+
+    // 5. SELF-REFERENCE — one relationship whose two ends are the same node.
+    const selfRefs = links.filter((l) => l.sourceNodeId === l.targetNodeId);
+    check(selfRefs.length === 1 && selfRefs[0].sourceNodeId === 'EMPLOYEE',
+      `expected exactly 1 self-referential relationship (on EMPLOYEE), got ${selfRefs.length}`);
+
+    // 6. The crow's-foot (many) marker actually PAINTS on the three crow-foot
+    //    relationships; every relationship paints a "one" bar on its tail.
+    check(host.querySelectorAll('.arrow-crow-foot').length === 3,
+      `expected 3 painted crow's-foot markers, got ${host.querySelectorAll('.arrow-crow-foot').length}`);
+    check(host.querySelectorAll('.arrow-one').length === 5,
+      `expected a "one" bar on each of the 5 tails, got ${host.querySelectorAll('.arrow-one').length}`);
+    // Optional vs mandatory: the two distinct composite ER markers each paint once.
+    check(host.querySelectorAll('.arrow-zero-or-many').length === 1, 'expected a zero-or-many (optional) marker to paint');
+    check(host.querySelectorAll('.arrow-one-or-many').length === 1, 'expected a one-or-many (mandatory) marker to paint');
+
+    // 7. FIELD-LEVEL (row) attachment — the two headline relationships attach to
+    //    DIFFERENT rows of the Shipment card, not both at the node centre. Proven
+    //    at the MODEL level (the ports carry the absolute row layout at distinct
+    //    y) AND geometrically (their painted crow's-feet sit >10px apart in y).
+    const shipment = model.getNode('SHIPMENT');
+    const pFrom = shipment.getPort('ship_from');
+    const pTo = shipment.getPort('ship_to');
+    check(pFrom?.layout?.strategy === 'absolute' && pTo?.layout?.strategy === 'absolute',
+      'the FK ports should use the absolute row layout (field-level attachment)');
+    check(pFrom.layout.args.y !== pTo.layout.args.y,
+      `the two FK ports must sit at DIFFERENT row offsets, got ${pFrom.layout.args.y} and ${pTo.layout.args.y}`);
+    const cfFrom = host.querySelector('[data-link-id="ships-from"] .arrow-crow-foot');
+    const cfTo = host.querySelector('[data-link-id="ships-to"] .arrow-crow-foot');
+    check(!!cfFrom && !!cfTo, 'each headline relationship should paint its own crow-foot inside its link group');
+    const dy = Math.abs(cfFrom.getBoundingClientRect().top - cfTo.getBoundingClientRect().top);
+    check(dy > 10, `the two FK relationships should land on DIFFERENT rows (Δy > 10px), got Δ=${dy.toFixed(1)}px`);
+  },
+});
+</script>
