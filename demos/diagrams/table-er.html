@@ -1,136 +1,65 @@
 <meta charset="utf-8">
 <title>Table / ER diagram — Grafloria</title>
 <link rel="stylesheet" href="../shell/demo.css">
-<style>
-  /* Entity "table" cards, painted as HTML inside each node's foreignObject.
-     Fills the node exactly (box-sizing) so its border IS the table border —
-     no second rectangle from the node's own shape. */
-  #canvas .entity { font: 12px/1.5 system-ui, sans-serif; border: 1px solid #64748b;
-    border-radius: 6px; overflow: hidden; background: #fff;
-    width: 100%; height: 100%; box-sizing: border-box; }
-  #canvas .entity-head { background: #334155; color: #fff; font-weight: 600; letter-spacing: .3px;
-    padding: 5px 10px; text-transform: uppercase; font-size: 11px; }
-  #canvas .row { display: flex; align-items: center; gap: 8px; padding: 3px 10px; border-top: 1px solid #e2e8f0; }
-  #canvas .row .key { width: 22px; font-size: 9px; font-weight: 700; color: #b45309; }
-  #canvas .row .key.fk { color: #6d28d9; }
-  #canvas .row .col { flex: 1; color: #0f172a; }
-  #canvas .row .ty { color: #64748b; font-size: 11px; }
-  #canvas .row.pk .col { font-weight: 600; }
-  /* Selection highlights the CARD, not a detached rectangle. The default
-     selection outline (drawn a few px OUTSIDE the node) reads as a second box
-     around a card that already has its own border — hide it and ring the card. */
-  #canvas .selection-highlight { display: none; }
-  #canvas g.node-group[data-selected="true"] .entity {
-    border-color: #2563eb; box-shadow: 0 0 0 2px rgba(37, 99, 235, .45); }
-  /* Also suppress the node's OWN rect border on select (theme paints it blue,
-     overriding the transparent style) — that square rect is the box-around-it. */
-  #canvas g.node-group[data-selected="true"] rect.diagram-node {
-    stroke: transparent !important; fill: none !important; }
-  @media (prefers-color-scheme: dark) {
-    #canvas .entity { background: #1e293b; border-color: #475569; }
-    #canvas .row { border-top-color: #334155; }
-    #canvas .row .col { color: #e2e8f0; }
-  }
-</style>
 <header id="demo-head"></header>
 <div id="canvas"></div>
 <script type="module">
-import { render } from '../shell/grafloria.js';
+import { render, erDiagram } from '../shell/grafloria.js';
 import { defineDemo, check } from '../shell/demo.js';
 
-// A database ER diagram, built natively in Grafloria: each entity is an HTML
-// "table" node (header + typed columns with PK/FK badges), and relationships
-// are edges carrying real ER crow's-foot cardinality markers (one → many).
-const ROW_H = 25, HEAD_H = 28;
-const entity = (name, cols) => ({
-  content: {
-    tag: 'div', className: 'entity',
-    children: [
-      { tag: 'div', className: 'entity-head', text: name },
-      ...cols.map((c) => ({
-        tag: 'div', className: 'row' + (c.pk ? ' pk' : ''),
-        children: [
-          { tag: 'span', className: 'key' + (c.fk ? ' fk' : ''), text: c.pk ? 'PK' : c.fk ? 'FK' : '' },
-          { tag: 'span', className: 'col', text: c.name },
-          { tag: 'span', className: 'ty', text: c.type },
-        ],
-      })),
-    ],
-  },
-});
-const node = (id, x, y, name, cols) => ({
-  id, position: { x, y }, size: { width: 190, height: HEAD_H + cols.length * ROW_H + 4 },
-  metadata: { html: entity(name, cols) },
-  // The HTML card draws its OWN border + shadow — hide the node's default
-  // rectangle so it doesn't wrap the table in a second box.
-  shape: { type: 'rect', fill: 'none', stroke: 'none' },
-  style: { fill: 'transparent', stroke: 'transparent', strokeWidth: 0 },
-});
-
-// ER edge: "one" bar on the source, crow's-foot "many" on the target.
-// Explicit source/target SIDES: tables have different heights, so their centre
-// points differ in y — without fixed sides the orthogonal router jogs right at
-// the table edge and the crow's-foot ends up pointing the wrong way (a "broken
-// arrow" until you nudge the table). Pinning the sides makes the line enter
-// along the correct axis every time.
-const rel = (id, source, target, label, sides = ['right', 'left']) => ({
-  id, source, target, label, type: 'orthogonal',
-  sourceHandle: sides[0], targetHandle: sides[1],
-  style: {
-    stroke: '#64748b', strokeWidth: 1.5,
-    arrowTail: { type: 'one', size: 8, filled: false },
-    arrowHead: { type: 'crow-foot', size: 9, filled: false },
-  },
+// A database ER diagram in PURE DATA, via the reusable diagram kit
+// (`erDiagram` from @grafloria/element). The kit owns the table-card look, the
+// PK/FK badges, the crow's-foot cardinality markers, the selection styling and
+// the routing discipline — this page just declares the schema. Compare with
+// diagrams/er-advanced.html for multi-FK / self-reference / field-level joins.
+const SPEC = erDiagram({
+  entities: [
+    // CUSTOMER / ORDER / LINE_ITEM are centre-aligned so their side-to-side
+    // relationships run dead straight into the crow's-foot.
+    { id: 'CUSTOMER', name: 'Customer', position: { x: 60, y: 76 }, columns: [
+      { name: 'id', type: 'int', pk: true },
+      { name: 'name', type: 'varchar' },
+      { name: 'email', type: 'varchar' },
+    ]},
+    { id: 'ORDER', name: 'Order', position: { x: 400, y: 64 }, columns: [
+      { name: 'id', type: 'int', pk: true },
+      { name: 'customer_id', type: 'int', fk: true },
+      { name: 'placed_at', type: 'date' },
+      { name: 'total', type: 'decimal' },
+    ]},
+    { id: 'LINE_ITEM', name: 'Line Item', position: { x: 740, y: 64 }, columns: [
+      { name: 'id', type: 'int', pk: true },
+      { name: 'order_id', type: 'int', fk: true },
+      { name: 'product_id', type: 'int', fk: true },
+      { name: 'qty', type: 'int' },
+    ]},
+    { id: 'PRODUCT', name: 'Product', position: { x: 740, y: 380 }, columns: [
+      { name: 'id', type: 'int', pk: true },
+      { name: 'sku', type: 'varchar' },
+      { name: 'price', type: 'decimal' },
+    ]},
+  ],
+  relationships: [
+    { from: 'CUSTOMER', to: 'ORDER', label: 'places' },
+    { from: 'ORDER', to: 'LINE_ITEM', label: 'contains' },
+    { from: 'PRODUCT', to: 'LINE_ITEM', label: 'appears in', fromSide: 'top', toSide: 'bottom' },
+  ],
 });
 
 defineDemo({
   name: 'Table / ER diagram',
-  blurb: 'A database entity-relationship diagram built natively in Grafloria: HTML "table" nodes with typed columns and PK/FK badges, joined by edges carrying real crow\'s-foot cardinality (one → many).',
+  blurb: 'A database entity-relationship diagram from PURE DATA via the reusable erDiagram() kit: HTML "table" nodes with typed columns and PK/FK badges, joined by crow\'s-foot cardinality — the look, selection and routing all come from the kit.',
   howTo: [
-    'Read a table: a dark header names the entity, each row is a column with its type and a PK (primary key) or FK (foreign key) badge — real HTML inside the node.',
+    'Read a table: a dark header names the entity, each row is a column with its type and a PK (primary key) or FK (foreign key) badge — real HTML inside the node, all generated by the kit.',
     'Follow a relationship: the line from CUSTOMER to ORDER ends in a crow\'s-foot (many) and starts with a single bar (one) — "one customer places many orders". The edge label names the relation.',
-    'Drag a table around: the columns ride inside the node and the relationship lines re-route to follow it.',
-    'Trace the FKs: ORDER.customer_id (FK) points back to CUSTOMER, LINE_ITEM.order_id and product_id (FK) point to ORDER and PRODUCT — the crow\'s-foot ends land on the "many" side.',
+    'Drag a table around: the columns ride inside the node and the relationship lines re-route to follow it. Click a table: the CARD highlights with a ring (no detached rectangle).',
+    'Read the source of this page: the whole diagram is one erDiagram({ entities, relationships }) call — no CSS, no HTML trees, no arrow config. That is the reusable kit.',
   ],
   reactflow: 'Entity Relationship',
   pro: true,
 
   async setup(ctx) {
-    const api = render({
-      nodes: [
-        // CUSTOMER / ORDER / LINE_ITEM are vertically CENTRE-ALIGNED (centre-y
-        // 130) so their side-to-side relationships are dead-straight horizontal
-        // lines — no elbow at the table edge, so the crow's-foot always enters
-        // the left side cleanly (a mis-aligned centre is what "broke" the arrow).
-        node('CUSTOMER', 60, 76, 'Customer', [
-          { pk: true, name: 'id', type: 'int' },
-          { name: 'name', type: 'varchar' },
-          { name: 'email', type: 'varchar' },
-        ]),
-        node('ORDER', 400, 64, 'Order', [
-          { pk: true, name: 'id', type: 'int' },
-          { fk: true, name: 'customer_id', type: 'int' },
-          { name: 'placed_at', type: 'date' },
-          { name: 'total', type: 'decimal' },
-        ]),
-        node('LINE_ITEM', 740, 64, 'Line Item', [
-          { pk: true, name: 'id', type: 'int' },
-          { fk: true, name: 'order_id', type: 'int' },
-          { fk: true, name: 'product_id', type: 'int' },
-          { name: 'qty', type: 'int' },
-        ]),
-        node('PRODUCT', 740, 380, 'Product', [
-          { pk: true, name: 'id', type: 'int' },
-          { name: 'sku', type: 'varchar' },
-          { name: 'price', type: 'decimal' },
-        ]),
-      ],
-      edges: [
-        rel('e1', 'CUSTOMER', 'ORDER', 'places'),
-        rel('e2', 'ORDER', 'LINE_ITEM', 'contains'),
-        rel('e3', 'PRODUCT', 'LINE_ITEM', 'appears in', ['top', 'bottom']),
-      ],
-    }, ctx.host);
+    const api = render(SPEC, ctx.host);
     ctx.instance = api;
     ctx.diagram = api.getModel();
     api.fitView?.(40);
@@ -139,26 +68,25 @@ defineDemo({
 
   async assert(ctx) {
     const host = ctx.host;
-    // 1. Entities render as HTML table cards with headers + column rows.
+    // 1. Entities render as kit table cards with headers + column rows.
     const cust = host.querySelector('[data-node-id="CUSTOMER"] foreignObject');
     check(!!cust, 'CUSTOMER entity did not render as an HTML node');
     check((cust.textContent || '').includes('email'), 'the Customer table should list its columns (email)');
-    const heads = [...host.querySelectorAll('.entity-head')].map((e) => e.textContent);
+    const heads = [...host.querySelectorAll('.axk-entity-head')].map((e) => e.textContent);
     check(heads.length === 4, `expected 4 entity headers, got ${heads.length}: [${heads}]`);
 
     // 2. PK/FK badges are present.
-    const badges = [...host.querySelectorAll('.entity .key')].map((e) => e.textContent).filter(Boolean);
+    const badges = [...host.querySelectorAll('.axk-entity .axk-key')].map((e) => e.textContent).filter(Boolean);
     check(badges.includes('PK') && badges.includes('FK'), `expected PK and FK badges, got [${[...new Set(badges)]}]`);
 
-    // 3. Relationships render as edges with crow's-foot markers.
+    // 3. Relationships render with painted cardinality markers.
     const model = ctx.diagram;
     check(model.getLinks().length === 3, `expected 3 relationships, got ${model.getLinks().length}`);
-    const crow = model.getLinks().every((l) => l.style?.arrowHead?.type === 'crow-foot');
-    check(crow, 'every relationship should carry a crow-foot (many) marker on its head');
-    // The crow's-foot (many) and the single bar (one) actually PAINT.
-    const crowFeet = host.querySelectorAll('.arrow-crow-foot');
-    check(crowFeet.length === 3, `expected 3 painted crow's-foot markers, got ${crowFeet.length}`);
+    check(host.querySelectorAll('.arrow-crow-foot').length === 3, `expected 3 painted crow's-foot markers`);
     check(host.querySelectorAll('.arrow-one').length === 3, 'each relationship should paint a "one" bar on its tail');
+
+    // 4. The kit injected its stylesheet exactly once.
+    check(document.querySelectorAll('#grafloria-diagram-kit-styles').length === 1, 'the kit stylesheet should be injected once');
   },
 });
 </script>

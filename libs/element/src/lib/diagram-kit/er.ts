@@ -1,0 +1,220 @@
+/**
+ * ER diagram kit — typed builders for database entity-relationship diagrams.
+ *
+ * The packaged form of what demos/diagrams/table-er.html and er-advanced.html
+ * hand-composed: HTML "table" cards (header, typed columns, PK/FK badges),
+ * crow's-foot cardinality edges, and field-level FK→PK connections via
+ * absolute-layout ports. An embedder writes data:
+ *
+ * ```ts
+ * const spec = erDiagram({
+ *   entities: [
+ *     { id: 'CUSTOMER', columns: [{ name: 'id', type: 'int', pk: true }, …] },
+ *     { id: 'ORDER',    columns: [{ name: 'customer_id', type: 'int', fk: true }, …] },
+ *   ],
+ *   relationships: [
+ *     { from: 'CUSTOMER', to: 'ORDER', label: 'places' },              // table-level
+ *     { from: 'ORDER.customer_id', to: 'CUSTOMER.id' },                // field-level
+ *   ],
+ * });
+ * render(spec, container);
+ * ```
+ */
+import { ensureDiagramKitStyles } from './styles';
+
+/** Row height / header height of the entity card — sizing is derived from these. */
+export const ER_ROW_H = 25;
+export const ER_HEAD_H = 28;
+/** Border slack: the card's 1px top+bottom borders eat into height:100%. */
+const BORDER_SLACK = 4;
+const DEFAULT_WIDTH = 190;
+
+export interface ErColumn {
+  name: string;
+  type?: string;
+  pk?: boolean;
+  fk?: boolean;
+}
+
+export interface ErEntitySpec {
+  id: string;
+  /** Header text. Defaults to the id. */
+  name?: string;
+  columns: ErColumn[];
+  position?: { x: number; y: number };
+  width?: number;
+}
+
+export type ErCardinality =
+  | 'one-to-many'
+  | 'one-to-one'
+  | 'many-to-many'
+  | 'one-to-zero-or-many'
+  | 'one-to-one-or-many';
+
+export type ErSide = 'left' | 'right' | 'top' | 'bottom';
+
+export interface ErRelationshipSpec {
+  /** Entity id, or `ENTITY.column` to attach at that column's row. */
+  from: string;
+  to: string;
+  label?: string;
+  /** Named cardinality (default one-to-many) or explicit marker types. */
+  cardinality?: ErCardinality | { tail: string; head: string };
+  fromSide?: ErSide;
+  toSide?: ErSide;
+  color?: string;
+  id?: string;
+}
+
+export interface ErDiagramOptions {
+  entities: ErEntitySpec[];
+  relationships?: ErRelationshipSpec[];
+}
+
+const CARDINALITY: Record<ErCardinality, { tail: string; head: string }> = {
+  'one-to-many': { tail: 'one', head: 'crow-foot' },
+  'one-to-one': { tail: 'one', head: 'one' },
+  'many-to-many': { tail: 'crow-foot', head: 'crow-foot' },
+  'one-to-zero-or-many': { tail: 'one', head: 'zero-or-many' },
+  'one-to-one-or-many': { tail: 'one', head: 'one-or-many' },
+};
+
+/** Node-local y of a row's centre (the +1 offsets past the card's top border). */
+export function erRowCenterY(rowIndex: number): number {
+  return ER_HEAD_H + rowIndex * ER_ROW_H + ER_ROW_H / 2 + 1;
+}
+
+const entityCard = (entity: ErEntitySpec) => ({
+  content: {
+    tag: 'div',
+    className: 'axk-entity',
+    children: [
+      { tag: 'div', className: 'axk-entity-head', text: entity.name ?? entity.id },
+      ...entity.columns.map((c) => ({
+        tag: 'div',
+        className: 'axk-row' + (c.pk ? ' axk-pk' : ''),
+        children: [
+          { tag: 'span', className: 'axk-key' + (c.fk ? ' axk-fk' : ''), text: c.pk ? 'PK' : c.fk ? 'FK' : '' },
+          { tag: 'span', className: 'axk-col', text: c.name },
+          { tag: 'span', className: 'axk-ty', text: c.type ?? '' },
+        ],
+      })),
+    ],
+  },
+});
+
+interface ParsedEnd {
+  entity: ErEntitySpec;
+  column?: string;
+  rowIndex?: number;
+}
+
+function parseEnd(ref: string, byId: Map<string, ErEntitySpec>): ParsedEnd {
+  const dot = ref.indexOf('.');
+  const entityId = dot === -1 ? ref : ref.slice(0, dot);
+  const entity = byId.get(entityId);
+  if (!entity) throw new Error(`erDiagram: unknown entity "${entityId}" in relationship end "${ref}"`);
+  if (dot === -1) return { entity };
+  const column = ref.slice(dot + 1);
+  const rowIndex = entity.columns.findIndex((c) => c.name === column);
+  if (rowIndex === -1) {
+    throw new Error(`erDiagram: entity "${entityId}" has no column "${column}" (relationship end "${ref}")`);
+  }
+  return { entity, column, rowIndex };
+}
+
+/**
+ * Build a render() spec for an ER diagram.
+ *
+ * Entities become HTML table cards; relationships become orthogonal edges with
+ * crow's-foot cardinality. A `TABLE.column` end pins the edge to that row via
+ * an absolute-layout port (the FK→PK look). Two edges landing on the same
+ * column are automatically spread apart.
+ */
+export function erDiagram(options: ErDiagramOptions): {
+  nodes: Array<Record<string, unknown>>;
+  edges: Array<Record<string, unknown>>;
+  finalize: (api: unknown) => void;
+} {
+  ensureDiagramKitStyles();
+
+  const byId = new Map(options.entities.map((e) => [e.id, e]));
+  // Field-level ports are accumulated per entity while walking relationships.
+  const portsByEntity = new Map<string, Array<Record<string, unknown>>>();
+  // How many edges already landed on a given entity row+side — drives the
+  // spread (dy) so shared columns (a PK referenced twice) don't stack.
+  const rowLandings = new Map<string, number>();
+
+  const width = (e: ErEntitySpec) => e.width ?? DEFAULT_WIDTH;
+
+  const fieldPort = (end: ParsedEnd, side: ErSide): string => {
+    const entity = end.entity;
+    const key = `${entity.id}#${end.rowIndex}#${side}`;
+    const landing = rowLandings.get(key) ?? 0;
+    rowLandings.set(key, landing + 1);
+    // Spread repeat landings ±5px around the row centre: 0, -5, +5, -10, …
+    const dy = landing === 0 ? 0 : (landing % 2 === 1 ? -1 : 1) * Math.ceil(landing / 2) * 5;
+    const id = `${entity.id}__${end.column}__${side}__${landing}`;
+    const w = width(entity);
+    const port = {
+      id,
+      side,
+      visible: false,
+      layout: {
+        strategy: 'absolute',
+        args: {
+          units: 'px',
+          x: side === 'right' ? w : side === 'left' ? 0 : w / 2,
+          y: erRowCenterY(end.rowIndex!),
+          dy,
+        },
+      },
+    };
+    const bucket = portsByEntity.get(entity.id) ?? [];
+    bucket.push(port);
+    portsByEntity.set(entity.id, bucket);
+    return id;
+  };
+
+  const edges = (options.relationships ?? []).map((rel, i) => {
+    const from = parseEnd(rel.from, byId);
+    const to = parseEnd(rel.to, byId);
+    const fromSide = rel.fromSide ?? 'right';
+    const toSide = rel.toSide ?? 'left';
+    const markers =
+      typeof rel.cardinality === 'object'
+        ? rel.cardinality
+        : CARDINALITY[rel.cardinality ?? 'one-to-many'];
+
+    return {
+      id: rel.id ?? `er-rel-${i + 1}`,
+      source: from.entity.id,
+      target: to.entity.id,
+      label: rel.label,
+      type: 'orthogonal',
+      sourceHandle: from.column !== undefined ? fieldPort(from, fromSide) : fromSide,
+      targetHandle: to.column !== undefined ? fieldPort(to, toSide) : toSide,
+      style: {
+        stroke: rel.color ?? '#64748b',
+        strokeWidth: 1.5,
+        arrowTail: { type: markers.tail, size: 8, filled: false },
+        arrowHead: { type: markers.head, size: 9, filled: false },
+      },
+    };
+  });
+
+  const nodes = options.entities.map((entity, i) => ({
+    id: entity.id,
+    position: entity.position ?? { x: 60 + (i % 3) * 340, y: 60 + Math.floor(i / 3) * 280 },
+    size: { width: width(entity), height: ER_HEAD_H + entity.columns.length * ER_ROW_H + BORDER_SLACK },
+    metadata: { html: entityCard(entity) },
+    // The card draws its own border — the node's default rectangle is hidden
+    // (and re-suppressed on selection by the kit stylesheet).
+    shape: { type: 'rect', fill: 'none', stroke: 'none' },
+    style: { fill: 'transparent', stroke: 'transparent', strokeWidth: 0 },
+    ...(portsByEntity.has(entity.id) ? { ports: portsByEntity.get(entity.id) } : {}),
+  }));
+
+  return { nodes, edges, finalize: () => undefined };
+}

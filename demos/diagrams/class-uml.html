@@ -1,126 +1,80 @@
 <meta charset="utf-8">
 <title>Class diagram (UML) — Grafloria</title>
 <link rel="stylesheet" href="../shell/demo.css">
-<style>
-  /* UML class boxes: name / attributes / methods compartments, as HTML. */
-  #canvas .uml { font: 12px/1.5 system-ui, sans-serif; border: 1px solid #475569;
-    border-radius: 4px; overflow: hidden; background: #fff;
-    width: 100%; height: 100%; box-sizing: border-box; }
-  #canvas .uml-name { text-align: center; font-weight: 700; padding: 5px 10px; background: #eef2ff; color: #1e1b4b; }
-  #canvas .uml-name.abstract { font-style: italic; }
-  #canvas .uml-comp { border-top: 1px solid #475569; padding: 3px 0; }
-  #canvas .uml-comp .member { padding: 1px 10px; font: 11px/1.5 ui-monospace, Menlo, monospace; color: #0f172a; white-space: nowrap; }
-  #canvas .uml-comp.empty { min-height: 8px; }
-  /* Selection rings the class box itself, not a detached outline. */
-  #canvas .selection-highlight { display: none; }
-  #canvas g.node-group[data-selected="true"] .uml {
-    border-color: #4f46e5; box-shadow: 0 0 0 2px rgba(79, 70, 229, .45); }
-  #canvas g.node-group[data-selected="true"] rect.diagram-node {
-    stroke: transparent !important; fill: none !important; }
-  @media (prefers-color-scheme: dark) {
-    #canvas .uml { background: #1e293b; border-color: #64748b; }
-    #canvas .uml-name { background: #312e81; color: #e0e7ff; }
-    #canvas .uml-comp { border-top-color: #64748b; }
-    #canvas .uml-comp .member { color: #e2e8f0; }
-  }
-</style>
 <header id="demo-head"></header>
 <div id="canvas"></div>
 <script type="module">
-import { render } from '../shell/grafloria.js';
+import { render, umlDiagram } from '../shell/grafloria.js';
 import { defineDemo, check } from '../shell/demo.js';
 
-const LINE_H = 19, NAME_H = 30, PAD = 8;
-const cls = (name, attrs, methods, { abstract = false } = {}) => ({
-  tag: 'div', className: 'uml',
-  children: [
-    { tag: 'div', className: 'uml-name' + (abstract ? ' abstract' : ''), text: name },
-    { tag: 'div', className: 'uml-comp' + (attrs.length ? '' : ' empty'),
-      children: attrs.map((a) => ({ tag: 'div', className: 'member', text: a })) },
-    { tag: 'div', className: 'uml-comp' + (methods.length ? '' : ' empty'),
-      children: methods.map((m) => ({ tag: 'div', className: 'member', text: m })) },
+// A UML class diagram in PURE DATA, via the reusable diagram kit
+// (`umlDiagram` from @grafloria/element). The kit owns the three-compartment
+// class-card look, the relationship notation (hollow triangle, diamonds, …),
+// the selection styling and the routing — this page just declares the model.
+// See diagrams/uml-relationships.html for the FULL relationship vocabulary.
+const SPEC = umlDiagram({
+  classes: [
+    { id: 'Animal', abstract: true, position: { x: 380, y: 40 },
+      attributes: ['# name: String', '# age: int'],
+      methods: ['+ speak(): void', '+ move(): void'] },
+    { id: 'Dog', position: { x: 150, y: 320 },
+      attributes: ['+ breed: String'],
+      methods: ['+ speak(): void', '+ fetch(): void'] },
+    { id: 'Cat', position: { x: 620, y: 320 },
+      attributes: ['+ indoor: bool'],
+      methods: ['+ speak(): void', '+ purr(): void'] },
+    { id: 'Owner', position: { x: 380, y: 600 },
+      attributes: ['+ name: String'],
+      methods: ['+ adopt(p): void'] },
   ],
-});
-const node = (id, x, y, name, attrs, methods, opts) => ({
-  id, position: { x, y },
-  size: { width: 200, height: NAME_H + (attrs.length + methods.length) * LINE_H + PAD * 2 + 6 },
-  metadata: { html: { content: cls(name, attrs, methods, opts) } },
-  // The class box draws its own border — hide the node's default rectangle.
-  shape: { type: 'rect', fill: 'none', stroke: 'none' },
-  style: { fill: 'transparent', stroke: 'transparent', strokeWidth: 0 },
-});
-
-const relBase = { stroke: '#475569', strokeWidth: 1.5 };
-// Dog --|> Animal : generalization (hollow triangle at the PARENT = head).
-const generalization = (id, child, parent) => ({
-  id, source: child, target: parent, type: 'orthogonal',
-  style: { ...relBase, arrowHead: { type: 'generalization', size: 18, filled: false } },
-});
-// Owner o-- Pet : aggregation (hollow diamond at the WHOLE = tail, source).
-const aggregation = (id, whole, part, label) => ({
-  id, source: whole, target: part, label, type: 'orthogonal',
-  style: { ...relBase, strokeDasharray: undefined,
-    arrowTail: { type: 'hollow-diamond', size: 15, filled: false },
-    arrowHead: { type: 'none', size: 0, filled: false } },
+  relationships: [
+    { from: 'Dog', to: 'Animal', kind: 'inheritance' },
+    { from: 'Cat', to: 'Animal', kind: 'inheritance' },
+    { from: 'Owner', to: 'Dog', kind: 'aggregation', label: 'owns' },
+    { from: 'Owner', to: 'Cat', kind: 'aggregation', label: 'owns' },
+  ],
 });
 
 defineDemo({
   name: 'Class diagram (UML)',
-  blurb: 'A UML class diagram built natively in Grafloria: class boxes with name / attributes / methods compartments, joined by real UML relationships — hollow-triangle inheritance and hollow-diamond aggregation.',
+  blurb: 'A UML class diagram from PURE DATA via the reusable umlDiagram() kit: class boxes with name / attributes / methods compartments, hollow-triangle inheritance and hollow-diamond aggregation — look, selection and routing all from the kit.',
   howTo: [
-    'Read a class box: a bold name compartment on top, then attributes (# protected, + public), then methods — three stacked compartments, real HTML inside the node.',
+    'Read a class box: a bold name compartment on top, then attributes (# protected, + public), then methods — three stacked compartments, all generated by the kit.',
     'Follow the inheritance: Dog and Cat point to Animal with a hollow triangle (△) — the UML "is-a" / generalization arrow. Animal\'s name is italic (abstract).',
     'Follow the aggregation: Owner connects to Dog and Cat with a hollow diamond (◇) at the Owner end — "an owner HAS pets" (a whole-part relationship).',
-    'Drag Animal around: its subclasses\' inheritance arrows re-route to keep pointing at it.',
+    'Read the source of this page: the whole diagram is one umlDiagram({ classes, relationships }) call — no CSS, no HTML trees, no arrow config. That is the reusable kit.',
   ],
   reactflow: 'Class Diagram',
   pro: true,
 
   async setup(ctx) {
-    const api = render({
-      nodes: [
-        node('Animal', 380, 40, 'Animal',
-          ['# name: String', '# age: int'],
-          ['+ speak(): void', '+ move(): void'], { abstract: true }),
-        node('Dog', 150, 320, 'Dog',
-          ['+ breed: String'],
-          ['+ speak(): void', '+ fetch(): void']),
-        node('Cat', 620, 320, 'Cat',
-          ['+ indoor: bool'],
-          ['+ speak(): void', '+ purr(): void']),
-        node('Owner', 380, 600, 'Owner',
-          ['+ name: String'],
-          ['+ adopt(p): void']),
-      ],
-      edges: [
-        generalization('g1', 'Dog', 'Animal'),
-        generalization('g2', 'Cat', 'Animal'),
-        aggregation('a1', 'Owner', 'Dog', 'owns'),
-        aggregation('a2', 'Owner', 'Cat', 'owns'),
-      ],
-    }, ctx.host);
+    const api = render(SPEC, ctx.host);
     ctx.instance = api;
     ctx.diagram = api.getModel();
+    SPEC.finalize(api);
     api.fitView?.(40);
     await ctx.tick();
   },
 
   async assert(ctx) {
     const host = ctx.host;
-    // 1. Classes render as three-compartment HTML boxes.
+    // 1. Classes render as three-compartment kit cards.
     const animal = host.querySelector('[data-node-id="Animal"] foreignObject');
     check(!!animal, 'Animal class did not render as an HTML node');
-    const names = [...host.querySelectorAll('.uml-name')].map((e) => e.textContent);
+    const names = [...host.querySelectorAll('.axk-uml-name')].map((e) => e.textContent);
     check(names.length === 4, `expected 4 class boxes, got ${names.length}: [${names}]`);
-    const comps = host.querySelectorAll('[data-node-id="Animal"] .uml-comp');
+    const comps = host.querySelectorAll('[data-node-id="Animal"] .axk-uml-comp');
     check(comps.length === 2, `Animal should have attribute + method compartments, got ${comps.length}`);
     check((animal.textContent || '').includes('speak(): void'), 'Animal should list its methods');
-    check(!!host.querySelector('.uml-name.abstract'), 'the abstract class should render italicised');
+    check(!!host.querySelector('.axk-uml-name.axk-abstract'), 'the abstract class should render italicised');
 
     // 2. UML relationship markers PAINT: inheritance triangles + aggregation diamonds.
     check(ctx.diagram.getLinks().length === 4, `expected 4 relationships, got ${ctx.diagram.getLinks().length}`);
     check(host.querySelectorAll('.arrow-generalization').length === 2, 'expected 2 inheritance (generalization) triangles');
     check(host.querySelectorAll('.arrow-hollow-diamond').length === 2, 'expected 2 aggregation (hollow-diamond) markers');
+
+    // 3. The kit stylesheet is present exactly once.
+    check(document.querySelectorAll('#grafloria-diagram-kit-styles').length === 1, 'the kit stylesheet should be injected once');
   },
 });
 </script>

@@ -530,6 +530,46 @@ export { serveLayout } from '@grafloria/engine';
 export type { LayoutPort, LayoutServePort, LayoutProgress } from '@grafloria/engine';
 
 
+// ===========================================================================
+// DIAGRAM KIT — reusable ER / UML builders (wave16m).
+//
+// The diagrams/* demos proved Grafloria can draw database tables with crow's-foot
+// cardinality (field-level FK→PK included) and full-vocabulary UML class
+// diagrams — but every page hand-composed the HTML cards, the CSS, the
+// selection overrides and the marker tables. That is a capability, not a
+// feature. This kit is the feature: typed builders that emit a ready render()
+// spec + one self-injected stylesheet, so an embedder writes DATA:
+//
+//   const spec = erDiagram({ entities, relationships });
+//   render(spec, el);
+//
+//   const uml = umlDiagram({ classes, relationships });
+//   const api = render(uml, el); uml.finalize(api);
+// ===========================================================================
+export {
+  erDiagram,
+  erRowCenterY,
+  ER_ROW_H,
+  ER_HEAD_H,
+  umlDiagram,
+  ensureDiagramKitStyles,
+  DIAGRAM_KIT_STYLE_ID,
+} from './lib/diagram-kit';
+export type {
+  ErColumn,
+  ErEntitySpec,
+  ErRelationshipSpec,
+  ErCardinality,
+  ErSide,
+  ErDiagramOptions,
+  UmlClassSpec,
+  UmlRelationshipSpec,
+  UmlRelationKind,
+  UmlSide,
+  UmlDiagramOptions,
+} from './lib/diagram-kit';
+
+
 // Side effect: define the element on import. This is what makes
 // `<script type="module" src="…/grafloria.js"></script>` + `<grafloria-flow>` in the
 // markup Just Work, which is the entire point of the card.
