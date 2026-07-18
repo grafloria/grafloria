@@ -11,6 +11,11 @@ import { computeChannelNudges, applyChannelNudges } from './channel-nudging';
 // Wave 8 (Performance & scale) — Card 6: incremental routing, and the off-thread
 // global solver the render loop now actually drives.
 import { RouteMemo, coalesce, inflate, ROUTE_INFLUENCE_PAD, type Rect } from './route-memo';
+import { MotionTracker } from './motion-tracker';
+// resize-ux: the floating-tool geometry the DOM event binder hit-tests. The
+// renderer paints the SAME layer (same class, same config), so the picture and
+// the hit ladder can never disagree about where a resize handle is.
+import { SelectionToolsController } from '../interaction/selection-tools';
 import { QualityGovernor, type GovernorState } from '../perf/quality-governor';
 import { RouteSolverBridge, type RouteSolverStats } from './route-solver-bridge';
 import type {
@@ -506,6 +511,40 @@ export class SVGRenderer implements IRenderer {
   private routeMemoDirty = true;
 
   /**
+   * resize-ux: the tool-layer geometry for the PAINTED resize handles. Same
+   * class and same resize-only configuration as the DomEventBinder's controller
+   * (halo/rotate/remove/link tools off — those belong to richer host
+   * renderers), so the corner dots and edge lines this renderer draws are the
+   * exact geometry the binder's press ladder hit-tests. Before this the default
+   * renderer hit-tested eight handles it never painted (live audit,
+   * nodes/node-resize-gesture.html).
+   */
+  private readonly resizeTools = new SelectionToolsController({
+    showHalo: false,
+    showRotateHandle: false,
+    showRemoveButton: false,
+    showLinkTools: false,
+  });
+
+  // Motion-stable routing (see motion-tracker.ts for the WHY and the measurements).
+  // While nodes are IN MOTION (rect changed two painted frames running — a tween
+  // or a drag, never a one-off setPosition), the straight router's crossing-detour
+  // and own-node penetration retries are suppressed so a link cannot flip shape
+  // class mid-animation. The honest route returns on the settle frame.
+  private motionTracker = new MotionTracker();
+  /**
+   * Links whose route THIS frame was computed under motion suppression. Volatile:
+   * never stored in the route memo — the settle frame has the same endpoints,
+   * hence the same route key, and a cached suppressed chord would be served
+   * straight back instead of the real detour. Cleared per frame.
+   */
+  private frameVolatileRoutes = new Set<string>();
+  /** One pending settle-epoch bump at a time (see the end of render()). */
+  private motionSettleQueued = false;
+  /** Per-frame static/moving obstacle partition, keyed on the frame's node-array identity. */
+  private frameMotionPartition: { source: NodeModel[]; statics: NodeModel[]; moving: NodeModel[] } | null = null;
+
+  /**
    * Wave 8 — Card 7. Watches frame time and biases the LOD tier down when this
    * machine cannot afford what the zoom asked for. `null` when disabled, in which
    * case the tier is exactly what the zoom says and rendering is deterministic —
@@ -914,6 +953,11 @@ export class SVGRenderer implements IRenderer {
     const nodesLayer = this.renderNodesLayer(visibleNodes, lod);
     const connectionPreviewLayer = this.renderConnectionPreviewLayer();
     const snapGuidesLayer = this.renderSnapGuidesLayer();
+    // resize-ux: RF-style resize affordances (4 corner dots + 4 edge lines) for
+    // the single selected resizable node. Recomputed per frame — NEVER cached —
+    // because the glyphs hold a constant SCREEN size (world size = px/zoom) and
+    // a cached node group would keep a stale zoom's sizing.
+    const resizeHandlesLayer = this.renderResizeToolsLayer(lod, zoom);
 
     // wave9/comments (Card 6): the pins. Null unless a comment source is attached, so a
     // canvas with no comment system pays literally nothing — not a layer, not a query.
@@ -989,6 +1033,12 @@ export class SVGRenderer implements IRenderer {
         nodesLayer,
         connectionPreviewLayer,
         snapGuidesLayer,
+        // resize-ux: after nodes/preview so the handles paint ON TOP of the node
+        // (and of its port glyphs at the edges); null whenever no single
+        // resizable node is selected, so the child array — and the positional
+        // [0]=links/[1]=nodes contract for group-free scenes — is byte-identical
+        // to before in every frame without a selection.
+        resizeHandlesLayer,
         defsNode,
         strokesLayer,
         commentsLayer,
@@ -1028,6 +1078,36 @@ export class SVGRenderer implements IRenderer {
     // attribute. A renderer that blamed the compositor for its own O(n²) loop would
     // be worse than no governor at all.
     this.governor?.record(this.lastRenderTime);
+
+    // Motion-stable routing: this frame painted PROVISIONAL routes (suppressed
+    // detours / penetration retries), so a settle repaint is owed once motion
+    // stops. Nothing in the model will say so — the settle frame is precisely
+    // the frame in which nothing moved — so the renderer must say it itself,
+    // through the invalidation epoch, the same seam the async route solver uses
+    // (see onRoutesReady above and canSkipFrame in create-diagram.ts).
+    //
+    // On a MICROTASK, not inline: the host stamps `lastRendererEpoch` right
+    // after this render() returns, so an inline bump would be absorbed into the
+    // stamp and the settle frame would be idle-skipped. The microtask runs after
+    // the paint task completes — the bump lands where the host can see it. The
+    // frame the model events of THIS paint already queued then survives the
+    // idle-skip, re-routes with the motion streak broken, and paints the honest
+    // geometry. While motion continues this fires per frame, which is free:
+    // those frames were being painted anyway.
+    if (this.frameVolatileRoutes.size > 0 && !this.motionSettleQueued) {
+      this.motionSettleQueued = true;
+      queueMicrotask(() => {
+        this.motionSettleQueued = false;
+        if (this.disposed) return;
+        this.invalidateFrame();
+        // …and REQUEST the frame. The epoch bump only stops the settle frame
+        // being idle-skipped; after a tween's last renderNow() nothing is even
+        // QUEUED (flush cancels the pending frame, and syncing link points
+        // emits no model event), so without this call the suppressed geometry
+        // stayed painted forever — the live probe caught exactly that.
+        this.config.onRoutesRefined?.();
+      });
+    }
 
     return root;
   }
@@ -2062,6 +2142,9 @@ export class SVGRenderer implements IRenderer {
     // so without this the first frame has no jumps and later frames use stale
     // geometry after nodes move.
     this.frameRoutes.clear();
+    // Motion-stable routing: per-frame suppression bookkeeping dies with the frame.
+    this.frameVolatileRoutes.clear();
+    this.frameMotionPartition = null;
     // Wave 6: lane assignments are geometry, so they die with the frame — a link
     // added or removed between frames changes how many siblings a port has.
     this.frameSpreadLanes.clear();
@@ -2162,7 +2245,15 @@ export class SVGRenderer implements IRenderer {
       if (!routed) {
         const fresh = this.routeForLOD(link, endpoints, routingLod);
         if (fresh) {
-          this.routeMemo.store(link.id, key, fresh);
+          if (this.frameVolatileRoutes.has(link.id)) {
+            // Computed under motion suppression: VOLATILE. The settle frame has
+            // the same endpoints — the same key — and must not be served this
+            // chord instead of the honest detour. Recompute-per-frame is what a
+            // moving link was paying anyway (its key churns with its endpoints).
+            this.routeMemo.drop(link.id);
+          } else {
+            this.routeMemo.store(link.id, key, fresh);
+          }
           routed = fresh;
         } else {
           // No route: make sure a previous frame's answer cannot linger.
@@ -2324,6 +2415,10 @@ export class SVGRenderer implements IRenderer {
         height: node.size.height,
       });
     }
+
+    // Motion-stable routing: observe the same rect map the memo diffs. Reads
+    // only, so sharing the map the memo takes ownership of is safe.
+    this.motionTracker.beginFrame(rects);
 
     // Anything that changes the obstacle set WITHOUT moving a node rect — a group
     // collapsing hides its members and raises a block — drops the cache whole.
@@ -4860,6 +4955,97 @@ export class SVGRenderer implements IRenderer {
 
     // Selection highlight = the shape outline grown by `padding` (registry).
     return buildShapeSelection(getShape(shapeConfig.type), width, height, padding, baseProps);
+  }
+
+  /**
+   * resize-ux: the PAINTED resize affordances — React Flow NodeResizer parity.
+   *
+   * When exactly one resizable, unlocked node is selected (the same conditions
+   * under which SelectionToolsController emits resize handles — this method
+   * paints whatever that controller computes, nothing of its own), draw:
+   *
+   *   - 4 EDGE LINES along the node's border (the side handles' bands: grab the
+   *     border anywhere and that edge follows), each with its axis cursor;
+   *   - 4 CORNER DOTS (white squares, primary border) with their diagonal
+   *     cursors, drawn AFTER the lines so a dot wins its own pixels — the same
+   *     priority the hit ladder gives it.
+   *
+   * All sizes are divided by zoom, so the affordances hold a constant SCREEN
+   * size at any zoom (RF's autoScale). That is also why this layer is rebuilt
+   * every frame and never enters the vnode cache: a cached node group would
+   * keep the sizing of whatever zoom it was built at.
+   *
+   * Painted as a ROOT overlay (not inside the node group) so it renders above
+   * the node's ports, and rotation comes from the layer's own geometry —
+   * `computeLayer` rotates every handle with the node.
+   */
+  private renderResizeToolsLayer(lod: LODLevel, zoom: number): VNode | null {
+    const diagram = this.engine.getDiagram();
+    if (!diagram || diagram.isReadonly()) return null;
+    // Same LOD tier that gates link handles: far-zoom tiers drop fine controls.
+    if (!this.lodAllows('handles', lod)) return null;
+
+    const layer = this.resizeTools.computeLayer(this.engine, zoom);
+    const handles = layer.handles.filter((h) => h.kind === 'resize');
+    if (handles.length === 0) return null;
+
+    const z = zoom > 0 && Number.isFinite(zoom) ? zoom : 1;
+    const dotSize = 8 / z;
+    const hairline = 1.5 / z;
+    const stroke = this.theme.colors.primary;
+    const children: VNode[] = [];
+
+    for (const handle of handles) {
+      if (!handle.segment) continue;
+      children.push({
+        type: 'line',
+        key: `resize-edge-${handle.handleId}`,
+        props: {
+          x1: handle.segment.a.x,
+          y1: handle.segment.a.y,
+          x2: handle.segment.b.x,
+          y2: handle.segment.b.y,
+          stroke,
+          strokeWidth: hairline,
+          className: `resize-edge-line resize-edge-${handle.handleId}`,
+          cursor: handle.cursor,
+          'data-resize-handle': handle.handleId,
+        },
+      } as VNode);
+    }
+
+    for (const handle of handles) {
+      if (handle.segment) continue;
+      children.push({
+        type: 'rect',
+        key: `resize-dot-${handle.handleId}`,
+        props: {
+          x: handle.world.x - dotSize / 2,
+          y: handle.world.y - dotSize / 2,
+          width: dotSize,
+          height: dotSize,
+          rx: hairline,
+          fill: '#ffffff',
+          stroke,
+          strokeWidth: hairline,
+          className: `resize-handle-dot resize-handle-${handle.handleId}`,
+          cursor: handle.cursor,
+          'data-resize-handle': handle.handleId,
+          // Align the square with a rotated node's frame (positions already
+          // rotate via computeLayer; this rotates the glyph about itself).
+          ...(layer.rotation
+            ? { transform: `rotate(${layer.rotation}, ${handle.world.x}, ${handle.world.y})` }
+            : {}),
+        },
+      } as VNode);
+    }
+
+    return {
+      type: 'g',
+      key: 'resize-tool-layer',
+      props: { className: 'resize-tool-layer' },
+      children,
+    };
   }
 
   /**
@@ -7958,13 +8144,33 @@ export class SVGRenderer implements IRenderer {
 
     let routedPath = routeWith(algorithm, true);
 
+    // Motion-stable routing: a link whose endpoints are mid-animation must not
+    // flip shape class frame to frame (measured: 17 class flips / 22 path
+    // discontinuities in one 900ms tween — the "edges aren't smooth" jank).
+    // While in motion the plain route stands, exactly as React Flow draws every
+    // per-frame node animation; the honest detour returns on the settle frame.
+    const endpointsInMotion =
+      this.motionTracker.hasMotion &&
+      ((sourceNodeId && this.motionTracker.isInMotion(sourceNodeId)) ||
+        (targetNodeId && this.motionTracker.isInMotion(targetNodeId)));
+    if (endpointsInMotion) this.frameVolatileRoutes.add(link.id);
+
     // The straight router ignores obstacles AND the link's own nodes. If its
-    // path cuts through any node body, reroute orthogonally instead.
-    if (routedPath && algorithm === 'straight' && this.routeCrossesNodes(routedPath.points, link, allNodes)) {
-      const detour = routeWith('orthogonal', true) || routeWith('orthogonal', false);
-      if (detour) {
-        routedPath = detour;
-        usedOrthogonal = true;
+    // path cuts through any node body, reroute orthogonally instead — unless the
+    // only bodies it cuts are themselves mid-animation: a node SWEEPING across a
+    // chord must not toggle that chord into a detour and back every few frames.
+    if (routedPath && algorithm === 'straight' && !endpointsInMotion) {
+      const { statics, moving } = this.motionPartition(allNodes);
+      if (this.routeCrossesNodes(routedPath.points, link, statics)) {
+        const detour = routeWith('orthogonal', true) || routeWith('orthogonal', false);
+        if (detour) {
+          routedPath = detour;
+          usedOrthogonal = true;
+        }
+      } else if (moving.length > 0 && this.routeCrossesNodes(routedPath.points, link, moving)) {
+        // Crossed by moving bodies only: keep the chord, but remember that this
+        // answer is provisional — the settle frame must re-decide it.
+        this.frameVolatileRoutes.add(link.id);
       }
     }
 
@@ -7996,7 +8202,11 @@ export class SVGRenderer implements IRenderer {
     if (srcNode) ownNodes.push(srcNode);
     if (tgtNode && tgtNode !== srcNode) ownNodes.push(tgtNode);
 
-    if (routedPath && ownNodes.length > 0) {
+    // Suppressed while the endpoints are mid-animation, for the same reason as
+    // the crossing detour above: two tweening nodes passing over each other
+    // otherwise trade escape-route candidates every frame. (`endpointsInMotion`
+    // already marked the route volatile, so the settle frame re-decides this.)
+    if (routedPath && ownNodes.length > 0 && !endpointsInMotion) {
       let bestPen = this.penetrationLength(routedPath.points, ownNodes);
       if (bestPen > 0) {
         // Wave 8: also hoisted — "every node as an obstacle" is the same array
@@ -8387,6 +8597,26 @@ export class SVGRenderer implements IRenderer {
    * inset by 1px so a path legitimately touching the border at a port doesn't
    * count as a crossing.
    */
+  /**
+   * Motion-stable routing: split the frame's obstacle nodes into the ones at
+   * rest and the ones mid-animation. Memoised on the node ARRAY's identity —
+   * `frameObstacles` hands every link the same array within a frame, so the
+   * partition is computed once per frame, not once per link.
+   */
+  private motionPartition(allNodes: NodeModel[]): { statics: NodeModel[]; moving: NodeModel[] } {
+    if (!this.motionTracker.hasMotion) return { statics: allNodes, moving: [] };
+    if (this.frameMotionPartition && this.frameMotionPartition.source === allNodes) {
+      return this.frameMotionPartition;
+    }
+    const statics: NodeModel[] = [];
+    const moving: NodeModel[] = [];
+    for (const node of allNodes) {
+      (this.motionTracker.isInMotion(node.id) ? moving : statics).push(node);
+    }
+    this.frameMotionPartition = { source: allNodes, statics, moving };
+    return this.frameMotionPartition;
+  }
+
   private routeCrossesNodes(
     points: Array<{ x: number; y: number }>,
     link: LinkModel,

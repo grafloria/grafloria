@@ -320,6 +320,19 @@ export function createDiagram(
       colorMode: options.colorMode ?? options.renderer?.colorMode,
       themes: options.themes,
       tokenBridge: options.tokenBridge,
+      // "My picture improved with no model change — repaint me." Fired by the
+      // async route solver's refinements and by motion-stable routing's settle
+      // frame (a tween's provisional routes re-deciding once motion stops).
+      // Neither has a model event to ride, so without this wire both improved
+      // pictures were unreachable from a real instance: the renderer bumped its
+      // invalidation epoch and nobody ever asked the scheduler for a frame.
+      // Late-bound on purpose — `scheduler` is constructed below and this
+      // callback only ever fires asynchronously, after mount. The host's own
+      // callback (if any) is chained, not replaced.
+      onRoutesRefined: () => {
+        options.renderer?.onRoutesRefined?.();
+        scheduler.schedule();
+      },
     },
     options.theme
   );
