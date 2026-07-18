@@ -67,21 +67,15 @@ defineDemo({
     // its buttons stay a constant, legible, clickable size. (A camera-layer
     // portal counter-scaled by 1/zoom held its size but drifted its position at
     // zoom ≠ 1 — a live measurement caught the bar 640px off the node at 2×.)
-    const toolbar = document.createElement('div');
-    toolbar.className = 'nt-toolbar';
-    ctx.host.appendChild(toolbar);
-    ctx.bar = toolbar;
-
+    // The toolbar overlay is REBUILDABLE: delete tears it down, and the demo can
+    // rebuild it (so the page never ends on an empty canvas). `toolbar`/`unsubs`
+    // are reassigned by buildBar; reposition/syncVisible close over them.
+    let toolbar = null, unsubs = [];
     const mk = (label, onClick) => { const b = document.createElement('button'); b.textContent = label; b.className = 'nt-btn-' + label; b.onclick = onClick; toolbar.appendChild(b); return b; };
-    mk('duplicate', () => {
-      const src = model.getNode('n'); if (!src) return;
-      api.setNodes([...model.getNodes().map((x) => ({ id: x.id, position: { x: x.position.x, y: x.position.y }, size: { ...x.size }, label: x.getMetadata('label') })),
-        { id: 'n-copy-' + Date.now().toString(36), position: { x: src.position.x + 40, y: src.position.y + 40 }, size: { ...src.size }, label: 'copy' }]);
-    });
 
     // Re-anchor the bar to the node's current projected screen position.
     const reposition = () => {
-      if (disposed) return;
+      if (disposed || !toolbar) return;
       const node = model.getNode('n'); if (!node) return;
       const pl = placement();
       const r = ctx.host.getBoundingClientRect();
@@ -93,24 +87,38 @@ defineDemo({
     // SELECTION-GATED visibility (RF isVisible:false default = follow selection),
     // with a force-visible override (RF isVisible:true).
     const syncVisible = () => {
-      if (disposed) return;
+      if (disposed || !toolbar) return;
       const node = model.getNode('n');
       toolbar.style.display = (node && (node.isSelected() || forceVisible)) ? '' : 'none';
     };
 
-    const unsubs = [];
-    // THE GLUE, on the node's + camera's REAL events — not helpers only this page
-    // calls. A live pointer drag moves the node through the binder's setPosition
+    // Build (or rebuild) the toolbar DOM, its buttons, and ALL the glue — on the
+    // node's + camera's REAL events, not helpers only this page calls. A live
+    // pointer drag moves the node through the binder's setPosition
     // (change:position); a real click selects/deselects it (selection:change);
-    // panning and zooming fire viewport:change. Subscribing to all of them is
-    // what makes the toolbar follow EVERY move the way a user's gestures do.
-    n.on('change:position', reposition);
-    n.on('change:size', reposition);
-    unsubs.push(api.on('selection:change', syncVisible));
-    unsubs.push(api.on('viewport:change', reposition));
-    unsubs.push(api.viewport.onChange(reposition));
-
-    mk('delete', () => { if (!model.getNode('n')) return; model.removeNode('n'); disposed = true; toolbar.remove(); for (const u of unsubs) try { u?.(); } catch { /* already gone */ } api.renderNow(); });
+    // panning and zooming fire viewport:change.
+    const buildBar = () => {
+      toolbar = document.createElement('div');
+      toolbar.className = 'nt-toolbar';
+      ctx.host.appendChild(toolbar);
+      ctx.bar = toolbar;
+      disposed = false;
+      mk('duplicate', () => {
+        const src = model.getNode('n'); if (!src) return;
+        api.setNodes([...model.getNodes().map((x) => ({ id: x.id, position: { x: x.position.x, y: x.position.y }, size: { ...x.size }, label: x.getMetadata('label') })),
+          { id: 'n-copy-' + Date.now().toString(36), position: { x: src.position.x + 40, y: src.position.y + 40 }, size: { ...src.size }, label: 'copy' }]);
+      });
+      mk('delete', () => { if (!model.getNode('n')) return; model.removeNode('n'); disposed = true; toolbar.remove(); toolbar = null; for (const u of unsubs) try { u?.(); } catch { /* already gone */ } api.renderNow(); });
+      const node = model.getNode('n');
+      node.on('change:position', reposition);
+      node.on('change:size', reposition);
+      unsubs = [
+        api.on('selection:change', syncVisible),
+        api.on('viewport:change', reposition),
+        api.viewport.onChange(reposition),
+      ];
+    };
+    buildBar();
 
     // --- live controls: the RF position / align / isVisible props, as chrome ----
     const controls = document.createElement('div');
@@ -149,6 +157,14 @@ defineDemo({
     ctx.setForce = (v) => { forceVisible = v; syncVisible(); refresh(); };
     ctx.selectN = () => { const node = model.getNode('n'); if (node) { model.selectNode(node); api.renderNow(); } };
     ctx.deselect = () => { model.clearSelection(); api.renderNow(); };
+    // Re-add the node and rebuild its toolbar (used after the delete proof so the
+    // demo restores a populated final frame instead of an empty canvas).
+    ctx.recreate = () => {
+      api.setNodes([{ id: 'n', position: { x: 320, y: 230 }, size: { width: 200, height: 100 }, label: 'selected' }]);
+      buildBar();
+      model.selectNode(model.getNode('n'));
+      api.renderNow(); reposition(); syncVisible(); refresh();
+    };
     ctx.fire = (type, w) => {
       const rect = ctx.host.getBoundingClientRect();
       const c = api.viewport.worldToClient(w.x, w.y, rect);
@@ -252,6 +268,15 @@ defineDemo({
     bar.querySelector('.nt-btn-delete').dispatchEvent(new PointerEvent('click', { bubbles: true }));
     check(model.getNode('n') === undefined, 'the toolbar delete button did not remove the node');
     check(ctx.host.querySelector('[data-node-id="n"]') === null, 'the deleted node is still in the DOM');
+
+    // Delete intentionally ends on an empty canvas — restore the node + toolbar so
+    // the visual gate's after-frame shows the feature, not a blank page. (Proves
+    // the rebuild path too: a fresh node re-mounts a fresh, selection-gated bar.)
+    ctx.recreate(); ctx.setPlacement('top', 'center'); api.renderNow(); await ctx.tick();
+    check(!!ctx.host.querySelector('[data-node-id="n"]'), 'the node should be restored for the final frame');
+    const rebuilt = ctx.bar; // recreate mounts a NEW bar (the captured `bar` is the torn-down one)
+    check(getComputedStyle(rebuilt).display !== 'none' && rebuilt.getBoundingClientRect().width > 0,
+      'the rebuilt toolbar should show for the restored, selected node');
   },
 });
 </script>
