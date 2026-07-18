@@ -53,6 +53,8 @@ body.nav-open #grafloria-nav { transform: none; }
 .an-item.current { background: var(--an-accent-soft); color: var(--an-accent); font-weight: 640; }
 .an-pro { margin-left: auto; font-size: 9.5px; font-weight: 700; color: #fff; background: var(--an-pro);
   padding: 1px 5px; border-radius: 999px; }
+.an-new { flex: none; font-size: 8.5px; font-weight: 800; letter-spacing: .04em; text-transform: uppercase;
+  color: #fff; background: #16a34a; padding: 1px 5px; border-radius: 999px; }
 .an-foot { padding: 9px 14px; border-top: 1px solid var(--an-line); color: var(--an-mut); font-size: 11px; }
 .an-foot .an-pro-dot { color: var(--an-pro); font-weight: 700; }
 /* Wide screens: an open menu shifts the page instead of overlaying it. */

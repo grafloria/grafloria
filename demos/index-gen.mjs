@@ -31,7 +31,7 @@ function collect() {
       } else if (entry.endsWith('.html') && entry !== 'index.html') {
         const rel = relative(here, full);
         const cat = rel.split('/')[0];
-        (byCat[cat] ??= []).push({ rel, ...parse(full, rel) });
+        (byCat[cat] ??= []).push({ rel, isNew: isNewDemo(rel), ...parse(full, rel) });
       }
     }
   };
@@ -85,6 +85,28 @@ const CATEGORY_LABEL = {
 // The order the sections appear in — roughly React Flow's own, so a visitor can scan across.
 const CATEGORY_ORDER = Object.keys(CATEGORY_LABEL);
 
+// NEW badge — a DATED, curatorial overlay, not part of the auto-discovery. These
+// are the pages created or reworked in the 2026-07 React-Flow-parity wave; the
+// badge just helps a visitor find them. Clear this set once the wave is old news.
+const NEW_DEMOS = new Set([
+  'nodes/delete-middle-node.html',
+  'nodes/drag-handle.html',
+  'nodes/intersections.html',
+  'nodes/node-resizer.html',
+  'nodes/node-resize-gesture.html',
+  'nodes/node-toolbar.html',
+  'nodes/proximity-connect.html',
+  'nodes/node-position-animation.html',
+  'nodes/stress-test.html',
+  'nodes/updating-nodes.html',
+  'edges/animating-edges.html',
+  'interaction/computing-flows.html',
+  'interaction/connection-events.html',
+  'grouping/parent-child.html',
+  'diagrams/scrollable-cards.html',
+]);
+const isNewDemo = (rel) => NEW_DEMOS.has(rel.split(sep).join('/'));
+
 const esc = (s) =>
   String(s).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c]);
 
@@ -103,8 +125,8 @@ function render(byCat) {
         .sort((a, b) => a.name.localeCompare(b.name))
         .map(
           (d) => `
-        <a class="card${d.pro ? ' pro' : ''}" href="${esc(d.rel)}">
-          <div class="card-name">${esc(d.name)}</div>
+        <a class="card${d.pro ? ' pro' : ''}${d.isNew ? ' is-new' : ''}" href="${esc(d.rel)}">
+          <div class="card-name">${d.isNew ? '<span class="badge new">New</span>' : ''}${esc(d.name)}</div>
           <div class="card-blurb">${esc(d.blurb)}</div>
           <div class="card-foot">
             ${d.reactflow ? `<span class="rf">React Flow: ${esc(d.reactflow)}</span>` : '<span class="rf none">no React Flow equivalent</span>'}
@@ -159,6 +181,9 @@ function render(byCat) {
   .rf { color:var(--mut); }
   .rf.none { opacity:.6; font-style:italic; }
   .badge { padding:1px 7px; border-radius:999px; background:var(--pro); color:#fff; font-weight:600; }
+  .badge.new { background:#16a34a; margin-right:7px; font-size:10.5px; text-transform:uppercase; letter-spacing:.04em; vertical-align:middle; }
+  .card.is-new { border-left:3px solid #16a34a; }
+  .card.is-new.pro { border-left:3px solid var(--pro); }
   footer { padding:22px 28px 50px; border-top:1px solid var(--line); color:var(--mut); font-size:13px; max-width:80ch; }
   code { padding:1px 5px; border-radius:4px; background:rgba(127,127,127,.16); font-size:.9em; }
 </style>
@@ -197,7 +222,7 @@ const cats = Object.keys(byCat).sort(
 const flat = cats.flatMap((cat) =>
   byCat[cat]
     .sort((a, b) => a.name.localeCompare(b.name))
-    .map((d) => ({ cat, name: d.name, rel: d.rel.split(sep).join('/'), reactflow: d.reactflow, pro: d.pro }))
+    .map((d) => ({ cat, name: d.name, rel: d.rel.split(sep).join('/'), reactflow: d.reactflow, pro: d.pro, isNew: d.isNew }))
 );
 writeFileSync(
   join(here, 'shell', 'demos-manifest.js'),

@@ -106,7 +106,7 @@ async function buildNav() {
           // NB: no `pro` class on the item — demo.css has a global `.pro` (the
           // page header's "Pro — paid" pill) that would paint the whole row. The
           // Pro marker is the scoped `.an-pro` badge span only.
-          return `<a class="an-item${current ? ' current' : ''}" href="../${esc(d.rel)}"${current ? ' aria-current="page"' : ''} data-name="${esc(d.name.toLowerCase())} ${esc((d.reactflow || '').toLowerCase())}">${esc(d.name)}${d.pro ? '<span class="an-pro" title="React Flow charges for this">Pro</span>' : ''}</a>`;
+          return `<a class="an-item${current ? ' current' : ''}${d.isNew ? ' an-is-new' : ''}" href="../${esc(d.rel)}"${current ? ' aria-current="page"' : ''} data-name="${esc(d.name.toLowerCase())} ${esc((d.reactflow || '').toLowerCase())}${d.isNew ? ' new' : ''}">${d.isNew ? '<span class="an-new" title="Added or reworked in the latest wave">New</span>' : ''}${esc(d.name)}${d.pro ? '<span class="an-pro" title="React Flow charges for this">Pro</span>' : ''}</a>`;
         })
         .join('');
       return `<div class="an-group"><div class="an-cat">${esc(CATEGORY_LABEL[cat] ?? cat)}</div>${items}</div>`;
