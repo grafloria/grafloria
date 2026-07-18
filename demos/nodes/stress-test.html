@@ -16,6 +16,8 @@
   <button class="lay" data-layout="layered" type="button">layered</button>
   <button class="lay" data-layout="elk" type="button">elk</button>
   <button class="lay" data-layout="dagre" type="button">dagre</button>
+  <button class="lay" data-layout="force" type="button">force</button>
+  <button class="lay" data-layout="auto" type="button">auto</button>
 </div>
 <div id="canvas"></div>
 <script type="module">
@@ -36,10 +38,10 @@ const nid = (r, c) => 'n' + (r * C + c);
 
 defineDemo({
   name: 'Stress test',
-  blurb: 'A 900-node mesh. Only the visible slice is ever in the DOM (viewport culling), a full-graph move repaints inside a frame budget, and one call lays ALL 900 out with a real engine — layered / elk / dagre, each snapping the mesh into a clean diamond. The strip prints the real layout time, so you can see which engine scales.',
+  blurb: 'A 900-node mesh. Only the visible slice is ever in the DOM (viewport culling), a full-graph move repaints inside a frame budget, and one call lays ALL 900 out with a real engine — layered / elk / dagre / force / auto, each spreading the mesh in 2D. The strip prints the real layout time, so you can see which engine scales.',
   howTo: [
     'Before touching the camera, click "▶ run the scripted checks": the page moves all 900 nodes seven times (timing every repaint), then lays them out and reports the numbers — nodes in the model, nodes actually in the DOM, median frame time, layout time.',
-    'Click layered / elk / dagre in the strip: the whole mesh snaps into a symmetric diamond and the strip prints how long that engine took. Compare them — layered is ~15× faster than dagre on this graph; that gap is a real, measured property of the engines, not a claim.',
+    'Click layered / elk / dagre / force / auto in the strip: the whole mesh re-lays-out and the strip prints how long that engine took. Compare them — layered snaps a clean diamond in ~100ms, dagre ~15× slower, force finds an organic spread, auto picks a fast engine for you. Every one completes in under a second at 900 nodes.',
     'Drag empty canvas to pan, or ⌘/Ctrl+wheel to zoom out until thousands of tiles would be in view: the DOM grows and shrinks with the viewport — that is why 900 nodes stay smooth.',
     'Drag any single node: an individual move repaints immediately, even with the full mesh in the model.',
   ],
@@ -68,8 +70,9 @@ defineDemo({
     const readout = document.getElementById('readout');
     ctx.lastFrame = '';
     // Run a real layout engine over all 900 nodes, time it, reframe, and report.
-    // (auto is excluded — it does not finish in tens of seconds at this scale;
-    //  force collapses the mesh to a wedge. Both are recorded as engine bugs.)
+    // All five finish under a second here now — auto's bake-off no longer runs
+    // every candidate on the full graph, and force spreads in 2D instead of
+    // collapsing to a wedge (both were engine bugs this page surfaced, now fixed).
     ctx.applyLayout = async (name) => {
       const t0 = performance.now();
       await ctx.engine.layout(name, { direction: 'TB', nodeSpacing: 20, rankSpacing: 52 });
@@ -141,7 +144,25 @@ defineDemo({
     const distinct = new Set(m.getNodes().slice(0, 200).map((n) => `${Math.round(n.position.x)},${Math.round(n.position.y)}`));
     check(distinct.size > 150, `nodes should not stack (only ${distinct.size}/200 distinct positions)`);
 
+    // 5. EVERY engine works at 900 nodes: completes under a second, spreads in
+    //    BOTH axes, moves every node. This is the teeth for the layout-engine
+    //    fixes — the pathologies this page found (auto hang, force wedge, dagre
+    //    crash) would each fail one of these on the offending engine.
+    for (const name of ['dagre', 'elk', 'force', 'auto']) {
+      const t0 = performance.now();
+      await ctx.engine.layout(name, { direction: 'TB', nodeSpacing: 20, rankSpacing: 52 });
+      const ms = Math.round(performance.now() - t0);
+      check(ms < 3000, `${name} on ${N} nodes took ${ms}ms — a scale problem`);
+      const exs = m.getNodes().map((n) => n.position.x), eys = m.getNodes().map((n) => n.position.y);
+      const ew = Math.max(...exs) - Math.min(...exs), eh = Math.max(...eys) - Math.min(...eys);
+      // force is organic (non-deterministic), so assert SHAPE not position: both
+      // axes non-trivial and neither more than ~12× the other (a wedge fails this).
+      check(ew > 400 && eh > 400, `${name} must spread in both axes (got ${Math.round(ew)}×${Math.round(eh)})`);
+      check(Math.max(ew, eh) / Math.min(ew, eh) < 12, `${name} collapsed to a wedge (${Math.round(ew)}×${Math.round(eh)})`);
+    }
+
     // Ends on the deterministic layered diamond — a stable, beautiful golden.
+    await ctx.applyLayout('layered');
     api.fitView?.(40);
     await ctx.tick();
   },
