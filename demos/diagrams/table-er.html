@@ -68,8 +68,14 @@ const node = (id, x, y, name, cols) => ({
 });
 
 // ER edge: "one" bar on the source, crow's-foot "many" on the target.
-const rel = (id, source, target, label) => ({
+// Explicit source/target SIDES: tables have different heights, so their centre
+// points differ in y — without fixed sides the orthogonal router jogs right at
+// the table edge and the crow's-foot ends up pointing the wrong way (a "broken
+// arrow" until you nudge the table). Pinning the sides makes the line enter
+// along the correct axis every time.
+const rel = (id, source, target, label, sides = ['right', 'left']) => ({
   id, source, target, label, type: 'orthogonal',
+  sourceHandle: sides[0], targetHandle: sides[1],
   style: {
     stroke: '#64748b', strokeWidth: 1.5,
     arrowTail: { type: 'one', size: 11, filled: false },
@@ -92,24 +98,28 @@ defineDemo({
   async setup(ctx) {
     const api = render({
       nodes: [
-        node('CUSTOMER', 60, 60, 'Customer', [
+        // CUSTOMER / ORDER / LINE_ITEM are vertically CENTRE-ALIGNED (centre-y
+        // 130) so their side-to-side relationships are dead-straight horizontal
+        // lines — no elbow at the table edge, so the crow's-foot always enters
+        // the left side cleanly (a mis-aligned centre is what "broke" the arrow).
+        node('CUSTOMER', 60, 76, 'Customer', [
           { pk: true, name: 'id', type: 'int' },
           { name: 'name', type: 'varchar' },
           { name: 'email', type: 'varchar' },
         ]),
-        node('ORDER', 400, 40, 'Order', [
+        node('ORDER', 400, 64, 'Order', [
           { pk: true, name: 'id', type: 'int' },
           { fk: true, name: 'customer_id', type: 'int' },
           { name: 'placed_at', type: 'date' },
           { name: 'total', type: 'decimal' },
         ]),
-        node('LINE_ITEM', 740, 30, 'Line Item', [
+        node('LINE_ITEM', 740, 64, 'Line Item', [
           { pk: true, name: 'id', type: 'int' },
           { fk: true, name: 'order_id', type: 'int' },
           { fk: true, name: 'product_id', type: 'int' },
           { name: 'qty', type: 'int' },
         ]),
-        node('PRODUCT', 740, 330, 'Product', [
+        node('PRODUCT', 740, 380, 'Product', [
           { pk: true, name: 'id', type: 'int' },
           { name: 'sku', type: 'varchar' },
           { name: 'price', type: 'decimal' },
@@ -118,7 +128,7 @@ defineDemo({
       edges: [
         rel('e1', 'CUSTOMER', 'ORDER', 'places'),
         rel('e2', 'ORDER', 'LINE_ITEM', 'contains'),
-        rel('e3', 'PRODUCT', 'LINE_ITEM', 'appears in'),
+        rel('e3', 'PRODUCT', 'LINE_ITEM', 'appears in', ['top', 'bottom']),
       ],
     }, ctx.host);
     ctx.instance = api;
