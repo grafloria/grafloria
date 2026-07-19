@@ -72,6 +72,20 @@ export interface GridPackResult {
   changed: boolean;
 }
 
+/** Options for {@link GridPackEngine.moveCheck}. */
+export interface MoveCheckOptions {
+  /**
+   * The >50% anti-jitter coverage gate AND the swap heuristics it feeds.
+   * `gate: false` is the FIRST-PLACEMENT mode (a palette drag-in entering the
+   * board, or a dragged-out tile re-entering — gridstack's `dragInNode`
+   * behaviour): the cell is taken unconditionally — locked tiles still refuse
+   * (E4b), but any unlocked occupant is pushed down regardless of coverage,
+   * and no swap shape fires (an entering tile has no meaningful cell to
+   * exchange). Default true.
+   */
+  gate?: boolean;
+}
+
 interface GestureMemory {
   x: number;
   y: number;
@@ -86,6 +100,19 @@ export class GridPackEngine {
   private memory = new Map<string, GestureMemory>();
   /** Gesture-start snapshot of EVERY item, for cancel/Escape restore. */
   private snapshot: Map<string, GestureMemory> | null = null;
+  /**
+   * S4 — swap hysteresis. An accepted swap LOCKS the pair for the rest of the
+   * gesture: the same two tiles may swap again only on a DELIBERATE return —
+   * the mover's probe centre reaching the partner's centre. Without this, a
+   * slow sweep of a small tile across a big one ping-pongs: the row swap
+   * drops the mover at the row edge, far from the cursor, so the very next
+   * cell crossing still covers the partner and instantly swaps back (found
+   * by driving the REAL demo board with a real mouse — synthetic step sizes
+   * jumped past it). Same-size pairs land ON the probe cell, which is why
+   * the recorded E3 never showed the defect; the lock's inclusive-midpoint
+   * return keeps the S1 wiggle (swap, retreat, swap again) intact.
+   */
+  private swapLock: { a: string; b: string } | null = null;
 
   constructor(items: GridPackItem[] = [], options: GridPackOptions = {}) {
     this.columns = options.columns ?? 12;
@@ -170,12 +197,14 @@ export class GridPackEngine {
    */
   beginGesture(): void {
     this.memory.clear();
+    this.swapLock = null;
     this.snapshot = new Map(this.items.map((i) => [i.id, { x: i.x, y: i.y }]));
   }
 
-  /** End a gesture: memory does NOT outlive it (E2). */
+  /** End a gesture: memory does NOT outlive it (E2, and the S4 swap lock). */
   endGesture(): void {
     this.memory.clear();
+    this.swapLock = null;
     this.snapshot = null;
   }
 
@@ -200,8 +229,10 @@ export class GridPackEngine {
    * swap (three shapes) | push-down (+skip below locked) → settle (teleport
    * memory + gravity). Refuses: out-of-gesture no-ops, cells intersecting a
    * locked tile (E4b), and collisions under the anti-jitter coverage gate.
+   * `{ gate: false }` (see {@link MoveCheckOptions}) is first-placement mode:
+   * gate and swaps are skipped, push-down still applies, E4b still refuses.
    */
-  moveCheck(id: string, x: number, y: number): GridPackResult {
+  moveCheck(id: string, x: number, y: number, options: MoveCheckOptions = {}): GridPackResult {
     const n = this.getItem(id);
     if (!n || n.locked) return { changed: false };
     x = Math.max(0, Math.min(this.columns - n.w, Math.round(x)));
@@ -211,7 +242,7 @@ export class GridPackEngine {
     const probe = { ...n, x, y };
     if (this.collideLocked(probe, n)) return { changed: false }; // E4b: refuse
 
-    const c = this.collide(probe, n);
+    const c = options.gate === false ? undefined : this.collide(probe, n);
     if (c) {
       // S3 — the three swap shapes.
       const sameSize = !this.float && c.w === n.w && c.h === n.h;
@@ -227,6 +258,17 @@ export class GridPackEngine {
           : c.w * c.h;
       if (inter <= 0.5 * gateArea) return { changed: false };
 
+      // S4: a just-swapped pair re-swaps only on a deliberate return.
+      if (
+        (sameSize || rowSwap || colSwap) &&
+        this.swapLock &&
+        ((this.swapLock.a === n.id && this.swapLock.b === c.id) ||
+          (this.swapLock.a === c.id && this.swapLock.b === n.id)) &&
+        !GridPackEngine.deliberateReturn(probe, n, c)
+      ) {
+        return { changed: false };
+      }
+
       if (sameSize || rowSwap || colSwap) this.remember(c);
 
       if (sameSize) {
@@ -237,6 +279,7 @@ export class GridPackEngine {
         n.y = c.y;
         c.x = ox;
         c.y = oy;
+        this.swapLock = { a: n.id, b: c.id };
         this.settle(n);
         return { changed: true };
       }
@@ -252,6 +295,7 @@ export class GridPackEngine {
           c.x = leftX + n.w;
         }
         n.y = c.y;
+        this.swapLock = { a: n.id, b: c.id };
         this.settle(n);
         return { changed: true };
       }
@@ -265,6 +309,7 @@ export class GridPackEngine {
           c.y = topY + n.h;
         }
         n.x = c.x;
+        this.swapLock = { a: n.id, b: c.id };
         this.settle(n);
         return { changed: true };
       }
@@ -303,6 +348,28 @@ export class GridPackEngine {
 
   private static hit(a: GridPackItem, b: GridPackItem): boolean {
     return a.x < b.x + b.w && b.x < a.x + a.w && a.y < b.y + b.h && b.y < a.y + a.h;
+  }
+
+  /**
+   * S4's return condition: on every axis where the pair's centres differ, the
+   * mover's PROBE centre must have reached (inclusive) the partner's centre
+   * from the mover's current side. Inclusive, so a same-size retreat onto the
+   * partner's exact cell (S1 wiggle) passes.
+   */
+  private static deliberateReturn(
+    probe: GridPackItem,
+    n: GridPackItem,
+    c: GridPackItem
+  ): boolean {
+    const probeCx = probe.x + n.w / 2;
+    const probeCy = probe.y + n.h / 2;
+    const curCx = n.x + n.w / 2;
+    const curCy = n.y + n.h / 2;
+    const cCx = c.x + c.w / 2;
+    const cCy = c.y + c.h / 2;
+    if (curCx !== cCx && !(curCx < cCx ? probeCx >= cCx : probeCx <= cCx)) return false;
+    if (curCy !== cCy && !(curCy < cCy ? probeCy >= cCy : probeCy <= cCy)) return false;
+    return true;
   }
 
   private static overlapArea(a: GridPackItem, b: GridPackItem): number {

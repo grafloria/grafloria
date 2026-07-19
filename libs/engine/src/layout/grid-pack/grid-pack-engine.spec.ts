@@ -137,6 +137,51 @@ describe('the anti-jitter coverage gate', () => {
   });
 });
 
+describe('first-placement mode — moveCheck({ gate: false })', () => {
+  // The dashboard kit's drag-in path (palette entry, drag-out re-entry):
+  // gridstack's dragInNode takes the cursor cell on entry without the
+  // anti-jitter gate — the tile has no meaningful previous cell to gate or
+  // swap against. Mutation-proven (each mutant run and seen red):
+  //   M1  `options.gate === false ? undefined : this.collide(...)` →
+  //       `this.collide(...)` unconditionally — both accept-tests below fail
+  //       (the 33% placement is refused; the same-size occupant swaps).
+  //   M2  deleting the collideLocked refusal → the E4b test below fails.
+  it('takes a 33%-covered cell the gate would refuse, and pushes the occupant', () => {
+    const e = seeded();
+    e.beginGesture();
+    const gated = e.moveCheck('t1', 1, 0);
+    expect(gated.changed).toBe(false); // the gate's own verdict, unchanged
+    const r = e.moveCheck('t1', 1, 0, { gate: false });
+    expect(r.changed).toBe(true);
+    expect(cells(e, 't1')).toEqual([1, 0]);
+    expect(e.getItem('t2')!.y).toBeGreaterThan(0); // pushed, not refused
+    expect(e.hasOverlaps()).toBe(false);
+    e.endGesture();
+  });
+
+  it('skips the swap heuristic: a same-size occupant is PUSHED, never exchanged', () => {
+    const e = seeded();
+    e.beginGesture();
+    const r = e.moveCheck('t1', 3, 0, { gate: false }); // exactly onto t2 (same 3×1)
+    expect(r.changed).toBe(true);
+    expect(cells(e, 't1')).toEqual([3, 0]);
+    expect(cells(e, 't2')).not.toEqual([0, 0]); // NOT swapped into t1's old cell
+    expect(e.getItem('t2')!.y).toBeGreaterThan(0); // pushed below instead
+    expect(e.hasOverlaps()).toBe(false);
+    e.endGesture();
+  });
+
+  it('still refuses a locked tile outright (E4b holds without the gate)', () => {
+    const e = seeded();
+    e.beginGesture();
+    const r = e.moveCheck('t1', 0, 3, { gate: false }); // onto the pinned row
+    expect(r.changed).toBe(false);
+    expect(cells(e, 't1')).toEqual([0, 0]);
+    expect(cells(e, 'pin')).toEqual([0, 3]);
+    e.endGesture();
+  });
+});
+
 describe('E3/S1 — same-size swap', () => {
   it('swaps cleanly and exchanges CELLS exactly', () => {
     const e = seeded();
@@ -201,6 +246,56 @@ describe('S3 — the other two swap shapes + the min-area gate', () => {
     expect(r.changed).toBe(true);
     expect(cells(e, 'bot')).toEqual([0, 0]);
     expect(cells(e, 'top')).toEqual([0, 2]); // below bot's 2 rows
+    expect(e.hasOverlaps()).toBe(false);
+    e.endGesture();
+  });
+});
+
+describe('S4 — swap hysteresis (no ping-pong on unequal pairs)', () => {
+  // Found by driving the real demo board with a REAL mouse: a slow sweep of
+  // the 4-wide across the 8-wide swapped on EVERY cell crossing (the row swap
+  // drops the mover at the row edge, far from the cursor, so the next
+  // crossing still covers the partner and instantly swaps back). An accepted
+  // swap locks the pair for the gesture; re-swap needs a deliberate return —
+  // the probe centre reaching the partner's centre. Mutation-proven:
+  //   M3  never setting `swapLock` (or short-circuiting the lock check) →
+  //       'a slow sweep…swaps once and HOLDS' fails at the first re-probe.
+  it('a slow sweep across an unequal partner swaps once and HOLDS', () => {
+    const e = seeded();
+    e.beginGesture();
+    expect(e.moveCheck('t6', 4, 1).changed).toBe(true); // recorded S3 acceptance
+    expect(cells(e, 't6')).toEqual([0, 1]);
+    expect(cells(e, 't5')).toEqual([4, 1]);
+    // The cursor keeps sweeping through the partner's area: every one of
+    // these crossings used to swap back. Now the pair is locked.
+    for (const x of [5, 4, 3, 2]) {
+      expect(e.moveCheck('t6', x, 1).changed).toBe(false);
+      expect(cells(e, 't6')).toEqual([0, 1]);
+      expect(cells(e, 't5')).toEqual([4, 1]);
+    }
+    e.endGesture();
+  });
+
+  it('a DELIBERATE return — probe centre past the partner centre — swaps back', () => {
+    const e = seeded();
+    e.beginGesture();
+    e.moveCheck('t6', 4, 1); // t6 -> 0, t5 -> 4..12 (centre 8)
+    // probe x6 puts t6's centre at 8 = t5's centre: the return is deliberate.
+    expect(e.moveCheck('t6', 6, 1).changed).toBe(true);
+    expect(cells(e, 't6')).toEqual([8, 1]);
+    expect(cells(e, 't5')).toEqual([0, 1]);
+    expect(e.hasOverlaps()).toBe(false);
+    e.endGesture();
+  });
+
+  it('the lock dies with the gesture (E2 scope): a fresh gesture swaps freely', () => {
+    const e = seeded();
+    e.beginGesture();
+    e.moveCheck('t6', 4, 1);
+    expect(e.moveCheck('t6', 5, 1).changed).toBe(false); // locked
+    e.endGesture();
+    e.beginGesture();
+    expect(e.moveCheck('t6', 5, 1).changed).toBe(true); // fresh gesture, normal gate
     expect(e.hasOverlaps()).toBe(false);
     e.endGesture();
   });

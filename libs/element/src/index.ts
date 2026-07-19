@@ -600,6 +600,41 @@ export {
 } from './lib/diagram-kit';
 export type { HandleApi } from './lib/diagram-kit';
 
+// ===========================================================================
+// THE DASHBOARD KIT — Phase 2 of the dashboard-grid plan.
+//
+// The dashboard demo proved Grafloria can host a dashboard-builder app — but its
+// interaction (live push while you hover, truthful placeholder, cell-stepped
+// resize, one undo step per gesture) was page JS. This kit is the feature:
+// `bindDashboardGrid(api, group)` puts a GridPackEngine-driven pack grid on
+// any group of widget nodes, with cells persisted in the EXISTING
+// GridItemConfig. Element-local code, so the Phase-0 wholesale re-export
+// below does NOT cover it — this curated block is its only door.
+// ===========================================================================
+export {
+  bindDashboardGrid,
+  rowHeightFor,
+  boardHeightFor,
+  columnUnitFor,
+  cellToRect,
+  pointToCell,
+  sizeToSpan,
+  gridItemFromCell,
+  cellFromGridItem,
+  buildCommitCommands,
+  ensureDashboardKitStyles,
+  DASHBOARD_KIT_STYLE_ID,
+} from './lib/dashboard-kit';
+export type {
+  DashboardGridApi,
+  DashboardGridOptions,
+  DashboardGridHandle,
+  CellRect,
+  WorldRect,
+  DashboardGridGeometry,
+  TileDelta,
+} from './lib/dashboard-kit';
+
 /* ==========================================================================
  * PHASE 0 — THE INVERSION.
  *

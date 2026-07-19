@@ -1,0 +1,1147 @@
+/**
+ * `bindDashboardGrid(api, group, options)` — the dashboard-grid gesture binder
+ * (Phase 2 of the dashboard-grid plan; the plan page's Section-1 prototype is
+ * the executable spec of the feel this reproduces).
+ *
+ * One binder owns ONE `GridPackEngine` mirroring the group's members — the
+ * engine is the single source of truth for cell math (three swap shapes, the
+ * >50% anti-jitter gate, locked refusal, push-down + skipDown, teleport-home
+ * settle). This module only converts: pointer → cells in, cells → pixels out,
+ * gesture → ONE undoable BatchCommand.
+ *
+ * HOW THE RENDERER'S OWN NODE-DRAG IS BYPASSED — a registered `CanvasTool`
+ * (the renderer's wave-6 tool registry, `registerTool`). The tool makes a
+ * POINT-SPECIFIC claim (priority 2, like the whiteboard ink tool): any
+ * pointerdown whose hit node is a member of the bound group, or that lands
+ * inside a member group's frame with no node under it (the KPI-slab dead
+ * zone — otherwise the built-in group-drag would fight the pack layout
+ * there). A claimed gesture bypasses the ENTIRE built-in ladder — node-drag,
+ * selection, marquee, wave-12 resize handles — and the DomEventBinder
+ * forwards move/up/cancel with world coordinates already computed. This beats
+ * `behavior.draggable = false` (which still runs selection and shows the
+ * built-in resize handles) and beats capture-phase DOM listeners (which fight
+ * the binder's own preventDefault bookkeeping). `click` is NOT a
+ * compatibility mouse event, so the page's click-to-focus keeps firing for
+ * sub-threshold presses.
+ *
+ * DURING a gesture, positions are written through the MODEL, not commands:
+ *  - the held tile is a GHOST — transition-exempt, tracking the cursor in
+ *    WORLD coordinates (no `position: fixed` hack; the html layer carries the
+ *    camera transform, and the tool events arrive already converted);
+ *  - every cell crossing runs `engine.moveCheck` / `resizeCheck`; every item
+ *    the engine displaced is re-projected cells→pixels. Those writes are
+ *    DERIVED state, so they run inside `diagram.runSystemWrite` — which is
+ *    also what lets a PINNED tile's pixels follow a fit-mode row-height
+ *    change without violating the authoritative geometry lock (its CELLS
+ *    never change; the pin protects the document fact, not the projection);
+ *  - a dashed PLACEHOLDER (`.axdb-ph`) always shows the engine's current cell
+ *    for the held tile — the truthful drop preview.
+ *
+ * The gesture ends in ONE `BatchCommand`: `SetGridItemCommand` per tile whose
+ * cells changed (cells are the truth) + `MoveNodeCommand`/`ResizeNodeCommand`
+ * (merge-opted-OUT) per unlocked node whose geometry changed, so a bare undo
+ * restores geometry AND cells with no binder help. Escape restores the
+ * engine snapshot (`cancelGesture`) and every pixel — nothing is committed.
+ *
+ * MEMBER GROUPS (e.g. a KPI section) ride as LOCKED slab items — never
+ * pushed, never packed, drags onto them refused (the prototype's pinned
+ * full-width row). Their cells persist in group metadata `gridItem` (groups
+ * carry no GridItemConfig); their INNER layout is their own concern — bind a
+ * second `bindDashboardGrid` on the section for a nested pack grid.
+ */
+
+import {
+  BatchCommand,
+  GridPackEngine,
+  type Command,
+  type DiagramModel,
+  type GridItemConfig,
+  type GridPackItem,
+  type GroupModel,
+  type NodeModel,
+} from '@grafloria/engine';
+import { registerTool, type CanvasTool, type ToolPointerEvent } from '@grafloria/renderer';
+import {
+  buildCommitCommands,
+  cellFromGridItem,
+  cellToRect,
+  columnUnitFor,
+  gridItemFromCell,
+  pointToCell,
+  rowHeightFor,
+  sizeToSpan,
+  type CellRect,
+  type DashboardGridGeometry,
+  type TileDelta,
+  type WorldRect,
+} from './grid-mapping';
+import { ensureDashboardKitStyles } from './styles';
+
+/** The slice of a DiagramInstance the binder needs (structural, test-friendly). */
+export interface DashboardGridApi {
+  getModel(): DiagramModel;
+  getEngine(): { commandManager: { execute(cmd: Command): Promise<unknown> | unknown } };
+  readonly container: HTMLElement;
+  readonly viewport?: {
+    clientToWorld(
+      clientX: number,
+      clientY: number,
+      rect: { left: number; top: number; width: number; height: number }
+    ): { x: number; y: number };
+  };
+  render(): void;
+  renderNow(): void;
+}
+
+export interface DashboardGridOptions {
+  /** Column count (default 12). */
+  columns?: number;
+  /** Gap between cells, px (default 12). */
+  gap?: number;
+  /** Board padding, px (default = gap). */
+  padding?: number;
+  /** Sizing mode (default 'fit' — the user decision recorded in the plan). */
+  sizing?: 'fit' | 'grow';
+  /** 'grow' row height, px (default 110). */
+  baseRowHeight?: number;
+  /** 'fit' row-height floor, px (default 28). */
+  minRowHeight?: number;
+  /**
+   * The board's design height (default: the group's height at bind time).
+   * 'fit' pins the frame to it; 'grow' never shrinks the frame below it.
+   */
+  designHeight?: number;
+  /** Engine float mode (default false → gravity packs upward). */
+  float?: boolean;
+  /**
+   * What dragging a tile OUT of the board means (default 'cancel' — the tile
+   * snaps back on release). 'remove' dims the ghost outside the board and a
+   * release outside calls `onRemoveRequest` — deletion stays on the page's
+   * atomic command path.
+   */
+  dragOut?: 'remove' | 'cancel';
+  /**
+   * Page hook for drag-out removal: execute ONE undoable batch that removes
+   * `nodeId` AND applies `displaced` (the survivors' cell commits, so undo
+   * restores the exact board).
+   */
+  onRemoveRequest?: (nodeId: string, displaced: Command[]) => void | Promise<void>;
+  /**
+   * Page hook for palette drag-in release: add `node` (already carrying
+   * `cell` in its gridItem, already placed in the engine) through the page's
+   * command path, folding `displaced` into the same batch.
+   */
+  onDropIn?: (node: NodeModel, cell: CellRect, displaced: Command[]) => void | Promise<void>;
+  /** Fires after commits/cancels/removals so the page can refocus/refit/flash. */
+  onGesture?: (e: {
+    type: 'commit' | 'cancel' | 'remove' | 'drop-in';
+    kind: 'move' | 'resize' | 'palette';
+    nodeId: string;
+    changed: boolean;
+  }) => void;
+  /** Inject the hover-revealed corner resize handle into member hosts (default true). */
+  resizeHandles?: boolean;
+}
+
+export interface DashboardGridHandle {
+  /** Rebuild the engine from the group's members + their cells, re-project pixels. */
+  sync(): void;
+  setSizing(mode: 'fit' | 'grow'): void;
+  getSizing(): 'fit' | 'grow';
+  /** Live board metrics (mapping inputs + derived row height / rows). */
+  metrics(): {
+    columns: number;
+    gap: number;
+    padding: number;
+    sizing: 'fit' | 'grow';
+    rows: number;
+    rowHeight: number;
+    columnUnit: number;
+    boardHeight: number;
+    frame: WorldRect;
+  };
+  /** The engine's cell record for a member (undefined when not a member). */
+  cellOf(id: string): CellRect | undefined;
+  /** World rect the member's current cells project to. */
+  cellRectOf(id: string): WorldRect | undefined;
+  /** Commands that reconcile the survivors after removing `id` — fold into the remove batch. */
+  planRemoval(id: string): Command[];
+  /**
+   * Programmatic single-step gestures — the demo asserts' deterministic hook.
+   * Same pipeline as a pointer gesture, committed as ONE BatchCommand. Unlike
+   * a pointer commit (which fire-and-forgets, wave-3 style, because the
+   * visible state is already final), these AWAIT the command execution so a
+   * caller can undo immediately after.
+   */
+  moveTo(id: string, x: number, y: number): Promise<boolean>;
+  resizeTo(id: string, w: number, h: number): Promise<boolean>;
+  /**
+   * Palette drag-in: `node` is a DETACHED widget node (not yet in the model).
+   * A chip follows the cursor; entering the board places the node's item in
+   * the engine (first placement skips the anti-jitter gate, as gridstack's
+   * drag-in does) and the normal live-push loop takes over. Release inside →
+   * `onDropIn`; release outside / Escape → aborted, nothing committed.
+   */
+  beginPaletteDrag(
+    node: NodeModel,
+    spec: { w: number; h: number; chip?: HTMLElement },
+    event: PointerEvent
+  ): void;
+  dispose(): void;
+}
+
+interface GeomSnapshot {
+  pos: { x: number; y: number };
+  size: { width: number; height: number; depth?: number };
+}
+
+interface GestureState {
+  kind: 'move' | 'resize' | 'palette';
+  id: string;
+  node: NodeModel;
+  pointerId: number | null;
+  started: boolean;
+  downClient: { x: number; y: number };
+  downWorld: { x: number; y: number };
+  grab: { dx: number; dy: number };
+  startCells: Map<string, CellRect>;
+  startGeom: Map<string, GeomSnapshot>;
+  startSize: { width: number; height: number };
+  spans: { w: number; h: number };
+  /** Drag-out: the item is currently absent from the engine. */
+  removedFromBoard: boolean;
+  chip: HTMLElement | null;
+}
+
+const DRAG_THRESHOLD = 4;
+const GLIDE_OFF_DELAY = 400;
+
+let binderSeq = 0;
+
+export function bindDashboardGrid(
+  api: DashboardGridApi,
+  group: GroupModel,
+  options: DashboardGridOptions = {}
+): DashboardGridHandle {
+  ensureDashboardKitStyles();
+
+  const diagram = api.getModel();
+  const columns = options.columns ?? 12;
+  const gap = options.gap ?? 12;
+  const padding = options.padding ?? gap;
+  const baseRowHeight = options.baseRowHeight ?? 110;
+  const minRowHeight = options.minRowHeight ?? 28;
+  const float = options.float ?? false;
+  const dragOut = options.dragOut ?? 'cancel';
+  const wantHandles = options.resizeHandles !== false;
+  const designH = options.designHeight ?? group.size?.height ?? 0;
+
+  let sizing: 'fit' | 'grow' = options.sizing ?? 'fit';
+  let engine = new GridPackEngine([], { columns, float });
+  let gesture: GestureState | null = null;
+  let disposed = false;
+  /** Reentrancy guard: our own derived frame writes must not re-project. */
+  let writing = false;
+  let placeholder: HTMLElement | null = null;
+  let glideTimer: ReturnType<typeof setTimeout> | null = null;
+  let ghostTimer: ReturnType<typeof setTimeout> | null = null;
+
+  const frame = (): WorldRect => ({
+    x: group.position.x,
+    y: group.position.y,
+    width: group.size?.width ?? 0,
+    height: group.size?.height ?? 0,
+  });
+
+  /** Entity size with GroupModel's optionality flattened away. */
+  const sizeOf = (e: {
+    size?: { width: number; height: number; depth?: number };
+  }): { width: number; height: number; depth?: number } =>
+    e.size ?? { width: 0, height: 0 };
+
+  /** Mapping geometry. 'fit' derives row height from the LIVE frame height
+   *  (which `enforceBoardHeight` pins to the design height), so an externally
+   *  resized board still fits itself. */
+  const geom = (): DashboardGridGeometry => ({
+    columns,
+    gap,
+    padding,
+    sizing,
+    baseRowHeight,
+    minRowHeight,
+    designHeight: sizing === 'fit' ? frame().height : designH,
+  });
+
+  const rows = (): number => Math.max(1, engine.rows());
+
+  const htmlLayer = (): HTMLElement | null => api.container.querySelector('.grafloria-html-layer');
+
+  const hostOf = (id: string): HTMLElement | null => {
+    const esc =
+      typeof CSS !== 'undefined' && CSS.escape ? CSS.escape(id) : id.replace(/"/g, '\\"');
+    return api.container.querySelector(`.grafloria-node-host[data-node-id="${esc}"]`);
+  };
+
+  const memberEntity = (id: string): NodeModel | GroupModel | undefined =>
+    diagram.getNode(id) ?? diagram.getGroup(id);
+
+  const isGroupMember = (id: string): boolean => !diagram.getNode(id) && !!diagram.getGroup(id);
+
+  // -- cells <-> members -----------------------------------------------------
+
+  /** The engine item a member should enter as (cells from GridItemConfig /
+   *  group metadata; spans falling back to metadata columnSpan/rowSpan; last
+   *  resort: adopt from the current pixel geometry). */
+  const itemFor = (id: string): GridPackItem => {
+    const node = diagram.getNode(id);
+    if (node) {
+      const spanMeta = Number(node.getMetadata?.('columnSpan')) || 0;
+      const rowsMeta = Number(node.getMetadata?.('rowSpan')) || 0;
+      const locked = node.state?.locked === true;
+      const cell = cellFromGridItem(node.getGridItem?.(), {
+        w: spanMeta || 1,
+        h: rowsMeta || 1,
+      });
+      if (cell) return { id, ...cell, locked };
+      const f = frame();
+      const g = geom();
+      if (node.position && (node.position.x !== 0 || node.position.y !== 0)) {
+        // First adoption from pixels: where the tile already sits.
+        const p = pointToCell(node.position.x, node.position.y, f, g, rows());
+        const s = sizeToSpan(node.size.width, node.size.height, f, g, rows());
+        return {
+          id,
+          x: Math.max(0, p.x),
+          y: Math.max(0, p.y),
+          w: spanMeta || s.w,
+          h: rowsMeta || s.h,
+          locked,
+        };
+      }
+      return { id, x: 0, y: 0, w: spanMeta || 1, h: rowsMeta || 1, locked, autoPosition: true };
+    }
+    const grp = diagram.getGroup(id);
+    const cell = grp
+      ? cellFromGridItem(grp.getMetadata?.('gridItem') as GridItemConfig | undefined)
+      : null;
+    // Member groups are LOCKED slabs (see the module doc).
+    if (cell) return { id, ...cell, locked: true };
+    return { id, x: 0, y: 0, w: columns, h: 1, locked: true, autoPosition: true };
+  };
+
+  /** Persist adopted cells so save/undo round-trips them. */
+  const persistAdoptedCell = (id: string, item: GridPackItem): void => {
+    const cell = { x: item.x, y: item.y, w: item.w, h: item.h };
+    const node = diagram.getNode(id);
+    if (node) {
+      if (!cellFromGridItem(node.getGridItem?.())) node.setGridItem(gridItemFromCell(cell));
+      return;
+    }
+    const grp = diagram.getGroup(id);
+    if (grp && !cellFromGridItem(grp.getMetadata?.('gridItem') as GridItemConfig | undefined)) {
+      grp.setMetadata('gridItem', gridItemFromCell(cell));
+    }
+  };
+
+  // -- projection: cells -> pixels -------------------------------------------
+
+  /** Write one member's projected rect (derived state → system write). */
+  const writeRect = (id: string, r: WorldRect): void => {
+    const node = diagram.getNode(id);
+    if (node) {
+      if (
+        Math.abs(node.position.x - r.x) > 0.25 ||
+        Math.abs(node.position.y - r.y) > 0.25 ||
+        Math.abs(node.size.width - r.width) > 0.25 ||
+        Math.abs(node.size.height - r.height) > 0.25
+      ) {
+        diagram.runSystemWrite(() => {
+          node.setPosition(r.x, r.y);
+          node.setSize(r.width, r.height, node.size.depth ?? 0);
+        });
+      }
+      return;
+    }
+    const grp = diagram.getGroup(id);
+    if (grp) {
+      const p = grp.position;
+      const s = sizeOf(grp);
+      if (
+        Math.abs(p.x - r.x) > 0.25 ||
+        Math.abs(p.y - r.y) > 0.25 ||
+        Math.abs(s.width - r.width) > 0.25 ||
+        Math.abs(s.height - r.height) > 0.25
+      ) {
+        diagram.runSystemWrite(() => grp.setFrame({ ...r }));
+      }
+    }
+  };
+
+  /** Enforce the board-frame height the sizing mode implies. */
+  const enforceBoardHeight = (): void => {
+    if (designH <= 0) return;
+    const r = rows();
+    const target =
+      sizing === 'fit'
+        ? designH
+        : Math.max(designH, 2 * padding + r * baseRowHeight + (r - 1) * gap);
+    const f = frame();
+    if (Math.abs(f.height - target) > 0.5) {
+      writing = true;
+      try {
+        diagram.runSystemWrite(() =>
+          group.setFrame({ x: f.x, y: f.y, width: f.width, height: target })
+        );
+      } finally {
+        writing = false;
+      }
+    }
+  };
+
+  /** Project every member from its engine cells (the ghost is exempt). */
+  const project = (): void => {
+    enforceBoardHeight();
+    writing = true;
+    try {
+      const f = frame();
+      const g = geom();
+      const r = rows();
+      for (const item of engine.getItems()) {
+        if (gesture?.started && item.id === gesture.id) continue; // the ghost
+        writeRect(item.id, cellToRect(item, f, g, r));
+      }
+    } finally {
+      writing = false;
+    }
+    syncPlaceholder();
+  };
+
+  // -- placeholder / ghost chrome --------------------------------------------
+
+  /** The placeholder exists ONLY while a gesture is live — so at any moment
+   *  the DOM holds at most one `.axdb-ph` per active gesture, not one idle
+   *  div per bound board. */
+  const syncPlaceholder = (): void => {
+    const live = gesture?.started && !gesture.removedFromBoard;
+    const item = live ? engine.getItem(gesture!.id) : undefined;
+    if (!live || !item) {
+      placeholder?.remove();
+      placeholder = null;
+      return;
+    }
+    const layer = htmlLayer();
+    if (!layer) return;
+    if (!placeholder || placeholder.parentElement !== layer) {
+      placeholder?.remove();
+      placeholder = document.createElement('div');
+      placeholder.className = 'axdb-ph';
+      layer.prepend(placeholder);
+    }
+    const r = cellToRect(item, frame(), geom(), rows());
+    placeholder.style.display = 'block';
+    placeholder.style.left = `${r.x}px`;
+    placeholder.style.top = `${r.y}px`;
+    placeholder.style.width = `${r.width}px`;
+    placeholder.style.height = `${r.height}px`;
+  };
+
+  const armGlide = (): void => {
+    htmlLayer()?.classList.add('axdb-glide');
+    if (glideTimer) clearTimeout(glideTimer);
+  };
+
+  const disarmGlideSoon = (): void => {
+    if (glideTimer) clearTimeout(glideTimer);
+    glideTimer = setTimeout(() => htmlLayer()?.classList.remove('axdb-glide'), GLIDE_OFF_DELAY);
+  };
+
+  const setGhost = (id: string, on: boolean): void => {
+    const host = hostOf(id);
+    if (!host) return;
+    if (on) {
+      if (ghostTimer) clearTimeout(ghostTimer);
+      host.classList.add('axdb-ghost');
+      host.classList.remove('axdb-out');
+    } else {
+      host.classList.remove('axdb-out');
+      // Keep transition-exemption through the drop write so the snap into the
+      // placeholder is INSTANT (gridstack-style), then let glides resume.
+      if (ghostTimer) clearTimeout(ghostTimer);
+      ghostTimer = setTimeout(() => host.classList.remove('axdb-ghost'), 60);
+    }
+  };
+
+  // -- resize handles ---------------------------------------------------------
+
+  const syncHandles = (): void => {
+    if (!wantHandles || disposed) return;
+    for (const id of group.members ?? []) {
+      const node = diagram.getNode(id);
+      if (!node) continue;
+      const host = hostOf(id);
+      if (!host) continue;
+      const existing = host.querySelector(':scope > .axdb-rs');
+      if (node.state?.locked === true) {
+        existing?.remove();
+        continue;
+      }
+      if (!existing) {
+        const rs = document.createElement('div');
+        rs.className = 'axdb-rs';
+        rs.setAttribute('title', 'Resize');
+        host.appendChild(rs);
+      }
+    }
+  };
+
+  const hostObserver = new MutationObserver(() => syncHandles());
+
+  // -- gesture snapshot / commit ---------------------------------------------
+
+  const snapshotAll = (): { cells: Map<string, CellRect>; geoms: Map<string, GeomSnapshot> } => {
+    const cells = new Map<string, CellRect>();
+    const geoms = new Map<string, GeomSnapshot>();
+    for (const item of engine.getItems()) {
+      cells.set(item.id, { x: item.x, y: item.y, w: item.w, h: item.h });
+      const e = memberEntity(item.id);
+      if (e) {
+        const es = sizeOf(e);
+        geoms.set(item.id, {
+          pos: { x: e.position.x, y: e.position.y },
+          size: { width: es.width, height: es.height, depth: es.depth },
+        });
+      }
+    }
+    return { cells, geoms };
+  };
+
+  const deltasSince = (
+    startCells: Map<string, CellRect>,
+    startGeom: Map<string, GeomSnapshot>,
+    excludeId?: string
+  ): TileDelta[] => {
+    const out: TileDelta[] = [];
+    for (const item of engine.getItems()) {
+      if (item.id === excludeId) continue;
+      const before = startCells.get(item.id);
+      const geomBefore = startGeom.get(item.id);
+      const e = memberEntity(item.id);
+      if (!before || !geomBefore || !e) continue; // items added mid-gesture commit separately
+      out.push({
+        id: item.id,
+        locked: !!item.locked,
+        isGroup: isGroupMember(item.id),
+        cellBefore: before,
+        cellAfter: { x: item.x, y: item.y, w: item.w, h: item.h },
+        posBefore: geomBefore.pos,
+        posAfter: { x: e.position.x, y: e.position.y },
+        sizeBefore: geomBefore.size,
+        sizeAfter: (({ width, height, depth }) => ({ width, height, depth }))(sizeOf(e)),
+      });
+    }
+    return out;
+  };
+
+  const execute = (name: string, commands: Command[]): boolean => {
+    if (commands.length === 0) return false;
+    void api.getEngine().commandManager.execute(new BatchCommand(name, commands));
+    return true;
+  };
+
+  // -- membership + bounds sync ----------------------------------------------
+
+  const onMemberAdded = (id: string): void => {
+    if (disposed) return;
+    if (!engine.getItem(id)) {
+      const item = itemFor(id);
+      const placed = engine.add(item);
+      persistAdoptedCell(id, placed);
+    }
+    project();
+    syncHandles();
+    api.render();
+  };
+
+  const onMemberRemoved = (id: string): void => {
+    if (disposed) return;
+    if (gesture && gesture.id === id) cancelActiveGesture(false);
+    if (!engine.getItem(id)) return;
+    engine.remove(id);
+    project();
+    api.render();
+  };
+
+  const onBoundsChanged = (): void => {
+    if (disposed || writing) return;
+    project();
+    api.render();
+  };
+
+  // -- board hit-testing ------------------------------------------------------
+
+  const boardVisualHeight = (): number => {
+    const f = frame();
+    const g = geom();
+    return Math.max(f.height, 2 * padding + rows() * (rowHeightFor(g, rows()) + gap) - gap);
+  };
+
+  const worldInsideBoard = (x: number, y: number): boolean => {
+    const f = frame();
+    return x >= f.x && x <= f.x + f.width && y >= f.y && y <= f.y + boardVisualHeight();
+  };
+
+  const insideMemberGroupFrame = (x: number, y: number): boolean => {
+    for (const id of group.members ?? []) {
+      const grp = diagram.getGroup(id);
+      if (!grp) continue;
+      const p = grp.position;
+      const s = sizeOf(grp);
+      if (x >= p.x && x <= p.x + s.width && y >= p.y && y <= p.y + s.height) return true;
+    }
+    return false;
+  };
+
+  const capturePointer = (pointerId: number | null): void => {
+    if (pointerId === null) return;
+    try {
+      api.container.setPointerCapture?.(pointerId);
+    } catch {
+      /* capture is best-effort */
+    }
+  };
+
+  const releasePointer = (pointerId: number | null): void => {
+    if (pointerId === null) return;
+    try {
+      api.container.releasePointerCapture?.(pointerId);
+    } catch {
+      /* nothing to release */
+    }
+  };
+
+  // -- the gesture machine ----------------------------------------------------
+
+  const beginGestureVisuals = (g: GestureState): void => {
+    engine.beginGesture();
+    const snap = snapshotAll();
+    g.startCells = snap.cells;
+    g.startGeom = snap.geoms;
+    g.started = true;
+    armGlide();
+    if (g.kind !== 'palette') {
+      setGhost(g.id, true);
+      capturePointer(g.pointerId);
+      api.container.style.cursor = g.kind === 'resize' ? 'nwse-resize' : 'grabbing';
+    }
+    syncPlaceholder();
+  };
+
+  const cleanupGestureVisuals = (g: GestureState): void => {
+    if (g.kind !== 'palette') setGhost(g.id, false);
+    disarmGlideSoon();
+    releasePointer(g.pointerId);
+    api.container.style.cursor = '';
+    g.chip?.remove();
+    placeholder?.remove();
+    placeholder = null;
+  };
+
+  const commitGesture = (g: GestureState): void => {
+    // Snap the ghost into its engine cell — the instant, truthful drop.
+    const item = engine.getItem(g.id);
+    if (item) {
+      writing = true;
+      try {
+        writeRect(g.id, cellToRect(item, frame(), geom(), rows()));
+      } finally {
+        writing = false;
+      }
+    }
+    const deltas = deltasSince(g.startCells, g.startGeom);
+    const changed = execute(
+      g.kind === 'resize' ? 'Resize widget' : 'Move widget',
+      buildCommitCommands(deltas)
+    );
+    engine.endGesture();
+    cleanupGestureVisuals(g);
+    gesture = null;
+    enforceBoardHeight();
+    api.renderNow();
+    options.onGesture?.({ type: 'commit', kind: g.kind, nodeId: g.id, changed });
+  };
+
+  const cancelActiveGesture = (notify = true): void => {
+    const g = gesture;
+    if (!g) return;
+    gesture = null;
+    if (g.started) {
+      if (g.removedFromBoard || g.kind === 'palette') {
+        // The engine cannot resurrect a removed item — rebuild from the
+        // gesture-start snapshot (cells are pure data; the constructor
+        // honours legal layouts verbatim).
+        engine.endGesture();
+        const items: GridPackItem[] = [];
+        for (const [id, c] of g.startCells) {
+          const lockedNode = diagram.getNode(id)?.state?.locked === true;
+          items.push({ id, ...c, locked: lockedNode || isGroupMember(id) });
+        }
+        engine = new GridPackEngine(items, { columns, float });
+      } else {
+        engine.cancelGesture();
+      }
+      // Restore every pixel to its gesture-start state.
+      writing = true;
+      try {
+        for (const [id, snap] of g.startGeom) {
+          const e = memberEntity(id);
+          if (!e) continue;
+          const node = diagram.getNode(id);
+          diagram.runSystemWrite(() => {
+            if (node) {
+              node.setPosition(snap.pos.x, snap.pos.y);
+              node.setSize(snap.size.width, snap.size.height, snap.size.depth ?? 0);
+            } else {
+              (e as GroupModel).setFrame({
+                x: snap.pos.x,
+                y: snap.pos.y,
+                width: snap.size.width,
+                height: snap.size.height,
+              });
+            }
+          });
+        }
+      } finally {
+        writing = false;
+      }
+    } else {
+      engine.endGesture();
+    }
+    cleanupGestureVisuals(g);
+    enforceBoardHeight();
+    api.renderNow();
+    if (notify) {
+      options.onGesture?.({ type: 'cancel', kind: g.kind, nodeId: g.id, changed: false });
+    }
+  };
+
+  /** Centre a w×h-span tile's top-left under the cursor, in world px. */
+  const centredTopLeft = (
+    worldX: number,
+    worldY: number,
+    spans: { w: number; h: number }
+  ): { x: number; y: number } => {
+    const f = frame();
+    const g = geom();
+    const cu = columnUnitFor(g, f.width);
+    const rh = rowHeightFor(g, rows());
+    return {
+      x: worldX - (spans.w * (cu + gap) - gap) / 2,
+      y: worldY - (spans.h * (rh + gap) - gap) / 2,
+    };
+  };
+
+  const onToolMove = (ev: ToolPointerEvent): void => {
+    const g = gesture;
+    if (!g || g.kind === 'palette') return;
+    if (!g.started) {
+      const dx = ev.screen.x - g.downClient.x;
+      const dy = ev.screen.y - g.downClient.y;
+      if (Math.abs(dx) + Math.abs(dy) < DRAG_THRESHOLD) return;
+      beginGestureVisuals(g);
+    }
+
+    if (g.kind === 'move') {
+      const desired = { x: ev.world.x - g.grab.dx, y: ev.world.y - g.grab.dy };
+      g.node.setPosition(desired.x, desired.y);
+
+      const inside = worldInsideBoard(ev.world.x, ev.world.y);
+      if (!inside && dragOut === 'remove') {
+        if (!g.removedFromBoard) {
+          g.removedFromBoard = true;
+          engine.remove(g.id); // survivors settle home (gesture memory intact)
+          hostOf(g.id)?.classList.add('axdb-out');
+          project();
+        }
+      } else if (g.removedFromBoard) {
+        g.removedFromBoard = false;
+        hostOf(g.id)?.classList.remove('axdb-out');
+        const cell = pointToCell(desired.x, desired.y, frame(), geom(), rows());
+        // Re-enter at the bottom edge (collision-free), then take the cursor
+        // cell GATELESSLY — a first placement skips the anti-jitter gate.
+        engine.add({ id: g.id, x: 0, y: engine.rows(), w: g.spans.w, h: g.spans.h });
+        engine.moveCheck(g.id, cell.x, cell.y, { gate: false });
+        project();
+      } else {
+        const cell = pointToCell(desired.x, desired.y, frame(), geom(), rows());
+        if (engine.moveCheck(g.id, cell.x, cell.y).changed) project();
+      }
+      syncPlaceholder();
+      return;
+    }
+
+    // resize: fluid pixel preview on the ghost, cell-stepped live push.
+    const dw = ev.world.x - g.downWorld.x;
+    const dh = ev.world.y - g.downWorld.y;
+    const f = frame();
+    const gg = geom();
+    const minW = Math.max(8, columnUnitFor(gg, f.width));
+    const minH = Math.max(8, rowHeightFor(gg, rows()));
+    const w = Math.max(minW, g.startSize.width + dw);
+    const h = Math.max(minH, g.startSize.height + dh);
+    g.node.setSize(w, h, g.node.size.depth ?? 0);
+    const span = sizeToSpan(w, h, f, gg, rows());
+    if (engine.resizeCheck(g.id, span.w, span.h).changed) project();
+    syncPlaceholder();
+  };
+
+  const onToolUp = (): void => {
+    const g = gesture;
+    if (!g || g.kind === 'palette') return;
+    if (!g.started) {
+      gesture = null; // a plain click — the page's own click-to-focus handles it
+      return;
+    }
+    if (g.removedFromBoard && dragOut === 'remove') {
+      // Release OUTSIDE the board → remove via the page's atomic command path.
+      const displaced = buildCommitCommands(deltasSince(g.startCells, g.startGeom, g.id));
+      const snap = g.startGeom.get(g.id);
+      if (snap) {
+        // Park the node on its start rect so the page's RemoveNodeCommand
+        // captures sane geometry for undo.
+        g.node.setPosition(snap.pos.x, snap.pos.y);
+        g.node.setSize(snap.size.width, snap.size.height, snap.size.depth ?? 0);
+      }
+      engine.endGesture();
+      cleanupGestureVisuals(g);
+      gesture = null;
+      enforceBoardHeight();
+      api.renderNow();
+      void options.onRemoveRequest?.(g.id, displaced);
+      options.onGesture?.({ type: 'remove', kind: g.kind, nodeId: g.id, changed: true });
+      return;
+    }
+    commitGesture(g);
+  };
+
+  const tool: CanvasTool = {
+    id: `dashboard-grid:${group.id}:${++binderSeq}`,
+    priority: 2, // point-specific claim — outranks mode-style tools (see ext/tools.ts)
+    hitTest(ev, hit) {
+      if (disposed) return false;
+      if (gesture) return true; // own the rest of an in-flight gesture
+      if (hit.node) return (group.members ?? new Set<string>()).has(hit.node.id);
+      // Claim (and deaden) empty presses inside a member group's frame so the
+      // built-in group-drag cannot fight the pack layout for the KPI slab.
+      return insideMemberGroupFrame(ev.world.x, ev.world.y);
+    },
+    onPointerDown(ev, hit) {
+      if (gesture || !hit.node) return; // dead zone (slab area), or mid-palette
+      const node = diagram.getNode(hit.node.id);
+      if (!node || node.state?.locked === true) return; // pinned: refuse; click still focuses
+      const target = (ev.source?.target ?? null) as Element | null;
+      const isResize = !!target?.closest?.('.axdb-rs');
+      const it = engine.getItem(node.id);
+      gesture = {
+        kind: isResize ? 'resize' : 'move',
+        id: node.id,
+        node,
+        pointerId:
+          typeof PointerEvent !== 'undefined' && ev.source instanceof PointerEvent
+            ? ev.source.pointerId
+            : null,
+        started: false,
+        downClient: { x: ev.screen.x, y: ev.screen.y },
+        downWorld: { x: ev.world.x, y: ev.world.y },
+        grab: { dx: ev.world.x - node.position.x, dy: ev.world.y - node.position.y },
+        startCells: new Map(),
+        startGeom: new Map(),
+        startSize: { width: node.size.width, height: node.size.height },
+        spans: { w: it?.w ?? 1, h: it?.h ?? 1 },
+        removedFromBoard: false,
+        chip: null,
+      };
+    },
+    onPointerMove(ev) {
+      onToolMove(ev);
+    },
+    onPointerUp() {
+      onToolUp();
+    },
+    onCancel() {
+      cancelActiveGesture();
+    },
+  };
+
+  const unregisterTool = registerTool(tool);
+
+  // -- palette drag-in --------------------------------------------------------
+
+  const beginPaletteDrag = (
+    node: NodeModel,
+    spec: { w: number; h: number; chip?: HTMLElement },
+    event: PointerEvent
+  ): void => {
+    if (disposed || gesture) return;
+    const chip = spec.chip ?? null;
+    if (chip) {
+      chip.classList.add('axdb-drag-chip');
+      document.body.appendChild(chip);
+      chip.style.left = `${event.clientX + 6}px`;
+      chip.style.top = `${event.clientY + 6}px`;
+    }
+    const g: GestureState = {
+      kind: 'palette',
+      id: node.id,
+      node,
+      pointerId: event.pointerId ?? null,
+      started: false,
+      downClient: { x: event.clientX, y: event.clientY },
+      downWorld: { x: 0, y: 0 },
+      grab: { dx: 0, dy: 0 },
+      startCells: new Map(),
+      startGeom: new Map(),
+      startSize: { width: 0, height: 0 },
+      spans: { w: Math.max(1, spec.w), h: Math.max(1, spec.h) },
+      removedFromBoard: true,
+      chip,
+    };
+    gesture = g;
+
+    const toWorld = (cx: number, cy: number): { x: number; y: number } => {
+      const rect = api.container.getBoundingClientRect();
+      return api.viewport?.clientToWorld
+        ? api.viewport.clientToWorld(cx, cy, rect)
+        : { x: cx - rect.left, y: cy - rect.top };
+    };
+
+    const detach = (): void => {
+      window.removeEventListener('pointermove', onMove, true);
+      window.removeEventListener('pointerup', onUp, true);
+      window.removeEventListener('keydown', onKey, true);
+    };
+
+    const onMove = (e: PointerEvent): void => {
+      if (gesture !== g) return detach();
+      if (!g.started) {
+        if (
+          Math.abs(e.clientX - g.downClient.x) + Math.abs(e.clientY - g.downClient.y) <
+          DRAG_THRESHOLD
+        ) {
+          return;
+        }
+        beginGestureVisuals(g);
+      }
+      if (chip) {
+        chip.style.left = `${e.clientX + 6}px`;
+        chip.style.top = `${e.clientY + 6}px`;
+      }
+      const world = toWorld(e.clientX, e.clientY);
+      const inside = worldInsideBoard(world.x, world.y);
+      if (inside) {
+        const tl = centredTopLeft(world.x, world.y, g.spans);
+        const cell = pointToCell(tl.x, tl.y, frame(), geom(), rows());
+        if (g.removedFromBoard) {
+          g.removedFromBoard = false;
+          // Enter at the bottom edge (collision-free), then take the cursor
+          // cell GATELESSLY — gridstack's drag-in skips the gate on entry.
+          engine.add({ id: g.id, x: 0, y: engine.rows(), w: g.spans.w, h: g.spans.h });
+          engine.moveCheck(g.id, cell.x, cell.y, { gate: false });
+          project();
+        } else if (engine.moveCheck(g.id, cell.x, cell.y).changed) {
+          project();
+        }
+      } else if (!g.removedFromBoard) {
+        g.removedFromBoard = true;
+        engine.remove(g.id); // displaced tiles come home (gesture memory)
+        project();
+      }
+      syncPlaceholder();
+      api.render();
+    };
+
+    const finish = (commit: boolean): void => {
+      detach();
+      if (gesture !== g) return;
+      if (!g.started) {
+        // Never crossed the threshold: a plain palette CLICK — the page's
+        // click-to-add handler owns it.
+        gesture = null;
+        chip?.remove();
+        return;
+      }
+      if (commit && !g.removedFromBoard && engine.getItem(g.id)) {
+        const item = engine.getItem(g.id)!;
+        const cell: CellRect = { x: item.x, y: item.y, w: item.w, h: item.h };
+        node.setGridItem(gridItemFromCell(cell));
+        const displaced = buildCommitCommands(deltasSince(g.startCells, g.startGeom, g.id));
+        engine.endGesture();
+        cleanupGestureVisuals(g);
+        gesture = null;
+        void options.onDropIn?.(node, cell, displaced);
+        options.onGesture?.({ type: 'drop-in', kind: 'palette', nodeId: g.id, changed: true });
+        api.renderNow();
+        return;
+      }
+      // Abort (released outside, or Escape): restore the board.
+      cancelActiveGesture();
+    };
+
+    const onUp = (): void => finish(true);
+    const onKey = (e: KeyboardEvent): void => {
+      if (e.key === 'Escape') finish(false);
+    };
+    window.addEventListener('pointermove', onMove, true);
+    window.addEventListener('pointerup', onUp, true);
+    window.addEventListener('keydown', onKey, true);
+  };
+
+  // -- handle -----------------------------------------------------------------
+
+  const subs: Array<() => void> = [
+    group.on('member:added', ((id: string) => onMemberAdded(id)) as (...args: unknown[]) => void),
+    group.on('member:removed', ((id: string) => onMemberRemoved(id)) as (
+      ...args: unknown[]
+    ) => void),
+    group.on('bounds:changed', (() => onBoundsChanged()) as (...args: unknown[]) => void),
+  ];
+
+  /** Run one programmatic gesture through the same snapshot→op→commit pipeline. */
+  const programmatic = async (
+    name: string,
+    id: string,
+    op: () => boolean
+  ): Promise<boolean> => {
+    if (disposed || gesture || !engine.getItem(id)) return false;
+    engine.beginGesture();
+    const snap = snapshotAll();
+    if (!op()) {
+      engine.endGesture();
+      return false;
+    }
+    armGlide();
+    project();
+    writing = true;
+    try {
+      const it = engine.getItem(id);
+      if (it) writeRect(id, cellToRect(it, frame(), geom(), rows()));
+    } finally {
+      writing = false;
+    }
+    const commands = buildCommitCommands(deltasSince(snap.cells, snap.geoms));
+    engine.endGesture();
+    disarmGlideSoon();
+    enforceBoardHeight();
+    if (commands.length > 0) {
+      await api.getEngine().commandManager.execute(new BatchCommand(name, commands));
+    }
+    api.renderNow();
+    return true;
+  };
+
+  const handle: DashboardGridHandle = {
+    sync(): void {
+      if (disposed) return;
+      if (gesture) cancelActiveGesture(false);
+      const items: GridPackItem[] = [];
+      for (const id of group.members ?? []) {
+        if (!memberEntity(id)) continue;
+        items.push(itemFor(id));
+      }
+      engine = new GridPackEngine(items, { columns, float });
+      for (const item of engine.getItems()) persistAdoptedCell(item.id, item);
+      project();
+      syncHandles();
+      api.renderNow();
+    },
+    setSizing(mode): void {
+      if (mode === sizing) return;
+      sizing = mode;
+      project();
+      api.renderNow();
+    },
+    getSizing: () => sizing,
+    metrics() {
+      const f = frame();
+      const g = geom();
+      const r = rows();
+      return {
+        columns,
+        gap,
+        padding,
+        sizing,
+        rows: r,
+        rowHeight: rowHeightFor(g, r),
+        columnUnit: columnUnitFor(g, f.width),
+        boardHeight: f.height,
+        frame: f,
+      };
+    },
+    cellOf(id) {
+      const it = engine.getItem(id);
+      return it ? { x: it.x, y: it.y, w: it.w, h: it.h } : undefined;
+    },
+    cellRectOf(id) {
+      const it = engine.getItem(id);
+      return it ? cellToRect(it, frame(), geom(), rows()) : undefined;
+    },
+    planRemoval(id) {
+      const it = engine.getItem(id);
+      if (!it) return [];
+      const clone = new GridPackEngine(
+        engine.getItems().map((i) => ({ ...i })),
+        { columns, float }
+      );
+      clone.remove(id);
+      const f = frame();
+      const g = geom();
+      const rAfter = Math.max(1, clone.rows());
+      const deltas: TileDelta[] = [];
+      for (const item of clone.getItems()) {
+        const before = engine.getItem(item.id);
+        const e = memberEntity(item.id);
+        if (!before || !e) continue;
+        const target = cellToRect(item, f, g, rAfter);
+        deltas.push({
+          id: item.id,
+          locked: !!item.locked,
+          isGroup: isGroupMember(item.id),
+          cellBefore: { x: before.x, y: before.y, w: before.w, h: before.h },
+          cellAfter: { x: item.x, y: item.y, w: item.w, h: item.h },
+          posBefore: { x: e.position.x, y: e.position.y },
+          posAfter: { x: target.x, y: target.y },
+          sizeBefore: (({ width, height, depth }) => ({ width, height, depth }))(sizeOf(e)),
+          sizeAfter: { width: target.width, height: target.height },
+        });
+      }
+      return buildCommitCommands(deltas);
+    },
+    moveTo(id, x, y) {
+      return programmatic('Move widget', id, () => engine.moveCheck(id, x, y).changed);
+    },
+    resizeTo(id, w, h) {
+      return programmatic('Resize widget', id, () => engine.resizeCheck(id, w, h).changed);
+    },
+    beginPaletteDrag,
+    dispose(): void {
+      if (disposed) return;
+      cancelActiveGesture(false);
+      disposed = true;
+      unregisterTool();
+      hostObserver.disconnect();
+      for (const off of subs) off();
+      placeholder?.remove();
+      placeholder = null;
+      if (glideTimer) clearTimeout(glideTimer);
+      if (ghostTimer) clearTimeout(ghostTimer);
+      htmlLayer()?.classList.remove('axdb-glide');
+      api.container.style.cursor = '';
+    },
+  };
+
+  // Boot: adopt the current members, observe host churn for handle re-injection.
+  handle.sync();
+  const layer = htmlLayer();
+  if (layer) hostObserver.observe(layer, { childList: true, subtree: true });
+
+  return handle;
+}
