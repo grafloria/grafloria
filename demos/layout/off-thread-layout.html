@@ -131,9 +131,12 @@ defineDemo({
     //    multi-thousand-iteration force sim ran. An inline layout would have starved it.
     check(mainThreadTicks >= 3, `main thread only ticked ${mainThreadTicks}× — it was blocked by the layout`);
 
-    // Leave the camera on the final (partial-cancel) picture — the cancelled run
-    // moved nodes after the last fit, and an unframed force cloud clips at the
-    // viewport bottom.
+    // End on a DETERMINISTIC frame: the cancelled run's picture depends on which
+    // iteration the cancel happened to land on (timing-based, machine-dependent),
+    // so a golden of it can never bless stably. Run one short COMPLETED layout
+    // with a fixed seed — the cancel proof is the checks above, not the picture.
+    const settle = await ctx.engine.layout('force', { seed: 0x5eed, iterations: 300, threshold: 0, sliceMs: 4 });
+    check(settle.partial === false, 'the deterministic settle run should complete');
     ctx.instance.renderNow();
     ctx.instance.fitView(30);
   },
