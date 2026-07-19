@@ -186,7 +186,14 @@
   #legend .yes   { border-top: 2.5px solid #16a34a; }
   #legend .no    { border-top: 2.5px solid #dc2626; }
 
+  /* The AI port labels (Model / Memory / Tool) sit exactly where their dashed
+     wires dive into the agent's bottom ports — a canvas-coloured text HALO
+     keeps the wire from striking through the glyphs, in both schemes. */
+  #canvas text.ai-port-label { fill: #4b5162; paint-order: stroke; stroke: #f4f5f8;
+    stroke-width: 5px; stroke-linejoin: round; }
+
   @media (prefers-color-scheme: dark) {
+    #canvas text.ai-port-label { fill: #b9becd; stroke: #16171d; }
     #palette { background: #191a22; border-right-color: rgba(255,255,255,.08); }
     .pal-item { background: #23242f; border-color: #33353f; color: #e7e9f0; }
     .pal-item:hover { background: #2b2c39; border-color: #45485a; }
@@ -310,10 +317,15 @@ const PORT = { shape: 'circle', size: 10 };
 const inPort  = (id) => ({ id: id + '_in',  side: 'left',  type: 'input',  shape: PORT });
 const outPort = (id) => ({ id: id + '_out', side: 'right', type: 'output', shape: PORT });
 // A port pinned to an exact node-local pixel (the FK→PK / bottom-AI pattern).
+// Labelled ports opt OUT of collision nudging: the nudger resolves along the
+// vertical axis only, so three same-y bottom labels get scattered up/down —
+// one onto the card, one onto its own wire. `noNudge` keeps the row uniform,
+// and the `ai-port-label` class paints the canvas-halo that keeps the dashed
+// wire from striking through the text (see the CSS above).
 const absPort = (id, side, x, y, type, label) => ({
   id, side, type, shape: PORT,
   layout: { strategy: 'absolute', args: { units: 'px', x, y } },
-  ...(label ? { label: { text: label, layout: 'outside' } } : {}),
+  ...(label ? { label: { text: label, layout: 'outside', offset: 8, fontSize: 11, fontWeight: 600, noNudge: true, className: 'ai-port-label' } } : {}),
 });
 
 // ---- the two line families + the branch colours --------------------------
@@ -595,12 +607,41 @@ defineDemo({
       : l.sourcePortId === 'if_false' ? { stroke: NO, strokeWidth: 2, arrowHead: { type: 'arrow', size: 8, filled: true } }
       : !isMain(l) ? aiStyle() : mainStyle();
     const baseLabel = (l) => l.sourcePortId === 'if_true' ? 'true' : l.sourcePortId === 'if_false' ? 'false' : '';
+    // n8n's wire pill — an OPAQUE rounded chip sitting ON the wire, so the
+    // line passes BEHIND it and can never strike through (or kiss the edge of)
+    // the text. The legacy string label (`setLabel`) hangs bare-offset text
+    // whose chip bottom exactly touches the path — that near-miss is the
+    // label-legibility bug this replaces. Chip colours follow the page scheme.
+    const DARK_MQ = window.matchMedia('(prefers-color-scheme: dark)');
+    const pillStyle = () => DARK_MQ.matches
+      ? { fontSize: 11, fontWeight: '600', color: '#e7e9f0', background: '#262733', border: '#3a3c49', padding: 5, borderRadius: 9 }
+      : { fontSize: 11, fontWeight: '600', color: '#3c4254', background: '#ffffff', border: '#d6dae4', padding: 5, borderRadius: 9 };
+    const PILL = 'wire-pill';
+    const setWirePill = (l, text) => {
+      const i = l.labels.findIndex((x) => x.id === PILL);
+      if (!text) { if (i !== -1) l.removeLabel(PILL); return; }
+      if (i !== -1) l.updateLabel(i, { text, style: pillStyle() });
+      else l.addLabel({ id: PILL, text, position: 0.5, offset: { x: 0, y: 0 }, style: pillStyle() });
+    };
+    ctx.setWirePill = setWirePill;
     // n8n's item-count pill on a wire that carried data ("4 items").
     const setPill = (l, n) => {
       const b = baseLabel(l);
-      l.setLabel(n > 0 ? (b ? b + ' · ' : '') + n + (n === 1 ? ' item' : ' items') : b);
+      setWirePill(l, n > 0 ? (b ? b + ' · ' : '') + n + (n === 1 ? ' item' : ' items') : b);
     };
-    const clearPill = (l) => l.setLabel(baseLabel(l));
+    const clearPill = (l) => setWirePill(l, baseLabel(l));
+    // Boot: the If branches' spec labels become pills too — ONE pill look on
+    // every wire label (a positioned label also supersedes the legacy render).
+    for (const l of model.getLinks()) clearPill(l);
+    api.renderNow();
+    // A live scheme flip must repaint the chips (they are model styles, not CSS).
+    DARK_MQ.addEventListener?.('change', () => {
+      for (const l of model.getLinks()) {
+        const i = l.labels.findIndex((x) => x.id === PILL);
+        if (i !== -1) l.updateLabel(i, { style: pillStyle() });
+      }
+      api.renderNow();
+    });
     const pillsFrom = (id) => {
       const d = RS.data.get(id);
       if (!d) return;
@@ -1431,6 +1472,23 @@ defineDemo({
     for (const [lid, txt] of pills) {
       check(linkText(lid).includes(txt), `wire ${lid} must show its item-count pill "${txt}", DOM text was "${linkText(lid)}"`);
     }
+    // LABEL LEGIBILITY — every pill is an n8n-style OPAQUE chip: a solid
+    // background rect sits under the text, so the wire passes BEHIND the pill
+    // instead of striking through (or kissing the edge of) the glyphs.
+    const pillChip = (lid) => {
+      const bg = host.querySelector(`[data-link-id="${lid}"] .link-label-bg`);
+      if (!bg) return false;
+      const f = getComputedStyle(bg).fill;
+      return f !== 'none' && !/rgba\(.*,\s*0\)$/.test(f);
+    };
+    for (const [lid] of pills) check(pillChip(lid), `wire ${lid}'s pill must be an opaque chip (solid background rect)`);
+    // …and the AI port labels (Model/Memory/Tool) carry the canvas-coloured
+    // text halo that keeps their dashed wires from striking through.
+    const halo = host.querySelector('text.ai-port-label');
+    check(!!halo, 'the AI port labels must carry the ai-port-label halo class');
+    const hs = halo && getComputedStyle(halo);
+    check(!!hs && hs.paintOrder.includes('stroke') && hs.stroke !== 'none' && parseFloat(hs.strokeWidth) >= 3,
+      `the AI port labels must paint a text halo (paint-order:stroke over the canvas colour), got paint-order="${hs && hs.paintOrder}" stroke="${hs && hs.stroke}" stroke-width=${hs && hs.strokeWidth}`);
     const takenEdge = tail6 === 'excel' ? 'if_true_excel' : 'if_false_wait';
     const untakenEdge = tail6 === 'excel' ? 'if_false_wait' : 'if_true_excel';
     check(linkText(takenEdge).includes('1 item'), `the taken If branch must show its pill, got "${linkText(takenEdge)}"`);
@@ -1621,12 +1679,23 @@ defineDemo({
       return true;
     };
     check(pillsConsistent(), 'baseline: every traversed wire pill must match the items that flowed');
-    model.getLink('e_merge_store').setLabel('99 items');
+    ctx.setWirePill(model.getLink('e_merge_store'), '99 items');
     api.renderNow(); await ctx.tick();
     check(!pillsConsistent(), 'MUTATION: with the merge→store pill forged to "99 items" the pill/data consistency check must go RED — it has teeth');
     ctx.pillsFrom('merge');
     api.renderNow(); await ctx.tick();
     check(pillsConsistent(), 'restore: repainting from the run data heals the pill');
+    // 11b. MUTATION PROOF (legibility) — the opaque-chip check has teeth too:
+    // strip one pill's background and it goes red; repaint heals it.
+    const mlk = model.getLink('e_merge_store');
+    const mIdx = mlk.labels.findIndex((x) => x.id === 'wire-pill');
+    check(mIdx !== -1, 'the merge→store wire must carry its positioned pill label');
+    mlk.updateLabel(mIdx, { style: { ...mlk.labels[mIdx].style, background: 'none' } });
+    api.renderNow(); await ctx.tick();
+    check(!pillChip('e_merge_store'), 'MUTATION: with its background stripped the pill is no longer an opaque chip — the chip check has teeth');
+    ctx.pillsFrom('merge');
+    api.renderNow(); await ctx.tick();
+    check(pillChip('e_merge_store'), 'restore: repainting the pill restores its opaque chip');
 
     // 12. The palette BUILDS: clicking a chip drops a fresh, registered node.
     const n0 = model.getNodes().length;
