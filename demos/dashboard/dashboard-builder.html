@@ -75,6 +75,20 @@
   .wx-body { flex: 1; min-height: 0; position: relative; }
   .wx-body svg { display: block; width: 100%; height: 100%; }
 
+  /* ---- reflow GLIDE ------------------------------------------------------
+     Tiles glide to their new slot instead of teleporting (gridstack-style).
+     The transition lives behind a .glide class that relayoutBoard() applies
+     for ~400ms around a settle, so that:
+       - while DRAGGING there is no class → the held tile tracks the pointer 1:1;
+       - on tab switches there is no class → parked views swap instantly rather
+         than flying in from the off-canvas parking position;
+       - on drop/add/remove/resize/undo the class is present → every affected
+         tile (including the released one) animates into place. */
+  .grafloria-html-layer.glide > .grafloria-node-host {
+    transition: left .28s cubic-bezier(.2, 0, .2, 1), top .28s cubic-bezier(.2, 0, .2, 1),
+                width .28s cubic-bezier(.2, 0, .2, 1), height .28s cubic-bezier(.2, 0, .2, 1);
+  }
+
   .kpi-val { font: 700 30px/1.05 system-ui, sans-serif; color: var(--wx-ink); letter-spacing: -.02em; }
   .kpi-delta { margin-top: 6px; font: 600 12px/1.2 system-ui, sans-serif; }
   .kpi-delta span { color: var(--wx-muted); font-weight: 500; }
@@ -442,6 +456,11 @@ function makeWidgetNode(kind, span, height, spec) {
   n.setMetadata('columnSpan', span);         // -> 12-col grid width
   n.setMetadata('widgetKind', kind);
   n.setMetadata('widgetSpec', spec || {});
+  // A dashboard has no wires: connectable:false makes the engine refuse this
+  // node as connection source AND target, the renderer paint no port glyphs on
+  // hover, and the controller not hover them (live user report: hovering a
+  // tile surfaced four side-port dots).
+  n.setBehavior({ connectable: false });
   return n;
 }
 function seedWidget(diagram, group, kind, span, height, spec) {
@@ -662,9 +681,20 @@ async function settleDrop(nodeId, from) {
  *  then GROW the board if the flow spilled past its bottom edge — a dashboard
  *  canvas extends rather than clipping its own tiles (never shrinks below the
  *  design height, so the seeded views keep their exact geometry). */
+let glideTimer = null;
+/** Arm the reflow transition for one relayout burst (see the CSS block). */
+function glide() {
+  const layer = document.querySelector('.grafloria-html-layer');
+  if (!layer) return;
+  layer.classList.add('glide');
+  clearTimeout(glideTimer);
+  glideTimer = setTimeout(() => layer.classList.remove('glide'), 420);
+}
+
 function relayoutBoard() {
   const D = ctxRef.diagram, active = tabs[state.active];
   if (!active) return;
+  glide();
   for (const s of sections) if (active.members?.has(s.id)) (s.requestLayout ? s.requestLayout(D) : s.applyLayout(D));
   active.requestLayout ? active.requestLayout(D) : active.applyLayout(D);
   const members = [...(active.members || [])].map(entityOf).filter(Boolean);
@@ -723,6 +753,7 @@ function syncToolbar() {
  *  cannot be BatchCommand-ed with AddNodeCommand (see report, library gap). We
  *  run them in sequence; the node lands in the active tab and reflows in. */
 async function addWidgetCmd(kind) {
+  glide();
   const p = PALETTE_SPEC[kind];
   const target = state.active === 'pipeline' ? tabs.pipeline : tabs[state.active];
   const node = makeWidgetNode(p.kind, p.span, p.height, { ...p.spec });
@@ -739,6 +770,7 @@ async function addWidgetCmd(kind) {
 /** REMOVE: atomic — both entities exist at pre-check, so the pair batches into
  *  ONE undoable step. removeMember reflows the survivors to close the gap. */
 async function removeWidgetCmd(nodeId) {
+  glide();
   const node = ctxRef.diagram.getNode(nodeId); if (!node) return;
   const groupId = [...Object.values(tabs), ...sections].find((g) => g.members?.has(nodeId))?.id;
   const cmds = [];
@@ -752,6 +784,7 @@ async function removeWidgetCmd(nodeId) {
 }
 
 async function growWidgetCmd(nodeId) {
+  glide();
   const node = ctxRef.diagram.getNode(nodeId); if (!node) return;
   const grown = node.size.height < 300 ? node.size.height + 90 : 160;
   await cmd().execute(new ResizeNodeCommand(nodeId, { width: node.size.width, height: grown, depth: 0 }, { ...node.size }));
@@ -982,6 +1015,19 @@ defineDemo({
       const chrome = ctx.host.querySelectorAll('.group-frame, .group-frame-rect, .group-frame-band, .group-frame-label');
       check(chrome.length === 0, `layout containers painted ${chrome.length} group-chrome elements — the board must be chromeless`);
       check(D.getGroups().length >= 4, 'the chromeless board still HAS its groups (chrome off, layout on)');
+
+      // …and no PORT affordances either (live report #2: hovering a tile
+      // surfaced four side-port dots — a dashboard has no wires). The nodes
+      // carry connectable:false; the renderer must paint zero glyphs even for
+      // a hovered widget.
+      const widgets = D.getNodes().filter((n) => n.getMetadata('widgetKind'));
+      check(widgets.length > 0 && widgets.every((n) => n.behavior?.connectable === false),
+        'every widget node declares connectable:false');
+      const w0 = widgets.find((n) => n.position.x > -10000); // one on the active board
+      w0.state.hovered = true; ctx.instance.renderNow();
+      check(ctx.host.querySelectorAll('[data-port-id]').length === 0,
+        'a hovered widget paints ZERO port glyphs (paint agrees with the refused gesture)');
+      w0.state.hovered = false; ctx.instance.renderNow();
     }
 
     // ---- (11) DROP SETTLE: a released tile takes a slot (live user report) --
@@ -1041,6 +1087,11 @@ defineDemo({
     if (lineNode) setFocus(lineNode.id);
     await settle();
     check(D.getNodes().length === before, 'ended on the seeded board (deterministic golden frame)');
+    // Drain the reflow-glide window: the cleanup relayout arms a 280ms tile
+    // transition, and a screenshot taken mid-glide would make the golden a
+    // race. End PAST the animation, on the resting frame.
+    await new Promise((r) => setTimeout(r, 520));
+    ctx.instance.renderNow();
   },
 });
 </script>
