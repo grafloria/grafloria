@@ -53,9 +53,9 @@
 import {
   AddToGroupCommand,
   BatchCommand,
+  Command,
   GridPackEngine,
   RemoveFromGroupCommand,
-  type Command,
   type DiagramModel,
   type GridItemConfig,
   type GridPackItem,
@@ -218,6 +218,21 @@ interface GeomSnapshot {
  */
 interface BinderPeer {
   group: GroupModel;
+  /** True when this board's engine holds `id` as an item (member lookup). */
+  hasItem(id: string): boolean;
+  /**
+   * Grow/shrink a member's row span by `dRows` — the parent half of nested
+   * HEIGHT ESCALATION: pulling a KPI taller than its one-row strip grows the
+   * STRIP's slab in the board that contains it (live report: "i cant
+   * increase height"). Returns the cell+frame before/after when accepted.
+   */
+  resizeMemberBy(id: string, dRows: number): {
+    changed: boolean;
+    cellBefore?: CellRect;
+    cellAfter?: CellRect;
+    frameBefore?: WorldRect;
+    frameAfter?: WorldRect;
+  };
   containsWorld(x: number, y: number): boolean;
   /**
    * Containment plus ONE extra row of grace below the frame — gridstack's
@@ -251,6 +266,55 @@ interface AdoptedLeg {
 
 const BOARD_REGISTRY = new Map<HTMLElement, Set<BinderPeer>>();
 
+/**
+ * Undoable cell+frame write for a GROUP member (the strip's slab). The engine
+ * has Move/Resize commands for nodes but none for a group's frame, and slab
+ * cells live in group metadata — this closes nested height escalation into
+ * the gesture's single BatchCommand so one undo restores the strip too.
+ */
+class SetGroupCellCommand extends Command {
+  constructor(
+    private groupId: string,
+    private cellBefore: CellRect,
+    private cellAfter: CellRect,
+    private frameBefore: WorldRect,
+    private frameAfter: WorldRect
+  ) {
+    super('Resize section');
+  }
+
+  private apply(context: { diagram?: unknown }, cell: CellRect, frame: WorldRect): void {
+    const diagram = context.diagram as DiagramModel | undefined;
+    const grp = diagram?.getGroup(this.groupId);
+    if (!grp) return;
+    grp.setMetadata('gridItem', gridItemFromCell(cell));
+    grp.setFrame({ ...frame });
+  }
+
+  override execute(context: { diagram?: unknown }): void {
+    this.apply(context, this.cellAfter, this.frameAfter);
+  }
+
+  override undo(context: { diagram?: unknown }): void {
+    this.apply(context, this.cellBefore, this.frameBefore);
+  }
+
+  override serialize() {
+    return {
+      id: this.id,
+      name: this.name,
+      timestamp: this.timestamp,
+      data: {
+        groupId: this.groupId,
+        cellBefore: this.cellBefore,
+        cellAfter: this.cellAfter,
+        frameBefore: this.frameBefore,
+        frameAfter: this.frameAfter,
+      },
+    };
+  }
+}
+
 interface GestureState {
   kind: 'move' | 'resize' | 'palette';
   id: string;
@@ -270,6 +334,15 @@ interface GestureState {
   leg: { peer: BinderPeer; adopted: AdoptedLeg } | null;
   /** Last pointer position, world coords — release semantics depend on WHERE. */
   lastWorld: { x: number; y: number } | null;
+  /** Nested height escalation: net rows added to OUR group in the parent. */
+  esc: {
+    peer: BinderPeer;
+    rowsAdded: number;
+    cellBefore: CellRect;
+    frameBefore: WorldRect;
+    cellAfter: CellRect;
+    frameAfter: WorldRect;
+  } | null;
   chip: HTMLElement | null;
 }
 
@@ -732,10 +805,19 @@ export function bindDashboardGrid(
       }
     }
     const deltas = deltasSince(g.startCells, g.startGeom);
-    const changed = execute(
-      g.kind === 'resize' ? 'Resize widget' : 'Move widget',
-      buildCommitCommands(deltas)
-    );
+    const commands = buildCommitCommands(deltas);
+    if (g.esc && g.esc.rowsAdded !== 0) {
+      commands.push(
+        new SetGroupCellCommand(
+          group.id,
+          g.esc.cellBefore,
+          g.esc.cellAfter,
+          g.esc.frameBefore,
+          g.esc.frameAfter
+        )
+      );
+    }
+    const changed = execute(g.kind === 'resize' ? 'Resize widget' : 'Move widget', commands);
     engine.endGesture();
     cleanupGestureVisuals(g);
     gesture = null;
@@ -751,6 +833,10 @@ export function bindDashboardGrid(
     if (g.kind !== 'palette' && g.leg) {
       g.leg.adopted.abort(); // target board back to its pre-entry layout
       g.leg = null;
+    }
+    if (g.kind !== 'palette' && g.esc && g.esc.rowsAdded !== 0) {
+      g.esc.peer.resizeMemberBy(group.id, -g.esc.rowsAdded); // slab back down
+      g.esc = null;
     }
     if (g.started) {
       if (g.removedFromBoard || g.kind === 'palette') {
@@ -919,21 +1005,67 @@ export function bindDashboardGrid(
     const minH = Math.max(8, rowHeightFor(gg, rows()));
     let w = Math.max(minW, g.startSize.width + dw);
     let h = Math.max(minH, g.startSize.height + dh);
+    // NESTED HEIGHT ESCALATION (live report: "i cant increase height"). A
+    // bounded strip cannot grow a tile taller than itself — so pulling
+    // clearly past its bottom GROWS THE STRIP: the slab gains a row in the
+    // parent board (all tiles inside get taller together), and releasing the
+    // pull removes it again. The whole ledger commits inside this gesture's
+    // one BatchCommand; Escape reverts it.
+    if (maxRows !== undefined && g.kind === 'resize') {
+      const visual = boardVisualHeight();
+      const parent = parentPeer();
+      if (parent) {
+        const slabRows = g.esc ? g.esc.cellAfter.h : 1;
+        const rowPx = visual / Math.max(1, slabRows);
+        if (h > visual + 24) {
+          const res = parent.resizeMemberBy(group.id, +1);
+          if (res.changed && res.cellBefore && res.cellAfter && res.frameBefore && res.frameAfter) {
+            if (!g.esc) {
+              g.esc = {
+                peer: parent,
+                rowsAdded: 0,
+                cellBefore: res.cellBefore,
+                frameBefore: res.frameBefore,
+                cellAfter: res.cellAfter,
+                frameAfter: res.frameAfter,
+              };
+            }
+            g.esc.rowsAdded += 1;
+            g.esc.cellAfter = res.cellAfter;
+            g.esc.frameAfter = res.frameAfter;
+            project();
+          }
+        } else if (g.esc && g.esc.rowsAdded > 0 && h < visual - rowPx * 0.7) {
+          const res = parent.resizeMemberBy(group.id, -1);
+          if (res.changed && res.cellAfter && res.frameAfter) {
+            g.esc.rowsAdded -= 1;
+            g.esc.cellAfter = res.cellAfter;
+            g.esc.frameAfter = res.frameAfter;
+            project();
+          }
+        }
+      }
+    }
     // The fluid preview must not outrun what the board can accept: on a
     // bounded strip an unclamped ghost ballooned to 273px while the engine
     // (rightly) refused every cell — visually indistinguishable from the
     // squeeze bug it replaced. Clamp to the tile's maximum legal rect.
+    // (Escalation above may have just grown the board — re-read the frame.)
+    const fNow = frame();
+    const ggNow = geom();
     const itemNow = engine.getItem(g.id);
     if (itemNow) {
-      const cuNow = columnUnitFor(gg, f.width);
-      const rhNow = rowHeightFor(gg, rows());
+      const cuNow = columnUnitFor(ggNow, fNow.width);
+      const rhNow = rowHeightFor(ggNow, rows());
       w = Math.min(w, (columns - itemNow.x) * (cuNow + gap) - gap);
       if (maxRows !== undefined) {
         h = Math.min(h, Math.max(1, maxRows - itemNow.y) * (rhNow + gap) - gap);
       }
     }
     g.node.setSize(w, h, g.node.size.depth ?? 0);
-    const span = sizeToSpan(w, h, f, gg, rows());
+    const spanF = maxRows !== undefined ? frame() : f;
+    const spanG = maxRows !== undefined ? geom() : gg;
+    const span = sizeToSpan(w, h, spanF, spanG, rows());
     if (engine.resizeCheck(g.id, span.w, span.h).changed) project();
     syncPlaceholder();
   };
@@ -1049,6 +1181,14 @@ export function bindDashboardGrid(
     return set;
   };
 
+  /** The board whose engine holds OUR group as an item (nesting parent). */
+  const parentPeer = (): BinderPeer | null => {
+    for (const p of peersOnCanvas()) {
+      if (p !== selfPeer && p.hasItem(group.id)) return p;
+    }
+    return null;
+  };
+
   /** Deepest OTHER registered board containing the world point. */
   const peerAt = (x: number, y: number, extended = false): BinderPeer | null => {
     let best: BinderPeer | null = null;
@@ -1142,6 +1282,30 @@ export function bindDashboardGrid(
 
   const selfPeer: BinderPeer = {
     group,
+    hasItem: (id) => !!engine.getItem(id),
+    resizeMemberBy: (id, dRows) => {
+      const item = engine.getItem(id);
+      if (!item || disposed) return { changed: false };
+      const grp = diagram.getGroup(id);
+      const cellBefore: CellRect = { x: item.x, y: item.y, w: item.w, h: item.h };
+      const fb = grp
+        ? { x: grp.position.x, y: grp.position.y, width: sizeOf(grp).width, height: sizeOf(grp).height }
+        : undefined;
+      const r = engine.resizeCheck(id, item.w, item.h + dRows);
+      if (!r.changed) return { changed: false };
+      project();
+      const after = engine.getItem(id)!;
+      const fa = grp
+        ? { x: grp.position.x, y: grp.position.y, width: sizeOf(grp).width, height: sizeOf(grp).height }
+        : undefined;
+      return {
+        changed: true,
+        cellBefore,
+        cellAfter: { x: after.x, y: after.y, w: after.w, h: after.h },
+        frameBefore: fb,
+        frameAfter: fa,
+      };
+    },
     containsWorld: worldInsideBoard,
     containsWorldExtended: worldInsideBoardExtended,
     frameArea: boardArea,
@@ -1186,6 +1350,7 @@ export function bindDashboardGrid(
         removedFromBoard: false,
         leg: null,
         lastWorld: null,
+        esc: null,
         chip: null,
       };
     },
@@ -1233,6 +1398,7 @@ export function bindDashboardGrid(
       removedFromBoard: true,
       leg: null,
       lastWorld: null,
+      esc: null,
       chip,
     };
     gesture = g;

@@ -342,21 +342,9 @@ try {
   if (!rs) { verdict(false, 'no resize handle on KPI'); await page.close(); }
   else {
     await shot(page, 'before');
-    // 1) HEIGHT growth: the strip is one row BY DESIGN — the ghost preview is
-    //    clamped and the released tile keeps its height; siblings untouched.
-    await page.mouse.move(rs.x, rs.y);
-    await page.mouse.down();
-    await page.mouse.move(rs.x, rs.y + 160, { steps: 10 });
-    await page.waitForTimeout(400);
-    const trTall = await host(page, 'Total revenue');
-    const ncMid = await host(page, 'New customers');
-    await shot(page, 'height-attempt');
-    await page.mouse.up();
-    await page.waitForTimeout(500);
-    const heightClamped = (await host(page, 'Total revenue')).h <= tr.h + 6;
-    const ghostClamped = trTall.h <= tr.h + 26; // preview may not balloon either
-    const siblingsIntact = Math.abs(ncMid.h - nc0.h) < 6 && Math.abs(ncMid.y - nc0.y) < 6;
-    // 2) WIDTH growth on a FULL 4/4 strip must be REFUSED — there is nowhere
+    // (HEIGHT growth is s21's contract now: pulling past the strip GROWS the
+    //  strip — all tiles together. This scenario owns the WIDTH rules.)
+    // 1) WIDTH growth on a FULL 4/4 strip must be REFUSED — there is nowhere
     //    for a sibling to go, and refusing IS the design staying intact.
     const rs2 = await resizeHandleOf(page, 'Total revenue');
     await page.mouse.move(rs2.x, rs2.y);
@@ -394,8 +382,8 @@ try {
     const widthPushed = ncPushed.x > nc1.x + 20 && Math.abs(ncPushed.y - nc1.y) < 6; // slid RIGHT, same row
     const widthRestored = Math.abs(ncBack.x - nc1.x) < 6;
     verdict(
-      heightClamped && ghostClamped && siblingsIntact && fullRefused && widthPushed && widthRestored && st.overlaps === 0,
-      `h-clamped=${heightClamped} ghost-clamped=${ghostClamped} siblings-intact=${siblingsIntact} full-strip-refused=${fullRefused} w-pushes-right=${widthPushed} w-restores=${widthRestored} overlaps=${st.overlaps}`
+      fullRefused && widthPushed && widthRestored && st.overlaps === 0,
+      `full-strip-refused=${fullRefused} w-pushes-right=${widthPushed} w-restores=${widthRestored} overlaps=${st.overlaps}`
     );
     await page.close();
   }
@@ -738,6 +726,69 @@ try {
   const st = await boardState(page);
   verdict(r.ok && m.ok && sameRow && st.overlaps === 0,
     `shrink=${r.ok}(${r.detail}) move-into-gap=${m.ok}(${m.detail}) same-row=${sameRow} overlaps=${st.overlaps}`);
+  await page.close();
+}
+
+// ---- S21 · "i cant increase height": KPI pull grows the WHOLE strip -------
+{
+  begin('s21-kpi-height-grows-strip');
+  const page = await freshPage();
+  const tr0 = await host(page, 'Total revenue');
+  const nc0 = await host(page, 'New customers');
+  const line0 = await host(page, 'Revenue vs target');
+  await shot(page, 'before');
+  await page.mouse.click(tr0.x + tr0.w / 2, tr0.y + 10);
+  await page.waitForTimeout(250);
+  const rs = await resizeHandleOf(page, 'Total revenue');
+  if (!rs) { verdict(false, 'no KPI handle'); await page.close(); }
+  else {
+    await page.mouse.move(rs.x, rs.y);
+    await page.mouse.down();
+    await page.mouse.move(rs.x, rs.y + 130, { steps: 12 });   // pull well past the strip
+    await page.waitForTimeout(500);
+    const trMid = await host(page, 'Total revenue');
+    const ncMid = await host(page, 'New customers');
+    await shot(page, 'pulled-taller');
+    await page.mouse.up();
+    await page.waitForTimeout(700);
+    const trA = await host(page, 'Total revenue');
+    const ncA = await host(page, 'New customers');
+    await shot(page, 'committed');
+    const st = await boardState(page);
+    // The WHOLE strip grew: the dragged KPI and its siblings are both taller.
+    const grewLive = trMid.h > tr0.h + 30 && ncMid.h > nc0.h + 30;
+    const grewCommitted = trA.h > tr0.h + 30 && ncA.h > nc0.h + 30;
+    // …and ONE undo restores the strip exactly.
+    await clickUndo(page);
+    const trU = await host(page, 'Total revenue');
+    const ncU = await host(page, 'New customers');
+    const lineU = await host(page, 'Revenue vs target');
+    await shot(page, 'after-undo');
+    const undone = Math.abs(trU.h - tr0.h) < 6 && Math.abs(ncU.h - nc0.h) < 6 &&
+                   Math.abs(lineU.y - line0.y) < 8;
+    verdict(grewLive && grewCommitted && undone && st.overlaps === 0,
+      `strip-grew-live=${grewLive} committed=${grewCommitted} one-undo-restores=${undone} overlaps=${st.overlaps} (tr ${tr0.h}->${trA.h}, nc ${nc0.h}->${ncA.h})`);
+    await page.close();
+  }
+}
+
+// ---- S22 · grow-mode fold: pan down, then the bottom tile resizes ---------
+{
+  begin('s22-grow-pan-then-resize-bottom');
+  const page = await freshPage();
+  await page.evaluate(() => document.getElementById('t-mode').click());
+  await page.waitForTimeout(600);
+  // The table's corner sits near/below the fold in grow mode: wheel-pan down
+  // first (that is the designed way to reach extended content), then resize.
+  const c = await host(page, 'Revenue vs target');
+  await page.mouse.move(c.x + c.w / 2, c.y + c.h / 2);
+  await page.mouse.wheel(0, 160);
+  await page.waitForTimeout(500);
+  const table0 = await host(page, 'Top reps');
+  const r = await resizeBy(page, 'Top reps', 0, 90);
+  await shot(page, 'bottom-tile-grown');
+  const st = await boardState(page);
+  verdict(r.ok && st.overlaps === 0, `pan-then-resize=${r.ok}(${r.detail}) overlaps=${st.overlaps}`);
   await page.close();
 }
 
