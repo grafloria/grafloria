@@ -119,3 +119,4 @@ export * from './community-layout-adapter';
 
 // Wave-5 Card 5: per-group recursive (compound) layout orchestrator
 export * from './CompoundLayoutService';
+export * from './grid-pack/grid-pack-engine'; // Phase 1 of the dashboard-grid plan
