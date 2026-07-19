@@ -317,15 +317,47 @@
     if (collideLocked(probe, n)) return false;       // E4b: refuse, don't reroute
     const c = collide(probe, n);
     if (c) {
-      if (coverage(probe, c) <= 0.5) return false;   // the anti-jitter gate
-      if (!FLOAT && c.w === n.w && c.h === n.h) {    // same-size neighbours swap
-        if (c._ox === undefined) { c._ox = c.x; c._oy = c.y; }
-        // A swap exchanges CELLS exactly — n takes c's cell, not the probe
-        // cell. (Placing n at the probe cell left a one-column overlap when
-        // the probe straddled c's edge — caught by driving this prototype.)
+      // Gridstack's engine has THREE swap shapes (its swap()): same size;
+      // same ROW + equal height (different widths — exchange horizontal
+      // order); same COLUMN + equal width (different heights). The 5↔6 case
+      // (8-wide next to 4-wide, one row) is the row shape — user report:
+      // "1 and 2 switch properly, 5 and 6 don't".
+      const sameSize = !FLOAT && c.w === n.w && c.h === n.h;
+      const rowSwap  = !FLOAT && !sameSize && c.h === n.h && c.y === n.y;
+      const colSwap  = !FLOAT && !sameSize && c.w === n.w && c.x === n.x;
+      // Anti-jitter gate. For swap-eligible pairs it measures against the
+      // SMALLER tile: a 4-wide can never cover >50% of an 8-wide, so gating
+      // on the static tile would make swaps one-directional (big onto small
+      // only). Everything else keeps gridstack's static-tile rule.
+      const inter = coverage(probe, c) * (c.w * c.h);
+      const gateArea = (sameSize || rowSwap || colSwap)
+        ? Math.min(c.w * c.h, n.w * n.h) : c.w * c.h;
+      if (inter <= 0.5 * gateArea) return false;
+      if (c._ox === undefined && (sameSize || rowSwap || colSwap)) { c._ox = c.x; c._oy = c.y; }
+      if (sameSize) {
+        // Exchange CELLS exactly — n takes c's cell, not the probe cell.
+        // (Placing n at the probe cell left a one-column overlap when the
+        // probe straddled c's edge — caught by driving this prototype.)
         const ox = n.x, oy = n.y;
         n.x = c.x; n.y = c.y;
         c.x = ox; c.y = oy;
+        settle(n); return true;
+      }
+      if (rowSwap) {
+        // Exchange horizontal ORDER, preserving the pair's union span:
+        // left(0..8)+right(8..12) → right-at-0(0..4)+left-at-4(4..12).
+        const leftX = Math.min(n.x, c.x);
+        if (n.x < c.x) { c.x = leftX; n.x = leftX + c.w; }
+        else           { n.x = leftX; c.x = leftX + n.w; }
+        n.y = c.y;
+        settle(n); return true;
+      }
+      if (colSwap) {
+        // Same, vertically.
+        const topY = Math.min(n.y, c.y);
+        if (n.y < c.y) { c.y = topY; n.y = topY + c.h; }
+        else           { n.y = topY; c.y = topY + n.h; }
+        n.x = c.x;
         settle(n); return true;
       }
     }
