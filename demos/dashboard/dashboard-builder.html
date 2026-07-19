@@ -582,7 +582,6 @@ function tabBinderOptions(tabId) {
       lastPaletteGestureAt = e.kind === 'palette' ? Date.now() : lastPaletteGestureAt;
       if (e.type === 'commit') {
         setFocus(e.nodeId);
-        if (sizingMode === 'grow') frameTab(state.active);   // board may have grown
         flash(e.changed
           ? (e.kind === 'resize' ? 'resize committed — one undoable step' : 'move committed — one undoable step')
           : 'released — nothing changed');
@@ -710,7 +709,6 @@ async function addWidgetCmd(kind) {
   const node = makeWidgetNode(p.kind, p.span, p.rows, { ...p.spec });
   await cmd().execute(new AddNodeCommand(node));
   await cmd().execute(new AddToGroupCommand(target.id, node.id));
-  if (sizingMode === 'grow') frameTab(state.active);   // the board may have grown a row
   ctxRef.instance.renderNow();
   setFocus(node.id);
   flash(`added ${p.kind} → ${state.active} (auto-positioned)`);
@@ -734,7 +732,6 @@ async function removeWidgetCmd(nodeId, displaced = null) {
   await cmd().execute(new BatchCommand('Remove widget', cmds));
   hosts.delete(nodeId);
   if (state.focus === nodeId) state.focus = null;
-  if (sizingMode === 'grow') frameTab(state.active);
   ctxRef.instance.renderNow();
   syncToolbar();
   flash('removed widget (survivors re-packed)');

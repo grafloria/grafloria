@@ -102,6 +102,52 @@ const boardState = (page, excludeNeedle = null) => page.evaluate((excludeNeedle)
 const undoEnabled = (page) => page.evaluate(() => !document.getElementById('t-undo').disabled);
 const clickUndo = async (page) => { await page.evaluate(() => document.getElementById('t-undo').click()); await page.waitForTimeout(500); };
 
+/** The dashed placeholder's screen rect (null when hidden). */
+const phRect = (page) => page.evaluate(() => {
+  const p = document.querySelector('.axdb-ph');
+  if (!p) return null;
+  const r = p.getBoundingClientRect();
+  return r.width > 6 ? { x: Math.round(r.x), y: Math.round(r.y), w: Math.round(r.width), h: Math.round(r.height) } : null;
+});
+
+/** THE core invariant: after any drop, the tile sits where the placeholder
+ *  last stood (±6px). Returns {ok, detail}. */
+async function dragTo(page, needle, tx, ty, { steps = 12, settle = 600 } = {}) {
+  const from = await host(page, needle);
+  await page.mouse.move(from.x + from.w / 2, from.y + 12);
+  await page.mouse.down();
+  await page.mouse.move(tx, ty, { steps });
+  await page.waitForTimeout(400);
+  const ph = await phRect(page);
+  await page.mouse.up();
+  await page.waitForTimeout(settle);
+  const after = await host(page, needle);
+  if (!ph) return { ok: false, detail: 'no placeholder at release', after };
+  const ok = after && Math.abs(after.x - ph.x) < 6 && Math.abs(after.y - ph.y) < 6 &&
+             Math.abs(after.w - ph.w) < 6 && Math.abs(after.h - ph.h) < 6;
+  return { ok, detail: ok ? 'landed-on-placeholder' : `tile=(${after?.x},${after?.y},${after?.w}x${after?.h}) ph=(${ph.x},${ph.y},${ph.w}x${ph.h})`, after };
+}
+
+async function resizeBy(page, needle, dx, dy, { settle = 600 } = {}) {
+  const t = await host(page, needle);
+  await page.mouse.click(t.x + t.w / 2, t.y + 10);
+  await page.waitForTimeout(250);
+  const rs = await resizeHandleOf(page, needle);
+  if (!rs) return { ok: false, detail: 'no handle' };
+  await page.mouse.move(rs.x, rs.y);
+  await page.mouse.down();
+  await page.mouse.move(rs.x + dx, rs.y + dy, { steps: 10 });
+  await page.waitForTimeout(400);
+  const ph = await phRect(page);
+  await page.mouse.up();
+  await page.waitForTimeout(settle);
+  const after = await host(page, needle);
+  if (!ph) return { ok: false, detail: 'no placeholder at release', after };
+  const ok = after && Math.abs(after.x - ph.x) < 6 && Math.abs(after.y - ph.y) < 6 &&
+             Math.abs(after.w - ph.w) < 6 && Math.abs(after.h - ph.h) < 6;
+  return { ok, detail: ok ? 'landed-on-placeholder' : `tile=(${after?.x},${after?.y},${after?.w}x${after?.h}) ph=(${ph.x},${ph.y},${ph.w}x${ph.h})`, after };
+}
+
 const resizeHandleOf = (page, needle) => page.evaluate((needle) => {
   const h = [...document.querySelectorAll('.grafloria-node-host')]
     .find((x) => x.textContent.includes(needle) && x.getBoundingClientRect().x > -5000);
@@ -448,6 +494,250 @@ try {
     afterRemove === before - 1 && afterUndo === before,
     `removed=${afterRemove === before - 1} undo-restored=${afterUndo === before}`
   );
+  await page.close();
+}
+
+// ---- S11 · COMBOS on one tile: resize→move→resize→move ---------------------
+{
+  begin('s11-resize-move-combos');
+  const page = await freshPage();
+  const donut0 = await host(page, 'Revenue by region');
+  const r1 = await resizeBy(page, 'Revenue by region', -120, 0);      // shrink width
+  await shot(page, 'after-shrink');
+  const line = await host(page, 'Revenue vs target');
+  const m1 = await dragTo(page, 'Revenue by region', line.x + line.w * 0.6, line.y + 16); // move onto line → swap/push
+  await shot(page, 'after-move');
+  const r2 = await resizeBy(page, 'Revenue by region', 140, 60);       // grow both axes
+  await shot(page, 'after-grow');
+  const kpiRow = await host(page, 'New customers');
+  const m2 = await dragTo(page, 'Revenue by region', kpiRow.x + 20, kpiRow.y + kpiRow.h + 200); // move again
+  await shot(page, 'after-move2');
+  const st = await boardState(page);
+  verdict(r1.ok && m1.ok && r2.ok && m2.ok && st.overlaps === 0,
+    `shrink=${r1.ok}(${r1.detail}) move=${m1.ok}(${m1.detail}) grow=${r2.ok}(${r2.detail}) move2=${m2.ok}(${m2.detail}) overlaps=${st.overlaps}`);
+  await page.close();
+}
+
+// ---- S12 · other tabs: Sales swap + Pipeline drag/resize -------------------
+{
+  begin('s12-sales-and-pipeline-tabs');
+  const page = await freshPage();
+  await page.click('.db-tab[data-tab="sales"]');
+  await page.waitForTimeout(700);
+  const bar = await host(page, 'Revenue by region'); // bar chart on Sales
+  const donut = await host(page, 'Region share');
+  const m1 = await dragTo(page, 'Revenue by region', donut.x + donut.w * 0.6, donut.y + 16);
+  await shot(page, 'sales-after-swap');
+  const st1 = await boardState(page);
+  await page.click('.db-tab[data-tab="pipeline"]');
+  await page.waitForTimeout(700);
+  const kpi = await host(page, 'Win rate');
+  const funnel = await host(page, 'Conversion funnel');
+  const m2 = await dragTo(page, 'Win rate', funnel.x + funnel.w * 0.6, funnel.y + funnel.h * 0.6);
+  await shot(page, 'pipeline-after-drag');
+  const r2 = await resizeBy(page, 'Pipeline by stage', 120, 80);
+  await shot(page, 'pipeline-after-resize');
+  const st2 = await boardState(page);
+  verdict(m1.ok && m2.ok && r2.ok && st1.overlaps === 0 && st2.overlaps === 0,
+    `sales-swap=${m1.ok}(${m1.detail}) pipeline-drag=${m2.ok}(${m2.detail}) pipeline-resize=${r2.ok}(${r2.detail}) overlaps=${st1.overlaps}/${st2.overlaps}`);
+  await page.close();
+}
+
+// ---- S13 · gestures IN GROW MODE ------------------------------------------
+{
+  begin('s13-gestures-in-grow-mode');
+  const page = await freshPage();
+  await page.evaluate(() => document.getElementById('t-mode').click());
+  await page.waitForTimeout(700);
+  const donut = await host(page, 'Revenue by region');
+  const line = await host(page, 'Revenue vs target');
+  const m = await dragTo(page, 'Revenue vs target', donut.x + donut.w * 0.7, donut.y + 20);
+  await shot(page, 'grow-after-swap');
+  // (resize a MID-board tile: in grow mode the table's corner sits near the
+  // canvas fold, and crossing the canvas edge triggers the binder's
+  // leave-commit - a real behaviour, but not what this scenario measures)
+  const r = await resizeBy(page, 'Revenue by region', 60, 70);
+  await shot(page, 'grow-after-resize');
+  const st = await boardState(page);
+  verdict(m.ok && r.ok && st.overlaps === 0,
+    `grow-swap=${m.ok}(${m.detail}) grow-resize=${r.ok}(${r.detail}) overlaps=${st.overlaps}`);
+  await page.close();
+}
+
+// ---- S14 · gestures UNDER A DIFFERENT ZOOM --------------------------------
+{
+  begin('s14-gestures-under-zoom');
+  const page = await freshPage();
+  const c = await host(page, 'Revenue vs target');
+  await page.mouse.move(c.x + c.w / 2, c.y + c.h / 2);
+  await page.keyboard.down('Control');
+  await page.mouse.wheel(0, 240); // zoom OUT
+  await page.keyboard.up('Control');
+  await page.waitForTimeout(500);
+  const donut = await host(page, 'Revenue by region');
+  const m = await dragTo(page, 'Revenue vs target', donut.x + donut.w * 0.7, donut.y + 14);
+  await shot(page, 'zoomed-after-swap');
+  const r = await resizeBy(page, 'Revenue vs target', 90, 50);
+  await shot(page, 'zoomed-after-resize');
+  const st = await boardState(page);
+  verdict(m.ok && r.ok && st.overlaps === 0,
+    `zoom-swap=${m.ok}(${m.detail}) zoom-resize=${r.ok}(${r.detail}) overlaps=${st.overlaps}`);
+  await page.close();
+}
+
+// ---- S15 · grab POINT variations: corner grab + fast flick ----------------
+{
+  begin('s15-grab-corner-and-flick');
+  const page = await freshPage();
+  const line0 = await host(page, 'Revenue vs target');
+  const donut0 = await host(page, 'Revenue by region');
+  // grab near the BOTTOM-LEFT corner (not the header), drop on the donut
+  await page.mouse.move(line0.x + 14, line0.y + line0.h - 14);
+  await page.mouse.down();
+  await page.mouse.move(donut0.x + donut0.w * 0.75, donut0.y + donut0.h - 20, { steps: 12 });
+  await page.waitForTimeout(400);
+  const ph1 = await phRect(page);
+  await page.mouse.up();
+  await page.waitForTimeout(600);
+  const lineA = await host(page, 'Revenue vs target');
+  const cornerOk = ph1 && lineA && Math.abs(lineA.x - ph1.x) < 6 && Math.abs(lineA.y - ph1.y) < 6;
+  await shot(page, 'corner-grab-drop');
+  // FAST FLICK: 3 huge steps back across the board
+  const donutA = await host(page, 'Revenue by region');
+  await page.mouse.move(lineA.x + lineA.w / 2, lineA.y + 12);
+  await page.mouse.down();
+  await page.mouse.move(donutA.x + donutA.w / 2, donutA.y + 16, { steps: 3 });
+  await page.waitForTimeout(350);
+  const ph2 = await phRect(page);
+  await page.mouse.up();
+  await page.waitForTimeout(600);
+  const lineB = await host(page, 'Revenue vs target');
+  const flickOk = ph2 && lineB && Math.abs(lineB.x - ph2.x) < 6 && Math.abs(lineB.y - ph2.y) < 6;
+  await shot(page, 'flick-drop');
+  const st = await boardState(page);
+  verdict(!!cornerOk && !!flickOk && st.overlaps === 0,
+    `corner-grab=${!!cornerOk} flick=${!!flickOk} overlaps=${st.overlaps}`);
+  await page.close();
+}
+
+// ---- S16 · add a widget, then immediately drag + resize it -----------------
+{
+  begin('s16-add-then-manipulate');
+  const page = await freshPage();
+  await page.evaluate(() => document.querySelector('.pal-item[data-add="bar"]').click());
+  await page.waitForTimeout(800);
+  const added = await host(page, 'Revenue by region'); // the new bar chart shares the title
+  const kpi = await host(page, 'Total revenue');
+  const m = await dragTo(page, 'Revenue by region', kpi.x + 30, kpi.y + kpi.h + 120);
+  await shot(page, 'added-then-moved');
+  const r = await resizeBy(page, 'Top reps', 0, -60); // shrink the table
+  await shot(page, 'then-shrunk-table');
+  const st = await boardState(page);
+  verdict(!!added && m.ok && r.ok && st.overlaps === 0,
+    `added=${!!added} moved=${m.ok}(${m.detail}) shrunk=${r.ok}(${r.detail}) overlaps=${st.overlaps}`);
+  await page.close();
+}
+
+// ---- S17 · undo/redo interleave across different gestures ------------------
+{
+  begin('s17-undo-redo-interleave');
+  const page = await freshPage();
+  const line0 = await host(page, 'Revenue vs target');
+  const donut0 = await host(page, 'Revenue by region');
+  await dragTo(page, 'Revenue vs target', donut0.x + donut0.w * 0.7, donut0.y + 16); // gesture 1: swap
+  const r = await resizeBy(page, 'Top reps', 0, 90);                                  // gesture 2: resize
+  await clickUndo(page);                                                              // undo resize
+  await clickUndo(page);                                                              // undo swap
+  const lineU = await host(page, 'Revenue vs target');
+  const donutU = await host(page, 'Revenue by region');
+  const undone = Math.abs(lineU.x - line0.x) < 5 && Math.abs(lineU.y - line0.y) < 5 &&
+                 Math.abs(donutU.x - donut0.x) < 5 && Math.abs(donutU.y - donut0.y) < 5;
+  await shot(page, 'after-2-undos');
+  await page.evaluate(() => document.getElementById('t-redo').click());
+  await page.waitForTimeout(500);
+  await page.evaluate(() => document.getElementById('t-redo').click());
+  await page.waitForTimeout(500);
+  const st = await boardState(page);
+  await shot(page, 'after-2-redos');
+  verdict(r.ok && undone && st.overlaps === 0,
+    `resize-ok=${r.ok} both-undone-exact=${undone} redo-clean-overlaps=${st.overlaps}`);
+  await page.close();
+}
+
+// ---- S18 · save → mutate → load → gestures still work ----------------------
+{
+  begin('s18-save-load-then-gesture');
+  const page = await freshPage();
+  await page.evaluate(() => document.getElementById('t-save').click());
+  await page.waitForTimeout(400);
+  const donut0 = await host(page, 'Revenue by region');
+  const line0 = await host(page, 'Revenue vs target');
+  await dragTo(page, 'Revenue vs target', donut0.x + donut0.w * 0.7, donut0.y + 16); // mutate
+  await page.evaluate(() => document.getElementById('t-load').click());
+  await page.waitForTimeout(900);
+  const lineL = await host(page, 'Revenue vs target');
+  const restored = lineL && Math.abs(lineL.x - line0.x) < 6 && Math.abs(lineL.y - line0.y) < 6;
+  await shot(page, 'loaded');
+  const donutL = await host(page, 'Revenue by region');
+  const m = await dragTo(page, 'Revenue vs target', donutL.x + donutL.w * 0.7, donutL.y + 16);
+  await shot(page, 'gesture-after-load');
+  const st = await boardState(page);
+  verdict(!!restored && m.ok && st.overlaps === 0,
+    `load-restored=${!!restored} gesture-after-load=${m.ok}(${m.detail}) overlaps=${st.overlaps}`);
+  await page.close();
+}
+
+// ---- S19 · pin blocks, unpin releases --------------------------------------
+{
+  begin('s19-pin-refuses-unpin-allows');
+  const page = await freshPage();
+  const line0 = await host(page, 'Revenue vs target');
+  await page.mouse.click(line0.x + line0.w / 2, line0.y + 10);
+  await page.waitForTimeout(250);
+  await page.evaluate(() => document.getElementById('t-pin').click());
+  await page.waitForTimeout(400);
+  const donut0 = await host(page, 'Revenue by region');
+  // drag the donut ONTO the pinned line chart → refused, snaps home
+  const before = await host(page, 'Revenue by region');
+  await page.mouse.move(before.x + before.w / 2, before.y + 12);
+  await page.mouse.down();
+  await page.mouse.move(line0.x + line0.w * 0.5, line0.y + 20, { steps: 12 });
+  await page.waitForTimeout(400);
+  await page.mouse.up();
+  await page.waitForTimeout(600);
+  const donutA = await host(page, 'Revenue by region');
+  const refused = Math.abs(donutA.x - before.x) < 6 && Math.abs(donutA.y - before.y) < 6;
+  const lineStill = await host(page, 'Revenue vs target');
+  const pinHeld = Math.abs(lineStill.x - line0.x) < 3 && Math.abs(lineStill.y - line0.y) < 3;
+  await shot(page, 'pin-refused');
+  // unpin → the same drag now swaps
+  await page.mouse.click(lineStill.x + lineStill.w / 2, lineStill.y + 10);
+  await page.waitForTimeout(250);
+  await page.evaluate(() => document.getElementById('t-pin').click());
+  await page.waitForTimeout(400);
+  const m = await dragTo(page, 'Revenue by region', lineStill.x + lineStill.w * 0.55, lineStill.y + 20);
+  await shot(page, 'unpinned-swaps');
+  const st = await boardState(page);
+  verdict(refused && pinHeld && m.ok && st.overlaps === 0,
+    `pinned-refuses=${refused} pin-held=${pinHeld} unpin-swaps=${m.ok}(${m.detail}) overlaps=${st.overlaps}`);
+  await page.close();
+}
+
+// ---- S20 · decrease size then move INTO the freed space --------------------
+{
+  begin('s20-shrink-then-move-into-gap');
+  const page = await freshPage();
+  const r = await resizeBy(page, 'Revenue vs target', -260, 0);  // free columns right of the line chart
+  await shot(page, 'shrunk');
+  const line = await host(page, 'Revenue vs target');
+  // move the donut into the freed gap (right of the shrunken line chart)
+  const m = await dragTo(page, 'Revenue by region', line.x + line.w + 80, line.y + 20);
+  await shot(page, 'moved-into-gap');
+  const donutA = await host(page, 'Revenue by region');
+  const sameRow = Math.abs(donutA.y - line.y) < 8;
+  const st = await boardState(page);
+  verdict(r.ok && m.ok && sameRow && st.overlaps === 0,
+    `shrink=${r.ok}(${r.detail}) move-into-gap=${m.ok}(${m.detail}) same-row=${sameRow} overlaps=${st.overlaps}`);
   await page.close();
 }
 
