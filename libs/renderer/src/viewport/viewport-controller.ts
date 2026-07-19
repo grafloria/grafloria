@@ -281,10 +281,22 @@ export class ViewportController {
   /**
    * CSS transform that keeps an HTML overlay layer registered with the SVG
    * layer in the hybrid renderer: `translate(...) scale(zoom)`.
+   *
+   * MUST be driven off the same {@link getViewBox} the SVG viewBox and
+   * {@link worldToClient} use — NOT the raw `viewport.x/y`. Since the camera
+   * rect's width/height became CANVAS PIXELS (see setCanvasSize), the visible
+   * world box is the pixel rect expanded around its centre by 1/zoom; the SVG
+   * renderer applies exactly that expansion (svg-renderer.ts `viewBoxX =
+   * centerX - width/zoom/2`). Using the raw `viewport.x` here omitted the
+   * `width*(1-zoom)/2` centring term, so the HTML custom-node layer drifted
+   * from the SVG at any zoom != 1 — invisible until a custom-node dashboard was
+   * framed with fitToBounds. Routing through getViewBox() makes a host at world
+   * W land at the identical pixel worldToClient(W) reports. Identical at zoom 1.
    */
   getHtmlLayerTransform(): string {
-    const translateX = -this.viewport.x * this.zoom;
-    const translateY = -this.viewport.y * this.zoom;
+    const box = this.getViewBox();
+    const translateX = -box.x * this.zoom;
+    const translateY = -box.y * this.zoom;
     return `translate(${translateX}px, ${translateY}px) scale(${this.zoom})`;
   }
 

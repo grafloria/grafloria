@@ -3729,6 +3729,14 @@ export class SVGRenderer implements IRenderer {
 
     const frames: VNode[] = [];
     for (const { g } of ordered) {
+      // A LAYOUT CONTAINER opts out of looking like a group. Dashboards use
+      // groups purely to drive column/flex/grid layout of widget tiles; forcing
+      // document chrome (frame + title band) onto those painted stray rectangles
+      // behind the tiles, and a dragged tile "left its rectangle behind" (live
+      // report). `frameChrome: 'none'` silences the OPEN-state chrome only —
+      // a collapsed group always draws, because members swallowed by a collapse
+      // need a visible, clickable anchor left on the canvas.
+      if (!g.isCollapsed && g.getMetadata?.('frameChrome') === 'none') continue;
       const bounds = g.getOuterBounds();
       // A group with no geometry yet (never framed, no members) has nothing to
       // draw — skip it rather than emit a zero-size rect.

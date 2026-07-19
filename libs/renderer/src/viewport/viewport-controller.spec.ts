@@ -327,13 +327,37 @@ describe('ViewportController (framework-agnostic camera)', () => {
   // HTML overlay layer + fit
   // ==========================================================================
   describe('HTML layer transform', () => {
-    it('emits the translate()+scale() the hybrid HTML layer needs', () => {
+    it('emits translate()+scale() driven off the center-expanded viewBox', () => {
       const vp = new ViewportController({
         viewport: { x: 100, y: 50, width: 800, height: 600 },
         zoom: 2,
       });
 
-      expect(vp.getHtmlLayerTransform()).toBe('translate(-200px, -100px) scale(2)');
+      // At zoom 2 the visible box is the pixel rect halved around its centre:
+      // box.x = (100+400) - (800/2)/2 = 300, box.y = (50+300) - (600/2)/2 = 200.
+      // translate = -box * zoom = (-600, -400). (The pre-fix code emitted
+      // -200/-100 off the raw viewport.x — which drifted from the SVG at zoom≠1.)
+      expect(vp.getHtmlLayerTransform()).toBe('translate(-600px, -400px) scale(2)');
+    });
+
+    it('places a world point at the SAME pixel worldToClient reports, at any zoom', () => {
+      // The HTML layer and the SVG must agree, or custom (HTML-layer) nodes
+      // drift from the diagram when framed at a non-unit zoom (fitToBounds).
+      const vp = new ViewportController({ viewport: { x: 0, y: 0, width: 800, height: 600 } });
+      vp.fitToBounds({ x: 0, y: 0, width: 1180, height: 660 }, 26, { maxZoom: 1 });
+      const rect = { left: 0, top: 0, width: 800, height: 600 };
+
+      // Parse the layer transform and apply it to a host positioned (CSS
+      // left/top) at a world coordinate — the exact composition the DOM does.
+      const m = vp.getHtmlLayerTransform().match(/translate\((-?[\d.]+)px, (-?[\d.]+)px\) scale\(([\d.]+)\)/);
+      expect(m).toBeTruthy();
+      const [tx, ty, s] = [parseFloat(m![1]), parseFloat(m![2]), parseFloat(m![3])];
+      for (const [wx, wy] of [[0, 0], [1180, 660], [590, 330]]) {
+        const htmlPx = { x: wx * s + tx, y: wy * s + ty };
+        const svgPx = vp.worldToClient(wx, wy, rect);
+        expect(htmlPx.x).toBeCloseTo(svgPx.x, 6);
+        expect(htmlPx.y).toBeCloseTo(svgPx.y, 6);
+      }
     });
   });
 

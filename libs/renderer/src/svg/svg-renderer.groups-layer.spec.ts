@@ -284,4 +284,51 @@ describe('wave12/group-visuals — the SVG renderer draws a frame for every grou
       expect((divider[0].props as any).y2).toBe(540);
     });
   });
+
+  describe('layout containers — metadata frameChrome:none suppresses the chrome', () => {
+    // THE REPRODUCTION (live report, dashboard-builder): a dashboard uses groups
+    // purely as LAYOUT CONTAINERS — a 12-column grid section is a group so the
+    // engine's column layout drives it. The renderer forced full document chrome
+    // (frame rect + band + label) onto every group, so the "board" showed stray
+    // rectangles behind the HTML widget cards, and dragging a widget out left
+    // its section's frame behind — read by the user as "not all of the widget
+    // dragged". A group must be able to lay out children without LOOKING like a
+    // group.
+
+    it('draws NO frame at all for an open group with frameChrome none', () => {
+      addNode('a', 60, 60);
+      const g = addGroup('g1', 'KPIs', { x: 40, y: 40, width: 220, height: 160 });
+      g.setMetadata('frameChrome', 'none');
+
+      const root = renderer.render(FULL_VIEW, 1) as VNode;
+      expect(findGroupFrame(root, 'g1')).toBeUndefined();
+    });
+
+    it('a chromeless group still counts for the layer, and siblings keep their chrome', () => {
+      const g1 = addGroup('g1', 'Silent', { x: 0, y: 0, width: 200, height: 100 });
+      g1.setMetadata('frameChrome', 'none');
+      addGroup('g2', 'Loud', { x: 300, y: 0, width: 200, height: 100 });
+
+      const root = renderer.render(FULL_VIEW, 1) as VNode;
+      expect(findGroupFrame(root, 'g1')).toBeUndefined();
+      const loud = findGroupFrame(root, 'g2');
+      expect(loud).toBeDefined();
+      expect(textsUnder(loud)).toContain('Loud');
+    });
+
+    it('a COLLAPSED chromeless group still draws — hidden content needs a visible anchor', () => {
+      // frameChrome:none silences the OPEN-state chrome only. A collapsed group
+      // with no frame would make its swallowed members simply vanish from the
+      // canvas with nothing left to click — that is data loss to the eye, so
+      // collapse overrides the chrome opt-out.
+      const g = addGroup('g1', 'Stash', { x: 40, y: 40, width: 220, height: 160 });
+      g.setMetadata('frameChrome', 'none');
+      g.collapse();
+
+      const root = renderer.render(FULL_VIEW, 1) as VNode;
+      const frame = findGroupFrame(root, 'g1');
+      expect(frame).toBeDefined();
+      expect((frame!.props as any).className).toContain('group-frame-collapsed');
+    });
+  });
 });

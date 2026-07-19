@@ -217,7 +217,14 @@ describe('createDiagram — the headless instance', () => {
 
       const layer = container.querySelector(`.${HTML_LAYER_CLASS}`) as HTMLElement;
       expect(layer.getAttribute('style')).toContain('scale(2)');
-      expect(layer.getAttribute('style')).toContain('translate(-20px, -40px)');
+      // The transform must be the SAME convention the SVG viewBox uses:
+      // -getViewBox().x * zoom, not -viewport.x * zoom. The old expectation
+      // (-20px, -40px) pinned the raw-viewport formula, which drifted the HTML
+      // custom-node layer off the SVG at any zoom ≠ 1 — the dashboard-builder
+      // page made the drift visible. With the 800×600 test canvas at zoom 2:
+      // box.x = (10+400) − 800/2/2 = 210 → translate −420px; box.y = (20+300)
+      // − 600/2/2 = 170 → −340px. worldToClient agrees — that is the point.
+      expect(layer.getAttribute('style')).toContain('translate(-420px, -340px)');
     });
   });
 
