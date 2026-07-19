@@ -77,6 +77,7 @@ const CATEGORY_LABEL = {
   interaction: 'Interaction',
   layout: 'Layout',
   grouping: 'Grouping & subflows',
+  dashboard: 'Dashboards',
   styling: 'Styling & theming',
   collab: 'Collaboration',
   whiteboard: 'Whiteboard',
@@ -107,6 +108,7 @@ const NEW_DEMOS = new Set([
   'interaction/n8n-workflow.html',
   'collab/conflict-resolution.html',
   'diagrams/erd-editor.html',
+  'dashboard/dashboard-builder.html',
 ]);
 const isNewDemo = (rel) => NEW_DEMOS.has(rel.split(sep).join('/'));
 

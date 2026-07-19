@@ -21,6 +21,10 @@
   #add { margin-top: 7px; padding: 6px 13px; border-radius: 6px; border: 1px solid rgba(127,127,127,.4);
     background: transparent; color: inherit; cursor: pointer; font: inherit; }
   #add:hover { background: rgba(127,127,127,.14); }
+  /* Empty-submit feedback: a click with nothing typed NUDGES the box instead of
+     silently doing nothing (the interaction gate rightly flagged the silent
+     path as a dead button — a control that looks alive must visibly react). */
+  .nudge { border-color: #e11d48 !important; box-shadow: 0 0 0 2px rgba(225,29,72,.25); }
 
   .thread { border: 1px solid rgba(127,127,127,.3); border-radius: 8px; padding: 8px 10px; margin-bottom: 10px; }
   .thread h4 { margin: 0 0 4px; font-size: 12px; }
@@ -113,9 +117,14 @@ defineDemo({
 
     // THE ADD-COMMENT FLOW. Read the box, start a thread on the current target.
     const body = document.getElementById('new-body');
+    const nudge = (el) => {   // visible "you forgot the text" feedback
+      el.focus();
+      el.classList.add('nudge');
+      setTimeout(() => el.classList.remove('nudge'), 650);
+    };
     ctx.addComment = () => {
       const text = body.value.trim();
-      if (!text) { body.focus(); return null; }
+      if (!text) { nudge(body); return null; }
       const tid = ctx.store.createThread(ctx.target, text);
       body.value = '';
       return tid;
@@ -141,7 +150,7 @@ defineDemo({
     };
     const submitReply = (card) => {
       const input = card.querySelector('.reply-body');
-      if (!input.value.trim()) { input.focus(); return; }
+      if (!input.value.trim()) { nudge(input); return; }
       ctx.replyTo(card.getAttribute('data-tid'), input.value);
       // paint() re-renders and clears the box — no need to touch it here.
     };

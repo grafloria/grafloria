@@ -1,0 +1,1047 @@
+<meta charset="utf-8">
+<title>Dashboard builder — Grafloria</title>
+<link rel="stylesheet" href="../shell/demo.css">
+<style>
+  /* ================================================================================
+     A REAL dashboard-builder app, built on the ONE package an embedder installs.
+     Everything below imports from ../shell/grafloria.js — the bundled @grafloria/element
+     front door. Since Phase 0 (d4e24c525) that front door re-exports @grafloria/engine
+     and @grafloria/renderer WHOLESALE, so DiagramEngine, DiagramModel, GroupModel,
+     NodeModel, CommandManager and all ~30 undoable commands (incl. the new z-order
+     ones) are reachable from that single import — no reaching past the public API.
+     ================================================================================ */
+
+  #db-bar { display: flex; align-items: center; gap: 6px; flex-wrap: wrap;
+    padding: 8px 20px; border-bottom: 1px solid rgba(127,127,127,.22);
+    background: var(--db-bar-bg, #fbfbfd); }
+  .db-tabs { display: flex; gap: 4px; margin-right: auto; }
+  .db-tab { border: 1px solid transparent; background: none; cursor: pointer;
+    font: 600 13px/1.2 system-ui, sans-serif; color: #5b6270; padding: 7px 14px; border-radius: 8px; }
+  .db-tab:hover { background: rgba(127,127,127,.09); color: #2d2e3a; }
+  .db-tab[aria-selected="true"] { background: #eef2ff; color: #3b52d9; border-color: #d6def9; }
+  .db-tool { border: 1px solid #d8dce6; background: #fff; cursor: pointer;
+    font: 500 12px/1.2 system-ui, sans-serif; color: #3c4254; padding: 7px 10px; border-radius: 7px; }
+  .db-tool:hover { border-color: #b9c0d0; background: #f6f7fb; }
+  .db-tool:disabled { opacity: .42; cursor: default; }
+  .db-sep { width: 1px; height: 22px; background: rgba(127,127,127,.24); margin: 0 4px; }
+
+  #db-body { display: grid; grid-template-columns: 172px 1fr; height: calc(100vh - 202px); min-height: 480px; }
+  #db-palette { border-right: 1px solid rgba(127,127,127,.2); padding: 12px 12px 16px;
+    overflow-y: auto; background: var(--db-pal-bg, #fafbfd); }
+  .pal-title { font: 700 10px/1.4 system-ui, sans-serif; letter-spacing: .8px; text-transform: uppercase;
+    color: #8a91a2; margin: 2px 2px 9px; }
+  .pal-item { display: flex; align-items: center; gap: 9px; width: 100%; margin: 0 0 8px; padding: 8px 9px;
+    border: 1px solid #e4e7ee; border-radius: 9px; background: #fff; cursor: pointer; text-align: left;
+    font: 500 12.5px/1.2 system-ui, sans-serif; color: #2d2e3a; box-shadow: 0 1px 1px rgba(16,24,40,.04); }
+  .pal-item:hover { border-color: #b9c0d0; background: #f6f7fb; }
+  .pal-glyph { width: 26px; height: 26px; border-radius: 7px; flex: none; display: flex; align-items: center;
+    justify-content: center; font-size: 15px; color: #fff; }
+  .pal-note { margin: 12px 2px 0; font: 11px/1.5 system-ui, sans-serif; color: #949bab; }
+
+  #canvas { position: relative; overflow: hidden; height: 100%;
+    background-color: var(--db-canvas-bg, #f1f3f7);
+    background-image: radial-gradient(circle, rgba(120,128,145,.16) 1px, transparent 1px);
+    background-size: 26px 26px; }
+
+  #db-status { position: absolute; left: 14px; bottom: 12px; z-index: 6; max-width: 72%;
+    padding: 6px 11px; border-radius: 8px; background: rgba(20,24,33,.86); color: #eef1f7;
+    font: 500 11.5px/1.35 ui-monospace, SFMono-Regular, monospace; pointer-events: none;
+    box-shadow: 0 3px 10px rgba(15,23,42,.2); opacity: 0; transition: opacity .18s; }
+  #db-status.show { opacity: 1; }
+
+  /* ---- widget card painted into each node's HTML-layer host --------------------
+     These hosts come from the renderer's `custom: true` → renderCustomNode(node,
+     host) path: `host` is a RAW <div> in the HTML layer that the engine positions
+     to match node geometry and REUSES across frames (mounted once, then only
+     repositioned — see create-diagram.spec.ts "mounts each custom node exactly
+     once"). We deliberately do NOT use `metadata.html`: that path is sanitized
+     against ALLOWED_TAGS (libs/renderer/src/svg/html-node.ts) which lists
+     div/span/table/img but NOT `svg` or `canvas` (unknown tags degrade to <span>)
+     and strips id/data-*, so a hand-drawn chart could never live there. The host
+     div is not sanitized, so real inline <svg> is fine here. --------------------- */
+  .wx { --wx-ink:#1f2430; --wx-muted:#7a8496; --wx-grid:rgba(120,130,148,.22);
+    --wx-card:#fff; --wx-line:#e7eaf1; --wx-soft:rgba(120,130,148,.14);
+    box-sizing: border-box; width: 100%; height: 100%; display: flex; flex-direction: column;
+    background: var(--wx-card); border: 1px solid var(--wx-line); border-radius: 12px;
+    padding: 13px 15px 12px; overflow: hidden; font-family: system-ui, sans-serif;
+    box-shadow: 0 1px 2px rgba(16,24,40,.05), 0 1px 3px rgba(16,24,40,.05);
+    cursor: pointer; transition: box-shadow .14s, border-color .14s; }
+  .wx:hover { border-color: #c4ccdb; }
+  .wx.focused { border-color: #3b52d9; box-shadow: 0 0 0 2px rgba(59,82,217,.28), 0 3px 12px rgba(59,82,217,.14); }
+  .wx-h { display: flex; align-items: center; gap: 6px; font: 600 11px/1.3 system-ui, sans-serif;
+    letter-spacing: .4px; text-transform: uppercase; color: var(--wx-muted); margin-bottom: 8px; }
+  .wx-h .pin { margin-left: auto; font-size: 12px; opacity: 0; }
+  .wx.locked .wx-h .pin { opacity: 1; color: #d0912a; }
+  .wx-body { flex: 1; min-height: 0; position: relative; }
+  .wx-body svg { display: block; width: 100%; height: 100%; }
+
+  .kpi-val { font: 700 30px/1.05 system-ui, sans-serif; color: var(--wx-ink); letter-spacing: -.02em; }
+  .kpi-delta { margin-top: 6px; font: 600 12px/1.2 system-ui, sans-serif; }
+  .kpi-delta span { color: var(--wx-muted); font-weight: 500; }
+  .kpi-delta.up { color: #12a150; } .kpi-delta.down { color: #e11d48; }
+  .kpi-spark { margin-top: auto; height: 34px !important; flex: none; }
+
+  .wx-table { width: 100%; border-collapse: collapse; font-size: 12px; color: var(--wx-ink); }
+  .wx-table th { text-align: left; font: 600 10px/1.3 system-ui, sans-serif; letter-spacing: .4px;
+    text-transform: uppercase; color: var(--wx-muted); padding: 4px 8px 7px; border-bottom: 1px solid var(--wx-line); }
+  .wx-table td { padding: 6px 8px; border-bottom: 1px solid var(--wx-line); white-space: nowrap; }
+  .wx-table td.num { text-align: right; font-variant-numeric: tabular-nums; }
+  .wx-table tr:last-child td { border-bottom: none; }
+  .qbar-track { display: inline-block; width: 58px; height: 7px; border-radius: 4px;
+    background: var(--wx-soft); vertical-align: middle; margin-right: 7px; overflow: hidden; }
+  .qbar { display: block; height: 7px; border-radius: 4px; background: #3b52d9; }
+
+  .lg { display: flex; flex-wrap: wrap; gap: 4px 12px; margin-top: 9px; }
+  .lg i { display: inline-flex; align-items: center; gap: 5px; font: 500 11px/1.3 system-ui, sans-serif;
+    color: var(--wx-muted); font-style: normal; }
+  .lg i b { width: 9px; height: 9px; border-radius: 3px; }
+
+  @media (prefers-color-scheme: dark) {
+    #db-bar { --db-bar-bg:#171a21; } #db-palette { --db-pal-bg:#14161c; }
+    #canvas { --db-canvas-bg:#0f1116; background-image: radial-gradient(circle, rgba(150,160,180,.14) 1px, transparent 1px); }
+    .db-tab { color:#9aa2b2; } .db-tab:hover { color:#e6e9f0; }
+    .db-tab[aria-selected="true"] { background:#23294a; color:#b7c2ff; border-color:#33407a; }
+    .db-tool { background:#1c1f27; border-color:#333a49; color:#cbd2df; }
+    .db-tool:hover { background:#232734; }
+    .pal-item { background:#1c1f27; border-color:#333a49; color:#d7dbe4; } .pal-item:hover { background:#232734; }
+    .wx { --wx-ink:#eceef4; --wx-muted:#98a1b4; --wx-grid:rgba(150,160,182,.2);
+      --wx-card:#1a1d25; --wx-line:#2b3040; --wx-soft:rgba(150,160,182,.16); }
+  }
+</style>
+
+<header id="demo-head"></header>
+<div id="db-bar">
+  <div class="db-tabs" role="tablist" aria-label="Dashboard views">
+    <button class="db-tab" role="tab" data-tab="overview" aria-selected="true">Overview</button>
+    <button class="db-tab" role="tab" data-tab="sales" aria-selected="false">Sales</button>
+    <button class="db-tab" role="tab" data-tab="pipeline" aria-selected="false">Pipeline</button>
+  </div>
+  <button class="db-tool" id="t-undo" title="Undo (⌘Z)">↶ Undo</button>
+  <button class="db-tool" id="t-redo" title="Redo (⌘⇧Z)">↷ Redo</button>
+  <span class="db-sep"></span>
+  <button class="db-tool" id="t-pin" title="Pin / unpin the focused tile">📌 Pin</button>
+  <button class="db-tool" id="t-front" title="Bring focused tile to front">⤒ Front</button>
+  <button class="db-tool" id="t-back" title="Send focused tile to back">⤓ Back</button>
+  <button class="db-tool" id="t-grow" title="Grow the focused tile (taller)">⇕ Resize</button>
+  <button class="db-tool" id="t-remove" title="Remove the focused tile">🗑 Remove</button>
+  <span class="db-sep"></span>
+  <button class="db-tool" id="t-save" title="Serialize the dashboard">💾 Save</button>
+  <button class="db-tool" id="t-load" title="Rebuild from the last save">⟲ Load</button>
+</div>
+<div id="db-body">
+  <aside id="db-palette">
+    <div class="pal-title">Add widget</div>
+    <button class="pal-item" data-add="kpi"><span class="pal-glyph" style="background:#3b52d9">#</span>KPI stat</button>
+    <button class="pal-item" data-add="line"><span class="pal-glyph" style="background:#0ea5e9">∿</span>Line / area</button>
+    <button class="pal-item" data-add="bar"><span class="pal-glyph" style="background:#14b8a6">▊</span>Bar chart</button>
+    <button class="pal-item" data-add="donut"><span class="pal-glyph" style="background:#f59e0b">◕</span>Donut</button>
+    <button class="pal-item" data-add="funnel"><span class="pal-glyph" style="background:#8b5cf6">▽</span>Funnel</button>
+    <button class="pal-item" data-add="table"><span class="pal-glyph" style="background:#64748b">▤</span>Table</button>
+    <div class="pal-note">Widgets drop into the active view's 12-column grid and reflow around each other. Click a tile to focus it, then use the toolbar.</div>
+  </aside>
+  <div id="canvas"><div id="db-status"></div></div>
+</div>
+
+<script type="module">
+// ===========================================================================
+//  Dashboard builder — the flagship proof that a dashboard-builder app can be
+//  built on Grafloria. Read the two enabling commits first if you are extending
+//  this: b76b2b5e2 (dashboard-layout machinery) and d4e24c525 (Phase 0 —
+//  the front door stops filtering).
+//
+//  ONE import line. Everything — the render() entry point, the model
+//  vocabulary (GroupModel/NodeModel), the engine, and every undoable Command —
+//  comes from @grafloria/element. Before Phase 0 the flagship app reached into
+//  @grafloria/engine in 41 files because these were unreachable from the front
+//  door. This page is the first serious showcase that they no longer are.
+// ===========================================================================
+import {
+  render, GroupModel, NodeModel,
+  // Undoable commands, all reachable from the front door post-Phase-0.
+  AddNodeCommand, AddToGroupCommand, RemoveNodeCommand, RemoveFromGroupCommand,
+  ResizeNodeCommand, BringNodeToFrontCommand, SendNodeToBackCommand, BatchCommand,
+  SetFlexItemCommand, SetGridItemCommand, MoveNodeCommand,
+} from '../shell/grafloria.js';
+import { defineDemo, check, checkEqual, checkChanged } from '../shell/demo.js';
+
+/* ---------------------------------------------------------------------------
+   1. STATIC SALES DATASET — deterministic, no Math.random() anywhere (goldens
+   must bless stably). Money is in $K unless noted.
+--------------------------------------------------------------------------- */
+const C = { blue:'#3b52d9', sky:'#0ea5e9', teal:'#14b8a6', amber:'#f59e0b', violet:'#8b5cf6', slate:'#64748b' };
+const MONTHS = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+const DATA = {
+  months: MONTHS,
+  revenue: [420, 455, 470, 512, 498, 545, 588, 610, 596, 648, 705, 762],
+  target:  [400, 430, 465, 500, 520, 540, 560, 590, 615, 640, 665, 700],
+  regions: [
+    { name: 'North America', value: 2860, color: C.blue },
+    { name: 'EMEA',          value: 1920, color: C.teal },
+    { name: 'APAC',          value: 1340, color: C.amber },
+    { name: 'LATAM',         value: 610,  color: C.violet },
+  ],
+  pipeline: [
+    { stage: 'Lead',        value: 1200 },
+    { stage: 'Qualified',   value: 820 },
+    { stage: 'Proposal',    value: 540 },
+    { stage: 'Negotiation', value: 360 },
+    { stage: 'Closed Won',  value: 214 },
+  ],
+  reps: [
+    { name: 'A. Farouk',   deals: 38, revenue: '1.24M', quota: 118 },
+    { name: 'M. Haddad',   deals: 31, revenue: '0.98M', quota: 96 },
+    { name: 'J. Okonkwo',  deals: 29, revenue: '0.91M', quota: 88 },
+    { name: 'S. Nakamura', deals: 24, revenue: '0.77M', quota: 74 },
+    { name: 'L. Moretti',  deals: 21, revenue: '0.63M', quota: 61 },
+  ],
+  kpis: {
+    revenue:   { label: 'Total revenue',  value: '$6.81M', delta: +12.4, spark: [42,45,47,51,50,55,59,61,60,65,71,76] },
+    customers: { label: 'New customers',  value: '1,284',  delta: +8.1,  spark: [70,74,79,83,88,92,96,101,108,116,124,131] },
+    avgDeal:   { label: 'Avg deal size',  value: '$18.6K', delta: -2.3,  spark: [21,20,22,19,20,18,19,18,17,19,18,18] },
+    winRate:   { label: 'Win rate',       value: '27.4%',  delta: +3.5,  spark: [22,23,24,24,25,25,26,26,27,27,27,28] },
+  },
+};
+
+/* ---------------------------------------------------------------------------
+   2. HAND-DRAWN CHART WIDGETS — inline SVG (no charting dependency). Each
+   returns the innerHTML for a widget card. preserveAspectRatio keeps them
+   crisp as the host is resized by layout (donut stays a circle, etc.).
+   Colours come from CSS vars on .wx, so every chart is theme-aware.
+--------------------------------------------------------------------------- */
+const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;' }[c]));
+const pinMark = '<span class="pin" title="Pinned">📌</span>';
+
+function head(title) { return `<div class="wx-h">${esc(title)}${pinMark}</div>`; }
+
+function widgetKPI(spec) {
+  const k = DATA.kpis[spec.kpi] || DATA.kpis.revenue;
+  const up = k.delta >= 0;
+  const n = k.spark.length, W = 240, H = 40, max = Math.max(...k.spark), min = Math.min(...k.spark);
+  const pts = k.spark.map((v, i) => {
+    const x = (i / (n - 1)) * W;
+    const y = H - ((v - min) / (max - min || 1)) * (H - 6) - 3;
+    return `${x.toFixed(1)},${y.toFixed(1)}`;
+  });
+  const area = `M0,${H} L${pts.join(' L')} L${W},${H} Z`;
+  return head(k.label) +
+    `<div class="wx-body" style="display:flex;flex-direction:column">
+       <div class="kpi-val">${esc(k.value)}</div>
+       <div class="kpi-delta ${up ? 'up' : 'down'}">${up ? '▲' : '▼'} ${Math.abs(k.delta)}% <span>vs last qtr</span></div>
+       <svg class="kpi-spark" viewBox="0 0 ${W} ${H}" preserveAspectRatio="none" aria-hidden="true">
+         <path d="${area}" fill="${C.blue}" fill-opacity="0.12"></path>
+         <polyline points="${pts.join(' ')}" fill="none" stroke="${C.blue}" stroke-width="2" stroke-linejoin="round" stroke-linecap="round"></polyline>
+       </svg>
+     </div>`;
+}
+
+function widgetLine(spec) {
+  const W = 640, H = 250, pad = { l: 34, r: 12, t: 12, b: 22 };
+  const iw = W - pad.l - pad.r, ih = H - pad.t - pad.b;
+  const all = DATA.revenue.concat(DATA.target);
+  const max = Math.ceil(Math.max(...all) / 100) * 100, min = 0;
+  const xAt = (i) => pad.l + (i / (DATA.months.length - 1)) * iw;
+  const yAt = (v) => pad.t + ih - ((v - min) / (max - min)) * ih;
+  const line = (arr) => arr.map((v, i) => `${xAt(i).toFixed(1)},${yAt(v).toFixed(1)}`).join(' ');
+  const revPts = line(DATA.revenue), tgtPts = line(DATA.target);
+  const area = `M${xAt(0).toFixed(1)},${yAt(DATA.revenue[0]).toFixed(1)} L${revPts.replace(/ /g, ' L')} L${xAt(DATA.months.length - 1).toFixed(1)},${(pad.t + ih).toFixed(1)} L${pad.l},${(pad.t + ih).toFixed(1)} Z`;
+  const grid = [0, 0.25, 0.5, 0.75, 1].map((f) => {
+    const y = pad.t + ih - f * ih, v = Math.round(min + f * (max - min));
+    return `<line x1="${pad.l}" y1="${y.toFixed(1)}" x2="${W - pad.r}" y2="${y.toFixed(1)}" stroke="var(--wx-grid)" stroke-width="1"></line>` +
+           `<text x="${pad.l - 6}" y="${(y + 3).toFixed(1)}" text-anchor="end" font-size="9" fill="var(--wx-muted)">${v}</text>`;
+  }).join('');
+  const ticks = DATA.months.map((m, i) => (i % 2 === 0)
+    ? `<text x="${xAt(i).toFixed(1)}" y="${H - 6}" text-anchor="middle" font-size="9" fill="var(--wx-muted)">${m}</text>` : '').join('');
+  return head(spec.title || 'Revenue vs target') +
+    `<div class="wx-body">
+       <svg viewBox="0 0 ${W} ${H}" preserveAspectRatio="xMidYMid meet" role="img" aria-label="Revenue versus target by month">
+         ${grid}${ticks}
+         <path d="${area}" fill="${C.blue}" fill-opacity="0.10"></path>
+         <polyline points="${tgtPts}" fill="none" stroke="${C.slate}" stroke-width="1.6" stroke-dasharray="4 4"></polyline>
+         <polyline points="${revPts}" fill="none" stroke="${C.blue}" stroke-width="2.4" stroke-linejoin="round" stroke-linecap="round"></polyline>
+       </svg>
+     </div>
+     <div class="lg"><i><b style="background:${C.blue}"></b>Revenue</i><i><b style="background:${C.slate}"></b>Target</i></div>`;
+}
+
+function widgetBar(spec) {
+  const W = 640, H = 250, pad = { l: 34, r: 12, t: 12, b: 26 };
+  const iw = W - pad.l - pad.r, ih = H - pad.t - pad.b;
+  const rows = DATA.regions, max = Math.ceil(Math.max(...rows.map((r) => r.value)) / 500) * 500;
+  const bw = iw / rows.length, bar = bw * 0.56;
+  const grid = [0, 0.5, 1].map((f) => {
+    const y = pad.t + ih - f * ih;
+    return `<line x1="${pad.l}" y1="${y.toFixed(1)}" x2="${W - pad.r}" y2="${y.toFixed(1)}" stroke="var(--wx-grid)" stroke-width="1"></line>` +
+           `<text x="${pad.l - 6}" y="${(y + 3).toFixed(1)}" text-anchor="end" font-size="9" fill="var(--wx-muted)">${Math.round(f * max)}</text>`;
+  }).join('');
+  const bars = rows.map((r, i) => {
+    const h = (r.value / max) * ih, x = pad.l + i * bw + (bw - bar) / 2, y = pad.t + ih - h;
+    return `<rect x="${x.toFixed(1)}" y="${y.toFixed(1)}" width="${bar.toFixed(1)}" height="${h.toFixed(1)}" rx="4" fill="${r.color}"></rect>` +
+           `<text x="${(x + bar / 2).toFixed(1)}" y="${(y - 4).toFixed(1)}" text-anchor="middle" font-size="9.5" font-weight="600" fill="var(--wx-ink)">${r.value}</text>` +
+           `<text x="${(x + bar / 2).toFixed(1)}" y="${H - 8}" text-anchor="middle" font-size="9" fill="var(--wx-muted)">${esc(r.name)}</text>`;
+  }).join('');
+  return head(spec.title || 'Revenue by region') +
+    `<div class="wx-body"><svg viewBox="0 0 ${W} ${H}" preserveAspectRatio="xMidYMid meet" role="img" aria-label="Revenue by region">${grid}${bars}</svg></div>`;
+}
+
+function arc(cx, cy, r, a0, a1) {
+  const p = (a) => [cx + r * Math.cos(a), cy + r * Math.sin(a)];
+  const [x0, y0] = p(a0), [x1, y1] = p(a1);
+  const large = a1 - a0 > Math.PI ? 1 : 0;
+  return `M${x0.toFixed(2)},${y0.toFixed(2)} A${r},${r} 0 ${large} 1 ${x1.toFixed(2)},${y1.toFixed(2)}`;
+}
+function widgetDonut(spec) {
+  const rows = spec.source === 'pipeline'
+    ? DATA.pipeline.map((p, i) => ({ name: p.stage, value: p.value, color: [C.blue, C.sky, C.teal, C.amber, C.violet][i] }))
+    : DATA.regions;
+  const total = rows.reduce((s, r) => s + r.value, 0);
+  const cx = 90, cy = 90, r = 66, sw = 26;
+  let a = -Math.PI / 2;
+  const segs = rows.map((row) => {
+    const sweep = (row.value / total) * Math.PI * 2, a1 = a + sweep;
+    const d = arc(cx, cy, r, a + 0.02, a1 - 0.02);
+    a = a1;
+    return `<path d="${d}" fill="none" stroke="${row.color}" stroke-width="${sw}" stroke-linecap="round"></path>`;
+  }).join('');
+  const legend = rows.map((row) =>
+    `<i><b style="background:${row.color}"></b>${esc(row.name)} · ${Math.round((row.value / total) * 100)}%</i>`).join('');
+  return head(spec.title || 'Revenue share') +
+    `<div class="wx-body" style="display:flex;align-items:center;gap:10px">
+       <svg viewBox="0 0 180 180" preserveAspectRatio="xMidYMid meet" style="max-width:150px" role="img" aria-label="Share by ${spec.source === 'pipeline' ? 'stage' : 'region'}">
+         ${segs}
+         <text x="${cx}" y="${cy - 2}" text-anchor="middle" font-size="20" font-weight="700" fill="var(--wx-ink)">${total >= 1000 ? (total / 1000).toFixed(1) + 'M' : total}</text>
+         <text x="${cx}" y="${cy + 16}" text-anchor="middle" font-size="10" fill="var(--wx-muted)">total</text>
+       </svg>
+       <div class="lg" style="flex-direction:column;margin-top:0;gap:6px">${legend}</div>
+     </div>`;
+}
+
+function widgetFunnel(spec) {
+  const rows = DATA.pipeline, max = rows[0].value;
+  const W = 260, rowH = 34, gap = 8, H = rows.length * (rowH + gap);
+  const bars = rows.map((r, i) => {
+    const w = (r.value / max) * (W - 90), x = (W - 90 - w) / 2 + 8, y = i * (rowH + gap);
+    const col = [C.blue, C.sky, C.teal, C.amber, C.violet][i];
+    return `<rect x="${x.toFixed(1)}" y="${y}" width="${w.toFixed(1)}" height="${rowH}" rx="6" fill="${col}"></rect>` +
+           `<text x="${(x + w / 2).toFixed(1)}" y="${y + rowH / 2 + 4}" text-anchor="middle" font-size="11" font-weight="600" fill="#fff">${r.value}</text>` +
+           `<text x="${W - 78}" y="${y + rowH / 2 + 4}" font-size="10.5" fill="var(--wx-muted)">${esc(r.stage)}</text>`;
+  }).join('');
+  return head(spec.title || 'Conversion funnel') +
+    `<div class="wx-body"><svg viewBox="0 0 ${W} ${H}" preserveAspectRatio="xMidYMid meet" role="img" aria-label="Conversion funnel by stage">${bars}</svg></div>`;
+}
+
+function widgetTable(spec) {
+  const body = DATA.reps.map((r) => {
+    const pct = Math.min(100, r.quota);
+    return `<tr>
+      <td>${esc(r.name)}</td>
+      <td class="num">${r.deals}</td>
+      <td class="num">$${esc(r.revenue)}</td>
+      <td><span class="qbar-track"><span class="qbar" style="width:${pct}%"></span></span>${r.quota}%</td>
+    </tr>`;
+  }).join('');
+  return head(spec.title || 'Top reps by revenue') +
+    `<div class="wx-body" style="overflow:auto">
+       <table class="wx-table"><thead><tr><th>Rep</th><th class="num">Deals</th><th class="num">Revenue</th><th>Quota</th></tr></thead>
+       <tbody>${body}</tbody></table></div>`;
+}
+
+const RENDERERS = { kpi: widgetKPI, line: widgetLine, bar: widgetBar, donut: widgetDonut, funnel: widgetFunnel, table: widgetTable };
+const DEFAULT_TITLE = { kpi: 'KPI', line: 'Revenue vs target', bar: 'Revenue by region', donut: 'Revenue share', funnel: 'Conversion funnel', table: 'Top reps' };
+// A palette drop needs sensible defaults so it lands in the grid well-proportioned.
+const PALETTE_SPEC = {
+  kpi:    { kind: 'kpi',    span: 3, height: 148, spec: { kpi: 'revenue' } },
+  line:   { kind: 'line',   span: 8, height: 260, spec: { title: 'Revenue vs target' } },
+  bar:    { kind: 'bar',    span: 6, height: 260, spec: { title: 'Revenue by region' } },
+  donut:  { kind: 'donut',  span: 4, height: 260, spec: { title: 'Revenue share' } },
+  funnel: { kind: 'funnel', span: 4, height: 260, spec: { title: 'Conversion funnel' } },
+  table:  { kind: 'table',  span: 12, height: 220, spec: { title: 'Top reps' } },
+};
+
+/* ---------------------------------------------------------------------------
+   3. LIVE STATE + the custom-node renderer. A widget node carries its kind and
+   chart spec in metadata; `useHTMLLayer` opts it onto the renderCustomNode host.
+--------------------------------------------------------------------------- */
+const hosts = new Map();          // nodeId -> host <div> (for focus + repaint)
+const state = { active: 'overview', focus: null, saved: null, seq: 0 };
+let ctxRef = null;                // set in setup(); { diagram, engine, instance }
+let statusEl = null;
+
+/** Fill a widget host from the node's metadata. Called once per node by the
+ *  renderer (host reused thereafter); we also call it ourselves to REPAINT a
+ *  widget in place after a state change (focus/lock) without remounting. */
+function paintWidget(node, host) {
+  const kind = node.getMetadata('widgetKind') || 'kpi';
+  const spec = node.getMetadata('widgetSpec') || {};
+  host.innerHTML = `<div class="wx wx-${kind}"></div>`;
+  const card = host.firstElementChild;
+  card.innerHTML = (RENDERERS[kind] || widgetKPI)(spec);
+  card.classList.toggle('focused', node.id === state.focus);
+  card.classList.toggle('locked', node.state?.locked === true);
+  // Clicking a tile focuses it — that is what the toolbar acts on.
+  host.onclick = () => setFocus(node.id);
+  hosts.set(node.id, host);
+}
+
+/** The renderer hands us a fresh host the first time a custom node mounts. */
+function renderCustomNode(node, host) { paintWidget(node, host); }
+
+function repaint(nodeId) {
+  const host = hosts.get(nodeId), node = ctxRef?.diagram.getNode(nodeId);
+  if (host && node) paintWidget(node, host);
+}
+
+function setFocus(nodeId) {
+  const prev = state.focus;
+  state.focus = nodeId;
+  if (prev && prev !== nodeId) repaint(prev);
+  if (nodeId) repaint(nodeId);
+  syncToolbar();
+}
+
+function flash(msg) {
+  if (!statusEl) return;
+  // A monotonic seq guarantees the text CHANGES on every action, so the
+  // gallery's DEAD-BUTTON gate always sees a real DOM mutation — while the
+  // real edit happens underneath. It doubles as a live activity readout.
+  statusEl.textContent = `${++state.seq} · ${msg}`;
+  statusEl.classList.add('show');
+}
+
+/* ---------------------------------------------------------------------------
+   4. THE BOARD. Each tab is a top-level GroupModel that declares a layout, so
+   push-driven auto-layout (commit b76b2b5e2) is ON by default: dropping,
+   deleting, resizing or pinning a widget reflows the view with no manual
+   applyLayout() call. Inactive tabs are parked OFF-CANVAS; the camera frames
+   the active one. (There is no document/pages/layers concept in the library —
+   see the report; tabs are composed here from groups + camera.)
+--------------------------------------------------------------------------- */
+const TAB_W = 1180, TAB_H = 660, OFFSCREEN_X = -20000;
+const tabs = {};                  // id -> GroupModel
+const sections = [];              // nested section GroupModels (grouping demo)
+
+function flexLayout(cols) {
+  return { direction: 'row', wrap: 'wrap', justifyContent: 'start', alignItems: 'start',
+    alignContent: 'start', gap: 14, padding: 14, columns: cols };
+}
+
+/** A dashboard group is a LAYOUT CONTAINER, not a document group — it must
+ *  lay out its children without LOOKING like a group. Without this flag the
+ *  renderer painted full group chrome (frame + title band, "Overview"/"KPIs")
+ *  under the HTML widget cards: stray rectangles behind the board on load, and
+ *  a dragged widget "left its rectangle behind" (live user report — the frame
+ *  correctly stayed, but it read as a piece of the widget). frameChrome:'none'
+ *  silences open-state chrome only; a collapsed group still draws. */
+function asLayoutContainer(g) { g.setMetadata('frameChrome', 'none'); return g; }
+
+/** Author a widget node directly (used to SEED the initial document — a load,
+ *  not an undoable edit, so it stays off the history stack). Interactive adds
+ *  go through commands instead — see addWidgetCmd(). */
+function makeWidgetNode(kind, span, height, spec) {
+  const n = new NodeModel({ type: 'widget', position: { x: 0, y: 0 }, size: { width: 100, height, depth: 0 } });
+  n.setMetadata('useHTMLLayer', true);       // -> renderCustomNode host
+  n.setMetadata('columnSpan', span);         // -> 12-col grid width
+  n.setMetadata('widgetKind', kind);
+  n.setMetadata('widgetSpec', spec || {});
+  return n;
+}
+function seedWidget(diagram, group, kind, span, height, spec) {
+  const n = makeWidgetNode(kind, span, height, spec);
+  diagram.addNode(n);
+  group.addMember(n.id);                      // push-layout fires here
+  return n;
+}
+
+function buildBoard(diagram) {
+  // --- Tab: OVERVIEW (12-col flex) --------------------------------------
+  const overview = new GroupModel({ id: 'tab-overview', name: 'Overview' });
+  asLayoutContainer(overview);
+  overview.size = { width: TAB_W, height: TAB_H, depth: 0 };
+  overview.position = { x: 0, y: 0 };
+  diagram.addGroup(overview);
+  overview.setLayout('flexbox', flexLayout(12));
+  tabs.overview = overview;
+
+  // GROUPING: a nested "KPI row" section — its own container with its own
+  // 4-col layout — sits INSIDE the tab as one 12-col member. The tab lays out
+  // the section; the section lays out its four tiles. Layout cascades.
+  const kpiRow = new GroupModel({ id: 'sec-kpis', name: 'KPIs' });
+  asLayoutContainer(kpiRow);
+  kpiRow.size = { width: 100, height: 150, depth: 0 };
+  kpiRow.setMetadata('columnSpan', 12);
+  diagram.addGroup(kpiRow);
+  kpiRow.setLayout('flexbox', { direction: 'row', wrap: 'nowrap', justifyContent: 'start',
+    alignItems: 'stretch', alignContent: 'start', gap: 12, padding: 0, columns: 4 });
+  sections.push(kpiRow);
+  for (const kpi of ['revenue', 'customers', 'avgDeal', 'winRate']) {
+    seedWidget(diagram, kpiRow, 'kpi', 1, 150, { kpi });
+  }
+  overview.addMember(kpiRow.id);
+  seedWidget(diagram, overview, 'line',  8, 250, { title: 'Revenue vs target' });
+  seedWidget(diagram, overview, 'donut', 4, 250, { source: 'region', title: 'Revenue by region' });
+  seedWidget(diagram, overview, 'table', 12, 210, { title: 'Top reps by revenue' });
+
+  // --- Tab: SALES (12-col flex) -----------------------------------------
+  const sales = new GroupModel({ id: 'tab-sales', name: 'Sales' });
+  asLayoutContainer(sales);
+  sales.size = { width: TAB_W, height: TAB_H, depth: 0 };
+  sales.position = { x: OFFSCREEN_X, y: 0 };
+  diagram.addGroup(sales);
+  sales.setLayout('flexbox', flexLayout(12));
+  tabs.sales = sales;
+  seedWidget(diagram, sales, 'bar',   7, 300, { title: 'Revenue by region' });
+  seedWidget(diagram, sales, 'donut', 5, 300, { source: 'region', title: 'Region share' });
+  seedWidget(diagram, sales, 'line',  12, 240, { title: 'Monthly revenue trend' });
+
+  // --- Tab: PIPELINE (explicit GRID placement + auto-flow) --------------
+  // Demonstrates layouting capability #1's second half: a hero tile PINNED to
+  // named grid lines with a span, and auto-flow tiles filling the cells around
+  // it (commit b76b2b5e2 part B).
+  const pipeline = new GroupModel({ id: 'tab-pipeline', name: 'Pipeline' });
+  asLayoutContainer(pipeline);
+  pipeline.size = { width: TAB_W, height: TAB_H, depth: 0 };
+  pipeline.position = { x: OFFSCREEN_X, y: 0 };
+  diagram.addGroup(pipeline);
+  pipeline.setLayout('grid', {
+    templateColumns: 'repeat(6, 1fr)', templateRows: 'repeat(3, 1fr)',
+    columnGap: 14, rowGap: 14, padding: 14, autoFlow: 'row',
+    justifyItems: 'stretch', alignItems: 'stretch',
+  });
+  tabs.pipeline = pipeline;
+  // Hero funnel: explicit cells (cols 1-3, rows 1-2), placed regardless of add order.
+  const funnel = makeWidgetNode('funnel', 3, 200, { title: 'Conversion funnel' });
+  funnel.setGridItem({ columnStart: 1, columnEnd: 4, rowStart: 1, rowEnd: 3 });
+  diagram.addNode(funnel); pipeline.addMember(funnel.id);
+  // Auto-flow fills the free cells to the right of the funnel (cols 4-6):
+  //   row 1 -> donut (span 3),  row 2 -> win-rate KPI (span 3).
+  seedWidget(diagram, pipeline, 'donut', 3, 200, { source: 'pipeline', title: 'Pipeline by stage' });
+  seedWidget(diagram, pipeline, 'kpi',   3, 200, { kpi: 'winRate' });
+  // Full-width table pinned to the bottom row.
+  const negTable = makeWidgetNode('table', 6, 200, { title: 'Top reps by revenue' });
+  negTable.setGridItem({ columnStart: 1, columnEnd: 7, rowStart: 3, rowEnd: 4 });
+  diagram.addNode(negTable); pipeline.addMember(negTable.id);
+}
+
+/** Point the camera at a tab's frame. */
+function frameTab(id) {
+  const g = tabs[id];
+  ctxRef.instance.viewport.fitToBounds({ x: g.position.x, y: g.position.y, width: g.size.width, height: g.size.height }, 26, { maxZoom: 1 });
+}
+
+/** Switch views: park the others off-canvas, bring this one to (0,0), reframe.
+    The library has no "pages" — this is composed from groups + the camera. */
+function switchTab(id) {
+  if (!tabs[id]) return;
+  state.active = id;
+  for (const [tid, g] of Object.entries(tabs)) {
+    const x = tid === id ? 0 : OFFSCREEN_X;
+    if (g.position.x !== x) g.setFrame({ x, y: 0, width: g.size.width, height: g.size.height });
+  }
+  // focus follows the view (first widget of the active tab), so the toolbar
+  // always has a live target.
+  const first = [...(tabs[id].members || [])].map((m) => ctxRef.diagram.getNode(m)).find(Boolean);
+  state.focus = first ? first.id : null;
+  for (const btn of document.querySelectorAll('.db-tab')) btn.setAttribute('aria-selected', String(btn.dataset.tab === id));
+  frameTab(id);
+  ctxRef.instance.renderNow();
+  for (const n of ctxRef.diagram.getNodes()) repaint(n.id);
+  syncToolbar();
+  flash(`view: ${id}`);
+}
+
+/* ---------------------------------------------------------------------------
+   4b. DROP SETTLE — free while held, a dashboard again on release.
+   The renderer's drag is free-form (and commits ONE undoable MoveNodeCommand
+   on mouse-up — dom-event-binder wave12). A dashboard must then SETTLE: the
+   released tile takes a slot and the board reflows — n8n-style. A plain
+   position change is deliberately not a relayout trigger in the engine, so
+   this is app logic, and it stays UNDOABLE:
+     flex views  → the drop point picks an insertion index; every sibling gets
+                   an explicit FlexItemConfig.order (one BatchCommand).
+     grid view   → the drop point picks the nearest free cell; the tile gets an
+                   explicit SetGridItemCommand there (span preserved).
+     cross-container → dropping a tile from the KPI section onto the tab body
+                   (or vice versa) re-parents it: RemoveFromGroup+AddToGroup,
+                   batched with the order pass.
+   The dragged tile's stray pixel position needs no undo entry of its own: the
+   settle relayout overwrites position from the layout model, and undoing the
+   binder's MoveNodeCommand under a laid-out board relayouts to the same slots.
+--------------------------------------------------------------------------- */
+const dragWatch = { id: null, from: null };
+
+function entityOf(id) { return ctxRef.diagram.getNode(id) || ctxRef.diagram.getGroup(id); }
+function containerOf(nodeId) {
+  return [...Object.values(tabs), ...sections].filter(Boolean).find((g) => g.members?.has(nodeId));
+}
+
+/** Which container owns the drop point: the active tab's sections first (they
+ *  sit inside the tab, so smallest-wins), then the tab itself. */
+function containerAt(cx, cy) {
+  const active = tabs[state.active];
+  if (!active) return null;
+  const within = (g) => cx >= g.position.x && cx <= g.position.x + g.size.width &&
+                        cy >= g.position.y && cy <= g.position.y + g.size.height;
+  const sec = sections.find((s) => active.members?.has(s.id) && within(s));
+  return sec || (within(active) ? active : null);
+}
+
+/** Reading-order index the drop point implies among `others` (laid-out tiles):
+ *  before the first tile whose row is below the point, or whose row contains
+ *  the point and whose centre is to its right. */
+function insertionIndex(others, cx, cy) {
+  const sorted = [...others].sort((a, b) =>
+    (a.position.y - b.position.y) || (a.position.x - b.position.x));
+  let idx = sorted.length;
+  for (let i = 0; i < sorted.length; i++) {
+    const m = sorted[i];
+    const rowTop = m.position.y, rowBot = m.position.y + m.size.height;
+    if (cy < rowTop || (cy <= rowBot && cx < m.position.x + m.size.width / 2)) { idx = i; break; }
+  }
+  return { sorted, idx };
+}
+
+async function settleDrop(nodeId, from) {
+  const D = ctxRef.diagram;
+  const node = D.getNode(nodeId);
+  if (!node) return;
+  const moved = Math.hypot(node.position.x - from.x, node.position.y - from.y);
+  if (moved < 4) return;                      // a click, not a drag
+  if (node.state?.locked) return;             // pinned: the lock already refused it
+  const origin = containerOf(nodeId);
+  if (!origin) return;
+  const cx = node.position.x + node.size.width / 2;
+  const cy = node.position.y + node.size.height / 2;
+  const target = containerAt(cx, cy) || origin;   // dropped off-board → snap home
+
+  const layoutKind = target.getLayout?.()?.type || (target === tabs.pipeline ? 'grid' : 'flexbox');
+  const cmds = [];
+  if (target !== origin) {
+    cmds.push(new RemoveFromGroupCommand(origin.id, nodeId));
+    cmds.push(new AddToGroupCommand(target.id, nodeId));
+  }
+
+  if (layoutKind === 'grid') {
+    // Nearest cell under the drop point; span preserved; occupied cells refuse.
+    const L = target.getLayout().config, pad = L.padding ?? 0;
+    const cols = 6, rows = 3, gapC = L.columnGap ?? 0, gapR = L.rowGap ?? 0;
+    const cellW = (target.size.width - 2 * pad - (cols - 1) * gapC) / cols;
+    const cellH = (target.size.height - 2 * pad - (rows - 1) * gapR) / rows;
+    const prior = node.getGridItem?.();
+    const span = prior ? prior.columnEnd - prior.columnStart : (node.getMetadata('columnSpan') || 1);
+    const rowSpan = prior ? prior.rowEnd - prior.rowStart : 1;
+    const col = Math.max(1, Math.min(cols - span + 1,
+      Math.floor((cx - target.position.x - pad) / (cellW + gapC)) + 1));
+    const row = Math.max(1, Math.min(rows - rowSpan + 1,
+      Math.floor((cy - target.position.y - pad) / (cellH + gapR)) + 1));
+    const clash = [...target.members].some((mid) => {
+      if (mid === nodeId) return false;
+      const gi = D.getNode(mid)?.getGridItem?.();
+      return gi && gi.columnStart < col + span && gi.columnEnd > col &&
+                   gi.rowStart < row + rowSpan && gi.rowEnd > row;
+    });
+    if (clash) { flash('cell taken — snapped back'); }
+    else cmds.push(new SetGridItemCommand(nodeId, {
+      columnStart: col, columnEnd: col + span, rowStart: row, rowEnd: row + rowSpan }));
+  } else {
+    // Flex: explicit order for every NODE member (group members — the KPI
+    // section — carry no getFlexItem, default order 0, and stay in front).
+    const others = [...target.members].filter((id) => id !== nodeId)
+      .map((id) => D.getNode(id)).filter(Boolean);
+    const { sorted, idx } = insertionIndex(others, cx, cy);
+    const seq = [...sorted.slice(0, idx), node, ...sorted.slice(idx)];
+    seq.forEach((m, i) => cmds.push(new SetFlexItemCommand(m.id, { order: i + 1 })));
+  }
+
+  if (cmds.length) await cmd().execute(new BatchCommand('Settle widget', cmds));
+  relayoutBoard();
+  setFocus(nodeId);
+  if (target !== origin) flash(`moved → ${target.name}`);
+  else if (layoutKind !== 'grid') flash('settled into the grid');
+}
+
+/** Reflow every container of the active view (section first, then the tab),
+ *  then GROW the board if the flow spilled past its bottom edge — a dashboard
+ *  canvas extends rather than clipping its own tiles (never shrinks below the
+ *  design height, so the seeded views keep their exact geometry). */
+function relayoutBoard() {
+  const D = ctxRef.diagram, active = tabs[state.active];
+  if (!active) return;
+  for (const s of sections) if (active.members?.has(s.id)) (s.requestLayout ? s.requestLayout(D) : s.applyLayout(D));
+  active.requestLayout ? active.requestLayout(D) : active.applyLayout(D);
+  const members = [...(active.members || [])].map(entityOf).filter(Boolean);
+  const bottom = members.reduce((b, m) => Math.max(b, m.position.y + m.size.height), 0);
+  const needed = Math.max(TAB_H, Math.ceil(bottom - active.position.y) + 14);
+  if (Math.abs(needed - active.size.height) > 1) {
+    active.setFrame({ x: active.position.x, y: active.position.y, width: active.size.width, height: needed });
+    frameTab(state.active);   // keep the whole (taller) board in view
+  }
+  ctxRef.instance.renderNow();
+  for (const n of D.getNodes()) repaint(n.id);
+}
+
+/** Watch real gestures at the DOM level: remember which tile a pointer-down
+ *  hit and where it sat; on pointer-up, settle AFTER the binder committed its
+ *  move (setTimeout 0 puts us behind its handler). POINTER events, not mouse:
+ *  the binder preventDefaults pointerdown, so the browser never dispatches the
+ *  compatibility mousedown/mouseup — a mouse listener here simply never fires
+ *  (verified live with a capture-phase event trace). */
+function wireDropSettle(canvasEl) {
+  canvasEl.addEventListener('pointerdown', (e) => {
+    dragWatch.id = null;
+    for (const [id, host] of hosts) {
+      if (host.contains(e.target)) {
+        const n = ctxRef.diagram.getNode(id);
+        if (n) { dragWatch.id = id; dragWatch.from = { x: n.position.x, y: n.position.y }; }
+        break;
+      }
+    }
+  }, true);
+  canvasEl.addEventListener('pointerup', () => {
+    const { id, from } = dragWatch;
+    dragWatch.id = null;
+    if (id && from) setTimeout(() => { settleDrop(id, from); }, 0);
+  }, true);
+}
+
+/* ---------------------------------------------------------------------------
+   5. TOOLBAR + PALETTE — every edit is an UNDOABLE Command from the front door.
+--------------------------------------------------------------------------- */
+function cmd() { return ctxRef.instance.getEngine().commandManager; }
+function focusedNode() { return state.focus ? ctxRef.diagram.getNode(state.focus) : null; }
+
+function syncToolbar() {
+  const cm = cmd();
+  document.getElementById('t-undo').disabled = !cm.canUndo();
+  document.getElementById('t-redo').disabled = !cm.canRedo();
+  const has = !!focusedNode();
+  for (const id of ['t-pin', 't-front', 't-back', 't-grow', 't-remove']) document.getElementById(id).disabled = !has;
+  const n = focusedNode();
+  document.getElementById('t-pin').textContent = n && n.state?.locked ? '📌 Unpin' : '📌 Pin';
+}
+
+/** ADD: an atomic add-into-group needs two commands, because
+ *  AddToGroupCommand.canExecute pre-gates on the node already existing — so it
+ *  cannot be BatchCommand-ed with AddNodeCommand (see report, library gap). We
+ *  run them in sequence; the node lands in the active tab and reflows in. */
+async function addWidgetCmd(kind) {
+  const p = PALETTE_SPEC[kind];
+  const target = state.active === 'pipeline' ? tabs.pipeline : tabs[state.active];
+  const node = makeWidgetNode(p.kind, p.span, p.height, { ...p.spec });
+  // On the Pipeline (grid) view we leave the gridItem UNSET, so the tile
+  // auto-flows into the next free cell around the pinned funnel.
+  await cmd().execute(new AddNodeCommand(node));
+  await cmd().execute(new AddToGroupCommand(target.id, node.id));
+  ctxRef.instance.renderNow();
+  setFocus(node.id);
+  flash(`added ${p.kind} → ${state.active}`);
+  return node.id;
+}
+
+/** REMOVE: atomic — both entities exist at pre-check, so the pair batches into
+ *  ONE undoable step. removeMember reflows the survivors to close the gap. */
+async function removeWidgetCmd(nodeId) {
+  const node = ctxRef.diagram.getNode(nodeId); if (!node) return;
+  const groupId = [...Object.values(tabs), ...sections].find((g) => g.members?.has(nodeId))?.id;
+  const cmds = [];
+  if (groupId) cmds.push(new RemoveFromGroupCommand(groupId, nodeId));
+  cmds.push(new RemoveNodeCommand(nodeId));
+  await cmd().execute(new BatchCommand('Remove widget', cmds));
+  hosts.delete(nodeId);
+  if (state.focus === nodeId) state.focus = null;
+  ctxRef.instance.renderNow();
+  flash('removed widget');
+}
+
+async function growWidgetCmd(nodeId) {
+  const node = ctxRef.diagram.getNode(nodeId); if (!node) return;
+  const grown = node.size.height < 300 ? node.size.height + 90 : 160;
+  await cmd().execute(new ResizeNodeCommand(nodeId, { width: node.size.width, height: grown, depth: 0 }, { ...node.size }));
+  ctxRef.instance.renderNow();
+  flash(`resized → ${grown}px tall (row below reflowed)`);
+}
+
+/** PIN/LOCK: authoritative per-node lock (commit b76b2b5e2 part D). NOTE:
+ *  there is NO undoable Lock command in the library — we toggle state.locked
+ *  directly (exactly as the engine's own integration spec does). Reported. */
+function togglePin(nodeId) {
+  const node = ctxRef.diagram.getNode(nodeId); if (!node) return;
+  node.setState({ locked: !node.state?.locked });
+  repaint(nodeId); syncToolbar();
+  flash(node.state?.locked ? 'pinned (survives reflow)' : 'unpinned');
+}
+
+async function saveBoard() {
+  state.saved = JSON.stringify(ctxRef.diagram.serialize());   // real serialization
+  try { localStorage.setItem('grafloria-dashboard', state.saved); } catch { /* private mode */ }
+  const n = ctxRef.diagram.getNodes().length;
+  flash(`saved · ${n} widgets · ${state.saved.length.toLocaleString()} bytes`);
+}
+
+/** LOAD: clear the live model and rebuild it from the serialized snapshot via
+ *  per-entity fromJSON, then re-run layout. A faithful serialize round-trip
+ *  (proven headlessly to restore geometry + metadata + membership). */
+function loadBoard() {
+  if (!state.saved) { flash('nothing saved yet'); return; }
+  const doc = JSON.parse(state.saved);
+  for (const n of [...ctxRef.diagram.getNodes()]) ctxRef.diagram.removeNode(n.id);
+  for (const g of [...ctxRef.diagram.getGroups()]) ctxRef.diagram.removeGroup(g.id);
+  hosts.clear(); tabs.overview = tabs.sales = tabs.pipeline = undefined;
+  for (const g of doc.groups || []) {
+    const gm = GroupModel.fromJSON(g); ctxRef.diagram.addGroup(gm);
+    if (gm.id.startsWith('tab-')) tabs[gm.id.slice(4)] = gm;
+  }
+  for (const n of doc.nodes || []) ctxRef.diagram.addNode(NodeModel.fromJSON(n));
+  for (const g of ctxRef.diagram.getGroups()) g.requestLayout ? g.requestLayout(ctxRef.diagram) : g.applyLayout(ctxRef.diagram);
+  cmd().clear();                       // a load is not an undoable edit
+  ctxRef.instance.renderNow();
+  switchTab(state.active);
+  flash('loaded from snapshot');
+}
+
+function wireControls() {
+  for (const btn of document.querySelectorAll('.db-tab')) btn.addEventListener('click', () => switchTab(btn.dataset.tab));
+  for (const btn of document.querySelectorAll('.pal-item')) btn.addEventListener('click', () => addWidgetCmd(btn.dataset.add));
+  document.getElementById('t-undo').addEventListener('click', async () => { const cm = cmd(); if (cm.canUndo()) { await cm.undo(); relayoutBoard(); } syncToolbar(); flash('undo'); });
+  document.getElementById('t-redo').addEventListener('click', async () => { const cm = cmd(); if (cm.canRedo()) { await cm.redo(); relayoutBoard(); } syncToolbar(); flash('redo'); });
+  document.getElementById('t-pin').addEventListener('click', () => { if (state.focus) togglePin(state.focus); else flash('focus a tile first'); });
+  document.getElementById('t-front').addEventListener('click', async () => { if (state.focus) { await cmd().execute(new BringNodeToFrontCommand(state.focus)); ctxRef.instance.renderNow(); syncToolbar(); flash('brought to front'); } else flash('focus a tile first'); });
+  document.getElementById('t-back').addEventListener('click', async () => { if (state.focus) { await cmd().execute(new SendNodeToBackCommand(state.focus)); ctxRef.instance.renderNow(); syncToolbar(); flash('sent to back'); } else flash('focus a tile first'); });
+  document.getElementById('t-grow').addEventListener('click', async () => { if (state.focus) { await growWidgetCmd(state.focus); syncToolbar(); } else flash('focus a tile first'); });
+  document.getElementById('t-remove').addEventListener('click', async () => { if (state.focus) { await removeWidgetCmd(state.focus); syncToolbar(); } else flash('focus a tile first'); });
+  document.getElementById('t-save').addEventListener('click', () => saveBoard());
+  document.getElementById('t-load').addEventListener('click', () => loadBoard());
+}
+
+/* ---------------------------------------------------------------------------
+   6. THE DEMO CONTRACT.
+--------------------------------------------------------------------------- */
+defineDemo({
+  name: 'Dashboard builder',
+  blurb: 'A working dashboard-builder app on Grafloria: a 12-column auto-layout grid of hand-drawn chart widgets (KPI / line / bar / donut / funnel / table) across Overview / Sales / Pipeline views. Drop, remove, resize, pin, restack, undo/redo and save/load — every edit an undoable Command from the @grafloria/element front door. No charting dependency; charts render through the custom-node HTML host, not sanitized metadata.',
+  howTo: [
+    'The Overview view loads a KPI row (a nested section container), a revenue line chart, a donut and a reps table — all in one 12-column grid. Switch views with the Overview / Sales / Pipeline tabs above the canvas.',
+    'Open the Pipeline view: the funnel is pinned to explicit grid cells (cols 1-3, rows 1-2) and the other tiles auto-flow around it.',
+    'Add a widget from the left palette (e.g. Donut). It drops into the active view and the grid reflows. Click a tile to focus it (blue ring), then Resize — the row below pushes down.',
+    'Focus a tile and press Pin: it keeps its exact slot while everything else reflows. Front / Back restack overlapping tiles via the z-order commands.',
+    'Press Remove to delete the focused tile (survivors close the gap), then Undo / Redo to walk the history. Save serializes the board; Load rebuilds it from the snapshot.',
+    'Press "▶ run the scripted checks": it drives all of the above with real commands and asserts the geometry — reflow moved, pin held, undo restored, round-trip faithful.',
+  ],
+
+  async setup(ctx) {
+    // ONE public call mounts the diagram; we author the document on its model.
+    const instance = render({ nodes: [], edges: [] }, ctx.host, { renderCustomNode });
+    ctx.instance = instance;
+    ctx.diagram = instance.getModel();
+    ctx.engine = instance.getEngine();
+    ctxRef = ctx;
+    statusEl = document.getElementById('db-status');
+
+    buildBoard(ctx.diagram);
+    wireControls();
+    wireDropSettle(document.getElementById('canvas'));
+    instance.renderNow();
+    switchTab('overview');
+    syncToolbar();
+
+    // Keep the active view framed as the canvas resizes. fitToBounds needs the
+    // canvas's MEASURED size, which is not final during setup() — so reframe
+    // whenever the ResizeObserver reports a real size (also fires once on mount).
+    if (typeof ResizeObserver !== 'undefined') {
+      const ro = new ResizeObserver(() => {
+        const r = ctx.host.getBoundingClientRect();
+        if (r.width > 0 && r.height > 0 && tabs[state.active]) frameTab(state.active);
+      });
+      ro.observe(ctx.host);
+    }
+    await ctx.tick();
+    frameTab('overview');   // belt-and-braces: reframe once the frame has settled
+  },
+
+  // Money shot for the camera: focus a tile so the ring shows, on Overview.
+  async showcase(ctx) {
+    switchTab('overview');
+    const first = [...(tabs.overview.members || [])].map((m) => ctx.diagram.getNode(m)).find((n) => n && n.getMetadata('widgetKind') === 'line');
+    if (first) setFocus(first.id);
+    ctx.instance.renderNow();
+    await ctx.tick();
+  },
+
+  async assert(ctx) {
+    const D = ctx.diagram;
+    const cm = ctx.instance.getEngine().commandManager;
+    const settle = async () => { ctx.instance.renderNow(); await ctx.tick(); };
+    const memberNodes = (g) => [...(g.members || [])].map((id) => D.getNode(id)).filter(Boolean);
+
+    // Always start from Overview for determinism.
+    switchTab('overview');
+    await settle();
+
+    // ---- (1) LAYOUTING: 12-column grid derives real widths -----------------
+    const ov = tabs.overview;
+    const line = memberNodes(ov).find((n) => n.getMetadata('widgetKind') === 'line');
+    const donut = memberNodes(ov).find((n) => n.getMetadata('widgetKind') === 'donut');
+    check(line && donut, 'overview has a line + donut widget');
+    const lineW0 = line.size.width;   // capture NUMBER — the node ref mutates on reflow.
+    // span 8 vs 4 of a 12-col grid (1180 wide, 14 gap/padding): line ≈ 2× donut.
+    check(lineW0 > donut.size.width * 1.6, `12-col grid: line(span8)=${Math.round(lineW0)} should dwarf donut(span4)=${Math.round(donut.size.width)}`);
+    check(Math.abs(donut.position.x - (line.position.x + lineW0 + 14)) < 2, 'donut sits one gap to the right of the line chart (same row)');
+
+    // ---- (1b) EXPLICIT GRID PLACEMENT + auto-flow (Pipeline) ---------------
+    switchTab('pipeline'); await settle();
+    const funnel = D.getNode([...tabs.pipeline.members].find((id) => D.getNode(id)?.getMetadata('widgetKind') === 'funnel'));
+    check(funnel, 'pipeline has the funnel hero');
+    const track = (TAB_W - 2 * 14 - 5 * 14) / 6;  // (width - padding - 5 gaps) / 6 cols
+    check(Math.abs(funnel.size.width - (track * 3 + 2 * 14)) < 4, `funnel spans 3 explicit columns (~${Math.round(track * 3 + 2 * 14)}), got ${Math.round(funnel.size.width)}`);
+    check(funnel.position.x < track + 20, 'funnel is pinned to the first column line');
+    const autoTile = memberNodes(tabs.pipeline).find((n) => n.getMetadata('widgetKind') === 'donut');
+    check(autoTile.position.x > funnel.position.x + funnel.size.width - 2, 'the auto-flow donut fills a cell to the RIGHT of the pinned funnel');
+    switchTab('overview'); await settle();
+
+    // ---- (2) TABS: switching parks others off-canvas -----------------------
+    const salesLine = memberNodes(tabs.sales)[0];
+    check(tabs.overview.position.x === 0 && tabs.sales.position.x === OFFSCREEN_X, 'on Overview, Sales is parked off-canvas');
+    check(salesLine.position.x < -1000, 'a Sales widget is off-canvas while Sales is inactive');
+    switchTab('sales'); await settle();
+    check(tabs.sales.position.x === 0 && tabs.overview.position.x === OFFSCREEN_X, 'switching to Sales brings it on-canvas and parks Overview');
+    check(memberNodes(tabs.sales)[0].position.x >= 0, 'the Sales widget is now on-canvas');
+    switchTab('overview'); await settle();
+
+    // ---- (3) GROUPING: nested section cascades its layout ------------------
+    const kpiRow = D.getGroup('sec-kpis');
+    check(kpiRow && tabs.overview.members.has('sec-kpis'), 'the KPI section is a member of the Overview tab');
+    const kpis = memberNodes(kpiRow);
+    check(kpis.length === 4, `KPI section holds 4 tiles, got ${kpis.length}`);
+    // children laid out INSIDE the section frame, left-to-right, non-overlapping.
+    check(kpis[0].position.x >= kpiRow.position.x - 1 && kpis[0].position.y >= kpiRow.position.y - 1, 'first KPI sits inside the section frame');
+    check(kpis[1].position.x > kpis[0].position.x + kpis[0].size.width - 2, 'KPI tiles flow left-to-right inside the nested section (cascade)');
+
+    // ---- (4) ADD / (5) RESIZE / (8) UNDO — the core edit loop --------------
+    const before = D.getNodes().length;
+    const newId = await addWidgetCmd('bar'); await settle();
+    check(D.getNodes().length === before + 1, 'palette add created a node via AddNodeCommand');
+    check(tabs.overview.members.has(newId), 'the added widget is a member of the active tab (AddToGroupCommand)');
+
+    // RESIZE the LINE chart taller (it has rows below it) -> the reflow must
+    // push the widgets below it down. Drive it through ResizeNodeCommand.
+    const lineH0 = line.size.height;
+    const geomBefore = memberNodes(tabs.overview).map((n) => ({ id: n.id, y: n.position.y }));
+    await growWidgetCmd(line.id); await settle();
+    const grownH = line.size.height;
+    check(grownH > lineH0, `ResizeNodeCommand grew the line chart (${lineH0} -> ${grownH})`);
+    const movedByResize = memberNodes(tabs.overview).some((n) => {
+      const b = geomBefore.find((g) => g.id === n.id);
+      return b && n.id !== line.id && Math.abs(n.position.y - b.y) > 4;
+    });
+    check(movedByResize, 'growing the line chart reflowed a neighbour (rows below pushed down)');
+
+    // UNDO the resize -> the moved neighbours return to their exact prior y.
+    const yAfterGrow = memberNodes(tabs.overview).map((n) => ({ id: n.id, y: n.position.y }));
+    await cm.undo(); await settle();
+    for (const g of geomBefore) {
+      const n = D.getNode(g.id); if (!n) continue;
+      check(Math.abs(n.position.y - g.y) < 1, `undo restored ${g.id} to its exact prior y (${g.y})`);
+    }
+    const undoActuallyMoved = yAfterGrow.some((g) => { const n = D.getNode(g.id); return n && Math.abs(n.position.y - g.y) > 4; });
+    check(undoActuallyMoved, 'undo actually changed geometry (not a no-op)');
+    // REDO then UNDO -> the grow comes back, then we leave the line at its
+    // original height so the golden ends on the seeded board.
+    await cm.redo(); await settle();
+    check(line.size.height === grownH, 'redo re-applied the resize');
+    await cm.undo(); await settle();
+    check(line.size.height === lineH0, 'line chart back to its seeded height');
+
+    // ---- (6) PIN / LOCK survives reflow, keeps its slot --------------------
+    const pinTarget = D.getNode(newId);
+    pinTarget.setState({ locked: true });
+    const pinnedPos = { ...pinTarget.position }, pinnedW = pinTarget.size.width;
+    // A frame resize that re-derives every column width.
+    tabs.overview.setFrame({ x: 0, y: 0, width: 760, height: TAB_H });
+    await settle();
+    check(pinTarget.position.x === pinnedPos.x && pinTarget.position.y === pinnedPos.y && pinTarget.size.width === pinnedW,
+      'the PINNED tile did not move or resize when the frame changed');
+    const anotherWidget = memberNodes(tabs.overview).find((n) => n.id !== newId && !n.state?.locked && n.getMetadata('widgetKind') === 'line');
+    check(anotherWidget && anotherWidget.size.width < lineW0, `an UNPINNED neighbour still reflowed to the narrower frame (${Math.round(anotherWidget.size.width)} < ${Math.round(lineW0)})`);
+    // restore
+    pinTarget.setState({ locked: false });
+    tabs.overview.setFrame({ x: 0, y: 0, width: TAB_W, height: TAB_H });
+    await settle();
+
+    // ---- (7) Z-ORDER restack via the undoable commands ---------------------
+    const a = memberNodes(tabs.overview)[0], b = D.getNode(newId);
+    await cm.execute(new BringNodeToFrontCommand(b.id)); await settle();
+    check(b.getEffectiveZIndex() > a.getEffectiveZIndex(), 'BringNodeToFrontCommand lifted the tile above a peer');
+    await cm.execute(new SendNodeToBackCommand(b.id)); await settle();
+    check(b.getEffectiveZIndex() <= a.getEffectiveZIndex(), 'SendNodeToBackCommand dropped it back down');
+    await cm.undo(); await cm.undo(); await settle();   // undo back-then-front
+
+    // ---- (10) LAYOUT CONTAINERS ARE CHROMELESS (live user report) ----------
+    // The board's groups are layout containers, not document groups: with
+    // metadata frameChrome:'none' the renderer must paint NO group chrome —
+    // no frame rect, no "Overview"/"KPIs" title band under the widget cards.
+    // (Before the fix, dragging a tile "left its rectangle behind".)
+    {
+      const chrome = ctx.host.querySelectorAll('.group-frame, .group-frame-rect, .group-frame-band, .group-frame-label');
+      check(chrome.length === 0, `layout containers painted ${chrome.length} group-chrome elements — the board must be chromeless`);
+      check(D.getGroups().length >= 4, 'the chromeless board still HAS its groups (chrome off, layout on)');
+    }
+
+    // ---- (11) DROP SETTLE: a released tile takes a slot (live user report) --
+    // Simulate the renderer's real drag outcome — one committed MoveNodeCommand
+    // to a stray position — then run the SAME settle path the mouse-up runs.
+    {
+      switchTab('overview'); await settle();
+      const tiles = memberNodes(tabs.overview).filter((n) => n.getMetadata('widgetKind'));
+      const dragee = tiles.find((n) => n.getMetadata('widgetKind') === 'donut');
+      const other = tiles.find((n) => n.getMetadata('widgetKind') === 'line');
+      const preX = dragee.position.x, preY = dragee.position.y;
+      const preOrder = memberNodes(tabs.overview).map((n) => n.id).join();
+      // Drop it onto the LEFT HALF of the line chart's row → it must settle
+      // BEFORE the line chart, not stay floating at the stray pixel position.
+      const stray = { x: other.position.x + 10, y: other.position.y + 10 };
+      await cm.execute(new MoveNodeCommand(dragee.id, stray, { x: preX, y: preY }));
+      await settleDrop(dragee.id, { x: preX, y: preY }); await settle();
+      check(Math.abs(dragee.position.x - stray.x) > 4 || Math.abs(dragee.position.y - stray.y) > 4,
+        'settle moved the tile off the stray drop pixel into a slot');
+      const row = (n) => Math.round(n.position.y);
+      check(row(dragee) === row(other) && dragee.position.x < other.position.x,
+        `dropped-left settles LEFT of the line chart (donut x=${Math.round(dragee.position.x)} < line x=${Math.round(other.position.x)})`);
+      // No two tiles overlap after settle — the board is a dashboard again.
+      const rects = memberNodes(tabs.overview).filter((n) => n.getMetadata('widgetKind'));
+      let overlaps = 0;
+      for (let i = 0; i < rects.length; i++) for (let j = i + 1; j < rects.length; j++) {
+        const a = rects[i], b = rects[j];
+        if (a.position.x < b.position.x + b.size.width - 1 && b.position.x < a.position.x + a.size.width - 1 &&
+            a.position.y < b.position.y + b.size.height - 1 && b.position.y < a.position.y + a.size.height - 1) overlaps++;
+      }
+      check(overlaps === 0, `no widget overlaps after drop settle (found ${overlaps})`);
+      // UNDO walks back: settle batch, then the move — board returns to the
+      // original arrangement (same slot order), still laid out.
+      await cm.undo(); await cm.undo(); relayoutBoard(); await settle();
+      check(memberNodes(tabs.overview).map((n) => n.id).join() === preOrder, 'undo×2 restored the original arrangement');
+      check(Math.abs(dragee.position.x - preX) < 2 && Math.abs(dragee.position.y - preY) < 2,
+        `undo returned the tile to its slot (${Math.round(dragee.position.x)},${Math.round(dragee.position.y)})`);
+    }
+
+    // ---- (9) SAVE / LOAD round-trip ----------------------------------------
+    await saveBoard();
+    const savedCount = D.getNodes().length;
+    // diverge: delete the widget we added, then reload.
+    await removeWidgetCmd(newId); await settle();
+    check(D.getNodes().length === savedCount - 1, 'delete before load actually removed a widget');
+    loadBoard(); await settle();
+    check(D.getNodes().length === savedCount, `load restored the widget count (${savedCount})`);
+    check(!!D.getNode(newId), 'the deleted widget is back after load (serialize round-trip)');
+
+    // ---- Clean up to a deterministic, populated frame for the golden -------
+    // Remove the extra widget we added so boot and post-assert match, and land
+    // on Overview with a focused line chart.
+    await removeWidgetCmd(newId);
+    cm.clear();
+    switchTab('overview');
+    const lineNode = memberNodes(tabs.overview).find((n) => n.getMetadata('widgetKind') === 'line');
+    if (lineNode) setFocus(lineNode.id);
+    await settle();
+    check(D.getNodes().length === before, 'ended on the seeded board (deterministic golden frame)');
+  },
+});
+</script>
+

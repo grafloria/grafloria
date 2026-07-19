@@ -47,9 +47,9 @@
   public embed with real pointer events and asserts a consequence; a broken demo fails CI.
   Where React Flow ships the same example only in its paid <b>Pro</b> tier, it is marked.</p>
   <div class="scoreboard">
-    <span class="stat"><b>102</b> demos</span>
+    <span class="stat"><b>103</b> demos</span>
     <span class="stat pro"><b>36</b> are features React Flow charges for</span>
-    <span class="stat"><b>11</b> categories</span>
+    <span class="stat"><b>12</b> categories</span>
   </div>
 </header>
 <main>
@@ -477,7 +477,7 @@
         </a>
         <a class="card is-new" href="interaction/n8n-workflow.html">
           <div class="card-name"><span class="badge new">New</span>n8n workflow builder</div>
-          <div class="card-blurb">An interactive n8n-style workflow: a left-rounded Trigger, blue HTTP nodes, Set / Code / Merge and an orange branching If, plus a violet AI Agent whose Chat Model / Memory / Tool sub-nodes attach to its BOTTOM ports with a distinct dashed &quot;ai&quot; wire — while the main data flow runs left→right on gray bezier lines. Drag nodes, drag-connect ports, and add nodes from the palette, just like in n8n. HTML nodes + sided/absolute ports + two edge families in the Grafloria engine.</div>
+          <div class="card-blurb">An n8n workflow you can actually RUN: press ▶ Test workflow and execution walks the graph from the Trigger — the running node spins, finished nodes get green checks, wires grow &quot;n items&quot; pills, the AI Agent's sub-nodes flash while it thinks, and the If node routes items down ONE branch by a real condition. Pause / step / continue a live run, read the execution log, and double-click any node for n8n's Node Details View: input items | an editable Parameters form + Settings tab | output items, plus &quot;Execute step&quot; to run up to that node. Connect-by-drag, a node palette, and the two wire families still apply.</div>
           <div class="card-foot">
             <span class="rf none">no React Flow equivalent</span>
             
@@ -650,6 +650,20 @@
         <a class="card" href="grouping/swimlanes.html">
           <div class="card-name">Swimlanes</div>
           <div class="card-blurb">Pools and weighted lanes that tile a frame and keep their nodes in-lane — a whole containment model React Flow does not have. Reachable now that SwimlaneService is on the public embed.</div>
+          <div class="card-foot">
+            <span class="rf none">no React Flow equivalent</span>
+            
+          </div>
+        </a>
+        </div>
+      </section>
+
+      <section>
+        <h2>Dashboards <span class="count">1</span></h2>
+        <div class="grid">
+        <a class="card is-new" href="dashboard/dashboard-builder.html">
+          <div class="card-name"><span class="badge new">New</span>Dashboard builder</div>
+          <div class="card-blurb">A working dashboard-builder app on Grafloria: a 12-column auto-layout grid of hand-drawn chart widgets (KPI / line / bar / donut / funnel / table) across Overview / Sales / Pipeline views. Drop, remove, resize, pin, restack, undo/redo and save/load — every edit an undoable Command from the @grafloria/element front door. No charting dependency; charts render through the custom-node HTML host, not sanitized metadata.</div>
           <div class="card-foot">
             <span class="rf none">no React Flow equivalent</span>
             
@@ -895,7 +909,7 @@
         </a>
         <a class="card pro" href="diagrams/er-advanced.html">
           <div class="card-name">ER diagram — advanced</div>
-          <div class="card-blurb">The entity-relationship shapes a real schema throws at you: two relationships between the SAME pair of tables on different FK columns, a self-reference, a many-to-many through a junction table, and optional-vs-mandatory crow's-foot cardinality — every line attached to the specific FK and PK ROW it joins.</div>
+          <div class="card-blurb">The advanced ER shapes — two relationships between the SAME pair of tables on different FK columns, a self-reference, a many-to-many junction, optional-vs-mandatory crow's-foot cardinality — all from ONE erDiagram() call: every line is a 'TABLE.column' → 'TABLE.column' string pinned to the exact row it joins.</div>
           <div class="card-foot">
             <span class="rf">React Flow: Entity Relationship</span>
             <span class="badge" title="React Flow puts the equivalent behind its paywall">Pro / paid there</span>
@@ -927,7 +941,7 @@
         </a>
         <a class="card pro" href="diagrams/uml-relationships.html">
           <div class="card-name">UML relationships</div>
-          <div class="card-blurb">The FULL UML class-relationship vocabulary in one native Grafloria diagram: generalization, realization, association (with multiplicities), directed association, aggregation, composition, dependency and a self-association — each drawn with its real UML arrowhead and clearly labelled.</div>
+          <div class="card-blurb">The FULL UML class-relationship vocabulary from PURE DATA via the reusable umlDiagram() kit: generalization, realization, association (with multiplicity chips), directed association, aggregation, composition and dependency — each with its real UML notation, look / selection / editing surface all from the kit. Only the Employee self-association is a hand-written edge (self-loops are not in the kit vocabulary yet).</div>
           <div class="card-foot">
             <span class="rf">React Flow: Class Diagram</span>
             <span class="badge" title="React Flow puts the equivalent behind its paywall">Pro / paid there</span>
