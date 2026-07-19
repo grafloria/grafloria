@@ -24,8 +24,8 @@
   "measuredJitterPct": 0
  },
  "collab__offline-and-reconnect.after.png": {
-  "tolerancePct": 0.02,
-  "measuredJitterPct": 0
+  "tolerancePct": 0.19,
+  "measuredJitterPct": 0.0633
  },
  "collab__offline-and-reconnect.boot.png": {
   "tolerancePct": 0.02,
@@ -52,16 +52,16 @@
   "measuredJitterPct": 0
  },
  "dashboard__dashboard-builder.after.png": {
-  "tolerancePct": 0.02,
-  "measuredJitterPct": 0
+  "tolerancePct": 0.124,
+  "measuredJitterPct": 0.0412
  },
  "dashboard__dashboard-builder.boot.png": {
   "tolerancePct": 0.02,
   "measuredJitterPct": 0
  },
  "dashboard__dashboard-builder.showcase.png": {
-  "tolerancePct": 0.02,
-  "measuredJitterPct": 0
+  "tolerancePct": 0.121,
+  "measuredJitterPct": 0.0404
  },
  "diagrams__class-uml.after.png": {
   "tolerancePct": 0.02,
@@ -236,16 +236,16 @@
   "measuredJitterPct": 0
  },
  "grouping__parent-child.after.png": {
-  "tolerancePct": 1.002,
-  "measuredJitterPct": 0.3341
+  "tolerancePct": 0.02,
+  "measuredJitterPct": 0
  },
  "grouping__parent-child.boot.png": {
-  "tolerancePct": 1.002,
-  "measuredJitterPct": 0.3341
+  "tolerancePct": 0.02,
+  "measuredJitterPct": 0
  },
  "grouping__parent-child.showcase.png": {
-  "tolerancePct": 1.088,
-  "measuredJitterPct": 0.3625
+  "tolerancePct": 0.02,
+  "measuredJitterPct": 0
  },
  "grouping__selection-grouping.after.png": {
   "tolerancePct": 0.02,
@@ -308,8 +308,8 @@
   "measuredJitterPct": 0
  },
  "interaction__copy-paste.after.png": {
-  "tolerancePct": 0.253,
-  "measuredJitterPct": 0.0844
+  "tolerancePct": 0.242,
+  "measuredJitterPct": 0.0808
  },
  "interaction__copy-paste.boot.png": {
   "tolerancePct": 0.02,
@@ -348,8 +348,8 @@
   "measuredJitterPct": 0
  },
  "interaction__execute-flow.showcase.png": {
-  "tolerancePct": 0.02,
-  "measuredJitterPct": 0
+  "tolerancePct": 0.028,
+  "measuredJitterPct": 0.0094
  },
  "interaction__helper-lines.after.png": {
   "tolerancePct": 0.02,
@@ -384,16 +384,16 @@
   "measuredJitterPct": 0
  },
  "interaction__n8n-workflow.after.png": {
-  "tolerancePct": 0.02,
-  "measuredJitterPct": 0
+  "tolerancePct": 0.151,
+  "measuredJitterPct": 0.0504
  },
  "interaction__n8n-workflow.boot.png": {
-  "tolerancePct": 0.02,
-  "measuredJitterPct": 0
+  "tolerancePct": 0.142,
+  "measuredJitterPct": 0.0475
  },
  "interaction__n8n-workflow.showcase.png": {
-  "tolerancePct": 0.02,
-  "measuredJitterPct": 0
+  "tolerancePct": 0.989,
+  "measuredJitterPct": 0.3297
  },
  "interaction__parent-move.after.png": {
   "tolerancePct": 0.02,
@@ -460,12 +460,12 @@
   "measuredJitterPct": 0
  },
  "layout__dagre-tree.after.png": {
-  "tolerancePct": 0.556,
-  "measuredJitterPct": 0.1854
+  "tolerancePct": 0.02,
+  "measuredJitterPct": 0
  },
  "layout__dagre-tree.boot.png": {
-  "tolerancePct": 0.556,
-  "measuredJitterPct": 0.1854
+  "tolerancePct": 0.02,
+  "measuredJitterPct": 0
  },
  "layout__dynamic-layouting.after.png": {
   "tolerancePct": 0.02,
@@ -496,12 +496,12 @@
   "measuredJitterPct": 0.0978
  },
  "layout__force-layout.after.png": {
-  "tolerancePct": 0.637,
-  "measuredJitterPct": 0.2124
+  "tolerancePct": 0.02,
+  "measuredJitterPct": 0
  },
  "layout__force-layout.boot.png": {
-  "tolerancePct": 0.637,
-  "measuredJitterPct": 0.2124
+  "tolerancePct": 0.02,
+  "measuredJitterPct": 0
  },
  "layout__layout-portfolio.after.png": {
   "tolerancePct": 0.02,
@@ -520,8 +520,8 @@
   "measuredJitterPct": 0
  },
  "layout__off-thread-layout.after.png": {
-  "tolerancePct": 0.237,
-  "measuredJitterPct": 0.0789
+  "tolerancePct": 0.241,
+  "measuredJitterPct": 0.0804
  },
  "layout__off-thread-layout.boot.png": {
   "tolerancePct": 0.02,
@@ -544,12 +544,12 @@
   "measuredJitterPct": 0
  },
  "misc__mermaid-text.after.png": {
-  "tolerancePct": 1.007,
-  "measuredJitterPct": 0.3355
+  "tolerancePct": 1.059,
+  "measuredJitterPct": 0.3531
  },
  "misc__mermaid-text.boot.png": {
-  "tolerancePct": 1.007,
-  "measuredJitterPct": 0.3355
+  "tolerancePct": 1.059,
+  "measuredJitterPct": 0.3531
  },
  "misc__mermaid-viewer.after.png": {
   "tolerancePct": 0.02,
@@ -660,16 +660,16 @@
   "measuredJitterPct": 0
  },
  "nodes__node-position-animation.after.png": {
-  "tolerancePct": 0.02,
-  "measuredJitterPct": 0
+  "tolerancePct": 0.174,
+  "measuredJitterPct": 0.0581
  },
  "nodes__node-position-animation.boot.png": {
   "tolerancePct": 0.02,
   "measuredJitterPct": 0
  },
  "nodes__node-position-animation.showcase.png": {
-  "tolerancePct": 0.02,
-  "measuredJitterPct": 0
+  "tolerancePct": 0.172,
+  "measuredJitterPct": 0.0573
  },
  "nodes__node-resize-gesture.after.png": {
   "tolerancePct": 0.02,
@@ -732,12 +732,12 @@
   "measuredJitterPct": 0
  },
  "nodes__updating-nodes.after.png": {
-  "tolerancePct": 0.135,
-  "measuredJitterPct": 0.045
+  "tolerancePct": 0.02,
+  "measuredJitterPct": 0
  },
  "nodes__updating-nodes.boot.png": {
-  "tolerancePct": 0.136,
-  "measuredJitterPct": 0.0454
+  "tolerancePct": 0.02,
+  "measuredJitterPct": 0
  },
  "ports__connection-validation.after.png": {
   "tolerancePct": 0.02,
