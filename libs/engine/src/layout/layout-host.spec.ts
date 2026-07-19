@@ -745,3 +745,44 @@ describe('wave10 — the steppable path separates overlapping boxes (regression)
     }
   });
 });
+
+// ---------------------------------------------------------------------------
+// Progress emission is THROTTLED, independent of sliceMs.
+//
+// Found live: the steppable loop coupled progress EMISSION to the YIELD cadence
+// at each slice boundary. With sliceMs:0 (maximal preemptibility) that emitted
+// one postMessage per iteration — ~4000 messages for a 4000-iteration run —
+// flooding the caller's event loop so badly that a setTimeout-based abort fired
+// AFTER the run completed: signal cancellation raced, machine-speed dependent.
+// The yield cadence is the cancellation contract and must stay per-slice; only
+// the emission needed decoupling (≥16ms apart OR ≥10% progress, plus a final
+// event so progress always reaches its true end value).
+// ---------------------------------------------------------------------------
+describe('progress throttling — sliceMs:0 must not flood the caller', () => {
+  it('emits a bounded, monotonic stream that still reaches exactly 1', async () => {
+    const graph = graphOf(30);
+    const { port } = createFakeWorker();
+    const progress: LayoutProgress[] = [];
+    const t0 = Date.now();
+    const result = await new LayoutHost(port).run(
+      'force',
+      graph,
+      { seed: DEFAULT_LAYOUT_SEED, iterations: 600, threshold: 0 },
+      { sliceMs: 0, onProgress: (p: LayoutProgress) => progress.push(p) }
+    );
+    const elapsed = Date.now() - t0;
+
+    // The stream contract the off-thread demo asserts, preserved verbatim:
+    expect(progress.length).toBeGreaterThan(2);
+    const values = progress.map((p) => p.progress);
+    expect([...values].sort((a, b) => a - b)).toEqual(values); // monotonic
+    expect(values[values.length - 1]).toBe(1); // reaches exactly 1
+    expect(result.partial).toBe(false);
+
+    // THE THROTTLE: bounded by wall-clock/16ms + 10%-progress steps + start/final
+    // — never by iteration count. Pre-fix this was ~600 (one per iteration).
+    const bound = Math.ceil(elapsed / 16) + 10 + 3;
+    expect(progress.length).toBeLessThanOrEqual(bound);
+    expect(progress.length).toBeLessThan(600 / 4);
+  });
+});

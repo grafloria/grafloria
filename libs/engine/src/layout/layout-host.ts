@@ -166,6 +166,10 @@ export interface LayoutServePort {
 
 /** How long to compute between surrenders of the thread. See the trap, above. */
 const DEFAULT_SLICE_MS = 12;
+/** Progress messages: at most one per ~frame… */
+const PROGRESS_EMIT_MIN_MS = 16;
+/** …unless the run advanced ≥10% since the last one (keeps FAST runs streamy). */
+const PROGRESS_EMIT_MIN_DELTA = 0.1;
 
 /**
  * Surrender the thread just long enough for queued messages to be delivered.
@@ -393,6 +397,17 @@ export function serveLayout(port: LayoutServePort, deps: ServeLayoutDeps = {}): 
         let stop: LayoutStopReason | undefined;
         let sliceStart = now();
 
+        // Progress EMISSION is throttled independently of the YIELD cadence.
+        // Found live: coupling them meant sliceMs:0 (maximal preemptibility)
+        // posted one progress message PER ITERATION — ~4000 for a long force
+        // run — flooding the caller's event loop so badly that a setTimeout
+        // abort on the main thread fired only after the run had already
+        // finished: signal cancellation raced, machine-speed dependent. The
+        // yield IS the cancellation contract and stays per-slice; a progress
+        // message is only worth sending every ~frame or every 10% of the run.
+        let lastEmitAt = now();
+        let lastEmitProgress = 0;
+
         for (;;) {
           if (cancelled.has(seq)) {
             stop = 'cancelled';
@@ -416,18 +431,34 @@ export function serveLayout(port: LayoutServePort, deps: ServeLayoutDeps = {}): 
           if (!layoutRun.step()) break; // converged, or hit the iteration cap
 
           // Slice boundary: surrender the thread so a `cancel` can actually be
-          // delivered, and stream a progress event while we are here.
+          // delivered — and stream a progress event only when it is DUE
+          // (≥ PROGRESS_EMIT_MIN_MS since the last one, or ≥ 10% more of the
+          // run done), never per-slice.
           if (now() - sliceStart >= sliceMs) {
-            emit(
-              total > 0 ? Math.min(layoutRun.iteration / total, 1) : 1,
-              'iterating',
-              layoutRun.iteration,
-              total
-            );
+            const progressNow =
+              total > 0 ? Math.min(layoutRun.iteration / total, 1) : 1;
+            if (
+              now() - lastEmitAt >= PROGRESS_EMIT_MIN_MS ||
+              progressNow - lastEmitProgress >= PROGRESS_EMIT_MIN_DELTA
+            ) {
+              emit(progressNow, 'iterating', layoutRun.iteration, total);
+              lastEmitAt = now();
+              lastEmitProgress = progressNow;
+            }
             await yieldToEventLoop();
             sliceStart = now();
           }
         }
+
+        // A final progress event, always: consumers watch the stream reach its
+        // true end value (a completed run must reach exactly 1 — the off-thread
+        // demo asserts it), and the throttle above may have held the last one.
+        emit(
+          total > 0 ? Math.min(layoutRun.iteration / total, 1) : 1,
+          'iterating',
+          layoutRun.iteration,
+          total
+        );
 
         // snapshot() is valid after ANY number of steps — including zero. This
         // is the whole point: a cancelled run hands back what it has.
