@@ -130,6 +130,14 @@ export interface DashboardGridOptions {
    */
   dragOut?: 'remove' | 'cancel';
   /**
+   * With dragOut:'remove', restrict deletion to an EXPLICIT drop zone (the
+   * page passes "over the palette" — gridstack web2's trash semantics).
+   * Outside the zone a release snaps home instead: a 60px overshoot past the
+   * frame edge must never destroy a widget (live parity review — the plan
+   * prototype clamps at its edges and cannot delete at all).
+   */
+  removeZone?: (screen: { x: number; y: number }, world: { x: number; y: number }) => boolean;
+  /**
    * Page hook for drag-out removal: execute ONE undoable batch that removes
    * `nodeId` AND applies `displaced` (the survivors' cell commits, so undo
    * restores the exact board).
@@ -334,6 +342,8 @@ interface GestureState {
   leg: { peer: BinderPeer; adopted: AdoptedLeg } | null;
   /** Last pointer position, world coords — release semantics depend on WHERE. */
   lastWorld: { x: number; y: number } | null;
+  /** Last pointer position, screen coords (for the removeZone test). */
+  lastScreen: { x: number; y: number } | null;
   /** Nested height escalation: net rows added to OUR group in the parent. */
   esc: {
     peer: BinderPeer;
@@ -729,6 +739,22 @@ export function bindDashboardGrid(
     return x >= f.x && x <= f.x + f.width && y >= f.y && y <= f.y + boardVisualHeight();
   };
 
+  /** Small overshoots CLAMP onto the board instead of counting as off-board —
+   *  the plan prototype cannot leave its board at all (cells clamp at the
+   *  edges), so a 60px slip past the frame must not dim or delete. */
+  const EDGE_GRACE = 60;
+  const worldInsideBoardGrace = (x: number, y: number): boolean => {
+    if (worldInsideBoardExtended(x, y)) return true;
+    const f = frame();
+    const band = rowHeightFor(geom(), rows()) + gap;
+    return (
+      x >= f.x - EDGE_GRACE &&
+      x <= f.x + f.width + EDGE_GRACE &&
+      y >= f.y - EDGE_GRACE &&
+      y <= f.y + boardVisualHeight() + band + EDGE_GRACE
+    );
+  };
+
   /** One extra row of grace below the frame (gridstack's extra drag row). */
   const worldInsideBoardExtended = (x: number, y: number): boolean => {
     if (worldInsideBoard(x, y)) return true;
@@ -919,6 +945,7 @@ export function bindDashboardGrid(
       g.node.setPosition(desired.x, desired.y);
 
       g.lastWorld = { x: ev.world.x, y: ev.world.y };
+      g.lastScreen = { x: ev.screen.x, y: ev.screen.y };
       // Deepest board under the pointer wins: the nested KPI strip beats the
       // tab that contains it; a foreign board beats "outside". Strict frames
       // first; the one-row grace band below each board (gridstack's extra
@@ -930,6 +957,9 @@ export function bindDashboardGrid(
       if (!strictSelf && !peer) {
         if (worldInsideBoardExtended(ev.world.x, ev.world.y)) inside = true;
         else peer = peerAt(ev.world.x, ev.world.y, true);
+        // Last resort: the grace band — a small slip past the edge stays ON
+        // this board (the engine clamps the cell; prototype parity).
+        if (!inside && !peer && worldInsideBoardGrace(ev.world.x, ev.world.y)) inside = true;
       }
       const selfWins = inside && (!peer || boardArea() <= peer.frameArea());
 
@@ -1137,9 +1167,13 @@ export function bindDashboardGrid(
     // delete the tile (the battery's S5 caught exactly that deletion).
     const releasedOutsideAll =
       !g.lastWorld ||
-      (!worldInsideBoardExtended(g.lastWorld.x, g.lastWorld.y) &&
+      (!worldInsideBoardGrace(g.lastWorld.x, g.lastWorld.y) &&
         !peerAt(g.lastWorld.x, g.lastWorld.y, true));
-    if (g.removedFromBoard && dragOut === 'remove' && !releasedOutsideAll) {
+    const inRemoveZone =
+      !options.removeZone ||
+      (g.lastScreen && g.lastWorld && options.removeZone(g.lastScreen, g.lastWorld));
+    if (g.removedFromBoard && dragOut === 'remove' && (!releasedOutsideAll || !inRemoveZone)) {
+      // Outside-but-not-over-the-trash (or a mere overshoot): snap home.
       cancelActiveGesture();
       return;
     }
@@ -1350,6 +1384,7 @@ export function bindDashboardGrid(
         removedFromBoard: false,
         leg: null,
         lastWorld: null,
+        lastScreen: null,
         esc: null,
         chip: null,
       };
@@ -1398,6 +1433,7 @@ export function bindDashboardGrid(
       removedFromBoard: true,
       leg: null,
       lastWorld: null,
+      lastScreen: null,
       esc: null,
       chip,
     };

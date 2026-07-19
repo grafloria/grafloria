@@ -478,9 +478,23 @@ try {
   await clickUndo(page);
   const afterUndo = (await boardState(page)).count;
   await shot(page, 'restored');
+  // …and an ACCIDENTAL overshoot past the right frame edge must NOT delete:
+  // deletion needs the palette (trash) — anywhere else snaps home. (Parity
+  // review: the prototype clamps at its edges and cannot delete at all.)
+  const line0 = await host(page, 'Revenue vs target');
+  const canvasRight = await page.evaluate(() => document.querySelector('.grafloria-diagram-root').getBoundingClientRect().right);
+  await page.mouse.move(line0.x + line0.w / 2, line0.y + 12);
+  await page.mouse.down();
+  await page.mouse.move(canvasRight - 8, line0.y + 12, { steps: 10 });
+  await page.waitForTimeout(400);
+  await page.mouse.up();
+  await page.waitForTimeout(600);
+  const lineA = await host(page, 'Revenue vs target');
+  const survivedOvershoot = !!lineA;
+  await shot(page, 'overshoot-snapped-home');
   verdict(
-    afterRemove === before - 1 && afterUndo === before,
-    `removed=${afterRemove === before - 1} undo-restored=${afterUndo === before}`
+    afterRemove === before - 1 && afterUndo === before && survivedOvershoot,
+    `removed-at-palette=${afterRemove === before - 1} undo-restored=${afterUndo === before} overshoot-survives=${survivedOvershoot}`
   );
   await page.close();
 }

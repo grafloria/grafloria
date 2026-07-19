@@ -565,6 +565,15 @@ function tabBinderOptions(tabId) {
   return {
     gap: GAP, padding: GAP, sizing: sizingMode, baseRowHeight: BASE_ROW,
     designHeight: TAB_H, dragOut: 'remove',
+    // Deletion needs INTENT: only a release over the palette removes (the
+    // trash affordance, gridstack-web2 style). A slip past the frame edge
+    // snaps home - the plan prototype cannot delete by overshoot at all.
+    removeZone: (screen) => {
+      const pal = document.getElementById('db-palette');
+      if (!pal) return false;
+      const r = pal.getBoundingClientRect();
+      return screen.x <= r.right + 8;
+    },
     // Drag-out release → the page's atomic remove path, survivors' cell
     // commits folded into the SAME batch so one undo restores the board.
     onRemoveRequest: (nodeId, displaced) => removeWidgetCmd(nodeId, displaced),
