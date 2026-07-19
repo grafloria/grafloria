@@ -2,7 +2,7 @@
 // Layout item configuration storage added in Phase 1.7
 
 import { DiagramEntity } from './DiagramEntity';
-import { writeBlocked } from './readonly-lock'; // Wave 9 — Card 7
+import { writeBlocked, isSystemWrite } from './readonly-lock'; // Wave 9 — Card 7
 import type { DiagramModel } from './DiagramModel';
 import { PortModel, SerializedPort } from './PortModel';
 import type {
@@ -86,6 +86,12 @@ export interface SerializedNode extends SerializedEntity {
   // NodeModel.legacy-keys.spec.ts for why that does not break the round-trip invariant.
   positionMode?: PositioningMode; // Phase 1.6a: Positioning mode
   transformOrigin?: Point; // Phase 1.6a: Transform origin (normalized 0-1)
+  /**
+   * Model-level stacking order. OMITTED when the node never set one, so every
+   * document written before this field existed round-trips byte-for-byte and no
+   * schema migration is needed — absence means "unset", not 0.
+   */
+  zIndex?: number;
   flexConfig?: FlexItemConfig; // Phase 1.7: Flexbox item configuration
   gridConfig?: GridItemConfig; // Phase 1.7: Grid item configuration
   portRenderingConfig?: any; // Phase 2: Port rendering configuration
@@ -107,6 +113,35 @@ export class NodeModel extends DiagramEntity {
     return writeBlocked(this.diagram);
   }
 
+  /**
+   * D — is a DOCUMENT write to this node's GEOMETRY forbidden right now?
+   *
+   * `state.locked` used to be honoured by the input layers and by nothing else, so
+   * a "locked" node was moved without complaint by any command, script or importer
+   * that called `setPosition` — the same security-shaped lie the Wave-9 document
+   * lock was built to kill, one scope down.
+   *
+   * It draws exactly the Wave-9 distinction and for exactly the Wave-9 reason: a
+   * SYSTEM write (auto-size measuring text, a portal placing itself — anything
+   * inside `ReadonlyLock.runSystemWrite`) still passes, because refusing those
+   * renders a locked node at the wrong size and would have "worked" in a unit test
+   * while destroying the product.
+   *
+   * Scope is GEOMETRY only: position, size, rotation, scale. Style, data, classes,
+   * selection and `setState` itself stay open — you must be able to un-lock a
+   * locked node, and pinning a widget should not freeze its colour.
+   *
+   * A DETACHED node (no diagram back-reference) is freely mutable even with
+   * `locked` set: there is no document yet to protect, and you have to be able to
+   * BUILD a node before you can add it. Same tolerance `writeBlocked()` has.
+   */
+  private geometryWriteBlocked(): boolean {
+    if (this.writeBlocked()) return true;
+    if (this.state.locked !== true) return false;
+    // Locked, and attached: refuse unless the engine is doing a system write.
+    return this.diagram !== undefined && !isSystemWrite(this.diagram);
+  }
+
   // Position & Transform
   position: Point;
   size: Size;
@@ -114,6 +149,21 @@ export class NodeModel extends DiagramEntity {
   scale: Point = { x: 1, y: 1 };
   positionMode: PositioningMode = 'absolute'; // Phase 1.6a: Default to absolute for backward compatibility
   transformOrigin: Point = { x: 0.5, y: 0.5 }; // Phase 1.6a: Default to center (normalized 0-1)
+
+  /**
+   * C — model-level stacking order (lower renders further back).
+   *
+   * `GroupModel` has had `zIndex` + `bringToFront`/`sendToBack` since Wave-5;
+   * nodes had nothing, so the only way to restack one was to write `style.zIndex`
+   * — a presentation field being used to carry a document fact, invisible to undo
+   * and to the diff/collab layers that watch `trackChange`.
+   *
+   * DELIBERATELY OPTIONAL, unlike the group's `zIndex = 0`. `undefined` means "this
+   * node never expressed an opinion", which is what lets {@link getEffectiveZIndex}
+   * fall through to the legacy `style.zIndex` the renderer already honoured, and
+   * what keeps `serialize()` byte-identical for every node that doesn't use it.
+   */
+  zIndex?: number;
 
   // Phase 1.7: Layout item configuration
   flexConfig?: FlexItemConfig;
@@ -233,7 +283,7 @@ export class NodeModel extends DiagramEntity {
    * Set position
    */
   setPosition(x: number, y: number, z?: number): void {
-    if (this.writeBlocked()) return;
+    if (this.geometryWriteBlocked()) return;
     const oldPosition = { ...this.position };
     this.position = { x, y, z };
     this.trackChange('position', oldPosition, this.position);
@@ -246,7 +296,7 @@ export class NodeModel extends DiagramEntity {
    * Move by delta
    */
   move(dx: number, dy: number, dz?: number): void {
-    if (this.writeBlocked()) return;
+    if (this.geometryWriteBlocked()) return;
     this.setPosition(
       this.position.x + dx,
       this.position.y + dy,
@@ -257,20 +307,56 @@ export class NodeModel extends DiagramEntity {
   }
 
   /**
-   * Set size
+   * Set size.
+   *
+   * A — this used to be five lines that wrote a field and told NOBODY, while its
+   * sibling `setPosition` has propagated since Phase 1.6a. A node growing inside a
+   * flex/grid container is a layout-invalidating event: its siblings have to move.
+   *
+   * It notifies its LAYOUT CONTAINERS, and deliberately NOT the transform chain
+   * `setPosition` uses: a parent's size does not move a relative child (the child's
+   * offset is measured from the parent ORIGIN), so emitting `transform-propagated`
+   * here would be noise that says something untrue.
    */
   setSize(width: number, height: number, depth?: number): void {
-    if (this.writeBlocked()) return;
+    if (this.geometryWriteBlocked()) return;
     const oldSize = { ...this.size };
+    if (oldSize.width === width && oldSize.height === height && oldSize.depth === depth) {
+      return; // no-op: never wake a layout pass for a write that changed nothing
+    }
     this.size = { width, height, depth };
     this.trackChange('size', oldSize, this.size);
+
+    this.notifyLayoutContainers();
+  }
+
+  /**
+   * A — tell every layout container that owns this node that its geometry moved.
+   *
+   * The re-entrancy this obviously invites (container lays out → writes a child's
+   * size → child notifies the container → …) is closed on the container side by
+   * `GroupModel.applyLayout`'s in-flight guard: a push that arrives DURING a pass
+   * is dropped, because that pass is already computing the answer it would ask for.
+   */
+  private notifyLayoutContainers(): void {
+    const diagram = this.diagram;
+    // `setSize` is HOT — layout adapters write thousands of them per run on graphs
+    // that have no groups at all. Iterate the Map directly (no `getGroups()` array
+    // allocation) and bail on the empty case before touching anything.
+    const groups = diagram?.groups;
+    if (!groups || groups.size === 0) return;
+    for (const group of groups.values()) {
+      if (group.members.has(this.id)) {
+        group.requestLayout(diagram);
+      }
+    }
   }
 
   /**
    * Resize by delta
    */
   resize(dw: number, dh: number, dd?: number): void {
-    if (this.writeBlocked()) return;
+    if (this.geometryWriteBlocked()) return;
     this.setSize(
       this.size.width + dw,
       this.size.height + dh,
@@ -284,7 +370,7 @@ export class NodeModel extends DiagramEntity {
    * Set rotation
    */
   setRotation(degrees: number): void {
-    if (this.writeBlocked()) return;
+    if (this.geometryWriteBlocked()) return;
     const oldRotation = this.rotation;
     this.rotation = degrees % 360;
     this.trackChange('rotation', oldRotation, this.rotation);
@@ -297,7 +383,7 @@ export class NodeModel extends DiagramEntity {
    * Rotate by delta
    */
   rotate(degrees: number): void {
-    if (this.writeBlocked()) return;
+    if (this.geometryWriteBlocked()) return;
     this.setRotation(this.rotation + degrees);
   }
 
@@ -305,7 +391,7 @@ export class NodeModel extends DiagramEntity {
    * Set scale
    */
   setScale(x: number, y: number): void {
-    if (this.writeBlocked()) return;
+    if (this.geometryWriteBlocked()) return;
     const oldScale = { ...this.scale };
     this.scale = { x, y };
     this.trackChange('scale', oldScale, this.scale);
@@ -1249,6 +1335,59 @@ export class NodeModel extends DiagramEntity {
     }
   }
 
+  // ========================================
+  // C — Z-order (mirrors GroupModel's Wave-5 API)
+  // ========================================
+
+  /**
+   * The stacking index a renderer should paint by.
+   *
+   * Precedence is explicit-model-field → legacy `style.zIndex` → 0. That ordering
+   * is the whole compatibility story: diagrams that restacked via style keep
+   * working untouched, and the moment a node states a model z-index it wins — so
+   * `setZIndex(1)` on a node styled `zIndex: 4` does what it says instead of
+   * silently losing to a stylesheet.
+   */
+  getEffectiveZIndex(): number {
+    return this.zIndex ?? this.style?.zIndex ?? 0;
+  }
+
+  /** Set the stacking index (lower renders further back). Tracked for undo/diff. */
+  setZIndex(z: number | undefined): void {
+    if (this.writeBlocked()) return;
+    if (this.zIndex === z) return;
+    const old = this.zIndex;
+    this.zIndex = z;
+    this.trackChange('zIndex', old, z);
+    this.emitter.emit('zindex:changed', z);
+  }
+
+  /**
+   * Bring this node in front of every other node in the diagram.
+   * Falls back to a relative bump when the node is detached, exactly as
+   * `GroupModel.bringToFront` does.
+   */
+  bringToFront(diagram?: DiagramModel): void {
+    const dm = diagram ?? this.diagram;
+    if (!dm) {
+      this.setZIndex(this.getEffectiveZIndex() + 1);
+      return;
+    }
+    const max = Math.max(0, ...dm.getNodes().map((n) => n.getEffectiveZIndex()));
+    this.setZIndex(max + 1);
+  }
+
+  /** Send this node behind every other node in the diagram. */
+  sendToBack(diagram?: DiagramModel): void {
+    const dm = diagram ?? this.diagram;
+    if (!dm) {
+      this.setZIndex(this.getEffectiveZIndex() - 1);
+      return;
+    }
+    const min = Math.min(0, ...dm.getNodes().map((n) => n.getEffectiveZIndex()));
+    this.setZIndex(min - 1);
+  }
+
   /**
    * Set flexbox item configuration (Phase 1.7)
    */
@@ -1432,6 +1571,12 @@ export class NodeModel extends DiagramEntity {
       transformOrigin: { ...this.transformOrigin }, // Phase 1.6a
     };
 
+    // C: only present when the node actually stated a z-index — see the field
+    // comment. `0` is a real, serialized value; `undefined` writes no key at all.
+    if (this.zIndex !== undefined) {
+      serialized.zIndex = this.zIndex;
+    }
+
     // Phase 1.7: Include layout configs if they exist
     if (this.flexConfig) {
       serialized.flexConfig = { ...this.flexConfig };
@@ -1479,6 +1624,12 @@ export class NodeModel extends DiagramEntity {
     // Restore Phase 1.6a properties (with defaults for backward compatibility)
     node.positionMode = data.positionMode || 'absolute';
     node.transformOrigin = data.transformOrigin || { x: 0.5, y: 0.5 };
+
+    // C: an absent key stays UNSET (not 0) so a legacy document keeps deferring to
+    // whatever `style.zIndex` it was painted with.
+    if (typeof data.zIndex === 'number') {
+      node.zIndex = data.zIndex;
+    }
 
     // Restore metadata
     for (const [key, value] of Object.entries(data.metadata)) {

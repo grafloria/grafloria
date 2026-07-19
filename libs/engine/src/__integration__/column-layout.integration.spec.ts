@@ -295,4 +295,168 @@ describe('Column-Based Layout - Dashboard Builder', () => {
       expect(mainContent.position.y).toBe(60);
     });
   });
+
+  // ===========================================================================
+  // The machinery a Dashboard Builder actually needs, end to end.
+  //
+  // Everything above this line proves the 12-column MATH was right. It was — and
+  // it was also unreachable: the layout only ran when someone called
+  // `applyLayout()` by hand, item configs were dead metadata, nodes had no
+  // z-order, and a "locked" widget was moved anyway. These exercise the whole
+  // loop the way a builder drives it.
+  // ===========================================================================
+  describe('Live dashboard editing', () => {
+    function makeDashboard(width = 1200, height = 800, gap = 0, padding = 0) {
+      const dashboard = new GroupModel({ name: 'Dashboard' });
+      dashboard.size = { width, height, depth: 0 };
+      diagram.addGroup(dashboard);
+      dashboard.setLayout('flexbox', {
+        direction: 'row',
+        wrap: 'wrap',
+        justifyContent: 'start',
+        alignItems: 'start',
+        alignContent: 'start',
+        gap,
+        padding,
+        columns: 12,
+      } as FlexboxLayoutConfig);
+      return dashboard;
+    }
+
+    function addWidget(dashboard: GroupModel, span: number, height = 200): NodeModel {
+      const w = new NodeModel({
+        type: 'widget',
+        position: { x: 0, y: 0 },
+        size: { width: 100, height, depth: 0 },
+      });
+      w.setMetadata('columnSpan', span);
+      diagram.addNode(w);
+      dashboard.addMember(w.id);
+      return w;
+    }
+
+    it('lays a widget out the moment it is dropped in — no manual applyLayout', () => {
+      const dashboard = makeDashboard();
+      const a = addWidget(dashboard, 6);
+      const b = addWidget(dashboard, 6);
+
+      expect(a.size.width).toBe(600);
+      expect(b.position.x).toBe(600);
+      expect(b.position.y).toBe(0);
+    });
+
+    it('reflows every widget when the dashboard canvas is resized', () => {
+      const dashboard = makeDashboard();
+      const a = addWidget(dashboard, 6);
+      const b = addWidget(dashboard, 6);
+
+      // The user drags the dashboard frame narrower.
+      dashboard.setFrame({ x: 0, y: 0, width: 600, height: 800 });
+
+      expect(a.size.width).toBe(300);
+      expect(b.size.width).toBe(300);
+      expect(b.position.x).toBe(300);
+    });
+
+    it('closes the gap when a widget is deleted', () => {
+      const dashboard = makeDashboard();
+      const a = addWidget(dashboard, 6);
+      const b = addWidget(dashboard, 6);
+      const c = addWidget(dashboard, 12);
+
+      expect(c.position.y).toBe(200); // row 2
+
+      diagram.removeNode(a.id);
+      dashboard.removeMember(a.id);
+
+      expect(b.position.x).toBe(0); // b slid left into a's slot
+      expect(c.position.y).toBe(200);
+      expect(c.position.x).toBe(0);
+    });
+
+    it('pushes the row below down when a widget grows', () => {
+      const dashboard = makeDashboard();
+      const top = addWidget(dashboard, 12, 200);
+      const below = addWidget(dashboard, 12, 200);
+
+      expect(below.position.y).toBe(200);
+
+      top.setSize(top.size.width, 320, 0);
+
+      expect(below.position.y).toBe(320);
+    });
+
+    it('keeps a PINNED widget exactly where the user left it, slot and all', () => {
+      const dashboard = makeDashboard();
+      const pinned = addWidget(dashboard, 6);
+      const flowing = addWidget(dashboard, 6);
+
+      pinned.setState({ locked: true });
+      const frozen = { ...pinned.position };
+      const frozenWidth = pinned.size.width;
+
+      // A resize that would otherwise re-derive every column width.
+      dashboard.setFrame({ x: 0, y: 0, width: 600, height: 800 });
+
+      expect(pinned.position).toMatchObject(frozen);
+      expect(pinned.size.width).toBe(frozenWidth);
+      // The unpinned widget still reflows, and still clears the pinned slot.
+      expect(flowing.size.width).toBe(300);
+      expect(flowing.position.x).toBe(frozenWidth);
+    });
+
+    it('stacks an overlay widget above the grid via the model z-index', () => {
+      const dashboard = makeDashboard();
+      const tile = addWidget(dashboard, 6);
+      const overlay = addWidget(dashboard, 6);
+
+      expect(tile.getEffectiveZIndex()).toBe(0);
+
+      overlay.bringToFront(diagram);
+      expect(overlay.getEffectiveZIndex()).toBeGreaterThan(tile.getEffectiveZIndex());
+
+      tile.bringToFront(diagram);
+      expect(tile.getEffectiveZIndex()).toBeGreaterThan(overlay.getEffectiveZIndex());
+
+      // …and it survives a save/load, which `style.zIndex` never guaranteed.
+      const restored = NodeModel.fromJSON(JSON.parse(JSON.stringify(tile.serialize())));
+      expect(restored.getEffectiveZIndex()).toBe(tile.getEffectiveZIndex());
+    });
+
+    it('places a widget in an EXPLICIT grid cell rather than by insertion order', () => {
+      const board = new GroupModel({ name: 'Grid Dashboard' });
+      board.size = { width: 620, height: 620, depth: 0 };
+      diagram.addGroup(board);
+      board.setLayout('grid', {
+        templateColumns: 'repeat(3, 1fr)',
+        templateRows: 'repeat(3, 1fr)',
+        columnGap: 10,
+        rowGap: 10,
+        autoFlow: 'row',
+        padding: 0,
+        justifyItems: 'stretch',
+        alignItems: 'stretch',
+      });
+
+      // Track: (620 - 2*10) / 3 = 200.
+      const kpi = new NodeModel({ type: 'kpi', position: { x: 0, y: 0 }, size: { width: 10, height: 10, depth: 0 } });
+      const chart = new NodeModel({ type: 'chart', position: { x: 0, y: 0 }, size: { width: 10, height: 10, depth: 0 } });
+      diagram.addNode(kpi);
+      diagram.addNode(chart);
+
+      // The chart claims the bottom-right 2x2 block, regardless of add order.
+      chart.setGridItem({ columnStart: 2, columnEnd: 4, rowStart: 2, rowEnd: 4 });
+
+      board.addMember(chart.id);
+      board.addMember(kpi.id);
+
+      expect(chart.position).toMatchObject({ x: 210, y: 210 });
+      expect(chart.size.width).toBe(410); // 2*200 + 10
+      expect(chart.size.height).toBe(410);
+
+      // The auto-placed KPI takes the first cell the chart did NOT claim.
+      expect(kpi.position).toMatchObject({ x: 0, y: 0 });
+      expect(kpi.size.width).toBe(200);
+    });
+  });
 });

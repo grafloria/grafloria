@@ -10,6 +10,8 @@ import type {
   LayoutConfig,
   FlexboxLayoutConfig,
   GridLayoutConfig,
+  FlexItemConfig,
+  GridItemConfig,
 } from '../types/layout.types';
 
 export interface SerializedGroup extends SerializedEntity {
@@ -392,10 +394,10 @@ export class GroupModel extends DiagramEntity {
     this.trackChange('members', null, entityId);
     this.emitter.emit('member:added', entityId);
 
-    // Auto-apply layout if enabled
-    if (this.getMetadata('autoLayout') === true) {
-      this.applyLayout();
-    }
+    // PUSH (A): a container that declares a layout reflows when its membership
+    // changes. This used to require an explicit `autoLayout` metadata flag, which
+    // meant the default behaviour of a layout container was "do nothing".
+    this.requestLayout(dm);
   }
 
   /**
@@ -415,6 +417,10 @@ export class GroupModel extends DiagramEntity {
 
       this.trackChange('members', entityId, null);
       this.emitter.emit('member:removed', entityId);
+
+      // PUSH (A): the survivors close the gap. Deleting a dashboard widget and
+      // leaving a hole is the single most obvious symptom of a pull-only layout.
+      this.requestLayout(dm);
       return true;
     }
     return false;
@@ -854,6 +860,11 @@ export class GroupModel extends DiagramEntity {
     this.bounds = { x: rect.x, y: rect.y, width: rect.width, height: rect.height };
     this.trackChange('bounds', oldBounds, this.bounds);
     this.emitter.emit('bounds:changed', this.bounds);
+
+    // PUSH (A): the frame IS the layout's coordinate system and available width.
+    // Resizing or moving a container without reflowing its children is how you
+    // get a 12-column dashboard whose columns stop matching its own edges.
+    this.requestLayout();
   }
 
   /**
@@ -948,12 +959,61 @@ export class GroupModel extends DiagramEntity {
     this.setZIndex(min - 1);
   }
 
+  // ---------------------------------------------------------------------------
+  // A — PUSH-DRIVEN LAYOUT
+  //
+  // `applyLayout` has always been a real layout engine. It was just never CALLED:
+  // it was pulled by hand, plus a one-shot on `addMember` behind an opt-IN metadata
+  // flag. Resize a container, delete a widget, or grow a child, and nothing
+  // reflowed. Everything below turns those three events into pushes, following the
+  // precedent already set by `NodeModel.setPosition` (which propagates) and
+  // `SwimlaneService.reflow` (the one place that already did this correctly).
+  // ---------------------------------------------------------------------------
+
+  /**
+   * Re-entrancy guard. The cycle this closes is real and one hop long: layout
+   * writes a child's size → the child notifies its containers → the container lays
+   * out again → it writes the child's size… Held for the duration of one pass;
+   * every push that arrives DURING a pass is dropped, because that pass is already
+   * producing the answer the push would ask for.
+   */
+  private layoutInFlight = false;
+
+  /**
+   * Is push-driven reflow active for this container?
+   *
+   * DEFAULT ON for any group that declares a layout — a container that says
+   * "I am a 12-column grid" and then lets its children drift is not a layout
+   * container. `metadata('autoLayout')` survives as the explicit override:
+   * set it to `false` to freeze the children (useful while dragging, or for a
+   * container whose positions are authored by hand). Setting it to `true`
+   * remains valid and is now simply the default.
+   */
+  isAutoLayoutEnabled(): boolean {
+    if (this.getMetadata('autoLayout') === false) {
+      return false;
+    }
+    return this.hasLayout();
+  }
+
+  /**
+   * THE push entry point: "something changed, reflow if you are supposed to."
+   * Distinct from {@link applyLayout}, which is the unconditional PULL — an
+   * explicit `applyLayout()` still works on an opted-out container.
+   */
+  requestLayout(diagram?: DiagramModel): void {
+    if (!this.isAutoLayoutEnabled()) {
+      return;
+    }
+    this.applyLayout(diagram);
+  }
+
   /**
    * Apply layout to member nodes (Phase 1.7+)
    * Positions child nodes based on flex or grid layout configuration
    */
   applyLayout(diagram?: DiagramModel): void {
-    if (!this.hasLayout()) {
+    if (!this.hasLayout() || this.layoutInFlight) {
       return;
     }
 
@@ -982,80 +1042,322 @@ export class GroupModel extends DiagramEntity {
       return;
     }
 
-    // Apply layout based on type
-    if (this.layoutType === 'flexbox') {
-      this.applyFlexboxLayout(entities);
-    } else if (this.layoutType === 'grid') {
-      this.applyGridLayout(entities);
+    this.layoutInFlight = true;
+    try {
+      if (this.layoutType === 'flexbox') {
+        this.applyFlexboxLayout(entities);
+      } else if (this.layoutType === 'grid') {
+        this.applyGridLayout(entities);
+      }
+    } finally {
+      this.layoutInFlight = false;
+    }
+  }
+
+  // ---------------------------------------------------------------------------
+  // Entity writers — the ONLY places a layout pass touches a child's geometry
+  // ---------------------------------------------------------------------------
+
+  /**
+   * D — auto-layout SKIPS LOCKED MEMBERS.
+   *
+   * A locked member keeps both its position and its size, but still consumes its
+   * slot in the flow (callers advance the cursor by the child's CURRENT size), so
+   * the container never stacks another widget on top of a pinned one. This is the
+   * precedent `LayoutManager` already set for graph layouts — it restores locked
+   * node positions after every run — and it is what "pin this tile" means to
+   * someone building a dashboard.
+   */
+  private isPinned(entity: NodeModel | GroupModel): boolean {
+    return (entity as NodeModel).state?.locked === true;
+  }
+
+  /**
+   * Move a member. Nodes go through `setPosition` (tracked + propagating);
+   * member GROUPS go through `setFrame` when they have a frame, which is what
+   * cascades the reflow down into a nested container's own children.
+   */
+  private placeEntity(entity: NodeModel | GroupModel, x: number, y: number): void {
+    if (this.isPinned(entity)) {
+      return;
+    }
+    if ('setPosition' in entity && typeof entity.setPosition === 'function') {
+      entity.setPosition(x, y);
+      return;
+    }
+    const group = entity as GroupModel;
+    if (group.size) {
+      group.setFrame({ x, y, width: group.size.width, height: group.size.height });
+      return;
+    }
+    group.position = { x, y };
+    group.requestLayout();
+  }
+
+  /**
+   * Resize a member along one or both axes. `undefined` leaves that axis alone.
+   * Nodes go through `setSize` so the write is tracked and honours the per-node
+   * lock; member groups go through `setFrame` so their own children follow.
+   */
+  private resizeEntity(entity: NodeModel | GroupModel, width?: number, height?: number): void {
+    if (this.isPinned(entity) || !entity.size) {
+      return;
+    }
+    const w = width ?? entity.size.width;
+    const h = height ?? entity.size.height;
+    if (w === entity.size.width && h === entity.size.height) {
+      return;
+    }
+    if ('setSize' in entity && typeof entity.setSize === 'function') {
+      (entity as NodeModel).setSize(w, h, entity.size.depth);
+      return;
+    }
+    const group = entity as GroupModel;
+    group.setFrame({ x: group.position.x, y: group.position.y, width: w, height: h });
+  }
+
+  /**
+   * B — the per-item flex config, finally read. `order` is a stable sort key
+   * (equal orders keep membership order), exactly like CSS.
+   */
+  private orderFlexEntities(
+    entities: Array<NodeModel | GroupModel>
+  ): Array<NodeModel | GroupModel> {
+    const anyOrdered = entities.some((e) => this.flexItemOf(e)?.order !== undefined);
+    if (!anyOrdered) {
+      return entities;
+    }
+    return entities
+      .map((entity, i) => ({ entity, i }))
+      .sort((a, b) => {
+        const oa = this.flexItemOf(a.entity)?.order ?? 0;
+        const ob = this.flexItemOf(b.entity)?.order ?? 0;
+        return oa !== ob ? oa - ob : a.i - b.i;
+      })
+      .map((e) => e.entity);
+  }
+
+  /** FlexItemConfig of a member, if it is a node that carries one. */
+  private flexItemOf(entity: NodeModel | GroupModel): FlexItemConfig | undefined {
+    const node = entity as NodeModel;
+    return typeof node.getFlexItem === 'function' ? node.getFlexItem() : undefined;
+  }
+
+  /** GridItemConfig of a member, if it is a node that carries one. */
+  private gridItemOf(entity: NodeModel | GroupModel): GridItemConfig | undefined {
+    const node = entity as NodeModel;
+    return typeof node.getGridItem === 'function' ? node.getGridItem() : undefined;
+  }
+
+  /**
+   * Apply flexbox layout to entities (nodes or groups).
+   *
+   * B — a real single-pass flex algorithm, written axis-agnostically so `row` and
+   * `column` share one code path: line breaking (`wrap`), `flexGrow` distribution,
+   * `justifyContent` on the main axis, and `alignItems`/`alignSelf` (including
+   * `stretch`) on the cross axis. Previously only `justifyContent: 'center'` and
+   * `alignItems: 'center'` existed and `wrap` was unread.
+   *
+   * The Bootstrap-style `columns` path is untouched and still takes priority for
+   * row containers — see {@link applyColumnBasedLayout}.
+   */
+  private applyFlexboxLayout(entities: Array<NodeModel | GroupModel>): void {
+    const config = this.getFlexboxLayout();
+    const padding = this.normalizePadding(config.padding);
+
+    const isColumn = config.direction === 'column' || config.direction === 'column-reverse';
+    const isReverse = config.direction.endsWith('-reverse');
+
+    // PRESERVED QUIRK: the main-axis gap reads `gap.row` for BOTH directions when
+    // gap is an object. Every asserted pixel in the existing specs was produced by
+    // that reading; the cross-axis (line) gap is new and picks the correct member.
+    const mainGap = typeof config.gap === 'number' ? config.gap : config.gap.row;
+    const crossGap =
+      typeof config.gap === 'number' ? config.gap : isColumn ? config.gap.column : config.gap.row;
+
+    const ordered = this.orderFlexEntities(entities);
+    const directed = isReverse ? ordered.slice().reverse() : ordered;
+
+    const startX = this.position.x + padding.left;
+    const startY = this.position.y + padding.top;
+
+    // Bootstrap 12-column path (rows only), unchanged.
+    if (!isColumn && config.columns !== undefined && config.columns > 0 && this.size) {
+      this.applyColumnBasedLayout(directed, config, padding, startX, startY);
+      return;
+    }
+
+    const contentWidth = this.size ? this.size.width - padding.left - padding.right : undefined;
+    const contentHeight = this.size ? this.size.height - padding.top - padding.bottom : undefined;
+    const mainAvail = isColumn ? contentHeight : contentWidth;
+    const crossAvail = isColumn ? contentWidth : contentHeight;
+
+    const mainOf = (e: NodeModel | GroupModel): number =>
+      (isColumn ? e.size?.height : e.size?.width) ?? (isColumn ? 50 : 100);
+    const crossOf = (e: NodeModel | GroupModel): number =>
+      (isColumn ? e.size?.width : e.size?.height) ?? (isColumn ? 100 : 50);
+
+    // ---- 1. Line breaking (`wrap`) -----------------------------------------
+    // Without a container extent there is no overflow to detect, so an unsized
+    // container is always single-line regardless of `wrap` — which is exactly the
+    // behaviour every pre-existing spec was written against.
+    const wraps = config.wrap !== 'nowrap' && mainAvail !== undefined;
+    const lines: Array<Array<NodeModel | GroupModel>> = [];
+    if (!wraps) {
+      lines.push(directed);
+    } else {
+      let line: Array<NodeModel | GroupModel> = [];
+      let used = 0;
+      for (const entity of directed) {
+        const size = mainOf(entity);
+        const next = line.length === 0 ? size : used + mainGap + size;
+        if (line.length > 0 && next > mainAvail!) {
+          lines.push(line);
+          line = [entity];
+          used = size;
+        } else {
+          line.push(entity);
+          used = next;
+        }
+      }
+      if (line.length > 0) {
+        lines.push(line);
+      }
+    }
+    if (config.wrap === 'wrap-reverse') {
+      lines.reverse();
+    }
+
+    // ---- 2. Per-line: grow, justify, align ----------------------------------
+    let crossCursor = isColumn ? startX : startY;
+
+    for (const line of lines) {
+      // flexGrow — distribute leftover main-axis space by factor.
+      if (mainAvail !== undefined) {
+        const totalGrow = line.reduce((s, e) => s + (this.flexItemOf(e)?.flexGrow ?? 0), 0);
+        if (totalGrow > 0) {
+          const used =
+            line.reduce((s, e) => s + mainOf(e), 0) + mainGap * Math.max(0, line.length - 1);
+          const free = mainAvail - used;
+          if (free > 0) {
+            for (const entity of line) {
+              const grow = this.flexItemOf(entity)?.flexGrow ?? 0;
+              if (grow <= 0) continue;
+              const target = mainOf(entity) + (free * grow) / totalGrow;
+              this.resizeEntity(
+                entity,
+                isColumn ? undefined : target,
+                isColumn ? target : undefined
+              );
+            }
+          }
+        }
+      }
+
+      // The line's cross extent. A SINGLE line in a sized container fills the
+      // container's content box (that is what makes `center`/`end`/`stretch`
+      // measure against the container, as the legacy centering code did); wrapped
+      // lines measure against their own tallest item, as CSS does.
+      const lineCross =
+        lines.length === 1 && crossAvail !== undefined
+          ? crossAvail
+          : line.reduce((m, e) => Math.max(m, crossOf(e)), 0);
+
+      // justifyContent — main-axis offset + inter-item spacing.
+      const usedMain =
+        line.reduce((s, e) => s + mainOf(e), 0) + mainGap * Math.max(0, line.length - 1);
+      const free = mainAvail !== undefined ? mainAvail - usedMain : 0;
+      const { offset, spacing } = this.resolveJustify(
+        config.justifyContent,
+        mainAvail !== undefined ? free : 0,
+        line.length
+      );
+
+      let mainCursor = (isColumn ? startY : startX) + offset;
+
+      for (const entity of line) {
+        const align = this.flexItemOf(entity)?.alignSelf;
+        const effectiveAlign =
+          align === undefined || align === 'auto' ? config.alignItems : align;
+
+        if (effectiveAlign === 'stretch') {
+          this.resizeEntity(
+            entity,
+            isColumn ? lineCross : undefined,
+            isColumn ? undefined : lineCross
+          );
+        }
+
+        const crossOffset = this.resolveAlign(effectiveAlign, lineCross, crossOf(entity));
+        const cross = crossCursor + crossOffset;
+
+        this.placeEntity(
+          entity,
+          isColumn ? cross : mainCursor,
+          isColumn ? mainCursor : cross
+        );
+
+        mainCursor += mainOf(entity) + mainGap + spacing;
+      }
+
+      crossCursor += lineCross + crossGap;
     }
   }
 
   /**
-   * Apply flexbox layout to entities (nodes or groups)
+   * Main-axis distribution for one flex line: how far the first item is pushed in,
+   * and how much EXTRA space goes between consecutive items (on top of `gap`).
+   * `start` (and anything unrecognised) is the identity, so a container with no
+   * size — where `free` is passed as 0 — always lays out from the content origin.
    */
-  private applyFlexboxLayout(entities: Array<NodeModel | GroupModel>): void {
-    const config = this.getFlexboxLayout();
-
-    // Get padding values
-    const padding = this.normalizePadding(config.padding);
-
-    // Calculate starting position
-    let currentX = this.position.x + padding.left;
-    let currentY = this.position.y + padding.top;
-
-    // Get gap value
-    const gap = typeof config.gap === 'number' ? config.gap : config.gap.row;
-
-    if (config.direction === 'column' || config.direction === 'column-reverse') {
-      // Vertical stacking
-      const orderedEntities = config.direction === 'column-reverse' ? entities.slice().reverse() : entities;
-
-      for (const entity of orderedEntities) {
-        if ('setPosition' in entity && typeof entity.setPosition === 'function') {
-          entity.setPosition(currentX, currentY);
-        } else {
-          // GroupModel
-          entity.position = { x: currentX, y: currentY };
-        }
-        const entityHeight = entity.size?.height || 50;
-        currentY += entityHeight + gap;
+  private resolveJustify(
+    justify: FlexboxLayoutConfig['justifyContent'],
+    free: number,
+    count: number
+  ): { offset: number; spacing: number } {
+    if (free <= 0 || count === 0) {
+      return { offset: 0, spacing: 0 };
+    }
+    switch (justify) {
+      case 'center':
+        return { offset: free / 2, spacing: 0 };
+      case 'end':
+        return { offset: free, spacing: 0 };
+      case 'space-between':
+        return count === 1
+          ? { offset: 0, spacing: 0 }
+          : { offset: 0, spacing: free / (count - 1) };
+      case 'space-around': {
+        const unit = free / count;
+        return { offset: unit / 2, spacing: unit };
       }
-    } else {
-      // Horizontal stacking (row or row-reverse)
-      const orderedEntities = config.direction === 'row-reverse' ? entities.slice().reverse() : entities;
-
-      // Check if using column-based layout (like Bootstrap grid)
-      const useColumnLayout = config.columns !== undefined && config.columns > 0 && this.size;
-
-      if (useColumnLayout && this.size) {
-        // Column-based layout (e.g., 12-column grid)
-        this.applyColumnBasedLayout(orderedEntities, config, padding, currentX, currentY);
-      } else {
-        // Standard flexbox layout
-        // Handle justifyContent for horizontal centering
-        if (config.justifyContent === 'center' && this.size) {
-          const totalWidth = this.calculateTotalWidth(orderedEntities, gap);
-          currentX = this.position.x + (this.size.width - totalWidth) / 2;
-        }
-
-        for (const entity of orderedEntities) {
-          // Handle alignItems for vertical centering
-          let entityY = currentY;
-          if (config.alignItems === 'center' && this.size) {
-            const entityHeight = entity.size?.height || 50;
-            entityY = this.position.y + (this.size.height - entityHeight) / 2;
-          }
-
-          if ('setPosition' in entity && typeof entity.setPosition === 'function') {
-            entity.setPosition(currentX, entityY);
-          } else {
-            // GroupModel
-            entity.position = { x: currentX, y: entityY };
-          }
-          const entityWidth = entity.size?.width || 100;
-          currentX += entityWidth + gap;
-        }
+      case 'space-evenly': {
+        const unit = free / (count + 1);
+        return { offset: unit, spacing: unit };
       }
+      default:
+        return { offset: 0, spacing: 0 };
+    }
+  }
+
+  /**
+   * Cross-axis offset of one item inside its line. `stretch` has already resized
+   * the item by the time this runs, so it lands at the line start like `start`.
+   * `baseline` degrades to `start`: this model has no text baselines to align to,
+   * and quietly inventing one would be worse than saying so.
+   */
+  private resolveAlign(
+    align: FlexboxLayoutConfig['alignItems'] | 'auto',
+    lineCross: number,
+    itemCross: number
+  ): number {
+    switch (align) {
+      case 'center':
+        return (lineCross - itemCross) / 2;
+      case 'end':
+        return lineCross - itemCross;
+      default:
+        return 0;
     }
   }
 
@@ -1105,68 +1407,242 @@ export class GroupModel extends DiagramEntity {
       // Calculate entity width based on column span
       const entityWidth = columnWidth * clampedSpan + gap * (clampedSpan - 1);
 
-      // Update entity size to match column width
-      if (entity.size) {
-        entity.size.width = entityWidth;
-      }
+      // Update entity size to match column width. Routed through resizeEntity /
+      // placeEntity so the write is tracked, honours the per-node lock (D), and
+      // cascades into a member group's own children (A).
+      this.resizeEntity(entity, entityWidth);
+      this.placeEntity(entity, currentX, currentY);
 
-      // Position entity
-      if ('setPosition' in entity && typeof entity.setPosition === 'function') {
-        entity.setPosition(currentX, currentY);
-      } else {
-        // GroupModel
-        entity.position = { x: currentX, y: currentY };
-      }
-
-      // Track row height (max height in this row)
+      // Track row height (max height in this row). A PINNED member keeps its own
+      // size, so the cursor advances by what it actually occupies.
+      const occupiedWidth = this.isPinned(entity) ? entity.size?.width ?? entityWidth : entityWidth;
       const entityHeight = entity.size?.height || 100;
       currentRowHeight = Math.max(currentRowHeight, entityHeight);
       rowEntities.push(entity);
 
       // Move to next column position
-      currentX += entityWidth + gap;
+      currentX += occupiedWidth + gap;
       currentColumn += clampedSpan;
     }
   }
 
   /**
-   * Apply grid layout to entities (nodes or groups)
+   * Apply grid layout to entities (nodes or groups).
+   *
+   * B — placement now comes from each item's {@link GridItemConfig} (explicit
+   * `columnStart`/`rowStart` lines and `columnEnd`/`rowEnd` spans), not from the
+   * member's ARRAY INDEX. Items with no explicit placement auto-flow into the
+   * first cell no explicit item has claimed, in `autoFlow` order. Tracks are
+   * uniform: derived from the container's content box when it has one, and from
+   * the widest/tallest member otherwise (which is what the old per-entity
+   * arithmetic already produced for the equal-sized children it was written for).
    */
   private applyGridLayout(entities: Array<NodeModel | GroupModel>): void {
     const config = this.getGridLayout();
 
-    // Parse template columns to get column count
-    const columns = this.parseGridColumns(config.templateColumns);
-
-    // Get gaps
+    const columns = Math.max(1, this.parseGridColumns(config.templateColumns));
     const columnGap = config.columnGap || 0;
     const rowGap = config.rowGap || 0;
-
-    // Get padding
     const padding = this.normalizePadding(config.padding);
 
-    // Starting position
     const startX = this.position.x + padding.left;
     const startY = this.position.y + padding.top;
 
-    // Position entities in grid
-    entities.forEach((entity, index) => {
-      const row = Math.floor(index / columns);
-      const col = index % columns;
+    // `templateRows` bounds a column-flow grid's row axis (CSS: column flow grows
+    // COLUMNS, so the rows have to be finite). With none declared, fall back to
+    // "as many rows as there are members", which can never force a wrap.
+    const templateRowCount = config.templateRows ? this.parseGridColumns(config.templateRows) : 0;
+    const rowLimit = templateRowCount > 0 ? templateRowCount : Math.max(1, entities.length);
 
-      const entityWidth = entity.size?.width || 100;
-      const entityHeight = entity.size?.height || 100;
+    const placements = this.resolveGridPlacements(entities, columns, config.autoFlow, rowLimit);
 
-      const x = startX + col * (entityWidth + columnGap);
-      const y = startY + row * (entityHeight + rowGap);
+    // Track sizes.
+    const rowCount = placements.reduce((m, p) => Math.max(m, p.row + p.rowSpan), 1);
+    const contentWidth = this.size ? this.size.width - padding.left - padding.right : undefined;
+    const contentHeight = this.size ? this.size.height - padding.top - padding.bottom : undefined;
 
-      if ('setPosition' in entity && typeof entity.setPosition === 'function') {
-        entity.setPosition(x, y);
-      } else {
-        // GroupModel
-        entity.position = { x, y };
+    const rowTracks = Math.max(rowCount, templateRowCount || 0, 1);
+
+    const columnWidth =
+      contentWidth !== undefined
+        ? (contentWidth - columnGap * (columns - 1)) / columns
+        : entities.reduce((m, e) => Math.max(m, e.size?.width ?? 0), 0) || 100;
+    const rowHeight =
+      contentHeight !== undefined
+        ? (contentHeight - rowGap * (rowTracks - 1)) / rowTracks
+        : entities.reduce((m, e) => Math.max(m, e.size?.height ?? 0), 0) || 100;
+
+    for (const { entity, row, column, rowSpan, columnSpan } of placements) {
+      const x = startX + column * (columnWidth + columnGap);
+      const y = startY + row * (rowHeight + rowGap);
+
+      // Cell-filling is OPT-IN. CSS defaults `justify-items`/`align-items` to
+      // stretch, but this engine's grid never resized anything, and silently
+      // starting to would re-geometry every existing grid container. Ask for it.
+      const item = this.gridItemOf(entity);
+      const justify = item?.justifySelf ?? config.justifyItems;
+      const alignSelf = item?.alignSelf ?? config.alignItems;
+      const stretchW = justify === 'stretch';
+      const stretchH = alignSelf === 'stretch';
+      if (stretchW || stretchH) {
+        this.resizeEntity(
+          entity,
+          stretchW ? columnWidth * columnSpan + columnGap * (columnSpan - 1) : undefined,
+          stretchH ? rowHeight * rowSpan + rowGap * (rowSpan - 1) : undefined
+        );
       }
+
+      this.placeEntity(entity, x, y);
+    }
+  }
+
+  /**
+   * Resolve every member to a 0-based grid cell + span.
+   *
+   * Two passes, because explicit placement must WIN: pass 1 reserves the cells
+   * claimed by items with a `GridItemConfig` line (or a `gridColumn`/`gridRow`
+   * metadata fallback); pass 2 flows the rest into the first cell still free.
+   * Without the reservation an auto item would happily land under a pinned one —
+   * which is precisely the bug "placement by array index" always had.
+   */
+  private resolveGridPlacements(
+    entities: Array<NodeModel | GroupModel>,
+    columns: number,
+    autoFlow: GridLayoutConfig['autoFlow'],
+    rowLimit: number
+  ): Array<{
+    entity: NodeModel | GroupModel;
+    row: number;
+    column: number;
+    rowSpan: number;
+    columnSpan: number;
+  }> {
+    type Placement = {
+      entity: NodeModel | GroupModel;
+      row: number;
+      column: number;
+      rowSpan: number;
+      columnSpan: number;
+    };
+
+    const occupied = new Set<string>();
+    const key = (r: number, c: number): string => `${r}:${c}`;
+    const occupy = (p: Placement): void => {
+      for (let r = p.row; r < p.row + p.rowSpan; r++) {
+        for (let c = p.column; c < p.column + p.columnSpan; c++) {
+          occupied.add(key(r, c));
+        }
+      }
+    };
+    const fits = (row: number, column: number, rowSpan: number, columnSpan: number): boolean => {
+      if (column + columnSpan > columns) return false;
+      for (let r = row; r < row + rowSpan; r++) {
+        for (let c = column; c < column + columnSpan; c++) {
+          if (occupied.has(key(r, c))) return false;
+        }
+      }
+      return true;
+    };
+
+    const line = (v: number | 'auto' | undefined): number | undefined =>
+      typeof v === 'number' && v >= 1 ? v - 1 : undefined; // CSS lines are 1-based
+
+    const specs = entities.map((entity) => {
+      const item = this.gridItemOf(entity);
+      const column = line(item?.columnStart) ?? line(entity.getMetadata('gridColumn') as number);
+      const row = line(item?.rowStart) ?? line(entity.getMetadata('gridRow') as number);
+
+      // Span: the CSS end-line form first, then the `columnSpan`/`rowSpan`
+      // metadata the Bootstrap path already uses (kept working on purpose).
+      const endCol = line(item?.columnEnd);
+      const endRow = line(item?.rowEnd);
+      const columnSpan = Math.max(
+        1,
+        Math.min(
+          columns,
+          endCol !== undefined && column !== undefined
+            ? endCol - column
+            : (entity.getMetadata('columnSpan') as number) || 1
+        )
+      );
+      const rowSpan = Math.max(
+        1,
+        endRow !== undefined && row !== undefined
+          ? endRow - row
+          : (entity.getMetadata('rowSpan') as number) || 1
+      );
+      return { entity, row, column, rowSpan, columnSpan };
     });
+
+    const placements: Placement[] = [];
+
+    // Pass 1 — explicit placements reserve their cells.
+    for (const spec of specs) {
+      if (spec.row === undefined || spec.column === undefined) continue;
+      const p: Placement = {
+        entity: spec.entity,
+        row: spec.row,
+        column: Math.min(spec.column, Math.max(0, columns - spec.columnSpan)),
+        rowSpan: spec.rowSpan,
+        columnSpan: spec.columnSpan,
+      };
+      occupy(p);
+      placements.push(p);
+    }
+
+    // Pass 2 — auto-flow the rest into the first cell pass 1 left free.
+    //
+    // `row` flow scans row-major (across, then down); `column` flow scans
+    // column-major (down `rowLimit` rows, then across). The row axis is
+    // unbounded in row flow, so the scan is capped rather than trusted.
+    const columnFirst = autoFlow === 'column';
+    const maxScan = (entities.length + 2) * (columns + 2);
+
+    for (const spec of specs) {
+      if (spec.row !== undefined && spec.column !== undefined) continue;
+
+      let row = spec.row ?? 0;
+      let column = spec.column ?? 0;
+
+      if (spec.column !== undefined) {
+        // Column pinned by the author: walk DOWN that column for a free row.
+        while (!fits(row, column, spec.rowSpan, spec.columnSpan) && row < maxScan) row++;
+      } else if (spec.row !== undefined) {
+        // Row pinned: walk ACROSS that row.
+        while (!fits(row, column, spec.rowSpan, spec.columnSpan) && column < columns) column++;
+        if (column >= columns) column = 0;
+      } else if (columnFirst) {
+        let scanned = 0;
+        while (!fits(row, column, spec.rowSpan, spec.columnSpan) && scanned++ < maxScan) {
+          row++;
+          if (row + spec.rowSpan > rowLimit) {
+            row = 0;
+            column++;
+          }
+        }
+      } else {
+        let scanned = 0;
+        while (!fits(row, column, spec.rowSpan, spec.columnSpan) && scanned++ < maxScan) {
+          column++;
+          if (column + spec.columnSpan > columns) {
+            column = 0;
+            row++;
+          }
+        }
+      }
+
+      const p: Placement = {
+        entity: spec.entity,
+        row,
+        column: Math.min(column, Math.max(0, columns - spec.columnSpan)),
+        rowSpan: spec.rowSpan,
+        columnSpan: spec.columnSpan,
+      };
+      occupy(p);
+      placements.push(p);
+    }
+
+    return placements;
   }
 
   /**
@@ -1182,20 +1658,6 @@ export class GroupModel extends DiagramEntity {
       return { top: padding, right: padding, bottom: padding, left: padding };
     }
     return padding;
-  }
-
-  /**
-   * Calculate total width of entities for centering
-   */
-  private calculateTotalWidth(entities: Array<NodeModel | GroupModel>, gap: number): number {
-    let total = 0;
-    for (let i = 0; i < entities.length; i++) {
-      total += entities[i].size?.width || 100;
-      if (i < entities.length - 1) {
-        total += gap;
-      }
-    }
-    return total;
   }
 
   /**

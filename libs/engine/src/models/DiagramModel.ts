@@ -453,6 +453,15 @@ export class DiagramModel extends DiagramEntity {
   }
 
   /**
+   * True while a SYSTEM write is in flight. Read by the PER-NODE geometry lock
+   * (`NodeState.locked`) so it exempts measured writes exactly as the document
+   * lock does — see readonly-lock.ts.
+   */
+  inSystemWrite(): boolean {
+    return this.readonlyLock.inSystemWrite();
+  }
+
+  /**
    * Run a SYSTEM write — a derived/measured value (auto-size, portal placement)
    * the engine needs in order to render the document as it already is. Permitted
    * even while locked. NOT reachable from user input; see readonly-lock.ts.

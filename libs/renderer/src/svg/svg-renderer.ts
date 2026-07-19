@@ -2979,10 +2979,20 @@ export class SVGRenderer implements IRenderer {
     // on the visible-query iteration order. `Array.prototype.sort` is stable, so
     // nodes that share a zIndex (the common case: none set → all 0) keep their
     // incoming order — this is a no-op for diagrams that never set zIndex.
+    //
+    // The sort key is now `NodeModel.getEffectiveZIndex()`, which resolves the
+    // MODEL field first and falls back to the legacy `style.zIndex` this line used
+    // to read directly. Style-ordered diagrams are unaffected; a node that states a
+    // model z-index (via SetNodeZIndexCommand) finally reaches the painter. The
+    // `?? ` probe keeps plain-object node stubs in older renderer specs working.
+    const zOf = (node: NodeModel): number =>
+      typeof node.getEffectiveZIndex === 'function'
+        ? node.getEffectiveZIndex()
+        : node.style?.zIndex ?? 0;
     const ordered = nodes
       .map((node, i) => ({ node, i }))
       .sort((a, b) => {
-        const za = (a.node.style?.zIndex ?? 0) - (b.node.style?.zIndex ?? 0);
+        const za = zOf(a.node) - zOf(b.node);
         return za !== 0 ? za : a.i - b.i;
       })
       .map((entry) => entry.node);

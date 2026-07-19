@@ -52,6 +52,15 @@
 export interface ReadonlyLockOwner {
   /** True when a *document* mutation must be refused right now. */
   blocksDocumentWrite(): boolean;
+  /**
+   * True while a SYSTEM write is in flight (see {@link ReadonlyLock.runSystemWrite}).
+   *
+   * Exposed because the document lock is not the only lock that needs the
+   * document/system distinction: the PER-NODE lock (`NodeState.locked`) draws the
+   * same line, and must draw it the same way or the engine ends up with two
+   * disagreeing definitions of "the engine is measuring, not the user editing".
+   */
+  inSystemWrite(): boolean;
 }
 
 /**
@@ -78,6 +87,11 @@ export class ReadonlyLock {
   /** True when a document mutation must be refused: locked AND not a system write. */
   blocksDocumentWrite(): boolean {
     return this.locked && this.systemWriteDepth === 0;
+  }
+
+  /** True while a system write is in flight, whether or not the document is locked. */
+  inSystemWrite(): boolean {
+    return this.systemWriteDepth > 0;
   }
 
   /**
@@ -108,4 +122,16 @@ export class ReadonlyLock {
  */
 export function writeBlocked(owner?: Partial<ReadonlyLockOwner>): boolean {
   return owner?.blocksDocumentWrite?.() === true;
+}
+
+/**
+ * True when `owner` is currently performing a SYSTEM write — a measured/derived
+ * value the engine needs in order to render the document as it already is.
+ *
+ * Same `undefined` tolerance as {@link writeBlocked}, and the same answer for a
+ * host that predates the accessor: `false` (assume a document write), which is the
+ * conservative reading — it refuses rather than silently permits.
+ */
+export function isSystemWrite(owner?: Partial<ReadonlyLockOwner>): boolean {
+  return owner?.inSystemWrite?.() === true;
 }

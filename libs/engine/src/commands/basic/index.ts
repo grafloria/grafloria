@@ -38,3 +38,6 @@ export * from './ReconnectLinkCommand'; // wave12 (reconnect undo)
 export * from './SetLinkLabelCommand'; // wave4/interaction (in-place text editing)
 
 export * from './PortCommands'; // wave6/ports (dynamic auto-ports)
+
+// C — node stacking order as undoable commands (dashboard z-order).
+export * from './NodeZOrderCommands';
