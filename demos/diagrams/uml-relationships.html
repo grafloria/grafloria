@@ -1,208 +1,130 @@
 <meta charset="utf-8">
 <title>UML relationships — Grafloria</title>
 <link rel="stylesheet" href="../shell/demo.css">
-<style>
-  /* UML class boxes: name / attributes / methods compartments, as HTML.
-     Same card pattern as the class-uml demo — the card FILLS the node and
-     draws its own border, so the node's own rectangle is hidden. */
-  #canvas .uml { font: 12px/1.5 system-ui, sans-serif; border: 1px solid #475569;
-    border-radius: 4px; overflow: hidden; background: #fff;
-    width: 100%; height: 100%; box-sizing: border-box; }
-  #canvas .uml-name { text-align: center; font-weight: 700; padding: 4px 10px; background: #eef2ff; color: #1e1b4b; }
-  #canvas .uml-cls-name { display: block; }
-  /* Interface / abstract names are italic — but the «stereotype» line above stays upright. */
-  #canvas .uml-name.italic .uml-cls-name { font-style: italic; }
-  #canvas .uml-stereo { display: block; font-weight: 400; font-style: normal;
-    font-size: 10px; letter-spacing: .02em; opacity: .72; }
-  #canvas .uml-comp { border-top: 1px solid #475569; padding: 3px 0; }
-  #canvas .uml-comp .member { padding: 1px 10px; font: 11px/1.5 ui-monospace, Menlo, monospace; color: #0f172a; white-space: nowrap; }
-  #canvas .uml-comp.empty { min-height: 8px; }
-  /* Selection rings the class box itself, not a detached outline. */
-  #canvas .selection-highlight { display: none; }
-  #canvas g.node-group[data-selected="true"] .uml {
-    border-color: #4f46e5; box-shadow: 0 0 0 2px rgba(79, 70, 229, .45); }
-  #canvas g.node-group[data-selected="true"] rect.diagram-node {
-    stroke: transparent !important; fill: none !important; }
-  @media (prefers-color-scheme: dark) {
-    #canvas .uml { background: #1e293b; border-color: #64748b; }
-    #canvas .uml-name { background: #312e81; color: #e0e7ff; }
-    #canvas .uml-comp { border-top-color: #64748b; }
-    #canvas .uml-comp .member { color: #e2e8f0; }
-  }
-</style>
 <header id="demo-head"></header>
 <div id="canvas"></div>
 <script type="module">
-import { render } from '../shell/grafloria.js';
+import { render, umlDiagram, umlClass } from '../shell/grafloria.js';
 import { defineDemo, check } from '../shell/demo.js';
 
-// ---- class boxes ---------------------------------------------------------
-const LINE_H = 19, NAME_H = 30, STEREO_H = 15, PAD = 8, W = 190;
+// The FULL UML relationship vocabulary as PURE DATA, via the reusable diagram
+// kit (`umlDiagram` from @grafloria/element). The kit owns the three-compartment
+// class-card look, every relationship's real notation (hollow triangle,
+// diamonds, open arrows, dashes), the multiplicity chips, row selection and
+// the card-ring selection styling (no node resize frame) — this page just
+// declares classes and relationships. See diagrams/class-uml.html for the
+// minimal kit consumer; this page exercises ALL SEVEN relationship kinds.
+//
+// Placement discipline (same as the hand-composed original): related cards are
+// CENTRE-ALIGNED — vertical pairs share their x (equal widths), horizontal
+// pairs have equal heights and share their y — so every orthogonal line runs
+// dead straight into a perpendicular marker, with no last-pixel jog.
+const SPEC = umlDiagram({
+  classes: [
+    // Band 1 — vertical pairs (parent / whole on top, child / part below).
+    { id: 'Shape', stereotype: 'abstract', abstract: true, position: { x: 70, y: 36 },
+      attributes: ['# x: float', '# y: float'],
+      methods: ['+ area(): float', '+ draw(): void'] },
+    { id: 'Circle', position: { x: 70, y: 392 },
+      attributes: ['+ radius: float'], methods: ['+ area(): float'] },
 
-// Height a box needs for its compartments (+ a taller header when it carries a «stereotype»).
-const clsHeight = (attrs, methods, opts = {}) =>
-  NAME_H + (opts.stereotype ? STEREO_H : 0) + (attrs.length + methods.length) * LINE_H + PAD * 2 + 6;
+    { id: 'Drawable', stereotype: 'interface', position: { x: 460, y: 55 },
+      attributes: [], methods: ['+ render(): void', '+ bounds(): Rect'] },
+    { id: 'Button', position: { x: 460, y: 392 },
+      attributes: ['+ label: String'], methods: ['+ render(): void'] },
 
-// A three-compartment class box as HTML: «stereotype» (optional) + name, then attributes, then methods.
-const cls = (name, attrs, methods, { stereotype = null, italic = false } = {}) => ({
-  tag: 'div', className: 'uml',
-  children: [
-    { tag: 'div', className: 'uml-name' + (italic ? ' italic' : ''),
-      children: [
-        ...(stereotype ? [{ tag: 'div', className: 'uml-stereo', text: '«' + stereotype + '»' }] : []),
-        { tag: 'div', className: 'uml-cls-name', text: name },
-      ] },
-    { tag: 'div', className: 'uml-comp' + (attrs.length ? '' : ' empty'),
-      children: attrs.map((a) => ({ tag: 'div', className: 'member', text: a })) },
-    { tag: 'div', className: 'uml-comp' + (methods.length ? '' : ' empty'),
-      children: methods.map((m) => ({ tag: 'div', className: 'member', text: m })) },
+    { id: 'Playlist', position: { x: 850, y: 62 },
+      attributes: ['+ name: String'], methods: ['+ add(s): void'] },
+    { id: 'Song', position: { x: 850, y: 392 },
+      attributes: ['+ title: String', '+ seconds: int'], methods: [] },
+
+    { id: 'Window', position: { x: 1240, y: 62 },
+      attributes: ['+ title: String'], methods: ['+ close(): void'] },
+    { id: 'TitleBar', position: { x: 1240, y: 402 },
+      attributes: ['+ text: String'], methods: [] },
+
+    // Band 2 — horizontal pairs (equal heights, shared y = shared centre line).
+    { id: 'Student', position: { x: 70, y: 682 },
+      attributes: ['+ name: String'], methods: [] },
+    { id: 'Course', position: { x: 380, y: 682 },
+      attributes: ['+ code: String'], methods: [] },
+
+    { id: 'Order', position: { x: 730, y: 672 },
+      attributes: ['+ id: int'], methods: ['+ total(): Money'] },
+    { id: 'Product', position: { x: 1040, y: 672 },
+      attributes: ['+ sku: String', '+ price: Money'], methods: [] },
+
+    // Band 3 — dependency pair + the self-association.
+    { id: 'OrderService', position: { x: 70, y: 962 },
+      attributes: [], methods: ['+ checkout(o): void'] },
+    { id: 'Logger', position: { x: 380, y: 962 },
+      attributes: [], methods: ['+ log(msg): void'] },
+
+    { id: 'Employee', position: { x: 800, y: 952 },
+      attributes: ['+ name: String'], methods: ['+ manage(e): void'] },
+  ],
+  relationships: [
+    // Solid + hollow triangle at the parent: "Circle IS-A Shape".
+    { id: 'gen', from: 'Circle', to: 'Shape', kind: 'inheritance',
+      label: 'generalization', fromSide: 'top', toSide: 'bottom' },
+    // DASHED + the same hollow triangle at the «interface»: "Button REALIZES Drawable".
+    { id: 'real', from: 'Button', to: 'Drawable', kind: 'realization',
+      label: 'realization', fromSide: 'top', toSide: 'bottom' },
+    // Hollow diamond at the WHOLE (the from end): shared whole-part.
+    { id: 'agg', from: 'Playlist', to: 'Song', kind: 'aggregation',
+      label: 'aggregation', fromSide: 'bottom', toSide: 'top' },
+    // FILLED diamond at the WHOLE: owned whole-part.
+    { id: 'comp', from: 'Window', to: 'TitleBar', kind: 'composition',
+      label: 'composition', fromSide: 'bottom', toSide: 'top' },
+    // Plain line, no heads, multiplicity chips at both ends.
+    { id: 'assoc', from: 'Student', to: 'Course', kind: 'association',
+      multiplicity: ['0..*', '1..*'], fromSide: 'right', toSide: 'left' },
+    // Open arrow at the target: navigable one way. Order 1 → 0..* Product.
+    { id: 'dir', from: 'Order', to: 'Product', kind: 'directed-association',
+      multiplicity: ['1', '0..*'], fromSide: 'right', toSide: 'left' },
+    // DASHED + open arrow: a transient «uses» dependency.
+    { id: 'dep', from: 'OrderService', to: 'Logger', kind: 'dependency',
+      label: '«uses»', fromSide: 'right', toSide: 'left' },
   ],
 });
 
-// Place a class box by its CENTRE — the discipline that keeps relationship lines
-// straight: two boxes sharing a centre X (or Y) let the orthogonal line run dead
-// straight into a perpendicular marker, with no last-pixel jog ("broken arrow").
-const nodeC = (id, cx, cy, name, attrs, methods, opts) => {
-  const h = clsHeight(attrs, methods, opts);
-  return {
-    id, position: { x: Math.round(cx - W / 2), y: Math.round(cy - h / 2) },
-    size: { width: W, height: h },
-    metadata: { html: { content: cls(name, attrs, methods, opts) } },
-    // The card draws its own border — hide the node's default rectangle.
-    shape: { type: 'rect', fill: 'none', stroke: 'none' },
-    style: { fill: 'transparent', stroke: 'transparent', strokeWidth: 0 },
-  };
-};
-
-// ---- relationships -------------------------------------------------------
-const REL = '#64748b';
-const base = { stroke: REL, strokeWidth: 1.5 };
-const DASH = '6,4';
-const tri  = { type: 'generalization', size: 18, filled: false, color: REL };  // hollow triangle
-const openA = { type: 'open-arrow', size: 13, filled: false, color: REL };      // open (line) arrow
-const noHead = { type: 'none', size: 0, filled: false };
-
-// Solid line + hollow triangle at the PARENT (target): "child IS-A parent".
-const generalization = (id, child, parent) => ({
-  id, source: child, target: parent, type: 'orthogonal', sourceHandle: 'top', targetHandle: 'bottom',
-  label: 'generalization', style: { ...base, arrowHead: tri },
+// THE ONE THING THE KIT CANNOT SAY (yet): a SELF-association. UmlRelationshipSpec
+// has no self-loop vocabulary (no `selfLoop` pass-through, and from === to has no
+// routing story), so this single edge stays hand-composed on top of the kit spec —
+// Employee loops out of and back into its own top edge, read by one `manages`
+// label. Everything else on this page is pure kit data.
+SPEC.edges.push({
+  id: 'self', source: 'Employee', target: 'Employee', type: 'orthogonal',
+  sourceHandle: 'top', targetHandle: 'top', label: 'manages',
+  style: { stroke: '#475569', strokeWidth: 1.5,
+    selfLoop: { side: 'top', size: 52, width: 96 },
+    arrowHead: { type: 'open-arrow', size: 12, filled: false } },
 });
-// DASHED line + hollow triangle at the «interface» (target): "class REALIZES interface".
-const realization = (id, impl, iface) => ({
-  id, source: impl, target: iface, type: 'orthogonal', sourceHandle: 'top', targetHandle: 'bottom',
-  label: 'realization', style: { ...base, strokeDasharray: DASH, arrowHead: tri },
-});
-// Plain solid line, NO heads — a symmetric association. The renderer draws a
-// default arrowhead unless it is explicitly suppressed, so `none` is required.
-// Multiplicities are added at the ends post-render.
-const association = (id, a, b) => ({
-  id, source: a, target: b, type: 'orthogonal', sourceHandle: 'right', targetHandle: 'left',
-  style: { ...base, arrowHead: noHead },
-});
-// Solid line + open arrow at the target — navigable ONE way.
-const directed = (id, a, b) => ({
-  id, source: a, target: b, type: 'orthogonal', sourceHandle: 'right', targetHandle: 'left',
-  style: { ...base, arrowHead: openA },
-});
-// Hollow diamond at the WHOLE (source / tail) — shared whole-part.
-const aggregation = (id, whole, part) => ({
-  id, source: whole, target: part, type: 'orthogonal', sourceHandle: 'bottom', targetHandle: 'top',
-  label: 'aggregation', style: { ...base, arrowTail: { type: 'hollow-diamond', size: 15, filled: false, color: REL }, arrowHead: noHead },
-});
-// FILLED diamond at the WHOLE (source / tail) — owned whole-part.
-const composition = (id, whole, part) => ({
-  id, source: whole, target: part, type: 'orthogonal', sourceHandle: 'bottom', targetHandle: 'top',
-  label: 'composition', style: { ...base, arrowTail: { type: 'filled-diamond', size: 15, filled: true, color: REL }, arrowHead: noHead },
-});
-// DASHED line + open arrow at the target — a «uses» dependency.
-const dependency = (id, a, b) => ({
-  id, source: a, target: b, type: 'orthogonal', sourceHandle: 'right', targetHandle: 'left',
-  label: '«uses»', style: { ...base, strokeDasharray: DASH, arrowHead: openA },
-});
-// A class associated with ITSELF, routed as a clean loop out of and back into the
-// top edge. A single centred `manages` label reads the self-relationship.
-const selfAssoc = (id, node) => ({
-  id, source: node, target: node, type: 'orthogonal', sourceHandle: 'top', targetHandle: 'top',
-  label: 'manages', style: { ...base, selfLoop: { side: 'top', size: 52, width: 96 }, arrowHead: openA },
-});
-
-// A small multiplicity / role chip that reads over a line.
-const chip = (text, slot) => ({ text, slot, offset: { x: 0, y: -7 },
-  style: { fontSize: 11, fontWeight: '600', color: '#0f172a', background: '#ffffffdd', padding: 1, borderRadius: 2 } });
 
 defineDemo({
   name: 'UML relationships',
-  blurb: 'The FULL UML class-relationship vocabulary in one native Grafloria diagram: generalization, realization, association (with multiplicities), directed association, aggregation, composition, dependency and a self-association — each drawn with its real UML arrowhead and clearly labelled.',
+  blurb: 'The FULL UML class-relationship vocabulary from PURE DATA via the reusable umlDiagram() kit: generalization, realization, association (with multiplicity chips), directed association, aggregation, composition and dependency — each with its real UML notation, look / selection / editing surface all from the kit. Only the Employee self-association is a hand-written edge (self-loops are not in the kit vocabulary yet).',
   howTo: [
+    'Read the source of this page: seven relationship kinds and fifteen classes are ONE umlDiagram({ classes, relationships }) call — no CSS, no HTML trees, no arrow config. Only the Employee "manages" self-loop is a hand-written edge (a documented kit gap).',
     'Generalization (inheritance): a SOLID line with a hollow triangle at the parent (Circle → Shape). Read the triangle as "is-a". Shape is «abstract» — italic name.',
-    'Realization: a DASHED line with the same hollow triangle, pointing at an «interface» (Button ⇢ Drawable). Read it as "implements". The interface name is italic with a «interface» stereotype header.',
-    'Association: a plain SOLID line, no arrowhead (Student — Course). Read the "1" / "0..*" chips at each end as multiplicity — how many objects take part.',
-    'Directed association: a solid line with an OPEN arrow (Order → Product) — the same association, but navigable only in the arrow\'s direction.',
-    'Aggregation: a HOLLOW diamond at the whole (Playlist ◇— Song) — a shared "has-a" whole-part; the parts can outlive the whole.',
-    'Composition: a FILLED diamond at the whole (Window ◆— TitleBar) — an owned whole-part; the parts die with the whole. Compare the two diamonds side by side.',
+    'Realization: a DASHED line with the same hollow triangle, pointing at an «interface» (Button ⇢ Drawable). Read it as "implements".',
+    'Association: a plain SOLID line, no arrowhead (Student — Course). The "0..*" / "1..*" chips at the ends are the kit\'s multiplicity option — pure data, no label plumbing.',
+    'Directed association: a solid line with an OPEN arrow (Order → Product) — the same association, navigable only in the arrow\'s direction.',
+    'Aggregation vs composition: a HOLLOW diamond at the whole (Playlist ◇— Song, shared parts) next to a FILLED diamond (Window ◆— TitleBar, owned parts) — compare the two diamonds side by side.',
     'Dependency: a DASHED line with an open arrow and a «uses» label (OrderService ⇢ Logger) — a transient "depends-on", weaker than an association.',
-    'Self-association: Employee loops back to Employee with a "manages" label — a class related to its own kind.',
-    'Drag any class: every relationship re-routes and its arrowhead re-enters the box cleanly.',
+    'Click a class: the kit rings the CARD itself (no detached rectangle, no resize handles). Click a member row: the row highlights — row selection is a kit default. Drag any class: every relationship re-routes and its marker re-enters the box cleanly.',
+    'The scripted checks below also edit Song through the typed umlClass() handle (add a method, rename the class) and undo both — the programmatic editing surface is part of the kit too.',
   ],
   reactflow: 'Class Diagram',
   pro: true,
 
   async setup(ctx) {
-    // Centre-aligned clusters: vertical pairs share a centre X, horizontal pairs
-    // share a centre Y, so every orthogonal line runs dead straight.
-    const nodes = [
-      // Band 1 — vertical pairs (parent/whole on top, child/part below).
-      nodeC('Shape', 170, 110, 'Shape', ['# x: float', '# y: float'], ['+ area(): float', '+ draw(): void'], { stereotype: 'abstract', italic: true }),
-      nodeC('Circle', 170, 440, 'Circle', ['+ radius: float'], ['+ area(): float']),
-
-      nodeC('Drawable', 560, 110, 'Drawable', [], ['+ render(): void', '+ bounds(): Rect'], { stereotype: 'interface', italic: true }),
-      nodeC('Button', 560, 440, 'Button', ['+ label: String'], ['+ render(): void']),
-
-      nodeC('Playlist', 950, 110, 'Playlist', ['+ name: String'], ['+ add(s): void']),
-      nodeC('Song', 950, 440, 'Song', ['+ title: String', '+ seconds: int'], []),
-
-      nodeC('Window', 1340, 110, 'Window', ['+ title: String'], ['+ close(): void']),
-      nodeC('TitleBar', 1340, 440, 'TitleBar', ['+ text: String'], []),
-
-      // Band 2 — horizontal pairs.
-      nodeC('Student', 170, 720, 'Student', ['+ name: String'], []),
-      nodeC('Course', 480, 720, 'Course', ['+ code: String'], []),
-
-      nodeC('Order', 830, 720, 'Order', ['+ id: int'], ['+ total(): Money']),
-      nodeC('Product', 1140, 720, 'Product', ['+ sku: String', '+ price: Money'], []),
-
-      // Band 3 — dependency pair + the self-association.
-      nodeC('OrderService', 170, 1000, 'OrderService', [], ['+ checkout(o): void']),
-      nodeC('Logger', 480, 1000, 'Logger', [], ['+ log(msg): void']),
-
-      nodeC('Employee', 900, 1000, 'Employee', ['+ name: String'], ['+ manage(e): void']),
-    ];
-
-    const edges = [
-      generalization('gen', 'Circle', 'Shape'),
-      realization('real', 'Button', 'Drawable'),
-      aggregation('agg', 'Playlist', 'Song'),
-      composition('comp', 'Window', 'TitleBar'),
-      association('assoc', 'Student', 'Course'),
-      directed('dir', 'Order', 'Product'),
-      dependency('dep', 'OrderService', 'Logger'),
-      selfAssoc('self', 'Employee'),
-    ];
-
-    const api = render({ nodes, edges }, ctx.host);
+    const api = render(SPEC, ctx.host);
     ctx.instance = api;
     ctx.diagram = api.getModel();
-
-    // Multiplicity / role chips at the ENDS of the associations — two labels on
-    // one edge, which only the positioned-label API (link.addLabel) can express.
-    const model = api.getModel();
-    const label = (id, ...chips) => { const l = model.getLink(id); if (l) chips.forEach((c) => l.addLabel(c)); };
-    label('assoc', chip('0..*', 'start'), chip('1..*', 'end'));   // Student 0..* — 1..* Course
-    label('dir', chip('1', 'start'), chip('0..*', 'end'));        // Order 1 → 0..* Product
-    // 'self' keeps its single centred `manages` label (set on the edge spec) — a
-    // positioned label array would suppress it, and one word reads the loop best.
-
-    api.renderNow?.();       // flush the label mutations into this frame
+    // render() auto-runs finalize; calling it again is the documented embedder
+    // contract and idempotent (chips are added once).
+    SPEC.finalize(api);
     api.fitView?.(50);
     await ctx.tick();
     await ctx.tick();
@@ -211,20 +133,40 @@ defineDemo({
   async assert(ctx) {
     const host = ctx.host;
 
-    // 1. Every class renders as a three-compartment HTML box.
-    const names = [...host.querySelectorAll('.uml-cls-name')].map((e) => e.textContent);
-    check(names.length === 15, `expected 15 class boxes, got ${names.length}: [${names}]`);
+    // 0. THE TYPED HANDLE PATH (umlClass) edits a kit card programmatically:
+    //    add a method, rename the class, verify both PAINT, then undo both so
+    //    the page (and its golden) ends exactly where it booted.
+    {
+      const c = umlClass(ctx.instance, 'Song');
+      check(c.attributes.length === 2, `handle should read Song's live members, got ${c.attributes.length}`);
+      await c.methods.add('+ play(): void');
+      check(c.methods.list().includes('+ play(): void'), 'methods.add should apply to the model');
+      const songFO = () => host.querySelector('[data-node-id="Song"] foreignObject');
+      check((songFO()?.textContent || '').includes('play(): void'), 'the handle edit should PAINT into the card');
+      await c.rename('Track');
+      check(c.name === 'Track', 'rename should apply to the model');
+      check((songFO()?.textContent || '').includes('Track'), 'the rename should PAINT into the header');
+      await c.undo();
+      await c.undo();
+      check(c.name === 'Song' && !c.methods.list().includes('+ play(): void'),
+        'two undos should fully restore the class the handle edited');
+      check(!(songFO()?.textContent || '').includes('play(): void'), 'the undone method must not stay painted');
+    }
+
+    // 1. Every class renders as a three-compartment KIT card.
+    const names = host.querySelectorAll('.axk-uml-name');
+    check(names.length === 15, `expected 15 kit class cards, got ${names.length}`);
     check(!!host.querySelector('[data-node-id="Shape"] foreignObject'), 'Shape should render as an HTML node');
-    const shapeComps = host.querySelectorAll('[data-node-id="Shape"] .uml-comp');
+    const shapeComps = host.querySelectorAll('[data-node-id="Shape"] .axk-uml-comp');
     check(shapeComps.length === 2, `Shape should have attribute + method compartments, got ${shapeComps.length}`);
 
     // 2. Stereotype headers: «interface» and «abstract», with italic names.
-    const stereos = [...host.querySelectorAll('.uml-stereo')].map((e) => e.textContent);
+    const stereos = [...host.querySelectorAll('.axk-uml-stereo')].map((e) => e.textContent);
     check(stereos.some((s) => s.includes('interface')), 'the «interface» stereotype should render in the header');
     check(stereos.some((s) => s.includes('abstract')), 'the «abstract» stereotype should render in the header');
-    check(!!host.querySelector('.uml-name.italic .uml-cls-name'), 'the interface / abstract class name should render italic');
+    check(!!host.querySelector('.axk-uml-name.axk-abstract'), 'the interface / abstract class name should render italic');
 
-    // 3. All eight relationships exist.
+    // 3. All eight relationships exist (7 kit kinds + the hand-composed self-loop).
     check(ctx.diagram.getLinks().length === 8, `expected 8 relationships, got ${ctx.diagram.getLinks().length}`);
 
     // 4. The real UML markers PAINT. Two hollow triangles: inheritance + the
@@ -245,9 +187,38 @@ defineDemo({
     });
     check(dashed.length >= 2, `expected >=2 dashed relationship lines (realization + dependency), got ${dashed.length}`);
 
-    // 6. Multiplicity chips render at the association ends.
+    // 6. Multiplicity chips (the kit's `multiplicity` option) render at the ends.
     const txt = host.textContent || '';
     check(txt.includes('0..*') && txt.includes('1..*'), 'multiplicity chips (0..*, 1..*) should render at association ends');
+
+    // 7. The kit stylesheet is present exactly once.
+    check(document.querySelectorAll('#grafloria-diagram-kit-styles').length === 1, 'the kit stylesheet should be injected once');
+
+    // 8. REGRESSION TOOTH — the resize-frame bug this port fixes. A REAL click
+    //    on a card must ring the CARD (kit selection styling) and paint ZERO
+    //    node resize handles: the kit finalizes every class with
+    //    resizable:false, which the hand-composed page never did.
+    {
+      const node = ctx.diagram.getNode('Student');
+      const rect = host.getBoundingClientRect();
+      const pt = ctx.instance.viewport.worldToClient(
+        node.position.x + node.size.width / 2, node.position.y + node.size.height / 2, rect);
+      const fire = (type, buttons) => host.dispatchEvent(new PointerEvent(type, {
+        pointerType: 'mouse', button: 0, buttons, bubbles: true, clientX: pt.x, clientY: pt.y,
+      }));
+      fire('pointerdown', 1);
+      fire('pointerup', 0);
+      await ctx.tick();
+      check(node.isSelected(), 'the real click should select the Student card');
+      check(!!host.querySelector('g.node-group[data-selected="true"] .axk-uml'),
+        'the selected class should ring the CARD itself (kit selection styling)');
+      check(host.querySelectorAll('[class*="resize-handle"]').length === 0,
+        'a selected class card must paint ZERO resize handles (the pre-kit page painted 4)');
+      // Restore a clean slate so the golden stays deterministic.
+      ctx.diagram.clearSelection();
+      ctx.instance.renderNow?.();
+      await ctx.tick();
+    }
   },
 });
 </script>
