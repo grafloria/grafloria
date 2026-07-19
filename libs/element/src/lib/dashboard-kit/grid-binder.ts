@@ -210,6 +210,17 @@ interface GestureState {
   spans: { w: number; h: number };
   /** Drag-out: the item is currently absent from the engine. */
   removedFromBoard: boolean;
+  /**
+   * dragOut:'cancel' boards only — the pointer is currently OUTSIDE this
+   * board's frame. The engine preview is parked at the gesture-start layout
+   * (nothing looks displaced while the ghost is away) and NO cells are minted
+   * from out-of-frame points. Without this, dragging a KPI below its section
+   * mapped an unbounded pointToCell row into the SECTION's coordinate space:
+   * rows() exploded, fit-mode row height collapsed (a 27px-tall tile painted
+   * over the main board), and release COMMITTED the nonsense — live report,
+   * "drag Total Revenue under Top reps by revenue".
+   */
+  parkedOutside: boolean;
   chip: HTMLElement | null;
 }
 
@@ -755,10 +766,23 @@ export function bindDashboardGrid(
       g.node.setPosition(desired.x, desired.y);
 
       const inside = worldInsideBoard(ev.world.x, ev.world.y);
-      if (!inside && dragOut === 'remove') {
-        if (!g.removedFromBoard) {
-          g.removedFromBoard = true;
-          engine.remove(g.id); // survivors settle home (gesture memory intact)
+      if (!inside) {
+        if (dragOut === 'remove') {
+          if (!g.removedFromBoard) {
+            g.removedFromBoard = true;
+            engine.remove(g.id); // survivors settle home (gesture memory intact)
+            hostOf(g.id)?.classList.add('axdb-out');
+            project();
+          }
+        } else if (!g.parkedOutside) {
+          // dragOut:'cancel' — the pointer left this board. Park the preview
+          // at the gesture-start layout and mint NO cells from out-of-frame
+          // points: an unbounded pointToCell row in a short board's space is
+          // exactly the section-KPI squeeze bug. The placeholder stays on the
+          // tile's home slot — a truthful "release snaps back here".
+          g.parkedOutside = true;
+          engine.cancelGesture(); // cells back to gesture start…
+          engine.beginGesture(); // …with the gesture kept alive
           hostOf(g.id)?.classList.add('axdb-out');
           project();
         }
@@ -772,6 +796,10 @@ export function bindDashboardGrid(
         engine.moveCheck(g.id, cell.x, cell.y, { gate: false });
         project();
       } else {
+        if (g.parkedOutside) {
+          g.parkedOutside = false;
+          hostOf(g.id)?.classList.remove('axdb-out');
+        }
         const cell = pointToCell(desired.x, desired.y, frame(), geom(), rows());
         if (engine.moveCheck(g.id, cell.x, cell.y).changed) project();
       }
@@ -858,6 +886,7 @@ export function bindDashboardGrid(
         startSize: { width: node.size.width, height: node.size.height },
         spans: { w: it?.w ?? 1, h: it?.h ?? 1 },
         removedFromBoard: false,
+      parkedOutside: false,
         chip: null,
       };
     },
@@ -903,6 +932,7 @@ export function bindDashboardGrid(
       startSize: { width: 0, height: 0 },
       spans: { w: Math.max(1, spec.w), h: Math.max(1, spec.h) },
       removedFromBoard: true,
+      parkedOutside: false,
       chip,
     };
     gesture = g;
