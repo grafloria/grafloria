@@ -24,8 +24,8 @@
   "measuredJitterPct": 0
  },
  "collab__offline-and-reconnect.after.png": {
-  "tolerancePct": 0.19,
-  "measuredJitterPct": 0.0633
+  "tolerancePct": 0.02,
+  "measuredJitterPct": 0
  },
  "collab__offline-and-reconnect.boot.png": {
   "tolerancePct": 0.02,
@@ -52,16 +52,16 @@
   "measuredJitterPct": 0
  },
  "dashboard__dashboard-builder.after.png": {
-  "tolerancePct": 0.124,
-  "measuredJitterPct": 0.0412
+  "tolerancePct": 0.02,
+  "measuredJitterPct": 0
  },
  "dashboard__dashboard-builder.boot.png": {
   "tolerancePct": 0.02,
   "measuredJitterPct": 0
  },
  "dashboard__dashboard-builder.showcase.png": {
-  "tolerancePct": 0.121,
-  "measuredJitterPct": 0.0404
+  "tolerancePct": 0.02,
+  "measuredJitterPct": 0
  },
  "diagrams__class-uml.after.png": {
   "tolerancePct": 0.02,
@@ -308,8 +308,8 @@
   "measuredJitterPct": 0
  },
  "interaction__copy-paste.after.png": {
-  "tolerancePct": 0.242,
-  "measuredJitterPct": 0.0808
+  "tolerancePct": 0.271,
+  "measuredJitterPct": 0.0904
  },
  "interaction__copy-paste.boot.png": {
   "tolerancePct": 0.02,
@@ -348,8 +348,8 @@
   "measuredJitterPct": 0
  },
  "interaction__execute-flow.showcase.png": {
-  "tolerancePct": 0.028,
-  "measuredJitterPct": 0.0094
+  "tolerancePct": 0.02,
+  "measuredJitterPct": 0
  },
  "interaction__helper-lines.after.png": {
   "tolerancePct": 0.02,
@@ -384,16 +384,16 @@
   "measuredJitterPct": 0
  },
  "interaction__n8n-workflow.after.png": {
-  "tolerancePct": 0.151,
-  "measuredJitterPct": 0.0504
+  "tolerancePct": 0.02,
+  "measuredJitterPct": 0
  },
  "interaction__n8n-workflow.boot.png": {
-  "tolerancePct": 0.142,
-  "measuredJitterPct": 0.0475
+  "tolerancePct": 0.02,
+  "measuredJitterPct": 0
  },
  "interaction__n8n-workflow.showcase.png": {
-  "tolerancePct": 0.989,
-  "measuredJitterPct": 0.3297
+  "tolerancePct": 0.02,
+  "measuredJitterPct": 0.0017
  },
  "interaction__parent-move.after.png": {
   "tolerancePct": 0.02,
@@ -520,8 +520,8 @@
   "measuredJitterPct": 0
  },
  "layout__off-thread-layout.after.png": {
-  "tolerancePct": 0.241,
-  "measuredJitterPct": 0.0804
+  "tolerancePct": 0.026,
+  "measuredJitterPct": 0.0087
  },
  "layout__off-thread-layout.boot.png": {
   "tolerancePct": 0.02,
@@ -544,12 +544,12 @@
   "measuredJitterPct": 0
  },
  "misc__mermaid-text.after.png": {
-  "tolerancePct": 1.059,
-  "measuredJitterPct": 0.3531
+  "tolerancePct": 1.017,
+  "measuredJitterPct": 0.3389
  },
  "misc__mermaid-text.boot.png": {
-  "tolerancePct": 1.059,
-  "measuredJitterPct": 0.3531
+  "tolerancePct": 1.017,
+  "measuredJitterPct": 0.3389
  },
  "misc__mermaid-viewer.after.png": {
   "tolerancePct": 0.02,
@@ -660,16 +660,16 @@
   "measuredJitterPct": 0
  },
  "nodes__node-position-animation.after.png": {
-  "tolerancePct": 0.174,
-  "measuredJitterPct": 0.0581
+  "tolerancePct": 0.02,
+  "measuredJitterPct": 0.0006
  },
  "nodes__node-position-animation.boot.png": {
   "tolerancePct": 0.02,
   "measuredJitterPct": 0
  },
  "nodes__node-position-animation.showcase.png": {
-  "tolerancePct": 0.172,
-  "measuredJitterPct": 0.0573
+  "tolerancePct": 0.02,
+  "measuredJitterPct": 0
  },
  "nodes__node-resize-gesture.after.png": {
   "tolerancePct": 0.02,

@@ -64,6 +64,16 @@ export interface GridPackOptions {
    * are legal; gravity does not pack. Default false (gravity).
    */
   float?: boolean;
+  /**
+   * Row bound for a board whose DESIGN is a fixed strip (the nested KPI
+   * section: one row, always). Any op whose settled result would exceed it —
+   * a height resize, a width resize whose push spills a sibling down, a move
+   * displacing someone out of bounds — ROLLS BACK wholesale and reports
+   * `changed: false`; `add()` returns null when nothing can fit. Without
+   * this, growing a first-row KPI exploded the strip's `rows()` and fit-mode
+   * collapsed its row height (live report: "design is destroyed").
+   */
+  maxRows?: number;
 }
 
 /** Result of a move/resize attempt. */
@@ -94,6 +104,8 @@ interface GestureMemory {
 export class GridPackEngine {
   readonly columns: number;
   float: boolean;
+  /** Row bound (see GridPackOptions.maxRows). Undefined = unbounded. */
+  readonly maxRows?: number;
 
   private items: GridPackItem[] = [];
   /** Per-gesture displaced-tile memory (S2/E2). Item id → gesture-start cell. */
@@ -117,7 +129,40 @@ export class GridPackEngine {
   constructor(items: GridPackItem[] = [], options: GridPackOptions = {}) {
     this.columns = options.columns ?? 12;
     this.float = options.float ?? false;
+    this.maxRows = options.maxRows;
     for (const it of items) this.add(it);
+  }
+
+  /** Bound check + wholesale rollback — the maxRows enforcement primitive. */
+  private cellsSnapshot(): Map<string, { x: number; y: number; w: number; h: number }> {
+    return new Map(this.items.map((i) => [i.id, { x: i.x, y: i.y, w: i.w, h: i.h }]));
+  }
+
+  private restoreCells(snap: Map<string, { x: number; y: number; w: number; h: number }>): void {
+    for (const it of this.items) {
+      const s = snap.get(it.id);
+      if (s) {
+        it.x = s.x;
+        it.y = s.y;
+        it.w = s.w;
+        it.h = s.h;
+      }
+    }
+  }
+
+  /**
+   * Accept the op that just mutated the board — unless the settled result
+   * exceeds `maxRows`, in which case the whole op rolls back and is refused.
+   * (Trial-run-then-commit, the same shape gridstack uses for maxRow grids.)
+   */
+  private acceptWithinBound(
+    pre: Map<string, { x: number; y: number; w: number; h: number }>
+  ): GridPackResult {
+    if (this.maxRows !== undefined && this.rows() > this.maxRows) {
+      this.restoreCells(pre);
+      return { changed: false };
+    }
+    return { changed: true };
   }
 
   // -- introspection ---------------------------------------------------------
@@ -155,24 +200,37 @@ export class GridPackEngine {
    * as gravity (gravity climbs one column; a hole at (3,0) under an occupied
    * column is only reachable by the scan — the spec's first red proved it).
    */
-  add(item: GridPackItem): GridPackItem {
+  add(item: GridPackItem): GridPackItem | null {
     const it: GridPackItem = { ...item };
     it.w = Math.max(1, Math.min(this.columns, it.w));
     it.x = Math.max(0, Math.min(this.columns - it.w, it.x));
     it.y = Math.max(0, it.y);
     it.h = Math.max(1, it.h);
-    const auto = it.autoPosition === true || !!this.collide(it, it);
+    // A bounded board refuses an item that cannot fit at all.
+    if (this.maxRows !== undefined && it.h > this.maxRows) return null;
+    const outOfBound = this.maxRows !== undefined && it.y + it.h > this.maxRows;
+    const auto = it.autoPosition === true || outOfBound || !!this.collide(it, it);
     delete it.autoPosition;
     if (auto) {
-      scan: for (let y = 0; ; y++) {
+      const yMax = this.maxRows !== undefined ? this.maxRows - it.h : Infinity;
+      let placed = false;
+      scan: for (let y = 0; y <= yMax; y++) {
         for (let x = 0; x <= this.columns - it.w; x++) {
           const probe = { ...it, x, y };
           if (!this.collide(probe, it)) {
             it.x = x;
             it.y = y;
+            placed = true;
             break scan;
           }
         }
+        if (this.maxRows === undefined && y > this.rows() + it.h + 1) break; // safety net
+      }
+      if (!placed) {
+        // Unbounded boards always fit at the bottom; bounded ones refuse.
+        if (this.maxRows !== undefined) return null;
+        it.x = 0;
+        it.y = this.rows();
       }
     }
     this.items.push(it);
@@ -241,6 +299,8 @@ export class GridPackEngine {
 
     const probe = { ...n, x, y };
     if (this.collideLocked(probe, n)) return { changed: false }; // E4b: refuse
+    // maxRows: trial-run the whole op, roll back if the settled result spills.
+    const pre = this.cellsSnapshot();
 
     const c = options.gate === false ? undefined : this.collide(probe, n);
     if (c) {
@@ -281,7 +341,7 @@ export class GridPackEngine {
         c.y = oy;
         this.swapLock = { a: n.id, b: c.id };
         this.settle(n);
-        return { changed: true };
+        return this.acceptWithinBound(pre);
       }
       if (rowSwap) {
         // Exchange horizontal ORDER, union span preserved:
@@ -297,7 +357,7 @@ export class GridPackEngine {
         n.y = c.y;
         this.swapLock = { a: n.id, b: c.id };
         this.settle(n);
-        return { changed: true };
+        return this.acceptWithinBound(pre);
       }
       if (colSwap) {
         const topY = Math.min(n.y, c.y);
@@ -311,7 +371,7 @@ export class GridPackEngine {
         n.x = c.x;
         this.swapLock = { a: n.id, b: c.id };
         this.settle(n);
-        return { changed: true };
+        return this.acceptWithinBound(pre);
       }
     }
 
@@ -319,7 +379,7 @@ export class GridPackEngine {
     n.y = y;
     this.pushDown(n);
     this.settle(n);
-    return { changed: true };
+    return this.acceptWithinBound(pre);
   }
 
   // -- the core: resize ------------------------------------------------------
@@ -334,14 +394,18 @@ export class GridPackEngine {
     if (!n) return { changed: false };
     w = Math.max(1, Math.min(this.columns - n.x, Math.round(w)));
     h = Math.max(1, Math.round(h));
+    // A bounded board clamps the tile's own height outright…
+    if (this.maxRows !== undefined) h = Math.min(h, Math.max(1, this.maxRows - n.y));
     while (w > n.w && this.collideLocked({ ...n, w }, n)) w--;
     while (h > n.h && this.collideLocked({ ...n, h }, n)) h--;
     if (w === n.w && h === n.h) return { changed: false };
+    // …and rolls back wholesale when the PUSH spills a sibling past the bound.
+    const pre = this.cellsSnapshot();
     n.w = w;
     n.h = h;
     this.pushDown(n);
     this.settle(n);
-    return { changed: true };
+    return this.acceptWithinBound(pre);
   }
 
   // -- internals -------------------------------------------------------------
@@ -408,6 +472,19 @@ export class GridPackEngine {
       if (o.locked) continue; // locked: never pushed
       if (!GridPackEngine.hit(placed, o)) continue;
       this.remember(o);
+      // A BOUNDED board displaces along the ROW first: in a one-row strip
+      // (the KPI section) "below" always spills the bound, while shifting the
+      // sibling rightward into free columns is the legal arrangement — and
+      // the teleport-home memory undoes the shift when the space frees again.
+      if (this.maxRows !== undefined) {
+        const rightX = placed.x + placed.w;
+        const right = { ...o, x: rightX };
+        if (rightX + o.w <= this.columns && !this.collideLocked(right, o)) {
+          o.x = rightX;
+          this.pushDown(o);
+          continue;
+        }
+      }
       o.y = placed.y + placed.h;
       let lk: GridPackItem | undefined;
       while ((lk = this.collideLocked(o, o))) o.y = lk.y + lk.h;

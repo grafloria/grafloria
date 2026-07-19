@@ -51,8 +51,10 @@
  */
 
 import {
+  AddToGroupCommand,
   BatchCommand,
   GridPackEngine,
+  RemoveFromGroupCommand,
   type Command,
   type DiagramModel,
   type GridItemConfig,
@@ -113,6 +115,13 @@ export interface DashboardGridOptions {
   designHeight?: number;
   /** Engine float mode (default false → gravity packs upward). */
   float?: boolean;
+  /**
+   * Engine row bound (see GridPackOptions.maxRows). A nested strip like the
+   * KPI section passes 1: its DESIGN is one row, so height growth and pushes
+   * that would spill a sibling downward are refused (siblings shift along the
+   * row instead), and the strip can never be squeezed.
+   */
+  maxRows?: number;
   /**
    * What dragging a tile OUT of the board means (default 'cancel' — the tile
    * snaps back on release). 'remove' dims the ghost outside the board and a
@@ -195,6 +204,53 @@ interface GeomSnapshot {
   size: { width: number; height: number; depth?: number };
 }
 
+/**
+ * CROSS-CONTAINER HANDOFF. Binders on the same canvas register here; a move
+ * gesture whose pointer enters ANOTHER registered board (deepest wins — the
+ * nested KPI section beats the tab that contains it) hands the tile off: the
+ * source engine drops it (survivors settle home), the target engine ADOPTS it
+ * (gateless first placement, then the normal live-push loop), and release
+ * commits ONE batch across both boards — displaced tiles on each side,
+ * RemoveFromGroup + AddToGroup, the tile's new cells and geometry. This is
+ * what makes "drag Total Revenue under Top reps" MOVE the KPI to the main
+ * board rather than snapping it home (live review: parking was a guard, not
+ * the feature).
+ */
+interface BinderPeer {
+  group: GroupModel;
+  containsWorld(x: number, y: number): boolean;
+  /**
+   * Containment plus ONE extra row of grace below the frame — gridstack's
+   * `_extraDragRow`: dropping "under the last row" appends a row rather than
+   * counting as off-board. Consulted only when NO strict frame matched, so a
+   * nested strip's band can never steal a point that strictly belongs to the
+   * board below it.
+   */
+  containsWorldExtended(x: number, y: number): boolean;
+  frameArea(): number;
+  adopt(
+    node: NodeModel,
+    world: { x: number; y: number },
+    pxSize: { width: number; height: number }
+  ): AdoptedLeg | null;
+}
+
+interface AdoptedLeg {
+  groupId: string;
+  /** Drive the target engine from the source binder's pointer stream. */
+  move(world: { x: number; y: number }): void;
+  /** Undo the adoption: target board back to its pre-entry layout. */
+  abort(): void;
+  /**
+   * Close the leg for commit: returns the target-side displaced commands, the
+   * tile's final cell and its projected rect. Null when the tile is somehow
+   * gone (treat as abort).
+   */
+  finalize(): { commands: Command[]; cell: CellRect; rect: WorldRect } | null;
+}
+
+const BOARD_REGISTRY = new Map<HTMLElement, Set<BinderPeer>>();
+
 interface GestureState {
   kind: 'move' | 'resize' | 'palette';
   id: string;
@@ -210,17 +266,10 @@ interface GestureState {
   spans: { w: number; h: number };
   /** Drag-out: the item is currently absent from the engine. */
   removedFromBoard: boolean;
-  /**
-   * dragOut:'cancel' boards only — the pointer is currently OUTSIDE this
-   * board's frame. The engine preview is parked at the gesture-start layout
-   * (nothing looks displaced while the ghost is away) and NO cells are minted
-   * from out-of-frame points. Without this, dragging a KPI below its section
-   * mapped an unbounded pointToCell row into the SECTION's coordinate space:
-   * rows() exploded, fit-mode row height collapsed (a 27px-tall tile painted
-   * over the main board), and release COMMITTED the nonsense — live report,
-   * "drag Total Revenue under Top reps by revenue".
-   */
-  parkedOutside: boolean;
+  /** Live cross-container adoption, when the pointer is over another board. */
+  leg: { peer: BinderPeer; adopted: AdoptedLeg } | null;
+  /** Last pointer position, world coords — release semantics depend on WHERE. */
+  lastWorld: { x: number; y: number } | null;
   chip: HTMLElement | null;
 }
 
@@ -243,17 +292,20 @@ export function bindDashboardGrid(
   const baseRowHeight = options.baseRowHeight ?? 110;
   const minRowHeight = options.minRowHeight ?? 28;
   const float = options.float ?? false;
+  const maxRows = options.maxRows;
   const dragOut = options.dragOut ?? 'cancel';
   const wantHandles = options.resizeHandles !== false;
   const designH = options.designHeight ?? group.size?.height ?? 0;
 
   let sizing: 'fit' | 'grow' = options.sizing ?? 'fit';
-  let engine = new GridPackEngine([], { columns, float });
+  let engine = new GridPackEngine([], { columns, float, maxRows });
   let gesture: GestureState | null = null;
   let disposed = false;
   /** Reentrancy guard: our own derived frame writes must not re-project. */
   let writing = false;
   let placeholder: HTMLElement | null = null;
+  /** Foreign tile currently adopted from another binder's gesture. */
+  let adoptedGhostId: string | null = null;
   let glideTimer: ReturnType<typeof setTimeout> | null = null;
   let ghostTimer: ReturnType<typeof setTimeout> | null = null;
 
@@ -419,6 +471,7 @@ export function bindDashboardGrid(
       const r = rows();
       for (const item of engine.getItems()) {
         if (gesture?.started && item.id === gesture.id) continue; // the ghost
+        if (item.id === adoptedGhostId) continue; // a ghost adopted from another binder
         writeRect(item.id, cellToRect(item, f, g, r));
       }
     } finally {
@@ -433,8 +486,10 @@ export function bindDashboardGrid(
    *  the DOM holds at most one `.axdb-ph` per active gesture, not one idle
    *  div per bound board. */
   const syncPlaceholder = (): void => {
-    const live = gesture?.started && !gesture.removedFromBoard;
-    const item = live ? engine.getItem(gesture!.id) : undefined;
+    const ghostId =
+      adoptedGhostId ?? (gesture?.started && !gesture.removedFromBoard ? gesture.id : null);
+    const item = ghostId ? engine.getItem(ghostId) : undefined;
+    const live = !!item;
     if (!live || !item) {
       placeholder?.remove();
       placeholder = null;
@@ -566,7 +621,7 @@ export function bindDashboardGrid(
     if (!engine.getItem(id)) {
       const item = itemFor(id);
       const placed = engine.add(item);
-      persistAdoptedCell(id, placed);
+      if (placed) persistAdoptedCell(id, placed);
     }
     project();
     syncHandles();
@@ -599,6 +654,14 @@ export function bindDashboardGrid(
   const worldInsideBoard = (x: number, y: number): boolean => {
     const f = frame();
     return x >= f.x && x <= f.x + f.width && y >= f.y && y <= f.y + boardVisualHeight();
+  };
+
+  /** One extra row of grace below the frame (gridstack's extra drag row). */
+  const worldInsideBoardExtended = (x: number, y: number): boolean => {
+    if (worldInsideBoard(x, y)) return true;
+    const f = frame();
+    const band = rowHeightFor(geom(), rows()) + gap;
+    return x >= f.x && x <= f.x + f.width && y >= f.y && y <= f.y + boardVisualHeight() + band;
   };
 
   const insideMemberGroupFrame = (x: number, y: number): boolean => {
@@ -685,6 +748,10 @@ export function bindDashboardGrid(
     const g = gesture;
     if (!g) return;
     gesture = null;
+    if (g.kind !== 'palette' && g.leg) {
+      g.leg.adopted.abort(); // target board back to its pre-entry layout
+      g.leg = null;
+    }
     if (g.started) {
       if (g.removedFromBoard || g.kind === 'palette') {
         // The engine cannot resurrect a removed item — rebuild from the
@@ -696,7 +763,7 @@ export function bindDashboardGrid(
           const lockedNode = diagram.getNode(id)?.state?.locked === true;
           items.push({ id, ...c, locked: lockedNode || isGroupMember(id) });
         }
-        engine = new GridPackEngine(items, { columns, float });
+        engine = new GridPackEngine(items, { columns, float, maxRows });
       } else {
         engine.cancelGesture();
       }
@@ -765,43 +832,79 @@ export function bindDashboardGrid(
       const desired = { x: ev.world.x - g.grab.dx, y: ev.world.y - g.grab.dy };
       g.node.setPosition(desired.x, desired.y);
 
-      const inside = worldInsideBoard(ev.world.x, ev.world.y);
-      if (!inside) {
-        if (dragOut === 'remove') {
+      g.lastWorld = { x: ev.world.x, y: ev.world.y };
+      // Deepest board under the pointer wins: the nested KPI strip beats the
+      // tab that contains it; a foreign board beats "outside". Strict frames
+      // first; the one-row grace band below each board (gridstack's extra
+      // drag row) is consulted only when NO strict frame matched — so "under
+      // the last row" appends instead of reading as off-board.
+      const strictSelf = worldInsideBoard(ev.world.x, ev.world.y);
+      let peer = peerAt(ev.world.x, ev.world.y);
+      let inside = strictSelf;
+      if (!strictSelf && !peer) {
+        if (worldInsideBoardExtended(ev.world.x, ev.world.y)) inside = true;
+        else peer = peerAt(ev.world.x, ev.world.y, true);
+      }
+      const selfWins = inside && (!peer || boardArea() <= peer.frameArea());
+
+      if (peer && !selfWins) {
+        // -- HANDOFF: the pointer is over another board -------------------
+        if (g.leg && g.leg.peer === peer) {
+          g.leg.adopted.move(ev.world);
+        } else {
+          if (g.leg) {
+            g.leg.adopted.abort();
+            g.leg = null;
+          }
           if (!g.removedFromBoard) {
             g.removedFromBoard = true;
             engine.remove(g.id); // survivors settle home (gesture memory intact)
-            hostOf(g.id)?.classList.add('axdb-out');
             project();
           }
-        } else if (!g.parkedOutside) {
-          // dragOut:'cancel' — the pointer left this board. Park the preview
-          // at the gesture-start layout and mint NO cells from out-of-frame
-          // points: an unbounded pointToCell row in a short board's space is
-          // exactly the section-KPI squeeze bug. The placeholder stays on the
-          // tile's home slot — a truthful "release snaps back here".
-          g.parkedOutside = true;
-          engine.cancelGesture(); // cells back to gesture start…
-          engine.beginGesture(); // …with the gesture kept alive
+          const adopted = peer.adopt(g.node, ev.world, {
+            width: g.node.size.width,
+            height: g.node.size.height,
+          });
+          if (adopted) {
+            hostOf(g.id)?.classList.remove('axdb-out');
+            g.leg = { peer, adopted };
+            g.leg.adopted.move(ev.world);
+          } else {
+            // Bounded/full board refused the adoption: dim = will snap home.
+            hostOf(g.id)?.classList.add('axdb-out');
+          }
+        }
+      } else if (inside) {
+        // -- back on (or still on) our own board --------------------------
+        if (g.leg) {
+          g.leg.adopted.abort();
+          g.leg = null;
+        }
+        if (g.removedFromBoard) {
+          g.removedFromBoard = false;
+          hostOf(g.id)?.classList.remove('axdb-out');
+          const cell = pointToCell(desired.x, desired.y, frame(), geom(), rows());
+          // Re-enter at the bottom edge (collision-free), then take the cursor
+          // cell GATELESSLY — a first placement skips the anti-jitter gate.
+          engine.add({ id: g.id, x: 0, y: engine.rows(), w: g.spans.w, h: g.spans.h });
+          engine.moveCheck(g.id, cell.x, cell.y, { gate: false });
+          project();
+        } else {
+          const cell = pointToCell(desired.x, desired.y, frame(), geom(), rows());
+          if (engine.moveCheck(g.id, cell.x, cell.y).changed) project();
+        }
+      } else {
+        // -- outside every board ------------------------------------------
+        if (g.leg) {
+          g.leg.adopted.abort();
+          g.leg = null;
+        }
+        if (!g.removedFromBoard) {
+          g.removedFromBoard = true;
+          engine.remove(g.id); // survivors settle home; cells minted nowhere
           hostOf(g.id)?.classList.add('axdb-out');
           project();
         }
-      } else if (g.removedFromBoard) {
-        g.removedFromBoard = false;
-        hostOf(g.id)?.classList.remove('axdb-out');
-        const cell = pointToCell(desired.x, desired.y, frame(), geom(), rows());
-        // Re-enter at the bottom edge (collision-free), then take the cursor
-        // cell GATELESSLY — a first placement skips the anti-jitter gate.
-        engine.add({ id: g.id, x: 0, y: engine.rows(), w: g.spans.w, h: g.spans.h });
-        engine.moveCheck(g.id, cell.x, cell.y, { gate: false });
-        project();
-      } else {
-        if (g.parkedOutside) {
-          g.parkedOutside = false;
-          hostOf(g.id)?.classList.remove('axdb-out');
-        }
-        const cell = pointToCell(desired.x, desired.y, frame(), geom(), rows());
-        if (engine.moveCheck(g.id, cell.x, cell.y).changed) project();
       }
       syncPlaceholder();
       return;
@@ -814,8 +917,21 @@ export function bindDashboardGrid(
     const gg = geom();
     const minW = Math.max(8, columnUnitFor(gg, f.width));
     const minH = Math.max(8, rowHeightFor(gg, rows()));
-    const w = Math.max(minW, g.startSize.width + dw);
-    const h = Math.max(minH, g.startSize.height + dh);
+    let w = Math.max(minW, g.startSize.width + dw);
+    let h = Math.max(minH, g.startSize.height + dh);
+    // The fluid preview must not outrun what the board can accept: on a
+    // bounded strip an unclamped ghost ballooned to 273px while the engine
+    // (rightly) refused every cell — visually indistinguishable from the
+    // squeeze bug it replaced. Clamp to the tile's maximum legal rect.
+    const itemNow = engine.getItem(g.id);
+    if (itemNow) {
+      const cuNow = columnUnitFor(gg, f.width);
+      const rhNow = rowHeightFor(gg, rows());
+      w = Math.min(w, (columns - itemNow.x) * (cuNow + gap) - gap);
+      if (maxRows !== undefined) {
+        h = Math.min(h, Math.max(1, maxRows - itemNow.y) * (rhNow + gap) - gap);
+      }
+    }
     g.node.setSize(w, h, g.node.size.depth ?? 0);
     const span = sizeToSpan(w, h, f, gg, rows());
     if (engine.resizeCheck(g.id, span.w, span.h).changed) project();
@@ -827,6 +943,72 @@ export function bindDashboardGrid(
     if (!g || g.kind === 'palette') return;
     if (!g.started) {
       gesture = null; // a plain click — the page's own click-to-focus handles it
+      return;
+    }
+    if (g.leg) {
+      // -- CROSS-CONTAINER COMMIT: one batch across both boards -----------
+      const fin = g.leg.adopted.finalize();
+      if (!fin) {
+        cancelActiveGesture();
+        return;
+      }
+      const targetGroupId = g.leg.adopted.groupId;
+      // Land the ghost on its target rect before the geometry deltas read it.
+      writing = true;
+      try {
+        diagram.runSystemWrite(() => {
+          g.node.setPosition(fin.rect.x, fin.rect.y);
+          g.node.setSize(fin.rect.width, fin.rect.height, g.node.size.depth ?? 0);
+        });
+      } finally {
+        writing = false;
+      }
+      const sourceDisplaced = buildCommitCommands(deltasSince(g.startCells, g.startGeom, g.id));
+      const before = g.startCells.get(g.id);
+      const geomBefore = g.startGeom.get(g.id);
+      const crossing: Command[] = [
+        ...sourceDisplaced,
+        new RemoveFromGroupCommand(group.id, g.id),
+        new AddToGroupCommand(targetGroupId, g.id),
+        ...buildCommitCommands([
+          {
+            id: g.id,
+            locked: false,
+            isGroup: false,
+            cellBefore: before ?? fin.cell,
+            cellAfter: fin.cell,
+            posBefore: geomBefore?.pos ?? { x: fin.rect.x, y: fin.rect.y },
+            posAfter: { x: fin.rect.x, y: fin.rect.y },
+            sizeBefore: geomBefore?.size ?? { width: fin.rect.width, height: fin.rect.height },
+            sizeAfter: { width: fin.rect.width, height: fin.rect.height },
+          },
+        ]),
+      ];
+      execute('Move widget', crossing);
+      engine.endGesture();
+      cleanupGestureVisuals(g);
+      gesture = null;
+      enforceBoardHeight();
+      api.renderNow();
+      options.onGesture?.({ type: 'commit', kind: g.kind, nodeId: g.id, changed: true });
+      return;
+    }
+    if (g.removedFromBoard && dragOut === 'cancel') {
+      // Released outside every board on a snap-home board: full restore,
+      // nothing committed (the parked-outside release).
+      cancelActiveGesture();
+      return;
+    }
+    // 'remove' fires ONLY for a release genuinely outside every board. A
+    // refused adoption (full strip) leaves removedFromBoard=true while the
+    // pointer is still over a board — releasing there must snap home, not
+    // delete the tile (the battery's S5 caught exactly that deletion).
+    const releasedOutsideAll =
+      !g.lastWorld ||
+      (!worldInsideBoardExtended(g.lastWorld.x, g.lastWorld.y) &&
+        !peerAt(g.lastWorld.x, g.lastWorld.y, true));
+    if (g.removedFromBoard && dragOut === 'remove' && !releasedOutsideAll) {
+      cancelActiveGesture();
       return;
     }
     if (g.removedFromBoard && dragOut === 'remove') {
@@ -850,6 +1032,122 @@ export function bindDashboardGrid(
     }
     commitGesture(g);
   };
+
+  // -- cross-container peers -------------------------------------------------
+
+  const boardArea = (): number => {
+    const f = frame();
+    return f.width * boardVisualHeight();
+  };
+
+  const peersOnCanvas = (): Set<BinderPeer> => {
+    let set = BOARD_REGISTRY.get(api.container);
+    if (!set) {
+      set = new Set();
+      BOARD_REGISTRY.set(api.container, set);
+    }
+    return set;
+  };
+
+  /** Deepest OTHER registered board containing the world point. */
+  const peerAt = (x: number, y: number, extended = false): BinderPeer | null => {
+    let best: BinderPeer | null = null;
+    for (const p of peersOnCanvas()) {
+      if (p === selfPeer) continue;
+      if (!(extended ? p.containsWorldExtended(x, y) : p.containsWorld(x, y))) continue;
+      if (!best || p.frameArea() < best.frameArea()) best = p;
+    }
+    return best;
+  };
+
+  /** This binder's side of an adoption: enter gateless, then live-push. */
+  const adopt = (
+    node: NodeModel,
+    world: { x: number; y: number },
+    pxSize: { width: number; height: number }
+  ): AdoptedLeg | null => {
+    if (disposed) return null;
+    const f = frame();
+    const gg = geom();
+    const span = sizeToSpan(pxSize.width, pxSize.height, f, gg, rows());
+    // Clamp to the TARGET board's shape: a tall tile entering a one-row strip
+    // arrives as a strip-height tile, not a refusal.
+    span.w = Math.max(1, Math.min(columns, span.w));
+    if (maxRows !== undefined) span.h = Math.max(1, Math.min(maxRows, span.h));
+    engine.beginGesture(); // pre-entry snapshot — abort() restores it
+    const entered = engine.add({ id: node.id, x: 0, y: engine.rows(), w: span.w, h: span.h });
+    if (!entered) {
+      engine.endGesture();
+      return null; // a bounded, full board refuses the adoption
+    }
+    // Pre-entry baselines for THIS board's displaced-tile commit.
+    const startCells = new Map<string, CellRect>();
+    const startGeom = new Map<string, GeomSnapshot>();
+    for (const item of engine.getItems()) {
+      if (item.id === node.id) continue;
+      startCells.set(item.id, { x: item.x, y: item.y, w: item.w, h: item.h });
+      const e = memberEntity(item.id);
+      if (e) {
+        const sz = sizeOf(e);
+        startGeom.set(item.id, {
+          pos: { x: e.position.x, y: e.position.y },
+          size: { width: sz.width, height: sz.height, depth: sz.depth },
+        });
+      }
+    }
+    adoptedGhostId = node.id;
+    const tl = centredTopLeft(world.x, world.y, span);
+    const cell0 = pointToCell(tl.x, tl.y, f, gg, rows());
+    engine.moveCheck(node.id, cell0.x, cell0.y, { gate: false });
+    armGlide();
+    project();
+    syncPlaceholder();
+    return {
+      groupId: group.id,
+      move: (w) => {
+        const item = engine.getItem(node.id);
+        if (!item) return;
+        const tlm = centredTopLeft(w.x, w.y, { w: item.w, h: item.h });
+        const cell = pointToCell(tlm.x, tlm.y, frame(), geom(), rows());
+        if (engine.moveCheck(node.id, cell.x, cell.y).changed) project();
+        syncPlaceholder();
+      },
+      abort: () => {
+        engine.remove(node.id);
+        engine.cancelGesture(); // pre-entry layout, memory cleared
+        adoptedGhostId = null;
+        disarmGlideSoon();
+        project();
+        syncPlaceholder();
+      },
+      finalize: () => {
+        const item = engine.getItem(node.id);
+        if (!item) {
+          engine.endGesture();
+          adoptedGhostId = null;
+          syncPlaceholder();
+          return null;
+        }
+        const cell: CellRect = { x: item.x, y: item.y, w: item.w, h: item.h };
+        const rect = cellToRect(item, frame(), geom(), rows());
+        const commands = buildCommitCommands(deltasSince(startCells, startGeom, node.id));
+        engine.endGesture();
+        adoptedGhostId = null;
+        disarmGlideSoon();
+        syncPlaceholder();
+        return { commands, cell, rect };
+      },
+    };
+  };
+
+  const selfPeer: BinderPeer = {
+    group,
+    containsWorld: worldInsideBoard,
+    containsWorldExtended: worldInsideBoardExtended,
+    frameArea: boardArea,
+    adopt,
+  };
+  peersOnCanvas().add(selfPeer);
 
   const tool: CanvasTool = {
     id: `dashboard-grid:${group.id}:${++binderSeq}`,
@@ -886,7 +1184,8 @@ export function bindDashboardGrid(
         startSize: { width: node.size.width, height: node.size.height },
         spans: { w: it?.w ?? 1, h: it?.h ?? 1 },
         removedFromBoard: false,
-      parkedOutside: false,
+        leg: null,
+        lastWorld: null,
         chip: null,
       };
     },
@@ -932,7 +1231,8 @@ export function bindDashboardGrid(
       startSize: { width: 0, height: 0 },
       spans: { w: Math.max(1, spec.w), h: Math.max(1, spec.h) },
       removedFromBoard: true,
-      parkedOutside: false,
+      leg: null,
+      lastWorld: null,
       chip,
     };
     gesture = g;
@@ -1077,7 +1377,7 @@ export function bindDashboardGrid(
         if (!memberEntity(id)) continue;
         items.push(itemFor(id));
       }
-      engine = new GridPackEngine(items, { columns, float });
+      engine = new GridPackEngine(items, { columns, float, maxRows });
       for (const item of engine.getItems()) persistAdoptedCell(item.id, item);
       project();
       syncHandles();
@@ -1156,6 +1456,7 @@ export function bindDashboardGrid(
       if (disposed) return;
       cancelActiveGesture(false);
       disposed = true;
+      peersOnCanvas().delete(selfPeer);
       unregisterTool();
       hostObserver.disconnect();
       for (const off of subs) off();

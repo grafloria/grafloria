@@ -48,7 +48,7 @@ describe('GridPackEngine — placement and gravity', () => {
   it('add() packs a new tile up into the first hole (gravity)', () => {
     const e = seeded();
     e.remove('t2'); // hole at (3,0)
-    const added = e.add({ id: 'new', x: 0, y: 0, w: 3, h: 1, autoPosition: true });
+    const added = e.add({ id: 'new', x: 0, y: 0, w: 3, h: 1, autoPosition: true })!;
     expect([added.x, added.y]).toEqual([3, 0]);
     expect(e.hasOverlaps()).toBe(false);
   });
@@ -399,6 +399,67 @@ describe('gesture cancel (Escape)', () => {
     // Positions restore for all (sizes are the binder's concern to restore —
     // the engine restores cells; the spec pins exactly that contract).
     for (const s of SEED) expect(cells(e, s.id)).toEqual([s.x, s.y]);
+  });
+});
+
+describe('maxRows — a bounded board refuses what cannot fit (nested-strip design)', () => {
+  // The KPI section is a ONE-ROW strip nested inside the tab board. Without a
+  // bound, growing a KPI's height (or pushing a sibling to row 2) exploded
+  // rows() and fit-mode collapsed the strip's row height — "resize an item
+  // from the first row, design is destroyed" (live report). A board with
+  // maxRows ROLLS BACK any op whose settled result exceeds the bound.
+  const STRIP: GridPackItem[] = [
+    { id: 'k1', x: 0, y: 0, w: 1, h: 1 },
+    { id: 'k2', x: 1, y: 0, w: 1, h: 1 },
+    { id: 'k3', x: 2, y: 0, w: 1, h: 1 },
+    { id: 'k4', x: 3, y: 0, w: 1, h: 1 },
+  ];
+  const strip = () => new GridPackEngine(STRIP, { columns: 4, maxRows: 1 });
+
+  it('refuses a height resize past the bound; cells untouched', () => {
+    const e = strip();
+    e.beginGesture();
+    expect(e.resizeCheck('k1', 1, 2).changed).toBe(false);
+    expect(e.getItem('k1')!.h).toBe(1);
+    expect(e.rows()).toBe(1);
+    e.endGesture();
+  });
+
+  it('refuses a width resize whose PUSH would spill a sibling past the bound', () => {
+    const e = strip(); // full row: growing k1 to w2 must shove k2 to row 2 — refuse
+    e.beginGesture();
+    expect(e.resizeCheck('k1', 2, 1).changed).toBe(false);
+    for (const s of STRIP) expect(cells(e, s.id)).toEqual([s.x, s.y]);
+    e.endGesture();
+  });
+
+  it('allows a width resize when a sibling was removed (room exists)', () => {
+    const e = strip();
+    e.remove('k4');
+    e.beginGesture();
+    expect(e.resizeCheck('k1', 2, 1).changed).toBe(true);
+    expect(e.rows()).toBe(1);
+    expect(e.hasOverlaps()).toBe(false);
+    e.endGesture();
+  });
+
+  it('refuses a move that would displace a sibling out of bounds, allows in-row swaps', () => {
+    const e = strip();
+    e.beginGesture();
+    // Same-size swap stays in-row — allowed.
+    expect(e.moveCheck('k1', 1, 0).changed).toBe(true);
+    expect(cells(e, 'k1')).toEqual([1, 0]);
+    expect(cells(e, 'k2')).toEqual([0, 0]);
+    expect(e.rows()).toBe(1);
+    e.endGesture();
+  });
+
+  it('add() refuses (returns null) when nothing can fit inside the bound', () => {
+    const e = strip(); // full 4×1 strip
+    const r = e.add({ id: 'k5', x: 0, y: 0, w: 1, h: 1, autoPosition: true });
+    expect(r).toBeNull();
+    expect(e.getItems().length).toBe(4);
+    expect(e.rows()).toBe(1);
   });
 });
 

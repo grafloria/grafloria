@@ -614,6 +614,11 @@ function bindAll() {
   const sec = sections[0];
   binders.kpis = sec ? bindDashboardGrid(inst, sec, {
     columns: 4, gap: 12, padding: 0, sizing: 'fit', designHeight: 0, dragOut: 'cancel',
+    // The strip's DESIGN is one row: height growth and downward pushes are
+    // refused in the ENGINE (siblings shift along the row instead), so the
+    // section can never be squeezed - the "resize a first-row KPI destroyed
+    // the design" report.
+    maxRows: 1,
     onGesture: (e) => {
       if (e.type === 'commit') { setFocus(e.nodeId); flash(e.changed ? 'KPI reordered (nested pack grid)' : 'released'); syncToolbar(); setTimeout(syncToolbar, 0); }
     },
@@ -768,8 +773,11 @@ function setSizingMode(mode) {
   sizingMode = mode;
   glide();
   for (const key of ['overview', 'sales', 'pipeline']) binders[key]?.setSizing(mode);
-  document.getElementById('t-mode').textContent = `Mode: ${mode}`;
-  frameTab(state.active);
+  document.getElementById('t-mode').textContent = `Mode: `;
+  // fit: refit the camera to the design-height board. grow: KEEP the camera -
+  // the board extends past the fold and panning reaches it; refitting would
+  // shrink the view and make grow visually identical to fit.
+  if (mode === 'fit') frameTab(state.active);
   ctxRef.instance.renderNow();
   for (const n of ctxRef.diagram.getNodes()) repaint(n.id);
   flash(mode === 'fit'
