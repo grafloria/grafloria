@@ -24,6 +24,19 @@ export * from './validation';
 // State
 export * from './state';
 
+// Clipboard + selection (Phase 1.8 / 1.8a).
+// These were ORPHANED from this barrel while being fully live: DiagramEngine
+// constructs both in its constructor and exposes them as public readonly
+// properties (`engine.clipboardManager` / `engine.selectionManager`), and
+// CopyCommand/PasteCommand take a ClipboardManager as a constructor argument.
+// So the classes were reachable at RUNTIME through the engine instance while
+// their types were unnameable — a consumer could call them but could not
+// declare a variable to hold one, nor construct a CopyCommand. Exporting the
+// type of a property you already expose is not new surface; it is closing a
+// hole in the surface that was already there.
+export * from './clipboard';
+export * from './selection';
+
 // Config
 export * from './config';
 

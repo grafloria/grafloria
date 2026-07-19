@@ -600,6 +600,88 @@ export {
 } from './lib/diagram-kit';
 export type { HandleApi } from './lib/diagram-kit';
 
+/* ==========================================================================
+ * PHASE 0 — THE INVERSION.
+ *
+ * Everything above this line is a CURATED re-export: a hand-written list, added
+ * to whenever someone noticed a capability was missing. That model made the
+ * front door default-DENY — a capability shipped in `@grafloria/engine` or
+ * `@grafloria/renderer` was invisible to embedders until a human remembered to add
+ * a line here. The Wave 10 comment above records what that cost the first time.
+ * It kept costing: an audit found 207 capability-level symbols (classes, and
+ * `register…` / `create…` / `define…` factories) built, tested, exported one
+ * layer down, and unreachable from this package — including `DiagramEngine`, `DiagramModel`,
+ * `NodeModel`, `Command`, `CommandManager`, `RoutingEngine`, `LayoutRegistry`,
+ * `EventBus`, `PluginManager` and every one of the 30 undoable commands. The
+ * repo's own flagship app (apps/renderer-demo, which contains a dashboard
+ * builder, a workflow builder and an ERD designer — exactly the apps this
+ * package is meant to enable) imports `@grafloria/engine` in 41 files and
+ * `@grafloria/element` in ZERO. It could not have used the front door.
+ *
+ * So the default flips: this package now re-exports the two lower packages
+ * WHOLESALE. Adding a capability downstairs makes it reachable here with no
+ * edit to this file, and `reachability.spec.ts` — now an INVERTED lock — fails
+ * the build if a capability is NOT reachable, rather than passing silently.
+ *
+ * The curated block above is kept deliberately: it is the DOCUMENTED surface
+ * (what the 15-line getting-started guide uses), and explicit exports take
+ * precedence over `export *`, so it also resolves the collisions below.
+ * ========================================================================== */
+export * from '@grafloria/engine';
+export * from '@grafloria/renderer';
+
+/* -- Collision resolution (9 names are declared in BOTH lower packages) -----
+ * Under ES `export *` semantics an ambiguous name is silently OMITTED from the
+ * re-export — a silent hole, which is the exact failure mode this phase exists
+ * to kill. So every one is resolved explicitly. The ENGINE wins by default:
+ * its declarations are the document vocabulary an app manipulates. Nothing is
+ * dropped — each renderer counterpart keeps a qualified name below.
+ *
+ * (`NodeModel`, `PortModel`, `PortLayoutArgs` and `PortLayoutSpec` are NOT real
+ * collisions: `svg/port-layout.ts` re-exports the engine's own declarations.
+ * They are pinned here anyway — they are the most load-bearing names in the
+ * package, and pinning costs one line.)
+ */
+export {
+  NodeModel,
+  PortModel,
+  distanceToSegment,
+  rotatePoint,
+  coalesce,
+} from '@grafloria/engine';
+// The three genuine VALUE collisions, kept reachable under qualified names.
+// `coalesce` is the one that matters: the engine's coalesces op-log entries for
+// batching, the renderer's merges dirty rectangles for partial redraw. Same
+// name, unrelated jobs — losing either to an `export *` ambiguity would be a
+// silent capability hole rather than a compile error.
+export {
+  distanceToSegment as distanceToSegmentCanvas,
+  rotatePoint as rotatePointSelection,
+  coalesce as coalesceRects,
+} from '@grafloria/renderer';
+export type {
+  Point,
+  BoundingBox,
+  Rectangle,
+  ValidationResult,
+  ValidationError,
+  PortLayoutArgs,
+  PortLayoutSpec,
+} from '@grafloria/engine';
+// `ConnectionValidator` is the ONE collision the engine does not win: the
+// curated surface above already claims it for the renderer's `ext/tools`
+// validator, which is the one an extension author writes. The engine's
+// ConnectionStateManager validator keeps a qualified name.
+export type { ConnectionValidator as EngineConnectionValidator } from '@grafloria/engine';
+export type {
+  BoundingBox as RendererBoundingBox,
+  Rectangle as RendererRectangle,
+  ValidationResult as PropertySchemaValidationResult,
+  ValidationError as PropertySchemaValidationError,
+  PortLayoutArgs as RendererPortLayoutArgs,
+  PortLayoutSpec as RendererPortLayoutSpec,
+} from '@grafloria/renderer';
+
 
 // Side effect: define the element on import. This is what makes
 // `<script type="module" src="…/grafloria.js"></script>` + `<grafloria-flow>` in the
