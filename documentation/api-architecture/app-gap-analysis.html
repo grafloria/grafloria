@@ -1,0 +1,443 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Grafloria — can we build Figma / draw.io / Visio / a dashboard builder on it?</title>
+<style>
+  :root{ color-scheme:light dark;
+    --bg:#fff; --fg:#111827; --mut:#6b7280; --line:rgba(127,127,127,.24);
+    --card:rgba(127,127,127,.055); --accent:#2563eb;
+    --have:#16a34a; --partial:#d97706; --missing:#dc2626; --code:#0f172a; --codefg:#e2e8f0; }
+  @media (prefers-color-scheme:dark){ :root{ --bg:#0d1117; --fg:#e6edf3; --mut:#8b949e;
+    --line:rgba(255,255,255,.14); --card:rgba(255,255,255,.04); --accent:#4c8dff; } }
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--fg);font:15px/1.6 system-ui,-apple-system,"Segoe UI",sans-serif}
+  header{padding:34px 30px 20px;border-bottom:1px solid var(--line)}
+  h1{margin:0 0 6px;font-size:25px;letter-spacing:-.02em}
+  h2{font-size:19px;margin:34px 0 8px}
+  h3{font-size:15px;margin:16px 0 6px}
+  .lede{color:var(--mut);max-width:95ch;margin:0}
+  main{padding:4px 30px 90px;max-width:1320px}
+  code{background:rgba(127,127,127,.16);padding:1px 5px;border-radius:4px;font-size:.87em}
+  /* verdict gauges */
+  .verdicts{display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:14px;margin:16px 0 6px}
+  .v{border:1px solid var(--line);border-radius:14px;padding:16px 18px;background:var(--card);position:relative;overflow:hidden}
+  .v h3{margin:0 0 2px;font-size:16px}
+  .v .sub{font-size:12.5px;color:var(--mut)}
+  .v .dist{font-size:27px;font-weight:800;letter-spacing:-.02em;margin:10px 0 2px}
+  .v .bar{height:9px;border-radius:6px;background:rgba(127,127,127,.18);overflow:hidden;margin-top:10px}
+  .v .fill{height:100%;border-radius:6px}
+  .v .note{font-size:12.5px;color:var(--mut);margin-top:8px}
+  /* headline */
+  .headline{border:2px solid var(--accent);border-radius:14px;padding:18px 22px;margin:22px 0;background:var(--card)}
+  .headline h2{margin:0 0 6px;font-size:18px;color:var(--accent)}
+  .ev{font:12.5px/1.6 ui-monospace,Menlo,monospace;background:var(--code);color:var(--codefg);
+      padding:12px 14px;border-radius:10px;overflow-x:auto;margin:10px 0;white-space:pre-wrap}
+  .ev .g{color:#86efac}.ev .r{color:#fca5a5}.ev .c{color:#7c93b5}
+  /* tabs */
+  .tabs{display:flex;gap:6px;flex-wrap:wrap;margin:18px 0 0}
+  .tabs button{font:600 13.5px system-ui;padding:9px 16px;border:1px solid var(--line);border-bottom:none;
+    border-radius:10px 10px 0 0;background:transparent;color:var(--fg);cursor:pointer;opacity:.62}
+  .tabs button.on{opacity:1;background:var(--card);border-color:var(--accent);color:var(--accent)}
+  .pane{display:none;border:1px solid var(--line);border-radius:0 12px 12px 12px;padding:16px 18px;background:var(--card)}
+  .pane.on{display:block}
+  /* filter chips */
+  .filters{display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin:2px 0 12px;font-size:13px}
+  .filters button{font:600 12px system-ui;padding:5px 12px;border-radius:999px;border:1px solid var(--line);
+    background:transparent;color:var(--fg);cursor:pointer;opacity:.6}
+  .filters button.on{opacity:1;border-color:var(--accent);color:var(--accent)}
+  .filters .count{color:var(--mut);margin-left:auto;font-variant-numeric:tabular-nums}
+  /* table */
+  table{border-collapse:collapse;width:100%;font-size:13.2px}
+  th,td{border:1px solid var(--line);padding:7px 9px;text-align:left;vertical-align:top}
+  th{font-size:12px;text-transform:uppercase;letter-spacing:.04em;color:var(--mut);position:sticky;top:0;background:var(--bg)}
+  tr.hide{display:none}
+  .pill{font-size:11px;font-weight:800;padding:2px 8px;border-radius:999px;color:#fff;white-space:nowrap}
+  .p-have{background:var(--have)}.p-partial{background:var(--partial)}.p-missing{background:var(--missing)}
+  .blk{color:var(--missing);font-weight:800}
+  .eff{font-weight:700}
+  td.evi{font:11.5px/1.5 ui-monospace,Menlo,monospace;color:var(--mut);max-width:340px}
+  /* blockers */
+  ol.blockers{padding-left:20px}
+  ol.blockers li{margin:9px 0}
+  ol.blockers b{color:var(--missing)}
+  /* roadmap scorer */
+  .sliders{display:grid;grid-template-columns:repeat(auto-fit,minmax(250px,1fr));gap:8px 22px;margin:12px 0}
+  .sliders label{display:flex;align-items:center;gap:10px;font-size:13px;color:var(--mut)}
+  .sliders label b{min-width:170px;color:var(--fg);font-weight:600}
+  .sliders input{flex:1;accent-color:var(--accent)}
+  .sliders .wv{min-width:2ch;text-align:right;font-variant-numeric:tabular-nums}
+  .bars{display:grid;gap:8px;margin:14px 0}
+  .bar{display:grid;grid-template-columns:290px 1fr 56px;align-items:center;gap:12px;font-size:13px}
+  .bar .track{height:24px;border-radius:7px;background:rgba(127,127,127,.15);overflow:hidden}
+  .bar .f{height:100%;display:flex;align-items:center;padding-left:9px;color:#fff;font-weight:700;font-size:11.5px}
+  .bar .n{font-weight:700;font-variant-numeric:tabular-nums}
+  .strong{border:1px solid var(--have);border-radius:12px;padding:14px 18px;background:rgba(22,163,74,.06);margin:12px 0}
+  .strong h3{margin:0 0 6px;color:var(--have)}
+  ul.tight{margin:6px 0;padding-left:18px} ul.tight li{margin:3px 0}
+  .small{font-size:12.5px;color:var(--mut)}
+</style>
+</head>
+<body>
+<header>
+  <h1>Can we build Figma / draw.io / Visio / a dashboard builder on Grafloria?</h1>
+  <p class="lede">A gap analysis of <b>the library</b>, not of app features: what Grafloria would need so these apps are <i>easy to build on top</i>.
+  Four parallel research passes over the real sources; every row below is backed by a file:line or a live probe. Verdicts are deliberately blunt.</p>
+</header>
+<main>
+
+<h2>1 · The answers, in one screen</h2>
+<div class="verdicts">
+  <div class="v">
+    <h3>📊 Dashboard builder</h3><div class="sub">widgets · stacked/flow · charts inside</div>
+    <div class="dist" style="color:var(--have)">A quarter</div>
+    <div class="small">Viable. Nothing architecturally blocked.</div>
+    <div class="bar"><div class="fill" style="width:70%;background:var(--have)"></div></div>
+    <div class="note"><b>Charts in widgets already work</b> — via custom nodes, not the HTML sanitizer. A 12-column dashboard layout engine is already written and never invoked.</div>
+  </div>
+  <div class="v">
+    <h3>📐 draw.io / Visio</h3><div class="sub">stencils · connectors · pages · layers</div>
+    <div class="dist" style="color:var(--partial)">2–4 dev-months</div>
+    <div class="small">To a credible draw.io-lite.</div>
+    <div class="bar"><div class="fill" style="width:48%;background:var(--partial)"></div></div>
+    <div class="note">An outstanding diagramming <b>canvas</b>; not yet a diagramming <b>document engine</b>. ~60% of the work is <i>exposure</i>, not construction.</div>
+  </div>
+  <div class="v">
+    <h3>🎨 Figma-class</h3><div class="sub">vector · text · components · frames</div>
+    <div class="dist" style="color:var(--missing)">Substrate, not foundation</div>
+    <div class="small">4 large subsystems + 5 medium + ~10 small.</div>
+    <div class="bar"><div class="fill" style="width:18%;background:var(--missing)"></div></div>
+    <div class="note">You'd get canvas, collab, export, theming free (12–18 months of the hardest infra) then write the entire <b>design model</b> yourself.</div>
+  </div>
+</div>
+
+<div class="headline">
+  <h2>2 · The finding that matters more than any single gap</h2>
+  <p style="margin:4px 0 0"><b>Grafloria's biggest weakness is not missing capability — it is <i>unreachable</i> capability.</b>
+  All four research passes independently hit the same shape: subsystems that are <b>built, tested, and wired to nothing</b>.
+  This is the single highest-leverage investment area, because the code already exists.</p>
+  <div class="ev">
+<span class="c"># The audit, by TypeScript compiler API over the full export graph:</span>
+  @grafloria/engine     800 exports  →  <span class="r">736 absent from @grafloria/element</span>
+  @grafloria/renderer   927 exports  →  <span class="r">677 absent from @grafloria/element</span>
+  @grafloria/element    369 exports  (the "front door": 238 runtime values)
+  <span class="r">→ 238 CAPABILITY-LEVEL symbols (classes + register*/create*/define* factories)</span>
+  <span class="r">  exist in engine/renderer and are unreachable from the embed package.</span>
+
+<span class="c"># A compile probe: import ONLY @grafloria/element, 20 @ts-expect-error markers → exit 0.</span>
+<span class="c"># All 20 are genuine errors. You cannot NAME:</span>
+  DiagramEngine · DiagramModel · NodeModel · Command · CommandManager · createDiagram
+  PluginManager · createExtensionHost · LayoutRegistry · registerDiagramMigration
+  validateSerializedDiagram · EventBus · RoutingEngine · DSL · DiagramOutlineView …
+
+<span class="c"># The corroboration that settles it — the repo's OWN flagship app</span>
+<span class="c"># (apps/renderer-demo: dashboard-builder, workflow-builder, erd-designer):</span>
+  imports @grafloria/engine   in <span class="g">41 files</span>   <span class="c">(re-counted by me)</span>
+  imports @grafloria/renderer in <span class="g">24 files</span>
+  imports @grafloria/element  in <span class="r">0 files</span>
+  <span class="r">→ the advertised surface cannot build the target apps. It already didn't.</span>
+
+<span class="c"># verified by me directly, not reported:</span>
+$ grep -rn "\.getFlexItem()\|\.getGridItem()" libs --include=*.ts | grep -v spec | grep -v NodeModel
+  SetGridItemCommand.ts:28 · SetFlexItemCommand.ts:28  <span class="c">// only to snapshot undo values</span>
+  <span class="r">→ NO layout pass reads flex/grid config. Full undoable commands write DEAD metadata.</span>
+$ grep -c "Command" libs/element/src/index.ts
+  <span class="r">0   → an embedder cannot compose a single undoable mutation.</span>
+  </div>
+  <p class="small" style="margin:2px 0 0">Other confirmed instances: <code>NodeTemplate</code> (a real Visio-master equivalent) + <b>80 checked-in BPMN/UML/ERD masters</b> imported by nothing, behind a registry no library code constructs, documented against an <code>engine.templateRegistry</code> that doesn't exist ·
+  <code>GroupMembershipService</code> never instantiated outside its own specs (so <b>dragging a shape into a container doesn't reparent it</b>) ·
+  <code>InPlaceTextEditor</code> wired only in the Angular wrapper (so <b>double-click-to-edit-text is unreachable</b> from the embed) ·
+  <code>clampChildToExtent</code>, <code>getGlobalTransformMatrix</code>, <code>path-geometry</code> (a complete M/L/C/Q/Z kernel), <code>printDocument</code>, the whole template library (bundled into the embed's bytes, zero public exports) — all zero callers.
+  <br><b>Mitigation that softens every verdict:</b> <code>getEngine()</code> is a total escape hatch and <code>@grafloria/engine</code> is a real peer dep — so "not exported" means <i>untyped and undocumented</i>, not impossible, except where code is genuinely never constructed.</p>
+</div>
+
+<h2>3 · Capability detail</h2>
+<div class="tabs" id="tabs">
+  <button data-t="dash" class="on">📊 Dashboard builder</button>
+  <button data-t="draw">📐 draw.io / Visio</button>
+  <button data-t="figma">🎨 Figma-class</button>
+  <button data-t="platform">⚙️ Platform foundations</button>
+</div>
+
+<div class="pane on" data-p="dash">
+  <div class="filters" data-for="dash">
+    <span>Show:</span>
+    <button data-f="all" class="on">all</button><button data-f="HAVE">have</button>
+    <button data-f="PARTIAL">partial</button><button data-f="MISSING">missing</button>
+    <button data-f="blocker">blockers only</button><span class="count"></span>
+  </div>
+  <table><thead><tr><th>Capability</th><th>Verdict</th><th>Evidence</th><th>What's needed</th><th>Effort</th><th>Blocker</th></tr></thead><tbody></tbody></table>
+  <h3>Top blockers</h3>
+  <ol class="blockers">
+    <li><b>Export of widget content (L).</b> PDF drops <code>foreignObject</code> by design; PNG rasterizes a serialized SVG via <code>drawImage</code>, which won't paint HTML — and custom-node content isn't in the vnode tree at all. Worse, <code>svg-renderer.ts:1764</code> discards the fidelity <code>warnings</code>, so you'd export a dashboard and get blank rectangles with no diagnostic. For a BI product this is table stakes and needs a genuinely new subsystem.</li>
+    <li><b>Custom nodes are never culled (M).</b> Probed live: hosts are created for every node regardless of viewport and never removed — panned 50,000px away, charts still ticking. 100 widgets = 100 live chart instances forever.</li>
+    <li><b>Container resize doesn't reflow children (M).</b> <code>setSize()</code> doesn't propagate, <code>setFrame()</code> never calls <code>applyLayout</code>. Resize a container or delete a widget and everything else stays put.</li>
+    <li><b>Flex/grid item config is dead metadata (S–M).</b> Verified above. You cannot place a widget in an explicit grid cell.</li>
+    <li><b>No node z-order; per-node lock is UI-only (S).</b> Groups have <code>bringToFront</code>; nodes have nothing. <code>state.locked</code> is honoured by input layers but by no model mutator — auto-layout relocates locked nodes.</li>
+  </ol>
+</div>
+
+<div class="pane" data-p="draw">
+  <div class="filters" data-for="draw">
+    <span>Show:</span>
+    <button data-f="all" class="on">all</button><button data-f="HAVE">have</button>
+    <button data-f="PARTIAL">partial</button><button data-f="MISSING">missing</button>
+    <button data-f="blocker">blockers only</button><span class="count"></span>
+  </div>
+  <table><thead><tr><th>Capability</th><th>Verdict</th><th>Evidence</th><th>What's needed</th><th>Effort</th><th>Blocker</th></tr></thead><tbody></tbody></table>
+  <h3>Top blockers</h3>
+  <ol class="blockers">
+    <li><b>There is no document model — only a diagram model.</b> No layers, no pages; <code>DocumentEnvelope</code> holds exactly one diagram. The <i>only</i> architectural blocker here: it changes serialization, the envelope, the CRDT surface and every export path.</li>
+    <li><b>The stencil system is built and orphaned.</b> A palette is the #1 thing this app class needs and all the parts are on the floor.</li>
+    <li><b>Dragging a shape into a container doesn't reparent it.</b> Containers <i>look</i> done and aren't — worse than missing.</li>
+    <li><b>Double-click-to-edit text isn't reachable</b> from the embed (Angular-only), and node labels are permanently centred.</li>
+    <li><b>Clipboard is in-memory only; undo is bifurcated.</b> No OS clipboard (no paste between tabs). Ctrl+Z uses <code>CommandManager</code> while the collab-safe <code>UndoStack</code> sits unreachable inside <code>Replica</code> — multiplayer and undo disagree.</li>
+  </ol>
+</div>
+
+<div class="pane" data-p="figma">
+  <div class="filters" data-for="figma">
+    <span>Show:</span>
+    <button data-f="all" class="on">all</button><button data-f="HAVE">have</button>
+    <button data-f="PARTIAL">partial</button><button data-f="MISSING">missing</button>
+    <button data-f="blocker">blockers only</button><span class="count"></span>
+  </div>
+  <table><thead><tr><th>Capability</th><th>Verdict</th><th>Evidence</th><th>What's needed</th><th>Effort</th><th>Blocker</th></tr></thead><tbody></tbody></table>
+  <h3>Top blockers</h3>
+  <ol class="blockers">
+    <li><b>No vector path entity, and no boolean ops.</b> That <i>is</i> the product category. Cruel irony: <code>canvas/path-geometry.ts</code> is already a complete path kernel (M/L/C/Q/Z, parse/transform/flatten/bounds/hit-test) that <b>no model consumes</b>.</li>
+    <li><b>Text is a property, not an object</b> — no standalone text, no style runs, and wrap decisions come from <code>length × fontSize × 0.6</code> while a real <code>measureText</code> sits unused in the canvas backend. Typography is most of design work.</li>
+    <li><b>No component/instance system.</b> <code>templateId</code> is written once and never read; edit a master, nothing propagates. Design systems are why teams buy Figma.</li>
+    <li><b>No document structure</b> — no frames, clipping, pages, or group transform. Deepest issue: the renderer emits <b>flat siblings, not nested <code>&lt;g&gt;</code></b>, so parent transforms never reach children; multi-select rotation is hardcoded to zero.</li>
+    <li><b>The mutation/undo seam is diagram-shaped and closed.</b> A design tool is ~90% property edits and there is <b>no node style command</b> — <code>setStyle()</code> is a raw write outside undo. Cheapest of the five to fix; silently poisons everything built above it.</li>
+  </ol>
+</div>
+
+<div class="pane" data-p="platform">
+  <div class="filters" data-for="platform">
+    <span>Show:</span>
+    <button data-f="all" class="on">all</button><button data-f="HAVE">have</button>
+    <button data-f="PARTIAL">partial</button><button data-f="MISSING">missing</button>
+    <button data-f="blocker">blockers only</button><span class="count"></span>
+  </div>
+  <table><thead><tr><th>Area</th><th>Verdict</th><th>Evidence</th><th>What's needed</th><th>Effort</th><th>Blocker</th></tr></thead><tbody></tbody></table>
+  <h3>Top foundation blockers</h3>
+  <ol class="blockers">
+    <li><b>The front door is not the door.</b> 238 capability symbols unreachable; the flagship in-repo app uses <code>@grafloria/element</code> in zero files. It's the <i>multiplier</i> on every other gap — excellent a11y, layout, collab and undo machinery all exist and are invisible to an app author. And the existing lock is an <i>allowlist</i>, so the gap regrows every wave.</li>
+    <li><b>No entity-kind registry.</b> The one gap with no workaround: <code>fromJSON</code> hardcodes concrete classes at <b>10 sites</b> and the collab <code>EntityTarget</code> union is closed across 4 files. Tellingly, the library's own domain features (swimlanes, ER tables, UML, comments) are all metadata conventions <i>working around</i> the missing primitive.</li>
+    <li><b>Undo is a good machine bolted to an unguarded model.</b> ~30 of ~104 document mutators covered (<b>29%</b>), ~66 internal bypass sites, no style/metadata/layout command, a <i>competing</i> layout undo stack — and with collab attached, two unconnected Ctrl-Z implementations over one document.</li>
+    <li><b>Process-global renderer registries.</b> Shape/style/tool registries are module-scope Maps, so <b>two diagrams on one page cannot have different vocabularies</b> — an ordinary requirement (widget editor beside a live preview) hits a hard ceiling. The correct instance-scoped pattern already exists twice in-repo.</li>
+    <li><b>Three live collab bugs</b>, all S-effort, none covered by tests: group membership over collab corrupts a Set into a character-split string and then makes <code>serialize()</code> <b>throw</b> (document unsaveable — reproduced live); manual waypoints never propagate; <code>writeGeneric</code> calls a 1-arg setter into 2-arg <code>setData</code>, writing a key literally named <code>[object Object]</code>.</li>
+  </ol>
+  <h3>Recommended hardening sequence</h3>
+  <ol class="blockers">
+    <li><b>Phase 0 — Stop the bleeding (days).</b> Generate the element barrel from engine/renderer capability exports and <b>invert the lock</b>: fail on an <i>unexported capability</i>, not a missing allowlist entry. Un-orphan <code>clipboard/</code> and <code>selection/</code> (absent from the engine barrel entirely). Add <code>exports</code>/<code>files</code> maps; stop shipping <code>__mocks__</code>.</li>
+    <li><b>Phase 1 — Ship what already exists (1–2 weeks).</b> Highest value-per-hour in the whole plan: export the command system, core models, <code>ExtensionHost</code>, <code>LayoutRegistry</code>, the serialization suite and the a11y controllers; wire a11y + keyboard nav into <code>createDiagram()</code> (Angular is a working reference). Delivers a11y, keyboard, layout and undo to every non-Angular consumer <i>without writing a feature</i>.</li>
+    <li><b>Phase 2 — Fix correctness (~1 week).</b> The three collab bugs, the un-undoable delete-link path, label-command merging (today: one undo entry per keystroke), palm rejection, ephemeral state out of saved docs.</li>
+    <li><b>Phase 3 — Registry coherence (3–4 weeks).</b> Instance-scope the renderer registries; unify ~34 registries across ~6 idioms onto one contract; make <code>ExtensionHost</code> the single entry point. Decide <code>PluginManager</code>'s fate — <code>install()</code>/<code>activate()</code> never fire and zero plugins exist; a dead plugin system in the public API is worse than none.</li>
+    <li><b>Phase 4 — <code>defineCardKind</code> (6–10 weeks).</b> The entity-kind registry (Option C from the earlier decision). Last of the build work deliberately: it touches safety-critical seams, and Phases 0–3 give it a stable registry contract, trustworthy undo and correct collab to build against.</li>
+    <li><b>Phase 5 — Undo invariant + docs.</b> Close the bypass sites (or enforce "document write requires a command or explicit <code>runSystemWrite()</code>"); reconcile the two undo stacks; rewrite the root README (currently <b>unmodified Nx boilerplate</b>), delete <code>libs/renderer/README.md</code>'s fiction (it documents 4 classes that no longer exist), tag <code>@public</code>/<code>@internal</code>.</li>
+  </ol>
+</div>
+
+<h2>4 · What to invest in first</h2>
+<p class="small">Each initiative scored 0–10 on how much it unlocks per app class + how cheap it is. Drag the weights to match your intent; the ranking re-sorts live.</p>
+<div class="sliders" id="sliders"></div>
+<div class="bars" id="bars"></div>
+
+<div class="strong">
+  <h3>5 · What Grafloria is already unusually strong at — do not rebuild these</h3>
+  <ul class="tight">
+    <li><b>Collaboration.</b> A hand-built <i>per-property</i> LWW CRDT with Lamport clocks that explicitly rejects whole-entity LWW ("if you drag a node while I rename it, somebody's work is silently lost"), 4 transports incl. serverless BroadcastChannel, fuzz + hostile-transport suites, supersession-aware undo. This is exactly the multiplayer model a design tool needs, already correct.</li>
+    <li><b>Presence.</b> Cursors live <i>outside</i> the VNode tree because the obvious implementation costs 240 full re-renders/sec at 4 peers. Measured 0.0ms idle-frame delta.</li>
+    <li><b>Routing — better than the thing you'd be cloning.</b> Seven pluggable routers plus an off-thread libavoid-class global solver, live rerouting, jump-overs, draw.io's floating attachment ported verbatim.</li>
+    <li><b>Export.</b> True <i>vector</i> PDF with selectable text; per-object export that prunes the tree (treating crop-only as "an information leak"); raster backends that refuse formats they can't produce rather than emitting wrong bytes; and the exported SVG/PNG <b>is</b> the document (metadata + PNG <code>iTXt</code> + checksum reimport) — a better round-trip than draw.io's.</li>
+    <li><b>Persistence.</b> <code>PersistedDocument</code> + a stepwise migration registry explicitly open for host apps, full metadata round-trip, document checksums for dirty-checking.</li>
+    <li><b>Theming.</b> Token bridge with shadcn/MUI/Tailwind presets, fail-soft <code>var()</code> fallbacks, a named-style registry wired to cache invalidation — genuine edit-once-update-all shared styles.</li>
+    <li><b>Snapping geometry.</b> Edge/centre alignment, equal-spacing detection in BETWEEN and CHAIN patterns, distance labels. The hard math for align/distribute is <i>already written</i> — only the command layer is missing (an S-sized win).</li>
+    <li><b>Performance + SSR.</b> Culling, spatial index, LOD governor, off-thread layout; 10k nodes: zoom-out 63s → 102ms, drag 5.5s → 61ms. Real headless render with determinism tests that first assert there's no DOM.</li>
+  </ul>
+</div>
+
+<h2>6 · The honest summary</h2>
+<p style="max-width:95ch">Grafloria is a <b>world-class diagramming canvas with production-grade substrate</b> (collab, export, theming, routing, performance) and a <b>diagram-shaped model</b>. That combination makes the dashboard builder a straightforward quarter, draw.io-lite a 2–4 month exposure-and-document-model project, and Figma-class a "build the design model beside it" undertaking.
+If the goal is <i>apps get built on Grafloria easily</i>, the highest-leverage work is not new features — it is <b>closing the reachability gap</b> (export the commands, own the template registry, wire the membership services, expose in-place editing) and then adding the <b>document model</b> (layers + pages) that two of the three app classes both need.</p>
+
+<script>
+const DATA = {
+ dash:[
+  ["Chart inside a widget (custom nodes)","HAVE","create-diagram.ts:381-412 syncCustomNodes; live: 2 canvas charts, 0 remounts across move/resize/zoom","nothing","—",0],
+  ["HTML-in-node via metadata.html","PARTIAL","html-node.ts:65-94 ALLOWED_TAGS has no svg/canvas; unknown tags→span; id/data-* stripped","use custom nodes for charts","—",0],
+  ["Custom node renderers / framework components","HAVE","react createPortal grafloria-flow.tsx:297; ext/node-component.ts:93 defineNodeComponent + autoSize; Angular directive","nothing","—",0],
+  ["Container layout (flex/grid/stack)","PARTIAL","GroupModel.ts:1063 real 12-col engine w/ wrapping; integration spec literally named 'Dashboard Builder'","make it push-driven","M",0],
+  ["Per-item flex/grid config","MISSING","SetFlex/SetGridItemCommand write config; NO layout pass reads it (verified)","wire configs into the layout passes","S–M",0],
+  ["Node resize (min/max/aspect)","HAVE","selection-tools.ts:66-389; per-node constraints in serialized metadata","nothing","—",0],
+  ["Container resize → reflow children","MISSING","setSize():262 no propagation; setFrame():836 never calls applyLayout","subscribe applyLayout to bounds:changed","M",1],
+  ["Responsive / breakpoints","MISSING","ResizeObserver syncs camera only (create-diagram.ts:593)","net-new","M",0],
+  ["Grid snapping / packing","HAVE","interaction/snapping.ts:298; overlap-removal; component-packing (shelf FFDH)","default snapToGrid on","S",0],
+  ["Z-order","PARTIAL","GroupModel zIndex/bringToFront exist; NodeModel has no zIndex field or command","add node z-order","S",0],
+  ["Persistence of dashboard definition","HAVE","PersistedDocument.ts:61; DiagramMigrations.ts:44 open for host registration; checksums","nothing","—",0],
+  ["Data binding / reactive widgets","MISSING","setMetadata emits no event; NodeFactory bindings one-shot; LemonadeJSRenderer orphaned","app-level + a metadata event","S",0],
+  ["Edit vs view mode, locking, fixed viewport","HAVE","readonly-lock.ts; DiagramMode.DESIGNER↔VIEW; independent enablePan/enableZoom","enforce per-node lock in model","S",0],
+  ["Performance with many live widgets","PARTIAL","custom-node hosts NEVER culled (probed: panned 50k px, charts still running)","cull/pause off-screen widgets","M",1],
+  ["LOD gating of HTML bodies","PARTIAL","svg-renderer.ts:4222 gates on lodAllows('decorations'); FO count 5@0.5 → 0@0.45 zoom","custom LODConfig (custom nodes immune)","S",0],
+  ["Export dashboard (PNG/PDF) with widget content","MISSING","pdf-export.ts:522 drops foreignObject; raster.ts:88 drawImage can't paint HTML; warnings discarded svg-renderer.ts:1764","real rasterizer / headless","L",1],
+  ["Theming across widgets","HAVE","token bridge; CSS vars inherit across the FO boundary","nothing","—",0]
+ ],
+ draw:[
+  ["Shape / stencil libraries","PARTIAL","NodeTemplate.ts:389 is a real Visio-master (geometry+ports+defaults+dataSchema); 80 masters imported by NOTHING; engine.templateRegistry documented but absent","own the registry on the engine; export stencil type+loader","M",1],
+  ["Connectors & routing","HAVE","7 routers + GlobalRouteSolver.ts:83 (libavoid-class); waypoint editing undoable; jump-overs; multi-label t-param; live reconnect","type the flags; name-export routing","S",0],
+  ["Layers","MISSING","no Layer/LayerModel anywhere; z-stack fixed; bringToFront only on GroupModel","LayerModel + per-layer lock/visibility + z commands","M",1],
+  ["Snapping / guides","PARTIAL","SnapController IS live (dom-event-binder.ts:1503); guides drawn; but off by default; resize snap param never passed","default-on; pass the resize hook","S",0],
+  ["Align / distribute operations","MISSING","zero AlignCommand/DistributeCommand hits; geometry already in SnapController","command layer over existing geometry","S",0],
+  ["Multi-page documents","MISSING","DocumentEnvelope.document is ONE SerializedDiagram; no pages[]","document container above DiagramModel + migration","M",1],
+  ["Containers / swimlanes","PARTIAL","nested containment, fitToContents, collapse commands all real — but GroupMembershipService never instantiated outside specs → drag-in doesn't reparent","wire membership into the binder","M",1],
+  ["Shape data / custom properties","PARTIAL","node.data syncs as per-key LWW registers (excellent); property-schema/ is types-only, zero runtime; working property sheet is Angular-only","runtime schema registry in core","M",0],
+  ["Interop (drawio/vsdx import)","MISSING","zero mxfile/vsdx/graphml/dot hits; DSL is flowchart-only, ~19 of 23 Mermaid types refused","a .drawio importer is the highest-leverage item","L",1],
+  ["Export (SVG/PNG/PDF)","HAVE","flattened CSS vars, inlined images, true vector multi-page PDF, editable round-trip artifact w/ checksum","nothing","—",0],
+  ["Text on shapes & in-place editing","PARTIAL","InPlaceTextEditor real+undoable but exported only from @grafloria/renderer and wired ONLY in Angular; node labels hard-centred; metrics = length×0.6 in two copies","export+wire; label placement; real metrics","M",1],
+  ["Printing / paper","PARTIAL","paginate() tiles w/ break snapping + bleed; multi-page vector PDF — but printDocument not exported from the embed","export printDocument; page rectangle","S",0],
+  ["Undo / clipboard","PARTIAL","33 commands, live-then-commit discipline — but no style/z-order/lock commands; clipboard in-memory only; TWO non-communicating undo systems","reconcile undo stacks; OS clipboard bridge","M",1],
+  ["Templates / starter documents","MISSING","zero template-library symbols in the 239 public exports — yet bundled into the embed's bytes","re-export","S",0],
+  ["Performance ceiling","HAVE","culling + spatial index + LOD + route memo + off-thread layout; 10k nodes: zoom-out 102ms, drag 61ms, pan 11ms","nothing urgent","—",0]
+ ],
+ figma:[
+  ["Editable vector path entity","MISSING","no PathModel/VectorModel; StrokeModel is {x,y,pressure?} w/ wholesale setPoints only. canvas/path-geometry.ts is a COMPLETE path kernel no model consumes","new PathModel on the existing PathCmd union","L",1],
+  ["Bezier anchor / handle editing","PARTIAL","ControlPointEditor.ts:78 real w/ symmetric mirroring — hardcoded to LinkModel.segments, off by default, and NOT undoable (raw writes)","generalize off links; anchor modes","M",0],
+  ["Boolean ops (union/subtract/…)","MISSING","zero paper/martinez/polybool/clipper deps; 'union' hits are marquee modes","greenfield sweep-line + winding resolver","L",1],
+  ["Text as a first-class entity","MISSING","models/ = DiagramEntity/Diagram/Group/Link/Node/Port/Stroke; ShapeType has no 'text'","TextModel + text tool","L",1],
+  ["Rich text runs (bold word in a sentence)","MISSING","no run/span model; tspan used only for line breaks; fontStyle modeled but never emitted","run model + renderer + editor + PDF path","L",1],
+  ["Text measurement / wrap","PARTIAL","real greedy wrap+hyphen+ellipsis, but width = length×fontSize×0.6; real measureText exists in canvas backend and doesn't feed wrap","pipe measureText through the existing seam","S",0],
+  ["In-place text editing","PARTIAL","good session+command model, but targets node|link-label only; single-line input; Angular-only; not exported","textarea + caret/IME; export","M",0],
+  ["Image / bitmap entity","MISSING","no ImageModel; images only as a fixed 48px band in node metadata","ImageModel + async cache","M",0],
+  ["Fills: solid / gradient / pattern","HAVE","paint-servers.ts:123 linear/radial/4 patterns, content-hashed dedup, LOD flattening","image fill is a closed set — add paint type","S",0],
+  ["Blend modes","MISSING","zero mix-blend-mode/globalCompositeOperation hits","model + both backends + export","M",0],
+  ["Shadow / blur","PARTIAL","SVG feDropShadow real; canvas shadows silently vanish (dangling ctx.filter url ref); no blur field","canvas shadow path; blur field","M",0],
+  ["Stroke cap/join/alignment","MISSING","hardcoded and backends DISAGREE (svg 'round' vs canvas 'butt'); no strokeAlign","model fields; align needs path offsetting","S–M",0],
+  ["Rotation (node-level)","HAVE","NodeModel.rotation + RotateNodeCommand + gesture w/ 15° snap + rotation-aware resize","nothing","—",0],
+  ["Rotation-aware hit-testing","MISSING","getNodeAtPosition is AABB; canvas picking DOES respect rotation → backends disagree","OBB hit-test","S",0],
+  ["Nested transform propagation","MISSING","getGlobalTransformMatrix composes correctly with ZERO renderer callers; renderer emits flat siblings not nested <g>; degrees-as-radians bug at NodeModel.ts:855","nested <g> emission (renderer rework)","L",1],
+  ["Group transform (rotate/scale a group)","MISSING","GroupModel has no rotation/scale/matrix; selection-tools.ts:560 explicitly ZEROES multi-select rotation","group as a transform node","L",1],
+  ["Components / instances / variants","MISSING","templateId written as inert metadata, never read back; re-registering a master leaves stamped nodes untouched; zero overrides/variants/detach","master→instance→override subsystem","L",1],
+  ["Auto-layout (flex/grid)","PARTIAL","commands write config nothing reads; Group solver handles only justifyContent:center, alignItems:center; grid ignores gridConfig","real solver at render time","M–L",0],
+  ["Constraints (pin / hug / fill)","MISSING","no resizeBehavior/pin; clampChildToExtent is correct and has ZERO callers","constraint model + solve on resize","M",0],
+  ["Frames / artboards + clipping","MISSING","no artboard entity; group frames explicitly decorative ('must never intercept a pointer'); no clipPath","frame entity + clip","M",1],
+  ["Design tokens / named styles","HAVE","token-bridge.ts:45 w/ shadcn/MUI/Tailwind presets + fail-soft fallbacks; style-registry change signal → cache invalidation","nothing","—",0],
+  ["Snapping / smart guides","HAVE","edge/center alignment, spacing guides BETWEEN+CHAIN, port magnets","enable by default; multi-select","S",0],
+  ["Multiplayer CRDT + presence + comments","HAVE","per-property LWW + Lamport, 4 transports, fuzz suites; presence outside the VNode tree (0.0ms idle); comments as prefix-free registers","nothing","—",0],
+  ["Export SVG / PNG / PDF + SSR","HAVE","zero-DOM deterministic SVG; true vector PDF w/ selectable text; batch w/ fault isolation; headless w/ determinism tests","font embedding for non-WinAnsi","M",0],
+  ["Property mutation as undoable commands","MISSING","of 35 commands the only style one is UpdateLinkStyleCommand; NO node style command — setStyle() is a raw write outside undo","SetNodeStyleCommand + property family","M",1],
+  ["Commands reachable from the embed","MISSING","grep -c Command libs/element/src/index.ts = 0 (verified); CommandManager exported nowhere","export CommandManager + command set","S",0]
+ ],
+ platform:[
+  ["Public API reachability","PARTIAL","238 capability symbols absent from element; 20/20 compile probe fails; flagship app imports element 0× / engine 41× (re-verified)","generated barrel + INVERTED lock (fail on unexported capability)","M",1],
+  ["Orphaned engine subsystems","MISSING","clipboard/ and selection/ absent from libs/engine/src/index.ts — SelectionManager (17 methods) + ClipboardManager nameable from no package","add to the engine barrel","S",0],
+  ["Registry coherence","PARTIAL","34 registries across ~6 idioms; renderer registries are process-global module Maps (shape-registry.ts:954, style-registry.ts:24) → two diagrams on one page cannot differ","instance-scope + one contract (restoring disposer + version counter)","L",1],
+  ["PluginManager","MISSING (dead)","constructed DiagramEngine.ts:312 but install()/activate() never fire outside specs; PluginContext.engine: any; destroy() commented out; 0 plugins exist","call installAll(), type the context — or delete it","M",0],
+  ["Layout registry (the good precedent)","HAVE","layout-registry.ts:241 instance-scoped, register() returns a RESTORING disposer, names/has/get","export it; delete 2 shadow registries","S",0],
+  ["Entity-kind extensibility","MISSING","fromJSON hardcodes concrete classes at 10 sites; collab EntityTarget is a closed 5-member union across 4 files","defineCardKind registry — 16 touchpoints incl. collab","L",1],
+  ["Serialization core","HAVE","groups/ink/comments/ports/swimlanes/layout/viewport all round-trip; SCHEMA_VERSION=3; migrations auto-run as the first statement of fromJSON; envelope checksums","nothing","—",0],
+  ["Large-document loading","MISSING","fromJSON is a synchronous full-document walk; no streaming/chunking/lazy","async chunked load + section index","L",1],
+  ["Asset management","MISSING","zero assetId/AssetRegistry repo-wide; images are raw URLs in metadata; inlineAssets() is complete with 0 production callers","asset table + call the already-written resolveAssets()","M",0],
+  ["Undo coverage","PARTIAL","~30 of ~104 document mutators (29%); ~66 bypass sites; no SetNodeStyle/SetNodeMetadata/ApplyLayout command; competing layout-history stack; only 3/36 commands merge","close bypasses; add commands; enable label merge","M",1],
+  ["Two undo systems in collab","MISSING","CommandManager (DiagramEngine.ts:311) and collab UndoStack (replica.ts:114) have ZERO cross-references — Ctrl-Z has two semantics","make Replica the authority when attached","M",1],
+  ["Collab core","HAVE","per-property LWW over Lamport; capture automatic via trackChange; version-vector catch-up, causal buffer, backoff, 2 real transports","—","—",0],
+  ["Collab correctness bugs","MISSING","group membership corrupts peers then makes serialize() THROW (live-reproduced); waypoints never propagate; writeGeneric 1-arg into 2-arg setData → key '[object Object]'","fix 3 bugs (all S, none test-covered)","S",1],
+  ["Op-log persistence / compaction","MISSING","unbounded op log; no compaction or persistence story","blocks long-lived documents","L",0],
+  ["Framework integration (React/Angular)","HAVE — best area","React supports BOTH controlled and uncontrolled + RF-shaped onNodesChange; createPortal for 17/18/19; SSR hydration is real DOM adoption","nothing","—",0],
+  ["Event surface","PARTIAL","GRAFLORIA_EVENTS = 8; instance has 10 (element drops reconnect + node:doubleclick); no drag start/end, hover, context-menu, port events, no beforeConnect veto","add events + a connect veto","S–M",0],
+  ["Packaging","PARTIAL","all 4 packages CJS, version 0.0.1, NO exports map, no files, no bundle target → cannot <script src> despite the docs; canvas-ng is an empty stub","ESM/IIFE build + exports maps","S",0],
+  ["Performance envelope","HAVE — strongest","measured Chromium w/ committed fences: pan 2.7/6.3/11.4ms @1k/5k/10k, drag 64ms @10k, idle 0.0ms; real spatial index; evidence-driven decision AGAINST auto-canvas (SVG 8.9× faster)","nothing","—",0],
+  ["Hit-testing at scale","PARTIAL","getNodeAtPosition is a LINEAR scan per pointer event (DiagramModel.ts:1529); link picking iterates all links; findNearestPort already proves the fix","route picking through queryNear","S–M",0],
+  ["A11y wiring","PARTIAL","~1,700 LOC of good a11y (W3C roles, dual live regions, role=tree outline, focus containment) but createDiagram() imports NOTHING from ../a11y — only Angular constructs it","a11y option on CreateDiagramOptions, default on","M",0],
+  ["Keyboard","PARTIAL","createDiagram path has 8 bindings, no Tab/arrows/Enter/connect; full nav exists only in Angular; NO keymap registry — flat if(event.key) chains, so apps cannot remap without patching source","port nav into the binder + KeymapRegistry","S–M",0],
+  ["Touch / pen","PARTIAL","pinch/pan/drag/tap/long-press solid; pen = pressure only, tiltX/tiltY zero occurrences; palm rejection MISSING and harmful — a resting palm becomes a pinch and discards the stroke","palm rejection first","S",0],
+  ["Testing tooling for app authors","PARTIAL","headless + static SVG render genuinely ship; but all 10 Playwright runners are repo-internal, no fixtures/factories (makeNode duplicated ~13×), no mock engine, __mocks__ accidentally ships","./testing subpath + exports maps","S–M",0],
+  ["Docs & API stability","MISSING in practice","root README is unmodified Nx boilerplate (0 hits for 'grafloria'); examples/ has zero code; renderer README documents 4 classes that no longer exist; no typedoc/CHANGELOG/CI; @public = 0 occurrences","rewrite, delete fiction, tag the surface","S–M",0]
+ ]
+};
+
+// build tables
+for (const [key, rows] of Object.entries(DATA)) {
+  const tb = document.querySelector(`.pane[data-p="${key}"] tbody`);
+  tb.innerHTML = rows.map(([cap,v,ev,need,eff,blk]) => `
+    <tr data-v="${v}" data-blk="${blk}">
+      <td><b>${cap}</b></td>
+      <td><span class="pill p-${v.toLowerCase().replace('–','')}">${v}</span></td>
+      <td class="evi">${ev}</td>
+      <td>${need}</td>
+      <td class="eff">${eff}</td>
+      <td>${blk?'<span class="blk">YES</span>':'—'}</td>
+    </tr>`).join('');
+}
+function applyFilter(key, f){
+  const pane = document.querySelector(`.pane[data-p="${key}"]`);
+  let shown = 0;
+  pane.querySelectorAll('tbody tr').forEach(tr => {
+    const ok = f==='all' || (f==='blocker' ? tr.dataset.blk==='1' : tr.dataset.v.startsWith(f));
+    tr.classList.toggle('hide', !ok); if (ok) shown++;
+  });
+  pane.querySelector('.count').textContent = `${shown} of ${pane.querySelectorAll('tbody tr').length} capabilities`;
+}
+document.querySelectorAll('.filters').forEach(bar => {
+  const key = bar.dataset.for;
+  bar.addEventListener('click', e => {
+    const b = e.target.closest('button'); if(!b) return;
+    bar.querySelectorAll('button').forEach(x=>x.classList.toggle('on', x===b));
+    applyFilter(key, b.dataset.f);
+  });
+  applyFilter(key,'all');
+});
+document.getElementById('tabs').addEventListener('click', e => {
+  const b = e.target.closest('button'); if(!b) return;
+  document.querySelectorAll('#tabs button').forEach(x=>x.classList.toggle('on', x===b));
+  document.querySelectorAll('.pane').forEach(p=>p.classList.toggle('on', p.dataset.p===b.dataset.t));
+});
+
+// roadmap scorer
+const CRIT = [
+  {k:'dash',  label:'Unlocks dashboard builder', w:30},
+  {k:'draw',  label:'Unlocks draw.io/Visio',     w:25},
+  {k:'figma', label:'Unlocks Figma-class',       w:10},
+  {k:'cheap', label:'Cheapness / speed',         w:25},
+  {k:'risk',  label:'Low risk (additive)',       w:20},
+];
+const INIT = {
+  'Close the reachability gap (export commands, own the template registry, wire membership, expose in-place editing)':
+    {dash:7,draw:10,figma:6,cheap:9,risk:10,color:'#2563eb'},
+  'Make container layout push-driven + read the flex/grid item configs':
+    {dash:10,draw:5,figma:5,cheap:7,risk:8,color:'#16a34a'},
+  'Document model: layers + pages':
+    {dash:3,draw:10,figma:8,cheap:3,risk:4,color:'#d97706'},
+  'Property-command family (node style, z-order, lock) + reconcile the two undo stacks':
+    {dash:6,draw:8,figma:9,cheap:6,risk:6,color:'#7c3aed'},
+  'Custom-node culling + widget lifecycle':
+    {dash:9,draw:2,figma:2,cheap:6,risk:7,color:'#0891b2'},
+  'Export fidelity for HTML/widget content (headless rasterizer)':
+    {dash:9,draw:4,figma:4,cheap:2,risk:5,color:'#be185d'},
+  'Vector path model + boolean ops + text entity':
+    {dash:1,draw:4,figma:10,cheap:1,risk:2,color:'#dc2626'},
+  'Align/distribute commands over the existing snap geometry':
+    {dash:5,draw:8,figma:7,cheap:10,risk:10,color:'#65a30d'},
+};
+const sl = document.getElementById('sliders');
+CRIT.forEach((c,i)=>{ const l=document.createElement('label');
+  l.innerHTML=`<b>${c.label}</b><input type="range" min="0" max="40" value="${c.w}" data-i="${i}"><span class="wv">${c.w}</span>`;
+  sl.appendChild(l); });
+sl.addEventListener('input',e=>{ const i=+e.target.dataset.i; CRIT[i].w=+e.target.value;
+  e.target.nextElementSibling.textContent=e.target.value; draw(); });
+function draw(){
+  const tw = CRIT.reduce((s,c)=>s+c.w,0)||1;
+  const rows = Object.entries(INIT).map(([n,o])=>({n,color:o.color,
+    s: CRIT.reduce((s,c)=>s+o[c.k]*c.w,0)/tw})).sort((a,b)=>b.s-a.s);
+  document.getElementById('bars').innerHTML = rows.map((r,i)=>`
+    <div class="bar"><div>${i===0?'★ ':''}${r.n}</div>
+    <div class="track"><div class="f" style="width:${r.s*10}%;background:${r.color}">${i===0?'start here':''}</div></div>
+    <div class="n">${r.s.toFixed(2)}</div></div>`).join('');
+}
+draw();
+</script>
+</main>
+</body>
+</html>
