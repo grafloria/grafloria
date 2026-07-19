@@ -1,0 +1,385 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Dashboard grid interaction — the plan</title>
+<style>
+  :root { --ink:#1e222d; --muted:#68707f; --line:#e3e6ec; --soft:#f6f7fa; --blue:#3b52d9;
+    --green:#12a150; --amber:#d97c06; --red:#dc2626; --card:#fff; }
+  * { box-sizing: border-box; }
+  body { margin: 0; font: 15px/1.55 system-ui, -apple-system, sans-serif; color: var(--ink); background:#fbfbfd; }
+  header { padding: 26px 34px 18px; background:#fff; border-bottom:1px solid var(--line); }
+  h1 { margin:0 0 6px; font-size:22px; }
+  .sub { color: var(--muted); max-width: 1000px; }
+  main { max-width: 1180px; margin: 0 auto; padding: 22px 28px 80px; }
+  h2 { font-size:17px; margin: 34px 0 10px; }
+  h2 .n { display:inline-flex; width:22px; height:22px; border-radius:6px; background:var(--blue); color:#fff;
+    align-items:center; justify-content:center; font-size:12px; margin-right:8px; vertical-align:-3px; }
+  table { border-collapse: collapse; width: 100%; font-size: 13.5px; background:#fff; }
+  th { text-align:left; font-size:11px; text-transform:uppercase; letter-spacing:.5px; color:var(--muted);
+    padding: 8px 10px; border-bottom: 2px solid var(--line); }
+  td { padding: 8px 10px; border-bottom: 1px solid var(--line); vertical-align: top; }
+  .tag { display:inline-block; padding:2px 8px; border-radius: 20px; font-size:11px; font-weight:600; }
+  .have { background:#e7f6ec; color:var(--green); } .part { background:#fdf1e2; color:var(--amber); }
+  .miss { background:#fdeaea; color:var(--red); } .new { background:#e9edfd; color:var(--blue); }
+  code { background: var(--soft); border:1px solid var(--line); border-radius:4px; padding: 1px 5px; font-size: 12.5px; }
+  .note { background:#f2f5ff; border:1px solid #d9e0fb; border-radius:10px; padding: 12px 16px; margin: 14px 0; }
+  .warn { background:#fff8ee; border-color:#f3e3c3; }
+  .cols { display:grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+  .card { background:var(--card); border:1px solid var(--line); border-radius:12px; padding:16px 18px; }
+  .card h3 { margin:0 0 8px; font-size:14px; }
+  ul { margin: 6px 0; padding-left: 20px; } li { margin: 3px 0; }
+  .k { font-weight:600; }
+
+  /* ------- the live prototype ------- */
+  #proto-wrap { background:#fff; border:1px solid var(--line); border-radius:14px; padding:16px 18px 18px; }
+  #proto-bar { display:flex; gap:8px; align-items:center; margin-bottom:10px; flex-wrap:wrap; }
+  #proto-bar button, #proto-bar label { font: 600 12px system-ui; padding: 6px 11px; border-radius: 7px;
+    border: 1px solid #d5d9e2; background:#fff; cursor:pointer; color:#3c4254; }
+  #proto-bar .on { background:#e9edfd; border-color:#b9c4f2; color:var(--blue); }
+  #proto-hint { font: 12px system-ui; color: var(--muted); margin-left:auto; }
+  #board { position: relative; height: 420px; border-radius: 10px; background: #f1f3f7;
+    background-image: radial-gradient(circle, rgba(120,128,145,.18) 1px, transparent 1px); background-size: 24px 24px;
+    overflow: hidden; touch-action:none; }
+  .tile { position:absolute; border-radius:10px; color:#fff; font: 600 12px system-ui; padding: 9px 11px;
+    box-shadow: 0 1px 2px rgba(16,24,40,.15); cursor: grab; user-select: none;
+    transition: left .3s cubic-bezier(.2,0,.2,1), top .3s cubic-bezier(.2,0,.2,1), width .3s, height .3s; }
+  .tile.drag, .tile.rsz { transition: none; z-index: 30; opacity: .85; cursor: grabbing;
+    box-shadow: 0 10px 26px rgba(16,24,40,.3); }
+  .tile.locked { outline: 2px dashed rgba(255,255,255,.75); outline-offset:-5px; cursor:not-allowed; }
+  .tile .pin { position:absolute; top:6px; right:8px; font-size:11px; }
+  .tile .rs { position:absolute; right:2px; bottom:2px; width:14px; height:14px; cursor: nwse-resize;
+    border-right:3px solid rgba(255,255,255,.85); border-bottom:3px solid rgba(255,255,255,.85); border-radius:2px; }
+  #ph { position:absolute; border-radius:10px; background: rgba(30,34,45,.14);
+    border: 2px dashed rgba(30,34,45,.28); display:none; z-index: 5; }
+  #proto-log { font: 11.5px ui-monospace, monospace; color: var(--muted); margin-top: 8px; min-height: 16px; }
+
+  .phase { display:flex; gap:14px; margin: 10px 0; }
+  .phase .pn { flex:none; width:30px; height:30px; border-radius:9px; background:var(--blue); color:#fff;
+    display:flex; align-items:center; justify-content:center; font: 700 13px system-ui; }
+  .phase.done .pn { background: var(--green); }
+  .phase .pb { flex:1; background:#fff; border:1px solid var(--line); border-radius:10px; padding: 10px 14px; }
+  .phase h4 { margin:0 0 4px; font-size:13.5px; } .phase p { margin:0; font-size:13px; color:var(--muted); }
+  .files { font-size:12px; color:var(--muted); margin-top:6px; }
+  @media (prefers-color-scheme: dark) {
+    :root { --ink:#e8eaf1; --muted:#9aa2b4; --line:#2b3040; --soft:#20242e; --card:#181b22; }
+    body { background:#12141a; } header { background:#181b22; }
+    table { background:#181b22; } #proto-wrap { background:#181b22; }
+    #board { background:#0f1116; background-image: radial-gradient(circle, rgba(150,160,180,.16) 1px, transparent 1px); }
+    #proto-bar button, #proto-bar label { background:#20242e; border-color:#333a49; color:#cbd2df; }
+    .note { background:#1b2030; border-color:#2c3550; } .warn { background:#241f14; border-color:#4a3b1e; }
+    #ph { background: rgba(220,225,240,.12); border-color: rgba(220,225,240,.3); }
+  }
+</style>
+
+<header>
+  <h1>Dashboard grid interaction — what I will build</h1>
+  <div class="sub">GridStack's interaction model (verified against its v13 source), mapped mechanic-by-mechanic
+  onto what Grafloria has <b>today</b> (each claim probed live on the running page), with the build plan on top.
+  <b>Section 1 is a working prototype of the exact model</b> — the same integer math that will move into the
+  engine. Everything is additive: a new layout type + a new kit module; nothing existing changes behaviour.</div>
+</header>
+<main>
+
+<h2><span class="n">1</span>Feel it first — the model, live (this exact math ports into the engine)</h2>
+<div id="proto-wrap">
+  <div id="proto-bar">
+    <button id="b-float">float: off</button>
+    <button id="b-add">＋ add tile</button>
+    <button id="b-reset">reset</button>
+    <span id="proto-hint">drag a tile anywhere · resize from the corner · double-click = pin/lock · Esc cancels a drag</span>
+  </div>
+  <div id="board"><div id="ph"></div></div>
+  <div id="proto-log"></div>
+</div>
+<div class="note" style="margin-top:12px">
+  What to notice while dragging: <b>(a)</b> the grey dashed <b>placeholder</b> always shows the exact drop result;
+  <b>(b)</b> neighbours <b>slide out of the way while you hover</b> — your first comment — and they only budge when you
+  cover <b>&gt;50%</b> of them (the anti-jitter gate); <b>(c)</b> resizing wider <b>pushes the next tile</b> right-then-down
+  and re-packs — your second comment; <b>(d)</b> the held tile follows the cursor 1:1 (transition-exempt) while
+  everyone else glides at .3s; the drop itself is instant, into the placeholder; <b>(e)</b> a pinned tile is never pushed —
+  others flow around it; <b>(f)</b> with <b>float off</b>, gravity packs tiles upward — no holes; toggle float to keep gaps.
+</div>
+
+<h2><span class="n">2</span>Where we actually stand (every row probed on the live page today)</h2>
+<table>
+  <tr><th>Mechanic</th><th>GridStack (source-verified)</th><th>Grafloria dashboard today (probed)</th><th></th></tr>
+  <tr><td class="k">Drag → neighbours move</td><td>Live during hover, around a placeholder</td>
+    <td>Nothing moves until release, then everything settles at once (your comment #1)</td><td><span class="tag part">RELEASE-ONLY</span></td></tr>
+  <tr><td class="k">Drop preview</td><td>Placeholder = truthful exact result</td>
+    <td>None — the drop result is a surprise</td><td><span class="tag miss">MISSING</span></td></tr>
+  <tr><td class="k">Resize → neighbours push</td><td>Live per cell-step, right/down + re-pack</td>
+    <td>Probed just now: widening the line chart into the donut moved the donut <b>0px</b> — during and after. Free pixel resize, grid-blind (your comment #2)</td><td><span class="tag miss">MISSING</span></td></tr>
+  <tr><td class="k">Anti-jitter</td><td>&gt;50% directional coverage gate + margin-adjusted rounding</td>
+    <td>n/a (no live push yet)</td><td><span class="tag miss">MISSING</span></td></tr>
+  <tr><td class="k">Gravity / compaction</td><td><code>float:false</code> packs upward after every op</td>
+    <td>Flex-wrap reflow closes gaps on relayout — different math, similar visible effect; no float option</td><td><span class="tag part">PARTIAL</span></td></tr>
+  <tr><td class="k">Cell model</td><td>Integer x,y,w,h per tile; engine is DOM-free + cloneable</td>
+    <td><code>GridItemConfig</code> (columnStart/rowStart/columnEnd/rowEnd) exists, live since <code>b76b2b5e2</code>, used on the Pipeline view — the storage is ALREADY THERE</td><td><span class="tag have">HAVE</span></td></tr>
+  <tr><td class="k">Reflow animation</td><td>One CSS transition rule; drag/resize/placeholder exempt</td>
+    <td>Shipped today (<code>180a27974</code>) — same rule, same exemptions</td><td><span class="tag have">HAVE</span></td></tr>
+  <tr><td class="k">Pin / locked</td><td><code>locked</code>: never pushed, jumped over</td>
+    <td>Authoritative per-node lock (refuses geometry writes; auto-layout skips + keeps slot)</td><td><span class="tag have">HAVE</span></td></tr>
+  <tr><td class="k">Undo</td><td>None built-in (apps listen to <code>change</code>)</td>
+    <td>Full command stack — every gesture already commits undoable commands. <b>Ours is stronger; keep it</b></td><td><span class="tag have">HAVE+</span></td></tr>
+  <tr><td class="k">Save / load</td><td><code>save()</code> → <code>[{x,y,w,h}]</code> cell units</td>
+    <td>Full document serialize incl. gridItem + metadata (round-trip proven in the demo)</td><td><span class="tag have">HAVE</span></td></tr>
+  <tr><td class="k">Palette drag-in</td><td><code>setupDragIn</code>: clone follows cursor, becomes widget on drop</td>
+    <td>Click-to-add only (palette button appends)</td><td><span class="tag part">PARTIAL</span></td></tr>
+  <tr><td class="k">Wire affordances</td><td>n/a (no ports concept)</td>
+    <td>Fixed today (<code>cda6bf217</code>): <code>connectable:false</code> — no port glyphs, no port hover</td><td><span class="tag have">HAVE</span></td></tr>
+  <tr><td class="k">Responsive columns</td><td><code>columnOpts.columnWidth</code> → count from container width; per-column layout cache</td>
+    <td>Fixed 12 columns; camera refits on canvas resize (ResizeObserver) but column count never changes</td><td><span class="tag miss">MISSING</span></td></tr>
+  <tr><td class="k">RTL</td><td>CSS <code>right</code>-anchoring; model is direction-agnostic</td>
+    <td>Nothing dashboard-specific</td><td><span class="tag miss">LATER</span></td></tr>
+</table>
+
+<h2><span class="n">3</span>The build — a pack engine in the library, not demo JS</h2>
+<div class="cols">
+  <div class="card">
+    <h3>A · <code>GridPackEngine</code> — pure integer math (engine)</h3>
+    <ul>
+      <li>DOM-free, deterministic, <b>cloneable</b> (what-if a move before committing — GridStack's own trick, and a perfect fit for our TDD/mutation discipline).</li>
+      <li>Operations: <code>moveCheck</code> (with the <b>&gt;50% directional coverage gate</b>), <code>push</code> (down, recursive, full-row sweep), <code>swap</code> (same-size neighbours), <code>pack</code> (gravity | float-with-memory), <code>growRows</code>.</li>
+      <li>Locked tiles: never pushed, jumped over — wired to our existing authoritative lock.</li>
+      <li>Cell state lives in the <b>existing</b> <code>GridItemConfig</code> — no new persistence, save/load already round-trips it.</li>
+      <li>Registered as a NEW group layout type <code>'pack'</code> beside flexbox/grid/columns — <b>zero edits to the existing layout paths</b> or their specs.</li>
+    </ul>
+    <div class="files">new: <code>libs/engine/src/layout/grid-pack/…</code> + table-driven specs (every rule mutation-proven)</div>
+  </div>
+  <div class="card">
+    <h3>B · Drag &amp; resize session (element kit)</h3>
+    <ul>
+      <li><code>bindDashboardGestures(api, group)</code>: pointer-capture loop over the HTML hosts (pointer events — the binder eats compat mouse events; learned that the hard way).</li>
+      <li>Drag: held tile = transition-exempt ghost tracking the cursor in <b>world</b> coords (our camera math replaces GridStack's <code>position:fixed</code> hack); a <b>placeholder tile</b> enters the engine in its stead; every cell-crossing runs <code>moveCheck</code> → neighbours reflow live with the glide we shipped today.</li>
+      <li>Resize: corner handle → fluid pixel preview; each cell-step change runs the same pipeline → live push right/down; min/max spans clamped continuously.</li>
+      <li>Escape restores the pre-drag snapshot (engine keeps it, like GridStack's <code>saveInitial</code>).</li>
+      <li><b>Gesture end = ONE BatchCommand</b> (SetGridItem/Move/Resize for every displaced tile) — single-step undo per gesture, which GridStack itself cannot do.</li>
+    </ul>
+    <div class="files">new: <code>libs/element/src/lib/dashboard-kit/…</code> (same shape as diagram-kit: spec + binder + typed handles)</div>
+  </div>
+</div>
+<div class="cols" style="margin-top:16px">
+  <div class="card">
+    <h3>C · Demo becomes the showcase</h3>
+    <ul>
+      <li><code>dashboard-builder.html</code> switches its views to <code>'pack'</code> + the kit binder; the interim release-settle module is retired (it was scaffolding for exactly this).</li>
+      <li>Palette upgraded to <b>drag-in</b> (clone follows cursor, placeholder appears on board entry — first placement skips the 50% gate, per GridStack) — click-to-add stays.</li>
+      <li>Trash-corner removal like web2 (drag a tile out → dim → release deletes, undoable).</li>
+    </ul>
+  </div>
+  <div class="card">
+    <h3>D · Responsive columns (phase 2)</h3>
+    <ul>
+      <li><code>columnWidth</code>-driven column count from container width (the <code>responsive_none</code> demo's model), with GridStack's <b>per-column-count layout cache</b> so narrow→wide round-trips losslessly and saving on mobile saves the desktop layout.</li>
+      <li>RTL rides the same engine later — the cell model is direction-agnostic; only the px mapping mirrors.</li>
+    </ul>
+  </div>
+</div>
+
+<h2><span class="n">4</span>Nothing breaks — the guarantees</h2>
+<div class="note warn">
+  <ul style="margin:0">
+    <li><b>New layout type, not a rewrite:</b> <code>'pack'</code> is registered beside flexbox/grid/columns. The existing paths, their integration specs (asserted pixel positions) and all 102 other demos are untouched.</li>
+    <li><b>Same storage:</b> cell state = the existing <code>GridItemConfig</code>; serialize/round-trip already proven. No migration.</li>
+    <li><b>Same undo contract:</b> every gesture commits through the CommandManager — stronger than GridStack, kept.</li>
+    <li><b>Today's fixes carry forward:</b> chromeless containers, connectable:false, the glide rule (the pack loop drives MORE reflows through the SAME animation), board growth, pin.</li>
+    <li><b>Gates before merge:</b> engine specs mutation-proven per rule; new e2e teeth — placeholder-truthfulness (drop lands exactly where the placeholder stood), live-push-during-hover, resize-pushes-neighbour, Esc-restore; full gallery + interaction + goldens green.</li>
+  </ul>
+</div>
+
+<h2><span class="n">5</span>Order of work</h2>
+<div class="phase"><div class="pn">1</div><div class="pb"><h4>GridPackEngine (pure math, TDD)</h4>
+  <p>place/moveCheck/push/swap/pack/coverage-gate/locked/growRows — table-driven specs, each rule mutation-proven. The prototype above is the executable spec.</p></div></div>
+<div class="phase"><div class="pn">2</div><div class="pb"><h4>'pack' layout type + kit gesture binder</h4>
+  <p>Placeholder drag loop + live push + glide; resize with live push; Esc restore; one BatchCommand per gesture.</p></div></div>
+<div class="phase"><div class="pn">3</div><div class="pb"><h4>Demo on top + palette drag-in + trash</h4>
+  <p>dashboard-builder switches to the kit; e2e teeth for placeholder truth, hover push, resize push; goldens re-blessed once.</p></div></div>
+<div class="phase"><div class="pn">4</div><div class="pb"><h4>Responsive columns (+ float toggle, RTL when wanted)</h4>
+  <p>columnWidth-driven count + per-column layout cache; float mode is a one-flag engine feature after phase 1.</p></div></div>
+
+<h2><span class="n">6</span>Open choices (defaults chosen — say if you want different)</h2>
+<table>
+  <tr><th>Question</th><th>Default I'll build</th><th>Alternative</th></tr>
+  <tr><td>Gravity or float?</td><td><b>float: off</b> (gravity packs upward — web1/web2/Grafana feel)</td><td>float: on per view, one flag</td></tr>
+  <tr><td>Drag handle</td><td><b>Whole tile</b> (GridStack default)</td><td>Header-bar only (Grafana style) — one option</td></tr>
+  <tr><td>Swap heuristic</td><td><b>On</b> for same-size neighbours</td><td>Off — push-only</td></tr>
+  <tr><td>Palette</td><td>Drag-in <b>and</b> click-to-add</td><td>Click-to-add only</td></tr>
+</table>
+
+<script>
+/* ============================================================================
+   THE PROTOTYPE — a ~200-line gridstack-lite. This is the spec, executable:
+   integer cell engine (moveCheck + 50% directional coverage + push + swap +
+   pack + locked) and the pointer loop (ghost / placeholder / live push /
+   corner resize / Esc restore). The engine half ports to
+   libs/engine/src/layout/grid-pack; the loop half to the dashboard kit.
+   ========================================================================== */
+(() => {
+  const COLS = 12, CELL_H = 64, MARGIN = 8;
+  const board = document.getElementById('board'), ph = document.getElementById('ph');
+  const log = (m) => document.getElementById('proto-log').textContent = m;
+  let FLOAT = false;
+
+  const PALETTE = ['#3b52d9','#0ea5e9','#14b8a6','#f59e0b','#8b5cf6','#e11d48','#64748b','#0d9488'];
+  let seq = 0;
+  const seed = () => [
+    { x:0,y:0,w:3,h:1 }, { x:3,y:0,w:3,h:1 }, { x:6,y:0,w:3,h:1 }, { x:9,y:0,w:3,h:1 },
+    { x:0,y:1,w:8,h:2 }, { x:8,y:1,w:4,h:2 }, { x:0,y:3,w:12,h:1, locked:true },
+  ].map((n,i)=>({ ...n, id:'t'+(seq++), color: PALETTE[i%PALETTE.length], label: n.locked?'pinned — flows around me':'tile '+(i+1) }));
+  let nodes = seed();
+
+  const cellW = () => (board.clientWidth - MARGIN) / COLS;
+  const pxX = (x) => MARGIN + x * cellW();
+  const pxY = (y) => MARGIN + y * (CELL_H + MARGIN);
+  const pxW = (w) => w * cellW() - MARGIN;
+  const pxH = (h) => h * (CELL_H + MARGIN) - MARGIN;
+
+  /* ---------- the integer engine ---------- */
+  const hit = (a,b) => a.x < b.x+b.w && b.x < a.x+a.w && a.y < b.y+b.h && b.y < a.y+a.h;
+  const collide = (n, skip) => nodes.find(o => o !== n && o !== skip && hit(n,o));
+  function coverage(mov, st) {         // % of the STATIC tile covered, GridStack's gate
+    const w = Math.min(mov.x+mov.w, st.x+st.w) - Math.max(mov.x, st.x);
+    const h = Math.min(mov.y+mov.h, st.y+st.h) - Math.max(mov.y, st.y);
+    return (w*h) / (st.w*st.h);
+  }
+  function pack() {
+    const sorted = [...nodes].sort((a,b)=>(a.y-b.y)||(a.x-b.x));
+    for (const n of sorted) {
+      if (n.locked) continue;
+      if (FLOAT && n._oy !== undefined) {          // float: climb back toward remembered y
+        while (n.y > n._oy) { const t={...n,y:n.y-1}; if (collide(t)) break; n.y--; }
+        continue;
+      }
+      if (!FLOAT) while (n.y > 0) { const t={...n,y:n.y-1}; if (collide(t)) break; n.y--; }
+    }
+  }
+  function pushDown(mover, placed) {   // displace whatever `placed` now covers
+    for (const o of [...nodes].sort((a,b)=>(a.y-b.y)||(a.x-b.x))) {
+      if (o === placed || o === mover) continue;
+      if (!hit(placed, o)) continue;
+      if (o.locked) continue;                       // locked: jumped over, never pushed
+      if (o._oy === undefined) o._oy = o.y;
+      o.y = placed.y + placed.h;                    // below the placed tile
+      // …but never ONTO a pinned tile: a pushed tile jumps below any locked
+      // tile it now covers (GridStack's _skipDown — found by driving this
+      // very prototype: without it, a push could bury the pinned row).
+      let lk;
+      while ((lk = nodes.find((l) => l.locked && l !== o && hit(o, l)))) o.y = lk.y + lk.h;
+      pushDown(mover, o);                           // recursively fix what THAT displaces
+    }
+  }
+  /** Try to put `n` at cell (x,y). Returns true if the board accepted it. */
+  function moveCheck(n, x, y) {
+    x = Math.max(0, Math.min(COLS - n.w, x)); y = Math.max(0, y);
+    if (n.x === x && n.y === y) return false;
+    const probe = { ...n, x, y };
+    const c = collide(probe, n);
+    if (c) {
+      if (c.locked) {                               // jump past a pinned tile
+        return moveCheck(n, x, c.y + c.h);
+      }
+      if (coverage(probe, c) <= 0.5) return false;  // the anti-jitter gate
+      if (!FLOAT && c.w === n.w && c.h === n.h) {   // same-size neighbours swap
+        const ox = n.x, oy = n.y; n.x = x; n.y = y; c.x = ox; c.y = oy; pack(); return true;
+      }
+    }
+    n.x = x; n.y = y;
+    pushDown(n, n); pack();
+    return true;
+  }
+
+  /* ---------- DOM ---------- */
+  function el(n) {
+    let d = board.querySelector('[data-id="'+n.id+'"]');
+    if (!d) {
+      d = document.createElement('div'); d.className='tile'; d.dataset.id=n.id;
+      d.innerHTML = '<span class="lb"></span><span class="pin"></span><span class="rs" title="resize"></span>';
+      board.appendChild(d);
+    }
+    return d;
+  }
+  function paint(skip) {
+    for (const n of nodes) {
+      const d = el(n);
+      if (d === skip) continue;
+      d.style.left = pxX(n.x)+'px'; d.style.top = pxY(n.y)+'px';
+      d.style.width = pxW(n.w)+'px'; d.style.height = pxH(n.h)+'px';
+      d.style.background = n.color;
+      d.classList.toggle('locked', !!n.locked);
+      d.querySelector('.lb').textContent = n.label;
+      d.querySelector('.pin').textContent = n.locked ? '📌' : '';
+    }
+    for (const d of board.querySelectorAll('.tile'))
+      if (!nodes.find(n=>n.id===d.dataset.id)) d.remove();
+  }
+  function showPh(n){ ph.style.display='block'; ph.style.left=pxX(n.x)+'px'; ph.style.top=pxY(n.y)+'px';
+    ph.style.width=pxW(n.w)+'px'; ph.style.height=pxH(n.h)+'px'; }
+
+  /* ---------- gestures ---------- */
+  let g = null;   // gesture state
+  board.addEventListener('pointerdown', (e) => {
+    const d = e.target.closest('.tile'); if (!d) return;
+    const n = nodes.find(x=>x.id===d.dataset.id); if (!n) return;
+    const isRs = e.target.classList.contains('rs');
+    if (n.locked && !isRs) { log('pinned tile — others flow around it (double-click to unpin)'); return; }
+    e.preventDefault(); board.setPointerCapture(e.pointerId);
+    const r = d.getBoundingClientRect(), br = board.getBoundingClientRect();
+    g = { n, d, mode: isRs ? 'rsz' : 'drag', dx: e.clientX-r.x, dy: e.clientY-r.y, br,
+          snap: nodes.map(o=>({o, x:o.x, y:o.y})), moved:false,
+          startW: r.width, startH: r.height, sx: e.clientX, sy: e.clientY };
+    for (const o of nodes) delete o._oy;
+  });
+  board.addEventListener('pointermove', (e) => {
+    if (!g) return;
+    const { n, d, br } = g;
+    if (!g.moved && Math.abs(e.clientX-g.sx)+Math.abs(e.clientY-g.sy) < 4) return;
+    if (!g.moved) { g.moved = true; d.classList.add(g.mode); showPh(n); }
+    if (g.mode === 'drag') {
+      const L = e.clientX - br.x - g.dx, T = e.clientY - br.y - g.dy;
+      d.style.left = L+'px'; d.style.top = T+'px';                       // ghost: pixel-exact
+      // margin-adjusted midpoint rounding, then the engine decides:
+      const cx = Math.round((L) / cellW()), cy = Math.round((T) / (CELL_H+MARGIN));
+      if (moveCheck(n, cx, cy)) { showPh(n); paint(d); }
+    } else {
+      const W = Math.max(cellW()*1-MARGIN, g.startW + (e.clientX-g.sx));
+      const H = Math.max(CELL_H, g.startH + (e.clientY-g.sy));
+      d.style.width = W+'px'; d.style.height = H+'px';                   // fluid pixel preview
+      const w = Math.max(1, Math.min(COLS-n.x, Math.round((W+MARGIN) / cellW())));
+      const h = Math.max(1, Math.round((H+MARGIN) / (CELL_H+MARGIN)));
+      if (w !== n.w || h !== n.h) {
+        n.w = w; n.h = h; pushDown(n, n); pack(); showPh(n); paint(d);   // live push per cell-step
+      }
+    }
+  });
+  const endG = (commit) => {
+    if (!g) return;
+    const { n, d } = g;
+    if (!commit) for (const s of g.snap) { s.o.x = s.x; s.o.y = s.y; }   // Esc: restoreInitial
+    d.classList.remove('drag','rsz'); ph.style.display='none';
+    d.style.transition='none'; paint(); void d.offsetWidth;             // instant drop, GridStack-style
+    setTimeout(()=>{ d.style.transition=''; }, 50);
+    log(commit && g.moved ? 'gesture committed — in Grafloria this is ONE undoable BatchCommand' : (g.moved?'cancelled — every tile restored':''));
+    g = null;
+  };
+  board.addEventListener('pointerup', () => endG(true));
+  window.addEventListener('keydown', (e) => { if (e.key==='Escape') endG(false); });
+  board.addEventListener('dblclick', (e) => {
+    const d = e.target.closest('.tile'); if (!d) return;
+    const n = nodes.find(x=>x.id===d.dataset.id); n.locked = !n.locked; paint();
+    log(n.locked ? 'pinned: never pushed, drags jump over it' : 'unpinned');
+  });
+
+  /* ---------- toolbar ---------- */
+  document.getElementById('b-float').onclick = function(){ FLOAT=!FLOAT;
+    this.textContent='float: '+(FLOAT?'on':'off'); this.classList.toggle('on',FLOAT);
+    if(!FLOAT){ for(const o of nodes) delete o._oy; pack(); paint(); }
+    log(FLOAT?'float on: tiles stay where placed, gaps allowed':'float off: gravity packs upward'); };
+  document.getElementById('b-add').onclick = () => {
+    const n = { id:'t'+(seq++), x:0, y:99, w:3, h:1, color:PALETTE[seq%PALETTE.length], label:'tile '+seq };
+    nodes.push(n); pack(); paint(); log('added — packed into the first hole (gravity)'); };
+  document.getElementById('b-reset').onclick = () => { nodes = seed(); paint(); log('reset'); };
+
+  paint();
+  new ResizeObserver(() => paint()).observe(board);
+})();
+</script>
+</main>
