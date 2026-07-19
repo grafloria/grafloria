@@ -46,8 +46,10 @@
     box-shadow: 0 10px 26px rgba(16,24,40,.3); }
   .tile.locked { outline: 2px dashed rgba(255,255,255,.75); outline-offset:-5px; cursor:not-allowed; }
   .tile .pin { position:absolute; top:6px; right:8px; font-size:11px; }
-  .tile .rs { position:absolute; right:2px; bottom:2px; width:14px; height:14px; cursor: nwse-resize;
-    border-right:3px solid rgba(255,255,255,.85); border-bottom:3px solid rgba(255,255,255,.85); border-radius:2px; }
+  .tile .rs { position:absolute; right:0; bottom:0; width:18px; height:18px; cursor: nwse-resize;
+    border-right:3px solid rgba(255,255,255,.9); border-bottom:3px solid rgba(255,255,255,.9);
+    border-bottom-right-radius: 10px; /* matches the tile's own radius exactly */ }
+  .tile .rs:hover { border-color:#fff; }
   #ph { position:absolute; border-radius:10px; background: rgba(30,34,45,.14);
     border: 2px dashed rgba(30,34,45,.28); display:none; z-index: 5; }
   #proto-log { font: 11.5px ui-monospace, monospace; color: var(--muted); margin-top: 8px; min-height: 16px; }
@@ -95,8 +97,12 @@
   <b>(b)</b> neighbours <b>slide out of the way while you hover</b> — your first comment — and they only budge when you
   cover <b>&gt;50%</b> of them (the anti-jitter gate); <b>(c)</b> resizing wider <b>pushes the next tile</b> right-then-down
   and re-packs — your second comment; <b>(d)</b> the held tile follows the cursor 1:1 (transition-exempt) while
-  everyone else glides at .3s; the drop itself is instant, into the placeholder; <b>(e)</b> a pinned tile is never pushed —
-  others flow around it; <b>(f)</b> with <b>float off</b>, gravity packs tiles upward — no holes; toggle float to keep gaps.
+  everyone else glides at .3s; the drop itself is instant, into the placeholder; <b>(e)</b> a pinned tile is never pushed,
+  and dragging ONTO it is <b>refused</b> — the placeholder will not enter it (recorded from real gridstack, web2 demo);
+  <b>(f)</b> with <b>float off</b>, gravity packs tiles upward — no holes; toggle float to keep gaps;
+  <b>(g)</b> <b>displaced tiles RETURN</b> when the space frees mid-gesture — grow a tile over a neighbour, then shrink
+  back: the neighbour comes home, <i>even from below the pinned row</i> (a deliberate improvement over gridstack itself,
+  whose gravity cannot climb back through a locked tile — your exact report).
 </div>
 
 <h2><span class="n">2</span>Where we actually stand (every row probed on the live page today)</h2>
@@ -233,38 +239,60 @@
   const pxW = (w) => w * cellW() - MARGIN;
   const pxH = (h) => h * (CELL_H + MARGIN) - MARGIN;
 
-  /* ---------- the integer engine ---------- */
+  /* ---------- the integer engine ------------------------------------------
+     Semantics EMPIRICALLY recorded from the real gridstackjs.com demos
+     (web1 + web2 driven with Playwright, gs-x/gs-y read at every stage):
+       E1  resize grow→shrink in ONE gesture: pushed tiles RETURN when the
+           space frees (emergent from gravity re-pack after every step).
+       E2  while dragging away, tiles below CLIMB into the vacated space
+           immediately; retreat re-resolves — a new valid layout, no memory
+           after release.
+       E3  same-size side-by-side tiles SWAP cleanly, no oscillation.
+       E4b a drag ONTO a locked tile is REFUSED — the placeholder does not
+           enter it (layout untouched); no skip-below for the dragged tile.
+       E4c grow→shrink taller: full restore, same mechanism as E1.
+     One DELIBERATE improvement over gridstack: displaced tiles remember their
+     gesture-start cell and TELEPORT home when it frees mid-gesture — gravity
+     alone cannot climb back through a pinned row (user report: "resize it
+     back, tile 6 isn't moved up again"). Memory clears when the gesture ends
+     (matching E2: no restore after release). ------------------------------ */
   const hit = (a,b) => a.x < b.x+b.w && b.x < a.x+a.w && a.y < b.y+b.h && b.y < a.y+a.h;
   const collide = (n, skip) => nodes.find(o => o !== n && o !== skip && hit(n,o));
+  const collideLocked = (probe, self) => nodes.find(o => o !== self && o.locked && hit(probe, o));
   function coverage(mov, st) {         // % of the STATIC tile covered, GridStack's gate
     const w = Math.min(mov.x+mov.w, st.x+st.w) - Math.max(mov.x, st.x);
     const h = Math.min(mov.y+mov.h, st.y+st.h) - Math.max(mov.y, st.y);
     return (w*h) / (st.w*st.h);
   }
-  function pack() {
-    const sorted = [...nodes].sort((a,b)=>(a.y-b.y)||(a.x-b.x));
-    for (const n of sorted) {
-      if (n.locked) continue;
-      if (FLOAT && n._oy !== undefined) {          // float: climb back toward remembered y
-        while (n.y > n._oy) { const t={...n,y:n.y-1}; if (collide(t)) break; n.y--; }
-        continue;
+  /** Displaced tiles first try to TELEPORT back to their remembered
+      gesture-start cell (works across a pinned row), then gravity packs.
+      Loops until stable so a restore can cascade further restores. */
+  function settle(active) {
+    for (let guard = 0; guard < 32; guard++) {
+      let changed = false;
+      for (const n of [...nodes].sort((a,b)=>(a.y-b.y)||(a.x-b.x))) {
+        if (n.locked || n === active) continue;
+        if (n._ox !== undefined && (n.x !== n._ox || n.y !== n._oy)) {
+          const home = { ...n, x: n._ox, y: n._oy };
+          if (!collide(home, n)) { n.x = n._ox; n.y = n._oy; changed = true; continue; }
+        }
+        if (!FLOAT) {                                // gravity: climb while free
+          while (n.y > 0 && !collide({ ...n, y: n.y-1 }, n)) { n.y--; changed = true; }
+        }
       }
-      if (!FLOAT) while (n.y > 0) { const t={...n,y:n.y-1}; if (collide(t)) break; n.y--; }
+      if (!changed) break;
     }
   }
-  function pushDown(mover, placed) {   // displace whatever `placed` now covers
+  function pushDown(placed) {          // displace whatever `placed` now covers
     for (const o of [...nodes].sort((a,b)=>(a.y-b.y)||(a.x-b.x))) {
-      if (o === placed || o === mover) continue;
+      if (o === placed) continue;
+      if (o.locked) continue;                        // locked: never pushed
       if (!hit(placed, o)) continue;
-      if (o.locked) continue;                       // locked: jumped over, never pushed
-      if (o._oy === undefined) o._oy = o.y;
-      o.y = placed.y + placed.h;                    // below the placed tile
-      // …but never ONTO a pinned tile: a pushed tile jumps below any locked
-      // tile it now covers (GridStack's _skipDown — found by driving this
-      // very prototype: without it, a push could bury the pinned row).
-      let lk;
-      while ((lk = nodes.find((l) => l.locked && l !== o && hit(o, l)))) o.y = lk.y + lk.h;
-      pushDown(mover, o);                           // recursively fix what THAT displaces
+      if (o._ox === undefined) { o._ox = o.x; o._oy = o.y; }   // gesture memory
+      o.y = placed.y + placed.h;                     // below the placed tile
+      let lk;                                        // …and past any pinned tile
+      while ((lk = collideLocked(o, o))) o.y = lk.y + lk.h;
+      pushDown(o);                                   // fix what THAT displaces
     }
   }
   /** Try to put `n` at cell (x,y). Returns true if the board accepted it. */
@@ -272,20 +300,37 @@
     x = Math.max(0, Math.min(COLS - n.w, x)); y = Math.max(0, y);
     if (n.x === x && n.y === y) return false;
     const probe = { ...n, x, y };
+    if (collideLocked(probe, n)) return false;       // E4b: refuse, don't reroute
     const c = collide(probe, n);
     if (c) {
-      if (c.locked) {                               // jump past a pinned tile
-        return moveCheck(n, x, c.y + c.h);
-      }
-      if (coverage(probe, c) <= 0.5) return false;  // the anti-jitter gate
-      if (!FLOAT && c.w === n.w && c.h === n.h) {   // same-size neighbours swap
-        const ox = n.x, oy = n.y; n.x = x; n.y = y; c.x = ox; c.y = oy; pack(); return true;
+      if (coverage(probe, c) <= 0.5) return false;   // the anti-jitter gate
+      if (!FLOAT && c.w === n.w && c.h === n.h) {    // same-size neighbours swap
+        if (c._ox === undefined) { c._ox = c.x; c._oy = c.y; }
+        // A swap exchanges CELLS exactly — n takes c's cell, not the probe
+        // cell. (Placing n at the probe cell left a one-column overlap when
+        // the probe straddled c's edge — caught by driving this prototype.)
+        const ox = n.x, oy = n.y;
+        n.x = c.x; n.y = c.y;
+        c.x = ox; c.y = oy;
+        settle(n); return true;
       }
     }
     n.x = x; n.y = y;
-    pushDown(n, n); pack();
+    pushDown(n); settle(n);
     return true;
   }
+  /** Resize `n` to w×h. Growth is CLAMPED so it never covers a pinned tile
+      (E4b's refusal, applied to size); unlocked neighbours push + settle. */
+  function resizeCheck(n, w, h) {
+    w = Math.max(1, Math.min(COLS - n.x, w)); h = Math.max(1, h);
+    while (w > n.w && collideLocked({ ...n, w }, n)) w--;
+    while (h > n.h && collideLocked({ ...n, h }, n)) h--;
+    if (w === n.w && h === n.h) return false;
+    n.w = w; n.h = h;
+    pushDown(n); settle(n);
+    return true;
+  }
+  const endGesture = () => { for (const o of nodes) { delete o._ox; delete o._oy; } };
 
   /* ---------- DOM ---------- */
   function el(n) {
@@ -323,10 +368,10 @@
     if (n.locked && !isRs) { log('pinned tile — others flow around it (double-click to unpin)'); return; }
     e.preventDefault(); board.setPointerCapture(e.pointerId);
     const r = d.getBoundingClientRect(), br = board.getBoundingClientRect();
+    endGesture();                                       // fresh per-gesture memory
     g = { n, d, mode: isRs ? 'rsz' : 'drag', dx: e.clientX-r.x, dy: e.clientY-r.y, br,
           snap: nodes.map(o=>({o, x:o.x, y:o.y})), moved:false,
           startW: r.width, startH: r.height, sx: e.clientX, sy: e.clientY };
-    for (const o of nodes) delete o._oy;
   });
   board.addEventListener('pointermove', (e) => {
     if (!g) return;
@@ -343,11 +388,9 @@
       const W = Math.max(cellW()*1-MARGIN, g.startW + (e.clientX-g.sx));
       const H = Math.max(CELL_H, g.startH + (e.clientY-g.sy));
       d.style.width = W+'px'; d.style.height = H+'px';                   // fluid pixel preview
-      const w = Math.max(1, Math.min(COLS-n.x, Math.round((W+MARGIN) / cellW())));
-      const h = Math.max(1, Math.round((H+MARGIN) / (CELL_H+MARGIN)));
-      if (w !== n.w || h !== n.h) {
-        n.w = w; n.h = h; pushDown(n, n); pack(); showPh(n); paint(d);   // live push per cell-step
-      }
+      const w = Math.round((W+MARGIN) / cellW());
+      const h = Math.round((H+MARGIN) / (CELL_H+MARGIN));
+      if (resizeCheck(n, w, h)) { showPh(n); paint(d); }   // live push per cell-step; growth clamps at pinned
     }
   });
   const endG = (commit) => {
@@ -358,6 +401,7 @@
     d.style.transition='none'; paint(); void d.offsetWidth;             // instant drop, GridStack-style
     setTimeout(()=>{ d.style.transition=''; }, 50);
     log(commit && g.moved ? 'gesture committed — in Grafloria this is ONE undoable BatchCommand' : (g.moved?'cancelled — every tile restored':''));
+    endGesture();                                        // memory does not outlive the gesture (E2)
     g = null;
   };
   board.addEventListener('pointerup', () => endG(true));
@@ -371,11 +415,11 @@
   /* ---------- toolbar ---------- */
   document.getElementById('b-float').onclick = function(){ FLOAT=!FLOAT;
     this.textContent='float: '+(FLOAT?'on':'off'); this.classList.toggle('on',FLOAT);
-    if(!FLOAT){ for(const o of nodes) delete o._oy; pack(); paint(); }
+    if(!FLOAT){ endGesture(); settle(null); paint(); }
     log(FLOAT?'float on: tiles stay where placed, gaps allowed':'float off: gravity packs upward'); };
   document.getElementById('b-add').onclick = () => {
     const n = { id:'t'+(seq++), x:0, y:99, w:3, h:1, color:PALETTE[seq%PALETTE.length], label:'tile '+seq };
-    nodes.push(n); pack(); paint(); log('added — packed into the first hole (gravity)'); };
+    nodes.push(n); settle(null); paint(); log('added — packed into the first hole (gravity)'); };
   document.getElementById('b-reset').onclick = () => { nodes = seed(); paint(); log('reset'); };
 
   paint();
