@@ -36,10 +36,10 @@
     border: 1px solid #d5d9e2; background:#fff; cursor:pointer; color:#3c4254; }
   #proto-bar .on { background:#e9edfd; border-color:#b9c4f2; color:var(--blue); }
   #proto-hint { font: 12px system-ui; color: var(--muted); margin-left:auto; }
-  #board { position: relative; height: 420px; border-radius: 10px; background: #f1f3f7;
+  #board { position: relative; height: 420px; border-radius: 8px; background: #f1f3f7;
     background-image: radial-gradient(circle, rgba(120,128,145,.18) 1px, transparent 1px); background-size: 24px 24px;
     overflow: hidden; touch-action:none; }
-  .tile { position:absolute; border-radius:10px; color:#fff; font: 600 12px system-ui; padding: 9px 11px;
+  .tile { position:absolute; border-radius:6px; color:#fff; font: 600 12px system-ui; padding: 9px 11px;
     box-shadow: 0 1px 2px rgba(16,24,40,.15); cursor: grab; user-select: none;
     transition: left .3s cubic-bezier(.2,0,.2,1), top .3s cubic-bezier(.2,0,.2,1), width .3s, height .3s; }
   .tile.drag, .tile.rsz { transition: none; z-index: 30; opacity: .85; cursor: grabbing;
@@ -48,9 +48,9 @@
   .tile .pin { position:absolute; top:6px; right:8px; font-size:11px; }
   .tile .rs { position:absolute; right:0; bottom:0; width:18px; height:18px; cursor: nwse-resize;
     border-right:3px solid rgba(255,255,255,.9); border-bottom:3px solid rgba(255,255,255,.9);
-    border-bottom-right-radius: 10px; /* matches the tile's own radius exactly */ }
+    border-bottom-right-radius: 6px; /* matches the tile's own radius exactly */ }
   .tile .rs:hover { border-color:#fff; }
-  #ph { position:absolute; border-radius:10px; background: rgba(30,34,45,.14);
+  #ph { position:absolute; border-radius:6px; background: rgba(30,34,45,.14);
     border: 2px dashed rgba(30,34,45,.28); display:none; z-index: 5; }
   #proto-log { font: 11.5px ui-monospace, monospace; color: var(--muted); margin-top: 8px; min-height: 16px; }
 
@@ -84,10 +84,11 @@
 <h2><span class="n">1</span>Feel it first — the model, live (this exact math ports into the engine)</h2>
 <div id="proto-wrap">
   <div id="proto-bar">
+    <button id="b-mode" class="on">mode: fit (compact)</button>
     <button id="b-float">float: off</button>
     <button id="b-add">＋ add tile</button>
     <button id="b-reset">reset</button>
-    <span id="proto-hint">drag a tile anywhere · resize from the corner · double-click = pin/lock · Esc cancels a drag</span>
+    <span id="proto-hint">drag anywhere · resize from the corner · double-click = pin · Esc cancels · try both sizing modes</span>
   </div>
   <div id="board"><div id="ph"></div></div>
   <div id="proto-log"></div>
@@ -102,7 +103,7 @@
   <b>(f)</b> with <b>float off</b>, gravity packs tiles upward — no holes; toggle float to keep gaps;
   <b>(g)</b> <b>displaced tiles RETURN</b> when the space frees mid-gesture — grow a tile over a neighbour, then shrink
   back: the neighbour comes home, <i>even from below the pinned row</i> (a deliberate improvement over gridstack itself,
-  whose gravity cannot climb back through a locked tile — your exact report).
+  whose gravity cannot climb back through a locked tile — your exact report); <b>(h)</b> two SIZING MODES: <b>fit (compact)</b> keeps the board at viewport height and rescales rows so every widget always stays visible — DevExtreme-dashboard behaviour, nothing can be pushed out of reach — while <b>grow</b> keeps row size and extends the board downward instead.
 </div>
 
 <h2><span class="n">2</span>Where we actually stand (every row probed on the live page today)</h2>
@@ -205,6 +206,7 @@
 <h2><span class="n">6</span>Open choices (defaults chosen — say if you want different)</h2>
 <table>
   <tr><th>Question</th><th>Default I'll build</th><th>Alternative</th></tr>
+  <tr><td>Sizing mode</td><td><b>fit (compact)</b> — rows rescale so the board always fits its viewport (DevExtreme style; nothing can vanish below the fold)</td><td>grow — fixed row height, board extends downward (page scrolls); per-view flag</td></tr>
   <tr><td>Gravity or float?</td><td><b>float: off</b> (gravity packs upward — web1/web2/Grafana feel)</td><td>float: on per view, one flag</td></tr>
   <tr><td>Drag handle</td><td><b>Whole tile</b> (GridStack default)</td><td>Header-bar only (Grafana style) — one option</td></tr>
   <tr><td>Swap heuristic</td><td><b>On</b> for same-size neighbours</td><td>Off — push-only</td></tr>
@@ -220,7 +222,15 @@
    libs/engine/src/layout/grid-pack; the loop half to the dashboard kit.
    ========================================================================== */
 (() => {
-  const COLS = 12, CELL_H = 64, MARGIN = 8;
+  const COLS = 12, BASE_ROW = 64, MARGIN = 8, BOARD_H = 420;
+  // TWO SIZING MODES (user decision):
+  //   'fit'  — DevExtreme-style COMPACT: the board keeps its viewport height and
+  //            the ROW height re-derives from the content's row count, so every
+  //            widget scales proportionally and always fits inside — nothing
+  //            can ever be pushed out of view.
+  //   'grow' — dashboard extends: rows keep their design height and the board
+  //            grows downward to hold them (the page scrolls; nothing hides).
+  let MODE = 'fit';
   const board = document.getElementById('board'), ph = document.getElementById('ph');
   const log = (m) => document.getElementById('proto-log').textContent = m;
   let FLOAT = false;
@@ -235,9 +245,13 @@
 
   const cellW = () => (board.clientWidth - MARGIN) / COLS;
   const pxX = (x) => MARGIN + x * cellW();
-  const pxY = (y) => MARGIN + y * (CELL_H + MARGIN);
+  const contentRows = () => Math.max(4, ...nodes.map((n) => n.y + n.h));
+  const rowH = () => MODE === 'fit'
+    ? Math.max(28, (BOARD_H - MARGIN) / contentRows() - MARGIN)   // squeeze to fit
+    : BASE_ROW;
+  const pxY = (y) => MARGIN + y * (rowH() + MARGIN);
   const pxW = (w) => w * cellW() - MARGIN;
-  const pxH = (h) => h * (CELL_H + MARGIN) - MARGIN;
+  const pxH = (h) => h * (rowH() + MARGIN) - MARGIN;
 
   /* ---------- the integer engine ------------------------------------------
      Semantics EMPIRICALLY recorded from the real gridstackjs.com demos
@@ -343,6 +357,11 @@
     return d;
   }
   function paint(skip) {
+    // Board height: 'grow' extends to hold every row (nothing can hide below
+    // the fold — the page scrolls); 'fit' keeps the viewport height and lets
+    // rowH() squeeze instead.
+    board.style.height = (MODE === 'grow'
+      ? Math.max(BOARD_H, MARGIN + contentRows() * (rowH() + MARGIN)) : BOARD_H) + 'px';
     for (const n of nodes) {
       const d = el(n);
       if (d === skip) continue;
@@ -382,14 +401,14 @@
       const L = e.clientX - br.x - g.dx, T = e.clientY - br.y - g.dy;
       d.style.left = L+'px'; d.style.top = T+'px';                       // ghost: pixel-exact
       // margin-adjusted midpoint rounding, then the engine decides:
-      const cx = Math.round((L) / cellW()), cy = Math.round((T) / (CELL_H+MARGIN));
+      const cx = Math.round((L) / cellW()), cy = Math.round((T) / (rowH()+MARGIN));
       if (moveCheck(n, cx, cy)) { showPh(n); paint(d); }
     } else {
       const W = Math.max(cellW()*1-MARGIN, g.startW + (e.clientX-g.sx));
-      const H = Math.max(CELL_H, g.startH + (e.clientY-g.sy));
+      const H = Math.max(rowH(), g.startH + (e.clientY-g.sy));
       d.style.width = W+'px'; d.style.height = H+'px';                   // fluid pixel preview
       const w = Math.round((W+MARGIN) / cellW());
-      const h = Math.round((H+MARGIN) / (CELL_H+MARGIN));
+      const h = Math.round((H+MARGIN) / (rowH()+MARGIN));
       if (resizeCheck(n, w, h)) { showPh(n); paint(d); }   // live push per cell-step; growth clamps at pinned
     }
   });
@@ -413,6 +432,15 @@
   });
 
   /* ---------- toolbar ---------- */
+  document.getElementById('b-mode').onclick = function(){
+    MODE = MODE === 'fit' ? 'grow' : 'fit';
+    this.textContent = 'mode: ' + (MODE === 'fit' ? 'fit (compact)' : 'grow');
+    this.classList.toggle('on', MODE === 'fit');
+    paint();
+    log(MODE === 'fit'
+      ? 'FIT: board keeps its height — rows scale proportionally so everything always fits (DevExtreme-style)'
+      : 'GROW: rows keep their size — the board extends downward to hold them');
+  };
   document.getElementById('b-float').onclick = function(){ FLOAT=!FLOAT;
     this.textContent='float: '+(FLOAT?'on':'off'); this.classList.toggle('on',FLOAT);
     if(!FLOAT){ endGesture(); settle(null); paint(); }
