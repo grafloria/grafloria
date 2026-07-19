@@ -4712,6 +4712,14 @@ export class SVGRenderer implements IRenderer {
     node: NodeModel,
     config: InteractionConfig
   ): boolean {
+    // connectable:false — the node refuses wires entirely (connection-rules.ts
+    // vetoes it as source AND target), so a port glyph on it advertises a
+    // gesture that can never succeed. Dashboard widgets are the live case:
+    // hovering a tile surfaced four side-port dots on a board with no lines.
+    // This beats every visibility mode, including 'always' — a lie doesn't
+    // become true by being louder. The interaction controller applies the same
+    // rule to hover, so paint and input agree the ports do not exist.
+    if (node.behavior?.connectable === false) return false;
     if (!this.shouldRenderPortByMode(port, node, config)) return false;
     // Occlusion veto, AFTER the (cheap) mode decision so only ports that would
     // actually show pay for it: a port whose anchor is covered by a node above

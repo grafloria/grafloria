@@ -1271,6 +1271,11 @@ export class InteractionController {
         // A drag-handle node is chrome: its ports are not hoverable, so a wire
         // can never START there (the rules also refuse it as a TARGET).
         if (node.behavior?.dragHandler?.isDragHandler === true) continue;
+        // connectable:false — the rules refuse this node as source AND target,
+        // and the renderer paints no glyph for it (shouldRenderPort). Hovering
+        // must agree, or an invisible port would still grab the cursor and
+        // start a wire the engine then refuses. Dashboard tiles are the case.
+        if (node.behavior?.connectable === false) continue;
         // CRITICAL FIX: Always check for port hits regardless of visibility mode
         // Visibility affects RENDERING, not HIT DETECTION
         // This fixes the chicken-and-egg problem where ports couldn't be hovered

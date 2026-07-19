@@ -189,6 +189,24 @@ describe('InteractionController (framework-agnostic interaction brain)', () => {
       expect(top.getPortBySide('right')!.id).toBe(hovered!.id);
       expect(under.getPortBySide('right')!.id).not.toBe(hovered!.id);
     });
+
+    /**
+     * connectable:false (live report, dashboard-builder): a dashboard widget is
+     * not a wiring endpoint — hovering it must not surface port affordances.
+     * The engine's connection rules already refuse such a node as source AND
+     * target; an affordance for a gesture the rules will refuse is a ghost.
+     * Same paint-and-input-agree principle as the occlusion rule above.
+     */
+    it('ports of a connectable:false node are not hoverable', () => {
+      const node = addNode(0);
+      node.behavior.connectable = false;
+      const port = sidePort(node, 'right');
+      const p = at(node, port);
+
+      controller.handleMouseMove(p.x, p.y, engine);
+      expect(controller.getState().hoveredPort).toBeNull();
+      expect(port.isHovered).toBe(false);
+    });
   });
 
   // ==========================================================================
