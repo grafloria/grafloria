@@ -1,11 +1,17 @@
 # Mermaid Compatibility — Gap Analysis & Plan (empirical)
 
-**Date:** 2026-07-17
-**Status:** Phases 0 ✅ (5db5b4a88), 1 ✅ (9528b1a57), 2 ✅ (0adc2f4a3) are
-DONE — the parser reads real hand-written flowcharts, fails safe on everything
-else, and the extension channel (styling + `%%grafloria:`) is live and validated
-against real Mermaid (demos/e2e/mermaid-oracle-run.mjs). The §2/§3 matrices below record the pre-Phase-1 state (what was
-broken); `mermaid-compat.spec.ts` is the living green version. Phases 2–4 remain.
+**Date:** 2026-07-19 (Phase 3 landed; previous revision 2026-07-17)
+**Status:** Phases 0 ✅ (5db5b4a88), 1 ✅ (9528b1a57), 2 ✅ (0adc2f4a3),
+**3 ✅ (this revision)** are DONE — the parser reads real hand-written
+flowcharts, **`erDiagram`, `classDiagram` and `stateDiagram[-v2]`**, fails safe
+on everything else, and the extension channel (styling + `%%grafloria:`) is live.
+All of it is validated against REAL mermaid v11.16 by
+`demos/e2e/mermaid-oracle-run.mjs` (19 cases, both directions: what we read and
+what we export). The §2/§3 matrices below record the pre-Phase-1 state (what was
+broken); `mermaid-compat.spec.ts` + `mermaid-graph-types.spec.ts` are the living
+green version. Phase 4 remains.
+
+**Per-type coverage today is §3a — read that, not the historical §3 table.**
 **Method:** every current-state claim below was produced by feeding real Mermaid
 syntax to `importDiagramText()` against the built engine and recording what
 actually came back — node/link counts, throws, and garbage nodes. This
@@ -83,7 +89,9 @@ flowcharts.
 
 ---
 
-## 3. Current state — every other diagram type
+## 3. Historical — every other diagram type, BEFORE Phase 3
+
+*(Kept as the record of what was broken. For today's truth see §3a.)*
 
 Mermaid ships ~23 diagram types. Our behaviour on the rest:
 
@@ -116,6 +124,122 @@ recoverable; a plausible-but-wrong diagram is not. Fixing this is the cheapest,
 highest-value change we can make (Phase 0). It is also a **prerequisite for the
 extension model** — the "ignore directives you don't understand" rule (§5) is
 the same discipline as "don't nodify tokens you can't parse."
+
+---
+
+## 3a. Current state — per-type coverage AFTER Phase 3 (2026-07-19)
+
+Every claim here was produced by feeding the syntax to `importDiagramText()`
+and, for the export claims, by feeding our generated body back to **real
+mermaid 11.16** through the oracle. Anything not listed as supported is either
+in the "still missing" list or is not implemented.
+
+| Type | Import | Export | Notes |
+|---|---|---|---|
+| `flowchart` / `graph` | ✅ full base + Tier-1 styling | ✅ | Phases 1–2 |
+| **`erDiagram`** | ✅ **new** | ✅ **new** | entities, attribute blocks, all 16 cardinality pairs, identifying/non-identifying |
+| **`classDiagram`** | ✅ **new** | ✅ **new** | classes, members, annotations, 17 relationship operators, multiplicity |
+| **`stateDiagram` / `-v2`** | ✅ **new** | ✅ **new** | states, `[*]`, transitions, composites→groups, fork/join/choice |
+| `sequenceDiagram`, `gantt`, `pie`, `journey`, `gitGraph`, `mindmap`, `timeline`, `quadrantChart`, `requirement`, `C4*`, `block`, `packet`, `sankey`, `xychart`, `kanban`, `architecture`, `radar`, `zenuml` | ❌ explicit `unsupported` signal, empty diagram | — | Phase 0 discipline: never garbage |
+
+The implementation is `dsl/mermaid/` — one file per type, each a matched
+**parser + model builder + generator** triple, because a type that parses but
+cannot re-emit itself loses everything the grammar cannot say on first save
+(§7). The old `extended/ERDParser` + `extended/UMLParser` scaffolding is no
+longer on any live path; `DSL.parseERD/parseUML/generateERD/generateUML` now
+delegate to `dsl/mermaid/` so there is exactly one implementation of each
+grammar. Those two classes remain only for demo scripts that import them
+directly and are deletion candidates.
+
+**Why now:** the diagram kit (`libs/element/src/lib/diagram-kit/`) gave ER and
+class diagrams a REAL target representation — table cards with typed columns and
+PK/FK badges, three-compartment UML cards, crow's-foot cardinality, the 7-kind
+notation vocabulary. Each parser therefore also publishes the kit's own spec on
+the diagram metadata (`erSpec` / `umlSpec`), so an embedder can hand it straight
+to `erDiagram()` / `umlDiagram()` without re-deriving anything.
+
+### What IS supported, per type
+
+**`erDiagram`** — entities declared by mention, by bare line, or by attribute
+block; attributes as `type name [PK|FK|UK[, …]] ["comment"]` (compound types
+like `string(99)` / `int[]` survive); all 4×4 cardinality token pairs (`||`,
+`|o`, `}o`, `}|` × `||`, `o|`, `o{`, `|{`) mapped onto the renderer's marker
+vocabulary (`one` / `zero-or-one` / `zero-or-many` / `one-or-many`);
+identifying `--` vs non-identifying `..`; relationship labels quoted or bare;
+GLUED relationships (`CUSTOMER||--o{ORDER`); hyphenated ids (`LINE-ITEM`);
+`direction`.
+
+**`classDiagram`** — `class X`, `class X { … }`, bare `X`, generics
+`class X~T~`, labels `class X["Label"]`, `X:::cssClass`; members in BOTH forms
+(`Animal : +int age` and inside a block) with visibility `+ - # ~` and the
+`$`/`*` classifiers; member names read from both spellings Mermaid accepts
+(`+String beakColor` and `+age: int`); `<<interface>>` in-block and
+`<<Interface>> X` standalone; **17 relationship operators** — `<|--` `--|>`
+`<|..` `..|>` `*--` `--*` `o--` `--o` `-->` `<--` `..>` `<..` `--` `..` and the
+two-way `<-->` `<|--|>` `<..>` — each mapped to the kit's kind with the
+arrowhead-end flip handled (Mermaid writes the arrowhead operand FIRST for
+`<|--`/`<--`/`<..`); multiplicity `"1" *-- "1..*"` including the chip swap on
+reversed operators; labels; `direction`; `note` / `note for X`.
+
+**`stateDiagram` / `stateDiagram-v2`** — states and transitions with labels;
+`[*]` resolved to **scoped** start/end pseudo-states (a composite's entry is not
+the diagram's entry); composite states → `GroupModel`; `state "desc" as id` and
+`id : desc`; `<<fork>>` `<<join>>` `<<choice>>`; `direction`; single-line and
+`end note`-terminated note blocks. v1 and v2 share the grammar (v2 is a
+different layout engine in Mermaid, not a different syntax).
+
+### What is STILL MISSING — the honest list
+
+*Everything below is either ignored (never garbage) or lossy in a stated way.*
+
+**`erDiagram`**
+- `ENTITY["display alias"]` is PARSED but not re-emitted — mermaid 11.16 has no
+  syntax for it, so emitting it would produce a body real Mermaid rejects. The
+  display name rides the `%%grafloria:document` sidecar (Tier 3) instead.
+- ER `style` / `classDef` / `:::` directives (v11 added them to ER): ignored,
+  not applied to the entity cards.
+- **Field-level relationships are not expressible.** The kit can pin an edge to
+  a specific column (`ORDER.customer_id → CUSTOMER.id`); Mermaid's ER grammar
+  cannot say WHICH column a relationship uses, so every imported relationship is
+  table-level. This is a Mermaid limitation, not ours.
+- `title` / frontmatter metadata is stripped, not stored.
+- `direction` is recorded on the model but does not drive layout.
+
+**`classDiagram`**
+- `namespace Foo { … }` — the classes inside are parsed correctly, but the
+  namespace GROUPING is lost (no `GroupModel`). Unlike flowchart `subgraph`,
+  which does become a group.
+- Two-way operators `<-->` `<|--|>` `<..>` render with only ONE arrowhead: the
+  kit's notation table has no both-ends kind. Structure and the literal operator
+  are preserved (export is exact), only the second marker is missing.
+- Lollipop / interface-ball notation (`bar ()-- foo`) is not parsed at all — it
+  is valid Mermaid and currently yields an empty diagram, silently.
+- `click`, `callback`, `link`, `cssClass` directives: ignored (not applied as
+  node metadata the way flowchart `click` is).
+- `:::cssClass` is captured by NAME only; no style resolution against `classDef`.
+- Member internals (parameter list, return type, generics inside a member) are
+  kept as RAW TEXT, not structurally parsed — deliberate (the kit renders member
+  strings verbatim and Mermaid accepts several spellings), but it means you
+  cannot query "the return type of this method".
+- `note` is stored on diagram metadata, not rendered as a note node.
+
+**`stateDiagram` / `-v2`**
+- Concurrency: the `--` region separator inside a composite is ignored, so
+  parallel regions MERGE into one composite. Not garbage, but a wrong reading of
+  a concurrent state machine.
+- Nested composites produce a group each, with correct membership, but the
+  groups are **not nested** (no parent/child link between `group-A` and
+  `group-b`) — flowchart `subgraph` nesting does establish this.
+- `classDef` / `class` / `style` for states: ignored.
+- Transition arrows other than `-->` (Mermaid state has none) — n/a.
+- History states (`[H]`, `[H*]`) are not modelled.
+
+**All three types**
+- The `%%grafloria:` Tier-2 per-entity directive channel (Phase 2) is wired for
+  FLOWCHART only. ER/class/state extras currently fall back to the Tier-3
+  sidecar, which is lossless but opaque.
+- Layout is a naive grid (3-up for ER/class, 4-up for state); no type-aware
+  layout (ER tables by FK dependency, class by inheritance depth, state by flow).
 
 ---
 
@@ -209,11 +333,20 @@ parse correctly, so the base (Phase 0–1) comes before the extension channel
     package (`mermaid.parse(body)`), so the "renders everywhere" invariant is a
     permanent gate. Test-only — not shipped in the product.
 
-### Phase 3 — Fix the scaffolded graph types (4–6 days each)
-- `erDiagram`, `classDiagram`: parsers exist — fix detection + parse bugs, wire
-  the generators, add round-trip teeth.
-- `stateDiagram-v2`: closest to flowchart (states + transitions, composite
-  states → groups); moderate new work.
+### Phase 3 — The graph types beyond flowchart ✅ DONE (this revision)
+The scaffolding was not "fixed" — it was REPLACED. `extended/ERDParser`
+produced a single node called `CUSTOMER ||--o`; `extended/UMLParser` produced
+zero nodes on canonical input (it only saw `class X` when the `{` was on the
+NEXT line, ignored the `Animal : +int age` member form entirely, and its
+relationship regex could not tell `<|--` from `<--`). `dsl/mermaid/` is a
+rewrite: one file per type, each a parser + model builder + generator triple.
+- `erDiagram`, `classDiagram`, `stateDiagram[-v2]`: import ✅, export ✅.
+- Teeth: `mermaid-graph-types.spec.ts` (61 rows, table-driven, mutation-proven)
+  **plus 14 new real-Mermaid oracle cases** — unit tests lock the STRUCTURE, the
+  oracle locks the VALIDITY. That split matters: the oracle is what caught the
+  export bug where `A ||--|| B : one` is a PARSE ERROR in real Mermaid, because
+  its ER lexer reads `one` as a cardinality keyword even in label position. No
+  unit test would have found that. We now quote ER labels unconditionally.
 
 ### Phase 4 — New graph-family grammars (1–2 weeks each, as demand dictates)
 - `sequenceDiagram`, `gitGraph`, `mindmap`, `requirementDiagram`, `C4`, `block`.
@@ -230,13 +363,23 @@ documented "not supported" — **not** forced into `DiagramModel`.
 ## 7. What "both ways" needs, per type
 
 Bidirectional editing = a **matched, tested generator+parser pair** on the same
-syntax, plus the extension tiers for anything the grammar can't say. Today only
-the narrow flowchart subset achieves it (leaning on the sidecar). After Phase 1+2,
-the flowchart body itself round-trips — base features in valid Mermaid, extras in
-Tier-1 directives or `%%grafloria:` comments, sidecar only as the lossless backstop
-for Grafloria-origin files. Each Phase-3/4 type repeats the pattern: teach its
-generator to emit exactly what its parser reads, or the export silently loses
-what the generator can't express.
+syntax, plus the extension tiers for anything the grammar can't say. After
+Phase 1+2 the flowchart body itself round-trips — base features in valid
+Mermaid, extras in Tier-1 directives or `%%grafloria:` comments, sidecar only as the
+lossless backstop for Grafloria-origin files.
+
+**After Phase 3, ER / class / state round-trip through the BODY too.** Each of
+the three stores its parse in MERMAID form on the model — the literal operator
+and the literal operand order, not a normalized guess — so the generator
+re-emits the author's own syntax rather than a re-derivation. That is what makes
+`parse → generate → parse` an identity on entities, attributes, cardinality,
+members and relationship kinds (locked by the round-trip rows in
+`mermaid-graph-types.spec.ts`), and it is why `DSL.generate()` routes by the
+diagram type the parser tagged: handing an ER model to the flowchart generator
+would emit valid Mermaid of the WRONG TYPE, with the attributes and cardinality
+silently gone.
+
+The residual losses are listed in §3a and all fall back to the Tier-3 sidecar.
 
 ---
 
@@ -245,11 +388,17 @@ what the generator can't express.
 - **Strategy:** own parser, Mermaid syntax as the base, Grafloria features added via
   Mermaid-native directives (Tier 1) and `%%grafloria:` comments (Tier 2/3). The
   visible body always stays valid Mermaid.
-- **Today:** we reliably read only our own output. Even flowchart misses chains,
-  multi-edges, four shapes, subgraphs, and all styling; other types garbage.
-- **Cheapest high-value work:** Phase 0 (stop garbage) + Phase 1 (real
-  flowchart) turns "reads our own output" into "reads real flowcharts" — the bulk
-  of what anyone pastes — and is the foundation the extension channel (Phase 2)
-  is built on.
-- **Then:** Phase 2 formalizes the extension model that lets our extra features
-  ride in Mermaid text without breaking Mermaid compatibility.
+- **Today (post-Phase-3):** we read real hand-written **flowcharts, ER diagrams,
+  class diagrams and state diagrams**, and we write all four back as bodies real
+  Mermaid accepts. Four of Mermaid's ~23 types — but four of the graph-family
+  ones people actually paste. Everything else fails safe with an explicit
+  `unsupported` signal instead of a plausible-but-wrong diagram.
+- **The gate that makes this claim worth anything** is the oracle
+  (`demos/e2e/mermaid-oracle-run.mjs`): 19 cases run through REAL mermaid v11.16
+  in both directions. It has now caught a real export bug that no unit test
+  would have (ER labels colliding with cardinality keywords). Any new type or
+  syntax MUST arrive with oracle cases, not just unit tests.
+- **Next, by demand:** Phase 4's remaining graph-family grammars
+  (`sequenceDiagram` is the most-requested), then the §3a per-type gaps —
+  namespace grouping, state concurrency regions, and wiring the Tier-2
+  `%%grafloria:` channel for the three new types.

@@ -28,15 +28,29 @@ import { LayoutDetector, LayoutSuggestion } from './detector/LayoutDetector';
 import { DSLGenerator, GeneratorOptions } from './generator/DSLGenerator';
 import { DSLFormatter, FormatterOptions } from './generator/DSLFormatter';
 import { DiagramModel } from '../models/DiagramModel';
-import { NodeModel } from '../models/NodeModel';
 import { DiagramNode } from './types/ASTNode';
 import { Token } from './types/Token';
 import { NodeStyle } from '../types/model.types';
 
-// Extended types (Phase 3)
-import { ERDParser, ERDGenerator, ERDTransformer } from './extended';
-import { BPMNParser, BPMNGenerator } from './extended';
-import { UMLParser, UMLGenerator } from './extended';
+// BPMN still rides the flowchart grammar (no Mermaid `bpmn` type exists).
+// NOTE: extended/ERDParser + extended/UMLParser are NO LONGER USED here —
+// parseERD/parseUML now delegate to dsl/mermaid/ so there is exactly one
+// implementation of each grammar. The old classes remain only for the demo
+// scripts that import them directly and are candidates for deletion.
+import { BPMNGenerator } from './extended';
+
+// Mermaid graph-family types (Phase 3): erDiagram / classDiagram / stateDiagram
+import {
+  parseMermaidEr,
+  erModelToDiagram,
+  generateErFromDiagram,
+  parseMermaidClass,
+  classModelToDiagram,
+  generateClassFromDiagram,
+  parseMermaidState,
+  stateModelToDiagram,
+  generateStateFromDiagram,
+} from './mermaid';
 
 // Advanced features (Phase 4)
 import { StyleParser, TemplateParser, TemplateDefinition } from './advanced';
@@ -90,9 +104,11 @@ export interface ParseResult {
 }
 
 export class DSL {
-  /** First-word (lowercased) → canonical Mermaid header, for the types we
-   *  recognise but do not yet parse. flowchart/graph/erDiagram/classDiagram are
-   *  handled directly in detectDiagramType and are intentionally absent here. */
+  /** First-word (lowercased) → canonical Mermaid header. flowchart/graph/
+   *  erDiagram/classDiagram are handled directly in detectDiagramType and are
+   *  intentionally absent. `stateDiagram[-v2]` IS listed (the header spelling
+   *  needs canonicalising) but is now parsed, not refused — everything else
+   *  here is still a recognised-but-unparsed type that Phase 0 fails safe on. */
   private static readonly KNOWN_DIAGRAM_TYPES: Record<string, string> = {
     sequencediagram: 'sequenceDiagram',
     statediagram: 'stateDiagram',
@@ -170,11 +186,25 @@ export class DSL {
         console.log(`[DSL] Detected diagram type: ${diagramType}`);
       }
 
-      // Use specialized parsers for ERD, UML, BPMN
+      // Mermaid graph-family types with a real parser of their own (Phase 3).
+      // Each returns a fully-built DiagramModel plus the kit spec its renderer
+      // consumes — see dsl/mermaid/.
       if (diagramType === 'erDiagram') {
-        return this.parseERDDetailed(text, startTime);
-      } else if (diagramType === 'classDiagram') {
-        return this.parseUMLDetailed(text, startTime);
+        return this.finishGraphType(erModelToDiagram(parseMermaidEr(text)), 'erDiagram', startTime);
+      }
+      if (diagramType === 'classDiagram') {
+        return this.finishGraphType(
+          classModelToDiagram(parseMermaidClass(text)),
+          'classDiagram',
+          startTime
+        );
+      }
+      if (diagramType === 'stateDiagram' || diagramType === 'stateDiagram-v2') {
+        return this.finishGraphType(
+          stateModelToDiagram(parseMermaidState(text)),
+          'stateDiagram-v2',
+          startTime
+        );
       }
 
       // Recognised Mermaid type we do not yet parse (sequence, gantt, pie, …):
@@ -377,6 +407,17 @@ export class DSL {
       console.log('[DSL] Generating DSL text from diagram...');
     }
 
+    // A graph-family diagram must be written back in ITS OWN grammar. Handing
+    // an ER model to the flowchart generator emits `flowchart TD` with the
+    // entity names as plain boxes — valid Mermaid, but a different diagram, and
+    // the attributes/cardinality are gone. Route by the type the parser tagged.
+    const graphType = diagram.getMetadata('diagramType') as string | undefined;
+    if (graphType === 'erDiagram' || graphType === 'erd') return generateErFromDiagram(diagram);
+    if (graphType === 'classDiagram') return generateClassFromDiagram(diagram);
+    if (graphType === 'stateDiagram' || graphType === 'stateDiagram-v2') {
+      return generateStateFromDiagram(diagram);
+    }
+
     const text = this.generator.generate(diagram, options);
 
     if (this.options.debug) {
@@ -478,28 +519,27 @@ export class DSL {
   // =========================================================================
 
   /**
-   * Parse ERD (Entity Relationship Diagram)
+   * Parse ERD (Entity Relationship Diagram).
+   *
+   * Delegates to the Phase-3 Mermaid parser — ONE implementation, so this
+   * long-standing public helper cannot drift back to the scaffolding's
+   * behaviour (a single node called `CUSTOMER ||--o`).
    */
   parseERD(text: string): DiagramModel {
-    const erdParser = new ERDParser();
-    const erdTransformer = new ERDTransformer();
-
-    const erdDiagram = erdParser.parse(text);
-    const diagram = erdTransformer.transform(erdDiagram);
-
+    const model = parseMermaidEr(text);
     if (this.options.debug) {
-      console.log(`[DSL] Parsed ERD: ${erdDiagram.entities.size} entities, ${erdDiagram.relationships.length} relationships`);
+      console.log(
+        `[DSL] Parsed ERD: ${model.entities.length} entities, ${model.relationships.length} relationships`
+      );
     }
-
-    return diagram;
+    return erModelToDiagram(model);
   }
 
   /**
    * Generate ERD DSL from diagram
    */
   generateERD(diagram: DiagramModel): string {
-    const erdGenerator = new ERDGenerator();
-    return erdGenerator.generate(diagram);
+    return generateErFromDiagram(diagram);
   }
 
   /**
@@ -520,86 +560,27 @@ export class DSL {
   }
 
   /**
-   * Parse UML Class Diagram
+   * Parse UML Class Diagram.
+   *
+   * Delegates to the Phase-3 Mermaid parser (see parseERD for the reasoning).
+   * The scaffolding this replaces returned an EMPTY diagram for canonical
+   * `classDiagram` input.
    */
   parseUML(text: string): DiagramModel {
-    const umlParser = new UMLParser();
-    const umlDiagram = umlParser.parse(text);
-
-    // Transform UML to DiagramModel
-    const diagram = new DiagramModel('UML Class Diagram');
-    diagram.setMetadata('diagramType', 'classDiagram');
-
-    // Create class nodes
-    let index = 0;
-    for (const [name, umlClass] of umlDiagram.classes) {
-      const row = Math.floor(index / 3);
-      const col = index % 3;
-
-      const node = new NodeModel({
-        id: name,
-        type: 'uml:class',
-        position: {
-          x: 100 + col * 300,
-          y: 100 + row * 250,
-        },
-        size: {
-          width: 220,
-          height: 150 + (umlClass.attributes.length + umlClass.methods.length) * 20,
-        },
-      });
-
-      node.data['name'] = name;
-      node.setLabel(name); // canonical write: metadata.label + legacy data mirror
-      node.data['stereotype'] = umlClass.stereotype;
-      node.data['attributes'] = umlClass.attributes;
-      node.data['methods'] = umlClass.methods;
-
-      // Set shape metadata for SVG renderer
-      node.setMetadata('shape', {
-        type: 'rect',
-        cornerRadius: 0,
-      });
-
-      // Set default styles for UML class
-      node.style.fill = '#f0f8ff';
-      node.style.stroke = '#4682b4';
-      node.style.strokeWidth = 2;
-      node.style.color = '#000000';
-
-      diagram.addNode(node);
-      index++;
-    }
-
-    // Create relationship links
-    for (const rel of umlDiagram.relationships) {
-      const sourceNode = diagram.getNode(rel.from);
-      const targetNode = diagram.getNode(rel.to);
-
-      if (sourceNode && targetNode) {
-        const link = diagram.createSmartLink(sourceNode, targetNode, 'smooth');
-        if (link) {
-          link.setMetadata('umlRelationship', rel.type);
-          if (rel.label) {
-            link.setLabel(rel.label);
-          }
-        }
-      }
-    }
-
+    const model = parseMermaidClass(text);
     if (this.options.debug) {
-      console.log(`[DSL] Parsed UML: ${umlDiagram.classes.size} classes, ${umlDiagram.relationships.length} relationships`);
+      console.log(
+        `[DSL] Parsed UML: ${model.classes.length} classes, ${model.relationships.length} relationships`
+      );
     }
-
-    return diagram;
+    return classModelToDiagram(model);
   }
 
   /**
    * Generate UML DSL from diagram
    */
   generateUML(diagram: DiagramModel): string {
-    const umlGenerator = new UMLGenerator();
-    return umlGenerator.generate(diagram);
+    return generateClassFromDiagram(diagram);
   }
 
   /**
@@ -729,39 +710,24 @@ export class DSL {
   }
 
   /**
-   * Parse ERD with detailed results
+   * Wrap an already-built graph-family DiagramModel in a ParseResult. These
+   * types do not go through the flowchart Lexer/Parser at all — their grammars
+   * are line-oriented and share nothing with the flowchart token stream — so
+   * the AST/token slots are empty by construction, not by omission.
    */
-  private parseERDDetailed(text: string, startTime: number): ParseResult {
-    const diagram = this.parseERD(text);
-    const parseTime = performance.now() - startTime;
-
+  private finishGraphType(
+    diagram: DiagramModel,
+    astType: string,
+    startTime: number
+  ): ParseResult {
     return {
       diagram,
-      ast: { type: 'Diagram', diagramType: 'erd', direction: 'TD', statements: [] },
+      ast: { type: 'Diagram', diagramType: astType as never, direction: 'TD', statements: [] },
       tokens: [],
       stats: {
         nodeCount: diagram.getNodes().length,
         linkCount: diagram.getLinks().length,
-        parseTime,
-      },
-    };
-  }
-
-  /**
-   * Parse UML with detailed results
-   */
-  private parseUMLDetailed(text: string, startTime: number): ParseResult {
-    const diagram = this.parseUML(text);
-    const parseTime = performance.now() - startTime;
-
-    return {
-      diagram,
-      ast: { type: 'Diagram', diagramType: 'classDiagram', direction: 'TD', statements: [] },
-      tokens: [],
-      stats: {
-        nodeCount: diagram.getNodes().length,
-        linkCount: diagram.getLinks().length,
-        parseTime,
+        parseTime: performance.now() - startTime,
       },
     };
   }

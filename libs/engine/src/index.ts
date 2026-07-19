@@ -191,6 +191,10 @@ export {
   isClassDef,
 } from './dsl';
 export * from './dsl/sync';
+// Phase 3 — the Mermaid graph-family types (erDiagram / classDiagram /
+// stateDiagram-v2): parsers, generators, and the projections onto the diagram
+// kit's erDiagram()/umlDiagram() options.
+export * from './dsl/mermaid';
 
 // Wave 6 (Ports & connections): groups, typed data-flow, the connection validator
 export * from './ports';

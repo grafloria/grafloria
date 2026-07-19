@@ -39,6 +39,11 @@ export { DiagramAnalyzer, type DiagramAnalysis } from './generator/DiagramAnalyz
 // Sync components (Phase 2)
 export * from './sync';
 
+// Mermaid graph-family types beyond the flowchart (Phase 3):
+// erDiagram / classDiagram / stateDiagram-v2 — parser + generator + the
+// diagram-kit spec projections (erSpecFrom / umlSpecFrom).
+export * from './mermaid';
+
 // Type definitions
 export {
   type Token,

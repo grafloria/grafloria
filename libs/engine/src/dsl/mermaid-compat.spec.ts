@@ -30,8 +30,10 @@ describe('Mermaid compat — Phase 0: safe failure (never garbage)', () => {
     ['gitGraph', 'gitGraph\n  commit\n  commit'],
     ['mindmap', 'mindmap\n  root((r))\n    child'],
     ['timeline', 'timeline\n  title H\n  2021: a\n  2022: b'],
-    ['stateDiagram-v2', 'stateDiagram-v2\n  [*] --> Still\n  Still --> [*]'],
     ['quadrantChart', 'quadrantChart\n  title R\n  A: [0.3, 0.6]'],
+    // NB: `stateDiagram-v2` used to live in this list. Phase 3 gave it a real
+    // parser — see mermaid-graph-types.spec.ts. A type only belongs here while
+    // we genuinely cannot read it.
   ] as const;
 
   it.each(UNSUPPORTED)('%s → explicit unsupported signal, no garbage diagram', (type, text) => {
