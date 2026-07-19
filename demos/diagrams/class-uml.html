@@ -4,7 +4,7 @@
 <header id="demo-head"></header>
 <div id="canvas"></div>
 <script type="module">
-import { render, umlDiagram } from '../shell/grafloria.js';
+import { render, umlDiagram, umlClass } from '../shell/grafloria.js';
 import { defineDemo, check } from '../shell/demo.js';
 
 // A UML class diagram in PURE DATA, via the reusable diagram kit
@@ -57,6 +57,23 @@ defineDemo({
   },
 
   async assert(ctx) {
+    // 0. THE TYPED HANDLE PATH (domain-API Option B) works on a READ-ONLY page
+    //    too — programmatic edits don't need the editable chrome. Undone so the
+    //    page (and its golden) stays pristine.
+    {
+      const c = umlClass(ctx.instance, 'Animal');
+      check(c.methods.length >= 1, 'handle should read the live members');
+      const wasAbstract = c.abstract;
+      await c.methods.add('+ viaHandle(): void');
+      check(c.methods.list().includes('+ viaHandle(): void'), 'methods.add should apply');
+      await c.setAbstract(!wasAbstract);
+      check(c.abstract === !wasAbstract, 'setAbstract should toggle');
+      await c.undo();
+      await c.undo();
+      check(!c.methods.list().includes('+ viaHandle(): void') && c.abstract === wasAbstract,
+        'two undos should fully restore the class the handle edited');
+    }
+
     const host = ctx.host;
     // 1. Classes render as three-compartment kit cards.
     const animal = host.querySelector('[data-node-id="Animal"] foreignObject');

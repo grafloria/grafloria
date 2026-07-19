@@ -584,6 +584,21 @@ export type {
   UmlClassDelta,
   CardEditingHandle,
 } from './lib/diagram-kit';
+// Typed façade handles (domain-API decision, Option B): the OO surface —
+// CardHandle → ErTable/UmlClass, ErField — over the data-first kit.
+export {
+  erTable,
+  umlClass,
+  erTables,
+  umlClasses,
+  CardHandle,
+  ErTable,
+  ErField,
+  ErColumnList,
+  UmlClass,
+  UmlMemberList,
+} from './lib/diagram-kit';
+export type { HandleApi } from './lib/diagram-kit';
 
 
 // Side effect: define the element on import. This is what makes

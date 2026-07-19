@@ -31,3 +31,16 @@ export {
 } from './update';
 export { bindCardEditing, type CardEditingHandle } from './editing';
 export { matchColumns, rowIndexFromY } from './card';
+export {
+  erTable,
+  umlClass,
+  erTables,
+  umlClasses,
+  CardHandle,
+  ErTable,
+  ErField,
+  ErColumnList,
+  UmlClass,
+  UmlMemberList,
+  type HandleApi,
+} from './handles';

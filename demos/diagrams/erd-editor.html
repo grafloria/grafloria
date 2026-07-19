@@ -4,7 +4,7 @@
 <header id="demo-head"></header>
 <div id="canvas"></div>
 <script type="module">
-import { render, erDiagram, erRowCenterY } from '../shell/grafloria.js';
+import { render, erDiagram, erRowCenterY, erTable } from '../shell/grafloria.js';
 import { defineDemo, check } from '../shell/demo.js';
 
 // The SAME erDiagram() kit as table-er.html, but with `editable: true`. That one
@@ -68,6 +68,23 @@ defineDemo({
   },
 
   async assert(ctx) {
+    // 0. THE TYPED HANDLE PATH (domain-API Option B): the same edits a host app
+    //    would write — erTable(api,…).columns.add / field.rename — must reach
+    //    the exact machinery the chrome uses, one undo step each. Undone again
+    //    so the rest of the assert (and the visual golden) sees a pristine page.
+    {
+      const t = erTable(ctx.instance, 'PRODUCTS');
+      check(t.name === 'Products' && t.columns.length === 3, 'handle should read the live spec');
+      await t.columns.add({ name: 'via_handle', type: 'int' }, { at: 1 });
+      check(t.columns.names()[1] === 'via_handle', 'columns.add(at:1) should insert in place');
+      await t.columns.get('via_handle').rename('renamed_via_handle');
+      check(t.columns.names()[1] === 'renamed_via_handle', 'ErField.rename should apply');
+      await t.undo();
+      await t.undo();
+      check(t.columns.length === 3 && !t.columns.get('renamed_via_handle'),
+        'two undos should fully restore the table the handles edited');
+    }
+
     const host = ctx.host;
     const model = ctx.diagram;
     const kit = (id) => model.getNode(id).getMetadata('kitEntity');
