@@ -1,0 +1,346 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Grafloria — Domain API architecture decision</title>
+<style>
+  :root {
+    color-scheme: light dark;
+    --bg:#fff; --fg:#111827; --mut:#6b7280; --line:rgba(127,127,127,.25);
+    --card:rgba(127,127,127,.06); --accent:#2563eb; --good:#16a34a; --warn:#d97706; --bad:#dc2626;
+    --code-bg:#0f172a; --code-fg:#e2e8f0; --chip:#eef2ff;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root { --bg:#0d1117; --fg:#e6edf3; --mut:#8b949e; --line:rgba(255,255,255,.14);
+            --card:rgba(255,255,255,.04); --accent:#4c8dff; --chip:#1e2a4a; }
+  }
+  * { box-sizing:border-box; }
+  body { margin:0; background:var(--bg); color:var(--fg); font:15px/1.6 system-ui,-apple-system,"Segoe UI",sans-serif; }
+  header { padding:36px 30px 22px; border-bottom:1px solid var(--line); }
+  h1 { margin:0 0 6px; font-size:26px; letter-spacing:-.02em; }
+  h2 { font-size:19px; margin:34px 0 10px; }
+  h3 { font-size:15px; margin:18px 0 8px; }
+  .lede { color:var(--mut); max-width:88ch; margin:0; }
+  main { padding:6px 30px 80px; max-width:1240px; }
+  .fact { display:flex; gap:10px; padding:10px 14px; border:1px solid var(--line); border-radius:10px; margin:8px 0; background:var(--card); }
+  .fact b.tag { flex:none; font-size:11px; padding:2px 8px; border-radius:999px; background:var(--chip); color:var(--accent); height:fit-content; margin-top:2px; white-space:nowrap; }
+  .fact code { background:rgba(127,127,127,.15); padding:1px 5px; border-radius:4px; font-size:.86em; }
+  .grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(340px,1fr)); gap:12px; }
+  .lib { border:1px solid var(--line); border-radius:12px; padding:14px 16px; background:var(--card); }
+  .lib h3 { margin:0 0 4px; display:flex; align-items:center; gap:8px; }
+  .lib .verdict { font-size:12px; color:var(--mut); }
+  pre { background:var(--code-bg); color:var(--code-fg); padding:12px 14px; border-radius:10px;
+        overflow-x:auto; font:12.5px/1.55 ui-monospace,Menlo,Consolas,monospace; margin:8px 0; }
+  pre .c { color:#7c93b5; } pre .k { color:#93c5fd; } pre .s { color:#86efac; } pre .f { color:#fbbf24; } pre .bad { color:#fca5a5; font-weight:600; }
+  .tabs { display:flex; gap:6px; flex-wrap:wrap; margin:14px 0 0; }
+  .tabs button { font:600 13.5px system-ui; padding:9px 16px; border:1px solid var(--line); border-radius:10px 10px 0 0;
+                 background:transparent; color:var(--fg); cursor:pointer; border-bottom:none; opacity:.65; }
+  .tabs button.on { opacity:1; background:var(--card); border-color:var(--accent); color:var(--accent); }
+  .pane { border:1px solid var(--line); border-radius:0 12px 12px 12px; padding:18px 20px; background:var(--card); }
+  .pane { display:none; } .pane.on { display:block; }
+  .badges { display:flex; gap:8px; flex-wrap:wrap; margin:6px 0 12px; }
+  .badge { font-size:11.5px; font-weight:700; padding:3px 10px; border-radius:999px; color:#fff; }
+  .b-good { background:var(--good); } .b-warn { background:var(--warn); } .b-bad { background:var(--bad); } .b-info { background:var(--accent); }
+  .cols { display:grid; grid-template-columns:1fr 1fr; gap:16px; }
+  @media (max-width:900px){ .cols { grid-template-columns:1fr; } }
+  ul.pc { margin:6px 0; padding-left:18px; } ul.pc li { margin:3px 0; }
+  ul.pc li::marker { color:var(--good); } ul.pc.cons li::marker { color:var(--bad); }
+  .trap { border:2px solid var(--bad); border-radius:12px; padding:14px 16px; margin:12px 0; background:rgba(220,38,38,.06); }
+  .trap b { color:var(--bad); }
+  /* scoring */
+  table.score { border-collapse:collapse; width:100%; margin:10px 0; }
+  table.score th, table.score td { border:1px solid var(--line); padding:7px 10px; font-size:13.5px; text-align:center; }
+  table.score th:first-child, table.score td:first-child { text-align:left; }
+  .sliders { display:grid; grid-template-columns:repeat(auto-fit,minmax(240px,1fr)); gap:10px 22px; margin:12px 0; }
+  .sliders label { display:flex; align-items:center; gap:10px; font-size:13px; color:var(--mut); }
+  .sliders label b { min-width:150px; color:var(--fg); font-weight:600; }
+  .sliders input[type=range]{ flex:1; accent-color:var(--accent); }
+  .sliders .wv { min-width:2ch; text-align:right; font-variant-numeric:tabular-nums; }
+  .bars { display:grid; gap:10px; margin:16px 0 4px; }
+  .bar { display:grid; grid-template-columns:200px 1fr 64px; align-items:center; gap:12px; }
+  .bar .track { height:26px; border-radius:8px; background:rgba(127,127,127,.14); overflow:hidden; }
+  .bar .fill { height:100%; border-radius:8px; transition:width .25s; display:flex; align-items:center; padding-left:10px;
+               color:#fff; font-weight:700; font-size:12px; }
+  .bar .num { font-variant-numeric:tabular-nums; font-weight:700; }
+  .winner { outline:2px solid var(--accent); border-radius:8px; }
+  .reco { border:1px solid var(--accent); border-radius:12px; padding:16px 20px; background:var(--card); margin:14px 0; }
+  .decide { display:flex; gap:10px; flex-wrap:wrap; margin:14px 0; }
+  .decide button { font:600 14px system-ui; padding:11px 18px; border-radius:10px; border:1px solid var(--line); background:var(--card); color:var(--fg); cursor:pointer; }
+  .decide button.sel { border-color:var(--accent); color:var(--accent); box-shadow:0 0 0 2px rgba(37,99,235,.25); }
+  #summary { white-space:pre-wrap; font:12.5px ui-monospace,Menlo,monospace; border:1px dashed var(--line); border-radius:10px; padding:12px 14px; margin-top:10px; color:var(--mut); }
+  .copy { margin-top:8px; }
+  .small { font-size:12.5px; color:var(--mut); }
+</style>
+</head>
+<body>
+<header>
+  <h1>Domain API architecture — how should developers build &amp; edit typed diagrams?</h1>
+  <p class="lede">The question you asked: <i>“a class UML inherits from node and adds the extra features so I can use it cleanly — same for tables and fields. Is that what we have?”</i>
+  Answer: no — today it is <b>data + functions</b>. This page lays out the facts, what the industry converged on, four candidate architectures with the <b>same task written in each</b>, a weighted scorer you can tune, and my recommendation.</p>
+</header>
+<main>
+
+<h2>1 · Facts on the ground (verified in the codebase today)</h2>
+<div class="fact"><b class="tag">KIT API</b><div>Building is declarative (<code>erDiagram({entities})</code> → spec → <code>render()</code>); editing is free functions over the live instance: <code>updateEntity(api, id, delta)</code>, <code>addColumnAt(api, id, col, i)</code>, <code>bindRowInteractions(api)</code>. Undo, port reconciliation and card re-render all live behind <code>updateEntity</code>.</div></div>
+<div class="fact"><b class="tag">MODEL</b><div>Every node is a plain <code>NodeModel</code>. “Table-ness” is data: <code>metadata.kitEntity</code> (the spec), <code>metadata.html</code> (the card), row-pinned ports. No <code>X extends NodeModel</code> exists anywhere in the engine.</div></div>
+<div class="fact"><b class="tag">THE CONSTRAINT</b><div><code>DiagramModel.fromJSON</code> hardcodes <code>NodeModel.fromJSON(data)</code> (DiagramModel.ts:651) — there is <b>no type→class registry</b>. Nodes are reconstructed from data on undo-restore, paste/duplicate, collab op application, serialization and sync. Any subclass instance would silently degrade to a plain <code>NodeModel</code> at each of those points.</div></div>
+<div class="fact"><b class="tag">PRECEDENT</b><div>The engine’s native idiom is <b>registries + type strings</b>: the layout registry (<code>engine.layout(name)</code>), the element-level <code>registerNodeType(type, renderer)</code> rendering registry, port data-type registry — and dormant domain vocabularies already sit in <code>engine/types/domain/{erd,uml,bpmn,flowchart}.ts</code> (<code>'erd:entity'</code>, <code>'erd:table'</code>… wired for a validation TypeRegistry, currently consumed by nothing).</div></div>
+<div class="fact"><b class="tag">SUBCLASS PRECEDENT</b><div><code>StrokeModel</code> earned true subclass status — but as a <i>sibling entity kind</i> (own map, own ops, own render path), not a flavor of node. A UML class is still a rectangle node with an HTML card.</div></div>
+
+<h2>2 · What the industry converged on</h2>
+<div class="grid">
+  <div class="lib"><h3>React Flow</h3>
+    <pre><span class="c">// type string + data + component map</span>
+{ id:<span class="s">'t1'</span>, type:<span class="s">'erTable'</span>, data:{ columns:[…] } }
+&lt;ReactFlow nodeTypes={{ erTable: ErTableNode }} /&gt;</pre>
+    <div class="verdict">Pure data records. Zero entity classes for users. Editing = immutable <code>setNodes</code> updates.</div></div>
+  <div class="lib"><h3>tldraw</h3>
+    <pre><span class="c">// records + a per-type BEHAVIOR class (ShapeUtil)</span>
+<span class="k">class</span> <span class="f">CardShapeUtil</span> <span class="k">extends</span> ShapeUtil&lt;CardShape&gt; {
+  <span class="k">static</span> type = <span class="s">'card'</span>
+  getGeometry(shape) {…}  component(shape) {…}
+}</pre>
+    <div class="verdict">The modern answer: state stays a serializable record; <b>behavior lives in a registered class per type</b>. Inheritance exists — on the util, never the record.</div></div>
+  <div class="lib"><h3>JointJS</h3>
+    <pre><span class="c">// real element subclasses + a NAMESPACE registry</span>
+joint.shapes.standard.Rectangle  <span class="c">// dia.Element subclass</span>
+<span class="c">// fromJSON works because type:'standard.Rectangle'</span>
+<span class="c">// is looked up in the joint.shapes namespace</span></pre>
+    <div class="verdict">The one subclass-based mainstream lib — and it pays with a global constructor registry threaded through deserialization. Proof it CAN work, and proof of the tax.</div></div>
+  <div class="lib"><h3>GoJS / X6</h3>
+    <pre><span class="c">// GoJS: category → template, data untouched</span>
+diagram.nodeTemplateMap.add(<span class="s">'table'</span>, tableTemplate)
+<span class="c">// X6: config registration (optional subclass sugar)</span>
+Graph.registerNode(<span class="s">'er-rect'</span>, { … })</pre>
+    <div class="verdict">Registration + data both times. X6 offers <code>Node.define()</code> sugar that compiles down to the registry.</div></div>
+  <div class="lib"><h3>n8n itself</h3>
+    <pre><span class="c">// nodes are DESCRIPTION OBJECTS in a registry</span>
+<span class="k">class</span> <span class="f">HttpRequest</span> <span class="k">implements</span> INodeType {
+  description = { name, inputs, outputs, properties }
+}</pre>
+    <div class="verdict">Classes exist but hold only <i>description + execute()</i> — the workflow graph itself stores plain JSON nodes.</div></div>
+  <div class="lib"><h3>Takeaway</h3>
+    <div class="verdict" style="font-size:14px; color:var(--fg)">Nobody ships user-facing <b>entity</b> subclassing without a deserialization registry (JointJS), and the modern libraries (tldraw, RF, X6, GoJS, n8n) all converged on <b>data records + registered per-type behavior</b>. Clean “OO feel” is delivered by handles/utils, not by subclassing the stored entity.</div></div>
+</div>
+
+<h2>3 · Four candidate architectures — the same task in each</h2>
+<p class="small">The task, identical in every tab: create a table · rename it · add a column at index 2 · rename a field · react to row selection · undo once.</p>
+<div class="tabs" id="tabs">
+  <button data-t="A">A · Status quo+</button>
+  <button data-t="B" class="on">B · Typed façade handles</button>
+  <button data-t="C">C · Card-kind registry</button>
+  <button data-t="D">D · Model inheritance</button>
+</div>
+
+<div class="pane" data-p="A">
+  <div class="badges"><span class="badge b-good">effort: S</span><span class="badge b-good">risk: none</span><span class="badge b-warn">DX: functional, verbose</span></div>
+  <pre>
+<span class="k">const</span> api = render(erDiagram({ entities:[{ id:<span class="s">'ORDERS'</span>, columns }] , editable:<span class="k">true</span> }), host);
+
+updateEntity(api, <span class="s">'ORDERS'</span>, { name: <span class="s">'Sales Orders'</span> });
+addColumnAt(api, <span class="s">'ORDERS'</span>, { name:<span class="s">'status'</span>, type:<span class="s">'varchar'</span> }, 2);
+renameColumnAt(api, <span class="s">'ORDERS'</span>, 3, <span class="s">'cust_id'</span>);
+host.addEventListener(<span class="s">'axk:row-select'</span>, e =&gt; panel.show(e.detail.selected));
+api.getEngine().undo();</pre>
+  <div class="cols">
+    <div><h3>Pros</h3><ul class="pc">
+      <li>Already shipped, tested, mutation-proven (undo, port glue, collab-safe)</li>
+      <li>Tree-shakeable, zero object lifetime questions</li>
+      <li>Matches React Flow’s mental model — familiar</li></ul></div>
+    <div><h3>Cons</h3><ul class="pc cons">
+      <li>Repetitive <code>(api, id, …)</code> threading; stringly-typed ids at every call</li>
+      <li>No discoverability — you must know the function names</li>
+      <li>Domain concepts (field, column) have no type identity — “not clean” is a fair critique</li></ul></div>
+  </div>
+</div>
+
+<div class="pane on" data-p="B">
+  <div class="badges"><span class="badge b-good">effort: S–M</span><span class="badge b-good">risk: none (stateless veneer)</span><span class="badge b-good">DX: the OO feel you asked for</span></div>
+  <pre>
+<span class="k">const</span> t = erTable(api, <span class="s">'ORDERS'</span>);          <span class="c">// ErTable extends CardHandle — inheritance, but SAFE:</span>
+t.name = <span class="s">'Sales Orders'</span>;                   <span class="c">// a handle is (api, id) — it stores NOTHING</span>
+t.columns.add({ name:<span class="s">'status'</span>, type:<span class="s">'varchar'</span> }, { at: 2 });
+t.columns.get(<span class="s">'customer_id'</span>).rename(<span class="s">'cust_id'</span>);   <span class="c">// ErField handle; ports stay glued</span>
+t.onRowSelect(sel =&gt; panel.show(sel));
+t.undo();                                   <span class="c">// sugar for engine.undo()</span>
+
+<span class="k">const</span> c = umlClass(api, <span class="s">'Shape'</span>);          <span class="c">// UmlClass extends CardHandle</span>
+c.abstract = <span class="k">true</span>;  c.methods.add(<span class="s">'+ area(): float'</span>);</pre>
+  <div class="cols">
+    <div><h3>Pros</h3><ul class="pc">
+      <li><b>Exactly the clean usage you described</b> — with a real class hierarchy (<code>CardHandle → ErTable/UmlClass</code>, <code>ErField</code>) where it is safe: the façade</li>
+      <li>Handles are stateless → they can never go stale across re-render, undo, collab, reload; nothing to serialize</li>
+      <li>Every mutation still funnels through <code>updateEntity</code> → one-step undo + port reconciliation come free</li>
+      <li>Full TypeScript autocomplete on domain concepts; ids typed once</li>
+      <li>Small: a typed veneer over update.ts / rows.ts / editing.ts</li></ul></div>
+    <div><h3>Cons</h3><ul class="pc cons">
+      <li>Two API layers to document (spec-in, handles-after) — needs a clear “build with data, edit with handles” story</li>
+      <li>Doesn’t by itself let THIRD PARTIES define new card kinds (that’s option C)</li>
+      <li>Property setters that mutate (<code>t.name = …</code>) surprise some FP-minded users — offer methods too</li></ul></div>
+  </div>
+</div>
+
+<div class="pane" data-p="C">
+  <div class="badges"><span class="badge b-warn">effort: M–L</span><span class="badge b-warn">risk: moderate (new public contract)</span><span class="badge b-info">the platform play</span></div>
+  <pre>
+<span class="c">// tldraw-ShapeUtil-style: data records + a registered KIND with behavior + a generated handle</span>
+defineCardKind({
+  kind: <span class="s">'er-table'</span>,                        <span class="c">// stored as node metadata.kind — survives serialization</span>
+  build(spec)      {…},                     <span class="c">// spec → html tree + size + ports (er.ts's entityCard)</span>
+  reconcile(delta) {…},                     <span class="c">// port glue on edit (update.ts's matcher)</span>
+  chrome: { editable:{…}, rowSelect:<span class="k">true</span> }, <span class="c">// finalize-time bindings</span>
+  handle: ErTable,                          <span class="c">// option B's class, now provided BY the kind</span>
+});
+
+<span class="k">const</span> t = api.card(<span class="s">'ORDERS'</span>);              <span class="c">// registry resolves kind → ErTable, fully typed</span>
+t.columns.add({ name:<span class="s">'status'</span> }, { at:2 });
+
+<span class="c">// and now a USER can do what WE did for n8n:</span>
+defineCardKind({ kind:<span class="s">'n8n-node'</span>, build: n8nCard, handle: N8nNode });</pre>
+  <div class="cols">
+    <div><h3>Pros</h3><ul class="pc">
+      <li><b>Extensibility</b>: third parties define their own typed cards (n8n nodes, BPMN, org charts) with the same power the ER/UML kit has — “the more reusable, the more they love us”</li>
+      <li>Includes option B (handles come from the kind) — B is a strict subset</li>
+      <li>Kind string lives in metadata → serialization/collab-safe by construction; the dormant <code>erd:*/uml:*</code> vocabularies finally get a consumer</li>
+      <li>Matches the engine’s registry idiom (layout registry, node-type renderer registry)</li></ul></div>
+    <div><h3>Cons</h3><ul class="pc cons">
+      <li>A new public contract to design well ONCE (build/reconcile/chrome lifecycle) — the cost is in getting this API right, not the code volume</li>
+      <li>Port-reconciliation as a user-implementable hook needs guard rails (our matcher took real care)</li>
+      <li>Overkill if ER + UML stay the only kinds</li></ul></div>
+  </div>
+</div>
+
+<div class="pane" data-p="D">
+  <div class="badges"><span class="badge b-bad">effort: L</span><span class="badge b-bad">risk: high — engine-invasive</span><span class="badge b-warn">DX: good until it bites</span></div>
+  <pre>
+<span class="k">class</span> <span class="f">UmlClassNode</span> <span class="k">extends</span> NodeModel {
+  attributes: <span class="k">string</span>[] = [];
+  addMethod(sig: <span class="k">string</span>) { … }
+}
+<span class="c">// …and for this to SURVIVE, every reconstruction site must know the class:</span>
+<span class="c">// fromJSON, undo restore, paste/duplicate clone, collab op apply, sync</span>
+NodeClassRegistry.register(<span class="s">'uml-class'</span>, UmlClassNode)   <span class="bad">// ← new engine seam, everywhere</span></pre>
+  <div class="trap"><b>The trap, concretely:</b> today <code>DiagramModel.fromJSON</code> builds <code>NodeModel</code> unconditionally. Without threading a class registry through <i>every</i> reconstruction path, a <code>UmlClassNode</code> silently becomes a plain <code>NodeModel</code> on the first undo, paste, or collab round-trip — methods gone, fields gone, no error. With the registry, every one of those safety-critical paths (undo, clipboard, collab, sync, serialization) takes a permanent maintenance tax. JointJS proves it’s possible; tldraw/RF/X6/GoJS/n8n all chose not to.</div>
+  <div class="cols">
+    <div><h3>Pros</h3><ul class="pc">
+      <li>The most literal match to “UML class inherits from node”</li>
+      <li>Instance methods sit directly on the thing you drag</li></ul></div>
+    <div><h3>Cons</h3><ul class="pc cons">
+      <li>Touches the engine’s most safety-critical seams for an ergonomic gain B already delivers</li>
+      <li>Call-sites end up looking identical to B’s handles anyway</li>
+      <li>Collab whole-card LWW + class state = two sources of truth to keep converged</li></ul></div>
+  </div>
+</div>
+
+<h2>4 · Score it yourself</h2>
+<p class="small">My honest 0–10 scores per criterion. Drag the weights to what YOU care about — the bars re-rank live. (Effort &amp; risk are scored inverted: higher = cheaper / safer.)</p>
+<div class="sliders" id="sliders"></div>
+<div class="bars" id="bars"></div>
+<details><summary class="small">Show the raw score matrix</summary>
+<table class="score" id="matrix"></table>
+</details>
+
+<h2>5 · Recommendation</h2>
+<div class="reco">
+  <b>Ship B now, design C as its second step, never do D.</b>
+  <ul class="pc">
+    <li><b>B (façade handles)</b> is the clean usage you asked for — a real <code>CardHandle → ErTable / UmlClass</code> hierarchy with <code>ErField</code> handles — at small cost and zero architectural risk, because handles are stateless and every write funnels through the already-proven <code>updateEntity</code> (undo + port glue included). It can ship quickly and nothing about it is throwaway.</li>
+    <li><b>C (card-kind registry)</b> is where B’s classes come from once third parties should be able to define their own typed cards (the n8n demo hand-rolled exactly what a kind would package: card builder + ports + chrome). B’s handle classes become the kind’s <code>handle</code> — B is a strict subset of C, so nothing is wasted. Decide C when a second consumer beyond ER/UML is real.</li>
+    <li><b>D</b> buys the same call-site ergonomics as B at engine-invasive cost, and the industry consensus (tldraw/RF/GoJS/X6/n8n) is data + registered behavior — the engine’s own registries and dormant <code>erd:*/uml:*</code> vocabularies point the same way.</li>
+  </ul>
+</div>
+
+<h2>6 · Decide</h2>
+<div class="decide" id="decide">
+  <button data-d="B">✅ B now (handles)</button>
+  <button data-d="B+C">🚀 B now, C next (platform)</button>
+  <button data-d="C">🏗️ Straight to C</button>
+  <button data-d="A">🧘 Stay functional (A)</button>
+  <button data-d="D">⚠️ True inheritance (D)</button>
+</div>
+<div id="summary">Pick an option above — a summary you can paste back into the chat appears here.</div>
+<button class="decide copy" id="copyBtn" style="display:none"><button style="display:none"></button>📋 Copy summary</button>
+
+<script>
+// ---- tabs ----
+const tabs = document.getElementById('tabs');
+tabs.addEventListener('click', e => {
+  const b = e.target.closest('button'); if (!b) return;
+  document.querySelectorAll('#tabs button').forEach(x => x.classList.toggle('on', x === b));
+  document.querySelectorAll('.pane').forEach(p => p.classList.toggle('on', p.dataset.p === b.dataset.t));
+});
+
+// ---- scoring ----
+const CRITERIA = [
+  { key:'dx',    label:'DX ergonomics',        w:25 },
+  { key:'types', label:'Type safety',           w:15 },
+  { key:'effort',label:'Low effort (inv.)',     w:10 },
+  { key:'risk',  label:'Arch safety (inv.)',    w:15 },
+  { key:'ext',   label:'3rd-party extensibility',w:10 },
+  { key:'collab',label:'Collab / undo safety',  w:15 },
+  { key:'stable',label:'Long-term API stability',w:10 },
+];
+const OPTIONS = {
+  'A · Status quo+':        { dx:5, types:6, effort:10, risk:10, ext:3,  collab:10, stable:7,  color:'#6b7280' },
+  'B · Façade handles':     { dx:9, types:9, effort:8,  risk:9,  ext:5,  collab:10, stable:8,  color:'#16a34a' },
+  'C · Card-kind registry': { dx:9, types:8, effort:5,  risk:7,  ext:10, collab:9,  stable:9,  color:'#2563eb' },
+  'D · Model inheritance':  { dx:8, types:9, effort:2,  risk:2,  ext:6,  collab:3,  stable:5,  color:'#dc2626' },
+};
+const sliders = document.getElementById('sliders');
+CRITERIA.forEach((c,i) => {
+  const l = document.createElement('label');
+  l.innerHTML = `<b>${c.label}</b><input type="range" min="0" max="40" value="${c.w}" data-i="${i}"><span class="wv">${c.w}</span>`;
+  sliders.appendChild(l);
+});
+sliders.addEventListener('input', e => {
+  const i = +e.target.dataset.i; CRITERIA[i].w = +e.target.value;
+  e.target.nextElementSibling.textContent = e.target.value;
+  renderBars();
+});
+function scores(){
+  const totalW = CRITERIA.reduce((s,c)=>s+c.w,0) || 1;
+  return Object.entries(OPTIONS).map(([name,o]) => ({
+    name, color:o.color,
+    score: CRITERIA.reduce((s,c)=> s + o[c.key]*c.w, 0) / totalW,
+  })).sort((a,b)=>b.score-a.score);
+}
+function renderBars(){
+  const data = scores(); const max = 10;
+  const bars = document.getElementById('bars'); bars.innerHTML = '';
+  data.forEach((d,i) => {
+    const row = document.createElement('div'); row.className = 'bar';
+    row.innerHTML = `<div${i===0?' class="winner" style="padding:2px 8px"':''}>${d.name}</div>
+      <div class="track"><div class="fill" style="width:${d.score/max*100}%;background:${d.color}">${i===0?'★ leader':''}</div></div>
+      <div class="num">${d.score.toFixed(2)}</div>`;
+    bars.appendChild(row);
+  });
+}
+const m = document.getElementById('matrix');
+m.innerHTML = '<tr><th>Option</th>' + CRITERIA.map(c=>`<th>${c.label}</th>`).join('') + '</tr>' +
+  Object.entries(OPTIONS).map(([n,o]) => `<tr><td>${n}</td>${CRITERIA.map(c=>`<td>${o[c.key]}</td>`).join('')}</tr>`).join('');
+renderBars();
+
+// ---- decide ----
+const decide = document.getElementById('decide');
+const summary = document.getElementById('summary');
+const DESCR = {
+  'B':  'DECISION: Option B — build the typed façade handle layer (CardHandle → ErTable/UmlClass, ErField handles, onRowSelect, undo sugar) over the existing kit. No engine changes.',
+  'B+C':'DECISION: Option B now, C next — ship the façade handles immediately, and design the defineCardKind() registry (build/reconcile/chrome/handle) as the follow-up so third parties can define their own typed cards; B\\u2019s handle classes become each kind\\u2019s handle.',
+  'C':  'DECISION: Option C directly — design and ship the card-kind registry (defineCardKind with build/reconcile/chrome/handle), migrating the ER/UML kit onto it and generating the typed handles from kinds.',
+  'A':  'DECISION: Option A — keep the functional kit API; invest only in docs/polish, no new abstraction layer.',
+  'D':  'DECISION: Option D — true NodeModel inheritance with a class registry threaded through fromJSON/undo/clipboard/collab. (Flagged: high-risk path; expect a design review of every reconstruction seam first.)',
+};
+decide.addEventListener('click', e => {
+  const b = e.target.closest('button'); if (!b) return;
+  decide.querySelectorAll('button').forEach(x=>x.classList.toggle('sel', x===b));
+  const d = scores();
+  summary.textContent = DESCR[b.dataset.d] +
+    `\n\nWeights at decision time: ` + CRITERIA.map(c=>`${c.label}=${c.w}`).join(', ') +
+    `\nScore ranking: ` + d.map(x=>`${x.name.split(' · ')[0]}=${x.score.toFixed(2)}`).join('  ') +
+    `\n\n(paste this back to proceed)`;
+});
+</script>
+</main>
+</body>
+</html>
