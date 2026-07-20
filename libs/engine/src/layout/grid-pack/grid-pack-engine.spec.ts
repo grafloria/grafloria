@@ -182,6 +182,59 @@ describe('first-placement mode — moveCheck({ gate: false })', () => {
   });
 });
 
+describe('the gate is DIRECTIONAL penetration, not area (gridstack parity)', () => {
+  // THE PORTING BUG (live report: a small widget "cannot be switched" with a
+  // big one). Real gridstack's directionCollideCoverage measures, per axis and
+  // only along the side you approached from, how deep the mover has
+  // penetrated the STATIC tile, as a fraction of that tile's extent — then
+  // takes the tighter of the two axes and needs > 50%. Our port used
+  // OVERLAP AREA / static area: a 3x1 tile covers at most 3/16 of an 8x2 one,
+  // so a small tile could NEVER displace a big one however far you dragged.
+  it('a small tile dragged HALFWAY INTO a big one displaces it', () => {
+    const e = seeded();
+    e.beginGesture();
+    // t1 (3x1 at 0,0) down into t5 (8x2 at 0,1). One row in = exactly 50%
+    // penetration: refused (the anti-jitter half-way rule).
+    expect(e.moveCheck('t1', 0, 1).changed).toBe(false);
+    // Two rows in = past half: accepted, and t5 is pushed.
+    expect(e.moveCheck('t1', 0, 2).changed).toBe(true);
+    expect(cells(e, 't1')).toEqual([0, 2]);
+    expect(e.getItem('t5')!.y).toBeGreaterThan(1);
+    expect(e.hasOverlaps()).toBe(false);
+    e.endGesture();
+  });
+
+  it('shallow penetration is still refused — the anti-jitter property holds', () => {
+    const e = new GridPackEngine(
+      [
+        { id: 'small', x: 0, y: 0, w: 2, h: 1 },
+        { id: 'big', x: 0, y: 1, w: 8, h: 4 }, // 4 rows tall
+      ],
+      { columns: 12 }
+    );
+    e.beginGesture();
+    expect(e.moveCheck('small', 0, 1).changed).toBe(false); // 1 of 4 rows = 25%
+    expect(e.moveCheck('small', 0, 2).changed).toBe(false); // 2 of 4 = 50%, not >50
+    expect(e.moveCheck('small', 0, 3).changed).toBe(true); // 3 of 4 = 75%
+    e.endGesture();
+  });
+
+  it('measures only the axis you approached from (pure sideways move)', () => {
+    const e = new GridPackEngine(
+      [
+        { id: 'a', x: 0, y: 0, w: 2, h: 2 },
+        { id: 'b', x: 4, y: 0, w: 6, h: 2 }, // same rows — vertical axis unconstrained
+      ],
+      { columns: 12 }
+    );
+    e.beginGesture();
+    expect(e.moveCheck('a', 3, 0).changed).toBe(false); // right edge at 5: 1/6 = 17%
+    expect(e.moveCheck('a', 6, 0).changed).toBe(true); // right edge at 8: 4/6 = 66%
+    expect(e.hasOverlaps()).toBe(false);
+    e.endGesture();
+  });
+});
+
 describe('E3/S1 — same-size swap', () => {
   it('swaps cleanly and exchanges CELLS exactly', () => {
     const e = seeded();
@@ -220,12 +273,13 @@ describe('S3 — the other two swap shapes + the min-area gate', () => {
     e.endGesture();
   });
 
-  it('min-area gate: the 4-wide can displace the 8-wide too (small onto big)', () => {
+  it('the 4-wide displaces the 8-wide once it is dragged deep enough', () => {
     const e = seeded();
     e.beginGesture();
-    // t6 (4×2) moved left onto t5 (8×2): covers 4×2=8 cells of t5's 16 = 50%
-    // of the BIG tile, but 100% of its own area → must trigger the row swap.
-    const r = e.moveCheck('t6', 4, 1);
+    // t6 (4×2 at x8) sweeping LEFT into t5 (8×2 at x0). Penetration is
+    // measured from the right edge: (t5.right - probe.x) / t5.w.
+    expect(e.moveCheck('t6', 4, 1).changed).toBe(false); // (8-4)/8 = 50%, not >50
+    const r = e.moveCheck('t6', 3, 1); // (8-3)/8 = 62.5%
     expect(r.changed).toBe(true);
     expect(cells(e, 't6')).toEqual([0, 1]);
     expect(cells(e, 't5')).toEqual([4, 1]);
@@ -263,7 +317,7 @@ describe('S4 — swap hysteresis (no ping-pong on unequal pairs)', () => {
   it('a slow sweep across an unequal partner swaps once and HOLDS', () => {
     const e = seeded();
     e.beginGesture();
-    expect(e.moveCheck('t6', 4, 1).changed).toBe(true); // recorded S3 acceptance
+    expect(e.moveCheck('t6', 3, 1).changed).toBe(true); // deep enough to swap
     expect(cells(e, 't6')).toEqual([0, 1]);
     expect(cells(e, 't5')).toEqual([4, 1]);
     // The cursor keeps sweeping through the partner's area: every one of
@@ -279,7 +333,7 @@ describe('S4 — swap hysteresis (no ping-pong on unequal pairs)', () => {
   it('a DELIBERATE return — probe centre past the partner centre — swaps back', () => {
     const e = seeded();
     e.beginGesture();
-    e.moveCheck('t6', 4, 1); // t6 -> 0, t5 -> 4..12 (centre 8)
+    e.moveCheck('t6', 3, 1); // t6 -> 0, t5 -> 4..12 (centre 8)
     // probe x6 puts t6's centre at 8 = t5's centre: the return is deliberate.
     expect(e.moveCheck('t6', 6, 1).changed).toBe(true);
     expect(cells(e, 't6')).toEqual([8, 1]);
@@ -291,11 +345,14 @@ describe('S4 — swap hysteresis (no ping-pong on unequal pairs)', () => {
   it('the lock dies with the gesture (E2 scope): a fresh gesture swaps freely', () => {
     const e = seeded();
     e.beginGesture();
-    e.moveCheck('t6', 4, 1);
-    expect(e.moveCheck('t6', 5, 1).changed).toBe(false); // locked
+    e.moveCheck('t6', 3, 1); // swap fires; the pair is now locked
+    expect(e.moveCheck('t6', 4, 1).changed).toBe(false); // locked mid-gesture
     e.endGesture();
+    // A FRESH gesture: the lock is gone. t6 now sits LEFT of t5, so the
+    // return approaches from the other side — deep enough is x5:
+    // (probe.right - t5.left) / t5.w = (5+4-4)/8 = 62.5%.
     e.beginGesture();
-    expect(e.moveCheck('t6', 5, 1).changed).toBe(true); // fresh gesture, normal gate
+    expect(e.moveCheck('t6', 5, 1).changed).toBe(true);
     expect(e.hasOverlaps()).toBe(false);
     e.endGesture();
   });

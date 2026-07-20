@@ -279,10 +279,18 @@
   const hit = (a,b) => a.x < b.x+b.w && b.x < a.x+a.w && a.y < b.y+b.h && b.y < a.y+a.h;
   const collide = (n, skip) => nodes.find(o => o !== n && o !== skip && hit(n,o));
   const collideLocked = (probe, self) => nodes.find(o => o !== self && o.locked && hit(probe, o));
-  function coverage(mov, st) {         // % of the STATIC tile covered, GridStack's gate
-    const w = Math.min(mov.x+mov.w, st.x+st.w) - Math.max(mov.x, st.x);
-    const h = Math.min(mov.y+mov.h, st.y+st.h) - Math.max(mov.y, st.y);
-    return (w*h) / (st.w*st.h);
+  /** Gridstack's directionCollideCoverage: per axis, and only along the side
+      you approached FROM, how deep the mover penetrates the STATIC tile as a
+      fraction of that tile's extent; the tighter axis decides. (Replaces an
+      overlap-AREA gate that could never let a small tile displace a big one —
+      3x1 covers 3/16 of 8x2 however far you drag.) */
+  function penetration(from, probe, c) {
+    let yOver = Infinity, xOver = Infinity;
+    if (from.y < c.y) yOver = (probe.y + probe.h - c.y) / c.h;
+    else if (from.y + from.h > c.y + c.h) yOver = (c.y + c.h - probe.y) / c.h;
+    if (from.x < c.x) xOver = (probe.x + probe.w - c.x) / c.w;
+    else if (from.x + from.w > c.x + c.w) xOver = (c.x + c.w - probe.x) / c.w;
+    return Math.min(xOver, yOver);
   }
   /** Displaced tiles first try to TELEPORT back to their remembered
       gesture-start cell (works across a pinned row), then gravity packs.
@@ -331,14 +339,8 @@
       const sameSize = !FLOAT && c.w === n.w && c.h === n.h;
       const rowSwap  = !FLOAT && !sameSize && c.h === n.h && c.y === n.y;
       const colSwap  = !FLOAT && !sameSize && c.w === n.w && c.x === n.x;
-      // Anti-jitter gate. For swap-eligible pairs it measures against the
-      // SMALLER tile: a 4-wide can never cover >50% of an 8-wide, so gating
-      // on the static tile would make swaps one-directional (big onto small
-      // only). Everything else keeps gridstack's static-tile rule.
-      const inter = coverage(probe, c) * (c.w * c.h);
-      const gateArea = (sameSize || rowSwap || colSwap)
-        ? Math.min(c.w * c.h, n.w * n.h) : c.w * c.h;
-      if (inter <= 0.5 * gateArea) return false;
+      // Anti-jitter gate: directional penetration (see penetration()).
+      if (penetration(n, probe, c) <= 0.5) return false;
       // S4: a just-swapped pair re-swaps only on a deliberate return.
       if ((sameSize || rowSwap || colSwap) && swapLock &&
           ((swapLock.a === n.id && swapLock.b === c.id) || (swapLock.a === c.id && swapLock.b === n.id))) {

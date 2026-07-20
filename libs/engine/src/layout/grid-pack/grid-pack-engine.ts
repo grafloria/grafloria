@@ -309,14 +309,18 @@ export class GridPackEngine {
       const rowSwap = !this.float && !sameSize && c.h === n.h && c.y === n.y;
       const colSwap = !this.float && !sameSize && c.w === n.w && c.x === n.x;
 
-      // Anti-jitter gate. Swap-eligible pairs measure against the SMALLER
-      // tile (S3's second half); plain pushes keep the static-tile rule.
-      const inter = GridPackEngine.overlapArea(probe, c);
-      const gateArea =
-        sameSize || rowSwap || colSwap
-          ? Math.min(c.w * c.h, n.w * n.h)
-          : c.w * c.h;
-      if (inter <= 0.5 * gateArea) return { changed: false };
+      // Anti-jitter gate — gridstack's `directionCollideCoverage`: per axis,
+      // and ONLY along the side you approached from, how deep the mover has
+      // penetrated the STATIC tile as a fraction of that tile's extent; the
+      // tighter axis wins and must exceed 50%.
+      //
+      // This replaced an OVERLAP-AREA gate that was a mis-port: a 3x1 tile
+      // covers at most 3/16 of an 8x2 tile's area, so a small widget could
+      // never displace a big one however far you dragged it (live report:
+      // "Total Revenue can't be switched with Revenue vs Target"). Area also
+      // needed a min-area special case to let swaps fire in both directions;
+      // penetration is naturally symmetric and needs none.
+      if (GridPackEngine.penetration(n, probe, c) <= 0.5) return { changed: false };
 
       // S4: a just-swapped pair re-swaps only on a deliberate return.
       if (
@@ -434,6 +438,22 @@ export class GridPackEngine {
     if (curCx !== cCx && !(curCx < cCx ? probeCx >= cCx : probeCx <= cCx)) return false;
     if (curCy !== cCy && !(curCy < cCy ? probeCy >= cCy : probeCy <= cCy)) return false;
     return true;
+  }
+
+  /**
+   * Directional penetration of `probe` into the static tile `c`, given the
+   * mover's pre-step cell `from` (which encodes the direction of travel).
+   * Returns the tighter of the two axes; an axis the move does not approach
+   * from is unconstrained (Infinity) and never decides.
+   */
+  private static penetration(from: GridPackItem, probe: GridPackItem, c: GridPackItem): number {
+    let yOver = Infinity;
+    let xOver = Infinity;
+    if (from.y < c.y) yOver = (probe.y + probe.h - c.y) / c.h; // entering from above
+    else if (from.y + from.h > c.y + c.h) yOver = (c.y + c.h - probe.y) / c.h; // from below
+    if (from.x < c.x) xOver = (probe.x + probe.w - c.x) / c.w; // from the left
+    else if (from.x + from.w > c.x + c.w) xOver = (c.x + c.w - probe.x) / c.w; // from the right
+    return Math.min(xOver, yOver);
   }
 
   private static overlapArea(a: GridPackItem, b: GridPackItem): number {
