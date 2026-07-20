@@ -500,8 +500,8 @@
   "measuredJitterPct": 0
  },
  "layout__expand-collapse.showcase.png": {
-  "tolerancePct": 0.02,
-  "measuredJitterPct": 0
+  "tolerancePct": 0.293,
+  "measuredJitterPct": 0.0978
  },
  "layout__force-layout.after.png": {
   "tolerancePct": 0.02,

@@ -7,8 +7,14 @@
      Everything below imports from ../shell/grafloria.js — the bundled @grafloria/element
      front door. Since Phase 0 (d4e24c525) that front door re-exports @grafloria/engine
      and @grafloria/renderer WHOLESALE, so DiagramEngine, DiagramModel, GroupModel,
-     NodeModel, CommandManager and all ~30 undoable commands (incl. the new z-order
+     NodeModel, CommandManager and all ~30 undoable commands (incl. the z-order
      ones) are reachable from that single import — no reaching past the public API.
+
+     The board itself is now DECLARED, not assembled: `dashboard({ views })` is the
+     authoring API, and its built-in renderers draw every widget from this page's
+     own data. So the page-side CSS below is only what the LIBRARY cannot know:
+     app chrome (toolbar, palette, canvas) plus the focus ring and pin marker this
+     app layers onto the kit's widget cards.
      ================================================================================ */
 
   #db-bar { display: flex; align-items: center; gap: 6px; flex-wrap: wrap;
@@ -38,7 +44,7 @@
     justify-content: center; font-size: 15px; color: #fff; }
   .pal-note { margin: 12px 2px 0; font: 11px/1.5 system-ui, sans-serif; color: #949bab; }
 
-  #canvas { --wx-radius: 5px; --axdb-rs-radius: 5px;   /* card = placeholder = handle arc */
+  #canvas { --axdb-rs-radius: 5px;   /* widget card = placeholder = handle arc */
     position: relative; overflow: hidden; height: 100%;
     background-color: var(--db-canvas-bg, #f1f3f7);
     background-image: radial-gradient(circle, rgba(120,128,145,.16) 1px, transparent 1px);
@@ -50,37 +56,23 @@
     box-shadow: 0 3px 10px rgba(15,23,42,.2); opacity: 0; transition: opacity .18s; }
   #db-status.show { opacity: 1; }
 
-  /* ---- widget card painted into each node's HTML-layer host --------------------
-     These hosts come from the renderer's `custom: true` → renderCustomNode(node,
-     host) path: `host` is a RAW <div> in the HTML layer that the engine positions
-     to match node geometry and REUSES across frames (mounted once, then only
-     repositioned — see create-diagram.spec.ts "mounts each custom node exactly
-     once"). We deliberately do NOT use `metadata.html`: that path is sanitized
-     against ALLOWED_TAGS (libs/renderer/src/svg/html-node.ts) which lists
-     div/span/table/img but NOT `svg` or `canvas` (unknown tags degrade to <span>)
-     and strips id/data-*, so a hand-drawn chart could never live there. The host
-     div is not sanitized, so real inline <svg> is fine here. --------------------- */
-  .wx { --wx-ink:#1f2430; --wx-muted:#7a8496; --wx-grid:rgba(120,130,148,.22);
-    --wx-card:#fff; --wx-line:#e7eaf1; --wx-soft:rgba(120,130,148,.14);
-    box-sizing: border-box; width: 100%; height: 100%; display: flex; flex-direction: column;
-    background: var(--wx-card); border: 1px solid var(--wx-line); border-radius: var(--wx-radius, 5px);
-    padding: 13px 15px 12px; overflow: hidden; font-family: system-ui, sans-serif;
-    box-shadow: 0 1px 2px rgba(16,24,40,.05), 0 1px 3px rgba(16,24,40,.05);
-    cursor: pointer; transition: box-shadow .14s, border-color .14s; }
-  .wx:hover { border-color: #c4ccdb; }
-  .wx.focused { border-color: #3b52d9; box-shadow: 0 0 0 2px rgba(59,82,217,.28), 0 3px 12px rgba(59,82,217,.14); }
-  .wx-h { display: flex; align-items: center; gap: 6px; font: 600 11px/1.3 system-ui, sans-serif;
-    letter-spacing: .4px; text-transform: uppercase; color: var(--wx-muted); margin-bottom: 8px; }
-  .wx-h .pin { margin-left: auto; font-size: 12px; opacity: 0; }
-  .wx.locked .wx-h .pin { opacity: 1; color: #d0912a; }
-  .wx-body { flex: 1; min-height: 0; position: relative; }
-  .wx-body svg { display: block; width: 100%; height: 100%; }
+  /* ---- APP CHROME ON TOP OF THE KIT'S WIDGET CARDS ----------------------------
+     `.axdb-widget` and its innards are painted by the library's built-in
+     renderers (libs/element/src/lib/dashboard-kit/widgets.ts) and styled by the
+     kit's own stylesheet — card, header, KPI stack, legend chips, table. What is
+     app-specific stays here: this builder makes tiles clickable, rings the FOCUSED
+     one (the toolbar's target) and marks PINNED ones. */
+  .axdb-widget { cursor: pointer; transition: box-shadow .14s, border-color .14s; }
+  .axdb-widget:hover { border-color: #c4ccdb; }
+  .axdb-widget.focused { border-color: #3b52d9; box-shadow: 0 0 0 2px rgba(59,82,217,.28), 0 3px 12px rgba(59,82,217,.14); }
+  .axdb-widget .pin { margin-left: auto; font-size: 12px; opacity: 0; }
+  .axdb-widget.locked .pin { opacity: 1; color: #d0912a; }
 
   /* ---- reflow GLIDE ------------------------------------------------------
      Tiles glide to their new slot instead of teleporting (gridstack-style).
      GESTURES use the dashboard kit's own identical rule (.axdb-glide, ghost
      exempt); this page-side .glide class covers the NON-gesture bursts —
-     add/remove/undo/load — via glide() around refreshBoards(), so that:
+     add/remove/undo/load — via glide() around refresh(), so that:
        - on tab switches there is no class → parked views swap instantly rather
          than flying in from the off-canvas parking position;
        - on add/remove/undo/load the class is present → every affected tile
@@ -90,30 +82,6 @@
                 width .28s cubic-bezier(.2, 0, .2, 1), height .28s cubic-bezier(.2, 0, .2, 1);
   }
 
-  .kpi-val { font: 700 30px/1.05 system-ui, sans-serif; color: var(--wx-ink); letter-spacing: -.02em; }
-  .kpi-delta { margin-top: 6px; font: 600 12px/1.2 system-ui, sans-serif; }
-  .kpi-delta span { color: var(--wx-muted); font-weight: 500; }
-  .kpi-delta.up { color: #12a150; } .kpi-delta.down { color: #e11d48; }
-  /* The spark yields gracefully when fit-mode squeezes the KPI row: it keeps
-     its 34px design height while there is room and shrinks (never pushes the
-     value/delta out) when there is not. */
-  .kpi-spark { margin-top: auto; height: 34px !important; min-height: 0 !important; flex: 0 1 34px; }
-
-  .wx-table { width: 100%; border-collapse: collapse; font-size: 12px; color: var(--wx-ink); }
-  .wx-table th { text-align: left; font: 600 10px/1.3 system-ui, sans-serif; letter-spacing: .4px;
-    text-transform: uppercase; color: var(--wx-muted); padding: 4px 8px 7px; border-bottom: 1px solid var(--wx-line); }
-  .wx-table td { padding: 6px 8px; border-bottom: 1px solid var(--wx-line); white-space: nowrap; }
-  .wx-table td.num { text-align: right; font-variant-numeric: tabular-nums; }
-  .wx-table tr:last-child td { border-bottom: none; }
-  .qbar-track { display: inline-block; width: 58px; height: 7px; border-radius: 4px;
-    background: var(--wx-soft); vertical-align: middle; margin-right: 7px; overflow: hidden; }
-  .qbar { display: block; height: 7px; border-radius: 4px; background: #3b52d9; }
-
-  .lg { display: flex; flex-wrap: wrap; gap: 4px 12px; margin-top: 9px; }
-  .lg i { display: inline-flex; align-items: center; gap: 5px; font: 500 11px/1.3 system-ui, sans-serif;
-    color: var(--wx-muted); font-style: normal; }
-  .lg i b { width: 9px; height: 9px; border-radius: 3px; }
-
   @media (prefers-color-scheme: dark) {
     #db-bar { --db-bar-bg:#171a21; } #db-palette { --db-pal-bg:#14161c; }
     #canvas { --db-canvas-bg:#0f1116; background-image: radial-gradient(circle, rgba(150,160,180,.14) 1px, transparent 1px); }
@@ -122,8 +90,6 @@
     .db-tool { background:#1c1f27; border-color:#333a49; color:#cbd2df; }
     .db-tool:hover { background:#232734; }
     .pal-item { background:#1c1f27; border-color:#333a49; color:#d7dbe4; } .pal-item:hover { background:#232734; }
-    .wx { --wx-ink:#eceef4; --wx-muted:#98a1b4; --wx-grid:rgba(150,160,182,.2);
-      --wx-card:#1a1d25; --wx-line:#2b3040; --wx-soft:rgba(150,160,182,.16); }
   }
 </style>
 
@@ -166,33 +132,43 @@
 <script type="module">
 // ===========================================================================
 //  Dashboard builder — the flagship proof that a dashboard-builder app can be
-//  built on Grafloria. Read the enabling commits first if you are extending this:
-//  b76b2b5e2 (dashboard-layout machinery), d4e24c525 (Phase 0 — the front
-//  door stops filtering), f198003fe (GridPackEngine), and the dashboard kit
-//  this page now runs on (libs/element/src/lib/dashboard-kit).
+//  built on Grafloria, and the reference for the NEWEST way to do it.
 //
-//  ONE import line. The render() entry point, the model vocabulary
-//  (GroupModel/NodeModel), every undoable Command, AND the dashboard kit all
-//  come from @grafloria/element. The interaction model is gridstack's, engine-
-//  driven: live push while you hover, a truthful placeholder, cell-stepped
-//  resize with live push, pin refusal, Esc restore — ONE undo step per
-//  gesture. The interim release-settle module this page used to carry
-//  (settleDrop/insertionIndex/containerAt/wireDropSettle) is retired: the
-//  kit's binder is what it was scaffolding for.
+//  THE BOARD IS DECLARED, NOT ASSEMBLED. `dashboard({ views })` (commit
+//  994b7c5f1) is to dashboards what `erDiagram()` is to ER diagrams: you write
+//  WHAT the dashboard is — views, widgets, spans — and render() wires the pack
+//  grid, drag/resize with live push, the truthful placeholder, fit/grow, float,
+//  pin and one-undo-per-gesture. This page used to hand-assemble a GroupModel
+//  per view, a NodeModel per widget, useHTMLLayer/widgetKind metadata, grid
+//  cells, membership and three binders: ~143 lines. It is now the VIEWS
+//  literal below, and SPEC.handle drives it.
+//
+//  Read the enabling commits if you are extending this: b76b2b5e2 (dashboard-
+//  layout machinery), d4e24c525 (Phase 0 — the front door stops filtering),
+//  f198003fe (GridPackEngine), 994b7c5f1 (dashboard()), and the kit itself at
+//  libs/element/src/lib/dashboard-kit.
+//
+//  WHAT STAYS PAGE-SIDE: the SALES DATASET (demo content — the library ships
+//  no sample data) and app chrome (toolbar, palette, focus, flash line).
+//  WHAT MOVED INTO THE LIBRARY: every chart. The six hand-drawn SVG renderers
+//  this page used to carry are now `defaultWidgetRenderer` in the kit, driven
+//  by the same data through documented per-kind contracts — so the page proves
+//  the built-ins rather than duplicating them.
 // ===========================================================================
 import {
-  render, GroupModel, NodeModel,
+  render, NodeModel,
   // Undoable commands, all reachable from the front door post-Phase-0.
   AddNodeCommand, AddToGroupCommand, RemoveNodeCommand, RemoveFromGroupCommand,
   BringNodeToFrontCommand, SendNodeToBackCommand, BatchCommand,
-  // The dashboard kit (Phase 2 of the dashboard-grid plan).
-  bindDashboardGrid,
+  // The dashboard kit: the authoring API + the built-in widget renderers.
+  dashboard, defaultWidgetRenderer,
 } from '../shell/grafloria.js';
 import { defineDemo, check, checkEqual, checkChanged } from '../shell/demo.js';
 
 /* ---------------------------------------------------------------------------
    1. STATIC SALES DATASET — deterministic, no Math.random() anywhere (goldens
-   must bless stably). Money is in $K unless noted.
+   must bless stably). Money is in $K unless noted. This is DEMO CONTENT: the
+   library ships renderers, never numbers.
 --------------------------------------------------------------------------- */
 const C = { blue:'#3b52d9', sky:'#0ea5e9', teal:'#14b8a6', amber:'#f59e0b', violet:'#8b5cf6', slate:'#64748b' };
 const MONTHS = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
@@ -221,208 +197,118 @@ const DATA = {
     { name: 'L. Moretti',  deals: 21, revenue: '0.63M', quota: 61 },
   ],
   kpis: {
-    revenue:   { label: 'Total revenue',  value: '$6.81M', delta: +12.4, spark: [42,45,47,51,50,55,59,61,60,65,71,76] },
-    customers: { label: 'New customers',  value: '1,284',  delta: +8.1,  spark: [70,74,79,83,88,92,96,101,108,116,124,131] },
-    avgDeal:   { label: 'Avg deal size',  value: '$18.6K', delta: -2.3,  spark: [21,20,22,19,20,18,19,18,17,19,18,18] },
-    winRate:   { label: 'Win rate',       value: '27.4%',  delta: +3.5,  spark: [22,23,24,24,25,25,26,26,27,27,27,28] },
+    // Already the built-in `kpi` contract, verbatim: { label, value, delta, deltaLabel, spark }.
+    revenue:   { label: 'Total revenue',  value: '$6.81M', delta: +12.4, deltaLabel: 'vs last qtr', spark: [42,45,47,51,50,55,59,61,60,65,71,76] },
+    customers: { label: 'New customers',  value: '1,284',  delta: +8.1, deltaLabel: 'vs last qtr',  spark: [70,74,79,83,88,92,96,101,108,116,124,131] },
+    avgDeal:   { label: 'Avg deal size',  value: '$18.6K', delta: -2.3, deltaLabel: 'vs last qtr',  spark: [21,20,22,19,20,18,19,18,17,19,18,18] },
+    winRate:   { label: 'Win rate',       value: '27.4%',  delta: +3.5, deltaLabel: 'vs last qtr',  spark: [22,23,24,24,25,25,26,26,27,27,27,28] },
   },
 };
 
-/* ---------------------------------------------------------------------------
-   2. HAND-DRAWN CHART WIDGETS — inline SVG (no charting dependency). Each
-   returns the innerHTML for a widget card. preserveAspectRatio keeps them
-   crisp as the host is resized by layout (donut stays a circle, etc.).
-   Colours come from CSS vars on .wx, so every chart is theme-aware.
---------------------------------------------------------------------------- */
-const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;' }[c]));
-const pinMark = '<span class="pin" title="Pinned">📌</span>';
-
-function head(title) { return `<div class="wx-h">${esc(title)}${pinMark}</div>`; }
-
-function widgetKPI(spec) {
-  const k = DATA.kpis[spec.kpi] || DATA.kpis.revenue;
-  const up = k.delta >= 0;
-  const n = k.spark.length, W = 240, H = 40, max = Math.max(...k.spark), min = Math.min(...k.spark);
-  const pts = k.spark.map((v, i) => {
-    const x = (i / (n - 1)) * W;
-    const y = H - ((v - min) / (max - min || 1)) * (H - 6) - 3;
-    return `${x.toFixed(1)},${y.toFixed(1)}`;
-  });
-  const area = `M0,${H} L${pts.join(' L')} L${W},${H} Z`;
-  return head(k.label) +
-    `<div class="wx-body" style="display:flex;flex-direction:column">
-       <div class="kpi-val">${esc(k.value)}</div>
-       <div class="kpi-delta ${up ? 'up' : 'down'}">${up ? '▲' : '▼'} ${Math.abs(k.delta)}% <span>vs last qtr</span></div>
-       <svg class="kpi-spark" viewBox="0 0 ${W} ${H}" preserveAspectRatio="none" aria-hidden="true">
-         <path d="${area}" fill="${C.blue}" fill-opacity="0.12"></path>
-         <polyline points="${pts.join(' ')}" fill="none" stroke="${C.blue}" stroke-width="2" stroke-linejoin="round" stroke-linecap="round"></polyline>
-       </svg>
-     </div>`;
-}
-
-function widgetLine(spec) {
-  const W = 640, H = 250, pad = { l: 34, r: 12, t: 12, b: 22 };
-  const iw = W - pad.l - pad.r, ih = H - pad.t - pad.b;
-  const all = DATA.revenue.concat(DATA.target);
-  const max = Math.ceil(Math.max(...all) / 100) * 100, min = 0;
-  const xAt = (i) => pad.l + (i / (DATA.months.length - 1)) * iw;
-  const yAt = (v) => pad.t + ih - ((v - min) / (max - min)) * ih;
-  const line = (arr) => arr.map((v, i) => `${xAt(i).toFixed(1)},${yAt(v).toFixed(1)}`).join(' ');
-  const revPts = line(DATA.revenue), tgtPts = line(DATA.target);
-  const area = `M${xAt(0).toFixed(1)},${yAt(DATA.revenue[0]).toFixed(1)} L${revPts.replace(/ /g, ' L')} L${xAt(DATA.months.length - 1).toFixed(1)},${(pad.t + ih).toFixed(1)} L${pad.l},${(pad.t + ih).toFixed(1)} Z`;
-  const grid = [0, 0.25, 0.5, 0.75, 1].map((f) => {
-    const y = pad.t + ih - f * ih, v = Math.round(min + f * (max - min));
-    return `<line x1="${pad.l}" y1="${y.toFixed(1)}" x2="${W - pad.r}" y2="${y.toFixed(1)}" stroke="var(--wx-grid)" stroke-width="1"></line>` +
-           `<text x="${pad.l - 6}" y="${(y + 3).toFixed(1)}" text-anchor="end" font-size="9" fill="var(--wx-muted)">${v}</text>`;
-  }).join('');
-  const ticks = DATA.months.map((m, i) => (i % 2 === 0)
-    ? `<text x="${xAt(i).toFixed(1)}" y="${H - 6}" text-anchor="middle" font-size="9" fill="var(--wx-muted)">${m}</text>` : '').join('');
-  return head(spec.title || 'Revenue vs target') +
-    `<div class="wx-body">
-       <svg viewBox="0 0 ${W} ${H}" preserveAspectRatio="xMidYMid meet" role="img" aria-label="Revenue versus target by month">
-         ${grid}${ticks}
-         <path d="${area}" fill="${C.blue}" fill-opacity="0.10"></path>
-         <polyline points="${tgtPts}" fill="none" stroke="${C.slate}" stroke-width="1.6" stroke-dasharray="4 4"></polyline>
-         <polyline points="${revPts}" fill="none" stroke="${C.blue}" stroke-width="2.4" stroke-linejoin="round" stroke-linecap="round"></polyline>
-       </svg>
-     </div>
-     <div class="lg"><i><b style="background:${C.blue}"></b>Revenue</i><i><b style="background:${C.slate}"></b>Target</i></div>`;
-}
-
-function widgetBar(spec) {
-  const W = 640, H = 250, pad = { l: 34, r: 12, t: 12, b: 26 };
-  const iw = W - pad.l - pad.r, ih = H - pad.t - pad.b;
-  const rows = DATA.regions, max = Math.ceil(Math.max(...rows.map((r) => r.value)) / 500) * 500;
-  const bw = iw / rows.length, bar = bw * 0.56;
-  const grid = [0, 0.5, 1].map((f) => {
-    const y = pad.t + ih - f * ih;
-    return `<line x1="${pad.l}" y1="${y.toFixed(1)}" x2="${W - pad.r}" y2="${y.toFixed(1)}" stroke="var(--wx-grid)" stroke-width="1"></line>` +
-           `<text x="${pad.l - 6}" y="${(y + 3).toFixed(1)}" text-anchor="end" font-size="9" fill="var(--wx-muted)">${Math.round(f * max)}</text>`;
-  }).join('');
-  const bars = rows.map((r, i) => {
-    const h = (r.value / max) * ih, x = pad.l + i * bw + (bw - bar) / 2, y = pad.t + ih - h;
-    return `<rect x="${x.toFixed(1)}" y="${y.toFixed(1)}" width="${bar.toFixed(1)}" height="${h.toFixed(1)}" rx="4" fill="${r.color}"></rect>` +
-           `<text x="${(x + bar / 2).toFixed(1)}" y="${(y - 4).toFixed(1)}" text-anchor="middle" font-size="9.5" font-weight="600" fill="var(--wx-ink)">${r.value}</text>` +
-           `<text x="${(x + bar / 2).toFixed(1)}" y="${H - 8}" text-anchor="middle" font-size="9" fill="var(--wx-muted)">${esc(r.name)}</text>`;
-  }).join('');
-  return head(spec.title || 'Revenue by region') +
-    `<div class="wx-body"><svg viewBox="0 0 ${W} ${H}" preserveAspectRatio="xMidYMid meet" role="img" aria-label="Revenue by region">${grid}${bars}</svg></div>`;
-}
-
-function arc(cx, cy, r, a0, a1) {
-  const p = (a) => [cx + r * Math.cos(a), cy + r * Math.sin(a)];
-  const [x0, y0] = p(a0), [x1, y1] = p(a1);
-  const large = a1 - a0 > Math.PI ? 1 : 0;
-  return `M${x0.toFixed(2)},${y0.toFixed(2)} A${r},${r} 0 ${large} 1 ${x1.toFixed(2)},${y1.toFixed(2)}`;
-}
-function widgetDonut(spec) {
-  const rows = spec.source === 'pipeline'
-    ? DATA.pipeline.map((p, i) => ({ name: p.stage, value: p.value, color: [C.blue, C.sky, C.teal, C.amber, C.violet][i] }))
-    : DATA.regions;
-  const total = rows.reduce((s, r) => s + r.value, 0);
-  const cx = 90, cy = 90, r = 66, sw = 26;
-  let a = -Math.PI / 2;
-  const segs = rows.map((row) => {
-    const sweep = (row.value / total) * Math.PI * 2, a1 = a + sweep;
-    const d = arc(cx, cy, r, a + 0.02, a1 - 0.02);
-    a = a1;
-    return `<path d="${d}" fill="none" stroke="${row.color}" stroke-width="${sw}" stroke-linecap="round"></path>`;
-  }).join('');
-  const legend = rows.map((row) =>
-    `<i><b style="background:${row.color}"></b>${esc(row.name)} · ${Math.round((row.value / total) * 100)}%</i>`).join('');
-  return head(spec.title || 'Revenue share') +
-    `<div class="wx-body" style="display:flex;align-items:center;gap:10px">
-       <svg viewBox="0 0 180 180" preserveAspectRatio="xMidYMid meet" style="max-width:150px" role="img" aria-label="Share by ${spec.source === 'pipeline' ? 'stage' : 'region'}">
-         ${segs}
-         <text x="${cx}" y="${cy - 2}" text-anchor="middle" font-size="20" font-weight="700" fill="var(--wx-ink)">${total >= 1000 ? (total / 1000).toFixed(1) + 'M' : total}</text>
-         <text x="${cx}" y="${cy + 16}" text-anchor="middle" font-size="10" fill="var(--wx-muted)">total</text>
-       </svg>
-       <div class="lg" style="flex-direction:column;margin-top:0;gap:6px">${legend}</div>
-     </div>`;
-}
-
-function widgetFunnel(spec) {
-  const rows = DATA.pipeline, max = rows[0].value;
-  const W = 260, rowH = 34, gap = 8, H = rows.length * (rowH + gap);
-  const bars = rows.map((r, i) => {
-    const w = (r.value / max) * (W - 90), x = (W - 90 - w) / 2 + 8, y = i * (rowH + gap);
-    const col = [C.blue, C.sky, C.teal, C.amber, C.violet][i];
-    return `<rect x="${x.toFixed(1)}" y="${y}" width="${w.toFixed(1)}" height="${rowH}" rx="6" fill="${col}"></rect>` +
-           `<text x="${(x + w / 2).toFixed(1)}" y="${y + rowH / 2 + 4}" text-anchor="middle" font-size="11" font-weight="600" fill="#fff">${r.value}</text>` +
-           `<text x="${W - 78}" y="${y + rowH / 2 + 4}" font-size="10.5" fill="var(--wx-muted)">${esc(r.stage)}</text>`;
-  }).join('');
-  return head(spec.title || 'Conversion funnel') +
-    `<div class="wx-body"><svg viewBox="0 0 ${W} ${H}" preserveAspectRatio="xMidYMid meet" role="img" aria-label="Conversion funnel by stage">${bars}</svg></div>`;
-}
-
-function widgetTable(spec) {
-  const body = DATA.reps.map((r) => {
-    const pct = Math.min(100, r.quota);
-    return `<tr>
-      <td>${esc(r.name)}</td>
-      <td class="num">${r.deals}</td>
-      <td class="num">$${esc(r.revenue)}</td>
-      <td><span class="qbar-track"><span class="qbar" style="width:${pct}%"></span></span>${r.quota}%</td>
-    </tr>`;
-  }).join('');
-  return head(spec.title || 'Top reps by revenue') +
-    `<div class="wx-body" style="overflow:auto">
-       <table class="wx-table"><thead><tr><th>Rep</th><th class="num">Deals</th><th class="num">Revenue</th><th>Quota</th></tr></thead>
-       <tbody>${body}</tbody></table></div>`;
-}
-
-const RENDERERS = { kpi: widgetKPI, line: widgetLine, bar: widgetBar, donut: widgetDonut, funnel: widgetFunnel, table: widgetTable };
-const DEFAULT_TITLE = { kpi: 'KPI', line: 'Revenue vs target', bar: 'Revenue by region', donut: 'Revenue share', funnel: 'Conversion funnel', table: 'Top reps' };
-// A palette drop needs sensible defaults so it lands in the grid well-
-// proportioned. Sizes are in INTEGER CELLS now (12-column pack grid): span
-// columns × rows rows — the kit's engine owns where they land.
-const PALETTE_SPEC = {
-  kpi:    { kind: 'kpi',    span: 3,  rows: 1, spec: { kpi: 'revenue' } },
-  line:   { kind: 'line',   span: 8,  rows: 2, spec: { title: 'Revenue vs target' } },
-  bar:    { kind: 'bar',    span: 6,  rows: 2, spec: { title: 'Revenue by region' } },
-  donut:  { kind: 'donut',  span: 4,  rows: 2, spec: { title: 'Revenue share' } },
-  funnel: { kind: 'funnel', span: 4,  rows: 2, spec: { title: 'Conversion funnel' } },
-  table:  { kind: 'table',  span: 12, rows: 2, spec: { title: 'Top reps' } },
+/* The dataset, shaped once per BUILT-IN WIDGET CONTRACT. Each of these is
+   exactly what libs/element/src/lib/dashboard-kit/widgets.ts documents for its
+   `kind` — the whole adaptation layer between an app's data and a working
+   dashboard is these six lines. */
+const TREND   = { series: [{ name: 'Revenue', values: DATA.revenue }, { name: 'Target', values: DATA.target }], labels: MONTHS };
+const MIX     = { slices: DATA.regions.map((r) => ({ label: r.name, value: r.value, color: r.color })), centerLabel: '$6.73M' };
+const BARS    = { bars: DATA.regions.map((r) => ({ label: r.name, value: r.value })) };
+const STAGES  = { stages: DATA.pipeline.map((p) => ({ label: p.stage, value: p.value })) };
+const STAGE_MIX = { slices: DATA.pipeline.map((p) => ({ label: p.stage, value: p.value })) };
+const REPS    = {
+  columns: ['Rep', 'Deals', 'Revenue', 'Quota'],
+  rows: DATA.reps.map((r) => [r.name, r.deals, `$${r.revenue}`, `${r.quota}%`]),
 };
 
 /* ---------------------------------------------------------------------------
-   3. LIVE STATE + the custom-node renderer. A widget node carries its kind and
-   chart spec in metadata; `useHTMLLayer` opts it onto the renderCustomNode host.
+   2. THE BOARD — DECLARED. Three views, each a list of widgets. Widgets that
+   name no cell FLOW left-to-right and wrap at the column count, which is how
+   all of Overview and Sales place themselves; Pipeline mixes ONE explicit cell
+   (the win-rate KPI parks under the stage donut) with flowed neighbours around
+   it. That is the whole board: no groups, no nodes, no metadata, no cells.
 --------------------------------------------------------------------------- */
-const hosts = new Map();          // nodeId -> host <div> (for focus + repaint)
-const state = { active: 'overview', focus: null, saved: null, seq: 0 };
-let ctxRef = null;                // set in setup(); { diagram, engine, instance }
+const VIEWS = [
+  { id: 'overview', name: 'Overview', widgets: [
+    { id: 'kpi-revenue',   kind: 'kpi',   span: 3,  rows: 1, data: DATA.kpis.revenue },
+    { id: 'kpi-customers', kind: 'kpi',   span: 3,  rows: 1, data: DATA.kpis.customers },
+    { id: 'kpi-avgdeal',   kind: 'kpi',   span: 3,  rows: 1, data: DATA.kpis.avgDeal },
+    { id: 'kpi-winrate',   kind: 'kpi',   span: 3,  rows: 1, data: DATA.kpis.winRate },
+    { id: 'trend',         kind: 'line',  span: 8,  rows: 2, title: 'Revenue vs target', data: TREND },
+    { id: 'mix',           kind: 'donut', span: 4,  rows: 2, title: 'Revenue by region', data: MIX },
+    { id: 'reps',          kind: 'table', span: 12, rows: 2, title: 'Top reps by revenue', data: REPS },
+  ]},
+  { id: 'sales', name: 'Sales', widgets: [
+    { id: 'sales-bar',   kind: 'bar',   span: 7,  rows: 2, title: 'Revenue by region', data: BARS },
+    { id: 'sales-mix',   kind: 'donut', span: 5,  rows: 2, title: 'Region share', data: MIX },
+    { id: 'sales-trend', kind: 'line',  span: 12, rows: 2, title: 'Monthly revenue trend', data: TREND },
+  ]},
+  { id: 'pipeline', name: 'Pipeline', widgets: [
+    { id: 'pipe-funnel', kind: 'funnel', span: 6,  rows: 2, title: 'Conversion funnel', data: STAGES },
+    { id: 'pipe-mix',    kind: 'donut',  span: 6,  rows: 1, title: 'Pipeline by stage', data: STAGE_MIX },
+    { id: 'pipe-winrate',kind: 'kpi',    span: 6,  rows: 1, x: 6, y: 1, data: DATA.kpis.winRate },
+    { id: 'pipe-reps',   kind: 'table',  span: 12, rows: 1, title: 'Top reps by revenue', data: REPS },
+  ]},
+];
+
+// Board geometry, shared by the initial mount and every Load rebuild.
+const BOARD = { columns: 12, gap: 8, rowHeight: 130, width: 1180, height: 660 };
+const GAP = BOARD.gap, BASE_ROW = BOARD.rowHeight, TAB_W = BOARD.width, TAB_H = BOARD.height;
+
+// A palette drop needs sensible defaults so it lands well-proportioned. Sizes
+// are INTEGER CELLS (12-column pack grid); the kit's engine owns where they go.
+const PALETTE = {
+  kpi:    { kind: 'kpi',    span: 3,  rows: 1, data: DATA.kpis.revenue },
+  line:   { kind: 'line',   span: 8,  rows: 2, title: 'Revenue vs target',   data: TREND },
+  bar:    { kind: 'bar',    span: 6,  rows: 2, title: 'Revenue by region',   data: BARS },
+  donut:  { kind: 'donut',  span: 4,  rows: 2, title: 'Revenue share',       data: MIX },
+  funnel: { kind: 'funnel', span: 4,  rows: 2, title: 'Conversion funnel',   data: STAGES },
+  table:  { kind: 'table',  span: 12, rows: 2, title: 'Top reps',            data: REPS },
+};
+
+/* ---------------------------------------------------------------------------
+   3. LIVE STATE + the widget painter.
+--------------------------------------------------------------------------- */
+let SPEC = null;                  // the live dashboard() spec (Load rebuilds it)
+let H = null;                     // SPEC.handle — showView / widget() / setSizing / …
+let ctxRef = null;                // { diagram, engine, instance } from defineDemo
 let statusEl = null;
+let sizingMode = 'fit', floatMode = false;
+const state = { focus: null, saved: null, seq: 0 };
+const hosts = new Map();          // widgetId -> host div  (see repaint(), below)
+const specs = new Map();          // widgetId -> declared widget  (ditto)
 
-/** Fill a widget host from the node's metadata. Called once per node by the
- *  renderer (host reused thereafter); we also call it ourselves to REPAINT a
- *  widget in place after a state change (focus/lock) without remounting. */
-function paintWidget(node, host) {
-  const kind = node.getMetadata('widgetKind') || 'kpi';
-  const spec = node.getMetadata('widgetSpec') || {};
-  host.innerHTML = `<div class="wx wx-${kind}"></div>`;
+/** dashboard()'s `renderWidget` seam. The LIBRARY draws the chart from the
+ *  declared `kind` + `data`; this page only adds what an app owns — a focus
+ *  ring, a pin marker and click-to-focus. That composition is the intended
+ *  use of defaultWidgetRenderer. */
+function renderWidget(widget, host) {
+  hosts.set(widget.id, host);     // (API gap #7) — see repaint()
+  specs.set(widget.id, widget);
+  defaultWidgetRenderer(widget, host);
   const card = host.firstElementChild;
-  card.innerHTML = (RENDERERS[kind] || widgetKPI)(spec);
-  card.classList.toggle('focused', node.id === state.focus);
-  card.classList.toggle('locked', node.state?.locked === true);
-  // Clicking a tile focuses it — that is what the toolbar acts on.
-  host.onclick = () => setFocus(node.id);
-  hosts.set(node.id, host);
+  if (!card) return;
+  card.classList.toggle('focused', widget.id === state.focus);
+  card.classList.toggle('locked', H?.widget(widget.id)?.pinned === true);
+  const head = card.querySelector('.axdb-widget-h');
+  if (head) head.insertAdjacentHTML('beforeend', '<span class="pin" title="Pinned">📌</span>');
+  host.onclick = () => setFocus(widget.id);
 }
 
-/** The renderer hands us a fresh host the first time a custom node mounts. */
-function renderCustomNode(node, host) { paintWidget(node, host); }
-
-function repaint(nodeId) {
-  const host = hosts.get(nodeId), node = ctxRef?.diagram.getNode(nodeId);
-  if (host && node) paintWidget(node, host);
+/** (API gap #7) `WidgetHandle.repaint()` paints through the kit's own host map,
+ *  which is filled by renderCustomNode — and a custom node MOUNTS ONCE. After a
+ *  Load rebuilds the spec the hosts are already mounted, so the new spec never
+ *  sees them and repaint() silently no-ops. The page therefore keeps its own
+ *  host+spec maps (two lines in renderWidget) and repaints from those. */
+function repaint(id) {
+  const host = hosts.get(id), widget = specs.get(id);
+  if (host && widget) renderWidget(widget, host);
 }
+function repaintAll() { for (const id of hosts.keys()) repaint(id); }
 
-function setFocus(nodeId) {
+function setFocus(id) {
   const prev = state.focus;
-  state.focus = nodeId;
-  if (prev && prev !== nodeId) repaint(prev);
-  if (nodeId) repaint(nodeId);
+  state.focus = id;
+  if (prev && prev !== id) repaint(prev);
+  if (id) repaint(id);
   syncToolbar();
 }
 
@@ -433,209 +319,6 @@ function flash(msg) {
   // real edit happens underneath. It doubles as a live activity readout.
   statusEl.textContent = `${++state.seq} · ${msg}`;
   statusEl.classList.add('show');
-}
-
-/* ---------------------------------------------------------------------------
-   4. THE BOARD. Each tab is a top-level GroupModel with NO auto-layout: its
-   members carry integer PACK CELLS in the existing GridItemConfig, and one
-   kit binder per view (`bindDashboardGrid`) owns placement — a GridPackEngine
-   mirrors the members and every pixel is projected from cells. All three
-   views are pack now (the old flex/CSS-grid layouts are gone): the seeds
-   reproduce the previous visual layout — the Pipeline cells are EXACTLY the
-   old grid placement doubled onto 12 columns, and Overview/Sales keep their
-   arrangement with heights snapped to the uniform row grid.
-
-   ONE FLAT GRID PER VIEW — deliberately. Every widget, KPI tiles included, is
-   a DIRECT member of its tab's 12-column grid: no nested section, no locked
-   slab, no bounded strip. That is the whole point of this page — resizing one
-   KPI resizes ONLY that KPI (never "the whole row grows"), and dragging any
-   tile onto any other behaves by the ordinary pack rules, with no special
-   case to learn. The advanced constructs (nested/bounded sections with
-   `maxRows`, cross-container boards, explicit placement) live on their own
-   page — demos/dashboard/grid-options.html — where they are labelled as
-   options rather than mixed into the flagship dashboard.
-
-   Inactive tabs are parked OFF-CANVAS; the camera frames the active one; the
-   binders re-project members whenever a frame moves (bounds:changed), which
-   is what carries a parked board's widgets with it.
---------------------------------------------------------------------------- */
-const TAB_W = 1180, TAB_H = 660, OFFSCREEN_X = -20000;
-const GAP = 8, BASE_ROW = 130;    // pack gap/padding + the 'grow' row height
-// GAP is the space between widget rows AND columns (it is also the board's
-// padding). RADIUS below is the widget-card corner; the kit's placeholder and
-// its corner resize-handle arc both follow it via --axdb-rs-radius, so the
-// three can never drift apart.
-const tabs = {};                  // id -> GroupModel
-const binders = { overview: null, sales: null, pipeline: null };
-let sizingMode = 'fit';           // 'fit' (default, DevExtreme-style) | 'grow'
-
-/** A dashboard group is a LAYOUT CONTAINER, not a document group — it must
- *  hold its children without LOOKING like a group. Without this flag the
- *  renderer painted full group chrome (frame + title band, "Overview"/"KPIs")
- *  under the HTML widget cards: stray rectangles behind the board on load, and
- *  a dragged widget "left its rectangle behind" (live user report — the frame
- *  correctly stayed, but it read as a piece of the widget). frameChrome:'none'
- *  silences open-state chrome only; a collapsed group still draws. */
-function asLayoutContainer(g) { g.setMetadata('frameChrome', 'none'); return g; }
-
-/** Author a widget node directly (used to SEED the initial document — a load,
- *  not an undoable edit, so it stays off the history stack). Interactive adds
- *  go through commands instead — see addWidgetCmd(). Cell spans live in
- *  metadata so a cell-less node (palette add) can auto-position at its
- *  intended size; the authoritative placement is the gridItem the binder
- *  keeps in sync. */
-function makeWidgetNode(kind, span, rows, spec) {
-  const n = new NodeModel({ type: 'widget', position: { x: 0, y: 0 }, size: { width: 120, height: 90, depth: 0 } });
-  n.setMetadata('useHTMLLayer', true);       // -> renderCustomNode host
-  n.setMetadata('columnSpan', span);         // -> pack width fallback (cells)
-  n.setMetadata('rowSpan', rows);            // -> pack height fallback (cells)
-  n.setMetadata('widgetKind', kind);
-  n.setMetadata('widgetSpec', spec || {});
-  // A dashboard has no wires: connectable:false makes the engine refuse this
-  // node as connection source AND target, the renderer paint no port glyphs on
-  // hover, and the controller not hover them (live user report: hovering a
-  // tile surfaced four side-port dots).
-  n.setBehavior({ connectable: false });
-  return n;
-}
-/** Seed a widget at explicit integer cells {x,y,w,h}. */
-function seedWidget(diagram, group, kind, cell, spec) {
-  const n = makeWidgetNode(kind, cell.w, cell.h, spec);
-  n.setGridItem({ columnStart: cell.x + 1, columnEnd: cell.x + cell.w + 1,
-                  rowStart: cell.y + 1, rowEnd: cell.y + cell.h + 1 });
-  diagram.addNode(n);
-  group.addMember(n.id);
-  return n;
-}
-
-function buildBoard(diagram) {
-  // --- Tab: OVERVIEW (12-col pack) --------------------------------------
-  const overview = new GroupModel({ id: 'tab-overview', name: 'Overview' });
-  asLayoutContainer(overview);
-  overview.size = { width: TAB_W, height: TAB_H, depth: 0 };
-  overview.position = { x: 0, y: 0 };
-  diagram.addGroup(overview);
-  tabs.overview = overview;
-
-  // The four KPI tiles are ORDINARY members of the same 12-column grid — three
-  // columns each across row 0. Nothing wraps them, so resizing one changes only
-  // that one and dragging any tile onto any other follows the ordinary rules.
-  ['revenue', 'customers', 'avgDeal', 'winRate'].forEach((kpi, i) => {
-    seedWidget(diagram, overview, 'kpi', { x: i * 3, y: 0, w: 3, h: 1 }, { kpi });
-  });
-  seedWidget(diagram, overview, 'line',  { x: 0, y: 1, w: 8,  h: 2 }, { title: 'Revenue vs target' });
-  seedWidget(diagram, overview, 'donut', { x: 8, y: 1, w: 4,  h: 2 }, { source: 'region', title: 'Revenue by region' });
-  seedWidget(diagram, overview, 'table', { x: 0, y: 3, w: 12, h: 2 }, { title: 'Top reps by revenue' });
-
-  // --- Tab: SALES (12-col pack) -----------------------------------------
-  const sales = new GroupModel({ id: 'tab-sales', name: 'Sales' });
-  asLayoutContainer(sales);
-  sales.size = { width: TAB_W, height: TAB_H, depth: 0 };
-  sales.position = { x: OFFSCREEN_X, y: 0 };
-  diagram.addGroup(sales);
-  tabs.sales = sales;
-  seedWidget(diagram, sales, 'bar',   { x: 0, y: 0, w: 7,  h: 2 }, { title: 'Revenue by region' });
-  seedWidget(diagram, sales, 'donut', { x: 7, y: 0, w: 5,  h: 2 }, { source: 'region', title: 'Region share' });
-  seedWidget(diagram, sales, 'line',  { x: 0, y: 2, w: 12, h: 2 }, { title: 'Monthly revenue trend' });
-
-  // --- Tab: PIPELINE (explicit pack cells — the old grid placement ×2) ---
-  // The hero funnel takes explicit cells (cols 0-5, rows 0-1 of 12×3 — the
-  // exact pixels the old 6-column CSS grid produced) and the other tiles sit
-  // in the cells around it. Under pack these stay EDITABLE: drag the donut
-  // onto the KPI and they swap; the funnel pushes like any tile.
-  const pipeline = new GroupModel({ id: 'tab-pipeline', name: 'Pipeline' });
-  asLayoutContainer(pipeline);
-  pipeline.size = { width: TAB_W, height: TAB_H, depth: 0 };
-  pipeline.position = { x: OFFSCREEN_X, y: 0 };
-  diagram.addGroup(pipeline);
-  tabs.pipeline = pipeline;
-  seedWidget(diagram, pipeline, 'funnel', { x: 0, y: 0, w: 6,  h: 2 }, { title: 'Conversion funnel' });
-  seedWidget(diagram, pipeline, 'donut',  { x: 6, y: 0, w: 6,  h: 1 }, { source: 'pipeline', title: 'Pipeline by stage' });
-  seedWidget(diagram, pipeline, 'kpi',    { x: 6, y: 1, w: 6,  h: 1 }, { kpi: 'winRate' });
-  seedWidget(diagram, pipeline, 'table',  { x: 0, y: 2, w: 12, h: 1 }, { title: 'Top reps by revenue' });
-}
-
-/* ---------------------------------------------------------------------------
-   4b. THE KIT BINDERS — exactly ONE per view, no nested binders. Everything
-   interactive (live push while hovering, the truthful placeholder, corner
-   resize with live push, pin refusal, Esc restore, palette drag-in, drag-out
-   remove, ONE BatchCommand per gesture) is the kit's; the page only supplies
-   its command paths for add/remove and reacts to gesture ends.
---------------------------------------------------------------------------- */
-let lastPaletteGestureAt = 0;   // suppresses the click-add after a real drag-in
-
-function tabBinderOptions(tabId) {
-  return {
-    gap: GAP, padding: GAP, sizing: sizingMode, baseRowHeight: BASE_ROW,
-    designHeight: TAB_H, dragOut: 'remove',
-    // Deletion needs INTENT: only a release over the palette removes (the
-    // trash affordance, gridstack-web2 style). A slip past the frame edge
-    // snaps home - the plan prototype cannot delete by overshoot at all.
-    removeZone: (screen) => {
-      const pal = document.getElementById('db-palette');
-      if (!pal) return false;
-      const r = pal.getBoundingClientRect();
-      return screen.x <= r.right + 8;
-    },
-    // Drag-out release → the page's atomic remove path, survivors' cell
-    // commits folded into the SAME batch so one undo restores the board.
-    onRemoveRequest: (nodeId, displaced) => removeWidgetCmd(nodeId, displaced),
-    // Palette drag-in release → the page's add path (the node already carries
-    // its cells; displaced neighbours commit in the same batch as the add).
-    onDropIn: async (node, cell, displaced) => {
-      await cmd().execute(new AddNodeCommand(node));
-      await cmd().execute(new BatchCommand('Add widget',
-        [new AddToGroupCommand(tabs[tabId].id, node.id), ...displaced]));
-      setFocus(node.id);
-      syncToolbar();
-      flash(`dropped ${node.getMetadata('widgetKind')} at column ${cell.x + 1}, row ${cell.y + 1}`);
-    },
-    onGesture: (e) => {
-      lastPaletteGestureAt = e.kind === 'palette' ? Date.now() : lastPaletteGestureAt;
-      if (e.type === 'commit') {
-        setFocus(e.nodeId);
-        flash(e.changed
-          ? (e.kind === 'resize' ? 'resize committed — one undoable step' : 'move committed — one undoable step')
-          : 'released — nothing changed');
-      } else if (e.type === 'cancel' && e.kind !== 'palette') {
-        flash('cancelled — every tile restored');
-      }
-      // The gesture's BatchCommand executes async (wave-3 commit pattern:
-      // pointerup never blocks on it) — resync once it has landed so the
-      // Undo button lights up.
-      syncToolbar();
-      setTimeout(syncToolbar, 0);
-    },
-  };
-}
-
-/** (Re)bind every view — used at boot and again after a load rebuilds the
- *  model (binders hold group references, so a rebuilt document needs fresh
- *  ones). One binder per tab; nothing nested. */
-function bindAll() {
-  for (const key of Object.keys(binders)) { binders[key]?.dispose(); binders[key] = null; }
-  const inst = ctxRef.instance;
-  binders.overview = bindDashboardGrid(inst, tabs.overview, tabBinderOptions('overview'));
-  binders.sales    = bindDashboardGrid(inst, tabs.sales,    tabBinderOptions('sales'));
-  binders.pipeline = bindDashboardGrid(inst, tabs.pipeline, tabBinderOptions('pipeline'));
-}
-
-/** The binder that owns a widget (i.e. the tab whose grid holds its cells). */
-function binderOwning(nodeId) {
-  for (const key of ['overview', 'sales', 'pipeline']) {
-    if (binders[key] && binders[key].cellOf(nodeId)) return binders[key];
-  }
-  return null;
-}
-
-/** Re-sync every binder from the model (undo/redo/load land here), then
- *  re-frame and repaint. This is all that remains of the old relayoutBoard. */
-function refreshBoards() {
-  glide();
-  for (const key of ['overview', 'sales', 'pipeline']) binders[key]?.sync();
-  frameTab(state.active);
-  ctxRef.instance.renderNow();
-  for (const n of ctxRef.diagram.getNodes()) repaint(n.id);
 }
 
 /** Arm the page-side reflow transition for one non-gesture relayout burst
@@ -649,212 +332,300 @@ function glide() {
   glideTimer = setTimeout(() => layer.classList.remove('glide'), 420);
 }
 
-/** Point the camera at a tab's frame. */
-function frameTab(id) {
-  const g = tabs[id];
-  ctxRef.instance.viewport.fitToBounds({ x: g.position.x, y: g.position.y, width: g.size.width, height: g.size.height }, 26, { maxZoom: 1 });
+const cmd = () => ctxRef.instance.getEngine().commandManager;
+
+/* ---------------------------------------------------------------------------
+   4. MOUNT. dashboard() → render(). Load re-runs mountBoard() with the saved
+   layout, which is the data-first round-trip: toJSON() output IS dashboard()
+   input.
+--------------------------------------------------------------------------- */
+function buildSpec(views) {
+  for (const v of views) for (const w of v.widgets) specs.set(w.id, w);
+  return dashboard({
+    ...BOARD,
+    sizing: sizingMode,
+    float: floatMode,
+    views,
+    renderWidget,
+    // Fires after every committed gesture: the undo button must light up as
+    // soon as the gesture's BatchCommand has landed.
+    onLayoutChange: () => syncToolbar(),
+    // The escape hatch dashboard() documents: options handed straight to the
+    // binder underneath. Drag-out-to-remove and palette drop-in are page
+    // COMMAND paths, so the kit asks rather than deletes.
+    binder: {
+      dragOut: 'remove',
+      // Deletion needs INTENT: only a release over the palette removes (the
+      // trash affordance, gridstack-web2 style). A slip past the frame edge
+      // snaps home — the plan prototype cannot delete by overshoot at all.
+      removeZone: (screen) => {
+        const pal = document.getElementById('db-palette');
+        if (!pal) return false;
+        return screen.x <= pal.getBoundingClientRect().right + 8;
+      },
+      onRemoveRequest: (nodeId) => removeWidget(nodeId),
+      onDropIn: (node, cell) => dropIn(node, cell),
+      onGesture: (e) => {
+        lastPaletteGestureAt = e.kind === 'palette' ? Date.now() : lastPaletteGestureAt;
+        if (e.type === 'commit') {
+          setFocus(e.nodeId);
+          flash(e.changed
+            ? (e.kind === 'resize' ? 'resize committed — one undoable step' : 'move committed — one undoable step')
+            : 'released — nothing changed');
+        } else if (e.type === 'cancel' && e.kind !== 'palette') {
+          flash('cancelled — every tile restored');
+        }
+        syncToolbar();
+        setTimeout(syncToolbar, 0);
+      },
+    },
+  });
 }
 
-/** Switch views: park the others off-canvas, bring this one to (0,0), reframe.
-    The library has no "pages" — this is composed from groups + the camera. */
-function switchTab(id) {
-  if (!tabs[id]) return;
-  state.active = id;
-  for (const [tid, g] of Object.entries(tabs)) {
-    const x = tid === id ? 0 : OFFSCREEN_X;
-    if (g.position.x !== x) g.setFrame({ x, y: 0, width: g.size.width, height: g.size.height });
-  }
-  // focus follows the view (first widget of the active tab), so the toolbar
-  // always has a live target.
-  const first = [...(tabs[id].members || [])].map((m) => ctxRef.diagram.getNode(m)).find(Boolean);
-  state.focus = first ? first.id : null;
+/** Run after every mount (boot and every Load rebuild). */
+function afterMount(active) {
+  // (API gap #5) dashboard() does not mark widget nodes unconnectable, so a
+  // hovered widget sprouts four port dots (a live user report against the old
+  // hand-built page). A dashboard has no wires: say so.
+  for (const v of H.views) for (const w of H.widgetsOf(v)) w.node?.setBehavior({ connectable: false });
+  for (const id of [...hosts.keys()]) if (!ctxRef.diagram.getNode(id)) { hosts.delete(id); specs.delete(id); }
+  showView(H.views.includes(active) ? active : H.views[0]);
+}
+
+/** Switch views: the handle parks the others off-canvas and re-frames. Focus
+ *  follows the view so the toolbar always has a live target. */
+function showView(id) {
+  H.showView(id);
+  state.focus = H.widgetsOf()[0]?.id ?? null;
   for (const btn of document.querySelectorAll('.db-tab')) btn.setAttribute('aria-selected', String(btn.dataset.tab === id));
-  frameTab(id);
   ctxRef.instance.renderNow();
-  for (const n of ctxRef.diagram.getNodes()) repaint(n.id);
+  repaintAll();
   syncToolbar();
   flash(`view: ${id}`);
+}
+
+/** Re-sync every board from the model (undo/redo land here), then re-frame and
+ *  repaint. (API gap #4) The handle has no "the model changed underneath you"
+ *  refresh, so the page reaches for each view's binder. */
+function refresh() {
+  glide();
+  for (const v of H.views) H.binderOf(v)?.sync();
+  H.showView(H.activeView);       // the only re-frame the handle exposes
+  ctxRef.instance.renderNow();
+  repaintAll();
 }
 
 /* ---------------------------------------------------------------------------
    5. TOOLBAR + PALETTE — every edit is an UNDOABLE Command from the front door.
 --------------------------------------------------------------------------- */
-function cmd() { return ctxRef.instance.getEngine().commandManager; }
-function focusedNode() { return state.focus ? ctxRef.diagram.getNode(state.focus) : null; }
+let lastPaletteGestureAt = 0;   // suppresses the click-add after a real drag-in
 
 function syncToolbar() {
   const cm = cmd();
   document.getElementById('t-undo').disabled = !cm.canUndo();
   document.getElementById('t-redo').disabled = !cm.canRedo();
-  const has = !!focusedNode();
-  for (const id of ['t-pin', 't-front', 't-back', 't-grow', 't-remove']) document.getElementById(id).disabled = !has;
-  const n = focusedNode();
-  document.getElementById('t-pin').textContent = n && n.state?.locked ? '📌 Unpin' : '📌 Pin';
+  const w = state.focus ? H.widget(state.focus) : null;
+  for (const id of ['t-pin', 't-front', 't-back', 't-grow', 't-remove']) document.getElementById(id).disabled = !w;
+  document.getElementById('t-pin').textContent = w && w.pinned ? '📌 Unpin' : '📌 Pin';
 }
 
-/** ADD (click-to-add): an atomic add-into-group needs two commands, because
- *  AddToGroupCommand.canExecute pre-gates on the node already existing — so it
- *  cannot be BatchCommand-ed with AddNodeCommand (see report, library gap). We
- *  run them in sequence; the node carries NO cells, so the view's binder
- *  auto-positions it into the first free hole (engine.add autoPosition) and
- *  persists the assigned cells into its gridItem. */
-async function addWidgetCmd(kind) {
+/** (API gap #1) `handle.addWidget()` ADOPTS a node that already exists in the
+ *  model — it cannot create one, and it is not undoable. So an interactive add
+ *  is still three steps: the page builds the NodeModel (carrying the kit's
+ *  columnSpan/rowSpan metadata, which addWidget does not write either),
+ *  AddNodeCommand puts it in the model, addWidget registers it with the
+ *  dashboard (MUST happen before the first paint — renderCustomNode returns
+ *  early for an id the spec does not know, and a custom node mounts once), and
+ *  AddToGroupCommand makes the membership undoable. */
+function makeWidgetNode(p) {
+  const n = new NodeModel({ type: 'widget', position: { x: 0, y: 0 }, size: { width: 120, height: 90, depth: 0 } });
+  n.setMetadata('useHTMLLayer', true);
+  n.setMetadata('columnSpan', p.span);
+  n.setMetadata('rowSpan', p.rows);
+  n.setMetadata('widgetKind', p.kind);
+  n.setMetadata('widgetSpec', p.data ?? {});
+  n.setBehavior({ connectable: false });
+  return n;
+}
+const widgetSpecOf = (p, id) => ({ id, kind: p.kind, span: p.span, rows: p.rows, title: p.title, data: p.data });
+
+async function addWidget(kind) {
   glide();
-  const p = PALETTE_SPEC[kind];
-  const target = tabs[state.active];
-  const node = makeWidgetNode(p.kind, p.span, p.rows, { ...p.spec });
+  const p = PALETTE[kind];
+  const view = H.activeView;
+  const node = makeWidgetNode(p);
   await cmd().execute(new AddNodeCommand(node));
-  await cmd().execute(new AddToGroupCommand(target.id, node.id));
+  H.addWidget(widgetSpecOf(p, node.id), view);          // auto-positions into the first free hole
+  await cmd().execute(new AddToGroupCommand(view, node.id));
   ctxRef.instance.renderNow();
   setFocus(node.id);
-  flash(`added ${p.kind} → ${state.active} (auto-positioned)`);
+  flash(`added ${p.kind} → ${view} (auto-positioned)`);
   return node.id;
 }
 
-/** REMOVE: ONE undoable batch — membership + node + the survivors' cell
- *  commits (binder.planRemoval), so undo restores the exact board: the
- *  neighbours' cells rewind first, then the widget re-enters its old cells
- *  with nothing in the way. `displaced` comes pre-computed when the kit's
- *  drag-out-to-remove path calls in (the gesture already knows its diff). */
-async function removeWidgetCmd(nodeId, displaced = null) {
+/** Palette DRAG-IN release: the node is already placed in the engine and
+ *  carries its cell; commit the add through the page's command path. */
+async function dropIn(node, cell) {
+  const view = H.activeView;
+  await cmd().execute(new AddNodeCommand(node));
+  H.addWidget(widgetSpecOf(node.__palette, node.id), view);
+  await cmd().execute(new AddToGroupCommand(view, node.id));
+  ctxRef.instance.renderNow();
+  setFocus(node.id);
+  syncToolbar();
+  flash(`dropped ${node.__palette.kind} at column ${cell.x + 1}, row ${cell.y + 1}`);
+}
+
+/** REMOVE: ONE undoable batch — membership + node + the survivors' re-pack, so
+ *  undo restores the exact board. `WidgetHandle.remove()` folds all three in.
+ *
+ *  (API gap #2) The kit's drag-out hook hands over the survivors' commands
+ *  (`displaced`) because its gesture already computed them — and remove() has
+ *  nowhere to put them: it recomputes planRemoval(), which returns [] once the
+ *  gesture has dropped the tile from the engine. Re-syncing the binder first
+ *  restores the pre-gesture truth so remove() plans the same batch by itself. */
+function removeWidget(id) {
   glide();
-  const node = ctxRef.diagram.getNode(nodeId); if (!node) return;
-  const owner = binderOwning(nodeId);
-  const groupId = Object.values(tabs).find((g) => g && g.members?.has(nodeId))?.id;
-  const cmds = [];
-  if (groupId) cmds.push(new RemoveFromGroupCommand(groupId, nodeId));
-  cmds.push(new RemoveNodeCommand(nodeId));
-  cmds.push(...(displaced ?? (owner ? owner.planRemoval(nodeId) : [])));
-  await cmd().execute(new BatchCommand('Remove widget', cmds));
-  hosts.delete(nodeId);
-  if (state.focus === nodeId) state.focus = null;
+  const w = H.widget(id);
+  if (!w) return;
+  H.binderOf(w.viewId)?.sync();
+  w.remove();
+  hosts.delete(id); specs.delete(id);
+  if (state.focus === id) state.focus = null;
   ctxRef.instance.renderNow();
   syncToolbar();
   flash('removed widget (survivors re-packed)');
 }
 
 /** RESIZE (toolbar): cycle the focused tile's row span 1→2→3→1 through the
- *  binder's programmatic gesture — same engine pipeline as the corner drag,
- *  same ONE-BatchCommand commit. */
-async function growWidgetCmd(nodeId) {
-  const b = binderOwning(nodeId); if (!b) return;
-  const cell = b.cellOf(nodeId); if (!cell) return;
-  const h = cell.h >= 3 ? 1 : cell.h + 1;
-  const changed = await b.resizeTo(nodeId, cell.w, h);
-  flash(changed ? `resized → ${h} row${h > 1 ? 's' : ''} tall (neighbours pushed live)` : 'resize refused (pinned neighbour?)');
+ *  handle — same engine pipeline as the corner drag, same ONE-BatchCommand
+ *  commit. (API gap #3) resize() returns void: the binder's accepted/refused
+ *  boolean is swallowed, so the page compares cells to know what happened. */
+async function cycleRows(id) {
+  const w = H.widget(id);
+  if (!w?.cell) return;
+  const before = w.cell.h;
+  const rows = before >= 3 ? 1 : before + 1;
+  await w.resize(w.cell.w, rows);
+  const after = w.cell.h;
+  flash(after !== before ? `resized → ${after} row${after > 1 ? 's' : ''} tall (neighbours pushed live)`
+                         : 'resize refused (pinned neighbour?)');
 }
 
-/** PIN/LOCK: authoritative per-node lock (commit b76b2b5e2 part D). NOTE:
- *  there is NO undoable Lock command in the library — we toggle state.locked
- *  directly (exactly as the engine's own integration spec does). Reported.
- *  The binder re-syncs so the engine's `locked` flag (never pushed, drags
- *  refused) and the hidden resize handle follow the pin immediately. */
-function togglePin(nodeId) {
-  const node = ctxRef.diagram.getNode(nodeId); if (!node) return;
-  node.setState({ locked: !node.state?.locked });
-  binderOwning(nodeId)?.sync();
-  repaint(nodeId); syncToolbar();
-  flash(node.state?.locked ? 'pinned (keeps its cells; drags onto it refused)' : 'unpinned');
+/** PIN/LOCK: the authoritative per-node lock. (API gap #8) `pin()` writes the
+ *  node state but does not re-sync the binder, so the engine's own `locked`
+ *  flag (never pushed, drags refused) and the hidden resize handle would lag a
+ *  frame behind the toolbar. */
+function togglePin(id) {
+  const w = H.widget(id);
+  if (!w) return;
+  w.pin();
+  H.binderOf(w.viewId)?.sync();
+  repaint(id); syncToolbar();
+  flash(w.pinned ? 'pinned (keeps its cells; drags onto it refused)' : 'unpinned');
 }
 
-/** SIZING MODE: fit (default) keeps every board at its design height and
- *  squeezes rows to fit (DevExtreme-style — nothing can fall below the
- *  fold); grow keeps the 130px design row and extends the board downward,
- *  after which the camera refits the taller frame. */
-let floatMode = false;
 function setFloatMode(on) {
   if (on === floatMode) return;
   floatMode = on;
   glide();
-  for (const key of ['overview', 'sales', 'pipeline']) binders[key]?.setFloat(on);
+  H.setFloat(on);
   document.getElementById('t-float').textContent = `Float: ${on ? 'on' : 'off'}`;
   ctxRef.instance.renderNow();
-  for (const n of ctxRef.diagram.getNodes()) repaint(n.id);
-  flash(on
-    ? 'Float ON: widgets stay wherever you put them - gaps are legal'
-    : 'Float OFF: gravity packs widgets upward');
+  repaintAll();
+  flash(on ? 'Float ON: widgets stay wherever you put them - gaps are legal'
+           : 'Float OFF: gravity packs widgets upward');
 }
 
+/** SIZING MODE: fit (default) keeps every board at its design height and
+ *  squeezes rows (DevExtreme-style — nothing falls below the fold); grow keeps
+ *  the 130px design row and extends the board downward. */
 function setSizingMode(mode) {
   if (mode === sizingMode) return;
   sizingMode = mode;
   glide();
-  for (const key of ['overview', 'sales', 'pipeline']) binders[key]?.setSizing(mode);
+  H.setSizing(mode);
   document.getElementById('t-mode').textContent = `Mode: ${mode}`;
-  // fit: refit the camera to the design-height board. grow: KEEP the camera -
+  // fit: refit the camera to the design-height board. grow: KEEP the camera —
   // the board extends past the fold and panning reaches it; refitting would
-  // shrink the view and make grow visually identical to fit.
-  if (mode === 'fit') frameTab(state.active);
+  // shrink the view and make grow visually identical to fit. (API gap #9) the
+  // only re-frame the handle exposes is showView().
+  if (mode === 'fit') H.showView(H.activeView);
   ctxRef.instance.renderNow();
-  for (const n of ctxRef.diagram.getNodes()) repaint(n.id);
+  repaintAll();
   flash(mode === 'fit'
     ? 'FIT: boards keep their height — rows squeeze so everything stays visible'
     : 'GROW: rows keep their height — boards extend downward (camera refits)');
 }
 
-async function saveBoard() {
-  state.saved = JSON.stringify(ctxRef.diagram.serialize());   // real serialization
+/** SAVE / LOAD — the data-first round-trip: toJSON() returns plain view data,
+ *  and that data is valid dashboard() input, so Load is just another mount. */
+function saveBoard() {
+  state.saved = JSON.stringify(H.toJSON());
   try { localStorage.setItem('grafloria-dashboard', state.saved); } catch { /* private mode */ }
-  const n = ctxRef.diagram.getNodes().length;
+  const n = H.views.reduce((s, v) => s + H.widgetsOf(v).length, 0);
   flash(`saved · ${n} widgets · ${state.saved.length.toLocaleString()} bytes`);
 }
 
-/** LOAD: clear the live model and rebuild it from the serialized snapshot via
- *  per-entity fromJSON — cells ride in each node's gridItem, so the binders
- *  re-project the exact saved board. The old
- *  binders hold dead group references after a rebuild; bindAll() replaces
- *  them. A faithful serialize round-trip (proven headlessly AND by the
- *  page's own assert). */
 function loadBoard() {
   if (!state.saved) { flash('nothing saved yet'); return; }
-  const doc = JSON.parse(state.saved);
-  for (const n of [...ctxRef.diagram.getNodes()]) ctxRef.diagram.removeNode(n.id);
+  glide();
+  const active = H.activeView;
+  H.dispose();                      // drop the old binders
+  // (API gap #6) dispose() leaves behind the GroupModels finalize() created, so
+  // a rebuild would stack a second set of boards. The page evicts them.
   for (const g of [...ctxRef.diagram.getGroups()]) ctxRef.diagram.removeGroup(g.id);
-  hosts.clear(); tabs.overview = tabs.sales = tabs.pipeline = undefined;
-  for (const g of doc.groups || []) {
-    const gm = GroupModel.fromJSON(g); ctxRef.diagram.addGroup(gm);
-    if (gm.id.startsWith('tab-')) tabs[gm.id.slice(4)] = gm;
-  }
-  for (const n of doc.nodes || []) ctxRef.diagram.addNode(NodeModel.fromJSON(n));
-  cmd().clear();                       // a load is not an undoable edit
-  bindAll();                           // fresh binders on the rebuilt groups
-  ctxRef.instance.renderNow();
-  switchTab(state.active);
-  flash('loaded from snapshot');
+  SPEC = buildSpec(JSON.parse(state.saved));
+  H = SPEC.handle;
+  // Reconcile the model to the rebuilt spec (same ids → the same hosts, so
+  // nothing remounts) and wire the fresh boards.
+  ctxRef.instance.setNodes(SPEC.nodes);
+  SPEC.finalize(ctxRef.instance);
+  cmd().clear();                    // a load is not an undoable edit
+  afterMount(active);
+  flash('loaded — toJSON() fed straight back into dashboard()');
 }
 
 function wireControls() {
-  for (const btn of document.querySelectorAll('.db-tab')) btn.addEventListener('click', () => switchTab(btn.dataset.tab));
+  for (const btn of document.querySelectorAll('.db-tab')) btn.addEventListener('click', () => showView(btn.dataset.tab));
   for (const btn of document.querySelectorAll('.pal-item')) {
     // Click-to-add stays; pointerdown ALSO arms the kit's palette DRAG-IN
     // (clone follows the cursor; entering the board places it live). A drag
     // that actually ran suppresses the click that may follow it.
     btn.addEventListener('click', () => {
       if (Date.now() - lastPaletteGestureAt < 400) return;   // that click was a drag
-      addWidgetCmd(btn.dataset.add);
+      addWidget(btn.dataset.add);
     });
     btn.addEventListener('pointerdown', (e) => {
       if (e.button !== 0) return;
-      const p = PALETTE_SPEC[btn.dataset.add];
-      const target = binders[state.active];
-      if (!p || !target) return;
-      const node = makeWidgetNode(p.kind, p.span, p.rows, { ...p.spec });
+      const p = PALETTE[btn.dataset.add];
+      // (API gap #10) palette drag-in lives only on the binder — the handle has
+      // no beginPaletteDrag — so this is the one gesture that must reach one
+      // layer down through binderOf().
+      const binder = H.binderOf();
+      if (!p || !binder) return;
+      const node = makeWidgetNode(p);
+      node.__palette = p;
       const chip = btn.cloneNode(true);
       chip.style.width = `${btn.offsetWidth}px`;
-      target.beginPaletteDrag(node, { w: p.span, h: p.rows, chip }, e);
+      binder.beginPaletteDrag(node, { w: p.span, h: p.rows, chip }, e);
     });
   }
-  document.getElementById('t-undo').addEventListener('click', async () => { const cm = cmd(); if (cm.canUndo()) { await cm.undo(); refreshBoards(); } syncToolbar(); flash('undo'); });
-  document.getElementById('t-redo').addEventListener('click', async () => { const cm = cmd(); if (cm.canRedo()) { await cm.redo(); refreshBoards(); } syncToolbar(); flash('redo'); });
-  document.getElementById('t-mode').addEventListener('click', () => setSizingMode(sizingMode === 'fit' ? 'grow' : 'fit'));
-  document.getElementById('t-float').addEventListener('click', () => setFloatMode(!floatMode));
-  document.getElementById('t-pin').addEventListener('click', () => { if (state.focus) togglePin(state.focus); else flash('focus a tile first'); });
-  document.getElementById('t-front').addEventListener('click', async () => { if (state.focus) { await cmd().execute(new BringNodeToFrontCommand(state.focus)); ctxRef.instance.renderNow(); syncToolbar(); flash('brought to front'); } else flash('focus a tile first'); });
-  document.getElementById('t-back').addEventListener('click', async () => { if (state.focus) { await cmd().execute(new SendNodeToBackCommand(state.focus)); ctxRef.instance.renderNow(); syncToolbar(); flash('sent to back'); } else flash('focus a tile first'); });
-  document.getElementById('t-grow').addEventListener('click', async () => { if (state.focus) { await growWidgetCmd(state.focus); syncToolbar(); } else flash('focus a tile first'); });
-  document.getElementById('t-remove').addEventListener('click', async () => { if (state.focus) { await removeWidgetCmd(state.focus); syncToolbar(); } else flash('focus a tile first'); });
-  document.getElementById('t-save').addEventListener('click', () => saveBoard());
-  document.getElementById('t-load').addEventListener('click', () => loadBoard());
+  const on = (id, fn) => document.getElementById(id).addEventListener('click', fn);
+  const focused = (fn) => async () => { if (state.focus) { await fn(state.focus); syncToolbar(); } else flash('focus a tile first'); };
+  on('t-undo', async () => { const cm = cmd(); if (cm.canUndo()) { await cm.undo(); refresh(); } syncToolbar(); flash('undo'); });
+  on('t-redo', async () => { const cm = cmd(); if (cm.canRedo()) { await cm.redo(); refresh(); } syncToolbar(); flash('redo'); });
+  on('t-mode', () => setSizingMode(sizingMode === 'fit' ? 'grow' : 'fit'));
+  on('t-float', () => setFloatMode(!floatMode));
+  on('t-pin', focused(togglePin));
+  on('t-grow', focused(cycleRows));
+  on('t-remove', focused(removeWidget));
+  // (API gap #11) z-order is not on the handle — but every command is on the
+  // front door, and a widget handle exposes its node, so the app just says so.
+  on('t-front', focused(async (id) => { await cmd().execute(new BringNodeToFrontCommand(id)); ctxRef.instance.renderNow(); flash('brought to front'); }));
+  on('t-back', focused(async (id) => { await cmd().execute(new SendNodeToBackCommand(id)); ctxRef.instance.renderNow(); flash('sent to back'); }));
+  on('t-save', () => saveBoard());
+  on('t-load', () => loadBoard());
 }
 
 /* ---------------------------------------------------------------------------
@@ -862,33 +633,40 @@ function wireControls() {
 --------------------------------------------------------------------------- */
 defineDemo({
   name: 'Dashboard builder',
-  blurb: 'A dashboard-builder app on the dashboard kit (bindDashboardGrid + GridPackEngine): ONE flat 12-column PACK grid per view, holding hand-drawn chart widgets across Overview / Sales / Pipeline. Every widget — KPI tiles included — is a direct member of that one grid, so there is a single rule to learn: drag a tile and neighbours slide out of the way live around a truthful placeholder; resize from the corner and only that tile changes while the rows below push per cell-step; pinned tiles refuse the mover; Esc restores; palette drag-in and drag-out-to-remove; fit/grow sizing — every gesture ONE undoable BatchCommand, from the @grafloria/element front door.',
+  blurb: 'A dashboard-builder app authored with the kit\'s DATA-FIRST API: `dashboard({ views: [{ widgets: [{ id, kind, span, rows, data }] }] })` — three tabbed views declared as plain data, no groups/nodes/cells assembled by hand, and every chart drawn by the kit\'s built-in renderers (kpi / line / bar / donut / funnel / table) from this page\'s own dataset. render() wires the rest: ONE flat 12-column PACK grid per view, so drag a tile and neighbours slide out of the way live around a truthful placeholder; resize from the corner and only that tile changes; pinned tiles refuse the mover; Esc restores; palette drag-in and drag-out-to-remove; fit/grow sizing — every gesture ONE undoable BatchCommand, from the @grafloria/element front door.',
   howTo: [
+    'THE BOARD IS A LITERAL: read the VIEWS array at the top of the page source — that is the entire dashboard. Widgets that name no cell flow and wrap at the column count; Pipeline mixes one explicit cell into the flow. Save then Load round-trips it: SPEC.handle.toJSON() returns the same shape and is fed straight back to dashboard().',
     'Drag any tile: it ghosts under the cursor while the dashed placeholder always shows the exact drop cell, and neighbours glide out of the way LIVE — same-size tiles swap, the 8-wide line chart and 4-wide donut exchange order, and a small KPI dragged more than halfway into a big chart displaces it (the three gridstack swap shapes + the directional-penetration gate). Esc mid-drag restores everything.',
     'Hover a tile and drag its bottom-right corner: each cell-step pushes the rows below live; shrink back in the same gesture and they return (displaced-tile memory). Resizing ONE KPI changes only that KPI — its neighbours keep their cells.',
     'The four KPI tiles are ordinary members of the same 12-column grid (3 columns each): nothing here is a special case, so any tile can be dragged onto any other and every widget resizes the same way.',
-    'Mode: fit keeps each board at its design height and squeezes rows so nothing can leave the viewport (DevExtreme-style); Mode: grow keeps 130px rows and extends the board downward, camera refitting. Float: on lets tiles sit anywhere with gaps; off packs upward.',
+    'Mode: fit keeps each board at its design height and squeezes rows so nothing can leave the viewport (DevExtreme-style); Mode: grow keeps 130px rows and extends the board downward. Float: on lets tiles sit anywhere with gaps; off packs upward. Both are one call on SPEC.handle.',
     'Drag a widget from the left palette onto the board (or just click it): the clone follows the cursor and the board makes room live from the moment it enters. Drag a tile OUT over the palette: the ghost dims — release deletes it, undoably, survivors re-packed in the same batch.',
-    'Every gesture commits ONE BatchCommand (cells + geometry): one Undo rewinds a whole drag or resize. Save serializes cells in the standard GridItemConfig; Load rebuilds the exact board.',
-    'Advanced grid constructs — nested/bounded sections (maxRows), two boards with cross-container drag, explicit cell placement — live on their own page: dashboard/grid-options.html. They are deliberately kept OFF this dashboard so the model here stays plain.',
-    'Press "▶ run the scripted checks": it drives real pointer gestures and asserts the flat pack model — live push mid-drag, placeholder truth, resize push + shrink-restore, both swap directions, one-KPI-only resize, small-onto-big displacement, pin refusal, Esc restore, one-undo-per-gesture, both sizing modes.',
+    'Every gesture commits ONE BatchCommand (cells + geometry): one Undo rewinds a whole drag or resize.',
+    'Advanced grid constructs — nested/bounded sections (maxRows), two boards with cross-container drag, explicit cell placement — live on their own page: dashboard/grid-options.html, which drives the binder BENEATH this API directly.',
+    'Press "▶ run the scripted checks": it drives real pointer gestures and asserts the declared board — the flow-placed cells, live push mid-drag, placeholder truth, resize push + shrink-restore, both swap directions, one-KPI-only resize, small-onto-big displacement, pin refusal, Esc restore, one-undo-per-gesture, both sizing modes, and the toJSON round-trip.',
   ],
 
   async setup(ctx) {
-    // ONE public call mounts the diagram; we author the document on its model.
-    const instance = render({ nodes: [], edges: [] }, ctx.host, { renderCustomNode });
+    // The whole mount: a declared spec, one render() call. render() runs the
+    // spec's finalize() itself, which builds a chromeless board per view, binds
+    // the pack grid and parks every inactive view off-camera.
+    ctxRef = ctx;
+    statusEl = document.getElementById('db-status');
+    SPEC = buildSpec(VIEWS);
+    H = SPEC.handle;
+    // (API gap #13) render() auto-runs a kit spec's finalize() but ignores its
+    // renderCustomNode, so it must be passed through. The page routes it via
+    // the live SPEC binding rather than the value, because Load rebuilds the
+    // spec and renderCustomNode is fixed at mount time.
+    const instance = render(SPEC, ctx.host, { renderCustomNode: (n, host) => SPEC.renderCustomNode(n, host) });
     ctx.instance = instance;
     ctx.diagram = instance.getModel();
     ctx.engine = instance.getEngine();
-    ctxRef = ctx;
-    statusEl = document.getElementById('db-status');
 
-    buildBoard(ctx.diagram);
-    bindAll();               // the kit binders own placement from here on
-    window.__dash = { binders, tabs, state };   // console/e2e escape hatch
+    afterMount('overview');
+    window.__dash = { get spec() { return SPEC; }, get handle() { return H; }, state };
     wireControls();
     instance.renderNow();
-    switchTab('overview');
     syncToolbar();
 
     // Keep the active view framed as the canvas resizes. fitToBounds needs the
@@ -897,19 +675,18 @@ defineDemo({
     if (typeof ResizeObserver !== 'undefined') {
       const ro = new ResizeObserver(() => {
         const r = ctx.host.getBoundingClientRect();
-        if (r.width > 0 && r.height > 0 && tabs[state.active]) frameTab(state.active);
+        if (r.width > 0 && r.height > 0) H.showView(H.activeView);
       });
       ro.observe(ctx.host);
     }
     await ctx.tick();
-    frameTab('overview');   // belt-and-braces: reframe once the frame has settled
+    H.showView('overview');   // belt-and-braces: reframe once the frame has settled
   },
 
   // Money shot for the camera: focus a tile so the ring shows, on Overview.
   async showcase(ctx) {
-    switchTab('overview');
-    const first = [...(tabs.overview.members || [])].map((m) => ctx.diagram.getNode(m)).find((n) => n && n.getMetadata('widgetKind') === 'line');
-    if (first) setFocus(first.id);
+    showView('overview');
+    setFocus('trend');
     ctx.instance.renderNow();
     await ctx.tick();
   },
@@ -918,13 +695,15 @@ defineDemo({
     const D = ctx.diagram;
     const cm = ctx.instance.getEngine().commandManager;
     const settle = async () => { ctx.instance.renderNow(); await ctx.tick(); };
-    const memberNodes = (g) => [...(g.members || [])].map((id) => D.getNode(id)).filter(Boolean);
-    const widgetOf = (g, kind) => memberNodes(g).find((n) => n.getMetadata('widgetKind') === kind);
-    const cellsSnap = (b) => {
+    const cell = (id) => H.widget(id)?.cell;
+    const node = (id) => H.widget(id)?.node;
+    // (API gap #12) the page's own gate needs three binder-level readings the
+    // handle does not expose: metrics(), cellRectOf() and the accept/refuse
+    // boolean of a programmatic gesture.
+    const B = () => H.binderOf('overview');
+    const cellsSnap = () => {
       const out = {};
-      for (const g of [tabs.overview, tabs.sales, tabs.pipeline]) {
-        for (const id of g?.members ?? []) { const c = b ? b.cellOf(id) : binderOwning(id)?.cellOf(id); if (c) out[id] = { ...c }; }
-      }
+      for (const v of H.views) for (const w of H.widgetsOf(v)) if (w.cell) out[w.id] = { ...w.cell };
       return out;
     };
 
@@ -953,83 +732,88 @@ defineDemo({
     const centerOf = (n) => ({ x: n.position.x + n.size.width / 2, y: n.position.y + n.size.height / 2 });
 
     // Always start from Overview, empty history, deterministic board.
-    switchTab('overview');
+    showView('overview');
     cm.clear();
     await settle();
 
-    const B = binders.overview;
-    const line = widgetOf(tabs.overview, 'line');
-    const donut = widgetOf(tabs.overview, 'donut');
-    const table = widgetOf(tabs.overview, 'table');
-    check(line && donut && table, 'overview has line + donut + table widgets');
+    // ---- (0) THE DECLARATION IS THE BOARD ---------------------------------
+    checkEqual(H.views, ['overview', 'sales', 'pipeline'], 'the three declared views exist, in order');
+    checkEqual(H.widgetsOf('overview').map((w) => w.id),
+      ['kpi-revenue', 'kpi-customers', 'kpi-avgdeal', 'kpi-winrate', 'trend', 'mix', 'reps'],
+      'the overview holds exactly the declared widgets');
+    checkEqual(D.getGroups().length, 3, 'one chromeless board per view — nothing nested');
+    check(!!node('trend') && node('trend').getMetadata('useHTMLLayer') === true,
+      'each widget became a custom-HTML node (the un-sanitised host path)');
+
+    // FLOW: not one of the Overview widgets named a cell, and they landed on
+    // exactly the grid the old hand-written seeds spelled out.
+    checkEqual(cell('kpi-revenue'), { x: 0, y: 0, w: 3, h: 1 }, 'flow: KPI 1 opens row 0');
+    checkEqual(cell('kpi-winrate'), { x: 9, y: 0, w: 3, h: 1 }, 'flow: the fourth KPI fills row 0');
+    checkEqual(cell('trend'), { x: 0, y: 1, w: 8, h: 2 }, 'flow: the line chart WRAPPED to row 1');
+    checkEqual(cell('mix'), { x: 8, y: 1, w: 4, h: 2 }, 'flow: the donut took the rest of that row');
+    checkEqual(cell('reps'), { x: 0, y: 3, w: 12, h: 2 }, 'flow: the full-width table wrapped again');
+    // …and Pipeline mixes ONE explicit cell into the flow.
+    checkEqual(cell('pipe-winrate'), { x: 6, y: 1, w: 6, h: 1 }, 'an explicit cell is honoured verbatim');
+    checkEqual(cell('pipe-reps'), { x: 0, y: 2, w: 12, h: 1 }, 'flowed neighbours route around the explicit one');
 
     // ---- (1) PACK CELLS project a real 12-column board ---------------------
-    checkEqual(B.cellOf(line.id), { x: 0, y: 1, w: 8, h: 2 }, 'line chart sits at its seeded cells');
-    checkEqual(B.cellOf(donut.id), { x: 8, y: 1, w: 4, h: 2 }, 'donut sits at its seeded cells');
+    const line = node('trend'), donut = node('mix'), table = node('reps');
     const lineW0 = line.size.width;
     check(lineW0 > donut.size.width * 1.6, `span 8 dwarfs span 4 (${Math.round(lineW0)} vs ${Math.round(donut.size.width)})`);
     check(Math.abs(donut.position.x - (line.position.x + lineW0 + GAP)) < 2, 'donut sits one gap right of the line chart (same row)');
-    const m0 = B.metrics();
+    const m0 = B().metrics();
     checkEqual(m0.sizing, 'fit', 'default sizing mode is FIT (the user decision)');
     check(Math.abs(m0.rowHeight - (TAB_H - 2 * GAP - 4 * GAP) / 5) < 0.1, `fit row height derives from 5 rows (${m0.rowHeight.toFixed(1)})`);
-
-    // ---- (1b) PIPELINE: explicit cells reproduce the old grid placement ----
-    switchTab('pipeline'); await settle();
-    const funnel = widgetOf(tabs.pipeline, 'funnel');
-    checkEqual(binders.pipeline.cellOf(funnel.id), { x: 0, y: 0, w: 6, h: 2 }, 'funnel holds explicit hero cells (half width, two rows)');
     const track = (TAB_W - 2 * GAP - 11 * GAP) / 12;
-    check(Math.abs(funnel.size.width - (track * 6 + 5 * GAP)) < 2, `funnel spans 6 of 12 columns (${Math.round(funnel.size.width)}px)`);
-    const pipeDonut = widgetOf(tabs.pipeline, 'donut');
-    check(pipeDonut.position.x > funnel.position.x + funnel.size.width - 2, 'the donut fills the cells to the RIGHT of the funnel');
-    switchTab('overview'); await settle();
+    showView('pipeline'); await settle();
+    check(Math.abs(node('pipe-funnel').size.width - (track * 6 + 5 * GAP)) < 2,
+      `the funnel spans 6 of 12 columns (${Math.round(node('pipe-funnel').size.width)}px)`);
+    check(node('pipe-mix').position.x > node('pipe-funnel').position.x + node('pipe-funnel').size.width - 2,
+      'the stage donut fills the cells to the RIGHT of the funnel');
+    showView('overview'); await settle();
 
     // ---- (2) TABS: parked off-canvas, binders carry the widgets along ------
-    const salesBar = widgetOf(tabs.sales, 'bar');
-    check(tabs.overview.position.x === 0 && tabs.sales.position.x === OFFSCREEN_X, 'on Overview, Sales is parked off-canvas');
-    check(salesBar.position.x < -1000, 'a parked view\'s widget travelled with its frame (binder re-projection)');
-    switchTab('sales'); await settle();
-    check(memberNodes(tabs.sales)[0].position.x >= 0, 'switching to Sales brings its widgets on-canvas');
-    switchTab('overview'); await settle();
+    check(D.getGroup('overview').position.x === 0 && D.getGroup('sales').position.x < -1000,
+      'on Overview, Sales is parked off-canvas');
+    check(node('sales-bar').position.x < -1000, 'a parked view\'s widget travelled with its frame (binder re-projection)');
+    showView('sales'); await settle();
+    check(node('sales-bar').position.x >= 0, 'switching to Sales brings its widgets on-canvas');
+    showView('overview'); await settle();
 
     // ---- (3) ONE FLAT GRID: every widget is a DIRECT member -----------------
-    const kpis = memberNodes(tabs.overview).filter((n) => n.getMetadata('widgetKind') === 'kpi');
-    check(kpis.length === 4, `the four KPI tiles are direct members of the tab grid, got ${kpis.length}`);
-    check(!D.getGroup('sec-kpis'), 'there is NO nested KPI section group any more');
-    checkEqual(D.getGroups().length, 3, 'the document holds exactly the three tab groups — nothing nested');
-    checkEqual(kpis.map((n) => B.cellOf(n.id)), [
+    const kpis = ['kpi-revenue', 'kpi-customers', 'kpi-avgdeal', 'kpi-winrate'];
+    check(!D.getGroup('sec-kpis'), 'there is NO nested KPI section group');
+    checkEqual(kpis.map(cell), [
       { x: 0, y: 0, w: 3, h: 1 }, { x: 3, y: 0, w: 3, h: 1 },
       { x: 6, y: 0, w: 3, h: 1 }, { x: 9, y: 0, w: 3, h: 1 },
     ], 'the KPI row is four 3-column members of the SAME 12-column grid');
-    // ONE grid means the KPI edges are the chart edges — no strip with its own
-    // column maths to keep in step.
-    check(Math.abs(kpis[0].position.x - line.position.x) < 0.5, 'KPI 1 shares the line chart\'s left column line');
-    check(Math.abs((kpis[3].position.x + kpis[3].size.width) - (donut.position.x + donut.size.width)) < 0.5,
+    check(Math.abs(node(kpis[0]).position.x - line.position.x) < 0.5, 'KPI 1 shares the line chart\'s left column line');
+    check(Math.abs((node(kpis[3]).position.x + node(kpis[3]).size.width) - (donut.position.x + donut.size.width)) < 0.5,
       'KPI 4\'s right edge lands exactly on the donut\'s right edge (both end at column line 12)');
 
-    // THE USER'S REPORT — resizing one KPI must change ONLY that KPI. Under the
-    // old nested strip a height pull grew the WHOLE row: every sibling with it.
+    // THE USER'S REPORT — resizing one KPI must change ONLY that KPI.
     {
-      check(await B.resizeTo(kpis[0].id, 3, 2), 'a KPI grows to two rows');
-      checkEqual(B.cellOf(kpis[0].id), { x: 0, y: 0, w: 3, h: 2 }, 'the resized KPI is two rows tall');
+      await H.widget(kpis[0]).resize(3, 2);
+      checkEqual(cell(kpis[0]), { x: 0, y: 0, w: 3, h: 2 }, 'the resized KPI is two rows tall');
       for (let i = 1; i < 4; i++) {
-        checkEqual(B.cellOf(kpis[i].id), { x: i * 3, y: 0, w: 3, h: 1 },
+        checkEqual(cell(kpis[i]), { x: i * 3, y: 0, w: 3, h: 1 },
           `KPI ${i + 1} kept its EXACT cells — the row did not grow with its neighbour`);
       }
-      check(kpis[0].size.height > kpis[1].size.height + 20,
-        `only the resized KPI got taller (${Math.round(kpis[0].size.height)}px vs ${Math.round(kpis[1].size.height)}px)`);
-      await cm.undo(); refreshBoards(); await settle();
-      checkEqual(B.cellOf(kpis[0].id), { x: 0, y: 0, w: 3, h: 1 }, 'one undo restored the KPI resize');
+      check(node(kpis[0]).size.height > node(kpis[1]).size.height + 20,
+        `only the resized KPI got taller (${Math.round(node(kpis[0]).size.height)}px vs ${Math.round(node(kpis[1]).size.height)}px)`);
+      await cm.undo(); refresh(); await settle();
+      checkEqual(cell(kpis[0]), { x: 0, y: 0, w: 3, h: 1 }, 'one undo restored the KPI resize');
       cm.clear();
     }
 
     // …and a KPI dragged DEEP into the big line chart DISPLACES it (the engine's
     // directional-penetration gate: small onto big works, both directions).
     {
-      const lineBefore = { ...B.cellOf(line.id) };
-      check(await B.moveTo(kpis[0].id, 2, 2), 'a KPI dragged deep into the 8-wide line chart is accepted');
-      checkChanged(lineBefore, B.cellOf(line.id), 'the big line chart was DISPLACED by the small KPI');
-      await cm.undo(); refreshBoards(); await settle();
-      checkEqual(B.cellOf(line.id), lineBefore, 'one undo restored the displaced line chart');
+      const lineBefore = { ...cell('trend') };
+      await H.widget(kpis[0]).moveTo(2, 2);
+      checkChanged(lineBefore, cell('trend'), 'the big line chart was DISPLACED by the small KPI');
+      await cm.undo(); refresh(); await settle();
+      checkEqual(cell('trend'), lineBefore, 'one undo restored the displaced line chart');
       cm.clear();
     }
 
@@ -1041,17 +825,16 @@ defineDemo({
       // (8-wide + 4-wide, same row, same height → the ROW swap shape).
       await dragTo(donutC, { x: donutC.x - 580, y: donutC.y }, { steps: 8 });
       // STILL HOLDING: the engine already swapped and the neighbour already MOVED.
-      checkEqual(B.cellOf(donut.id).x, 0, 'mid-drag: the donut took the left cells (row swap, live)');
-      checkEqual(B.cellOf(line.id).x, 4, 'mid-drag: the 8-wide line chart slid right — union span preserved');
+      checkEqual(cell('mix').x, 0, 'mid-drag: the donut took the left cells (row swap, live)');
+      checkEqual(cell('trend').x, 4, 'mid-drag: the 8-wide line chart slid right — union span preserved');
       check(Math.abs(line.position.x - lineX0px) > 100, 'mid-drag: the line chart\'s PIXELS moved while the button is still down (live push)');
       const ph = container.querySelector('.axdb-ph');
       check(ph && ph.style.display !== 'none', 'mid-drag: the placeholder is visible');
-      const phRect = { x: parseFloat(ph.style.left), y: parseFloat(ph.style.top), w: parseFloat(ph.style.width), h: parseFloat(ph.style.height) };
-      const engRect = B.cellRectOf(donut.id);
+      const phRect = { x: parseFloat(ph.style.left), y: parseFloat(ph.style.top), w: parseFloat(ph.style.width) };
+      const engRect = B().cellRectOf('mix');
       check(Math.abs(phRect.x - engRect.x) < 1 && Math.abs(phRect.y - engRect.y) < 1 && Math.abs(phRect.w - engRect.width) < 1,
         'the placeholder shows EXACTLY the engine\'s current cell for the held tile');
-      const ghost = container.querySelector('.grafloria-node-host.axdb-ghost');
-      check(!!ghost, 'the held tile is a transition-exempt ghost');
+      check(!!container.querySelector('.grafloria-node-host.axdb-ghost'), 'the held tile is a transition-exempt ghost');
       await release(donutC.x - 580, donutC.y);
       // (b) the drop landed exactly where the placeholder stood.
       check(Math.abs(donut.position.x - phRect.x) < 1 && Math.abs(donut.position.y - phRect.y) < 1,
@@ -1060,31 +843,31 @@ defineDemo({
 
       // ---- (g) ONE undo step per gesture -----------------------------------
       check(cm.canUndo(), 'the whole drag committed ONE undoable batch');
-      await cm.undo(); refreshBoards(); await settle();
+      await cm.undo(); refresh(); await settle();
       check(!cm.canUndo(), 'exactly one undo step: history is empty again');
-      checkEqual(B.cellOf(donut.id), { x: 8, y: 1, w: 4, h: 2 }, 'one undo rewound the swap (donut cells)');
-      checkEqual(B.cellOf(line.id), { x: 0, y: 1, w: 8, h: 2 }, 'one undo rewound the swap (line cells)');
+      checkEqual(cell('mix'), { x: 8, y: 1, w: 4, h: 2 }, 'one undo rewound the swap (donut cells)');
+      checkEqual(cell('trend'), { x: 0, y: 1, w: 8, h: 2 }, 'one undo rewound the swap (line cells)');
       check(Math.abs(line.position.x - lineX0px) < 1, 'one undo restored the line chart\'s exact pixels');
       cm.clear();
     }
 
     // ---- (d) SWAP 5↔6 BOTH DIRECTIONS (deterministic, via the same pipeline)
     {
-      check(await B.moveTo(donut.id, 1, 1), 'swap forward: donut onto the line chart');
-      checkEqual(B.cellOf(donut.id), { x: 0, y: 1, w: 4, h: 2 }, 'forward row-swap: donut leads the row');
-      checkEqual(B.cellOf(line.id), { x: 4, y: 1, w: 8, h: 2 }, 'forward row-swap: line trails');
-      check(await B.moveTo(donut.id, 6, 1), 'swap back: donut dragged onto the line chart again');
-      checkEqual(B.cellOf(donut.id), { x: 8, y: 1, w: 4, h: 2 }, 'reverse row-swap: donut back to the right');
-      checkEqual(B.cellOf(line.id), { x: 0, y: 1, w: 8, h: 2 }, 'reverse row-swap: line back to the left');
-      await cm.undo(); await cm.undo(); refreshBoards(); await settle();
+      await H.widget('mix').moveTo(1, 1);
+      checkEqual(cell('mix'), { x: 0, y: 1, w: 4, h: 2 }, 'forward row-swap: donut leads the row');
+      checkEqual(cell('trend'), { x: 4, y: 1, w: 8, h: 2 }, 'forward row-swap: line trails');
+      await H.widget('mix').moveTo(6, 1);
+      checkEqual(cell('mix'), { x: 8, y: 1, w: 4, h: 2 }, 'reverse row-swap: donut back to the right');
+      checkEqual(cell('trend'), { x: 0, y: 1, w: 8, h: 2 }, 'reverse row-swap: line back to the left');
+      await cm.undo(); await cm.undo(); refresh(); await settle();
       cm.clear();
     }
 
     // ---- (c) RESIZE: live push per cell-step + shrink-restore (S2) ---------
     {
-      const rs = container.querySelector(`.grafloria-node-host[data-node-id="${line.id}"] .axdb-rs`);
+      const rs = container.querySelector(`.grafloria-node-host[data-node-id="trend"] .axdb-rs`);
       check(!!rs, 'the line chart host carries the kit\'s corner resize handle');
-      const rowH = B.metrics().rowHeight;
+      const rowH = B().metrics().rowHeight;
       const corner = { x: line.position.x + line.size.width - 6, y: line.position.y + line.size.height - 6 };
       PID++;
       const a = toClient(corner.x, corner.y);
@@ -1092,34 +875,35 @@ defineDemo({
       // grow one row-step: the table below must push down LIVE.
       let c = toClient(corner.x + 8, corner.y + rowH);
       pev('pointermove', c.x, c.y); await raf();
-      checkEqual(B.cellOf(line.id).h, 3, 'mid-resize: the line chart grew to 3 rows at the cell-step');
-      checkEqual(B.cellOf(table.id).y, 4, 'mid-resize: the table below pushed down LIVE');
+      checkEqual(cell('trend').h, 3, 'mid-resize: the line chart grew to 3 rows at the cell-step');
+      checkEqual(cell('reps').y, 4, 'mid-resize: the table below pushed down LIVE');
       // shrink back IN THE SAME GESTURE: the table comes home (S2 memory).
       c = toClient(corner.x, corner.y);
       pev('pointermove', c.x, c.y); await raf();
-      checkEqual(B.cellOf(line.id).h, 2, 'shrink-back: the line chart returned to 2 rows');
-      checkEqual(B.cellOf(table.id).y, 3, 'shrink-back: the displaced table TELEPORTED home (S2)');
+      checkEqual(cell('trend').h, 2, 'shrink-back: the line chart returned to 2 rows');
+      checkEqual(cell('reps').y, 3, 'shrink-back: the displaced table TELEPORTED home (S2)');
       await release(corner.x, corner.y);
       check(!cm.canUndo(), 'a gesture that ends where it started commits NOTHING');
       // …and a resize that STANDS commits one step and pushes for real:
-      check(await B.resizeTo(line.id, 8, 3), 'programmatic resize to 3 rows');
-      checkEqual(B.cellOf(table.id).y, 4, 'committed resize pushed the table');
-      await cm.undo(); refreshBoards(); await settle();
-      checkEqual(B.cellOf(table.id).y, 3, 'one undo restored the resize AND the push');
+      await H.widget('trend').resize(8, 3);
+      checkEqual(cell('reps').y, 4, 'committed resize pushed the table');
+      await cm.undo(); refresh(); await settle();
+      checkEqual(cell('reps').y, 3, 'one undo restored the resize AND the push');
       cm.clear();
     }
 
     // ---- (e) PINNED tiles refuse the mover ---------------------------------
     {
-      table.setState({ locked: true });
-      binders.overview.sync(); await settle();
-      check(!(await B.moveTo(donut.id, 0, 3)), 'a drag ONTO the pinned table is refused outright');
-      checkEqual(B.cellOf(donut.id), { x: 8, y: 1, w: 4, h: 2 }, 'the refused mover kept its cells');
-      check(!(await B.resizeTo(line.id, 8, 3)), 'growth INTO the pinned table clamps to no-op (E4b applied to size)');
-      check(container.querySelector(`.grafloria-node-host[data-node-id="${table.id}"] .axdb-rs`) === null,
+      togglePin('reps');
+      await settle();
+      check(H.widget('reps').pinned, 'pin() reached the model as the authoritative lock');
+      check(!(await B().moveTo('mix', 0, 3)), 'a drag ONTO the pinned table is refused outright');
+      checkEqual(cell('mix'), { x: 8, y: 1, w: 4, h: 2 }, 'the refused mover kept its cells');
+      check(!(await B().resizeTo('trend', 8, 3)), 'growth INTO the pinned table clamps to no-op (E4b applied to size)');
+      check(container.querySelector(`.grafloria-node-host[data-node-id="reps"] .axdb-rs`) === null,
         'a pinned tile hides its resize handle');
-      table.setState({ locked: false });
-      binders.overview.sync(); await settle();
+      togglePin('reps');
+      await settle();
       cm.clear();
     }
 
@@ -1129,55 +913,57 @@ defineDemo({
       const before = cellsSnap();
       const linePx0 = line.position.x;
       await dragTo(donutC, { x: donutC.x - 580, y: donutC.y }, { steps: 6 });
-      checkEqual(B.cellOf(donut.id).x, 0, 'Esc setup: the swap really happened mid-gesture');
+      checkEqual(cell('mix').x, 0, 'Esc setup: the swap really happened mid-gesture');
       window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
       await settle();
-      checkEqual(B.cellOf(donut.id), before[donut.id], 'Escape restored the donut\'s cells');
-      checkEqual(B.cellOf(line.id), before[line.id], 'Escape restored the line chart\'s cells');
+      checkEqual(cell('mix'), before['mix'], 'Escape restored the donut\'s cells');
+      checkEqual(cell('trend'), before['trend'], 'Escape restored the line chart\'s cells');
       check(Math.abs(line.position.x - linePx0) < 1, 'Escape restored the pushed neighbour\'s pixels');
       check(!cm.canUndo(), 'a cancelled gesture leaves NO undo entry');
       PID++; pev('pointerup', 10, 10);   // stray up after Esc must be inert
       await settle();
-      checkEqual(B.cellOf(donut.id), before[donut.id], 'the post-Escape pointerup changed nothing');
+      checkEqual(cell('mix'), before['mix'], 'the post-Escape pointerup changed nothing');
     }
 
     // ---- (h) SIZING MODES: fit squeezes, grow extends ----------------------
     {
-      const inside = (g, b) => memberNodes(g).every((n) =>
-        n.position.y >= g.position.y - 1 && n.position.y + n.size.height <= g.position.y + b + 1);
-      check(Math.abs(tabs.overview.size.height - TAB_H) < 1, 'FIT: the board holds its design height');
-      check(inside(tabs.overview, TAB_H), 'FIT: every tile fits inside the design height');
+      const board = () => D.getGroup('overview');
+      const inside = (b) => H.widgetsOf('overview').every((w) =>
+        w.node.position.y >= board().position.y - 1 && w.node.position.y + w.node.size.height <= board().position.y + b + 1);
+      check(Math.abs(board().size.height - TAB_H) < 1, 'FIT: the board holds its design height');
+      check(inside(TAB_H), 'FIT: every tile fits inside the design height');
       document.getElementById('t-mode').click(); await settle();
       const grown = 2 * GAP + 5 * BASE_ROW + 4 * GAP;   // 5 rows at the 130px design row
-      check(Math.abs(tabs.overview.size.height - grown) < 1, `GROW: the board extended to hold 130px rows (${Math.round(tabs.overview.size.height)} = ${grown})`);
-      check(Math.abs(binders.overview.metrics().rowHeight - BASE_ROW) < 0.1, 'GROW: rows keep the design height');
-      check(inside(tabs.overview, grown), 'GROW: every tile stays inside the grown board');
+      check(Math.abs(board().size.height - grown) < 1, `GROW: the board extended to hold 130px rows (${Math.round(board().size.height)} = ${grown})`);
+      check(Math.abs(B().metrics().rowHeight - BASE_ROW) < 0.1, 'GROW: rows keep the design height');
+      check(inside(grown), 'GROW: every tile stays inside the grown board');
       document.getElementById('t-mode').click(); await settle();
-      check(Math.abs(tabs.overview.size.height - TAB_H) < 1, 'back to FIT: design height restored');
-      check(inside(tabs.overview, TAB_H), 'back to FIT: tiles squeezed back inside');
+      check(Math.abs(board().size.height - TAB_H) < 1, 'back to FIT: design height restored');
+      check(inside(TAB_H), 'back to FIT: tiles squeezed back inside');
     }
 
     // ---- (4/5) ADD via palette + REMOVE with survivors' commit -------------
     {
       const before = D.getNodes().length;
-      const newId = await addWidgetCmd('bar'); await settle();
+      const newId = await addWidget('bar'); await settle();
       check(D.getNodes().length === before + 1, 'palette click-add created a node via AddNodeCommand');
-      const newCell = B.cellOf(newId);
+      const newCell = cell(newId);
       check(newCell && newCell.y >= 5, `the cell-less add auto-positioned into the first free hole (row ${newCell.y})`);
+      check(!!hosts.get(newId), 'the added widget was registered with the dashboard and PAINTED');
       const gi = D.getNode(newId).getGridItem();
       check(gi && gi.columnStart === newCell.x + 1, 'the assigned cells persisted into the standard GridItemConfig');
-      await removeWidgetCmd(newId); await settle();
-      check(D.getNodes().length === before, 'remove (with planRemoval folded in) took it back out');
-      await cm.undo(); refreshBoards(); await settle();
-      check(D.getNodes().length === before + 1 && !!B.cellOf(newId), 'undo restored the widget INTO the pack grid');
-      await cm.undo(); await cm.undo(); refreshBoards(); await settle();
+      removeWidget(newId); await settle();
+      check(D.getNodes().length === before, 'remove (with the survivors\' re-pack folded in) took it back out');
+      await cm.undo(); refresh(); await settle();
+      check(D.getNodes().length === before + 1, 'undo restored the widget INTO the pack grid');
+      await cm.undo(); await cm.undo(); refresh(); await settle();
       check(D.getNodes().length === before, 'undoing the add removed it again (2 steps: node + membership)');
       cm.clear();
     }
 
     // ---- (7) Z-ORDER restack via the undoable commands ---------------------
     {
-      const a = memberNodes(tabs.overview)[0], b = donut;
+      const a = node(kpis[0]), b = donut;
       await cm.execute(new BringNodeToFrontCommand(b.id)); await settle();
       check(b.getEffectiveZIndex() > a.getEffectiveZIndex(), 'BringNodeToFrontCommand lifted the tile above a peer');
       await cm.execute(new SendNodeToBackCommand(b.id)); await settle();
@@ -1186,11 +972,10 @@ defineDemo({
       cm.clear();
     }
 
-    // ---- (10) chromeless containers + zero port affordances (kept) ---------
+    // ---- (10) chromeless containers + zero port affordances ----------------
     {
       const chrome = ctx.host.querySelectorAll('.group-frame, .group-frame-rect, .group-frame-band, .group-frame-label');
       check(chrome.length === 0, `layout containers painted ${chrome.length} group-chrome elements — the board must be chromeless`);
-      check(D.getGroups().length === 3, 'the chromeless board still HAS its three tab groups (chrome off, pack on)');
       const widgets = D.getNodes().filter((n) => n.getMetadata('widgetKind'));
       check(widgets.length > 0 && widgets.every((n) => n.behavior?.connectable === false), 'every widget node declares connectable:false');
       const w0 = widgets.find((n) => n.position.x > -10000);
@@ -1199,25 +984,42 @@ defineDemo({
       w0.state.hovered = false; ctx.instance.renderNow();
     }
 
-    // ---- (9) SAVE / LOAD round-trip (cells serialize via GridItemConfig) ---
+    // ---- (11) BUILT-IN RENDERERS: the data became real marks ---------------
+    {
+      const card = (id) => hosts.get(id)?.querySelector('.axdb-widget');
+      check(card('kpi-revenue').querySelector('.axdb-kpi-v').textContent === '$6.81M', 'the kpi widget shows the declared value');
+      check(card('kpi-revenue').querySelector('.axdb-kpi-d').classList.contains('up'), 'a positive delta paints up');
+      check(card('trend').querySelectorAll('polyline').length === 2, 'the line widget drew one polyline per declared series');
+      check(card('mix').querySelectorAll('path').length === DATA.regions.length, 'the donut drew one arc per declared slice');
+      check(card('reps').querySelectorAll('tbody tr').length === DATA.reps.length, 'the table drew one row per declared row');
+      showView('pipeline'); await settle();
+      check(hosts.get('pipe-funnel').querySelectorAll('rect').length === DATA.pipeline.length, 'the funnel drew one bar per declared stage');
+      showView('sales'); await settle();
+      check(hosts.get('sales-bar').querySelectorAll('rect').length === DATA.regions.length, 'the bar widget drew one column per declared bar');
+      showView('overview'); await settle();
+    }
+
+    // ---- (9) SAVE / LOAD round-trip: toJSON() IS dashboard() input ---------
     {
       const cellsBefore = cellsSnap();
-      await saveBoard();
+      saveBoard();
       const savedCount = D.getNodes().length;
-      check(await B.moveTo(donut.id, 1, 1), 'diverge: swap the row before loading');
+      const saved = JSON.parse(state.saved);
+      checkEqual(saved.map((v) => v.id), ['overview', 'sales', 'pipeline'], 'toJSON() returns the views as plain data');
+      checkEqual(saved[0].widgets.find((w) => w.id === 'trend').span, 8, 'toJSON() carries live spans, not the declared ones');
+      await H.widget('mix').moveTo(1, 1);          // diverge
       loadBoard(); await settle();
       check(D.getNodes().length === savedCount, `load restored the widget count (${savedCount})`);
-      const cellsAfter = cellsSnap();
-      checkEqual(cellsAfter, cellsBefore, 'load restored EVERY tile\'s cells (GridItemConfig round-trip)');
+      checkEqual(cellsSnap(), cellsBefore, 'load restored EVERY tile\'s cells (the data-first round-trip)');
+      check(!!hosts.get('trend') && !!cell('trend'), 'the rebuilt board is live again (fresh binders, same hosts)');
     }
 
     // ---- Clean up to a deterministic, populated frame for the golden -------
     cm.clear();
-    switchTab('overview');
-    const lineNode = widgetOf(tabs.overview, 'line');
-    if (lineNode) setFocus(lineNode.id);
+    showView('overview');
+    setFocus('trend');
     await settle();
-    check(!D.getNodes().some((n) => n.state?.locked), 'ended with no pinned tiles (deterministic frame)');
+    check(!H.widgetsOf('overview').some((w) => w.pinned), 'ended with no pinned tiles (deterministic frame)');
     // Drain the reflow-glide window: the cleanup relayout arms a 280ms tile
     // transition, and a screenshot taken mid-glide would make the golden a
     // race. End PAST the animation, on the resting frame.
@@ -1226,4 +1028,3 @@ defineDemo({
   },
 });
 </script>
-
