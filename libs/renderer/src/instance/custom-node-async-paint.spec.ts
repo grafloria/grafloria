@@ -486,6 +486,55 @@ describe('custom-node export — an ASYNC renderCustomNode', () => {
     expect(painted).toEqual(['near', 'wanted']);
   }, 10000);
 
+  // Proportionality: the wait is scoped the same way the mounting is. Exporting one tile
+  // out of a board must not sit out another tile's stuck painter.
+  it("does not wait for a stuck painter OUTSIDE the export's scope", async () => {
+    diagram = createDiagram(container, {
+      nodes: [W('stuck', 0, 0), W('fine', 300, 0)],
+      renderCustomNode: (node: NodeModel, el: HTMLElement) => {
+        painted.push(node.id);
+        if (node.id === 'stuck') return new Promise<void>(() => undefined);
+        draw(node.id, el);
+        return undefined;
+      },
+    });
+
+    const started = Date.now();
+    const svg = await diagram.export('svg', { includeIds: ['fine'] });
+
+    expect(svg).toContain(sentinel('fine'));
+    expect(Date.now() - started).toBeLessThan(1000);
+  }, 10000);
+
+  // 'destroy' is the one mode that re-runs a painter, so it is the one place a stale
+  // verdict could outlive the paint it described — and blame a widget that drew perfectly
+  // for a failure two mounts ago.
+  it("mode 'destroy': a re-mounted widget is not still blamed for its old failure", async () => {
+    let attempt = 0;
+    diagram = createDiagram(container, {
+      nodes: [W('flaky', 40000, 0)],
+      renderCustomNode: (node: NodeModel, el: HTMLElement) => {
+        painted.push(node.id);
+        attempt += 1;
+        if (attempt === 1) return Promise.reject(new Error('first attempt failed'));
+        return sleep(5).then(() => draw(node.id, el));
+      },
+      cullCustomNodes: { mode: 'destroy' },
+    });
+    diagram.renderNow();
+
+    const first: string[] = [];
+    await diagram.export('svg', { onWarnings: (w) => first.push(...w) });
+    expect(first.some((w) => w.includes('"flaky"') && /rejected/i.test(w))).toBe(true);
+
+    // 'destroy' tore down what the export built, so this one re-mounts and re-paints it.
+    const second: string[] = [];
+    const svg = await diagram.export('svg', { onWarnings: (w) => second.push(...w) });
+
+    expect(svg).toContain(sentinel('flaky'));
+    expect(second.filter((w) => w.includes('custom node'))).toEqual([]);
+  }, 10000);
+
   it('two exports in flight at once both come back complete', async () => {
     diagram = createDiagram(container, {
       nodes: [W('near', 0, 0), W('far', 40000, 0)],
@@ -501,6 +550,47 @@ describe('custom-node export — an ASYNC renderCustomNode', () => {
     expect(b).toContain(sentinel('far'));
     expect(mountedHosts()).toBe(before);
     expect(painted).toEqual(['near', 'far']); // and still painted once
+  }, 10000);
+
+  // The deadline is a safety net, and a safety net left hanging has a cost of its own: in
+  // Node a pending 5s timer keeps the event loop alive, so a thumbnailer that exports and
+  // exits would linger for the full deadline after its work was done.
+  it('leaves no deadline timer pending once the painters have settled', async () => {
+    diagram = createDiagram(container, {
+      nodes: [W('micro', 0, 0)],
+      // Settles on a MICROTASK, so the wait is real but the deadline is the only TIMER
+      // this export creates — which is what lets the count below mean one thing only.
+      renderCustomNode: (node: NodeModel, el: HTMLElement) => {
+        painted.push(node.id);
+        return Promise.resolve().then(() => draw(node.id, el));
+      },
+    });
+
+    // Counted by hand rather than with jest's fake timers: installing those around a live
+    // instance leaves the worker with timers it cannot reconcile, and a test that reports
+    // a leak by causing one is no use to anybody.
+    const live = new Set<unknown>();
+    const realSetTimeout = globalThis.setTimeout;
+    const realClearTimeout = globalThis.clearTimeout;
+    globalThis.setTimeout = ((fn: never, ms: never, ...rest: never[]) => {
+      const id = realSetTimeout(fn, ms, ...rest);
+      live.add(id);
+      return id;
+    }) as typeof globalThis.setTimeout;
+    globalThis.clearTimeout = ((id: never) => {
+      live.delete(id);
+      return realClearTimeout(id);
+    }) as typeof globalThis.clearTimeout;
+
+    try {
+      const svg = await diagram.export('svg');
+
+      expect(svg).toContain(sentinel('micro')); // it really did wait
+      expect(live.size).toBe(0); // …and did not leave its 5s net hanging
+    } finally {
+      globalThis.setTimeout = realSetTimeout;
+      globalThis.clearTimeout = realClearTimeout;
+    }
   }, 10000);
 
   it('reaches the raster and pdf targets on the same path', async () => {
