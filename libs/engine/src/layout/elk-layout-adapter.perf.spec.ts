@@ -103,7 +103,15 @@ describe('ELKLayoutAdapter performance audit', () => {
     expect(adapterMs).toBeLessThan(perfBudget(10000));
     // The adapter's own translation + result mapping must stay a small fraction
     // of the run — the algorithm, not our plumbing, is allowed to be the cost.
-    expect(adapterMs - rawMs).toBeLessThan(Math.max(500, rawMs));
+    //
+    // The floor is machine-scaled, the two lines above it were not: under a
+    // contended full-suite run the overhead measured ~534ms against a flat 500ms
+    // floor and flaked ~2 runs in 3, while `rawMs` (the OTHER half of the cap)
+    // inflated right alongside it. perfBudget() lifts the floor with the machine
+    // — 500ms on an idle box, so a genuine plumbing regression still fails — and
+    // the `Math.max(_, rawMs)` half keeps the "overhead < the algorithm itself"
+    // intent intact on any machine.
+    expect(adapterMs - rawMs).toBeLessThan(Math.max(perfBudget(500), rawMs));
   }, 60000);
 
   it('small-graph output is byte-identical to the pre-optimization adapter (snapshot)', async () => {
