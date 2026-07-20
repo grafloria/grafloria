@@ -25,6 +25,7 @@ import {
   umlSpecFrom,
   parseMermaidState,
   generateMermaidState,
+  umlRelationKind,
 } from './mermaid';
 
 const imp = (text: string) => importDiagramText(text);
@@ -343,6 +344,118 @@ describe('Mermaid compat — Phase 3: classDiagram', () => {
 });
 
 // ═══════════════════════════════════════════════════════════════════════════
+// The operator set is Mermaid's `relationType? lineType relationType?` grammar —
+// 72 spellings, all of which mermaid 11.16 accepts. The hand-written table this
+// replaces listed 17; a line using any of the other 55 matched NO rule, so it
+// was skipped and both of its classes vanished with it. An EMPTY DIAGRAM, with
+// no error. That is the failure mode this whole module exists to prevent.
+describe('Mermaid compat — classDiagram: the full operator grammar', () => {
+  const LEFT = ['', '<|', '*', 'o', '<', '()'] as const;
+  const RIGHT = ['', '|>', '*', 'o', '>', '()'] as const;
+  const LINE = ['--', '..'] as const;
+  const ALL: string[] = [];
+  for (const l of LEFT) for (const li of LINE) for (const r of RIGHT) ALL.push(`${l}${li}${r}`);
+
+  it('there are exactly 72 spellings, and the sweep below covers all of them', () => {
+    expect(ALL).toHaveLength(72);
+    expect(new Set(ALL).size).toBe(72);
+  });
+
+  it.each(ALL.map((op) => [op]))('`A %s B` yields two classes and one link', (op) => {
+    const r = imp(`classDiagram\n  A ${op} B`);
+    expect(r.unsupported).toBeUndefined();
+    expect(nodeIds(r.diagram)).toEqual(['A', 'B']);
+    expect(r.diagram.getLinks()).toHaveLength(1);
+    // …and the author's own operator comes back out, character for character.
+    expect(generateMermaidClass(parseMermaidClass(`classDiagram\n  A ${op} B`)))
+      .toContain(`A ${op} B`);
+  });
+
+  // LOLLIPOP — the ball-and-socket notation. `bar ()-- foo` reads "foo provides
+  // interface bar": Mermaid's own `addRelation` calls `addInterface(id1, id2)`
+  // when the `()` is on the LEFT, making the near operand the interface and the
+  // far one the implementing class. The long spelling of that sentence is
+  // `foo ..|> bar`, so the kit kind is REALIZATION pointing at the interface.
+  it.each([
+    ['bar ()-- foo', 'foo', 'bar'],
+    ['foo --() bar', 'foo', 'bar'],
+    ['bar ().. foo', 'foo', 'bar'],
+    ['foo ..() bar', 'foo', 'bar'],
+  ])('lollipop `%s` → realization from the class (%s) to the interface (%s)', (line, from, to) => {
+    const spec = umlSpecFrom(parseMermaidClass(`classDiagram\n  ${line}`));
+    expect(spec.relationships).toHaveLength(1);
+    expect(spec.relationships[0]).toMatchObject({ kind: 'realization', from, to });
+  });
+
+  it('a lollipop line used to produce a SILENTLY EMPTY diagram', () => {
+    const r = imp('classDiagram\n    bar ()-- foo');
+    expect(nodeIds(r.diagram)).toEqual(['bar', 'foo']);
+    expect(r.diagram.getLinks()).toHaveLength(1);
+    expect(r.diagram.getLinks()[0].getMetadata('umlKind')).toBe('realization');
+  });
+
+  it('lollipop survives the DiagramModel round-trip with its `()` intact', () => {
+    const body = dsl.generate(imp('classDiagram\n  bar ()-- foo').diagram);
+    expect(body).toContain('bar ()-- foo');
+    expect(imp(body).diagram.getLinks()[0].getMetadata('umlKind')).toBe('realization');
+  });
+
+  // The direction rule, stated once: a triangle/arrow marks the TARGET, so
+  // Mermaid writing it FIRST means the kit's ends are reversed — but a diamond
+  // marks the WHOLE, i.e. the source, so the diamond kinds are the mirror.
+  it.each([
+    ['<|--', 'inheritance', true],
+    ['--|>', 'inheritance', false],
+    ['<|..', 'realization', true],
+    ['..|>', 'realization', false],
+    ['()--', 'realization', true],
+    ['--()', 'realization', false],
+    ['*--', 'composition', false],
+    ['--*', 'composition', true],
+    ['o--', 'aggregation', false],
+    ['--o', 'aggregation', true],
+    ['-->', 'directed-association', false],
+    ['<--', 'directed-association', true],
+    ['..>', 'dependency', false],
+    ['<..', 'dependency', true],
+    ['--', 'association', false],
+    ['..', 'association', false],
+  ])('%s → kind %s, reversed=%s', (op, kind, reversed) => {
+    expect(umlRelationKind(op)).toEqual({ kind, reversed });
+  });
+
+  // MIXED operators (a marker at each end). The kit has no both-ends kind, so
+  // the RIGHT marker wins and the left glyph is lost — lossy, documented, and
+  // vastly better than dropping the line.
+  it.each([
+    ['A <|--* B', 'composition'],
+    ['A o--|> B', 'inheritance'],
+    ['A *--o B', 'aggregation'],
+    ['A ()--|> B', 'inheritance'],
+    ['A <..> B', 'dependency'],
+    ['A <|--|> B', 'inheritance'],
+    ['A <--> B', 'directed-association'],
+  ])('mixed `%s` keeps the line, taking its kind from the right marker (%s)', (line, kind) => {
+    const r = imp(`classDiagram\n  ${line}`);
+    expect(nodeIds(r.diagram)).toEqual(['A', 'B']);
+    expect(r.diagram.getLinks()[0].getMetadata('umlKind')).toBe(kind);
+  });
+
+  it('an operator with no marker at all is a plain association, either line type', () => {
+    expect(umlRelationKind('--')).toEqual({ kind: 'association', reversed: false });
+    expect(umlRelationKind('..')).toEqual({ kind: 'association', reversed: false });
+  });
+
+  it('multiplicity + label still work on a lollipop', () => {
+    const model = parseMermaidClass('classDiagram\n  bar "1" ()-- "*" foo : provides');
+    expect(model.relationships[0]).toMatchObject({
+      operator: '()--', label: 'provides', multiplicity: ['1', '*'],
+    });
+    expect(generateMermaidClass(model)).toContain('bar "1" ()-- "*" foo : provides');
+  });
+});
+
+// ═══════════════════════════════════════════════════════════════════════════
 describe('Mermaid compat — Phase 3: stateDiagram-v2', () => {
   it('parses (it was an explicit Phase-0 "unsupported" before)', () => {
     const r = imp('stateDiagram-v2\n  [*] --> Still\n  Still --> [*]');
@@ -444,5 +557,222 @@ describe('Mermaid compat — Phase 3: stateDiagram-v2', () => {
     expect(body.startsWith('stateDiagram-v2')).toBe(true);
     const second = imp(body).diagram;
     expect(second.getNodes().map((n) => n.id).sort()).toEqual(['Moving', 'Still', '__start__']);
+  });
+});
+
+// ═══════════════════════════════════════════════════════════════════════════
+// CONCURRENCY. A `--` line inside a composite splits its body into orthogonal
+// regions that run at the same time. The separator used to be ignored, so the
+// regions merged into ONE composite — and because `[*]` is scoped to its body,
+// every region's entry point fused into a single start node. A two-region
+// keyboard (NumLock ∥ CapsLock) was read as one machine with one start and two
+// outgoing initial transitions: not lossy, WRONG.
+describe('Mermaid compat — stateDiagram-v2: concurrent regions', () => {
+  const KEYBOARD =
+    'stateDiagram-v2\n' +
+    '  [*] --> Active\n' +
+    '  state Active {\n' +
+    '    [*] --> NumLockOff\n' +
+    '    NumLockOff --> NumLockOn : EvNumLockPressed\n' +
+    '    --\n' +
+    '    [*] --> CapsLockOff\n' +
+    '    CapsLockOff --> CapsLockOn : EvCapsLockPressed\n' +
+    '  }';
+
+  it('each region gets its OWN start pseudo-state (they used to be one node)', () => {
+    const r = imp(KEYBOARD);
+    expect(r.unsupported).toBeUndefined();
+    expect(nodeIds(r.diagram)).toEqual([
+      'Active', 'Active.region1', 'Active.region1.__start__',
+      'Active.region2', 'Active.region2.__start__',
+      'CapsLockOff', 'CapsLockOn', 'NumLockOff', 'NumLockOn', '__start__',
+    ]);
+    expect(linkPairs(r.diagram)).toContain('Active.region1.__start__->NumLockOff');
+    expect(linkPairs(r.diagram)).toContain('Active.region2.__start__->CapsLockOff');
+  });
+
+  it('the regions are SEPARATE groups, nested inside the composite`s group', () => {
+    const r = imp(KEYBOARD);
+    const ids = r.diagram.getGroups().map((g) => g.id).sort();
+    expect(ids).toEqual(['group-Active', 'group-Active.region1', 'group-Active.region2']);
+    const region1 = r.diagram.getGroup('group-Active.region1')!;
+    const region2 = r.diagram.getGroup('group-Active.region2')!;
+    // Containment is real, not just naming: the nesting tree must resolve.
+    expect(region1.parentGroupId).toBe('group-Active');
+    expect(region2.parentGroupId).toBe('group-Active');
+    // …and each region owns only its own states.
+    expect([...region1.members].sort()).toEqual(['Active.region1.__start__', 'NumLockOff', 'NumLockOn']);
+    expect([...region2.members].sort()).toEqual(['Active.region2.__start__', 'CapsLockOff', 'CapsLockOn']);
+  });
+
+  it('EXPORT puts the `--` back, and never writes a region as a nested state', () => {
+    const body = generateMermaidState(parseMermaidState(KEYBOARD));
+    expect(body).toContain('    --\n');
+    expect(body).not.toContain('region1');
+    expect(body).not.toContain('region2');
+    // Both regions still start from `[*]`, inside the one composite.
+    expect(body.match(/\[\*\] --> /g)).toHaveLength(3); // two regions + the outer entry
+  });
+
+  it('ROUND-TRIP: parse → generate → parse preserves the region split', () => {
+    const first = parseMermaidState(KEYBOARD);
+    const second = parseMermaidState(generateMermaidState(first));
+    expect(second.states.map((s) => `${s.id}:${s.kind}:${s.region ?? false}`).sort()).toEqual(
+      first.states.map((s) => `${s.id}:${s.kind}:${s.region ?? false}`).sort()
+    );
+    // Order-independent: the generator emits composite bodies before the root
+    // transitions, so `[*] --> Active` moves to the end. The SET is what has to
+    // survive — each region's entry must still point at its own first state.
+    const key = (t: { from: string; to: string; label?: string }) => `${t.from}->${t.to}:${t.label ?? ''}`;
+    expect(second.transitions.map(key).sort()).toEqual(first.transitions.map(key).sort());
+  });
+
+  it('ROUND-TRIP through the DiagramModel keeps the regions apart', () => {
+    const body = dsl.generate(imp(KEYBOARD).diagram);
+    expect(body).toContain('--');
+    const again = imp(body).diagram;
+    expect(again.getNode('Active.region1.__start__')).toBeTruthy();
+    expect(again.getNode('Active.region2.__start__')).toBeTruthy();
+  });
+
+  it('three regions → three groups, in source order', () => {
+    const r = imp('stateDiagram-v2\n  state A {\n    [*] --> a\n    --\n    [*] --> b\n    --\n    [*] --> c\n  }');
+    expect(r.diagram.getGroups().map((g) => g.id)).toEqual([
+      'group-A', 'group-A.region1', 'group-A.region2', 'group-A.region3',
+    ]);
+  });
+
+  // Mermaid's lexer reads the separator as a REPEATED `--`, so an EVEN run of
+  // dashes separates and an odd one is a lexical error. Confirmed against
+  // mermaid 11.16 token by token — `-{2,}` would be wrong on both counts.
+  it.each([['--', 2], ['----', 2], ['------', 2], ['-----', 1], ['-------', 1]])(
+    'a run of %s dashes yields %i region(s)',
+    (sep, regions) => {
+      const model = parseMermaidState(
+        `stateDiagram-v2\n  state A {\n    [*] --> a\n    ${sep}\n    [*] --> b\n  }`
+      );
+      // One region means "not concurrent": no synthetic regions at all.
+      expect(model.states.filter((s) => s.region)).toHaveLength(regions === 1 ? 0 : regions);
+      // An odd run is not valid Mermaid; ignore it, never nodify it.
+      expect(model.states.some((s) => /^-+$/.test(s.id))).toBe(false);
+    }
+  );
+
+  it('a composite with NO separator stays a single body (no synthetic regions)', () => {
+    const model = parseMermaidState('stateDiagram-v2\n  state A {\n    [*] --> b\n  }');
+    expect(model.states.some((s) => s.region)).toBe(false);
+    expect(model.states.find((s) => s.id === 'A')!.concurrent).toBeUndefined();
+  });
+
+  it('a `--` at the TOP level is skipped, never turned into a state', () => {
+    // Real Mermaid rejects it outright there; we ignore it rather than nodify
+    // a run of dashes (invariant #1).
+    const r = imp('stateDiagram-v2\n  [*] --> a\n  --\n  [*] --> b');
+    expect(nodeIds(r.diagram)).toEqual(['__start__', 'a', 'b']);
+  });
+
+  it('a composite nested INSIDE a region belongs to that region', () => {
+    const model = parseMermaidState(
+      'stateDiagram-v2\n  state Outer {\n    [*] --> x\n    --\n    state Inner {\n      [*] --> y\n    }\n  }'
+    );
+    expect(model.states.find((s) => s.id === 'Inner')!.parent).toBe('Outer.region2');
+    expect(model.states.find((s) => s.id === 'y')!.parent).toBe('Inner');
+  });
+
+  it('a nested composite`s `--` does not make its PARENT concurrent', () => {
+    // The pre-scan must count braces: the separator below belongs to Inner.
+    const model = parseMermaidState(
+      'stateDiagram-v2\n  state Outer {\n    state Inner {\n      [*] --> x\n      --\n      [*] --> y\n    }\n  }'
+    );
+    expect(model.states.find((s) => s.id === 'Outer')!.concurrent).toBeUndefined();
+    expect(model.states.find((s) => s.id === 'Inner')!.concurrent).toBe(true);
+  });
+});
+
+// ═══════════════════════════════════════════════════════════════════════════
+// Three more silent-wrong readings found in the same file while fixing the two
+// above. Each produced a plausible diagram that said something the author did
+// not write.
+describe('Mermaid compat — stateDiagram-v2: silent misreadings', () => {
+  it('`state "desc" as X {` opens a composite (it used to match NOTHING)', () => {
+    // The regex demanded end-of-line after the id, so the whole line was
+    // ignored: the composite vanished, its children leaked into the enclosing
+    // scope, and the orphaned `}` popped a scope it never pushed.
+    const r = imp('stateDiagram-v2\n  state "the desc" as A {\n    [*] --> b\n  }\n  A --> [*]');
+    expect(r.diagram.getGroups().map((g) => g.id)).toEqual(['group-A']);
+    expect(r.diagram.getNode('A.__start__')).toBeTruthy();
+    expect(parseMermaidState('stateDiagram-v2\n  state "the desc" as A {\n    [*] --> b\n  }')
+      .states.find((s) => s.id === 'b')!.parent).toBe('A');
+    // …and it re-exports as itself, label and body intact.
+    const body = generateMermaidState(
+      parseMermaidState('stateDiagram-v2\n  state "the desc" as A {\n    [*] --> b\n  }')
+    );
+    expect(body).toContain('state "the desc" as A {');
+  });
+
+  it('`direction` inside a composite is the COMPOSITE`s, not the diagram`s', () => {
+    // It used to be hoisted onto the model and re-emitted at top level, which
+    // silently re-oriented the entire diagram.
+    const model = parseMermaidState('stateDiagram-v2\n  state A {\n    direction LR\n    [*] --> b\n  }');
+    expect(model.direction).toBeUndefined();
+    expect(model.states.find((s) => s.id === 'A')!.direction).toBe('LR');
+    const body = generateMermaidState(model);
+    expect(body).toContain('state A {\n        direction LR');
+    expect(body.startsWith('stateDiagram-v2\n    state A')).toBe(true);
+  });
+
+  it.each([
+    ['[H]', 'history', '__history__'],
+    ['[H*]', 'deep-history', '__deep_history__'],
+  ])('history state %s is a scoped pseudo-state (the line used to be dropped)', (token, kind, slug) => {
+    const model = parseMermaidState(`stateDiagram-v2\n  state A {\n    [*] --> b\n    b --> ${token}\n  }`);
+    const history = model.states.find((s) => s.kind === kind)!;
+    expect(history.id).toBe(`A.${slug}`);
+    expect(history.parent).toBe('A');
+    expect(model.transitions).toContainEqual({ from: 'b', to: `A.${slug}` });
+    // …and it is written back as the bracket token, never as the internal id.
+    const body = generateMermaidState(model);
+    expect(body).toContain(`b --> ${token}`);
+    expect(body).not.toContain(slug);
+  });
+
+  it.each([
+    ['target', 'stateDiagram-v2\n  [*] --> A:::hot'],
+    ['source', 'stateDiagram-v2\n  A:::hot --> B'],
+    ['bare line', 'stateDiagram-v2\n  A:::hot\n  A --> B'],
+    ['declaration', 'stateDiagram-v2\n  state A:::hot\n  A --> B'],
+  ])('`A:::hot` (%s) is the state A with a style hook, NOT a label `::hot`', (_where, text) => {
+    // `:::cssClass` is Mermaid's inline style hook. The description rule ate it
+    // first, so the state came out LABELLED `::hot` and export then wrote
+    // `[*] --> A : ::hot` — a transition label the author never typed.
+    const model = parseMermaidState(text);
+    const a = model.states.find((s) => s.id === 'A')!;
+    expect(a).toBeTruthy();
+    expect(a.label).toBe('A');
+    expect(a.cssClass).toBe('hot');
+    expect(model.states.map((s) => s.id)).not.toContain('A:::hot');
+    expect(generateMermaidState(model)).not.toContain('::hot');
+  });
+
+  it('a real description is still a description (the lookahead is not too greedy)', () => {
+    const model = parseMermaidState('stateDiagram-v2\n  A : a plain description');
+    expect(model.states.find((s) => s.id === 'A')!.label).toBe('a plain description');
+  });
+
+  it('a transition CROSSING two composites is emitted once, at the root', () => {
+    // Matching on either endpoint put this line inside BOTH composites — a
+    // duplicate edge on re-import, and one that visually adopts the far state.
+    const source =
+      'stateDiagram-v2\n' +
+      '  state A {\n    a1 --> a2\n  }\n' +
+      '  state B {\n    b1 --> b2\n  }\n' +
+      '  a2 --> b1';
+    const body = generateMermaidState(parseMermaidState(source));
+    expect(body.match(/a2 --> b1/g)).toHaveLength(1);
+    // Root indent (4), not nested inside a composite body (8).
+    expect(body).toContain('\n    a2 --> b1');
+    // …and every transition survives the round-trip exactly once.
+    const again = parseMermaidState(body);
+    expect(again.transitions).toHaveLength(3);
   });
 });

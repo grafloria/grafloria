@@ -1,15 +1,33 @@
 # Mermaid Compatibility — Gap Analysis & Plan (empirical)
 
-**Date:** 2026-07-19 (Phase 3 landed; previous revision 2026-07-17)
+**Date:** 2026-07-20 (Phase 3.1 — the silent-wrong sweep; Phase 3 was 2026-07-19)
 **Status:** Phases 0 ✅ (5db5b4a88), 1 ✅ (9528b1a57), 2 ✅ (0adc2f4a3),
-**3 ✅ (this revision)** are DONE — the parser reads real hand-written
+**3 ✅**, **3.1 ✅ (this revision)** are DONE — the parser reads real hand-written
 flowcharts, **`erDiagram`, `classDiagram` and `stateDiagram[-v2]`**, fails safe
 on everything else, and the extension channel (styling + `%%grafloria:`) is live.
 All of it is validated against REAL mermaid v11.16 by
-`demos/e2e/mermaid-oracle-run.mjs` (19 cases, both directions: what we read and
+`demos/e2e/mermaid-oracle-run.mjs` (28 cases, both directions: what we read and
 what we export). The §2/§3 matrices below record the pre-Phase-1 state (what was
 broken); `mermaid-compat.spec.ts` + `mermaid-graph-types.spec.ts` are the living
 green version. Phase 4 remains.
+
+**Phase 3.1 closed the six inputs that produced a WRONG DIAGRAM WITHOUT AN
+ERROR** — the failure mode this module treats as worse than an honest refusal.
+Two were on Phase 3's own honest list (§3a); four more were found while in
+there, by sweeping the real Mermaid grammar rather than trusting the code:
+
+| # | Input | Was | Now |
+|---|---|---|---|
+| 1 | `bar ()-- foo` (lollipop) | **empty diagram, silently** | realization, both directions |
+| 2 | 55 more operators (`A <\|--* B`, …) | **empty diagram, silently** | all 72 spellings parse |
+| 3 | `--` regions in a composite | merged into ONE composite, one shared `[*]` | separate nested regions |
+| 4 | `state "d" as X {` | composite lost, children leaked, `}` popped a scope it never pushed | composite, round-trips |
+| 5 | `A:::hot` | state **labelled `::hot`**; export wrote `: ::hot` | style hook, captured by name |
+| 6 | `direction` inside a composite | hoisted → re-oriented the WHOLE diagram | scoped to the composite |
+
+Plus two export defects with the same signature: `[H]`/`[H*]` transitions were
+dropped entirely, and a transition crossing two composites was written twice
+(a duplicate edge on re-import) or, at the root, not at all.
 
 **Per-type coverage today is §3a — read that, not the historical §3 table.**
 **Method:** every current-state claim below was produced by feeding real Mermaid
@@ -138,8 +156,8 @@ in the "still missing" list or is not implemented.
 |---|---|---|---|
 | `flowchart` / `graph` | ✅ full base + Tier-1 styling | ✅ | Phases 1–2 |
 | **`erDiagram`** | ✅ **new** | ✅ **new** | entities, attribute blocks, all 16 cardinality pairs, identifying/non-identifying |
-| **`classDiagram`** | ✅ **new** | ✅ **new** | classes, members, annotations, 17 relationship operators, multiplicity |
-| **`stateDiagram` / `-v2`** | ✅ **new** | ✅ **new** | states, `[*]`, transitions, composites→groups, fork/join/choice |
+| **`classDiagram`** | ✅ | ✅ | classes, members, annotations, **all 72 relationship operators** (lollipop included), multiplicity |
+| **`stateDiagram` / `-v2`** | ✅ | ✅ | states, `[*]`, `[H]`/`[H*]`, transitions, composites→nested groups, **concurrent regions**, fork/join/choice |
 | `sequenceDiagram`, `gantt`, `pie`, `journey`, `gitGraph`, `mindmap`, `timeline`, `quadrantChart`, `requirement`, `C4*`, `block`, `packet`, `sankey`, `xychart`, `kanban`, `architecture`, `radar`, `zenuml` | ❌ explicit `unsupported` signal, empty diagram | — | Phase 0 discipline: never garbage |
 
 The implementation is `dsl/mermaid/` — one file per type, each a matched
@@ -174,19 +192,38 @@ GLUED relationships (`CUSTOMER||--o{ORDER`); hyphenated ids (`LINE-ITEM`);
 (`Animal : +int age` and inside a block) with visibility `+ - # ~` and the
 `$`/`*` classifiers; member names read from both spellings Mermaid accepts
 (`+String beakColor` and `+age: int`); `<<interface>>` in-block and
-`<<Interface>> X` standalone; **17 relationship operators** — `<|--` `--|>`
-`<|..` `..|>` `*--` `--*` `o--` `--o` `-->` `<--` `..>` `<..` `--` `..` and the
-two-way `<-->` `<|--|>` `<..>` — each mapped to the kit's kind with the
-arrowhead-end flip handled (Mermaid writes the arrowhead operand FIRST for
-`<|--`/`<--`/`<..`); multiplicity `"1" *-- "1..*"` including the chip swap on
-reversed operators; labels; `direction`; `note` / `note for X`.
+`<<Interface>> X` standalone; multiplicity `"1" *-- "1..*"` including the chip
+swap on reversed operators; labels; `direction`; `note` / `note for X`.
+
+**…and the relationship operator set is now DERIVED FROM THE GRAMMAR.** Mermaid
+composes `relationType? lineType relationType?` — `<|`/`|>` `*` `o` `<`/`>` `()`
+crossed with `--`/`..` — which is **72 legal spellings**, every one verified
+against the real parser. The previous hand-written table listed 17; a line using
+any of the other 55 matched no rule at all, so it was skipped and BOTH of its
+classes vanished with it. Each operator maps to the kit's kind by rule, not by
+lookup: the line type decides triangle→`inheritance`/`realization` and
+arrow→`directed-association`/`dependency`, and the ends flip when Mermaid writes
+the marker first — except for the diamond kinds, where the diamond marks the
+*whole* and the rule mirrors. **Lollipop** (`()`) → `realization`: mermaid's own
+`addRelation` calls `addInterface()` on the operand beside the `()`, making it
+the interface and the far operand the implementing class, which is exactly
+`class ..|> interface` in long form.
 
 **`stateDiagram` / `stateDiagram-v2`** — states and transitions with labels;
 `[*]` resolved to **scoped** start/end pseudo-states (a composite's entry is not
-the diagram's entry); composite states → `GroupModel`; `state "desc" as id` and
-`id : desc`; `<<fork>>` `<<join>>` `<<choice>>`; `direction`; single-line and
-`end note`-terminated note blocks. v1 and v2 share the grammar (v2 is a
-different layout engine in Mermaid, not a different syntax).
+the diagram's entry) and `[H]`/`[H*]` likewise; composite states → `GroupModel`,
+**nested when the composites nest**; **concurrent `--` regions** → a synthetic
+composite per region, so each region keeps its own children and its own `[*]`,
+and the separator is written back out; `state "desc" as id` **with or without a
+`{ … }` body**; `id : desc`; `id:::cssClass` captured as a style hook rather
+than read as a label; `<<fork>>` `<<join>>` `<<choice>>`; `direction`, **scoped
+to its composite when written inside one**; single-line and `end note`-terminated
+note blocks. v1 and v2 share the grammar (v2 is a different layout engine in
+Mermaid, not a different syntax).
+
+The `--` separator is matched as `(?:--)+`, not `-{2,}`: Mermaid lexes it as a
+repeated `--`, so `--` and `----` separate while `---` and `-----` are lexical
+errors. Guessing here would have invented regions Mermaid never accepts.
 
 ### What is STILL MISSING — the honest list
 
@@ -208,12 +245,19 @@ different layout engine in Mermaid, not a different syntax).
 **`classDiagram`**
 - `namespace Foo { … }` — the classes inside are parsed correctly, but the
   namespace GROUPING is lost (no `GroupModel`). Unlike flowchart `subgraph`,
-  which does become a group.
-- Two-way operators `<-->` `<|--|>` `<..>` render with only ONE arrowhead: the
-  kit's notation table has no both-ends kind. Structure and the literal operator
-  are preserved (export is exact), only the second marker is missing.
-- Lollipop / interface-ball notation (`bar ()-- foo`) is not parsed at all — it
-  is valid Mermaid and currently yields an empty diagram, silently.
+  which does become a group. *(The classes survive, so this is lossy, not
+  wrong — but it is now the largest remaining class-diagram gap.)*
+- **Both-ends operators render with only ONE glyph.** `<-->`, `<|--|>`, `<..>`
+  and every mixed spelling (`<|--*`, `o--|>`, `*--o`, `()--|>`, …) carry a
+  marker at each end; the kit's notation table has no both-ends kind, so the
+  RIGHT marker wins and the left glyph is dropped. Structure and the literal
+  operator are preserved, so export is exact and the loss is display-only.
+- **Lollipop draws as a realization, not as a ball.** `bar ()-- foo` now parses
+  (kind, direction and re-export are all correct), but the kit has no
+  lollipop/socket marker, so it renders as the long-form dashed-triangle
+  realization instead of the interface ball. Mermaid additionally collapses the
+  interface operand into a bare ball rather than a class card; we keep it as a
+  card. Semantically equivalent, visually not identical.
 - `click`, `callback`, `link`, `cssClass` directives: ignored (not applied as
   node metadata the way flowchart `click` is).
 - `:::cssClass` is captured by NAME only; no style resolution against `classDef`.
@@ -224,15 +268,24 @@ different layout engine in Mermaid, not a different syntax).
 - `note` is stored on diagram metadata, not rendered as a note node.
 
 **`stateDiagram` / `-v2`**
-- Concurrency: the `--` region separator inside a composite is ignored, so
-  parallel regions MERGE into one composite. Not garbage, but a wrong reading of
-  a concurrent state machine.
-- Nested composites produce a group each, with correct membership, but the
-  groups are **not nested** (no parent/child link between `group-A` and
-  `group-b`) — flowchart `subgraph` nesting does establish this.
-- `classDef` / `class` / `style` for states: ignored.
-- Transition arrows other than `-->` (Mermaid state has none) — n/a.
-- History states (`[H]`, `[H*]`) are not modelled.
+- Concurrent regions are modelled and re-exported, but **layout does not band
+  them**: the regions are nested `GroupModel`s and the placement is still the
+  naive 4-up grid, so nothing draws the dashed divider Mermaid puts between
+  regions. The structure is right; the picture is not yet.
+- A region is a SYNTHETIC state (`A.region1`) carrying `region: true`, so it
+  appears in `states` and as a node. Consumers that enumerate states see them;
+  they are excluded from the exported text on purpose.
+- `classDef` / `class` / `style` for states: still not applied. The inline
+  `:::cssClass` hook is now captured by NAME on the state (so it is no longer
+  misread as a label) but it is **not re-emitted** — a `classDef` we dropped
+  would leave the hook dangling. Round-trip loses state styling, silently in
+  the sense that the diagram is right and only the colour is gone.
+- History states `[H]` / `[H*]` are modelled as scoped pseudo-states and
+  round-trip through the text, but they render as a plain circle rather than
+  the H-in-circle glyph, and the "resume the region's last active state"
+  semantics are not modelled (there is nothing static to model).
+- Transition arrows other than `-->` (Mermaid state has none) — n/a. We do
+  accept `--->`, which real Mermaid rejects; leniency on input only.
 
 **All three types**
 - The `%%grafloria:` Tier-2 per-entity directive channel (Phase 2) is wired for
@@ -348,6 +401,21 @@ rewrite: one file per type, each a parser + model builder + generator triple.
   its ER lexer reads `one` as a cardinality keyword even in label position. No
   unit test would have found that. We now quote ER labels unconditionally.
 
+### Phase 3.1 — Kill the silent-wrong readings ✅ DONE (this revision)
+The six inputs tabulated at the top of this document, all of which produced a
+plausible diagram that said something the author did not write. The method is
+the finding worth keeping: **do not audit the code, sweep the grammar.** Both
+headline bugs were the same mistake — a hand-written subset standing in for a
+compositional rule — and enumerating what real mermaid 11.16 actually accepts,
+operator by operator and separator by separator, is what turned "lollipop is
+missing" into "55 operators are missing" and "`--` is ignored" into the precise
+`(?:--)+` lexing rule.
+- Teeth: `mermaid-graph-types.spec.ts` is now **190 rows**, every new rule
+  mutation-proven (21 mutations applied, all killed, baseline green before and
+  after). The oracle went 19 → **28 cases**, including a sweep that puts all 72
+  class operators through real Mermaid in both directions — the gate that stops
+  the operator table drifting back into a hand-written subset.
+
 ### Phase 4 — New graph-family grammars (1–2 weeks each, as demand dictates)
 - `sequenceDiagram`, `gitGraph`, `mindmap`, `requirementDiagram`, `C4`, `block`.
   Each hand-rolled following the same base-plus-extension pattern; prioritise by
@@ -394,11 +462,16 @@ The residual losses are listed in §3a and all fall back to the Tier-3 sidecar.
   ones people actually paste. Everything else fails safe with an explicit
   `unsupported` signal instead of a plausible-but-wrong diagram.
 - **The gate that makes this claim worth anything** is the oracle
-  (`demos/e2e/mermaid-oracle-run.mjs`): 19 cases run through REAL mermaid v11.16
+  (`demos/e2e/mermaid-oracle-run.mjs`): 28 cases run through REAL mermaid v11.16
   in both directions. It has now caught a real export bug that no unit test
   would have (ER labels colliding with cardinality keywords). Any new type or
   syntax MUST arrive with oracle cases, not just unit tests.
+- **The remaining gaps are LOSSY, not WRONG.** As of Phase 3.1 every input we
+  accept in these four types either produces the diagram the author wrote or
+  drops something we have named above — nothing else parses into a plausible
+  lie. That is the property worth defending on every future change: a hand-
+  written subset of a compositional grammar is the shape this bug always takes.
 - **Next, by demand:** Phase 4's remaining graph-family grammars
   (`sequenceDiagram` is the most-requested), then the §3a per-type gaps —
-  namespace grouping, state concurrency regions, and wiring the Tier-2
-  `%%grafloria:` channel for the three new types.
+  namespace grouping, banded layout for concurrent regions, and wiring the
+  Tier-2 `%%grafloria:` channel for the three new types.

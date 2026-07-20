@@ -107,6 +107,38 @@ const CASES = {
     '    ClassM -- ClassN',
   'class multiplicity + label':
     'classDiagram\n    Vehicle "1" *-- "1..*" Wheel : has\n    Client ..> Service : uses',
+  // LOLLIPOP / ball-and-socket. Valid Mermaid that we did not parse AT ALL —
+  // the line matched no rule, so it was skipped and both classes vanished with
+  // it: an empty diagram, no error. Mermaid's own `addRelation` makes the
+  // operand beside the `()` the INTERFACE and the far one the implementing
+  // class, so we read it as the kit's `realization` (class → interface).
+  'class lollipop':
+    'classDiagram\n' +
+    '    bar ()-- foo\n' +
+    '    baz --() qux\n' +
+    '    class foo {\n' +
+    '        +run() void\n' +
+    '    }',
+  'class lollipop dotted + multiplicity':
+    'classDiagram\n    bar ().. foo\n    Svc "1" --() "*" Client : provides',
+  // MIXED operators — a marker at each end. Same silent-drop failure.
+  'class mixed operators':
+    'classDiagram\n    A <|--* B\n    C o--|> D\n    E *--o F\n    G ()--|> H\n    I <..> J',
+  // Mermaid composes `relationType? lineType relationType?`, so there are 72
+  // legal operators and every one must survive BOTH directions. This case is
+  // the gate that stops the operator table drifting back into a hand-written
+  // subset — the exact bug that hid the lollipop family.
+  'class ALL 72 operators': (() => {
+    const LEFT = ['', '<|', '*', 'o', '<', '()'];
+    const RIGHT = ['', '|>', '*', 'o', '>', '()'];
+    const lines = ['classDiagram'];
+    let n = 0;
+    for (const l of LEFT) for (const li of ['--', '..']) for (const r of RIGHT) {
+      lines.push(`    A${n} ${l}${li}${r} B${n}`);
+      n++;
+    }
+    return lines.join('\n');
+  })(),
 
   // ── stateDiagram-v2 (Phase 3) ───────────────────────────────────────────
   'state minimal': 'stateDiagram-v2\n    [*] --> Still\n    Still --> [*]',
@@ -130,6 +162,67 @@ const CASES = {
     '        second --> third\n' +
     '    }\n' +
     '    First --> [*]',
+  // CONCURRENCY. The `--` separator was ignored, so the two regions merged into
+  // one composite and — because `[*]` is scoped to its body — both regions'
+  // entry points fused into a single start node. A wrong reading of a
+  // concurrent machine, not a lossy one. Each region is now its own body, and
+  // the separator goes back into the exported text.
+  'state concurrency':
+    'stateDiagram-v2\n' +
+    '    [*] --> Active\n' +
+    '    state Active {\n' +
+    '        [*] --> NumLockOff\n' +
+    '        NumLockOff --> NumLockOn : EvNumLockPressed\n' +
+    '        NumLockOn --> NumLockOff : EvNumLockPressed\n' +
+    '        --\n' +
+    '        [*] --> CapsLockOff\n' +
+    '        CapsLockOff --> CapsLockOn : EvCapsLockPressed\n' +
+    '        CapsLockOn --> CapsLockOff : EvCapsLockPressed\n' +
+    '    }',
+  'state concurrency 3 regions + direction':
+    'stateDiagram-v2\n' +
+    '    state Machine {\n' +
+    '        direction LR\n' +
+    '        [*] --> a1\n' +
+    '        --\n' +
+    '        [*] --> b1\n' +
+    '        b1 --> b2 : tick\n' +
+    '        --\n' +
+    '        [*] --> c1\n' +
+    '    }',
+  // A composite nested inside one region: the region pre-scan has to count
+  // braces, or the inner `--` would make the OUTER state concurrent.
+  'state concurrency + nested composite':
+    'stateDiagram-v2\n' +
+    '    state Outer {\n' +
+    '        [*] --> x\n' +
+    '        --\n' +
+    '        state Inner {\n' +
+    '            [*] --> y\n' +
+    '            --\n' +
+    '            [*] --> z\n' +
+    '        }\n' +
+    '    }',
+  // `state "…" as X {` is valid Mermaid that matched NO rule: the composite was
+  // lost, its children leaked to the enclosing scope, and the stray `}` popped
+  // a scope that was never pushed.
+  'state described composite':
+    'stateDiagram-v2\n' +
+    '    state "the long name" as A {\n' +
+    '        [*] --> b\n' +
+    '        b --> [H]\n' +
+    '    }\n' +
+    '    A --> [*]',
+  // `A:::hot` is Mermaid's inline style hook. The description rule ate it, so
+  // the state came out LABELLED `::hot` and export wrote `[*] --> A : ::hot` —
+  // a transition label nobody typed. The hook is now captured by name (styling
+  // itself is still not applied) and never mistaken for a label.
+  'state inline css hook':
+    'stateDiagram-v2\n' +
+    '    [*] --> Active:::hot\n' +
+    '    Active --> Idle:::cool : timeout\n' +
+    '    classDef hot fill:#f9a\n' +
+    '    classDef cool fill:#9cf',
 };
 
 // Bundle the public entry point (same alias map as demos/build.mjs).

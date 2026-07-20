@@ -22,6 +22,11 @@
  *     the ends (and the multiplicity pair with them) while the model keeps the
  *     literal operator and operand order — which is what lets the generator
  *     re-emit the author's own syntax.
+ *  3. THE OPERATOR SET IS DERIVED FROM THE GRAMMAR, NOT ENUMERATED. See
+ *     `UmlOperator` below: Mermaid composes `relationType? lineType
+ *     relationType?`, which is 72 legal spellings. Listing a subset by hand is
+ *     how the lollipop family (`bar ()-- foo`) and every mixed operator
+ *     (`A <|--* B`) came to be dropped in silence.
  */
 import { DiagramModel } from '../../models/DiagramModel';
 import { NodeModel } from '../../models/NodeModel';
@@ -53,13 +58,24 @@ export interface MermaidClassDef {
   cssClasses: string[];
 }
 
+/**
+ * Mermaid's class relationship grammar is COMPOSITIONAL, not a fixed list:
+ *
+ *     relation := relationType? lineType relationType?
+ *
+ * with `relationType` ∈ {`<|`/`|>` extension, `*` composition, `o` aggregation,
+ * `<`/`>` dependency, `()` lollipop} and `lineType` ∈ {`--` solid, `..` dotted}.
+ * That is **72 legal spellings**, every one of which mermaid 11.16 accepts
+ * (verified operator-by-operator against the real parser). The previous
+ * hand-written table listed 17 of them, and a line using any of the other 55 —
+ * `A <|--* B`, `A o--|> B`, the whole lollipop family — matched no rule at all,
+ * so the line was skipped and BOTH classes vanished: an empty diagram, silently.
+ */
+export type UmlLeftMarker = '' | '<|' | '*' | 'o' | '<' | '()';
+export type UmlRightMarker = '' | '|>' | '*' | 'o' | '>' | '()';
+export type UmlLineType = '--' | '..';
 /** The literal Mermaid operator, kept so generation is not a guess. */
-export type UmlOperator =
-  | '<|--' | '--|>' | '<|..' | '..|>'
-  | '*--' | '--*' | 'o--' | '--o'
-  | '-->' | '<--' | '..>' | '<..'
-  | '<-->' | '<|--|>' | '<..>'
-  | '--' | '..';
+export type UmlOperator = `${UmlLeftMarker}${UmlLineType}${UmlRightMarker}`;
 
 /** The diagram kit's relationship vocabulary. */
 export type UmlKind =
@@ -85,42 +101,92 @@ export interface MermaidClassModel {
   notes: Array<{ for?: string; text: string }>;
 }
 
-/**
- * Operator → (kit kind, whether the kit's ends are the REVERSE of Mermaid's).
- * The reverse flag is the whole subtlety: Mermaid writes the arrowhead end
- * FIRST for `<|--`, `<--`, `<..`, and LAST for `--|>`, `-->`, `..>`; the
- * diamond kinds are the mirror of that (the diamond marks the *whole*).
- */
-const OPERATORS: Record<UmlOperator, { kind: UmlKind; reversed: boolean }> = {
-  '<|--': { kind: 'inheritance', reversed: true },
-  '--|>': { kind: 'inheritance', reversed: false },
-  '<|..': { kind: 'realization', reversed: true },
-  '..|>': { kind: 'realization', reversed: false },
-  '*--': { kind: 'composition', reversed: false },
-  '--*': { kind: 'composition', reversed: true },
-  'o--': { kind: 'aggregation', reversed: false },
-  '--o': { kind: 'aggregation', reversed: true },
-  '-->': { kind: 'directed-association', reversed: false },
-  '<--': { kind: 'directed-association', reversed: true },
-  '..>': { kind: 'dependency', reversed: false },
-  '<..': { kind: 'dependency', reversed: true },
-  '--': { kind: 'association', reversed: false },
-  '..': { kind: 'association', reversed: false },
-  // TWO-WAY forms. Real Mermaid accepts all three, and dropping them meant the
-  // line was skipped ENTIRELY — both classes vanished from the diagram, which
-  // is worse than a lossy render. The kit's notation table has no both-ends
-  // kind, so the SECOND arrowhead is lost; the structure is right, the literal
-  // operator is preserved for re-export, and the loss is documented in the gap
-  // analysis rather than hidden.
-  '<-->': { kind: 'directed-association', reversed: false },
-  '<|--|>': { kind: 'inheritance', reversed: false },
-  '<..>': { kind: 'dependency', reversed: false },
-};
+/** What a marker MEANS, before the line type refines it. */
+type MarkerRole = 'extension' | 'composition' | 'aggregation' | 'dependency' | 'lollipop';
 
-/** Longest-first, so `<|--` never matches as `<--` and `*--` never as `--`. */
-const OPERATOR_ALTERNATION = (Object.keys(OPERATORS) as UmlOperator[])
+const LEFT_MARKERS: Record<Exclude<UmlLeftMarker, ''>, MarkerRole> = {
+  '<|': 'extension', '*': 'composition', 'o': 'aggregation', '<': 'dependency', '()': 'lollipop',
+};
+const RIGHT_MARKERS: Record<Exclude<UmlRightMarker, ''>, MarkerRole> = {
+  '|>': 'extension', '*': 'composition', 'o': 'aggregation', '>': 'dependency', '()': 'lollipop',
+};
+const LINE_TYPES: readonly UmlLineType[] = ['--', '..'];
+
+/** Split an operator into its three grammar pieces. `<|` before `<`, `|>` before `>`. */
+const OPERATOR_SHAPE_RE = /^(<\||\*|o|<|\(\))?(--|\.\.)(\|>|\*|o|>|\(\))?$/;
+
+/**
+ * A marker's kind, once the line type has had its say: a solid line makes the
+ * triangle INHERITANCE and the arrow a DIRECTED ASSOCIATION, a dotted line
+ * makes them REALIZATION and DEPENDENCY.
+ *
+ * LOLLIPOP → `realization`, and this is the one judgement call in the table.
+ * The ball-and-socket notation is UML's compact spelling of interface
+ * PROVISION: `bar ()-- foo` says "foo provides interface bar" — mermaid's own
+ * `addRelation` proves it, calling `addInterface(id1, id2)` so that the operand
+ * beside the `()` becomes the interface and the far operand becomes the class.
+ * The long spelling of exactly that sentence is `foo ..|> bar`, i.e. the kit's
+ * `realization` from the class to the interface. So a lollipop is a realization
+ * whose interface end happens to be drawn as a ball; we keep the kind and lose
+ * only the ball glyph (the kit has no lollipop marker — see the gap analysis).
+ */
+function markerKind(role: MarkerRole, line: UmlLineType): UmlKind {
+  switch (role) {
+    case 'extension': return line === '..' ? 'realization' : 'inheritance';
+    case 'dependency': return line === '..' ? 'dependency' : 'directed-association';
+    case 'composition': return 'composition';
+    case 'aggregation': return 'aggregation';
+    case 'lollipop': return 'realization';
+  }
+}
+
+/**
+ * Kinds the kit draws with their distinguishing glyph at `from` rather than at
+ * `to`. This is the whole subtlety of the direction flip: an arrowhead or a
+ * triangle marks the TARGET, so Mermaid writing it first (`<|--`, `<--`, `<..`,
+ * `()--`) means the kit's ends are reversed — but a diamond marks the *whole*,
+ * which is the SOURCE, so the diamond kinds are the mirror of that.
+ */
+const MARKER_AT_FROM: ReadonlySet<UmlKind> = new Set<UmlKind>(['composition', 'aggregation']);
+
+/**
+ * Operator → (kit kind, whether the kit's ends are the REVERSE of Mermaid's),
+ * derived from the grammar rather than enumerated. This reproduces the previous
+ * 17-row table exactly and covers the other 55 spellings for free.
+ */
+export function umlRelationKind(operator: string): { kind: UmlKind; reversed: boolean } {
+  const shape = OPERATOR_SHAPE_RE.exec(operator);
+  // Unreachable for anything the parser produced (the alternation IS this
+  // grammar); a plain association is the honest fallback for a hand-built model.
+  if (!shape) return { kind: 'association', reversed: false };
+  const [, left, line, right] = shape as unknown as [string, UmlLeftMarker | undefined, UmlLineType, UmlRightMarker | undefined];
+  const leftKind = left ? markerKind(LEFT_MARKERS[left as Exclude<UmlLeftMarker, ''>], line) : undefined;
+  const rightKind = right ? markerKind(RIGHT_MARKERS[right as Exclude<UmlRightMarker, ''>], line) : undefined;
+  if (!leftKind && !rightKind) return { kind: 'association', reversed: false };
+  // BOTH ends marked (`<-->`, `<|--|>`, `<..>`, `()--|>`, `*--o`, …). The kit's
+  // notation table has no both-ends kind, so the RIGHT marker wins and the
+  // second glyph is lost. Dropping the line instead would make both classes
+  // vanish — a silent empty diagram, which is worse than a lossy one. The
+  // literal operator is preserved, so export is still exact.
+  const kind = rightKind ?? (leftKind as UmlKind);
+  const markerOnLeft = rightKind === undefined;
+  return { kind, reversed: MARKER_AT_FROM.has(kind) ? !markerOnLeft : markerOnLeft };
+}
+
+/** Every spelling the grammar can produce: left? × line × right? = 72. */
+const ALL_OPERATORS: UmlOperator[] = [];
+for (const left of ['', ...Object.keys(LEFT_MARKERS)] as UmlLeftMarker[]) {
+  for (const line of LINE_TYPES) {
+    for (const right of ['', ...Object.keys(RIGHT_MARKERS)] as UmlRightMarker[]) {
+      ALL_OPERATORS.push(`${left}${line}${right}`);
+    }
+  }
+}
+
+/** Longest-first, so `<|--` never matches as `<--` and `()--()` never as `()--`. */
+const OPERATOR_ALTERNATION = [...ALL_OPERATORS]
   .sort((a, b) => b.length - a.length)
-  .map((op) => op.replace(/[.*|]/g, (c) => '\\' + c))
+  .map((op) => op.replace(/[.*+?^${}()|[\]\\]/g, (c) => '\\' + c))
   .join('|');
 
 const CLASS_REF = '(?:[A-Za-z0-9_\\u00c0-\\uffff][A-Za-z0-9_\\u00c0-\\uffff]*(?:~[^~]*~)?)';
@@ -332,7 +398,7 @@ export function umlSpecFrom(model: MermaidClassModel): UmlSpec {
       methods: c.methods.map((m) => m.raw),
     })),
     relationships: model.relationships.map((r) => {
-      const { kind, reversed } = OPERATORS[r.operator];
+      const { kind, reversed } = umlRelationKind(r.operator);
       const multiplicity = r.multiplicity;
       return {
         from: reversed ? r.to : r.from,
@@ -389,7 +455,7 @@ export function classModelToDiagram(model: MermaidClassModel): DiagramModel {
     if (!link) continue;
     if (rel.label) link.setLabel(rel.label);
     link.setMetadata('umlRelationship', rel);
-    link.setMetadata('umlKind', OPERATORS[rel.operator].kind);
+    link.setMetadata('umlKind', umlRelationKind(rel.operator).kind);
   }
 
   return diagram;
