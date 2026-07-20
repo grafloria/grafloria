@@ -1,0 +1,12 @@
+# Gate OUTPUT, regenerated on every run — evidence, not source.
+#
+# `shoot.mjs` writes e2e/shots/ and `dashboard-scenarios-run.mjs` writes
+# e2e/scenario-shots/ (one screenshot per stage of every scenario). They exist
+# to be LOOKED at right after a run — several real defects this project fixed
+# were visible truths no assert was watching — but they are reproducible from
+# source and would otherwise churn hundreds of binaries per commit.
+#
+# NOTE: e2e/goldens/ is deliberately NOT ignored. Those are the blessed
+# reference frames; they are the point of the visual gate.
+e2e/shots/
+e2e/scenario-shots/
