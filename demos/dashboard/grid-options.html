@@ -46,7 +46,8 @@
   .go-key code { font: 11px/1.2 ui-monospace, SFMono-Regular, monospace; background: rgba(127,127,127,.13);
     padding: 1px 4px; border-radius: 4px; }
 
-  #canvas { position: relative; overflow: hidden; height: 100%;
+  #canvas { --gt-radius: 5px; --axdb-rs-radius: 5px;   /* tile = placeholder = handle arc */
+    position: relative; overflow: hidden; height: 100%;
     background-color: var(--go-canvas-bg, #f1f3f7);
     background-image: radial-gradient(circle, rgba(120,128,145,.16) 1px, transparent 1px);
     background-size: 26px 26px; }
@@ -59,7 +60,7 @@
 
   /* ---- a plain labelled tile, painted into each node's HTML-layer host ------- */
   .gt { box-sizing: border-box; width: 100%; height: 100%; display: flex; flex-direction: column;
-    background: var(--gt-card, #fff); border: 1px solid var(--gt-line, #e7eaf1); border-radius: 11px;
+    background: var(--gt-card, #fff); border: 1px solid var(--gt-line, #e7eaf1); border-radius: var(--gt-radius, 5px);
     padding: 11px 13px; overflow: hidden; font-family: system-ui, sans-serif; cursor: pointer;
     box-shadow: 0 1px 2px rgba(16,24,40,.05); transition: box-shadow .14s, border-color .14s; }
   .gt:hover { border-color: #c4ccdb; }
@@ -155,7 +156,7 @@ import { defineDemo, check, checkEqual, checkChanged } from '../shell/demo.js';
 /* ---------------------------------------------------------------------------
    1. GEOMETRY. Three boards in world space; captions ride above each one.
 --------------------------------------------------------------------------- */
-const GAP = 14, SMALL_GAP = 12, BASE_ROW = 110;
+const GAP = 8, SMALL_GAP = 6, BASE_ROW = 110;
 const BOARD = {
   a: { x: 0,   y: 52,  w: 540,  h: 240, columns: 6,  gap: SMALL_GAP },
   b: { x: 580, y: 52,  w: 540,  h: 240, columns: 6,  gap: SMALL_GAP },
@@ -756,9 +757,15 @@ defineDemo({
 
       checkEqual(binders.c.getSizing(), 'fit', 'sizing starts in FIT (boards hold their design height)');
       check(Math.abs(boards.c.size.height - BOARD.c.h) < 1, 'FIT: board C is at its design height');
+      // Compare the two modes against EACH OTHER, not a magic pixel threshold:
+      // the grown height is rows x baseRow + gaps, so any gap/row-count change
+      // moves it (a +20 literal here failed by 1px when the page gap went
+      // 14 -> 8). "Extended downward" is the claim; measure exactly that.
+      const fitH = boards.c.size.height;
       document.getElementById('o-mode').click(); await settle();
       checkEqual(binders.c.getSizing(), 'grow', 'the Mode button switched every board to GROW');
-      check(boards.c.size.height > BOARD.c.h + 20, `GROW: board C extended downward (${Math.round(boards.c.size.height)}px)`);
+      check(boards.c.size.height > fitH + 1,
+        `GROW: board C extended downward (${Math.round(fitH)} -> ${Math.round(boards.c.size.height)}px)`);
       check(Math.abs(binders.c.metrics().rowHeight - BASE_ROW) < 0.1, 'GROW: rows keep their design height');
       document.getElementById('o-mode').click(); await settle();
       check(Math.abs(boards.c.size.height - BOARD.c.h) < 1, 'back to FIT: the design height is restored');

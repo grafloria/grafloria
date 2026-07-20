@@ -38,7 +38,8 @@
     justify-content: center; font-size: 15px; color: #fff; }
   .pal-note { margin: 12px 2px 0; font: 11px/1.5 system-ui, sans-serif; color: #949bab; }
 
-  #canvas { position: relative; overflow: hidden; height: 100%;
+  #canvas { --wx-radius: 5px; --axdb-rs-radius: 5px;   /* card = placeholder = handle arc */
+    position: relative; overflow: hidden; height: 100%;
     background-color: var(--db-canvas-bg, #f1f3f7);
     background-image: radial-gradient(circle, rgba(120,128,145,.16) 1px, transparent 1px);
     background-size: 26px 26px; }
@@ -62,7 +63,7 @@
   .wx { --wx-ink:#1f2430; --wx-muted:#7a8496; --wx-grid:rgba(120,130,148,.22);
     --wx-card:#fff; --wx-line:#e7eaf1; --wx-soft:rgba(120,130,148,.14);
     box-sizing: border-box; width: 100%; height: 100%; display: flex; flex-direction: column;
-    background: var(--wx-card); border: 1px solid var(--wx-line); border-radius: 12px;
+    background: var(--wx-card); border: 1px solid var(--wx-line); border-radius: var(--wx-radius, 5px);
     padding: 13px 15px 12px; overflow: hidden; font-family: system-ui, sans-serif;
     box-shadow: 0 1px 2px rgba(16,24,40,.05), 0 1px 3px rgba(16,24,40,.05);
     cursor: pointer; transition: box-shadow .14s, border-color .14s; }
@@ -459,7 +460,11 @@ function flash(msg) {
    is what carries a parked board's widgets with it.
 --------------------------------------------------------------------------- */
 const TAB_W = 1180, TAB_H = 660, OFFSCREEN_X = -20000;
-const GAP = 14, BASE_ROW = 130;   // pack gap/padding + the 'grow' row height
+const GAP = 8, BASE_ROW = 130;    // pack gap/padding + the 'grow' row height
+// GAP is the space between widget rows AND columns (it is also the board's
+// padding). RADIUS below is the widget-card corner; the kit's placeholder and
+// its corner resize-handle arc both follow it via --axdb-rs-radius, so the
+// three can never drift apart.
 const tabs = {};                  // id -> GroupModel
 const binders = { overview: null, sales: null, pipeline: null };
 let sizingMode = 'fit';           // 'fit' (default, DevExtreme-style) | 'grow'

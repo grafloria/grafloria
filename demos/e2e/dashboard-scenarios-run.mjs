@@ -856,7 +856,10 @@ try {
   const dev = await page.evaluate(() => {
     const D = window.__demoCtx.diagram;
     const f = D.getGroup('board-c');
-    const GAP = 14, PAD = 14, COLS = 12;
+    // Read the board's live geometry rather than hardcoding it, so a page
+    // gap/padding change cannot silently invalidate this alignment check.
+    const m = window.__opts.binders.c.metrics();
+    const GAP = m.gap, PAD = m.padding, COLS = m.columns;
     const cu = (f.size.width - 2 * PAD - (COLS - 1) * GAP) / COLS;
     // Every tile of board C — INCLUDING the nested section's — must sit on a
     // 12-column line of the board grid (gap parity makes 1 section col = 3
