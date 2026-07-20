@@ -17,6 +17,8 @@ export * from './scope';
 export * from './round-trip';
 export * from './assets';
 export * from './svg-export';
+export * from './custom-nodes';
+export * from './capture-host';
 export * from './raster';
 export * from './node-raster';
 export * from './pagination';

@@ -10,6 +10,8 @@ import type { GovernorState } from '../perf/quality-governor';
 import type { AnimationService } from '../services/animation.service';
 import type { SvgExportResult } from '../export/svg-export';
 import type { PdfExportResult } from '../export/pdf/pdf-export';
+import type { CustomNodeCapture } from '../export/custom-nodes';
+import { captureCustomNodeHost } from '../export/capture-host';
 import { SVGRenderer } from '../svg/svg-renderer';
 import { VNodePatcher } from '../vnode/patch';
 import { InteractionController } from '../interaction/interaction-controller';
@@ -537,6 +539,52 @@ export function createDiagram(
     }
   };
 
+  /**
+   * THE EXPORT BOUNDARY for HTML-layer nodes.
+   *
+   * A custom node paints into a raw host that is a SIBLING of the SVG, so the VNode
+   * tree the exporter serializes contains an empty `<g>` for it and nothing else. That
+   * is why an exported dashboard used to be a set of blank rectangles: the content was
+   * never in the tree to begin with.
+   *
+   * THIS is the only place that can fix it, because this is the only place that holds
+   * the hosts. So the DOM read happens HERE, once, and produces plain data —
+   * `exportSvg` stays pure, DOM-free and deterministic, which is a property worth
+   * strictly more than the convenience of reaching into the document from inside it.
+   *
+   * A caller's own `customNodes` always wins (including `[]`, which means "export the
+   * diagram without its widgets").
+   */
+  const captureCustomNodes = (): CustomNodeCapture[] => {
+    const captures: CustomNodeCapture[] = [];
+    // Model order, not Map order: an export must not depend on mount sequence, or two
+    // runs of the same board would differ in byte order.
+    for (const node of model.getNodes()) {
+      const host = nodeHosts.get(node.id);
+      if (!host) continue;
+      captures.push(
+        captureCustomNodeHost(
+          node.id,
+          {
+            x: node.position.x,
+            y: node.position.y,
+            width: node.size.width,
+            height: node.size.height,
+          },
+          host
+        )
+      );
+    }
+    return captures;
+  };
+
+  const withCustomNodes = (exportOptions?: ExportOptions): ExportOptions => {
+    if (exportOptions?.customNodes !== undefined) return exportOptions;
+    const customNodes = captureCustomNodes();
+    if (customNodes.length === 0) return exportOptions ?? {};
+    return { ...exportOptions, customNodes };
+  };
+
   // -- the frame --------------------------------------------------------------
   let lastViewportKey = '';
   let lastFrameHadPreview = false;
@@ -792,9 +840,9 @@ export function createDiagram(
       scheduler.schedule();
     },
 
-    export: (format, exportOptions) => renderer.export(format, exportOptions),
-    exportSvgString: (exportOptions) => renderer.exportSvgString(exportOptions),
-    exportPdf: (exportOptions) => renderer.exportPdf(exportOptions),
+    export: (format, exportOptions) => renderer.export(format, withCustomNodes(exportOptions)),
+    exportSvgString: (exportOptions) => renderer.exportSvgString(withCustomNodes(exportOptions)),
+    exportPdf: (exportOptions) => renderer.exportPdf(withCustomNodes(exportOptions)),
 
     /** The LOD tier actually rendered, and the governor's last verdict. */
     getQualityState: () => renderer.getQualityState(),

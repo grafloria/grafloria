@@ -27,6 +27,13 @@ import { createClassStyleResolver } from './style-flattener';
 import { serializeVNode, escapeAttr, type ForeignObjectMode } from './vnode-serializer';
 import { clampOutputSize, DEFAULT_MAX_OUTPUT_SIZE, padRect, vnodeBounds } from './bounds';
 import { filterTreeByIds } from './scope';
+import {
+  customNodeBounds,
+  customNodeVNodes,
+  filterCaptures,
+  type CustomNodeCapture,
+  type HtmlFallbackMode,
+} from './custom-nodes';
 import { embedModelInSvg } from './round-trip';
 import { fontFaceCss, type FontSource } from './assets';
 import type { DiagramDocumentEnvelope } from '@grafloria/engine';
@@ -59,6 +66,24 @@ export interface SvgExportOptions {
 
   /** Supply the live HTML inside a foreignObject (browser-side callers). */
   captureForeignObject?: (vnode: VNode) => string | undefined;
+
+  /**
+   * CUSTOM-NODE CONTENT — the widgets an HTML-layer node paints, which the VNode tree
+   * does not contain and cannot contain (the renderer emits an empty `<g>` for those
+   * nodes; the page paints a raw HTML host that is a SIBLING of the SVG).
+   *
+   * Plain data, captured by whoever has the DOM — `createDiagram` does it for you.
+   * Passing it keeps this function pure: no element ever reaches here.
+   * See `capture-host.ts` for the capture and `custom-nodes.ts` for the placement.
+   */
+  customNodes?: readonly CustomNodeCapture[];
+
+  /**
+   * What to do with a custom node that could only be captured as HTML. Default
+   * `'foreignObject'`. Whatever you choose, it is REPORTED in `warnings` — a widget
+   * that cannot make it into the file faithfully never does so quietly.
+   */
+  htmlFallback?: HtmlFallbackMode;
 
   /**
    * CSS emitted verbatim into a `<style>` inside `<defs>`. THE font seam: pass an
@@ -171,10 +196,16 @@ export function exportSvg(root: VNode, options: SvgExportOptions = {}): SvgExpor
   // (1) SCOPE — prune before anything else, so the box is fitted to what survives.
   const tree = options.includeIds !== undefined ? filterTreeByIds(root, options.includeIds) : root;
 
+  // Custom-node content is scoped by the SAME ids. A capture is keyed by node id, so
+  // `includeIds` prunes widgets exactly as it prunes nodes.
+  const captures = filterCaptures(options.customNodes ?? [], options.includeIds);
+  const custom = customNodeVNodes(captures, { htmlFallback: options.htmlFallback });
+  warnings.push(...custom.warnings);
+
   // (2) THE BOX. Priority: an explicit viewBox, else the content fit (the default —
   // the root's own viewBox is the live viewport, which is not what a file wants),
   // else the tree's viewBox verbatim.
-  const viewBox = resolveViewBox(tree, options, warnings);
+  const viewBox = resolveViewBox(tree, options, warnings, captures);
 
   // (3) SIZE, capped.
   //
@@ -203,18 +234,22 @@ export function exportSvg(root: VNode, options: SvgExportOptions = {}): SvgExpor
   // emitted after it — hence children are serialized BEFORE the document is composed.
   const extraDefs = new Map<string, string>();
 
-  const children = (tree.children ?? [])
-    .filter(child => child !== null && child !== undefined)
-    .map(child =>
-      serializeVNode(child, {
-        classStyles,
-        foreignObject: options.foreignObject,
-        captureForeignObject: options.captureForeignObject,
-        warnings,
-        extraDefs,
-      })
-    )
-    .join('');
+  const serialize = (child: VNode): string =>
+    serializeVNode(child, {
+      classStyles,
+      foreignObject: options.foreignObject,
+      captureForeignObject: options.captureForeignObject,
+      warnings,
+      extraDefs,
+    });
+
+  // Custom nodes are serialized LAST, so they paint above the diagram — the same
+  // stacking the live page has, where `.grafloria-html-layer` sits on top of the SVG layer.
+  const children =
+    (tree.children ?? [])
+      .filter(child => child !== null && child !== undefined)
+      .map(serialize)
+      .join('') + custom.nodes.map(serialize).join('');
 
   const background =
     options.backgroundColor !== undefined
@@ -260,13 +295,24 @@ export function exportSvg(root: VNode, options: SvgExportOptions = {}): SvgExpor
  * same rectangle. Exporting it is how a "download PNG" button produces a picture of
  * the user's scroll position instead of a picture of the diagram.
  */
-function resolveViewBox(tree: VNode, options: SvgExportOptions, warnings: string[]): ViewBox {
+function resolveViewBox(
+  tree: VNode,
+  options: SvgExportOptions,
+  warnings: string[],
+  captures: readonly CustomNodeCapture[] = []
+): ViewBox {
   if (options.viewBox) return options.viewBox;
 
   if (options.fitToContent !== false) {
-    const content = vnodeBounds(tree, {
+    const drawn = vnodeBounds(tree, {
       includeIds: options.includeIds ? new Set(options.includeIds) : undefined,
     });
+
+    // The custom nodes' own rects join the fit. Two reasons this is not optional:
+    // a lifted chart hides its geometry behind a `<g transform>` and a foreignObject's
+    // content is opaque, so `vnodeBounds` under-measures a board — and on an ALL-custom
+    // dashboard it measures nothing at all and the file comes out a 40px square.
+    const content = unionRects(drawn, customNodeBounds(captures));
     if (content) return padRect(content, options.padding ?? 20);
 
     // Nothing is drawn. A zero-area document is rejected by rasterizers, so emit a
@@ -279,4 +325,18 @@ function resolveViewBox(tree: VNode, options: SvgExportOptions, warnings: string
   }
 
   return readViewBox(tree);
+}
+
+/** Union of two optional rectangles — either, both, or neither. */
+function unionRects(a: Rectangle | null, b: Rectangle | null): Rectangle | null {
+  if (!a) return b;
+  if (!b) return a;
+  const x = Math.min(a.x, b.x);
+  const y = Math.min(a.y, b.y);
+  return {
+    x,
+    y,
+    width: Math.max(a.x + a.width, b.x + b.width) - x,
+    height: Math.max(a.y + a.height, b.y + b.height) - y,
+  };
 }

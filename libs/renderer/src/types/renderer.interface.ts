@@ -8,6 +8,7 @@ import type { RasterBackend } from '../export/raster';
 import type { ExportScope } from '../export/bounds';
 import type { PdfExportOptions } from '../export/pdf/pdf-export';
 import type { FontSource } from '../export/assets';
+import type { CustomNodeCapture, HtmlFallbackMode } from '../export/custom-nodes';
 // Wave 8 (Performance & scale) — Card 6: the global route solver's worker seam.
 // Type-only, so the engine's solver is not pulled into every renderer bundle.
 import type { SolverPort, SolverOptions } from '@grafloria/engine';
@@ -198,6 +199,35 @@ export interface ExportOptions {
    * exporter cannot know it — a browser-side caller can hand it back here.
    */
   captureForeignObject?: (vnode: VNode) => string | undefined;
+
+  /**
+   * CUSTOM-NODE (HTML-layer) CONTENT to place into the export.
+   *
+   * An HTML-layer node draws nothing in the VNode tree — the renderer emits an empty
+   * `<g>` and the page paints a raw HTML host beside the SVG. Without this, such a
+   * node exports as literally nothing. `createDiagram` captures its hosts and fills
+   * this in automatically; a bare `SVGRenderer` has no DOM and needs it passed.
+   *
+   * Set `[]` to opt out and export the diagram without its widgets.
+   */
+  customNodes?: readonly CustomNodeCapture[];
+
+  /** How to export a custom node that could only be captured as HTML. Default `'foreignObject'`. */
+  htmlFallback?: HtmlFallbackMode;
+
+  /**
+   * FIDELITY REPORT. `IRenderer.export()` returns a bare string, so it has nowhere to
+   * put the caveats an export hit — and for years it simply threw them away, which is
+   * how a blank widget reaches a customer with no diagnostic anywhere.
+   *
+   * This is that missing channel: it fires once per export, on every format, with the
+   * same list `exportSvgString()`/`exportPdf()` return. Empty means a clean export.
+   *
+   * ```ts
+   * await renderer.export('pdf', { onWarnings: w => w.length && console.warn(w) });
+   * ```
+   */
+  onWarnings?: (warnings: string[]) => void;
 
   /**
    * CSS injected verbatim into the exported SVG's `<defs>`. The font seam: an

@@ -530,4 +530,77 @@ describe('createDiagram — the headless instance', () => {
       expect(frameOf(String(group.id))).toBeNull();
     });
   });
+
+  // ---------------------------------------------------------------------------
+  // The custom-node EXPORT BOUNDARY.
+  //
+  // A custom node's pixels live in a raw HTML host beside the SVG, so the VNode tree
+  // the exporter serializes has an empty <g> where the widget should be. The instance
+  // is the only layer that holds those hosts, so it is the only layer that can capture
+  // them — and it must do so WITHOUT the pure serializer ever seeing an element.
+  //
+  // jsdom lays nothing out, so the captures here come back `empty`. That is exactly the
+  // right thing to assert: the boundary RAN and reported the widget it could not read,
+  // instead of exporting a blank and saying nothing.
+  // ---------------------------------------------------------------------------
+  describe('custom-node export boundary', () => {
+    const withWidgets = (): DiagramInstance =>
+      createDiagram(container, {
+        nodes: [
+          { id: 'w1', position: { x: 0, y: 0 }, size: { width: 200, height: 100 }, custom: true },
+          { id: 'w2', position: { x: 220, y: 0 }, size: { width: 200, height: 100 }, custom: true },
+        ],
+        renderCustomNode: (_node: NodeModel, el: HTMLElement) => {
+          el.innerHTML = '<div class="widget">content</div>';
+        },
+      });
+
+    it('captures every mounted host and reports each one it could not read', () => {
+      diagram = withWidgets();
+      const { warnings } = diagram.exportSvgString();
+
+      expect(warnings.some((w) => w.includes('w1'))).toBe(true);
+      expect(warnings.some((w) => w.includes('w2'))).toBe(true);
+    });
+
+    it('emits a marked box per widget rather than nothing at all', () => {
+      diagram = withWidgets();
+      const { svg } = diagram.exportSvgString();
+
+      expect(svg).toContain('data-node-id="w1"');
+      expect(svg).toContain('data-node-id="w2"');
+      expect((svg.match(/grafloria-custom-node-placeholder/g) || []).length).toBe(2);
+    });
+
+    it('fits the box to the widgets, not to the empty groups they render as', () => {
+      // Without the capture the tree draws NOTHING and this collapses to a 40x40 square.
+      diagram = withWidgets();
+      const { viewBox } = diagram.exportSvgString({ padding: 0 });
+
+      expect(viewBox).toEqual({ x: 0, y: 0, width: 420, height: 100 });
+    });
+
+    it("a caller's own customNodes win — including an empty list to opt out", () => {
+      diagram = withWidgets();
+      const { svg, warnings } = diagram.exportSvgString({ customNodes: [] });
+
+      expect(svg).not.toContain('grafloria-custom-node');
+      expect(warnings.some((w) => w.includes('w1'))).toBe(false);
+    });
+
+    it('routes the same captures through exportPdf', () => {
+      diagram = withWidgets();
+      const { warnings } = diagram.exportPdf();
+
+      expect(warnings.some((w) => w.includes('w1'))).toBe(true);
+    });
+
+    it('reaches the caller through onWarnings on the string-only export() too', async () => {
+      diagram = withWidgets();
+      const seen: string[][] = [];
+      await diagram.export('svg', { onWarnings: (w: string[]) => seen.push(w) });
+
+      expect(seen[0].some((w) => w.includes('w1'))).toBe(true);
+    });
+  });
 });

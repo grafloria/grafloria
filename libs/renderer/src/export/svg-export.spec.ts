@@ -581,4 +581,97 @@ describe('SVGRenderer.export()', () => {
       expect(seen[0].svg).not.toContain('fill="#ffffff"/><g');
     });
   });
+
+  // -------------------------------------------------------------------------
+  // Custom (HTML-layer) nodes, and the fidelity channel
+  //
+  // `export()` returns a bare string, so for years the `warnings` it computed were
+  // simply thrown away — which is how a dashboard exports blank and nobody finds out
+  // until a customer opens the file. `onWarnings` is the missing channel.
+  // -------------------------------------------------------------------------
+
+  describe('custom-node content and warnings', () => {
+    const widget = {
+      id: 'kpi-1',
+      rect: { x: 0, y: 0, width: 200, height: 100 },
+      fidelity: 'vector' as const,
+      content: [
+        { type: 'text', props: { x: 10, y: 40, fill: '#1f2430', textContent: '$6.8M' }, children: [] },
+        { type: 'path', props: { d: 'M0,0 L10,10', stroke: '#3b52d9', fill: 'none' }, children: [] },
+      ],
+    };
+
+    it('puts captured widget content in the SVG a caller actually gets', async () => {
+      const out = await svg({ customNodes: [widget] });
+      expect(out).toContain('$6.8M');
+      expect(out).toContain('M0,0 L10,10');
+    });
+
+    it('fires onWarnings for an SVG export', async () => {
+      const seen: string[][] = [];
+      await svg({
+        customNodes: [{ id: 'w', rect: { x: 0, y: 0, width: 10, height: 10 }, fidelity: 'empty' as const }],
+        onWarnings: (w: string[]) => seen.push(w),
+      });
+
+      expect(seen).toHaveLength(1);
+      expect(seen[0].some(w => w.includes('EMPTY BOX'))).toBe(true);
+    });
+
+    it('fires onWarnings for a RASTER export too — the same blind spot', async () => {
+      const seen: string[][] = [];
+      const backend = { rasterize: async () => 'data:image/png;base64,AA==' };
+      await renderer.export('png', {
+        rasterBackend: backend,
+        customNodes: [{ id: 'w', rect: { x: 0, y: 0, width: 10, height: 10 }, fidelity: 'empty' as const }],
+        onWarnings: (w: string[]) => seen.push(w),
+      });
+
+      expect(seen[0].some(w => w.includes('EMPTY BOX'))).toBe(true);
+    });
+
+    it('reports a clean export as an EMPTY list, not silence', async () => {
+      const seen: string[][] = [];
+      addNode('n1');
+      await svg({ onWarnings: (w: string[]) => seen.push(w) });
+      expect(seen).toHaveLength(1);
+    });
+
+    it('exports a VECTOR widget into the PDF as real paths and text', () => {
+      // The claim that matters for PDF: a lifted widget is ordinary geometry, so it is
+      // painted, not dropped. foreignObject is the thing PDF cannot hold — vector is not.
+      const result = renderer.exportPdf({ customNodes: [widget] });
+      // latin1, byte for byte — the PDF's content streams are not compressed, so the
+      // painted text is literally in the bytes.
+      const bytes = Array.from(result.pdf, b => String.fromCharCode(b)).join('');
+
+      expect(result.pageCount).toBe(1);
+      expect(bytes).toContain('6.8M');
+      expect(result.warnings.some(w => w.includes('kpi-1'))).toBe(false);
+    });
+
+    it('warns through exportPdf when a widget is HTML — PDF genuinely cannot hold it', () => {
+      const seen: string[][] = [];
+      const result = renderer.exportPdf({
+        customNodes: [
+          {
+            id: 'grid-1',
+            rect: { x: 0, y: 0, width: 200, height: 100 },
+            fidelity: 'html' as const,
+            html: '<table></table>',
+          },
+        ],
+        onWarnings: (w: string[]) => seen.push(w),
+      });
+
+      expect(result.warnings.some(w => w.includes('grid-1'))).toBe(true);
+      expect(seen[0]).toEqual(result.warnings);
+    });
+
+    it('lets a caller opt out of widgets entirely with an empty list', async () => {
+      addNode('n1');
+      const out = await svg({ customNodes: [] });
+      expect(out).not.toContain('grafloria-custom-node');
+    });
+  });
 });

@@ -47,6 +47,7 @@ import { mimeTypeForFormat, resolveRasterBackend } from '../export/raster';
 import { DEFAULT_MAX_OUTPUT_SIZE } from '../export/bounds';
 import { bytesToDataUrl, dataUrlToBytes, embedModelInPng } from '../export/round-trip';
 import { filterTreeByIds } from '../export/scope';
+import { customNodeVNodes, filterCaptures } from '../export/custom-nodes';
 import { exportPdf, type PdfExportResult } from '../export/pdf/pdf-export';
 import { paginate, type Page, type PaginationOptions } from '../export/pagination';
 
@@ -1845,7 +1846,7 @@ export class SVGRenderer implements IRenderer {
     // identical picture, not a differently-culled render.
     const root = this.render(renderViewport, 1);
 
-    return exportSvg(root, {
+    const result = exportSvg(root, {
       theme: this.theme,
       scale: options.scale,
       backgroundColor: options.backgroundColor,
@@ -1862,7 +1863,15 @@ export class SVGRenderer implements IRenderer {
       minSize: options.minSize,
       xmlDeclaration: options.xmlDeclaration,
       embedModel: this.modelEnvelope(options),
+      customNodes: options.customNodes,
+      htmlFallback: options.htmlFallback,
     });
+
+    // THE FIDELITY CHANNEL. `export()` hands back a bare string and every caller of it
+    // used to lose these silently — which is exactly how a dashboard exports blank and
+    // nobody finds out until a customer opens the PDF.
+    options.onWarnings?.(result.warnings);
+    return result;
   }
 
   /**
@@ -1882,7 +1891,20 @@ export class SVGRenderer implements IRenderer {
     let tree = this.render(renderViewport, 1);
     if (ids !== undefined) tree = filterTreeByIds(tree, ids);
 
-    return exportPdf(tree, {
+    // CUSTOM NODES IN PDF. A `foreignObject` genuinely cannot survive here — PDF has no
+    // HTML — so the painter drops it and says so. But a widget captured as VECTOR is
+    // ordinary paths, rects and text, and those are exactly what the PDF writer paints.
+    // Grafting them onto the tree is therefore not a fallback: it is the SAME true-vector
+    // export the SVG target gets. Whatever could NOT be transcribed reports itself through
+    // the warnings below rather than vanishing.
+    const custom = customNodeVNodes(filterCaptures(options.customNodes ?? [], ids), {
+      htmlFallback: options.htmlFallback,
+    });
+    if (custom.nodes.length > 0) {
+      tree = { ...tree, children: [...(tree.children ?? []), ...custom.nodes] };
+    }
+
+    const result = exportPdf(tree, {
       // The renderer's LIVE theme. Without it the PDF resolves the cascade against the
       // default light theme — or, in CSS mode, against nothing at all, and every link
       // loses its stroke and every node its fill.
@@ -1892,6 +1914,12 @@ export class SVGRenderer implements IRenderer {
       backgroundColor: options.backgroundColor,
       ...options.pdf,
     });
+
+    // The capture's own caveats come FIRST — "this widget is HTML and PDF cannot hold
+    // it" is the sentence a caller needs, and it is generated up here, not in the writer.
+    const warnings = [...new Set([...custom.warnings, ...result.warnings])];
+    options.onWarnings?.(warnings);
+    return { ...result, warnings };
   }
 
   /**
