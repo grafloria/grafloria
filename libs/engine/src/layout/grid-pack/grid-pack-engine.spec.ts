@@ -542,3 +542,300 @@ describe('the standing invariant', () => {
     expect(e.hasOverlaps()).toBe(false);
   });
 });
+
+// ===========================================================================
+// RESPONSIVE COLUMN COUNT — `setColumns(n, layout)` and the per-column cache.
+//
+// The semantics are gridstack's `ColumnOptions`. The board these use is a
+// deliberately plain one-row strip of four 3-wide tiles at 12 columns, so the
+// arithmetic of each mode is readable in the assertion itself:
+//
+//   a(0,0 3×1) b(3,0 3×1) c(6,0 3×1) d(9,0 3×1)
+// ===========================================================================
+
+const ROW: GridPackItem[] = [
+  { id: 'a', x: 0, y: 0, w: 3, h: 1 },
+  { id: 'b', x: 3, y: 0, w: 3, h: 1 },
+  { id: 'c', x: 6, y: 0, w: 3, h: 1 },
+  { id: 'd', x: 9, y: 0, w: 3, h: 1 },
+];
+const row = (columns = 12): GridPackEngine => new GridPackEngine(ROW, { columns });
+/** Every item as [x, y, w] — the shape each column mode is asserted in. */
+const shape = (e: GridPackEngine): Record<string, [number, number, number]> =>
+  Object.fromEntries(e.getItems().map((i) => [i.id, [i.x, i.y, i.w]]));
+
+describe('setColumns — the four ColumnOptions modes', () => {
+  it('is a no-op for the count it already has', () => {
+    const e = row();
+    expect(e.setColumns(12)).toBe(false);
+    expect(e.columns).toBe(12);
+  });
+
+  it("'moveScale' (default) scales BOTH x and w by newCols/oldCols", () => {
+    const e = row();
+    expect(e.setColumns(4)).toBe(true);
+    expect(e.columns).toBe(4);
+    // ratio 1/3, exact: every 3-wide becomes 1 wide and every x thirds, so the
+    // whole row survives as a row — the proportions are what 'moveScale' keeps.
+    expect(shape(e)).toEqual({ a: [0, 0, 1], b: [1, 0, 1], c: [2, 0, 1], d: [3, 0, 1] });
+    expect(e.hasOverlaps()).toBe(false);
+  });
+
+  it("'moveScale' halves a 12-column row into a 6-column one", () => {
+    const e = new GridPackEngine(
+      [
+        { id: 'p', x: 0, y: 0, w: 4, h: 1 },
+        { id: 'q', x: 4, y: 0, w: 4, h: 1 },
+        { id: 'r', x: 8, y: 0, w: 4, h: 1 },
+      ],
+      { columns: 12 }
+    );
+    e.setColumns(6);
+    expect(shape(e)).toEqual({ p: [0, 0, 2], q: [2, 0, 2], r: [4, 0, 2] });
+  });
+
+  it("'move' scales x only — widths survive verbatim, clamped to fit", () => {
+    const e = row();
+    e.setColumns(4, 'move');
+    // Widths stay 3 (NOT scaled to 1): that is the whole difference from
+    // 'moveScale', and it is why the row has to wrap.
+    expect(e.getItems().every((i) => i.w === 3)).toBe(true);
+    expect(e.getItems().every((i) => i.x + i.w <= 4)).toBe(true);
+    expect(e.rows()).toBe(4); // four 3-wide tiles cannot share a 4-column row
+    expect(e.hasOverlaps()).toBe(false);
+  });
+
+  it("'scale' scales w only — x survives verbatim, clamped to fit", () => {
+    const e = row();
+    e.setColumns(4, 'scale');
+    const s = shape(e);
+    // Widths scaled 3 -> 1; a and b keep the exact x they had…
+    expect(e.getItems().every((i) => i.w === 1)).toBe(true);
+    expect(s['a']).toEqual([0, 0, 1]);
+    expect(s['b']).toEqual([3, 0, 1]);
+    // …while c(6) and d(9) cannot start past column 3 and get clamped in.
+    expect(e.getItems().every((i) => i.x + i.w <= 4)).toBe(true);
+    expect(e.hasOverlaps()).toBe(false);
+  });
+
+  it("'none' keeps x and w verbatim, clamping only what no longer fits", () => {
+    const e = row();
+    e.setColumns(4, 'none');
+    const s = shape(e);
+    expect(s['a']).toEqual([0, 0, 3]); // untouched: it already fitted
+    expect(e.getItems().every((i) => i.w === 3)).toBe(true); // no width scaling at all
+    // b(3), c(6) and d(9) cannot start past column 1 any more: clamped, and
+    // the collisions send them down IN READING ORDER.
+    expect(s['b'][1]).toBe(1);
+    expect(s['c'][1]).toBe(2);
+    expect(s['d'][1]).toBe(3);
+    expect(e.hasOverlaps()).toBe(false);
+  });
+
+  it('reading order survives the wrap — c and d land BELOW a and b, in order', () => {
+    const e = row();
+    e.setColumns(6, 'none');
+    const order = [...e.getItems()].sort((p, q) => p.y - q.y || p.x - q.x).map((i) => i.id);
+    expect(order).toEqual(['a', 'b', 'c', 'd']);
+    expect(e.hasOverlaps()).toBe(false);
+  });
+
+  it('column 1 forces a single stack whatever the mode says', () => {
+    for (const mode of ['moveScale', 'move', 'scale', 'none'] as const) {
+      const e = row();
+      e.setColumns(1, mode);
+      expect(e.columns).toBe(1);
+      expect(e.getItems().every((i) => i.x === 0 && i.w === 1)).toBe(true);
+      // one per row, in reading order
+      expect(e.getItems().map((i) => i.id).sort()).toEqual(['a', 'b', 'c', 'd']);
+      expect(e.rows()).toBe(4);
+      expect(e.hasOverlaps()).toBe(false);
+    }
+  });
+
+  it('a locked tile is re-placed like any other and never lost', () => {
+    const e = new GridPackEngine(
+      [...ROW, { id: 'pin', x: 0, y: 1, w: 12, h: 1, locked: true }],
+      { columns: 12 }
+    );
+    e.setColumns(4);
+    expect(e.getItem('pin')).toBeDefined();
+    expect(e.getItem('pin')!.w).toBe(4); // clamped to the board
+    expect(e.hasOverlaps()).toBe(false);
+  });
+
+  it('never drops a tile and never overlaps across a sweep of every count', () => {
+    const e = row();
+    for (const n of [8, 3, 1, 5, 12, 2, 6, 12]) {
+      e.setColumns(n);
+      expect(e.getItems().length).toBe(4);
+      expect(e.hasOverlaps()).toBe(false);
+      expect(e.getItems().every((i) => i.x >= 0 && i.x + i.w <= n)).toBe(true);
+    }
+  });
+});
+
+describe('the per-column LAYOUT CACHE', () => {
+  it('12 -> 1 -> 12 round-trips LOSSLESSLY (the whole point of the cache)', () => {
+    const e = row();
+    const before = shape(e);
+    e.setColumns(1);
+    expect(shape(e)).not.toEqual(before); // it really did re-lay out
+    e.setColumns(12);
+    expect(shape(e)).toEqual(before);
+  });
+
+  it('round-trips through a chain of counts, not just one hop', () => {
+    const e = row();
+    const before = shape(e);
+    e.setColumns(6);
+    const at6 = shape(e);
+    e.setColumns(1);
+    e.setColumns(6);
+    expect(shape(e)).toEqual(at6); // 6 came back from ITS cache, not from 1
+    e.setColumns(12);
+    expect(shape(e)).toEqual(before);
+  });
+
+  it('shrinking NEVER restores — a narrow layout derives from where we are now', () => {
+    const e = row();
+    e.setColumns(6);
+    e.setColumns(12); // caches 6
+    // Move a tile at 12 columns, then go back down: the 6-column result must
+    // reflect the edit, not the stale cached 6.
+    e.beginGesture();
+    e.moveCheck('a', 0, 3);
+    e.endGesture();
+    const aAt12 = e.getItem('a')!.y;
+    e.setColumns(6);
+    expect(e.getItem('a')!.y).toBeGreaterThanOrEqual(aAt12 > 0 ? 1 : 0);
+    expect(e.hasOverlaps()).toBe(false);
+  });
+
+  it('an EDIT made while narrow propagates into the cached wide layout', () => {
+    const e = row();
+    e.setColumns(6); // caches 12; every tile is now 2 wide
+    e.beginGesture();
+    e.resizeCheck('a', 4, 1); // the user widens it on the narrow board
+    e.endGesture();
+    e.setColumns(12);
+    // 4 of 6 columns -> 8 of 12: the edit came back SCALED, not verbatim.
+    expect(e.getItem('a')!.w).toBe(8);
+  });
+
+  it('a mere REORDER while narrow keeps every cached width intact', () => {
+    // Two HALF-width tiles beside a full-width band. The half-widths are what
+    // makes this test bite: at 1 column every tile is x=0 w=1, so propagating
+    // x/w unconditionally would scale all three back to w=12 and the desktop
+    // layout would come home as three stacked bands. Vertical order is
+    // meaningful here too (a single-row board's desktop order is horizontal,
+    // and a phone reorder has nothing to say about it).
+    const e = new GridPackEngine(
+      [
+        { id: 'left', x: 0, y: 0, w: 6, h: 1 },
+        { id: 'right', x: 6, y: 0, w: 6, h: 1 },
+        { id: 'band', x: 0, y: 1, w: 12, h: 1 },
+      ],
+      { columns: 12 }
+    );
+    e.setColumns(1); // the phone stack: every tile x=0 w=1
+    e.beginGesture();
+    e.moveCheck('band', 0, 0); // drag the band to the top of the stack
+    e.endGesture();
+    e.setColumns(12);
+    // Widths are the desktop's own — the 1-column x/w were DERIVED, not edited,
+    // so they must NOT scale back up.
+    expect(e.getItem('left')!.w).toBe(6);
+    expect(e.getItem('right')!.w).toBe(6);
+    expect(e.getItem('band')!.w).toBe(12);
+    // …but the REORDER carried: the band is now the top row and the pair sits
+    // side by side underneath it, exactly as they were.
+    expect(e.getItem('band')!.y).toBe(0);
+    expect(e.getItem('left')!.y).toBe(1);
+    expect(e.getItem('right')!.y).toBe(1);
+    expect(e.hasOverlaps()).toBe(false);
+  });
+
+  it('a tile added while narrow survives the growth (no cache entry needed)', () => {
+    const e = row();
+    e.setColumns(6);
+    e.add({ id: 'new', x: 0, y: 0, w: 2, h: 1, autoPosition: true });
+    e.setColumns(12);
+    expect(e.getItem('new')).toBeDefined();
+    expect(e.hasOverlaps()).toBe(false);
+  });
+
+  it('a tile removed while narrow does not resurrect on the way back', () => {
+    const e = row();
+    e.setColumns(6);
+    e.remove('b');
+    e.setColumns(12);
+    expect(e.getItem('b')).toBeUndefined();
+    expect(e.getItems().length).toBe(3);
+  });
+
+  it('exports and re-imports the cache — a rebuilt engine still round-trips', () => {
+    const e = row();
+    const before = shape(e);
+    e.setColumns(6);
+    // The kit rebuilds its engine from the model on every sync(); the cache
+    // has to survive that or growing back re-derives instead of restoring.
+    const carried = e.getLayouts();
+    const rebuilt = new GridPackEngine(
+      e.getItems().map((i) => ({ ...i })),
+      { columns: 6 }
+    );
+    rebuilt.setLayouts(carried);
+    rebuilt.setColumns(12);
+    expect(shape(rebuilt)).toEqual(before);
+  });
+
+  it('reports which counts it holds', () => {
+    const e = row();
+    e.setColumns(6);
+    e.setColumns(1);
+    expect(e.cachedColumns()).toEqual([6, 12]);
+  });
+});
+
+describe('saveLayout — saving on a phone saves the desktop layout', () => {
+  it('serialises from the LARGEST cached column count, not the live one', () => {
+    const e = row();
+    const before = shape(e);
+    e.setColumns(1);
+    const saved = e.saveLayout();
+    expect(saved.columns).toBe(12);
+    expect(
+      Object.fromEntries(saved.items.map((i) => [i.id, [i.x, i.y, i.w]]))
+    ).toEqual(before);
+    // …while the LIVE board really is a one-column stack.
+    expect(e.columns).toBe(1);
+    expect(e.getItems().every((i) => i.w === 1)).toBe(true);
+  });
+
+  it('is the live layout when the board is already at its widest', () => {
+    const e = row();
+    e.setColumns(6);
+    e.setColumns(12);
+    const saved = e.saveLayout();
+    expect(saved.columns).toBe(12);
+    expect(Object.fromEntries(saved.items.map((i) => [i.id, [i.x, i.y, i.w]]))).toEqual(shape(e));
+  });
+
+  it('carries the live h, which no column count can change', () => {
+    const e = new GridPackEngine([{ id: 'tall', x: 0, y: 0, w: 4, h: 3 }], { columns: 12 });
+    e.setColumns(1);
+    const saved = e.saveLayout();
+    expect(saved.items[0].h).toBe(3);
+    expect(saved.items[0].w).toBe(4);
+  });
+
+  it('includes a tile added while narrow, at its live cells', () => {
+    const e = row();
+    e.setColumns(4);
+    e.add({ id: 'late', x: 0, y: 0, w: 2, h: 1, autoPosition: true });
+    const saved = e.saveLayout();
+    expect(saved.columns).toBe(12);
+    expect(saved.items.find((i) => i.id === 'late')).toBeDefined();
+  });
+});

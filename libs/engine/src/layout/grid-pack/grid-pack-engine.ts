@@ -56,6 +56,36 @@ export interface GridPackItem {
   autoPosition?: boolean;
 }
 
+/**
+ * How a COLUMN-COUNT change re-lays the board out — gridstack's
+ * `ColumnOptions`, recorded from its documented semantics:
+ *
+ *   'moveScale' (default) — scale both x and w by newColumns/oldColumns, so
+ *                the board keeps its proportions at any width;
+ *   'move'     — scale x only; widths survive verbatim (clamped to fit);
+ *   'scale'    — scale w only; x survives verbatim (clamped to fit);
+ *   'none'     — keep x and w exactly; clamp only what no longer fits.
+ *
+ * Whatever the mode, `columns === 1` forces a SINGLE STACK (every tile x=0,
+ * w=1) — the phone layout — and every mode re-places the result in reading
+ * order afterwards, so the outcome can never overlap.
+ */
+export type GridColumnLayout = 'moveScale' | 'move' | 'scale' | 'none';
+
+/** One item's cached geometry at a column count. `h` is column-independent. */
+export interface CachedCell {
+  x: number;
+  y: number;
+  w: number;
+}
+
+/**
+ * The PER-COLUMN LAYOUT CACHE, as plain data: column count → item id → cell.
+ * Exported/imported so a host that rebuilds its engine (the kit's `sync()`)
+ * carries the wider layouts across the rebuild instead of losing them.
+ */
+export type GridLayoutCache = Record<number, Record<string, CachedCell>>;
+
 export interface GridPackOptions {
   /** Column count of the board. Default 12. */
   columns?: number;
@@ -102,7 +132,11 @@ interface GestureMemory {
 }
 
 export class GridPackEngine {
-  readonly columns: number;
+  private _columns: number;
+  /** Live column count. Change it only through {@link setColumns}. */
+  get columns(): number {
+    return this._columns;
+  }
   float: boolean;
   /** Row bound (see GridPackOptions.maxRows). Undefined = unbounded. */
   readonly maxRows?: number;
@@ -125,9 +159,26 @@ export class GridPackEngine {
    * return keeps the S1 wiggle (swap, retreat, swap again) intact.
    */
   private swapLock: { a: string; b: string } | null = null;
+  /**
+   * THE PER-COLUMN LAYOUT CACHE (gridstack's `_layouts`). Column count → the
+   * layout the board had at that count. Written on the way OUT of a column
+   * count, read on the way BACK IN, so 12 → 1 → 12 round-trips losslessly
+   * instead of re-deriving a squashed 12 from the phone stack.
+   */
+  private layouts = new Map<number, Map<string, CachedCell>>();
+  /**
+   * What the last column change ASSIGNED each item. It is the only way to
+   * tell a user edit made at the narrow count from a value the column change
+   * itself derived — an edit propagates into the wider cached layouts, a
+   * derived value must not (or every visit to 1 column would flatten the
+   * desktop layout to full-width tiles).
+   */
+  private assigned = new Map<string, CachedCell>();
+  /** Re-entrancy guard: the column change's own writes never propagate. */
+  private inColumnChange = false;
 
   constructor(items: GridPackItem[] = [], options: GridPackOptions = {}) {
-    this.columns = options.columns ?? 12;
+    this._columns = options.columns ?? 12;
     this.float = options.float ?? false;
     this.maxRows = options.maxRows;
     for (const it of items) this.add(it);
@@ -162,6 +213,7 @@ export class GridPackEngine {
       this.restoreCells(pre);
       return { changed: false };
     }
+    this.propagateToCaches();
     return { changed: true };
   }
 
@@ -202,8 +254,8 @@ export class GridPackEngine {
    */
   add(item: GridPackItem): GridPackItem | null {
     const it: GridPackItem = { ...item };
-    it.w = Math.max(1, Math.min(this.columns, it.w));
-    it.x = Math.max(0, Math.min(this.columns - it.w, it.x));
+    it.w = Math.max(1, Math.min(this._columns, it.w));
+    it.x = Math.max(0, Math.min(this._columns - it.w, it.x));
     it.y = Math.max(0, it.y);
     it.h = Math.max(1, it.h);
     // A bounded board refuses an item that cannot fit at all.
@@ -215,7 +267,7 @@ export class GridPackEngine {
       const yMax = this.maxRows !== undefined ? this.maxRows - it.h : Infinity;
       let placed = false;
       scan: for (let y = 0; y <= yMax; y++) {
-        for (let x = 0; x <= this.columns - it.w; x++) {
+        for (let x = 0; x <= this._columns - it.w; x++) {
           const probe = { ...it, x, y };
           if (!this.collide(probe, it)) {
             it.x = x;
@@ -235,6 +287,7 @@ export class GridPackEngine {
     }
     this.items.push(it);
     this.settle(null);
+    this.propagateToCaches();
     return it;
   }
 
@@ -244,6 +297,7 @@ export class GridPackEngine {
     this.items.splice(idx, 1);
     this.memory.delete(id);
     this.settle(null);
+    this.propagateToCaches();
   }
 
   // -- gestures --------------------------------------------------------------
@@ -293,7 +347,7 @@ export class GridPackEngine {
   moveCheck(id: string, x: number, y: number, options: MoveCheckOptions = {}): GridPackResult {
     const n = this.getItem(id);
     if (!n || n.locked) return { changed: false };
-    x = Math.max(0, Math.min(this.columns - n.w, Math.round(x)));
+    x = Math.max(0, Math.min(this._columns - n.w, Math.round(x)));
     y = Math.max(0, Math.round(y));
     if (n.x === x && n.y === y) return { changed: false };
 
@@ -396,7 +450,7 @@ export class GridPackEngine {
   resizeCheck(id: string, w: number, h: number): GridPackResult {
     const n = this.getItem(id);
     if (!n) return { changed: false };
-    w = Math.max(1, Math.min(this.columns - n.x, Math.round(w)));
+    w = Math.max(1, Math.min(this._columns - n.x, Math.round(w)));
     h = Math.max(1, Math.round(h));
     // A bounded board clamps the tile's own height outright…
     if (this.maxRows !== undefined) h = Math.min(h, Math.max(1, this.maxRows - n.y));
@@ -410,6 +464,197 @@ export class GridPackEngine {
     this.pushDown(n);
     this.settle(n);
     return this.acceptWithinBound(pre);
+  }
+
+  // -- the core: responsive column count -------------------------------------
+
+  /**
+   * Change the board's COLUMN COUNT — gridstack's `column(n, layout)`, and the
+   * whole of responsive behaviour in one operation.
+   *
+   * Three things happen, in this order:
+   *
+   *  1. THE LAYOUT WE ARE LEAVING IS CACHED under its own column count. This
+   *     is the load-bearing step: without it, 12 → 1 → 12 would have to
+   *     re-derive twelve columns from a one-column stack and every tile would
+   *     come back full width.
+   *  2. GROWING RESTORES FROM THE CACHE, per item. Items the cache knows come
+   *     back at exactly the cells they had the last time the board was this
+   *     wide; items it does not know (added while narrow) fall through to the
+   *     scale rules below. Shrinking never restores — a narrower layout is
+   *     always derived from where the board is NOW, which is what makes a
+   *     gradual squeeze look natural.
+   *  3. THE REMAINDER IS SCALED by `layout` (see {@link GridColumnLayout}),
+   *     `columns === 1` forcing a single stack, and everything is re-placed in
+   *     reading order so the result cannot overlap.
+   *
+   * Returns true when the count actually changed.
+   */
+  setColumns(next: number, layout: GridColumnLayout = 'moveScale'): boolean {
+    const n = Math.max(1, Math.round(next));
+    const prev = this._columns;
+    if (n === prev) return false;
+
+    this.inColumnChange = true;
+    try {
+      // 1. cache the layout we are leaving, keyed by the count it belongs to.
+      this.cacheLayout(prev);
+
+      // 2. growing back: restore per item from the cache for the NEW count.
+      const restored = new Set<string>();
+      const cached = n > prev ? this.layouts.get(n) : undefined;
+      if (cached) {
+        for (const it of this.items) {
+          const c = cached.get(it.id);
+          if (!c) continue;
+          it.x = c.x;
+          it.y = c.y;
+          it.w = c.w;
+          restored.add(it.id);
+        }
+      }
+
+      // 3. everything else follows the layout mode.
+      const ratio = n / prev;
+      const move = layout === 'move' || layout === 'moveScale';
+      const scale = layout === 'scale' || layout === 'moveScale';
+      // NOTE ON `columns === 1`: the phone layout (every tile x=0, w=1, one per
+      // row) needs no special case — the two clamps below already produce it in
+      // EVERY mode, since `min(1, w)` is 1 and `min(1 - 1, x)` is 0. An
+      // explicit `if (n === 1)` branch was written here first and no test could
+      // kill it (mutation-proved: deleting it changed nothing), so it is gone.
+      // The spec asserts the stack for all four modes instead.
+      for (const it of this.items) {
+        if (restored.has(it.id)) continue;
+        const w = scale ? Math.max(1, Math.round(it.w * ratio)) : it.w;
+        it.w = Math.max(1, Math.min(n, w));
+        const x = move ? Math.round(it.x * ratio) : it.x;
+        it.x = Math.max(0, Math.min(n - it.w, x));
+      }
+
+      this._columns = n;
+      this.rePlace();
+      // Remember what THIS change assigned, so a later edit at the new count
+      // is distinguishable from a value the change itself derived.
+      this.assigned = new Map(this.items.map((i) => [i.id, { x: i.x, y: i.y, w: i.w }]));
+    } finally {
+      this.inColumnChange = false;
+    }
+    return true;
+  }
+
+  /**
+   * The layout to PERSIST — gridstack's `save()`, which serialises from the
+   * LARGEST cached column count rather than the live one. Saving while the
+   * board is narrow (a phone) therefore saves the DESKTOP layout: the cells a
+   * user authored at full width are the document, and the narrow arrangement
+   * is a projection of it.
+   *
+   * `h` is never cached because it does not depend on the column count, so it
+   * always comes from the live item; items the widest cache does not know
+   * (added while narrow) contribute their live cells, which are legal at any
+   * count at least as wide.
+   */
+  saveLayout(): { columns: number; items: GridPackItem[] } {
+    let widest = this._columns;
+    for (const col of this.layouts.keys()) if (col > widest) widest = col;
+    const cached = widest === this._columns ? undefined : this.layouts.get(widest);
+    return {
+      columns: widest,
+      items: this.items.map((it) => {
+        const c = cached?.get(it.id);
+        return c ? { ...it, x: c.x, y: c.y, w: c.w } : { ...it };
+      }),
+    };
+  }
+
+  /** The column counts the cache currently holds a layout for (ascending). */
+  cachedColumns(): number[] {
+    return [...this.layouts.keys()].sort((a, b) => a - b);
+  }
+
+  /** The cache as plain data — hand it to a rebuilt engine via {@link setLayouts}. */
+  getLayouts(): GridLayoutCache {
+    const out: GridLayoutCache = {};
+    for (const [col, entries] of this.layouts) {
+      const o: Record<string, CachedCell> = {};
+      for (const [id, c] of entries) o[id] = { ...c };
+      out[col] = o;
+    }
+    return out;
+  }
+
+  /**
+   * Adopt a cache exported by {@link getLayouts}. The kit calls this after
+   * rebuilding its engine from the model (`sync()`), which would otherwise
+   * throw the wider layouts away on every undo, add or refresh.
+   */
+  setLayouts(cache: GridLayoutCache): void {
+    this.layouts = new Map();
+    for (const key of Object.keys(cache)) {
+      const col = Number(key);
+      if (!Number.isFinite(col) || col < 1) continue;
+      const entries = new Map<string, CachedCell>();
+      for (const [id, c] of Object.entries(cache[col] ?? {})) entries.set(id, { ...c });
+      this.layouts.set(col, entries);
+    }
+  }
+
+  /** Snapshot every item's x/y/w under `columns`. */
+  private cacheLayout(columns: number): void {
+    const entries = new Map<string, CachedCell>();
+    for (const it of this.items) entries.set(it.id, { x: it.x, y: it.y, w: it.w });
+    this.layouts.set(columns, entries);
+  }
+
+  /**
+   * Push an edit made at the LIVE column count into every WIDER (and narrower)
+   * cached layout, proportionally — so a widget re-arranged on a phone is
+   * still re-arranged when the desktop layout comes back.
+   *
+   *  - `y` always propagates verbatim: vertical order is column-independent,
+   *    and reordering is exactly what a user does on a narrow board.
+   *  - `x` and `w` propagate SCALED by cachedColumns/liveColumns, but only
+   *    when they differ from what the last column change assigned. That test
+   *    is what keeps a mere reorder at 1 column from rewriting every cached
+   *    width to full width (x=0,w=1 scaled by 12 would be x=0,w=12).
+   */
+  private propagateToCaches(): void {
+    if (this.inColumnChange || this.layouts.size === 0) return;
+    const cur = this._columns;
+    for (const [col, entries] of this.layouts) {
+      if (col === cur) continue;
+      const ratio = col / cur;
+      for (const it of this.items) {
+        const e = entries.get(it.id);
+        if (!e) continue;
+        const a = this.assigned.get(it.id);
+        e.y = it.y;
+        if (!a || a.w !== it.w) e.w = Math.max(1, Math.min(col, Math.round(it.w * ratio)));
+        if (!a || a.x !== it.x) e.x = Math.round(it.x * ratio);
+        e.x = Math.max(0, Math.min(col - e.w, e.x));
+      }
+    }
+  }
+
+  /**
+   * Re-place every item in READING ORDER after a column change: clamp it to
+   * the new width, then let `add()` resolve collisions exactly as it does for
+   * any other placement (row-major first-hole scan, then gravity).
+   *
+   * Reading order — not gridstack's reverse order — is what keeps the visible
+   * sequence intact: at 12 → 6 four 3-wide tiles on one row must become two
+   * rows of two IN ORDER, and placing bottom-right-first scrambles them.
+   */
+  private rePlace(): void {
+    const ordered = [...this.items].sort((a, b) => a.y - b.y || a.x - b.x);
+    this.items = [];
+    for (const it of ordered) {
+      if (this.add(it)) continue;
+      // A bounded board can refuse (maxRows). Never LOSE a tile to a column
+      // change: park it on a fresh row at the bottom instead.
+      this.items.push({ ...it, x: 0, y: this.rows() });
+    }
   }
 
   // -- internals -------------------------------------------------------------
@@ -499,7 +744,7 @@ export class GridPackEngine {
       if (this.maxRows !== undefined) {
         const rightX = placed.x + placed.w;
         const right = { ...o, x: rightX };
-        if (rightX + o.w <= this.columns && !this.collideLocked(right, o)) {
+        if (rightX + o.w <= this._columns && !this.collideLocked(right, o)) {
           o.x = rightX;
           this.pushDown(o);
           continue;
