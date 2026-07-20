@@ -444,11 +444,15 @@ function flash(msg) {
    old grid placement doubled onto 12 columns, and Overview/Sales keep their
    arrangement with heights snapped to the uniform row grid.
 
-   GROUPING under pack: the KPI section rides in the Overview engine as a
-   LOCKED full-width slab (the plan prototype's "pinned — flows around me"
-   row): never pushed, drags onto it refused. INSIDE, it is its own 4-column
-   pack grid via a second binder — pack applies per-container and the layout
-   cascade (tab sizes the slab → slab's binder re-projects the KPIs) is live.
+   ONE FLAT GRID PER VIEW — deliberately. Every widget, KPI tiles included, is
+   a DIRECT member of its tab's 12-column grid: no nested section, no locked
+   slab, no bounded strip. That is the whole point of this page — resizing one
+   KPI resizes ONLY that KPI (never "the whole row grows"), and dragging any
+   tile onto any other behaves by the ordinary pack rules, with no special
+   case to learn. The advanced constructs (nested/bounded sections with
+   `maxRows`, cross-container boards, explicit placement) live on their own
+   page — demos/dashboard/grid-options.html — where they are labelled as
+   options rather than mixed into the flagship dashboard.
 
    Inactive tabs are parked OFF-CANVAS; the camera frames the active one; the
    binders re-project members whenever a frame moves (bounds:changed), which
@@ -457,8 +461,7 @@ function flash(msg) {
 const TAB_W = 1180, TAB_H = 660, OFFSCREEN_X = -20000;
 const GAP = 14, BASE_ROW = 130;   // pack gap/padding + the 'grow' row height
 const tabs = {};                  // id -> GroupModel
-const sections = [];              // nested section GroupModels (grouping demo)
-const binders = { overview: null, sales: null, pipeline: null, kpis: null };
+const binders = { overview: null, sales: null, pipeline: null };
 let sizingMode = 'fit';           // 'fit' (default, DevExtreme-style) | 'grow'
 
 /** A dashboard group is a LAYOUT CONTAINER, not a document group — it must
@@ -509,18 +512,12 @@ function buildBoard(diagram) {
   diagram.addGroup(overview);
   tabs.overview = overview;
 
-  // GROUPING: the KPI section — a locked slab in the tab's pack grid (row 0,
-  // full width), itself a 4-column pack grid of the four KPI tiles.
-  const kpiRow = new GroupModel({ id: 'sec-kpis', name: 'KPIs' });
-  asLayoutContainer(kpiRow);
-  kpiRow.size = { width: 1152, height: 150, depth: 0 };
-  kpiRow.setMetadata('gridItem', { columnStart: 1, columnEnd: 13, rowStart: 1, rowEnd: 2 });
-  diagram.addGroup(kpiRow);
-  sections.push(kpiRow);
+  // The four KPI tiles are ORDINARY members of the same 12-column grid — three
+  // columns each across row 0. Nothing wraps them, so resizing one changes only
+  // that one and dragging any tile onto any other follows the ordinary rules.
   ['revenue', 'customers', 'avgDeal', 'winRate'].forEach((kpi, i) => {
-    seedWidget(diagram, kpiRow, 'kpi', { x: i, y: 0, w: 1, h: 1 }, { kpi });
+    seedWidget(diagram, overview, 'kpi', { x: i * 3, y: 0, w: 3, h: 1 }, { kpi });
   });
-  overview.addMember(kpiRow.id);
   seedWidget(diagram, overview, 'line',  { x: 0, y: 1, w: 8,  h: 2 }, { title: 'Revenue vs target' });
   seedWidget(diagram, overview, 'donut', { x: 8, y: 1, w: 4,  h: 2 }, { source: 'region', title: 'Revenue by region' });
   seedWidget(diagram, overview, 'table', { x: 0, y: 3, w: 12, h: 2 }, { title: 'Top reps by revenue' });
@@ -554,7 +551,7 @@ function buildBoard(diagram) {
 }
 
 /* ---------------------------------------------------------------------------
-   4b. THE KIT BINDERS — one per view + one for the KPI section. Everything
+   4b. THE KIT BINDERS — exactly ONE per view, no nested binders. Everything
    interactive (live push while hovering, the truthful placeholder, corner
    resize with live push, pin refusal, Esc restore, palette drag-in, drag-out
    remove, ONE BatchCommand per gesture) is the kit's; the page only supplies
@@ -609,37 +606,18 @@ function tabBinderOptions(tabId) {
 
 /** (Re)bind every view — used at boot and again after a load rebuilds the
  *  model (binders hold group references, so a rebuilt document needs fresh
- *  ones). Order matters: tabs first (they place the KPI slab), section last. */
+ *  ones). One binder per tab; nothing nested. */
 function bindAll() {
   for (const key of Object.keys(binders)) { binders[key]?.dispose(); binders[key] = null; }
   const inst = ctxRef.instance;
   binders.overview = bindDashboardGrid(inst, tabs.overview, tabBinderOptions('overview'));
   binders.sales    = bindDashboardGrid(inst, tabs.sales,    tabBinderOptions('sales'));
   binders.pipeline = bindDashboardGrid(inst, tabs.pipeline, tabBinderOptions('pipeline'));
-  // The KPI section: 4 columns, its own gap, no padding — and designHeight 0,
-  // which tells the binder the slab's height is NOT its concern (the tab's
-  // binder owns the slab; this one just fits its tiles into whatever height
-  // the cascade hands down).
-  const sec = sections[0];
-  binders.kpis = sec ? bindDashboardGrid(inst, sec, {
-    // gap === the tab GAP so one strip column spans EXACTLY three board
-    // columns - KPI edges land on the same lines as the charts below
-    // (parity review: "align them correctly"; 12 vs 14 drifted ~4.5px).
-    columns: 4, gap: GAP, padding: 0, sizing: 'fit', designHeight: 0, dragOut: 'cancel',
-    // The strip's DESIGN is one row: height growth and downward pushes are
-    // refused in the ENGINE (siblings shift along the row instead), so the
-    // section can never be squeezed - the "resize a first-row KPI destroyed
-    // the design" report.
-    maxRows: 1,
-    onGesture: (e) => {
-      if (e.type === 'commit') { setFocus(e.nodeId); flash(e.changed ? 'KPI reordered (nested pack grid)' : 'released'); syncToolbar(); setTimeout(syncToolbar, 0); }
-    },
-  }) : null;
 }
 
-/** The binder that owns a widget (the section's tiles belong to the section). */
+/** The binder that owns a widget (i.e. the tab whose grid holds its cells). */
 function binderOwning(nodeId) {
-  for (const key of ['kpis', 'overview', 'sales', 'pipeline']) {
+  for (const key of ['overview', 'sales', 'pipeline']) {
     if (binders[key] && binders[key].cellOf(nodeId)) return binders[key];
   }
   return null;
@@ -649,7 +627,7 @@ function binderOwning(nodeId) {
  *  re-frame and repaint. This is all that remains of the old relayoutBoard. */
 function refreshBoards() {
   glide();
-  for (const key of ['overview', 'sales', 'pipeline', 'kpis']) binders[key]?.sync();
+  for (const key of ['overview', 'sales', 'pipeline']) binders[key]?.sync();
   frameTab(state.active);
   ctxRef.instance.renderNow();
   for (const n of ctxRef.diagram.getNodes()) repaint(n.id);
@@ -737,7 +715,7 @@ async function removeWidgetCmd(nodeId, displaced = null) {
   glide();
   const node = ctxRef.diagram.getNode(nodeId); if (!node) return;
   const owner = binderOwning(nodeId);
-  const groupId = [...Object.values(tabs), ...sections].find((g) => g && g.members?.has(nodeId))?.id;
+  const groupId = Object.values(tabs).find((g) => g && g.members?.has(nodeId))?.id;
   const cmds = [];
   if (groupId) cmds.push(new RemoveFromGroupCommand(groupId, nodeId));
   cmds.push(new RemoveNodeCommand(nodeId));
@@ -817,8 +795,8 @@ async function saveBoard() {
 }
 
 /** LOAD: clear the live model and rebuild it from the serialized snapshot via
- *  per-entity fromJSON — cells ride in each node's gridItem (and the KPI
- *  slab's metadata), so the binders re-project the exact saved board. The old
+ *  per-entity fromJSON — cells ride in each node's gridItem, so the binders
+ *  re-project the exact saved board. The old
  *  binders hold dead group references after a rebuild; bindAll() replaces
  *  them. A faithful serialize round-trip (proven headlessly AND by the
  *  page's own assert). */
@@ -828,11 +806,9 @@ function loadBoard() {
   for (const n of [...ctxRef.diagram.getNodes()]) ctxRef.diagram.removeNode(n.id);
   for (const g of [...ctxRef.diagram.getGroups()]) ctxRef.diagram.removeGroup(g.id);
   hosts.clear(); tabs.overview = tabs.sales = tabs.pipeline = undefined;
-  sections.length = 0;
   for (const g of doc.groups || []) {
     const gm = GroupModel.fromJSON(g); ctxRef.diagram.addGroup(gm);
     if (gm.id.startsWith('tab-')) tabs[gm.id.slice(4)] = gm;
-    if (gm.id.startsWith('sec-')) sections.push(gm);
   }
   for (const n of doc.nodes || []) ctxRef.diagram.addNode(NodeModel.fromJSON(n));
   cmd().clear();                       // a load is not an undoable edit
@@ -881,15 +857,16 @@ function wireControls() {
 --------------------------------------------------------------------------- */
 defineDemo({
   name: 'Dashboard builder',
-  blurb: 'A dashboard-builder app on the dashboard kit (bindDashboardGrid + GridPackEngine): a 12-column PACK grid of hand-drawn chart widgets across Overview / Sales / Pipeline views. Drag a tile and neighbours slide out of the way live around a truthful placeholder; resize from the corner and the rows push per cell-step; pinned tiles refuse the mover; Esc restores; palette drag-in and drag-out-to-remove; fit/grow sizing modes — every gesture ONE undoable BatchCommand, from the @grafloria/element front door.',
+  blurb: 'A dashboard-builder app on the dashboard kit (bindDashboardGrid + GridPackEngine): ONE flat 12-column PACK grid per view, holding hand-drawn chart widgets across Overview / Sales / Pipeline. Every widget — KPI tiles included — is a direct member of that one grid, so there is a single rule to learn: drag a tile and neighbours slide out of the way live around a truthful placeholder; resize from the corner and only that tile changes while the rows below push per cell-step; pinned tiles refuse the mover; Esc restores; palette drag-in and drag-out-to-remove; fit/grow sizing — every gesture ONE undoable BatchCommand, from the @grafloria/element front door.',
   howTo: [
-    'Drag any tile: it ghosts under the cursor while the dashed placeholder always shows the exact drop cell, and neighbours glide out of the way LIVE — same-size tiles swap, the 8-wide line chart and 4-wide donut exchange order (the three gridstack swap shapes). Esc mid-drag restores everything.',
-    'Hover a tile and drag its bottom-right corner: each cell-step pushes the rows below live; shrink back in the same gesture and they return (displaced-tile memory).',
-    'The KPI row is a nested SECTION — a locked slab in the tab grid (drags onto it are refused) that is its own 4-column pack grid inside: drag one KPI onto another and they swap.',
-    'Mode: fit keeps each board at its design height and squeezes rows so nothing can leave the viewport (DevExtreme-style); Mode: grow keeps 130px rows and extends the board downward, camera refitting.',
-    'Drag a widget from the left palette onto the board (or just click it): the clone follows the cursor and the board makes room live from the moment it enters. Drag a tile OUT of the board: the ghost dims — release deletes it, undoably, survivors re-packed in the same batch.',
+    'Drag any tile: it ghosts under the cursor while the dashed placeholder always shows the exact drop cell, and neighbours glide out of the way LIVE — same-size tiles swap, the 8-wide line chart and 4-wide donut exchange order, and a small KPI dragged more than halfway into a big chart displaces it (the three gridstack swap shapes + the directional-penetration gate). Esc mid-drag restores everything.',
+    'Hover a tile and drag its bottom-right corner: each cell-step pushes the rows below live; shrink back in the same gesture and they return (displaced-tile memory). Resizing ONE KPI changes only that KPI — its neighbours keep their cells.',
+    'The four KPI tiles are ordinary members of the same 12-column grid (3 columns each): nothing here is a special case, so any tile can be dragged onto any other and every widget resizes the same way.',
+    'Mode: fit keeps each board at its design height and squeezes rows so nothing can leave the viewport (DevExtreme-style); Mode: grow keeps 130px rows and extends the board downward, camera refitting. Float: on lets tiles sit anywhere with gaps; off packs upward.',
+    'Drag a widget from the left palette onto the board (or just click it): the clone follows the cursor and the board makes room live from the moment it enters. Drag a tile OUT over the palette: the ghost dims — release deletes it, undoably, survivors re-packed in the same batch.',
     'Every gesture commits ONE BatchCommand (cells + geometry): one Undo rewinds a whole drag or resize. Save serializes cells in the standard GridItemConfig; Load rebuilds the exact board.',
-    'Press "▶ run the scripted checks": it drives real pointer gestures and asserts the pack model — live push mid-drag, placeholder truth, resize push + shrink-restore, both swap directions, pin refusal, Esc restore, one-undo-per-gesture, both sizing modes.',
+    'Advanced grid constructs — nested/bounded sections (maxRows), two boards with cross-container drag, explicit cell placement — live on their own page: dashboard/grid-options.html. They are deliberately kept OFF this dashboard so the model here stays plain.',
+    'Press "▶ run the scripted checks": it drives real pointer gestures and asserts the flat pack model — live push mid-drag, placeholder truth, resize push + shrink-restore, both swap directions, one-KPI-only resize, small-onto-big displacement, pin refusal, Esc restore, one-undo-per-gesture, both sizing modes.',
   ],
 
   async setup(ctx) {
@@ -903,7 +880,7 @@ defineDemo({
 
     buildBoard(ctx.diagram);
     bindAll();               // the kit binders own placement from here on
-    window.__dash = { binders, tabs, sections, state };   // console/e2e escape hatch
+    window.__dash = { binders, tabs, state };   // console/e2e escape hatch
     wireControls();
     instance.renderNow();
     switchTab('overview');
@@ -940,7 +917,7 @@ defineDemo({
     const widgetOf = (g, kind) => memberNodes(g).find((n) => n.getMetadata('widgetKind') === kind);
     const cellsSnap = (b) => {
       const out = {};
-      for (const g of [tabs.overview, tabs.sales, tabs.pipeline, ...sections]) {
+      for (const g of [tabs.overview, tabs.sales, tabs.pipeline]) {
         for (const id of g?.members ?? []) { const c = b ? b.cellOf(id) : binderOwning(id)?.cellOf(id); if (c) out[id] = { ...c }; }
       }
       return out;
@@ -1009,24 +986,47 @@ defineDemo({
     check(memberNodes(tabs.sales)[0].position.x >= 0, 'switching to Sales brings its widgets on-canvas');
     switchTab('overview'); await settle();
 
-    // ---- (3) GROUPING: the KPI section — locked slab outside, pack inside --
-    const kpiRow = D.getGroup('sec-kpis');
-    check(kpiRow && tabs.overview.members.has('sec-kpis'), 'the KPI section is a member of the Overview tab');
-    const kpis = memberNodes(kpiRow);
-    check(kpis.length === 4, `KPI section holds 4 tiles, got ${kpis.length}`);
-    check(kpis[0].position.x >= kpiRow.position.x - 1 && kpis[0].position.y >= kpiRow.position.y - 1, 'first KPI sits inside the section frame');
-    check(kpis[1].position.x > kpis[0].position.x + kpis[0].size.width - 2, 'KPI tiles flow left-to-right inside the section (cascade)');
-    // The slab REFUSES a widget dragged onto it (engine-locked, like the plan
-    // prototype's pinned row): moveCheck onto row 0 must not change anything.
-    check(!(await B.moveTo(donut.id, 8, 0)), 'dragging the donut onto the KPI slab is refused (locked slab)');
-    checkEqual(B.cellOf(donut.id), { x: 8, y: 1, w: 4, h: 2 }, 'refused move left the donut cells untouched');
-    // Inside: the section is its own pack grid — swap two KPIs and undo.
-    const k0 = binders.kpis.cellOf(kpis[0].id), k1 = binders.kpis.cellOf(kpis[1].id);
-    check(await binders.kpis.moveTo(kpis[0].id, k1.x, k1.y), 'nested pack grid: KPI 1 dragged onto KPI 2 swaps');
-    checkEqual(binders.kpis.cellOf(kpis[1].id), k0, 'the two KPIs exchanged cells exactly');
-    await cm.undo(); refreshBoards(); await settle();
-    checkEqual(binders.kpis.cellOf(kpis[0].id), k0, 'undo restored the KPI order (one step)');
-    cm.clear();
+    // ---- (3) ONE FLAT GRID: every widget is a DIRECT member -----------------
+    const kpis = memberNodes(tabs.overview).filter((n) => n.getMetadata('widgetKind') === 'kpi');
+    check(kpis.length === 4, `the four KPI tiles are direct members of the tab grid, got ${kpis.length}`);
+    check(!D.getGroup('sec-kpis'), 'there is NO nested KPI section group any more');
+    checkEqual(D.getGroups().length, 3, 'the document holds exactly the three tab groups — nothing nested');
+    checkEqual(kpis.map((n) => B.cellOf(n.id)), [
+      { x: 0, y: 0, w: 3, h: 1 }, { x: 3, y: 0, w: 3, h: 1 },
+      { x: 6, y: 0, w: 3, h: 1 }, { x: 9, y: 0, w: 3, h: 1 },
+    ], 'the KPI row is four 3-column members of the SAME 12-column grid');
+    // ONE grid means the KPI edges are the chart edges — no strip with its own
+    // column maths to keep in step.
+    check(Math.abs(kpis[0].position.x - line.position.x) < 0.5, 'KPI 1 shares the line chart\'s left column line');
+    check(Math.abs((kpis[3].position.x + kpis[3].size.width) - (donut.position.x + donut.size.width)) < 0.5,
+      'KPI 4\'s right edge lands exactly on the donut\'s right edge (both end at column line 12)');
+
+    // THE USER'S REPORT — resizing one KPI must change ONLY that KPI. Under the
+    // old nested strip a height pull grew the WHOLE row: every sibling with it.
+    {
+      check(await B.resizeTo(kpis[0].id, 3, 2), 'a KPI grows to two rows');
+      checkEqual(B.cellOf(kpis[0].id), { x: 0, y: 0, w: 3, h: 2 }, 'the resized KPI is two rows tall');
+      for (let i = 1; i < 4; i++) {
+        checkEqual(B.cellOf(kpis[i].id), { x: i * 3, y: 0, w: 3, h: 1 },
+          `KPI ${i + 1} kept its EXACT cells — the row did not grow with its neighbour`);
+      }
+      check(kpis[0].size.height > kpis[1].size.height + 20,
+        `only the resized KPI got taller (${Math.round(kpis[0].size.height)}px vs ${Math.round(kpis[1].size.height)}px)`);
+      await cm.undo(); refreshBoards(); await settle();
+      checkEqual(B.cellOf(kpis[0].id), { x: 0, y: 0, w: 3, h: 1 }, 'one undo restored the KPI resize');
+      cm.clear();
+    }
+
+    // …and a KPI dragged DEEP into the big line chart DISPLACES it (the engine's
+    // directional-penetration gate: small onto big works, both directions).
+    {
+      const lineBefore = { ...B.cellOf(line.id) };
+      check(await B.moveTo(kpis[0].id, 2, 2), 'a KPI dragged deep into the 8-wide line chart is accepted');
+      checkChanged(lineBefore, B.cellOf(line.id), 'the big line chart was DISPLACED by the small KPI');
+      await cm.undo(); refreshBoards(); await settle();
+      checkEqual(B.cellOf(line.id), lineBefore, 'one undo restored the displaced line chart');
+      cm.clear();
+    }
 
     // ---- (a) LIVE PUSH DURING A REAL DRAG + (b) PLACEHOLDER TRUTH ----------
     {
@@ -1185,7 +1185,7 @@ defineDemo({
     {
       const chrome = ctx.host.querySelectorAll('.group-frame, .group-frame-rect, .group-frame-band, .group-frame-label');
       check(chrome.length === 0, `layout containers painted ${chrome.length} group-chrome elements — the board must be chromeless`);
-      check(D.getGroups().length >= 4, 'the chromeless board still HAS its groups (chrome off, pack on)');
+      check(D.getGroups().length === 3, 'the chromeless board still HAS its three tab groups (chrome off, pack on)');
       const widgets = D.getNodes().filter((n) => n.getMetadata('widgetKind'));
       check(widgets.length > 0 && widgets.every((n) => n.behavior?.connectable === false), 'every widget node declares connectable:false');
       const w0 = widgets.find((n) => n.position.x > -10000);

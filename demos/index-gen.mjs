@@ -109,6 +109,7 @@ const NEW_DEMOS = new Set([
   'collab/conflict-resolution.html',
   'diagrams/erd-editor.html',
   'dashboard/dashboard-builder.html',
+  'dashboard/grid-options.html',
 ]);
 const isNewDemo = (rel) => NEW_DEMOS.has(rel.split(sep).join('/'));
 

@@ -9,6 +9,12 @@
 // dragged", "design is destroyed") were VISIBLE truths that no functional
 // assert was looking at.
 //
+// TWO PAGES since the flattening. dashboard-builder.html is now ONE flat
+// 12-column grid per view (every widget a direct member, no nested section) —
+// so the scenarios that exercise a bounded/nested strip moved to the page that
+// still ships that construct, dashboard/grid-options.html. The behaviours are
+// unchanged; only their address is. Scenarios tagged [OPTIONS] run there.
+//
 //   node demos/e2e/dashboard-scenarios-run.mjs             # run, shots to e2e/scenario-shots/
 //   node demos/e2e/dashboard-scenarios-run.mjs --out DIR   # shots elsewhere
 //
@@ -60,11 +66,14 @@ function verdict(ok, detail) {
   console.log(`${ok ? '✓' : '✗'} ${scenario}${ok ? '' : `   ${detail}`}`);
 }
 
-async function freshPage() {
+const DASH = '/dashboard/dashboard-builder.html';   // the plain, flat grid
+const OPTS = '/dashboard/grid-options.html';        // the advanced constructs
+
+async function freshPage(path = DASH) {
   const page = await browser.newPage({ viewport: { width: 1400, height: 900 } });
   const errs = [];
   page.on('pageerror', (e) => errs.push(e.message));
-  await page.goto(`${origin}/dashboard/dashboard-builder.html`, { waitUntil: 'networkidle' });
+  await page.goto(`${origin}${path}`, { waitUntil: 'networkidle' });
   await page.waitForFunction(() => window.__demoReady === true, { timeout: 20000 });
   await page.waitForTimeout(500);
   page.__errs = errs;
@@ -99,8 +108,11 @@ const boardState = (page, excludeNeedle = null) => page.evaluate((excludeNeedle)
   return { count: hosts.length, overlaps };
 }, excludeNeedle);
 
-const undoEnabled = (page) => page.evaluate(() => !document.getElementById('t-undo').disabled);
-const clickUndo = async (page) => { await page.evaluate(() => document.getElementById('t-undo').click()); await page.waitForTimeout(500); };
+// Both pages carry the same toolbar affordances under their own id prefix
+// (t- on the dashboard, o- on the options page) — resolve either.
+const undoEnabled = (page) => page.evaluate(() => !document.querySelector('#t-undo, #o-undo').disabled);
+const clickUndo = async (page) => { await page.evaluate(() => document.querySelector('#t-undo, #o-undo').click()); await page.waitForTimeout(500); };
+const clickRemove = async (page) => { await page.evaluate(() => document.querySelector('#t-remove, #o-remove').click()); await page.waitForTimeout(600); };
 
 /** The dashed placeholder's screen rect (null when hidden). */
 const phRect = (page) => page.evaluate(() => {
@@ -255,9 +267,11 @@ try {
   await page.close();
 }
 
-// ---- S4 · THE USER'S GESTURE: KPI dragged under the table CROSSES boards ---
+// ---- S4 · THE USER'S GESTURE: KPI dragged under the table lands there ------
+// (Was a CROSSING while the KPI row was a nested section. On the flat grid it
+//  is an ordinary in-board move — which is exactly the point of flattening.)
 {
-  begin('s04-kpi-under-table-crosses');
+  begin('s04-kpi-under-table-lands');
   const page = await freshPage();
   const tr0 = await host(page, 'Total revenue');
   const table = await host(page, 'Top reps');
@@ -267,123 +281,127 @@ try {
   await page.mouse.move(table.x + table.w / 2, table.y + table.h + 40, { steps: 16 });
   await page.waitForTimeout(500);
   const trMid = await host(page, 'Total revenue');
+  const ph = await phRect(page);          // the truthful drop preview
   await shot(page, 'mid-under-table');
   await page.mouse.up();
   await page.waitForTimeout(700);
   const trAfter = await host(page, 'Total revenue');
+  const tableAfter = await host(page, 'Top reps');
   await shot(page, 'dropped');
   const st = await boardState(page);
-  const movedToMainBoard = trAfter && trAfter.y > table.y && trAfter.h > 60; // below the table, full-height
+  // Below the table it now IS (compare against where the table settled — the
+  // board gained rows, so fit mode re-squeezed everything upward).
+  const belowTable = !!trAfter && !!tableAfter && trAfter.y >= tableAfter.y + tableAfter.h - 4;
+  const onPlaceholder = !!ph && Math.abs(trAfter.x - ph.x) < 6 && Math.abs(trAfter.y - ph.y) < 6;
+  const ghostKeptItsSize = !!trMid && trMid.h > 60;   // the ghost tracks at full size
   const committed = await undoEnabled(page);
-  // …and one undo brings it back into the KPI strip
+  // …and one undo brings it back to the top row
   await clickUndo(page);
   const trUndone = await host(page, 'Total revenue');
   await shot(page, 'after-undo');
   const backHome = trUndone && Math.abs(trUndone.x - tr0.x) < 5 && Math.abs(trUndone.y - tr0.y) < 5;
   verdict(
-    !!movedToMainBoard && committed && !!backHome && st.overlaps === 0 && trMid.h > 60,
-    `crossed=${!!movedToMainBoard} committed=${committed} undo-restores=${!!backHome} overlaps=${st.overlaps} ghost-full-size=${trMid.h > 60}`
+    belowTable && onPlaceholder && committed && !!backHome && st.overlaps === 0 && ghostKeptItsSize,
+    `below-table=${belowTable} landed-on-placeholder=${onPlaceholder} committed=${committed} undo-restores=${!!backHome} overlaps=${st.overlaps} ghost-full-size=${ghostKeptItsSize}`
   );
   await page.close();
 }
 
-// ---- S5 · main-board tile dragged INTO the KPI strip (reverse crossing) ----
+// ---- S5 [OPTIONS] · board tile dragged INTO the bounded section ------------
 {
-  begin('s05-tile-into-kpi-strip');
-  const page = await freshPage();
-  // The strip is FULL (4 KPIs, maxRows 1) — entry must be REFUSED, snap home.
-  const donut0 = await host(page, 'Revenue by region');
-  const kpi = await host(page, 'New customers');
-  await page.mouse.move(donut0.x + donut0.w / 2, donut0.y + 12);
+  begin('s05-tile-into-bounded-section');
+  const page = await freshPage(OPTS);
+  // The section is FULL (4 tiles, maxRows 1) — entry must be REFUSED, snap home.
+  const share0 = await host(page, 'Share panel');
+  const sB = await host(page, 'Strip B');
+  await page.mouse.move(share0.x + share0.w / 2, share0.y + 12);
   await page.mouse.down();
-  await page.mouse.move(kpi.x + kpi.w / 2, kpi.y + kpi.h / 2, { steps: 14 });
+  await page.mouse.move(sB.x + sB.w / 2, sB.y + sB.h / 2, { steps: 14 });
   await page.waitForTimeout(450);
-  await shot(page, 'over-full-strip');
+  await shot(page, 'over-full-section');
   await page.mouse.up();
   await page.waitForTimeout(600);
-  const donutA = await host(page, 'Revenue by region');
-  const snapHome = Math.abs(donutA.x - donut0.x) < 5 && Math.abs(donutA.y - donut0.y) < 5;
+  const shareA = await host(page, 'Share panel');
+  const snapHome = Math.abs(shareA.x - share0.x) < 5 && Math.abs(shareA.y - share0.y) < 5;
   const noCommit = !(await undoEnabled(page));
   await shot(page, 'refused-snap-home');
-  // Now make room: remove one KPI, then the donut CAN cross in.
-  await page.mouse.click(kpi.x + kpi.w / 2, kpi.y + 12);
+  // Now make room: remove one strip tile, then the panel CAN cross in.
+  await page.mouse.click(sB.x + sB.w / 2, sB.y + 12);
   await page.waitForTimeout(250);
-  await page.evaluate(() => document.getElementById('t-remove').click());
-  await page.waitForTimeout(600);
-  const donutB0 = await host(page, 'Revenue by region');
-  await page.mouse.move(donutB0.x + donutB0.w / 2, donutB0.y + 12);
+  await clickRemove(page);
+  const shareB0 = await host(page, 'Share panel');
+  await page.mouse.move(shareB0.x + shareB0.w / 2, shareB0.y + 12);
   await page.mouse.down();
-  const strip = await host(page, 'Total revenue');
+  const strip = await host(page, 'Strip A');
   await page.mouse.move(strip.x + strip.w + 80, strip.y + strip.h / 2, { steps: 14 });
   await page.waitForTimeout(450);
   await shot(page, 'entering-with-room');
   await page.mouse.up();
   await page.waitForTimeout(700);
-  const donutB = await host(page, 'Revenue by region');
-  const inStrip = donutB && Math.abs(donutB.y - strip.y) < 8; // same row as the KPIs
-  await shot(page, 'joined-strip');
+  const shareB = await host(page, 'Share panel');
+  const inStrip = shareB && Math.abs(shareB.y - strip.y) < 8; // same row as the strip tiles
+  await shot(page, 'joined-section');
   const st = await boardState(page);
   verdict(
     snapHome && noCommit && !!inStrip && st.overlaps === 0,
-    `full-strip-refused=${snapHome} no-commit=${noCommit} joined-when-room=${!!inStrip} overlaps=${st.overlaps}`
+    `full-section-refused=${snapHome} no-commit=${noCommit} joined-when-room=${!!inStrip} overlaps=${st.overlaps}`
   );
   await page.close();
 }
 
-// ---- S6 · resize a FIRST-ROW KPI: width pushes siblings, height is clamped -
+// ---- S6 [OPTIONS] · width rules inside the bounded section -----------------
 {
-  begin('s06-kpi-resize-strip-integrity');
-  const page = await freshPage();
-  const tr = await host(page, 'Total revenue');
-  const nc0 = await host(page, 'New customers');
+  begin('s06-section-resize-integrity');
+  const page = await freshPage(OPTS);
+  const tr = await host(page, 'Strip A');
+  const nc0 = await host(page, 'Strip B');
   await page.mouse.click(tr.x + tr.w / 2, tr.y + 12);
   await page.waitForTimeout(300);
-  const rs = await resizeHandleOf(page, 'Total revenue');
-  if (!rs) { verdict(false, 'no resize handle on KPI'); await page.close(); }
+  const rs = await resizeHandleOf(page, 'Strip A');
+  if (!rs) { verdict(false, 'no resize handle on the strip tile'); await page.close(); }
   else {
     await shot(page, 'before');
-    // (HEIGHT growth is s21's contract now: pulling past the strip GROWS the
-    //  strip — all tiles together. This scenario owns the WIDTH rules.)
-    // 1) WIDTH growth on a FULL 4/4 strip must be REFUSED — there is nowhere
+    // (HEIGHT growth is s21's contract: pulling past the section GROWS the
+    //  section — all tiles together. This scenario owns the WIDTH rules.)
+    // 1) WIDTH growth on a FULL 4/4 section must be REFUSED — there is nowhere
     //    for a sibling to go, and refusing IS the design staying intact.
-    const rs2 = await resizeHandleOf(page, 'Total revenue');
+    const rs2 = await resizeHandleOf(page, 'Strip A');
     await page.mouse.move(rs2.x, rs2.y);
     await page.mouse.down();
     await page.mouse.move(rs2.x + 180, rs2.y, { steps: 10 });
     await page.waitForTimeout(450);
-    await shot(page, 'width-attempt-full-strip');
+    await shot(page, 'width-attempt-full-section');
     await page.mouse.up();
     await page.waitForTimeout(500);
-    const ncFull = await host(page, 'New customers');
+    const ncFull = await host(page, 'Strip B');
     const fullRefused = Math.abs(ncFull.x - nc0.x) < 6 &&
-      Math.abs((await host(page, 'Total revenue')).w - tr.w) < 10;
-    // 3) Make ROOM (remove the last KPI), then width growth pushes the row
-    //    sideways and shrink-back restores it.
-    const wr = await host(page, 'Win rate');
+      Math.abs((await host(page, 'Strip A')).w - tr.w) < 10;
+    // 3) Make ROOM (remove the last strip tile), then width growth pushes the
+    //    row sideways and shrink-back restores it.
+    const wr = await host(page, 'Strip D');
     await page.mouse.click(wr.x + wr.w / 2, wr.y + 12);
     await page.waitForTimeout(250);
-    await page.evaluate(() => document.getElementById('t-remove').click());
-    await page.waitForTimeout(600);
-    const nc1 = await host(page, 'New customers');
-    const rs3 = await resizeHandleOf(page, 'Total revenue');
+    await clickRemove(page);
+    const nc1 = await host(page, 'Strip B');
+    const rs3 = await resizeHandleOf(page, 'Strip A');
     await page.mouse.move(rs3.x, rs3.y);
     await page.mouse.down();
     await page.mouse.move(rs3.x + 200, rs3.y, { steps: 10 });
     await page.waitForTimeout(450);
-    const ncPushed = await host(page, 'New customers');
+    const ncPushed = await host(page, 'Strip B');
     await shot(page, 'width-grown-with-room');
     await page.mouse.move(rs3.x, rs3.y, { steps: 10 });
     await page.waitForTimeout(500);
     await page.mouse.up();
     await page.waitForTimeout(400);
-    const ncBack = await host(page, 'New customers');
+    const ncBack = await host(page, 'Strip B');
     await shot(page, 'width-restored');
     const st = await boardState(page);
     const widthPushed = ncPushed.x > nc1.x + 20 && Math.abs(ncPushed.y - nc1.y) < 6; // slid RIGHT, same row
     const widthRestored = Math.abs(ncBack.x - nc1.x) < 6;
     verdict(
       fullRefused && widthPushed && widthRestored && st.overlaps === 0,
-      `full-strip-refused=${fullRefused} w-pushes-right=${widthPushed} w-restores=${widthRestored} overlaps=${st.overlaps}`
+      `full-section-refused=${fullRefused} w-pushes-right=${widthPushed} w-restores=${widthRestored} overlaps=${st.overlaps}`
     );
     await page.close();
   }
@@ -743,45 +761,45 @@ try {
   await page.close();
 }
 
-// ---- S21 · "i cant increase height": KPI pull grows the WHOLE strip -------
+// ---- S21 [OPTIONS] · height escalation: a pull grows the WHOLE section -----
 {
-  begin('s21-kpi-height-grows-strip');
-  const page = await freshPage();
-  const tr0 = await host(page, 'Total revenue');
-  const nc0 = await host(page, 'New customers');
-  const line0 = await host(page, 'Revenue vs target');
+  begin('s21-section-height-escalation');
+  const page = await freshPage(OPTS);
+  const tr0 = await host(page, 'Strip A');
+  const nc0 = await host(page, 'Strip B');
+  const line0 = await host(page, 'Trend panel');
   await shot(page, 'before');
   await page.mouse.click(tr0.x + tr0.w / 2, tr0.y + 10);
   await page.waitForTimeout(250);
-  const rs = await resizeHandleOf(page, 'Total revenue');
-  if (!rs) { verdict(false, 'no KPI handle'); await page.close(); }
+  const rs = await resizeHandleOf(page, 'Strip A');
+  if (!rs) { verdict(false, 'no strip-tile handle'); await page.close(); }
   else {
     await page.mouse.move(rs.x, rs.y);
     await page.mouse.down();
-    await page.mouse.move(rs.x, rs.y + 130, { steps: 12 });   // pull well past the strip
+    await page.mouse.move(rs.x, rs.y + 130, { steps: 12 });   // pull well past the section
     await page.waitForTimeout(500);
-    const trMid = await host(page, 'Total revenue');
-    const ncMid = await host(page, 'New customers');
+    const trMid = await host(page, 'Strip A');
+    const ncMid = await host(page, 'Strip B');
     await shot(page, 'pulled-taller');
     await page.mouse.up();
     await page.waitForTimeout(700);
-    const trA = await host(page, 'Total revenue');
-    const ncA = await host(page, 'New customers');
+    const trA = await host(page, 'Strip A');
+    const ncA = await host(page, 'Strip B');
     await shot(page, 'committed');
     const st = await boardState(page);
-    // The WHOLE strip grew: the dragged KPI and its siblings are both taller.
+    // The WHOLE section grew: the dragged tile and its siblings are both taller.
     const grewLive = trMid.h > tr0.h + 30 && ncMid.h > nc0.h + 30;
     const grewCommitted = trA.h > tr0.h + 30 && ncA.h > nc0.h + 30;
-    // …and ONE undo restores the strip exactly.
+    // …and ONE undo restores the section exactly.
     await clickUndo(page);
-    const trU = await host(page, 'Total revenue');
-    const ncU = await host(page, 'New customers');
-    const lineU = await host(page, 'Revenue vs target');
+    const trU = await host(page, 'Strip A');
+    const ncU = await host(page, 'Strip B');
+    const lineU = await host(page, 'Trend panel');
     await shot(page, 'after-undo');
     const undone = Math.abs(trU.h - tr0.h) < 6 && Math.abs(ncU.h - nc0.h) < 6 &&
                    Math.abs(lineU.y - line0.y) < 8;
     verdict(grewLive && grewCommitted && undone && st.overlaps === 0,
-      `strip-grew-live=${grewLive} committed=${grewCommitted} one-undo-restores=${undone} overlaps=${st.overlaps} (tr ${tr0.h}->${trA.h}, nc ${nc0.h}->${ncA.h})`);
+      `section-grew-live=${grewLive} committed=${grewCommitted} one-undo-restores=${undone} overlaps=${st.overlaps} (a ${tr0.h}->${trA.h}, b ${nc0.h}->${ncA.h})`);
     await page.close();
   }
 }
@@ -831,18 +849,20 @@ try {
   await page.close();
 }
 
-// ---- S24 · ALIGNMENT: KPI strip columns sit ON the board's column lines ---
+// ---- S24 [OPTIONS] · the nested section's columns sit ON the board's lines -
 {
-  begin('s24-strip-board-alignment');
-  const page = await freshPage();
+  begin('s24-section-board-alignment');
+  const page = await freshPage(OPTS);
   const dev = await page.evaluate(() => {
-    const f = window.__demoCtx.diagram.getGroup('tab-overview');
+    const D = window.__demoCtx.diagram;
+    const f = D.getGroup('board-c');
     const GAP = 14, PAD = 14, COLS = 12;
     const cu = (f.size.width - 2 * PAD - (COLS - 1) * GAP) / COLS;
-    // Every widget node — INCLUDING the KPI strip's tiles — must sit on a
-    // 12-column line of the tab grid (gap parity makes 1 strip col = 3 tab cols).
-    const nodes = window.__demoCtx.diagram.getNodes()
-      .filter((n) => n.getMetadata && n.getMetadata('widgetKind') && n.position.x > -5000);
+    // Every tile of board C — INCLUDING the nested section's — must sit on a
+    // 12-column line of the board grid (gap parity makes 1 section col = 3
+    // board cols). Boards A/B run their own 6-column geometry: excluded.
+    const ids = new Set([...(D.getGroup('board-c').members || []), ...(D.getGroup('sec-strip').members || [])]);
+    const nodes = D.getNodes().filter((n) => ids.has(n.id));
     const devs = nodes.map((n) => {
       const rel = n.position.x - f.position.x - PAD;
       const c = rel / (cu + GAP);
@@ -855,44 +875,128 @@ try {
   await page.close();
 }
 
-// ---- S25 · the strip is NOT a ratchet: grow, release, shrink back ---------
+// ---- S25 [OPTIONS] · the section is NOT a ratchet: grow, release, shrink ---
 {
-  begin('s25-strip-shrinks-back-across-gestures');
-  const page = await freshPage();
-  const tr0 = await host(page, 'Total revenue');
-  const nc0 = await host(page, 'New customers');
-  // GESTURE 1: grow the strip via the KPI corner, release (commit).
+  begin('s25-section-shrinks-back-across-gestures');
+  const page = await freshPage(OPTS);
+  const tr0 = await host(page, 'Strip A');
+  const nc0 = await host(page, 'Strip B');
+  // GESTURE 1: grow the section via the tile corner, release (commit).
   await page.mouse.click(tr0.x + tr0.w / 2, tr0.y + 10);
   await page.waitForTimeout(250);
-  let rs = await resizeHandleOf(page, 'Total revenue');
+  let rs = await resizeHandleOf(page, 'Strip A');
   await page.mouse.move(rs.x, rs.y); await page.mouse.down();
   await page.mouse.move(rs.x, rs.y + 130, { steps: 12 });
   await page.waitForTimeout(450);
   await page.mouse.up(); await page.waitForTimeout(600);
-  const trTall = await host(page, 'Total revenue');
+  const trTall = await host(page, 'Strip A');
   const grew = trTall.h > tr0.h + 30;
   await shot(page, 'grown-committed');
   // GESTURE 2 (fresh): shrink it back up — the ratchet bug made this a no-op.
-  rs = await resizeHandleOf(page, 'Total revenue');
+  rs = await resizeHandleOf(page, 'Strip A');
   await page.mouse.move(rs.x, rs.y); await page.mouse.down();
-  await page.mouse.move(rs.x, rs.y - 130, { steps: 12 });
+  await page.mouse.move(rs.x, rs.y - 200, { steps: 12 });
   await page.waitForTimeout(450);
   await page.mouse.up(); await page.waitForTimeout(600);
-  const trBack = await host(page, 'Total revenue');
-  const ncBack = await host(page, 'New customers');
+  const trBack = await host(page, 'Strip A');
+  const ncBack = await host(page, 'Strip B');
   const shrank = Math.abs(trBack.h - tr0.h) < 8 && Math.abs(ncBack.h - nc0.h) < 8;
   await shot(page, 'shrunk-back-committed');
   const st = await boardState(page);
-  // Undo walks: shrink-commit undone -> tall strip; grow-commit undone -> original.
+  // Undo walks: shrink-commit undone -> tall section; grow-commit undone -> original.
   await clickUndo(page);
-  const trU1 = await host(page, 'Total revenue');
+  const trU1 = await host(page, 'Strip A');
   const undo1Tall = trU1.h > tr0.h + 30;
   await clickUndo(page);
-  const trU2 = await host(page, 'Total revenue');
+  const trU2 = await host(page, 'Strip A');
   const undo2Orig = Math.abs(trU2.h - tr0.h) < 8;
   await shot(page, 'after-undos');
   verdict(grew && shrank && undo1Tall && undo2Orig && st.overlaps === 0,
-    `grew=${grew} shrank-in-NEW-gesture=${shrank} undo1-tall=${undo1Tall} undo2-original=${undo2Orig} overlaps=${st.overlaps} (tr ${tr0.h}->${trTall.h}->${trBack.h})`);
+    `grew=${grew} shrank-in-NEW-gesture=${shrank} undo1-tall=${undo1Tall} undo2-original=${undo2Orig} overlaps=${st.overlaps} (a ${tr0.h}->${trTall.h}->${trBack.h})`);
+  await page.close();
+}
+
+// ---- S26 · THE USER'S REPORT: resizing ONE KPI changes ONLY that KPI ------
+// Under the old nested strip a height pull grew the whole row — every sibling
+// with it. On the flat grid a KPI is an ordinary member: its neighbours keep
+// their place and are never dragged along.
+{
+  begin('s26-kpi-resize-affects-only-that-kpi');
+  const page = await freshPage();
+  const tr0 = await host(page, 'Total revenue');
+  const nc0 = await host(page, 'New customers');
+  const ad0 = await host(page, 'Avg deal size');
+  const wr0 = await host(page, 'Win rate');
+  await shot(page, 'before');
+  await page.mouse.click(tr0.x + tr0.w / 2, tr0.y + 10);
+  await page.waitForTimeout(250);
+  const rs = await resizeHandleOf(page, 'Total revenue');
+  if (!rs) { verdict(false, 'no KPI handle'); await page.close(); }
+  else {
+    await page.mouse.move(rs.x, rs.y); await page.mouse.down();
+    await page.mouse.move(rs.x, rs.y + 130, { steps: 12 });   // grow it a row taller
+    await page.waitForTimeout(450);
+    await shot(page, 'mid-pull');
+    await page.mouse.up(); await page.waitForTimeout(700);
+    const trA = await host(page, 'Total revenue');
+    const ncA = await host(page, 'New customers');
+    const adA = await host(page, 'Avg deal size');
+    const wrA = await host(page, 'Win rate');
+    await shot(page, 'committed');
+    // ONE tile got taller. The other three did NOT grow (fit-mode may squeeze
+    // them a little as the board gains a row — never grow them along).
+    const itGrew = trA.h > tr0.h + 25;
+    const siblingsDidNotGrow = ncA.h <= nc0.h + 2 && adA.h <= ad0.h + 2 && wrA.h <= wr0.h + 2;
+    const siblingsHeldTheirPlace =
+      Math.abs(ncA.x - nc0.x) < 4 && Math.abs(ncA.y - nc0.y) < 4 &&
+      Math.abs(adA.x - ad0.x) < 4 && Math.abs(wrA.x - wr0.x) < 4;
+    await clickUndo(page);
+    const trU = await host(page, 'Total revenue');
+    const ncU = await host(page, 'New customers');
+    await shot(page, 'after-undo');
+    const undone = Math.abs(trU.h - tr0.h) < 6 && Math.abs(ncU.h - nc0.h) < 6;
+    const st = await boardState(page);
+    verdict(itGrew && siblingsDidNotGrow && siblingsHeldTheirPlace && undone && st.overlaps === 0,
+      `only-it-grew=${itGrew} siblings-unchanged=${siblingsDidNotGrow} siblings-in-place=${siblingsHeldTheirPlace} one-undo=${undone} overlaps=${st.overlaps} (tr ${tr0.h}->${trA.h}, nc ${nc0.h}->${ncA.h})`);
+    await page.close();
+  }
+}
+
+// ---- S27 · THE USER'S REPORT: a KPI dragged INTO a big chart displaces it --
+// "Total Revenue can't be switched with Revenue vs Target" — the anti-jitter
+// gate was measuring overlap AREA, so a 3×1 tile could never cover >50% of an
+// 8×2 one. With gridstack's directional-penetration rule (326690030) dragging
+// the small tile more than halfway in pushes the big one.
+{
+  begin('s27-kpi-displaces-big-chart');
+  const page = await freshPage();
+  const tr0 = await host(page, 'Total revenue');
+  const line0 = await host(page, 'Revenue vs target');
+  await shot(page, 'before');
+  await page.mouse.move(tr0.x + tr0.w / 2, tr0.y + 14);
+  await page.mouse.down();
+  await page.mouse.move(line0.x + line0.w * 0.45, line0.y + line0.h * 0.72, { steps: 16 });
+  await page.waitForTimeout(450);
+  const lineMid = await host(page, 'Revenue vs target');
+  const ph = await phRect(page);
+  await shot(page, 'mid-deep-inside-the-chart');
+  await page.mouse.up();
+  await page.waitForTimeout(700);
+  const trA = await host(page, 'Total revenue');
+  const lineA = await host(page, 'Revenue vs target');
+  await shot(page, 'displaced');
+  const displacedLive = !!lineMid && (lineMid.y !== line0.y || lineMid.x !== line0.x);
+  const landedOnPh = !!ph && Math.abs(trA.x - ph.x) < 6 && Math.abs(trA.y - ph.y) < 6;
+  const chartMoved = lineA.y !== line0.y || lineA.x !== line0.x;
+  const st = await boardState(page);
+  await clickUndo(page);
+  const trU = await host(page, 'Total revenue');
+  const lineU = await host(page, 'Revenue vs target');
+  await shot(page, 'after-undo');
+  const undone = Math.abs(trU.x - tr0.x) < 6 && Math.abs(trU.y - tr0.y) < 6 &&
+                 Math.abs(lineU.y - line0.y) < 6 && Math.abs(lineU.x - line0.x) < 6;
+  verdict(displacedLive && landedOnPh && chartMoved && undone && st.overlaps === 0,
+    `chart-pushed-live=${displacedLive} landed-on-placeholder=${landedOnPh} chart-moved=${chartMoved} one-undo=${undone} overlaps=${st.overlaps}`);
   await page.close();
 }
 
