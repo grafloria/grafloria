@@ -113,6 +113,8 @@
   <button class="go-tool" id="o-float" title="Option ⑤ — float OFF packs tiles upward; ON lets them sit anywhere, gaps legal">Float: off</button>
   <button class="go-tool" id="o-mode" title="Option ⑤ — fit holds each board's design height and squeezes rows; grow keeps the row height and extends the board">Mode: fit</button>
   <span class="go-sep"></span>
+  <button class="go-tool" id="o-width" title="Option ⑦ — resize board D. Its binder derives the column count from the width (one column per 45px, capped at 12) and re-lays the tiles out through the per-column layout cache">Board D: 540px · 12 cols</button>
+  <span class="go-sep"></span>
   <button class="go-tool" id="o-reset" title="Re-seed every board">⟲ Reset boards</button>
   <span class="go-hint">the plain, everyday model is on <b>Dashboard builder</b> — this page is the options menu</span>
 </div>
@@ -132,6 +134,8 @@
       <li><span class="n">4</span><span><b>Pinned tile</b>The amber tile is <code>locked</code>: never pushed, and a drag onto it is refused outright.</span></li>
       <li><span class="n">5</span><span><b>Float &amp; fit/grow</b><b style="font-weight:400">Float off</b> = gravity packs upward, no holes; <b style="font-weight:400">on</b> = tiles stay where you drop them. <b style="font-weight:400">Fit</b> = board keeps its height, rows squeeze; <b style="font-weight:400">grow</b> = rows keep their height, the board extends.</span></li>
       <li><span class="n">6</span><span><b>Palette in, drag out</b>Drag-in places live from the moment the cursor enters; a release over the palette deletes, undoably.</span></li>
+      <li><span class="n">7</span><span><b>Responsive columns + the layout cache</b>Board D's count comes from its WIDTH (<code>responsive: { columnWidth: 45 }</code>, capped at 12; <code>breakpoints</code> is the other way to say it). Press <b style="font-weight:400">Board width</b>: narrowing caches the layout it leaves, so widening back restores it <em>exactly</em>. Edits made while narrow carry into the wide layout, and <code>toJSON()</code> always saves the widest one — save on a phone, keep the desktop. The binder owns the re-evaluation; no page code listens for resizes.</span></li>
+      <li><span class="n">8</span><span><b>RTL</b>Board E is <code>rtl: true</code>. Column 0 renders at the RIGHT edge, the resize corner and the drop placeholder mirror with it — and nothing else changes: the cells, the engine's push/swap/gravity rules and every saved layout are direction-agnostic.</span></li>
     </ul>
   </aside>
   <div id="canvas"><div id="go-status"></div></div>
@@ -161,9 +165,23 @@ const BOARD = {
   a: { x: 0,   y: 52,  w: 540,  h: 240, columns: 6,  gap: SMALL_GAP },
   b: { x: 580, y: 52,  w: 540,  h: 240, columns: 6,  gap: SMALL_GAP },
   c: { x: 0,   y: 356, w: 1120, h: 460, columns: 12, gap: GAP },
+  d: { x: 0,   y: 892, w: 540,  h: 240, columns: 12, gap: SMALL_GAP },
+  e: { x: 580, y: 892, w: 540,  h: 240, columns: 6,  gap: SMALL_GAP },
 };
 /** The bounds the camera frames — every board plus the caption band above. */
-const WORLD = { x: 0, y: 4, width: 1120, height: 812 };
+const WORLD = { x: 0, y: 4, width: 1120, height: 1128 };
+
+/* OPTION ⑦ — RESPONSIVE COLUMNS. Board D's binder derives its column count
+   from the board's own WIDTH: `round(width / columnWidth)`, capped at the
+   declared 12. 45px per column makes the ladder exact — 540px is 12 columns,
+   270px is 6, 90px is 2 — so the width button below reads as a column count.
+   (`breakpoints: [{w, c}]` is the other way to say it; the binder also
+   re-evaluates when the CANVAS resizes, which is what a board sized from the
+   viewport rides on. This page uses an explicit control so the demo is
+   deterministic and the goldens do not move with the window.) */
+const D_COLUMN_WIDTH = 45;
+const D_WIDTHS = [540, 360, 270, 180, 90, 45];
+let dWidthIdx = 0;
 
 const LABELS = [
   { id: 'go-lab-a', board: 'a',
@@ -175,6 +193,12 @@ const LABELS = [
   { id: 'go-lab-c', board: 'c',
     title: '③ Board C — a bounded section (maxRows: 1) nested in a board',
     sub: 'the blue strip is its own pack grid, a locked slab to the board around it — pull a tile past it and the strip grows a row. <em>The main dashboard deliberately does NOT use this.</em>' },
+  { id: 'go-lab-d', board: 'd',
+    title: '⑦ Board D — columns follow the board WIDTH',
+    sub: 'one column per 45px, capped at 12 — widening restores the cached layout' },
+  { id: 'go-lab-e', board: 'e',
+    title: '⑧ Board E — RTL: the same cells, mirrored',
+    sub: 'column 0 renders at the RIGHT edge — only the pixels mirror' },
 ];
 
 /** What the palette drops. Sizes are integer CELLS. */
@@ -188,8 +212,8 @@ const PALETTE_SPEC = {
    about the OPTIONS, not the content).
 --------------------------------------------------------------------------- */
 const hosts = new Map();
-const boards = {};                    // key -> GroupModel (a, b, c)
-const binders = { a: null, b: null, c: null, strip: null };
+const boards = {};                    // key -> GroupModel (a, b, c, d, e)
+const binders = { a: null, b: null, c: null, d: null, e: null, strip: null };
 const state = { focus: null, seq: 0, dropBoard: 'c' };
 let strip = null;                     // the nested bounded-section GroupModel
 let ctxRef = null;
@@ -324,6 +348,26 @@ function buildBoards(diagram) {
   seedAt(diagram, c, 'Trend panel',  'an ordinary member of board C', { x: 0, y: 1, w: 8, h: 2 });
   seedAt(diagram, c, 'Share panel',  'an ordinary member of board C', { x: 8, y: 1, w: 4, h: 2 });
   seedAt(diagram, c, 'Detail table', 'an ordinary member of board C', { x: 0, y: 3, w: 12, h: 1 });
+
+  // --- ⑦ Board D: RESPONSIVE. Authored at 12 columns; the binder re-derives
+  //     the live count from the board's width and re-lays the tiles out
+  //     through the per-column layout cache.
+  const d = makeBoard(diagram, 'd', 'Board D');
+  seedAt(diagram, d, 'D · one',   'authored at 12 columns', { x: 0, y: 0, w: 3, h: 1 });
+  seedAt(diagram, d, 'D · two',   'span 3',                 { x: 3, y: 0, w: 3, h: 1 });
+  seedAt(diagram, d, 'D · three', 'span 3',                 { x: 6, y: 0, w: 3, h: 1 });
+  seedAt(diagram, d, 'D · four',  'span 3',                 { x: 9, y: 0, w: 3, h: 1 });
+  seedAt(diagram, d, 'D · wide',  'span 6 — halves as the board narrows', { x: 0, y: 1, w: 6, h: 1 });
+  seedAt(diagram, d, 'D · half',  'span 6',                 { x: 6, y: 1, w: 6, h: 1 });
+
+  // --- ⑧ Board E: RTL. Explicit cells, so the mirroring is readable straight
+  //     off the screen: x=0 is the RIGHTMOST tile.
+  const e = makeBoard(diagram, 'e', 'Board E');
+  seedAt(diagram, e, 'E · col 0', 'x = 0 — the RIGHT edge in RTL', { x: 0, y: 0, w: 2, h: 1 });
+  seedAt(diagram, e, 'E · col 2', 'x = 2',                          { x: 2, y: 0, w: 2, h: 1 });
+  seedAt(diagram, e, 'E · col 4', 'x = 4 — the LEFT edge in RTL',   { x: 4, y: 0, w: 2, h: 1 });
+  seedAt(diagram, e, 'E · wide',  'x = 0, span 4 — still right-anchored', { x: 0, y: 1, w: 4, h: 1 });
+  seedAt(diagram, e, 'E · last',  'x = 4, span 2',                  { x: 4, y: 1, w: 2, h: 1 });
 }
 
 /* ---------------------------------------------------------------------------
@@ -336,6 +380,19 @@ function boardBinderOptions(key) {
     columns: spec.columns, gap: spec.gap, padding: spec.gap,
     sizing: sizingMode, baseRowHeight: BASE_ROW, designHeight: spec.h,
     float: floatMode,
+    // OPTION ⑦ — board D's column count is DERIVED from its width. Nothing on
+    // this page listens for the resize: the binder owns that.
+    ...(key === 'd'
+      ? {
+          responsive: { columnWidth: D_COLUMN_WIDTH, columnMax: spec.columns, layout: 'moveScale' },
+          onColumnsChange: (c, prev) => {
+            syncWidthButton();
+            flash(`board D is ${Math.round(boards.d.size.width)}px wide → ${c} columns (was ${prev})`);
+          },
+        }
+      : {}),
+    // OPTION ⑧ — board E renders right-to-left. Same cells, mirrored pixels.
+    ...(key === 'e' ? { rtl: true } : {}),
     // OPTION ⑥ — drag OUT to remove, but only over the palette (the trash
     // affordance): an overshoot past a frame edge snaps home instead.
     dragOut: 'remove',
@@ -375,6 +432,8 @@ function bindAll() {
   binders.a = bindDashboardGrid(inst, boards.a, boardBinderOptions('a'));
   binders.b = bindDashboardGrid(inst, boards.b, boardBinderOptions('b'));
   binders.c = bindDashboardGrid(inst, boards.c, boardBinderOptions('c'));
+  binders.d = bindDashboardGrid(inst, boards.d, boardBinderOptions('d'));
+  binders.e = bindDashboardGrid(inst, boards.e, boardBinderOptions('e'));
   // OPTION ③ — the BOUNDED SECTION. `maxRows: 1` tells the engine the strip's
   // design is exactly one row: a tile can never be pushed onto a second row
   // (siblings shift ALONG the row instead) and the strip can never be
@@ -392,7 +451,7 @@ function bindAll() {
 
 /** Which binder owns a node's cells (the strip's tiles belong to the strip). */
 function boardKeyOf(nodeId) {
-  for (const key of ['strip', 'a', 'b', 'c']) {
+  for (const key of ['strip', 'a', 'b', 'c', 'd', 'e']) {
     if (binders[key] && binders[key].cellOf(nodeId)) return key;
   }
   return null;
@@ -401,7 +460,7 @@ function binderOwning(nodeId) { const k = boardKeyOf(nodeId); return k ? binders
 
 function refreshBoards() {
   glide();
-  for (const key of ['a', 'b', 'c', 'strip']) binders[key]?.sync();
+  for (const key of ['a', 'b', 'c', 'd', 'e', 'strip']) binders[key]?.sync();
   ctxRef.instance.renderNow();
   ensureLabels();
   repaintAll();
@@ -439,7 +498,9 @@ function ensureLabels() {
     if (!g) continue;
     el.style.left = `${g.position.x}px`;
     el.style.top = `${g.position.y - 46}px`;
-    el.style.width = `${g.size.width}px`;
+    // The AUTHORED width, not the live one: board D's width control must move
+    // the board, never reflow the caption that names it into its own tiles.
+    el.style.width = `${BOARD[L.board].w}px`;
   }
 }
 
@@ -506,7 +567,7 @@ function togglePin(nodeId) {
 function setFloatMode(on) {
   floatMode = on;
   glide();
-  for (const key of ['a', 'b', 'c']) binders[key]?.setFloat(on);
+  for (const key of ['a', 'b', 'c', 'd', 'e']) binders[key]?.setFloat(on);
   document.getElementById('o-float').textContent = `Float: ${on ? 'on' : 'off'}`;
   ctxRef.instance.renderNow();
   ensureLabels();
@@ -519,7 +580,7 @@ function setFloatMode(on) {
 function setSizingMode(mode) {
   sizingMode = mode;
   glide();
-  for (const key of ['a', 'b', 'c']) binders[key]?.setSizing(mode);
+  for (const key of ['a', 'b', 'c', 'd', 'e']) binders[key]?.setSizing(mode);
   document.getElementById('o-mode').textContent = `Mode: ${mode}`;
   ctxRef.instance.renderNow();
   ensureLabels();
@@ -528,11 +589,36 @@ function setSizingMode(mode) {
                        : 'GROW: rows keep their 110px height — boards extend downward');
 }
 
+/** OPTION ⑦ — the width control. It resizes board D's FRAME and nothing else:
+ *  the binder hears the frame change, re-derives the column count and re-lays
+ *  the board out through the engine's per-column cache. */
+function syncWidthButton() {
+  const btn = document.getElementById('o-width');
+  if (!btn || !binders.d || !boards.d) return;
+  btn.textContent = `Board D: ${Math.round(boards.d.size.width)}px · ${binders.d.getColumns()} cols`;
+}
+
+function cycleBoardWidth() {
+  dWidthIdx = (dWidthIdx + 1) % D_WIDTHS.length;
+  setBoardDWidth(D_WIDTHS[dWidthIdx]);
+}
+
+function setBoardDWidth(width) {
+  glide();
+  const g = boards.d;
+  g.setFrame({ x: g.position.x, y: g.position.y, width, height: g.size.height });
+  ctxRef.instance.renderNow();
+  ensureLabels();
+  repaintAll();
+  syncWidthButton();
+}
+
 function resetBoards() {
   for (const n of [...ctxRef.diagram.getNodes()]) ctxRef.diagram.removeNode(n.id);
   for (const g of [...ctxRef.diagram.getGroups()]) ctxRef.diagram.removeGroup(g.id);
   hosts.clear();
   state.focus = null; state.dropBoard = 'c';
+  dWidthIdx = 0;                       // board D goes back to its authored width
   buildBoards(ctxRef.diagram);
   cmd().clear();
   bindAll();
@@ -541,6 +627,7 @@ function resetBoards() {
   ensureLabels();
   repaintAll();
   syncToolbar();
+  syncWidthButton();
   flash('boards re-seeded');
 }
 
@@ -567,6 +654,7 @@ function wireControls() {
   document.getElementById('o-remove').addEventListener('click', async () => { if (state.focus) { await removeTileCmd(state.focus); syncToolbar(); } else flash('focus a tile first'); });
   document.getElementById('o-float').addEventListener('click', () => setFloatMode(!floatMode));
   document.getElementById('o-mode').addEventListener('click', () => setSizingMode(sizingMode === 'fit' ? 'grow' : 'fit'));
+  document.getElementById('o-width').addEventListener('click', () => cycleBoardWidth());
   document.getElementById('o-reset').addEventListener('click', () => resetBoards());
 }
 
@@ -596,7 +684,7 @@ defineDemo({
 
     buildBoards(ctx.diagram);
     bindAll();
-    window.__opts = { binders, boards, strip, state };   // console/e2e escape hatch
+    window.__opts = { binders, boards, strip, state, setBoardDWidth, D_WIDTHS };   // console/e2e escape hatch
     wireControls();
     instance.renderNow();
     frameAll();
@@ -606,6 +694,7 @@ defineDemo({
     const first = [...(boards.c.members || [])].map((m) => ctx.diagram.getNode(m)).find(Boolean);
     if (first) setFocus(first.id);
     syncToolbar();
+    syncWidthButton();
 
     if (typeof ResizeObserver !== 'undefined') {
       const ro = new ResizeObserver(() => {

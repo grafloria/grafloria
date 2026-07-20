@@ -134,9 +134,9 @@
   <tr><td class="k">Wire affordances</td><td>n/a (no ports concept)</td>
     <td>Fixed today (<code>cda6bf217</code>): <code>connectable:false</code> — no port glyphs, no port hover</td><td><span class="tag have">HAVE</span></td></tr>
   <tr><td class="k">Responsive columns</td><td><code>columnOpts.columnWidth</code> → count from container width; per-column layout cache</td>
-    <td>Fixed 12 columns; camera refits on canvas resize (ResizeObserver) but column count never changes</td><td><span class="tag miss">MISSING</span></td></tr>
+    <td><b>Phase 4 shipped:</b> <code>GridPackEngine.setColumns(n, layout)</code> — all four <code>ColumnOptions</code> modes — plus the per-column layout cache (shrink caches, grow restores, narrow edits propagate proportionally) and <code>saveLayout()</code>, which serialises from the LARGEST cached count so saving on a phone saves the desktop. The binder derives the count from the board width (<code>responsive: { columnWidth | breakpoints }</code>) and owns the resize watch itself</td><td><span class="tag have">HAVE</span></td></tr>
   <tr><td class="k">RTL</td><td>CSS <code>right</code>-anchoring; model is direction-agnostic</td>
-    <td>Nothing dashboard-specific</td><td><span class="tag miss">LATER</span></td></tr>
+    <td><b>Phase 4 shipped:</b> <code>rtl: true</code> on the binder and on <code>dashboard()</code>. Exactly as predicted below, it lives ENTIRELY in the pixel mapping (<code>cellToRect</code> / <code>pointToCell</code>) plus the resize gesture's horizontal delta — the engine, the cells and every saved layout are direction-agnostic, and the spec proves it by mapping the same cells both ways</td><td><span class="tag have">HAVE</span></td></tr>
 </table>
 
 <h2><span class="n">3</span>The build — a pack engine in the library, not demo JS</h2>
@@ -200,8 +200,8 @@
   <p>Placeholder drag loop + live push + glide; resize with live push; Esc restore; one BatchCommand per gesture.</p></div></div>
 <div class="phase"><div class="pn">3</div><div class="pb"><h4>Demo on top + palette drag-in + trash</h4>
   <p>dashboard-builder switches to the kit; e2e teeth for placeholder truth, hover push, resize push; goldens re-blessed once.</p></div></div>
-<div class="phase"><div class="pn">4</div><div class="pb"><h4>Responsive columns (+ float toggle, RTL when wanted)</h4>
-  <p>columnWidth-driven count + per-column layout cache; float mode is a one-flag engine feature after phase 1.</p></div></div>
+<div class="phase done"><div class="pn">4</div><div class="pb"><h4>Responsive columns (+ float toggle, RTL when wanted) — SHIPPED</h4>
+  <p>columnWidth/breakpoint-driven count + the per-column layout cache, and RTL as pure pixel mirroring. Demonstrated on boards ⑦ and ⑧ of <code>dashboard/grid-options.html</code>, gated by battery scenarios S28 (cache round-trip + save-while-narrow) and S29 (mirrored pixels, unchanged cells, truthful drop in RTL).</p></div></div>
 
 <h2><span class="n">6</span>Open choices (defaults chosen — say if you want different)</h2>
 <table>

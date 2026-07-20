@@ -1003,6 +1003,145 @@ try {
   await page.close();
 }
 
+// ---- S28 [OPTIONS] · RESPONSIVE COLUMNS + the per-column layout CACHE ------
+// Board D derives its column count from its own width. The load-bearing claim
+// is not that narrowing re-lays out — it is that WIDENING BACK RESTORES THE
+// ORIGINAL CELLS EXACTLY, because the layout it left was cached. A naive
+// implementation re-derives 12 columns from the narrow layout and every tile
+// comes home the wrong width.
+{
+  begin('s28-responsive-columns-and-layout-cache');
+  const page = await freshPage(OPTS);
+  const readD = () => page.evaluate(() => {
+    const D = window.__demoCtx.diagram;
+    const b = window.__opts.binders.d;
+    const m = b.metrics();
+    const cells = [...(D.getGroup('board-d').members || [])]
+      .map((id) => ({ label: D.getNode(id)?.getMetadata('label'), cell: b.cellOf(id) }))
+      .filter((r) => r.label)
+      .sort((p, q) => p.label.localeCompare(q.label));
+    const saved = b.saveLayout();
+    return {
+      columns: b.getColumns(), maxColumns: m.maxColumns, responsive: m.responsive,
+      width: Math.round(window.__opts.boards.d.size.width),
+      cells, savedColumns: saved.columns,
+      savedCells: [...saved.cells.entries()]
+        .map(([id, c]) => ({ label: D.getNode(id)?.getMetadata('label'), cell: c }))
+        .filter((r) => r.label)
+        .sort((p, q) => p.label.localeCompare(q.label)),
+    };
+  });
+  const wide0 = await readD();
+  await shot(page, 'authored-12-columns');
+
+  // Narrow it with the page's own width control (two clicks: 540 -> 360 -> 270).
+  await page.click('#o-width');
+  await page.waitForTimeout(400);
+  await page.click('#o-width');
+  await page.waitForTimeout(600);
+  const narrow = await readD();
+  await shot(page, 'narrowed-to-6-columns');
+
+  const countFollowedWidth = wide0.columns === 12 && narrow.columns === 6 && narrow.width === 270;
+  const reLaidOut = JSON.stringify(narrow.cells) !== JSON.stringify(wide0.cells) &&
+                    narrow.cells.every((r) => r.cell.x + r.cell.w <= 6);
+  // SAVING WHILE NARROW STILL SAVES THE WIDE LAYOUT (gridstack's save()).
+  const savedTheDesktop = narrow.savedColumns === 12 &&
+    JSON.stringify(narrow.savedCells) === JSON.stringify(wide0.cells);
+
+  // Widen back through the rest of the cycle (270 -> 180 -> 90 -> 45 -> 540).
+  for (let i = 0; i < 4; i++) { await page.click('#o-width'); await page.waitForTimeout(320); }
+  await page.waitForTimeout(500);
+  const wide1 = await readD();
+  await shot(page, 'widened-back-restored');
+  const restoredExactly = JSON.stringify(wide1.cells) === JSON.stringify(wide0.cells) &&
+                          wide1.columns === 12;
+
+  const st = await boardState(page);
+  verdict(
+    countFollowedWidth && reLaidOut && savedTheDesktop && restoredExactly && st.overlaps === 0,
+    `count-follows-width=${countFollowedWidth}(${wide0.columns}@${wide0.width}px -> ${narrow.columns}@${narrow.width}px) ` +
+    `re-laid-out=${reLaidOut} save-while-narrow-keeps-desktop=${savedTheDesktop}(cols=${narrow.savedColumns}) ` +
+    `widen-restores-exactly=${restoredExactly} overlaps=${st.overlaps}`
+  );
+  await page.close();
+}
+
+// ---- S29 [OPTIONS] · RTL: mirrored pixels, identical cells, truthful drop ---
+// Board E is `rtl: true`. Two claims: the tiles MIRROR (cell x=0 renders at the
+// board's right edge, and screen order runs opposite to cell order), while the
+// CELLS are exactly what was declared — and a real drag still lands where the
+// placeholder said, which is the bug RTL mapping usually introduces (the tile
+// lands one span away from the preview).
+{
+  begin('s29-rtl-mirrors-pixels-not-cells');
+  const page = await freshPage(OPTS);
+  const readE = () => page.evaluate(() => {
+    const D = window.__demoCtx.diagram;
+    const b = window.__opts.binders.e;
+    const g = window.__opts.boards.e;
+    return {
+      rtl: b.getRtl(),
+      frame: { x: g.position.x, w: g.size.width },
+      pad: b.metrics().padding,
+      tiles: [...(g.members || [])]
+        .map((id) => {
+          const n = D.getNode(id);
+          return { label: n?.getMetadata('label'), cell: b.cellOf(id), x: Math.round(n.position.x), w: Math.round(n.size.width) };
+        })
+        .filter((r) => r.label)
+        .sort((p, q) => p.label.localeCompare(q.label)),
+    };
+  });
+  const e0 = await readE();
+  await shot(page, 'rtl-board');
+  const at = (l) => e0.tiles.find((t) => t.label === l);
+  const c0 = at('E · col 0'), c2 = at('E · col 2'), c4 = at('E · col 4');
+
+  // CELLS are exactly as declared — direction changed nothing in the model.
+  const cellsUnchanged =
+    c0.cell.x === 0 && c2.cell.x === 2 && c4.cell.x === 4 &&
+    c0.cell.y === 0 && c2.cell.y === 0 && c4.cell.y === 0;
+  // PIXELS mirror: cell order 0,2,4 runs RIGHT to LEFT on screen…
+  const screenOrderMirrored = c0.x > c2.x && c2.x > c4.x;
+  // …and column 0's RIGHT edge is one padding in from the board's right edge.
+  const rightAnchored = Math.abs((c0.x + c0.w) - (e0.frame.x + e0.frame.w - e0.pad)) < 2;
+  // The last column hugs the LEFT edge.
+  const lastAtLeft = Math.abs(c4.x - (e0.frame.x + e0.pad)) < 2;
+
+  // A REAL DRAG in RTL must land exactly on the placeholder. Drag the rightmost
+  // tile (cell x=0) leftwards onto the leftmost one (cell x=4): mirrored, that
+  // is a move to a HIGHER cell x, and the two same-size tiles swap.
+  const target = await host(page, 'E · col 4');
+  const m = await dragTo(page, 'E · col 0', target.x + target.w / 2, target.y + target.h / 2, { steps: 14 });
+  await shot(page, 'after-rtl-drag');
+  const e1 = await readE();
+  const moved = e1.tiles.find((t) => t.label === 'E · col 0');
+  const movedRight = moved.cell.x > 0;          // cells advanced…
+  const movedLeftOnScreen = moved.x < c0.x;     // …while the pixels went LEFT
+
+  // THE INVARIANT THAT MUST SURVIVE A GESTURE: on every row, screen order is
+  // still the exact reverse of cell order. If the drag had written a cell
+  // through an unmirrored path, this is what would catch it.
+  const stillMirrored = [0, 1].every((row) => {
+    const inRow = e1.tiles.filter((t) => t.cell.y === row);
+    const byCell = [...inRow].sort((p, q) => p.cell.x - q.cell.x).map((t) => t.label);
+    const byScreen = [...inRow].sort((p, q) => q.x - p.x).map((t) => t.label);
+    return JSON.stringify(byCell) === JSON.stringify(byScreen);
+  });
+
+  const st = await boardState(page);
+  verdict(
+    cellsUnchanged && screenOrderMirrored && rightAnchored && lastAtLeft &&
+      m.ok && movedRight && movedLeftOnScreen && stillMirrored && st.overlaps === 0,
+    `cells-unchanged=${cellsUnchanged} screen-order-mirrored=${screenOrderMirrored} ` +
+    `col0-at-right-edge=${rightAnchored} col4-at-left-edge=${lastAtLeft} ` +
+    `drag-landed-on-placeholder=${m.ok}(${m.detail}) cell-advanced=${movedRight}(x=${moved.cell.x}) ` +
+    `pixels-went-left=${movedLeftOnScreen} still-mirrored-after-gesture=${stillMirrored} overlaps=${st.overlaps}`
+  );
+  await page.close();
+}
+
 } finally {
   await browser.close();
   server.close();
