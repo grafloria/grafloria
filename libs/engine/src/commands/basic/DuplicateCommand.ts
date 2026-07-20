@@ -176,9 +176,13 @@ export class DuplicateCommand extends Command {
       (newGroup as any).id = newId; // Override readonly id
       this.idMap.set(oldId, newId);
 
-      // Remap member IDs
+      // Remap member IDs. Iterate the ORIGINAL group's members — `newGroup` was
+      // just constructed and is empty, so iterating it produced no members, the
+      // `size > 0` guard below dropped the group, and duplicating a grouped
+      // selection silently lost the grouping. (Twin of the PasteCommand bug in
+      // b661cc945.)
       const newMembers = new Set<string>();
-      for (const memberId of newGroup.members) {
+      for (const memberId of group.members) {
         const newMemberId = this.idMap.get(memberId);
         if (newMemberId) {
           newMembers.add(newMemberId);

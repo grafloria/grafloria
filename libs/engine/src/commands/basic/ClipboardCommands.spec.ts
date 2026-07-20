@@ -554,6 +554,41 @@ describe('Clipboard Commands (Phase 1.8)', () => {
       expect(originalPortIds.has(dupLink.targetPortId)).toBe(false);
     });
 
+    it('duplicates a grouped selection instead of silently dropping the group', () => {
+      // TWIN of the PasteCommand bug fixed in b661cc945. The member-remap loop
+      // iterated `newGroup.members` — the freshly-built EMPTY group — instead of
+      // the original `group.members`, so `newMembers` was always empty, the
+      // `size > 0` guard dropped the group, and duplicating a grouped selection
+      // silently lost the grouping. No test duplicated a group WITH members, so
+      // it survived. Flagged by the collaboration-integrity sweep.
+      const n1 = new NodeModel({ type: 'rect', position: { x: 0, y: 0 } });
+      const n2 = new NodeModel({ type: 'rect', position: { x: 40, y: 0 } });
+      diagram.addNode(n1);
+      diagram.addNode(n2);
+      const group = new GroupModel({ name: 'G' });
+      diagram.addGroup(group);
+      group.addMember(n1.id);
+      group.addMember(n2.id);
+
+      context.store!.set('selectedNodes', new Set([n1.id, n2.id]));
+      new DuplicateCommand().execute(context);
+
+      // The duplicated group must exist AND carry the two duplicated nodes.
+      expect(diagram.getGroups().length).toBe(2);
+      const dupGroup = diagram.getGroups().find((g) => g.id !== group.id)!;
+      expect(dupGroup).toBeDefined();
+      expect(dupGroup.members.size).toBe(2);
+
+      // Its members must be the REMAPPED node ids, not the originals — a loop
+      // that copied `group.members` verbatim (forgetting the remap) would pass
+      // the size check and fail here.
+      const dupNodeIds = new Set(
+        diagram.getNodes().filter((n) => n.id !== n1.id && n.id !== n2.id).map((n) => n.id),
+      );
+      for (const m of dupGroup.members) expect(dupNodeIds.has(m)).toBe(true);
+      expect(dupGroup.members.has(n1.id)).toBe(false);
+    });
+
     it('should select duplicated entities by default', () => {
       const node = new NodeModel({ type: 'rect', position: { x: 0, y: 0 } });
       diagram.addNode(node);
