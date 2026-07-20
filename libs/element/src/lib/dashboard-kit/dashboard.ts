@@ -326,6 +326,12 @@ function buildWidgetNode(w: DashboardWidgetSpec, rowHeight: number): NodeModel {
   node.setMetadata('useHTMLLayer', true);
   node.setMetadata('widgetKind', w.kind ?? 'widget');
   node.setMetadata('widgetSpec', w.data ?? {});
+  // The TITLE was the one authored field that never reached the node — so a
+  // document-level reload rebuilt every card with `titleOf()` falling through to
+  // the kind, and a board of "Revenue vs target" / "Top reps by revenue" came
+  // back as "line" / "table". Only written when authored, so an untitled widget
+  // serialises exactly as it always did.
+  if (w.title !== undefined) node.setMetadata('widgetTitle', w.title);
   node.setMetadata('columnSpan', w.span ?? 3);
   node.setMetadata('rowSpan', w.rows ?? 1);
   if (w.x !== undefined && w.y !== undefined) {
@@ -398,6 +404,10 @@ export function dashboard(options: DashboardOptions): DashboardSpec {
           useHTMLLayer: true,
           widgetKind: w.kind ?? 'widget',
           widgetSpec: w.data ?? {},
+          // See buildWidgetNode(): the title has to reach the node or a reload
+          // cannot rebuild the card's header. These two paths are the drift the
+          // comment on buildWidgetNode warns about — they must agree.
+          ...(w.title !== undefined ? { widgetTitle: w.title } : {}),
           columnSpan: w.span,
           rowSpan: w.rows,
           gridItem: { columnStart: w.x! + 1, columnEnd: w.x! + 1 + w.span!, rowStart: w.y! + 1, rowEnd: w.y! + 1 + w.rows! },
@@ -699,6 +709,22 @@ export function dashboard(options: DashboardOptions): DashboardSpec {
         const g = new GroupModel({ id: v.id, name: v.name ?? v.id });
         model.addGroup(g);
         g.setMetadata('frameChrome', 'none');
+        // THE BOARD'S GEOMETRY, PERSISTED. Cells alone do not describe a board:
+        // the column count, gap and sizing mode are what turn them into pixels,
+        // and they live only in the `dashboard()` call. Without them a reloaded
+        // document could paint the widgets but never rebind the grid — the
+        // reload would be a picture of a dashboard rather than a dashboard.
+        // Serializable values only: the binder's callbacks belong to the app.
+        g.setMetadata('dashboardBoard', {
+          columns: v.columns ?? columns,
+          gap,
+          padding: gap,
+          sizing: options.sizing ?? 'fit',
+          baseRowHeight: rowHeight,
+          designHeight: v.height ?? boardH,
+          float: options.float ?? false,
+          rtl: options.rtl ?? false,
+        });
         g.size = { width: v.width ?? boardW, height: v.height ?? boardH, depth: 0 };
         g.position = { x: v.id === active ? 0 : OFFSCREEN_X, y: 0 };
         groups.set(v.id, g);

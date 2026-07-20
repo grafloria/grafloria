@@ -155,6 +155,8 @@ export function umlDiagram(options: UmlDiagramOptions): {
         html: { content: classCardContent(cls, editable), interactive: true },
         kitClass: cls,
         kitEditable: editable,
+        // Opt-out only — see the same stamp in er.ts.
+        ...(options.rowSelection === false ? { kitRowSelection: false } : {}),
       },
       shape: { type: 'rect', fill: 'none', stroke: 'none' },
       style: { fill: 'transparent', stroke: 'transparent', strokeWidth: 0 },

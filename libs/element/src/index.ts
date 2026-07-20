@@ -20,6 +20,12 @@ export { GrafloriaFlowElement, defineGrafloriaFlow, GRAFLORIA_EVENTS } from './l
 export { Grafloria, render, renderStatic } from './lib/grafloria';
 export type { DiagramSpec, RenderSpec, RenderOptions } from './lib/grafloria';
 
+// The LOAD front door — the other half of `DiagramSerializer.serialize()`.
+// `render(fromDocument(json), host)` is the one-liner; see lib/load.ts for why
+// the loaded models go back in as models rather than being re-specced.
+export { fromDocument } from './lib/load';
+export type { SavedDiagram, FromDocumentOptions, LoadedDiagramSpec } from './lib/load';
+
 export {
   registerNodeType,
   unregisterNodeType,

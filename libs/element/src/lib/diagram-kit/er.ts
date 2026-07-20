@@ -214,6 +214,10 @@ export function erDiagram(options: ErDiagramOptions): {
       html: { content: entityCardContent(entity, editable), interactive: true },
       kitEntity: entity,
       kitEditable: editable,
+      // Only the OPT-OUT is recorded. A loader has to know not to re-bind row
+      // selection, but stamping the default on every card would change the bytes
+      // of every existing document for a value that is already the default.
+      ...(options.rowSelection === false ? { kitRowSelection: false } : {}),
     },
     // The card draws its own border — the node's default rectangle is hidden
     // (and re-suppressed on selection by the kit stylesheet).
