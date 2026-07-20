@@ -29,6 +29,12 @@ import type { ArrowStyle, LinkLabel, LinkModel, Point } from '@grafloria/engine'
 import type { VNode } from '../types/vnode.types';
 import type { Theme } from '../types/theme.types';
 import { XHTML_NS } from '../vnode/patch';
+import {
+  LABEL_TEMPLATES,
+  LINK_TEMPLATES,
+  MARKERS,
+  scopedTable,
+} from '../ext/registry-scope';
 
 // ===========================================================================
 // Contexts handed to author code
@@ -119,7 +125,8 @@ export function registerLinkTemplate(name: string, template: LinkTemplate): void
 }
 
 export function getLinkTemplate(name: string): LinkTemplate | undefined {
-  return linkTemplates.get(name);
+  // DIAGRAM-FIRST, then process-global — see `ext/registry-scope.ts`.
+  return scopedTable<LinkTemplate>(LINK_TEMPLATES)?.get(name) ?? linkTemplates.get(name);
 }
 
 export function registerLabelTemplate(name: string, template: LabelTemplate): void {
@@ -128,7 +135,7 @@ export function registerLabelTemplate(name: string, template: LabelTemplate): vo
 }
 
 export function getLabelTemplate(name: string): LabelTemplate | undefined {
-  return labelTemplates.get(name);
+  return scopedTable<LabelTemplate>(LABEL_TEMPLATES)?.get(name) ?? labelTemplates.get(name);
 }
 
 export function registerMarker(name: string, definition: MarkerDefinition): void {
@@ -137,11 +144,11 @@ export function registerMarker(name: string, definition: MarkerDefinition): void
 }
 
 export function getMarker(name: string): MarkerDefinition | undefined {
-  return markers.get(name);
+  return scopedTable<MarkerDefinition>(MARKERS)?.get(name) ?? markers.get(name);
 }
 
 export function hasMarker(name: string): boolean {
-  return markers.has(name);
+  return scopedTable<MarkerDefinition>(MARKERS)?.has(name) === true || markers.has(name);
 }
 
 /** Resolve a registered marker's tip offset for a concrete style. */
@@ -152,15 +159,21 @@ export function markerTipOffset(definition: MarkerDefinition, style: ArrowStyle)
 }
 
 export function listLinkTemplates(): string[] {
-  return Array.from(linkTemplates.keys());
+  return union(linkTemplates, scopedTable<LinkTemplate>(LINK_TEMPLATES));
 }
 
 export function listLabelTemplates(): string[] {
-  return Array.from(labelTemplates.keys());
+  return union(labelTemplates, scopedTable<LabelTemplate>(LABEL_TEMPLATES));
 }
 
 export function listMarkers(): string[] {
-  return Array.from(markers.keys());
+  return union(markers, scopedTable<MarkerDefinition>(MARKERS));
+}
+
+/** Global names plus this diagram's own, global order first, no duplicates. */
+function union(global: Map<string, unknown>, scoped: Map<string, unknown> | undefined): string[] {
+  if (!scoped || scoped.size === 0) return Array.from(global.keys());
+  return [...new Set([...global.keys(), ...scoped.keys()])];
 }
 
 // ---------------------------------------------------------------------------
@@ -199,6 +212,18 @@ export function clearEdgeTemplates(): void {
   linkTemplates.clear();
   labelTemplates.clear();
   markers.clear();
+  bump();
+}
+
+
+/**
+ * Internal: let a PER-DIAGRAM registry participate in the version/notify
+ * protocol. A scoped registration must invalidate cached VNodes for exactly the
+ * reason a global one must — the definition is baked into the cache. Notifying
+ * every renderer (not just the contributing one) is deliberate: over-invalidation
+ * costs a repaint, under-invalidation shows a stale picture.
+ */
+export function notifyEdgeTemplatesChanged(): void {
   bump();
 }
 

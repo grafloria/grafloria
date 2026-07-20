@@ -50,6 +50,16 @@ export * from './extension-host';
 export * from './capabilities';
 export * from './disposable';
 
+// PER-DIAGRAM REGISTRIES. The contribution registries used to be module-scope
+// Maps — one process, one vocabulary — so two diagrams on one page could not
+// disagree about what a shape name meant, and one diagram's extension teardown
+// stripped the other's registration. `diagram.registry` is one diagram's own
+// table; the module-level `registerShape()` / `defineStyle()` / … are still the
+// process-wide one, and a diagram falls through to it for every name it did not
+// claim itself.
+export * from './registry-scope';
+export * from './diagram-registry';
+
 // Card 7 — the manifest, the compat gate, and the semver matcher behind it.
 export * from './manifest';
 

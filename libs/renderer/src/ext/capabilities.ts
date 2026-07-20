@@ -154,6 +154,17 @@ export interface ExtensionContext<C extends CapabilityName = CapabilityName> {
 export interface HostBindings {
   engine: DiagramEngine;
   /**
+   * The registry every contribution is written into. Pass `diagram.registry` and
+   * this host's extensions contribute to THAT DIAGRAM ONLY.
+   *
+   * Absent means the PROCESS-GLOBAL registries, which is what every host did
+   * before per-diagram registries existed and remains the right answer for an
+   * app-wide plugin. It is also why two hosts on one page used to fight: both
+   * wrote the same `badge`, the second won, and the first one's `dispose()`
+   * restored "no badge" over the top of the second's registration.
+   */
+  registry?: import('./diagram-registry').DiagramRegistry;
+  /**
    * The engine's node-template registry.
    *
    * MUST be passed explicitly: `TemplateRegistry` is constructed with an

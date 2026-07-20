@@ -36,6 +36,7 @@ import {
   type PathViewBox,
 } from './path-outline';
 import { parsePath, type PathCmd } from '../canvas/path-geometry';
+import { SHAPES, scopedTable } from '../ext/registry-scope';
 
 export type ShapeSide = 'left' | 'right' | 'top' | 'bottom';
 export interface ShapePoint {
@@ -1016,6 +1017,27 @@ export function registerPathShape(
   path: PathGeometry,
   opts: PathShapeOptions = {}
 ): void {
+  registry.set(type, buildPathShapeDefinition(type, path, opts));
+  // Wave 6: path shapes bypass `registerShape` (they build the definition here),
+  // so they must bump the version themselves or an extension that contributes a
+  // path shape would be invisible to cache invalidation and to its own disposer.
+  notifyShapeRegistered();
+}
+
+/**
+ * BUILD a path shape's definition without storing it anywhere.
+ *
+ * Extracted from {@link registerPathShape} so a PER-DIAGRAM registry can offer
+ * `registerPathShape` too. Everything expensive and everything subtle — path
+ * parsing, the one-slot outline sample memo, the derived boundary and port
+ * anchors — lives here, so the global and scoped paths cannot drift into
+ * producing different geometry for the same path.
+ */
+export function buildPathShapeDefinition(
+  type: string,
+  path: PathGeometry,
+  opts: PathShapeOptions = {}
+): ShapeDefinition {
   const steps = opts.sampleSteps ?? 24;
   const viewBox = opts.viewBox ?? { x: 0, y: 0, w: 1, h: 1 };
 
@@ -1040,7 +1062,7 @@ export function registerPathShape(
     return sampleCache;
   };
 
-  registry.set(type, {
+  return {
     type,
     styleMode: 'inline',
     outline(width, height, t = {}) {
@@ -1065,26 +1087,33 @@ export function registerPathShape(
       return polygonPortAnchor(verts, width, height, side, rank, count);
     },
     innerRect: opts.innerRect,
-  });
-  // Wave 6: path shapes bypass `registerShape` (they build the definition here),
-  // so they must bump the version themselves or an extension that contributes a
-  // path shape would be invisible to cache invalidation and to its own disposer.
-  notifyShapeRegistered();
+  };
 }
 
-/** The rect shape is the default fallback for unknown / unset shape types. */
+/**
+ * The rect shape is the default fallback for unknown / unset shape types.
+ *
+ * Resolution order is DIAGRAM-FIRST, then process-global. A diagram that
+ * contributed its own `badge` sees its own; every other diagram — and this one,
+ * for every name it did not claim — still sees the global registry. See
+ * `ext/registry-scope.ts` for why the lookup is ambient rather than threaded.
+ */
 export function getShape(type: string | undefined): ShapeDefinition {
-  return (type ? registry.get(type) : undefined) ?? RectShape;
+  if (!type) return RectShape;
+  return scopedTable<ShapeDefinition>(SHAPES)?.get(type) ?? registry.get(type) ?? RectShape;
 }
 
 /** Whether a shape type is registered (excludes the implicit rect fallback). */
 export function hasShape(type: string): boolean {
-  return registry.has(type);
+  return scopedTable<ShapeDefinition>(SHAPES)?.has(type) === true || registry.has(type);
 }
 
 /** All registered shape type names (built-ins + extended library + aliases). */
 export function listShapes(): string[] {
-  return [...registry.keys()];
+  const scoped = scopedTable<ShapeDefinition>(SHAPES);
+  if (!scoped || scoped.size === 0) return [...registry.keys()];
+  // Union, global order first, so an override renames nothing and adds nothing twice.
+  return [...new Set([...registry.keys(), ...scoped.keys()])];
 }
 
 // ---------------------------------------------------------------------------
@@ -1123,7 +1152,7 @@ export function unregisterShape(type: string): boolean {
  * an existing shape rather than adding a new one.
  */
 export function getShapeDefinition(type: string): ShapeDefinition | undefined {
-  return registry.get(type);
+  return scopedTable<ShapeDefinition>(SHAPES)?.get(type) ?? registry.get(type);
 }
 
 /**

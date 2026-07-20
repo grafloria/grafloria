@@ -135,6 +135,8 @@ import {
   onLinkPipelineChange,
 } from '../ext/link-pipeline';
 import { onShapeRegistryChange } from './shape-registry';
+import { RegistryScope, runInRegistryScope } from '../ext/registry-scope';
+import { DiagramRegistry } from '../ext/diagram-registry';
 
 // Nodes & shapes foundation: unified shape registry / geometry contract.
 // The five shape switch sites below (renderNodeShape, renderSelectionHighlight,
@@ -639,6 +641,25 @@ export class SVGRenderer implements IRenderer {
   /** Handle of the 1 Hz FPS sampler — cleared in dispose() (see startFPSTracking). */
   private fpsInterval?: ReturnType<typeof setInterval>;
 
+  /**
+   * THIS DIAGRAM'S contribution tables — shapes, named styles, link/label
+   * templates, markers, and the link pipeline it registered for itself.
+   *
+   * Empty until something contributes, and an empty scope is treated as no scope
+   * at all, so a renderer nobody extended costs exactly what it always did.
+   */
+  private readonly registryScope = new RegistryScope();
+  private readonly registryFacade = new DiagramRegistry(this.registryScope);
+
+  /**
+   * Register shapes / styles / markers / link-pipeline stages for THIS renderer
+   * alone. The module-level `registerShape()` & friends remain the process-wide
+   * registry, and this one shadows it — see `ext/diagram-registry.ts`.
+   */
+  getRegistry(): DiagramRegistry {
+    return this.registryFacade;
+  }
+
   constructor(
     private engine: DiagramEngine,
     config: SVGRendererConfig = {},
@@ -815,9 +836,26 @@ export class SVGRenderer implements IRenderer {
   }
 
   /**
-   * Render diagram to VNode tree
+   * Render diagram to VNode tree.
+   *
+   * THE REGISTRY SCOPE IS ACTIVATED HERE, around the whole pass, and this is the
+   * only place it needs to be for the picture to be right. Every contribution
+   * registry the frame consults — shapes, named styles, link/label templates,
+   * markers, anchors, connection points, connectors — resolves this diagram's
+   * own table first and the process-global one second, including from the read
+   * sites that are pure free functions three frames down (`shapeStrategy` in
+   * port-layout, `resolveNodeStyle` in the style cascade) and could not have been
+   * handed an instance without rewriting their signatures. See
+   * `ext/registry-scope.ts`.
+   *
+   * A diagram that contributed nothing activates nothing, so the single-diagram
+   * path is byte-identical to what it was.
    */
   render(viewport: Rectangle, zoom: number): VNode {
+    return runInRegistryScope(this.registryScope, () => this.renderInScope(viewport, zoom));
+  }
+
+  private renderInScope(viewport: Rectangle, zoom: number): VNode {
     const startTime = performance.now();
 
     const diagram = this.engine.getDiagram();
@@ -2105,6 +2143,11 @@ export class SVGRenderer implements IRenderer {
     this.unsubscribeLinkPipeline = undefined;
     this.unsubscribeShapeRegistry?.();
     this.unsubscribeShapeRegistry = undefined;
+
+    // Hand back whatever THIS diagram contributed. Nothing else on the page can
+    // be reading these tables — that is the whole point of them being ours — so
+    // unlike the global registries above there is no restore to negotiate.
+    this.registryFacade.dispose();
 
     // Stop following the OS colour scheme / contrast preferences.
     this.colorModeController?.dispose();

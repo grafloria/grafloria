@@ -51,6 +51,7 @@
 import type { LinkModel, LinkStyle, NodeModel, PortModel } from '@grafloria/engine';
 import type { Disposer } from './disposable';
 import { snapshotRestore } from './disposable';
+import { ANCHORS, CONNECTION_POINTS, CONNECTORS, scopedTable } from './registry-scope';
 
 // ===========================================================================
 // Shared geometry vocabulary
@@ -135,15 +136,18 @@ export function registerAnchor(name: string, fn: AnchorFn): Disposer {
 }
 
 export function getAnchor(name: string): AnchorFn | undefined {
-  return anchors.get(name);
+  // DIAGRAM-FIRST, then process-global — see `ext/registry-scope.ts`.
+  return scopedTable<AnchorFn>(ANCHORS)?.get(name) ?? anchors.get(name);
 }
 
 export function hasAnchor(name: string): boolean {
-  return anchors.has(name);
+  return scopedTable<AnchorFn>(ANCHORS)?.has(name) === true || anchors.has(name);
 }
 
 export function listAnchors(): string[] {
-  return [...anchors.keys()];
+  const scoped = scopedTable<AnchorFn>(ANCHORS);
+  if (!scoped || scoped.size === 0) return [...anchors.keys()];
+  return [...new Set([...anchors.keys(), ...scoped.keys()])];
 }
 
 // ===========================================================================
@@ -217,15 +221,18 @@ export function registerConnectionPoint(name: string, fn: ConnectionPointFn): Di
 }
 
 export function getConnectionPoint(name: string): ConnectionPointFn | undefined {
-  return connectionPoints.get(name);
+  // DIAGRAM-FIRST, then process-global — see `ext/registry-scope.ts`.
+  return scopedTable<ConnectionPointFn>(CONNECTION_POINTS)?.get(name) ?? connectionPoints.get(name);
 }
 
 export function hasConnectionPoint(name: string): boolean {
-  return connectionPoints.has(name);
+  return scopedTable<ConnectionPointFn>(CONNECTION_POINTS)?.has(name) === true || connectionPoints.has(name);
 }
 
 export function listConnectionPoints(): string[] {
-  return [...connectionPoints.keys()];
+  const scoped = scopedTable<ConnectionPointFn>(CONNECTION_POINTS);
+  if (!scoped || scoped.size === 0) return [...connectionPoints.keys()];
+  return [...new Set([...connectionPoints.keys(), ...scoped.keys()])];
 }
 
 // ===========================================================================
@@ -277,15 +284,18 @@ export function registerConnector(name: string, fn: ConnectorFn): Disposer {
 }
 
 export function getConnector(name: string): ConnectorFn | undefined {
-  return connectors.get(name);
+  // DIAGRAM-FIRST, then process-global — see `ext/registry-scope.ts`.
+  return scopedTable<ConnectorFn>(CONNECTORS)?.get(name) ?? connectors.get(name);
 }
 
 export function hasConnector(name: string): boolean {
-  return connectors.has(name);
+  return scopedTable<ConnectorFn>(CONNECTORS)?.has(name) === true || connectors.has(name);
 }
 
 export function listConnectors(): string[] {
-  return [...connectors.keys()];
+  const scoped = scopedTable<ConnectorFn>(CONNECTORS);
+  if (!scoped || scoped.size === 0) return [...connectors.keys()];
+  return [...new Set([...connectors.keys(), ...scoped.keys()])];
 }
 
 // ===========================================================================
@@ -300,6 +310,18 @@ const pipelineListeners = new Set<() => void>();
 function bumpPipeline(): void {
   pipelineVersion++;
   for (const listener of [...pipelineListeners]) listener();
+}
+
+
+/**
+ * Internal: let a PER-DIAGRAM registry participate in the version/notify
+ * protocol. A scoped registration must invalidate cached VNodes for exactly the
+ * reason a global one must — the definition is baked into the cache. Notifying
+ * every renderer (not just the contributing one) is deliberate: over-invalidation
+ * costs a repaint, under-invalidation shows a stale picture.
+ */
+export function notifyLinkPipelineChanged(): void {
+  bumpPipeline();
 }
 
 export function getLinkPipelineVersion(): number {

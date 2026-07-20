@@ -17,6 +17,7 @@
 // after nodes are already cached invalidates those cached VNodes.
 
 import type { NodeStyle, LinkStyle } from '@grafloria/engine';
+import { STYLES, scopedTable } from '../ext/registry-scope';
 
 /** A named style may carry node properties, link properties, or the ones they share. */
 export type NamedStyle = Partial<NodeStyle> | Partial<LinkStyle>;
@@ -47,13 +48,19 @@ export function defineStyles(styles: Record<string, NamedStyle>): void {
   bump();
 }
 
-/** The raw definition, or undefined when the name was never defined. */
+/**
+ * The raw definition, or undefined when the name was never defined.
+ *
+ * DIAGRAM-FIRST, then process-global — see `ext/registry-scope.ts`. A diagram
+ * that defined its own `critical` sees its own; one that did not still sees the
+ * app-wide definition.
+ */
 export function getStyle(name: string): NamedStyle | undefined {
-  return registry.get(name);
+  return scopedTable<NamedStyle>(STYLES)?.get(name) ?? registry.get(name);
 }
 
 export function hasStyle(name: string): boolean {
-  return registry.has(name);
+  return scopedTable<NamedStyle>(STYLES)?.has(name) === true || registry.has(name);
 }
 
 export function removeStyle(name: string): boolean {
@@ -70,7 +77,21 @@ export function clearStyles(): void {
 }
 
 export function listStyles(): string[] {
-  return Array.from(registry.keys());
+  const scoped = scopedTable<NamedStyle>(STYLES);
+  if (!scoped || scoped.size === 0) return Array.from(registry.keys());
+  return [...new Set([...registry.keys(), ...scoped.keys()])];
+}
+
+
+/**
+ * Internal: let a PER-DIAGRAM registry participate in the version/notify
+ * protocol. A scoped registration must invalidate cached VNodes for exactly the
+ * reason a global one must — the definition is baked into the cache. Notifying
+ * every renderer (not just the contributing one) is deliberate: over-invalidation
+ * costs a repaint, under-invalidation shows a stale picture.
+ */
+export function notifyStyleRegistryChanged(): void {
+  bump();
 }
 
 /** Bumped on every mutation — renderers key cache invalidation off this. */
@@ -92,11 +113,15 @@ export function resolveStyleClasses<T extends NamedStyle>(styleClass: string | u
   if (!styleClass) return {};
   const names = styleClass.trim().split(/\s+/).filter(Boolean);
   if (names.length === 0) return {};
-  if (names.length === 1) return (registry.get(names[0]) ?? {}) as Partial<T>;
+
+  // THE RENDER-PATH READ. `getStyle` — not `registry.get` — because this is the
+  // one lookup that decides what a node is actually painted with, and it must
+  // resolve against the diagram being painted rather than the process.
+  if (names.length === 1) return (getStyle(names[0]) ?? {}) as Partial<T>;
 
   const merged: Record<string, unknown> = {};
   for (const name of names) {
-    Object.assign(merged, registry.get(name) ?? {});
+    Object.assign(merged, getStyle(name) ?? {});
   }
   return merged as Partial<T>;
 }

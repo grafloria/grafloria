@@ -13,6 +13,7 @@ import type { PdfExportResult } from '../export/pdf/pdf-export';
 import type { CustomNodeCapture } from '../export/custom-nodes';
 import { captureCustomNodeHost } from '../export/capture-host';
 import { SVGRenderer } from '../svg/svg-renderer';
+import type { DiagramRegistry } from '../ext/diagram-registry';
 import { VNodePatcher } from '../vnode/patch';
 import { InteractionController } from '../interaction/interaction-controller';
 import { ViewportController } from '../viewport/viewport-controller';
@@ -320,6 +321,28 @@ export interface DiagramInstance {
    * threshold). Custom node components receive this as the `dragging` prop.
    */
   getDraggingNodeIds(): string[];
+
+  /**
+   * THIS diagram's contribution registry — shapes, named styles, link/label
+   * templates, markers, anchors, connection points, connectors, animations.
+   *
+   * The module-level `registerShape()` / `defineStyle()` / … remain the
+   * PROCESS-WIDE registry and still work exactly as before; this one shadows it
+   * for this diagram only. That distinction is the whole reason it exists: the
+   * registries used to be module-scope `Map`s, so two diagrams on one page could
+   * not have different vocabularies, and unloading one diagram's extension
+   * restored the registry to its pre-registration state — silently stripping the
+   * shape out from under the diagram beside it.
+   *
+   * ```ts
+   * editor.registry.registerShape('badge', badgeGeometry);   // editor only
+   * preview.registry.registerShape('badge', otherGeometry);  // preview only
+   * ```
+   *
+   * Pass it to `createExtensionHost({ …, registry: diagram.registry })` and every
+   * extension that host loads contributes to this diagram alone.
+   */
+  readonly registry: DiagramRegistry;
 
   /** Escape hatches for hosts and tests. */
   readonly container: HTMLElement;
@@ -1281,6 +1304,8 @@ export function createDiagram(
     },
 
     getDraggingNodeIds: () => binder.getDraggingNodeIds(),
+
+    registry: renderer.getRegistry(),
 
     dispose() {
       if (disposed) return;
