@@ -234,6 +234,12 @@
   const board = document.getElementById('board'), ph = document.getElementById('ph');
   const log = (m) => document.getElementById('proto-log').textContent = m;
   let FLOAT = false;
+  // S4 swap hysteresis (ported back FROM the engine, where real-mouse driving
+  // found it): an accepted swap LOCKS the pair for the rest of the gesture —
+  // re-swap needs a deliberate return (probe centre reaching the partner's
+  // centre). Without it, a slow hand-sweep of a small tile across a big one
+  // ping-pongs at every cell crossing.
+  let swapLock = null;
 
   const PALETTE = ['#3b52d9','#0ea5e9','#14b8a6','#f59e0b','#8b5cf6','#e11d48','#64748b','#0d9488'];
   let seq = 0;
@@ -333,6 +339,16 @@
       const gateArea = (sameSize || rowSwap || colSwap)
         ? Math.min(c.w * c.h, n.w * n.h) : c.w * c.h;
       if (inter <= 0.5 * gateArea) return false;
+      // S4: a just-swapped pair re-swaps only on a deliberate return.
+      if ((sameSize || rowSwap || colSwap) && swapLock &&
+          ((swapLock.a === n.id && swapLock.b === c.id) || (swapLock.a === c.id && swapLock.b === n.id))) {
+        const pcx = x + n.w / 2, pcy = y + n.h / 2;
+        const ncx = n.x + n.w / 2, ncy = n.y + n.h / 2;
+        const ccx = c.x + c.w / 2, ccy = c.y + c.h / 2;
+        const xOk = ncx === ccx || (ncx < ccx ? pcx >= ccx : pcx <= ccx);
+        const yOk = ncy === ccy || (ncy < ccy ? pcy >= ccy : pcy <= ccy);
+        if (!(xOk && yOk)) return false;
+      }
       if (c._ox === undefined && (sameSize || rowSwap || colSwap)) { c._ox = c.x; c._oy = c.y; }
       if (sameSize) {
         // Exchange CELLS exactly — n takes c's cell, not the probe cell.
@@ -341,6 +357,7 @@
         const ox = n.x, oy = n.y;
         n.x = c.x; n.y = c.y;
         c.x = ox; c.y = oy;
+        swapLock = { a: n.id, b: c.id };
         settle(n); return true;
       }
       if (rowSwap) {
@@ -350,6 +367,7 @@
         if (n.x < c.x) { c.x = leftX; n.x = leftX + c.w; }
         else           { n.x = leftX; c.x = leftX + n.w; }
         n.y = c.y;
+        swapLock = { a: n.id, b: c.id };
         settle(n); return true;
       }
       if (colSwap) {
@@ -358,6 +376,7 @@
         if (n.y < c.y) { c.y = topY; n.y = topY + c.h; }
         else           { n.y = topY; c.y = topY + n.h; }
         n.x = c.x;
+        swapLock = { a: n.id, b: c.id };
         settle(n); return true;
       }
     }
@@ -420,6 +439,7 @@
     e.preventDefault(); board.setPointerCapture(e.pointerId);
     const r = d.getBoundingClientRect(), br = board.getBoundingClientRect();
     endGesture();                                       // fresh per-gesture memory
+    swapLock = null;
     g = { n, d, mode: isRs ? 'rsz' : 'drag', dx: e.clientX-r.x, dy: e.clientY-r.y, br,
           snap: nodes.map(o=>({o, x:o.x, y:o.y})), moved:false,
           startW: r.width, startH: r.height, sx: e.clientX, sy: e.clientY };
@@ -453,6 +473,7 @@
     setTimeout(()=>{ d.style.transition=''; }, 50);
     log(commit && g.moved ? 'gesture committed — in Grafloria this is ONE undoable BatchCommand' : (g.moved?'cancelled — every tile restored':''));
     endGesture();                                        // memory does not outlive the gesture (E2)
+    swapLock = null;
     g = null;
   };
   board.addEventListener('pointerup', () => endG(true));
