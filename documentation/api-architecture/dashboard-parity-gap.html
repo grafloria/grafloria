@@ -117,6 +117,16 @@
     <td><span class="tag same">SAME+</span></td></tr>
 </table>
 
+<div class="note" style="border-color:#f3c3c3;background:#fff5f5">
+  <b>Superseded in part (2026-07-20, commit 82ba7471a).</b> After this review the user ruled that the dashboard
+  example must be PLAIN: <code>dashboard-builder.html</code> is now ONE flat 12-column grid per view — no nested
+  KPI section, no locked slab, no bounded strip. Every row below that mentions the KPI strip still describes real,
+  shipping behaviour, but it now lives on <code>demos/dashboard/grid-options.html</code>, where each construct is
+  labelled as an OPTION. Also fixed after this table was written: the anti-jitter gate was measuring overlap AREA
+  instead of gridstack's DIRECTIONAL PENETRATION (commit 326690030) — a small widget can now displace a big one by
+  being dragged more than halfway in, which is what "switching should work normal" meant.
+</div>
+
 <h2><span class="n">2</span>What the page does that the plan prototype never had</h2>
 <div class="note">
   Cross-container drag (KPI ↔ board, one undo restores both sides — R3) · nested strip with its own pack grid ·
