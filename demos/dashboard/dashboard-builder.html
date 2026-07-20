@@ -148,7 +148,7 @@
 //  or a WidgetHandle. The page builds no widget NodeModel, sequences no
 //  commands, keeps no host or spec side-maps. Exactly TWO things reach past the
 //  façade, both deliberate and both marked at their call site: H.binderOf() for
-//  palette drag-in, and setBehavior({connectable:false}) in afterMount().
+//  palette drag-in (the kit's documented escape hatch).
 //
 //  Read the enabling commits if you are extending this: b76b2b5e2 (dashboard-
 //  layout machinery), d4e24c525 (Phase 0 — the front door stops filtering),
@@ -390,11 +390,9 @@ function buildSpec(views) {
 
 /** Run after every mount (boot and every Load rebuild). */
 function afterMount(active) {
-  // THE ONE REMAINING GAP. addWidget() builds unconnectable, port-less nodes,
-  // but widgets DECLARED in dashboard({views}) become node specs with metadata
-  // and no `behavior` — so a hovered tile sprouts four port dots (a live user
-  // report). A dashboard has no wires: say so for the declared ones too.
-  for (const v of H.views) for (const w of H.widgetsOf(v)) w.node?.setBehavior({ connectable: false });
+  // (The connectable:false sweep that used to live here is gone: dashboard()'s
+  //  finalize() now marks DECLARED widgets unconnectable and strips their
+  //  default ports, matching what addWidget() always did for created ones.)
   showView(H.views.includes(active) ? active : H.views[0]);
 }
 

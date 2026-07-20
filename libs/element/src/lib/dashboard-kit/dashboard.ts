@@ -629,6 +629,15 @@ export function dashboard(options: DashboardOptions): DashboardSpec {
             n.setGridItem(gridItemFromCell({ x: w.x, y: w.y, w: w.span ?? 3, h: w.rows ?? 1 }));
           }
           if (w.pinned) n.setState({ locked: true });
+          // A dashboard widget is not a wiring endpoint. This MUST happen here
+          // rather than on the node spec: the render-input path IGNORES a
+          // spec-level `behavior` (the same trap erDiagram documents for
+          // `resizable`), so a DECLARED widget shipped connectable with four
+          // default ports and sprouted glyphs on hover — while addWidget()'s
+          // directly-built nodes were already correct. One path being right is
+          // exactly what hid it, and why the tooth now covers both.
+          n.setBehavior({ connectable: false });
+          for (const p of [...n.getPorts().values()]) n.removePort(p.id);
           g.addMember(w.id);
         }
         binders.set(

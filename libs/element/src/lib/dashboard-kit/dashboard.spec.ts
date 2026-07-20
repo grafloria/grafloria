@@ -358,12 +358,22 @@ describe('the closed API gaps (the port\'s bypass list)', () => {
     expect(cm.canUndo()).toBe(true);
   });
 
-  it('#5 widget nodes are NOT connectable and carry no ports', () => {
+  it('#5 widget nodes are NOT connectable and carry no ports — BOTH paths', () => {
+    // The first version of this tooth only exercised addWidget(). Widgets
+    // DECLARED in dashboard({views}) travel a different road: they become node
+    // SPECS, and the render-input path ignores a spec-level `behavior` (the
+    // same trap erDiagram documents for `resizable`), so finalize() has to set
+    // it on the live model. Covering one path let the other ship connectable.
     const { model, handle } = mount(SIMPLE());
+    for (const id of ['a', 'b', 'c']) {
+      const declared = model.getNode(id)!;
+      expect(declared.behavior?.connectable).toBe(false);
+      expect([...declared.getPorts().values()]).toHaveLength(0);
+    }
     handle.addWidget({ id: 'w5', kind: 'kpi' });
-    const node = model.getNode('w5')!;
-    expect(node.behavior?.connectable).toBe(false);
-    expect([...node.getPorts().values()]).toHaveLength(0);
+    const added = model.getNode('w5')!;
+    expect(added.behavior?.connectable).toBe(false);
+    expect([...added.getPorts().values()]).toHaveLength(0);
   });
 
   it('#3 resize/moveTo report whether the board ACCEPTED the change', async () => {
