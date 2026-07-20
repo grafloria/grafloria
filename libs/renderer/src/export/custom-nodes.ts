@@ -69,6 +69,17 @@ export interface CustomNodeCapture {
   content?: VNode[];
   /** Raw XHTML for the `foreignObject` attempt. Only for `fidelity: 'html'`. */
   html?: string;
+  /**
+   * A caveat the DOM boundary knows and this layer cannot see.
+   *
+   * `fidelity` describes what was READ; this describes what happened while reading it.
+   * They are independent, and the gap between them was a silent blank: an ASYNC painter
+   * that missed the export's deadline can leave a host holding half a widget, which
+   * captures perfectly as `fidelity: 'vector'` and would otherwise be reported as a clean
+   * export of a half-drawn chart. Emitted verbatim, ahead of any fidelity warning, because
+   * it is the CAUSE and the fidelity line is the consequence.
+   */
+  warning?: string;
 }
 
 /** What to do with a capture we could only get as HTML. */
@@ -150,6 +161,8 @@ export function customNodeVNodes(
   const htmlFallback = options.htmlFallback ?? 'foreignObject';
 
   for (const capture of captures) {
+    // The boundary's own caveat FIRST — it is why the fidelity below is what it is.
+    if (capture.warning) warnings.push(capture.warning);
     const node = customNodeVNode(capture, htmlFallback, warnings);
     if (node) nodes.push(node);
   }

@@ -216,6 +216,25 @@ export interface ExportOptions {
   htmlFallback?: HtmlFallbackMode;
 
   /**
+   * THE BOUND on waiting for an ASYNC custom-node painter, in milliseconds. Default 5000.
+   *
+   * A `renderCustomNode` may return a promise to say "I have not finished drawing yet"
+   * (a rAF, a fetch, a framework's async render, a web font). `await export(…)` — the only
+   * export entry point that is asynchronous — waits for exactly those promises and for
+   * nothing else. That promise is the SIGNAL; this number is only the safety net, because
+   * a painter that never settles must not hang a print job forever.
+   *
+   * On expiry the export proceeds with whatever the host has drawn so far — which may be
+   * partial, or nothing — and WARNS, naming the node and this deadline. It is never a
+   * silent blank. `0` means "capture immediately, do not wait", which still reports every
+   * painter it did not wait for.
+   *
+   * Ignored by `exportSvgString()` / `exportPdf()`: those are synchronous by contract and
+   * cannot wait at all. They report an unfinished painter as a warning instead.
+   */
+  customNodeTimeout?: number;
+
+  /**
    * FIDELITY REPORT. `IRenderer.export()` returns a bare string, so it has nowhere to
    * put the caveats an export hit — and for years it simply threw them away, which is
    * how a blank widget reaches a customer with no diagnostic anywhere.

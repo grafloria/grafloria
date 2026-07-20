@@ -330,6 +330,238 @@ check(
   `${lazy.svgLen} bytes`
 );
 
+// ===========================================================================
+// THE WIDGET THAT DRAWS LATER.
+//
+// Everything above paints INLINE: `renderCustomNode` returns and the pixels are already
+// there, so a synchronous capture reads them. A painter that DEFERS — a rAF, a fetch, a
+// framework's async render, a web font — has drawn nothing when the capture looks, and
+// its widget came out as a marked box. Honest, and still blank in the customer's PDF.
+//
+// THE MECHANISM: `renderCustomNode` may RETURN A PROMISE. `export()` has always returned
+// one, so it is the async entry point and there is no new public method. It waits for
+// exactly the painters that said they were not finished, and for nothing else.
+//
+// WHAT MAKES THIS A TEST AND NOT A COINCIDENCE: every tile's headline value is a string
+// only that tile's painter can produce, and the SAME board is exported SYNCHRONOUSLY
+// first — that export must contain none of them. If it did, the widget had drawn inline
+// and the async round trip would be proving nothing. Real rAFs, in a real browser, with
+// the real dashboard kit doing the drawing.
+// ===========================================================================
+console.log('\n--- an ASYNC renderCustomNode: the widget that draws later ---');
+
+const deferred = await p.evaluate(async () => {
+  const { render, dashboard } = await import('/shell/grafloria.js');
+
+  const unhandled = [];
+  addEventListener('unhandledrejection', (e) => unhandled.push(String(e.reason)));
+
+  const nextFrame = () => new Promise((r) => requestAnimationFrame(() => r()));
+
+  const board = (n, tag) => {
+    const widgets = [];
+    for (let i = 0; i < n; i++) {
+      widgets.push({
+        id: `${tag}${i}`,
+        kind: 'kpi',
+        data: { label: `Async ${i}`, value: `${tag.toUpperCase()}PROOF-${i}`, delta: 3.1, spark: [2, 7, 4, 9, 6] },
+      });
+    }
+    const spec = dashboard({ widgets });
+    const nodes = spec.nodes.map((node, i) => ({
+      ...node,
+      position: { x: (i % 3) * 292, y: Math.floor(i / 3) * 212 },
+      size: { width: 280, height: 200 },
+    }));
+    return { spec, nodes, values: widgets.map((w) => w.data.value) };
+  };
+
+  const mount = (nodes, renderCustomNode) => {
+    const host = document.createElement('div');
+    host.style.cssText =
+      'position:fixed;left:0;bottom:0;width:900px;height:460px;overflow:hidden;z-index:-1;background:#fff';
+    document.body.appendChild(host);
+    const instance = render({ nodes, edges: [] }, host, { renderCustomNode });
+    instance.renderNow();
+    const hosts = () => host.querySelectorAll('.grafloria-html-layer > .grafloria-node-host').length;
+    return { host, instance, hosts };
+  };
+
+  // -- the round trip --------------------------------------------------------
+  const main = board(6, 'a');
+  const painted = [];
+  const late = mount(main.nodes, async (node, el) => {
+    painted.push(node.id);
+    // A REAL deferral. Two animation frames is what a charting library that measures its
+    // own container actually does, and it is the case a synchronous capture cannot see.
+    await nextFrame();
+    await nextFrame();
+    main.spec.renderCustomNode(node, el);
+  });
+
+  // SYNCHRONOUS, taken with no await in between, so not one frame has passed.
+  const sync = late.instance.exportSvgString();
+  const hostsBefore = late.hosts();
+
+  // ASYNCHRONOUS: the identical board, waited for.
+  let asyncWarnings = [];
+  const startedFast = Date.now();
+  const asyncSvg = await late.instance.export('svg', { onWarnings: (w) => (asyncWarnings = w) });
+  const fastMs = Date.now() - startedFast;
+  const hostsAfter = late.hosts();
+  const paintedAfter = [...painted];
+
+  // -- the bound: a painter that never settles -------------------------------
+  const stuck = board(3, 'n');
+  const hung = mount(stuck.nodes, () => new Promise(() => undefined));
+  let hungWarnings = [];
+  const startedHung = Date.now();
+  const hungSvg = await hung.instance.export('svg', {
+    customNodeTimeout: 200,
+    onWarnings: (w) => (hungWarnings = w),
+  });
+  const hungMs = Date.now() - startedHung;
+
+  // -- a painter that REJECTS ------------------------------------------------
+  const mixed = board(3, 'r');
+  const broke = mount(mixed.nodes, async (node, el) => {
+    if (node.id === 'r1') throw new Error('feed unavailable');
+    await nextFrame();
+    mixed.spec.renderCustomNode(node, el);
+  });
+  let brokeWarnings = [];
+  const brokeHostsBefore = broke.hosts();
+  const brokeSvg = await broke.instance.export('svg', { onWarnings: (w) => (brokeWarnings = w) });
+
+  const result = {
+    values: main.values,
+    sync: {
+      leaked: main.values.filter((v) => sync.svg.includes(v)),
+      placeholders: (sync.svg.match(/grafloria-custom-node-placeholder/g) || []).length,
+      warnedAsync: sync.warnings.filter((w) => /still painting/i.test(w)).length,
+    },
+    async: {
+      missing: main.values.filter((v) => !asyncSvg.includes(v)),
+      placeholders: (asyncSvg.match(/grafloria-custom-node-placeholder/g) || []).length,
+      groups: (asyncSvg.match(/class="grafloria-custom-node"/g) || []).length,
+      warnings: asyncWarnings.filter((w) => w.includes('custom node')),
+      ms: fastMs,
+      hostsBefore,
+      hostsAfter,
+      paints: paintedAfter.length,
+      distinct: new Set(paintedAfter).size,
+      foreignObject: asyncSvg.includes('<foreignObject'),
+    },
+    hung: {
+      ms: hungMs,
+      timedOut: hungWarnings.filter((w) => /did not finish painting within 200ms/.test(w)).length,
+      placeholders: (hungSvg.match(/grafloria-custom-node-placeholder/g) || []).length,
+    },
+    rejected: {
+      survivors: ['RPROOF-0', 'RPROOF-2'].filter((v) => brokeSvg.includes(v)),
+      warned: brokeWarnings.some((w) => w.includes('"r1"') && /reject/i.test(w) && w.includes('feed unavailable')),
+      hostsBefore: brokeHostsBefore,
+      hostsAfter: broke.hosts(),
+    },
+    unhandled,
+  };
+
+  for (const m of [late, hung, broke]) {
+    m.instance.dispose();
+    m.host.remove();
+  }
+  return result;
+});
+
+// -- the precondition: synchronously, this board really is blank -------------
+check(
+  'SYNC: not one of the six deferred widgets had drawn when exportSvgString() read them',
+  deferred.sync.leaked.length === 0 && deferred.sync.placeholders === 6,
+  `leaked=${deferred.sync.leaked.join(',') || 'none'} placeholders=${deferred.sync.placeholders}`
+);
+// …and it SAYS so, in words that name the cause and the fix. The generic "empty box"
+// warning would have been green all along, so this asserts the async-specific sentence.
+check(
+  'SYNC: and each one is reported as still painting, not merely as empty',
+  deferred.sync.warnedAsync === 6,
+  `${deferred.sync.warnedAsync}/6 warned`
+);
+
+// -- the fix -----------------------------------------------------------------
+check(
+  'ASYNC: await export() has every deferred widget, drawn by the real kit',
+  deferred.async.missing.length === 0 && deferred.async.groups === 6,
+  deferred.async.missing.length ? `missing ${deferred.async.missing.join(', ')}` : `groups=${deferred.async.groups}`
+);
+check(
+  'ASYNC: none of them fell back to a placeholder box',
+  deferred.async.placeholders === 0,
+  `placeholders=${deferred.async.placeholders}`
+);
+check(
+  'ASYNC: and nothing was reported as unreadable',
+  deferred.async.warnings.length === 0,
+  deferred.async.warnings.join(' | ') || 'none'
+);
+check(
+  'ASYNC: still true vector — no foreignObject, so it survives PDF',
+  deferred.async.foreignObject === false
+);
+// The PROMISE is the signal, not the clock. Waiting out the 5s default instead of the
+// painter's two frames would be the fixed-timeout guess this design exists to avoid.
+check(
+  'the wait ends when the painter settles, not when the deadline expires',
+  deferred.async.ms < 2000,
+  `${deferred.async.ms}ms, default deadline 5000ms`
+);
+
+// -- the standing guarantees survive the await -------------------------------
+check(
+  'the document is the same size after the async export as before it',
+  deferred.async.hostsAfter === deferred.async.hostsBefore,
+  `${deferred.async.hostsBefore} → ${deferred.async.hostsAfter} hosts`
+);
+check(
+  'mount-once survives: one paint per widget across a sync AND an async export',
+  deferred.async.paints === 6 && deferred.async.distinct === 6,
+  `${deferred.async.paints} paints, ${deferred.async.distinct} distinct`
+);
+
+// -- the bound ---------------------------------------------------------------
+check(
+  'a painter that NEVER settles cannot hang an export',
+  deferred.hung.ms >= 150 && deferred.hung.ms < 3000,
+  `returned in ${deferred.hung.ms}ms against a 200ms deadline`
+);
+check(
+  'and every widget it gave up on is named, with the deadline it missed',
+  deferred.hung.timedOut === 3 && deferred.hung.placeholders === 3,
+  `warned=${deferred.hung.timedOut} placeholders=${deferred.hung.placeholders}`
+);
+
+// -- a painter that rejects --------------------------------------------------
+check(
+  'a REJECTING painter does not abort the export — its neighbours are still in the file',
+  deferred.rejected.survivors.length === 2,
+  deferred.rejected.survivors.join(',') || 'none survived'
+);
+check(
+  'and the rejection is reported by node id, with the error it threw',
+  deferred.rejected.warned
+);
+check(
+  'and it strands nothing',
+  deferred.rejected.hostsAfter === deferred.rejected.hostsBefore,
+  `${deferred.rejected.hostsBefore} → ${deferred.rejected.hostsAfter} hosts`
+);
+// We asked for the promise, so we own its failure. Leaking it would put a red
+// "Uncaught (in promise)" in every embedder's console for a case we already handle.
+check(
+  'no unhandled promise rejection reached the page',
+  deferred.unhandled.length === 0,
+  deferred.unhandled.join(' | ')
+);
+
 check('no page errors', pageErrors.length === 0, pageErrors.join(' | '));
 
 await b.close();

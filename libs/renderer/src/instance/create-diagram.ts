@@ -125,8 +125,29 @@ export interface CreateDiagramOptions extends DomEventBinderOptions {
    * than SVG (`custom: true` / `metadata.useHTMLLayer`). The instance creates and
    * positions an absolutely-placed host element inside the HTML layer and hands
    * it to you; you own what goes inside it.
+   *
+   * RETURN A PROMISE IF YOU DRAW LATER. A painter that defers — to a
+   * `requestAnimationFrame`, a `fetch`, a framework's async render, a web font — has
+   * drawn nothing by the time a synchronous export reads the host, and its widget used
+   * to come out as a marked box. Returning the promise is the SIGNAL that closes that:
+   * `await diagram.export(…)` waits for exactly the painters that said they were not
+   * done, and for nothing else — no polling and no fixed sleep. It is bounded by
+   * {@link ExportOptions.customNodeTimeout} (default 5s) so a painter that never settles
+   * cannot hang a print job, and a miss is WARNED about rather than silently blank.
+   *
+   * ```ts
+   * renderCustomNode: async (node, el) => {
+   *   const data = await fetch(`/api/widget/${node.id}`).then(r => r.json());
+   *   el.append(chartFor(data));
+   * }
+   * ```
+   *
+   * Nothing else changes: the promise is ignored by the frame loop (a widget still
+   * appears when it appears) and by `exportSvgString()` / `exportPdf()`, which are
+   * synchronous by contract and report an unfinished painter instead of waiting. A
+   * rejection is caught, reported, and never reaches the host as an unhandled rejection.
    */
-  renderCustomNode?: (node: NodeModel, element: HTMLElement) => void;
+  renderCustomNode?: (node: NodeModel, element: HTMLElement) => void | Promise<void>;
   /** Called before a custom node's host element is removed — unmount your component. */
   removeCustomNode?: (nodeId: string, element: HTMLElement) => void;
 
@@ -164,6 +185,10 @@ export interface CreateDiagramOptions extends DomEventBinderOptions {
    * document back exactly as they found it (see `materializeCustomNodes` below for what
    * "put back" means per mode). Turning culling on cannot change what comes out of a file:
    * it is a performance knob, and a performance knob that lost data would not be one.
+   *
+   * An ASYNC painter materialized this way is waited for by `await export(…)` — and the
+   * hosts an in-flight capture is holding are exempt from culling for exactly that long,
+   * so a frame (or an animated pan) mid-export cannot empty the widget being read.
    */
   cullCustomNodes?: boolean | HostCullOptions;
 
@@ -222,9 +247,21 @@ export interface DiagramInstance {
    *
    * Pass `{ embedModel: true }` (PNG and SVG) and the diagram model rides inside
    * the artifact — the exported file re-opens as an editable diagram.
+   *
+   * THE ASYNC ONE, and the only one. If a custom node's `renderCustomNode` returned a
+   * promise — "I draw later: a rAF, a fetch, a framework's render, a web font" — this
+   * waits for it before reading the host, bounded by
+   * {@link ExportOptions.customNodeTimeout}. The synchronous entry points below cannot,
+   * and say so in their `warnings`. Read the fidelity report through
+   * {@link ExportOptions.onWarnings}, which fires on every format.
    */
   export(format?: ExportFormat, options?: ExportOptions): Promise<string>;
-  /** Synchronous, DOM-free, deterministic. Carries `warnings`. */
+  /**
+   * Synchronous, DOM-free, deterministic. Carries `warnings`.
+   *
+   * Synchronous means a widget whose painter is still running is captured as it stands
+   * and REPORTED, not waited for — `await export('svg')` is the entry point that waits.
+   */
   exportSvgString(options?: ExportOptions): SvgExportResult;
   /** A real vector PDF: paths stay paths, text stays selectable text. */
   exportPdf(options?: ExportOptions): PdfExportResult;
@@ -474,6 +511,54 @@ export function createDiagram(
   /** The lifecycle the culler consults, read once so the export can consult it too. */
   const lifecycle = renderer.getViewLifecycle();
 
+  /**
+   * THE PAINT LEDGER — what an ASYNC `renderCustomNode` told us about itself.
+   *
+   * `pendingPaints` holds one entry per widget whose painter returned a promise that has
+   * not settled; the entry deletes itself when it does. `paintFailures` remembers the ones
+   * that rejected, so an export can say "its painter rejected: …" instead of the useless
+   * "its host was empty".
+   *
+   * Both are keyed by node id and both are written ONLY on a first mount, because
+   * `renderCustomNode` runs exactly once per host — so there is exactly one promise per
+   * widget, ever, and re-attaching a culled host neither re-runs nor re-awaits anything.
+   */
+  const pendingPaints = new Map<string, Promise<void>>();
+  const paintFailures = new Map<string, string>();
+
+  const isThenable = (value: unknown): value is PromiseLike<unknown> =>
+    value !== null &&
+    (typeof value === 'object' || typeof value === 'function') &&
+    typeof (value as { then?: unknown }).then === 'function';
+
+  /**
+   * Record what a painter returned.
+   *
+   * The `.then` here is also what keeps a rejecting painter from surfacing as an unhandled
+   * rejection in the host's console — we are the ones who asked for the promise, so we are
+   * the ones who must handle it, whether or not an export ever happens.
+   */
+  const trackPaint = (id: string, result: unknown): void => {
+    if (!isThenable(result)) return;
+    try {
+      const settled: Promise<void> = Promise.resolve(result).then(
+        () => undefined,
+        (error: unknown) => {
+          paintFailures.set(id, error instanceof Error ? error.message : String(error));
+        }
+      );
+      const entry = settled.then(() => {
+        // Identity-checked: a 'destroy'-mode remount replaces the entry, and a stale
+        // promise settling afterwards must not delete its successor.
+        if (pendingPaints.get(id) === entry) pendingPaints.delete(id);
+      });
+      pendingPaints.set(id, entry);
+    } catch {
+      // A broken thenable is not worth taking a frame down for. It simply is not tracked,
+      // and its widget degrades exactly as an unreadable host already does.
+    }
+  };
+
   /** World bounds of a custom node — the rect both the culler and the capture work in. */
   const nodeBounds = (node: NodeModel): Rectangle => ({
     x: node.position.x,
@@ -502,7 +587,13 @@ export function createDiagram(
       host.className = 'grafloria-node-host';
       layers.html.appendChild(host);
       nodeHosts.set(node.id, host);
-      options.renderCustomNode?.(node, host);
+      // A fresh paint supersedes whatever the last one ended in — only reachable in
+      // 'destroy' cull mode, which is the one mode that re-runs a painter.
+      pendingPaints.delete(node.id);
+      paintFailures.delete(node.id);
+      // The RETURN VALUE is the whole async contract: a painter that is not finished says
+      // so by handing back a promise. Sync painters return undefined and cost nothing.
+      trackPaint(node.id, options.renderCustomNode?.(node, host));
     } else if (!host.parentNode) {
       // Re-entry after a detach cull: the SAME element goes back, with its subtree, its
       // scroll offset, its canvas bitmap and its event listeners intact. `renderCustomNode`
@@ -516,6 +607,23 @@ export function createDiagram(
       nodeHostStyle(node.position.x, node.position.y, node.size.width, node.size.height)
     );
   };
+
+  /**
+   * Hosts an in-flight ASYNC capture is holding open, which no frame may cull.
+   *
+   * Only an async export can populate this, and only for as long as it is waiting. The
+   * synchronous capture materializes, reads and restores inside one tick with no
+   * suspension point, so nothing can run in the middle of it and it needs no pin.
+   *
+   * Without this, waiting for a painter would be self-defeating: real frames run WHILE we
+   * wait (that is what "async" means here), and one of them culling the very host we are
+   * waiting on would hand the capture a detached element — no layout box, every rect zero,
+   * a blank widget. An animated pan during an export would silently empty it. In 'destroy'
+   * mode it is worse than blank: the frame fires `removeCustomNode` and drops the host, so
+   * the export's own teardown would fire a SECOND time on an element the embedder has
+   * already disposed.
+   */
+  const pinnedHosts = new Set<string>();
 
   const syncCustomNodes = (): void => {
     const wanted = new Set<string>();
@@ -531,7 +639,7 @@ export function createDiagram(
 
       const existing = nodeHosts.get(node.id);
 
-      if (culler) {
+      if (culler && !pinnedHosts.has(node.id)) {
         // `existing?.parentNode` — the DOM's own answer to "is this mounted", rather than a
         // bookkeeping set that can drift from it. Feeding the CURRENT state back in is what
         // makes the hysteresis band work: which of the two rects applies depends on where
@@ -565,6 +673,27 @@ export function createDiagram(
       nodeHosts.delete(id);
     }
   };
+
+  /**
+   * The custom nodes an export with this scope will contain — the one definition of
+   * "in scope", shared by everything that has to agree on it (what gets materialized,
+   * what gets pinned, what gets waited for).
+   *
+   * WHAT IT WILL NOT INCLUDE. An explicit {@link ViewLifecycle} freeze is skipped, and
+   * that is not timidity: `SVGRenderer.render` gates every entity on
+   * `ViewLifecycle.admits`, so the render pass of this very export omits a frozen node.
+   * Capturing its widget would put content in the file with no node beneath it, and
+   * stretch the fitted viewBox to reach a node the same file does not draw.
+   */
+  const exportableCustomNodes = (needed: (node: NodeModel) => boolean): NodeModel[] =>
+    model
+      .getNodes()
+      .filter(
+        (node: NodeModel) =>
+          !!node.getMetadata('useHTMLLayer') &&
+          needed(node) &&
+          !lifecycle?.isExplicitlyFrozen('node', node.id)
+      );
 
   /**
    * FORCE-MATERIALIZE the hosts an export is about to read, and hand back the undo.
@@ -604,26 +733,19 @@ export function createDiagram(
    *                       between `setNodes()` and the frame it schedules — which used to
    *                       export blank widgets, and no longer does.)
    *
-   * WHAT IT WILL NOT OVERRULE. An explicit {@link ViewLifecycle} freeze is skipped. That
-   * is not timidity either: `SVGRenderer.render` gates every entity on
-   * `ViewLifecycle.admits`, so the render pass of this very export omits a frozen node.
-   * Capturing its widget would put content in the file with no node beneath it, and
-   * stretch the fitted viewBox to reach a node the same file does not draw.
+   * WHAT IT WILL NOT OVERRULE is decided by `exportableCustomNodes` above — an explicit
+   * {@link ViewLifecycle} freeze is skipped, and it says why.
    *
-   * THE HONEST LIMIT. `renderCustomNode` is called synchronously and read synchronously
-   * on the next line, because `exportSvgString()` is synchronous by contract. A painter
-   * that defers its paint (rAF, a fetch, a framework's async render) has not drawn
-   * anything by the time we look, so a first-mount capture of it comes back `empty` —
-   * reported as a warning and a marked box, never a silent blank. Widgets that paint
-   * inline (the dashboard kit's do) are unaffected.
+   * WHAT IT CANNOT DO ON ITS OWN. `renderCustomNode` is called here and read on the next
+   * line, because `exportSvgString()` is synchronous by contract. A painter that defers
+   * its paint has not drawn anything by the time we look. That is what the async path
+   * below exists for; the synchronous one still reports it rather than exporting a
+   * silent blank.
    */
   const materializeCustomNodes = (needed: (node: NodeModel) => boolean): (() => void) => {
     const undo: Array<() => void> = [];
 
-    for (const node of model.getNodes()) {
-      if (!node.getMetadata('useHTMLLayer')) continue;
-      if (!needed(node)) continue;
-      if (lifecycle?.isExplicitlyFrozen('node', node.id)) continue;
+    for (const node of exportableCustomNodes(needed)) {
       if (nodeHosts.get(node.id)?.parentNode) continue; // already live — leave it alone
 
       const was = nodeHosts.has(node.id) ? 'detached' : 'absent';
@@ -645,6 +767,12 @@ export function createDiagram(
         if (was === 'detached') undo.push(() => host.remove());
       } else if (culler.getMode() === 'destroy') {
         undo.push(() => {
+          // IDENTITY-CHECKED, because the async path can suspend between the mount and
+          // this undo. If the node left the model while we waited, the frame's own
+          // teardown loop has already fired `removeCustomNode` and dropped the host —
+          // firing again would dispose an embedder's component twice. In the synchronous
+          // path nothing can run in between, so this is always true and changes nothing.
+          if (nodeHosts.get(node.id) !== host) return;
           options.removeCustomNode?.(node.id, host);
           host.remove();
           nodeHosts.delete(node.id);
@@ -657,6 +785,41 @@ export function createDiagram(
     return () => {
       for (const restore of undo) restore();
     };
+  };
+
+  /**
+   * Why this widget's capture may be short, in the words a developer can act on.
+   *
+   * `waited` distinguishes the two ways an unfinished painter reaches an export, because
+   * they have different fixes: the synchronous entry points CANNOT wait and the caller
+   * should move to `await export(…)`; the asynchronous one waited and gave up, and the
+   * caller should raise the deadline or find out why the painter never settles.
+   */
+  const paintWarning = (
+    id: string,
+    waited: boolean,
+    timeoutMs: number
+  ): string | undefined => {
+    const failure = paintFailures.get(id);
+    if (failure !== undefined) {
+      return (
+        `custom node "${id}" — its renderCustomNode promise REJECTED (${failure}), so whatever ` +
+        'it had not drawn by then is missing from this export.'
+      );
+    }
+    if (!pendingPaints.has(id)) return undefined;
+    if (waited) {
+      return (
+        `custom node "${id}" did not finish painting within ${timeoutMs}ms — captured as it ` +
+        'stood at the deadline, which may be partial or blank. Raise ' +
+        'ExportOptions.customNodeTimeout, or check why its renderCustomNode promise never settles.'
+      );
+    }
+    return (
+      `custom node "${id}" is STILL PAINTING asynchronously (its renderCustomNode returned a ` +
+      'promise that has not settled). exportSvgString() / exportPdf() are synchronous by ' +
+      "contract and cannot wait — use `await diagram.export('svg' | 'pdf' | 'png', …)`, which does."
+    );
   };
 
   /**
@@ -676,23 +839,111 @@ export function createDiagram(
    * diagram without its widgets").
    */
   const captureCustomNodes = (needed: (node: NodeModel) => boolean): CustomNodeCapture[] => {
-    const captures: CustomNodeCapture[] = [];
     const restore = materializeCustomNodes(needed);
     try {
-      // Model order, not Map order: an export must not depend on mount sequence, or two
-      // runs of the same board would differ in byte order.
-      for (const node of model.getNodes()) {
-        const host = nodeHosts.get(node.id);
-        if (!host) continue;
-        captures.push(captureCustomNodeHost(node.id, nodeBounds(node), host));
-      }
+      return readHosts(false, 0);
     } finally {
       // `finally`: a capture that threw must not leave a board's worth of hosts mounted.
       // (`captureCustomNodeHost` is documented never to throw, but the restore is the one
       // thing here whose failure would be permanent, so it does not depend on that.)
       restore();
     }
+  };
+
+  /** The DOM read, shared by both capture paths so they cannot disagree about a host. */
+  const readHosts = (waited: boolean, timeoutMs: number): CustomNodeCapture[] => {
+    const captures: CustomNodeCapture[] = [];
+    // Model order, not Map order: an export must not depend on mount sequence, or two
+    // runs of the same board would differ in byte order.
+    for (const node of model.getNodes()) {
+      const host = nodeHosts.get(node.id);
+      if (!host) continue;
+      const capture = captureCustomNodeHost(node.id, nodeBounds(node), host);
+      const warning = paintWarning(node.id, waited, timeoutMs);
+      captures.push(warning ? { ...capture, warning } : capture);
+    }
     return captures;
+  };
+
+  /**
+   * THE ASYNC CAPTURE — the same boundary, allowed to wait for a painter that said it
+   * was not finished.
+   *
+   * THE SIGNAL IS THE PROMISE, and nothing else. A fixed sleep would be both slow (every
+   * export pays for the slowest imaginable widget) and wrong (the slowest widget is always
+   * slower than the guess, on someone's machine). `renderCustomNode` returning a promise
+   * is a contract the painter's author owns, can type, and is never wrong about — so this
+   * waits for exactly those, and returns the instant the last one settles.
+   *
+   * THE BOUND. `customNodeTimeout` (default 5s) is a safety net, never the mechanism: a
+   * painter that never settles must not hang a print job. On expiry the export takes the
+   * host as it stands — partial, or blank — and every widget it did not get to wait out is
+   * WARNED about by id. Degraded, reported, never silent.
+   *
+   * WHY THE SYNC PATH IS REUSED VERBATIM WHEN NOTHING IS PENDING. If no painter in scope
+   * has an unsettled promise, this runs materialize → read → restore with no suspension
+   * point at all, i.e. the identical sequence `exportSvgString()` performs. That makes "an
+   * all-sync board exports the same bytes through both paths" structurally true rather
+   * than merely tested — there is no second code path for it to drift into.
+   */
+  const captureCustomNodesAsync = async (
+    needed: (node: NodeModel) => boolean,
+    timeoutMs: number
+  ): Promise<CustomNodeCapture[]> => {
+    const scope = exportableCustomNodes(needed).map((node: NodeModel) => node.id);
+    for (const id of scope) pinnedHosts.add(id);
+
+    const restore = materializeCustomNodes(needed);
+    try {
+      // Only NOW is the pending set knowable: materializing runs first mounts, and a
+      // first mount is exactly where a painter announces that it is async.
+      const waits = scope
+        .map((id) => pendingPaints.get(id))
+        .filter((p): p is Promise<void> => p !== undefined);
+
+      if (waits.length === 0) return readHosts(false, timeoutMs); // ← atomic, as above
+      await settle(waits, timeoutMs);
+      return readHosts(true, timeoutMs);
+    } finally {
+      restore();
+      for (const id of scope) pinnedHosts.delete(id);
+    }
+  };
+
+  /** Wait for every tracked paint, or for the deadline — whichever comes first. */
+  const settle = async (waits: Promise<void>[], timeoutMs: number): Promise<void> => {
+    if (!(timeoutMs > 0)) return; // 0 (or nonsense) means "do not wait"; still reported
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const deadline = new Promise<void>((resolve) => {
+      timer = setTimeout(resolve, timeoutMs);
+    });
+    try {
+      // The tracked promises are wrapped never to reject, so this races two resolutions
+      // and cannot itself throw. A rejecting painter is recorded, not propagated.
+      await Promise.race([Promise.all(waits), deadline]);
+    } finally {
+      // Without this a fast export still holds the event loop open for the full deadline,
+      // which in Node keeps a process alive after the work is done.
+      if (timer !== undefined) clearTimeout(timer);
+    }
+  };
+
+  /**
+   * ONE async capture at a time.
+   *
+   * Two exports in flight would otherwise interleave their materialize/restore pairs —
+   * the first's restore tearing down a host the second is still waiting to read, which is
+   * a blank widget in a file that asked for nothing unusual. Serializing is also the
+   * cheaper answer: the second export finds the first's painters already settled.
+   */
+  let captureQueue: Promise<unknown> = Promise.resolve();
+  const serializeCapture = <T>(run: () => Promise<T>): Promise<T> => {
+    const result = captureQueue.then(run, run);
+    captureQueue = result.then(
+      () => undefined,
+      () => undefined
+    );
+    return result;
   };
 
   /**
@@ -714,6 +965,24 @@ export function createDiagram(
   const withCustomNodes = (exportOptions?: ExportOptions): ExportOptions => {
     if (exportOptions?.customNodes !== undefined) return exportOptions;
     const customNodes = captureCustomNodes(exportNeeds(exportOptions));
+    if (customNodes.length === 0) return exportOptions ?? {};
+    return { ...exportOptions, customNodes };
+  };
+
+  /** Default bound on waiting for an async painter. See ExportOptions.customNodeTimeout. */
+  const DEFAULT_CUSTOM_NODE_TIMEOUT = 5000;
+
+  const withCustomNodesAsync = async (exportOptions?: ExportOptions): Promise<ExportOptions> => {
+    // The caller's own captures win, and short-circuit the wait entirely — `customNodes:
+    // []` means "export the diagram without its widgets", which must not sit out a
+    // deadline for painters whose output was never going in the file.
+    if (exportOptions?.customNodes !== undefined) return exportOptions;
+    const customNodes = await serializeCapture(() =>
+      captureCustomNodesAsync(
+        exportNeeds(exportOptions),
+        exportOptions?.customNodeTimeout ?? DEFAULT_CUSTOM_NODE_TIMEOUT
+      )
+    );
     if (customNodes.length === 0) return exportOptions ?? {};
     return { ...exportOptions, customNodes };
   };
@@ -973,7 +1242,13 @@ export function createDiagram(
       scheduler.schedule();
     },
 
-    export: (format, exportOptions) => renderer.export(format, withCustomNodes(exportOptions)),
+    // THE ONLY ASYNC EXPORT ENTRY POINT — and it always was one. `IRenderer.export`
+    // has returned a Promise since the seam existed, so an ASYNC custom-node painter
+    // needs no new public method: this is where waiting for one belongs. The two
+    // synchronous entry points below keep their contract exactly, and report an
+    // unfinished painter rather than pretending to have read it.
+    export: async (format, exportOptions) =>
+      renderer.export(format, await withCustomNodesAsync(exportOptions)),
     exportSvgString: (exportOptions) => renderer.exportSvgString(withCustomNodes(exportOptions)),
     exportPdf: (exportOptions) => renderer.exportPdf(withCustomNodes(exportOptions)),
 
