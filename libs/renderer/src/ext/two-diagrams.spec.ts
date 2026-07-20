@@ -327,6 +327,40 @@ describe('two diagrams on one page — contribution registries must not be share
     expect(bodyTag(a)).toBe('circle');
   });
 
+  it('a diagram with its OWN shape still sees GLOBAL shapes it did not override', () => {
+    // The fall-through rule, and the reason the scope is an OVERLAY not a
+    // replacement. A diagram that contributes one shape must not thereby lose the
+    // app-wide library: its OTHER nodes still resolve against the process-global
+    // registry. Without this a scoped diagram would render every un-overridden
+    // node as a bare rect.
+    const { registerShape } = jest.requireActual<typeof import('../svg/shape-registry')>(
+      '../svg/shape-registry'
+    );
+    registerShape('star', badgeShape('ellipse')); // an app-wide shape, drawn as an ellipse
+
+    const a = mount({
+      nodes: [
+        { id: 'own', position: { x: 20, y: 20 }, size: { width: 60, height: 60 }, shape: { type: 'badge' } },
+        { id: 'glob', position: { x: 200, y: 20 }, size: { width: 60, height: 60 }, shape: { type: 'star' } },
+      ],
+    });
+    // A registers ITS OWN badge — so a non-empty scope is active during its render.
+    hostFor(a).register(badgeExtension('ext.a', 'circle'));
+    a.renderNow();
+
+    const tags = Array.from(a.container.querySelectorAll('.diagram-node')).map((n) =>
+      n.tagName.toLowerCase()
+    );
+    // Its own overridden shape…
+    expect(tags).toContain('circle');
+    // …AND the global one it never touched, resolved through fall-through.
+    expect(tags).toContain('ellipse');
+    // Nothing fell back to rect.
+    expect(tags).not.toContain('rect');
+
+    unregisterShape('star');
+  });
+
   it('lets a diagram OVERRIDE a global shape without mutating the global one', () => {
     const { registerShape, getShapeDefinition } = jest.requireActual<
       typeof import('../svg/shape-registry')
