@@ -154,6 +154,19 @@ export interface DashboardSpec {
   readonly handle: DashboardHandle;
 }
 
+/**
+ * A whole board as plain data: every `DashboardOptions` field except the
+ * function seams. `dashboard({ ...snapshot, renderWidget })` rebuilds it.
+ *
+ * Typed as an Omit rather than a hand-written twin on purpose — a field added
+ * to `DashboardOptions` then joins the snapshot automatically instead of being
+ * silently dropped, which is the exact failure this type exists to end.
+ */
+export type DashboardSnapshot = Omit<
+  DashboardOptions,
+  'renderWidget' | 'onLayoutChange' | 'views'
+> & { views: DashboardViewSpec[] };
+
 /** The typed façade — the `erTable`/`umlClass` equivalent for dashboards. */
 export interface DashboardHandle {
   /** The view ids, in declaration order. */
@@ -198,8 +211,27 @@ export interface DashboardHandle {
   fit(viewId?: string): void;
   /** Live geometry of a view's board (columns, gap, rows, rowHeight, frame…). */
   metrics(viewId?: string): ReturnType<DashboardGridHandle['metrics']> | undefined;
-  /** The current layout as plain data — feed it straight back to dashboard(). */
-  toJSON(): DashboardViewSpec[];
+  /**
+   * The whole board as plain data — feed it straight back to `dashboard()`:
+   *
+   * ```ts
+   * dashboard({ ...handle.toJSON(), renderWidget });   // a true round trip
+   * ```
+   *
+   * Everything `DashboardOptions` takes EXCEPT the function seams
+   * (`renderWidget`, `onLayoutChange`), which cannot be written to a file and
+   * must be supplied again on the way back in.
+   *
+   * Values are read from the LIVE board, not from the authored literal, so a
+   * mode or column count the user changed after mount is what you get back.
+   *
+   * This used to return only `views`, which made the round-trip claim true of
+   * the layout and false of the board: a board authored `grow` at a 10-column,
+   * 6px-gap geometry reloaded as a 12-column `fit` one. It is also what
+   * `JSON.stringify(handle)` calls, so the partial answer was a permanent
+   * footgun in a save API rather than merely an omission.
+   */
+  toJSON(): DashboardSnapshot;
   /**
    * The node ids ONE view occupies — pass straight to `includeIds` to export
    * just that board:
@@ -573,7 +605,7 @@ export function dashboard(options: DashboardOptions): DashboardSpec {
       // board currently squeezed to 1 column still writes out the 12-column
       // layout its user authored — and the view's `columns` is that count, so
       // feeding this straight back into dashboard() rebuilds the wide board.
-      return views.map((v) => {
+      const savedViews = views.map((v) => {
         const saved = binders.get(v.id)?.saveLayout();
         return {
           ...v,
@@ -584,6 +616,23 @@ export function dashboard(options: DashboardOptions): DashboardSpec {
           }),
         };
       });
+
+      // Board options come off the LIVE board wherever the handle can see it —
+      // `sizing` and `float` are the two a user changes from the toolbar, and
+      // reading them from the authored literal would restore the board they
+      // started with rather than the one they are looking at.
+      return {
+        ...options,
+        renderWidget: undefined,
+        onLayoutChange: undefined,
+        columns,
+        gap,
+        rowHeight,
+        sizing: handle.getSizing(),
+        float: handle.getFloat(),
+        rtl: handle.getRtl(),
+        views: savedViews,
+      } as DashboardSnapshot;
     },
     dispose() {
       for (const b of binders.values()) b.dispose();
@@ -768,7 +817,7 @@ export function dashboard(options: DashboardOptions): DashboardSpec {
             ...(options.binder ?? {}),
             onGesture: (e) => {
               if (e.type === 'commit' && options.onLayoutChange) {
-                const snapshot = handle.toJSON().find((x) => x.id === v.id);
+                const snapshot = handle.toJSON().views.find((x) => x.id === v.id);
                 if (snapshot) options.onLayoutChange(v.id, snapshot.widgets);
               }
               options.binder?.onGesture?.(e);

@@ -610,10 +610,12 @@ function setSizingMode(mode) {
    per board, captured in ~20 ms, and it is the difference between a list you
    read and a gallery you recognise.
 
-   THE ONE THING toJSON() DOES NOT CARRY is board-level options — `sizing`,
-   `float`, gap, rowHeight. Those are set on dashboard() and read back through
-   getSizing()/getFloat(), so a version records them alongside the views and
-   applyVersion() puts them back. See the notes on that gap in the report.
+   toJSON() CARRIES THE WHOLE BOARD, not just the views: columns, gap, sizing,
+   rowHeight, float and rtl come back with it, read off the LIVE board rather
+   than the authored literal. It returned only `views` until this page tried to
+   PERSIST a board and a `grow` board reloaded as `fit` — the round-trip claim
+   was true of the layout and false of the board. A version therefore stores one
+   snapshot and nothing beside it.
 --------------------------------------------------------------------------- */
 const HISTORY_KEY = 'grafloria-dashboard-history';
 const MAX_VERSIONS = 8;          // localStorage is small and THROWS when full
@@ -645,8 +647,9 @@ const thumbUri = (svg) => `data:image/svg+xml;charset=utf-8,${encodeURIComponent
 function captureVersion({ auto = false } = {}) {
   const v = {
     n: ++versionSeq, at: Date.now(), auto,
-    views: H.toJSON(),
-    sizing: H.getSizing(), float: H.getFloat(),
+    // ONE snapshot, one source of truth. `sizing`/`float` used to be read
+    // separately through getSizing()/getFloat() because toJSON() dropped them.
+    ...(() => { const s = H.toJSON(); return { board: s, views: s.views, sizing: s.sizing, float: s.float }; })(),
     view: H.activeView,          // the view the thumbnail shows
     thumb: thumbOf(),
   };
@@ -668,7 +671,7 @@ function captureVersion({ auto = false } = {}) {
  *  and banked a copy of an unedited board every time (caught by the gate). */
 function captureIfChanged(opts) {
   const anchor = history.find((v) => v.id === currentVersion) ?? history[0];
-  if (anchor && JSON.stringify(anchor.views) === JSON.stringify(H.toJSON())) return null;
+  if (anchor && JSON.stringify(anchor.views) === JSON.stringify(H.toJSON().views)) return null;
   return captureVersion(opts);
 }
 

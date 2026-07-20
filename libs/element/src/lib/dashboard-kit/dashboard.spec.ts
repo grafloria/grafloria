@@ -309,10 +309,10 @@ describe('the typed handles (the erTable/umlClass equivalent)', () => {
     const { handle } = mount(SIMPLE());
     await handle.widget('a')!.resize(6, 1);
     const saved = handle.toJSON();
-    expect(saved.map((v) => v.id)).toEqual(['overview', 'sales']);
-    expect(saved[0].widgets.find((w) => w.id === 'a')).toMatchObject({ span: 6, rows: 1 });
+    expect(saved.views.map((v) => v.id)).toEqual(['overview', 'sales']);
+    expect(saved.views[0].widgets.find((w) => w.id === 'a')).toMatchObject({ span: 6, rows: 1 });
     // Feed it straight back — the whole point of a data-first API.
-    const reloaded = dashboard({ columns: 12, views: saved });
+    const reloaded = dashboard({ ...saved, columns: 12 });
     const cellOfA = (reloaded.nodes.find((n) => (n as Record<string, any>)['id'] === 'a') as Record<
       string,
       any
@@ -576,9 +576,9 @@ describe('dashboard() — responsive column count', () => {
     const wide = handle.toJSON();
     handle.setColumns(1);
     const narrow = handle.toJSON();
-    expect(narrow[0].columns).toBe(12); // the view records the widest count
-    expect(narrow[0].widgets.map((w) => [w.x, w.y, w.span])).toEqual(
-      wide[0].widgets.map((w) => [w.x, w.y, w.span])
+    expect(narrow.views[0].columns).toBe(12); // the view records the widest count
+    expect(narrow.views[0].widgets.map((w) => [w.x, w.y, w.span])).toEqual(
+      wide.views[0].widgets.map((w) => [w.x, w.y, w.span])
     );
     // …while the board on screen really IS one column wide.
     expect(handle.getColumns()).toBe(1);
@@ -589,10 +589,10 @@ describe('dashboard() — responsive column count', () => {
     const { handle } = mount(BOARD());
     handle.setColumns(1);
     const saved = handle.toJSON();
-    const rebuilt = mount(dashboard({ views: saved, width: 1200, height: 400 }));
+    const rebuilt = mount(dashboard({ ...saved, width: 1200, height: 400 }));
     expect(rebuilt.handle.getColumns()).toBe(12);
     expect(rebuilt.handle.widgetsOf().map((w) => ({ id: w.id, ...w.cell! }))).toEqual(
-      handle.toJSON()[0].widgets.map((w) => ({ id: w.id, x: w.x!, y: w.y!, w: w.span!, h: w.rows! }))
+      handle.toJSON().views[0].widgets.map((w) => ({ id: w.id, x: w.x!, y: w.y!, w: w.span!, h: w.rows! }))
     );
   });
 });
@@ -648,7 +648,7 @@ describe('dashboard() — RTL', () => {
   it('a layout SAVED in one direction re-renders mirrored in the other, same cells', () => {
     const { ltr } = both();
     const saved = ltr.handle.toJSON();
-    const mirrored = mount(dashboard({ views: saved, width: 1200, height: 400, rtl: true }));
+    const mirrored = mount(dashboard({ ...saved, width: 1200, height: 400, rtl: true }));
     for (const id of ['w1', 'w2', 'w3']) {
       expect(mirrored.handle.widget(id)!.cell).toEqual(ltr.handle.widget(id)!.cell);
     }
@@ -737,5 +737,85 @@ describe('dashboard() — exporting a TABBED board', () => {
   it('returns an empty set for a view that does not exist', () => {
     const { handle } = mount(SIMPLE());
     expect(handle!.exportIds('nope').size).toBe(0);
+  });
+});
+
+describe('handle.toJSON() — the round-trip promise, kept', () => {
+  // THE BUG. Three places in this repo claim "toJSON() output IS dashboard()
+  // input". It was true only of `views`. `DashboardOptions` also carries
+  // columns/gap/sizing/rowHeight/width/height/float/rtl/responsive, and every
+  // one of them was dropped — so a board authored in `grow` at a 10-column,
+  // 6px-gap geometry came back as a 12-column, default-gap `fit` board. It
+  // surfaced the moment anyone PERSISTED a board rather than just reading the
+  // layout, which is exactly what a save feature does.
+  //
+  // `toJSON()` is also what `JSON.stringify(handle)` calls. A save API whose
+  // stringify silently drops half the configuration is a permanent footgun, so
+  // this is fixed at the source rather than by adding a second method beside it.
+  const board = () =>
+    dashboard({
+      columns: 10,
+      gap: 6,
+      sizing: 'grow',
+      rowHeight: 90,
+      float: true,
+      width: 1111,
+      height: 555,
+      responsive: { columnWidth: 100 },
+      views: [{ id: 'v', name: 'V', widgets: [{ id: 'a', kind: 'kpi', span: 2, rows: 1 }] }],
+    });
+
+  it('carries the board options, not just the views', () => {
+    const { handle } = mount(board());
+    const saved = handle!.toJSON();
+
+    expect(saved.gap).toBe(6);
+    expect(saved.sizing).toBe('grow');
+    expect(saved.rowHeight).toBe(90);
+    expect(saved.float).toBe(true);
+    // Asserted per-key rather than with one toEqual: a single object compare
+    // would let a future field go missing without a word.
+    expect(saved.views.map((v) => v.id)).toEqual(['v']);
+  });
+
+  it('carries the options it does NOT name explicitly', () => {
+    // WEAK TOOTH, caught by mutation. The test above passes with the `...options`
+    // spread DELETED, because gap/sizing/rowHeight/float are all re-stated by
+    // name afterwards. Only width, height and responsive arrive purely through
+    // the spread — so they are what actually proves it is there, and they are
+    // what proves the Omit<> type's promise that a NEW DashboardOptions field
+    // joins the snapshot for free instead of being silently dropped.
+    const { handle } = mount(board());
+    const saved = handle!.toJSON();
+
+    expect(saved.width).toBe(1111);
+    expect(saved.height).toBe(555);
+    expect(saved.responsive).toEqual({ columnWidth: 100 });
+  });
+
+  it('reports the LIVE geometry, not the authored literal', () => {
+    // The whole point is restoring what the user is looking at. Reading the
+    // options back off the spec would pass the test above and still lose every
+    // change the user made after mount.
+    const { handle } = mount(board());
+    handle!.setSizing('fit');
+    handle!.setFloat(false);
+
+    const saved = handle!.toJSON();
+    expect(saved.sizing).toBe('fit');
+    expect(saved.float).toBe(false);
+  });
+
+  it('feeds straight back into dashboard() — the documented claim', () => {
+    const { handle } = mount(board());
+    handle!.setSizing('fit');
+
+    const rebuilt = mount(dashboard(handle!.toJSON()));
+    const again = rebuilt.handle!.toJSON();
+
+    expect(again.sizing).toBe('fit');
+    expect(again.gap).toBe(6);
+    expect(again.rowHeight).toBe(90);
+    expect(again.views[0].widgets.map((w) => w.id)).toEqual(['a']);
   });
 });
