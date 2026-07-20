@@ -36,6 +36,7 @@ import {
   BAKEOFF_NODE_LIMIT,
   type AutoLayoutResult,
 } from './layout-auto-select';
+import { perfBudget } from './perf-budget';
 
 jest.setTimeout(120000);
 
@@ -220,7 +221,7 @@ describe('auto at scale — the graphs that hung it, with generous CI caps', () 
   it('chain @ 300: was 16,000ms+, must now complete well under 5s and run ONE engine', async () => {
     const { result, ms } = await runAuto(chain(300));
 
-    expect(ms).toBeLessThan(5000);
+    expect(ms).toBeLessThan(perfBudget(5000));
     // Bounded work, not just a faster stopwatch: exactly one engine ran.
     expect(result.selection.candidates).toHaveLength(1);
     // A chain is structurally a tree; the O(n) tree layout is the measured pick.
@@ -233,7 +234,7 @@ describe('auto at scale — the graphs that hung it, with generous CI caps', () 
   it('mesh @ 900: was killed >22s, must complete < 1s and pick layered', async () => {
     const { result, ms } = await runAuto(mesh(30, 30));
 
-    expect(ms).toBeLessThan(1000);
+    expect(ms).toBeLessThan(perfBudget(1000));
     expect(result.selection.chosen).toBe('layered:TB');
     expect(result.selection.candidates).toHaveLength(1);
     expectFinitePositions(result, 900);
@@ -251,7 +252,7 @@ describe('auto at scale — the graphs that hung it, with generous CI caps', () 
   it('tree @ 2000: must complete < 3s via the O(n) tree layout', async () => {
     const { result, ms } = await runAuto(tree(2000));
 
-    expect(ms).toBeLessThan(3000);
+    expect(ms).toBeLessThan(perfBudget(3000));
     expect(result.selection.chosen).toBe('tree');
     expectFinitePositions(result, 2000);
   });
@@ -259,7 +260,7 @@ describe('auto at scale — the graphs that hung it, with generous CI caps', () 
   it('chain @ 2000: the shape that kills dagre must complete < 3s', async () => {
     const { result, ms } = await runAuto(chain(2000));
 
-    expect(ms).toBeLessThan(3000);
+    expect(ms).toBeLessThan(perfBudget(3000));
     // Structurally a tree — and crucially NOT dagre (unbounded at 2,000 ranks).
     expect(result.selection.chosen).toBe('tree');
     expectFinitePositions(result, 2000);
@@ -268,7 +269,7 @@ describe('auto at scale — the graphs that hung it, with generous CI caps', () 
   it('sparse DAG @ 2000: the shape that kills layered must complete < 3s via dagre', async () => {
     const { result, ms } = await runAuto(sparseDag(2000));
 
-    expect(ms).toBeLessThan(3000);
+    expect(ms).toBeLessThan(perfBudget(3000));
     expect(result.selection.chosen).toBe('dagre:TB');
     expectFinitePositions(result, 2000);
   });
@@ -276,7 +277,7 @@ describe('auto at scale — the graphs that hung it, with generous CI caps', () 
   it('mesh @ 2025: must complete < 3s', async () => {
     const { result, ms } = await runAuto(mesh(45, 45));
 
-    expect(ms).toBeLessThan(3000);
+    expect(ms).toBeLessThan(perfBudget(3000));
     expect(result.selection.chosen).toBe('layered:TB');
     expectFinitePositions(result, 2025);
   });

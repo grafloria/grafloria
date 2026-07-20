@@ -16,6 +16,7 @@ import { ELKLayoutAdapter } from './elk-layout-adapter';
 import { NodeModel } from '../models/NodeModel';
 import { LinkModel } from '../models/LinkModel';
 import { PortModel } from '../models/PortModel';
+import { perfBudget } from './perf-budget';
 
 /** R×C mesh with right+down edges — the probe's 900-node shape. */
 function buildMesh(rows: number, cols: number) {
@@ -99,7 +100,7 @@ describe('ELKLayoutAdapter performance audit', () => {
     expect(result.nodePositions.size).toBe(900);
     // Generous CI-safe cap: live probe measured ~672ms; anything near this cap
     // means the adapter or elkjs went pathological.
-    expect(adapterMs).toBeLessThan(10000);
+    expect(adapterMs).toBeLessThan(perfBudget(10000));
     // The adapter's own translation + result mapping must stay a small fraction
     // of the run — the algorithm, not our plumbing, is allowed to be the cost.
     expect(adapterMs - rawMs).toBeLessThan(Math.max(500, rawMs));
@@ -195,7 +196,7 @@ describe('ELKLayoutAdapter performance audit', () => {
     expect(result.metadata?.['portConstrainedNodes']).toBe(900);
     // Generous CI cap — port constraints make ELK itself work harder, but the
     // run must stay the same order of magnitude as the unported mesh.
-    expect(ms).toBeLessThan(15000);
+    expect(ms).toBeLessThan(perfBudget(15000));
   }, 60000);
 
   it('is deterministic: two runs on the same graph produce identical positions', async () => {
