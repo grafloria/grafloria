@@ -131,6 +131,34 @@ describe('dashboard() — the declarative surface', () => {
     expect(handle.views).toEqual(['overview', 'sales']);
   });
 
+  it('DECLARED CELLS REACH THE BOARD — not just the flow order', () => {
+    // The regression this locks: the spec's `metadata.gridItem` is inert, so
+    // finalize() must write the model's real GridItemConfig. Before it did,
+    // the board auto-positioned every widget in declaration order and an
+    // out-of-flow cell was silently ignored — invisible whenever the flow
+    // happened to agree, and fatal to the toJSON() round-trip when it did not.
+    const { handle } = mount(
+      dashboard({
+        columns: 12,
+        widgets: [
+          { id: 'far', span: 3, rows: 1, x: 9, y: 2 }, // nowhere near the flow's first hole
+          { id: 'near', span: 3, rows: 1, x: 0, y: 0 },
+        ],
+      })
+    );
+    // Declared FIRST, yet it holds the last three columns — auto-positioning
+    // would have opened the board with it at x: 0.
+    expect(handle.widget('far')!.cell).toMatchObject({ x: 9, w: 3 });
+    expect(handle.widget('near')!.cell).toEqual({ x: 0, y: 0, w: 3, h: 1 });
+    // …and the row obeys gravity, which is the engine's job, not the spec's:
+    // with float off nothing hovers over an empty row.
+    expect(handle.widget('far')!.cell!.y).toBe(0);
+    const floated = mount(
+      dashboard({ float: true, widgets: [{ id: 'far', span: 3, rows: 1, x: 9, y: 2 }] })
+    );
+    expect(floated.handle.widget('far')!.cell).toEqual({ x: 9, y: 2, w: 3, h: 1 });
+  });
+
   it('parks every non-active view off-camera (the tab pattern)', () => {
     const { model, handle } = mount(SIMPLE());
     expect(handle.activeView).toBe('overview');
@@ -244,6 +272,12 @@ describe('the typed handles (the erTable/umlClass equivalent)', () => {
       any
     >)['metadata'].gridItem;
     expect(cellOfA).toMatchObject({ columnStart: 1, columnEnd: 7 });
+    // …and MOUNTING that reload really reproduces the saved cells, which is
+    // the claim a save/load button depends on (the spec's node metadata alone
+    // never reaches the board — finalize() writes the model's GridItemConfig).
+    const { handle: h2 } = mount(reloaded);
+    expect(h2.widget('a')!.cell).toEqual({ x: 0, y: 0, w: 6, h: 1 });
+    expect(h2.widget('c')!.cell).toEqual(handle.widget('c')!.cell);
   });
 
   it('onLayoutChange is wired to committed gestures', () => {

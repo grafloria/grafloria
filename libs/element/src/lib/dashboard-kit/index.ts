@@ -31,3 +31,23 @@ export {
   type DashboardWidgetSpec,
   type WidgetHandle,
 } from './dashboard';
+
+// The built-in renderers behind `kind` — dashboard()'s default renderWidget.
+export {
+  defaultWidgetRenderer,
+  renderKpiWidget,
+  renderLineWidget,
+  renderBarWidget,
+  renderDonutWidget,
+  renderFunnelWidget,
+  renderTableWidget,
+  BUILT_IN_WIDGET_KINDS,
+  type WidgetRenderer,
+  type KpiWidgetData,
+  type LineWidgetData,
+  type LineSeries,
+  type BarWidgetData,
+  type DonutWidgetData,
+  type FunnelWidgetData,
+  type TableWidgetData,
+} from './widgets';

@@ -626,6 +626,17 @@ export {
   DASHBOARD_KIT_STYLE_ID,
   // The DATA-FIRST authoring API — the erDiagram()/umlDiagram() equivalent.
   dashboard,
+  // …and the built-in renderers behind `kind`, so a dashboard is useful with
+  // no renderWidget at all. Composable: call defaultWidgetRenderer first, then
+  // decorate the host.
+  defaultWidgetRenderer,
+  renderKpiWidget,
+  renderLineWidget,
+  renderBarWidget,
+  renderDonutWidget,
+  renderFunnelWidget,
+  renderTableWidget,
+  BUILT_IN_WIDGET_KINDS,
 } from './lib/dashboard-kit';
 export type {
   DashboardGridApi,
@@ -641,6 +652,14 @@ export type {
   DashboardViewSpec,
   DashboardWidgetSpec,
   WidgetHandle,
+  WidgetRenderer,
+  KpiWidgetData,
+  LineWidgetData,
+  LineSeries,
+  BarWidgetData,
+  DonutWidgetData,
+  FunnelWidgetData,
+  TableWidgetData,
 } from './lib/dashboard-kit';
 
 /* ==========================================================================

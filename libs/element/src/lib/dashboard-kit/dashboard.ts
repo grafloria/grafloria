@@ -33,8 +33,11 @@
  * WHAT IT DELIBERATELY DOES NOT DO: pick a charting library. `renderWidget` is
  * the seam — the kit hands you the widget and a raw HTML host (the renderer's
  * custom-node path, which unlike `metadata.html` is not sanitised, so real
- * `<svg>`/`<canvas>` is fine). Omit it and widgets render a titled frame, so a
- * layout is testable before any chart exists.
+ * `<svg>`/`<canvas>` is fine). Omit it and `defaultWidgetRenderer` (widgets.ts)
+ * draws the declared `kind` from your own `data` with hand-rolled inline SVG —
+ * kpi / line / bar / donut / funnel / table, no dependency, no sample dataset —
+ * falling back to a titled frame for kinds it does not know, so a layout is
+ * testable before any chart exists.
  *
  * Cells are the truth and live in the existing `GridItemConfig`, so save/load
  * round-trips with no extra work — same as every other kit.
@@ -48,7 +51,9 @@ import {
   type NodeModel,
 } from '@grafloria/engine';
 import { bindDashboardGrid, type DashboardGridHandle, type DashboardGridOptions } from './grid-binder';
+import { gridItemFromCell } from './grid-mapping';
 import { ensureDashboardKitStyles } from './styles';
+import { defaultWidgetRenderer } from './widgets';
 
 /** A widget, declared as data. */
 export interface DashboardWidgetSpec {
@@ -144,6 +149,14 @@ export interface DashboardHandle {
   addWidget(spec: DashboardWidgetSpec, viewId?: string): WidgetHandle | undefined;
   /** The current layout as plain data — feed it straight back to dashboard(). */
   toJSON(): DashboardViewSpec[];
+  /**
+   * THE DOCUMENTED ESCAPE HATCH: the view's own `bindDashboardGrid` handle
+   * (default: the active view). Reach for it only for what this façade does
+   * not cover yet — palette drag-in (`beginPaletteDrag`), board `metrics()`,
+   * `cellRectOf`, `planRemoval`, and re-`sync()` after an external undo. Every
+   * call site is a named gap in this API, not a normal way to drive a board.
+   */
+  binderOf(viewId?: string): DashboardGridHandle | undefined;
   dispose(): void;
 }
 
@@ -234,18 +247,10 @@ export function dashboard(options: DashboardOptions): DashboardSpec {
     }
   }
 
-  const renderWidget =
-    options.renderWidget ??
-    ((w: DashboardWidgetSpec, host: HTMLElement) => {
-      host.innerHTML = '';
-      const card = host.ownerDocument.createElement('div');
-      card.className = 'axdb-widget';
-      const h = host.ownerDocument.createElement('div');
-      h.className = 'axdb-widget-h';
-      h.textContent = w.title ?? w.kind ?? w.id;
-      card.appendChild(h);
-      host.appendChild(card);
-    });
+  // No renderWidget → the built-in renderers draw the declared `kind` from the
+  // developer's own `data` (widgets.ts), unknown kinds landing on the titled
+  // frame they always did.
+  const renderWidget = options.renderWidget ?? defaultWidgetRenderer;
 
   // -- runtime, populated by finalize() --------------------------------------
   const binders = new Map<string, DashboardGridHandle>();
@@ -335,6 +340,9 @@ export function dashboard(options: DashboardOptions): DashboardSpec {
           return cell ? { ...w, x: cell.x, y: cell.y, span: cell.w, rows: cell.h } : { ...w };
         }),
       }));
+    },
+    binderOf(viewId) {
+      return binders.get(viewId ?? active);
     },
     dispose() {
       for (const b of binders.values()) b.dispose();
@@ -429,6 +437,16 @@ export function dashboard(options: DashboardOptions): DashboardSpec {
         for (const w of v.widgets) {
           const n = model.getNode(w.id);
           if (!n) continue;
+          // DECLARED CELLS ARE AUTHORITATIVE. `metadata.gridItem` on the node
+          // SPEC is inert — the model's GridItemConfig is a real field
+          // (`setGridItem`), and it is the only thing the binder reads. Without
+          // this write the board silently auto-positioned instead, which
+          // matched the declaration only while flow order happened to agree,
+          // and made toJSON() → dashboard() NOT round-trip (a saved layout
+          // rebuilt back into its declaration order rather than its cells).
+          if (w.x !== undefined && w.y !== undefined) {
+            n.setGridItem(gridItemFromCell({ x: w.x, y: w.y, w: w.span ?? 3, h: w.rows ?? 1 }));
+          }
           if (w.pinned) n.setState({ locked: true });
           g.addMember(w.id);
         }
