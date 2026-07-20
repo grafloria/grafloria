@@ -10,6 +10,7 @@
  * minimal API stub, the same shape `render()` passes to `finalize()`.
  */
 import { DiagramModel, GroupModel, NodeModel, CommandManager, EventBus } from '@grafloria/engine';
+import { render } from '../grafloria';
 import { dashboard, type DashboardSpec } from './dashboard';
 
 /** The slice of a DiagramInstance `finalize()` uses, over a real model. */
@@ -194,6 +195,51 @@ describe('dashboard() — the declarative surface', () => {
     const host = document.createElement('div');
     spec.renderCustomNode({ id: 'w' }, host);
     expect(host.textContent).toContain('Revenue');
+  });
+});
+
+describe('render(SPEC, host) — the documented one-liner', () => {
+  // A spec that carries BOTH `finalize` and `renderCustomNode` must have both
+  // honoured. render() auto-ran finalize but dropped renderCustomNode, so the
+  // kit's headline usage — `render(dashboard({…}), host)` — mounted a board
+  // whose widgets never painted. The API's own doc comment was false.
+  it('paints widgets through render() itself — the whole one-liner', () => {
+    // Drives the REAL render() path, not the spec object: the first version of
+    // this tooth called spec.renderCustomNode directly and stayed green with
+    // the bug in place (render() silently dropped it). Weak teeth are how a
+    // documented API stays false.
+    const painted: string[] = [];
+    const el = document.createElement('div');
+    el.style.width = '900px';
+    el.style.height = '600px';
+    document.body.appendChild(el);
+    render(
+      dashboard({
+        widgets: [{ id: 'w1', kind: 'kpi' }, { id: 'w2', kind: 'line' }],
+        renderWidget: (w, host) => {
+          painted.push(w.id);
+          host.textContent = w.id;
+        },
+      }) as never,
+      el
+    );
+    expect(painted.sort()).toEqual(['w1', 'w2']);
+  });
+
+  it('honours a spec-provided renderCustomNode', () => {
+    const painted: string[] = [];
+    const spec = dashboard({
+      widgets: [{ id: 'w', kind: 'kpi' }],
+      renderWidget: (w, host) => {
+        painted.push(w.id);
+        host.textContent = w.id;
+      },
+    });
+    // The exact contract render() relies on: the spec exposes the painter.
+    expect(typeof spec.renderCustomNode).toBe('function');
+    const host = document.createElement('div');
+    spec.renderCustomNode({ id: 'w' }, host);
+    expect(painted).toEqual(['w']);
   });
 });
 

@@ -80,9 +80,14 @@ export function render(
     nodes: parsed.nodes ?? [],
     edges: parsed.edges ?? [],
     // Wire the global registry in, so `registerNodeType` works for the tiny API
-    // exactly as it does for `<grafloria-flow>` — unless the caller supplies their own.
+    // exactly as it does for `<grafloria-flow>` — unless the caller supplies their
+    // own. A KIT SPEC may also carry its own painter (dashboard() does: every
+    // widget is a custom HTML node), and it must be honoured — otherwise the
+    // documented one-liner `render(dashboard({…}), host)` mounts a board whose
+    // widgets never paint. Precedence: explicit option > spec > registry.
     renderCustomNode:
       options.renderCustomNode ??
+      (parsed as { renderCustomNode?: RenderOptions['renderCustomNode'] }).renderCustomNode ??
       ((node, host) => getNodeType(node.type)?.(node, host)),
   });
 
