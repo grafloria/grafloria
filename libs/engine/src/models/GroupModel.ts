@@ -436,9 +436,21 @@ export class GroupModel extends DiagramEntity {
       return;
     }
     // Detach from a previous parent so its members set stays consistent.
+    //
+    // THROUGH THE FUNNEL. `trackChange` is the single channel every mutation in this
+    // engine is observed on — dirty tracking, versioning, and (wave 9) the collab capture
+    // layer that turns edits into ops. This detach mutates a THIRD group's Set and used
+    // to do it SILENTLY, so re-parenting a nested group never reached any peer: the old
+    // parent kept the child in `members` forever on every machine but the author's, and
+    // the two documents disagreed with nothing anywhere reporting a problem. Mirrors
+    // removeMember's own three lines exactly — a half-mirror is the next bug.
     if (child.parentGroupId) {
       const oldParent = diagram.getGroup(child.parentGroupId);
-      oldParent?.members.delete(child.id);
+      if (oldParent?.members.delete(child.id)) {
+        oldParent.trackChange('members', child.id, null);
+        oldParent.emitter.emit('member:removed', child.id);
+        oldParent.requestLayout(diagram);
+      }
     }
     const old = child.parentGroupId;
     child.parentGroupId = this.id;
@@ -488,9 +500,17 @@ export class GroupModel extends DiagramEntity {
       return true;
     }
 
-    // Detach from old parent's members.
+    // Detach from old parent's members — THROUGH THE FUNNEL, see linkChildGroup. These
+    // two writes touch a group that is neither `this` nor the caller, and mutating a
+    // model this engine is watching without telling it is how an edit becomes invisible
+    // to undo, to dirty tracking and to every peer in the session at once.
     if (dm && oldParentId) {
-      dm.getGroup(oldParentId)?.members.delete(this.id);
+      const oldParent = dm.getGroup(oldParentId);
+      if (oldParent?.members.delete(this.id)) {
+        oldParent.trackChange('members', this.id, null);
+        oldParent.emitter.emit('member:removed', this.id);
+        oldParent.requestLayout(dm);
+      }
     }
 
     this.parentGroupId = newParentId;
@@ -499,7 +519,13 @@ export class GroupModel extends DiagramEntity {
 
     // Attach to new parent's members (kept in sync with parentGroupId).
     if (dm && newParentId) {
-      dm.getGroup(newParentId)?.members.add(this.id);
+      const newParent = dm.getGroup(newParentId);
+      if (newParent && !newParent.members.has(this.id)) {
+        newParent.members.add(this.id);
+        newParent.trackChange('members', null, this.id);
+        newParent.emitter.emit('member:added', this.id);
+        newParent.requestLayout(dm);
+      }
     }
 
     return true;

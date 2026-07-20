@@ -237,6 +237,26 @@ export class OpCapture {
   /** portId → unsubscribe for the live-port watch (Defect 2: port edits must sync). */
   private readonly portSubs = new Map<string, Unsubscribe>();
 
+  /**
+   * groupId → the member collection last emitted for that group.
+   *
+   * The same shadow trick as `portShadows`, for the same reason and against a worse bug.
+   * `GroupModel.addMember` reports the funnel change as trackChange('members', null,
+   * <the one id that joined>) — a DELTA, where every other register in this engine
+   * reports the property's VALUE. Emitted verbatim, that put the bare string 'node-1' on
+   * the wire as the whole `members` register (and a bare `null` for a removal), which the
+   * receiving peer wrote straight over its Set. See apply-op.ts for what that did to
+   * serialize().
+   *
+   * So the value is read off the live Set instead — trackChange fires AFTER the mutation,
+   * so the Set is already the post-state — and the shadow supplies `before`. It has to:
+   * `before` for a removal is the collection WITH the member back IN ITS ORIGINAL
+   * POSITION, and a Set that has had an element deleted cannot reproduce that (re-adding
+   * appends). Undo restores `before`, and order is in serialize(), so a reconstructed one
+   * would make undo save a byte-different document.
+   */
+  private readonly memberShadows = new Map<string, string[]>();
+
   /** True while we are applying a REMOTE op: everything the model emits is an echo. */
   private applying = false;
   private stopped = false;
@@ -312,6 +332,7 @@ export class OpCapture {
     this.entitySubs.clear();
     this.portSubs.clear();
     this.portShadows.clear();
+    this.memberShadows.clear();
   }
 
   // -------------------------------------------------------------------------
@@ -405,6 +426,14 @@ export class OpCapture {
       }
     }
 
+    // SEED the member shadow with what the group ALREADY has, for the same reason the
+    // port shadows are seeded: `before` for a group's first membership change must be its
+    // REAL prior collection, not "empty" — or undoing the first add would strip the group
+    // of every member it was born with.
+    if (entity instanceof GroupModel) {
+      this.memberShadows.set(entity.id, [...entity.members]);
+    }
+
     const onChange = (entry: { property: string; oldValue: unknown; newValue: unknown }) => {
       // Per-target: a LINK's `points` is derived and dropped; a STROKE's `points` is the
       // authored content and must travel. See DERIVED_BY_TARGET.
@@ -459,6 +488,30 @@ export class OpCapture {
             { kind: 'value', value: was }
           );
         }
+        return;
+      }
+
+      // MEMBERS: the register value is THE WHOLE COLLECTION, never the delta the funnel
+      // reports. GroupModel.addMember/removeMember call trackChange('members', null, id)
+      // and ('members', id, null) — they name the member that MOVED, not the value the
+      // register now holds, which makes `members` the one register in the engine whose
+      // funnel payload is not its value. Emitting it verbatim shipped a bare id string
+      // (and a bare null) as the whole Set; see memberShadows and apply-op.ts.
+      //
+      // Read off the live Set — trackChange fires after the mutation, so it is the
+      // post-state — and take `before` from the shadow, which is the only thing that
+      // remembers the collection's ORDER before a delete.
+      if (entry.property === 'members' && entity instanceof GroupModel) {
+        const now = [...entity.members];
+        const was = this.memberShadows.get(entity.id);
+        // A membership change that changes nothing emits nothing: re-adding a member the
+        // group already has is a no-op in the model, and it must be one on the wire too.
+        if (sameJson(now, was)) return;
+        this.memberShadows.set(entity.id, now);
+        this.emit(
+          this.setDraft(target, entity.id, 'members', now as OpValue),
+          { kind: 'value', value: was as OpValue | undefined }
+        );
         return;
       }
 
@@ -549,5 +602,8 @@ export class OpCapture {
       for (const portId of shadows.keys()) this.unwatchPort(portId);
       this.portShadows.delete(id);
     }
+    // Same for a removed GROUP's member shadow: a group deleted and resurrected must not
+    // inherit the membership its previous incarnation had.
+    this.memberShadows.delete(id);
   }
 }

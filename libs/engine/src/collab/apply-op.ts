@@ -309,6 +309,14 @@ function readEntityProp(entity: Entity, path: string): unknown {
   if (path === 'ports' && entity instanceof NodeModel) {
     return entity.getPorts().map((p) => p.serialize());
   }
+  // A group's `members` is a Set held in memory and an ARRAY on the wire (serialize()
+  // writes Array.from(members)) — compare like with like, exactly as `ports` above. Read
+  // raw, this returns the live Set, and deepEqual(Set, ['n1']) is false for every value
+  // any op could ever carry: the idempotence guard would never fire, so every duplicate
+  // delivery would rebuild the collection and bump `version`.
+  if (path === 'members' && entity instanceof GroupModel) {
+    return [...entity.members];
+  }
   let cur: unknown = entity;
   for (const part of path.split('.')) {
     if (cur === null || typeof cur !== 'object') return undefined;
@@ -407,6 +415,71 @@ function setEntityProp(
       return true;
     }
     return updatePortInPlace(existing, data);
+  }
+
+  // A GROUP'S `members` IS A Set — the third collection in this file, and the one that was
+  // missed. Everything the `metadata` and `ports` comments above warn about happened here,
+  // in production traffic, on the most ordinary edit a group has:
+  //
+  //   • `addMember('node-1')` reached writeGeneric, which found no setMembers() and
+  //     ASSIGNED THE RAW WIRE VALUE. The peer's `members` became the STRING 'node-1', and
+  //     serialize()'s Array.from() split it per character: six phantom members
+  //     ['n','o','d','e','-','1'], every one of them a node id that does not exist.
+  //   • `removeMember()` travelled as `null`, so the peer's `members` became null and
+  //     Array.from(null) THREW — the receiving peer could no longer serialize the document
+  //     at all. Save, autosave and every further op broke, on the one peer that made no
+  //     edit.
+  //
+  // Both were invisible to the author (their own Set is fine) and to every single-process
+  // test, which is exactly the shape of bug this file exists to prevent.
+  //
+  // THROUGH THE REAL MUTATORS — addMember/removeMember — never a raw Set write. They
+  // maintain the `parentGroupId` back-pointer that IS the nesting tree (a receiver that
+  // wrote the Set directly would hold the right membership and the wrong containment
+  // graph), they emit member:added/member:removed, and they reflow a layout container.
+  // The one thing they do that a raw write would not is consult `memberValidation` — a
+  // deliberately non-serialized LOCAL predicate; a peer that installed one has asked for
+  // candidates to be gated, and gating a remote membership is the same answer it gives a
+  // local one.
+  if (entity instanceof GroupModel && path === 'members') {
+    // A non-array is REFUSED rather than read as "no members" — same reasoning as `ports`.
+    // This also makes the fix safe against LOGS PERSISTED BEFORE IT: a pre-fix op carries
+    // the bare member id ('node-1') or null, and refusing both leaves the collection alone
+    // instead of corrupting it, so replaying an old log degrades rather than explodes.
+    if (!Array.isArray(value)) return false;
+    const wanted = new Set(
+      (value as unknown[]).filter((m): m is string => typeof m === 'string')
+    );
+
+    let changed = false;
+    for (const m of [...entity.members]) {
+      if (!wanted.has(m)) {
+        entity.removeMember(m);
+        changed = true;
+      }
+    }
+    for (const m of wanted) {
+      if (!entity.members.has(m)) {
+        entity.addMember(m);
+        changed = true;
+      }
+    }
+
+    // Same SET, possibly a different ORDER — and order is in serialize()
+    // (Array.from(members)), so two peers that converged on the same membership by
+    // different routes would otherwise save byte-different files. Align with the incoming
+    // collection, which every peer has. Direct Set surgery, exactly as the `ports` branch
+    // reorders its Map: this reorders nothing the model considers a change.
+    //
+    // Guarded by size: the removal loop leaves members ⊆ wanted and the add loop only adds
+    // from wanted, so equal sizes here means the two sets are EQUAL — and an addMember the
+    // group refused (capacity, a cycle, memberValidation) shows up as a size mismatch and
+    // correctly leaves the order alone.
+    if (entity.members.size === wanted.size) {
+      entity.members.clear();
+      for (const m of wanted) entity.members.add(m);
+    }
+    return changed;
   }
 
   if (entity instanceof NodeModel) {
@@ -516,6 +589,13 @@ function clearEntityProp(entity: Entity, path: string): boolean {
   // emitted that — so a clear here is malformed traffic; refuse it rather than strip a
   // node of every port it has on a guess.
   if (path === 'ports' && entity instanceof NodeModel) return false;
+
+  // Nor is `members`: an emptied group travels as `[]` — a value, not a clear. Refuse a
+  // clear rather than strip a group of every member it has on a guess. (The pre-fix
+  // `removeMember` put a literal `null` on the wire, which is a VALUE and is refused one
+  // level up by the non-array guard in setEntityProp; this is the same refusal for the
+  // explicit-clear shape.)
+  if (path === 'members' && entity instanceof GroupModel) return false;
 
   // Generic: empty the slot the way the author's clear did (clearFlexItem assigns
   // undefined and fires trackChange; there is no removeFlexConfig mutator to prefer).
