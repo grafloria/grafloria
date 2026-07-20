@@ -624,6 +624,8 @@ export {
   buildCommitCommands,
   ensureDashboardKitStyles,
   DASHBOARD_KIT_STYLE_ID,
+  // The DATA-FIRST authoring API — the erDiagram()/umlDiagram() equivalent.
+  dashboard,
 } from './lib/dashboard-kit';
 export type {
   DashboardGridApi,
@@ -633,6 +635,12 @@ export type {
   WorldRect,
   DashboardGridGeometry,
   TileDelta,
+  DashboardOptions,
+  DashboardSpec,
+  DashboardHandle,
+  DashboardViewSpec,
+  DashboardWidgetSpec,
+  WidgetHandle,
 } from './lib/dashboard-kit';
 
 /* ==========================================================================
