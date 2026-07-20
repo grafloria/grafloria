@@ -1361,10 +1361,26 @@ export class DiagramEngine {
   }
 
   /**
-   * Register plugin
+   * Register a plugin AND bring it to life.
+   *
+   * `PluginManager.register()` only RECORDS a plugin; `install()` and
+   * `activate()` are separate steps. Calling register alone — which both of
+   * this engine's entry points used to do — left every plugin permanently
+   * inert: its hooks never fired, though `getPlugin()` happily returned it.
+   * "Register a plugin" can only sensibly mean "make it run", so this drives
+   * the full lifecycle. A plugin that throws is reported and skipped rather
+   * than taking the host down with it.
    */
   async registerPlugin(plugin: Plugin): Promise<void> {
-    await this.pluginManager.register(plugin);
+    const name = plugin.metadata?.name;
+    this.pluginManager.register(plugin);
+    if (!name) return;
+    try {
+      await this.pluginManager.install(name);
+      await this.pluginManager.activate(name);
+    } catch (error) {
+      this.eventBus?.emit('plugin:error', { name, error });
+    }
   }
 
   /**
@@ -1702,8 +1718,9 @@ export class DiagramEngine {
    */
   private async installPlugins(): Promise<void> {
     if (this.config.plugins) {
+      // Same contract as registerPlugin(): a configured plugin is a LIVE one.
       for (const plugin of this.config.plugins) {
-        await this.pluginManager.register(plugin);
+        await this.registerPlugin(plugin);
       }
     }
   }
