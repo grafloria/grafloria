@@ -91,10 +91,13 @@
 <div class="verdicts">
   <div class="v">
     <h3>📊 Dashboard builder</h3><div class="sub">widgets · stacked/flow · charts inside</div>
-    <div class="dist" style="color:var(--have)">A quarter</div>
-    <div class="small">Viable. Nothing architecturally blocked.</div>
-    <div class="bar"><div class="fill" style="width:70%;background:var(--have)"></div></div>
-    <div class="note"><b>Charts in widgets already work</b> — via custom nodes, not the HTML sanitizer. A 12-column dashboard layout engine is already written and never invoked.</div>
+    <div class="dist" style="color:var(--have)">SHIPPED</div>
+    <div class="small">Estimated "a quarter". Built and gated instead.</div>
+    <div class="bar"><div class="fill" style="width:100%;background:var(--have)"></div></div>
+    <div class="note"><b>This verdict is now a product, not a forecast.</b> A developer writes
+    <code>dashboard({ views: [{ widgets: [...] }] })</code> and calls <code>render()</code>. The rest of this
+    page's dashboard rows are kept as the DATED analysis that led there — see the banner below for what
+    actually shipped.</div>
   </div>
   <div class="v">
     <h3>📐 draw.io / Visio</h3><div class="sub">stencils · connectors · pages · layers</div>
@@ -113,7 +116,33 @@
 </div>
 
 <div class="headline">
-  <h2>2 · The finding that matters more than any single gap</h2>
+  <div class="note" style="border:1px solid #b7d8c0;background:#f2fbf5;border-radius:10px;padding:14px 18px;margin:18px 0">
+  <b style="color:#12a150">UPDATE — the dashboard verdict was executed (2026-07-20).</b><br>
+  Everything below is the original analysis, kept verbatim as the dated reasoning. What has since shipped:
+  <ul style="margin:8px 0 4px">
+    <li><b><code>GridPackEngine</code></b> — the gridstack interaction model as pure integer-cell math: live push
+      around a truthful placeholder, three swap shapes, directional-penetration anti-jitter gate, pinned refusal,
+      teleport-home restore, gravity/float, bounded strips. 37 tests, every rule mutation-proven; semantics
+      RECORDED from the real gridstack demos rather than read from its source.</li>
+    <li><b>The dashboard kit</b> — <code>bindDashboardGrid()</code> (ghost, placeholder, live push, fit/grow,
+      cross-container drag, palette drag-in, drag-out-to-trash) with every gesture committing ONE undoable
+      <code>BatchCommand</code>.</li>
+    <li><b>The authoring API</b> — <code>dashboard({views, widgets, renderWidget})</code>, the
+      <code>erDiagram()</code>-shaped declarative layer, plus typed handles
+      (<code>widget(id).resize/moveTo/pin/remove/update</code>) and built-in data-driven widget renderers.
+      <code>handle.toJSON()</code> returns valid <code>dashboard()</code> input.</li>
+    <li><b>Two demo pages</b> — a plain dashboard builder and a labelled grid-options page — guarded by a
+      27-scenario REAL-MOUSE battery (<code>demos/e2e/dashboard-scenarios-run.mjs</code>) that screenshots every
+      stage and asserts the tile lands exactly where the placeholder stood.</li>
+  </ul>
+  Two blockers listed below were fixed on the way: the <b>reachability</b> finding (Phase 0 — the front door now
+  re-exports the lower packages wholesale, 207 unreachable capabilities → 0) and the dormant
+  <b>12-column layout engine</b> (now push-driven, with live flex/grid item configs and node z-order).
+  Still open from the dashboard list: <b>widget-content export</b> (PDF/PNG cannot paint HTML custom nodes) and
+  <b>custom-node culling</b>.
+</div>
+
+<h2>2 · The finding that matters more than any single gap</h2>
   <p style="margin:4px 0 0"><b>Grafloria's biggest weakness is not missing capability — it is <i>unreachable</i> capability.</b>
   All four research passes independently hit the same shape: subsystems that are <b>built, tested, and wired to nothing</b>.
   This is the single highest-leverage investment area, because the code already exists.</p>
