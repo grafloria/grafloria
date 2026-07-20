@@ -31,7 +31,10 @@
   .db-tool:disabled { opacity: .42; cursor: default; }
   .db-sep { width: 1px; height: 22px; background: rgba(127,127,127,.24); margin: 0 4px; }
 
-  #db-body { display: grid; grid-template-columns: 172px 1fr; height: calc(100vh - 202px); min-height: 480px; }
+  /* Three tracks, and the third is `auto` — the version drawer is `hidden` until
+     it is asked for, so the track measures 0 and the canvas is exactly as wide
+     as it was before this feature existed. */
+  #db-body { display: grid; grid-template-columns: 172px 1fr auto; height: calc(100vh - 202px); min-height: 480px; }
   #db-palette { border-right: 1px solid rgba(127,127,127,.2); padding: 12px 12px 16px;
     overflow-y: auto; background: var(--db-pal-bg, #fafbfd); }
   .pal-title { font: 700 10px/1.4 system-ui, sans-serif; letter-spacing: .8px; text-transform: uppercase;
@@ -49,6 +52,46 @@
     background-color: var(--db-canvas-bg, #f1f3f7);
     background-image: radial-gradient(circle, rgba(120,128,145,.16) 1px, transparent 1px);
     background-size: 26px 26px; }
+
+  /* ---- VERSION DRAWER --------------------------------------------------------
+     Same vocabulary as the palette on the other side: 1px hairline, 9px card
+     radius, 8px gaps, the toolbar's #3b52d9 for "this one". Nothing new is
+     invented here — a version card IS a .pal-item with a picture on it. */
+  #db-history[hidden] { display: none; }
+  #db-history { display: flex; flex-direction: column; width: 272px; overflow: hidden;
+    border-left: 1px solid rgba(127,127,127,.2); background: var(--db-pal-bg, #fafbfd); }
+  .hist-head { display: flex; align-items: center; gap: 6px; padding: 12px 12px 8px; }
+  .hist-title { font: 700 10px/1.4 system-ui, sans-serif; letter-spacing: .8px;
+    text-transform: uppercase; color: #8a91a2; }
+  .hist-count { font: 500 10.5px/1.4 ui-monospace, SFMono-Regular, monospace; color: #a9b0be; margin-right: auto; }
+  .hist-btn { border: 1px solid #d8dce6; background: #fff; cursor: pointer; color: #5b6270;
+    font: 500 11px/1.2 system-ui, sans-serif; padding: 4px 7px; border-radius: 6px; }
+  .hist-btn:hover { border-color: #b9c0d0; background: #f6f7fb; }
+  .hist-list { flex: 1; min-height: 0; overflow-y: auto; padding: 0 12px 2px; }
+  .hist-item { display: block; width: 100%; margin: 0 0 8px; padding: 7px; text-align: left;
+    border: 1px solid #e4e7ee; border-radius: 9px; background: #fff; cursor: pointer;
+    box-shadow: 0 1px 1px rgba(16,24,40,.04); }
+  .hist-item:hover { border-color: #b9c0d0; background: #f6f7fb; }
+  .hist-item.current { border-color: #3b52d9; background: #eef2ff; }
+  /* The thumbnail is a TRUE-VECTOR export of the board that was saved — the same
+     exportSvgString({ includeIds: handle.exportIds() }) an embedder would call.
+     The export is TRANSPARENT on purpose: the cells a board does not fill should
+     read as canvas, and only CSS knows which canvas the reader is looking at. */
+  .hist-thumb { display: block; width: 100%; height: auto; border: 1px solid #edeff4;
+    border-radius: 5px; background: var(--db-canvas-bg, #f1f3f7); }
+  .hist-thumb-none { display: flex; align-items: center; justify-content: center; height: 74px;
+    font: 500 10.5px/1.2 system-ui, sans-serif; color: #b3b9c6; }
+  .hist-row { display: flex; align-items: baseline; gap: 6px; margin: 7px 1px 0; }
+  .hist-id { font: 700 11.5px/1.2 ui-monospace, SFMono-Regular, monospace; color: #2d2e3a; }
+  .hist-when { font: 500 11px/1.2 system-ui, sans-serif; color: #8a91a2; margin-right: auto; }
+  .hist-tag { font: 600 9.5px/1.6 system-ui, sans-serif; letter-spacing: .3px; text-transform: uppercase;
+    padding: 1px 5px; border-radius: 4px; background: #eef0f5; color: #7c8494; }
+  .hist-tag.now { background: #3b52d9; color: #fff; }
+  .hist-sub { margin: 3px 1px 0; font: 500 11px/1.35 system-ui, sans-serif; color: #5b6270; }
+  .hist-delta { margin: 1px 1px 0; font: 11px/1.35 system-ui, sans-serif; color: #949bab; }
+  .hist-empty { padding: 8px 2px; font: 11.5px/1.55 system-ui, sans-serif; color: #949bab; }
+  .hist-note { padding: 9px 12px 12px; border-top: 1px solid rgba(127,127,127,.14);
+    font: 11px/1.5 system-ui, sans-serif; color: #949bab; }
 
   #db-status { position: absolute; left: 14px; bottom: 12px; z-index: 6; max-width: 72%;
     padding: 6px 11px; border-radius: 8px; background: rgba(20,24,33,.86); color: #eef1f7;
@@ -90,6 +133,13 @@
     .db-tool { background:#1c1f27; border-color:#333a49; color:#cbd2df; }
     .db-tool:hover { background:#232734; }
     .pal-item { background:#1c1f27; border-color:#333a49; color:#d7dbe4; } .pal-item:hover { background:#232734; }
+    #db-history { --db-pal-bg:#14161c; --db-canvas-bg:#0f1116; }
+    .hist-btn, .hist-item { background:#1c1f27; border-color:#333a49; color:#cbd2df; }
+    .hist-btn:hover, .hist-item:hover { background:#232734; border-color:#465066; }
+    .hist-item.current { background:#23294a; border-color:#33407a; }
+    .hist-thumb { border-color:#2a2f3b; }
+    .hist-id { color:#e6e9f0; } .hist-sub { color:#aab2c2; }
+    .hist-tag { background:#2a3040; color:#9aa2b2; } .hist-tag.now { background:#3b52d9; color:#fff; }
   }
 </style>
 
@@ -114,6 +164,7 @@
   <span class="db-sep"></span>
   <button class="db-tool" id="t-save" title="Serialize the dashboard">💾 Save</button>
   <button class="db-tool" id="t-load" title="Rebuild from the last save">⟲ Load</button>
+  <button class="db-tool" id="t-history" aria-expanded="false" title="Version history — every Save is a version you can go back to">🕘 Versions</button>
 </div>
 <div id="db-body">
   <aside id="db-palette">
@@ -127,6 +178,20 @@
     <div class="pal-note">Click to add, or DRAG onto the board — it makes room live from the moment the cursor enters. On the board: drag tiles (neighbours slide out of the way around the dashed placeholder), resize from a tile's corner, drag OUT to remove. Click a tile to focus it, then use the toolbar.</div>
   </aside>
   <div id="canvas"><div id="db-status"></div></div>
+  <!-- VERSION HISTORY. A grid COLUMN, not an overlay: opening it narrows the
+       canvas, the ResizeObserver below reframes the board, and the whole board
+       stays visible next to the versions you are choosing between. -->
+  <aside id="db-history" hidden aria-label="Version history">
+    <div class="hist-head">
+      <span class="hist-title">Versions</span>
+      <span class="hist-count" id="hist-count">0</span>
+      <button class="hist-btn" id="hist-clear" title="Forget every saved version">Clear</button>
+      <button class="hist-btn" id="hist-close" title="Close (Esc)">✕</button>
+    </div>
+    <div class="hist-list" id="hist-list"></div>
+    <div class="hist-note">Every 💾 Save banks a version, thumbnail and all. Click one to restore
+      it — the board you were on is banked first, so a restore is never a one-way door.</div>
+  </aside>
 </div>
 
 <script type="module">
@@ -526,29 +591,244 @@ function setSizingMode(mode) {
     : 'GROW: rows keep their height — boards extend downward (camera refits)');
 }
 
-/** SAVE / LOAD — the data-first round-trip: toJSON() returns plain view data,
- *  and that data is valid dashboard() input, so Load is just another mount. */
-function saveBoard() {
-  state.saved = JSON.stringify(H.toJSON());
-  try { localStorage.setItem('grafloria-dashboard', state.saved); } catch { /* private mode */ }
-  const n = H.views.reduce((s, v) => s + H.widgetsOf(v).length, 0);
-  flash(`saved · ${n} widgets · ${state.saved.length.toLocaleString()} bytes`);
+/* ---------------------------------------------------------------------------
+   6. VERSION HISTORY — every Save is a version you can go back to.
+   ---------------------------------------------------------------------------
+   THIS IS APP CODE, DELIBERATELY. Versioning is not a diagram-engine concern:
+   what a "version" means, how many you keep, where they live and what a
+   thumbnail is for are all product decisions, and a kit that answered them for
+   you would be wrong for the next app. So the library contributes exactly three
+   calls and nothing else, and each is the NEWEST public way to do its job:
+
+     handle.toJSON()   → the layout, as plain data (and valid dashboard() input)
+     handle.exportIds() → the ids of the visible board, group included
+     instance.exportSvgString({ includeIds }) → a TRUE-VECTOR picture of it
+
+   The last one is why the drawer shows real thumbnails rather than timestamps:
+   a widget is a custom HTML node, so until the widget-content export landed a
+   board exported as a row of empty boxes. It is ~23 KB of self-contained SVG
+   per board, captured in ~20 ms, and it is the difference between a list you
+   read and a gallery you recognise.
+
+   THE ONE THING toJSON() DOES NOT CARRY is board-level options — `sizing`,
+   `float`, gap, rowHeight. Those are set on dashboard() and read back through
+   getSizing()/getFloat(), so a version records them alongside the views and
+   applyVersion() puts them back. See the notes on that gap in the report.
+--------------------------------------------------------------------------- */
+const HISTORY_KEY = 'grafloria-dashboard-history';
+const MAX_VERSIONS = 8;          // localStorage is small and THROWS when full
+let history = [];                // newest first
+let versionSeq = 0;              // monotonic, so a label ("v3") is stable
+let currentVersion = null;       // the version the board was last restored from
+let historyOpen = false;
+
+/** Probe ONCE. In private mode setItem always throws, and a persist() that read
+ *  that as "quota" would shed every thumbnail it holds for nothing. */
+const storageOk = (() => {
+  try { localStorage.setItem('grafloria-dash-probe', '1'); localStorage.removeItem('grafloria-dash-probe'); return true; }
+  catch { return false; }
+})();
+
+/** A TRUE-VECTOR picture of the board as it stands — the whole reason the cards
+ *  are worth looking at. Scoped with exportIds(): unscoped, the parked views put
+ *  a ~21,000px mostly-empty document in each card. */
+function thumbOf() {
+  try {
+    const { svg } = ctxRef.instance.exportSvgString({ includeIds: H.exportIds(), padding: 4 });
+    return svg;
+  } catch { return null; }   // a picture is a nicety; never fail a save for it
+}
+const thumbUri = (svg) => `data:image/svg+xml;charset=utf-8,${encodeURIComponent(svg)}`;
+
+/** Bank the board as a new version. `auto` marks the ones the app took on the
+ *  user's behalf (before a restore) rather than the ones they asked for. */
+function captureVersion({ auto = false } = {}) {
+  const v = {
+    n: ++versionSeq, at: Date.now(), auto,
+    views: H.toJSON(),
+    sizing: H.getSizing(), float: H.getFloat(),
+    view: H.activeView,          // the view the thumbnail shows
+    thumb: thumbOf(),
+  };
+  v.id = `v${v.n}`;
+  history.unshift(v);
+  if (history.length > MAX_VERSIONS) history.length = MAX_VERSIONS;
+  currentVersion = v.id;
+  persist();
+  renderHistory();
+  return v;
 }
 
-function loadBoard() {
-  if (!state.saved) { flash('nothing saved yet'); return; }
+/** Bank only if the board actually differs from the newest version — browsing
+ *  versions must not breed a duplicate entry per click. */
+function captureIfChanged(opts) {
+  const now = JSON.stringify(H.toJSON());
+  if (history[0] && JSON.stringify(history[0].views) === now) return null;
+  return captureVersion(opts);
+}
+
+function persist() {
+  if (!storageOk) return false;
+  const store = () => localStorage.setItem(HISTORY_KEY, JSON.stringify({ seq: versionSeq, versions: history }));
+  try { store(); return true; } catch { /* full — shed and retry */ }
+  // QUOTA. Thumbnails are ~85% of the payload, so shed those first, oldest
+  // first, and only then whole versions. Never throw at the user.
+  for (let i = history.length - 1; i >= 0; i--) {
+    if (!history[i].thumb) continue;
+    history[i].thumb = null;
+    try { store(); flash('storage full — dropped the oldest thumbnails'); renderHistory(); return true; } catch { /* keep shedding */ }
+  }
+  while (history.length > 1) {
+    history.pop();
+    try { store(); flash('storage full — dropped the oldest versions'); renderHistory(); return true; } catch { /* keep shedding */ }
+  }
+  try { localStorage.removeItem(HISTORY_KEY); } catch { /* nothing more to do */ }
+  return false;
+}
+
+/** Read the drawer back on boot — SILENTLY. A flash here would rewrite the
+ *  status line before the user has done anything. */
+function restoreHistory() {
+  if (!storageOk) return;
+  try {
+    const raw = localStorage.getItem(HISTORY_KEY);
+    if (!raw) return;
+    const data = JSON.parse(raw);
+    if (!Array.isArray(data?.versions)) return;
+    history = data.versions.filter((v) => v && Array.isArray(v.views) && v.id);
+    versionSeq = Number(data.seq) || history.reduce((m, v) => Math.max(m, v.n || 0), 0);
+  } catch { history = []; }
+}
+
+/** Mount a version's data: the SAME rebuild Load always did, plus the board
+ *  options toJSON() cannot carry. */
+function applyVersion(v) {
   glide();
-  const active = H.activeView;
+  const active = H.views.includes(v.view) ? v.view : H.activeView;
   H.dispose();                      // drops the old binders AND their boards
-  SPEC = buildSpec(JSON.parse(state.saved));
+  sizingMode = v.sizing ?? sizingMode;
+  floatMode = v.float ?? floatMode;
+  SPEC = buildSpec(v.views);        // toJSON() output IS dashboard() input
   H = SPEC.handle;
   // Reconcile the model to the rebuilt spec (same ids → the same hosts, so
   // nothing remounts) and wire the fresh boards.
   ctxRef.instance.setNodes(SPEC.nodes);
   SPEC.finalize(ctxRef.instance);
   cmd().clear();                    // a load is not an undoable edit
+  document.getElementById('t-mode').textContent = `Mode: ${sizingMode}`;
+  document.getElementById('t-float').textContent = `Float: ${floatMode ? 'on' : 'off'}`;
   afterMount(active);
-  flash('loaded — toJSON() fed straight back into dashboard()');
+}
+
+/** RESTORE, and never a one-way door: the board you are leaving is banked first
+ *  (silently, and only if it differs), so the history is its own undo. The
+ *  target is held by REFERENCE, so it restores even if that bank evicted it
+ *  from a full list. */
+function restoreVersion(id) {
+  const v = history.find((x) => x.id === id);
+  if (!v) { flash('that version is gone'); return; }
+  captureIfChanged({ auto: true });
+  applyVersion(v);
+  currentVersion = v.id;
+  state.saved = JSON.stringify(v.views);
+  renderHistory();
+  flash(`restored ${v.id} · ${widgetCount(v)} widgets · saved ${relTime(v.at)}`);
+}
+
+const widgetCount = (v) => v.views.reduce((s, x) => s + x.widgets.length, 0);
+
+function relTime(at) {
+  const s = Math.max(0, Math.round((Date.now() - at) / 1000));
+  if (s < 5) return 'just now';
+  if (s < 60) return `${s}s ago`;
+  const m = Math.round(s / 60);
+  if (m < 60) return `${m} min ago`;
+  const h = Math.round(m / 60);
+  return h < 24 ? `${h} h ago` : `${Math.round(h / 24)} d ago`;
+}
+
+/** WHAT CHANGED between two versions, per widget — the line that makes two
+ *  same-sized boards tellable apart without opening both. */
+function deltaText(newer, older) {
+  const index = (views) => {
+    const m = new Map();
+    for (const v of views) for (const w of v.widgets) m.set(`${v.id}/${w.id}`, w);
+    return m;
+  };
+  const A = index(newer.views), B = index(older.views);
+  let added = 0, removed = 0, moved = 0, resized = 0;
+  for (const [k, w] of A) {
+    const o = B.get(k);
+    if (!o) { added++; continue; }
+    if (o.x !== w.x || o.y !== w.y) moved++;
+    if (o.span !== w.span || o.rows !== w.rows) resized++;
+  }
+  for (const k of B.keys()) if (!A.has(k)) removed++;
+  const parts = [];
+  if (added) parts.push(`+${added} added`);
+  if (removed) parts.push(`−${removed} removed`);
+  if (moved) parts.push(`${moved} moved`);
+  if (resized) parts.push(`${resized} resized`);
+  if (newer.view !== older.view) parts.push(`view → ${viewNameOf(newer.view)}`);
+  if (newer.sizing !== older.sizing) parts.push(`mode → ${newer.sizing}`);
+  if (newer.float !== older.float) parts.push(`float ${newer.float ? 'on' : 'off'}`);
+  return parts.length ? parts.join(' · ') : 'no layout change';
+}
+
+const viewNameOf = (id) => VIEWS.find((v) => v.id === id)?.name ?? id;
+const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c]);
+
+function renderHistory() {
+  const list = document.getElementById('hist-list');
+  if (!list) return;
+  document.getElementById('hist-count').textContent = `${history.length}/${MAX_VERSIONS}`;
+  if (history.length === 0) {
+    list.innerHTML = '<div class="hist-empty">No versions yet. Press 💾 Save and this fills with real, ' +
+      'vector thumbnails of the board — one per save.</div>';
+    return;
+  }
+  list.innerHTML = history.map((v, i) => {
+    const older = history[i + 1];
+    const kb = Math.max(1, Math.round((JSON.stringify(v.views).length + (v.thumb?.length ?? 0)) / 1024));
+    return `<button class="hist-item${v.id === currentVersion ? ' current' : ''}" data-version="${esc(v.id)}"
+        title="Restore ${esc(v.id)} — saved ${esc(new Date(v.at).toLocaleTimeString())}">
+      ${v.thumb
+        ? `<img class="hist-thumb" src="${thumbUri(v.thumb)}" alt="${esc(viewNameOf(v.view))} board, ${widgetCount(v)} widgets">`
+        : '<div class="hist-thumb hist-thumb-none">no preview</div>'}
+      <div class="hist-row"><span class="hist-id">${esc(v.id)}</span>
+        <span class="hist-when">${esc(relTime(v.at))}</span>
+        ${v.auto ? '<span class="hist-tag" title="banked automatically before a restore">auto</span>' : ''}
+        ${v.id === currentVersion ? '<span class="hist-tag now">current</span>' : ''}</div>
+      <div class="hist-sub">${widgetCount(v)} widgets · ${esc(viewNameOf(v.view))} · ${kb} KB</div>
+      <div class="hist-delta">${older ? esc(deltaText(v, older)) : 'first version'}</div>
+    </button>`;
+  }).join('');
+}
+
+function toggleHistory(on) {
+  historyOpen = on ?? !historyOpen;
+  document.getElementById('db-history').hidden = !historyOpen;
+  document.getElementById('t-history').setAttribute('aria-expanded', String(historyOpen));
+  renderHistory();
+  // The canvas just changed width. The ResizeObserver in setup() reframes the
+  // board, but only after layout settles — ask for the reframe now so the board
+  // is never a frame behind the drawer.
+  H.showView(H.activeView);
+  flash(historyOpen ? `versions: ${history.length} saved` : 'versions closed');
+}
+
+/** SAVE / LOAD — the data-first round-trip: toJSON() returns plain view data,
+ *  and that data is valid dashboard() input, so Load is just another mount.
+ *  Save now BANKS a version; Load restores the newest one. */
+function saveBoard() {
+  const v = captureVersion();
+  state.saved = JSON.stringify(v.views);
+  flash(`saved ${v.id} · ${widgetCount(v)} widgets · ${state.saved.length.toLocaleString()} bytes`);
+}
+
+function loadBoard() {
+  if (!history.length) { flash('nothing saved yet'); return; }
+  restoreVersion(history[0].id);
 }
 
 function wireControls() {
@@ -591,10 +871,28 @@ function wireControls() {
   on('t-back', focused((id) => { H.widget(id)?.sendToBack(); flash('sent to back'); }));
   on('t-save', () => saveBoard());
   on('t-load', () => loadBoard());
+  // VERSION DRAWER. One delegated listener for the whole gallery — the cards are
+  // re-rendered on every save, so per-card listeners would leak.
+  on('t-history', () => toggleHistory());
+  on('hist-close', () => toggleHistory(false));
+  on('hist-clear', () => {
+    history = []; currentVersion = null;
+    persist(); renderHistory();
+    flash('version history cleared');
+  });
+  document.getElementById('hist-list').addEventListener('click', (e) => {
+    const id = e.target.closest('.hist-item')?.dataset.version;
+    if (id) restoreVersion(id);
+  });
+  // Esc closes the drawer. Only when it is OPEN, so the binder's own mid-gesture
+  // Esc (restore every tile) is untouched.
+  window.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape' && historyOpen) toggleHistory(false);
+  });
 }
 
 /* ---------------------------------------------------------------------------
-   6. THE DEMO CONTRACT.
+   7. THE DEMO CONTRACT.
 --------------------------------------------------------------------------- */
 defineDemo({
   name: 'Dashboard builder',
@@ -606,6 +904,7 @@ defineDemo({
     'The four KPI tiles are ordinary members of the same 12-column grid (3 columns each): nothing here is a special case, so any tile can be dragged onto any other and every widget resizes the same way.',
     'Mode: fit keeps each board at its design height and squeezes rows so nothing can leave the viewport (DevExtreme-style); Mode: grow keeps 130px rows and extends the board downward. Float: on lets tiles sit anywhere with gaps; off packs upward. Both are one call on SPEC.handle.',
     'Drag a widget from the left palette onto the board (or just click it): the clone follows the cursor and the board makes room live from the moment it enters. Drag a tile OUT over the palette: the ghost dims — release deletes it, undoably, survivors re-packed in the same batch.',
+    'VERSION HISTORY: press 💾 Save, change the board, save again — then 🕘 Versions opens a drawer of every save, newest first, each card carrying a REAL vector thumbnail of the board it holds (instance.exportSvgString({ includeIds: handle.exportIds() }) — the same call an embedder makes), when it was saved, its widget count and view, and what changed since the version below it. Click a card to restore it; the board you were on is banked first, so a restore is never a one-way door. ⟲ Load stays the one-click shortcut for the newest version. The drawer is a grid COLUMN, so opening it narrows the canvas and the board reframes itself rather than hiding behind a panel.',
     'Every gesture commits ONE BatchCommand (cells + geometry): one Undo rewinds a whole drag or resize.',
     'Advanced grid constructs — nested/bounded sections (maxRows), two boards with cross-container drag, explicit cell placement — live on their own page: dashboard/grid-options.html, which drives the binder BENEATH this API directly.',
     'Press "▶ run the scripted checks": it drives real pointer gestures and asserts the declared board — the flow-placed cells, live push mid-drag, placeholder truth, resize push + shrink-restore, both swap directions, one-KPI-only resize, small-onto-big displacement, pin refusal, Esc restore, one-undo-per-gesture, both sizing modes, and the toJSON round-trip.',
@@ -641,7 +940,19 @@ defineDemo({
     ctx.engine = instance.getEngine();
 
     afterMount('overview');
-    window.__dash = { get spec() { return SPEC; }, get handle() { return H; }, state };
+    window.__dash = {
+      get spec() { return SPEC; }, get handle() { return H; }, state,
+      // The version drawer's own model, for the save/load gate: it drives the
+      // real buttons with a real mouse and reads the truth back from here.
+      get history() { return history; },
+      get currentVersion() { return currentVersion; },
+      get historyOpen() { return historyOpen; },
+    };
+    // Versions survive a reload (they are in localStorage), so read them back
+    // BEFORE the controls are live — silently: the status line belongs to what
+    // the user just did, not to what a previous session left behind.
+    restoreHistory();
+    renderHistory();
     wireControls();
     instance.renderNow();
     syncToolbar();
