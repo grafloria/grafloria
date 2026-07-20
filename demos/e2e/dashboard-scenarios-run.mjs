@@ -1142,6 +1142,104 @@ try {
   await page.close();
 }
 
+// ---- S30 [OPTIONS] · THE ResizeObserver PATH, DRIVEN BY A REAL VIEWPORT -----
+// S28 proves responsive columns through the page's explicit width CONTROL —
+// deliberately, so this demo's goldens do not move with the browser window.
+// That left the OTHER trigger untested end to end, and it is the one a real
+// viewport-sized board actually rides on: the binder's own ResizeObserver on
+// the canvas container. A board can only be "responsive" in the sense users
+// mean — it reflows when the window does — through that observer.
+//
+// This drives it AND ISOLATES it, with a two-phase A/B:
+//
+//   A. Narrow board D's MODEL width by assigning `size.width` directly. That is
+//      a deliberately SILENT write: it fires no `bounds:changed`, so the
+//      binder's group subscription — the path S28 already covers — cannot see
+//      it, and NOTHING may move. If the count changed here, everything below
+//      would be proving the wrong trigger.
+//   B. Resize the ACTUAL BROWSER VIEWPORT. `#canvas` is viewport-elastic
+//      (`grid-template-columns: 214px 1fr`), so the container really does
+//      resize, and the binder's ResizeObserver is now the ONLY code in the
+//      system that can notice the width already sitting on the model.
+//
+// Then the same two steps in reverse, which is the per-column layout cache's
+// round-trip guarantee reached through the OBSERVER instead of the control:
+// restore the width and the viewport, and every cell must come back EXACTLY as
+// authored — not merely "12 columns again".
+//
+// Determinism: the assertions are model reads (column count and cells), never
+// pixels, so nothing here depends on the window size. The board width, the
+// column count and the viewport are all restored before the page closes, and
+// `freshPage()` re-pins 1400x900 for every scenario anyway — so neither the
+// scenarios that follow nor the separate visual gate can see this.
+{
+  begin('s30-viewport-resizeobserver-drives-columns');
+  const page = await freshPage(OPTS);
+  const readD = () => page.evaluate(() => {
+    const D = window.__demoCtx.diagram;
+    const b = window.__opts.binders.d;
+    return {
+      columns: b.getColumns(),
+      responsive: b.metrics().responsive,
+      width: Math.round(window.__opts.boards.d.size.width),
+      canvas: Math.round(document.getElementById('canvas').getBoundingClientRect().width),
+      cells: [...(D.getGroup('board-d').members || [])]
+        .map((id) => ({ label: D.getNode(id)?.getMetadata('label'), cell: b.cellOf(id) }))
+        .filter((r) => r.label)
+        .sort((p, q) => p.label.localeCompare(q.label)),
+    };
+  });
+  // A model write with NO setFrame() behind it — the point is that it is silent.
+  const silentWidth = (w) => page.evaluate((width) => {
+    window.__opts.boards.d.size.width = width;
+  }, w);
+
+  const wide0 = await readD();
+  await shot(page, 'authored-12-columns');
+
+  // A — silent width write, viewport untouched. Nothing may move.
+  await silentWidth(270);
+  await page.waitForTimeout(400);
+  const quiet = await readD();
+  const stayedQuiet = quiet.columns === 12 && quiet.width === 270;
+
+  // B — the real viewport change. Only the ResizeObserver can react to it.
+  await page.setViewportSize({ width: 900, height: 900 });
+  await page.waitForTimeout(800);
+  const narrow = await readD();
+  await shot(page, 'observer-narrowed-to-6-columns');
+
+  const canvasShrank = narrow.canvas < wide0.canvas;
+  const observerDroveColumns = narrow.columns === 6 && narrow.width === 270;
+  const reLaidOut = JSON.stringify(narrow.cells) !== JSON.stringify(wide0.cells) &&
+                    narrow.cells.every((r) => r.cell.x + r.cell.w <= 6);
+
+  // C — restore both, and the cache must hand back the authored layout exactly.
+  await silentWidth(540);
+  await page.setViewportSize({ width: 1400, height: 900 });
+  await page.waitForTimeout(800);
+  const wide1 = await readD();
+  await shot(page, 'restored-12-columns');
+
+  const restoredExactly = wide1.columns === 12 && wide1.width === 540 &&
+                          JSON.stringify(wide1.cells) === JSON.stringify(wide0.cells);
+  // A resize is DERIVED state: it must never pin the board out of responsive
+  // mode the way an explicit setColumns() does.
+  const stillResponsive = wide1.responsive === true;
+
+  const st = await boardState(page);
+  verdict(
+    stayedQuiet && canvasShrank && observerDroveColumns && reLaidOut &&
+      restoredExactly && stillResponsive && st.overlaps === 0,
+    `silent-width-write-moved-nothing=${stayedQuiet}(cols=${quiet.columns}@${quiet.width}px) ` +
+    `canvas-shrank=${canvasShrank}(${wide0.canvas}->${narrow.canvas}px) ` +
+    `observer-drove-columns=${observerDroveColumns}(${wide0.columns}->${narrow.columns} @${narrow.width}px) ` +
+    `re-laid-out=${reLaidOut} viewport-restore-restores-cells-exactly=${restoredExactly} ` +
+    `still-responsive=${stillResponsive} overlaps=${st.overlaps}`
+  );
+  await page.close();
+}
+
 } finally {
   await browser.close();
   server.close();
