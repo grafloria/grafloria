@@ -165,6 +165,13 @@ export interface DashboardGridHandle {
   sync(): void;
   setSizing(mode: 'fit' | 'grow'): void;
   getSizing(): 'fit' | 'grow';
+  /**
+   * Engine float mode, live (the prototype's second toggle): ON — tiles stay
+   * exactly where placed, vertical gaps are legal; OFF — gravity re-packs
+   * upward immediately.
+   */
+  setFloat(on: boolean): void;
+  getFloat(): boolean;
   /** Live board metrics (mapping inputs + derived row height / rows). */
   metrics(): {
     columns: number;
@@ -374,7 +381,7 @@ export function bindDashboardGrid(
   const padding = options.padding ?? gap;
   const baseRowHeight = options.baseRowHeight ?? 110;
   const minRowHeight = options.minRowHeight ?? 28;
-  const float = options.float ?? false;
+  let float = options.float ?? false;
   const maxRows = options.maxRows;
   const dragOut = options.dragOut ?? 'cancel';
   const wantHandles = options.resizeHandles !== false;
@@ -1592,6 +1599,16 @@ export function bindDashboardGrid(
       api.renderNow();
     },
     getSizing: () => sizing,
+    setFloat(on): void {
+      if (on === float) return;
+      float = on;
+      // Rebuild from persisted cells under the new mode: sync() constructs a
+      // fresh engine with the captured `float`, and gravity (when turning
+      // OFF) packs immediately through its settle.
+      this.sync();
+      api.renderNow();
+    },
+    getFloat: () => float,
     metrics() {
       const f = frame();
       const g = geom();

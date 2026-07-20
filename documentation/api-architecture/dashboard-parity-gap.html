@@ -1,0 +1,155 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Plan vs delivered — the dashboard parity gap analysis</title>
+<style>
+  :root { --ink:#1e222d; --muted:#68707f; --line:#e3e6ec; --soft:#f6f7fa; --blue:#3b52d9;
+    --green:#12a150; --amber:#d97c06; --red:#dc2626; }
+  * { box-sizing:border-box; }
+  body { margin:0; font:15px/1.55 system-ui,-apple-system,sans-serif; color:var(--ink); background:#fbfbfd; }
+  header { padding:26px 34px 18px; background:#fff; border-bottom:1px solid var(--line); }
+  h1 { margin:0 0 6px; font-size:22px; }
+  .sub { color:var(--muted); max-width:1050px; }
+  main { max-width:1180px; margin:0 auto; padding:22px 28px 80px; }
+  h2 { font-size:17px; margin:34px 0 10px; }
+  h2 .n { display:inline-flex; width:22px; height:22px; border-radius:6px; background:var(--blue); color:#fff;
+    align-items:center; justify-content:center; font-size:12px; margin-right:8px; vertical-align:-3px; }
+  table { border-collapse:collapse; width:100%; font-size:13.5px; background:#fff; }
+  th { text-align:left; font-size:11px; text-transform:uppercase; letter-spacing:.5px; color:var(--muted);
+    padding:8px 10px; border-bottom:2px solid var(--line); position:sticky; top:0; background:#fff; }
+  td { padding:8px 10px; border-bottom:1px solid var(--line); vertical-align:top; }
+  .tag { display:inline-block; padding:2px 8px; border-radius:20px; font-size:11px; font-weight:600; white-space:nowrap; }
+  .same { background:#e7f6ec; color:var(--green); } .fixed { background:#e9edfd; color:var(--blue); }
+  .delib { background:#f1f2f6; color:#5b6270; } .was { background:#fdeaea; color:var(--red); }
+  code { background:var(--soft); border:1px solid var(--line); border-radius:4px; padding:1px 5px; font-size:12.5px; }
+  .note { background:#f2f5ff; border:1px solid #d9e0fb; border-radius:10px; padding:12px 16px; margin:14px 0; }
+  .shots { display:grid; grid-template-columns:1fr 1fr; gap:14px; margin:12px 0; }
+  .shot { background:#fff; border:1px solid var(--line); border-radius:10px; overflow:hidden; }
+  .shot img { display:block; width:100%; height:auto; }
+  .shot figcaption { font-size:12px; color:var(--muted); padding:8px 12px; border-top:1px solid var(--line); }
+  .k { font-weight:600; }
+  @media (prefers-color-scheme: dark) {
+    :root { --ink:#e8eaf1; --muted:#9aa2b4; --line:#2b3040; --soft:#20242e; }
+    body { background:#12141a; } header,table,th { background:#181b22; }
+    .shot { background:#181b22; } .note { background:#1b2030; border-color:#2c3550; }
+    .delib { background:#232734; color:#9aa2b4; }
+  }
+</style>
+<header>
+  <h1>Plan vs delivered — dashboard parity, measured</h1>
+  <div class="sub">Capability-by-capability comparison of the <a href="dashboard-grid-plan.html">plan prototype</a>
+  against the delivered <code>demos/dashboard/dashboard-builder.html</code>. Every row was PROBED with a real
+  mouse on both pages (not asserted from reading code); the six user-review rounds are folded in. Verdicts:
+  <span class="tag same">SAME</span> behaves identically ·
+  <span class="tag fixed">FIXED Rn</span> diverged, fixed in review round n ·
+  <span class="tag delib">DELIBERATE</span> intentionally different (product reasons, listed openly).</div>
+</header>
+<main>
+
+<h2><span class="n">1</span>The interaction model — row by row</h2>
+<table>
+  <tr><th style="width:26%">Capability (as the prototype does it)</th><th>Delivered page</th><th style="width:110px">Verdict</th></tr>
+
+  <tr><td class="k">Drag anywhere on a tile → ghost + dashed placeholder + neighbours slide live</td>
+    <td>Identical loop through the same <code>GridPackEngine</code>; verified mid-hold (donut slid while button down). Battery s01.</td>
+    <td><span class="tag same">SAME</span></td></tr>
+
+  <tr><td class="k">Drop lands EXACTLY where the placeholder stood</td>
+    <td>Placeholder-truth asserted at <b>every</b> drop in all 24 battery scenarios (±6px, all tabs, both modes, under zoom).</td>
+    <td><span class="tag same">SAME</span></td></tr>
+
+  <tr><td class="k">Increase / decrease width (corner handle, fluid preview, cell-quantized release)</td>
+    <td>Same, including cold-grab with no prior click (probe artifact cleared in R6: both pages quantize at the half-cell —
+    a +80px pull on a ~90px cell reads as "nothing" on BOTH). Battery s02/s06/s11/s20.</td>
+    <td><span class="tag same">SAME</span></td></tr>
+
+  <tr><td class="k">Increase / decrease height</td>
+    <td>Main-board tiles: same (fit +63px net, grow +141px measured). KPI strip: was FROZEN by the R3 maxRows clamp —
+    now pulling past the strip grows the WHOLE strip (all KPIs together) and one undo restores everything. Battery s21.</td>
+    <td><span class="tag fixed">FIXED R5</span></td></tr>
+
+  <tr><td class="k">Alignment: every tile sits on exact column lines</td>
+    <td>Was: strip gap 12 vs board gap 14 → KPI edges drifted up to ~4.5px off the board's column lines.
+    Now: strip gap = board gap, one strip column = exactly three board columns; measured max deviation ≤2px
+    (model-precision rounding only). Battery s24.</td>
+    <td><span class="tag fixed">FIXED R7</span></td></tr>
+
+  <tr><td class="k">Move a widget to ANY place — <code>float</code> mode (gaps legal, no gravity)</td>
+    <td>Was: engine supported float, the page never exposed it. Now: <b>Float: on/off</b> in the toolbar
+    (live switch, all three views); ON → widgets stay wherever dropped; OFF → gravity re-packs. Battery s23.</td>
+    <td><span class="tag fixed">FIXED R7</span></td></tr>
+
+  <tr><td class="k">Gravity mode: tiles climb into vacated space, live during the drag</td>
+    <td>Same engine settle; verified live (E2 recording). Note both pages: a tile dropped below a FULL-WIDTH
+    blocker (the pinned row / the table) stays below it — gravity never climbs through; the teleport-restore
+    memory is what brings tiles home mid-gesture.</td>
+    <td><span class="tag same">SAME</span></td></tr>
+
+  <tr><td class="k">Two sizing modes: fit (compact squeeze) / grow (board extends)</td>
+    <td>Same toggle. R4 caught grow being silently converted to fit by camera refits at every commit (0.899× drop offset =
+    designH/grownH) — grow now NEVER refits; the board extends past the fold and panning reaches it.</td>
+    <td><span class="tag fixed">FIXED R4</span></td></tr>
+
+  <tr><td class="k">Board edges CATCH the drag — you cannot lose a widget off the side</td>
+    <td>Was: a ~60px overshoot past the frame dimmed the tile and release DELETED it. Now: a 60px grace band clamps
+    small overshoots onto the board (engine cell-clamp = the prototype feel), and deletion requires releasing over the
+    palette — an explicit trash zone. Anywhere else: snaps home, no commit. Battery s10.</td>
+    <td><span class="tag fixed">FIXED R6</span></td></tr>
+
+  <tr><td class="k">Same-size swap · row swap (different widths) · column swap · min-area gate</td>
+    <td>Same three shapes + gate, plus S4 swap hysteresis (added when real-mouse driving found unequal row-swaps
+    ping-ponging — the prototype's synthetic steps jumped past it). Battery s03.</td>
+    <td><span class="tag same">SAME</span></td></tr>
+
+  <tr><td class="k">Pinned tile: never pushed, refuses the mover outright</td>
+    <td>Same (E4b recording). Battery s19. Affordance differs — see §3.</td>
+    <td><span class="tag same">SAME</span></td></tr>
+
+  <tr><td class="k">Mid-gesture restore: shrink/retreat brings displaced tiles home (even across the pinned row)</td>
+    <td>Same teleport-home memory, per-gesture scope. Battery s02/s06/s17.</td>
+    <td><span class="tag same">SAME</span></td></tr>
+
+  <tr><td class="k">Esc cancels everything, exactly</td>
+    <td>Same — full snapshot restore, no history entry; also aborts a cross-board leg and reverts strip escalation. Battery s07.</td>
+    <td><span class="tag same">SAME</span></td></tr>
+
+  <tr><td class="k">Add tile → auto-position into the first hole</td>
+    <td>Same row-major scan (palette click), plus palette DRAG-IN with live push from board entry — beyond the prototype. Battery s16.</td>
+    <td><span class="tag same">SAME+</span></td></tr>
+</table>
+
+<h2><span class="n">2</span>What the page does that the plan prototype never had</h2>
+<div class="note">
+  Cross-container drag (KPI ↔ board, one undo restores both sides — R3) · nested strip with its own pack grid ·
+  strip height escalation (R5) · palette drag-in &amp; drag-out-to-remove · undoable command history for every gesture ·
+  save/load round-trip · three tabbed views · camera pan/zoom with all gestures zoom-correct (battery s14).
+</div>
+
+<h2><span class="n">3</span>Deliberate differences (open, not hidden)</h2>
+<table>
+  <tr><th>Prototype</th><th>Page</th><th>Why</th></tr>
+  <tr><td>Double-click pins a tile</td><td>Select + toolbar <b>Pin</b></td><td>Double-click is reserved (future in-place editing); same semantics. Say the word to add double-click too.</td></tr>
+  <tr><td>Board inert to the wheel</td><td>Wheel pans/zooms the canvas</td><td>The page is a real canvas product; gestures are zoom-correct (s14).</td></tr>
+  <tr><td>Six flat colored tiles, 64px rows</td><td>Real chart widgets, content-sized rows</td><td>Seed/content, not mechanics — the cell math is identical.</td></tr>
+</table>
+
+<h2><span class="n">4</span>Evidence (from the 24-scenario battery — every run re-screenshots these)</h2>
+<div class="shots">
+  <figure class="shot"><img src="parity-shots/live-push.png" alt="live push mid-drag">
+    <figcaption><b>s01</b> — mid-hold: ghost under cursor, dashed placeholder, donut already slid aside. Neighbours move BEFORE the drop.</figcaption></figure>
+  <figure class="shot"><img src="parity-shots/float-anywhere.png" alt="float mode placement">
+    <figcaption><b>s23</b> — Float ON: the donut sits in empty space below the table, gap above it legal. Toggling off re-packs.</figcaption></figure>
+  <figure class="shot"><img src="parity-shots/strip-grow.png" alt="strip grows">
+    <figcaption><b>s21</b> — pulling one KPI taller grew the whole strip; one undo restores KPIs, siblings and slab.</figcaption></figure>
+  <figure class="shot"><img src="parity-shots/cross-container.png" alt="cross container">
+    <figcaption><b>s04</b> — the reported gesture: Total Revenue dragged under the table now LIVES there; the strip closed up.</figcaption></figure>
+</div>
+
+<h2><span class="n">5</span>How this stays true</h2>
+<div class="note">
+  <b>The battery is the gate:</b> <code>node demos/e2e/dashboard-scenarios-run.mjs</code> — 24 scenarios, real mouse,
+  placeholder-truth at every drop, a screenshot at every stage. Every behaviour in §1 has a scenario; a regression
+  turns a row red with its geometry evidence printed. The five review rounds each added the scenario that would have
+  caught them (s10 overshoot-survival, s13 grow-camera, s21 strip growth, s23 float, s24 alignment).
+</div>
+
+</main>

@@ -143,6 +143,7 @@
   <button class="db-tool" id="t-remove" title="Remove the focused tile">🗑 Remove</button>
   <span class="db-sep"></span>
   <button class="db-tool" id="t-mode" title="Sizing mode: fit keeps the board height and squeezes rows; grow keeps row height and extends the board">Mode: fit</button>
+  <button class="db-tool" id="t-float" title="Float: on lets widgets sit anywhere with gaps (no gravity); off packs upward">Float: off</button>
   <span class="db-sep"></span>
   <button class="db-tool" id="t-save" title="Serialize the dashboard">💾 Save</button>
   <button class="db-tool" id="t-load" title="Rebuild from the last save">⟲ Load</button>
@@ -621,7 +622,10 @@ function bindAll() {
   // the cascade hands down).
   const sec = sections[0];
   binders.kpis = sec ? bindDashboardGrid(inst, sec, {
-    columns: 4, gap: 12, padding: 0, sizing: 'fit', designHeight: 0, dragOut: 'cancel',
+    // gap === the tab GAP so one strip column spans EXACTLY three board
+    // columns - KPI edges land on the same lines as the charts below
+    // (parity review: "align them correctly"; 12 vs 14 drifted ~4.5px).
+    columns: 4, gap: GAP, padding: 0, sizing: 'fit', designHeight: 0, dragOut: 'cancel',
     // The strip's DESIGN is one row: height growth and downward pushes are
     // refused in the ENGINE (siblings shift along the row instead), so the
     // section can never be squeezed - the "resize a first-row KPI destroyed
@@ -774,6 +778,20 @@ function togglePin(nodeId) {
  *  squeezes rows to fit (DevExtreme-style — nothing can fall below the
  *  fold); grow keeps the 130px design row and extends the board downward,
  *  after which the camera refits the taller frame. */
+let floatMode = false;
+function setFloatMode(on) {
+  if (on === floatMode) return;
+  floatMode = on;
+  glide();
+  for (const key of ['overview', 'sales', 'pipeline']) binders[key]?.setFloat(on);
+  document.getElementById('t-float').textContent = `Float: `;
+  ctxRef.instance.renderNow();
+  for (const n of ctxRef.diagram.getNodes()) repaint(n.id);
+  flash(on
+    ? 'Float ON: widgets stay wherever you put them - gaps are legal'
+    : 'Float OFF: gravity packs widgets upward');
+}
+
 function setSizingMode(mode) {
   if (mode === sizingMode) return;
   sizingMode = mode;
@@ -848,6 +866,7 @@ function wireControls() {
   document.getElementById('t-undo').addEventListener('click', async () => { const cm = cmd(); if (cm.canUndo()) { await cm.undo(); refreshBoards(); } syncToolbar(); flash('undo'); });
   document.getElementById('t-redo').addEventListener('click', async () => { const cm = cmd(); if (cm.canRedo()) { await cm.redo(); refreshBoards(); } syncToolbar(); flash('redo'); });
   document.getElementById('t-mode').addEventListener('click', () => setSizingMode(sizingMode === 'fit' ? 'grow' : 'fit'));
+  document.getElementById('t-float').addEventListener('click', () => setFloatMode(!floatMode));
   document.getElementById('t-pin').addEventListener('click', () => { if (state.focus) togglePin(state.focus); else flash('focus a tile first'); });
   document.getElementById('t-front').addEventListener('click', async () => { if (state.focus) { await cmd().execute(new BringNodeToFrontCommand(state.focus)); ctxRef.instance.renderNow(); syncToolbar(); flash('brought to front'); } else flash('focus a tile first'); });
   document.getElementById('t-back').addEventListener('click', async () => { if (state.focus) { await cmd().execute(new SendNodeToBackCommand(state.focus)); ctxRef.instance.renderNow(); syncToolbar(); flash('sent to back'); } else flash('focus a tile first'); });

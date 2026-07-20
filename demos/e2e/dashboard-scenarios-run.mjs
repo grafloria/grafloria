@@ -806,6 +806,55 @@ try {
   await page.close();
 }
 
+// ---- S23 · FLOAT mode: place a widget ANYWHERE, gaps legal ----------------
+{
+  begin('s23-float-place-anywhere');
+  const page = await freshPage();
+  await page.evaluate(() => document.getElementById('t-float').click());
+  await page.waitForTimeout(500);
+  const table = await host(page, 'Top reps');
+  const donut0 = await host(page, 'Revenue by region');
+  // drop the donut into the EMPTY space below the table (extended band)
+  const m = await dragTo(page, 'Revenue by region', table.x + 200, table.y + table.h + 30);
+  await shot(page, 'float-placed-below');
+  const donutA = await host(page, 'Revenue by region');
+  const stayed = donutA.y > donut0.y + 100;           // did NOT gravity-climb
+  // toggle float off → gravity packs it back up
+  await page.evaluate(() => document.getElementById('t-float').click());
+  await page.waitForTimeout(800);
+  const donutB = await host(page, 'Revenue by region');
+  await shot(page, 'gravity-repacked');
+  const repacked = donutB.y < donutA.y - 60;
+  const st = await boardState(page);
+  verdict(m.ok && stayed && repacked && st.overlaps === 0,
+    `placed=${m.ok}(${m.detail}) stays-in-float=${stayed} repacks-on-off=${repacked} overlaps=${st.overlaps}`);
+  await page.close();
+}
+
+// ---- S24 · ALIGNMENT: KPI strip columns sit ON the board's column lines ---
+{
+  begin('s24-strip-board-alignment');
+  const page = await freshPage();
+  const dev = await page.evaluate(() => {
+    const f = window.__demoCtx.diagram.getGroup('tab-overview');
+    const GAP = 14, PAD = 14, COLS = 12;
+    const cu = (f.size.width - 2 * PAD - (COLS - 1) * GAP) / COLS;
+    // Every widget node — INCLUDING the KPI strip's tiles — must sit on a
+    // 12-column line of the tab grid (gap parity makes 1 strip col = 3 tab cols).
+    const nodes = window.__demoCtx.diagram.getNodes()
+      .filter((n) => n.getMetadata && n.getMetadata('widgetKind') && n.position.x > -5000);
+    const devs = nodes.map((n) => {
+      const rel = n.position.x - f.position.x - PAD;
+      const c = rel / (cu + GAP);
+      return Math.abs(c - Math.round(c)) * (cu + GAP);
+    });
+    return Math.round(Math.max(...devs) * 10) / 10;
+  });
+  await shot(page, 'aligned');
+  verdict(dev <= 2, `max column-line deviation ${dev}px (must be ≤2px)`);
+  await page.close();
+}
+
 } finally {
   await browser.close();
   server.close();
