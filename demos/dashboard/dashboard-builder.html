@@ -784,7 +784,7 @@ function setFloatMode(on) {
   floatMode = on;
   glide();
   for (const key of ['overview', 'sales', 'pipeline']) binders[key]?.setFloat(on);
-  document.getElementById('t-float').textContent = `Float: `;
+  document.getElementById('t-float').textContent = `Float: ${on ? 'on' : 'off'}`;
   ctxRef.instance.renderNow();
   for (const n of ctxRef.diagram.getNodes()) repaint(n.id);
   flash(on
@@ -797,7 +797,7 @@ function setSizingMode(mode) {
   sizingMode = mode;
   glide();
   for (const key of ['overview', 'sales', 'pipeline']) binders[key]?.setSizing(mode);
-  document.getElementById('t-mode').textContent = `Mode: `;
+  document.getElementById('t-mode').textContent = `Mode: ${mode}`;
   // fit: refit the camera to the design-height board. grow: KEEP the camera -
   // the board extends past the fold and panning reaches it; refitting would
   // shrink the view and make grow visually identical to fit.
