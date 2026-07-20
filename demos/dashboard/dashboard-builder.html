@@ -5,14 +5,14 @@
   /* ================================================================================
      A REAL dashboard-builder app, built on the ONE package an embedder installs.
      Everything below imports from ../shell/grafloria.js — the bundled @grafloria/element
-     front door. Since Phase 0 (d4e24c525) that front door re-exports @grafloria/engine
-     and @grafloria/renderer WHOLESALE, so DiagramEngine, DiagramModel, GroupModel,
-     NodeModel, CommandManager and all ~30 undoable commands (incl. the z-order
-     ones) are reachable from that single import — no reaching past the public API.
+     front door — and the whole import list is now four names: render, NodeModel,
+     dashboard, defaultWidgetRenderer. The board is DECLARED, not assembled, and
+     `dashboard({ views }).handle` drives every edit, so the page never reaches
+     for a command, a GroupModel or the CommandManager to change the board. (They
+     remain reachable from that same import since Phase 0, d4e24c525 — this page
+     simply no longer needs them.)
 
-     The board itself is now DECLARED, not assembled: `dashboard({ views })` is the
-     authoring API, and its built-in renderers draw every widget from this page's
-     own data. So the page-side CSS below is only what the LIBRARY cannot know:
+     The page-side CSS below is therefore only what the LIBRARY cannot know:
      app chrome (toolbar, palette, canvas) plus the focus ring and pin marker this
      app layers onto the kit's widget cards.
      ================================================================================ */
@@ -143,10 +143,17 @@
 //  cells, membership and three binders: ~143 lines. It is now the VIEWS
 //  literal below, and SPEC.handle drives it.
 //
+//  THE HANDLE IS THE WHOLE SURFACE. Every edit below — add, remove, resize,
+//  move, pin, raise/lower, fit, refresh, save/load — is one call on SPEC.handle
+//  or a WidgetHandle. The page builds no widget NodeModel, sequences no
+//  commands, keeps no host or spec side-maps. Exactly TWO things reach past the
+//  façade, both deliberate and both marked at their call site: H.binderOf() for
+//  palette drag-in, and setBehavior({connectable:false}) in afterMount().
+//
 //  Read the enabling commits if you are extending this: b76b2b5e2 (dashboard-
 //  layout machinery), d4e24c525 (Phase 0 — the front door stops filtering),
-//  f198003fe (GridPackEngine), 994b7c5f1 (dashboard()), and the kit itself at
-//  libs/element/src/lib/dashboard-kit.
+//  f198003fe (GridPackEngine), 994b7c5f1 (dashboard()), 8a507a613 (the handle
+//  closes the gaps), and the kit itself at libs/element/src/lib/dashboard-kit.
 //
 //  WHAT STAYS PAGE-SIDE: the SALES DATASET (demo content — the library ships
 //  no sample data) and app chrome (toolbar, palette, focus, flash line).
@@ -156,10 +163,11 @@
 //  the built-ins rather than duplicating them.
 // ===========================================================================
 import {
-  render, NodeModel,
-  // Undoable commands, all reachable from the front door post-Phase-0.
-  AddNodeCommand, AddToGroupCommand, RemoveNodeCommand, RemoveFromGroupCommand,
-  BringNodeToFrontCommand, SendNodeToBackCommand, BatchCommand,
+  render,
+  // The ONE engine type this page still names: a detached carrier node for the
+  // palette drag gesture (see wireControls). Every other node is built by the
+  // kit — this page never assembles one.
+  NodeModel,
   // The dashboard kit: the authoring API + the built-in widget renderers.
   dashboard, defaultWidgetRenderer,
 } from '../shell/grafloria.js';
@@ -273,43 +281,40 @@ let ctxRef = null;                // { diagram, engine, instance } from defineDe
 let statusEl = null;
 let sizingMode = 'fit', floatMode = false;
 const state = { focus: null, saved: null, seq: 0 };
-const hosts = new Map();          // widgetId -> host div  (see repaint(), below)
-const specs = new Map();          // widgetId -> declared widget  (ditto)
 
 /** dashboard()'s `renderWidget` seam. The LIBRARY draws the chart from the
  *  declared `kind` + `data`; this page only adds what an app owns — a focus
  *  ring, a pin marker and click-to-focus. That composition is the intended
  *  use of defaultWidgetRenderer. */
 function renderWidget(widget, host) {
-  hosts.set(widget.id, host);     // (API gap #7) — see repaint()
-  specs.set(widget.id, widget);
   defaultWidgetRenderer(widget, host);
   const card = host.firstElementChild;
   if (!card) return;
-  card.classList.toggle('focused', widget.id === state.focus);
-  card.classList.toggle('locked', H?.widget(widget.id)?.pinned === true);
   const head = card.querySelector('.axdb-widget-h');
   if (head) head.insertAdjacentHTML('beforeend', '<span class="pin" title="Pinned">📌</span>');
   host.onclick = () => setFocus(widget.id);
+  paintChrome(card, widget.id);
 }
 
-/** (API gap #7) `WidgetHandle.repaint()` paints through the kit's own host map,
- *  which is filled by renderCustomNode — and a custom node MOUNTS ONCE. After a
- *  Load rebuilds the spec the hosts are already mounted, so the new spec never
- *  sees them and repaint() silently no-ops. The page therefore keeps its own
- *  host+spec maps (two lines in renderWidget) and repaints from those. */
-function repaint(id) {
-  const host = hosts.get(id), widget = specs.get(id);
-  if (host && widget) renderWidget(widget, host);
+/* APP CHROME — the focus ring and the pin marker are the two things the kit
+   cannot know, and both are just CSS classes on the card it painted. The page
+   toggles them on the MOUNTED host (the HTML layer's documented `data-node-id`
+   contract) rather than repainting: no chart is redrawn to move a ring, and
+   the page needs no host or spec side-maps at all. */
+const cardOf = (id) => ctxRef?.host.querySelector(`.grafloria-node-host[data-node-id="${id}"] .axdb-widget`);
+function paintChrome(card, id) {
+  if (!card) return;
+  card.classList.toggle('focused', id === state.focus);
+  card.classList.toggle('locked', H?.widget(id)?.pinned === true);
 }
-function repaintAll() { for (const id of hosts.keys()) repaint(id); }
+function syncChrome() {
+  for (const v of H.views) for (const w of H.widgetsOf(v)) paintChrome(cardOf(w.id), w.id);
+}
 
 function setFocus(id) {
-  const prev = state.focus;
   state.focus = id;
-  if (prev && prev !== id) repaint(prev);
-  if (id) repaint(id);
-  syncToolbar();
+  syncChrome();
+  syncToolbarSoon();
 }
 
 function flash(msg) {
@@ -340,7 +345,6 @@ const cmd = () => ctxRef.instance.getEngine().commandManager;
    input.
 --------------------------------------------------------------------------- */
 function buildSpec(views) {
-  for (const v of views) for (const w of v.widgets) specs.set(w.id, w);
   return dashboard({
     ...BOARD,
     sizing: sizingMode,
@@ -349,7 +353,7 @@ function buildSpec(views) {
     renderWidget,
     // Fires after every committed gesture: the undo button must light up as
     // soon as the gesture's BatchCommand has landed.
-    onLayoutChange: () => syncToolbar(),
+    onLayoutChange: () => syncToolbarSoon(),
     // The escape hatch dashboard() documents: options handed straight to the
     // binder underneath. Drag-out-to-remove and palette drop-in are page
     // COMMAND paths, so the kit asks rather than deletes.
@@ -363,7 +367,10 @@ function buildSpec(views) {
         if (!pal) return false;
         return screen.x <= pal.getBoundingClientRect().right + 8;
       },
-      onRemoveRequest: (nodeId) => removeWidget(nodeId),
+      // Both hand over `displaced` — the survivors' cell commits the gesture
+      // already computed. remove() folds them into its own batch; see dropIn()
+      // for the one place that still has nowhere to put them.
+      onRemoveRequest: (nodeId, displaced) => removeWidget(nodeId, displaced),
       onDropIn: (node, cell) => dropIn(node, cell),
       onGesture: (e) => {
         lastPaletteGestureAt = e.kind === 'palette' ? Date.now() : lastPaletteGestureAt;
@@ -375,8 +382,7 @@ function buildSpec(views) {
         } else if (e.type === 'cancel' && e.kind !== 'palette') {
           flash('cancelled — every tile restored');
         }
-        syncToolbar();
-        setTimeout(syncToolbar, 0);
+        syncToolbarSoon();
       },
     },
   });
@@ -384,39 +390,33 @@ function buildSpec(views) {
 
 /** Run after every mount (boot and every Load rebuild). */
 function afterMount(active) {
-  // (API gap #5) dashboard() does not mark widget nodes unconnectable, so a
-  // hovered widget sprouts four port dots (a live user report against the old
-  // hand-built page). A dashboard has no wires: say so.
+  // THE ONE REMAINING GAP. addWidget() builds unconnectable, port-less nodes,
+  // but widgets DECLARED in dashboard({views}) become node specs with metadata
+  // and no `behavior` — so a hovered tile sprouts four port dots (a live user
+  // report). A dashboard has no wires: say so for the declared ones too.
   for (const v of H.views) for (const w of H.widgetsOf(v)) w.node?.setBehavior({ connectable: false });
-  for (const id of [...hosts.keys()]) if (!ctxRef.diagram.getNode(id)) { hosts.delete(id); specs.delete(id); }
   showView(H.views.includes(active) ? active : H.views[0]);
 }
 
-/** Switch views: the handle parks the others off-canvas and re-frames. Focus
- *  follows the view so the toolbar always has a live target. */
+/** Switch views: the handle parks the others off-canvas, re-frames and
+ *  re-renders. Focus follows the view so the toolbar always has a live target. */
 function showView(id) {
   H.showView(id);
-  state.focus = H.widgetsOf()[0]?.id ?? null;
   for (const btn of document.querySelectorAll('.db-tab')) btn.setAttribute('aria-selected', String(btn.dataset.tab === id));
-  ctxRef.instance.renderNow();
-  repaintAll();
-  syncToolbar();
+  setFocus(H.widgetsOf()[0]?.id ?? null);
   flash(`view: ${id}`);
 }
 
-/** Re-sync every board from the model (undo/redo land here), then re-frame and
- *  repaint. (API gap #4) The handle has no "the model changed underneath you"
- *  refresh, so the page reaches for each view's binder. */
+/** Re-read every board from the model (undo/redo land here) and re-frame. */
 function refresh() {
   glide();
-  for (const v of H.views) H.binderOf(v)?.sync();
-  H.showView(H.activeView);       // the only re-frame the handle exposes
-  ctxRef.instance.renderNow();
-  repaintAll();
+  H.refresh();
+  H.fit();
+  syncChrome();
 }
 
 /* ---------------------------------------------------------------------------
-   5. TOOLBAR + PALETTE — every edit is an UNDOABLE Command from the front door.
+   5. TOOLBAR + PALETTE — every edit is ONE call on the handle, one undo step.
 --------------------------------------------------------------------------- */
 let lastPaletteGestureAt = 0;   // suppresses the click-add after a real drag-in
 
@@ -429,99 +429,74 @@ function syncToolbar() {
   document.getElementById('t-pin').textContent = w && w.pinned ? '📌 Unpin' : '📌 Pin';
 }
 
-/** (API gap #1) `handle.addWidget()` ADOPTS a node that already exists in the
- *  model — it cannot create one, and it is not undoable. So an interactive add
- *  is still three steps: the page builds the NodeModel (carrying the kit's
- *  columnSpan/rowSpan metadata, which addWidget does not write either),
- *  AddNodeCommand puts it in the model, addWidget registers it with the
- *  dashboard (MUST happen before the first paint — renderCustomNode returns
- *  early for an id the spec does not know, and a custom node mounts once), and
- *  AddToGroupCommand makes the membership undoable. */
-function makeWidgetNode(p) {
-  const n = new NodeModel({ type: 'widget', position: { x: 0, y: 0 }, size: { width: 120, height: 90, depth: 0 } });
-  n.setMetadata('useHTMLLayer', true);
-  n.setMetadata('columnSpan', p.span);
-  n.setMetadata('rowSpan', p.rows);
-  n.setMetadata('widgetKind', p.kind);
-  n.setMetadata('widgetSpec', p.data ?? {});
-  n.setBehavior({ connectable: false });
-  return n;
-}
-const widgetSpecOf = (p, id) => ({ id, kind: p.kind, span: p.span, rows: p.rows, title: p.title, data: p.data });
+/** Every commit path here — the handle's edits and the binder's gestures alike —
+ *  fires its command WITHOUT awaiting it (the visible state is already final),
+ *  so the undo entry lands on the NEXT tick. Read the history now AND then, or
+ *  the Undo button misses the edit that just happened. */
+function syncToolbarSoon() { syncToolbar(); setTimeout(syncToolbar, 0); }
 
-async function addWidget(kind) {
-  glide();
+/** ADD: one call. `handle.addWidget()` CREATES the node (metadata, spans, grid
+ *  cell, connectable:false, no ports), registers it before the node reaches the
+ *  model so the first paint works, and commits node + membership as ONE undoable
+ *  step. Omitting x/y auto-positions it into the first free hole. */
+function addWidget(kind) {
   const p = PALETTE[kind];
   const view = H.activeView;
-  const node = makeWidgetNode(p);
-  await cmd().execute(new AddNodeCommand(node));
-  H.addWidget(widgetSpecOf(p, node.id), view);          // auto-positions into the first free hole
-  await cmd().execute(new AddToGroupCommand(view, node.id));
-  ctxRef.instance.renderNow();
-  setFocus(node.id);
+  glide();
+  const w = H.addWidget({ ...p }, view);
+  if (!w) return null;
+  setFocus(w.id);
   flash(`added ${p.kind} → ${view} (auto-positioned)`);
-  return node.id;
+  return w.id;
 }
 
-/** Palette DRAG-IN release: the node is already placed in the engine and
- *  carries its cell; commit the add through the page's command path. */
-async function dropIn(node, cell) {
-  const view = H.activeView;
-  await cmd().execute(new AddNodeCommand(node));
-  H.addWidget(widgetSpecOf(node.__palette, node.id), view);
-  await cmd().execute(new AddToGroupCommand(view, node.id));
-  ctxRef.instance.renderNow();
-  setFocus(node.id);
-  syncToolbar();
-  flash(`dropped ${node.__palette.kind} at column ${cell.x + 1}, row ${cell.y + 1}`);
+/** Palette DRAG-IN release: the carrier node only drove the ghost and never
+ *  entered the model, so the drop is the SAME one-call add, pinned to the cell
+ *  the placeholder settled on. (`displaced` — the survivors this drop pushed —
+ *  is the one thing the API still cannot express: addWidget() has no
+ *  counterpart to remove(displaced). Unchanged from the hand-assembled page.) */
+function dropIn(node, cell) {
+  const p = node.__palette;
+  const w = H.addWidget({ ...p, x: cell.x, y: cell.y }, H.activeView);
+  if (!w) return;
+  setFocus(w.id);
+  flash(`dropped ${p.kind} at column ${cell.x + 1}, row ${cell.y + 1}`);
 }
 
 /** REMOVE: ONE undoable batch — membership + node + the survivors' re-pack, so
- *  undo restores the exact board. `WidgetHandle.remove()` folds all three in.
- *
- *  (API gap #2) The kit's drag-out hook hands over the survivors' commands
- *  (`displaced`) because its gesture already computed them — and remove() has
- *  nowhere to put them: it recomputes planRemoval(), which returns [] once the
- *  gesture has dropped the tile from the engine. Re-syncing the binder first
- *  restores the pre-gesture truth so remove() plans the same batch by itself. */
-function removeWidget(id) {
-  glide();
+ *  undo restores the exact board. A drag-out passes the `displaced` commands its
+ *  gesture already computed (by then the tile has left the engine, so the handle
+ *  could not re-plan them); the toolbar passes nothing and the handle plans. */
+function removeWidget(id, displaced) {
   const w = H.widget(id);
   if (!w) return;
-  H.binderOf(w.viewId)?.sync();
-  w.remove();
-  hosts.delete(id); specs.delete(id);
-  if (state.focus === id) state.focus = null;
-  ctxRef.instance.renderNow();
-  syncToolbar();
+  glide();
+  w.remove(displaced);
+  setFocus(state.focus === id ? null : state.focus);
   flash('removed widget (survivors re-packed)');
 }
 
 /** RESIZE (toolbar): cycle the focused tile's row span 1→2→3→1 through the
  *  handle — same engine pipeline as the corner drag, same ONE-BatchCommand
- *  commit. (API gap #3) resize() returns void: the binder's accepted/refused
- *  boolean is swallowed, so the page compares cells to know what happened. */
+ *  commit, and it resolves the board's own accepted/refused verdict. */
 async function cycleRows(id) {
   const w = H.widget(id);
   if (!w?.cell) return;
-  const before = w.cell.h;
-  const rows = before >= 3 ? 1 : before + 1;
-  await w.resize(w.cell.w, rows);
-  const after = w.cell.h;
-  flash(after !== before ? `resized → ${after} row${after > 1 ? 's' : ''} tall (neighbours pushed live)`
-                         : 'resize refused (pinned neighbour?)');
+  const rows = w.cell.h >= 3 ? 1 : w.cell.h + 1;
+  const ok = await w.resize(w.cell.w, rows);
+  flash(ok ? `resized → ${rows} row${rows > 1 ? 's' : ''} tall (neighbours pushed live)`
+           : 'resize refused (pinned neighbour?)');
 }
 
-/** PIN/LOCK: the authoritative per-node lock. (API gap #8) `pin()` writes the
- *  node state but does not re-sync the binder, so the engine's own `locked`
- *  flag (never pushed, drags refused) and the hidden resize handle would lag a
- *  frame behind the toolbar. */
+/** PIN/LOCK: the authoritative per-node lock — pin() re-syncs the board itself,
+ *  so the engine's `locked` flag (never pushed, drags refused) and the hidden
+ *  resize handle take effect on this frame. */
 function togglePin(id) {
   const w = H.widget(id);
   if (!w) return;
   w.pin();
-  H.binderOf(w.viewId)?.sync();
-  repaint(id); syncToolbar();
+  syncChrome();
+  syncToolbarSoon();
   flash(w.pinned ? 'pinned (keeps its cells; drags onto it refused)' : 'unpinned');
 }
 
@@ -531,8 +506,6 @@ function setFloatMode(on) {
   glide();
   H.setFloat(on);
   document.getElementById('t-float').textContent = `Float: ${on ? 'on' : 'off'}`;
-  ctxRef.instance.renderNow();
-  repaintAll();
   flash(on ? 'Float ON: widgets stay wherever you put them - gaps are legal'
            : 'Float OFF: gravity packs widgets upward');
 }
@@ -548,11 +521,8 @@ function setSizingMode(mode) {
   document.getElementById('t-mode').textContent = `Mode: ${mode}`;
   // fit: refit the camera to the design-height board. grow: KEEP the camera —
   // the board extends past the fold and panning reaches it; refitting would
-  // shrink the view and make grow visually identical to fit. (API gap #9) the
-  // only re-frame the handle exposes is showView().
-  if (mode === 'fit') H.showView(H.activeView);
-  ctxRef.instance.renderNow();
-  repaintAll();
+  // shrink the view and make grow visually identical to fit.
+  if (mode === 'fit') H.fit();
   flash(mode === 'fit'
     ? 'FIT: boards keep their height — rows squeeze so everything stays visible'
     : 'GROW: rows keep their height — boards extend downward (camera refits)');
@@ -571,10 +541,7 @@ function loadBoard() {
   if (!state.saved) { flash('nothing saved yet'); return; }
   glide();
   const active = H.activeView;
-  H.dispose();                      // drop the old binders
-  // (API gap #6) dispose() leaves behind the GroupModels finalize() created, so
-  // a rebuild would stack a second set of boards. The page evicts them.
-  for (const g of [...ctxRef.diagram.getGroups()]) ctxRef.diagram.removeGroup(g.id);
+  H.dispose();                      // drops the old binders AND their boards
   SPEC = buildSpec(JSON.parse(state.saved));
   H = SPEC.handle;
   // Reconcile the model to the rebuilt spec (same ids → the same hosts, so
@@ -599,12 +566,13 @@ function wireControls() {
     btn.addEventListener('pointerdown', (e) => {
       if (e.button !== 0) return;
       const p = PALETTE[btn.dataset.add];
-      // (API gap #10) palette drag-in lives only on the binder — the handle has
-      // no beginPaletteDrag — so this is the one gesture that must reach one
-      // layer down through binderOf().
+      // THE DOCUMENTED ESCAPE HATCH: beginPaletteDrag is a gesture on the
+      // binder one layer down, which binderOf() exposes on purpose. The carrier
+      // node never enters the model, so it needs no widget metadata — dropIn()
+      // builds the real widget through H.addWidget().
       const binder = H.binderOf();
       if (!p || !binder) return;
-      const node = makeWidgetNode(p);
+      const node = new NodeModel({ type: 'widget', size: { width: 120, height: 90, depth: 0 } });
       node.__palette = p;
       const chip = btn.cloneNode(true);
       chip.style.width = `${btn.offsetWidth}px`;
@@ -612,18 +580,17 @@ function wireControls() {
     });
   }
   const on = (id, fn) => document.getElementById(id).addEventListener('click', fn);
-  const focused = (fn) => async () => { if (state.focus) { await fn(state.focus); syncToolbar(); } else flash('focus a tile first'); };
-  on('t-undo', async () => { const cm = cmd(); if (cm.canUndo()) { await cm.undo(); refresh(); } syncToolbar(); flash('undo'); });
-  on('t-redo', async () => { const cm = cmd(); if (cm.canRedo()) { await cm.redo(); refresh(); } syncToolbar(); flash('redo'); });
+  const focused = (fn) => async () => { if (state.focus) { await fn(state.focus); syncToolbarSoon(); } else flash('focus a tile first'); };
+  on('t-undo', async () => { const cm = cmd(); if (cm.canUndo()) { await cm.undo(); refresh(); } syncToolbarSoon(); flash('undo'); });
+  on('t-redo', async () => { const cm = cmd(); if (cm.canRedo()) { await cm.redo(); refresh(); } syncToolbarSoon(); flash('redo'); });
   on('t-mode', () => setSizingMode(sizingMode === 'fit' ? 'grow' : 'fit'));
   on('t-float', () => setFloatMode(!floatMode));
   on('t-pin', focused(togglePin));
   on('t-grow', focused(cycleRows));
   on('t-remove', focused(removeWidget));
-  // (API gap #11) z-order is not on the handle — but every command is on the
-  // front door, and a widget handle exposes its node, so the app just says so.
-  on('t-front', focused(async (id) => { await cmd().execute(new BringNodeToFrontCommand(id)); ctxRef.instance.renderNow(); flash('brought to front'); }));
-  on('t-back', focused(async (id) => { await cmd().execute(new SendNodeToBackCommand(id)); ctxRef.instance.renderNow(); flash('sent to back'); }));
+  // Z-order: one undoable step each, on the widget handle.
+  on('t-front', focused((id) => { H.widget(id)?.bringToFront(); flash('brought to front'); }));
+  on('t-back', focused((id) => { H.widget(id)?.sendToBack(); flash('sent to back'); }));
   on('t-save', () => saveBoard());
   on('t-load', () => loadBoard());
 }
@@ -654,10 +621,11 @@ defineDemo({
     statusEl = document.getElementById('db-status');
     SPEC = buildSpec(VIEWS);
     H = SPEC.handle;
-    // (API gap #13) render() auto-runs a kit spec's finalize() but ignores its
-    // renderCustomNode, so it must be passed through. The page routes it via
-    // the live SPEC binding rather than the value, because Load rebuilds the
-    // spec and renderCustomNode is fixed at mount time.
+    // `render(SPEC, ctx.host)` alone paints: the spec carries its own
+    // renderCustomNode and render() honours it. This page passes it explicitly
+    // for ONE reason — render() resolves the painter once, at mount, and Load
+    // REPLACES the spec, so a widget added after a Load would be unknown to the
+    // captured closure. A live binding, not a workaround.
     const instance = render(SPEC, ctx.host, { renderCustomNode: (n, host) => SPEC.renderCustomNode(n, host) });
     ctx.instance = instance;
     ctx.diagram = instance.getModel();
@@ -697,10 +665,9 @@ defineDemo({
     const settle = async () => { ctx.instance.renderNow(); await ctx.tick(); };
     const cell = (id) => H.widget(id)?.cell;
     const node = (id) => H.widget(id)?.node;
-    // (API gap #12) the page's own gate needs three binder-level readings the
-    // handle does not expose: metrics(), cellRectOf() and the accept/refuse
-    // boolean of a programmatic gesture.
-    const B = () => H.binderOf('overview');
+    // Board geometry, a widget's world rect and the accept/refuse verdict of a
+    // programmatic gesture are all on the handle — this gate reads nothing
+    // below it.
     const cellsSnap = () => {
       const out = {};
       for (const v of H.views) for (const w of H.widgetsOf(v)) if (w.cell) out[w.id] = { ...w.cell };
@@ -761,7 +728,7 @@ defineDemo({
     const lineW0 = line.size.width;
     check(lineW0 > donut.size.width * 1.6, `span 8 dwarfs span 4 (${Math.round(lineW0)} vs ${Math.round(donut.size.width)})`);
     check(Math.abs(donut.position.x - (line.position.x + lineW0 + GAP)) < 2, 'donut sits one gap right of the line chart (same row)');
-    const m0 = B().metrics();
+    const m0 = H.metrics('overview');
     checkEqual(m0.sizing, 'fit', 'default sizing mode is FIT (the user decision)');
     check(Math.abs(m0.rowHeight - (TAB_H - 2 * GAP - 4 * GAP) / 5) < 0.1, `fit row height derives from 5 rows (${m0.rowHeight.toFixed(1)})`);
     const track = (TAB_W - 2 * GAP - 11 * GAP) / 12;
@@ -831,7 +798,7 @@ defineDemo({
       const ph = container.querySelector('.axdb-ph');
       check(ph && ph.style.display !== 'none', 'mid-drag: the placeholder is visible');
       const phRect = { x: parseFloat(ph.style.left), y: parseFloat(ph.style.top), w: parseFloat(ph.style.width) };
-      const engRect = B().cellRectOf('mix');
+      const engRect = H.widget('mix').rect;
       check(Math.abs(phRect.x - engRect.x) < 1 && Math.abs(phRect.y - engRect.y) < 1 && Math.abs(phRect.w - engRect.width) < 1,
         'the placeholder shows EXACTLY the engine\'s current cell for the held tile');
       check(!!container.querySelector('.grafloria-node-host.axdb-ghost'), 'the held tile is a transition-exempt ghost');
@@ -867,7 +834,7 @@ defineDemo({
     {
       const rs = container.querySelector(`.grafloria-node-host[data-node-id="trend"] .axdb-rs`);
       check(!!rs, 'the line chart host carries the kit\'s corner resize handle');
-      const rowH = B().metrics().rowHeight;
+      const rowH = H.metrics('overview').rowHeight;
       const corner = { x: line.position.x + line.size.width - 6, y: line.position.y + line.size.height - 6 };
       PID++;
       const a = toClient(corner.x, corner.y);
@@ -897,9 +864,9 @@ defineDemo({
       togglePin('reps');
       await settle();
       check(H.widget('reps').pinned, 'pin() reached the model as the authoritative lock');
-      check(!(await B().moveTo('mix', 0, 3)), 'a drag ONTO the pinned table is refused outright');
+      check(!(await H.widget('mix').moveTo(0, 3)), 'a drag ONTO the pinned table is refused outright');
       checkEqual(cell('mix'), { x: 8, y: 1, w: 4, h: 2 }, 'the refused mover kept its cells');
-      check(!(await B().resizeTo('trend', 8, 3)), 'growth INTO the pinned table clamps to no-op (E4b applied to size)');
+      check(!(await H.widget('trend').resize(8, 3)), 'growth INTO the pinned table clamps to no-op (E4b applied to size)');
       check(container.querySelector(`.grafloria-node-host[data-node-id="reps"] .axdb-rs`) === null,
         'a pinned tile hides its resize handle');
       togglePin('reps');
@@ -935,7 +902,7 @@ defineDemo({
       document.getElementById('t-mode').click(); await settle();
       const grown = 2 * GAP + 5 * BASE_ROW + 4 * GAP;   // 5 rows at the 130px design row
       check(Math.abs(board().size.height - grown) < 1, `GROW: the board extended to hold 130px rows (${Math.round(board().size.height)} = ${grown})`);
-      check(Math.abs(B().metrics().rowHeight - BASE_ROW) < 0.1, 'GROW: rows keep the design height');
+      check(Math.abs(H.metrics('overview').rowHeight - BASE_ROW) < 0.1, 'GROW: rows keep the design height');
       check(inside(grown), 'GROW: every tile stays inside the grown board');
       document.getElementById('t-mode').click(); await settle();
       check(Math.abs(board().size.height - TAB_H) < 1, 'back to FIT: design height restored');
@@ -946,28 +913,28 @@ defineDemo({
     {
       const before = D.getNodes().length;
       const newId = await addWidget('bar'); await settle();
-      check(D.getNodes().length === before + 1, 'palette click-add created a node via AddNodeCommand');
+      check(D.getNodes().length === before + 1, 'palette click-add created the node via handle.addWidget()');
       const newCell = cell(newId);
       check(newCell && newCell.y >= 5, `the cell-less add auto-positioned into the first free hole (row ${newCell.y})`);
-      check(!!hosts.get(newId), 'the added widget was registered with the dashboard and PAINTED');
+      check(!!cardOf(newId), 'the added widget was registered with the dashboard and PAINTED');
       const gi = D.getNode(newId).getGridItem();
       check(gi && gi.columnStart === newCell.x + 1, 'the assigned cells persisted into the standard GridItemConfig');
       removeWidget(newId); await settle();
       check(D.getNodes().length === before, 'remove (with the survivors\' re-pack folded in) took it back out');
       await cm.undo(); refresh(); await settle();
       check(D.getNodes().length === before + 1, 'undo restored the widget INTO the pack grid');
-      await cm.undo(); await cm.undo(); refresh(); await settle();
-      check(D.getNodes().length === before, 'undoing the add removed it again (2 steps: node + membership)');
+      await cm.undo(); refresh(); await settle();
+      check(D.getNodes().length === before, 'undoing the add removed it again — ONE step (node + membership)');
       cm.clear();
     }
 
-    // ---- (7) Z-ORDER restack via the undoable commands ---------------------
+    // ---- (7) Z-ORDER restack via the widget handle -------------------------
     {
       const a = node(kpis[0]), b = donut;
-      await cm.execute(new BringNodeToFrontCommand(b.id)); await settle();
-      check(b.getEffectiveZIndex() > a.getEffectiveZIndex(), 'BringNodeToFrontCommand lifted the tile above a peer');
-      await cm.execute(new SendNodeToBackCommand(b.id)); await settle();
-      check(b.getEffectiveZIndex() <= a.getEffectiveZIndex(), 'SendNodeToBackCommand dropped it back down');
+      H.widget(b.id).bringToFront(); await settle();
+      check(b.getEffectiveZIndex() > a.getEffectiveZIndex(), 'widget.bringToFront() lifted the tile above a peer');
+      H.widget(b.id).sendToBack(); await settle();
+      check(b.getEffectiveZIndex() <= a.getEffectiveZIndex(), 'widget.sendToBack() dropped it back down');
       await cm.undo(); await cm.undo(); await settle();
       cm.clear();
     }
@@ -986,16 +953,16 @@ defineDemo({
 
     // ---- (11) BUILT-IN RENDERERS: the data became real marks ---------------
     {
-      const card = (id) => hosts.get(id)?.querySelector('.axdb-widget');
+      const card = (id) => cardOf(id);
       check(card('kpi-revenue').querySelector('.axdb-kpi-v').textContent === '$6.81M', 'the kpi widget shows the declared value');
       check(card('kpi-revenue').querySelector('.axdb-kpi-d').classList.contains('up'), 'a positive delta paints up');
       check(card('trend').querySelectorAll('polyline').length === 2, 'the line widget drew one polyline per declared series');
       check(card('mix').querySelectorAll('path').length === DATA.regions.length, 'the donut drew one arc per declared slice');
       check(card('reps').querySelectorAll('tbody tr').length === DATA.reps.length, 'the table drew one row per declared row');
       showView('pipeline'); await settle();
-      check(hosts.get('pipe-funnel').querySelectorAll('rect').length === DATA.pipeline.length, 'the funnel drew one bar per declared stage');
+      check(card('pipe-funnel').querySelectorAll('rect').length === DATA.pipeline.length, 'the funnel drew one bar per declared stage');
       showView('sales'); await settle();
-      check(hosts.get('sales-bar').querySelectorAll('rect').length === DATA.regions.length, 'the bar widget drew one column per declared bar');
+      check(card('sales-bar').querySelectorAll('rect').length === DATA.regions.length, 'the bar widget drew one column per declared bar');
       showView('overview'); await settle();
     }
 
@@ -1011,7 +978,7 @@ defineDemo({
       loadBoard(); await settle();
       check(D.getNodes().length === savedCount, `load restored the widget count (${savedCount})`);
       checkEqual(cellsSnap(), cellsBefore, 'load restored EVERY tile\'s cells (the data-first round-trip)');
-      check(!!hosts.get('trend') && !!cell('trend'), 'the rebuilt board is live again (fresh binders, same hosts)');
+      check(!!cardOf('trend') && !!cell('trend'), 'the rebuilt board is live again (fresh binders, same hosts)');
     }
 
     // ---- Clean up to a deterministic, populated frame for the golden -------
