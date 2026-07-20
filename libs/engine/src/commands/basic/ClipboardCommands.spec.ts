@@ -230,6 +230,53 @@ describe('Clipboard Commands (Phase 1.8)', () => {
       expect(nodes[0].id).not.toBe(nodes[1].id);
     });
 
+    /**
+     * Pasting a grouped selection must paste the GROUP, with its membership
+     * remapped to the pasted nodes.
+     *
+     * The member-remap loop iterated the freshly-constructed (empty) group instead
+     * of the clipboard's `oldGroup`, so `newMembers` was always empty, the
+     * `size > 0` guard dropped the group, and copy-pasting a grouped selection
+     * silently lost the group entirely. It survived because EVERY prior paste test
+     * used `groups: []` — a paste-a-group case never existed. The assertion is on
+     * the REMAPPED ids, not merely on the group's existence: a test that only
+     * checked the group was pasted would pass with the remap still broken.
+     */
+    it('pastes a group and remaps its members to the pasted nodes', () => {
+      const a = new NodeModel({ type: 'rect', position: { x: 0, y: 0 } });
+      const b = new NodeModel({ type: 'rect', position: { x: 100, y: 0 } });
+      diagram.addNode(a);
+      diagram.addNode(b);
+      const group = new GroupModel({ name: 'Cluster' });
+      diagram.addGroup(group);
+      group.addMember(a.id);
+      group.addMember(b.id);
+
+      clipboard.copy({
+        nodes: [a, b],
+        links: [],
+        groups: [group],
+      });
+
+      new PasteCommand(clipboard).execute(context);
+
+      // The group was pasted…
+      expect(diagram.getGroups().length).toBe(2);
+      const pasted = diagram.getGroups().find((g) => g.id !== group.id)!;
+      expect(pasted).toBeDefined();
+
+      // …and its members are the PASTED nodes, not the originals and not empty.
+      const pastedNodeIds = diagram
+        .getNodes()
+        .filter((n) => n.id !== a.id && n.id !== b.id)
+        .map((n) => n.id);
+      expect(pastedNodeIds).toHaveLength(2);
+      expect([...pasted.members].sort()).toEqual([...pastedNodeIds].sort());
+      // The originals must NOT be members of the pasted group.
+      expect(pasted.members.has(a.id)).toBe(false);
+      expect(pasted.members.has(b.id)).toBe(false);
+    });
+
     it('should apply position offset to pasted nodes', () => {
       const node = new NodeModel({ type: 'rect', position: { x: 100, y: 100 } });
       diagram.addNode(node);

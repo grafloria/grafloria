@@ -169,14 +169,25 @@ export class PasteCommand extends Command {
       (group as any).id = newId; // Override readonly id
       this.idMap.set(oldId, newId);
 
-      // Remap member IDs
+      // Remap member IDs — from oldGroup, which is the one that HAS members.
+      // This iterated `group.members` (the freshly-constructed, empty group), so
+      // newMembers was always empty, the size>0 guard below dropped the group, and
+      // pasting a grouped selection silently lost the group. No test caught it
+      // because every paste test used groups:[]. See ClipboardCommands.spec.ts.
       const newMembers = new Set<string>();
-      for (const memberId of group.members) {
+      for (const memberId of oldGroup.members) {
         const newMemberId = this.idMap.get(memberId);
         if (newMemberId) {
           newMembers.add(newMemberId);
         }
       }
+      // DIRECT field write, deliberately: `group` is DETACHED here (constructed,
+      // not yet addGroup'd), so nothing is capturing it and a tracked mutator would
+      // buy nothing — exactly like building a node before adding it. The addGroup
+      // below is the funnel: it emits the structural op carrying group.serialize(),
+      // whose `members` array is read wholesale, so a collab peer receives the
+      // pasted group correctly regardless of this assignment. (Contrast an ATTACHED
+      // group, where membership edits MUST go through addMember/removeMember.)
       group.members = newMembers;
 
       // Only add group if it has members
