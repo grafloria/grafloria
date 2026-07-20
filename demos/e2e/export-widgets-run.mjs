@@ -40,9 +40,14 @@ console.log('--- custom-node export: the real dashboard, exported by its own ins
 const out = await p.evaluate(() => {
   const instance = window.__demoCtx.instance;
 
-  // The visible view only. (The demo parks inactive tab views at x ≈ -20000, so the
-  // unscoped box legitimately spans them — that is model geometry, not an export bug.)
-  const overview = ['kpi-revenue', 'kpi-customers', 'kpi-avgdeal', 'kpi-winrate', 'trend', 'mix', 'reps'];
+  // THE VISIBLE VIEW ONLY. Tabs park inactive views at x ≈ -20000, so an unscoped
+  // export of a tabbed board writes a ~21,000px document that is almost all empty.
+  // That is real model geometry rather than a rendering fault — but a developer who
+  // calls export() and gets that has still been failed, so the kit now names the
+  // scope itself. This asks the LIVE handle; the literal below is only the expected
+  // answer, so a wrong set fails loudly instead of quietly agreeing with itself.
+  const overview = [...window.__demoCtx.dashboard.exportIds()];
+  const expected = ['overview', 'kpi-revenue', 'kpi-customers', 'kpi-avgdeal', 'kpi-winrate', 'trend', 'mix', 'reps'];
 
   const full = instance.exportSvgString();
   // `customNodes: []` is the documented opt-out — and it reproduces, exactly, what every
@@ -56,6 +61,8 @@ const out = await p.evaluate(() => {
     hosts: document.querySelectorAll('.grafloria-html-layer .grafloria-node-host').length,
     before: { viewBox: before.viewBox, svg: before.svg },
     scoped: { viewBox: scoped.viewBox, svg: scoped.svg },
+    ids: { got: overview.sort(), expected: expected.sort() },
+    fullWidth: full.viewBox.width,
   };
 });
 
@@ -131,6 +138,20 @@ check(
 );
 check('the scoped export still carries its widget content', out.scoped.svg.includes('$6.81M'));
 check('the scoped export excludes the other views', !out.scoped.svg.includes('data-node-id="pipe-funnel"'));
+
+// -- the kit names its own scope --------------------------------------------
+check(
+  'handle.exportIds() names the visible view — group included, parked views out',
+  JSON.stringify(out.ids.got) === JSON.stringify(out.ids.expected),
+  out.ids.got.join(',')
+);
+// The reason exportIds() exists, stated as a number: this is what a developer who
+// does NOT scope gets today, and it is not a document anyone wanted.
+check(
+  'and the unscoped export really is the runaway it protects against',
+  out.fullWidth > 15000,
+  `unscoped ${Math.round(out.fullWidth)}px vs scoped ${Math.round(out.scoped.viewBox.width)}px`
+);
 
 // -- the fidelity channel ----------------------------------------------------
 check('warnings is a real array a caller can read', Array.isArray(out.warnings));

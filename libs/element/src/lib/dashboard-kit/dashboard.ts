@@ -201,6 +201,25 @@ export interface DashboardHandle {
   /** The current layout as plain data — feed it straight back to dashboard(). */
   toJSON(): DashboardViewSpec[];
   /**
+   * The node ids ONE view occupies — pass straight to `includeIds` to export
+   * just that board:
+   *
+   * ```ts
+   * api.export('pdf', { includeIds: handle.exportIds() });
+   * ```
+   *
+   * WHY THIS EXISTS. Tabs park the inactive views far off-camera, which is
+   * invisible on screen and ruinous on export: `export()` frames the whole
+   * MODEL, so a two-view board writes a ~21,000px document that is almost
+   * entirely empty — with no warning, because nothing is technically wrong.
+   * Scoping was always possible; knowing WHAT to scope to was not.
+   *
+   * The set includes the view's GROUP as well as its widgets. Rolling this by
+   * hand from `toJSON()` looks equivalent and is not — it drops the group, and
+   * the widgets export without the frame they sit in.
+   */
+  exportIds(viewId?: string): Set<string>;
+  /**
    * THE DOCUMENTED ESCAPE HATCH: the view's own `bindDashboardGrid` handle
    * (default: the active view). Reach for it only for what this façade does
    * not cover yet — palette drag-in (`beginPaletteDrag`), board `metrics()`,
@@ -523,6 +542,20 @@ export function dashboard(options: DashboardOptions): DashboardSpec {
     },
     binderOf(viewId) {
       return binders.get(viewId ?? active);
+    },
+    exportIds(viewId) {
+      const id = viewId ?? active;
+      const ids = new Set<string>();
+      // A view with no group is a view that was never finalized — an empty set
+      // is the honest answer, and scoping an export to nothing is a visible
+      // failure rather than a silently enormous document.
+      if (!groups.has(id)) return ids;
+      ids.add(id);
+      // Read the SPEC, not the group's member Set: membership is maintained by
+      // commands and an in-flight drag can have a widget momentarily reparented.
+      // The spec is what the view IS.
+      for (const w of views.find((v) => v.id === id)?.widgets ?? []) ids.add(w.id);
+      return ids;
     },
     toJSON() {
       // SAVING ON A PHONE SAVES THE DESKTOP LAYOUT. The binder serialises from

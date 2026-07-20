@@ -691,3 +691,51 @@ describe('dashboard() — RTL', () => {
     expect(f.x + f.width - (a.x + a.width)).toBeCloseTo(handle.metrics()!.padding, 4);
   });
 });
+
+describe('dashboard() — exporting a TABBED board', () => {
+  // THE BUG THIS PINS. Tabs are a kit feature: `showView()` parks the inactive
+  // views at OFFSCREEN_X (-20000) so only one is on camera. That is invisible
+  // on screen and catastrophic on export — `api.export()` frames the whole
+  // MODEL, so a two-view board writes a ~21000px document that is 95% empty,
+  // and the developer gets no signal that anything is wrong.
+  //
+  // The export layer already scopes correctly via `includeIds`; what was
+  // missing is any way for the caller to KNOW which ids the visible board is.
+  // Reaching for handle.toJSON() and mapping widget ids looks right and is
+  // wrong — it misses the group, so the frame goes and the widgets export
+  // unparented.
+  it('exportIds() names exactly the visible view — group included', () => {
+    const { handle } = mount(SIMPLE());
+    const ids = handle!.exportIds();
+
+    // The group is the frame the widgets live in. Omitting it is the mistake a
+    // caller rolling their own set would make, so it is asserted first.
+    expect(ids.has('overview')).toBe(true);
+    for (const w of ['a', 'b', 'c']) expect(ids.has(w)).toBe(true);
+
+    // And NOTHING from the parked view — this is the half that shrinks the
+    // document. A set that simply returned every id would pass the asserts
+    // above and fail here.
+    expect(ids.has('sales')).toBe(false);
+    expect(ids.has('d')).toBe(false);
+    expect(ids.size).toBe(4);
+  });
+
+  it('follows the active view, so exporting after a tab switch is correct', () => {
+    const { handle } = mount(SIMPLE());
+    handle!.showView('sales');
+    const ids = handle!.exportIds();
+    expect([...ids].sort()).toEqual(['d', 'sales']);
+  });
+
+  it('takes an explicit view id — exporting a tab you are not looking at', () => {
+    const { handle } = mount(SIMPLE());
+    expect([...handle!.exportIds('sales')].sort()).toEqual(['d', 'sales']);
+    expect(handle!.activeView).toBe('overview'); // asking must not switch tabs
+  });
+
+  it('returns an empty set for a view that does not exist', () => {
+    const { handle } = mount(SIMPLE());
+    expect(handle!.exportIds('nope').size).toBe(0);
+  });
+});

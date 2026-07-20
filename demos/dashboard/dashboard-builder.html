@@ -627,6 +627,10 @@ defineDemo({
     const instance = render(SPEC, ctx.host, { renderCustomNode: (n, host) => SPEC.renderCustomNode(n, host) });
     ctx.instance = instance;
     ctx.diagram = instance.getModel();
+    // Debug seam, same intent as ctx.instance: the export gate needs the LIVE
+    // handle so it can prove `exportIds()` against the real board rather than a
+    // hand-copied id list that would drift the moment a widget is renamed.
+    ctx.dashboard = SPEC.handle;
     ctx.engine = instance.getEngine();
 
     afterMount('overview');
