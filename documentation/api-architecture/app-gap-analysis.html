@@ -132,14 +132,33 @@
       (<code>widget(id).resize/moveTo/pin/remove/update</code>) and built-in data-driven widget renderers.
       <code>handle.toJSON()</code> returns valid <code>dashboard()</code> input.</li>
     <li><b>Two demo pages</b> — a plain dashboard builder and a labelled grid-options page — guarded by a
-      27-scenario REAL-MOUSE battery (<code>demos/e2e/dashboard-scenarios-run.mjs</code>) that screenshots every
+      30-scenario REAL-MOUSE battery (<code>demos/e2e/dashboard-scenarios-run.mjs</code>) that screenshots every
       stage and asserts the tile lands exactly where the placeholder stood.</li>
+    <li><b>Three rows below were re-checked and moved.</b> <code>PluginManager</code> was reported here as dead;
+      it was in fact HALF-WIRED — <code>registerPlugin()</code> only recorded a plugin, so no hook ever fired.
+      Both entry points now run <code>install</code> + <code>activate</code>, and a throwing plugin is reported
+      rather than fatal: <b>keep, not delete</b>. The collab register that corrupted group membership over the
+      wire is fixed (<code>9b53c533c</code>) — it shipped a delta where every other register ships a value, and
+      no test had ever added a member to a group over collab. And the lazy subsystem, built since wave 8, was
+      reachable only by hand-constructing an <code>SVGRenderer</code>, never from the <code>createDiagram</code>
+      factory every embedder uses — <b>the same unreachability shape §2 names below, found again while fixing
+      it</b>.</li>
   </ul>
   Two blockers listed below were fixed on the way: the <b>reachability</b> finding (Phase 0 — the front door now
   re-exports the lower packages wholesale, 207 unreachable capabilities → 0) and the dormant
   <b>12-column layout engine</b> (now push-driven, with live flex/grid item configs and node z-order).
-  Still open from the dashboard list: <b>widget-content export</b> (PDF/PNG cannot paint HTML custom nodes) and
-  <b>custom-node culling</b>.
+  The last two dashboard-list items have since closed too. <b>Widget-content export</b>
+  (<code>907525159</code>): custom-node content is now <i>transcribed</i> to SVG primitives — inline
+  <code>&lt;svg&gt;</code> lifted with custom properties resolved and the viewBox fit baked into a transform, HTML
+  text to <code>&lt;text&gt;</code>, backgrounds and borders to <code>rect</code>/<code>line</code> — so all six
+  built-in widget kinds export as TRUE VECTOR, valid in PDF and standalone rasterizers rather than
+  <code>foreignObject</code> that only browsers paint. Anything not expressible as those primitives (gradients,
+  shadows, images, clipping) still degrades, and now <i>says so</i> via <code>ExportOptions.onWarnings</code>,
+  which fires for every format. Gate: <code>demos/e2e/export-widgets-run.mjs</code>, 24/24 — it pins the before
+  state too (an empty 40×40 square, 331 bytes). <b>Custom-node culling</b>: opt-in host culling with detach-and-
+  reattach semantics; 300 widgets drop 94% of their DOM and cost zero repaints on return.
+  <code>ViewLifecycle</code> could not be reused — its freeze is destroy-and-rebuild, which is correct for a VNode
+  and fatal to a host contracted to mount exactly once.
 </div>
 
 <h2>2 · The finding that matters more than any single gap</h2>
