@@ -659,13 +659,29 @@ function captureVersion({ auto = false } = {}) {
   return v;
 }
 
-/** Bank only if the board actually differs from the newest version — browsing
- *  versions must not breed a duplicate entry per click. */
+/** Bank only if the board differs from THE VERSION IT CAME FROM — browsing
+ *  versions must not breed a duplicate entry per click.
+ *
+ *  The anchor is `currentVersion`, not `history[0]`, and the difference is the
+ *  whole point: after one restore the newest entry is the auto-bank of the board
+ *  you LEFT, so comparing against it declared every subsequent click a change
+ *  and banked a copy of an unedited board every time (caught by the gate). */
 function captureIfChanged(opts) {
-  const now = JSON.stringify(H.toJSON());
-  if (history[0] && JSON.stringify(history[0].views) === now) return null;
+  const anchor = history.find((v) => v.id === currentVersion) ?? history[0];
+  if (anchor && JSON.stringify(anchor.views) === JSON.stringify(H.toJSON())) return null;
   return captureVersion(opts);
 }
+
+/** What the last persist() had to drop to fit. REPORTED BY THE CALLER, not
+ *  flashed from here: persist() runs inside save/restore, whose own flash lands
+ *  a moment later and used to overwrite the warning before anyone read it (the
+ *  gate caught that too — the message existed and was invisible). */
+let lastShed = null;
+const shedNote = () => {
+  const s = lastShed;
+  lastShed = null;
+  return s ? ` · ⚠ storage full, dropped the oldest ${s}` : '';
+};
 
 function persist() {
   if (!storageOk) return false;
@@ -676,13 +692,15 @@ function persist() {
   for (let i = history.length - 1; i >= 0; i--) {
     if (!history[i].thumb) continue;
     history[i].thumb = null;
-    try { store(); flash('storage full — dropped the oldest thumbnails'); renderHistory(); return true; } catch { /* keep shedding */ }
+    try { store(); lastShed = 'thumbnails'; renderHistory(); return true; } catch { /* keep shedding */ }
   }
   while (history.length > 1) {
     history.pop();
-    try { store(); flash('storage full — dropped the oldest versions'); renderHistory(); return true; } catch { /* keep shedding */ }
+    try { store(); lastShed = 'versions'; renderHistory(); return true; } catch { /* keep shedding */ }
   }
+  lastShed = 'versions';
   try { localStorage.removeItem(HISTORY_KEY); } catch { /* nothing more to do */ }
+  renderHistory();
   return false;
 }
 
@@ -732,10 +750,14 @@ function restoreVersion(id) {
   currentVersion = v.id;
   state.saved = JSON.stringify(v.views);
   renderHistory();
-  flash(`restored ${v.id} · ${widgetCount(v)} widgets · saved ${relTime(v.at)}`);
+  flash(`restored ${v.id} · ${widgetCount(v)} widgets · saved ${relTime(v.at)}${shedNote()}`);
 }
 
 const widgetCount = (v) => v.views.reduce((s, x) => s + x.widgets.length, 0);
+/** …and how many of them are on the view the THUMBNAIL shows. A card that said
+ *  "14 widgets" next to a picture of 7 was the drawer's one genuinely
+ *  misleading line — the gate caught it. */
+const viewCount = (v) => v.views.find((x) => x.id === v.view)?.widgets.length ?? 0;
 
 function relTime(at) {
   const s = Math.max(0, Math.round((Date.now() - at) / 1000));
@@ -799,7 +821,7 @@ function renderHistory() {
         <span class="hist-when">${esc(relTime(v.at))}</span>
         ${v.auto ? '<span class="hist-tag" title="banked automatically before a restore">auto</span>' : ''}
         ${v.id === currentVersion ? '<span class="hist-tag now">current</span>' : ''}</div>
-      <div class="hist-sub">${widgetCount(v)} widgets · ${esc(viewNameOf(v.view))} · ${kb} KB</div>
+      <div class="hist-sub">${esc(viewNameOf(v.view))} · ${viewCount(v)} of ${widgetCount(v)} widgets · ${kb} KB</div>
       <div class="hist-delta">${older ? esc(deltaText(v, older)) : 'first version'}</div>
     </button>`;
   }).join('');
@@ -823,7 +845,7 @@ function toggleHistory(on) {
 function saveBoard() {
   const v = captureVersion();
   state.saved = JSON.stringify(v.views);
-  flash(`saved ${v.id} · ${widgetCount(v)} widgets · ${state.saved.length.toLocaleString()} bytes`);
+  flash(`saved ${v.id} · ${widgetCount(v)} widgets · ${state.saved.length.toLocaleString()} bytes${shedNote()}`);
 }
 
 function loadBoard() {
