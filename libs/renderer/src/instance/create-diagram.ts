@@ -32,6 +32,9 @@ import {
 } from './layers';
 import type { HydrationSnapshot } from '../ssr/render-to-static';
 import { isBrowser } from '../platform';
+import { HtmlHostCuller } from '../lazy/host-culling';
+import type { HostCullOptions } from '../lazy/host-culling';
+import type { ViewLifecycle } from '../lazy/view-lifecycle';
 
 /**
  * `createDiagram()` — the headless instance factory.
@@ -124,6 +127,51 @@ export interface CreateDiagramOptions extends DomEventBinderOptions {
   renderCustomNode?: (node: NodeModel, element: HTMLElement) => void;
   /** Called before a custom node's host element is removed — unmount your component. */
   removeCustomNode?: (nodeId: string, element: HTMLElement) => void;
+
+  /**
+   * VIEWPORT-CULL the custom-node hosts: keep only the ones near the viewport in the
+   * document. `true` for the defaults, or an options object (`margin`, `hysteresis`,
+   * `mode` — see {@link HostCullOptions}).
+   *
+   * OFF by default, and that is not timidity. Every custom host has been permanently in
+   * the document since custom nodes existed, and embedders are entitled to have built on
+   * that: this workspace's own dashboard kit resolves a tile with
+   * `container.querySelector('.grafloria-node-host[data-node-id=…]')`, and outside it there
+   * are IntersectionObservers, React portal containers, third-party widget libraries that
+   * cache a DOM reference at mount, and analytics that count nodes. Culling removes
+   * elements from the document with no error and no visible diff, so switching it on by
+   * default would break working apps on a version bump, silently, in exchange for a
+   * performance win they did not ask for. A host with hundreds of widgets knows it has
+   * hundreds of widgets and can say so.
+   *
+   * The default MODE, once you are in, is the safe one: `'detach'` keeps the element and
+   * re-appends it on re-entry, so `renderCustomNode` still mounts exactly once and
+   * `removeCustomNode` does NOT fire on a cull.
+   *
+   * INTERACTION WITH ANYTHING THAT READS WIDGET CONTENT, stated because it is not obvious.
+   * Culling never removes a host from `nodeHosts` in `'detach'` mode, only from the
+   * document, so a consumer that walks the map (rather than querying the DOM) still sees
+   * every widget it ever saw. What no consumer can see is a widget that has NEVER been
+   * mounted: culling means its painter has not run and there is no content to read. On a
+   * board larger than the camera has visited, anything that harvests widget content —
+   * export, print, thumbnailing — will find nothing for the tiles the user has never
+   * scrolled to. Pan or `fitView()` first if you need all of them. `mode: 'destroy'` makes
+   * this strictly worse: anything currently culled has no host at all.
+   */
+  cullCustomNodes?: boolean | HostCullOptions;
+
+  /**
+   * Install a {@link ViewLifecycle} — freeze/unfreeze, `autoFreeze`, and the admission set
+   * a {@link ProgressiveMounter} drives.
+   *
+   * The lazy subsystem has been fully built and fully tested since wave 8 and was
+   * reachable only by constructing an `SVGRenderer` by hand — which `createDiagram()`
+   * exists to stop you doing. Undefined keeps today's behaviour exactly: no gate, every
+   * entity culling admits gets a view on the frame it is admitted.
+   *
+   * Custom-node culling honours it too: an explicitly frozen node releases its HTML host.
+   */
+  viewLifecycle?: ViewLifecycle;
 
   /**
    * Adopt a server-rendered snapshot instead of mounting fresh (Card 6).
@@ -337,6 +385,11 @@ export function createDiagram(
     options.theme
   );
   renderer.applyInstanceScope(layers.root);
+  // The lazy subsystem (freeze / autoFreeze / progressive mount) has existed since wave 8
+  // and was reachable only by building an `SVGRenderer` yourself — i.e. not from the
+  // factory that every host actually uses. Absent leaves the renderer ungated, which is
+  // exactly what it did before this line existed.
+  if (options.viewLifecycle) renderer.setViewLifecycle(options.viewLifecycle);
   const patcher = new VNodePatcher({ document: doc });
 
   // -- events -----------------------------------------------------------------
@@ -379,16 +432,82 @@ export function createDiagram(
   );
 
   // -- custom (HTML-layer) nodes ---------------------------------------------
+  //
+  // `nodeHosts` is the record of every host this instance OWNS — not of what is in the
+  // document. In `'detach'` cull mode a culled host stays in this map with its element
+  // parked off-document, which is what keeps the two teardown paths below (model removal,
+  // and `dispose()`) correct without either of them learning that culling exists: a node
+  // that is culled and then deleted still fires `removeCustomNode` exactly once, because
+  // it never left the map.
   const nodeHosts = new Map<string, HTMLElement>();
+
+  const culler = options.cullCustomNodes
+    ? new HtmlHostCuller(
+        options.cullCustomNodes === true ? {} : options.cullCustomNodes,
+        renderer.getViewLifecycle()
+      )
+    : null;
+
+  /**
+   * Nodes a live gesture owns, which must never be culled out from under it.
+   *
+   * Built only when culling is on — a host that never opted in pays not even the Set.
+   */
+  const gestureHeld = (): ReadonlySet<string> => {
+    const ids = new Set<string>(binder.getDraggingNodeIds());
+    // Resize / rotate / vertex. `SelectionToolsController` keeps the gesture's node
+    // private and these gestures are single-selection by construction, so the selection
+    // is the available answer — and being a superset is the safe direction to be wrong in.
+    if (binder.hasActiveGesture()) {
+      for (const node of model.getSelectedNodes()) ids.add(node.id);
+    }
+    return ids;
+  };
 
   const syncCustomNodes = (): void => {
     const wanted = new Set<string>();
+
+    // The viewBox, not `getViewport()`: the two diverge at any zoom != 1 and culling
+    // against the camera rect drops hosts that are on screen whenever the board is zoomed
+    // out — which fitView() always does.
+    if (culler) culler.beginFrame(viewport.getViewBox(), viewport.getZoom(), gestureHeld());
 
     for (const node of model.getNodes()) {
       if (!node.getMetadata('useHTMLLayer')) continue;
       wanted.add(node.id);
 
       let host = nodeHosts.get(node.id);
+
+      if (culler) {
+        const bounds = {
+          x: node.position.x,
+          y: node.position.y,
+          width: node.size?.width ?? 0,
+          height: node.size?.height ?? 0,
+        };
+        // `host?.parentNode` — the DOM's own answer to "is this mounted", rather than a
+        // bookkeeping set that can drift from it. Feeding the CURRENT state back in is what
+        // makes the hysteresis band work: which of the two rects applies depends on where
+        // the host already is.
+        if (!culler.admits(node.id, bounds, !!host?.parentNode)) {
+          if (host) {
+            if (culler.getMode() === 'destroy') {
+              options.removeCustomNode?.(node.id, host);
+              host.remove();
+              nodeHosts.delete(node.id);
+            } else if (host.parentNode) {
+              // DETACH ONLY. No `removeCustomNode` — the component was not unmounted, it
+              // is parked. Firing the teardown hook here would be a lie the host would act
+              // on (disposing a chart it is about to be handed back).
+              host.remove();
+            }
+          }
+          // …and no style write. That is most of the saving: a 400-widget board stops
+          // paying 400 `setAttribute` calls per frame to position elements nobody sees.
+          continue;
+        }
+      }
+
       if (!host) {
         host = doc.createElement('div');
         host.setAttribute('data-node-id', node.id);
@@ -396,7 +515,14 @@ export function createDiagram(
         layers.html.appendChild(host);
         nodeHosts.set(node.id, host);
         options.renderCustomNode?.(node, host);
+      } else if (!host.parentNode) {
+        // Re-entry after a detach cull: the SAME element goes back, with its subtree, its
+        // scroll offset, its canvas bitmap and its event listeners intact. `renderCustomNode`
+        // is NOT called again — "a custom node mounts exactly once" is a promise the cull
+        // is not allowed to break.
+        layers.html.appendChild(host);
       }
+
       host.setAttribute(
         'style',
         nodeHostStyle(node.position.x, node.position.y, node.size.width, node.size.height)

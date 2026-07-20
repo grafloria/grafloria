@@ -233,6 +233,19 @@ export class DomEventBinder {
     return this.nodeDrag?.committed ? [...this.nodeDrag.nodeIds] : [];
   }
 
+  /**
+   * True while a resize / rotate / vertex gesture owns the pointer.
+   *
+   * The companion to {@link getDraggingNodeIds} for the gestures that are NOT node drags.
+   * Custom-node culling needs it: unmounting a host element mid-resize would take the
+   * pointer capture and the handles with it, and `SelectionToolsController` keeps the
+   * gesture's own node private, so "is a gesture live" plus the current selection is the
+   * answer available from out here.
+   */
+  hasActiveGesture(): boolean {
+    return this.selectionTools.isActive();
+  }
+
   // The legacy mouse listeners are GATED on `sawPointerEvent`: once the environment
   // has proved it delivers PointerEvents, the pointer pipeline owns everything and
   // these must go silent, or every mouse gesture would be handled twice (once as

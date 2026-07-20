@@ -24,3 +24,10 @@ export type {
 } from './progressive-mounter';
 
 export type { EntityKind, MountGate, MountStats } from './types';
+
+// Viewport culling for CUSTOM (HTML-layer) node hosts — the one layer that was never
+// culled, so a 400-widget board paid for 400 mounted divs to show three. Opt in through
+// `createDiagram({ cullCustomNodes: true })`; the class is exported for hosts that drive
+// the host lifecycle themselves.
+export { HtmlHostCuller } from './host-culling';
+export type { FreezeQuery, HostCullMode, HostCullOptions } from './host-culling';
