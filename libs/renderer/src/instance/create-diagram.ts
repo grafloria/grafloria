@@ -153,12 +153,17 @@ export interface CreateDiagramOptions extends DomEventBinderOptions {
    * INTERACTION WITH ANYTHING THAT READS WIDGET CONTENT, stated because it is not obvious.
    * Culling never removes a host from `nodeHosts` in `'detach'` mode, only from the
    * document, so a consumer that walks the map (rather than querying the DOM) still sees
-   * every widget it ever saw. What no consumer can see is a widget that has NEVER been
-   * mounted: culling means its painter has not run and there is no content to read. On a
-   * board larger than the camera has visited, anything that harvests widget content —
-   * export, print, thumbnailing — will find nothing for the tiles the user has never
-   * scrolled to. Pan or `fitView()` first if you need all of them. `mode: 'destroy'` makes
-   * this strictly worse: anything currently culled has no host at all.
+   * every widget it ever saw.
+   *
+   * EXPORT IS UNAFFECTED, in either mode, and this used to be untrue. A widget the camera
+   * has never reached has never been painted and a detached one has no layout box, so an
+   * export found nothing to capture for exactly the tiles a user had not scrolled to — and
+   * this comment used to tell you to "pan or `fitView()` first", which is no answer at all
+   * for a headless print job or a server-side thumbnailer. `export()` / `exportSvgString()`
+   * / `exportPdf()` now FORCE-MATERIALIZE the hosts they need, read them, and put the
+   * document back exactly as they found it (see `materializeCustomNodes` below for what
+   * "put back" means per mode). Turning culling on cannot change what comes out of a file:
+   * it is a performance knob, and a performance knob that lost data would not be one.
    */
   cullCustomNodes?: boolean | HostCullOptions;
 
@@ -466,6 +471,52 @@ export function createDiagram(
     return ids;
   };
 
+  /** The lifecycle the culler consults, read once so the export can consult it too. */
+  const lifecycle = renderer.getViewLifecycle();
+
+  /** World bounds of a custom node — the rect both the culler and the capture work in. */
+  const nodeBounds = (node: NodeModel): Rectangle => ({
+    x: node.position.x,
+    y: node.position.y,
+    width: node.size?.width ?? 0,
+    height: node.size?.height ?? 0,
+  });
+
+  /**
+   * Create-or-re-attach one custom node's host and place it.
+   *
+   * Shared by the frame loop and the export boundary deliberately: the two must agree
+   * byte for byte on what a host is (the class, the `data-node-id`, the style, and above
+   * all the mount-once rule that `renderCustomNode` fires only when the element is
+   * created). Two copies of this would drift, and the drift would be silent.
+   *
+   * The element is put in `nodeHosts` and in the document BEFORE the painter runs, which
+   * is what lets the export boundary undo a mount whose painter threw.
+   */
+  const mountHost = (node: NodeModel): void => {
+    let host = nodeHosts.get(node.id);
+
+    if (!host) {
+      host = doc.createElement('div');
+      host.setAttribute('data-node-id', node.id);
+      host.className = 'grafloria-node-host';
+      layers.html.appendChild(host);
+      nodeHosts.set(node.id, host);
+      options.renderCustomNode?.(node, host);
+    } else if (!host.parentNode) {
+      // Re-entry after a detach cull: the SAME element goes back, with its subtree, its
+      // scroll offset, its canvas bitmap and its event listeners intact. `renderCustomNode`
+      // is NOT called again — "a custom node mounts exactly once" is a promise neither the
+      // cull nor the export is allowed to break.
+      layers.html.appendChild(host);
+    }
+
+    host.setAttribute(
+      'style',
+      nodeHostStyle(node.position.x, node.position.y, node.size.width, node.size.height)
+    );
+  };
+
   const syncCustomNodes = (): void => {
     const wanted = new Set<string>();
 
@@ -478,30 +529,24 @@ export function createDiagram(
       if (!node.getMetadata('useHTMLLayer')) continue;
       wanted.add(node.id);
 
-      let host = nodeHosts.get(node.id);
+      const existing = nodeHosts.get(node.id);
 
       if (culler) {
-        const bounds = {
-          x: node.position.x,
-          y: node.position.y,
-          width: node.size?.width ?? 0,
-          height: node.size?.height ?? 0,
-        };
-        // `host?.parentNode` — the DOM's own answer to "is this mounted", rather than a
+        // `existing?.parentNode` — the DOM's own answer to "is this mounted", rather than a
         // bookkeeping set that can drift from it. Feeding the CURRENT state back in is what
         // makes the hysteresis band work: which of the two rects applies depends on where
         // the host already is.
-        if (!culler.admits(node.id, bounds, !!host?.parentNode)) {
-          if (host) {
+        if (!culler.admits(node.id, nodeBounds(node), !!existing?.parentNode)) {
+          if (existing) {
             if (culler.getMode() === 'destroy') {
-              options.removeCustomNode?.(node.id, host);
-              host.remove();
+              options.removeCustomNode?.(node.id, existing);
+              existing.remove();
               nodeHosts.delete(node.id);
-            } else if (host.parentNode) {
+            } else if (existing.parentNode) {
               // DETACH ONLY. No `removeCustomNode` — the component was not unmounted, it
               // is parked. Firing the teardown hook here would be a lie the host would act
               // on (disposing a chart it is about to be handed back).
-              host.remove();
+              existing.remove();
             }
           }
           // …and no style write. That is most of the saving: a 400-widget board stops
@@ -510,25 +555,7 @@ export function createDiagram(
         }
       }
 
-      if (!host) {
-        host = doc.createElement('div');
-        host.setAttribute('data-node-id', node.id);
-        host.className = 'grafloria-node-host';
-        layers.html.appendChild(host);
-        nodeHosts.set(node.id, host);
-        options.renderCustomNode?.(node, host);
-      } else if (!host.parentNode) {
-        // Re-entry after a detach cull: the SAME element goes back, with its subtree, its
-        // scroll offset, its canvas bitmap and its event listeners intact. `renderCustomNode`
-        // is NOT called again — "a custom node mounts exactly once" is a promise the cull
-        // is not allowed to break.
-        layers.html.appendChild(host);
-      }
-
-      host.setAttribute(
-        'style',
-        nodeHostStyle(node.position.x, node.position.y, node.size.width, node.size.height)
-      );
+      mountHost(node);
     }
 
     for (const [id, host] of [...nodeHosts]) {
@@ -537,6 +564,99 @@ export function createDiagram(
       host.remove();
       nodeHosts.delete(id);
     }
+  };
+
+  /**
+   * FORCE-MATERIALIZE the hosts an export is about to read, and hand back the undo.
+   *
+   * THE GAP THIS CLOSES. Culling means a widget the camera has never reached has never
+   * been painted, so there is nothing in the document to capture; a widget culling
+   * detached has an element with no layout box, which every `getBoundingClientRect()`
+   * reports as zero. Either way the export used to emit an empty box, and the option's
+   * own documentation told the caller to "pan or fitView() first". That is not a
+   * workaround anyone can apply from a headless print job, a thumbnailer or a server —
+   * and it made `cullCustomNodes`, a PERFORMANCE knob, silently change what comes out of
+   * a file. A performance knob that loses data is not a performance knob.
+   *
+   * So the rule is now: **an export contains the same widgets whether culling is on or
+   * off.** The capture mounts what it needs, reads it, and puts the document back.
+   *
+   * PUTS IT BACK, precisely — because an export that permanently mounted a 300-widget
+   * board would just be a different bug:
+   *
+   *   was 'attached'  nothing to do, nothing to undo. Already live, already correct.
+   *   was 'detached'  re-attached to be read, then detached again. `renderCustomNode`
+   *                   never re-runs, so mount-once is untouched.
+   *   was 'absent'    created and painted — a legitimate FIRST mount, not a second one.
+   *                   Then re-culled to whatever the configured mode means:
+   *                     • 'detach'  — parked off-document, retained. Identical to what a
+   *                       pan across the board and back leaves behind, and it keeps the
+   *                       promise that this widget's painter runs exactly once, ever.
+   *                     • 'destroy' — torn down for real (`removeCustomNode` fires). That
+   *                       mode exists to BOUND THE HEAP, so leaving hosts retained would
+   *                       defeat it outright; the balanced mount/unmount an export
+   *                       performs is the same lifecycle a pan already produces, and a
+   *                       'destroy' embedder has accepted that its painter re-runs.
+   *                     • no culler at all — left mounted. There is no culled state to
+   *                       restore to, and the documented default is that every custom
+   *                       host is permanently in the document, so this is the state the
+   *                       next frame would have produced anyway. (Reachable by exporting
+   *                       between `setNodes()` and the frame it schedules — which used to
+   *                       export blank widgets, and no longer does.)
+   *
+   * WHAT IT WILL NOT OVERRULE. An explicit {@link ViewLifecycle} freeze is skipped. That
+   * is not timidity either: `SVGRenderer.render` gates every entity on
+   * `ViewLifecycle.admits`, so the render pass of this very export omits a frozen node.
+   * Capturing its widget would put content in the file with no node beneath it, and
+   * stretch the fitted viewBox to reach a node the same file does not draw.
+   *
+   * THE HONEST LIMIT. `renderCustomNode` is called synchronously and read synchronously
+   * on the next line, because `exportSvgString()` is synchronous by contract. A painter
+   * that defers its paint (rAF, a fetch, a framework's async render) has not drawn
+   * anything by the time we look, so a first-mount capture of it comes back `empty` —
+   * reported as a warning and a marked box, never a silent blank. Widgets that paint
+   * inline (the dashboard kit's do) are unaffected.
+   */
+  const materializeCustomNodes = (needed: (node: NodeModel) => boolean): (() => void) => {
+    const undo: Array<() => void> = [];
+
+    for (const node of model.getNodes()) {
+      if (!node.getMetadata('useHTMLLayer')) continue;
+      if (!needed(node)) continue;
+      if (lifecycle?.isExplicitlyFrozen('node', node.id)) continue;
+      if (nodeHosts.get(node.id)?.parentNode) continue; // already live — leave it alone
+
+      const was = nodeHosts.has(node.id) ? 'detached' : 'absent';
+      try {
+        mountHost(node);
+      } catch {
+        // A FIRST-MOUNT PAINTER THAT THROWS must not take the export with it. This is the
+        // only place a widget's painter runs outside a frame, so letting it propagate
+        // would abort the whole export AND strand every host materialized before it.
+        // `mountHost` registers the element before it calls the painter, so the undo below
+        // is still knowable, and the capture degrades to the marked box and warning that
+        // every unreadable host already gets.
+      }
+
+      const host = nodeHosts.get(node.id);
+      if (!host) continue;
+
+      if (was === 'detached' || !culler) {
+        if (was === 'detached') undo.push(() => host.remove());
+      } else if (culler.getMode() === 'destroy') {
+        undo.push(() => {
+          options.removeCustomNode?.(node.id, host);
+          host.remove();
+          nodeHosts.delete(node.id);
+        });
+      } else {
+        undo.push(() => host.remove());
+      }
+    }
+
+    return () => {
+      for (const restore of undo) restore();
+    };
   };
 
   /**
@@ -555,32 +675,45 @@ export function createDiagram(
    * A caller's own `customNodes` always wins (including `[]`, which means "export the
    * diagram without its widgets").
    */
-  const captureCustomNodes = (): CustomNodeCapture[] => {
+  const captureCustomNodes = (needed: (node: NodeModel) => boolean): CustomNodeCapture[] => {
     const captures: CustomNodeCapture[] = [];
-    // Model order, not Map order: an export must not depend on mount sequence, or two
-    // runs of the same board would differ in byte order.
-    for (const node of model.getNodes()) {
-      const host = nodeHosts.get(node.id);
-      if (!host) continue;
-      captures.push(
-        captureCustomNodeHost(
-          node.id,
-          {
-            x: node.position.x,
-            y: node.position.y,
-            width: node.size.width,
-            height: node.size.height,
-          },
-          host
-        )
-      );
+    const restore = materializeCustomNodes(needed);
+    try {
+      // Model order, not Map order: an export must not depend on mount sequence, or two
+      // runs of the same board would differ in byte order.
+      for (const node of model.getNodes()) {
+        const host = nodeHosts.get(node.id);
+        if (!host) continue;
+        captures.push(captureCustomNodeHost(node.id, nodeBounds(node), host));
+      }
+    } finally {
+      // `finally`: a capture that threw must not leave a board's worth of hosts mounted.
+      // (`captureCustomNodeHost` is documented never to throw, but the restore is the one
+      // thing here whose failure would be permanent, so it does not depend on that.)
+      restore();
     }
     return captures;
   };
 
+  /**
+   * Which nodes this export will actually contain.
+   *
+   * Materializing is the expensive half — it runs a painter — so it is bounded by the
+   * export's own scope rather than mounting a 300-widget board to capture the three
+   * widgets `includeIds` asked for. The predicates mirror what the renderer resolves
+   * `ids` to (`SVGRenderer.selectedIds` reads exactly this `state.selected`), so what is
+   * mounted and what survives `filterCaptures` are the same set.
+   */
+  const exportNeeds = (exportOptions?: ExportOptions): ((node: NodeModel) => boolean) => {
+    if (exportOptions?.scope === 'selection') return (node) => node.state?.selected === true;
+    if (exportOptions?.includeIds === undefined) return () => true;
+    const ids = new Set(exportOptions.includeIds);
+    return (node) => ids.has(node.id);
+  };
+
   const withCustomNodes = (exportOptions?: ExportOptions): ExportOptions => {
     if (exportOptions?.customNodes !== undefined) return exportOptions;
-    const customNodes = captureCustomNodes();
+    const customNodes = captureCustomNodes(exportNeeds(exportOptions));
     if (customNodes.length === 0) return exportOptions ?? {};
     return { ...exportOptions, customNodes };
   };

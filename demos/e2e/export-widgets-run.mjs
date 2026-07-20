@@ -161,6 +161,175 @@ check(
   out.warnings.filter((w) => w.includes('custom node')).join(' | ') || 'none'
 );
 
+// ===========================================================================
+// THE BOARD THE CAMERA HAS NEVER VISITED.
+//
+// Everything above runs with `cullCustomNodes` OFF, which is the default, so every host
+// has been in the document since mount and the export had something to read for all of
+// them. Switch culling on and the widget layer becomes lazy: a tile the camera has never
+// reached has never been PAINTED, so there is nothing in the document to capture, and one
+// culling detached has an element with no layout box — every rect reads zero. Both used
+// to export as a blank, and the option's own docs told you to "pan or fitView() first",
+// which is no answer for a headless print job.
+//
+// This drives the REAL kit — `dashboard()`'s own widget renderers, real inline SVG, real
+// KPI text — into a 320x220 camera on a ~1160x1050 board, so 16 of 20 tiles are never
+// visited by any frame. The board is laid out explicitly rather than through the grid
+// binder for ONE reason: the binder's finalize() ends in fitToBounds(), which frames the
+// whole board and would mount every tile before the first assertion could run.
+//
+// WHAT MAKES THIS A TEST AND NOT A COINCIDENCE: each tile's headline value is a string
+// only that tile can produce, and the preconditions below prove the far ones were unpainted
+// BEFORE the export. "The file contains widget text" would have been green all along.
+// ===========================================================================
+console.log('\n--- culling ON: widgets the camera has never reached ---');
+
+const lazy = await p.evaluate(async () => {
+  const { render, dashboard } = await import('/shell/grafloria.js');
+
+  const COLS = 4;
+  const ROWS = 5;
+  const TILE = { w: 280, h: 200, gap: 12 };
+
+  const widgets = [];
+  for (let i = 0; i < COLS * ROWS; i++) {
+    widgets.push({
+      id: `t${i}`,
+      kind: 'kpi',
+      data: { label: `Tile ${i}`, value: `CULLPROOF-${i}`, delta: 4.2, spark: [3, 9, 5, 12, 8] },
+    });
+  }
+  // dashboard() for the PAINTER and the widget specs; the geometry is ours, so no
+  // finalize() runs and no camera fit mounts the board out from under the test.
+  const spec = dashboard({ widgets });
+  const nodes = spec.nodes.map((n, i) => ({
+    ...n,
+    position: { x: (i % COLS) * (TILE.w + TILE.gap), y: Math.floor(i / COLS) * (TILE.h + TILE.gap) },
+    size: { width: TILE.w, height: TILE.h },
+  }));
+
+  const mount = (cull) => {
+    const host = document.createElement('div');
+    host.style.cssText =
+      'position:fixed;left:0;bottom:0;width:320px;height:220px;overflow:hidden;z-index:-1;background:#fff';
+    document.body.appendChild(host);
+    const painted = [];
+    const instance = render(
+      { nodes, edges: [] },
+      host,
+      {
+        renderCustomNode: (n, el) => {
+          painted.push(n.id);
+          spec.renderCustomNode(n, el);
+        },
+        ...(cull ? { cullCustomNodes: true } : {}),
+      }
+    );
+    instance.renderNow();
+    const hosts = () => host.querySelectorAll('.grafloria-html-layer > .grafloria-node-host').length;
+    return { host, instance, painted, hosts };
+  };
+
+  // -- the culled board ------------------------------------------------------
+  const culled = mount(true);
+  const before = {
+    hosts: culled.hosts(),
+    painted: [...culled.painted],
+    // The far corner tile, straight out of the live DOM: proof it was never painted.
+    farInDom: culled.host.textContent.includes(`CULLPROOF-${COLS * ROWS - 1}`),
+  };
+
+  const exported = culled.instance.exportSvgString();
+
+  const after = {
+    hosts: culled.hosts(),
+    painted: [...culled.painted],
+    farInDom: culled.host.textContent.includes(`CULLPROOF-${COLS * ROWS - 1}`),
+  };
+
+  // -- the same board with culling OFF, for the identity claim ---------------
+  const plain = mount(false);
+  const plainExported = plain.instance.exportSvgString();
+
+  const strip = (s) => s.replace(/grafloria-\d+/g, 'grafloria-N');
+  const result = {
+    total: COLS * ROWS,
+    before,
+    after,
+    warnings: exported.warnings,
+    svgLen: exported.svg.length,
+    placeholders: (exported.svg.match(/grafloria-custom-node-placeholder/g) || []).length,
+    groups: (exported.svg.match(/class="grafloria-custom-node"/g) || []).length,
+    missing: widgets.map((w) => w.data.value).filter((v) => !exported.svg.includes(v)),
+    identical: strip(exported.svg) === strip(plainExported.svg),
+    plainHosts: plain.hosts(),
+  };
+
+  culled.instance.dispose();
+  culled.host.remove();
+  plain.instance.dispose();
+  plain.host.remove();
+  return result;
+});
+
+// -- preconditions: the far tiles really were unreachable --------------------
+check(
+  'culling left most of the board unmounted',
+  lazy.before.hosts > 0 && lazy.before.hosts < lazy.total,
+  `${lazy.before.hosts}/${lazy.total} hosts mounted`
+);
+check(
+  'and unPAINTED — the far tile is nowhere in the live DOM before the export',
+  lazy.before.farInDom === false && lazy.before.painted.length === lazy.before.hosts,
+  `painter ran ${lazy.before.painted.length}x`
+);
+check(
+  'culling OFF mounts the whole board, which is what makes the two comparable',
+  lazy.plainHosts === lazy.total,
+  `${lazy.plainHosts}/${lazy.total}`
+);
+
+// -- the fix -----------------------------------------------------------------
+check(
+  'EVERY widget is in the export, including the 16 no frame ever drew',
+  lazy.missing.length === 0,
+  lazy.missing.length ? `missing ${lazy.missing.join(', ')}` : `all ${lazy.total} present`
+);
+check(
+  'each one is a real group, not a placeholder box',
+  lazy.groups === lazy.total && lazy.placeholders === 0,
+  `groups=${lazy.groups} placeholders=${lazy.placeholders}`
+);
+check(
+  'and nothing was reported as unreadable',
+  !lazy.warnings.some((w) => w.includes('custom node')),
+  lazy.warnings.filter((w) => w.includes('custom node')).join(' | ') || 'none'
+);
+
+// -- the export is non-destructive -------------------------------------------
+check(
+  'the document is the SAME SIZE after the export as before it',
+  lazy.after.hosts === lazy.before.hosts,
+  `${lazy.before.hosts} → ${lazy.after.hosts} hosts`
+);
+check(
+  'the far tile is re-culled, not left mounted',
+  lazy.after.farInDom === false
+);
+check(
+  'and every widget was painted exactly once — mount-once survives the export',
+  lazy.after.painted.length === lazy.total &&
+    new Set(lazy.after.painted).size === lazy.total,
+  `${lazy.after.painted.length} paints, ${new Set(lazy.after.painted).size} distinct`
+);
+
+// -- the governing claim -----------------------------------------------------
+check(
+  'THE FILE IS IDENTICAL WITH CULLING ON AND OFF — a perf knob that cannot lose data',
+  lazy.identical,
+  `${lazy.svgLen} bytes`
+);
+
 check('no page errors', pageErrors.length === 0, pageErrors.join(' | '));
 
 await b.close();

@@ -9,9 +9,13 @@
 //   3. A node under a live gesture is NEVER culled.
 //   4. OFF unless asked for. An embedder who never opted in sees byte-identical DOM.
 //   5. Teardown still fires exactly once for a host that was culled when it died.
+//   6. CULLING IS INVISIBLE TO AN EXPORT. Whatever the camera has or has not visited,
+//      the file contains the same widgets — and the document is the same size after the
+//      export as it was before it. (Bottom of this file.)
 
 import { createDiagram } from '../instance/create-diagram';
 import type { DiagramInstance } from '../instance/create-diagram';
+import type { NodeModel } from '@grafloria/engine';
 import { HTML_LAYER_CLASS } from '../instance/layers';
 import { HtmlHostCuller } from './host-culling';
 import { ViewLifecycle } from './view-lifecycle';
@@ -498,5 +502,452 @@ describe('createDiagram — custom-node host culling', () => {
     const mounted = mountedHosts();
     expect(mounted).toBeGreaterThan(0);
     expect(mounted).toBeLessThan(20); // 200 tiles, a handful near the camera
+  });
+});
+
+// ===========================================================================
+// CULLING IS INVISIBLE TO AN EXPORT.
+//
+// The gap this closes: a widget the camera has never reached has never been painted,
+// so there was nothing in the document to capture and it exported as an empty box —
+// or, when it had no host at all, as literally nothing. The old documentation told the
+// caller to "pan or fitView() first", which is not a workaround anybody can apply from
+// inside a headless print job.
+//
+// WHAT THESE TESTS HAVE TO BE CAREFUL ABOUT, because the obvious assertion is a weak
+// tooth: "the export contains widget text" is green whenever ANY widget contributed
+// that text, including the one already on screen. So every content assertion below is
+// scoped to a per-node SENTINEL that only that node's painter can ever produce, and is
+// paired with a precondition proving that node was NOT mounted beforehand.
+// ===========================================================================
+
+describe('createDiagram — an export force-materializes the hosts it needs', () => {
+  let container: HTMLElement;
+  let diagram: DiagramInstance | undefined;
+  /** Every `renderCustomNode` call, in order — the mount ledger these tests read. */
+  let painted: string[];
+  /** The element each node's painter was handed, so identity can be checked later. */
+  let elements: Map<string, HTMLElement>;
+
+  const W = (id: string, x: number, y: number) => ({
+    id,
+    position: { x, y },
+    size: { width: 200, height: 120 },
+    custom: true,
+  });
+
+  const hostOf = (id: string) =>
+    container.querySelector(`[data-node-id="${id}"]`) as HTMLElement | null;
+  const mountedHosts = () =>
+    container.querySelectorAll(`.${HTML_LAYER_CLASS} > .grafloria-node-host`).length;
+
+  /** The sentinel a node's widget paints. Unique per node, by construction. */
+  const sentinel = (id: string) => `SENTINEL~${id}`;
+
+  /**
+   * A laid-out box — but ONLY while the element is in the document.
+   *
+   * That conditional is load-bearing, not decoration. A real browser gives a detached
+   * subtree no layout box at all: every rect comes back zero, which is exactly why a
+   * culled-away widget captured as `empty`. jsdom has no layout engine either way, so
+   * a fake that always reported 200x120 would let a DETACHED host capture perfectly —
+   * and the test for re-attachment would pass with the bug still in place. It did,
+   * before this was written.
+   */
+  const box = (el: { isConnected: boolean }, w: number, h: number) =>
+    () =>
+      (el.isConnected
+        ? { left: 0, top: 0, width: w, height: h, right: w, bottom: h }
+        : { left: 0, top: 0, width: 0, height: 0, right: 0, bottom: 0 }) as DOMRect;
+
+  /**
+   * A painter that writes a per-node sentinel AND states its own geometry.
+   *
+   * jsdom has no layout engine, so every `getBoundingClientRect()` is zeros and a
+   * capture of a real host would come back `empty` — which would make "did the content
+   * reach the file?" unanswerable here, and that is the only question these tests ask.
+   * Stating the rects is what lets `capture-host` transcribe a `<text>` run.
+   */
+  const painter = (node: NodeModel, el: HTMLElement): void => {
+    painted.push(node.id);
+    elements.set(node.id, el);
+    const inner = el.ownerDocument.createElement('div');
+    inner.textContent = sentinel(node.id);
+    el.appendChild(inner);
+    el.getBoundingClientRect = box(el, 200, 120);
+    inner.getBoundingClientRect = box(inner, 200, 40);
+  };
+
+  beforeEach(() => {
+    container = makeContainer();
+    painted = [];
+    elements = new Map();
+  });
+
+  afterEach(() => {
+    diagram?.dispose();
+    diagram = undefined;
+    container.remove();
+  });
+
+  // ---- THE BUG -----------------------------------------------------------
+
+  it('exports the content of a widget the camera has NEVER visited', () => {
+    diagram = createDiagram(container, {
+      nodes: [W('near', 0, 0), W('far', 40000, 0)],
+      renderCustomNode: painter,
+      cullCustomNodes: true,
+    });
+    diagram.renderNow();
+
+    // PRECONDITIONS. Without these the assertion below could be green because the
+    // widget had been mounted all along — the exact weak tooth this suite guards.
+    expect(painted).toEqual(['near']);
+    expect(hostOf('far')).toBeNull();
+
+    const { svg } = diagram.exportSvgString();
+
+    expect(svg).toContain(sentinel('far')); // ← the never-visited widget's OWN content
+    expect(painted).toEqual(['near', 'far']); // its painter ran, for the first time
+  });
+
+  it('gives a never-visited widget a REAL group, not a placeholder box and not a warning', () => {
+    diagram = createDiagram(container, {
+      nodes: [W('near', 0, 0), W('far', 40000, 0)],
+      renderCustomNode: painter,
+      cullCustomNodes: true,
+    });
+    diagram.renderNow();
+
+    const { svg, warnings } = diagram.exportSvgString();
+
+    // Naming the group is what makes this a test. "No placeholder" alone is green when
+    // the widget produced NOTHING AT ALL, which is precisely the bug.
+    expect(svg).toContain('<g class="grafloria-custom-node" data-node-id="far"');
+    expect(svg).not.toContain('grafloria-custom-node-placeholder');
+    expect(warnings.some((w) => w.includes('far'))).toBe(false);
+  });
+
+  it('fits the exported box to a widget the camera never reached', () => {
+    diagram = createDiagram(container, {
+      nodes: [W('near', 0, 0), W('far', 40000, 0)],
+      renderCustomNode: painter,
+      cullCustomNodes: true,
+    });
+    diagram.renderNow();
+
+    const { viewBox } = diagram.exportSvgString({ padding: 0 });
+
+    // Without the capture the far widget contributes no geometry and the box stops
+    // short of it: 40200 is `far`'s right edge.
+    expect(viewBox.width).toBeCloseTo(40200, 0);
+  });
+
+  // ---- the second shape of the same bug ----------------------------------
+
+  it('re-attaches a host culling DETACHED, reads it, and does not re-run the painter', () => {
+    diagram = createDiagram(container, {
+      nodes: [W('near', 0, 0), W('far', 40000, 0)],
+      renderCustomNode: painter,
+      cullCustomNodes: true,
+    });
+    diagram.renderNow();
+
+    // Visit it, then leave: now it exists but is parked off-document.
+    diagram.viewport.pan(40000, 0);
+    diagram.renderNow();
+    diagram.viewport.pan(-40000, 0);
+    diagram.renderNow();
+    expect(hostOf('far')).toBeNull();
+    expect(painted).toEqual(['near', 'far']);
+
+    const { svg } = diagram.exportSvgString();
+
+    expect(svg).toContain(sentinel('far'));
+    expect(painted).toEqual(['near', 'far']); // mount-once: NOT painted a second time
+  });
+
+  // ---- non-destructiveness ------------------------------------------------
+
+  it('leaves the document exactly as it found it', () => {
+    diagram = createDiagram(container, {
+      nodes: [W('near', 0, 0), W('far', 40000, 0)],
+      renderCustomNode: painter,
+      cullCustomNodes: true,
+    });
+    diagram.renderNow();
+
+    const before = mountedHosts();
+    const { svg } = diagram.exportSvgString();
+
+    // Both halves in one test on purpose: "nothing changed" is trivially true of an
+    // export that did nothing, so it only means something next to the proof that the
+    // export DID materialize the far widget.
+    expect(svg).toContain(sentinel('far'));
+    expect(mountedHosts()).toBe(before);
+    expect(hostOf('far')).toBeNull(); // re-culled, not left inflating the DOM
+  });
+
+  it('does not inflate a 200-widget board — the count is the same after as before', () => {
+    const nodes = [];
+    for (let i = 0; i < 200; i++) {
+      nodes.push(W(`w${i}`, (i % 10) * 400, Math.floor(i / 10) * 300));
+    }
+    diagram = createDiagram(container, {
+      nodes,
+      renderCustomNode: painter,
+      cullCustomNodes: true,
+    });
+    diagram.renderNow();
+
+    const before = mountedHosts();
+    expect(before).toBeLessThan(20);
+
+    const { svg } = diagram.exportSvgString();
+
+    // Every one of the 200 is in the file…
+    expect((svg.match(/SENTINEL~/g) || []).length).toBe(200);
+    // …and the document is the size it was. This is the difference between a fix and
+    // a second bug: an export must not permanently mount a board.
+    expect(mountedHosts()).toBe(before);
+  });
+
+  it('keeps mount-once across the export: the camera later finds the SAME element', () => {
+    diagram = createDiagram(container, {
+      nodes: [W('near', 0, 0), W('far', 40000, 0)],
+      renderCustomNode: painter,
+      cullCustomNodes: true,
+    });
+    diagram.renderNow();
+    diagram.exportSvgString();
+
+    const materialized = elements.get('far')!;
+    diagram.viewport.pan(40000, 0);
+    diagram.renderNow();
+
+    expect(hostOf('far')).toBe(materialized); // parked, then handed back
+    expect(painted).toEqual(['near', 'far']); // and never painted twice
+  });
+
+  // ---- the governing invariant -------------------------------------------
+  //
+  // `cullCustomNodes` is a PERFORMANCE knob. If turning it on changes what comes out of
+  // export(), it is not a performance knob, it is a data-loss switch. This is the
+  // strongest statement of the fix available, and nothing partial can fake it.
+
+  it('produces the IDENTICAL file whether culling is on or off', () => {
+    const boardOf = (cull: boolean): string => {
+      const host = makeContainer();
+      const d = createDiagram(host, {
+        nodes: [W('a', 0, 0), W('b', 4000, 0), W('c', 40000, 900)],
+        renderCustomNode: painter,
+        cullCustomNodes: cull,
+      });
+      d.renderNow();
+      const { svg } = d.exportSvgString();
+      d.dispose();
+      host.remove();
+      // The instance id is a mount-time CSS scope, not content: two mounts of the same
+      // board legitimately differ there and nowhere else.
+      return svg.replace(/grafloria-\d+/g, 'grafloria-N');
+    };
+
+    expect(boardOf(true)).toBe(boardOf(false));
+  });
+
+  // ---- the default path is untouched -------------------------------------
+
+  it('captures a widget whose first frame has not run yet, and leaves it mounted', () => {
+    diagram = createDiagram(container, { nodes: [], renderCustomNode: painter });
+    diagram.setNodes([W('fresh', 0, 0)]); // schedules a frame; does not run one
+    expect(painted).toEqual([]);
+    expect(mountedHosts()).toBe(0);
+
+    const { svg } = diagram.exportSvgString();
+
+    expect(svg).toContain(sentinel('fresh'));
+    expect(painted).toEqual(['fresh']);
+    // LEFT MOUNTED, deliberately. With no culler there is no culled state to put it back
+    // into, and the documented default is that every custom host lives permanently in the
+    // document — so this is exactly the state the pending frame would have produced.
+    // Detaching it instead would make an export DELETE a widget from an uncculled board.
+    expect(mountedHosts()).toBe(1);
+  });
+
+  it('mounts nothing and paints nothing extra when culling is off', () => {
+    diagram = createDiagram(container, {
+      nodes: [W('near', 0, 0), W('far', 40000, 0)],
+      renderCustomNode: painter,
+    });
+    diagram.renderNow();
+
+    const before = mountedHosts();
+    const calls = painted.length;
+    diagram.exportSvgString();
+
+    expect(mountedHosts()).toBe(before);
+    expect(painted.length).toBe(calls);
+  });
+
+  // ---- the other cull mode -----------------------------------------------
+  //
+  // `'destroy'` exists to BOUND THE HEAP, so an export that left its materialized hosts
+  // retained would defeat the mode outright. It therefore tears down exactly what it
+  // built — the same balanced mount/unmount a pan across the board produces, which is a
+  // lifecycle a `'destroy'` embedder has already accepted (its painter re-runs by
+  // design). Hosts that were already mounted are not touched.
+
+  it("mode 'destroy': captures a never-visited widget, then destroys what it built", () => {
+    const removeCustomNode = jest.fn();
+    diagram = createDiagram(container, {
+      nodes: [W('near', 0, 0), W('far', 40000, 0)],
+      renderCustomNode: painter,
+      removeCustomNode,
+      cullCustomNodes: { mode: 'destroy' },
+    });
+    diagram.renderNow();
+    expect(painted).toEqual(['near']);
+
+    const before = mountedHosts();
+    const { svg } = diagram.exportSvgString();
+
+    expect(svg).toContain(sentinel('far'));
+    expect(removeCustomNode).toHaveBeenCalledTimes(1);
+    expect(removeCustomNode).toHaveBeenCalledWith('far', expect.any(HTMLElement));
+    expect(mountedHosts()).toBe(before);
+    expect(hostOf('far')).toBeNull();
+  });
+
+  it("mode 'destroy': the heap is restored too — a later visit re-creates the host", () => {
+    diagram = createDiagram(container, {
+      nodes: [W('far', 40000, 0)],
+      renderCustomNode: painter,
+      cullCustomNodes: { mode: 'destroy' },
+    });
+    diagram.renderNow();
+    diagram.exportSvgString();
+    expect(painted).toEqual(['far']);
+    // Grab it now: the next paint overwrites the ledger entry with its replacement.
+    const materialized = elements.get('far')!;
+
+    diagram.viewport.pan(40000, 0);
+    diagram.renderNow();
+
+    // Re-initialised, which is what this mode already documents as its cost.
+    expect(painted).toEqual(['far', 'far']);
+    expect(hostOf('far')).not.toBe(materialized);
+  });
+
+  // ---- what it must NOT overrule -----------------------------------------
+
+  it('honours an explicit ViewLifecycle freeze — a frozen node has no view anywhere', () => {
+    const lifecycle = new ViewLifecycle();
+    diagram = createDiagram(container, {
+      nodes: [W('near', 0, 0), W('far', 40000, 0)],
+      renderCustomNode: painter,
+      cullCustomNodes: true,
+      viewLifecycle: lifecycle,
+    });
+    diagram.renderNow();
+    lifecycle.freeze('node', 'far');
+
+    const { svg } = diagram.exportSvgString();
+
+    // The render pass drops a frozen entity (ViewLifecycle.admits), so capturing its
+    // widget would put content in the file with no node under it — and stretch the
+    // viewBox to reach a node the very same export does not draw.
+    expect(svg).not.toContain(sentinel('far'));
+    expect(painted).toEqual(['near']);
+  });
+
+  // ---- a painter that throws on its FIRST mount --------------------------
+  //
+  // The export path is the one place a widget's painter can be invoked by something
+  // other than a frame, so it is the one place a painter that throws could take an
+  // export down — and strand every host mounted before it. It degrades the way every
+  // unreadable host already does: a marked box and a warning.
+
+  it('survives a widget painter that throws, and still restores the document', () => {
+    diagram = createDiagram(container, {
+      nodes: [W('near', 0, 0), W('bad', 40000, 0), W('good', 40400, 0)],
+      renderCustomNode: (node, el) => {
+        if (node.id === 'bad') throw new Error('widget blew up on mount');
+        painter(node, el);
+      },
+      cullCustomNodes: true,
+    });
+    diagram.renderNow();
+    const before = mountedHosts();
+
+    const { svg, warnings } = diagram.exportSvgString();
+
+    expect(svg).toContain(sentinel('good')); // the export completed past the thrower
+    expect(warnings.some((w) => w.includes('bad'))).toBe(true); // and said so
+    expect(svg).toContain('grafloria-custom-node-placeholder');
+    expect(mountedHosts()).toBe(before); // nothing stranded
+  });
+
+  it("a caller's own customNodes still opts out completely — nothing is mounted", () => {
+    diagram = createDiagram(container, {
+      nodes: [W('near', 0, 0), W('far', 40000, 0)],
+      renderCustomNode: painter,
+      cullCustomNodes: true,
+    });
+    diagram.renderNow();
+
+    const { svg } = diagram.exportSvgString({ customNodes: [] });
+
+    expect(svg).not.toContain('grafloria-custom-node');
+    expect(painted).toEqual(['near']);
+  });
+
+  // ---- proportionality ----------------------------------------------------
+
+  it('mounts only what a SCOPED export will actually contain', () => {
+    diagram = createDiagram(container, {
+      nodes: [W('near', 0, 0), W('wanted', 40000, 0), W('unwanted', 80000, 0)],
+      renderCustomNode: painter,
+      cullCustomNodes: true,
+    });
+    diagram.renderNow();
+
+    const { svg } = diagram.exportSvgString({ includeIds: ['near', 'wanted'] });
+
+    expect(svg).toContain(sentinel('wanted'));
+    // Exporting three widgets out of a board must not mount the board.
+    expect(painted).toEqual(['near', 'wanted']);
+  });
+
+  it("scope 'selection' mounts only the selected widgets", () => {
+    diagram = createDiagram(container, {
+      nodes: [W('near', 0, 0), W('picked', 40000, 0), W('other', 80000, 0)],
+      renderCustomNode: painter,
+      cullCustomNodes: true,
+    });
+    diagram.renderNow();
+    diagram.getModel().getNodes().find((n) => n.id === 'picked')!.setSelected(true);
+
+    const { svg } = diagram.exportSvgString({ scope: 'selection' });
+
+    expect(svg).toContain(sentinel('picked'));
+    expect(painted).toEqual(['near', 'picked']);
+  });
+
+  // ---- every export target, not just the SVG string -----------------------
+
+  it('reaches exportPdf on the same path', () => {
+    diagram = createDiagram(container, {
+      nodes: [W('far', 40000, 0)],
+      renderCustomNode: painter,
+      cullCustomNodes: true,
+    });
+    diagram.renderNow();
+    expect(painted).toEqual([]);
+
+    const { warnings } = diagram.exportPdf();
+
+    expect(painted).toEqual(['far']);
+    expect(warnings.some((w) => w.includes('far'))).toBe(false);
+    expect(hostOf('far')).toBeNull();
   });
 });
