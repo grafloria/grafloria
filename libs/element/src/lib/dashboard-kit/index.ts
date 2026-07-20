@@ -20,3 +20,14 @@ export {
   type TileDelta,
 } from './grid-mapping';
 export { ensureDashboardKitStyles, DASHBOARD_KIT_STYLE_ID } from './styles';
+
+// The DATA-FIRST authoring API (the erDiagram/umlDiagram equivalent).
+export {
+  dashboard,
+  type DashboardOptions,
+  type DashboardSpec,
+  type DashboardHandle,
+  type DashboardViewSpec,
+  type DashboardWidgetSpec,
+  type WidgetHandle,
+} from './dashboard';
