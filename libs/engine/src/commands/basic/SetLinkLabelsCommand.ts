@@ -36,7 +36,13 @@ export class SetLinkLabelsCommand extends Command {
     }
 
     this.previousLabels = cloneLabels(link.labels);
-    link.labels = cloneLabels(this.labels);
+    // THROUGH THE TRACKED MUTATOR, not `link.labels = …`. A direct field write does not
+    // pass `trackChange()` — the one funnel collab captures from — so this command emitted
+    // ZERO ops on BOTH execute and undo: a whole-array label edit was invisible to every
+    // peer in both directions (worse than UpdateLinkStyleCommand, which at least travelled
+    // on execute). setLabels() does the wholesale tracked write. markDirty and the event
+    // are now redundant (trackChange fires both) but kept: harmless, and explicit.
+    link.setLabels(cloneLabels(this.labels));
     link.markDirty('labels');
     link.emitter.emit('link:labels-changed', { labels: link.labels });
   }
@@ -47,7 +53,7 @@ export class SetLinkLabelsCommand extends Command {
       throw new Error('Cannot undo: missing link or previous labels');
     }
 
-    link.labels = cloneLabels(this.previousLabels);
+    link.setLabels(cloneLabels(this.previousLabels));
     link.markDirty('labels');
     link.emitter.emit('link:labels-changed', { labels: link.labels });
   }

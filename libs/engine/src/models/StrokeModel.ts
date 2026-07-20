@@ -318,6 +318,23 @@ export class StrokeModel extends DiagramEntity {
   }
 
   /**
+   * REPLACE the whole style object — the write `setStyle` cannot express, and the collab
+   * reducer's write path.
+   *
+   * `setStyle` MERGES, so applying a `style` op with it meant a peer could gain a key and
+   * never lose one: the author clears an `opacity` and every other peer keeps the faded
+   * stroke forever. `NodeModel.replaceStyle` is the same seam for the same reason, and a
+   * plain field assignment is not a substitute — it would skip the `bounds` invalidation
+   * below and leave the peer measuring the stroke at its old width.
+   */
+  replaceStyle(style: Partial<StrokeStyle>): void {
+    const prev = { ...this.style };
+    this.style = { ...style } as StrokeStyle;
+    this.bounds = null; // width feeds the bounds padding
+    this.trackChange('style', prev, { ...this.style });
+  }
+
+  /**
    * The accessible name, when the author gave one. See the a11y note on the
    * ink layer. Overrides the DiagramEntity canon (metadata.label): a stroke's
    * label lives in its own serialized `label` property, not the metadata bag.

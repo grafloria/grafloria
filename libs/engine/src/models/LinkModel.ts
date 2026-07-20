@@ -13,6 +13,22 @@ import type {
 } from '../types';
 
 /**
+ * A detached copy of a label collection — the value the `labels` register holds.
+ *
+ * Every `trackChange('labels', …)` reports one of these on BOTH sides. It has to be a
+ * copy rather than the live array: `updateLabel` mutates a label object IN PLACE, so a
+ * "previous" value that shared those objects would already carry the edit, and undo would
+ * restore the new text over itself. `offset` and `style` are the only nested members.
+ */
+function snapshotLabels(labels: readonly LinkLabel[]): LinkLabel[] {
+  return labels.map((label) => ({
+    ...label,
+    offset: { ...label.offset },
+    ...(label.style ? { style: { ...label.style } } : {}),
+  }));
+}
+
+/**
  * Wave 4 (Edges & links), Card 5 — where each of the three edge label SLOTS sits
  * along the path.
  *
@@ -675,8 +691,16 @@ export class LinkModel extends DiagramEntity {
       offset: label.offset || { x: 0, y: 0 },
       style: label.style,
     };
+    const prev = snapshotLabels(this.labels);
     this.labels.push(fullLabel);
-    this.trackChange('labels', null, fullLabel);
+    // THE VALUE, NOT THE DELTA. This used to be
+    // `trackChange('labels', null, fullLabel)` — it named the label that MOVED, not
+    // what the register now holds, and capture ships the funnel payload verbatim. The
+    // receiving peer has no `setLabels()` to prefer, so the generic write ASSIGNED THE
+    // BARE LABEL OBJECT over its array; `serialize()` then threw "this.labels.map is
+    // not a function" and the peer could no longer save the document AT ALL. Identical
+    // in shape to the `members` defect — see collab/register-values.spec.ts.
+    this.trackChange('labels', prev, snapshotLabels(this.labels));
     this.emitter.emit('link:label-added', fullLabel);
   }
 
@@ -687,8 +711,11 @@ export class LinkModel extends DiagramEntity {
     if (this.writeBlocked()) return undefined;
     const index = this.labels.findIndex((l) => l.id === labelId);
     if (index !== -1) {
+      const prev = snapshotLabels(this.labels);
       const label = this.labels.splice(index, 1)[0];
-      this.trackChange('labels', label, null);
+      // The VALUE. This reported `null` — the peer's `labels` became null and
+      // `null.map()` broke serialize() outright. See addLabel.
+      this.trackChange('labels', prev, snapshotLabels(this.labels));
       this.emitter.emit('link:label-removed', label);
       return label;
     }
@@ -701,8 +728,9 @@ export class LinkModel extends DiagramEntity {
   removeLabelAt(index: number): LinkLabel | undefined {
     if (this.writeBlocked()) return undefined;
     if (index >= 0 && index < this.labels.length) {
+      const prev = snapshotLabels(this.labels);
       const label = this.labels.splice(index, 1)[0];
-      this.trackChange('labels', label, null);
+      this.trackChange('labels', prev, snapshotLabels(this.labels));
       this.emitter.emit('link:label-removed', label);
       return label;
     }
@@ -717,10 +745,40 @@ export class LinkModel extends DiagramEntity {
     const label = this.labels[index];
     if (label) {
       const oldLabel = { ...label };
+      // Snapshotted BEFORE the in-place Object.assign below: `prev` must not share the
+      // object about to be mutated, or the "previous" collection would already carry
+      // the edit and undo would restore the new text over itself.
+      const prev = snapshotLabels(this.labels);
       Object.assign(label, updates);
-      this.trackChange('labels', oldLabel, label);
+      // The VALUE. This reported the ONE label that changed, so a peer assigned that
+      // single object over its array and lost every other label on the link.
+      this.trackChange('labels', prev, snapshotLabels(this.labels));
       this.emitter.emit('link:label-updated', { index, label });
     }
+  }
+
+  /**
+   * REPLACE the whole label collection — the write `addLabel`/`updateLabel` cannot express.
+   *
+   * `SetLinkLabelsCommand` used to do this by assigning `link.labels` directly on BOTH
+   * execute and undo. A plain field write does not pass `trackChange()` — the one funnel
+   * collab captures from — so the command emitted ZERO ops in BOTH directions: authoring
+   * a link's labels was invisible to every other peer, and so was taking it back. (The
+   * `UpdateLinkStyleCommand` defect at least emitted one op on execute; this emitted none
+   * at all.) `replaceStyle` is the same seam for the same reason.
+   */
+  setLabels(labels: LinkLabel[]): void {
+    if (this.writeBlocked()) return;
+    // A NON-ARRAY IS REFUSED rather than read as "no labels". This is what makes the fix
+    // safe against LOGS PERSISTED BEFORE IT: a pre-fix op carries a bare LinkLabel object
+    // (the old addLabel) or a bare `null` (the old removeLabel), and both would otherwise
+    // land here through the reducer. Refusing leaves the collection alone, so replaying an
+    // old log degrades rather than destroying the peer's ability to serialize.
+    if (!Array.isArray(labels)) return;
+    const prev = snapshotLabels(this.labels);
+    this.labels = snapshotLabels(labels);
+    this.trackChange('labels', prev, snapshotLabels(this.labels));
+    this.emitter.emit('link:labels-changed', { labels: this.labels });
   }
 
   /**

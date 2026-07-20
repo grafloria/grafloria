@@ -99,6 +99,16 @@ export interface SerializedNode extends SerializedEntity {
   connectionGroup?: string; // Phase 2: Connection group identifier
 }
 
+/**
+ * The keys of `NodeState` that describe a VIEWER rather than the DOCUMENT.
+ *
+ * The same list collab/capture.ts strips before an op goes on the wire, and the same list
+ * the convergence oracle exempts. It lives here too because `replaceState` has to put them
+ * BACK: a register value never carries them, so a wholesale replace would blank the
+ * receiving user's own selection.
+ */
+const VIEW_STATE_KEYS = ['selected', 'hovered', 'highlighted', 'focused'] as const;
+
 export class NodeModel extends DiagramEntity {
   // Diagram reference (Phase 1.6a) - Non-enumerable to prevent circular cloning
   diagram?: DiagramModel;
@@ -552,6 +562,60 @@ export class NodeModel extends DiagramEntity {
   }
 
   /**
+   * REPLACE the DOCUMENT half of `state`, keeping THIS viewer's own view half.
+   *
+   * The write `setState` cannot express, and the collab reducer's write path.
+   *
+   * ## Why a merge was wrong
+   *
+   * `state` is a value register: the op carries the whole (projected) object the author
+   * now holds. Applying it with the merging `setState` meant a peer could GAIN a key and
+   * never LOSE one — `NodeState.error`, `warning`, `status` and `animateStatus` are all
+   * optional, so the author clears an error badge and every other peer keeps it FOREVER,
+   * with no later edit able to correct it. Node `style` had exactly this defect and was
+   * fixed with `replaceStyle`; this is the same fix for the register next to it.
+   *
+   * ## Why it is not a plain wholesale replace either
+   *
+   * `selected` / `hovered` / `highlighted` / `focused` are facts about a VIEWER, not about
+   * the document. Capture strips them (see collab/capture.ts — syncing them meant your
+   * cursor lit up my node and your click deselected it), so an incoming register value
+   * never carries them. Replacing wholesale would therefore BLANK the receiving user's own
+   * selection on every remote state edit — reintroducing the very bug through the back
+   * door. So: durable keys replaced wholesale, view keys taken from what this replica
+   * already had.
+   *
+   * ## The read-only posture, deliberately UNCHANGED
+   *
+   * This refuses outright while the document is locked, exactly like `setPosition`,
+   * `setStyle` and `replaceStyle`. It does NOT copy `setState`'s Wave-9 Card-7 filter,
+   * and that is not an oversight:
+   *
+   *   • That filter exists so a LOCAL user can still select, hover and keyboard-navigate a
+   *     presentation-mode diagram. It is about input, not about the wire.
+   *   • It would be a no-op here anyway: capture strips the view keys, so an incoming
+   *     `state` value contains none of the keys the filter admits — a locked replica
+   *     already dropped remote state ops entirely, before this method existed. Behaviour
+   *     is therefore identical, and `setState` is left untouched.
+   *   • Making `state` the one register that DID reach a locked replica would be
+   *     incoherent: a read-only replica currently applies no remote document write at all
+   *     (verified — a locked peer ignores remote `position` and `style` too). That gap is
+   *     real and systemic, and it belongs to the lock, not to this register.
+   */
+  replaceState(state: Partial<NodeState>): void {
+    if (this.writeBlocked()) return;
+    const oldState = { ...this.state };
+    const next = { ...state } as NodeState;
+    const prevView = oldState as unknown as Record<string, unknown>;
+    const nextView = next as unknown as Record<string, unknown>;
+    for (const key of VIEW_STATE_KEYS) {
+      if (key in prevView) nextView[key] = prevView[key];
+    }
+    this.state = next;
+    this.trackChange('state', oldState, this.state);
+  }
+
+  /**
    * Set behavior property
    */
   setBehavior(behavior: Partial<NodeBehavior>): void {
@@ -664,8 +728,12 @@ export class NodeModel extends DiagramEntity {
   addClass(className: string): void {
     if (this.writeBlocked()) return;
     if (!this.classes.has(className)) {
+      const prev = [...this.classes];
       this.classes.add(className);
-      this.trackChange('classes', null, className);
+      // THE VALUE, NOT THE DELTA — see setClasses. This reported the class NAME, and a
+      // peer assigned that bare string over its Set: the peer's own next addClass() then
+      // threw "this.classes.has is not a function".
+      this.trackChange('classes', prev, [...this.classes]);
     }
   }
 
@@ -675,9 +743,32 @@ export class NodeModel extends DiagramEntity {
   removeClass(className: string): void {
     if (this.writeBlocked()) return;
     if (this.classes.has(className)) {
+      const prev = [...this.classes];
       this.classes.delete(className);
-      this.trackChange('classes', className, null);
+      // The VALUE. This reported `null`, which a peer assigned over its Set.
+      this.trackChange('classes', prev, [...this.classes]);
     }
+  }
+
+  /**
+   * REPLACE the whole class collection.
+   *
+   * `classes` is a `Set`, so it needs the same treatment `members` and `ports` needed: a
+   * register whose in-memory form is a collection and whose wire form is an array must be
+   * REBUILT on the receiving side, never assigned. The collab reducer writes it through
+   * here.
+   *
+   * A non-array is REFUSED rather than read as "no classes" — logs persisted before the
+   * funnel fix carry a bare class name (the old addClass) or a bare `null` (the old
+   * removeClass), and assigning either is what corrupted the Set in the first place.
+   */
+  setClasses(classNames: string[]): void {
+    if (this.writeBlocked()) return;
+    if (!Array.isArray(classNames)) return;
+    const prev = [...this.classes];
+    const next = classNames.filter((c): c is string => typeof c === 'string');
+    this.classes = new Set(next);
+    this.trackChange('classes', prev, [...this.classes]);
   }
 
   /**
@@ -864,8 +955,13 @@ export class NodeModel extends DiagramEntity {
   addChild(childId: string): void {
     if (this.writeBlocked()) return;
     if (!this.children.has(childId)) {
+      const prev = [...this.children];
       this.children.add(childId);
-      this.trackChange('children', null, childId);
+      // THE VALUE, NOT THE DELTA. This reported the child id, and `children` IS
+      // serialized (`Array.from(this.children)`) — so a peer that assigned the bare
+      // string 'beta' over its Set serialized it as ['b','e','t','a']: four child ids
+      // that exist nowhere. The exact `members` defect, on a second register.
+      this.trackChange('children', prev, [...this.children]);
     }
   }
 
@@ -875,9 +971,31 @@ export class NodeModel extends DiagramEntity {
   removeChild(childId: string): void {
     if (this.writeBlocked()) return;
     if (this.children.has(childId)) {
+      const prev = [...this.children];
       this.children.delete(childId);
-      this.trackChange('children', childId, null);
+      // The VALUE. This reported `null`, so a peer's `children` became null and
+      // `Array.from(null)` threw inside serialize().
+      this.trackChange('children', prev, [...this.children]);
     }
+  }
+
+  /**
+   * REPLACE the whole child collection. The collab reducer's write path.
+   *
+   * Same contract as {@link setClasses}: a Set in memory, an array on the wire, rebuilt
+   * rather than assigned, and a non-array refused so a pre-fix log degrades instead of
+   * destroying the collection.
+   *
+   * This maintains only its own half of the hierarchy, exactly as `addChild`/`removeChild`
+   * do — the child's `parentId` is its own register with its own op.
+   */
+  setChildren(childIds: string[]): void {
+    if (this.writeBlocked()) return;
+    if (!Array.isArray(childIds)) return;
+    const prev = [...this.children];
+    const next = childIds.filter((c): c is string => typeof c === 'string');
+    this.children = new Set(next);
+    this.trackChange('children', prev, [...this.children]);
   }
 
   /**

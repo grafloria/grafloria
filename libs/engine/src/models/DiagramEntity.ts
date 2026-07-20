@@ -245,6 +245,34 @@ export abstract class DiagramEntity {
   }
 
   /**
+   * REPORT A REGISTER WRITE THE COLLAB REDUCER JUST PERFORMED.
+   *
+   * `trackChange()` is `protected`, and `applyOp` lives outside the class — so every
+   * register the reducer wrote by plain field assignment (anything with no dedicated
+   * mutator: a link's `style`, `flexConfig`, a group's `isCollapsed`, `layoutConfig`,
+   * `bounds`, `parentId`, …) mutated the model WITHOUT passing the funnel.
+   *
+   * That is not a cosmetic gap. `UndoStack.undo()` applies the inverse THROUGH THE MODEL
+   * WITH CAPTURE LIVE and then reads back whatever capture minted. No trackChange means
+   * no op, which means THE UNDO REACHES NOBODY. Measured before this existed:
+   *
+   *     link style   execute → 1 op   undo → 0 ops
+   *     flexConfig   execute → 1 op   undo → 0 ops
+   *     isCollapsed  execute → 1 op   undo → 0 ops
+   *     position     execute → 1 op   undo → 1 op   ← a real mutator: always worked
+   *
+   * The author's own document was correct every time — which is exactly why this
+   * survived. It is the `UpdateLinkStyleCommand` defect (see style-undo.spec.ts) living
+   * one layer down, in the reducer, and hitting every mutator-less register at once.
+   *
+   * So the reducer gets a seam onto the funnel rather than a copy of it. There is still
+   * ONE funnel; this is a door onto it, not a second source of truth.
+   */
+  reportRegisterWrite(property: string, oldValue: unknown, newValue: unknown): void {
+    this.trackChange(property, oldValue, newValue);
+  }
+
+  /**
    * Subscribe to changes
    */
   on(event: string, handler: Function): () => void {

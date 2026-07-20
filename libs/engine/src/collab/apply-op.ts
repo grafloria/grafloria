@@ -549,7 +549,21 @@ function setEntityProp(
         return true;
       }
       case 'state':
-        entity.setState(structuredClone(value) as never);
+        // REPLACE the durable half, KEEP this viewer's own view half — never merge.
+        //
+        // `setState` MERGES, and `state` is a value register: the op carries the whole
+        // projected object the author now holds. So a peer could gain a key and never
+        // lose one — `error`, `warning`, `status` and `animateStatus` are optional, so
+        // the author clears an error badge and every OTHER peer keeps it forever, with
+        // no later edit able to correct it. Exactly the `style` defect, on the register
+        // next to it.
+        //
+        // It is not a bare wholesale replace either: capture strips the per-viewer keys
+        // (selected/hovered/highlighted/focused), so the incoming value never carries
+        // them and replacing wholesale would blank the RECEIVING user's own selection on
+        // every remote state edit. replaceState() draws exactly that line — including
+        // why it deliberately does NOT copy setState's read-only filter.
+        entity.replaceState(structuredClone(value) as never);
         return true;
       case 'style':
         // REPLACE, not merge. `style` is a value register: the op carries the whole
@@ -565,6 +579,37 @@ function setEntityProp(
 
   if (entity instanceof LinkModel && path === 'points') {
     entity.setPoints(structuredClone(value) as Array<{ x: number; y: number }>);
+    return true;
+  }
+
+  // A LINK'S `labels` IS AN ARRAY held behind tracked mutators, and it was the third
+  // collection to repeat the `members` mistake: addLabel/updateLabel reported the ONE
+  // label that moved and removeLabel reported `null`, so a peer assigned a bare object
+  // (or null) over its array and `serialize()` threw — the receiving peer could no longer
+  // save the document at all. setLabels() is the wholesale tracked write, and it refuses
+  // the non-array shapes a pre-fix log carries.
+  if (entity instanceof LinkModel && path === 'labels') {
+    if (!Array.isArray(value)) return false;
+    entity.setLabels(structuredClone(value) as never);
+    return true;
+  }
+
+  // A NODE'S `children` AND `classes` ARE Sets — rebuilt through their real mutators, never
+  // assigned. `children` is serialized, so the bare-string write this replaced turned one
+  // child id into one phantom child PER CHARACTER.
+  if (entity instanceof NodeModel && (path === 'children' || path === 'classes')) {
+    if (!Array.isArray(value)) return false;
+    const ids = structuredClone(value) as string[];
+    if (path === 'children') entity.setChildren(ids);
+    else entity.setClasses(ids);
+    return true;
+  }
+
+  // A STROKE'S `style`: REPLACE, not merge — setStyle() merges, so a cleared key would
+  // never clear on a peer. replaceStyle() also keeps the bounds invalidation a plain
+  // assignment would skip.
+  if (entity instanceof StrokeModel && path === 'style') {
+    entity.replaceStyle(structuredClone(value) as never);
     return true;
   }
 
@@ -605,10 +650,19 @@ function clearEntityProp(entity: Entity, path: string): boolean {
 
   // Generic: empty the slot the way the author's clear did (clearFlexItem assigns
   // undefined and fires trackChange; there is no removeFlexConfig mutator to prefer).
+  //
+  // AND REPORT IT THROUGH THE FUNNEL — for exactly the reason writeGeneric does. A raw
+  // `holder[head] = undefined` does not pass trackChange, so an UNDO whose inverse is a
+  // clear (setFlexItem then undo → clear flexConfig) minted no op and reached no peer:
+  // measured flexConfig execute → 1 op, undo → 0 ops. clearFlexItem itself fires
+  // trackChange, but the reducer never calls it — it assigns — so the clear has to report
+  // on its own.
   const [head, ...rest] = path.split('.');
   const holder = entity as unknown as Record<string, unknown>;
   if (rest.length === 0) {
+    const before = holder[head];
     holder[head] = undefined;
+    entity.reportRegisterWrite(path, before, undefined);
     return true;
   }
   const current = holder[head];
@@ -616,8 +670,10 @@ function clearEntityProp(entity: Entity, path: string): boolean {
     typeof current === 'object' && current !== null && !Array.isArray(current)
       ? (structuredClone(current) as Record<string, unknown>)
       : {};
+  const before = readEntityProp(entity, path);
   setPath(next, rest.join('.'), undefined);
   holder[head] = next;
+  entity.reportRegisterWrite(path, before, undefined);
   return true;
 }
 
@@ -743,17 +799,99 @@ function updatePortInPlace(port: PortModel, data: SerializedPort): boolean {
 }
 
 /**
- * Anything without a dedicated mutator: `zIndex`, `router`, `pathType`, an author's
- * own field.
+ * Registers whose write MUST go through a named model mutator, and only those.
  *
- * Prefers a real `set<Prop>()` when the model defines one, because a mutator does more
- * than assign — it updates the spatial index, bumps the version, marks dirty and emits
- * change events. A reducer that reached in and assigned the field directly would build
- * a model that LOOKS right and serializes right while being invisible to culling,
- * routing and the renderer: green tests, broken screen. Direct assignment is the last
- * resort, and it still goes through structuredClone so two entities can never end up
- * aliasing one mutable object — a bug that only appears under concurrency and is then
- * almost impossible to find.
+ * ---------------------------------------------------------------------------
+ * WHY THIS IS A LIST AND NOT A NAME LOOKUP
+ * ---------------------------------------------------------------------------
+ *
+ * This used to be `entity['set' + Prop]` — call whatever method the register's name
+ * happens to spell. That is a GUESS, and it silently assumed every such method is a
+ * single-argument whole-value writer. Three in this engine are not, and each produced a
+ * different corruption on the receiving peer and nowhere else:
+ *
+ *     setData(key, value)        called as setData({color:'red'}) → the peer stored a key
+ *                                literally named "[object Object]" and NEVER received
+ *                                `data` at all. Every setData edit was lost on every peer.
+ *     setScale(x, y)             called with the point → peer got {x:{x:2,y:3}}.
+ *     setTransformOrigin(x, y)   → peer got {x:{x:0.25,y:0.75}}.
+ *
+ * And arity is not the whole test, because a one-argument setter can still be the WRONG
+ * KIND of write: `setBehavior` and `StrokeModel.setStyle` both MERGE, so applying a value
+ * register with them let a peer gain a key and never lose one. A guess cannot tell those
+ * apart from `setRotation`. An explicit list can, and it makes each decision reviewable
+ * instead of emergent — the same reason the read-only lock keeps its bypass greppable.
+ *
+ * The rule for admission: the method takes the register's value as its ONE argument and
+ * writes it WHOLESALE. Everything else falls through to the tracked assignment below,
+ * which is wholesale by construction.
+ */
+const REGISTER_MUTATORS: Record<string, ReadonlySet<string>> = {
+  // NodeModel — position/size/state/style/ports/metadata are handled upstream.
+  node: new Set([
+    'rotation', // setRotation(degrees)
+    'zIndex', // setZIndex(z)
+    'portRenderingConfig', // setPortRenderingConfig(config)
+    'dragHandlerConfig', // setDragHandlerConfig(config)
+    'connectionGroup', // setConnectionGroup(group)
+  ]),
+  // LinkModel — points/labels/style handled upstream (style has no mutator: wholesale).
+  link: new Set([
+    'pathType', // setPathType(t)
+    'router', // setRouter(name)
+    'connector', // setConnector(name)
+  ]),
+  // GroupModel — members handled upstream.
+  group: new Set([
+    'capacity', // setCapacity(n)
+    'collapsedState', // setCollapsedState(state)
+    'zIndex', // setZIndex(z)
+  ]),
+  // StrokeModel — style handled upstream (it merges).
+  stroke: new Set([
+    'points', // setPoints(points)
+    'label', // setLabel(label)
+  ]),
+};
+
+function mutatorKind(entity: Entity): string {
+  if (entity instanceof NodeModel) return 'node';
+  if (entity instanceof LinkModel) return 'link';
+  if (entity instanceof GroupModel) return 'group';
+  return 'stroke';
+}
+
+/**
+ * Anything without a dedicated mutator: a link's `style`, `flexConfig`, `parentId`,
+ * `isCollapsed`, `layoutConfig`, `bounds`, an author's own field.
+ *
+ * Uses a real mutator ONLY where {@link REGISTER_MUTATORS} says one exists, because a
+ * mutator does more than assign — it updates the spatial index, bumps the version, marks
+ * dirty and emits change events.
+ *
+ * ---------------------------------------------------------------------------
+ * THE ASSIGNMENT FALLBACK REPORTS THROUGH THE FUNNEL, AND THAT IS LOAD-BEARING
+ * ---------------------------------------------------------------------------
+ *
+ * A plain `holder[head] = value` does not pass `trackChange()`. That looked harmless — the
+ * model is correct afterwards, it serializes correctly, every replay test is green — and
+ * it silently broke UNDO for every register on this path.
+ *
+ * `UndoStack.undo()` applies the inverse THROUGH THE MODEL WITH CAPTURE LIVE and then
+ * reads back whatever capture minted. No trackChange, no op, and the undo reaches NOBODY:
+ *
+ *     link style   execute → 1 op   undo → 0 ops   Bob stayed red forever
+ *     flexConfig   execute → 1 op   undo → 0 ops
+ *     isCollapsed  execute → 1 op   undo → 0 ops
+ *     position     execute → 1 op   undo → 1 op    ← a real mutator: always worked
+ *
+ * That is the `UpdateLinkStyleCommand` defect (style-undo.spec.ts) one layer down, hitting
+ * every mutator-less register at once, and invisible to the author every time. So the
+ * assignment path reports what it wrote. `reportRegisterWrite` is DiagramEntity's seam
+ * onto the one funnel — not a second source of truth.
+ *
+ * structuredClone stays, so two entities can never end up aliasing one mutable object — a
+ * bug that only appears under concurrency and is then almost impossible to find.
  */
 function writeGeneric(
   entity: Entity,
@@ -763,17 +901,26 @@ function writeGeneric(
   const [head, ...rest] = path.split('.');
   const holder = entity as unknown as Record<string, unknown>;
   const cloned = structuredClone(value);
+  const viaMutator = REGISTER_MUTATORS[mutatorKind(entity)]?.has(head) === true;
 
   if (rest.length === 0) {
-    const setter = holder[`set${head[0].toUpperCase()}${head.slice(1)}`];
-    if (typeof setter === 'function') {
-      (setter as (v: unknown) => void).call(entity, cloned);
+    if (viaMutator) {
+      (holder[`set${head[0].toUpperCase()}${head.slice(1)}`] as (v: unknown) => void).call(
+        entity,
+        cloned
+      );
       return true;
     }
+    const before = holder[head];
     holder[head] = cloned;
+    entity.reportRegisterWrite(path, before, cloned);
     return true;
   }
 
+  // A DOTTED path (`data.color`): the register is the LEAF, but the field that holds it is
+  // the head, so the whole holder is rebuilt with the leaf replaced. The change is reported
+  // under the FULL path — that is the vocabulary capture emitted it with, so an undo of a
+  // `data.color` edit mints a `data.color` op and not a whole-`data` one.
   const current = holder[head];
   const next: Record<string, unknown> =
     typeof current === 'object' && current !== null && !Array.isArray(current)
@@ -781,13 +928,9 @@ function writeGeneric(
       : {};
   setPath(next, rest.join('.'), cloned);
 
-  const setter = holder[`set${head[0].toUpperCase()}${head.slice(1)}`];
-  if (typeof setter === 'function') {
-    (setter as (v: unknown) => void).call(entity, next);
-    return true;
-  }
-
+  const before = readEntityProp(entity, path);
   holder[head] = next;
+  entity.reportRegisterWrite(path, before, cloned);
   return true;
 }
 
