@@ -143,6 +143,20 @@
       reachable only by hand-constructing an <code>SVGRenderer</code>, never from the <code>createDiagram</code>
       factory every embedder uses — <b>the same unreachability shape §2 names below, found again while fixing
       it</b>.</li>
+    <li><b>Two more rows have since moved, one of them by accident.</b> <i>"Commands reachable from the
+      embed — MISSING: <code>grep -c Command libs/element/src/index.ts</code> = 0"</i> is <b>no longer
+      true</b>: Phase 0's wholesale re-export closed it as a side effect. The front door now exposes
+      <b>1,017 names, 44 of them commands</b>, and <code>CommandManager</code> resolves identity-equal to
+      the engine's own export — so the row reads as an open gap and is not one. The row beside it
+      <i>("Property mutation as undoable commands — NO node style command; <code>setStyle()</code> is a raw
+      write outside undo")</i> <b>was</b> still true and is now closed by
+      <code>SetNodeStyleCommand</code>, which takes one node or a whole selection as a single undo entry.
+      Building it surfaced two live collab defects it would otherwise have copied: link-style
+      <code>undo()</code> restored via a direct field write, which never passes <code>trackChange()</code>
+      — measured at <b>1 op from execute, 0 from undo</b>, so every peer kept an undone style forever —
+      and <code>apply-op</code> wrote node style with the merging <code>setStyle</code>, meaning a peer
+      could gain a style key but never lose one. Both now go through a tracked wholesale
+      <code>replaceStyle()</code>.</li>
   </ul>
   Two blockers listed below were fixed on the way: the <b>reachability</b> finding (Phase 0 — the front door now
   re-exports the lower packages wholesale, 207 unreachable capabilities → 0) and the dormant
