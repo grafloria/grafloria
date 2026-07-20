@@ -235,6 +235,8 @@ interface BinderPeer {
   group: GroupModel;
   /** True when this board's engine holds `id` as an item (member lookup). */
   hasItem(id: string): boolean;
+  /** The member's current cell in this board (undefined when absent). */
+  memberCell(id: string): CellRect | undefined;
   /**
    * Grow/shrink a member's row span by `dRows` — the parent half of nested
    * HEIGHT ESCALATION: pulling a KPI taller than its one-row strip grows the
@@ -1064,47 +1066,56 @@ export function bindDashboardGrid(
     const f = frame();
     const gg = geom();
     const minW = Math.max(8, columnUnitFor(gg, f.width));
-    const minH = Math.max(8, rowHeightFor(gg, rows()));
     let w = Math.max(minW, g.startSize.width + dw);
-    let h = Math.max(minH, g.startSize.height + dh);
+    // The height min-clamp is applied AFTER the escalation logic below: on a
+    // grown strip "one current row" IS the whole strip, and clamping the
+    // fluid pull to it made the de-escalation threshold unreachable — the
+    // ratchet's second disguise (grow committed; a fresh shrink gesture could
+    // never pull low enough to ask the parent for a row back).
+    let h = g.startSize.height + dh;
     // NESTED HEIGHT ESCALATION (live report: "i cant increase height"). A
     // bounded strip cannot grow a tile taller than itself — so pulling
     // clearly past its bottom GROWS THE STRIP: the slab gains a row in the
-    // parent board (all tiles inside get taller together), and releasing the
-    // pull removes it again. The whole ledger commits inside this gesture's
-    // one BatchCommand; Escape reverts it.
+    // parent board (all tiles inside get taller together); pulling clearly
+    // back up REMOVES a row again. SYMMETRIC AND STATELESS ACROSS GESTURES:
+    // the first version only de-escalated inside the ledger of the gesture
+    // that grew ("rowsAdded > 0"), so grow → release → try to shrink was a
+    // RATCHET — the strip could only ever get taller (live report: "Total
+    // Revenue widget size can only increase"). Direction is now decided from
+    // the strip's CURRENT slab rows, whatever gesture created them; the
+    // ledger just accumulates this gesture's net change for the one-batch
+    // commit and for Escape.
     if (maxRows !== undefined && g.kind === 'resize') {
-      const visual = boardVisualHeight();
       const parent = parentPeer();
       if (parent) {
-        const slabRows = g.esc ? g.esc.cellAfter.h : 1;
+        const visual = boardVisualHeight();
+        const slabRows = parent.memberCell(group.id)?.h ?? 1;
         const rowPx = visual / Math.max(1, slabRows);
+        const record = (
+          res: ReturnType<BinderPeer['resizeMemberBy']>,
+          d: number
+        ): void => {
+          if (!res.changed || !res.cellBefore || !res.cellAfter || !res.frameBefore || !res.frameAfter)
+            return;
+          if (!g.esc) {
+            g.esc = {
+              peer: parent,
+              rowsAdded: 0,
+              cellBefore: res.cellBefore,
+              frameBefore: res.frameBefore,
+              cellAfter: res.cellAfter,
+              frameAfter: res.frameAfter,
+            };
+          }
+          g.esc.rowsAdded += d;
+          g.esc.cellAfter = res.cellAfter;
+          g.esc.frameAfter = res.frameAfter;
+          project();
+        };
         if (h > visual + 24) {
-          const res = parent.resizeMemberBy(group.id, +1);
-          if (res.changed && res.cellBefore && res.cellAfter && res.frameBefore && res.frameAfter) {
-            if (!g.esc) {
-              g.esc = {
-                peer: parent,
-                rowsAdded: 0,
-                cellBefore: res.cellBefore,
-                frameBefore: res.frameBefore,
-                cellAfter: res.cellAfter,
-                frameAfter: res.frameAfter,
-              };
-            }
-            g.esc.rowsAdded += 1;
-            g.esc.cellAfter = res.cellAfter;
-            g.esc.frameAfter = res.frameAfter;
-            project();
-          }
-        } else if (g.esc && g.esc.rowsAdded > 0 && h < visual - rowPx * 0.7) {
-          const res = parent.resizeMemberBy(group.id, -1);
-          if (res.changed && res.cellAfter && res.frameAfter) {
-            g.esc.rowsAdded -= 1;
-            g.esc.cellAfter = res.cellAfter;
-            g.esc.frameAfter = res.frameAfter;
-            project();
-          }
+          record(parent.resizeMemberBy(group.id, +1), +1);
+        } else if (slabRows > 1 && h < visual - rowPx * 0.7) {
+          record(parent.resizeMemberBy(group.id, -1), -1);
         }
       }
     }
@@ -1112,9 +1123,10 @@ export function bindDashboardGrid(
     // bounded strip an unclamped ghost ballooned to 273px while the engine
     // (rightly) refused every cell — visually indistinguishable from the
     // squeeze bug it replaced. Clamp to the tile's maximum legal rect.
-    // (Escalation above may have just grown the board — re-read the frame.)
+    // (Escalation above may have just grown OR shrunk the board — re-read.)
     const fNow = frame();
     const ggNow = geom();
+    h = Math.max(Math.max(8, rowHeightFor(ggNow, rows())), h);
     const itemNow = engine.getItem(g.id);
     if (itemNow) {
       const cuNow = columnUnitFor(ggNow, fNow.width);
@@ -1350,6 +1362,10 @@ export function bindDashboardGrid(
   const selfPeer: BinderPeer = {
     group,
     hasItem: (id) => !!engine.getItem(id),
+    memberCell: (id) => {
+      const it = engine.getItem(id);
+      return it ? { x: it.x, y: it.y, w: it.w, h: it.h } : undefined;
+    },
     resizeMemberBy: (id, dRows) => {
       const item = engine.getItem(id);
       if (!item || disposed) return { changed: false };

@@ -855,6 +855,47 @@ try {
   await page.close();
 }
 
+// ---- S25 · the strip is NOT a ratchet: grow, release, shrink back ---------
+{
+  begin('s25-strip-shrinks-back-across-gestures');
+  const page = await freshPage();
+  const tr0 = await host(page, 'Total revenue');
+  const nc0 = await host(page, 'New customers');
+  // GESTURE 1: grow the strip via the KPI corner, release (commit).
+  await page.mouse.click(tr0.x + tr0.w / 2, tr0.y + 10);
+  await page.waitForTimeout(250);
+  let rs = await resizeHandleOf(page, 'Total revenue');
+  await page.mouse.move(rs.x, rs.y); await page.mouse.down();
+  await page.mouse.move(rs.x, rs.y + 130, { steps: 12 });
+  await page.waitForTimeout(450);
+  await page.mouse.up(); await page.waitForTimeout(600);
+  const trTall = await host(page, 'Total revenue');
+  const grew = trTall.h > tr0.h + 30;
+  await shot(page, 'grown-committed');
+  // GESTURE 2 (fresh): shrink it back up — the ratchet bug made this a no-op.
+  rs = await resizeHandleOf(page, 'Total revenue');
+  await page.mouse.move(rs.x, rs.y); await page.mouse.down();
+  await page.mouse.move(rs.x, rs.y - 130, { steps: 12 });
+  await page.waitForTimeout(450);
+  await page.mouse.up(); await page.waitForTimeout(600);
+  const trBack = await host(page, 'Total revenue');
+  const ncBack = await host(page, 'New customers');
+  const shrank = Math.abs(trBack.h - tr0.h) < 8 && Math.abs(ncBack.h - nc0.h) < 8;
+  await shot(page, 'shrunk-back-committed');
+  const st = await boardState(page);
+  // Undo walks: shrink-commit undone -> tall strip; grow-commit undone -> original.
+  await clickUndo(page);
+  const trU1 = await host(page, 'Total revenue');
+  const undo1Tall = trU1.h > tr0.h + 30;
+  await clickUndo(page);
+  const trU2 = await host(page, 'Total revenue');
+  const undo2Orig = Math.abs(trU2.h - tr0.h) < 8;
+  await shot(page, 'after-undos');
+  verdict(grew && shrank && undo1Tall && undo2Orig && st.overlaps === 0,
+    `grew=${grew} shrank-in-NEW-gesture=${shrank} undo1-tall=${undo1Tall} undo2-original=${undo2Orig} overlaps=${st.overlaps} (tr ${tr0.h}->${trTall.h}->${trBack.h})`);
+  await page.close();
+}
+
 } finally {
   await browser.close();
   server.close();
