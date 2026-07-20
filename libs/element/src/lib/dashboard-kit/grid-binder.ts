@@ -351,6 +351,8 @@ interface GestureState {
   lastWorld: { x: number; y: number } | null;
   /** Last pointer position, screen coords (for the removeZone test). */
   lastScreen: { x: number; y: number } | null;
+  /** The ghost's host element, cached for the same-event style fast-path. */
+  hostEl: HTMLElement | null;
   /** Nested height escalation: net rows added to OUR group in the parent. */
   esc: {
     peer: BinderPeer;
@@ -810,10 +812,32 @@ export function bindDashboardGrid(
     armGlide();
     if (g.kind !== 'palette') {
       setGhost(g.id, true);
+      g.hostEl = hostOf(g.id);
       capturePointer(g.pointerId);
       api.container.style.cursor = g.kind === 'resize' ? 'nwse-resize' : 'grabbing';
     }
     syncPlaceholder();
+  };
+
+  /**
+   * SAME-EVENT ghost fast-path — the vanilla-parity fix. The prototype writes
+   * the tile's style inside the pointermove handler, so the ghost sits at 0px
+   * behind the cursor; writing only the MODEL leaves the host to the next
+   * render frame (~7.5px measured trailing at hand speed). Hosts live in the
+   * HTML layer whose transform carries the camera, so world px == style px;
+   * the renderer's next pass writes the identical values from the model — no
+   * fight, just no wait.
+   */
+  const ghostStyleFastPath = (
+    g: GestureState,
+    rect: { x?: number; y?: number; width?: number; height?: number }
+  ): void => {
+    const el = g.hostEl;
+    if (!el) return;
+    if (rect.x !== undefined) el.style.left = `${rect.x}px`;
+    if (rect.y !== undefined) el.style.top = `${rect.y}px`;
+    if (rect.width !== undefined) el.style.width = `${rect.width}px`;
+    if (rect.height !== undefined) el.style.height = `${rect.height}px`;
   };
 
   const cleanupGestureVisuals = (g: GestureState): void => {
@@ -950,6 +974,7 @@ export function bindDashboardGrid(
     if (g.kind === 'move') {
       const desired = { x: ev.world.x - g.grab.dx, y: ev.world.y - g.grab.dy };
       g.node.setPosition(desired.x, desired.y);
+      ghostStyleFastPath(g, desired);
 
       g.lastWorld = { x: ev.world.x, y: ev.world.y };
       g.lastScreen = { x: ev.screen.x, y: ev.screen.y };
@@ -1100,6 +1125,7 @@ export function bindDashboardGrid(
       }
     }
     g.node.setSize(w, h, g.node.size.depth ?? 0);
+    ghostStyleFastPath(g, { width: w, height: h });
     const spanF = maxRows !== undefined ? frame() : f;
     const spanG = maxRows !== undefined ? geom() : gg;
     const span = sizeToSpan(w, h, spanF, spanG, rows());
@@ -1369,6 +1395,13 @@ export function bindDashboardGrid(
       if (gesture || !hit.node) return; // dead zone (slab area), or mid-palette
       const node = diagram.getNode(hit.node.id);
       if (!node || node.state?.locked === true) return; // pinned: refuse; click still focuses
+      // Arm the glide class NOW, a full task before any displacement can
+      // happen: a transition defined in the same style recalc as the first
+      // left/top write does not run (CSS transitions fire only when the
+      // property changes while the transition exists in the BEFORE-change
+      // style) — the first pushed neighbour of every gesture TELEPORTED
+      // (measured 109px in one frame) while later ones glided.
+      armGlide();
       const target = (ev.source?.target ?? null) as Element | null;
       const isResize = !!target?.closest?.('.axdb-rs');
       const it = engine.getItem(node.id);
@@ -1392,6 +1425,7 @@ export function bindDashboardGrid(
         leg: null,
         lastWorld: null,
         lastScreen: null,
+        hostEl: null,
         esc: null,
         chip: null,
       };
@@ -1441,6 +1475,7 @@ export function bindDashboardGrid(
       leg: null,
       lastWorld: null,
       lastScreen: null,
+      hostEl: null,
       esc: null,
       chip,
     };
