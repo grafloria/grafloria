@@ -497,6 +497,45 @@ describe('SetLinkLabelsCommand over the wire', () => {
 });
 
 // ---------------------------------------------------------------------------
+// 5b. THE DETACHED-ENTITY WRITE IS NOT ONE OF THESE BUGS — proof, so it stays that way
+// ---------------------------------------------------------------------------
+//
+// PasteCommand and DuplicateCommand assign `group.members = newSet` and
+// `node.children = newSet` DIRECTLY — the exact field whose corruption group-members.spec
+// documents. It looks like the same defect and it is NOT: the write lands on a DETACHED
+// entity (built, not yet added), so no capture is listening. It is the subsequent
+// addGroup/addNode — the structural funnel `trackChange('groups'|'nodes', null, entity)` —
+// that captures the whole entity via serialize(), which reads the collection correctly no
+// matter how the field was assigned. So the direct write is harmless HERE, and "fixing" it
+// into a mutator call on a detached entity would be pointless (the mutator refuses a
+// read-only detached parent anyway). This test exists so that conclusion is enforced, not
+// just asserted in a report.
+describe('a detached entity carries its collections in through its add op', () => {
+  it('a group given members before addGroup arrives whole on the peer', () => {
+    const { wire, alice, bob } = twoPeers();
+    const g = new GroupModel({ name: 'Pasted' });
+    (g as unknown as { id: string }).id = 'pasted';
+    g.members = new Set(['alpha', 'beta']); // the PasteCommand:180 pattern, verbatim
+    alice.diagram.addGroup(g);
+    bob.receive(overTheWire(wire));
+
+    expect(bob.diagram.getGroup('pasted')!.serialize().members).toEqual(['alpha', 'beta']);
+    expectConverged(alice.diagram, bob.diagram);
+  });
+
+  it('a node given children before addNode arrives whole on the peer', () => {
+    const { wire, alice, bob } = twoPeers();
+    const n = node('container', 400, 0);
+    n.children = new Set(['alpha']); // the PasteCommand:112 pattern, verbatim
+    alice.diagram.addNode(n);
+    bob.receive(overTheWire(wire));
+
+    expect(bob.diagram.getNode('container')!.serialize().children).toEqual(['alpha']);
+    expectConverged(alice.diagram, bob.diagram);
+  });
+});
+
+// ---------------------------------------------------------------------------
 // 6. HOSTILE / LEGACY TRAFFIC
 // ---------------------------------------------------------------------------
 
