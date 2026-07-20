@@ -24,6 +24,7 @@ export * from './DeleteSelectionCommand'; // Phase 1.8
 export * from './CutCommand'; // wave3/interaction
 export * from './resolveLinkNodeIds'; // wave3/interaction
 export * from './UpdateLinkStyleCommand'; // wave4/edges
+export * from './SetNodeStyleCommand'; // node style, undoable + collab-safe
 export * from './SetLinkLabelsCommand'; // wave4/edges
 // wave4/interaction: the clone re-id recipe is public now — the Halo's clone/fork
 // tools (in @grafloria/renderer) must mint fresh port ids exactly the way Paste does,

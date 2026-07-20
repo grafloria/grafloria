@@ -639,6 +639,26 @@ export class NodeModel extends DiagramEntity {
   }
 
   /**
+   * REPLACE the whole style object — the write `setStyle` cannot express.
+   *
+   * `setStyle` merges, so it can add a key and overwrite a key but can never REMOVE
+   * one. Restoring a snapshot therefore has to assign wholesale, and the obvious way to
+   * do that — `node.style = snapshot` — is a plain field write that never passes
+   * `trackChange()`. That funnel is what collab captures from, so the direct assignment
+   * reaches the renderer (via markDirty) and reaches no other peer at all. That is not
+   * hypothetical: it is exactly how an undone LINK style stayed applied on every peer
+   * but the one that pressed Ctrl+Z. See collab/style-undo.spec.ts.
+   *
+   * Undo paths must use this, not the field.
+   */
+  replaceStyle(style: Partial<NodeStyle>): void {
+    if (this.writeBlocked()) return;
+    const oldStyle = { ...this.style };
+    this.style = { ...style };
+    this.trackChange('style', oldStyle, this.style);
+  }
+
+  /**
    * Add CSS class
    */
   addClass(className: string): void {

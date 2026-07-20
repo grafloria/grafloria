@@ -765,6 +765,24 @@ export class LinkModel extends DiagramEntity {
   }
 
   /**
+   * REPLACE the whole style object — the write `updateStyle` cannot express.
+   *
+   * `updateStyle` merges, so it can never REMOVE a key; restoring a snapshot has to
+   * assign wholesale. `UpdateLinkStyleCommand.undo()` used to do that with a direct
+   * field write (`link.style = restored`), which never passes `trackChange()` — the
+   * single funnel collab captures from. Measured: execute emitted 1 op, undo emitted 0,
+   * so every peer kept the styled link forever while the author saw it correctly
+   * reverted. See collab/style-undo.spec.ts.
+   */
+  replaceStyle(style: Partial<LinkStyle>): void {
+    if (this.writeBlocked()) return;
+    const oldStyle = { ...this.style };
+    this.style = { ...style };
+    this.trackChange('style', oldStyle, this.style);
+    this.emitter.emit('link:style-changed', { oldStyle, newStyle: this.style });
+  }
+
+  /**
    * Set data property
    */
   setData(key: string, value: any): void {

@@ -552,7 +552,13 @@ function setEntityProp(
         entity.setState(structuredClone(value) as never);
         return true;
       case 'style':
-        entity.setStyle(structuredClone(value) as never);
+        // REPLACE, not merge. `style` is a value register: the op carries the whole
+        // object the author now holds, so applying it with the merging `setStyle` means
+        // a peer can gain a key but can NEVER LOSE ONE. Undo a fill and the author goes
+        // back to plain while every peer keeps the fill — the register is write-only in
+        // one direction. (Links never had this: they fall through to the generic writer,
+        // which assigns wholesale. Only the NodeModel branch merged.)
+        entity.replaceStyle(structuredClone(value) as never);
         return true;
     }
   }

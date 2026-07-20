@@ -43,13 +43,13 @@ export class UpdateLinkStyleCommand extends Command {
     // Assign the snapshot wholesale rather than merging: `updateStyle` cannot
     // REMOVE a key, so merging would leave behind any property this command
     // introduced.
-    const restored = { ...this.previousStyle };
-    link.style = restored;
-    link.markDirty('style');
-    link.emitter.emit('link:style-changed', {
-      oldStyle: this.style,
-      newStyle: restored,
-    });
+    //
+    // Through `replaceStyle`, NOT the field. This undo used to be
+    // `link.style = restored; link.markDirty('style')`, and a direct field write does
+    // not pass `trackChange()` — the one funnel collab captures from. Execute emitted
+    // an op, undo emitted none, so the author saw the style revert and every other peer
+    // kept it applied forever, with no later edit able to correct it.
+    link.replaceStyle({ ...this.previousStyle });
   }
 
   override canExecute(context: CommandContext): boolean {
