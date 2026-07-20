@@ -631,6 +631,13 @@ defineDemo({
     // handle so it can prove `exportIds()` against the real board rather than a
     // hand-copied id list that would drift the moment a widget is renamed.
     ctx.dashboard = SPEC.handle;
+    // …and this page's OWN widget painter, for the same reason one layer up.
+    // `renderWidget` is a FUNCTION: it cannot be serialised, so a document-level
+    // reload rebuilds the kit's chart and loses whatever the app drew on top of
+    // it (here: the focus ring and the 📌 marker). `fromDocument({ renderWidget })`
+    // is the seam that hands it back — and the save/load gate proves BOTH sides
+    // of that limit against this page rather than a re-implementation of it.
+    ctx.renderWidget = renderWidget;
     ctx.engine = instance.getEngine();
 
     afterMount('overview');
