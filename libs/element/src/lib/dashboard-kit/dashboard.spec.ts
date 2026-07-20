@@ -462,3 +462,232 @@ describe('the closed API gaps (the port\'s bypass list)', () => {
     expect(spec.handle.widget('u')!.spec.data).toEqual({ value: 'two' });
   });
 });
+
+// ===========================================================================
+// PHASE 4 — responsive column count and RTL, through the DATA-FIRST API.
+//
+// The engine spec proves the column-change semantics and the cache; these
+// prove the authoring surface actually reaches them, which is the gap that
+// made this phase's work "not only the binder".
+// ===========================================================================
+
+const BOARD = () =>
+  dashboard({
+    columns: 12,
+    width: 1200,
+    height: 400,
+    views: [
+      {
+        id: 'main',
+        widgets: [
+          { id: 'w1', span: 3, rows: 1, x: 0, y: 0 },
+          { id: 'w2', span: 3, rows: 1, x: 3, y: 0 },
+          { id: 'w3', span: 6, rows: 1, x: 6, y: 0 },
+        ],
+      },
+    ],
+  });
+
+describe('dashboard() — responsive column count', () => {
+  it('setColumns re-lays the board out and metrics report the LIVE count', () => {
+    const { handle } = mount(BOARD());
+    expect(handle.getColumns()).toBe(12);
+    expect(handle.metrics()!.columns).toBe(12);
+    handle.setColumns(6);
+    expect(handle.getColumns()).toBe(6);
+    expect(handle.metrics()!.columns).toBe(6);
+    expect(handle.metrics()!.maxColumns).toBe(12); // the authored width is remembered
+    for (const w of handle.widgetsOf()) expect(w.cell!.x + w.cell!.w).toBeLessThanOrEqual(6);
+  });
+
+  it('shrinking then growing back restores every cell EXACTLY (the cache)', () => {
+    const { handle } = mount(BOARD());
+    const before = handle.widgetsOf().map((w) => ({ id: w.id, ...w.cell! }));
+    handle.setColumns(1);
+    expect(handle.widgetsOf().every((w) => w.cell!.w === 1)).toBe(true);
+    handle.setColumns(12);
+    expect(handle.widgetsOf().map((w) => ({ id: w.id, ...w.cell! }))).toEqual(before);
+  });
+
+  it('the column change writes cells through, so a refresh() cannot undo it', () => {
+    const { handle } = mount(BOARD());
+    handle.setColumns(4);
+    const narrow = handle.widgetsOf().map((w) => ({ id: w.id, ...w.cell! }));
+    handle.refresh(); // rebuilds every engine from the model
+    expect(handle.widgetsOf().map((w) => ({ id: w.id, ...w.cell! }))).toEqual(narrow);
+    // …and the cache still survived the rebuild, so growing back still restores.
+    handle.setColumns(12);
+    expect(handle.widgetsOf().find((w) => w.id === 'w3')!.cell!.w).toBe(6);
+  });
+
+  it('a responsive board derives its count from the board width', () => {
+    const spec = dashboard({
+      columns: 12,
+      width: 600,
+      height: 300,
+      responsive: { columnWidth: 100 },
+      widgets: [
+        { id: 'a', span: 3, rows: 1, x: 0, y: 0 },
+        { id: 'b', span: 3, rows: 1, x: 3, y: 0 },
+      ],
+    });
+    const { handle } = mount(spec);
+    // 600 / 100 = 6 columns, not the declared 12.
+    expect(handle.getColumns()).toBe(6);
+    expect(handle.metrics()!.responsive).toBe(true);
+  });
+
+  it('breakpoints pick the first step at least as wide as the board', () => {
+    const make = (width: number) =>
+      mount(
+        dashboard({
+          columns: 12,
+          width,
+          height: 300,
+          responsive: { breakpoints: [{ w: 500, c: 1 }, { w: 900, c: 6 }] },
+          widgets: [{ id: 'a', span: 6, rows: 1, x: 0, y: 0 }],
+        })
+      ).handle;
+    expect(make(400).getColumns()).toBe(1); // <= 500
+    expect(make(800).getColumns()).toBe(6); // <= 900
+    expect(make(1200).getColumns()).toBe(12); // wider than every step -> the max
+  });
+
+  it('an explicit setColumns PINS the count against the width evaluator', () => {
+    const { handle } = mount(
+      dashboard({
+        columns: 12,
+        width: 600,
+        height: 300,
+        responsive: { columnWidth: 100 },
+        widgets: [{ id: 'a', span: 3, rows: 1, x: 0, y: 0 }],
+      })
+    );
+    expect(handle.getColumns()).toBe(6);
+    handle.setColumns(12);
+    expect(handle.getColumns()).toBe(12);
+    expect(handle.metrics()!.responsive).toBe(false);
+    handle.refresh(); // would re-evaluate width and snap back to 6 if not pinned
+    expect(handle.getColumns()).toBe(12);
+  });
+
+  it('SAVING WHILE NARROW saves the wide layout — toJSON keeps the desktop', () => {
+    const { handle } = mount(BOARD());
+    const wide = handle.toJSON();
+    handle.setColumns(1);
+    const narrow = handle.toJSON();
+    expect(narrow[0].columns).toBe(12); // the view records the widest count
+    expect(narrow[0].widgets.map((w) => [w.x, w.y, w.span])).toEqual(
+      wide[0].widgets.map((w) => [w.x, w.y, w.span])
+    );
+    // …while the board on screen really IS one column wide.
+    expect(handle.getColumns()).toBe(1);
+    expect(handle.widgetsOf().every((w) => w.cell!.w === 1)).toBe(true);
+  });
+
+  it('that saved JSON feeds straight back into dashboard() as the wide board', () => {
+    const { handle } = mount(BOARD());
+    handle.setColumns(1);
+    const saved = handle.toJSON();
+    const rebuilt = mount(dashboard({ views: saved, width: 1200, height: 400 }));
+    expect(rebuilt.handle.getColumns()).toBe(12);
+    expect(rebuilt.handle.widgetsOf().map((w) => ({ id: w.id, ...w.cell! }))).toEqual(
+      handle.toJSON()[0].widgets.map((w) => ({ id: w.id, x: w.x!, y: w.y!, w: w.span!, h: w.rows! }))
+    );
+  });
+});
+
+describe('dashboard() — RTL', () => {
+  /** The same three-widget board, declared once, mounted in each direction. */
+  const both = () => {
+    const ltr = mount(BOARD());
+    const rtlSpec = dashboard({
+      columns: 12,
+      width: 1200,
+      height: 400,
+      rtl: true,
+      views: [
+        {
+          id: 'main',
+          widgets: [
+            { id: 'w1', span: 3, rows: 1, x: 0, y: 0 },
+            { id: 'w2', span: 3, rows: 1, x: 3, y: 0 },
+            { id: 'w3', span: 6, rows: 1, x: 6, y: 0 },
+          ],
+        },
+      ],
+    });
+    return { ltr, rtl: mount(rtlSpec) };
+  };
+
+  it('is direction-agnostic in the MODEL: identical cells, mirrored pixels', () => {
+    const { ltr, rtl } = both();
+    for (const id of ['w1', 'w2', 'w3']) {
+      expect(rtl.handle.widget(id)!.cell).toEqual(ltr.handle.widget(id)!.cell);
+    }
+    // Column 0 is at the LEFT in LTR and at the RIGHT in RTL.
+    const l1 = ltr.handle.widget('w1')!.rect!;
+    const r1 = rtl.handle.widget('w1')!.rect!;
+    expect(r1.width).toBeCloseTo(l1.width, 5);
+    expect(r1.y).toBeCloseTo(l1.y, 5);
+    expect(r1.x).toBeGreaterThan(l1.x);
+    // The mirror identity, on the frame the board actually has.
+    const f = rtl.handle.metrics()!.frame;
+    expect(f.x + f.width - (r1.x + r1.width)).toBeCloseTo(l1.x - f.x, 4);
+  });
+
+  it('the LAST column renders at the LEFT edge in RTL', () => {
+    const { ltr, rtl } = both();
+    const l3 = ltr.handle.widget('w3')!.rect!; // x=6, the right half in LTR
+    const r3 = rtl.handle.widget('w3')!.rect!;
+    expect(r3.x).toBeLessThan(l3.x);
+    const f = rtl.handle.metrics()!.frame;
+    expect(r3.x - f.x).toBeCloseTo(ltr.handle.metrics()!.frame.width - (l3.x + l3.width), 4);
+  });
+
+  it('a layout SAVED in one direction re-renders mirrored in the other, same cells', () => {
+    const { ltr } = both();
+    const saved = ltr.handle.toJSON();
+    const mirrored = mount(dashboard({ views: saved, width: 1200, height: 400, rtl: true }));
+    for (const id of ['w1', 'w2', 'w3']) {
+      expect(mirrored.handle.widget(id)!.cell).toEqual(ltr.handle.widget(id)!.cell);
+    }
+    expect(mirrored.handle.widget('w1')!.rect!.x).toBeGreaterThan(
+      ltr.handle.widget('w1')!.rect!.x
+    );
+  });
+
+  it('toggles live without touching a single cell', () => {
+    const { ltr } = both();
+    const cells = ltr.handle.widgetsOf().map((w) => ({ id: w.id, ...w.cell! }));
+    const xBefore = ltr.handle.widget('w1')!.rect!.x;
+    ltr.handle.setRtl(true);
+    expect(ltr.handle.getRtl()).toBe(true);
+    expect(ltr.handle.widgetsOf().map((w) => ({ id: w.id, ...w.cell! }))).toEqual(cells);
+    expect(ltr.handle.widget('w1')!.rect!.x).toBeGreaterThan(xBefore);
+    ltr.handle.setRtl(false);
+    expect(ltr.handle.widget('w1')!.rect!.x).toBeCloseTo(xBefore, 4);
+  });
+
+  it('RTL and responsive compose: mirrored AND width-derived at once', () => {
+    const { handle } = mount(
+      dashboard({
+        columns: 12,
+        width: 600,
+        height: 300,
+        rtl: true,
+        responsive: { columnWidth: 100 },
+        widgets: [
+          { id: 'a', span: 3, rows: 1, x: 0, y: 0 },
+          { id: 'b', span: 3, rows: 1, x: 3, y: 0 },
+        ],
+      })
+    );
+    expect(handle.getColumns()).toBe(6);
+    expect(handle.getRtl()).toBe(true);
+    const f = handle.metrics()!.frame;
+    const a = handle.widget('a')!.rect!;
+    // x=0 still hugs the RIGHT edge, whatever the column count became.
+    expect(f.x + f.width - (a.x + a.width)).toBeCloseTo(handle.metrics()!.padding, 4);
+  });
+});

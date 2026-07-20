@@ -59,6 +59,16 @@ export interface DashboardGridGeometry {
   minRowHeight: number;
   /** The board's design height — 'fit' keeps it, 'grow' never shrinks below it. */
   designHeight: number;
+  /**
+   * RIGHT-TO-LEFT boards. The MODEL is direction-agnostic — cell x=0 is always
+   * "the first column" and every rule in `GridPackEngine` (push, swap, gravity,
+   * the anti-jitter gate) is written in cells, so none of it changes. ONLY this
+   * module's pixel mapping mirrors: x=0 renders at the board's RIGHT edge and
+   * columns run leftwards. A layout saved in one direction therefore renders
+   * mirrored in the other with byte-identical cells, which is the property the
+   * kit's spec and the e2e battery both assert.
+   */
+  rtl?: boolean;
 }
 
 /** Row height for a board currently `rows` rows tall (both modes). */
@@ -82,7 +92,20 @@ export function columnUnitFor(g: DashboardGridGeometry, width: number): number {
   return (width - 2 * g.padding - (g.columns - 1) * g.gap) / g.columns;
 }
 
-/** Project integer cells into a world rectangle inside `frame`. */
+/** Width in px of a `w`-column span (the pitch identity used by both mappings). */
+export function spanWidthPx(w: number, g: DashboardGridGeometry, frameWidth: number): number {
+  const cu = columnUnitFor(g, frameWidth);
+  return w * cu + (w - 1) * g.gap;
+}
+
+/**
+ * Project integer cells into a world rectangle inside `frame`.
+ *
+ * RTL mirrors about the board's vertical centre line: the distance from the
+ * board's RIGHT padding edge to the tile's RIGHT edge equals what the LTR
+ * distance from the left padding edge to the tile's LEFT edge would be. Only
+ * the x term changes — rows, heights and spans are direction-agnostic.
+ */
 export function cellToRect(
   cell: CellRect,
   frame: WorldRect,
@@ -91,10 +114,13 @@ export function cellToRect(
 ): WorldRect {
   const cu = columnUnitFor(g, frame.width);
   const rh = rowHeightFor(g, rows);
+  const width = cell.w * cu + (cell.w - 1) * g.gap;
   return {
-    x: frame.x + g.padding + cell.x * (cu + g.gap),
+    x: g.rtl
+      ? frame.x + frame.width - g.padding - cell.x * (cu + g.gap) - width
+      : frame.x + g.padding + cell.x * (cu + g.gap),
     y: frame.y + g.padding + cell.y * (rh + g.gap),
-    width: cell.w * cu + (cell.w - 1) * g.gap,
+    width,
     height: cell.h * rh + (cell.h - 1) * g.gap,
   };
 }
@@ -103,18 +129,29 @@ export function cellToRect(
  * The cell whose slot a tile TOP-LEFT at world (x, y) is closest to — the
  * prototype's margin-adjusted midpoint rounding (`round(L / cellPitch)`).
  * Clamping to the board is the ENGINE's job (moveCheck clamps), not ours.
+ *
+ * `spanW` is the tile's COLUMN SPAN and is used only when `g.rtl`: mirrored,
+ * the cell is decided by the tile's RIGHT edge (its leading edge), so the
+ * span is what converts the given left edge into it. LTR ignores it entirely,
+ * which is why every existing call site keeps its exact behaviour. Getting
+ * this wrong is the classic RTL drag bug — the tile lands a span away from
+ * the placeholder — so the e2e battery asserts drop-on-placeholder in RTL.
  */
 export function pointToCell(
   x: number,
   y: number,
   frame: WorldRect,
   g: DashboardGridGeometry,
-  rows: number
+  rows: number,
+  spanW = 1
 ): { x: number; y: number } {
   const cu = columnUnitFor(g, frame.width);
   const rh = rowHeightFor(g, rows);
+  const right = x + spanWidthPx(spanW, g, frame.width);
   return {
-    x: Math.round((x - frame.x - g.padding) / (cu + g.gap)),
+    x: g.rtl
+      ? Math.round((frame.x + frame.width - g.padding - right) / (cu + g.gap))
+      : Math.round((x - frame.x - g.padding) / (cu + g.gap)),
     y: Math.round((y - frame.y - g.padding) / (rh + g.gap)),
   };
 }

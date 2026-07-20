@@ -74,6 +74,16 @@ const CSS = `
 }
 .grafloria-node-host:hover > .axdb-rs { opacity: 1; }
 .grafloria-node-host > .axdb-rs:hover { border-color: #3b52d9; }
+/* RTL boards grow leftwards, so the grab corner mirrors with them. */
+.grafloria-node-host > .axdb-rs.axdb-rs--rtl {
+  right: auto;
+  left: 0;
+  cursor: nesw-resize;
+  border-right: none;
+  border-left: 3px solid rgba(120, 130, 148, .55);
+  border-bottom-right-radius: 0;
+  border-bottom-left-radius: var(--axdb-rs-radius, 12px);
+}
 
 /* ===== palette drag-in chip (screen-space clone following the cursor) ===== */
 .axdb-drag-chip {

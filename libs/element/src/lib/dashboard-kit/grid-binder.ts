@@ -57,6 +57,7 @@ import {
   GridPackEngine,
   RemoveFromGroupCommand,
   type DiagramModel,
+  type GridColumnLayout,
   type GridItemConfig,
   type GridPackItem,
   type GroupModel,
@@ -95,9 +96,52 @@ export interface DashboardGridApi {
   renderNow(): void;
 }
 
+/**
+ * RESPONSIVE COLUMN COUNT — gridstack's `columnOpts`, driven by the BOARD's
+ * width. Give it `columnWidth`, or `breakpoints`, or both (breakpoints win).
+ *
+ * The binder owns the recomputation, not the page: it re-evaluates whenever
+ * the group's frame changes AND whenever the canvas container resizes, so a
+ * board that tracks the viewport and a board resized by a control both work
+ * with no page code. Column changes are DERIVED state — they re-project
+ * pixels and re-write cells through `runSystemWrite`, never through the
+ * command stack, so responding to a window resize can never land in undo.
+ */
+export interface DashboardResponsiveOptions {
+  /**
+   * Target width of ONE column, px. The count is `round(boardWidth /
+   * columnWidth)`, clamped to `[1, columnMax]` — gridstack's `columnWidth`.
+   */
+  columnWidth?: number;
+  /**
+   * Upper bound for the derived count, and the count used when no breakpoint
+   * matches. Defaults to the binder's declared `columns`.
+   */
+  columnMax?: number;
+  /**
+   * Explicit steps, gridstack-style: the FIRST entry (ascending by `w`) whose
+   * `w` is at least the board width decides the count. Wider than every entry
+   * → `columnMax`. Each step may name its own re-layout mode.
+   */
+  breakpoints?: Array<{ w: number; c: number; layout?: GridColumnLayout }>;
+  /** Default re-layout mode for a change (see {@link GridColumnLayout}). */
+  layout?: GridColumnLayout;
+}
+
 export interface DashboardGridOptions {
-  /** Column count (default 12). */
+  /** Column count (default 12). With `responsive`, the starting/maximum count. */
   columns?: number;
+  /**
+   * RIGHT-TO-LEFT board. Cells are unchanged — x=0 is still the first column —
+   * but it renders at the board's RIGHT edge and columns run leftwards. Purely
+   * a pixel-mapping concern: the engine, the cells and every saved layout are
+   * direction-agnostic.
+   */
+  rtl?: boolean;
+  /** Derive the column count from the board's width (see the interface). */
+  responsive?: DashboardResponsiveOptions;
+  /** Fires after a responsive (or programmatic) column-count change. */
+  onColumnsChange?: (columns: number, previous: number) => void;
   /** Gap between cells, px (default 12). */
   gap?: number;
   /** Board padding, px (default = gap). */
@@ -172,9 +216,35 @@ export interface DashboardGridHandle {
    */
   setFloat(on: boolean): void;
   getFloat(): boolean;
+  /**
+   * Change the COLUMN COUNT live (gridstack's `column(n, layout)`), through the
+   * engine's per-column layout cache: shrinking caches the layout it leaves,
+   * growing back restores it. Returns true when the count actually changed.
+   *
+   * Calling this directly PINS the count — it switches the responsive
+   * evaluator off, so a board under an explicit count is not fought by its own
+   * width observer. `setColumns(n, layout, { responsive: true })` is the
+   * evaluator's own path back.
+   */
+  setColumns(n: number, layout?: GridColumnLayout, opts?: { responsive?: boolean }): boolean;
+  getColumns(): number;
+  /** RTL mirroring, live. Cells never change — only the pixels. */
+  setRtl(on: boolean): void;
+  getRtl(): boolean;
+  /**
+   * The layout to PERSIST — from the engine's LARGEST cached column count, so
+   * saving while the board is narrow still saves the wide layout the user
+   * authored (gridstack's `save()` semantics).
+   */
+  saveLayout(): { columns: number; cells: Map<string, CellRect> };
   /** Live board metrics (mapping inputs + derived row height / rows). */
   metrics(): {
+    /** The LIVE column count — with `responsive`, this is what width chose. */
     columns: number;
+    /** The declared maximum (the count the board was authored at). */
+    maxColumns: number;
+    rtl: boolean;
+    responsive: boolean;
     gap: number;
     padding: number;
     sizing: 'fit' | 'grow';
@@ -380,7 +450,14 @@ export function bindDashboardGrid(
   ensureDashboardKitStyles();
 
   const diagram = api.getModel();
-  const columns = options.columns ?? 12;
+  /** The DECLARED count — the board's authored width, and the responsive cap. */
+  const maxColumns = options.columns ?? 12;
+  /** The LIVE count. Responsive width evaluation and `setColumns` move it. */
+  let columns = maxColumns;
+  let rtl = options.rtl === true;
+  const responsive = options.responsive;
+  /** An explicit `setColumns` pins the count and stops width evaluation. */
+  let responsivePinned = false;
   const gap = options.gap ?? 12;
   const padding = options.padding ?? gap;
   const baseRowHeight = options.baseRowHeight ?? 110;
@@ -427,6 +504,7 @@ export function bindDashboardGrid(
     baseRowHeight,
     minRowHeight,
     designHeight: sizing === 'fit' ? frame().height : designH,
+    rtl,
   });
 
   const rows = (): number => Math.max(1, engine.rows());
@@ -463,9 +541,11 @@ export function bindDashboardGrid(
       const f = frame();
       const g = geom();
       if (node.position && (node.position.x !== 0 || node.position.y !== 0)) {
-        // First adoption from pixels: where the tile already sits.
-        const p = pointToCell(node.position.x, node.position.y, f, g, rows());
+        // First adoption from pixels: where the tile already sits. The SPAN is
+        // resolved first because the mirrored (RTL) mapping needs it to turn a
+        // left edge into a cell.
         const s = sizeToSpan(node.size.width, node.size.height, f, g, rows());
+        const p = pointToCell(node.position.x, node.position.y, f, g, rows(), spanMeta || s.w);
         return {
           id,
           x: Math.max(0, p.x),
@@ -645,12 +725,15 @@ export function bindDashboardGrid(
         existing?.remove();
         continue;
       }
+      const rs = existing ?? document.createElement('div');
       if (!existing) {
-        const rs = document.createElement('div');
         rs.className = 'axdb-rs';
         rs.setAttribute('title', 'Resize');
         host.appendChild(rs);
       }
+      // The grab corner mirrors with the board: bottom-right LTR, bottom-left
+      // RTL — the same corner the tile actually grows from in each direction.
+      rs.classList.toggle('axdb-rs--rtl', rtl);
     }
   };
 
@@ -733,9 +816,99 @@ export function bindDashboardGrid(
 
   const onBoundsChanged = (): void => {
     if (disposed || writing) return;
+    if (evaluateResponsive()) return; // a column change already re-projected
     project();
     api.render();
   };
+
+  // -- responsive column count -----------------------------------------------
+
+  /**
+   * The column count this board's CURRENT WIDTH asks for. Breakpoints win when
+   * given (first step, ascending, whose `w` is at least the board width);
+   * otherwise `columnWidth` divides the width. Both clamp to `[1, columnMax]`.
+   */
+  const columnsForWidth = (width: number): { c: number; layout?: GridColumnLayout } | null => {
+    if (!responsive) return null;
+    const max = Math.max(1, responsive.columnMax ?? maxColumns);
+    if (responsive.breakpoints?.length) {
+      const steps = [...responsive.breakpoints].sort((a, b) => a.w - b.w);
+      const hit = steps.find((s) => width <= s.w);
+      const c = hit ? hit.c : max;
+      return { c: Math.max(1, Math.min(max, c)), layout: hit?.layout ?? responsive.layout };
+    }
+    if (responsive.columnWidth && responsive.columnWidth > 0) {
+      const c = Math.round(width / responsive.columnWidth);
+      return { c: Math.max(1, Math.min(max, c)), layout: responsive.layout };
+    }
+    return null;
+  };
+
+  /**
+   * Re-derive the column count from the board width and apply it. Returns true
+   * when the count actually changed (the caller then skips its own project(),
+   * because applyColumns already re-projected everything).
+   */
+  const evaluateResponsive = (): boolean => {
+    if (!responsive || responsivePinned || disposed || gesture) return false;
+    const want = columnsForWidth(frame().width);
+    if (!want || want.c === columns) return false;
+    return applyColumns(want.c, want.layout ?? responsive.layout ?? 'moveScale');
+  };
+
+  /**
+   * Cells written by a column change are DERIVED STATE, not an edit: they go
+   * through `runSystemWrite` exactly like the pixel projection does, never
+   * through the command stack. A browser resize must not be undoable, and the
+   * authored layout is safe regardless — the engine's cache still holds it,
+   * and `saveLayout()` serialises from the widest cached count.
+   */
+  const persistLiveCells = (): void => {
+    writing = true;
+    try {
+      diagram.runSystemWrite(() => {
+        for (const item of engine.getItems()) {
+          const cell = { x: item.x, y: item.y, w: item.w, h: item.h };
+          const node = diagram.getNode(item.id);
+          if (node) {
+            node.setGridItem(gridItemFromCell(cell));
+            continue;
+          }
+          diagram.getGroup(item.id)?.setMetadata('gridItem', gridItemFromCell(cell));
+        }
+      });
+    } finally {
+      writing = false;
+    }
+  };
+
+  const applyColumns = (n: number, layout: GridColumnLayout): boolean => {
+    const prev = columns;
+    if (!engine.setColumns(n, layout)) return false;
+    columns = engine.columns;
+    persistLiveCells();
+    armGlide();
+    project();
+    syncPlaceholder();
+    disarmGlideSoon();
+    api.renderNow();
+    options.onColumnsChange?.(columns, prev);
+    return true;
+  };
+
+  /**
+   * The canvas container resizing is the OTHER trigger for re-evaluation: a
+   * page that sizes its boards from the viewport changes the frame in the same
+   * turn, and a page that does not still wants the check to run. The binder
+   * owns this — pages should never have to wire a ResizeObserver for it.
+   */
+  const containerObserver =
+    responsive && typeof ResizeObserver !== 'undefined'
+      ? new ResizeObserver(() => {
+          if (disposed) return;
+          evaluateResponsive();
+        })
+      : null;
 
   // -- board hit-testing ------------------------------------------------------
 
@@ -1033,14 +1206,15 @@ export function bindDashboardGrid(
         if (g.removedFromBoard) {
           g.removedFromBoard = false;
           hostOf(g.id)?.classList.remove('axdb-out');
-          const cell = pointToCell(desired.x, desired.y, frame(), geom(), rows());
+          const cell = pointToCell(desired.x, desired.y, frame(), geom(), rows(), g.spans.w);
           // Re-enter at the bottom edge (collision-free), then take the cursor
           // cell GATELESSLY — a first placement skips the anti-jitter gate.
           engine.add({ id: g.id, x: 0, y: engine.rows(), w: g.spans.w, h: g.spans.h });
           engine.moveCheck(g.id, cell.x, cell.y, { gate: false });
           project();
         } else {
-          const cell = pointToCell(desired.x, desired.y, frame(), geom(), rows());
+          const spanW = engine.getItem(g.id)?.w ?? g.spans.w;
+          const cell = pointToCell(desired.x, desired.y, frame(), geom(), rows(), spanW);
           if (engine.moveCheck(g.id, cell.x, cell.y).changed) project();
         }
       } else {
@@ -1061,7 +1235,13 @@ export function bindDashboardGrid(
     }
 
     // resize: fluid pixel preview on the ghost, cell-stepped live push.
-    const dw = ev.world.x - g.downWorld.x;
+    //
+    // RTL: the corner handle is on the BOTTOM-LEFT and the tile grows
+    // leftwards, so the horizontal delta inverts and the tile's RIGHT edge is
+    // what stays pinned. Everything below this line — the span rounding, the
+    // engine's resizeCheck, the maxRows escalation — is in CELLS and needs no
+    // mirroring at all.
+    const dw = rtl ? g.downWorld.x - ev.world.x : ev.world.x - g.downWorld.x;
     const dh = ev.world.y - g.downWorld.y;
     const f = frame();
     const gg = geom();
@@ -1137,7 +1317,17 @@ export function bindDashboardGrid(
       }
     }
     g.node.setSize(w, h, g.node.size.depth ?? 0);
-    ghostStyleFastPath(g, { width: w, height: h });
+    if (rtl) {
+      // Keep the RIGHT edge pinned: mirrored, that is the tile's origin. The
+      // start position is recoverable from the grab offset, so this needs no
+      // extra gesture state.
+      const startLeft = g.downWorld.x - g.grab.dx;
+      const right = startLeft + g.startSize.width;
+      g.node.setPosition(right - w, g.node.position.y);
+      ghostStyleFastPath(g, { x: right - w, width: w, height: h });
+    } else {
+      ghostStyleFastPath(g, { width: w, height: h });
+    }
     const spanF = maxRows !== undefined ? frame() : f;
     const spanG = maxRows !== undefined ? geom() : gg;
     const span = sizeToSpan(w, h, spanF, spanG, rows());
@@ -1316,7 +1506,7 @@ export function bindDashboardGrid(
     }
     adoptedGhostId = node.id;
     const tl = centredTopLeft(world.x, world.y, span);
-    const cell0 = pointToCell(tl.x, tl.y, f, gg, rows());
+    const cell0 = pointToCell(tl.x, tl.y, f, gg, rows(), span.w);
     engine.moveCheck(node.id, cell0.x, cell0.y, { gate: false });
     armGlide();
     project();
@@ -1327,7 +1517,7 @@ export function bindDashboardGrid(
         const item = engine.getItem(node.id);
         if (!item) return;
         const tlm = centredTopLeft(w.x, w.y, { w: item.w, h: item.h });
-        const cell = pointToCell(tlm.x, tlm.y, frame(), geom(), rows());
+        const cell = pointToCell(tlm.x, tlm.y, frame(), geom(), rows(), item.w);
         if (engine.moveCheck(node.id, cell.x, cell.y).changed) project();
         syncPlaceholder();
       },
@@ -1529,7 +1719,7 @@ export function bindDashboardGrid(
       const inside = worldInsideBoard(world.x, world.y);
       if (inside) {
         const tl = centredTopLeft(world.x, world.y, g.spans);
-        const cell = pointToCell(tl.x, tl.y, frame(), geom(), rows());
+        const cell = pointToCell(tl.x, tl.y, frame(), geom(), rows(), g.spans.w);
         if (g.removedFromBoard) {
           g.removedFromBoard = false;
           // Enter at the bottom edge (collision-free), then take the cursor
@@ -1637,11 +1827,40 @@ export function bindDashboardGrid(
         if (!memberEntity(id)) continue;
         items.push(itemFor(id));
       }
+      // CARRY THE PER-COLUMN CACHE ACROSS THE REBUILD. sync() runs on every
+      // undo, member add and refresh; without this handoff a responsive board
+      // would silently lose its wide layouts the first time anything else
+      // happened, and growing back would re-derive instead of restoring.
+      const carried = engine.getLayouts();
       engine = new GridPackEngine(items, { columns, float, maxRows });
+      engine.setLayouts(carried);
       for (const item of engine.getItems()) persistAdoptedCell(item.id, item);
       project();
       syncHandles();
       api.renderNow();
+      evaluateResponsive();
+    },
+    setColumns(n, layout, opts): boolean {
+      if (disposed) return false;
+      if (!opts?.responsive) responsivePinned = true;
+      return applyColumns(n, layout ?? responsive?.layout ?? 'moveScale');
+    },
+    getColumns: () => columns,
+    setRtl(on): void {
+      if (on === rtl) return;
+      rtl = on;
+      // Pixels only — the cells are already correct in both directions.
+      project();
+      syncHandles();
+      api.renderNow();
+    },
+    getRtl: () => rtl,
+    saveLayout() {
+      const saved = engine.saveLayout();
+      return {
+        columns: saved.columns,
+        cells: new Map(saved.items.map((i) => [i.id, { x: i.x, y: i.y, w: i.w, h: i.h }])),
+      };
     },
     setSizing(mode): void {
       if (mode === sizing) return;
@@ -1666,6 +1885,9 @@ export function bindDashboardGrid(
       const r = rows();
       return {
         columns,
+        maxColumns,
+        rtl,
+        responsive: !!responsive && !responsivePinned,
         gap,
         padding,
         sizing,
@@ -1729,6 +1951,7 @@ export function bindDashboardGrid(
       peersOnCanvas().delete(selfPeer);
       unregisterTool();
       hostObserver.disconnect();
+      containerObserver?.disconnect();
       for (const off of subs) off();
       placeholder?.remove();
       placeholder = null;
@@ -1739,10 +1962,13 @@ export function bindDashboardGrid(
     },
   };
 
-  // Boot: adopt the current members, observe host churn for handle re-injection.
+  // Boot: adopt the current members, observe host churn for handle re-injection,
+  // and let a responsive board settle on the count its width asks for before the
+  // first frame (a 400px board declared at 12 columns must not flash at 12).
   handle.sync();
   const layer = htmlLayer();
   if (layer) hostObserver.observe(layer, { childList: true, subtree: true });
+  containerObserver?.observe(api.container);
 
   return handle;
 }

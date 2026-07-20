@@ -120,6 +120,91 @@ describe('dashboard-kit mapping — cell ↔ pixel round-trip (both modes)', () 
   });
 });
 
+// ===========================================================================
+// RTL — the model is direction-agnostic; ONLY this mapping mirrors.
+//
+// Every assert below is written as a comparison between the SAME cells mapped
+// LTR and RTL, so what is being proved is the mirror relationship itself
+// rather than a pile of hand-computed pixels.
+// ===========================================================================
+describe('dashboard-kit mapping — RTL mirrors pixels, never cells', () => {
+  const CELLS = [
+    { x: 0, y: 0, w: 3, h: 1 },
+    { x: 8, y: 1, w: 4, h: 2 },
+    { x: 0, y: 3, w: 12, h: 2 },
+    { x: 5, y: 2, w: 1, h: 1 },
+  ];
+
+  it('cell x=0 renders at the RIGHT edge, and the whole row mirrors', () => {
+    const ltr = geom();
+    const rtl = geom({ rtl: true });
+    const a = cellToRect({ x: 0, y: 0, w: 3, h: 1 }, FRAME, rtl, 5);
+    // Its RIGHT edge sits one padding in from the board's right edge…
+    expect(a.x + a.width).toBeCloseTo(FRAME.x + FRAME.width - 14, 5);
+    // …which is the exact mirror of where LTR puts its LEFT edge.
+    const aL = cellToRect({ x: 0, y: 0, w: 3, h: 1 }, FRAME, ltr, 5);
+    expect(aL.x).toBeCloseTo(14, 5);
+    // The last column mirrors to the left edge.
+    const z = cellToRect({ x: 9, y: 0, w: 3, h: 1 }, FRAME, rtl, 5);
+    expect(z.x).toBeCloseTo(14, 5);
+  });
+
+  it('is an exact mirror of LTR for every cell: same size, mirrored x, same y', () => {
+    const ltr = geom();
+    const rtl = geom({ rtl: true });
+    for (const cell of CELLS) {
+      const l = cellToRect(cell, FRAME, ltr, 5);
+      const r = cellToRect(cell, FRAME, rtl, 5);
+      expect(r.width).toBeCloseTo(l.width, 6);
+      expect(r.height).toBeCloseTo(l.height, 6);
+      expect(r.y).toBeCloseTo(l.y, 6); // rows are direction-agnostic
+      // mirror identity: distance-from-right in RTL == distance-from-left in LTR
+      const fromRight = FRAME.x + FRAME.width - (r.x + r.width);
+      const fromLeft = l.x - FRAME.x;
+      expect(fromRight).toBeCloseTo(fromLeft, 6);
+    }
+  });
+
+  it('cellToRect → pointToCell is the identity in RTL too (the drag contract)', () => {
+    const g = geom({ rtl: true });
+    for (const cell of CELLS) {
+      const r = cellToRect(cell, FRAME, g, 5);
+      // The span MUST be passed: mirrored, the leading edge is the right one.
+      expect(pointToCell(r.x, r.y, FRAME, g, 5, cell.w)).toEqual({ x: cell.x, y: cell.y });
+      // Spans themselves never mirror.
+      expect(sizeToSpan(r.width, r.height, FRAME, g, 5)).toEqual({ w: cell.w, h: cell.h });
+    }
+  });
+
+  it('midpoint rounding mirrors: dragging LEFT in RTL advances the cell', () => {
+    const g = geom({ rtl: true });
+    const cell = { x: 3, y: 0, w: 3, h: 1 };
+    const r = cellToRect(cell, FRAME, g, 5);
+    const pitch = columnUnitFor(g, FRAME.width) + g.gap;
+    // A nudge leftwards past half a pitch moves to the NEXT cell (x+1), because
+    // cells advance leftwards; the same nudge rightwards goes back to x-1.
+    expect(pointToCell(r.x - pitch * 0.51, r.y, FRAME, g, 5, cell.w).x).toBe(4);
+    expect(pointToCell(r.x - pitch * 0.49, r.y, FRAME, g, 5, cell.w).x).toBe(3);
+    expect(pointToCell(r.x + pitch * 0.51, r.y, FRAME, g, 5, cell.w).x).toBe(2);
+  });
+
+  it('LTR is untouched by the new span argument (every old call site is safe)', () => {
+    const g = geom();
+    const r = cellToRect({ x: 4, y: 1, w: 5, h: 1 }, FRAME, g, 5);
+    expect(pointToCell(r.x, r.y, FRAME, g, 5)).toEqual({ x: 4, y: 1 });
+    expect(pointToCell(r.x, r.y, FRAME, g, 5, 5)).toEqual({ x: 4, y: 1 });
+    expect(pointToCell(r.x, r.y, FRAME, g, 5, 99)).toEqual({ x: 4, y: 1 });
+  });
+
+  it('rows, row heights and board heights are identical in both directions', () => {
+    const ltr = geom();
+    const rtl = geom({ rtl: true });
+    expect(rowHeightFor(rtl, 5)).toBe(rowHeightFor(ltr, 5));
+    expect(boardHeightFor(rtl, 5)).toBe(boardHeightFor(ltr, 5));
+    expect(columnUnitFor(rtl, FRAME.width)).toBe(columnUnitFor(ltr, FRAME.width));
+  });
+});
+
 describe('dashboard-kit mapping — GridItemConfig ↔ cells', () => {
   it('round-trips cells through the persisted 1-based line numbers', () => {
     const cell = { x: 8, y: 1, w: 4, h: 2 };

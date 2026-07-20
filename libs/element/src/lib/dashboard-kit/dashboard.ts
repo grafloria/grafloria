@@ -53,8 +53,14 @@ import {
   RemoveFromGroupCommand,
   RemoveNodeCommand,
   SendNodeToBackCommand,
+  type GridColumnLayout,
 } from '@grafloria/engine';
-import { bindDashboardGrid, type DashboardGridHandle, type DashboardGridOptions } from './grid-binder';
+import {
+  bindDashboardGrid,
+  type DashboardGridHandle,
+  type DashboardGridOptions,
+  type DashboardResponsiveOptions,
+} from './grid-binder';
 import { gridItemFromCell } from './grid-mapping';
 import { ensureDashboardKitStyles } from './styles';
 import { defaultWidgetRenderer } from './widgets';
@@ -106,6 +112,22 @@ export interface DashboardOptions {
   height?: number;
   /** Engine float mode (default false → gravity packs upward). */
   float?: boolean;
+  /**
+   * RIGHT-TO-LEFT boards: column x=0 renders at the RIGHT edge and columns run
+   * leftwards. Cells are untouched — the same `widgets` array describes the
+   * same layout in both directions, and a layout saved in one renders mirrored
+   * in the other with identical cells.
+   */
+  rtl?: boolean;
+  /**
+   * RESPONSIVE COLUMN COUNT: derive the live count from each board's width.
+   * `{ columnWidth: 100 }` gives one column per ~100px (capped by `columns`);
+   * `{ breakpoints: [{ w: 480, c: 1 }, { w: 900, c: 6 }] }` names the steps.
+   * The count changes through the engine's per-column layout CACHE, so
+   * narrowing and widening again restores the wide layout exactly, and
+   * `toJSON()` keeps serialising the widest layout however narrow the board is.
+   */
+  responsive?: DashboardResponsiveOptions;
   /** One view, or many (the tab pattern). Mutually exclusive with `widgets`. */
   views?: DashboardViewSpec[];
   /** Shorthand for a single unnamed view. */
@@ -149,6 +171,18 @@ export interface DashboardHandle {
   getSizing(): 'fit' | 'grow';
   setFloat(on: boolean): void;
   getFloat(): boolean;
+  /**
+   * Set the COLUMN COUNT of every board (or one view), live. Goes through the
+   * engine's per-column layout cache, so shrinking then growing back restores
+   * the wide layout rather than re-deriving it. An explicit call PINS the
+   * count — the width-driven `responsive` evaluator stops overriding it.
+   */
+  setColumns(n: number, layout?: GridColumnLayout, viewId?: string): void;
+  /** The LIVE column count of a view (default: the active one). */
+  getColumns(viewId?: string): number;
+  /** RTL mirroring, live — pixels only, cells never change. */
+  setRtl(on: boolean): void;
+  getRtl(): boolean;
   /**
    * Add a widget to a view. CREATES the node (you do not pre-build one), wires
    * its metadata, and commits node + membership as ONE undoable step.
@@ -427,6 +461,17 @@ export function dashboard(options: DashboardOptions): DashboardSpec {
       apiRef?.renderNow();
     },
     getFloat: () => binders.get(active)?.getFloat() ?? (options.float ?? false),
+    setColumns(n, layout, viewId) {
+      const targets = viewId ? [binders.get(viewId)] : [...binders.values()];
+      for (const b of targets) b?.setColumns(n, layout);
+      apiRef?.renderNow();
+    },
+    getColumns: (viewId) => binders.get(viewId ?? active)?.getColumns() ?? columns,
+    setRtl(on) {
+      for (const b of binders.values()) b.setRtl(on);
+      apiRef?.renderNow();
+    },
+    getRtl: () => binders.get(active)?.getRtl() ?? (options.rtl ?? false),
     addWidget(spec, viewId) {
       const vid = viewId ?? active;
       const v = views.find((x) => x.id === vid);
@@ -480,13 +525,22 @@ export function dashboard(options: DashboardOptions): DashboardSpec {
       return binders.get(viewId ?? active);
     },
     toJSON() {
-      return views.map((v) => ({
-        ...v,
-        widgets: v.widgets.map((w) => {
-          const cell = binders.get(v.id)?.cellOf(w.id);
-          return cell ? { ...w, x: cell.x, y: cell.y, span: cell.w, rows: cell.h } : { ...w };
-        }),
-      }));
+      // SAVING ON A PHONE SAVES THE DESKTOP LAYOUT. The binder serialises from
+      // the engine's LARGEST cached column count (gridstack's `save()`), so a
+      // board currently squeezed to 1 column still writes out the 12-column
+      // layout its user authored — and the view's `columns` is that count, so
+      // feeding this straight back into dashboard() rebuilds the wide board.
+      return views.map((v) => {
+        const saved = binders.get(v.id)?.saveLayout();
+        return {
+          ...v,
+          ...(saved ? { columns: saved.columns } : {}),
+          widgets: v.widgets.map((w) => {
+            const cell = saved?.cells.get(w.id) ?? binders.get(v.id)?.cellOf(w.id);
+            return cell ? { ...w, x: cell.x, y: cell.y, span: cell.w, rows: cell.h } : { ...w };
+          }),
+        };
+      });
     },
     dispose() {
       for (const b of binders.values()) b.dispose();
@@ -650,6 +704,8 @@ export function dashboard(options: DashboardOptions): DashboardSpec {
             baseRowHeight: rowHeight,
             designHeight: v.height ?? boardH,
             float: options.float ?? false,
+            rtl: options.rtl ?? false,
+            ...(options.responsive ? { responsive: options.responsive } : {}),
             ...(options.binder ?? {}),
             onGesture: (e) => {
               if (e.type === 'commit' && options.onLayoutChange) {

@@ -3,6 +3,7 @@ export {
   type DashboardGridApi,
   type DashboardGridOptions,
   type DashboardGridHandle,
+  type DashboardResponsiveOptions,
 } from './grid-binder';
 export {
   rowHeightFor,
@@ -11,6 +12,7 @@ export {
   cellToRect,
   pointToCell,
   sizeToSpan,
+  spanWidthPx,
   gridItemFromCell,
   cellFromGridItem,
   buildCommitCommands,
