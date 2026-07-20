@@ -44,11 +44,15 @@
  */
 
 import {
+  AddToGroupCommand,
   BatchCommand,
+  BringNodeToFrontCommand,
+  Command,
   GroupModel,
+  NodeModel,
   RemoveFromGroupCommand,
   RemoveNodeCommand,
-  type NodeModel,
+  SendNodeToBackCommand,
 } from '@grafloria/engine';
 import { bindDashboardGrid, type DashboardGridHandle, type DashboardGridOptions } from './grid-binder';
 import { gridItemFromCell } from './grid-mapping';
@@ -145,8 +149,21 @@ export interface DashboardHandle {
   getSizing(): 'fit' | 'grow';
   setFloat(on: boolean): void;
   getFloat(): boolean;
-  /** Add a widget to a view (auto-positions when no cell is given). */
+  /**
+   * Add a widget to a view. CREATES the node (you do not pre-build one), wires
+   * its metadata, and commits node + membership as ONE undoable step.
+   * Auto-positions when the spec names no cell.
+   */
   addWidget(spec: DashboardWidgetSpec, viewId?: string): WidgetHandle | undefined;
+  /**
+   * Re-read every board from the model — call after undo/redo, or any
+   * out-of-band mutation, so the grid and the projection agree again.
+   */
+  refresh(): void;
+  /** Re-frame the camera on a view (default: the active one). */
+  fit(viewId?: string): void;
+  /** Live geometry of a view's board (columns, gap, rows, rowHeight, frame…). */
+  metrics(viewId?: string): ReturnType<DashboardGridHandle['metrics']> | undefined;
   /** The current layout as plain data — feed it straight back to dashboard(). */
   toJSON(): DashboardViewSpec[];
   /**
@@ -165,23 +182,112 @@ export interface WidgetHandle {
   readonly id: string;
   readonly viewId: string;
   readonly node: NodeModel | undefined;
+  /** The DECLARED spec — read it back (title/kind/data) without a side map. */
+  readonly spec: DashboardWidgetSpec;
   /** Current cell, as data. */
   readonly cell: { x: number; y: number; w: number; h: number } | undefined;
-  /** Resize in CELLS — one undoable step. */
-  resize(span: number, rows: number): Promise<void>;
-  /** Move to a cell — one undoable step. */
-  moveTo(x: number, y: number): Promise<void>;
+  /** The world rect the current cell projects to. */
+  readonly rect: { x: number; y: number; width: number; height: number } | undefined;
+  /** Resize in CELLS. Resolves TRUE when the board accepted it. */
+  resize(span: number, rows: number): Promise<boolean>;
+  /** Move to a cell. Resolves TRUE when the board accepted it. */
+  moveTo(x: number, y: number): Promise<boolean>;
   /** Pin / unpin (a pinned widget refuses the mover and never gets pushed). */
   pin(on?: boolean): void;
   readonly pinned: boolean;
-  /** Remove it (survivors re-pack). */
-  remove(): void;
+  /** Raise / lower — one undoable step each (mirrors the toolbar commands). */
+  bringToFront(): void;
+  sendToBack(): void;
+  /**
+   * Remove it — ONE undoable step including the survivors' re-pack.
+   * `displaced` accepts the commands a drag-out gesture already computed;
+   * omit it and the handle plans them itself.
+   */
+  remove(displaced?: unknown[]): void;
+  /** Replace the widget's `data` (and optionally title) and repaint. */
+  update(patch: Partial<Pick<DashboardWidgetSpec, 'data' | 'title' | 'kind'>>): void;
   /** Repaint through `renderWidget` (after your data changed). */
   repaint(): void;
 }
 
+/**
+ * Add a widget node AND its board membership as ONE undoable step.
+ *
+ * A `BatchCommand([AddNodeCommand, AddToGroupCommand])` cannot express this:
+ * the manager validates the whole batch up front, and
+ * `AddToGroupCommand.canExecute` pre-gates on the node ALREADY being in the
+ * diagram — which it is not until the first command runs. Sequencing two
+ * commands works but costs two undo steps, so an interactive "add widget"
+ * would need two Ctrl-Z. This composite does both in its own execute(), and
+ * unwinds both in undo().
+ */
+class AddWidgetCommand extends Command {
+  constructor(
+    private node: NodeModel,
+    private groupId: string
+  ) {
+    super('Add widget');
+  }
+
+  override execute(context: { diagram?: unknown }): void {
+    const diagram = context.diagram as
+      | { addNode(n: NodeModel): void; getGroup(id: string): GroupModel | undefined }
+      | undefined;
+    if (!diagram) return;
+    diagram.addNode(this.node);
+    diagram.getGroup(this.groupId)?.addMember(this.node.id);
+  }
+
+  override undo(context: { diagram?: unknown }): void {
+    const diagram = context.diagram as
+      | { removeNode(id: string): unknown; getGroup(id: string): GroupModel | undefined }
+      | undefined;
+    if (!diagram) return;
+    diagram.getGroup(this.groupId)?.removeMember(this.node.id);
+    diagram.removeNode(this.node.id);
+  }
+
+  override serialize() {
+    return {
+      id: this.id,
+      name: this.name,
+      timestamp: this.timestamp,
+      data: { nodeId: this.node.id, groupId: this.groupId },
+    };
+  }
+}
+
 const DEFAULTS = { columns: 12, gap: 8, rowHeight: 130, width: 1180, height: 660 };
 const OFFSCREEN_X = -20000;
+let autoId = 0;
+
+/** The node a widget spec becomes — one place, so addWidget() and the initial
+ *  spec build can never drift apart on metadata. */
+function buildWidgetNode(w: DashboardWidgetSpec, rowHeight: number): NodeModel {
+  const node = new NodeModel({
+    id: w.id,
+    type: 'widget',
+    position: { x: 0, y: 0 },
+    size: { width: 120, height: rowHeight, depth: 0 },
+  });
+  node.setMetadata('useHTMLLayer', true);
+  node.setMetadata('widgetKind', w.kind ?? 'widget');
+  node.setMetadata('widgetSpec', w.data ?? {});
+  node.setMetadata('columnSpan', w.span ?? 3);
+  node.setMetadata('rowSpan', w.rows ?? 1);
+  if (w.x !== undefined && w.y !== undefined) {
+    node.setGridItem({
+      columnStart: w.x + 1,
+      columnEnd: w.x + 1 + (w.span ?? 3),
+      rowStart: w.y + 1,
+      rowEnd: w.y + 1 + (w.rows ?? 1),
+    });
+  }
+  // A dashboard widget is not a wiring endpoint: no ports, no hover glyphs.
+  node.setBehavior({ connectable: false });
+  for (const p of [...node.getPorts().values()]) node.removePort(p.id);
+  return node;
+}
 
 /** Flow widgets that declared no cell: left-to-right, wrapping at `columns`. */
 function assignCells(widgets: DashboardWidgetSpec[], columns: number): void {
@@ -261,6 +367,7 @@ export function dashboard(options: DashboardOptions): DashboardSpec {
       getNode(id: string): NodeModel | undefined;
       addGroup(g: GroupModel): void;
       getGroup(id: string): GroupModel | undefined;
+      removeGroup?(id: string): unknown;
     };
     getEngine?: () => { commandManager: { execute(c: unknown): unknown } };
     renderNow(): void;
@@ -268,7 +375,14 @@ export function dashboard(options: DashboardOptions): DashboardSpec {
   } | null = null;
 
   const execCommand = (api: typeof apiRef, cmd: unknown): void => {
-    void api?.getEngine?.()?.commandManager.execute(cmd);
+    try {
+      const r = api?.getEngine?.()?.commandManager.execute(cmd) as { catch?: (f: () => void) => void };
+      // Fire-and-forget like the binder's own commits, but never leave an
+      // unhandled rejection: a refused command is a no-op, not a crash.
+      r?.catch?.(() => undefined);
+    } catch {
+      /* a refused command must not break the caller */
+    }
   };
 
   const handle: DashboardHandle = {
@@ -319,18 +433,51 @@ export function dashboard(options: DashboardOptions): DashboardSpec {
       const model = apiRef?.getModel();
       const group = groups.get(vid);
       if (!v || !model || !group) return undefined;
-      const w: DashboardWidgetSpec = { ...spec, span: spec.span ?? 3, rows: spec.rows ?? 1 };
+      const w: DashboardWidgetSpec = {
+        ...spec,
+        id: spec.id || `w-${++autoId}`,
+        span: spec.span ?? 3,
+        rows: spec.rows ?? 1,
+      };
+      // REGISTER FIRST: a custom node mounts exactly once, and the painter
+      // returns early for an id the spec does not know — so the widget must be
+      // known before the node reaches the model, or it paints blank forever.
       v.widgets.push(w);
       specById.set(w.id, w);
       viewOfWidget.set(w.id, vid);
-      // The binder adopts it on member-add and auto-positions when the cell
-      // is absent — the same path the palette uses.
-      const node = model.getNode(w.id);
-      if (!node) return undefined;
-      group.addMember(w.id);
+
+      const existing = model.getNode(w.id);
+      const node = existing ?? buildWidgetNode(w, rowHeight);
+      if (w.pinned) node.setState({ locked: true });
+      // ONE undoable step (see AddWidgetCommand for why this cannot be a batch).
+      execCommand(
+        apiRef,
+        existing ? new AddToGroupCommand(group.id, w.id) : new AddWidgetCommand(node, group.id)
+      );
+
       binders.get(vid)?.sync();
       apiRef?.renderNow();
       return makeWidgetHandle(w.id);
+    },
+    refresh() {
+      for (const b of binders.values()) b.sync();
+      apiRef?.renderNow();
+    },
+    fit(viewId) {
+      const g = groups.get(viewId ?? active);
+      if (!g) return;
+      const gs = g.size ?? { width: boardW, height: boardH };
+      apiRef?.viewport?.fitToBounds(
+        { x: g.position.x, y: g.position.y, width: gs.width, height: gs.height },
+        26,
+        { maxZoom: 1 }
+      );
+    },
+    metrics(viewId) {
+      return binders.get(viewId ?? active)?.metrics();
+    },
+    binderOf(viewId) {
+      return binders.get(viewId ?? active);
     },
     toJSON() {
       return views.map((v) => ({
@@ -341,12 +488,15 @@ export function dashboard(options: DashboardOptions): DashboardSpec {
         }),
       }));
     },
-    binderOf(viewId) {
-      return binders.get(viewId ?? active);
-    },
     dispose() {
       for (const b of binders.values()) b.dispose();
       binders.clear();
+      // The groups finalize() created are ours to clean up — leaving them
+      // behind made a rebuild stack a second set of boards on the first.
+      const model = apiRef?.getModel();
+      for (const id of groups.keys()) model?.removeGroup?.(id);
+      groups.clear();
+      hosts.clear();
     },
   };
 
@@ -362,32 +512,61 @@ export function dashboard(options: DashboardOptions): DashboardSpec {
       get node() {
         return node();
       },
+      get spec() {
+        return spec;
+      },
       get cell() {
         return binder()?.cellOf(id);
+      },
+      get rect() {
+        return binder()?.cellRectOf(id);
       },
       get pinned() {
         return node()?.state?.locked === true;
       },
       async resize(span, rows) {
-        await binder()?.resizeTo(id, span, rows);
+        return (await binder()?.resizeTo(id, span, rows)) ?? false;
       },
       async moveTo(x, y) {
-        await binder()?.moveTo(id, x, y);
+        return (await binder()?.moveTo(id, x, y)) ?? false;
       },
       pin(on) {
         const n = node();
         if (!n) return;
         n.setState({ locked: on ?? !(n.state?.locked === true) });
+        // Re-sync so the ENGINE's locked flag (never pushed, drags refused)
+        // and the hidden corner handle take effect on this frame, not the next
+        // gesture.
+        binder()?.sync();
         apiRef?.renderNow();
       },
-      remove() {
+      bringToFront() {
+        execCommand(apiRef, new BringNodeToFrontCommand(id));
+        apiRef?.renderNow();
+      },
+      sendToBack() {
+        execCommand(apiRef, new SendNodeToBackCommand(id));
+        apiRef?.renderNow();
+      },
+      update(patch) {
+        if (patch.data !== undefined) spec.data = patch.data;
+        if (patch.title !== undefined) spec.title = patch.title;
+        if (patch.kind !== undefined) spec.kind = patch.kind;
+        const host = hostOf(id);
+        if (host) renderWidget(spec, host);
+      },
+      remove(displaced) {
         const n = node();
         const group = groups.get(viewId);
         const b = binder();
         if (!n || !group || !b) return;
         // ONE undoable step, survivors' re-pack folded in — the same atomic
-        // shape the kit's own drag-out-to-remove uses.
-        const cmds = [...b.planRemoval(id), new RemoveFromGroupCommand(group.id, id), new RemoveNodeCommand(id)];
+        // shape the kit's own drag-out-to-remove uses. A gesture that ALREADY
+        // computed the survivors passes them in: after a drag-out the tile is
+        // gone from the engine, so planRemoval() would return [] and the
+        // survivors' cells would never commit.
+        const survivors = (displaced as never[] | undefined) ?? b.planRemoval(id);
+        const cmds = [...survivors, new RemoveFromGroupCommand(group.id, id), new RemoveNodeCommand(id)];
         void execCommand(apiRef, new BatchCommand('Remove widget', cmds));
         const v = views.find((x) => x.id === viewId);
         if (v) v.widgets = v.widgets.filter((w) => w.id !== id);
@@ -400,6 +579,8 @@ export function dashboard(options: DashboardOptions): DashboardSpec {
         const host = hostOf(id);
         if (host) renderWidget(spec, host);
       },
+      // (hosts are captured in renderCustomNode, so repaint works for every
+      //  widget the renderer has mounted — including after a rebuild.)
     };
   }
 

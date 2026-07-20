@@ -9,7 +9,7 @@
  * They drive the real engine (DiagramModel + the kit's binder) through a
  * minimal API stub, the same shape `render()` passes to `finalize()`.
  */
-import { DiagramModel, GroupModel, NodeModel, CommandManager, EventBus } from '@grafloria/engine';
+import { Command, DiagramModel, GroupModel, NodeModel, CommandManager, EventBus } from '@grafloria/engine';
 import { render } from '../grafloria';
 import { dashboard, type DashboardSpec } from './dashboard';
 
@@ -335,5 +335,120 @@ describe('the typed handles (the erTable/umlClass equivalent)', () => {
     mount(spec);
     // No gesture yet — the hook must not fire on boot.
     expect(calls).toEqual([]);
+  });
+});
+
+describe('the closed API gaps (the port\'s bypass list)', () => {
+  it('#1 addWidget CREATES the node, wires its metadata, and is UNDOABLE', async () => {
+    const { model, api, handle } = mount(SIMPLE());
+    const cm = api.getEngine().commandManager;
+    expect(model.getNode('fresh')).toBeUndefined();
+    const w = handle.addWidget({ id: 'fresh', kind: 'bar', span: 4, rows: 2 });
+    expect(w).toBeDefined();
+    const node = model.getNode('fresh')!;
+    expect(node).toBeDefined();
+    expect(node.getMetadata('useHTMLLayer')).toBe(true);
+    expect(node.getMetadata('widgetKind')).toBe('bar');
+    expect(node.getMetadata('columnSpan')).toBe(4);
+    expect([...(model.getGroup('overview')!.members ?? [])]).toContain('fresh');
+    // The manager settles its history asynchronously (it awaits internally),
+    // so the undo entry lands on the next tick — the node itself is already
+    // in the model synchronously, which is what the paint path needs.
+    await new Promise((r) => setTimeout(r, 0));
+    expect(cm.canUndo()).toBe(true);
+  });
+
+  it('#5 widget nodes are NOT connectable and carry no ports', () => {
+    const { model, handle } = mount(SIMPLE());
+    handle.addWidget({ id: 'w5', kind: 'kpi' });
+    const node = model.getNode('w5')!;
+    expect(node.behavior?.connectable).toBe(false);
+    expect([...node.getPorts().values()]).toHaveLength(0);
+  });
+
+  it('#3 resize/moveTo report whether the board ACCEPTED the change', async () => {
+    const { handle } = mount(SIMPLE());
+    await expect(handle.widget('a')!.resize(6, 2)).resolves.toBe(true);
+    // Same cells again -> nothing to do -> false, not a silent void.
+    const cell = handle.widget('a')!.cell!;
+    await expect(handle.widget('a')!.resize(cell.w, cell.h)).resolves.toBe(false);
+  });
+
+  it('#7/#12 the handle exposes the declared spec, the rect and board metrics', () => {
+    const { handle } = mount(SIMPLE());
+    expect(handle.widget('a')!.spec.kind).toBe('kpi');
+    const rect = handle.widget('a')!.rect!;
+    expect(rect.width).toBeGreaterThan(0);
+    const m = handle.metrics()!;
+    expect(m.columns).toBe(12);
+    expect(m.rows).toBeGreaterThan(0);
+  });
+
+  it('#11 z-order lives on the handle and is undoable', async () => {
+    const { model, api, handle } = mount(SIMPLE());
+    handle.widget('a')!.bringToFront();
+    await new Promise((r) => setTimeout(r, 0));
+    expect(api.getEngine().commandManager.canUndo()).toBe(true);
+    expect(typeof model.getNode('a')!.getEffectiveZIndex()).toBe('number');
+    handle.widget('a')!.sendToBack();
+  });
+
+  it('#2 remove() USES the gesture\'s already-computed displaced commands', async () => {
+    // A weaker version of this tooth passed `[]` and only checked the widget
+    // vanished — which stayed green when remove() ignored the argument and
+    // re-planned its own. The caller's commands must actually RUN, so hand it
+    // an observable one and watch for it.
+    let ran = false;
+    class Sentinel extends Command {
+      constructor() {
+        super('Sentinel');
+      }
+      override execute(): void {
+        ran = true;
+      }
+      override undo(): void {
+        ran = false;
+      }
+      override serialize() {
+        return { id: this.id, name: this.name, timestamp: this.timestamp, data: {} };
+      }
+    }
+    const { handle } = mount(SIMPLE());
+    handle.widget('b')!.remove([new Sentinel()]);
+    await new Promise((r) => setTimeout(r, 0));
+    expect(ran).toBe(true);
+    expect(handle.widget('b')).toBeUndefined();
+  });
+
+  it('#6 dispose() takes its boards with it — a rebuild cannot stack them', () => {
+    const { model, handle } = mount(SIMPLE());
+    expect(model.getGroup('overview')).toBeDefined();
+    handle.dispose();
+    expect(model.getGroup('overview')).toBeUndefined();
+    expect(model.getGroup('sales')).toBeUndefined();
+  });
+
+  it('#4/#9 refresh() and fit() exist and are safe to call', () => {
+    const { handle } = mount(SIMPLE());
+    expect(() => handle.refresh()).not.toThrow();
+    expect(() => handle.fit()).not.toThrow();
+    expect(() => handle.fit('sales')).not.toThrow();
+  });
+
+  it('update() swaps the data and repaints through renderWidget', () => {
+    const painted: unknown[] = [];
+    const spec = dashboard({
+      widgets: [{ id: 'u', kind: 'kpi', data: { value: 'one' } }],
+      renderWidget: (w, host) => {
+        painted.push(w.data);
+        host.textContent = String((w.data as { value?: string })?.value ?? '');
+      },
+    });
+    const host = document.createElement('div');
+    spec.renderCustomNode({ id: 'u' }, host); // mount captures the host
+    mount(spec);
+    spec.handle.widget('u')!.update({ data: { value: 'two' } });
+    expect(host.textContent).toBe('two');
+    expect(spec.handle.widget('u')!.spec.data).toEqual({ value: 'two' });
   });
 });
