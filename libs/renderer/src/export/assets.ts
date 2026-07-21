@@ -252,6 +252,166 @@ export async function resolveAssets(root: VNode, options: ResolveAssetsOptions =
   return { tree: inlineAssets(root, byUrl), inlined: byUrl.size, warnings };
 }
 
+// ---------------------------------------------------------------------------
+// The TIERED fetch — what `await export(…)` runs for external image URLs.
+//
+// This library is CLIENT-SIDE: the export runs in a browser, and a browser can often
+// fetch the very URL a PDF cannot. Three tiers, in order:
+//
+//   1. the environment's own fetch — same-origin assets always; cross-origin whenever
+//      the image's server allows CORS (most public CDNs do). `fetch()` REJECTS on a
+//      CORS refusal, and that rejection is the tier boundary. `no-cors` mode is
+//      deliberately NOT used: an opaque response's bytes are unreadable, which would
+//      trade an honest warning for a silently empty image.
+//   2. the caller's {@link AssetFetcher} — the embedding app's proxy, service worker,
+//      or cache. Consulted only when tier 1 failed.
+//   3. honesty — a recorded failure that names both escape hatches (enable CORS on the
+//      image's server, or pass an assetFetcher). Never a throw: one dead logo must not
+//      lose the export of a whole board.
+//
+// BOUNDED twice, because an export is often a print job someone is waiting on:
+//   - `timeoutMs` (default 5s, the same figure as customNodeTimeout) caps the wait per
+//     URL — a dead host cannot hang the export;
+//   - `maxBytes` (default 5MB, shared with resolveAssets) caps the payload — a data:
+//     URI inflates ~33%, and the cap is TERMINAL: a proxy would return the same bytes,
+//     so tier 2 is not consulted for an oversized file.
+// ---------------------------------------------------------------------------
+
+export interface TieredFetchOptions {
+  /** Tier 2: consulted only when the environment's own fetch fails. */
+  fetcher?: AssetFetcher;
+  /** Cap on one asset's size, in bytes. Default 5MB. TERMINAL — no tier retries it. */
+  maxBytes?: number;
+  /** Bound on fetching ONE URL, per tier, in milliseconds. Default 5000. */
+  timeoutMs?: number;
+}
+
+export interface TieredFetchResult {
+  /** URL → `data:` URI, for every asset some tier could produce. */
+  byUrl: Map<string, string>;
+  /** URL → why EVERY tier failed — ready to surface as a warning. */
+  failures: Map<string, string>;
+}
+
+const DEFAULT_ASSET_MAX_BYTES = 5 * 1024 * 1024;
+const DEFAULT_ASSET_TIMEOUT = 5000;
+
+/**
+ * Fetch every URL through the tiers above. Deduplicated: a URL is fetched once no
+ * matter how many elements reference it. Resolves when the last URL settles; never
+ * rejects.
+ */
+export async function fetchAssetsTiered(
+  urls: readonly string[],
+  options: TieredFetchOptions = {}
+): Promise<TieredFetchResult> {
+  const byUrl = new Map<string, string>();
+  const failures = new Map<string, string>();
+  const unique = [...new Set(urls)];
+  if (unique.length === 0) return { byUrl, failures };
+
+  const maxBytes = options.maxBytes ?? DEFAULT_ASSET_MAX_BYTES;
+  const timeoutMs = options.timeoutMs ?? DEFAULT_ASSET_TIMEOUT;
+  const browser = defaultFetcher();
+
+  await Promise.all(
+    unique.map(async url => {
+      // -- tier 1: the environment's own fetch --------------------------------
+      let tier1Error: string;
+      if (browser) {
+        try {
+          const asset = await bounded(browser(url), timeoutMs);
+          if (asset.data.length > maxBytes) {
+            failures.set(url, overCap(asset.data.length, maxBytes));
+            return; // terminal — a proxy returns the same bytes
+          }
+          byUrl.set(url, toDataUri(asset));
+          return;
+        } catch (cause) {
+          tier1Error = errorMessage(cause);
+        }
+      } else {
+        tier1Error = 'this environment has no fetch';
+      }
+
+      // -- tier 2: the caller's fetcher ---------------------------------------
+      if (options.fetcher) {
+        try {
+          const asset = await bounded(options.fetcher(url), timeoutMs);
+          if (asset.data.length > maxBytes) {
+            failures.set(url, overCap(asset.data.length, maxBytes));
+            return;
+          }
+          byUrl.set(url, toDataUri(asset));
+          return;
+        } catch (cause) {
+          failures.set(
+            url,
+            `fetch failed (${tier1Error}) and the assetFetcher also failed (${errorMessage(cause)})`
+          );
+          return;
+        }
+      }
+
+      // -- tier 3: honesty ----------------------------------------------------
+      failures.set(
+        url,
+        `fetch failed (${tier1Error}), which usually means the image's server does not allow ` +
+          `CORS — enable CORS on that server, or pass ExportOptions.assetFetcher to fetch it ` +
+          `through your own proxy`
+      );
+    })
+  );
+
+  return { byUrl, failures };
+}
+
+/** Race a fetch against a deadline; always clears the timer so a fast export exits fast. */
+async function bounded<T>(work: Promise<T>, timeoutMs: number): Promise<T> {
+  if (!(timeoutMs > 0) || !Number.isFinite(timeoutMs)) return work;
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const deadline = new Promise<never>((_, reject) => {
+    timer = setTimeout(() => reject(new Error(`timed out after ${timeoutMs}ms`)), timeoutMs);
+  });
+  try {
+    return await Promise.race([work, deadline]);
+  } finally {
+    if (timer !== undefined) clearTimeout(timer);
+  }
+}
+
+const overCap = (size: number, cap: number): string =>
+  `asset is ${size} bytes, over the ${cap}-byte cap`;
+
+const errorMessage = (cause: unknown): string =>
+  cause instanceof Error ? cause.message : String(cause);
+
+/**
+ * Bytes → `data:` URI, trusting the MAGIC BYTES over the server's content-type. A CDN
+ * that serves a PNG as `application/octet-stream` is common, and a data: URI that lies
+ * about its media type makes the PDF writer (which trusts the URI) refuse a perfectly
+ * good image.
+ */
+function toDataUri(asset: { data: Uint8Array; mimeType: string }): string {
+  const sniffed = sniffImageMime(asset.data) ?? asset.mimeType;
+  return `data:${sniffed};base64,${bytesToBase64(asset.data)}`;
+}
+
+/** PNG / JPEG / GIF / WebP signatures — the formats an export can actually carry. */
+function sniffImageMime(data: Uint8Array): string | null {
+  if (data.length > 8 && data[0] === 0x89 && data[1] === 0x50 && data[2] === 0x4e && data[3] === 0x47)
+    return 'image/png';
+  if (data.length > 3 && data[0] === 0xff && data[1] === 0xd8 && data[2] === 0xff) return 'image/jpeg';
+  if (data.length > 6 && data[0] === 0x47 && data[1] === 0x49 && data[2] === 0x46) return 'image/gif';
+  if (
+    data.length > 12 &&
+    data[0] === 0x52 && data[1] === 0x49 && data[2] === 0x46 && data[3] === 0x46 &&
+    data[8] === 0x57 && data[9] === 0x45 && data[10] === 0x42 && data[11] === 0x50
+  )
+    return 'image/webp';
+  return null;
+}
+
 /** `fetch` if this environment has one. */
 function defaultFetcher(): AssetFetcher | null {
   const fetchImpl = (globalThis as { fetch?: typeof fetch }).fetch;

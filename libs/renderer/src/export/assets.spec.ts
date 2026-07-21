@@ -9,6 +9,7 @@ import { SVGRenderer } from '../svg/svg-renderer';
 import type { VNode } from '../types/vnode.types';
 import {
   collectAssetUrls,
+  fetchAssetsTiered,
   fetchFont,
   fontFaceCss,
   fontFormatFromUrl,
@@ -249,5 +250,165 @@ describe('a truly self-contained export', () => {
 
     expect(resolved.inlined).toBe(1);
     expect(collectAssetUrls(resolved.tree)).toEqual([]); // nothing external left
+  });
+});
+
+// ---------------------------------------------------------------------------
+// fetchAssetsTiered — the CLIENT-SIDE three-tier fetch behind `await export(…)`.
+//
+// Tier 1 is the environment's own fetch (same-origin, or a server that allows CORS —
+// most public CDNs). Tier 2 is the caller's AssetFetcher (their proxy) when tier 1
+// is refused. Tier 3 is honesty: a recorded failure that names both escape hatches.
+// ---------------------------------------------------------------------------
+
+describe('fetchAssetsTiered — browser fetch, caller fetcher, honest residue', () => {
+  const globals = globalThis as { fetch?: unknown };
+  const realDescriptor = Object.getOwnPropertyDescriptor(globalThis, 'fetch');
+
+  // This realm pins `fetch` as read-only, so plain assignment throws — defineProperty
+  // is the stub seam, and the original descriptor (or its absence) is restored after.
+  const setFetch = (impl: unknown): void => {
+    Object.defineProperty(globalThis, 'fetch', { value: impl, configurable: true, writable: true });
+  };
+  const clearFetch = (): void => {
+    setFetch(undefined);
+    delete globals.fetch;
+  };
+  afterEach(() => {
+    if (realDescriptor === undefined) clearFetch();
+    else Object.defineProperty(globalThis, 'fetch', realDescriptor);
+  });
+
+  /** A minimal Response-shaped success for the tier-1 stub. */
+  const respond = (bytes: Uint8Array, mimeType = 'image/png') => ({
+    ok: true,
+    status: 200,
+    arrayBuffer: async () => bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength),
+    headers: { get: (name: string) => (name.toLowerCase() === 'content-type' ? mimeType : null) },
+  });
+
+  it('tier 1: inlines an image the environment fetch can reach', async () => {
+    const calls: string[] = [];
+    setFetch(async (url: string) => {
+      calls.push(url);
+      return respond(PNG_BYTES);
+    });
+
+    const { byUrl, failures } = await fetchAssetsTiered(['https://cdn.example/logo.png']);
+
+    expect(calls).toEqual(['https://cdn.example/logo.png']);
+    expect(byUrl.get('https://cdn.example/logo.png')).toMatch(/^data:image\/png;base64,/);
+    expect(failures.size).toBe(0);
+  });
+
+  it('tier 2: a CORS-refused fetch falls back to the caller fetcher', async () => {
+    // fetch() REJECTS on a CORS failure — that rejection is the tier boundary.
+    setFetch(async () => {
+      throw new TypeError('Failed to fetch');
+    });
+    const asked: string[] = [];
+    const fetcher: AssetFetcher = async (url) => {
+      asked.push(url);
+      return { data: PNG_BYTES, mimeType: 'image/png' };
+    };
+
+    const { byUrl, failures } = await fetchAssetsTiered(['https://blocked.example/a.png'], { fetcher });
+
+    expect(asked).toEqual(['https://blocked.example/a.png']);
+    expect(byUrl.get('https://blocked.example/a.png')).toMatch(/^data:image\/png;base64,/);
+    expect(failures.size).toBe(0);
+  });
+
+  it('tier 3: with no fetcher, the failure names BOTH escape hatches — CORS and assetFetcher', async () => {
+    setFetch(async () => {
+      throw new TypeError('Failed to fetch');
+    });
+
+    const { byUrl, failures } = await fetchAssetsTiered(['https://blocked.example/a.png']);
+
+    expect(byUrl.size).toBe(0);
+    const reason = failures.get('https://blocked.example/a.png') ?? '';
+    expect(reason).toMatch(/CORS/);
+    expect(reason).toMatch(/assetFetcher/);
+  });
+
+  it('the size cap is TERMINAL: oversized bytes are refused and the fetcher is not asked for the same file', async () => {
+    setFetch(async () => respond(new Uint8Array(64)));
+    const fetcher = jest.fn();
+
+    const { byUrl, failures } = await fetchAssetsTiered(['https://cdn.example/big.png'], {
+      fetcher: fetcher as unknown as AssetFetcher,
+      maxBytes: 16,
+    });
+
+    expect(byUrl.size).toBe(0);
+    expect(failures.get('https://cdn.example/big.png')).toMatch(/64 bytes.*16-byte cap/);
+    expect(fetcher).not.toHaveBeenCalled(); // a proxy returns the SAME bytes — nothing to gain
+  });
+
+  it('the size cap binds the caller fetcher too', async () => {
+    clearFetch(); // no tier 1 in this environment
+    const fetcher: AssetFetcher = async () => ({ data: new Uint8Array(64), mimeType: 'image/png' });
+
+    const { byUrl, failures } = await fetchAssetsTiered(['https://x/a.png'], { fetcher, maxBytes: 16 });
+
+    expect(byUrl.size).toBe(0);
+    expect(failures.get('https://x/a.png')).toMatch(/64 bytes.*16-byte cap/);
+  });
+
+  it('a fetch that never settles is BOUNDED by timeoutMs — one dead URL cannot hang an export', async () => {
+    setFetch(() => new Promise(() => undefined)); // hangs forever
+
+    const started = Date.now();
+    const { byUrl, failures } = await fetchAssetsTiered(['https://dead.example/x.png'], { timeoutMs: 25 });
+
+    expect(Date.now() - started).toBeLessThan(2000);
+    expect(byUrl.size).toBe(0);
+    expect(failures.get('https://dead.example/x.png')).toMatch(/25ms/);
+  });
+
+  it('fetches one URL exactly once, however many times it is referenced', async () => {
+    const calls: string[] = [];
+    setFetch(async (url: string) => {
+      calls.push(url);
+      return respond(PNG_BYTES);
+    });
+
+    await fetchAssetsTiered(['https://a/1.png', 'https://a/1.png', 'https://a/1.png']);
+
+    expect(calls).toEqual(['https://a/1.png']);
+  });
+
+  it('sniffs the real image type when the server says octet-stream — the data: URI must not lie', async () => {
+    setFetch(async () => respond(PNG_BYTES, 'application/octet-stream'));
+
+    const { byUrl } = await fetchAssetsTiered(['https://cdn.example/logo.png']);
+
+    expect(byUrl.get('https://cdn.example/logo.png')).toMatch(/^data:image\/png;base64,/);
+  });
+
+  it('leaves no deadline timer pending once the fetch settles', async () => {
+    setFetch(async () => respond(PNG_BYTES));
+
+    const live = new Set<unknown>();
+    const realSetTimeout = globalThis.setTimeout;
+    const realClearTimeout = globalThis.clearTimeout;
+    globalThis.setTimeout = ((fn: never, ms: never, ...rest: never[]) => {
+      const id = realSetTimeout(fn, ms, ...rest);
+      live.add(id);
+      return id;
+    }) as typeof globalThis.setTimeout;
+    globalThis.clearTimeout = ((id: never) => {
+      live.delete(id);
+      return realClearTimeout(id);
+    }) as typeof globalThis.clearTimeout;
+
+    try {
+      await fetchAssetsTiered(['https://cdn.example/logo.png']);
+      expect(live.size).toBe(0);
+    } finally {
+      globalThis.setTimeout = realSetTimeout;
+      globalThis.clearTimeout = realClearTimeout;
+    }
   });
 });

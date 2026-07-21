@@ -7,7 +7,7 @@ import type { ForeignObjectMode } from '../export/vnode-serializer';
 import type { RasterBackend } from '../export/raster';
 import type { ExportScope } from '../export/bounds';
 import type { PdfExportOptions } from '../export/pdf/pdf-export';
-import type { FontSource } from '../export/assets';
+import type { AssetFetcher, FontSource } from '../export/assets';
 import type { CustomNodeCapture, HtmlFallbackMode } from '../export/custom-nodes';
 // Wave 8 (Performance & scale) — Card 6: the global route solver's worker seam.
 // Type-only, so the engine's solver is not pulled into every renderer bundle.
@@ -233,6 +233,35 @@ export interface ExportOptions {
    * cannot wait at all. They report an unfinished painter as a warning instead.
    */
   customNodeTimeout?: number;
+
+  /**
+   * TIER 2 for EXTERNAL image URLs (`<img src="https://…">` inside a widget, a panel
+   * node's logo). `await export(…)` — every format — first tries the environment's own
+   * fetch, which succeeds for same-origin assets and for any server that allows CORS;
+   * when that is refused, THIS fetcher is consulted (route the URL through your own
+   * proxy, a service worker, an app cache); when both fail the reference is left as-is
+   * and the export WARNS, naming the URL and both escape hatches.
+   *
+   * Also the determinism seam: inject a fetcher in tests and no live network is touched.
+   *
+   * Ignored by `exportSvgString()` / `exportPdf()` — synchronous by contract, they
+   * cannot fetch and say so in their warnings.
+   */
+  assetFetcher?: AssetFetcher;
+
+  /**
+   * Bound on fetching ONE external image, per tier, in milliseconds. Default 5000 —
+   * the same figure as {@link customNodeTimeout}, for the same reason: a dead URL must
+   * not hang a print job. On expiry the image degrades to the tier-3 warning.
+   */
+  assetTimeout?: number;
+
+  /**
+   * Cap on one fetched image's size, in bytes. Default 5MB — a data: URI is ~33%
+   * bigger than the file it carries. Over the cap the image is refused with a warning;
+   * the cap is terminal (a proxy would return the same bytes, so tier 2 is not asked).
+   */
+  assetMaxBytes?: number;
 
   /**
    * FIDELITY REPORT. `IRenderer.export()` returns a bare string, so it has nowhere to

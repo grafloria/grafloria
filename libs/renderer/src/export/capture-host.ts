@@ -684,9 +684,39 @@ function transcribeSvgElement(el: El, ctx: WalkContext): VNode | null {
 // place. Def dedup is by the stable `paintDefId` hash: identical paint → one def.
 // ---------------------------------------------------------------------------
 
-const IMAGE_PDF_WARNING =
-  'a widget image references an EXTERNAL URL — the SVG keeps the link (renders online), ' +
-  'but the PDF cannot fetch it, so it will be MISSING from a PDF export.';
+/**
+ * The capture-time verdict on an external image, EXPORTED because the async export path
+ * revises it: `await export(…)` fetches external URLs (environment fetch, then
+ * `ExportOptions.assetFetcher`) and STRIPS this warning from any capture whose images it
+ * embedded — see `stripResolvedImageWarnings`. The synchronous entry points cannot fetch,
+ * so for them this text is the whole truth, and it names the way out.
+ */
+export const IMAGE_PDF_WARNING =
+  'a widget image references an EXTERNAL URL — a synchronous export keeps the link (the ' +
+  'SVG renders online, but a PDF cannot fetch a URL, so it will be MISSING from a PDF ' +
+  'export). `await export(…)` embeds the image when its server allows CORS or when ' +
+  'ExportOptions.assetFetcher is supplied.';
+
+/** Companion caveat from `resolveImageHref` — same lifecycle as {@link IMAGE_PDF_WARNING}. */
+export const IMAGE_NOT_INLINED_WARNING =
+  'an image could not be inlined (cross-origin or unloaded) — the export references it ' +
+  'externally and is not fully self-contained.';
+
+/**
+ * Remove the two external-image caveats from a capture's warning — called by the async
+ * export AFTER it embedded every external image the capture held, at which point both
+ * sentences assert a problem that no longer exists (the same defect, mirrored, as
+ * staying silent about one that does). Returns undefined when nothing else remains.
+ */
+export function stripResolvedImageWarnings(warning: string | undefined): string | undefined {
+  if (!warning) return warning;
+  const stripped = warning
+    .replace(IMAGE_PDF_WARNING, '')
+    .replace(IMAGE_NOT_INLINED_WARNING, '')
+    .replace(/\s+/g, ' ')
+    .trim();
+  return stripped === '' ? undefined : stripped;
+}
 
 /** Register a def VNode once per capture; identical defs (same id) collapse to one. */
 function pushDef(ctx: WalkContext, id: string, build: () => VNode): void {
@@ -1019,10 +1049,7 @@ function resolveImageHref(el: El | null, src: string, ctx: WalkContext): string 
   if (src.startsWith('data:')) return src;
   const inlined = el ? tryCanvasInline(el, ctx) : null;
   if (inlined) return inlined;
-  ctx.warnings.push(
-    'an image could not be inlined (cross-origin or unloaded) — the export references it ' +
-      'externally and is not fully self-contained.'
-  );
+  ctx.warnings.push(IMAGE_NOT_INLINED_WARNING);
   return src;
 }
 

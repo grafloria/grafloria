@@ -11,7 +11,9 @@ import type { AnimationService } from '../services/animation.service';
 import type { SvgExportResult } from '../export/svg-export';
 import type { PdfExportResult } from '../export/pdf/pdf-export';
 import type { CustomNodeCapture } from '../export/custom-nodes';
-import { captureCustomNodeHost } from '../export/capture-host';
+import { captureCustomNodeHost, stripResolvedImageWarnings } from '../export/capture-host';
+import { collectAssetUrls, fetchAssetsTiered, inlineAssets } from '../export/assets';
+import type { VNode } from '../types/vnode.types';
 import { SVGRenderer } from '../svg/svg-renderer';
 import type { DiagramRegistry } from '../ext/diagram-registry';
 import { VNodePatcher } from '../vnode/patch';
@@ -1014,6 +1016,86 @@ export function createDiagram(
     return { ...exportOptions, customNodes };
   };
 
+  /**
+   * EXTERNAL-URL IMAGES → embedded bytes, for the async export only.
+   *
+   * A widget's `<img src="https://…">` captures as `<image href="https://…">`, which an
+   * SVG renders online and a PDF cannot draw at all. This library is client-side: the
+   * export RUNS IN A BROWSER, and the browser can usually fetch that URL itself. So the
+   * awaited path fetches every external reference the captures hold and swaps it for the
+   * `data:` URI the PDF writer already embeds as an XObject (b2854b0a1) — three tiers,
+   * see `fetchAssetsTiered`: environment fetch (same-origin / CORS-allowed), then
+   * `ExportOptions.assetFetcher` (the app's proxy), then the accurate warning.
+   *
+   * THE WARNING LEDGER IS RECONCILED, both ways. A capture whose external images were
+   * all embedded has its capture-time "EXTERNAL URL" caveat STRIPPED — after the fetch
+   * it asserts a problem that no longer exists. A URL every tier failed on keeps the
+   * reference (broken-but-visible beats silently blanked, the `inlineAssets` rule) and
+   * gains a warning naming the URL, the reason, and the escape hatches.
+   *
+   * `exportSvgString()` / `exportPdf()` are untouched: synchronous by contract, they
+   * cannot fetch, and their capture-time warning says exactly that.
+   */
+  const withInlinedImages = async (exportOptions: ExportOptions): Promise<ExportOptions> => {
+    const captures = exportOptions.customNodes;
+    if (!captures || captures.length === 0) return exportOptions;
+
+    // Collect across ALL captures first, so one URL referenced by five widgets is
+    // fetched once. Stable order (model order, then first appearance) for determinism.
+    const roots = new Map<CustomNodeCapture, VNode>();
+    const urls: string[] = [];
+    const seen = new Set<string>();
+    for (const capture of captures) {
+      if (!capture.content || capture.content.length === 0) continue;
+      const root: VNode = { type: 'g', props: {}, children: [...capture.content] };
+      const found = collectAssetUrls(root);
+      if (found.length === 0) continue;
+      roots.set(capture, root);
+      for (const url of found) {
+        if (!seen.has(url)) {
+          seen.add(url);
+          urls.push(url);
+        }
+      }
+    }
+    if (urls.length === 0) return exportOptions; // nothing external — identical options out
+
+    const { byUrl, failures } = await fetchAssetsTiered(urls, {
+      fetcher: exportOptions.assetFetcher,
+      maxBytes: exportOptions.assetMaxBytes,
+      timeoutMs: exportOptions.assetTimeout,
+    });
+
+    const customNodes = captures.map((capture): CustomNodeCapture => {
+      const root = roots.get(capture);
+      if (!root) return capture;
+
+      const inlined = inlineAssets(root, byUrl);
+      const remaining = collectAssetUrls(inlined);
+
+      let warning = capture.warning;
+      if (remaining.length === 0) {
+        // Every external image is now bytes in the file — the capture-time caveat
+        // (written for the sync paths, which cannot fetch) is no longer true here.
+        warning = stripResolvedImageWarnings(warning);
+      } else {
+        const residue = remaining
+          .map(
+            (url) =>
+              `widget image "${url}" could not be embedded: ${failures.get(url) ?? 'unknown failure'}. ` +
+              'The reference is left in the file (an SVG still renders it online); it will be ' +
+              'MISSING from a PDF export.'
+          )
+          .join(' ');
+        warning = [warning, residue].filter(Boolean).join(' ');
+      }
+
+      return { ...capture, content: inlined.children ?? [], warning };
+    });
+
+    return { ...exportOptions, customNodes };
+  };
+
   // -- the frame --------------------------------------------------------------
   let lastViewportKey = '';
   let lastFrameHadPreview = false;
@@ -1275,7 +1357,7 @@ export function createDiagram(
     // synchronous entry points below keep their contract exactly, and report an
     // unfinished painter rather than pretending to have read it.
     export: async (format, exportOptions) =>
-      renderer.export(format, await withCustomNodesAsync(exportOptions)),
+      renderer.export(format, await withInlinedImages(await withCustomNodesAsync(exportOptions))),
     exportSvgString: (exportOptions) => renderer.exportSvgString(withCustomNodes(exportOptions)),
     exportPdf: (exportOptions) => renderer.exportPdf(withCustomNodes(exportOptions)),
 
