@@ -38,6 +38,7 @@ defineDemo({
     'Open it and drag-select the labels: Requirements, Design and Ship highlight and copy out as REAL text — vector glyphs, not pixels.',
     'Zoom deep into the page — node borders and edges stay razor-sharp: true path operators, and the file embeds no raster image at all.',
     'Drag a node on the canvas and download again — the PDF tracks the live diagram (an unchanged view exports deterministically).',
+    'External images (a panel node\'s logo, a widget\'s <img>) are fetched and embedded by await export(…). If the image\'s server blocks CORS, pass ExportOptions.assetFetcher — an allowlisted server-side proxy that fetches the URL and returns bytes + content-type (the full ~10-line recipe, with its SSRF warning, is in the assetFetcher JSDoc) — and the bytes still reach the file.',
   ],
   reactflow: 'Download Image',
 
