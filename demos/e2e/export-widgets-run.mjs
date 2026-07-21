@@ -562,6 +562,179 @@ check(
   deferred.unhandled.join(' | ')
 );
 
+// ===========================================================================
+// CSS PAINT → TRUE VECTOR: gradients, shadows and images.
+//
+// A widget card is rarely a flat fill. It is a linear-gradient header, a drop shadow, a
+// logo. Those used to be dropped silently by the transcriber — the card degraded to a
+// <foreignObject>, which browsers render and PDF / resvg / librsvg leave BLANK. This drives
+// the real capture over three widgets built from exactly that CSS, exports through the
+// live instance to BOTH targets, and asserts the honest per-format outcome: SVG carries a
+// real <linearGradient>/<feDropShadow>/<image>; PDF flattens the gradient to a solid (with
+// a warning), keeps the shadowed box (minus the blur), and REPORTS the image it cannot draw.
+//
+// WHAT MAKES THIS A TEST AND NOT A COINCIDENCE: "the file contains a <linearGradient>" can
+// be green from a DIFFERENT node, and "no foreignObject" says nothing about the paint. So
+// the gradient's stops are pinned to the authored red→blue, the box's fill is asserted to
+// reference THAT gradient's id, and the 90deg endpoints are checked to be a HORIZONTAL line
+// — a wrong-angle gradient still contains a <linearGradient>.
+// ===========================================================================
+console.log('\n--- CSS paint → true vector: gradients, shadows, images ---');
+
+const paint = await p.evaluate(async () => {
+  const { render } = await import('/shell/grafloria.js');
+
+  const host = document.createElement('div');
+  host.style.cssText =
+    'position:fixed;left:0;bottom:0;width:920px;height:240px;overflow:hidden;z-index:-1;background:#fff';
+  document.body.appendChild(host);
+
+  // A 1x1 opaque-red PNG — a data: URI so the capture inlines it verbatim and the file is
+  // self-contained without a network round trip.
+  const IMG =
+    'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==';
+
+  const node = (id, x) => ({
+    id,
+    position: { x, y: 0 },
+    size: { width: 280, height: 200 },
+    metadata: { useHTMLLayer: true },
+  });
+  const nodes = [node('grad', 0), node('shadow', 320), node('img', 640)];
+
+  const renderCustomNode = (n, el) => {
+    if (n.id === 'grad') {
+      el.innerHTML =
+        '<div style="width:100%;height:100%;background-image:' +
+        'linear-gradient(90deg, rgb(255,0,0) 0%, rgb(0,0,255) 100%)"></div>';
+    } else if (n.id === 'shadow') {
+      el.innerHTML =
+        '<div style="width:100%;height:100%;background-color:rgb(255,255,255);' +
+        'box-shadow: rgba(0,0,0,0.3) 3px 5px 12px 0px"></div>';
+    } else {
+      el.innerHTML = `<img src="${IMG}" style="width:100%;height:100%">`;
+    }
+  };
+
+  const instance = render({ nodes, edges: [] }, host, { renderCustomNode });
+  instance.renderNow();
+
+  const svgOut = instance.exportSvgString();
+  const pdfOut = instance.exportPdf();
+
+  instance.dispose();
+  host.remove();
+
+  return {
+    svg: svgOut.svg,
+    svgWarnings: svgOut.warnings,
+    pdfWarnings: pdfOut.warnings,
+    pdfBytes: pdfOut.pdf.length,
+    pdfHeader: String.fromCharCode(...pdfOut.pdf.slice(0, 5)),
+  };
+});
+
+const psvg = paint.svg;
+
+// -- the gradient, faithful in SVG -------------------------------------------
+const gradMatch = psvg.match(/<linearGradient id="(grafloria-def-[^"]+)"[^>]*gradientUnits="userSpaceOnUse"[^>]*>/);
+check('the linear-gradient became a userSpaceOnUse <linearGradient>', !!gradMatch, gradMatch ? gradMatch[1] : 'none');
+if (gradMatch) {
+  const gid = gradMatch[1];
+  // The gradient body — its stops must be the authored red → blue, not an empty gradient.
+  const body = psvg.slice(psvg.indexOf(gradMatch[0]));
+  const grad = body.slice(0, body.indexOf('</linearGradient>'));
+  check(
+    'its stops are the authored red → blue (an empty gradient would still be a <linearGradient>)',
+    /stop-color="rgb\(255, ?0, ?0\)"/.test(grad) && /stop-color="rgb\(0, ?0, ?255\)"/.test(grad),
+    grad.replace(/\s+/g, ' ').slice(0, 160)
+  );
+  // 90deg is a HORIZONTAL line: y1 === y2. A wrong-angle gradient is still a gradient, so
+  // this is the assertion that actually proves the maths.
+  const x1 = Number(gradMatch[0].match(/x1="([-\d.]+)"/)?.[1]);
+  const y1 = Number(gradMatch[0].match(/y1="([-\d.]+)"/)?.[1]);
+  const x2 = Number(gradMatch[0].match(/x2="([-\d.]+)"/)?.[1]);
+  const y2 = Number(gradMatch[0].match(/y2="([-\d.]+)"/)?.[1]);
+  check('90deg is a horizontal gradient line — y1 === y2, x1 < x2', y1 === y2 && x1 < x2, `(${x1},${y1})→(${x2},${y2})`);
+  // The box FILLS with this exact gradient — not merely "a gradient exists somewhere".
+  check('the widget box fills with THIS gradient', psvg.includes(`fill="url(#${gid})"`));
+}
+
+// -- the shadow, faithful in SVG ---------------------------------------------
+const shadowFilter = psvg.match(/<filter id="(grafloria-def-[^"]+)"[^>]*>\s*<feDropShadow[^>]*dx="3"[^>]*dy="5"[^>]*stdDeviation="6"/);
+check('the box-shadow became an feDropShadow filter (12px blur → std-deviation 6)', !!shadowFilter, shadowFilter ? shadowFilter[1] : 'none');
+if (shadowFilter) {
+  check('and the shadowed box wears that filter', psvg.includes(`filter="url(#${shadowFilter[1]})"`));
+}
+
+// -- the image, faithful in SVG ----------------------------------------------
+check('the <img> became an <image> with an inlined data: URI', /<image[^>]+href="data:image\/png/.test(psvg));
+
+// -- still true vector: no foreignObject, no unresolved vars -----------------
+check('none of the three fell back to a foreignObject', !psvg.includes('<foreignObject'), 'so they survive resvg/librsvg, not just browsers');
+check('and no CSS custom property leaked into the file', !psvg.includes('var(--'));
+
+// -- the HONEST PDF degradation ----------------------------------------------
+// The SAME capture, painted to PDF. The point of the subsystem is that the file does not
+// LIE about a format: a gradient becomes a solid stop and SAYS so; an image cannot be drawn
+// at all and SAYS so; the shadowed box still draws (minus the blur PDF has no way to make).
+// The PDF is deliberately SMALL: all three widgets degrade (gradient → solid, shadow → a
+// flat box, image → omitted), so there is little to draw — but it is a valid file.
+check('PDF produced a real, well-formed file', paint.pdfHeader === '%PDF-' && paint.pdfBytes > 400, `${paint.pdfHeader} ${paint.pdfBytes} bytes`);
+check(
+  'PDF reports the gradient was flattened to a solid stop — not silently blanked',
+  paint.pdfWarnings.some((w) => /gradient/i.test(w) && /flatten|first stop/i.test(w)),
+  paint.pdfWarnings.find((w) => /gradient/i.test(w)) || 'no gradient warning'
+);
+check(
+  'PDF reports the image was omitted — accurately, not silently dropped',
+  paint.pdfWarnings.some((w) => /image/i.test(w) && /PDF|XObject|omitted/i.test(w)),
+  paint.pdfWarnings.find((w) => /image/i.test(w)) || 'no image warning'
+);
+// The image caveat is also surfaced on the SVG export's warnings, so a caller who never
+// touches PDF is still told which widgets carry a PDF risk.
+check(
+  'the SVG export also flags the image as a PDF fidelity risk',
+  paint.svgWarnings.some((w) => /image/i.test(w) && /PDF/.test(w)),
+  paint.svgWarnings.find((w) => /image/i.test(w)) || 'none'
+);
+
+// -- render the exported SVG STANDALONE and prove it is not blank ------------
+// The standing rule here: an export that serializes but renders wrong is not done. This
+// rasterizes the gradient widget's SVG in a bare <img> (no page CSS, no kit) and reads the
+// pixels back — a red-left / blue-right split is the gradient actually painting.
+const standalone = await p.evaluate(async (svg) => {
+  const url = 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(svg);
+  const img = new Image();
+  await new Promise((res, rej) => {
+    img.onload = res;
+    img.onerror = () => rej(new Error('standalone SVG failed to load'));
+    img.src = url;
+  });
+  const c = document.createElement('canvas');
+  c.width = img.naturalWidth || 920;
+  c.height = img.naturalHeight || 240;
+  const g = c.getContext('2d');
+  g.drawImage(img, 0, 0);
+  const at = (fx) => {
+    const d = g.getImageData(Math.floor(c.width * fx), Math.floor(c.height * 0.4), 1, 1).data;
+    return { r: d[0], g: d[1], b: d[2], a: d[3] };
+  };
+  // Sample inside the gradient widget: it occupies the left ~30% of the board.
+  return { left: at(0.03), right: at(0.27), w: c.width, h: c.height };
+}, psvg);
+
+check(
+  'STANDALONE render: the gradient widget paints red on the left',
+  standalone.left.r > 150 && standalone.left.b < 100 && standalone.left.a > 0,
+  JSON.stringify(standalone.left)
+);
+check(
+  'STANDALONE render: and blue on the right — the gradient truly renders, not just serializes',
+  standalone.right.b > 150 && standalone.right.r < 100,
+  JSON.stringify(standalone.right)
+);
+
 check('no page errors', pageErrors.length === 0, pageErrors.join(' | '));
 
 await b.close();
