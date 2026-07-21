@@ -25,9 +25,20 @@
 // dict's /Decode array undoes. APP14 transform 2 (YCCK) passes through as well: the
 // reader's own DCT decoder does the YCCK→CMYK conversion (poppler pixel-verified).
 //
-// REFUSALS are loud, never guessed: sub-8-bit PNGs (1/2/4-bit packing) and external URLs
-// (fetching is not pure). CRCs are read past, not verified: the input is a data: URL the
-// capture layer just built, not a file that survived a network.
+// SUB-8-BIT (1/2/4-bit grey and indexed) embeds at its NATIVE depth: PDF's
+// /BitsPerComponent speaks 1/2/4 directly, and the PNG-predictor /DecodeParms model packs
+// sub-byte samples EXACTLY as PNG does (both specs filter whole bytes with the
+// bytes-per-pixel floored to 1 — poppler pixel-verified in the e2e gate). Interlaced
+// sub-8-bit goes through the decode path instead (each Adam7 pass row packs its own
+// bits), expanded to 8-bit samples — correctness over cleverness.
+//
+// INDEXED tRNS (palette alpha) builds a REAL /SMask: the indices are decoded (even when
+// the colour stream passes through untouched) and mapped through the tRNS table — an
+// index past the table's end is opaque 255, per the PNG spec.
+//
+// REFUSALS are loud, never guessed: external URLs (fetching is not pure) and depth/colour
+// combinations the PNG spec itself forbids. CRCs are read past, not verified: the input
+// is a data: URL the capture layer just built, not a file that survived a network.
 
 import { zlibDeflateStored, zlibInflate } from './flate';
 
@@ -130,7 +141,8 @@ interface PngChunks {
   interlace: number;
   idat: Uint8Array;
   palette: Uint8Array | null;
-  trns: boolean;
+  /** The raw tRNS chunk — for indexed PNGs, one alpha byte per palette entry. */
+  trns: Uint8Array | null;
 }
 
 function parsePng(bytes: Uint8Array): PngChunks | null {
@@ -138,7 +150,7 @@ function parsePng(bytes: Uint8Array): PngChunks | null {
 
   let width = 0, height = 0, bitDepth = 0, colorType = 0, interlace = 0;
   let palette: Uint8Array | null = null;
-  let trns = false;
+  let trns: Uint8Array | null = null;
   const idatParts: Uint8Array[] = [];
   let sawIhdr = false;
 
@@ -161,7 +173,7 @@ function parsePng(bytes: Uint8Array): PngChunks | null {
     } else if (type === 'PLTE') {
       palette = data;
     } else if (type === 'tRNS') {
-      trns = true;
+      trns = data;
     } else if (type === 'IDAT') {
       idatParts.push(data);
     } else if (type === 'IEND') {
@@ -188,18 +200,19 @@ function parsePng(bytes: Uint8Array): PngChunks | null {
 /** channels per pixel, by PNG colour type. */
 const CHANNELS: Record<number, number> = { 0: 1, 2: 3, 3: 1, 4: 2, 6: 4 };
 
+/** The depths the PNG spec allows per colour type (§11.2.2) — anything else is corrupt. */
+const VALID_DEPTHS: Record<number, number[]> = {
+  0: [1, 2, 4, 8, 16],
+  2: [8, 16],
+  3: [1, 2, 4, 8],
+  4: [8, 16],
+  6: [8, 16],
+};
+
 function decodePng(bytes: Uint8Array, warn: (message: string) => void): PdfImage | null {
   const png = parsePng(bytes);
   if (!png) {
     warn('an <image> data: URL could not be parsed as a PNG — the image is omitted from the PDF.');
-    return null;
-  }
-
-  if (png.bitDepth !== 8 && png.bitDepth !== 16) {
-    warn(
-      `a ${png.bitDepth}-bit PNG cannot be embedded (sub-byte sample packing is not implemented; ` +
-        'canvas images are always 8-bit). The image is omitted from the PDF.'
-    );
     return null;
   }
 
@@ -210,7 +223,16 @@ function decodePng(bytes: Uint8Array, warn: (message: string) => void): PdfImage
     return null;
   }
 
+  if (!VALID_DEPTHS[colorType].includes(png.bitDepth)) {
+    warn(
+      `a ${png.bitDepth}-bit PNG with colour type ${colorType} is not a valid PNG — ` +
+        'the image is omitted from the PDF.'
+    );
+    return null;
+  }
+
   const sixteen = png.bitDepth === 16;
+  const subByte = png.bitDepth < 8;
   const interlaced = png.interlace !== 0;
 
   // The colourspace, shared by both paths. Indexed needs its palette either way.
@@ -224,32 +246,83 @@ function decodePng(bytes: Uint8Array, warn: (message: string) => void): PdfImage
       warn('an indexed PNG carries no palette — the image is omitted from the PDF.');
       return null;
     }
-    if (png.trns) {
-      warn(
-        'an indexed PNG with palette transparency (tRNS) renders OPAQUE in the PDF — expanding ' +
-          'palette alpha to an SMask is not implemented.'
-      );
-    }
     let hex = '';
     for (const b of png.palette) hex += b.toString(16).padStart(2, '0');
     colorSpace = `[/Indexed /DeviceRGB ${png.palette.length / 3 - 1} <${hex}>]`;
   }
 
-  // Passthrough: the IDAT already IS a /FlateDecode+predictor stream — but only for
-  // opaque 8-bit non-interlaced images (interlacing has no PDF predictor equivalent,
-  // 16-bit is downsampled, and alpha must be split out).
+  // Indexed palette alpha (tRNS) → a real /SMask, built by mapping every DECODED index
+  // through the tRNS table. The colour stream can still pass through untouched — only
+  // the mask needs the decode.
+  const trns = colorType === 3 && png.trns && png.trns.length > 0 ? png.trns : null;
+
+  // Passthrough: the IDAT already IS a /FlateDecode+predictor stream — for opaque,
+  // non-interlaced, ≤8-bit grey/RGB/indexed. Sub-byte packing rides through too: PDF's
+  // PNG-predictor model packs 1/2/4-bit samples exactly as PNG does (both filter whole
+  // bytes, bytes-per-pixel floored to 1). Interlacing has no PDF predictor equivalent,
+  // 16-bit is downsampled, and interleaved alpha must be split out.
   if (!interlaced && !sixteen && (colorType === 2 || colorType === 0 || colorType === 3)) {
     const colors = colorType === 2 ? 3 : 1;
+    let smask: PdfImage['smask'] = null;
+    if (trns) {
+      try {
+        smask = { data: zlibDeflateStored(alphaFromTrns(decodeSamples(png), trns)), bitsPerComponent: 8 };
+      } catch {
+        warn('an <image> PNG has a corrupt pixel stream — the image is omitted from the PDF.');
+        return null;
+      }
+    }
     return {
       width,
       height,
       colorSpace,
-      bitsPerComponent: 8,
+      bitsPerComponent: png.bitDepth,
       data: png.idat,
       filter: '/FlateDecode',
-      decodeParms: `<< /Predictor 15 /Colors ${colors} /BitsPerComponent 8 /Columns ${width} >>`,
+      decodeParms: `<< /Predictor 15 /Colors ${colors} /BitsPerComponent ${png.bitDepth} /Columns ${width} >>`,
       decode: null,
-      smask: null,
+      smask,
+    };
+  }
+
+  // Sub-byte decode path — reached only when INTERLACED (the passthrough above owns the
+  // rest), and only grey/indexed can be sub-byte (VALID_DEPTHS). Samples expand to one
+  // byte each: grey scales to full range (×255/(2^depth−1) — exact for 1/2/4), indices
+  // stay indices under the same /Indexed colourspace.
+  if (subByte) {
+    let samples: Uint8Array;
+    try {
+      samples = decodeSamples(png);
+    } catch {
+      warn('an <image> PNG has a corrupt pixel stream — the image is omitted from the PDF.');
+      return null;
+    }
+
+    if (colorType === 0) {
+      const scale = 255 / ((1 << png.bitDepth) - 1);
+      const gray = new Uint8Array(samples.length);
+      for (let i = 0; i < samples.length; i++) gray[i] = samples[i] * scale;
+      return {
+        width, height,
+        colorSpace: '/DeviceGray',
+        bitsPerComponent: 8,
+        data: zlibDeflateStored(gray),
+        filter: '/FlateDecode',
+        decodeParms: null,
+        decode: null,
+        smask: null,
+      };
+    }
+
+    return {
+      width, height,
+      colorSpace,
+      bitsPerComponent: 8,
+      data: zlibDeflateStored(samples),
+      filter: '/FlateDecode',
+      decodeParms: null,
+      decode: null,
+      smask: trns ? { data: zlibDeflateStored(alphaFromTrns(samples, trns)), bitsPerComponent: 8 } : null,
     };
   }
 
@@ -306,8 +379,70 @@ function decodePng(bytes: Uint8Array, warn: (message: string) => void): PdfImage
     filter: '/FlateDecode',
     decodeParms: null,
     decode: null,
-    smask: null,
+    // An interlaced indexed PNG with tRNS: `raw` is the raster-order indices.
+    smask: trns ? { data: zlibDeflateStored(alphaFromTrns(raw, trns)), bitsPerComponent: 8 } : null,
   };
+}
+
+// ---------------------------------------------------------------------------
+// Sub-byte sample handling — 1/2/4-bit grey levels and palette indices.
+// ---------------------------------------------------------------------------
+
+/**
+ * Decoded one-byte-per-SAMPLE pixels for a single-channel PNG of depth ≤ 8 (grey or
+ * indexed). Grey values are NOT scaled here — callers that need full-range grey scale
+ * by 255/(2^depth − 1); tRNS mask building wants the raw indices.
+ */
+function decodeSamples(png: PngChunks): Uint8Array {
+  const inflated = zlibInflate(png.idat);
+  if (png.bitDepth === 8) {
+    return png.interlace !== 0
+      ? deinterlace(inflated, png.width, png.height, 1)
+      : unfilter(inflated, png.width, png.height, 1);
+  }
+  return png.interlace !== 0
+    ? deinterlaceSub8(inflated, png.width, png.height, png.bitDepth)
+    : unfilterSub8(inflated, png.width, png.height, png.bitDepth);
+}
+
+/** tRNS table → alpha plane: alpha = table[index], indices past the table are opaque. */
+function alphaFromTrns(indices: Uint8Array, trns: Uint8Array): Uint8Array {
+  const alpha = new Uint8Array(indices.length);
+  for (let i = 0; i < indices.length; i++) alpha[i] = indices[i] < trns.length ? trns[indices[i]] : 255;
+  return alpha;
+}
+
+/**
+ * Unpack one packed row into one-byte samples, MSB first (PNG §7.2: bits are packed
+ * high-to-low within each byte, left pixel first).
+ */
+function unpackRow(
+  packed: Uint8Array,
+  srcOffset: number,
+  out: Uint8Array,
+  dstOffset: number,
+  count: number,
+  depth: number
+): void {
+  const mask = (1 << depth) - 1;
+  for (let i = 0; i < count; i++) {
+    const bit = i * depth;
+    out[dstOffset + i] = (packed[srcOffset + (bit >> 3)] >> (8 - depth - (bit & 7))) & mask;
+  }
+}
+
+/**
+ * Un-filter a non-interlaced sub-byte image and unpack to one byte per sample. PNG
+ * filters sub-byte rows as WHOLE BYTES with the pixel stride floored to one byte
+ * (spec §7.2 "filters operate on bytes") — so the byte-level unfilter is reused with
+ * width = rowBytes, bpp = 1, and the unpack happens after.
+ */
+function unfilterSub8(data: Uint8Array, width: number, height: number, depth: number): Uint8Array {
+  const rowBytes = Math.ceil((width * depth) / 8);
+  const rows = unfilter(data, rowBytes, height, 1);
+  const out = new Uint8Array(width * height);
+  for (let y = 0; y < height; y++) unpackRow(rows, y * rowBytes, out, y * width, width, depth);
+  return out;
 }
 
 /**
@@ -330,9 +465,9 @@ function deinterlace(data: Uint8Array, width: number, height: number, bpp: numbe
   const out = new Uint8Array(width * height * bpp);
   let pos = 0;
 
-  for (const { x0, y0, dx, dy } of ADAM7) {
-    const passWidth = Math.ceil(Math.max(0, width - x0) / dx);
-    const passHeight = Math.ceil(Math.max(0, height - y0) / dy);
+  for (const pass of ADAM7) {
+    const passWidth = Math.ceil(Math.max(0, width - pass.x0) / pass.dx);
+    const passHeight = Math.ceil(Math.max(0, height - pass.y0) / pass.dy);
     if (passWidth === 0 || passHeight === 0) continue; // empty passes have NO scanlines
 
     const passLength = passHeight * (passWidth * bpp + 1);
@@ -340,16 +475,59 @@ function deinterlace(data: Uint8Array, width: number, height: number, bpp: numbe
     const passRaw = unfilter(data.subarray(pos, pos + passLength), passWidth, passHeight, bpp);
     pos += passLength;
 
-    for (let j = 0; j < passHeight; j++) {
-      for (let i = 0; i < passWidth; i++) {
-        const src = (j * passWidth + i) * bpp;
-        const dst = ((y0 + j * dy) * width + (x0 + i * dx)) * bpp;
-        for (let k = 0; k < bpp; k++) out[dst + k] = passRaw[src + k];
-      }
-    }
+    placePass(out, passRaw, width, pass, passWidth, passHeight, bpp);
   }
 
   return out;
+}
+
+/**
+ * Interlaced AND sub-byte: each Adam7 pass row packs ITS OWN bits (PNG §8.2 — a pass is
+ * a self-contained sub-image), so every pass is unfiltered at its own byte width, then
+ * unpacked to one-byte samples, then placed by the SAME pass-offset arithmetic the byte
+ * path uses (placePass — shared so the mutation-hardened 8×8 placement proof covers both).
+ */
+function deinterlaceSub8(data: Uint8Array, width: number, height: number, depth: number): Uint8Array {
+  const out = new Uint8Array(width * height);
+  let pos = 0;
+
+  for (const pass of ADAM7) {
+    const passWidth = Math.ceil(Math.max(0, width - pass.x0) / pass.dx);
+    const passHeight = Math.ceil(Math.max(0, height - pass.y0) / pass.dy);
+    if (passWidth === 0 || passHeight === 0) continue;
+
+    const rowBytes = Math.ceil((passWidth * depth) / 8);
+    const passLength = passHeight * (rowBytes + 1);
+    const passRows = unfilter(data.subarray(pos, pos + passLength), rowBytes, passHeight, 1);
+    pos += passLength;
+
+    const passSamples = new Uint8Array(passWidth * passHeight);
+    for (let j = 0; j < passHeight; j++) {
+      unpackRow(passRows, j * rowBytes, passSamples, j * passWidth, passWidth, depth);
+    }
+    placePass(out, passSamples, width, pass, passWidth, passHeight, 1);
+  }
+
+  return out;
+}
+
+/** Write one de-interlaced pass back to its raster addresses: (x0 + i·dx, y0 + j·dy). */
+function placePass(
+  out: Uint8Array,
+  passRaw: Uint8Array,
+  width: number,
+  { x0, y0, dx, dy }: { x0: number; y0: number; dx: number; dy: number },
+  passWidth: number,
+  passHeight: number,
+  bpp: number
+): void {
+  for (let j = 0; j < passHeight; j++) {
+    for (let i = 0; i < passWidth; i++) {
+      const src = (j * passWidth + i) * bpp;
+      const dst = ((y0 + j * dy) * width + (x0 + i * dx)) * bpp;
+      for (let k = 0; k < bpp; k++) out[dst + k] = passRaw[src + k];
+    }
+  }
 }
 
 /**

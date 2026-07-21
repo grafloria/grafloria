@@ -246,17 +246,40 @@ describe('decodeDataUrlImage — PNG', () => {
       expect(image.decodeParms).toBe('<< /Predictor 15 /Colors 1 /BitsPerComponent 8 /Columns 2 >>');
     });
 
-    it('a palette WITH transparency renders opaque — and warns, never silently', () => {
+    it('a palette WITH transparency builds a REAL /SMask — alpha = tRNS[index], no warning', () => {
+      // 4×1: indices 0,1,2,1. tRNS covers only indices 0 and 1 — index 2 sits PAST the
+      // table and must be opaque 255 (PNG spec: entries beyond the table default opaque).
       const warnings: string[] = [];
       const image = decode(
         buildPng({
-          width: 1, height: 1, colorType: 3, scanlines: [0, 0],
-          palette: [255, 0, 0], trns: [0],
+          width: 4, height: 1, colorType: 3,
+          scanlines: [0, 0, 1, 2, 1],
+          palette: [255, 0, 0, 0, 255, 0, 0, 0, 255],
+          trns: [0, 128],
         }),
         warnings
-      );
-      expect(image).not.toBeNull();
-      expect(warnings.join(' ')).toMatch(/transparen/i);
+      )!;
+      expect(image.colorSpace).toBe('[/Indexed /DeviceRGB 2 <ff000000ff000000ff>]');
+      // The COLOUR stream is still the untouched IDAT passthrough — only the mask needed a decode.
+      expect(image.decodeParms).toBe('<< /Predictor 15 /Colors 1 /BitsPerComponent 8 /Columns 4 >>');
+      expect(Array.from(inflateSync(image.data))).toEqual([0, 0, 1, 2, 1]);
+      expect(image.smask).not.toBeNull();
+      expect(image.smask!.bitsPerComponent).toBe(8);
+      expect(Array.from(inflateSync(image.smask!.data))).toEqual([0, 128, 255, 128]);
+      expect(warnings).toEqual([]); // the old "renders OPAQUE" warning is gone
+    });
+
+    it('the tRNS mask decode UNFILTERS the index rows first (Up filter)', () => {
+      // 2×2, row 1 Up-filtered: raw indices row0 = 0,1; row1 = 0+1, 1+1 = 1, 2.
+      const image = decode(
+        buildPng({
+          width: 2, height: 2, colorType: 3,
+          scanlines: [0, 0, 1, 2, 1, 1],
+          palette: [255, 0, 0, 0, 255, 0, 0, 0, 255],
+          trns: [10, 200, 30],
+        })
+      )!;
+      expect(Array.from(inflateSync(image.smask!.data))).toEqual([10, 200, 200, 30]);
     });
   });
 
@@ -424,13 +447,231 @@ describe('decodeDataUrlImage — PNG', () => {
     });
   });
 
+  describe('sub-8-bit PNGs — 1/2/4-bit grey and indexed embed at their NATIVE depth', () => {
+    it('4-bit grey: IDAT passthrough with /BitsPerComponent 4 in dict AND DecodeParms', () => {
+      // 4×2 ramp, packed two samples per byte: rows 0x01 0x23 / 0x45 0x67.
+      const image = decode(
+        buildPng({ width: 4, height: 2, colorType: 0, bitDepth: 4, scanlines: [0, 0x01, 0x23, 0, 0x45, 0x67] })
+      )!;
+      expect(image.colorSpace).toBe('/DeviceGray');
+      expect(image.bitsPerComponent).toBe(4);
+      expect(image.decodeParms).toBe('<< /Predictor 15 /Colors 1 /BitsPerComponent 4 /Columns 4 >>');
+      expect(Array.from(inflateSync(image.data))).toEqual([0, 0x01, 0x23, 0, 0x45, 0x67]);
+      expect(image.smask).toBeNull();
+    });
+
+    it('1-bit grey: BitsPerComponent 1, untouched stream', () => {
+      // 8×1 checker: 0b10101010 = 0xaa.
+      const image = decode(buildPng({ width: 8, height: 1, colorType: 0, bitDepth: 1, scanlines: [0, 0xaa] }))!;
+      expect(image.bitsPerComponent).toBe(1);
+      expect(image.decodeParms).toBe('<< /Predictor 15 /Colors 1 /BitsPerComponent 1 /Columns 8 >>');
+      expect(Array.from(inflateSync(image.data))).toEqual([0, 0xaa]);
+    });
+
+    it('2-bit grey: BitsPerComponent 2', () => {
+      const image = decode(buildPng({ width: 4, height: 1, colorType: 0, bitDepth: 2, scanlines: [0, 0x1b] }))!;
+      expect(image.bitsPerComponent).toBe(2);
+      expect(image.decodeParms).toBe('<< /Predictor 15 /Colors 1 /BitsPerComponent 2 /Columns 4 >>');
+    });
+
+    it('4-bit INDEXED keeps the palette colourspace at 4 bits — palette embedded, never expanded', () => {
+      // 3×1: packed indices 0x01, 0x20 → 0, 1, 2.
+      const image = decode(
+        buildPng({
+          width: 3, height: 1, colorType: 3, bitDepth: 4,
+          scanlines: [0, 0x01, 0x20],
+          palette: [255, 0, 0, 0, 255, 0, 0, 0, 255],
+        })
+      )!;
+      expect(image.colorSpace).toBe('[/Indexed /DeviceRGB 2 <ff000000ff000000ff>]');
+      expect(image.bitsPerComponent).toBe(4);
+      expect(image.decodeParms).toBe('<< /Predictor 15 /Colors 1 /BitsPerComponent 4 /Columns 3 >>');
+      expect(Array.from(inflateSync(image.data))).toEqual([0, 0x01, 0x20]);
+    });
+
+    it('4-bit indexed + tRNS: the mask indices are unpacked MSB-FIRST from packed bytes', () => {
+      // 3×1 packed 0x01, 0x20 → indices 0,1,2; tRNS [10, 200] → alpha 10, 200, 255.
+      // An LSB-first unpack reads 1,0,0 → alpha 200,10,10 — nowhere near.
+      const image = decode(
+        buildPng({
+          width: 3, height: 1, colorType: 3, bitDepth: 4,
+          scanlines: [0, 0x01, 0x20],
+          palette: [255, 0, 0, 0, 255, 0, 0, 0, 255],
+          trns: [10, 200],
+        })
+      )!;
+      expect(Array.from(inflateSync(image.smask!.data))).toEqual([10, 200, 255]);
+      // Colour stream stays passthrough at native depth.
+      expect(image.bitsPerComponent).toBe(4);
+      expect(Array.from(inflateSync(image.data))).toEqual([0, 0x01, 0x20]);
+    });
+
+    it('1-bit indexed + tRNS: a fully transparent ink over an opaque paper', () => {
+      // 8×1: 0b01100001; tRNS [255, 0] — index 1 transparent, index 0 opaque.
+      const image = decode(
+        buildPng({
+          width: 8, height: 1, colorType: 3, bitDepth: 1,
+          scanlines: [0, 0x61],
+          palette: [255, 255, 255, 0, 0, 0],
+          trns: [255, 0],
+        })
+      )!;
+      expect(Array.from(inflateSync(image.smask!.data))).toEqual([255, 0, 0, 255, 255, 255, 255, 0]);
+    });
+  });
+
+  describe('interlaced sub-8-bit — Adam7 and bit-packing COMBINED (each pass row is packed on its own)', () => {
+    it('interlaced 4-bit grey de-interlaces then scales to 8-bit (level × 17)', () => {
+      // 2×2: P1 (0,0)=1, P6 (1,0)=5, P7 row y=1 = 9, 13. Each pass row packs its own bits.
+      const image = decode(
+        buildPng({
+          width: 2, height: 2, colorType: 0, bitDepth: 4, interlace: 1,
+          scanlines: [0, 0x10, 0, 0x50, 0, 0x9d],
+        })
+      )!;
+      expect(image.bitsPerComponent).toBe(8);
+      expect(image.colorSpace).toBe('/DeviceGray');
+      expect(image.decodeParms).toBeNull();
+      expect(Array.from(inflateSync(image.data))).toEqual([17, 85, 153, 221]);
+    });
+
+    it('interlaced 1-bit grey → 0 / 255', () => {
+      // 2×2: P1=1, P6=0, P7 = 0,1 (bits in the high positions of their pass bytes).
+      const image = decode(
+        buildPng({
+          width: 2, height: 2, colorType: 0, bitDepth: 1, interlace: 1,
+          scanlines: [0, 0x80, 0, 0x00, 0, 0x40],
+        })
+      )!;
+      expect(Array.from(inflateSync(image.data))).toEqual([255, 0, 0, 255]);
+    });
+
+    it('MUTATION GUARD — 8×8 interlaced 4-bit populates ALL SEVEN passes, v = (3x+5y) mod 16', () => {
+      // Any pass origin/stride slip moves pixels by (Δx,Δy) with 3Δx+5Δy ≢ 0 (mod 16)
+      // for every offset the seven passes can confuse — so the output bytes change.
+      const v = (x: number, y: number) => (3 * x + 5 * y) % 16;
+      const ADAM7 = [
+        [0, 0, 8, 8], [4, 0, 8, 8], [0, 4, 4, 8], [2, 0, 4, 4],
+        [0, 2, 2, 4], [1, 0, 2, 2], [0, 1, 1, 2],
+      ];
+      const scanlines: number[] = [];
+      for (const [x0, y0, dx, dy] of ADAM7) {
+        const pw = Math.ceil((8 - x0) / dx);
+        const ph = Math.ceil((8 - y0) / dy);
+        if (!pw || !ph) continue;
+        for (let j = 0; j < ph; j++) {
+          scanlines.push(0); // filter None
+          let byte = 0;
+          for (let i = 0; i < pw; i++) {
+            const sample = v(x0 + i * dx, y0 + j * dy);
+            if (i % 2 === 0) byte = sample << 4;
+            else { scanlines.push(byte | sample); byte = 0; }
+          }
+          if (pw % 2 === 1) scanlines.push(byte);
+        }
+      }
+      const image = decode(
+        buildPng({ width: 8, height: 8, colorType: 0, bitDepth: 4, interlace: 1, scanlines })
+      )!;
+      const expected: number[] = [];
+      for (let y = 0; y < 8; y++) for (let x = 0; x < 8; x++) expected.push(v(x, y) * 17);
+      expect(Array.from(inflateSync(image.data))).toEqual(expected);
+    });
+
+    it('interlaced 8-bit indexed + tRNS builds the mask from RASTER-order indices', () => {
+      // 2×1: P1 (0,0)=1, P6 (1,0)=0. tRNS [40, 200] → raster alpha 200, 40.
+      const image = decode(
+        buildPng({
+          width: 2, height: 1, colorType: 3, interlace: 1,
+          scanlines: [0, 1, 0, 0],
+          palette: [255, 0, 0, 0, 255, 0],
+          trns: [40, 200],
+        })
+      )!;
+      expect(image.colorSpace).toBe('[/Indexed /DeviceRGB 1 <ff000000ff00>]');
+      expect(Array.from(inflateSync(image.data))).toEqual([1, 0]);
+      expect(Array.from(inflateSync(image.smask!.data))).toEqual([200, 40]);
+    });
+  });
+
+  describe('REAL-ENCODER fixtures (Pillow / ImageMagick — zlib-verified before check-in)', () => {
+    // 16×16 4-bit grey ramp, column x = level x (ImageMagick -depth 4).
+    const GRAY4_RAMP =
+      'iVBORw0KGgoAAAANSUhEUgAAABAAAAAQBAAAAAD/aE28AAAAAmJLR0QADzoyPqMAAAAHdElNRQfqBxUNOw8KOYgDAAAAFUlEQVQI12NgVHZN71x99j3D4GAAAIhAPAG6V7HMAAAAJXRFWHRkYXRlOmNyZWF0ZQAyMDI2LTA3LTIxVDEzOjU5OjE1KzAwOjAwfRKTZgAAACV0RVh0ZGF0ZTptb2RpZnkAMjAyNi0wNy0yMVQxMzo1OToxNSswMDowMAxPK9oAAAAodEVYdGRhdGU6dGltZXN0YW1wADIwMjYtMDctMjFUMTM6NTk6MTUrMDA6MDBbWgoFAAAAAElFTkSuQmCC';
+    // 16×16 1-bit checkerboard, 4-px blocks (Pillow mode '1').
+    const GRAY1_CHECKER =
+      'iVBORw0KGgoAAAANSUhEUgAAABAAAAAQAQAAAAA3iMLMAAAAFElEQVR4nGPkZ2BigCLGD0hsHOIAMiICG+iQ6usAAAAASUVORK5CYII=';
+    // 24×8 8-bit indexed thirds red|green|blue, tRNS [0, 128] (Pillow bits=8).
+    const IDX8_TRNS =
+      'iVBORw0KGgoAAAANSUhEUgAAABgAAAAICAMAAADUf89RAAADAFBMVEX/AAAA/wAAAP8AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAUz4tDAAAAAnRSTlMAgJsrThgAAAAVSURBVHicY2CAAkYoYIICmPgQkQAAR8gAwQEPj78AAAAASUVORK5CYII=';
+    // Same thirds at 4-bit indexed (Pillow bits=4).
+    const IDX4_TRNS =
+      'iVBORw0KGgoAAAANSUhEUgAAABgAAAAIBAMAAAARjyJQAAAAMFBMVEX/AAAA/wAAAP8AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAACk+nGOAAAAAnRSTlMAgJsrThgAAAAWSURBVHicY2RgYGAQhGImEAcGqMsBABCKADL5PHF1AAAAAElFTkSuQmCC';
+    // 16×16 4-bit grey ramp, INTERLACED (ImageMagick -interlace PNG -depth 4).
+    const GRAY4_LACE_RAMP =
+      'iVBORw0KGgoAAAANSUhEUgAAABAAAAAQBAAAAAGIb30qAAAAAmJLR0QADzoyPqMAAAAHdElNRQfqBxUNOw8KOYgDAAAALUlEQVQI12PgYOBg8AFClh4QUluHQExuXefQCeHw2feJIRiVXdM7V599TyEDAFZXOLmwhcf6AAAAJXRFWHRkYXRlOmNyZWF0ZQAyMDI2LTA3LTIxVDEzOjU5OjE1KzAwOjAwfRKTZgAAACV0RVh0ZGF0ZTptb2RpZnkAMjAyNi0wNy0yMVQxMzo1OToxNSswMDowMAxPK9oAAAAodEVYdGRhdGU6dGltZXN0YW1wADIwMjYtMDctMjFUMTM6NTk6MTUrMDA6MDBbWgoFAAAAAElFTkSuQmCC';
+
+    const real = (b64: string, warnings: string[] = []) =>
+      decodeDataUrlImage(`data:image/png;base64,${b64}`, w => warnings.push(w));
+
+    it('ImageMagick 4-bit grey ramp: native-depth passthrough, stream inflates to whole rows', () => {
+      const warnings: string[] = [];
+      const image = real(GRAY4_RAMP, warnings)!;
+      expect(image).not.toBeNull();
+      expect(image.width).toBe(16);
+      expect(image.bitsPerComponent).toBe(4);
+      expect(image.decodeParms).toBe('<< /Predictor 15 /Colors 1 /BitsPerComponent 4 /Columns 16 >>');
+      expect(inflateSync(image.data).length).toBe(16 * (8 + 1)); // 8 packed bytes + filter byte per row
+      expect(warnings).toEqual([]);
+    });
+
+    it('Pillow 1-bit checkerboard: BitsPerComponent 1 passthrough', () => {
+      const image = real(GRAY1_CHECKER)!;
+      expect(image.bitsPerComponent).toBe(1);
+      expect(image.decodeParms).toBe('<< /Predictor 15 /Colors 1 /BitsPerComponent 1 /Columns 16 >>');
+      expect(inflateSync(image.data).length).toBe(16 * (2 + 1));
+    });
+
+    it('Pillow 8-bit indexed + tRNS: palette embedded, SMask thirds are 0 / 128 / 255', () => {
+      const warnings: string[] = [];
+      const image = real(IDX8_TRNS, warnings)!;
+      expect(image.width).toBe(24);
+      expect(image.height).toBe(8);
+      // Pillow pads the palette to 256 entries — hival 255, red/green/blue up front.
+      expect(image.colorSpace.startsWith('[/Indexed /DeviceRGB 255 <ff000000ff000000ff')).toBe(true);
+      const alpha = Array.from(inflateSync(image.smask!.data));
+      const expectRow = [...Array(8).fill(0), ...Array(8).fill(128), ...Array(8).fill(255)];
+      expect(alpha).toEqual([...Array(8)].flatMap(() => expectRow));
+      expect(warnings).toEqual([]);
+    });
+
+    it('Pillow 4-bit indexed + tRNS: same thirds, native 4-bit colour stream', () => {
+      const image = real(IDX4_TRNS)!;
+      expect(image.bitsPerComponent).toBe(4);
+      expect(image.colorSpace.startsWith('[/Indexed /DeviceRGB 15 <ff000000ff000000ff')).toBe(true);
+      const alpha = Array.from(inflateSync(image.smask!.data));
+      const expectRow = [...Array(8).fill(0), ...Array(8).fill(128), ...Array(8).fill(255)];
+      expect(alpha).toEqual([...Array(8)].flatMap(() => expectRow));
+    });
+
+    it('ImageMagick INTERLACED 4-bit ramp decodes to the exact 8-bit ramp — every Adam7+packing seam', () => {
+      const warnings: string[] = [];
+      const image = real(GRAY4_LACE_RAMP, warnings)!;
+      expect(image.bitsPerComponent).toBe(8);
+      const expected: number[] = [];
+      for (let y = 0; y < 16; y++) for (let x = 0; x < 16; x++) expected.push(x * 17);
+      expect(Array.from(inflateSync(image.data))).toEqual(expected);
+      expect(warnings).toEqual([]);
+    });
+  });
+
   describe('the honest refusals — warn and return null, never guess pixels', () => {
-    it('sub-8-bit PNGs (1/2/4-bit packing) are still refused', () => {
+    it('a sub-8-bit depth on a colour type that cannot carry it (RGB at 4-bit) is refused', () => {
       const warnings: string[] = [];
       expect(
-        decode(buildPng({ width: 1, height: 1, colorType: 0, bitDepth: 4, scanlines: [0, 0] }), warnings)
+        decode(buildPng({ width: 1, height: 1, colorType: 2, bitDepth: 4, scanlines: [0, 0, 0] }), warnings)
       ).toBeNull();
-      expect(warnings.join(' ')).toMatch(/4-bit|bit/i);
+      expect(warnings.join(' ')).toMatch(/4-bit|not valid|bit/i);
     });
 
     it('bytes that are not a PNG at all', () => {

@@ -387,15 +387,11 @@ describe('exportPdf — the document', () => {
       expect(contentStreams(pdf)).toContain('1 1 1 rg');
     });
 
-    it('flattens a gradient STROKE to its first stop, and says so — stroking a shading needs outline geometry we do not build', () => {
-      const withGradient = tree([
-        defs([linGrad('grad', { x1: 0, y1: 0, x2: 10, y2: 0 })]),
-        el('rect', { x: 0, y: 0, width: 10, height: 10, stroke: 'url(#grad)', strokeWidth: 2 }),
-      ]);
-
-      const { pdf, warnings } = exportPdf(withGradient);
-      expect(warnings.join(' ')).toContain('first stop');
-      expect(contentStreams(pdf)).toContain('1 0 0 RG'); // the red first stop, as a stroke
+    it('a stroke referencing a MISSING def warns and does not paint', () => {
+      const { warnings } = exportPdf(
+        tree([el('rect', { x: 0, y: 0, width: 10, height: 10, stroke: 'url(#nope)', strokeWidth: 2 })])
+      );
+      expect(warnings.join(' ')).toContain('not in the tree');
     });
 
     it('omits foreignObject and says why', () => {
