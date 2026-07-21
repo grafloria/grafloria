@@ -186,6 +186,58 @@ function buildPattern(id: string, p: Pattern): VNode {
   };
 }
 
+// ---------------------------------------------------------------------------
+// userSpaceOnUse gradients — for transcribing a CSS gradient off a live box.
+//
+// The engine's LinearGradient/RadialGradient are objectBoundingBox (0–1) coords, and
+// `buildLinearGradient` above emits them that way. That is right for a model spec, but
+// objectBoundingBox DISTORTS a CSS gradient's angle on a non-square box: a 45° gradient
+// on a 300×100 card comes out at the wrong slope because the unit square is stretched.
+//
+// CSS resolves a gradient in the box's PIXEL space, so the faithful transcription is
+// `gradientUnits="userSpaceOnUse"` with pixel endpoints — the geometry the capture layer
+// computes from the box rect and the CSS angle. These builders exist so that maths lives
+// in ONE place (the capture layer) and the VNode shape stays owned here, alongside its
+// objectBoundingBox sibling and the shared `buildStops`.
+// ---------------------------------------------------------------------------
+
+/** A linear gradient in absolute pixel endpoints (userSpaceOnUse), not 0–1. */
+export interface UserSpaceLinear {
+  x1: number;
+  y1: number;
+  x2: number;
+  y2: number;
+  stops: GradientStop[];
+}
+
+/** A radial gradient with a pixel centre and radius (userSpaceOnUse), not 0–1. */
+export interface UserSpaceRadial {
+  cx: number;
+  cy: number;
+  r: number;
+  stops: GradientStop[];
+}
+
+/** `<linearGradient gradientUnits="userSpaceOnUse">` with pixel endpoints. */
+export function buildLinearGradientUserSpace(id: string, g: UserSpaceLinear): VNode {
+  return {
+    type: 'linearGradient',
+    key: id,
+    props: { id, gradientUnits: 'userSpaceOnUse', x1: g.x1, y1: g.y1, x2: g.x2, y2: g.y2 },
+    children: buildStops(g.stops),
+  };
+}
+
+/** `<radialGradient gradientUnits="userSpaceOnUse">` with a pixel centre + radius. */
+export function buildRadialGradientUserSpace(id: string, g: UserSpaceRadial): VNode {
+  return {
+    type: 'radialGradient',
+    key: id,
+    props: { id, gradientUnits: 'userSpaceOnUse', cx: g.cx, cy: g.cy, r: g.r },
+    children: buildStops(g.stops),
+  };
+}
+
 /** Build the `<linearGradient>` / `<radialGradient>` / `<pattern>` def for a paint spec. */
 export function buildPaintServerVNode(id: string, spec: PaintSpec): VNode {
   switch (spec.type) {

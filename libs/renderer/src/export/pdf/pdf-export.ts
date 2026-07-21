@@ -527,6 +527,17 @@ function paint(vnode: VNode, stream: ContentStream, ctx: PaintContext): void {
     return;
   }
 
+  // Images: this writer has no image XObject support (rect/line/path/text/circle/ellipse/
+  // polygon only), so an <image> cannot be drawn. Report it rather than dropping it
+  // silently — the SVG export carries the image faithfully; the PDF simply cannot.
+  if (vnode.type === 'image') {
+    ctx.warnings.push(
+      'an <image> was omitted from the PDF — PDF image embedding (XObjects) is not implemented. ' +
+        'The SVG export renders it; the PDF cannot.'
+    );
+    return;
+  }
+
   // A blur is a filter, and PDF has no filters. Dropping the element beats drawing the
   // node shadow as a hard black slab.
   const filter = style['filter'];

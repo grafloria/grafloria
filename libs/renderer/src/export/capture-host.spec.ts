@@ -449,6 +449,161 @@ describe('captureCustomNodeHost — boxes', () => {
   });
 });
 
+describe('captureCustomNodeHost — CSS gradients become gradient paint servers', () => {
+  const gradientHost = (backgroundImage: string) =>
+    build({
+      tag: 'div',
+      rect: { left: 0, top: 0, width: 200, height: 100 },
+      style: { 'background-image': backgroundImage },
+    });
+
+  it('transcribes a linear-gradient into a userSpaceOnUse <linearGradient> the box fills with', () => {
+    const content = capture(
+      gradientHost('linear-gradient(90deg, rgb(255, 0, 0) 0%, rgb(0, 0, 255) 100%)')
+    ).content as VNode[];
+
+    const grad = find(content, 'linearGradient');
+    const rect = find(content, 'rect');
+    expect(grad).toBeDefined();
+    // The box's fill references THIS gradient's id — not merely "a gradient exists".
+    expect(rect?.props['fill']).toBe(`url(#${grad?.props['id']})`);
+    expect(grad?.props['gradientUnits']).toBe('userSpaceOnUse');
+
+    // The stops are actually red → blue (a "no foreignObject" assertion would pass on an
+    // empty gradient; this pins the colours).
+    const stops = grad?.children as VNode[];
+    expect(stops.map(s => s.props['stop-color'])).toEqual(['rgb(255, 0, 0)', 'rgb(0, 0, 255)']);
+    expect(stops.map(s => s.props['offset'])).toEqual([0, 1]);
+  });
+
+  it('90deg is a HORIZONTAL line and 0deg is a VERTICAL one — proves the angle maths', () => {
+    const horiz = find(
+      capture(gradientHost('linear-gradient(90deg, rgb(1,2,3), rgb(4,5,6))')).content as VNode[],
+      'linearGradient'
+    )?.props as Record<string, number>;
+    // 90deg → to the right: y1 === y2, x1 < x2, spanning the full width.
+    expect(horiz['y1']).toBe(horiz['y2']);
+    expect(horiz['x1']).toBeLessThan(horiz['x2']);
+    expect(horiz['x2'] - horiz['x1']).toBeCloseTo(200, 4);
+    expect(horiz['y1']).toBeCloseTo(50, 4);
+
+    const vert = find(
+      capture(gradientHost('linear-gradient(0deg, rgb(1,2,3), rgb(4,5,6))')).content as VNode[],
+      'linearGradient'
+    )?.props as Record<string, number>;
+    // 0deg → to the top: x1 === x2, and the END is ABOVE the start (smaller y).
+    expect(vert['x1']).toBe(vert['x2']);
+    expect(vert['y2']).toBeLessThan(vert['y1']);
+    expect(vert['y1'] - vert['y2']).toBeCloseTo(100, 4);
+  });
+
+  it('distributes stops with no explicit position evenly across [0,1]', () => {
+    const grad = find(
+      capture(
+        gradientHost('linear-gradient(90deg, rgb(1,1,1), rgb(2,2,2), rgb(3,3,3))')
+      ).content as VNode[],
+      'linearGradient'
+    );
+    expect((grad?.children as VNode[]).map(s => s.props['offset'])).toEqual([0, 0.5, 1]);
+  });
+
+  it('transcribes a radial-gradient into a userSpaceOnUse <radialGradient>', () => {
+    const content = capture(
+      gradientHost('radial-gradient(rgb(255, 0, 0), rgb(0, 0, 255))')
+    ).content as VNode[];
+    const grad = find(content, 'radialGradient');
+    const rect = find(content, 'rect');
+    expect(grad?.props['gradientUnits']).toBe('userSpaceOnUse');
+    expect(rect?.props['fill']).toBe(`url(#${grad?.props['id']})`);
+    // Centre of a 200x100 box; default farthest-corner radius = sqrt(100^2+50^2).
+    expect(grad?.props['cx']).toBeCloseTo(100, 4);
+    expect(grad?.props['cy']).toBeCloseTo(50, 4);
+    expect(grad?.props['r']).toBeCloseTo(Math.hypot(100, 50), 3);
+  });
+
+  it('two boxes with the SAME gradient share ONE def (deduped by id)', () => {
+    const host = build({
+      tag: 'div',
+      rect: { left: 0, top: 0, width: 200, height: 100 },
+      style: { 'background-image': 'linear-gradient(90deg, rgb(1,2,3), rgb(4,5,6))' },
+      children: [
+        {
+          tag: 'div',
+          rect: { left: 0, top: 0, width: 200, height: 100 },
+          style: { 'background-image': 'linear-gradient(90deg, rgb(1,2,3), rgb(4,5,6))' },
+        },
+      ],
+    });
+    const grads = (capture(host).content as VNode[]).filter(n => n.type === 'linearGradient');
+    expect(grads).toHaveLength(1);
+  });
+});
+
+describe('captureCustomNodeHost — box-shadow becomes a drop-shadow filter', () => {
+  it('emits a feDropShadow filter and applies it to the background box', () => {
+    const content = capture(
+      build({
+        tag: 'div',
+        rect: { left: 0, top: 0, width: 200, height: 100 },
+        style: {
+          'background-color': 'rgb(255, 255, 255)',
+          'box-shadow': 'rgba(0, 0, 0, 0.25) 2px 4px 12px 0px',
+        },
+      })
+    ).content as VNode[];
+
+    const filter = find(content, 'filter');
+    const drop = filter?.children?.[0] as VNode;
+    const rect = find(content, 'rect');
+    expect(drop.type).toBe('feDropShadow');
+    expect(drop.props['dx']).toBe(2);
+    expect(drop.props['dy']).toBe(4);
+    // CSS blur radius maps to feGaussianBlur std-deviation ≈ radius/2, so a 12px CSS
+    // blur is a std-deviation of 6 — matching how the serializer already translates blur.
+    expect(drop.props['stdDeviation']).toBe(6);
+    expect(drop.props['flood-color']).toBe('rgba(0, 0, 0, 0.25)');
+    // The box wears the filter.
+    expect(rect?.props['filter']).toBe(`url(#${filter?.props['id']})`);
+  });
+
+  it('skips an inset shadow and reports it, rather than drawing it wrong', () => {
+    const result = capture(
+      build({
+        tag: 'div',
+        rect: { left: 0, top: 0, width: 200, height: 100 },
+        style: {
+          'background-color': 'rgb(255, 255, 255)',
+          'box-shadow': 'rgba(0, 0, 0, 0.25) 0px 2px 4px 0px inset',
+        },
+      })
+    );
+    expect((result.content as VNode[]).find(n => n.type === 'filter')).toBeUndefined();
+    expect(result.warning ?? '').toMatch(/inset/i);
+  });
+});
+
+describe('captureCustomNodeHost — images become <image>', () => {
+  it('emits an <image> for an <img> at its laid-out box', () => {
+    const host = build({
+      tag: 'img',
+      rect: { left: 0, top: 0, width: 120, height: 80 },
+      attrs: { src: 'https://example.com/logo.png' },
+    });
+    const content = capture(host).content as VNode[];
+    const image = find(content, 'image');
+    expect(image).toBeDefined();
+    expect(image?.props['href']).toBe('https://example.com/logo.png');
+    expect(image?.props).toMatchObject({ x: 0, y: 0, width: 120, height: 80 });
+  });
+
+  it('reports an image as a PDF fidelity risk', () => {
+    const result = capture(
+      build({ tag: 'img', rect: { left: 0, top: 0, width: 10, height: 10 }, attrs: { src: 'https://x/y.png' } })
+    );
+    expect(result.warning ?? '').toMatch(/PDF/);
+  });
+});
+
 describe('captureCustomNodeHost — what must not be captured', () => {
   it('skips display:none and visibility:hidden subtrees', () => {
     const host = build({

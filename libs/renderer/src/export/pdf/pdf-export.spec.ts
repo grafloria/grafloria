@@ -224,6 +224,16 @@ describe('exportPdf — the document', () => {
     expect(content).not.toContain('/Image');
   });
 
+  it('reports an <image> as omitted rather than dropping it silently — PDF has no image XObject', () => {
+    const { pdf, warnings } = exportPdf(
+      tree([g({}, [el('image', { x: 0, y: 0, width: 100, height: 50, href: 'data:image/png;base64,AAAA' })])])
+    );
+    expect(warnings.some(w => /image/i.test(w) && /PDF/.test(w))).toBe(true);
+    // The image is not smuggled in as anything else, and the file is still valid.
+    expect(text(pdf)).not.toContain('/Image');
+    expect(xrefIsValid(pdf)).toBe(true);
+  });
+
   it('honours page size and orientation', () => {
     const portrait = text(exportPdf(simple(), { pageSize: 'a4', orientation: 'portrait' }).pdf);
     expect(portrait).toContain('/MediaBox [0 0 595.28 841.89]');

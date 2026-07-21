@@ -882,7 +882,11 @@ export function createDiagram(
       const host = nodeHosts.get(node.id);
       if (!host) continue;
       const capture = captureCustomNodeHost(node.id, nodeBounds(node), host);
-      const warning = paintWarning(node.id, waited, timeoutMs);
+      // A still-painting caveat is the CAUSE and leads; the capture's own fidelity caveats
+      // (an image that PDF cannot draw, an inset shadow that was skipped) follow it. Merging
+      // rather than overwriting keeps both — a widget can be both async AND hold an image.
+      const paint = paintWarning(node.id, waited, timeoutMs);
+      const warning = [paint, capture.warning].filter(Boolean).join(' ');
       captures.push(warning ? { ...capture, warning } : capture);
     }
     return captures;
