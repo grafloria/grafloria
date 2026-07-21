@@ -404,6 +404,335 @@ function assignCells(widgets: DashboardWidgetSpec[], columns: number): void {
   }
 }
 
+/**
+ * The API surface the handle drives — the slice of a DiagramInstance both
+ * `dashboard().finalize` and `fromDocument().finalize` hand in. Named (was an
+ * inline type on the old `apiRef` local) because two call sites now share it.
+ */
+export interface DashboardApiRef {
+  getModel(): {
+    getNode(id: string): NodeModel | undefined;
+    addGroup(g: GroupModel): void;
+    getGroup(id: string): GroupModel | undefined;
+    removeGroup?(id: string): unknown;
+  };
+  getEngine?: () => { commandManager: { execute(c: unknown): unknown } };
+  renderNow(): void;
+  viewport?: { fitToBounds(r: unknown, pad: number, o?: unknown): void };
+}
+
+/**
+ * Everything one `DashboardHandle` closes over, gathered into ONE object so a
+ * single builder can serve both `dashboard()` (context built from the authored
+ * literal) and `fromDocument()` (context reconstructed from the loaded model).
+ *
+ * `active` and `apiRef` are the two MUTABLE cells: the handle READS them on
+ * every call and the builder WRITES them (showView reassigns `active`, the
+ * caller's finalize sets `apiRef`). They live here rather than as free `let`s
+ * precisely because there are now two call sites — a boxed cell one builder
+ * reads and writes is the whole reason a second handle implementation, which
+ * would silently drift, is not needed.
+ */
+export interface DashboardHandleContext {
+  /** The views — MUTATED in place by addWidget (push) and remove (filter). */
+  views: DashboardViewSpec[];
+  groups: Map<string, GroupModel>;
+  binders: Map<string, DashboardGridHandle>;
+  specById: Map<string, DashboardWidgetSpec>;
+  viewOfWidget: Map<string, string>;
+  hosts: Map<string, HTMLElement>;
+  renderWidget: (widget: DashboardWidgetSpec, host: HTMLElement) => void;
+  columns: number;
+  gap: number;
+  rowHeight: number;
+  boardW: number;
+  boardH: number;
+  /**
+   * Spread verbatim into `toJSON()` output — carries width/height/responsive
+   * and any other authored option so a new `DashboardOptions` field round-trips
+   * for free (dashboard() passes the whole `options`; fromDocument() passes the
+   * geometry it can recover from the persisted board metadata).
+   */
+  optionsBase: Partial<DashboardOptions>;
+  /** MUTABLE — reassigned by showView(). */
+  active: string;
+  /** MUTABLE — set by the caller's finalize once the render API exists. */
+  apiRef: DashboardApiRef | null;
+}
+
+/**
+ * Build THE `DashboardHandle` — the one and only implementation, shared by
+ * `dashboard()` and `fromDocument()`. Reads/writes the mutable `ctx.active` /
+ * `ctx.apiRef` cells so the caller's finalize can wire the API in afterwards.
+ */
+export function createDashboardHandle(ctx: DashboardHandleContext): DashboardHandle {
+  const { views, groups, binders, specById, viewOfWidget } = ctx;
+
+  const hostOf = (id: string): HTMLElement | undefined => ctx.hosts.get(id);
+
+  const execCommand = (cmd: unknown): void => {
+    try {
+      const r = ctx.apiRef?.getEngine?.()?.commandManager.execute(cmd) as {
+        catch?: (f: () => void) => void;
+      };
+      // Fire-and-forget like the binder's own commits, but never leave an
+      // unhandled rejection: a refused command is a no-op, not a crash.
+      r?.catch?.(() => undefined);
+    } catch {
+      /* a refused command must not break the caller */
+    }
+  };
+
+  const handle: DashboardHandle = {
+    get views() {
+      return views.map((v) => v.id);
+    },
+    get activeView() {
+      return ctx.active;
+    },
+    showView(id) {
+      if (!groups.has(id)) return;
+      ctx.active = id;
+      for (const [vid, g] of groups) {
+        const x = vid === id ? 0 : OFFSCREEN_X;
+        const s = g.size ?? { width: ctx.boardW, height: ctx.boardH };
+        if (g.position.x !== x) g.setFrame({ x, y: 0, width: s.width, height: s.height });
+      }
+      binders.get(id)?.sync();
+      ctx.apiRef?.renderNow();
+      const g = groups.get(id)!;
+      const gs = g.size ?? { width: ctx.boardW, height: ctx.boardH };
+      ctx.apiRef?.viewport?.fitToBounds(
+        { x: g.position.x, y: g.position.y, width: gs.width, height: gs.height },
+        26,
+        { maxZoom: 1 }
+      );
+    },
+    widget(id) {
+      return makeWidgetHandle(id);
+    },
+    widgetsOf(viewId) {
+      const v = views.find((x) => x.id === (viewId ?? ctx.active));
+      return (v?.widgets ?? []).map((w) => makeWidgetHandle(w.id)).filter(Boolean) as WidgetHandle[];
+    },
+    setSizing(mode) {
+      for (const b of binders.values()) b.setSizing(mode);
+      ctx.apiRef?.renderNow();
+    },
+    getSizing: () => binders.get(ctx.active)?.getSizing() ?? (ctx.optionsBase.sizing ?? 'fit'),
+    setFloat(on) {
+      for (const b of binders.values()) b.setFloat(on);
+      ctx.apiRef?.renderNow();
+    },
+    getFloat: () => binders.get(ctx.active)?.getFloat() ?? (ctx.optionsBase.float ?? false),
+    setColumns(n, layout, viewId) {
+      const targets = viewId ? [binders.get(viewId)] : [...binders.values()];
+      for (const b of targets) b?.setColumns(n, layout);
+      ctx.apiRef?.renderNow();
+    },
+    getColumns: (viewId) => binders.get(viewId ?? ctx.active)?.getColumns() ?? ctx.columns,
+    setRtl(on) {
+      for (const b of binders.values()) b.setRtl(on);
+      ctx.apiRef?.renderNow();
+    },
+    getRtl: () => binders.get(ctx.active)?.getRtl() ?? (ctx.optionsBase.rtl ?? false),
+    addWidget(spec, viewId) {
+      const vid = viewId ?? ctx.active;
+      const v = views.find((x) => x.id === vid);
+      const model = ctx.apiRef?.getModel();
+      const group = groups.get(vid);
+      if (!v || !model || !group) return undefined;
+      const w: DashboardWidgetSpec = {
+        ...spec,
+        id: spec.id || `w-${++autoId}`,
+        span: spec.span ?? 3,
+        rows: spec.rows ?? 1,
+      };
+      // REGISTER FIRST: a custom node mounts exactly once, and the painter
+      // returns early for an id the spec does not know — so the widget must be
+      // known before the node reaches the model, or it paints blank forever.
+      v.widgets.push(w);
+      specById.set(w.id, w);
+      viewOfWidget.set(w.id, vid);
+
+      const existing = model.getNode(w.id);
+      const node = existing ?? buildWidgetNode(w, ctx.rowHeight);
+      if (w.pinned) node.setState({ locked: true });
+      // ONE undoable step (see AddWidgetCommand for why this cannot be a batch).
+      execCommand(existing ? new AddToGroupCommand(group.id, w.id) : new AddWidgetCommand(node, group.id));
+
+      binders.get(vid)?.sync();
+      ctx.apiRef?.renderNow();
+      return makeWidgetHandle(w.id);
+    },
+    refresh() {
+      for (const b of binders.values()) b.sync();
+      ctx.apiRef?.renderNow();
+    },
+    fit(viewId) {
+      const g = groups.get(viewId ?? ctx.active);
+      if (!g) return;
+      const gs = g.size ?? { width: ctx.boardW, height: ctx.boardH };
+      ctx.apiRef?.viewport?.fitToBounds(
+        { x: g.position.x, y: g.position.y, width: gs.width, height: gs.height },
+        26,
+        { maxZoom: 1 }
+      );
+    },
+    metrics(viewId) {
+      return binders.get(viewId ?? ctx.active)?.metrics();
+    },
+    binderOf(viewId) {
+      return binders.get(viewId ?? ctx.active);
+    },
+    exportIds(viewId) {
+      const id = viewId ?? ctx.active;
+      const ids = new Set<string>();
+      // A view with no group is a view that was never finalized — an empty set
+      // is the honest answer, and scoping an export to nothing is a visible
+      // failure rather than a silently enormous document.
+      if (!groups.has(id)) return ids;
+      ids.add(id);
+      // Read the SPEC, not the group's member Set: membership is maintained by
+      // commands and an in-flight drag can have a widget momentarily reparented.
+      // The spec is what the view IS.
+      for (const w of views.find((v) => v.id === id)?.widgets ?? []) ids.add(w.id);
+      return ids;
+    },
+    toJSON() {
+      // SAVING ON A PHONE SAVES THE DESKTOP LAYOUT. The binder serialises from
+      // the engine's LARGEST cached column count (gridstack's `save()`), so a
+      // board currently squeezed to 1 column still writes out the 12-column
+      // layout its user authored — and the view's `columns` is that count, so
+      // feeding this straight back into dashboard() rebuilds the wide board.
+      const savedViews = views.map((v) => {
+        const saved = binders.get(v.id)?.saveLayout();
+        return {
+          ...v,
+          ...(saved ? { columns: saved.columns } : {}),
+          widgets: v.widgets.map((w) => {
+            const cell = saved?.cells.get(w.id) ?? binders.get(v.id)?.cellOf(w.id);
+            return cell ? { ...w, x: cell.x, y: cell.y, span: cell.w, rows: cell.h } : { ...w };
+          }),
+        };
+      });
+
+      // Board options come off the LIVE board wherever the handle can see it —
+      // `sizing` and `float` are the two a user changes from the toolbar, and
+      // reading them from the authored literal would restore the board they
+      // started with rather than the one they are looking at.
+      return {
+        ...ctx.optionsBase,
+        renderWidget: undefined,
+        onLayoutChange: undefined,
+        columns: ctx.columns,
+        gap: ctx.gap,
+        rowHeight: ctx.rowHeight,
+        sizing: handle.getSizing(),
+        float: handle.getFloat(),
+        rtl: handle.getRtl(),
+        views: savedViews,
+      } as DashboardSnapshot;
+    },
+    dispose() {
+      for (const b of binders.values()) b.dispose();
+      binders.clear();
+      // The groups finalize() created are ours to clean up — leaving them
+      // behind made a rebuild stack a second set of boards on the first.
+      const model = ctx.apiRef?.getModel();
+      for (const id of groups.keys()) model?.removeGroup?.(id);
+      groups.clear();
+      ctx.hosts.clear();
+    },
+  };
+
+  function makeWidgetHandle(id: string): WidgetHandle | undefined {
+    const spec = specById.get(id);
+    const viewId = viewOfWidget.get(id);
+    if (!spec || !viewId) return undefined;
+    const binder = () => binders.get(viewId);
+    const node = () => ctx.apiRef?.getModel().getNode(id);
+    return {
+      id,
+      viewId,
+      get node() {
+        return node();
+      },
+      get spec() {
+        return spec;
+      },
+      get cell() {
+        return binder()?.cellOf(id);
+      },
+      get rect() {
+        return binder()?.cellRectOf(id);
+      },
+      get pinned() {
+        return node()?.state?.locked === true;
+      },
+      async resize(span, rows) {
+        return (await binder()?.resizeTo(id, span, rows)) ?? false;
+      },
+      async moveTo(x, y) {
+        return (await binder()?.moveTo(id, x, y)) ?? false;
+      },
+      pin(on) {
+        const n = node();
+        if (!n) return;
+        n.setState({ locked: on ?? !(n.state?.locked === true) });
+        // Re-sync so the ENGINE's locked flag (never pushed, drags refused)
+        // and the hidden corner handle take effect on this frame, not the next
+        // gesture.
+        binder()?.sync();
+        ctx.apiRef?.renderNow();
+      },
+      bringToFront() {
+        execCommand(new BringNodeToFrontCommand(id));
+        ctx.apiRef?.renderNow();
+      },
+      sendToBack() {
+        execCommand(new SendNodeToBackCommand(id));
+        ctx.apiRef?.renderNow();
+      },
+      update(patch) {
+        if (patch.data !== undefined) spec.data = patch.data;
+        if (patch.title !== undefined) spec.title = patch.title;
+        if (patch.kind !== undefined) spec.kind = patch.kind;
+        const host = hostOf(id);
+        if (host) ctx.renderWidget(spec, host);
+      },
+      remove(displaced) {
+        const n = node();
+        const group = groups.get(viewId);
+        const b = binder();
+        if (!n || !group || !b) return;
+        // ONE undoable step, survivors' re-pack folded in — the same atomic
+        // shape the kit's own drag-out-to-remove uses. A gesture that ALREADY
+        // computed the survivors passes them in: after a drag-out the tile is
+        // gone from the engine, so planRemoval() would return [] and the
+        // survivors' cells would never commit.
+        const survivors = (displaced as never[] | undefined) ?? b.planRemoval(id);
+        const cmds = [...survivors, new RemoveFromGroupCommand(group.id, id), new RemoveNodeCommand(id)];
+        void execCommand(new BatchCommand('Remove widget', cmds));
+        const v = views.find((x) => x.id === viewId);
+        if (v) v.widgets = v.widgets.filter((w) => w.id !== id);
+        specById.delete(id);
+        viewOfWidget.delete(id);
+        b.sync();
+        ctx.apiRef?.renderNow();
+      },
+      repaint() {
+        const host = hostOf(id);
+        if (host) ctx.renderWidget(spec, host);
+      },
+      // (hosts are captured in renderCustomNode, so repaint works for every
+      //  widget the renderer has mounted — including after a rebuild.)
+    };
+  }
+
+  return handle;
+}
+
 export function dashboard(options: DashboardOptions): DashboardSpec {
   ensureDashboardKitStyles();
 
@@ -453,285 +782,31 @@ export function dashboard(options: DashboardOptions): DashboardSpec {
   // frame they always did.
   const renderWidget = options.renderWidget ?? defaultWidgetRenderer;
 
-  // -- runtime, populated by finalize() --------------------------------------
-  const binders = new Map<string, DashboardGridHandle>();
-  const groups = new Map<string, GroupModel>();
-  let active = views[0]?.id ?? 'main';
-  let apiRef: {
-    getModel(): {
-      getNode(id: string): NodeModel | undefined;
-      addGroup(g: GroupModel): void;
-      getGroup(id: string): GroupModel | undefined;
-      removeGroup?(id: string): unknown;
-    };
-    getEngine?: () => { commandManager: { execute(c: unknown): unknown } };
-    renderNow(): void;
-    viewport?: { fitToBounds(r: unknown, pad: number, o?: unknown): void };
-  } | null = null;
-
-  const execCommand = (api: typeof apiRef, cmd: unknown): void => {
-    try {
-      const r = api?.getEngine?.()?.commandManager.execute(cmd) as { catch?: (f: () => void) => void };
-      // Fire-and-forget like the binder's own commits, but never leave an
-      // unhandled rejection: a refused command is a no-op, not a crash.
-      r?.catch?.(() => undefined);
-    } catch {
-      /* a refused command must not break the caller */
-    }
+  // -- runtime: ONE shared handle over a boxed context -----------------------
+  // The two MUTABLE cells the handle used to close over as free `let`s —
+  // `active` (showView reassigns it) and `apiRef` (finalize sets it) — are boxed
+  // on `ctx`, so the SAME builder that fromDocument() calls reads and writes
+  // them. Everything else is the stable state; the handle is identical to what
+  // was inline here, moved verbatim into createDashboardHandle().
+  const ctx: DashboardHandleContext = {
+    views,
+    groups: new Map<string, GroupModel>(),
+    binders: new Map<string, DashboardGridHandle>(),
+    specById,
+    viewOfWidget,
+    hosts: new Map<string, HTMLElement>(),
+    renderWidget,
+    columns,
+    gap,
+    rowHeight,
+    boardW,
+    boardH,
+    optionsBase: options,
+    active: views[0]?.id ?? 'main',
+    apiRef: null,
   };
-
-  const handle: DashboardHandle = {
-    get views() {
-      return views.map((v) => v.id);
-    },
-    get activeView() {
-      return active;
-    },
-    showView(id) {
-      if (!groups.has(id)) return;
-      active = id;
-      for (const [vid, g] of groups) {
-        const x = vid === id ? 0 : OFFSCREEN_X;
-        const s = g.size ?? { width: boardW, height: boardH };
-        if (g.position.x !== x) g.setFrame({ x, y: 0, width: s.width, height: s.height });
-      }
-      binders.get(id)?.sync();
-      apiRef?.renderNow();
-      const g = groups.get(id)!;
-      const gs = g.size ?? { width: boardW, height: boardH };
-      apiRef?.viewport?.fitToBounds(
-        { x: g.position.x, y: g.position.y, width: gs.width, height: gs.height },
-        26,
-        { maxZoom: 1 }
-      );
-    },
-    widget(id) {
-      return makeWidgetHandle(id);
-    },
-    widgetsOf(viewId) {
-      const v = views.find((x) => x.id === (viewId ?? active));
-      return (v?.widgets ?? []).map((w) => makeWidgetHandle(w.id)).filter(Boolean) as WidgetHandle[];
-    },
-    setSizing(mode) {
-      for (const b of binders.values()) b.setSizing(mode);
-      apiRef?.renderNow();
-    },
-    getSizing: () => binders.get(active)?.getSizing() ?? (options.sizing ?? 'fit'),
-    setFloat(on) {
-      for (const b of binders.values()) b.setFloat(on);
-      apiRef?.renderNow();
-    },
-    getFloat: () => binders.get(active)?.getFloat() ?? (options.float ?? false),
-    setColumns(n, layout, viewId) {
-      const targets = viewId ? [binders.get(viewId)] : [...binders.values()];
-      for (const b of targets) b?.setColumns(n, layout);
-      apiRef?.renderNow();
-    },
-    getColumns: (viewId) => binders.get(viewId ?? active)?.getColumns() ?? columns,
-    setRtl(on) {
-      for (const b of binders.values()) b.setRtl(on);
-      apiRef?.renderNow();
-    },
-    getRtl: () => binders.get(active)?.getRtl() ?? (options.rtl ?? false),
-    addWidget(spec, viewId) {
-      const vid = viewId ?? active;
-      const v = views.find((x) => x.id === vid);
-      const model = apiRef?.getModel();
-      const group = groups.get(vid);
-      if (!v || !model || !group) return undefined;
-      const w: DashboardWidgetSpec = {
-        ...spec,
-        id: spec.id || `w-${++autoId}`,
-        span: spec.span ?? 3,
-        rows: spec.rows ?? 1,
-      };
-      // REGISTER FIRST: a custom node mounts exactly once, and the painter
-      // returns early for an id the spec does not know — so the widget must be
-      // known before the node reaches the model, or it paints blank forever.
-      v.widgets.push(w);
-      specById.set(w.id, w);
-      viewOfWidget.set(w.id, vid);
-
-      const existing = model.getNode(w.id);
-      const node = existing ?? buildWidgetNode(w, rowHeight);
-      if (w.pinned) node.setState({ locked: true });
-      // ONE undoable step (see AddWidgetCommand for why this cannot be a batch).
-      execCommand(
-        apiRef,
-        existing ? new AddToGroupCommand(group.id, w.id) : new AddWidgetCommand(node, group.id)
-      );
-
-      binders.get(vid)?.sync();
-      apiRef?.renderNow();
-      return makeWidgetHandle(w.id);
-    },
-    refresh() {
-      for (const b of binders.values()) b.sync();
-      apiRef?.renderNow();
-    },
-    fit(viewId) {
-      const g = groups.get(viewId ?? active);
-      if (!g) return;
-      const gs = g.size ?? { width: boardW, height: boardH };
-      apiRef?.viewport?.fitToBounds(
-        { x: g.position.x, y: g.position.y, width: gs.width, height: gs.height },
-        26,
-        { maxZoom: 1 }
-      );
-    },
-    metrics(viewId) {
-      return binders.get(viewId ?? active)?.metrics();
-    },
-    binderOf(viewId) {
-      return binders.get(viewId ?? active);
-    },
-    exportIds(viewId) {
-      const id = viewId ?? active;
-      const ids = new Set<string>();
-      // A view with no group is a view that was never finalized — an empty set
-      // is the honest answer, and scoping an export to nothing is a visible
-      // failure rather than a silently enormous document.
-      if (!groups.has(id)) return ids;
-      ids.add(id);
-      // Read the SPEC, not the group's member Set: membership is maintained by
-      // commands and an in-flight drag can have a widget momentarily reparented.
-      // The spec is what the view IS.
-      for (const w of views.find((v) => v.id === id)?.widgets ?? []) ids.add(w.id);
-      return ids;
-    },
-    toJSON() {
-      // SAVING ON A PHONE SAVES THE DESKTOP LAYOUT. The binder serialises from
-      // the engine's LARGEST cached column count (gridstack's `save()`), so a
-      // board currently squeezed to 1 column still writes out the 12-column
-      // layout its user authored — and the view's `columns` is that count, so
-      // feeding this straight back into dashboard() rebuilds the wide board.
-      const savedViews = views.map((v) => {
-        const saved = binders.get(v.id)?.saveLayout();
-        return {
-          ...v,
-          ...(saved ? { columns: saved.columns } : {}),
-          widgets: v.widgets.map((w) => {
-            const cell = saved?.cells.get(w.id) ?? binders.get(v.id)?.cellOf(w.id);
-            return cell ? { ...w, x: cell.x, y: cell.y, span: cell.w, rows: cell.h } : { ...w };
-          }),
-        };
-      });
-
-      // Board options come off the LIVE board wherever the handle can see it —
-      // `sizing` and `float` are the two a user changes from the toolbar, and
-      // reading them from the authored literal would restore the board they
-      // started with rather than the one they are looking at.
-      return {
-        ...options,
-        renderWidget: undefined,
-        onLayoutChange: undefined,
-        columns,
-        gap,
-        rowHeight,
-        sizing: handle.getSizing(),
-        float: handle.getFloat(),
-        rtl: handle.getRtl(),
-        views: savedViews,
-      } as DashboardSnapshot;
-    },
-    dispose() {
-      for (const b of binders.values()) b.dispose();
-      binders.clear();
-      // The groups finalize() created are ours to clean up — leaving them
-      // behind made a rebuild stack a second set of boards on the first.
-      const model = apiRef?.getModel();
-      for (const id of groups.keys()) model?.removeGroup?.(id);
-      groups.clear();
-      hosts.clear();
-    },
-  };
-
-  function makeWidgetHandle(id: string): WidgetHandle | undefined {
-    const spec = specById.get(id);
-    const viewId = viewOfWidget.get(id);
-    if (!spec || !viewId) return undefined;
-    const binder = () => binders.get(viewId);
-    const node = () => apiRef?.getModel().getNode(id);
-    return {
-      id,
-      viewId,
-      get node() {
-        return node();
-      },
-      get spec() {
-        return spec;
-      },
-      get cell() {
-        return binder()?.cellOf(id);
-      },
-      get rect() {
-        return binder()?.cellRectOf(id);
-      },
-      get pinned() {
-        return node()?.state?.locked === true;
-      },
-      async resize(span, rows) {
-        return (await binder()?.resizeTo(id, span, rows)) ?? false;
-      },
-      async moveTo(x, y) {
-        return (await binder()?.moveTo(id, x, y)) ?? false;
-      },
-      pin(on) {
-        const n = node();
-        if (!n) return;
-        n.setState({ locked: on ?? !(n.state?.locked === true) });
-        // Re-sync so the ENGINE's locked flag (never pushed, drags refused)
-        // and the hidden corner handle take effect on this frame, not the next
-        // gesture.
-        binder()?.sync();
-        apiRef?.renderNow();
-      },
-      bringToFront() {
-        execCommand(apiRef, new BringNodeToFrontCommand(id));
-        apiRef?.renderNow();
-      },
-      sendToBack() {
-        execCommand(apiRef, new SendNodeToBackCommand(id));
-        apiRef?.renderNow();
-      },
-      update(patch) {
-        if (patch.data !== undefined) spec.data = patch.data;
-        if (patch.title !== undefined) spec.title = patch.title;
-        if (patch.kind !== undefined) spec.kind = patch.kind;
-        const host = hostOf(id);
-        if (host) renderWidget(spec, host);
-      },
-      remove(displaced) {
-        const n = node();
-        const group = groups.get(viewId);
-        const b = binder();
-        if (!n || !group || !b) return;
-        // ONE undoable step, survivors' re-pack folded in — the same atomic
-        // shape the kit's own drag-out-to-remove uses. A gesture that ALREADY
-        // computed the survivors passes them in: after a drag-out the tile is
-        // gone from the engine, so planRemoval() would return [] and the
-        // survivors' cells would never commit.
-        const survivors = (displaced as never[] | undefined) ?? b.planRemoval(id);
-        const cmds = [...survivors, new RemoveFromGroupCommand(group.id, id), new RemoveNodeCommand(id)];
-        void execCommand(apiRef, new BatchCommand('Remove widget', cmds));
-        const v = views.find((x) => x.id === viewId);
-        if (v) v.widgets = v.widgets.filter((w) => w.id !== id);
-        specById.delete(id);
-        viewOfWidget.delete(id);
-        b.sync();
-        apiRef?.renderNow();
-      },
-      repaint() {
-        const host = hostOf(id);
-        if (host) renderWidget(spec, host);
-      },
-      // (hosts are captured in renderCustomNode, so repaint works for every
-      //  widget the renderer has mounted — including after a rebuild.)
-    };
-  }
-
-  const hosts = new Map<string, HTMLElement>();
-  const hostOf = (id: string) => hosts.get(id);
+  const { binders, groups } = ctx;
+  const handle = createDashboardHandle(ctx);
 
   return {
     nodes,
@@ -740,16 +815,16 @@ export function dashboard(options: DashboardOptions): DashboardSpec {
       const n = node as { id: string };
       const spec = specById.get(n.id);
       if (!spec) return;
-      hosts.set(n.id, host);
+      ctx.hosts.set(n.id, host);
       renderWidget(spec, host);
     },
     get handle() {
       return handle;
     },
     finalize: (api: unknown) => {
-      const a = api as typeof apiRef;
+      const a = api as DashboardApiRef | null;
       if (!a) return;
-      apiRef = a;
+      ctx.apiRef = a;
       const model = a.getModel();
 
       for (const v of views) {
@@ -775,7 +850,7 @@ export function dashboard(options: DashboardOptions): DashboardSpec {
           rtl: options.rtl ?? false,
         });
         g.size = { width: v.width ?? boardW, height: v.height ?? boardH, depth: 0 };
-        g.position = { x: v.id === active ? 0 : OFFSCREEN_X, y: 0 };
+        g.position = { x: v.id === ctx.active ? 0 : OFFSCREEN_X, y: 0 };
         groups.set(v.id, g);
         for (const w of v.widgets) {
           const n = model.getNode(w.id);
@@ -825,7 +900,7 @@ export function dashboard(options: DashboardOptions): DashboardSpec {
           })
         );
       }
-      handle.showView(active);
+      handle.showView(ctx.active);
     },
   };
 }
