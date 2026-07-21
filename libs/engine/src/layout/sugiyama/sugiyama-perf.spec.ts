@@ -28,6 +28,7 @@
 // cap, so CI pins the fix without flaking.
 
 import { sugiyama, type SugiyamaEdge, type SugiyamaNode } from './sugiyama';
+import { perfBudget } from '../perf-budget';
 
 const N = (id: string, w = 100, h = 50): SugiyamaNode => ({ id, width: w, height: h });
 
@@ -74,7 +75,9 @@ describe('sugiyama — sparse-DAG performance regression (killed at >25s before 
     const r = sugiyama(nodes, edges, { direction: 'TB' });
     const ms = Date.now() - t0;
     expect(r.positions.size).toBe(2000);
-    expect(ms).toBeLessThan(3000); // measured ~200ms; generous CI headroom
+    // Machine-scaled: 3000ms on an idle box (a real regression from the ~200ms
+    // fix still fails), lifted proportionally under contended full-suite load.
+    expect(ms).toBeLessThan(perfBudget(3000)); // measured ~200ms
   }, 30000);
 
   it('does bounded work: the counters cannot silently re-explode', () => {

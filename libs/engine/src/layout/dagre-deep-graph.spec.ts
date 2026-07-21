@@ -20,6 +20,7 @@ import * as dagre from 'dagre';
 import { DagreLayoutAdapter } from './dagre-layout-adapter';
 import { NodeModel } from '../models/NodeModel';
 import { LinkModel } from '../models/LinkModel';
+import { perfBudget } from './perf-budget';
 
 function mkNode(id: string): NodeModel {
   return new NodeModel({
@@ -79,7 +80,9 @@ describe('DagreLayoutAdapter — deep-graph fast path', () => {
       const elapsed = performance.now() - t0;
 
       expect(result.nodePositions.size).toBe(2000);
-      expect(elapsed).toBeLessThan(3000); // generous CI cap; measured ~50ms
+      // Machine-scaled like its perf-family siblings: 3000ms on an idle box (so a
+      // genuine regression from the ~50ms fast path still fails), lifted under load.
+      expect(elapsed).toBeLessThan(perfBudget(3000)); // measured ~50ms
       expect(result.metadata?.['deepFastPath']).toBe(true);
       expect(result.metadata?.['ranker']).toBe('longest-path');
     });
@@ -93,7 +96,7 @@ describe('DagreLayoutAdapter — deep-graph fast path', () => {
       const elapsed = performance.now() - t0;
 
       expect(result.nodePositions.size).toBe(400);
-      expect(elapsed).toBeLessThan(3000);
+      expect(elapsed).toBeLessThan(perfBudget(3000));
       expect(result.metadata?.['deepFastPath']).toBe(true);
     });
   });
