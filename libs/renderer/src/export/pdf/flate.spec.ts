@@ -74,6 +74,21 @@ describe('inflateRaw — RFC 1951, all three block types', () => {
     expect(Array.from(inflateRaw(deflateRawSync(data, { level: 1 })))).toEqual(Array.from(data));
   });
 
+  it('MUTATION GUARD: exercises EVERY short match distance, 1–64 and beyond', () => {
+    // A survived mutation proved the point: an off-by-one in the distance-base table for
+    // codes the test data never emitted round-trips clean. Period-d repetition forces the
+    // deflater to a nearest match AT distance d, so each small distance code (and its
+    // extra bits) is decoded at least once; the far ones cover the high codes.
+    const parts: number[] = [];
+    for (const d of [...Array.from({ length: 64 }, (_, i) => i + 1), 100, 250, 700, 3000, 20000, 30000]) {
+      const seed = noise(Math.min(d, 4096), d * 2654435761);
+      for (let repeat = 0; repeat < 6; repeat++) parts.push(...seed);
+    }
+    const data = Uint8Array.from(parts);
+    expect(Array.from(inflateRaw(deflateRawSync(data)))).toEqual(Array.from(data));
+    expect(Array.from(inflateRaw(deflateRawSync(data, { level: 9 })))).toEqual(Array.from(data));
+  });
+
   it('throws on garbage rather than returning wrong pixels', () => {
     expect(() => inflateRaw(noise(64, 0xdead))).toThrow();
   });

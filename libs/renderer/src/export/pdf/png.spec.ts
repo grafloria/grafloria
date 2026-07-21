@@ -184,6 +184,24 @@ describe('decodeDataUrlImage — PNG', () => {
       expect(Array.from(inflateSync(image.smask!.data))).toEqual([255, 255, 127, 192]);
     });
 
+    it('MUTATION GUARD — Paeth TIE pa == pc must pick LEFT (spec order), not upper-left', () => {
+      // Constructed so the second row's second pixel hits pa == pc with left ≠ upper-left:
+      // a=90, b=105, c=100 → p=95, pa=5, pb=10, pc=5 — the spec breaks the tie toward a.
+      // (`pa <= pc` mutated to `pa < pc` picks c=100 and reconstructs 105, not 95.)
+      const png = buildPng({
+        width: 2,
+        height: 2,
+        colorType: 6,
+        scanlines: [
+          0, 100, 100, 100, 100, 105, 105, 105, 105,
+          4, 246, 246, 246, 246, 5, 5, 5, 5, // 246 ≡ −10: px0 = 100−10 = 90
+        ],
+      });
+      const image = decode(png)!;
+      expect(Array.from(inflateSync(image.data))).toEqual([100, 100, 100, 105, 105, 105, 90, 90, 90, 95, 95, 95]);
+      expect(Array.from(inflateSync(image.smask!.data))).toEqual([100, 105, 90, 95]);
+    });
+
     it('unfilters Paeth (4): the predictor picks nearest of left/above/upper-left', () => {
       const png = buildPng({
         width: 2,
