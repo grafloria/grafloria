@@ -5,6 +5,7 @@
 // real PDF text operators rather than an image of text. A PDF that "looks right" in a
 // string comparison but whose xref is wrong will not open in Acrobat at all.
 
+import { deflateSync, inflateSync } from 'zlib';
 import { DiagramEngine, DiagramModel, LinkModel, NodeModel, PortModel } from '@grafloria/engine';
 import { SVGRenderer } from '../../svg/svg-renderer';
 import type { VNode } from '../../types/vnode.types';
@@ -64,6 +65,78 @@ const g = (props: Record<string, unknown>, children: VNode[] = []): VNode =>
 const el = (type: string, props: Record<string, unknown>): VNode => ({ type, props } as VNode);
 
 const tree = (children: VNode[]): VNode => ({ type: 'svg', key: 'diagram-root', props: {}, children } as VNode);
+
+/** Extract one indirect object's body by number: `N 0 obj … endobj`. */
+function pdfObject(pdf: Uint8Array, id: number): string {
+  const match = new RegExp(`(?:^|\\n)${id} 0 obj\\n([\\s\\S]*?)\\nendobj`).exec(text(pdf));
+  return match ? match[1] : '';
+}
+
+/** Every op-index in order — for "A must happen before B in the stream" assertions. */
+function orderedIndexOf(haystack: string, ...needles: string[]): number[] {
+  let from = 0;
+  return needles.map(needle => {
+    const at = haystack.indexOf(needle, from);
+    if (at >= 0) from = at + needle.length;
+    return at;
+  });
+}
+
+const isAscending = (values: number[]): boolean =>
+  values.every((v, i) => v >= 0 && (i === 0 || v > values[i - 1]));
+
+// -- a tiny in-test PNG builder (CRCs zeroed; the decoder reads structure, not checksums) --
+function pngChunk(type: string, data: number[] | Uint8Array): number[] {
+  const body = Array.from(data);
+  const out = [(body.length >>> 24) & 0xff, (body.length >>> 16) & 0xff, (body.length >>> 8) & 0xff, body.length & 0xff];
+  for (const c of type) out.push(c.charCodeAt(0));
+  out.push(...body, 0, 0, 0, 0);
+  return out;
+}
+
+function testPng(width: number, height: number, colorType: number, scanlines: number[]): string {
+  const ihdr = [
+    (width >>> 24) & 0xff, (width >>> 16) & 0xff, (width >>> 8) & 0xff, width & 0xff,
+    (height >>> 24) & 0xff, (height >>> 16) & 0xff, (height >>> 8) & 0xff, height & 0xff,
+    8, colorType, 0, 0, 0,
+  ];
+  const png = Uint8Array.from([
+    0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a,
+    ...pngChunk('IHDR', ihdr),
+    ...pngChunk('IDAT', deflateSync(Uint8Array.from(scanlines))),
+    ...pngChunk('IEND', []),
+  ]);
+  let bin = '';
+  for (const b of png) bin += String.fromCharCode(b);
+  return `data:image/png;base64,${btoa(bin)}`;
+}
+
+/** 2×2 opaque RGB: red green / blue white. */
+const RGB_PNG = () => testPng(2, 2, 2, [0, 255, 0, 0, 0, 255, 0, 0, 0, 0, 255, 255, 255, 255]);
+/** 2×1 RGBA: opaque red, half-transparent blue — the canvas.toDataURL shape. */
+const RGBA_PNG = () => testPng(2, 1, 6, [0, 255, 0, 0, 255, 0, 0, 255, 128]);
+
+// -- def builders, in the exact prop shapes `svg/paint-servers.ts` emits --------------
+const defs = (children: VNode[]): VNode => ({ type: 'defs', props: {}, children } as VNode);
+
+const stops2 = (): VNode[] => [
+  el('stop', { offset: 0, 'stop-color': '#ff0000' }),
+  el('stop', { offset: 1, 'stop-color': '#0000ff' }),
+];
+
+const linGrad = (id: string, coords: Record<string, unknown>, stops = stops2()): VNode =>
+  ({
+    type: 'linearGradient',
+    props: { id, gradientUnits: 'userSpaceOnUse', ...coords },
+    children: stops,
+  } as VNode);
+
+const radGrad = (id: string, coords: Record<string, unknown>, stops = stops2()): VNode =>
+  ({
+    type: 'radialGradient',
+    props: { id, gradientUnits: 'userSpaceOnUse', ...coords },
+    children: stops,
+  } as VNode);
 
 describe('pdf-primitives', () => {
   describe('parsePdfColor', () => {
@@ -224,7 +297,9 @@ describe('exportPdf — the document', () => {
     expect(content).not.toContain('/Image');
   });
 
-  it('reports an <image> as omitted rather than dropping it silently — PDF has no image XObject', () => {
+  it('reports an UNPARSEABLE <image> as omitted rather than dropping it silently', () => {
+    // 'AAAA' is not a PNG. A decodable image now embeds (see the XObject suite); an
+    // undecodable one must still warn and leave a valid file behind.
     const { pdf, warnings } = exportPdf(
       tree([g({}, [el('image', { x: 0, y: 0, width: 100, height: 50, href: 'data:image/png;base64,AAAA' })])])
     );
@@ -312,28 +387,26 @@ describe('exportPdf — the document', () => {
       expect(contentStreams(pdf)).toContain('1 1 1 rg');
     });
 
-    it('flattens a gradient to its first stop, and says so', () => {
+    it('flattens a gradient STROKE to its first stop, and says so — stroking a shading needs outline geometry we do not build', () => {
       const withGradient = tree([
-        {
-          type: 'defs',
-          props: {},
-          children: [
-            {
-              type: 'linearGradient',
-              props: { id: 'grad' },
-              children: [
-                el('stop', { offset: '0', stopColor: '#ff0000' }),
-                el('stop', { offset: '1', stopColor: '#0000ff' }),
-              ],
-            } as VNode,
-          ],
-        } as VNode,
-        el('rect', { x: 0, y: 0, width: 10, height: 10, fill: 'url(#grad)' }),
+        defs([linGrad('grad', { x1: 0, y1: 0, x2: 10, y2: 0 })]),
+        el('rect', { x: 0, y: 0, width: 10, height: 10, stroke: 'url(#grad)', strokeWidth: 2 }),
       ]);
 
       const { pdf, warnings } = exportPdf(withGradient);
       expect(warnings.join(' ')).toContain('first stop');
-      expect(contentStreams(pdf)).toContain('1 0 0 rg'); // the red first stop
+      expect(contentStreams(pdf)).toContain('1 0 0 RG'); // the red first stop, as a stroke
+    });
+
+    it('flattens a gradient fill ON TEXT to its first stop, and says so', () => {
+      const { pdf, warnings } = exportPdf(
+        tree([
+          defs([linGrad('grad', { x1: 0, y1: 0, x2: 10, y2: 0 })]),
+          el('text', { x: 0, y: 0, fontSize: 12, fill: 'url(#grad)', textContent: 'Hi' }),
+        ])
+      );
+      expect(warnings.join(' ')).toContain('first stop');
+      expect(contentStreams(pdf)).toContain('1 0 0 rg');
     });
 
     it('omits foreignObject and says why', () => {
@@ -391,6 +464,337 @@ describe('exportPdf — the document', () => {
     const { pdf, pageCount } = exportPdf(tree([]));
     expect(pageCount).toBe(1);
     expect(xrefIsValid(pdf)).toBe(true);
+  });
+});
+
+describe('gradient fills — REAL PDF shadings, not first-stop flattening', () => {
+  const gradRect = (gradProps: Record<string, unknown> = { x1: 0, y1: 25, x2: 100, y2: 25 }) =>
+    tree([
+      defs([linGrad('grafloria-def-g1', gradProps)]),
+      el('rect', { x: 0, y: 0, width: 100, height: 50, fill: 'url(#grafloria-def-g1)' }),
+    ]);
+
+  it('a linear gradient becomes /ShadingType 2 with the DEF\'S OWN pixel coords (direction matters)', () => {
+    const { pdf, warnings } = exportPdf(gradRect());
+    const body = text(pdf);
+
+    expect(body).toContain('/ShadingType 2');
+    // x1 y1 x2 y2 — left red, right blue. Swapped endpoints = a flipped gradient.
+    expect(body).toContain('/Coords [0 25 100 25]');
+    expect(body).toContain('/C0 [1 0 0]');
+    expect(body).toContain('/C1 [0 0 1]');
+    // SVG's default spreadMethod is 'pad' — the shading must extend past both endpoints.
+    expect(body).toContain('/Extend [true true]');
+    // The gradient RENDERS now, so the old flattening warning must be gone.
+    expect(warnings.join(' ')).not.toContain('first stop');
+    expect(xrefIsValid(pdf)).toBe(true);
+  });
+
+  it('WEAK-TOOTH GUARD: the shading is actually INVOKED — clipped to the shape, inside its own q/Q', () => {
+    // "/ShadingType 2 exists in the file" passes with the shading unreferenced by anything.
+    // The proof is the content stream: shape path → W n (clip) → /Sh1 sh, all before the Q.
+    const content = contentStreams(exportPdf(gradRect()).pdf);
+    const sequence = orderedIndexOf(content, '0 0 m', '100 0 l', 'W n', '/Sh1 sh', 'Q');
+    expect(isAscending(sequence)).toBe(true);
+    // And no solid-fill fallback painted over/under it.
+    expect(content).not.toContain('1 0 0 rg');
+  });
+
+  it('a THREE-stop gradient becomes a Type 3 stitching function with interior bounds', () => {
+    const threeStops = [
+      el('stop', { offset: 0, 'stop-color': '#ff0000' }),
+      el('stop', { offset: '50%', 'stop-color': '#ffffff' }), // percent offsets must parse
+      el('stop', { offset: 1, 'stop-color': '#0000ff' }),
+    ];
+    const { pdf } = exportPdf(
+      tree([
+        defs([linGrad('grafloria-def-g1', { x1: 0, y1: 0, x2: 100, y2: 0 }, threeStops)]),
+        el('rect', { x: 0, y: 0, width: 100, height: 50, fill: 'url(#grafloria-def-g1)' }),
+      ])
+    );
+    const body = text(pdf);
+    expect(body).toContain('/FunctionType 3');
+    expect(body).toContain('/Bounds [0.5]');
+    expect(body).toContain('/Encode [0 1 0 1]');
+    // The two sub-functions carry the right stop pairs.
+    expect(body).toContain('/C0 [1 0 0] /C1 [1 1 1]');
+    expect(body).toContain('/C0 [1 1 1] /C1 [0 0 1]');
+  });
+
+  it('a radial gradient becomes /ShadingType 3, focal at the centre', () => {
+    const { pdf } = exportPdf(
+      tree([
+        defs([radGrad('grafloria-def-r1', { cx: 50, cy: 25, r: 40 })]),
+        el('circle', { cx: 50, cy: 25, r: 20, fill: 'url(#grafloria-def-r1)' }),
+      ])
+    );
+    const body = text(pdf);
+    expect(body).toContain('/ShadingType 3');
+    expect(body).toContain('/Coords [50 25 0 50 25 40]');
+    expect(contentStreams(pdf)).toContain('sh');
+  });
+
+  it('objectBoundingBox coords (a model-spec gradient) are mapped through the ELEMENT\'S box', () => {
+    // buildLinearGradient emits 0–1 coords with no gradientUnits attr — the SVG default.
+    const oBB: VNode = {
+      type: 'linearGradient',
+      props: { id: 'grafloria-def-obb', x1: 0, y1: 0, x2: 1, y2: 0 },
+      children: stops2(),
+    } as VNode;
+    const { pdf } = exportPdf(
+      tree([defs([oBB]), el('rect', { x: 5, y: 5, width: 20, height: 10, fill: 'url(#grafloria-def-obb)' })])
+    );
+    expect(text(pdf)).toContain('/Coords [5 5 25 5]');
+  });
+
+  it('a gradient-filled shape that is ALSO stroked keeps its stroke (a second pass)', () => {
+    const { pdf } = exportPdf(
+      tree([
+        defs([linGrad('grafloria-def-g1', { x1: 0, y1: 0, x2: 100, y2: 0 })]),
+        el('rect', { x: 0, y: 0, width: 100, height: 50, fill: 'url(#grafloria-def-g1)', stroke: '#000000', strokeWidth: 2 }),
+      ])
+    );
+    const content = contentStreams(pdf);
+    expect(content).toContain('/Sh1 sh');
+    // The stroke is painted as its own pass, after the shading's Q.
+    expect(isAscending(orderedIndexOf(content, '/Sh1 sh', 'Q', '0 0 0 RG', 'S'))).toBe(true);
+  });
+
+  it('stop opacity is a DOCUMENTED limit: the shading paints opaque, and warns', () => {
+    const translucent = [
+      el('stop', { offset: 0, 'stop-color': '#ff0000', 'stop-opacity': 0.5 }),
+      el('stop', { offset: 1, 'stop-color': '#0000ff' }),
+    ];
+    const { pdf, warnings } = exportPdf(
+      tree([
+        defs([linGrad('grafloria-def-g1', { x1: 0, y1: 0, x2: 100, y2: 0 }, translucent)]),
+        el('rect', { x: 0, y: 0, width: 100, height: 50, fill: 'url(#grafloria-def-g1)' }),
+      ])
+    );
+    expect(text(pdf)).toContain('/ShadingType 2'); // still renders — opaquely
+    expect(warnings.join(' ')).toMatch(/stop.*opacit|opacit.*stop/i);
+  });
+
+  it('rgba() stop colours: the colour is honoured, the alpha is the same documented limit', () => {
+    const rgbaStops = [
+      el('stop', { offset: 0, 'stop-color': 'rgba(255, 0, 0, 0.5)' }),
+      el('stop', { offset: 1, 'stop-color': '#0000ff' }),
+    ];
+    const { pdf, warnings } = exportPdf(
+      tree([
+        defs([linGrad('grafloria-def-g1', { x1: 0, y1: 0, x2: 100, y2: 0 }, rgbaStops)]),
+        el('rect', { x: 0, y: 0, width: 100, height: 50, fill: 'url(#grafloria-def-g1)' }),
+      ])
+    );
+    expect(text(pdf)).toContain('/C0 [1 0 0]');
+    expect(warnings.join(' ')).toMatch(/stop.*opacit|opacit.*stop/i);
+  });
+
+  it('a PATTERN fill is flattened to its background colour — and warns (it used to vanish silently)', () => {
+    const pattern: VNode = {
+      type: 'pattern',
+      props: { id: 'grafloria-def-p1', width: 8, height: 8, patternUnits: 'userSpaceOnUse' },
+      children: [
+        el('rect', { x: 0, y: 0, width: 8, height: 8, fill: '#00ff00' }),
+        el('circle', { cx: 4, cy: 4, r: 1, fill: '#000000' }),
+      ],
+    } as VNode;
+    const { pdf, warnings } = exportPdf(
+      tree([defs([pattern]), el('rect', { x: 0, y: 0, width: 100, height: 50, fill: 'url(#grafloria-def-p1)' })])
+    );
+    expect(warnings.join(' ')).toMatch(/pattern/i);
+    expect(contentStreams(pdf)).toContain('0 1 0 rg'); // the pattern's background survives
+  });
+
+  it('same gradient on two shapes → ONE shading resource, invoked twice', () => {
+    const { pdf } = exportPdf(
+      tree([
+        defs([linGrad('grafloria-def-g1', { x1: 0, y1: 0, x2: 100, y2: 0 })]),
+        el('rect', { x: 0, y: 0, width: 100, height: 50, fill: 'url(#grafloria-def-g1)' }),
+        el('rect', { x: 0, y: 60, width: 100, height: 50, fill: 'url(#grafloria-def-g1)' }),
+      ])
+    );
+    expect(contentStreams(pdf).match(/\/Sh1 sh/g)).toHaveLength(2);
+    expect(text(pdf).match(/\/ShadingType 2/g)).toHaveLength(1);
+  });
+});
+
+describe('images — PDF image XObjects, painted with Do', () => {
+  const imageTree = (href: string, extra: Record<string, unknown> = {}) =>
+    tree([g({}, [el('image', { x: 10, y: 20, width: 4, height: 4, href, ...extra })])]);
+
+  it('an opaque RGB PNG embeds as a FlateDecode XObject with PNG-predictor DecodeParms — IDAT passthrough', () => {
+    const { pdf, warnings } = exportPdf(imageTree(RGB_PNG()));
+    const body = text(pdf);
+
+    const ref = /\/Im1 (\d+) 0 R/.exec(body);
+    expect(ref).not.toBeNull();
+    const object = pdfObject(pdf, Number(ref![1]));
+    expect(object).toContain('/Subtype /Image');
+    expect(object).toContain('/Width 2');
+    expect(object).toContain('/Height 2');
+    expect(object).toContain('/ColorSpace /DeviceRGB');
+    expect(object).toContain('/BitsPerComponent 8');
+    expect(object).toContain('/Filter /FlateDecode');
+    // /Columns wrong = a sheared image that every structural test would miss.
+    expect(object).toContain('/DecodeParms << /Predictor 15 /Colors 3 /BitsPerComponent 8 /Columns 2 >>');
+
+    // The embed is real, so the old "PDF cannot draw images" warning must be gone.
+    expect(warnings.join(' ')).not.toMatch(/not implemented/);
+    expect(xrefIsValid(pdf)).toBe(true);
+  });
+
+  it('WEAK-TOOTH GUARD: the XObject is actually DRAWN — placed with cm and invoked with Do inside q/Q', () => {
+    const content = contentStreams(exportPdf(imageTree(RGB_PNG())).pdf);
+    // [w 0 0 -h x y+h]: the -h un-flips the image under the page's y-down CTM.
+    expect(isAscending(orderedIndexOf(content, 'q', '4 0 0 -4 10 24 cm', '/Im1 Do', 'Q'))).toBe(true);
+  });
+
+  it('an RGBA PNG (canvas.toDataURL) splits: RGB stream + alpha wired as /SMask — and the PIXELS are right', () => {
+    const { pdf } = exportPdf(imageTree(RGBA_PNG()));
+    const body = text(pdf);
+
+    const ref = /\/Im1 (\d+) 0 R/.exec(body)!;
+    const image = pdfObject(pdf, Number(ref[1]));
+    const smaskRef = /\/SMask (\d+) 0 R/.exec(image);
+    expect(smaskRef).not.toBeNull();
+
+    const smask = pdfObject(pdf, Number(smaskRef![1]));
+    expect(smask).toContain('/Subtype /Image');
+    expect(smask).toContain('/ColorSpace /DeviceGray');
+
+    // Read the two streams back OUT of the file and inflate them: colour then coverage.
+    const imageStream = /stream\n([\s\S]*?)\nendstream/.exec(image)!;
+    const smaskStream = /stream\n([\s\S]*?)\nendstream/.exec(smask)!;
+    const toBytes = (s: string) => Uint8Array.from([...s].map(c => c.charCodeAt(0) & 0xff));
+    expect(Array.from(inflateSync(toBytes(imageStream[1])))).toEqual([255, 0, 0, 0, 0, 255]);
+    expect(Array.from(inflateSync(toBytes(smaskStream[1])))).toEqual([255, 128]);
+  });
+
+  it('the same href twice → ONE XObject, two Do invocations', () => {
+    const href = RGB_PNG();
+    const { pdf } = exportPdf(
+      tree([
+        el('image', { x: 0, y: 0, width: 4, height: 4, href }),
+        el('image', { x: 10, y: 0, width: 4, height: 4, href }),
+      ])
+    );
+    expect(contentStreams(pdf).match(/\/Im1 Do/g)).toHaveLength(2);
+    expect(text(pdf).match(/\/Subtype \/Image/g)).toHaveLength(1);
+  });
+
+  it('an EXTERNAL URL image stays a warning — fetching would make the export impure', () => {
+    const { pdf, warnings } = exportPdf(imageTree('https://example.com/logo.png'));
+    expect(warnings.join(' ')).toMatch(/external|not inlined/i);
+    expect(text(pdf)).not.toContain('/Image');
+  });
+
+  it('image opacity rides the ExtGState like every other element', () => {
+    const { pdf } = exportPdf(imageTree(RGB_PNG(), { opacity: 0.5 }));
+    expect(text(pdf)).toContain('/ca 0.5');
+    expect(isAscending(orderedIndexOf(contentStreams(pdf), 'gs', '/Im1 Do'))).toBe(true);
+  });
+
+  it('is deterministic with images and gradients in the tree — same tree, same bytes', () => {
+    const build = () =>
+      exportPdf(
+        tree([
+          defs([linGrad('grafloria-def-g1', { x1: 0, y1: 0, x2: 100, y2: 0 })]),
+          el('rect', { x: 0, y: 0, width: 100, height: 50, fill: 'url(#grafloria-def-g1)' }),
+          el('image', { x: 10, y: 20, width: 4, height: 4, href: RGBA_PNG() }),
+        ])
+      ).pdf;
+    expect(Array.from(build())).toEqual(Array.from(build()));
+  });
+});
+
+describe('element-level clip paths — clip-path="url(#…)" on a group', () => {
+  const clipDef = (id: string, children: VNode[], props: Record<string, unknown> = {}): VNode =>
+    ({ type: 'clipPath', props: { id, ...props }, children } as VNode);
+
+  it('emits the clip shape as a PDF path with W n, scoped by q/Q — content after the Q is NOT clipped', () => {
+    const { pdf, warnings } = exportPdf(
+      tree([
+        defs([clipDef('c1', [el('rect', { x: 2, y: 0, width: 5, height: 5 })])]),
+        g({ clipPath: 'url(#c1)' }, [el('rect', { x: 0, y: 0, width: 100, height: 100, fill: '#ff0000' })]),
+        el('rect', { x: 200, y: 0, width: 10, height: 10, fill: '#00ff00' }),
+      ])
+    );
+    const content = contentStreams(pdf);
+    // clip path geometry → W n → the clipped content → Q → the unclipped sibling.
+    expect(isAscending(orderedIndexOf(content, '2 0 m', 'W n', '1 0 0 rg', 'Q', '0 1 0 rg'))).toBe(true);
+    expect(warnings.join(' ')).not.toMatch(/clip/i);
+  });
+
+  it('a multi-shape clipPath unions its children into one clip path before the single W n', () => {
+    const content = contentStreams(
+      exportPdf(
+        tree([
+          defs([
+            clipDef('c1', [
+              el('rect', { x: 2, y: 0, width: 5, height: 5 }),
+              el('circle', { cx: 30, cy: 30, r: 10 }),
+            ]),
+          ]),
+          g({ clipPath: 'url(#c1)' }, [el('rect', { x: 0, y: 0, width: 100, height: 100, fill: '#ff0000' })]),
+        ])
+      ).pdf
+    );
+    // Both shapes' geometry lands before ONE W n (the second W n in the file — the first is the page clip).
+    const afterPageClip = content.slice(content.indexOf('W n') + 3);
+    expect(isAscending(orderedIndexOf(afterPageClip, '2 0 m', '40 30 m', 'W n', '1 0 0 rg'))).toBe(true);
+    expect(afterPageClip.match(/W n/g)).toHaveLength(1);
+  });
+
+  it('a path-shaped clip works — the d attribute is the clip geometry', () => {
+    const content = contentStreams(
+      exportPdf(
+        tree([
+          defs([clipDef('c1', [el('path', { d: 'M 2 0 L 7 0 L 7 5 L 2 5 Z' })])]),
+          g({ clipPath: 'url(#c1)' }, [el('rect', { x: 0, y: 0, width: 100, height: 100, fill: '#ff0000' })]),
+        ])
+      ).pdf
+    );
+    expect(isAscending(orderedIndexOf(content.slice(content.indexOf('W n') + 3), '2 0 m', '7 0 l', 'W n', '1 0 0 rg'))).toBe(true);
+  });
+
+  it('a clip on a group scopes the group\'s WHOLE subtree, transforms included', () => {
+    const content = contentStreams(
+      exportPdf(
+        tree([
+          defs([clipDef('c1', [el('rect', { x: 2, y: 0, width: 5, height: 5 })])]),
+          g({ clipPath: 'url(#c1)', transform: 'translate(100, 200)' }, [
+            el('rect', { x: 0, y: 0, width: 10, height: 10, fill: '#ff0000' }),
+          ]),
+        ])
+      ).pdf
+    );
+    // The clip rides INSIDE the group's own cm: an element's transform applies to its
+    // clip path too (SVG moves them together — animate a clipped group and watch).
+    expect(isAscending(orderedIndexOf(content, '1 0 0 1 100 200 cm', '2 0 m', 'W n', '1 0 0 rg', 'Q'))).toBe(true);
+  });
+
+  it('a MISSING clip def warns and paints unclipped — losing content beats losing it silently', () => {
+    const { pdf, warnings } = exportPdf(
+      tree([g({ clipPath: 'url(#nope)' }, [el('rect', { x: 0, y: 0, width: 10, height: 10, fill: '#ff0000' })])])
+    );
+    expect(warnings.join(' ')).toMatch(/clip/i);
+    expect(contentStreams(pdf)).toContain('1 0 0 rg'); // the content survived
+  });
+
+  it('clipPathUnits="objectBoundingBox" is a documented limit: warn, paint unclipped', () => {
+    const { pdf, warnings } = exportPdf(
+      tree([
+        defs([
+          clipDef('c1', [el('rect', { x: 0, y: 0, width: 0.5, height: 0.5 })], {
+            clipPathUnits: 'objectBoundingBox',
+          }),
+        ]),
+        g({ clipPath: 'url(#c1)' }, [el('rect', { x: 0, y: 0, width: 10, height: 10, fill: '#ff0000' })]),
+      ])
+    );
+    expect(warnings.join(' ')).toMatch(/objectBoundingBox/);
+    expect(contentStreams(pdf)).toContain('1 0 0 rg');
   });
 });
 
