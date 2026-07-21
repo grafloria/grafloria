@@ -605,11 +605,23 @@ describe('captureCustomNodeHost — images become <image>', () => {
     expect(image?.props).toMatchObject({ x: 0, y: 0, width: 120, height: 80 });
   });
 
-  it('reports an image as a PDF fidelity risk', () => {
+  it('reports an EXTERNAL image as a PDF fidelity risk — the PDF cannot fetch it', () => {
     const result = capture(
       build({ tag: 'img', rect: { left: 0, top: 0, width: 10, height: 10 }, attrs: { src: 'https://x/y.png' } })
     );
     expect(result.warning ?? '').toMatch(/PDF/);
+  });
+
+  it('does NOT flag a data: URI image as a PDF risk — the PDF embeds those now', () => {
+    // The blanket warning predates the PDF writer's image XObjects (b2854b0a1).
+    // A data: PNG/JPEG is embedded by the PDF painter, which carries its OWN
+    // precise warnings for the forms it refuses (interlaced, 16-bit, CMYK…).
+    // A capture-time blanket would re-assert a fixed limitation forever.
+    const result = capture(
+      build({ tag: 'img', rect: { left: 0, top: 0, width: 10, height: 10 },
+        attrs: { src: 'data:image/png;base64,AAAA' } })
+    );
+    expect(result.warning ?? '').not.toMatch(/MISSING from a PDF/);
   });
 });
 
@@ -1046,8 +1058,13 @@ describe('captureCustomNodeHost — overflow clipping', () => {
     expect(groups.every(g => g.props['clip-path'] === `url(#${defs[0].props['id']})`)).toBe(true);
   });
 
-  it('reports clipping as a PDF fidelity risk', () => {
-    expect(capture(CLIPPED_CARD()).warning ?? '').toMatch(/PDF/);
+  it('does NOT report clipping as a PDF risk — the PDF painter applies these clips', () => {
+    // The capture emits exactly the clip contract the PDF consumes (one shape
+    // child, host-local user space, referenced by <g clip-path>): proven by
+    // rasterizing the exported PDF — the rounded corners are visibly clipped.
+    // Warning a caller about a limitation that no longer exists is the same
+    // defect as staying silent about one that does.
+    expect(capture(CLIPPED_CARD()).warning ?? '').not.toMatch(/BLEED in a PDF/);
   });
 });
 

@@ -341,7 +341,6 @@ function walk(el: El, ctx: WalkContext, sink: VNode[]): void {
 
   if (overflowClip && childSink.length > 0) {
     pushDef(ctx, overflowClip.id, () => overflowClip.def);
-    ctx.warnings.push(CLIP_PDF_WARNING);
     ownSink.push({
       type: 'g',
       props: { 'clip-path': `url(#${overflowClip.id})` },
@@ -350,7 +349,6 @@ function walk(el: El, ctx: WalkContext, sink: VNode[]): void {
   }
   if (selfClip && ownSink.length > 0) {
     pushDef(ctx, selfClip.id, () => selfClip.def);
-    ctx.warnings.push(CLIP_PDF_WARNING);
     sink.push({
       type: 'g',
       props: { 'clip-path': `url(#${selfClip.id})` },
@@ -687,8 +685,8 @@ function transcribeSvgElement(el: El, ctx: WalkContext): VNode | null {
 // ---------------------------------------------------------------------------
 
 const IMAGE_PDF_WARNING =
-  'a widget image was exported as <image> (faithful in SVG/resvg) — but PDF has no image ' +
-  'primitive, so it will be MISSING from a PDF export.';
+  'a widget image references an EXTERNAL URL — the SVG keeps the link (renders online), ' +
+  'but the PDF cannot fetch it, so it will be MISSING from a PDF export.';
 
 /** Register a def VNode once per capture; identical defs (same id) collapse to one. */
 function pushDef(ctx: WalkContext, id: string, build: () => VNode): void {
@@ -997,8 +995,12 @@ function emitImage(
   sink: VNode[]
 ): void {
   if (!src) return;
-  ctx.warnings.push(IMAGE_PDF_WARNING);
   const href = resolveImageHref(el, src, ctx);
+  // Only an EXTERNAL image is a PDF risk now: the PDF writer embeds data: PNGs/JPEGs
+  // as image XObjects (b2854b0a1) and carries its own precise warnings for the forms
+  // it refuses (interlaced, 16-bit, CMYK…). An external URL it cannot fetch, so that
+  // half of the old blanket warning is the half that stays.
+  if (!href.startsWith('data:')) ctx.warnings.push(IMAGE_PDF_WARNING);
   sink.push({
     type: 'image',
     props: {
@@ -1071,10 +1073,6 @@ function tryCanvasInline(el: El, ctx: WalkContext): string | null {
 // derived from its own font, the same approximation `emitText` makes), but a PAINTED
 // box with auto size is underivable and is reported, never guessed.
 
-/** Warned once per capture when clipped content is exported (see per-format honesty). */
-const CLIP_PDF_WARNING =
-  'clipped content was exported with an SVG <clipPath> (faithful in SVG/resvg) — the PDF ' +
-  'painter does not yet apply clips, so clipped content may BLEED in a PDF export.';
 
 /** A px/% length against a basis. Returns null for auto/keywords/unparsable. */
 function resolveLen(token: string, basis: number): number | null {

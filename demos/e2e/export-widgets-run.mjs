@@ -589,10 +589,17 @@ const paint = await p.evaluate(async () => {
     'position:fixed;left:0;bottom:0;width:920px;height:240px;overflow:hidden;z-index:-1;background:#fff';
   document.body.appendChild(host);
 
-  // A 1x1 opaque-red PNG — a data: URI so the capture inlines it verbatim and the file is
-  // self-contained without a network round trip.
-  const IMG =
-    'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==';
+  // A REAL canvas PNG (8x8 opaque red) — generated the way production images arrive
+  // (canvas.toDataURL). The previous hand-pasted 1x1 base64 was TRUNCATED: its zlib
+  // Adler-32 tail was cut short, which browsers tolerate and strict decoders refuse —
+  // so the PDF's PNG parser (correctly) rejected it and the "XObject embedded" check
+  // could never pass. A fixture must be the thing production produces, not a minified
+  // approximation of it.
+  const cv = document.createElement('canvas');
+  cv.width = 8; cv.height = 8;
+  const c2 = cv.getContext('2d');
+  c2.fillStyle = 'rgb(255,0,0)'; c2.fillRect(0, 0, 8, 8);
+  const IMG = cv.toDataURL('image/png');
 
   const node = (id, x) => ({
     id,
@@ -632,6 +639,7 @@ const paint = await p.evaluate(async () => {
     pdfBytes: pdfOut.pdf.length,
     pdfHeader: String.fromCharCode(...pdfOut.pdf.slice(0, 5)),
     pdfHasAxialShading: new TextDecoder('latin1').decode(pdfOut.pdf).includes('/ShadingType 2'),
+    pdfHasImageXObject: (() => { const t = new TextDecoder('latin1').decode(pdfOut.pdf); return t.includes('/Subtype /Image') && / Do\b/.test(t); })(),
   };
 });
 
@@ -693,17 +701,21 @@ check(
     !paint.pdfWarnings.some((w) => /gradient/i.test(w) && /flatten|first stop/i.test(w)),
   paint.pdfHasAxialShading ? '/ShadingType 2 present' : 'no shading object in the PDF'
 );
+// RECONCILED (2026-07-21): the PDF painter embeds data: images as XObjects (b2854b0a1),
+// so "the image was omitted" is no longer true for this data: PNG — asserting the old
+// warning would demand a lie. The stronger truth: the XObject is IN the PDF and invoked.
 check(
-  'PDF reports the image was omitted — accurately, not silently dropped',
-  paint.pdfWarnings.some((w) => /image/i.test(w) && /PDF|XObject|omitted/i.test(w)),
-  paint.pdfWarnings.find((w) => /image/i.test(w)) || 'no image warning'
+  'PDF embeds the data: image as an XObject (and invokes it) — nothing to warn about',
+  paint.pdfHasImageXObject === true &&
+    !paint.pdfWarnings.some((w) => /image/i.test(w) && /MISSING from a PDF/.test(w)),
+  paint.pdfHasImageXObject ? '/Subtype /Image present + Do' : 'no image XObject in the PDF'
 );
 // The image caveat is also surfaced on the SVG export's warnings, so a caller who never
 // touches PDF is still told which widgets carry a PDF risk.
 check(
-  'the SVG export also flags the image as a PDF fidelity risk',
-  paint.svgWarnings.some((w) => /image/i.test(w) && /PDF/.test(w)),
-  paint.svgWarnings.find((w) => /image/i.test(w)) || 'none'
+  'the SVG export does NOT flag a data: image as a PDF risk any more — the PDF embeds it',
+  !paint.svgWarnings.some((w) => /image/i.test(w) && /MISSING from a PDF/.test(w)),
+  paint.svgWarnings.find((w) => /image/i.test(w)) || 'no image warning (correct)'
 );
 
 // -- render the exported SVG STANDALONE and prove it is not blank ------------
@@ -845,10 +857,13 @@ if (clipDefMatch) {
   const unclippedSegment = csvg.slice(idxUnclipped, csvg.indexOf('data-node-id="pseudo"'));
   check('while the overflow:visible twin carries NO clip', !unclippedSegment.includes('clip-path='));
 }
+// RECONCILED (2026-07-21): the PDF painter consumes the capture's clip contract (W n
+// inside q/Q, proven by rasterizing an exported PDF — the rounded corners really clip),
+// so the "may BLEED in a PDF" warning was removed with it.
 check(
-  'clipping is reported as a PDF fidelity risk (the PDF painter cannot apply clips yet)',
-  clipOut.warnings.some((w) => /clip/i.test(w) && /PDF/.test(w)),
-  clipOut.warnings.find((w) => /clip/i.test(w)) || 'no clip warning'
+  'clipping carries NO stale PDF warning — the PDF painter applies these clips now',
+  !clipOut.warnings.some((w) => /clip/i.test(w) && /BLEED in a PDF/.test(w)),
+  clipOut.warnings.find((w) => /clip/i.test(w)) || 'no clip warning (correct)'
 );
 
 // -- the pixel proof: rasterize STANDALONE and read the corner ---------------
