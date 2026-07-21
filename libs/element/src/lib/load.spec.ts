@@ -451,6 +451,20 @@ describe('fromDocument — dashboard handle', () => {
     expect(painted).toContain('77');
   });
 
+  it('update() repaints an EXISTING widget on the reloaded board (host was captured)', () => {
+    // Proves the host-capture rule in renderCustomNode: without it the widget
+    // handle cannot find the mounted host and update() paints nothing.
+    const original = mount(DASH_SPEC());
+    const spec = fromDocument(save(original.api));
+    const loaded = mount(spec);
+
+    expect(paintedText(loaded.host)['k1']).toContain('$6.81M');
+    spec.handle.widget('k1')!.update({ data: { label: 'rev', value: 'CHANGED-9X' } });
+    loaded.api.renderNow();
+    expect(paintedText(loaded.host)['k1']).toContain('CHANGED-9X');
+    expect(paintedText(loaded.host)['k1']).not.toContain('$6.81M');
+  });
+
   it('setSizing changes the reloaded board and toJSON round-trips it back into dashboard()', () => {
     const original = mount(DASH_SPEC());
     const spec = fromDocument(save(original.api));
@@ -490,16 +504,24 @@ describe('fromDocument — dashboard handle', () => {
         ],
       })
     );
+    // Save with the SECOND view active (not the first), so the reload's active
+    // view can only be right if it is read from the saved group positions — a
+    // "just pick views[0]" shortcut would answer 'a' and fail here.
+    original.spec.handle.showView('b');
+    original.api.renderNow();
+
     const spec = fromDocument(save(original.api));
     const loaded = mount(spec);
 
     expect(spec.handle.views).toEqual(['a', 'b']);
-    expect(spec.handle.activeView).toBe('a');
-
-    spec.handle.showView('b');
     expect(spec.handle.activeView).toBe('b');
-    expect(loaded.api.getModel().getGroup('b')!.position.x).toBe(0);
+    // …and the parked view really is off-camera on the reload.
     expect(loaded.api.getModel().getGroup('a')!.position.x).toBeLessThan(-1000);
+
+    spec.handle.showView('a');
+    expect(spec.handle.activeView).toBe('a');
+    expect(loaded.api.getModel().getGroup('a')!.position.x).toBe(0);
+    expect(loaded.api.getModel().getGroup('b')!.position.x).toBeLessThan(-1000);
   });
 
   it('returns an INERT handle for a non-dashboard document', () => {
