@@ -169,38 +169,55 @@ export class Replica {
     // together.
     for (const op of fresh) this.note(op);
 
-    // Suppressed capture: applying these must not re-emit them as OUR edits, or two peers
-    // relay the same op back and forth forever.
-    this.capture.applyRemote(fresh, (op) => this.applyRemote(op));
-
-    // ONCE per batch, not once per op: reconcile is O(links), and a 10k-op catch-up that
-    // swept after every op would be quadratic. Safe because the invariant is a function of
-    // the batch's FINAL state — a link orphaned in the middle of a batch and re-parented by
-    // the end of it was never really orphaned.
+    // REMOTE OPS BYPASS THE READ-ONLY LOCK — and this is the whole reason a locked replica
+    // is a VIEWER of a live session rather than a document frozen at join. The lock refuses
+    // THIS user's document writes (drag, delete, paste); a remote op is not this user's
+    // intent, it is the document already meaning something new on a peer, mirrored here. So
+    // the entire apply window — the reducer, the integrity sweep it may trigger (evicting an
+    // orphaned link is a locked-guarded removeLink), and the port re-canonicalization —
+    // runs as a SYSTEM write, exactly the door auto-size and portal placement already use.
     //
-    // SILENTLY, and this is not hygiene — it is the difference between converging and not.
-    // With capture live, evicting an orphaned link emits a LOCAL `remove link` op. That op
-    // is broadcast, and on the peer that receives it the link is not quarantined but
-    // DESTROYED: its presence register now says "removed", permanently. Undo the node delete
-    // and the link comes back on the peer that quarantined it and stays dead on the peer
-    // that was told to remove it. Two documents, no error. Integrity is DERIVED — every peer
-    // computes it for itself — so putting any of it on the wire is not redundancy, it is a
-    // race against the very ops it was derived from.
-    this.capture.silently(() => this.integrity.reconcile());
+    // Scoped to THIS boundary only. runSystemWrite is a synchronous try/finally depth
+    // counter and everything inside is synchronous, so the window is exactly the apply and
+    // closes before this method returns — a subsequent LOCAL edit is refused as ever. The
+    // local-edit paths (onLocalOp, applyLocalInverse, undo/redo/transact) are deliberately
+    // OUTSIDE this wrap: they carry user intent and must keep hitting the lock. This and
+    // op-log.ts's replay() are the entire remote-apply allowlist — greppable, not ambient,
+    // exactly as models/readonly-lock.ts demands of its bypass.
+    this.diagram.runSystemWrite(() => {
+      // Suppressed capture: applying these must not re-emit them as OUR edits, or two peers
+      // relay the same op back and forth forever.
+      this.capture.applyRemote(fresh, (op) => this.applyRemote(op));
 
-    // Ports have per-port registers (wave14), so their ORDER inside the node's Map — which
-    // is serialize() order, i.e. part of the document — is no longer carried by any single
-    // op. Derive it, exactly as integrity derives entity order. Only nodes this batch
-    // touched; local edits never de-canonicalize (a local op has the newest stamp this
-    // peer has seen, so its append position IS its canonical position).
-    const portNodes = new Set<string>();
-    for (const op of fresh) {
-      if (op.target !== 'node') continue;
-      if (op.op === 'add' || (op.op === 'set' && op.path.startsWith('ports'))) {
-        portNodes.add(op.id);
+      // ONCE per batch, not once per op: reconcile is O(links), and a 10k-op catch-up that
+      // swept after every op would be quadratic. Safe because the invariant is a function of
+      // the batch's FINAL state — a link orphaned in the middle of a batch and re-parented by
+      // the end of it was never really orphaned.
+      //
+      // SILENTLY, and this is not hygiene — it is the difference between converging and not.
+      // With capture live, evicting an orphaned link emits a LOCAL `remove link` op. That op
+      // is broadcast, and on the peer that receives it the link is not quarantined but
+      // DESTROYED: its presence register now says "removed", permanently. Undo the node delete
+      // and the link comes back on the peer that quarantined it and stays dead on the peer
+      // that was told to remove it. Two documents, no error. Integrity is DERIVED — every peer
+      // computes it for itself — so putting any of it on the wire is not redundancy, it is a
+      // race against the very ops it was derived from.
+      this.capture.silently(() => this.integrity.reconcile());
+
+      // Ports have per-port registers (wave14), so their ORDER inside the node's Map — which
+      // is serialize() order, i.e. part of the document — is no longer carried by any single
+      // op. Derive it, exactly as integrity derives entity order. Only nodes this batch
+      // touched; local edits never de-canonicalize (a local op has the newest stamp this
+      // peer has seen, so its append position IS its canonical position).
+      const portNodes = new Set<string>();
+      for (const op of fresh) {
+        if (op.target !== 'node') continue;
+        if (op.op === 'add' || (op.op === 'set' && op.path.startsWith('ports'))) {
+          portNodes.add(op.id);
+        }
       }
-    }
-    if (portNodes.size > 0) this.canonicalizePortOrder(portNodes);
+      if (portNodes.size > 0) this.canonicalizePortOrder(portNodes);
+    });
 
     return fresh;
   }
