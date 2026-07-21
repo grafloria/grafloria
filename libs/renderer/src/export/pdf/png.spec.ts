@@ -295,6 +295,34 @@ describe('decodeDataUrlImage — PNG', () => {
       expect(warnings).toEqual([]); // the old refusal warning is gone
     });
 
+    it('MUTATION GUARD — every one of the SEVEN passes lands at its own offsets (8×8, unique values)', () => {
+      // The 4×4 case above leaves passes 2 and 3 EMPTY (both start past a 4-wide image),
+      // so a pass-2 ↔ pass-3 offset swap sails through it — this 8×8 greyscale populates
+      // all seven passes with 64 unique values, so ANY offset/stride slip reorders bytes.
+      const image = decode(
+        buildPng({
+          width: 8,
+          height: 8,
+          colorType: 0,
+          interlace: 1,
+          scanlines: [
+            0, 0,                                  // P1 (0,0)
+            0, 4,                                  // P2 (4,0)
+            0, 32, 36,                             // P3 (0,4) (4,4)
+            0, 2, 6, 0, 34, 38,                    // P4 rows y=0, y=4
+            0, 16, 18, 20, 22, 0, 48, 50, 52, 54,  // P5 rows y=2, y=6
+            0, 1, 3, 5, 7, 0, 17, 19, 21, 23,      // P6 rows y=0, y=2
+            0, 33, 35, 37, 39, 0, 49, 51, 53, 55,  // P6 rows y=4, y=6
+            0, 8, 9, 10, 11, 12, 13, 14, 15,       // P7 row y=1
+            0, 24, 25, 26, 27, 28, 29, 30, 31,     // P7 row y=3
+            0, 40, 41, 42, 43, 44, 45, 46, 47,     // P7 row y=5
+            0, 56, 57, 58, 59, 60, 61, 62, 63,     // P7 row y=7
+          ],
+        })
+      )!;
+      expect(Array.from(inflateSync(image.data))).toEqual([...Array(64).keys()]);
+    });
+
     it('interlaced RGBA still splits into colour + SMask, in raster order', () => {
       // 2×2: passes are P1 (0,0), P6 (1,0), P7 (0,1),(1,1).
       const image = decode(
