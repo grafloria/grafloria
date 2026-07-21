@@ -47,6 +47,7 @@ import { mimeTypeForFormat, resolveRasterBackend } from '../export/raster';
 import { DEFAULT_MAX_OUTPUT_SIZE } from '../export/bounds';
 import { bytesToDataUrl, dataUrlToBytes, embedModelInPng } from '../export/round-trip';
 import { filterTreeByIds } from '../export/scope';
+import { collectAssetUrls, inlineAssets } from '../export/assets';
 import { customNodeVNodes, filterCaptures } from '../export/custom-nodes';
 import { exportPdf, type PdfExportResult } from '../export/pdf/pdf-export';
 import { paginate, type Page, type PaginationOptions } from '../export/pagination';
@@ -1882,7 +1883,14 @@ export class SVGRenderer implements IRenderer {
     // zoom 1: the SVG stays vector, and `scale` multiplies the intrinsic
     // width/height instead of the viewBox — so a 2x PNG is 2x pixels of the
     // identical picture, not a differently-culled render.
-    const root = this.render(renderViewport, 1);
+    let root = this.render(renderViewport, 1);
+
+    // PRE-RESOLVED external images (a panel node's avatar/logo) become bytes in the
+    // file. A PURE substitution — `inlineAssets` maps URL → data: URI over the tree,
+    // no network, no DOM — so this path stays synchronous and deterministic. The async
+    // `export(…)` fills the map from its tiered fetch; a sync caller may pass bytes it
+    // already holds. See ExportOptions.resolvedAssets.
+    if (options.resolvedAssets?.size) root = inlineAssets(root, options.resolvedAssets);
 
     const result = exportSvg(root, {
       theme: this.theme,
@@ -1941,6 +1949,13 @@ export class SVGRenderer implements IRenderer {
     if (custom.nodes.length > 0) {
       tree = { ...tree, children: [...(tree.children ?? []), ...custom.nodes] };
     }
+
+    // PRE-RESOLVED external images become bytes BEFORE the PDF painter runs — a PDF
+    // cannot fetch a URL, so this is the last moment the substitution is possible.
+    // After the widget graft deliberately: the one pass covers the renderer's own tree
+    // (panel avatars/logos) AND any raw captures the caller handed in. Pure and sync —
+    // this path stays network-free; `await export('pdf')` is what fills the map.
+    if (options.resolvedAssets?.size) tree = inlineAssets(tree, options.resolvedAssets);
 
     const result = exportPdf(tree, {
       // The renderer's LIVE theme. Without it the PDF resolves the cascade against the
@@ -2022,6 +2037,30 @@ export class SVGRenderer implements IRenderer {
     });
 
     return { ...result, warnings: [...new Set([...layout.warnings, ...result.warnings])] };
+  }
+
+  /**
+   * Every EXTERNAL image URL the exported tree will reference — a panel node's
+   * avatar/logo/icon (`<image href="https://…">` painted by the renderer itself), or
+   * any registered shape that emits one. Widget (HTML-layer) captures are NOT in this
+   * tree; their URLs are collected from the captures by the instance layer.
+   *
+   * This is the LOOK-BEFORE-YOU-EXPORT half of the async image pass: `await export(…)`
+   * calls this first, fetches the URLs through the tiers, and hands the resolved map
+   * back down as {@link ExportOptions.resolvedAssets} for the pure sync substitution.
+   * The tree is enumerated from the SAME `render()` the export will serialize (VNode
+   * caching makes the second call cheap), so what is collected and what is substituted
+   * cannot drift. Synchronous and network-free.
+   */
+  collectExportImageUrls(options: ExportOptions = {}): string[] {
+    const padding = options.padding ?? 20;
+    const ids = options.scope === 'selection' ? this.selectedIds() : options.includeIds;
+    // scope 'viewport' without a rectangle throws in the export proper; enumeration is
+    // best-effort and simply falls back to the content bounds (a superset of the URLs).
+    const renderViewport = options.viewport ?? this.contentViewport(padding + CONTENT_RENDER_SLACK);
+    let tree = this.render(renderViewport, 1);
+    if (ids !== undefined) tree = filterTreeByIds(tree, ids);
+    return collectAssetUrls(tree);
   }
 
   /**

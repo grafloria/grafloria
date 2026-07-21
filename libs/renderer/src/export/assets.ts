@@ -151,7 +151,7 @@ export function collectAssetUrls(root: VNode): string[] {
  * reference is debuggable, and an element silently stripped of its href is not. The async
  * layer reports those as warnings.
  */
-export function inlineAssets(root: VNode, byUrl: Map<string, string>): VNode {
+export function inlineAssets(root: VNode, byUrl: ReadonlyMap<string, string>): VNode {
   const rewrite = (vnode: VNode): VNode => {
     if (!vnode || typeof vnode !== 'object') return vnode;
 

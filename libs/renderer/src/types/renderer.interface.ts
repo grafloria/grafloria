@@ -244,10 +244,59 @@ export interface ExportOptions {
    *
    * Also the determinism seam: inject a fetcher in tests and no live network is touched.
    *
+   * THE PROXY RECIPE, end to end — when the image's server does not allow CORS, your
+   * own server fetches it and hands the bytes back from YOUR origin. Server side
+   * (Node/Express, ~10 lines):
+   *
+   * ```ts
+   * // ⚠ SSRF: an unrestricted URL parameter makes this an OPEN PROXY into your
+   * // network (internal services, cloud metadata endpoints). ALWAYS allowlist.
+   * const ALLOWED_HOSTS = new Set(['cdn.example.com', 'avatars.example.com']);
+   * app.get('/asset-proxy', async (req, res) => {
+   *   const url = new URL(String(req.query.url));
+   *   if (!ALLOWED_HOSTS.has(url.hostname)) return res.status(403).end();
+   *   const upstream = await fetch(url);
+   *   if (!upstream.ok) return res.status(502).end();
+   *   res.set('Content-Type', upstream.headers.get('content-type') ?? 'image/png');
+   *   res.send(Buffer.from(await upstream.arrayBuffer()));
+   * });
+   * ```
+   *
+   * Client side, one line of wiring:
+   *
+   * ```ts
+   * await diagram.export('pdf', {
+   *   assetFetcher: async (url) => {
+   *     const res = await fetch(`/asset-proxy?url=${encodeURIComponent(url)}`);
+   *     if (!res.ok) throw new Error(`proxy HTTP ${res.status}`);
+   *     return {
+   *       data: new Uint8Array(await res.arrayBuffer()),
+   *       mimeType: res.headers.get('content-type') ?? 'image/png',
+   *     };
+   *   },
+   * });
+   * ```
+   *
    * Ignored by `exportSvgString()` / `exportPdf()` — synchronous by contract, they
-   * cannot fetch and say so in their warnings.
+   * cannot fetch and say so in their warnings. (For those, pre-resolve the bytes
+   * yourself and pass {@link resolvedAssets}.)
    */
   assetFetcher?: AssetFetcher;
+
+  /**
+   * PRE-RESOLVED external assets: URL → `data:` URI. Every `<image href>` in the export
+   * — the renderer's own tree (a panel node's image/icon) and widget captures alike —
+   * whose URL appears here is substituted with the supplied bytes, by a PURE, synchronous
+   * pass (`inlineAssets` in `export/assets.ts`). No network is touched.
+   *
+   * You rarely set this yourself: `await export(…)` fills it from its own tiered fetch.
+   * Set it when you already hold the bytes — a server-side export, a strict-CSP page, or
+   * the synchronous `exportSvgString()` / `exportPdf()`, which cannot fetch and honour
+   * this map as their only way to embed an external image.
+   *
+   * A URL present here is trusted and never re-fetched by the async export.
+   */
+  resolvedAssets?: ReadonlyMap<string, string>;
 
   /**
    * Bound on fetching ONE external image, per tier, in milliseconds. Default 5000 —

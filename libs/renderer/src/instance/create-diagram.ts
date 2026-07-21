@@ -1022,49 +1022,77 @@ export function createDiagram(
    * A widget's `<img src="https://…">` captures as `<image href="https://…">`, which an
    * SVG renders online and a PDF cannot draw at all. This library is client-side: the
    * export RUNS IN A BROWSER, and the browser can usually fetch that URL itself. So the
-   * awaited path fetches every external reference the captures hold and swaps it for the
-   * `data:` URI the PDF writer already embeds as an XObject (b2854b0a1) — three tiers,
-   * see `fetchAssetsTiered`: environment fetch (same-origin / CORS-allowed), then
+   * awaited path fetches every external reference and swaps it for the `data:` URI the
+   * PDF writer already embeds as an XObject (b2854b0a1) — three tiers, see
+   * `fetchAssetsTiered`: environment fetch (same-origin / CORS-allowed), then
    * `ExportOptions.assetFetcher` (the app's proxy), then the accurate warning.
+   *
+   * TWO KINDS OF IMAGE, ONE PASS. Widget captures hold their images as captured VNodes
+   * and are substituted here directly. But a PANEL-type diagram node (an ERD avatar, a
+   * logo — `metadata.panel.image/icon.href`) is painted by the RENDERER'S OWN tree,
+   * which is built inside the synchronous export — this layer never holds it. So the
+   * renderer enumerates that tree's URLs up front (`collectExportImageUrls` — the same
+   * `render()` the export serializes, so no drift), the fetch covers the UNION of both
+   * kinds (one fetch per URL, however many widgets and panels share it), and the
+   * resolved map rides down `ExportOptions.resolvedAssets` for the sync path's pure
+   * `inlineAssets` substitution. A URL the caller pre-resolved is trusted, never fetched.
    *
    * THE WARNING LEDGER IS RECONCILED, both ways. A capture whose external images were
    * all embedded has its capture-time "EXTERNAL URL" caveat STRIPPED — after the fetch
    * it asserts a problem that no longer exists. A URL every tier failed on keeps the
    * reference (broken-but-visible beats silently blanked, the `inlineAssets` rule) and
-   * gains a warning naming the URL, the reason, and the escape hatches.
+   * gains a warning naming the URL, the reason, and the escape hatches — a tree image's
+   * failure reaches `onWarnings` the same way a widget image's reaches the capture.
    *
-   * `exportSvgString()` / `exportPdf()` are untouched: synchronous by contract, they
-   * cannot fetch, and their capture-time warning says exactly that.
+   * `exportSvgString()` / `exportPdf()` stay synchronous and network-free: they fetch
+   * nothing, and honour only a `resolvedAssets` map the caller supplies.
    */
   const withInlinedImages = async (exportOptions: ExportOptions): Promise<ExportOptions> => {
-    const captures = exportOptions.customNodes;
-    if (!captures || captures.length === 0) return exportOptions;
+    const captures = exportOptions.customNodes ?? [];
 
-    // Collect across ALL captures first, so one URL referenced by five widgets is
-    // fetched once. Stable order (model order, then first appearance) for determinism.
+    // Collect the union — widget-capture URLs first, then the renderer's tree — each
+    // deduplicated in a STABLE order (model order, then first appearance) for
+    // determinism. One URL, one fetch, no matter which kinds reference it.
     const roots = new Map<CustomNodeCapture, VNode>();
     const urls: string[] = [];
     const seen = new Set<string>();
-    for (const capture of captures) {
-      if (!capture.content || capture.content.length === 0) continue;
-      const root: VNode = { type: 'g', props: {}, children: [...capture.content] };
-      const found = collectAssetUrls(root);
-      if (found.length === 0) continue;
-      roots.set(capture, root);
+    const add = (found: readonly string[]): void => {
       for (const url of found) {
         if (!seen.has(url)) {
           seen.add(url);
           urls.push(url);
         }
       }
+    };
+    for (const capture of captures) {
+      if (!capture.content || capture.content.length === 0) continue;
+      const root: VNode = { type: 'g', props: {}, children: [...capture.content] };
+      const found = collectAssetUrls(root);
+      if (found.length === 0) continue;
+      roots.set(capture, root);
+      add(found);
     }
+    const treeUrls = renderer.collectExportImageUrls(exportOptions);
+    add(treeUrls);
+
     if (urls.length === 0) return exportOptions; // nothing external — identical options out
 
-    const { byUrl, failures } = await fetchAssetsTiered(urls, {
-      fetcher: exportOptions.assetFetcher,
-      maxBytes: exportOptions.assetMaxBytes,
-      timeoutMs: exportOptions.assetTimeout,
-    });
+    // A URL the caller already resolved is bytes we hold — fetching it again would be
+    // both wasteful and a trust inversion (their bytes are the ones they want in the file).
+    const preResolved = exportOptions.resolvedAssets;
+    const toFetch = preResolved ? urls.filter((url) => !preResolved.has(url)) : urls;
+
+    const { byUrl, failures } =
+      toFetch.length > 0
+        ? await fetchAssetsTiered(toFetch, {
+            fetcher: exportOptions.assetFetcher,
+            maxBytes: exportOptions.assetMaxBytes,
+            timeoutMs: exportOptions.assetTimeout,
+          })
+        : { byUrl: new Map<string, string>(), failures: new Map<string, string>() };
+    if (preResolved) {
+      for (const [url, uri] of preResolved) byUrl.set(url, uri);
+    }
 
     const customNodes = captures.map((capture): CustomNodeCapture => {
       const root = roots.get(capture);
@@ -1093,7 +1121,30 @@ export function createDiagram(
       return { ...capture, content: inlined.children ?? [], warning };
     });
 
-    return { ...exportOptions, customNodes };
+    const out: ExportOptions = { ...exportOptions };
+    if (exportOptions.customNodes !== undefined) out.customNodes = customNodes;
+    // The resolved map rides DOWN the same options object: the sync export applies it
+    // to the renderer's tree with the pure `inlineAssets` — which is how a panel image
+    // becomes bytes without the sync path ever fetching.
+    if (byUrl.size > 0) out.resolvedAssets = byUrl;
+
+    // A TREE image's failure has no capture to carry its warning, so it goes to the
+    // export's own fidelity channel. Same honesty rule as the widget residue: name the
+    // URL, the reason, and (via the tier-3 text) both escape hatches.
+    const treeResidue = treeUrls
+      .filter((url) => !byUrl.has(url))
+      .map(
+        (url) =>
+          `diagram image "${url}" could not be embedded: ${failures.get(url) ?? 'unknown failure'}. ` +
+          'The reference is left in the file (an SVG still renders it online); it will be ' +
+          'MISSING from a PDF export.'
+      );
+    if (treeResidue.length > 0) {
+      const original = exportOptions.onWarnings;
+      out.onWarnings = (warnings) => original?.([...warnings, ...treeResidue]);
+    }
+
+    return out;
   };
 
   // -- the frame --------------------------------------------------------------
