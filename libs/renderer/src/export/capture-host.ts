@@ -197,6 +197,14 @@ export function captureCustomNodeHost(
       sawUncapturable: false,
       warnings: [],
       emittedDefs: new Set<string>(),
+      // jsdom does not implement getComputedStyle(el, '::before') — it LOGS a
+      // not-implemented error (it does not throw) and returns the element's own style,
+      // once per call. Probing it per element would print hundreds of identical lines
+      // into every jsdom-hosted test run for a fact known up front: jsdom announces
+      // itself in the UA. Real browsers are untouched.
+      pseudoUnsupported: /jsdom/i.test(
+        (win as { navigator?: { userAgent?: string } }).navigator?.userAgent ?? ''
+      ),
     };
 
     walk(el, ctx, ctx.out);
@@ -233,6 +241,13 @@ interface WalkContext {
   warnings: string[];
   /** Def ids already pushed this capture — identical gradients/filters share ONE def. */
   emittedDefs: Set<string>;
+  /**
+   * Set when `getComputedStyle(el, '::before')` THROWS (jsdom says "not implemented").
+   * One probe decides for the whole capture — without this, every element of every
+   * jsdom-hosted capture logs its own not-implemented error, hundreds of lines of
+   * noise about a fact we learned on the first call.
+   */
+  pseudoUnsupported?: boolean;
 }
 
 /** Client-space rect → host-local layout rect. */
@@ -1138,10 +1153,12 @@ function emitPseudo(
   sink: VNode[],
   precededByFlowContent: boolean
 ): boolean {
+  if (ctx.pseudoUnsupported) return false;
   let ps: Record<string, string> | undefined;
   try {
     ps = ctx.win.getComputedStyle(el, which);
   } catch {
+    ctx.pseudoUnsupported = true; // e.g. jsdom — learn it once, not once per element
     return false;
   }
   if (!ps) return false;
