@@ -631,6 +631,7 @@ const paint = await p.evaluate(async () => {
     pdfWarnings: pdfOut.warnings,
     pdfBytes: pdfOut.pdf.length,
     pdfHeader: String.fromCharCode(...pdfOut.pdf.slice(0, 5)),
+    pdfHasAxialShading: new TextDecoder('latin1').decode(pdfOut.pdf).includes('/ShadingType 2'),
   };
 });
 
@@ -681,10 +682,16 @@ check('and no CSS custom property leaked into the file', !psvg.includes('var(--'
 // The PDF is deliberately SMALL: all three widgets degrade (gradient → solid, shadow → a
 // flat box, image → omitted), so there is little to draw — but it is a valid file.
 check('PDF produced a real, well-formed file', paint.pdfHeader === '%PDF-' && paint.pdfBytes > 400, `${paint.pdfHeader} ${paint.pdfBytes} bytes`);
+// RECONCILED (2026-07-21): the PDF painter landed REAL axial shadings (b2854b0a1 —
+// linear gradients become /ShadingType 2 objects), so the old "gradient was flattened
+// to a solid stop" warning no longer fires for a userSpace gradient fill, and asserting
+// it would demand a lie. The check now asserts the STRONGER truth: the gradient is IN
+// the PDF as a real shading object, which is why no flatten warning is needed.
 check(
-  'PDF reports the gradient was flattened to a solid stop — not silently blanked',
-  paint.pdfWarnings.some((w) => /gradient/i.test(w) && /flatten|first stop/i.test(w)),
-  paint.pdfWarnings.find((w) => /gradient/i.test(w)) || 'no gradient warning'
+  'PDF carries the gradient as a REAL axial shading (/ShadingType 2) — nothing left to warn about',
+  paint.pdfHasAxialShading === true &&
+    !paint.pdfWarnings.some((w) => /gradient/i.test(w) && /flatten|first stop/i.test(w)),
+  paint.pdfHasAxialShading ? '/ShadingType 2 present' : 'no shading object in the PDF'
 );
 check(
   'PDF reports the image was omitted — accurately, not silently dropped',
@@ -733,6 +740,162 @@ check(
   'STANDALONE render: and blue on the right — the gradient truly renders, not just serializes',
   standalone.right.b > 150 && standalone.right.r < 100,
   JSON.stringify(standalone.right)
+);
+
+// ===========================================================================
+// PSEUDO-ELEMENTS AND CLIPPING.
+//
+// Two widgets no earlier capture could express:
+//   • a ::before pseudo-element — decorative content that exists only in a stylesheet.
+//     A pseudo has NO element to getBoundingClientRect(); its box is DERIVED from
+//     computed style, and its content goes through the same text emission as real text
+//     (the stylesheet says text-transform: uppercase over "beta flag" — the export must
+//     say "BETA FLAG", positioned at the card's padding inset, not merely "somewhere").
+//   • a rounded card with overflow:hidden and a child that bleeds 200% past it. The
+//     REAL tooth is the NEGATIVE, read from pixels: a corner pixel that IS painted red
+//     on the identical card without overflow:hidden must NOT be red on the clipped one.
+//     "The export contains a clipPath" would pass off a lifted inline <svg>'s clip; so
+//     the assertions scope to OUR generated clip's id and the group that wears it.
+// ===========================================================================
+console.log('\n--- pseudo-elements and clipping ---');
+
+const clipOut = await p.evaluate(async () => {
+  const { render } = await import('/shell/grafloria.js');
+
+  const host = document.createElement('div');
+  host.style.cssText =
+    'position:fixed;left:0;bottom:0;width:1000px;height:240px;overflow:hidden;z-index:-1;background:#fff';
+  document.body.appendChild(host);
+
+  // The pseudo-element lives in a stylesheet — there is no inline way to author one.
+  const styleEl = document.createElement('style');
+  styleEl.textContent =
+    '.wexp-pseudo::before{content:"beta flag";text-transform:uppercase;' +
+    'color:rgb(0, 140, 60);font-size:16px;font-weight:700;}';
+  document.head.appendChild(styleEl);
+
+  const node = (id, x) => ({
+    id,
+    position: { x, y: 0 },
+    size: { width: 280, height: 200 },
+    metadata: { useHTMLLayer: true },
+  });
+  const nodes = [node('clipped', 0), node('unclipped', 320), node('pseudo', 640)];
+
+  const renderCustomNode = (n, el) => {
+    if (n.id === 'pseudo') {
+      el.innerHTML =
+        '<div class="wexp-pseudo" style="width:100%;height:100%;padding:12px;box-sizing:border-box"></div>';
+    } else {
+      // The same card twice: border-radius 48, a child bleeding to 200% — the ONLY
+      // difference is overflow:hidden. Neither card has a background of its own, so
+      // the corner pixel belongs to the bleeding child or to nobody.
+      const overflow = n.id === 'clipped' ? 'overflow:hidden;' : '';
+      el.innerHTML =
+        `<div style="width:100%;height:100%;border-radius:48px;${overflow}">` +
+        '<div style="width:200%;height:200%;background:rgb(220, 0, 0)"></div></div>';
+    }
+  };
+
+  const instance = render({ nodes, edges: [] }, host, { renderCustomNode });
+  instance.renderNow();
+  const out = instance.exportSvgString();
+  instance.dispose();
+  host.remove();
+  styleEl.remove();
+  return { svg: out.svg, viewBox: out.viewBox, warnings: out.warnings };
+});
+
+const csvg = clipOut.svg;
+
+// -- the pseudo-element, positioned ------------------------------------------
+const pseudoText = csvg.match(/<text([^>]*)>BETA FLAG<\/text>/);
+check(
+  '::before content is in the file, UPPERCASED by the pseudo’s own text-transform',
+  !!pseudoText,
+  pseudoText ? 'found' : 'no <text>BETA FLAG</text> — the DOM never contains this string, only the stylesheet does'
+);
+if (pseudoText) {
+  const attr = (name) => Number(pseudoText[1].match(new RegExp(`${name}="([-\\d.]+)"`))?.[1]);
+  const px = attr('x');
+  const py = attr('y');
+  // Derived box: the card's 12px padding inset, baseline inside the first line box —
+  // a content string appearing "anywhere" is not proof of geometry, these numbers are.
+  check('and it is POSITIONED at the card’s padding inset', px >= 10 && px <= 16, `x=${px}`);
+  check('with a baseline inside the first line box', py >= 18 && py <= 36, `y=${py}`);
+  check('and the pseudo’s own colour', pseudoText[1].includes('fill="rgb(0, 140, 60)"'));
+  const idx = { pseudo: csvg.indexOf('data-node-id="pseudo"'), text: csvg.indexOf('>BETA FLAG<') };
+  check('inside the pseudo widget’s group, not some other node', idx.text > idx.pseudo && idx.pseudo > 0);
+}
+
+// -- the clip, scoped to OUR generated def -----------------------------------
+const clipDefMatch = csvg.match(/<clipPath id="(grafloria-def-[a-z0-9]+)"><rect[^>]*rx="48"[^>]*\/><\/clipPath>/);
+check('the rounded card emitted OUR <clipPath> (a rounded 48px rect, paintDefId-stable)', !!clipDefMatch, clipDefMatch ? clipDefMatch[1] : 'none');
+if (clipDefMatch) {
+  const cid = clipDefMatch[1];
+  const ref = csvg.indexOf(`clip-path="url(#${cid})"`);
+  check('and a <g> wears THAT clip’s id', ref >= 0);
+  const idxClipped = csvg.indexOf('data-node-id="clipped"');
+  const idxUnclipped = csvg.indexOf('data-node-id="unclipped"');
+  check(
+    'inside the CLIPPED widget’s group',
+    ref > idxClipped && ref < idxUnclipped,
+    `ref@${ref} clipped@${idxClipped} unclipped@${idxUnclipped}`
+  );
+  const unclippedSegment = csvg.slice(idxUnclipped, csvg.indexOf('data-node-id="pseudo"'));
+  check('while the overflow:visible twin carries NO clip', !unclippedSegment.includes('clip-path='));
+}
+check(
+  'clipping is reported as a PDF fidelity risk (the PDF painter cannot apply clips yet)',
+  clipOut.warnings.some((w) => /clip/i.test(w) && /PDF/.test(w)),
+  clipOut.warnings.find((w) => /clip/i.test(w)) || 'no clip warning'
+);
+
+// -- the pixel proof: rasterize STANDALONE and read the corner ---------------
+// Corner pixel at local (8,8): with a 48px radius the corner arc centre is (48,48), and
+// distance((8,8),(48,48)) ≈ 56.6 > 48 — OUTSIDE the rounded corner, INSIDE the card box.
+// The 200% child covers it. Clip honest ⇒ nothing paints there. Clip missing ⇒ red.
+const clipPixels = await p.evaluate(async ({ svg, viewBox }) => {
+  const url = 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(svg);
+  const img = new Image();
+  await new Promise((res, rej) => {
+    img.onload = res;
+    img.onerror = () => rej(new Error('standalone SVG failed to load'));
+    img.src = url;
+  });
+  const c = document.createElement('canvas');
+  c.width = img.naturalWidth || viewBox.width;
+  c.height = img.naturalHeight || viewBox.height;
+  const g = c.getContext('2d');
+  g.drawImage(img, 0, 0);
+  const at = (wx, wy) => {
+    const x = Math.round(((wx - viewBox.x) * c.width) / viewBox.width);
+    const y = Math.round(((wy - viewBox.y) * c.height) / viewBox.height);
+    const d = g.getImageData(x, y, 1, 1).data;
+    return { r: d[0], g: d[1], b: d[2], a: d[3] };
+  };
+  return {
+    clippedCorner: at(8, 8), // outside the rounded corner of the CLIPPED card
+    clippedCentre: at(140, 100), // well inside it
+    unclippedCorner: at(328, 8), // the SAME corner pixel on the overflow:visible twin
+  };
+}, { svg: csvg, viewBox: clipOut.viewBox });
+
+const isRed = (px) => px.a > 200 && px.r > 150 && px.g < 100 && px.b < 100;
+check(
+  'CONTROL: without the clip that exact corner pixel IS red — it would paint',
+  isRed(clipPixels.unclippedCorner),
+  JSON.stringify(clipPixels.unclippedCorner)
+);
+check(
+  'NEGATIVE: the clipped card’s corner pixel is NOT red — the clip actually clips',
+  !isRed(clipPixels.clippedCorner),
+  JSON.stringify(clipPixels.clippedCorner)
+);
+check(
+  'and the card’s interior still paints — the clip removes the bleed, not the widget',
+  isRed(clipPixels.clippedCentre),
+  JSON.stringify(clipPixels.clippedCentre)
 );
 
 check('no page errors', pageErrors.length === 0, pageErrors.join(' | '));
