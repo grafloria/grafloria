@@ -393,6 +393,127 @@ describe('fromDocument — dashboard', () => {
 });
 
 // ---------------------------------------------------------------------------
+// Dashboard — the reloaded HANDLE (parity with dashboard())
+//
+// A document-level load used to return only the low-level `boards` grid binders.
+// A reloaded dashboard must also get the SAME `DashboardHandle` dashboard()
+// returns — addWidget/showView/setSizing/toJSON and the rest — built by the one
+// shared builder, so it cannot drift from the authoring handle.
+//
+// WEAK-TEETH GUARDS: "a handle exists" proves nothing, so every op is DRIVEN and
+// the board is asserted to have actually changed. addWidget uses a UNIQUE id and
+// title and asserts THAT text painted on the reloaded host (not merely that some
+// widget is present). toJSON is round-tripped back through dashboard() and the
+// rebuilt board's cells/sizing are compared, and against a fresh dashboard()
+// doing the same ops.
+// ---------------------------------------------------------------------------
+
+describe('fromDocument — dashboard handle', () => {
+  it('reads the live cells of the reloaded board through widget()', () => {
+    const original = mount(DASH_SPEC());
+    const spec = fromDocument(save(original.api));
+    mount(spec);
+
+    expect(spec.handle.views).toEqual(['main']);
+    expect(spec.handle.activeView).toBe('main');
+    // The exact cells the ORIGINAL authored — read off the re-attached binder,
+    // not the authored literal (which the reload never sees).
+    expect(spec.handle.widget('k1')!.cell).toEqual({ x: 0, y: 0, w: 3, h: 1 });
+    expect(spec.handle.widget('t1')!.cell).toEqual({ x: 3, y: 0, w: 9, h: 2 });
+    expect(spec.handle.widget('nope')).toBeUndefined();
+  });
+
+  it('addWidget() on the reloaded handle mounts AND paints a brand-new widget', () => {
+    const original = mount(DASH_SPEC());
+    const spec = fromDocument(save(original.api));
+    const loaded = mount(spec);
+
+    // A UNIQUE id+title: "a widget appeared" cannot be satisfied by k1/t1 that
+    // were already there — only by the one this call created.
+    const w = spec.handle.addWidget({
+      id: 'reloaded-add',
+      kind: 'kpi',
+      title: 'Reloaded Add',
+      span: 3,
+      rows: 1,
+      data: { value: '77' },
+    });
+    expect(w).toBeDefined();
+    loaded.api.renderNow();
+
+    const model = loaded.api.getModel();
+    expect(model.getNode('reloaded-add')).toBeDefined();
+    expect([...(model.getGroup('main')!.members ?? [])]).toContain('reloaded-add');
+    // The load-bearing assertion: it actually PAINTED its own content on the
+    // reloaded board, so the widget is live, not a detached node.
+    const painted = paintedText(loaded.host)['reloaded-add'] ?? '';
+    expect(painted).toContain('Reloaded Add');
+    expect(painted).toContain('77');
+  });
+
+  it('setSizing changes the reloaded board and toJSON round-trips it back into dashboard()', () => {
+    const original = mount(DASH_SPEC());
+    const spec = fromDocument(save(original.api));
+    mount(spec);
+
+    expect(spec.handle.getSizing()).toBe('fit');
+    spec.handle.setSizing('grow');
+    expect(spec.handle.getSizing()).toBe('grow');
+
+    const saved = spec.handle.toJSON();
+    expect(saved.sizing).toBe('grow');
+    expect(saved.views.map((v) => v.id)).toEqual(['main']);
+    expect(saved.views[0].widgets.map((x) => x.id).sort()).toEqual(['k1', 't1']);
+    // Cells survive the reload → edit → save round-trip.
+    expect(saved.views[0].widgets.find((x) => x.id === 't1')).toMatchObject({
+      x: 3,
+      y: 0,
+      span: 9,
+      rows: 2,
+    });
+
+    // TRUE PARITY: the reloaded handle's toJSON IS dashboard() input, and the
+    // board it rebuilds matches a fresh dashboard() authored the same way.
+    const rebuilt = mount(dashboard(saved));
+    expect(rebuilt.spec.handle.getSizing()).toBe('grow');
+    expect(rebuilt.spec.handle.widget('t1')!.cell).toEqual({ x: 3, y: 0, w: 9, h: 2 });
+    expect(rebuilt.spec.handle.widget('k1')!.cell).toEqual({ x: 0, y: 0, w: 3, h: 1 });
+  });
+
+  it('showView parks the inactive board on a reloaded TABBED dashboard', () => {
+    const original = mount(
+      dashboard({
+        columns: 12,
+        views: [
+          { id: 'a', name: 'A', widgets: [{ id: 'wa', kind: 'kpi', span: 3, title: 'Alpha' }] },
+          { id: 'b', name: 'B', widgets: [{ id: 'wb', kind: 'kpi', span: 3, title: 'Beta' }] },
+        ],
+      })
+    );
+    const spec = fromDocument(save(original.api));
+    const loaded = mount(spec);
+
+    expect(spec.handle.views).toEqual(['a', 'b']);
+    expect(spec.handle.activeView).toBe('a');
+
+    spec.handle.showView('b');
+    expect(spec.handle.activeView).toBe('b');
+    expect(loaded.api.getModel().getGroup('b')!.position.x).toBe(0);
+    expect(loaded.api.getModel().getGroup('a')!.position.x).toBeLessThan(-1000);
+  });
+
+  it('returns an INERT handle for a non-dashboard document', () => {
+    // An ER doc has no board; the honest answer is an empty handle, not a
+    // half-wired one that pretends CUSTOMERS is a widget.
+    const original = mount(ER_SPEC());
+    const spec = fromDocument(save(original.api));
+    mount(spec);
+    expect(spec.handle.views).toEqual([]);
+    expect(spec.handle.widget('CUSTOMERS')).toBeUndefined();
+  });
+});
+
+// ---------------------------------------------------------------------------
 // The front door itself
 // ---------------------------------------------------------------------------
 

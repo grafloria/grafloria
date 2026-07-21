@@ -77,7 +77,14 @@ import { ensureDiagramKitStyles } from './diagram-kit/styles';
 import { bindDashboardGrid, type DashboardGridHandle } from './dashboard-kit/grid-binder';
 import { ensureDashboardKitStyles } from './dashboard-kit/styles';
 import { defaultWidgetRenderer, type WidgetRenderer } from './dashboard-kit/widgets';
-import type { DashboardWidgetSpec } from './dashboard-kit/dashboard';
+import {
+  createDashboardHandle,
+  type DashboardApiRef,
+  type DashboardHandle,
+  type DashboardHandleContext,
+  type DashboardViewSpec,
+  type DashboardWidgetSpec,
+} from './dashboard-kit/dashboard';
 
 /** Anything `DiagramSerializer.deserialize()` accepts, or the JSON string of it. */
 export type SavedDiagram =
@@ -114,8 +121,31 @@ export interface LoadedDiagramSpec {
   /**
    * Live grid binders for the boards `finalize()` re-attached, keyed by group
    * id. Empty for a document that is not a dashboard.
+   *
+   * This is the SAME Map instance the handle drives (`handle.binderOf` returns
+   * from it), so the two can never disagree — `boards` is now derived from the
+   * handle's own binders rather than a parallel copy.
    */
   readonly boards: Map<string, DashboardGridHandle>;
+  /**
+   * The dashboard toolbar handle over the reloaded board(s) — the SAME
+   * `DashboardHandle` `dashboard()` returns, built by the one shared builder so
+   * it cannot drift from the authoring surface: addWidget/showView/setSizing/
+   * setColumns/toJSON/exportIds and the widget handles, all live on the reload.
+   *
+   * INERT (empty `views`, every op a no-op) for a document that is not a
+   * dashboard — an ER/UML load carries no board, so an honest empty handle
+   * beats one that pretends a class card is a widget.
+   *
+   * Two carried limits, both because the datum is not in the document:
+   *  - `responsive` is a runtime seam, never serialised, so a reloaded board is
+   *    fixed at its saved column count until `setColumns`/`responsive` is
+   *    re-supplied; `toJSON()` therefore omits it.
+   *  - `renderWidget`/`onLayoutChange` are functions and cannot serialise —
+   *    pass `renderWidget` to `fromDocument({ renderWidget })` to reattach the
+   *    app's own painter, exactly as `dashboard({ renderWidget })` did.
+   */
+  readonly handle: DashboardHandle;
 }
 
 /** The board geometry `dashboard()` stamps on its view group so a reload can rebind. */
@@ -184,10 +214,79 @@ export function fromDocument(
 
   const paintWidget = options.renderWidget ?? defaultWidgetRenderer;
 
+  // -- reconstruct the dashboard handle's context from the loaded model -------
+  // Every board group carries `dashboardBoard` geometry; its widget members
+  // carry `widgetSpec`/title/span/rows — the canonical, lossless source for
+  // widgets (the load.ts principle that non-widget nodes go back as LIVE models
+  // is untouched; only widgets are rebuilt from metadata, exactly as the
+  // renderCustomNode painter already does). That is enough to build the SAME
+  // handle dashboard() does, through the SAME builder — no drifting twin.
+  const dashGroups = groups.filter((g) => g.getMetadata('dashboardBoard') !== undefined);
+  const specById = new Map<string, DashboardWidgetSpec>();
+  const viewOfWidget = new Map<string, string>();
+  const ctxViews: DashboardViewSpec[] = dashGroups.map((g) => {
+    const board = g.getMetadata('dashboardBoard') as PersistedBoard;
+    const widgets: DashboardWidgetSpec[] = [];
+    for (const memberId of g.members ?? []) {
+      const node = model.getNode(memberId);
+      const ws = node ? widgetSpecOf(node) : null;
+      if (!ws) continue; // non-widget members (e.g. a nested slab group) are not widgets
+      specById.set(ws.id, ws);
+      viewOfWidget.set(ws.id, g.id);
+      widgets.push(ws);
+    }
+    return { id: g.id, name: g.name, widgets, columns: board.columns, width: g.size?.width, height: g.size?.height };
+  });
+
+  const firstBoard = dashGroups[0]?.getMetadata('dashboardBoard') as PersistedBoard | undefined;
+  // The active view is the one the save left ON camera (x≈0); the others were
+  // parked far off-screen by showView. Falls back to the first board when
+  // positions are ambiguous (e.g. a single view, or positions not restored).
+  const activeGroup = dashGroups.find((g) => g.position.x > -1000) ?? dashGroups[0];
+
+  const ctx: DashboardHandleContext = {
+    views: ctxViews,
+    groups: new Map(dashGroups.map((g) => [g.id, g])),
+    // The SAME map the LoadedDiagramSpec exposes as `boards` — derived, not a copy.
+    binders: boards,
+    specById,
+    viewOfWidget,
+    hosts: new Map<string, HTMLElement>(),
+    renderWidget: paintWidget,
+    columns: firstBoard?.columns ?? 12,
+    gap: firstBoard?.gap ?? 8,
+    rowHeight: firstBoard?.baseRowHeight ?? 130,
+    boardW: dashGroups[0]?.size?.width ?? 1180,
+    boardH: dashGroups[0]?.size?.height ?? 660,
+    // responsive is NOT in the document (a runtime seam), so it is deliberately
+    // absent from the round-trip; width/height/columns/gap/sizing/float/rtl are.
+    optionsBase: firstBoard
+      ? {
+          columns: firstBoard.columns,
+          gap: firstBoard.gap,
+          rowHeight: firstBoard.baseRowHeight,
+          sizing: firstBoard.sizing,
+          float: firstBoard.float,
+          rtl: firstBoard.rtl,
+          width: dashGroups[0]?.size?.width,
+          height: dashGroups[0]?.size?.height,
+        }
+      : {},
+    active: activeGroup?.id ?? 'main',
+    apiRef: null,
+  };
+  const handle = createDashboardHandle(ctx);
+
   const renderCustomNode = (node: NodeModel, host: HTMLElement): void => {
     if (options.renderCustomNode) return options.renderCustomNode(node, host);
-    const widget = widgetSpecOf(node);
-    if (widget) return paintWidget(widget, host);
+    // Prefer the ctx spec object so a later handle.update()/repaint() mutates the
+    // SAME object this initial paint used; fall back to a fresh rebuild for a
+    // loose widget node that belongs to no reconstructed board.
+    const widget = specById.get(node.id) ?? widgetSpecOf(node);
+    if (widget) {
+      ctx.hosts.set(node.id, host); // captured so update()/repaint() can find the host
+      return paintWidget(widget, host);
+    }
     getNodeType(node.type)?.(node, host);
   };
 
@@ -228,6 +327,11 @@ export function fromDocument(
     }
 
     // -- dashboard boards -----------------------------------------------------
+    // Wire the render API into the handle's boxed cell, then bind each board.
+    // `bindDashboardGrid` sync()s on construction, so the handle's cellOf/toJSON
+    // work immediately — no camera move, no showView, so the paint is byte-for-
+    // byte what a boards-only load produced.
+    ctx.apiRef = a as unknown as DashboardApiRef;
     for (const group of groups) {
       const board = group.getMetadata('dashboardBoard') as PersistedBoard | undefined;
       if (!board) continue;
@@ -235,7 +339,7 @@ export function fromDocument(
     }
   };
 
-  return { nodes, edges: model.getLinks(), renderCustomNode, finalize, model, boards };
+  return { nodes, edges: model.getLinks(), renderCustomNode, finalize, model, boards, handle };
 }
 
 interface FinalizeApi {
