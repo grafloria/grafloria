@@ -31,16 +31,21 @@
 //     Those characters are replaced with '?' and reported in `warnings` — loudly, because
 //     a silently-mangled label is worse than a missing one.
 //   • GRADIENT FILLS are REAL: linear → /ShadingType 2, radial → /ShadingType 3, painted
-//     as `sh` clipped to the shape (see drawGradientFill for why not a pattern fill).
-//     What still flattens to the first stop: gradient STROKES (a shading through a stroke
-//     needs the stroke's outline as a clip, which we do not build) and gradient-filled
-//     TEXT (needs text-as-clip). Stop OPACITY renders opaque and warns — a shading SMask
-//     is a whole transparency-group machinery. Each of these warns.
-//   • IMAGES embed as real XObjects for data: PNGs (incl. RGBA — the alpha channel is
-//     split into an /SMask) and JPEGs (DCTDecode passthrough). Still refused, loudly:
-//     external URLs (fetching would make the export impure), interlaced PNGs, 16-bit
-//     PNGs, CMYK JPEGs. RGBA re-compression is stored-block (see flate.ts): raw-size
-//     streams, correct pixels.
+//     as `sh` clipped to the shape (see the shading section for why not a pattern fill).
+//     Stop OPACITY is real too: a luminosity soft mask (a DeviceGray transparency-group
+//     form painting the alpha ramp, wired through /ExtGState /SMask). Gradient-filled
+//     TEXT is real: text rendering mode 7 turns the glyphs into the clip and the shading
+//     paints through. What still flattens to the first stop, with a warning: gradient
+//     STROKES — a shading through a stroke needs either the stroke outline as a clip
+//     (PDF cannot build one) or a shading pattern whose /Matrix lives in page space,
+//     i.e. exactly the accumulated-CTM bookkeeping the sh approach exists to avoid.
+//   • IMAGES embed as real XObjects for data: PNGs — RGBA's alpha splits into an /SMask,
+//     interlaced (Adam7) PNGs are de-interlaced, 16-bit samples downsample to their high
+//     byte (< 0.4% error) — and JPEGs (DCTDecode passthrough), including CMYK: the Adobe
+//     APP14 convention stores inverted ink values, undone via /Decode. Still refused,
+//     loudly: external URLs (fetching would make the export impure) and sub-8-bit PNGs.
+//     RGBA re-compression is stored-block (see flate.ts): raw-size streams, correct
+//     pixels.
 //   • ELEMENT clip-paths (clip-path="url(#…)" with userSpaceOnUse shapes) clip for real
 //     via W n. clipPathUnits="objectBoundingBox" warns and paints unclipped.
 //   • BLURRED elements (the node drop shadow) are DROPPED. PDF has no gaussian blur, and
@@ -277,7 +282,14 @@ export function exportPdf(root: VNode, options: PdfExportOptions = {}): PdfExpor
   const defs = collectDefs(root);
   // The stylesheet, flattened — the same resolver the SVG exporter uses.
   const classStyles = createClassStyleResolver(options.theme ?? LIGHT_THEME, warnings);
-  const ctx: PaintContext = { defs, shadings: new ShadingRegistry(), images: new ImageRegistry(), warnings, classStyles };
+  const ctx: PaintContext = {
+    defs,
+    shadings: new ShadingRegistry(),
+    softMasks: new SoftMaskRegistry(),
+    images: new ImageRegistry(),
+    warnings,
+    classStyles,
+  };
 
   const writer = new PdfWriter();
   const catalogId = writer.allocate();
@@ -393,11 +405,14 @@ export function exportPdf(root: VNode, options: PdfExportOptions = {}): PdfExpor
 
     const imageId = writer.allocate();
     const decodeParms = image.decodeParms ? ` /DecodeParms ${image.decodeParms}` : '';
+    // /Decode is how an Adobe-inverted CMYK JPEG comes out the right colours — dropping
+    // it here renders every such image inverted (red → cyan) with no other symptom.
+    const decode = image.decode ? ` /Decode ${image.decode}` : '';
     writer.setStream(
       imageId,
       `/Type /XObject /Subtype /Image /Width ${image.width} /Height ${image.height} ` +
         `/ColorSpace ${image.colorSpace} /BitsPerComponent ${image.bitsPerComponent} ` +
-        `/Filter ${image.filter}${decodeParms}${smaskRef}`,
+        `/Filter ${image.filter}${decodeParms}${decode}${smaskRef}`,
       Array.from(image.data)
     );
     imageRefs.push(`/${name} ${imageId} 0 R`);
@@ -408,9 +423,27 @@ export function exportPdf(root: VNode, options: PdfExportOptions = {}): PdfExpor
     .map(([name, dict]) => `/${name} ${dict}`)
     .join(' ');
 
+  // Luminosity soft masks: a Form XObject painting the alpha ramp in DeviceGray, and an
+  // ExtGState pointing at it. The /Transparency group's /CS MUST be DeviceGray — an RGB
+  // group's luminosity is a different function of the ramp, and the mask silently warps.
+  const softMaskResources = ctx.softMasks
+    .entries()
+    .map(mask => {
+      const formId = writer.allocate();
+      writer.setStream(
+        formId,
+        `/Type /XObject /Subtype /Form /BBox [${mask.bbox}] ` +
+          `/Group << /S /Transparency /CS /DeviceGray >> ` +
+          `/Resources << /Shading << /G0 ${mask.shading} >> >>`,
+        latin1Bytes('/G0 sh')
+      );
+      return `/${mask.name} << /Type /ExtGState /SMask << /S /Luminosity /G ${formId} 0 R >> >>`;
+    })
+    .join(' ');
+
   const resources =
     `<< /Font << ${fontResources} >> ` +
-    `/ExtGState << ${alphaResources} >> ` +
+    `/ExtGState << ${alphaResources}${softMaskResources ? ` ${softMaskResources}` : ''} >> ` +
     (shadingResources ? `/Shading << ${shadingResources} >> ` : '') +
     (imageRefs.length ? `/XObject << ${imageRefs.join(' ')} >> ` : '') +
     `/ProcSet [/PDF /Text${imageRefs.length ? ' /ImageB /ImageC /ImageI' : ''}] >>`;
@@ -479,6 +512,7 @@ function toPdfDate(iso: string): string {
 interface PaintContext {
   defs: Defs;
   shadings: ShadingRegistry;
+  softMasks: SoftMaskRegistry;
   images: ImageRegistry;
   warnings: string[];
   classStyles: ClassStyleResolver;
@@ -651,6 +685,31 @@ class ShadingRegistry {
 
   get size(): number {
     return this.byDict.size;
+  }
+}
+
+/**
+ * Luminosity soft masks — one per distinct (gray alpha-ramp shading, bbox) pair.
+ *
+ * Each entry becomes a Form XObject painting the alpha ramp as a DEVICEGRAY shading
+ * (stop alpha 1 → white, 0 → black) inside a /Transparency group, plus an ExtGState
+ * whose /SMask /Luminosity points at it. `gs` that state and every later paint is
+ * multiplied by the mask — which is exactly SVG's per-stop opacity.
+ */
+class SoftMaskRegistry {
+  private readonly byKey = new Map<string, { name: string; shading: string; bbox: string }>();
+
+  nameFor(shading: string, bbox: string): string {
+    const key = `${bbox}|${shading}`;
+    const existing = this.byKey.get(key);
+    if (existing) return existing.name;
+    const name = `GSM${this.byKey.size + 1}`;
+    this.byKey.set(key, { name, shading, bbox });
+    return name;
+  }
+
+  entries(): Array<{ name: string; shading: string; bbox: string }> {
+    return [...this.byKey.values()];
   }
 }
 
@@ -837,21 +896,28 @@ function flattenedPaint(value: unknown, ctx: PaintContext, why: string): PdfRgb 
 // twice (once as the clip, once for the stroke) — cheap, and only when stroked.
 // ---------------------------------------------------------------------------
 
-/** Type 2 (exponential) function between two stops — PDF's native two-colour ramp. */
-function rampFunction(from: GradientStopDef, to: GradientStopDef): string {
-  const c = (s: GradientStopDef) => `[${num(s.color.r)} ${num(s.color.g)} ${num(s.color.b)}]`;
+/** A stop's function-space value: RGB for the colour ramp, [alpha] for the gray mask ramp. */
+type StopChannels = (stop: GradientStopDef) => number[];
+
+const COLOR_CHANNELS: StopChannels = s => [s.color.r, s.color.g, s.color.b];
+/** Stop alpha as DeviceGray luminosity: 1 → white (keep), 0 → black (mask away). */
+const ALPHA_CHANNELS: StopChannels = s => [s.alpha];
+
+/** Type 2 (exponential) function between two stops — PDF's native two-value ramp. */
+function rampFunction(from: GradientStopDef, to: GradientStopDef, channels: StopChannels): string {
+  const c = (s: GradientStopDef) => `[${channels(s).map(num).join(' ')}]`;
   return `<< /FunctionType 2 /Domain [0 1] /C0 ${c(from)} /C1 ${c(to)} /N 1 >>`;
 }
 
 /** 2 stops → one Type 2; more → a Type 3 stitching of Type 2 ramps at the stop offsets. */
-function shadingFunction(stops: GradientStopDef[]): string {
+function shadingFunction(stops: GradientStopDef[], channels: StopChannels): string {
   // Pad the domain: SVG pads before the first and after the last stop with their colours.
   const padded = [...stops];
   if (padded[0].offset > 0) padded.unshift({ ...padded[0], offset: 0 });
   if (padded[padded.length - 1].offset < 1) padded.push({ ...padded[padded.length - 1], offset: 1 });
   if (padded.length === 1) padded.push({ ...padded[0], offset: 1 });
 
-  if (padded.length === 2) return rampFunction(padded[0], padded[1]);
+  if (padded.length === 2) return rampFunction(padded[0], padded[1], channels);
 
   // /Bounds must ascend strictly inside (0,1) — two stops at one offset (a hard colour
   // break) become an epsilon-wide ramp, which is what it looks like at any zoom.
@@ -864,7 +930,7 @@ function shadingFunction(stops: GradientStopDef[]): string {
   }
 
   const functions: string[] = [];
-  for (let i = 0; i < padded.length - 1; i++) functions.push(rampFunction(padded[i], padded[i + 1]));
+  for (let i = 0; i < padded.length - 1; i++) functions.push(rampFunction(padded[i], padded[i + 1], channels));
 
   return (
     `<< /FunctionType 3 /Domain [0 1] /Functions [${functions.join(' ')}] ` +
@@ -872,12 +938,19 @@ function shadingFunction(stops: GradientStopDef[]): string {
   );
 }
 
+/** What one element needs to paint a gradient: the colour shading, and (for translucent
+ * stops) the DeviceGray alpha-ramp shading + the bbox its mask form must cover. */
+interface ElementShading {
+  color: string;
+  mask: { shading: string; bbox: string } | null;
+}
+
 /**
- * The shading dict for a gradient as used by ONE element (objectBoundingBox coords
+ * The shading dicts for a gradient as used by ONE element (objectBoundingBox coords
  * depend on the element's box), or null when the box cannot be determined.
  */
-function shadingDictFor(gradient: GradientDef, vnode: VNode, ctx: PaintContext): string | null {
-  let coords: string;
+function shadingDictFor(gradient: GradientDef, vnode: VNode, ctx: PaintContext): ElementShading | null {
+  let geometry: string;
 
   if (gradient.kind === 'linear') {
     let { x1, y1, x2, y2 } = gradient.coords as { x1: number; y1: number; x2: number; y2: number };
@@ -889,7 +962,7 @@ function shadingDictFor(gradient: GradientDef, vnode: VNode, ctx: PaintContext):
       x2 = box.x + x2 * box.width;
       y2 = box.y + y2 * box.height;
     }
-    coords = `/ShadingType 2 /ColorSpace /DeviceRGB /Coords [${num(x1)} ${num(y1)} ${num(x2)} ${num(y2)}]`;
+    geometry = `/ShadingType 2 /ColorSpace {CS} /Coords [${num(x1)} ${num(y1)} ${num(x2)} ${num(y2)}]`;
   } else {
     let { cx, cy, r } = gradient.coords as { cx: number; cy: number; r: number };
     if (gradient.objectBoundingBox) {
@@ -903,18 +976,36 @@ function shadingDictFor(gradient: GradientDef, vnode: VNode, ctx: PaintContext):
     }
     // PDF radial coords are [x0 y0 r0 x1 y1 r1]: inner circle (SVG's focal, radius 0) to
     // the outer circle. The capture emits no focal point, so it sits at the centre.
-    coords = `/ShadingType 3 /ColorSpace /DeviceRGB /Coords [${num(cx)} ${num(cy)} 0 ${num(cx)} ${num(cy)} ${num(r)}]`;
-  }
-
-  if (gradient.stops.some(stop => stop.alpha < 1)) {
-    ctx.warnings.push(
-      'a gradient stop with opacity < 1 is painted OPAQUE — a translucent shading needs an ' +
-        'ExtGState soft mask (a transparency group per gradient), which this exporter does not build'
-    );
+    geometry = `/ShadingType 3 /ColorSpace {CS} /Coords [${num(cx)} ${num(cy)} 0 ${num(cx)} ${num(cy)} ${num(r)}]`;
   }
 
   // /Extend [true true] = SVG's default spreadMethod="pad": both ends run on.
-  return `<< ${coords} /Function ${shadingFunction(gradient.stops)} /Extend [true true] >>`;
+  const dict = (cs: string, channels: StopChannels) =>
+    `<< ${geometry.replace('{CS}', cs)} /Function ${shadingFunction(gradient.stops, channels)} /Extend [true true] >>`;
+
+  const color = dict('/DeviceRGB', COLOR_CHANNELS);
+
+  // Translucent stops → a luminosity soft mask painting the SAME geometry as a gray
+  // alpha ramp. The mask form's /BBox must cover everything the colour shading can
+  // reach (the element, since the sh is clipped to it) — outside the BBox the mask's
+  // BLACK backdrop rules, i.e. alpha 0, so an under-sized box eats the element's edge.
+  if (gradient.stops.some(stop => stop.alpha < 1)) {
+    const box = vnodeBounds(vnode);
+    if (!box) {
+      ctx.warnings.push(
+        'a gradient with stop opacity is painted OPAQUE — its soft-mask form needs an element ' +
+          'bounding box that could not be determined'
+      );
+      return { color, mask: null };
+    }
+    const pad = 8; // anti-aliasing head-room; the shape clip bounds the real paint anyway
+    const bbox =
+      `${num(box.x - pad)} ${num(box.y - pad)} ` +
+      `${num(box.x + box.width + pad)} ${num(box.y + box.height + pad)}`;
+    return { color, mask: { shading: dict('/DeviceGray', ALPHA_CHANNELS), bbox } };
+  }
+
+  return { color, mask: null };
 }
 
 function drawElement(
@@ -940,11 +1031,13 @@ function drawElement(
   const fillId = urlRefId(style['fill']);
   const gradient = fillId ? ctx.defs.gradients.get(fillId) : undefined;
   let shadingName: string | null = null;
+  let softMaskName: string | null = null;
   let fill: PdfRgb | null = null;
   if (gradient) {
-    const dict = shadingDictFor(gradient, vnode, ctx);
-    if (dict) {
-      shadingName = ctx.shadings.nameFor(dict);
+    const shading = shadingDictFor(gradient, vnode, ctx);
+    if (shading) {
+      shadingName = ctx.shadings.nameFor(shading.color);
+      if (shading.mask) softMaskName = ctx.softMasks.nameFor(shading.mask.shading, shading.mask.bbox);
     } else {
       ctx.warnings.push(
         'a gradient fill was flattened to its first stop — its objectBoundingBox coords need an ' +
@@ -977,7 +1070,11 @@ function drawElement(
 
   if (shadingName) {
     // Clip to the shape, paint the shading, pop. The clip is why W n precedes sh.
+    // The soft-mask gs (stop opacity) comes FIRST: the mask form's coordinate space is
+    // fixed at gs time, and it must be the same current user space the sh paints in.
+    // The matching Q resets the SMask — nothing after this block stays masked.
     stream.save();
+    if (softMaskName) stream.push(`/${softMaskName} gs`);
     if (alpha < 1) stream.setAlpha(Math.max(0, alpha));
     for (const op of ops) stream.push(op);
     stream.push('W n');
@@ -1131,14 +1228,7 @@ function drawText(
   if (fontSize <= 0) return;
 
   const font = pickBaseFont(style['font-family'], style['font-weight'], style['font-style']);
-
-  const fill =
-    flattenedPaint(
-      style['fill'] ?? style['color'],
-      ctx,
-      'a gradient fill on text was flattened to its first stop — shading-filled text needs ' +
-        'text-as-clipping-path, which this exporter does not build'
-    ) ?? { r: 0, g: 0, b: 0 };
+  const fillValue = style['fill'] ?? style['color'];
   const anchor = String(style['text-anchor'] ?? 'start');
 
   const x = len(style['x']);
@@ -1147,12 +1237,14 @@ function drawText(
   const lines = content.split('\n');
   const opacity = nn(style['opacity'], 1) * nn(style['fill-opacity'], 1);
 
-  stream.save();
-  if (opacity < 1) stream.setAlpha(Math.max(0, opacity));
-  stream.setFill(fill);
-  stream.setFont(font, fontSize);
+  // A gradient-filled text gets the REAL gradient: text rendering mode 7 adds the glyph
+  // outlines to the CLIP path at ET, and the shading is then painted through them —
+  // the same clipped-sh technique shapes use, with glyphs for geometry.
+  const gradientId = urlRefId(fillValue);
+  const gradient = gradientId ? ctx.defs.gradients.get(gradientId) : undefined;
+  const shading = gradient ? shadingDictFor(gradient, vnode, ctx) : null;
 
-  lines.forEach((line, index) => {
+  const emitLine = (line: string, index: number): void => {
     const encoded = encodeWinAnsi(line);
     if (encoded.unsupported.length > 0) {
       ctx.warnings.push(
@@ -1166,10 +1258,54 @@ function drawText(
     const left = anchor === 'middle' ? x - width / 2 : anchor === 'end' ? x - width : x;
     const lineY = y + index * fontSize;
 
-    stream.push('BT');
     // Un-flip: the page CTM has d = -scale, so without this the glyphs render upside down.
     stream.push(`1 0 0 -1 ${num(left)} ${num(lineY)} Tm`);
     stream.push(`${pdfString(encoded.bytes)} Tj`);
+  };
+
+  if (shading) {
+    const shadingName = ctx.shadings.nameFor(shading.color);
+    const softMaskName = shading.mask
+      ? ctx.softMasks.nameFor(shading.mask.shading, shading.mask.bbox)
+      : null;
+
+    stream.save();
+    // Mask gs first — its coordinate space is fixed at gs time (see drawElement).
+    if (softMaskName) stream.push(`/${softMaskName} gs`);
+    if (opacity < 1) stream.setAlpha(Math.max(0, opacity));
+    stream.setFont(font, fontSize);
+
+    // ONE BT/ET for every line: each ET intersects the block's accumulated outlines with
+    // the current clip, so per-line blocks would intersect line 1's clip with line 2's —
+    // empty — and the gradient would paint nothing.
+    stream.push('BT');
+    stream.push('7 Tr'); // mode 7: add to clip, paint nothing
+    lines.forEach(emitLine);
+    stream.push('ET');
+    stream.push(`/${shadingName} sh`);
+    // Q restores both the clip and text mode 0 for whatever paints next.
+    stream.restore();
+    return;
+  }
+
+  // Reached with a gradient only when shadingDictFor failed (no bounding box for its
+  // objectBoundingBox coords) — the honest degrade is first stop, said out loud.
+  const fill =
+    flattenedPaint(
+      fillValue,
+      ctx,
+      'a gradient fill on text was flattened to its first stop — its objectBoundingBox coords ' +
+        'need an element bounding box that could not be determined'
+    ) ?? { r: 0, g: 0, b: 0 };
+
+  stream.save();
+  if (opacity < 1) stream.setAlpha(Math.max(0, opacity));
+  stream.setFill(fill);
+  stream.setFont(font, fontSize);
+
+  lines.forEach((line, index) => {
+    stream.push('BT');
+    emitLine(line, index);
     stream.push('ET');
   });
 

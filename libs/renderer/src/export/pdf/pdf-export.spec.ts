@@ -398,17 +398,6 @@ describe('exportPdf — the document', () => {
       expect(contentStreams(pdf)).toContain('1 0 0 RG'); // the red first stop, as a stroke
     });
 
-    it('flattens a gradient fill ON TEXT to its first stop, and says so', () => {
-      const { pdf, warnings } = exportPdf(
-        tree([
-          defs([linGrad('grad', { x1: 0, y1: 0, x2: 10, y2: 0 })]),
-          el('text', { x: 0, y: 0, fontSize: 12, fill: 'url(#grad)', textContent: 'Hi' }),
-        ])
-      );
-      expect(warnings.join(' ')).toContain('first stop');
-      expect(contentStreams(pdf)).toContain('1 0 0 rg');
-    });
-
     it('omits foreignObject and says why', () => {
       const { warnings } = exportPdf(
         tree([{ type: 'foreignObject', props: { x: 0, y: 0, width: 10, height: 10 }, children: [] } as VNode])
@@ -560,34 +549,102 @@ describe('gradient fills — REAL PDF shadings, not first-stop flattening', () =
     expect(isAscending(orderedIndexOf(content, '/Sh1 sh', 'Q', '0 0 0 RG', 'S'))).toBe(true);
   });
 
-  it('stop opacity is a DOCUMENTED limit: the shading paints opaque, and warns', () => {
-    const translucent = [
-      el('stop', { offset: 0, 'stop-color': '#ff0000', 'stop-opacity': 0.5 }),
-      el('stop', { offset: 1, 'stop-color': '#0000ff' }),
-    ];
-    const { pdf, warnings } = exportPdf(
+  describe('stop opacity — a REAL luminosity soft mask, verified against poppler pixels in the e2e gate', () => {
+    const translucentRect = (stops: VNode[]) =>
       tree([
-        defs([linGrad('grafloria-def-g1', { x1: 0, y1: 0, x2: 100, y2: 0 }, translucent)]),
+        defs([linGrad('grafloria-def-g1', { x1: 0, y1: 0, x2: 100, y2: 0 }, stops)]),
         el('rect', { x: 0, y: 0, width: 100, height: 50, fill: 'url(#grafloria-def-g1)' }),
-      ])
-    );
-    expect(text(pdf)).toContain('/ShadingType 2'); // still renders — opaquely
-    expect(warnings.join(' ')).toMatch(/stop.*opacit|opacit.*stop/i);
-  });
+      ]);
+    const fadeOut = () => [
+      el('stop', { offset: 0, 'stop-color': '#0000ff', 'stop-opacity': 1 }),
+      el('stop', { offset: 1, 'stop-color': '#0000ff', 'stop-opacity': 0 }),
+    ];
 
-  it('rgba() stop colours: the colour is honoured, the alpha is the same documented limit', () => {
-    const rgbaStops = [
-      el('stop', { offset: 0, 'stop-color': 'rgba(255, 0, 0, 0.5)' }),
-      el('stop', { offset: 1, 'stop-color': '#0000ff' }),
-    ];
-    const { pdf, warnings } = exportPdf(
-      tree([
-        defs([linGrad('grafloria-def-g1', { x1: 0, y1: 0, x2: 100, y2: 0 }, rgbaStops)]),
-        el('rect', { x: 0, y: 0, width: 100, height: 50, fill: 'url(#grafloria-def-g1)' }),
-      ])
-    );
-    expect(text(pdf)).toContain('/C0 [1 0 0]');
-    expect(warnings.join(' ')).toMatch(/stop.*opacit|opacit.*stop/i);
+    it('wires an ExtGState /SMask /Luminosity at a Form XObject with a DEVICEGRAY transparency group', () => {
+      const { pdf, warnings } = exportPdf(translucentRect(fadeOut()));
+      const body = text(pdf);
+
+      const gRef = /\/SMask << \/S \/Luminosity \/G (\d+) 0 R >>/.exec(body);
+      expect(gRef).not.toBeNull();
+      const form = pdfObject(pdf, Number(gRef![1]));
+      expect(form).toContain('/Subtype /Form');
+      // DeviceGray is load-bearing: an RGB group's luminosity is a different ramp — the
+      // mask goes wrong for any stop whose colour is not achromatic.
+      expect(form).toContain('/Group << /S /Transparency /CS /DeviceGray >>');
+      // The form PAINTS the mask: its own content is an sh of the gray shading.
+      expect(/stream\n([\s\S]*?)\nendstream/.exec(form)![1]).toContain('sh');
+      // No more "paints OPAQUE" warning.
+      expect(warnings.join(' ')).not.toMatch(/OPAQUE/);
+      expect(xrefIsValid(pdf)).toBe(true);
+    });
+
+    it('the mask ramp IS the alpha ramp, over the SAME geometry as the colour shading', () => {
+      const { pdf } = exportPdf(translucentRect(fadeOut()));
+      const gRef = /\/SMask << \/S \/Luminosity \/G (\d+) 0 R >>/.exec(text(pdf))!;
+      const form = pdfObject(pdf, Number(gRef[1]));
+      expect(form).toContain('/ColorSpace /DeviceGray');
+      // alpha 1 → white, alpha 0 → black.
+      expect(form).toContain('/C0 [1] /C1 [0]');
+      // Same axial geometry as the colour shading — a mask painted elsewhere masks nothing.
+      expect(form).toContain('/Coords [0 0 100 0]');
+      expect(form).toContain('/Extend [true true]');
+    });
+
+    it('the mask gs is INVOKED before the sh, inside the q/Q (Q is the reset — nothing later stays masked)', () => {
+      const content = contentStreams(exportPdf(translucentRect(fadeOut())).pdf);
+      expect(isAscending(orderedIndexOf(content, 'q', '/GSM1 gs', 'W n', '/Sh1 sh', 'Q'))).toBe(true);
+    });
+
+    it('an OPAQUE gradient builds NO mask machinery at all', () => {
+      const { pdf } = exportPdf(gradRect());
+      expect(text(pdf)).not.toContain('/Luminosity');
+      expect(text(pdf)).not.toContain('/Subtype /Form');
+    });
+
+    it('multi-stop alpha → the same Type 3 stitching, in gray', () => {
+      const { pdf } = exportPdf(
+        translucentRect([
+          el('stop', { offset: 0, 'stop-color': '#ff0000', 'stop-opacity': 1 }),
+          el('stop', { offset: 0.5, 'stop-color': '#00ff00', 'stop-opacity': 0.5 }),
+          el('stop', { offset: 1, 'stop-color': '#0000ff', 'stop-opacity': 0 }),
+        ])
+      );
+      const gRef = /\/SMask << \/S \/Luminosity \/G (\d+) 0 R >>/.exec(text(pdf))!;
+      const form = pdfObject(pdf, Number(gRef[1]));
+      expect(form).toContain('/FunctionType 3');
+      expect(form).toContain('/C0 [1] /C1 [0.5]');
+      expect(form).toContain('/C0 [0.5] /C1 [0]');
+      expect(form).toContain('/Bounds [0.5]');
+    });
+
+    it('rgba() stop colours: the colour feeds the colour ramp, the alpha feeds the MASK ramp', () => {
+      const { pdf, warnings } = exportPdf(
+        translucentRect([
+          el('stop', { offset: 0, 'stop-color': 'rgba(255, 0, 0, 0.5)' }),
+          el('stop', { offset: 1, 'stop-color': '#0000ff' }),
+        ])
+      );
+      expect(text(pdf)).toContain('/C0 [1 0 0]');
+      const gRef = /\/SMask << \/S \/Luminosity \/G (\d+) 0 R >>/.exec(text(pdf))!;
+      expect(pdfObject(pdf, Number(gRef[1]))).toContain('/C0 [0.5] /C1 [1]');
+      expect(warnings.join(' ')).not.toMatch(/opacit/i);
+    });
+
+    it('stop-opacity COMPOUNDS with rgba alpha (0.5 × 0.5 = 0.25)', () => {
+      const { pdf } = exportPdf(
+        translucentRect([
+          el('stop', { offset: 0, 'stop-color': 'rgba(255, 0, 0, 0.5)', 'stop-opacity': 0.5 }),
+          el('stop', { offset: 1, 'stop-color': '#0000ff' }),
+        ])
+      );
+      const gRef = /\/SMask << \/S \/Luminosity \/G (\d+) 0 R >>/.exec(text(pdf))!;
+      expect(pdfObject(pdf, Number(gRef[1]))).toContain('/C0 [0.25] /C1 [1]');
+    });
+
+    it('is deterministic with a masked gradient in the tree', () => {
+      const build = () => exportPdf(translucentRect(fadeOut())).pdf;
+      expect(Array.from(build())).toEqual(Array.from(build()));
+    });
   });
 
   it('a PATTERN fill is flattened to its background colour — and warns (it used to vanish silently)', () => {
@@ -616,6 +673,77 @@ describe('gradient fills — REAL PDF shadings, not first-stop flattening', () =
     );
     expect(contentStreams(pdf).match(/\/Sh1 sh/g)).toHaveLength(2);
     expect(text(pdf).match(/\/ShadingType 2/g)).toHaveLength(1);
+  });
+});
+
+describe('gradient-filled TEXT — glyphs become the clip (7 Tr), the shading paints through', () => {
+  const gradText = (content = 'Hi') =>
+    tree([
+      defs([linGrad('grafloria-def-g1', { x1: 0, y1: 0, x2: 100, y2: 0 })]),
+      el('text', { x: 0, y: 12, fontSize: 12, fill: 'url(#grafloria-def-g1)', textContent: content }),
+    ]);
+
+  it('shows the text in clip mode, then sh — all inside one q/Q', () => {
+    const { pdf, warnings } = exportPdf(gradText());
+    const content = contentStreams(pdf);
+    // BT → 7 Tr → Tj → ET (the glyph outlines join the clip at ET) → sh → Q.
+    expect(isAscending(orderedIndexOf(content, 'q', 'BT', '7 Tr', '(Hi) Tj', 'ET', '/Sh1 sh', 'Q'))).toBe(true);
+    // The gradient RENDERS — no first-stop flattening, no warning.
+    expect(warnings.join(' ')).not.toContain('first stop');
+    expect(xrefIsValid(pdf)).toBe(true);
+  });
+
+  it('multi-line text uses ONE BT/ET — per-line blocks would INTERSECT the clips to nothing', () => {
+    const content = contentStreams(exportPdf(gradText('a\nb')).pdf);
+    expect((content.match(/\bBT\b/g) ?? []).length).toBe(1);
+    expect((content.match(/\bET\b/g) ?? []).length).toBe(1);
+    expect(isAscending(orderedIndexOf(content, 'BT', '(a) Tj', '(b) Tj', 'ET', '/Sh1 sh'))).toBe(true);
+  });
+
+  it('the clip mode does NOT leak: a later solid text still paints filled', () => {
+    const { pdf } = exportPdf(
+      tree([
+        defs([linGrad('grafloria-def-g1', { x1: 0, y1: 0, x2: 100, y2: 0 })]),
+        el('text', { x: 0, y: 12, fontSize: 12, fill: 'url(#grafloria-def-g1)', textContent: 'Grad' }),
+        el('text', { x: 0, y: 40, fontSize: 12, fill: '#00ff00', textContent: 'Solid' }),
+      ])
+    );
+    const content = contentStreams(pdf);
+    // The gradient block closes (Q restores text mode 0) before the solid text's fill+Tj.
+    expect(isAscending(orderedIndexOf(content, '7 Tr', '(Grad) Tj', '/Sh1 sh', 'Q', '0 1 0 rg', '(Solid) Tj'))).toBe(true);
+    // And the solid block never sets mode 7.
+    expect(content.indexOf('7 Tr')).toBe(content.lastIndexOf('7 Tr'));
+  });
+
+  it('a TRANSLUCENT gradient on text rides the same luminosity mask', () => {
+    const { pdf } = exportPdf(
+      tree([
+        defs([
+          linGrad('grafloria-def-g1', { x1: 0, y1: 0, x2: 100, y2: 0 }, [
+            el('stop', { offset: 0, 'stop-color': '#0000ff', 'stop-opacity': 0.5 }),
+            el('stop', { offset: 1, 'stop-color': '#0000ff' }),
+          ]),
+        ]),
+        el('text', { x: 0, y: 12, fontSize: 12, fill: 'url(#grafloria-def-g1)', textContent: 'Hi' }),
+      ])
+    );
+    const content = contentStreams(pdf);
+    expect(isAscending(orderedIndexOf(content, '/GSM1 gs', 'BT', '7 Tr', 'ET', '/Sh1 sh', 'Q'))).toBe(true);
+    expect(text(pdf)).toContain('/Luminosity');
+  });
+
+  it('gradient STROKES on shapes remain first-stop + warning — the honest, documented choice', () => {
+    // A shading through a stroke needs either the stroke outline as a clip (PDF cannot
+    // build one) or a shading PATTERN, whose /Matrix lives in page space — the exact CTM
+    // bookkeeping drawGradientFill was designed to avoid. Flatten + warn stays.
+    const { pdf, warnings } = exportPdf(
+      tree([
+        defs([linGrad('grafloria-def-g1', { x1: 0, y1: 0, x2: 10, y2: 0 })]),
+        el('rect', { x: 0, y: 0, width: 10, height: 10, stroke: 'url(#grafloria-def-g1)', strokeWidth: 2 }),
+      ])
+    );
+    expect(warnings.join(' ')).toContain('first stop');
+    expect(contentStreams(pdf)).toContain('1 0 0 RG');
   });
 });
 
@@ -681,6 +809,30 @@ describe('images — PDF image XObjects, painted with Do', () => {
     );
     expect(contentStreams(pdf).match(/\/Im1 Do/g)).toHaveLength(2);
     expect(text(pdf).match(/\/Subtype \/Image/g)).toHaveLength(1);
+  });
+
+  it('a CMYK JPEG (Adobe APP14) embeds as /DeviceCMYK with the /Decode inversion IN THE IMAGE DICT', () => {
+    // The decoder computing a decode array that the writer never serialises would render
+    // every Adobe CMYK image colour-inverted (red → cyan) — the dict entry is the fix.
+    const head = [0xff, 0xd8, 0xff, 0xee, 0x00, 0x0e];
+    for (const c of 'Adobe') head.push(c.charCodeAt(0));
+    head.push(0x00, 0x64, 0x00, 0x00, 0x00, 0x00, 0x00); // version, flags, transform 0
+    const cmyk = Uint8Array.from([
+      ...head,
+      0xff, 0xc0, 0x00, 20, 8, 0, 4, 0, 4, 4, 1, 0x11, 0, 2, 0x11, 0, 3, 0x11, 0, 4, 0x11, 0,
+      0xff, 0xd9,
+    ]);
+    let bin = '';
+    for (const b of cmyk) bin += String.fromCharCode(b);
+    const { pdf, warnings } = exportPdf(imageTree(`data:image/jpeg;base64,${btoa(bin)}`));
+    const body = text(pdf);
+    const ref = /\/Im1 (\d+) 0 R/.exec(body);
+    expect(ref).not.toBeNull();
+    const object = pdfObject(pdf, Number(ref![1]));
+    expect(object).toContain('/ColorSpace /DeviceCMYK');
+    expect(object).toContain('/Filter /DCTDecode');
+    expect(object).toContain('/Decode [1 0 1 0 1 0 1 0]');
+    expect(warnings.join(' ')).not.toMatch(/CMYK/);
   });
 
   it('an EXTERNAL URL image stays a warning — fetching would make the export impure', () => {

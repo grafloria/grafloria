@@ -260,23 +260,149 @@ describe('decodeDataUrlImage — PNG', () => {
     });
   });
 
-  describe('the honest refusals — warn and return null, never guess pixels', () => {
-    it('interlaced (Adam7) PNG', () => {
+  describe('interlaced (Adam7) — de-interlaced through the seven passes, then re-embedded', () => {
+    // 4×4 RGB where pixel (x,y) carries [i, 100+i, 200+i] with i = y*4+x — every pixel
+    // unique, so ANY misplacement (swapped pass offsets, wrong strides) changes the
+    // output bytes. The scanlines are written in PASS order, exactly as Adam7 stores
+    // them: P1 (0,0); P4 (2,0); P5 (0,2),(2,2); P6 two rows; P7 two full rows.
+    const adam7rgb = () =>
+      buildPng({
+        width: 4,
+        height: 4,
+        colorType: 2,
+        interlace: 1,
+        scanlines: [
+          0, 0, 100, 200,                                                   // P1: (0,0)
+          0, 2, 102, 202,                                                   // P4: (2,0)
+          0, 8, 108, 208, 10, 110, 210,                                     // P5: (0,2) (2,2)
+          0, 1, 101, 201, 3, 103, 203,                                      // P6 row y=0: (1,0) (3,0)
+          0, 9, 109, 209, 11, 111, 211,                                     // P6 row y=2: (1,2) (3,2)
+          1, 4, 104, 204, 1, 1, 1, 1, 1, 1, 1, 1, 1,                        // P7 row y=1 — SUB-filtered
+          0, 12, 112, 212, 13, 113, 213, 14, 114, 214, 15, 115, 215,        // P7 row y=3
+        ],
+      });
+
+    it('reassembles the raster in IMAGE order — each pass unfiltered on its own', () => {
       const warnings: string[] = [];
-      const image = decode(
-        buildPng({ width: 1, height: 1, colorType: 6, interlace: 1, scanlines: [0, 1, 2, 3, 4] }),
-        warnings
-      );
-      expect(image).toBeNull();
-      expect(warnings.join(' ')).toMatch(/interlaced/i);
+      const image = decode(adam7rgb(), warnings)!;
+      expect(image).not.toBeNull();
+      expect(image.colorSpace).toBe('/DeviceRGB');
+      // Re-encoded raw (no predictor): passthrough is impossible for interlaced IDAT.
+      expect(image.decodeParms).toBeNull();
+      const expected: number[] = [];
+      for (let i = 0; i < 16; i++) expected.push(i, 100 + i, 200 + i);
+      expect(Array.from(inflateSync(image.data))).toEqual(expected);
+      expect(warnings).toEqual([]); // the old refusal warning is gone
     });
 
-    it('16-bit PNG', () => {
+    it('interlaced RGBA still splits into colour + SMask, in raster order', () => {
+      // 2×2: passes are P1 (0,0), P6 (1,0), P7 (0,1),(1,1).
+      const image = decode(
+        buildPng({
+          width: 2,
+          height: 2,
+          colorType: 6,
+          interlace: 1,
+          scanlines: [
+            0, 10, 11, 12, 255,               // P1
+            0, 20, 21, 22, 200,               // P6
+            0, 30, 31, 32, 100, 40, 41, 42, 0, // P7
+          ],
+        })
+      )!;
+      expect(Array.from(inflateSync(image.data))).toEqual([10, 11, 12, 20, 21, 22, 30, 31, 32, 40, 41, 42]);
+      expect(Array.from(inflateSync(image.smask!.data))).toEqual([255, 200, 100, 0]);
+    });
+
+    it('interlaced INDEXED keeps its palette colourspace through the decode path', () => {
+      // 2×1: P1 (0,0), P6 (1,0); P7 starts at y=1 and the image is 1 tall — empty pass.
+      const image = decode(
+        buildPng({
+          width: 2,
+          height: 1,
+          colorType: 3,
+          interlace: 1,
+          scanlines: [0, 0, 0, 1],
+          palette: [255, 0, 0, 0, 0, 255],
+        })
+      )!;
+      expect(image.colorSpace).toBe('[/Indexed /DeviceRGB 1 <ff00000000ff>]');
+      expect(image.decodeParms).toBeNull();
+      expect(Array.from(inflateSync(image.data))).toEqual([0, 1]);
+    });
+  });
+
+  describe('16-bit — downsampled to the HIGH byte (documented: error < 0.4%, one code path, no predictor-at-16 reader risk)', () => {
+    it('takes the high byte of every big-endian sample — low bytes chosen to SCREAM if picked', () => {
+      // Samples 0xFF11 0x0022 0x8033 / 0x0144 0xFE55 0x7F66: high bytes 255,0,128 / 1,254,127.
+      // A low-byte mutation yields 17,34,51… — nowhere near.
+      const image = decode(
+        buildPng({
+          width: 2,
+          height: 1,
+          colorType: 2,
+          bitDepth: 16,
+          scanlines: [0, 0xff, 0x11, 0x00, 0x22, 0x80, 0x33, 0x01, 0x44, 0xfe, 0x55, 0x7f, 0x66],
+        })
+      )!;
+      expect(image.bitsPerComponent).toBe(8);
+      expect(image.colorSpace).toBe('/DeviceRGB');
+      expect(image.decodeParms).toBeNull();
+      expect(Array.from(inflateSync(image.data))).toEqual([255, 0, 128, 1, 254, 127]);
+    });
+
+    it('16-bit RGBA: the alpha plane is the high byte too', () => {
+      const image = decode(
+        buildPng({
+          width: 1,
+          height: 1,
+          colorType: 6,
+          bitDepth: 16,
+          scanlines: [0, 0xab, 0x01, 0xcd, 0x02, 0xef, 0x03, 0x80, 0x7f],
+        })
+      )!;
+      expect(Array.from(inflateSync(image.data))).toEqual([0xab, 0xcd, 0xef]);
+      expect(Array.from(inflateSync(image.smask!.data))).toEqual([0x80]);
+    });
+
+    it('unfilters at the 16-bit BYTE stride before downsampling (Up across a 2-byte pixel)', () => {
+      // Grey 1×2: row 1 is Up-filtered against row 0's raw BYTES, then the high byte wins.
+      const image = decode(
+        buildPng({
+          width: 1,
+          height: 2,
+          colorType: 0,
+          bitDepth: 16,
+          scanlines: [0, 0x12, 0xff, 2, 0x01, 0x00],
+        })
+      )!;
+      expect(image.colorSpace).toBe('/DeviceGray');
+      expect(Array.from(inflateSync(image.data))).toEqual([0x12, 0x13]);
+    });
+
+    it('16-bit AND interlaced compose', () => {
+      // Grey 2×2 Adam7: P1 (0,0), P6 (1,0), P7 (0,1),(1,1) — 2-byte samples.
+      const image = decode(
+        buildPng({
+          width: 2,
+          height: 2,
+          colorType: 0,
+          bitDepth: 16,
+          interlace: 1,
+          scanlines: [0, 0x10, 0xaa, 0, 0x20, 0xbb, 0, 0x30, 0xcc, 0x40, 0xdd],
+        })
+      )!;
+      expect(Array.from(inflateSync(image.data))).toEqual([0x10, 0x20, 0x30, 0x40]);
+    });
+  });
+
+  describe('the honest refusals — warn and return null, never guess pixels', () => {
+    it('sub-8-bit PNGs (1/2/4-bit packing) are still refused', () => {
       const warnings: string[] = [];
       expect(
-        decode(buildPng({ width: 1, height: 1, colorType: 2, bitDepth: 16, scanlines: [0, 0, 1, 0, 2, 0, 3] }), warnings)
+        decode(buildPng({ width: 1, height: 1, colorType: 0, bitDepth: 4, scanlines: [0, 0] }), warnings)
       ).toBeNull();
-      expect(warnings.join(' ')).toMatch(/16-bit|bit depth/i);
+      expect(warnings.join(' ')).toMatch(/4-bit|bit/i);
     });
 
     it('bytes that are not a PNG at all', () => {
@@ -294,8 +420,19 @@ describe('decodeDataUrlImage — PNG', () => {
 });
 
 describe('decodeDataUrlImage — JPEG (DCTDecode passthrough)', () => {
-  /** A minimal JPEG skeleton: SOI, a SOF0 with dimensions, EOI. Enough for the header scan. */
-  function fakeJpeg(width: number, height: number, components: number): Uint8Array {
+  /**
+   * A minimal JPEG skeleton: SOI, [APP14 "Adobe"], a SOF0 with dimensions, EOI. Enough
+   * for the header scan. `app14` is the Adobe colour-transform byte (0 = CMYK/RGB,
+   * 2 = YCCK), or null for no marker.
+   */
+  function fakeJpeg(width: number, height: number, components: number, app14: number | null = null): Uint8Array {
+    const head: number[] = [0xff, 0xd8];
+    if (app14 !== null) {
+      // FF EE, length 14, "Adobe", version 100, flags0, flags1, transform.
+      head.push(0xff, 0xee, 0x00, 0x0e);
+      for (const c of 'Adobe') head.push(c.charCodeAt(0));
+      head.push(0x00, 0x64, 0x00, 0x00, 0x00, 0x00, app14);
+    }
     const sof = [
       0xff, 0xc0, 0x00, 8 + components * 3, 8,
       (height >> 8) & 0xff, height & 0xff,
@@ -303,8 +440,20 @@ describe('decodeDataUrlImage — JPEG (DCTDecode passthrough)', () => {
       components,
     ];
     for (let i = 0; i < components; i++) sof.push(i + 1, 0x11, 0);
-    return Uint8Array.from([0xff, 0xd8, ...sof, 0xff, 0xd9]);
+    return Uint8Array.from([...head, ...sof, 0xff, 0xd9]);
   }
+
+  // A REAL 8×8 solid-red CMYK JPEG written by Pillow: APP14 "Adobe" transform 0, data
+  // stored INVERTED (the Adobe convention) — pixel-verified via pdftoppm: it renders red
+  // exactly when the image dict carries /Decode [1 0 1 0 1 0 1 0], cyan without it.
+  const PIL_CMYK_RED =
+    '/9j/7gAOQWRvYmUAZAAAAAAA/9sAQwAQCwwODAoQDg0OEhEQExgoGhgWFhgxIyUdKDozPTw5Mzg3QEhcTkBEV0U3OFBtUVdfYmdoZz5NcXlwZHhcZWdj/8AAFAgACAAIBEMRAE0RAFkRAEsRAP/EAB8AAAEFAQEBAQEBAAAAAAAAAAABAgMEBQYHCAkKC//EALUQAAIBAwMCBAMFBQQEAAABfQECAwAEEQUSITFBBhNRYQcicRQygZGhCCNCscEVUtHwJDNicoIJChYXGBkaJSYnKCkqNDU2Nzg5OkNERUZHSElKU1RVVldYWVpjZGVmZ2hpanN0dXZ3eHl6g4SFhoeIiYqSk5SVlpeYmZqio6Slpqeoqaqys7S1tre4ubrCw8TFxsfIycrS09TV1tfY2drh4uPk5ebn6Onq8fLz9PX29/j5+v/aAA4EQwBNAFkASwAAPwD0CvP68/r0Cv/Z';
+
+  // The same solid red written by ImageMagick: APP14 transform 2 — the data is YCCK.
+  // The PDF reader's own DCT decoder converts YCCK back to (inverted) CMYK; poppler
+  // pixel-verified: red with the /Decode inversion.
+  const IM_YCCK_RED =
+    '/9j/7gAOQWRvYmUAZAAAAAAC/9sAQwAQCwwODAoQDg0OEhEQExgoGhgWFhgxIyUdKDozPTw5Mzg3QEhcTkBEV0U3OFBtUVdfYmdoZz5NcXlwZHhcZWdj/9sAQwEREhIYFRgvGhovY0I4QmNjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2Nj/8AAFAgACAAIBAEiAAIRAQMRAQQiAP/EABYAAQEBAAAAAAAAAAAAAAAAAAAFB//EABQQAQAAAAAAAAAAAAAAAAAAAAD/xAAVAQEBAAAAAAAAAAAAAAAAAAAFBv/EABQRAQAAAAAAAAAAAAAAAAAAAAD/2gAOBAEAAhEDEQQAAD8AtAFEG0AB/9k=';
 
   it('passes the whole file through as /DCTDecode with the SOF dimensions', () => {
     const jpeg = fakeJpeg(320, 240, 3);
@@ -321,9 +470,51 @@ describe('decodeDataUrlImage — JPEG (DCTDecode passthrough)', () => {
     expect(image.colorSpace).toBe('/DeviceGray');
   });
 
-  it('CMYK (4-component) JPEG is refused with a warning — Adobe inversion would silently ruin it', () => {
-    const warnings: string[] = [];
-    expect(decodeDataUrlImage(toDataUrl(fakeJpeg(10, 10, 4), 'image/jpeg'), w => warnings.push(w))).toBeNull();
-    expect(warnings.join(' ')).toMatch(/CMYK/i);
+  describe('CMYK (4-component) — /DeviceCMYK, with the Adobe inversion handled via /Decode', () => {
+    it('APP14 transform 0 (Adobe CMYK, inverted data) → /Decode [1 0 1 0 1 0 1 0]', () => {
+      const warnings: string[] = [];
+      const jpeg = fakeJpeg(10, 10, 4, 0);
+      const image = decodeDataUrlImage(toDataUrl(jpeg, 'image/jpeg'), w => warnings.push(w))!;
+      expect(image).not.toBeNull();
+      expect(image.colorSpace).toBe('/DeviceCMYK');
+      expect(image.filter).toBe('/DCTDecode');
+      expect(image.decode).toBe('[1 0 1 0 1 0 1 0]');
+      expect(Array.from(image.data)).toEqual(Array.from(jpeg));
+      expect(warnings).toEqual([]);
+    });
+
+    it('APP14 transform 2 (YCCK) embeds too — the READER\'S DCT decoder does the YCCK→CMYK step', () => {
+      const image = decodeDataUrlImage(toDataUrl(fakeJpeg(10, 10, 4, 2), 'image/jpeg'), () => undefined)!;
+      expect(image).not.toBeNull();
+      expect(image.colorSpace).toBe('/DeviceCMYK');
+      expect(image.decode).toBe('[1 0 1 0 1 0 1 0]');
+    });
+
+    it('NO APP14 marker → the data is not Adobe-inverted, so NO /Decode', () => {
+      const image = decodeDataUrlImage(toDataUrl(fakeJpeg(10, 10, 4, null), 'image/jpeg'), () => undefined)!;
+      expect(image).not.toBeNull();
+      expect(image.colorSpace).toBe('/DeviceCMYK');
+      expect(image.decode).toBeNull();
+    });
+
+    it('a REAL Pillow CMYK JPEG (Adobe transform 0) decodes with the inversion', () => {
+      const image = decodeDataUrlImage(`data:image/jpeg;base64,${PIL_CMYK_RED}`, () => undefined)!;
+      expect(image.width).toBe(8);
+      expect(image.height).toBe(8);
+      expect(image.colorSpace).toBe('/DeviceCMYK');
+      expect(image.decode).toBe('[1 0 1 0 1 0 1 0]');
+    });
+
+    it('a REAL ImageMagick YCCK JPEG (Adobe transform 2) decodes with the inversion', () => {
+      const image = decodeDataUrlImage(`data:image/jpeg;base64,${IM_YCCK_RED}`, () => undefined)!;
+      expect(image.width).toBe(8);
+      expect(image.colorSpace).toBe('/DeviceCMYK');
+      expect(image.decode).toBe('[1 0 1 0 1 0 1 0]');
+    });
+  });
+
+  it('RGB and grey JPEGs carry NO /Decode array', () => {
+    const image = decodeDataUrlImage(toDataUrl(fakeJpeg(10, 10, 3), 'image/jpeg'), () => undefined)!;
+    expect(image.decode).toBeNull();
   });
 });

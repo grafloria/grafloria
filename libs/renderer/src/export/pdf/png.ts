@@ -14,11 +14,20 @@
 //    two planes re-compressed as stored-block zlib. Stored means the embedded image is
 //    raw-size (see flate.ts for why we do not ship a compressor) — correct first.
 //
-// REFUSALS are loud, never guessed: interlaced (Adam7's pass geometry is a different
-// decoder), 16-bit (canvas never emits it), CMYK JPEG (Adobe's inversion convention would
-// silently invert the colours), external URLs (fetching is not pure). CRCs are read past,
-// not verified: the input is a data: URL the capture layer just built, not a file that
-// survived a network.
+// INTERLACED (Adam7) PNGs take the split path too: the seven passes are each unfiltered
+// on their own and reassembled into raster order (passthrough is impossible — the PDF
+// predictor model has no interlacing). 16-BIT samples are downsampled to their HIGH byte
+// (big-endian, so byte 0 of each sample): the error is < 0.4% of full scale — invisible —
+// and it keeps one code path instead of gambling on reader support for /Predictor with
+// /BitsPerComponent 16. CMYK JPEGs embed as /DeviceCMYK DCTDecode; when they carry the
+// Adobe APP14 marker the sample values are INVERTED (Adobe's convention — Pillow and
+// ImageMagick both follow it, checked against their actual output), which the image
+// dict's /Decode array undoes. APP14 transform 2 (YCCK) passes through as well: the
+// reader's own DCT decoder does the YCCK→CMYK conversion (poppler pixel-verified).
+//
+// REFUSALS are loud, never guessed: sub-8-bit PNGs (1/2/4-bit packing) and external URLs
+// (fetching is not pure). CRCs are read past, not verified: the input is a data: URL the
+// capture layer just built, not a file that survived a network.
 
 import { zlibDeflateStored, zlibInflate } from './flate';
 
@@ -34,6 +43,8 @@ export interface PdfImage {
   filter: '/FlateDecode' | '/DCTDecode';
   /** The `/DecodeParms` dict (PNG-predictor passthrough), or null. */
   decodeParms: string | null;
+  /** The `/Decode` array (Adobe-inverted CMYK JPEGs), or null for the default mapping. */
+  decode: string | null;
   /** The alpha plane as a /DeviceGray zlib stream, or null for opaque images. */
   smask: { data: Uint8Array; bitsPerComponent: number } | null;
 }
@@ -174,6 +185,9 @@ function parsePng(bytes: Uint8Array): PngChunks | null {
   return { width, height, bitDepth, colorType, interlace, idat, palette, trns };
 }
 
+/** channels per pixel, by PNG colour type. */
+const CHANNELS: Record<number, number> = { 0: 1, 2: 3, 3: 1, 4: 2, 6: 4 };
+
 function decodePng(bytes: Uint8Array, warn: (message: string) => void): PdfImage | null {
   const png = parsePng(bytes);
   if (!png) {
@@ -181,51 +195,51 @@ function decodePng(bytes: Uint8Array, warn: (message: string) => void): PdfImage
     return null;
   }
 
-  if (png.interlace !== 0) {
+  if (png.bitDepth !== 8 && png.bitDepth !== 16) {
     warn(
-      'an interlaced (Adam7) PNG cannot be embedded — the PDF predictor model has no interlacing. ' +
-        'Re-encode the image non-interlaced (canvas.toDataURL always is). The image is omitted.'
-    );
-    return null;
-  }
-
-  if (png.bitDepth !== 8) {
-    warn(
-      `a ${png.bitDepth}-bit PNG cannot be embedded (only 8-bit channels are supported; ` +
+      `a ${png.bitDepth}-bit PNG cannot be embedded (sub-byte sample packing is not implemented; ` +
         'canvas images are always 8-bit). The image is omitted from the PDF.'
     );
     return null;
   }
 
   const { width, height, colorType } = png;
+  const channels = CHANNELS[colorType];
+  if (channels === undefined) {
+    warn(`a PNG with colour type ${colorType} is not supported — the image is omitted from the PDF.`);
+    return null;
+  }
 
-  // Passthrough colour types: the IDAT already IS a /FlateDecode+predictor stream.
-  if (colorType === 2 || colorType === 0 || colorType === 3) {
-    let colorSpace: string;
-    let colors: number;
-    if (colorType === 2) {
-      colorSpace = '/DeviceRGB';
-      colors = 3;
-    } else if (colorType === 0) {
-      colorSpace = '/DeviceGray';
-      colors = 1;
-    } else {
-      if (!png.palette || png.palette.length % 3 !== 0 || png.palette.length === 0) {
-        warn('an indexed PNG carries no palette — the image is omitted from the PDF.');
-        return null;
-      }
-      if (png.trns) {
-        warn(
-          'an indexed PNG with palette transparency (tRNS) renders OPAQUE in the PDF — expanding ' +
-            'palette alpha to an SMask is not implemented.'
-        );
-      }
-      let hex = '';
-      for (const b of png.palette) hex += b.toString(16).padStart(2, '0');
-      colorSpace = `[/Indexed /DeviceRGB ${png.palette.length / 3 - 1} <${hex}>]`;
-      colors = 1;
+  const sixteen = png.bitDepth === 16;
+  const interlaced = png.interlace !== 0;
+
+  // The colourspace, shared by both paths. Indexed needs its palette either way.
+  let colorSpace: string;
+  if (colorType === 2 || colorType === 6) {
+    colorSpace = '/DeviceRGB';
+  } else if (colorType === 0 || colorType === 4) {
+    colorSpace = '/DeviceGray';
+  } else {
+    if (!png.palette || png.palette.length % 3 !== 0 || png.palette.length === 0) {
+      warn('an indexed PNG carries no palette — the image is omitted from the PDF.');
+      return null;
     }
+    if (png.trns) {
+      warn(
+        'an indexed PNG with palette transparency (tRNS) renders OPAQUE in the PDF — expanding ' +
+          'palette alpha to an SMask is not implemented.'
+      );
+    }
+    let hex = '';
+    for (const b of png.palette) hex += b.toString(16).padStart(2, '0');
+    colorSpace = `[/Indexed /DeviceRGB ${png.palette.length / 3 - 1} <${hex}>]`;
+  }
 
+  // Passthrough: the IDAT already IS a /FlateDecode+predictor stream — but only for
+  // opaque 8-bit non-interlaced images (interlacing has no PDF predictor equivalent,
+  // 16-bit is downsampled, and alpha must be split out).
+  if (!interlaced && !sixteen && (colorType === 2 || colorType === 0 || colorType === 3)) {
+    const colors = colorType === 2 ? 3 : 1;
     return {
       width,
       height,
@@ -234,21 +248,34 @@ function decodePng(bytes: Uint8Array, warn: (message: string) => void): PdfImage
       data: png.idat,
       filter: '/FlateDecode',
       decodeParms: `<< /Predictor 15 /Colors ${colors} /BitsPerComponent 8 /Columns ${width} >>`,
+      decode: null,
       smask: null,
     };
   }
 
-  // Alpha colour types: inflate, unfilter, split the planes.
-  if (colorType === 6 || colorType === 4) {
-    const channels = colorType === 6 ? 4 : 2;
-    let raw: Uint8Array;
-    try {
-      raw = unfilter(zlibInflate(png.idat), width, height, channels);
-    } catch {
-      warn('an <image> PNG has a corrupt pixel stream — the image is omitted from the PDF.');
-      return null;
-    }
+  // Decode path: inflate, unfilter (per pass when interlaced), then reduce.
+  const sampleBytes = sixteen ? 2 : 1;
+  const bpp = channels * sampleBytes;
+  let raw: Uint8Array;
+  try {
+    const inflated = zlibInflate(png.idat);
+    raw = interlaced ? deinterlace(inflated, width, height, bpp) : unfilter(inflated, width, height, bpp);
+  } catch {
+    warn('an <image> PNG has a corrupt pixel stream — the image is omitted from the PDF.');
+    return null;
+  }
 
+  // 16-bit → 8-bit: keep the HIGH byte of each big-endian sample. Max error 255/65535
+  // (< 0.4% of full scale); 0x0000 and 0xffff stay exact. See the header for why this
+  // beats a 16-BPC passthrough.
+  if (sixteen) {
+    const reduced = new Uint8Array(raw.length / 2);
+    for (let i = 0; i < reduced.length; i++) reduced[i] = raw[i * 2];
+    raw = reduced;
+  }
+
+  // Alpha colour types split into colour + /SMask planes; opaque ones embed whole.
+  if (colorType === 6 || colorType === 4) {
     const colorChannels = channels - 1;
     const color = new Uint8Array(width * height * colorChannels);
     const alpha = new Uint8Array(width * height);
@@ -260,17 +287,69 @@ function decodePng(bytes: Uint8Array, warn: (message: string) => void): PdfImage
     return {
       width,
       height,
-      colorSpace: colorType === 6 ? '/DeviceRGB' : '/DeviceGray',
+      colorSpace,
       bitsPerComponent: 8,
       data: zlibDeflateStored(color),
       filter: '/FlateDecode',
       decodeParms: null,
+      decode: null,
       smask: { data: zlibDeflateStored(alpha), bitsPerComponent: 8 },
     };
   }
 
-  warn(`a PNG with colour type ${colorType} is not supported — the image is omitted from the PDF.`);
-  return null;
+  return {
+    width,
+    height,
+    colorSpace,
+    bitsPerComponent: 8,
+    data: zlibDeflateStored(raw),
+    filter: '/FlateDecode',
+    decodeParms: null,
+    decode: null,
+    smask: null,
+  };
+}
+
+/**
+ * Adam7: seven passes, each a sub-image with its own filtered scanlines (PNG spec §8.2).
+ * Pass p samples the pixels at (x0 + i·dx, y0 + j·dy) — reassembling is just writing each
+ * pass pixel back to that address. `bpp` is BYTES per pixel (16-bit samples ride along
+ * untouched; downsampling happens after reassembly).
+ */
+const ADAM7 = [
+  { x0: 0, y0: 0, dx: 8, dy: 8 },
+  { x0: 4, y0: 0, dx: 8, dy: 8 },
+  { x0: 0, y0: 4, dx: 4, dy: 8 },
+  { x0: 2, y0: 0, dx: 4, dy: 4 },
+  { x0: 0, y0: 2, dx: 2, dy: 4 },
+  { x0: 1, y0: 0, dx: 2, dy: 2 },
+  { x0: 0, y0: 1, dx: 1, dy: 2 },
+];
+
+function deinterlace(data: Uint8Array, width: number, height: number, bpp: number): Uint8Array {
+  const out = new Uint8Array(width * height * bpp);
+  let pos = 0;
+
+  for (const { x0, y0, dx, dy } of ADAM7) {
+    const passWidth = Math.ceil(Math.max(0, width - x0) / dx);
+    const passHeight = Math.ceil(Math.max(0, height - y0) / dy);
+    if (passWidth === 0 || passHeight === 0) continue; // empty passes have NO scanlines
+
+    const passLength = passHeight * (passWidth * bpp + 1);
+    // Each pass is filtered AGAINST ITSELF: its own rows are the "above" neighbours.
+    const passRaw = unfilter(data.subarray(pos, pos + passLength), passWidth, passHeight, bpp);
+    pos += passLength;
+
+    for (let j = 0; j < passHeight; j++) {
+      for (let i = 0; i < passWidth; i++) {
+        const src = (j * passWidth + i) * bpp;
+        const dst = ((y0 + j * dy) * width + (x0 + i * dx)) * bpp;
+        for (let k = 0; k < bpp; k++) out[dst + k] = passRaw[src + k];
+      }
+    }
+  }
+
+  return out;
 }
 
 /**
@@ -328,7 +407,12 @@ function decodeJpeg(bytes: Uint8Array, warn: (message: string) => void): PdfImag
     return null;
   }
 
-  // Scan segments for a start-of-frame (SOF0/1/2 cover baseline + progressive).
+  // Scan segments for the start-of-frame (SOF0/1/2 cover baseline + progressive) AND the
+  // Adobe APP14 marker — both live before the entropy data, so stop at SOS (0xDA).
+  let sof: { width: number; height: number; components: number } | null = null;
+  /** APP14 "Adobe" colour-transform byte: 0 = CMYK/RGB, 1 = YCbCr, 2 = YCCK. */
+  let adobeTransform: number | null = null;
+
   let pos = 2;
   while (pos + 4 <= bytes.length) {
     if (bytes[pos] !== 0xff) {
@@ -343,37 +427,60 @@ function decodeJpeg(bytes: Uint8Array, warn: (message: string) => void): PdfImag
     const length = (bytes[pos + 2] << 8) | bytes[pos + 3];
 
     if (marker === 0xc0 || marker === 0xc1 || marker === 0xc2) {
-      const height = (bytes[pos + 5] << 8) | bytes[pos + 6];
-      const width = (bytes[pos + 7] << 8) | bytes[pos + 8];
-      const components = bytes[pos + 9];
-
-      if (components === 4) {
-        warn(
-          'a CMYK JPEG cannot be embedded — Adobe CMYK JPEGs use an inverted convention that ' +
-            'would silently invert every colour. The image is omitted from the PDF.'
-        );
-        return null;
-      }
-      if (components !== 1 && components !== 3) {
-        warn(`a JPEG with ${components} components is not supported — the image is omitted from the PDF.`);
-        return null;
-      }
-
-      return {
-        width,
-        height,
-        colorSpace: components === 3 ? '/DeviceRGB' : '/DeviceGray',
-        bitsPerComponent: 8,
-        data: bytes,
-        filter: '/DCTDecode',
-        decodeParms: null,
-        smask: null,
+      sof = {
+        height: (bytes[pos + 5] << 8) | bytes[pos + 6],
+        width: (bytes[pos + 7] << 8) | bytes[pos + 8],
+        components: bytes[pos + 9],
       };
+    } else if (
+      marker === 0xee &&
+      length >= 14 &&
+      String.fromCharCode(bytes[pos + 4], bytes[pos + 5], bytes[pos + 6], bytes[pos + 7], bytes[pos + 8]) === 'Adobe'
+    ) {
+      // Segment data: "Adobe"(5) version(2) flags0(2) flags1(2) transform(1).
+      adobeTransform = bytes[pos + 15];
+    } else if (marker === 0xda) {
+      break; // entropy-coded data — nothing after this is a header
     }
 
     pos += 2 + length;
   }
 
-  warn('a JPEG data: URL carries no start-of-frame header — the image is omitted from the PDF.');
-  return null;
+  if (!sof) {
+    warn('a JPEG data: URL carries no start-of-frame header — the image is omitted from the PDF.');
+    return null;
+  }
+
+  const { width, height, components } = sof;
+  let colorSpace: string;
+  let decode: string | null = null;
+
+  if (components === 4) {
+    colorSpace = '/DeviceCMYK';
+    // THE ADOBE TRAP: files carrying the APP14 "Adobe" marker store INVERTED CMYK
+    // (Photoshop, Pillow and ImageMagick all do — verified against their output). The
+    // /Decode array flips every channel back. Transform 2 (YCCK) is fine too: the
+    // reader's DCT decoder converts YCCK → (still inverted) CMYK before /Decode applies
+    // (pixel-verified through poppler). No APP14 → plain CMYK, default mapping.
+    if (adobeTransform !== null) decode = '[1 0 1 0 1 0 1 0]';
+  } else if (components === 3) {
+    colorSpace = '/DeviceRGB';
+  } else if (components === 1) {
+    colorSpace = '/DeviceGray';
+  } else {
+    warn(`a JPEG with ${components} components is not supported — the image is omitted from the PDF.`);
+    return null;
+  }
+
+  return {
+    width,
+    height,
+    colorSpace,
+    bitsPerComponent: 8,
+    data: bytes,
+    filter: '/DCTDecode',
+    decodeParms: null,
+    decode,
+    smask: null,
+  };
 }
