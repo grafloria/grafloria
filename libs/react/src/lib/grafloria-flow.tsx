@@ -4,7 +4,8 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { CSSProperties, ComponentType, ReactNode } from 'react';
 import { createPortal } from 'react-dom';
 import type { LinkModel, NodeModel } from '@grafloria/engine';
-import { createDiagram } from '@grafloria/renderer';
+import { createDiagram, attachCanvasPlugins } from '@grafloria/renderer';
+import type { CanvasPluginOptions } from '@grafloria/renderer';
 import type {
   CreateDiagramOptions,
   DiagramInstance,
@@ -100,6 +101,11 @@ export interface GrafloriaFlowProps {
   layout?: string | { name: string; options?: Record<string, unknown> };
   /** Fires after each declarative layout completes. */
   onLayoutDone?: (result: unknown) => void;
+  /**
+   * Canvas plugins — `true` mounts minimap + zoom/fit controls + background
+   * grid with defaults; an object picks and configures them.
+   */
+  plugins?: boolean | CanvasPluginOptions;
 
   className?: string;
   style?: CSSProperties;
@@ -228,6 +234,19 @@ export function GrafloriaFlow(props: GrafloriaFlowProps) {
     if (!instance || !props.theme) return;
     instance.setTheme(props.theme);
   }, [instance, props.theme]);
+
+  // -- canvas plugins (minimap / controls / background) -----------------------
+  const pluginsKey = props.plugins === undefined ? undefined : JSON.stringify(props.plugins);
+  useEffect(() => {
+    if (!instance || pluginsKey === undefined) return;
+    const parsed = JSON.parse(pluginsKey) as boolean | CanvasPluginOptions;
+    if (parsed === false) return;
+    const attached = attachCanvasPlugins(
+      instance,
+      parsed === true ? { minimap: true, controls: true, background: true } : parsed
+    );
+    return () => attached.dispose();
+  }, [instance, pluginsKey]);
 
   // -- declarative layout -----------------------------------------------------
   // Runs when the `layout` prop (by VALUE, so inline objects are fine) or the

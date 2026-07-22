@@ -1,5 +1,13 @@
-import { DiagramEngine, getMutationEpoch } from '@grafloria/engine';
-import type { DiagramModel, LinkModel, LODLevel, NodeModel } from '@grafloria/engine';
+import { DiagramEngine, getMutationEpoch, exportDiagramText, importDiagramText } from '@grafloria/engine';
+import type {
+  DiagramModel,
+  LinkModel,
+  LODLevel,
+  NodeModel,
+  ExportTextOptions,
+  ImportTextOptions,
+  ImportTextResult,
+} from '@grafloria/engine';
 import type { Theme } from '../types/theme.types';
 import type { SVGRendererConfig } from '../types/renderer.interface';
 import type { Rectangle } from '../types/geometry.types';
@@ -23,7 +31,7 @@ import type { CanvasRect, Unsubscribe } from '../viewport/viewport-controller';
 import { RenderScheduler } from './render-scheduler';
 import { DomEventBinder } from './dom-event-binder';
 import type { DomEventBinderOptions } from './dom-event-binder';
-import { applyEdges, applyNodes } from './model-input';
+import { applyEdges, applyNodes, toNodeSpec, toEdgeSpec } from './model-input';
 import type { EdgeSpec, NodeSpec } from './model-input';
 import {
   HTML_LAYER_CLASS,
@@ -315,6 +323,19 @@ export interface DiagramInstance {
    * default, and on a low unplugged battery it disables edge animations).
    */
   animations: AnimationService;
+
+  /**
+   * Mermaid-compatible text export (with the lossless sidecar by default) —
+   * feed the result back to `loadText` for a full round-trip.
+   */
+  exportText(options?: ExportTextOptions): string;
+
+  /**
+   * Parse Mermaid-compatible text (sidecar-aware) and reconcile it INTO the
+   * live diagram through the same spec reconciler `setNodes`/`setEdges` use —
+   * listeners, plugins, and the renderer all stay attached.
+   */
+  loadText(text: string, options?: ImportTextOptions): ImportTextResult;
 
   dispose(): void;
 
@@ -1411,6 +1432,17 @@ export function createDiagram(
       renderer.export(format, await withInlinedImages(await withCustomNodesAsync(exportOptions))),
     exportSvgString: (exportOptions) => renderer.exportSvgString(withCustomNodes(exportOptions)),
     exportPdf: (exportOptions) => renderer.exportPdf(withCustomNodes(exportOptions)),
+
+    exportText: (textOptions) => exportDiagramText(model, textOptions),
+    loadText: (text, textOptions) => {
+      const result = importDiagramText(text, textOptions);
+      // Reconcile INTO the live model (never swap it): applyNodes/applyEdges
+      // are full reconcilers, so removals happen and every listener, plugin,
+      // and renderer binding stays attached to the same DiagramModel.
+      applyNodes(model, result.diagram.getNodes().map((n) => toNodeSpec(n)));
+      applyEdges(model, result.diagram.getLinks().map((l) => toEdgeSpec(l)));
+      return result;
+    },
 
     /** The LOD tier actually rendered, and the governor's last verdict. */
     getQualityState: () => renderer.getQualityState(),

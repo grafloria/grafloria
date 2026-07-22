@@ -35,8 +35,11 @@ import {
 import type { NodeModel, LinkModel, DiagramEngine } from '@grafloria/engine';
 import {
   createDiagram,
+  attachCanvasPlugins,
   toNodeSpec,
   toEdgeSpec,
+  type CanvasPluginOptions,
+  type CanvasPlugins,
   type DiagramInstance,
   type NodeSpec,
   type EdgeSpec,
@@ -78,6 +81,14 @@ export const GrafloriaFlow = defineComponent({
      */
     layout: {
       type: [String, Object] as PropType<string | GrafloriaLayoutRequest>,
+      default: undefined,
+    },
+    /**
+     * Canvas plugins — `true` mounts minimap + zoom/fit controls + background
+     * grid with defaults; an object picks and configures them.
+     */
+    plugins: {
+      type: [Boolean, Object] as PropType<boolean | CanvasPluginOptions>,
       default: undefined,
     },
     fitView: { type: Boolean, default: undefined },
@@ -139,6 +150,18 @@ export const GrafloriaFlow = defineComponent({
       for (const entry of mounted.values()) paintSlot(entry);
     };
 
+    let plugins: CanvasPlugins | null = null;
+    const attachPlugins = (config: boolean | CanvasPluginOptions | undefined): void => {
+      plugins?.dispose();
+      plugins = null;
+      const inst = instance.value;
+      if (!inst || config === undefined || config === false) return;
+      plugins = attachCanvasPlugins(
+        inst,
+        config === true ? { minimap: true, controls: true, background: true } : config
+      );
+    };
+
     const runLayout = async (req: string | GrafloriaLayoutRequest): Promise<void> => {
       const inst = instance.value;
       if (!inst) return;
@@ -189,6 +212,7 @@ export const GrafloriaFlow = defineComponent({
       );
 
       emit('init', inst);
+      attachPlugins(props.plugins);
       if (props.layout !== undefined) void runLayout(props.layout);
     });
 
@@ -211,6 +235,10 @@ export const GrafloriaFlow = defineComponent({
         if (next && instance.value) instance.value.setTheme(next);
       }
     );
+    watch(
+      () => (props.plugins === undefined ? undefined : JSON.stringify(props.plugins)),
+      (key) => attachPlugins(key === undefined ? undefined : JSON.parse(key))
+    );
     // Layout re-runs on VALUE change only (JSON key), never on node data.
     watch(
       () => (props.layout === undefined ? undefined : JSON.stringify(props.layout)),
@@ -220,6 +248,8 @@ export const GrafloriaFlow = defineComponent({
     );
 
     onBeforeUnmount(() => {
+      plugins?.dispose();
+      plugins = null;
       for (const off of offs) off();
       for (const entry of mounted.values()) vueRender(null, entry.element);
       mounted.clear();
@@ -236,6 +266,8 @@ export const GrafloriaFlow = defineComponent({
       exportDiagram: (format?: string, options?: unknown) =>
         instance.value?.export(format as any, options as any),
       snapshot: () => instance.value?.getModel().serialize() ?? null,
+      exportText: (options?: unknown) => instance.value?.exportText(options as any),
+      loadText: (text: string, options?: unknown) => instance.value?.loadText(text, options as any),
       fitView: (padding?: number) => instance.value?.fitView(padding),
     });
 

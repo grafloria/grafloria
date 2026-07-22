@@ -144,3 +144,29 @@ describe('GrafloriaFlow (Vue)', () => {
     expect(distinct.size).toBe(3);
   });
 });
+
+describe('canvas plugins prop', () => {
+  it('plugins: true mounts the minimap; unmount disposes it', async () => {
+    const host = document.createElement('div');
+    document.body.appendChild(host);
+    const app = createApp(
+      defineComponent({
+        setup() {
+          return () =>
+            h(GrafloriaFlow, {
+              defaultNodes: [
+                { id: 'a', position: { x: 0, y: 0 }, size: { width: 100, height: 50 }, label: 'A' },
+              ] as NodeSpec[],
+              plugins: true,
+            });
+        },
+      })
+    );
+    app.mount(host);
+    await flush();
+    expect(host.querySelector('.grafloria-minimap')).toBeTruthy();
+    app.unmount();
+    expect(document.querySelector('.grafloria-minimap')).toBeNull();
+    host.remove();
+  });
+});

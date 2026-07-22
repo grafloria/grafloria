@@ -51,6 +51,9 @@ import {
   getMutationEpoch,
   // Phase 2 (Angular-native DX): declarative [layout] + snapshot()/loadSnapshot().
   type SerializedDiagram,
+  // Advanced domains wave 1: Mermaid-compatible text on the component.
+  exportDiagramText,
+  importDiagramText,
 } from '@grafloria/engine';
 
 /** Request shape for the declarative `[layout]` input / `applyLayout()`. */
@@ -334,11 +337,37 @@ export class DiagramCanvasComponent implements AfterViewInit, OnDestroy {
     return this.eng?.getDiagram()?.serialize() ?? null;
   }
 
-  /** Replace the diagram with a previously `snapshot()`-ed document. */
+  /**
+   * Restore a `snapshot()`-ed document by reconciling INTO the live diagram —
+   * `applyNodes`/`applyEdges` are full reconcilers, so removals happen and the
+   * renderer, listeners, and plugins stay attached to the same model.
+   */
   loadSnapshot(data: SerializedDiagram): void {
-    const engine = this.activeEngine();
-    if (!engine) return;
-    engine.setDiagram(DiagramModel.fromJSON(data));
+    const diagram = this.eng?.getDiagram();
+    if (!diagram) return;
+    const parsed = DiagramModel.fromJSON(data);
+    applyNodes(diagram, parsed.getNodes().map((n) => toNodeSpec(n)));
+    applyEdges(diagram, parsed.getLinks().map((l) => toEdgeSpec(l)));
+  }
+
+  /** Mermaid-compatible text export (lossless sidecar by default). */
+  exportText(options?: unknown): string {
+    const diagram = this.eng?.getDiagram();
+    if (!diagram) return '';
+    return exportDiagramText(diagram, options as never);
+  }
+
+  /**
+   * Parse Mermaid-compatible text (sidecar-aware) and reconcile it into the
+   * live diagram — same mechanics as `loadSnapshot`.
+   */
+  loadText(text: string, options?: unknown): unknown {
+    const diagram = this.eng?.getDiagram();
+    if (!diagram) return undefined;
+    const result = importDiagramText(text, options as never);
+    applyNodes(diagram, result.diagram.getNodes().map((n) => toNodeSpec(n)));
+    applyEdges(diagram, result.diagram.getLinks().map((l) => toEdgeSpec(l)));
+    return result;
   }
 
   private assertRenderer(): void {

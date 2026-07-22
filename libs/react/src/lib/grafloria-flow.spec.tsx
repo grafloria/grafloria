@@ -388,3 +388,14 @@ describe('declarative layout prop', () => {
     expect(distinct.size).toBe(3);
   });
 });
+
+describe('canvas plugins prop', () => {
+  it('plugins={true} mounts minimap + controls; unmount disposes them', async () => {
+    const { container, unmount } = render(
+      <GrafloriaFlow defaultNodes={NODES} plugins={true} />
+    );
+    await waitFor(() => expect(container.querySelector('.grafloria-minimap')).toBeTruthy());
+    unmount();
+    expect(document.querySelector('.grafloria-minimap')).toBeNull();
+  });
+});

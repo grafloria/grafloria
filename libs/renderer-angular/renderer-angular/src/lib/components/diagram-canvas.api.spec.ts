@@ -109,3 +109,27 @@ describe('diagram-canvas Angular-native API', () => {
     expect(JSON.stringify(positions())).toBe(savedPositions);
   });
 });
+
+describe('diagram-canvas text round-trip', () => {
+  it('exportText() → loadText() restores the diagram through the live model', async () => {
+    await TestBed.configureTestingModule({ imports: [ApiHost] }).compileComponents();
+    const fixture = TestBed.createComponent(ApiHost);
+    fixture.detectChanges();
+    const canvas = fixture.debugElement.query(By.directive(DiagramCanvasComponent)).componentInstance;
+    (canvas as unknown as { renderNow(): void }).renderNow();
+    fixture.detectChanges();
+
+    const text = canvas.exportText();
+    expect(text).toContain('A');
+
+    const diagram = (canvas as any).eng.getDiagram();
+    diagram.removeNode('b');
+    diagram.removeNode('c');
+    expect(diagram.getNodes()).toHaveLength(1);
+
+    canvas.loadText(text);
+    expect((canvas as any).eng.getDiagram()).toBe(diagram); // same model
+    expect(diagram.getNodes().map((n: any) => n.id).sort()).toEqual(['a', 'b', 'c']);
+    fixture.destroy();
+  });
+});
