@@ -1,14 +1,4 @@
-import {
-  ApplicationRef,
-  ComponentRef,
-  Injectable,
-  Injector,
-  OnChanges,
-  SimpleChange,
-  SimpleChanges,
-  Type,
-  ViewContainerRef,
-} from '@angular/core';
+import { ApplicationRef, ComponentRef, Injectable, Injector, OnChanges, SimpleChange, SimpleChanges, Type, ViewContainerRef, output } from '@angular/core';
 import {
   ContainerIdGenerator,
   createForeignObject,
@@ -101,7 +91,7 @@ export class ComponentRendererService {
    * export class ErdTableComponent {
    *   @Input() tableName: string;
    *   @Input() columns: Column[];
-   *   @Output() columnAdded = new EventEmitter<Column>();
+   *   readonly columnAdded = output<Column>();
    * }
    *
    * componentRenderer.registerComponent('ERD.TABLE', ErdTableComponent);

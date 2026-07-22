@@ -1,14 +1,4 @@
-import {
-  Component,
-  Input,
-  Output,
-  EventEmitter,
-  OnInit,
-  OnDestroy,
-  ChangeDetectionStrategy,
-  ChangeDetectorRef,
-  TemplateRef
-} from '@angular/core';
+import { Component, Input, OnInit, OnDestroy, ChangeDetectionStrategy, ChangeDetectorRef, TemplateRef, output } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { PropertyPanelService, type PropertyDiagramNode } from '../../services/property-panel.service';
 import { PropertyEditorComponent } from './property-editor.component';
@@ -125,22 +115,22 @@ export class PropertyPanelComponent implements OnInit, OnDestroy {
   /**
    * Emitted when property value changes.
    */
-  @Output() propertyChanged = new EventEmitter<PropertyPanelChangeEvent>();
+  readonly propertyChanged = output<PropertyPanelChangeEvent>();
 
   /**
    * Emitted when validation error occurs.
    */
-  @Output() validationError = new EventEmitter<ValidationErrorEvent>();
+  readonly validationError = output<ValidationErrorEvent>();
 
   /**
    * Emitted when Save button clicked (deferred mode).
    */
-  @Output() save = new EventEmitter<SaveEvent>();
+  readonly save = output<SaveEvent>();
 
   /**
    * Emitted when Cancel button clicked (deferred mode).
    */
-  @Output() cancel = new EventEmitter<void>();
+  readonly cancel = output<void>();
 
   // Internal state
   schema: PropertySchema | null = null;

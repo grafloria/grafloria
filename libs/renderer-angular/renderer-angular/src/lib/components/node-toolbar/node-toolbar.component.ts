@@ -1,19 +1,4 @@
-import {
-  Component,
-  Input,
-  Output,
-  EventEmitter,
-  OnInit,
-  OnDestroy,
-  OnChanges,
-  SimpleChanges,
-  TemplateRef,
-  ViewChild,
-  ElementRef,
-  ChangeDetectorRef,
-  ChangeDetectionStrategy,
-  HostListener,
-} from '@angular/core';
+import { Component, Input, OnInit, OnDestroy, OnChanges, SimpleChanges, TemplateRef, ViewChild, ElementRef, ChangeDetectorRef, ChangeDetectionStrategy, HostListener, output } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { NodeModel } from '@grafloria/engine';
 import type { DiagramEngine } from '@grafloria/engine';
@@ -428,9 +413,9 @@ export class NodeToolbarComponent implements OnInit, OnChanges, OnDestroy {
   // Configuration object (preferred approach)
   @Input() config?: NodeToolbarConfig;
 
-  @Output() actionClicked = new EventEmitter<{ action: ToolbarAction; node: NodeModel }>();
-  @Output() visibilityChanged = new EventEmitter<boolean>();
-  @Output() positionUpdated = new EventEmitter<{ x: number; y: number }>();
+  readonly actionClicked = output<{ action: ToolbarAction; node: NodeModel }>();
+  readonly visibilityChanged = output<boolean>();
+  readonly positionUpdated = output<{ x: number; y: number }>();
 
   @ViewChild('toolbar', { read: ElementRef }) toolbarRef?: ElementRef<HTMLDivElement>;
 

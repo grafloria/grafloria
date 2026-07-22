@@ -1,18 +1,4 @@
-import {
-  ChangeDetectionStrategy,
-  ChangeDetectorRef,
-  Component,
-  ElementRef,
-  EventEmitter,
-  Input,
-  OnChanges,
-  OnDestroy,
-  OnInit,
-  Output,
-  SimpleChanges,
-  TemplateRef,
-  ViewChild,
-} from '@angular/core';
+import { ChangeDetectionStrategy, ChangeDetectorRef, Component, ElementRef, Input, OnChanges, OnDestroy, OnInit, SimpleChanges, TemplateRef, ViewChild, output } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import type { DiagramEngine, DiagramModel, LinkModel } from '@grafloria/engine';
 import { Subject, fromEvent } from 'rxjs';
@@ -205,11 +191,11 @@ export class LinkToolbarComponent implements OnInit, OnChanges, OnDestroy {
   @Input() animation?: ToolbarAnimationConfig;
   @Input() ariaLabel = 'Link actions';
 
-  @Output() actionClicked = new EventEmitter<{ action: LinkToolbarAction; context: LinkActionContext }>();
-  @Output() positionUpdated = new EventEmitter<Point>();
+  readonly actionClicked = output<{ action: LinkToolbarAction; context: LinkActionContext }>();
+  readonly positionUpdated = output<Point>();
   /** Emits while the pointer is over the toolbar — lets the host keep it alive
    *  when the pointer leaves the link itself to reach for a button. */
-  @Output() pointerOverChange = new EventEmitter<boolean>();
+  readonly pointerOverChange = output<boolean>();
 
   @ViewChild('toolbar', { read: ElementRef }) toolbarRef?: ElementRef<HTMLDivElement>;
 

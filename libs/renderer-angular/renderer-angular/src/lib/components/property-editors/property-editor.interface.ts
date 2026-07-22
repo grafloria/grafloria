@@ -1,4 +1,4 @@
-import { EventEmitter } from '@angular/core';
+import type { OutputEmitterRef } from '@angular/core';
 import { PropertyDefinition, ValidationError } from '@grafloria/renderer';
 
 /**
@@ -24,8 +24,8 @@ import { PropertyDefinition, ValidationError } from '@grafloria/renderer';
  *   @Input() value: any;
  *   @Input() property!: PropertyDefinition;
  *   @Input() readonly = false;
- *   @Output() valueChange = new EventEmitter<any>();
- *   @Output() validationError = new EventEmitter<ValidationError | null>();
+ *   readonly valueChange = output<any>();
+ *   readonly validationError = output<ValidationError | null>();
  *
  *   onValueChange(newValue: any): void {
  *     this.valueChange.emit(newValue);
@@ -44,8 +44,8 @@ export interface PropertyEditorComponent {
   readonly: boolean;
 
   /** Emitted when value changes */
-  valueChange: EventEmitter<any>;
+  valueChange: OutputEmitterRef<any>;
 
   /** Emitted when validation error occurs */
-  validationError: EventEmitter<ValidationError | null>;
+  validationError: OutputEmitterRef<ValidationError | null>;
 }

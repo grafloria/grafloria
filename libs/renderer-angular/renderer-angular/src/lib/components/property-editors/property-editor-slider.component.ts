@@ -1,12 +1,4 @@
-import {
-  Component,
-  Input,
-  Output,
-  EventEmitter,
-  OnInit,
-  OnChanges,
-  SimpleChanges,
-} from '@angular/core';
+import { Component, Input, OnInit, OnChanges, SimpleChanges, output } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { PropertyDefinition, ValidationError } from '@grafloria/renderer';
@@ -175,8 +167,8 @@ export class PropertyEditorSliderComponent
   @Input() property!: PropertyDefinition;
   @Input() readonly = false;
 
-  @Output() valueChange = new EventEmitter<any>();
-  @Output() validationError = new EventEmitter<ValidationError | null>();
+  readonly valueChange = output<any>();
+  readonly validationError = output<ValidationError | null>();
 
   currentValue: number = 0;
 

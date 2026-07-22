@@ -1,10 +1,4 @@
-import {
-  Component,
-  Input,
-  Output,
-  EventEmitter,
-  ChangeDetectionStrategy
-} from '@angular/core';
+import { Component, Input, ChangeDetectionStrategy, output } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import type { PropertyDefinition } from '@grafloria/renderer';
@@ -195,7 +189,7 @@ export class PropertyEditorComponent {
   @Input() value: any = '';
   @Input() readonly = false;
 
-  @Output() valueChange = new EventEmitter<any>();
+  readonly valueChange = output<any>();
 
   get placeholder(): string {
     if (this.value === '(multiple values)') {

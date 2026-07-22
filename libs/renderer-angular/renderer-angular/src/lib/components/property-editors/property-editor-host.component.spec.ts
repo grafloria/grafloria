@@ -1,7 +1,7 @@
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { PropertyEditorHostComponent } from './property-editor-host.component';
 import { PropertyEditorRegistryService } from '../../services/property-editor-registry.service';
-import { Component, Input, Output, EventEmitter } from '@angular/core';
+import { Component, Input, output } from '@angular/core';
 import { PropertyEditorComponent } from './property-editor.interface';
 import { PropertyDefinition, PropertyEditorType, ValidationError } from '@grafloria/renderer';
 
@@ -15,8 +15,8 @@ class MockEditorComponent implements PropertyEditorComponent {
   @Input() value: any;
   @Input() property!: PropertyDefinition;
   @Input() readonly = false;
-  @Output() valueChange = new EventEmitter<any>();
-  @Output() validationError = new EventEmitter<ValidationError | null>();
+  readonly valueChange = output<any>();
+  readonly validationError = output<ValidationError | null>();
 }
 
 describe('PropertyEditorHostComponent', () => {

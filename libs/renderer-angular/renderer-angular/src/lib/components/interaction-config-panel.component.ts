@@ -1,13 +1,4 @@
-import {
-  Component,
-  Input,
-  Output,
-  EventEmitter,
-  OnInit,
-  OnChanges,
-  SimpleChanges,
-  ChangeDetectionStrategy,
-} from '@angular/core';
+import { Component, Input, OnInit, OnChanges, SimpleChanges, ChangeDetectionStrategy, output } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import type { DiagramEngine, InteractionConfig } from '@grafloria/engine';
@@ -58,7 +49,7 @@ export class InteractionConfigPanelComponent implements OnInit, OnChanges {
   /**
    * Emit config changes
    */
-  @Output() configChanged = new EventEmitter<Partial<InteractionConfig>>();
+  readonly configChanged = output<Partial<InteractionConfig>>();
 
   /**
    * Current configuration (local copy)

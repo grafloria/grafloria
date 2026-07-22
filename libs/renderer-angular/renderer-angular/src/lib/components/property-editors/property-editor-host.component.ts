@@ -1,16 +1,4 @@
-import {
-  Component,
-  Input,
-  Output,
-  EventEmitter,
-  OnInit,
-  OnChanges,
-  OnDestroy,
-  SimpleChanges,
-  ViewChild,
-  ViewContainerRef,
-  ComponentRef,
-} from '@angular/core';
+import { Component, Input, OnInit, OnChanges, OnDestroy, SimpleChanges, ViewChild, ViewContainerRef, ComponentRef, output } from '@angular/core';
 import { PropertyDefinition, ValidationError } from '@grafloria/renderer';
 import { PropertyEditorRegistryService } from '../../services/property-editor-registry.service';
 
@@ -68,12 +56,12 @@ export class PropertyEditorHostComponent
   /**
    * Emitted when the value changes in the editor.
    */
-  @Output() valueChange = new EventEmitter<any>();
+  readonly valueChange = output<any>();
 
   /**
    * Emitted when a validation error occurs in the editor.
    */
-  @Output() validationError = new EventEmitter<ValidationError | null>();
+  readonly validationError = output<ValidationError | null>();
 
   /**
    * ViewContainerRef for dynamically creating components.
