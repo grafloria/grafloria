@@ -60,3 +60,5 @@ export { GrafloriaDashboard } from './lib/grafloria-dashboard';
 export type { GrafloriaDashboardProps, WidgetProps, WidgetTypes } from './lib/grafloria-dashboard';
 export { GrafloriaDiagram } from './lib/grafloria-diagram';
 export type { GrafloriaDiagramProps } from './lib/grafloria-diagram';
+export { GrafloriaCommentPanel } from './lib/grafloria-comment-panel';
+export type { GrafloriaCommentPanelProps } from './lib/grafloria-comment-panel';

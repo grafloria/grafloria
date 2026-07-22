@@ -27,7 +27,7 @@ describe('instance comments', () => {
     const store = instance.getCommentStore()!;
     expect(store).toBeTruthy();
 
-    const threadId = store.createThread({ kind: 'node', nodeId: 'a' } as never, 'looks wrong');
+    const threadId = store.createThread({ kind: 'node', id: 'a' } as never, 'looks wrong');
     instance.renderNow();
     const pin = container.querySelector(`[data-comment-thread-id="${threadId}"]`);
     expect(pin).toBeTruthy();

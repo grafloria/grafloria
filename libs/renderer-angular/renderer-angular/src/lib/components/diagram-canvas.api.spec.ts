@@ -234,7 +234,7 @@ describe('[collab] presence + [comments] on the Angular canvas', () => {
     const store = canvas.getCommentStore()!;
     expect(store).toBeTruthy();
 
-    const threadId = store.createThread({ kind: 'node', nodeId: 'a' }, 'check this');
+    const threadId = store.createThread({ kind: 'node', id: 'a' }, 'check this');
     (canvas as unknown as { renderNow(): void }).renderNow();
     const el = fixture.nativeElement as HTMLElement;
     expect(el.querySelector(`[data-comment-thread-id="${threadId}"]`)).toBeTruthy();

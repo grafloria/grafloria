@@ -472,7 +472,7 @@ describe('comments', () => {
     await waitFor(() => expect(instance).toBeTruthy());
     const store = instance!.getCommentStore()!;
     expect(store).toBeTruthy();
-    const threadId = store.createThread({ kind: 'node', nodeId: 'a' } as never, 'hm');
+    const threadId = store.createThread({ kind: 'node', id: 'a' } as never, 'hm');
     instance!.renderNow();
     await waitFor(() =>
       expect(document.querySelector(`[data-comment-thread-id="${threadId}"]`)).toBeTruthy()

@@ -54,3 +54,4 @@ export * from './lib/providers';
 export * from './lib/components/dashboard/grafloria-dashboard.component';
 export * from './lib/components/dashboard/grafloria-widget-def.directive';
 export * from './lib/components/grafloria-diagram.component';
+export * from './lib/components/grafloria-comment-panel.component';

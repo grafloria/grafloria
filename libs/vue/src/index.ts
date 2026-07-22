@@ -16,3 +16,4 @@ export type { SelectionChange } from './lib/composables';
 export { GrafloriaDashboard } from './lib/grafloria-dashboard';
 export type { GrafloriaCollabOptions } from './lib/grafloria-flow';
 export { GrafloriaDiagram } from './lib/grafloria-diagram';
+export { GrafloriaCommentPanel } from './lib/grafloria-comment-panel';
