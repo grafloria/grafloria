@@ -1,15 +1,16 @@
 {
   "name": "@grafloria/engine",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "type": "commonjs",
   "main": "./src/index.js",
   "types": "./src/index.d.ts",
   "dependencies": {
-    "dagre": "^0.8.5",
     "elkjs": "^0.9.3",
     "eventemitter3": "^5.0.1",
     "nanoid": "^5.0.0",
-    "uuid": "^9.0.1"
+    "uuid": "^9.0.1",
+    "@dagrejs/dagre": "^1.1.5",
+    "lemonadejs": "^5.1.1"
   },
   "devDependencies": {
     "@types/dagre": "^0.7.52"
