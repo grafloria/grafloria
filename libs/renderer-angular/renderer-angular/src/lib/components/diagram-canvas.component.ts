@@ -54,7 +54,18 @@ import {
   // Advanced domains wave 1: Mermaid-compatible text on the component.
   exportDiagramText,
   importDiagramText,
+  // Tier 3: real-time collaboration.
+  createSyncSession,
+  type SyncAdapter,
+  type SyncTransport,
 } from '@grafloria/engine';
+
+/** The uniform collab contract every Grafloria wrapper shares. */
+export interface GrafloriaCollabOptions {
+  transport: SyncTransport;
+  actor: string;
+  [option: string]: unknown;
+}
 
 /** Request shape for the declarative `[layout]` input / `applyLayout()`. */
 export interface GrafloriaLayoutRequest {
@@ -291,6 +302,29 @@ export class DiagramCanvasComponent implements AfterViewInit, OnDestroy {
   }
 
   // --- Angular-native layout ------------------------------------------------
+
+  // --- real-time collaboration ----------------------------------------------
+
+  /**
+   * Real-time collaboration: a transport (BroadcastChannelTransport,
+   * WebSocketTransport, MemoryTransport, …) + actor id — the canvas joins a
+   * CRDT sync session once the diagram exists and leaves on destroy. Fixed
+   * for the life of the canvas.
+   */
+  readonly collab = input<GrafloriaCollabOptions | undefined>(undefined);
+  /** The live SyncAdapter, right after `join()`. */
+  readonly collabReady = output<SyncAdapter>();
+  private collabSession?: SyncAdapter;
+
+  private attachCollab(config: GrafloriaCollabOptions | undefined): void {
+    if (this.collabSession || !config) return;
+    const diagram = this.activeEngine()?.getDiagram();
+    if (!diagram) return;
+    const { transport, actor, ...rest } = config;
+    this.collabSession = createSyncSession(diagram, transport, { actor, ...rest } as never);
+    this.collabSession.join();
+    this.collabReady.emit(this.collabSession);
+  }
 
   // --- canvas plugins: minimap / controls / background ----------------------
 
@@ -936,6 +970,13 @@ export class DiagramCanvasComponent implements AfterViewInit, OnDestroy {
       untracked(() => this.attachPluginsNow(config));
     });
 
+    // --- collab ---------------------------------------------------------------
+    effect(() => {
+      const config = this.collab();
+      this.activeEngine(); // join once the diagram exists
+      untracked(() => this.attachCollab(config));
+    });
+
     // canvas → plugin camera: [(zoom)]/[(viewport)] changes reach the plugins.
     effect(() => {
       const zoom = this.zoom();
@@ -984,6 +1025,9 @@ export class DiagramCanvasComponent implements AfterViewInit, OnDestroy {
 
   ngOnDestroy(): void {
     this.destroyed = true;
+    this.collabSession?.leave();
+    this.collabSession?.dispose();
+    this.collabSession = undefined;
     this.pluginsHandle?.dispose();
     this.pluginsHandle = undefined;
     this.cleanup();

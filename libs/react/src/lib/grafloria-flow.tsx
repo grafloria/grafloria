@@ -3,7 +3,16 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { CSSProperties, ComponentType, ReactNode } from 'react';
 import { createPortal } from 'react-dom';
-import type { LinkModel, NodeModel } from '@grafloria/engine';
+import { createSyncSession } from '@grafloria/engine';
+import type { LinkModel, NodeModel, SyncAdapter, SyncTransport } from '@grafloria/engine';
+
+/** The uniform collab contract every Grafloria wrapper shares. */
+export interface GrafloriaCollabOptions {
+  transport: SyncTransport;
+  actor: string;
+  /** Everything else passes through to `createSyncSession`'s options. */
+  [option: string]: unknown;
+}
 import { createDiagram, attachCanvasPlugins } from '@grafloria/renderer';
 import type { CanvasPluginOptions } from '@grafloria/renderer';
 import type {
@@ -106,6 +115,15 @@ export interface GrafloriaFlowProps {
    * grid with defaults; an object picks and configures them.
    */
   plugins?: boolean | CanvasPluginOptions;
+  /**
+   * Real-time collaboration: hand in a transport (BroadcastChannelTransport,
+   * WebSocketTransport, MemoryTransport, …) and an actor id — the flow joins a
+   * CRDT sync session at mount and leaves on unmount. Fixed for the life of
+   * the instance.
+   */
+  collab?: GrafloriaCollabOptions;
+  /** The live SyncAdapter, right after `join()`. */
+  onCollabReady?: (session: SyncAdapter) => void;
 
   className?: string;
   style?: CSSProperties;
@@ -187,6 +205,16 @@ export function GrafloriaFlow(props: GrafloriaFlowProps) {
 
     const diagram = createDiagram(container, options);
 
+    // Collab: join the CRDT sync session over the supplied transport. Fixed
+    // for the life of the instance — remounting is the way to change rooms.
+    let session: SyncAdapter | null = null;
+    if (callbacks.current.collab) {
+      const { transport, actor, ...rest } = callbacks.current.collab;
+      session = createSyncSession(diagram.getModel(), transport, { actor, ...rest } as never);
+      session.join();
+      callbacks.current.onCollabReady?.(session);
+    }
+
     const offs = [
       diagram.on('nodes:change', ({ nodes: next }) =>
         callbacks.current.onNodesChange?.(next)
@@ -207,6 +235,9 @@ export function GrafloriaFlow(props: GrafloriaFlowProps) {
     callbacks.current.onInit?.(diagram);
 
     return () => {
+      session?.leave();
+      session?.dispose();
+      session = null;
       for (const off of offs) off();
       store.set(null);
       setInstance(null);

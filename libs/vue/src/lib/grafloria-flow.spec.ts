@@ -170,3 +170,48 @@ describe('canvas plugins prop', () => {
     host.remove();
   });
 });
+
+describe('collab — two flows over a MemoryHub (Vue)', () => {
+  it('an edit in flow A converges into flow B through the CRDT', async () => {
+    const { MemoryHub } = require('@grafloria/engine');
+    const hub = new MemoryHub();
+    const host2 = document.createElement('div');
+    document.body.appendChild(host2);
+    let a: any = null;
+    let b: any = null;
+    const NODES: NodeSpec[] = [
+      { id: 'n1', position: { x: 0, y: 0 }, size: { width: 100, height: 50 }, label: 'N1' },
+    ];
+    const mk = (target: HTMLElement, actor: string, onInit: (i: unknown) => void) => {
+      const app = createApp(
+        defineComponent({
+          setup() {
+            return () =>
+              h(GrafloriaFlow, {
+                defaultNodes: NODES,
+                collab: { transport: hub.connect(actor), actor, batch: false },
+                onInit,
+              });
+          },
+        })
+      );
+      app.mount(target);
+      return app;
+    };
+    const host1 = document.createElement('div');
+    document.body.appendChild(host1);
+    const app1 = mk(host1, 'actor-a', (i) => (a = i));
+    const app2 = mk(host2, 'actor-b', (i) => (b = i));
+    await flush();
+
+    a.getModel().getNodes()[0].setPosition(444, 55);
+    for (let i = 0; i < 40; i++) {
+      const n = b.getModel().getNode('n1');
+      if (n && n.position.x === 444) break;
+      await flush();
+    }
+    const nb = b.getModel().getNode('n1');
+    expect({ x: nb.position.x, y: nb.position.y }).toEqual({ x: 444, y: 55 });
+    app1.unmount(); app2.unmount(); host1.remove(); host2.remove();
+  });
+});

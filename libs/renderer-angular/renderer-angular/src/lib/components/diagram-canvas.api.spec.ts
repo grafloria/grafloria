@@ -133,3 +133,46 @@ describe('diagram-canvas text round-trip', () => {
     fixture.destroy();
   });
 });
+
+describe('[collab] — two canvases over a MemoryHub', () => {
+  it('an edit in canvas A converges into canvas B through the CRDT', async () => {
+    const { MemoryHub } = require('@grafloria/engine');
+    const hub = new MemoryHub();
+
+    @Component({
+      imports: [DiagramCanvasComponent],
+      template: `
+        <grafloria-diagram-canvas #a style="display:block;width:400px;height:300px"
+          [(nodes)]="nodes" [collab]="collabA" (collabReady)="sessions = sessions + 1" />
+        <grafloria-diagram-canvas #b style="display:block;width:400px;height:300px"
+          [(nodes)]="nodesB" [collab]="collabB" (collabReady)="sessions = sessions + 1" />
+      `,
+    })
+    class CollabHost {
+      sessions = 0;
+      nodes = signal<NodeSpec[]>([{ id: 'n1', position: { x: 0, y: 0 }, size: { width: 100, height: 50 }, label: 'N1' }]);
+      nodesB = signal<NodeSpec[]>([{ id: 'n1', position: { x: 0, y: 0 }, size: { width: 100, height: 50 }, label: 'N1' }]);
+      collabA = { transport: hub.connect('actor-a'), actor: 'actor-a', batch: false };
+      collabB = { transport: hub.connect('actor-b'), actor: 'actor-b', batch: false };
+    }
+
+    await TestBed.configureTestingModule({ imports: [CollabHost] }).compileComponents();
+    const fixture = TestBed.createComponent(CollabHost);
+    fixture.detectChanges();
+    expect(fixture.componentInstance.sessions).toBe(2);
+
+    const canvases = fixture.debugElement.queryAll(By.directive(DiagramCanvasComponent));
+    const modelA = (canvases[0].componentInstance as any).eng.getDiagram();
+    const modelB = (canvases[1].componentInstance as any).eng.getDiagram();
+
+    modelA.getNodes()[0].setPosition(555, 66);
+    for (let i = 0; i < 40; i++) {
+      const n = modelB.getNode('n1');
+      if (n && n.position.x === 555) break;
+      await new Promise((r) => setTimeout(r, 25));
+    }
+    const nb = modelB.getNode('n1');
+    expect({ x: nb.position.x, y: nb.position.y }).toEqual({ x: 555, y: 66 });
+    fixture.destroy();
+  });
+});

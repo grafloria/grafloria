@@ -399,3 +399,37 @@ describe('canvas plugins prop', () => {
     expect(document.querySelector('.grafloria-minimap')).toBeNull();
   });
 });
+
+describe('collab — two flows over a MemoryHub', () => {
+  it('an edit in flow A converges into flow B through the CRDT', async () => {
+    const { MemoryHub } = require('@grafloria/engine');
+    const hub = new MemoryHub();
+    let a: DiagramInstance | undefined;
+    let b: DiagramInstance | undefined;
+    const sessions: unknown[] = [];
+    render(
+      <>
+        <GrafloriaFlow
+          defaultNodes={NODES}
+          onInit={(i) => (a = i)}
+          collab={{ transport: hub.connect('actor-a'), actor: 'actor-a', batch: false }}
+          onCollabReady={(s) => sessions.push(s)}
+        />
+        <GrafloriaFlow
+          defaultNodes={NODES}
+          onInit={(i) => (b = i)}
+          collab={{ transport: hub.connect('actor-b'), actor: 'actor-b', batch: false }}
+          onCollabReady={(s) => sessions.push(s)}
+        />
+      </>
+    );
+    await waitFor(() => expect(sessions).toHaveLength(2));
+
+    const nodeA = a!.getModel().getNodes()[0];
+    nodeA.setPosition(333, 77);
+    await waitFor(() => {
+      const nodeB = b!.getModel().getNode(nodeA.id)!;
+      expect({ x: nodeB.position.x, y: nodeB.position.y }).toEqual({ x: 333, y: 77 });
+    });
+  });
+});

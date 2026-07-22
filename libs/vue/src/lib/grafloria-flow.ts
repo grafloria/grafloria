@@ -33,8 +33,16 @@ import {
   type VNode,
 } from 'vue';
 import { inject } from 'vue';
-import type { NodeModel, LinkModel, DiagramEngine } from '@grafloria/engine';
+import { createSyncSession } from '@grafloria/engine';
+import type { NodeModel, LinkModel, DiagramEngine, SyncAdapter, SyncTransport } from '@grafloria/engine';
 import { GRAFLORIA_STORE } from './composables';
+
+/** The uniform collab contract every Grafloria wrapper shares. */
+export interface GrafloriaCollabOptions {
+  transport: SyncTransport;
+  actor: string;
+  [option: string]: unknown;
+}
 import {
   createDiagram,
   attachCanvasPlugins,
@@ -93,6 +101,14 @@ export const GrafloriaFlow = defineComponent({
       type: [Boolean, Object] as PropType<boolean | CanvasPluginOptions>,
       default: undefined,
     },
+    /**
+     * Real-time collaboration: a transport + actor id — the flow joins a CRDT
+     * sync session at mount and leaves on unmount. Fixed for the instance.
+     */
+    collab: {
+      type: Object as PropType<GrafloriaCollabOptions>,
+      default: undefined,
+    },
     fitView: { type: Boolean, default: undefined },
     enablePan: { type: Boolean, default: undefined },
     enableZoom: { type: Boolean, default: undefined },
@@ -110,6 +126,7 @@ export const GrafloriaFlow = defineComponent({
     'nodeClick',
     'edgeClick',
     'layoutDone',
+    'collabReady',
   ],
   setup(props, { emit, slots, expose }) {
     const container = ref<HTMLElement | null>(null);
@@ -155,6 +172,7 @@ export const GrafloriaFlow = defineComponent({
       for (const entry of mounted.values()) paintSlot(entry);
     };
 
+    let session: SyncAdapter | null = null;
     let plugins: CanvasPlugins | null = null;
     const attachPlugins = (config: boolean | CanvasPluginOptions | undefined): void => {
       plugins?.dispose();
@@ -218,6 +236,12 @@ export const GrafloriaFlow = defineComponent({
 
       emit('init', inst);
       if (providedStore) providedStore.value = inst;
+      if (props.collab) {
+        const { transport, actor, ...rest } = props.collab;
+        session = createSyncSession(inst.getModel(), transport, { actor, ...rest } as never);
+        session.join();
+        emit('collabReady', session);
+      }
       attachPlugins(props.plugins);
       if (props.layout !== undefined) void runLayout(props.layout);
     });
@@ -254,6 +278,9 @@ export const GrafloriaFlow = defineComponent({
     );
 
     onBeforeUnmount(() => {
+      session?.leave();
+      session?.dispose();
+      session = null;
       plugins?.dispose();
       plugins = null;
       for (const off of offs) off();
