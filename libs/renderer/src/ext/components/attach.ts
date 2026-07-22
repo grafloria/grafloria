@@ -59,15 +59,28 @@ export interface CanvasPlugins {
   dispose: Disposer;
 }
 
+/**
+ * The structural surface the plugins actually need. `DiagramInstance`
+ * satisfies it; so does any framework canvas that keeps a live
+ * `ViewportController` (the Angular wrapper builds exactly this adapter).
+ */
+export interface CanvasPluginHost {
+  container: HTMLElement;
+  viewport: DiagramInstance['viewport'];
+  getModel(): DiagramModel;
+  getEngine(): DiagramEngine;
+  fitView(padding?: number): void;
+}
+
 /** The diagram root element the instance mounted (portals attach to this). */
-function rootOf(instance: DiagramInstance): HTMLElement {
+function rootOf(instance: CanvasPluginHost): HTMLElement {
   const root = instance.container.querySelector('.grafloria-diagram-root');
   // Fall back to the container itself: a host may have handed us the root.
   return (root as HTMLElement | null) ?? instance.container;
 }
 
 export function attachCanvasPlugins(
-  instance: DiagramInstance,
+  instance: CanvasPluginHost,
   options: CanvasPluginOptions = {}
 ): CanvasPlugins {
   const store = new DisposableStore();

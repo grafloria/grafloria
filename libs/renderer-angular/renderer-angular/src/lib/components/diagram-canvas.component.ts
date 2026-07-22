@@ -77,6 +77,12 @@ import {
   applyEdges,
   toNodeSpec,
   toEdgeSpec,
+  // Advanced domains: the same minimap/controls/background the React and Vue
+  // wrappers mount — attachable here because the canvas keeps a persistent,
+  // two-way-synced ViewportController (see pluginsCamera).
+  attachCanvasPlugins,
+  type CanvasPluginOptions,
+  type CanvasPlugins,
   type NodeSpec,
   type EdgeSpec,
   // wave4/interaction — every bit of tool/snap/keyboard LOGIC lives in
@@ -285,6 +291,62 @@ export class DiagramCanvasComponent implements AfterViewInit, OnDestroy {
   }
 
   // --- Angular-native layout ------------------------------------------------
+
+  // --- canvas plugins: minimap / controls / background ----------------------
+
+  /**
+   * `[plugins]="true"` mounts minimap + zoom/fit controls + background grid
+   * with defaults; an object picks and configures them. The plugins drive and
+   * follow the SAME camera as `[(zoom)]`/`[(viewport)]` via a persistent
+   * two-way-synced ViewportController.
+   */
+  readonly plugins = input<boolean | CanvasPluginOptions | undefined>(undefined);
+
+  private pluginsCamera?: ViewportController;
+  private pluginsHandle?: CanvasPlugins;
+  private syncingCamera = false;
+
+  private attachPluginsNow(config: boolean | CanvasPluginOptions | undefined): void {
+    this.pluginsHandle?.dispose();
+    this.pluginsHandle = undefined;
+    const engine = this.activeEngine();
+    if (!config || !engine || !engine.getDiagram() || !this.containerRef?.nativeElement) return;
+
+    const cam = (this.pluginsCamera ??= this.createPluginsCamera());
+    this.pluginsHandle = attachCanvasPlugins(
+      {
+        container: this.containerRef.nativeElement,
+        viewport: cam,
+        getModel: () => engine.getDiagram()!,
+        getEngine: () => engine,
+        fitView: (padding?: number) => this.fitToContent(padding ?? 40),
+      },
+      config === true ? { minimap: true, controls: true, background: true } : config
+    );
+  }
+
+  private createPluginsCamera(): ViewportController {
+    const cam = new ViewportController({});
+    const v = this.viewport();
+    if (v) cam.setViewport(v);
+    cam.setZoom(this.zoom());
+    const rect = this.containerRef.nativeElement.getBoundingClientRect();
+    cam.setCanvasSize(rect.width || 800, rect.height || 600);
+    // plugin → canvas: minimap clicks and control buttons mutate the camera;
+    // reflect into the two-way model signals so the SVG viewBox follows.
+    cam.onChange((state) => {
+      if (this.syncingCamera) return;
+      this.syncingCamera = true;
+      try {
+        this.zoom.set(state.zoom);
+        this.viewport.set({ ...state.viewport });
+        this.cdr.markForCheck();
+      } finally {
+        this.syncingCamera = false;
+      }
+    });
+    return cam;
+  }
 
   /**
    * Declarative auto-layout: `[layout]="'elk'"` or
@@ -867,6 +929,30 @@ export class DiagramCanvasComponent implements AfterViewInit, OnDestroy {
       untracked(() => this.syncFromInputs(nodes, edges, skip));
     });
 
+    // --- canvas plugins -------------------------------------------------------
+    effect(() => {
+      const config = this.plugins();
+      this.activeEngine(); // re-attach when the engine (re)appears
+      untracked(() => this.attachPluginsNow(config));
+    });
+
+    // canvas → plugin camera: [(zoom)]/[(viewport)] changes reach the plugins.
+    effect(() => {
+      const zoom = this.zoom();
+      const viewport = this.viewport();
+      untracked(() => {
+        const cam = this.pluginsCamera;
+        if (!cam || this.syncingCamera) return;
+        this.syncingCamera = true;
+        try {
+          if (viewport) cam.setViewport(viewport);
+          cam.setZoom(zoom);
+        } finally {
+          this.syncingCamera = false;
+        }
+      });
+    });
+
     // --- declarative [layout] -------------------------------------------------
     // Tracks the binding and the engine's existence, nothing else: node-data
     // changes must never trigger a relayout (see the `layout` input docs).
@@ -898,6 +984,8 @@ export class DiagramCanvasComponent implements AfterViewInit, OnDestroy {
 
   ngOnDestroy(): void {
     this.destroyed = true;
+    this.pluginsHandle?.dispose();
+    this.pluginsHandle = undefined;
     this.cleanup();
   }
 
