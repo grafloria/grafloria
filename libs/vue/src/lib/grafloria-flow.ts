@@ -32,7 +32,9 @@ import {
   type Slots,
   type VNode,
 } from 'vue';
+import { inject } from 'vue';
 import type { NodeModel, LinkModel, DiagramEngine } from '@grafloria/engine';
+import { GRAFLORIA_STORE } from './composables';
 import {
   createDiagram,
   attachCanvasPlugins,
@@ -112,6 +114,9 @@ export const GrafloriaFlow = defineComponent({
   setup(props, { emit, slots, expose }) {
     const container = ref<HTMLElement | null>(null);
     const instance = shallowRef<DiagramInstance | null>(null);
+    // Publish to the nearest <GrafloriaProvider>, if any, so useGrafloria()
+    // works from siblings (toolbars, inspectors).
+    const providedStore = inject(GRAFLORIA_STORE, undefined);
     const mounted = new Map<string, MountedNode>();
     const offs: Array<() => void> = [];
 
@@ -212,6 +217,7 @@ export const GrafloriaFlow = defineComponent({
       );
 
       emit('init', inst);
+      if (providedStore) providedStore.value = inst;
       attachPlugins(props.plugins);
       if (props.layout !== undefined) void runLayout(props.layout);
     });
@@ -255,6 +261,7 @@ export const GrafloriaFlow = defineComponent({
       mounted.clear();
       instance.value?.dispose();
       instance.value = null;
+      if (providedStore) providedStore.value = null;
     });
 
     expose({
