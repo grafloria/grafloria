@@ -101,6 +101,17 @@ defineDemo({
     // Start a long run, and while awaiting it, tick a counter on the main thread. If
     // layout blocked the main thread, the counter could not advance. It runs in the
     // worker, so it does.
+    //
+    // The bar is MEASURED, not guessed: on a starved 2-vCPU CI runner the timer
+    // fires rarely even on an idle main thread, so a fixed ">= 3" flakes there.
+    // First measure how often THIS machine ticks while idle over the same wall
+    // time, then require a fraction of that during the layout. A truly BLOCKED
+    // main thread still reads ~0 ticks on any machine and stays red.
+    let baselineTicks = 0;
+    const baseTicker = setInterval(() => { baselineTicks++; }, 4);
+    await new Promise((r) => setTimeout(r, 60));
+    clearInterval(baseTicker);
+
     let mainThreadTicks = 0;
     const ticker = setInterval(() => { mainThreadTicks++; }, 4);
 
@@ -128,8 +139,12 @@ defineDemo({
     check(overlaps(ctx.diagram).length === 0, 'the retained partial layout overlaps — it was not a coherent picture');
 
     // 3. THE MAIN THREAD STAYED RESPONSIVE — the counter kept advancing while a
-    //    multi-thousand-iteration force sim ran. An inline layout would have starved it.
-    check(mainThreadTicks >= 3, `main thread only ticked ${mainThreadTicks}× — it was blocked by the layout`);
+    //    multi-thousand-iteration force sim ran. An inline layout would have starved
+    //    it. Bar = 20% of this machine's own idle rate over the same wall time
+    //    (floor 1): blocked ⇒ ~0 ticks ⇒ red on ANY machine.
+    const requiredTicks = Math.max(1, Math.floor(baselineTicks * 0.2));
+    check(mainThreadTicks >= requiredTicks,
+      `main thread only ticked ${mainThreadTicks}× (idle baseline ${baselineTicks}, bar ${requiredTicks}) — it was blocked by the layout`);
 
     // End on a DETERMINISTIC frame: the cancelled run's picture depends on which
     // iteration the cancel happened to land on (timing-based, machine-dependent),
