@@ -361,3 +361,30 @@ describe('hooks', () => {
     expect(on).not.toHaveBeenCalled(); // the handler ref absorbs the new closure
   });
 });
+
+describe('declarative layout prop', () => {
+  it('runs a registry layout and reports completion — stacked nodes separate', async () => {
+    const stacked: NodeSpec[] = [
+      { id: 'a', position: { x: 0, y: 0 }, size: { width: 100, height: 50 }, label: 'A' },
+      { id: 'b', position: { x: 0, y: 0 }, size: { width: 100, height: 50 }, label: 'B' },
+      { id: 'c', position: { x: 0, y: 0 }, size: { width: 100, height: 50 }, label: 'C' },
+    ];
+    const onInit = jest.fn();
+    const onLayoutDone = jest.fn();
+    render(
+      <GrafloriaFlow
+        defaultNodes={stacked}
+        defaultEdges={[{ source: 'a', target: 'b' }, { source: 'b', target: 'c' }]}
+        layout="grid"
+        onInit={onInit}
+        onLayoutDone={onLayoutDone}
+      />
+    );
+    await waitFor(() => expect(onLayoutDone).toHaveBeenCalled(), { timeout: 5000 });
+    const instance: DiagramInstance = onInit.mock.calls[0][0];
+    const distinct = new Set(
+      instance.getModel().getNodes().map((n) => `${n.position.x},${n.position.y}`)
+    );
+    expect(distinct.size).toBe(3);
+  });
+});

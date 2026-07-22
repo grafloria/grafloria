@@ -92,6 +92,14 @@ export interface GrafloriaFlowProps {
   // -- SSR -------------------------------------------------------------------
   /** The `renderToStaticSVG()` result. Renders server-side, hydrates client-side. */
   ssr?: { html: string; snapshot: HydrationSnapshot };
+  /**
+   * Declarative auto-layout — any engine registry name ('elk', 'dagre',
+   * 'force', 'tree', 'grid', 'auto', …) or `{ name, options }`. Re-runs when
+   * the prop VALUE changes, never when node data changes.
+   */
+  layout?: string | { name: string; options?: Record<string, unknown> };
+  /** Fires after each declarative layout completes. */
+  onLayoutDone?: (result: unknown) => void;
 
   className?: string;
   style?: CSSProperties;
@@ -220,6 +228,27 @@ export function GrafloriaFlow(props: GrafloriaFlowProps) {
     if (!instance || !props.theme) return;
     instance.setTheme(props.theme);
   }, [instance, props.theme]);
+
+  // -- declarative layout -----------------------------------------------------
+  // Runs when the `layout` prop (by VALUE, so inline objects are fine) or the
+  // instance changes — never when node data changes, so user drags are not
+  // fought by a relayout. Re-run on demand via `useGrafloria().getEngine()`.
+  const layoutKey = props.layout === undefined ? undefined : JSON.stringify(props.layout);
+  useEffect(() => {
+    if (!instance || layoutKey === undefined) return;
+    const req = JSON.parse(layoutKey) as string | { name: string; options?: Record<string, unknown> };
+    const { name, options } = typeof req === 'string' ? { name: req, options: {} } : req;
+    let cancelled = false;
+    void instance
+      .getEngine()
+      .layout(name, options ?? {})
+      .then((result) => {
+        if (!cancelled) callbacks.current.onLayoutDone?.(result);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [instance, layoutKey]);
 
   const rootStyle = useMemo<CSSProperties>(
     () => ({ width: '100%', height: '100%', position: 'relative', ...style }),
