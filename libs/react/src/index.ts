@@ -58,3 +58,5 @@ export { renderToStaticSVG, LIGHT_THEME, DARK_THEME } from '@grafloria/renderer'
 // Tier 2 (advanced domains): the dashboard kit, the React way.
 export { GrafloriaDashboard } from './lib/grafloria-dashboard';
 export type { GrafloriaDashboardProps, WidgetProps, WidgetTypes } from './lib/grafloria-dashboard';
+export { GrafloriaDiagram } from './lib/grafloria-diagram';
+export type { GrafloriaDiagramProps } from './lib/grafloria-diagram';

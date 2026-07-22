@@ -15,3 +15,4 @@ export type { SelectionChange } from './lib/composables';
 // Tier 2 (advanced domains): the dashboard kit, the Vue way.
 export { GrafloriaDashboard } from './lib/grafloria-dashboard';
 export type { GrafloriaCollabOptions } from './lib/grafloria-flow';
+export { GrafloriaDiagram } from './lib/grafloria-diagram';

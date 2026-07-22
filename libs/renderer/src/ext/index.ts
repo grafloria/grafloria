@@ -89,3 +89,6 @@ export * from './components/attach';
 // NOTE: `capability-factory` is deliberately NOT exported. It is the host's
 // private wiring to the real registries; an extension reaching it directly would
 // bypass the capability grant, which is the whole point of Card 7.
+// Lazy entry for the plugin chain — what the framework wrappers use, so
+// consumers who never mount plugins ship none of this chain.
+export { loadCanvasPlugins } from './plugins-loader';

@@ -57,12 +57,21 @@ describe('[plugins] — minimap/controls/background on the Angular canvas', () =
 
   afterEach(() => fixture.destroy());
 
-  it('mounts the minimap and controls', () => {
+  /** The plugin chain loads lazily — wait for the minimap to arrive. */
+  async function pluginsMounted(): Promise<void> {
+    for (let i = 0; i < 100 && !el.querySelector('.grafloria-minimap'); i++) {
+      await new Promise((r) => setTimeout(r, 10));
+    }
+  }
+
+  it('mounts the minimap and controls (lazily)', async () => {
+    await pluginsMounted();
     expect(el.querySelector('.grafloria-minimap')).toBeTruthy();
     expect(el.querySelector('[title="Zoom in"], [aria-label="Zoom in"]')).toBeTruthy();
   });
 
-  it('plugin → canvas: the zoom-in control drives [(zoom)]', () => {
+  it('plugin → canvas: the zoom-in control drives [(zoom)]', async () => {
+    await pluginsMounted();
     const before = host.zoom;
     const btn = el.querySelector('[title="Zoom in"], [aria-label="Zoom in"]') as HTMLElement;
     btn.click();
@@ -78,13 +87,15 @@ describe('[plugins] — minimap/controls/background on the Angular canvas', () =
     expect(cam.getZoom()).toBeCloseTo(2, 5);
   });
 
-  it('[plugins] set to undefined disposes the plugin DOM', () => {
+  it('[plugins] set to undefined disposes the plugin DOM', async () => {
+    await pluginsMounted();
     host.plugins.set(undefined);
     fixture.detectChanges();
     expect(el.querySelector('.grafloria-minimap')).toBeNull();
   });
 
-  it('destroying the canvas removes the plugin DOM', () => {
+  it('destroying the canvas removes the plugin DOM', async () => {
+    await pluginsMounted();
     fixture.destroy();
     expect(document.querySelector('.grafloria-minimap')).toBeNull();
   });

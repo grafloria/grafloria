@@ -53,3 +53,4 @@ export * from './lib/providers';
 // Tier 2 (advanced domains): the dashboard kit, the Angular way.
 export * from './lib/components/dashboard/grafloria-dashboard.component';
 export * from './lib/components/dashboard/grafloria-widget-def.directive';
+export * from './lib/components/grafloria-diagram.component';

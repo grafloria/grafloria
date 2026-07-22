@@ -1,6 +1,6 @@
 {
   "name": "@grafloria/vue",
-  "version": "0.5.0",
+  "version": "0.6.0",
   "description": "Vue 3 bindings for the Grafloria diagram engine — v-model data, slot-based custom nodes, declarative layout",
   "license": "MIT",
   "author": "Ramy Othman",

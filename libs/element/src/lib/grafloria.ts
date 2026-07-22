@@ -46,9 +46,20 @@ export interface DiagramSpec {
   edges?: EdgeSpec[];
 }
 
-// A kit spec (dashboard() et al) IS a render spec — `render(dashboard({…}), host)`
-// is the documented one-liner, so the type says so too.
-export type RenderSpec = DiagramSpec | DashboardSpec | string;
+/**
+ * The structural shape every diagram kit emits (erDiagram, umlDiagram, …):
+ * nodes/edges as loose records plus the optional painter and finalize hook.
+ */
+export interface KitDiagramSpec {
+  nodes: Array<Record<string, unknown>>;
+  edges: Array<Record<string, unknown>>;
+  renderCustomNode?: (node: unknown, host: HTMLElement) => void;
+  finalize?: (api: unknown) => void;
+}
+
+// A kit spec (dashboard(), erDiagram(), umlDiagram(), …) IS a render spec —
+// `render(kit({…}), host)` is the documented one-liner, so the type says so.
+export type RenderSpec = DiagramSpec | DashboardSpec | KitDiagramSpec | string;
 
 export type RenderOptions = Omit<CreateDiagramOptions, 'nodes' | 'edges'>;
 

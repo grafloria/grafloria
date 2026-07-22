@@ -215,3 +215,43 @@ describe('collab — two flows over a MemoryHub (Vue)', () => {
     app1.unmount(); app2.unmount(); host1.remove(); host2.remove();
   });
 });
+
+describe('collab presence — live cursors (Vue)', () => {
+  it("A's pointer appears as a remote cursor in B's presence layer", async () => {
+    const { MemoryHub } = require('@grafloria/engine');
+    const hub = new MemoryHub();
+    const NODES: NodeSpec[] = [
+      { id: 'n1', position: { x: 0, y: 0 }, size: { width: 100, height: 50 }, label: 'N1' },
+    ];
+    const mk = (target: HTMLElement, actor: string, name: string) => {
+      const app = createApp(
+        defineComponent({
+          setup() {
+            return () =>
+              h(GrafloriaFlow, {
+                defaultNodes: NODES,
+                collab: { transport: hub.connect(actor), actor, batch: false,
+                          awarenessThrottleMs: 0, presence: { name, smoothing: 0 } },
+              });
+          },
+        })
+      );
+      app.mount(target);
+      return app;
+    };
+    const hostA = document.createElement('div');
+    const hostB = document.createElement('div');
+    document.body.append(hostA, hostB);
+    const app1 = mk(hostA, 'ana', 'Ana');
+    const app2 = mk(hostB, 'ben', 'Ben');
+    await flush();
+    expect(hostA.querySelector('.grafloria-presence-layer')).toBeTruthy();
+    expect(hostB.querySelector('.grafloria-presence-layer')).toBeTruthy();
+
+    const rootA = hostA.querySelector('.grafloria-diagram-root') as HTMLElement;
+    rootA.dispatchEvent(new MouseEvent('pointermove', { clientX: 120, clientY: 80, bubbles: true }));
+    for (let i = 0; i < 40 && !hostB.querySelector('.grafloria-presence-cursor'); i++) await flush();
+    expect(hostB.querySelector('.grafloria-presence-cursor')).toBeTruthy();
+    app1.unmount(); app2.unmount(); hostA.remove(); hostB.remove();
+  });
+});

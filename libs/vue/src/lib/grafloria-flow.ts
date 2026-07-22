@@ -41,13 +41,18 @@ import { GRAFLORIA_STORE } from './composables';
 export interface GrafloriaCollabOptions {
   transport: SyncTransport;
   actor: string;
+  /** Live cursors + remote selection outlines. `true` for defaults. */
+  presence?: boolean | BindPresenceOptions;
   [option: string]: unknown;
 }
 import {
   createDiagram,
-  attachCanvasPlugins,
+  loadCanvasPlugins,
+  bindPresence,
   toNodeSpec,
   toEdgeSpec,
+  type BindPresenceOptions,
+  type PresenceBinding,
   type CanvasPluginOptions,
   type CanvasPlugins,
   type DiagramInstance,
@@ -173,16 +178,23 @@ export const GrafloriaFlow = defineComponent({
     };
 
     let session: SyncAdapter | null = null;
+    let presence: PresenceBinding | null = null;
     let plugins: CanvasPlugins | null = null;
+    let pluginsEpoch = 0;
     const attachPlugins = (config: boolean | CanvasPluginOptions | undefined): void => {
       plugins?.dispose();
       plugins = null;
+      const epoch = ++pluginsEpoch;
       const inst = instance.value;
       if (!inst || config === undefined || config === false) return;
-      plugins = attachCanvasPlugins(
-        inst,
-        config === true ? { minimap: true, controls: true, background: true } : config
-      );
+      // Lazy chain — consumers who never pass `plugins` ship none of it.
+      void loadCanvasPlugins().then(({ attachCanvasPlugins }) => {
+        if (epoch !== pluginsEpoch || instance.value !== inst) return;
+        plugins = attachCanvasPlugins(
+          inst,
+          config === true ? { minimap: true, controls: true, background: true } : config
+        );
+      });
     };
 
     const runLayout = async (req: string | GrafloriaLayoutRequest): Promise<void> => {
@@ -237,9 +249,12 @@ export const GrafloriaFlow = defineComponent({
       emit('init', inst);
       if (providedStore) providedStore.value = inst;
       if (props.collab) {
-        const { transport, actor, ...rest } = props.collab;
+        const { transport, actor, presence: presenceOpt, ...rest } = props.collab;
         session = createSyncSession(inst.getModel(), transport, { actor, ...rest } as never);
         session.join();
+        if (presenceOpt) {
+          presence = bindPresence(inst, session as never, presenceOpt === true ? {} : presenceOpt);
+        }
         emit('collabReady', session);
       }
       attachPlugins(props.plugins);
@@ -278,6 +293,8 @@ export const GrafloriaFlow = defineComponent({
     );
 
     onBeforeUnmount(() => {
+      presence?.dispose();
+      presence = null;
       session?.leave();
       session?.dispose();
       session = null;

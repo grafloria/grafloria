@@ -433,3 +433,34 @@ describe('collab — two flows over a MemoryHub', () => {
     });
   });
 });
+
+describe('collab presence — live cursors', () => {
+  it("A's pointer appears as a remote cursor in B's presence layer", async () => {
+    const { MemoryHub } = require('@grafloria/engine');
+    const hub = new MemoryHub();
+    const { container } = render(
+      <>
+        <div data-testid="pane-a">
+          <GrafloriaFlow defaultNodes={NODES}
+            collab={{ transport: hub.connect('ana'), actor: 'ana', batch: false,
+                      awarenessThrottleMs: 0, presence: { name: 'Ana', smoothing: 0 } }} />
+        </div>
+        <div data-testid="pane-b">
+          <GrafloriaFlow defaultNodes={NODES}
+            collab={{ transport: hub.connect('ben'), actor: 'ben', batch: false,
+                      awarenessThrottleMs: 0, presence: { name: 'Ben', smoothing: 0 } }} />
+        </div>
+      </>
+    );
+    await waitFor(() =>
+      expect(container.querySelectorAll('.grafloria-presence-layer').length).toBe(2)
+    );
+    // Ana moves her pointer over pane A's diagram root
+    const rootA = container.querySelector('[data-testid="pane-a"] .grafloria-diagram-root, [data-testid="pane-a"] > div > div') as HTMLElement;
+    rootA.dispatchEvent(new MouseEvent('pointermove', { clientX: 120, clientY: 80, bubbles: true }));
+    await waitFor(() => {
+      const cursorInB = container.querySelector('[data-testid="pane-b"] .grafloria-presence-cursor');
+      expect(cursorInB).toBeTruthy();
+    });
+  });
+});

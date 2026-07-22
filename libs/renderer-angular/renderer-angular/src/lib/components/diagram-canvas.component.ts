@@ -90,8 +90,9 @@ import {
   toEdgeSpec,
   // Advanced domains: the same minimap/controls/background the React and Vue
   // wrappers mount — attachable here because the canvas keeps a persistent,
-  // two-way-synced ViewportController (see pluginsCamera).
-  attachCanvasPlugins,
+  // two-way-synced ViewportController (see pluginsCamera). Loaded LAZILY:
+  // consumers who never pass [plugins] ship none of the ext chain.
+  loadCanvasPlugins,
   type CanvasPluginOptions,
   type CanvasPlugins,
   type NodeSpec,
@@ -340,23 +341,29 @@ export class DiagramCanvasComponent implements AfterViewInit, OnDestroy {
   private pluginsHandle?: CanvasPlugins;
   private syncingCamera = false;
 
+  private pluginsEpoch = 0;
+
   private attachPluginsNow(config: boolean | CanvasPluginOptions | undefined): void {
     this.pluginsHandle?.dispose();
     this.pluginsHandle = undefined;
+    const epoch = ++this.pluginsEpoch;
     const engine = this.activeEngine();
     if (!config || !engine || !engine.getDiagram() || !this.containerRef?.nativeElement) return;
 
     const cam = (this.pluginsCamera ??= this.createPluginsCamera());
-    this.pluginsHandle = attachCanvasPlugins(
-      {
-        container: this.containerRef.nativeElement,
-        viewport: cam,
-        getModel: () => engine.getDiagram()!,
-        getEngine: () => engine,
-        fitView: (padding?: number) => this.fitToContent(padding ?? 40),
-      },
-      config === true ? { minimap: true, controls: true, background: true } : config
-    );
+    void loadCanvasPlugins().then(({ attachCanvasPlugins }) => {
+      if (epoch !== this.pluginsEpoch || this.destroyed) return;
+      this.pluginsHandle = attachCanvasPlugins(
+        {
+          container: this.containerRef.nativeElement,
+          viewport: cam,
+          getModel: () => engine.getDiagram()!,
+          getEngine: () => engine,
+          fitView: (padding?: number) => this.fitToContent(padding ?? 40),
+        },
+        config === true ? { minimap: true, controls: true, background: true } : config
+      );
+    });
   }
 
   private createPluginsCamera(): ViewportController {

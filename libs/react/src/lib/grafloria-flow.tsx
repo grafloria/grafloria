@@ -10,11 +10,16 @@ import type { LinkModel, NodeModel, SyncAdapter, SyncTransport } from '@graflori
 export interface GrafloriaCollabOptions {
   transport: SyncTransport;
   actor: string;
+  /**
+   * Live cursors + remote selection outlines. `true` for defaults, or
+   * `{ name, color, smoothing, … }`.
+   */
+  presence?: boolean | BindPresenceOptions;
   /** Everything else passes through to `createSyncSession`'s options. */
   [option: string]: unknown;
 }
-import { createDiagram, attachCanvasPlugins } from '@grafloria/renderer';
-import type { CanvasPluginOptions } from '@grafloria/renderer';
+import { createDiagram, loadCanvasPlugins, bindPresence } from '@grafloria/renderer';
+import type { CanvasPluginOptions, BindPresenceOptions, PresenceBinding } from '@grafloria/renderer';
 import type {
   CreateDiagramOptions,
   DiagramInstance,
@@ -208,10 +213,18 @@ export function GrafloriaFlow(props: GrafloriaFlowProps) {
     // Collab: join the CRDT sync session over the supplied transport. Fixed
     // for the life of the instance — remounting is the way to change rooms.
     let session: SyncAdapter | null = null;
+    let presence: PresenceBinding | null = null;
     if (callbacks.current.collab) {
-      const { transport, actor, ...rest } = callbacks.current.collab;
+      const { transport, actor, presence: presenceOpt, ...rest } = callbacks.current.collab;
       session = createSyncSession(diagram.getModel(), transport, { actor, ...rest } as never);
       session.join();
+      if (presenceOpt) {
+        presence = bindPresence(
+          diagram,
+          session as never,
+          presenceOpt === true ? {} : presenceOpt
+        );
+      }
       callbacks.current.onCollabReady?.(session);
     }
 
@@ -235,6 +248,8 @@ export function GrafloriaFlow(props: GrafloriaFlowProps) {
     callbacks.current.onInit?.(diagram);
 
     return () => {
+      presence?.dispose();
+      presence = null;
       session?.leave();
       session?.dispose();
       session = null;
@@ -272,11 +287,22 @@ export function GrafloriaFlow(props: GrafloriaFlowProps) {
     if (!instance || pluginsKey === undefined) return;
     const parsed = JSON.parse(pluginsKey) as boolean | CanvasPluginOptions;
     if (parsed === false) return;
-    const attached = attachCanvasPlugins(
-      instance,
-      parsed === true ? { minimap: true, controls: true, background: true } : parsed
-    );
-    return () => attached.dispose();
+    // The plugin chain loads lazily — consumers who never pass `plugins`
+    // ship none of it (the elkjs recipe).
+    let disposed = false;
+    let dispose: (() => void) | undefined;
+    void loadCanvasPlugins().then(({ attachCanvasPlugins }) => {
+      if (disposed) return;
+      const attached = attachCanvasPlugins(
+        instance,
+        parsed === true ? { minimap: true, controls: true, background: true } : parsed
+      );
+      dispose = () => attached.dispose();
+    });
+    return () => {
+      disposed = true;
+      dispose?.();
+    };
   }, [instance, pluginsKey]);
 
   // -- declarative layout -----------------------------------------------------
