@@ -1,10 +1,11 @@
 import { Component, signal, viewChild } from '@angular/core';
 import { DiagramCanvasComponent, GrafloriaNodeDefDirective } from '@grafloria/renderer-angular';
+import { DashboardPageComponent } from './dashboard-page.component';
 import type { NodeSpec, EdgeSpec } from '@grafloria/renderer';
 
 @Component({
   selector: 'app-root',
-  imports: [DiagramCanvasComponent, GrafloriaNodeDefDirective],
+  imports: [DiagramCanvasComponent, GrafloriaNodeDefDirective, DashboardPageComponent],
   template: `
     <h1>Grafloria conformance — the Angular way</h1>
     <p>
@@ -18,6 +19,7 @@ import type { NodeSpec, EdgeSpec } from '@grafloria/renderer';
       style="display:block;width:800px;height:400px;border:1px solid #ccc"
       [(nodes)]="nodes"
       [(edges)]="edges"
+      [plugins]="true"
       (layoutDone)="status.set('layout done')">
       <ng-template grafloriaNode="job" let-node let-data="data">
         <div class="job-card" [attr.data-node]="node.id"
@@ -29,6 +31,8 @@ import type { NodeSpec, EdgeSpec } from '@grafloria/renderer';
         </div>
       </ng-template>
     </grafloria-diagram-canvas>
+
+    <app-dashboard-page />
   `,
 })
 export class AppComponent {
