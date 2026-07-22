@@ -36,6 +36,9 @@ jobs:
           cache: npm
       - run: npm ci
       - run: npx playwright install --with-deps chromium
+      # poppler-utils provides pdftoppm — the export gates PIXEL-verify PDFs,
+      # and must keep doing so on CI.
+      - run: sudo apt-get update && sudo apt-get install -y poppler-utils
       - run: node demos/build.mjs
       # visual-run and export-pdf-run are LOCAL-ONLY for now: goldens are
       # per-platform (font rasterization differs), and the blessed set is
