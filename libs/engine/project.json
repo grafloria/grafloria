@@ -16,12 +16,16 @@
   "targets": {
     "build": {
       "executor": "@nx/js:tsc",
-      "outputs": ["{options.outputPath}"],
+      "outputs": [
+        "{options.outputPath}"
+      ],
       "options": {
         "outputPath": "dist/libs/engine",
         "main": "libs/engine/src/index.ts",
         "tsConfig": "libs/engine/tsconfig.lib.json",
-        "assets": ["libs/engine/*.md"]
+        "assets": [
+          "libs/engine/*.md"
+        ]
       }
     },
     "nx-release-publish": {
@@ -31,9 +35,23 @@
     },
     "test": {
       "executor": "@nx/jest:jest",
-      "outputs": ["{workspaceRoot}/coverage/{projectRoot}"],
+      "outputs": [
+        "{workspaceRoot}/coverage/{projectRoot}"
+      ],
       "options": {
         "jestConfig": "libs/engine/jest.config.ts"
+      }
+    },
+    "build-esm": {
+      "executor": "nx:run-commands",
+      "dependsOn": [
+        "build"
+      ],
+      "outputs": [
+        "{workspaceRoot}/dist/libs/engine/esm"
+      ],
+      "options": {
+        "command": "npx tsc -p libs/engine/tsconfig.lib.json --module es2022 --moduleResolution bundler --outDir dist/libs/engine/esm --rootDir libs/engine --declaration false --declarationMap false --incremental false"
       }
     }
   }
