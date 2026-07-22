@@ -15,7 +15,7 @@
         "main": "libs/element/src/index.ts",
         "tsConfig": "libs/element/tsconfig.lib.json",
         "assets": [
-          "libs/element/*.md"
+          "libs/element/README.md"
         ]
       }
     },

@@ -24,7 +24,7 @@
         "main": "libs/renderer/src/index.ts",
         "tsConfig": "libs/renderer/tsconfig.lib.json",
         "assets": [
-          "libs/renderer/*.md"
+          "libs/renderer/README.md"
         ]
       }
     },

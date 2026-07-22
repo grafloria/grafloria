@@ -15,7 +15,7 @@
         "main": "libs/react/src/index.ts",
         "tsConfig": "libs/react/tsconfig.lib.json",
         "assets": [
-          "libs/react/*.md"
+          "libs/react/README.md"
         ]
       }
     },

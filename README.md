@@ -16,11 +16,12 @@ SVG/PNG/PDF exporters — there is no second implementation to drift.
 | `@grafloria/engine` | Headless core — graph model, commands/undo, layout engines (ELK, dagre, force, tree…), DSL + Mermaid-compatible text format, collab op-log |
 | `@grafloria/renderer` | SVG renderer — interaction, theming, a11y outline, and the export pipeline (SVG, PNG, and a self-contained vector **PDF writer**: gradients, soft masks, images, text) |
 | `@grafloria/element` | `<grafloria-flow>` custom element + high-level kits: dashboard kit (grid pack, widgets), UML kit, ERD kit — works in any framework or none |
-| `@grafloria/react` | React bindings |
+| `@grafloria/react` | React bindings — component custom nodes, hooks, SSR + hydration |
 | `@grafloria/renderer-angular` | Angular components, directives, and services |
 | `@grafloria/canvas-ng` | Angular canvas integration |
+| `@grafloria/vue` | Vue 3 bindings — `v-model` data, slot-based custom nodes |
 
-> npm publication is in progress — until then, build from source (below).
+All packages are on npm under the [`@grafloria`](https://www.npmjs.com/org/grafloria) scope — ESM for bundlers (tree-shakeable) plus CJS for Node.
 
 ## Quick start (any page, no framework)
 

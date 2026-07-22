@@ -12,7 +12,7 @@
         "outputPath": "dist/libs/vue",
         "main": "libs/vue/src/index.ts",
         "tsConfig": "libs/vue/tsconfig.lib.json",
-        "assets": ["libs/vue/*.md"]
+        "assets": ["libs/vue/README.md"]
       }
     },
     "build-esm": {
