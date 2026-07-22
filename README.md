@@ -1,12 +1,32 @@
-# Grafloria
+<p align="center">
+  <a href="https://grafloria.com"><img src="assets/logo/grafloria-mark.svg" width="120" alt="Grafloria — a bloom of connected diagram nodes"></a>
+</p>
 
-[![CI](https://github.com/grafloria/grafloria/actions/workflows/ci.yml/badge.svg)](https://github.com/grafloria/grafloria/actions/workflows/ci.yml)
+<h1 align="center">Grafloria</h1>
 
-**The framework-agnostic diagram engine.** Flow charts, dashboards, UML, ERD, mind maps,
-org charts — one headless core, real renderers, and adapters for React, Angular, and the
-plain web platform.
+<p align="center"><b>The framework-agnostic diagram engine.</b><br>
+Flow charts, dashboards, UML, ERD, and real-time collaboration —<br>
+one headless core, native in <b>Angular</b>, <b>React</b>, and <b>Vue</b>. MIT, no pro tier.</p>
 
-Grafloria is built as a layered system: a headless model you can run anywhere (including
+<p align="center">
+  <a href="https://github.com/grafloria/grafloria/actions/workflows/ci.yml"><img src="https://github.com/grafloria/grafloria/actions/workflows/ci.yml/badge.svg" alt="CI"></a>
+  <a href="https://www.npmjs.com/org/grafloria"><img src="https://img.shields.io/npm/v/%40grafloria%2Fengine?label=npm&color=3B52D9" alt="npm"></a>
+  <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-3B52D9" alt="MIT"></a>
+</p>
+
+<p align="center">
+  <a href="https://grafloria.com"><b>grafloria.com</b></a> ·
+  <a href="https://grafloria.com/demos/"><b>100+ live demos</b></a> ·
+  <a href="https://www.npmjs.com/org/grafloria"><b>packages</b></a>
+</p>
+
+---
+
+<a href="https://grafloria.com/demos/interaction/n8n-workflow.html"><img src="docs/shots/workflow.png" alt="An n8n-style workflow editor built with Grafloria — typed wires, an AI-agent node with model/memory/tool ports, and a step-execution toolbar"></a>
+
+<p align="center"><i>An n8n-style workflow editor, a drag-pack <a href="https://grafloria.com/demos/dashboard/dashboard-builder.html">dashboard builder</a>, <a href="https://grafloria.com/demos/diagrams/class-uml.html">UML</a> &amp; ER kits, live-cursor collaboration — every one of them a <a href="https://grafloria.com/demos/">clickable demo</a>, not a mockup.</i></p>
+
+Grafloria is a layered system: a headless model you can run anywhere (including
 Node and workers), a renderer that paints it, and thin framework bindings on top. The same
 diagram model drives the interactive canvas, the text format, the collab replicas, and the
 SVG/PNG/PDF exporters — there is no second implementation to drift.
@@ -49,9 +69,9 @@ children. Every capability has a working page in the demo gallery.
 
 ## The demo gallery is the documentation
 
-104 self-contained demo pages under [`demos/`](demos/) — each one is a real, runnable
-example of exactly one capability, and each is executed in CI as a gate. If it's in the
-gallery, it works; if it works, it's in the gallery.
+**[Play with 100+ live demos → grafloria.com/demos](https://grafloria.com/demos/)** — each
+one a real, runnable example of exactly one capability, and each executed in CI as a gate.
+If it's in the gallery, it works; if it works, it's in the gallery.
 
 ```sh
 npm ci
