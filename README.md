@@ -1,5 +1,7 @@
 # Grafloria
 
+[![CI](https://github.com/grafloria/grafloria/actions/workflows/ci.yml/badge.svg)](https://github.com/grafloria/grafloria/actions/workflows/ci.yml)
+
 **The framework-agnostic diagram engine.** Flow charts, dashboards, UML, ERD, mind maps,
 org charts — one headless core, real renderers, and adapters for React, Angular, and the
 plain web platform.
