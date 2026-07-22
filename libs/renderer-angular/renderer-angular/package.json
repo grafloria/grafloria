@@ -1,6 +1,6 @@
 {
   "name": "@grafloria/renderer-angular",
-  "version": "0.4.0",
+  "version": "0.5.0",
   "//": "wave4/ngwrapper: the peer range was pinned to ^18.1.0 while the package was actually BUILT against Angular 19 — every consumer on 19 installed an unmet peer. It is a LADDER now. The newest Angular API the wrapper uses is model()/output() (17.2/17.3) plus standalone signal inputs, and it publishes in partial-Ivy form, so an 18.x linker can consume it; this workspace builds and tests it on 19. The @grafloria/*, forms, platform-browser and rxjs peers were simply MISSING — the package imported them without declaring them (nx dependency-checks flagged it).",
   "peerDependencies": {
     "@angular/common": "^18.1.0 || ^19.0.0 || ^20.0.0",
