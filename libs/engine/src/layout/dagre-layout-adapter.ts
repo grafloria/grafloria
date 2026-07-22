@@ -7,7 +7,7 @@
  * @see https://github.com/dagrejs/dagre
  */
 
-import * as dagre from 'dagre';
+import * as dagre from '@dagrejs/dagre';
 import { NodeModel } from '../models/NodeModel';
 import { LinkModel } from '../models/LinkModel';
 import {
