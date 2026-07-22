@@ -1,0 +1,70 @@
+# Grafloria
+
+> The framework-agnostic diagram engine. Flow charts, dashboards, UML, ERD, and real-time
+> collaboration — one headless TypeScript core with native bindings for Angular, React, Vue,
+> and a plain web component. MIT licensed, every feature free; there is no commercial tier.
+
+Grafloria ships what other diagram libraries sell or leave to DIY: obstacle-avoiding
+orthogonal edge routing (never crosses its own nodes), built-in auto-layout (ELK layered,
+tree, force — off-thread in a Worker), command-based undo/redo, minimap/snap/marquee editor
+chrome, per-property CRDT collaboration with live cursors and anchored comments, keyboard
+accessibility with live-region narration, server-side SVG/PNG/PDF export, a Mermaid-compatible
+text format that round-trips through the live canvas, a drag-and-pack dashboard kit, and
+interactive UML/ER kits. Every capability is demonstrated by one of 100+ live demos, each
+executed in CI with real pointer events.
+
+## Packages (npm, all MIT)
+
+- @grafloria/engine — headless diagram model: nodes, edges, ports, groups, layout, CRDT collab. Runs in Node, workers, browsers; no DOM required.
+- @grafloria/renderer — SVG renderer over the engine: interaction, routing, editor chrome, export, comments UI.
+- @grafloria/renderer-angular — Angular components: <grafloria-diagram-canvas> with [(nodes)]/[(edges)] two-way bindings, ng-template custom nodes, [layout], [plugins], [collab], [comments].
+- @grafloria/react — React components & hooks: <GrafloriaFlow>, nodeTypes, useGrafloria/useSelection/useViewport, <GrafloriaCommentPanel>.
+- @grafloria/vue — Vue 3 components & composables: <GrafloriaFlow> with v-model:nodes, #node-<type> slots, provider composables.
+- @grafloria/element — dependency-free custom element <grafloria-flow>; also renders kit specs (erDiagram, umlDiagram, dashboard) and Mermaid-style text.
+
+## Quick start (plain web)
+
+```html
+<script type="module">
+  import '@grafloria/element';
+</script>
+<grafloria-flow id="flow"></grafloria-flow>
+<script>
+  document.getElementById('flow').render({
+    nodes: [
+      { id: 'a', label: 'Start', x: 40,  y: 60 },
+      { id: 'b', label: 'Ship',  x: 260, y: 60 },
+    ],
+    edges: [{ id: 'e1', source: 'a', target: 'b' }],
+  });
+</script>
+```
+
+## Quick start (React)
+
+```tsx
+import { GrafloriaFlow } from '@grafloria/react';
+
+<GrafloriaFlow
+  nodes={nodes}
+  edges={edges}
+  onNodesChange={setNodes}
+  layout="elk"
+  plugins
+/>
+```
+
+## Docs
+
+- [Live demo gallery](https://grafloria.com/demos/): 100+ runnable pages — view-source is the tutorial; every demo is also a CI test.
+- [How Grafloria compares](https://grafloria.com/compare/): factual matrix vs React Flow, JointJS+, GoJS, ngx-vflow, Mermaid.
+- [GitHub repository](https://github.com/grafloria/grafloria): source, READMEs per package, issues.
+- [npm organization](https://www.npmjs.com/org/grafloria): published packages.
+
+## Notes for code generation
+
+- Ports are model anatomy (spec.ports on a node), not separate components — identical across all frameworks.
+- The same JSON spec drives every surface; there is no framework-specific model.
+- Collab: pass collab={{ transport, actor, presence: true }} — the CRDT lives in the engine; BroadcastChannel works serverless for same-browser tabs.
+- Text format: instance.exportText() / instance.loadText() round-trip Mermaid-style text with a lossless position sidecar.
+- Dashboards / UML / ER: pass a kit spec ({ dashboard: ... }, { umlDiagram: ... }, { erDiagram: ... }) to the same render/spec entry points.
