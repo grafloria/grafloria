@@ -1,0 +1,25 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
+  <!-- Grafloria mark: a bloom of diagram nodes — mixed node shapes as petals,
+       stems merged into the hub, breathing gaps between neighbours, and one
+       lighter node docking at the open port on the right. -->
+  <g stroke="#3B52D9" stroke-width="40" stroke-linecap="round">
+    <line x1="256" y1="256" x2="256" y2="126"/>
+    <line x1="256" y1="256" x2="150" y2="150"/>
+    <line x1="256" y1="256" x2="126" y2="256"/>
+    <line x1="256" y1="256" x2="150" y2="362"/>
+    <line x1="256" y1="256" x2="256" y2="386"/>
+    <line x1="256" y1="256" x2="362" y2="362"/>
+    <line x1="256" y1="256" x2="362" y2="150"/>
+  </g>
+  <circle cx="256" cy="256" r="60" fill="#3B52D9"/>
+  <!-- petals: rounded squares + circles = different node types -->
+  <rect x="214" y="76" width="84" height="84" rx="22" fill="#3B52D9"/>
+  <rect x="108" y="108" width="84" height="84" rx="22" fill="#3B52D9"/>
+  <circle cx="120" cy="256" r="46" fill="#3B52D9"/>
+  <rect x="108" y="320" width="84" height="84" rx="22" fill="#3B52D9"/>
+  <circle cx="256" cy="392" r="46" fill="#3B52D9"/>
+  <rect x="320" y="320" width="84" height="84" rx="22" fill="#3B52D9"/>
+  <rect x="320" y="108" width="84" height="84" rx="22" fill="#3B52D9"/>
+  <!-- the docking node: lighter, detached — a new node joining the graph -->
+  <path d="M 452 212 L 498 246 L 481 300 L 423 300 L 406 246 Z" fill="#94A5F0" transform="rotate(10 452 256)"/>
+</svg>
