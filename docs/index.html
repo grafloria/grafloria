@@ -109,6 +109,27 @@
   .proof .n { font-size: 34px; font-weight: 800; color: var(--indigo); letter-spacing: -1px; font-variant-numeric: tabular-nums; }
   .proof .l { font-size: 14px; color: var(--slate); }
 
+  .routing { margin: 64px 0 0; border: 1px solid var(--indigo-soft); border-radius: 18px;
+    background: linear-gradient(135deg, var(--indigo-wash), #fff 60%); padding: 34px 36px; }
+  .routing .kick { font-size: 12px; letter-spacing: .08em; text-transform: uppercase; color: var(--indigo);
+    font-weight: 700; margin-bottom: 8px; }
+  .routing h2 { font-size: 26px; font-weight: 750; letter-spacing: -0.6px; margin-bottom: 10px; }
+  .routing p { color: var(--slate); max-width: 78ch; }
+  .routing p b { color: var(--ink); }
+  .routing .pts { margin: 18px 0 0; display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 10px 22px; }
+  .routing .pt { font-size: 14px; color: var(--ink); padding-left: 20px; position: relative; }
+  .routing .pt::before { content: "→"; position: absolute; left: 0; color: var(--indigo); font-weight: 700; }
+  .routing .try { margin-top: 18px; font-weight: 600; font-size: 14.5px; }
+
+  .surface { padding: 64px 0 8px; }
+  .surface h2 { font-size: 28px; font-weight: 750; letter-spacing: -0.6px; text-align: center; }
+  .surface > .wrap > .sub { text-align: center; color: var(--slate); max-width: 66ch; margin: 8px auto 30px; }
+  .sgrid { display: grid; grid-template-columns: repeat(auto-fill, minmax(255px, 1fr)); gap: 12px; }
+  .scard { border: 1px solid var(--line); border-radius: 12px; background: #fff; padding: 15px 17px; }
+  .scard h3 { font-size: 13.5px; text-transform: uppercase; letter-spacing: .05em; color: var(--indigo);
+    font-weight: 700; margin-bottom: 6px; }
+  .scard p { font-size: 13.5px; color: var(--slate); line-height: 1.55; }
+  .scard p a { font-weight: 500; }
   footer { border-top: 1px solid var(--line); padding: 34px 0 44px; color: var(--slate); font-size: 14.5px; background: #fff; }
   footer .row { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
   footer img { width: 22px; height: 22px; }
@@ -195,6 +216,68 @@
         <div class="card"><span class="chip">Text</span>
           <h3>Mermaid-compatible text</h3>
           <p>Diagrams as text with a lossless sidecar: hand-edit the body, keep positions and styles, round-trip through the live model.</p></div>
+      </div>
+    </div>
+  </section>
+
+  <div class="wrap">
+    <div class="routing">
+      <div class="kick">The part everyone else skips</div>
+      <h2>Commercial-grade edge routing, free</h2>
+      <p>Most libraries let wires cut straight through nodes and call it a day — obstacle-avoiding
+      routing is the feature the market puts price tags on. Grafloria ships it in the MIT core:
+      <b>orthogonal routes that never cross their own nodes</b>, proven in CI by a 480-placement
+      sweep, hardened by hundreds of real-gesture line-geometry checks.</p>
+      <div class="pts">
+        <span class="pt">Obstacle-avoiding orthogonal routing with escape stubs for buried ports</span>
+        <span class="pt">Three jump-over styles — arc, gap, bridge — where wires cross</span>
+        <span class="pt">Smart connection points with port snapping and per-shape arrow anchoring</span>
+        <span class="pt">Curve identity held during drag — edges never jump shape mid-gesture</span>
+        <span class="pt">Parallel-link separation and self-loops that stay readable</span>
+        <span class="pt">Editable waypoints, reconnectable ends, floating attachment by default</span>
+      </div>
+      <p class="try"><a href="demos/edges/edge-routing.html">See the router dodge obstacles live →</a></p>
+    </div>
+  </div>
+
+  <section class="surface">
+    <div class="wrap">
+      <h2>The full surface</h2>
+      <p class="sub">Sixteen capability areas, every one demonstrated in the live gallery — this is
+      what "framework-agnostic diagram engine" actually means in practice.</p>
+      <div class="sgrid">
+        <div class="scard"><h3>Rendering</h3>
+          <p>Framework-agnostic SVG VNode pipeline; per-entity caching; spatial-index viewport culling; 3-tier level-of-detail; rich <a href="demos/nodes/html-nodes.html">HTML inside nodes</a>.</p></div>
+        <div class="scard"><h3>Edges</h3>
+          <p>Four path families, eight arrowhead types, labels, <a href="demos/edges/jump-overs.html">jump-overs</a>, <a href="demos/edges/parallel-links-and-self-loops.html">parallel links &amp; self-loops</a>, <a href="demos/edges/editable-edge.html">editable waypoints</a>, reconnect, animated gradients.</p></div>
+        <div class="scard"><h3>Routing</h3>
+          <p><a href="demos/edges/edge-routing.html">Obstacle-avoiding orthogonal</a> with a never-cross-your-own-node guarantee, escape stubs, smart connection points, port snapping.</p></div>
+        <div class="scard"><h3>Ports</h3>
+          <p>Per-shape positioning, multi-port spreading, visibility strategies, <a href="demos/ports/typed-ports.html">typed ports</a> with validation, <a href="demos/nodes/connection-limit.html">connection limits</a>.</p></div>
+        <div class="scard"><h3>Nodes &amp; shapes</h3>
+          <p><a href="demos/nodes/shapes.html">21 built-in figures</a> plus custom silhouettes, <a href="demos/nodes/auto-sizing.html">auto-sizing</a>, <a href="demos/nodes/node-resizer.html">resizer chrome</a>, <a href="demos/nodes/node-toolbar.html">node toolbars</a>, drag handles, intersections.</p></div>
+        <div class="scard"><h3>Interaction</h3>
+          <p>Drag, pan, zoom, marquee, snap-to-grid, <a href="demos/interaction/helper-lines.html">helper lines</a>, <a href="demos/nodes/proximity-connect.html">proximity connect</a>, context menus, touch — every gesture undoable.</p></div>
+        <div class="scard"><h3>Grouping</h3>
+          <p>Nested groups with real frames, <a href="demos/grouping/swimlanes.html">swimlanes &amp; pools</a>, parent-child membership, cross-boundary edges resolved at the right ancestor.</p></div>
+        <div class="scard"><h3>Auto-layout</h3>
+          <p><a href="demos/layout/elk-tree.html">Layered (ELK)</a>, tree, force, grid, compound containers — off the main thread in a Worker, lazy-loaded so you ship none of it unused.</p></div>
+        <div class="scard"><h3>Data &amp; text</h3>
+          <p>Plain-JSON specs, byte-stable <a href="demos/interaction/save-and-restore.html">save / load</a>, Mermaid-compatible <a href="demos/misc/mermaid-text.html">text in and out</a> with a lossless position sidecar.</p></div>
+        <div class="scard"><h3>Performance</h3>
+          <p>Viewport culling, level-of-detail, VNode caching, worker layout — see the <a href="demos/nodes/stress-test.html">stress test</a> hold up under load.</p></div>
+        <div class="scard"><h3>Styling &amp; theming</h3>
+          <p>Light/dark token themes with runtime switching, CSS variables, per-edge style API — up to <a href="demos/styling/turbo-flow.html">glowing animated gradients</a>.</p></div>
+        <div class="scard"><h3>Frameworks</h3>
+          <p>Angular templates &amp; signals, React hooks, Vue composables, a vanilla <code>&lt;grafloria-flow&gt;</code> element — one conformance suite across all four.</p></div>
+        <div class="scard"><h3>Accessibility</h3>
+          <p><a href="demos/interaction/keyboard-a11y.html">Keyboard-complete canvas</a>: focus ring, arrow nudge with pixel-exact undo, connect by keyboard, live-region narration — axe-audited in CI.</p></div>
+        <div class="scard"><h3>Export</h3>
+          <p>SVG, PNG, and a self-contained PDF writer — true vectors, <a href="demos/misc/server-side-export.html">rendered server-side</a>, byte-identical every run.</p></div>
+        <div class="scard"><h3>Collaboration</h3>
+          <p>Per-property CRDT, <a href="demos/collab/two-tabs-live.html">serverless cross-tab sync</a>, presence cursors, <a href="demos/collab/comments.html">anchored comment threads</a>, <a href="demos/collab/conflict-resolution.html">conflict resolution</a> you can watch converge.</p></div>
+        <div class="scard"><h3>Extensibility</h3>
+          <p>Custom tools on a public seam, custom shapes, lazy-loaded plugin chrome (minimap, controls, background), and data-driven kits: <a href="demos/diagrams/erd-editor.html">ER</a>, <a href="demos/diagrams/class-uml.html">UML</a>, <a href="demos/dashboard/dashboard-builder.html">dashboards</a>.</p></div>
       </div>
     </div>
   </section>
