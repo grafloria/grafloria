@@ -15,10 +15,26 @@
 // It runs against the page's OWN live instance (`window.__demoCtx.instance`), so there
 // is no second mounting path to drift from what a user sees.
 //
-// Needs: the demo server on :4321, and a `demos/shell/grafloria.js` built from current libs
-// (`node demos/build.mjs`) — the same standing requirement every demo gate has.
+// Needs: a `demos/shell/grafloria.js` built from current libs (`node demos/build.mjs`) —
+// the gate serves the demos tree itself on an ephemeral port, like the other gates.
 
 import { chromium } from 'playwright';
+import { createServer } from 'http';
+import { readFileSync } from 'fs';
+import { fileURLToPath } from 'url';
+import { dirname, join, extname } from 'path';
+
+const root = join(dirname(fileURLToPath(import.meta.url)), '..');
+const MIME = { '.html': 'text/html; charset=utf-8', '.js': 'text/javascript; charset=utf-8', '.css': 'text/css; charset=utf-8', '.json': 'application/json', '.svg': 'image/svg+xml' };
+const server = createServer((req, res) => {
+  const url = decodeURIComponent((req.url || '/').split('?')[0]);
+  try {
+    const body = readFileSync(join(root, url === '/' ? 'index.html' : url));
+    res.writeHead(200, { 'Content-Type': MIME[extname(url)] ?? 'application/octet-stream' }).end(body);
+  } catch { res.writeHead(404).end('not found'); }
+});
+await new Promise((r) => server.listen(0, '127.0.0.1', r));
+const origin = `http://127.0.0.1:${server.address().port}`;
 
 const checks = [];
 const check = (name, ok, detail) => {
@@ -31,7 +47,7 @@ const p = await b.newPage({ viewport: { width: 1400, height: 900 } });
 const pageErrors = [];
 p.on('pageerror', (e) => pageErrors.push(String(e).slice(0, 200)));
 
-await p.goto('http://127.0.0.1:4321/dashboard/dashboard-builder.html', { waitUntil: 'networkidle' });
+await p.goto(`${origin}/dashboard/dashboard-builder.html`, { waitUntil: 'networkidle' });
 await p.waitForFunction(() => window.__demoReady === true, { timeout: 20000 });
 await p.waitForTimeout(500);
 
@@ -916,6 +932,7 @@ check(
 check('no page errors', pageErrors.length === 0, pageErrors.join(' | '));
 
 await b.close();
+server.close();
 const failed = checks.filter((c) => !c).length;
 console.log(
   failed === 0
