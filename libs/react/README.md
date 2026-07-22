@@ -38,6 +38,16 @@ export function Flow() {
   `useEdgesState`, `useSelection`, `useOnSelectionChange`, `useViewport`.
 - **`layout`** — declarative auto-layout by registry name or `{ name, options }`;
   re-runs on value change, never on data change. ELK loads lazily.
+- **Ports — no `<Handle>` needed.** React Flow requires `<Handle>` components
+  because handles ARE its port system. Grafloria's ports are model anatomy:
+  declare them on the spec and the core renders, positions, and wires them —
+  identically in React, Angular, Vue, and the plain element.
+
+  ```tsx
+  { id: 'a', type: 'job', custom: true, position: { x: 0, y: 0 },
+    data: { title: 'Extract' },
+    ports: [{ id: 'out', side: 'right', type: 'output' }] }
+  ```
 - **SSR** — `renderToStaticSVG()` on the server, hydrate on the client via the
   `ssr` prop: the diagram adopts the server DOM without a flash.
 - Ships ESM for bundlers (tree-shakeable, `sideEffects: false`) plus CJS.
