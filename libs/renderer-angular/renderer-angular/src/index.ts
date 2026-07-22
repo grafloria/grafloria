@@ -46,3 +46,7 @@ export * from './lib/services/angular-animation.service';
 // shipped in the installable package looking like the touch story while the
 // canvas was mouse-only.
 export * from './lib/interaction';
+// Phase 2 (Angular-native DX): declarative <ng-template grafloriaNode> custom
+// nodes and app-wide provideGrafloria() configuration.
+export * from './lib/directives/grafloria-node-def.directive';
+export * from './lib/providers';

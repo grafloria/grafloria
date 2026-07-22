@@ -51,15 +51,16 @@ describe('DiagramCanvasComponent', () => {
     test('should initialize with light theme by default', () => {
       fixture.detectChanges();
 
-      expect(component.theme()).toBeDefined();
-      expect(component.theme().name).toBe('Light');
+      // The input itself is undefined until bound; the RESOLVED theme is Light.
+      expect(component.effectiveTheme()).toBeDefined();
+      expect(component.effectiveTheme().name).toBe('Light');
     });
 
     test('should accept custom theme input', () => {
       fixture.componentRef.setInput("theme", DARK_THEME);
       fixture.detectChanges();
 
-      expect(component.theme().name).toBe('Dark');
+      expect(component.effectiveTheme().name).toBe('Dark');
     });
 
     test('should use custom viewport if provided', () => {
@@ -197,7 +198,7 @@ describe('DiagramCanvasComponent', () => {
       fixture.detectChanges(); // flush effects
 
       expect(spy).toHaveBeenCalled();
-      expect(component.theme().name).toBe('Dark');
+      expect(component.effectiveTheme().name).toBe('Dark');
     });
   });
 

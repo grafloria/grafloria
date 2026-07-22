@@ -200,9 +200,15 @@
            [style.width.px]="node.size.width"
            [style.height.px]="node.size.height"
            [style.z-index]="node.getMetadata('z') || 1">
-        <!-- Dynamically render component using directive -->
-        <!-- Support both NodeModel (node.type) and GroupModel (metadata.type) -->
-        <ng-container [htmlNodeRenderer]="node" [nodeType]="node.type || node.getMetadata('type')" [engine]="activeEngine()!"></ng-container>
+        <!-- Angular-native custom nodes win: an <ng-template grafloriaNode> def
+             for this node's type renders with real Angular bindings. Otherwise
+             fall back to the component registry / string-template renderer. -->
+        @if (nodeTemplateFor(node); as tpl) {
+          <ng-container [ngTemplateOutlet]="tpl" [ngTemplateOutletContext]="nodeTemplateContext(node)"></ng-container>
+        } @else {
+          <!-- Support both NodeModel (node.type) and GroupModel (metadata.type) -->
+          <ng-container [htmlNodeRenderer]="node" [nodeType]="node.type || node.getMetadata('type')" [engine]="activeEngine()!"></ng-container>
+        }
 
         <!-- Render HTML handles for nodes with ports (React Flow style) -->
         @for (port of node.ports.values(); track port.id) {

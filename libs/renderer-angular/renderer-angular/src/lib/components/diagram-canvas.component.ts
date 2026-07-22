@@ -18,6 +18,8 @@ import {
   computed,
   effect,
   untracked,
+  contentChildren,
+  TemplateRef,
 } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import {
@@ -112,6 +114,11 @@ import { ComponentRendererService } from '../services/component-renderer.service
 import { HandleRegistryService } from '../services/handle-registry.service';
 import { HtmlNodeRendererDirective } from '../directives/html-node-renderer.directive';
 import { GrafloriaHandleDirective } from '../directives/grafloria-handle.directive';
+import {
+  GrafloriaNodeDefDirective,
+  type GrafloriaNodeTemplateContext,
+} from '../directives/grafloria-node-def.directive';
+import { GRAFLORIA_CONFIG } from '../providers';
 import {
   ToolManager,
   ToolActions,
@@ -227,8 +234,43 @@ export class DiagramCanvasComponent implements AfterViewInit, OnDestroy {
    *
    * Ignored as a SOURCE once `colorMode` is set — the mode plus the OS's
    * preferences then decide which of `themes` is active.
+   *
+   * Resolution order: explicit `[theme]` binding → app-wide
+   * `provideGrafloria({ theme })` → built-in light theme.
    */
-  readonly theme = input<Theme>(LIGHT_THEME);
+  readonly theme = input<Theme | undefined>(undefined);
+
+  private readonly appConfig = inject(GRAFLORIA_CONFIG, { optional: true });
+
+  /** The theme the canvas actually renders with (see `theme` for precedence). */
+  readonly effectiveTheme = computed<Theme>(
+    () => this.theme() ?? this.appConfig?.theme ?? LIGHT_THEME
+  );
+
+  // --- Angular-native custom nodes: <ng-template grafloriaNode="type"> -------
+  private readonly nodeDefs = contentChildren(GrafloriaNodeDefDirective);
+
+  /** type → template; '' is the wildcard fallback for HTML-layer nodes. */
+  readonly nodeDefMap = computed(() => {
+    const map = new Map<string, TemplateRef<GrafloriaNodeTemplateContext>>();
+    for (const def of this.nodeDefs()) map.set(def.type(), def.templateRef);
+    return map;
+  });
+
+  nodeTemplateFor(node: any): TemplateRef<GrafloriaNodeTemplateContext> | null {
+    const map = this.nodeDefMap();
+    if (map.size === 0) return null;
+    const type = node.type || node.getMetadata?.('type');
+    return map.get(type) ?? map.get('') ?? null;
+  }
+
+  nodeTemplateContext(node: any): GrafloriaNodeTemplateContext {
+    return {
+      $implicit: node,
+      engine: this.activeEngine() ?? undefined,
+      data: node.data ?? node.getMetadata?.('data') ?? {},
+    };
+  }
 
   /**
    * Wave 4 (styling) — Card "colorMode".
@@ -648,7 +690,7 @@ export class DiagramCanvasComponent implements AfterViewInit, OnDestroy {
 
     // --- theme ---------------------------------------------------------------
     effect(() => {
-      const theme = this.theme();
+      const theme = this.effectiveTheme();
       untracked(() => {
         // wave4/styling: when a colorMode is in force, the OS preference + the theme
         // SET decide which theme is active — a stray [theme] binding must not fight
@@ -714,6 +756,10 @@ export class DiagramCanvasComponent implements AfterViewInit, OnDestroy {
       const nodes = this.nodes();
       const edges = this.edges();
       const skip = this.skipModelUpdate();
+      // Tracked on purpose: content-projected <ng-template grafloriaNode> defs
+      // resolve AFTER the first sync, and matching specs must be re-applied as
+      // `custom` once they do (see syncFromInputs).
+      this.nodeDefMap();
       untracked(() => this.syncFromInputs(nodes, edges, skip));
     });
   }
@@ -801,12 +847,28 @@ export class DiagramCanvasComponent implements AfterViewInit, OnDestroy {
       return;
     }
 
+    // Angular-native custom nodes: a spec whose `type` has an exact
+    // <ng-template grafloriaNode="type"> def renders in the HTML layer without
+    // the author touching `custom` — declaring the template IS the opt-in.
+    // Explicit `custom` (either value) always wins; live models pass through.
+    let effectiveNodes = nodes;
+    const defs = untracked(() => this.nodeDefMap());
+    if (nodes && defs.size > 0) {
+      effectiveNodes = nodes.map((n) => {
+        if (n instanceof NodeModel) return n;
+        const spec = n as NodeSpec;
+        return spec.custom === undefined && spec.type && defs.has(spec.type)
+          ? { ...spec, custom: true }
+          : n;
+      });
+    }
+
     this.applyDepth++; // guard 2
     try {
       // Guard 1 lives inside the shared reconciler: applyNodeSpec/applyEdgeSpec
       // only write a field when it actually differs, so re-applying the model's
       // own projection emits nothing.
-      if (nodes) applyNodes(diagram, nodes as Array<NodeSpec | NodeModel>);
+      if (effectiveNodes) applyNodes(diagram, effectiveNodes as Array<NodeSpec | NodeModel>);
       if (edges) applyEdges(diagram, edges as Array<EdgeSpec | LinkModel>);
     } finally {
       this.applyDepth--;
@@ -961,7 +1023,7 @@ export class DiagramCanvasComponent implements AfterViewInit, OnDestroy {
         ...(this.tokenBridge() ? { tokenBridge: this.tokenBridge() } : {}),
         ...this.rendererConfig(),
       },
-      this.theme()
+      this.effectiveTheme()
     );
 
     // LATENT BUG (Wave 4): `applyInstanceScope()` existed since the scoped-theme
