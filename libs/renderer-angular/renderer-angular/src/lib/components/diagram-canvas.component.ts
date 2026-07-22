@@ -58,12 +58,16 @@ import {
   createSyncSession,
   type SyncAdapter,
   type SyncTransport,
+  // Tier 3 tail: anchored comments.
+  CommentStore,
 } from '@grafloria/engine';
 
 /** The uniform collab contract every Grafloria wrapper shares. */
 export interface GrafloriaCollabOptions {
   transport: SyncTransport;
   actor: string;
+  /** Live cursors + remote selection outlines. `true` for defaults. */
+  presence?: boolean | BindPresenceOptions;
   [option: string]: unknown;
 }
 
@@ -128,6 +132,11 @@ import {
   // wave14/ng-touch: the camera-rect type the TouchGestureController's host
   // contract speaks (getBoundingClientRect-shaped).
   type CanvasRect,
+  // Tier 3 tail: presence cursors + anchored comment pins on the canvas.
+  bindPresence,
+  CommentOverlayController,
+  type PresenceBinding,
+  type BindPresenceOptions,
 } from '@grafloria/renderer';
 // wave14/ng-touch: the SHARED touch gesture brain (wave 9) — the same class the
 // framework-free DomEventBinder instantiates, so Angular gets pan / pinch / tap /
@@ -317,14 +326,82 @@ export class DiagramCanvasComponent implements AfterViewInit, OnDestroy {
   readonly collabReady = output<SyncAdapter>();
   private collabSession?: SyncAdapter;
 
+  private presenceBinding?: PresenceBinding;
+
   private attachCollab(config: GrafloriaCollabOptions | undefined): void {
     if (this.collabSession || !config) return;
-    const diagram = this.activeEngine()?.getDiagram();
-    if (!diagram) return;
-    const { transport, actor, ...rest } = config;
+    const engine = this.activeEngine();
+    const diagram = engine?.getDiagram();
+    if (!engine || !diagram) return;
+    const { transport, actor, presence, ...rest } = config;
     this.collabSession = createSyncSession(diagram, transport, { actor, ...rest } as never);
     this.collabSession.join();
+    if (presence) {
+      this.presenceBinding = bindPresence(
+        this.presenceHost(engine, diagram),
+        this.collabSession as never,
+        presence === true ? {} : presence
+      );
+    }
     this.collabReady.emit(this.collabSession);
+  }
+
+  /**
+   * The DiagramInstance-shaped surface bindPresence needs, assembled from the
+   * canvas's own parts: the host element, the persistent plugins camera, the
+   * live model, and instance-style events bridged from MODEL events.
+   */
+  private presenceHost(engine: DiagramEngine, diagram: DiagramModel): never {
+    const cam = (this.pluginsCamera ??= this.createPluginsCamera());
+    const on = (event: string, handler: (payload: unknown) => void): (() => void) => {
+      if (event === 'selection:change') {
+        return diagram.on('selection:changed', () => {
+          handler({
+            nodes: diagram.getSelectedNodes(),
+            edges: diagram.getLinks().filter((l) => l.state === 'selected'),
+          });
+        }) as () => void;
+      }
+      if (event === 'nodes:change') {
+        const offs = [
+          diagram.on('node:added', () => handler({ nodes: diagram.getNodes() })),
+          diagram.on('node:removed', () => handler({ nodes: diagram.getNodes() })),
+        ];
+        return () => offs.forEach((off) => (off as () => void)());
+      }
+      return () => undefined;
+    };
+    return {
+      container: this.containerRef.nativeElement,
+      viewport: cam,
+      getModel: () => diagram,
+      getEngine: () => engine,
+      on,
+    } as never;
+  }
+
+  // --- anchored comments ----------------------------------------------------
+
+  /**
+   * Anchored comment threads. `true` creates a store (viewer 'local'); pass a
+   * `CommentStore` to share one. Pins render inside the SVG via the overlay.
+   */
+  readonly comments = input<boolean | CommentStore | undefined>(undefined);
+  private commentStore: CommentStore | null = null;
+  private commentOverlay: CommentOverlayController | null = null;
+
+  private attachComments(config: boolean | CommentStore | undefined): void {
+    if (this.commentOverlay || !config || !this.renderer) return;
+    const diagram = this.activeEngine()?.getDiagram();
+    if (!diagram) return;
+    this.commentStore =
+      config === true ? new CommentStore(diagram, { viewer: 'local' }) : config;
+    this.commentOverlay = new CommentOverlayController(this.commentStore, this.renderer);
+  }
+
+  /** The live comment store, when `[comments]` is enabled. */
+  getCommentStore(): CommentStore | null {
+    return this.commentStore;
   }
 
   // --- canvas plugins: minimap / controls / background ----------------------
@@ -984,6 +1061,13 @@ export class DiagramCanvasComponent implements AfterViewInit, OnDestroy {
       untracked(() => this.attachCollab(config));
     });
 
+    // --- comments -------------------------------------------------------------
+    effect(() => {
+      const config = this.comments();
+      this.activeEngine(); // attach once the diagram + renderer exist
+      untracked(() => this.attachComments(config));
+    });
+
     // canvas → plugin camera: [(zoom)]/[(viewport)] changes reach the plugins.
     effect(() => {
       const zoom = this.zoom();
@@ -1032,6 +1116,10 @@ export class DiagramCanvasComponent implements AfterViewInit, OnDestroy {
 
   ngOnDestroy(): void {
     this.destroyed = true;
+    this.presenceBinding?.dispose();
+    this.presenceBinding = undefined;
+    this.commentOverlay?.dispose();
+    this.commentOverlay = null;
     this.collabSession?.leave();
     this.collabSession?.dispose();
     this.collabSession = undefined;
@@ -1288,6 +1376,8 @@ export class DiagramCanvasComponent implements AfterViewInit, OnDestroy {
     // no `--grafloria-*` variables and matched none of the scoped rules. Scoping the
     // container, which wraps BOTH layers, is what the method was written for.
     this.renderer.applyInstanceScope(this.containerRef?.nativeElement);
+    // [comments] may have been set before the renderer existed — attach now.
+    this.attachComments(this.comments());
   }
 
   /**

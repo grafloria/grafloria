@@ -1,4 +1,5 @@
-import { DiagramEngine, getMutationEpoch, exportDiagramText, importDiagramText } from '@grafloria/engine';
+import { DiagramEngine, getMutationEpoch, exportDiagramText, importDiagramText, CommentStore } from '@grafloria/engine';
+import { CommentOverlayController } from '../comments/comment-overlay';
 import type {
   DiagramModel,
   LinkModel,
@@ -223,6 +224,15 @@ export interface CreateDiagramOptions extends DomEventBinderOptions {
    * already in the container — no re-creation, no flash, no re-layout.
    */
   hydrate?: HydrationSnapshot;
+
+  /**
+   * Anchored comment threads. `true` creates a store (viewer `'local'`);
+   * pass a `CommentStore` to share one (collab). Pins render into the VNode
+   * tree via the comment overlay; read them back with `getCommentStore()`.
+   */
+  comments?: boolean | CommentStore;
+  /** Viewer id for a `comments: true`-created store (default `'local'`). */
+  commentsViewer?: string;
 }
 
 export interface DiagramInstance {
@@ -230,6 +240,8 @@ export interface DiagramInstance {
   setEdges(edges: EdgeInput[]): void;
   getModel(): DiagramModel;
   getEngine(): DiagramEngine;
+  /** The comment store, when `comments` was enabled; `null` otherwise. */
+  getCommentStore(): CommentStore | null;
 
   on<K extends DiagramEventName>(event: K, handler: DiagramEventHandler<K>): Unsubscribe;
   off<K extends DiagramEventName>(event: K, handler: DiagramEventHandler<K>): void;
@@ -490,6 +502,19 @@ export function createDiagram(
     // Copy: a handler is allowed to unsubscribe itself.
     for (const listener of [...set]) (listener as (p: unknown) => void)(payload);
   };
+
+  // -- comments ---------------------------------------------------------------
+  // The overlay hooks the renderer's comment source, so pins render inside the
+  // VNode tree (they survive export and pan/zoom for free).
+  let commentStore: CommentStore | null = null;
+  let commentOverlay: CommentOverlayController | null = null;
+  if (options.comments) {
+    commentStore =
+      options.comments === true
+        ? new CommentStore(model, { viewer: options.commentsViewer ?? 'local' })
+        : options.comments;
+    commentOverlay = new CommentOverlayController(commentStore, renderer);
+  }
 
   // -- interaction ------------------------------------------------------------
   const interaction = new InteractionController();
@@ -1386,6 +1411,7 @@ export function createDiagram(
     },
     getModel: () => model,
     getEngine: () => engine,
+    getCommentStore: () => commentStore,
 
     on(event, handler) {
       let set = listeners.get(event);
@@ -1480,6 +1506,8 @@ export function createDiagram(
       if (disposed) return;
       disposed = true;
 
+      commentOverlay?.dispose();
+      commentOverlay = null;
       binder.detach();
       scheduler.dispose();
       resizeObserver?.disconnect();

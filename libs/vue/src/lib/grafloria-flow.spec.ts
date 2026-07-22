@@ -255,3 +255,32 @@ describe('collab presence — live cursors (Vue)', () => {
     app1.unmount(); app2.unmount(); hostA.remove(); hostB.remove();
   });
 });
+
+describe('comments (Vue)', () => {
+  it('comments prop wires a store and a thread renders its pin', async () => {
+    const host = document.createElement('div');
+    document.body.appendChild(host);
+    let instance: any = null;
+    const app = createApp(
+      defineComponent({
+        setup() {
+          return () =>
+            h(GrafloriaFlow, {
+              defaultNodes: [{ id: 'a', position: { x: 50, y: 50 }, size: { width: 100, height: 50 } }] as NodeSpec[],
+              comments: true,
+              onInit: (i: unknown) => (instance = i),
+            });
+        },
+      })
+    );
+    app.mount(host);
+    await flush();
+    const store = instance.getCommentStore();
+    expect(store).toBeTruthy();
+    const threadId = store.createThread({ kind: 'node', nodeId: 'a' }, 'hm');
+    instance.renderNow();
+    expect(host.querySelector(`[data-comment-thread-id="${threadId}"]`)).toBeTruthy();
+    app.unmount();
+    host.remove();
+  });
+});

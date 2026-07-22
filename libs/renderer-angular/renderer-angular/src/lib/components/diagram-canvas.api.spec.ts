@@ -176,3 +176,68 @@ describe('[collab] — two canvases over a MemoryHub', () => {
     fixture.destroy();
   });
 });
+
+describe('[collab] presence + [comments] on the Angular canvas', () => {
+  it("presence: A's pointer becomes a live cursor in canvas B", async () => {
+    const { MemoryHub } = require('@grafloria/engine');
+    const hub = new MemoryHub();
+
+    @Component({
+      imports: [DiagramCanvasComponent],
+      template: `
+        <div id="pane-a"><grafloria-diagram-canvas style="display:block;width:400px;height:300px"
+          [(nodes)]="nodes" [collab]="collabA" /></div>
+        <div id="pane-b"><grafloria-diagram-canvas style="display:block;width:400px;height:300px"
+          [(nodes)]="nodesB" [collab]="collabB" /></div>
+      `,
+    })
+    class PresenceHost {
+      nodes = signal<NodeSpec[]>([{ id: 'n1', position: { x: 0, y: 0 }, size: { width: 100, height: 50 } }]);
+      nodesB = signal<NodeSpec[]>([{ id: 'n1', position: { x: 0, y: 0 }, size: { width: 100, height: 50 } }]);
+      collabA = { transport: hub.connect('ana'), actor: 'ana', batch: false,
+                  awarenessThrottleMs: 0, presence: { name: 'Ana', smoothing: 0 } };
+      collabB = { transport: hub.connect('ben'), actor: 'ben', batch: false,
+                  awarenessThrottleMs: 0, presence: { name: 'Ben', smoothing: 0 } };
+    }
+
+    await TestBed.configureTestingModule({ imports: [PresenceHost] }).compileComponents();
+    const fixture = TestBed.createComponent(PresenceHost);
+    fixture.detectChanges();
+    const el = fixture.nativeElement as HTMLElement;
+    expect(el.querySelectorAll('.grafloria-presence-layer').length).toBe(2);
+
+    // bindPresence listens on the INNER container div — dispatch there.
+    const containerA = el.querySelector('#pane-a .diagram-canvas-container') as HTMLElement;
+    containerA.dispatchEvent(new MouseEvent('pointermove', { clientX: 120, clientY: 80, bubbles: true }));
+    for (let i = 0; i < 40 && !el.querySelector('#pane-b .grafloria-presence-cursor'); i++) {
+      await new Promise((r) => setTimeout(r, 25));
+    }
+    expect(el.querySelector('#pane-b .grafloria-presence-cursor')).toBeTruthy();
+    fixture.destroy();
+  });
+
+  it('[comments]="true" — a thread renders its pin on the node', async () => {
+    @Component({
+      imports: [DiagramCanvasComponent],
+      template: `<grafloria-diagram-canvas style="display:block;width:400px;height:300px"
+        [viewport]="{ x: 0, y: 0, width: 400, height: 300 }" [zoom]="1"
+        [(nodes)]="nodes" [comments]="true" />`,
+    })
+    class CommentsHost {
+      nodes = signal<NodeSpec[]>([{ id: 'a', position: { x: 100, y: 100 }, size: { width: 120, height: 60 }, label: 'A' }]);
+    }
+    await TestBed.configureTestingModule({ imports: [CommentsHost] }).compileComponents();
+    const fixture = TestBed.createComponent(CommentsHost);
+    fixture.detectChanges();
+    const canvas = fixture.debugElement.query(By.directive(DiagramCanvasComponent)).componentInstance;
+    (canvas as unknown as { renderNow(): void }).renderNow();
+    const store = canvas.getCommentStore()!;
+    expect(store).toBeTruthy();
+
+    const threadId = store.createThread({ kind: 'node', nodeId: 'a' }, 'check this');
+    (canvas as unknown as { renderNow(): void }).renderNow();
+    const el = fixture.nativeElement as HTMLElement;
+    expect(el.querySelector(`[data-comment-thread-id="${threadId}"]`)).toBeTruthy();
+    fixture.destroy();
+  });
+});

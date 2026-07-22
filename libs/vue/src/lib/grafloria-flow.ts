@@ -114,6 +114,12 @@ export const GrafloriaFlow = defineComponent({
       type: Object as PropType<GrafloriaCollabOptions>,
       default: undefined,
     },
+    /** Anchored comment threads — `true` creates a store; or pass a shared one. */
+    comments: {
+      type: [Boolean, Object] as PropType<boolean | object>,
+      default: undefined,
+    },
+    commentsViewer: { type: String, default: undefined },
     fitView: { type: Boolean, default: undefined },
     enablePan: { type: Boolean, default: undefined },
     enableZoom: { type: Boolean, default: undefined },
@@ -220,6 +226,8 @@ export const GrafloriaFlow = defineComponent({
         minZoom: props.minZoom,
         maxZoom: props.maxZoom,
         zoomSensitivity: props.zoomSensitivity,
+        comments: props.comments,
+        commentsViewer: props.commentsViewer,
         renderCustomNode: (node: NodeModel, element: HTMLElement) => {
           const entry: MountedNode = { node, element };
           mounted.set(node.id, entry);

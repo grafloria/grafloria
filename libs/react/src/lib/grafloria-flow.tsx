@@ -4,7 +4,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { CSSProperties, ComponentType, ReactNode } from 'react';
 import { createPortal } from 'react-dom';
 import { createSyncSession } from '@grafloria/engine';
-import type { LinkModel, NodeModel, SyncAdapter, SyncTransport } from '@grafloria/engine';
+import type { CommentStore, LinkModel, NodeModel, SyncAdapter, SyncTransport } from '@grafloria/engine';
 
 /** The uniform collab contract every Grafloria wrapper shares. */
 export interface GrafloriaCollabOptions {
@@ -129,6 +129,13 @@ export interface GrafloriaFlowProps {
   collab?: GrafloriaCollabOptions;
   /** The live SyncAdapter, right after `join()`. */
   onCollabReady?: (session: SyncAdapter) => void;
+  /**
+   * Anchored comment threads — `true` creates a store, or pass a shared
+   * `CommentStore`. Read it back with `useGrafloria()?.getCommentStore()`.
+   */
+  comments?: boolean | CommentStore;
+  /** Viewer id for a `comments: true`-created store. */
+  commentsViewer?: string;
 
   className?: string;
   style?: CSSProperties;
@@ -190,6 +197,8 @@ export function GrafloriaFlow(props: GrafloriaFlowProps) {
       minZoom: callbacks.current.minZoom,
       maxZoom: callbacks.current.maxZoom,
       hydrate: callbacks.current.ssr?.snapshot,
+      comments: callbacks.current.comments,
+      commentsViewer: callbacks.current.commentsViewer,
 
       // Blocker #4, from React's side: the core hands us an element, we render a
       // PORTAL into it. Portals keep the node component inside this React tree —

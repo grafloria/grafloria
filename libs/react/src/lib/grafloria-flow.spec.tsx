@@ -464,3 +464,18 @@ describe('collab presence — live cursors', () => {
     });
   });
 });
+
+describe('comments', () => {
+  it('comments prop wires a store and a thread renders its pin', async () => {
+    let instance: DiagramInstance | undefined;
+    render(<GrafloriaFlow defaultNodes={NODES} comments onInit={(i) => (instance = i)} />);
+    await waitFor(() => expect(instance).toBeTruthy());
+    const store = instance!.getCommentStore()!;
+    expect(store).toBeTruthy();
+    const threadId = store.createThread({ kind: 'node', nodeId: 'a' } as never, 'hm');
+    instance!.renderNow();
+    await waitFor(() =>
+      expect(document.querySelector(`[data-comment-thread-id="${threadId}"]`)).toBeTruthy()
+    );
+  });
+});
