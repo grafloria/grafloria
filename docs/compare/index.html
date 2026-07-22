@@ -1,0 +1,265 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>How Grafloria compares — diagram library comparison</title>
+<meta name="description" content="A factual, sourced comparison of Grafloria with React Flow, JointJS and GoJS: licensing, frameworks, layout, collaboration, exports.">
+<link rel="icon" href="../favicon.svg" type="image/svg+xml">
+<link rel="alternate icon" href="../favicon-32.png">
+<link rel="apple-touch-icon" href="../apple-touch-icon.png">
+<meta property="og:title" content="How Grafloria compares">
+<meta property="og:description" content="A factual comparison of diagram libraries: licensing, frameworks, layout, collaboration, exports.">
+<meta property="og:url" content="https://grafloria.com/compare/">
+<style>
+  :root {
+    --indigo: #3B52D9;
+    --indigo-deep: #2A3CA8;
+    --indigo-soft: #94A5F0;
+    --indigo-wash: #EEF1FE;
+    --ink: #232A3D;
+    --slate: #5A6478;
+    --line: #E3E7F2;
+    --bg: #FCFCFF;
+  }
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+    background: var(--bg); color: var(--ink);
+    -webkit-font-smoothing: antialiased; line-height: 1.6;
+  }
+  .wrap { max-width: 1060px; margin: 0 auto; padding: 0 24px; }
+  a { color: var(--indigo); text-decoration: none; }
+  a:hover { text-decoration: underline; }
+  a:focus-visible { outline: 3px solid var(--indigo-soft); outline-offset: 2px; border-radius: 6px; }
+
+  header { padding: 20px 0; border-bottom: 1px solid var(--line); background: #fff; }
+  .nav { display: flex; align-items: center; gap: 12px; }
+  .nav img { width: 34px; height: 34px; }
+  .nav .name { font-weight: 700; font-size: 20px; letter-spacing: -0.3px; }
+  .nav .name a { color: var(--ink); }
+  .nav .links { margin-left: auto; display: flex; gap: 22px; font-size: 15px; font-weight: 500; }
+
+  .head { padding: 64px 0 8px; max-width: 72ch; }
+  h1 { font-size: clamp(30px, 4.6vw, 44px); font-weight: 800; letter-spacing: -1px; line-height: 1.12; text-wrap: balance; }
+  .head p { margin-top: 16px; color: var(--slate); font-size: 17px; }
+  .head p b { color: var(--ink); }
+
+  .legend { margin: 26px 0 14px; display: flex; flex-wrap: wrap; gap: 10px 18px; font-size: 13.5px; color: var(--slate); }
+  .legend b { color: var(--ink); font-weight: 600; }
+
+  .tablewrap { overflow-x: auto; border: 1px solid var(--line); border-radius: 14px; background: #fff; margin-bottom: 8px; }
+  table { border-collapse: collapse; width: 100%; min-width: 840px; font-size: 14.5px; }
+  th, td { padding: 11px 16px; text-align: left; border-top: 1px solid var(--line); vertical-align: top; }
+  thead th { border-top: 0; font-size: 13px; text-transform: uppercase; letter-spacing: .05em; color: var(--slate); background: #fff; }
+  tbody th { font-weight: 600; width: 24%; }
+  td.us { background: var(--indigo-wash); font-weight: 600; }
+  thead th.us { color: var(--indigo); background: var(--indigo-wash); }
+  td .note { display: block; font-weight: 400; font-size: 12.5px; color: var(--slate); }
+  .yes { color: var(--indigo); font-weight: 700; }
+  .dim { color: var(--slate); }
+
+  .fair { margin: 44px 0 0; display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 16px; }
+  .fair .card { border: 1px solid var(--line); border-radius: 14px; background: #fff; padding: 20px 22px; }
+  .fair h3 { font-size: 16px; margin-bottom: 6px; }
+  .fair p { font-size: 14.5px; color: var(--slate); }
+
+  .cta { margin: 48px 0 72px; text-align: center; }
+  .cta .btn { display: inline-block; padding: 12px 26px; border-radius: 10px; font-weight: 600; font-size: 16px; margin: 0 7px 10px; }
+  .btn.primary { background: var(--indigo); color: #fff; }
+  .btn.primary:hover { background: var(--indigo-deep); text-decoration: none; }
+  .btn.ghost { border: 1.5px solid var(--line); color: var(--ink); background: #fff; }
+  .btn.ghost:hover { border-color: var(--indigo-soft); text-decoration: none; }
+
+  .fine { margin: 0 0 56px; max-width: 78ch; font-size: 13px; color: var(--slate); }
+  .fine a { font-weight: 500; }
+
+  footer { border-top: 1px solid var(--line); padding: 34px 0 44px; color: var(--slate); font-size: 14.5px; background: #fff; }
+  footer .row { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+  footer img { width: 22px; height: 22px; }
+  footer .fam { margin-left: auto; }
+</style>
+</head>
+<body>
+
+<header>
+  <div class="wrap nav">
+    <img src="../favicon.svg" alt="">
+    <span class="name"><a href="../">grafloria</a></span>
+    <nav class="links">
+      <a href="https://github.com/grafloria/grafloria">GitHub</a>
+      <a href="https://www.npmjs.com/org/grafloria">npm</a>
+      <a href="../demos/">Demos</a>
+      <a href="./" aria-current="page">Compare</a>
+    </nav>
+  </div>
+</header>
+
+<main>
+  <div class="wrap">
+    <div class="head">
+      <h1>How Grafloria compares</h1>
+      <p>
+        React&nbsp;Flow, JointJS, and GoJS are excellent, mature libraries — this page is not
+        here to knock them. It answers the first question everyone asks:
+        <b>what ships in the box, and what do I buy, build, or bolt on?</b>
+        Compiled from each project's public documentation and pricing pages; if anything below
+        is out of date, <a href="https://github.com/grafloria/grafloria/issues">open an issue</a>
+        and we'll correct it.
+      </p>
+    </div>
+
+    <div class="legend">
+      <span><b class="yes">✓</b> ships in the box</span>
+      <span><b>examples&nbsp;/&nbsp;DIY</b> — achievable, assembled from examples or third-party libraries</span>
+      <span><b>paid tier</b> — offered in a commercial edition</span>
+      <span><b>—</b> not offered</span>
+    </div>
+
+    <div class="tablewrap">
+      <table>
+        <thead>
+          <tr>
+            <th scope="col"></th>
+            <th scope="col" class="us">Grafloria</th>
+            <th scope="col">React Flow</th>
+            <th scope="col">JointJS</th>
+            <th scope="col">GoJS</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <th scope="row">License</th>
+            <td class="us">MIT — every feature<span class="note">no commercial tier exists</span></td>
+            <td>MIT library<span class="note">Pro subscription: advanced examples + support</span></td>
+            <td>Open-source core<span class="note">JointJS+ commercial edition</span></td>
+            <td class="dim">Commercial<span class="note">per-developer license</span></td>
+          </tr>
+          <tr>
+            <th scope="row">Frameworks</th>
+            <td class="us">Angular · React · Vue · plain web component<span class="note">one engine underneath all four</span></td>
+            <td>React<span class="note">sibling project for Svelte</span></td>
+            <td>Plain JS core<span class="note">framework integrations available</span></td>
+            <td>Plain JS<span class="note">usable inside frameworks</span></td>
+          </tr>
+          <tr>
+            <th scope="row">Headless core — runs in Node, no DOM</th>
+            <td class="us"><span class="yes">✓</span><span class="note">byte-identical server renders</span></td>
+            <td class="dim">browser-first</td>
+            <td class="dim">browser-first</td>
+            <td class="dim">browser-first</td>
+          </tr>
+          <tr>
+            <th scope="row">Custom nodes</th>
+            <td class="us"><span class="yes">✓</span><span class="note">HTML nodes, portals, 21 shapes + custom paths</span></td>
+            <td><span class="yes">✓</span></td>
+            <td><span class="yes">✓</span></td>
+            <td><span class="yes">✓</span></td>
+          </tr>
+          <tr>
+            <th scope="row">Auto-layout built in</th>
+            <td class="us"><span class="yes">✓</span><span class="note">tree, layered (ELK), force, compound containers</span></td>
+            <td>examples / DIY<span class="note">dagre or elkjs wired by hand</span></td>
+            <td>partial<span class="note">directed-graph plugin; more in JointJS+</span></td>
+            <td><span class="yes">✓</span><span class="note">rich built-in layouts</span></td>
+          </tr>
+          <tr>
+            <th scope="row">Real-time collaboration<br><span class="note" style="font-weight:400">CRDT sync · live cursors · comments</span></th>
+            <td class="us"><span class="yes">✓</span><span class="note">per-property CRDT in the engine — no sync library, no server required</span></td>
+            <td>examples / DIY<span class="note">third-party CRDT wiring</span></td>
+            <td>examples / DIY</td>
+            <td>examples / DIY</td>
+          </tr>
+          <tr>
+            <th scope="row">Undo / redo</th>
+            <td class="us"><span class="yes">✓</span><span class="note">command-based, one gesture = one step</span></td>
+            <td>examples / DIY</td>
+            <td>paid tier</td>
+            <td><span class="yes">✓</span></td>
+          </tr>
+          <tr>
+            <th scope="row">Dashboard kit — drag-and-pack widget grid</th>
+            <td class="us"><span class="yes">✓</span></td>
+            <td>—</td>
+            <td>—</td>
+            <td>—</td>
+          </tr>
+          <tr>
+            <th scope="row">UML &amp; ER kits</th>
+            <td class="us"><span class="yes">✓</span><span class="note">class diagrams, entity tables, PK/FK badges</span></td>
+            <td>—</td>
+            <td>paid tier<span class="note">shape libraries in JointJS+</span></td>
+            <td>samples</td>
+          </tr>
+          <tr>
+            <th scope="row">Diagram-as-text format</th>
+            <td class="us"><span class="yes">✓</span><span class="note">Mermaid-style text in and out of the live canvas</span></td>
+            <td>—</td>
+            <td>—</td>
+            <td>—</td>
+          </tr>
+          <tr>
+            <th scope="row">Server-side vector export — SVG · PNG · PDF</th>
+            <td class="us"><span class="yes">✓</span><span class="note">render on a server, cache, diff</span></td>
+            <td>examples / DIY<span class="note">in-browser screenshotting</span></td>
+            <td>partial<span class="note">export features in JointJS+</span></td>
+            <td>partial<span class="note">in-browser image export</span></td>
+          </tr>
+          <tr>
+            <th scope="row">Demos executed as CI tests</th>
+            <td class="us"><span class="yes">✓</span><span class="note"><a href="../demos/">104 live demos</a> — each one drives the engine with real pointer events and fails the build if it breaks</span></td>
+            <td>—</td>
+            <td>—</td>
+            <td>—</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+
+    <div class="fair">
+      <div class="card">
+        <h3>When React Flow is the right call</h3>
+        <p>You're all-in on React, want the largest community and ecosystem in this space, and
+        are happy assembling advanced behavior from its excellent examples. It's a great
+        library — Grafloria's demo gallery deliberately covers the same ground so you can
+        judge the overlap yourself.</p>
+      </div>
+      <div class="card">
+        <h3>When JointJS or GoJS is the right call</h3>
+        <p>You need a vendor with commercial support contracts, SLAs, and decades-deep
+        enterprise deployments. Both are mature, well-engineered commercial products.</p>
+      </div>
+      <div class="card">
+        <h3>When Grafloria is the right call</h3>
+        <p>You want everything in the table in one MIT box — especially if your codebase is
+        Angular or Vue, you need collaboration without standing up a sync stack, or you render
+        diagrams on a server. And you can <a href="../demos/">try every claim live</a> before
+        installing anything.</p>
+      </div>
+    </div>
+
+    <div class="cta">
+      <a class="btn primary" href="../demos/">Try the live demos</a>
+      <a class="btn ghost" href="https://github.com/grafloria/grafloria">Read the source</a>
+    </div>
+
+    <p class="fine">
+      Compiled in good faith from public documentation and pricing pages, July 2026. These
+      projects evolve quickly and this table may lag them — corrections are welcome via
+      <a href="https://github.com/grafloria/grafloria/issues">GitHub issues</a>. React Flow,
+      JointJS, JointJS+, and GoJS are trademarks of their respective owners; their appearance
+      here is comparative reference only, and no affiliation or endorsement is implied.
+    </p>
+  </div>
+</main>
+
+<footer>
+  <div class="wrap row">
+    <img src="../favicon.svg" alt="">
+    <span>© 2026 Grafloria · MIT License</span>
+    <span class="fam">A sibling of <a href="https://atloria.dev">Atloria</a></span>
+  </div>
+</footer>
+
+</body>
+</html>

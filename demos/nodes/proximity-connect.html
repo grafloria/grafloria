@@ -17,7 +17,7 @@ import { defineDemo, check } from '../shell/demo.js';
 
 defineDemo({
   name: 'Proximity connect',
-  blurb: 'Drag a node near another and a dashed wire proposes itself LIVE, then commits on drop — SnapController.findProximityConnection driven from host glue on node:moved, exactly React Flow\'s onNodeDrag/onNodeDragStop shape.',
+  blurb: 'Drag a node near another and a dashed wire proposes itself LIVE, then commits on drop — SnapController.findProximityConnection driven from host glue on node:moved.',
   howTo: [
     'See the layout first: "drag me →" (A) sits far from B with no wires — at this distance the snap logic proposes nothing.',
     'Drag A toward B and watch its leading edge: the moment it comes inside the proximity radius, a dashed amber wire appears between the two closest ports — the proposal, painted live on every move, before you drop anything.',

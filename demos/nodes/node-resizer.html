@@ -47,11 +47,11 @@ function installResizer(host, api) {
 
 defineDemo({
   name: 'Node resizer',
-  blurb: 'Two resizers, like React Flow\'s pair: SELECT a node for the built-in one — painted corner dots + edge lines, per-handle cursors, every handle live — or grab the bottom-right corner WITHOUT selecting for a custom control registered through the public registerTool seam. Both clamp to the node\'s declared min/max/aspect DURING the gesture.',
+  blurb: 'Two resizers: SELECT a node for the built-in one — painted corner dots + edge lines, per-handle cursors, every handle live — or grab the bottom-right corner WITHOUT selecting for a custom control registered through the public registerTool seam. Both clamp to the node\'s declared min/max/aspect DURING the gesture.',
   howTo: [
     'Click the "80–260 wide" node to select it: the renderer paints the full resizer — four white corner dots and four edge lines, each with its own resize cursor (nwse/nesw/ns/ew).',
     'Drag ANY corner or edge: the box resizes from that side, the opposite side pinned, clamped to 80–260 × 60–200 mid-drag.',
-    'Now click empty canvas to deselect, and press within ~20px of the node\'s bottom-right corner: it STILL resizes — that gesture is a custom control on the public registerTool seam (React Flow\'s NodeResizeControl), no selection needed.',
+    'Now click empty canvas to deselect, and press within ~20px of the node\'s bottom-right corner: it STILL resizes — that gesture is a custom control on the public registerTool seam, no selection needed.',
     'Haul the corner far right and down: the size stops DEAD at 260×200 — min/max come off the node\'s own metadata.sizing.',
     'Drag the corner deep into the node: it floors at 80×60, never inverting.',
     'Resize the "aspect locked" node: whatever path you drag, the box holds its 1.6 ratio.',

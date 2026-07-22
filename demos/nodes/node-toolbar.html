@@ -25,7 +25,7 @@ defineDemo({
   name: 'Node toolbar',
   blurb: 'A floating toolbar pinned to a node — shown only while the node is selected (or forced visible), placeable on any side with an alignment, and held at a CONSTANT on-screen size so its buttons stay legible at any zoom. It rides the node through pans, zooms and drags; its buttons act on that node.',
   howTo: [
-    'The node boots SELECTED, so its dark toolbar shows above it. Click empty canvas to deselect — the toolbar vanishes; click the node again — it returns. (Toggle "force" in the top-left panel to keep it up regardless, like React Flow\'s isVisible.)',
+    'The node boots SELECTED, so its dark toolbar shows above it. Click empty canvas to deselect — the toolbar vanishes; click the node again — it returns. (Toggle "force" in the top-left panel to keep it up regardless of selection.)',
     'Use the top-left panel to move the toolbar to any side — top / right / bottom / left — and change its alignment — start / center / end. It re-pins to the chosen edge of the node.',
     'Zoom with ⌘+wheel / Ctrl+wheel: the node scales but the toolbar does NOT balloon — it holds a constant on-screen size (a screen-space overlay re-anchored each camera move) so the buttons stay clickable.',
     'Drag the node around: the toolbar rides it, mid-drag and after release, and pans with it when you drag the empty canvas.',

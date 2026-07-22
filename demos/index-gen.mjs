@@ -121,23 +121,15 @@ function render(byCat) {
     (a, b) => (CATEGORY_ORDER.indexOf(a) + 1 || 99) - (CATEGORY_ORDER.indexOf(b) + 1 || 99)
   );
   const total = Object.values(byCat).reduce((n, xs) => n + xs.length, 0);
-  const proCount = Object.values(byCat)
-    .flat()
-    .filter((d) => d.pro).length;
-
   const sections = cats
     .map((cat) => {
       const cards = byCat[cat]
         .sort((a, b) => a.name.localeCompare(b.name))
         .map(
           (d) => `
-        <a class="card${d.pro ? ' pro' : ''}${d.isNew ? ' is-new' : ''}" href="${esc(d.rel)}">
+        <a class="card${d.isNew ? ' is-new' : ''}" href="${esc(d.rel)}">
           <div class="card-name">${d.isNew ? '<span class="badge new">New</span>' : ''}${esc(d.name)}</div>
           <div class="card-blurb">${esc(d.blurb)}</div>
-          <div class="card-foot">
-            ${d.reactflow ? `<span class="rf">React Flow: ${esc(d.reactflow)}</span>` : '<span class="rf none">no React Flow equivalent</span>'}
-            ${d.pro ? '<span class="badge" title="React Flow puts the equivalent behind its paywall">Pro / paid there</span>' : ''}
-          </div>
         </a>`
         )
         .join('');
@@ -151,66 +143,96 @@ function render(byCat) {
     .join('\n');
 
   return `<!doctype html>
+<html lang="en">
 <meta charset="utf-8">
 <title>Grafloria — demo gallery</title>
 <meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="description" content="Over 100 live, clickable Grafloria demos — every one executed in CI as a test. Nodes, edges, layouts, dashboards, collaboration, exports.">
+<link rel="icon" href="shell/logo.svg" type="image/svg+xml">
 <style>
-  :root { color-scheme: light dark; --bg:#fff; --fg:#111; --mut:#666; --line:rgba(127,127,127,.22);
-          --card:rgba(127,127,127,.05); --accent:#2563eb; --pro:#b45309; }
+  :root {
+    color-scheme: light dark;
+    --gf-accent:#3B52D9; --gf-deep:#2A3CA8; --gf-soft:#94A5F0; --gf-wash:#EEF1FE;
+    --gf-bg:#FCFCFF; --gf-panel:#FFFFFF; --gf-ink:#232A3D; --gf-mut:#5A6478; --gf-line:#E3E7F2;
+  }
   @media (prefers-color-scheme: dark) {
-    :root { --bg:#0d1117; --fg:#e6edf3; --mut:#8b949e; --line:rgba(255,255,255,.12); --card:rgba(255,255,255,.03); --accent:#4c8dff; }
+    :root { --gf-accent:#8B9CF2; --gf-deep:#A9B6F5; --gf-soft:#5A6EE0; --gf-wash:rgba(139,156,242,.13);
+            --gf-bg:#0E1118; --gf-panel:#141927; --gf-ink:#E6EAF6; --gf-mut:#9AA3BC; --gf-line:rgba(255,255,255,.1); }
   }
   * { box-sizing: border-box; }
-  body { margin:0; background:var(--bg); color:var(--fg);
-         font:15px/1.55 system-ui,-apple-system,"Segoe UI",sans-serif; }
-  header { padding:40px 28px 26px; border-bottom:1px solid var(--line); }
-  h1 { margin:0 0 8px; font-size:30px; letter-spacing:-.02em; }
-  .lede { margin:0; max-width:70ch; color:var(--mut); }
-  .lede b { color:var(--fg); }
+  body { margin:0; background:var(--gf-bg); color:var(--gf-ink);
+         font:15px/1.55 ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+         -webkit-font-smoothing: antialiased; }
+  a { color:var(--gf-accent); }
+  .topbar { padding:16px 28px; border-bottom:1px solid var(--gf-line); background:var(--gf-panel);
+            display:flex; align-items:center; gap:10px; }
+  .topbar img { width:28px; height:28px; }
+  .topbar .name { font-weight:700; font-size:18px; letter-spacing:-.3px; color:var(--gf-ink); text-decoration:none; }
+  .topbar .name:hover { color:var(--gf-accent); }
+  .topbar nav { margin-left:auto; display:flex; gap:20px; font-size:14px; font-weight:500; }
+  .topbar nav a { text-decoration:none; }
+  .topbar nav a:hover { text-decoration:underline; }
+  header.hero { padding:40px 28px 26px; border-bottom:1px solid var(--gf-line); }
+  h1 { margin:0 0 8px; font-size:30px; letter-spacing:-.5px; }
+  .lede { margin:0; max-width:70ch; color:var(--gf-mut); }
+  .lede b { color:var(--gf-ink); }
   .scoreboard { margin:18px 0 0; display:flex; flex-wrap:wrap; gap:10px; }
-  .stat { padding:6px 12px; border:1px solid var(--line); border-radius:999px; font-size:13px; }
-  .stat b { color:var(--accent); }
-  .stat.pro b { color:var(--pro); }
+  .stat { padding:6px 12px; border:1px solid var(--gf-line); border-radius:999px; font-size:13px;
+          background:var(--gf-panel); }
+  .stat b { color:var(--gf-accent); }
+  a.stat.link { text-decoration:none; color:var(--gf-accent); border-color:var(--gf-soft); font-weight:600; }
+  a.stat.link:hover { background:var(--gf-wash); }
   main { padding:8px 28px 60px; }
   section { margin:30px 0 0; }
-  h2 { font-size:15px; text-transform:uppercase; letter-spacing:.06em; color:var(--mut);
-       border-bottom:1px solid var(--line); padding-bottom:8px; }
-  h2 .count { color:var(--fg); opacity:.5; margin-left:6px; }
+  h2 { font-size:15px; text-transform:uppercase; letter-spacing:.06em; color:var(--gf-mut);
+       border-bottom:1px solid var(--gf-line); padding-bottom:8px; }
+  h2 .count { color:var(--gf-ink); opacity:.5; margin-left:6px; }
   .grid { display:grid; grid-template-columns:repeat(auto-fill,minmax(260px,1fr)); gap:12px; margin-top:14px; }
-  .card { display:block; padding:14px 15px; border:1px solid var(--line); border-radius:10px;
-          background:var(--card); text-decoration:none; color:inherit; transition:border-color .12s, transform .12s; }
-  .card:hover { border-color:var(--accent); transform:translateY(-1px); }
-  .card.pro { border-left:3px solid var(--pro); }
+  .card { display:block; padding:14px 15px; border:1px solid var(--gf-line); border-radius:12px;
+          background:var(--gf-panel); text-decoration:none; color:inherit;
+          transition:border-color .12s, transform .12s, box-shadow .12s; }
+  .card:hover { border-color:var(--gf-accent); transform:translateY(-1px);
+                box-shadow:0 6px 20px rgba(59,82,217,.1); }
   .card-name { font-weight:640; }
-  .card-blurb { margin-top:4px; font-size:13px; color:var(--mut); }
-  .card-foot { margin-top:10px; display:flex; flex-wrap:wrap; gap:8px; align-items:center; font-size:11.5px; }
-  .rf { color:var(--mut); }
-  .rf.none { opacity:.6; font-style:italic; }
-  .badge { padding:1px 7px; border-radius:999px; background:var(--pro); color:#fff; font-weight:600; }
-  .badge.new { background:#16a34a; margin-right:7px; font-size:10.5px; text-transform:uppercase; letter-spacing:.04em; vertical-align:middle; }
+  .card-blurb { margin-top:4px; font-size:13px; color:var(--gf-mut); }
+  .badge.new { padding:1px 7px; border-radius:999px; background:#16a34a; color:#fff; font-weight:600;
+               margin-right:7px; font-size:10.5px; text-transform:uppercase; letter-spacing:.04em; vertical-align:middle; }
   .card.is-new { border-left:3px solid #16a34a; }
-  .card.is-new.pro { border-left:3px solid var(--pro); }
-  footer { padding:22px 28px 50px; border-top:1px solid var(--line); color:var(--mut); font-size:13px; max-width:80ch; }
-  code { padding:1px 5px; border-radius:4px; background:rgba(127,127,127,.16); font-size:.9em; }
+  footer { padding:22px 28px 50px; border-top:1px solid var(--gf-line); color:var(--gf-mut); font-size:13px; }
+  footer .row { max-width:80ch; }
+  code { padding:1px 5px; border-radius:4px; background:var(--gf-wash); font-size:.9em; }
 </style>
-<header>
-  <h1>Grafloria — demo gallery</h1>
+<div class="topbar">
+  <img src="shell/logo.svg" alt="">
+  <a class="name" href="https://grafloria.com">grafloria</a>
+  <nav>
+    <a href="https://github.com/grafloria/grafloria">GitHub</a>
+    <a href="https://www.npmjs.com/org/grafloria">npm</a>
+    <a href="https://grafloria.com/compare/">Compare</a>
+    <a href="https://grafloria.com">grafloria.com</a>
+  </nav>
+</div>
+<header class="hero">
+  <h1>Demo gallery</h1>
   <p class="lede"><b>Every demo here is a test.</b> Each page drives the engine through its
   public embed with real pointer events and asserts a consequence; a broken demo fails CI.
-  Where React Flow ships the same example only in its paid <b>Pro</b> tier, it is marked.</p>
+  If it's in the gallery, it works.</p>
   <div class="scoreboard">
     <span class="stat"><b>${total}</b> demos</span>
-    <span class="stat pro"><b>${proCount}</b> are features React Flow charges for</span>
     <span class="stat"><b>${cats.length}</b> categories</span>
+    <span class="stat"><b>MIT</b> — every one of them</span>
+    <a class="stat link" href="https://grafloria.com/compare/">how Grafloria compares →</a>
   </div>
 </header>
 <main>
 ${sections}
 </main>
 <footer>
+  <div class="row">
   Run the gate: <code>node demos/build.mjs &amp;&amp; node demos/e2e/gallery-run.mjs</code>.
   A demo that does not work is a feature that does not work — that is the whole point of the gallery.
   This index is generated from the pages themselves (<code>node demos/index-gen.mjs</code>); it cannot drift from what exists.
+  </div>
 </footer>
 `;
 }
@@ -228,7 +250,7 @@ const cats = Object.keys(byCat).sort(
 const flat = cats.flatMap((cat) =>
   byCat[cat]
     .sort((a, b) => a.name.localeCompare(b.name))
-    .map((d) => ({ cat, name: d.name, rel: d.rel.split(sep).join('/'), reactflow: d.reactflow, pro: d.pro, isNew: d.isNew }))
+    .map((d) => ({ cat, name: d.name, rel: d.rel.split(sep).join('/'), isNew: d.isNew }))
 );
 writeFileSync(
   join(here, 'shell', 'demos-manifest.js'),
@@ -239,6 +261,5 @@ writeFileSync(
 );
 
 const total = Object.values(byCat).reduce((n, xs) => n + xs.length, 0);
-const pro = Object.values(byCat).flat().filter((d) => d.pro).length;
-console.log(`index: ${total} demos across ${Object.keys(byCat).length} categories, ${pro} React-Flow-Pro-equivalents`);
+console.log(`index: ${total} demos across ${Object.keys(byCat).length} categories`);
 console.log(`manifest: shell/demos-manifest.js (${flat.length} demos for the side menu)`);

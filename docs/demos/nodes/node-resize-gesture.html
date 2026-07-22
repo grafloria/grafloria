@@ -15,7 +15,7 @@ import { defineDemo, check } from '../shell/demo.js';
 
 defineDemo({
   name: 'Node resize gesture',
-  blurb: 'Select a node and the renderer paints the React-Flow-style resizer: four corner dots and four edge lines, each with its own resize cursor, driven by a REAL pointer drag through the default pipeline. Corners resize both axes and pin the opposite corner; an edge line is grabbable ANYWHERE along the border and moves just that edge; the port keeps its glyph (that press draws a wire); min/max/aspect clamp DURING the gesture; one release is one undo step.',
+  blurb: 'Select a node and the renderer paints the full resizer chrome: four corner dots and four edge lines, each with its own resize cursor, driven by a REAL pointer drag through the default pipeline. Corners resize both axes and pin the opposite corner; an edge line is grabbable ANYWHERE along the border and moves just that edge; the port keeps its glyph (that press draws a wire); min/max/aspect clamp DURING the gesture; one release is one undo step.',
   howTo: [
     'Click the "80–260 wide" node — a dashed ring plus the painted resizer appear: white corner dots and solid edge lines, drawn by the renderer itself (no demo overlay).',
     'Hover the handles: each corner shows its diagonal resize cursor (nwse/nesw), each edge its axis cursor (ns/ew). The port circles at the edge midpoints keep the crosshair — a press there draws a wire, never resizes.',
@@ -24,7 +24,7 @@ defineDemo({
     'Grab an edge line anywhere ALONG the border (not on the port circle) — only that edge follows the pointer.',
     'Try to drag past the max: the box refuses to grow beyond 260×200 while the pointer keeps going.',
     'Resize the second node — its aspect ratio stays locked at 1.6 whichever handle you pull, corner OR edge.',
-    'Zoom in with ⌘/Ctrl+wheel: the dots and lines hold the same on-screen size at any zoom, like React Flow\'s autoScale.',
+    'Zoom in with ⌘/Ctrl+wheel: the dots and lines hold the same on-screen size at any zoom, so the chrome stays usable however far in you go.',
     'Press ⌘Z / Ctrl+Z — the whole resize gesture is ONE undo step.',
   ],
   reactflow: 'Node Resizer',

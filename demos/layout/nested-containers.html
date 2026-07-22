@@ -33,12 +33,12 @@ const INTERNAL = [
 
 defineDemo({
   name: 'Nested containers',
-  blurb: 'Compound layout with cross-boundary edges induced at the LCA. Reverse the one edge that crosses the two containers and their order flips — proof the cross edge actually reaches the root, which is the sub-flow bug React Flow ships.',
+  blurb: 'Compound layout with cross-boundary edges induced at the LCA. Reverse the one edge that crosses the two containers and their order flips — proof the cross edge actually reaches the root instead of being silently dropped.',
   howTo: [
     'On load two labelled containers each wrap their two members; the single cross-boundary edge (m1a → m2a) decides which container sits left and which right.',
     'Check the geometry: every member sits inside its own frame, and the two frames never overlap.',
     'Open the DevTools console and run `await __demo.run()`: the cross edge is rebuilt in the opposite direction and the compound layout re-runs — the two containers swap sides.',
-    'Read the readout: it prints both runs\' container x-positions with the G2−G1 sign flipped — proof the cross edge is induced at the root instead of dropped (the React Flow sub-flow bug).',
+    'Read the readout: it prints both runs\' container x-positions with the G2−G1 sign flipped — proof the cross edge is induced at the root instead of being silently dropped.',
   ],
   reactflow: 'Sub Flow',
   pro: true,
@@ -118,7 +118,7 @@ defineDemo({
 
     check(Math.sign(orderForward) !== 0 && Math.sign(orderReversed) !== 0, 'containers were placed at the same x — no left/right ordering to test');
     check(Math.sign(orderForward) !== Math.sign(orderReversed),
-      `reversing the cross edge did NOT flip container order (forward ${orderForward.toFixed(0)}, reversed ${orderReversed.toFixed(0)}) — the cross-boundary edge is being dropped at the root, the React Flow bug`);
+      `reversing the cross edge did NOT flip container order (forward ${orderForward.toFixed(0)}, reversed ${orderReversed.toFixed(0)}) — the cross-boundary edge is being dropped at the root`);
   },
 });
 </script>

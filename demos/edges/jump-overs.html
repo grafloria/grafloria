@@ -28,7 +28,7 @@ const arcCount = (d) => (d.match(/[Aa]/g) || []).length;
 
 defineDemo({
   name: 'Jump-overs',
-  blurb: 'Crossing wires hop: the edge owning a crossing draws an arc over the other. Asserted by the arc command in the path — React Flow has no equivalent.',
+  blurb: 'Crossing wires hop: the edge owning a crossing draws an arc over the other. Asserted by the arc command in the painted path.',
   howTo: [
     'Look at the centre of the X where the two wires cross: one hops over the other with a small arc — the schematic cue that crossing wires do not connect.',
     'Drag any node around — the crossing point moves and the hop follows it exactly.',

@@ -9,7 +9,7 @@ import { defineDemo, check, checkEqual } from '../shell/demo.js';
 
 defineDemo({
   name: 'Delete the middle node',
-  blurb: 'Delete B out of A→B→C and the chain HEALS: its two edges cascade away with it, and a fresh A→C wire bridges the gap. React Flow’s onNodesDelete reconnect — built here from getLinks() + the shipped link command, so the bridge is a real, undoable edge.',
+  blurb: 'Delete B out of A→B→C and the chain HEALS: its two edges cascade away with it, and a fresh A→C wire bridges the gap. Built from getLinks() + the shipped link command, so the bridge is a real, undoable edge.',
   howTo: [
     'Click "B (middle)" to select it — its outline highlights.',
     'Press Delete (or Backspace): B vanishes, its two edges (A→B, B→C) go with it, and in their place ONE new A→C wire appears. The predecessors reconnect to the successors across the gap.',

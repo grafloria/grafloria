@@ -103,10 +103,7 @@ async function buildNav() {
         .get(cat)
         .map((d) => {
           const current = d.rel === here;
-          // NB: no `pro` class on the item — demo.css has a global `.pro` (the
-          // page header's "Pro — paid" pill) that would paint the whole row. The
-          // Pro marker is the scoped `.an-pro` badge span only.
-          return `<a class="an-item${current ? ' current' : ''}${d.isNew ? ' an-is-new' : ''}" href="../${esc(d.rel)}"${current ? ' aria-current="page"' : ''} data-name="${esc(d.name.toLowerCase())} ${esc((d.reactflow || '').toLowerCase())}${d.isNew ? ' new' : ''}">${d.isNew ? '<span class="an-new" title="Added or reworked in the latest wave">New</span>' : ''}${esc(d.name)}${d.pro ? '<span class="an-pro" title="React Flow charges for this">Pro</span>' : ''}</a>`;
+          return `<a class="an-item${current ? ' current' : ''}${d.isNew ? ' an-is-new' : ''}" href="../${esc(d.rel)}"${current ? ' aria-current="page"' : ''} data-name="${esc(d.name.toLowerCase())}${d.isNew ? ' new' : ''}">${d.isNew ? '<span class="an-new" title="Added or reworked in the latest wave">New</span>' : ''}${esc(d.name)}</a>`;
         })
         .join('');
       return `<div class="an-group"><div class="an-cat">${esc(CATEGORY_LABEL[cat] ?? cat)}</div>${items}</div>`;
@@ -117,11 +114,11 @@ async function buildNav() {
   nav.id = 'grafloria-nav';
   nav.setAttribute('aria-label', 'Demo gallery');
   nav.innerHTML =
-    `<div class="an-head"><a class="an-home" href="../index.html">◆ Grafloria demos</a>` +
+    `<div class="an-head"><a class="an-home" href="../index.html"><img src="../shell/logo.svg" alt="">Grafloria demos</a>` +
     `<button class="an-close" aria-label="Close menu" title="Close (Esc)">×</button></div>` +
     `<input class="an-search" type="search" placeholder="Filter demos…  ( / )" aria-label="Filter demos" autocomplete="off">` +
     `<div class="an-list">${list}</div>` +
-    `<div class="an-foot">${DEMOS.length} demos · <span class="an-pro-dot">Pro</span> = React Flow charges for it</div>`;
+    `<div class="an-foot">${DEMOS.length} demos · every one MIT · <a href="https://grafloria.com">grafloria.com</a></div>`;
 
   const toggle = document.createElement('button');
   toggle.id = 'grafloria-nav-toggle';
@@ -243,22 +240,22 @@ export function defineDemo(spec) {
         new Promise((r) => requestAnimationFrame(() => (ms ? setTimeout(r, ms) : r()))),
     };
 
-    // Header. Written by the shell so every page carries the same claim in the same place —
-    // including, honestly, whether the equivalent is paid over at React Flow.
+    // Header. Written by the shell so every page carries the same brand and the
+    // same claim in the same place.
     const head = document.getElementById('demo-head');
     if (head) {
       head.innerHTML = `
+        <div class="brand-row">
+          <a class="brand" href="../index.html"><img src="../shell/logo.svg" alt=""><span>grafloria</span></a>
+          <span class="crumb">demos</span>
+          <nav class="head-links">
+            <a href="../index.html">← All demos</a>
+            <a href="https://github.com/grafloria/grafloria">GitHub</a>
+            <a href="https://grafloria.com">grafloria.com</a>
+          </nav>
+        </div>
         <h1>${escapeHtml(spec.name)}</h1>
-        <p class="blurb">${escapeHtml(spec.blurb)}</p>
-        ${
-          spec.reactflow
-            ? `<p class="rf">React Flow equivalent: <code>${escapeHtml(spec.reactflow)}</code>${
-                spec.pro
-                  ? ' <span class="pro" title="React Flow puts this behind its paywall">Pro — paid</span>'
-                  : ''
-              }</p>`
-            : ''
-        }`;
+        <p class="blurb">${escapeHtml(spec.blurb)}</p>`;
     }
 
     // Reserve the CHROME's layout space BEFORE the page fits itself: buildNav

@@ -17,6 +17,7 @@ one headless core, native in <b>Angular</b>, <b>React</b>, and <b>Vue</b>. MIT, 
 <p align="center">
   <a href="https://grafloria.com"><b>grafloria.com</b></a> ·
   <a href="https://grafloria.com/demos/"><b>100+ live demos</b></a> ·
+  <a href="https://grafloria.com/compare/"><b>how it compares</b></a> ·
   <a href="https://www.npmjs.com/org/grafloria"><b>packages</b></a>
 </p>
 

@@ -69,7 +69,7 @@ function tweenTo(ctx, targets, duration = 900) {
 
 defineDemo({
   name: 'Node position animation',
-  blurb: 'Eight nodes tween between layouts — grid · ring · row — by writing node.position every frame on an ease-out curve (React Flow\'s useAnimatedNodes, in userland). Proven by sampling a node mid-flight: it is between start and target, AHEAD of a linear curve, lands exactly on target, and both the node DOM and its edges follow.',
+  blurb: 'Eight nodes tween between layouts — grid · ring · row — by writing node.position every frame on an ease-out curve (pure userland — no animation API needed). Proven by sampling a node mid-flight: it is between start and target, AHEAD of a linear curve, lands exactly on target, and both the node DOM and its edges follow.',
   howTo: [
     'Click "▶ shuffle layout" (top-left): all eight nodes glide to the next arrangement — grid → ring → row → grid — easing into place while their ring edges follow. Nothing teleports; every node tweens through the in-between positions.',
     'Click "▶ run the scripted checks" in the right panel: it tweens the graph grid → ring, samples a node a third of the way through (proving it is genuinely mid-flight and ease-out — ahead of a linear curve), confirms every node lands on the ring, then returns them to the grid.',

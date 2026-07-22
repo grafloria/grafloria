@@ -132,7 +132,7 @@ for (const page of pages) {
   results.push(result);
 
   const mark = result.ok ? '✓' : '✗';
-  console.log(`${mark} ${rel}${result.pro ? '   [React Flow: Pro/paid]' : ''}`);
+  console.log(`${mark} ${rel}`);
   for (const f of result.failures) console.log(`    ${f.split('\n').join('\n    ')}`);
   for (const e of result.pageErrors) console.log(`    PAGE ERROR: ${e}`);
 }
@@ -141,13 +141,9 @@ await browser.close();
 server.close();
 
 const failed = results.filter((r) => !r.ok);
-const proCovered = results.filter((r) => r.ok && r.pro).length;
 
 console.log('');
 console.log(`gallery: ${results.length - failed.length}/${results.length} demos pass`);
-if (proCovered) {
-  console.log(`         ${proCovered} of them are features React Flow charges for`);
-}
 if (failed.length) {
   console.log('');
   console.log('A DEMO THAT DOES NOT WORK IS A FEATURE THAT DOES NOT WORK. This is the gate.');

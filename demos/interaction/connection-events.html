@@ -77,10 +77,10 @@ const EVENTS = [
 
 defineDemo({
   name: 'Connection events',
-  blurb: 'A live log of the connection lifecycle the engine fires as you drag a wire — start, per-move update, port enter/leave, then complete or cancel. React Flow logs onConnectStart/onConnect/onConnectEnd; Grafloria emits the same spine plus per-move detail, splitting the "end" into complete (valid) vs cancel (abandoned/refused).',
+  blurb: 'A live log of the connection lifecycle the engine fires as you drag a wire — start, per-move update, port enter/leave, then complete or cancel. The stream splits the "end" into complete (valid) vs cancel (abandoned/refused), so hosts can react to each outcome differently.',
   howTo: [
     'Drag from the SOURCE node\'s right port to the TARGET node\'s left port and release: watch "start" light, then "port-enter"/"update" as you cross the target, then "complete" — the log records each with its ports.',
-    'Drag from the source\'s right port and release over EMPTY canvas: "start" lights, then "cancel" (not "complete") — this is our end-without-connect, React Flow\'s onConnectEnd firing with no onConnect.',
+    'Drag from the source\'s right port and release over EMPTY canvas: "start" lights, then "cancel" (not "complete") — an end without a connect, and the host can tell the two apart.',
     'Read the flag row: start≈onConnectStart, complete≈onConnect, and complete-OR-cancel together are onConnectEnd — our end is split by outcome so the event name tells you what happened.',
     'Press Escape mid-drag: the drag ends in "cancel", never "complete" — an abandoned gesture creates no link.',
     'Press "clear" to reset the log between attempts.',
