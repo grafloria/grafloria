@@ -1,6 +1,6 @@
 {
   "name": "@grafloria/vue",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "description": "Vue 3 bindings for the Grafloria diagram engine — v-model data, slot-based custom nodes, declarative layout",
   "license": "MIT",
   "author": "Ramy Othman",
@@ -10,17 +10,32 @@
     "url": "git+https://github.com/grafloria/grafloria.git",
     "directory": "libs/vue"
   },
-  "bugs": { "url": "https://github.com/grafloria/grafloria/issues" },
-  "keywords": ["diagram", "flowchart", "graph", "node-editor", "vue", "vue3", "svg", "layout"],
-  "publishConfig": { "access": "public" },
+  "bugs": {
+    "url": "https://github.com/grafloria/grafloria/issues"
+  },
+  "keywords": [
+    "diagram",
+    "flowchart",
+    "graph",
+    "node-editor",
+    "vue",
+    "vue3",
+    "svg",
+    "layout"
+  ],
+  "publishConfig": {
+    "access": "public"
+  },
   "main": "./src/index.js",
   "module": "./esm/src/index.js",
   "types": "./src/index.d.ts",
   "sideEffects": false,
-  "dependencies": { "tslib": "^2.3.0" },
+  "dependencies": {
+    "tslib": "^2.3.0"
+  },
   "peerDependencies": {
     "@grafloria/engine": "^0.2.0",
-    "@grafloria/renderer": "^0.2.0",
+    "@grafloria/renderer": "^0.3.0",
     "vue": "^3.4.0"
   }
 }
