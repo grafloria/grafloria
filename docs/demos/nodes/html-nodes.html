@@ -1,0 +1,83 @@
+<meta charset="utf-8">
+<title>HTML nodes — Grafloria</title>
+<link rel="stylesheet" href="../shell/demo.css">
+<style>
+  /* The card's OWN look — the spec declares .badge/.progress and no CSS
+     existed anywhere, so the "staging badge" rendered as bare text (live
+     audit). Host CSS styling HTML nodes is exactly the feature. */
+  #canvas .badge { display: inline-block; background: #0ea5e9; color: #fff;
+    font: 10px/1.6 system-ui; padding: 0 8px; border-radius: 999px; }
+  #canvas .progress { display: block; height: 4px; border-radius: 2px;
+    background: linear-gradient(90deg, #10b981 0 64%, #e5e7eb 64%); margin-top: 6px; }
+</style>
+<header id="demo-head"></header>
+<div id="canvas"></div>
+<script type="module">
+import { render } from '../shell/grafloria.js';
+import { defineDemo, check, checkChanged } from '../shell/demo.js';
+
+defineDemo({
+  name: 'HTML nodes',
+  blurb: 'Rich HTML inside a node via SVG foreignObject — sanitised (never innerHTML), and because it lives inside the node’s transformed group it rotates, pans and moves with the node.',
+  howTo: [
+    'Read the card: bold "Deploy #4213", a progress line and a "staging" badge — real HTML painted inside the node through an SVG foreignObject, built from a sanitised description (never innerHTML).',
+    'Drag the card around: the markup is welded to the node — it rides inside the node\'s transformed group, pixel-locked, not floated nearby.',
+    'Drag empty canvas to pan and ⌘+wheel / Ctrl+wheel to zoom: the HTML pans and scales with the diagram, because it lives in camera space.',
+  ],
+  reactflow: 'Custom Nodes (HTML)',
+
+  async setup(ctx) {
+    const api = render({
+      nodes: [{
+        id: 'card', position: { x: 200, y: 120 }, size: { width: 260, height: 140 },
+        metadata: {
+          html: {
+            content: {
+              tag: 'div',
+              children: [
+                { tag: 'strong', text: 'Deploy #4213' },
+                { tag: 'p', text: 'building → 72%' },
+                { tag: 'span', className: 'badge', text: 'staging' },
+              ],
+            },
+          },
+        },
+      }],
+      edges: [],
+    }, ctx.host);
+    ctx.instance = api;
+    ctx.diagram = api.getModel();
+    await ctx.tick();
+  },
+
+  async assert(ctx) {
+    const sel = '[data-node-id="card"] foreignObject.grafloria-html-foreign';
+    const fo = ctx.host.querySelector(sel);
+
+    // 1. It is a real foreignObject INSIDE the node group, sized to the node.
+    check(!!fo, 'no foreignObject rendered for the HTML node');
+    check(Number(fo.getAttribute('width')) === 260, `foreignObject width should match the node (260), got ${fo.getAttribute('width')}`);
+
+    // 2. The sanitised structure actually reached the DOM — text via textContent.
+    const strong = ctx.host.querySelector(sel + ' .grafloria-html-node strong');
+    check(!!strong && strong.textContent === 'Deploy #4213', `expected the <strong> content, got ${strong && strong.textContent}`);
+    check(!!ctx.host.querySelector(sel + ' .badge'), 'the class-carrying <span> did not survive sanitisation');
+
+    // 3. THE TEETH: it is welded to the node, not floated near it. Move the node and
+    //    the HTML content moves with it, because it rides inside the translated <g>.
+    const foScreenX = () => ctx.host.querySelector(sel).getBoundingClientRect().x;
+    const x0 = foScreenX();
+    ctx.diagram.getNode('card').setPosition(560, 120);
+    ctx.instance.renderNow();
+    checkChanged(x0, foScreenX(), 'moving the node did not move its HTML foreignObject content');
+
+    // 4. Content updates: change the model, the sanitized subtree is replaced.
+    ctx.diagram.getNode('card').setMetadata('html', {
+      content: { tag: 'div', children: [{ tag: 'strong', text: 'Deployed ✓' }, { tag: 'div', text: 'build #4213 · 12s · all checks green' }, { tag: 'em', text: 'rolled out to 3 regions' }] },
+    });
+    ctx.instance.renderNow();
+    const s2 = ctx.host.querySelector(sel + ' .grafloria-html-node strong');
+    check(!!s2 && s2.textContent === 'Deployed ✓', `HTML content did not update on a model change (got ${s2 && s2.textContent})`);
+  },
+});
+</script>

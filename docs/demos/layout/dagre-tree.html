@@ -1,0 +1,96 @@
+<meta charset="utf-8">
+<title>Dagre tree — Grafloria</title>
+<link rel="stylesheet" href="../shell/demo.css">
+<style>
+  #readout { padding: 8px 24px; font: 12px/1.5 ui-monospace, monospace; opacity: .8; border-bottom: 1px solid rgba(127,127,127,.25); }
+  #canvas { height: calc(100vh - 150px); }
+</style>
+<header id="demo-head"></header>
+<div id="readout"></div>
+<div id="canvas"></div>
+<script type="module">
+import { render } from '../shell/grafloria.js';
+import { defineDemo, check, checkEqual } from '../shell/demo.js';
+import { overlaps, signature, layering, restack } from './_layout-lib.js';
+
+// A real org tree: one root, a fan-out, and a deeper branch. Every node starts
+// STACKED at (0,0). If dagre were the no-op the engine's layout once was (it
+// required a setLayoutService() nothing ever called), all seven would render in
+// one pile and every assertion below would fail.
+// Handles pinned bottom→top — a TB tree flows vertically, and React Flow's
+// own tree examples pin their handles the same way. (Bare edges float, which
+// is right generally but reads diagonal on the root fan-out of a tree.)
+const EDGES = [
+  { id: 'e1', source: 'root', target: 'a', sourceHandle: 'bottom', targetHandle: 'top' },
+  { id: 'e2', source: 'root', target: 'b', sourceHandle: 'bottom', targetHandle: 'top' },
+  { id: 'e3', source: 'a', target: 'a1', sourceHandle: 'bottom', targetHandle: 'top' },
+  { id: 'e4', source: 'a', target: 'a2', sourceHandle: 'bottom', targetHandle: 'top' },
+  { id: 'e5', source: 'b', target: 'b1', sourceHandle: 'bottom', targetHandle: 'top' },
+];
+const NODES = ['root', 'a', 'b', 'a1', 'a2', 'b1', 'b2'].map((id) => ({
+  id, position: { x: 0, y: 0 }, size: { width: 120, height: 48 }, label: id,
+}));
+// b2 is an ISOLATED node — dagre must place it somewhere too, without overlap.
+const SPEC = { nodes: NODES, edges: EDGES };
+
+defineDemo({
+  name: 'Dagre tree',
+  blurb: 'Hierarchical top-down layout via engine.layout("dagre"). Seven nodes start stacked at (0,0); after one call the tree is layered and no two boxes touch.',
+  howTo: [
+    'On load the seven nodes — authored stacked at (0,0) — appear as a top-down tree: root above a and b, their children on the rank below.',
+    'Read the readout: "0 overlaps" and "5/5 edges point downward" — every parent sits strictly above its child.',
+    'Find b2: it has no edges at all, yet dagre parked it clear of the tree instead of leaving it on the pile.',
+    'Reload the page — the picture comes back pixel-identical: the layout is seeded, not random.',
+  ],
+  reactflow: 'Dagre Tree',
+
+  async setup(ctx) {
+    const api = render(SPEC, ctx.host);
+    ctx.instance = api;
+    ctx.diagram = api.getModel();
+    ctx.engine = api.getEngine();
+    ctx.runLayout = async () => {
+      const r = await ctx.engine.layout('dagre', { direction: 'TB', nodeSpacing: 40, rankSpacing: 80 });
+      api.renderNow();
+      api.fitView(40);
+      const lay = layering(ctx.diagram, EDGES, 'y');
+      document.getElementById('readout').textContent =
+        `dagre TB  seed=${r.seed}  ${overlaps(ctx.diagram).length} overlaps  ${lay.forward}/${lay.total} edges point downward`;
+      return r;
+    };
+    await ctx.runLayout();
+  },
+
+  async assert(ctx) {
+    restack(ctx.diagram);
+    const r = await ctx.runLayout();
+
+    // 1. IT RAN and committed a coordinate for every node.
+    check(r.nodePositions.size === 7, `expected 7 positions, got ${r.nodePositions.size}`);
+    const stacked = ctx.diagram.getNodes().filter((n) => n.position.x === 0 && n.position.y === 0);
+    check(stacked.length <= 1, `${stacked.length} nodes still stacked at (0,0) — layout did not reach the model`);
+
+    // 2. NO OVERLAP.
+    const hits = overlaps(ctx.diagram);
+    check(hits.length === 0, `nodes overlap after dagre: ${hits.join(', ')}`);
+
+    // 3. LAYERED — the teeth. In a TB hierarchy EVERY tree edge must point strictly
+    //    downward: the child sits below its parent. A force blob or a no-op fails this.
+    const lay = layering(ctx.diagram, EDGES, 'y');
+    check(lay.forward === lay.total, `not layered: ${lay.backward.join(', ')} did not go parent→child downward`);
+
+    // 4. Root above its children, specifically — the single most basic tree invariant.
+    const rootY = ctx.diagram.getNode('root').position.y;
+    for (const child of ['a', 'b']) {
+      check(ctx.diagram.getNode(child).position.y > rootY, `${child} is not below root`);
+    }
+
+    // 5. DETERMINISM. Dagre was one of the adapters seeded off Math.random(); the
+    //    same graph laid out twice must be byte-identical.
+    const sig = signature(ctx.diagram);
+    restack(ctx.diagram);
+    await ctx.runLayout();
+    checkEqual(signature(ctx.diagram), sig, 'two identical dagre runs produced different positions');
+  },
+});
+</script>

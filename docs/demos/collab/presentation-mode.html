@@ -1,0 +1,183 @@
+<meta charset="utf-8">
+<title>Presentation mode — Grafloria</title>
+<link rel="stylesheet" href="../shell/demo.css">
+<style>
+  .note { font-size: 12px; opacity: .8; padding: 10px 24px; border-bottom: 1px solid rgba(127,127,127,.25); line-height: 1.6; }
+  code { background: rgba(127,127,127,.15); padding: 1px 5px; border-radius: 4px; }
+  #canvas { display: flex; height: calc(100vh - 190px); }
+  .pane { flex: 1; min-width: 0; position: relative; }
+  .pane + .pane { border-left: 2px solid rgba(127,127,127,.35); }
+  .pane .tag { position: absolute; top: 8px; left: 8px; z-index: 2; font: 11px ui-monospace, Menlo, monospace; padding: 2px 8px; border-radius: 4px; color:#fff; }
+  .tag.pres { background: rgba(220,38,38,.9); } .tag.fol { background: rgba(37,99,235,.85); }
+</style>
+<header id="demo-head"></header>
+<div class="note">
+  The presenter drives the camera; every follower's viewport <b>follows the presenter</b> —
+  the same world region at the same zoom, each keeping its own canvas size. The follower is
+  <b>read-only from the moment it mounts</b>: the document lock drives the engine's real
+  mode, so the drag itself is refused — camera gestures (pan, zoom) stay live, because
+  following is camera work, not a document edit.
+</div>
+<div id="canvas">
+  <div class="pane"><span class="tag pres">presenter</span><div id="paneA" style="height:100%"></div></div>
+  <div class="pane"><span class="tag fol">follower (read-only)</span><div id="paneB" style="height:100%"></div></div>
+</div>
+<script type="module">
+import { render, InMemoryViewportChannel, presentTo, followPresenter, lockDocument, isDocumentLocked } from '../shell/grafloria.js';
+import { defineDemo, check, checkChanged } from '../shell/demo.js';
+
+const SPEC = () => ({
+  nodes: [
+    { id: 'a', label: 'A', position: { x: 60,  y: 80 },  size: { width: 130, height: 60 } },
+    { id: 'b', label: 'B', position: { x: 320, y: 80 },  size: { width: 130, height: 60 } },
+    { id: 'c', label: 'C', position: { x: 190, y: 240 }, size: { width: 130, height: 60 } },
+  ],
+  edges: [{ id: 'e1', source: 'a', target: 'b' }, { id: 'e2', source: 'a', target: 'c' }],
+});
+
+const centerOf = (inst) => { const v = inst.viewport.getViewport(); return { x: v.x + v.width / 2, y: v.y + v.height / 2 }; };
+
+defineDemo({
+  name: 'Presentation mode',
+  blurb: 'Follow-the-presenter + a real read-only lock. Followers see the presenter\'s world region at their own screen size, and cannot edit.',
+  howTo: [
+    'Pan the LEFT (presenter) pane by dragging empty canvas — the follower\'s camera moves to the same world region.',
+    'Zoom the presenter with ctrl/cmd + wheel — the follower adopts the same zoom and centre while keeping its own canvas size.',
+    'Pan the FOLLOWER pane somewhere else, then move the presenter again — the follower snaps back to following. (Camera gestures are allowed on a locked pane; only document edits are not.)',
+    'Try to DRAG A NODE in the follower — nothing moves. The pane boots with the document lock ON: the engine refuses the gesture itself, it does not just hide a toolbar.',
+    'Drag a node in the presenter — it moves there but NOT in the follower: this page shares only the camera, never the document.',
+    '"▶ run the scripted checks": they replay that follower drag with real pointer events — refused while locked, landing the instant the follower is unlocked — then re-lock it and re-sync the panes.',
+  ],
+  reactflow: 'Collaborative (Yjs)',
+  pro: true,
+
+  async setup(ctx) {
+    ctx.A = render(SPEC(), document.getElementById('paneA')); // presenter
+    ctx.B = render(SPEC(), document.getElementById('paneB')); // follower
+    ctx.channel = new InMemoryViewportChannel();
+    presentTo(ctx.A, ctx.channel, { presenterId: 'ana', throttleMs: 0 });
+    followPresenter(ctx.B, ctx.channel, { ignorePresenterId: 'bo' });
+
+    // The pane's tag is a CONTRACT, not a costume: the follower mounts with the
+    // document lock ON. (It used to be locked only while the scripted checks
+    // held it — a visitor could drag "read-only" nodes freely the whole time.)
+    lockDocument(ctx.B.getEngine(), true);
+
+    // Frame the content in the presenter; the broadcast frames the follower the
+    // same way. Without this the page boots with node B sliced by the pane edge.
+    ctx.A.fitView(60);
+
+    // The interaction gate drives its live gestures against ctx.instance —
+    // point it at the presenter pane, the editable one.
+    ctx.instance = ctx.A;
+    await ctx.tick();
+  },
+
+  // Money shot: mid-presentation — the presenter zoomed onto the content and the
+  // follower's pane showing the SAME world region at the same zoom.
+  async showcase(ctx) {
+    ctx.A.viewport.setZoom(1.35);
+    await ctx.tick(30);
+    ctx.A.renderNow();
+    ctx.B.renderNow();
+  },
+
+  async assert(ctx) {
+    const A = ctx.A, B = ctx.B;
+
+    // 1. THE TAG IS TRUE AT BOOT. The pane labelled "read-only" IS locked from
+    //    the moment the page is up — not merely while a script holds the lock.
+    check(isDocumentLocked(B.getEngine()), 'the follower pane must boot LOCKED — its tag says read-only');
+    check(!isDocumentLocked(A.getEngine()), 'the presenter must NOT boot locked');
+
+    // A REAL pointer drag at a node's PAINTED position — the exact pipeline a
+    // visitor's mouse drives (pointerdown → past the drag threshold → pointerup).
+    const dragNodeByPointer = async (paneId, nodeId, dx, dy) => {
+      const el = document.querySelector(`#${paneId} [data-node-id="${nodeId}"]`);
+      check(!!el, `node '${nodeId}' is not painted in #${paneId}`);
+      const r = el.getBoundingClientRect();
+      let x = r.x + r.width / 2, y = r.y + r.height / 2;
+      const fire = (type, buttons) => el.dispatchEvent(new PointerEvent(type, {
+        bubbles: true, cancelable: true, clientX: x, clientY: y,
+        button: 0, buttons, pointerId: 7, pointerType: 'mouse',
+      }));
+      fire('pointerdown', 1);
+      for (let i = 0; i < 3; i++) { x += dx / 3; y += dy / 3; fire('pointermove', 1); }
+      fire('pointerup', 0);
+      await ctx.tick();
+    };
+
+    // 2. THE LOCK REFUSES THE GESTURE ITSELF. Drag the follower's node 'a' with
+    //    real pointer events while locked: the model must not move — the engine
+    //    refuses the drag, it does not just hide an affordance.
+    const start = { ...B.getModel().getNode('a').position };
+    await dragNodeByPointer('paneB', 'a', 36, 24);
+    const lockedAfter = B.getModel().getNode('a').position;
+    check(
+      lockedAfter.x === start.x && lockedAfter.y === start.y,
+      `a POINTER drag moved a locked follower node: (${start.x},${start.y}) → (${lockedAfter.x},${lockedAfter.y}).\n` +
+      `    The lock must refuse the real gesture, not only the model API.`
+    );
+
+    // 3. …AND IT WAS THE LOCK DOING THE REFUSING. Unlock and replay the very
+    //    same gesture: it must land — otherwise check 2 proves nothing (a dead
+    //    pane also "refuses" drags).
+    lockDocument(B.getEngine(), false);
+    await dragNodeByPointer('paneB', 'a', 36, 24);
+    checkChanged(start, { ...B.getModel().getNode('a').position },
+      'unlocked, the same pointer drag still did not move the follower node — the pane is dead, not locked');
+
+    // Restore the document, the lock, and the selection the drags left behind.
+    B.getModel().getNode('a').setPosition(start.x, start.y);
+    lockDocument(B.getEngine(), true);
+    check(isDocumentLocked(B.getEngine()), 're-locking the follower did not take');
+    B.getModel().clearSelection();
+
+    // 4. The lock gates real MUTATORS too, not just the event binder: a direct
+    //    model write on the locked document is a no-op.
+    const beforeApi = B.getModel().getNode('a').position.x;
+    B.getModel().getNode('a').setPosition(999, 999);
+    check(
+      B.getModel().getNode('a').position.x === beforeApi,
+      `a locked follower accepted a setPosition(): node 'a' moved from ${beforeApi} to ${B.getModel().getNode('a').position.x}`
+    );
+
+    // 5. FOLLOW: the presenter zooms and pans; the follower lands on the SAME
+    //    world centre at the SAME zoom.
+    const bCenter0 = centerOf(B);
+    A.viewport.setZoom(2);
+    A.viewport.pan(300, 150);
+    await ctx.tick();
+
+    check(B.viewport.getZoom() === 2, `the follower did not adopt the presenter's zoom (got ${B.viewport.getZoom()})`);
+    const aCenter = centerOf(A), bCenter = centerOf(B);
+    checkChanged(bCenter0, bCenter, 'the presenter moved and the follower did not follow at all');
+    check(
+      Math.abs(aCenter.x - bCenter.x) < 0.001 && Math.abs(aCenter.y - bCenter.y) < 0.001,
+      `follower centre ${JSON.stringify(bCenter)} != presenter centre ${JSON.stringify(aCenter)}`
+    );
+
+    // 6. THE TRAP: the follower keeps its OWN canvas size (it does not inherit
+    //    the presenter's rectangle wholesale — that would desync its hit-testing).
+    const bVp = B.viewport.getViewport();
+    check(
+      bVp.width === B.container.getBoundingClientRect().width,
+      `the follower adopted the presenter's canvas width (${bVp.width}) instead of its own`
+    );
+
+    // 7. …and the presenter is NOT locked — it still edits freely.
+    const pa = A.getModel().getNode('a').position.x;
+    A.getModel().getNode('a').setPosition(pa + 40, 80);
+    check(A.getModel().getNode('a').position.x === pa + 40, 'the presenter was wrongly locked too');
+    A.getModel().getNode('a').setPosition(pa, 80); // restore
+
+    // Leave the page as the visitor found it: both panes framed on the SAME
+    // graph, cameras matching, follower locked. (The checks used to end by
+    // editing the unlocked follower and leaving it that way — after "✓ all
+    // checks passed" the two panes showed different documents.)
+    A.fitView(60);
+    await ctx.tick(30);
+    A.renderNow(); B.renderNow();
+  },
+});
+</script>

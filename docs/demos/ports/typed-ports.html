@@ -1,0 +1,104 @@
+<meta charset="utf-8">
+<title>Typed ports — Grafloria</title>
+<link rel="stylesheet" href="../shell/demo.css">
+<style>
+  #hint { padding: 8px 24px; font: 13px/1.5 system-ui; opacity: .75; border-bottom: 1px solid rgba(127,127,127,.25); }
+  #canvas { height: calc(100vh - 190px); }
+</style>
+<header id="demo-head"></header>
+<div id="hint">Ports are coloured by data type. A number output connects to a number input, but the engine refuses to wire it to a string input.</div>
+<div id="canvas"></div>
+<script type="module">
+import { render, portTypeRegistry } from '../shell/grafloria.js';
+import { defineDemo, check } from '../shell/demo.js';
+
+// Register the palette: a data type COLOURS its glyph only if someone says what
+// colour it is. This registry was unreachable from the embed until the audit
+// caught all three glyphs wearing direction colours under a caption claiming
+// type colours.
+portTypeRegistry.registerAll([
+  { name: 'number', color: '#2563eb', compatibleWith: ['number'] },
+  { name: 'string', color: '#9333ea', compatibleWith: ['string'] },
+]);
+
+// Data-flow ports: each carries a `dataType` that (1) COLOURS the glyph and (2)
+// drives connection VALIDITY natively — no host validator needed. A number output
+// may reach a number input; the same drag onto a string input is refused before
+// any link exists, because the declared types do not match.
+const NODES = [
+  { id: 'src', position: { x: 120, y: 260 }, size: { width: 130, height: 70 }, label: 'number src',
+    ports: [{ id: 'out', side: 'right', type: 'output', dataType: 'number', shape: { shape: 'circle', size: 13 } }] },
+  { id: 'num', position: { x: 640, y: 140 }, size: { width: 130, height: 70 }, label: 'number in',
+    ports: [{ id: 'nin', side: 'left', type: 'input', dataType: 'number', shape: { shape: 'circle', size: 13 } }] },
+  { id: 'str', position: { x: 640, y: 400 }, size: { width: 130, height: 70 }, label: 'string in',
+    ports: [{ id: 'sin', side: 'left', type: 'input', dataType: 'string', shape: { shape: 'circle', size: 13 } }] },
+];
+
+defineDemo({
+  name: 'Typed ports',
+  blurb: 'Ports coloured by data type, refusing a mismatched connection — number→number is allowed, number→string is rejected before it is made.',
+  howTo: [
+    'Check the port colours: both number ports ("number src", "number in") paint blue, the string port on "string in" paints purple — each glyph wears its registered data-type colour.',
+    'Press on the blue output of "number src" and drag toward "number in": the matching blue input highlights as a valid target — drop on it and the wire is created.',
+    'Drag from the same output down to "string in": the purple port never highlights, and dropping on it is refused — no link, the declared types simply do not match.',
+    'Note there is no validator code on this page — compatibility comes entirely from the registered types (number is only compatibleWith number).',
+  ],
+  reactflow: 'Validation',
+  pro: false,
+
+  async setup(ctx) {
+    ctx.instance = render({ nodes: NODES, edges: [] }, ctx.host, { interaction: { portVisibility: 'always' } });
+    ctx.diagram = ctx.instance.getModel();
+    // Client-space, shape-agnostic: read the glyph's rendered box (works for a
+    // triangle/diamond glyph that has no cx/cy) and drive real pointer events there.
+    ctx.pointer = (type, cx, cy) => ctx.host.dispatchEvent(new PointerEvent(({ mousedown: 'pointerdown', mousemove: 'pointermove', mouseup: 'pointerup' })[type] ?? type, { clientX: cx, clientY: cy, bubbles: true, cancelable: true, button: 0, buttons: type === 'pointerup' ? 0 : 1, pointerId: 1, pointerType: 'mouse' }));
+    ctx.portC = (portId) => { const r = ctx.host.querySelector(`[data-port-id="${portId}"]`).getBoundingClientRect(); return { x: r.left + r.width / 2, y: r.top + r.height / 2 }; };
+    ctx.drag = async (fromId, toId) => {
+      const from = ctx.portC(fromId), to = ctx.portC(toId);
+      ctx.pointer('pointermove', from.x, from.y); await ctx.tick();
+      ctx.pointer('pointerdown', from.x, from.y); await ctx.tick();
+      ctx.pointer('pointermove', (from.x + to.x) / 2, (from.y + to.y) / 2); await ctx.tick();
+      ctx.pointer('pointermove', to.x, to.y); await ctx.tick();
+      // Is THIS specific target a valid drop while the cursor is over it?
+      const tp = ctx.diagram.getNodes().flatMap((n) => [...n.getPorts().values()]).find((p) => p.id === toId);
+      const targetHighlighted = !!(tp && (tp.isValidTarget || tp.isHighlighted));
+      ctx.pointer('pointerup', to.x, to.y); await ctx.tick();
+      return targetHighlighted;
+    };
+    await ctx.tick();
+  },
+
+  async assert(ctx) {
+    const classOf = (portId) => ctx.host.querySelector(`[data-port-id="${portId}"]`).getAttribute('class');
+
+    // 1. The glyph is styled by its dataType — both number ports carry the
+    //    port-type-number class, the string port a different one. (This class is
+    //    what the stylesheet colours; if PortSpec.dataType were dropped, all three
+    //    would be bare `port` with no type class.)
+    check(classOf('out').includes('port-type-number'), `the number output is not tagged by dataType: ${classOf('out')}`);
+    check(classOf('nin').includes('port-type-number'), `the number input is not tagged by dataType: ${classOf('nin')}`);
+    check(classOf('sin').includes('port-type-string'), `the string input is not tagged by dataType: ${classOf('sin')}`);
+    check(!classOf('sin').includes('port-type-number'), 'the string port was tagged as a number — dataType is not driving the style');
+
+    //    ...and the REGISTERED colour actually lands on the glyph fill — class
+    //    tagging alone looked green while every glyph wore direction colours.
+    //    COMPUTED, not the attribute: the theme stylesheet paints direction
+    //    strokes and CSS beats presentation attributes — an attribute check
+    //    stayed green here while every glyph painted teal.
+    const strokeOf = (portId) => getComputedStyle(ctx.host.querySelector(`[data-port-id="${portId}"]`)).stroke;
+    check(strokeOf('out') === 'rgb(37, 99, 235)', `number glyph should PAINT the registered blue, got ${strokeOf('out')}`);
+    check(strokeOf('sin') === 'rgb(147, 51, 234)', `string glyph should PAINT the registered purple, got ${strokeOf('sin')}`);
+    check(strokeOf('out') !== strokeOf('sin'), 'number and string glyphs are indistinguishable');
+
+    // 2. number → number is ACCEPTED (link created, highlight offered mid-drag).
+    const hlValid = await ctx.drag('out', 'nin');
+    check(hlValid, 'the valid number target was never highlighted during the drag');
+    check(ctx.diagram.getLinks().length === 1, `number→number should create a link, got ${ctx.diagram.getLinks().length}`);
+
+    // 3. number → string is REFUSED — no link, and the target never highlighted.
+    const hlInvalid = await ctx.drag('out', 'sin');
+    check(!hlInvalid, 'the string input highlighted as a valid target despite the type mismatch');
+    check(ctx.diagram.getLinks().length === 1, `number→string must be refused, but the link count grew to ${ctx.diagram.getLinks().length}`);
+  },
+});
+</script>

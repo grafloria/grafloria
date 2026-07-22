@@ -1,0 +1,71 @@
+<meta charset="utf-8">
+<title>Auto-sizing — Grafloria</title>
+<link rel="stylesheet" href="../shell/demo.css">
+<header id="demo-head"></header>
+<div id="canvas"></div>
+<script type="module">
+import { render, desiredNodeSize } from '../shell/grafloria.js';
+import { defineDemo, check } from '../shell/demo.js';
+
+defineDemo({
+  name: 'Auto-sizing',
+  blurb: 'Opt a node into content-aware sizing (metadata.sizing.auto) and it grows to fit its label on the very next frame — no manual measuring, and it re-fits when the text changes.',
+  howTo: [
+    'Compare the two nodes: both were DECLARED 60px wide with the same long label. The top one opted in via metadata.sizing.auto and has already grown to fit its text; the bottom control is still squeezed into its 60px — growth is opt-in, per node.',
+    'Drag the top node around — the fitted size travels with it like any hand-set size.',
+    'Click "▶ run the scripted checks" in this panel: the check hands the auto node an even LONGER label and you can watch it widen again to fit (it also verifies the width matches the pure measurer, and that the control never left 60px).',
+  ],
+  reactflow: 'Auto-sizing nodes',
+
+  async setup(ctx) {
+    const api = render({
+      nodes: [
+        // Deliberately TOO SMALL for the label it carries.
+        { id: 'a', position: { x: 120, y: 140 }, size: { width: 60, height: 36 },
+          label: 'a comfortably long label that will not fit in sixty pixels',
+          metadata: { sizing: { auto: true, padding: 10 } } },
+        // A fixed control that must NOT resize.
+        // BELOW the auto node, not beside it: the auto node grows to whatever
+        // width its final label needs (the demo later sets an even longer one),
+        // and a neighbor on the same row ends up swallowed by the growth.
+        { id: 'b', position: { x: 120, y: 280 }, size: { width: 60, height: 36 },
+          label: 'a comfortably long label that will not fit in sixty pixels' },
+      ],
+      edges: [],
+    }, ctx.host);
+    ctx.instance = api;
+    ctx.diagram = api.getModel();
+    await ctx.tick();
+  },
+
+  async assert(ctx) {
+    const m = ctx.diagram;
+    const a = m.getNode('a'), b = m.getNode('b');
+
+    // 1. The auto node grew past its declared 60px to fit the label. The renderer's
+    //    per-frame auto-sizer did this — we never called setSize.
+    ctx.instance.renderNow();
+    check(a.size.width > 60,
+      `auto-sized node should have grown past 60px to fit its label, is ${a.size.width}`);
+
+    // 2. The control WITHOUT the flag stayed put — proving the growth is opt-in,
+    //    not just "every node gets bigger".
+    check(b.size.width === 60,
+      `the non-auto control must keep its declared width, is ${b.size.width}`);
+
+    // 3. The grown size actually fits the content (matches the pure measurer within
+    //    rounding) — it did not just pick an arbitrary bigger number.
+    const want = desiredNodeSize(a);
+    check(Math.abs(a.size.width - want.width) < 1.5,
+      `auto width ${a.size.width} should match desiredNodeSize ${want.width}`);
+
+    // 4. THE TEETH: change the label and the node RE-FITS. Auto-sizing grows to fit
+    //    content, so a longer label makes it wider on the next frame.
+    const wide = a.size.width;
+    a.setMetadata('label', 'an even longer label than before, with considerably more text to accommodate');
+    ctx.instance.renderNow();
+    check(a.size.width > wide,
+      `a longer label should grow the auto-sized node further (${wide} -> ${a.size.width})`);
+  },
+});
+</script>

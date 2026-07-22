@@ -1,0 +1,93 @@
+<meta charset="utf-8">
+<title>Sub-flow — Grafloria</title>
+<link rel="stylesheet" href="../shell/demo.css">
+<header id="demo-head"></header>
+<div id="canvas"></div>
+<script type="module">
+import { render } from '../shell/grafloria.js';
+import { defineDemo, check } from '../shell/demo.js';
+
+const encloses = (r, n) =>
+  n.position.x >= r.x && n.position.y >= r.y &&
+  n.position.x + n.size.width <= r.x + r.width &&
+  n.position.y + n.size.height <= r.y + r.height;
+
+defineDemo({
+  name: 'Sub-flow',
+  blurb: 'A container that holds a nested graph: nodes become members, the frame fits itself around them, and a sub-group nests inside — a real parent/child group hierarchy.',
+  howTo: [
+    'See the "Pipeline" frame fitted snugly around stage 1, stage 2 and retry, with the nested "Retry handler" frame inside it around retry — while "outside" sits beyond both.',
+    'Drag "stage 1" around — members stay ordinary draggable nodes, and dragging one out of the frame does NOT detach it: membership is explicit, not geometric.',
+    'Open the DevTools console and run `await __demo.run()`: the frame is shrunk to a deliberately-wrong 40×40 box, then fitToContents re-grows it to enclose every member — and still not "outside".',
+    'Note the hierarchy is real: the "Retry handler" sub-group is itself a member of the pipeline and points back to its parent.',
+  ],
+  reactflow: 'Sub Flows',
+
+  async setup(ctx) {
+    const api = render({
+      nodes: [
+        { id: 'n1', position: { x: 400, y: 150 }, size: { width: 120, height: 60 }, label: 'stage 1' },
+        { id: 'n2', position: { x: 560, y: 150 }, size: { width: 120, height: 60 }, label: 'stage 2' },
+        { id: 'n3', position: { x: 480, y: 275 }, size: { width: 120, height: 60 }, label: 'retry' },
+        { id: 'outside', position: { x: 80, y: 150 }, size: { width: 120, height: 60 }, label: 'outside' },
+      ],
+      edges: [{ id: 'e1', source: 'n1', target: 'n2' }, { id: 'e2', source: 'n1', target: 'n3' }],
+    }, ctx.host);
+    ctx.instance = api;
+    ctx.diagram = api.getModel();
+    ctx.engine = api.getEngine();
+
+    // Build the container and move three nodes into it.
+    const g = await ctx.engine.addGroup({ name: 'Pipeline' });
+    await ctx.engine.addToGroup(g.id, 'n1');
+    await ctx.engine.addToGroup(g.id, 'n2');
+    await ctx.engine.addToGroup(g.id, 'n3');
+    ctx.g = g;
+
+    // A nested sub-group inside it (a sub-flow within the sub-flow).
+    const inner = await ctx.engine.addGroup({ name: 'Retry handler' });
+    await ctx.engine.addToGroup(inner.id, 'n3');
+    g.addMember(inner.id, ctx.diagram);   // nest the sub-group under the pipeline
+    ctx.inner = inner;
+
+    // What a visitor should SEE from the first frame: both frames wrapping their
+    // members, inner first so the outer fits around the inner's own frame — the
+    // React Flow Sub Flows look. The assert below still proves fitToContents has
+    // teeth by shrinking the outer frame back down and watching it re-grow.
+    inner.fitToContents(ctx.diagram);
+    g.fitToContents(ctx.diagram);
+    api.renderNow();
+    await ctx.tick();
+  },
+
+  async assert(ctx) {
+    const m = ctx.diagram, g = ctx.g, inner = ctx.inner;
+
+    // 1. The three nodes are members of the container; the outsider is not.
+    check(g.members.has('n1') && g.members.has('n2') && g.members.has('n3'),
+      `the container should hold n1/n2/n3, has ${[...g.members]}`);
+    check(!g.members.has('outside'), 'the outside node must not be a member');
+    // Membership does not delete the graph: members still render and their edges live.
+    check(!!ctx.host.querySelector('[data-node-id="n1"]'), 'a grouped node stopped rendering');
+    check(m.getLinks().length === 2, 'grouping should not have dropped the edges');
+
+    // 2. THE TEETH: shrink the frame to a deliberately-wrong 40×40, then fit — it
+    //    must re-grow to wrap every member. A real containment relationship, not a
+    //    decorative rectangle (and not a frame that only LOOKS right because setup
+    //    happened to draw it there).
+    g.setFrame({ x: 470, y: 190, width: 40, height: 40 });
+    check(g.getOuterBounds().width === 40, 'precondition: the frame really was shrunk');
+    g.fitToContents(m);
+    const box = g.getOuterBounds();
+    for (const id of ['n1', 'n2', 'n3']) {
+      check(encloses(box, m.getNode(id)), `after fitToContents the frame must enclose ${id} (frame ${JSON.stringify(box)})`);
+    }
+    check(!encloses(box, m.getNode('outside')), 'the fitted frame should NOT swallow the outside node');
+
+    // 3. Nesting is real: the sub-group is a member of the pipeline and points back to it.
+    check(g.members.has(inner.id), 'the nested sub-group is not a member of the pipeline');
+    check(inner.parentGroupId === g.id,
+      `the sub-group should point to its parent group (${inner.parentGroupId} vs ${g.id})`);
+  },
+});
+</script>

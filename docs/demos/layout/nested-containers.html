@@ -1,0 +1,124 @@
+<meta charset="utf-8">
+<title>Nested containers — Grafloria</title>
+<link rel="stylesheet" href="../shell/demo.css">
+<style>
+  #readout { padding: 8px 24px; font: 12px/1.5 ui-monospace, monospace; opacity: .8; border-bottom: 1px solid rgba(127,127,127,.25); white-space: pre; }
+  #canvas { height: calc(100vh - 168px); }
+</style>
+<header id="demo-head"></header>
+<div id="readout"></div>
+<div id="canvas"></div>
+<script type="module">
+import { render, GroupModel } from '../shell/grafloria.js';
+import { defineDemo, check } from '../shell/demo.js';
+import { bbox, boxesIntersect } from './_layout-lib.js';
+
+// Two containers, each with two members and an internal edge, plus ONE edge that
+// crosses the boundary. engine.layout() runs the compound path automatically when
+// a diagram has groups: each container is laid out, then the containers themselves
+// are arranged as compound nodes at the root.
+//
+// THE CRUX (the bug React Flow ships): the cross-boundary edge must be INDUCED onto
+// the compound nodes at their lowest common ancestor — the root. React Flow gives
+// the root an empty link array, so A→B and B→A produce the same picture. We prove
+// ours does not: reverse the single cross edge and the container ORDER flips. If the
+// induced edge were dropped, both directions would give the identical arrangement.
+const NODES = ['m1a', 'm1b', 'm2a', 'm2b'].map((id) => ({
+  id, position: { x: 0, y: 0 }, size: { width: 90, height: 44 }, label: id,
+}));
+const INTERNAL = [
+  { id: 'i1', source: 'm1a', target: 'm1b' },
+  { id: 'i2', source: 'm2a', target: 'm2b' },
+];
+
+defineDemo({
+  name: 'Nested containers',
+  blurb: 'Compound layout with cross-boundary edges induced at the LCA. Reverse the one edge that crosses the two containers and their order flips — proof the cross edge actually reaches the root, which is the sub-flow bug React Flow ships.',
+  howTo: [
+    'On load two labelled containers each wrap their two members; the single cross-boundary edge (m1a → m2a) decides which container sits left and which right.',
+    'Check the geometry: every member sits inside its own frame, and the two frames never overlap.',
+    'Open the DevTools console and run `await __demo.run()`: the cross edge is rebuilt in the opposite direction and the compound layout re-runs — the two containers swap sides.',
+    'Read the readout: it prints both runs\' container x-positions with the G2−G1 sign flipped — proof the cross edge is induced at the root instead of dropped (the React Flow sub-flow bug).',
+  ],
+  reactflow: 'Sub Flow',
+  pro: true,
+
+  async setup(ctx) {
+    const api = render({ nodes: NODES, edges: [...INTERNAL, { id: 'cross', source: 'm1a', target: 'm2a' }] }, ctx.host);
+    ctx.instance = api;
+    ctx.diagram = api.getModel();
+    ctx.engine = api.getEngine();
+
+    // Two real containers, authored through the model (render()'s spec has no group
+    // vocabulary — GroupModel + addGroup is the authoring seam, re-exported for this).
+    const g1 = new GroupModel({ id: 'G1', name: 'Container 1' });
+    const g2 = new GroupModel({ id: 'G2', name: 'Container 2' });
+    ctx.diagram.addGroup(g1);
+    ctx.diagram.addGroup(g2);
+    g1.padding = 12;
+    g2.padding = 12;
+    g1.addMember('m1a', ctx.diagram);
+    g1.addMember('m1b', ctx.diagram);
+    g2.addMember('m2a', ctx.diagram);
+    g2.addMember('m2b', ctx.diagram);
+
+    ctx.runLayout = async (crossSource, crossTarget) => {
+      // Rebuild the cross edge in the requested direction. A NEW id each time, so the
+      // reconciler removes the old link and adds a fresh one — updating an existing
+      // edge's spec does not move its endpoints, only its style.
+      ctx.instance.setEdges([...INTERNAL, { id: `cross_${crossSource}_${crossTarget}`, source: crossSource, target: crossTarget }]);
+      for (const n of ctx.diagram.getNodes()) n.setPosition(0, 0);
+      const r = await ctx.engine.layout('dagre', { direction: 'LR', nodeSpacing: 30, rankSpacing: 60 });
+      ctx.instance.renderNow();
+      ctx.instance.fitView(30);
+      return r;
+    };
+
+    await ctx.runLayout('m1a', 'm2a');
+  },
+
+  async assert(ctx) {
+    const model = ctx.diagram;
+    const g1 = model.getGroup('G1');
+    const g2 = model.getGroup('G2');
+
+    // Run 1: cross edge flows G1 → G2.
+    const r = await ctx.runLayout('m1a', 'm2a');
+
+    // 1. THE COMPOUND PATH RAN. Not the flat path that strands container frames.
+    check(r.metadata?.nested === true, 'engine.layout did not take the nested/compound path');
+    check((r.metadata?.containersLaidOut ?? []).length === 2, `expected 2 containers laid out, got ${JSON.stringify(r.metadata?.containersLaidOut)}`);
+
+    // 2. EVERY MEMBER SITS INSIDE ITS OWN CONTAINER.
+    const g1box = g1.getOuterBounds();
+    const g2box = g2.getOuterBounds();
+    const inside = (nbox, gb) => nbox.x >= gb.x - 0.5 && nbox.y >= gb.y - 0.5 &&
+      nbox.x + nbox.w <= gb.x + gb.width + 0.5 && nbox.y + nbox.h <= gb.y + gb.height + 0.5;
+    check(inside(bbox(model, ['m1a']), g1box) && inside(bbox(model, ['m1b']), g1box), 'a member of G1 escaped its container');
+    check(inside(bbox(model, ['m2a']), g2box) && inside(bbox(model, ['m2b']), g2box), 'a member of G2 escaped its container');
+
+    // 3. THE CONTAINERS DO NOT OVERLAP EACH OTHER.
+    const asBox = (b) => ({ x: b.x, y: b.y, w: b.width, h: b.height });
+    check(!boxesIntersect(asBox(g1box), asBox(g2box)), 'the two containers overlap');
+
+    const orderForward = g2box.x - g1box.x; // >0 means G2 is right of G1
+
+    // 4. THE CRUX. Reverse the ONLY cross-boundary edge and re-lay-out. The container
+    //    order must flip. React Flow drops cross edges at the root, so its two runs
+    //    would be identical; ours must not be.
+    await ctx.runLayout('m2a', 'm1a');
+    const g1b = model.getGroup('G1').getOuterBounds();
+    const g2b = model.getGroup('G2').getOuterBounds();
+    const orderReversed = g2b.x - g1b.x;
+
+    document.getElementById('readout').textContent =
+      `G1→G2:  G1.x=${g1box.x.toFixed(0)}  G2.x=${g2box.x.toFixed(0)}  (G2-G1=${orderForward.toFixed(0)})\n` +
+      `G2→G1:  G1.x=${g1b.x.toFixed(0)}  G2.x=${g2b.x.toFixed(0)}  (G2-G1=${orderReversed.toFixed(0)})\n` +
+      `nested=${r.metadata?.nested}  containers=${JSON.stringify(r.metadata?.containersLaidOut)}`;
+
+    check(Math.sign(orderForward) !== 0 && Math.sign(orderReversed) !== 0, 'containers were placed at the same x — no left/right ordering to test');
+    check(Math.sign(orderForward) !== Math.sign(orderReversed),
+      `reversing the cross edge did NOT flip container order (forward ${orderForward.toFixed(0)}, reversed ${orderReversed.toFixed(0)}) — the cross-boundary edge is being dropped at the root, the React Flow bug`);
+  },
+});
+</script>

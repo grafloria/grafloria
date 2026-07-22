@@ -1,0 +1,114 @@
+<meta charset="utf-8">
+<title>Offline &amp; reconnect — Grafloria</title>
+<link rel="stylesheet" href="../shell/demo.css">
+<style>
+  .note { font-size: 12px; opacity: .8; padding: 10px 24px; border-bottom: 1px solid rgba(127,127,127,.25); line-height: 1.6; }
+  code { background: rgba(127,127,127,.15); padding: 1px 5px; border-radius: 4px; }
+  #canvas { display: flex; height: calc(100vh - 190px); }
+  .pane { flex: 1; min-width: 0; position: relative; }
+  .pane + .pane { border-left: 2px solid rgba(127,127,127,.35); }
+  .pane .tag { position: absolute; top: 8px; left: 8px; z-index: 2; font: 11px ui-monospace, Menlo, monospace; background: rgba(37,99,235,.85); color:#fff; padding: 2px 8px; border-radius: 4px; }
+</style>
+<header id="demo-head"></header>
+<div class="note">
+  Cut the connection, edit <b>both</b> sides while disconnected, then reconnect. Anti-entropy
+  exchanges exactly the ops each side missed and the two converge — no lost edits, no full
+  resend. Offline edits are held in the local op log; the reconnect's sync round delivers them.
+</div>
+<div id="canvas">
+  <div class="pane"><span class="tag">peer A</span><div id="paneA" style="height:100%"></div></div>
+  <div class="pane"><span class="tag">peer B</span><div id="paneB" style="height:100%"></div></div>
+</div>
+<script type="module">
+import { render, createSyncSession, MemoryHub } from '../shell/grafloria.js';
+import { defineDemo, check } from '../shell/demo.js';
+
+const SPEC = () => ({
+  nodes: [
+    { id: 'a', label: 'Alpha', position: { x: 80,  y: 90 }, size: { width: 150, height: 66 } },
+    { id: 'b', label: 'Beta',  position: { x: 320, y: 90 }, size: { width: 150, height: 66 } },
+  ],
+  edges: [{ id: 'e1', source: 'a', target: 'b' }],
+});
+
+const hub = new MemoryHub();
+function peer(hostId, actor) {
+  const inst = render(SPEC(), document.getElementById(hostId));
+  const transport = hub.connect(actor);
+  const session = createSyncSession(inst.getModel(), transport, { actor, batch: false });
+  session.join();
+  return { inst, session, transport };
+}
+
+const posX = (inst, id) => inst.getModel().getNode(id)?.position.x;
+const label = (inst, id) => inst.getModel().getNode(id)?.getMetadata('label');
+
+defineDemo({
+  name: 'Offline & reconnect',
+  blurb: 'Disconnect, edit both sides, reconnect — anti-entropy ships each peer exactly what it missed and they converge. No lost edits.',
+  howTo: [
+    'Drag the Alpha node in peer A\'s pane — it moves in peer B\'s pane in real time: the replicas sync over an in-page hub.',
+    'Cut the wire from the DevTools console: __demoCtx.A.transport.disconnect(); __demoCtx.B.transport.disconnect()',
+    'Edit both sides while dark — drag Alpha in the left pane and Beta in the right: neither pane sees the other\'s change.',
+    'Reconnect and sync: __demoCtx.A.transport.connect(); __demoCtx.B.transport.connect(); __demoCtx.A.session.sync(); __demoCtx.B.session.sync() — the panes converge, and both offline edits survive on both sides.',
+    'Drag any node again — live sync has resumed.',
+  ],
+  reactflow: 'Collaborative (Yjs)',
+  pro: true,
+
+  async setup(ctx) {
+    ctx.A = peer('paneA', 'ana');
+    ctx.B = peer('paneB', 'bo');
+    await ctx.tick();
+  },
+
+  async assert(ctx) {
+    const A = ctx.A.inst, B = ctx.B.inst;
+
+    // Sanity: while connected, an edit crosses immediately.
+    A.getModel().getNode('a').setPosition(80, 240);
+    await ctx.tick();
+    check(posX(B, 'a') === 80 && B.getModel().getNode('a').position.y === 240, 'baseline online sync failed');
+
+    // ---- GO OFFLINE ---------------------------------------------------------
+    ctx.A.transport.disconnect();
+    ctx.B.transport.disconnect();
+    check(ctx.A.transport.status === 'disconnected', 'peer A did not go offline');
+
+    // ---- EDIT BOTH SIDES WHILE DISCONNECTED ---------------------------------
+    // A moves 'b' and renames 'a'. B moves 'a' elsewhere-on-another-axis and
+    // renames 'b'. None of this is on the wire yet.
+    A.getModel().getNode('b').setPosition(430, 90);
+    A.getModel().getNode('a').setMetadata('label', 'Alpha★');
+    B.getModel().getNode('b').setMetadata('label', 'Beta★');
+    await ctx.tick();
+
+    // The edits are LOCAL only — the other side is blind to them.
+    check(posX(B, 'b') === 320, `peer B saw peer A's offline move — the connection was not really cut (B.b.x=${posX(B,'b')})`);
+    check(label(A, 'b') === 'Beta', `peer A saw peer B's offline rename while offline (A.b=${label(A,'b')})`);
+
+    // ---- RECONNECT ----------------------------------------------------------
+    // Reconnecting drives announce() → an anti-entropy sync round in both
+    // directions. The ops each side made while dark now cross.
+    ctx.A.transport.connect();
+    ctx.B.transport.connect();
+    ctx.A.session.sync();
+    ctx.B.session.sync();
+    await ctx.tick(30);
+
+    // ---- CONVERGENCE: every offline edit is present on BOTH peers ------------
+    for (const [name, inst] of [['A', A], ['B', B]]) {
+      check(posX(inst, 'b') === 430, `peer ${name} is missing A's offline MOVE of 'b' (x=${posX(inst,'b')}, expected 430)`);
+      check(label(inst, 'a') === 'Alpha★', `peer ${name} is missing A's offline RENAME of 'a' (got "${label(inst,'a')}")`);
+      check(label(inst, 'b') === 'Beta★', `peer ${name} is missing B's offline RENAME of 'b' (got "${label(inst,'b')}")`);
+      // the pre-offline edit is still intact too
+      check(posX(inst, 'a') === 80, `peer ${name} lost the pre-offline edit of 'a'`);
+    }
+
+    // And a fresh edit flows live again — the channel is healthy after reconnect.
+    A.getModel().getNode('a').setPosition(200, 240);
+    await ctx.tick();
+    check(posX(B, 'a') === 200, 'live sync did not resume after reconnect');
+  },
+});
+</script>

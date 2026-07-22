@@ -1,0 +1,159 @@
+<meta charset="utf-8">
+<title>Off-thread layout — Grafloria</title>
+<link rel="stylesheet" href="../shell/demo.css">
+<style>
+  #readout { padding: 8px 24px; font: 12px/1.5 ui-monospace, monospace; opacity: .8; border-bottom: 1px solid rgba(127,127,127,.25); white-space: pre; }
+  #canvas { height: calc(100vh - 168px); }
+</style>
+<header id="demo-head"></header>
+<div id="readout"></div>
+<div id="canvas"></div>
+<script type="module">
+import { render } from '../shell/grafloria.js';
+import { defineDemo, check } from '../shell/demo.js';
+import { overlaps } from './_layout-lib.js';
+
+// A REAL Worker runs the force layout. The worker body is this very package: we
+// import it inside the worker and call serveLayout(self) — engine.setLayoutPort()
+// then routes engine.layout() through the worker thread. This is the whole point
+// of the card: progress streams OUT of another thread, a cancel lands MID-RUN, the
+// partial result is kept, and the main thread never blocks.
+//
+// (The engine deliberately does not construct the Worker — that would bake one
+// bundler's URL scheme into a library — so the app builds it. Here the app is this
+// page, and it builds the worker from a Blob that imports the gallery bundle.)
+
+// A chunky graph so force has real work to do and a cancel has something to cut.
+const N = 45;
+const NODES = Array.from({ length: N }, (_, i) => ({
+  id: `n${i}`, position: { x: (i % 9) * 90, y: Math.floor(i / 9) * 90 }, size: { width: 40, height: 40 }, label: `${i}`,
+}));
+// Straight edges: this demo is about the layout THREAD, not obstacle routing.
+const EDGES = [];
+for (let i = 1; i < N; i++) EDGES.push({ id: `e${i}`, source: `n${i - 1}`, target: `n${i}`, type: 'direct' });
+for (let i = 0; i < N; i += 5) EDGES.push({ id: `x${i}`, source: `n${i}`, target: `n${(i + 12) % N}`, type: 'direct' });
+
+const lines = [];
+const log = (s) => { lines.push(s); document.getElementById('readout').textContent = lines.join('\n'); };
+
+defineDemo({
+  name: 'Off-thread layout',
+  blurb: 'Force layout in a REAL Worker via engine.setLayoutPort(): progress streams from the other thread, a cancel lands mid-run and keeps the partial result, and the main thread keeps ticking the whole time.',
+  howTo: [
+    'On load the 45 nodes sit in a rigid 9×5 grid — no layout has run yet; a real module Worker is standing by.',
+    'Open the DevTools console and run `await __demo.run()`: the grid melts into a force-directed cloud, computed entirely off the main thread.',
+    'Watch the readout log: a monotonically increasing stream of progress events arrives from the worker and reaches 1.',
+    'Then a 4000-iteration run is cancelled mid-flight — "cancelled at iteration …, reason=cancelled, partial=true" — and the partial picture is KEPT on screen, not thrown away.',
+    'The last line counts how often the main thread ticked while the sim ran: the page never froze.',
+  ],
+  reactflow: 'Web Worker',
+  pro: true,
+
+  async setup(ctx) {
+    const api = render({ nodes: NODES, edges: EDGES }, ctx.host, {
+      // anti-parallel neighbour links rendered exactly coincident (one hidden) (live audit) — the shipped separation fans them apart.
+      renderer: { parallelLinks: true },
+    });
+    api.fitView(40); // frame the boot grid — it sat flush top-left, first column sliced
+    ctx.instance = api;
+    ctx.diagram = api.getModel();
+    ctx.engine = api.getEngine();
+
+    // Build a REAL module Worker whose body is serveLayout(self), imported from the
+    // same bundle the page uses. This is exactly how an app wires it in production,
+    // minus the bundler's `new URL('./layout.worker', import.meta.url)` sugar.
+    const bundleUrl = new URL('../shell/grafloria.js', import.meta.url).href;
+    const workerSrc = `import { serveLayout } from ${JSON.stringify(bundleUrl)};\nserveLayout(self);`;
+    ctx.worker = new Worker(URL.createObjectURL(new Blob([workerSrc], { type: 'text/javascript' })), { type: 'module' });
+    ctx.engine.setLayoutPort(ctx.worker);
+  },
+
+  async assert(ctx) {
+    const engine = ctx.engine;
+
+    // Warm the worker: the first run pays the bundle-boot cost, so later timings and
+    // the mid-run cancel measure the algorithm, not module loading.
+    const warm = await engine.layout('force', { seed: 1, iterations: 5 });
+    log(`worker warmed: ${warm.iteration} iterations, partial=${warm.partial}`);
+    check(warm.partial === false, 'the warm-up run came back partial — the worker never completed a run');
+    check(warm.nodePositions.size === N, `worker returned ${warm.nodePositions.size} positions, expected ${N}`);
+
+    // --- PROGRESS streams from the other thread. ---
+    const seen = [];
+    const full = await engine.layout('force', {
+      seed: 0x5eed, iterations: 300, threshold: 0, sliceMs: 0,
+      onProgress: (p) => seen.push(p.progress),
+    });
+    log(`progress events: ${seen.length}, last=${seen[seen.length - 1]}`);
+    check(seen.length > 2, `expected a stream of progress events, got ${seen.length}`);
+    let monotonic = true;
+    for (let i = 1; i < seen.length; i++) if (seen[i] < seen[i - 1]) monotonic = false;
+    check(monotonic, 'progress went backwards — it is not real iteration progress');
+    check(seen[seen.length - 1] === 1, `progress did not reach 1 (got ${seen[seen.length - 1]})`);
+    check(full.partial === false, 'the completed run reported itself partial');
+
+    // The worker committed a real layout: no overlaps, nothing stacked at the seed.
+    ctx.instance.renderNow();
+    ctx.instance.fitView(30);
+    check(overlaps(ctx.diagram).length === 0, `overlaps after worker layout: ${overlaps(ctx.diagram).slice(0, 4).join(', ')}…`);
+
+    // --- CANCELLATION mid-run + MAIN-THREAD RESPONSIVENESS. ---
+    // Start a long run, and while awaiting it, tick a counter on the main thread. If
+    // layout blocked the main thread, the counter could not advance. It runs in the
+    // worker, so it does.
+    //
+    // The bar is MEASURED, not guessed: on a starved 2-vCPU CI runner the timer
+    // fires rarely even on an idle main thread, so a fixed ">= 3" flakes there.
+    // First measure how often THIS machine ticks while idle over the same wall
+    // time, then require a fraction of that during the layout. A truly BLOCKED
+    // main thread still reads ~0 ticks on any machine and stays red.
+    let baselineTicks = 0;
+    const baseTicker = setInterval(() => { baselineTicks++; }, 4);
+    await new Promise((r) => setTimeout(r, 60));
+    clearInterval(baseTicker);
+
+    let mainThreadTicks = 0;
+    const ticker = setInterval(() => { mainThreadTicks++; }, 4);
+
+    const controller = new AbortController();
+    const running = engine.layout('force', {
+      seed: 0x5eed, iterations: 4000, threshold: 0, sliceMs: 0, signal: controller.signal,
+    });
+    await new Promise((r) => setTimeout(r, 60)); // let the worker get genuinely under way
+    controller.abort();
+    const cancelled = await running;
+    clearInterval(ticker);
+
+    log(`cancelled at iteration ${cancelled.iteration}, reason=${cancelled.reason}, partial=${cancelled.partial}`);
+    log(`main thread ticked ${mainThreadTicks}× during the worker run`);
+
+    // 1. The run stopped MID-way — a real cancel, not a completion.
+    check(cancelled.partial === true, `cancel did not produce a partial result (partial=${cancelled.partial})`);
+    check(cancelled.reason === 'cancelled', `stop reason was ${cancelled.reason}, not 'cancelled'`);
+    check(cancelled.iteration > 5 && cancelled.iteration < 4000,
+      `cancel did not land mid-run (iteration ${cancelled.iteration}) — it either never started or ran to completion`);
+
+    // 2. THE PARTIAL RESULT IS KEPT — it carries a real coordinate for every node,
+    //    committed to the model, not thrown away.
+    check(cancelled.nodePositions.size === N, `partial result dropped positions (${cancelled.nodePositions.size}/${N})`);
+    check(overlaps(ctx.diagram).length === 0, 'the retained partial layout overlaps — it was not a coherent picture');
+
+    // 3. THE MAIN THREAD STAYED RESPONSIVE — the counter kept advancing while a
+    //    multi-thousand-iteration force sim ran. An inline layout would have starved
+    //    it. Bar = 20% of this machine's own idle rate over the same wall time
+    //    (floor 1): blocked ⇒ ~0 ticks ⇒ red on ANY machine.
+    const requiredTicks = Math.max(1, Math.floor(baselineTicks * 0.2));
+    check(mainThreadTicks >= requiredTicks,
+      `main thread only ticked ${mainThreadTicks}× (idle baseline ${baselineTicks}, bar ${requiredTicks}) — it was blocked by the layout`);
+
+    // End on a DETERMINISTIC frame: the cancelled run's picture depends on which
+    // iteration the cancel happened to land on (timing-based, machine-dependent),
+    // so a golden of it can never bless stably. Run one short COMPLETED layout
+    // with a fixed seed — the cancel proof is the checks above, not the picture.
+    const settle = await ctx.engine.layout('force', { seed: 0x5eed, iterations: 300, threshold: 0, sliceMs: 4 });
+    check(settle.partial === false, 'the deterministic settle run should complete');
+    ctx.instance.renderNow();
+    ctx.instance.fitView(30);
+  },
+});
+</script>

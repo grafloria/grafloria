@@ -1,0 +1,1713 @@
+<meta charset="utf-8">
+<title>n8n-style workflow builder — Grafloria</title>
+<link rel="stylesheet" href="../shell/demo.css">
+<style>
+  /* ---- the n8n canvas: a dotted grid ground ------------------------------ */
+  #stage { display: grid; grid-template-columns: 188px 1fr; height: calc(100vh - 150px); min-height: 460px; }
+  #palette { border-right: 1px solid rgba(127,127,127,.2); padding: 12px 12px 16px; overflow-y: auto;
+    background: #fafbfd; }
+  .pal-title { font: 600 10px/1.4 system-ui, sans-serif; letter-spacing: .8px; text-transform: uppercase;
+    color: #8a91a2; margin: 2px 2px 10px; }
+  .pal-item { display: flex; align-items: center; gap: 9px; width: 100%; margin: 0 0 8px; padding: 7px 9px;
+    border: 1px solid #e4e7ee; border-radius: 9px; background: #fff; cursor: pointer; text-align: left;
+    font: 500 12.5px/1.2 system-ui, sans-serif; color: #2d2e3a; box-shadow: 0 1px 1px rgba(16,24,40,.04); }
+  .pal-item:hover { border-color: #c7ccd8; background: #f7f8fb; }
+  .pal-dot { width: 24px; height: 24px; border-radius: 6px; flex: none; display: flex; align-items: center;
+    justify-content: center; font-size: 14px; color: #fff; }
+  .pal-dot.mono { font: 700 12px/1 ui-monospace, monospace; }
+  #canvas { height: 100%; position: relative; overflow: hidden;
+    background-color: #f4f5f8;
+    background-image: radial-gradient(circle, #d5d9e2 1.1px, transparent 1.1px);
+    background-size: 22px 22px; }
+  /* Status badges sit half-out of the card's top-right corner, n8n-style. */
+  #canvas foreignObject { overflow: visible; }
+
+  /* ---- the node card painted inside each node's foreignObject ------------- */
+  #canvas .n8n-card { display: flex; align-items: center; gap: 10px; width: 100%; height: 100%;
+    box-sizing: border-box; padding: 0 12px; background: #fff; color: #2d2e3a; position: relative;
+    border: 1px solid #dfe2ea; border-left-width: 3px; border-radius: 9px;
+    box-shadow: 0 1px 2px rgba(16,24,40,.06), 0 1px 3px rgba(16,24,40,.05); font-family: system-ui, sans-serif; }
+  #canvas .n8n-badge { width: 34px; height: 34px; border-radius: 8px; flex: none; display: flex;
+    align-items: center; justify-content: center; font-size: 19px; line-height: 1; color: #fff; background: #667; }
+  #canvas .n8n-badge.mono { font: 700 15px/1 ui-monospace, monospace; }
+  #canvas .n8n-body { min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+  #canvas .n8n-title { font-weight: 600; font-size: 13.5px; line-height: 1.15; color: #262a35;
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  #canvas .n8n-sub { font-size: 10px; letter-spacing: .4px; text-transform: uppercase; color: #8a91a2;
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+
+  /* Trigger nodes: the signature n8n left-rounded "start" pill. */
+  #canvas .n8n-card.cat-trigger { border-radius: 28px 9px 9px 28px; padding-left: 15px; }
+
+  /* A half-wired "next step" node — dashed, inviting you to connect it. */
+  #canvas .n8n-card.dangling { border-style: dashed; border-color: #b794f4; background: #fbf8ff; }
+  #canvas .n8n-card.dangling .n8n-sub { color: #9b6bd6; }
+
+  /* Category accents: coloured icon badge + left border, n8n-style. */
+  #canvas .cat-trigger .n8n-badge { background: #10b981; } #canvas .cat-trigger { border-left-color: #10b981; }
+  #canvas .cat-http    .n8n-badge { background: #0ea5e9; } #canvas .cat-http    { border-left-color: #0ea5e9; }
+  #canvas .cat-set     .n8n-badge { background: #6366f1; } #canvas .cat-set     { border-left-color: #6366f1; }
+  #canvas .cat-code    .n8n-badge { background: #475569; } #canvas .cat-code    { border-left-color: #475569; }
+  #canvas .cat-merge   .n8n-badge { background: #06b6d4; } #canvas .cat-merge   { border-left-color: #06b6d4; }
+  #canvas .cat-if      .n8n-badge { background: #f97316; } #canvas .cat-if      { border-left-color: #f97316; }
+  #canvas .cat-ai      .n8n-badge { background: #8b5cf6; } #canvas .cat-ai      { border-left-color: #8b5cf6; }
+  #canvas .cat-sheet   .n8n-badge { background: #22a565; } #canvas .cat-sheet   { border-left-color: #22a565; }
+  #canvas .cat-notify  .n8n-badge { background: #ec4899; } #canvas .cat-notify  { border-left-color: #ec4899; }
+
+  /* ---- EXECUTION affordances (the n8n run language) ----------------------- */
+  /* pending: queued behind the walker — dimmed, exactly the n8n grey-out */
+  #canvas .n8n-card.st-pending { opacity: .42; }
+  /* running: n8n-orange highlight + a spinner half-out of the corner */
+  #canvas .n8n-card.st-running { border-color: #ff6d5a; border-left-color: #ff6d5a;
+    box-shadow: 0 0 0 2.5px rgba(255,109,90,.28), 0 2px 8px rgba(255,109,90,.18); }
+  #canvas .n8n-card.st-error { border-color: #ea1f30; border-left-color: #ea1f30;
+    box-shadow: 0 0 0 2px rgba(234,31,48,.18); }
+  /* AI sub-nodes flash while their agent runs (they are invoked BY it) */
+  #canvas .n8n-card.st-flash { border-color: #8b5cf6;
+    box-shadow: 0 0 0 2.5px rgba(139,92,246,.3), 0 2px 10px rgba(139,92,246,.25); }
+  #canvas .n8n-status { position: absolute; top: -8px; right: -8px; width: 17px; height: 17px;
+    border-radius: 50%; display: flex; align-items: center; justify-content: center;
+    font: 700 10.5px/1 system-ui, sans-serif; color: #fff; box-shadow: 0 1px 3px rgba(0,0,0,.28); }
+  #canvas .n8n-status.ok  { background: #2ea56e; }
+  #canvas .n8n-status.err { background: #ea1f30; }
+  #canvas .n8n-spin { position: absolute; top: -9px; right: -9px; width: 18px; height: 18px;
+    box-sizing: border-box; border-radius: 50%; background: #fff;
+    border: 3px solid rgba(255,109,90,.25); border-top-color: #ff6d5a;
+    animation: n8nspin .7s linear infinite; }
+  @keyframes n8nspin { to { transform: rotate(360deg); } }
+
+  /* ---- the floating run bar (n8n's bottom-centre "Test workflow") --------- */
+  #runbar { position: absolute; left: 50%; transform: translateX(-50%); bottom: 14px; z-index: 6;
+    display: flex; gap: 7px; align-items: center; background: rgba(255,255,255,.96);
+    border: 1px solid #dfe2ea; border-radius: 12px; padding: 8px 10px;
+    box-shadow: 0 6px 22px rgba(15,23,42,.16); }
+  #canvas.logs-open #runbar { bottom: 200px; }
+  #btn-run { background: #ff6d5a; color: #fff; border: none; font: 600 13px/1.2 system-ui, sans-serif;
+    padding: 8px 14px; border-radius: 8px; cursor: pointer; }
+  #btn-run:hover { background: #f75e4a; }
+  #btn-run:disabled { opacity: .55; cursor: default; }
+  #runbar .rb { padding: 7px 10px; border: 1px solid #d6dae4; background: #fff; border-radius: 8px;
+    cursor: pointer; font: 500 12px/1.2 system-ui, sans-serif; color: #3c4254; }
+  #runbar .rb:hover { border-color: #b9bfce; }
+  #runbar .rb:disabled { opacity: .45; cursor: default; }
+  #runbar .rb[aria-pressed="true"] { background: #fdece9; border-color: #ff6d5a; color: #c2402f; }
+  #run-readout { font: 11px/1.3 ui-monospace, monospace; color: #6a7183; min-width: 76px; max-width: 200px;
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+
+  /* ---- the execution log panel (n8n's bottom Logs view) ------------------- */
+  #runlog { position: absolute; left: 0; right: 0; bottom: 0; height: 186px; z-index: 5;
+    background: rgba(255,255,255,.97); border-top: 1px solid #dfe2ea; display: flex;
+    flex-direction: column; box-shadow: 0 -8px 24px rgba(15,23,42,.09); }
+  #runlog[hidden] { display: none; }
+  .rl-head { display: flex; gap: 10px; align-items: center; padding: 7px 14px;
+    border-bottom: 1px solid #eceef4; font: 600 10px/1.4 system-ui, sans-serif;
+    letter-spacing: .7px; text-transform: uppercase; color: #7c8296; }
+  #rl-status { text-transform: none; letter-spacing: 0; font: 500 11.5px/1.3 system-ui, sans-serif; color: #6a7183; }
+  #rl-status.ok { color: #218358; } #rl-status.err { color: #c11626; }
+  #rl-close { margin-left: auto; border: none; background: transparent; color: #8a91a2;
+    font-size: 15px; cursor: pointer; padding: 0 2px; }
+  .rl-rows { overflow: auto; flex: 1; }
+  .rl-row { display: grid; grid-template-columns: 14px minmax(140px,1.2fr) minmax(90px,1fr) 110px 110px;
+    gap: 10px; align-items: center; padding: 4px 14px; border-bottom: 1px dashed #eef0f5;
+    font: 11.5px/1.5 ui-monospace, monospace; color: #3c4254; }
+  .rl-dot { width: 8px; height: 8px; border-radius: 50%; background: #2ea56e; }
+  .rl-dot.err { background: #ea1f30; }
+  .rl-name { font-family: system-ui, sans-serif; font-weight: 600; font-size: 12px; color: #2d2e3a;
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .rl-sub { color: #8a91a2; font-size: 10px; text-transform: uppercase; letter-spacing: .4px;
+    font-family: system-ui, sans-serif; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .rl-ms { text-align: right; color: #6a7183; }
+
+  /* ---- the NDV (Node Details View) — n8n's input | parameters | output ---- */
+  #ndv { position: fixed; inset: 0; z-index: 40; display: flex; align-items: center; justify-content: center; }
+  #ndv[hidden] { display: none; }
+  #ndv .ndv-back { position: absolute; inset: 0; background: rgba(22,23,32,.62); }
+  .ndv-modal { position: relative; width: min(1150px, 94vw); height: min(660px, 88vh); background: #f4f5f9;
+    border-radius: 12px; overflow: hidden; display: flex; flex-direction: column;
+    box-shadow: 0 24px 80px rgba(0,0,0,.45); font-family: system-ui, sans-serif; }
+  .ndv-head { display: flex; align-items: center; gap: 10px; background: #2b2c39; color: #eceef4;
+    padding: 9px 14px; flex: none; }
+  .ndv-head .hd-badge { width: 30px; height: 30px; border-radius: 7px; flex: none; display: flex;
+    align-items: center; justify-content: center; font-size: 16px; color: #fff; background: #667; }
+  #ndv-name { background: transparent; border: 1px solid transparent; color: inherit;
+    font: 600 15px/1.3 system-ui, sans-serif; padding: 4px 8px; border-radius: 6px; min-width: 240px; }
+  #ndv-name:hover, #ndv-name:focus { border-color: #4a4c5e; background: #232430; outline: none; }
+  .ndv-head .hd-kind { font-size: 10.5px; letter-spacing: .5px; text-transform: uppercase; color: #8a90a6; }
+  #ndv-exec { margin-left: auto; background: #ff6d5a; color: #fff; border: none; border-radius: 8px;
+    padding: 8px 14px; font: 600 12.5px/1.2 system-ui, sans-serif; cursor: pointer; }
+  #ndv-exec:hover { background: #f75e4a; }
+  #ndv-exec:disabled { opacity: .5; cursor: default; }
+  #ndv-close { background: transparent; color: #9aa0b4; border: none; font-size: 20px; cursor: pointer; padding: 0 4px; }
+  #ndv-close:hover { color: #fff; }
+  .ndv-body { flex: 1; display: grid; grid-template-columns: 1fr 1.18fr 1fr; min-height: 0; }
+  .ndv-pane { display: flex; flex-direction: column; min-height: 0; background: #eef0f6; border-right: 1px solid #e0e3ec; }
+  .ndv-pane.out { border-right: none; border-left: 1px solid #e0e3ec; }
+  .ndv-pane-head { font: 600 10px/1.4 system-ui, sans-serif; letter-spacing: .7px; text-transform: uppercase;
+    padding: 10px 12px 8px; color: #7c8296; display: flex; justify-content: space-between; }
+  .ndv-items { overflow: auto; padding: 0 10px 12px; flex: 1; display: flex; flex-direction: column; }
+  .ndv-item { background: #fff; border: 1px solid #e2e5ee; border-radius: 8px; margin: 0 0 8px; flex: none; }
+  .ndv-item pre { margin: 0; padding: 7px 10px; font: 10.5px/1.55 ui-monospace, monospace;
+    white-space: pre-wrap; word-break: break-word; color: #34394a; }
+  .ndv-hint { margin: auto; text-align: center; color: #8a91a2; font: 12.5px/1.6 system-ui, sans-serif; padding: 18px; }
+  .ndv-hint button { display: block; margin: 10px auto 0; border: 1px solid #ff6d5a; color: #d34a36;
+    background: #fff; border-radius: 8px; padding: 7px 12px; font: 600 12px/1.2 system-ui, sans-serif; cursor: pointer; }
+  .ndv-hint button:hover { background: #fdece9; }
+  .ndv-main { background: #fff; display: flex; flex-direction: column; min-height: 0; }
+  .ndv-tabs { display: flex; gap: 2px; padding: 6px 12px 0; border-bottom: 1px solid #eceef4; flex: none; }
+  .ndv-tab { border: none; background: transparent; font: 600 12.5px/1.3 system-ui, sans-serif; color: #7c8296;
+    padding: 8px 10px; cursor: pointer; border-bottom: 2px solid transparent; }
+  .ndv-tab.on { color: #ff6d5a; border-bottom-color: #ff6d5a; }
+  #ndv-params, #ndv-settings { overflow: auto; padding: 14px 16px; display: flex; flex-direction: column; gap: 12px; }
+  .ndv-field label { display: block; font: 600 11px/1.4 system-ui, sans-serif; color: #5b6273; margin-bottom: 4px; }
+  .ndv-field input[type="text"], .ndv-field input[type="number"], .ndv-field select, .ndv-field textarea {
+    width: 100%; box-sizing: border-box; font: 12.5px/1.4 system-ui, sans-serif; padding: 7px 9px;
+    border: 1px solid #d9dde7; border-radius: 7px; background: #fbfcfe; color: #2d2e3a; }
+  .ndv-field textarea { min-height: 74px; resize: vertical; }
+  .ndv-field textarea.code { font: 11.5px/1.5 ui-monospace, monospace; min-height: 130px; }
+  .ndv-kv { display: grid; grid-template-columns: 1fr 1.4fr; gap: 6px; margin-bottom: 6px; }
+  .ndv-add { align-self: flex-start; border: 1px dashed #c3c9d6; background: transparent; color: #5b6273;
+    border-radius: 7px; padding: 6px 10px; font: 600 11.5px/1.2 system-ui, sans-serif; cursor: pointer; }
+  .ndv-check { display: flex; gap: 8px; align-items: center; font: 12.5px/1.4 system-ui, sans-serif; color: #3c4254; }
+  .ndv-note { font: 12px/1.6 system-ui, sans-serif; color: #7c8296; }
+
+  /* HUD + legend — plain chrome, overlaid on the canvas (no model entities). */
+  #hud { position: absolute; right: 12px; top: 10px; z-index: 4; font: 12px/1.3 ui-monospace, monospace;
+    color: #5b6273; background: rgba(255,255,255,.86); border: 1px solid #dfe2ea; border-radius: 8px;
+    padding: 5px 10px; pointer-events: none; }
+  #legend { position: absolute; left: 12px; bottom: 12px; z-index: 4; pointer-events: none;
+    font: 11px/1.5 system-ui, sans-serif; color: #4b5162; background: rgba(255,255,255,.92);
+    border: 1px solid #dfe2ea; border-radius: 9px; padding: 9px 12px; box-shadow: 0 4px 14px rgba(15,23,42,.1); }
+  #legend b { display: block; font: 600 9.5px/1.4 system-ui; letter-spacing: .6px; text-transform: uppercase;
+    color: #8a91a2; margin-bottom: 5px; }
+  #legend .row { display: flex; align-items: center; gap: 8px; margin: 2px 0; }
+  #legend .swatch { width: 30px; height: 0; flex: none; }
+  #legend .main  { border-top: 2.5px solid #9aa2b1; }
+  #legend .ai    { border-top: 2.5px dashed #8b5cf6; }
+  #legend .yes   { border-top: 2.5px solid #16a34a; }
+  #legend .no    { border-top: 2.5px solid #dc2626; }
+
+  /* The AI port labels (Model / Memory / Tool) sit exactly where their dashed
+     wires dive into the agent's bottom ports — a canvas-coloured text HALO
+     keeps the wire from striking through the glyphs, in both schemes. */
+  #canvas text.ai-port-label { fill: #4b5162; paint-order: stroke; stroke: #f4f5f8;
+    stroke-width: 5px; stroke-linejoin: round; }
+
+  @media (prefers-color-scheme: dark) {
+    #canvas text.ai-port-label { fill: #b9becd; stroke: #16171d; }
+    #palette { background: #191a22; border-right-color: rgba(255,255,255,.08); }
+    .pal-item { background: #23242f; border-color: #33353f; color: #e7e9f0; }
+    .pal-item:hover { background: #2b2c39; border-color: #45485a; }
+    .pal-title { color: #7b8194; }
+    #canvas { background-color: #16171d; background-image: radial-gradient(circle, #2a2c38 1.1px, transparent 1.1px); }
+    #canvas .n8n-card { background: #262733; color: #e7e9f0; border-color: #363845; }
+    #canvas .n8n-title { color: #eceef4; }
+    #canvas .n8n-sub { color: #9298ab; }
+    #canvas .n8n-card.dangling { background: #241d33; border-color: #6d4fa0; }
+    #canvas .n8n-spin { background: #262733; }
+    #hud, #legend { background: rgba(30,31,42,.9); border-color: #363845; color: #b9becd; }
+    #legend b { color: #838aa0; }
+    #runbar { background: rgba(30,31,42,.95); border-color: #363845; }
+    #runbar .rb { background: #23242f; border-color: #3a3c49; color: #c9cdda; }
+    #runbar .rb[aria-pressed="true"] { background: #3a2320; border-color: #ff6d5a; color: #ff8d7d; }
+    #run-readout { color: #9298ab; }
+    #runlog { background: rgba(24,25,33,.97); border-top-color: #363845; }
+    .rl-head { border-bottom-color: #2c2e3a; color: #838aa0; }
+    .rl-row { border-bottom-color: #23242f; color: #c9cdda; }
+    .rl-name { color: #e7e9f0; }
+    .ndv-modal { background: #1d1e28; }
+    .ndv-pane { background: #191a22; border-color: #2c2e3a; }
+    .ndv-pane.out { border-left-color: #2c2e3a; }
+    .ndv-main { background: #23242f; }
+    .ndv-tabs { border-bottom-color: #2c2e3a; }
+    .ndv-item { background: #262733; border-color: #363845; }
+    .ndv-item pre { color: #c9cdda; }
+    .ndv-field input[type="text"], .ndv-field input[type="number"], .ndv-field select, .ndv-field textarea {
+      background: #1c1d26; border-color: #3a3c49; color: #e7e9f0; }
+    .ndv-check { color: #c9cdda; }
+    .ndv-hint button { background: #23242f; }
+  }
+</style>
+<header id="demo-head"></header>
+<div id="stage">
+  <div id="palette">
+    <div class="pal-title">Add node</div>
+    <button class="pal-item" data-kind="http"><span class="pal-dot" style="background:#0ea5e9">🌐</span>HTTP Request</button>
+    <button class="pal-item" data-kind="set"><span class="pal-dot" style="background:#6366f1">✏️</span>Edit Fields</button>
+    <button class="pal-item" data-kind="code"><span class="pal-dot mono" style="background:#475569">{}</span>Code</button>
+    <button class="pal-item" data-kind="if"><span class="pal-dot" style="background:#f97316">⋔</span>If</button>
+    <button class="pal-item" data-kind="merge"><span class="pal-dot" style="background:#06b6d4">🔀</span>Merge</button>
+    <button class="pal-item" data-kind="ai"><span class="pal-dot" style="background:#8b5cf6">🤖</span>AI Agent</button>
+  </div>
+  <div id="canvas"></div>
+</div>
+<script type="module">
+import { render } from '../shell/grafloria.js';
+import { defineDemo, check } from '../shell/demo.js';
+
+// An interactive n8n workflow, rebuilt on the Grafloria engine — now with n8n's
+// EXECUTION model, not just its looks:
+//
+//   • ▶ TEST WORKFLOW (bottom-centre, like n8n): the run walks the graph
+//     topologically from the trigger; the executing node shows a SPINNER,
+//     completed nodes a green CHECK badge, a failing node a red badge that
+//     halts the run. Wires that carried data grow n8n's "n items" count pill.
+//   • DATA FLOWS AS ITEMS: every node consumes input items and emits output
+//     items (the trigger emits 1, the HTTP lookups emit 4 + 3, Merge appends
+//     to 7, the AI Agent reduces to 1 verdict item); the If node routes items
+//     to its true/false outputs by a real, editable condition — so the branch
+//     taken ALTERNATES with the simulated data across runs.
+//   • NDV — double-click any node for n8n's Node Details View: INPUT items |
+//     a per-type Parameters form (+ a Settings tab: notes, retry on fail,
+//     continue on fail, execute once) | OUTPUT items, an editable name, and
+//     "Execute step" which runs the workflow UP TO that node. Edits persist
+//     and change the simulation (flip the If operation and the branch flips).
+//   • PAUSE / STEP / LOGS: a live run can be paused (freezes on the running
+//     node), stepped one node at a time, continued, or reset; the bottom log
+//     panel lists every executed node with status, items in→out and timing.
+//   • Plus everything the page already proved: node-type cards, bottom-port
+//     AI sub-nodes on dashed violet wires (they FLASH while their agent runs,
+//     because in n8n the agent invokes them), labelled If branches,
+//     connect-by-drag, a node palette.
+
+// ---- palette / node-type catalogue ---------------------------------------
+const PALETTE = {
+  trigger: { glyph: '▶',  sub: 'Trigger' },
+  http:    { glyph: '🌐', sub: 'HTTP Request' },
+  set:     { glyph: '✏️', sub: 'Edit Fields' },
+  code:    { glyph: '{}', sub: 'Code', mono: true },
+  merge:   { glyph: '🔀', sub: 'Merge' },
+  if:      { glyph: '⋔',  sub: 'If' },
+  ai:      { glyph: '🤖', sub: 'AI Agent' },
+  sheet:   { glyph: '📊', sub: 'Spreadsheet File' },
+  notify:  { glyph: '🔔', sub: 'Send Message' },
+};
+
+// A node's HTML body: icon badge + title + type subtitle — the n8n card.
+// opts.status paints the n8n execution language: st-pending dims the card,
+// st-running adds the orange highlight + corner spinner, completed/error a
+// corner badge; opts.flash is the AI sub-node "my agent is running" glow.
+const card = (cat, glyph, title, sub, opts = {}) => ({
+  tag: 'div',
+  className: 'n8n-card cat-' + cat + (opts.dangling ? ' dangling' : '')
+    + (opts.status && opts.status !== 'idle' ? ' st-' + opts.status : '')
+    + (opts.flash ? ' st-flash' : ''),
+  children: [
+    { tag: 'div', className: 'n8n-badge' + (opts.mono ? ' mono' : ''), text: glyph },
+    { tag: 'div', className: 'n8n-body', children: [
+      { tag: 'div', className: 'n8n-title', text: title },
+      { tag: 'div', className: 'n8n-sub', text: sub },
+    ] },
+    ...(opts.status === 'completed' ? [{ tag: 'div', className: 'n8n-status ok', text: '✓' }]
+      : opts.status === 'error' ? [{ tag: 'div', className: 'n8n-status err', text: '!' }]
+      : opts.status === 'running' ? [{ tag: 'div', className: 'n8n-spin' }] : []),
+  ],
+});
+
+// The node factory: a transparent SVG rect (so the HTML card's border is the
+// only border) carrying the card in its foreignObject, plus explicit ports.
+const N = (id, x, y, w, h, cat, glyph, title, sub, ports, opts = {}) => ({
+  id, position: { x, y }, size: { width: w, height: h },
+  metadata: { html: { content: card(cat, glyph, title, sub, opts), padding: 0 } },
+  shape: { type: 'rect', fill: 'none', stroke: 'none' },
+  style: { fill: 'transparent', stroke: 'transparent', strokeWidth: 0 },
+  ports,
+});
+
+const PORT = { shape: 'circle', size: 10 };
+const inPort  = (id) => ({ id: id + '_in',  side: 'left',  type: 'input',  shape: PORT });
+const outPort = (id) => ({ id: id + '_out', side: 'right', type: 'output', shape: PORT });
+// A port pinned to an exact node-local pixel (the FK→PK / bottom-AI pattern).
+// Labelled ports opt OUT of collision nudging: the nudger resolves along the
+// vertical axis only, so three same-y bottom labels get scattered up/down —
+// one onto the card, one onto its own wire. `noNudge` keeps the row uniform,
+// and the `ai-port-label` class paints the canvas-halo that keeps the dashed
+// wire from striking through the text (see the CSS above).
+const absPort = (id, side, x, y, type, label) => ({
+  id, side, type, shape: PORT,
+  layout: { strategy: 'absolute', args: { units: 'px', x, y } },
+  ...(label ? { label: { text: label, layout: 'outside', offset: 8, fontSize: 11, fontWeight: 600, noNudge: true, className: 'ai-port-label' } } : {}),
+});
+
+// ---- the two line families + the branch colours --------------------------
+const MAIN = '#9aa2b1';   // gray solid — the main data flow
+const AI   = '#8b5cf6';   // violet dashed — the ai_* sub-node connections
+const YES  = '#16a34a';   // if → true
+const NO   = '#dc2626';   // if → false
+
+const mainStyle = () => ({ stroke: MAIN, strokeWidth: 2, arrowHead: { type: 'arrow', size: 8, filled: true } });
+const aiStyle   = () => ({ stroke: AI,   strokeWidth: 2, strokeDasharray: '2 5', arrowHead: { type: 'none' } });
+
+const mE = (id, s, sh, t, th) => ({ id, source: s, target: t, sourceHandle: sh, targetHandle: th, type: 'bezier', style: mainStyle() });
+const aE = (id, s, sh, t, th) => ({ id, source: s, target: t, sourceHandle: sh, targetHandle: th, type: 'bezier', style: aiStyle() });
+const bE = (id, sh, t, th, color, label) => ({ id, source: 'ifNode', target: t, sourceHandle: sh, targetHandle: th, type: 'bezier', label, style: { stroke: color, strokeWidth: 2, arrowHead: { type: 'arrow', size: 8, filled: true } } });
+
+const SPEC = {
+  nodes: [
+    N('start',       40, 180, 180, 64, 'trigger', '▶',  'On Start',            'Trigger',          [outPort('start')]),
+    N('login',      280, 180, 200, 64, 'http',    '🌐', 'Login to PAMS',       'HTTP Request',     [inPort('login'), outPort('login')]),
+    N('setToken',   540, 180, 200, 64, 'set',     '✏️', 'Set Bearer Token',    'Edit Fields',      [inPort('setToken'), outPort('setToken')]),
+    N('getBranches', 800, 80, 200, 64, 'http',    '🌐', 'Get Branches',        'HTTP Request',     [inPort('getBranches'), outPort('getBranches')]),
+    N('getVendors', 800, 290, 200, 64, 'http',    '🌐', 'Get Vendors',         'HTTP Request',     [inPort('getVendors'), outPort('getVendors')]),
+    N('merge',     1070, 180, 180, 64, 'merge',   '🔀', 'Merge Lookups',       'Merge', [
+      absPort('merge_in1', 'left', 0, 20, 'input'),
+      absPort('merge_in2', 'left', 0, 44, 'input'),
+      outPort('merge'),
+    ]),
+    N('store',     1310, 180, 200, 64, 'code',    '{}', 'Store Lookup Data',   'Code', [inPort('store'), outPort('store')], { mono: true }),
+    N('agent',     1570, 168, 210, 88, 'ai',      '🤖', 'AI Quality Agent',    'AI Agent', [
+      inPort('agent'), outPort('agent'),
+      absPort('agent_model',  'bottom', 46,  88, 'input', 'Model'),
+      absPort('agent_memory', 'bottom', 105, 88, 'input', 'Memory'),
+      absPort('agent_tool',   'bottom', 164, 88, 'input', 'Tool'),
+    ]),
+    N('model',     1450, 390, 168, 58, 'ai',      '🧠', 'Azure OpenAI',        'Chat Model',       [absPort('model_aiout',  'top', 84, 0, 'output')]),
+    N('memory',    1628, 390, 168, 58, 'ai',      '💾', 'MongoDB Memory',      'Memory',           [absPort('memory_aiout', 'top', 84, 0, 'output')]),
+    N('tool',      1806, 390, 168, 58, 'ai',      '🔧', 'Calendar Tool',       'Tool',             [absPort('tool_aiout',   'top', 84, 0, 'output')]),
+    N('ifNode',    1840, 180, 180, 64, 'if',      '⋔',  'All Inquiries Done?', 'If', [
+      inPort('ifNode'),
+      absPort('if_true',  'right', 180, 20, 'output'),
+      absPort('if_false', 'right', 180, 44, 'output'),
+    ]),
+    N('excel',     2090, 80, 200, 64, 'sheet',    '📊', 'Write Summary',       'Spreadsheet File', [inPort('excel'), outPort('excel')]),
+    N('wait',      2090, 290, 200, 64, 'set',     '⏳', 'Wait & Retry',        'No-Op',            [inPort('wait')]),
+    N('slack',     2350, 80, 200, 64, 'notify',   '🔔', 'Send Slack Alert',    'drag a wire to me', [inPort('slack'), outPort('slack')], { dangling: true }),
+  ],
+  edges: [
+    mE('e_start_login',    'start',       'start_out',       'login',       'login_in'),
+    mE('e_login_set',      'login',       'login_out',       'setToken',    'setToken_in'),
+    mE('e_set_branches',   'setToken',    'setToken_out',    'getBranches', 'getBranches_in'),
+    mE('e_set_vendors',    'setToken',    'setToken_out',    'getVendors',  'getVendors_in'),
+    mE('e_branches_merge', 'getBranches', 'getBranches_out', 'merge',       'merge_in1'),
+    mE('e_vendors_merge',  'getVendors',  'getVendors_out',  'merge',       'merge_in2'),
+    mE('e_merge_store',    'merge',       'merge_out',       'store',       'store_in'),
+    mE('e_store_agent',    'store',       'store_out',       'agent',       'agent_in'),
+    mE('e_agent_if',       'agent',       'agent_out',       'ifNode',      'ifNode_in'),
+    // IF branches — two labelled, colour-coded outputs.
+    bE('if_true_excel',  'if_true',  'excel', 'excel_in', YES, 'true'),
+    bE('if_false_wait',  'if_false', 'wait',  'wait_in',  NO,  'false'),
+    // AI sub-node connections — the distinct dashed violet family, on the bottom.
+    aE('ai_model',  'model',  'model_aiout',  'agent', 'agent_model'),
+    aE('ai_memory', 'memory', 'memory_aiout', 'agent', 'agent_memory'),
+    aE('ai_tool',   'tool',   'tool_aiout',   'agent', 'agent_tool'),
+  ],
+};
+
+// ---- the per-node registry the execution sim runs on ----------------------
+// kind → which Parameters form + simulator the node gets; META → how its card
+// paints; titles/params/settings are the NDV's persistent, editable state.
+const KIND = {
+  start: 'trigger', login: 'http', setToken: 'set', getBranches: 'http', getVendors: 'http',
+  merge: 'merge', store: 'code', agent: 'ai', model: 'ai-model', memory: 'ai-memory',
+  tool: 'ai-tool', ifNode: 'if', excel: 'sheet', wait: 'noop', slack: 'notify',
+};
+const META = {
+  start:       { cat: 'trigger', glyph: '▶',  sub: 'Trigger' },
+  login:       { cat: 'http',    glyph: '🌐', sub: 'HTTP Request' },
+  setToken:    { cat: 'set',     glyph: '✏️', sub: 'Edit Fields' },
+  getBranches: { cat: 'http',    glyph: '🌐', sub: 'HTTP Request' },
+  getVendors:  { cat: 'http',    glyph: '🌐', sub: 'HTTP Request' },
+  merge:       { cat: 'merge',   glyph: '🔀', sub: 'Merge' },
+  store:       { cat: 'code',    glyph: '{}', sub: 'Code', mono: true },
+  agent:       { cat: 'ai',      glyph: '🤖', sub: 'AI Agent' },
+  model:       { cat: 'ai',      glyph: '🧠', sub: 'Chat Model' },
+  memory:      { cat: 'ai',      glyph: '💾', sub: 'Memory' },
+  tool:        { cat: 'ai',      glyph: '🔧', sub: 'Tool' },
+  ifNode:      { cat: 'if',      glyph: '⋔',  sub: 'If' },
+  excel:       { cat: 'sheet',   glyph: '📊', sub: 'Spreadsheet File' },
+  wait:        { cat: 'set',     glyph: '⏳', sub: 'No-Op' },
+  slack:       { cat: 'notify',  glyph: '🔔', sub: 'Send Message' },
+};
+const TITLES0 = {
+  start: 'On Start', login: 'Login to PAMS', setToken: 'Set Bearer Token', getBranches: 'Get Branches',
+  getVendors: 'Get Vendors', merge: 'Merge Lookups', store: 'Store Lookup Data', agent: 'AI Quality Agent',
+  model: 'Azure OpenAI', memory: 'MongoDB Memory', tool: 'Calendar Tool', ifNode: 'All Inquiries Done?',
+  excel: 'Write Summary', wait: 'Wait & Retry', slack: 'Send Slack Alert',
+};
+// Per-kind default Parameters — what the NDV's centre form edits.
+const DEFAULT_PARAMS = {
+  trigger:     () => ({}),
+  http:        (id) => id === 'login' ? { method: 'POST', url: 'https://pams.example/api/login', auth: 'None' }
+              : id === 'getBranches' ? { method: 'GET', url: 'https://pams.example/api/branches', auth: 'Bearer Token' }
+              : id === 'getVendors'  ? { method: 'GET', url: 'https://pams.example/api/vendors?state=all', auth: 'Bearer Token' }
+              : { method: 'GET', url: 'https://api.example.com/data', auth: 'None' },
+  set:         (id) => id === 'wait' ? { fields: [{ name: 'retryAfter', value: '600' }] }
+              : { fields: [{ name: 'authorization', value: 'Bearer {{ $json.token }}' }, { name: 'source', value: 'pams' }] },
+  code:        () => ({ mode: 'Run Once for All Items', code: '// annotate each merged lookup row\nreturn items.map((it) => ({\n  ...it.json,\n  storedAt: "lookup_cache",\n}));' }),
+  merge:       () => ({ mode: 'Append', inputs: 2 }),
+  if:          () => ({ value1: '{{ $json.allDone }}', operation: 'is true', value2: '' }),
+  ai:          () => ({ prompt: 'Review the merged branch + vendor lookups and decide whether every inquiry is resolved.', model: 'gpt-5.5', temperature: 0.2 }),
+  'ai-model':  () => ({ deployment: 'gpt-5.5', apiVersion: 'v1' }),
+  'ai-memory': () => ({ collection: 'agent_memory', contextWindow: 10 }),
+  'ai-tool':   () => ({ description: 'Look up the on-call calendar for a branch.' }),
+  sheet:       () => ({ operation: 'Write to file', file: 'quality-summary.xlsx' }),
+  noop:        () => ({ amount: 10, unit: 'seconds' }),
+  notify:      () => ({ channel: '#it-ops', text: 'Quality run finished: {{ $json.verdict }}' }),
+};
+// Simulated per-node execution time (ms) — DETERMINISTIC, so the log panel's
+// pixels are stable for the visual gate (n8n shows measured times; a sim shows
+// simulated ones).
+const SIM_MS = { start: 3, login: 341, setToken: 12, getBranches: 512, getVendors: 387,
+  merge: 24, store: 56, agent: 1240, ifNode: 9, excel: 96, wait: 11, slack: 74 };
+
+// The If node's condition, evaluated per ITEM the way n8n routes items.
+const evalIf = (items, p) => {
+  const key = (/\$json\.(\w+)/.exec(p.value1 || '') || [])[1];
+  const val = (it) => (key ? it[key] : p.value1);
+  const pass = (v) => {
+    switch (p.operation) {
+      case 'is true':   return v === true;
+      case 'is false':  return v === false;
+      case 'equals':    return String(v) === String(p.value2);
+      case 'not equals': return String(v) !== String(p.value2);
+      case 'larger':    return Number(v) > Number(p.value2);
+      default:          return !!v;
+    }
+  };
+  const t = [], f = [];
+  for (const it of items) (pass(val(it)) ? t : f).push(it);
+  return { t, f };
+};
+
+const escText = (s) => String(s).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c]);
+
+defineDemo({
+  name: 'n8n workflow builder',
+  blurb: 'An n8n workflow you can actually RUN: press ▶ Test workflow and execution walks the graph from the Trigger — the running node spins, finished nodes get green checks, wires grow "n items" pills, the AI Agent\'s sub-nodes flash while it thinks, and the If node routes items down ONE branch by a real condition. Pause / step / continue a live run, read the execution log, and double-click any node for n8n\'s Node Details View: input items | an editable Parameters form + Settings tab | output items, plus "Execute step" to run up to that node. Connect-by-drag, a node palette, and the two wire families still apply.',
+  howTo: [
+    'Read the node cards: a green left-rounded Trigger (▶) starts the run, blue HTTP Request cards (🌐) fetch data, an indigo Edit Fields (✏️) and slate Code ({}) transform it, a cyan Merge (🔀) joins the two branches, and the violet AI Agent (🤖) carries Chat Model / Memory / Tool sub-nodes on dashed violet wires at its BOTTOM ports — exactly n8n\'s two connection families (see the legend).',
+    'Press "▶ Test workflow" (bottom centre, like n8n): the run sweeps the graph — the executing node shows an orange highlight + corner spinner, completed nodes a green ✓ badge, and every wire that carried data grows an "n items" count pill (1 item → 4 + 3 items → 7 after the Merge). The AI sub-nodes flash violet while the Agent runs, because the agent invokes them.',
+    'Mid-run, press "⏸ pause": the picture freezes with the current node still spinning. "step ▸" now advances exactly one node per click; "▶ continue" resumes; "reset" clears the run. Pressing "step ▸" while idle starts a NEW run already paused, so you can walk the whole workflow node by node.',
+    'Open "☰ logs" (it also opens itself when a run starts): the bottom panel lists every executed node in order with its status dot, type, items in → out, and simulated execution time — n8n\'s execution log.',
+    'Double-click any node to open its Node Details View: LEFT = the input items it consumed, CENTRE = its Parameters form (HTTP method/URL/auth, the Code editor, the If condition rows, the Agent prompt…) plus a Settings tab (notes, retry on fail, continue on fail, execute once), RIGHT = the items it produced. Rename the node in the header — the card updates live. Edits persist and drive the simulation.',
+    'In the NDV press "▶ Execute step": the workflow runs UP TO and including that node only — n8n\'s partial execution. On a node that has never run, the input pane offers "Execute previous nodes" instead.',
+    'Watch the If node ("All Inquiries Done?"): the vendor data alternates between runs, so one run takes the green true branch (Write Summary) and the next takes the red false branch (Wait & Retry). Open the If node\'s NDV and flip the operation to "is false" — the routing flips with it.',
+    'Arm "⚡ fail vendors" and run again: Get Vendors fails with a red ! badge and the run HALTS — downstream never runs. Then open Get Vendors → Settings and enable "Retry on fail" (it recovers) or "Continue on fail" (the error item flows on) and run once more.',
+    'Build like in n8n: drag a wire from an OUTPUT dot to an INPUT dot (try Write Summary → the dashed Send Slack Alert card — once wired, it executes in the next run), add nodes from the left palette, drag nodes to reposition, pan the canvas and Ctrl/⌘ + wheel to zoom.',
+  ],
+
+  async setup(ctx) {
+    const api = render(SPEC, ctx.host, { interaction: { portVisibility: 'always' } });
+    ctx.instance = api;
+    ctx.diagram = api.getModel();
+    ctx.engine = api.getEngine();
+    const model = ctx.diagram, engine = ctx.engine, host = ctx.host;
+    // The page asserts running affordances — battery saver must not still them.
+    api.animations.updateConfig({ respectBatteryStatus: false, batterySavingMode: false });
+
+    // Keep the n8n CARDS painted at every zoom (LOD widening — see the ER demos).
+    try {
+      const cfg = model.getLODConfig();
+      const full = new Set();
+      for (const t of cfg.tiers) for (const f of t.features) full.add(f);
+      for (const t of cfg.tiers) for (const f of full) t.features.add(f);
+      model.setLODConfig(cfg);
+    } catch { /* older engine without LOD config — the demo still runs */ }
+
+    // Put a world point at the canvas centre at a chosen zoom. NB the viewport
+    // stores {x,y} such that the world CENTRE is x + width/2 (width/height are
+    // the canvas pixel box, NOT world units — probed live; dividing by zoom
+    // here mis-centres at any zoom other than the boot fit).
+    ctx.centerView = (cx, cy, z) => {
+      const vp = api.viewport;
+      vp.setZoom(z);
+      const cur = vp.getViewport();
+      vp.setViewport({ x: cx - cur.width / 2, y: cy - cur.height / 2, width: cur.width, height: cur.height });
+      api.renderNow();
+    };
+    ctx.initialFrame = () => { api.fitView(46); api.renderNow(); };
+    ctx.initialFrame();
+
+    // ---- HUD + legend (plain chrome, overlaid on #canvas) ------------------
+    const hud = document.createElement('div');
+    hud.id = 'hud';
+    host.appendChild(hud);
+    ctx.updateHud = () => { hud.textContent = `${model.getNodes().length} nodes · ${model.getLinks().length} wires`; };
+    ctx.updateHud();
+    if (!host.querySelector('#legend')) {
+      const legend = document.createElement('div');
+      legend.id = 'legend';
+      legend.innerHTML =
+        '<b>Connections</b>' +
+        '<div class="row"><span class="swatch main"></span>data flow (main)</div>' +
+        '<div class="row"><span class="swatch ai"></span>ai · model / memory / tool</div>' +
+        '<div class="row"><span class="swatch yes"></span>if → true</div>' +
+        '<div class="row"><span class="swatch no"></span>if → false</div>';
+      host.appendChild(legend);
+    }
+
+    // ---- run-bar + log panel (canvas chrome) + the NDV modal ---------------
+    host.insertAdjacentHTML('beforeend', `
+      <div id="runbar">
+        <button id="btn-run" title="Run the workflow from the trigger">▶ Test workflow</button>
+        <button id="btn-pause" class="rb" disabled>⏸ pause</button>
+        <button id="btn-step" class="rb" title="Advance one node (starts a paused run when idle)">step ▸</button>
+        <button id="btn-reset" class="rb">reset</button>
+        <button id="btn-logs" class="rb" aria-pressed="false">☰ logs</button>
+        <button id="btn-fail" class="rb" aria-pressed="false" title="Simulate a 502 from the vendors API on the next run">⚡ fail vendors</button>
+        <span id="run-readout">idle</span>
+      </div>
+      <div id="runlog" hidden>
+        <div class="rl-head"><span>Execution log</span><span id="rl-status">idle</span>
+          <button id="rl-close" title="close">×</button></div>
+        <div class="rl-rows" id="rl-rows"></div>
+      </div>`);
+    document.body.insertAdjacentHTML('beforeend', `
+      <div id="ndv" hidden>
+        <div class="ndv-back"></div>
+        <div class="ndv-modal">
+          <div class="ndv-head">
+            <div class="hd-badge" id="ndv-badge">⚙</div>
+            <div><input id="ndv-name" aria-label="Node name"><div class="hd-kind" id="ndv-kind"></div></div>
+            <button id="ndv-exec">▶ Execute step</button>
+            <button id="ndv-close" title="close (Esc)">×</button>
+          </div>
+          <div class="ndv-body">
+            <div class="ndv-pane"><div class="ndv-pane-head"><span>Input</span><span id="ndv-in-count"></span></div>
+              <div class="ndv-items" id="ndv-input"></div></div>
+            <div class="ndv-main">
+              <div class="ndv-tabs">
+                <button class="ndv-tab on" data-tab="params">Parameters</button>
+                <button class="ndv-tab" data-tab="settings">Settings</button>
+              </div>
+              <div id="ndv-params"></div>
+              <div id="ndv-settings" style="display:none"></div>
+            </div>
+            <div class="ndv-pane out"><div class="ndv-pane-head"><span>Output</span><span id="ndv-out-count"></span></div>
+              <div class="ndv-items" id="ndv-output"></div></div>
+          </div>
+        </div>
+      </div>`);
+    const $id = (i) => document.getElementById(i);
+    const readout = $id('run-readout'), rlRows = $id('rl-rows'), rlStatus = $id('rl-status');
+    const btnRun = $id('btn-run'), pauseBtn = $id('btn-pause'), stepBtn = $id('btn-step');
+    const logsBtn = $id('btn-logs'), failBtn = $id('btn-fail'), ndvEl = $id('ndv');
+
+    // ---- registry: titles / params / settings (the NDV's persistent state) --
+    const titles = { ...TITLES0 };
+    const PARAMS = {}, SETTINGS = {};
+    const defSettings = () => ({ notes: '', retryOnFail: false, continueOnFail: false, executeOnce: false });
+    for (const id of Object.keys(KIND)) {
+      PARAMS[id] = DEFAULT_PARAMS[KIND[id]](id);
+      SETTINGS[id] = defSettings();
+    }
+    ctx.titles = titles; ctx.PARAMS = PARAMS; ctx.SETTINGS = SETTINGS;
+
+    // ---- run state -----------------------------------------------------------
+    // seq alternates the simulated vendor data run-to-run, so BOTH If branches
+    // are reachable; status/data/branchOut/executed/log describe the last run.
+    const RS = { seq: 0, status: new Map(), data: new Map(), branchOut: new Map(), executed: [], log: [], running: null };
+    ctx.RS = RS;
+    const flash = new Set();
+
+    // ---- link helpers --------------------------------------------------------
+    const isMain = (l) => !/agent_(model|memory|tool)|_aiout/.test(`${l.sourcePortId} ${l.targetPortId}`);
+    const srcOf = (l) => model.getNodeByPortId(l.sourcePortId)?.id;
+    const tgtOf = (l) => model.getNodeByPortId(l.targetPortId)?.id;
+    const styleFor = (l) => l.sourcePortId === 'if_true' ? { stroke: YES, strokeWidth: 2, arrowHead: { type: 'arrow', size: 8, filled: true } }
+      : l.sourcePortId === 'if_false' ? { stroke: NO, strokeWidth: 2, arrowHead: { type: 'arrow', size: 8, filled: true } }
+      : !isMain(l) ? aiStyle() : mainStyle();
+    const baseLabel = (l) => l.sourcePortId === 'if_true' ? 'true' : l.sourcePortId === 'if_false' ? 'false' : '';
+    // n8n's wire pill — an OPAQUE rounded chip sitting ON the wire, so the
+    // line passes BEHIND it and can never strike through (or kiss the edge of)
+    // the text. The legacy string label (`setLabel`) hangs bare-offset text
+    // whose chip bottom exactly touches the path — that near-miss is the
+    // label-legibility bug this replaces. Chip colours follow the page scheme.
+    const DARK_MQ = window.matchMedia('(prefers-color-scheme: dark)');
+    const pillStyle = () => DARK_MQ.matches
+      ? { fontSize: 11, fontWeight: '600', color: '#e7e9f0', background: '#262733', border: '#3a3c49', padding: 5, borderRadius: 9 }
+      : { fontSize: 11, fontWeight: '600', color: '#3c4254', background: '#ffffff', border: '#d6dae4', padding: 5, borderRadius: 9 };
+    const PILL = 'wire-pill';
+    const setWirePill = (l, text) => {
+      const i = l.labels.findIndex((x) => x.id === PILL);
+      if (!text) { if (i !== -1) l.removeLabel(PILL); return; }
+      if (i !== -1) l.updateLabel(i, { text, style: pillStyle() });
+      else l.addLabel({ id: PILL, text, position: 0.5, offset: { x: 0, y: 0 }, style: pillStyle() });
+    };
+    ctx.setWirePill = setWirePill;
+    // n8n's item-count pill on a wire that carried data ("4 items").
+    const setPill = (l, n) => {
+      const b = baseLabel(l);
+      setWirePill(l, n > 0 ? (b ? b + ' · ' : '') + n + (n === 1 ? ' item' : ' items') : b);
+    };
+    const clearPill = (l) => setWirePill(l, baseLabel(l));
+    // Boot: the If branches' spec labels become pills too — ONE pill look on
+    // every wire label (a positioned label also supersedes the legacy render).
+    for (const l of model.getLinks()) clearPill(l);
+    api.renderNow();
+    // A live scheme flip must repaint the chips (they are model styles, not CSS).
+    DARK_MQ.addEventListener?.('change', () => {
+      for (const l of model.getLinks()) {
+        const i = l.labels.findIndex((x) => x.id === PILL);
+        if (i !== -1) l.updateLabel(i, { style: pillStyle() });
+      }
+      api.renderNow();
+    });
+    const pillsFrom = (id) => {
+      const d = RS.data.get(id);
+      if (!d) return;
+      const b = RS.branchOut.get(id);
+      for (const l of model.getLinks()) {
+        if (!isMain(l) || srcOf(l) !== id) continue;
+        setPill(l, b ? (b[l.sourcePortId] ?? []).length : d.output.length);
+      }
+    };
+    ctx.pillsFrom = pillsFrom;
+    const setEdgesRun = (id, on) => {
+      for (const l of model.getLinks()) {
+        if (!isMain(l) || tgtOf(l) !== id) continue;
+        l.updateStyle({ ...styleFor(l), animation: on ? { type: 'flow', speed: 'fast', direction: 'forward' } : { type: 'none' } });
+      }
+    };
+    // In n8n the agent INVOKES its sub-nodes: while it runs they flash and
+    // their dashed wires animate; they never execute on the main walk.
+    const setAgentFlash = (id, on) => {
+      if (!/^agent$/.test(id)) return;
+      for (const sid of ['model', 'memory', 'tool']) { on ? flash.add(sid) : flash.delete(sid); paintNode(sid); }
+      for (const l of model.getLinks()) {
+        if (isMain(l)) continue;
+        l.updateStyle({ ...aiStyle(), animation: on ? { type: 'dash-flow', speed: 'fast', direction: 'forward' } : { type: 'none' } });
+      }
+    };
+
+    // ---- painting: the card IS the status display (metadata.html re-render) --
+    const paintNode = (id) => {
+      const n = model.getNode(id), m = META[id];
+      if (!n || !m) return;
+      const st = RS.status.get(id) || 'idle';
+      const dangling = id === 'slack' && !model.getLinks().some((l) => isMain(l) && tgtOf(l) === 'slack');
+      n.setMetadata('html', {
+        content: card(m.cat, m.glyph, titles[id] ?? id, dangling ? 'drag a wire to me' : m.sub,
+          { mono: m.mono, dangling, status: st, flash: flash.has(id) }),
+        padding: 0,
+      });
+    };
+    const paintStatus = (id, st) => { RS.status.set(id, st); paintNode(id); };
+    ctx.paintNode = paintNode; ctx.paintStatus = paintStatus;
+
+    // ---- restyle any wire by the ports it joins (idempotent) -----------------
+    ctx.restyleLinks = () => {
+      for (const l of model.getLinks()) l.updateStyle(styleFor(l));
+      paintNode('slack'); // once wired, the dashed "drag a wire to me" invite resolves
+      api.renderNow();
+    };
+    api.on('connect', () => setTimeout(() => { ctx.restyleLinks(); ctx.updateHud(); }, 0));
+
+    // ---- the execution log panel --------------------------------------------
+    const setLogsOpen = (on) => {
+      $id('runlog').hidden = !on;
+      host.classList.toggle('logs-open', on);
+      logsBtn.setAttribute('aria-pressed', String(on));
+    };
+    const setLogStatus = (text, cls) => { rlStatus.textContent = text; rlStatus.className = cls || ''; };
+    const renderLog = () => {
+      rlRows.innerHTML = RS.log.map((r) =>
+        `<div class="rl-row"><span class="rl-dot${r.status === 'error' ? ' err' : ''}"></span>` +
+        `<span class="rl-name">${escText(r.title)}</span><span class="rl-sub">${escText(r.sub)}</span>` +
+        `<span>${r.nIn} → ${r.nOut} items</span><span class="rl-ms">${r.ms} ms${escText(r.note)}</span></div>`).join('');
+      rlRows.scrollTop = rlRows.scrollHeight;
+    };
+    const pushLog = (id, status, ms, nIn, nOut, note = '') => {
+      RS.log.push({ title: titles[id] ?? id, sub: (META[id] || {}).sub || '', status, ms, nIn, nOut, note });
+      renderLog();
+    };
+    ctx.pushLog = pushLog; ctx.setLogsOpen = setLogsOpen; ctx.setLogStatus = setLogStatus; ctx.renderLog = renderLog;
+
+    // ---- the walk: topological over MAIN edges, live from the model ----------
+    // Recomputed per run so visitor edits (a drawn wire, a deleted node) are
+    // honoured; upTo restricts to the ancestors of one node ("Execute step"),
+    // exclusive=true stops just short of it ("Execute previous nodes").
+    const buildWalk = (upTo = null, exclusive = false) => {
+      const links = model.getLinks().filter(isMain);
+      const out = new Map(), rin = new Map();
+      for (const l of links) {
+        const s = srcOf(l), t = tgtOf(l);
+        if (!s || !t) continue;
+        (out.get(s) ?? out.set(s, []).get(s)).push(t);
+        (rin.get(t) ?? rin.set(t, []).get(t)).push(s);
+      }
+      const seen = new Set();
+      const q = model.getNode('start') ? ['start'] : [];
+      while (q.length) {
+        const id = q.shift();
+        if (seen.has(id)) continue;
+        seen.add(id);
+        for (const t of out.get(id) || []) q.push(t);
+      }
+      let keep = seen;
+      if (upTo) {
+        keep = new Set();
+        const q2 = [upTo];
+        while (q2.length) {
+          const id = q2.shift();
+          if (keep.has(id) || !seen.has(id)) continue;
+          keep.add(id);
+          for (const s of rin.get(id) || []) q2.push(s);
+        }
+        if (exclusive) keep.delete(upTo);
+      }
+      const deg = new Map();
+      for (const id of keep) deg.set(id, 0);
+      for (const l of links) {
+        const s = srcOf(l), t = tgtOf(l);
+        if (keep.has(s) && keep.has(t)) deg.set(t, deg.get(t) + 1);
+      }
+      const order = [], q3 = [...keep].filter((id) => deg.get(id) === 0);
+      while (q3.length) {
+        const id = q3.shift();
+        order.push(id);
+        for (const t of out.get(id) || []) {
+          if (!keep.has(t)) continue;
+          deg.set(t, deg.get(t) - 1);
+          if (deg.get(t) === 0) q3.push(t);
+        }
+      }
+      return order;
+    };
+    ctx.buildWalk = buildWalk;
+
+    // Inputs = every executed upstream main edge's delivered items (the If
+    // node delivers per-handle partitions — n8n routes items, not wires).
+    const gatherInputs = (id) => {
+      const items = [];
+      for (const l of model.getLinks()) {
+        if (!isMain(l) || tgtOf(l) !== id) continue;
+        const up = srcOf(l);
+        if (!up || !RS.data.has(up)) continue;
+        const b = RS.branchOut.get(up);
+        items.push(...(b ? (b[l.sourcePortId] ?? []) : RS.data.get(up).output));
+      }
+      return items;
+    };
+
+    // ---- the simulators: items in → items out, per node ----------------------
+    const simOutput = (id, input) => {
+      const p = PARAMS[id] || {};
+      switch (id) {
+        case 'start':       return [{ trigger: 'manual', run: RS.seq }];
+        case 'login':       return [{ token: 'pams.7f3d1c', expiresIn: 3600 }];
+        case 'setToken':    return input.map((it) => ({ ...it, authorization: 'Bearer pams.7f3d1c' }));
+        case 'getBranches': return ['Cairo HQ', 'Alexandria', 'Giza Plant', 'Mansoura'].map((name, i) => ({ branchId: 101 + i, name }));
+        case 'getVendors': {
+          const pend = RS.seq % 2 === 1 ? 0 : 2;
+          return [
+            { vendorId: 'V-201', vendor: 'Nile Supplies', pendingInquiries: 0 },
+            { vendorId: 'V-202', vendor: 'Delta Tools', pendingInquiries: pend },
+            { vendorId: 'V-203', vendor: 'Suez Freight', pendingInquiries: 0 },
+          ];
+        }
+        case 'store':       return input.map((it) => ({ ...it, storedAt: 'lookup_cache' }));
+        case 'agent': {
+          const open = input.reduce((n, it) => n + (it.pendingInquiries || 0), 0);
+          return [{ verdict: open === 0 ? 'all inquiries resolved' : `${open} inquiries still open`, openInquiries: open, allDone: open === 0 }];
+        }
+        case 'excel':       return [{ file: p.file || 'summary.xlsx', rows: input.length, written: true }];
+        case 'slack':       return [{ channel: p.channel || '#it-ops', sent: true }];
+        default: break;
+      }
+      switch (KIND[id]) { // palette-added nodes get plausible kind defaults
+        case 'http': return [{ status: 200, url: p.url }, { status: 200, page: 2 }];
+        case 'ai':   return [{ response: 'ok' }];
+        default:     return input.length ? input : [{}];
+      }
+    };
+
+    // ---- the pause/step gate (the execute-flow pattern, verbatim semantics) --
+    ctx.runActive = false;
+    ctx.paused = false;
+    ctx.runToken = 0;
+    ctx.failArmed = false;
+    let pauseWaiters = [];
+    let pendingSteps = 0;
+    let wakeSleep = null;
+    const gateSleep = (ms) => new Promise((res) => {
+      const t = setTimeout(() => { wakeSleep = null; res(); }, ms);
+      wakeSleep = () => { clearTimeout(t); wakeSleep = null; res(); };
+    });
+    const pokeGate = () => { if (wakeSleep) wakeSleep(); };
+    const releaseGate = (all) => {
+      if (all) {
+        pendingSteps = 0;
+        for (const res of pauseWaiters.splice(0)) res();
+        return;
+      }
+      const parked = pauseWaiters.splice(0, 1);
+      if (parked.length) parked[0]();
+      else { pendingSteps += 1; pokeGate(); }
+    };
+    const stepGate = async (stepMs) => {
+      if (!ctx.paused) await gateSleep(stepMs);
+      if (!ctx.paused) return;
+      if (pendingSteps > 0) { pendingSteps -= 1; return; }
+      await new Promise((res) => pauseWaiters.push(res));
+    };
+    const syncButtons = () => {
+      btnRun.disabled = ctx.runActive;
+      pauseBtn.disabled = !ctx.runActive;
+      pauseBtn.textContent = ctx.paused ? '▶ continue' : '⏸ pause';
+      stepBtn.disabled = ctx.runActive && !ctx.paused;
+      const ex = $id('ndv-exec');
+      if (ex) ex.disabled = ctx.runActive;
+    };
+    ctx.setPaused = (on) => {
+      if (!ctx.runActive) return;
+      ctx.paused = on;
+      syncButtons();
+      const held = RS.running;
+      if (on) readout.textContent = `paused at: ${held ? titles[held] : '—'} — ▶ continue or step ▸`;
+      else {
+        if (held) readout.textContent = `running: ${titles[held]}`;
+        releaseGate(true);
+      }
+    };
+
+    ctx.reset = () => {
+      ctx.runToken += 1;
+      ctx.paused = false;
+      ctx.runActive = false;
+      syncButtons();
+      releaseGate(true);
+      pokeGate();
+      RS.status.clear(); RS.data.clear(); RS.branchOut.clear();
+      RS.executed = []; RS.log = []; RS.running = null;
+      flash.clear();
+      for (const id of Object.keys(META)) paintNode(id);
+      for (const l of model.getLinks()) {
+        clearPill(l);
+        l.updateStyle({ ...styleFor(l), animation: { type: 'none' } });
+      }
+      renderLog();
+      setLogStatus('idle', '');
+      readout.textContent = 'idle';
+      api.renderNow();
+      if (ndvOpenId) refreshNDVData();
+    };
+
+    /**
+     * THE EXECUTOR — walks the live graph topologically from the trigger,
+     * flows simulated items edge-to-edge, and drives every n8n affordance:
+     * spinner (running), green check (completed), red badge (error, halts),
+     * item-count pills, the log panel, the AI sub-node flash. upTo/exclusive
+     * are the NDV's partial executions; startPaused is idle "step ▸".
+     */
+    ctx.execute = async ({ stepMs = 480, upTo = null, exclusive = false, startPaused = false } = {}) => {
+      ctx.reset();
+      const token = ctx.runToken;
+      RS.seq += 1;
+      ctx.runActive = true;
+      ctx.paused = !!startPaused;
+      syncButtons();
+      setLogsOpen(true);
+      setLogStatus('Running…', '');
+      try {
+        const walk = buildWalk(upTo, exclusive);
+        if (!walk.length) {
+          readout.textContent = upTo ? 'not connected to the trigger' : 'no trigger node';
+          setLogStatus(readout.textContent, 'err');
+          return { executed: [], failed: null, aborted: false };
+        }
+        for (const id of walk) if (model.getNode(id)) paintStatus(id, 'pending');
+        api.renderNow();
+
+        let failedAt = null, totalMs = 0;
+        for (const id of walk) {
+          if (!model.getNode(id)) continue; // deleted mid-run — skip, never throw
+          const hasIncoming = model.getLinks().some((l) => isMain(l) && tgtOf(l) === id);
+          const input = gatherInputs(id);
+          // n8n only runs a node that received items (an untaken If branch
+          // starves its downstream); triggers have no input by design.
+          if (hasIncoming && input.length === 0) continue;
+
+          RS.running = id;
+          paintStatus(id, 'running');
+          setEdgesRun(id, true);
+          setAgentFlash(id, true);
+          readout.textContent = ctx.paused ? `paused at: ${titles[id]} — ▶ continue or step ▸` : `running: ${titles[id]}`;
+          api.renderNow();
+          await stepGate(stepMs);
+          if (token !== ctx.runToken) return { executed: [], failed: null, aborted: true };
+          if (ctx.paused) readout.textContent = `paused at: ${titles[id]} — ▶ continue or step ▸`;
+
+          const s = SETTINGS[id] || defSettings();
+          const inWork = s.executeOnce ? input.slice(0, 1) : input;
+          let failing = ctx.failArmed && id === 'getVendors';
+          let ms = SIM_MS[id] ?? 45, note = '', status = 'completed', output;
+          if (failing && s.retryOnFail) { failing = false; ms = ms * 2 + 210; note = ' · retried ×1'; }
+          if (failing) {
+            status = 'error';
+            output = s.continueOnFail ? [{ error: 'PAMS vendor API: 502 Bad Gateway' }] : [];
+            if (s.continueOnFail) note = ' · continued';
+            else failedAt = id;
+          } else {
+            output = simOutput(id, inWork);
+          }
+          if (id === 'ifNode' && status === 'completed') {
+            const parts = evalIf(output, PARAMS.ifNode || {});
+            RS.branchOut.set(id, { if_true: parts.t, if_false: parts.f });
+          }
+          RS.data.set(id, { input: inWork, output, ms });
+          RS.executed.push(id);
+          totalMs += ms;
+
+          setEdgesRun(id, false);
+          setAgentFlash(id, false);
+          paintStatus(id, status);
+          pillsFrom(id);
+          pushLog(id, status, ms, inWork.length, output.length, note);
+          api.renderNow();
+          if (failedAt) break;
+        }
+        RS.running = null;
+        for (const id of walk) if (RS.status.get(id) === 'pending') paintStatus(id, 'idle');
+        const secs = (totalMs / 1000).toFixed(2);
+        if (failedAt) {
+          readout.textContent = `✗ failed at: ${titles[failedAt]} — downstream never ran`;
+          setLogStatus(`Error after ${secs}s — halted at ${titles[failedAt]}`, 'err');
+        } else {
+          readout.textContent = upTo ? `✓ ran up to: ${titles[upTo] ?? upTo}` : '✓ workflow ran successfully';
+          setLogStatus(`Success in ${secs}s · ${RS.executed.length} nodes`, 'ok');
+        }
+        api.renderNow();
+        if (ndvOpenId) refreshNDVData();
+        return { executed: [...RS.executed], failed: failedAt, aborted: false };
+      } finally {
+        if (token === ctx.runToken) {
+          ctx.runActive = false;
+          ctx.paused = false;
+          RS.running = null;
+          syncButtons();
+        }
+      }
+    };
+
+    // ---- run-bar wiring ------------------------------------------------------
+    btnRun.addEventListener('click', () => { if (!ctx.runActive) ctx.execute(); });
+    pauseBtn.addEventListener('click', () => ctx.setPaused(!ctx.paused));
+    stepBtn.addEventListener('click', () => {
+      if (ctx.runActive && ctx.paused) releaseGate(false);
+      else if (!ctx.runActive) ctx.execute({ startPaused: true, stepMs: 250 });
+    });
+    $id('btn-reset').addEventListener('click', () => ctx.reset());
+    logsBtn.addEventListener('click', () => setLogsOpen($id('runlog').hidden));
+    $id('rl-close').addEventListener('click', () => setLogsOpen(false));
+    failBtn.addEventListener('click', () => {
+      ctx.failArmed = !ctx.failArmed;
+      failBtn.setAttribute('aria-pressed', String(ctx.failArmed));
+    });
+
+    // ---- the NDV (Node Details View): input | parameters/settings | output --
+    let ndvOpenId = null;
+    const kindLabel = { trigger: 'Trigger', http: 'HTTP Request', set: 'Edit Fields', code: 'Code',
+      merge: 'Merge', if: 'If', ai: 'AI Agent', 'ai-model': 'Chat Model', 'ai-memory': 'Memory',
+      'ai-tool': 'Tool', sheet: 'Spreadsheet File', noop: 'No-Op', notify: 'Send Message' };
+    const CAT_BG = { trigger: '#10b981', http: '#0ea5e9', set: '#6366f1', code: '#475569',
+      merge: '#06b6d4', if: '#f97316', ai: '#8b5cf6', sheet: '#22a565', notify: '#ec4899' };
+
+    const fieldWrap = (labelTxt, ctrl) => {
+      const w = document.createElement('div');
+      w.className = 'ndv-field';
+      const lb = document.createElement('label');
+      lb.textContent = labelTxt;
+      w.append(lb, ctrl);
+      return w;
+    };
+    // Controls WRITE into PARAMS as you type — the n8n "edits persist" contract
+    // (in-page state; closing and reopening the NDV shows what you left).
+    const bindText = (id, key, type = 'text') => {
+      const inp = document.createElement(type === 'textarea' ? 'textarea' : 'input');
+      if (type !== 'textarea') inp.type = type;
+      inp.value = PARAMS[id][key] ?? '';
+      inp.dataset.param = key;
+      inp.addEventListener('input', () => { PARAMS[id][key] = type === 'number' ? Number(inp.value) : inp.value; });
+      return inp;
+    };
+    const bindSelect = (id, key, options) => {
+      const sel = document.createElement('select');
+      sel.dataset.param = key;
+      for (const o of options) {
+        const op = document.createElement('option');
+        op.value = o; op.textContent = o;
+        sel.append(op);
+      }
+      sel.value = PARAMS[id][key] ?? options[0];
+      sel.addEventListener('change', () => { PARAMS[id][key] = sel.value; });
+      return sel;
+    };
+
+    // The per-type Parameters form — the n8n NDV centre pane.
+    const renderParams = (id) => {
+      const box = $id('ndv-params');
+      box.innerHTML = '';
+      const p = PARAMS[id] || {};
+      const add = (el) => box.append(el);
+      switch (KIND[id]) {
+        case 'trigger': {
+          const note = document.createElement('p');
+          note.className = 'ndv-note';
+          note.textContent = 'When you press "▶ Test workflow", this trigger emits one item and the run begins. Triggers have no parameters here.';
+          add(note);
+          break;
+        }
+        case 'http':
+          add(fieldWrap('Method', bindSelect(id, 'method', ['GET', 'POST', 'PUT', 'DELETE'])));
+          add(fieldWrap('URL', bindText(id, 'url')));
+          add(fieldWrap('Authentication', bindSelect(id, 'auth', ['None', 'Basic Auth', 'Header Auth', 'Bearer Token'])));
+          break;
+        case 'set': {
+          const head = document.createElement('div');
+          head.className = 'ndv-field';
+          const lb = document.createElement('label');
+          lb.textContent = 'Fields to set (name = value)';
+          head.append(lb);
+          add(head);
+          (p.fields || []).forEach((f, i) => {
+            const row = document.createElement('div');
+            row.className = 'ndv-kv';
+            const nm = document.createElement('input');
+            nm.type = 'text'; nm.value = f.name; nm.dataset.param = 'field-name-' + i;
+            nm.addEventListener('input', () => { f.name = nm.value; });
+            const vl = document.createElement('input');
+            vl.type = 'text'; vl.value = f.value; vl.dataset.param = 'field-value-' + i;
+            vl.addEventListener('input', () => { f.value = vl.value; });
+            row.append(nm, vl);
+            add(row);
+          });
+          const btn = document.createElement('button');
+          btn.className = 'ndv-add';
+          btn.textContent = '+ Add field';
+          btn.addEventListener('click', () => { p.fields.push({ name: 'field_' + (p.fields.length + 1), value: '' }); renderParams(id); });
+          add(btn);
+          break;
+        }
+        case 'code': {
+          add(fieldWrap('Mode', bindSelect(id, 'mode', ['Run Once for All Items', 'Run Once for Each Item'])));
+          const t = bindText(id, 'code', 'textarea');
+          t.className = 'code';
+          add(fieldWrap('JavaScript', t));
+          break;
+        }
+        case 'merge':
+          add(fieldWrap('Mode', bindSelect(id, 'mode', ['Append', 'Combine', 'Choose Branch'])));
+          add(fieldWrap('Number of inputs', bindText(id, 'inputs', 'number')));
+          break;
+        case 'if':
+          add(fieldWrap('Value 1', bindText(id, 'value1')));
+          add(fieldWrap('Operation', bindSelect(id, 'operation', ['is true', 'is false', 'equals', 'not equals', 'larger'])));
+          add(fieldWrap('Value 2', bindText(id, 'value2')));
+          break;
+        case 'ai':
+          add(fieldWrap('Prompt (system message)', bindText(id, 'prompt', 'textarea')));
+          add(fieldWrap('Model', bindSelect(id, 'model', ['gpt-5.5', 'gpt-4.1', 'o4-mini'])));
+          add(fieldWrap('Temperature', bindText(id, 'temperature', 'number')));
+          break;
+        case 'ai-model':
+          add(fieldWrap('Deployment', bindText(id, 'deployment')));
+          add(fieldWrap('API version', bindText(id, 'apiVersion')));
+          break;
+        case 'ai-memory':
+          add(fieldWrap('Collection', bindText(id, 'collection')));
+          add(fieldWrap('Context window', bindText(id, 'contextWindow', 'number')));
+          break;
+        case 'ai-tool':
+          add(fieldWrap('Tool description', bindText(id, 'description', 'textarea')));
+          break;
+        case 'sheet':
+          add(fieldWrap('Operation', bindSelect(id, 'operation', ['Write to file', 'Append to file'])));
+          add(fieldWrap('File name', bindText(id, 'file')));
+          break;
+        case 'noop':
+          add(fieldWrap('Wait amount', bindText(id, 'amount', 'number')));
+          add(fieldWrap('Unit', bindSelect(id, 'unit', ['seconds', 'minutes', 'hours'])));
+          break;
+        case 'notify':
+          add(fieldWrap('Channel', bindText(id, 'channel')));
+          add(fieldWrap('Message', bindText(id, 'text', 'textarea')));
+          break;
+        default: {
+          const note = document.createElement('p');
+          note.className = 'ndv-note';
+          note.textContent = 'This node has no parameters.';
+          add(note);
+        }
+      }
+    };
+    // The Settings tab: n8n's node settings that actually STEER the simulator.
+    const renderSettings = (id) => {
+      const box = $id('ndv-settings');
+      box.innerHTML = '';
+      const s = SETTINGS[id];
+      const chk = (key, label) => {
+        const w = document.createElement('label');
+        w.className = 'ndv-check';
+        const c = document.createElement('input');
+        c.type = 'checkbox';
+        c.checked = !!s[key];
+        c.dataset.set = key;
+        c.addEventListener('change', () => { s[key] = c.checked; });
+        const sp = document.createElement('span');
+        sp.textContent = label;
+        w.append(c, sp);
+        return w;
+      };
+      box.append(chk('retryOnFail', 'Retry on fail — one retry, then give up'));
+      box.append(chk('continueOnFail', 'Continue on fail — pass the error item downstream'));
+      box.append(chk('executeOnce', 'Execute once — consume only the first input item'));
+      const t = document.createElement('textarea');
+      t.value = s.notes;
+      t.dataset.set = 'notes';
+      t.addEventListener('input', () => { s.notes = t.value; });
+      box.append(fieldWrap('Notes', t));
+    };
+    // The data panes. Input shows what the node consumed last run — or, before
+    // it ever ran, what its upstream would hand it — or n8n's "execute previous
+    // nodes" affordance when there is no data at all.
+    const renderPane = (which) => {
+      const id = ndvOpenId;
+      const box = $id(which === 'input' ? 'ndv-input' : 'ndv-output');
+      const cnt = $id(which === 'input' ? 'ndv-in-count' : 'ndv-out-count');
+      box.innerHTML = '';
+      cnt.textContent = '';
+      if (!id) return;
+      if (['ai-model', 'ai-memory', 'ai-tool'].includes(KIND[id])) {
+        const h = document.createElement('div');
+        h.className = 'ndv-hint';
+        h.textContent = which === 'input'
+          ? 'This sub-node is invoked BY its AI Agent while the agent step runs — it takes no items of its own.'
+          : "Sub-nodes produce no items; they answer the agent's calls.";
+        box.append(h);
+        return;
+      }
+      const d = RS.data.get(id);
+      let items = d ? d[which] : null;
+      if (!items && which === 'input') {
+        const fromUpstream = gatherInputs(id);
+        if (fromUpstream.length) items = fromUpstream;
+      }
+      if (!items) {
+        const h = document.createElement('div');
+        h.className = 'ndv-hint';
+        if (which === 'output') {
+          h.textContent = 'No output data yet — press "▶ Execute step" above to run up to this node.';
+        } else if (KIND[id] === 'trigger') {
+          h.textContent = 'The trigger starts the run — it consumes no input items.';
+        } else if (!model.getLinks().some((l) => isMain(l) && tgtOf(l) === id)) {
+          h.textContent = 'Wire an input into this node first — it has no incoming connection.';
+        } else {
+          h.textContent = 'No input data yet.';
+          const b = document.createElement('button');
+          b.textContent = '▶ Execute previous nodes';
+          b.addEventListener('click', () => { if (!ctx.runActive) ctx.execute({ upTo: id, exclusive: true, stepMs: 140 }); });
+          h.append(b);
+        }
+        box.append(h);
+        return;
+      }
+      cnt.textContent = `${items.length} item${items.length === 1 ? '' : 's'}`;
+      for (const it of items) {
+        const w = document.createElement('div');
+        w.className = 'ndv-item';
+        const pre = document.createElement('pre');
+        pre.textContent = JSON.stringify(it, null, 1);
+        w.append(pre);
+        box.append(w);
+      }
+    };
+    const refreshNDVData = () => { renderPane('input'); renderPane('output'); };
+
+    ctx.openNDV = (id) => {
+      if (!META[id] || !model.getNode(id)) return;
+      ndvOpenId = id;
+      const m = META[id];
+      $id('ndv-badge').textContent = m.glyph;
+      $id('ndv-badge').style.background = CAT_BG[m.cat] || '#667';
+      $id('ndv-name').value = titles[id] ?? id;
+      $id('ndv-kind').textContent = kindLabel[KIND[id]] || m.sub;
+      for (const tb of ndvEl.querySelectorAll('.ndv-tab')) tb.classList.toggle('on', tb.dataset.tab === 'params');
+      $id('ndv-params').style.display = '';
+      $id('ndv-settings').style.display = 'none';
+      renderParams(id);
+      renderSettings(id);
+      refreshNDVData();
+      syncButtons();
+      ndvEl.hidden = false;
+    };
+    ctx.closeNDV = () => { ndvOpenId = null; ndvEl.hidden = true; };
+    $id('ndv-close').addEventListener('click', () => ctx.closeNDV());
+    ndvEl.querySelector('.ndv-back').addEventListener('click', () => ctx.closeNDV());
+    window.addEventListener('keydown', (e) => { if (e.key === 'Escape' && !ndvEl.hidden) ctx.closeNDV(); });
+    // Renaming in the header renames the card on the canvas, live.
+    $id('ndv-name').addEventListener('input', () => {
+      if (!ndvOpenId) return;
+      titles[ndvOpenId] = $id('ndv-name').value;
+      paintNode(ndvOpenId);
+      api.renderNow();
+    });
+    // n8n's "Execute step": run the workflow UP TO and including this node.
+    $id('ndv-exec').addEventListener('click', () => {
+      if (ndvOpenId && !ctx.runActive) ctx.execute({ upTo: ndvOpenId, stepMs: 140 });
+    });
+    for (const tb of ndvEl.querySelectorAll('.ndv-tab')) {
+      tb.addEventListener('click', () => {
+        for (const o of ndvEl.querySelectorAll('.ndv-tab')) o.classList.toggle('on', o === tb);
+        $id('ndv-params').style.display = tb.dataset.tab === 'params' ? '' : 'none';
+        $id('ndv-settings').style.display = tb.dataset.tab === 'settings' ? '' : 'none';
+      });
+    }
+    // Double-click a node card → its NDV (the n8n gesture). Model-space hit
+    // test, so it works for real pointers and synthetic dispatch alike.
+    host.addEventListener('dblclick', (e) => {
+      const w = api.viewport.clientToWorld(e.clientX, e.clientY, host.getBoundingClientRect());
+      const hit = model.getNodes().find((n) =>
+        w.x >= n.position.x && w.x <= n.position.x + n.size.width &&
+        w.y >= n.position.y && w.y <= n.position.y + n.size.height);
+      if (hit) ctx.openNDV(hit.id);
+    });
+
+    // ---- palette: click a chip → drop a fresh, fully-registered node --------
+    let added = 0;
+    ctx.addNode = async (kind) => {
+      const meta = PALETTE[kind];
+      const x = 60 + (added % 3) * 46, y = 470 + Math.floor(added / 3) * 24;
+      added++;
+      const node = await engine.addNode({ type: 'rect', position: { x, y }, size: { width: 200, height: 64 } });
+      node.setMetadata('shape', { type: 'rect', fill: 'none', stroke: 'none' });
+      // Register it as a first-class citizen: it gets an NDV, params, a sim.
+      KIND[node.id] = kind;
+      META[node.id] = { cat: kind, glyph: meta.glyph, sub: meta.sub, mono: meta.mono };
+      titles[node.id] = meta.sub;
+      PARAMS[node.id] = (DEFAULT_PARAMS[kind] || (() => ({})))(node.id);
+      SETTINGS[node.id] = defSettings();
+      paintNode(node.id);
+      api.renderNow();
+      ctx.updateHud();
+      return node;
+    };
+    for (const btn of document.querySelectorAll('.pal-item'))
+      btn.addEventListener('click', () => ctx.addNode(btn.dataset.kind));
+
+    // internals the showcase stages directly (deterministic money shot)
+    ctx.setAgentFlash = setAgentFlash;
+    ctx.setEdgesRun = setEdgesRun;
+
+    await ctx.tick();
+  },
+
+  // Money shot: the run held mid-flight at the AI Agent — everything upstream
+  // green-checked with item-count pills on the wires, the Agent spinning with
+  // its three sub-nodes flashing violet on animated dashed wires, downstream
+  // dimmed pending, and the execution log open on the rows so far. Staged
+  // directly (not timed) so the frame is deterministic for the pixel gate.
+  async showcase(ctx) {
+    ctx.reset();
+    const RS = ctx.RS;
+    const outCounts = { start: 1, login: 1, setToken: 1, getBranches: 4, getVendors: 3, merge: 7, store: 7 };
+    const inCounts = { start: 0, login: 1, setToken: 1, getBranches: 1, getVendors: 1, merge: 7, store: 7 };
+    const SIM_MS_LOCAL = { start: 3, login: 341, setToken: 12, getBranches: 512, getVendors: 387, merge: 24, store: 56 };
+    for (const [id, n] of Object.entries(outCounts)) {
+      RS.data.set(id, { input: [], output: Array.from({ length: n }, () => ({})), ms: SIM_MS_LOCAL[id] });
+      RS.executed.push(id);
+      ctx.paintStatus(id, 'completed');
+      ctx.pillsFrom(id);
+      ctx.pushLog(id, 'completed', SIM_MS_LOCAL[id], inCounts[id], n);
+    }
+    ctx.paintStatus('agent', 'running');
+    ctx.RS.running = 'agent';
+    ctx.setEdgesRun('agent', true);
+    ctx.setAgentFlash('agent', true);
+    for (const id of ['ifNode', 'excel', 'wait']) ctx.paintStatus(id, 'pending');
+    ctx.setLogsOpen(true);
+    ctx.setLogStatus('Running…', '');
+    document.getElementById('run-readout').textContent = 'running: AI Quality Agent';
+    ctx.instance.renderNow();
+    // Frame the action: merge→store→AGENT(spinning)→if→branches with the
+    // sub-node flash, shifted up so the open log panel doesn't cover it.
+    ctx.centerView(1495, 450, 0.62);
+  },
+
+  async assert(ctx) {
+    const host = ctx.host, model = ctx.diagram, api = ctx.instance;
+
+    // Bring every node on-screen so glyph-based (port) checks can find their
+    // elements — off-screen nodes are culled from the DOM.
+    api.fitView(50); api.renderNow(); await ctx.tick();
+
+    // Normalize boot state (a gate re-run inside one page must not inherit a
+    // twiddled panel): no run, no NDV, logs closed, failure disarmed.
+    ctx.reset();
+    ctx.closeNDV();
+    ctx.setLogsOpen(false);
+    const failBtn = document.getElementById('btn-fail');
+    if (failBtn.getAttribute('aria-pressed') === 'true') failBtn.click();
+
+    const linkPath = (id) => host.querySelector(`[data-link-id="${id}"] path.diagram-link`);
+    const strokeOf = (id) => { const p = linkPath(id); return p ? getComputedStyle(p).stroke : ''; };
+    const dashOf   = (id) => { const p = linkPath(id); return p ? getComputedStyle(p).strokeDasharray : ''; };
+    const portC = (portId) => { const el = host.querySelector(`[data-port-id="${portId}"]`); if (!el) return null; const r = el.getBoundingClientRect(); return { x: r.left + r.width / 2, y: r.top + r.height / 2 }; };
+    const portsOf = (id) => { const ps = model.getNode(id).getPorts(); return Array.isArray(ps) ? ps : [...ps.values()]; };
+    const cardEl = (id) => host.querySelector(`[data-node-id="${id}"] .n8n-card`);
+    const linkText = (id) => host.querySelector(`[data-link-id="${id}"]`)?.textContent || '';
+    const until = async (cond, what) => {
+      for (let i = 0; i < 400 && !cond(); i++) await new Promise((r) => setTimeout(r, 10));
+      check(cond(), `timed out waiting for ${what}`);
+    };
+    const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+
+    // 1. NODE-TYPE VARIETY — the canvas carries the distinct n8n node families,
+    //    each an HTML card with its own accent class.
+    const cats = ['trigger', 'http', 'set', 'code', 'merge', 'if', 'ai', 'sheet', 'notify'];
+    const present = cats.filter((c) => host.querySelector(`.n8n-card.cat-${c}`));
+    check(present.length >= 8, `expected the n8n node-type variety (>=8 families), got ${present.length}: [${present}]`);
+    check(host.querySelectorAll('.n8n-card.cat-ai').length === 4, `the AI cluster should be 4 violet cards, got ${host.querySelectorAll('.n8n-card.cat-ai').length}`);
+    const trig = cardEl('start');
+    const pill = parseFloat(getComputedStyle(trig).borderTopLeftRadius);
+    check(pill >= 20, `the trigger card should be a left-rounded pill (border-radius>=20), got ${pill}`);
+    const httpBadge = host.querySelector('[data-node-id="login"] .n8n-badge');
+    check(getComputedStyle(httpBadge).backgroundColor === 'rgb(14, 165, 233)', `the HTTP icon badge should paint its accent colour, got ${getComputedStyle(httpBadge).backgroundColor}`);
+
+    // 2. TWO LINE FAMILIES are genuinely distinct: main = solid gray, AI = dashed violet.
+    const mainDash = dashOf('e_start_login'), aiDash = dashOf('ai_model');
+    const mainCol = strokeOf('e_start_login'), aiCol = strokeOf('ai_model');
+    check(mainDash === 'none', `a main wire must be solid (dash=none), got "${mainDash}"`);
+    check(aiDash && aiDash !== 'none', `an AI wire must be dashed, got "${aiDash}"`);
+    check(aiCol !== mainCol, `the AI wire colour must differ from the main wire (ai=${aiCol}, main=${mainCol})`);
+    const agentRect = cardEl('agent').getBoundingClientRect();
+    const agentMidY = agentRect.top + agentRect.height / 2;
+    for (const pid of ['agent_model', 'agent_memory', 'agent_tool']) {
+      const pc = portC(pid);
+      check(pc && pc.y > agentMidY, `AI dock port ${pid} must sit on the BOTTOM of the agent, y=${pc && pc.y.toFixed(0)} vs mid ${agentMidY.toFixed(0)}`);
+    }
+    check(['ai_model', 'ai_memory', 'ai_tool'].every((id) => linkPath(id)), 'all three AI sub-node wires should render');
+
+    // 3. The IF node is a BRANCH node: two labelled, colour-coded outputs.
+    const ifOuts = portsOf('ifNode').filter((p) => p.type === 'output');
+    check(ifOuts.length === 2, `the If node must have 2 outputs (true/false), got ${ifOuts.length}`);
+    check(!!linkPath('if_true_excel') && !!linkPath('if_false_wait'), 'both If branches should render a wire');
+    check(strokeOf('if_true_excel') !== strokeOf('if_false_wait'), 'the true/false branches must be colour-coded differently');
+    check(/true/i.test(linkText('if_true_excel')), `the true branch should be labelled "true", DOM text was "${linkText('if_true_excel')}"`);
+    check(/false/i.test(linkText('if_false_wait')), `the false branch should be labelled "false", DOM text was "${linkText('if_false_wait')}"`);
+
+    // 4. CONNECT-BY-DRAG actually wires a new edge, with a real pointer gesture.
+    let btnDown = false;
+    const fireP = (type, x, y) => {
+      if (type === 'pointerdown') btnDown = true;
+      const buttons = type === 'pointerup' ? 0 : (type === 'pointerdown' ? 1 : (btnDown ? 1 : 0));
+      if (type === 'pointerup') btnDown = false;
+      host.dispatchEvent(new PointerEvent(type, { clientX: x, clientY: y, bubbles: true, cancelable: true, button: 0, buttons, pointerId: 1, pointerType: 'mouse' }));
+    };
+    const dragTo = async (fromPort, x, y) => {
+      const a = portC(fromPort);
+      fireP('pointermove', a.x, a.y); fireP('pointerdown', a.x, a.y);
+      fireP('pointermove', (a.x + x) / 2, (a.y + y) / 2); fireP('pointermove', x, y);
+      fireP('pointerup', x, y);
+      await new Promise((r) => setTimeout(r, 0)); await ctx.tick();
+    };
+    const joins = (l, a, b) => {
+      const s = model.getNodeByPortId(l.sourcePortId)?.id, t = model.getNodeByPortId(l.targetPortId)?.id;
+      return (s === a && t === b) || (s === b && t === a);
+    };
+    check(!model.getLinks().some((l) => joins(l, 'excel', 'slack')), 'precondition: Write Summary → Send Slack Alert should start UNWIRED (the dangling node)');
+    const before = model.getLinks().length;
+    const target = portC('slack_in');
+    await dragTo('excel_out', target.x, target.y);
+    check(model.getLinks().length === before + 1, `connect-by-drag should add exactly one wire (was ${before}, now ${model.getLinks().length})`);
+    const made = model.getLinks().find((l) => joins(l, 'excel', 'slack'));
+    check(!!made, 'the drawn wire should join Write Summary → Send Slack Alert');
+
+    // 4b. TEETH — a release on EMPTY canvas connects nothing.
+    const before2 = model.getLinks().length;
+    const r = host.getBoundingClientRect();
+    await dragTo('excel_out', r.left + 24, r.top + 24); // top-left corner is empty at fit
+    check(model.getLinks().length === before2, `a release on empty canvas must not connect (links ${before2}→${model.getLinks().length})`);
+    // Restore the dangling node for the gallery frame.
+    model.removeLink(made.id); ctx.restyleLinks(); api.renderNow();
+    check(!model.getLinks().some((l) => joins(l, 'excel', 'slack')), 'restore: Send Slack Alert is dangling again');
+
+    // 5. MUTATION PROOF (wire families) — the two line families are distinct by
+    //    DESIGN, not luck: repaint an AI wire solid-gray and the checks go red.
+    const ai = model.getLink('ai_model');
+    ai.updateStyle({ stroke: MAIN, strokeDasharray: undefined }); api.renderNow();
+    check(dashOf('ai_model') === 'none', 'MUTATION: with its dash removed the AI wire is now (wrongly) solid — the dash check has teeth');
+    check(strokeOf('ai_model') === strokeOf('e_start_login'), 'MUTATION: recoloured to main-gray, the AI wire is now indistinguishable from a main wire — the distinction check has teeth');
+    ai.updateStyle(aiStyle()); api.renderNow();
+    check(dashOf('ai_model') !== 'none', 'restore: the AI wire is dashed again');
+    check(strokeOf('ai_model') !== strokeOf('e_start_login'), 'restore: the AI wire is visually distinct again');
+
+    // ================== THE EXECUTION SIMULATION ==================
+    const RS = ctx.RS;
+
+    // 6. FULL RUN — topological, item-flowing, with live n8n affordances.
+    const run6 = ctx.execute({ stepMs: 90 });
+    await until(() => RS.running === 'login', 'the run to reach Login (running)');
+    check(cardEl('login').classList.contains('st-running'), 'the executing node must paint the st-running highlight');
+    check(!!host.querySelector('[data-node-id="login"] .n8n-spin'), 'the executing node must show the corner SPINNER');
+    check(host.querySelectorAll('#canvas .n8n-spin').length === 1, 'exactly ONE node may spin at a time');
+    check([...RS.status.values()].filter((s) => s === 'running').length === 1, 'exactly one node may hold status running');
+    const runCls = host.querySelector('[data-link-id="e_start_login"] .diagram-link')?.getAttribute('class') || '';
+    check(runCls.includes('link-animated-'), `the executing node's incoming wire must animate, got "${runCls}"`);
+    check(cardEl('start').classList.contains('st-completed'), 'the finished trigger must paint st-completed');
+    check(!!host.querySelector('[data-node-id="start"] .n8n-status.ok'), 'the finished trigger must carry the green ✓ badge');
+    check(cardEl('agent').classList.contains('st-pending'), 'downstream nodes must dim as pending during the run');
+    check(!document.getElementById('runlog').hidden, 'starting a run must open the execution log (n8n opens its logs view)');
+    const r6 = await run6;
+    check(r6.failed === null && !r6.aborted, 'the happy-path run must finish clean');
+    const allDone6 = RS.data.get('agent').output[0].allDone;
+    const tail6 = allDone6 ? 'excel' : 'wait';
+    const expected6 = ['start', 'login', 'setToken', 'getBranches', 'getVendors', 'merge', 'store', 'agent', 'ifNode', tail6];
+    check(JSON.stringify(r6.executed) === JSON.stringify(expected6),
+      `the run must execute the reachable main path in TOPOLOGICAL order\n    expected: ${JSON.stringify(expected6)}\n    actual:   ${JSON.stringify(r6.executed)}`);
+    for (const id of expected6) {
+      check(RS.status.get(id) === 'completed', `${id} should be completed, is ${RS.status.get(id)}`);
+      check(cardEl(id).classList.contains('st-completed'), `${id} should paint st-completed`);
+      check(!!host.querySelector(`[data-node-id="${id}"] .n8n-status.ok`), `${id} should carry the ✓ badge`);
+    }
+    const untaken6 = tail6 === 'excel' ? 'wait' : 'excel';
+    check((RS.status.get(untaken6) ?? 'idle') === 'idle', `the untaken If branch (${untaken6}) must stay IDLE, is ${RS.status.get(untaken6)}`);
+    check(!host.querySelector(`[data-node-id="${untaken6}"] .n8n-status.ok`), 'the untaken branch node must carry no ✓ badge');
+    check((RS.status.get('model') ?? 'idle') === 'idle', 'AI sub-nodes never execute on the main walk (the agent invokes them)');
+    // Item-count pills on every wire that carried data — n8n's "n items".
+    const pills = [
+      ['e_start_login', '1 item'], ['e_login_set', '1 item'], ['e_set_branches', '1 item'],
+      ['e_set_vendors', '1 item'], ['e_branches_merge', '4 items'], ['e_vendors_merge', '3 items'],
+      ['e_merge_store', '7 items'], ['e_store_agent', '7 items'], ['e_agent_if', '1 item'],
+    ];
+    for (const [lid, txt] of pills) {
+      check(linkText(lid).includes(txt), `wire ${lid} must show its item-count pill "${txt}", DOM text was "${linkText(lid)}"`);
+    }
+    // LABEL LEGIBILITY — every pill is an n8n-style OPAQUE chip: a solid
+    // background rect sits under the text, so the wire passes BEHIND the pill
+    // instead of striking through (or kissing the edge of) the glyphs.
+    const pillChip = (lid) => {
+      const bg = host.querySelector(`[data-link-id="${lid}"] .link-label-bg`);
+      if (!bg) return false;
+      const f = getComputedStyle(bg).fill;
+      return f !== 'none' && !/rgba\(.*,\s*0\)$/.test(f);
+    };
+    for (const [lid] of pills) check(pillChip(lid), `wire ${lid}'s pill must be an opaque chip (solid background rect)`);
+    // …and the AI port labels (Model/Memory/Tool) carry the canvas-coloured
+    // text halo that keeps their dashed wires from striking through.
+    const halo = host.querySelector('text.ai-port-label');
+    check(!!halo, 'the AI port labels must carry the ai-port-label halo class');
+    const hs = halo && getComputedStyle(halo);
+    check(!!hs && hs.paintOrder.includes('stroke') && hs.stroke !== 'none' && parseFloat(hs.strokeWidth) >= 3,
+      `the AI port labels must paint a text halo (paint-order:stroke over the canvas colour), got paint-order="${hs && hs.paintOrder}" stroke="${hs && hs.stroke}" stroke-width=${hs && hs.strokeWidth}`);
+    const takenEdge = tail6 === 'excel' ? 'if_true_excel' : 'if_false_wait';
+    const untakenEdge = tail6 === 'excel' ? 'if_false_wait' : 'if_true_excel';
+    check(linkText(takenEdge).includes('1 item'), `the taken If branch must show its pill, got "${linkText(takenEdge)}"`);
+    check(!/item/.test(linkText(untakenEdge)), `the untaken If branch must show NO item pill, got "${linkText(untakenEdge)}"`);
+    // The execution log: one row per executed node, in order, with in→out counts.
+    check(RS.log.length === r6.executed.length, `the log must hold one row per executed node (${r6.executed.length}), got ${RS.log.length}`);
+    check(document.querySelectorAll('#rl-rows .rl-row').length === r6.executed.length, 'the log PANEL must render every row');
+    RS.log.forEach((row, i) => {
+      const d = RS.data.get(r6.executed[i]);
+      check(row.nIn === d.input.length && row.nOut === d.output.length,
+        `log row ${i} (${row.title}) must report ${d.input.length}→${d.output.length} items, got ${row.nIn}→${row.nOut}`);
+    });
+    check(document.getElementById('rl-status').textContent.includes('Success'), 'the log status line must report Success');
+
+    // 7. NDV — double-click opens n8n's Node Details View; edits persist.
+    const dbl = (id) => {
+      const rc = cardEl(id).getBoundingClientRect();
+      host.dispatchEvent(new MouseEvent('dblclick', { clientX: rc.left + rc.width / 2, clientY: rc.top + rc.height / 2, bubbles: true, cancelable: true }));
+    };
+    const ndv = document.getElementById('ndv');
+    dbl('login');
+    check(!ndv.hidden, 'double-clicking a node must open the NDV');
+    const methodSel = document.querySelector('#ndv-params select[data-param="method"]');
+    const urlInp = document.querySelector('#ndv-params input[data-param="url"]');
+    check(!!methodSel && !!urlInp, 'the HTTP node must render its Method + URL parameters form');
+    check(methodSel.value === 'POST' && urlInp.value === 'https://pams.example/api/login',
+      `the params form must show the node's stored parameters, got ${methodSel.value} ${urlInp.value}`);
+    // input/output panes carry the LAST RUN's items
+    check(document.getElementById('ndv-input').textContent.includes('"trigger"'), 'the NDV input pane must show the upstream items from the last run');
+    check(document.getElementById('ndv-output').textContent.includes('"token"'), 'the NDV output pane must show the items this node produced');
+    check(document.getElementById('ndv-in-count').textContent === '1 item', `the input pane must count its items, got "${document.getElementById('ndv-in-count').textContent}"`);
+    // edit the URL, close with Escape, reopen → the edit persisted
+    urlInp.value = 'https://pams.example/api/v2/login';
+    urlInp.dispatchEvent(new Event('input'));
+    window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+    check(ndv.hidden, 'Escape must close the NDV');
+    dbl('login');
+    check(document.querySelector('#ndv-params input[data-param="url"]').value === 'https://pams.example/api/v2/login',
+      'a param edit must PERSIST across close/reopen (in-page state, like n8n)');
+    ctx.PARAMS.login.url = 'https://pams.example/api/login'; // restore
+    // rename in the header → the canvas card updates live
+    const nameInp = document.getElementById('ndv-name');
+    nameInp.value = 'Login v2 (PAMS)';
+    nameInp.dispatchEvent(new Event('input'));
+    await ctx.tick();
+    check(cardEl('login').querySelector('.n8n-title').textContent === 'Login v2 (PAMS)', 'renaming in the NDV must rename the card on the canvas');
+    nameInp.value = 'Login to PAMS';
+    nameInp.dispatchEvent(new Event('input'));
+    ctx.closeNDV();
+    // "Execute step": runs the workflow UP TO the opened node only.
+    ctx.reset();
+    ctx.openNDV('setToken');
+    document.getElementById('ndv-exec').click();
+    await until(() => !ctx.runActive && RS.executed.length > 0, 'Execute step to finish');
+    check(JSON.stringify(RS.executed) === JSON.stringify(['start', 'login', 'setToken']),
+      `Execute step must run ancestors + the node ONLY, got ${JSON.stringify(RS.executed)}`);
+    check(RS.status.get('setToken') === 'completed' && (RS.status.get('getBranches') ?? 'idle') === 'idle',
+      'Execute step must leave everything downstream untouched');
+    check(document.getElementById('ndv-output').textContent.includes('authorization'), 'after Execute step the NDV output pane must fill');
+    ctx.closeNDV();
+    // the "no input yet" hint + "Execute previous nodes" (n8n's affordance)
+    ctx.reset();
+    ctx.openNDV('merge');
+    const hintBox = document.getElementById('ndv-input');
+    check(/No input data yet/.test(hintBox.textContent), `an unexecuted node must hint about missing input, got "${hintBox.textContent.slice(0, 60)}"`);
+    const prevBtn = hintBox.querySelector('button');
+    check(!!prevBtn && /Execute previous/.test(prevBtn.textContent), 'the hint must offer "Execute previous nodes"');
+    prevBtn.click();
+    await until(() => !ctx.runActive && RS.executed.length > 0, 'Execute previous nodes to finish');
+    check(RS.executed.includes('getVendors') && !RS.executed.includes('merge'),
+      `"Execute previous nodes" must stop SHORT of the node itself, got ${JSON.stringify(RS.executed)}`);
+    check(document.getElementById('ndv-in-count').textContent === '7 items', 'the input pane must now show the 7 upstream items');
+    ctx.closeNDV();
+
+    // 8. PAUSE freezes a live run; step ▸ advances exactly one node; continue finishes.
+    const pauseBtn = document.getElementById('btn-pause');
+    const stepBtn = document.getElementById('btn-step');
+    check(pauseBtn.disabled, 'the pause button must be disarmed while no run is active');
+    const pr = ctx.execute({ stepMs: 380 });
+    try {
+      await until(() => RS.executed.length >= 1, 'the run to pass its first node');
+      check(!pauseBtn.disabled, 'the pause button must arm while a run is active');
+      pauseBtn.click();
+      check(ctx.paused === true, 'clicking pause must pause the run');
+      check(pauseBtn.textContent === '▶ continue', `the pause button must flip to continue, got "${pauseBtn.textContent}"`);
+      await sleep(280);
+      const held = RS.running;
+      const doneBefore = RS.executed.length;
+      check([...RS.status.values()].filter((s) => s === 'running').length === 1, 'a paused run must hold exactly one running node');
+      await sleep(300);
+      check(RS.executed.length === doneBefore, 'NO node may complete while the run is paused');
+      check(RS.running === held, 'the paused run must hold the SAME node');
+      check(document.getElementById('run-readout').textContent.includes('paused at'), 'the readout must announce the pause');
+      stepBtn.click();
+      await until(() => RS.executed.length === doneBefore + 1, 'step-while-paused to advance');
+      check(ctx.paused === true, 'stepping must not unpause the run');
+      await sleep(300);
+      check(RS.executed.length === doneBefore + 1, 'step ▸ must advance EXACTLY one node');
+      pauseBtn.click(); // ▶ continue
+      check(ctx.paused === false, 'continue must unpause');
+      const pres = await pr;
+      check(pres.failed === null && !pres.aborted, 'the continued run must finish normally');
+      check(pauseBtn.disabled && pauseBtn.textContent === '⏸ pause', 'the pause button must disarm after the run ends');
+    } finally {
+      ctx.reset();
+      await pr.catch(() => {});
+    }
+    // step ▸ from idle starts a run BORN paused at the trigger (walk it node by node)
+    stepBtn.click();
+    await until(() => RS.running === 'start', 'idle step ▸ to hold the trigger running');
+    check(ctx.paused === true, 'the idle-started step run must be born paused');
+    document.getElementById('btn-reset').click();
+    await until(() => !ctx.runActive, 'reset to abort the stepped run');
+    check([...RS.status.values()].every((s) => s === 'idle') || RS.status.size === 0, 'reset must clear every status back to idle');
+
+    // 9. IF BRANCHING — items drive the branch; it alternates with the data,
+    //    and flipping the operation IN THE NDV flips the routing.
+    const ra = await ctx.execute({ stepMs: 0 });
+    const ta = ra.executed[ra.executed.length - 1];
+    const allDoneA = RS.data.get('agent').output[0].allDone;
+    check(ta === (allDoneA ? 'excel' : 'wait'), `the branch must follow the condition on the ITEMS (allDone=${allDoneA} → ${ta})`);
+    check((RS.status.get(ta === 'excel' ? 'wait' : 'excel') ?? 'idle') === 'idle', 'the untaken branch stays idle');
+    const rb = await ctx.execute({ stepMs: 0 });
+    const tb = rb.executed[rb.executed.length - 1];
+    check(ta !== tb, `the simulated data alternates run-to-run, so consecutive runs must take DIFFERENT branches (got ${ta} then ${tb})`);
+    ctx.openNDV('ifNode');
+    const opSel = document.querySelector('#ndv-params select[data-param="operation"]');
+    check(!!opSel, 'the If node must render its condition operation select');
+    opSel.value = 'is false';
+    opSel.dispatchEvent(new Event('change'));
+    ctx.closeNDV();
+    const rf2 = await ctx.execute({ stepMs: 0 });
+    const allDoneC = RS.data.get('agent').output[0].allDone;
+    const tc = rf2.executed[rf2.executed.length - 1];
+    check(tc === (allDoneC ? 'wait' : 'excel'), `flipping the If operation in the NDV must flip the routing (allDone=${allDoneC}, op="is false" → ${tc})`);
+    ctx.PARAMS.ifNode.operation = 'is true'; // restore
+
+    // 10. FAILURE halts the run n8n-style; Settings can retry or continue.
+    failBtn.click();
+    check(failBtn.getAttribute('aria-pressed') === 'true', 'the fail toggle must arm visibly');
+    const rerr = await ctx.execute({ stepMs: 0 });
+    check(rerr.failed === 'getVendors', `the armed failure must halt at Get Vendors, got ${rerr.failed}`);
+    check(RS.status.get('getVendors') === 'error', 'the failing node must hold status error');
+    check(cardEl('getVendors').classList.contains('st-error'), 'the failing node must paint st-error');
+    check(!!host.querySelector('[data-node-id="getVendors"] .n8n-status.err'), 'the failing node must carry the red ! badge');
+    for (const id of ['merge', 'store', 'agent', 'ifNode', 'excel', 'wait']) {
+      check((RS.status.get(id) ?? 'idle') === 'idle', `${id} is downstream of the failure and must never run, is ${RS.status.get(id)}`);
+    }
+    check(document.getElementById('rl-status').textContent.includes('Error'), 'the log status line must report the error');
+    // Continue on fail (NDV Settings tab, driven through the real UI):
+    ctx.openNDV('getVendors');
+    document.querySelector('.ndv-tab[data-tab="settings"]').click();
+    const cof = document.querySelector('#ndv-settings input[data-set="continueOnFail"]');
+    check(!!cof, 'the Settings tab must render the continue-on-fail toggle');
+    cof.click();
+    check(ctx.SETTINGS.getVendors.continueOnFail === true, 'the Settings toggle must persist into the node settings');
+    ctx.closeNDV();
+    const rcont = await ctx.execute({ stepMs: 0 });
+    check(rcont.failed === null, 'with continue-on-fail the run must NOT halt');
+    check(RS.status.get('getVendors') === 'error', 'the failing node still reports its error');
+    check(RS.status.get('merge') === 'completed', 'downstream must run on the error item');
+    check(RS.data.get('merge').output.length === 5, `Merge must see 4 branches + 1 error item, got ${RS.data.get('merge').output.length}`);
+    // Retry on fail recovers:
+    ctx.SETTINGS.getVendors.continueOnFail = false;
+    ctx.SETTINGS.getVendors.retryOnFail = true;
+    const rretry = await ctx.execute({ stepMs: 0 });
+    check(rretry.failed === null && RS.status.get('getVendors') === 'completed', 'retry-on-fail must recover the node');
+    check(RS.log.some((row) => row.note.includes('retried')), 'the log must note the retry');
+    failBtn.click(); // disarm
+    ctx.SETTINGS.getVendors.retryOnFail = false;
+
+    // 11. MUTATION PROOF (execution) — the pill/data consistency check has
+    //     teeth: forge one pill and it goes red; repaint from run data, green.
+    const rg = await ctx.execute({ stepMs: 0 });
+    check(rg.failed === null, 'mutation baseline run must be green');
+    api.fitView(50); api.renderNow(); await ctx.tick();
+    const pillsConsistent = () => {
+      for (const id of RS.executed) {
+        const d = RS.data.get(id);
+        const b = RS.branchOut.get(id);
+        for (const l of model.getLinks()) {
+          if (!/^(e_|if_)/.test(l.id) || model.getNodeByPortId(l.sourcePortId)?.id !== id) continue;
+          const n = b ? (b[l.sourcePortId] ?? []).length : d.output.length;
+          if (n === 0) continue;
+          if (!linkText(l.id).includes(`${n} item`)) return false;
+        }
+      }
+      return true;
+    };
+    check(pillsConsistent(), 'baseline: every traversed wire pill must match the items that flowed');
+    ctx.setWirePill(model.getLink('e_merge_store'), '99 items');
+    api.renderNow(); await ctx.tick();
+    check(!pillsConsistent(), 'MUTATION: with the merge→store pill forged to "99 items" the pill/data consistency check must go RED — it has teeth');
+    ctx.pillsFrom('merge');
+    api.renderNow(); await ctx.tick();
+    check(pillsConsistent(), 'restore: repainting from the run data heals the pill');
+    // 11b. MUTATION PROOF (legibility) — the opaque-chip check has teeth too:
+    // strip one pill's background and it goes red; repaint heals it.
+    const mlk = model.getLink('e_merge_store');
+    const mIdx = mlk.labels.findIndex((x) => x.id === 'wire-pill');
+    check(mIdx !== -1, 'the merge→store wire must carry its positioned pill label');
+    mlk.updateLabel(mIdx, { style: { ...mlk.labels[mIdx].style, background: 'none' } });
+    api.renderNow(); await ctx.tick();
+    check(!pillChip('e_merge_store'), 'MUTATION: with its background stripped the pill is no longer an opaque chip — the chip check has teeth');
+    ctx.pillsFrom('merge');
+    api.renderNow(); await ctx.tick();
+    check(pillChip('e_merge_store'), 'restore: repainting the pill restores its opaque chip');
+
+    // 12. The palette BUILDS: clicking a chip drops a fresh, registered node.
+    const n0 = model.getNodes().length;
+    await ctx.addNode('code');
+    check(model.getNodes().length === n0 + 1, `clicking a palette chip should add a node (${n0}→${model.getNodes().length})`);
+    check(!!host.querySelector('.n8n-card.cat-code'), 'the palette-added Code node should paint its card');
+
+    // Leave the page framed the way a visitor first meets it.
+    ctx.reset();
+    ctx.closeNDV();
+    ctx.setLogsOpen(false);
+    ctx.initialFrame();
+  },
+});
+</script>

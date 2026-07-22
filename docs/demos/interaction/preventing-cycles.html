@@ -1,0 +1,118 @@
+<meta charset="utf-8">
+<title>Preventing cycles — Grafloria</title>
+<link rel="stylesheet" href="../shell/demo.css">
+<style>
+  #readout { padding: 8px 24px; font: 12px/1.5 ui-monospace, monospace; opacity: .8; border-bottom: 1px solid rgba(127,127,127,.25); white-space: pre; }
+  #canvas { height: calc(100vh - 168px); }
+</style>
+<header id="demo-head"></header>
+<div id="readout"></div>
+<div id="canvas"></div>
+<script type="module">
+import { render, registerConnectionValidator, clearConnectionValidators } from '../shell/grafloria.js';
+import { defineDemo, check } from '../shell/demo.js';
+
+// A DAG: a→b→c→d. Closing a loop (d→a, or c→a) would make it cyclic. A validator
+// walks the existing directed edges and refuses any connection whose target can
+// already reach its source. We drive real connect attempts and prove the
+// loop-forming one is refused (no link) while a legal forward edge is accepted.
+const SPEC = {
+  nodes: ['a', 'b', 'c', 'd'].map((id, i) => ({
+    id, position: { x: 60 + i * 170, y: 120 }, size: { width: 110, height: 46 }, label: id.toUpperCase(),
+  })),
+  edges: [
+    { id: 'ab', source: 'a', target: 'b' },
+    { id: 'bc', source: 'b', target: 'c' },
+    { id: 'cd', source: 'c', target: 'd' },
+  ],
+};
+
+// Directed reachability over the live model: can `from` reach `to` following edges?
+function reaches(model, fromId, toId) {
+  const nodeOf = (portId, cached) => model.getNodeByPortId(portId)?.id ?? cached;
+  const seen = new Set();
+  const stack = [fromId];
+  while (stack.length) {
+    const cur = stack.pop();
+    if (cur === toId) return true;
+    if (seen.has(cur)) continue;
+    seen.add(cur);
+    for (const link of model.getLinks()) {
+      if (nodeOf(link.sourcePortId, link.sourceNodeId) === cur) {
+        stack.push(nodeOf(link.targetPortId, link.targetNodeId));
+      }
+    }
+  }
+  return false;
+}
+
+const portOf = (node, side) => node.getPortBySide(side);
+
+defineDemo({
+  name: 'Preventing cycles',
+  blurb: 'A DAG that stays acyclic: a connection whose target can already reach its source is refused, so a→b→c→d can never be closed into a loop. Driven through the real connect pipeline.',
+  howTo: [
+    'The pipeline runs A→B→C→D. Try to close the loop: drag from D\'s right port and drop on A\'s left port — the connection is refused, no wire appears.',
+    'Try the shortcut C→A the same way — also refused: A already reaches C, so that edge would cycle too.',
+    'Drag from A\'s right port to D\'s left port — a legal forward edge, and it connects.',
+    'Drag the nodes around freely — legality is reachability through the wires, never where the boxes sit.',
+  ],
+  reactflow: 'Prevent Cycles',
+
+  async setup(ctx) {
+    const api = render(SPEC, ctx.host);
+    ctx.instance = api;
+    ctx.diagram = api.getModel();
+    ctx.engine = api.getEngine();
+
+    clearConnectionValidators();
+    ctx.dispose = registerConnectionValidator(({ sourceNode, targetNode }) => {
+      if (reaches(ctx.diagram, targetNode.id, sourceNode.id)) return 'Refused: would create a cycle';
+      return true;
+    });
+    ctx.report = (m) => { document.getElementById('readout').textContent = m; };
+    ctx.report('acyclic guard active on a→b→c→d');
+  },
+
+  async tryConnect(ctx, sourceId, targetId) {
+    const csm = ctx.engine.getConnectionStateManager();
+    const s = portOf(ctx.diagram.getNode(sourceId), 'right');
+    const t = portOf(ctx.diagram.getNode(targetId), 'left');
+    const before = ctx.diagram.getLinks().length;
+    csm.startConnection(s, { x: 0, y: 0 });
+    const res = csm.completeConnection(t);
+    await ctx.tick(20);
+    return { success: res.success, added: ctx.diagram.getLinks().length - before };
+  },
+
+  async assert(ctx) {
+    const model = ctx.diagram;
+
+    // Sanity: d can reach a's would-be source? No — but a reaches d.
+    check(reaches(model, 'a', 'd'), 'reachability helper is broken: a should reach d');
+    check(!reaches(model, 'd', 'a'), 'reachability helper is broken: d should not reach a yet');
+
+    // 1. THE BACK-EDGE d→a closes a loop → refused, no link.
+    const loop = await this.tryConnect(ctx, 'd', 'a');
+    ctx.report(`d→a (would loop): success=${loop.success}, links added=${loop.added}`);
+    check(loop.success === false, 'the pipeline accepted a loop-forming connection');
+    check(loop.added === 0, `a refused cycle still created ${loop.added} link(s)`);
+    check(!model.getLinks().some((l) => l.sourceNodeId === 'd' && l.targetNodeId === 'a'), 'the d→a link exists — the cycle was NOT prevented');
+
+    // 2. A SHORTCUT c→a also loops (a→b→c→a) → refused.
+    const loop2 = await this.tryConnect(ctx, 'c', 'a');
+    check(loop2.success === false && loop2.added === 0, 'the c→a shortcut cycle was not refused');
+
+    // 3. A LEGAL forward edge a→d does NOT loop → accepted.
+    const ok = await this.tryConnect(ctx, 'a', 'd');
+    ctx.report(`a→d (forward): success=${ok.success}, links added=${ok.added}`);
+    check(ok.success === true && ok.added === 1, `a valid acyclic edge was refused (success=${ok.success}, added=${ok.added})`);
+
+    // 4. The graph is still acyclic: no node reaches itself.
+    for (const n of model.getNodes()) {
+      const nbrs = model.getLinks().filter((l) => l.sourceNodeId === n.id).map((l) => l.targetNodeId);
+      for (const m of nbrs) check(!reaches(model, m, n.id) || m !== n.id, `cycle through ${n.id}`);
+    }
+  },
+});
+</script>

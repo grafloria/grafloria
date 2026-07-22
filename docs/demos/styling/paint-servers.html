@@ -1,0 +1,138 @@
+<meta charset="utf-8">
+<title>Paint servers — Grafloria</title>
+<link rel="stylesheet" href="../shell/demo.css">
+<style>
+  .note { font-size: 12px; opacity: .75; padding: 10px 24px; border-bottom: 1px solid rgba(127,127,127,.25); }
+  code { background: rgba(127,127,127,.15); padding: 1px 5px; border-radius: 4px; }
+  #canvas { height: calc(100vh - 190px); }
+</style>
+<header id="demo-head"></header>
+<div class="note">
+  A node's <code>style.fill</code> / <code>style.stroke</code> may be a <strong>gradient or pattern
+  spec object</strong>, and <code>style.shadow</code> a <strong>Shadow spec</strong>. Each is
+  materialised as a real <code>&lt;linearGradient&gt;</code> / <code>&lt;radialGradient&gt;</code> /
+  <code>&lt;pattern&gt;</code> / <code>&lt;filter&gt;</code> in one <em>deduped</em> <code>&lt;defs&gt;</code> and
+  referenced by <code>url(#…)</code>. Two identical specs share ONE def.
+</div>
+<div id="canvas"></div>
+<script type="module">
+import { render } from '../shell/grafloria.js';
+import { defineDemo, check, checkChanged } from '../shell/demo.js';
+
+// The four kinds of paint server, plus a plain flat fill as the control.
+const LINEAR = {
+  type: 'linear', x1: 0, y1: 0, x2: 1, y2: 1,
+  stops: [{ offset: 0, color: '#7c3aed' }, { offset: 1, color: '#ec4899' }],
+};
+const RADIAL = {
+  type: 'radial', cx: 0.5, cy: 0.4, r: 0.6,
+  stops: [{ offset: 0, color: '#fde047' }, { offset: 1, color: '#ea580c' }],
+};
+const DOTS = { type: 'dots', color: '#0369a1', backgroundColor: '#e0f2fe', size: 2, spacing: 10 }; // light ground: the label must stay readable ON the pattern
+const SHADOW = { offsetX: 4, offsetY: 6, blur: 8, color: 'rgba(0,0,0,0.5)' };
+
+const SPEC = {
+  nodes: [
+    { id: 'grad',   position: { x: 60,  y: 90 },  size: { width: 190, height: 84 }, data: { label: 'linear' },  style: { fill: LINEAR } },
+    { id: 'grad2',  position: { x: 60,  y: 220 }, size: { width: 190, height: 84 }, data: { label: 'linear (twin)' }, style: { fill: LINEAR } },
+    { id: 'radial', position: { x: 320, y: 90 },  size: { width: 190, height: 84 }, data: { label: 'radial' },  style: { fill: RADIAL } },
+    { id: 'dots',   position: { x: 320, y: 220 }, size: { width: 190, height: 84 }, data: { label: 'dots pattern' }, style: { fill: DOTS } },
+    { id: 'shadow', position: { x: 580, y: 90 },  size: { width: 190, height: 84 }, data: { label: 'drop shadow' }, style: { fill: '#ffffff', shadow: SHADOW } },
+    { id: 'flat',   position: { x: 580, y: 220 }, size: { width: 190, height: 84 }, data: { label: 'flat (control)' }, style: { fill: '#e2e8f0' } },
+  ],
+  edges: [{ id: 'e1', source: 'grad', target: 'radial' }],
+};
+
+const rectOf = (host, id) => host.querySelector(`[data-node-id="${id}"] rect.diagram-node`);
+// Paint fills land as INLINE style (rect.style.fill = url("#grafloria-def-…")).
+const fillOf = (host, id) => rectOf(host, id).style.fill;
+const defIdIn = (s) => (String(s).match(/#(grafloria-def-[a-z0-9]+)/) || [])[1];
+
+defineDemo({
+  name: 'Paint servers',
+  blurb: 'Gradient & pattern fills and drop-shadow filters — each a real, deduped <defs> paint server referenced by url(#…), not a flattened approximation.',
+  howTo: [
+    'Compare the six nodes: a linear gradient (and its twin), a radial gradient, a dots pattern, a drop shadow, and the flat control.',
+    'Zoom your browser in (⌘+ / Ctrl++) — gradients and dots stay perfectly crisp: real SVG paint servers, not baked bitmaps.',
+    'Inspect the "linear" node in devtools: the rect\'s inline fill is url(#grafloria-def-…), pointing at a real <linearGradient> in the page\'s single <defs>.',
+    'Check "linear (twin)": it references the SAME def id — two identical specs dedup to one shared paint server.',
+    'Note "flat (control)" keeps a bare colour — no def is minted for a plain fill.',
+  ],
+  reactflow: null,
+
+  async setup(ctx) {
+    const api = render(SPEC, ctx.host);
+    ctx.instance = api;
+    ctx.diagram = api.getModel();
+    api.renderNow();
+    await ctx.tick();
+  },
+
+  async assert(ctx) {
+    const host = ctx.host;
+    const defs = host.querySelector('defs');
+    check(!!defs, 'the SVG root has no <defs> block at all');
+
+    // 1. LINEAR gradient: the node references a paint server, and that server
+    //    is a REAL <linearGradient> with the two stops we asked for. A demo that
+    //    only checked "the node painted" would pass with the flat fallback colour
+    //    — the whole point of a paint server is that it is NOT flattened.
+    const gradFill = fillOf(host, 'grad');
+    const gradId = defIdIn(gradFill);
+    check(
+      !!gradId,
+      `a gradient fill must reference a paint server, got fill="${gradFill}".\n` +
+      `    A bare colour here means the gradient was flattened away.`
+    );
+    const gradDef = defs.querySelector(`linearGradient[id="${gradId}"]`);
+    check(!!gradDef, `the url(#${gradId}) points at a <linearGradient> that does not exist in <defs>`);
+    const stops = gradDef.querySelectorAll('stop');
+    check(stops.length === 2, `the gradient should have 2 stops, found ${stops.length}`);
+    check(
+      stops[0].getAttribute('stop-color') === '#7c3aed' && stops[1].getAttribute('stop-color') === '#ec4899',
+      `the gradient stops lost their colours: ` +
+      `${stops[0].getAttribute('stop-color')} -> ${stops[1].getAttribute('stop-color')}`
+    );
+
+    // 2. DEDUP: the twin node has the SAME gradient spec, so it must share the
+    //    SAME def id — not mint a second identical <linearGradient>.
+    const twinId = defIdIn(fillOf(host, 'grad2'));
+    check(twinId === gradId, `identical gradients must dedup to one def; got ${gradId} vs ${twinId}`);
+    const linearDefs = defs.querySelectorAll(`linearGradient[id="${gradId}"]`);
+    check(linearDefs.length === 1, `two identical gradients minted ${linearDefs.length} defs — dedup is broken`);
+
+    // 3. RADIAL gradient resolves to a <radialGradient>.
+    const radId = defIdIn(fillOf(host, 'radial'));
+    check(!!radId, `radial fill was not a paint server: ${fillOf(host, 'radial')}`);
+    check(!!defs.querySelector(`radialGradient[id="${radId}"]`), 'radial gradient def missing');
+
+    // 4. PATTERN fill resolves to a <pattern> with a real feature mark (a dot).
+    const dotId = defIdIn(fillOf(host, 'dots'));
+    check(!!dotId, `pattern fill was not a paint server: ${fillOf(host, 'dots')}`);
+    const patternDef = defs.querySelector(`pattern[id="${dotId}"]`);
+    check(!!patternDef, 'dots pattern def missing');
+    check(!!patternDef.querySelector('circle'), 'the dots pattern has no <circle> mark inside it');
+
+    // 5. SHADOW: a Shadow spec becomes a <filter> with <feDropShadow>, referenced
+    //    via the node's filter attribute — and the flood-colour survives.
+    const filterRef = rectOf(host, 'shadow').getAttribute('filter');
+    const filterId = defIdIn(filterRef || '');
+    check(!!filterId, `the shadow node has no filter reference (got ${filterRef})`);
+    const filterDef = defs.querySelector(`filter[id="${filterId}"]`);
+    check(!!filterDef, 'drop-shadow <filter> def missing');
+    const drop = filterDef.querySelector('feDropShadow');
+    check(!!drop, 'the <filter> has no <feDropShadow>');
+    check(
+      drop.getAttribute('flood-color') === 'rgba(0,0,0,0.5)',
+      `the shadow flood-colour was lost: ${drop.getAttribute('flood-color')}`
+    );
+
+    // 6. The CONTROL: a plain colour is NOT a paint server. This is what proves
+    //    the url(#) checks above are meaningful and not vacuously true.
+    const flatFill = fillOf(host, 'flat');
+    check(flatFill === 'rgb(226, 232, 240)', `a flat fill must stay a bare colour, got ${flatFill}`);
+    check(!defIdIn(flatFill), 'a flat colour must NOT resolve to a paint server');
+    checkChanged(gradFill, flatFill, 'gradient and flat fills resolved to the same thing');
+  },
+});
+</script>

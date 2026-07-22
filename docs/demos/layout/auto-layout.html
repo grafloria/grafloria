@@ -1,0 +1,209 @@
+<meta charset="utf-8">
+<title>Auto layout — Grafloria</title>
+<link rel="stylesheet" href="../shell/demo.css">
+<style>
+  #bar { display: flex; gap: 8px; padding: 10px 24px; border-bottom: 1px solid rgba(127,127,127,.25); align-items: center; flex-wrap: wrap; }
+  #bar button { padding: 5px 12px; border-radius: 6px; border: 1px solid rgba(127,127,127,.4); background: transparent; color: inherit; cursor: pointer; font: inherit; }
+  #bar button[aria-pressed="true"] { background: #2563eb; border-color: #2563eb; color: #fff; }
+  #readout { margin-left: auto; font: 12px/1.4 ui-monospace, monospace; opacity: .8; }
+  #canvas { height: calc(100vh - 152px); }
+</style>
+<header id="demo-head"></header>
+<div id="bar">
+  <span>engine:</span>
+  <button data-layout="dagre">dagre</button>
+  <button data-layout="elk">elk</button>
+  <button data-layout="layered">layered</button>
+  <button data-layout="tree">tree</button>
+  <button data-layout="force">force</button>
+  <button data-layout="auto">auto</button>
+  <span id="readout"></span>
+</div>
+<div id="canvas"></div>
+<script type="module">
+import { render } from '../shell/grafloria.js';
+import { defineDemo, check, checkEqual } from '../shell/demo.js';
+
+/** Every node's world box, keyed by id — the thing every assertion below is about. */
+const boxes = (model) =>
+  model.getNodes().map((n) => ({
+    id: n.id,
+    x: n.position.x, y: n.position.y,
+    w: n.size.width, h: n.size.height,
+  }));
+
+/** Positions as a canonical string. Two runs must produce the SAME one. */
+const signature = (model) =>
+  boxes(model)
+    .sort((a, b) => (a.id < b.id ? -1 : 1))
+    .map((b) => `${b.id}:${b.x.toFixed(4)},${b.y.toFixed(4)}`)
+    .join('|');
+
+/** Pairs of nodes whose boxes intersect. A layout that returns any is broken. */
+function overlaps(model) {
+  const bs = boxes(model);
+  const hits = [];
+  for (let i = 0; i < bs.length; i++) {
+    for (let j = i + 1; j < bs.length; j++) {
+      const a = bs[i], b = bs[j];
+      if (a.x < b.x + b.w && b.x < a.x + a.w && a.y < b.y + b.h && b.y < a.y + a.h) {
+        hits.push(`${a.id}×${b.id}`);
+      }
+    }
+  }
+  return hits;
+}
+
+// A pipeline with a fan-out, a fan-in and a back-edge: enough structure that a
+// layout engine has to make real decisions, and enough that a NO-OP is obvious.
+const SPEC = {
+  nodes: [
+    { id: 'ingest',   position: { x: 0, y: 0 }, size: { width: 130, height: 52 }, label: 'Ingest' },
+    { id: 'parse',    position: { x: 0, y: 0 }, size: { width: 130, height: 52 }, label: 'Parse' },
+    { id: 'validate', position: { x: 0, y: 0 }, size: { width: 130, height: 52 }, label: 'Validate' },
+    { id: 'enrich',   position: { x: 0, y: 0 }, size: { width: 130, height: 52 }, label: 'Enrich' },
+    { id: 'score',    position: { x: 0, y: 0 }, size: { width: 130, height: 52 }, label: 'Score' },
+    { id: 'store',    position: { x: 0, y: 0 }, size: { width: 130, height: 52 }, label: 'Store' },
+    { id: 'index',    position: { x: 0, y: 0 }, size: { width: 130, height: 52 }, label: 'Index' },
+    { id: 'notify',   position: { x: 0, y: 0 }, size: { width: 130, height: 52 }, label: 'Notify' },
+    { id: 'retry',    position: { x: 0, y: 0 }, size: { width: 130, height: 52 }, label: 'Retry' },
+  ],
+  edges: [
+    { id: 'e1', source: 'ingest',   target: 'parse' },
+    { id: 'e2', source: 'parse',    target: 'validate' },
+    { id: 'e3', source: 'validate', target: 'enrich' },
+    { id: 'e4', source: 'validate', target: 'retry' },
+    { id: 'e5', source: 'enrich',   target: 'score' },
+    { id: 'e6', source: 'score',    target: 'store' },
+    { id: 'e7', source: 'score',    target: 'index' },
+    { id: 'e8', source: 'store',    target: 'notify' },
+    { id: 'e9', source: 'index',    target: 'notify' },
+  ],
+};
+
+// NOTE: EVERY node starts at (0,0) — piled on top of each other. That is deliberate.
+// If `engine.layout()` were the no-op it used to be (it required a
+// `setLayoutService()` call that nothing in the codebase ever made), this page would
+// render nine nodes in a single stack and every assertion below would fail loudly.
+
+defineDemo({
+  name: 'Auto layout',
+  blurb: 'One graph, six engines, one call: engine.layout(name). All nine nodes start stacked at (0,0) — if layout were a no-op you would see it.',
+  howTo: [
+    'Click through the engine buttons — dagre, elk, layered, tree, force: the nine pipeline nodes (all authored stacked at 0,0) rearrange into a genuinely different picture per engine, and the view re-fits each time.',
+    'Watch the readout after every click: it names the algorithm that ran, its seed, and "0 overlaps".',
+    'Click "auto": it holds a bake-off across the engines and the readout adds "chose=…" — the algorithm it picked, by name.',
+    'After any switch, follow a few edges: every one re-routes to its nodes\' new positions — no stale routes left over from the previous layout.',
+  ],
+  reactflow: 'Auto Layout',
+  pro: true,
+
+  async setup(ctx) {
+    const api = render(SPEC, ctx.host);
+    ctx.instance = api;
+    ctx.diagram = api.getModel();
+    ctx.engine = api.getEngine();
+
+    ctx.run = async (name) => {
+      const result = await ctx.engine.layout(name, { direction: 'LR', nodeSpacing: 40, rankSpacing: 90 });
+      api.renderNow();
+      api.fitView(50);
+      for (const b of document.querySelectorAll('#bar button')) {
+        b.setAttribute('aria-pressed', String(b.dataset.layout === name));
+      }
+      document.getElementById('readout').textContent =
+        `${result.algorithm}  seed=${result.seed}  ${overlaps(ctx.diagram).length} overlaps` +
+        (result.selection ? `  chose=${result.selection.chosen}` : '');
+      return result;
+    };
+
+    for (const b of document.querySelectorAll('#bar button')) {
+      b.addEventListener('click', () => ctx.run(b.dataset.layout));
+    }
+
+    await ctx.run('dagre');
+  },
+
+  async assert(ctx) {
+    // The stacked start is the control: prove the picture is not just "whatever the
+    // spec said". Every node was at (0,0).
+    const NAMES = ['dagre', 'elk', 'layered', 'tree', 'force', 'auto'];
+    const sigs = new Map();
+
+    for (const name of NAMES) {
+      // Re-stack before every run so each engine is judged on its own output and
+      // cannot be flattered by the last one's.
+      ctx.diagram.getNodes().forEach((n) => n.setPosition(0, 0));
+
+      const result = await ctx.run(name);
+
+      // 1. IT RAN, and it produced a coordinate for every node.
+      check(
+        result.nodePositions.size === 9,
+        `${name}: expected positions for 9 nodes, got ${result.nodePositions.size}`
+      );
+
+      // 2. IT COMMITTED. The result object is not the diagram; a layout that computes
+      //    beautiful coordinates and never writes them back is exactly the class of
+      //    bug this gallery exists to catch.
+      const stacked = ctx.diagram.getNodes().filter((n) => n.position.x === 0 && n.position.y === 0);
+      check(
+        stacked.length <= 1,
+        `${name}: ${stacked.length} nodes are still stacked at (0,0) — the layout did not reach the model`
+      );
+
+      // 3. NO TWO NODES OVERLAP. The single assertion that a layout is a layout.
+      const hits = overlaps(ctx.diagram);
+      check(hits.length === 0, `${name}: nodes overlap after layout — ${hits.join(', ')}`);
+
+      // 4. EVERY ENGINE PRODUCES A DIFFERENT PICTURE. All 17 LOD presets in this repo
+      //    once produced the identical image; "we support six layouts" has to mean six.
+      const sig = signature(ctx.diagram);
+      for (const [other, otherSig] of sigs) {
+        // `auto` legitimately picks one of the others and reproduces it exactly.
+        if (name === 'auto') continue;
+        check(sig !== otherSig, `${name} produced positions identical to ${other} — one of them is not running`);
+      }
+      sigs.set(name, sig);
+
+      // 5. DETERMINISM. Three adapters were seeded from Math.random(); the same graph
+      //    laid out twice must be byte-identical or nothing above is reproducible.
+      ctx.diagram.getNodes().forEach((n) => n.setPosition(0, 0));
+      await ctx.run(name);
+      checkEqual(signature(ctx.diagram), sig, `${name}: two identical runs produced different positions`);
+
+      // 6. THE PAINT AGREES. ctx.run ends in fitView, which flips the LOD tier —
+      //    the per-LOD VNode cache once served the PREVIOUS layout's routes there
+      //    (a single dirty flag guarded per-LOD entries), so every layout after
+      //    'force' painted spaghetti while the model was perfect ("the diagram is
+      //    destroyed", live report). Read the PAINTED d, not the model.
+      await ctx.tick(); await ctx.tick();
+      for (const l of ctx.diagram.getLinks()) {
+        const el = ctx.host.querySelector(`[data-link-id="${l.id}"] path.diagram-link`)
+          || ctx.host.querySelector(`[data-link-id="${l.id}"] path[d]`);
+        check(!!el, `${name}: link ${l.id} is not painted at all`);
+        if (!el) continue;
+        const nums = el.getAttribute('d').match(/-?[\d.]+/g).map(Number);
+        const s = ctx.diagram.getNode(l.sourceNodeId), t = ctx.diagram.getNode(l.targetNodeId);
+        const near = (px, py, n) => px > n.position.x - 30 && px < n.position.x + n.size.width + 30
+          && py > n.position.y - 30 && py < n.position.y + n.size.height + 30;
+        check(near(nums[0], nums[1], s) && near(nums[nums.length - 2], nums[nums.length - 1], t),
+          `${name}: painted edge ${l.id} does not touch its nodes — a stale route from a previous layout is on screen`);
+      }
+    }
+
+    // 6. `auto` must SHOW ITS WORKING — an auto-selector that cannot say why is a
+    //    support ticket.
+    const auto = await ctx.run('auto');
+    check(!!auto.selection, 'auto layout returned no selection report');
+    check(
+      typeof auto.selection.chosen === 'string' && auto.selection.chosen.length > 0,
+      `auto did not name the algorithm it chose (${JSON.stringify(auto.selection)})`
+    );
+    check(
+      Array.isArray(auto.selection.candidates) && auto.selection.candidates.length > 1,
+      'auto scored fewer than two candidates — it is not a bake-off'
+    );
+  },
+});
+</script>

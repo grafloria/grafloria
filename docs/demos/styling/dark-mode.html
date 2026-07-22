@@ -1,0 +1,220 @@
+<meta charset="utf-8">
+<title>Dark mode — Grafloria</title>
+<link rel="stylesheet" href="../shell/demo.css">
+<style>
+  .bar { display: flex; gap: 8px; align-items: center; padding: 10px 24px; border-bottom: 1px solid rgba(127,127,127,.25); flex-wrap: wrap; }
+  .bar button { padding: 6px 14px; border-radius: 6px; border: 1px solid rgba(127,127,127,.4); background: transparent; color: inherit; cursor: pointer; font: inherit; }
+  .bar button[aria-pressed="true"] { background: #2563eb; border-color: #2563eb; color: #fff; }
+  .note { font-size: 12px; opacity: .75; margin-left: auto; }
+  #canvas { height: calc(100vh - 160px); }
+  code { background: rgba(127,127,127,.15); padding: 1px 5px; border-radius: 4px; }
+</style>
+<header id="demo-head"></header>
+<div class="bar">
+  <strong style="font-size:12px">colour mode:</strong>
+  <button id="m-light"  aria-pressed="false">light</button>
+  <button id="m-dark"   aria-pressed="false">dark</button>
+  <button id="m-system" aria-pressed="true">system</button>
+  <span class="note">
+    <code>system</code> follows the OS — and an OS <em>accessibility</em> preference
+    (<code>prefers-contrast: more</code>) upgrades us to high-contrast rather than flashing light at you.
+  </span>
+</div>
+<div class="bar" style="border-top:0">
+  <strong style="font-size:12px">pretend the OS says:</strong>
+  <button id="os-none" aria-pressed="true">nothing</button>
+  <button id="os-dark" aria-pressed="false">prefers-color-scheme: dark</button>
+  <button id="os-contrast" aria-pressed="false">prefers-contrast: more</button>
+  <span class="note" id="resolved">resolved theme: —</span>
+</div>
+<div id="canvas"></div>
+<script type="module">
+import {
+  render, LIGHT_THEME, DARK_THEME, DEFAULT_THEME_SET,
+  HIGH_CONTRAST_LIGHT_THEME, HIGH_CONTRAST_DARK_THEME,
+  MEDIA_PREFERS_DARK, MEDIA_PREFERS_CONTRAST,
+} from '../shell/grafloria.js';
+import { defineDemo, check, checkChanged } from '../shell/demo.js';
+
+// ---------------------------------------------------------------------------
+// The OS is the input to this feature, and a demo that cannot vary its input
+// proves nothing. So we STUB `matchMedia` — the exact seam the renderer reads —
+// and let the page pretend to be an OS. Everything downstream of that seam is
+// the real, shipped code path.
+// ---------------------------------------------------------------------------
+const osPrefs = { dark: false, contrast: false };
+const listeners = new Set();
+
+window.matchMedia = (query) => {
+  const matches = () =>
+    query === MEDIA_PREFERS_DARK ? osPrefs.dark
+    : query === MEDIA_PREFERS_CONTRAST ? osPrefs.contrast
+    : false;
+  const mql = {
+    media: query,
+    get matches() { return matches(); },
+    addEventListener: (_, cb) => listeners.add(cb),
+    removeEventListener: (_, cb) => listeners.delete(cb),
+    addListener: (cb) => listeners.add(cb),
+    removeListener: (cb) => listeners.delete(cb),
+    onchange: null,
+    dispatchEvent: () => false,
+  };
+  return mql;
+};
+/** Tell the renderer the OS changed its mind — the same event a real OS fires. */
+function fireOsChange() {
+  for (const cb of listeners) cb({ matches: true });
+}
+
+const SPEC = {
+  nodes: [
+    { id: 'a', position: { x: 80,  y: 90 },  size: { width: 190, height: 78 }, data: { label: 'Ingest' } },
+    { id: 'b', position: { x: 400, y: 90 },  size: { width: 190, height: 78 }, data: { label: 'Transform' } },
+    { id: 'c', position: { x: 720, y: 90 },  size: { width: 190, height: 78 }, data: { label: 'Publish' } },
+    { id: 'd', position: { x: 400, y: 250 }, size: { width: 190, height: 78 }, data: { label: 'Quarantine' } },
+  ],
+  edges: [
+    { id: 'e1', source: 'a', target: 'b' },
+    { id: 'e2', source: 'b', target: 'c' },
+    { id: 'e3', source: 'b', target: 'd' },
+  ],
+};
+
+/** The paint the browser ACTUALLY computed for a node — not what we asked for. */
+const nodeFill = (host) =>
+  getComputedStyle(host.querySelector('rect.diagram-node')).fill;
+const nodeStroke = (host) =>
+  getComputedStyle(host.querySelector('rect.diagram-node')).stroke;
+
+defineDemo({
+  name: 'Dark mode',
+  blurb: 'Light, dark — and system, where an OS accessibility preference upgrades us to high-contrast instead of flashing light at the user.',
+  howTo: [
+    'Click "dark" in the colour-mode bar — the palette flips, and the "resolved:" readout reports the fill/stroke the browser actually painted.',
+    'Click "system" with the pretend-OS row on "nothing": you get the light theme.',
+    'Still on system, click "prefers-color-scheme: dark" — the diagram goes dark without you touching the mode.',
+    'Click "prefers-contrast: more" — an accessibility ask: the theme upgrades to HIGH CONTRAST (pure black node strokes), not plain light.',
+    'Now click "light" in the mode bar: an explicit choice beats whatever the OS says.',
+  ],
+  reactflow: 'Dark Mode',
+
+  async setup(ctx) {
+    // `colorMode: 'system'` is the whole feature. It was built, tested, and
+    // NOT FORWARDED by createDiagram() until wave 10 — see the [wave10-fix].
+    const api = render(SPEC, ctx.host, {
+      colorMode: 'system',
+      themes: DEFAULT_THEME_SET,
+    });
+    ctx.instance = api;
+    ctx.diagram = api.getModel();
+
+    const modeButtons = {
+      light: document.getElementById('m-light'),
+      dark: document.getElementById('m-dark'),
+      system: document.getElementById('m-system'),
+    };
+    const osButtons = {
+      none: document.getElementById('os-none'),
+      dark: document.getElementById('os-dark'),
+      contrast: document.getElementById('os-contrast'),
+    };
+    const resolved = document.getElementById('resolved');
+
+    const paint = () => {
+      resolved.textContent = `resolved: node fill ${nodeFill(ctx.host)}, stroke ${nodeStroke(ctx.host)}`;
+    };
+
+    ctx.setMode = (mode) => {
+      api.setColorMode(mode, DEFAULT_THEME_SET);
+      // Flip the PANE with the mode — RF's dark example does this via a CSS
+      // class on the wrapper; the certify pass read dark-nodes-on-white as half
+      // a dark mode. Read the truth off the resolved theme vars.
+      requestAnimationFrame(() => {
+        const rect = ctx.host.querySelector('rect.diagram-node');
+        const fill = rect ? getComputedStyle(rect).fill : '';
+        const m = fill.match(/\d+/g);
+        const lum = m ? (0.299 * m[0] + 0.587 * m[1] + 0.114 * m[2]) : 255;
+        ctx.host.style.background = lum < 128 ? '#0b1220' : '';
+      });
+      for (const [k, b] of Object.entries(modeButtons)) b.setAttribute('aria-pressed', String(k === mode));
+      api.renderNow();
+      paint();
+    };
+    ctx.setOs = (which) => {
+      osPrefs.dark = which === 'dark';
+      osPrefs.contrast = which === 'contrast';
+      for (const [k, b] of Object.entries(osButtons)) b.setAttribute('aria-pressed', String(k === which));
+      fireOsChange();
+      api.renderNow();
+      paint();
+    };
+
+    for (const [k, b] of Object.entries(modeButtons)) b.onclick = () => ctx.setMode(k);
+    for (const [k, b] of Object.entries(osButtons)) b.onclick = () => ctx.setOs(k);
+
+    await ctx.tick();
+    paint();
+  },
+
+  // Money shot: the DARK palette itself (assert round-trips back to light).
+  async showcase(ctx) {
+    ctx.setMode('dark');
+    ctx.instance.renderNow();
+  },
+
+  async assert(ctx) {
+    const api = ctx.instance;
+
+    // 0. `colorMode` survived the trip into the renderer. It did not, for two waves.
+    check(api.getColorMode() === 'system', `colorMode did not reach the renderer: ${api.getColorMode()}`);
+
+    // 1. SYSTEM, OS silent → the light theme.
+    ctx.setOs('none');
+    ctx.setMode('system');
+    await ctx.tick();
+    const light = nodeFill(ctx.host);
+    check(light === 'rgb(255, 255, 255)', `system + quiet OS should give the LIGHT theme's white node, got ${light}`);
+
+    // 2. SYSTEM, OS says dark → the dark theme, WITHOUT the caller touching a theme.
+    ctx.setOs('dark');
+    await ctx.tick();
+    const dark = nodeFill(ctx.host);
+    checkChanged(light, dark, 'the OS asked for dark and the diagram did not change');
+    check(dark !== 'rgb(255, 255, 255)', `dark mode still painting a white node: ${dark}`);
+
+    // 3. THE ONE THAT MATTERS. The OS says "I need more contrast" — an
+    //    ACCESSIBILITY preference, not an aesthetic one. We must not answer it
+    //    with the ordinary light theme. We must upgrade to HIGH CONTRAST.
+    ctx.setOs('contrast');
+    await ctx.tick();
+    const hc = nodeFill(ctx.host);
+    const hcStroke = nodeStroke(ctx.host);
+
+    check(
+      hcStroke === 'rgb(0, 0, 0)',
+      `prefers-contrast:more must upgrade to the high-contrast theme, whose node stroke is pure black.\n` +
+      `    got stroke ${hcStroke} (fill ${hc}).\n` +
+      `    A light-theme stroke here means the a11y preference was ignored.`
+    );
+    check(
+      hcStroke !== nodeStroke(ctx.host) || hc === 'rgb(255, 255, 255)',
+      'high-contrast light should keep a white fill with a black stroke'
+    );
+
+    // 4. And an EXPLICIT choice still wins over the OS — a user who picked dark
+    //    in OUR ui gets dark, whatever the OS says.
+    ctx.setOs('none');
+    ctx.setMode('dark');
+    await ctx.tick();
+    const pinnedDark = nodeFill(ctx.host);
+    check(
+      pinnedDark !== 'rgb(255, 255, 255)',
+      `an explicit 'dark' must override a quiet OS, got ${pinnedDark}`
+    );
+
+    // Leave it on system for whoever is looking at the page.
+    ctx.setMode('system');
+  },
+});
+</script>

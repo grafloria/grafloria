@@ -1,0 +1,94 @@
+<meta charset="utf-8">
+<title>Minimap &amp; controls — Grafloria</title>
+<link rel="stylesheet" href="../shell/demo.css">
+<style>
+  .note { font-size: 12px; opacity: .8; padding: 10px 24px; border-bottom: 1px solid rgba(127,127,127,.25); line-height: 1.6; }
+  code { background: rgba(127,127,127,.15); padding: 1px 5px; border-radius: 4px; }
+  #canvas { height: calc(100vh - 190px); position: relative; }
+</style>
+<header id="demo-head"></header>
+<div class="note">
+  <code>attachCanvasPlugins()</code> mounts a live <b>minimap</b> (real node rects + a camera
+  rectangle), <b>zoom / fit controls</b>, and a dotted <b>background</b> — one call over the
+  instance, all wired to the engine's store.
+</div>
+<div id="canvas"></div>
+<script type="module">
+import { render, attachCanvasPlugins } from '../shell/grafloria.js';
+import { defineDemo, check, checkChanged } from '../shell/demo.js';
+
+const SPEC = {
+  nodes: [
+    { id: 'a', label: 'A', position: { x: 60,  y: 80 },  size: { width: 120, height: 60 } },
+    { id: 'b', label: 'B', position: { x: 300, y: 80 },  size: { width: 120, height: 60 } },
+    { id: 'c', label: 'C', position: { x: 540, y: 80 },  size: { width: 120, height: 60 } },
+    { id: 'd', label: 'D', position: { x: 300, y: 240 }, size: { width: 120, height: 60 } },
+  ],
+  edges: [{ id: 'e1', source: 'a', target: 'b' }, { id: 'e2', source: 'b', target: 'c' }, { id: 'e3', source: 'b', target: 'd' }],
+};
+
+const miniNodeCount = (mini) => mini.element.querySelectorAll('rect[data-node-id]').length;
+
+defineDemo({
+  name: 'Minimap & controls',
+  blurb: 'A live minimap that mirrors the diagram, plus zoom/fit controls and a dotted background — all from one attachCanvasPlugins() call.',
+  howTo: [
+    'Find the minimap in the bottom-right corner: one rect per node plus a tinted camera rectangle.',
+    'Drag a node — its rect in the minimap tracks the move live.',
+    'Click (or drag) inside the minimap — the camera centres where you point and the main canvas follows.',
+    'Use the control strip bottom-left (hover the buttons for names): "Zoom in" / "Zoom out" zoom the canvas, and the minimap\'s camera rectangle resizes to match.',
+    'Drag empty canvas to pan far off the content, then click "Fit view" — the camera flies back to frame the whole diagram.',
+  ],
+  reactflow: 'MiniMap / Controls',
+
+  async setup(ctx) {
+    const api = render(SPEC, ctx.host);
+    ctx.instance = api;
+    api.renderNow();
+    ctx.plugins = attachCanvasPlugins(api, { background: { variant: 'dots' }, minimap: true, controls: true });
+    await ctx.tick();
+  },
+
+  async assert(ctx) {
+    const host = ctx.host;
+    const { minimap, controls, background } = ctx.plugins;
+
+    // 1. All three plugins actually mounted DOM.
+    check(!!minimap && !!host.querySelector('.grafloria-minimap'), 'the minimap did not mount');
+    check(!!controls && !!host.querySelector('.grafloria-controls'), 'the controls did not mount');
+    check(!!background, 'the background plugin did not mount');
+
+    // 2. THE MINIMAP MIRRORS THE DIAGRAM: one rect per node, plus a camera rect.
+    //    A minimap that just draws a grey box would pass a weaker test; this counts.
+    check(miniNodeCount(minimap) === 4, `the minimap shows ${miniNodeCount(minimap)} node rects, expected 4`);
+    check(!!minimap.element.querySelector('.grafloria-minimap-viewport'), 'the minimap has no camera/viewport rectangle');
+
+    // 3. It STAYS in sync: add a node and the minimap gains a rect.
+    ctx.instance.setNodes([...SPEC.nodes, { id: 'e', label: 'E', position: { x: 540, y: 240 }, size: { width: 120, height: 60 } }]);
+    ctx.instance.renderNow();
+    await ctx.tick();
+    check(miniNodeCount(minimap) === 5, `after adding a node the minimap shows ${miniNodeCount(minimap)} rects, expected 5`);
+
+    // 4. THE CONTROLS DO SOMETHING: the zoom-in button actually zooms.
+    const buttons = host.querySelectorAll('.grafloria-controls button');
+    check(buttons.length >= 2, `expected zoom controls, found ${buttons.length} buttons`);
+    const zoomBefore = ctx.instance.viewport.getZoom();
+    // The first control is zoom-in.
+    buttons[0].click();
+    await ctx.tick();
+    const zoomAfter = ctx.instance.viewport.getZoom();
+    checkChanged(zoomBefore, zoomAfter, 'clicking the zoom-in control did not change the zoom');
+    check(zoomAfter > zoomBefore, `zoom-in should INCREASE zoom (${zoomBefore} -> ${zoomAfter})`);
+
+    // 5. Fit-view frames the content: pan far away, then fit — the viewport must
+    //    move back to encompass the diagram.
+    ctx.instance.viewport.pan(600, 600);
+    const panned = JSON.stringify(ctx.instance.viewport.getViewport());
+    const fit = [...buttons].find((b) => /fit/i.test(b.getAttribute('aria-label') || b.title || ''));
+    check(!!fit, 'no fit-view control found');
+    fit.click();
+    await ctx.tick();
+    checkChanged(panned, JSON.stringify(ctx.instance.viewport.getViewport()), 'fit-view did nothing to the panned-away viewport');
+  },
+});
+</script>

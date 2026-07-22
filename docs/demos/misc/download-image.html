@@ -1,0 +1,105 @@
+<meta charset="utf-8">
+<title>Download image — Grafloria</title>
+<link rel="stylesheet" href="../shell/demo.css">
+<style>
+  .bar { display: flex; gap: 8px; align-items: center; padding: 10px 24px; border-bottom: 1px solid rgba(127,127,127,.25); flex-wrap: wrap; }
+  .bar button { padding: 6px 14px; border-radius: 6px; border: 1px solid rgba(127,127,127,.4); background: transparent; color: inherit; cursor: pointer; font: inherit; }
+  .note { font-size: 12px; opacity: .75; margin-left: auto; }
+  #canvas { height: calc(100vh - 210px); }
+  code { background: rgba(127,127,127,.15); padding: 1px 5px; border-radius: 4px; }
+</style>
+<header id="demo-head"></header>
+<div class="bar">
+  <button id="dl-png">download PNG</button>
+  <button id="dl-svg">download SVG</button>
+  <span class="note">Exports the VNode tree — labels, arrowheads, shadows and all — not a screenshot.</span>
+</div>
+<div id="canvas"></div>
+<script type="module">
+import { render } from '../shell/grafloria.js';
+import { defineDemo, check } from '../shell/demo.js';
+
+const SHADOW = { offsetX: 3, offsetY: 4, blur: 5, color: '#1e293b' };
+const SPEC = {
+  nodes: [
+    { id: 'ingest',   label: 'Ingest',    position: { x: 60,  y: 100 }, size: { width: 170, height: 78 }, style: { fill: '#dbeafe', stroke: '#2563eb', strokeWidth: 2 } },
+    { id: 'transform',label: 'Transform', position: { x: 340, y: 100 }, size: { width: 170, height: 78 }, style: { fill: '#ffffff', stroke: '#0f172a', strokeWidth: 2, shadow: SHADOW } },
+    { id: 'publish',  label: 'Publish',   position: { x: 620, y: 100 }, size: { width: 170, height: 78 }, style: { fill: '#dcfce7', stroke: '#16a34a', strokeWidth: 2 } },
+  ],
+  edges: [
+    { id: 'e1', source: 'ingest', target: 'transform', label: 'rows' },
+    { id: 'e2', source: 'transform', target: 'publish' },
+  ],
+};
+
+const download = (href, name) => { const a = document.createElement('a'); a.href = href; a.download = name; a.click(); };
+
+/** Draw a data-URL raster to a canvas and read its pixels back. */
+async function pixelsOf(dataUrl) {
+  const img = new Image();
+  img.src = dataUrl;
+  await img.decode();
+  const c = document.createElement('canvas');
+  c.width = img.naturalWidth || img.width;
+  c.height = img.naturalHeight || img.height;
+  const cx = c.getContext('2d');
+  cx.drawImage(img, 0, 0);
+  return { data: cx.getImageData(0, 0, c.width, c.height).data, w: c.width, h: c.height };
+}
+
+defineDemo({
+  name: 'Download image',
+  blurb: 'PNG and SVG straight from the VNode tree — labels, arrowheads and shadows included — and the raster is provably not blank and not black.',
+  howTo: [
+    'Click "download PNG" — diagram.png downloads at 2× scale. Open it: node labels, arrowheads and the Transform node\'s drop shadow are all in the image, which is neither blank nor black.',
+    'Click "download SVG" and open diagram.svg in a text editor — the labels are real <text>, the arrowhead a <marker>, the shadow a filter: the VNode tree serialized, not a screenshot.',
+    'Drag a node somewhere else and download again — the exports track the live model.',
+  ],
+  reactflow: 'Download Image',
+
+  async setup(ctx) {
+    const api = render(SPEC, ctx.host);
+    ctx.instance = api;
+    api.renderNow();
+    // Feedback beside the buttons: a download alone leaves the PAGE unchanged,
+    // which reads as "nothing happened" (and the DEAD-BUTTON gate agrees).
+    const note = (m) => { let el = document.getElementById('dl-note'); if (!el) { el = document.createElement('span'); el.id = 'dl-note'; el.style.cssText = 'font:12px ui-monospace,monospace;opacity:.8;margin-left:8px'; document.getElementById('dl-png').parentElement.appendChild(el); } el.textContent = m; };
+    document.getElementById('dl-png').onclick = async () => { const d = await api.export('png', { scale: 2 }); download(d, 'diagram.png'); note(`diagram.png saved (${Math.round(d.length * 3 / 4 / 1024)} KB)`); };
+    document.getElementById('dl-svg').onclick = async () => { const svg = await api.export('svg'); download('data:image/svg+xml;charset=utf-8,' + encodeURIComponent(svg), 'diagram.svg'); note(`diagram.svg saved (${Math.round(svg.length / 1024)} KB)`); };
+    await ctx.tick();
+  },
+
+  async assert(ctx) {
+    const api = ctx.instance;
+
+    // ---- SVG: the content is really THERE, not a bitmap of it ----------------
+    const svg = await api.export('svg');
+    check(svg.trimStart().startsWith('<svg') || svg.includes('<svg'), 'export("svg") did not return an <svg> document');
+    // The node LABELS survived into the vector — the commonest thing an exporter drops.
+    for (const label of ['Ingest', 'Transform', 'Publish']) {
+      check(svg.includes(label), `the exported SVG is missing the node label "${label}" — labels were dropped on export`);
+    }
+    // An ARROWHEAD marker and a SHADOW filter made it in too.
+    check(/<marker|marker-end|url\(#/.test(svg), 'the exported SVG has no arrowhead marker');
+    check(svg.includes('feDropShadow') || svg.includes('filter'), 'the exported SVG lost the drop-shadow filter');
+
+    // ---- PNG: NOT BLANK and NOT BLACK ---------------------------------------
+    // Exporting black was a real bug (JPEG-on-transparent). Sample the pixels.
+    const png = await api.export('png', { scale: 2 });
+    check(png.startsWith('data:image/png'), `export("png") did not return a PNG data URL: ${png.slice(0, 30)}`);
+    const { data, w, h } = await pixelsOf(png);
+    check(w > 0 && h > 0, 'the PNG decoded to a zero-size image');
+
+    let opaque = 0, nonBlack = 0, nonWhite = 0;
+    for (let i = 0; i < data.length; i += 4) {
+      const [r, g, b, a] = [data[i], data[i + 1], data[i + 2], data[i + 3]];
+      if (a > 0) opaque++;
+      if (a > 0 && (r > 8 || g > 8 || b > 8)) nonBlack++;
+      if (a > 0 && (r < 250 || g < 250 || b < 250)) nonWhite++;
+    }
+    check(opaque > 100, `the PNG is essentially blank — only ${opaque} opaque pixels`);
+    check(nonBlack > 100, `the PNG is essentially BLACK — only ${nonBlack} non-black pixels (the JPEG-black bug shape)`);
+    check(nonWhite > 100, `the PNG is essentially blank white — only ${nonWhite} pixels carry any ink`);
+  },
+});
+</script>

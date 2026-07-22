@@ -1,0 +1,248 @@
+<meta charset="utf-8">
+<title>Node resize gesture — Grafloria</title>
+<link rel="stylesheet" href="../shell/demo.css">
+<header id="demo-head"></header>
+<div id="canvas"></div>
+<script type="module">
+import { render } from '../shell/grafloria.js';
+import { defineDemo, check } from '../shell/demo.js';
+
+// The handles are PAINTED BY THE RENDERER now (g.resize-tool-layer: 4 corner
+// dots + 4 edge lines, constant screen size, per-handle cursors) — this page
+// used to hand-roll an HTML overlay from the same geometry, and the live audit
+// found the mounted SVG painting straight over it: the user saw NO corner
+// affordance at all. The overlay is gone; what you see is the product.
+
+defineDemo({
+  name: 'Node resize gesture',
+  blurb: 'Select a node and the renderer paints the React-Flow-style resizer: four corner dots and four edge lines, each with its own resize cursor, driven by a REAL pointer drag through the default pipeline. Corners resize both axes and pin the opposite corner; an edge line is grabbable ANYWHERE along the border and moves just that edge; the port keeps its glyph (that press draws a wire); min/max/aspect clamp DURING the gesture; one release is one undo step.',
+  howTo: [
+    'Click the "80–260 wide" node — a dashed ring plus the painted resizer appear: white corner dots and solid edge lines, drawn by the renderer itself (no demo overlay).',
+    'Hover the handles: each corner shows its diagonal resize cursor (nwse/nesw), each edge its axis cursor (ns/ew). The port circles at the edge midpoints keep the crosshair — a press there draws a wire, never resizes.',
+    'Press the bottom-right corner dot and drag outward — the node resizes live, clamped to its 80–260 × 60–200 limits mid-drag, and the cursor stays nwse-resize for the whole drag.',
+    'Grab the TOP-LEFT corner instead — it resizes from there too, and the OPPOSITE (bottom-right) corner stays pinned: every corner is a live handle.',
+    'Grab an edge line anywhere ALONG the border (not on the port circle) — only that edge follows the pointer.',
+    'Try to drag past the max: the box refuses to grow beyond 260×200 while the pointer keeps going.',
+    'Resize the second node — its aspect ratio stays locked at 1.6 whichever handle you pull, corner OR edge.',
+    'Zoom in with ⌘/Ctrl+wheel: the dots and lines hold the same on-screen size at any zoom, like React Flow\'s autoScale.',
+    'Press ⌘Z / Ctrl+Z — the whole resize gesture is ONE undo step.',
+  ],
+  reactflow: 'Node Resizer',
+
+  async setup(ctx) {
+    const api = render({
+      nodes: [
+        { id: 'clamp', position: { x: 140, y: 130 }, size: { width: 160, height: 100 },
+          data: { label: '80–260 wide' },
+          metadata: { sizing: { minWidth: 80, minHeight: 60, maxWidth: 260, maxHeight: 200 } } },
+        { id: 'ratio', position: { x: 560, y: 130 }, size: { width: 160, height: 100 },
+          data: { label: 'aspect 1.6' },
+          metadata: { sizing: { aspectLock: true } } },   // locks to 160/100 = 1.6
+      ],
+      edges: [],
+    }, ctx.host);
+    ctx.instance = api;
+    ctx.diagram = api.getModel();
+
+    // A real pointer event, pointerType 'mouse', through the PUBLIC element. This is
+    // the whole point: the binder's pointer fork routes mouse/pen down the same
+    // ladder, so a synthetic PointerEvent drives EXACTLY what a mouse does.
+    ctx.fire = (type, world, buttons = 1) => {
+      const rect = ctx.host.getBoundingClientRect();
+      const c = api.viewport.worldToClient(world.x, world.y, rect);
+      ctx.host.dispatchEvent(new PointerEvent(({ mousedown: 'pointerdown', mousemove: 'pointermove', mouseup: 'pointerup' })[type] ?? type, {
+        bubbles: true, cancelable: true, pointerType: 'mouse', pointerId: 1,
+        isPrimary: true, button: type === 'pointermove' ? -1 : 0,
+        buttons: type === 'pointerup' ? 0 : buttons,
+        clientX: c.x, clientY: c.y,
+      }));
+    };
+    // The SE (bottom-right) corner handle of a node, in world coords.
+    ctx.handleSE = (id) => {
+      const n = ctx.diagram.getNode(id);
+      return { x: n.position.x + n.size.width, y: n.position.y + n.size.height };
+    };
+    // The NW (top-left) corner handle — dragging it resizes AND moves the origin,
+    // which is why RF corner-resize pins the opposite corner instead of the origin.
+    ctx.handleNW = (id) => {
+      const n = ctx.diagram.getNode(id);
+      return { x: n.position.x, y: n.position.y };
+    };
+    // Select a node WITHOUT resizing: press+release on its centre.
+    ctx.select = async (id) => {
+      const n = ctx.diagram.getNode(id);
+      const centre = { x: n.position.x + n.size.width / 2, y: n.position.y + n.size.height / 2 };
+      ctx.fire('pointerdown', centre);
+      ctx.fire('pointerup', centre);
+      await ctx.tick();
+    };
+
+    await ctx.tick();
+  },
+
+  async assert(ctx) {
+    const m = ctx.diagram;
+
+    // ---- 0. THE RENDERER PAINTS THE RESIZER (RF parity: dots + lines) --------
+    // Selecting must produce the painted tool layer: 4 corner dots + 4 edge
+    // lines, each advertising its cursor. This was THE audit finding — the
+    // binder hit-tested 8 handles no layer painted (the page's old hand-rolled
+    // overlay sat BENEATH the mounted SVG, so the user saw nothing).
+    await ctx.select('clamp');
+    ctx.instance.renderNow();
+    await ctx.tick();
+    const clamp = m.getNode('clamp');
+    check(clamp.isSelected(), 'the node must be selected before its handles exist');
+    const dots = ctx.host.querySelectorAll('.resize-tool-layer .resize-handle-dot');
+    const lines = ctx.host.querySelectorAll('.resize-tool-layer .resize-edge-line');
+    check(dots.length === 4, `the renderer should paint 4 corner dots when selected, found ${dots.length}`);
+    check(lines.length === 4, `the renderer should paint 4 edge lines when selected, found ${lines.length}`);
+
+    // ---- 0b. PER-HANDLE CURSORS (nwse/nesw/ns/ew); the port keeps its crosshair
+    const se0 = ctx.handleSE('clamp');
+    ctx.fire('pointermove', se0);
+    check(ctx.host.style.cursor === 'nwse-resize',
+      `hovering the SE corner should show nwse-resize, host cursor is "${ctx.host.style.cursor}"`);
+    ctx.fire('pointermove', { x: clamp.position.x + clamp.size.width * 0.25, y: clamp.position.y + clamp.size.height });
+    check(ctx.host.style.cursor === 'ns-resize',
+      `hovering the bottom edge line should show ns-resize, host cursor is "${ctx.host.style.cursor}"`);
+    ctx.fire('pointermove', { x: clamp.position.x + clamp.size.width, y: clamp.position.y + clamp.size.height / 2 });
+    await ctx.tick();
+    check(ctx.host.style.cursor === 'crosshair',
+      `hovering the side port should keep the crosshair, host cursor is "${ctx.host.style.cursor}"`);
+
+    // ---- 0c. HANDLES HOLD SCREEN SIZE ACROSS ZOOM (RF autoScale) ------------
+    const dotW = (el) => parseFloat(el.getAttribute('width'));
+    const w1 = dotW(ctx.host.querySelector('.resize-handle-dot'));
+    ctx.instance.viewport.setZoom(2);
+    ctx.instance.renderNow();
+    await ctx.tick();
+    const w2 = dotW(ctx.host.querySelector('.resize-handle-dot'));
+    check(Math.abs(w2 - w1 / 2) < 0.01,
+      `at zoom 2 a dot's world size should halve (constant screen size): ${w1} → ${w2}`);
+    ctx.instance.viewport.setZoom(1);
+    ctx.instance.renderNow();
+    await ctx.tick();
+
+    // ---- 1. MAX clamp, applied DURING the drag (you cannot drag past it) --------
+    const se = ctx.handleSE('clamp');
+    ctx.fire('pointerdown', { x: se.x, y: se.y });
+    ctx.fire('pointermove', { x: se.x + 1000, y: se.y + 1000 });  // haul FAR past the 260/200 cap
+    ctx.instance.renderNow();
+    check(clamp.size.width === 260, `width should be capped at its 260 max MID-DRAG, is ${clamp.size.width}`);
+    check(clamp.size.height === 200, `height should be capped at its 200 max MID-DRAG, is ${clamp.size.height}`);
+    ctx.fire('pointerup', { x: se.x + 1000, y: se.y + 1000 });
+    // Let the release's async command commit land before the next gesture on
+    // this node — the commit re-applies the gesture's final size, and a
+    // back-to-back synthetic gesture (no event-loop turn, humanly impossible)
+    // would otherwise see that re-apply stomp its own live mutation.
+    await ctx.tick();
+
+    // The node grew and its NW corner (the anchored edge) stayed put.
+    check(clamp.position.x === 140 && clamp.position.y === 130, 'the anchored NW corner must not move');
+
+    // ---- 2. MIN clamp: dragging inward floors at the min, never past 0 ----------
+    const se2 = ctx.handleSE('clamp');
+    ctx.fire('pointerdown', { x: se2.x, y: se2.y });
+    ctx.fire('pointermove', { x: clamp.position.x - 500, y: clamp.position.y - 500 });
+    ctx.instance.renderNow();
+    check(clamp.size.width === 80, `width should floor at its 80 min, is ${clamp.size.width}`);
+    check(clamp.size.height === 60, `height should floor at its 60 min, is ${clamp.size.height}`);
+    ctx.fire('pointerup', { x: clamp.position.x - 500, y: clamp.position.y - 500 });
+    await ctx.tick();   // let the commit land (see assert 1)
+
+    // ---- 2b. EVERY CORNER is a handle: the NW corner resizes too, and pins the
+    //     OPPOSITE (SE) corner. RF's resizer isn't a single bottom-right grip —
+    //     grab any of the four corners and the box grows from there, the far
+    //     corner staying put. (Node is at its 80×60 floor, anchored at 140,130.)
+    const seFixed = { x: clamp.position.x + clamp.size.width, y: clamp.position.y + clamp.size.height }; // (220,190)
+    const nw = ctx.handleNW('clamp');
+    ctx.fire('pointerdown', { x: nw.x, y: nw.y });
+    ctx.fire('pointermove', { x: nw.x - 80, y: nw.y - 60 });   // haul the TOP-LEFT corner out
+    ctx.instance.renderNow();
+    check(clamp.size.width > 80 && clamp.size.height > 60,
+      `dragging the NW handle should grow the box from that corner (is ${clamp.size.width}×${clamp.size.height})`);
+    check(clamp.position.x < 140 && clamp.position.y < 130,
+      `the NW corner (and the node origin) should have moved up-left (pos ${clamp.position.x},${clamp.position.y})`);
+    check(Math.abs((clamp.position.x + clamp.size.width) - seFixed.x) < 1 &&
+          Math.abs((clamp.position.y + clamp.size.height) - seFixed.y) < 1,
+      `the OPPOSITE (SE) corner must stay pinned at ${seFixed.x},${seFixed.y} (is ${clamp.position.x + clamp.size.width},${clamp.position.y + clamp.size.height})`);
+    ctx.fire('pointerup', { x: nw.x - 80, y: nw.y - 60 });
+    await ctx.tick();   // let the commit land (see assert 1)
+
+    // ---- 2c. EDGE LINES are grabbable ANYWHERE along the border (the audit's
+    //     headline defect: side resize was 100% unreachable — every aimed press
+    //     either missed the old 6px midpoint dot or was swallowed by the port).
+    //     A press 25% along the bottom edge must RESIZE that edge — no wire, no
+    //     node drag, opposite edge pinned.
+    {
+      const w0 = clamp.size.width, h0 = clamp.size.height, top0 = clamp.position.y;
+      const grab = { x: clamp.position.x + w0 * 0.25, y: clamp.position.y + h0 };
+      ctx.fire('pointermove', grab);
+      ctx.fire('pointerdown', grab);
+      ctx.fire('pointermove', { x: grab.x, y: grab.y + 30 });
+      ctx.instance.renderNow();
+      check(!ctx.instance.interaction.getState().isConnecting,
+        'a press on the edge LINE (off the port) must not start a wire');
+      check(Math.abs(clamp.size.height - (h0 + 30)) < 1,
+        `dragging the bottom edge +30 should grow height ${h0}→${h0 + 30}, is ${clamp.size.height}`);
+      check(Math.abs(clamp.size.width - w0) < 0.01, `an edge drag moves ONE axis; width changed ${w0}→${clamp.size.width}`);
+      check(Math.abs(clamp.position.y - top0) < 0.01, 'the opposite (top) edge must stay pinned');
+      ctx.fire('pointerup', { x: grab.x, y: grab.y + 30 });
+      await ctx.tick();   // let the commit land (see assert 1)
+    }
+
+    // ---- 2d. …and the PORT still owns its glyph on that same border: pressing
+    //     the right-edge midpoint (the port anchor) draws a WIRE, never resizes.
+    {
+      const w0 = clamp.size.width, h0 = clamp.size.height;
+      const port = { x: clamp.position.x + clamp.size.width, y: clamp.position.y + clamp.size.height / 2 };
+      ctx.fire('pointermove', port);
+      await ctx.tick();
+      ctx.fire('pointerdown', port);
+      ctx.fire('pointermove', { x: port.x + 60, y: port.y + 20 });
+      check(ctx.instance.interaction.getState().isConnecting,
+        'pressing the port glyph on a selected node must start a connection');
+      check(clamp.size.width === w0 && clamp.size.height === h0,
+        `the port press must not resize (${w0}×${h0} → ${clamp.size.width}×${clamp.size.height})`);
+      ctx.fire('pointerup', { x: port.x + 60, y: port.y + 20 });
+      await ctx.tick();
+    }
+
+    // ---- 3. ASPECT lock holds the ratio through an arbitrary corner drag --------
+    await ctx.select('ratio');
+    const ratio = m.getNode('ratio');
+    const r = ctx.handleSE('ratio');
+    ctx.fire('pointerdown', { x: r.x, y: r.y });
+    ctx.fire('pointermove', { x: r.x + 120, y: r.y + 8 });   // mostly wider, barely taller
+    ctx.instance.renderNow();
+    const ar = ratio.size.width / ratio.size.height;
+    check(Math.abs(ar - 1.6) < 0.02, `aspect lock should hold the 1.6 ratio, got ${ar.toFixed(3)}`);
+    check(ratio.size.width > 160, 'the aspect node should actually have grown');
+    ctx.fire('pointerup', { x: r.x + 120, y: r.y + 8 });
+    await ctx.tick();   // let the commit land (see assert 1)
+
+    // ---- 3b. ASPECT holds on an EDGE drag too (RF applies keepAspectRatio to
+    //     its line controls; ours derives the cross axis, centred).
+    {
+      const grab = { x: ratio.position.x + ratio.size.width, y: ratio.position.y + ratio.size.height * 0.25 };
+      ctx.fire('pointermove', grab);
+      ctx.fire('pointerdown', grab);
+      ctx.fire('pointermove', { x: grab.x + 40, y: grab.y });
+      ctx.instance.renderNow();
+      const arEdge = ratio.size.width / ratio.size.height;
+      check(Math.abs(arEdge - 1.6) < 0.02,
+        `an E-edge drag on the aspect-locked node should hold 1.6, got ${arEdge.toFixed(3)}`);
+      ctx.fire('pointerup', { x: grab.x + 40, y: grab.y });
+    }
+
+    // ---- 4. ONE release == ONE undo step ----------------------------------------
+    const cm = ctx.instance.getEngine().commandManager;
+    await new Promise((res) => setTimeout(res, 0));   // execute() is async
+    check(cm.canUndo(), 'the resize must have committed an undoable command');
+    const wBefore = ratio.size.width;
+    await cm.undo();
+    check(ratio.size.width < wBefore, `undo should shrink the aspect node back, ${ratio.size.width} vs ${wBefore}`);
+  },
+});
+</script>

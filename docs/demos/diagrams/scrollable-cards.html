@@ -1,0 +1,172 @@
+<meta charset="utf-8">
+<title>Scrollable cards — Grafloria</title>
+<link rel="stylesheet" href="../shell/demo.css">
+<header id="demo-head"></header>
+<div id="canvas"></div>
+<script type="module">
+import { render, erDiagram, umlDiagram } from '../shell/grafloria.js';
+import { defineDemo, check } from '../shell/demo.js';
+
+// A card with far more rows than it should stretch to. Give the ER entity OR
+// the UML class a fixed `height` and the kit body scrolls; the binder DELEGATES
+// a wheel over the card to that body (card content is pointer-events:none, so
+// native scroll could never reach it) and CONTAINS it — reaching the bottom
+// never pans the diagram. This page shows BOTH: a 21-column ER table and a
+// many-member UML class, each capped and scrolling.
+const COLUMNS = [
+  { name: 'id', type: 'int', pk: true },
+  { name: 'sku', type: 'varchar' },
+  { name: 'name', type: 'varchar' },
+  { name: 'description', type: 'text' },
+  { name: 'category', type: 'varchar' },
+  { name: 'supplier_id', type: 'int', fk: true },
+  { name: 'unit_cost', type: 'decimal' },
+  { name: 'list_price', type: 'decimal' },
+  { name: 'currency', type: 'char(3)' },
+  { name: 'weight_kg', type: 'decimal' },
+  { name: 'width_cm', type: 'decimal' },
+  { name: 'height_cm', type: 'decimal' },
+  { name: 'depth_cm', type: 'decimal' },
+  { name: 'stock_on_hand', type: 'int' },
+  { name: 'stock_reserved', type: 'int' },
+  { name: 'reorder_level', type: 'int' },
+  { name: 'reorder_qty', type: 'int' },
+  { name: 'barcode', type: 'varchar' },
+  { name: 'is_active', type: 'bool' },
+  { name: 'created_at', type: 'timestamp' },
+  { name: 'updated_at', type: 'timestamp' },
+];
+
+const er = erDiagram({
+  entities: [
+    // Small table, no height: sized to content, no scrollbar. On the left so
+    // "supplies" runs straight across into the tall card.
+    { id: 'SUPPLIER', name: 'Supplier', position: { x: 120, y: 90 }, columns: [
+      { name: 'id', type: 'int', pk: true },
+      { name: 'name', type: 'varchar' },
+    ]},
+    // 21 columns, capped at 260px — the body scrolls.
+    { id: 'ITEM', name: 'Warehouse Item', position: { x: 460, y: 60 }, height: 260, columns: COLUMNS },
+  ],
+  relationships: [{ from: 'SUPPLIER', to: 'ITEM', label: 'supplies' }],
+});
+
+// The SAME height option on a UML class: 16 attributes + 10 methods capped at
+// 240px, and a small class that fits. Class cards scroll exactly like tables.
+const uml = umlDiagram({
+  classes: [
+    { id: 'Repo', name: 'Repository', position: { x: 460, y: 400 }, height: 240,
+      attributes: Array.from({ length: 16 }, (_, i) => `- field${i + 1}: string`),
+      methods: Array.from({ length: 10 }, (_, i) => `+ op${i + 1}(): void`) },
+    { id: 'Entity', name: 'Entity', position: { x: 120, y: 440 },
+      attributes: ['- id: int'], methods: ['+ save(): void'] },
+  ],
+  relationships: [{ from: 'Entity', to: 'Repo', kind: 'association' }],
+});
+
+// One canvas, both kit outputs — the injected stylesheet is idempotent.
+const SPEC = { nodes: [...er.nodes, ...uml.nodes], edges: [...er.edges, ...uml.edges] };
+
+defineDemo({
+  name: 'Scrollable cards',
+  blurb: 'BOTH an ER table (21 columns) and a UML class (26 members) capped at a fixed height: each card body scrolls. The wheel belongs to the card (the binder delegates — card content is pointer-events:none) and is CONTAINED: at the end of the range the canvas does not pan, so reaching the bottom never jumps the whole diagram. ctrl/⌘-wheel always zooms.',
+  howTo: [
+    'Put the cursor over the Warehouse Item ROWS and wheel: the rows scroll, the canvas does not move. Keep wheeling to the last row — the scroll stops there and the diagram stays put (the card contains the wheel). To pan the diagram, move the cursor off the card.',
+    'Do the same over the Repository CLASS below: its members scroll exactly the same way — the height option and the scroll behaviour are identical for ER tables and UML classes.',
+    'Hold ctrl (or ⌘) and wheel over either card: pinch-zoom always belongs to the canvas, never the rows/members.',
+    'Read the source: an erDiagram() and a umlDiagram() call merged onto one canvas; the tall entity adds `height: 260`, the tall class adds `height: 240`. The small table and small class omit it — cards that fit never scroll.',
+  ],
+  reactflow: 'Custom nodes + nowheel class',
+
+  async setup(ctx) {
+    const api = render(SPEC, ctx.host);
+    ctx.instance = api;
+    ctx.diagram = api.getModel();
+    api.fitView?.(40);
+    await ctx.tick();
+  },
+
+  async assert(ctx) {
+    const host = ctx.host;
+    const body = host.querySelector('[data-node-id="ITEM"] .axk-entity-body');
+    check(!!body, 'the tall entity should render a kit body element');
+
+    // 1. The fixed height binds and the body genuinely overflows.
+    const node = ctx.diagram.getNode('ITEM');
+    check(node.size.height === 260, `entity height option should bind (got ${node.size.height})`);
+    const range = body.scrollHeight - body.clientHeight;
+    check(range > 100, `21 rows in a 260px card must overflow (scroll range ${range}px)`);
+    const small = host.querySelector('[data-node-id="SUPPLIER"] .axk-entity-body');
+    check(small && small.scrollHeight <= small.clientHeight, 'the small table should NOT overflow');
+
+    // 1b. The UML CLASS scrolls by the SAME height option (this is the "does it
+    //     work for class diagrams too" proof).
+    const umlBody = host.querySelector('[data-node-id="Repo"] .axk-uml-body');
+    check(!!umlBody, 'the tall class should render a kit UML body element');
+    check(ctx.diagram.getNode('Repo').size.height === 240, 'class height option should bind');
+    const umlRange = umlBody.scrollHeight - umlBody.clientHeight;
+    check(umlRange > 100, `26 members in a 240px class must overflow (scroll range ${umlRange}px)`);
+    const smallClass = host.querySelector('[data-node-id="Entity"] .axk-uml-body');
+    check(smallClass && smallClass.scrollHeight <= smallClass.clientHeight, 'the small class should NOT overflow');
+
+    // 2. A real wheel over the card scrolls the CARD, not the canvas. The
+    //    dispatch goes to the element the browser would actually hit
+    //    (the foreignObject — content is pointer-events:none) and bubbles to
+    //    the binder like a trusted wheel would.
+    const vb = () => JSON.stringify(ctx.instance.viewport.getViewBox());
+    const wheelOverBody = (init = {}) => {
+      const r = body.getBoundingClientRect();
+      const cx = r.x + r.width / 2, cy = r.y + Math.min(60, r.height / 2);
+      const target = document.elementFromPoint(cx, cy) || body;
+      target.dispatchEvent(new WheelEvent('wheel', {
+        deltaY: 120, clientX: cx, clientY: cy, bubbles: true, cancelable: true, ...init,
+      }));
+    };
+    body.scrollTop = 0;
+    const vb0 = vb();
+    wheelOverBody();
+    check(body.scrollTop > 0, 'a wheel over the card must scroll its rows');
+    check(vb() === vb0, 'while the card scrolls, the canvas must NOT pan');
+
+    // 3. CONTAINMENT: at the end of the range the canvas must NOT pan. Reaching
+    //    the bottom of a card must never jump the whole diagram.
+    body.scrollTop = range;
+    wheelOverBody();
+    check(vb() === vb0, 'at the scroll end the card must ABSORB the wheel, not pan the canvas');
+    check(body.scrollTop === range, 'the card stays clamped at its end');
+
+    // 4. ctrl-wheel is pinch-zoom — canvas, never the rows.
+    const scrolledAt = body.scrollTop = 40;
+    const vb1 = vb();
+    wheelOverBody({ ctrlKey: true, deltaY: -120 });
+    check(vb() !== vb1, 'ctrl-wheel over the card must zoom the canvas');
+    check(body.scrollTop === scrolledAt, 'ctrl-wheel must never scroll the card');
+
+    // 4b. The UML class body scrolls on a real wheel and CONTAINS it at the end,
+    //     exactly like the table — same delegation, same containment.
+    const wheelOver = (el, init = {}) => {
+      const r = el.getBoundingClientRect();
+      const cx = r.x + r.width / 2, cy = r.y + Math.min(60, r.height / 2);
+      (document.elementFromPoint(cx, cy) || el).dispatchEvent(new WheelEvent('wheel', {
+        deltaY: 120, clientX: cx, clientY: cy, bubbles: true, cancelable: true, ...init }));
+    };
+    umlBody.scrollTop = 0;
+    const vbU = vb();
+    wheelOver(umlBody);
+    check(umlBody.scrollTop > 0, 'a wheel over the class must scroll its members');
+    check(vb() === vbU, 'while the class scrolls, the canvas must NOT pan');
+    umlBody.scrollTop = umlRange;
+    wheelOver(umlBody);
+    check(vb() === vbU, 'at the class scroll end the card must ABSORB the wheel, not pan');
+
+    // 5. Kit stylesheet injected exactly once (both builders share it).
+    check(document.querySelectorAll('#grafloria-diagram-kit-styles').length === 1, 'the kit stylesheet should be injected once');
+
+    // Leave a deterministic frame for the visual gate.
+    body.scrollTop = 0;
+    umlBody.scrollTop = 0;
+    ctx.instance.fitView?.(40);
+    await ctx.tick();
+  },
+});
+</script>

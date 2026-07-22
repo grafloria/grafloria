@@ -1,0 +1,107 @@
+<meta charset="utf-8">
+<title>Editable round-trip — Grafloria</title>
+<link rel="stylesheet" href="../shell/demo.css">
+<style>
+  .note { font-size: 12px; opacity: .8; padding: 10px 24px; border-bottom: 1px solid rgba(127,127,127,.25); line-height: 1.6; }
+  code { background: rgba(127,127,127,.15); padding: 1px 5px; border-radius: 4px; }
+  #canvas { display: flex; height: calc(100vh - 190px); }
+  .pane { flex: 1; min-width: 0; position: relative; }
+  .pane + .pane { border-left: 2px solid rgba(127,127,127,.35); }
+  .pane .tag { position: absolute; top: 8px; left: 8px; z-index: 2; font: 11px ui-monospace, Menlo, monospace; background: rgba(37,99,235,.85); color:#fff; padding: 2px 8px; border-radius: 4px; }
+</style>
+<header id="demo-head"></header>
+<div class="note">
+  The model rides <b>inside</b> the exported file — SVG <code>&lt;metadata&gt;</code> or a PNG
+  <code>iTXt</code> chunk. Re-open that file and you get an <b>editable diagram back</b>, not a
+  flat picture. Nobody else does this: export a PNG from another tool and the diagram is gone.
+</div>
+<div id="canvas">
+  <div class="pane"><span class="tag">original</span><div id="paneA" style="height:100%"></div></div>
+  <div class="pane"><span class="tag">re-opened from the exported file</span><div id="paneB" style="height:100%"></div></div>
+</div>
+<script type="module">
+import { render, importDiagram, extractModel, isEditableArtifact } from '../shell/grafloria.js';
+import { defineDemo, check } from '../shell/demo.js';
+
+const SPEC = {
+  nodes: [
+    { id: 'a', label: 'Author',  position: { x: 60,  y: 90 },  size: { width: 150, height: 66 } },
+    { id: 'b', label: 'Review',  position: { x: 300, y: 90 },  size: { width: 150, height: 66 } },
+    { id: 'c', label: 'Publish', position: { x: 300, y: 230 }, size: { width: 150, height: 66 } },
+  ],
+  edges: [{ id: 'e1', source: 'a', target: 'b' }, { id: 'e2', source: 'b', target: 'c' }],
+};
+const WHEN = '2020-01-01T00:00:00Z'; // fixed timestamp → deterministic bytes
+
+/** Project a re-opened model back into a spec, so we can mount it as a live diagram. */
+const modelToSpec = (model) => ({
+  nodes: model.getNodes().map((n) => ({
+    id: n.id, label: n.getMetadata('label'),
+    position: { x: n.position.x, y: n.position.y },
+    size: { width: n.size.width, height: n.size.height },
+  })),
+  edges: model.getLinks().map((l) => ({ id: l.id, source: l.sourceNodeId, target: l.targetNodeId })),
+});
+
+defineDemo({
+  name: 'Editable round-trip',
+  blurb: 'The diagram model is embedded in the exported SVG/PNG; re-opening the file gives back an EDITABLE diagram, not a flat image.',
+  howTo: [
+    'Drag the nodes in the LEFT ("original") pane — this live model is what rides inside the exported file.',
+    'Click "▶ run the scripted checks" in this panel (once per page load) — the page exports the left diagram as SVG and PNG with the model embedded, then re-imports both from the file bytes alone.',
+    'Watch the RIGHT pane fill: that diagram was re-opened from the exported SVG — live and editable; the checks even move its Author node to prove it.',
+    'The readout shows "✓ all checks passed": labels and positions survived both round-trips, and a plain export WITHOUT embedModel correctly refuses to re-open — flat picture in, flat picture out.',
+  ],
+  reactflow: null,
+
+  async setup(ctx) {
+    ctx.A = render(SPEC, document.getElementById('paneA'));
+    ctx.A.renderNow();
+    await ctx.tick();
+  },
+
+  async assert(ctx) {
+    const A = ctx.A;
+
+    // ---- SVG round-trip ------------------------------------------------------
+    const svg = await A.export('svg', { embedModel: true, embedModelCreatedAt: WHEN });
+    check(isEditableArtifact(svg), 'the exported SVG is NOT recognised as an editable artifact — the model was not embedded');
+    const env = extractModel(svg);
+    check(!!env, 'extractModel() found no embedded model in the SVG');
+
+    const modelFromSvg = importDiagram(svg);
+    check(!!modelFromSvg, 'importDiagram() could not re-open the SVG as a diagram');
+    check(modelFromSvg.getNodes().length === 3, `re-opened model has ${modelFromSvg.getNodes().length} nodes, expected 3`);
+    check(modelFromSvg.getLinks().length === 2, `re-opened model has ${modelFromSvg.getLinks().length} links, expected 2`);
+    // The DATA survived exactly — labels and positions.
+    const b = modelFromSvg.getNode('b');
+    check(b.getMetadata('label') === 'Review', `label lost in round-trip: ${b.getMetadata('label')}`);
+    check(b.position.x === 300 && b.position.y === 90, `position lost in round-trip: ${JSON.stringify(b.position)}`);
+
+    // ---- Re-open it as a LIVE, EDITABLE diagram in pane B --------------------
+    const B = render(modelToSpec(modelFromSvg), document.getElementById('paneB'));
+    ctx.B = B;
+    B.renderNow();
+    await ctx.tick();
+    check(!!document.querySelector('#paneB [data-node-id="a"]'), 'the re-opened diagram did not render');
+    // It is genuinely editable — move a node and it moves.
+    const before = B.getModel().getNode('a').position.x;
+    B.getModel().getNode('a').setPosition(120, 300);
+    B.renderNow();
+    check(B.getModel().getNode('a').position.x === 120 && before !== 120, 're-opened diagram is not editable — the node did not move');
+
+    // ---- PNG round-trip: the model rides in a real iTXt chunk ----------------
+    const png = await A.export('png', { embedModel: true, embedModelCreatedAt: WHEN });
+    check(png.startsWith('data:image/png'), 'PNG export did not return a PNG');
+    check(isEditableArtifact(png), 'the exported PNG is not recognised as editable — the iTXt model chunk is missing');
+    const modelFromPng = importDiagram(png);
+    check(!!modelFromPng && modelFromPng.getNodes().length === 3, 'importDiagram() could not re-open the PNG into the same 3-node diagram');
+    check(modelFromPng.getNode('c').getMetadata('label') === 'Publish', 'PNG round-trip lost a label');
+
+    // ---- NON-VACUOUS: a plain export WITHOUT embedding is NOT editable -------
+    const plain = await A.export('svg'); // no embedModel
+    check(!isEditableArtifact(plain), 'a plain SVG with no embedded model was wrongly reported editable');
+    check(importDiagram(plain) === null, 'importDiagram() invented a diagram from an SVG that carries no model');
+  },
+});
+</script>

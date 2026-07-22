@@ -1,0 +1,86 @@
+<meta charset="utf-8">
+<title>Connection validation — Grafloria</title>
+<link rel="stylesheet" href="../shell/demo.css">
+<style>
+  #status { padding: 8px 24px; font: 13px/1.5 ui-monospace, monospace; min-height: 20px; border-bottom: 1px solid rgba(127,127,127,.25); }
+  #canvas { height: calc(100vh - 190px); }
+</style>
+<header id="demo-head"></header>
+<div id="status">—</div>
+<div id="canvas"></div>
+<script type="module">
+import { render, registerConnectionValidator, isValidConnection, clearConnectionValidators } from '../shell/grafloria.js';
+import { defineDemo, check } from '../shell/demo.js';
+
+// registerConnectionValidator(): veto a connection BEFORE it is made, with a
+// reason. The rule here is a directional one — an output may only feed an input,
+// never another output. The public isValidConnection() hook reports the reason,
+// and the interactive drag is actually refused (no link appears).
+const NODES = [
+  { id: 'a', position: { x: 120, y: 260 }, size: { width: 120, height: 70 }, label: 'A (out)',
+    ports: [{ id: 'ao', side: 'right', type: 'output', shape: { shape: 'triangle', size: 13 } }] },
+  { id: 'b', position: { x: 640, y: 140 }, size: { width: 120, height: 70 }, label: 'B (in)',
+    ports: [{ id: 'bi', side: 'left', type: 'input', shape: { shape: 'circle', size: 13 } }] },
+  { id: 'c', position: { x: 640, y: 400 }, size: { width: 120, height: 70 }, label: 'C (out)',
+    ports: [{ id: 'co', side: 'left', type: 'output', shape: { shape: 'triangle', size: 13 } }] },
+];
+
+defineDemo({
+  name: 'Connection validation',
+  blurb: 'A registered validator vetoes an invalid connection before it is made — output→output is rejected (with a reason), output→input is allowed.',
+  howTo: [
+    'Press on A\'s triangle port (an output) and drag: a wire follows your cursor, B\'s round input port lights up as a valid target, and C\'s output port stays dark.',
+    'Drop on C\'s port anyway: the connection is refused — the wire evaporates and no edge is created, because the registered validator vetoes output→output (with a reason the API surfaces).',
+    'Drag from A\'s port again and drop on B\'s input: this one lands — the validator vetoes bad pairs, it does not block everything.',
+    'Press Escape mid-drag to abandon a connection without dropping it.',
+  ],
+  reactflow: 'Validation',
+
+  async setup(ctx) {
+    clearConnectionValidators();
+    ctx.dispose = registerConnectionValidator(({ sourcePort, targetPort }) => {
+      if (!sourcePort || !targetPort) return true;
+      if (sourcePort.type === 'output' && targetPort.type === 'output') return 'an output cannot feed another output';
+      return true;
+    });
+    ctx.instance = render({ nodes: NODES, edges: [] }, ctx.host, { interaction: { portVisibility: 'always' } });
+    ctx.diagram = ctx.instance.getModel();
+    ctx.pointer = (type, cx, cy) => ctx.host.dispatchEvent(new PointerEvent(({ mousedown: 'pointerdown', mousemove: 'pointermove', mouseup: 'pointerup' })[type] ?? type, { clientX: cx, clientY: cy, bubbles: true, cancelable: true, button: 0, buttons: type === 'pointerup' ? 0 : 1, pointerId: 1, pointerType: 'mouse' }));
+    ctx.portC = (portId) => { const r = ctx.host.querySelector(`[data-port-id="${portId}"]`).getBoundingClientRect(); return { x: r.left + r.width / 2, y: r.top + r.height / 2 }; };
+    ctx.candidate = (sN, sP, tN, tP) => ({
+      sourceNode: ctx.diagram.getNode(sN), sourcePort: ctx.diagram.getNode(sN).getPort(sP),
+      targetNode: ctx.diagram.getNode(tN), targetPort: ctx.diagram.getNode(tN).getPort(tP),
+    });
+    ctx.drag = async (fromId, toId) => {
+      const from = ctx.portC(fromId), to = ctx.portC(toId);
+      ctx.pointer('pointermove', from.x, from.y); await ctx.tick();
+      ctx.pointer('pointerdown', from.x, from.y); await ctx.tick();
+      ctx.pointer('pointermove', (from.x + to.x) / 2, (from.y + to.y) / 2); await ctx.tick();
+      ctx.pointer('pointermove', to.x, to.y); await ctx.tick();
+      ctx.pointer('pointerup', to.x, to.y); await ctx.tick();
+    };
+    await ctx.tick();
+  },
+
+  async assert(ctx) {
+    const status = document.getElementById('status');
+
+    // 1. The public hook reports the veto AND the reason, before any drag.
+    const bad = isValidConnection(ctx.candidate('a', 'ao', 'c', 'co'));
+    check(bad.valid === false, 'the validator did not reject an output→output connection');
+    check(bad.reason === 'an output cannot feed another output', `the veto reason was not surfaced (got ${JSON.stringify(bad.reason)})`);
+    const good = isValidConnection(ctx.candidate('a', 'ao', 'b', 'bi'));
+    check(good.valid === true, `output→input should be allowed, got ${JSON.stringify(good)}`);
+
+    // 2. The interactive drag is actually refused — the invalid drop makes no link.
+    await ctx.drag('ao', 'co');
+    status.textContent = `output→output: ${ctx.diagram.getLinks().length} links (rejected)`;
+    check(ctx.diagram.getLinks().length === 0, `the invalid connection was created anyway (${ctx.diagram.getLinks().length} links)`);
+
+    // 3. The valid drag succeeds — proof the validator vetoes, not blocks everything.
+    await ctx.drag('ao', 'bi');
+    status.textContent = `output→input: ${ctx.diagram.getLinks().length} link (accepted)`;
+    check(ctx.diagram.getLinks().length === 1, `the valid connection was not made (${ctx.diagram.getLinks().length} links)`);
+  },
+});
+</script>

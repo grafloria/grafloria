@@ -1,0 +1,96 @@
+<meta charset="utf-8">
+<title>Easy connect — Grafloria</title>
+<link rel="stylesheet" href="../shell/demo.css">
+<header id="demo-head"></header>
+<div id="canvas"></div>
+<script type="module">
+import { render, registerTool, SnapController } from '../shell/grafloria.js';
+import { defineDemo, check } from '../shell/demo.js';
+
+// Easy Connect: the WHOLE node is a handle. Press anywhere on a node, release
+// anywhere on another, and they connect — no aiming at a 6px port glyph. Wired
+// through the public registerTool seam (the engine's built-in connect still needs
+// a port glyph to start), committing the link with the shipped link command.
+function installEasyConnect(model, engine) {
+  const snap = new SnapController();
+  let src = null;
+  registerTool({
+    id: 'demo-easy-connect',
+    priority: 10,
+    hitTest: (_e, hit) => !!hit.node,               // any node body is a handle
+    onPointerDown: (_e, hit) => { src = hit.node; },
+    onPointerUp: (e) => {
+      if (!src) return;
+      const tgt = model.getNodeAtPosition(e.world.x, e.world.y);
+      if (tgt && tgt.id !== src.id) {
+        const candidate = {
+          sourcePort: src.getPortBySide('right') ?? src.getPorts()[0],
+          targetPort: tgt.getPortBySide('left') ?? tgt.getPorts()[0],
+          sourceNodeId: src.id, targetNodeId: tgt.id, distance: 0,
+        };
+        engine.commandManager.execute(snap.buildProximityLinkCommand(candidate));
+      }
+      src = null;
+    },
+    onCancel: () => { src = null; },
+  });
+}
+
+defineDemo({
+  name: 'Easy connect',
+  blurb: 'The whole node is a connection handle: press anywhere on one node, release anywhere on another, and they wire up — no need to hit a tiny port. Real pointer drag; a real link.',
+  howTo: [
+    'Press anywhere on node A\'s body — dead centre is fine; there is no port to aim at.',
+    'Keep the button down, cross to node B, and release anywhere on it: a wire appears joining A to B.',
+    'Press ⌘Z / Ctrl+Z to unwind it — the tool commits the link through the command stack.',
+    'Press on B and release over empty canvas: nothing connects. A node is a handle; the void is not.',
+    'Note the trade this page makes: with the whole body a connect handle, a body-press no longer MOVES a node — the registered tool owns the gesture.',
+  ],
+  reactflow: 'Easy Connect',
+
+  async setup(ctx) {
+    const api = render({
+      nodes: [
+        { id: 'a', position: { x: 100, y: 150 }, size: { width: 200, height: 120 }, label: 'A · press anywhere' },
+        { id: 'b', position: { x: 560, y: 150 }, size: { width: 200, height: 120 }, label: 'B · release anywhere' },
+      ],
+      edges: [],
+    }, ctx.host);
+    ctx.instance = api;
+    ctx.diagram = api.getModel();
+    installEasyConnect(ctx.diagram, api.getEngine());
+
+    ctx.fire = (type, w) => {
+      const rect = ctx.host.getBoundingClientRect();
+      const c = api.viewport.worldToClient(w.x, w.y, rect);
+      ctx.host.dispatchEvent(new PointerEvent(({ mousedown: 'pointerdown', mousemove: 'pointermove', mouseup: 'pointerup' })[type] ?? type, { bubbles: true, pointerId: 1, pointerType: 'mouse', clientX: c.x, clientY: c.y, button: 0 }));
+    };
+    ctx.centre = (id) => { const n = ctx.diagram.getNode(id); return { x: n.position.x + n.size.width / 2, y: n.position.y + n.size.height / 2 }; };
+    ctx.drag = async (p0, p1) => { ctx.fire('mousedown', p0); ctx.fire('mousemove', { x: p0.x + 8, y: p0.y }); ctx.fire('mousemove', p1); ctx.fire('mouseup', p1); await ctx.tick(); };
+    await ctx.tick();
+  },
+
+  async assert(ctx) {
+    const m = ctx.diagram;
+    check(m.getLinks().length === 0, 'should start with no links');
+
+    // The centres are far from every port — so this only works if the whole BODY is
+    // a handle, not just the glyphs.
+    const a = m.getNode('a'), ca = ctx.centre('a');
+    const nearest = Math.min(...a.getPorts().map((p) => { const ap = p.getAbsolutePosition(a.getBoundingBox()); return Math.hypot(ap.x - ca.x, ap.y - ca.y); }));
+    check(nearest > 40, `precondition: A's centre must be well away from its ports (was ${nearest.toFixed(0)}px)`);
+
+    // 1. Press A's centre, release on B's centre → they connect.
+    await ctx.drag(ctx.centre('a'), ctx.centre('b'));
+    check(m.getLinks().length === 1, `press-A-release-B should create one link, got ${m.getLinks().length}`);
+    const link = m.getLinks()[0];
+    check(m.getNodeByPortId(link.sourcePortId).id === 'a' && m.getNodeByPortId(link.targetPortId).id === 'b',
+      'the link should run A→B');
+
+    // 2. THE TEETH: release on EMPTY canvas connects nothing — a node is a handle,
+    //    the void is not.
+    await ctx.drag(ctx.centre('b'), { x: 1150, y: 560 });
+    check(m.getLinks().length === 1, `a release on empty canvas must not connect, links=${m.getLinks().length}`);
+  },
+});
+</script>

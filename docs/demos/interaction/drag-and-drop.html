@@ -1,0 +1,118 @@
+<meta charset="utf-8">
+<title>Drag & drop from a palette — Grafloria</title>
+<link rel="stylesheet" href="../shell/demo.css">
+<style>
+  #wrap { display: grid; grid-template-columns: 160px 1fr; height: calc(100vh - 120px); }
+  #palette { border-right: 1px solid rgba(127,127,127,.25); padding: 12px; display: flex; flex-direction: column; gap: 10px; }
+  .chip { padding: 10px; border: 1px dashed rgba(127,127,127,.5); border-radius: 8px; text-align: center; cursor: grab; user-select: none; font: 13px/1.2 system-ui, sans-serif; }
+  #canvas { height: 100%; position: relative; }
+  #readout { position: absolute; right: 10px; top: 8px; font: 12px/1.4 ui-monospace, monospace; opacity: .75; }
+</style>
+<header id="demo-head"></header>
+<div id="wrap">
+  <div id="palette">
+    <div class="chip" data-kind="source" draggable="true">Source</div>
+    <div class="chip" data-kind="filter" draggable="true">Filter</div>
+    <div class="chip" data-kind="sink" draggable="true">Sink</div>
+  </div>
+  <div id="canvas"><span id="readout"></span></div>
+</div>
+<script type="module">
+import { render } from '../shell/grafloria.js';
+import { defineDemo, check } from '../shell/demo.js';
+
+// Drag a chip out of the palette and drop it on the canvas: a node is created AT
+// THE DROP POINT, in world coordinates (so it lands where the cursor is even after
+// the camera has panned/zoomed). We drive it with real pointer events and assert
+// the node exists at the mapped world position — not merely "a node appeared".
+defineDemo({
+  name: 'Drag & drop',
+  blurb: 'Drag a node type from a palette and drop it on the canvas. It is created at the drop point in WORLD space, and a second drop makes a second, independent node.',
+  howTo: [
+    'Drag the "Filter" chip out of the left palette and drop it on the canvas — a filter node is created exactly where you dropped it.',
+    'Drop a "Sink" chip somewhere else — the counter in the top-right of the canvas ticks up; each drop is a new, independent node.',
+    'Drag on empty canvas to pan, then drop another chip — it still lands under your cursor: the drop point maps through the live viewport into world space.',
+    'Drag the created nodes around — moving one never moves another.',
+  ],
+  reactflow: 'Drag and Drop',
+
+  async setup(ctx) {
+    const api = render({ nodes: [], edges: [] }, ctx.host);
+    ctx.instance = api;
+    ctx.diagram = api.getModel();
+    ctx.engine = api.getEngine();
+
+    // Map a client (screen) point to world coordinates through the live viewport —
+    // the same transform a real editor uses so a drop lands under the cursor.
+    ctx.clientToWorld = (clientX, clientY) => {
+      const rect = ctx.host.getBoundingClientRect();
+      const vp = api.viewport;
+      const zoom = vp.getZoom();
+      const v = vp.getViewport();
+      return { x: v.x + (clientX - rect.left) / zoom, y: v.y + (clientY - rect.top) / zoom };
+    };
+
+    // The real drop handler: create a node at the world point for the dropped kind.
+    ctx.dropAt = async (kind, clientX, clientY) => {
+      const w = ctx.clientToWorld(clientX, clientY);
+      const node = await ctx.engine.addNode({
+        type: 'rect',
+        position: { x: w.x - 55, y: w.y - 22 },
+        size: { width: 110, height: 44 },
+      });
+      node.data = { kind };
+      node.setMetadata('label', kind);
+      api.renderNow();
+      document.getElementById('readout').textContent = `${ctx.diagram.getNodes().length} nodes`;
+      return node;
+    };
+
+    // Wire HTML5 drag-and-drop for the human demo (the assert drives dropAt directly,
+    // because DataTransfer is not scriptable across a synthetic drag in every engine).
+    let dragKind = null;
+    for (const chip of document.querySelectorAll('.chip')) {
+      chip.addEventListener('dragstart', () => { dragKind = chip.dataset.kind; });
+    }
+    ctx.host.addEventListener('dragover', (e) => e.preventDefault());
+    ctx.host.addEventListener('drop', (e) => {
+      e.preventDefault();
+      if (dragKind) ctx.dropAt(dragKind, e.clientX, e.clientY);
+    });
+  },
+
+  async assert(ctx) {
+    const model = ctx.diagram;
+    check(model.getNodes().length === 0, `canvas did not start empty (${model.getNodes().length} nodes)`);
+
+    const rect = ctx.host.getBoundingClientRect();
+    const p1 = { x: rect.left + 300, y: rect.top + 200 };
+    const world1 = ctx.clientToWorld(p1.x, p1.y);
+
+    // Drop a "filter" node at p1.
+    const n1 = await ctx.dropAt('filter', p1.x, p1.y);
+
+    // 1. Exactly one node now exists, and it is the one we dropped.
+    check(model.getNodes().length === 1, `expected 1 node after the drop, got ${model.getNodes().length}`);
+    check(model.getNode(n1.id)?.data?.kind === 'filter', 'the dropped node did not carry its palette kind');
+
+    // 2. IT LANDED AT THE DROP POINT — the node's centre maps back to where we dropped.
+    const c = { x: n1.position.x + n1.size.width / 2, y: n1.position.y + n1.size.height / 2 };
+    check(Math.abs(c.x - world1.x) < 1 && Math.abs(c.y - world1.y) < 1,
+      `node centre (${c.x.toFixed(1)},${c.y.toFixed(1)}) is not at the drop point (${world1.x.toFixed(1)},${world1.y.toFixed(1)})`);
+
+    // 3. IT IS A REAL, HIT-TESTABLE NODE in the DOM (not a floating decoration).
+    await ctx.tick();
+    check(ctx.host.querySelector(`[data-node-id="${n1.id}"]`), 'the dropped node never rendered to the DOM');
+
+    // 4. A SECOND, INDEPENDENT drop. Different point → different node, and moving the
+    //    first must not move the second.
+    const p2 = { x: rect.left + 520, y: rect.top + 360 };
+    const n2 = await ctx.dropAt('sink', p2.x, p2.y);
+    check(model.getNodes().length === 2, `expected 2 nodes after the second drop, got ${model.getNodes().length}`);
+    check(n2.id !== n1.id, 'the second drop reused the first node');
+    const n2Before = { x: n2.position.x, y: n2.position.y };
+    model.getNode(n1.id).setPosition(0, 0);
+    check(n2.position.x === n2Before.x && n2.position.y === n2Before.y, 'moving the first node moved the second — they are not independent');
+  },
+});
+</script>

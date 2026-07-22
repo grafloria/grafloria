@@ -1,0 +1,115 @@
+<meta charset="utf-8">
+<title>Edge types — Grafloria</title>
+<link rel="stylesheet" href="../shell/demo.css">
+<style>
+  #bar { display: flex; gap: 8px; padding: 10px 24px; border-bottom: 1px solid rgba(127,127,127,.25); align-items: center; flex-wrap: wrap; }
+  #bar button { padding: 5px 12px; border-radius: 6px; border: 1px solid rgba(127,127,127,.4); background: transparent; color: inherit; cursor: pointer; font: inherit; }
+  #bar button[aria-pressed="true"] { background: #2563eb; border-color: #2563eb; color: #fff; }
+  #canvas { height: calc(100vh - 200px); }
+</style>
+<header id="demo-head"></header>
+<div id="bar">
+  <span>edge type:</span>
+  <button data-t="straight">straight</button>
+  <button data-t="step">step</button>
+  <button data-t="smoothstep">smoothstep</button>
+  <button data-t="bezier">bezier</button>
+</div>
+<div id="canvas"></div>
+<script type="module">
+import { render } from '../shell/grafloria.js';
+import { defineDemo, check } from '../shell/demo.js';
+
+// The four React-Flow edge types, each expressed through EdgeSpec's two
+// orthogonal knobs: `router` (WHERE the line goes) and `connector` (HOW it is
+// drawn). Endpoints are deliberately OFFSET (A top-left, B bottom-right) so an
+// orthogonal router is forced to bend — a no-op router would draw a diagonal.
+const VARIANTS = {
+  straight:   { type: 'direct' },
+  step:       { router: 'orthogonal', connector: 'straight' },
+  smoothstep: { router: 'orthogonal', connector: 'rounded' },
+  bezier:     { type: 'bezier' },
+};
+
+const NODES = [
+  { id: 'a', position: { x: 100, y: 120 }, size: { width: 130, height: 60 }, label: 'A' },
+  { id: 'b', position: { x: 760, y: 400 }, size: { width: 130, height: 60 }, label: 'B' },
+];
+
+/** True when every consecutive segment of `pts` is horizontal or vertical. */
+const isAxisAligned = (pts) =>
+  pts.every((p, i) => i === 0 ||
+    Math.abs(p.x - pts[i - 1].x) < 0.5 || Math.abs(p.y - pts[i - 1].y) < 0.5);
+
+defineDemo({
+  name: 'Edge types',
+  blurb: 'straight · step · smoothstep · bezier — one graph, four edge shapes, driven by EdgeSpec {router, connector}. The route geometry is asserted, not the pixels.',
+  howTo: [
+    'Click "straight": one diagonal line, corner to corner.',
+    'Click "step": same endpoints, but the route turns axis-aligned with sharp right-angle bends.',
+    'Click "smoothstep": the IDENTICAL orthogonal route, only the corners are now rounded — where the line goes (router) and how it is drawn (connector) are independent knobs.',
+    'Click "bezier": a single sweeping cubic curve. The active button stays highlighted blue.',
+    'In any mode, drag node B around — the route recomputes live in that style.',
+  ],
+  reactflow: 'Edge Types',
+
+  async setup(ctx) {
+    ctx.build = (t) => {
+      if (ctx.instance) ctx.instance.dispose();
+      ctx.host.innerHTML = '';
+      ctx.instance = render({ nodes: NODES, edges: [{ id: 'e1', source: 'a', target: 'b', ...VARIANTS[t] }] }, ctx.host);
+      ctx.diagram = ctx.instance.getModel();
+      for (const btn of document.querySelectorAll('#bar button'))
+        btn.setAttribute('aria-pressed', String(btn.dataset.t === t));
+      return ctx.instance;
+    };
+    for (const btn of document.querySelectorAll('#bar button'))
+      btn.addEventListener('click', () => ctx.build(btn.dataset.t));
+    ctx.build('smoothstep');
+    await ctx.tick();
+  },
+
+  async assert(ctx) {
+    const read = async (t) => {
+      ctx.build(t);
+      await ctx.tick();
+      const pts = ctx.diagram.getLinks()[0].points;
+      const d = ctx.host.querySelector('path.diagram-link').getAttribute('d');
+      return { pts, d, curved: /C/.test(d), rounded: /Q/.test(d) };
+    };
+
+    // straight — TWO points on a diagonal, drawn as a single line: no bend, no curve.
+    const s = await read('straight');
+    check(s.pts.length === 2, `straight should be a 2-point line, got ${s.pts.length} points`);
+    check(!isAxisAligned(s.pts) || s.pts.length === 2, 'straight should run corner-to-corner');
+    check(!s.curved && !s.rounded, `straight must be drawn with no curve command, got: ${s.d}`);
+
+    // step — an ORTHOGONAL route (every segment axis-aligned) with a real bend,
+    // drawn SHARP (no arc commands). A no-op router would fail isAxisAligned.
+    const st = await read('step');
+    check(st.pts.length >= 3, `step should bend (>=3 points), got ${st.pts.length}`);
+    check(isAxisAligned(st.pts), `step route is not orthogonal: ${JSON.stringify(st.pts)}`);
+    check(!st.curved && !st.rounded, `step corners must be sharp, got: ${st.d}`);
+
+    // smoothstep — the SAME orthogonal route, drawn with ROUNDED corners. Same
+    // geometry as step, different connector: proves the two knobs are independent.
+    const ss = await read('smoothstep');
+    check(isAxisAligned(ss.pts), `smoothstep route is not orthogonal: ${JSON.stringify(ss.pts)}`);
+    check(ss.rounded, `smoothstep corners must be rounded (Q command), got: ${ss.d}`);
+    check(JSON.stringify(st.pts) === JSON.stringify(ss.pts),
+      'step and smoothstep should share the same route — only the corner drawing differs');
+
+    // bezier — drawn with a cubic curve, and its hit polyline FOLLOWS the
+    // curve: link.points is the painted geometry (flattened cubic), not the
+    // 2-point chord. The chord was the dagre-tree bug — clicks along the
+    // visible curve measured distance to a line nobody could see.
+    const bz = await read('bezier');
+    check(bz.pts.length >= 10, `bezier hit polyline must follow the painted curve (>=10 samples), got ${bz.pts.length}`);
+    check(bz.curved, `bezier must be drawn with a cubic curve (C command), got: ${bz.d}`);
+
+    // All four are genuinely DISTINCT drawings.
+    const shapes = new Set([s.d, st.d, ss.d, bz.d]);
+    check(shapes.size === 4, `the four edge types produced only ${shapes.size} distinct paths — some are not really different`);
+  },
+});
+</script>

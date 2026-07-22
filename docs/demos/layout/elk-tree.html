@@ -1,0 +1,90 @@
+<meta charset="utf-8">
+<title>ELK tree — Grafloria</title>
+<link rel="stylesheet" href="../shell/demo.css">
+<style>
+  #readout { padding: 8px 24px; font: 12px/1.5 ui-monospace, monospace; opacity: .8; border-bottom: 1px solid rgba(127,127,127,.25); }
+  #canvas { height: calc(100vh - 150px); }
+</style>
+<header id="demo-head"></header>
+<div id="readout"></div>
+<div id="canvas"></div>
+<script type="module">
+import { render } from '../shell/grafloria.js';
+import { defineDemo, check, checkEqual } from '../shell/demo.js';
+import { overlaps, signature, layering, restack } from './_layout-lib.js';
+
+// The SAME graph the dagre demo lays out — because the sharp claim here is not just
+// "ELK arranges a tree", it is "ELK is a DIFFERENT engine that happens to also
+// arrange this tree". So this page runs BOTH and proves the pictures differ: if the
+// ELK adapter had silently fallen back to dagre (the exact shape of bug where "we
+// support N layouts" secretly means one), the two signatures would match and this
+// page goes red.
+// Handles pinned bottom→top — a TB tree flows vertically, and React Flow's
+// own tree examples pin their handles the same way. (Bare edges float, which
+// is right generally but reads diagonal on the root fan-out of a tree.)
+const EDGES = [
+  { id: 'e1', source: 'ceo', target: 'eng', sourceHandle: 'bottom', targetHandle: 'top' },
+  { id: 'e2', source: 'ceo', target: 'ops', sourceHandle: 'bottom', targetHandle: 'top' },
+  { id: 'e3', source: 'eng', target: 'fe', sourceHandle: 'bottom', targetHandle: 'top' },
+  { id: 'e4', source: 'eng', target: 'be', sourceHandle: 'bottom', targetHandle: 'top' },
+  { id: 'e5', source: 'ops', target: 'sre', sourceHandle: 'bottom', targetHandle: 'top' },
+  { id: 'e6', source: 'be', target: 'db', sourceHandle: 'bottom', targetHandle: 'top' },
+];
+const NODES = ['ceo', 'eng', 'ops', 'fe', 'be', 'sre', 'db'].map((id) => ({
+  id, position: { x: 0, y: 0 }, size: { width: 120, height: 48 }, label: id,
+}));
+const SPEC = { nodes: NODES, edges: EDGES };
+
+defineDemo({
+  name: 'ELK tree',
+  blurb: 'The layered ELK engine on the same tree the dagre page uses — and the two pictures are provably different, so neither is a secret alias of the other.',
+  howTo: [
+    'On load ELK lays the org chart out top-down: ceo above eng and ops, fe/be/sre on the next rank, db at the bottom.',
+    'Read the readout: "0 overlaps" and "6/6 edges downward" — every report line is measured from the live model.',
+    'Reload the page — the identical picture returns: the ELK run is deterministic.',
+    'Open the DevTools console and run `await __demo.run()`: the same tree is re-laid with dagre and the page proves the two engines\' pictures differ — watch the arrangement visibly change (the readout ends on the dagre run).',
+  ],
+  reactflow: 'ELK Tree',
+
+  async setup(ctx) {
+    const api = render(SPEC, ctx.host);
+    ctx.instance = api;
+    ctx.diagram = api.getModel();
+    ctx.engine = api.getEngine();
+    ctx.runLayout = async (name) => {
+      const r = await ctx.engine.layout(name, { direction: 'TB', nodeSpacing: 45, rankSpacing: 90 });
+      api.renderNow();
+      api.fitView(40);
+      const lay = layering(ctx.diagram, EDGES, 'y');
+      document.getElementById('readout').textContent =
+        `${name} TB  ${overlaps(ctx.diagram).length} overlaps  ${lay.forward}/${lay.total} edges downward`;
+      return r;
+    };
+    await ctx.runLayout('elk');
+  },
+
+  async assert(ctx) {
+    // ELK
+    restack(ctx.diagram);
+    const r = await ctx.runLayout('elk');
+    check(r.nodePositions.size === 7, `elk: expected 7 positions, got ${r.nodePositions.size}`);
+    const stacked = ctx.diagram.getNodes().filter((n) => n.position.x === 0 && n.position.y === 0);
+    check(stacked.length <= 1, `elk: ${stacked.length} nodes still stacked at (0,0)`);
+    check(overlaps(ctx.diagram).length === 0, `elk: nodes overlap — ${overlaps(ctx.diagram).join(', ')}`);
+    const lay = layering(ctx.diagram, EDGES, 'y');
+    check(lay.forward === lay.total, `elk not layered: ${lay.backward.join(', ')}`);
+    const elkSig = signature(ctx.diagram);
+
+    // DETERMINISM.
+    restack(ctx.diagram);
+    await ctx.runLayout('elk');
+    checkEqual(signature(ctx.diagram), elkSig, 'two identical elk runs produced different positions');
+
+    // DIFFERENT ENGINE. Lay the identical graph out with dagre and prove ELK is not it.
+    restack(ctx.diagram);
+    await ctx.runLayout('dagre');
+    const dagreSig = signature(ctx.diagram);
+    check(elkSig !== dagreSig, 'elk produced positions identical to dagre — one adapter is aliasing the other');
+  },
+});
+</script>

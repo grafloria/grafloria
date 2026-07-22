@@ -1,0 +1,142 @@
+<meta charset="utf-8">
+<title>Dynamic (mental-map) layouting — Grafloria</title>
+<link rel="stylesheet" href="../shell/demo.css">
+<style>
+  #readout { padding: 8px 24px; font: 12px/1.5 ui-monospace, monospace; opacity: .8; border-bottom: 1px solid rgba(127,127,127,.25); white-space: pre; }
+  #canvas { height: calc(100vh - 168px); }
+</style>
+<header id="demo-head"></header>
+<div id="readout"></div>
+<div id="canvas"></div>
+<script type="module">
+import { render } from '../shell/grafloria.js';
+import { defineDemo, check } from '../shell/demo.js';
+import { overlaps, center } from './_layout-lib.js';
+
+// A layered pipeline. We lay it out, remember where everything is, then ADD one
+// node wired into the middle. The claim under test: an incremental pass moves the
+// existing nodes MUCH LESS than laying the whole thing out from scratch would —
+// and we MEASURE both, on the page, and assert the bound.
+const BASE_NODES = ['n0', 'n1', 'n2', 'n3', 'n4', 'n5'].map((id) => ({
+  id, position: { x: 0, y: 0 }, size: { width: 110, height: 46 }, label: id,
+}));
+const BASE_EDGES = [
+  { id: 'e0', source: 'n0', target: 'n1' },
+  { id: 'e1', source: 'n1', target: 'n2' },
+  { id: 'e2', source: 'n2', target: 'n3' },
+  { id: 'e3', source: 'n3', target: 'n4' },
+  { id: 'e4', source: 'n4', target: 'n5' },
+];
+
+const snapshot = (model) => {
+  const m = new Map();
+  for (const n of model.getNodes()) m.set(n.id, center(n));
+  return m;
+};
+/** Total distance the `ids` moved between two snapshots. */
+const movementOf = (before, after, ids) => {
+  let total = 0;
+  for (const id of ids) {
+    const a = before.get(id);
+    const b = after.get(id);
+    if (a && b) total += Math.hypot(a.x - b.x, a.y - b.y);
+  }
+  return total;
+};
+
+defineDemo({
+  name: 'Dynamic layouting',
+  blurb: 'Mental-map-preserving incremental layout: add a node and the rest barely move. The page measures total movement two ways and asserts the incremental pass is a fraction of a from-scratch relayout.',
+  howTo: [
+    'On load the chain n0 → n5 is laid out left-to-right. Memorise the shape — the point of this page is how little it changes.',
+    'Open the DevTools console and run `await __demo.run()`: a new "inserted" node is wired into the middle (n2 → inserted → n4) and an incremental pass places it.',
+    'Read the readout: it prints how many pixels the existing nodes moved under the incremental pass versus how far a from-scratch relayout moves them — the first number is a clear fraction of the second.',
+    'Both numbers are measured live on this page (the run really performs the from-scratch relayout too), so the mental-map claim is demonstrated, not asserted on faith.',
+  ],
+  reactflow: 'Dynamic Layouting',
+  pro: true,
+
+  async setup(ctx) {
+    const api = render({ nodes: BASE_NODES, edges: BASE_EDGES }, ctx.host);
+    ctx.instance = api;
+    ctx.diagram = api.getModel();
+    ctx.engine = api.getEngine();
+    // Establish the baseline layered picture.
+    await ctx.engine.layout('layered', { direction: 'LR' });
+    api.renderNow();
+    api.fitView(40);
+  },
+
+  async assert(ctx) {
+    const model = ctx.diagram;
+    const engine = ctx.engine;
+    const BASE_IDS = BASE_NODES.map((n) => n.id);
+
+    // Re-establish a known baseline so the test is self-contained and repeatable.
+    for (const n of model.getNodes()) if (BASE_IDS.includes(n.id)) n.setPosition(0, 0);
+    if (model.getNode('inserted')) model.removeNode('inserted');
+    await engine.layout('layered', { direction: 'LR' });
+    const before = snapshot(model);
+
+    // --- Path A: incremental. Add a node wired into the middle of the chain. ---
+    ctx.instance.setNodes([
+      ...BASE_NODES,
+      { id: 'inserted', position: { x: 0, y: 0 }, size: { width: 110, height: 46 }, label: 'inserted' },
+    ]);
+    ctx.instance.setEdges([
+      ...BASE_EDGES,
+      { id: 'x0', source: 'n2', target: 'inserted' },
+      { id: 'x1', source: 'inserted', target: 'n4' },
+    ]);
+
+    const inc = await engine.layoutIncremental({ changed: ['inserted'], direction: 'LR', radius: 1 });
+    ctx.instance.renderNow();
+    ctx.instance.fitView(40);
+    const afterInc = snapshot(model);
+    const incMovement = movementOf(before, afterInc, BASE_IDS);
+
+    // 1. The new node landed with a REAL position (it did not stay stacked at 0,0).
+    const ins = model.getNode('inserted');
+    check(!(ins.position.x === 0 && ins.position.y === 0), 'the inserted node never got a position');
+
+    // 2. No overlaps after the incremental insert.
+    check(overlaps(model).length === 0, `overlaps after incremental insert: ${overlaps(model).join(', ')}`);
+
+    // 3. The engine returns a coherent movement summary and a tween PLAN the host can
+    //    drive: at(0) is the old picture, at(1) is the new one. A mental-map feature
+    //    that cannot show its own numbers is a claim, not a capability.
+    check(inc.movement && typeof inc.movement.total === 'number' && inc.movement.total >= 0, 'no movement report returned');
+    check(typeof inc.tween?.at === 'function', 'no tween plan returned');
+    const t0 = inc.tween.at(0);
+    const t1 = inc.tween.at(1);
+    check(t0.size === t1.size && t0.size > 0, 'tween plan has no frames');
+
+    // --- Path B: from scratch. Reset to the baseline and lay the WHOLE graph
+    //     (now including the inserted node) out fresh; measure how far the
+    //     originals move. ---
+    for (const n of model.getNodes()) n.setPosition(0, 0);
+    await engine.layout('layered', { direction: 'LR' });
+    const afterFull = snapshot(model);
+    const fullMovement = movementOf(before, afterFull, BASE_IDS);
+    // Leave the camera ON the final picture. Without this the graph lays out
+    // fine while the viewport still points at the old world rect — a white
+    // canvas over three perfectly true status lines (the audit's one blocker).
+    ctx.instance.renderNow();
+    ctx.instance.fitView(40);
+
+    // 4. THE TEETH. Incremental must move the existing nodes strictly, and
+    //    substantially, less than a from-scratch relayout does. If layoutIncremental
+    //    silently degenerated into a full relayout, these two numbers would be equal.
+    document.getElementById('readout').textContent =
+      `incremental moved existing nodes: ${incMovement.toFixed(1)}px total\n` +
+      `from-scratch would move them:      ${fullMovement.toFixed(1)}px total\n` +
+      `report: total=${inc.movement.total.toFixed(1)} max=${inc.movement.max.toFixed(1)} ` +
+      `saved-by-alignment=${inc.movement.savedByAlignment.toFixed(1)} moved=${inc.movement.moved}/${BASE_IDS.length}`;
+
+    check(fullMovement > 1, 'the from-scratch relayout did not move the originals at all — the control is broken');
+    check(incMovement < fullMovement, `incremental (${incMovement.toFixed(1)}) did not move LESS than from-scratch (${fullMovement.toFixed(1)})`);
+    check(incMovement <= fullMovement * 0.6,
+      `incremental movement ${incMovement.toFixed(1)} is not a clear fraction of from-scratch ${fullMovement.toFixed(1)} — mental map not preserved`);
+  },
+});
+</script>

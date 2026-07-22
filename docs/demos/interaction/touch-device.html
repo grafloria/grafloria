@@ -1,0 +1,150 @@
+<meta charset="utf-8">
+<title>Touch device — Grafloria</title>
+<link rel="stylesheet" href="../shell/demo.css">
+<style>
+  #readout { padding: 8px 24px; font: 12px/1.5 ui-monospace, monospace; opacity: .85; border-bottom: 1px solid rgba(127,127,127,.25); white-space: pre; }
+  #canvas { height: calc(100vh - 168px); touch-action: none; }
+</style>
+<header id="demo-head"></header>
+<div id="readout"></div>
+<div id="canvas"></div>
+<script type="module">
+import { render } from '../shell/grafloria.js';
+import { defineDemo, check } from '../shell/demo.js';
+
+// Real finger input, driven with real PointerEvents (pointerType:'touch'). The binder
+// forks touch pointers to the gesture controller, so one finger pans, one finger on a
+// node drags it, one tap selects, and two fingers pinch-zoom. (Genuine multi-touch
+// through CDP is exercised by libs/renderer/e2e/touch-run.mjs; here we drive the same
+// pipeline in-page and assert each gesture changed the right piece of state.)
+const SPEC = {
+  nodes: [
+    { id: 'a', position: { x: 500, y: 120 }, size: { width: 120, height: 60 }, label: 'A' },
+    { id: 'b', position: { x: 500, y: 320 }, size: { width: 120, height: 60 }, label: 'B' },
+  ],
+  edges: [],
+};
+
+defineDemo({
+  name: 'Touch device',
+  blurb: 'Pan, pinch-zoom, tap-to-select and one-finger node drag — all from real touch PointerEvents through the same pipeline a phone uses. touch-action:none is what keeps the browser from eating the gesture.',
+  howTo: [
+    'Open this page on a touch screen (or in DevTools device emulation) — touch-action: none keeps the browser from eating the gestures.',
+    'Drag one finger across empty canvas: the camera pans.',
+    'Pinch with two fingers: spreading them zooms in around your fingers.',
+    'Tap node A — exactly the node under your finger becomes selected.',
+    'Put a finger on a node and drag — the node travels with your finger while the camera stays put.',
+  ],
+  reactflow: 'Touch Device',
+  pro: true,
+
+  async setup(ctx) {
+    const api = render(SPEC, ctx.host);
+    ctx.instance = api;
+    ctx.diagram = api.getModel();
+    ctx.engine = api.getEngine();
+
+    let nextId = 1;
+    const fire = (type, points) => {
+      for (const p of points) {
+        const ev = new PointerEvent(({ mousedown: 'pointerdown', mousemove: 'pointermove', mouseup: 'pointerup' })[type] ?? type, {
+          pointerId: p.id, pointerType: 'touch', isPrimary: p.id === 1,
+          clientX: p.x, clientY: p.y, bubbles: true, cancelable: true, button: 0,
+        });
+        ctx.host.dispatchEvent(ev);
+      }
+    };
+    ctx.fire = fire;
+    // A straight one-finger drag in `steps` real move events.
+    ctx.oneFingerDrag = async (from, to, { steps = 8, id = 1 } = {}) => {
+      fire('pointerdown', [{ id, x: from.x, y: from.y }]);
+      for (let i = 1; i <= steps; i++) {
+        const t = i / steps;
+        fire('pointermove', [{ id, x: from.x + (to.x - from.x) * t, y: from.y + (to.y - from.y) * t }]);
+      }
+      fire('pointerup', [{ id, x: to.x, y: to.y }]);
+      await ctx.tick();
+    };
+    ctx.tap = async (pt) => {
+      ctx.fire('pointerdown', [{ id: 1, x: pt.x, y: pt.y }]);
+      ctx.fire('pointerup', [{ id: 1, x: pt.x, y: pt.y }]);
+      await ctx.tick();
+    };
+    // Two fingers moving apart about a centre — a pinch.
+    ctx.pinch = async (center, startGap, endGap, steps = 10) => {
+      const at = (gap) => [
+        { id: 1, x: center.x - gap / 2, y: center.y },
+        { id: 2, x: center.x + gap / 2, y: center.y },
+      ];
+      ctx.fire('pointerdown', [at(startGap)[0]]);
+      ctx.fire('pointerdown', [at(startGap)[1]]);
+      for (let i = 1; i <= steps; i++) {
+        const gap = startGap + (endGap - startGap) * (i / steps);
+        ctx.fire('pointermove', at(gap));
+      }
+      ctx.fire('pointerup', [{ id: 1, x: center.x - endGap / 2, y: center.y }]);
+      ctx.fire('pointerup', [{ id: 2, x: center.x + endGap / 2, y: center.y }]);
+      await ctx.tick();
+    };
+    ctx.rect = () => ctx.host.getBoundingClientRect();
+    ctx.report = (m) => { document.getElementById('readout').textContent = m; };
+    ctx.report('drive with a finger: pan, pinch, tap, drag');
+  },
+
+  async assert(ctx) {
+    const api = ctx.instance;
+    const model = ctx.diagram;
+    const rect = ctx.rect();
+    // Empty region of the canvas (nodes live near x≈500..620 world; keep clear of them).
+    const empty = (dx, dy) => ({ x: rect.left + 120 + dx, y: rect.top + 120 + dy });
+
+    // 1. ONE-FINGER PAN moves the camera.
+    const vp0 = { ...api.viewport.getViewport() };
+    await ctx.oneFingerDrag(empty(0, 0), empty(140, 90));
+    const vp1 = { ...api.viewport.getViewport() };
+    check(vp0.x !== vp1.x || vp0.y !== vp1.y, 'one-finger drag on empty canvas did not pan the camera');
+
+    // 2. PINCH-ZOOM changes the zoom.
+    const z0 = api.viewport.getZoom();
+    await ctx.pinch({ x: rect.left + 300, y: rect.top + 300 }, 80, 260);
+    const z1 = api.viewport.getZoom();
+    check(Math.abs(z1 - z0) > 0.01, `pinch did not change zoom (was ${z0.toFixed(3)}, now ${z1.toFixed(3)})`);
+    check(z1 > z0, `spreading two fingers should zoom IN (was ${z0.toFixed(3)}, now ${z1.toFixed(3)})`);
+
+    // Reset camera so screen↔world math is simple for the node gestures.
+    api.viewport.setZoom(1);
+    api.viewport.setViewport({ x: 0, y: 0, width: rect.width, height: rect.height });
+    api.renderNow();
+
+    // Screen point over a node's centre, given the reset camera.
+    const onNode = (id) => {
+      const n = model.getNode(id);
+      return { x: rect.left + n.position.x + n.size.width / 2, y: rect.top + n.position.y + n.size.height / 2 };
+    };
+
+    // 3. TAP selects the node under the finger.
+    model.clearSelection?.();
+    await ctx.tap(onNode('a'));
+    check(model.getNode('a').isSelected(), 'a tap on node A did not select it');
+    check(!model.getNode('b').isSelected(), 'the tap selected the wrong node');
+
+    // 4. ONE-FINGER DRAG on a node moves THAT node (not the camera).
+    const aBefore = { x: model.getNode('a').position.x, y: model.getNode('a').position.y };
+    const vpBefore = { ...api.viewport.getViewport() };
+    const start = onNode('a');
+    await ctx.oneFingerDrag(start, { x: start.x + 120, y: start.y + 40 }, { steps: 10 });
+    const aAfter = { x: model.getNode('a').position.x, y: model.getNode('a').position.y };
+    check(aAfter.x !== aBefore.x || aAfter.y !== aBefore.y, 'dragging a finger on node A did not move it');
+    // It moved roughly by the drag delta (world≈screen at zoom 1), and it moved the
+    // NODE rather than panning the camera.
+    check(Math.abs((aAfter.x - aBefore.x) - 120) < 30, `node A moved ${(aAfter.x - aBefore.x).toFixed(0)}px, expected ~120`);
+
+    ctx.report(
+      `pan: (${vp0.x.toFixed(0)},${vp0.y.toFixed(0)})→(${vp1.x.toFixed(0)},${vp1.y.toFixed(0)})\n` +
+      `pinch zoom: ${z0.toFixed(2)}→${z1.toFixed(2)}\n` +
+      `tap selected A; drag moved A by ${(aAfter.x - aBefore.x).toFixed(0)}px`
+    );
+    void vpBefore;
+  },
+});
+</script>

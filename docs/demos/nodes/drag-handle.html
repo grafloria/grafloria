@@ -1,0 +1,120 @@
+<meta charset="utf-8">
+<title>Drag handle — Grafloria</title>
+<link rel="stylesheet" href="../shell/demo.css">
+<header id="demo-head"></header>
+<div id="canvas"></div>
+<script type="module">
+import { render } from '../shell/grafloria.js';
+import { defineDemo, check, checkChanged } from '../shell/demo.js';
+
+defineDemo({
+  name: 'Drag handle',
+  blurb: 'A designated grip drags its parent — and ONLY the grip: the body selects but no longer drags, and the handle is chrome (no ports, no wires). Press the title bar and the window moves through the real drag pipeline.',
+  howTo: [
+    'Press the "⠿ title bar (drag me)" strip and drag: the WHOLE window moves — the handle redirects the drag to its parent.',
+    'Press the window body and drag: it does not move, it only selects. Declaring a drag handle means "drag me by the handle" — the body stops being a grip.',
+    'Press ⌘Z / Ctrl+Z to undo the title-bar move.',
+    'Hover along the title bar: no port glyphs surface on it — the handle is chrome, not anatomy. Hover the window\'s top edge (which runs through the title bar) and the WINDOW\'s own top port appears, painted in front of the bar so you can aim at it.',
+  ],
+  reactflow: 'Drag Handle',
+
+  async setup(ctx) {
+    const api = render({
+      nodes: [
+        { id: 'win',  position: { x: 300, y: 200 }, size: { width: 240, height: 120 }, label: 'window body' },
+        { id: 'grip', position: { x: 300, y: 200 }, size: { width: 240, height: 28 },  label: '⠿ title bar (drag me)' },
+      ],
+      edges: [],
+    }, ctx.host);
+    ctx.instance = api;
+    ctx.diagram = api.getModel();
+
+    // Make the grip a drag-handle child of the window — INSIDE the parent's
+    // top strip, like a real window's title bar. Chrome that lives inside the
+    // parent's silhouette leaves the OUTER rectangle to the parent, so the
+    // parent's ports sit on the composite's true boundary (the top port rides
+    // on top of the title bar, not buried at a seam between two stacked boxes —
+    // a live report caught the stacked version reading as "ports inside").
+    const grip = ctx.diagram.getNode('grip');
+    grip.setParent('win');
+    grip.setPosition(0, 0);             // local → covers the parent's top 28px
+    grip.setBehavior({ dragHandler: { isDragHandler: true } });
+    api.renderNow();
+
+    ctx.fire = (type, w) => {
+      const rect = ctx.host.getBoundingClientRect();
+      const c = api.viewport.worldToClient(w.x, w.y, rect);
+      ctx.host.dispatchEvent(new PointerEvent(({ mousedown: 'pointerdown', mousemove: 'pointermove', mouseup: 'pointerup' })[type] ?? type, { bubbles: true, pointerId: 1, pointerType: 'mouse', clientX: c.x, clientY: c.y, button: 0 }));
+    };
+    await ctx.tick();
+  },
+
+  async assert(ctx) {
+    const m = ctx.diagram;
+    const win = m.getNode('win'), grip = m.getNode('grip');
+    const winBefore = { ...win.position };
+    const gripBefore = { ...grip.position };
+
+    // 1. Press ON THE GRIP and drag +200px right. The press is redirected to the
+    //    parent, so the WINDOW moves.
+    ctx.fire('mousedown', { x: 420, y: 214 });     // inside the grip (world y 200–228)
+    ctx.fire('mousemove', { x: 430, y: 214 });     // pass the drag threshold
+    ctx.fire('mousemove', { x: 620, y: 214 });     // +200 total
+    ctx.fire('mouseup',   { x: 620, y: 214 });
+    ctx.instance.renderNow();
+
+    checkChanged(winBefore, win.position, 'pressing the drag-handle grip did not move the parent window');
+    check(Math.abs(win.position.x - (winBefore.x + 200)) < 6,
+      `the window should have followed the grip drag by ~200px (${winBefore.x} -> ${win.position.x})`);
+
+    // 2. THE TEETH: it was a REDIRECT, not a drag of the grip itself. The grip did
+    //    not move — the press on the child moved the parent. A plain node drag would
+    //    have moved the grip, not the window.
+    check(grip.position.x === gripBefore.x && grip.position.y === gripBefore.y,
+      `the grip itself should NOT have moved (was ${JSON.stringify(gripBefore)}, now ${JSON.stringify(grip.position)})`);
+
+    // 3. HANDLE-ONLY: declaring a handle MEANS "drag me by the handle". A press on
+    //    the BODY selects the window but must not move it (a live report: "I can
+    //    drag from everywhere — not sure that's intended". It wasn't.)
+    const afterGripDrag = { ...win.position };
+    const bodyCentre = { x: win.position.x + win.size.width / 2, y: win.position.y + win.size.height / 2 };
+    ctx.fire('mousedown', bodyCentre);
+    ctx.fire('mousemove', { x: bodyCentre.x + 10, y: bodyCentre.y });
+    ctx.fire('mousemove', { x: bodyCentre.x + 120, y: bodyCentre.y + 60 });
+    ctx.fire('mouseup',   { x: bodyCentre.x + 120, y: bodyCentre.y + 60 });
+    ctx.instance.renderNow();
+    check(win.position.x === afterGripDrag.x && win.position.y === afterGripDrag.y,
+      `a BODY press must not drag a node that has a drag handle (moved to ${JSON.stringify(win.position)})`);
+    check(win.isSelected(), 'the body press should still SELECT the window');
+
+    // 4. THE HANDLE IS CHROME: it sprouts no ports (a title bar with ports invited
+    //    "wire the window to itself"), cannot be hovered as a connection source,
+    //    and the rules refuse it as a target — so grip→window creates NO link.
+    const gw = grip.getWorldPosition();
+    ctx.fire('mousemove', { x: gw.x + grip.size.width, y: gw.y + grip.size.height / 2 });
+    ctx.instance.renderNow();
+    check(!ctx.instance.interaction.getState().hoveredPort,
+      'hovering the grip edge must not surface a port — the handle is chrome, not anatomy');
+    check(ctx.host.querySelectorAll('[data-node-id="grip"] [data-port-id]').length === 0,
+      'the grip must render no port glyphs');
+
+    //    …and the WINDOW's top port paints IN FRONT of the title bar, not behind
+    //    it (ports render in an overlay above every node body — a port you can
+    //    see but not quite see is a port you cannot aim at).
+    ctx.fire('mousemove', { x: win.position.x + win.size.width / 2, y: win.position.y });
+    ctx.instance.renderNow();
+    const topPort = ctx.host.querySelector(`[data-port-id="${win.getPortBySide('top').id}"]`);
+    const gripGroup = ctx.host.querySelector('[data-node-id="grip"]');
+    check(!!topPort, "hovering the title's top edge should surface the window's top port");
+    check(!!(gripGroup.compareDocumentPosition(topPort) & Node.DOCUMENT_POSITION_FOLLOWING),
+      'the top port must paint ABOVE the title bar (it painted behind it)');
+    const linksBefore = m.getLinks().length;
+    ctx.fire('mousedown', { x: gw.x + grip.size.width, y: gw.y + grip.size.height / 2 });
+    ctx.fire('mousemove', { x: win.position.x + win.size.width, y: win.position.y + win.size.height / 2 });
+    ctx.fire('mouseup',   { x: win.position.x + win.size.width, y: win.position.y + win.size.height / 2 });
+    ctx.instance.renderNow();
+    check(m.getLinks().length === linksBefore,
+      'dragging from the grip to the window must create NO link (visually that is "the node wired to itself")');
+  },
+});
+</script>

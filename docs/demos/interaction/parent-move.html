@@ -1,0 +1,110 @@
+<meta charset="utf-8">
+<title>Parent move — Grafloria</title>
+<link rel="stylesheet" href="../shell/demo.css">
+<header id="demo-head"></header>
+<div id="canvas"></div>
+<script type="module">
+import { render } from '../shell/grafloria.js';
+import { defineDemo, check } from '../shell/demo.js';
+
+// Move the container, the contents follow. The engine stores ABSOLUTE
+// coordinates, so members do not track a group frame on their own — the LIVE
+// drag path (dom-event-binder) translates every member node and the frame by the
+// same delta and commits it as ONE undoable step. No host glue: the page only
+// flips `enableGroupDrag` and drives real pointer events.
+
+defineDemo({
+  name: 'Parent move',
+  blurb: 'Drag a subflow container by its frame and the whole graph inside it moves with it — members and frame together, as one undoable step. Nothing wires this host-side; the engine does it.',
+  howTo: [
+    'Press on the container\'s frame (the band around the group, not a node) and drag — every member travels with it.',
+    'Press ⌘Z / Ctrl+Z: the whole group move is ONE undo step.',
+    'Drag a member node around INSIDE the frame — it moves alone; the container stays put.',
+    'Drag a member OUTSIDE the frame: it stays a member (membership is explicit, like React Flow\'s parentNode — geometry never detaches it). Dragging the frame afterwards still carries it. Detaching is an API action (removeFromGroup), not a gesture.',
+  ],
+  reactflow: 'Sub Flows',
+  pro: true,
+
+  async setup(ctx) {
+    const api = render({
+      nodes: [
+        { id: 'm1', position: { x: 400, y: 200 }, size: { width: 100, height: 50 }, label: 'stage 1' },
+        { id: 'm2', position: { x: 560, y: 220 }, size: { width: 100, height: 50 }, label: 'stage 2' },
+        { id: 'outside', position: { x: 120, y: 500 }, size: { width: 100, height: 50 }, label: 'outside' },
+      ],
+      edges: [{ id: 'e1', source: 'm1', target: 'm2' }],
+    }, ctx.host);
+    ctx.instance = api;
+    ctx.diagram = api.getModel();
+    ctx.engine = api.getEngine();
+
+    // Opt in to the built-in group drag. This is the ONLY wiring the page does.
+    ctx.engine.setInteractionConfig({ enableGroupDrag: true });
+
+    const g = await ctx.engine.addGroup({ name: 'Pipeline' });
+    // A frame with room below the members, so we can press EMPTY container area
+    // (a press on a member drags only that member — the node wins the ladder).
+    g.setFrame({ x: 370, y: 180, width: 320, height: 170 });
+    await ctx.engine.addToGroup(g.id, 'm1');
+    await ctx.engine.addToGroup(g.id, 'm2');
+    ctx.g = g;
+
+    ctx.fire = (type, w) => {
+      const rect = ctx.host.getBoundingClientRect();
+      const c = api.viewport.worldToClient(w.x, w.y, rect);
+      ctx.host.dispatchEvent(new PointerEvent(({ mousedown: 'pointerdown', mousemove: 'pointermove', mouseup: 'pointerup' })[type] ?? type, { bubbles: true, pointerId: 1, pointerType: 'mouse', clientX: c.x, clientY: c.y, button: 0 }));
+    };
+    ctx.dragFrom = (w, dx, dy) => {
+      ctx.fire('mousedown', w);
+      ctx.fire('mousemove', { x: w.x + 8, y: w.y }); // pass the drag threshold
+      ctx.fire('mousemove', { x: w.x + dx, y: w.y + dy });
+      ctx.fire('mouseup',   { x: w.x + dx, y: w.y + dy });
+      api.renderNow();
+    };
+    ctx.pos = (id) => { const n = ctx.diagram.getNode(id); return { x: n.position.x, y: n.position.y }; };
+    await ctx.tick();
+  },
+
+  async assert(ctx) {
+    const m = ctx.diagram, g = ctx.g;
+
+    const b1 = ctx.pos('m1'), b2 = ctx.pos('m2'), bOut = ctx.pos('outside');
+    const bFrame = g.getOuterBounds();
+
+    // 1. Press an EMPTY spot inside the frame (world 430,320 — below the members)
+    //    and drag +140,+50. Every member and the frame follow by that delta.
+    ctx.dragFrom({ x: 430, y: 320 }, 140, 50);
+
+    check(Math.abs(ctx.pos('m1').x - (b1.x + 140)) < 1 && Math.abs(ctx.pos('m1').y - (b1.y + 50)) < 1,
+      `m1 should have followed the container, at ${JSON.stringify(ctx.pos('m1'))} (was ${JSON.stringify(b1)})`);
+    check(Math.abs(ctx.pos('m2').x - (b2.x + 140)) < 1 && Math.abs(ctx.pos('m2').y - (b2.y + 50)) < 1,
+      `m2 should have followed the container, at ${JSON.stringify(ctx.pos('m2'))}`);
+    const f = g.getOuterBounds();
+    check(Math.abs(f.x - (bFrame.x + 140)) < 1 && Math.abs(f.y - (bFrame.y + 50)) < 1,
+      `the frame should have followed, at ${JSON.stringify(f)} (was ${JSON.stringify(bFrame)})`);
+
+    // 2. THE TEETH: the non-member did NOT move. Only the subflow travelled.
+    check(JSON.stringify(ctx.pos('outside')) === JSON.stringify(bOut),
+      `the outside node must not move, at ${JSON.stringify(ctx.pos('outside'))}`);
+
+    // 3. ONE undoable step: a single undo puts the whole subflow back. (Let the
+    //    async command land on the history stack first — the live drag already
+    //    applied the positions; the command records the single undo entry.)
+    await ctx.tick();
+    check(ctx.engine.commandManager.canUndo(), 'the group drag should have pushed one undo entry');
+    await ctx.engine.commandManager.undo();
+    check(Math.abs(ctx.pos('m1').x - b1.x) < 1 && Math.abs(ctx.pos('m2').x - b2.x) < 1,
+      'undo should restore every member position in one step');
+    check(Math.abs(g.getOuterBounds().x - bFrame.x) < 1, 'undo should restore the frame too');
+
+    // 4. A press on a MEMBER drags only that member (the node wins the frame).
+    ctx.instance.renderNow();
+    const before2 = ctx.pos('m2');
+    // Downward: +90 on x parked stage 1 ON TOP of stage 2 in the final frame.
+    ctx.dragFrom({ x: ctx.pos('m1').x + 50, y: ctx.pos('m1').y + 25 }, 0, 70); // m1 centre
+    check(Math.abs(ctx.pos('m1').y - (b1.y + 70)) < 1, 'pressing a member should drag that member');
+    check(JSON.stringify(ctx.pos('m2')) === JSON.stringify(before2),
+      'dragging one member must not drag its siblings');
+  },
+});
+</script>

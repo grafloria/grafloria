@@ -1,0 +1,1342 @@
+<meta charset="utf-8">
+<title>Dashboard builder — Grafloria</title>
+<link rel="stylesheet" href="../shell/demo.css">
+<style>
+  /* ================================================================================
+     A REAL dashboard-builder app, built on the ONE package an embedder installs.
+     Everything below imports from ../shell/grafloria.js — the bundled @grafloria/element
+     front door — and the whole import list is now four names: render, NodeModel,
+     dashboard, defaultWidgetRenderer. The board is DECLARED, not assembled, and
+     `dashboard({ views }).handle` drives every edit, so the page never reaches
+     for a command, a GroupModel or the CommandManager to change the board. (They
+     remain reachable from that same import since Phase 0, d4e24c525 — this page
+     simply no longer needs them.)
+
+     The page-side CSS below is therefore only what the LIBRARY cannot know:
+     app chrome (toolbar, palette, canvas) plus the focus ring and pin marker this
+     app layers onto the kit's widget cards.
+     ================================================================================ */
+
+  #db-bar { display: flex; align-items: center; gap: 6px; flex-wrap: wrap;
+    padding: 8px 20px; border-bottom: 1px solid rgba(127,127,127,.22);
+    background: var(--db-bar-bg, #fbfbfd); }
+  .db-tabs { display: flex; gap: 4px; margin-right: auto; }
+  .db-tab { border: 1px solid transparent; background: none; cursor: pointer;
+    font: 600 13px/1.2 system-ui, sans-serif; color: #5b6270; padding: 7px 14px; border-radius: 8px; }
+  .db-tab:hover { background: rgba(127,127,127,.09); color: #2d2e3a; }
+  .db-tab[aria-selected="true"] { background: #eef2ff; color: #3b52d9; border-color: #d6def9; }
+  .db-tool { border: 1px solid #d8dce6; background: #fff; cursor: pointer;
+    font: 500 12px/1.2 system-ui, sans-serif; color: #3c4254; padding: 7px 10px; border-radius: 7px; }
+  .db-tool:hover { border-color: #b9c0d0; background: #f6f7fb; }
+  .db-tool:disabled { opacity: .42; cursor: default; }
+  .db-sep { width: 1px; height: 22px; background: rgba(127,127,127,.24); margin: 0 4px; }
+
+  /* Three tracks, and the third is `auto` — the version drawer is `hidden` until
+     it is asked for, so the track measures 0 and the canvas is exactly as wide
+     as it was before this feature existed. */
+  #db-body { display: grid; grid-template-columns: 172px 1fr auto; height: calc(100vh - 202px); min-height: 480px; }
+  #db-palette { border-right: 1px solid rgba(127,127,127,.2); padding: 12px 12px 16px;
+    overflow-y: auto; background: var(--db-pal-bg, #fafbfd); }
+  .pal-title { font: 700 10px/1.4 system-ui, sans-serif; letter-spacing: .8px; text-transform: uppercase;
+    color: #8a91a2; margin: 2px 2px 9px; }
+  .pal-item { display: flex; align-items: center; gap: 9px; width: 100%; margin: 0 0 8px; padding: 8px 9px;
+    border: 1px solid #e4e7ee; border-radius: 9px; background: #fff; cursor: pointer; text-align: left;
+    font: 500 12.5px/1.2 system-ui, sans-serif; color: #2d2e3a; box-shadow: 0 1px 1px rgba(16,24,40,.04); }
+  .pal-item:hover { border-color: #b9c0d0; background: #f6f7fb; }
+  .pal-glyph { width: 26px; height: 26px; border-radius: 7px; flex: none; display: flex; align-items: center;
+    justify-content: center; font-size: 15px; color: #fff; }
+  .pal-note { margin: 12px 2px 0; font: 11px/1.5 system-ui, sans-serif; color: #949bab; }
+
+  #canvas { --axdb-rs-radius: 5px;   /* widget card = placeholder = handle arc */
+    position: relative; overflow: hidden; height: 100%;
+    background-color: var(--db-canvas-bg, #f1f3f7);
+    background-image: radial-gradient(circle, rgba(120,128,145,.16) 1px, transparent 1px);
+    background-size: 26px 26px; }
+
+  /* ---- VERSION DRAWER --------------------------------------------------------
+     Same vocabulary as the palette on the other side: 1px hairline, 9px card
+     radius, 8px gaps, the toolbar's #3b52d9 for "this one". Nothing new is
+     invented here — a version card IS a .pal-item with a picture on it. */
+  #db-history[hidden] { display: none; }
+  #db-history { display: flex; flex-direction: column; width: 272px; overflow: hidden;
+    border-left: 1px solid rgba(127,127,127,.2); background: var(--db-pal-bg, #fafbfd); }
+  .hist-head { display: flex; align-items: center; gap: 6px; padding: 12px 12px 8px; }
+  .hist-title { font: 700 10px/1.4 system-ui, sans-serif; letter-spacing: .8px;
+    text-transform: uppercase; color: #8a91a2; }
+  .hist-count { font: 500 10.5px/1.4 ui-monospace, SFMono-Regular, monospace; color: #a9b0be; margin-right: auto; }
+  .hist-btn { border: 1px solid #d8dce6; background: #fff; cursor: pointer; color: #5b6270;
+    font: 500 11px/1.2 system-ui, sans-serif; padding: 4px 7px; border-radius: 6px; }
+  .hist-btn:hover { border-color: #b9c0d0; background: #f6f7fb; }
+  .hist-list { flex: 1; min-height: 0; overflow-y: auto; padding: 0 12px 2px; }
+  .hist-item { display: block; width: 100%; margin: 0 0 8px; padding: 7px; text-align: left;
+    border: 1px solid #e4e7ee; border-radius: 9px; background: #fff; cursor: pointer;
+    box-shadow: 0 1px 1px rgba(16,24,40,.04); }
+  .hist-item:hover { border-color: #b9c0d0; background: #f6f7fb; }
+  .hist-item.current { border-color: #3b52d9; background: #eef2ff; }
+  /* The thumbnail is a TRUE-VECTOR export of the board that was saved — the same
+     exportSvgString({ includeIds: handle.exportIds() }) an embedder would call.
+     The export is TRANSPARENT on purpose: the cells a board does not fill should
+     read as canvas, and only CSS knows which canvas the reader is looking at. */
+  .hist-thumb { display: block; width: 100%; height: auto; border: 1px solid #edeff4;
+    border-radius: 5px; background: var(--db-canvas-bg, #f1f3f7); }
+  .hist-thumb-none { display: flex; align-items: center; justify-content: center; height: 74px;
+    font: 500 10.5px/1.2 system-ui, sans-serif; color: #b3b9c6; }
+  .hist-row { display: flex; align-items: baseline; gap: 6px; margin: 7px 1px 0; }
+  .hist-id { font: 700 11.5px/1.2 ui-monospace, SFMono-Regular, monospace; color: #2d2e3a; }
+  .hist-when { font: 500 11px/1.2 system-ui, sans-serif; color: #8a91a2; margin-right: auto; }
+  .hist-tag { font: 600 9.5px/1.6 system-ui, sans-serif; letter-spacing: .3px; text-transform: uppercase;
+    padding: 1px 5px; border-radius: 4px; background: #eef0f5; color: #7c8494; }
+  .hist-tag.now { background: #3b52d9; color: #fff; }
+  .hist-sub { margin: 3px 1px 0; font: 500 11px/1.35 system-ui, sans-serif; color: #5b6270; }
+  .hist-delta { margin: 1px 1px 0; font: 11px/1.35 system-ui, sans-serif; color: #949bab; }
+  .hist-empty { padding: 8px 2px; font: 11.5px/1.55 system-ui, sans-serif; color: #949bab; }
+  .hist-note { padding: 9px 12px 12px; border-top: 1px solid rgba(127,127,127,.14);
+    font: 11px/1.5 system-ui, sans-serif; color: #949bab; }
+
+  #db-status { position: absolute; left: 14px; bottom: 12px; z-index: 6; max-width: 72%;
+    padding: 6px 11px; border-radius: 8px; background: rgba(20,24,33,.86); color: #eef1f7;
+    font: 500 11.5px/1.35 ui-monospace, SFMono-Regular, monospace; pointer-events: none;
+    box-shadow: 0 3px 10px rgba(15,23,42,.2); opacity: 0; transition: opacity .18s; }
+  #db-status.show { opacity: 1; }
+
+  /* ---- APP CHROME ON TOP OF THE KIT'S WIDGET CARDS ----------------------------
+     `.axdb-widget` and its innards are painted by the library's built-in
+     renderers (libs/element/src/lib/dashboard-kit/widgets.ts) and styled by the
+     kit's own stylesheet — card, header, KPI stack, legend chips, table. What is
+     app-specific stays here: this builder makes tiles clickable, rings the FOCUSED
+     one (the toolbar's target) and marks PINNED ones. */
+  .axdb-widget { cursor: pointer; transition: box-shadow .14s, border-color .14s; }
+  .axdb-widget:hover { border-color: #c4ccdb; }
+  .axdb-widget.focused { border-color: #3b52d9; box-shadow: 0 0 0 2px rgba(59,82,217,.28), 0 3px 12px rgba(59,82,217,.14); }
+  .axdb-widget .pin { margin-left: auto; font-size: 12px; opacity: 0; }
+  .axdb-widget.locked .pin { opacity: 1; color: #d0912a; }
+
+  /* ---- reflow GLIDE ------------------------------------------------------
+     Tiles glide to their new slot instead of teleporting (gridstack-style).
+     GESTURES use the dashboard kit's own identical rule (.axdb-glide, ghost
+     exempt); this page-side .glide class covers the NON-gesture bursts —
+     add/remove/undo/load — via glide() around refresh(), so that:
+       - on tab switches there is no class → parked views swap instantly rather
+         than flying in from the off-canvas parking position;
+       - on add/remove/undo/load the class is present → every affected tile
+         animates into place. */
+  .grafloria-html-layer.glide > .grafloria-node-host {
+    transition: left .28s cubic-bezier(.2, 0, .2, 1), top .28s cubic-bezier(.2, 0, .2, 1),
+                width .28s cubic-bezier(.2, 0, .2, 1), height .28s cubic-bezier(.2, 0, .2, 1);
+  }
+
+  @media (prefers-color-scheme: dark) {
+    #db-bar { --db-bar-bg:#171a21; } #db-palette { --db-pal-bg:#14161c; }
+    #canvas { --db-canvas-bg:#0f1116; background-image: radial-gradient(circle, rgba(150,160,180,.14) 1px, transparent 1px); }
+    .db-tab { color:#9aa2b2; } .db-tab:hover { color:#e6e9f0; }
+    .db-tab[aria-selected="true"] { background:#23294a; color:#b7c2ff; border-color:#33407a; }
+    .db-tool { background:#1c1f27; border-color:#333a49; color:#cbd2df; }
+    .db-tool:hover { background:#232734; }
+    .pal-item { background:#1c1f27; border-color:#333a49; color:#d7dbe4; } .pal-item:hover { background:#232734; }
+    #db-history { --db-pal-bg:#14161c; --db-canvas-bg:#0f1116; }
+    .hist-btn, .hist-item { background:#1c1f27; border-color:#333a49; color:#cbd2df; }
+    .hist-btn:hover, .hist-item:hover { background:#232734; border-color:#465066; }
+    .hist-item.current { background:#23294a; border-color:#33407a; }
+    .hist-thumb { border-color:#2a2f3b; }
+    .hist-id { color:#e6e9f0; } .hist-sub { color:#aab2c2; }
+    .hist-tag { background:#2a3040; color:#9aa2b2; } .hist-tag.now { background:#3b52d9; color:#fff; }
+  }
+</style>
+
+<header id="demo-head"></header>
+<div id="db-bar">
+  <div class="db-tabs" role="tablist" aria-label="Dashboard views">
+    <button class="db-tab" role="tab" data-tab="overview" aria-selected="true">Overview</button>
+    <button class="db-tab" role="tab" data-tab="sales" aria-selected="false">Sales</button>
+    <button class="db-tab" role="tab" data-tab="pipeline" aria-selected="false">Pipeline</button>
+  </div>
+  <button class="db-tool" id="t-undo" title="Undo (⌘Z)">↶ Undo</button>
+  <button class="db-tool" id="t-redo" title="Redo (⌘⇧Z)">↷ Redo</button>
+  <span class="db-sep"></span>
+  <button class="db-tool" id="t-pin" title="Pin / unpin the focused tile">📌 Pin</button>
+  <button class="db-tool" id="t-front" title="Bring focused tile to front">⤒ Front</button>
+  <button class="db-tool" id="t-back" title="Send focused tile to back">⤓ Back</button>
+  <button class="db-tool" id="t-grow" title="Cycle the focused tile's row span (live push)">⇕ Resize</button>
+  <button class="db-tool" id="t-remove" title="Remove the focused tile">🗑 Remove</button>
+  <span class="db-sep"></span>
+  <button class="db-tool" id="t-mode" title="Sizing mode: fit keeps the board height and squeezes rows; grow keeps row height and extends the board">Mode: fit</button>
+  <button class="db-tool" id="t-float" title="Float: on lets widgets sit anywhere with gaps (no gravity); off packs upward">Float: off</button>
+  <span class="db-sep"></span>
+  <button class="db-tool" id="t-save" title="Serialize the dashboard">💾 Save</button>
+  <button class="db-tool" id="t-load" title="Rebuild from the last save">⟲ Load</button>
+  <button class="db-tool" id="t-history" aria-expanded="false" title="Version history — every Save is a version you can go back to">🕘 Versions</button>
+</div>
+<div id="db-body">
+  <aside id="db-palette">
+    <div class="pal-title">Add widget</div>
+    <button class="pal-item" data-add="kpi"><span class="pal-glyph" style="background:#3b52d9">#</span>KPI stat</button>
+    <button class="pal-item" data-add="line"><span class="pal-glyph" style="background:#0ea5e9">∿</span>Line / area</button>
+    <button class="pal-item" data-add="bar"><span class="pal-glyph" style="background:#14b8a6">▊</span>Bar chart</button>
+    <button class="pal-item" data-add="donut"><span class="pal-glyph" style="background:#f59e0b">◕</span>Donut</button>
+    <button class="pal-item" data-add="funnel"><span class="pal-glyph" style="background:#8b5cf6">▽</span>Funnel</button>
+    <button class="pal-item" data-add="table"><span class="pal-glyph" style="background:#64748b">▤</span>Table</button>
+    <div class="pal-note">Click to add, or DRAG onto the board — it makes room live from the moment the cursor enters. On the board: drag tiles (neighbours slide out of the way around the dashed placeholder), resize from a tile's corner, drag OUT to remove. Click a tile to focus it, then use the toolbar.</div>
+  </aside>
+  <div id="canvas"><div id="db-status"></div></div>
+  <!-- VERSION HISTORY. A grid COLUMN, not an overlay: opening it narrows the
+       canvas, the ResizeObserver below reframes the board, and the whole board
+       stays visible next to the versions you are choosing between. -->
+  <aside id="db-history" hidden aria-label="Version history">
+    <div class="hist-head">
+      <span class="hist-title">Versions</span>
+      <span class="hist-count" id="hist-count">0</span>
+      <button class="hist-btn" id="hist-clear" title="Forget every saved version">Clear</button>
+      <button class="hist-btn" id="hist-close" title="Close (Esc)">✕</button>
+    </div>
+    <div class="hist-list" id="hist-list"></div>
+    <div class="hist-note">Every 💾 Save banks a version, thumbnail and all. Click one to restore
+      it — the board you were on is banked first, so a restore is never a one-way door.</div>
+  </aside>
+</div>
+
+<script type="module">
+// ===========================================================================
+//  Dashboard builder — the flagship proof that a dashboard-builder app can be
+//  built on Grafloria, and the reference for the NEWEST way to do it.
+//
+//  THE BOARD IS DECLARED, NOT ASSEMBLED. `dashboard({ views })` (commit
+//  994b7c5f1) is to dashboards what `erDiagram()` is to ER diagrams: you write
+//  WHAT the dashboard is — views, widgets, spans — and render() wires the pack
+//  grid, drag/resize with live push, the truthful placeholder, fit/grow, float,
+//  pin and one-undo-per-gesture. This page used to hand-assemble a GroupModel
+//  per view, a NodeModel per widget, useHTMLLayer/widgetKind metadata, grid
+//  cells, membership and three binders: ~143 lines. It is now the VIEWS
+//  literal below, and SPEC.handle drives it.
+//
+//  THE HANDLE IS THE WHOLE SURFACE. Every edit below — add, remove, resize,
+//  move, pin, raise/lower, fit, refresh, save/load — is one call on SPEC.handle
+//  or a WidgetHandle. The page builds no widget NodeModel, sequences no
+//  commands, keeps no host or spec side-maps. Exactly TWO things reach past the
+//  façade, both deliberate and both marked at their call site: H.binderOf() for
+//  palette drag-in (the kit's documented escape hatch).
+//
+//  Read the enabling commits if you are extending this: b76b2b5e2 (dashboard-
+//  layout machinery), d4e24c525 (Phase 0 — the front door stops filtering),
+//  f198003fe (GridPackEngine), 994b7c5f1 (dashboard()), 8a507a613 (the handle
+//  closes the gaps), and the kit itself at libs/element/src/lib/dashboard-kit.
+//
+//  WHAT STAYS PAGE-SIDE: the SALES DATASET (demo content — the library ships
+//  no sample data) and app chrome (toolbar, palette, focus, flash line).
+//  WHAT MOVED INTO THE LIBRARY: every chart. The six hand-drawn SVG renderers
+//  this page used to carry are now `defaultWidgetRenderer` in the kit, driven
+//  by the same data through documented per-kind contracts — so the page proves
+//  the built-ins rather than duplicating them.
+// ===========================================================================
+import {
+  render,
+  // The ONE engine type this page still names: a detached carrier node for the
+  // palette drag gesture (see wireControls). Every other node is built by the
+  // kit — this page never assembles one.
+  NodeModel,
+  // The dashboard kit: the authoring API + the built-in widget renderers.
+  dashboard, defaultWidgetRenderer,
+} from '../shell/grafloria.js';
+import { defineDemo, check, checkEqual, checkChanged } from '../shell/demo.js';
+
+/* ---------------------------------------------------------------------------
+   1. STATIC SALES DATASET — deterministic, no Math.random() anywhere (goldens
+   must bless stably). Money is in $K unless noted. This is DEMO CONTENT: the
+   library ships renderers, never numbers.
+--------------------------------------------------------------------------- */
+const C = { blue:'#3b52d9', sky:'#0ea5e9', teal:'#14b8a6', amber:'#f59e0b', violet:'#8b5cf6', slate:'#64748b' };
+const MONTHS = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+const DATA = {
+  months: MONTHS,
+  revenue: [420, 455, 470, 512, 498, 545, 588, 610, 596, 648, 705, 762],
+  target:  [400, 430, 465, 500, 520, 540, 560, 590, 615, 640, 665, 700],
+  regions: [
+    { name: 'North America', value: 2860, color: C.blue },
+    { name: 'EMEA',          value: 1920, color: C.teal },
+    { name: 'APAC',          value: 1340, color: C.amber },
+    { name: 'LATAM',         value: 610,  color: C.violet },
+  ],
+  pipeline: [
+    { stage: 'Lead',        value: 1200 },
+    { stage: 'Qualified',   value: 820 },
+    { stage: 'Proposal',    value: 540 },
+    { stage: 'Negotiation', value: 360 },
+    { stage: 'Closed Won',  value: 214 },
+  ],
+  reps: [
+    { name: 'A. Farouk',   deals: 38, revenue: '1.24M', quota: 118 },
+    { name: 'M. Haddad',   deals: 31, revenue: '0.98M', quota: 96 },
+    { name: 'J. Okonkwo',  deals: 29, revenue: '0.91M', quota: 88 },
+    { name: 'S. Nakamura', deals: 24, revenue: '0.77M', quota: 74 },
+    { name: 'L. Moretti',  deals: 21, revenue: '0.63M', quota: 61 },
+  ],
+  kpis: {
+    // Already the built-in `kpi` contract, verbatim: { label, value, delta, deltaLabel, spark }.
+    revenue:   { label: 'Total revenue',  value: '$6.81M', delta: +12.4, deltaLabel: 'vs last qtr', spark: [42,45,47,51,50,55,59,61,60,65,71,76] },
+    customers: { label: 'New customers',  value: '1,284',  delta: +8.1, deltaLabel: 'vs last qtr',  spark: [70,74,79,83,88,92,96,101,108,116,124,131] },
+    avgDeal:   { label: 'Avg deal size',  value: '$18.6K', delta: -2.3, deltaLabel: 'vs last qtr',  spark: [21,20,22,19,20,18,19,18,17,19,18,18] },
+    winRate:   { label: 'Win rate',       value: '27.4%',  delta: +3.5, deltaLabel: 'vs last qtr',  spark: [22,23,24,24,25,25,26,26,27,27,27,28] },
+  },
+};
+
+/* The dataset, shaped once per BUILT-IN WIDGET CONTRACT. Each of these is
+   exactly what libs/element/src/lib/dashboard-kit/widgets.ts documents for its
+   `kind` — the whole adaptation layer between an app's data and a working
+   dashboard is these six lines. */
+const TREND   = { series: [{ name: 'Revenue', values: DATA.revenue }, { name: 'Target', values: DATA.target }], labels: MONTHS };
+const MIX     = { slices: DATA.regions.map((r) => ({ label: r.name, value: r.value, color: r.color })), centerLabel: '$6.73M' };
+const BARS    = { bars: DATA.regions.map((r) => ({ label: r.name, value: r.value })) };
+const STAGES  = { stages: DATA.pipeline.map((p) => ({ label: p.stage, value: p.value })) };
+const STAGE_MIX = { slices: DATA.pipeline.map((p) => ({ label: p.stage, value: p.value })) };
+const REPS    = {
+  columns: ['Rep', 'Deals', 'Revenue', 'Quota'],
+  rows: DATA.reps.map((r) => [r.name, r.deals, `$${r.revenue}`, `${r.quota}%`]),
+};
+
+/* ---------------------------------------------------------------------------
+   2. THE BOARD — DECLARED. Three views, each a list of widgets. Widgets that
+   name no cell FLOW left-to-right and wrap at the column count, which is how
+   all of Overview and Sales place themselves; Pipeline mixes ONE explicit cell
+   (the win-rate KPI parks under the stage donut) with flowed neighbours around
+   it. That is the whole board: no groups, no nodes, no metadata, no cells.
+--------------------------------------------------------------------------- */
+const VIEWS = [
+  { id: 'overview', name: 'Overview', widgets: [
+    { id: 'kpi-revenue',   kind: 'kpi',   span: 3,  rows: 1, data: DATA.kpis.revenue },
+    { id: 'kpi-customers', kind: 'kpi',   span: 3,  rows: 1, data: DATA.kpis.customers },
+    { id: 'kpi-avgdeal',   kind: 'kpi',   span: 3,  rows: 1, data: DATA.kpis.avgDeal },
+    { id: 'kpi-winrate',   kind: 'kpi',   span: 3,  rows: 1, data: DATA.kpis.winRate },
+    { id: 'trend',         kind: 'line',  span: 8,  rows: 2, title: 'Revenue vs target', data: TREND },
+    { id: 'mix',           kind: 'donut', span: 4,  rows: 2, title: 'Revenue by region', data: MIX },
+    { id: 'reps',          kind: 'table', span: 12, rows: 2, title: 'Top reps by revenue', data: REPS },
+  ]},
+  { id: 'sales', name: 'Sales', widgets: [
+    { id: 'sales-bar',   kind: 'bar',   span: 7,  rows: 2, title: 'Revenue by region', data: BARS },
+    { id: 'sales-mix',   kind: 'donut', span: 5,  rows: 2, title: 'Region share', data: MIX },
+    { id: 'sales-trend', kind: 'line',  span: 12, rows: 2, title: 'Monthly revenue trend', data: TREND },
+  ]},
+  { id: 'pipeline', name: 'Pipeline', widgets: [
+    { id: 'pipe-funnel', kind: 'funnel', span: 6,  rows: 2, title: 'Conversion funnel', data: STAGES },
+    { id: 'pipe-mix',    kind: 'donut',  span: 6,  rows: 1, title: 'Pipeline by stage', data: STAGE_MIX },
+    { id: 'pipe-winrate',kind: 'kpi',    span: 6,  rows: 1, x: 6, y: 1, data: DATA.kpis.winRate },
+    { id: 'pipe-reps',   kind: 'table',  span: 12, rows: 1, title: 'Top reps by revenue', data: REPS },
+  ]},
+];
+
+// Board geometry, shared by the initial mount and every Load rebuild.
+const BOARD = { columns: 12, gap: 8, rowHeight: 130, width: 1180, height: 660 };
+const GAP = BOARD.gap, BASE_ROW = BOARD.rowHeight, TAB_W = BOARD.width, TAB_H = BOARD.height;
+
+// A palette drop needs sensible defaults so it lands well-proportioned. Sizes
+// are INTEGER CELLS (12-column pack grid); the kit's engine owns where they go.
+const PALETTE = {
+  kpi:    { kind: 'kpi',    span: 3,  rows: 1, data: DATA.kpis.revenue },
+  line:   { kind: 'line',   span: 8,  rows: 2, title: 'Revenue vs target',   data: TREND },
+  bar:    { kind: 'bar',    span: 6,  rows: 2, title: 'Revenue by region',   data: BARS },
+  donut:  { kind: 'donut',  span: 4,  rows: 2, title: 'Revenue share',       data: MIX },
+  funnel: { kind: 'funnel', span: 4,  rows: 2, title: 'Conversion funnel',   data: STAGES },
+  table:  { kind: 'table',  span: 12, rows: 2, title: 'Top reps',            data: REPS },
+};
+
+/* ---------------------------------------------------------------------------
+   3. LIVE STATE + the widget painter.
+--------------------------------------------------------------------------- */
+let SPEC = null;                  // the live dashboard() spec (Load rebuilds it)
+let H = null;                     // SPEC.handle — showView / widget() / setSizing / …
+let ctxRef = null;                // { diagram, engine, instance } from defineDemo
+let statusEl = null;
+let sizingMode = 'fit', floatMode = false;
+const state = { focus: null, saved: null, seq: 0 };
+
+/** dashboard()'s `renderWidget` seam. The LIBRARY draws the chart from the
+ *  declared `kind` + `data`; this page only adds what an app owns — a focus
+ *  ring, a pin marker and click-to-focus. That composition is the intended
+ *  use of defaultWidgetRenderer. */
+function renderWidget(widget, host) {
+  defaultWidgetRenderer(widget, host);
+  const card = host.firstElementChild;
+  if (!card) return;
+  const head = card.querySelector('.axdb-widget-h');
+  if (head) head.insertAdjacentHTML('beforeend', '<span class="pin" title="Pinned">📌</span>');
+  host.onclick = () => setFocus(widget.id);
+  paintChrome(card, widget.id);
+}
+
+/* APP CHROME — the focus ring and the pin marker are the two things the kit
+   cannot know, and both are just CSS classes on the card it painted. The page
+   toggles them on the MOUNTED host (the HTML layer's documented `data-node-id`
+   contract) rather than repainting: no chart is redrawn to move a ring, and
+   the page needs no host or spec side-maps at all. */
+const cardOf = (id) => ctxRef?.host.querySelector(`.grafloria-node-host[data-node-id="${id}"] .axdb-widget`);
+function paintChrome(card, id) {
+  if (!card) return;
+  card.classList.toggle('focused', id === state.focus);
+  card.classList.toggle('locked', H?.widget(id)?.pinned === true);
+}
+function syncChrome() {
+  for (const v of H.views) for (const w of H.widgetsOf(v)) paintChrome(cardOf(w.id), w.id);
+}
+
+function setFocus(id) {
+  state.focus = id;
+  syncChrome();
+  syncToolbarSoon();
+}
+
+function flash(msg) {
+  if (!statusEl) return;
+  // A monotonic seq guarantees the text CHANGES on every action, so the
+  // gallery's DEAD-BUTTON gate always sees a real DOM mutation — while the
+  // real edit happens underneath. It doubles as a live activity readout.
+  statusEl.textContent = `${++state.seq} · ${msg}`;
+  statusEl.classList.add('show');
+}
+
+/** Arm the page-side reflow transition for one non-gesture relayout burst
+ *  (add/remove/undo/load). Gestures use the kit's own identical glide. */
+let glideTimer = null;
+function glide() {
+  const layer = document.querySelector('.grafloria-html-layer');
+  if (!layer) return;
+  layer.classList.add('glide');
+  clearTimeout(glideTimer);
+  glideTimer = setTimeout(() => layer.classList.remove('glide'), 420);
+}
+
+const cmd = () => ctxRef.instance.getEngine().commandManager;
+
+/* ---------------------------------------------------------------------------
+   4. MOUNT. dashboard() → render(). Load re-runs mountBoard() with the saved
+   layout, which is the data-first round-trip: toJSON() output IS dashboard()
+   input.
+--------------------------------------------------------------------------- */
+function buildSpec(views) {
+  return dashboard({
+    ...BOARD,
+    sizing: sizingMode,
+    float: floatMode,
+    views,
+    renderWidget,
+    // Fires after every committed gesture: the undo button must light up as
+    // soon as the gesture's BatchCommand has landed.
+    onLayoutChange: () => syncToolbarSoon(),
+    // The escape hatch dashboard() documents: options handed straight to the
+    // binder underneath. Drag-out-to-remove and palette drop-in are page
+    // COMMAND paths, so the kit asks rather than deletes.
+    binder: {
+      dragOut: 'remove',
+      // Deletion needs INTENT: only a release over the palette removes (the
+      // trash affordance, gridstack-web2 style). A slip past the frame edge
+      // snaps home — the plan prototype cannot delete by overshoot at all.
+      removeZone: (screen) => {
+        const pal = document.getElementById('db-palette');
+        if (!pal) return false;
+        return screen.x <= pal.getBoundingClientRect().right + 8;
+      },
+      // Both hand over `displaced` — the survivors' cell commits the gesture
+      // already computed. remove() folds them into its own batch; see dropIn()
+      // for the one place that still has nowhere to put them.
+      onRemoveRequest: (nodeId, displaced) => removeWidget(nodeId, displaced),
+      onDropIn: (node, cell) => dropIn(node, cell),
+      onGesture: (e) => {
+        lastPaletteGestureAt = e.kind === 'palette' ? Date.now() : lastPaletteGestureAt;
+        if (e.type === 'commit') {
+          setFocus(e.nodeId);
+          flash(e.changed
+            ? (e.kind === 'resize' ? 'resize committed — one undoable step' : 'move committed — one undoable step')
+            : 'released — nothing changed');
+        } else if (e.type === 'cancel' && e.kind !== 'palette') {
+          flash('cancelled — every tile restored');
+        }
+        syncToolbarSoon();
+      },
+    },
+  });
+}
+
+/** Run after every mount (boot and every Load rebuild). */
+function afterMount(active) {
+  // (The connectable:false sweep that used to live here is gone: dashboard()'s
+  //  finalize() now marks DECLARED widgets unconnectable and strips their
+  //  default ports, matching what addWidget() always did for created ones.)
+  showView(H.views.includes(active) ? active : H.views[0]);
+}
+
+/** Switch views: the handle parks the others off-canvas, re-frames and
+ *  re-renders. Focus follows the view so the toolbar always has a live target. */
+function showView(id) {
+  H.showView(id);
+  for (const btn of document.querySelectorAll('.db-tab')) btn.setAttribute('aria-selected', String(btn.dataset.tab === id));
+  setFocus(H.widgetsOf()[0]?.id ?? null);
+  flash(`view: ${id}`);
+}
+
+/** Re-read every board from the model (undo/redo land here) and re-frame. */
+function refresh() {
+  glide();
+  H.refresh();
+  H.fit();
+  syncChrome();
+}
+
+/* ---------------------------------------------------------------------------
+   5. TOOLBAR + PALETTE — every edit is ONE call on the handle, one undo step.
+--------------------------------------------------------------------------- */
+let lastPaletteGestureAt = 0;   // suppresses the click-add after a real drag-in
+
+function syncToolbar() {
+  const cm = cmd();
+  document.getElementById('t-undo').disabled = !cm.canUndo();
+  document.getElementById('t-redo').disabled = !cm.canRedo();
+  const w = state.focus ? H.widget(state.focus) : null;
+  for (const id of ['t-pin', 't-front', 't-back', 't-grow', 't-remove']) document.getElementById(id).disabled = !w;
+  document.getElementById('t-pin').textContent = w && w.pinned ? '📌 Unpin' : '📌 Pin';
+}
+
+/** Every commit path here — the handle's edits and the binder's gestures alike —
+ *  fires its command WITHOUT awaiting it (the visible state is already final),
+ *  so the undo entry lands on the NEXT tick. Read the history now AND then, or
+ *  the Undo button misses the edit that just happened. */
+function syncToolbarSoon() { syncToolbar(); setTimeout(syncToolbar, 0); }
+
+/** ADD: one call. `handle.addWidget()` CREATES the node (metadata, spans, grid
+ *  cell, connectable:false, no ports), registers it before the node reaches the
+ *  model so the first paint works, and commits node + membership as ONE undoable
+ *  step. Omitting x/y auto-positions it into the first free hole. */
+function addWidget(kind) {
+  const p = PALETTE[kind];
+  const view = H.activeView;
+  glide();
+  const w = H.addWidget({ ...p }, view);
+  if (!w) return null;
+  setFocus(w.id);
+  flash(`added ${p.kind} → ${view} (auto-positioned)`);
+  return w.id;
+}
+
+/** Palette DRAG-IN release: the carrier node only drove the ghost and never
+ *  entered the model, so the drop is the SAME one-call add, pinned to the cell
+ *  the placeholder settled on. (`displaced` — the survivors this drop pushed —
+ *  is the one thing the API still cannot express: addWidget() has no
+ *  counterpart to remove(displaced). Unchanged from the hand-assembled page.) */
+function dropIn(node, cell) {
+  const p = node.__palette;
+  const w = H.addWidget({ ...p, x: cell.x, y: cell.y }, H.activeView);
+  if (!w) return;
+  setFocus(w.id);
+  flash(`dropped ${p.kind} at column ${cell.x + 1}, row ${cell.y + 1}`);
+}
+
+/** REMOVE: ONE undoable batch — membership + node + the survivors' re-pack, so
+ *  undo restores the exact board. A drag-out passes the `displaced` commands its
+ *  gesture already computed (by then the tile has left the engine, so the handle
+ *  could not re-plan them); the toolbar passes nothing and the handle plans. */
+function removeWidget(id, displaced) {
+  const w = H.widget(id);
+  if (!w) return;
+  glide();
+  w.remove(displaced);
+  setFocus(state.focus === id ? null : state.focus);
+  flash('removed widget (survivors re-packed)');
+}
+
+/** RESIZE (toolbar): cycle the focused tile's row span 1→2→3→1 through the
+ *  handle — same engine pipeline as the corner drag, same ONE-BatchCommand
+ *  commit, and it resolves the board's own accepted/refused verdict. */
+async function cycleRows(id) {
+  const w = H.widget(id);
+  if (!w?.cell) return;
+  const rows = w.cell.h >= 3 ? 1 : w.cell.h + 1;
+  const ok = await w.resize(w.cell.w, rows);
+  flash(ok ? `resized → ${rows} row${rows > 1 ? 's' : ''} tall (neighbours pushed live)`
+           : 'resize refused (pinned neighbour?)');
+}
+
+/** PIN/LOCK: the authoritative per-node lock — pin() re-syncs the board itself,
+ *  so the engine's `locked` flag (never pushed, drags refused) and the hidden
+ *  resize handle take effect on this frame. */
+function togglePin(id) {
+  const w = H.widget(id);
+  if (!w) return;
+  w.pin();
+  syncChrome();
+  syncToolbarSoon();
+  flash(w.pinned ? 'pinned (keeps its cells; drags onto it refused)' : 'unpinned');
+}
+
+function setFloatMode(on) {
+  if (on === floatMode) return;
+  floatMode = on;
+  glide();
+  H.setFloat(on);
+  document.getElementById('t-float').textContent = `Float: ${on ? 'on' : 'off'}`;
+  flash(on ? 'Float ON: widgets stay wherever you put them - gaps are legal'
+           : 'Float OFF: gravity packs widgets upward');
+}
+
+/** SIZING MODE: fit (default) keeps every board at its design height and
+ *  squeezes rows (DevExtreme-style — nothing falls below the fold); grow keeps
+ *  the 130px design row and extends the board downward. */
+function setSizingMode(mode) {
+  if (mode === sizingMode) return;
+  sizingMode = mode;
+  glide();
+  H.setSizing(mode);
+  document.getElementById('t-mode').textContent = `Mode: ${mode}`;
+  // fit: refit the camera to the design-height board. grow: KEEP the camera —
+  // the board extends past the fold and panning reaches it; refitting would
+  // shrink the view and make grow visually identical to fit.
+  if (mode === 'fit') H.fit();
+  flash(mode === 'fit'
+    ? 'FIT: boards keep their height — rows squeeze so everything stays visible'
+    : 'GROW: rows keep their height — boards extend downward (camera refits)');
+}
+
+/* ---------------------------------------------------------------------------
+   6. VERSION HISTORY — every Save is a version you can go back to.
+   ---------------------------------------------------------------------------
+   THIS IS APP CODE, DELIBERATELY. Versioning is not a diagram-engine concern:
+   what a "version" means, how many you keep, where they live and what a
+   thumbnail is for are all product decisions, and a kit that answered them for
+   you would be wrong for the next app. So the library contributes exactly three
+   calls and nothing else, and each is the NEWEST public way to do its job:
+
+     handle.toJSON()   → the layout, as plain data (and valid dashboard() input)
+     handle.exportIds() → the ids of the visible board, group included
+     instance.exportSvgString({ includeIds }) → a TRUE-VECTOR picture of it
+
+   The last one is why the drawer shows real thumbnails rather than timestamps:
+   a widget is a custom HTML node, so until the widget-content export landed a
+   board exported as a row of empty boxes. It is ~23 KB of self-contained SVG
+   per board, captured in ~20 ms, and it is the difference between a list you
+   read and a gallery you recognise.
+
+   toJSON() CARRIES THE WHOLE BOARD, not just the views: columns, gap, sizing,
+   rowHeight, float and rtl come back with it, read off the LIVE board rather
+   than the authored literal. It returned only `views` until this page tried to
+   PERSIST a board and a `grow` board reloaded as `fit` — the round-trip claim
+   was true of the layout and false of the board. A version therefore stores one
+   snapshot and nothing beside it.
+--------------------------------------------------------------------------- */
+const HISTORY_KEY = 'grafloria-dashboard-history';
+const MAX_VERSIONS = 8;          // localStorage is small and THROWS when full
+let history = [];                // newest first
+let versionSeq = 0;              // monotonic, so a label ("v3") is stable
+let currentVersion = null;       // the version the board was last restored from
+let historyOpen = false;
+
+/** Probe ONCE. In private mode setItem always throws, and a persist() that read
+ *  that as "quota" would shed every thumbnail it holds for nothing. */
+const storageOk = (() => {
+  try { localStorage.setItem('grafloria-dash-probe', '1'); localStorage.removeItem('grafloria-dash-probe'); return true; }
+  catch { return false; }
+})();
+
+/** A TRUE-VECTOR picture of the board as it stands — the whole reason the cards
+ *  are worth looking at. Scoped with exportIds(): unscoped, the parked views put
+ *  a ~21,000px mostly-empty document in each card. */
+function thumbOf() {
+  try {
+    const { svg } = ctxRef.instance.exportSvgString({ includeIds: H.exportIds(), padding: 4 });
+    return svg;
+  } catch { return null; }   // a picture is a nicety; never fail a save for it
+}
+const thumbUri = (svg) => `data:image/svg+xml;charset=utf-8,${encodeURIComponent(svg)}`;
+
+/** Bank the board as a new version. `auto` marks the ones the app took on the
+ *  user's behalf (before a restore) rather than the ones they asked for. */
+function captureVersion({ auto = false } = {}) {
+  const v = {
+    n: ++versionSeq, at: Date.now(), auto,
+    // ONE snapshot, one source of truth. `sizing`/`float` used to be read
+    // separately through getSizing()/getFloat() because toJSON() dropped them.
+    ...(() => { const s = H.toJSON(); return { board: s, views: s.views, sizing: s.sizing, float: s.float }; })(),
+    view: H.activeView,          // the view the thumbnail shows
+    thumb: thumbOf(),
+  };
+  v.id = `v${v.n}`;
+  history.unshift(v);
+  if (history.length > MAX_VERSIONS) history.length = MAX_VERSIONS;
+  currentVersion = v.id;
+  persist();
+  renderHistory();
+  return v;
+}
+
+/** Bank only if the board differs from THE VERSION IT CAME FROM — browsing
+ *  versions must not breed a duplicate entry per click.
+ *
+ *  The anchor is `currentVersion`, not `history[0]`, and the difference is the
+ *  whole point: after one restore the newest entry is the auto-bank of the board
+ *  you LEFT, so comparing against it declared every subsequent click a change
+ *  and banked a copy of an unedited board every time (caught by the gate). */
+function captureIfChanged(opts) {
+  const anchor = history.find((v) => v.id === currentVersion) ?? history[0];
+  if (anchor && JSON.stringify(anchor.views) === JSON.stringify(H.toJSON().views)) return null;
+  return captureVersion(opts);
+}
+
+/** What the last persist() had to drop to fit. REPORTED BY THE CALLER, not
+ *  flashed from here: persist() runs inside save/restore, whose own flash lands
+ *  a moment later and used to overwrite the warning before anyone read it (the
+ *  gate caught that too — the message existed and was invisible). */
+let lastShed = null;
+const shedNote = () => {
+  const s = lastShed;
+  lastShed = null;
+  return s ? ` · ⚠ storage full, dropped the oldest ${s}` : '';
+};
+
+function persist() {
+  if (!storageOk) return false;
+  const store = () => localStorage.setItem(HISTORY_KEY, JSON.stringify({ seq: versionSeq, versions: history }));
+  try { store(); return true; } catch { /* full — shed and retry */ }
+  // QUOTA. Thumbnails are ~85% of the payload, so shed those first, oldest
+  // first, and only then whole versions. Never throw at the user.
+  for (let i = history.length - 1; i >= 0; i--) {
+    if (!history[i].thumb) continue;
+    history[i].thumb = null;
+    try { store(); lastShed = 'thumbnails'; renderHistory(); return true; } catch { /* keep shedding */ }
+  }
+  while (history.length > 1) {
+    history.pop();
+    try { store(); lastShed = 'versions'; renderHistory(); return true; } catch { /* keep shedding */ }
+  }
+  lastShed = 'versions';
+  try { localStorage.removeItem(HISTORY_KEY); } catch { /* nothing more to do */ }
+  renderHistory();
+  return false;
+}
+
+/** Read the drawer back on boot — SILENTLY. A flash here would rewrite the
+ *  status line before the user has done anything. */
+function restoreHistory() {
+  if (!storageOk) return;
+  try {
+    const raw = localStorage.getItem(HISTORY_KEY);
+    if (!raw) return;
+    const data = JSON.parse(raw);
+    if (!Array.isArray(data?.versions)) return;
+    history = data.versions.filter((v) => v && Array.isArray(v.views) && v.id);
+    versionSeq = Number(data.seq) || history.reduce((m, v) => Math.max(m, v.n || 0), 0);
+  } catch { history = []; }
+}
+
+/** Mount a version's data: the SAME rebuild Load always did, plus the board
+ *  options toJSON() cannot carry. */
+function applyVersion(v) {
+  glide();
+  const active = H.views.includes(v.view) ? v.view : H.activeView;
+  H.dispose();                      // drops the old binders AND their boards
+  sizingMode = v.sizing ?? sizingMode;
+  floatMode = v.float ?? floatMode;
+  SPEC = buildSpec(v.views);        // toJSON() output IS dashboard() input
+  H = SPEC.handle;
+  // Reconcile the model to the rebuilt spec (same ids → the same hosts, so
+  // nothing remounts) and wire the fresh boards.
+  ctxRef.instance.setNodes(SPEC.nodes);
+  SPEC.finalize(ctxRef.instance);
+  cmd().clear();                    // a load is not an undoable edit
+  document.getElementById('t-mode').textContent = `Mode: ${sizingMode}`;
+  document.getElementById('t-float').textContent = `Float: ${floatMode ? 'on' : 'off'}`;
+  afterMount(active);
+}
+
+/** RESTORE, and never a one-way door: the board you are leaving is banked first
+ *  (silently, and only if it differs), so the history is its own undo. The
+ *  target is held by REFERENCE, so it restores even if that bank evicted it
+ *  from a full list. */
+function restoreVersion(id) {
+  const v = history.find((x) => x.id === id);
+  if (!v) { flash('that version is gone'); return; }
+  captureIfChanged({ auto: true });
+  applyVersion(v);
+  currentVersion = v.id;
+  state.saved = JSON.stringify(v.views);
+  renderHistory();
+  flash(`restored ${v.id} · ${widgetCount(v)} widgets · saved ${relTime(v.at)}${shedNote()}`);
+}
+
+const widgetCount = (v) => v.views.reduce((s, x) => s + x.widgets.length, 0);
+/** …and how many of them are on the view the THUMBNAIL shows. A card that said
+ *  "14 widgets" next to a picture of 7 was the drawer's one genuinely
+ *  misleading line — the gate caught it. */
+const viewCount = (v) => v.views.find((x) => x.id === v.view)?.widgets.length ?? 0;
+
+function relTime(at) {
+  const s = Math.max(0, Math.round((Date.now() - at) / 1000));
+  if (s < 5) return 'just now';
+  if (s < 60) return `${s}s ago`;
+  const m = Math.round(s / 60);
+  if (m < 60) return `${m} min ago`;
+  const h = Math.round(m / 60);
+  return h < 24 ? `${h} h ago` : `${Math.round(h / 24)} d ago`;
+}
+
+/** WHAT CHANGED between two versions, per widget — the line that makes two
+ *  same-sized boards tellable apart without opening both. */
+function deltaText(newer, older) {
+  const index = (views) => {
+    const m = new Map();
+    for (const v of views) for (const w of v.widgets) m.set(`${v.id}/${w.id}`, w);
+    return m;
+  };
+  const A = index(newer.views), B = index(older.views);
+  let added = 0, removed = 0, moved = 0, resized = 0;
+  for (const [k, w] of A) {
+    const o = B.get(k);
+    if (!o) { added++; continue; }
+    if (o.x !== w.x || o.y !== w.y) moved++;
+    if (o.span !== w.span || o.rows !== w.rows) resized++;
+  }
+  for (const k of B.keys()) if (!A.has(k)) removed++;
+  const parts = [];
+  if (added) parts.push(`+${added} added`);
+  if (removed) parts.push(`−${removed} removed`);
+  if (moved) parts.push(`${moved} moved`);
+  if (resized) parts.push(`${resized} resized`);
+  if (newer.view !== older.view) parts.push(`view → ${viewNameOf(newer.view)}`);
+  if (newer.sizing !== older.sizing) parts.push(`mode → ${newer.sizing}`);
+  if (newer.float !== older.float) parts.push(`float ${newer.float ? 'on' : 'off'}`);
+  return parts.length ? parts.join(' · ') : 'no layout change';
+}
+
+const viewNameOf = (id) => VIEWS.find((v) => v.id === id)?.name ?? id;
+const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c]);
+
+function renderHistory() {
+  const list = document.getElementById('hist-list');
+  if (!list) return;
+  document.getElementById('hist-count').textContent = `${history.length}/${MAX_VERSIONS}`;
+  if (history.length === 0) {
+    list.innerHTML = '<div class="hist-empty">No versions yet. Press 💾 Save and this fills with real, ' +
+      'vector thumbnails of the board — one per save.</div>';
+    return;
+  }
+  list.innerHTML = history.map((v, i) => {
+    const older = history[i + 1];
+    const kb = Math.max(1, Math.round((JSON.stringify(v.views).length + (v.thumb?.length ?? 0)) / 1024));
+    return `<button class="hist-item${v.id === currentVersion ? ' current' : ''}" data-version="${esc(v.id)}"
+        title="Restore ${esc(v.id)} — saved ${esc(new Date(v.at).toLocaleTimeString())}">
+      ${v.thumb
+        ? `<img class="hist-thumb" src="${thumbUri(v.thumb)}" alt="${esc(viewNameOf(v.view))} board, ${widgetCount(v)} widgets">`
+        : '<div class="hist-thumb hist-thumb-none">no preview</div>'}
+      <div class="hist-row"><span class="hist-id">${esc(v.id)}</span>
+        <span class="hist-when">${esc(relTime(v.at))}</span>
+        ${v.auto ? '<span class="hist-tag" title="banked automatically before a restore">auto</span>' : ''}
+        ${v.id === currentVersion ? '<span class="hist-tag now">current</span>' : ''}</div>
+      <div class="hist-sub">${esc(viewNameOf(v.view))} · ${viewCount(v)} of ${widgetCount(v)} widgets · ${kb} KB</div>
+      <div class="hist-delta">${older ? esc(deltaText(v, older)) : 'first version'}</div>
+    </button>`;
+  }).join('');
+}
+
+function toggleHistory(on) {
+  historyOpen = on ?? !historyOpen;
+  document.getElementById('db-history').hidden = !historyOpen;
+  document.getElementById('t-history').setAttribute('aria-expanded', String(historyOpen));
+  renderHistory();
+  // The canvas just changed width. The ResizeObserver in setup() reframes the
+  // board, but only after layout settles — ask for the reframe now so the board
+  // is never a frame behind the drawer.
+  H.showView(H.activeView);
+  flash(historyOpen ? `versions: ${history.length} saved` : 'versions closed');
+}
+
+/** SAVE / LOAD — the data-first round-trip: toJSON() returns plain view data,
+ *  and that data is valid dashboard() input, so Load is just another mount.
+ *  Save now BANKS a version; Load restores the newest one. */
+function saveBoard() {
+  const v = captureVersion();
+  state.saved = JSON.stringify(v.views);
+  flash(`saved ${v.id} · ${widgetCount(v)} widgets · ${state.saved.length.toLocaleString()} bytes${shedNote()}`);
+}
+
+function loadBoard() {
+  if (!history.length) { flash('nothing saved yet'); return; }
+  restoreVersion(history[0].id);
+}
+
+function wireControls() {
+  for (const btn of document.querySelectorAll('.db-tab')) btn.addEventListener('click', () => showView(btn.dataset.tab));
+  for (const btn of document.querySelectorAll('.pal-item')) {
+    // Click-to-add stays; pointerdown ALSO arms the kit's palette DRAG-IN
+    // (clone follows the cursor; entering the board places it live). A drag
+    // that actually ran suppresses the click that may follow it.
+    btn.addEventListener('click', () => {
+      if (Date.now() - lastPaletteGestureAt < 400) return;   // that click was a drag
+      addWidget(btn.dataset.add);
+    });
+    btn.addEventListener('pointerdown', (e) => {
+      if (e.button !== 0) return;
+      const p = PALETTE[btn.dataset.add];
+      // THE DOCUMENTED ESCAPE HATCH: beginPaletteDrag is a gesture on the
+      // binder one layer down, which binderOf() exposes on purpose. The carrier
+      // node never enters the model, so it needs no widget metadata — dropIn()
+      // builds the real widget through H.addWidget().
+      const binder = H.binderOf();
+      if (!p || !binder) return;
+      const node = new NodeModel({ type: 'widget', size: { width: 120, height: 90, depth: 0 } });
+      node.__palette = p;
+      const chip = btn.cloneNode(true);
+      chip.style.width = `${btn.offsetWidth}px`;
+      binder.beginPaletteDrag(node, { w: p.span, h: p.rows, chip }, e);
+    });
+  }
+  const on = (id, fn) => document.getElementById(id).addEventListener('click', fn);
+  const focused = (fn) => async () => { if (state.focus) { await fn(state.focus); syncToolbarSoon(); } else flash('focus a tile first'); };
+  on('t-undo', async () => { const cm = cmd(); if (cm.canUndo()) { await cm.undo(); refresh(); } syncToolbarSoon(); flash('undo'); });
+  on('t-redo', async () => { const cm = cmd(); if (cm.canRedo()) { await cm.redo(); refresh(); } syncToolbarSoon(); flash('redo'); });
+  on('t-mode', () => setSizingMode(sizingMode === 'fit' ? 'grow' : 'fit'));
+  on('t-float', () => setFloatMode(!floatMode));
+  on('t-pin', focused(togglePin));
+  on('t-grow', focused(cycleRows));
+  on('t-remove', focused(removeWidget));
+  // Z-order: one undoable step each, on the widget handle.
+  on('t-front', focused((id) => { H.widget(id)?.bringToFront(); flash('brought to front'); }));
+  on('t-back', focused((id) => { H.widget(id)?.sendToBack(); flash('sent to back'); }));
+  on('t-save', () => saveBoard());
+  on('t-load', () => loadBoard());
+  // VERSION DRAWER. One delegated listener for the whole gallery — the cards are
+  // re-rendered on every save, so per-card listeners would leak.
+  on('t-history', () => toggleHistory());
+  on('hist-close', () => toggleHistory(false));
+  on('hist-clear', () => {
+    history = []; currentVersion = null;
+    persist(); renderHistory();
+    flash('version history cleared');
+  });
+  document.getElementById('hist-list').addEventListener('click', (e) => {
+    const id = e.target.closest('.hist-item')?.dataset.version;
+    if (id) restoreVersion(id);
+  });
+  // Esc closes the drawer. Only when it is OPEN, so the binder's own mid-gesture
+  // Esc (restore every tile) is untouched.
+  window.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape' && historyOpen) toggleHistory(false);
+  });
+}
+
+/* ---------------------------------------------------------------------------
+   7. THE DEMO CONTRACT.
+--------------------------------------------------------------------------- */
+defineDemo({
+  name: 'Dashboard builder',
+  blurb: 'A dashboard-builder app authored with the kit\'s DATA-FIRST API: `dashboard({ views: [{ widgets: [{ id, kind, span, rows, data }] }] })` — three tabbed views declared as plain data, no groups/nodes/cells assembled by hand, and every chart drawn by the kit\'s built-in renderers (kpi / line / bar / donut / funnel / table) from this page\'s own dataset. render() wires the rest: ONE flat 12-column PACK grid per view, so drag a tile and neighbours slide out of the way live around a truthful placeholder; resize from the corner and only that tile changes; pinned tiles refuse the mover; Esc restores; palette drag-in and drag-out-to-remove; fit/grow sizing — every gesture ONE undoable BatchCommand, from the @grafloria/element front door.',
+  howTo: [
+    'THE BOARD IS A LITERAL: read the VIEWS array at the top of the page source — that is the entire dashboard. Widgets that name no cell flow and wrap at the column count; Pipeline mixes one explicit cell into the flow. Save then Load round-trips it: SPEC.handle.toJSON() returns the same shape and is fed straight back to dashboard().',
+    'Drag any tile: it ghosts under the cursor while the dashed placeholder always shows the exact drop cell, and neighbours glide out of the way LIVE — same-size tiles swap, the 8-wide line chart and 4-wide donut exchange order, and a small KPI dragged more than halfway into a big chart displaces it (the three gridstack swap shapes + the directional-penetration gate). Esc mid-drag restores everything.',
+    'Hover a tile and drag its bottom-right corner: each cell-step pushes the rows below live; shrink back in the same gesture and they return (displaced-tile memory). Resizing ONE KPI changes only that KPI — its neighbours keep their cells.',
+    'The four KPI tiles are ordinary members of the same 12-column grid (3 columns each): nothing here is a special case, so any tile can be dragged onto any other and every widget resizes the same way.',
+    'Mode: fit keeps each board at its design height and squeezes rows so nothing can leave the viewport (DevExtreme-style); Mode: grow keeps 130px rows and extends the board downward. Float: on lets tiles sit anywhere with gaps; off packs upward. Both are one call on SPEC.handle.',
+    'Drag a widget from the left palette onto the board (or just click it): the clone follows the cursor and the board makes room live from the moment it enters. Drag a tile OUT over the palette: the ghost dims — release deletes it, undoably, survivors re-packed in the same batch.',
+    'VERSION HISTORY: press 💾 Save, change the board, save again — then 🕘 Versions opens a drawer of every save, newest first, each card carrying a REAL vector thumbnail of the board it holds (instance.exportSvgString({ includeIds: handle.exportIds() }) — the same call an embedder makes), when it was saved, its widget count and view, and what changed since the version below it. Click a card to restore it; the board you were on is banked first, so a restore is never a one-way door. ⟲ Load stays the one-click shortcut for the newest version. The drawer is a grid COLUMN, so opening it narrows the canvas and the board reframes itself rather than hiding behind a panel.',
+    'Every gesture commits ONE BatchCommand (cells + geometry): one Undo rewinds a whole drag or resize.',
+    'Advanced grid constructs — nested/bounded sections (maxRows), two boards with cross-container drag, explicit cell placement — live on their own page: dashboard/grid-options.html, which drives the binder BENEATH this API directly.',
+    'Press "▶ run the scripted checks": it drives real pointer gestures and asserts the declared board — the flow-placed cells, live push mid-drag, placeholder truth, resize push + shrink-restore, both swap directions, one-KPI-only resize, small-onto-big displacement, pin refusal, Esc restore, one-undo-per-gesture, both sizing modes, and the toJSON round-trip.',
+  ],
+
+  async setup(ctx) {
+    // The whole mount: a declared spec, one render() call. render() runs the
+    // spec's finalize() itself, which builds a chromeless board per view, binds
+    // the pack grid and parks every inactive view off-camera.
+    ctxRef = ctx;
+    statusEl = document.getElementById('db-status');
+    SPEC = buildSpec(VIEWS);
+    H = SPEC.handle;
+    // `render(SPEC, ctx.host)` alone paints: the spec carries its own
+    // renderCustomNode and render() honours it. This page passes it explicitly
+    // for ONE reason — render() resolves the painter once, at mount, and Load
+    // REPLACES the spec, so a widget added after a Load would be unknown to the
+    // captured closure. A live binding, not a workaround.
+    const instance = render(SPEC, ctx.host, { renderCustomNode: (n, host) => SPEC.renderCustomNode(n, host) });
+    ctx.instance = instance;
+    ctx.diagram = instance.getModel();
+    // Debug seam, same intent as ctx.instance: the export gate needs the LIVE
+    // handle so it can prove `exportIds()` against the real board rather than a
+    // hand-copied id list that would drift the moment a widget is renamed.
+    ctx.dashboard = SPEC.handle;
+    // …and this page's OWN widget painter, for the same reason one layer up.
+    // `renderWidget` is a FUNCTION: it cannot be serialised, so a document-level
+    // reload rebuilds the kit's chart and loses whatever the app drew on top of
+    // it (here: the focus ring and the 📌 marker). `fromDocument({ renderWidget })`
+    // is the seam that hands it back — and the save/load gate proves BOTH sides
+    // of that limit against this page rather than a re-implementation of it.
+    ctx.renderWidget = renderWidget;
+    ctx.engine = instance.getEngine();
+
+    afterMount('overview');
+    window.__dash = {
+      get spec() { return SPEC; }, get handle() { return H; }, state,
+      // The version drawer's own model, for the save/load gate: it drives the
+      // real buttons with a real mouse and reads the truth back from here.
+      get history() { return history; },
+      get currentVersion() { return currentVersion; },
+      get historyOpen() { return historyOpen; },
+    };
+    // Versions survive a reload (they are in localStorage), so read them back
+    // BEFORE the controls are live — silently: the status line belongs to what
+    // the user just did, not to what a previous session left behind.
+    restoreHistory();
+    renderHistory();
+    wireControls();
+    instance.renderNow();
+    syncToolbar();
+
+    // Keep the active view framed as the canvas resizes. fitToBounds needs the
+    // canvas's MEASURED size, which is not final during setup() — so reframe
+    // whenever the ResizeObserver reports a real size (also fires once on mount).
+    if (typeof ResizeObserver !== 'undefined') {
+      const ro = new ResizeObserver(() => {
+        const r = ctx.host.getBoundingClientRect();
+        if (r.width > 0 && r.height > 0) H.showView(H.activeView);
+      });
+      ro.observe(ctx.host);
+    }
+    await ctx.tick();
+    H.showView('overview');   // belt-and-braces: reframe once the frame has settled
+  },
+
+  // Money shot for the camera: focus a tile so the ring shows, on Overview.
+  async showcase(ctx) {
+    showView('overview');
+    setFocus('trend');
+    ctx.instance.renderNow();
+    await ctx.tick();
+  },
+
+  async assert(ctx) {
+    const D = ctx.diagram;
+    const cm = ctx.instance.getEngine().commandManager;
+    const settle = async () => { ctx.instance.renderNow(); await ctx.tick(); };
+    const cell = (id) => H.widget(id)?.cell;
+    const node = (id) => H.widget(id)?.node;
+    // Board geometry, a widget's world rect and the accept/refuse verdict of a
+    // programmatic gesture are all on the handle — this gate reads nothing
+    // below it.
+    const cellsSnap = () => {
+      const out = {};
+      for (const v of H.views) for (const w of H.widgetsOf(v)) if (w.cell) out[w.id] = { ...w.cell };
+      return out;
+    };
+
+    // -- real-pointer helpers: the SAME events a hand on a mouse produces ----
+    const container = ctx.host;                       // render() mounted here → the binder listens here
+    const toClient = (wx, wy) => ctx.instance.viewport.worldToClient(wx, wy, container.getBoundingClientRect());
+    const raf = () => new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r)));
+    let PID = 40;
+    const pev = (type, cx, cy, target = container) => target.dispatchEvent(new PointerEvent(type, {
+      clientX: cx, clientY: cy, bubbles: true, cancelable: true, composed: true,
+      pointerId: PID, pointerType: 'mouse', isPrimary: true, button: 0, buttons: type === 'pointerup' ? 0 : 1,
+    }));
+    /** Press at world A, glide to world B in steps, WITHOUT releasing. */
+    const dragTo = async (fromW, toW, { target, steps = 6 } = {}) => {
+      PID++;
+      const a = toClient(fromW.x, fromW.y);
+      pev('pointerdown', a.x, a.y, target ?? container);
+      for (let i = 1; i <= steps; i++) {
+        const w = { x: fromW.x + ((toW.x - fromW.x) * i) / steps, y: fromW.y + ((toW.y - fromW.y) * i) / steps };
+        const c = toClient(w.x, w.y);
+        pev('pointermove', c.x, c.y);
+        await raf();
+      }
+    };
+    const release = async (wx, wy) => { const c = toClient(wx, wy); pev('pointerup', c.x, c.y); await settle(); };
+    const centerOf = (n) => ({ x: n.position.x + n.size.width / 2, y: n.position.y + n.size.height / 2 });
+
+    // Always start from Overview, empty history, deterministic board.
+    showView('overview');
+    cm.clear();
+    await settle();
+
+    // ---- (0) THE DECLARATION IS THE BOARD ---------------------------------
+    checkEqual(H.views, ['overview', 'sales', 'pipeline'], 'the three declared views exist, in order');
+    checkEqual(H.widgetsOf('overview').map((w) => w.id),
+      ['kpi-revenue', 'kpi-customers', 'kpi-avgdeal', 'kpi-winrate', 'trend', 'mix', 'reps'],
+      'the overview holds exactly the declared widgets');
+    checkEqual(D.getGroups().length, 3, 'one chromeless board per view — nothing nested');
+    check(!!node('trend') && node('trend').getMetadata('useHTMLLayer') === true,
+      'each widget became a custom-HTML node (the un-sanitised host path)');
+
+    // FLOW: not one of the Overview widgets named a cell, and they landed on
+    // exactly the grid the old hand-written seeds spelled out.
+    checkEqual(cell('kpi-revenue'), { x: 0, y: 0, w: 3, h: 1 }, 'flow: KPI 1 opens row 0');
+    checkEqual(cell('kpi-winrate'), { x: 9, y: 0, w: 3, h: 1 }, 'flow: the fourth KPI fills row 0');
+    checkEqual(cell('trend'), { x: 0, y: 1, w: 8, h: 2 }, 'flow: the line chart WRAPPED to row 1');
+    checkEqual(cell('mix'), { x: 8, y: 1, w: 4, h: 2 }, 'flow: the donut took the rest of that row');
+    checkEqual(cell('reps'), { x: 0, y: 3, w: 12, h: 2 }, 'flow: the full-width table wrapped again');
+    // …and Pipeline mixes ONE explicit cell into the flow.
+    checkEqual(cell('pipe-winrate'), { x: 6, y: 1, w: 6, h: 1 }, 'an explicit cell is honoured verbatim');
+    checkEqual(cell('pipe-reps'), { x: 0, y: 2, w: 12, h: 1 }, 'flowed neighbours route around the explicit one');
+
+    // ---- (1) PACK CELLS project a real 12-column board ---------------------
+    const line = node('trend'), donut = node('mix'), table = node('reps');
+    const lineW0 = line.size.width;
+    check(lineW0 > donut.size.width * 1.6, `span 8 dwarfs span 4 (${Math.round(lineW0)} vs ${Math.round(donut.size.width)})`);
+    check(Math.abs(donut.position.x - (line.position.x + lineW0 + GAP)) < 2, 'donut sits one gap right of the line chart (same row)');
+    const m0 = H.metrics('overview');
+    checkEqual(m0.sizing, 'fit', 'default sizing mode is FIT (the user decision)');
+    check(Math.abs(m0.rowHeight - (TAB_H - 2 * GAP - 4 * GAP) / 5) < 0.1, `fit row height derives from 5 rows (${m0.rowHeight.toFixed(1)})`);
+    const track = (TAB_W - 2 * GAP - 11 * GAP) / 12;
+    showView('pipeline'); await settle();
+    check(Math.abs(node('pipe-funnel').size.width - (track * 6 + 5 * GAP)) < 2,
+      `the funnel spans 6 of 12 columns (${Math.round(node('pipe-funnel').size.width)}px)`);
+    check(node('pipe-mix').position.x > node('pipe-funnel').position.x + node('pipe-funnel').size.width - 2,
+      'the stage donut fills the cells to the RIGHT of the funnel');
+    showView('overview'); await settle();
+
+    // ---- (2) TABS: parked off-canvas, binders carry the widgets along ------
+    check(D.getGroup('overview').position.x === 0 && D.getGroup('sales').position.x < -1000,
+      'on Overview, Sales is parked off-canvas');
+    check(node('sales-bar').position.x < -1000, 'a parked view\'s widget travelled with its frame (binder re-projection)');
+    showView('sales'); await settle();
+    check(node('sales-bar').position.x >= 0, 'switching to Sales brings its widgets on-canvas');
+    showView('overview'); await settle();
+
+    // ---- (3) ONE FLAT GRID: every widget is a DIRECT member -----------------
+    const kpis = ['kpi-revenue', 'kpi-customers', 'kpi-avgdeal', 'kpi-winrate'];
+    check(!D.getGroup('sec-kpis'), 'there is NO nested KPI section group');
+    checkEqual(kpis.map(cell), [
+      { x: 0, y: 0, w: 3, h: 1 }, { x: 3, y: 0, w: 3, h: 1 },
+      { x: 6, y: 0, w: 3, h: 1 }, { x: 9, y: 0, w: 3, h: 1 },
+    ], 'the KPI row is four 3-column members of the SAME 12-column grid');
+    check(Math.abs(node(kpis[0]).position.x - line.position.x) < 0.5, 'KPI 1 shares the line chart\'s left column line');
+    check(Math.abs((node(kpis[3]).position.x + node(kpis[3]).size.width) - (donut.position.x + donut.size.width)) < 0.5,
+      'KPI 4\'s right edge lands exactly on the donut\'s right edge (both end at column line 12)');
+
+    // THE USER'S REPORT — resizing one KPI must change ONLY that KPI.
+    {
+      await H.widget(kpis[0]).resize(3, 2);
+      checkEqual(cell(kpis[0]), { x: 0, y: 0, w: 3, h: 2 }, 'the resized KPI is two rows tall');
+      for (let i = 1; i < 4; i++) {
+        checkEqual(cell(kpis[i]), { x: i * 3, y: 0, w: 3, h: 1 },
+          `KPI ${i + 1} kept its EXACT cells — the row did not grow with its neighbour`);
+      }
+      check(node(kpis[0]).size.height > node(kpis[1]).size.height + 20,
+        `only the resized KPI got taller (${Math.round(node(kpis[0]).size.height)}px vs ${Math.round(node(kpis[1]).size.height)}px)`);
+      await cm.undo(); refresh(); await settle();
+      checkEqual(cell(kpis[0]), { x: 0, y: 0, w: 3, h: 1 }, 'one undo restored the KPI resize');
+      cm.clear();
+    }
+
+    // …and a KPI dragged DEEP into the big line chart DISPLACES it (the engine's
+    // directional-penetration gate: small onto big works, both directions).
+    {
+      const lineBefore = { ...cell('trend') };
+      await H.widget(kpis[0]).moveTo(2, 2);
+      checkChanged(lineBefore, cell('trend'), 'the big line chart was DISPLACED by the small KPI');
+      await cm.undo(); refresh(); await settle();
+      checkEqual(cell('trend'), lineBefore, 'one undo restored the displaced line chart');
+      cm.clear();
+    }
+
+    // ---- (a) LIVE PUSH DURING A REAL DRAG + (b) PLACEHOLDER TRUTH ----------
+    {
+      const donutC = centerOf(donut);
+      const lineX0px = line.position.x;
+      // Drag the donut LEFT onto the line chart — the plan's exact "5↔6" case
+      // (8-wide + 4-wide, same row, same height → the ROW swap shape).
+      await dragTo(donutC, { x: donutC.x - 580, y: donutC.y }, { steps: 8 });
+      // STILL HOLDING: the engine already swapped and the neighbour already MOVED.
+      checkEqual(cell('mix').x, 0, 'mid-drag: the donut took the left cells (row swap, live)');
+      checkEqual(cell('trend').x, 4, 'mid-drag: the 8-wide line chart slid right — union span preserved');
+      check(Math.abs(line.position.x - lineX0px) > 100, 'mid-drag: the line chart\'s PIXELS moved while the button is still down (live push)');
+      const ph = container.querySelector('.axdb-ph');
+      check(ph && ph.style.display !== 'none', 'mid-drag: the placeholder is visible');
+      const phRect = { x: parseFloat(ph.style.left), y: parseFloat(ph.style.top), w: parseFloat(ph.style.width) };
+      const engRect = H.widget('mix').rect;
+      check(Math.abs(phRect.x - engRect.x) < 1 && Math.abs(phRect.y - engRect.y) < 1 && Math.abs(phRect.w - engRect.width) < 1,
+        'the placeholder shows EXACTLY the engine\'s current cell for the held tile');
+      check(!!container.querySelector('.grafloria-node-host.axdb-ghost'), 'the held tile is a transition-exempt ghost');
+      await release(donutC.x - 580, donutC.y);
+      // (b) the drop landed exactly where the placeholder stood.
+      check(Math.abs(donut.position.x - phRect.x) < 1 && Math.abs(donut.position.y - phRect.y) < 1,
+        `placeholder truth: drop landed at (${Math.round(donut.position.x)},${Math.round(donut.position.y)}) where the placeholder stood`);
+      check(!container.querySelector('.axdb-ph'), 'the placeholder leaves the DOM after the drop');
+
+      // ---- (g) ONE undo step per gesture -----------------------------------
+      check(cm.canUndo(), 'the whole drag committed ONE undoable batch');
+      await cm.undo(); refresh(); await settle();
+      check(!cm.canUndo(), 'exactly one undo step: history is empty again');
+      checkEqual(cell('mix'), { x: 8, y: 1, w: 4, h: 2 }, 'one undo rewound the swap (donut cells)');
+      checkEqual(cell('trend'), { x: 0, y: 1, w: 8, h: 2 }, 'one undo rewound the swap (line cells)');
+      check(Math.abs(line.position.x - lineX0px) < 1, 'one undo restored the line chart\'s exact pixels');
+      cm.clear();
+    }
+
+    // ---- (d) SWAP 5↔6 BOTH DIRECTIONS (deterministic, via the same pipeline)
+    {
+      await H.widget('mix').moveTo(1, 1);
+      checkEqual(cell('mix'), { x: 0, y: 1, w: 4, h: 2 }, 'forward row-swap: donut leads the row');
+      checkEqual(cell('trend'), { x: 4, y: 1, w: 8, h: 2 }, 'forward row-swap: line trails');
+      await H.widget('mix').moveTo(6, 1);
+      checkEqual(cell('mix'), { x: 8, y: 1, w: 4, h: 2 }, 'reverse row-swap: donut back to the right');
+      checkEqual(cell('trend'), { x: 0, y: 1, w: 8, h: 2 }, 'reverse row-swap: line back to the left');
+      await cm.undo(); await cm.undo(); refresh(); await settle();
+      cm.clear();
+    }
+
+    // ---- (c) RESIZE: live push per cell-step + shrink-restore (S2) ---------
+    {
+      const rs = container.querySelector(`.grafloria-node-host[data-node-id="trend"] .axdb-rs`);
+      check(!!rs, 'the line chart host carries the kit\'s corner resize handle');
+      const rowH = H.metrics('overview').rowHeight;
+      const corner = { x: line.position.x + line.size.width - 6, y: line.position.y + line.size.height - 6 };
+      PID++;
+      const a = toClient(corner.x, corner.y);
+      pev('pointerdown', a.x, a.y, rs);
+      // grow one row-step: the table below must push down LIVE.
+      let c = toClient(corner.x + 8, corner.y + rowH);
+      pev('pointermove', c.x, c.y); await raf();
+      checkEqual(cell('trend').h, 3, 'mid-resize: the line chart grew to 3 rows at the cell-step');
+      checkEqual(cell('reps').y, 4, 'mid-resize: the table below pushed down LIVE');
+      // shrink back IN THE SAME GESTURE: the table comes home (S2 memory).
+      c = toClient(corner.x, corner.y);
+      pev('pointermove', c.x, c.y); await raf();
+      checkEqual(cell('trend').h, 2, 'shrink-back: the line chart returned to 2 rows');
+      checkEqual(cell('reps').y, 3, 'shrink-back: the displaced table TELEPORTED home (S2)');
+      await release(corner.x, corner.y);
+      check(!cm.canUndo(), 'a gesture that ends where it started commits NOTHING');
+      // …and a resize that STANDS commits one step and pushes for real:
+      await H.widget('trend').resize(8, 3);
+      checkEqual(cell('reps').y, 4, 'committed resize pushed the table');
+      await cm.undo(); refresh(); await settle();
+      checkEqual(cell('reps').y, 3, 'one undo restored the resize AND the push');
+      cm.clear();
+    }
+
+    // ---- (e) PINNED tiles refuse the mover ---------------------------------
+    {
+      togglePin('reps');
+      await settle();
+      check(H.widget('reps').pinned, 'pin() reached the model as the authoritative lock');
+      check(!(await H.widget('mix').moveTo(0, 3)), 'a drag ONTO the pinned table is refused outright');
+      checkEqual(cell('mix'), { x: 8, y: 1, w: 4, h: 2 }, 'the refused mover kept its cells');
+      check(!(await H.widget('trend').resize(8, 3)), 'growth INTO the pinned table clamps to no-op (E4b applied to size)');
+      check(container.querySelector(`.grafloria-node-host[data-node-id="reps"] .axdb-rs`) === null,
+        'a pinned tile hides its resize handle');
+      togglePin('reps');
+      await settle();
+      cm.clear();
+    }
+
+    // ---- (f) ESCAPE mid-gesture restores everything, commits nothing -------
+    {
+      const donutC = centerOf(donut);
+      const before = cellsSnap();
+      const linePx0 = line.position.x;
+      await dragTo(donutC, { x: donutC.x - 580, y: donutC.y }, { steps: 6 });
+      checkEqual(cell('mix').x, 0, 'Esc setup: the swap really happened mid-gesture');
+      window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+      await settle();
+      checkEqual(cell('mix'), before['mix'], 'Escape restored the donut\'s cells');
+      checkEqual(cell('trend'), before['trend'], 'Escape restored the line chart\'s cells');
+      check(Math.abs(line.position.x - linePx0) < 1, 'Escape restored the pushed neighbour\'s pixels');
+      check(!cm.canUndo(), 'a cancelled gesture leaves NO undo entry');
+      PID++; pev('pointerup', 10, 10);   // stray up after Esc must be inert
+      await settle();
+      checkEqual(cell('mix'), before['mix'], 'the post-Escape pointerup changed nothing');
+    }
+
+    // ---- (h) SIZING MODES: fit squeezes, grow extends ----------------------
+    {
+      const board = () => D.getGroup('overview');
+      const inside = (b) => H.widgetsOf('overview').every((w) =>
+        w.node.position.y >= board().position.y - 1 && w.node.position.y + w.node.size.height <= board().position.y + b + 1);
+      check(Math.abs(board().size.height - TAB_H) < 1, 'FIT: the board holds its design height');
+      check(inside(TAB_H), 'FIT: every tile fits inside the design height');
+      document.getElementById('t-mode').click(); await settle();
+      const grown = 2 * GAP + 5 * BASE_ROW + 4 * GAP;   // 5 rows at the 130px design row
+      check(Math.abs(board().size.height - grown) < 1, `GROW: the board extended to hold 130px rows (${Math.round(board().size.height)} = ${grown})`);
+      check(Math.abs(H.metrics('overview').rowHeight - BASE_ROW) < 0.1, 'GROW: rows keep the design height');
+      check(inside(grown), 'GROW: every tile stays inside the grown board');
+      document.getElementById('t-mode').click(); await settle();
+      check(Math.abs(board().size.height - TAB_H) < 1, 'back to FIT: design height restored');
+      check(inside(TAB_H), 'back to FIT: tiles squeezed back inside');
+    }
+
+    // ---- (4/5) ADD via palette + REMOVE with survivors' commit -------------
+    {
+      const before = D.getNodes().length;
+      const newId = await addWidget('bar'); await settle();
+      check(D.getNodes().length === before + 1, 'palette click-add created the node via handle.addWidget()');
+      const newCell = cell(newId);
+      check(newCell && newCell.y >= 5, `the cell-less add auto-positioned into the first free hole (row ${newCell.y})`);
+      check(!!cardOf(newId), 'the added widget was registered with the dashboard and PAINTED');
+      const gi = D.getNode(newId).getGridItem();
+      check(gi && gi.columnStart === newCell.x + 1, 'the assigned cells persisted into the standard GridItemConfig');
+      removeWidget(newId); await settle();
+      check(D.getNodes().length === before, 'remove (with the survivors\' re-pack folded in) took it back out');
+      await cm.undo(); refresh(); await settle();
+      check(D.getNodes().length === before + 1, 'undo restored the widget INTO the pack grid');
+      await cm.undo(); refresh(); await settle();
+      check(D.getNodes().length === before, 'undoing the add removed it again — ONE step (node + membership)');
+      cm.clear();
+    }
+
+    // ---- (7) Z-ORDER restack via the widget handle -------------------------
+    {
+      const a = node(kpis[0]), b = donut;
+      H.widget(b.id).bringToFront(); await settle();
+      check(b.getEffectiveZIndex() > a.getEffectiveZIndex(), 'widget.bringToFront() lifted the tile above a peer');
+      H.widget(b.id).sendToBack(); await settle();
+      check(b.getEffectiveZIndex() <= a.getEffectiveZIndex(), 'widget.sendToBack() dropped it back down');
+      await cm.undo(); await cm.undo(); await settle();
+      cm.clear();
+    }
+
+    // ---- (10) chromeless containers + zero port affordances ----------------
+    {
+      const chrome = ctx.host.querySelectorAll('.group-frame, .group-frame-rect, .group-frame-band, .group-frame-label');
+      check(chrome.length === 0, `layout containers painted ${chrome.length} group-chrome elements — the board must be chromeless`);
+      const widgets = D.getNodes().filter((n) => n.getMetadata('widgetKind'));
+      check(widgets.length > 0 && widgets.every((n) => n.behavior?.connectable === false), 'every widget node declares connectable:false');
+      const w0 = widgets.find((n) => n.position.x > -10000);
+      w0.state.hovered = true; ctx.instance.renderNow();
+      check(ctx.host.querySelectorAll('[data-port-id]').length === 0, 'a hovered widget paints ZERO port glyphs');
+      w0.state.hovered = false; ctx.instance.renderNow();
+    }
+
+    // ---- (11) BUILT-IN RENDERERS: the data became real marks ---------------
+    {
+      const card = (id) => cardOf(id);
+      check(card('kpi-revenue').querySelector('.axdb-kpi-v').textContent === '$6.81M', 'the kpi widget shows the declared value');
+      check(card('kpi-revenue').querySelector('.axdb-kpi-d').classList.contains('up'), 'a positive delta paints up');
+      check(card('trend').querySelectorAll('polyline').length === 2, 'the line widget drew one polyline per declared series');
+      check(card('mix').querySelectorAll('path').length === DATA.regions.length, 'the donut drew one arc per declared slice');
+      check(card('reps').querySelectorAll('tbody tr').length === DATA.reps.length, 'the table drew one row per declared row');
+      showView('pipeline'); await settle();
+      check(card('pipe-funnel').querySelectorAll('rect').length === DATA.pipeline.length, 'the funnel drew one bar per declared stage');
+      showView('sales'); await settle();
+      check(card('sales-bar').querySelectorAll('rect').length === DATA.regions.length, 'the bar widget drew one column per declared bar');
+      showView('overview'); await settle();
+    }
+
+    // ---- (9) SAVE / LOAD round-trip: toJSON() IS dashboard() input ---------
+    {
+      const cellsBefore = cellsSnap();
+      saveBoard();
+      const savedCount = D.getNodes().length;
+      const saved = JSON.parse(state.saved);
+      checkEqual(saved.map((v) => v.id), ['overview', 'sales', 'pipeline'], 'toJSON() returns the views as plain data');
+      checkEqual(saved[0].widgets.find((w) => w.id === 'trend').span, 8, 'toJSON() carries live spans, not the declared ones');
+      await H.widget('mix').moveTo(1, 1);          // diverge
+      loadBoard(); await settle();
+      check(D.getNodes().length === savedCount, `load restored the widget count (${savedCount})`);
+      checkEqual(cellsSnap(), cellsBefore, 'load restored EVERY tile\'s cells (the data-first round-trip)');
+      check(!!cardOf('trend') && !!cell('trend'), 'the rebuilt board is live again (fresh binders, same hosts)');
+    }
+
+    // ---- Clean up to a deterministic, populated frame for the golden -------
+    cm.clear();
+    showView('overview');
+    setFocus('trend');
+    await settle();
+    check(!H.widgetsOf('overview').some((w) => w.pinned), 'ended with no pinned tiles (deterministic frame)');
+    // Drain the reflow-glide window: the cleanup relayout arms a 280ms tile
+    // transition, and a screenshot taken mid-glide would make the golden a
+    // race. End PAST the animation, on the resting frame.
+    await new Promise((r) => setTimeout(r, 520));
+    ctx.instance.renderNow();
+  },
+});
+</script>

@@ -1,0 +1,106 @@
+<meta charset="utf-8">
+<title>Rotatable node — Grafloria</title>
+<link rel="stylesheet" href="../shell/demo.css">
+<header id="demo-head"></header>
+<div id="canvas"></div>
+<script type="module">
+import { render, registerTool } from '../shell/grafloria.js';
+import { defineDemo, check, checkChanged } from '../shell/demo.js';
+
+const rotateOf = (el) => {
+  const t = el.getAttribute('transform') || '';
+  const m = t.match(/rotate\(\s*(-?\d+(?:\.\d+)?)/);
+  return m ? Number(m[1]) : null;
+};
+
+defineDemo({
+  name: 'Rotatable node',
+  blurb: 'A node carries a rotation the renderer bakes into its SVG transform. Set it directly, or spin it with a real pointer drag through the public registerTool seam.',
+  howTo: [
+    'Press anywhere on the "spin me" node and, holding, orbit your pointer around the node\'s centre — it rotates live, tracking your angle.',
+    'Try a quarter orbit: start due-right of the centre and drag around to due-below — the node picks up ~90°.',
+    'Watch the body, label and outline spin together about the box centre: the rotation is baked into the node\'s SVG transform as rotate(θ, cx, cy).',
+    'Note that on this page a press on the node ROTATES it rather than moves it — the spin gesture is a tool registered through the public registerTool seam, and a claiming tool owns the whole drag.',
+  ],
+  reactflow: 'Node rotation',
+
+  async setup(ctx) {
+    const api = render({
+      nodes: [{ id: 'n', position: { x: 360, y: 150 }, size: { width: 200, height: 120 }, label: 'spin me' }],
+      edges: [],
+    }, ctx.host);
+    ctx.instance = api;
+    ctx.diagram = api.getModel();
+
+    // A rotate gesture, wired to real pointer events through the PUBLIC tool seam.
+    // (The engine ships the rotate math on SelectionToolsController but does not
+    // bind it to the DOM; registerTool is the documented seam to do so — so this
+    // is genuinely a user with a mouse spinning the node, not an API poke.)
+    let grab = null;
+    const center = (node) => ({
+      x: node.position.x + node.size.width / 2,
+      y: node.position.y + node.size.height / 2,
+    });
+    registerTool({
+      id: 'demo-rotate',
+      priority: 10,
+      hitTest: (_e, hit) => !!hit.node,               // claim any press on the node
+      onPointerDown: (e, hit) => {
+        const c = center(hit.node);
+        grab = { node: hit.node, cx: c.x, cy: c.y,
+          a0: Math.atan2(e.world.y - c.y, e.world.x - c.x), r0: hit.node.rotation };
+      },
+      onPointerMove: (e) => {
+        if (!grab) return;
+        const a = Math.atan2(e.world.y - grab.cy, e.world.x - grab.cx);
+        grab.node.setRotation(grab.r0 + (a - grab.a0) * 180 / Math.PI);
+      },
+      onPointerUp: () => { grab = null; },
+    });
+
+    ctx.fire = (type, wx, wy) => {
+      const rect = ctx.host.getBoundingClientRect();
+      const c = api.viewport.worldToClient(wx, wy, rect);
+      ctx.host.dispatchEvent(new PointerEvent(({ mousedown: 'pointerdown', mousemove: 'pointermove', mouseup: 'pointerup' })[type] ?? type, { bubbles: true, pointerId: 1, pointerType: 'mouse', clientX: c.x, clientY: c.y, button: 0 }));
+    };
+    await ctx.tick();
+  },
+
+  async assert(ctx) {
+    const api = ctx.instance;
+    const node = ctx.diagram.getNode('n');
+    const g = () => ctx.host.querySelector('[data-node-id="n"]');
+
+    // 1. Unrotated: transform has no rotate() (or rotate(0)).
+    const r0 = rotateOf(g());
+    check(r0 === null || r0 === 0, `node should start unrotated, transform rotate=${r0}`);
+
+    // 2. DIRECT: setRotation → the renderer bakes rotate(θ, w/2, h/2) into the group.
+    node.setRotation(45);
+    api.renderNow();
+    const r1 = rotateOf(g());
+    check(r1 === 45, `setRotation(45) did not reach the SVG transform (got rotate=${r1})`);
+    // Pivot is the box centre, not the origin — otherwise a rotated node flies off.
+    const t = g().getAttribute('transform');
+    check(t.includes('rotate(45, 100, 60)'),
+      `expected rotation about the box centre (100,60), transform was "${t}"`);
+
+    // 3. GESTURE: a real pointer drag around the centre spins it. Press to the RIGHT
+    //    of centre (0°), drag to BELOW centre (+90° in screen space) → ~+90° added.
+    node.setRotation(0);
+    api.renderNow();
+    const before = node.rotation;
+    ctx.fire('mousedown', 560, 210);   // centre is (460,210); this is due-right
+    ctx.fire('mousemove', 460, 310);   // now due-below → quarter turn
+    ctx.fire('mouseup',   460, 310);
+    api.renderNow();
+
+    checkChanged(before, node.rotation, 'the pointer rotate gesture did not change the rotation');
+    check(Math.abs(node.rotation - 90) < 8,
+      `a quarter-turn drag should be ~90°, node.rotation is ${node.rotation.toFixed(1)}`);
+    // And the DOM followed the gesture, not just the model.
+    check(Math.abs(rotateOf(g()) - node.rotation) < 0.01,
+      `the SVG transform (${rotateOf(g())}) did not track the gesture rotation (${node.rotation})`);
+  },
+});
+</script>

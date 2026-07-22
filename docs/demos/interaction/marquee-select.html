@@ -1,0 +1,191 @@
+<meta charset="utf-8">
+<title>Marquee selection — Grafloria</title>
+<link rel="stylesheet" href="../shell/demo.css">
+<div id="canvas"></div>
+<header id="demo-head"></header>
+<script type="module">
+import { render, registerTool } from '../shell/grafloria.js';
+import { defineDemo, check } from '../shell/demo.js';
+
+// Marquee (rubber-band) box-selection. The framework-free binder ships every other
+// gesture — node-drag, pan, link-draw — but DELIBERATELY leaves marquee to the host,
+// because it needs an overlay rectangle in the host's own layer (see dom-event-binder:
+// "Marquee selection is deliberately NOT here"). This demo assembles it from the
+// PUBLIC seams an embedder actually has: `registerTool()` claims the empty-canvas drag,
+// `instance.viewport` converts coordinates, and the model's selection API records the hit.
+// Nothing here reaches past the embed boundary.
+
+const NODES = [
+  // The left cluster — the set a box will enclose.
+  { id: 'n1', position: { x: 120, y: 110 }, size: { width: 120, height: 60 }, label: 'n1' },
+  { id: 'n2', position: { x: 300, y: 110 }, size: { width: 120, height: 60 }, label: 'n2' },
+  { id: 'n3', position: { x: 120, y: 230 }, size: { width: 120, height: 60 }, label: 'n3' },
+  // The outsiders — each reachable by its own box, none by the first.
+  { id: 'n4', position: { x: 560, y: 120 }, size: { width: 120, height: 60 }, label: 'n4' },
+  { id: 'n5', position: { x: 560, y: 300 }, size: { width: 120, height: 60 }, label: 'n5' },
+  { id: 'n6', position: { x: 330, y: 410 }, size: { width: 120, height: 60 }, label: 'n6' },
+];
+const EDGES = [
+  { id: 'e1', source: 'n1', target: 'n2' },
+  { id: 'e2', source: 'n1', target: 'n3' },
+  { id: 'e3', source: 'n4', target: 'n5' },
+];
+
+/** A node's world-space bounds (honours group nesting when present). */
+function worldBounds(node) {
+  const p = typeof node.getWorldPosition === 'function' ? node.getWorldPosition() : node.position;
+  return { x: p.x, y: p.y, w: node.size.width, h: node.size.height };
+}
+
+/** Fully-contained marquee: every node whose bounds sit ENTIRELY inside `rect`. */
+function nodesInRect(model, rect) {
+  const x1 = Math.min(rect.ax, rect.bx), y1 = Math.min(rect.ay, rect.by);
+  const x2 = Math.max(rect.ax, rect.bx), y2 = Math.max(rect.ay, rect.by);
+  return model.getNodes().filter((n) => {
+    const b = worldBounds(n);
+    return b.x >= x1 && b.y >= y1 && b.x + b.w <= x2 && b.y + b.h <= y2;
+  });
+}
+
+defineDemo({
+  name: 'Marquee selection',
+  blurb: 'Drag a rubber-band box over empty canvas and every node it fully encloses is selected — the marquee tool the binder leaves to the host, assembled from the public registerTool + viewport + selection seams. Shift adds to the selection.',
+  howTo: [
+    'Press on EMPTY canvas (not on a node) and drag: a dashed blue rectangle rubber-bands out under the pointer.',
+    'Release with the box drawn around n1/n2/n3 — those three get a selection outline and nothing outside the box does.',
+    'Drag a fresh box somewhere else: the previous selection clears and only the newly enclosed nodes are picked.',
+    'Hold Shift while you drag a second box: its catch is ADDED to the current selection instead of replacing it.',
+    'Open DevTools and run `await __demo.run()` to see the scripted marquee drags assert the exact selected set.',
+  ],
+  reactflow: 'Box Select',
+  pro: false,
+
+  async setup(ctx) {
+    const api = render({ nodes: NODES, edges: EDGES }, ctx.host);
+    ctx.instance = api;
+    ctx.diagram = api.getModel();
+    // The overlay lives in the host's own layer, above the SVG the patcher owns.
+    ctx.host.style.position = ctx.host.style.position || 'relative';
+
+    let overlay = null;
+    let start = null;      // { world:{x,y}, screen:{x,y} }
+    let baseSelection = new Set(); // ids selected BEFORE the drag (for Shift-add)
+
+    const showBox = (aScreen, bScreen) => {
+      if (!overlay) {
+        overlay = document.createElement('div');
+        overlay.className = 'marquee-box';
+        overlay.style.cssText =
+          'position:absolute;pointer-events:none;z-index:20;border:1px dashed #3b82f6;' +
+          'background:rgba(59,130,246,.15);border-radius:2px;';
+        ctx.host.appendChild(overlay);
+      }
+      const x = Math.min(aScreen.x, bScreen.x), y = Math.min(aScreen.y, bScreen.y);
+      overlay.style.left = x + 'px';
+      overlay.style.top = y + 'px';
+      overlay.style.width = Math.abs(bScreen.x - aScreen.x) + 'px';
+      overlay.style.height = Math.abs(bScreen.y - aScreen.y) + 'px';
+    };
+    const clearBox = () => { overlay?.remove(); overlay = null; };
+
+    // Apply the marquee's catch to the model's selection. Additive keeps the base set.
+    const applySelection = (worldRect, additive) => {
+      const hit = new Set(nodesInRect(ctx.diagram, worldRect).map((n) => n.id));
+      for (const n of ctx.diagram.getNodes()) {
+        const want = hit.has(n.id) || (additive && baseSelection.has(n.id));
+        n.setSelected(want);
+      }
+      api.renderNow();
+    };
+
+    // The tool: first refusal on every EMPTY-canvas gesture; nodes still drag normally.
+    registerTool({
+      id: 'marquee',
+      priority: 1,
+      hitTest: (_ev, hit) => !!hit.empty,
+      onPointerDown: (ev) => {
+        start = { world: { ...ev.world }, screen: { ...ev.screen } };
+        const additive = ev.modifiers.shift || ev.modifiers.ctrl || ev.modifiers.meta;
+        baseSelection = new Set(ctx.diagram.getSelectedNodes().map((n) => n.id));
+        if (!additive) { ctx.diagram.clearSelection(); baseSelection.clear(); }
+      },
+      onPointerMove: (ev) => {
+        if (!start) return;
+        showBox(start.screen, ev.screen);
+        const additive = ev.modifiers.shift || ev.modifiers.ctrl || ev.modifiers.meta;
+        applySelection({ ax: start.world.x, ay: start.world.y, bx: ev.world.x, by: ev.world.y }, additive);
+      },
+      onPointerUp: (ev) => {
+        if (start) {
+          const additive = ev.modifiers.shift || ev.modifiers.ctrl || ev.modifiers.meta;
+          applySelection({ ax: start.world.x, ay: start.world.y, bx: ev.world.x, by: ev.world.y }, additive);
+        }
+        start = null;
+        clearBox();
+      },
+      onCancel: () => { start = null; clearBox(); },
+    });
+
+    // Drive one real marquee gesture in WORLD coordinates (converted to client for the
+    // binder). Optionally hold Shift. Leaving `release=false` parks the box on screen.
+    ctx.marquee = (aWorld, bWorld, { shift = false, release = true } = {}) => {
+      const rect = ctx.host.getBoundingClientRect();
+      const a = api.viewport.worldToClient(aWorld.x, aWorld.y, rect);
+      const b = api.viewport.worldToClient(bWorld.x, bWorld.y, rect);
+      const fire = (type, c, buttons) =>
+        ctx.host.dispatchEvent(new PointerEvent(type, {
+          pointerType: 'mouse', button: 0, buttons, bubbles: true,
+          shiftKey: shift, clientX: c.x, clientY: c.y,
+        }));
+      fire('pointerdown', a, 1);
+      const STEPS = 6;
+      for (let i = 1; i <= STEPS; i++) {
+        const t = i / STEPS;
+        fire('pointermove', { x: a.x + (b.x - a.x) * t, y: a.y + (b.y - a.y) * t }, 1);
+      }
+      if (release) fire('pointerup', b, 0);
+    };
+    await ctx.tick();
+  },
+
+  async assert(ctx) {
+    const ids = () => ctx.diagram.getSelectedNodes().map((n) => n.id).sort().join(',');
+    check(ids() === '', `expected nothing selected at boot, got {${ids()}}`);
+
+    // 1. A box over the left cluster selects EXACTLY {n1,n2,n3}. Its top-left corner
+    //    (90,80) is empty canvas, so the marquee tool — not node-drag — claims the drag.
+    ctx.marquee({ x: 90, y: 80 }, { x: 450, y: 320 });
+    await ctx.tick();
+    check(ids() === 'n1,n2,n3', `the marquee should select the enclosed cluster, got {${ids()}}`);
+
+    // 2. THE TEETH: n6 sits just below the box (y 410) and n4/n5 to the right — none
+    //    partially clipped, none selected. A dead marquee that "grabbed everything" fails here.
+    check(!ctx.diagram.getNode('n6').isSelected(), 'n6 is outside the box and must NOT be selected');
+
+    // 3. A fresh (non-additive) box REPLACES the selection — proving the rect decides,
+    //    not a hardcoded set. This one catches only n5.
+    ctx.marquee({ x: 520, y: 270 }, { x: 720, y: 380 });
+    await ctx.tick();
+    check(ids() === 'n5', `a new marquee must replace the selection, got {${ids()}}`);
+
+    // 4. Shift-drag a box over n4: additive — the catch JOINS the current selection.
+    ctx.marquee({ x: 520, y: 90 }, { x: 720, y: 200 }, { shift: true });
+    await ctx.tick();
+    check(ids() === 'n4,n5', `Shift-marquee should ADD to the selection, got {${ids()}}`);
+
+    // 5. The selection genuinely painted: selected nodes carry the renderer's selected state.
+    const painted = ctx.host.querySelectorAll('.grafloria-node.selected, [data-selected="true"], .grafloria-node[aria-selected="true"]');
+    check(painted.length >= 2, `expected the selected nodes to paint a selection state, found ${painted.length}`);
+
+    // Restore a clean slate for the viewer.
+    ctx.diagram.clearSelection();
+    ctx.instance.renderNow();
+  },
+
+  // Money shot: park a marquee mid-drag over the cluster with the box + selection lit.
+  async showcase(ctx) {
+    ctx.marquee({ x: 90, y: 80 }, { x: 450, y: 320 }, { release: false });
+    await ctx.tick();
+  },
+});
+</script>

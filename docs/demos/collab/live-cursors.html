@@ -1,0 +1,139 @@
+<meta charset="utf-8">
+<title>Live cursors — Grafloria</title>
+<link rel="stylesheet" href="../shell/demo.css">
+<style>
+  .note { font-size: 12px; opacity: .8; padding: 10px 24px; border-bottom: 1px solid rgba(127,127,127,.25); line-height: 1.6; }
+  code { background: rgba(127,127,127,.15); padding: 1px 5px; border-radius: 4px; }
+  #canvas { display: flex; height: calc(100vh - 190px); }
+  .pane { flex: 1; min-width: 0; position: relative; }
+  .pane + .pane { border-left: 2px solid rgba(127,127,127,.35); }
+  .pane .tag { position: absolute; top: 8px; left: 8px; z-index: 2; font: 11px ui-monospace, Menlo, monospace; background: rgba(37,99,235,.85); color:#fff; padding: 2px 8px; border-radius: 4px; }
+</style>
+<header id="demo-head"></header>
+<div class="note">
+  Move your pointer over the left canvas — your cursor appears live in the right one. Remote
+  cursors live on a <b>separate DOM layer</b> (<code>.grafloria-presence-layer</code>), never in the
+  VNode tree — so 60Hz cursor traffic does NOT repaint the diagram, and never enters the op log.
+</div>
+<div id="canvas">
+  <div class="pane"><span class="tag">Ana (you)</span><div id="paneA" style="height:100%"></div></div>
+  <div class="pane"><span class="tag">Bo (sees Ana)</span><div id="paneB" style="height:100%"></div></div>
+</div>
+<script type="module">
+import { render, createSyncSession, MemoryHub, bindPresence, PRESENCE_LAYER_CLASS } from '../shell/grafloria.js';
+import { defineDemo, check, checkChanged } from '../shell/demo.js';
+
+const SPEC = () => ({
+  nodes: [
+    { id: 'a', label: 'Plan',  position: { x: 70,  y: 90 }, size: { width: 150, height: 66 } },
+    { id: 'b', label: 'Build', position: { x: 320, y: 90 }, size: { width: 150, height: 66 } },
+  ],
+  edges: [{ id: 'e1', source: 'a', target: 'b' }],
+});
+
+const hub = new MemoryHub();
+function peer(hostId, actor, name) {
+  const el = document.getElementById(hostId);
+  const inst = render(SPEC(), el);
+  const session = createSyncSession(inst.getModel(), hub.connect(actor), { actor, batch: false, awarenessThrottleMs: 0 });
+  session.join();
+  const presence = bindPresence(inst, session, { name, smoothing: 0 });
+  return { el, inst, session, presence };
+}
+
+defineDemo({
+  name: 'Live cursors',
+  blurb: "Remote presence cursors on a separate DOM layer — 60Hz cursor traffic never repaints the diagram and never touches the op log.",
+  howTo: [
+    'Sweep your pointer across the LEFT pane — a cursor labelled "Ana" tracks it live in the RIGHT pane.',
+    'Move out of the pane and the remote cursor disappears — presence clears on pointer-leave.',
+    'It\'s symmetric: move over the RIGHT pane and a "Bo" cursor appears in the LEFT one.',
+    'Click a node in one pane — the OTHER pane outlines it: selection is shared presence too.',
+    'Drag a node in either pane — that move syncs across as a document op; cursor traffic, by contrast, never repaints the diagram and never enters the op log.',
+    'Drag a node the OTHER user has selected: its coloured outline rides the node through the whole drag — in the pane you are dragging in, not just after you drop.',
+  ],
+  reactflow: 'Collaborative (Yjs)',
+  pro: true,
+
+  async setup(ctx) {
+    ctx.A = peer('paneA', 'ana', 'Ana');
+    ctx.B = peer('paneB', 'bo', 'Bo');
+    await ctx.tick();
+  },
+
+  async assert(ctx) {
+    const A = ctx.A, B = ctx.B;
+    const move = (x, y) => A.el.dispatchEvent(new PointerEvent('pointermove', { clientX: x, clientY: y, bubbles: true }));
+
+    // 1. A pointer move on Ana's canvas materialises a cursor in Bo's DOM, on the
+    //    dedicated presence LAYER (not the SVG scene).
+    const aRect = A.el.getBoundingClientRect();
+    move(aRect.left + 200, aRect.top + 150);
+    await ctx.tick(60);
+
+    const layer = B.el.querySelector(`.${PRESENCE_LAYER_CLASS}`);
+    check(!!layer, `Bo's pane has no ${PRESENCE_LAYER_CLASS} — presence is not on its own DOM layer`);
+    const cursor = layer.querySelector('.grafloria-presence-cursor[data-actor="ana"]');
+    check(!!cursor, "Ana's cursor never appeared in Bo's presence layer");
+    check(cursor.style.display === 'block', `Ana's cursor is in the DOM but hidden (display=${cursor.style.display})`);
+
+    // The cursor is positioned in WORLD coords via a transform; moving Ana's
+    // pointer must MOVE Bo's rendered cursor.
+    const t1 = cursor.style.transform;
+    move(aRect.left + 360, aRect.top + 300);
+    await ctx.tick(60);
+    const t2 = B.el.querySelector('.grafloria-presence-cursor[data-actor="ana"]').style.transform;
+    checkChanged(t1, t2, "Ana moved her pointer and Bo's cursor did not follow");
+
+    // The label names the peer.
+    check(layer.querySelector('.grafloria-presence-label').textContent === 'Ana', 'the remote cursor is unlabelled');
+
+    // 2. THE PERF TRAP, ASSERTED. A hundred remote cursor moves must NOT repaint
+    //    Bo's diagram — the cursors are not VNodes.
+    B.inst.renderNow();
+    await ctx.tick();
+    const paintedBefore = B.inst.scheduler.stats.painted;
+    for (let i = 0; i < 100; i++) move(aRect.left + 100 + i, aRect.top + 150);
+    await ctx.tick();
+    check(
+      B.inst.scheduler.stats.painted === paintedBefore,
+      `100 remote cursor updates repainted Bo's diagram ${B.inst.scheduler.stats.painted - paintedBefore} time(s).\n` +
+      `    Cursors on the VNode tree would re-reconcile the whole scene per mouse move — that is the trap.`
+    );
+    // …but the cursor DID track all 100 moves.
+    check(
+      !!B.el.querySelector('.grafloria-presence-cursor[data-actor="ana"]'),
+      "the cursor vanished under load"
+    );
+
+    // 3. Presence NEVER enters the op log — 200 pointer moves, zero ops.
+    check(
+      ctx.A.session.replica.history().length === 0 && ctx.B.session.replica.history().length === 0,
+      `moving the mouse wrote to the document: A=${ctx.A.session.replica.history().length} ops, B=${ctx.B.session.replica.history().length} ops.\n` +
+      `    A live cursor is a fact about a viewer, not an edit to the diagram.`
+    );
+
+    // 4. A remote-selection outline RIDES a drag in the pane being dragged
+    //    (live report: "when dragging the rectangle the purple is somehow not
+    //    dragged" — it froze at the start position until mouseup). Ana selects
+    //    in her pane; Bo's pane outlines it; then the node MOVES in Bo's pane
+    //    the way a drag moves it — a raw position stream between commits — and
+    //    the outline must track every step.
+    A.inst.getModel().selectNode(A.inst.getModel().getNode('a'));
+    await ctx.tick(60);
+    const outlineB = B.el.querySelector('.grafloria-presence-selection[data-entity="a"]');
+    check(!!outlineB, "Ana's selection never outlined the node in Bo's pane");
+    const bNode = B.inst.getModel().getNode('a');
+    const home = { x: bNode.position.x, y: bNode.position.y };
+    bNode.setPosition(home.x + 60, home.y + 35);
+    const mid = outlineB.getAttribute('style');
+    check(mid.includes(`left:${home.x + 60}px`) && mid.includes(`top:${home.y + 35}px`),
+      `mid-drag the outline must sit ON the node (expected ${home.x + 60},${home.y + 35}), got "${mid.match(/left:[^;]+;top:[^;]+/)?.[0]}"`);
+    // restore the picture for the capture + later gates
+    bNode.setPosition(home.x, home.y);
+    A.inst.getModel().clearSelection();
+    await ctx.tick(60);
+    A.inst.renderNow(); B.inst.renderNow();
+  },
+});
+</script>

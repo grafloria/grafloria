@@ -1,0 +1,88 @@
+<meta charset="utf-8">
+<title>Connection limit — Grafloria</title>
+<link rel="stylesheet" href="../shell/demo.css">
+<header id="demo-head"></header>
+<div id="canvas"></div>
+<script type="module">
+import { render } from '../shell/grafloria.js';
+import { defineDemo, check } from '../shell/demo.js';
+
+defineDemo({
+  name: 'Connection limit',
+  blurb: 'A port declares maxConnections:1 and REFUSES a second wire — vetoed inside the real drag, not by disabling the UI. Drawn with genuine pointer events; the refusal leaves the model untouched.',
+  howTo: [
+    'Hover the right edge of "Source 1" so its port glyph surfaces, press on it, drag a wire to the port on the LEFT edge of "Target (1 max)" and release: the wire lands. (Escape mid-drag cancels a connection.)',
+    'Draw the same wire from "Source 2" to that SAME left port and release: nothing lands — the port declares maxConnections:1, so the drop is vetoed inside the drag. The first wire is untouched.',
+    'Drag from "Source 2" to the port on the target\'s RIGHT edge instead: it connects. The cap is per-port, not per-node — only the full port refuses.',
+  ],
+  reactflow: 'Connection Limit',
+
+  async setup(ctx) {
+    const api = render({
+      nodes: [
+        { id: 's1', position: { x: 60,  y: 60 },  size: { width: 150, height: 70 }, label: 'Source 1' },
+        { id: 's2', position: { x: 60,  y: 240 }, size: { width: 150, height: 70 }, label: 'Source 2' },
+        { id: 't',  position: { x: 520, y: 150 }, size: { width: 150, height: 70 }, label: 'Target (1 max)',
+          // A single input port on the left that accepts at most ONE connection.
+          ports: [
+            { id: 't__left',  side: 'left',  type: 'bi', maxConnections: 1 },
+            { id: 't__right', side: 'right', type: 'bi' },
+          ] },
+      ],
+      edges: [],
+    }, ctx.host);
+    ctx.instance = api;
+    ctx.diagram = api.getModel();
+
+    // Port world positions (default rect ports sit at edge midpoints).
+    ctx.rightPort = (id) => { const n = ctx.diagram.getNode(id); return { x: n.position.x + n.size.width, y: n.position.y + n.size.height / 2 }; };
+    ctx.leftPort  = (id) => { const n = ctx.diagram.getNode(id); return { x: n.position.x, y: n.position.y + n.size.height / 2 }; };
+
+    const fire = (type, w) => {
+      const rect = ctx.host.getBoundingClientRect();
+      const c = api.viewport.worldToClient(w.x, w.y, rect);
+      ctx.host.dispatchEvent(new PointerEvent(({ mousedown: 'pointerdown', mousemove: 'pointermove', mouseup: 'pointerup' })[type] ?? type, { bubbles: true, pointerId: 1, pointerType: 'mouse', clientX: c.x, clientY: c.y, button: 0 }));
+    };
+    // Draw a wire from a source's right port to the target's left port, with the
+    // real gesture: hover the source port, press, drag, release on the target port.
+    ctx.drawWire = async (fromId) => {
+      const a = ctx.rightPort(fromId), b = ctx.leftPort('t');
+      fire('mousemove', a);   // populate hoveredPort = source
+      fire('mousedown', a);   // startConnection
+      fire('mousemove', b);   // drag to target port
+      fire('mouseup',   b);   // completeConnection → (maybe) link
+      // The link is created asynchronously from connection:complete.
+      await new Promise((r) => setTimeout(r, 0));
+      await ctx.tick();
+    };
+    await ctx.tick();
+  },
+
+  async assert(ctx) {
+    const m = ctx.diagram;
+    let connects = 0;
+    ctx.instance.on('connect', () => connects++);
+
+    check(m.getLinks().length === 0, 'should start with no links');
+
+    // 1. First wire onto the capped port: ACCEPTED.
+    await ctx.drawWire('s1');
+    check(m.getLinks().length === 1,
+      `the first connection to the port should succeed, links=${m.getLinks().length}`);
+    check(connects === 1, `expected exactly one connect event, got ${connects}`);
+
+    // 2. THE TEETH: second wire onto the SAME port — REFUSED. Same gesture, from a
+    //    different source. The port is full, so completeConnection vetoes it and the
+    //    model does not change.
+    await ctx.drawWire('s2');
+    check(m.getLinks().length === 1,
+      `maxConnections:1 was not enforced — a second wire landed (links=${m.getLinks().length})`);
+    check(connects === 1, `the refused connection still fired a connect event (${connects})`);
+
+    // 3. Sanity: the ONE link that exists is the s1→t one, not a phantom.
+    const link = m.getLinks()[0];
+    const srcNode = m.getNodeByPortId(link.sourcePortId);
+    check(srcNode && srcNode.id === 's1', `the surviving link should originate at s1, got ${srcNode && srcNode.id}`);
+  },
+});
+</script>

@@ -1,0 +1,125 @@
+<meta charset="utf-8">
+<title>Copy / paste — Grafloria</title>
+<link rel="stylesheet" href="../shell/demo.css">
+<style>
+  #readout { padding: 8px 24px; font: 12px/1.5 ui-monospace, monospace; opacity: .8; border-bottom: 1px solid rgba(127,127,127,.25); white-space: pre; }
+  #canvas { height: calc(100vh - 168px); }
+</style>
+<header id="demo-head"></header>
+<div id="readout"></div>
+<div id="canvas"></div>
+<script type="module">
+import { render } from '../shell/grafloria.js';
+import { defineDemo, check } from '../shell/demo.js';
+
+// Copy a selected node to the clipboard, then paste it TWICE. Each paste is an
+// independent copy: it gets its own id, its own position, and mutating one leaves
+// the other — and the original — untouched. (The clipboard here is the engine's
+// serialized clipboard; a production embed would bridge the same serialize/paste to
+// navigator.clipboard for real cross-tab OS paste — that bridge is the ONE thing
+// this page does not exercise, since headless has no clipboard permission.)
+const SPEC = {
+  nodes: [
+    { id: 'orig', position: { x: 120, y: 120 }, size: { width: 130, height: 50 }, label: 'Original' },
+  ],
+  edges: [],
+};
+
+defineDemo({
+  name: 'Copy / paste',
+  blurb: 'Copy a node, paste it twice — two independent copies, each with its own id and position, and mutating one touches neither the other nor the original.',
+  howTo: [
+    'Click the Original node to select it, then press ⌘C / Ctrl+C to copy it.',
+    'Press ⌘V / Ctrl+V — an independent copy appears, offset from the original.',
+    'Keep pressing ⌘V / Ctrl+V — one copy was put on the clipboard, so every paste adds another, and each lands 20px further down-right (a cascade, never a hidden stack).',
+    'Drag one copy somewhere else — the other copy and the Original stay put; the pastes share nothing.',
+    'Select a copy and press Delete — it disappears; ⌘Z / Ctrl+Z brings it back.',
+  ],
+  reactflow: 'Copy Paste',
+  pro: true,
+
+  async setup(ctx) {
+    const api = render(SPEC, ctx.host);
+    ctx.instance = api;
+    ctx.diagram = api.getModel();
+    ctx.engine = api.getEngine();
+    ctx.report = (m) => { document.getElementById('readout').textContent = m; };
+    ctx.report('one node; select + copy + paste twice');
+  },
+
+  async assert(ctx) {
+    const model = ctx.diagram;
+    const engine = ctx.engine;
+
+    const idsBefore = new Set(model.getNodes().map((n) => n.id));
+    check(idsBefore.size === 1, `expected 1 node to start, got ${idsBefore.size}`);
+
+    // Select the original and copy it to the clipboard.
+    engine.selectNodes(['orig']);
+    await engine.copy();
+    check(engine.hasClipboardData(), 'copy did not put anything on the clipboard');
+
+    // PASTE #1.
+    await engine.paste({ offset: { x: 60, y: 60 } });
+    ctx.instance.renderNow();
+    const afterFirst = model.getNodes().map((n) => n.id);
+    const paste1 = afterFirst.find((id) => !idsBefore.has(id));
+    check(model.getNodes().length === 2, `paste #1 should give 2 nodes, got ${model.getNodes().length}`);
+    check(!!paste1, 'paste #1 produced no new node');
+
+    // PASTE #2 — from the SAME clipboard. A second, independent copy.
+    await engine.paste({ offset: { x: 140, y: 120 } });
+    ctx.instance.renderNow();
+    const afterSecond = new Set(model.getNodes().map((n) => n.id));
+    const paste2 = [...afterSecond].find((id) => id !== 'orig' && id !== paste1);
+    check(model.getNodes().length === 3, `paste #2 should give 3 nodes, got ${model.getNodes().length}`);
+    check(!!paste2 && paste2 !== paste1, 'paste #2 reused paste #1\'s id — not an independent copy');
+
+    const orig = model.getNode('orig');
+    const c1 = model.getNode(paste1);
+    const c2 = model.getNode(paste2);
+
+    // 1. Distinct ids, all three.
+    check(orig.id !== c1.id && c1.id !== c2.id && orig.id !== c2.id, 'the three nodes do not all have distinct ids');
+
+    // 2. The two copies landed at DIFFERENT positions (different paste offsets).
+    check(c1.position.x !== c2.position.x || c1.position.y !== c2.position.y,
+      'the two pastes landed on the exact same spot — offset ignored');
+
+    // 3. INDEPENDENCE. Move copy #1; the original and copy #2 must not budge.
+    // The destination stays INSIDE the viewport — this is also the final frame
+    // a visitor (and the screenshot audit) sees, and a node parked at 999,999
+    // reads as "the second paste never happened".
+    const c2Before = { x: c2.position.x, y: c2.position.y };
+    const origBefore = { x: orig.position.x, y: orig.position.y };
+    c1.setPosition(620, 300);
+    check(c2.position.x === c2Before.x && c2.position.y === c2Before.y, 'moving copy #1 moved copy #2 — they share state');
+    check(orig.position.x === origBefore.x && orig.position.y === origBefore.y, 'moving copy #1 moved the ORIGINAL — paste aliased it');
+
+    // 4. THE KEYBOARD PATH. ⌘C then ⌘V must work live — the engine clipboard
+    //    always did, while NO key binding reached it (live report: "copy paste
+    //    not working"; metaKey deliberately, the flavour Ctrl-only chords drop).
+    engine.selectNodes(['orig']);
+    window.dispatchEvent(new KeyboardEvent('keydown', { key: 'c', metaKey: true, bubbles: true, cancelable: true }));
+    for (let i = 0; i < 30 && !engine.hasClipboardData(); i++) await new Promise((r) => setTimeout(r, 10));
+    window.dispatchEvent(new KeyboardEvent('keydown', { key: 'v', metaKey: true, bubbles: true, cancelable: true }));
+    for (let i = 0; i < 30 && model.getNodes().length < 4; i++) await new Promise((r) => setTimeout(r, 10));
+    check(model.getNodes().length === 4,
+      `⌘C/⌘V did not paste a 4th node live (have ${model.getNodes().length})`);
+
+    // 5. REPEAT-PASTE CASCADES. One copy, many pastes: each default paste must
+    //    land somewhere NEW (live report: "copy paste works but for one time" —
+    //    every ⌘V worked, but they all stacked on the same pixels, so paste #2+
+    //    was invisible under paste #1).
+    window.dispatchEvent(new KeyboardEvent('keydown', { key: 'v', metaKey: true, bubbles: true, cancelable: true }));
+    for (let i = 0; i < 30 && model.getNodes().length < 5; i++) await new Promise((r) => setTimeout(r, 10));
+    check(model.getNodes().length === 5,
+      `a second ⌘V from the same copy did not paste (have ${model.getNodes().length})`);
+    const spots = model.getNodes().map((n) => `${n.position.x},${n.position.y}`);
+    check(new Set(spots).size === spots.length,
+      `repeat pastes stacked on the same spot — positions [${spots.join('  ')}]`);
+
+    ctx.report(`orig=${orig.id}  copy1=${c1.id}  copy2=${c2.id}  (+2 via ⌘C/⌘V ×2 = 5 nodes, all at distinct spots)`);
+  },
+});
+</script>

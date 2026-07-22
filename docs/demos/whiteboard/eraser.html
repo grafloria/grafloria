@@ -1,0 +1,79 @@
+<meta charset="utf-8">
+<title>Eraser — Grafloria</title>
+<link rel="stylesheet" href="../shell/demo.css">
+<header id="demo-head"></header>
+<div id="canvas"></div>
+<script type="module">
+import { render, registerTool, createEraserTool, StrokeModel } from '../shell/grafloria.js';
+import { defineDemo, check } from '../shell/demo.js';
+
+function gesture(host, from, to, steps) {
+  const rect = host.getBoundingClientRect();
+  const fire = (type, x, y, buttons) =>
+    host.dispatchEvent(new PointerEvent(({ mousedown: 'pointerdown', mousemove: 'pointermove', mouseup: 'pointerup' })[type] ?? type, {
+      pointerType: 'mouse', button: 0, buttons, bubbles: true,
+      clientX: rect.left + x, clientY: rect.top + y,
+    }));
+  fire('pointerdown', from.x, from.y, 1);
+  for (let i = 1; i <= steps; i++) {
+    const t = i / steps;
+    fire('pointermove', from.x + (to.x - from.x) * t, from.y + (to.y - from.y) * t, 1);
+  }
+  fire('pointerup', to.x, to.y, 0);
+}
+
+// A horizontal ink stroke at a given y.
+function ink(id, y) {
+  return new StrokeModel(
+    [{ x: 100, y }, { x: 300, y }, { x: 500, y }],
+    { color: '#1f2933', width: 4 },
+    { id }
+  );
+}
+
+defineDemo({
+  name: 'Eraser',
+  blurb: 'Wipe over ink to remove it. Whole-stroke delete; a sweep across several strokes is one undo step.',
+  howTo: [
+    'Three parallel ink lines are seeded and the eraser is live. Press and sweep across the middle line — the WHOLE stroke vanishes, not a pixel-wide gap.',
+    'Note the two lines you never crossed survive — the eraser takes exactly what it touched.',
+    'Drag one vertical sweep down through BOTH remaining lines — both disappear in the one gesture.',
+    'Press ⌘Z / Ctrl+Z once: that sweep was ONE undo step — both lines come back together.',
+  ],
+  reactflow: 'Freehand Draw',
+  pro: true,
+
+  async setup(ctx) {
+    const api = render({ nodes: [], edges: [] }, ctx.host);
+    ctx.instance = api;
+    ctx.diagram = api.getModel();
+    // Seed three parallel strokes to erase selectively.
+    api.getModel().addStroke(ink('top', 120));
+    api.getModel().addStroke(ink('mid', 240));
+    api.getModel().addStroke(ink('bot', 360));
+    registerTool(createEraserTool(api, { radius: 10 }));
+    await ctx.tick();
+  },
+
+  async assert(ctx) {
+    check(ctx.diagram.getStrokes().length === 3, 'expected 3 seeded strokes');
+
+    // Wipe a HORIZONTAL sweep across ONLY the middle stroke (y≈240).
+    gesture(ctx.host, { x: 80, y: 240 }, { x: 520, y: 240 }, 20);
+    await ctx.tick();
+
+    // 1. The erased stroke is GONE — the consequence. (Mutation test: make EraserTool.onPointerUp
+    //    a no-op and this goes red.)
+    check(ctx.diagram.getStroke('mid') === undefined, 'the swept stroke should be erased');
+
+    // 2. …and ONLY it. The eraser removed what it crossed, not the whole board.
+    check(ctx.diagram.getStroke('top') !== undefined, 'a stroke it never touched must survive');
+    check(ctx.diagram.getStroke('bot') !== undefined, 'a stroke it never touched must survive');
+    check(ctx.diagram.getStrokes().length === 2, `expected 2 strokes left, found ${ctx.diagram.getStrokes().length}`);
+
+    // 3. The DOM reflects it: two ink paths remain.
+    const inkPaths = ctx.host.querySelectorAll('path.grafloria-stroke');
+    check(inkPaths.length === 2, `expected 2 ink <path> left, found ${inkPaths.length}`);
+  },
+});
+</script>

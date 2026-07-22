@@ -1,0 +1,104 @@
+<meta charset="utf-8">
+<title>Instance-scoped CSS variables — Grafloria</title>
+<link rel="stylesheet" href="../shell/demo.css">
+<style>
+  .note { font-size: 12px; opacity: .8; padding: 10px 24px; border-bottom: 1px solid rgba(127,127,127,.25); line-height: 1.6; }
+  code { background: rgba(127,127,127,.15); padding: 1px 5px; border-radius: 4px; }
+  #canvas { display: flex; gap: 0; height: calc(100vh - 190px); }
+  .pane { flex: 1; min-width: 0; position: relative; }
+  .pane + .pane { border-left: 1px solid rgba(127,127,127,.3); }
+  .pane .tag { position: absolute; top: 8px; left: 8px; z-index: 2; font: 11px ui-monospace, Menlo, monospace; background: rgba(127,127,127,.2); padding: 2px 6px; border-radius: 4px; }
+</style>
+<header id="demo-head"></header>
+<div class="note">
+  Two diagrams, two themes, <b>one page, one shared stylesheet</b>. Each instance stamps
+  <code>data-grafloria-instance</code> on its root and writes ONLY its own scoped variable block
+  (<code>[data-grafloria-instance="grafloria-3"] { --grafloria-node-fill: … }</code>). So the light one and
+  the dark one never clobber each other — the classic bug was a global rule keyed by theme name,
+  where the last inject won for both.
+</div>
+<div id="canvas">
+  <div class="pane"><span class="tag">instance A — light</span><div id="paneA" style="height:100%"></div></div>
+  <div class="pane"><span class="tag">instance B — dark</span><div id="paneB" style="height:100%"></div></div>
+</div>
+<script type="module">
+import { render, LIGHT_THEME, DARK_THEME, GRAFLORIA_INSTANCE_ATTR } from '../shell/grafloria.js';
+import { defineDemo, check, checkChanged } from '../shell/demo.js';
+
+const SPEC = () => ({
+  nodes: [
+    { id: 'a', position: { x: 40,  y: 70 },  size: { width: 150, height: 70 }, data: { label: 'Alpha' } },
+    { id: 'b', position: { x: 260, y: 70 },  size: { width: 150, height: 70 }, data: { label: 'Beta' } },
+    { id: 'c', position: { x: 150, y: 200 }, size: { width: 150, height: 70 }, data: { label: 'Gamma' } },
+  ],
+  edges: [{ id: 'e1', source: 'a', target: 'b' }, { id: 'e2', source: 'a', target: 'c' }],
+});
+
+const rootOf = (host) => host.querySelector(`[${GRAFLORIA_INSTANCE_ATTR}]`);
+const nodeFill = (host) => getComputedStyle(host.querySelector('rect.diagram-node')).fill;
+
+defineDemo({
+  name: 'Instance-scoped CSS variables',
+  blurb: 'Two diagrams with different themes on ONE page do not clobber each other — each writes only its own [data-grafloria-instance]-scoped variable block.',
+  howTo: [
+    'Compare the panes: the same three-node graph renders LIGHT in instance A and DARK in instance B — one page, one shared stylesheet, nothing clobbered.',
+    'Open devtools and inspect each pane\'s diagram root: each carries its own distinct data-grafloria-instance id.',
+    'Find the injected variable rules: every block is scoped as [data-grafloria-instance="…"] { --grafloria-node-fill: … } — there is no global theme-name rule for the last inject to win.',
+  ],
+  reactflow: null,
+
+  async setup(ctx) {
+    const A = document.getElementById('paneA');
+    const B = document.getElementById('paneB');
+    ctx.A = render(SPEC(), A, { theme: LIGHT_THEME });
+    ctx.B = render(SPEC(), B, { theme: DARK_THEME });
+    ctx.hostA = A; ctx.hostB = B;
+    ctx.A.renderNow();
+    ctx.B.renderNow();
+    await ctx.tick();
+  },
+
+  async assert(ctx) {
+    // 0. Each instance carries a DISTINCT instance id on its root — the scope key.
+    const idA = rootOf(ctx.hostA)?.getAttribute(GRAFLORIA_INSTANCE_ATTR);
+    const idB = rootOf(ctx.hostB)?.getAttribute(GRAFLORIA_INSTANCE_ATTR);
+    check(!!idA && !!idB, `both instances must stamp ${GRAFLORIA_INSTANCE_ATTR} (got ${idA}, ${idB})`);
+    check(idA !== idB, `the two instances share an id (${idA}) — their scoped blocks would collide`);
+
+    // 1. They render DIFFERENT themes side by side, right now: light A is white,
+    //    dark B is not. If a global rule had clobbered, both would be equal.
+    const lightA = nodeFill(ctx.hostA);
+    const darkB = nodeFill(ctx.hostB);
+    check(lightA === 'rgb(255, 255, 255)', `instance A (light) should paint a white node, got ${lightA}`);
+    check(darkB !== 'rgb(255, 255, 255)', `instance B (dark) is painting a LIGHT node — B was clobbered by A: ${darkB}`);
+    checkChanged(lightA, darkB, 'two themes on one page collapsed to the same paint — instance scoping failed');
+
+    // 2. THE ONE THAT MATTERS. Re-theme B (dark -> light -> dark) and force it to
+    //    re-inject its variable block. Instance A must NOT move a pixel. The old
+    //    bug: B's inject rewrote a theme-name-keyed global that A also read.
+    ctx.B.setTheme(LIGHT_THEME);
+    ctx.B.renderNow();
+    await ctx.tick();
+    const bAfterLight = nodeFill(ctx.hostB);
+    check(bAfterLight === 'rgb(255, 255, 255)', `B re-themed to light should be white, got ${bAfterLight}`);
+    // A, untouched, must still be exactly what it was.
+    check(nodeFill(ctx.hostA) === lightA, `re-theming B changed instance A — the scopes are leaking into each other`);
+
+    ctx.B.setTheme(DARK_THEME);
+    ctx.B.renderNow();
+    await ctx.tick();
+    check(nodeFill(ctx.hostB) === darkB, `B back to dark should return to ${darkB}, got ${nodeFill(ctx.hostB)}`);
+    check(nodeFill(ctx.hostA) === lightA, `after two B re-themes, A must be untouched at ${lightA}, got ${nodeFill(ctx.hostA)}`);
+
+    // 3. And the reverse: re-theme A and B must not follow.
+    ctx.A.setTheme(DARK_THEME);
+    ctx.A.renderNow();
+    await ctx.tick();
+    checkChanged(lightA, nodeFill(ctx.hostA), 'A did not respond to its own theme swap');
+    check(nodeFill(ctx.hostB) === darkB, `re-theming A dragged B along: B is now ${nodeFill(ctx.hostB)}`);
+
+    ctx.A.setTheme(LIGHT_THEME);
+    ctx.A.renderNow();
+  },
+});
+</script>

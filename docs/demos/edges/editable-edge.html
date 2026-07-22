@@ -1,0 +1,85 @@
+<meta charset="utf-8">
+<title>Editable edge (waypoints) — Grafloria</title>
+<link rel="stylesheet" href="../shell/demo.css">
+<style>
+  #hint { padding: 8px 24px; font: 13px/1.5 system-ui; opacity: .75; border-bottom: 1px solid rgba(127,127,127,.25); }
+  #canvas { height: calc(100vh - 190px); }
+</style>
+<header id="demo-head"></header>
+<div id="hint">Select the edge, click its body to drop a waypoint, then drag the waypoint. Real pointer events throughout.</div>
+<div id="canvas"></div>
+<script type="module">
+import { render } from '../shell/grafloria.js';
+import { defineDemo, check } from '../shell/demo.js';
+
+// Draggable edge WAYPOINTS — React Flow puts editable edges behind Pro. Select the
+// edge, click its path to insert a bend point, then drag that point anywhere. The
+// route is asserted to gain an interior waypoint at the click, and to follow the
+// waypoint as it is dragged — all driven with real pointer events.
+const NODES = [
+  { id: 'a', position: { x: 120, y: 260 }, size: { width: 120, height: 60 }, label: 'A' },
+  { id: 'b', position: { x: 660, y: 260 }, size: { width: 120, height: 60 }, label: 'B' },
+];
+
+defineDemo({
+  name: 'Editable edge',
+  blurb: 'Click an edge to drop a waypoint, then drag it — the route bends to follow. Driven with real pointer events; React Flow charges for editable edges.',
+  howTo: [
+    'Click the wire between A and B — its stroke highlights to show it is selected.',
+    'Click the selected edge\'s body where you want a bend — a waypoint handle appears right under the click, and the route now passes through it.',
+    'Drag that waypoint anywhere — the handle rides your pointer 1:1 and the wire bends to follow, while both ends stay pinned to A and B.',
+    'Click other spots on the selected edge to drop more waypoints and sculpt a multi-bend route.',
+  ],
+  reactflow: 'Editable Edge',
+  pro: true,
+
+  async setup(ctx) {
+    ctx.instance = render(
+      { nodes: NODES, edges: [{ id: 'e1', source: 'a', target: 'b', type: 'direct' }] },
+      ctx.host,
+      { interaction: { enableWaypointEditing: true, showWaypointHandles: true } }
+    );
+    ctx.diagram = ctx.instance.getModel();
+    ctx.pointer = (type, wx, wy) => {
+      const c = ctx.instance.viewport.worldToClient(wx, wy, ctx.host.getBoundingClientRect());
+      ctx.host.dispatchEvent(new PointerEvent(({ mousedown: 'pointerdown', mousemove: 'pointermove', mouseup: 'pointerup' })[type] ?? type, {
+        clientX: c.x, clientY: c.y, bubbles: true, cancelable: true,
+        button: 0, buttons: type === 'pointerup' ? 0 : 1, pointerId: 1, pointerType: 'mouse',
+      }));
+    };
+    ctx.click = async (x, y) => { ctx.pointer('pointermove', x, y); await ctx.tick(); ctx.pointer('pointerdown', x, y); await ctx.tick(); ctx.pointer('pointerup', x, y); await ctx.tick(); };
+    await ctx.tick();
+  },
+
+  async assert(ctx) {
+    const link = () => ctx.diagram.getLink('e1');
+    const pts = () => link().points.map((p) => ({ x: Math.round(p.x), y: Math.round(p.y) }));
+
+    // Straight to begin with: two points.
+    check(pts().length === 2, `edge should start straight (2 points), got ${pts().length}`);
+
+    // 1. Select the edge, then click its body at x=460 to insert a waypoint there.
+    await ctx.click(400, 290);          // select
+    check(link().state === 'selected', 'clicking the edge did not select it');
+    await ctx.click(460, 290);          // add waypoint
+    const added = pts();
+    check(added.length === 3, `clicking the path should add ONE interior waypoint, now ${added.length} points`);
+    const wp = added[1];
+    check(Math.abs(wp.x - 460) < 12, `the new waypoint should sit where it was clicked (x≈460), got x=${wp.x}`);
+
+    // 2. Drag the waypoint down — the route bends to follow it.
+    ctx.pointer('pointermove', wp.x, wp.y); await ctx.tick();
+    ctx.pointer('pointerdown', wp.x, wp.y); await ctx.tick();
+    check(ctx.instance.interaction.getState().isDraggingWaypoint, 'pressing the waypoint did not begin a waypoint drag');
+    ctx.pointer('pointermove', wp.x, wp.y + 100); await ctx.tick();
+    ctx.pointer('pointerup', wp.x, wp.y + 100); await ctx.tick();
+
+    const dragged = pts();
+    check(dragged.length === 3, `after dragging, the route should still have its waypoint (${dragged.length} points)`);
+    check(dragged[1].y - wp.y > 60, `the waypoint did not follow the drag (was y=${wp.y}, now y=${dragged[1].y})`);
+    // The endpoints did NOT move — only the interior bent.
+    check(dragged[0].x === added[0].x && dragged[2].x === added[2].x,
+      'dragging the waypoint moved the endpoints — it should only bend the interior');
+  },
+});
+</script>

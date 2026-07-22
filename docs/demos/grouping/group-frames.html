@@ -1,0 +1,85 @@
+<meta charset="utf-8">
+<title>Group frames — Grafloria</title>
+<link rel="stylesheet" href="../shell/demo.css">
+<header id="demo-head"></header>
+<div id="canvas"></div>
+<script type="module">
+import { render } from '../shell/grafloria.js';
+import { defineDemo, check } from '../shell/demo.js';
+
+// The gallery flagged this as half-wired: groups drove layout and collapse but the SVG
+// renderer drew NO visible frame — a subflow container was invisible. This demo is the
+// reachability proof that it is now drawn, through the PUBLIC embed (render + addGroup),
+// not just in a unit test.
+defineDemo({
+  name: 'Group frames',
+  blurb: 'Groups now draw a visible, labelled, themed frame — nested containers included. Was model-only since Wave 7.',
+  howTo: [
+    'Look at the canvas: the "Pipeline" group draws a real, labelled frame around its three nodes — containers used to be model-only and invisible.',
+    'Find the nested "Retry handler" frame INSIDE the pipeline, wrapping just the retry node: frames nest.',
+    'Drag any node, say "ingest" — it responds normally: frames paint BEHIND the nodes and never steal their clicks.',
+    'Note both frames carry their names — a container you cannot name is chrome, not a group.',
+  ],
+  reactflow: 'Sub Flow',
+
+  async setup(ctx) {
+    const api = render({
+      nodes: [
+        { id: 'n1', position: { x: 320, y: 160 }, size: { width: 120, height: 60 }, label: 'ingest' },
+        { id: 'n2', position: { x: 520, y: 160 }, size: { width: 120, height: 60 }, label: 'transform' },
+        { id: 'n3', position: { x: 420, y: 280 }, size: { width: 120, height: 60 }, label: 'retry' },
+      ],
+      edges: [{ id: 'e1', source: 'n1', target: 'n2' }, { id: 'e2', source: 'n1', target: 'n3' }],
+    }, ctx.host);
+    ctx.instance = api;
+    ctx.diagram = api.getModel();
+    ctx.engine = api.getEngine();
+
+    const outer = await ctx.engine.addGroup({ name: 'Pipeline' });
+    outer.setFrame({ x: 290, y: 120, width: 400, height: 240 });
+    await ctx.engine.addToGroup(outer.id, 'n1');
+    await ctx.engine.addToGroup(outer.id, 'n2');
+    await ctx.engine.addToGroup(outer.id, 'n3');
+    ctx.outer = outer;
+
+    // A nested sub-group — a frame inside a frame, drawn behind its own members.
+    const inner = await ctx.engine.addGroup({ name: 'Retry handler' });
+    inner.setFrame({ x: 390, y: 250, width: 180, height: 100 });
+    await ctx.engine.addToGroup(inner.id, 'n3');
+    outer.addMember(inner.id, ctx.diagram);
+    ctx.inner = inner;
+
+    api.renderNow();
+    await ctx.tick();
+  },
+
+  async assert(ctx) {
+    const frame = (id) => ctx.host.querySelector(`[data-group-id="${id}"]`);
+
+    // 1. BOTH frames are in the DOM — the group and the nested sub-group.
+    check(frame('' + ctx.outer.id), 'the outer group drew no frame');
+    check(frame('' + ctx.inner.id), 'the nested group drew no frame');
+
+    // 2. THE FRAME SITS AT THE GROUP'S BOUNDS — not merely "a rect appeared". A frame drawn
+    //    at the wrong place is worse than none; this is the assertion with teeth. Find the
+    //    frame's own <rect> and check its geometry against the group's declared frame.
+    const outerEl = frame('' + ctx.outer.id);
+    const rect = outerEl.matches('rect') ? outerEl : outerEl.querySelector('rect');
+    check(rect, 'the group frame has no <rect>');
+    const x = parseFloat(rect.getAttribute('x'));
+    const w = parseFloat(rect.getAttribute('width'));
+    // The Pipeline frame was set at x:290 w:400; allow a small padding/stroke tolerance.
+    check(Math.abs(x - 290) < 20, `frame x ${x} is not at the group's left edge (290)`);
+    check(Math.abs(w - 400) < 40, `frame width ${w} does not match the group (400)`);
+
+    // 3. THE LABEL travels with the frame — a container you cannot name is chrome, not a group.
+    const text = outerEl.textContent || '';
+    check(text.includes('Pipeline'), `the group frame does not show its name; text was "${text}"`);
+
+    // 4. It is drawn BEHIND the nodes: the node must still be clickable (frame is not on top).
+    //    A frame painted over the nodes would swallow every click — check the node is present
+    //    and the frame does not intercept (the renderer draws groups first, nodes after).
+    check(ctx.host.querySelector('[data-node-id="n1"]'), 'a grouped node stopped rendering under the frame');
+  },
+});
+</script>

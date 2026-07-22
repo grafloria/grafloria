@@ -66,6 +66,18 @@
   .frameworks { padding: 30px 0 10px; text-align: center; color: var(--slate); font-size: 15px; }
   .frameworks span { margin: 0 12px; font-weight: 600; color: var(--ink); }
 
+  section.shots { padding: 64px 0 8px; }
+  .shots h2 { font-size: 30px; letter-spacing: -0.6px; margin-bottom: 8px; }
+  .shots .sub { color: var(--slate); margin-bottom: 28px; max-width: 62ch; }
+  .shot { display: block; border: 1px solid var(--line); border-radius: 14px; overflow: hidden;
+          background: #fff; text-decoration: none; }
+  .shot:hover { border-color: var(--indigo-soft); text-decoration: none; }
+  .shot img { display: block; width: 100%; height: auto; }
+  .shot span { display: block; padding: 12px 16px; font-size: 14.5px; font-weight: 600; color: var(--ink); }
+  .shot.wide { margin-bottom: 18px; }
+  .shotgrid { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 18px; }
+  .shots .more { margin: 22px 0 8px; font-weight: 600; }
+
   section.features { padding: 70px 0; }
   .features h2, .code h2 { font-size: 30px; letter-spacing: -0.6px; margin-bottom: 8px; text-wrap: balance; }
   .features .sub, .code .sub { color: var(--slate); margin-bottom: 38px; max-width: 62ch; }
@@ -112,7 +124,7 @@
     <nav class="links">
       <a href="https://github.com/grafloria/grafloria">GitHub</a>
       <a href="https://www.npmjs.com/org/grafloria">npm</a>
-      <a href="https://github.com/grafloria/grafloria/tree/main/demos">Demos</a>
+      <a href="demos/">Demos</a>
     </nav>
   </div>
 </header>
@@ -136,6 +148,28 @@
       <p class="frameworks">Native in <span>Angular</span>·<span>React</span>·<span>Vue</span>· and every framework via <span>&lt;grafloria-flow&gt;</span></p>
     </div>
   </div>
+
+  <section class="shots">
+    <div class="wrap">
+      <h2>See it running</h2>
+      <p class="sub">Screenshots from the live gallery — every one links to the working demo. 100+ pages, each driven by real gestures in CI.</p>
+      <a class="shot wide" href="demos/interaction/n8n-workflow.html">
+        <img src="shots/workflow.png" alt="An n8n-style workflow editor built with Grafloria: typed nodes, an AI agent with model, memory and tool ports, and a run toolbar" loading="lazy">
+        <span>Workflow editor — typed wires, AI-agent ports, step execution</span>
+      </a>
+      <div class="shotgrid">
+        <a class="shot" href="demos/dashboard/dashboard-builder.html">
+          <img src="shots/dashboard.png" alt="A tabbed dashboard built with the Grafloria dashboard kit: KPI cards, charts and a drag-pack grid" loading="lazy">
+          <span>Dashboard builder — drag-pack grid, undoable gestures</span>
+        </a>
+        <a class="shot" href="demos/diagrams/class-uml.html">
+          <img src="shots/uml.png" alt="A UML class diagram from pure data: compartments and hollow-triangle inheritance" loading="lazy">
+          <span>UML &amp; ER kits — diagrams from pure data</span>
+        </a>
+      </div>
+      <p class="more"><a href="demos/">Browse all 100+ live demos →</a></p>
+    </div>
+  </section>
 
   <section class="features">
     <div class="wrap">

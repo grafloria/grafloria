@@ -1,0 +1,127 @@
+<meta charset="utf-8">
+<title>Edge toolbar — Grafloria</title>
+<link rel="stylesheet" href="../shell/demo.css">
+<style>
+  #canvas { height: calc(100vh - 140px); }
+  .edge-tb { display: flex; gap: 4px; transform: translate(-50%, -50%); background: #1f2937; border-radius: 8px; padding: 4px 6px; box-shadow: 0 4px 14px rgba(0,0,0,.3); }
+  .edge-tb button { border: 0; background: #374151; color: #fff; border-radius: 5px; width: 26px; height: 26px; cursor: pointer; font: 13px system-ui; }
+  .edge-tb button:hover { background: #4b5563; }
+</style>
+<header id="demo-head"></header>
+<div id="canvas"></div>
+<script type="module">
+import { render, createViewportPortal } from '../shell/grafloria.js';
+import { defineDemo, check } from '../shell/demo.js';
+
+// An edge toolbar anchored to the PATH, built the way the package documents:
+// createViewportPortal() drops your own DOM into the world layer that tracks the
+// camera. The toolbar sits at the edge's midpoint and re-anchors when the route
+// changes — the model's stale `segments` would lie, so we read the LIVE points.
+const NODES = [
+  { id: 'a', position: { x: 120, y: 140 }, size: { width: 130, height: 60 }, label: 'A' },
+  { id: 'b', position: { x: 660, y: 140 }, size: { width: 130, height: 60 }, label: 'B' },
+];
+
+const midpoint = (pts) => {
+  // Midpoint by arc length along the routed polyline.
+  let total = 0;
+  for (let i = 0; i < pts.length - 1; i++) total += Math.hypot(pts[i + 1].x - pts[i].x, pts[i + 1].y - pts[i].y);
+  let half = total / 2;
+  for (let i = 0; i < pts.length - 1; i++) {
+    const seg = Math.hypot(pts[i + 1].x - pts[i].x, pts[i + 1].y - pts[i].y);
+    if (half <= seg) { const t = half / (seg || 1); return { x: pts[i].x + (pts[i + 1].x - pts[i].x) * t, y: pts[i].y + (pts[i + 1].y - pts[i].y) * t }; }
+    half -= seg;
+  }
+  return pts[0];
+};
+
+defineDemo({
+  name: 'Edge toolbar',
+  blurb: 'A floating toolbar anchored to the edge via createViewportPortal() — sits at the path midpoint and re-anchors when the route moves.',
+  howTo: [
+    'Spot the small dark toolbar (✎ 🗑) floating exactly at the midpoint of the wire between A and B.',
+    'Drag node B anywhere — the toolbar glides continuously so it always sits on the path\'s midpoint; it re-anchors every frame, not just after the drop.',
+    'Drag empty canvas to pan and ctrl/cmd + wheel to zoom — the toolbar is real HTML living in the world layer (createViewportPortal), so it travels with the scene instead of sticking to the screen.',
+    'Click ✎ — the wire toggles dashed and back: the toolbar acts on the edge it is anchored to.',
+    'Click 🗑 — the edge is deleted and the toolbar tears down with it; ⌘Z / Ctrl+Z brings the edge back (re-load the page to get the toolbar again).',
+  ],
+  reactflow: 'Edge Toolbar',
+
+  async setup(ctx) {
+    ctx.instance = render({ nodes: NODES, edges: [{ id: 'e1', source: 'a', target: 'b', type: 'smooth' }] }, ctx.host);
+    ctx.diagram = ctx.instance.getModel();
+
+    const htmlLayer = ctx.host.querySelector('.grafloria-html-layer');
+    ctx.portal = createViewportPortal(htmlLayer, { className: 'edge-tb' });
+    ctx.portal.element.innerHTML = '<button title="toggle dashed">✎</button><button title="delete edge">🗑</button>';
+
+    // The toolbar's buttons ACT on the edge it is anchored to — an edge toolbar
+    // whose buttons do nothing is decoration (the DEAD-BUTTON gate agrees).
+    const [editBtn, deleteBtn] = ctx.portal.element.querySelectorAll('button');
+    editBtn.addEventListener('click', () => {
+      const link = ctx.diagram.getLink('e1');
+      if (!link) return;
+      const dashed = link.style?.strokeDasharray;
+      link.updateStyle({ strokeDasharray: dashed ? undefined : '8 5' });
+      ctx.instance.renderNow();
+    });
+    deleteBtn.addEventListener('click', async () => {
+      if (!ctx.diagram.getLink('e1')) return;
+      await ctx.instance.getEngine().removeLink('e1');
+      cancelAnimationFrame(ctx._raf);
+      ctx.portal.dispose();
+      ctx.instance.renderNow();
+    });
+
+    ctx.reanchor = () => {
+      const m = midpoint(ctx.diagram.getLink('e1').points);
+      ctx.portal.setPosition(m.x, m.y);
+      return m;
+    };
+    // Track the route every frame — exactly how an overlay stays glued to moving
+    // geometry (the routed points change on render, not on a discrete event).
+    const loop = () => { ctx.reanchor(); ctx._raf = requestAnimationFrame(loop); };
+    loop();
+    await ctx.tick();
+  },
+
+  async assert(ctx) {
+    const worldPos = () => {
+      // Read the CSSOM properties, not the raw attribute string — how the
+      // portal serializes its style is an implementation detail.
+      const s = ctx.portal.element.style;
+      return { x: parseFloat(s.left), y: parseFloat(s.top) };
+    };
+
+    // 1. The toolbar is real DOM, anchored at the edge midpoint (in world space).
+    check(ctx.host.contains(ctx.portal.element), 'the toolbar portal is not in the DOM');
+    check(ctx.portal.element.querySelectorAll('button').length === 2, 'the toolbar did not render its buttons');
+    const mid0 = midpoint(ctx.diagram.getLink('e1').points);
+    let p = worldPos();
+    check(Math.abs(p.x - mid0.x) < 2 && Math.abs(p.y - mid0.y) < 2,
+      `toolbar should sit at the edge midpoint (${Math.round(mid0.x)},${Math.round(mid0.y)}), is at (${Math.round(p.x)},${Math.round(p.y)})`);
+
+    // 2. It is really OVER the path on screen: its client rect centre lines up with
+    //    the midpoint projected through the camera.
+    const rect = ctx.host.getBoundingClientRect();
+    const screenMid = ctx.instance.viewport.worldToClient(mid0.x, mid0.y, rect);
+    const tb = ctx.portal.element.getBoundingClientRect();
+    const tbCenter = { x: tb.left + tb.width / 2, y: tb.top + tb.height / 2 };
+    check(Math.abs(tbCenter.x - screenMid.x) < 6 && Math.abs(tbCenter.y - screenMid.y) < 6,
+      `the toolbar is not painted over the path midpoint (toolbar ${Math.round(tbCenter.x)},${Math.round(tbCenter.y)} vs path ${Math.round(screenMid.x)},${Math.round(screenMid.y)})`);
+
+    // 3. Move a node — the toolbar RE-ANCHORS to the new midpoint, it does not stay put.
+    ctx.diagram.getNode('b').setPosition(660, 460);
+    ctx.instance.renderNow();
+    await ctx.tick();
+    const mid1 = midpoint(ctx.diagram.getLink('e1').points);
+    p = worldPos();
+    check(Math.abs(p.y - mid0.y) > 60, 'the toolbar stayed put when the edge moved — it is not anchored to the path');
+    check(Math.abs(p.x - mid1.x) < 2 && Math.abs(p.y - mid1.y) < 2,
+      `the toolbar did not track to the new midpoint (${Math.round(mid1.x)},${Math.round(mid1.y)}), is at (${Math.round(p.x)},${Math.round(p.y)})`);
+
+    ctx.diagram.getNode('b').setPosition(660, 140);
+    ctx.instance.renderNow();
+  },
+});
+</script>

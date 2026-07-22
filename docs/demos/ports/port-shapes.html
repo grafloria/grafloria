@@ -1,0 +1,71 @@
+<meta charset="utf-8">
+<title>Port shapes — Grafloria</title>
+<link rel="stylesheet" href="../shell/demo.css">
+<style>#canvas { height: calc(100vh - 140px); }</style>
+<header id="demo-head"></header>
+<div id="canvas"></div>
+<script type="module">
+import { render } from '../shell/grafloria.js';
+import { defineDemo, check } from '../shell/demo.js';
+
+// Wave-6 port glyphs: a port is not always a dot. circle / square / diamond /
+// triangle / a custom SVG path — each renders as a DIFFERENT SVG primitive, which
+// is exactly what the assertion checks. If PortSpec.shape were dropped on the
+// floor (it was, before the reachability fix), all five would be circles.
+const SHAPES = [
+  { id: 'circle',   spec: { shape: 'circle', size: 16 } },
+  { id: 'square',   spec: { shape: 'square', size: 16 } },
+  { id: 'diamond',  spec: { shape: 'diamond', size: 16 } },
+  { id: 'triangle', spec: { shape: 'triangle', size: 16 } },
+  { id: 'path',     spec: { shape: 'path', size: 18, path: 'M0,-9 L9,0 L0,9 L-9,0 Z M0,-4 L4,0 L0,4 L-4,0 Z' } },
+];
+const NODES = SHAPES.map((s, i) => ({
+  id: s.id, position: { x: 120 + i * 170, y: 240 }, size: { width: 120, height: 70 }, label: s.id,
+  ports: [{ id: `${s.id}-p`, side: 'right', shape: s.spec }],
+}));
+
+// What SVG element each glyph MUST be. This is the teeth: a wrong (or ignored)
+// shape shows up as the wrong tag.
+const EXPECT = { circle: 'circle', square: 'rect', diamond: 'polygon', triangle: 'polygon', path: 'path' };
+
+defineDemo({
+  name: 'Port shapes',
+  blurb: 'circle · square · diamond · triangle · custom path — five ports, five different SVG primitives. Asserted by element type, not by "a port appeared".',
+  howTo: [
+    'Read the five nodes left to right — each wears the port glyph it is named after: circle, square, diamond, triangle, and a custom double-diamond from an author-supplied SVG path.',
+    'Ctrl/cmd + wheel to zoom in close: five genuinely different SVG primitives (a real square, a 4-point diamond, a 3-point triangle…), not one dot restyled.',
+    'Press on any glyph and drag — it is a live port: a connection wire follows your cursor. Press Escape to cancel the drag.',
+  ],
+
+  async setup(ctx) {
+    ctx.instance = render({ nodes: NODES, edges: [] }, ctx.host, { interaction: { portVisibility: 'always' } });
+    await ctx.tick();
+  },
+
+  async assert(ctx) {
+    const tagOf = (id) => {
+      const el = ctx.host.querySelector(`[data-port-id="${id}-p"]`);
+      return el ? el.tagName.toLowerCase() : null;
+    };
+
+    // Every glyph is the RIGHT primitive.
+    for (const s of SHAPES) {
+      check(tagOf(s.id) === EXPECT[s.id], `${s.id} port should render as <${EXPECT[s.id]}>, got <${tagOf(s.id)}>`);
+    }
+
+    // The diamond is a 4-point polygon, the triangle a 3-point one — not the same
+    // <polygon> by luck.
+    const pts = (id) => (ctx.host.querySelector(`[data-port-id="${id}-p"]`).getAttribute('points').trim().split(/\s+/).length);
+    check(pts('diamond') === 4, `diamond should have 4 points, has ${pts('diamond')}`);
+    check(pts('triangle') === 3, `triangle should have 3 points, has ${pts('triangle')}`);
+
+    // The custom path carries the author's own `d`.
+    const d = ctx.host.querySelector('[data-port-id="path-p"]').getAttribute('d');
+    check(d.includes('M0,-9'), `the custom path glyph did not use the author's path data (got ${d})`);
+
+    // And they are genuinely different renderings — a dead shape pipe collapses this.
+    const tags = new Set(SHAPES.map((s) => tagOf(s.id)));
+    check(tags.size >= 4, `expected at least 4 distinct glyph primitives, got ${tags.size} (${[...tags]})`);
+  },
+});
+</script>

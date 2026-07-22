@@ -1,0 +1,148 @@
+<meta charset="utf-8">
+<title>Intersections — Grafloria</title>
+<link rel="stylesheet" href="../shell/demo.css">
+<style>
+  #readout { padding: 8px 24px; font: 12px/1.5 ui-monospace, monospace; opacity: .8; border-bottom: 1px solid rgba(127,127,127,.25); white-space: pre; }
+  #canvas { height: calc(100vh - 168px); }
+</style>
+<header id="demo-head"></header>
+<div id="readout">drag a node — the overlap set recomputes on every move</div>
+<div id="canvas"></div>
+<script type="module">
+import { render, createDiagramApi } from '../shell/grafloria.js';
+import { defineDemo, check, checkEqual } from '../shell/demo.js';
+
+// React Flow's Intersections example: while you DRAG a node, every node it
+// overlaps lights up, live. Ours is served by the PUBLIC wrapper —
+// createDiagramApi(instance).getIntersectingNodes(rect, { fully }) — the same
+// call an embedder gets, with both semantics: overlap (default) and full
+// containment (fully:true, which is what the small node S is for). The glue
+// here is one node:moved listener; the assert also cross-checks the wrapper
+// against the model's own spatial index so the two can never drift apart.
+
+// The one shared style object the live glue paints with. Identity (===) is the
+// marker for "this highlight is OURS", so restoring can never clobber a fill a
+// future version of this demo might set for other reasons.
+const HILITE = { type: 'rect', fill: '#fecaca', stroke: '#dc2626' };
+
+const rectOf = (n) => ({ x: n.position.x, y: n.position.y, width: n.size.width, height: n.size.height });
+
+defineDemo({
+  name: 'Intersections',
+  blurb: 'Drag a node and every node it overlaps lights up red, live — createDiagramApi(…).getIntersectingNodes on each move, with overlap vs full-containment (fully:true) both proven.',
+  howTo: [
+    'Drag node A onto node B — the moment their boxes overlap, B lights up red. The set comes from the public getIntersectingNodes on every move, not on drop.',
+    'Drag A clear again — the highlight dies with the overlap. A stale result would keep B lit.',
+    'Drag the small node S until it is completely inside B: it highlights B while merely touching, but the containment mode (fully:true) — which the scripted checks interrogate — only reports S once it is fully inside B\'s box.',
+    'Reload, then click "▶ run the scripted checks": A and S jump onto B and back while the assertions prove the overlap is symmetric, the highlight paints and clears, and overlap vs containment disagree exactly where they should.',
+  ],
+  reactflow: 'Intersections',
+
+  async setup(ctx) {
+    const api = render({
+      nodes: [
+        { id: 'a', position: { x: 120, y: 140 }, size: { width: 180, height: 110 }, label: 'A · drag me' },
+        { id: 'b', position: { x: 460, y: 140 }, size: { width: 180, height: 110 }, label: 'B' },
+        { id: 'c', position: { x: 800, y: 140 }, size: { width: 180, height: 110 }, label: 'C' },
+        // The intersection tester: small enough to fit ENTIRELY inside another
+        // node, which is the only way overlap and containment can disagree.
+        { id: 's', position: { x: 150, y: 430 }, size: { width: 60, height: 60 }, label: 'S' },
+      ],
+      edges: [],
+    }, ctx.host);
+    ctx.instance = api;
+    ctx.diagram = api.getModel();
+    // THE POINT: the public API wrapper, not demo-side AABB math.
+    ctx.api = createDiagramApi(api);
+
+    // Which OTHER nodes' boxes overlap this one — one public call, self filtered.
+    ctx.hits = (id, options) => ctx.api
+      .getIntersectingNodes(rectOf(ctx.diagram.getNode(id)), options)
+      .filter((o) => o.id !== id)
+      .map((o) => o.id)
+      .sort();
+
+    const readout = (msg) => { document.getElementById('readout').textContent = msg; };
+
+    // LIVE GLUE (the whole React Flow example in one listener): on every move,
+    // re-ask the public API and paint the nodes the moved one overlaps. The
+    // MOVED node itself stays unpainted — it is already carrying the drag
+    // selection, and React Flow highlights only the nodes it lands on.
+    ctx.relight = (movedId) => {
+      const moved = ctx.diagram.getNode(movedId);
+      if (!moved) return;
+      const lit = ctx.hits(movedId);
+      for (const n of ctx.diagram.getNodes()) {
+        const want = lit.includes(n.id);
+        const has = n.getMetadata('shape') === HILITE;
+        if (want && !has) n.setMetadata('shape', HILITE);
+        else if (!want && has) n.setMetadata('shape', undefined);
+      }
+      readout(`dragging ${movedId} — overlaps: ${lit.length ? lit.join(', ') : '(none)'}`);
+    };
+    ctx.diagram.on('node:moved', ({ nodeId }) => ctx.relight(nodeId));
+    await ctx.tick();
+  },
+
+  // Money shot: A dragged onto B with the LIVE highlight painted by the glue
+  // itself — not hand-tinted for the camera.
+  async showcase(ctx) {
+    const b = ctx.diagram.getNode('b');
+    ctx.diagram.getNode('a').setPosition(b.position.x - 40, b.position.y - 24);
+    ctx.instance.renderNow();
+  },
+
+  async assert(ctx) {
+    const m = ctx.diagram;
+    const painted = (id) => m.getNode(id).getMetadata('shape') === HILITE;
+
+    // 1. Laid out apart, the public API reports nothing for anybody.
+    for (const id of ['a', 'b', 'c', 's']) {
+      check(ctx.hits(id).length === 0, `${id} should start clear, hits: ${ctx.hits(id)}`);
+    }
+
+    // 2. Slide A onto B. The overlap must be reported — BOTH ways (A sees B,
+    //    B sees A) — and the wrapper must agree with the model's own spatial
+    //    index, or the public API has drifted from the engine's truth.
+    m.getNode('a').setPosition(400, 150);   // A now straddles B (B.x=460)
+    ctx.instance.renderNow();
+    check(ctx.hits('a').includes('b'), `A moved onto B but the overlap was not detected (hits: ${ctx.hits('a')})`);
+    check(ctx.hits('b').includes('a'), 'overlap is not symmetric — B does not see A');
+    check(!ctx.hits('a').includes('c'), 'A should not intersect the far-away C');
+    const a = m.getNode('a');
+    const indexView = m.getVisibleNodes(rectOf(a)).filter((o) => o.id !== 'a').map((o) => o.id).sort();
+    checkEqual(ctx.hits('a'), indexView, 'the public wrapper disagrees with the model spatial index');
+
+    // 3. The LIVE glue painted what the API reported: B is lit, the far C is
+    //    not, and the DRAGGED node itself stays unpainted (React Flow parity —
+    //    only the nodes you land on highlight).
+    check(painted('b'), 'A overlaps B but B did not get the live highlight');
+    check(!painted('c'), 'C is clear but got painted anyway');
+    check(!painted('a'), 'the dragged node itself must not be highlighted');
+    check(document.getElementById('readout').textContent.includes('overlaps: b'),
+      'the readout does not name the overlap the API reported');
+
+    // 4. Overlap vs CONTAINMENT. Park S fully inside B's box: the default
+    //    (overlap) query on B's rect sees both A (partial) and S (contained);
+    //    fully:true must keep S and DROP the merely-straddling A.
+    m.getNode('s').setPosition(500, 170);   // S (60×60) entirely inside B's 460..640 × 140..250
+    ctx.instance.renderNow();
+    checkEqual(ctx.hits('b'), ['a', 's'], 'overlap mode should see the straddler AND the contained node');
+    checkEqual(ctx.hits('b', { fully: true }), ['s'],
+      'fully:true must report only the node completely inside — a partial overlap is not containment');
+
+    // 5. THE TEETH: drag both clear and the overlap — and the paint — must
+    //    DISAPPEAR. A stale result (or a highlight nobody restores) keeps
+    //    phantom state on screen; that is exactly what this catches.
+    m.getNode('a').setPosition(120, 140);
+    m.getNode('s').setPosition(150, 430);
+    ctx.instance.renderNow();
+    for (const id of ['a', 'b', 'c', 's']) {
+      check(ctx.hits(id).length === 0, `${id} was dragged clear but still reports overlaps: ${ctx.hits(id)}`);
+      check(!painted(id), `${id} is clear but still carries the live highlight — nobody restored it`);
+    }
+    check(document.getElementById('readout').textContent.includes('(none)'),
+      'the readout should say (none) once everything is clear');
+  },
+});
+</script>

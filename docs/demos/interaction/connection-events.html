@@ -1,0 +1,197 @@
+<meta charset="utf-8">
+<title>Connection events — Grafloria</title>
+<link rel="stylesheet" href="../shell/demo.css">
+<style>
+  #events { padding: 8px 24px 10px; border-bottom: 1px solid rgba(127,127,127,.25); font: 12px/1.4 ui-monospace, monospace; }
+  #flags { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+  #flags .flag { padding: 2px 9px; border: 1px solid rgba(127,127,127,.4); border-radius: 999px; opacity: .32; transition: opacity .12s, background .12s, color .12s, border-color .12s; }
+  #flags .flag.lit { opacity: 1; font-weight: 600; }
+  #flags .flag[data-ev="connection:start"].lit    { background: #2563eb; color: #fff; border-color: #2563eb; }
+  #flags .flag[data-ev="connection:update"].lit    { background: #64748b; color: #fff; border-color: #64748b; }
+  #flags .flag[data-ev="connection:port-enter"].lit{ background: #0d9488; color: #fff; border-color: #0d9488; }
+  #flags .flag[data-ev="connection:complete"].lit  { background: #16a34a; color: #fff; border-color: #16a34a; }
+  #flags .flag[data-ev="connection:cancel"].lit    { background: #dc2626; color: #fff; border-color: #dc2626; }
+  #flags .legend { opacity: .6; margin-left: auto; }
+  #flags .clear { font: inherit; padding: 2px 9px; border: 1px solid rgba(127,127,127,.4); border-radius: 6px; background: transparent; color: inherit; cursor: pointer; }
+  #log { margin-top: 8px; height: 88px; overflow-y: auto; white-space: pre; opacity: .9; }
+  #log .row { padding: 1px 0; }
+  #log .row .ev { display: inline-block; min-width: 168px; font-weight: 600; }
+  #log .row.connect .ev { color: #16a34a; }
+  #log .row.cancel .ev  { color: #dc2626; }
+  #log .empty { opacity: .5; }
+  #canvas { height: calc(100vh - 300px); min-height: 300px; }
+</style>
+<header id="demo-head"></header>
+<div id="events">
+  <div id="flags">
+    <span class="flag" data-ev="connection:start">start</span>
+    <span class="flag" data-ev="connection:update">update</span>
+    <span class="flag" data-ev="connection:port-enter">port-enter</span>
+    <span class="flag" data-ev="connection:complete">complete</span>
+    <span class="flag" data-ev="connection:cancel">cancel</span>
+    <button class="clear" id="clear-log">clear</button>
+    <span class="legend">start≈onConnectStart · complete≈onConnect · complete|cancel = onConnectEnd (split by outcome)</span>
+  </div>
+  <div id="log"><span class="empty">drag from the source's right port to see the connection lifecycle fire…</span></div>
+</div>
+<div id="canvas"></div>
+<script type="module">
+import { render } from '../shell/grafloria.js';
+import { defineDemo, check } from '../shell/demo.js';
+
+// What does a connect DRAG emit? React Flow's Connection Events example logs
+// onConnectStart / onConnect / onConnectEnd (and the reconnect trio) as you drag a
+// wire. Grafloria emits its own lifecycle on the engine event bus, and it is RICHER:
+//
+//   connection:start        ≈ onConnectStart   { sourcePort, startPoint, validTargetPorts }
+//   connection:update       (no RF equivalent) { targetPort, isValid, rejectionReason, … }  ← per move
+//   connection:port-enter   (no RF equivalent) { port, isValid, rejectionReason }
+//   connection:port-leave   (no RF equivalent) { port }
+//   connection:complete     ≈ onConnect        { sourcePort, targetPort, sourcePortId, targetPortId }
+//   connection:cancel       the "end" without a connect { sourcePort }
+//
+// The honest difference from React Flow: RF's onConnectEnd is ONE event that fires on
+// every drag end. Ours SPLITS the end by outcome — connection:complete on a valid drop,
+// connection:cancel on an abandoned or refused one — so the outcome is in the event name.
+// "end" is their union. (Lib gap: we emit no onReconnectStart/onReconnectEnd-style events
+// on the bus; endpoint reconnection emits link:reconnected on the LinkModel's own emitter.)
+const SPEC = {
+  nodes: [
+    { id: 'src', position: { x: 80,  y: 70 }, size: { width: 150, height: 60 }, label: 'source',
+      ports: [{ id: 'src.out', side: 'right', type: 'output' }] },
+    { id: 'dst', position: { x: 430, y: 70 }, size: { width: 150, height: 60 }, label: 'target',
+      ports: [{ id: 'dst.in', side: 'left', type: 'input' }] },
+  ],
+  edges: [],
+};
+
+// The six lifecycle events, in fire order, with a human summary of each payload.
+const EVENTS = [
+  ['connection:start',      (p) => p?.sourcePort?.id ?? '?'],
+  ['connection:update',     (p) => `${p?.targetPort?.id ?? '(none)'} ${p?.isValid ? 'ok' : 'no'}`],
+  ['connection:port-enter', (p) => `${p?.port?.id ?? '?'} ${p?.isValid ? 'ok' : '✗ ' + (p?.rejectionReason ?? '')}`],
+  ['connection:port-leave', (p) => p?.port?.id ?? '?'],
+  ['connection:complete',   (p) => `${p?.sourcePortId ?? '?'} → ${p?.targetPortId ?? '?'}`],
+  ['connection:cancel',     (p) => `${p?.sourcePort?.id ?? '?'} (abandoned / refused)`],
+];
+
+defineDemo({
+  name: 'Connection events',
+  blurb: 'A live log of the connection lifecycle the engine fires as you drag a wire — start, per-move update, port enter/leave, then complete or cancel. React Flow logs onConnectStart/onConnect/onConnectEnd; Grafloria emits the same spine plus per-move detail, splitting the "end" into complete (valid) vs cancel (abandoned/refused).',
+  howTo: [
+    'Drag from the SOURCE node\'s right port to the TARGET node\'s left port and release: watch "start" light, then "port-enter"/"update" as you cross the target, then "complete" — the log records each with its ports.',
+    'Drag from the source\'s right port and release over EMPTY canvas: "start" lights, then "cancel" (not "complete") — this is our end-without-connect, React Flow\'s onConnectEnd firing with no onConnect.',
+    'Read the flag row: start≈onConnectStart, complete≈onConnect, and complete-OR-cancel together are onConnectEnd — our end is split by outcome so the event name tells you what happened.',
+    'Press Escape mid-drag: the drag ends in "cancel", never "complete" — an abandoned gesture creates no link.',
+    'Press "clear" to reset the log between attempts.',
+  ],
+  reactflow: 'Connection Events',
+
+  async setup(ctx) {
+    const api = render(SPEC, ctx.host);
+    ctx.instance = api;
+    ctx.diagram = api.getModel();
+    ctx.engine = api.getEngine();
+
+    const summaryOf = new Map(EVENTS);
+    const flagEls = new Map([...document.querySelectorAll('#flags .flag')].map((el) => [el.dataset.ev, el]));
+    const logEl = document.getElementById('log');
+
+    // Every captured event, so the assert can interrogate exact payloads and order.
+    ctx.events = [];
+
+    const light = (name) => {
+      const el = flagEls.get(name);
+      if (!el) return;
+      el.classList.add('lit');
+      clearTimeout(el._t);
+      el._t = setTimeout(() => el.classList.remove('lit'), 1100);
+    };
+    const logRow = (name, payload) => {
+      const empty = logEl.querySelector('.empty');
+      if (empty) empty.remove();
+      const row = document.createElement('div');
+      const kind = name === 'connection:complete' ? ' connect' : name === 'connection:cancel' ? ' cancel' : '';
+      row.className = 'row' + kind;
+      const summary = (summaryOf.get(name) || (() => ''))(payload);
+      row.innerHTML = `<span class="ev"></span><span class="detail"></span>`;
+      row.querySelector('.ev').textContent = name;
+      row.querySelector('.detail').textContent = summary;
+      logEl.prepend(row);
+      while (logEl.querySelectorAll('.row').length > 12) logEl.querySelector('.row:last-child').remove();
+    };
+    ctx.record = (name, payload) => {
+      ctx.events.push({ type: name, payload });
+      light(name);
+      logRow(name, payload);
+    };
+
+    // THE WIRING: subscribe to the engine's connection lifecycle on its event bus.
+    // These are the SAME events a real drag-from-port gesture fires through the
+    // binder — this page just listens and paints them.
+    ctx.disposers = EVENTS.map(([name]) =>
+      ctx.engine.eventBus.on(name, (payload) => ctx.record(name, payload)));
+
+    // "clear" always writes a marker row, so it is observably not a dead button.
+    document.getElementById('clear-log').addEventListener('click', () => {
+      logEl.innerHTML = '<span class="empty">— log cleared —</span>';
+    });
+
+    await ctx.tick();
+  },
+
+  async assert(ctx) {
+    const model = ctx.diagram;
+    const csm = ctx.engine.getConnectionStateManager();
+    const srcOut = model.getNode('src').getPortBySide('right');
+    const dstIn = model.getNode('dst').getPortBySide('left');
+    const logEl = document.getElementById('log');
+    check(!!srcOut && srcOut.type === 'output', 'expected a right OUTPUT port on the source node');
+    check(!!dstIn && dstIn.type === 'input', 'expected a left INPUT port on the target node');
+
+    const types = () => ctx.events.map((e) => e.type);
+
+    // 1. A VALID connect gesture, driven through the real connection pipeline, fires
+    //    start → update/port-enter → complete, and — the teeth — NOT cancel.
+    ctx.events.length = 0;
+    csm.startConnection(srcOut, { x: 0, y: 0 });
+    csm.updateConnection({ x: 12, y: 8 }, dstIn);      // cross the target port
+    const res = csm.completeConnection(dstIn);
+    await ctx.tick(20);
+    check(res.success === true, 'the valid connect was refused by the pipeline');
+    check(types().includes('connection:start'), `no connection:start fired (${types().join(', ') || 'nothing'})`);
+    check(types().includes('connection:complete'), `no connection:complete fired (${types().join(', ')})`);
+    check(!types().includes('connection:cancel'),
+      `connection:cancel fired after a SUCCESSFUL connect — the end double-counted (${types().join(', ')})`);
+    check(types().includes('connection:port-enter'), 'no connection:port-enter fired while crossing the target port');
+    // onConnect's payload carries the real endpoints, like React Flow's connection object.
+    const done = ctx.events.find((e) => e.type === 'connection:complete');
+    check(done.payload.sourcePortId === srcOut.id && done.payload.targetPortId === dstIn.id,
+      `connection:complete carried ${done.payload.sourcePortId} → ${done.payload.targetPortId}, expected ${srcOut.id} → ${dstIn.id}`);
+    // The VISIBLE panel recorded it (this is a log demo — the DOM must show it).
+    check(/connection:complete/.test(logEl.textContent), 'the event-log panel did not record the connect');
+
+    // 2. An ABANDONED gesture fires start → cancel, and NOT complete: our
+    //    end-without-connect (React Flow's onConnectEnd with no onConnect).
+    ctx.events.length = 0;
+    csm.startConnection(srcOut, { x: 0, y: 0 });
+    csm.cancelConnection();
+    await ctx.tick(20);
+    check(types().includes('connection:start'), `abandon: no connection:start (${types().join(', ')})`);
+    check(types().includes('connection:cancel'), `abandon: no connection:cancel (${types().join(', ')})`);
+    check(!types().includes('connection:complete'),
+      `abandon: connection:complete fired on an abandoned drag (${types().join(', ')})`);
+    check(/connection:cancel/.test(logEl.textContent), 'the event-log panel did not record the cancel');
+
+    // 3. A REFUSED target (self-connect: the source port dropped on itself) ends in
+    //    cancel and returns success:false — never complete.
+    ctx.events.length = 0;
+    csm.startConnection(srcOut, { x: 0, y: 0 });
+    const bad = csm.completeConnection(srcOut);
+    await ctx.tick(20);
+    check(bad.success === false, 'a self-connection (port onto itself) was accepted');
+    check(types().includes('connection:cancel') && !types().includes('connection:complete'),
+      `a refused drop must end in cancel, not complete (${types().join(', ')})`);
+  },
+});
+</script>

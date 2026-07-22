@@ -1,0 +1,112 @@
+<meta charset="utf-8">
+<title>Collaboration-aware undo — Grafloria</title>
+<link rel="stylesheet" href="../shell/demo.css">
+<style>
+  #stage { display: grid; grid-template-columns: 1fr 1fr; gap: 1px; background: rgba(127,127,127,.25); height: calc(100vh - 150px); }
+  .peer { background: var(--bg, #fff); position: relative; }
+  .peer h3 { position: absolute; top: 6px; left: 10px; margin: 0; font: 600 12px system-ui; opacity: .7; z-index: 2; }
+  .peer .canvas { height: 100%; }
+  #readout { padding: 8px 24px; font: 12px/1.4 ui-monospace, monospace; opacity: .8; border-bottom: 1px solid rgba(127,127,127,.25); white-space: pre; }
+  @media (prefers-color-scheme: dark) { .peer { --bg: #111; } }
+</style>
+<header id="demo-head"></header>
+<div id="readout"></div>
+<div id="stage">
+  <div class="peer"><h3>Peer A (me)</h3><div class="canvas" id="canvasA"></div></div>
+  <div class="peer"><h3>Peer B</h3><div class="canvas" id="canvasB"></div></div>
+</div>
+<div id="canvas" style="display:none"></div>
+<script type="module">
+import { render, Replica } from '../shell/grafloria.js';
+import { defineDemo, check, checkEqual } from '../shell/demo.js';
+
+// Two peers, two real diagrams, sharing an op log. The point that makes this
+// COLLABORATION-AWARE and not just "undo": when peer A hits ⌘Z it undoes A's OWN
+// last edit — never peer B's — even though B's edit happened more recently. That is
+// a structural guarantee (a peer's undo stack only ever holds that peer's captured
+// ops; remote ops are applied with capture suppressed), and we prove it here.
+const SPEC = {
+  nodes: [
+    { id: 'n1', position: { x: 80, y: 120 }, size: { width: 120, height: 48 }, label: 'n1' },
+    { id: 'n2', position: { x: 320, y: 120 }, size: { width: 120, height: 48 }, label: 'n2' },
+  ],
+  edges: [{ id: 'e', source: 'n1', target: 'n2' }],
+};
+
+defineDemo({
+  name: 'Collaboration-aware undo',
+  blurb: 'Two peers share an op log. ⌘Z on peer A undoes A\'s OWN last move, not the move peer B made afterwards — the thing single-buffer undo gets wrong in every collaborative editor.',
+  howTo: [
+    'Drag a node on Peer A\'s canvas — the same node glides on Peer B\'s canvas: two live diagrams, one shared op log.',
+    'Drag a different node on Peer B\'s side — it mirrors back onto A the same way.',
+    'Press ⌘Z / Ctrl+Z — the moves walk back and both canvases converge again (on this one page both peers hear your keyboard, and each only ever undoes its OWN edits).',
+    'Press ⇧⌘Z / Ctrl+Y — the moves replay, still in lockstep on both canvases.',
+  ],
+  reactflow: 'Undo / Redo',
+  pro: true,
+
+  async setup(ctx) {
+    const apiA = render(structuredClone(SPEC), document.getElementById('canvasA'));
+    const apiB = render(structuredClone(SPEC), document.getElementById('canvasB'));
+    ctx.apiA = apiA;
+    ctx.apiB = apiB;
+    ctx.mA = apiA.getModel();
+    ctx.mB = apiB.getModel();
+
+    // Wire two replicas so each peer's local ops flow to the other. undo() emits its
+    // inverse through the same capture path, so it also broadcasts automatically.
+    ctx.A = new Replica(ctx.mA, { actor: 'A', onLocalOp: (op) => ctx.B.receive([op]) });
+    ctx.B = new Replica(ctx.mB, { actor: 'B', onLocalOp: (op) => ctx.A.receive([op]) });
+
+    ctx.paint = () => { apiA.renderNow(); apiB.renderNow(); };
+    ctx.report = (msg) => {
+      const p = (m, id) => { const n = m.getNode(id); return `${id}(${n.position.x},${n.position.y})`; };
+      document.getElementById('readout').textContent =
+        `${msg}\nA: ${p(ctx.mA, 'n1')} ${p(ctx.mA, 'n2')}   |   B: ${p(ctx.mB, 'n1')} ${p(ctx.mB, 'n2')}`;
+    };
+    ctx.report('two peers, one shared op log');
+  },
+
+  async assert(ctx) {
+    const { mA, mB, A } = ctx;
+
+    // Everyone starts agreeing.
+    checkEqual(mA.getNode('n1').position.x, mB.getNode('n1').position.x, 'peers did not start in sync');
+
+    // op1 — PEER A moves n1. Broadcasts to B.
+    mA.getNode('n1').setPosition(80, 300);
+    ctx.paint();
+    checkEqual(mB.getNode('n1').position.y, 300, 'A\'s move did not propagate to B');
+
+    // op2 — PEER B moves n2, AFTER A's edit. Broadcasts to A. This is the more recent
+    // op globally, and a naive single-buffer undo would revert THIS on A's ⌘Z.
+    mB.getNode('n2').setPosition(320, 320);
+    ctx.paint();
+    checkEqual(mA.getNode('n2').position.y, 320, 'B\'s move did not propagate to A');
+    ctx.report('A moved n1, then B moved n2');
+
+    // ⌘Z ON PEER A. It must undo A's OWN op (n1 back to y=120) and leave B's op (n2 at
+    // y=320) untouched — on BOTH replicas, since the undo broadcasts too.
+    const undone = A.undo();
+    ctx.paint();
+    ctx.report('after A pressed ⌘Z');
+
+    check(undone.length > 0, 'A.undo() did nothing — A had an op to undo');
+
+    // THE TEETH:
+    checkEqual(mA.getNode('n1').position.y, 120, 'A\'s undo did not revert A\'s OWN move of n1');
+    checkEqual(mA.getNode('n2').position.y, 320, 'A\'s undo wrongly reverted peer B\'s move of n2');
+    // …and B converged to the same state (A undid n1 everywhere; n2 stayed put).
+    checkEqual(mB.getNode('n1').position.y, 120, 'A\'s undo did not propagate to B');
+    checkEqual(mB.getNode('n2').position.y, 320, 'B\'s own move was reverted on B by A\'s undo — undo is not actor-scoped');
+
+    // REDO on A restores A's op only.
+    const redone = A.redo();
+    ctx.paint();
+    check(redone.length > 0, 'A.redo() did nothing');
+    checkEqual(mA.getNode('n1').position.y, 300, 'redo did not restore A\'s move');
+    checkEqual(mA.getNode('n2').position.y, 320, 'redo disturbed peer B\'s move');
+    ctx.report('after A pressed ⌘⇧Z (redo)');
+  },
+});
+</script>

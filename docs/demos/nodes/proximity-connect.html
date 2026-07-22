@@ -1,0 +1,184 @@
+<meta charset="utf-8">
+<title>Proximity connect — Grafloria</title>
+<link rel="stylesheet" href="../shell/demo.css">
+<header id="demo-head"></header>
+<div id="canvas"></div>
+<script type="module">
+import { render, SnapController, DEFAULT_SNAP_CONFIG } from '../shell/grafloria.js';
+import { defineDemo, check } from '../shell/demo.js';
+
+// React Flow's Proximity Connect is HOST GLUE: onNodeDrag asks for the closest
+// node and paints a dashed "temp" edge; onNodeDragStop makes it permanent. This
+// page is that same shape on Grafloria — the shipped SnapController is consulted
+// from demo-side listeners: node:moved (every live move) paints the dashed
+// proposal, nodes:change (the drop commit) turns it into a real link. The
+// sibling page interaction/proximity-connect-live.html is the OTHER story,
+// where the engine's own drag path does all of this with one config flag.
+
+defineDemo({
+  name: 'Proximity connect',
+  blurb: 'Drag a node near another and a dashed wire proposes itself LIVE, then commits on drop — SnapController.findProximityConnection driven from host glue on node:moved, exactly React Flow\'s onNodeDrag/onNodeDragStop shape.',
+  howTo: [
+    'See the layout first: "drag me →" (A) sits far from B with no wires — at this distance the snap logic proposes nothing.',
+    'Drag A toward B and watch its leading edge: the moment it comes inside the proximity radius, a dashed amber wire appears between the two closest ports — the proposal, painted live on every move, before you drop anything.',
+    'Drag back out of the radius without releasing — the dashed wire disappears; the proposal follows the distance, not the gesture.',
+    'Drop inside the radius: the dashed wire is replaced by a real committed link. Drag A far away afterwards — no new proposal, no duplicate; the single wire survives, stretched across the canvas.',
+  ],
+  reactflow: 'Proximity Connect',
+
+  async setup(ctx) {
+    const api = render({
+      nodes: [
+        { id: 'a', position: { x: 150, y: 150 }, size: { width: 150, height: 80 }, label: 'drag me →' },
+        { id: 'b', position: { x: 600, y: 150 }, size: { width: 150, height: 80 }, label: 'B' },
+      ],
+      edges: [],
+    }, ctx.host);
+    ctx.instance = api;
+    ctx.diagram = api.getModel();
+    ctx.engine = api.getEngine();
+    ctx.snap = new SnapController();     // shipped reference implementation
+
+    // ── The dashed TEMP wire (React Flow's className:'temp' edge), host-drawn ──
+    // An SVG overlay owned by the DEMO, not the renderer: this page's story is
+    // that a host can build proximity connect from the public pieces alone.
+    ctx.host.style.position = 'relative';
+    const NS = 'http://www.w3.org/2000/svg';
+    const overlay = document.createElementNS(NS, 'svg');
+    overlay.setAttribute('style', 'position:absolute;inset:0;width:100%;height:100%;pointer-events:none;overflow:visible;z-index:5');
+    const wire = document.createElementNS(NS, 'line');
+    wire.setAttribute('class', 'proximity-temp-wire');
+    wire.setAttribute('stroke', '#f59e0b');
+    wire.setAttribute('stroke-width', '2');
+    wire.setAttribute('stroke-dasharray', '7 5');
+    wire.setAttribute('visibility', 'hidden');
+    overlay.appendChild(wire);
+    ctx.host.appendChild(overlay);
+    ctx.tempWireVisible = () => wire.getAttribute('visibility') !== 'hidden';
+    const hideWire = () => wire.setAttribute('visibility', 'hidden');
+
+    // Paint (or clear) the proposal for the node that just moved. Returns the
+    // candidate so the assert can interrogate the same object the paint used.
+    ctx.paintProposal = (movedId) => {
+      const cand = ctx.snap.findProximityConnection(ctx.engine, movedId);
+      if (!cand) { hideWire(); return null; }
+      const rect = ctx.host.getBoundingClientRect();
+      const end = (nodeId, port) => {
+        const n = ctx.diagram.getNode(nodeId);
+        const w = port.getAbsolutePosition(n.getBoundingBox());
+        const c = api.viewport.worldToClient(w.x, w.y, rect);
+        return { x: c.x - rect.left, y: c.y - rect.top };
+      };
+      const s = end(cand.sourceNodeId, cand.sourcePort);
+      const t = end(cand.targetNodeId, cand.targetPort);
+      wire.setAttribute('x1', s.x); wire.setAttribute('y1', s.y);
+      wire.setAttribute('x2', t.x); wire.setAttribute('y2', t.y);
+      wire.setAttribute('visibility', 'visible');
+      return cand;
+    };
+
+    // onNodeDrag: node:moved fires on EVERY live position change, dragged or
+    // scripted — the proposal follows the node, not the mouse.
+    ctx.diagram.on('node:moved', ({ nodeId }) => ctx.paintProposal(nodeId));
+
+    // onNodeDragStop: nodes:change fires on the drag-end commit — evaluate
+    // proximity for the moved node and make the proposal permanent. The dashed
+    // wire dies either way: after a drop there is either a real link under it
+    // or no proposal at all.
+    ctx.instance.on('nodes:change', () => {
+      for (const n of ctx.diagram.getNodes()) {
+        const cand = ctx.snap.findProximityConnection(ctx.engine, n.id);
+        if (cand) {
+          ctx.engine.commandManager.execute(ctx.snap.buildProximityLinkCommand(cand));
+          break;
+        }
+      }
+      hideWire();
+    });
+
+    // Real pointer events, like a hand would send.
+    ctx.fire = (type, w) => {
+      const rect = ctx.host.getBoundingClientRect();
+      const c = api.viewport.worldToClient(w.x, w.y, rect);
+      ctx.host.dispatchEvent(new PointerEvent(({ mousedown: 'pointerdown', mousemove: 'pointermove', mouseup: 'pointerup' })[type] ?? type, { bubbles: true, pointerId: 1, pointerType: 'mouse', clientX: c.x, clientY: c.y, button: 0 }));
+    };
+    ctx.centre = (id) => { const n = ctx.diagram.getNode(id); return { x: n.position.x + n.size.width / 2, y: n.position.y + n.size.height / 2 }; };
+    await ctx.tick();
+  },
+
+  // Money shot: A held INSIDE the radius with the dashed proposal wire lit —
+  // the state a drop would commit, which assert() cannot leave behind.
+  async showcase(ctx) {
+    const before = ctx.centre('a');
+    ctx.fire('mousedown', before);
+    ctx.fire('mousemove', { x: before.x + 6, y: before.y });
+    ctx.fire('mousemove', { x: before.x + 280, y: before.y });
+    ctx.instance.renderNow();
+    await ctx.tick();
+  },
+
+  async assert(ctx) {
+    const m = ctx.diagram;
+    check(DEFAULT_SNAP_CONFIG.proximityConnectRadius > 0, 'no proximity radius configured');
+    check(m.getLinks().length === 0, 'should start with no links');
+
+    // 1. Far apart: no proposal, no dashed wire.
+    check(ctx.snap.findProximityConnection(ctx.engine, 'a') === null,
+      'A is far from B but a proximity connection was proposed');
+    check(!ctx.tempWireVisible(), 'the temp wire is painted while nothing is proposed');
+
+    // 2. Drag A toward B and HOLD inside the radius. A starts at x=150 (right
+    //    edge 300); B's left edge is 600. Moving +280 puts A's right edge at
+    //    580, ~20px from B — inside the 60px radius. MID-DRAG, React Flow's
+    //    signature visual must be there: the dashed temp wire, painted before
+    //    any drop.
+    const before = ctx.centre('a');
+    ctx.fire('mousedown', before);
+    ctx.fire('mousemove', { x: before.x + 6, y: before.y });   // pass the drag threshold
+    ctx.fire('mousemove', { x: before.x + 280, y: before.y });
+    await ctx.tick();
+    check(ctx.tempWireVisible(), 'mid-drag inside the radius, the dashed temp wire is not painted');
+
+    //    The proposal under the paint joins A and B (both default ports are
+    //    bidirectional, so the ends are symmetric), within the radius.
+    const cand = ctx.snap.findProximityConnection(ctx.engine, 'a');
+    check(!!cand, 'inside the radius, findProximityConnection proposed nothing');
+    const ends = [cand.sourceNodeId, cand.targetNodeId].sort().join(',');
+    check(ends === 'a,b', `the proposal should join A and B, was ${cand.sourceNodeId}→${cand.targetNodeId}`);
+    check(cand.distance <= DEFAULT_SNAP_CONFIG.proximityConnectRadius, `proposal distance ${cand && cand.distance} should be within the radius (${DEFAULT_SNAP_CONFIG.proximityConnectRadius})`);
+
+    // 3. Retreat OUT of the radius without releasing — the dashed wire must
+    //    follow the distance and disappear. A stale proposal that outlives the
+    //    proximity is exactly the bug this glue can have.
+    ctx.fire('mousemove', { x: before.x + 80, y: before.y });
+    await ctx.tick();
+    check(!ctx.tempWireVisible(), 'the temp wire survived retreating out of the radius');
+
+    // 4. Back inside, then DROP: the proposal commits as a real link and the
+    //    dashed wire clears — temp became permanent, React Flow's dragStop.
+    ctx.fire('mousemove', { x: before.x + 280, y: before.y });
+    ctx.fire('mouseup',   { x: before.x + 280, y: before.y });
+    await ctx.tick();
+    await ctx.tick();
+    check(m.getLinks().length === 1, `the proximity link was not committed on drop, links=${m.getLinks().length}`);
+    check(!ctx.tempWireVisible(), 'the temp wire must clear once the drop commits');
+    const link = m.getLinks()[0];
+    const linkEnds = [m.getNodeByPortId(link.sourcePortId).id, m.getNodeByPortId(link.targetPortId).id].sort().join(',');
+    check(linkEnds === 'a,b', `the committed link does not join A and B (${linkEnds})`);
+
+    // 5. THE TEETH against duplicates: drag A far away and drop — connected
+    //    pairs propose nothing, so no second wire and no phantom proposal.
+    const now = ctx.centre('a');
+    ctx.fire('mousedown', now);
+    ctx.fire('mousemove', { x: now.x - 6, y: now.y });
+    ctx.fire('mousemove', { x: 200, y: 400 });
+    await ctx.tick();
+    check(ctx.snap.findProximityConnection(ctx.engine, 'a') === null,
+      'A dragged clear should propose nothing');
+    check(!ctx.tempWireVisible(), 'the temp wire is painted for an already-connected pair');
+    ctx.fire('mouseup', { x: 200, y: 400 });
+    await ctx.tick();
+    check(m.getLinks().length === 1, `no extra link should appear, links=${m.getLinks().length}`);
+  },
+});
+</script>

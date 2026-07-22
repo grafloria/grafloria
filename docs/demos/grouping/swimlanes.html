@@ -1,0 +1,81 @@
+<meta charset="utf-8">
+<title>Swimlanes — Grafloria</title>
+<link rel="stylesheet" href="../shell/demo.css">
+<header id="demo-head"></header>
+<div id="canvas"></div>
+<script type="module">
+import { render, SwimlaneService } from '../shell/grafloria.js';
+import { defineDemo, check } from '../shell/demo.js';
+
+defineDemo({
+  name: 'Swimlanes',
+  blurb: 'Pools and weighted lanes that tile a frame and keep their nodes in-lane — a whole containment model React Flow does not have. Reachable now that SwimlaneService is on the public embed.',
+  howTo: [
+    'See the "Delivery" pool tiled into three labelled lanes — Backlog, In progress, Done — with no gaps: each band starts exactly where the previous one ends.',
+    'Compare the bands: the weight-2 "In progress" lane is exactly twice as tall as the two weight-1 lanes.',
+    'Find the "ticket" node floating to the right of the pool, outside every lane.',
+    'Open the DevTools console and run `await __demo.run()`: the ticket is added to the "In progress" lane and clamped into that band — it ends up inside the middle lane.',
+  ],
+  reactflow: null,
+
+  async setup(ctx) {
+    const api = render({
+      nodes: [
+        { id: 'task', position: { x: 1090, y: 300 }, size: { width: 120, height: 50 }, label: 'ticket' }, // right of the pool, fully in-frame
+      ],
+      edges: [],
+    }, ctx.host);
+    ctx.instance = api;
+    ctx.diagram = api.getModel();
+
+    // Three lanes with weights 1:2:1 — the middle lane is twice as tall.
+    const svc = new SwimlaneService(ctx.diagram);
+    const { pool, lanes } = svc.createPool({
+      name: 'Delivery',
+      orientation: 'horizontal',
+      bounds: { x: 60, y: 60, width: 1000, height: 480 },
+      lanes: [
+        { name: 'Backlog', weight: 1 },
+        { name: 'In progress', weight: 2 },
+        { name: 'Done', weight: 1 },
+      ],
+      headerSize: 40,
+    });
+    ctx.svc = svc; ctx.pool = pool; ctx.lanes = lanes;
+    api.renderNow();
+    await ctx.tick();
+  },
+
+  async assert(ctx) {
+    const svc = ctx.svc, pool = ctx.pool, m = ctx.diagram;
+
+    // 1. It is a pool of three lanes.
+    check(svc.isPool(pool), 'createPool did not produce a pool');
+    const lanes = svc.getLanes(pool);
+    check(lanes.length === 3, `expected 3 lanes, got ${lanes.length}`);
+    for (const l of lanes) check(svc.isLane(l), 'a lane is not tagged as a lane');
+
+    // 2. THE TEETH: the lanes TILE the pool along the cross axis, weighted 1:2:1.
+    //    Horizontal orientation ⇒ lanes are stacked bands sharing the full width,
+    //    so the cross axis is height. The middle band must be ~2× the outer bands.
+    const b = lanes.map((l) => l.getOuterBounds());
+    const H = b.map((r) => r.height);
+    check(Math.abs(H[1] - 2 * H[0]) < 2, `the weight-2 lane should be ~twice the weight-1 lane (${H[0].toFixed(0)} vs ${H[1].toFixed(0)})`);
+    check(Math.abs(H[0] - H[2]) < 2, `the two weight-1 lanes should match (${H[0].toFixed(0)} vs ${H[2].toFixed(0)})`);
+    // Bands are contiguous — each starts where the previous ended (no gaps/overlap).
+    check(Math.abs(b[1].y - (b[0].y + b[0].height)) < 2, 'lanes 0 and 1 are not contiguous');
+    check(Math.abs(b[2].y - (b[1].y + b[1].height)) < 2, 'lanes 1 and 2 are not contiguous');
+
+    // 3. A node dropped into a lane is CONSTRAINED into that lane's band. The ticket
+    //    starts at (900,700) — well below the pool — and is clamped back inside.
+    const lane = lanes[1];
+    lane.addMember('task', m);
+    const clamped = lane.clampChildToExtent('task', m);
+    check(clamped, 'clampChildToExtent should have moved the out-of-lane node');
+    const t = m.getNode('task'), lb = lane.getOuterBounds();
+    check(t.position.y >= lb.y - 1 && t.position.y + t.size.height <= lb.y + lb.height + 1,
+      `the ticket should be clamped inside lane 2 [${lb.y.toFixed(0)}..${(lb.y + lb.height).toFixed(0)}], y=${t.position.y.toFixed(0)}`);
+    check(lane.members.has('task'), 'the ticket is not a member of the lane');
+  },
+});
+</script>

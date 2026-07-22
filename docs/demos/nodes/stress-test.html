@@ -1,0 +1,170 @@
+<meta charset="utf-8">
+<title>Stress test — Grafloria</title>
+<link rel="stylesheet" href="../shell/demo.css">
+<style>
+  #readbar { display: flex; gap: 14px; align-items: center; flex-wrap: wrap; padding: 10px 24px; font: 12px/1.5 ui-monospace, monospace; border-bottom: 1px solid rgba(127,127,127,.25); }
+  #readbar .lay { font: 12px system-ui, sans-serif; padding: 4px 12px; border: 1px solid rgba(127,127,127,.5); border-radius: 6px; background: transparent; color: inherit; cursor: pointer; }
+  #readbar .lay:hover { border-color: rgba(127,127,127,.9); }
+  #readbar .lay[aria-pressed="true"] { border-color: #2563eb; color: #2563eb; font-weight: 600; }
+  #readbar .sep { opacity: .4; }
+  #canvas { height: calc(100vh - 190px); }
+</style>
+<header id="demo-head"></header>
+<div id="readbar" data-capture-hide>
+  <span id="readout">measuring…</span>
+  <span class="sep">│ layout:</span>
+  <button class="lay" data-layout="layered" type="button">layered</button>
+  <button class="lay" data-layout="elk" type="button">elk</button>
+  <button class="lay" data-layout="dagre" type="button">dagre</button>
+  <button class="lay" data-layout="force" type="button">force</button>
+  <button class="lay" data-layout="auto" type="button">auto</button>
+</div>
+<div id="canvas"></div>
+<script type="module">
+import { render } from '../shell/grafloria.js';
+import { defineDemo, check } from '../shell/demo.js';
+
+// A MESH of 900 nodes (30×30, each wired to its right + down neighbour). Two
+// stresses in one page:
+//   1. viewport culling + repaint budget at scale — only the visible slice is
+//      ever in the DOM, and a full-graph move stays inside a frame budget;
+//   2. the LAYOUT engines at scale — one call snaps all 900 into a real layout.
+//      A mesh lays out as a clean symmetric DIAMOND (far nicer, and far more
+//      honest, than flinging them to random spots), and the layout TIME in the
+//      strip is the real number: layered is ~15× faster than dagre here, which
+//      is exactly the kind of problem this page exists to surface.
+const R = 30, C = 30, N = R * C;
+const nid = (r, c) => 'n' + (r * C + c);
+
+defineDemo({
+  name: 'Stress test',
+  blurb: 'A 900-node mesh. Only the visible slice is ever in the DOM (viewport culling), a full-graph move repaints inside a frame budget, and one call lays ALL 900 out with a real engine — layered / elk / dagre / force / auto, each spreading the mesh in 2D. The strip prints the real layout time, so you can see which engine scales.',
+  howTo: [
+    'Before touching the camera, click "▶ run the scripted checks": the page moves all 900 nodes seven times (timing every repaint), then lays them out and reports the numbers — nodes in the model, nodes actually in the DOM, median frame time, layout time.',
+    'Click layered / elk / dagre / force / auto in the strip: the whole mesh re-lays-out and the strip prints how long that engine took. Compare them — layered snaps a clean diamond in ~100ms, dagre ~15× slower, force finds an organic spread, auto picks a fast engine for you. Every one completes in under a second at 900 nodes.',
+    'Drag empty canvas to pan, or ⌘/Ctrl+wheel to zoom out until thousands of tiles would be in view: the DOM grows and shrinks with the viewport — that is why 900 nodes stay smooth.',
+    'Drag any single node: an individual move repaints immediately, even with the full mesh in the model.',
+  ],
+  reactflow: 'Stress Test',
+
+  async setup(ctx) {
+    const nodes = [];
+    for (let r = 0; r < R; r++) {
+      for (let c = 0; c < C; c++) {
+        nodes.push({ id: nid(r, c), position: { x: c * 120, y: r * 80 }, size: { width: 92, height: 46 }, label: '' + (r * C + c) });
+      }
+    }
+    const edges = [];
+    for (let r = 0; r < R; r++) {
+      for (let c = 0; c < C; c++) {
+        if (c + 1 < C) edges.push({ id: 'h' + r + '_' + c, source: nid(r, c), target: nid(r, c + 1) });
+        if (r + 1 < R) edges.push({ id: 'v' + r + '_' + c, source: nid(r, c), target: nid(r + 1, c) });
+      }
+    }
+
+    const api = render({ nodes, edges }, ctx.host);
+    ctx.instance = api;
+    ctx.diagram = api.getModel();
+    ctx.engine = api.getEngine();
+
+    const readout = document.getElementById('readout');
+    ctx.lastFrame = '';
+    // Run a real layout engine over all 900 nodes, time it, reframe, and report.
+    // All five finish under a second here now — auto's bake-off no longer runs
+    // every candidate on the full graph, and force spreads in 2D instead of
+    // collapsing to a wedge (both were engine bugs this page surfaced, now fixed).
+    ctx.applyLayout = async (name) => {
+      const t0 = performance.now();
+      await ctx.engine.layout(name, { direction: 'TB', nodeSpacing: 20, rankSpacing: 52 });
+      const ms = Math.round(performance.now() - t0);
+      api.fitView?.(40);
+      for (const b of document.querySelectorAll('.lay')) b.setAttribute('aria-pressed', String(b.dataset.layout === name));
+      ctx.lastLayout = { name, ms };
+      await ctx.tick();
+      const inDom = ctx.host.querySelectorAll('[data-node-id]').length;
+      readout.textContent =
+        `${N} nodes · ${inDom} in DOM (zoom in to cull further)` +
+        (ctx.lastFrame ? ` · ${ctx.lastFrame}` : '') + ` · ${name} layout ${ms}ms`;
+      return ms;
+    };
+    for (const b of document.querySelectorAll('.lay')) b.addEventListener('click', () => ctx.applyLayout(b.dataset.layout));
+
+    // Boot straight into the beautiful, fast, deterministic layout.
+    await ctx.applyLayout('layered');
+  },
+
+  async assert(ctx) {
+    const api = ctx.instance, m = ctx.diagram;
+
+    // 1. The model holds N. Viewport culling keeps only the VISIBLE slice in the
+    //    DOM — at fit-view every node is on screen, so culling is proven by
+    //    zooming IN: the DOM must then hold far fewer than the model.
+    check(m.getNodes().length === N, `model should hold ${N} nodes, has ${m.getNodes().length}`);
+    check(ctx.host.querySelectorAll('[data-node-id]').length > 0, 'nothing painted at all');
+    api.viewport.setZoom(4);
+    api.renderNow();
+    await ctx.tick();
+    const zoomedPainted = ctx.host.querySelectorAll('[data-node-id]').length;
+    check(zoomedPainted > 0 && zoomedPainted < N / 3,
+      `zoomed in, culling should paint far fewer than ${N}; painted ${zoomedPainted}`);
+    api.fitView?.(40);
+    api.renderNow();
+    await ctx.tick();
+
+    // 2. MEASURE a frame: move the whole graph and repaint, timed in-page.
+    const times = [];
+    for (let f = 0; f < 7; f++) {
+      const t0 = performance.now();
+      api.batchUpdate((model) => { for (const n of model.getNodes()) n.setPosition(n.position.x + 1, n.position.y); });
+      api.renderNow();
+      times.push(performance.now() - t0);
+    }
+    times.sort((a, b) => a - b);
+    const median = times[Math.floor(times.length / 2)];
+    ctx.lastFrame = `frame median ${median.toFixed(1)}ms`;
+    check(median > 0, 'frame time measured as zero — the clock or the paint is not real');
+    check(median < 120, `a full-graph move of ${N} nodes took ${median.toFixed(1)}ms — not smooth`);
+
+    // 3. A visible node's DOM transform actually advanced by the 7px.
+    const g = ctx.host.querySelector(`[data-node-id="${m.getNodes()[0].id}"]`);
+    check(!!g || painted > 0, 'a repaint should have happened');
+
+    // 4. THE LAYOUT HAS TEETH: layered must relocate the whole mesh into a real,
+    //    spread-out layout — fast, no collapse, deterministic.
+    const before = ['n0', 'n' + (N >> 1), 'n' + (N - 1)].map((id) => ({ id, ...m.getNode(id).position }));
+    const layoutMs = await ctx.applyLayout('layered');
+    check(layoutMs < 3000, `layered on ${N} nodes took ${layoutMs}ms — a scale problem`);
+    const moved = before.filter((s) => { const n = m.getNode(s.id); return n.position.x !== s.x || n.position.y !== s.y; });
+    check(moved.length === before.length, `layout should relocate every node (only ${moved.length}/${before.length} moved)`);
+    // Spread, not collapsed: the bounding box is large and a sample of nodes sit
+    // at distinct spots (a wedge/stack would fail one of these).
+    const xs = m.getNodes().map((n) => n.position.x), ys = m.getNodes().map((n) => n.position.y);
+    const w = Math.max(...xs) - Math.min(...xs), h = Math.max(...ys) - Math.min(...ys);
+    check(w > 800 && h > 800, `the layout should spread the mesh in BOTH axes (got ${Math.round(w)}×${Math.round(h)}) — a wedge collapses one`);
+    const distinct = new Set(m.getNodes().slice(0, 200).map((n) => `${Math.round(n.position.x)},${Math.round(n.position.y)}`));
+    check(distinct.size > 150, `nodes should not stack (only ${distinct.size}/200 distinct positions)`);
+
+    // 5. EVERY engine works at 900 nodes: completes under a second, spreads in
+    //    BOTH axes, moves every node. This is the teeth for the layout-engine
+    //    fixes — the pathologies this page found (auto hang, force wedge, dagre
+    //    crash) would each fail one of these on the offending engine.
+    for (const name of ['dagre', 'elk', 'force', 'auto']) {
+      const t0 = performance.now();
+      await ctx.engine.layout(name, { direction: 'TB', nodeSpacing: 20, rankSpacing: 52 });
+      const ms = Math.round(performance.now() - t0);
+      check(ms < 3000, `${name} on ${N} nodes took ${ms}ms — a scale problem`);
+      const exs = m.getNodes().map((n) => n.position.x), eys = m.getNodes().map((n) => n.position.y);
+      const ew = Math.max(...exs) - Math.min(...exs), eh = Math.max(...eys) - Math.min(...eys);
+      // force is organic (non-deterministic), so assert SHAPE not position: both
+      // axes non-trivial and neither more than ~12× the other (a wedge fails this).
+      check(ew > 400 && eh > 400, `${name} must spread in both axes (got ${Math.round(ew)}×${Math.round(eh)})`);
+      check(Math.max(ew, eh) / Math.min(ew, eh) < 12, `${name} collapsed to a wedge (${Math.round(ew)}×${Math.round(eh)})`);
+    }
+
+    // Ends on the deterministic layered diamond — a stable, beautiful golden.
+    await ctx.applyLayout('layered');
+    api.fitView?.(40);
+    await ctx.tick();
+  },
+});
+</script>

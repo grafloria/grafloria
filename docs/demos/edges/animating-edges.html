@@ -1,0 +1,260 @@
+<meta charset="utf-8">
+<title>Animating edges — Grafloria</title>
+<link rel="stylesheet" href="../shell/demo.css">
+<style>#canvas { height: calc(100vh - 140px); position: relative; }</style>
+<header id="demo-head"></header>
+<div id="canvas"></div>
+<script type="module">
+import { render } from '../shell/grafloria.js';
+import { defineDemo, check } from '../shell/demo.js';
+
+// Two ways to show a wire carrying data, side by side.
+//
+//   1. THE STROKE animates — four CSS keyframe styles (marching-ants · flow ·
+//      pulse · dash-flow), each a class the shipped stylesheet drives. This is
+//      React Flow's built-in `animated: true`.
+//   2. A SHAPE RIDES the wire — an SVG token travels the EXACT painted edge path
+//      via <animateMotion><mpath>. This is React Flow's "Animating Edges" hero:
+//      a circle / package / train of dots moving ALONG the path. React Flow does
+//      it inside a custom edge component; we do it in the DEMO layer, on the very
+//      geometry the engine paints — the engine exposes no edge-particle API (nor
+//      does React Flow's core), so both live in userland.
+//
+// The engine's <svg> reconciler OWNS its subtree and wipes foreign children on
+// every renderNow, so the riders live in a SIBLING overlay <svg> that shares the
+// engine's coordinate space by mirroring its viewBox; a tiny sync keeps the
+// overlay locked to the engine across pan / zoom / drag-reroute.
+
+const XLINK = 'http://www.w3.org/1999/xlink';
+const svgEl = (tag) => document.createElementNS('http://www.w3.org/2000/svg', tag);
+
+// Token factories — each centred on its own origin (0,0) so <animateMotion>,
+// which translates the origin along the path, keeps it on the wire.
+function circleToken(color) {
+  return () => { const c = svgEl('circle'); c.setAttribute('r', '6'); c.setAttribute('fill', color); c.setAttribute('stroke', '#fff'); c.setAttribute('stroke-width', '1.5'); return c; };
+}
+function diamondToken(color) {
+  return () => { const p = svgEl('path'); p.setAttribute('d', 'M0,-7 L7,0 L0,7 L-7,0 Z'); p.setAttribute('fill', color); p.setAttribute('stroke', '#fff'); p.setAttribute('stroke-width', '1'); return p; };
+}
+function emojiToken(char) {
+  return () => { const t = svgEl('text'); t.textContent = char; t.setAttribute('font-size', '18'); t.setAttribute('text-anchor', 'middle'); t.setAttribute('dominant-baseline', 'central'); return t; };
+}
+
+// The stroke style per row, and what rides it. `begin` is negative (already
+// under way) so setCurrentTime(0) — how the screenshot rig freezes SMIL — snaps
+// each token to a DETERMINISTIC phase spread along its wire, not bunched at the
+// source.
+const TYPES = ['marching-ants', 'flow', 'pulse', 'dash-flow'];
+const KEYFRAME = { 'marching-ants': 'marching-ants', 'flow': 'flow', 'pulse': 'pulse-edge', 'dash-flow': 'dash-flow' };
+const RIDERS = {
+  'marching-ants': [{ begin: '-0.6s', make: circleToken('#ec4899') }],
+  'flow':          [{ begin: '-1.2s', make: emojiToken('📦') }],   // arbitrary content rides the wire
+  'pulse':         [{ begin: '-1.8s', make: diamondToken('#6366f1') }],
+  'dash-flow':     [                                                 // a TRAIN — multiple shapes on one edge
+    { begin: '-0.3s', make: circleToken('#0ea5e9') },
+    { begin: '-1.1s', make: circleToken('#0ea5e9') },
+    { begin: '-1.9s', make: circleToken('#0ea5e9') },
+  ],
+};
+const RIDE_DUR = '2.4s';
+
+const NODES = [];
+const EDGES = [];
+TYPES.forEach((type, i) => {
+  const y = 60 + i * 110;
+  NODES.push({ id: `a${i}`, position: { x: 120, y }, size: { width: 130, height: 56 }, label: type });
+  NODES.push({ id: `b${i}`, position: { x: 640, y }, size: { width: 130, height: 56 }, label: '' });
+  EDGES.push({ id: `e${i}`, source: `a${i}`, target: `b${i}`, style: { animation: { type, speed: 'normal' } } });
+});
+
+defineDemo({
+  name: 'Animating edges',
+  blurb: 'Two ways to show a wire carrying data: the STROKE animates (four CSS styles) AND a SHAPE rides the wire — a circle, a package, a train of dots travelling the exact painted edge path via <animateMotion>. Asserted by the resolved animation-name, by the token tracking the path geometry, and by real per-frame motion.',
+  howTo: [
+    'Just watch: each wire animates its stroke (marching-ants · flow · pulse · dash-flow, named by the node on its left) AND carries a shape riding along it — a pink dot, a 📦 package, a diamond, and a train of three dots.',
+    'Drag any right-hand node up or down — the edge re-routes and BOTH the stroke animation and the riding shapes follow the new path (the overlay re-tracks the engine\'s painted geometry).',
+    'Ctrl/cmd + wheel to zoom — the riders stay glued to their wires because the overlay mirrors the engine\'s viewBox on every viewport change.',
+    'Click "▶ run the scripted checks": it proves the stroke keyframes resolve, each token is bound by <mpath> to its wire\'s painted path, the token sits ON the wire, and it actually travels frame to frame.',
+  ],
+  reactflow: 'Animating Edges',
+
+  async setup(ctx) {
+    ctx.instance = render({ nodes: NODES, edges: EDGES }, ctx.host);
+    // This page ASSERTS the CSS stroke animations run — opt out of the battery
+    // auto-saver, or an unplugged laptop under 20% silently kills every animation
+    // (a real product feature; a flaky gate).
+    ctx.instance.animations.updateConfig({ respectBatteryStatus: false, batterySavingMode: false });
+    ctx.diagram = ctx.instance.getModel();
+    await ctx.tick();
+
+    const engSvg = ctx.host.querySelector('svg');
+
+    // Riders live in a SIBLING overlay (the engine wipes foreign children of its
+    // own <svg>). pointer-events:none so drags/zoom still land on the canvas
+    // beneath; overflow:visible so a token near an end isn't clipped.
+    const overlay = svgEl('svg');
+    overlay.id = 'flow-overlay';
+    overlay.style.cssText = 'position:absolute;inset:0;width:100%;height:100%;pointer-events:none;overflow:visible';
+    ctx.host.appendChild(overlay);
+    ctx.overlay = overlay;
+
+    // Per wire: one hidden guide path (geometry copied from the engine's painted
+    // path) + its riders, each <mpath>-bound to that guide.
+    TYPES.forEach((type, i) => {
+      const wireId = `e${i}`;
+      const guide = svgEl('path');
+      guide.id = `flow-guide-${wireId}`;
+      guide.setAttribute('fill', 'none');
+      guide.setAttribute('stroke', 'none');
+      overlay.appendChild(guide);
+      RIDERS[type].forEach((r, j) => {
+        const el = r.make();
+        el.setAttribute('data-rider', `${wireId}-${j}`);
+        const am = svgEl('animateMotion');
+        am.setAttribute('dur', RIDE_DUR);
+        am.setAttribute('repeatCount', 'indefinite');
+        am.setAttribute('begin', r.begin);
+        const mp = svgEl('mpath');
+        mp.setAttribute('href', `#flow-guide-${wireId}`);
+        mp.setAttributeNS(XLINK, 'xlink:href', `#flow-guide-${wireId}`);
+        am.appendChild(mp);
+        el.appendChild(am);
+        overlay.appendChild(el);
+      });
+    });
+
+    // Lock the overlay to the engine: mirror the viewBox (pan/zoom) and re-copy
+    // each edge's painted geometry (drag-reroute). Called once now, then on every
+    // engine event that can move a wire.
+    const sync = () => {
+      const vb = engSvg.getAttribute('viewBox');
+      if (vb) overlay.setAttribute('viewBox', vb);
+      TYPES.forEach((type, i) => {
+        const p = ctx.host.querySelector(`[data-link-id="e${i}"] path.diagram-link`);
+        const g = overlay.querySelector(`#flow-guide-e${i}`);
+        if (p && g) { const d = p.getAttribute('d'); if (d) g.setAttribute('d', d); }
+      });
+    };
+    ctx.syncOverlay = sync;
+    sync();
+    // The engine emits no event on a programmatic geometry change, and only
+    // nodes:change on a real drag — so observe the painted DOM directly: any
+    // change to a path's `d` (reroute) or the svg's viewBox (pan/zoom) re-syncs
+    // the overlay. The observer watches the ENGINE svg while sync writes only to
+    // the OVERLAY svg, so there is no feedback loop.
+    const obs = new MutationObserver(sync);
+    obs.observe(engSvg, { attributes: true, attributeFilter: ['d', 'viewBox'], subtree: true });
+    ctx._flowObserver = obs;
+    // Belt: also re-sync on the semantic viewport events, where they exist.
+    for (const ev of ['viewport:changed', 'viewport:change', 'viewport:zoomed']) {
+      try { ctx.instance.on(ev, sync); } catch { /* not supported here */ }
+    }
+    await ctx.tick();
+  },
+
+  async assert(ctx) {
+    const host = ctx.host;
+    const overlay = ctx.overlay;
+    const pathOf = (id) => host.querySelector(`[data-link-id="${id}"] path.diagram-link`);
+
+    // Can this environment animate AT ALL? Under the screenshot freeze
+    // (* { animation: none !important } + paused SMIL) it cannot — so every
+    // positive-motion check gates on this probe and SKIPS rather than throws
+    // (a throw would leak the assert's live run into the frozen after-frame).
+    // Classes, bindings and geometry stay unconditional; the gallery gate (no
+    // freeze) enforces the motion too.
+    const motionAllowed = (() => {
+      const probe = document.createElement('div');
+      probe.style.cssText = 'position:absolute;width:1px;height:1px;animation: marching-ants 1s linear infinite;';
+      document.body.appendChild(probe);
+      const name = getComputedStyle(probe).animationName;
+      probe.remove();
+      return name && name !== 'none';
+    })();
+
+    // 1. THE STROKE ANIMATES — class always; the resolved keyframe when live.
+    TYPES.forEach((type, i) => {
+      const p = pathOf(`e${i}`);
+      check(!!p, `link e${i} did not render`);
+      check(p.getAttribute('class').includes(`link-animated-${type}`),
+        `link e${i} is missing the link-animated-${type} class (got '${p.getAttribute('class')}')`);
+      if (motionAllowed) {
+        const anim = getComputedStyle(p).animationName;
+        check(anim && anim !== 'none',
+          `link e${i} (${type}) has the class but NO running CSS animation resolved (animation-name: ${anim})`);
+        check(anim === KEYFRAME[type],
+          `link e${i} (${type}) resolved the wrong keyframe: expected ${KEYFRAME[type]}, got ${anim}`);
+      }
+    });
+
+    // 2. A SHAPE RIDES EACH WIRE — the right count of riders, each an
+    //    <animateMotion> whose <mpath> follows the overlay guide, and the guide
+    //    IS the engine's painted geometry (not a hand-drawn copy that could drift).
+    TYPES.forEach((type, i) => {
+      const guide = overlay.querySelector(`#flow-guide-e${i}`);
+      check(!!guide, `overlay guide for e${i} is missing`);
+      check(guide.getAttribute('d') === pathOf(`e${i}`).getAttribute('d'),
+        `overlay guide e${i} is not tracking the engine's painted path`);
+      const riders = [...overlay.querySelectorAll(`[data-rider^="e${i}-"]`)];
+      check(riders.length === RIDERS[type].length,
+        `wire e${i} should carry ${RIDERS[type].length} rider(s), has ${riders.length}`);
+      riders.forEach((r) => {
+        const mp = r.querySelector('animateMotion > mpath');
+        check(!!mp, `a rider on e${i} has no animateMotion/mpath`);
+        const href = mp.getAttribute('href') || mp.getAttributeNS(XLINK, 'href');
+        check(href === `#flow-guide-e${i}`, `a rider on e${i} is bound to ${href}, not the e${i} guide`);
+      });
+    });
+
+    // 3. ON THE WIRE — each token's centre sits on its (horizontal) painted path.
+    //    animateMotion constrains it to the path, so this holds at EVERY phase:
+    //    true live and true frozen, hence unconditional.
+    TYPES.forEach((type, i) => {
+      const pr = pathOf(`e${i}`).getBoundingClientRect();
+      const wireY = pr.y + pr.height / 2;
+      [...overlay.querySelectorAll(`[data-rider^="e${i}-"]`)].forEach((r) => {
+        const rr = r.getBoundingClientRect();
+        const ry = rr.y + rr.height / 2;
+        check(Math.abs(ry - wireY) <= 8, `a rider on e${i} is off its wire (token y ${ry.toFixed(0)} vs wire y ${wireY.toFixed(0)})`);
+      });
+    });
+
+    // 4. MOTION IS REAL — sample a token's x twice; it must travel. Gated: SMIL
+    //    is paused under the freeze, where this is unsatisfiable by design.
+    if (motionAllowed) {
+      const rider = overlay.querySelector('[data-rider="e0-0"]');
+      const xAt = () => { const r = rider.getBoundingClientRect(); return r.x + r.width / 2; };
+      const x0 = xAt();
+      await ctx.tick(450);
+      const x1 = xAt();
+      check(Math.abs(x1 - x0) > 20, `the token must travel along the wire, moved only ${Math.abs(x1 - x0).toFixed(0)}px in 450ms`);
+    }
+
+    // 5. THE OVERLAY TRACKS A RE-ROUTE — move a target node; the guide re-copies
+    //    the engine's NEW geometry (proves the live sync wiring, not a one-shot
+    //    copy). Restore so the after-frame equals the boot-frame.
+    const b0 = ctx.diagram.getNode('b0');
+    const y0 = b0.position.y;
+    b0.setPosition(b0.position.x, y0 + 40);
+    ctx.instance.renderNow();
+    await ctx.tick();
+    check(overlay.querySelector('#flow-guide-e0').getAttribute('d') === pathOf('e0').getAttribute('d'),
+      'after a re-route the overlay guide did not re-track the engine path (sync wiring is dead)');
+    b0.setPosition(b0.position.x, y0);
+    ctx.instance.renderNow();
+    await ctx.tick();
+
+    // 6. TURNING THE STROKE OFF actually stops it — proof the style drives it.
+    ctx.diagram.getLink('e0').updateStyle({ animation: { type: 'none' } });
+    ctx.instance.renderNow();
+    await ctx.tick();
+    const off = pathOf('e0');
+    check(!off.getAttribute('class').includes('link-animated-'),
+      "setting animation type 'none' left the animation class on the edge");
+    check(getComputedStyle(off).animationName === 'none',
+      'the edge is still animating after being turned off');
+    ctx.diagram.getLink('e0').updateStyle({ animation: { type: 'marching-ants' } });
+    ctx.instance.renderNow();
+  },
+});
+</script>

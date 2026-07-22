@@ -1,0 +1,898 @@
+<meta charset="utf-8">
+<title>Dashboard grid options — Grafloria</title>
+<link rel="stylesheet" href="../shell/demo.css">
+<style>
+  /* ================================================================================
+     THE OPTIONS PAGE. dashboard-builder.html is deliberately PLAIN — one flat
+     12-column grid per view, every widget a direct member, no special cases. This
+     page is where the ADVANCED grid constructs live, each labelled so a reader can
+     see which option produces which behaviour before deciding to switch it on.
+
+     Same one import an embedder installs (../shell/grafloria.js → @grafloria/element), same
+     kit call (bindDashboardGrid). The tiles are deliberately PLAIN — this page is
+     about the grid options, not the content.
+     ================================================================================ */
+
+  #go-bar { display: flex; align-items: center; gap: 6px; flex-wrap: wrap;
+    padding: 8px 20px; border-bottom: 1px solid rgba(127,127,127,.22);
+    background: var(--go-bar-bg, #fbfbfd); }
+  .go-tool { border: 1px solid #d8dce6; background: #fff; cursor: pointer;
+    font: 500 12px/1.2 system-ui, sans-serif; color: #3c4254; padding: 7px 10px; border-radius: 7px; }
+  .go-tool:hover { border-color: #b9c0d0; background: #f6f7fb; }
+  .go-tool:disabled { opacity: .42; cursor: default; }
+  .go-sep { width: 1px; height: 22px; background: rgba(127,127,127,.24); margin: 0 4px; }
+  .go-hint { margin-left: auto; font: 500 11.5px/1.3 system-ui, sans-serif; color: #8a91a2; }
+
+  #go-body { display: grid; grid-template-columns: 214px 1fr; height: calc(100vh - 210px); min-height: 520px; }
+  #go-side { border-right: 1px solid rgba(127,127,127,.2); padding: 12px 12px 20px;
+    overflow-y: auto; background: var(--go-side-bg, #fafbfd); }
+  .go-title { font: 700 10px/1.4 system-ui, sans-serif; letter-spacing: .8px; text-transform: uppercase;
+    color: #8a91a2; margin: 2px 2px 9px; }
+  .pal-item { display: flex; align-items: center; gap: 9px; width: 100%; margin: 0 0 8px; padding: 8px 9px;
+    border: 1px solid #e4e7ee; border-radius: 9px; background: #fff; cursor: pointer; text-align: left;
+    font: 500 12.5px/1.2 system-ui, sans-serif; color: #2d2e3a; box-shadow: 0 1px 1px rgba(16,24,40,.04); }
+  .pal-item:hover { border-color: #b9c0d0; background: #f6f7fb; }
+  .pal-glyph { width: 24px; height: 24px; border-radius: 7px; flex: none; display: flex; align-items: center;
+    justify-content: center; font-size: 13px; color: #fff; background: #3b52d9; }
+  .go-note { margin: 10px 2px 16px; font: 11px/1.5 system-ui, sans-serif; color: #949bab; }
+
+  /* The numbered legend — the long explanations live here, always at 100% size,
+     while the in-canvas labels stay short so they read at any camera zoom. */
+  .go-key { margin: 0 0 10px; padding: 0; list-style: none; }
+  .go-key li { display: flex; gap: 8px; margin: 0 0 10px; font: 11.5px/1.45 system-ui, sans-serif; color: #5b6270; }
+  .go-key b { display: block; color: #2d2e3a; font-weight: 650; }
+  .go-key .n { flex: none; width: 18px; height: 18px; border-radius: 50%; margin-top: 1px;
+    background: #3b52d9; color: #fff; font: 700 11px/18px system-ui, sans-serif; text-align: center; }
+  .go-key code { font: 11px/1.2 ui-monospace, SFMono-Regular, monospace; background: rgba(127,127,127,.13);
+    padding: 1px 4px; border-radius: 4px; }
+
+  #canvas { --gt-radius: 5px; --axdb-rs-radius: 5px;   /* tile = placeholder = handle arc */
+    position: relative; overflow: hidden; height: 100%;
+    background-color: var(--go-canvas-bg, #f1f3f7);
+    background-image: radial-gradient(circle, rgba(120,128,145,.16) 1px, transparent 1px);
+    background-size: 26px 26px; }
+
+  #go-status { position: absolute; left: 14px; bottom: 12px; z-index: 6; max-width: 74%;
+    padding: 6px 11px; border-radius: 8px; background: rgba(20,24,33,.86); color: #eef1f7;
+    font: 500 11.5px/1.35 ui-monospace, SFMono-Regular, monospace; pointer-events: none;
+    box-shadow: 0 3px 10px rgba(15,23,42,.2); opacity: 0; transition: opacity .18s; }
+  #go-status.show { opacity: 1; }
+
+  /* ---- a plain labelled tile, painted into each node's HTML-layer host ------- */
+  .gt { box-sizing: border-box; width: 100%; height: 100%; display: flex; flex-direction: column;
+    background: var(--gt-card, #fff); border: 1px solid var(--gt-line, #e7eaf1); border-radius: var(--gt-radius, 5px);
+    padding: 11px 13px; overflow: hidden; font-family: system-ui, sans-serif; cursor: pointer;
+    box-shadow: 0 1px 2px rgba(16,24,40,.05); transition: box-shadow .14s, border-color .14s; }
+  .gt:hover { border-color: #c4ccdb; }
+  .gt.focused { border-color: #3b52d9; box-shadow: 0 0 0 2px rgba(59,82,217,.28); }
+  .gt-h { display: flex; align-items: center; gap: 6px; font: 650 14px/1.25 system-ui, sans-serif;
+    color: var(--gt-ink, #1f2430); }
+  .gt-h .pin { margin-left: auto; font-size: 13px; opacity: 0; }
+  .gt.locked { border-color: #e2b467; background: var(--gt-lock, #fffaf0); }
+  .gt.locked .gt-h .pin { opacity: 1; }
+  .gt-n { margin-top: 5px; font: 11.5px/1.4 system-ui, sans-serif; color: var(--gt-muted, #7a8496); }
+  .gt-strip { background: var(--gt-strip, #eef2ff); border-color: #d6def9; }
+  .gt-fixed { background: var(--gt-fixed, #eefaf4); border-color: #bfe6d4; }
+
+  /* ---- in-canvas board captions -------------------------------------------
+     Appended to the renderer's HTML layer, positioned in WORLD px — that layer
+     carries the camera transform, so a label pans and zooms with the board it
+     names (exactly how the kit's own drag placeholder is positioned). */
+  .go-label { position: absolute; pointer-events: none; z-index: 1; }
+  .go-label b { display: block; font: 700 15px/1.25 system-ui, sans-serif; color: var(--go-lab, #2d2e3a); }
+  .go-label span { display: block; margin-top: 3px; font: 12.5px/1.35 system-ui, sans-serif; color: var(--go-lab-sub, #7a8496); }
+  .go-label em { font-style: normal; color: #b4553a; font-weight: 600; }
+
+  /* Reflow glide for the non-gesture bursts (add/remove/undo/reset). */
+  .grafloria-html-layer.glide > .grafloria-node-host {
+    transition: left .28s cubic-bezier(.2,0,.2,1), top .28s cubic-bezier(.2,0,.2,1),
+                width .28s cubic-bezier(.2,0,.2,1), height .28s cubic-bezier(.2,0,.2,1);
+  }
+
+  @media (prefers-color-scheme: dark) {
+    #go-bar { --go-bar-bg:#171a21; } #go-side { --go-side-bg:#14161c; }
+    #canvas { --go-canvas-bg:#0f1116; background-image: radial-gradient(circle, rgba(150,160,180,.14) 1px, transparent 1px); }
+    .go-tool { background:#1c1f27; border-color:#333a49; color:#cbd2df; }
+    .go-tool:hover { background:#232734; }
+    .pal-item { background:#1c1f27; border-color:#333a49; color:#d7dbe4; } .pal-item:hover { background:#232734; }
+    .go-key li { color:#9aa2b2; } .go-key b { color:#e6e9f0; }
+    .gt { --gt-card:#1a1d25; --gt-line:#2b3040; --gt-ink:#eceef4; --gt-muted:#98a1b4;
+      --gt-lock:#2a2418; --gt-strip:#1e2440; --gt-fixed:#16261f; }
+    .go-label { --go-lab:#e6e9f0; --go-lab-sub:#98a1b4; }
+  }
+</style>
+
+<header id="demo-head"></header>
+<div id="go-bar">
+  <button class="go-tool" id="o-undo" title="Undo (one step per gesture)">↶ Undo</button>
+  <button class="go-tool" id="o-redo" title="Redo">↷ Redo</button>
+  <span class="go-sep"></span>
+  <button class="go-tool" id="o-pin" title="Pin / unpin the focused tile — option ④">📌 Pin</button>
+  <button class="go-tool" id="o-remove" title="Remove the focused tile">🗑 Remove</button>
+  <span class="go-sep"></span>
+  <button class="go-tool" id="o-float" title="Option ⑤ — float OFF packs tiles upward; ON lets them sit anywhere, gaps legal">Float: off</button>
+  <button class="go-tool" id="o-mode" title="Option ⑤ — fit holds each board's design height and squeezes rows; grow keeps the row height and extends the board">Mode: fit</button>
+  <span class="go-sep"></span>
+  <button class="go-tool" id="o-width" title="Option ⑦ — resize board D. Its binder derives the column count from the width (one column per 45px, capped at 12) and re-lays the tiles out through the per-column layout cache">Board D: 540px · 12 cols</button>
+  <span class="go-sep"></span>
+  <button class="go-tool" id="o-reset" title="Re-seed every board">⟲ Reset boards</button>
+  <span class="go-hint">the plain, everyday model is on <b>Dashboard builder</b> — this page is the options menu</span>
+</div>
+<div id="go-body">
+  <aside id="go-side">
+    <div class="go-title">Palette — option ⑥</div>
+    <button class="pal-item" data-add="tile"><span class="pal-glyph">▫</span>Tile (2×1)</button>
+    <button class="pal-item" data-add="wide"><span class="pal-glyph">▭</span>Wide tile (4×1)</button>
+    <div class="go-note">Drag one onto the board you last touched (or click to add). Drag any tile OUT and release
+      <b>over this panel</b> to remove it — one undo puts it back with its neighbours.</div>
+
+    <div class="go-title">What each board shows</div>
+    <ul class="go-key">
+      <li><span class="n">1</span><span><b>Two boards, one canvas</b>Drag a tile from ① into ② — the source board settles, the target makes room live, and the whole crossing is ONE undo.</span></li>
+      <li><span class="n">2</span><span><b>Explicit cell placement</b>The green tile declares fixed cells (<code>gridItem</code> col 3–4 · row 1–2); the others carry no cells and auto-flow around it.</span></li>
+      <li><span class="n">3</span><span><b>Bounded section</b><code>maxRows: 1</code> nested inside board ③: its own pack grid, a locked slab outside. Pull a tile past it and the strip GROWS a row (all tiles together); pull back and it shrinks. <em>The main dashboard deliberately does not use this.</em></span></li>
+      <li><span class="n">4</span><span><b>Pinned tile</b>The amber tile is <code>locked</code>: never pushed, and a drag onto it is refused outright.</span></li>
+      <li><span class="n">5</span><span><b>Float &amp; fit/grow</b><b style="font-weight:400">Float off</b> = gravity packs upward, no holes; <b style="font-weight:400">on</b> = tiles stay where you drop them. <b style="font-weight:400">Fit</b> = board keeps its height, rows squeeze; <b style="font-weight:400">grow</b> = rows keep their height, the board extends.</span></li>
+      <li><span class="n">6</span><span><b>Palette in, drag out</b>Drag-in places live from the moment the cursor enters; a release over the palette deletes, undoably.</span></li>
+      <li><span class="n">7</span><span><b>Responsive columns + the layout cache</b>Board D's count comes from its WIDTH (<code>responsive: { columnWidth: 45 }</code>, capped at 12; <code>breakpoints</code> is the other way to say it). Press <b style="font-weight:400">Board width</b>: narrowing caches the layout it leaves, so widening back restores it <em>exactly</em>. Edits made while narrow carry into the wide layout, and <code>toJSON()</code> always saves the widest one — save on a phone, keep the desktop. The binder owns the re-evaluation; no page code listens for resizes.</span></li>
+      <li><span class="n">8</span><span><b>RTL</b>Board E is <code>rtl: true</code>. Column 0 renders at the RIGHT edge, the resize corner and the drop placeholder mirror with it — and nothing else changes: the cells, the engine's push/swap/gravity rules and every saved layout are direction-agnostic.</span></li>
+    </ul>
+  </aside>
+  <div id="canvas"><div id="go-status"></div></div>
+</div>
+
+<script type="module">
+// ===========================================================================
+//  DASHBOARD GRID OPTIONS — the advanced constructs, labelled.
+//
+//  Read dashboard-builder.html first: that is the flagship, and it is
+//  deliberately plain (ONE flat 12-column grid per view, every widget a direct
+//  member, no nesting). The constructs below are all real `bindDashboardGrid`
+//  options — they just do not belong on a page whose job is to be predictable.
+// ===========================================================================
+import {
+  render, GroupModel, NodeModel,
+  AddNodeCommand, AddToGroupCommand, RemoveNodeCommand, RemoveFromGroupCommand,
+  BatchCommand, bindDashboardGrid,
+} from '../shell/grafloria.js';
+import { defineDemo, check, checkEqual, checkChanged } from '../shell/demo.js';
+
+/* ---------------------------------------------------------------------------
+   1. GEOMETRY. Three boards in world space; captions ride above each one.
+--------------------------------------------------------------------------- */
+const GAP = 8, SMALL_GAP = 6, BASE_ROW = 110;
+const BOARD = {
+  a: { x: 0,   y: 52,  w: 540,  h: 240, columns: 6,  gap: SMALL_GAP },
+  b: { x: 580, y: 52,  w: 540,  h: 240, columns: 6,  gap: SMALL_GAP },
+  c: { x: 0,   y: 356, w: 1120, h: 460, columns: 12, gap: GAP },
+  d: { x: 0,   y: 892, w: 540,  h: 240, columns: 12, gap: SMALL_GAP },
+  e: { x: 580, y: 892, w: 540,  h: 240, columns: 6,  gap: SMALL_GAP },
+};
+/** The bounds the camera frames — every board plus the caption band above. */
+const WORLD = { x: 0, y: 4, width: 1120, height: 1128 };
+
+/* OPTION ⑦ — RESPONSIVE COLUMNS. Board D's binder derives its column count
+   from the board's own WIDTH: `round(width / columnWidth)`, capped at the
+   declared 12. 45px per column makes the ladder exact — 540px is 12 columns,
+   270px is 6, 90px is 2 — so the width button below reads as a column count.
+   (`breakpoints: [{w, c}]` is the other way to say it; the binder also
+   re-evaluates when the CANVAS resizes, which is what a board sized from the
+   viewport rides on. This page uses an explicit control so the demo is
+   deterministic and the goldens do not move with the window.) */
+const D_COLUMN_WIDTH = 45;
+const D_WIDTHS = [540, 360, 270, 180, 90, 45];
+let dWidthIdx = 0;
+
+const LABELS = [
+  { id: 'go-lab-a', board: 'a',
+    title: '① Board A — two boards, one canvas',
+    sub: 'drag a tile into board B: the crossing commits as ONE undoable step' },
+  { id: 'go-lab-b', board: 'b',
+    title: '② Board B — explicit cell placement',
+    sub: 'the green tile holds fixed cells; the rest auto-flow around it' },
+  { id: 'go-lab-c', board: 'c',
+    title: '③ Board C — a bounded section (maxRows: 1) nested in a board',
+    sub: 'the blue strip is its own pack grid, a locked slab to the board around it — pull a tile past it and the strip grows a row. <em>The main dashboard deliberately does NOT use this.</em>' },
+  { id: 'go-lab-d', board: 'd',
+    title: '⑦ Board D — columns follow the board WIDTH',
+    sub: 'one column per 45px, capped at 12 — widening restores the cached layout' },
+  { id: 'go-lab-e', board: 'e',
+    title: '⑧ Board E — RTL: the same cells, mirrored',
+    sub: 'column 0 renders at the RIGHT edge — only the pixels mirror' },
+];
+
+/** What the palette drops. Sizes are integer CELLS. */
+const PALETTE_SPEC = {
+  tile: { w: 2, h: 1, label: 'New tile',      note: 'dropped from the palette' },
+  wide: { w: 4, h: 1, label: 'New wide tile', note: 'dropped from the palette' },
+};
+
+/* ---------------------------------------------------------------------------
+   2. STATE + the custom-node renderer (plain labelled tiles — this page is
+   about the OPTIONS, not the content).
+--------------------------------------------------------------------------- */
+const hosts = new Map();
+const boards = {};                    // key -> GroupModel (a, b, c, d, e)
+const binders = { a: null, b: null, c: null, d: null, e: null, strip: null };
+const state = { focus: null, seq: 0, dropBoard: 'c' };
+let strip = null;                     // the nested bounded-section GroupModel
+let ctxRef = null;
+let statusEl = null;
+let sizingMode = 'fit';
+let floatMode = false;
+
+const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;' }[c]));
+
+function paintTile(node, host) {
+  const label = node.getMetadata('label') || 'Tile';
+  const note = node.getMetadata('note') || '';
+  const tone = node.getMetadata('tone') || '';
+  host.innerHTML = `<div class="gt${tone ? ` gt-${tone}` : ''}"></div>`;
+  const card = host.firstElementChild;
+  card.innerHTML =
+    `<div class="gt-h">${esc(label)}<span class="pin" title="Pinned">📌</span></div>` +
+    (note ? `<div class="gt-n">${esc(note)}</div>` : '');
+  card.classList.toggle('focused', node.id === state.focus);
+  card.classList.toggle('locked', node.state?.locked === true);
+  host.onclick = () => setFocus(node.id);
+  hosts.set(node.id, host);
+}
+function renderCustomNode(node, host) { paintTile(node, host); }
+
+function repaint(nodeId) {
+  const host = hosts.get(nodeId), node = ctxRef?.diagram.getNode(nodeId);
+  if (host && node) paintTile(node, host);
+}
+function repaintAll() { for (const n of ctxRef.diagram.getNodes()) repaint(n.id); }
+
+/** Focus follows the click — and so does the palette's drop target, so a
+ *  drag-in has an unambiguous destination on a multi-board canvas. */
+function setFocus(nodeId) {
+  const prev = state.focus;
+  state.focus = nodeId;
+  if (prev && prev !== nodeId) repaint(prev);
+  if (nodeId) repaint(nodeId);
+  const key = boardKeyOf(nodeId);
+  if (key) state.dropBoard = key === 'strip' ? 'c' : key;
+  syncToolbar();
+}
+
+function flash(msg) {
+  if (!statusEl) return;
+  statusEl.textContent = `${++state.seq} · ${msg}`;
+  statusEl.classList.add('show');
+}
+
+/* ---------------------------------------------------------------------------
+   3. THE DOCUMENT. Three top-level boards; board C additionally holds a nested
+   SECTION group that rides in C's engine as a locked slab and is its own
+   bounded pack grid inside.
+--------------------------------------------------------------------------- */
+function asLayoutContainer(g) { g.setMetadata('frameChrome', 'none'); return g; }
+
+function makeTile(label, note, cell, opts = {}) {
+  const n = new NodeModel({ type: 'tile', position: { x: 0, y: 0 }, size: { width: 120, height: 80, depth: 0 } });
+  n.setMetadata('useHTMLLayer', true);
+  n.setMetadata('label', label);
+  n.setMetadata('note', note);
+  if (opts.tone) n.setMetadata('tone', opts.tone);
+  n.setMetadata('columnSpan', cell.w);
+  n.setMetadata('rowSpan', cell.h);
+  // A dashboard tile has no wires AND no connection points. connectable:false
+  // stops the engine accepting it as a link end and stops the renderer painting
+  // port glyphs; dropping the four auto-created default ports says the same
+  // thing in the MODEL, so nothing downstream (hover affordances, the gallery's
+  // HOVER-PORTS gate) has to infer it from behaviour flags.
+  n.setBehavior({ connectable: false });
+  for (const p of n.getPorts()) n.removePort(p.id);
+  if (opts.locked) n.setState({ locked: true });
+  return n;
+}
+
+/** Seed at EXPLICIT integer cells — option ② in its pure form. */
+function seedAt(diagram, group, label, note, cell, opts = {}) {
+  const n = makeTile(label, note, cell, opts);
+  n.setGridItem({ columnStart: cell.x + 1, columnEnd: cell.x + cell.w + 1,
+                  rowStart: cell.y + 1, rowEnd: cell.y + cell.h + 1 });
+  diagram.addNode(n);
+  group.addMember(n.id);
+  return n;
+}
+/** Seed with NO cells: the engine auto-positions it (row-major first hole). */
+function seedFlowing(diagram, group, label, note, span, opts = {}) {
+  const n = makeTile(label, note, span, opts);
+  diagram.addNode(n);
+  group.addMember(n.id);
+  return n;
+}
+
+function makeBoard(diagram, key, name) {
+  const spec = BOARD[key];
+  const g = new GroupModel({ id: `board-${key}`, name });
+  asLayoutContainer(g);
+  g.size = { width: spec.w, height: spec.h, depth: 0 };
+  g.position = { x: spec.x, y: spec.y };
+  diagram.addGroup(g);
+  boards[key] = g;
+  return g;
+}
+
+function buildBoards(diagram) {
+  // --- ① Board A: the source of the cross-container drag, and the home of
+  //     the PINNED tile (option ④).
+  const a = makeBoard(diagram, 'a', 'Board A');
+  seedAt(diagram, a, 'A · one',   'drag me into board B', { x: 0, y: 0, w: 3, h: 1 });
+  seedAt(diagram, a, 'A · two',   'an ordinary tile',      { x: 3, y: 0, w: 3, h: 1 });
+  seedAt(diagram, a, 'A · pinned', 'locked — never pushed, drags onto it refused',
+         { x: 0, y: 1, w: 3, h: 1 }, { locked: true });
+  seedAt(diagram, a, 'A · three', 'an ordinary tile',      { x: 3, y: 1, w: 3, h: 1 });
+
+  // --- ② Board B: one tile at EXPLICIT cells, the rest auto-flowing round it.
+  const b = makeBoard(diagram, 'b', 'Board B');
+  seedAt(diagram, b, 'B · fixed cells', 'gridItem col 3–4 · row 1–2', { x: 2, y: 0, w: 2, h: 2 }, { tone: 'fixed' });
+  seedFlowing(diagram, b, 'B · one',   'no cells — auto-placed', { w: 2, h: 1 });
+  seedFlowing(diagram, b, 'B · two',   'no cells — auto-placed', { w: 2, h: 1 });
+  seedFlowing(diagram, b, 'B · three', 'no cells — auto-placed', { w: 2, h: 1 });
+
+  // --- ③ Board C: a bounded SECTION nested in a normal 12-column board.
+  const c = makeBoard(diagram, 'c', 'Board C');
+  strip = new GroupModel({ id: 'sec-strip', name: 'Bounded strip' });
+  asLayoutContainer(strip);
+  strip.size = { width: BOARD.c.w - 2 * GAP, height: 90, depth: 0 };
+  strip.setMetadata('gridItem', { columnStart: 1, columnEnd: 13, rowStart: 1, rowEnd: 2 });
+  diagram.addGroup(strip);
+  ['A', 'B', 'C', 'D'].forEach((s, i) => {
+    seedAt(diagram, strip, `Strip ${s}`, i === 0 ? 'pull my corner down' : 'maxRows: 1', { x: i, y: 0, w: 1, h: 1 }, { tone: 'strip' });
+  });
+  c.addMember(strip.id);
+  seedAt(diagram, c, 'Trend panel',  'an ordinary member of board C', { x: 0, y: 1, w: 8, h: 2 });
+  seedAt(diagram, c, 'Share panel',  'an ordinary member of board C', { x: 8, y: 1, w: 4, h: 2 });
+  seedAt(diagram, c, 'Detail table', 'an ordinary member of board C', { x: 0, y: 3, w: 12, h: 1 });
+
+  // --- ⑦ Board D: RESPONSIVE. Authored at 12 columns; the binder re-derives
+  //     the live count from the board's width and re-lays the tiles out
+  //     through the per-column layout cache.
+  const d = makeBoard(diagram, 'd', 'Board D');
+  seedAt(diagram, d, 'D · one',   'authored at 12 columns', { x: 0, y: 0, w: 3, h: 1 });
+  seedAt(diagram, d, 'D · two',   'span 3',                 { x: 3, y: 0, w: 3, h: 1 });
+  seedAt(diagram, d, 'D · three', 'span 3',                 { x: 6, y: 0, w: 3, h: 1 });
+  seedAt(diagram, d, 'D · four',  'span 3',                 { x: 9, y: 0, w: 3, h: 1 });
+  seedAt(diagram, d, 'D · wide',  'span 6 — halves as the board narrows', { x: 0, y: 1, w: 6, h: 1 });
+  seedAt(diagram, d, 'D · half',  'span 6',                 { x: 6, y: 1, w: 6, h: 1 });
+
+  // --- ⑧ Board E: RTL. Explicit cells, so the mirroring is readable straight
+  //     off the screen: x=0 is the RIGHTMOST tile.
+  const e = makeBoard(diagram, 'e', 'Board E');
+  seedAt(diagram, e, 'E · col 0', 'x = 0 — the RIGHT edge in RTL', { x: 0, y: 0, w: 2, h: 1 });
+  seedAt(diagram, e, 'E · col 2', 'x = 2',                          { x: 2, y: 0, w: 2, h: 1 });
+  seedAt(diagram, e, 'E · col 4', 'x = 4 — the LEFT edge in RTL',   { x: 4, y: 0, w: 2, h: 1 });
+  seedAt(diagram, e, 'E · wide',  'x = 0, span 4 — still right-anchored', { x: 0, y: 1, w: 4, h: 1 });
+  seedAt(diagram, e, 'E · last',  'x = 4, span 2',                  { x: 4, y: 1, w: 2, h: 1 });
+}
+
+/* ---------------------------------------------------------------------------
+   4. THE BINDERS — one per board, plus one for the nested bounded section.
+   Everything else on this page is page chrome.
+--------------------------------------------------------------------------- */
+function boardBinderOptions(key) {
+  const spec = BOARD[key];
+  return {
+    columns: spec.columns, gap: spec.gap, padding: spec.gap,
+    sizing: sizingMode, baseRowHeight: BASE_ROW, designHeight: spec.h,
+    float: floatMode,
+    // OPTION ⑦ — board D's column count is DERIVED from its width. Nothing on
+    // this page listens for the resize: the binder owns that.
+    ...(key === 'd'
+      ? {
+          responsive: { columnWidth: D_COLUMN_WIDTH, columnMax: spec.columns, layout: 'moveScale' },
+          onColumnsChange: (c, prev) => {
+            syncWidthButton();
+            flash(`board D is ${Math.round(boards.d.size.width)}px wide → ${c} columns (was ${prev})`);
+          },
+        }
+      : {}),
+    // OPTION ⑧ — board E renders right-to-left. Same cells, mirrored pixels.
+    ...(key === 'e' ? { rtl: true } : {}),
+    // OPTION ⑥ — drag OUT to remove, but only over the palette (the trash
+    // affordance): an overshoot past a frame edge snaps home instead.
+    dragOut: 'remove',
+    removeZone: (screen) => {
+      const side = document.getElementById('go-side');
+      if (!side) return false;
+      return screen.x <= side.getBoundingClientRect().right + 8;
+    },
+    onRemoveRequest: (nodeId, displaced) => removeTileCmd(nodeId, displaced),
+    onDropIn: async (node, cell, displaced) => {
+      await cmd().execute(new AddNodeCommand(node));
+      await cmd().execute(new BatchCommand('Add tile',
+        [new AddToGroupCommand(boards[key].id, node.id), ...displaced]));
+      setFocus(node.id);
+      flash(`dropped into board ${key.toUpperCase()} at column ${cell.x + 1}, row ${cell.y + 1}`);
+    },
+    onGesture: (e) => onAnyGesture(e, `board ${key.toUpperCase()}`),
+  };
+}
+
+let lastPaletteGestureAt = 0;
+function onAnyGesture(e, where) {
+  lastPaletteGestureAt = e.kind === 'palette' ? Date.now() : lastPaletteGestureAt;
+  if (e.type === 'commit') {
+    setFocus(e.nodeId);
+    flash(e.changed ? `${e.kind} committed on ${where} — one undoable step` : 'released — nothing changed');
+  } else if (e.type === 'cancel' && e.kind !== 'palette') {
+    flash('cancelled — every tile restored');
+  }
+  syncToolbar();
+  setTimeout(syncToolbar, 0);
+}
+
+function bindAll() {
+  for (const key of Object.keys(binders)) { binders[key]?.dispose(); binders[key] = null; }
+  const inst = ctxRef.instance;
+  binders.a = bindDashboardGrid(inst, boards.a, boardBinderOptions('a'));
+  binders.b = bindDashboardGrid(inst, boards.b, boardBinderOptions('b'));
+  binders.c = bindDashboardGrid(inst, boards.c, boardBinderOptions('c'));
+  binders.d = bindDashboardGrid(inst, boards.d, boardBinderOptions('d'));
+  binders.e = bindDashboardGrid(inst, boards.e, boardBinderOptions('e'));
+  // OPTION ③ — the BOUNDED SECTION. `maxRows: 1` tells the engine the strip's
+  // design is exactly one row: a tile can never be pushed onto a second row
+  // (siblings shift ALONG the row instead) and the strip can never be
+  // squeezed. Its own gap equals board C's, so one strip column spans exactly
+  // three board columns and the tile edges land on the board's column lines.
+  // `designHeight: 0` says the slab's height is not this binder's business —
+  // board C owns it, and pulling a strip tile taller ESCALATES to board C,
+  // which grows the slab by a row (all four tiles get taller together).
+  binders.strip = bindDashboardGrid(inst, strip, {
+    columns: 4, gap: GAP, padding: 0, sizing: 'fit', designHeight: 0,
+    dragOut: 'cancel', maxRows: 1,
+    onGesture: (e) => onAnyGesture(e, 'the bounded strip'),
+  });
+}
+
+/** Which binder owns a node's cells (the strip's tiles belong to the strip). */
+function boardKeyOf(nodeId) {
+  for (const key of ['strip', 'a', 'b', 'c', 'd', 'e']) {
+    if (binders[key] && binders[key].cellOf(nodeId)) return key;
+  }
+  return null;
+}
+function binderOwning(nodeId) { const k = boardKeyOf(nodeId); return k ? binders[k] : null; }
+
+function refreshBoards() {
+  glide();
+  for (const key of ['a', 'b', 'c', 'd', 'e', 'strip']) binders[key]?.sync();
+  ctxRef.instance.renderNow();
+  ensureLabels();
+  repaintAll();
+}
+
+let glideTimer = null;
+function glide() {
+  const layer = document.querySelector('.grafloria-html-layer');
+  if (!layer) return;
+  layer.classList.add('glide');
+  clearTimeout(glideTimer);
+  glideTimer = setTimeout(() => layer.classList.remove('glide'), 420);
+}
+
+/* ---------------------------------------------------------------------------
+   5. IN-CANVAS CAPTIONS. The renderer's HTML layer carries the camera
+   transform, so a plain absolutely-positioned div written in WORLD pixels pans
+   and zooms with the board it names (the kit's own drag placeholder is
+   positioned exactly this way).
+--------------------------------------------------------------------------- */
+function ensureLabels() {
+  const layer = document.querySelector('.grafloria-html-layer');
+  if (!layer) return;
+  for (const L of LABELS) {
+    let el = document.getElementById(L.id);
+    if (!el || el.parentElement !== layer) {
+      el?.remove();
+      el = document.createElement('div');
+      el.id = L.id;
+      el.className = 'go-label';
+      el.innerHTML = `<b>${esc(L.title)}</b><span>${L.sub}</span>`;
+      layer.appendChild(el);
+    }
+    const g = boards[L.board];
+    if (!g) continue;
+    el.style.left = `${g.position.x}px`;
+    el.style.top = `${g.position.y - 46}px`;
+    // The AUTHORED width, not the live one: board D's width control must move
+    // the board, never reflow the caption that names it into its own tiles.
+    el.style.width = `${BOARD[L.board].w}px`;
+  }
+}
+
+function frameAll() {
+  ctxRef.instance.viewport.fitToBounds(WORLD, 18, { maxZoom: 1 });
+}
+
+/* ---------------------------------------------------------------------------
+   6. TOOLBAR + PALETTE — every edit is an undoable Command.
+--------------------------------------------------------------------------- */
+function cmd() { return ctxRef.instance.getEngine().commandManager; }
+function focusedNode() { return state.focus ? ctxRef.diagram.getNode(state.focus) : null; }
+
+function syncToolbar() {
+  const cm = cmd();
+  document.getElementById('o-undo').disabled = !cm.canUndo();
+  document.getElementById('o-redo').disabled = !cm.canRedo();
+  const n = focusedNode();
+  for (const id of ['o-pin', 'o-remove']) document.getElementById(id).disabled = !n;
+  document.getElementById('o-pin').textContent = n && n.state?.locked ? '📌 Unpin' : '📌 Pin';
+}
+
+async function addTileCmd(kind) {
+  glide();
+  const p = PALETTE_SPEC[kind];
+  const key = state.dropBoard;
+  const node = makeTile(p.label, p.note, { w: p.w, h: p.h });
+  await cmd().execute(new AddNodeCommand(node));
+  await cmd().execute(new AddToGroupCommand(boards[key].id, node.id));
+  ctxRef.instance.renderNow();
+  setFocus(node.id);
+  flash(`added a ${p.w}×${p.h} tile to board ${key.toUpperCase()} (auto-positioned)`);
+  return node.id;
+}
+
+/** ONE undoable batch: membership + node + the survivors' cell commits. */
+async function removeTileCmd(nodeId, displaced = null) {
+  glide();
+  const node = ctxRef.diagram.getNode(nodeId); if (!node) return;
+  const owner = binderOwning(nodeId);
+  const groupId = [...Object.values(boards), strip].find((g) => g && g.members?.has(nodeId))?.id;
+  const cmds = [];
+  if (groupId) cmds.push(new RemoveFromGroupCommand(groupId, nodeId));
+  cmds.push(new RemoveNodeCommand(nodeId));
+  cmds.push(...(displaced ?? (owner ? owner.planRemoval(nodeId) : [])));
+  await cmd().execute(new BatchCommand('Remove tile', cmds));
+  hosts.delete(nodeId);
+  if (state.focus === nodeId) state.focus = null;
+  ctxRef.instance.renderNow();
+  syncToolbar();
+  flash('removed (survivors re-packed in the same batch)');
+}
+
+/** OPTION ④ — pin/unpin. A locked tile is never pushed and refuses the mover. */
+function togglePin(nodeId) {
+  const node = ctxRef.diagram.getNode(nodeId); if (!node) return;
+  node.setState({ locked: !node.state?.locked });
+  binderOwning(nodeId)?.sync();
+  repaint(nodeId); syncToolbar();
+  flash(node.state?.locked ? 'pinned — never pushed, drags onto it refused' : 'unpinned');
+}
+
+/** OPTION ⑤a — float. */
+function setFloatMode(on) {
+  floatMode = on;
+  glide();
+  for (const key of ['a', 'b', 'c', 'd', 'e']) binders[key]?.setFloat(on);
+  document.getElementById('o-float').textContent = `Float: ${on ? 'on' : 'off'}`;
+  ctxRef.instance.renderNow();
+  ensureLabels();
+  repaintAll();
+  flash(on ? 'Float ON: tiles stay exactly where you drop them — gaps are legal'
+           : 'Float OFF: gravity packs every tile upward — no holes');
+}
+
+/** OPTION ⑤b — fit vs grow. */
+function setSizingMode(mode) {
+  sizingMode = mode;
+  glide();
+  for (const key of ['a', 'b', 'c', 'd', 'e']) binders[key]?.setSizing(mode);
+  document.getElementById('o-mode').textContent = `Mode: ${mode}`;
+  ctxRef.instance.renderNow();
+  ensureLabels();
+  repaintAll();
+  flash(mode === 'fit' ? 'FIT: each board keeps its design height — rows squeeze to fit'
+                       : 'GROW: rows keep their 110px height — boards extend downward');
+}
+
+/** OPTION ⑦ — the width control. It resizes board D's FRAME and nothing else:
+ *  the binder hears the frame change, re-derives the column count and re-lays
+ *  the board out through the engine's per-column cache. */
+function syncWidthButton() {
+  const btn = document.getElementById('o-width');
+  if (!btn || !binders.d || !boards.d) return;
+  btn.textContent = `Board D: ${Math.round(boards.d.size.width)}px · ${binders.d.getColumns()} cols`;
+}
+
+function cycleBoardWidth() {
+  dWidthIdx = (dWidthIdx + 1) % D_WIDTHS.length;
+  setBoardDWidth(D_WIDTHS[dWidthIdx]);
+}
+
+function setBoardDWidth(width) {
+  glide();
+  const g = boards.d;
+  g.setFrame({ x: g.position.x, y: g.position.y, width, height: g.size.height });
+  ctxRef.instance.renderNow();
+  ensureLabels();
+  repaintAll();
+  syncWidthButton();
+}
+
+function resetBoards() {
+  for (const n of [...ctxRef.diagram.getNodes()]) ctxRef.diagram.removeNode(n.id);
+  for (const g of [...ctxRef.diagram.getGroups()]) ctxRef.diagram.removeGroup(g.id);
+  hosts.clear();
+  state.focus = null; state.dropBoard = 'c';
+  dWidthIdx = 0;                       // board D goes back to its authored width
+  buildBoards(ctxRef.diagram);
+  cmd().clear();
+  bindAll();
+  ctxRef.instance.renderNow();
+  frameAll();
+  ensureLabels();
+  repaintAll();
+  syncToolbar();
+  syncWidthButton();
+  flash('boards re-seeded');
+}
+
+function wireControls() {
+  for (const btn of document.querySelectorAll('.pal-item')) {
+    btn.addEventListener('click', () => {
+      if (Date.now() - lastPaletteGestureAt < 400) return;   // that click was a drag
+      addTileCmd(btn.dataset.add);
+    });
+    btn.addEventListener('pointerdown', (e) => {
+      if (e.button !== 0) return;
+      const p = PALETTE_SPEC[btn.dataset.add];
+      const target = binders[state.dropBoard];
+      if (!p || !target) return;
+      const node = makeTile(p.label, p.note, { w: p.w, h: p.h });
+      const chip = btn.cloneNode(true);
+      chip.style.width = `${btn.offsetWidth}px`;
+      target.beginPaletteDrag(node, { w: p.w, h: p.h, chip }, e);
+    });
+  }
+  document.getElementById('o-undo').addEventListener('click', async () => { const cm = cmd(); if (cm.canUndo()) { await cm.undo(); refreshBoards(); } syncToolbar(); flash('undo'); });
+  document.getElementById('o-redo').addEventListener('click', async () => { const cm = cmd(); if (cm.canRedo()) { await cm.redo(); refreshBoards(); } syncToolbar(); flash('redo'); });
+  document.getElementById('o-pin').addEventListener('click', () => { if (state.focus) togglePin(state.focus); else flash('focus a tile first'); });
+  document.getElementById('o-remove').addEventListener('click', async () => { if (state.focus) { await removeTileCmd(state.focus); syncToolbar(); } else flash('focus a tile first'); });
+  document.getElementById('o-float').addEventListener('click', () => setFloatMode(!floatMode));
+  document.getElementById('o-mode').addEventListener('click', () => setSizingMode(sizingMode === 'fit' ? 'grow' : 'fit'));
+  document.getElementById('o-width').addEventListener('click', () => cycleBoardWidth());
+  document.getElementById('o-reset').addEventListener('click', () => resetBoards());
+}
+
+/* ---------------------------------------------------------------------------
+   7. THE DEMO CONTRACT.
+--------------------------------------------------------------------------- */
+defineDemo({
+  name: 'Dashboard grid options',
+  blurb: 'The dashboard kit\'s ADVANCED grid constructs, one labelled board each — cross-container drag between two boards, a bounded section (maxRows: 1) nested inside a board with height escalation, a pinned tile that refuses the mover, explicit cell placement with auto-flow around it, float and fit/grow toggles, palette drag-in and drag-out-to-remove. The flagship Dashboard builder deliberately uses NONE of these: it is one flat 12-column grid so its behaviour is predictable. This page is the options menu. LAYERS: `dashboard({ views })` declares a whole board as data and wires all of this for you (dashboard/dashboard-builder.html) — this page is the layer beneath it, `bindDashboardGrid` driven directly, because that is where these options live.',
+  howTo: [
+    '① Drag "A · one" from board A into board B: the source board settles behind it, board B makes room live around the dashed placeholder, and ONE undo restores both boards at once (cross-container drag — the tile changes group membership in the same batch).',
+    '② Board B\'s green tile declares explicit cells (gridItem col 3–4, row 1–2). The other three carry no cells at all and were auto-positioned around it by the engine\'s row-major scan.',
+    '③ Board C\'s blue strip is a nested SECTION bound with maxRows: 1 — its own 4-column pack grid inside, a locked slab to board C outside. Drag a strip tile onto another and they shift ALONG the row (never onto a second row). Pull "Strip A"\'s bottom-right corner well past the strip and the whole strip GROWS a row; pull back up and it shrinks again. The main dashboard deliberately does not use this construct.',
+    '④ The amber "A · pinned" tile is locked: drag another tile onto it and the drag is refused outright, and nothing can push it. Focus any tile and press Pin to lock it too.',
+    '⑤ Float: off is gravity — tiles pack upward and holes close. Float: on lets a tile stay exactly where you dropped it. Mode: fit keeps every board at its design height and squeezes the rows; Mode: grow keeps 110px rows and lets the boards extend downward.',
+    '⑥ Drag a palette item onto the board you last touched — it places live from the moment the cursor enters. Drag any tile OUT and release over the palette panel to delete it; one undo puts it back with its neighbours.',
+    'Press "▶ run the scripted checks": it drives real pointer gestures and asserts each option — the crossing and its single undo, the bounded strip refusing a second row, escalation growing the slab, the pinned refusal, the explicit-cell layout, both toggles, and palette add + drag-out remove.',
+  ],
+
+  async setup(ctx) {
+    const instance = render({ nodes: [], edges: [] }, ctx.host, { renderCustomNode });
+    ctx.instance = instance;
+    ctx.diagram = instance.getModel();
+    ctx.engine = instance.getEngine();
+    ctxRef = ctx;
+    statusEl = document.getElementById('go-status');
+
+    buildBoards(ctx.diagram);
+    bindAll();
+    window.__opts = { binders, boards, strip, state, setBoardDWidth, D_WIDTHS };   // console/e2e escape hatch
+    wireControls();
+    instance.renderNow();
+    frameAll();
+    ensureLabels();
+    // A focused tile gives the toolbar a live target from the first frame (and
+    // sets the palette's drop board).
+    const first = [...(boards.c.members || [])].map((m) => ctx.diagram.getNode(m)).find(Boolean);
+    if (first) setFocus(first.id);
+    syncToolbar();
+    syncWidthButton();
+
+    if (typeof ResizeObserver !== 'undefined') {
+      const ro = new ResizeObserver(() => {
+        const r = ctx.host.getBoundingClientRect();
+        if (r.width > 0 && r.height > 0) { frameAll(); ensureLabels(); }
+      });
+      ro.observe(ctx.host);
+    }
+    await ctx.tick();
+    frameAll();
+    ensureLabels();
+  },
+
+  async assert(ctx) {
+    const D = ctx.diagram;
+    const cm = ctx.instance.getEngine().commandManager;
+    const settle = async () => { ctx.instance.renderNow(); await ctx.tick(); };
+    const byLabel = (label) => D.getNodes().find((n) => n.getMetadata('label') === label);
+
+    // -- real-pointer helpers (the same events a hand on a mouse produces) ----
+    const container = ctx.host;
+    const toClient = (wx, wy) => ctx.instance.viewport.worldToClient(wx, wy, container.getBoundingClientRect());
+    const raf = () => new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r)));
+    let PID = 70;
+    const pev = (type, cx, cy, target = container) => target.dispatchEvent(new PointerEvent(type, {
+      clientX: cx, clientY: cy, bubbles: true, cancelable: true, composed: true,
+      pointerId: PID, pointerType: 'mouse', isPrimary: true, button: 0, buttons: type === 'pointerup' ? 0 : 1,
+    }));
+    const dragTo = async (fromW, toW, { target, steps = 8 } = {}) => {
+      PID++;
+      const a = toClient(fromW.x, fromW.y);
+      pev('pointerdown', a.x, a.y, target ?? container);
+      for (let i = 1; i <= steps; i++) {
+        const w = { x: fromW.x + ((toW.x - fromW.x) * i) / steps, y: fromW.y + ((toW.y - fromW.y) * i) / steps };
+        const c = toClient(w.x, w.y);
+        pev('pointermove', c.x, c.y);
+        await raf();
+      }
+    };
+    const release = async (wx, wy) => { const c = toClient(wx, wy); pev('pointerup', c.x, c.y); await settle(); };
+    const centerOf = (n) => ({ x: n.position.x + n.size.width / 2, y: n.position.y + n.size.height / 2 });
+
+    resetBoards();
+    cm.clear();
+    await settle();
+
+    // ---- ① CROSS-CONTAINER DRAG: A → B, ONE undo restores both -------------
+    {
+      const a1 = byLabel('A · one');
+      const b1 = byLabel('B · one');
+      check(boards.a.members.has(a1.id), 'the tile starts as a member of board A');
+      const aCells0 = { ...binders.a.cellOf(a1.id) };
+      const bCount0 = [...boards.b.members].length;
+      const target = centerOf(b1);
+      await dragTo(centerOf(a1), { x: target.x, y: target.y + 4 }, { steps: 10 });
+      check(!!container.querySelector('.axdb-ph'), 'mid-crossing: the target board shows a truthful placeholder');
+      await release(target.x, target.y + 4);
+      check(boards.b.members.has(a1.id), 'the tile crossed into board B');
+      check(!boards.a.members.has(a1.id), 'the tile left board A in the SAME gesture');
+      check([...boards.b.members].length === bCount0 + 1, 'board B gained exactly one member');
+      check(!!binders.b.cellOf(a1.id), 'board B\'s engine owns the crossed tile\'s cells');
+      check(cm.canUndo(), 'the crossing committed ONE undoable batch');
+      await cm.undo(); refreshBoards(); await settle();
+      check(boards.a.members.has(a1.id) && !boards.b.members.has(a1.id), 'ONE undo sent the tile home to board A');
+      checkEqual(binders.a.cellOf(a1.id), aCells0, 'one undo restored its exact cells');
+      check(!cm.canUndo(), 'exactly one undo step for the whole crossing');
+      cm.clear();
+    }
+
+    // ---- ② EXPLICIT CELL PLACEMENT + auto-flow around it -------------------
+    {
+      const fixed = byLabel('B · fixed cells');
+      checkEqual(binders.b.cellOf(fixed.id), { x: 2, y: 0, w: 2, h: 2 },
+        'the fixed tile holds the explicit cells its gridItem declared');
+      const gi = fixed.getGridItem();
+      checkEqual([gi.columnStart, gi.columnEnd, gi.rowStart, gi.rowEnd], [3, 5, 1, 3],
+        'those cells came from the standard GridItemConfig (1-based col 3–4, row 1–2)');
+      const flow = ['B · one', 'B · two', 'B · three'].map((l) => binders.b.cellOf(byLabel(l).id));
+      check(flow.every(Boolean), 'the cell-less tiles were all auto-positioned');
+      const fx = binders.b.cellOf(fixed.id);
+      for (const c of flow) {
+        const overlaps = c.x < fx.x + fx.w && fx.x < c.x + c.w && c.y < fx.y + fx.h && fx.y < c.y + c.h;
+        check(!overlaps, `an auto-placed tile flowed AROUND the fixed cells (got ${JSON.stringify(c)})`);
+      }
+    }
+
+    // ---- ③ THE BOUNDED SECTION (maxRows: 1) --------------------------------
+    {
+      check(D.getGroup('sec-strip') && boards.c.members.has('sec-strip'),
+        'the bounded section is a member of board C');
+      check(!!binders.c.cellOf('sec-strip'), 'board C\'s engine carries the section as a slab item');
+      const s0 = byLabel('Strip A'), s1 = byLabel('Strip B');
+      const trend = byLabel('Trend panel');
+      // A locked slab refuses the mover: nothing from board C can land on row 0.
+      check(!(await binders.c.moveTo(trend.id, 0, 0)), 'a board-C tile dragged onto the section slab is refused');
+      checkEqual(binders.c.cellOf(trend.id), { x: 0, y: 1, w: 8, h: 2 }, 'the refused mover kept its cells');
+      // maxRows: 1 — a second row simply cannot exist inside the section.
+      check(!(await binders.strip.resizeTo(s0.id, 1, 2)), 'the bounded section refuses a two-row tile (maxRows: 1)');
+      checkEqual(binders.strip.cellOf(s0.id).h, 1, 'the strip tile is still one row tall');
+      // Inside, it is an ordinary pack grid: tiles shift ALONG the row.
+      const c1 = binders.strip.cellOf(s1.id);
+      check(await binders.strip.moveTo(s0.id, c1.x, 0), 'inside the section, a tile dragged onto its neighbour swaps');
+      checkEqual(binders.strip.cellOf(s1.id).y, 0, 'the displaced neighbour stayed on row 0 — it shifted along');
+      await cm.undo(); refreshBoards(); await settle();
+      cm.clear();
+
+      // HEIGHT ESCALATION: pull a strip tile well past the strip and the SLAB
+      // grows a row in board C — every strip tile gets taller together.
+      const s0b = byLabel('Strip A');
+      const h0 = s0b.size.height, sibH0 = byLabel('Strip B').size.height;
+      const slab0 = { ...binders.c.cellOf('sec-strip') };
+      const rs = container.querySelector(`.grafloria-node-host[data-node-id="${s0b.id}"] .axdb-rs`);
+      check(!!rs, 'the strip tile carries the kit\'s corner resize handle');
+      const corner = { x: s0b.position.x + s0b.size.width - 6, y: s0b.position.y + s0b.size.height - 6 };
+      PID++;
+      const at = toClient(corner.x, corner.y);
+      pev('pointerdown', at.x, at.y, rs);
+      let cpt = toClient(corner.x, corner.y + 150);
+      pev('pointermove', cpt.x, cpt.y); await raf(); await raf();
+      checkEqual(binders.c.cellOf('sec-strip').h, slab0.h + 1, 'pulling past the strip grew the SLAB by a row');
+      check(byLabel('Strip B').size.height > sibH0 + 10, 'every tile in the section grew with it (it is one bounded row)');
+      await release(corner.x, corner.y + 150);
+      check(byLabel('Strip A').size.height > h0 + 10, 'the escalation committed');
+      await cm.undo(); refreshBoards(); await settle();
+      checkEqual(binders.c.cellOf('sec-strip').h, slab0.h, 'ONE undo shrank the section back — slab cells restored');
+      cm.clear();
+    }
+
+    // ---- ④ PINNED tile: never pushed, drags onto it refused ----------------
+    {
+      const pinned = byLabel('A · pinned');
+      const other = byLabel('A · three');
+      check(pinned.state?.locked === true, 'the pinned tile is locked');
+      const pc = { ...binders.a.cellOf(pinned.id) };
+      check(!(await binders.a.moveTo(other.id, pc.x, pc.y)), 'a drag ONTO the pinned tile is refused outright');
+      checkEqual(binders.a.cellOf(pinned.id), pc, 'the pinned tile kept its exact cells');
+      check(container.querySelector(`.grafloria-node-host[data-node-id="${pinned.id}"] .axdb-rs`) === null,
+        'a pinned tile hides its resize handle');
+      cm.clear();
+    }
+
+    // ---- ⑤ TOGGLES: float on/off and fit/grow ------------------------------
+    {
+      check(binders.a.getFloat() === false, 'float starts OFF (gravity packs upward)');
+      document.getElementById('o-float').click(); await settle();
+      check(binders.a.getFloat() === true && binders.c.getFloat() === true, 'the Float button turned float ON for every board');
+      document.getElementById('o-float').click(); await settle();
+      check(binders.a.getFloat() === false, 'and back OFF');
+
+      checkEqual(binders.c.getSizing(), 'fit', 'sizing starts in FIT (boards hold their design height)');
+      check(Math.abs(boards.c.size.height - BOARD.c.h) < 1, 'FIT: board C is at its design height');
+      // Compare the two modes against EACH OTHER, not a magic pixel threshold:
+      // the grown height is rows x baseRow + gaps, so any gap/row-count change
+      // moves it (a +20 literal here failed by 1px when the page gap went
+      // 14 -> 8). "Extended downward" is the claim; measure exactly that.
+      const fitH = boards.c.size.height;
+      document.getElementById('o-mode').click(); await settle();
+      checkEqual(binders.c.getSizing(), 'grow', 'the Mode button switched every board to GROW');
+      check(boards.c.size.height > fitH + 1,
+        `GROW: board C extended downward (${Math.round(fitH)} -> ${Math.round(boards.c.size.height)}px)`);
+      check(Math.abs(binders.c.metrics().rowHeight - BASE_ROW) < 0.1, 'GROW: rows keep their design height');
+      document.getElementById('o-mode').click(); await settle();
+      check(Math.abs(boards.c.size.height - BOARD.c.h) < 1, 'back to FIT: the design height is restored');
+    }
+
+    // ---- ⑥ PALETTE add + DRAG-OUT remove -----------------------------------
+    {
+      const before = D.getNodes().length;
+      setFocus(byLabel('Trend panel').id);      // → the palette drops into board C
+      const newId = await addTileCmd('wide'); await settle();
+      check(D.getNodes().length === before + 1, 'the palette added a tile through AddNodeCommand');
+      check(boards.c.members.has(newId), 'it landed in the board the page last touched (C)');
+      const cell = binders.c.cellOf(newId);
+      check(cell && cell.w === 4, `the cell-less add auto-positioned at its palette size (${JSON.stringify(cell)})`);
+      // Now drag it OUT over the palette panel: release there removes it.
+      const node = D.getNode(newId);
+      const side = document.getElementById('go-side').getBoundingClientRect();
+      const outWorld = ctx.instance.viewport.clientToWorld(side.left + 20, side.top + 120, container.getBoundingClientRect());
+      await dragTo(centerOf(node), outWorld, { steps: 10 });
+      await release(outWorld.x, outWorld.y);
+      await settle(); await ctx.tick();
+      check(D.getNodes().length === before, 'releasing over the palette REMOVED the tile');
+      await cm.undo(); refreshBoards(); await settle();
+      check(D.getNodes().length === before + 1, 'one undo brought it back with its neighbours');
+      cm.clear();
+    }
+
+    // ---- a deterministic resting frame for the golden -----------------------
+    resetBoards();
+    cm.clear();
+    const rest = byLabel('Trend panel');
+    if (rest) setFocus(rest.id);
+    await settle();
+    check(!D.getNodes().some((n) => n.state?.locked && n.getMetadata('label') !== 'A · pinned'),
+      'ended with only the seeded pin (deterministic frame)');
+    await new Promise((r) => setTimeout(r, 520));   // drain the reflow glide
+    ctx.instance.renderNow();
+    ensureLabels();
+  },
+});
+</script>

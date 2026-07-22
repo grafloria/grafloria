@@ -1,0 +1,172 @@
+<meta charset="utf-8">
+<title>Stroke edit — Grafloria</title>
+<link rel="stylesheet" href="../shell/demo.css">
+<header id="demo-head"></header>
+<div id="bar" style="display:flex;gap:8px;padding:10px 24px;border-bottom:1px solid rgba(127,127,127,.25)">
+  <span>tool:</span>
+  <button id="btn-draw" aria-pressed="true">draw</button>
+  <button id="btn-edit" aria-pressed="false">edit</button>
+</div>
+<style>#bar button[aria-pressed="true"] { background: #0f766e; border-color: #0f766e; color: #fff; }
+  #bar button { padding: 4px 12px; border-radius: 6px; border: 1px solid rgba(127,127,127,.4); background: transparent; color: inherit; cursor: pointer; font: inherit; }</style>
+<div id="canvas"></div>
+<script type="module">
+import { render, registerTool, createDrawTool, createStrokeEditTool } from '../shell/grafloria.js';
+import { defineDemo, check } from '../shell/demo.js';
+
+// THE LAST WHITEBOARD GAP, closed: ink could be drawn and erased, but not EDITED. The model
+// could do it (StrokeModel.setPoints/setStyle capture correctly — the collab fuzz proves it)
+// but NO gesture reached it: strokes render pointer-events:none, no tool selected or moved
+// one. This demo drives a REAL pointer drag over committed ink with the EDIT tool active and
+// asserts the ink MOVED — the assertion that was RED before the tool existed.
+
+function gesture(host, from, to, steps) {
+  const rect = host.getBoundingClientRect();
+  const fire = (type, x, y, buttons) =>
+    host.dispatchEvent(new PointerEvent(({ mousedown: 'pointerdown', mousemove: 'pointermove', mouseup: 'pointerup' })[type] ?? type, {
+      pointerType: 'mouse', button: 0, buttons, bubbles: true,
+      clientX: rect.left + x, clientY: rect.top + y,
+    }));
+  fire('pointerdown', from.x, from.y, 1);
+  for (let i = 1; i <= steps; i++) {
+    const t = i / steps;
+    fire('pointermove', from.x + (to.x - from.x) * t, from.y + (to.y - from.y) * t, 1);
+  }
+  fire('pointerup', to.x, to.y, 0);
+}
+
+defineDemo({
+  name: 'Stroke edit',
+  blurb: 'Select committed ink with the edit tool and drag it — the whole stroke translates, as one undoable step.',
+  howTo: [
+    'The pen is live on load: press on the blank canvas and drag — a teal stroke commits when you release.',
+    'Click the "edit" button in the tool bar to switch from drawing to editing.',
+    'Now press ON the ink and drag: the whole stroke travels with the pointer.',
+    'Press ⌘Z / Ctrl+Z — that drag was ONE undo step; the ink jumps back where it was.',
+    'Grab the ink again, drag, and hit Escape before releasing: the move is abandoned and nothing lands on the undo stack.',
+  ],
+  reactflow: 'Freehand Draw',
+  pro: true,
+
+  async setup(ctx) {
+    const api = render({ nodes: [], edges: [] }, ctx.host);
+    ctx.instance = api;
+    ctx.diagram = api.getModel();
+    ctx.engine = api.getEngine();
+
+    // The draw tool, to author the ink through REAL pointer events (not a seeded model).
+    ctx.drawTool = createDrawTool(api, { color: '#0f766e', width: 4 });
+    registerTool(ctx.drawTool);
+    // The EDIT tool, registered like any other whiteboard tool — INACTIVE until the
+    // host switches to it (setActive is the tool-switch seam, same as draw/eraser).
+    ctx.editTool = createStrokeEditTool(api, { active: false });
+    registerTool(ctx.editTool);
+
+    // The live tool switch — the seam a host app would put behind its toolbar
+    // (live report: pages need visible ways to test, not console commands).
+    const setTool = (edit) => {
+      ctx.drawTool.setActive(!edit);
+      ctx.editTool.setActive(edit);
+      document.getElementById('btn-draw').setAttribute('aria-pressed', String(!edit));
+      document.getElementById('btn-edit').setAttribute('aria-pressed', String(edit));
+    };
+    document.getElementById('btn-draw').addEventListener('click', () => setTool(false));
+    document.getElementById('btn-edit').addEventListener('click', () => setTool(true));
+
+    // The async command commit — same settle as the drag-undo demo.
+    ctx.settle = () => new Promise((r) => setTimeout(r, 0));
+    await ctx.tick();
+  },
+
+  async assert(ctx) {
+    // -----------------------------------------------------------------------
+    // 1. Author a stroke with the pen, through the pointer pipeline.
+    // -----------------------------------------------------------------------
+    gesture(ctx.host, { x: 120, y: 200 }, { x: 420, y: 260 }, 24);
+    await ctx.tick();
+    check(ctx.diagram.getStrokes().length === 1, 'the draw gesture should commit one stroke');
+    const stroke = ctx.diagram.getStrokes()[0];
+    const before = stroke.getPoints().map((p) => ({ ...p }));
+    check(before.length >= 2, 'the committed stroke should have real geometry');
+
+    // -----------------------------------------------------------------------
+    // 2. Switch tools: pen down, edit ON — exactly how a host switches tools.
+    // -----------------------------------------------------------------------
+    ctx.drawTool.setActive(false);
+    ctx.editTool.setActive(true);
+
+    // -----------------------------------------------------------------------
+    // 3. Drag the ink itself. Grab a point ON the stroke (its middle sample)
+    //    and pull it by a known delta.
+    //
+    //    THE GAP THIS DEMO EXISTS FOR: before the edit tool, this gesture did
+    //    NOTHING — the stroke could not be selected or moved.
+    // -----------------------------------------------------------------------
+    const mid = before[Math.floor(before.length / 2)];
+    const DX = 150, DY = -80;
+    gesture(ctx.host, { x: mid.x, y: mid.y }, { x: mid.x + DX, y: mid.y + DY }, 16);
+    await ctx.tick();
+    await ctx.settle(); // the command commit is void-async — let it reach the undo stack
+
+    const after = stroke.getPoints();
+    check(after.length === before.length,
+      `a translate must not change the point count: ${before.length} -> ${after.length}`);
+    const translated = after.every((p, i) =>
+      Math.abs(p.x - (before[i].x + DX)) < 0.05 && Math.abs(p.y - (before[i].y + DY)) < 0.05);
+    check(translated,
+      `the drag did not move the stroke: point[0] ${JSON.stringify(before[0])} -> ${JSON.stringify(after[0])}, expected +${DX},${DY}`);
+
+    // -----------------------------------------------------------------------
+    // 4. One gesture, one undo step: undo restores the pre-drag geometry…
+    // -----------------------------------------------------------------------
+    await ctx.engine.undo();
+    await ctx.tick();
+    const undone = stroke.getPoints();
+    const restored = undone.length === before.length && undone.every((p, i) =>
+      Math.abs(p.x - before[i].x) < 0.05 && Math.abs(p.y - before[i].y) < 0.05);
+    check(restored, 'undo should restore the stroke to where the drag began');
+
+    // 5. …and redo re-applies it.
+    await ctx.engine.redo();
+    await ctx.tick();
+    const redone = stroke.getPoints().map((p) => ({ ...p }));
+    const reapplied = redone.every((p, i) =>
+      Math.abs(p.x - (before[i].x + DX)) < 0.05 && Math.abs(p.y - (before[i].y + DY)) < 0.05);
+    check(reapplied, 'redo should re-apply the translate');
+
+    // -----------------------------------------------------------------------
+    // 6. Escape CANCELS: pen down on the ink, pull it, Escape — nothing moves,
+    //    nothing lands on the undo stack.
+    // -----------------------------------------------------------------------
+    const rect = ctx.host.getBoundingClientRect();
+    const grab = redone[Math.floor(redone.length / 2)];
+    const firePtr = (type, x, y, buttons) =>
+      ctx.host.dispatchEvent(new PointerEvent(({ mousedown: 'pointerdown', mousemove: 'pointermove', mouseup: 'pointerup' })[type] ?? type, {
+        pointerType: 'mouse', button: 0, buttons, bubbles: true,
+        clientX: rect.left + x, clientY: rect.top + y,
+      }));
+    firePtr('pointerdown', grab.x, grab.y, 1);
+    firePtr('pointermove', grab.x + 60, grab.y + 60, 1);
+    window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+    firePtr('pointerup', grab.x + 60, grab.y + 60, 0);
+    await ctx.tick();
+    await ctx.settle();
+    const afterEscape = stroke.getPoints();
+    const untouched = afterEscape.every((p, i) =>
+      Math.abs(p.x - redone[i].x) < 0.05 && Math.abs(p.y - redone[i].y) < 0.05);
+    check(untouched, 'Escape mid-drag should abandon the move — the ink must not budge');
+
+    // -----------------------------------------------------------------------
+    // 7. RESTYLE rides the same selection path: recolour + rewiden the stroke
+    //    through the model's setStyle, and the RENDERED ink follows.
+    // -----------------------------------------------------------------------
+    stroke.setStyle({ color: '#e11d48', width: 8 });
+    ctx.instance.renderNow(); // a bare model write asks for its repaint, like any embedder
+    await ctx.tick();
+    const path = ctx.host.querySelector('path.grafloria-stroke');
+    check(path !== null, 'the committed ink should render a path.grafloria-stroke');
+    const restyled = path.getAttribute('stroke') === '#e11d48' || path.getAttribute('fill') === '#e11d48';
+    check(restyled, `restyle should reach the pixels: stroke=${path.getAttribute('stroke')} fill=${path.getAttribute('fill')}`);
+  },
+});
+</script>

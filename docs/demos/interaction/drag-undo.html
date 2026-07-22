@@ -1,0 +1,95 @@
+<meta charset="utf-8">
+<title>Drag is undoable — Grafloria</title>
+<link rel="stylesheet" href="../shell/demo.css">
+<header id="demo-head"></header>
+<div id="canvas"></div>
+<script type="module">
+import { render } from '../shell/grafloria.js';
+import { defineDemo, check } from '../shell/demo.js';
+
+// A pointer node-drag used to mutate the model directly and record NOTHING on the command
+// history — so Ctrl+Z could not undo a drag (keyboard-nudge and resize DID commit a command;
+// only the drag skipped it). This demo drives a REAL pointer drag through the public embed
+// and proves undo restores the start, redo re-applies — one gesture, one undo step.
+defineDemo({
+  name: 'Drag is undoable',
+  blurb: 'Drag a node, press Ctrl+Z — it returns to where the drag began. The drag now commits one undoable step.',
+  howTo: [
+    'Drag the "drag me" node somewhere else and release.',
+    'Press ⌘Z / Ctrl+Z — the node snaps back to exactly where the drag began: one gesture, one undo step.',
+    'Press ⇧⌘Z / Ctrl+Y — redo puts it back where you dropped it.',
+    'Drag both nodes, then undo twice — each drag is its own history step, unwound in order.',
+  ],
+  reactflow: 'Undo and Redo',
+  pro: true, // React Flow's undo/redo is a Pro example
+
+  async setup(ctx) {
+    const api = render({
+      nodes: [
+        { id: 'n1', position: { x: 260, y: 200 }, size: { width: 120, height: 60 }, label: 'drag me' },
+        { id: 'n2', position: { x: 520, y: 200 }, size: { width: 120, height: 60 }, label: 'and me' },
+      ],
+    }, ctx.host);
+    ctx.instance = api;
+    ctx.diagram = api.getModel();
+    ctx.engine = api.getEngine();
+
+    ctx.fire = (type, w) => {
+      const rect = ctx.host.getBoundingClientRect();
+      const c = api.viewport.worldToClient(w.x, w.y, rect);
+      ctx.host.dispatchEvent(new PointerEvent(({ mousedown: 'pointerdown', mousemove: 'pointermove', mouseup: 'pointerup' })[type] ?? type, { bubbles: true, pointerId: 1, pointerType: 'mouse', clientX: c.x, clientY: c.y, button: 0 }));
+    };
+    // Select then drag: the ladder needs the node selected before a body-press drags it.
+    // The binder commits the drag via `commandManager.execute()`, which is async (void).
+    // Wait for it to land on the history stack before undoing — same as the unit test.
+    ctx.settle = () => new Promise((r) => setTimeout(r, 0));
+    ctx.dragNode = async (id, dx, dy) => {
+      const n = ctx.diagram.getNode(id);
+      ctx.diagram.selectNode(n);
+      const c = { x: n.position.x + n.size.width / 2, y: n.position.y + n.size.height / 2 };
+      ctx.fire('mousedown', c);
+      ctx.fire('mousemove', { x: c.x + 8, y: c.y }); // cross the drag threshold
+      ctx.fire('mousemove', { x: c.x + dx, y: c.y + dy });
+      ctx.fire('mouseup',   { x: c.x + dx, y: c.y + dy });
+      api.renderNow();
+      await ctx.settle(); // let the async command commit reach the undo stack
+    };
+    ctx.pos = (id) => { const n = ctx.diagram.getNode(id); return { x: Math.round(n.position.x), y: Math.round(n.position.y) }; };
+    await ctx.tick();
+  },
+
+  async assert(ctx) {
+    const start = ctx.pos('n1');
+
+    // 1. A real pointer drag moves the node.
+    await ctx.dragNode('n1', 180, 100);
+    const moved = ctx.pos('n1');
+    check(moved.x === start.x + 180 && moved.y === start.y + 100,
+      `drag did not move the node: ${JSON.stringify(start)} -> ${JSON.stringify(moved)}`);
+
+    // 2. THE ASSERTION THAT WAS RED: undo returns it to where the drag BEGAN —
+    //    driven through the REAL keyboard chord (⌘Z), not engine.undo(). The
+    //    engine API always worked while NO key binding reached it, so a live
+    //    visitor pressing undo got nothing (live report, on a Mac — which is
+    //    also why this dispatches metaKey, the chord Ctrl-only handlers drop).
+    window.dispatchEvent(new KeyboardEvent('keydown', { key: 'z', metaKey: true, bubbles: true, cancelable: true }));
+    // The chord routes through an async command — poll briefly for it to land.
+    for (let i = 0; i < 30 && ctx.pos('n1').x !== start.x; i++) await new Promise((r) => setTimeout(r, 10));
+    const undone = ctx.pos('n1');
+    check(undone.x === start.x && undone.y === start.y,
+      `keyboard undo (⌘Z) did not restore the drag start: expected ${JSON.stringify(start)}, got ${JSON.stringify(undone)}`);
+
+    // 3. Redo re-applies it — one gesture is one clean, reversible history step.
+    //    Ctrl+Shift+Z, so both modifier flavours are exercised end-to-end.
+    // The position lands mid-pipeline; give the command manager a beat to
+    // finish the undo before the next chord, or the redo is refused as
+    // re-entrant and silently dropped.
+    await new Promise((r) => setTimeout(r, 40));
+    window.dispatchEvent(new KeyboardEvent('keydown', { key: 'z', ctrlKey: true, shiftKey: true, bubbles: true, cancelable: true }));
+    for (let i = 0; i < 30 && ctx.pos('n1').x !== moved.x; i++) await new Promise((r) => setTimeout(r, 10));
+    const redone = ctx.pos('n1');
+    check(redone.x === moved.x && redone.y === moved.y,
+      `keyboard redo (Ctrl+Shift+Z) did not re-apply the drag: expected ${JSON.stringify(moved)}, got ${JSON.stringify(redone)}`);
+  },
+});
+</script>

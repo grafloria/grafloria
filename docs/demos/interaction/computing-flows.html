@@ -1,0 +1,187 @@
+<meta charset="utf-8">
+<title>Computing flows — Grafloria</title>
+<link rel="stylesheet" href="../shell/demo.css">
+<style>
+  #readout { padding: 8px 24px; font: 12px/1.5 ui-monospace, monospace; opacity: .9; border-bottom: 1px solid rgba(127,127,127,.25); display: flex; align-items: center; gap: 14px; flex-wrap: wrap; }
+  #readout label { display: inline-flex; align-items: center; gap: 6px; }
+  #src { width: 74px; font: inherit; padding: 2px 6px; border: 1px solid rgba(127,127,127,.5); border-radius: 4px; background: transparent; color: inherit; }
+  #formula { white-space: pre; }
+  #canvas { height: calc(100vh - 176px); }
+</style>
+<header id="demo-head"></header>
+<div id="readout">
+  <label>input <input id="src" type="number" step="1" value="2" aria-label="source value — type to recompute the flow"></label>
+  <span id="formula"></span>
+</div>
+<div id="canvas"></div>
+<script type="module">
+import { render } from '../shell/grafloria.js';
+import { defineDemo, check } from '../shell/demo.js';
+
+// Data flowing through TYPED ports. Grafloria gives you the graph — nodes with typed
+// input/output ports, links connecting port→port — and fires change events; the app
+// supplies the per-node compute (exactly as React Flow's own "Computing Flows"
+// example does). The teeth: values propagate along the REAL link topology, so
+// TYPING a new input recomputes every downstream node, and REWIRING (dropping or
+// cutting a wire) recomputes off the new topology — the number at the sink is not
+// decoration, it is computed through the model, live.
+//
+//   input ──▶ [ ×3 ] ──▶ [ +10 ] ──▶ sink
+const SPEC = {
+  nodes: [
+    { id: 'in',  position: { x: 40,  y: 120 }, size: { width: 120, height: 56 }, label: 'input',
+      ports: [{ id: 'in.out', side: 'right', type: 'output', dataType: 'number' }], data: { value: 2 } },
+    { id: 'mul', position: { x: 240, y: 120 }, size: { width: 120, height: 56 }, label: '× 3',
+      ports: [{ id: 'mul.in', side: 'left', type: 'input', dataType: 'number' },
+              { id: 'mul.out', side: 'right', type: 'output', dataType: 'number' }], data: { op: 'mul', k: 3, value: 0 } },
+    { id: 'add', position: { x: 440, y: 120 }, size: { width: 120, height: 56 }, label: '+ 10',
+      ports: [{ id: 'add.in', side: 'left', type: 'input', dataType: 'number' },
+              { id: 'add.out', side: 'right', type: 'output', dataType: 'number' }], data: { op: 'add', k: 10, value: 0 } },
+    { id: 'out', position: { x: 640, y: 120 }, size: { width: 120, height: 56 }, label: 'sink',
+      ports: [{ id: 'out.in', side: 'left', type: 'input', dataType: 'number' }], data: { op: 'sink', value: 0 } },
+  ],
+  edges: [
+    { id: 'l1', source: 'in',  target: 'mul', sourceHandle: 'in.out',  targetHandle: 'mul.in' },
+    { id: 'l2', source: 'mul', target: 'add', sourceHandle: 'mul.out', targetHandle: 'add.in' },
+    { id: 'l3', source: 'add', target: 'out', sourceHandle: 'add.out', targetHandle: 'out.in' },
+  ],
+};
+
+defineDemo({
+  name: 'Computing flows',
+  blurb: 'Type a value into the source and it flows: every downstream node recomputes LIVE along the real link topology. Drop a wire and the result recomputes the instant it lands; cut a wire and the flow stops past the cut. Grafloria owns the graph and fires the change events; the app owns the arithmetic.',
+  howTo: [
+    'Type a number into the "input" box above the canvas — the strip recomputes live as you type, all the way to the sink: input → ×3 → +10 → sink.',
+    'Watch the wires carry it: each stage\'s typed output port (number) feeds the next stage\'s typed input port; the sink\'s value is computed through the real links, not painted on.',
+    'Rewire it: grab the +10 node\'s right port and drop the wire on the sink\'s left port — a dropped connection recomputes the sink immediately, because the graph fires a link-added event the app listens to.',
+    'Drag any stage around — the wires stay attached and the numbers do NOT change: topology and data carry the flow, position does not.',
+    'Drag on empty canvas to pan — the flow itself is untouched.',
+  ],
+  reactflow: 'Computing Flows',
+
+  async setup(ctx) {
+    const api = render(SPEC, ctx.host);
+    ctx.instance = api;
+    ctx.diagram = api.getModel();
+    ctx.engine = api.getEngine();
+
+    const srcInput = document.getElementById('src');
+    const formula = document.getElementById('formula');
+
+    // Propagate values along the REAL directed links, in source→sink order. Each node
+    // computes from its single incoming value. This walks model.getLinks() — the
+    // library's graph — not a private copy.
+    ctx.propagate = () => {
+      const model = ctx.diagram;
+      const order = ['in', 'mul', 'add', 'out']; // topological for this pipeline
+      const incoming = (nodeId) => model.getLinks().filter((l) => l.targetNodeId === nodeId);
+      for (const id of order) {
+        const node = model.getNode(id);
+        if (id === 'in') continue; // source holds its own value
+        const feeds = incoming(id);
+        const input = feeds.length ? (model.getNode(feeds[0].sourceNodeId)?.data.value ?? 0) : null;
+        if (input === null) continue; // no upstream → keep last value (the "cut" case)
+        const d = node.data;
+        d.value = d.op === 'mul' ? input * d.k : d.op === 'add' ? input + d.k : input;
+      }
+      api.renderNow();
+      ctx.report();
+    };
+    ctx.report = () => {
+      const v = (id) => ctx.diagram.getNode(id).data.value;
+      formula.textContent = `→  ×3=${v('mul')}  →  +10=${v('add')}  →  sink=${v('out')}`;
+      // Keep the box in sync when the value is changed from elsewhere (assert, a
+      // reset), but never yank it out from under a human mid-type.
+      if (document.activeElement !== srcInput) srcInput.value = String(v('in'));
+    };
+
+    // LIVE TYPING. Editing the source box recomputes the WHOLE flow — this is React
+    // Flow's "type and it propagates", driven by a real DOM input event.
+    srcInput.addEventListener('input', () => {
+      const n = Number(srcInput.value);
+      ctx.diagram.getNode('in').data.value = Number.isFinite(n) ? n : 0;
+      ctx.propagate();
+    });
+
+    // LIVE REWIRING. The graph fires link:added / link:removed whenever the topology
+    // changes — by a real port-drag gesture or programmatically — and the app
+    // recomputes off the NEW topology. THIS is what makes a dropped wire change the
+    // sink's number with nobody calling propagate by hand.
+    ctx.diagram.on('link:added', () => ctx.propagate());
+    ctx.diagram.on('link:removed', () => ctx.propagate());
+
+    ctx.propagate();
+  },
+
+  async assert(ctx) {
+    const model = ctx.diagram;
+    const srcInput = document.getElementById('src');
+    const formula = document.getElementById('formula');
+
+    // 0. The ports really are TYPED — dataType rode through the spec onto the model.
+    const outPort = model.getNode('in').getPort('in.out');
+    check(outPort?.dataType === 'number', `the output port lost its dataType (${outPort?.dataType})`);
+    check(model.getNode('mul').getPort('mul.in')?.type === 'input', 'the transform\'s input port is not typed input');
+
+    // 1. THE FLOW COMPUTES through the graph: 2 → ×3 → 6 → +10 → 16 at the sink.
+    model.getNode('in').data.value = 2;
+    ctx.propagate();
+    check(model.getNode('mul').data.value === 6, `×3 stage = ${model.getNode('mul').data.value}, expected 6`);
+    check(model.getNode('add').data.value === 16, `+10 stage = ${model.getNode('add').data.value}, expected 16`);
+    check(model.getNode('out').data.value === 16, `sink = ${model.getNode('out').data.value}, expected 16`);
+
+    // 2. CHANGE THE INPUT and everything downstream recomputes. 5 → 15 → 25.
+    model.getNode('in').data.value = 5;
+    ctx.propagate();
+    check(model.getNode('out').data.value === 25, `after input=5 the sink is ${model.getNode('out').data.value}, expected 25`);
+
+    // 3. CUT A LINK and the flow stops PAST the cut. Remove mul→add: the sink no
+    //    longer tracks the input (add keeps its last value; sink follows add).
+    const sinkBefore = model.getNode('out').data.value;
+    model.removeLink('l2');
+    model.getNode('in').data.value = 100; // would give sink=310 if still connected
+    ctx.propagate();
+    check(model.getNode('mul').data.value === 300, 'the stage upstream of the cut did not recompute');
+    check(model.getNode('out').data.value === sinkBefore,
+      `the sink changed to ${model.getNode('out').data.value} despite the cut — data crossed a removed link`);
+
+    // 4. RECONNECT (the reconciler adds the missing l2 back) and the flow is whole
+    //    again: input 100 → ×3 = 300 → +10 = 310 at the sink.
+    ctx.instance.setEdges([
+      { id: 'l1', source: 'in',  target: 'mul', sourceHandle: 'in.out',  targetHandle: 'mul.in' },
+      { id: 'l2', source: 'mul', target: 'add', sourceHandle: 'mul.out', targetHandle: 'add.in' },
+      { id: 'l3', source: 'add', target: 'out', sourceHandle: 'add.out', targetHandle: 'out.in' },
+    ]);
+    ctx.propagate();
+    check(model.getNode('out').data.value === 310, `after reconnecting, sink is ${model.getNode('out').data.value}, expected 310`);
+
+    // 5. LIVE TYPING through a REAL DOM input event — no manual propagate. Editing
+    //    the source box recomputes the whole flow and repaints the strip: 4 → 12 → 22.
+    srcInput.value = '4';
+    srcInput.dispatchEvent(new Event('input', { bubbles: true }));
+    check(model.getNode('out').data.value === 22, `typing 4 should give sink = 4×3+10 = 22, got ${model.getNode('out').data.value}`);
+    check(/sink=22/.test(formula.textContent), `the readout strip did not show the live-typed result (was "${formula.textContent}")`);
+
+    // 6. LIVE REWIRE by a REAL connect gesture. Cut the sink's feed, retype, and the
+    //    sink goes STALE (flow stops past the cut). Then DRAG add.out → out.in through
+    //    the real connection pipeline: the sink recomputes the INSTANT the wire lands,
+    //    driven by the link:added event — nobody calls propagate.
+    model.removeLink('l3');                                   // link:removed → out loses its feed
+    srcInput.value = '1';
+    srcInput.dispatchEvent(new Event('input', { bubbles: true })); // in=1 → mul=3 → add=13; out STALE at 22
+    check(model.getNode('add').data.value === 13, `upstream of the cut should recompute to 13, got ${model.getNode('add').data.value}`);
+    check(model.getNode('out').data.value === 22, `past the cut the sink must be STALE (22), got ${model.getNode('out').data.value}`);
+
+    const csm = ctx.engine.getConnectionStateManager();
+    const before = model.getLinks().length;
+    csm.startConnection(model.getNode('add').getPort('add.out'), { x: 0, y: 0 });
+    const res = csm.completeConnection(model.getNode('out').getPort('out.in'));
+    check(res.success === true, 'the reconnect gesture was refused by the connect pipeline');
+    // Link creation + routing is async off connection:complete — wait for the link.
+    for (let i = 0; i < 25 && model.getLinks().length === before; i++) await ctx.tick(15);
+    check(model.getLinks().length === before + 1, `the reconnect gesture created ${model.getLinks().length - before} link(s), expected 1`);
+    check(model.getNode('out').data.value === 13,
+      `after the wire landed the sink must recompute LIVE to 13, got ${model.getNode('out').data.value} — the link:added event did not drive a recompute`);
+  },
+});
+</script>

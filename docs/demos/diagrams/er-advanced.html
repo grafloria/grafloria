@@ -1,0 +1,307 @@
+<meta charset="utf-8">
+<title>ER diagram — advanced — Grafloria</title>
+<link rel="stylesheet" href="../shell/demo.css">
+<style>
+  /* The KIT owns the card look, selection ring and routing. The page adds one
+     garnish on top of the kit's own markup: tint the FK rows so a reader's eye
+     lands on "two FKs → one PK" without hunting (the kit paints the badge, the
+     page paints the wash — its classes are a styling surface, not a secret). */
+  #canvas .axk-row:has(.axk-key.axk-fk) { background: #faf5ff; }
+  @media (prefers-color-scheme: dark) { #canvas .axk-row:has(.axk-key.axk-fk) { background: #2a2140; } }
+  /* A small cardinality legend, pinned to the corner. Plain chrome — it is not
+     part of the diagram model, so it never perturbs an assert. */
+  .er-legend { position: fixed; left: 14px; bottom: 14px; z-index: 5;
+    font: 11px/1.4 system-ui, sans-serif; background: rgba(255,255,255,.94);
+    border: 1px solid #cbd5e1; border-radius: 8px; padding: 8px 11px;
+    box-shadow: 0 4px 14px rgba(15,23,42,.12); color: #334155; }
+  .er-legend b { display: block; margin-bottom: 5px; font-size: 10px; letter-spacing: .4px;
+    text-transform: uppercase; color: #64748b; }
+  .er-legend div { display: flex; align-items: center; gap: 7px; margin: 2px 0; }
+  .er-legend svg { flex: none; }
+  @media (prefers-color-scheme: dark) {
+    .er-legend { background: rgba(30,41,59,.94); border-color: #475569; color: #e2e8f0; }
+    .er-legend b { color: #94a3b8; }
+  }
+</style>
+<header id="demo-head"></header>
+<div id="canvas"></div>
+<script type="module">
+import { render, erDiagram, erRowCenterY, erTable } from '../shell/grafloria.js';
+import { defineDemo, check } from '../shell/demo.js';
+
+// The ADVANCED entity-relationship showcase, now written the NEW way: one
+// erDiagram({ entities, relationships }) call from the reusable diagram kit.
+// Where diagrams/table-er.html shows the basics, this page keeps the shapes a
+// real schema throws at you — and every one of them is PURE DATA:
+//
+//   1. TWO relationships between the SAME pair of tables, on different FK
+//      columns (Shipment.from_warehouse_id AND Shipment.to_warehouse_id, both
+//      → Warehouse.id). Both ends are 'TABLE.column' strings; because both
+//      tails land on the SAME Warehouse.id row, the kit auto-spreads the two
+//      landings apart (±5px) so they never stack.
+//   2. A SELF-REFERENCE (Employee.manager_id → Employee.id): both ends on the
+//      SAME table, routed out the right side and back in as a corner loop
+//      (fromSide/toSide both 'right' — the field-level ports sit at the id and
+//      manager_id row centres, so the loop brackets the card's right edge).
+//   3. A MANY-TO-MANY resolved through a junction table
+//      (Student —< Enrollment >— Course), the FK columns carrying the feet.
+//   4. OPTIONAL vs MANDATORY cardinality by NAME: 'one-to-zero-or-many' and
+//      'one-to-one-or-many' — the kit translates to the composite ER markers.
+//
+// FIELD-LEVEL attachment is the kit's 'TABLE.column' endpoint syntax: it pins
+// an invisible absolute-layout port at that column's row centre (erRowCenterY)
+// and glues the edge to it — a misspelled column name THROWS at build time.
+// Row selection, the card selection ring, and resizable:false (no resize-handle
+// frame around a card) are all wired by the kit's finalize, which render() runs
+// automatically. Compare diagrams/erd-editor.html for the editable variant.
+
+const SPEC = erDiagram({
+  entities: [
+    // --- Headline: two FK relationships between the SAME pair ---------------
+    { id: 'WAREHOUSE', name: 'Warehouse', position: { x: 80, y: 70 }, columns: [
+      { name: 'id', type: 'int', pk: true },
+      { name: 'code', type: 'varchar' },
+      { name: 'city', type: 'varchar' },
+    ]},
+    // Sits LOWER than Warehouse on purpose: the two headline edges get real
+    // vertical runs, so their labels ride the (staggered) vertical segments
+    // and never stack on each other.
+    { id: 'SHIPMENT', name: 'Shipment', position: { x: 400, y: 150 }, columns: [
+      { name: 'id', type: 'int', pk: true },
+      { name: 'from_warehouse_id', type: 'int', fk: true },
+      { name: 'to_warehouse_id', type: 'int', fk: true },
+      { name: 'shipped_at', type: 'date' },
+    ]},
+    // --- Self-reference -----------------------------------------------------
+    { id: 'EMPLOYEE', name: 'Employee', position: { x: 850, y: 90 }, columns: [
+      { name: 'id', type: 'int', pk: true },
+      { name: 'name', type: 'varchar' },
+      { name: 'manager_id', type: 'int', fk: true },
+    ]},
+    // --- Many-to-many through a junction ------------------------------------
+    // STUDENT and COURSE are row-aligned to the ENROLLMENT rows they join
+    // (Student.id ↔ student_id, Course.id ↔ course_id), so both edges run
+    // dead straight into their FK rows.
+    { id: 'STUDENT', name: 'Student', position: { x: 80, y: 370 }, columns: [
+      { name: 'id', type: 'int', pk: true },
+      { name: 'name', type: 'varchar' },
+      { name: 'email', type: 'varchar' },
+    ]},
+    { id: 'ENROLLMENT', name: 'Enrollment', position: { x: 430, y: 345 }, columns: [
+      { name: 'id', type: 'int', pk: true },
+      { name: 'student_id', type: 'int', fk: true },
+      { name: 'course_id', type: 'int', fk: true },
+      { name: 'grade', type: 'varchar' },
+    ]},
+    { id: 'COURSE', name: 'Course', position: { x: 800, y: 395 }, columns: [
+      { name: 'id', type: 'int', pk: true },
+      { name: 'title', type: 'varchar' },
+      { name: 'credits', type: 'int' },
+    ]},
+  ],
+  relationships: [
+    // TWO relationships, SAME pair, different FK columns — the headline. Both
+    // tails land on Warehouse.id: the kit spreads them ±5px automatically.
+    // ships-to is declared FIRST so the spread pushes ships-from's tail UP
+    // (toward its higher FK row): the two labels' midpoints separate instead
+    // of stacking on the same spot.
+    { id: 'ships-to', from: 'WAREHOUSE.id', to: 'SHIPMENT.to_warehouse_id', label: 'ships to', color: '#d97706' },
+    { id: 'ships-from', from: 'WAREHOUSE.id', to: 'SHIPMENT.from_warehouse_id', label: 'ships from', color: '#0d9488' },
+    // Self-reference: id (PK) → manager_id (FK) on the same table. Both ends
+    // out the RIGHT side — the loop brackets the card's right edge.
+    { id: 'reports-to', from: 'EMPLOYEE.id', to: 'EMPLOYEE.manager_id', label: 'reports to', fromSide: 'right', toSide: 'right' },
+    // Junction: optional (zero-or-many) vs mandatory (one-or-many), by name.
+    { id: 'has', from: 'STUDENT.id', to: 'ENROLLMENT.student_id', label: 'has', cardinality: 'one-to-zero-or-many' },
+    { id: 'for', from: 'COURSE.id', to: 'ENROLLMENT.course_id', label: 'for', cardinality: 'one-to-one-or-many', fromSide: 'left', toSide: 'right' },
+  ],
+});
+
+// Every table here takes part in a FIELD-LEVEL join, and a node with explicit
+// ports loses its DEFAULT (hoverable, wireable) side ports — the kit emits only
+// the invisible row ports it pinned. Hand each card back one ordinary
+// connection point, as plain spec data: hover a card and the glyph surfaces at
+// its bottom edge, same as any default-ported node.
+for (const n of SPEC.nodes) (n.ports ??= []).push({ id: `${n.id}__wire__bottom`, side: 'bottom' });
+
+defineDemo({
+  name: 'ER diagram — advanced',
+  blurb: 'The advanced ER shapes — two relationships between the SAME pair of tables on different FK columns, a self-reference, a many-to-many junction, optional-vs-mandatory crow\'s-foot cardinality — all from ONE erDiagram() call: every line is a \'TABLE.column\' → \'TABLE.column\' string pinned to the exact row it joins.',
+  howTo: [
+    'Read the headline pair (top-left): SHIPMENT has TWO foreign keys into WAREHOUSE — the teal line ("ships from") lands on the from_warehouse_id row, the amber line ("ships to") on the to_warehouse_id row. In the source each is just a data item: { from: \'WAREHOUSE.id\', to: \'SHIPMENT.from_warehouse_id\' } — the kit pins an invisible port at that row\'s centre. Both tails share the Warehouse.id row, so the kit spreads them apart automatically.',
+    'Follow the self-reference (top-right): EMPLOYEE.manager_id points back to EMPLOYEE.id — one relationship whose two ends name the SAME table. With fromSide and toSide both \'right\' the orthogonal router loops out of the card and back into the manager_id row: one manager, many reports (the crow\'s-foot).',
+    'Trace the many-to-many (bottom): STUDENT and COURSE join through the ENROLLMENT junction. Cardinality is named data — \'one-to-zero-or-many\' ("has", optional: a circle before the foot) vs \'one-to-one-or-many\' ("for", mandatory: a bar before the foot) — see the legend, bottom-left.',
+    'Click a table: the CARD rings blue — no rectangle frame, no resize handles (the kit ships resizable:false for ER cards). Click a COLUMN row: it highlights and the kit fires axk:row-select with { nodeId, rowIndex, name }. Drag a table: every line stays glued to its rows.',
+    'Read the source: the whole page is one erDiagram({ entities, relationships }) call — no HTML trees, no port math, no arrow config. Misspell a column in a relationship end and the kit THROWS instead of drawing a wrong line. Scripted edits go through the typed handles: erTable(api, \'ENROLLMENT\').columns.add(…) — one undoable step, ports re-glued.',
+  ],
+  reactflow: 'Entity Relationship',
+  pro: true,
+
+  async setup(ctx) {
+    const api = render(SPEC, ctx.host);
+    ctx.instance = api;
+    ctx.diagram = api.getModel();
+    api.fitView?.(48);
+    await ctx.tick();
+
+    // Cardinality legend — plain chrome, appended to the body (asserted by
+    // nothing, harmless under the harness).
+    if (!document.querySelector('.er-legend')) {
+      const S = '#64748b';
+      const icon = (paths) => `<svg width="42" height="18" viewBox="0 0 42 18" fill="none" stroke="${S}" stroke-width="1.4">${paths}</svg>`;
+      const legend = document.createElement('div');
+      legend.className = 'er-legend';
+      legend.innerHTML =
+        '<b>Cardinality</b>' +
+        `<div>${icon('<line x1="2" y1="9" x2="30" y2="9"/><line x1="24" y1="4" x2="24" y2="14"/>')}exactly one</div>` +
+        `<div>${icon('<line x1="2" y1="9" x2="26" y2="9"/><line x1="26" y1="9" x2="40" y2="3"/><line x1="26" y1="9" x2="40" y2="9"/><line x1="26" y1="9" x2="40" y2="15"/>')}many (crow&#39;s-foot)</div>` +
+        `<div>${icon('<circle cx="7" cy="9" r="4"/><line x1="11" y1="9" x2="26" y2="9"/><line x1="26" y1="9" x2="40" y2="3"/><line x1="26" y1="9" x2="40" y2="9"/><line x1="26" y1="9" x2="40" y2="15"/>')}zero-or-many &mdash; optional</div>` +
+        `<div>${icon('<line x1="2" y1="9" x2="26" y2="9"/><line x1="9" y1="4" x2="9" y2="14"/><line x1="26" y1="9" x2="40" y2="3"/><line x1="26" y1="9" x2="40" y2="9"/><line x1="26" y1="9" x2="40" y2="15"/>')}one-or-many &mdash; mandatory</div>`;
+      document.body.appendChild(legend);
+    }
+  },
+
+  async assert(ctx) {
+    const host = ctx.host;
+    const model = ctx.diagram;
+    const portOf = (nodeId, portId) => model.getNode(nodeId).getPort(portId);
+
+    // 1. Six entity tables render as KIT cards with headers + typed columns.
+    const heads = [...host.querySelectorAll('.axk-entity-head')].map((e) => (e.textContent || '').trim());
+    check(heads.length === 6, `expected 6 entity headers, got ${heads.length}: [${heads}]`);
+    for (const name of ['Warehouse', 'Shipment', 'Employee', 'Student', 'Enrollment', 'Course']) {
+      check(heads.includes(name), `missing entity table "${name}"`);
+    }
+    const ship = host.querySelector('[data-node-id="SHIPMENT"] foreignObject');
+    check(!!ship && (ship.textContent || '').includes('from_warehouse_id') && (ship.textContent || '').includes('to_warehouse_id'),
+      'Shipment should list BOTH foreign-key columns (from_warehouse_id, to_warehouse_id)');
+
+    // 2. PK/FK badges present (kit classes).
+    const badges = [...host.querySelectorAll('.axk-entity .axk-key')].map((e) => e.textContent).filter(Boolean);
+    check(badges.includes('PK') && badges.includes('FK'), `expected PK and FK badges, got [${[...new Set(badges)]}]`);
+
+    // 3. Exactly five relationships; exactly TWO between the SAME pair (headline).
+    const links = model.getLinks();
+    check(links.length === 5, `expected 5 relationships, got ${links.length}`);
+    const pair = links.filter((l) => {
+      const s = l.sourceNodeId, t = l.targetNodeId;
+      return (s === 'WAREHOUSE' && t === 'SHIPMENT') || (s === 'SHIPMENT' && t === 'WAREHOUSE');
+    });
+    check(pair.length === 2, `expected 2 relationships between WAREHOUSE and SHIPMENT (the headline), got ${pair.length}`);
+
+    // 4. SELF-REFERENCE — one relationship whose two ends are the same node,
+    //    and its loop actually PAINTS: the path travels out past the card's
+    //    right edge and back (a collapsed/zero-length loop fails both checks).
+    const selfRefs = links.filter((l) => l.sourceNodeId === l.targetNodeId);
+    check(selfRefs.length === 1 && selfRefs[0].sourceNodeId === 'EMPLOYEE',
+      `expected exactly 1 self-referential relationship (on EMPLOYEE), got ${selfRefs.length}`);
+    const loopPaths = [...host.querySelectorAll('[data-link-id="reports-to"] path')].filter((p) => p.getTotalLength);
+    const loopLen = Math.max(0, ...loopPaths.map((p) => p.getTotalLength()));
+    check(loopLen > 60, `the self-loop should paint a real out-and-back path (length > 60), got ${loopLen.toFixed(1)}`);
+    const empCard = host.querySelector('[data-node-id="EMPLOYEE"] .axk-entity').getBoundingClientRect();
+    const loopRight = Math.max(...loopPaths.map((p) => p.getBoundingClientRect().right));
+    check(loopRight > empCard.right + 4, `the self-loop should bracket the card's RIGHT edge (loop right ${loopRight.toFixed(1)} vs card ${empCard.right.toFixed(1)})`);
+
+    // 5. Cardinality markers PAINT: crow-feet on the 3 plain one-to-many heads,
+    //    a "one" bar on all 5 tails, and one of each composite ER marker.
+    check(host.querySelectorAll('.arrow-crow-foot').length === 3,
+      `expected 3 painted crow's-foot markers, got ${host.querySelectorAll('.arrow-crow-foot').length}`);
+    check(host.querySelectorAll('.arrow-one').length === 5,
+      `expected a "one" bar on each of the 5 tails, got ${host.querySelectorAll('.arrow-one').length}`);
+    check(host.querySelectorAll('.arrow-zero-or-many').length === 1, 'expected a zero-or-many (optional) marker to paint');
+    check(host.querySelectorAll('.arrow-one-or-many').length === 1, 'expected a one-or-many (mandatory) marker to paint');
+
+    // 6. FIELD-LEVEL attachment — every 'TABLE.column' end became an invisible
+    //    absolute-layout port pinned at ITS row's centre (erRowCenterY).
+    for (const [nodeId, portId, row] of [
+      ['WAREHOUSE', 'WAREHOUSE__id__right__0', 0],
+      ['WAREHOUSE', 'WAREHOUSE__id__right__1', 0],
+      ['SHIPMENT', 'SHIPMENT__from_warehouse_id__left__0', 1],
+      ['SHIPMENT', 'SHIPMENT__to_warehouse_id__left__0', 2],
+      ['EMPLOYEE', 'EMPLOYEE__id__right__0', 0],
+      ['EMPLOYEE', 'EMPLOYEE__manager_id__right__0', 2],
+      ['STUDENT', 'STUDENT__id__right__0', 0],
+      ['ENROLLMENT', 'ENROLLMENT__student_id__left__0', 1],
+      ['ENROLLMENT', 'ENROLLMENT__course_id__right__0', 2],
+      ['COURSE', 'COURSE__id__left__0', 0],
+    ]) {
+      const p = portOf(nodeId, portId);
+      check(p?.layout?.strategy === 'absolute' && p.layout.args.y === erRowCenterY(row),
+        `${portId} should be pinned at erRowCenterY(${row})=${erRowCenterY(row)}, got ${p?.layout?.args?.y}`);
+    }
+
+    // 7. SAME-ROW SPREAD — two tails land on the one Warehouse.id row; the kit
+    //    must spread them (dy 0 vs -5) and the PAINTED "one" bars must sit
+    //    visibly apart (a stacked pair reads as a single relationship).
+    const dy0 = portOf('WAREHOUSE', 'WAREHOUSE__id__right__0').layout.args.dy;
+    const dy1 = portOf('WAREHOUSE', 'WAREHOUSE__id__right__1').layout.args.dy;
+    check(dy0 !== dy1, `two landings on the SAME row must get distinct spread offsets, got dy=${dy0} and dy=${dy1}`);
+    const oneFrom = host.querySelector('[data-link-id="ships-from"] .arrow-one');
+    const oneTo = host.querySelector('[data-link-id="ships-to"] .arrow-one');
+    check(!!oneFrom && !!oneTo, 'each headline relationship should paint its own "one" tail bar');
+    const tailDy = Math.abs(oneFrom.getBoundingClientRect().top - oneTo.getBoundingClientRect().top);
+    check(tailDy > 2.5, `the two tails sharing Warehouse.id must be visibly spread apart (Δy > 2.5px painted), got Δ=${tailDy.toFixed(1)}px`);
+    // …and the heads land on DIFFERENT Shipment rows (field-level, one row apart).
+    const cfFrom = host.querySelector('[data-link-id="ships-from"] .arrow-crow-foot');
+    const cfTo = host.querySelector('[data-link-id="ships-to"] .arrow-crow-foot');
+    check(!!cfFrom && !!cfTo, 'each headline relationship should paint its own crow-foot');
+    const headDy = Math.abs(cfFrom.getBoundingClientRect().top - cfTo.getBoundingClientRect().top);
+    check(headDy > 10, `the two FK relationships should land on DIFFERENT rows (Δy > 10px), got Δ=${headDy.toFixed(1)}px`);
+
+    // 8. TYPED HANDLES — the scripted-edit surface a host app uses. Insert a
+    //    column ABOVE student_id: the FK port must TRACK its column down one
+    //    row and the 'has' edge must stay glued. Rename via the field handle.
+    //    Both undone, so the golden frame ends exactly as it began.
+    {
+      const t = erTable(ctx.instance, 'ENROLLMENT');
+      check(t.name === 'Enrollment' && t.columns.length === 4, 'erTable handle reads the live spec');
+      check(t.columns.get('student_id')?.fk === true, 'ErField exposes the fk flag');
+      const fkPortY = () => portOf('ENROLLMENT', 'ENROLLMENT__student_id__left__0').layout.args.y;
+      check(fkPortY() === erRowCenterY(1), 'the student_id port starts pinned to row 1');
+
+      await t.columns.add({ name: 'enrolled_at', type: 'date' }, { at: 1 });
+      await ctx.tick(20);
+      check(t.columns.names()[1] === 'enrolled_at', 'columns.add({at:1}) inserts in place');
+      check(t.columns.get('student_id').index === 2, 'student_id slid down one row');
+      check(fkPortY() === erRowCenterY(2), `the FK port TRACKED its column to row 2 (got y=${fkPortY()}, expected ${erRowCenterY(2)})`);
+      check(model.getLink('has')?.targetPortId === 'ENROLLMENT__student_id__left__0',
+        'the "has" edge is STILL glued to the (moved) student_id port');
+      check((host.querySelector('[data-node-id="ENROLLMENT"] foreignObject')?.textContent || '').includes('enrolled_at'),
+        'the inserted column paints in the card');
+
+      await t.columns.get('grade').rename('final_grade');
+      await ctx.tick(20);
+      check(t.columns.get('final_grade')?.type === 'varchar', 'ErField.rename applied (type preserved)');
+
+      await t.undo();
+      await t.undo();
+      await ctx.tick(20);
+      check(t.columns.names().join(',') === 'id,student_id,course_id,grade',
+        `two undos restore the original columns, got [${t.columns.names()}]`);
+      check(fkPortY() === erRowCenterY(1), 'undo re-pinned the FK port to row 1');
+    }
+
+    // 9. REGRESSION TOOTH — select a card with a REAL click (pointer events
+    //    through the binder, not model.selectNode): the kit's finalize set
+    //    resizable:false, so NO resize-handle frame may paint — only the card's
+    //    own ring. This is the bug the hand-composed page had.
+    {
+      const headEl = host.querySelector('[data-node-id="STUDENT"] .axk-entity-head');
+      const r = headEl.getBoundingClientRect();
+      const fire = (type, buttons) => host.dispatchEvent(new PointerEvent(type, {
+        pointerType: 'mouse', button: 0, buttons, bubbles: true,
+        clientX: r.left + r.width / 2, clientY: r.top + r.height / 2,
+      }));
+      fire('pointerdown', 1); fire('pointerup', 0);
+      await ctx.tick(20);
+      const sel = host.querySelector('g.node-group[data-selected="true"]');
+      check(sel?.getAttribute('data-node-id') === 'STUDENT', `a real click on the Student card selects it (got ${sel?.getAttribute('data-node-id')})`);
+      check(host.querySelectorAll('[class*="resize-handle"]').length === 0,
+        'REGRESSION: a selected kit card must paint ZERO resize handles (no rectangle frame)');
+      const ring = getComputedStyle(sel.querySelector('.axk-entity')).boxShadow;
+      check(!!ring && ring !== 'none', 'the selected card paints the kit ring (box-shadow on .axk-entity)');
+    }
+    ctx.instance.getModel().clearSelection?.();
+    await ctx.tick();
+  },
+});
+</script>

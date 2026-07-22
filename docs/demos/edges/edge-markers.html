@@ -1,0 +1,107 @@
+<meta charset="utf-8">
+<title>Edge markers — Grafloria</title>
+<link rel="stylesheet" href="../shell/demo.css">
+<style>#canvas { height: calc(100vh - 140px); }</style>
+<header id="demo-head"></header>
+<div id="canvas"></div>
+<script type="module">
+import { render, registerMarker, unregisterMarker } from '../shell/grafloria.js';
+import { defineDemo, check } from '../shell/demo.js';
+
+// Eight built-in arrowheads, one AUTHOR-DEFINED marker (registerMarker), and one
+// explicit `none`. Each arrowhead renders as its own <g class="arrow arrow-TYPE">
+// inside the link group, so the assertion can prove that EACH link got the head
+// it asked for — not that "an arrow appeared somewhere".
+const BUILTINS = ['arrow', 'open-arrow', 'circle', 'square', 'diamond', 'crow-foot', 'hollow-diamond', 'one-or-many'];
+
+// A custom marker: a raw feather glyph. This is the registerMarker seam — the
+// catalogue is not a closed enum. It tags itself so the test can find it.
+const FEATHER_DEF = {
+  tipOffset: (style) => style.size,
+  render: (mctx) => ({
+    type: 'path',
+    props: {
+      d: `M0,0 L${mctx.size},0 M${mctx.size * 0.4},-4 L${mctx.size},0 L${mctx.size * 0.4},4`,
+      stroke: mctx.color, fill: 'none', 'stroke-width': 1.5,
+      transform: mctx.transform, className: 'arrow arrow-feather',
+    },
+  }),
+};
+registerMarker('feather', FEATHER_DEF);
+
+const ROWS = [...BUILTINS, 'feather', 'none'];
+const NODES = [];
+const EDGES = [];
+ROWS.forEach((type, i) => {
+  const y = 40 + i * 62;
+  NODES.push({ id: `a${i}`, position: { x: 120, y }, size: { width: 120, height: 44 }, label: type });
+  NODES.push({ id: `b${i}`, position: { x: 620, y }, size: { width: 120, height: 44 }, label: '' });
+  EDGES.push({ id: `e${i}`, source: `a${i}`, target: `b${i}`, style: { arrowHead: { type, size: 14, filled: false } } });
+});
+
+defineDemo({
+  name: 'Edge markers',
+  blurb: 'Eight built-in arrowheads + a custom one via registerMarker() + explicit none — each asserted to render the exact head it asked for.',
+  howTo: [
+    'Scan the ten rows — each left node names the head its wire wears: eight built-ins (arrow, open-arrow, circle, square, diamond, crow-foot, hollow-diamond, one-or-many), a custom "feather", and "none" with no head at all.',
+    'Ctrl/cmd + wheel to zoom in on the right-hand ends and compare the glyphs — crow-foot and one-or-many are true ERD heads; the feather is an author-registered marker, not a built-in.',
+    'Drag any right-hand node around — the head stays glued to the endpoint and rotates to match the wire\'s new approach angle.',
+  ],
+  reactflow: 'Markers',
+
+  async setup(ctx) {
+    ctx.instance = render({ nodes: NODES, edges: EDGES }, ctx.host);
+    ctx.diagram = ctx.instance.getModel();
+    await ctx.tick();
+  },
+
+  async assert(ctx) {
+    const arrowClassOf = (id) => {
+      const el = ctx.host.querySelector(`[data-link-id="${id}"] .arrow`);
+      return el ? el.getAttribute('class') : null;
+    };
+
+    // 1. Each of the eight built-ins + the custom one rendered a head, and every
+    //    one is a DISTINCT glyph class. If arrowHead.type were ignored, all nine
+    //    would collapse onto the same default class and this set would shrink.
+    const classes = [];
+    ROWS.forEach((type, i) => {
+      if (type === 'none') return;
+      const cls = arrowClassOf(`e${i}`);
+      check(cls !== null, `link e${i} (${type}) rendered no arrowhead at all`);
+      classes.push(cls.replace('arrow ', '').trim());
+    });
+    const distinct = new Set(classes);
+    check(distinct.size === ROWS.length - 1,
+      `expected ${ROWS.length - 1} distinct arrowhead glyphs, got ${distinct.size}: ${[...distinct].join(', ')}`);
+    // The crow-foot is a named ERD head — pin one exact mapping so this can't pass
+    // by accident on nine copies of nine different-but-wrong classes.
+    check(arrowClassOf(`e${BUILTINS.indexOf('crow-foot')}`).includes('arrow-crow-foot'),
+      'the crow-foot edge did not render an arrow-crow-foot glyph');
+
+    // 2. The CUSTOM marker really came from registerMarker (raw <path>, our class).
+    const feather = ctx.host.querySelector('.arrow-feather');
+    check(!!feather, 'the registerMarker() custom marker did not render');
+    check(feather.tagName.toLowerCase() === 'path', `custom feather should be a raw <path>, got <${feather.tagName}>`);
+
+    // 3. `type: 'none'` renders NO arrowhead — the absence is a feature too.
+    const noneRow = ROWS.indexOf('none');
+    check(arrowClassOf(`e${noneRow}`) === null,
+      "an edge with arrowHead type 'none' still drew an arrowhead");
+
+    // 4. Unregistering the custom marker makes it fall back — proof the registry
+    //    is what was driving it, not a coincidental built-in.
+    unregisterMarker('feather');
+    ctx.instance.renderNow();
+    await ctx.tick();
+    check(!ctx.host.querySelector('.arrow-feather'),
+      'after unregisterMarker(), the feather glyph was still rendered — it was never really custom');
+
+    // Put the feather back: the catalog row still says "feather", and the final
+    // frame is the certify shot.
+    registerMarker('feather', FEATHER_DEF);
+    ctx.instance.renderNow();
+    await ctx.tick();
+  },
+});
+</script>
