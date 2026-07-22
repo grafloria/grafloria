@@ -25,3 +25,8 @@ export * from './keyboard-navigation';
 // overlay layer the in-progress stroke draws on (the presence pattern, for the frame gate).
 export * from './whiteboard-tools';
 export * from './ink-overlay';
+
+// Wave 9: the SHARED touch gesture brain — pan / pinch / tap / long-press /
+// drag-to-connect / touch-resize. One implementation for the framework-free
+// DomEventBinder AND the Angular wrapper (which used to deep-import it).
+export * from './touch-gestures';

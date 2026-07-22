@@ -101,18 +101,11 @@ import {
 // framework-free DomEventBinder instantiates, so Angular gets pan / pinch / tap /
 // long-press / drag-to-connect / touch-resize from ONE implementation instead of
 // growing a second one.
-//
-// DEEP RELATIVE IMPORT, deliberately: `@grafloria/renderer`'s barrel does not export
-// `touch-gestures` (DomEventBinder deep-imports it too), the tsconfig path alias
-// only maps the barrel, and `libs/renderer/src/**` is owned by sibling waves this
-// cycle so the export cannot be added from here. When a wave that owns the
-// renderer hoists TouchGestureController onto the public barrel, flip this to
-// `@grafloria/renderer` and delete this note.
 import {
   TouchGestureController,
   type TouchGestureHost,
   type TouchGestureOptions,
-} from '../../../../../renderer/src/interaction/touch-gestures';
+} from '@grafloria/renderer';
 import { VNodeRendererService } from '../services/vnode-renderer.service';
 import { InteractionHandlerService } from '../services/interaction-handler.service';
 import { ComponentRendererService } from '../services/component-renderer.service';
