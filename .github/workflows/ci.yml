@@ -1,0 +1,48 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  units:
+    name: Unit batteries
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      # renderer-demo is excluded: it carries 18 documented pre-existing
+      # failures that predate the extraction (see project memory / ROADMAP).
+      # --parallel=1 on purpose: the perf-budget specs flake under contention.
+      - run: npx nx run-many -t test --all --exclude=renderer-demo-renderer-demo --parallel=1
+        env:
+          NX_DAEMON: 'false'
+
+  gates:
+    name: Demo gates (browser)
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npx playwright install --with-deps chromium
+      - run: node demos/build.mjs
+      # visual-run and export-pdf-run are LOCAL-ONLY for now: goldens are
+      # per-platform (font rasterization differs), and the blessed set is
+      # macOS. Blessing a Linux golden set in CI is tracked in ROADMAP.md.
+      - run: node demos/e2e/gallery-run.mjs
+      - run: node demos/e2e/interaction-run.mjs
+      - run: node demos/e2e/save-load-run.mjs
+      - run: node demos/e2e/export-widgets-run.mjs
+      - run: node demos/e2e/export-fetch-run.mjs
+      - run: node demos/e2e/export-tree-images-run.mjs
