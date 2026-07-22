@@ -49,7 +49,16 @@ import {
   // bumps. Replaces the dirty-COUNT idle-skip, which never fired — see
   // canSkipFrame().
   getMutationEpoch,
+  // Phase 2 (Angular-native DX): declarative [layout] + snapshot()/loadSnapshot().
+  type SerializedDiagram,
 } from '@grafloria/engine';
+
+/** Request shape for the declarative `[layout]` input / `applyLayout()`. */
+export interface GrafloriaLayoutRequest {
+  /** Registry layout name: 'elk' | 'dagre' | 'force' | 'tree' | 'grid' | 'auto' | … */
+  name: string;
+  options?: Record<string, unknown>;
+}
 import {
   SVGRenderer,
   LIGHT_THEME,
@@ -270,6 +279,72 @@ export class DiagramCanvasComponent implements AfterViewInit, OnDestroy {
       engine: this.activeEngine() ?? undefined,
       data: node.data ?? node.getMetadata?.('data') ?? {},
     };
+  }
+
+  // --- Angular-native layout ------------------------------------------------
+
+  /**
+   * Declarative auto-layout: `[layout]="'elk'"` or
+   * `[layout]="{ name: 'auto', options: { spacing: 60 } }"` — any name in the
+   * engine's layout registry (elk, dagre, force, tree, grid, auto, …).
+   *
+   * Runs when the binding changes (and once the engine exists). It deliberately
+   * does NOT re-run when node data changes — a drag round-trips through
+   * `[(nodes)]` and must not be fought by a relayout. Call `applyLayout()` to
+   * re-run on demand.
+   */
+  readonly layout = input<string | GrafloriaLayoutRequest | undefined>(undefined);
+
+  /** Fires after each declarative or imperative layout completes. */
+  readonly layoutDone = output<unknown>();
+
+  /** Re-run the bound layout, or run any registry layout imperatively. */
+  async applyLayout(request?: string | GrafloriaLayoutRequest): Promise<unknown | undefined> {
+    const engine = this.activeEngine();
+    const req = request ?? this.layout();
+    if (!engine || !req) return undefined;
+    const { name, options } = typeof req === 'string' ? { name: req, options: {} } : req;
+    const result = await engine.layout(name, options ?? {});
+    this.layoutDone.emit(result);
+    return result;
+  }
+
+  // --- Angular-native export / persistence -----------------------------------
+
+  /** Async export — the full pipeline, including async custom-node capture. */
+  exportDiagram(format: 'svg' | 'png' | 'jpeg' | 'webp' | 'pdf' = 'svg', options: any = {}): Promise<string> {
+    this.assertRenderer();
+    return this.renderer!.export(format as any, options);
+  }
+
+  /** Synchronous SVG string export. */
+  exportSvg(options: any = {}): any {
+    this.assertRenderer();
+    return this.renderer!.exportSvgString(options);
+  }
+
+  /** Synchronous vector-PDF export. */
+  exportPdf(options: any = {}): any {
+    this.assertRenderer();
+    return this.renderer!.exportPdf(options);
+  }
+
+  /** Serialize the current diagram — feed the result back to `loadSnapshot`. */
+  snapshot(): SerializedDiagram | null {
+    return this.eng?.getDiagram()?.serialize() ?? null;
+  }
+
+  /** Replace the diagram with a previously `snapshot()`-ed document. */
+  loadSnapshot(data: SerializedDiagram): void {
+    const engine = this.activeEngine();
+    if (!engine) return;
+    engine.setDiagram(DiagramModel.fromJSON(data));
+  }
+
+  private assertRenderer(): void {
+    if (!this.renderer) {
+      throw new Error('grafloria-diagram-canvas: the canvas has not rendered yet — export is available after the first paint.');
+    }
   }
 
   /**
@@ -761,6 +836,18 @@ export class DiagramCanvasComponent implements AfterViewInit, OnDestroy {
       // `custom` once they do (see syncFromInputs).
       this.nodeDefMap();
       untracked(() => this.syncFromInputs(nodes, edges, skip));
+    });
+
+    // --- declarative [layout] -------------------------------------------------
+    // Tracks the binding and the engine's existence, nothing else: node-data
+    // changes must never trigger a relayout (see the `layout` input docs).
+    effect(() => {
+      const request = this.layout();
+      const engine = this.activeEngine();
+      if (!request || !engine) return;
+      untracked(() => {
+        void this.applyLayout(request);
+      });
     });
   }
 
