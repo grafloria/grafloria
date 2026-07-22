@@ -8,6 +8,7 @@ import type {
   StaticRenderResult,
 } from '@grafloria/renderer';
 import { defineGrafloriaFlow } from './grafloria-flow-element';
+import type { DashboardSpec } from './dashboard-kit';
 import { registerNodeType, registeredNodeTypes, getNodeType } from './node-type-registry';
 import type { NodeTypeRenderer } from './node-type-registry';
 
@@ -45,7 +46,9 @@ export interface DiagramSpec {
   edges?: EdgeSpec[];
 }
 
-export type RenderSpec = DiagramSpec | string;
+// A kit spec (dashboard() et al) IS a render spec — `render(dashboard({…}), host)`
+// is the documented one-liner, so the type says so too.
+export type RenderSpec = DiagramSpec | DashboardSpec | string;
 
 export type RenderOptions = Omit<CreateDiagramOptions, 'nodes' | 'edges'>;
 
@@ -73,7 +76,9 @@ export function render(
     throw new Error(`Grafloria.render: no element matched ${JSON.stringify(target)}`);
   }
 
-  const parsed: DiagramSpec = typeof spec === 'string' ? parseSpec(spec) : spec;
+  // Kit specs (dashboard()) carry looser node typing than DiagramSpec — both
+  // flow into createDiagram's NodeInput[] the same way.
+  const parsed = (typeof spec === 'string' ? parseSpec(spec) : spec) as DiagramSpec;
 
   const instance = createDiagram(element, {
     ...options,

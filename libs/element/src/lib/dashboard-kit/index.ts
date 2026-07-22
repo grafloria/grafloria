@@ -28,6 +28,7 @@ export {
   dashboard,
   type DashboardOptions,
   type DashboardSpec,
+  type DashboardSnapshot,
   type DashboardHandle,
   type DashboardViewSpec,
   type DashboardWidgetSpec,

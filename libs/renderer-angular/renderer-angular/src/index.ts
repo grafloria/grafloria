@@ -50,3 +50,6 @@ export * from './lib/interaction';
 // nodes and app-wide provideGrafloria() configuration.
 export * from './lib/directives/grafloria-node-def.directive';
 export * from './lib/providers';
+// Tier 2 (advanced domains): the dashboard kit, the Angular way.
+export * from './lib/components/dashboard/grafloria-dashboard.component';
+export * from './lib/components/dashboard/grafloria-widget-def.directive';

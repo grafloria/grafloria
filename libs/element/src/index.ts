@@ -654,6 +654,7 @@ export type {
   TileDelta,
   DashboardOptions,
   DashboardSpec,
+  DashboardSnapshot,
   DashboardHandle,
   DashboardViewSpec,
   DashboardWidgetSpec,
