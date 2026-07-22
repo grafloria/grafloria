@@ -8,7 +8,8 @@
  * @see https://github.com/kieler/elkjs
  */
 
-import ElkConstructor, { ElkNode, ElkExtendedEdge, ELK } from 'elkjs/lib/elk.bundled';
+import type { ElkNode, ElkExtendedEdge, ELK } from 'elkjs/lib/elk.bundled';
+import { loadElk } from './elk-loader';
 import { NodeModel } from '../models/NodeModel';
 import { LinkModel } from '../models/LinkModel';
 import {
@@ -145,9 +146,12 @@ export class ELKLayoutAdapter implements LayoutAdapter {
   // adapter had not. Constructing an adapter must be inert — the Worker is created
   // only when a layout is actually run, which never happens for ELK inside a worker
   // (the host keeps ELK on the main thread), so the detonation site simply goes away.
+  // One level deeper still (0.2.x): the elkjs MODULE is now loaded lazily too
+  // (see elk-loader.ts) — consumers who never run an ELK layout ship zero
+  // elkjs bytes; bundlers split it into a chunk fetched on first use.
   private _elk?: ELK;
-  private get elk(): ELK {
-    return (this._elk ??= new ElkConstructor());
+  private async elkInstance(): Promise<ELK> {
+    return (this._elk ??= new (await loadElk()).default());
   }
 
   /**
@@ -280,7 +284,7 @@ export class ELKLayoutAdapter implements LayoutAdapter {
     };
 
     // Run ELK layout algorithm
-    const layoutedGraph = await this.elk.layout(elkGraph);
+    const layoutedGraph = await (await this.elkInstance()).layout(elkGraph);
 
     // Extract positions from layouted graph
     const nodePositions = new Map<string, { x: number; y: number }>();

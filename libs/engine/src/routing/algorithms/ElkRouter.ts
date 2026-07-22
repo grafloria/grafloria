@@ -1,7 +1,8 @@
 // ElkRouter - Uses ELK.js for intelligent orthogonal routing with obstacle avoidance
 // Based on Eclipse Layout Kernel - handles complex graph layouts automatically
 
-import ELK, { type ElkNode, type ElkExtendedEdge } from 'elkjs/lib/elk.bundled.js';
+import type { ELK, ElkNode, ElkExtendedEdge } from 'elkjs/lib/elk.bundled';
+import { loadElk } from '../../layout/elk-loader';
 import type { IRouter, RouteRequest, RoutedPath, RoutePoint } from '../types';
 import type { Point } from '../../types';
 
@@ -18,11 +19,9 @@ import type { Point } from '../../types';
  * License: EPL-2.0 (Eclipse Public License 2.0)
  */
 export class ElkRouter implements IRouter {
-  private elk: InstanceType<typeof ELK>;
-
-  constructor() {
-    this.elk = new ELK();
-  }
+  // elkjs loads lazily on the first route() call (see layout/elk-loader.ts) —
+  // constructing a router must not cost the ~1.4 MB module.
+  private elk?: ELK;
 
   getName(): string {
     return 'elk';
@@ -90,7 +89,8 @@ export class ElkRouter implements IRouter {
         }],
       };
 
-      // Let ELK calculate the layout
+      // Let ELK calculate the layout (module + instance load lazily on first use)
+      this.elk ??= new (await loadElk()).default();
       const layouted = await this.elk.layout(graph);
 
       // Debug: Log the ELK result
