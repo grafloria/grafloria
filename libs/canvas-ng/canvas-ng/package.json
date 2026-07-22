@@ -1,9 +1,36 @@
 {
   "name": "@grafloria/canvas-ng",
-  "version": "0.0.1",
+  "version": "0.1.0",
   "peerDependencies": {
     "@angular/common": "^18.1.0",
     "@angular/core": "^18.1.0"
   },
-  "sideEffects": false
+  "sideEffects": false,
+  "description": "Angular canvas integration for the Grafloria diagram engine",
+  "license": "MIT",
+  "author": "Ramy Othman",
+  "homepage": "https://github.com/grafloria/grafloria",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/grafloria/grafloria.git",
+    "directory": "libs/canvas-ng/canvas-ng"
+  },
+  "bugs": {
+    "url": "https://github.com/grafloria/grafloria/issues"
+  },
+  "keywords": [
+    "diagram",
+    "flowchart",
+    "graph",
+    "node-editor",
+    "dashboard",
+    "uml",
+    "erd",
+    "svg",
+    "layout",
+    "mermaid"
+  ],
+  "publishConfig": {
+    "access": "public"
+  }
 }

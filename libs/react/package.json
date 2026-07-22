@@ -1,16 +1,43 @@
 {
   "name": "@grafloria/react",
-  "version": "0.0.1",
+  "version": "0.1.0",
   "type": "commonjs",
   "main": "./src/index.js",
   "types": "./src/index.d.ts",
   "peerDependencies": {
-    "@grafloria/engine": "*",
-    "@grafloria/renderer": "*",
+    "@grafloria/engine": "^0.1.0",
+    "@grafloria/renderer": "^0.1.0",
     "react": "^17.0.0 || ^18.0.0 || ^19.0.0",
     "react-dom": "^17.0.0 || ^18.0.0 || ^19.0.0"
   },
   "dependencies": {
     "tslib": "^2.3.0"
+  },
+  "description": "React bindings for the Grafloria diagram engine",
+  "license": "MIT",
+  "author": "Ramy Othman",
+  "homepage": "https://github.com/grafloria/grafloria",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/grafloria/grafloria.git",
+    "directory": "libs/react"
+  },
+  "bugs": {
+    "url": "https://github.com/grafloria/grafloria/issues"
+  },
+  "keywords": [
+    "diagram",
+    "flowchart",
+    "graph",
+    "node-editor",
+    "dashboard",
+    "uml",
+    "erd",
+    "svg",
+    "layout",
+    "mermaid"
+  ],
+  "publishConfig": {
+    "access": "public"
   }
 }
