@@ -1,0 +1,32 @@
+{
+  "name": "vue",
+  "$schema": "../../node_modules/nx/schemas/project-schema.json",
+  "sourceRoot": "libs/vue/src",
+  "projectType": "library",
+  "tags": [],
+  "targets": {
+    "build": {
+      "executor": "@nx/js:tsc",
+      "outputs": ["{options.outputPath}"],
+      "options": {
+        "outputPath": "dist/libs/vue",
+        "main": "libs/vue/src/index.ts",
+        "tsConfig": "libs/vue/tsconfig.lib.json",
+        "assets": ["libs/vue/*.md"]
+      }
+    },
+    "build-esm": {
+      "executor": "nx:run-commands",
+      "dependsOn": ["build"],
+      "outputs": ["{workspaceRoot}/dist/libs/vue/esm"],
+      "options": {
+        "command": "npx tsc -p libs/vue/tsconfig.esm.json --module es2022 --moduleResolution bundler --outDir dist/libs/vue/esm --rootDir libs/vue --declaration false --declarationMap false --incremental false"
+      }
+    },
+    "test": {
+      "executor": "@nx/jest:jest",
+      "outputs": ["{workspaceRoot}/coverage/{projectRoot}"],
+      "options": { "jestConfig": "libs/vue/jest.config.ts" }
+    }
+  }
+}
