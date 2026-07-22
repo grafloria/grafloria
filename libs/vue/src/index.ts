@@ -12,3 +12,5 @@ export {
   useViewport,
 } from './lib/composables';
 export type { SelectionChange } from './lib/composables';
+// Tier 2 (advanced domains): the dashboard kit, the Vue way.
+export { GrafloriaDashboard } from './lib/grafloria-dashboard';
