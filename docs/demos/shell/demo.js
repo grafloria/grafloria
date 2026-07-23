@@ -258,13 +258,17 @@ function buildCodePanel(spec) {
   // running demo to it. Absent (404 / local-only serving), tabs degrade to the
   // generic dialect samples.
   const routeKey = location.pathname.replace(/.*\/([^/]+\/[^/]+)\.html$/, '$1');
-  const VARIANT_BASE = '../../demos-angular/';
-  let ngFiles = null;      // [{name, text}] when a real variant exists
-  let ngFileIdx = 0;
-  const variantReady = fetch(VARIANT_BASE + 'sources.json')
-    .then((r) => (r.ok ? r.json() : null))
-    .then((j) => { ngFiles = j?.routes?.[routeKey] ?? null; })
-    .catch(() => { ngFiles = null; });
+  // Each framework may ship a REAL implementation of this demo under
+  // ../../demos-<fw>/. The tab shows its actual source files; the pill runs it.
+  const FW_APPS = { angular: '../../demos-angular/', react: '../../demos-react/', vue: '../../demos-vue/' };
+  const fwFiles = { angular: null, react: null, vue: null };   // [{name,text}] per fw
+  let fwFileIdx = 0;
+  const variantReady = Promise.all(Object.keys(FW_APPS).map((fw) =>
+    fetch(FW_APPS[fw] + 'sources.json')
+      .then((r) => (r.ok ? r.json() : null))
+      .then((j) => { fwFiles[fw] = j?.routes?.[routeKey] ?? null; })
+      .catch(() => { fwFiles[fw] = null; })
+  ));
 
   const FW = [
     { key: 'js',      label: 'JavaScript' },
@@ -388,11 +392,13 @@ npm i @grafloria/engine @grafloria/renderer`,
     badge.style.display = editable ? '' : 'none';
     runBtn.style.display = editable ? '' : 'none';
     resetBtn.style.display = editable ? '' : 'none';
+    const realFw = fwFiles[t];
     if (editable) { if (!editor.value) editor.value = samples.js; }
-    else if (t === 'angular' && ngFiles) renderNgFiles();
+    else if (realFw) renderFwFiles(t);
     else view.innerHTML = highlight(samples[t]);
-    note.innerHTML = (t === 'angular' && ngFiles)
-      ? '<b>This is a real Angular app.</b> The files below are the actual compiled-and-gated source of the Angular implementation running when the Angular pill is active. <a href="' + VARIANT_BASE + 'index.html#/' + routeKey + '" target="_blank" rel="noopener">Open it standalone ↗</a>'
+    const fwLabel = { angular: 'Angular', react: 'React', vue: 'Vue' }[t];
+    note.innerHTML = realFw
+      ? '<b>This is a real ' + fwLabel + ' app.</b> The files below are the actual compiled-and-gated source of the ' + fwLabel + ' implementation running when the ' + fwLabel + ' pill is active. <a href="' + FW_APPS[t] + 'index.html#/' + routeKey + '" target="_blank" rel="noopener">Open it standalone ↗</a>'
       : NOTES[t];
     document.querySelectorAll('.fw-switch [data-fw]').forEach((p) => p.classList.toggle('on', p.dataset.fw === t));
   };
@@ -421,26 +427,32 @@ npm i @grafloria/engine @grafloria/renderer`,
     }
   });
 
-  // Multi-file view for the real Angular variant: file sub-tabs over one pre.
-  const renderNgFiles = () => {
-    const tabs = ngFiles.map((f, i) =>
-      `<button class="gfc-file${i === ngFileIdx ? ' on' : ''}" data-i="${i}">${escapeHtml(f.name)}</button>`).join('');
+  // Multi-file view for a real framework variant: file sub-tabs over one pre.
+  const renderFwFiles = (fw) => {
+    const files = fwFiles[fw];
+    if (fwFileIdx >= files.length) fwFileIdx = 0;
+    const tabs = files.map((f, i) =>
+      `<button class="gfc-file${i === fwFileIdx ? ' on' : ''}" data-i="${i}">${escapeHtml(f.name)}</button>`).join('');
     view.innerHTML = `<div class="gfc-files">${tabs}</div>` +
-      `<div class="gfc-filebody">${highlight(ngFiles[ngFileIdx].text)}</div>`;
+      `<div class="gfc-filebody">${highlight(files[fwFileIdx].text)}</div>`;
     view.querySelectorAll('.gfc-file').forEach((b) =>
-      b.addEventListener('click', () => { ngFileIdx = +b.dataset.i; renderNgFiles(); }));
+      b.addEventListener('click', () => { fwFileIdx = +b.dataset.i; renderFwFiles(fw); }));
   };
 
-  // The variant overlay: the Angular implementation RUNNING over the JS demo.
+  // The variant overlay: a framework implementation RUNNING over the JS demo.
   let variantOverlay = null;
-  const showVariant = () => {
-    if (!ngFiles) return;
+  let variantFw = null;
+  const showVariant = (fw) => {
+    if (!fwFiles[fw]) return;
+    if (variantOverlay && variantFw !== fw) { variantOverlay.remove(); variantOverlay = null; }
+    variantFw = fw;
+    const label = { angular: 'Angular', react: 'React', vue: 'Vue' }[fw];
     if (!variantOverlay) {
       variantOverlay = document.createElement('div');
       variantOverlay.className = 'gfc-overlay gfc-variant';
       variantOverlay.innerHTML =
-        `<div class="gfc-variant-banner">Angular implementation — live. Switch to <b>JS</b> to return.</div>` +
-        `<iframe class="gfc-frame" title="Angular implementation" src="${VARIANT_BASE}index.html#/${routeKey}"></iframe>`;
+        `<div class="gfc-variant-banner">${label} implementation — live. Switch to <b>JS</b> to return.</div>` +
+        `<iframe class="gfc-frame" title="${label} implementation" src="${FW_APPS[fw]}index.html#/${routeKey}"></iframe>`;
       document.body.appendChild(variantOverlay);
     }
     positionOverlays();
@@ -498,15 +510,17 @@ npm i @grafloria/engine @grafloria/renderer`,
   document.querySelectorAll('.fw-switch [data-fw]').forEach((p) =>
     p.addEventListener('click', async () => {
       await variantReady;
-      setTab(p.dataset.fw);
+      const fw = p.dataset.fw;
+      fwFileIdx = 0;
+      setTab(fw);
       setOpen(true);
-      if (p.dataset.fw === 'angular' && ngFiles) showVariant();
-      else if (p.dataset.fw !== 'angular') hideVariant();
-      try { localStorage.setItem('grafloria-fw', p.dataset.fw); } catch { /* private mode */ }
+      if (fw !== 'js' && fwFiles[fw]) showVariant(fw);
+      else hideVariant();
+      try { localStorage.setItem('grafloria-fw', fw); } catch { /* private mode */ }
     })
   );
-  // Refresh the Angular tab once discovery lands, if the visitor is already on it.
-  variantReady.then(() => { if (tab === 'angular' && ngFiles) setTab('angular'); });
+  // Refresh the current tab once discovery lands, if a real variant appeared.
+  variantReady.then(() => { if (tab !== 'js' && fwFiles[tab]) setTab(tab); });
 
   let fw = 'js';
   try { fw = localStorage.getItem('grafloria-fw') || 'js'; } catch { /* private mode */ }
