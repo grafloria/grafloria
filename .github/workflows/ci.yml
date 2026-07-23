@@ -44,6 +44,10 @@ jobs:
       # per-platform (font rasterization differs), and the blessed set is
       # macOS. Blessing a Linux golden set in CI is tracked in ROADMAP.md.
       - run: node demos/e2e/gallery-run.mjs
+      # The framework-variant covenant: the Angular host app builds and every
+      # route paints, or the claim "this demo runs in Angular" must not ship.
+      - run: npx nx build demos-angular
+      - run: node demos/e2e/angular-run.mjs
       - run: node demos/e2e/interaction-run.mjs
       - run: node demos/e2e/save-load-run.mjs
       - run: node demos/e2e/export-widgets-run.mjs
