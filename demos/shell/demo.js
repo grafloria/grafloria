@@ -562,18 +562,25 @@ export function defineDemo(spec) {
       if (head) head.remove();
       document.body.classList.add('gf-embed');
     } else if (head) {
-      head.innerHTML = `
-        <div class="brand-row">
-          <a class="brand" href="../index.html"><img src="../shell/logo.svg" alt=""><span>grafloria</span></a>
-          <span class="crumb">demos</span>
+      // The fw pills + Code toggle are wired by buildCodePanel, which never
+      // builds under webdriver — so under webdriver they must not RENDER
+      // either. interaction-run's DEAD-BUTTON audit caught exactly this:
+      // five chrome buttons with no observable effect. Chrome renders only
+      // where its wiring does.
+      const chrome = navigator.webdriver ? '' : `
           <div class="fw-switch" role="tablist" aria-label="Framework">
             <button data-fw="js" role="tab">JS</button>
             <button data-fw="angular" role="tab">Angular</button>
             <button data-fw="react" role="tab">React</button>
             <button data-fw="vue" role="tab">Vue</button>
-          </div>
-          <nav class="head-links">
-            <button class="code-toggle" id="gf-code-toggle">&lsaquo;/&rsaquo; Code</button>
+          </div>`;
+      const codeBtn = navigator.webdriver ? '' : `
+            <button class="code-toggle" id="gf-code-toggle">&lsaquo;/&rsaquo; Code</button>`;
+      head.innerHTML = `
+        <div class="brand-row">
+          <a class="brand" href="../index.html"><img src="../shell/logo.svg" alt=""><span>grafloria</span></a>
+          <span class="crumb">demos</span>${chrome}
+          <nav class="head-links">${codeBtn}
             <a href="../index.html">← All demos</a>
             <a href="https://github.com/grafloria/grafloria">GitHub</a>
             <a href="https://grafloria.com">grafloria.com</a>
