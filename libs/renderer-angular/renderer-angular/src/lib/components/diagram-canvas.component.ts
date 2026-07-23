@@ -443,6 +443,20 @@ export class DiagramCanvasComponent implements AfterViewInit, OnDestroy {
     });
   }
 
+  /**
+   * The live viewport controller — the world↔screen transform this canvas is
+   * painting with. Use it to anchor HTML overlays (floating toolbars, badges,
+   * callouts) to world coordinates: `viewportController().worldToClient(x, y,
+   * hostRect)` returns client pixels, and `onChange` fires on every pan/zoom so
+   * the overlay can re-anchor. Same instance the minimap/controls plugins drive,
+   * so overlays and plugins stay in lockstep. Returns undefined only before the
+   * view initialises.
+   */
+  viewportController(): ViewportController | undefined {
+    if (!this.containerRef?.nativeElement) return undefined;
+    return (this.pluginsCamera ??= this.createPluginsCamera());
+  }
+
   private createPluginsCamera(): ViewportController {
     const cam = new ViewportController({});
     const v = this.viewport();
