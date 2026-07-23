@@ -230,9 +230,253 @@ function buildHowTo(spec) {
   setOpen(open);
 }
 
+
+/**
+ * The code drawer — DevExtreme-style framework tabs plus an ECharts-style live
+ * editor, on EVERY demo page with zero per-demo authoring:
+ *
+ *  - The JavaScript tab is the page's OWN module source (extracted from the DOM,
+ *    true by construction) in an editable pane. "Run" rebuilds the entire page
+ *    inside a sandboxed iframe with the edited source — full fidelity for all
+ *    demos, because what runs IS the page. "Reset" discards the iframe; the
+ *    original live demo underneath was never touched.
+ *  - Angular / React / Vue tabs show the verified mount dialect for the same
+ *    engine. A demo can override any tab with hand-written code via
+ *    defineDemo({ code: { angular: '...', react: '...', vue: '...' } }).
+ *  - Chrome like the nav: invisible under webdriver, so gates and goldens
+ *    never see it.
+ */
+function buildCodePanel(spec) {
+  if (navigator.webdriver) return;
+  if (document.getElementById('gf-code')) return;
+
+  const pageSource = (document.querySelector('script[type="module"]')?.textContent ?? '').replace(/^\n/, '');
+
+  const FW = [
+    { key: 'js',      label: 'JavaScript' },
+    { key: 'angular', label: 'Angular' },
+    { key: 'react',   label: 'React' },
+    { key: 'vue',     label: 'Vue' },
+    { key: 'install', label: 'Install' },
+  ];
+
+  const samples = {
+    js: pageSource,
+    angular: spec.code?.angular ?? `// npm i @grafloria/renderer-angular
+import { Component, viewChild } from '@angular/core';
+import { GrafloriaDiagramCanvas } from '@grafloria/renderer-angular';
+
+@Component({
+  standalone: true,
+  imports: [GrafloriaDiagramCanvas],
+  template: \`
+    <grafloria-diagram-canvas
+      [(nodes)]="nodes" [(edges)]="edges"
+      style="display:block; height:100%" />
+  \`,
+})
+export class DemoComponent {
+  // Use this demo's exact nodes/edges — copy them from the JavaScript tab.
+  nodes = [/* ... */];
+  edges = [/* ... */];
+
+  // Need the instance? Grab the canvas by template ref — its public methods
+  // (exportText, fitView, ...) and the engine API are identical to the
+  // JavaScript tab: one engine underneath every framework.
+  canvas = viewChild(GrafloriaDiagramCanvas);
+}`,
+    react: spec.code?.react ?? `// npm i @grafloria/react
+import { GrafloriaFlow } from '@grafloria/react';
+
+// Use this demo's exact nodes/edges — copy them from the JavaScript tab.
+const nodes = [/* ... */];
+const edges = [/* ... */];
+
+export function Demo() {
+  return (
+    <GrafloriaFlow
+      nodes={nodes}
+      edges={edges}
+      onInit={(instance) => {
+        // \`instance\` is the same object the JavaScript tab drives —
+        // every call there works identically here.
+      }}
+    />
+  );
+}`,
+    vue: spec.code?.vue ?? `<!-- npm i @grafloria/vue -->
+<script setup>
+import { GrafloriaFlow } from '@grafloria/vue';
+import { ref } from 'vue';
+
+// Use this demo's exact nodes/edges — copy them from the JavaScript tab.
+const nodes = ref([/* ... */]);
+const edges = ref([/* ... */]);
+
+// \`instance\` from @init is the same object the JavaScript tab drives.
+const onInit = (instance) => {};
+<\/script>
+
+<template>
+  <GrafloriaFlow v-model:nodes="nodes" v-model:edges="edges" @init="onInit" />
+</template>`,
+    install: `# pick your dialect — one engine underneath all of them
+npm i @grafloria/element            # plain web component <grafloria-flow>
+npm i @grafloria/renderer-angular   # Angular
+npm i @grafloria/react              # React
+npm i @grafloria/vue                # Vue 3
+
+# headless (Node, workers, server-side export)
+npm i @grafloria/engine @grafloria/renderer`,
+  };
+
+  const NOTES = {
+    js: '<b>This exact code just ran on this page.</b> Edit it and press Run — the demo rebuilds with your code. <code>ctx.host</code> is the container element; <code>defineDemo</code> is gallery harness you can keep or drop.',
+    angular: '<b>Same engine, Angular dialect.</b> The mount is Angular signals + banana-boxes; every instance call from the JavaScript tab works identically here.',
+    react: '<b>Same engine, React dialect.</b> The mount is React; every instance call from the JavaScript tab works identically on the <code>onInit</code> instance.',
+    vue: '<b>Same engine, Vue dialect.</b> The mount is Vue 3; every instance call from the JavaScript tab works identically on the <code>@init</code> instance.',
+    install: '<b>All packages are MIT.</b> Dual CJS + ESM builds; the element registers <code>&lt;grafloria-flow&gt;</code> on import.',
+  };
+
+  const drawer = document.createElement('div');
+  drawer.id = 'gf-code';
+  drawer.innerHTML =
+    `<div class="gfc-bar" role="tablist" aria-label="Code language">` +
+    FW.map((f) => `<button class="gfc-tab" role="tab" data-tab="${f.key}">${f.label}</button>`).join('') +
+    `<span class="gfc-badge" id="gfc-badge">&#9679; this page's live source — ran in CI</span>` +
+    `<span class="gfc-actions">` +
+    `<button class="gfc-run" id="gfc-run" title="Re-run the demo with your edited code">&#9654; Run</button>` +
+    `<button class="gfc-reset" id="gfc-reset" title="Back to the live original">Reset</button>` +
+    `<button class="gfc-copy" id="gfc-copy">Copy</button>` +
+    `<button class="gfc-close" id="gfc-close" aria-label="Close">×</button>` +
+    `</span></div>` +
+    `<p class="gfc-note" id="gfc-note"></p>` +
+    `<div class="gfc-body">` +
+    `<textarea class="gfc-editor" id="gfc-editor" spellcheck="false" aria-label="Demo source"></textarea>` +
+    `<pre class="gfc-view" id="gfc-view"></pre>` +
+    `</div>`;
+  document.body.appendChild(drawer);
+
+  const editor = drawer.querySelector('#gfc-editor');
+  const view = drawer.querySelector('#gfc-view');
+  const note = drawer.querySelector('#gfc-note');
+  const badge = drawer.querySelector('#gfc-badge');
+  const runBtn = drawer.querySelector('#gfc-run');
+  const resetBtn = drawer.querySelector('#gfc-reset');
+
+  let tab = 'js';
+  const setTab = (t) => {
+    tab = t;
+    drawer.querySelectorAll('.gfc-tab').forEach((b) => b.classList.toggle('on', b.dataset.tab === t));
+    const editable = t === 'js';
+    editor.style.display = editable ? '' : 'none';
+    view.style.display = editable ? 'none' : '';
+    badge.style.display = editable ? '' : 'none';
+    runBtn.style.display = editable ? '' : 'none';
+    resetBtn.style.display = editable ? '' : 'none';
+    if (editable) { if (!editor.value) editor.value = samples.js; }
+    else view.innerHTML = highlight(samples[t]);
+    note.innerHTML = NOTES[t];
+    document.querySelectorAll('.fw-switch [data-fw]').forEach((p) => p.classList.toggle('on', p.dataset.fw === t));
+  };
+
+  const setOpen = (open) => {
+    document.body.classList.toggle('code-open', open);
+    try { localStorage.setItem('grafloria-code-open', open ? '1' : '0'); } catch { /* private mode */ }
+  };
+
+  drawer.querySelectorAll('.gfc-tab').forEach((b) => b.addEventListener('click', () => setTab(b.dataset.tab)));
+  drawer.querySelector('#gfc-close').addEventListener('click', () => setOpen(false));
+  drawer.querySelector('#gfc-copy').addEventListener('click', async () => {
+    const text = tab === 'js' ? editor.value : samples[tab];
+    try { await navigator.clipboard.writeText(text); } catch { /* clipboard denied */ }
+    const c = drawer.querySelector('#gfc-copy');
+    c.textContent = 'Copied'; setTimeout(() => { c.textContent = 'Copy'; }, 1200);
+  });
+
+  // Tab key inserts two spaces instead of leaving the editor.
+  editor.addEventListener('keydown', (e) => {
+    if (e.key === 'Tab') {
+      e.preventDefault();
+      const { selectionStart: a, selectionEnd: b, value } = editor;
+      editor.value = value.slice(0, a) + '  ' + value.slice(b);
+      editor.selectionStart = editor.selectionEnd = a + 2;
+    }
+  });
+
+  // ── Run: rebuild the page in an iframe with the edited source ──
+  let overlay = null;
+  const positionOverlay = () => {
+    if (!overlay) return;
+    const head = document.getElementById('demo-head');
+    overlay.style.top = (head ? head.getBoundingClientRect().bottom : 0) + 'px';
+  };
+  runBtn.addEventListener('click', async () => {
+    runBtn.textContent = '… running'; runBtn.disabled = true;
+    try {
+      const html = await (await fetch(location.pathname)).text();
+      const edited = editor.value.replace(/<\/script/gi, '<\\/script');
+      const at = html.indexOf('<script type="module">');
+      const end = html.indexOf('</' + 'script>', at);
+      const rebuilt =
+        `<base href="${location.href}">` +
+        `<script>window.__GRAFLORIA_EMBED = 1<\/script>` +
+        html.slice(0, at) + '<script type="module">\n' + edited + '\n' + html.slice(end);
+      if (!overlay) {
+        overlay = document.createElement('div');
+        overlay.className = 'gfc-overlay';
+        overlay.innerHTML = '<iframe class="gfc-frame" title="Your edited demo"></iframe>';
+        document.body.appendChild(overlay);
+      }
+      overlay.querySelector('iframe').srcdoc = rebuilt;
+      positionOverlay();
+      document.body.classList.add('gfc-running');
+    } finally {
+      runBtn.textContent = '\u25B6 Run'; runBtn.disabled = false;
+    }
+  });
+  resetBtn.addEventListener('click', () => {
+    overlay?.remove(); overlay = null;
+    document.body.classList.remove('gfc-running');
+    editor.value = samples.js;
+  });
+  addEventListener('resize', positionOverlay);
+
+  // Header wiring: the Code toggle + the framework pills.
+  document.getElementById('gf-code-toggle')?.addEventListener('click', () => {
+    setOpen(!document.body.classList.contains('code-open'));
+  });
+  document.querySelectorAll('.fw-switch [data-fw]').forEach((p) =>
+    p.addEventListener('click', () => {
+      setTab(p.dataset.fw);
+      setOpen(true);
+      try { localStorage.setItem('grafloria-fw', p.dataset.fw); } catch { /* private mode */ }
+    })
+  );
+
+  let fw = 'js';
+  try { fw = localStorage.getItem('grafloria-fw') || 'js'; } catch { /* private mode */ }
+  setTab(FW.some((f) => f.key === fw) ? fw : 'js');
+  let open = false;
+  try { open = localStorage.getItem('grafloria-code-open') === '1'; } catch { /* private mode */ }
+  setOpen(open);
+}
+
+/** Tiny regex highlighter for the read-only tabs — good enough, zero deps. */
+function highlight(src) {
+  let out = escapeHtml(src);
+  out = out.replace(/(\/\/[^\n]*|&lt;!--[\s\S]*?--&gt;|#[^\n]*)/g, '<span class="tk-c">$1</span>');
+  out = out.replace(/('(?:[^'\\\n]|\\.)*')/g, '<span class="tk-s">$1</span>');
+  out = out.replace(/\b(import|from|export|const|let|var|function|return|async|await|new|class|extends|if|else|for|of|this)\b/g, '<span class="tk-k">$1</span>');
+  return out;
+}
+
 export function defineDemo(spec) {
   const boot = async () => {
-    buildNav(); // fire-and-forget: the menu must not block the demo booting
+    // EMBED MODE: the code drawer's Run rebuilds this page inside an iframe with
+    // the visitor's edited source. The iframe run gets NO chrome — just the demo.
+    const embedded = !!window.__GRAFLORIA_EMBED;
+    if (!embedded) buildNav(); // fire-and-forget: the menu must not block the demo booting
     const host = document.getElementById('canvas');
     const ctx = {
       host,
@@ -243,12 +487,23 @@ export function defineDemo(spec) {
     // Header. Written by the shell so every page carries the same brand and the
     // same claim in the same place.
     const head = document.getElementById('demo-head');
-    if (head) {
+    if (embedded) {
+      // The iframe run: no header, full-height canvas.
+      if (head) head.remove();
+      document.body.classList.add('gf-embed');
+    } else if (head) {
       head.innerHTML = `
         <div class="brand-row">
           <a class="brand" href="../index.html"><img src="../shell/logo.svg" alt=""><span>grafloria</span></a>
           <span class="crumb">demos</span>
+          <div class="fw-switch" role="tablist" aria-label="Framework">
+            <button data-fw="js" role="tab">JS</button>
+            <button data-fw="angular" role="tab">Angular</button>
+            <button data-fw="react" role="tab">React</button>
+            <button data-fw="vue" role="tab">Vue</button>
+          </div>
           <nav class="head-links">
+            <button class="code-toggle" id="gf-code-toggle">&lsaquo;/&rsaquo; Code</button>
             <a href="../index.html">← All demos</a>
             <a href="https://github.com/grafloria/grafloria">GitHub</a>
             <a href="https://grafloria.com">grafloria.com</a>
@@ -263,12 +518,13 @@ export function defineDemo(spec) {
     // were framed for the full width — then the drawer pushed in and clipped
     // the right edge (live audit: swimlanes' ticket, dynamic-layouting's n5,
     // a racy auto-layout boot). Same store, same default as buildNav's setOpen.
-    if (!navigator.webdriver) {
+    if (!navigator.webdriver && !embedded) {
       let navOpen = null;
       try { navOpen = localStorage.getItem('grafloria-nav-open'); } catch { /* private mode */ }
       document.body.classList.toggle('nav-open', navOpen === null ? window.innerWidth >= 1100 : navOpen === '1');
     }
-    buildHowTo(spec); // right-side "how to test" panel (skipped under webdriver)
+    if (!embedded) buildHowTo(spec); // right-side "how to test" panel (skipped under webdriver)
+    if (!embedded) buildCodePanel(spec); // bottom code drawer (skipped under webdriver)
 
     await spec.setup(ctx);
 

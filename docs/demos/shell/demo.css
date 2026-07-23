@@ -109,3 +109,59 @@ body.nav-open #grafloria-nav { transform: none; }
 @media (min-width: 1100px) {
   body.howto-open { padding-right: 312px; }
 }
+
+/* ── Framework switcher (header pills) ── */
+.fw-switch { display: inline-flex; margin-left: 10px; border: 1px solid var(--gf-line); border-radius: 999px; padding: 2px; gap: 2px; }
+.fw-switch button { border: 0; background: none; color: var(--gf-mut); font: 600 11.5px ui-sans-serif, system-ui, sans-serif;
+  padding: 4px 11px; border-radius: 999px; cursor: pointer; }
+.fw-switch button:hover { color: var(--gf-ink); }
+.fw-switch button.on { background: var(--gf-accent); color: #fff; }
+.code-toggle { border: 1px solid var(--gf-soft); background: var(--gf-wash); color: var(--gf-accent);
+  font: 600 12px ui-monospace, Menlo, monospace; padding: 4px 12px; border-radius: 7px; cursor: pointer; }
+.code-toggle:hover { background: var(--gf-accent); color: #fff; }
+
+/* ── The code drawer ── */
+#gf-code { position: fixed; left: 0; right: 0; bottom: 0; height: 46vh; z-index: 52;
+  background: var(--gf-panel); border-top: 1px solid var(--gf-line);
+  box-shadow: 0 -12px 40px rgba(35, 42, 61, .14); display: none; flex-direction: column; }
+body.code-open #gf-code { display: flex; }
+@media (min-width: 1100px) { body.nav-open #gf-code { left: 264px; } }
+.gfc-bar { display: flex; align-items: center; gap: 2px; padding: 6px 14px 0; border-bottom: 1px solid var(--gf-line); flex-wrap: wrap; }
+.gfc-tab { padding: 8px 13px 9px; font: 600 13px ui-sans-serif, system-ui, sans-serif; color: var(--gf-mut);
+  background: none; border: 0; border-bottom: 2px solid transparent; cursor: pointer; }
+.gfc-tab:hover { color: var(--gf-ink); }
+.gfc-tab.on { color: var(--gf-accent); border-bottom-color: var(--gf-accent); }
+.gfc-badge { margin-left: 10px; font-size: 11px; color: #059669; background: #ecfdf5; border: 1px solid #a7f3d0;
+  padding: 2px 9px; border-radius: 999px; font-weight: 600; }
+@media (prefers-color-scheme: dark) { .gfc-badge { background: rgba(5,150,105,.15); border-color: rgba(5,150,105,.4); color: #34d399; } }
+.gfc-actions { margin-left: auto; display: flex; gap: 8px; align-items: center; padding-bottom: 4px; }
+.gfc-run { padding: 5px 14px; border-radius: 7px; border: 0; background: var(--gf-accent); color: #fff;
+  font: 600 12px ui-sans-serif, system-ui, sans-serif; cursor: pointer; }
+.gfc-run:hover { background: var(--gf-deep); }
+.gfc-run:disabled { opacity: .6; cursor: default; }
+.gfc-reset, .gfc-copy { padding: 5px 12px; border-radius: 7px; border: 1px solid var(--gf-soft); background: var(--gf-wash);
+  color: var(--gf-accent); font: 600 12px ui-sans-serif, system-ui, sans-serif; cursor: pointer; }
+.gfc-reset:hover, .gfc-copy:hover { background: var(--gf-accent); color: #fff; }
+.gfc-close { border: 0; background: none; color: var(--gf-mut); font-size: 20px; cursor: pointer; padding: 0 4px; }
+.gfc-close:hover { color: var(--gf-ink); }
+.gfc-note { margin: 8px 20px 6px; font-size: 12.5px; color: var(--gf-mut); }
+.gfc-note b { color: var(--gf-ink); }
+.gfc-note code { font-family: ui-monospace, Menlo, monospace; background: var(--gf-wash); padding: 1px 5px; border-radius: 4px; }
+.gfc-body { flex: 1; overflow: hidden; display: flex; padding: 0 20px 14px; }
+.gfc-editor { flex: 1; resize: none; border: 1px solid var(--gf-line); border-radius: 10px; padding: 12px 14px;
+  background: var(--gf-bg); color: var(--gf-ink); font: 12.5px/1.6 ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+  tab-size: 2; outline: none; white-space: pre; }
+.gfc-editor:focus { border-color: var(--gf-accent); }
+.gfc-view { flex: 1; overflow: auto; margin: 0; border: 1px solid var(--gf-line); border-radius: 10px; padding: 12px 14px;
+  background: var(--gf-bg); font: 12.5px/1.6 ui-monospace, "SF Mono", Menlo, Consolas, monospace; tab-size: 2; }
+.tk-k { color: #7c3aed; } .tk-s { color: #059669; } .tk-c { color: #94a3b8; font-style: italic; }
+@media (prefers-color-scheme: dark) { .tk-k { color: #b79df5; } .tk-s { color: #4ade80; } .tk-c { color: #64748b; } }
+
+/* ── The Run overlay: the visitor's edited demo, in an iframe over the original ── */
+.gfc-overlay { position: fixed; left: 0; right: 0; bottom: 0; z-index: 40; background: var(--gf-bg); }
+@media (min-width: 1100px) { body.nav-open .gfc-overlay { left: 264px; } body.howto-open .gfc-overlay { right: 312px; } }
+body.code-open .gfc-overlay { bottom: 46vh; }
+.gfc-frame { width: 100%; height: 100%; border: 0; }
+
+/* ── Embed mode (inside the Run iframe): no chrome, full-bleed canvas ── */
+body.gf-embed #canvas { height: 100vh; }
