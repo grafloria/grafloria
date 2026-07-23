@@ -1,0 +1,9 @@
+<div style="display:flex; height:100vh">
+  <grafloria-diagram-canvas [(nodes)]="nodes" [(edges)]="edges"
+    [comments]="true" style="display:block; flex:1" />
+  @if (store) {
+    <div style="width:300px; border-left:1px solid #E3E7F2; overflow:auto">
+      <grafloria-comment-panel [store]="store" />
+    </div>
+  }
+</div>

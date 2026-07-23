@@ -1,0 +1,4 @@
+html, body { margin: 0; height: 100%; }
+body { font: 14px/1.5 ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+       background: #FCFCFF; color: #232A3D; }
+app-root { display: block; height: 100%; }
