@@ -127,6 +127,10 @@ export const GrafloriaFlow = defineComponent({
     minZoom: { type: Number, default: undefined },
     maxZoom: { type: Number, default: undefined },
     zoomSensitivity: { type: Number, default: undefined },
+    /** Renderer config passthrough (parallelLinks, parallelSpacing, jump styles, …). */
+    rendererConfig: { type: Object as PropType<Record<string, unknown>>, default: undefined },
+    /** Interaction config passthrough (portVisibility, enableHelperLines, …). */
+    interaction: { type: Object as PropType<Record<string, unknown>>, default: undefined },
   },
   emits: [
     'update:nodes',
@@ -228,6 +232,8 @@ export const GrafloriaFlow = defineComponent({
         zoomSensitivity: props.zoomSensitivity,
         comments: props.comments,
         commentsViewer: props.commentsViewer,
+        renderer: props.rendererConfig as never,
+        interaction: props.interaction,
         renderCustomNode: (node: NodeModel, element: HTMLElement) => {
           const entry: MountedNode = { node, element };
           mounted.set(node.id, entry);

@@ -136,6 +136,10 @@ export interface GrafloriaFlowProps {
   comments?: boolean | CommentStore;
   /** Viewer id for a `comments: true`-created store. */
   commentsViewer?: string;
+  /** Renderer config passthrough (parallelLinks, parallelSpacing, jump styles, …). */
+  rendererConfig?: Record<string, unknown>;
+  /** Interaction config passthrough (portVisibility, enableHelperLines, …). */
+  interaction?: Record<string, unknown>;
 
   className?: string;
   style?: CSSProperties;
@@ -199,6 +203,8 @@ export function GrafloriaFlow(props: GrafloriaFlowProps) {
       hydrate: callbacks.current.ssr?.snapshot,
       comments: callbacks.current.comments,
       commentsViewer: callbacks.current.commentsViewer,
+      renderer: callbacks.current.rendererConfig as never,
+      interaction: callbacks.current.interaction,
 
       // Blocker #4, from React's side: the core hands us an element, we render a
       // PORTAL into it. Portals keep the node component inside this React tree —
