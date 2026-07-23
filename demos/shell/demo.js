@@ -252,6 +252,20 @@ function buildCodePanel(spec) {
 
   const pageSource = (document.querySelector('script[type="module"]')?.textContent ?? '').replace(/^\n/, '');
 
+  // ── Framework variants: a REAL Angular implementation may exist for this
+  // demo (apps/demos-angular, baked to ../../demos-angular). When it does, the
+  // Angular tab shows its actual source files and the Angular pill swaps the
+  // running demo to it. Absent (404 / local-only serving), tabs degrade to the
+  // generic dialect samples.
+  const routeKey = location.pathname.replace(/.*\/([^/]+\/[^/]+)\.html$/, '$1');
+  const VARIANT_BASE = '../../demos-angular/';
+  let ngFiles = null;      // [{name, text}] when a real variant exists
+  let ngFileIdx = 0;
+  const variantReady = fetch(VARIANT_BASE + 'sources.json')
+    .then((r) => (r.ok ? r.json() : null))
+    .then((j) => { ngFiles = j?.routes?.[routeKey] ?? null; })
+    .catch(() => { ngFiles = null; });
+
   const FW = [
     { key: 'js',      label: 'JavaScript' },
     { key: 'angular', label: 'Angular' },
@@ -375,8 +389,11 @@ npm i @grafloria/engine @grafloria/renderer`,
     runBtn.style.display = editable ? '' : 'none';
     resetBtn.style.display = editable ? '' : 'none';
     if (editable) { if (!editor.value) editor.value = samples.js; }
+    else if (t === 'angular' && ngFiles) renderNgFiles();
     else view.innerHTML = highlight(samples[t]);
-    note.innerHTML = NOTES[t];
+    note.innerHTML = (t === 'angular' && ngFiles)
+      ? '<b>This is a real Angular app.</b> The files below are the actual compiled-and-gated source of the Angular implementation running when the Angular pill is active. <a href="' + VARIANT_BASE + 'index.html#/' + routeKey + '" target="_blank" rel="noopener">Open it standalone ↗</a>'
+      : NOTES[t];
     document.querySelectorAll('.fw-switch [data-fw]').forEach((p) => p.classList.toggle('on', p.dataset.fw === t));
   };
 
@@ -404,13 +421,45 @@ npm i @grafloria/engine @grafloria/renderer`,
     }
   });
 
+  // Multi-file view for the real Angular variant: file sub-tabs over one pre.
+  const renderNgFiles = () => {
+    const tabs = ngFiles.map((f, i) =>
+      `<button class="gfc-file${i === ngFileIdx ? ' on' : ''}" data-i="${i}">${escapeHtml(f.name)}</button>`).join('');
+    view.innerHTML = `<div class="gfc-files">${tabs}</div>` +
+      `<div class="gfc-filebody">${highlight(ngFiles[ngFileIdx].text)}</div>`;
+    view.querySelectorAll('.gfc-file').forEach((b) =>
+      b.addEventListener('click', () => { ngFileIdx = +b.dataset.i; renderNgFiles(); }));
+  };
+
+  // The variant overlay: the Angular implementation RUNNING over the JS demo.
+  let variantOverlay = null;
+  const showVariant = () => {
+    if (!ngFiles) return;
+    if (!variantOverlay) {
+      variantOverlay = document.createElement('div');
+      variantOverlay.className = 'gfc-overlay gfc-variant';
+      variantOverlay.innerHTML =
+        `<div class="gfc-variant-banner">Angular implementation — live. Switch to <b>JS</b> to return.</div>` +
+        `<iframe class="gfc-frame" title="Angular implementation" src="${VARIANT_BASE}index.html#/${routeKey}"></iframe>`;
+      document.body.appendChild(variantOverlay);
+    }
+    positionOverlays();
+    document.body.classList.add('gfc-variant-on');
+  };
+  const hideVariant = () => {
+    variantOverlay?.remove(); variantOverlay = null;
+    document.body.classList.remove('gfc-variant-on');
+  };
+
   // ── Run: rebuild the page in an iframe with the edited source ──
   let overlay = null;
-  const positionOverlay = () => {
-    if (!overlay) return;
+  const positionOverlays = () => {
     const head = document.getElementById('demo-head');
-    overlay.style.top = (head ? head.getBoundingClientRect().bottom : 0) + 'px';
+    const top = (head ? head.getBoundingClientRect().bottom : 0) + 'px';
+    if (overlay) overlay.style.top = top;
+    if (variantOverlay) variantOverlay.style.top = top;
   };
+  const positionOverlay = positionOverlays;
   runBtn.addEventListener('click', async () => {
     runBtn.textContent = '… running'; runBtn.disabled = true;
     try {
@@ -440,19 +489,24 @@ npm i @grafloria/engine @grafloria/renderer`,
     document.body.classList.remove('gfc-running');
     editor.value = samples.js;
   });
-  addEventListener('resize', positionOverlay);
+  addEventListener('resize', positionOverlays);
 
   // Header wiring: the Code toggle + the framework pills.
   document.getElementById('gf-code-toggle')?.addEventListener('click', () => {
     setOpen(!document.body.classList.contains('code-open'));
   });
   document.querySelectorAll('.fw-switch [data-fw]').forEach((p) =>
-    p.addEventListener('click', () => {
+    p.addEventListener('click', async () => {
+      await variantReady;
       setTab(p.dataset.fw);
       setOpen(true);
+      if (p.dataset.fw === 'angular' && ngFiles) showVariant();
+      else if (p.dataset.fw !== 'angular') hideVariant();
       try { localStorage.setItem('grafloria-fw', p.dataset.fw); } catch { /* private mode */ }
     })
   );
+  // Refresh the Angular tab once discovery lands, if the visitor is already on it.
+  variantReady.then(() => { if (tab === 'angular' && ngFiles) setTab('angular'); });
 
   let fw = 'js';
   try { fw = localStorage.getItem('grafloria-fw') || 'js'; } catch { /* private mode */ }
@@ -462,13 +516,29 @@ npm i @grafloria/engine @grafloria/renderer`,
   setOpen(open);
 }
 
-/** Tiny regex highlighter for the read-only tabs — good enough, zero deps. */
+/**
+ * Tiny single-pass highlighter for the read-only tabs — zero deps. ONE pass
+ * over the RAW source, escaping per token: multi-pass replace() re-scans its
+ * own injected markup (the `class` in `<span class=…>` matched the keyword
+ * rule and shredded the HTML — caught by screenshot, not by tests).
+ */
 function highlight(src) {
-  let out = escapeHtml(src);
-  out = out.replace(/(\/\/[^\n]*|&lt;!--[\s\S]*?--&gt;|#[^\n]*)/g, '<span class="tk-c">$1</span>');
-  out = out.replace(/('(?:[^'\\\n]|\\.)*')/g, '<span class="tk-s">$1</span>');
-  out = out.replace(/\b(import|from|export|const|let|var|function|return|async|await|new|class|extends|if|else|for|of|this)\b/g, '<span class="tk-k">$1</span>');
-  return out;
+  const esc = (x) => String(x).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c]);
+  const re = /(\/\/[^\n]*|<!--[\s\S]*?-->|(?:^|\n)#[^\n]*)|('(?:[^'\\\n]|\\.)*')|\b(import|from|export|const|let|var|function|return|async|await|new|class|extends|if|else|for|of|this)\b/g;
+  let out = '', last = 0, m;
+  while ((m = re.exec(src))) {
+    out += esc(src.slice(last, m.index));
+    if (m[1]) {
+      const nl = m[1].startsWith('\n') ? '\n' : '';
+      out += nl + '<span class="tk-c">' + esc(nl ? m[1].slice(1) : m[1]) + '</span>';
+    } else if (m[2]) {
+      out += '<span class="tk-s">' + esc(m[2]) + '</span>';
+    } else {
+      out += '<span class="tk-k">' + m[3] + '</span>';
+    }
+    last = re.lastIndex;
+  }
+  return out + esc(src.slice(last));
 }
 
 export function defineDemo(spec) {
