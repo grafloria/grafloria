@@ -30,4 +30,8 @@ export const routes: Routes = [
   { path: 'edges/reconnect-edge', loadComponent: () => import('./demos/reconnect-edge/reconnect-edge.component').then((m) => m.ReconnectEdgeComponent) },
   { path: 'layout/auto-layout', loadComponent: () => import('./demos/auto-layout/auto-layout.component').then((m) => m.AutoLayoutComponent) },
   { path: 'styling/dark-mode', loadComponent: () => import('./demos/dark-mode/dark-mode.component').then((m) => m.DarkModeComponent) },
+  { path: 'nodes/drag-handle', loadComponent: () => import('./demos/drag-handle/drag-handle.component').then((m) => m.DragHandleComponent) },
+  { path: 'interaction/save-and-restore', loadComponent: () => import('./demos/save-and-restore/save-and-restore.component').then((m) => m.SaveAndRestoreComponent) },
+  { path: 'interaction/undo-redo', loadComponent: () => import('./demos/undo-redo/undo-redo.component').then((m) => m.UndoRedoComponent) },
+  { path: 'grouping/parent-child', loadComponent: () => import('./demos/parent-child/parent-child.component').then((m) => m.ParentChildComponent) },
 ];

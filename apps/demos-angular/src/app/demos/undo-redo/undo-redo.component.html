@@ -1,0 +1,8 @@
+<div style="position:fixed; top:12px; left:50%; transform:translateX(-50%); z-index:5; display:flex; gap:8px">
+  <button (click)="undo()"
+    style="padding:7px 16px; border-radius:999px; border:0; background:#3B52D9; color:#fff; font-weight:600; cursor:pointer">↩ Undo</button>
+  <button (click)="redo()"
+    style="padding:7px 16px; border-radius:999px; border:1px solid #94A5F0; background:#EEF1FE; color:#3B52D9; font-weight:600; cursor:pointer">↪ Redo</button>
+</div>
+<grafloria-diagram-canvas [(nodes)]="nodes" [(edges)]="edges"
+  style="display:block; height:100vh" />
