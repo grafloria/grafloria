@@ -25,4 +25,9 @@ export const routes: Routes = [
   { path: 'edges/floating-edges', loadComponent: () => import('./demos/floating-edges/floating-edges.component').then((m) => m.FloatingEdgesComponent) },
   { path: 'layout/dagre-tree', loadComponent: () => import('./demos/dagre-tree/dagre-tree.component').then((m) => m.DagreTreeComponent) },
   { path: 'layout/force-layout', loadComponent: () => import('./demos/force-layout/force-layout.component').then((m) => m.ForceLayoutComponent) },
+  { path: 'edges/animating-edges', loadComponent: () => import('./demos/animating-edges/animating-edges.component').then((m) => m.AnimatingEdgesComponent) },
+  { path: 'edges/routing-algorithms', loadComponent: () => import('./demos/routing-algorithms/routing-algorithms.component').then((m) => m.RoutingAlgorithmsComponent) },
+  { path: 'edges/reconnect-edge', loadComponent: () => import('./demos/reconnect-edge/reconnect-edge.component').then((m) => m.ReconnectEdgeComponent) },
+  { path: 'layout/auto-layout', loadComponent: () => import('./demos/auto-layout/auto-layout.component').then((m) => m.AutoLayoutComponent) },
+  { path: 'styling/dark-mode', loadComponent: () => import('./demos/dark-mode/dark-mode.component').then((m) => m.DarkModeComponent) },
 ];

@@ -1,0 +1,8 @@
+<div style="position:fixed; top:12px; left:50%; transform:translateX(-50%); z-index:5">
+  <button (click)="dark = !dark"
+    style="padding:7px 18px; border-radius:999px; border:1px solid #94A5F0; background:#EEF1FE; color:#3B52D9; font-weight:600; cursor:pointer">
+    {{ dark ? '☀ light' : '☾ dark' }}
+  </button>
+</div>
+<grafloria-diagram-canvas [(nodes)]="nodes" [(edges)]="edges"
+  [theme]="dark ? darkTheme : light" style="display:block; height:100vh" />
