@@ -1,0 +1,12 @@
+<div style="position:fixed; top:12px; left:50%; transform:translateX(-50%); z-index:5; display:flex; gap:8px">
+  @for (p of positions; track p) {
+    <button (click)="place(p)"
+      [style.background]="where === p ? '#3B52D9' : '#EEF1FE'"
+      [style.color]="where === p ? '#fff' : '#3B52D9'"
+      style="padding:6px 14px; border-radius:999px; border:1px solid #94A5F0; font-weight:600; cursor:pointer">
+      {{ p }}
+    </button>
+  }
+</div>
+<grafloria-diagram-canvas [(nodes)]="nodes" [(edges)]="edges"
+  style="display:block; height:100vh" />
