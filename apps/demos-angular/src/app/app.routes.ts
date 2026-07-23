@@ -34,4 +34,6 @@ export const routes: Routes = [
   { path: 'interaction/save-and-restore', loadComponent: () => import('./demos/save-and-restore/save-and-restore.component').then((m) => m.SaveAndRestoreComponent) },
   { path: 'interaction/undo-redo', loadComponent: () => import('./demos/undo-redo/undo-redo.component').then((m) => m.UndoRedoComponent) },
   { path: 'grouping/parent-child', loadComponent: () => import('./demos/parent-child/parent-child.component').then((m) => m.ParentChildComponent) },
+  { path: 'ports/port-shapes', loadComponent: () => import('./demos/port-shapes/port-shapes.component').then((m) => m.PortShapesComponent) },
+  { path: 'ports/port-labels', loadComponent: () => import('./demos/port-labels/port-labels.component').then((m) => m.PortLabelsComponent) },
 ];
