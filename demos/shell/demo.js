@@ -84,28 +84,31 @@ async function buildNav() {
   } catch {
     return; // no manifest (run index-gen) → page still works, just no menu
   }
-  const { DEMOS, CATEGORY_LABEL, CATEGORY_ORDER } = mod;
+  const { DEMOS, FEATURED, CATEGORY_LABEL, CATEGORY_ORDER } = mod;
   const here = location.pathname.replace(/.*\/([^/]+\/[^/]+\.html)$/, '$1'); // <cat>/<file>.html
 
   const byCat = new Map();
+  const byRel = new Map();
   for (const d of DEMOS) {
     if (!byCat.has(d.cat)) byCat.set(d.cat, []);
     byCat.get(d.cat).push(d);
+    byRel.set(d.rel.replace(/\.html$/, ''), d);
   }
   const cats = [...byCat.keys()].sort(
     (a, b) => ((CATEGORY_ORDER.indexOf(a) + 1 || 99) - (CATEGORY_ORDER.indexOf(b) + 1 || 99))
   );
 
   const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c]);
-  const list = cats
+  const item = (d) => {
+    const current = d.rel === here;
+    return `<a class="an-item${current ? ' current' : ''}${d.isNew ? ' an-is-new' : ''}" href="../${esc(d.rel)}"${current ? ' aria-current="page"' : ''} data-name="${esc(d.name.toLowerCase())}${d.isNew ? ' new' : ''}">${d.isNew ? '<span class="an-new" title="Added or reworked in the latest wave">New</span>' : ''}${esc(d.name)}</a>`;
+  };
+  // Featured group first — same flagships-on-top order as the gallery index.
+  const featuredItems = (FEATURED ?? []).map((k) => byRel.get(k)).filter(Boolean).map(item).join('');
+  const featuredGroup = featuredItems ? `<div class="an-group an-featured"><div class="an-cat">★ Featured</div>${featuredItems}</div>` : '';
+  const list = featuredGroup + cats
     .map((cat) => {
-      const items = byCat
-        .get(cat)
-        .map((d) => {
-          const current = d.rel === here;
-          return `<a class="an-item${current ? ' current' : ''}${d.isNew ? ' an-is-new' : ''}" href="../${esc(d.rel)}"${current ? ' aria-current="page"' : ''} data-name="${esc(d.name.toLowerCase())}${d.isNew ? ' new' : ''}">${d.isNew ? '<span class="an-new" title="Added or reworked in the latest wave">New</span>' : ''}${esc(d.name)}</a>`;
-        })
-        .join('');
+      const items = byCat.get(cat).map(item).join('');
       return `<div class="an-group"><div class="an-cat">${esc(CATEGORY_LABEL[cat] ?? cat)}</div>${items}</div>`;
     })
     .join('');

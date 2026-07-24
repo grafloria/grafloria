@@ -123,22 +123,47 @@ const isNewDemo = (rel) => NEW_DEMOS.has(rel.split(sep).join('/'));
 const esc = (s) =>
   String(s).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c]);
 
+// The wow-factor demos, in the order a first-time visitor should meet them —
+// so the flagships are never buried below alphabetical A-Z. Keys are `cat/name`.
+const FEATURED = [
+  'interaction/n8n-workflow', 'dashboard/dashboard-builder', 'diagrams/erd-editor',
+  'diagrams/class-uml', 'collab/two-tabs-live', 'edges/edge-routing',
+  'styling/turbo-flow', 'interaction/execute-flow', 'grouping/swimlanes',
+  'collab/comments', 'nodes/shapes', 'layout/off-thread-layout',
+];
+
+const thumbSrc = (rel) => 'thumbs/' + rel.replace(/\.html$/, '.png');
+const cardHtml = (d, cat) => `
+        <a class="card${d.isNew ? ' is-new' : ''}" href="${esc(d.rel)}" style="--cat:${CAT_COLOR[cat] ?? 'var(--gf-accent)'}">
+          <div class="card-thumb"><img src="${thumbSrc(d.rel)}" loading="lazy" alt="" width="600" height="360"></div>
+          <div class="card-name">${d.isNew ? '<span class="badge new">New</span>' : ''}${esc(d.name)}<span class="card-go">→</span></div>
+          <div class="card-blurb">${esc(d.blurb)}</div>
+        </a>`;
+
 function render(byCat) {
   const cats = Object.keys(byCat).sort(
     (a, b) => (CATEGORY_ORDER.indexOf(a) + 1 || 99) - (CATEGORY_ORDER.indexOf(b) + 1 || 99)
   );
   const total = Object.values(byCat).reduce((n, xs) => n + xs.length, 0);
+
+  // Flat lookup by `cat/name` so the Featured strip can pull demos across categories.
+  const byRel = {};
+  for (const cat of cats) for (const d of byCat[cat]) byRel[d.rel.replace(/\.html$/, '')] = { d, cat };
+
+  const featuredCards = FEATURED.map((k) => byRel[k]).filter(Boolean)
+    .map(({ d, cat }) => cardHtml(d, cat)).join('');
+  const featuredSection = featuredCards ? `
+      <section class="featured">
+        <h2>★ Featured <span class="count">start here</span></h2>
+        <div class="grid">${featuredCards}
+        </div>
+      </section>` : '';
+
   const sections = cats
     .map((cat) => {
       const cards = byCat[cat]
         .sort((a, b) => a.name.localeCompare(b.name))
-        .map(
-          (d) => `
-        <a class="card${d.isNew ? ' is-new' : ''}" href="${esc(d.rel)}" style="--cat:${CAT_COLOR[cat] ?? 'var(--gf-accent)'}">
-          <div class="card-name">${d.isNew ? '<span class="badge new">New</span>' : ''}${esc(d.name)}<span class="card-go">→</span></div>
-          <div class="card-blurb">${esc(d.blurb)}</div>
-        </a>`
-        )
+        .map((d) => cardHtml(d, cat))
         .join('');
       return `
       <section>
@@ -194,22 +219,30 @@ function render(byCat) {
   h2 { font-size:15px; text-transform:uppercase; letter-spacing:.06em; color:var(--gf-mut);
        border-bottom:1px solid var(--gf-line); padding-bottom:8px; }
   h2 .count { color:var(--gf-ink); opacity:.5; margin-left:6px; }
-  .grid { display:grid; grid-template-columns:repeat(auto-fill,minmax(272px,1fr)); gap:12px; margin-top:14px; }
-  .card { display:block; padding:14px 16px 15px; border:1px solid var(--gf-line); border-radius:12px;
+  .grid { display:grid; grid-template-columns:repeat(auto-fill,minmax(272px,1fr)); gap:14px; margin-top:14px; }
+  .card { display:block; border:1px solid var(--gf-line); border-radius:13px;
           background:var(--gf-panel); text-decoration:none; color:inherit; position:relative; overflow:hidden;
           border-left:3px solid var(--cat); transition:border-color .12s, transform .12s, box-shadow .12s; }
-  .card::before { content:""; position:absolute; inset:0 0 auto 0; height:0; }
-  .card:hover { border-color:var(--cat); transform:translateY(-2px); box-shadow:0 8px 22px rgba(35,42,61,.10); }
-  .card-name { font-weight:660; display:flex; align-items:center; }
+  .card:hover { border-color:var(--cat); transform:translateY(-2px); box-shadow:0 10px 26px rgba(35,42,61,.12); }
+  /* Thumbnail — a real render of the demo, DevExtreme-style, so the grid is visual. */
+  .card-thumb { height:154px; background:#fff; border-bottom:1px solid var(--gf-line); overflow:hidden; }
+  .card-thumb img { width:100%; height:100%; object-fit:cover; object-position:center top; display:block;
+                    transition:transform .3s ease; }
+  .card:hover .card-thumb img { transform:scale(1.03); }
+  .card-name { font-weight:660; display:flex; align-items:center; padding:12px 15px 0; }
   .card-go { margin-left:auto; color:var(--cat); font-weight:700; opacity:0; transform:translateX(-4px);
              transition:opacity .12s, transform .12s; }
   .card:hover .card-go { opacity:1; transform:none; }
   /* Clamp the blurb to a scannable snippet — the full story is on the demo page. */
-  .card-blurb { margin-top:5px; font-size:12.5px; line-height:1.5; color:var(--gf-mut);
-                display:-webkit-box; -webkit-line-clamp:3; -webkit-box-orient:vertical; overflow:hidden; }
+  .card-blurb { margin:5px 15px 14px; font-size:12.5px; line-height:1.5; color:var(--gf-mut);
+                display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical; overflow:hidden; }
   .badge.new { padding:1px 7px; border-radius:999px; background:#16a34a; color:#fff; font-weight:600;
                margin-right:7px; font-size:10.5px; text-transform:uppercase; letter-spacing:.04em; vertical-align:middle; }
   .card.is-new { border-left-color:#16a34a; }
+  /* Featured strip — the flagships, up top, with a warm accent so they read as special. */
+  section.featured h2 { color:var(--gf-accent); }
+  section.featured .count { color:var(--gf-mut); opacity:1; font-size:12px; text-transform:uppercase; letter-spacing:.06em; }
+  section.featured .card { border-left-color:var(--gf-accent); }
   footer { padding:22px 28px 50px; border-top:1px solid var(--gf-line); color:var(--gf-mut); font-size:13px; }
   footer .row { max-width:80ch; }
   code { padding:1px 5px; border-radius:4px; background:var(--gf-wash); font-size:.9em; }
@@ -237,6 +270,7 @@ function render(byCat) {
   </div>
 </header>
 <main>
+${featuredSection}
 ${sections}
 </main>
 <footer>
@@ -268,6 +302,7 @@ writeFileSync(
   join(here, 'shell', 'demos-manifest.js'),
   `// AUTO-GENERATED by demos/index-gen.mjs — do not edit by hand.\n` +
     `export const DEMOS = ${JSON.stringify(flat)};\n` +
+    `export const FEATURED = ${JSON.stringify(FEATURED)};\n` +
     `export const CATEGORY_LABEL = ${JSON.stringify(CATEGORY_LABEL)};\n` +
     `export const CATEGORY_ORDER = ${JSON.stringify(CATEGORY_ORDER)};\n`
 );

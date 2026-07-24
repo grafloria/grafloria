@@ -79,14 +79,18 @@
     color: var(--indigo-soft); font-size: 13px; font-weight: 600; letter-spacing: .04em; }
   @media (prefers-reduced-motion: reduce) { .canvasframe { transition: none; } .canvasframe .live-badge .dot { animation: none; } }
 
-  /* The connecting-line spine — an indigo dashed flow threading between sections,
-     Grafloria's own edge-routing turned into page furniture. */
-  .connector { display: flex; justify-content: center; margin: 6px 0; }
-  .connector svg { width: 40px; height: 76px; }
-  .connector .wire { stroke: var(--indigo-soft); stroke-width: 2; stroke-dasharray: 5 6; fill: none; }
-  @media (prefers-reduced-motion: no-preference) { .connector .wire { animation: march 1.4s linear infinite; } }
-  @keyframes march { to { stroke-dashoffset: -22; } }
-  .connector .port { fill: #fff; stroke: var(--indigo); stroke-width: 2; }
+  /* The connecting-line spine — a hand-routed Grafloria edge between sections:
+     a soft S-curve in an indigo gradient, animated flow particles, and real
+     "handle" ports at each end. Grafloria's own edge aesthetic as page furniture. */
+  .connector { display: flex; justify-content: center; margin: -2px 0; }
+  .connector svg { width: 96px; height: 104px; overflow: visible; }
+  .connector .wire { fill: none; stroke: url(#cwire); stroke-width: 2.5; stroke-linecap: round; }
+  .connector .flow { fill: none; stroke: var(--indigo); stroke-width: 2.5; stroke-linecap: round;
+    stroke-dasharray: 1 13; opacity: .9; }
+  @media (prefers-reduced-motion: no-preference) { .connector .flow { animation: cflow 1.5s linear infinite; } }
+  @keyframes cflow { to { stroke-dashoffset: -28; } }
+  .connector .handle { fill: #fff; stroke: var(--indigo); stroke-width: 2.5; }
+  .connector .handle-ring { fill: none; stroke: var(--indigo-soft); stroke-width: 1.5; opacity: .5; }
 
   .cta { margin: 28px 0 10px; display: flex; gap: 14px; flex-wrap: wrap; }
   .btn {
