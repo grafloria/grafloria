@@ -1,0 +1,1 @@
+function r(e,t){return{getModel:()=>e.activeEngine().getDiagram(),getEngine:()=>e.activeEngine()??null,get viewport(){return e.viewportController()},container:t,render:()=>e.scheduleRender()}}export{r as a};

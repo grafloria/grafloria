@@ -131,6 +131,8 @@ export const GrafloriaFlow = defineComponent({
     rendererConfig: { type: Object as PropType<Record<string, unknown>>, default: undefined },
     /** Interaction config passthrough (portVisibility, enableHelperLines, …). */
     interaction: { type: Object as PropType<Record<string, unknown>>, default: undefined },
+    /** Design-token bridge — adopt the app's shadcn / MUI / Tailwind CSS variables. */
+    tokenBridge: { type: Object as PropType<unknown>, default: undefined },
   },
   emits: [
     'update:nodes',
@@ -234,6 +236,7 @@ export const GrafloriaFlow = defineComponent({
         commentsViewer: props.commentsViewer,
         renderer: props.rendererConfig as never,
         interaction: props.interaction,
+        tokenBridge: props.tokenBridge as never,
         renderCustomNode: (node: NodeModel, element: HTMLElement) => {
           const entry: MountedNode = { node, element };
           mounted.set(node.id, entry);

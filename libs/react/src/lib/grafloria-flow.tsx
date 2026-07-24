@@ -140,6 +140,8 @@ export interface GrafloriaFlowProps {
   rendererConfig?: Record<string, unknown>;
   /** Interaction config passthrough (portVisibility, enableHelperLines, …). */
   interaction?: Record<string, unknown>;
+  /** Design-token bridge — adopt the app's shadcn / MUI / Tailwind CSS variables. */
+  tokenBridge?: unknown;
 
   className?: string;
   style?: CSSProperties;
@@ -205,6 +207,7 @@ export function GrafloriaFlow(props: GrafloriaFlowProps) {
       commentsViewer: callbacks.current.commentsViewer,
       renderer: callbacks.current.rendererConfig as never,
       interaction: callbacks.current.interaction,
+      tokenBridge: callbacks.current.tokenBridge as never,
 
       // Blocker #4, from React's side: the core hands us an element, we render a
       // PORTAL into it. Portals keep the node component inside this React tree —
