@@ -162,6 +162,15 @@ body.code-open #gf-code { display: flex; }
 @media (min-width: 1100px) { body.nav-open .gfc-overlay { left: 264px; } body.howto-open .gfc-overlay { right: 312px; } }
 body.code-open .gfc-overlay { bottom: 46vh; }
 .gfc-frame { width: 100%; height: 100%; border: 0; }
+/* Error banner over the preview when the visitor's edited code throws. */
+.gfc-err { position: absolute; left: 0; right: 0; bottom: 0; z-index: 3; display: flex; align-items: flex-start; gap: 10px;
+  padding: 12px 16px; background: #fef2f2; border-top: 2px solid #dc2626; color: #7f1d1d;
+  font: 13px/1.5 ui-sans-serif, system-ui, sans-serif; box-shadow: 0 -6px 20px rgba(220, 38, 38, .12); }
+.gfc-err b { color: #b91c1c; white-space: nowrap; }
+.gfc-err span { font-family: ui-monospace, Menlo, Consolas, monospace; font-size: 12px; overflow: auto; flex: 1; white-space: pre-wrap; word-break: break-word; }
+.gfc-err-x { margin-left: auto; border: 0; background: none; color: #b91c1c; font-size: 18px; line-height: 1; cursor: pointer; padding: 0 2px; }
+@media (prefers-color-scheme: dark) { .gfc-err { background: #2a1414; color: #fecaca; border-top-color: #ef4444; }
+  .gfc-err b, .gfc-err-x { color: #fca5a5; } }
 
 /* ── Embed mode (inside the Run iframe): no chrome, full-bleed canvas ── */
 body.gf-embed #canvas { height: 100vh; }

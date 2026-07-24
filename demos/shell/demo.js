@@ -575,6 +575,28 @@ npm i @grafloria/engine @grafloria/renderer`,
     if (variantOverlay) variantOverlay.style.top = top;
   };
   const positionOverlay = positionOverlays;
+
+  // A classic script injected FIRST into the preview iframe: it registers global
+  // error handlers before the edited module parses, so a syntax error (which
+  // dispatches a window 'error' event) or a runtime throw / rejected promise is
+  // relayed to this drawer instead of dying silently in the iframe's console.
+  const ERR_CATCHER =
+    `<script>(function(){function s(m){try{parent.postMessage({__gfErr:1,msg:String(m||'Unknown error')},'*');}catch(e){}}` +
+    `addEventListener('error',function(e){s(e.message||(e.error&&e.error.stack)||'Script error');});` +
+    `addEventListener('unhandledrejection',function(e){var r=e.reason;s((r&&(r.stack||r.message))||r||'Unhandled promise rejection');});})();<\/script>`;
+
+  const showRunError = (msg) => {
+    if (!overlay) return;
+    let el = overlay.querySelector('.gfc-err');
+    if (!el) { el = document.createElement('div'); el.className = 'gfc-err'; overlay.appendChild(el); }
+    el.innerHTML = `<b>Your code didn't run.</b> <span></span>` +
+      `<button class="gfc-err-x" aria-label="Dismiss">×</button>`;
+    el.querySelector('span').textContent = msg;
+    el.querySelector('.gfc-err-x').onclick = () => el.remove();
+  };
+  // The preview iframe (srcdoc) inherits this page's origin, so postMessage is same-origin.
+  addEventListener('message', (e) => { if (e.data && e.data.__gfErr) showRunError(e.data.msg); });
+
   runBtn.addEventListener('click', async () => {
     runBtn.textContent = '… running'; runBtn.disabled = true;
     try {
@@ -584,7 +606,7 @@ npm i @grafloria/engine @grafloria/renderer`,
       const end = html.indexOf('</' + 'script>', at);
       const rebuilt =
         `<base href="${location.href}">` +
-        `<script>window.__GRAFLORIA_EMBED = 1<\/script>` +
+        `<script>window.__GRAFLORIA_EMBED = 1<\/script>` + ERR_CATCHER +
         html.slice(0, at) + '<script type="module">\n' + edited + '\n' + html.slice(end);
       if (!overlay) {
         overlay = document.createElement('div');
@@ -592,6 +614,7 @@ npm i @grafloria/engine @grafloria/renderer`,
         overlay.innerHTML = '<iframe class="gfc-frame" title="Your edited demo"></iframe>';
         document.body.appendChild(overlay);
       }
+      overlay.querySelector('.gfc-err')?.remove();  // clear last run's error before retrying
       overlay.querySelector('iframe').srcdoc = rebuilt;
       positionOverlay();
       document.body.classList.add('gfc-running');

@@ -1,6 +1,6 @@
 <meta charset="utf-8">
 <title>Collaboration-aware undo — Grafloria</title>
-<link rel="stylesheet" href="../shell/demo.css?v=drawer2">
+<link rel="stylesheet" href="../shell/demo.css?v=drawer3">
 <style>
   #stage { display: grid; grid-template-columns: 1fr 1fr; gap: 1px; background: rgba(127,127,127,.25); height: calc(100vh - 150px); }
   .peer { background: var(--bg, #fff); position: relative; }
@@ -18,7 +18,7 @@
 <div id="canvas" style="display:none"></div>
 <script type="module">
 import { render, Replica } from '../shell/grafloria.js';
-import { defineDemo, check, checkEqual } from '../shell/demo.js?v=drawer2';
+import { defineDemo, check, checkEqual } from '../shell/demo.js?v=drawer3';
 
 // Two peers, two real diagrams, sharing an op log. The point that makes this
 // COLLABORATION-AWARE and not just "undo": when peer A hits ⌘Z it undoes A's OWN
