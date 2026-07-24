@@ -82,6 +82,13 @@ const CATEGORY_LABEL = {
   collab: 'Collaboration',
   whiteboard: 'Whiteboard',
   misc: 'Export & misc',
+  diagrams: 'Diagrams & kits',
+};
+// A colour per category — a quiet accent stripe so the grid is scannable at a glance.
+const CAT_COLOR = {
+  nodes: '#3B52D9', edges: '#059669', ports: '#d97706', interaction: '#7c3aed',
+  layout: '#2563eb', grouping: '#db2777', dashboard: '#0891b2', styling: '#ca8a04',
+  collab: '#dc2626', whiteboard: '#4f46e5', misc: '#64748b', diagrams: '#9333ea',
 };
 // The order the sections appear in — roughly React Flow's own, so a visitor can scan across.
 const CATEGORY_ORDER = Object.keys(CATEGORY_LABEL);
@@ -127,8 +134,8 @@ function render(byCat) {
         .sort((a, b) => a.name.localeCompare(b.name))
         .map(
           (d) => `
-        <a class="card${d.isNew ? ' is-new' : ''}" href="${esc(d.rel)}">
-          <div class="card-name">${d.isNew ? '<span class="badge new">New</span>' : ''}${esc(d.name)}</div>
+        <a class="card${d.isNew ? ' is-new' : ''}" href="${esc(d.rel)}" style="--cat:${CAT_COLOR[cat] ?? 'var(--gf-accent)'}">
+          <div class="card-name">${d.isNew ? '<span class="badge new">New</span>' : ''}${esc(d.name)}<span class="card-go">→</span></div>
           <div class="card-blurb">${esc(d.blurb)}</div>
         </a>`
         )
@@ -187,17 +194,22 @@ function render(byCat) {
   h2 { font-size:15px; text-transform:uppercase; letter-spacing:.06em; color:var(--gf-mut);
        border-bottom:1px solid var(--gf-line); padding-bottom:8px; }
   h2 .count { color:var(--gf-ink); opacity:.5; margin-left:6px; }
-  .grid { display:grid; grid-template-columns:repeat(auto-fill,minmax(260px,1fr)); gap:12px; margin-top:14px; }
-  .card { display:block; padding:14px 15px; border:1px solid var(--gf-line); border-radius:12px;
-          background:var(--gf-panel); text-decoration:none; color:inherit;
-          transition:border-color .12s, transform .12s, box-shadow .12s; }
-  .card:hover { border-color:var(--gf-accent); transform:translateY(-1px);
-                box-shadow:0 6px 20px rgba(59,82,217,.1); }
-  .card-name { font-weight:640; }
-  .card-blurb { margin-top:4px; font-size:13px; color:var(--gf-mut); }
+  .grid { display:grid; grid-template-columns:repeat(auto-fill,minmax(272px,1fr)); gap:12px; margin-top:14px; }
+  .card { display:block; padding:14px 16px 15px; border:1px solid var(--gf-line); border-radius:12px;
+          background:var(--gf-panel); text-decoration:none; color:inherit; position:relative; overflow:hidden;
+          border-left:3px solid var(--cat); transition:border-color .12s, transform .12s, box-shadow .12s; }
+  .card::before { content:""; position:absolute; inset:0 0 auto 0; height:0; }
+  .card:hover { border-color:var(--cat); transform:translateY(-2px); box-shadow:0 8px 22px rgba(35,42,61,.10); }
+  .card-name { font-weight:660; display:flex; align-items:center; }
+  .card-go { margin-left:auto; color:var(--cat); font-weight:700; opacity:0; transform:translateX(-4px);
+             transition:opacity .12s, transform .12s; }
+  .card:hover .card-go { opacity:1; transform:none; }
+  /* Clamp the blurb to a scannable snippet — the full story is on the demo page. */
+  .card-blurb { margin-top:5px; font-size:12.5px; line-height:1.5; color:var(--gf-mut);
+                display:-webkit-box; -webkit-line-clamp:3; -webkit-box-orient:vertical; overflow:hidden; }
   .badge.new { padding:1px 7px; border-radius:999px; background:#16a34a; color:#fff; font-weight:600;
                margin-right:7px; font-size:10.5px; text-transform:uppercase; letter-spacing:.04em; vertical-align:middle; }
-  .card.is-new { border-left:3px solid #16a34a; }
+  .card.is-new { border-left-color:#16a34a; }
   footer { padding:22px 28px 50px; border-top:1px solid var(--gf-line); color:var(--gf-mut); font-size:13px; }
   footer .row { max-width:80ch; }
   code { padding:1px 5px; border-radius:4px; background:var(--gf-wash); font-size:.9em; }

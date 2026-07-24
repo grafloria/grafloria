@@ -36,7 +36,28 @@ if (!pairs.length) throw new Error(`bake: no routes parsed for ${FW}`);
 const sources = {};
 for (const p of pairs) {
   if (FW === 'angular') {
-    sources[p.route] = readdirSync(p.dir).sort().map((name) => ({ name, text: readFileSync(join(p.dir, name), 'utf8') }));
+    const files = readdirSync(p.dir).sort().flatMap((name) => {
+      const text = readFileSync(join(p.dir, name), 'utf8');
+      // Split an inline `template: \`…\`` component into two drawer tabs — the
+      // .ts (template swapped for a templateUrl reference) and the extracted
+      // .component.html — so every Angular demo shows its markup like a real
+      // multi-file project (DevExtreme-style), without touching source files.
+      if (name.endsWith('.component.ts') && !/templateUrl\s*:/.test(text)) {
+        const m = text.match(/template\s*:\s*`([\s\S]*?)`\s*,/);
+        if (m) {
+          const html = m[1].replace(/^\n/, '').replace(/\n\s*$/, '');
+          const base = name.replace(/\.ts$/, '.html');
+          // de-indent the template for a clean .html view
+          const lines = html.split('\n');
+          const indent = Math.min(...lines.filter((l) => l.trim()).map((l) => l.match(/^\s*/)[0].length));
+          const dedented = lines.map((l) => l.slice(indent)).join('\n');
+          const ts = text.replace(m[0], `templateUrl: './${base}',`);
+          return [{ name, text: ts }, { name: base, text: dedented }];
+        }
+      }
+      return [{ name, text }];
+    });
+    sources[p.route] = files;
   } else {
     // react/vue: one file per demo (a .tsx or a .vue SFC). Resolve the exact name.
     const base = join(APP, 'src', 'demos');

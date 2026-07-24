@@ -43,17 +43,22 @@
   h2 { font-size:15px; text-transform:uppercase; letter-spacing:.06em; color:var(--gf-mut);
        border-bottom:1px solid var(--gf-line); padding-bottom:8px; }
   h2 .count { color:var(--gf-ink); opacity:.5; margin-left:6px; }
-  .grid { display:grid; grid-template-columns:repeat(auto-fill,minmax(260px,1fr)); gap:12px; margin-top:14px; }
-  .card { display:block; padding:14px 15px; border:1px solid var(--gf-line); border-radius:12px;
-          background:var(--gf-panel); text-decoration:none; color:inherit;
-          transition:border-color .12s, transform .12s, box-shadow .12s; }
-  .card:hover { border-color:var(--gf-accent); transform:translateY(-1px);
-                box-shadow:0 6px 20px rgba(59,82,217,.1); }
-  .card-name { font-weight:640; }
-  .card-blurb { margin-top:4px; font-size:13px; color:var(--gf-mut); }
+  .grid { display:grid; grid-template-columns:repeat(auto-fill,minmax(272px,1fr)); gap:12px; margin-top:14px; }
+  .card { display:block; padding:14px 16px 15px; border:1px solid var(--gf-line); border-radius:12px;
+          background:var(--gf-panel); text-decoration:none; color:inherit; position:relative; overflow:hidden;
+          border-left:3px solid var(--cat); transition:border-color .12s, transform .12s, box-shadow .12s; }
+  .card::before { content:""; position:absolute; inset:0 0 auto 0; height:0; }
+  .card:hover { border-color:var(--cat); transform:translateY(-2px); box-shadow:0 8px 22px rgba(35,42,61,.10); }
+  .card-name { font-weight:660; display:flex; align-items:center; }
+  .card-go { margin-left:auto; color:var(--cat); font-weight:700; opacity:0; transform:translateX(-4px);
+             transition:opacity .12s, transform .12s; }
+  .card:hover .card-go { opacity:1; transform:none; }
+  /* Clamp the blurb to a scannable snippet — the full story is on the demo page. */
+  .card-blurb { margin-top:5px; font-size:12.5px; line-height:1.5; color:var(--gf-mut);
+                display:-webkit-box; -webkit-line-clamp:3; -webkit-box-orient:vertical; overflow:hidden; }
   .badge.new { padding:1px 7px; border-radius:999px; background:#16a34a; color:#fff; font-weight:600;
                margin-right:7px; font-size:10.5px; text-transform:uppercase; letter-spacing:.04em; vertical-align:middle; }
-  .card.is-new { border-left:3px solid #16a34a; }
+  .card.is-new { border-left-color:#16a34a; }
   footer { padding:22px 28px 50px; border-top:1px solid var(--gf-line); color:var(--gf-mut); font-size:13px; }
   footer .row { max-width:80ch; }
   code { padding:1px 5px; border-radius:4px; background:var(--gf-wash); font-size:.9em; }
@@ -85,72 +90,72 @@
       <section>
         <h2>Nodes <span class="count">17</span></h2>
         <div class="grid">
-        <a class="card" href="nodes/auto-sizing.html">
-          <div class="card-name">Auto-sizing</div>
+        <a class="card" href="nodes/auto-sizing.html" style="--cat:#3B52D9">
+          <div class="card-name">Auto-sizing<span class="card-go">→</span></div>
           <div class="card-blurb">Opt a node into content-aware sizing (metadata.sizing.auto) and it grows to fit its label on the very next frame — no manual measuring, and it re-fits when the text changes.</div>
         </a>
-        <a class="card" href="nodes/connection-limit.html">
-          <div class="card-name">Connection limit</div>
+        <a class="card" href="nodes/connection-limit.html" style="--cat:#3B52D9">
+          <div class="card-name">Connection limit<span class="card-go">→</span></div>
           <div class="card-blurb">A port declares maxConnections:1 and REFUSES a second wire — vetoed inside the real drag, not by disabling the UI. Drawn with genuine pointer events; the refusal leaves the model untouched.</div>
         </a>
-        <a class="card" href="nodes/custom-nodes.html">
-          <div class="card-name">Custom nodes</div>
+        <a class="card" href="nodes/custom-nodes.html" style="--cat:#3B52D9">
+          <div class="card-name">Custom nodes<span class="card-go">→</span></div>
           <div class="card-blurb">Arbitrary content inside a node — and the node still hit-tests, routes and serialises like any other.</div>
         </a>
-        <a class="card is-new" href="nodes/delete-middle-node.html">
-          <div class="card-name"><span class="badge new">New</span>Delete the middle node</div>
+        <a class="card is-new" href="nodes/delete-middle-node.html" style="--cat:#3B52D9">
+          <div class="card-name"><span class="badge new">New</span>Delete the middle node<span class="card-go">→</span></div>
           <div class="card-blurb">Delete B out of A→B→C and the chain HEALS: its two edges cascade away with it, and a fresh A→C wire bridges the gap. Built from getLinks() + the shipped link command, so the bridge is a real, undoable edge.</div>
         </a>
-        <a class="card is-new" href="nodes/drag-handle.html">
-          <div class="card-name"><span class="badge new">New</span>Drag handle</div>
+        <a class="card is-new" href="nodes/drag-handle.html" style="--cat:#3B52D9">
+          <div class="card-name"><span class="badge new">New</span>Drag handle<span class="card-go">→</span></div>
           <div class="card-blurb">A designated grip drags its parent — and ONLY the grip: the body selects but no longer drags, and the handle is chrome (no ports, no wires). Press the title bar and the window moves through the real drag pipeline.</div>
         </a>
-        <a class="card" href="nodes/easy-connect.html">
-          <div class="card-name">Easy connect</div>
+        <a class="card" href="nodes/easy-connect.html" style="--cat:#3B52D9">
+          <div class="card-name">Easy connect<span class="card-go">→</span></div>
           <div class="card-blurb">The whole node is a connection handle: press anywhere on one node, release anywhere on another, and they wire up — no need to hit a tiny port. Real pointer drag; a real link.</div>
         </a>
-        <a class="card" href="nodes/html-nodes.html">
-          <div class="card-name">HTML nodes</div>
+        <a class="card" href="nodes/html-nodes.html" style="--cat:#3B52D9">
+          <div class="card-name">HTML nodes<span class="card-go">→</span></div>
           <div class="card-blurb">Rich HTML inside a node via SVG foreignObject — sanitised (never innerHTML), and because it lives inside the node’s transformed group it rotates, pans and moves with the node.</div>
         </a>
-        <a class="card is-new" href="nodes/intersections.html">
-          <div class="card-name"><span class="badge new">New</span>Intersections</div>
+        <a class="card is-new" href="nodes/intersections.html" style="--cat:#3B52D9">
+          <div class="card-name"><span class="badge new">New</span>Intersections<span class="card-go">→</span></div>
           <div class="card-blurb">Drag a node and every node it overlaps lights up red, live — createDiagramApi(…).getIntersectingNodes on each move, with overlap vs full-containment (fully:true) both proven.</div>
         </a>
-        <a class="card is-new" href="nodes/node-position-animation.html">
-          <div class="card-name"><span class="badge new">New</span>Node position animation</div>
+        <a class="card is-new" href="nodes/node-position-animation.html" style="--cat:#3B52D9">
+          <div class="card-name"><span class="badge new">New</span>Node position animation<span class="card-go">→</span></div>
           <div class="card-blurb">Eight nodes tween between layouts — grid · ring · row — by writing node.position every frame on an ease-out curve (pure userland — no animation API needed). Proven by sampling a node mid-flight: it is between start and target, AHEAD of a linear curve, lands exactly on target, and both the node DOM and its edges follow.</div>
         </a>
-        <a class="card is-new" href="nodes/node-resize-gesture.html">
-          <div class="card-name"><span class="badge new">New</span>Node resize gesture</div>
+        <a class="card is-new" href="nodes/node-resize-gesture.html" style="--cat:#3B52D9">
+          <div class="card-name"><span class="badge new">New</span>Node resize gesture<span class="card-go">→</span></div>
           <div class="card-blurb">Select a node and the renderer paints the full resizer chrome: four corner dots and four edge lines, each with its own resize cursor, driven by a REAL pointer drag through the default pipeline. Corners resize both axes and pin the opposite corner; an edge line is grabbable ANYWHERE along the border and moves just that edge; the port keeps its glyph (that press draws a wire); min/max/aspect clamp DURING the gesture; one release is one undo step.</div>
         </a>
-        <a class="card is-new" href="nodes/node-resizer.html">
-          <div class="card-name"><span class="badge new">New</span>Node resizer</div>
+        <a class="card is-new" href="nodes/node-resizer.html" style="--cat:#3B52D9">
+          <div class="card-name"><span class="badge new">New</span>Node resizer<span class="card-go">→</span></div>
           <div class="card-blurb">Two resizers: SELECT a node for the built-in one — painted corner dots + edge lines, per-handle cursors, every handle live — or grab the bottom-right corner WITHOUT selecting for a custom control registered through the public registerTool seam. Both clamp to the node's declared min/max/aspect DURING the gesture.</div>
         </a>
-        <a class="card is-new" href="nodes/node-toolbar.html">
-          <div class="card-name"><span class="badge new">New</span>Node toolbar</div>
+        <a class="card is-new" href="nodes/node-toolbar.html" style="--cat:#3B52D9">
+          <div class="card-name"><span class="badge new">New</span>Node toolbar<span class="card-go">→</span></div>
           <div class="card-blurb">A floating toolbar pinned to a node — shown only while the node is selected (or forced visible), placeable on any side with an alignment, and held at a CONSTANT on-screen size so its buttons stay legible at any zoom. It rides the node through pans, zooms and drags; its buttons act on that node.</div>
         </a>
-        <a class="card is-new" href="nodes/proximity-connect.html">
-          <div class="card-name"><span class="badge new">New</span>Proximity connect</div>
+        <a class="card is-new" href="nodes/proximity-connect.html" style="--cat:#3B52D9">
+          <div class="card-name"><span class="badge new">New</span>Proximity connect<span class="card-go">→</span></div>
           <div class="card-blurb">Drag a node near another and a dashed wire proposes itself LIVE, then commits on drop — SnapController.findProximityConnection driven from host glue on node:moved.</div>
         </a>
-        <a class="card" href="nodes/rotatable-node.html">
-          <div class="card-name">Rotatable node</div>
+        <a class="card" href="nodes/rotatable-node.html" style="--cat:#3B52D9">
+          <div class="card-name">Rotatable node<span class="card-go">→</span></div>
           <div class="card-blurb">A node carries a rotation the renderer bakes into its SVG transform. Set it directly, or spin it with a real pointer drag through the public registerTool seam.</div>
         </a>
-        <a class="card" href="nodes/shapes.html">
-          <div class="card-name">Shapes</div>
+        <a class="card" href="nodes/shapes.html" style="--cat:#3B52D9">
+          <div class="card-name">Shapes<span class="card-go">→</span></div>
           <div class="card-blurb">21 built-in figures, each a full ShapeDefinition — and registerPathShape() adds a custom silhouette whose links attach to its real edge — the full shape pack, MIT.</div>
         </a>
-        <a class="card is-new" href="nodes/stress-test.html">
-          <div class="card-name"><span class="badge new">New</span>Stress test</div>
+        <a class="card is-new" href="nodes/stress-test.html" style="--cat:#3B52D9">
+          <div class="card-name"><span class="badge new">New</span>Stress test<span class="card-go">→</span></div>
           <div class="card-blurb">A 900-node mesh. Only the visible slice is ever in the DOM (viewport culling), a full-graph move repaints inside a frame budget, and one call lays ALL 900 out with a real engine — layered / elk / dagre / force / auto, each spreading the mesh in 2D. The strip prints the real layout time, so you can see which engine scales.</div>
         </a>
-        <a class="card is-new" href="nodes/updating-nodes.html">
-          <div class="card-name"><span class="badge new">New</span>Updating nodes</div>
+        <a class="card is-new" href="nodes/updating-nodes.html" style="--cat:#3B52D9">
+          <div class="card-name"><span class="badge new">New</span>Updating nodes<span class="card-go">→</span></div>
           <div class="card-blurb">Edit a live node from OUTSIDE the canvas — type a label, pick a background, drag the width slider — and it re-renders on the spot. Each control calls a tracked setter (setMetadata, setSize) that bumps the mutation epoch; a raw field write would silently NOT repaint.</div>
         </a>
         </div>
@@ -159,56 +164,56 @@
       <section>
         <h2>Edges <span class="count">13</span></h2>
         <div class="grid">
-        <a class="card is-new" href="edges/animating-edges.html">
-          <div class="card-name"><span class="badge new">New</span>Animating edges</div>
+        <a class="card is-new" href="edges/animating-edges.html" style="--cat:#059669">
+          <div class="card-name"><span class="badge new">New</span>Animating edges<span class="card-go">→</span></div>
           <div class="card-blurb">Two ways to show a wire carrying data: the STROKE animates (four CSS styles) AND a SHAPE rides the wire — a circle, a package, a train of dots travelling the exact painted edge path via &lt;animateMotion&gt;. Asserted by the resolved animation-name, by the token tracking the path geometry, and by real per-frame motion.</div>
         </a>
-        <a class="card" href="edges/custom-edges.html">
-          <div class="card-name">Custom edges</div>
+        <a class="card" href="edges/custom-edges.html" style="--cat:#059669">
+          <div class="card-name">Custom edges<span class="card-go">→</span></div>
           <div class="card-blurb">An author-supplied edge template via registerLinkTemplate() — a two-rail pipe drawn from the routed polyline. Asserted to REPLACE the default edge, and to follow the route.</div>
         </a>
-        <a class="card" href="edges/edge-labels.html">
-          <div class="card-name">Edge labels</div>
+        <a class="card" href="edges/edge-labels.html" style="--cat:#059669">
+          <div class="card-name">Edge labels<span class="card-go">→</span></div>
           <div class="card-blurb">A label anchored ON the edge — draggable with a real pointer, and re-anchored automatically when the edge re-routes.</div>
         </a>
-        <a class="card" href="edges/edge-markers.html">
-          <div class="card-name">Edge markers</div>
+        <a class="card" href="edges/edge-markers.html" style="--cat:#059669">
+          <div class="card-name">Edge markers<span class="card-go">→</span></div>
           <div class="card-blurb">Eight built-in arrowheads + a custom one via registerMarker() + explicit none — each asserted to render the exact head it asked for.</div>
         </a>
-        <a class="card" href="edges/edge-routing.html">
-          <div class="card-name">Edge routing</div>
+        <a class="card" href="edges/edge-routing.html" style="--cat:#059669">
+          <div class="card-name">Edge routing<span class="card-go">→</span></div>
           <div class="card-blurb">A Manhattan route that dodges an obstacle: asserted to be orthogonal AND to never cross the obstacle rectangle. Re-routes live when the wall moves or vanishes.</div>
         </a>
-        <a class="card" href="edges/edge-toolbar.html">
-          <div class="card-name">Edge toolbar</div>
+        <a class="card" href="edges/edge-toolbar.html" style="--cat:#059669">
+          <div class="card-name">Edge toolbar<span class="card-go">→</span></div>
           <div class="card-blurb">A floating toolbar anchored to the edge via createViewportPortal() — sits at the path midpoint and re-anchors when the route moves.</div>
         </a>
-        <a class="card" href="edges/edge-types.html">
-          <div class="card-name">Edge types</div>
+        <a class="card" href="edges/edge-types.html" style="--cat:#059669">
+          <div class="card-name">Edge types<span class="card-go">→</span></div>
           <div class="card-blurb">straight · step · smoothstep · bezier — one graph, four edge shapes, driven by EdgeSpec {router, connector}. The route geometry is asserted, not the pixels.</div>
         </a>
-        <a class="card" href="edges/editable-edge.html">
-          <div class="card-name">Editable edge</div>
+        <a class="card" href="edges/editable-edge.html" style="--cat:#059669">
+          <div class="card-name">Editable edge<span class="card-go">→</span></div>
           <div class="card-blurb">Click an edge to drop a waypoint, then drag it — the route bends to follow. Driven with real pointer events, and every bend is undoable.</div>
         </a>
-        <a class="card" href="edges/floating-edges.html">
-          <div class="card-name">Floating edges</div>
+        <a class="card" href="edges/floating-edges.html" style="--cat:#059669">
+          <div class="card-name">Floating edges<span class="card-go">→</span></div>
           <div class="card-blurb">Endpoints slide to the nearest point on each node's perimeter (draw.io strategy) — asserted by watching the attachment migrate to the side that faces the partner when a node moves.</div>
         </a>
-        <a class="card" href="edges/jump-overs.html">
-          <div class="card-name">Jump-overs</div>
+        <a class="card" href="edges/jump-overs.html" style="--cat:#059669">
+          <div class="card-name">Jump-overs<span class="card-go">→</span></div>
           <div class="card-blurb">Crossing wires hop: the edge owning a crossing draws an arc over the other. Asserted by the arc command in the painted path.</div>
         </a>
-        <a class="card" href="edges/parallel-links-and-self-loops.html">
-          <div class="card-name">Parallel links &amp; self-loops</div>
+        <a class="card" href="edges/parallel-links-and-self-loops.html" style="--cat:#059669">
+          <div class="card-name">Parallel links &amp; self-loops<span class="card-go">→</span></div>
           <div class="card-blurb">Three links between the same pair fan onto separate lanes; a self-link routes as a real loop OUTSIDE its node. Both asserted geometrically.</div>
         </a>
-        <a class="card" href="edges/reconnect-edge.html">
-          <div class="card-name">Reconnect edge</div>
+        <a class="card" href="edges/reconnect-edge.html" style="--cat:#059669">
+          <div class="card-name">Reconnect edge<span class="card-go">→</span></div>
           <div class="card-blurb">Drag an edge endpoint onto a different node — driven with real pointer events. Asserts the model rewired (A→B becomes A→C) and a reconnect event fired.</div>
         </a>
-        <a class="card" href="edges/routing-algorithms.html">
-          <div class="card-name">Routing algorithms</div>
+        <a class="card" href="edges/routing-algorithms.html" style="--cat:#059669">
+          <div class="card-name">Routing algorithms<span class="card-go">→</span></div>
           <div class="card-blurb">One corridor, one wall, three routers chosen per-link via EdgeSpec.router — orthogonal, manhattan (grid) and elk (ELK edge router). Each is asserted to clear a wall that sits squarely on its straight line, and manhattan is asserted to take a geometrically different route from orthogonal — proof the per-link knob dispatches to genuinely separate solvers.</div>
         </a>
         </div>
@@ -217,28 +222,28 @@
       <section>
         <h2>Ports &amp; handles <span class="count">6</span></h2>
         <div class="grid">
-        <a class="card" href="ports/connection-validation.html">
-          <div class="card-name">Connection validation</div>
+        <a class="card" href="ports/connection-validation.html" style="--cat:#d97706">
+          <div class="card-name">Connection validation<span class="card-go">→</span></div>
           <div class="card-blurb">A registered validator vetoes an invalid connection before it is made — output→output is rejected (with a reason), output→input is allowed.</div>
         </a>
-        <a class="card" href="ports/magnet-and-highlight.html">
-          <div class="card-name">Magnet &amp; highlight</div>
+        <a class="card" href="ports/magnet-and-highlight.html" style="--cat:#d97706">
+          <div class="card-name">Magnet &amp; highlight<span class="card-go">→</span></div>
           <div class="card-blurb">Valid targets highlight the instant a drag begins, and the drop snaps to the nearest port from 20px away. Both need the live connection-state manager.</div>
         </a>
-        <a class="card" href="ports/port-groups-and-layouts.html">
-          <div class="card-name">Port groups &amp; layouts</div>
+        <a class="card" href="ports/port-groups-and-layouts.html" style="--cat:#d97706">
+          <div class="card-name">Port groups &amp; layouts<span class="card-go">→</span></div>
           <div class="card-blurb">One group, one layout strategy, N ports: sideLinear column · line along a segment · ellipseSpread ring. Each arrangement asserted geometrically.</div>
         </a>
-        <a class="card" href="ports/port-labels.html">
-          <div class="card-name">Port labels</div>
+        <a class="card" href="ports/port-labels.html" style="--cat:#d97706">
+          <div class="card-name">Port labels<span class="card-go">→</span></div>
           <div class="card-blurb">Labels placed inside / outside / orthogonal to the glyph, and a keep-upright flip that rescues an upside-down label. All asserted by geometry.</div>
         </a>
-        <a class="card" href="ports/port-shapes.html">
-          <div class="card-name">Port shapes</div>
+        <a class="card" href="ports/port-shapes.html" style="--cat:#d97706">
+          <div class="card-name">Port shapes<span class="card-go">→</span></div>
           <div class="card-blurb">circle · square · diamond · triangle · custom path — five ports, five different SVG primitives. Asserted by element type, not by &quot;a port appeared&quot;.</div>
         </a>
-        <a class="card" href="ports/typed-ports.html">
-          <div class="card-name">Typed ports</div>
+        <a class="card" href="ports/typed-ports.html" style="--cat:#d97706">
+          <div class="card-name">Typed ports<span class="card-go">→</span></div>
           <div class="card-blurb">Ports coloured by data type, refusing a mismatched connection — number→number is allowed, number→string is rejected before it is made.</div>
         </a>
         </div>
@@ -247,84 +252,84 @@
       <section>
         <h2>Interaction <span class="count">20</span></h2>
         <div class="grid">
-        <a class="card" href="interaction/undo-redo.html">
-          <div class="card-name">Collaboration-aware undo</div>
+        <a class="card" href="interaction/undo-redo.html" style="--cat:#7c3aed">
+          <div class="card-name">Collaboration-aware undo<span class="card-go">→</span></div>
           <div class="card-blurb">Two peers share an op log. ⌘Z on peer A undoes A's OWN last move, not the move peer B made afterwards — the thing single-buffer undo gets wrong in every collaborative editor.</div>
         </a>
-        <a class="card is-new" href="interaction/computing-flows.html">
-          <div class="card-name"><span class="badge new">New</span>Computing flows</div>
+        <a class="card is-new" href="interaction/computing-flows.html" style="--cat:#7c3aed">
+          <div class="card-name"><span class="badge new">New</span>Computing flows<span class="card-go">→</span></div>
           <div class="card-blurb">Type a value into the source and it flows: every downstream node recomputes LIVE along the real link topology. Drop a wire and the result recomputes the instant it lands; cut a wire and the flow stops past the cut. Grafloria owns the graph and fires the change events; the app owns the arithmetic.</div>
         </a>
-        <a class="card is-new" href="interaction/connection-events.html">
-          <div class="card-name"><span class="badge new">New</span>Connection events</div>
+        <a class="card is-new" href="interaction/connection-events.html" style="--cat:#7c3aed">
+          <div class="card-name"><span class="badge new">New</span>Connection events<span class="card-go">→</span></div>
           <div class="card-blurb">A live log of the connection lifecycle the engine fires as you drag a wire — start, per-move update, port enter/leave, then complete or cancel. The stream splits the &quot;end&quot; into complete (valid) vs cancel (abandoned/refused), so hosts can react to each outcome differently.</div>
         </a>
-        <a class="card" href="interaction/validation.html">
-          <div class="card-name">Connection validation</div>
+        <a class="card" href="interaction/validation.html" style="--cat:#7c3aed">
+          <div class="card-name">Connection validation<span class="card-go">→</span></div>
           <div class="card-blurb">A registered validator refuses an illegal connection (nothing flows OUT of a Sink). Driven through the real connect pipeline: the rejected drag creates no link; the legal one does.</div>
         </a>
-        <a class="card" href="interaction/context-menu.html">
-          <div class="card-name">Context menu</div>
+        <a class="card" href="interaction/context-menu.html" style="--cat:#7c3aed">
+          <div class="card-name">Context menu<span class="card-go">→</span></div>
           <div class="card-blurb">Right-click a node for Rename / Duplicate / Delete — driven by a real contextmenu event, and every item actually mutates the model it names.</div>
         </a>
-        <a class="card" href="interaction/contextual-zoom.html">
-          <div class="card-name">Contextual zoom (LOD)</div>
+        <a class="card" href="interaction/contextual-zoom.html" style="--cat:#7c3aed">
+          <div class="card-name">Contextual zoom (LOD)<span class="card-go">→</span></div>
           <div class="card-blurb">The detail tier follows the zoom: high → medium → sketch → low. Both the reported tier and the amount of text in the DOM drop as you zoom out — the tiers are genuinely different renders, not one picture with 17 names.</div>
         </a>
-        <a class="card" href="interaction/copy-paste.html">
-          <div class="card-name">Copy / paste</div>
+        <a class="card" href="interaction/copy-paste.html" style="--cat:#7c3aed">
+          <div class="card-name">Copy / paste<span class="card-go">→</span></div>
           <div class="card-blurb">Copy a node, paste it twice — two independent copies, each with its own id and position, and mutating one touches neither the other nor the original.</div>
         </a>
-        <a class="card" href="interaction/drag-and-drop.html">
-          <div class="card-name">Drag &amp; drop</div>
+        <a class="card" href="interaction/drag-and-drop.html" style="--cat:#7c3aed">
+          <div class="card-name">Drag &amp; drop<span class="card-go">→</span></div>
           <div class="card-blurb">Drag a node type from a palette and drop it on the canvas. It is created at the drop point in WORLD space, and a second drop makes a second, independent node.</div>
         </a>
-        <a class="card" href="interaction/drag-undo.html">
-          <div class="card-name">Drag is undoable</div>
+        <a class="card" href="interaction/drag-undo.html" style="--cat:#7c3aed">
+          <div class="card-name">Drag is undoable<span class="card-go">→</span></div>
           <div class="card-blurb">Drag a node, press Ctrl+Z — it returns to where the drag began. The drag now commits one undoable step.</div>
         </a>
-        <a class="card" href="interaction/easy-connect-body.html">
-          <div class="card-name">Easy connect (body)</div>
+        <a class="card" href="interaction/easy-connect-body.html" style="--cat:#7c3aed">
+          <div class="card-name">Easy connect (body)<span class="card-go">→</span></div>
           <div class="card-blurb">Press anywhere on a node and release anywhere on another — they wire up, no aiming at a 6px port. Built into the engine drag path; the page only sets enableEasyConnect.</div>
         </a>
-        <a class="card" href="interaction/execute-flow.html">
-          <div class="card-name">Execute flow (node statuses)</div>
+        <a class="card" href="interaction/execute-flow.html" style="--cat:#7c3aed">
+          <div class="card-name">Execute flow (node statuses)<span class="card-go">→</span></div>
           <div class="card-blurb">Run the workflow like n8n: nodes pulse while running, the active wire animates in your chosen style (marching ants / flow / pulse / dash flow, any speed, either direction), a failure halts the run, a warning does not, a live run can be paused, stepped while paused, and continued — and every status keeps a static affordance under reduced motion. All node.state.status + link style.animation machinery.</div>
         </a>
-        <a class="card" href="interaction/helper-lines.html">
-          <div class="card-name">Helper lines (snaplines)</div>
+        <a class="card" href="interaction/helper-lines.html" style="--cat:#7c3aed">
+          <div class="card-name">Helper lines (snaplines)<span class="card-go">→</span></div>
           <div class="card-blurb">Drag a node near another's left edge and it snaps into alignment with a guide; a genuine near-miss beyond the threshold does not. Equal-spacing guides appear when three nodes line up evenly.</div>
         </a>
-        <a class="card" href="interaction/keyboard-a11y.html">
-          <div class="card-name">Keyboard &amp; screen-reader a11y</div>
+        <a class="card" href="interaction/keyboard-a11y.html" style="--cat:#7c3aed">
+          <div class="card-name">Keyboard &amp; screen-reader a11y<span class="card-go">→</span></div>
           <div class="card-blurb">Everything by keyboard: Tab moves a focus ring, arrows nudge (and ⌘Z undoes to the exact pixel), C+Tab+Enter connects, and a live-region outline mirror narrates the whole graph to a screen reader.</div>
         </a>
-        <a class="card" href="interaction/marquee-select.html">
-          <div class="card-name">Marquee selection</div>
+        <a class="card" href="interaction/marquee-select.html" style="--cat:#7c3aed">
+          <div class="card-name">Marquee selection<span class="card-go">→</span></div>
           <div class="card-blurb">Drag a rubber-band box over empty canvas and every node it fully encloses is selected — the marquee tool the binder leaves to the host, assembled from the public registerTool + viewport + selection seams. Shift adds to the selection.</div>
         </a>
-        <a class="card is-new" href="interaction/n8n-workflow.html">
-          <div class="card-name"><span class="badge new">New</span>n8n workflow builder</div>
+        <a class="card is-new" href="interaction/n8n-workflow.html" style="--cat:#7c3aed">
+          <div class="card-name"><span class="badge new">New</span>n8n workflow builder<span class="card-go">→</span></div>
           <div class="card-blurb">An n8n workflow you can actually RUN: press ▶ Test workflow and execution walks the graph from the Trigger — the running node spins, finished nodes get green checks, wires grow &quot;n items&quot; pills, the AI Agent's sub-nodes flash while it thinks, and the If node routes items down ONE branch by a real condition. Pause / step / continue a live run, read the execution log, and double-click any node for n8n's Node Details View: input items | an editable Parameters form + Settings tab | output items, plus &quot;Execute step&quot; to run up to that node. Connect-by-drag, a node palette, and the two wire families still apply.</div>
         </a>
-        <a class="card" href="interaction/parent-move.html">
-          <div class="card-name">Parent move</div>
+        <a class="card" href="interaction/parent-move.html" style="--cat:#7c3aed">
+          <div class="card-name">Parent move<span class="card-go">→</span></div>
           <div class="card-blurb">Drag a subflow container by its frame and the whole graph inside it moves with it — members and frame together, as one undoable step. Nothing wires this host-side; the engine does it.</div>
         </a>
-        <a class="card" href="interaction/preventing-cycles.html">
-          <div class="card-name">Preventing cycles</div>
+        <a class="card" href="interaction/preventing-cycles.html" style="--cat:#7c3aed">
+          <div class="card-name">Preventing cycles<span class="card-go">→</span></div>
           <div class="card-blurb">A DAG that stays acyclic: a connection whose target can already reach its source is refused, so a→b→c→d can never be closed into a loop. Driven through the real connect pipeline.</div>
         </a>
-        <a class="card" href="interaction/proximity-connect-live.html">
-          <div class="card-name">Proximity connect (live)</div>
+        <a class="card" href="interaction/proximity-connect-live.html" style="--cat:#7c3aed">
+          <div class="card-name">Proximity connect (live)<span class="card-go">→</span></div>
           <div class="card-blurb">Drag a node next to another and the wire proposes AND commits itself — driven by the engine’s own drag path, not host glue. The page only sets enableProximityConnect.</div>
         </a>
-        <a class="card" href="interaction/save-and-restore.html">
-          <div class="card-name">Save &amp; restore</div>
+        <a class="card" href="interaction/save-and-restore.html" style="--cat:#7c3aed">
+          <div class="card-name">Save &amp; restore<span class="card-go">→</span></div>
           <div class="card-blurb">Save a document as a snapshot + op-log tail, then restore it into a fresh peer that RESUMES its Lamport clock — its next edit stamps after everything saved, so a reloaded collaborator rejoins without clobbering history.</div>
         </a>
-        <a class="card" href="interaction/touch-device.html">
-          <div class="card-name">Touch device</div>
+        <a class="card" href="interaction/touch-device.html" style="--cat:#7c3aed">
+          <div class="card-name">Touch device<span class="card-go">→</span></div>
           <div class="card-blurb">Pan, pinch-zoom, tap-to-select and one-finger node drag — all from real touch PointerEvents through the same pipeline a phone uses. touch-action:none is what keeps the browser from eating the gesture.</div>
         </a>
         </div>
@@ -333,40 +338,40 @@
       <section>
         <h2>Layout <span class="count">9</span></h2>
         <div class="grid">
-        <a class="card" href="layout/auto-layout.html">
-          <div class="card-name">Auto layout</div>
+        <a class="card" href="layout/auto-layout.html" style="--cat:#2563eb">
+          <div class="card-name">Auto layout<span class="card-go">→</span></div>
           <div class="card-blurb">One graph, six engines, one call: engine.layout(name). All nine nodes start stacked at (0,0) — if layout were a no-op you would see it.</div>
         </a>
-        <a class="card" href="layout/dagre-tree.html">
-          <div class="card-name">Dagre tree</div>
+        <a class="card" href="layout/dagre-tree.html" style="--cat:#2563eb">
+          <div class="card-name">Dagre tree<span class="card-go">→</span></div>
           <div class="card-blurb">Hierarchical top-down layout via engine.layout(&quot;dagre&quot;). Seven nodes start stacked at (0,0); after one call the tree is layered and no two boxes touch.</div>
         </a>
-        <a class="card" href="layout/dynamic-layouting.html">
-          <div class="card-name">Dynamic layouting</div>
+        <a class="card" href="layout/dynamic-layouting.html" style="--cat:#2563eb">
+          <div class="card-name">Dynamic layouting<span class="card-go">→</span></div>
           <div class="card-blurb">Mental-map-preserving incremental layout: add a node and the rest barely move. The page measures total movement two ways and asserts the incremental pass is a fraction of a from-scratch relayout.</div>
         </a>
-        <a class="card" href="layout/elk-tree.html">
-          <div class="card-name">ELK tree</div>
+        <a class="card" href="layout/elk-tree.html" style="--cat:#2563eb">
+          <div class="card-name">ELK tree<span class="card-go">→</span></div>
           <div class="card-blurb">The layered ELK engine on the same tree the dagre page uses — and the two pictures are provably different, so neither is a secret alias of the other.</div>
         </a>
-        <a class="card" href="layout/expand-collapse.html">
-          <div class="card-name">Expand / collapse</div>
+        <a class="card" href="layout/expand-collapse.html" style="--cat:#2563eb">
+          <div class="card-name">Expand / collapse<span class="card-go">→</span></div>
           <div class="card-blurb">Collapse a container to a placeholder — members hide, boundary edges aggregate onto a proxy — then expand it back to the exact pixel it held. Lossless, and driven through the real GroupCollapseService.</div>
         </a>
-        <a class="card" href="layout/force-layout.html">
-          <div class="card-name">Force layout</div>
+        <a class="card" href="layout/force-layout.html" style="--cat:#2563eb">
+          <div class="card-name">Force layout<span class="card-go">→</span></div>
           <div class="card-blurb">Force-directed placement, and the seed is REAL: same seed → byte-identical picture (three adapters here once drew from Math.random()); different seed → different picture; connected nodes end up closer than the average pair.</div>
         </a>
-        <a class="card" href="layout/layout-portfolio.html">
-          <div class="card-name">Layout portfolio</div>
+        <a class="card" href="layout/layout-portfolio.html" style="--cat:#2563eb">
+          <div class="card-name">Layout portfolio<span class="card-go">→</span></div>
           <div class="card-blurb">Five engines — tree, radial, circular, grid, force — over one graph, each a genuinely different picture, none overlapping. And a disconnected component is PACKED beside the rest, not laid on top of it.</div>
         </a>
-        <a class="card" href="layout/nested-containers.html">
-          <div class="card-name">Nested containers</div>
+        <a class="card" href="layout/nested-containers.html" style="--cat:#2563eb">
+          <div class="card-name">Nested containers<span class="card-go">→</span></div>
           <div class="card-blurb">Compound layout with cross-boundary edges induced at the LCA. Reverse the one edge that crosses the two containers and their order flips — proof the cross edge actually reaches the root instead of being silently dropped.</div>
         </a>
-        <a class="card" href="layout/off-thread-layout.html">
-          <div class="card-name">Off-thread layout</div>
+        <a class="card" href="layout/off-thread-layout.html" style="--cat:#2563eb">
+          <div class="card-name">Off-thread layout<span class="card-go">→</span></div>
           <div class="card-blurb">Force layout in a REAL Worker via engine.setLayoutPort(): progress streams from the other thread, a cancel lands mid-run and keeps the partial result, and the main thread keeps ticking the whole time.</div>
         </a>
         </div>
@@ -375,28 +380,28 @@
       <section>
         <h2>Grouping &amp; subflows <span class="count">6</span></h2>
         <div class="grid">
-        <a class="card" href="grouping/collapse-expand.html">
-          <div class="card-name">Collapse &amp; expand</div>
+        <a class="card" href="grouping/collapse-expand.html" style="--cat:#db2777">
+          <div class="card-name">Collapse &amp; expand<span class="card-go">→</span></div>
           <div class="card-blurb">Really collapse a group: its members hide, and the several links that crossed its boundary are replaced by ONE aggregated proxy link to the collapsed placeholder. Expand restores every one.</div>
         </a>
-        <a class="card" href="grouping/group-frames.html">
-          <div class="card-name">Group frames</div>
+        <a class="card" href="grouping/group-frames.html" style="--cat:#db2777">
+          <div class="card-name">Group frames<span class="card-go">→</span></div>
           <div class="card-blurb">Groups now draw a visible, labelled, themed frame — nested containers included. Was model-only since Wave 7.</div>
         </a>
-        <a class="card is-new" href="grouping/parent-child.html">
-          <div class="card-name"><span class="badge new">New</span>Parent &amp; child</div>
+        <a class="card is-new" href="grouping/parent-child.html" style="--cat:#db2777">
+          <div class="card-name"><span class="badge new">New</span>Parent &amp; child<span class="card-go">→</span></div>
           <div class="card-blurb">Drop the child into the container to attach it. While attached, an out-of-bounds drag is reeled back to the container’s extent on release, and dragging the frame carries the child along. Detach, and the very same drag sticks — membership is the binding.</div>
         </a>
-        <a class="card" href="grouping/selection-grouping.html">
-          <div class="card-name">Selection grouping</div>
+        <a class="card" href="grouping/selection-grouping.html" style="--cat:#db2777">
+          <div class="card-name">Selection grouping<span class="card-go">→</span></div>
           <div class="card-blurb">Marquee/ctrl-click a set of nodes, then bundle exactly that selection into a container — the group holds what you picked and nothing you did not.</div>
         </a>
-        <a class="card" href="grouping/sub-flow.html">
-          <div class="card-name">Sub-flow</div>
+        <a class="card" href="grouping/sub-flow.html" style="--cat:#db2777">
+          <div class="card-name">Sub-flow<span class="card-go">→</span></div>
           <div class="card-blurb">A container that holds a nested graph: nodes become members, the frame fits itself around them, and a sub-group nests inside — a real parent/child group hierarchy.</div>
         </a>
-        <a class="card" href="grouping/swimlanes.html">
-          <div class="card-name">Swimlanes</div>
+        <a class="card" href="grouping/swimlanes.html" style="--cat:#db2777">
+          <div class="card-name">Swimlanes<span class="card-go">→</span></div>
           <div class="card-blurb">Pools and weighted lanes that tile a frame and keep their nodes in-lane — a full containment model, reachable now that SwimlaneService is on the public embed.</div>
         </a>
         </div>
@@ -405,12 +410,12 @@
       <section>
         <h2>Dashboards <span class="count">2</span></h2>
         <div class="grid">
-        <a class="card is-new" href="dashboard/dashboard-builder.html">
-          <div class="card-name"><span class="badge new">New</span>Dashboard builder</div>
+        <a class="card is-new" href="dashboard/dashboard-builder.html" style="--cat:#0891b2">
+          <div class="card-name"><span class="badge new">New</span>Dashboard builder<span class="card-go">→</span></div>
           <div class="card-blurb">A dashboard-builder app authored with the kit's DATA-FIRST API: `dashboard({ views: [{ widgets: [{ id, kind, span, rows, data }] }] })` — three tabbed views declared as plain data, no groups/nodes/cells assembled by hand, and every chart drawn by the kit's built-in renderers (kpi / line / bar / donut / funnel / table) from this page's own dataset. render() wires the rest: ONE flat 12-column PACK grid per view, so drag a tile and neighbours slide out of the way live around a truthful placeholder; resize from the corner and only that tile changes; pinned tiles refuse the mover; Esc restores; palette drag-in and drag-out-to-remove; fit/grow sizing — every gesture ONE undoable BatchCommand, from the @grafloria/element front door.</div>
         </a>
-        <a class="card is-new" href="dashboard/grid-options.html">
-          <div class="card-name"><span class="badge new">New</span>Dashboard grid options</div>
+        <a class="card is-new" href="dashboard/grid-options.html" style="--cat:#0891b2">
+          <div class="card-name"><span class="badge new">New</span>Dashboard grid options<span class="card-go">→</span></div>
           <div class="card-blurb">The dashboard kit's ADVANCED grid constructs, one labelled board each — cross-container drag between two boards, a bounded section (maxRows: 1) nested inside a board with height escalation, a pinned tile that refuses the mover, explicit cell placement with auto-flow around it, float and fit/grow toggles, palette drag-in and drag-out-to-remove. The flagship Dashboard builder deliberately uses NONE of these: it is one flat 12-column grid so its behaviour is predictable. This page is the options menu. LAYERS: `dashboard({ views })` declares a whole board as data and wires all of this for you (dashboard/dashboard-builder.html) — this page is the layer beneath it, `bindDashboardGrid` driven directly, because that is where these options live.</div>
         </a>
         </div>
@@ -419,32 +424,32 @@
       <section>
         <h2>Styling &amp; theming <span class="count">7</span></h2>
         <div class="grid">
-        <a class="card" href="styling/dark-mode.html">
-          <div class="card-name">Dark mode</div>
+        <a class="card" href="styling/dark-mode.html" style="--cat:#ca8a04">
+          <div class="card-name">Dark mode<span class="card-go">→</span></div>
           <div class="card-blurb">Light, dark — and system, where an OS accessibility preference upgrades us to high-contrast instead of flashing light at the user.</div>
         </a>
-        <a class="card" href="styling/css-variables.html">
-          <div class="card-name">Instance-scoped CSS variables</div>
+        <a class="card" href="styling/css-variables.html" style="--cat:#ca8a04">
+          <div class="card-name">Instance-scoped CSS variables<span class="card-go">→</span></div>
           <div class="card-blurb">Two diagrams with different themes on ONE page do not clobber each other — each writes only its own [data-grafloria-instance]-scoped variable block.</div>
         </a>
-        <a class="card" href="styling/named-style-classes.html">
-          <div class="card-name">Named style classes</div>
+        <a class="card" href="styling/named-style-classes.html" style="--cat:#ca8a04">
+          <div class="card-name">Named style classes<span class="card-go">→</span></div>
           <div class="card-blurb">defineStyle() + style.styleClass — one deterministic cascade: theme &lt; type-default &lt; named-class &lt; element-inline &lt; state.</div>
         </a>
-        <a class="card" href="styling/paint-servers.html">
-          <div class="card-name">Paint servers</div>
+        <a class="card" href="styling/paint-servers.html" style="--cat:#ca8a04">
+          <div class="card-name">Paint servers<span class="card-go">→</span></div>
           <div class="card-blurb">Gradient &amp; pattern fills and drop-shadow filters — each a real, deduped &lt;defs&gt; paint server referenced by url(#…), not a flattened approximation.</div>
         </a>
-        <a class="card" href="styling/theme-bound-properties.html">
-          <div class="card-name">Theme-bound properties</div>
+        <a class="card" href="styling/theme-bound-properties.html" style="--cat:#ca8a04">
+          <div class="card-name">Theme-bound properties<span class="card-go">→</span></div>
           <div class="card-blurb">themeRef('category.critical') — a theme swap recolours the CALLER's semantic colours, not just the chrome. The one dimension where GoJS clearly led us.</div>
         </a>
-        <a class="card" href="styling/themes-and-tokens.html">
-          <div class="card-name">Themes &amp; design tokens</div>
+        <a class="card" href="styling/themes-and-tokens.html" style="--cat:#ca8a04">
+          <div class="card-name">Themes &amp; design tokens<span class="card-go">→</span></div>
           <div class="card-blurb">A design-token bridge: the HOST's shadcn / MUI / Tailwind variables paint the diagram — and deriveTheme() audits its own output against WCAG.</div>
         </a>
-        <a class="card" href="styling/turbo-flow.html">
-          <div class="card-name">Turbo flow</div>
+        <a class="card" href="styling/turbo-flow.html" style="--cat:#ca8a04">
+          <div class="card-name">Turbo flow<span class="card-go">→</span></div>
           <div class="card-blurb">Glowing animated gradient edges and node borders, all through the public style API.</div>
         </a>
         </div>
@@ -453,28 +458,28 @@
       <section>
         <h2>Collaboration <span class="count">6</span></h2>
         <div class="grid">
-        <a class="card is-new" href="collab/conflict-resolution.html">
-          <div class="card-name"><span class="badge new">New</span>Conflict resolution</div>
+        <a class="card is-new" href="collab/conflict-resolution.html" style="--cat:#dc2626">
+          <div class="card-name"><span class="badge new">New</span>Conflict resolution<span class="card-go">→</span></div>
           <div class="card-blurb">Concurrent move + rename of the SAME node: both survive on both peers. Whole-entity LWW would throw one away — a per-property CRDT does not.</div>
         </a>
-        <a class="card" href="collab/live-cursors.html">
-          <div class="card-name">Live cursors</div>
+        <a class="card" href="collab/live-cursors.html" style="--cat:#dc2626">
+          <div class="card-name">Live cursors<span class="card-go">→</span></div>
           <div class="card-blurb">Remote presence cursors on a separate DOM layer — 60Hz cursor traffic never repaints the diagram and never touches the op log.</div>
         </a>
-        <a class="card" href="collab/offline-and-reconnect.html">
-          <div class="card-name">Offline &amp; reconnect</div>
+        <a class="card" href="collab/offline-and-reconnect.html" style="--cat:#dc2626">
+          <div class="card-name">Offline &amp; reconnect<span class="card-go">→</span></div>
           <div class="card-blurb">Disconnect, edit both sides, reconnect — anti-entropy ships each peer exactly what it missed and they converge. No lost edits.</div>
         </a>
-        <a class="card" href="collab/presentation-mode.html">
-          <div class="card-name">Presentation mode</div>
+        <a class="card" href="collab/presentation-mode.html" style="--cat:#dc2626">
+          <div class="card-name">Presentation mode<span class="card-go">→</span></div>
           <div class="card-blurb">Follow-the-presenter + a real read-only lock. Followers see the presenter's world region at their own screen size, and cannot edit.</div>
         </a>
-        <a class="card" href="collab/comments.html">
-          <div class="card-name">Threaded comments</div>
+        <a class="card" href="collab/comments.html" style="--cat:#dc2626">
+          <div class="card-name">Threaded comments<span class="card-go">→</span></div>
           <div class="card-blurb">Write a comment on any node and reply in-thread — then delete the node and the thread is orphaned, not destroyed. Concurrent replies both survive (one register per message).</div>
         </a>
-        <a class="card" href="collab/two-tabs-live.html">
-          <div class="card-name">Two tabs, live</div>
+        <a class="card" href="collab/two-tabs-live.html" style="--cat:#dc2626">
+          <div class="card-name">Two tabs, live<span class="card-go">→</span></div>
           <div class="card-blurb">Real cross-tab multiplayer over BroadcastChannel — no server. Edit one instance, the other converges through a per-property CRDT.</div>
         </a>
         </div>
@@ -483,20 +488,20 @@
       <section>
         <h2>Whiteboard <span class="count">4</span></h2>
         <div class="grid">
-        <a class="card" href="whiteboard/eraser.html">
-          <div class="card-name">Eraser</div>
+        <a class="card" href="whiteboard/eraser.html" style="--cat:#4f46e5">
+          <div class="card-name">Eraser<span class="card-go">→</span></div>
           <div class="card-blurb">Wipe over ink to remove it. Whole-stroke delete; a sweep across several strokes is one undo step.</div>
         </a>
-        <a class="card" href="whiteboard/freehand-draw.html">
-          <div class="card-name">Freehand draw</div>
+        <a class="card" href="whiteboard/freehand-draw.html" style="--cat:#4f46e5">
+          <div class="card-name">Freehand draw<span class="card-go">→</span></div>
           <div class="card-blurb">Draw ink with a pointer or a finger. The line commits as one simplified stroke entity — real vector ink, not a screenshot.</div>
         </a>
-        <a class="card" href="whiteboard/rectangle.html">
-          <div class="card-name">Rectangle tool</div>
+        <a class="card" href="whiteboard/rectangle.html" style="--cat:#4f46e5">
+          <div class="card-name">Rectangle tool<span class="card-go">→</span></div>
           <div class="card-blurb">Drag out a rectangle. It becomes a real NODE — connectable, resizable, laid out — because a rectangle IS a box, unlike freehand ink.</div>
         </a>
-        <a class="card" href="whiteboard/stroke-edit.html">
-          <div class="card-name">Stroke edit</div>
+        <a class="card" href="whiteboard/stroke-edit.html" style="--cat:#4f46e5">
+          <div class="card-name">Stroke edit<span class="card-go">→</span></div>
           <div class="card-blurb">Select committed ink with the edit tool and drag it — the whole stroke translates, as one undoable step.</div>
         </a>
         </div>
@@ -505,66 +510,66 @@
       <section>
         <h2>Export &amp; misc <span class="count">8</span></h2>
         <div class="grid">
-        <a class="card" href="misc/download-image.html">
-          <div class="card-name">Download image</div>
+        <a class="card" href="misc/download-image.html" style="--cat:#64748b">
+          <div class="card-name">Download image<span class="card-go">→</span></div>
           <div class="card-blurb">PNG and SVG straight from the VNode tree — labels, arrowheads and shadows included — and the raster is provably not blank and not black.</div>
         </a>
-        <a class="card" href="misc/editable-round-trip.html">
-          <div class="card-name">Editable round-trip</div>
+        <a class="card" href="misc/editable-round-trip.html" style="--cat:#64748b">
+          <div class="card-name">Editable round-trip<span class="card-go">→</span></div>
           <div class="card-blurb">The diagram model is embedded in the exported SVG/PNG; re-opening the file gives back an EDITABLE diagram, not a flat image.</div>
         </a>
-        <a class="card" href="misc/mermaid-text.html">
-          <div class="card-name">Mermaid text</div>
+        <a class="card" href="misc/mermaid-text.html" style="--cat:#64748b">
+          <div class="card-name">Mermaid text<span class="card-go">→</span></div>
           <div class="card-blurb">Lossless, Mermaid-compatible text with a hidden model sidecar — and hand-edit detection: edit the text and the diagram rebuilds from your edit.</div>
         </a>
-        <a class="card" href="misc/mermaid-viewer.html">
-          <div class="card-name">Mermaid viewer</div>
+        <a class="card" href="misc/mermaid-viewer.html" style="--cat:#64748b">
+          <div class="card-name">Mermaid viewer<span class="card-go">→</span></div>
           <div class="card-blurb">Paste or pick a Mermaid diagram and see how Grafloria renders it. Flowcharts render fully (shapes, colours, subgraphs, node status); ER / class / state are in progress; unsupported types report themselves instead of blanking.</div>
         </a>
-        <a class="card" href="misc/minimap-and-controls.html">
-          <div class="card-name">Minimap &amp; controls</div>
+        <a class="card" href="misc/minimap-and-controls.html" style="--cat:#64748b">
+          <div class="card-name">Minimap &amp; controls<span class="card-go">→</span></div>
           <div class="card-blurb">A live minimap that mirrors the diagram, plus zoom/fit controls and a dotted background — all from one attachCanvasPlugins() call.</div>
         </a>
-        <a class="card" href="misc/pdf-export.html">
-          <div class="card-name">PDF export</div>
+        <a class="card" href="misc/pdf-export.html" style="--cat:#64748b">
+          <div class="card-name">PDF export<span class="card-go">→</span></div>
           <div class="card-blurb">A real vector PDF — selectable text and true paths, not a rasterized screenshot — built with zero new dependencies.</div>
         </a>
-        <a class="card" href="misc/perf-hud.html">
-          <div class="card-name">Perf HUD &amp; quality governor</div>
+        <a class="card" href="misc/perf-hud.html" style="--cat:#64748b">
+          <div class="card-name">Perf HUD &amp; quality governor<span class="card-go">→</span></div>
           <div class="card-blurb">An adaptive quality governor that steps the render tier down under load, with a live HUD — and idle-cost / pan-fps measured in the page.</div>
         </a>
-        <a class="card" href="misc/server-side-export.html">
-          <div class="card-name">Server-side export</div>
+        <a class="card" href="misc/server-side-export.html" style="--cat:#64748b">
+          <div class="card-name">Server-side export<span class="card-go">→</span></div>
           <div class="card-blurb">Deterministic headless export: pure spec → styles-inlined SVG, zero DOM, byte-identical across independent renders. Provable in-page.</div>
         </a>
         </div>
       </section>
 
       <section>
-        <h2>diagrams <span class="count">6</span></h2>
+        <h2>Diagrams &amp; kits <span class="count">6</span></h2>
         <div class="grid">
-        <a class="card" href="diagrams/class-uml.html">
-          <div class="card-name">Class diagram (UML)</div>
+        <a class="card" href="diagrams/class-uml.html" style="--cat:#9333ea">
+          <div class="card-name">Class diagram (UML)<span class="card-go">→</span></div>
           <div class="card-blurb">A UML class diagram from PURE DATA via the reusable umlDiagram() kit: class boxes with name / attributes / methods compartments, hollow-triangle inheritance and hollow-diamond aggregation — look, selection and routing all from the kit.</div>
         </a>
-        <a class="card" href="diagrams/er-advanced.html">
-          <div class="card-name">ER diagram — advanced</div>
+        <a class="card" href="diagrams/er-advanced.html" style="--cat:#9333ea">
+          <div class="card-name">ER diagram — advanced<span class="card-go">→</span></div>
           <div class="card-blurb">The advanced ER shapes — two relationships between the SAME pair of tables on different FK columns, a self-reference, a many-to-many junction, optional-vs-mandatory crow's-foot cardinality — all from ONE erDiagram() call: every line is a 'TABLE.column' → 'TABLE.column' string pinned to the exact row it joins.</div>
         </a>
-        <a class="card is-new" href="diagrams/erd-editor.html">
-          <div class="card-name"><span class="badge new">New</span>ERD editor (in-canvas editing)</div>
+        <a class="card is-new" href="diagrams/erd-editor.html" style="--cat:#9333ea">
+          <div class="card-name"><span class="badge new">New</span>ERD editor (in-canvas editing)<span class="card-go">→</span></div>
           <div class="card-blurb">The erDiagram() kit with editable:true — rename tables &amp; columns in place, add and delete columns, all as undoable edits. Field ports and FK→PK edges reconcile automatically, so an edge never comes unglued when the rows shift.</div>
         </a>
-        <a class="card is-new" href="diagrams/scrollable-cards.html">
-          <div class="card-name"><span class="badge new">New</span>Scrollable cards</div>
+        <a class="card is-new" href="diagrams/scrollable-cards.html" style="--cat:#9333ea">
+          <div class="card-name"><span class="badge new">New</span>Scrollable cards<span class="card-go">→</span></div>
           <div class="card-blurb">BOTH an ER table (21 columns) and a UML class (26 members) capped at a fixed height: each card body scrolls. The wheel belongs to the card (the binder delegates — card content is pointer-events:none) and is CONTAINED: at the end of the range the canvas does not pan, so reaching the bottom never jumps the whole diagram. ctrl/⌘-wheel always zooms.</div>
         </a>
-        <a class="card" href="diagrams/table-er.html">
-          <div class="card-name">Table / ER diagram</div>
+        <a class="card" href="diagrams/table-er.html" style="--cat:#9333ea">
+          <div class="card-name">Table / ER diagram<span class="card-go">→</span></div>
           <div class="card-blurb">A database entity-relationship diagram from PURE DATA via the reusable erDiagram() kit: HTML &quot;table&quot; nodes with typed columns and PK/FK badges, joined by crow's-foot cardinality — the look, selection and routing all come from the kit.</div>
         </a>
-        <a class="card" href="diagrams/uml-relationships.html">
-          <div class="card-name">UML relationships</div>
+        <a class="card" href="diagrams/uml-relationships.html" style="--cat:#9333ea">
+          <div class="card-name">UML relationships<span class="card-go">→</span></div>
           <div class="card-blurb">The FULL UML class-relationship vocabulary from PURE DATA via the reusable umlDiagram() kit: generalization, realization, association (with multiplicity chips), directed association, aggregation, composition and dependency — each with its real UML notation, look / selection / editing surface all from the kit. Only the Employee self-association is a hand-written edge (self-loops are not in the kit vocabulary yet).</div>
         </a>
         </div>
