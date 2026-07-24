@@ -1,6 +1,6 @@
 <meta charset="utf-8">
 <title>Turbo flow — Grafloria</title>
-<link rel="stylesheet" href="../shell/demo.css">
+<link rel="stylesheet" href="../shell/demo.css?v=drawer2">
 <style>
   .note { font-size: 12px; opacity: .8; padding: 10px 24px; border-bottom: 1px solid rgba(127,127,127,.25); line-height: 1.6; }
   code { background: rgba(127,127,127,.15); padding: 1px 5px; border-radius: 4px; }
@@ -16,7 +16,7 @@
 <div id="canvas"></div>
 <script type="module">
 import { render, DARK_THEME } from '../shell/grafloria.js';
-import { defineDemo, check } from '../shell/demo.js';
+import { defineDemo, check } from '../shell/demo.js?v=drawer2';
 
 const TURBO = { type: 'linear', x1: 0, y1: 0, x2: 1, y2: 0,
   stops: [{ offset: 0, color: '#2a8af6' }, { offset: 0.5, color: '#a853ba' }, { offset: 1, color: '#e92a67' }] };

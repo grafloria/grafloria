@@ -1,11 +1,11 @@
 <meta charset="utf-8">
 <title>Rectangle tool — Grafloria</title>
-<link rel="stylesheet" href="../shell/demo.css">
+<link rel="stylesheet" href="../shell/demo.css?v=drawer2">
 <header id="demo-head"></header>
 <div id="canvas"></div>
 <script type="module">
 import { render, registerTool, createRectangleTool } from '../shell/grafloria.js';
-import { defineDemo, check } from '../shell/demo.js';
+import { defineDemo, check } from '../shell/demo.js?v=drawer2';
 
 function gesture(host, from, to, steps) {
   const rect = host.getBoundingClientRect();

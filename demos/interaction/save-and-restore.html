@@ -1,6 +1,6 @@
 <meta charset="utf-8">
 <title>Save & restore — Grafloria</title>
-<link rel="stylesheet" href="../shell/demo.css">
+<link rel="stylesheet" href="../shell/demo.css?v=drawer2">
 <style>
   #readout { padding: 8px 24px; font: 12px/1.5 ui-monospace, monospace; opacity: .85; border-bottom: 1px solid rgba(127,127,127,.25); white-space: pre; }
   #canvas { height: calc(100vh - 168px); }
@@ -14,7 +14,7 @@
 <div id="canvas"></div>
 <script type="module">
 import { render, Replica, DiagramSerializer } from '../shell/grafloria.js';
-import { defineDemo, check, checkEqual } from '../shell/demo.js';
+import { defineDemo, check, checkEqual } from '../shell/demo.js?v=drawer2';
 
 // A peer edits a document, then we SAVE it as (snapshot + op-log tail) and a fresh
 // peer RESTORES from that pair — the Wave 9 durable-collaboration round-trip. The

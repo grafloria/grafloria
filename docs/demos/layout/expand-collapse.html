@@ -1,6 +1,6 @@
 <meta charset="utf-8">
 <title>Expand / collapse — Grafloria</title>
-<link rel="stylesheet" href="../shell/demo.css">
+<link rel="stylesheet" href="../shell/demo.css?v=drawer2">
 <style>
   #bar { display: flex; gap: 8px; padding: 10px 24px; border-bottom: 1px solid rgba(127,127,127,.25); align-items: center; }
   #bar button { padding: 5px 12px; border-radius: 6px; border: 1px solid rgba(127,127,127,.4); background: transparent; color: inherit; cursor: pointer; font: inherit; }
@@ -16,7 +16,7 @@
 <div id="canvas"></div>
 <script type="module">
 import { render, GroupModel, GroupCollapseService } from '../shell/grafloria.js';
-import { defineDemo, check, checkEqual } from '../shell/demo.js';
+import { defineDemo, check, checkEqual } from '../shell/demo.js?v=drawer2';
 
 // A container of three members, plus an external node wired to two of them across
 // the boundary. Collapse must: hide the members, shrink the group to a placeholder,

@@ -1,6 +1,6 @@
 <meta charset="utf-8">
 <title>Two tabs, live — Grafloria</title>
-<link rel="stylesheet" href="../shell/demo.css">
+<link rel="stylesheet" href="../shell/demo.css?v=drawer2">
 <style>
   .note { font-size: 12px; opacity: .8; padding: 10px 24px; border-bottom: 1px solid rgba(127,127,127,.25); line-height: 1.6; }
   code { background: rgba(127,127,127,.15); padding: 1px 5px; border-radius: 4px; }
@@ -22,7 +22,7 @@
 </div>
 <script type="module">
 import { render, createSyncSession, BroadcastChannelTransport } from '../shell/grafloria.js';
-import { defineDemo, check } from '../shell/demo.js';
+import { defineDemo, check } from '../shell/demo.js?v=drawer2';
 
 const SPEC = () => ({
   nodes: [
