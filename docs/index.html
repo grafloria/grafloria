@@ -137,6 +137,27 @@
   .story-canvas .skel { position: absolute; inset: 0; z-index: 2; display: flex; align-items: center; justify-content: center;
     color: var(--indigo-soft); font-size: 12.5px; font-weight: 600; background: #fff; opacity: 1; transition: opacity .4s ease; }
   .story-canvas.ready .skel { opacity: 0; pointer-events: none; }
+  /* n8n-style node cards, painted inside each node's foreignObject (workflow story). */
+  .story-canvas .cv foreignObject { overflow: visible; }
+  .story-canvas .cv .n8n-card { display: flex; align-items: center; gap: 9px; width: 100%; height: 100%;
+    box-sizing: border-box; padding: 0 11px; background: #fff; color: #2d2e3a; position: relative;
+    border: 1px solid #dfe2ea; border-left-width: 3px; border-radius: 9px; font-family: system-ui, sans-serif;
+    box-shadow: 0 1px 2px rgba(16,24,40,.06), 0 1px 3px rgba(16,24,40,.05); }
+  .story-canvas .cv .n8n-badge { width: 30px; height: 30px; border-radius: 8px; flex: none; display: flex;
+    align-items: center; justify-content: center; font-size: 17px; line-height: 1; color: #fff; background: #667; }
+  .story-canvas .cv .n8n-body { min-width: 0; display: flex; flex-direction: column; gap: 1px; }
+  .story-canvas .cv .n8n-title { font-weight: 600; font-size: 13px; line-height: 1.15; color: #262a35;
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .story-canvas .cv .n8n-sub { font-size: 9.5px; letter-spacing: .4px; text-transform: uppercase; color: #8a91a2;
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .story-canvas .cv .n8n-card.cat-trigger { border-radius: 26px 9px 9px 26px; padding-left: 14px; }
+  .story-canvas .cv .cat-trigger .n8n-badge { background: #10b981; } .story-canvas .cv .cat-trigger { border-left-color: #10b981; }
+  .story-canvas .cv .cat-http    .n8n-badge { background: #0ea5e9; } .story-canvas .cv .cat-http    { border-left-color: #0ea5e9; }
+  .story-canvas .cv .cat-set     .n8n-badge { background: #6366f1; } .story-canvas .cv .cat-set     { border-left-color: #6366f1; }
+  .story-canvas .cv .cat-if      .n8n-badge { background: #f97316; } .story-canvas .cv .cat-if      { border-left-color: #f97316; }
+  .story-canvas .cv .cat-merge   .n8n-badge { background: #06b6d4; } .story-canvas .cv .cat-merge   { border-left-color: #06b6d4; }
+  .story-canvas .cv .cat-ai      .n8n-badge { background: #8b5cf6; } .story-canvas .cv .cat-ai      { border-left-color: #8b5cf6; }
+  .story-canvas .cv .cat-notify  .n8n-badge { background: #ec4899; } .story-canvas .cv .cat-notify  { border-left-color: #ec4899; }
   @media (max-width: 860px) { .story, .story.rev { grid-template-columns: 1fr; gap: 20px; }
     .story.rev .story-text { order: 1; } .story.rev .story-stage { order: 2; } }
   .shots .more { margin: 26px 0 8px; font-weight: 600; text-align: center; }
@@ -264,7 +285,7 @@
           <a class="go" href="demos/interaction/n8n-workflow.html">Open the full workflow builder →</a>
         </div>
         <div class="story-stage">
-          <div class="story-canvas" data-demo="workflow"><span class="live-badge"><span class="dot"></span>live</span><div class="skel">rendering…</div><div class="cv"></div></div>
+          <div class="story-canvas" data-demo="n8n"><span class="live-badge"><span class="dot"></span>live</span><div class="skel">rendering…</div><div class="cv"></div></div>
         </div>
       </div>
 
@@ -498,6 +519,59 @@
         { id: 'd', source: 'code', target: 'note', style: flow('#9333ea') },
       ],
     }),
+    // A genuine n8n-style graph — HTML node cards with icon badges, an If branch
+    // (green true / red false), a Merge, and the signature AI-agent sub-nodes
+    // hanging below on violet dashed wires. Distinct from the hero's linear flow.
+    n8n: (k) => {
+      const card = (cat, glyph, title, sub) => ({
+        tag: 'div', className: 'n8n-card cat-' + cat, children: [
+          { tag: 'div', className: 'n8n-badge', text: glyph },
+          { tag: 'div', className: 'n8n-body', children: [
+            { tag: 'div', className: 'n8n-title', text: title },
+            { tag: 'div', className: 'n8n-sub', text: sub },
+          ] },
+        ],
+      });
+      const P = { shape: 'circle', size: 9 };
+      const NN = (id, x, y, w, h, cat, glyph, title, sub, ports) => ({
+        id, position: { x, y }, size: { width: w, height: h },
+        metadata: { html: { content: card(cat, glyph, title, sub), padding: 0 } },
+        shape: { type: 'rect', fill: 'none', stroke: 'none' },
+        style: { fill: 'transparent', stroke: 'transparent', strokeWidth: 0 }, ports,
+      });
+      const inP = (id) => ({ id: id + '_in', side: 'left', type: 'input', shape: P });
+      const outP = (id) => ({ id: id + '_out', side: 'right', type: 'output', shape: P });
+      const abs = (id, side, x, y, type) => ({ id, side, type, shape: P, layout: { strategy: 'absolute', args: { units: 'px', x, y } } });
+      const main = () => ({ stroke: '#9aa2b1', strokeWidth: 2, arrowHead: { type: 'arrow', size: 8, filled: true } });
+      const yes = () => ({ stroke: '#16a34a', strokeWidth: 2, arrowHead: { type: 'arrow', size: 8, filled: true } });
+      const no = () => ({ stroke: '#dc2626', strokeWidth: 2, arrowHead: { type: 'arrow', size: 8, filled: true } });
+      const ai = () => ({ stroke: '#8b5cf6', strokeWidth: 2, strokeDasharray: '2 5', arrowHead: { type: 'none' } });
+      const bez = (id, s, sh, t, th, style) => ({ id, source: s, target: t, sourceHandle: sh, targetHandle: th, type: 'bezier', style });
+      return {
+        nodes: [
+          NN('start', 20, 170, 180, 60, 'trigger', '▶', 'On Schedule', 'Trigger', [outP('start')]),
+          NN('http', 260, 170, 200, 60, 'http', '🌐', 'Fetch Orders', 'HTTP Request', [inP('http'), outP('http')]),
+          NN('iff', 520, 170, 180, 60, 'if', '⋔', 'New order?', 'If', [inP('iff'), abs('iff_true', 'right', 180, 20, 'output'), abs('iff_false', 'right', 180, 42, 'output')]),
+          NN('agent', 760, 40, 210, 82, 'ai', '🤖', 'Draft Reply', 'AI Agent', [inP('agent'), outP('agent'), abs('agent_model', 'bottom', 62, 82, 'input'), abs('agent_mem', 'bottom', 140, 82, 'input')]),
+          NN('set', 760, 280, 190, 60, 'set', '✏️', 'Skip Order', 'Edit Fields', [inP('set'), outP('set')]),
+          NN('merge', 1030, 170, 180, 60, 'merge', '🔀', 'Merge', 'Combine', [abs('merge_in1', 'left', 0, 20, 'input'), abs('merge_in2', 'left', 0, 40, 'input'), outP('merge')]),
+          NN('slack', 1270, 170, 190, 60, 'notify', '🔔', 'Send Slack', 'Notify', [inP('slack')]),
+          NN('model', 690, 240, 168, 54, 'ai', '🧠', 'Chat Model', 'gpt-5', [abs('model_out', 'top', 84, 0, 'output')]),
+          NN('mem', 890, 240, 150, 54, 'ai', '💾', 'Memory', 'Buffer', [abs('mem_out', 'top', 75, 0, 'output')]),
+        ],
+        edges: [
+          bez('e1', 'start', 'start_out', 'http', 'http_in', main()),
+          bez('e2', 'http', 'http_out', 'iff', 'iff_in', main()),
+          bez('e3', 'iff', 'iff_true', 'agent', 'agent_in', yes()),
+          bez('e4', 'iff', 'iff_false', 'set', 'set_in', no()),
+          bez('e5', 'agent', 'agent_out', 'merge', 'merge_in1', main()),
+          bez('e6', 'set', 'set_out', 'merge', 'merge_in2', main()),
+          bez('e7', 'merge', 'merge_out', 'slack', 'slack_in', main()),
+          bez('e8', 'model', 'model_out', 'agent', 'agent_model', ai()),
+          bez('e9', 'mem', 'mem_out', 'agent', 'agent_mem', ai()),
+        ],
+      };
+    },
     dashboard: (k) => k.dashboard({ views: [{ id: 'ov', name: 'Overview', widgets: [
       { id: 'k1', kind: 'kpi', span: 3, rows: 1, data: { label: 'Total revenue', value: '$6.81M', delta: 12.4, deltaLabel: 'vs last qtr', spark: [42,45,47,51,50,55,59,61,60,65,71,76] } },
       { id: 'k2', kind: 'kpi', span: 3, rows: 1, data: { label: 'New customers', value: '1,284', delta: 8.1, deltaLabel: 'vs last qtr', spark: [70,74,79,83,88,92,96,101,108,116,124,131] } },
@@ -534,8 +608,20 @@
     try {
       const spec = DEMOS[kind](k);
       const api = k.render(spec, host);
+      // HTML node cards (the n8n cards) only paint at the 'decorations' LOD tier
+      // (zoom >= 0.5), but a story canvas fits a wide graph at ~0.35 zoom, which
+      // would drop them. Pin a single all-detail tier so cards always render —
+      // costless for these tiny scenes.
+      try {
+        // Everything EXCEPT 'routing': obstacle-aware routing detours edges around
+        // node bodies (ugly loops on a hand-placed graph); off ⇒ clean port-to-port
+        // beziers, the n8n look.
+        api.getModel?.().setLODConfig?.({ tiers: [{ name: 'all', minZoom: 0,
+          features: new Set(['labels', 'icons', 'borders', 'shadows', 'ports', 'decorations', 'handles', 'link-detail', 'gradients']) }] });
+      } catch { /* older bundle without setLODConfig — falls back to zoom tiers */ }
       requestAnimationFrame(() => {
         api.fitView?.(30);
+        api.renderNow?.();
         frame.classList.add('ready');
         if (skel) { skel.style.opacity = '0'; skel.style.pointerEvents = 'none'; }
       });
