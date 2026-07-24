@@ -107,17 +107,35 @@
   .frameworks { padding: 30px 0 10px; text-align: center; color: var(--slate); font-size: 15px; }
   .frameworks span { margin: 0 12px; font-weight: 600; color: var(--ink); }
 
-  section.shots { padding: 64px 0 8px; }
-  .shots h2 { font-size: 30px; letter-spacing: -0.6px; margin-bottom: 8px; }
-  .shots .sub { color: var(--slate); margin-bottom: 28px; max-width: 62ch; }
-  .shot { display: block; border: 1px solid var(--line); border-radius: 14px; overflow: hidden;
-          background: #fff; text-decoration: none; }
-  .shot:hover { border-color: var(--indigo-soft); text-decoration: none; }
-  .shot img { display: block; width: 100%; height: auto; }
-  .shot span { display: block; padding: 12px 16px; font-size: 14.5px; font-weight: 600; color: var(--ink); }
-  .shot.wide { margin-bottom: 18px; }
-  .shotgrid { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 18px; }
-  .shots .more { margin: 22px 0 8px; font-weight: 600; }
+  section.shots { padding: 56px 0 8px; }
+  .shots > .wrap > h2 { font-size: 30px; letter-spacing: -0.6px; margin-bottom: 8px; text-align: center; }
+  .shots > .wrap > .sub { color: var(--slate); margin: 0 auto 10px; max-width: 60ch; text-align: center; }
+
+  /* Zig-zag story rows: a real text story beside a LIVE, playable canvas. */
+  .story { display: grid; grid-template-columns: 1fr 1.12fr; gap: 44px; align-items: center; padding: 30px 0; }
+  .story.rev .story-text { order: 2; }
+  .story.rev .story-stage { order: 1; }
+  .story-text .chip { display: inline-block; font-size: 12px; font-weight: 700; letter-spacing: .5px;
+    text-transform: uppercase; color: var(--indigo); background: var(--indigo-wash); border-radius: 999px; padding: 4px 12px; margin-bottom: 14px; }
+  .story-text h3 { font-size: 26px; letter-spacing: -0.5px; margin-bottom: 12px; text-wrap: balance; }
+  .story-text p { color: var(--slate); font-size: 16px; margin-bottom: 8px; }
+  .story-text p b { color: var(--ink); font-weight: 650; }
+  .story-text .go { display: inline-block; margin-top: 12px; font-weight: 600; font-size: 15px; }
+  .story-stage { position: relative; }
+  .story-canvas { position: relative; height: 380px; border: 1px solid var(--line); border-radius: 16px;
+    background: #fff url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='22' height='22'%3E%3Ccircle cx='1.4' cy='1.4' r='1.4' fill='%23e6e9f4'/%3E%3C/svg%3E");
+    box-shadow: 0 14px 44px rgba(35,42,61,.10); overflow: hidden; }
+  .story-canvas .live-badge { position: absolute; top: 11px; right: 11px; z-index: 3; font-size: 11px; font-weight: 700;
+    color: var(--indigo); background: var(--indigo-wash); border: 1px solid var(--indigo-soft); border-radius: 999px;
+    padding: 3px 10px; display: flex; align-items: center; gap: 5px; pointer-events: none; }
+  .story-canvas .live-badge .dot { width: 6px; height: 6px; border-radius: 50%; background: #16a34a; }
+  .story-canvas .cv { width: 100%; height: 100%; }
+  .story-canvas .skel { position: absolute; inset: 0; z-index: 2; display: flex; align-items: center; justify-content: center;
+    color: var(--indigo-soft); font-size: 12.5px; font-weight: 600; background: #fff; opacity: 1; transition: opacity .4s ease; }
+  .story-canvas.ready .skel { opacity: 0; pointer-events: none; }
+  @media (max-width: 860px) { .story, .story.rev { grid-template-columns: 1fr; gap: 20px; }
+    .story.rev .story-text { order: 1; } .story.rev .story-stage { order: 2; } }
+  .shots .more { margin: 26px 0 8px; font-weight: 600; text-align: center; }
 
   section.features { padding: 70px 0; }
   .features h2, .code h2 { font-size: 30px; letter-spacing: -0.6px; margin-bottom: 8px; text-wrap: balance; }
@@ -229,21 +247,72 @@
   <section class="shots">
     <div class="wrap">
       <h2>See it running</h2>
-      <p class="sub">The hero above is a real canvas — and so are these. Every card opens a working demo from the 100+-page gallery, each driven by real gestures in CI.</p>
-      <a class="shot wide" href="demos/interaction/n8n-workflow.html">
-        <img src="shots/workflow.png" alt="An n8n-style workflow editor built with Grafloria: typed nodes, an AI agent with model, memory and tool ports, and a run toolbar" loading="lazy">
-        <span>Workflow editor — typed wires, AI-agent ports, step execution</span>
-      </a>
-      <div class="shotgrid">
-        <a class="shot" href="demos/dashboard/dashboard-builder.html">
-          <img src="shots/dashboard.png" alt="A tabbed dashboard built with the Grafloria dashboard kit: KPI cards, charts and a drag-pack grid" loading="lazy">
-          <span>Dashboard builder — drag-pack grid, undoable gestures</span>
-        </a>
-        <a class="shot" href="demos/diagrams/class-uml.html">
-          <img src="shots/uml.png" alt="A UML class diagram from pure data: compartments and hollow-triangle inheritance" loading="lazy">
-          <span>UML &amp; ER kits — diagrams from pure data</span>
-        </a>
+      <p class="sub">Not screenshots — every canvas below is a real Grafloria instance you can drag, pan and play with. The things people always wonder about, rendered live.</p>
+
+      <div class="story">
+        <div class="story-text">
+          <span class="chip">Workflow automation</span>
+          <h3>Runnable workflows, n8n-style</h3>
+          <p><b>Wire a pipeline and watch it flow.</b> Typed ports keep incompatible nodes from
+            connecting, animated wires carry the data, and an AI-agent node fans out to its
+            model, memory and tool sub-nodes.</p>
+          <p>The same engine drives a real execution model — run, pause, step — not just a picture of one.</p>
+          <a class="go" href="demos/interaction/n8n-workflow.html">Open the full workflow builder →</a>
+        </div>
+        <div class="story-stage">
+          <div class="story-canvas" data-demo="workflow"><span class="live-badge"><span class="dot"></span>live</span><div class="skel">rendering…</div><div class="cv"></div></div>
+        </div>
       </div>
+
+      <div class="connector" aria-hidden="true"><svg viewBox="0 0 40 70"><path class="wire" d="M20 2 V68"/><circle class="port" cx="20" cy="4" r="4"/><circle class="port" cx="20" cy="66" r="4"/></svg></div>
+
+      <div class="story rev">
+        <div class="story-text">
+          <span class="chip">Dashboards</span>
+          <h3>Dashboards from pure data</h3>
+          <p><b>Declare views as data; the kit packs the grid.</b> KPI cards, line, bar and donut
+            widgets tile a 12-column grid — drag to re-pack live, resize from a corner, undo any gesture.</p>
+          <p>Save and restore round-trips the whole board byte-for-byte.</p>
+          <a class="go" href="demos/dashboard/dashboard-builder.html">Open the dashboard builder →</a>
+        </div>
+        <div class="story-stage">
+          <div class="story-canvas" data-demo="dashboard"><span class="live-badge"><span class="dot"></span>live</span><div class="skel">rendering…</div><div class="cv"></div></div>
+        </div>
+      </div>
+
+      <div class="connector" aria-hidden="true"><svg viewBox="0 0 40 70"><path class="wire" d="M20 2 V68"/><circle class="port" cx="20" cy="4" r="4"/><circle class="port" cx="20" cy="66" r="4"/></svg></div>
+
+      <div class="story">
+        <div class="story-text">
+          <span class="chip">UML · class diagrams</span>
+          <h3>Class diagrams that draw themselves</h3>
+          <p><b>From pure data to a full UML card.</b> Each class renders its name, attributes and
+            methods in real compartments; inheritance draws a hollow triangle, aggregation a hollow diamond.</p>
+          <p>No hand-placing boxes — pass classes and relationships, the kit does the rest.</p>
+          <a class="go" href="demos/diagrams/class-uml.html">Open the UML demo →</a>
+        </div>
+        <div class="story-stage">
+          <div class="story-canvas" data-demo="uml"><span class="live-badge"><span class="dot"></span>live</span><div class="skel">rendering…</div><div class="cv"></div></div>
+        </div>
+      </div>
+
+      <div class="connector" aria-hidden="true"><svg viewBox="0 0 40 70"><path class="wire" d="M20 2 V68"/><circle class="port" cx="20" cy="4" r="4"/><circle class="port" cx="20" cy="66" r="4"/></svg></div>
+
+      <div class="story rev">
+        <div class="story-text">
+          <span class="chip">ERD · database schemas</span>
+          <h3>Your schema, wired up</h3>
+          <p><b>Entities as tables, keys as ports.</b> Every column is a row you can wire from;
+            primary keys carry a PK badge, foreign keys an FK, and relationships attach with
+            crow's-foot cardinality.</p>
+          <p>Edit it in the canvas — rename columns, drag new links — and export the model.</p>
+          <a class="go" href="demos/diagrams/erd-editor.html">Open the ER editor →</a>
+        </div>
+        <div class="story-stage">
+          <div class="story-canvas" data-demo="er"><span class="live-badge"><span class="dot"></span>live</span><div class="skel">rendering…</div><div class="cv"></div></div>
+        </div>
+      </div>
+
       <p class="more"><a href="demos/">Browse all 100+ live demos →</a></p>
     </div>
   </section>
@@ -395,59 +464,92 @@
 </footer>
 
 <script type="module">
-  // The hero is a REAL Grafloria canvas — the product rendering itself. The engine
-  // bundle is 6MB, so we defer it: render only once the hero is on screen, and
-  // never block first paint. Same-origin module → CSP-clean.
-  const frame = document.getElementById('hero-frame');
-  const host = document.getElementById('hero-canvas');
-  const skeleton = document.getElementById('hero-skeleton');
+  // Every canvas on this page is a REAL Grafloria instance — the product rendering
+  // itself, not screenshots. The engine bundle is ~6MB, so we load it ONCE, lazily,
+  // and render each canvas only when it scrolls into view. Same-origin → CSP-clean.
+  let bundlePromise = null;
+  const loadBundle = () => (bundlePromise ??= import('./demos/shell/grafloria.js'));
 
-  let started = false;
-  async function boot() {
-    if (started) return; started = true;
-    let render;
-    try {
-      ({ render } = await import('./demos/shell/grafloria.js'));
-    } catch { skeleton.textContent = 'demo bundle unavailable'; return; }
+  const flow = (stroke) => ({ animation: { type: 'flow', speed: 'normal', direction: 'forward' }, ...(stroke ? { stroke } : {}) });
+  const N = (id, x, y, label, fill, stroke, shape) => ({
+    id, position: { x, y }, size: { width: 150, height: 56 }, label,
+    shape: shape ? { type: shape, fill, stroke } : undefined,
+    style: shape ? undefined : { fill, stroke, strokeWidth: 1.5 },
+  });
 
-    // A small, honest workflow — animated "flow" wires carrying data, one AI branch.
-    const N = (id, x, y, label, fill, stroke, shape) => ({
-      id, position: { x, y }, size: { width: 150, height: 58 }, label,
-      shape: shape ? { type: shape, fill, stroke } : undefined,
-      style: shape ? undefined : { fill, stroke, strokeWidth: 1.5 },
-    });
-    const flow = { animation: { type: 'flow', speed: 'normal', direction: 'forward' } };
-    const spec = {
+  // Each demo's spec, built lazily from the bundle's kit helpers.
+  const DEMOS = {
+    workflow: (k) => ({
       nodes: [
-        N('src',   40,  150, 'Trigger',   '#ecfdf5', '#059669', 'terminal'),
-        N('fetch', 250, 150, 'Fetch data','#eef2ff', '#3B52D9'),
-        N('route', 470, 150, 'Route',     '#fffbeb', '#d97706', 'diamond'),
-        N('agent', 690, 60,  'AI Agent',  '#f5f3ff', '#7c3aed'),
-        N('ship',  690, 250, 'Publish',   '#fdf4ff', '#9333ea', 'document'),
+        N('trig', 30, 150, 'Webhook',      '#ecfdf5', '#059669', 'terminal'),
+        N('http', 230, 150, 'HTTP Request','#eef2ff', '#3B52D9'),
+        N('code', 430, 150, 'Transform',   '#f1f5f9', '#475569'),
+        N('ai',   640, 60,  'AI Agent',    '#f5f3ff', '#7c3aed'),
+        N('note', 640, 250, 'Notify',      '#fdf4ff', '#9333ea', 'document'),
       ],
       edges: [
-        { id: 'e1', source: 'src',   target: 'fetch', style: flow },
-        { id: 'e2', source: 'fetch', target: 'route', style: flow },
-        { id: 'e3', source: 'route', target: 'agent', style: { ...flow, stroke: '#7c3aed' } },
-        { id: 'e4', source: 'route', target: 'ship',  style: { ...flow, stroke: '#9333ea' } },
+        { id: 'a', source: 'trig', target: 'http', style: flow() },
+        { id: 'b', source: 'http', target: 'code', style: flow() },
+        { id: 'c', source: 'code', target: 'ai',   style: flow('#7c3aed') },
+        { id: 'd', source: 'code', target: 'note', style: flow('#9333ea') },
       ],
-    };
+    }),
+    dashboard: (k) => k.dashboard({ views: [{ id: 'ov', name: 'Overview', widgets: [
+      { id: 'k1', kind: 'kpi', span: 3, rows: 1, data: { label: 'Total revenue', value: '$6.81M', delta: 12.4, deltaLabel: 'vs last qtr', spark: [42,45,47,51,50,55,59,61,60,65,71,76] } },
+      { id: 'k2', kind: 'kpi', span: 3, rows: 1, data: { label: 'New customers', value: '1,284', delta: 8.1, deltaLabel: 'vs last qtr', spark: [70,74,79,83,88,92,96,101,108,116,124,131] } },
+      { id: 'ln', kind: 'line', span: 6, rows: 2, title: 'Revenue trend', data: { series: [{ name: 'Revenue', values: [42,45,47,51,50,55,59,61,60,65,71,76] }], labels: ['J','F','M','A','M','J','J','A','S','O','N','D'] } },
+      { id: 'dn', kind: 'donut', span: 6, rows: 2, title: 'By region', data: { slices: [ { label: 'EMEA', value: 2.9, color: '#3B52D9' }, { label: 'AMER', value: 2.4, color: '#94A5F0' }, { label: 'APAC', value: 1.5, color: '#059669' } ], centerLabel: '$6.8M' } },
+    ] }] }),
+    uml: (k) => k.umlDiagram({
+      classes: [
+        { id: 'Animal', abstract: true, position: { x: 340, y: 20 }, attributes: ['# name: String'], methods: ['+ speak(): void'] },
+        { id: 'Dog', position: { x: 150, y: 250 }, attributes: ['+ breed: String'], methods: ['+ fetch(): void'] },
+        { id: 'Cat', position: { x: 560, y: 250 }, attributes: ['+ indoor: bool'], methods: ['+ purr(): void'] },
+      ],
+      relationships: [
+        { from: 'Dog', to: 'Animal', kind: 'inheritance' },
+        { from: 'Cat', to: 'Animal', kind: 'inheritance' },
+      ],
+    }),
+    er: (k) => k.erDiagram({
+      editable: true,
+      entities: [
+        { id: 'CUSTOMERS', name: 'Customers', position: { x: 40, y: 40 }, columns: [ { name: 'id', type: 'int', pk: true }, { name: 'name', type: 'varchar' }, { name: 'email', type: 'varchar' } ] },
+        { id: 'ORDERS', name: 'Orders', position: { x: 420, y: 120 }, columns: [ { name: 'id', type: 'int', pk: true }, { name: 'customer_id', type: 'int', fk: true }, { name: 'total', type: 'decimal' } ] },
+      ],
+      relationships: [ { from: 'CUSTOMERS', to: 'ORDERS', cardinality: 'one-to-many' } ],
+    }),
+  };
 
+  async function mount(frame) {
+    const kind = frame.dataset.demo;
+    const host = frame.querySelector('.cv');
+    const skel = frame.querySelector('.skel');
+    let k;
+    try { k = await loadBundle(); } catch { skel.textContent = 'demo bundle unavailable'; return; }
     try {
-      const api = render(spec, host);
-      requestAnimationFrame(() => { api.fitView?.(40); });
-      skeleton.style.display = 'none';
-      frame.classList.add('ready');
-    } catch {
-      skeleton.textContent = 'render error';
-    }
+      const spec = DEMOS[kind](k);
+      const api = k.render(spec, host);
+      requestAnimationFrame(() => {
+        api.fitView?.(30);
+        frame.classList.add('ready');
+        if (skel) { skel.style.opacity = '0'; skel.style.pointerEvents = 'none'; }
+      });
+    } catch (e) { if (skel) skel.textContent = 'render error'; }
   }
 
+  // Lazy-mount every canvas (the hero frame + the four story frames) as it nears the viewport.
+  const frames = [
+    (() => { const f = document.getElementById('hero-frame'); f.dataset.demo = 'workflow'; f.querySelector('#hero-canvas').classList.add('cv'); f.querySelector('#hero-skeleton').classList.add('skel'); return f; })(),
+    ...document.querySelectorAll('.story-canvas'),
+  ];
   if ('IntersectionObserver' in window) {
-    const io = new IntersectionObserver((es) => { if (es.some((e) => e.isIntersecting)) { io.disconnect(); boot(); } });
-    io.observe(frame);
+    const io = new IntersectionObserver((es) => es.forEach((e) => {
+      if (e.isIntersecting) { io.unobserve(e.target); mount(e.target); }
+    }), { rootMargin: '200px' });
+    frames.forEach((f) => io.observe(f));
   } else {
-    boot();
+    frames.forEach(mount);
   }
 </script>
 
