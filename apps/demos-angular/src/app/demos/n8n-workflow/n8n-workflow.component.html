@@ -1,0 +1,176 @@
+<div id="n8n-stage">
+  <div id="n8n-palette">
+    <div class="pal-title">Add node</div>
+    @for (p of palItems; track p.kind) {
+      <button class="pal-item" (click)="addNode(p.kind)">
+        <span class="pal-dot" [class.mono]="p.mono" [style.background]="p.bg">{{ p.glyph }}</span>{{ p.sub }}
+      </button>
+    }
+  </div>
+
+  <div id="n8n-canvas" #canvasHost [class.logs-open]="logsOpen" (dblclick)="onDblClick($event)">
+    <grafloria-diagram-canvas [(nodes)]="nodes" [(edges)]="edges" />
+
+    <div id="n8n-hud">{{ hudText }}</div>
+
+    <div id="n8n-legend">
+      <b>Connections</b>
+      <div class="row"><span class="swatch main"></span>data flow (main)</div>
+      <div class="row"><span class="swatch ai"></span>ai · model / memory / tool</div>
+      <div class="row"><span class="swatch yes"></span>if → true</div>
+      <div class="row"><span class="swatch no"></span>if → false</div>
+    </div>
+
+    <div id="n8n-runbar">
+      <button id="btn-run" title="Run the workflow from the trigger" [disabled]="runActive" (click)="onRun()">▶ Test workflow</button>
+      <button class="rb" [disabled]="!runActive" (click)="onPause()">{{ paused ? '▶ continue' : '⏸ pause' }}</button>
+      <button class="rb" title="Advance one node (starts a paused run when idle)" [disabled]="stepDisabled" (click)="onStep()">step ▸</button>
+      <button class="rb" (click)="onReset()">reset</button>
+      <button class="rb" [attr.aria-pressed]="logsOpen" (click)="onToggleLogs()">☰ logs</button>
+      <button class="rb" [attr.aria-pressed]="failArmed" title="Simulate a 502 from the vendors API on the next run" (click)="onToggleFail()">⚡ fail vendors</button>
+      <span id="run-readout">{{ readout }}</span>
+    </div>
+
+    <div id="n8n-runlog" [hidden]="!logsOpen">
+      <div class="rl-head">
+        <span>Execution log</span>
+        <span id="rl-status" [class]="logStatusCls">{{ logStatusText }}</span>
+        <button id="rl-close" title="close" (click)="onCloseLogs()">×</button>
+      </div>
+      <div class="rl-rows">
+        @for (r of logRows; track $index) {
+          <div class="rl-row">
+            <span class="rl-dot" [class.err]="r.status === 'error'"></span>
+            <span class="rl-name">{{ r.title }}</span>
+            <span class="rl-sub">{{ r.sub }}</span>
+            <span>{{ r.nIn }} → {{ r.nOut }} items</span>
+            <span class="rl-ms">{{ r.ms }} ms{{ r.note }}</span>
+          </div>
+        }
+      </div>
+    </div>
+  </div>
+</div>
+
+<div id="n8n-ndv" [hidden]="!ndvOpen">
+  <div class="ndv-back" (click)="closeNDV()"></div>
+  <div class="ndv-modal">
+    <div class="ndv-head">
+      <div class="hd-badge" [style.background]="ndvBadgeBg">{{ ndvBadge }}</div>
+      <div>
+        <input id="ndv-name" aria-label="Node name" [value]="ndvName" (input)="onNdvName($any($event.target).value)" />
+        <div class="hd-kind">{{ ndvKind }}</div>
+      </div>
+      <button id="ndv-exec" [disabled]="runActive" (click)="onNdvExec()">▶ Execute step</button>
+      <button id="ndv-close" title="close (Esc)" (click)="closeNDV()">×</button>
+    </div>
+
+    <div class="ndv-body">
+      <!-- INPUT pane -->
+      <div class="ndv-pane">
+        <div class="ndv-pane-head"><span>Input</span><span>{{ ndvInput.count }}</span></div>
+        <div class="ndv-items">
+          @if (ndvInput.items) {
+            @for (it of ndvInput.items; track $index) {
+              <div class="ndv-item"><pre>{{ json(it) }}</pre></div>
+            }
+          } @else {
+            <div class="ndv-hint">
+              {{ ndvInput.hint }}
+              @if (ndvInput.prevBtn) {
+                <button (click)="onExecutePrev()">▶ Execute previous nodes</button>
+              }
+            </div>
+          }
+        </div>
+      </div>
+
+      <!-- PARAMETERS / SETTINGS -->
+      <div class="ndv-main">
+        <div class="ndv-tabs">
+          <button class="ndv-tab" [class.on]="ndvTab === 'params'" (click)="setTab('params')">Parameters</button>
+          <button class="ndv-tab" [class.on]="ndvTab === 'settings'" (click)="setTab('settings')">Settings</button>
+        </div>
+
+        <div id="ndv-params" [style.display]="ndvTab === 'params' ? '' : 'none'">
+          @for (f of ndvFields; track $index) {
+            @switch (f.type) {
+              @case ('note') {
+                <p class="ndv-note">{{ f.text }}</p>
+              }
+              @case ('select') {
+                <div class="ndv-field">
+                  <label>{{ f.label }}</label>
+                  <select [attr.data-param]="f.key" (change)="onParamInput(f.key!, $any($event.target).value)">
+                    @for (o of f.options; track o) { <option [value]="o" [selected]="o === paramVal(f.key!)">{{ o }}</option> }
+                  </select>
+                </div>
+              }
+              @case ('text') {
+                <div class="ndv-field">
+                  <label>{{ f.label }}</label>
+                  <input type="text" [attr.data-param]="f.key" [value]="paramVal(f.key!)" (input)="onParamInput(f.key!, $any($event.target).value)" />
+                </div>
+              }
+              @case ('number') {
+                <div class="ndv-field">
+                  <label>{{ f.label }}</label>
+                  <input type="number" [attr.data-param]="f.key" [value]="paramVal(f.key!)" (input)="onParamInput(f.key!, $any($event.target).value, true)" />
+                </div>
+              }
+              @case ('textarea') {
+                <div class="ndv-field">
+                  <label>{{ f.label }}</label>
+                  <textarea [class.code]="f.code" [attr.data-param]="f.key" [value]="paramVal(f.key!)" (input)="onParamInput(f.key!, $any($event.target).value)"></textarea>
+                </div>
+              }
+              @case ('set-fields') {
+                <div class="ndv-field"><label>Fields to set (name = value)</label></div>
+                @for (kv of setFields; track $index) {
+                  <div class="ndv-kv">
+                    <input type="text" [value]="kv.name" (input)="onSetFieldName($index, $any($event.target).value)" />
+                    <input type="text" [value]="kv.value" (input)="onSetFieldValue($index, $any($event.target).value)" />
+                  </div>
+                }
+                <button class="ndv-add" (click)="addSetField()">+ Add field</button>
+              }
+            }
+          }
+        </div>
+
+        <div id="ndv-settings" [style.display]="ndvTab === 'settings' ? '' : 'none'">
+          <label class="ndv-check">
+            <input type="checkbox" [checked]="settingVal('retryOnFail')" (change)="onSettingToggle('retryOnFail', $any($event.target).checked)" />
+            <span>Retry on fail — one retry, then give up</span>
+          </label>
+          <label class="ndv-check">
+            <input type="checkbox" [checked]="settingVal('continueOnFail')" (change)="onSettingToggle('continueOnFail', $any($event.target).checked)" />
+            <span>Continue on fail — pass the error item downstream</span>
+          </label>
+          <label class="ndv-check">
+            <input type="checkbox" [checked]="settingVal('executeOnce')" (change)="onSettingToggle('executeOnce', $any($event.target).checked)" />
+            <span>Execute once — consume only the first input item</span>
+          </label>
+          <div class="ndv-field">
+            <label>Notes</label>
+            <textarea [value]="notesVal" (input)="onNotesInput($any($event.target).value)"></textarea>
+          </div>
+        </div>
+      </div>
+
+      <!-- OUTPUT pane -->
+      <div class="ndv-pane out">
+        <div class="ndv-pane-head"><span>Output</span><span>{{ ndvOutput.count }}</span></div>
+        <div class="ndv-items">
+          @if (ndvOutput.items) {
+            @for (it of ndvOutput.items; track $index) {
+              <div class="ndv-item"><pre>{{ json(it) }}</pre></div>
+            }
+          } @else {
+            <div class="ndv-hint">{{ ndvOutput.hint }}</div>
+          }
+        </div>
+      </div>
+    </div>
+  </div>
+</div>

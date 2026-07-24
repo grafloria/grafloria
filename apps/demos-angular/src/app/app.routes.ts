@@ -84,6 +84,7 @@ export const routes: Routes = [
   { path: 'interaction/helper-lines', loadComponent: () => import('./demos/helper-lines/helper-lines.component').then((m) => m.HelperLinesComponent) },
   { path: 'interaction/keyboard-a11y', loadComponent: () => import('./demos/keyboard-a11y/keyboard-a11y.component').then((m) => m.KeyboardA11yComponent) },
   { path: 'interaction/marquee-select', loadComponent: () => import('./demos/marquee-select/marquee-select.component').then((m) => m.MarqueeSelectComponent) },
+  { path: 'interaction/n8n-workflow', loadComponent: () => import('./demos/n8n-workflow/n8n-workflow.component').then((m) => m.N8nWorkflowComponent) },
   { path: 'interaction/parent-move', loadComponent: () => import('./demos/parent-move/parent-move.component').then((m) => m.ParentMoveComponent) },
   { path: 'interaction/preventing-cycles', loadComponent: () => import('./demos/preventing-cycles/preventing-cycles.component').then((m) => m.PreventingCyclesComponent) },
   { path: 'interaction/proximity-connect-live', loadComponent: () => import('./demos/proximity-connect-live/proximity-connect-live.component').then((m) => m.ProximityConnectLiveComponent) },
