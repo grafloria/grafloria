@@ -82,15 +82,15 @@
   /* The connecting-line spine — a hand-routed Grafloria edge between sections:
      a soft S-curve in an indigo gradient, animated flow particles, and real
      "handle" ports at each end. Grafloria's own edge aesthetic as page furniture. */
-  .connector { display: flex; justify-content: center; margin: -2px 0; }
-  .connector svg { width: 96px; height: 104px; overflow: visible; }
-  .connector .wire { fill: none; stroke: url(#cwire); stroke-width: 2.5; stroke-linecap: round; }
+  .connector { display: flex; justify-content: center; margin: 0; }
+  .connector svg { width: 84px; height: 96px; overflow: visible; }
+  .connector .wire { fill: none; stroke: var(--indigo-soft); stroke-width: 2.5; stroke-linecap: round; }
   .connector .flow { fill: none; stroke: var(--indigo); stroke-width: 2.5; stroke-linecap: round;
-    stroke-dasharray: 1 13; opacity: .9; }
-  @media (prefers-reduced-motion: no-preference) { .connector .flow { animation: cflow 1.5s linear infinite; } }
-  @keyframes cflow { to { stroke-dashoffset: -28; } }
+    stroke-dasharray: 1.5 12; opacity: .95; }
+  @media (prefers-reduced-motion: no-preference) { .connector .flow { animation: cflow 1.6s linear infinite; } }
+  @keyframes cflow { to { stroke-dashoffset: -27; } }
   .connector .handle { fill: #fff; stroke: var(--indigo); stroke-width: 2.5; }
-  .connector .handle-ring { fill: none; stroke: var(--indigo-soft); stroke-width: 1.5; opacity: .5; }
+  .connector .handle-ring { fill: var(--indigo); opacity: .12; }
 
   .cta { margin: 28px 0 10px; display: flex; gap: 14px; flex-wrap: wrap; }
   .btn {
@@ -245,7 +245,7 @@
   </div>
 
   <div class="connector" aria-hidden="true">
-    <svg viewBox="0 0 40 76"><path class="wire" d="M20 2 V74"/><circle class="port" cx="20" cy="4" r="4"/><circle class="port" cx="20" cy="72" r="4"/></svg>
+    <svg viewBox="0 0 84 96"><path class="wire" d="M42 6 C 24 34, 60 62, 42 90"/><path class="flow" d="M42 6 C 24 34, 60 62, 42 90"/><circle class="handle-ring" cx="42" cy="6" r="8"/><circle class="handle" cx="42" cy="6" r="4"/><circle class="handle-ring" cx="42" cy="90" r="8"/><circle class="handle" cx="42" cy="90" r="4"/></svg>
   </div>
 
   <section class="shots">
@@ -268,7 +268,7 @@
         </div>
       </div>
 
-      <div class="connector" aria-hidden="true"><svg viewBox="0 0 40 70"><path class="wire" d="M20 2 V68"/><circle class="port" cx="20" cy="4" r="4"/><circle class="port" cx="20" cy="66" r="4"/></svg></div>
+      <div class="connector" aria-hidden="true"><svg viewBox="0 0 84 96"><path class="wire" d="M42 6 C 24 34, 60 62, 42 90"/><path class="flow" d="M42 6 C 24 34, 60 62, 42 90"/><circle class="handle-ring" cx="42" cy="6" r="8"/><circle class="handle" cx="42" cy="6" r="4"/><circle class="handle-ring" cx="42" cy="90" r="8"/><circle class="handle" cx="42" cy="90" r="4"/></svg></div>
 
       <div class="story rev">
         <div class="story-text">
@@ -284,7 +284,7 @@
         </div>
       </div>
 
-      <div class="connector" aria-hidden="true"><svg viewBox="0 0 40 70"><path class="wire" d="M20 2 V68"/><circle class="port" cx="20" cy="4" r="4"/><circle class="port" cx="20" cy="66" r="4"/></svg></div>
+      <div class="connector" aria-hidden="true"><svg viewBox="0 0 84 96"><path class="wire" d="M42 6 C 24 34, 60 62, 42 90"/><path class="flow" d="M42 6 C 24 34, 60 62, 42 90"/><circle class="handle-ring" cx="42" cy="6" r="8"/><circle class="handle" cx="42" cy="6" r="4"/><circle class="handle-ring" cx="42" cy="90" r="8"/><circle class="handle" cx="42" cy="90" r="4"/></svg></div>
 
       <div class="story">
         <div class="story-text">
@@ -300,7 +300,7 @@
         </div>
       </div>
 
-      <div class="connector" aria-hidden="true"><svg viewBox="0 0 40 70"><path class="wire" d="M20 2 V68"/><circle class="port" cx="20" cy="4" r="4"/><circle class="port" cx="20" cy="66" r="4"/></svg></div>
+      <div class="connector" aria-hidden="true"><svg viewBox="0 0 84 96"><path class="wire" d="M42 6 C 24 34, 60 62, 42 90"/><path class="flow" d="M42 6 C 24 34, 60 62, 42 90"/><circle class="handle-ring" cx="42" cy="6" r="8"/><circle class="handle" cx="42" cy="6" r="4"/><circle class="handle-ring" cx="42" cy="90" r="8"/><circle class="handle" cx="42" cy="90" r="4"/></svg></div>
 
       <div class="story rev">
         <div class="story-text">
