@@ -37,6 +37,10 @@ export class SwimlanesComponent implements AfterViewInit {
         ],
         headerSize: 40,
       });
+      // The pool's lanes/labels are added straight to the model after the first
+      // paint — nudge the two-way [(nodes)] so the canvas repaints the full pool.
+      this.nodes = [...this.nodes];
+      this.canvas().fitToContent?.(40);
     }
     markReady();
   }
