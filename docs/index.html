@@ -28,10 +28,12 @@
     --bg: #FCFCFF;
   }
   * { margin: 0; padding: 0; box-sizing: border-box; }
+  html { overflow-x: hidden; }
   body {
     font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
     background: var(--bg); color: var(--ink);
     -webkit-font-smoothing: antialiased; line-height: 1.6;
+    overflow-x: hidden; /* the hero glow bleeds past the fold by design — clip, never scroll */
   }
   .wrap { max-width: 1060px; margin: 0 auto; padding: 0 24px; }
   a { color: var(--indigo); text-decoration: none; }
@@ -44,15 +46,49 @@
   .nav .name { font-weight: 700; font-size: 20px; letter-spacing: -0.3px; }
   .nav .links { margin-left: auto; display: flex; gap: 22px; font-size: 15px; font-weight: 500; }
 
-  .hero { padding: 84px 0 30px; text-align: center; }
-  .hero img { width: 108px; height: 108px; }
+  /* Hero — two columns: the pitch on the left, a LIVE Grafloria canvas on the right. */
+  .hero { padding: 60px 0 20px; display: grid; grid-template-columns: 1fr 1.05fr; gap: 40px; align-items: center; }
+  .hero .brandmark { display: flex; align-items: center; gap: 10px; margin-bottom: 20px; }
+  .hero .brandmark img { width: 40px; height: 40px; }
+  .hero .brandmark span { font-weight: 700; font-size: 17px; letter-spacing: -0.3px; }
   .hero h1 {
-    margin: 26px auto 14px; font-size: clamp(34px, 5.4vw, 56px); font-weight: 800;
-    letter-spacing: -1.5px; line-height: 1.08; max-width: 17ch; text-wrap: balance;
+    margin: 0 0 16px; font-size: clamp(34px, 4.4vw, 52px); font-weight: 800;
+    letter-spacing: -1.5px; line-height: 1.06; max-width: 15ch; text-wrap: balance;
   }
   .hero h1 em { font-style: normal; color: var(--indigo); }
-  .hero p.lede { max-width: 56ch; margin: 0 auto; font-size: 19px; color: var(--slate); }
-  .cta { margin: 34px 0 10px; display: flex; gap: 14px; justify-content: center; flex-wrap: wrap; }
+  .hero p.lede { max-width: 48ch; margin: 0; font-size: 18px; color: var(--slate); }
+  @media (max-width: 900px) { .hero { grid-template-columns: 1fr; gap: 26px; padding: 40px 0 10px; } }
+
+  /* The live canvas frame — a real, draggable, flow-animated workflow, not a screenshot. */
+  .stage { position: relative; }
+  .stage .glow { position: absolute; inset: -14% -8% -20% -8%; z-index: 0; border-radius: 40px;
+    background: radial-gradient(60% 55% at 55% 42%, rgba(148,165,240,.42), rgba(148,165,240,0) 70%); filter: blur(6px); }
+  .canvasframe { position: relative; z-index: 1; height: 400px; border: 1px solid var(--line);
+    border-radius: 18px; background: #fff url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='22' height='22'%3E%3Ccircle cx='1.4' cy='1.4' r='1.4' fill='%23dfe3f0'/%3E%3C/svg%3E");
+    box-shadow: 0 18px 60px rgba(35,42,61,.14); overflow: hidden; opacity: 0; transform: translateY(10px) scale(.99);
+    transition: opacity .6s ease, transform .6s cubic-bezier(.2,.7,.3,1); }
+  .canvasframe.ready { opacity: 1; transform: none; }
+  .canvasframe .live-badge { position: absolute; top: 12px; right: 12px; z-index: 3; font-size: 11.5px; font-weight: 700;
+    color: var(--indigo); background: var(--indigo-wash); border: 1px solid var(--indigo-soft); border-radius: 999px;
+    padding: 4px 11px; display: flex; align-items: center; gap: 6px; pointer-events: none; }
+  .canvasframe .live-badge .dot { width: 7px; height: 7px; border-radius: 50%; background: #16a34a; box-shadow: 0 0 0 0 rgba(22,163,74,.5); animation: pulse-dot 2s infinite; }
+  @keyframes pulse-dot { 0% { box-shadow: 0 0 0 0 rgba(22,163,74,.5); } 70% { box-shadow: 0 0 0 6px rgba(22,163,74,0); } 100% { box-shadow: 0 0 0 0 rgba(22,163,74,0); } }
+  .canvasframe .hint { position: absolute; bottom: 10px; left: 14px; z-index: 3; font-size: 12px; color: var(--slate); pointer-events: none; }
+  #hero-canvas { width: 100%; height: 100%; }
+  .canvasframe .skeleton { position: absolute; inset: 0; z-index: 2; display: flex; align-items: center; justify-content: center;
+    color: var(--indigo-soft); font-size: 13px; font-weight: 600; letter-spacing: .04em; }
+  @media (prefers-reduced-motion: reduce) { .canvasframe { transition: none; } .canvasframe .live-badge .dot { animation: none; } }
+
+  /* The connecting-line spine — an indigo dashed flow threading between sections,
+     Grafloria's own edge-routing turned into page furniture. */
+  .connector { display: flex; justify-content: center; margin: 6px 0; }
+  .connector svg { width: 40px; height: 76px; }
+  .connector .wire { stroke: var(--indigo-soft); stroke-width: 2; stroke-dasharray: 5 6; fill: none; }
+  @media (prefers-reduced-motion: no-preference) { .connector .wire { animation: march 1.4s linear infinite; } }
+  @keyframes march { to { stroke-dashoffset: -22; } }
+  .connector .port { fill: #fff; stroke: var(--indigo); stroke-width: 2; }
+
+  .cta { margin: 28px 0 10px; display: flex; gap: 14px; flex-wrap: wrap; }
   .btn {
     display: inline-block; padding: 12px 26px; border-radius: 10px; font-weight: 600; font-size: 16px;
   }
@@ -159,27 +195,41 @@
 <main>
   <div class="wrap">
     <div class="hero">
-      <img src="favicon.svg" alt="Grafloria logo — a bloom of connected diagram nodes">
-      <h1>The <em>framework-agnostic</em> diagram engine</h1>
-      <p class="lede">
-        Flow charts, dashboards, UML, ERD, and real-time collaboration — one headless core,
-        with bindings that feel native in Angular, React, and Vue. Open source, MIT.
-      </p>
-      <div class="cta">
-        <a class="btn primary" href="https://github.com/grafloria/grafloria">Star on GitHub</a>
-        <a class="btn ghost" href="https://www.npmjs.com/org/grafloria">Browse packages</a>
+      <div class="hero-copy">
+        <div class="brandmark"><img src="favicon.svg" alt=""><span>grafloria</span></div>
+        <h1>Wire your ideas with <em>Grafloria</em></h1>
+        <p class="lede">
+          The framework-agnostic diagram engine — flow charts, dashboards, UML, and real-time
+          collaboration. Native in Angular, React and Vue. Open source, MIT, no pro tier.
+        </p>
+        <div class="cta">
+          <a class="btn primary" href="demos/">Try the live demos</a>
+          <a class="btn ghost" href="https://github.com/grafloria/grafloria">Star on GitHub</a>
+        </div>
+        <div class="install">
+          <code>npm install <b>@grafloria/react</b>   <i># or renderer-angular · vue · element</i></code>
+        </div>
       </div>
-      <div class="install">
-        <code>npm install <b>@grafloria/react</b>   <i># or @grafloria/renderer-angular · @grafloria/vue · @grafloria/element</i></code>
+      <div class="stage">
+        <div class="glow"></div>
+        <div class="canvasframe" id="hero-frame">
+          <span class="live-badge"><span class="dot"></span>live · drag a node</span>
+          <div class="skeleton" id="hero-skeleton">rendering…</div>
+          <div id="hero-canvas"></div>
+          <span class="hint">A real Grafloria canvas — not a screenshot.</span>
+        </div>
       </div>
-      <p class="frameworks">Native in <span>Angular</span>·<span>React</span>·<span>Vue</span>· and every framework via <span>&lt;grafloria-flow&gt;</span></p>
     </div>
+  </div>
+
+  <div class="connector" aria-hidden="true">
+    <svg viewBox="0 0 40 76"><path class="wire" d="M20 2 V74"/><circle class="port" cx="20" cy="4" r="4"/><circle class="port" cx="20" cy="72" r="4"/></svg>
   </div>
 
   <section class="shots">
     <div class="wrap">
       <h2>See it running</h2>
-      <p class="sub">Screenshots from the live gallery — every one links to the working demo. 100+ pages, each driven by real gestures in CI.</p>
+      <p class="sub">The hero above is a real canvas — and so are these. Every card opens a working demo from the 100+-page gallery, each driven by real gestures in CI.</p>
       <a class="shot wide" href="demos/interaction/n8n-workflow.html">
         <img src="shots/workflow.png" alt="An n8n-style workflow editor built with Grafloria: typed nodes, an AI agent with model, memory and tool ports, and a run toolbar" loading="lazy">
         <span>Workflow editor — typed wires, AI-agent ports, step execution</span>
@@ -343,6 +393,63 @@
     <span class="fam">A sibling of <a href="https://atloria.dev">Atloria</a></span>
   </div>
 </footer>
+
+<script type="module">
+  // The hero is a REAL Grafloria canvas — the product rendering itself. The engine
+  // bundle is 6MB, so we defer it: render only once the hero is on screen, and
+  // never block first paint. Same-origin module → CSP-clean.
+  const frame = document.getElementById('hero-frame');
+  const host = document.getElementById('hero-canvas');
+  const skeleton = document.getElementById('hero-skeleton');
+
+  let started = false;
+  async function boot() {
+    if (started) return; started = true;
+    let render;
+    try {
+      ({ render } = await import('./demos/shell/grafloria.js'));
+    } catch { skeleton.textContent = 'demo bundle unavailable'; return; }
+
+    // A small, honest workflow — animated "flow" wires carrying data, one AI branch.
+    const N = (id, x, y, label, fill, stroke, shape) => ({
+      id, position: { x, y }, size: { width: 150, height: 58 }, label,
+      shape: shape ? { type: shape, fill, stroke } : undefined,
+      style: shape ? undefined : { fill, stroke, strokeWidth: 1.5 },
+    });
+    const flow = { animation: { type: 'flow', speed: 'normal', direction: 'forward' } };
+    const spec = {
+      nodes: [
+        N('src',   40,  150, 'Trigger',   '#ecfdf5', '#059669', 'terminal'),
+        N('fetch', 250, 150, 'Fetch data','#eef2ff', '#3B52D9'),
+        N('route', 470, 150, 'Route',     '#fffbeb', '#d97706', 'diamond'),
+        N('agent', 690, 60,  'AI Agent',  '#f5f3ff', '#7c3aed'),
+        N('ship',  690, 250, 'Publish',   '#fdf4ff', '#9333ea', 'document'),
+      ],
+      edges: [
+        { id: 'e1', source: 'src',   target: 'fetch', style: flow },
+        { id: 'e2', source: 'fetch', target: 'route', style: flow },
+        { id: 'e3', source: 'route', target: 'agent', style: { ...flow, stroke: '#7c3aed' } },
+        { id: 'e4', source: 'route', target: 'ship',  style: { ...flow, stroke: '#9333ea' } },
+      ],
+    };
+
+    try {
+      const api = render(spec, host);
+      requestAnimationFrame(() => { api.fitView?.(40); });
+      skeleton.style.display = 'none';
+      frame.classList.add('ready');
+    } catch {
+      skeleton.textContent = 'render error';
+    }
+  }
+
+  if ('IntersectionObserver' in window) {
+    const io = new IntersectionObserver((es) => { if (es.some((e) => e.isIntersecting)) { io.disconnect(); boot(); } });
+    io.observe(frame);
+  } else {
+    boot();
+  }
+</script>
 
 </body>
 </html>
