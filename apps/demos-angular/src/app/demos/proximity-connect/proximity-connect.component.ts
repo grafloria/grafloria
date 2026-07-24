@@ -1,5 +1,5 @@
 import { AfterViewInit, Component } from '@angular/core';
-import { DiagramCanvasComponent } from '@grafloria/renderer-angular';
+import { DiagramCanvasComponent } from '@grafloria/angular';
 import { markReady } from '../demo-ready';
 
 /** Drag a node near another and a proximity connection is proposed, then

@@ -10,7 +10,7 @@ The `DiagramRendererService` provides a high-level Angular service for managing 
 
 ```typescript
 import { Component, OnInit, ViewChild, ElementRef } from '@angular/core';
-import { DiagramRendererService } from '@grafloria/renderer-angular';
+import { DiagramRendererService } from '@grafloria/angular';
 import { RendererFactory } from '@grafloria/renderer';
 
 @Component({
@@ -196,7 +196,7 @@ checkCapabilities() {
 
 ```typescript
 import { Component, OnInit, OnDestroy, ViewChild, ElementRef } from '@angular/core';
-import { DiagramRendererService } from '@grafloria/renderer-angular';
+import { DiagramRendererService } from '@grafloria/angular';
 import { RendererFactory } from '@grafloria/renderer';
 import { Subject } from 'rxjs';
 import { takeUntil } from 'rxjs/operators';

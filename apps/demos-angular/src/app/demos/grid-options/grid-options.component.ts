@@ -1,5 +1,5 @@
 import { AfterViewInit, Component } from '@angular/core';
-import { GrafloriaDashboardComponent } from '@grafloria/renderer-angular';
+import { GrafloriaDashboardComponent } from '@grafloria/angular';
 import type { DashboardOptions, DashboardViewSpec } from '@grafloria/element';
 import { markReady } from '../demo-ready';
 

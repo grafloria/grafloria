@@ -1,6 +1,6 @@
 import { Component, Input, OnInit, OnDestroy, ChangeDetectorRef, HostListener } from '@angular/core';
 import { CommonModule } from '@angular/common';
-import { GrafloriaHandleDirective } from '@grafloria/renderer-angular';
+import { GrafloriaHandleDirective } from '@grafloria/angular';
 import type { DiagramEngine } from '@grafloria/engine';
 
 /**

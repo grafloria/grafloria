@@ -1,5 +1,5 @@
 import { AfterViewInit, Component } from '@angular/core';
-import { DiagramCanvasComponent } from '@grafloria/renderer-angular';
+import { DiagramCanvasComponent } from '@grafloria/angular';
 import { markReady } from '../demo-ready';
 
 const TYPES = ['direct', 'smooth', 'orthogonal', 'bezier'] as const;

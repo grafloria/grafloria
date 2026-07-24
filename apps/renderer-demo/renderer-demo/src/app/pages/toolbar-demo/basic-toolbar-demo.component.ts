@@ -2,8 +2,8 @@ import { Component, OnInit, ViewContainerRef } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { DiagramEngine, DiagramModel } from '@grafloria/engine';
-import { DiagramCanvasComponent } from '@grafloria/renderer-angular';
-import { NodeToolbarService, AutoToolbarDirective, createStandardActions } from '@grafloria/renderer-angular';
+import { DiagramCanvasComponent } from '@grafloria/angular';
+import { NodeToolbarService, AutoToolbarDirective, createStandardActions } from '@grafloria/angular';
 
 /**
  * Basic NodeToolbar Demo

@@ -1,7 +1,7 @@
 /**
  * Wave 3 (framework-agnostic instance API) — InteractionController.
  *
- * The interaction brain used to live in `@grafloria/renderer-angular` as an
+ * The interaction brain used to live in `@grafloria/angular` as an
  * `@Injectable` service, which meant every new framework wrapper would have had
  * to reimplement hover, connect, reconnect and waypoint editing. It now lives
  * here, and the Angular service is a thin subclass.

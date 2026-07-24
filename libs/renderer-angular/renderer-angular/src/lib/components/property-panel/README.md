@@ -82,8 +82,8 @@ The `PropertyPanelComponent` is a schema-driven, fully accessible Angular compon
 ## Installation
 
 ```typescript
-import { PropertyPanelComponent } from '@grafloria/renderer-angular';
-import { PropertyPanelService } from '@grafloria/renderer-angular';
+import { PropertyPanelComponent } from '@grafloria/angular';
+import { PropertyPanelService } from '@grafloria/angular';
 
 // In your component
 @Component({
@@ -415,7 +415,7 @@ property-panel/
 - `@grafloria/renderer` (core types)
 
 ### Peer Dependencies
-- `PropertyPanelService` from `@grafloria/renderer-angular`
+- `PropertyPanelService` from `@grafloria/angular`
 
 ### Dev Dependencies
 - `@angular/platform-browser-dynamic` (for testing)

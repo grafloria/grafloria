@@ -1,6 +1,6 @@
 import { Component, Input, OnInit, OnDestroy, OnChanges, SimpleChanges, inject, HostListener } from '@angular/core';
 import { CommonModule } from '@angular/common';
-import { DiagramCanvasComponent } from '@grafloria/renderer-angular';
+import { DiagramCanvasComponent } from '@grafloria/angular';
 import {
   DiagramEngine,
   NodeModel,

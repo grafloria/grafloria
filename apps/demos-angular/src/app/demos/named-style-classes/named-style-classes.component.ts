@@ -1,5 +1,5 @@
 import { AfterViewInit, Component } from '@angular/core';
-import { DiagramCanvasComponent } from '@grafloria/renderer-angular';
+import { DiagramCanvasComponent } from '@grafloria/angular';
 import { defineStyle } from '@grafloria/renderer';
 import { markReady } from '../demo-ready';
 

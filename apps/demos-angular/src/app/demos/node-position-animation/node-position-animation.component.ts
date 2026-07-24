@@ -1,5 +1,5 @@
 import { AfterViewInit, Component, viewChild } from '@angular/core';
-import { DiagramCanvasComponent } from '@grafloria/renderer-angular';
+import { DiagramCanvasComponent } from '@grafloria/angular';
 import { markReady } from '../demo-ready';
 
 /** Eight nodes tween between layouts (grid · ring · row) by writing

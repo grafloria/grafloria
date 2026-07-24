@@ -283,9 +283,9 @@ function buildCodePanel(spec) {
 
   const samples = {
     js: pageSource,
-    angular: spec.code?.angular ?? `// npm i @grafloria/renderer-angular
+    angular: spec.code?.angular ?? `// npm i @grafloria/angular
 import { Component, viewChild } from '@angular/core';
-import { GrafloriaDiagramCanvas } from '@grafloria/renderer-angular';
+import { GrafloriaDiagramCanvas } from '@grafloria/angular';
 
 @Component({
   standalone: true,
@@ -343,7 +343,7 @@ const onInit = (instance) => {};
 </template>`,
     install: `# pick your dialect — one engine underneath all of them
 npm i @grafloria/element            # plain web component <grafloria-flow>
-npm i @grafloria/renderer-angular   # Angular
+npm i @grafloria/angular   # Angular
 npm i @grafloria/react              # React
 npm i @grafloria/vue                # Vue 3
 

@@ -2,8 +2,8 @@ import { Component, OnInit, ViewContainerRef, TemplateRef, ViewChild } from '@an
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { DiagramEngine } from '@grafloria/engine';
-import { DiagramCanvasComponent } from '@grafloria/renderer-angular';
-import { NodeToolbarService, AutoToolbarDirective } from '@grafloria/renderer-angular';
+import { DiagramCanvasComponent } from '@grafloria/angular';
+import { NodeToolbarService, AutoToolbarDirective } from '@grafloria/angular';
 
 /**
  * Custom Toolbar Template Demo

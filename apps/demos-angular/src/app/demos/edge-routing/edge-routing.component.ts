@@ -1,5 +1,5 @@
 import { AfterViewInit, Component } from '@angular/core';
-import { DiagramCanvasComponent } from '@grafloria/renderer-angular';
+import { DiagramCanvasComponent } from '@grafloria/angular';
 import { markReady } from '../demo-ready';
 
 /** A Manhattan/orthogonal route that dodges an obstacle: the A→B edge declares

@@ -1,5 +1,5 @@
 import { AfterViewInit, Component } from '@angular/core';
-import { DiagramCanvasComponent } from '@grafloria/renderer-angular';
+import { DiagramCanvasComponent } from '@grafloria/angular';
 import { themeRef, LIGHT_THEME, DARK_THEME, HIGH_CONTRAST_LIGHT_THEME, type Theme } from '@grafloria/renderer';
 import { markReady } from '../demo-ready';
 

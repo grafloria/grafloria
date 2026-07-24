@@ -1,5 +1,5 @@
 import { AfterViewInit, Component, OnDestroy, viewChild } from '@angular/core';
-import { DiagramCanvasComponent } from '@grafloria/renderer-angular';
+import { DiagramCanvasComponent } from '@grafloria/angular';
 import { registerConnectionValidator, clearConnectionValidators } from '@grafloria/renderer';
 import { markReady } from '../demo-ready';
 

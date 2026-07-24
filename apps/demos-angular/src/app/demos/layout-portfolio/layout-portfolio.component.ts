@@ -1,5 +1,5 @@
 import { AfterViewInit, Component, viewChild } from '@angular/core';
-import { DiagramCanvasComponent } from '@grafloria/renderer-angular';
+import { DiagramCanvasComponent } from '@grafloria/angular';
 import { markReady } from '../demo-ready';
 
 const COMP_A = ['a0', 'a1', 'a2', 'a3', 'a4', 'a5'];

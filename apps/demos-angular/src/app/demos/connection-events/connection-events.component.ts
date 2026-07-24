@@ -1,5 +1,5 @@
 import { AfterViewInit, Component, ElementRef, viewChild } from '@angular/core';
-import { DiagramCanvasComponent } from '@grafloria/renderer-angular';
+import { DiagramCanvasComponent } from '@grafloria/angular';
 import { markReady } from '../demo-ready';
 
 /** A live log of the connection lifecycle the engine fires as you drag a wire —

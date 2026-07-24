@@ -92,7 +92,7 @@ Condition operators supported:
 ### Schema Registration
 
 ```typescript
-import { PropertyPanelService } from '@grafloria/renderer-angular';
+import { PropertyPanelService } from '@grafloria/angular';
 
 // Register a schema
 propertyPanelService.registerSchema('ERD.TABLE', {

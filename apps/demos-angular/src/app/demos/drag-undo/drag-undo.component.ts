@@ -1,5 +1,5 @@
 import { AfterViewInit, Component, viewChild } from '@angular/core';
-import { DiagramCanvasComponent } from '@grafloria/renderer-angular';
+import { DiagramCanvasComponent } from '@grafloria/angular';
 import { markReady } from '../demo-ready';
 
 /** A pointer node-drag commits ONE undoable step: drag a node, undo, and it

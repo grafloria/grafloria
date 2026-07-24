@@ -1,5 +1,5 @@
 import { AfterViewInit, Component, ElementRef, viewChild } from '@angular/core';
-import { DiagramCanvasComponent } from '@grafloria/renderer-angular';
+import { DiagramCanvasComponent } from '@grafloria/angular';
 import { markReady } from '../demo-ready';
 
 /** Data flowing through TYPED ports: type a value into the source and every

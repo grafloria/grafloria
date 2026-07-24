@@ -1,6 +1,6 @@
 import { AfterViewInit, Component } from '@angular/core';
 import { FormsModule } from '@angular/forms';
-import { DiagramCanvasComponent } from '@grafloria/renderer-angular';
+import { DiagramCanvasComponent } from '@grafloria/angular';
 import { importDiagramText } from '@grafloria/element';
 import { markReady } from '../demo-ready';
 

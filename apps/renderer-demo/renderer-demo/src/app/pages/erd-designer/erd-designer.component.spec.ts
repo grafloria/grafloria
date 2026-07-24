@@ -2,7 +2,7 @@ import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { FormsModule } from '@angular/forms';
 import { ErdDesignerComponent } from './erd-designer.component';
 import { TableNodeComponent } from './table-node.component';
-import { DiagramCanvasComponent } from '@grafloria/renderer-angular';
+import { DiagramCanvasComponent } from '@grafloria/angular';
 import { DiagramEngine, NodeModel } from '@grafloria/engine';
 
 describe('ErdDesignerComponent', () => {

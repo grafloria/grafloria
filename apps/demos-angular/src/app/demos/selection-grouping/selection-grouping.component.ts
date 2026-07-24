@@ -1,5 +1,5 @@
 import { AfterViewInit, Component, viewChild } from '@angular/core';
-import { DiagramCanvasComponent } from '@grafloria/renderer-angular';
+import { DiagramCanvasComponent } from '@grafloria/angular';
 import { markReady } from '../demo-ready';
 
 /** Bundle a selection into a container: n1 and n2 are selected and grouped, and

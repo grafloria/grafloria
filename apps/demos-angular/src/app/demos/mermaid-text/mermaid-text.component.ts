@@ -1,6 +1,6 @@
 import { AfterViewInit, Component, viewChild } from '@angular/core';
 import { FormsModule } from '@angular/forms';
-import { DiagramCanvasComponent } from '@grafloria/renderer-angular';
+import { DiagramCanvasComponent } from '@grafloria/angular';
 import { markReady } from '../demo-ready';
 
 /** Diagram-as-text: exportText() writes Mermaid-style text from the live

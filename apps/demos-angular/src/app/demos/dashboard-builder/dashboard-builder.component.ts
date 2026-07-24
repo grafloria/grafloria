@@ -1,5 +1,5 @@
 import { AfterViewInit, Component } from '@angular/core';
-import { GrafloriaDashboardComponent } from '@grafloria/renderer-angular';
+import { GrafloriaDashboardComponent } from '@grafloria/angular';
 import { markReady } from '../demo-ready';
 
 /** The dashboard kit, data-first: [views] declares the whole board; the kit

@@ -1,4 +1,4 @@
-# @grafloria/renderer-angular
+# @grafloria/angular
 
 Angular components, directives, and providers for the
 [Grafloria](https://github.com/grafloria/grafloria) diagram engine — built the
@@ -6,14 +6,14 @@ Angular way: standalone components, signal inputs/outputs, `OnPush`, and
 verified **zoneless**.
 
 ```sh
-npm install @grafloria/renderer-angular @grafloria/renderer @grafloria/engine
+npm install @grafloria/angular @grafloria/renderer @grafloria/engine
 ```
 
 ## The canvas
 
 ```ts
 import { Component, signal } from '@angular/core';
-import { DiagramCanvasComponent, GrafloriaNodeDefDirective } from '@grafloria/renderer-angular';
+import { DiagramCanvasComponent, GrafloriaNodeDefDirective } from '@grafloria/angular';
 import type { NodeSpec, EdgeSpec } from '@grafloria/renderer';
 
 @Component({

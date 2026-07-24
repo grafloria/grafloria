@@ -2,7 +2,7 @@ import { Component, OnInit, ViewContainerRef } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { DiagramEngine, NodeModel } from '@grafloria/engine';
-import { DiagramCanvasComponent } from '@grafloria/renderer-angular';
+import { DiagramCanvasComponent } from '@grafloria/angular';
 import {
   NodeToolbarService,
   NodeToolbarConfig,
@@ -17,7 +17,7 @@ import {
   createLockAction,
   createBringToFrontAction,
   createSendToBackAction
-} from '@grafloria/renderer-angular';
+} from '@grafloria/angular';
 
 /**
  * Comprehensive NodeToolbar Demo
@@ -305,7 +305,7 @@ import {
         <div class="doc-section cta-section">
           <h3>🚀 Quick Start</h3>
           <code class="code-block">
-import { getToolbarPreset } from '@grafloria/renderer-angular';
+import { getToolbarPreset } from '@grafloria/angular';
 
 const config = getToolbarPreset('standard', engine, onEdit);
 

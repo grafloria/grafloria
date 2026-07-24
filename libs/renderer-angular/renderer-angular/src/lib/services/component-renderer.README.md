@@ -19,7 +19,7 @@ The `ComponentRendererService` manages the complete lifecycle of Angular compone
 The service is provided at root level and automatically available via dependency injection:
 
 ```typescript
-import { ComponentRendererService } from '@grafloria/renderer-angular';
+import { ComponentRendererService } from '@grafloria/angular';
 
 @Component({
   // ...

@@ -1,5 +1,5 @@
 import { AfterViewInit, Component, viewChild } from '@angular/core';
-import { DiagramCanvasComponent } from '@grafloria/renderer-angular';
+import { DiagramCanvasComponent } from '@grafloria/angular';
 import { GroupModel, GroupCollapseService } from '@grafloria/element';
 import { markReady } from '../demo-ready';
 

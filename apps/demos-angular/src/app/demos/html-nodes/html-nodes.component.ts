@@ -1,5 +1,5 @@
 import { AfterViewInit, Component } from '@angular/core';
-import { DiagramCanvasComponent, GrafloriaNodeDefDirective } from '@grafloria/renderer-angular';
+import { DiagramCanvasComponent, GrafloriaNodeDefDirective } from '@grafloria/angular';
 import { markReady } from '../demo-ready';
 
 /** Custom nodes THE ANGULAR WAY: an ng-template per node type, with real

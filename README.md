@@ -40,7 +40,7 @@ SVG/PNG/PDF exporters — there is no second implementation to drift.
 | `@grafloria/renderer` | SVG renderer — interaction, theming, a11y outline, and the export pipeline (SVG, PNG, and a self-contained vector **PDF writer**: gradients, soft masks, images, text) |
 | `@grafloria/element` | `<grafloria-flow>` custom element + high-level kits: dashboard kit (grid pack, widgets), UML kit, ERD kit — works in any framework or none |
 | `@grafloria/react` | React bindings — component custom nodes, hooks, SSR + hydration |
-| `@grafloria/renderer-angular` | Angular components, directives, and services |
+| `@grafloria/angular` | Angular components, directives, and services |
 | `@grafloria/canvas-ng` | Angular canvas integration |
 | `@grafloria/vue` | Vue 3 bindings — `v-model` data, slot-based custom nodes |
 

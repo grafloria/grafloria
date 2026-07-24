@@ -25,6 +25,6 @@ properties (`el.nodes = [...]`) — the standard custom-element contract every
 framework's template binding targets.
 
 For first-class framework idioms use `@grafloria/react`,
-`@grafloria/renderer-angular`, or `@grafloria/vue`.
+`@grafloria/angular`, or `@grafloria/vue`.
 
 MIT © [Grafloria](https://github.com/grafloria/grafloria)

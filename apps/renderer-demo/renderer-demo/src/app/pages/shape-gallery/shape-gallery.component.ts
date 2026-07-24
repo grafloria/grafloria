@@ -7,7 +7,7 @@ import { FormsModule } from '@angular/forms';
 import {
   DiagramCanvasComponent,
   ComponentRendererService,
-} from '@grafloria/renderer-angular';
+} from '@grafloria/angular';
 import {
   DiagramEngine,
   NodeModel,

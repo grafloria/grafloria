@@ -1,5 +1,5 @@
 import { AfterViewInit, Component, viewChild } from '@angular/core';
-import { DiagramCanvasComponent, GrafloriaCommentPanelComponent } from '@grafloria/renderer-angular';
+import { DiagramCanvasComponent, GrafloriaCommentPanelComponent } from '@grafloria/angular';
 import type { CommentStore } from '@grafloria/engine';
 import { markReady } from '../demo-ready';
 

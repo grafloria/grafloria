@@ -1,6 +1,6 @@
 import { ApplicationConfig, provideExperimentalZonelessChangeDetection } from '@angular/core';
 import { provideRouter } from '@angular/router';
-import { provideGrafloria } from '@grafloria/renderer-angular';
+import { provideGrafloria } from '@grafloria/angular';
 import { DARK_THEME } from '@grafloria/renderer';
 
 import { routes } from './app.routes';

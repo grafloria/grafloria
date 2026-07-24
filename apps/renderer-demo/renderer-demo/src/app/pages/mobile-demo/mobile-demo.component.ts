@@ -5,8 +5,8 @@ import { DiagramEngine } from '@grafloria/engine';
 import { NodeModel } from '@grafloria/engine';
 import { MobileManager } from '@grafloria/engine';
 import { MobilePerformanceService } from '@grafloria/engine';
-import { MobileToolbarComponent } from '@grafloria/renderer-angular';
-import { ResponsiveCanvasDirective } from '@grafloria/renderer-angular';
+import { MobileToolbarComponent } from '@grafloria/angular';
+import { ResponsiveCanvasDirective } from '@grafloria/angular';
 
 @Component({
   selector: 'app-mobile-demo',

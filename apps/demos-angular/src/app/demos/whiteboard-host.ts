@@ -1,4 +1,4 @@
-import type { DiagramCanvasComponent } from '@grafloria/renderer-angular';
+import type { DiagramCanvasComponent } from '@grafloria/angular';
 
 /**
  * Assemble the `WhiteboardHost` slice the whiteboard tools need

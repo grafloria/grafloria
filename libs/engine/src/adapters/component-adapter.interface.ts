@@ -10,7 +10,7 @@
  *
  * Implementation Guide:
  * - Interface lives in @grafloria/engine (framework-agnostic)
- * - Implementations live in framework packages (@grafloria/renderer-angular, @grafloria/adapter-react)
+ * - Implementations live in framework packages (@grafloria/angular, @grafloria/adapter-react)
  * - Each adapter wraps its framework's component system
  *
  * @example

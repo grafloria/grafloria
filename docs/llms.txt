@@ -17,7 +17,7 @@ executed in CI with real pointer events.
 
 - @grafloria/engine — headless diagram model: nodes, edges, ports, groups, layout, CRDT collab. Runs in Node, workers, browsers; no DOM required.
 - @grafloria/renderer — SVG renderer over the engine: interaction, routing, editor chrome, export, comments UI.
-- @grafloria/renderer-angular — Angular components: <grafloria-diagram-canvas> with [(nodes)]/[(edges)] two-way bindings, ng-template custom nodes, [layout], [plugins], [collab], [comments].
+- @grafloria/angular — Angular components: <grafloria-diagram-canvas> with [(nodes)]/[(edges)] two-way bindings, ng-template custom nodes, [layout], [plugins], [collab], [comments].
 - @grafloria/react — React components & hooks: <GrafloriaFlow>, nodeTypes, useGrafloria/useSelection/useViewport, <GrafloriaCommentPanel>.
 - @grafloria/vue — Vue 3 components & composables: <GrafloriaFlow> with v-model:nodes, #node-<type> slots, provider composables.
 - @grafloria/element — dependency-free custom element <grafloria-flow>; also renders kit specs (erDiagram, umlDiagram, dashboard) and Mermaid-style text.

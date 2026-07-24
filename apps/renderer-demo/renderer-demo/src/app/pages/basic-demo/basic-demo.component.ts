@@ -6,7 +6,7 @@ import {
   InteractionConfigPanelComponent,
   ComponentRendererService,
   HandleRegistryService
-} from '@grafloria/renderer-angular';
+} from '@grafloria/angular';
 import {
   DiagramEngine,
   NodeModel,

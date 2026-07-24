@@ -2,7 +2,7 @@ import { Component, OnInit } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { DSL, DiagramEngine } from '@grafloria/engine';
-import { DiagramCanvasComponent } from '@grafloria/renderer-angular';
+import { DiagramCanvasComponent } from '@grafloria/angular';
 import { LIGHT_THEME, type Theme, type Rectangle } from '@grafloria/renderer';
 
 interface TemplateExample {

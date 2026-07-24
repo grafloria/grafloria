@@ -20,6 +20,6 @@ const svg = diagram.exportSvgString();
 ```
 
 Framework packages build on this: `@grafloria/element`, `@grafloria/react`,
-`@grafloria/renderer-angular`, `@grafloria/vue`.
+`@grafloria/angular`, `@grafloria/vue`.
 
 MIT © [Grafloria](https://github.com/grafloria/grafloria)

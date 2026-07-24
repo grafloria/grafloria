@@ -4,7 +4,7 @@ import { InteractionController } from '@grafloria/renderer';
 /**
  * Re-exported for backwards compatibility: `LinkPartHit` was declared in this
  * file before the interaction logic moved down into `@grafloria/renderer`. It is
- * part of `@grafloria/renderer-angular`'s public API (the lib barrel re-exports this
+ * part of `@grafloria/angular`'s public API (the lib barrel re-exports this
  * module), so it must keep resolving from here.
  */
 export type { LinkPartHit } from '@grafloria/renderer';

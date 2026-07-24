@@ -1,5 +1,5 @@
 import { AfterViewInit, Component, ElementRef, ViewEncapsulation, viewChild } from '@angular/core';
-import { DiagramCanvasComponent } from '@grafloria/renderer-angular';
+import { DiagramCanvasComponent } from '@grafloria/angular';
 import { markReady } from '../demo-ready';
 import {
   buildSpec, card, evalIf, aiStyle, mainStyle,

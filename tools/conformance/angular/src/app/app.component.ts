@@ -1,5 +1,5 @@
 import { Component, signal, viewChild } from '@angular/core';
-import { DiagramCanvasComponent, GrafloriaNodeDefDirective } from '@grafloria/renderer-angular';
+import { DiagramCanvasComponent, GrafloriaNodeDefDirective } from '@grafloria/angular';
 import { DashboardPageComponent } from './dashboard-page.component';
 import type { NodeSpec, EdgeSpec } from '@grafloria/renderer';
 

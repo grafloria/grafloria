@@ -2,7 +2,7 @@ import { Component, signal } from '@angular/core';
 import {
   GrafloriaDashboardComponent,
   GrafloriaWidgetDefDirective,
-} from '@grafloria/renderer-angular';
+} from '@grafloria/angular';
 import type { DashboardHandle, DashboardViewSpec } from '@grafloria/element';
 
 @Component({

@@ -24,7 +24,7 @@ The interaction modes system provides three different ways for users to interact
 ### 1. Install Dependencies
 
 ```bash
-npm install @grafloria/engine @grafloria/renderer @grafloria/renderer-angular
+npm install @grafloria/engine @grafloria/renderer @grafloria/angular
 ```
 
 ### 2. Import Components
@@ -36,7 +36,7 @@ import { LIGHT_THEME } from '@grafloria/renderer';
 import {
   DiagramCanvasComponent,
   InteractionConfigPanelComponent
-} from '@grafloria/renderer-angular';
+} from '@grafloria/angular';
 
 @Component({
   selector: 'app-diagram',
@@ -312,7 +312,7 @@ engine.eventBus.on('config:interaction-changed', (event) => {
 The InteractionHandlerService tracks performance metrics:
 
 ```typescript
-import { InteractionHandlerService } from '@grafloria/renderer-angular';
+import { InteractionHandlerService } from '@grafloria/angular';
 
 @Component({ ... })
 export class DiagramComponent {
@@ -450,7 +450,7 @@ engine.eventBus.on('link:reconnected', (event) => {
 Override cursor behavior:
 
 ```typescript
-import { InteractionHandlerService } from '@grafloria/renderer-angular';
+import { InteractionHandlerService } from '@grafloria/angular';
 
 @Component({ ... })
 export class DiagramComponent {
@@ -470,7 +470,7 @@ export class DiagramComponent {
 See full API documentation at:
 - Engine: `@grafloria/engine` README
 - Renderer: `@grafloria/renderer` README
-- Angular: `@grafloria/renderer-angular` README
+- Angular: `@grafloria/angular` README
 
 ## Support
 

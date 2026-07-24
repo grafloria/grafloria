@@ -234,7 +234,7 @@ const id = ContainerIdGenerator.generate('node-1'); // 'fo-node-1-1'
 ### Angular Component Rendering
 
 ```typescript
-import { ComponentRenderer } from '@grafloria/renderer-angular';
+import { ComponentRenderer } from '@grafloria/angular';
 import { createForeignObject, getContainerId } from '@grafloria/renderer';
 
 // Create foreignObject VNode

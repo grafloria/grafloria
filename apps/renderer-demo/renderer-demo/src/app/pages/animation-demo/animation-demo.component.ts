@@ -3,7 +3,7 @@ import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { DiagramEngine, NodeModel, LinkModel } from '@grafloria/engine';
 import { AnimationPresets, LIGHT_THEME, type Theme, type Rectangle } from '@grafloria/renderer';
-import { DiagramCanvasComponent } from '@grafloria/renderer-angular';
+import { DiagramCanvasComponent } from '@grafloria/angular';
 
 @Component({
     selector: 'app-animation-demo',

@@ -31,7 +31,7 @@
       "@grafloria/engine": ["libs/engine/src/index.ts"],
       "@grafloria/react": ["libs/react/src/index.ts"],
       "@grafloria/renderer": ["libs/renderer/src/index.ts"],
-      "@grafloria/renderer-angular": [
+      "@grafloria/angular": [
         "libs/renderer-angular/renderer-angular/src/index.ts"
       ]
     }

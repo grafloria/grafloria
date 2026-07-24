@@ -159,7 +159,7 @@ The host component:
 ### Basic Usage
 
 ```typescript
-import { PropertyEditorStringComponent } from '@grafloria/renderer-angular';
+import { PropertyEditorStringComponent } from '@grafloria/angular';
 
 @Component({
   template: `
@@ -192,7 +192,7 @@ export class MyComponent {
 ### Using PropertyEditorHost for Dynamic Loading
 
 ```typescript
-import { PropertyEditorHostComponent } from '@grafloria/renderer-angular';
+import { PropertyEditorHostComponent } from '@grafloria/angular';
 
 @Component({
   template: `
@@ -222,7 +222,7 @@ export class MyComponent {
 ### Registering Custom Editors
 
 ```typescript
-import { PropertyEditorRegistryService } from '@grafloria/renderer-angular';
+import { PropertyEditorRegistryService } from '@grafloria/angular';
 
 @Component({
   selector: 'custom-editor',

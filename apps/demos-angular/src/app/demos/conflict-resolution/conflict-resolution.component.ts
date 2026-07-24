@@ -1,6 +1,6 @@
 import { AfterViewInit, Component, viewChild } from '@angular/core';
 import { FormsModule } from '@angular/forms';
-import { DiagramCanvasComponent } from '@grafloria/renderer-angular';
+import { DiagramCanvasComponent } from '@grafloria/angular';
 import { MemoryHub } from '@grafloria/element';
 import { markReady } from '../demo-ready';
 

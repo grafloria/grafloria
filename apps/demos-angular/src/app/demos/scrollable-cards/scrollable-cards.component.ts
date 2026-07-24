@@ -1,5 +1,5 @@
 import { AfterViewInit, Component } from '@angular/core';
-import { GrafloriaDiagramComponent } from '@grafloria/renderer-angular';
+import { GrafloriaDiagramComponent } from '@grafloria/angular';
 import { erDiagram, umlDiagram } from '@grafloria/element';
 import { markReady } from '../demo-ready';
 

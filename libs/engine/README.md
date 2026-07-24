@@ -23,6 +23,6 @@ const doc = diagram.serialize();     // round-trippable document
 Runs in browsers, Node, and workers. ESM for bundlers (tree-shakeable,
 `sideEffects: false`) plus CJS. Pair with `@grafloria/renderer` to draw it, or
 one of the framework packages: `@grafloria/element` (any framework),
-`@grafloria/react`, `@grafloria/renderer-angular`, `@grafloria/vue`.
+`@grafloria/react`, `@grafloria/angular`, `@grafloria/vue`.
 
 MIT © [Grafloria](https://github.com/grafloria/grafloria)
