@@ -451,7 +451,8 @@ npm i @grafloria/engine @grafloria/renderer`,
   // Show text in Monaco with a language + editability; syncs the file-tab bar too.
   const showMonaco = (text, langExt, readOnly, files, activeIdx, onPick) => {
     const monaco = window.monaco;
-    monacoHost.style.display = ''; editor.style.display = 'none'; view.style.display = 'none';
+    // Set an explicit display — '' would revert to the stylesheet's `display:none`.
+    monacoHost.style.display = 'block'; editor.style.display = 'none'; view.style.display = 'none';
     const model = M.editor.getModel();
     if (model.getValue() !== text) M.editor.setValue(text);
     monaco.editor.setModelLanguage(model, EXT_LANG[langExt] ?? 'plaintext');
@@ -459,7 +460,7 @@ npm i @grafloria/engine @grafloria/renderer`,
     fileBar.innerHTML = files
       ? files.map((f, i) => `<button class="gfc-file${i === activeIdx ? ' on' : ''}" data-i="${i}">${escapeHtml(f.name)}</button>`).join('')
       : '';
-    fileBar.style.display = files ? '' : 'none';
+    fileBar.style.display = files ? 'flex' : 'none';  // '' would revert to the stylesheet's display:none
     if (files) fileBar.querySelectorAll('.gfc-file').forEach((b) => b.addEventListener('click', () => onPick(+b.dataset.i)));
   };
 
