@@ -176,3 +176,11 @@ body.gf-embed #canvas { height: 100vh; }
   background: var(--gf-accent); color: #fff; font: 600 12px ui-sans-serif, system-ui, sans-serif;
   padding: 6px 16px; border-radius: 999px; box-shadow: 0 6px 20px rgba(59, 82, 217, .35); }
 .gfc-variant-banner b { color: #fff; text-decoration: underline; }
+
+/* ── Monaco editor surface (progressive enhancement over the textarea/pre) ── */
+.gfc-filebar { display: none; gap: 2px; padding: 0 20px; flex-wrap: wrap; }
+.gfc-filebar .gfc-file { padding: 4px 12px; border-radius: 7px 7px 0 0; border: 1px solid var(--gf-line); border-bottom: 0;
+  background: var(--gf-bg); color: var(--gf-mut); font: 600 12px ui-monospace, Menlo, monospace; cursor: pointer; }
+.gfc-filebar .gfc-file.on { background: var(--gf-panel); color: var(--gf-accent); border-color: var(--gf-soft); }
+.gfc-monaco { display: none; flex: 1; min-height: 0; border: 1px solid var(--gf-line); border-radius: 10px; overflow: hidden; }
+body.code-open .gfc-body { position: relative; }

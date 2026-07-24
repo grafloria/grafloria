@@ -372,9 +372,11 @@ npm i @grafloria/engine @grafloria/renderer`,
     `<button class="gfc-close" id="gfc-close" aria-label="Close">×</button>` +
     `</span></div>` +
     `<p class="gfc-note" id="gfc-note"></p>` +
+    `<div class="gfc-filebar" id="gfc-filebar"></div>` +
     `<div class="gfc-body">` +
     `<textarea class="gfc-editor" id="gfc-editor" spellcheck="false" aria-label="Demo source"></textarea>` +
     `<pre class="gfc-view" id="gfc-view"></pre>` +
+    `<div class="gfc-monaco" id="gfc-monaco"></div>` +
     `</div>`;
   document.body.appendChild(drawer);
 
@@ -384,21 +386,113 @@ npm i @grafloria/engine @grafloria/renderer`,
   const badge = drawer.querySelector('#gfc-badge');
   const runBtn = drawer.querySelector('#gfc-run');
   const resetBtn = drawer.querySelector('#gfc-reset');
+  const monacoHost = drawer.querySelector('#gfc-monaco');
+  const fileBar = drawer.querySelector('#gfc-filebar');
+
+  // ── Monaco editor (progressive enhancement) ──────────────────────────────
+  // Real VS Code-grade syntax colouring + an editable JS surface. Loaded lazily
+  // from the CDN the first time the drawer opens; if it never arrives (offline,
+  // CSP), the textarea + regex highlighter below stay as the fallback.
+  const M = { editor: null, ready: null, jsValue: pageSource, lang: 'javascript', file: 0 };
+  const EXT_LANG = { ts: 'typescript', tsx: 'typescript', js: 'javascript', html: 'html', vue: 'html', css: 'css' };
+  function loadMonaco() {
+    if (M.ready) return M.ready;
+    const CDN = 'https://cdn.jsdelivr.net/npm/monaco-editor@0.52.2/min/vs';
+    M.ready = new Promise((resolve, reject) => {
+      window.MonacoEnvironment = {
+        // A BLOB worker (page origin) can importScripts the CDN's CORS-enabled
+        // worker; a data: worker has an opaque origin and is blocked.
+        getWorkerUrl: () => URL.createObjectURL(new Blob(
+          [`self.MonacoEnvironment={baseUrl:'${CDN}/'};importScripts('${CDN}/base/worker/workerMain.js');`],
+          { type: 'application/javascript' })),
+      };
+      const s = document.createElement('script');
+      s.src = `${CDN}/loader.js`;
+      s.onload = () => {
+        window.require.config({ paths: { vs: CDN } });
+        window.require(['vs/editor/editor.main'], () => resolve(window.monaco), reject);
+      };
+      s.onerror = reject;
+      document.head.appendChild(s);
+    }).catch(() => null);
+    return M.ready;
+  }
+  function mountMonaco(monaco) {
+    if (M.editor || !monaco) return;
+    // We want rich SYNTAX COLOURING + a light editable surface, not a full IDE.
+    // Turn off the worker-backed language services (IntelliSense, validation) so
+    // no cross-origin worker is ever spawned — that keeps the console clean and
+    // avoids a CDN worker dependency. Tokenizer colouring runs on the main thread.
+    try {
+      const off = { completionItems: false, hovers: false, documentSymbols: false, definitions: false,
+        references: false, documentHighlights: false, rename: false, diagnostics: false, codeActions: false,
+        signatureHelp: false, onTypeFormattingEdits: false, documentRangeFormattingEdits: false, inlayHints: false };
+      const t = monaco.languages.typescript;
+      for (const d of [t.typescriptDefaults, t.javascriptDefaults]) {
+        d.setDiagnosticsOptions({ noSemanticValidation: true, noSyntaxValidation: true, noSuggestionDiagnostics: true });
+        d.setModeConfiguration(off);
+      }
+      monaco.languages.html?.htmlDefaults?.setModeConfiguration?.(off);
+      monaco.languages.css?.cssDefaults?.setModeConfiguration?.(off);
+    } catch { /* older monaco — coloring still works */ }
+    const dark = matchMedia('(prefers-color-scheme: dark)').matches;
+    M.editor = monaco.editor.create(monacoHost, {
+      value: M.jsValue, language: 'javascript', theme: dark ? 'vs-dark' : 'vs',
+      readOnly: false, minimap: { enabled: false }, fontSize: 12.5, lineNumbers: 'on',
+      scrollBeyondLastLine: false, automaticLayout: true, tabSize: 2, wordWrap: 'off',
+      renderLineHighlight: 'none', padding: { top: 10 },
+    });
+    editor.style.display = 'none'; view.style.display = 'none';
+    setTab(tab); // re-render the active tab through Monaco now that it exists
+  }
+
+  // The JS source the visitor is currently editing (Monaco if mounted, else textarea).
+  const currentJs = () => (M.editor && tab === 'js' ? M.editor.getValue() : editor.value);
+  // Show text in Monaco with a language + editability; syncs the file-tab bar too.
+  const showMonaco = (text, langExt, readOnly, files, activeIdx, onPick) => {
+    const monaco = window.monaco;
+    monacoHost.style.display = ''; editor.style.display = 'none'; view.style.display = 'none';
+    const model = M.editor.getModel();
+    if (model.getValue() !== text) M.editor.setValue(text);
+    monaco.editor.setModelLanguage(model, EXT_LANG[langExt] ?? 'plaintext');
+    M.editor.updateOptions({ readOnly });
+    fileBar.innerHTML = files
+      ? files.map((f, i) => `<button class="gfc-file${i === activeIdx ? ' on' : ''}" data-i="${i}">${escapeHtml(f.name)}</button>`).join('')
+      : '';
+    fileBar.style.display = files ? '' : 'none';
+    if (files) fileBar.querySelectorAll('.gfc-file').forEach((b) => b.addEventListener('click', () => onPick(+b.dataset.i)));
+  };
 
   let tab = 'js';
   const setTab = (t) => {
     tab = t;
     drawer.querySelectorAll('.gfc-tab').forEach((b) => b.classList.toggle('on', b.dataset.tab === t));
     const editable = t === 'js';
-    editor.style.display = editable ? '' : 'none';
-    view.style.display = editable ? 'none' : '';
+    const realFw = fwFiles[t];
     badge.style.display = editable ? '' : 'none';
     runBtn.style.display = editable ? '' : 'none';
     resetBtn.style.display = editable ? '' : 'none';
-    const realFw = fwFiles[t];
-    if (editable) { if (!editor.value) editor.value = samples.js; }
-    else if (realFw) renderFwFiles(t);
-    else view.innerHTML = highlight(samples[t]);
+
+    if (M.editor) {
+      // Monaco path.
+      if (editable) {
+        showMonaco(M.jsValue, 'js', false, null, 0);
+      } else if (realFw) {
+        if (M.file >= realFw.length) M.file = 0;
+        const f = realFw[M.file];
+        showMonaco(f.text, f.name.split('.').pop(), true, realFw, M.file, (i) => { M.file = i; setTab(t); });
+      } else {
+        showMonaco(samples[t], t === 'install' ? 'js' : 'typescript', true, null, 0);
+      }
+    } else {
+      // Fallback: textarea (JS) / highlighted <pre> (frameworks).
+      editor.style.display = editable ? '' : 'none';
+      view.style.display = editable ? 'none' : '';
+      if (editable) { if (!editor.value) editor.value = samples.js; }
+      else if (realFw) renderFwFiles(t);
+      else view.innerHTML = highlight(samples[t]);
+    }
+
     const fwLabel = { angular: 'Angular', react: 'React', vue: 'Vue' }[t];
     note.innerHTML = realFw
       ? '<b>This is a real ' + fwLabel + ' app.</b> The files below are the actual compiled-and-gated source of the ' + fwLabel + ' implementation running when the ' + fwLabel + ' pill is active. <a href="' + FW_APPS[t] + 'index.html#/' + routeKey + '" target="_blank" rel="noopener">Open it standalone ↗</a>'
@@ -406,21 +500,25 @@ npm i @grafloria/engine @grafloria/renderer`,
     document.querySelectorAll('.fw-switch [data-fw]').forEach((p) => p.classList.toggle('on', p.dataset.fw === t));
   };
 
+  // Keep the edited JS in sync as the user types, so a tab switch never loses it.
+  const saveJs = () => { if (M.editor && tab === 'js') M.jsValue = M.editor.getValue(); };
+
   const setOpen = (open) => {
     document.body.classList.toggle('code-open', open);
+    if (open) loadMonaco().then((m) => { if (m) { mountMonaco(m); requestAnimationFrame(() => M.editor?.layout()); } });
     try { localStorage.setItem('grafloria-code-open', open ? '1' : '0'); } catch { /* private mode */ }
   };
 
-  drawer.querySelectorAll('.gfc-tab').forEach((b) => b.addEventListener('click', () => setTab(b.dataset.tab)));
+  drawer.querySelectorAll('.gfc-tab').forEach((b) => b.addEventListener('click', () => { saveJs(); setTab(b.dataset.tab); }));
   drawer.querySelector('#gfc-close').addEventListener('click', () => setOpen(false));
   drawer.querySelector('#gfc-copy').addEventListener('click', async () => {
-    const text = tab === 'js' ? editor.value : samples[tab];
+    const text = tab === 'js' ? currentJs() : (fwFiles[tab] ? fwFiles[tab][M.file].text : samples[tab]);
     try { await navigator.clipboard.writeText(text); } catch { /* clipboard denied */ }
     const c = drawer.querySelector('#gfc-copy');
     c.textContent = 'Copied'; setTimeout(() => { c.textContent = 'Copy'; }, 1200);
   });
 
-  // Tab key inserts two spaces instead of leaving the editor.
+  // Tab key inserts two spaces instead of leaving the textarea (fallback only).
   editor.addEventListener('keydown', (e) => {
     if (e.key === 'Tab') {
       e.preventDefault();
@@ -430,7 +528,8 @@ npm i @grafloria/engine @grafloria/renderer`,
     }
   });
 
-  // Multi-file view for a real framework variant: file sub-tabs over one pre.
+  // Multi-file view for a real framework variant — FALLBACK (no Monaco): file
+  // sub-tabs over one highlighted <pre>.
   const renderFwFiles = (fw) => {
     const files = fwFiles[fw];
     if (fwFileIdx >= files.length) fwFileIdx = 0;
@@ -479,7 +578,7 @@ npm i @grafloria/engine @grafloria/renderer`,
     runBtn.textContent = '… running'; runBtn.disabled = true;
     try {
       const html = await (await fetch(location.pathname)).text();
-      const edited = editor.value.replace(/<\/script/gi, '<\\/script');
+      const edited = currentJs().replace(/<\/script/gi, '<\\/script');
       const at = html.indexOf('<script type="module">');
       const end = html.indexOf('</' + 'script>', at);
       const rebuilt =
@@ -502,7 +601,8 @@ npm i @grafloria/engine @grafloria/renderer`,
   resetBtn.addEventListener('click', () => {
     overlay?.remove(); overlay = null;
     document.body.classList.remove('gfc-running');
-    editor.value = samples.js;
+    M.jsValue = samples.js; editor.value = samples.js;
+    if (M.editor && tab === 'js') M.editor.setValue(samples.js);
   });
   addEventListener('resize', positionOverlays);
 
