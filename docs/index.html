@@ -119,6 +119,11 @@
   .story { display: grid; grid-template-columns: 1fr 1.12fr; gap: 44px; align-items: center; padding: 30px 0; }
   .story.rev .story-text { order: 2; }
   .story.rev .story-stage { order: 1; }
+  /* Full-width variant: the wide n8n workflow gets a big reactflow.dev-style stage
+     (text above, canvas spanning the row) so the flow renders at a larger zoom. */
+  .story.wide { grid-template-columns: 1fr; gap: 22px; }
+  .story.wide .story-text { max-width: 780px; }
+  .story.wide .story-canvas { height: 440px; }
   .story-text .chip { display: inline-block; font-size: 12px; font-weight: 700; letter-spacing: .5px;
     text-transform: uppercase; color: var(--indigo); background: var(--indigo-wash); border-radius: 999px; padding: 4px 12px; margin-bottom: 14px; }
   .story-text h3 { font-size: 26px; letter-spacing: -0.5px; margin-bottom: 12px; text-wrap: balance; }
@@ -274,7 +279,7 @@
       <h2>See it running</h2>
       <p class="sub">Not screenshots — every canvas below is a real Grafloria instance you can drag, pan and play with. The things people always wonder about, rendered live.</p>
 
-      <div class="story">
+      <div class="story wide">
         <div class="story-text">
           <span class="chip">Workflow automation</span>
           <h3>Runnable workflows, n8n-style</h3>
@@ -549,15 +554,15 @@
       const bez = (id, s, sh, t, th, style) => ({ id, source: s, target: t, sourceHandle: sh, targetHandle: th, type: 'bezier', style });
       return {
         nodes: [
-          NN('start', 20, 170, 180, 60, 'trigger', '▶', 'On Schedule', 'Trigger', [outP('start')]),
-          NN('http', 260, 170, 200, 60, 'http', '🌐', 'Fetch Orders', 'HTTP Request', [inP('http'), outP('http')]),
-          NN('iff', 520, 170, 180, 60, 'if', '⋔', 'New order?', 'If', [inP('iff'), abs('iff_true', 'right', 180, 20, 'output'), abs('iff_false', 'right', 180, 42, 'output')]),
-          NN('agent', 760, 40, 210, 82, 'ai', '🤖', 'Draft Reply', 'AI Agent', [inP('agent'), outP('agent'), abs('agent_model', 'bottom', 62, 82, 'input'), abs('agent_mem', 'bottom', 140, 82, 'input')]),
-          NN('set', 760, 280, 190, 60, 'set', '✏️', 'Skip Order', 'Edit Fields', [inP('set'), outP('set')]),
-          NN('merge', 1030, 170, 180, 60, 'merge', '🔀', 'Merge', 'Combine', [abs('merge_in1', 'left', 0, 20, 'input'), abs('merge_in2', 'left', 0, 40, 'input'), outP('merge')]),
-          NN('slack', 1270, 170, 190, 60, 'notify', '🔔', 'Send Slack', 'Notify', [inP('slack')]),
-          NN('model', 690, 240, 168, 54, 'ai', '🧠', 'Chat Model', 'gpt-5', [abs('model_out', 'top', 84, 0, 'output')]),
-          NN('mem', 890, 240, 150, 54, 'ai', '💾', 'Memory', 'Buffer', [abs('mem_out', 'top', 75, 0, 'output')]),
+          NN('start', 20, 180, 180, 60, 'trigger', '▶', 'On Schedule', 'Trigger', [outP('start')]),
+          NN('http', 260, 180, 200, 60, 'http', '🌐', 'Fetch Orders', 'HTTP Request', [inP('http'), outP('http')]),
+          NN('iff', 520, 180, 180, 60, 'if', '⋔', 'New order?', 'If', [inP('iff'), abs('iff_true', 'right', 180, 20, 'output'), abs('iff_false', 'right', 180, 42, 'output')]),
+          NN('agent', 780, 40, 210, 82, 'ai', '🤖', 'Draft Reply', 'AI Agent', [inP('agent'), outP('agent'), abs('agent_model', 'bottom', 62, 82, 'input'), abs('agent_mem', 'bottom', 140, 82, 'input')]),
+          NN('model', 720, 210, 168, 54, 'ai', '🧠', 'Chat Model', 'gpt-5', [abs('model_out', 'top', 84, 0, 'output')]),
+          NN('mem', 920, 210, 150, 54, 'ai', '💾', 'Memory', 'Buffer', [abs('mem_out', 'top', 75, 0, 'output')]),
+          NN('set', 800, 350, 190, 60, 'set', '✏️', 'Skip Order', 'Edit Fields', [inP('set'), outP('set')]),
+          NN('merge', 1090, 180, 180, 60, 'merge', '🔀', 'Merge', 'Combine', [abs('merge_in1', 'left', 0, 20, 'input'), abs('merge_in2', 'left', 0, 40, 'input'), outP('merge')]),
+          NN('slack', 1330, 180, 190, 60, 'notify', '🔔', 'Send Slack', 'Notify', [inP('slack')]),
         ],
         edges: [
           bez('e1', 'start', 'start_out', 'http', 'http_in', main()),
