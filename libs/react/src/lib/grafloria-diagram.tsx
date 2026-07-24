@@ -52,7 +52,7 @@ export function GrafloriaDiagram(props: GrafloriaDiagramProps) {
     <div
       ref={containerRef}
       className={props.className}
-      style={{ position: 'relative', ...props.style }}
+      style={{ width: '100%', height: '100%', position: 'relative', ...props.style }}
     />
   );
 }

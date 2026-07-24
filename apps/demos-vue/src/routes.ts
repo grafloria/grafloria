@@ -60,6 +60,7 @@ export const ROUTES: Record<string, () => Promise<{ default: Component }>> = {
   'interaction/helper-lines': () => import('./demos/helper-lines.vue'),
   'interaction/keyboard-a11y': () => import('./demos/keyboard-a11y.vue'),
   'interaction/marquee-select': () => import('./demos/marquee-select.vue'),
+  'interaction/n8n-workflow': () => import('./demos/n8n-workflow.vue'),
   'interaction/parent-move': () => import('./demos/parent-move.vue'),
   'interaction/preventing-cycles': () => import('./demos/preventing-cycles.vue'),
   'interaction/proximity-connect-live': () => import('./demos/proximity-connect-live.vue'),

@@ -131,7 +131,7 @@ export function GrafloriaDashboard(props: GrafloriaDashboardProps) {
   }, [handle, props.activeView]);
 
   const rootStyle = useMemo<CSSProperties>(
-    () => ({ position: 'relative', ...style }),
+    () => ({ width: '100%', height: '100%', position: 'relative', ...style }),
     [style]
   );
 

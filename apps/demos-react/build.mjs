@@ -15,14 +15,22 @@ await build({
   entryPoints: [join(here, 'src', 'main.tsx')],
   bundle: true,
   format: 'esm',
+  target: 'es2020',
   jsx: 'automatic',
   outfile: join(out, 'main.js'),
   splitting: false,
   minify: true,
   sourcemap: false,
   logLevel: 'info',
+  // The renderer's classes rely on ASSIGNMENT semantics for class fields (the
+  // same setting the gallery bundle uses). Without this, esbuild's default
+  // [[Define]] semantics silently clobber fields — foreignObject html-node
+  // bodies stop rendering. Matches demos/build.mjs.
+  tsconfigRaw: { compilerOptions: { useDefineForClassFields: false, experimentalDecorators: true } },
   define: { 'process.env.NODE_ENV': '"production"' },
   alias: {
+    'fs/promises': L('renderer/e2e/node-stubs.ts'),
+    path: L('renderer/e2e/node-stubs.ts'),
     '@grafloria/react': L('react/src/index.ts'),
     '@grafloria/engine': L('engine/src/index.ts'),
     '@grafloria/renderer': L('renderer/src/index.ts'),

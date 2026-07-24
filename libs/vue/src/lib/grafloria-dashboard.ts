@@ -133,6 +133,6 @@ export const GrafloriaDashboard = defineComponent({
     });
 
     return () =>
-      h('div', { ref: container, class: 'grafloria-dashboard', style: 'position:relative' });
+      h('div', { ref: container, class: 'grafloria-dashboard', style: 'width:100%;height:100%;position:relative' });
   },
 });

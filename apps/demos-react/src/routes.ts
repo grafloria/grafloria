@@ -56,6 +56,7 @@ export const ROUTES: Record<string, () => Promise<{ default: React.ComponentType
   'interaction/drag-undo': () => import('./demos/drag-undo'),
   'interaction/easy-connect-body': () => import('./demos/easy-connect-body'),
   'interaction/execute-flow': () => import('./demos/execute-flow'),
+  'interaction/n8n-workflow': () => import('./demos/n8n-workflow'),
   'interaction/helper-lines': () => import('./demos/helper-lines'),
   'interaction/keyboard-a11y': () => import('./demos/keyboard-a11y'),
   'interaction/marquee-select': () => import('./demos/marquee-select'),

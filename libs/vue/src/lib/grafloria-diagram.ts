@@ -34,6 +34,6 @@ export const GrafloriaDiagram = defineComponent({
 
     expose({ getInstance: () => instance });
 
-    return () => h('div', { ref: container, class: 'grafloria-diagram', style: 'position:relative' });
+    return () => h('div', { ref: container, class: 'grafloria-diagram', style: 'width:100%;height:100%;position:relative' });
   },
 });
