@@ -4,4 +4,6 @@ export type {
   StencilPaletteOptions,
   StencilPaletteHandle,
 } from './palette';
+export { bindShapeDataPanel } from './shape-data';
+export type { ShapeDataPanelApi, ShapeDataPanelOptions, ShapeDataPanelHandle } from './shape-data';
 export { ensureStencilKitStyles } from './styles';

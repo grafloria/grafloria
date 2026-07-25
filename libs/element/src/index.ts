@@ -688,11 +688,14 @@ export type {
 
 // The stencil kit — a Visio-style palette that drags shape masters onto the
 // canvas (T6/T7). Pairs with listStencils()/registerStencils() above.
-export { bindStencilPalette, ensureStencilKitStyles } from './lib/stencil-kit';
+export { bindStencilPalette, bindShapeDataPanel, ensureStencilKitStyles } from './lib/stencil-kit';
 export type {
   StencilPaletteApi,
   StencilPaletteOptions,
   StencilPaletteHandle,
+  ShapeDataPanelApi,
+  ShapeDataPanelOptions,
+  ShapeDataPanelHandle,
 } from './lib/stencil-kit';
 
 /* ==========================================================================

@@ -57,6 +57,32 @@ const CSS = `
 }
 .gf-stencil-item:hover .gf-stencil-label { color: var(--gf-st-ink); }
 .gf-stencil-empty { padding: 18px 12px; color: var(--gf-st-mut); font-size: 12px; text-align: center; }
+.gf-shapedata {
+  --gf-st-bg: #fff; --gf-st-ink: #1e2436; --gf-st-mut: #6b7280;
+  --gf-st-line: #e5e7eb; --gf-st-accent: #3B52D9;
+  display: flex; flex-direction: column; height: 100%; box-sizing: border-box;
+  background: var(--gf-st-bg); color: var(--gf-st-ink); overflow: auto;
+  font: 13px/1.4 ui-sans-serif, system-ui, -apple-system, sans-serif;
+  border-left: 1px solid var(--gf-st-line);
+}
+@media (prefers-color-scheme: dark) {
+  .gf-shapedata { --gf-st-bg: #161a24; --gf-st-ink: #e8ecfb; --gf-st-mut: #9aa4bf; --gf-st-line: #2a3040; --gf-st-accent: #8fa2ff; }
+}
+.gf-sd-title {
+  padding: 10px 12px; font-weight: 600; font-size: 12px; text-transform: uppercase;
+  letter-spacing: .02em; color: var(--gf-st-mut); border-bottom: 1px solid var(--gf-st-line);
+}
+.gf-sd-empty { padding: 16px 12px; color: var(--gf-st-mut); font-size: 12px; }
+.gf-sd-fields { display: flex; flex-direction: column; gap: 8px; padding: 12px; }
+.gf-sd-row { display: flex; flex-direction: column; gap: 3px; }
+.gf-sd-label { font-size: 11px; color: var(--gf-st-mut); }
+.gf-sd-input {
+  padding: 6px 8px; border: 1px solid var(--gf-st-line); border-radius: 7px;
+  background: var(--gf-st-bg); color: var(--gf-st-ink); font: inherit; outline: none; width: 100%; box-sizing: border-box;
+}
+.gf-sd-input:focus { border-color: var(--gf-st-accent); }
+.gf-sd-check { width: 16px; height: 16px; accent-color: var(--gf-st-accent); }
+
 /* The canvas while a stencil is held over it. */
 .gf-stencil-target { outline: 2px dashed var(--gf-st-accent); outline-offset: -3px; }
 `;
