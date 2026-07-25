@@ -1,6 +1,6 @@
 import type { DiagramEngine, LinkModel, NodeModel, GroupModel } from '@grafloria/engine';
 // wave12/connect-ergonomics (gap 1): the ONE undoable step a subflow drag commits.
-import { MoveGroupCommand, MoveNodeCommand, MacroCommand } from '@grafloria/engine';
+import { MoveGroupCommand, MoveNodeCommand, MacroCommand, GroupMembershipService } from '@grafloria/engine';
 import type { Command } from '@grafloria/engine';
 import type { GroupFrameSnapshot, GroupNodeMove, GroupFrameMove } from '@grafloria/engine';
 import type { InteractionController } from '../interaction/interaction-controller';
@@ -156,6 +156,8 @@ export class DomEventBinder {
    * a highlight it painted can always be cleared by the same instance.
    */
   private snap?: SnapController;
+  /** T8 — lazily built per diagram; rebuilt when the diagram identity changes. */
+  private membership?: { service: GroupMembershipService; diagram: unknown };
   /** The proximity candidate currently highlighted mid-drag (for commit on drop). */
   private proximityCandidate: ProximityCandidate | null = null;
 
@@ -1174,6 +1176,8 @@ export class DomEventBinder {
       this.nodeDrag = null;
       // wave12: record the completed drag as one undoable step BEFORE anything else.
       if (moved && engine) this.commitNodeMove(engine, drag);
+      // T8/visio: the drop may also change WHAT CONTAINS the node.
+      if (moved && engine) this.applyMembershipOnDrop(engine, drag);
       // wave12 (gap 2): a drag that ended near a compatible port auto-links on drop.
       const connected = moved ? this.commitProximityConnection() : false;
       if (moved) this.emitNodesChange();
@@ -1800,6 +1804,53 @@ export class DomEventBinder {
    * execute() is a visual no-op that records one history entry, and undo restores `from`.
    * A multi-node drag collapses into one MacroCommand — one gesture, one undo step.
    */
+  /**
+   * T8/visio — after a node drag COMMITS its move, reparent it into whatever
+   * container it was dropped in (or unembed it when dropped outside every one).
+   *
+   * The whole drop policy already lived in `GroupMembershipService`: innermost
+   * hit-test, per-group `canAddMember` veto, coordinate translation, and
+   * undoable Add/RemoveFromGroupCommand on the shared stack. It was simply
+   * never constructed outside its own specs, so a drag into a container moved
+   * the node's x/y and nothing else. This is the missing call.
+   *
+   * Runs only for a single-node drag: a multi-select drop into a container is a
+   * separate policy question (which member wins the hit-test?), and guessing it
+   * silently is worse than leaving it to a host.
+   */
+  private applyMembershipOnDrop(engine: DiagramEngine, drag: NodeDragState): void {
+    if (engine.getInteractionConfig().enableGroupMembershipOnDrop !== true) return;
+    if (drag.nodeIds.length !== 1 || this.isReadonly()) return;
+
+    const diagram = engine.getDiagram();
+    if (!diagram) return;
+    const node = diagram.getNode(drag.nodeIds[0]);
+    if (!node || node.state.locked) return;
+
+    if (!this.membership || this.membership.diagram !== diagram) {
+      this.membership = {
+        diagram,
+        service: new GroupMembershipService({ diagram, dispatcher: engine.commandManager }),
+      };
+    }
+    const service = this.membership.service;
+    service.refresh(); // groups may have moved during the drag
+
+    // Hit-test the node's CENTRE, not the pointer: the cursor can sit outside a
+    // small node's body, and it is the shape's position that decides where it
+    // landed.
+    const point = {
+      x: node.position.x + node.size.width / 2,
+      y: node.position.y + node.size.height / 2,
+    };
+    void Promise.resolve(service.handleNodeDragEnd(node.id, point)).then((result) => {
+      if (result?.changed) {
+        this.emitNodesChange();
+        this.host.requestRender();
+      }
+    });
+  }
+
   private commitNodeMove(engine: DiagramEngine, drag: NodeDragState): void {
     if (!drag.committed || !drag.startPositions) return;
     const diagram = engine.getDiagram();
