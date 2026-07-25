@@ -131275,7 +131275,7 @@ function serveLayout(port, deps = {}) {
     void run(request);
   };
   async function run(request) {
-    const { seq } = request;
+    const { seq: seq2 } = request;
     try {
       let adapter;
       try {
@@ -131283,7 +131283,7 @@ function serveLayout(port, deps = {}) {
       } catch (constructionError) {
         const detail = constructionError instanceof Error ? constructionError.message : String(constructionError);
         port.postMessage({
-          seq,
+          seq: seq2,
           kind: "error",
           message: `Layout '${request.algorithm}' could not be constructed in this context: ${detail}`
         });
@@ -131291,7 +131291,7 @@ function serveLayout(port, deps = {}) {
       }
       if (!adapter) {
         port.postMessage({
-          seq,
+          seq: seq2,
           kind: "error",
           message: `Unknown layout '${request.algorithm}'`
         });
@@ -131302,7 +131302,7 @@ function serveLayout(port, deps = {}) {
       const startedAt = now3();
       const emit = (progress, phase, iteration, totalIterations) => {
         port.postMessage({
-          seq,
+          seq: seq2,
           kind: "progress",
           progress,
           phase,
@@ -131311,9 +131311,9 @@ function serveLayout(port, deps = {}) {
         });
       };
       const finish = (result2, partial, reason, iteration, totalIterations) => {
-        cancelled.delete(seq);
+        cancelled.delete(seq2);
         port.postMessage({
-          seq,
+          seq: seq2,
           kind: "result",
           algorithm: request.algorithm,
           positions: [...result2.nodePositions],
@@ -131339,7 +131339,7 @@ function serveLayout(port, deps = {}) {
         let lastEmitAt = now3();
         let lastEmitProgress = 0;
         for (; ; ) {
-          if (cancelled.has(seq)) {
+          if (cancelled.has(seq2)) {
             stop = "cancelled";
             break;
           }
@@ -131391,7 +131391,7 @@ function serveLayout(port, deps = {}) {
         return;
       }
       emit(0, "start", 0, 1);
-      if (cancelled.has(seq)) {
+      if (cancelled.has(seq2)) {
         finish(unchanged(request.graph), true, "cancelled", 0, 1);
         return;
       }
@@ -131399,9 +131399,9 @@ function serveLayout(port, deps = {}) {
       emit(1, "done", 1, 1);
       finish(result, false, void 0, 1, 1);
     } catch (error) {
-      cancelled.delete(seq);
+      cancelled.delete(seq2);
       port.postMessage({
-        seq,
+        seq: seq2,
         kind: "error",
         message: error instanceof Error ? error.message : String(error)
       });
@@ -131497,20 +131497,20 @@ var LayoutHost = class {
     };
   }
   run(algorithm, graph, options = {}, runOptions = {}) {
-    const seq = ++this.seq;
+    const seq2 = ++this.seq;
     const { signal, onProgress, timeBudgetMs, sliceMs, stopAfterIteration } = runOptions;
     return new Promise((resolve, reject) => {
-      this.pending.set(seq, { resolve, reject, onProgress });
+      this.pending.set(seq2, { resolve, reject, onProgress });
       if (signal?.aborted) {
-        this.port.postMessage({ seq: 0, kind: "cancel", target: seq });
+        this.port.postMessage({ seq: 0, kind: "cancel", target: seq2 });
       }
       signal?.addEventListener("abort", () => {
-        if (this.pending.has(seq)) {
-          this.port.postMessage({ seq: 0, kind: "cancel", target: seq });
+        if (this.pending.has(seq2)) {
+          this.port.postMessage({ seq: 0, kind: "cancel", target: seq2 });
         }
       });
       this.port.postMessage({
-        seq,
+        seq: seq2,
         kind: "run",
         algorithm,
         graph,
@@ -157251,9 +157251,9 @@ var CommentStore = class {
    */
   mintId(prefix) {
     if (this.opts.idFactory) return this.opts.idFactory();
-    const seq = (this.counter++).toString(36).padStart(4, "0");
+    const seq2 = (this.counter++).toString(36).padStart(4, "0");
     const rand = Math.random().toString(36).slice(2, 8);
-    return `${prefix}_${Date.now().toString(36)}_${seq}_${rand}`;
+    return `${prefix}_${Date.now().toString(36)}_${seq2}_${rand}`;
   }
 };
 
@@ -157308,23 +157308,23 @@ var Awareness = class {
    * gate refuses a superseded op. Same idea, one scope down, and no shared machinery
    * because the lifecycles have nothing in common.
    */
-  applyRemote(actor, state, seq) {
+  applyRemote(actor, state, seq2) {
     if (actor === this.options.actor) return null;
     if (state === null) {
       return this.remove(actor);
     }
     const existing = this.peers.get(actor);
-    if (existing && seq < existing.seq) return null;
+    if (existing && seq2 < existing.seq) return null;
     const now3 = this.nowFn();
     if (existing) {
       existing.lastSeen = now3;
-      if (seq === existing.seq) return null;
-      existing.seq = seq;
+      if (seq2 === existing.seq) return null;
+      existing.seq = seq2;
       existing.state = state;
       this.emit({ added: [], updated: [actor], removed: [] });
       return { added: [], updated: [actor], removed: [] };
     }
-    this.peers.set(actor, { actor, state, lastSeen: now3, seq });
+    this.peers.set(actor, { actor, state, lastSeen: now3, seq: seq2 });
     const change = { added: [actor], updated: [], removed: [] };
     this.emit(change);
     return change;
@@ -194415,6 +194415,15 @@ function ensureStencilKitStyles(doc = document) {
   doc.head.appendChild(style);
 }
 
+// libs/element/src/lib/stencil-kit/builders.ts
+var builders = /* @__PURE__ */ new Map();
+function registerStencilBuilder(masterId, builder) {
+  builders.set(masterId, builder);
+}
+function getStencilBuilder(masterId) {
+  return builders.get(masterId);
+}
+
 // libs/element/src/lib/stencil-kit/palette.ts
 var SVG_NS5 = "http://www.w3.org/2000/svg";
 var DND_TYPE = "application/x-grafloria-master";
@@ -194640,9 +194649,11 @@ function bindStencilPalette(api, hosts, options = {}) {
     const w = Number(struct.size?.width) || 100;
     const h = Number(struct.size?.height) || 60;
     const at = { x: world.x - w / 2, y: world.y - h / 2 };
-    const factory = new NodeFactory(registry5, diagram);
-    const root = factory.createFromTemplate(masterId, options.data?.(master) ?? {}, at);
-    const created = subtree(diagram, root);
+    const builder = getStencilBuilder(masterId);
+    const built = builder ? builder({ api, master, at }) : null;
+    const factory = built ? null : new NodeFactory(registry5, diagram);
+    const root = built ?? factory.createFromTemplate(masterId, options.data?.(master) ?? {}, at);
+    const created = built ? [built] : subtree(diagram, root);
     if (options.htmlLayer === true) {
       for (const n3 of created) n3.setMetadata("useHTMLLayer", true);
     }
@@ -194790,6 +194801,87 @@ function bindShapeDataPanel(api, host, options = {}) {
     }
   };
 }
+
+// libs/element/src/lib/stencil-kit/card-builders.ts
+var CARD_SHAPE = { type: "rect", fill: "none", stroke: "none" };
+var CARD_STYLE = { fill: "transparent", stroke: "transparent", strokeWidth: 0 };
+var seq = 0;
+var nextId = (prefix) => `${prefix}-${++seq}`;
+function mountCard(ctx, opts) {
+  ensureDiagramKitStyles();
+  const node = new NodeModel({
+    id: opts.id,
+    type: "kit-card",
+    position: { x: ctx.at.x, y: ctx.at.y },
+    size: { width: opts.width, height: opts.height }
+  });
+  node.setMetadata("html", { content: opts.content, interactive: true });
+  node.setMetadata(opts.metaKey, opts.spec);
+  node.setMetadata("kitEditable", true);
+  node.setMetadata("shape", CARD_SHAPE);
+  node.setStyle?.(CARD_STYLE);
+  ctx.api.getModel().addNode(node);
+  const container = ctx.api.container ?? ctx.api.getContainer?.();
+  if (container) {
+    const kitApi = { ...ctx.api, container };
+    try {
+      bindRowInteractions(kitApi);
+    } catch {
+    }
+    try {
+      bindCardEditing(kitApi);
+    } catch {
+    }
+  }
+  return node;
+}
+function registerCardBuilders() {
+  for (const masterId of ["erd-entity", "erd-table", "erd-associative-entity", "erd-bridge-entity"]) {
+    registerStencilBuilder(masterId, (ctx) => {
+      const id = nextId("entity");
+      const spec = {
+        id,
+        name: ctx.master.meta?.name ?? "Entity",
+        columns: [
+          { name: "id", type: "uuid", pk: true },
+          { name: "name", type: "varchar" }
+        ]
+      };
+      return mountCard(ctx, {
+        id,
+        width: 220,
+        height: entityAutoHeight(spec, true),
+        content: entityCardContent(spec, true),
+        metaKey: "kitEntity",
+        spec
+      });
+    });
+  }
+  for (const masterId of ["uml-class", "uml-abstract-class", "uml-interface"]) {
+    registerStencilBuilder(masterId, (ctx) => {
+      const id = nextId("class");
+      const spec = {
+        id,
+        name: ctx.master.meta?.name ?? "Class",
+        abstract: masterId === "uml-abstract-class",
+        stereotype: masterId === "uml-interface" ? "interface" : void 0,
+        attributes: ["- field: Type"],
+        methods: ["+ method(): void"]
+      };
+      return mountCard(ctx, {
+        id,
+        width: 220,
+        height: classAutoHeight(spec, true),
+        content: classCardContent(spec, true),
+        metaKey: "kitClass",
+        spec
+      });
+    });
+  }
+}
+
+// libs/element/src/lib/stencil-kit/index.ts
+registerCardBuilders();
 
 // libs/element/src/index.ts
 defineGrafloriaFlow();

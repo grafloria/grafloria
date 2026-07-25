@@ -23,6 +23,7 @@ import {
 } from '@grafloria/engine';
 import { getShape } from '@grafloria/renderer';
 import { ensureStencilKitStyles } from './styles';
+import { getStencilBuilder } from './builders';
 
 const SVG_NS = 'http://www.w3.org/2000/svg';
 /** The MIME the palette drags with — namespaced so a page's other DnD is untouched. */
@@ -371,9 +372,16 @@ export function bindStencilPalette(
     const h = Number(struct.size?.height) || 60;
     const at = { x: world.x - w / 2, y: world.y - h / 2 };   // drop centres on the cursor
 
-    const factory = new NodeFactory(registry, diagram);
-    const root = factory.createFromTemplate(masterId, options.data?.(master) ?? {}, at);
-    const created = subtree(diagram, root);
+    // A master may resolve to a registered BUILDER (an ER entity / UML class is
+    // a kit card, not a silhouette). Anything without one takes the template
+    // path — see stencil-kit/builders.ts for why this is a registry and not an
+    // id check inside the palette.
+    const builder = getStencilBuilder(masterId);
+    const built = builder ? builder({ api, master, at }) : null;
+
+    const factory = built ? null : new NodeFactory(registry, diagram);
+    const root = built ?? factory!.createFromTemplate(masterId, options.data?.(master) ?? {}, at);
+    const created = built ? [built] : subtree(diagram, root);
 
     // NOTE: masters used to need `useHTMLLayer` stripped here or they rendered
     // as empty groups. That is fixed at the source now (NodeFactory no longer
