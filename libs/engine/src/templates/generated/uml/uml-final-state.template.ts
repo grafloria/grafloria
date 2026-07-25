@@ -38,8 +38,8 @@ export const umlFinalStateTemplate: NodeTemplate = {
     },
     "shape": {
       "type": "circle",
-      "fill": "#FFFFFF",
-      "stroke": "#000000",
+      "fill": "#F8FAFC",
+      "stroke": "#475569",
       "strokeWidth": 4,
       "opacity": 1
     },

@@ -37,8 +37,8 @@ export const bpmnManualTaskTemplate: NodeTemplate = {
     },
     "shape": {
       "type": "rect",
-      "fill": "#FFF3E0",
-      "stroke": "#000000",
+      "fill": "#FFFFFF",
+      "stroke": "#334155",
       "strokeWidth": 2,
       "opacity": 1,
       "cornerRadius": 8

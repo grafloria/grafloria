@@ -38,8 +38,8 @@ export const flowchartDocumentTemplate: NodeTemplate = {
     },
     "shape": {
       "type": "document",
-      "fill": "#FFF9C4",
-      "stroke": "#F57F17",
+      "fill": "#EEF2FF",
+      "stroke": "#4F46E5",
       "strokeWidth": 2,
       "opacity": 1
     },

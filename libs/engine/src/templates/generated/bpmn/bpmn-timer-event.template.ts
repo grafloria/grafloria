@@ -37,8 +37,8 @@ export const bpmnTimerEventTemplate: NodeTemplate = {
     },
     "shape": {
       "type": "circle",
-      "fill": "#FFF3E0",
-      "stroke": "#000000",
+      "fill": "#FFFFFF",
+      "stroke": "#334155",
       "strokeWidth": 2,
       "opacity": 1
     },

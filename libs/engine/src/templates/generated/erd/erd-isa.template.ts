@@ -38,8 +38,8 @@ export const erdIsaTemplate: NodeTemplate = {
     },
     "shape": {
       "type": "triangle",
-      "fill": "#E8F5E9",
-      "stroke": "#388E3C",
+      "fill": "#ECFDF5",
+      "stroke": "#059669",
       "strokeWidth": 2,
       "opacity": 1
     },

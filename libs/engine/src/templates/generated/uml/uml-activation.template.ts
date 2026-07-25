@@ -38,8 +38,8 @@ export const umlActivationTemplate: NodeTemplate = {
     },
     "shape": {
       "type": "rect",
-      "fill": "#FFFFFF",
-      "stroke": "#1976D2",
+      "fill": "#F8FAFC",
+      "stroke": "#475569",
       "strokeWidth": 2,
       "opacity": 1
     },

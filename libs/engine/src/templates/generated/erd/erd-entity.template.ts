@@ -37,8 +37,8 @@ export const erdEntityTemplate: NodeTemplate = {
     },
     "shape": {
       "type": "rect",
-      "fill": "#E3F2FD",
-      "stroke": "#1976D2",
+      "fill": "#ECFDF5",
+      "stroke": "#059669",
       "strokeWidth": 2,
       "opacity": 1
     },

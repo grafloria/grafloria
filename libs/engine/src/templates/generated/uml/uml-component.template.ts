@@ -37,8 +37,8 @@ export const umlComponentTemplate: NodeTemplate = {
     },
     "shape": {
       "type": "component",
-      "fill": "#E0F7FA",
-      "stroke": "#00838F",
+      "fill": "#F8FAFC",
+      "stroke": "#475569",
       "strokeWidth": 2,
       "opacity": 1
     },

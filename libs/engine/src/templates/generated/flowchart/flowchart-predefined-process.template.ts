@@ -38,8 +38,8 @@ export const flowchartPredefinedProcessTemplate: NodeTemplate = {
     },
     "shape": {
       "type": "predefined-process",
-      "fill": "#FFFFFF",
-      "stroke": "#000000",
+      "fill": "#EEF2FF",
+      "stroke": "#4F46E5",
       "strokeWidth": 3,
       "opacity": 1
     },

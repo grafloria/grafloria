@@ -39,8 +39,8 @@ export const umlJoinTemplate: NodeTemplate = {
     },
     "shape": {
       "type": "sync-bar",
-      "fill": "#FFFFFF",
-      "stroke": "#000000",
+      "fill": "#F8FAFC",
+      "stroke": "#475569",
       "strokeWidth": 2,
       "opacity": 1
     },

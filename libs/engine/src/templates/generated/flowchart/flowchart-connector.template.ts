@@ -37,8 +37,8 @@ export const flowchartConnectorTemplate: NodeTemplate = {
     },
     "shape": {
       "type": "circle",
-      "fill": "#FFFFFF",
-      "stroke": "#757575",
+      "fill": "#EEF2FF",
+      "stroke": "#4F46E5",
       "strokeWidth": 2,
       "opacity": 1
     },

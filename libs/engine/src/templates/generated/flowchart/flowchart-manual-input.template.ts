@@ -38,8 +38,8 @@ export const flowchartManualInputTemplate: NodeTemplate = {
     },
     "shape": {
       "type": "parallelogram-top",
-      "fill": "#E0F7FA",
-      "stroke": "#00838F",
+      "fill": "#EEF2FF",
+      "stroke": "#4F46E5",
       "strokeWidth": 2,
       "opacity": 1
     },

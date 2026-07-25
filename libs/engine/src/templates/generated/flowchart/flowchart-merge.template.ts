@@ -37,8 +37,8 @@ export const flowchartMergeTemplate: NodeTemplate = {
     },
     "shape": {
       "type": "triangle",
-      "fill": "#E8F5E9",
-      "stroke": "#388E3C",
+      "fill": "#EEF2FF",
+      "stroke": "#4F46E5",
       "strokeWidth": 2,
       "opacity": 1
     },

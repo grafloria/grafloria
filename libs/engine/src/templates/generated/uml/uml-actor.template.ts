@@ -38,8 +38,8 @@ export const umlActorTemplate: NodeTemplate = {
     },
     "shape": {
       "type": "actor",
-      "fill": "#FFFFFF",
-      "stroke": "#000000",
+      "fill": "#F8FAFC",
+      "stroke": "#475569",
       "strokeWidth": 2,
       "opacity": 1
     },

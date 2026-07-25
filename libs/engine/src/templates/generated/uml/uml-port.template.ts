@@ -37,8 +37,8 @@ export const umlPortTemplate: NodeTemplate = {
     },
     "shape": {
       "type": "rect",
-      "fill": "#FFFFFF",
-      "stroke": "#00838F",
+      "fill": "#F8FAFC",
+      "stroke": "#475569",
       "strokeWidth": 2,
       "opacity": 1
     },

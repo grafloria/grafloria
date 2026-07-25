@@ -39,8 +39,8 @@ export const erdAssociativeEntityTemplate: NodeTemplate = {
     },
     "shape": {
       "type": "rect",
-      "fill": "#FFF3E0",
-      "stroke": "#F57C00",
+      "fill": "#ECFDF5",
+      "stroke": "#059669",
       "strokeWidth": 3,
       "opacity": 1,
       "cornerRadius": 8

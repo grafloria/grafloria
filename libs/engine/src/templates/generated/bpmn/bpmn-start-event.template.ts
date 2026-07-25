@@ -37,8 +37,8 @@ export const bpmnStartEventTemplate: NodeTemplate = {
     },
     "shape": {
       "type": "circle",
-      "fill": "#E8F5E9",
-      "stroke": "#388E3C",
+      "fill": "#FFFFFF",
+      "stroke": "#334155",
       "strokeWidth": 2,
       "opacity": 1
     },

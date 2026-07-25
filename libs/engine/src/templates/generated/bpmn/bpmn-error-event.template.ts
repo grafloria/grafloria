@@ -37,8 +37,8 @@ export const bpmnErrorEventTemplate: NodeTemplate = {
     },
     "shape": {
       "type": "circle",
-      "fill": "#FFCDD2",
-      "stroke": "#D32F2F",
+      "fill": "#FFFFFF",
+      "stroke": "#334155",
       "strokeWidth": 2,
       "opacity": 1
     },

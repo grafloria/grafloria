@@ -38,8 +38,8 @@ export const bpmnExclusiveGatewayTemplate: NodeTemplate = {
     },
     "shape": {
       "type": "diamond",
-      "fill": "#FFF9C4",
-      "stroke": "#F57F17",
+      "fill": "#FFFFFF",
+      "stroke": "#334155",
       "strokeWidth": 2,
       "opacity": 1
     },

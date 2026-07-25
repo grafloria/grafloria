@@ -37,8 +37,8 @@ export const umlNodeTemplate: NodeTemplate = {
     },
     "shape": {
       "type": "cube",
-      "fill": "#FFEBEE",
-      "stroke": "#C62828",
+      "fill": "#F8FAFC",
+      "stroke": "#475569",
       "strokeWidth": 2,
       "opacity": 1
     },
