@@ -47,6 +47,12 @@ export interface StencilPaletteOptions {
   data?: (master: NodeTemplate) => Record<string, unknown>;
   /** Called after a master is placed on the canvas. */
   onPlace?: (info: { master: NodeTemplate; nodeId: string; x: number; y: number }) => void;
+  /**
+   * Keep `useHTMLLayer` on placed masters. Only set this when the host really
+   * runs an HTML layer that paints `node.data._html`; with the plain SVG
+   * renderer the flag makes the node render as an empty group (see `place`).
+   */
+  htmlLayer?: boolean;
 }
 
 export interface StencilPaletteHandle {
@@ -281,6 +287,22 @@ export function bindStencilPalette(
     const factory = new NodeFactory(registry, diagram);
     const root = factory.createFromTemplate(masterId, options.data?.(master) ?? {}, at);
     const created = subtree(diagram, root);
+
+    // `NodeFactory` flags any master carrying `structure.html` as `useHTMLLayer`
+    // — and the SVG renderer answers that flag with an EMPTY <g> (it expects an
+    // HTML layer to paint the body from `metadata.html`, while the factory
+    // stashes its config on `node.data._html` instead). All 80 generated masters
+    // declare html, so every dropped shape rendered as nothing at all.
+    //
+    // The geometry the palette already drew as a thumbnail is right there in
+    // `metadata.shape`, so drop the flag and let the SVG path paint the real
+    // silhouette + label. Hosts that DO run an HTML layer can opt back in with
+    // `htmlLayer: true`.
+    if (options.htmlLayer !== true) {
+      for (const n of created) {
+        if (n.getMetadata?.('useHTMLLayer') === true) n.setMetadata('useHTMLLayer', false);
+      }
+    }
 
     // Serialize into commands BEFORE detaching (AddNodeCommand snapshots in its
     // constructor), then detach and replay through the command manager.

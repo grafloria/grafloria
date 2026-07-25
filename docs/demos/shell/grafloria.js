@@ -194517,6 +194517,11 @@ function bindStencilPalette(api, hosts, options = {}) {
     const factory = new NodeFactory(registry5, diagram);
     const root = factory.createFromTemplate(masterId, options.data?.(master) ?? {}, at);
     const created = subtree(diagram, root);
+    if (options.htmlLayer !== true) {
+      for (const n3 of created) {
+        if (n3.getMetadata?.("useHTMLLayer") === true) n3.setMetadata("useHTMLLayer", false);
+      }
+    }
     const cmds = created.map((n3) => new AddNodeCommand(n3));
     for (const n3 of [...created].reverse()) diagram.removeNode(n3.id);
     await engine.commandManager.execute(new BatchCommand(`Place ${master.meta?.name ?? masterId}`, cmds));
