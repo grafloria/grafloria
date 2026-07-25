@@ -44,6 +44,8 @@ So the fix for most rows is a **one-line data change per master** — point it a
 
 **15 rows / ~26 masters — all fixable by changing declared shape types.**
 
+> **STATUS: DONE (2026-07-25).** `tools/resync-template-shapes.mjs` corrected **25 masters**. Root cause was narrower than assumed: `types/domain/*.ts` always declared the right shapes and `ShapeMapper` always mapped them — the checked-in `generated/` output simply predated ShapeMapper's extended table. Verified visually: Data is a parallelogram, Document has its wavy bottom, Manual Operation a trapezoid, Predefined Process double bars, Stored Data a cylinder, Terminal a stadium.
+
 ## B · Wrong shape — needs a NEW shape in the registry
 
 | Stencil | Master | Should be | Note |
@@ -77,8 +79,8 @@ Flowchart **Process, Decision, Preparation, Connector, OR**(circle) · BPMN **St
 
 ## E · Cross-cutting rendering defects
 
-1. **Labels overflow their silhouette.** "Decision" is clipped left and right inside its diamond; "Connector" reads as `nnec` in its circle. Node labels are hard-centred on the *bounding box* rather than fitted to the shape's inner rect — `getInnerRect()` exists and insets correctly for diamonds/ellipses, but the label engine does not use it here. (Matches the gap analysis' "node labels hard-centred" row.)
-2. **No text auto-fit.** A small circle (36 px) keeps a full-size font, so any label longer than ~4 characters is truncated rather than shrunk or wrapped.
+1. ~~Labels are hard-centred on the bounding box~~ — **CORRECTED after measuring.** `renderNodeLabel` already routes through `getInnerRect()`, and the insets are right (diamond 100×100 → inner 50×50; circle → 60×60). It also passes `maxWidth`, `maxLines` and a clip path. E1 as originally written was wrong.
+2. **The real defect: no fit for UNBREAKABLE words.** "Decision" (8 chars, ~67 px at 14 px font) does not fit a diamond's 50 px inner width, and being a single word with no space the greedy wrapper cannot break it — so it stays one over-wide line and the clip path shears it to "Decisior". "Connector" in a 36 px circle becomes "nnec". The fix is shrink-to-fit (or hyphenate/ellipsis) when a single token exceeds `maxWidth`, **not** inner-rect plumbing. Compounding it: width is estimated as `length × fontSize × 0.6`, duplicated across ~8 sites, while a real `measureText` exists in the canvas backend and never feeds the wrap.
 3. **Colour is per-master, not per-notation.** Flowchart masters ship individually coloured (pink Manual Operation, yellow Document, teal Manual Input). Visio stencils are monochrome by default and take colour from a theme. Dropping five shapes yields a harlequin diagram.
 4. **No ports on drop.** Placed masters expose no connection points until hovered, and several notation shapes (gateways, events) should carry fixed anchor points.
 
@@ -87,7 +89,7 @@ Flowchart **Process, Decision, Preparation, Connector, OR**(circle) · BPMN **St
 ## Recommended order
 
 1. **Group A** — retarget ~26 masters to shapes that already exist. Pure data edit, highest visual payoff per unit of work.
-2. **E1 / E2** — route node labels through `getInnerRect()` and add auto-shrink. Fixes clipped text across *every* shape at once.
+2. **E2** — shrink-to-fit for unbreakable tokens, and feed the real `measureText` into the wrap. Fixes clipped text across *every* shape at once. (E1 needs no work — verified already correct.)
 3. **C** — rounded corners for BPMN tasks + UML states (`rx`), then UML class compartments.
 4. **Group B** — add the missing silhouettes (double-outline variants, Delay, Display, icon overlays).
 5. **E3** — a neutral default palette, with colour moved to the theme.
