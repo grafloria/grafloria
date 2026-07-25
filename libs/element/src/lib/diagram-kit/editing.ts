@@ -176,8 +176,26 @@ function beginRename(api: EditApi, target: Element): void {
     return;
   }
 
-  // ER column rename.
-  const colEl = target.closest('.axk-col');
+  // ER column. Which CELL was double-clicked decides what gets edited and where
+  // the input is mounted: the name span (`.axk-col`) and the type span
+  // (`.axk-ty`) are SIBLINGS inside `.axk-row`. Editing only ever handled the
+  // name and always anchored to it, so double-clicking a type either did
+  // nothing or dropped the caret over the name — the wrong field in the wrong
+  // place. A double-click anywhere else on the row falls back to the name,
+  // anchored to the name cell, so the gesture is predictable everywhere.
+  const typeEl = target.closest('.axk-ty');
+  if (typeEl && rowIndex >= 0) {
+    const ent = kitEntity(api, nodeId);
+    if (!ent) return;
+    openInlineEditor(api, typeEl, ent.columns[rowIndex]?.type ?? '', (type) => {
+      const columns = ent.columns.map((c, i) => (i === rowIndex ? { ...c, type } : c));
+      void updateEntity(api as never, nodeId, { columns });
+    });
+    return;
+  }
+
+  const rowEl = target.closest('.axk-row');
+  const colEl = target.closest('.axk-col') ?? rowEl?.querySelector('.axk-col') ?? null;
   if (colEl && rowIndex >= 0) {
     const ent = kitEntity(api, nodeId);
     if (!ent) return;
@@ -283,6 +301,8 @@ export function bindCardEditing(api: EditApi): CardEditingHandle {
       target.closest('.axk-entity-head') ||
       target.closest('.axk-uml-name') ||
       target.closest('.axk-col') ||
+      target.closest('.axk-ty') ||
+      target.closest('.axk-row') ||
       target.closest('.axk-member')
     ) {
       event.preventDefault();
