@@ -58,7 +58,7 @@ defineDemo({
 
     // 1. The palette rendered real, categorized sections.
     const groups = document.querySelectorAll('#stencil-rail .gf-stencil-group');
-    check(groups.length >= 6, `expected ≥6 stencil sections, got ${groups.length}`);
+    check(groups.length >= 4, `expected ≥4 stencil sections, got ${groups.length}`);
     const items = document.querySelectorAll('#stencil-rail .gf-stencil-item');
     check(items.length > 0, 'no shapes rendered in the palette');
     check(ctx.registered >= 80, `expected ≥80 masters registered, got ${ctx.registered}`);

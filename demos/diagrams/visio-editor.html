@@ -146,7 +146,7 @@ defineDemo({
 
     // 1. The whole surface is present.
     check(document.querySelectorAll('#vs-rail .gf-stencil-item').length > 0, 'the stencil rail is empty');
-    check(ctx.registered >= 80, `expected ≥80 masters registered, got ${ctx.registered}`);
+    check(ctx.registered === 80, `expected exactly 80 masters registered, got ${ctx.registered}`);
     check(!!document.querySelector('#vs-panel .gf-sd-title'), 'the shape-data panel did not mount');
     check(document.querySelectorAll('#vs-bar button').length >= 5, 'the align toolbar is missing buttons');
 
