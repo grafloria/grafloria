@@ -48,6 +48,18 @@ export interface StencilPaletteOptions {
   /** Called after a master is placed on the canvas. */
   onPlace?: (info: { master: NodeTemplate; nodeId: string; x: number; y: number }) => void;
   /**
+   * Restyle the shapes per stencil WITHOUT editing any master — the seam that
+   * makes stencil colour a host/theme decision instead of baked template data.
+   * Keyed by stencil id (`flowchart`, `bpmn`, `uml`, `erd`); each entry
+   * overrides the master's own `fill` / `stroke`. Pass `'theme'` for a value to
+   * take it from the live theme instead of a literal.
+   *
+   *   bindStencilPalette(api, hosts, {
+   *     notationTheme: { flowchart: { fill: 'theme', stroke: '#0f172a' } },
+   *   })
+   */
+  notationTheme?: Record<string, { fill?: string; stroke?: string }>;
+  /**
    * Keep `useHTMLLayer` on placed masters. Only set this when the host really
    * runs an HTML layer that paints `node.data._html`; with the plain SVG
    * renderer the flag makes the node render as an empty group (see `place`).
@@ -64,6 +76,36 @@ export interface StencilPaletteHandle {
   destroy(): void;
 }
 
+
+/**
+ * Repaint a placed master from the host's per-notation palette.
+ *
+ * Colour used to live only in the 80 generated templates, so restyling meant
+ * editing template data — impossible for an embedder. This applies the caller's
+ * scheme on top, and `'theme'` resolves against the live theme so a colour-mode
+ * swap carries the stencils with it.
+ */
+function applyNotationTheme(
+  node: any,
+  stencilId: string | undefined,
+  scheme: Record<string, { fill?: string; stroke?: string }> | undefined,
+  api: StencilPaletteApi
+): void {
+  if (!stencilId || !scheme) return;
+  const want = scheme[stencilId];
+  if (!want) return;
+  const shape = { ...(node.getMetadata?.('shape') ?? {}) };
+  const theme: any = (api as any).getTheme?.() ?? null;
+  const resolve = (v: string | undefined, token: 'surface' | 'ink') =>
+    v === 'theme'
+      ? (token === 'surface' ? theme?.colors?.background?.paper : theme?.colors?.primary) ?? undefined
+      : v;
+  const fill = resolve(want.fill, 'surface');
+  const stroke = resolve(want.stroke, 'ink');
+  if (fill !== undefined) shape.fill = fill;
+  if (stroke !== undefined) shape.stroke = stroke;
+  node.setMetadata('shape', shape);
+}
 
 /** UML classifiers get a name compartment + a member compartment. */
 const UML_CLASSIFIERS: Record<string, string | null> = {
@@ -177,6 +219,9 @@ export function bindStencilPalette(
   ensureStencilKitStyles(hosts.palette.ownerDocument ?? document);
 
   const stencils = options.stencils ?? listStencils();
+  /** master id → stencil id, so a drop knows which notation it belongs to. */
+  const stencilOf = new Map<string, string>();
+  for (const st of stencils) for (const m of st.masters) stencilOf.set(m.id, st.id);
   const collapsed = new Set(options.collapsed ?? stencils.slice(1).map((s) => s.id));
   const { palette, canvas } = hosts;
   let query = '';
@@ -354,6 +399,7 @@ export function bindStencilPalette(
     // layer the plain SVG embed does not run — the exact dependency that made
     // every dropped master render blank.
     applyNotationPanel(root, masterId, master);
+    applyNotationTheme(root, stencilOf.get(masterId), options.notationTheme, api);
 
     // Serialize into commands BEFORE detaching (AddNodeCommand snapshots in its
     // constructor), then detach and replay through the command manager.

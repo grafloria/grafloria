@@ -194419,6 +194419,19 @@ function ensureStencilKitStyles(doc = document) {
 // libs/element/src/lib/stencil-kit/palette.ts
 var SVG_NS5 = "http://www.w3.org/2000/svg";
 var DND_TYPE = "application/x-grafloria-master";
+function applyNotationTheme(node, stencilId, scheme, api) {
+  if (!stencilId || !scheme) return;
+  const want = scheme[stencilId];
+  if (!want) return;
+  const shape = { ...node.getMetadata?.("shape") ?? {} };
+  const theme = api.getTheme?.() ?? null;
+  const resolve = (v, token) => v === "theme" ? (token === "surface" ? theme?.colors?.background?.paper : theme?.colors?.primary) ?? void 0 : v;
+  const fill = resolve(want.fill, "surface");
+  const stroke = resolve(want.stroke, "ink");
+  if (fill !== void 0) shape.fill = fill;
+  if (stroke !== void 0) shape.stroke = stroke;
+  node.setMetadata("shape", shape);
+}
 var UML_CLASSIFIERS = {
   "uml-class": null,
   "uml-abstract-class": "\xABabstract\xBB",
@@ -194504,6 +194517,8 @@ function subtree(diagram, root) {
 function bindStencilPalette(api, hosts, options = {}) {
   ensureStencilKitStyles(hosts.palette.ownerDocument ?? document);
   const stencils = options.stencils ?? listStencils();
+  const stencilOf = /* @__PURE__ */ new Map();
+  for (const st of stencils) for (const m of st.masters) stencilOf.set(m.id, st.id);
   const collapsed = new Set(options.collapsed ?? stencils.slice(1).map((s) => s.id));
   const { palette, canvas } = hosts;
   let query = "";
@@ -194635,6 +194650,7 @@ function bindStencilPalette(api, hosts, options = {}) {
       }
     }
     applyNotationPanel(root, masterId, master);
+    applyNotationTheme(root, stencilOf.get(masterId), options.notationTheme, api);
     const cmds = created.map((n3) => new AddNodeCommand(n3));
     for (const n3 of [...created].reverse()) diagram.removeNode(n3.id);
     await engine.commandManager.execute(new BatchCommand(`Place ${master.meta?.name ?? masterId}`, cmds));
