@@ -19,9 +19,15 @@
   #vs-bar .sep { width: 1px; height: 18px; background: var(--gf-line, #e5e7eb); margin: 0 4px; }
   #vs-bar .hint { margin-left: auto; color: var(--gf-mut, #6b7280); }
   #vs-body { display: flex; flex: 1; min-height: 0; }
-  #vs-rail { width: 210px; flex: none; }
-  #vs-canvas { flex: 1; min-width: 0; position: relative; }
-  #vs-panel { width: 210px; flex: none; }
+  /* The rails must never crush the canvas: the gallery already spends ~576px on
+     its nav + how-to panel, so two fixed 210px rails left the canvas ~200px and
+     everything a user dropped past that fell outside the camera and was culled.
+     The rails shrink first, and the data panel drops out entirely when narrow. */
+  #vs-rail { flex: 0 1 200px; min-width: 128px; }
+  #vs-canvas { flex: 1 1 auto; min-width: 260px; position: relative; }
+  #vs-panel { flex: 0 1 200px; min-width: 150px; }
+  @media (max-width: 1500px) { #vs-panel { display: none; } }
+  @media (max-width: 1180px) { #vs-rail { flex-basis: 150px; } }
 </style>
 <script type="module">
 import {
