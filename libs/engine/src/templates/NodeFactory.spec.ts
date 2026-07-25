@@ -285,7 +285,11 @@ describe('NodeFactory', () => {
   });
 
   describe('HTML Configuration', () => {
-    it('should set useHTMLLayer metadata when HTML component specified', () => {
+    // REVERSED (2026-07-25). This used to assert `useHTMLLayer === true`, which
+    // locked in a bug: the SVG renderer answers that flag with an EMPTY <g>, so
+    // every html-bearing master rendered as nothing. See
+    // NodeFactory.html-contract.spec.ts for the full contract.
+    it('does NOT set useHTMLLayer when an HTML component is specified', () => {
       const htmlTemplate: NodeTemplate = {
         ...simpleTemplate,
         id: 'html-node',
@@ -304,7 +308,10 @@ describe('NodeFactory', () => {
         { x: 0, y: 0 }
       );
 
-      expect(node.getMetadata('useHTMLLayer')).toBe(true);
+      // With the flag off the node takes the normal paint path (a master with
+      // no declared shape falls back to `rect` in the renderer), instead of
+      // being short-circuited to an empty group.
+      expect(node.getMetadata('useHTMLLayer')).not.toBe(true);
     });
 
     it('should store HTML configuration in node data', () => {

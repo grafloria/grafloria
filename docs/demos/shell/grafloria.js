@@ -140434,7 +140434,6 @@ var NodeFactory = class {
       this.applyPropertyBindings(node, structure.propertyBindings, data2);
     }
     if (structure.html) {
-      node.setMetadata("useHTMLLayer", true);
       node.data["_html"] = {
         mode: structure.html.mode,
         template: structure.html.template,
@@ -194644,10 +194643,8 @@ function bindStencilPalette(api, hosts, options = {}) {
     const factory = new NodeFactory(registry5, diagram);
     const root = factory.createFromTemplate(masterId, options.data?.(master) ?? {}, at);
     const created = subtree(diagram, root);
-    if (options.htmlLayer !== true) {
-      for (const n3 of created) {
-        if (n3.getMetadata?.("useHTMLLayer") === true) n3.setMetadata("useHTMLLayer", false);
-      }
+    if (options.htmlLayer === true) {
+      for (const n3 of created) n3.setMetadata("useHTMLLayer", true);
     }
     applyNotationPanel(root, masterId, master);
     applyNotationTheme(root, stencilOf.get(masterId), options.notationTheme, api);

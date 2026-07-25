@@ -132,9 +132,23 @@ export class NodeFactory {
       this.applyPropertyBindings(node, (structure as any).propertyBindings, data);
     }
 
-    // Handle HTML configuration
+    // Handle HTML configuration.
+    //
+    // NOTE — `useHTMLLayer` is deliberately NOT set here any more. It made every
+    // html-bearing master render as NOTHING: the SVG renderer answers that flag
+    // by returning an EMPTY <g> (svg-renderer `renderNode`), on the assumption
+    // that some HTML layer paints the body instead — and nothing does, because
+    // the only html body the renderer actually paints is `metadata.html`, a
+    // STRUCTURED, sanitized content tree (see svg/html-node.ts, which never uses
+    // innerHTML), not the raw handlebars string stashed below. All 80 generated
+    // masters declare html, so all 80 were invisible whenever they were built
+    // through this factory.
+    //
+    // Without the flag a template node paints its real silhouette + label, which
+    // is correct and visible. The html config is still recorded on `data._html`
+    // for callers that want to render it themselves; a kit that wants a rich
+    // card sets `metadata.html` with a content tree (see diagram-kit/er.ts).
     if (structure.html) {
-      node.setMetadata('useHTMLLayer', true);
       node.data['_html'] = {
         mode: structure.html.mode,
         template: structure.html.template,
