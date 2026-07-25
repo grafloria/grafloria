@@ -60,9 +60,9 @@ export interface StencilPaletteOptions {
    */
   notationTheme?: Record<string, { fill?: string; stroke?: string }>;
   /**
-   * Keep `useHTMLLayer` on placed masters. Only set this when the host really
-   * runs an HTML layer that paints `node.data._html`; with the plain SVG
-   * renderer the flag makes the node render as an empty group (see `place`).
+   * Opt a placed master INTO `useHTMLLayer`. Only set this when the host really
+   * runs an HTML layer that paints `node.data._html` — with the plain SVG
+   * renderer the flag makes the node render as an empty group.
    */
   htmlLayer?: boolean;
 }
@@ -375,20 +375,13 @@ export function bindStencilPalette(
     const root = factory.createFromTemplate(masterId, options.data?.(master) ?? {}, at);
     const created = subtree(diagram, root);
 
-    // `NodeFactory` flags any master carrying `structure.html` as `useHTMLLayer`
-    // — and the SVG renderer answers that flag with an EMPTY <g> (it expects an
-    // HTML layer to paint the body from `metadata.html`, while the factory
-    // stashes its config on `node.data._html` instead). All 80 generated masters
-    // declare html, so every dropped shape rendered as nothing at all.
-    //
-    // The geometry the palette already drew as a thumbnail is right there in
-    // `metadata.shape`, so drop the flag and let the SVG path paint the real
-    // silhouette + label. Hosts that DO run an HTML layer can opt back in with
-    // `htmlLayer: true`.
-    if (options.htmlLayer !== true) {
-      for (const n of created) {
-        if (n.getMetadata?.('useHTMLLayer') === true) n.setMetadata('useHTMLLayer', false);
-      }
+    // NOTE: masters used to need `useHTMLLayer` stripped here or they rendered
+    // as empty groups. That is fixed at the source now (NodeFactory no longer
+    // sets the flag — see NodeFactory.html-contract.spec.ts), so the workaround
+    // is gone. `htmlLayer: true` is still honoured for hosts that set the flag
+    // themselves and DO run a layer that paints it.
+    if (options.htmlLayer === true) {
+      for (const n of created) n.setMetadata('useHTMLLayer', true);
     }
 
     // COMPARTMENTS & EVENT MARKERS. `metadata.panel` drives the renderer's
