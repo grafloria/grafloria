@@ -36,7 +36,7 @@ export const bpmnErrorEventTemplate: NodeTemplate = {
       "maxHeight": 200
     },
     "shape": {
-      "type": "rect",
+      "type": "circle",
       "fill": "#FFCDD2",
       "stroke": "#D32F2F",
       "strokeWidth": 2,

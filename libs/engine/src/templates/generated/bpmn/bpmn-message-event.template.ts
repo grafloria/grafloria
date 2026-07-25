@@ -35,7 +35,7 @@ export const bpmnMessageEventTemplate: NodeTemplate = {
       "maxHeight": 200
     },
     "shape": {
-      "type": "rect",
+      "type": "circle",
       "fill": "#E3F2FD",
       "stroke": "#000000",
       "strokeWidth": 2,

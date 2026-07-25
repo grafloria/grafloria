@@ -37,7 +37,7 @@ export const umlActorTemplate: NodeTemplate = {
       "maxHeight": 600
     },
     "shape": {
-      "type": "rect",
+      "type": "actor",
       "fill": "#FFFFFF",
       "stroke": "#000000",
       "strokeWidth": 2,

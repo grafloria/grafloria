@@ -37,7 +37,7 @@ export const flowchartStoredDataTemplate: NodeTemplate = {
       "maxHeight": 150
     },
     "shape": {
-      "type": "rect",
+      "type": "cylinder",
       "fill": "#E8F5E9",
       "stroke": "#388E3C",
       "strokeWidth": 2,

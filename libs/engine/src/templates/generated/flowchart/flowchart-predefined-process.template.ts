@@ -37,7 +37,7 @@ export const flowchartPredefinedProcessTemplate: NodeTemplate = {
       "maxHeight": 150
     },
     "shape": {
-      "type": "rect",
+      "type": "predefined-process",
       "fill": "#FFFFFF",
       "stroke": "#000000",
       "strokeWidth": 3,
