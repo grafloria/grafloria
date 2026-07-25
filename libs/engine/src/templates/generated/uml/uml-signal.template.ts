@@ -37,7 +37,7 @@ export const umlSignalTemplate: NodeTemplate = {
       "maxHeight": 600
     },
     "shape": {
-      "type": "rect",
+      "type": "trapezoid",
       "fill": "#FFF3E0",
       "stroke": "#F57C00",
       "strokeWidth": 2,

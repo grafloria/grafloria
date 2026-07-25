@@ -37,7 +37,7 @@ export const flowchartManualInputTemplate: NodeTemplate = {
       "maxHeight": 150
     },
     "shape": {
-      "type": "rect",
+      "type": "parallelogram-top",
       "fill": "#E0F7FA",
       "stroke": "#00838F",
       "strokeWidth": 2,

@@ -37,7 +37,7 @@ export const umlPackageTemplate: NodeTemplate = {
       "maxHeight": 600
     },
     "shape": {
-      "type": "rect",
+      "type": "package",
       "fill": "#FFF9C4",
       "stroke": "#F57F17",
       "strokeWidth": 2,

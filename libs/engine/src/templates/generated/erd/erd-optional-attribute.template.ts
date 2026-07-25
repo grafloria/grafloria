@@ -36,7 +36,7 @@ export const erdOptionalAttributeTemplate: NodeTemplate = {
       "maxHeight": 500
     },
     "shape": {
-      "type": "rect",
+      "type": "ellipse",
       "fill": "#FFFFFF",
       "stroke": "#000000",
       "strokeWidth": 2,

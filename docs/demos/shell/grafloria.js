@@ -142244,7 +142244,7 @@ var bpmnMessageEventTemplate = {
       "maxHeight": 200
     },
     "shape": {
-      "type": "rect",
+      "type": "circle",
       "fill": "#E3F2FD",
       "stroke": "#000000",
       "strokeWidth": 2,
@@ -142357,7 +142357,7 @@ var bpmnTimerEventTemplate = {
       "maxHeight": 200
     },
     "shape": {
-      "type": "rect",
+      "type": "circle",
       "fill": "#FFF3E0",
       "stroke": "#000000",
       "strokeWidth": 2,
@@ -142470,7 +142470,7 @@ var bpmnErrorEventTemplate = {
       "maxHeight": 200
     },
     "shape": {
-      "type": "rect",
+      "type": "circle",
       "fill": "#FFCDD2",
       "stroke": "#D32F2F",
       "strokeWidth": 2,
@@ -142832,7 +142832,7 @@ var flowchartTerminalTemplate = {
       "maxHeight": 150
     },
     "shape": {
-      "type": "rect",
+      "type": "stadium",
       "fill": "#E8F5E9",
       "stroke": "#388E3C",
       "strokeWidth": 2,
@@ -142947,7 +142947,7 @@ var flowchartDataTemplate = {
       "maxHeight": 150
     },
     "shape": {
-      "type": "rect",
+      "type": "parallelogram",
       "fill": "#F3E5F5",
       "stroke": "#7B1FA2",
       "strokeWidth": 2,
@@ -143061,7 +143061,7 @@ var flowchartDocumentTemplate = {
       "maxHeight": 150
     },
     "shape": {
-      "type": "rect",
+      "type": "document",
       "fill": "#FFF9C4",
       "stroke": "#F57F17",
       "strokeWidth": 2,
@@ -143403,7 +143403,7 @@ var flowchartManualInputTemplate = {
       "maxHeight": 150
     },
     "shape": {
-      "type": "rect",
+      "type": "parallelogram-top",
       "fill": "#E0F7FA",
       "stroke": "#00838F",
       "strokeWidth": 2,
@@ -143516,7 +143516,7 @@ var flowchartManualOperationTemplate = {
       "maxHeight": 150
     },
     "shape": {
-      "type": "rect",
+      "type": "trapezoid",
       "fill": "#FCE4EC",
       "stroke": "#C2185B",
       "strokeWidth": 2,
@@ -143630,7 +143630,7 @@ var flowchartPredefinedProcessTemplate = {
       "maxHeight": 150
     },
     "shape": {
-      "type": "rect",
+      "type": "predefined-process",
       "fill": "#FFFFFF",
       "stroke": "#000000",
       "strokeWidth": 3,
@@ -143744,7 +143744,7 @@ var flowchartStoredDataTemplate = {
       "maxHeight": 150
     },
     "shape": {
-      "type": "rect",
+      "type": "cylinder",
       "fill": "#E8F5E9",
       "stroke": "#388E3C",
       "strokeWidth": 2,
@@ -144086,7 +144086,7 @@ var flowchartMergeTemplate = {
       "maxHeight": 150
     },
     "shape": {
-      "type": "rect",
+      "type": "triangle",
       "fill": "#E8F5E9",
       "stroke": "#388E3C",
       "strokeWidth": 2,
@@ -145366,7 +145366,7 @@ var umlPackageTemplate = {
       "maxHeight": 600
     },
     "shape": {
-      "type": "rect",
+      "type": "package",
       "fill": "#FFF9C4",
       "stroke": "#F57F17",
       "strokeWidth": 2,
@@ -145479,7 +145479,7 @@ var umlComponentTemplate = {
       "maxHeight": 600
     },
     "shape": {
-      "type": "rect",
+      "type": "component",
       "fill": "#E0F7FA",
       "stroke": "#00838F",
       "strokeWidth": 2,
@@ -145592,7 +145592,7 @@ var umlNodeTemplate = {
       "maxHeight": 600
     },
     "shape": {
-      "type": "rect",
+      "type": "cube",
       "fill": "#FFEBEE",
       "stroke": "#C62828",
       "strokeWidth": 2,
@@ -145706,7 +145706,7 @@ var umlActorTemplate = {
       "maxHeight": 600
     },
     "shape": {
-      "type": "rect",
+      "type": "actor",
       "fill": "#FFFFFF",
       "stroke": "#000000",
       "strokeWidth": 2,
@@ -146280,7 +146280,7 @@ var umlNoteTemplate = {
       "maxHeight": 600
     },
     "shape": {
-      "type": "rect",
+      "type": "note",
       "fill": "#FFFDE7",
       "stroke": "#F57F17",
       "strokeWidth": 1,
@@ -146621,7 +146621,7 @@ var umlMergeTemplate = {
       "maxHeight": 600
     },
     "shape": {
-      "type": "rect",
+      "type": "diamond",
       "fill": "#E8F5E9",
       "stroke": "#388E3C",
       "strokeWidth": 2,
@@ -148213,7 +148213,7 @@ var umlSignalTemplate = {
       "maxHeight": 600
     },
     "shape": {
-      "type": "rect",
+      "type": "trapezoid",
       "fill": "#FFF3E0",
       "stroke": "#F57C00",
       "strokeWidth": 2,
@@ -149347,7 +149347,7 @@ var erdKeyAttributeTemplate = {
       "maxHeight": 500
     },
     "shape": {
-      "type": "rect",
+      "type": "ellipse",
       "fill": "#FFFFFF",
       "stroke": "#000000",
       "strokeWidth": 2,
@@ -149460,7 +149460,7 @@ var erdMultivaluedAttributeTemplate = {
       "maxHeight": 500
     },
     "shape": {
-      "type": "rect",
+      "type": "ellipse",
       "fill": "#FFFFFF",
       "stroke": "#000000",
       "strokeWidth": 4,
@@ -149573,7 +149573,7 @@ var erdDerivedAttributeTemplate = {
       "maxHeight": 500
     },
     "shape": {
-      "type": "rect",
+      "type": "ellipse",
       "fill": "#FFFFFF",
       "stroke": "#000000",
       "strokeWidth": 2,
@@ -149686,7 +149686,7 @@ var erdCompositeAttributeTemplate = {
       "maxHeight": 500
     },
     "shape": {
-      "type": "rect",
+      "type": "ellipse",
       "fill": "#FFFFFF",
       "stroke": "#000000",
       "strokeWidth": 2,
@@ -149800,7 +149800,7 @@ var erdIsaTemplate = {
       "maxHeight": 500
     },
     "shape": {
-      "type": "rect",
+      "type": "triangle",
       "fill": "#E8F5E9",
       "stroke": "#388E3C",
       "strokeWidth": 2,
@@ -150077,7 +150077,7 @@ var erdPartialKeyTemplate = {
       "maxHeight": 500
     },
     "shape": {
-      "type": "rect",
+      "type": "ellipse",
       "fill": "#FFFFFF",
       "stroke": "#000000",
       "strokeWidth": 2,
@@ -150190,7 +150190,7 @@ var erdOptionalAttributeTemplate = {
       "maxHeight": 500
     },
     "shape": {
-      "type": "rect",
+      "type": "ellipse",
       "fill": "#FFFFFF",
       "stroke": "#000000",
       "strokeWidth": 2,

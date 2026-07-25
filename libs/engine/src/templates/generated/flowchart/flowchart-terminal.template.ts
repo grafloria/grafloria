@@ -37,7 +37,7 @@ export const flowchartTerminalTemplate: NodeTemplate = {
       "maxHeight": 150
     },
     "shape": {
-      "type": "rect",
+      "type": "stadium",
       "fill": "#E8F5E9",
       "stroke": "#388E3C",
       "strokeWidth": 2,

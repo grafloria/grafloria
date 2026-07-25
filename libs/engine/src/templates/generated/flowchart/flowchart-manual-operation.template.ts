@@ -36,7 +36,7 @@ export const flowchartManualOperationTemplate: NodeTemplate = {
       "maxHeight": 150
     },
     "shape": {
-      "type": "rect",
+      "type": "trapezoid",
       "fill": "#FCE4EC",
       "stroke": "#C2185B",
       "strokeWidth": 2,

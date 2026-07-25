@@ -36,7 +36,7 @@ export const bpmnTimerEventTemplate: NodeTemplate = {
       "maxHeight": 200
     },
     "shape": {
-      "type": "rect",
+      "type": "circle",
       "fill": "#FFF3E0",
       "stroke": "#000000",
       "strokeWidth": 2,
