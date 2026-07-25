@@ -1,6 +1,7 @@
 // DiagramEngine - Main orchestrator for diagram functionality
 
 import { EventBus } from '../events/EventBus';
+import { TemplateRegistry } from '../templates/TemplateRegistry';
 import { bumpMutationEpoch } from '../models/DiagramEntity';
 import { DiagramStore } from '../state/DiagramStore';
 import { CommandManager } from '../commands/CommandManager';
@@ -171,6 +172,7 @@ export class DiagramEngine {
   readonly clipboardManager: ClipboardManager; // Phase 1.8
   readonly selectionManager: SelectionManager; // Phase 1.8a
   readonly routingEngine: RoutingEngine; // Routing system for link paths
+  readonly templateRegistry: TemplateRegistry; // Shape "masters" for stencils / the palette
 
   // Phase 0.2: Live rerouting engine
   private liveReroutingEngine: LiveReroutingEngine | null = null;
@@ -209,6 +211,10 @@ export class DiagramEngine {
     // Initialize core systems
     this.eventBus = new EventBus();
     this.store = new DiagramStore();
+    // Empty by default (a plain app pays nothing); registerTemplateLibrary() /
+    // registerGeneratedTemplates() populate it. Closes the documented-but-absent
+    // `engine.templateRegistry` the template-library integration already targets.
+    this.templateRegistry = new TemplateRegistry(this.eventBus);
 
     // Phase 1: Initialize interaction config
     this.interactionConfig = {

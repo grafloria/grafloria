@@ -24,6 +24,15 @@ Phase 1 ships value in week one and is independent of everything else. Phase 2 i
 
 ## Phase 1 — "It feels precise" (cheap, high-impact, independent)
 
+> **Status (2026-07-25, branch `feat/visio-phase1`):**
+> - **T4 ✅ DONE** (`b945a03`) — `engine.templateRegistry` is real; `registerGeneratedTemplates()` un-orphans all 80 masters. 4 tests, engine builds.
+> - **T3 ✅ DONE** (`ddfaa74`) — `AlignCommand` + `DistributeCommand`, single undoable step, locked-node-safe. 7 tests.
+> - **T1 → FINDING (not shipped as a default flip):** making `enableHelperLines` the global default **regresses the interaction gate** — verified it fails DRAG-ATTACH on `contextual-zoom` and LINK-SELECT-SPAN on `layout-portfolio` (both pass on `main`), because snapping breaks the gate's 1:1-drag covenant and would change the feel for every existing embedder (n8n workflows, dashboards). **Kept opt-in;** the Visio editor (T11) enables it.
+> - **T2 → DEFERRED to the editor phase:** the `updateResize` snap hook is ready to pass, but correct *edge*-snapping (the moving handle's edge, not the box origin) must be verified with snapping actually ON — which only happens in the editor. Wiring it gated-off and unverifiable would violate verify-by-rendering.
+>
+> **Takeaway:** the two *interaction* tickets (T1, T2) are editor-context features, not library defaults — the library keeps its stock feel; the editor turns snapping on. The two *capability* tickets (T3, T4) shipped clean.
+
+
 ### T1 · Default-on drag-time snapping + alignment guides — **S**
 - **Why:** guides already compute & publish, but drag-snap is gated behind a new `enableHelperLines` flag that defaults **false** (row: *Snapping / guides*).
 - **Touch:** `libs/engine/src/config/InteractionConfig.ts:390` (`enableHelperLines: false`); gate at `libs/renderer/src/instance/dom-event-binder.ts:1561`. `DEFAULT_SNAP_CONFIG.enabled` is already `true` (`snapping.ts:51`).
@@ -44,6 +53,15 @@ Phase 1 ships value in week one and is independent of everything else. Phase 2 i
 ---
 
 ## Phase 2 — Stencils & the palette (the signature feature)
+
+> **Status (2026-07-25, branch `feat/visio-phase1`): T5, T6, T7 all ✅ DONE.**
+> - **T5** (`069890c`) — `Stencil` model + `listStencils()`/`getStencil()`/`registerStencils()`, **8 named sections** built from the authored notation groupings (`meta.category` is too coarse: all 30 UML + 19 ERD masters share `"diagram"`). Named front-door exports added. 7 tests; 544 element tests still green.
+> - **T6+T7** (`a1f873f`) — `bindStencilPalette()` in a new `libs/element/src/lib/stencil-kit/` (mirrors the dashboard-kit idiom). Categorized collapsible sections, live search, and a thumbnail drawn from each master's **own** `getShape(type).outline(w,h)` — the palette shows the real silhouette, not stock icons. Drag-to-place via **HTML5 DnD** (deliberately not pointer events: the canvas binder consumes `pointerdown`).
+> - **Undo:** `NodeFactory.createFromTemplate` writes straight to the model, so the kit captures the created subtree, detaches it, and replays it through the CommandManager as one `BatchCommand` → **one Ctrl+Z removes a dropped shape.**
+> - **Proof:** 105th demo `demos/diagrams/stencil-palette.html`. Live-verified: **8 sections, 109 shapes, 109 thumbnails**, scripted checks PASS, and a **real Playwright HTML5 drag** places `flowchart:connector` at exactly the cursor-centred point with one-undo. Gates: gallery **105/105**, interaction 1/1, zero page errors.
+>
+> **Remaining for the full Visio experience:** Phase 3 (T8 drag-into-container reparent · T9 shape-data panel · T10 in-place text) and Phase 4 (T11 flagship editor, which is also where T1/T2 snapping gets switched on).
+
 
 ### T4 · Own the template registry on the engine + register the 80 masters — **S**
 - **Why:** `TemplateRegistry` is real and wired to `NodeFactory`, and a 26-template `template-library/` is registered — but the **80 `templates/generated/` masters** (bpmn 15, erd 19, flowchart 16, uml 30) are imported by nothing, and `engine.templateRegistry` as a `DiagramEngine` property is still absent (row: *Shape / stencil libraries*).
@@ -71,6 +89,14 @@ Phase 1 ships value in week one and is independent of everything else. Phase 2 i
 
 ## Phase 3 — Container & shape-data depth
 
+> **Status (2026-07-25, branch `feat/visio-phase1`): T8, T9, T10 all ✅ DONE.**
+> - **T8** — drag-into-container now **reparents**. `GroupMembershipService.handleNodeDragEnd()` already held the entire policy (innermost hit-test, `canAddMember` veto, coordinate translation, undoable Add/Remove commands) and was never called; the binder now calls it on the node-drag mouseup, hit-testing the node's **centre** (the cursor can sit outside a small shape). Opt-in `enableGroupMembershipOnDrop`. **106th demo** proves join → travel-with-container → transfer → unembed with **real pointer drags**.
+> - **T10** — **double-click edits a label** in the framework-free binder (was auto-wired only in Angular, so vanilla/React/Vue got an event and no caret). Opt-in `enableInPlaceTextEdit`; the widget is positioned through the live world→client map so it lands on the label at any zoom. **107th demo** proves Enter-commit + undo/redo, Escape-abandon, blur-commit.
+> - **T9** — **`SetNodeDataCommand`** (new: shape data was a raw `setData` write outside undo) + a **framework-free shape-data panel** rendering each master's `dataSchema` (all 80 carry one). Per-**key** writes so collab's LWW registers don't clobber a co-editor's other field; undo removes keys the edit invented. **108th demo** proves seed → edit → undo/redo → follows-selection.
+>
+> **Verification:** gallery **108/108**, interaction **1066/1066**, engine **3467** tests, element **545**. Every new gesture is opt-in, so all 105 pre-existing demos are untouched.
+
+
 ### T8 · Drag-into-container reparents — **M**
 - **Why:** pointer drop does **not** reparent today; both `GroupMembershipService` and the new `SemanticMembershipService` exist but are never instantiated in lib code (row: *Containers / swimlanes*).
 - **Touch:** binder node-drag commit path in `dom-event-binder.ts`; hit-test with the existing `findGroupAtPoint` (`:1653`); on mouseup emit `SetParentCommand` (pattern proven in `keyboard-navigation.ts:647`) / `AddToGroupCommand`, gated by `GroupMembershipService.canAddMember` / `SemanticMembershipService`; show a target-container highlight during hover.
@@ -89,6 +115,16 @@ Phase 1 ships value in week one and is independent of everything else. Phase 2 i
 ---
 
 ## Phase 4 — Prove it
+
+> **Status (2026-07-25, branch `feat/visio-phase1`): T11 ✅ DONE — and with it T2, and T1's enablement.**
+> - **T11** — `demos/diagrams/visio-editor.html`, the **109th demo**: stencil rail · canvas · shape-data panel · align/distribute toolbar, with drag-to-place, drop-to-contain, in-place rename and snap guides all live in one surface.
+> - **T2** — the resize-snap hook is now passed (`selection-tools.ts` always accepted it; the binder never did). It shares `enableHelperLines` with the drag — a host that asked for snap guides means both — and publishes the same guide segments, so a resize aligns to neighbours instead of landing a pixel out. Needed a new `activeGestureNodeId()` so a box never snaps to itself.
+> - **T1** — helper lines are switched on **here**, in the editor, rather than as a library default (see the Phase 1 note: a global flip regressed the drag gate).
+> - **A real find from the gate:** the first cut of the toolbar failed **DEAD-BUTTON** — Align/Distribute did nothing when too few shapes were selected. Fixed properly by *disabling* each button below the count its command needs (2 for align, 3 for distribute) and syncing on `selection:change`. An enabled control that does nothing is a bug, and the gate was right to call it.
+>
+> **Verification:** gallery **109/109** · interaction **1088/1088** · engine **3467** · renderer **2649** · element **545**.
+
+### Original ticket
 
 ### T11 · "Visio-style editor" flagship demo + gate — **M**
 - **Do:** a gallery demo — stencil palette (left) · canvas · shape-data panel (right) · snap/guides · align toolbar · templates — tying T1–T10 together, published to the demo gallery.

@@ -1,0 +1,186 @@
+<meta charset="utf-8">
+<title>Visio-style editor — Grafloria</title>
+<link rel="stylesheet" href="../shell/demo.css?v=drawer3">
+<header id="demo-head"></header>
+<div id="canvas"></div>
+<style>
+  #vs-shell { display: flex; flex-direction: column; height: 100%; min-height: 0; }
+  #vs-bar {
+    display: flex; align-items: center; gap: 6px; padding: 6px 10px; flex: none;
+    border-bottom: 1px solid var(--gf-line, #e5e7eb); background: var(--gf-panel, #fff);
+    font: 12px ui-sans-serif, system-ui, sans-serif;
+  }
+  #vs-bar button {
+    padding: 5px 10px; border-radius: 7px; border: 1px solid var(--gf-line, #e5e7eb);
+    background: var(--gf-bg, #fff); color: var(--gf-ink, #1e2436); cursor: pointer; font: inherit;
+  }
+  #vs-bar button:hover:not(:disabled) { border-color: #3B52D9; color: #3B52D9; }
+  #vs-bar button:disabled { opacity: .45; cursor: default; }
+  #vs-bar .sep { width: 1px; height: 18px; background: var(--gf-line, #e5e7eb); margin: 0 4px; }
+  #vs-bar .hint { margin-left: auto; color: var(--gf-mut, #6b7280); }
+  #vs-body { display: flex; flex: 1; min-height: 0; }
+  #vs-rail { width: 210px; flex: none; }
+  #vs-canvas { flex: 1; min-width: 0; position: relative; }
+  #vs-panel { width: 210px; flex: none; }
+</style>
+<script type="module">
+import {
+  render, registerStencils, bindStencilPalette, bindShapeDataPanel,
+  AlignCommand, DistributeCommand,
+} from '../shell/grafloria.js';
+import { defineDemo, check } from '../shell/demo.js?v=drawer3';
+
+// T11/visio — the flagship: every Phase 1–3 ticket in ONE surface.
+//   T4/T5  stencil registry + 8 categorized stencils
+//   T6/T7  the palette, and drag-from-palette to place a master
+//   T3     align & distribute over the selection
+//   T8     drop a shape in a container and it joins it
+//   T9     the shape-data panel, driven by each master's dataSchema
+//   T10    double-click to rename
+//   T1/T2  snap guides on drag AND on resize (switched on HERE, not globally —
+//          a library-wide default regressed the drag gate; an editor is the
+//          context where snapping is what a user expects)
+defineDemo({
+  name: 'Visio-style editor',
+  blurb: 'The whole authoring surface: stencil palette, drag-to-place, snap guides on drag and resize, containers that adopt what you drop in them, align & distribute, in-place rename, and a shape-data panel — every edit undoable.',
+  howTo: [
+    'Drag a shape from the left rail onto the canvas — it drops centred on your cursor and is immediately live.',
+    'Drag it near another shape: dashed guides appear as its edges and centre line up. Resize from a corner — the guides help there too.',
+    'Drop a shape inside the "Process" container: it JOINS the container, so dragging the frame carries it along.',
+    'Select two or more shapes (shift-click) and use Align / Distribute in the toolbar — one undo step for the whole arrangement.',
+    'Double-click a shape to rename it; select it to edit its declared fields in the right-hand panel. Ctrl/⌘+Z undoes any of it.',
+  ],
+  reactflow: null,
+
+  async setup(ctx) {
+    const shell = document.createElement('div'); shell.id = 'vs-shell';
+    const bar = document.createElement('div'); bar.id = 'vs-bar';
+    const body = document.createElement('div'); body.id = 'vs-body';
+    const rail = document.createElement('div'); rail.id = 'vs-rail';
+    const canvasEl = document.createElement('div'); canvasEl.id = 'vs-canvas';
+    const panelEl = document.createElement('div'); panelEl.id = 'vs-panel';
+    body.append(rail, canvasEl, panelEl);
+    shell.append(bar, body);
+    ctx.host.appendChild(shell);
+
+    const api = render({
+      nodes: [
+        { id: 'a', position: { x: 300, y: 140 }, size: { width: 130, height: 56 }, label: 'intake' },
+        { id: 'b', position: { x: 520, y: 210 }, size: { width: 130, height: 56 }, label: 'triage' },
+        { id: 'c', position: { x: 740, y: 300 }, size: { width: 130, height: 56 }, label: 'resolve' },
+      ],
+      edges: [{ id: 'e1', source: 'a', target: 'b' }, { id: 'e2', source: 'b', target: 'c' }],
+    }, canvasEl);
+    ctx.instance = api;
+    ctx.diagram = api.getModel();
+    ctx.engine = api.getEngine();
+
+    // Every gesture this editor wants — each opt-in at the library level.
+    ctx.engine.setInteractionConfig({
+      enableHelperLines: true,            // T1 + T2: snap guides on drag and resize
+      enableGroupMembershipOnDrop: true,  // T8: drop into a container to join it
+      enableInPlaceTextEdit: true,        // T10: double-click to rename
+      enableGroupDrag: true,
+    });
+
+    // T4/T5 — all 8 stencils behind the registry, feeding the palette.
+    ctx.registered = registerStencils(ctx.engine.templateRegistry);
+    ctx.palette = bindStencilPalette(api, { palette: rail, canvas: canvasEl }, {
+      data: (master) => ({ label: master.meta?.name ?? master.id }),
+    });
+    ctx.panel = bindShapeDataPanel(api, panelEl);
+
+    // A container to drop shapes into (T8).
+    const box = await ctx.engine.addGroup({ name: 'Process' });
+    box.setFrame({ x: 260, y: 380, width: 380, height: 190 });
+    ctx.box = box;
+
+    // T3 — the align/distribute toolbar over the live selection.
+    const selected = () => ctx.diagram.getSelectedNodes().map((n) => n.id);
+    const mk = (label, title, run) => {
+      const b = document.createElement('button');
+      b.textContent = label; b.title = title;
+      b.addEventListener('click', () => { const ids = selected(); if (ids.length) void run(ids); });
+      bar.appendChild(b);
+      return b;
+    };
+    ctx.align = (edge) => ctx.engine.commandManager.execute(new AlignCommand(selected(), edge));
+    // Each button declares how many shapes it needs; below that it is DISABLED,
+    // not silently inert — an enabled control that does nothing is a bug.
+    const needs = [];
+    const mkN = (label, title, min, run) => { needs.push([mk(label, title, run), min]); };
+    mkN('⇤ Left', 'Align left edges (2+ shapes)', 2, (ids) => ctx.engine.commandManager.execute(new AlignCommand(ids, 'left')));
+    mkN('⇥ Right', 'Align right edges (2+ shapes)', 2, (ids) => ctx.engine.commandManager.execute(new AlignCommand(ids, 'right')));
+    mkN('⤒ Top', 'Align top edges (2+ shapes)', 2, (ids) => ctx.engine.commandManager.execute(new AlignCommand(ids, 'top')));
+    bar.appendChild(Object.assign(document.createElement('span'), { className: 'sep' }));
+    mkN('↔ Distribute', 'Equal horizontal gaps (3+ shapes)', 3, (ids) => ctx.engine.commandManager.execute(new DistributeCommand(ids, 'horizontal')));
+    bar.appendChild(Object.assign(document.createElement('span'), { className: 'sep' }));
+    const undoBtn = mk('↶ Undo', 'Undo the last edit', () => ctx.engine.commandManager.undo());
+    undoBtn.addEventListener('click', () => setTimeout(syncBar, 0));
+    function syncBar() {
+      const n = selected().length;
+      for (const [btn, min] of needs) btn.disabled = n < min;
+      undoBtn.disabled = !ctx.engine.commandManager.canUndo?.();
+    }
+    ctx.syncBar = syncBar;
+    api.on('selection:change', syncBar);
+    syncBar();
+    const hint = document.createElement('span');
+    hint.className = 'hint';
+    hint.textContent = 'drag a shape from the rail →';
+    bar.appendChild(hint);
+
+    api.renderNow();
+    await ctx.tick();
+  },
+
+  async assert(ctx) {
+    const api = ctx.instance, m = ctx.diagram;
+    const raf2 = () => new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r)));
+
+    // 1. The whole surface is present.
+    check(document.querySelectorAll('#vs-rail .gf-stencil-item').length > 0, 'the stencil rail is empty');
+    check(ctx.registered >= 80, `expected ≥80 masters registered, got ${ctx.registered}`);
+    check(!!document.querySelector('#vs-panel .gf-sd-title'), 'the shape-data panel did not mount');
+    check(document.querySelectorAll('#vs-bar button').length >= 5, 'the align toolbar is missing buttons');
+
+    // 2. T7 — placing from the palette adds a live node, undoably.
+    const before = m.getNodes().length;
+    const placed = await ctx.palette.place('flowchart-process', { x: 430, y: 470 });
+    check(!!placed && m.getNodes().length === before + 1, 'placing a master from the palette failed');
+
+    // 3. T8 — that drop landed inside the "Process" container's frame, so a real
+    //    drag-drop there would adopt it. Prove the adoption path directly.
+    const svc = await (async () => {
+      const n = m.getNode(placed);
+      // the node sits inside the frame; commit membership the way the binder does
+      const { GroupMembershipService } = await import('../shell/grafloria.js');
+      const s = new GroupMembershipService({ diagram: m, dispatcher: ctx.engine.commandManager });
+      s.refresh();
+      await s.handleNodeDragEnd(n.id, { x: n.position.x + n.size.width / 2, y: n.position.y + n.size.height / 2 });
+      return s;
+    })();
+    check([...ctx.box.members].includes(placed), 'a shape dropped inside the container did not join it');
+
+    // 4. T3 — align the three seeded nodes as ONE undo step.
+    m.clearSelection();
+    for (const id of ['a', 'b', 'c']) m.addToSelection(m.getNode(id));  // multi-select: selectNode REPLACES
+    const topsBefore = ['a', 'b', 'c'].map((id) => m.getNode(id).position.y);
+    check(new Set(topsBefore).size > 1, 'fixture changed: the three nodes should start at different heights');
+    await ctx.align('top');
+    const topsAfter = ['a', 'b', 'c'].map((id) => m.getNode(id).position.y);
+    check(new Set(topsAfter).size === 1, `align top did not level the selection: ${topsAfter.join(',')}`);
+    await ctx.engine.commandManager.undo();
+    const topsUndone = ['a', 'b', 'c'].map((id) => m.getNode(id).position.y);
+    check(topsUndone.join(',') === topsBefore.join(','), 'one undo did not restore all three positions');
+
+    // 5. T1/T2 — this editor asked for snap guides on BOTH drag and resize.
+    const cfg = ctx.engine.getInteractionConfig();
+    check(cfg.enableHelperLines === true, 'the editor should enable helper lines');
+    check(cfg.enableGroupMembershipOnDrop === true, 'the editor should enable drop-to-contain');
+    check(cfg.enableInPlaceTextEdit === true, 'the editor should enable in-place rename');
+
+    api.renderNow();
+  },
+});
+</script>

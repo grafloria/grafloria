@@ -1,0 +1,102 @@
+<meta charset="utf-8">
+<title>Shape data panel — Grafloria</title>
+<link rel="stylesheet" href="../shell/demo.css?v=drawer3">
+<header id="demo-head"></header>
+<div id="canvas"></div>
+<style>
+  #sd-split { display: flex; height: 100%; min-height: 0; }
+  #sd-canvas { flex: 1; min-width: 0; position: relative; }
+  #sd-panel { width: 232px; flex: none; }
+</style>
+<script type="module">
+import { render, registerStencils, bindShapeDataPanel, NodeFactory } from '../shell/grafloria.js';
+import { defineDemo, check } from '../shell/demo.js?v=drawer3';
+
+// T9/visio — Visio's "Shape Data" window. Every master ships a dataSchema and the
+// values live on node.data, but the renderer's property-schema/ was TYPES ONLY
+// (zero runtime) and the one working property sheet lived inside the Angular
+// wrapper. This is the framework-free runtime, writing through SetNodeDataCommand
+// so every field edit is undoable and collab-safe.
+defineDemo({
+  name: 'Shape data panel',
+  blurb: 'Select a shape and edit the fields its master declares — a framework-free property sheet driven by the template\'s dataSchema, with every edit undoable.',
+  howTo: [
+    'Click the "Decision" shape: the right-hand panel lists the fields its master declares (its dataSchema), seeded with the current values.',
+    'Type a new value and press Enter (or click away): the shape data updates — one commit per edit, not one per keystroke.',
+    'Press Ctrl/⌘+Z: the edit reverts. Shape data goes through a real command, so it shares the canvas undo stack.',
+    'Click empty canvas to deselect: the panel returns to its empty state.',
+    'Select the other shape: the panel swaps to that master\'s fields — the form follows the selection.',
+  ],
+  reactflow: null,
+
+  async setup(ctx) {
+    const split = document.createElement('div');
+    split.id = 'sd-split';
+    const canvasEl = document.createElement('div'); canvasEl.id = 'sd-canvas';
+    const panelEl = document.createElement('div'); panelEl.id = 'sd-panel';
+    split.append(canvasEl, panelEl);
+    ctx.host.appendChild(split);
+
+    const api = render({ nodes: [], edges: [] }, canvasEl);
+    ctx.instance = api;
+    ctx.diagram = api.getModel();
+    ctx.engine = api.getEngine();
+
+    // Masters carry the dataSchema the panel renders.
+    registerStencils(ctx.engine.templateRegistry);
+    const factory = new NodeFactory(ctx.engine.templateRegistry, ctx.diagram);
+    ctx.a = factory.createFromTemplate('flowchart-decision', { label: 'Approve?' }, { x: 220, y: 180 });
+    ctx.b = factory.createFromTemplate('flowchart-process', { label: 'Pay' }, { x: 460, y: 180 });
+
+    ctx.panel = bindShapeDataPanel(api, panelEl, { onEdit: (i) => { ctx.lastEdit = i; } });
+
+    api.renderNow();
+    await ctx.tick();
+  },
+
+  async assert(ctx) {
+    const m = ctx.diagram, panel = document.getElementById('sd-panel');
+    const fields = () => [...panel.querySelectorAll('.gf-sd-row')];
+    const raf2 = () => new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r)));
+
+    // 1. Nothing selected → the empty state, not a broken form.
+    m.clearSelection();
+    await raf2();
+    check(!!panel.querySelector('.gf-sd-empty'), 'with no selection the panel should show its empty state');
+    check(fields().length === 0, 'the panel rendered fields with nothing selected');
+
+    // 2. THE TEETH — selecting a shape renders the fields its MASTER declares.
+    m.selectNode(m.getNode(ctx.a.id));
+    await raf2();
+    const rows = fields();
+    check(rows.length > 0, 'selecting a shape rendered no data fields');
+    const input = panel.querySelector('.gf-sd-input');
+    check(!!input, 'no editable input in the panel');
+    check(input.value === 'Approve?', `the field should seed from node.data, got "${input.value}"`);
+
+    // 3. An edit COMMITS through a command — so undo takes it back.
+    input.value = 'Needs sign-off?';
+    input.dispatchEvent(new Event('change', { bubbles: true }));
+    await raf2();
+    check(m.getNode(ctx.a.id).getData('label') === 'Needs sign-off?',
+      `the edit did not reach node.data (got "${m.getNode(ctx.a.id).getData('label')}")`);
+    check(ctx.lastEdit?.key === 'label', 'onEdit did not report the edited field');
+
+    await ctx.engine.commandManager.undo();
+    check(m.getNode(ctx.a.id).getData('label') === 'Approve?',
+      'undo did not revert the shape-data edit — it was not a command');
+    await ctx.engine.commandManager.redo();
+    check(m.getNode(ctx.a.id).getData('label') === 'Needs sign-off?', 'redo did not re-apply the edit');
+
+    // 4. The form FOLLOWS the selection.
+    m.clearSelection();
+    m.selectNode(m.getNode(ctx.b.id));
+    await raf2();
+    const other = panel.querySelector('.gf-sd-input');
+    check(!!other, 'the panel did not render fields for the second shape');
+    check(other.value === 'Pay', `the panel should show the newly selected shape's data, got "${other.value}"`);
+
+    ctx.instance.renderNow();
+  },
+});
+</script>
