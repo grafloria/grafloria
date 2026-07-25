@@ -89,6 +89,14 @@ Phase 1 ships value in week one and is independent of everything else. Phase 2 i
 
 ## Phase 3 — Container & shape-data depth
 
+> **Status (2026-07-25, branch `feat/visio-phase1`): T8, T9, T10 all ✅ DONE.**
+> - **T8** — drag-into-container now **reparents**. `GroupMembershipService.handleNodeDragEnd()` already held the entire policy (innermost hit-test, `canAddMember` veto, coordinate translation, undoable Add/Remove commands) and was never called; the binder now calls it on the node-drag mouseup, hit-testing the node's **centre** (the cursor can sit outside a small shape). Opt-in `enableGroupMembershipOnDrop`. **106th demo** proves join → travel-with-container → transfer → unembed with **real pointer drags**.
+> - **T10** — **double-click edits a label** in the framework-free binder (was auto-wired only in Angular, so vanilla/React/Vue got an event and no caret). Opt-in `enableInPlaceTextEdit`; the widget is positioned through the live world→client map so it lands on the label at any zoom. **107th demo** proves Enter-commit + undo/redo, Escape-abandon, blur-commit.
+> - **T9** — **`SetNodeDataCommand`** (new: shape data was a raw `setData` write outside undo) + a **framework-free shape-data panel** rendering each master's `dataSchema` (all 80 carry one). Per-**key** writes so collab's LWW registers don't clobber a co-editor's other field; undo removes keys the edit invented. **108th demo** proves seed → edit → undo/redo → follows-selection.
+>
+> **Verification:** gallery **108/108**, interaction **1066/1066**, engine **3467** tests, element **545**. Every new gesture is opt-in, so all 105 pre-existing demos are untouched.
+
+
 ### T8 · Drag-into-container reparents — **M**
 - **Why:** pointer drop does **not** reparent today; both `GroupMembershipService` and the new `SemanticMembershipService` exist but are never instantiated in lib code (row: *Containers / swimlanes*).
 - **Touch:** binder node-drag commit path in `dom-event-binder.ts`; hit-test with the existing `findGroupAtPoint` (`:1653`); on mouseup emit `SetParentCommand` (pattern proven in `keyboard-navigation.ts:647`) / `AddToGroupCommand`, gated by `GroupMembershipService.canAddMember` / `SemanticMembershipService`; show a target-container highlight during hover.
