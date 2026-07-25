@@ -38,8 +38,8 @@ export const umlPackageTemplate: NodeTemplate = {
     },
     "shape": {
       "type": "package",
-      "fill": "#FFF9C4",
-      "stroke": "#F57F17",
+      "fill": "#F8FAFC",
+      "stroke": "#475569",
       "strokeWidth": 2,
       "opacity": 1
     },

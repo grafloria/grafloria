@@ -37,8 +37,8 @@ export const bpmnBusinessRuleTaskTemplate: NodeTemplate = {
     },
     "shape": {
       "type": "rect",
-      "fill": "#F3E5F5",
-      "stroke": "#000000",
+      "fill": "#FFFFFF",
+      "stroke": "#334155",
       "strokeWidth": 2,
       "opacity": 1,
       "cornerRadius": 8

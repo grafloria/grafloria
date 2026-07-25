@@ -38,8 +38,8 @@ export const flowchartSummingJunctionTemplate: NodeTemplate = {
     },
     "shape": {
       "type": "summing-junction",
-      "fill": "#E0F2F1",
-      "stroke": "#00695C",
+      "fill": "#EEF2FF",
+      "stroke": "#4F46E5",
       "strokeWidth": 2,
       "opacity": 1
     },

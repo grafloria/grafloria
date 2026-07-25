@@ -38,8 +38,8 @@ export const flowchartDecisionTemplate: NodeTemplate = {
     },
     "shape": {
       "type": "diamond",
-      "fill": "#FFF3E0",
-      "stroke": "#F57C00",
+      "fill": "#EEF2FF",
+      "stroke": "#4F46E5",
       "strokeWidth": 2,
       "opacity": 1
     },

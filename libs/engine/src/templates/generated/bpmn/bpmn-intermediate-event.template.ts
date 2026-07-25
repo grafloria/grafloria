@@ -38,8 +38,8 @@ export const bpmnIntermediateEventTemplate: NodeTemplate = {
     },
     "shape": {
       "type": "circle",
-      "fill": "#FFF9C4",
-      "stroke": "#F57F17",
+      "fill": "#FFFFFF",
+      "stroke": "#334155",
       "strokeWidth": 3,
       "opacity": 1
     },

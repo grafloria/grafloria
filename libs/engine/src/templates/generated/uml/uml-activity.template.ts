@@ -37,8 +37,8 @@ export const umlActivityTemplate: NodeTemplate = {
     },
     "shape": {
       "type": "rect",
-      "fill": "#E3F2FD",
-      "stroke": "#1976D2",
+      "fill": "#F8FAFC",
+      "stroke": "#475569",
       "strokeWidth": 2,
       "opacity": 1,
       "cornerRadius": 20

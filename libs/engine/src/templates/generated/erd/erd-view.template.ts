@@ -38,8 +38,8 @@ export const erdViewTemplate: NodeTemplate = {
     },
     "shape": {
       "type": "rect",
-      "fill": "#E0F2F1",
-      "stroke": "#00695C",
+      "fill": "#ECFDF5",
+      "stroke": "#059669",
       "strokeWidth": 2,
       "opacity": 1
     },

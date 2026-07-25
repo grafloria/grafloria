@@ -348,8 +348,8 @@
   "measuredJitterPct": 0
  },
  "interaction__copy-paste.after.png": {
-  "tolerancePct": 0.221,
-  "measuredJitterPct": 0.0738
+  "tolerancePct": 0.217,
+  "measuredJitterPct": 0.0722
  },
  "interaction__copy-paste.boot.png": {
   "tolerancePct": 0.02,
@@ -560,8 +560,8 @@
   "measuredJitterPct": 0
  },
  "layout__off-thread-layout.after.png": {
-  "tolerancePct": 0.03,
-  "measuredJitterPct": 0.01
+  "tolerancePct": 0.029,
+  "measuredJitterPct": 0.0098
  },
  "layout__off-thread-layout.boot.png": {
   "tolerancePct": 0.02,
@@ -584,12 +584,12 @@
   "measuredJitterPct": 0
  },
  "misc__mermaid-text.after.png": {
-  "tolerancePct": 1.221,
-  "measuredJitterPct": 0.4068
+  "tolerancePct": 0.93,
+  "measuredJitterPct": 0.3101
  },
  "misc__mermaid-text.boot.png": {
-  "tolerancePct": 1.221,
-  "measuredJitterPct": 0.4068
+  "tolerancePct": 0.93,
+  "measuredJitterPct": 0.3101
  },
  "misc__mermaid-viewer.after.png": {
   "tolerancePct": 0.02,

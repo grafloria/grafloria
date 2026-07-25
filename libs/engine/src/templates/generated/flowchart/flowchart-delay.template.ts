@@ -38,8 +38,8 @@ export const flowchartDelayTemplate: NodeTemplate = {
     },
     "shape": {
       "type": "delay",
-      "fill": "#FFEBEE",
-      "stroke": "#C62828",
+      "fill": "#EEF2FF",
+      "stroke": "#4F46E5",
       "strokeWidth": 2,
       "opacity": 1,
       "cornerRadius": 15

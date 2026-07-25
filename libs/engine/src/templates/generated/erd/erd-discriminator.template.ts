@@ -37,8 +37,8 @@ export const erdDiscriminatorTemplate: NodeTemplate = {
     },
     "shape": {
       "type": "diamond",
-      "fill": "#FFF9C4",
-      "stroke": "#F57F17",
+      "fill": "#ECFDF5",
+      "stroke": "#059669",
       "strokeWidth": 2,
       "opacity": 1
     },

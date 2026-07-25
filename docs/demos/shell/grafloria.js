@@ -140857,7 +140857,7 @@ var bpmnTaskTemplate = {
     "shape": {
       "type": "rect",
       "fill": "#FFFFFF",
-      "stroke": "#000000",
+      "stroke": "#334155",
       "strokeWidth": 2,
       "opacity": 1,
       "cornerRadius": 8
@@ -140999,8 +140999,8 @@ var bpmnUserTaskTemplate = {
     },
     "shape": {
       "type": "rect",
-      "fill": "#E3F2FD",
-      "stroke": "#000000",
+      "fill": "#FFFFFF",
+      "stroke": "#334155",
       "strokeWidth": 2,
       "opacity": 1,
       "cornerRadius": 8
@@ -141113,8 +141113,8 @@ var bpmnServiceTaskTemplate = {
     },
     "shape": {
       "type": "rect",
-      "fill": "#E8F5E9",
-      "stroke": "#000000",
+      "fill": "#FFFFFF",
+      "stroke": "#334155",
       "strokeWidth": 2,
       "opacity": 1,
       "cornerRadius": 8
@@ -141227,8 +141227,8 @@ var bpmnManualTaskTemplate = {
     },
     "shape": {
       "type": "rect",
-      "fill": "#FFF3E0",
-      "stroke": "#000000",
+      "fill": "#FFFFFF",
+      "stroke": "#334155",
       "strokeWidth": 2,
       "opacity": 1,
       "cornerRadius": 8
@@ -141341,8 +141341,8 @@ var bpmnBusinessRuleTaskTemplate = {
     },
     "shape": {
       "type": "rect",
-      "fill": "#F3E5F5",
-      "stroke": "#000000",
+      "fill": "#FFFFFF",
+      "stroke": "#334155",
       "strokeWidth": 2,
       "opacity": 1,
       "cornerRadius": 8
@@ -141455,8 +141455,8 @@ var bpmnScriptTaskTemplate = {
     },
     "shape": {
       "type": "rect",
-      "fill": "#FCE4EC",
-      "stroke": "#000000",
+      "fill": "#FFFFFF",
+      "stroke": "#334155",
       "strokeWidth": 2,
       "opacity": 1,
       "cornerRadius": 8
@@ -141570,8 +141570,8 @@ var bpmnExclusiveGatewayTemplate = {
     },
     "shape": {
       "type": "diamond",
-      "fill": "#FFF9C4",
-      "stroke": "#F57F17",
+      "fill": "#FFFFFF",
+      "stroke": "#334155",
       "strokeWidth": 2,
       "opacity": 1
     },
@@ -141685,8 +141685,8 @@ var bpmnParallelGatewayTemplate = {
     },
     "shape": {
       "type": "diamond",
-      "fill": "#E0F7FA",
-      "stroke": "#00838F",
+      "fill": "#FFFFFF",
+      "stroke": "#334155",
       "strokeWidth": 2,
       "opacity": 1
     },
@@ -141798,8 +141798,8 @@ var bpmnInclusiveGatewayTemplate = {
     },
     "shape": {
       "type": "diamond",
-      "fill": "#F3E5F5",
-      "stroke": "#7B1FA2",
+      "fill": "#FFFFFF",
+      "stroke": "#334155",
       "strokeWidth": 2,
       "opacity": 1
     },
@@ -141911,8 +141911,8 @@ var bpmnStartEventTemplate = {
     },
     "shape": {
       "type": "circle",
-      "fill": "#E8F5E9",
-      "stroke": "#388E3C",
+      "fill": "#FFFFFF",
+      "stroke": "#334155",
       "strokeWidth": 2,
       "opacity": 1
     },
@@ -142024,8 +142024,8 @@ var bpmnEndEventTemplate = {
     },
     "shape": {
       "type": "circle",
-      "fill": "#FFEBEE",
-      "stroke": "#C62828",
+      "fill": "#FFFFFF",
+      "stroke": "#334155",
       "strokeWidth": 4,
       "opacity": 1
     },
@@ -142138,8 +142138,8 @@ var bpmnIntermediateEventTemplate = {
     },
     "shape": {
       "type": "circle",
-      "fill": "#FFF9C4",
-      "stroke": "#F57F17",
+      "fill": "#FFFFFF",
+      "stroke": "#334155",
       "strokeWidth": 3,
       "opacity": 1
     },
@@ -142250,8 +142250,8 @@ var bpmnMessageEventTemplate = {
     },
     "shape": {
       "type": "circle",
-      "fill": "#E3F2FD",
-      "stroke": "#000000",
+      "fill": "#FFFFFF",
+      "stroke": "#334155",
       "strokeWidth": 2,
       "opacity": 1
     },
@@ -142363,8 +142363,8 @@ var bpmnTimerEventTemplate = {
     },
     "shape": {
       "type": "circle",
-      "fill": "#FFF3E0",
-      "stroke": "#000000",
+      "fill": "#FFFFFF",
+      "stroke": "#334155",
       "strokeWidth": 2,
       "opacity": 1
     },
@@ -142476,8 +142476,8 @@ var bpmnErrorEventTemplate = {
     },
     "shape": {
       "type": "circle",
-      "fill": "#FFCDD2",
-      "stroke": "#D32F2F",
+      "fill": "#FFFFFF",
+      "stroke": "#334155",
       "strokeWidth": 2,
       "opacity": 1
     },
@@ -142610,8 +142610,8 @@ var flowchartProcessTemplate = {
     },
     "shape": {
       "type": "rect",
-      "fill": "#E3F2FD",
-      "stroke": "#1976D2",
+      "fill": "#EEF2FF",
+      "stroke": "#4F46E5",
       "strokeWidth": 2,
       "opacity": 1
     },
@@ -142724,8 +142724,8 @@ var flowchartDecisionTemplate = {
     },
     "shape": {
       "type": "diamond",
-      "fill": "#FFF3E0",
-      "stroke": "#F57C00",
+      "fill": "#EEF2FF",
+      "stroke": "#4F46E5",
       "strokeWidth": 2,
       "opacity": 1
     },
@@ -142838,8 +142838,8 @@ var flowchartTerminalTemplate = {
     },
     "shape": {
       "type": "stadium",
-      "fill": "#E8F5E9",
-      "stroke": "#388E3C",
+      "fill": "#EEF2FF",
+      "stroke": "#4F46E5",
       "strokeWidth": 2,
       "opacity": 1,
       "cornerRadius": 25
@@ -142953,8 +142953,8 @@ var flowchartDataTemplate = {
     },
     "shape": {
       "type": "parallelogram",
-      "fill": "#F3E5F5",
-      "stroke": "#7B1FA2",
+      "fill": "#EEF2FF",
+      "stroke": "#4F46E5",
       "strokeWidth": 2,
       "opacity": 1
     },
@@ -143067,8 +143067,8 @@ var flowchartDocumentTemplate = {
     },
     "shape": {
       "type": "document",
-      "fill": "#FFF9C4",
-      "stroke": "#F57F17",
+      "fill": "#EEF2FF",
+      "stroke": "#4F46E5",
       "strokeWidth": 2,
       "opacity": 1
     },
@@ -143180,8 +143180,8 @@ var flowchartConnectorTemplate = {
     },
     "shape": {
       "type": "circle",
-      "fill": "#FFFFFF",
-      "stroke": "#757575",
+      "fill": "#EEF2FF",
+      "stroke": "#4F46E5",
       "strokeWidth": 2,
       "opacity": 1
     },
@@ -143294,8 +143294,8 @@ var flowchartDelayTemplate = {
     },
     "shape": {
       "type": "delay",
-      "fill": "#FFEBEE",
-      "stroke": "#C62828",
+      "fill": "#EEF2FF",
+      "stroke": "#4F46E5",
       "strokeWidth": 2,
       "opacity": 1,
       "cornerRadius": 15
@@ -143409,8 +143409,8 @@ var flowchartManualInputTemplate = {
     },
     "shape": {
       "type": "parallelogram-top",
-      "fill": "#E0F7FA",
-      "stroke": "#00838F",
+      "fill": "#EEF2FF",
+      "stroke": "#4F46E5",
       "strokeWidth": 2,
       "opacity": 1
     },
@@ -143522,8 +143522,8 @@ var flowchartManualOperationTemplate = {
     },
     "shape": {
       "type": "trapezoid",
-      "fill": "#FCE4EC",
-      "stroke": "#C2185B",
+      "fill": "#EEF2FF",
+      "stroke": "#4F46E5",
       "strokeWidth": 2,
       "opacity": 1
     },
@@ -143636,8 +143636,8 @@ var flowchartPredefinedProcessTemplate = {
     },
     "shape": {
       "type": "predefined-process",
-      "fill": "#FFFFFF",
-      "stroke": "#000000",
+      "fill": "#EEF2FF",
+      "stroke": "#4F46E5",
       "strokeWidth": 3,
       "opacity": 1
     },
@@ -143750,8 +143750,8 @@ var flowchartStoredDataTemplate = {
     },
     "shape": {
       "type": "cylinder",
-      "fill": "#E8F5E9",
-      "stroke": "#388E3C",
+      "fill": "#EEF2FF",
+      "stroke": "#4F46E5",
       "strokeWidth": 2,
       "opacity": 1
     },
@@ -143864,8 +143864,8 @@ var flowchartDisplayTemplate = {
     },
     "shape": {
       "type": "display",
-      "fill": "#F3E5F5",
-      "stroke": "#7B1FA2",
+      "fill": "#EEF2FF",
+      "stroke": "#4F46E5",
       "strokeWidth": 2,
       "opacity": 1,
       "cornerRadius": 15
@@ -143979,8 +143979,8 @@ var flowchartPreparationTemplate = {
     },
     "shape": {
       "type": "hexagon",
-      "fill": "#FFF3E0",
-      "stroke": "#F57C00",
+      "fill": "#EEF2FF",
+      "stroke": "#4F46E5",
       "strokeWidth": 2,
       "opacity": 1
     },
@@ -144092,8 +144092,8 @@ var flowchartMergeTemplate = {
     },
     "shape": {
       "type": "triangle",
-      "fill": "#E8F5E9",
-      "stroke": "#388E3C",
+      "fill": "#EEF2FF",
+      "stroke": "#4F46E5",
       "strokeWidth": 2,
       "opacity": 1
     },
@@ -144205,8 +144205,8 @@ var flowchartOrTemplate = {
     },
     "shape": {
       "type": "or-junction",
-      "fill": "#FFF9C4",
-      "stroke": "#F57F17",
+      "fill": "#EEF2FF",
+      "stroke": "#4F46E5",
       "strokeWidth": 2,
       "opacity": 1
     },
@@ -144319,8 +144319,8 @@ var flowchartSummingJunctionTemplate = {
     },
     "shape": {
       "type": "summing-junction",
-      "fill": "#E0F2F1",
-      "stroke": "#00695C",
+      "fill": "#EEF2FF",
+      "stroke": "#4F46E5",
       "strokeWidth": 2,
       "opacity": 1
     },
@@ -144467,8 +144467,8 @@ var umlClassTemplate = {
     },
     "shape": {
       "type": "rect",
-      "fill": "#E3F2FD",
-      "stroke": "#1976D2",
+      "fill": "#F8FAFC",
+      "stroke": "#475569",
       "strokeWidth": 2,
       "opacity": 1
     },
@@ -144693,8 +144693,8 @@ var umlInterfaceTemplate = {
     },
     "shape": {
       "type": "rect",
-      "fill": "#F3E5F5",
-      "stroke": "#7B1FA2",
+      "fill": "#F8FAFC",
+      "stroke": "#475569",
       "strokeWidth": 2,
       "opacity": 1
     },
@@ -144919,8 +144919,8 @@ var umlAbstractClassTemplate = {
     },
     "shape": {
       "type": "rect",
-      "fill": "#FFF3E0",
-      "stroke": "#F57C00",
+      "fill": "#F8FAFC",
+      "stroke": "#475569",
       "strokeWidth": 2,
       "opacity": 1
     },
@@ -145145,8 +145145,8 @@ var umlEnumTemplate = {
     },
     "shape": {
       "type": "rect",
-      "fill": "#E8F5E9",
-      "stroke": "#388E3C",
+      "fill": "#F8FAFC",
+      "stroke": "#475569",
       "strokeWidth": 2,
       "opacity": 1
     },
@@ -145372,8 +145372,8 @@ var umlPackageTemplate = {
     },
     "shape": {
       "type": "package",
-      "fill": "#FFF9C4",
-      "stroke": "#F57F17",
+      "fill": "#F8FAFC",
+      "stroke": "#475569",
       "strokeWidth": 2,
       "opacity": 1
     },
@@ -145485,8 +145485,8 @@ var umlComponentTemplate = {
     },
     "shape": {
       "type": "component",
-      "fill": "#E0F7FA",
-      "stroke": "#00838F",
+      "fill": "#F8FAFC",
+      "stroke": "#475569",
       "strokeWidth": 2,
       "opacity": 1
     },
@@ -145598,8 +145598,8 @@ var umlNodeTemplate = {
     },
     "shape": {
       "type": "cube",
-      "fill": "#FFEBEE",
-      "stroke": "#C62828",
+      "fill": "#F8FAFC",
+      "stroke": "#475569",
       "strokeWidth": 2,
       "opacity": 1
     },
@@ -145712,8 +145712,8 @@ var umlActorTemplate = {
     },
     "shape": {
       "type": "actor",
-      "fill": "#FFFFFF",
-      "stroke": "#000000",
+      "fill": "#F8FAFC",
+      "stroke": "#475569",
       "strokeWidth": 2,
       "opacity": 1
     },
@@ -145828,8 +145828,8 @@ var umlUseCaseTemplate = {
     },
     "shape": {
       "type": "ellipse",
-      "fill": "#E8F5E9",
-      "stroke": "#388E3C",
+      "fill": "#F8FAFC",
+      "stroke": "#475569",
       "strokeWidth": 2,
       "opacity": 1
     },
@@ -145944,8 +145944,8 @@ var umlStateTemplate = {
     },
     "shape": {
       "type": "rect",
-      "fill": "#FFF3E0",
-      "stroke": "#F57C00",
+      "fill": "#F8FAFC",
+      "stroke": "#475569",
       "strokeWidth": 2,
       "opacity": 1,
       "cornerRadius": 12
@@ -146172,8 +146172,8 @@ var umlFinalStateTemplate = {
     },
     "shape": {
       "type": "circle",
-      "fill": "#FFFFFF",
-      "stroke": "#000000",
+      "fill": "#F8FAFC",
+      "stroke": "#475569",
       "strokeWidth": 4,
       "opacity": 1
     },
@@ -146286,8 +146286,8 @@ var umlNoteTemplate = {
     },
     "shape": {
       "type": "note",
-      "fill": "#FFFDE7",
-      "stroke": "#F57F17",
+      "fill": "#F8FAFC",
+      "stroke": "#475569",
       "strokeWidth": 1,
       "opacity": 1
     },
@@ -146399,8 +146399,8 @@ var umlActivityTemplate = {
     },
     "shape": {
       "type": "rect",
-      "fill": "#E3F2FD",
-      "stroke": "#1976D2",
+      "fill": "#F8FAFC",
+      "stroke": "#475569",
       "strokeWidth": 2,
       "opacity": 1,
       "cornerRadius": 20
@@ -146514,8 +146514,8 @@ var umlDecisionTemplate = {
     },
     "shape": {
       "type": "diamond",
-      "fill": "#FFF9C4",
-      "stroke": "#F57F17",
+      "fill": "#F8FAFC",
+      "stroke": "#475569",
       "strokeWidth": 2,
       "opacity": 1
     },
@@ -146627,8 +146627,8 @@ var umlMergeTemplate = {
     },
     "shape": {
       "type": "diamond",
-      "fill": "#E8F5E9",
-      "stroke": "#388E3C",
+      "fill": "#F8FAFC",
+      "stroke": "#475569",
       "strokeWidth": 2,
       "opacity": 1
     },
@@ -146857,8 +146857,8 @@ var umlJoinTemplate = {
     },
     "shape": {
       "type": "sync-bar",
-      "fill": "#FFFFFF",
-      "stroke": "#000000",
+      "fill": "#F8FAFC",
+      "stroke": "#475569",
       "strokeWidth": 2,
       "opacity": 1
     },
@@ -147313,8 +147313,8 @@ var umlLifelineTemplate = {
     },
     "shape": {
       "type": "rect",
-      "fill": "#E3F2FD",
-      "stroke": "#1976D2",
+      "fill": "#F8FAFC",
+      "stroke": "#475569",
       "strokeWidth": 2,
       "opacity": 1
     },
@@ -147427,8 +147427,8 @@ var umlActivationTemplate = {
     },
     "shape": {
       "type": "rect",
-      "fill": "#FFFFFF",
-      "stroke": "#1976D2",
+      "fill": "#F8FAFC",
+      "stroke": "#475569",
       "strokeWidth": 2,
       "opacity": 1
     },
@@ -147540,8 +147540,8 @@ var umlObjectTemplate = {
     },
     "shape": {
       "type": "rect",
-      "fill": "#F3E5F5",
-      "stroke": "#7B1FA2",
+      "fill": "#F8FAFC",
+      "stroke": "#475569",
       "strokeWidth": 2,
       "opacity": 1
     },
@@ -147766,8 +147766,8 @@ var umlDatatypeTemplate = {
     },
     "shape": {
       "type": "rect",
-      "fill": "#E0F2F1",
-      "stroke": "#00695C",
+      "fill": "#F8FAFC",
+      "stroke": "#475569",
       "strokeWidth": 2,
       "opacity": 1
     },
@@ -147992,8 +147992,8 @@ var umlPrimitiveTypeTemplate = {
     },
     "shape": {
       "type": "rect",
-      "fill": "#E8EAF6",
-      "stroke": "#3F51B5",
+      "fill": "#F8FAFC",
+      "stroke": "#475569",
       "strokeWidth": 2,
       "opacity": 1
     },
@@ -148219,8 +148219,8 @@ var umlSignalTemplate = {
     },
     "shape": {
       "type": "trapezoid",
-      "fill": "#FFF3E0",
-      "stroke": "#F57C00",
+      "fill": "#F8FAFC",
+      "stroke": "#475569",
       "strokeWidth": 2,
       "opacity": 1
     },
@@ -148332,8 +148332,8 @@ var umlPortTemplate = {
     },
     "shape": {
       "type": "rect",
-      "fill": "#FFFFFF",
-      "stroke": "#00838F",
+      "fill": "#F8FAFC",
+      "stroke": "#475569",
       "strokeWidth": 2,
       "opacity": 1
     },
@@ -148445,8 +148445,8 @@ var umlPartTemplate = {
     },
     "shape": {
       "type": "rect",
-      "fill": "#E1F5FE",
-      "stroke": "#0277BD",
+      "fill": "#F8FAFC",
+      "stroke": "#475569",
       "strokeWidth": 2,
       "opacity": 1
     },
@@ -148558,8 +148558,8 @@ var umlCollaborationTemplate = {
     },
     "shape": {
       "type": "ellipse",
-      "fill": "#F3E5F5",
-      "stroke": "#7B1FA2",
+      "fill": "#F8FAFC",
+      "stroke": "#475569",
       "strokeWidth": 2,
       "opacity": 1
     },
@@ -148695,8 +148695,8 @@ var erdEntityTemplate = {
     },
     "shape": {
       "type": "rect",
-      "fill": "#E3F2FD",
-      "stroke": "#1976D2",
+      "fill": "#ECFDF5",
+      "stroke": "#059669",
       "strokeWidth": 2,
       "opacity": 1
     },
@@ -148855,8 +148855,8 @@ var erdWeakEntityTemplate = {
     },
     "shape": {
       "type": "double-rect",
-      "fill": "#FFFFFF",
-      "stroke": "#000000",
+      "fill": "#ECFDF5",
+      "stroke": "#059669",
       "strokeWidth": 4,
       "opacity": 1
     },
@@ -149014,8 +149014,8 @@ var erdRelationshipTemplate = {
     },
     "shape": {
       "type": "diamond",
-      "fill": "#FFF3E0",
-      "stroke": "#F57C00",
+      "fill": "#ECFDF5",
+      "stroke": "#059669",
       "strokeWidth": 2,
       "opacity": 1
     },
@@ -149127,8 +149127,8 @@ var erdWeakRelationshipTemplate = {
     },
     "shape": {
       "type": "double-diamond",
-      "fill": "#FFFFFF",
-      "stroke": "#000000",
+      "fill": "#ECFDF5",
+      "stroke": "#059669",
       "strokeWidth": 4,
       "opacity": 1
     },
@@ -149240,8 +149240,8 @@ var erdAttributeTemplate = {
     },
     "shape": {
       "type": "ellipse",
-      "fill": "#F3E5F5",
-      "stroke": "#7B1FA2",
+      "fill": "#ECFDF5",
+      "stroke": "#059669",
       "strokeWidth": 2,
       "opacity": 1
     },
@@ -149353,8 +149353,8 @@ var erdKeyAttributeTemplate = {
     },
     "shape": {
       "type": "ellipse",
-      "fill": "#FFFFFF",
-      "stroke": "#000000",
+      "fill": "#ECFDF5",
+      "stroke": "#059669",
       "strokeWidth": 2,
       "opacity": 1
     },
@@ -149466,8 +149466,8 @@ var erdMultivaluedAttributeTemplate = {
     },
     "shape": {
       "type": "double-ellipse",
-      "fill": "#FFFFFF",
-      "stroke": "#000000",
+      "fill": "#ECFDF5",
+      "stroke": "#059669",
       "strokeWidth": 4,
       "opacity": 1
     },
@@ -149579,8 +149579,8 @@ var erdDerivedAttributeTemplate = {
     },
     "shape": {
       "type": "ellipse",
-      "fill": "#FFFFFF",
-      "stroke": "#000000",
+      "fill": "#ECFDF5",
+      "stroke": "#059669",
       "strokeWidth": 2,
       "opacity": 1
     },
@@ -149692,8 +149692,8 @@ var erdCompositeAttributeTemplate = {
     },
     "shape": {
       "type": "ellipse",
-      "fill": "#FFFFFF",
-      "stroke": "#000000",
+      "fill": "#ECFDF5",
+      "stroke": "#059669",
       "strokeWidth": 2,
       "opacity": 1
     },
@@ -149806,8 +149806,8 @@ var erdIsaTemplate = {
     },
     "shape": {
       "type": "triangle",
-      "fill": "#E8F5E9",
-      "stroke": "#388E3C",
+      "fill": "#ECFDF5",
+      "stroke": "#059669",
       "strokeWidth": 2,
       "opacity": 1
     },
@@ -149921,8 +149921,8 @@ var erdAssociativeEntityTemplate = {
     },
     "shape": {
       "type": "rect",
-      "fill": "#FFF3E0",
-      "stroke": "#F57C00",
+      "fill": "#ECFDF5",
+      "stroke": "#059669",
       "strokeWidth": 3,
       "opacity": 1,
       "cornerRadius": 8
@@ -150083,8 +150083,8 @@ var erdPartialKeyTemplate = {
     },
     "shape": {
       "type": "ellipse",
-      "fill": "#FFFFFF",
-      "stroke": "#000000",
+      "fill": "#ECFDF5",
+      "stroke": "#059669",
       "strokeWidth": 2,
       "opacity": 1
     },
@@ -150196,8 +150196,8 @@ var erdOptionalAttributeTemplate = {
     },
     "shape": {
       "type": "ellipse",
-      "fill": "#FFFFFF",
-      "stroke": "#000000",
+      "fill": "#ECFDF5",
+      "stroke": "#059669",
       "strokeWidth": 2,
       "opacity": 1
     },
@@ -150310,8 +150310,8 @@ var erdTableTemplate = {
     },
     "shape": {
       "type": "rect",
-      "fill": "#E8F5E9",
-      "stroke": "#388E3C",
+      "fill": "#ECFDF5",
+      "stroke": "#059669",
       "strokeWidth": 2,
       "opacity": 1
     },
@@ -150424,8 +150424,8 @@ var erdViewTemplate = {
     },
     "shape": {
       "type": "rect",
-      "fill": "#E0F2F1",
-      "stroke": "#00695C",
+      "fill": "#ECFDF5",
+      "stroke": "#059669",
       "strokeWidth": 2,
       "opacity": 1
     },
@@ -150539,8 +150539,8 @@ var erdBridgeEntityTemplate = {
     },
     "shape": {
       "type": "rect",
-      "fill": "#FFF9C4",
-      "stroke": "#F57F17",
+      "fill": "#ECFDF5",
+      "stroke": "#059669",
       "strokeWidth": 2,
       "opacity": 1
     },
@@ -150700,8 +150700,8 @@ var erdSubtypeTemplate = {
     },
     "shape": {
       "type": "rect",
-      "fill": "#E8F5E9",
-      "stroke": "#388E3C",
+      "fill": "#ECFDF5",
+      "stroke": "#059669",
       "strokeWidth": 2,
       "opacity": 1
     },
@@ -150814,8 +150814,8 @@ var erdSupertypeTemplate = {
     },
     "shape": {
       "type": "rect",
-      "fill": "#E3F2FD",
-      "stroke": "#1976D2",
+      "fill": "#ECFDF5",
+      "stroke": "#059669",
       "strokeWidth": 2,
       "opacity": 1
     },
@@ -150927,8 +150927,8 @@ var erdDiscriminatorTemplate = {
     },
     "shape": {
       "type": "diamond",
-      "fill": "#FFF9C4",
-      "stroke": "#F57F17",
+      "fill": "#ECFDF5",
+      "stroke": "#059669",
       "strokeWidth": 2,
       "opacity": 1
     },

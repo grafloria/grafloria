@@ -37,8 +37,8 @@ export const erdWeakRelationshipTemplate: NodeTemplate = {
     },
     "shape": {
       "type": "double-diamond",
-      "fill": "#FFFFFF",
-      "stroke": "#000000",
+      "fill": "#ECFDF5",
+      "stroke": "#059669",
       "strokeWidth": 4,
       "opacity": 1
     },

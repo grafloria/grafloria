@@ -37,8 +37,8 @@ export const erdWeakEntityTemplate: NodeTemplate = {
     },
     "shape": {
       "type": "double-rect",
-      "fill": "#FFFFFF",
-      "stroke": "#000000",
+      "fill": "#ECFDF5",
+      "stroke": "#059669",
       "strokeWidth": 4,
       "opacity": 1
     },

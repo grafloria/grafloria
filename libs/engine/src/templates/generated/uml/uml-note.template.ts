@@ -38,8 +38,8 @@ export const umlNoteTemplate: NodeTemplate = {
     },
     "shape": {
       "type": "note",
-      "fill": "#FFFDE7",
-      "stroke": "#F57F17",
+      "fill": "#F8FAFC",
+      "stroke": "#475569",
       "strokeWidth": 1,
       "opacity": 1
     },

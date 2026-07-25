@@ -38,8 +38,8 @@ export const flowchartDisplayTemplate: NodeTemplate = {
     },
     "shape": {
       "type": "display",
-      "fill": "#F3E5F5",
-      "stroke": "#7B1FA2",
+      "fill": "#EEF2FF",
+      "stroke": "#4F46E5",
       "strokeWidth": 2,
       "opacity": 1,
       "cornerRadius": 15

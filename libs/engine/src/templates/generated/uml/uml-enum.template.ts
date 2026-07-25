@@ -37,8 +37,8 @@ export const umlEnumTemplate: NodeTemplate = {
     },
     "shape": {
       "type": "rect",
-      "fill": "#E8F5E9",
-      "stroke": "#388E3C",
+      "fill": "#F8FAFC",
+      "stroke": "#475569",
       "strokeWidth": 2,
       "opacity": 1
     },

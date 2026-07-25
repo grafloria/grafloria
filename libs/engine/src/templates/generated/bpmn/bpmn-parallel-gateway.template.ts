@@ -39,8 +39,8 @@ export const bpmnParallelGatewayTemplate: NodeTemplate = {
     },
     "shape": {
       "type": "diamond",
-      "fill": "#E0F7FA",
-      "stroke": "#00838F",
+      "fill": "#FFFFFF",
+      "stroke": "#334155",
       "strokeWidth": 2,
       "opacity": 1
     },

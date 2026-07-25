@@ -37,8 +37,8 @@ export const erdAttributeTemplate: NodeTemplate = {
     },
     "shape": {
       "type": "ellipse",
-      "fill": "#F3E5F5",
-      "stroke": "#7B1FA2",
+      "fill": "#ECFDF5",
+      "stroke": "#059669",
       "strokeWidth": 2,
       "opacity": 1
     },
