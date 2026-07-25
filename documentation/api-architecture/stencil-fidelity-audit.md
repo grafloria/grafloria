@@ -83,7 +83,7 @@ Flowchart **Process, Decision, Preparation, Connector, OR**(circle) · BPMN **St
 
 1. ~~Labels are hard-centred on the bounding box~~ — **CORRECTED after measuring.** `renderNodeLabel` already routes through `getInnerRect()`, and the insets are right (diamond 100×100 → inner 50×50; circle → 60×60). It also passes `maxWidth`, `maxLines` and a clip path. E1 as originally written was wrong.
 2. **The real defect: no fit for UNBREAKABLE words.** "Decision" (8 chars, ~67 px at 14 px font) does not fit a diamond's 50 px inner width, and being a single word with no space the greedy wrapper cannot break it — so it stays one over-wide line and the clip path shears it to "Decisior". "Connector" in a 36 px circle becomes "nnec". The fix is shrink-to-fit (or hyphenate/ellipsis) when a single token exceeds `maxWidth`, **not** inner-rect plumbing. Compounding it: width is estimated as `length × fontSize × 0.6`, duplicated across ~8 sites, while a real `measureText` exists in the canvas backend and never feeds the wrap.
-3. **Colour is per-master, not per-notation.** Flowchart masters ship individually coloured (pink Manual Operation, yellow Document, teal Manual Input). Visio stencils are monochrome by default and take colour from a theme. Dropping five shapes yields a harlequin diagram.
+3. ~~Colour is per-master~~ — **DONE (2026-07-25).** Masters shipped 10–14 distinct fills per notation; now one scheme each (flowchart indigo `#EEF2FF`/`#4F46E5`, BPMN spec-white `#FFFFFF`/`#334155`, UML slate, ERD emerald), with semantic fills (solid black sync bars, transparent) preserved. Original finding: Flowchart masters ship individually coloured (pink Manual Operation, yellow Document, teal Manual Input). Visio stencils are monochrome by default and take colour from a theme. Dropping five shapes yields a harlequin diagram.
 4. **No ports on drop.** Placed masters expose no connection points until hovered, and several notation shapes (gateways, events) should carry fixed anchor points.
 
 ---
@@ -94,4 +94,4 @@ Flowchart **Process, Decision, Preparation, Connector, OR**(circle) · BPMN **St
 2. ~~E2~~ — **DONE.** Shrink-to-fit for unbreakable tokens, and feed the real `measureText` into the wrap. Fixes clipped text across *every* shape at once. (E1 needs no work — verified already correct.)
 3. **C** — rounded corners for BPMN tasks + UML states (`rx`), then UML class compartments.
 4. ~~Group B~~ — **DONE** (8 shapes added, 9 masters retargeted). Still open from C: **UML class compartments** and **BPMN event-type icons**.
-5. **E3** — a neutral default palette, with colour moved to the theme.
+5. ~~E3~~ — **DONE.** One palette per notation. Moving colour fully into the *theme* (so a host can restyle without touching masters) remains a further step.
