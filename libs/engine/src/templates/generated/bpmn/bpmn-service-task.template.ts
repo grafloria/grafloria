@@ -103,7 +103,6 @@ export const bpmnServiceTaskTemplate: NodeTemplate = {
       "resizable": false,
       "deletable": true
     },
-      "cornerRadius": 8
   },
   "defaultData": {
     "label": "Service Task"

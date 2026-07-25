@@ -103,7 +103,6 @@ export const bpmnUserTaskTemplate: NodeTemplate = {
       "resizable": false,
       "deletable": true
     },
-      "cornerRadius": 8
   },
   "defaultData": {
     "label": "User Task"

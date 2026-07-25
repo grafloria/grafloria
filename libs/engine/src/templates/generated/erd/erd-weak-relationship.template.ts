@@ -36,7 +36,7 @@ export const erdWeakRelationshipTemplate: NodeTemplate = {
       "maxHeight": 500
     },
     "shape": {
-      "type": "rect",
+      "type": "double-diamond",
       "fill": "#FFFFFF",
       "stroke": "#000000",
       "strokeWidth": 4,

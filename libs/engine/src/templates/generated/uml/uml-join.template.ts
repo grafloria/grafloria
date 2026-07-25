@@ -38,7 +38,7 @@ export const umlJoinTemplate: NodeTemplate = {
       "maxHeight": 600
     },
     "shape": {
-      "type": "rect",
+      "type": "sync-bar",
       "fill": "#FFFFFF",
       "stroke": "#000000",
       "strokeWidth": 2,

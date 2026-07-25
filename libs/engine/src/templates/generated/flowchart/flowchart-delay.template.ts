@@ -37,7 +37,7 @@ export const flowchartDelayTemplate: NodeTemplate = {
       "maxHeight": 150
     },
     "shape": {
-      "type": "rect",
+      "type": "delay",
       "fill": "#FFEBEE",
       "stroke": "#C62828",
       "strokeWidth": 2,

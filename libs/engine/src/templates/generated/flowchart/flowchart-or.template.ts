@@ -36,7 +36,7 @@ export const flowchartOrTemplate: NodeTemplate = {
       "maxHeight": 150
     },
     "shape": {
-      "type": "circle",
+      "type": "or-junction",
       "fill": "#FFF9C4",
       "stroke": "#F57F17",
       "strokeWidth": 2,

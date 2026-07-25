@@ -37,7 +37,7 @@ export const flowchartDisplayTemplate: NodeTemplate = {
       "maxHeight": 150
     },
     "shape": {
-      "type": "rect",
+      "type": "display",
       "fill": "#F3E5F5",
       "stroke": "#7B1FA2",
       "strokeWidth": 2,

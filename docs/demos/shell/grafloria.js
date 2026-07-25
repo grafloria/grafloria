@@ -3701,7 +3701,7 @@ var require_elk_bundled = __commonJS({
         g.ELK = f();
       }
     })(function() {
-      var define2, module2, exports2;
+      var define3, module2, exports2;
       return (/* @__PURE__ */ function() {
         function r(e, n3, t) {
           function o(i2, f) {
@@ -141066,8 +141066,7 @@ var bpmnUserTaskTemplate = {
       "connectable": true,
       "resizable": false,
       "deletable": true
-    },
-    "cornerRadius": 8
+    }
   },
   "defaultData": {
     "label": "User Task"
@@ -141181,8 +141180,7 @@ var bpmnServiceTaskTemplate = {
       "connectable": true,
       "resizable": false,
       "deletable": true
-    },
-    "cornerRadius": 8
+    }
   },
   "defaultData": {
     "label": "Service Task"
@@ -141296,8 +141294,7 @@ var bpmnManualTaskTemplate = {
       "connectable": true,
       "resizable": false,
       "deletable": true
-    },
-    "cornerRadius": 8
+    }
   },
   "defaultData": {
     "label": "Manual Task"
@@ -141411,8 +141408,7 @@ var bpmnBusinessRuleTaskTemplate = {
       "connectable": true,
       "resizable": false,
       "deletable": true
-    },
-    "cornerRadius": 8
+    }
   },
   "defaultData": {
     "label": "Business Rule Task"
@@ -141526,8 +141522,7 @@ var bpmnScriptTaskTemplate = {
       "connectable": true,
       "resizable": false,
       "deletable": true
-    },
-    "cornerRadius": 8
+    }
   },
   "defaultData": {
     "label": "Script Task"
@@ -143298,7 +143293,7 @@ var flowchartDelayTemplate = {
       "maxHeight": 150
     },
     "shape": {
-      "type": "rect",
+      "type": "delay",
       "fill": "#FFEBEE",
       "stroke": "#C62828",
       "strokeWidth": 2,
@@ -143868,7 +143863,7 @@ var flowchartDisplayTemplate = {
       "maxHeight": 150
     },
     "shape": {
-      "type": "rect",
+      "type": "display",
       "fill": "#F3E5F5",
       "stroke": "#7B1FA2",
       "strokeWidth": 2,
@@ -144209,7 +144204,7 @@ var flowchartOrTemplate = {
       "maxHeight": 150
     },
     "shape": {
-      "type": "circle",
+      "type": "or-junction",
       "fill": "#FFF9C4",
       "stroke": "#F57F17",
       "strokeWidth": 2,
@@ -144323,7 +144318,7 @@ var flowchartSummingJunctionTemplate = {
       "maxHeight": 150
     },
     "shape": {
-      "type": "rect",
+      "type": "summing-junction",
       "fill": "#E0F2F1",
       "stroke": "#00695C",
       "strokeWidth": 2,
@@ -146746,7 +146741,7 @@ var umlForkTemplate = {
       "maxHeight": 600
     },
     "shape": {
-      "type": "rect",
+      "type": "sync-bar",
       "fill": "#000000",
       "stroke": "#000000",
       "strokeWidth": 1,
@@ -146861,7 +146856,7 @@ var umlJoinTemplate = {
       "maxHeight": 600
     },
     "shape": {
-      "type": "rect",
+      "type": "sync-bar",
       "fill": "#FFFFFF",
       "stroke": "#000000",
       "strokeWidth": 2,
@@ -148859,7 +148854,7 @@ var erdWeakEntityTemplate = {
       "maxHeight": 500
     },
     "shape": {
-      "type": "rect",
+      "type": "double-rect",
       "fill": "#FFFFFF",
       "stroke": "#000000",
       "strokeWidth": 4,
@@ -149131,7 +149126,7 @@ var erdWeakRelationshipTemplate = {
       "maxHeight": 500
     },
     "shape": {
-      "type": "rect",
+      "type": "double-diamond",
       "fill": "#FFFFFF",
       "stroke": "#000000",
       "strokeWidth": 4,
@@ -149470,7 +149465,7 @@ var erdMultivaluedAttributeTemplate = {
       "maxHeight": 500
     },
     "shape": {
-      "type": "ellipse",
+      "type": "double-ellipse",
       "fill": "#FFFFFF",
       "stroke": "#000000",
       "strokeWidth": 4,
@@ -176695,6 +176690,43 @@ _SVGRenderer.LINK_VAR_SAFE = /* @__PURE__ */ new Set([
 ]);
 var SVGRenderer = _SVGRenderer;
 
+// libs/renderer/src/svg/notation-shapes.ts
+var DOUBLE_INSET = 5;
+var rectPath2 = (x, y, w, h) => `M ${x} ${y} L ${x + w} ${y} L ${x + w} ${y + h} L ${x} ${y + h} Z`;
+var diamondPath = (x, y, w, h) => `M ${x + w / 2} ${y} L ${x + w} ${y + h / 2} L ${x + w / 2} ${y + h} L ${x} ${y + h / 2} Z`;
+var ellipsePath2 = (cx, cy, rx, ry) => `M ${cx - rx} ${cy} A ${rx} ${ry} 0 1 0 ${cx + rx} ${cy} A ${rx} ${ry} 0 1 0 ${cx - rx} ${cy} Z`;
+function registerNotationShapes() {
+  define2("delay", (w, h) => {
+    const r = h / 2;
+    return `M 0 0 L ${w - r} 0 A ${r} ${r} 0 0 1 ${w - r} ${h} L 0 ${h} Z`;
+  });
+  define2("display", (w, h) => {
+    const r = h / 2;
+    const lead = Math.min(w * 0.18, r);
+    return `M ${lead} 0 L ${w - r} 0 A ${r} ${r} 0 0 1 ${w - r} ${h} L ${lead} ${h} Q 0 ${h / 2} ${lead} 0 Z`;
+  });
+  define2("summing-junction", (w, h) => {
+    const r = Math.min(w, h) / 2, cx = w / 2, cy = h / 2, d = r * Math.SQRT1_2;
+    return `${ellipsePath2(cx, cy, r, r)} M ${cx - d} ${cy - d} L ${cx + d} ${cy + d} M ${cx + d} ${cy - d} L ${cx - d} ${cy + d}`;
+  });
+  define2("or-junction", (w, h) => {
+    const r = Math.min(w, h) / 2, cx = w / 2, cy = h / 2;
+    return `${ellipsePath2(cx, cy, r, r)} M ${cx - r} ${cy} L ${cx + r} ${cy} M ${cx} ${cy - r} L ${cx} ${cy + r}`;
+  });
+  define2("sync-bar", (w, h) => {
+    const t = Math.max(4, Math.min(h, 8));
+    const y = (h - t) / 2;
+    return rectPath2(0, y, w, t);
+  });
+  define2("double-rect", (w, h) => `${rectPath2(0, 0, w, h)} ${rectPath2(DOUBLE_INSET, DOUBLE_INSET, w - DOUBLE_INSET * 2, h - DOUBLE_INSET * 2)}`);
+  define2("double-diamond", (w, h) => `${diamondPath(0, 0, w, h)} ${diamondPath(DOUBLE_INSET, DOUBLE_INSET, w - DOUBLE_INSET * 2, h - DOUBLE_INSET * 2)}`);
+  define2("double-ellipse", (w, h) => `${ellipsePath2(w / 2, h / 2, w / 2, h / 2)} ${ellipsePath2(w / 2, h / 2, w / 2 - DOUBLE_INSET, h / 2 - DOUBLE_INSET)}`);
+}
+function define2(type, path) {
+  if (hasShape(type)) return;
+  registerPathShape(type, path);
+}
+
 // libs/renderer/src/comments/comment-panel.ts
 function panelSignature(threads, selected) {
   return selected + "|" + threads.map(
@@ -190581,6 +190613,9 @@ function loadReadonlySnapshot(engine, snapshot) {
   return model;
 }
 
+// libs/renderer/src/index.ts
+registerNotationShapes();
+
 // libs/element/src/lib/node-type-registry.ts
 var registry4 = /* @__PURE__ */ new Map();
 function registerNodeType(type, renderer) {
@@ -195584,6 +195619,7 @@ export {
   registerLinkTemplate,
   registerMarker,
   registerNodeType,
+  registerNotationShapes,
   registerPathShape,
   registerPortLayout,
   registerShape,

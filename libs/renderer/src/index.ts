@@ -17,6 +17,11 @@ export * from './themes';
 
 // Export renderers
 export * from './svg';
+// Group B — the notation silhouettes the base registry lacked (Delay, Display,
+// summing junction, sync bar, and the Chen double-outline family). Registered on
+// import so every embed has them without an opt-in call.
+import { registerNotationShapes as _registerNotationShapes } from './svg/notation-shapes';
+_registerNotationShapes();
 
 // Wave 9 (Collaboration) — Card 6: anchored comment pins (world-space, in the viewBox),
 // the HTML conversation panel, and the controller that keeps the frame gate honest.
