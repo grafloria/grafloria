@@ -10,6 +10,7 @@
  * edit is undoable and collab-safe (per-key, matching node.data's LWW registers).
  */
 import { SetNodeDataCommand } from '@grafloria/engine';
+import { erTable, umlClass } from '../diagram-kit';
 import { ensureStencilKitStyles } from './styles';
 
 /** A JSON-Schema-shaped field description, as the masters author it. */
@@ -92,6 +93,18 @@ export function bindShapeDataPanel(
     }
 
     const node = selected[0];
+
+    // KIT CARDS FIRST. An ER entity / UML class is not a schema-shaped bag of
+    // scalars — it is a card the diagram kit already owns, with a live handle
+    // API (`erTable(api,id)`) and a row-selection event. Driving that is the
+    // whole point: it is the same surface `erd-editor` edits, so the panel and
+    // the canvas can never disagree. The dataSchema path below stays for plain
+    // template masters.
+    if (node.getMetadata?.('kitEntity') || node.getMetadata?.('kitClass')) {
+      renderKitCard(node);
+      return;
+    }
+
     const props = schemaFor(engine, node);
     if (!props || Object.keys(props).length === 0) {
       const empty = document.createElement('div');
@@ -169,12 +182,89 @@ export function bindShapeDataPanel(
     host.appendChild(form);
   }
 
+  /** Table/class properties, plus the selected column's, Visio-style. */
+  function renderKitCard(node: any): void {
+    const isEr = !!node.getMetadata('kitEntity');
+    const spec = node.getMetadata(isEr ? 'kitEntity' : 'kitClass');
+    const handle: any = isEr ? erTable(api as any, node.id) : umlClass(api as any, node.id);
+
+    const form = document.createElement('div');
+    form.className = 'gf-sd-fields';
+
+    // ── the card itself ──
+    form.appendChild(sectionLabel(isEr ? 'Table' : 'Class'));
+    form.appendChild(textField('Name', spec?.name ?? node.id, (v) => { void handle.rename(v); }));
+    form.appendChild(readOnlyField(isEr ? 'Columns' : 'Members',
+      String(isEr ? (spec?.columns?.length ?? 0)
+                  : ((spec?.attributes?.length ?? 0) + (spec?.methods?.length ?? 0)))));
+
+    // ── the selected row, if any ──
+    const rowHost = document.createElement('div');
+    form.appendChild(rowHost);
+    const showField = (field: any) => {
+      rowHost.innerHTML = '';
+      if (!field) {
+        rowHost.appendChild(hint('Click a column to edit it.'));
+        return;
+      }
+      // ErField exposes name/type/pk/fk as getters over the live spec.
+      rowHost.appendChild(sectionLabel('Column'));
+      rowHost.appendChild(textField('Name', field.name ?? '', (v) => { void field.rename(v); }));
+      rowHost.appendChild(textField('Type', field.type ?? '', (v) => { void field.setType(v); }));
+      if (field.pk || field.fk) {
+        rowHost.appendChild(readOnlyField('Key', [field.pk && 'PK', field.fk && 'FK'].filter(Boolean).join(' + ')));
+      }
+      const del = document.createElement('button');
+      del.className = 'gf-sd-danger';
+      del.textContent = 'Delete column';
+      del.addEventListener('click', () => { void field.remove(); rowHost.innerHTML = ''; });
+      rowHost.appendChild(del);
+    };
+    showField(isEr ? handle.selectedColumn ?? null : null);
+    // Live: the panel follows the kit's own row-selection event.
+    offRow?.();
+    offRow = handle.onRowSelect?.(({ field }: any) => showField(field)) ?? null;
+
+    host.appendChild(form);
+  }
+
+  const sectionLabel = (text: string) => {
+    const el = document.createElement('div');
+    el.className = 'gf-sd-section';
+    el.textContent = text;
+    return el;
+  };
+  const hint = (text: string) => {
+    const el = document.createElement('div');
+    el.className = 'gf-sd-empty';
+    el.textContent = text;
+    return el;
+  };
+  const readOnlyField = (label: string, value: string) => {
+    const row = document.createElement('label');
+    row.className = 'gf-sd-row';
+    const l = document.createElement('span'); l.className = 'gf-sd-label'; l.textContent = label;
+    const v = document.createElement('input'); v.className = 'gf-sd-input'; v.value = value; v.readOnly = true;
+    row.append(l, v); return row;
+  };
+  const textField = (label: string, value: string, commit: (v: string) => void) => {
+    const row = document.createElement('label');
+    row.className = 'gf-sd-row';
+    const l = document.createElement('span'); l.className = 'gf-sd-label'; l.textContent = label;
+    const i = document.createElement('input'); i.className = 'gf-sd-input'; i.value = value;
+    i.addEventListener('change', () => commit(i.value));
+    i.addEventListener('keydown', (e) => { e.stopPropagation(); if ((e as KeyboardEvent).key === 'Enter') i.blur(); });
+    row.append(l, i); return row;
+  };
+
+  let offRow: (() => void) | null = null;
   const off = api.on('selection:change', () => render());
   render();
 
   return {
     refresh: render,
     destroy() {
+      offRow?.();
       off?.();
       host.classList.remove('gf-shapedata');
       host.innerHTML = '';

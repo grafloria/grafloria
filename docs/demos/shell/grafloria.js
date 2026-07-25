@@ -194403,6 +194403,20 @@ var CSS5 = `
 }
 .gf-sd-input:focus { border-color: var(--gf-st-accent); }
 .gf-sd-check { width: 16px; height: 16px; accent-color: var(--gf-st-accent); }
+.gf-sd-section {
+  font-size: 10.5px; font-weight: 600; text-transform: uppercase; letter-spacing: .04em;
+  color: var(--gf-st-mut); margin: 10px 0 2px; padding-top: 8px; border-top: 1px solid var(--gf-st-line);
+}
+.gf-sd-section:first-child { margin-top: 0; padding-top: 0; border-top: 0; }
+.gf-sd-danger {
+  margin-top: 8px; padding: 6px 10px; border-radius: 7px; cursor: pointer;
+  border: 1px solid #fecaca; background: #fef2f2; color: #b91c1c;
+  font: 600 12px ui-sans-serif, system-ui, sans-serif;
+}
+.gf-sd-danger:hover { background: #fee2e2; }
+@media (prefers-color-scheme: dark) {
+  .gf-sd-danger { background: #2a1414; border-color: #7f1d1d; color: #fca5a5; }
+}
 
 /* The canvas while a stencil is held over it. */
 .gf-stencil-target { outline: 2px dashed var(--gf-st-accent); outline-offset: -3px; }
@@ -194718,6 +194732,10 @@ function bindShapeDataPanel(api, host, options = {}) {
       return;
     }
     const node = selected[0];
+    if (node.getMetadata?.("kitEntity") || node.getMetadata?.("kitClass")) {
+      renderKitCard(node);
+      return;
+    }
     const props = schemaFor(engine, node);
     if (!props || Object.keys(props).length === 0) {
       const empty2 = document.createElement("div");
@@ -194790,11 +194808,101 @@ function bindShapeDataPanel(api, host, options = {}) {
     }
     host.appendChild(form);
   }
+  function renderKitCard(node) {
+    const isEr = !!node.getMetadata("kitEntity");
+    const spec = node.getMetadata(isEr ? "kitEntity" : "kitClass");
+    const handle = isEr ? erTable(api, node.id) : umlClass(api, node.id);
+    const form = document.createElement("div");
+    form.className = "gf-sd-fields";
+    form.appendChild(sectionLabel(isEr ? "Table" : "Class"));
+    form.appendChild(textField("Name", spec?.name ?? node.id, (v) => {
+      void handle.rename(v);
+    }));
+    form.appendChild(readOnlyField(
+      isEr ? "Columns" : "Members",
+      String(isEr ? spec?.columns?.length ?? 0 : (spec?.attributes?.length ?? 0) + (spec?.methods?.length ?? 0))
+    ));
+    const rowHost = document.createElement("div");
+    form.appendChild(rowHost);
+    const showField = (field) => {
+      rowHost.innerHTML = "";
+      if (!field) {
+        rowHost.appendChild(hint("Click a column to edit it."));
+        return;
+      }
+      rowHost.appendChild(sectionLabel("Column"));
+      rowHost.appendChild(textField("Name", field.name ?? "", (v) => {
+        void field.rename(v);
+      }));
+      rowHost.appendChild(textField("Type", field.type ?? "", (v) => {
+        void field.setType(v);
+      }));
+      if (field.pk || field.fk) {
+        rowHost.appendChild(readOnlyField("Key", [field.pk && "PK", field.fk && "FK"].filter(Boolean).join(" + ")));
+      }
+      const del = document.createElement("button");
+      del.className = "gf-sd-danger";
+      del.textContent = "Delete column";
+      del.addEventListener("click", () => {
+        void field.remove();
+        rowHost.innerHTML = "";
+      });
+      rowHost.appendChild(del);
+    };
+    showField(isEr ? handle.selectedColumn ?? null : null);
+    offRow?.();
+    offRow = handle.onRowSelect?.(({ field }) => showField(field)) ?? null;
+    host.appendChild(form);
+  }
+  const sectionLabel = (text) => {
+    const el = document.createElement("div");
+    el.className = "gf-sd-section";
+    el.textContent = text;
+    return el;
+  };
+  const hint = (text) => {
+    const el = document.createElement("div");
+    el.className = "gf-sd-empty";
+    el.textContent = text;
+    return el;
+  };
+  const readOnlyField = (label, value) => {
+    const row = document.createElement("label");
+    row.className = "gf-sd-row";
+    const l = document.createElement("span");
+    l.className = "gf-sd-label";
+    l.textContent = label;
+    const v = document.createElement("input");
+    v.className = "gf-sd-input";
+    v.value = value;
+    v.readOnly = true;
+    row.append(l, v);
+    return row;
+  };
+  const textField = (label, value, commit) => {
+    const row = document.createElement("label");
+    row.className = "gf-sd-row";
+    const l = document.createElement("span");
+    l.className = "gf-sd-label";
+    l.textContent = label;
+    const i = document.createElement("input");
+    i.className = "gf-sd-input";
+    i.value = value;
+    i.addEventListener("change", () => commit(i.value));
+    i.addEventListener("keydown", (e) => {
+      e.stopPropagation();
+      if (e.key === "Enter") i.blur();
+    });
+    row.append(l, i);
+    return row;
+  };
+  let offRow = null;
   const off = api.on("selection:change", () => render2());
   render2();
   return {
     refresh: render2,
     destroy() {
+      offRow?.();
       off?.();
       host.classList.remove("gf-shapedata");
       host.innerHTML = "";
