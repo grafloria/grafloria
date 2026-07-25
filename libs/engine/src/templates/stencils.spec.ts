@@ -31,9 +31,12 @@ describe('T5 — stencils', () => {
     }
   });
 
-  it('includes the curated groups alongside the generated notations', () => {
-    const ids = listStencils().map((s) => s.id);
-    expect(ids).toEqual(expect.arrayContaining(['flowchart', 'bpmn', 'uml', 'erd', 'common', 'workflow']));
+  it('ships ONLY the notation stencils — every master must actually draw', () => {
+    // The template-library groups (common/workflow/data-viz/erd) carry their real
+    // content in HTML the SVG canvas does not paint, so they dropped as bare
+    // rectangles; they have working successors (dashboard() and erDiagram()).
+    expect(listStencils().map((s) => s.id)).toEqual(['flowchart', 'bpmn', 'uml', 'erd']);
+    expect(listStencils().reduce((n, s) => n + s.masters.length, 0)).toBe(80);
   });
 
   it('getStencil resolves by id and misses cleanly', () => {
@@ -44,7 +47,7 @@ describe('T5 — stencils', () => {
   it('registerStencils puts every master behind engine.templateRegistry', () => {
     const engine = new DiagramEngine();
     const n = registerStencils(engine.templateRegistry);
-    expect(n).toBeGreaterThanOrEqual(80);
+    expect(n).toBe(80);
     for (const s of builtInStencils()) {
       for (const m of s.masters) expect(engine.templateRegistry.has(m.id)).toBe(true);
     }

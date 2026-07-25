@@ -151028,6 +151028,634 @@ function registerGeneratedTemplates(registry5) {
   return templates.length;
 }
 
+// libs/engine/src/templates/stencils.ts
+function templatesOf(mod) {
+  const seen = /* @__PURE__ */ new Set();
+  const out = [];
+  for (const v of Object.values(mod)) {
+    if (v && typeof v === "object" && "id" in v && "structure" in v && "meta" in v) {
+      const t = v;
+      if (!seen.has(t.id)) {
+        seen.add(t.id);
+        out.push(t);
+      }
+    }
+  }
+  return out;
+}
+function builtInStencils() {
+  return [
+    { id: "flowchart", name: "Flowchart", description: "Process, decision, data and terminator shapes.", masters: templatesOf(flowchart_exports) },
+    { id: "bpmn", name: "BPMN", description: "Tasks, gateways and events for business process models.", masters: templatesOf(bpmn_exports) },
+    { id: "uml", name: "UML", description: "Class, activity, state and component shapes.", masters: templatesOf(uml_exports) },
+    { id: "erd", name: "ERD", description: "Entities, relationships and attributes for data models.", masters: templatesOf(erd_exports) }
+    // NOTE: the `template-library/` groups (common, workflow, data-viz, erd) are
+    // deliberately NOT stencils. Every one of them carries its real content in an
+    // HTML template, and the SVG canvas paints only the silhouette — so a KPI
+    // card, a gauge, an avatar or a table drops as a bare labelled rectangle.
+    // They also have working successors: the dashboard kit (`dashboard()`) for
+    // KPI/line/bar/donut widgets, and the `erDiagram()` / `erTable()` kit for
+    // true entity tables with typed rows, field ports and reconciling FK→PK
+    // edges (demos/diagrams/erd-editor.html). The erd-templates set was doubly
+    // unfit: its entries are design experiments ("ERD Table (OLD)", "Option A",
+    // "Option B", "Repeater") and two of them — "ERD Container (Option B)" and
+    // "ERD Header (Option B)" — are SEPARATE nodes, so dragging the body left
+    // the header behind. A stencil ships only shapes that actually draw. Those
+    // entries are design experiments — their own names say so ("ERD Table (OLD)",
+    // "Option A", "Option B", "Repeater") — and two of them ("ERD Container
+    // (Option B)" + "ERD Header (Option B)") are SEPARATE nodes, so dragging the
+    // body leaves the header behind. Their table fidelity also lived in HTML
+    // templates the SVG path does not paint, so they drop as bare rectangles.
+    // The real entity-relationship surface is the `erDiagram()` / `erTable()`
+    // kit (see demos/diagrams/erd-editor.html), which renders true tables with
+    // typed rows, field ports and reconciling FK→PK edges.
+  ].filter((s) => s.masters.length > 0);
+}
+function getStencil(id) {
+  return builtInStencils().find((s) => s.id === id);
+}
+function listStencils() {
+  return builtInStencils();
+}
+function registerStencils(registry5, stencils = builtInStencils()) {
+  let n3 = 0;
+  for (const s of stencils) {
+    for (const m of s.masters) {
+      registry5.register(m);
+      n3++;
+    }
+  }
+  return n3;
+}
+
+// libs/engine/src/rendering/HtmlTemplateRenderer.ts
+var HtmlTemplateRenderer = class {
+  constructor(eventBus) {
+    this.eventBus = eventBus;
+    /**
+     * Track event handlers by node UUID for cleanup
+     */
+    this.eventHandlers = /* @__PURE__ */ new Map();
+    /**
+     * Track rendered results by node UUID for cleanup
+     */
+    this.renderResults = /* @__PURE__ */ new Map();
+  }
+  /**
+   * Render HTML configuration to result
+   * @param config - HTML configuration from template
+   * @param node - Node model with data
+   * @returns Render result with HTML, bindings, and event handlers
+   */
+  render(config, node) {
+    this.disposeNode(node.uuid);
+    const mode = this.determineMode(config);
+    const result = {
+      mode,
+      eventHandlers: {},
+      bindings: {},
+      pointerEvents: config.pointerEvents !== false,
+      // Default true
+      zIndex: config.zIndex,
+      className: this.buildClassName(config.className),
+      style: config.style,
+      nodeId: node.id,
+      nodeUuid: node.uuid
+    };
+    if (mode === "component") {
+      return this.renderComponentMode(config, result);
+    } else {
+      return this.renderTemplateMode(config, node, result);
+    }
+  }
+  /**
+   * Determine rendering mode from config
+   */
+  determineMode(config) {
+    if (config.mode) {
+      return config.mode;
+    }
+    if (config.template) {
+      return "template";
+    }
+    if (config.component) {
+      return "component";
+    }
+    throw new Error("HtmlConfig must specify either template or component");
+  }
+  /**
+   * Render component mode (pass-through)
+   */
+  renderComponentMode(config, result) {
+    if (!config.component) {
+      throw new Error("Component mode requires component property");
+    }
+    result.componentRef = config.component;
+    return result;
+  }
+  /**
+   * Render template mode with LemonadeJS
+   */
+  renderTemplateMode(config, node, result) {
+    if (!config.template) {
+      throw new Error("Template mode requires template property");
+    }
+    result.bindings = this.resolveBindings(config, node);
+    if (config.events) {
+      result.eventHandlers = this.createEventHandlers(config.events, node);
+    }
+    result.html = this.renderTemplate(config.template, result.bindings, result);
+    this.renderResults.set(node.uuid, result);
+    if (Object.keys(result.eventHandlers).length > 0) {
+      this.eventHandlers.set(node.uuid, result.eventHandlers);
+    }
+    return result;
+  }
+  /**
+   * Resolve data bindings from node data
+   */
+  resolveBindings(config, node) {
+    const bindings3 = {};
+    bindings3["data"] = node.data || {};
+    bindings3["nodeId"] = node.id;
+    bindings3["nodeUuid"] = node.uuid;
+    if (config.bindings) {
+      for (const [key, path] of Object.entries(config.bindings)) {
+        bindings3[key] = this.getValueByPath(node, path);
+      }
+    }
+    return bindings3;
+  }
+  /**
+   * Get value from node by path (e.g., 'data.user.name')
+   */
+  getValueByPath(node, path) {
+    const parts = path.split(".");
+    let value = node;
+    for (const part of parts) {
+      if (value == null) {
+        return void 0;
+      }
+      value = value[part];
+    }
+    return value;
+  }
+  /**
+   * Create event handlers that emit to EventBus
+   */
+  createEventHandlers(events, node) {
+    const handlers = {};
+    for (const [domEvent, engineEvent] of Object.entries(events)) {
+      handlers[domEvent] = (event) => {
+        this.eventBus.emit(engineEvent, {
+          nodeId: node.id,
+          nodeUuid: node.uuid,
+          nodeData: node.data,
+          event,
+          domEventType: domEvent
+        });
+      };
+    }
+    return handlers;
+  }
+  /**
+   * Render template with bindings (simplified LemonadeJS-style)
+   * In production, this would use actual LemonadeJS library
+   *
+   * Phase 3.4: Simple template rendering for testing
+   * Real implementation will use LemonadeJS when package is available
+   */
+  renderTemplate(template, bindings3, result) {
+    let html = template;
+    html = html.replace(/\{\{([^}]+)\}\}/g, (match, expression) => {
+      const value = this.evaluateExpression(expression.trim(), bindings3);
+      return value != null ? String(value) : "";
+    });
+    const containerAttrs = [];
+    if (result.className) {
+      containerAttrs.push(`class="${result.className}"`);
+    }
+    if (result.style) {
+      const styleStr = Object.entries(result.style).map(([key, value]) => `${this.camelToKebab(key)}: ${value}`).join("; ");
+      containerAttrs.push(`style="${styleStr}"`);
+    }
+    if (result.pointerEvents === false) {
+      containerAttrs.push('style="pointer-events: none"');
+    }
+    if (result.zIndex !== void 0) {
+      const existingStyle = containerAttrs.find((attr) => attr.startsWith("style="));
+      if (existingStyle) {
+        containerAttrs[containerAttrs.indexOf(existingStyle)] = existingStyle.replace(
+          '"',
+          `"z-index: ${result.zIndex}; `
+        );
+      } else {
+        containerAttrs.push(`style="z-index: ${result.zIndex}"`);
+      }
+    }
+    if (containerAttrs.length > 0) {
+      html = `<div ${containerAttrs.join(" ")}>${html}</div>`;
+    }
+    return html;
+  }
+  /**
+   * Evaluate expression in binding context
+   */
+  evaluateExpression(expression, bindings3) {
+    try {
+      const parts = expression.split(".");
+      let value = bindings3;
+      for (const part of parts) {
+        if (value == null) {
+          return void 0;
+        }
+        value = value[part];
+      }
+      return value;
+    } catch (error) {
+      this.eventBus.emit("renderer:warning", {
+        message: "Failed to evaluate expression",
+        expression,
+        error,
+        phase: "expression-evaluation",
+        renderer: "HtmlTemplateRenderer"
+      });
+      return void 0;
+    }
+  }
+  /**
+   * Build className string from config
+   */
+  buildClassName(className) {
+    if (!className) {
+      return void 0;
+    }
+    if (Array.isArray(className)) {
+      return className.join(" ");
+    }
+    return className;
+  }
+  /**
+   * Convert camelCase to kebab-case for CSS properties
+   */
+  camelToKebab(str) {
+    return str.replace(/([a-z0-9])([A-Z])/g, "$1-$2").toLowerCase();
+  }
+  /**
+   * Dispose resources for a specific node
+   * @param nodeUuid - UUID of node to clean up
+   */
+  disposeNode(nodeUuid) {
+    const handlers = this.eventHandlers.get(nodeUuid);
+    if (handlers) {
+      Object.keys(handlers).forEach((key) => {
+        delete handlers[key];
+      });
+    }
+    this.eventHandlers.delete(nodeUuid);
+    const result = this.renderResults.get(nodeUuid);
+    if (result) {
+      if (result.bindings) {
+        Object.keys(result.bindings).forEach((key) => {
+          delete result.bindings[key];
+        });
+      }
+      if (result.eventHandlers) {
+        Object.keys(result.eventHandlers).forEach((key) => {
+          delete result.eventHandlers[key];
+        });
+      }
+    }
+    this.renderResults.delete(nodeUuid);
+  }
+  /**
+   * Cleanup all renderer resources
+   */
+  dispose() {
+    const nodeUuids = Array.from(this.renderResults.keys());
+    nodeUuids.forEach((uuid) => this.disposeNode(uuid));
+    this.eventHandlers.clear();
+    this.renderResults.clear();
+  }
+};
+
+// libs/engine/src/rendering/LemonadeJSRenderer.ts
+var lemonade = __toESM(require_lemonade());
+var LemonadeJSRenderer = class {
+  constructor(eventBus) {
+    this.eventBus = eventBus;
+    /**
+     * Track rendered elements by node UUID for cleanup
+     */
+    this.renderedElements = /* @__PURE__ */ new Map();
+    /**
+     * Track LemonadeJS self objects by node UUID for cleanup
+     */
+    this.selfObjects = /* @__PURE__ */ new Map();
+    /**
+     * Track event handlers by node UUID for cleanup
+     */
+    this.eventHandlers = /* @__PURE__ */ new Map();
+    /**
+     * Track EventBus subscriptions by node UUID for cleanup
+     */
+    this.eventSubscriptions = /* @__PURE__ */ new Map();
+  }
+  /**
+   * Render HTML configuration to LemonadeJS element
+   * @param config - HTML configuration from template
+   * @param node - Node model with data
+   * @returns Render result with LemonadeJS element
+   */
+  render(config, node) {
+    this.disposeNode(node.uuid);
+    const mode = this.determineMode(config);
+    const result = {
+      mode,
+      eventHandlers: {},
+      bindings: {},
+      pointerEvents: config.pointerEvents !== false,
+      zIndex: config.zIndex,
+      className: this.buildClassName(config.className),
+      style: config.style,
+      nodeId: node.id,
+      nodeUuid: node.uuid
+    };
+    if (mode === "component") {
+      return this.renderComponentMode(config, result);
+    } else {
+      return this.renderTemplateMode(config, node, result);
+    }
+  }
+  /**
+   * Determine rendering mode from config
+   */
+  determineMode(config) {
+    if (config.mode) {
+      return config.mode;
+    }
+    if (config.template) {
+      return "template";
+    }
+    if (config.component) {
+      return "component";
+    }
+    throw new Error("HtmlConfig must specify either template or component");
+  }
+  /**
+   * Render component mode (pass-through)
+   */
+  renderComponentMode(config, result) {
+    if (!config.component) {
+      throw new Error("Component mode requires component property");
+    }
+    result.componentRef = config.component;
+    return result;
+  }
+  /**
+   * Render template mode with LemonadeJS
+   */
+  renderTemplateMode(config, node, result) {
+    if (!config.template) {
+      throw new Error("Template mode requires template property");
+    }
+    result.self = this.createSelfObject(node, config, result);
+    if (config.events) {
+      result.eventHandlers = this.createEventHandlers(config.events, node);
+    }
+    result.bindings = this.resolveBindings(config, node);
+    try {
+      result.element = lemonade.element(config.template, result.self);
+      if (result.element) {
+        this.applyStyles(result.element, result);
+      }
+      result.html = result.element?.outerHTML;
+    } catch (error) {
+      this.eventBus.emit("renderer:error", {
+        nodeId: node.id,
+        nodeUuid: node.uuid,
+        error,
+        message: "LemonadeJS rendering error",
+        phase: "template-rendering"
+      });
+      result.html = this.fallbackRender(config.template, result.bindings);
+    }
+    if (result.element) {
+      this.renderedElements.set(node.uuid, result.element);
+    }
+    if (result.self) {
+      this.selfObjects.set(node.uuid, result.self);
+    }
+    if (Object.keys(result.eventHandlers).length > 0) {
+      this.eventHandlers.set(node.uuid, result.eventHandlers);
+    }
+    return result;
+  }
+  /**
+   * Create LemonadeJS self object with reactive data
+   */
+  createSelfObject(node, config, result) {
+    const self2 = {
+      // Node data (reactive)
+      data: node.data || {},
+      nodeId: node.id,
+      nodeUuid: node.uuid,
+      // Custom bindings
+      ...config.bindings ? this.resolveCustomBindings(config.bindings, node) : {}
+    };
+    if (config.events) {
+      Object.entries(config.events).forEach(([domEvent, engineEvent]) => {
+        const methodName = `on${domEvent.charAt(0).toUpperCase()}${domEvent.slice(1)}`;
+        self2[methodName] = (e) => {
+          this.eventBus.emit(engineEvent, {
+            nodeId: node.id,
+            nodeUuid: node.uuid,
+            nodeData: node.data,
+            event: e,
+            domEventType: domEvent
+          });
+        };
+      });
+    }
+    return self2;
+  }
+  /**
+   * Resolve custom bindings from config
+   */
+  resolveCustomBindings(bindings3, node) {
+    const resolved2 = {};
+    for (const [key, path] of Object.entries(bindings3)) {
+      resolved2[key] = this.getValueByPath(node, path);
+    }
+    return resolved2;
+  }
+  /**
+   * Create event handlers that emit to EventBus
+   */
+  createEventHandlers(events, node) {
+    const handlers = {};
+    for (const [domEvent, engineEvent] of Object.entries(events)) {
+      handlers[domEvent] = (event) => {
+        this.eventBus.emit(engineEvent, {
+          nodeId: node.id,
+          nodeUuid: node.uuid,
+          nodeData: node.data,
+          event,
+          domEventType: domEvent
+        });
+      };
+    }
+    return handlers;
+  }
+  /**
+   * Resolve data bindings from node
+   */
+  resolveBindings(config, node) {
+    const bindings3 = {
+      data: node.data || {},
+      nodeId: node.id,
+      nodeUuid: node.uuid
+    };
+    if (config.bindings) {
+      for (const [key, path] of Object.entries(config.bindings)) {
+        bindings3[key] = this.getValueByPath(node, path);
+      }
+    }
+    return bindings3;
+  }
+  /**
+   * Get value from node by path
+   */
+  getValueByPath(node, path) {
+    const parts = path.split(".");
+    let value = node;
+    for (const part of parts) {
+      if (value == null) {
+        return void 0;
+      }
+      value = value[part];
+    }
+    return value;
+  }
+  /**
+   * Apply styles and classes to rendered element
+   */
+  applyStyles(element2, result) {
+    if (result.className) {
+      element2.className = result.className;
+    }
+    if (result.style) {
+      Object.entries(result.style).forEach(([key, value]) => {
+        const cssKey = this.camelToKebab(key);
+        element2.style.setProperty(cssKey, String(value));
+      });
+    }
+    if (result.zIndex !== void 0) {
+      element2.style.zIndex = String(result.zIndex);
+    }
+    if (result.pointerEvents === false) {
+      element2.style.pointerEvents = "none";
+    }
+  }
+  /**
+   * Fallback rendering (simple string replacement)
+   */
+  fallbackRender(template, bindings3) {
+    let html = template;
+    html = html.replace(/\{\{([^}]+)\}\}/g, (match, expression) => {
+      const value = this.evaluateExpression(expression.trim(), bindings3);
+      return value != null ? String(value) : "";
+    });
+    return html;
+  }
+  /**
+   * Evaluate expression in binding context
+   */
+  evaluateExpression(expression, bindings3) {
+    try {
+      const parts = expression.split(".");
+      let value = bindings3;
+      for (const part of parts) {
+        if (value == null) {
+          return void 0;
+        }
+        value = value[part];
+      }
+      return value;
+    } catch (error) {
+      this.eventBus.emit("renderer:warning", {
+        message: "Failed to evaluate expression",
+        expression,
+        error,
+        phase: "expression-evaluation"
+      });
+      return void 0;
+    }
+  }
+  /**
+   * Build className string
+   */
+  buildClassName(className) {
+    if (!className) {
+      return void 0;
+    }
+    if (Array.isArray(className)) {
+      return className.join(" ");
+    }
+    return className;
+  }
+  /**
+   * Convert camelCase to kebab-case
+   */
+  camelToKebab(str) {
+    return str.replace(/([a-z0-9])([A-Z])/g, "$1-$2").toLowerCase();
+  }
+  /**
+   * Dispose resources for a specific node
+   * @param nodeUuid - UUID of node to clean up
+   */
+  disposeNode(nodeUuid) {
+    const element2 = this.renderedElements.get(nodeUuid);
+    if (element2 && element2.parentNode) {
+      element2.parentNode.removeChild(element2);
+    }
+    this.renderedElements.delete(nodeUuid);
+    const self2 = this.selfObjects.get(nodeUuid);
+    if (self2) {
+      if (typeof self2.destroy === "function") {
+        self2.destroy();
+      }
+      Object.keys(self2).forEach((key) => {
+        delete self2[key];
+      });
+    }
+    this.selfObjects.delete(nodeUuid);
+    const handlers = this.eventHandlers.get(nodeUuid);
+    if (handlers) {
+      Object.keys(handlers).forEach((key) => {
+        delete handlers[key];
+      });
+    }
+    this.eventHandlers.delete(nodeUuid);
+    const subscriptions = this.eventSubscriptions.get(nodeUuid);
+    if (subscriptions) {
+      subscriptions.forEach((unsubscribe) => unsubscribe());
+    }
+    this.eventSubscriptions.delete(nodeUuid);
+  }
+  /**
+   * Cleanup all renderer resources
+   */
+  dispose() {
+    const nodeUuids = Array.from(this.renderedElements.keys());
+    nodeUuids.forEach((uuid) => this.disposeNode(uuid));
+    this.renderedElements.clear();
+    this.selfObjects.clear();
+    this.eventHandlers.clear();
+    this.eventSubscriptions.clear();
+  }
+};
+
 // libs/engine/src/template-library/common-templates.ts
 var UserAvatarTemplate = {
   id: "user-avatar",
@@ -152957,618 +153585,6 @@ var ERDTemplates = {
   ERDFieldOptionB,
   // Modern Repeater Approach (RECOMMENDED)
   ERDTableRepeater
-};
-
-// libs/engine/src/templates/stencils.ts
-function templatesOf(mod) {
-  const seen = /* @__PURE__ */ new Set();
-  const out = [];
-  for (const v of Object.values(mod)) {
-    if (v && typeof v === "object" && "id" in v && "structure" in v && "meta" in v) {
-      const t = v;
-      if (!seen.has(t.id)) {
-        seen.add(t.id);
-        out.push(t);
-      }
-    }
-  }
-  return out;
-}
-function builtInStencils() {
-  return [
-    { id: "flowchart", name: "Flowchart", description: "Process, decision, data and terminator shapes.", masters: templatesOf(flowchart_exports) },
-    { id: "bpmn", name: "BPMN", description: "Tasks, gateways and events for business process models.", masters: templatesOf(bpmn_exports) },
-    { id: "uml", name: "UML", description: "Class, activity, state and component shapes.", masters: templatesOf(uml_exports) },
-    { id: "erd", name: "ERD", description: "Entities, relationships and attributes for data models.", masters: templatesOf(erd_exports) },
-    { id: "common", name: "Basic", description: "Cards, buttons, inputs, badges and avatars.", masters: templatesOf(CommonTemplates) },
-    { id: "workflow", name: "Workflow", description: "Ready-made workflow and automation nodes.", masters: templatesOf(WorkflowTemplates) },
-    { id: "data-viz", name: "Data viz", description: "KPI, chart and metric widgets.", masters: templatesOf(DataVizTemplates) },
-    { id: "erd-rich", name: "ERD (rich)", description: "Detailed entity shapes with typed column rows.", masters: templatesOf(ERDTemplates) }
-  ].filter((s) => s.masters.length > 0);
-}
-function getStencil(id) {
-  return builtInStencils().find((s) => s.id === id);
-}
-function listStencils() {
-  return builtInStencils();
-}
-function registerStencils(registry5, stencils = builtInStencils()) {
-  let n3 = 0;
-  for (const s of stencils) {
-    for (const m of s.masters) {
-      registry5.register(m);
-      n3++;
-    }
-  }
-  return n3;
-}
-
-// libs/engine/src/rendering/HtmlTemplateRenderer.ts
-var HtmlTemplateRenderer = class {
-  constructor(eventBus) {
-    this.eventBus = eventBus;
-    /**
-     * Track event handlers by node UUID for cleanup
-     */
-    this.eventHandlers = /* @__PURE__ */ new Map();
-    /**
-     * Track rendered results by node UUID for cleanup
-     */
-    this.renderResults = /* @__PURE__ */ new Map();
-  }
-  /**
-   * Render HTML configuration to result
-   * @param config - HTML configuration from template
-   * @param node - Node model with data
-   * @returns Render result with HTML, bindings, and event handlers
-   */
-  render(config, node) {
-    this.disposeNode(node.uuid);
-    const mode = this.determineMode(config);
-    const result = {
-      mode,
-      eventHandlers: {},
-      bindings: {},
-      pointerEvents: config.pointerEvents !== false,
-      // Default true
-      zIndex: config.zIndex,
-      className: this.buildClassName(config.className),
-      style: config.style,
-      nodeId: node.id,
-      nodeUuid: node.uuid
-    };
-    if (mode === "component") {
-      return this.renderComponentMode(config, result);
-    } else {
-      return this.renderTemplateMode(config, node, result);
-    }
-  }
-  /**
-   * Determine rendering mode from config
-   */
-  determineMode(config) {
-    if (config.mode) {
-      return config.mode;
-    }
-    if (config.template) {
-      return "template";
-    }
-    if (config.component) {
-      return "component";
-    }
-    throw new Error("HtmlConfig must specify either template or component");
-  }
-  /**
-   * Render component mode (pass-through)
-   */
-  renderComponentMode(config, result) {
-    if (!config.component) {
-      throw new Error("Component mode requires component property");
-    }
-    result.componentRef = config.component;
-    return result;
-  }
-  /**
-   * Render template mode with LemonadeJS
-   */
-  renderTemplateMode(config, node, result) {
-    if (!config.template) {
-      throw new Error("Template mode requires template property");
-    }
-    result.bindings = this.resolveBindings(config, node);
-    if (config.events) {
-      result.eventHandlers = this.createEventHandlers(config.events, node);
-    }
-    result.html = this.renderTemplate(config.template, result.bindings, result);
-    this.renderResults.set(node.uuid, result);
-    if (Object.keys(result.eventHandlers).length > 0) {
-      this.eventHandlers.set(node.uuid, result.eventHandlers);
-    }
-    return result;
-  }
-  /**
-   * Resolve data bindings from node data
-   */
-  resolveBindings(config, node) {
-    const bindings3 = {};
-    bindings3["data"] = node.data || {};
-    bindings3["nodeId"] = node.id;
-    bindings3["nodeUuid"] = node.uuid;
-    if (config.bindings) {
-      for (const [key, path] of Object.entries(config.bindings)) {
-        bindings3[key] = this.getValueByPath(node, path);
-      }
-    }
-    return bindings3;
-  }
-  /**
-   * Get value from node by path (e.g., 'data.user.name')
-   */
-  getValueByPath(node, path) {
-    const parts = path.split(".");
-    let value = node;
-    for (const part of parts) {
-      if (value == null) {
-        return void 0;
-      }
-      value = value[part];
-    }
-    return value;
-  }
-  /**
-   * Create event handlers that emit to EventBus
-   */
-  createEventHandlers(events, node) {
-    const handlers = {};
-    for (const [domEvent, engineEvent] of Object.entries(events)) {
-      handlers[domEvent] = (event) => {
-        this.eventBus.emit(engineEvent, {
-          nodeId: node.id,
-          nodeUuid: node.uuid,
-          nodeData: node.data,
-          event,
-          domEventType: domEvent
-        });
-      };
-    }
-    return handlers;
-  }
-  /**
-   * Render template with bindings (simplified LemonadeJS-style)
-   * In production, this would use actual LemonadeJS library
-   *
-   * Phase 3.4: Simple template rendering for testing
-   * Real implementation will use LemonadeJS when package is available
-   */
-  renderTemplate(template, bindings3, result) {
-    let html = template;
-    html = html.replace(/\{\{([^}]+)\}\}/g, (match, expression) => {
-      const value = this.evaluateExpression(expression.trim(), bindings3);
-      return value != null ? String(value) : "";
-    });
-    const containerAttrs = [];
-    if (result.className) {
-      containerAttrs.push(`class="${result.className}"`);
-    }
-    if (result.style) {
-      const styleStr = Object.entries(result.style).map(([key, value]) => `${this.camelToKebab(key)}: ${value}`).join("; ");
-      containerAttrs.push(`style="${styleStr}"`);
-    }
-    if (result.pointerEvents === false) {
-      containerAttrs.push('style="pointer-events: none"');
-    }
-    if (result.zIndex !== void 0) {
-      const existingStyle = containerAttrs.find((attr) => attr.startsWith("style="));
-      if (existingStyle) {
-        containerAttrs[containerAttrs.indexOf(existingStyle)] = existingStyle.replace(
-          '"',
-          `"z-index: ${result.zIndex}; `
-        );
-      } else {
-        containerAttrs.push(`style="z-index: ${result.zIndex}"`);
-      }
-    }
-    if (containerAttrs.length > 0) {
-      html = `<div ${containerAttrs.join(" ")}>${html}</div>`;
-    }
-    return html;
-  }
-  /**
-   * Evaluate expression in binding context
-   */
-  evaluateExpression(expression, bindings3) {
-    try {
-      const parts = expression.split(".");
-      let value = bindings3;
-      for (const part of parts) {
-        if (value == null) {
-          return void 0;
-        }
-        value = value[part];
-      }
-      return value;
-    } catch (error) {
-      this.eventBus.emit("renderer:warning", {
-        message: "Failed to evaluate expression",
-        expression,
-        error,
-        phase: "expression-evaluation",
-        renderer: "HtmlTemplateRenderer"
-      });
-      return void 0;
-    }
-  }
-  /**
-   * Build className string from config
-   */
-  buildClassName(className) {
-    if (!className) {
-      return void 0;
-    }
-    if (Array.isArray(className)) {
-      return className.join(" ");
-    }
-    return className;
-  }
-  /**
-   * Convert camelCase to kebab-case for CSS properties
-   */
-  camelToKebab(str) {
-    return str.replace(/([a-z0-9])([A-Z])/g, "$1-$2").toLowerCase();
-  }
-  /**
-   * Dispose resources for a specific node
-   * @param nodeUuid - UUID of node to clean up
-   */
-  disposeNode(nodeUuid) {
-    const handlers = this.eventHandlers.get(nodeUuid);
-    if (handlers) {
-      Object.keys(handlers).forEach((key) => {
-        delete handlers[key];
-      });
-    }
-    this.eventHandlers.delete(nodeUuid);
-    const result = this.renderResults.get(nodeUuid);
-    if (result) {
-      if (result.bindings) {
-        Object.keys(result.bindings).forEach((key) => {
-          delete result.bindings[key];
-        });
-      }
-      if (result.eventHandlers) {
-        Object.keys(result.eventHandlers).forEach((key) => {
-          delete result.eventHandlers[key];
-        });
-      }
-    }
-    this.renderResults.delete(nodeUuid);
-  }
-  /**
-   * Cleanup all renderer resources
-   */
-  dispose() {
-    const nodeUuids = Array.from(this.renderResults.keys());
-    nodeUuids.forEach((uuid) => this.disposeNode(uuid));
-    this.eventHandlers.clear();
-    this.renderResults.clear();
-  }
-};
-
-// libs/engine/src/rendering/LemonadeJSRenderer.ts
-var lemonade = __toESM(require_lemonade());
-var LemonadeJSRenderer = class {
-  constructor(eventBus) {
-    this.eventBus = eventBus;
-    /**
-     * Track rendered elements by node UUID for cleanup
-     */
-    this.renderedElements = /* @__PURE__ */ new Map();
-    /**
-     * Track LemonadeJS self objects by node UUID for cleanup
-     */
-    this.selfObjects = /* @__PURE__ */ new Map();
-    /**
-     * Track event handlers by node UUID for cleanup
-     */
-    this.eventHandlers = /* @__PURE__ */ new Map();
-    /**
-     * Track EventBus subscriptions by node UUID for cleanup
-     */
-    this.eventSubscriptions = /* @__PURE__ */ new Map();
-  }
-  /**
-   * Render HTML configuration to LemonadeJS element
-   * @param config - HTML configuration from template
-   * @param node - Node model with data
-   * @returns Render result with LemonadeJS element
-   */
-  render(config, node) {
-    this.disposeNode(node.uuid);
-    const mode = this.determineMode(config);
-    const result = {
-      mode,
-      eventHandlers: {},
-      bindings: {},
-      pointerEvents: config.pointerEvents !== false,
-      zIndex: config.zIndex,
-      className: this.buildClassName(config.className),
-      style: config.style,
-      nodeId: node.id,
-      nodeUuid: node.uuid
-    };
-    if (mode === "component") {
-      return this.renderComponentMode(config, result);
-    } else {
-      return this.renderTemplateMode(config, node, result);
-    }
-  }
-  /**
-   * Determine rendering mode from config
-   */
-  determineMode(config) {
-    if (config.mode) {
-      return config.mode;
-    }
-    if (config.template) {
-      return "template";
-    }
-    if (config.component) {
-      return "component";
-    }
-    throw new Error("HtmlConfig must specify either template or component");
-  }
-  /**
-   * Render component mode (pass-through)
-   */
-  renderComponentMode(config, result) {
-    if (!config.component) {
-      throw new Error("Component mode requires component property");
-    }
-    result.componentRef = config.component;
-    return result;
-  }
-  /**
-   * Render template mode with LemonadeJS
-   */
-  renderTemplateMode(config, node, result) {
-    if (!config.template) {
-      throw new Error("Template mode requires template property");
-    }
-    result.self = this.createSelfObject(node, config, result);
-    if (config.events) {
-      result.eventHandlers = this.createEventHandlers(config.events, node);
-    }
-    result.bindings = this.resolveBindings(config, node);
-    try {
-      result.element = lemonade.element(config.template, result.self);
-      if (result.element) {
-        this.applyStyles(result.element, result);
-      }
-      result.html = result.element?.outerHTML;
-    } catch (error) {
-      this.eventBus.emit("renderer:error", {
-        nodeId: node.id,
-        nodeUuid: node.uuid,
-        error,
-        message: "LemonadeJS rendering error",
-        phase: "template-rendering"
-      });
-      result.html = this.fallbackRender(config.template, result.bindings);
-    }
-    if (result.element) {
-      this.renderedElements.set(node.uuid, result.element);
-    }
-    if (result.self) {
-      this.selfObjects.set(node.uuid, result.self);
-    }
-    if (Object.keys(result.eventHandlers).length > 0) {
-      this.eventHandlers.set(node.uuid, result.eventHandlers);
-    }
-    return result;
-  }
-  /**
-   * Create LemonadeJS self object with reactive data
-   */
-  createSelfObject(node, config, result) {
-    const self2 = {
-      // Node data (reactive)
-      data: node.data || {},
-      nodeId: node.id,
-      nodeUuid: node.uuid,
-      // Custom bindings
-      ...config.bindings ? this.resolveCustomBindings(config.bindings, node) : {}
-    };
-    if (config.events) {
-      Object.entries(config.events).forEach(([domEvent, engineEvent]) => {
-        const methodName = `on${domEvent.charAt(0).toUpperCase()}${domEvent.slice(1)}`;
-        self2[methodName] = (e) => {
-          this.eventBus.emit(engineEvent, {
-            nodeId: node.id,
-            nodeUuid: node.uuid,
-            nodeData: node.data,
-            event: e,
-            domEventType: domEvent
-          });
-        };
-      });
-    }
-    return self2;
-  }
-  /**
-   * Resolve custom bindings from config
-   */
-  resolveCustomBindings(bindings3, node) {
-    const resolved2 = {};
-    for (const [key, path] of Object.entries(bindings3)) {
-      resolved2[key] = this.getValueByPath(node, path);
-    }
-    return resolved2;
-  }
-  /**
-   * Create event handlers that emit to EventBus
-   */
-  createEventHandlers(events, node) {
-    const handlers = {};
-    for (const [domEvent, engineEvent] of Object.entries(events)) {
-      handlers[domEvent] = (event) => {
-        this.eventBus.emit(engineEvent, {
-          nodeId: node.id,
-          nodeUuid: node.uuid,
-          nodeData: node.data,
-          event,
-          domEventType: domEvent
-        });
-      };
-    }
-    return handlers;
-  }
-  /**
-   * Resolve data bindings from node
-   */
-  resolveBindings(config, node) {
-    const bindings3 = {
-      data: node.data || {},
-      nodeId: node.id,
-      nodeUuid: node.uuid
-    };
-    if (config.bindings) {
-      for (const [key, path] of Object.entries(config.bindings)) {
-        bindings3[key] = this.getValueByPath(node, path);
-      }
-    }
-    return bindings3;
-  }
-  /**
-   * Get value from node by path
-   */
-  getValueByPath(node, path) {
-    const parts = path.split(".");
-    let value = node;
-    for (const part of parts) {
-      if (value == null) {
-        return void 0;
-      }
-      value = value[part];
-    }
-    return value;
-  }
-  /**
-   * Apply styles and classes to rendered element
-   */
-  applyStyles(element2, result) {
-    if (result.className) {
-      element2.className = result.className;
-    }
-    if (result.style) {
-      Object.entries(result.style).forEach(([key, value]) => {
-        const cssKey = this.camelToKebab(key);
-        element2.style.setProperty(cssKey, String(value));
-      });
-    }
-    if (result.zIndex !== void 0) {
-      element2.style.zIndex = String(result.zIndex);
-    }
-    if (result.pointerEvents === false) {
-      element2.style.pointerEvents = "none";
-    }
-  }
-  /**
-   * Fallback rendering (simple string replacement)
-   */
-  fallbackRender(template, bindings3) {
-    let html = template;
-    html = html.replace(/\{\{([^}]+)\}\}/g, (match, expression) => {
-      const value = this.evaluateExpression(expression.trim(), bindings3);
-      return value != null ? String(value) : "";
-    });
-    return html;
-  }
-  /**
-   * Evaluate expression in binding context
-   */
-  evaluateExpression(expression, bindings3) {
-    try {
-      const parts = expression.split(".");
-      let value = bindings3;
-      for (const part of parts) {
-        if (value == null) {
-          return void 0;
-        }
-        value = value[part];
-      }
-      return value;
-    } catch (error) {
-      this.eventBus.emit("renderer:warning", {
-        message: "Failed to evaluate expression",
-        expression,
-        error,
-        phase: "expression-evaluation"
-      });
-      return void 0;
-    }
-  }
-  /**
-   * Build className string
-   */
-  buildClassName(className) {
-    if (!className) {
-      return void 0;
-    }
-    if (Array.isArray(className)) {
-      return className.join(" ");
-    }
-    return className;
-  }
-  /**
-   * Convert camelCase to kebab-case
-   */
-  camelToKebab(str) {
-    return str.replace(/([a-z0-9])([A-Z])/g, "$1-$2").toLowerCase();
-  }
-  /**
-   * Dispose resources for a specific node
-   * @param nodeUuid - UUID of node to clean up
-   */
-  disposeNode(nodeUuid) {
-    const element2 = this.renderedElements.get(nodeUuid);
-    if (element2 && element2.parentNode) {
-      element2.parentNode.removeChild(element2);
-    }
-    this.renderedElements.delete(nodeUuid);
-    const self2 = this.selfObjects.get(nodeUuid);
-    if (self2) {
-      if (typeof self2.destroy === "function") {
-        self2.destroy();
-      }
-      Object.keys(self2).forEach((key) => {
-        delete self2[key];
-      });
-    }
-    this.selfObjects.delete(nodeUuid);
-    const handlers = this.eventHandlers.get(nodeUuid);
-    if (handlers) {
-      Object.keys(handlers).forEach((key) => {
-        delete handlers[key];
-      });
-    }
-    this.eventHandlers.delete(nodeUuid);
-    const subscriptions = this.eventSubscriptions.get(nodeUuid);
-    if (subscriptions) {
-      subscriptions.forEach((unsubscribe) => unsubscribe());
-    }
-    this.eventSubscriptions.delete(nodeUuid);
-  }
-  /**
-   * Cleanup all renderer resources
-   */
-  dispose() {
-    const nodeUuids = Array.from(this.renderedElements.keys());
-    nodeUuids.forEach((uuid) => this.disposeNode(uuid));
-    this.renderedElements.clear();
-    this.selfObjects.clear();
-    this.eventHandlers.clear();
-    this.eventSubscriptions.clear();
-  }
 };
 
 // libs/engine/src/template-library/integration.ts
