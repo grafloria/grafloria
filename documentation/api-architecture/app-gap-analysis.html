@@ -101,10 +101,10 @@
   </div>
   <div class="v">
     <h3>📐 draw.io / Visio</h3><div class="sub">stencils · connectors · pages · layers</div>
-    <div class="dist" style="color:var(--partial)">2–4 dev-months</div>
+    <div class="dist" style="color:var(--partial)">~2–3 dev-months</div>
     <div class="small">To a credible draw.io-lite.</div>
-    <div class="bar"><div class="fill" style="width:48%;background:var(--partial)"></div></div>
-    <div class="note">An outstanding diagramming <b>canvas</b>; not yet a diagramming <b>document engine</b>. ~60% of the work is <i>exposure</i>, not construction.</div>
+    <div class="bar"><div class="fill" style="width:56%;background:var(--partial)"></div></div>
+    <div class="note">An outstanding diagramming <b>canvas</b>; still not a diagramming <b>document engine</b> — but even more of the work is now <i>exposure</i>, not construction. <b>Re-verified 2026-07-25</b>: stencil registry, printing, templates &amp; in-place editing all moved (see the dated banner below §1).</div>
   </div>
   <div class="v">
     <h3>🎨 Figma-class</h3><div class="sub">vector · text · components · frames</div>
@@ -212,6 +212,18 @@ $ grep -c "Command" libs/element/src/index.ts
   <code>InPlaceTextEditor</code> wired only in the Angular wrapper (so <b>double-click-to-edit-text is unreachable</b> from the embed) ·
   <code>clampChildToExtent</code>, <code>getGlobalTransformMatrix</code>, <code>path-geometry</code> (a complete M/L/C/Q/Z kernel), <code>printDocument</code>, the whole template library (bundled into the embed's bytes, zero public exports) — all zero callers.
   <br><b>Mitigation that softens every verdict:</b> <code>getEngine()</code> is a total escape hatch and <code>@grafloria/engine</code> is a real peer dep — so "not exported" means <i>untyped and undocumented</i>, not impossible, except where code is genuinely never constructed.</p>
+</div>
+
+<div class="note" style="border:1px solid #d8c7b7;background:#fbf8f2;border-radius:10px;padding:14px 18px;margin:18px 0">
+  <b style="color:#b8860b">RE-VERIFICATION — the draw.io / Visio rows were audited against current <code>main</code> (2026-07-25).</b>
+  Four parallel audits re-checked all 16 rows by opening the referenced files. What has <b>moved since 2026-07-20</b> (rows marked ↑ in the 📐 tab):
+  <ul style="margin:8px 0 4px">
+    <li><b>Stencil registry is now real &amp; wired</b> — <code>TemplateRegistry</code> + a <code>NodeFactory</code> runtime + a 26-template <code>template-library/</code> registered through it, all reachable from <code>@grafloria/element</code>. Only the 80 <code>templates/generated/</code> masters stay orphaned, so this row drops <b>M → S</b>.</li>
+    <li><b>Printing → HAVE</b> and the <b>whole template stack → reachable</b> — the Phase-0 <code>export *</code> inversion made <code>printDocument</code> and the node-template library embed-reachable. <b>In-place text editing</b> is now embed-exported too (still auto-wired only in Angular).</li>
+    <li><b>Undo</b> gained <code>SetNodeStyleCommand</code> + node z-order commands (collab-wired, ~40 commands now); the <b>Mermaid DSL</b> went flowchart-only → 4 real types (flowchart/ER/class/state) with a fail-safe.</li>
+    <li><b>Still open — the genuine build:</b> pointer <b>drag-into-container doesn't reparent</b> (both membership services exist, unwired); <b>drag-time snap is off by default</b> (new <code>enableHelperLines</code> flag) and resize-snap is never passed; no <b>Align/Distribute</b> commands (the geometry is ready); no <b>Layers</b>, no <b>multi-page</b>, no <b>.drawio/.vsdx import</b>; shape-data schema is still Angular-only.</li>
+  </ul>
+  <b>Bottom line for a Visio-style stencil palette:</b> the three prioritised pillars — stencil libraries, categorized shapes, and snap/guides+align — are <b>~70% pre-built</b>. The net-new work is the palette UI + drag-to-place, wiring drop→reparent, and flipping/passing the snap hooks — not construction.
 </div>
 
 <h2>3 · Capability detail</h2>
@@ -347,22 +359,23 @@ const DATA = {
   ["Export dashboard (PNG/PDF) with widget content","MISSING","pdf-export.ts:522 drops foreignObject; raster.ts:88 drawImage can't paint HTML; warnings discarded svg-renderer.ts:1764","real rasterizer / headless","L",1],
   ["Theming across widgets","HAVE","token bridge; CSS vars inherit across the FO boundary","nothing","—",0]
  ],
+ // draw.io / Visio rows RE-VERIFIED against current main on 2026-07-25 (4 parallel audits). ↑ = moved since 2026-07-20.
  draw:[
-  ["Shape / stencil libraries","PARTIAL","NodeTemplate.ts:389 is a real Visio-master (geometry+ports+defaults+dataSchema); 80 masters imported by NOTHING; engine.templateRegistry documented but absent","own the registry on the engine; export stencil type+loader","M",1],
-  ["Connectors & routing","HAVE","7 routers + GlobalRouteSolver.ts:83 (libavoid-class); waypoint editing undoable; jump-overs; multi-label t-param; live reconnect","type the flags; name-export routing","S",0],
-  ["Layers","MISSING","no Layer/LayerModel anywhere; z-stack fixed; bringToFront only on GroupModel","LayerModel + per-layer lock/visibility + z commands","M",1],
-  ["Snapping / guides","PARTIAL","SnapController IS live (dom-event-binder.ts:1503); guides drawn; but off by default; resize snap param never passed","default-on; pass the resize hook","S",0],
-  ["Align / distribute operations","MISSING","zero AlignCommand/DistributeCommand hits; geometry already in SnapController","command layer over existing geometry","S",0],
-  ["Multi-page documents","MISSING","DocumentEnvelope.document is ONE SerializedDiagram; no pages[]","document container above DiagramModel + migration","M",1],
-  ["Containers / swimlanes","PARTIAL","nested containment, fitToContents, collapse commands all real — but GroupMembershipService never instantiated outside specs → drag-in doesn't reparent","wire membership into the binder","M",1],
-  ["Shape data / custom properties","PARTIAL","node.data syncs as per-key LWW registers (excellent); property-schema/ is types-only, zero runtime; working property sheet is Angular-only","runtime schema registry in core","M",0],
-  ["Interop (drawio/vsdx import)","MISSING","zero mxfile/vsdx/graphml/dot hits; DSL is flowchart-only, ~19 of 23 Mermaid types refused","a .drawio importer is the highest-leverage item","L",1],
-  ["Export (SVG/PNG/PDF)","HAVE","flattened CSS vars, inlined images, true vector multi-page PDF, editable round-trip artifact w/ checksum","nothing","—",0],
-  ["Text on shapes & in-place editing","PARTIAL","InPlaceTextEditor real+undoable but exported only from @grafloria/renderer and wired ONLY in Angular; node labels hard-centred; metrics = length×0.6 in two copies","export+wire; label placement; real metrics","M",1],
-  ["Printing / paper","PARTIAL","paginate() tiles w/ break snapping + bleed; multi-page vector PDF — but printDocument not exported from the embed","export printDocument; page rectangle","S",0],
-  ["Undo / clipboard","PARTIAL","33 commands, live-then-commit discipline — but no style/z-order/lock commands; clipboard in-memory only; TWO non-communicating undo systems","reconcile undo stacks; OS clipboard bridge","M",1],
-  ["Templates / starter documents","MISSING","zero template-library symbols in the 239 public exports — yet bundled into the embed's bytes","re-export","S",0],
-  ["Performance ceiling","HAVE","culling + spatial index + LOD + route memo + off-thread layout; 10k nodes: zoom-out 102ms, drag 61ms, pan 11ms","nothing urgent","—",0]
+  ["Shape / stencil libraries","PARTIAL","↑ TemplateRegistry.ts:14 is REAL + wired — NodeFactory.ts:29 consumes it at runtime; a 26-template template-library/ is registered via registerTemplateLibrary(); exposed as a renderer 'templates' capability; NodeTemplate (interface:389) carries geometry+ports+defaults+dataSchema. STILL open: templates/generated/ (80 BPMN/UML/ERD/flowchart masters) imported by nothing; engine.templateRegistry as a DiagramEngine property still absent","register the 80 generated masters into the pipeline; hang templateRegistry/nodeFactory off DiagramEngine","S",1],
+  ["Connectors & routing","HAVE","7 routers + GlobalRouteSolver.ts:83 (libavoid-class, worker host); waypoint editing undoable (SetLinkPointsCommand); jump-overs; multi-label t-param; live reconnect; ↑ LinkRouterName/LinkConnectorName now typed + name-exported","nothing","—",0],
+  ["Layers","MISSING","still no Layer/LayerModel entity, no per-layer visibility/lock — but the 'z-stack fixed' sub-claim is STALE: NodeModel now has zIndex + bringToFront/sendToBack (:1508) + SetNodeZIndexCommand, painter sorts on the model field","LayerModel (id/name/visible/locked/z-band) + membership + serialization","L",1],
+  ["Snapping / guides","PARTIAL","↑ SnapController wired lazily in the binder (dom-event-binder.ts:1515); guides computed+published (setSnapGuides); DEFAULT_SNAP_CONFIG.enabled now true. STILL: live drag-snap gated behind NEW enableHelperLines flag (InteractionConfig:390 default FALSE); resize-snap hook exists (selection-tools.ts:906) but the binder never passes it; single unparented nodes only","default enableHelperLines on; pass the resize hook; extend to multi-select","S–M",1],
+  ["Align / distribute operations","MISSING","still zero AlignCommand/DistributeCommand anywhere — but the geometry is ready: snapping.ts:345 bestAlignment (edge/centre) + :465 bestSpacing (equal-gap)","command layer (batch MoveNodeCommand) over the existing snapping geometry + toolbar action","S–M",0],
+  ["Multi-page documents","MISSING","PersistedDocument.ts:61 document is ONE SerializedDiagram; no pages[]/Workspace/activePage anywhere (only 'pages' in the tree is PDF output tiles)","document envelope with pages[] + active-page tracking + migration","L",1],
+  ["Containers / swimlanes","PARTIAL","nested containment/fit/collapse all real; SetParentCommand + KEYBOARD reparent (keyboard-navigation.ts:647) exist — but pointer drag-into-container STILL does NOT reparent: GroupMembershipService AND the new SemanticMembershipService are exported yet never instantiated in lib code; the binder's node-drop path emits no reparent command","wire binder drop→SetParentCommand via findGroupAtPoint (already present) gated by (Semantic)GroupMembershipService","M",1],
+  ["Shape data / custom properties","PARTIAL","node.data syncs as per-key LWW registers (excellent); renderer/types/property-schema/ is types-only (zero runtime exports); the working property sheet is Angular-only (extension-host.ts:15 flags it)","framework-agnostic runtime: schema registry + validation/condition evaluator writing to node.data","M",0],
+  ["Interop (drawio/vsdx import)","MISSING","still zero mxfile/vsdx/graphml/dot importers — but the DSL sub-claim is STALE: Mermaid now parses 4 real types (flowchart+er+class+state-v2) with a fail-safe (DSL.ts:192) + %%grafloria: channel, oracle-validated","a .drawio (mxGraph XML) importer is the highest-leverage item; then vsdx","L",1],
+  ["Export (SVG/PNG/PDF)","HAVE","flattened CSS vars, inlined images, true vector multi-page PDF w/ selectable text, editable round-trip artifact + DocumentEnvelope integrity checksum","nothing","—",0],
+  ["Text on shapes & in-place editing","PARTIAL","↑ reachability FIXED — InPlaceTextEditor now embed-exported (element index.ts:699 export *, locked by reachability.spec). STILL: auto-wired ONLY in Angular; binder onDoubleClick (:1230) emits an event, doesn't open the editor; labels hard-centred (svg-renderer.ts:5011); length×0.6 metric now duplicated in ~8 sites","wire binder dblclick→InPlaceTextEditor; configurable label align; centralize the 0.6 metric","M",1],
+  ["Printing / paper","HAVE","↑ paginate() (break snapping + bleed) exported (index.ts:182); printDocument now embed-reachable via export * (browser-only, steers Node to export('pdf')); multi-page vector PDF","optional: add printDocument to the curated Export block for discoverability","—",0],
+  ["Undo / clipboard","PARTIAL","↑ ~40 commands now; SetNodeStyleCommand + node z-order commands (SetNodeZIndex/BringToFront/SendToBack) ADDED and collab-wired. STILL: no lock command; clipboard in-memory only (ClipboardManager.ts:33); TWO non-communicating undo systems (CommandManager vs collab undo.ts)","SetNodeLockCommand (S); navigator.clipboard bridge (M); reconcile the two undo stacks (L)","M",1],
+  ["Templates / starter documents","HAVE","↑ the node-template stack (TemplateRegistry, registerTemplateLibrary, NodeTemplate, Common/Workflow/DataViz/ERDTemplates) is now reachable from @grafloria/element via export * — was 'zero public exports'. NB: still no blank/starter-DOCUMENT concept","add named re-exports for discoverability; a true 'starter documents' feature is separate","S",0],
+  ["Performance ceiling","HAVE","culling (host-culling.ts) + SpatialIndex + LOD governor (getLODLevel/shouldRender) + route memo (LRUCache) + off-thread layout.worker + QualityGovernor","optional: commit a recorded 10k-node benchmark baseline to regression-gate","—",0]
  ],
  figma:[
   ["Editable vector path entity","MISSING","no PathModel/VectorModel; StrokeModel is {x,y,pressure?} w/ wholesale setPoints only. canvas/path-geometry.ts is a COMPLETE path kernel no model consumes","new PathModel on the existing PathCmd union","L",1],
