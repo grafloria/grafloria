@@ -387,6 +387,10 @@ export const DEFAULT_INTERACTION_CONFIG: InteractionConfig = {
   enableGroupDrag: false,
   enableProximityConnect: false,
   proximityConnectRadius: 0, // 0 → fall back to DEFAULT_SNAP_CONFIG.proximityConnectRadius
+  // Kept opt-in at the library level: a global default-on regresses the drag
+  // covenant (the interaction gate's 1:1-move assumption — verified: it fails
+  // DRAG-ATTACH on contextual-zoom + LINK-SELECT-SPAN on layout-portfolio), and
+  // changes the feel for every embedder. The Visio editor surface enables it.
   enableHelperLines: false,
   enableEasyConnect: false,
   easyConnectModifier: 'none',
