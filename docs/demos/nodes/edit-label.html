@@ -1,0 +1,100 @@
+<meta charset="utf-8">
+<title>Edit label in place — Grafloria</title>
+<link rel="stylesheet" href="../shell/demo.css?v=drawer3">
+<header id="demo-head"></header>
+<div id="canvas"></div>
+<script type="module">
+import { render } from '../shell/grafloria.js';
+import { defineDemo, check } from '../shell/demo.js?v=drawer3';
+
+// T10/visio — double-click to rename. InPlaceTextEditor (session + undoable
+// commit) shipped in the renderer but was auto-wired ONLY in the Angular
+// wrapper: a vanilla / React / Vue embed got a `node:doubleclick` event and no
+// caret. The binder now opens the widget itself.
+defineDemo({
+  name: 'Edit label in place',
+  blurb: 'Double-click a node and type — the label edits in place, commits on Enter or blur as ONE undoable step, and Escape abandons the edit.',
+  howTo: [
+    'Double-click "draft" — a text box opens over the label with the text selected.',
+    'Type a new name and press Enter: the node keeps it. Press Ctrl/⌘+Z and the old label comes back — the rename is a real command, not a raw write.',
+    'Double-click again, type something, then press Escape: the edit is abandoned and the original label stays.',
+    'Double-click, then click empty canvas: blurring commits, the same as Enter.',
+    'Zoom in or pan first, then double-click: the editor still lands on the label — it is positioned through the live world→screen map, not the click point.',
+  ],
+  reactflow: null,
+
+  async setup(ctx) {
+    const api = render({
+      nodes: [
+        { id: 'a', position: { x: 260, y: 200 }, size: { width: 150, height: 60 }, label: 'draft' },
+        { id: 'b', position: { x: 520, y: 200 }, size: { width: 150, height: 60 }, label: 'review' },
+      ],
+      edges: [{ id: 'e1', source: 'a', target: 'b' }],
+    }, ctx.host);
+    ctx.instance = api;
+    ctx.diagram = api.getModel();
+    ctx.engine = api.getEngine();
+
+    // The gesture under test — opt-in, so a host with its own editor keeps control.
+    ctx.engine.setInteractionConfig({ enableInPlaceTextEdit: true });
+
+    api.renderNow();
+    await ctx.tick();
+  },
+
+  async assert(ctx) {
+    const api = ctx.instance, m = ctx.diagram;
+    const host = document.querySelector('svg.grafloria-diagram')?.closest('.grafloria-diagram-root')?.parentElement
+      || document.getElementById('canvas');
+    const raf2 = () => new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r)));
+
+    /** A real double-click on a node's centre, through the binder. */
+    const dblClickNode = async (id) => {
+      const n = m.getNode(id);
+      const c = api.viewport.worldToClient(
+        n.position.x + n.size.width / 2, n.position.y + n.size.height / 2, host.getBoundingClientRect());
+      host.dispatchEvent(new MouseEvent('dblclick', { clientX: c.x, clientY: c.y, bubbles: true, cancelable: true, button: 0 }));
+      await raf2();
+      return document.querySelector('input.grafloria-text-editor');
+    };
+    const key = (el, k) => el.dispatchEvent(new KeyboardEvent('keydown', { key: k, bubbles: true, cancelable: true }));
+
+    check(m.getNode('a').getLabel() === 'draft', 'fixture changed: node a should start as "draft"');
+
+    // 1. THE TEETH — a double-click opens a real editor over the label, seeded
+    //    with the current text.
+    let input = await dblClickNode('a');
+    check(!!input, 'double-click did not open an in-place editor');
+    check(input.value === 'draft', `editor should open with the current label, got "${input.value}"`);
+
+    // 2. Enter COMMITS, and the commit is undoable.
+    input.value = 'approved';
+    key(input, 'Enter');
+    await raf2();
+    check(m.getNode('a').getLabel() === 'approved', `Enter did not commit the rename (label = "${m.getNode('a').getLabel()}")`);
+    check(!document.querySelector('input.grafloria-text-editor'), 'the editor stayed open after Enter');
+    await ctx.engine.commandManager.undo();
+    check(m.getNode('a').getLabel() === 'draft', 'undo did not restore the original label — the rename was not a command');
+    await ctx.engine.commandManager.redo();
+    check(m.getNode('a').getLabel() === 'approved', 'redo did not re-apply the rename');
+
+    // 3. Escape ABANDONS — the label must not change.
+    input = await dblClickNode('a');
+    check(!!input, 'the editor did not reopen');
+    input.value = 'discard me';
+    key(input, 'Escape');
+    await raf2();
+    check(m.getNode('a').getLabel() === 'approved', 'Escape must not change the label');
+    check(!document.querySelector('input.grafloria-text-editor'), 'Escape left the editor open');
+
+    // 4. Blur commits (the same path a click-away takes).
+    input = await dblClickNode('b');
+    input.value = 'signed off';
+    input.dispatchEvent(new FocusEvent('blur', { bubbles: false }));
+    await raf2();
+    check(m.getNode('b').getLabel() === 'signed off', `blur did not commit (label = "${m.getNode('b').getLabel()}")`);
+
+    api.renderNow();
+  },
+});
+</script>

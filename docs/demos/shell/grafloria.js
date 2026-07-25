@@ -116714,6 +116714,200 @@ var SendNodeToBackCommand = class extends NodeZOrderCommand {
   }
 };
 
+// libs/engine/src/commands/basic/SetNodeDataCommand.ts
+var ABSENT = Symbol("absent");
+var SetNodeDataCommand = class extends Command {
+  constructor(nodeId, data2) {
+    super("Set Shape Data");
+    this.data = data2;
+    this.nodeIds = typeof nodeId === "string" ? [nodeId] : [...nodeId];
+  }
+  execute(context) {
+    const diagram = context.diagram;
+    if (!diagram) throw new Error("Diagram not found in context");
+    const nodes = this.nodeIds.map((id) => {
+      const n3 = diagram.getNode(id);
+      if (!n3) throw new Error(`Node ${id} not found`);
+      return n3;
+    });
+    this.previous = new Map(
+      nodes.map((n3) => {
+        const before = /* @__PURE__ */ new Map();
+        for (const key of Object.keys(this.data)) {
+          const has = n3.data && Object.prototype.hasOwnProperty.call(n3.data, key);
+          before.set(key, has ? n3.getData(key) : ABSENT);
+        }
+        return [n3.id, before];
+      })
+    );
+    for (const n3 of nodes) {
+      for (const [key, value] of Object.entries(this.data)) n3.setData(key, value);
+    }
+  }
+  undo(context) {
+    const diagram = context.diagram;
+    if (!diagram || !this.previous) throw new Error("Cannot undo: missing diagram or snapshot");
+    for (const [id, before] of this.previous) {
+      const node = diagram.getNode(id);
+      if (!node) continue;
+      for (const [key, value] of before) {
+        if (value === ABSENT) {
+          if (node.data) delete node.data[key];
+        } else {
+          node.setData(key, value);
+        }
+      }
+    }
+  }
+  canExecute(context) {
+    return !!context.diagram && this.nodeIds.length > 0 && Object.keys(this.data).length > 0;
+  }
+  canUndo(context) {
+    return !!context.diagram && !!this.previous;
+  }
+  serialize() {
+    return {
+      id: this.id,
+      name: this.name,
+      timestamp: this.timestamp,
+      data: { nodeIds: this.nodeIds, data: this.data }
+    };
+  }
+  getDescription() {
+    const keys = Object.keys(this.data);
+    return `Set ${keys.length === 1 ? keys[0] : `${keys.length} fields`} on ${this.nodeIds.length} node(s)`;
+  }
+};
+
+// libs/engine/src/commands/basic/AlignCommands.ts
+var MultiNodeArrangeCommand = class extends Command {
+  constructor(name, nodeIds) {
+    super(name);
+    this.nodeIds = nodeIds;
+    this.before = /* @__PURE__ */ new Map();
+  }
+  /** Minimum node count for the op to mean anything (align: 2, distribute: 3). */
+  minNodes() {
+    return 2;
+  }
+  liveNodes(context) {
+    const diagram = context.diagram;
+    if (!diagram) throw new Error("Diagram not found in context");
+    return this.nodeIds.map((id) => diagram.getNode(id)).filter((n3) => !!n3 && !n3.state.locked);
+  }
+  execute(context) {
+    const nodes = this.liveNodes(context);
+    if (this.before.size === 0) {
+      for (const n3 of nodes) this.before.set(n3.id, { x: n3.position.x, y: n3.position.y });
+    }
+    const targets = this.targets(nodes);
+    for (const n3 of nodes) {
+      const t = targets.get(n3.id);
+      if (t) n3.setPosition(t.x, t.y);
+    }
+  }
+  undo(context) {
+    const diagram = context.diagram;
+    if (!diagram) throw new Error("Diagram not found in context");
+    for (const [id, p] of this.before) {
+      const n3 = diagram.getNode(id);
+      if (n3) n3.setPosition(p.x, p.y);
+    }
+  }
+  canExecute(context) {
+    return !!context.diagram && this.nodeIds.length >= this.minNodes();
+  }
+  canUndo(context) {
+    return !!context.diagram && this.before.size > 0;
+  }
+  serialize() {
+    return { id: this.id, name: this.name, timestamp: this.timestamp, data: { nodeIds: this.nodeIds } };
+  }
+};
+var AlignCommand = class extends MultiNodeArrangeCommand {
+  constructor(nodeIds, edge) {
+    super(`Align ${edge}`, nodeIds);
+    this.edge = edge;
+  }
+  targets(nodes) {
+    const map = /* @__PURE__ */ new Map();
+    if (nodes.length < 2) return map;
+    const b = nodes.map((n3) => ({
+      id: n3.id,
+      x: n3.position.x,
+      y: n3.position.y,
+      w: n3.size.width,
+      h: n3.size.height
+    }));
+    const minL = Math.min(...b.map((n3) => n3.x));
+    const maxR = Math.max(...b.map((n3) => n3.x + n3.w));
+    const minT = Math.min(...b.map((n3) => n3.y));
+    const maxB = Math.max(...b.map((n3) => n3.y + n3.h));
+    for (const n3 of b) {
+      switch (this.edge) {
+        case "left":
+          map.set(n3.id, { x: minL, y: n3.y });
+          break;
+        case "right":
+          map.set(n3.id, { x: maxR - n3.w, y: n3.y });
+          break;
+        case "top":
+          map.set(n3.id, { x: n3.x, y: minT });
+          break;
+        case "bottom":
+          map.set(n3.id, { x: n3.x, y: maxB - n3.h });
+          break;
+        case "center-x":
+          map.set(n3.id, { x: (minL + maxR) / 2 - n3.w / 2, y: n3.y });
+          break;
+        case "center-y":
+          map.set(n3.id, { x: n3.x, y: (minT + maxB) / 2 - n3.h / 2 });
+          break;
+      }
+    }
+    return map;
+  }
+  getDescription() {
+    return `Align ${this.edge} (${this.nodeIds.length} nodes)`;
+  }
+};
+var DistributeCommand = class extends MultiNodeArrangeCommand {
+  constructor(nodeIds, axis) {
+    super(`Distribute ${axis}`, nodeIds);
+    this.axis = axis;
+  }
+  minNodes() {
+    return 3;
+  }
+  targets(nodes) {
+    const map = /* @__PURE__ */ new Map();
+    if (nodes.length < 3) return map;
+    const horiz = this.axis === "horizontal";
+    const b = nodes.map((n3) => ({
+      id: n3.id,
+      x: n3.position.x,
+      y: n3.position.y,
+      pos: horiz ? n3.position.x : n3.position.y,
+      size: horiz ? n3.size.width : n3.size.height
+    })).sort((p, q) => p.pos - q.pos);
+    const first = b[0];
+    const last = b[b.length - 1];
+    const span = last.pos + last.size - first.pos;
+    const totalSize = b.reduce((s, n3) => s + n3.size, 0);
+    const gap = (span - totalSize) / (b.length - 1);
+    let cursor = first.pos + first.size + gap;
+    for (let i = 1; i < b.length - 1; i++) {
+      const n3 = b[i];
+      map.set(n3.id, horiz ? { x: cursor, y: n3.y } : { x: n3.x, y: cursor });
+      cursor += n3.size + gap;
+    }
+    return map;
+  }
+  getDescription() {
+    return `Distribute ${this.axis} (${this.nodeIds.length} nodes)`;
+  }
+};
+
 // libs/engine/src/plugins/PluginManager.ts
 var PluginManager = class {
   constructor(engine, eventBus, config = {}) {
@@ -119864,7 +120058,13 @@ var DEFAULT_INTERACTION_CONFIG = {
   enableProximityConnect: false,
   proximityConnectRadius: 0,
   // 0 → fall back to DEFAULT_SNAP_CONFIG.proximityConnectRadius
+  // Kept opt-in at the library level: a global default-on regresses the drag
+  // covenant (the interaction gate's 1:1-move assumption — verified: it fails
+  // DRAG-ATTACH on contextual-zoom + LINK-SELECT-SPAN on layout-portfolio), and
+  // changes the feel for every embedder. The Visio editor surface enables it.
   enableHelperLines: false,
+  enableGroupMembershipOnDrop: false,
+  enableInPlaceTextEdit: false,
   enableEasyConnect: false,
   easyConnectModifier: "none"
 };
@@ -119884,6 +120084,118 @@ var SMART_MODE_CONFIG = {
   portHoverScaleFactor: 1.5,
   enableSmartAutoConnect: true,
   highlightValidTargets: true
+};
+
+// libs/engine/src/templates/TemplateRegistry.ts
+var TemplateRegistry = class {
+  constructor(eventBus) {
+    this.eventBus = eventBus;
+    this.templates = /* @__PURE__ */ new Map();
+    this.validators = /* @__PURE__ */ new Map();
+  }
+  /**
+   * Register a template
+   */
+  register(template) {
+    this.templates.set(template.id, template);
+    this.eventBus.emit("template:registered", { template });
+  }
+  /**
+   * Register multiple templates
+   */
+  registerMany(templates) {
+    templates.forEach((t) => this.register(t));
+  }
+  /**
+   * Unregister a template
+   * @returns true if template was removed, false if it didn't exist
+   */
+  unregister(templateId) {
+    const template = this.templates.get(templateId);
+    if (template) {
+      this.templates.delete(templateId);
+      this.eventBus.emit("template:unregistered", { template });
+      return true;
+    }
+    return false;
+  }
+  /**
+   * Get template by ID
+   */
+  get(id) {
+    return this.templates.get(id);
+  }
+  /**
+   * Get all registered templates
+   */
+  getAll() {
+    return Array.from(this.templates.values());
+  }
+  /**
+   * Get templates by category
+   */
+  getByCategory(category) {
+    return this.getAll().filter((t) => t.meta.category === category);
+  }
+  /**
+   * Search templates by name, description, or tags
+   */
+  search(query) {
+    const lowerQuery = query.toLowerCase();
+    return this.getAll().filter((t) => {
+      if (t.meta.name.toLowerCase().includes(lowerQuery)) {
+        return true;
+      }
+      if (t.meta.description?.toLowerCase().includes(lowerQuery)) {
+        return true;
+      }
+      if (t.meta.tags?.some((tag) => tag.toLowerCase().includes(lowerQuery))) {
+        return true;
+      }
+      return false;
+    });
+  }
+  /**
+   * Get all unique categories (sorted)
+   */
+  getCategories() {
+    const categories = /* @__PURE__ */ new Set();
+    this.getAll().forEach((t) => categories.add(t.meta.category));
+    return Array.from(categories).sort();
+  }
+  /**
+   * Check if template exists
+   */
+  has(templateId) {
+    return this.templates.has(templateId);
+  }
+  /**
+   * Get template count
+   */
+  count() {
+    return this.templates.size;
+  }
+  /**
+   * Clear all templates
+   */
+  clear() {
+    this.templates.clear();
+    this.eventBus.emit("templates:cleared", {
+      timestamp: Date.now()
+    });
+  }
+  /**
+   * Register custom connection validator
+   */
+  registerValidator(id, validator) {
+    this.validators.set(id, validator);
+  }
+  /**
+   * Get connection validator
+   */
+  getValidator(id) {
+    return this.validators.get(id);
+  }
 };
 
 // libs/engine/src/serialization/DocumentEnvelope.ts
@@ -131223,7 +131535,7 @@ function stripNonClonable(options) {
 // libs/engine/src/engine/DiagramEngine.ts
 var DiagramEngine = class {
   constructor(config = {}) {
-    // Routing system for link paths
+    // Shape "masters" for stencils / the palette
     // Phase 0.2: Live rerouting engine
     this.liveReroutingEngine = null;
     // Current diagram
@@ -131245,6 +131557,7 @@ var DiagramEngine = class {
     this.config = config;
     this.eventBus = new EventBus();
     this.store = new DiagramStore();
+    this.templateRegistry = new TemplateRegistry(this.eventBus);
     this.interactionConfig = {
       ...DEFAULT_INTERACTION_CONFIG,
       ...config.interaction
@@ -140047,118 +140360,6 @@ var TemplateLoader = class {
   }
 };
 
-// libs/engine/src/templates/TemplateRegistry.ts
-var TemplateRegistry = class {
-  constructor(eventBus) {
-    this.eventBus = eventBus;
-    this.templates = /* @__PURE__ */ new Map();
-    this.validators = /* @__PURE__ */ new Map();
-  }
-  /**
-   * Register a template
-   */
-  register(template) {
-    this.templates.set(template.id, template);
-    this.eventBus.emit("template:registered", { template });
-  }
-  /**
-   * Register multiple templates
-   */
-  registerMany(templates) {
-    templates.forEach((t) => this.register(t));
-  }
-  /**
-   * Unregister a template
-   * @returns true if template was removed, false if it didn't exist
-   */
-  unregister(templateId) {
-    const template = this.templates.get(templateId);
-    if (template) {
-      this.templates.delete(templateId);
-      this.eventBus.emit("template:unregistered", { template });
-      return true;
-    }
-    return false;
-  }
-  /**
-   * Get template by ID
-   */
-  get(id) {
-    return this.templates.get(id);
-  }
-  /**
-   * Get all registered templates
-   */
-  getAll() {
-    return Array.from(this.templates.values());
-  }
-  /**
-   * Get templates by category
-   */
-  getByCategory(category) {
-    return this.getAll().filter((t) => t.meta.category === category);
-  }
-  /**
-   * Search templates by name, description, or tags
-   */
-  search(query) {
-    const lowerQuery = query.toLowerCase();
-    return this.getAll().filter((t) => {
-      if (t.meta.name.toLowerCase().includes(lowerQuery)) {
-        return true;
-      }
-      if (t.meta.description?.toLowerCase().includes(lowerQuery)) {
-        return true;
-      }
-      if (t.meta.tags?.some((tag) => tag.toLowerCase().includes(lowerQuery))) {
-        return true;
-      }
-      return false;
-    });
-  }
-  /**
-   * Get all unique categories (sorted)
-   */
-  getCategories() {
-    const categories = /* @__PURE__ */ new Set();
-    this.getAll().forEach((t) => categories.add(t.meta.category));
-    return Array.from(categories).sort();
-  }
-  /**
-   * Check if template exists
-   */
-  has(templateId) {
-    return this.templates.has(templateId);
-  }
-  /**
-   * Get template count
-   */
-  count() {
-    return this.templates.size;
-  }
-  /**
-   * Clear all templates
-   */
-  clear() {
-    this.templates.clear();
-    this.eventBus.emit("templates:cleared", {
-      timestamp: Date.now()
-    });
-  }
-  /**
-   * Register custom connection validator
-   */
-  registerValidator(id, validator) {
-    this.validators.set(id, validator);
-  }
-  /**
-   * Get connection validator
-   */
-  getValidator(id) {
-    return this.validators.get(id);
-  }
-};
-
 // libs/engine/src/templates/NodeFactory.ts
 var NodeFactory = class {
   constructor(templateRegistry, diagram) {
@@ -140522,573 +140723,10310 @@ var NodeFactory = class {
   }
 };
 
-// libs/engine/src/rendering/HtmlTemplateRenderer.ts
-var HtmlTemplateRenderer = class {
-  constructor(eventBus) {
-    this.eventBus = eventBus;
-    /**
-     * Track event handlers by node UUID for cleanup
-     */
-    this.eventHandlers = /* @__PURE__ */ new Map();
-    /**
-     * Track rendered results by node UUID for cleanup
-     */
-    this.renderResults = /* @__PURE__ */ new Map();
-  }
-  /**
-   * Render HTML configuration to result
-   * @param config - HTML configuration from template
-   * @param node - Node model with data
-   * @returns Render result with HTML, bindings, and event handlers
-   */
-  render(config, node) {
-    this.disposeNode(node.uuid);
-    const mode = this.determineMode(config);
-    const result = {
-      mode,
-      eventHandlers: {},
-      bindings: {},
-      pointerEvents: config.pointerEvents !== false,
-      // Default true
-      zIndex: config.zIndex,
-      className: this.buildClassName(config.className),
-      style: config.style,
-      nodeId: node.id,
-      nodeUuid: node.uuid
-    };
-    if (mode === "component") {
-      return this.renderComponentMode(config, result);
-    } else {
-      return this.renderTemplateMode(config, node, result);
-    }
-  }
-  /**
-   * Determine rendering mode from config
-   */
-  determineMode(config) {
-    if (config.mode) {
-      return config.mode;
-    }
-    if (config.template) {
-      return "template";
-    }
-    if (config.component) {
-      return "component";
-    }
-    throw new Error("HtmlConfig must specify either template or component");
-  }
-  /**
-   * Render component mode (pass-through)
-   */
-  renderComponentMode(config, result) {
-    if (!config.component) {
-      throw new Error("Component mode requires component property");
-    }
-    result.componentRef = config.component;
-    return result;
-  }
-  /**
-   * Render template mode with LemonadeJS
-   */
-  renderTemplateMode(config, node, result) {
-    if (!config.template) {
-      throw new Error("Template mode requires template property");
-    }
-    result.bindings = this.resolveBindings(config, node);
-    if (config.events) {
-      result.eventHandlers = this.createEventHandlers(config.events, node);
-    }
-    result.html = this.renderTemplate(config.template, result.bindings, result);
-    this.renderResults.set(node.uuid, result);
-    if (Object.keys(result.eventHandlers).length > 0) {
-      this.eventHandlers.set(node.uuid, result.eventHandlers);
-    }
-    return result;
-  }
-  /**
-   * Resolve data bindings from node data
-   */
-  resolveBindings(config, node) {
-    const bindings3 = {};
-    bindings3["data"] = node.data || {};
-    bindings3["nodeId"] = node.id;
-    bindings3["nodeUuid"] = node.uuid;
-    if (config.bindings) {
-      for (const [key, path] of Object.entries(config.bindings)) {
-        bindings3[key] = this.getValueByPath(node, path);
+// libs/engine/src/templates/generated/index.ts
+var generated_exports = {};
+__export(generated_exports, {
+  bpmnBusinessRuleTaskTemplate: () => bpmnBusinessRuleTaskTemplate,
+  bpmnEndEventTemplate: () => bpmnEndEventTemplate,
+  bpmnErrorEventTemplate: () => bpmnErrorEventTemplate,
+  bpmnExclusiveGatewayTemplate: () => bpmnExclusiveGatewayTemplate,
+  bpmnInclusiveGatewayTemplate: () => bpmnInclusiveGatewayTemplate,
+  bpmnIntermediateEventTemplate: () => bpmnIntermediateEventTemplate,
+  bpmnManualTaskTemplate: () => bpmnManualTaskTemplate,
+  bpmnMessageEventTemplate: () => bpmnMessageEventTemplate,
+  bpmnParallelGatewayTemplate: () => bpmnParallelGatewayTemplate,
+  bpmnScriptTaskTemplate: () => bpmnScriptTaskTemplate,
+  bpmnServiceTaskTemplate: () => bpmnServiceTaskTemplate,
+  bpmnStartEventTemplate: () => bpmnStartEventTemplate,
+  bpmnTaskTemplate: () => bpmnTaskTemplate,
+  bpmnTimerEventTemplate: () => bpmnTimerEventTemplate,
+  bpmnUserTaskTemplate: () => bpmnUserTaskTemplate,
+  erdAssociativeEntityTemplate: () => erdAssociativeEntityTemplate,
+  erdAttributeTemplate: () => erdAttributeTemplate,
+  erdBridgeEntityTemplate: () => erdBridgeEntityTemplate,
+  erdCompositeAttributeTemplate: () => erdCompositeAttributeTemplate,
+  erdDerivedAttributeTemplate: () => erdDerivedAttributeTemplate,
+  erdDiscriminatorTemplate: () => erdDiscriminatorTemplate,
+  erdEntityTemplate: () => erdEntityTemplate,
+  erdIsaTemplate: () => erdIsaTemplate,
+  erdKeyAttributeTemplate: () => erdKeyAttributeTemplate,
+  erdMultivaluedAttributeTemplate: () => erdMultivaluedAttributeTemplate,
+  erdOptionalAttributeTemplate: () => erdOptionalAttributeTemplate,
+  erdPartialKeyTemplate: () => erdPartialKeyTemplate,
+  erdRelationshipTemplate: () => erdRelationshipTemplate,
+  erdSubtypeTemplate: () => erdSubtypeTemplate,
+  erdSupertypeTemplate: () => erdSupertypeTemplate,
+  erdTableTemplate: () => erdTableTemplate,
+  erdViewTemplate: () => erdViewTemplate,
+  erdWeakEntityTemplate: () => erdWeakEntityTemplate,
+  erdWeakRelationshipTemplate: () => erdWeakRelationshipTemplate,
+  flowchartConnectorTemplate: () => flowchartConnectorTemplate,
+  flowchartDataTemplate: () => flowchartDataTemplate,
+  flowchartDecisionTemplate: () => flowchartDecisionTemplate,
+  flowchartDelayTemplate: () => flowchartDelayTemplate,
+  flowchartDisplayTemplate: () => flowchartDisplayTemplate,
+  flowchartDocumentTemplate: () => flowchartDocumentTemplate,
+  flowchartManualInputTemplate: () => flowchartManualInputTemplate,
+  flowchartManualOperationTemplate: () => flowchartManualOperationTemplate,
+  flowchartMergeTemplate: () => flowchartMergeTemplate,
+  flowchartOrTemplate: () => flowchartOrTemplate,
+  flowchartPredefinedProcessTemplate: () => flowchartPredefinedProcessTemplate,
+  flowchartPreparationTemplate: () => flowchartPreparationTemplate,
+  flowchartProcessTemplate: () => flowchartProcessTemplate,
+  flowchartStoredDataTemplate: () => flowchartStoredDataTemplate,
+  flowchartSummingJunctionTemplate: () => flowchartSummingJunctionTemplate,
+  flowchartTerminalTemplate: () => flowchartTerminalTemplate,
+  umlAbstractClassTemplate: () => umlAbstractClassTemplate,
+  umlActivationTemplate: () => umlActivationTemplate,
+  umlActivityPartitionTemplate: () => umlActivityPartitionTemplate,
+  umlActivityTemplate: () => umlActivityTemplate,
+  umlActorTemplate: () => umlActorTemplate,
+  umlClassTemplate: () => umlClassTemplate,
+  umlCollaborationTemplate: () => umlCollaborationTemplate,
+  umlComponentTemplate: () => umlComponentTemplate,
+  umlDatatypeTemplate: () => umlDatatypeTemplate,
+  umlDecisionTemplate: () => umlDecisionTemplate,
+  umlEnumTemplate: () => umlEnumTemplate,
+  umlFinalNodeTemplate: () => umlFinalNodeTemplate,
+  umlFinalStateTemplate: () => umlFinalStateTemplate,
+  umlForkTemplate: () => umlForkTemplate,
+  umlInitialNodeTemplate: () => umlInitialNodeTemplate,
+  umlInitialStateTemplate: () => umlInitialStateTemplate,
+  umlInterfaceTemplate: () => umlInterfaceTemplate,
+  umlJoinTemplate: () => umlJoinTemplate,
+  umlLifelineTemplate: () => umlLifelineTemplate,
+  umlMergeTemplate: () => umlMergeTemplate,
+  umlNodeTemplate: () => umlNodeTemplate,
+  umlNoteTemplate: () => umlNoteTemplate,
+  umlObjectTemplate: () => umlObjectTemplate,
+  umlPackageTemplate: () => umlPackageTemplate,
+  umlPartTemplate: () => umlPartTemplate,
+  umlPortTemplate: () => umlPortTemplate,
+  umlPrimitiveTypeTemplate: () => umlPrimitiveTypeTemplate,
+  umlSignalTemplate: () => umlSignalTemplate,
+  umlStateTemplate: () => umlStateTemplate,
+  umlUseCaseTemplate: () => umlUseCaseTemplate
+});
+
+// libs/engine/src/templates/generated/bpmn/index.ts
+var bpmn_exports = {};
+__export(bpmn_exports, {
+  bpmnBusinessRuleTaskTemplate: () => bpmnBusinessRuleTaskTemplate,
+  bpmnEndEventTemplate: () => bpmnEndEventTemplate,
+  bpmnErrorEventTemplate: () => bpmnErrorEventTemplate,
+  bpmnExclusiveGatewayTemplate: () => bpmnExclusiveGatewayTemplate,
+  bpmnInclusiveGatewayTemplate: () => bpmnInclusiveGatewayTemplate,
+  bpmnIntermediateEventTemplate: () => bpmnIntermediateEventTemplate,
+  bpmnManualTaskTemplate: () => bpmnManualTaskTemplate,
+  bpmnMessageEventTemplate: () => bpmnMessageEventTemplate,
+  bpmnParallelGatewayTemplate: () => bpmnParallelGatewayTemplate,
+  bpmnScriptTaskTemplate: () => bpmnScriptTaskTemplate,
+  bpmnServiceTaskTemplate: () => bpmnServiceTaskTemplate,
+  bpmnStartEventTemplate: () => bpmnStartEventTemplate,
+  bpmnTaskTemplate: () => bpmnTaskTemplate,
+  bpmnTimerEventTemplate: () => bpmnTimerEventTemplate,
+  bpmnUserTaskTemplate: () => bpmnUserTaskTemplate
+});
+
+// libs/engine/src/templates/generated/bpmn/bpmn-task.template.ts
+var bpmnTaskTemplate = {
+  "id": "bpmn-task",
+  "version": "1.0.0",
+  "meta": {
+    "name": "Task",
+    "description": "A generic task or activity",
+    "category": "workflow",
+    "tags": [
+      "activity",
+      "task",
+      "work",
+      "bpmn"
+    ],
+    "author": "Auto-Generated"
+  },
+  "structure": {
+    "type": "bpmn:task",
+    "size": {
+      "width": 120,
+      "height": 80,
+      "minWidth": 80,
+      "maxWidth": 300,
+      "minHeight": 60,
+      "maxHeight": 200
+    },
+    "shape": {
+      "type": "rect",
+      "fill": "#FFFFFF",
+      "stroke": "#000000",
+      "strokeWidth": 2,
+      "opacity": 1,
+      "cornerRadius": 8
+    },
+    "html": {
+      "mode": "template",
+      "template": `<div class="bpmn-task-content">
+          <div class="node-label">{{data.label || 'Task'}}</div>
+        </div>`,
+      "className": "bpmn-task",
+      "style": {
+        "display": "flex",
+        "alignItems": "center",
+        "justifyContent": "center",
+        "padding": "8px",
+        "fontFamily": "Arial, sans-serif",
+        "fontSize": "14px",
+        "textAlign": "center",
+        "wordBreak": "break-word"
       }
-    }
-    return bindings3;
-  }
-  /**
-   * Get value from node by path (e.g., 'data.user.name')
-   */
-  getValueByPath(node, path) {
-    const parts = path.split(".");
-    let value = node;
-    for (const part of parts) {
-      if (value == null) {
-        return void 0;
-      }
-      value = value[part];
-    }
-    return value;
-  }
-  /**
-   * Create event handlers that emit to EventBus
-   */
-  createEventHandlers(events, node) {
-    const handlers = {};
-    for (const [domEvent, engineEvent] of Object.entries(events)) {
-      handlers[domEvent] = (event) => {
-        this.eventBus.emit(engineEvent, {
-          nodeId: node.id,
-          nodeUuid: node.uuid,
-          nodeData: node.data,
-          event,
-          domEventType: domEvent
-        });
-      };
-    }
-    return handlers;
-  }
-  /**
-   * Render template with bindings (simplified LemonadeJS-style)
-   * In production, this would use actual LemonadeJS library
-   *
-   * Phase 3.4: Simple template rendering for testing
-   * Real implementation will use LemonadeJS when package is available
-   */
-  renderTemplate(template, bindings3, result) {
-    let html = template;
-    html = html.replace(/\{\{([^}]+)\}\}/g, (match, expression) => {
-      const value = this.evaluateExpression(expression.trim(), bindings3);
-      return value != null ? String(value) : "";
-    });
-    const containerAttrs = [];
-    if (result.className) {
-      containerAttrs.push(`class="${result.className}"`);
-    }
-    if (result.style) {
-      const styleStr = Object.entries(result.style).map(([key, value]) => `${this.camelToKebab(key)}: ${value}`).join("; ");
-      containerAttrs.push(`style="${styleStr}"`);
-    }
-    if (result.pointerEvents === false) {
-      containerAttrs.push('style="pointer-events: none"');
-    }
-    if (result.zIndex !== void 0) {
-      const existingStyle = containerAttrs.find((attr) => attr.startsWith("style="));
-      if (existingStyle) {
-        containerAttrs[containerAttrs.indexOf(existingStyle)] = existingStyle.replace(
-          '"',
-          `"z-index: ${result.zIndex}; `
-        );
-      } else {
-        containerAttrs.push(`style="z-index: ${result.zIndex}"`);
-      }
-    }
-    if (containerAttrs.length > 0) {
-      html = `<div ${containerAttrs.join(" ")}>${html}</div>`;
-    }
-    return html;
-  }
-  /**
-   * Evaluate expression in binding context
-   */
-  evaluateExpression(expression, bindings3) {
-    try {
-      const parts = expression.split(".");
-      let value = bindings3;
-      for (const part of parts) {
-        if (value == null) {
-          return void 0;
+    },
+    "ports": {
+      "enabled": true,
+      "defaultVisibility": "on-hover",
+      "rendering": {
+        "mode": "svg",
+        "size": {
+          "width": 8,
+          "height": 8,
+          "hoverScale": 1.5
+        },
+        "svg": {
+          "shape": "circle",
+          "fill": "#1976D2",
+          "stroke": "#FFFFFF",
+          "strokeWidth": 2
         }
-        value = value[part];
+      },
+      "left": {
+        "enabled": true,
+        "type": "input",
+        "maxConnections": void 0
+      },
+      "right": {
+        "enabled": true,
+        "type": "output",
+        "maxConnections": void 0
+      },
+      "top": {
+        "enabled": true,
+        "type": "bi",
+        "maxConnections": void 0
+      },
+      "bottom": {
+        "enabled": true,
+        "type": "bi",
+        "maxConnections": void 0
       }
-      return value;
-    } catch (error) {
-      this.eventBus.emit("renderer:warning", {
-        message: "Failed to evaluate expression",
-        expression,
-        error,
-        phase: "expression-evaluation",
-        renderer: "HtmlTemplateRenderer"
-      });
-      return void 0;
+    },
+    "behavior": {
+      "draggable": true,
+      "selectable": true,
+      "connectable": true,
+      "resizable": true,
+      "deletable": true
     }
-  }
-  /**
-   * Build className string from config
-   */
-  buildClassName(className) {
-    if (!className) {
-      return void 0;
-    }
-    if (Array.isArray(className)) {
-      return className.join(" ");
-    }
-    return className;
-  }
-  /**
-   * Convert camelCase to kebab-case for CSS properties
-   */
-  camelToKebab(str) {
-    return str.replace(/([a-z0-9])([A-Z])/g, "$1-$2").toLowerCase();
-  }
-  /**
-   * Dispose resources for a specific node
-   * @param nodeUuid - UUID of node to clean up
-   */
-  disposeNode(nodeUuid) {
-    const handlers = this.eventHandlers.get(nodeUuid);
-    if (handlers) {
-      Object.keys(handlers).forEach((key) => {
-        delete handlers[key];
-      });
-    }
-    this.eventHandlers.delete(nodeUuid);
-    const result = this.renderResults.get(nodeUuid);
-    if (result) {
-      if (result.bindings) {
-        Object.keys(result.bindings).forEach((key) => {
-          delete result.bindings[key];
-        });
+  },
+  "defaultData": {
+    "label": "Task"
+  },
+  "dataSchema": {
+    "type": "object",
+    "properties": {
+      "label": {
+        "type": "string",
+        "default": "Task"
+      },
+      "taskType": {
+        "type": "string",
+        "enum": [
+          "task",
+          "user",
+          "service",
+          "manual",
+          "script",
+          "business-rule"
+        ]
+      },
+      "assignee": {
+        "type": "string"
+      },
+      "candidateGroups": {
+        "type": "array",
+        "items": {
+          "type": "string"
+        }
+      },
+      "dueDate": {
+        "type": "string",
+        "format": "date-time"
+      },
+      "priority": {
+        "type": "number",
+        "minimum": 0,
+        "maximum": 10
       }
-      if (result.eventHandlers) {
-        Object.keys(result.eventHandlers).forEach((key) => {
-          delete result.eventHandlers[key];
-        });
-      }
-    }
-    this.renderResults.delete(nodeUuid);
-  }
-  /**
-   * Cleanup all renderer resources
-   */
-  dispose() {
-    const nodeUuids = Array.from(this.renderResults.keys());
-    nodeUuids.forEach((uuid) => this.disposeNode(uuid));
-    this.eventHandlers.clear();
-    this.renderResults.clear();
+    },
+    "required": [
+      "label"
+    ]
   }
 };
 
-// libs/engine/src/rendering/LemonadeJSRenderer.ts
-var lemonade = __toESM(require_lemonade());
-var LemonadeJSRenderer = class {
-  constructor(eventBus) {
-    this.eventBus = eventBus;
-    /**
-     * Track rendered elements by node UUID for cleanup
-     */
-    this.renderedElements = /* @__PURE__ */ new Map();
-    /**
-     * Track LemonadeJS self objects by node UUID for cleanup
-     */
-    this.selfObjects = /* @__PURE__ */ new Map();
-    /**
-     * Track event handlers by node UUID for cleanup
-     */
-    this.eventHandlers = /* @__PURE__ */ new Map();
-    /**
-     * Track EventBus subscriptions by node UUID for cleanup
-     */
-    this.eventSubscriptions = /* @__PURE__ */ new Map();
-  }
-  /**
-   * Render HTML configuration to LemonadeJS element
-   * @param config - HTML configuration from template
-   * @param node - Node model with data
-   * @returns Render result with LemonadeJS element
-   */
-  render(config, node) {
-    this.disposeNode(node.uuid);
-    const mode = this.determineMode(config);
-    const result = {
-      mode,
-      eventHandlers: {},
-      bindings: {},
-      pointerEvents: config.pointerEvents !== false,
-      zIndex: config.zIndex,
-      className: this.buildClassName(config.className),
-      style: config.style,
-      nodeId: node.id,
-      nodeUuid: node.uuid
-    };
-    if (mode === "component") {
-      return this.renderComponentMode(config, result);
-    } else {
-      return this.renderTemplateMode(config, node, result);
-    }
-  }
-  /**
-   * Determine rendering mode from config
-   */
-  determineMode(config) {
-    if (config.mode) {
-      return config.mode;
-    }
-    if (config.template) {
-      return "template";
-    }
-    if (config.component) {
-      return "component";
-    }
-    throw new Error("HtmlConfig must specify either template or component");
-  }
-  /**
-   * Render component mode (pass-through)
-   */
-  renderComponentMode(config, result) {
-    if (!config.component) {
-      throw new Error("Component mode requires component property");
-    }
-    result.componentRef = config.component;
-    return result;
-  }
-  /**
-   * Render template mode with LemonadeJS
-   */
-  renderTemplateMode(config, node, result) {
-    if (!config.template) {
-      throw new Error("Template mode requires template property");
-    }
-    result.self = this.createSelfObject(node, config, result);
-    if (config.events) {
-      result.eventHandlers = this.createEventHandlers(config.events, node);
-    }
-    result.bindings = this.resolveBindings(config, node);
-    try {
-      result.element = lemonade.element(config.template, result.self);
-      if (result.element) {
-        this.applyStyles(result.element, result);
+// libs/engine/src/templates/generated/bpmn/bpmn-user-task.template.ts
+var bpmnUserTaskTemplate = {
+  "id": "bpmn-user-task",
+  "version": "1.0.0",
+  "meta": {
+    "name": "User Task",
+    "description": "A task performed by a human user",
+    "category": "common",
+    "tags": [
+      "task",
+      "user",
+      "manual",
+      "human"
+    ],
+    "author": "Auto-Generated"
+  },
+  "structure": {
+    "type": "bpmn:user-task",
+    "size": {
+      "width": 120,
+      "height": 80,
+      "minWidth": 80,
+      "maxWidth": 300,
+      "minHeight": 60,
+      "maxHeight": 200
+    },
+    "shape": {
+      "type": "rect",
+      "fill": "#E3F2FD",
+      "stroke": "#000000",
+      "strokeWidth": 2,
+      "opacity": 1
+    },
+    "html": {
+      "mode": "template",
+      "template": `<div class="bpmn-user-task-content">
+          <div class="node-label">{{data.label || 'User Task'}}</div>
+        </div>`,
+      "className": "bpmn-user-task",
+      "style": {
+        "display": "flex",
+        "alignItems": "center",
+        "justifyContent": "center",
+        "padding": "8px",
+        "fontFamily": "Arial, sans-serif",
+        "fontSize": "14px",
+        "textAlign": "center",
+        "wordBreak": "break-word"
       }
-      result.html = result.element?.outerHTML;
-    } catch (error) {
-      this.eventBus.emit("renderer:error", {
-        nodeId: node.id,
-        nodeUuid: node.uuid,
-        error,
-        message: "LemonadeJS rendering error",
-        phase: "template-rendering"
-      });
-      result.html = this.fallbackRender(config.template, result.bindings);
-    }
-    if (result.element) {
-      this.renderedElements.set(node.uuid, result.element);
-    }
-    if (result.self) {
-      this.selfObjects.set(node.uuid, result.self);
-    }
-    if (Object.keys(result.eventHandlers).length > 0) {
-      this.eventHandlers.set(node.uuid, result.eventHandlers);
-    }
-    return result;
-  }
-  /**
-   * Create LemonadeJS self object with reactive data
-   */
-  createSelfObject(node, config, result) {
-    const self2 = {
-      // Node data (reactive)
-      data: node.data || {},
-      nodeId: node.id,
-      nodeUuid: node.uuid,
-      // Custom bindings
-      ...config.bindings ? this.resolveCustomBindings(config.bindings, node) : {}
-    };
-    if (config.events) {
-      Object.entries(config.events).forEach(([domEvent, engineEvent]) => {
-        const methodName = `on${domEvent.charAt(0).toUpperCase()}${domEvent.slice(1)}`;
-        self2[methodName] = (e) => {
-          this.eventBus.emit(engineEvent, {
-            nodeId: node.id,
-            nodeUuid: node.uuid,
-            nodeData: node.data,
-            event: e,
-            domEventType: domEvent
-          });
-        };
-      });
-    }
-    return self2;
-  }
-  /**
-   * Resolve custom bindings from config
-   */
-  resolveCustomBindings(bindings3, node) {
-    const resolved2 = {};
-    for (const [key, path] of Object.entries(bindings3)) {
-      resolved2[key] = this.getValueByPath(node, path);
-    }
-    return resolved2;
-  }
-  /**
-   * Create event handlers that emit to EventBus
-   */
-  createEventHandlers(events, node) {
-    const handlers = {};
-    for (const [domEvent, engineEvent] of Object.entries(events)) {
-      handlers[domEvent] = (event) => {
-        this.eventBus.emit(engineEvent, {
-          nodeId: node.id,
-          nodeUuid: node.uuid,
-          nodeData: node.data,
-          event,
-          domEventType: domEvent
-        });
-      };
-    }
-    return handlers;
-  }
-  /**
-   * Resolve data bindings from node
-   */
-  resolveBindings(config, node) {
-    const bindings3 = {
-      data: node.data || {},
-      nodeId: node.id,
-      nodeUuid: node.uuid
-    };
-    if (config.bindings) {
-      for (const [key, path] of Object.entries(config.bindings)) {
-        bindings3[key] = this.getValueByPath(node, path);
-      }
-    }
-    return bindings3;
-  }
-  /**
-   * Get value from node by path
-   */
-  getValueByPath(node, path) {
-    const parts = path.split(".");
-    let value = node;
-    for (const part of parts) {
-      if (value == null) {
-        return void 0;
-      }
-      value = value[part];
-    }
-    return value;
-  }
-  /**
-   * Apply styles and classes to rendered element
-   */
-  applyStyles(element2, result) {
-    if (result.className) {
-      element2.className = result.className;
-    }
-    if (result.style) {
-      Object.entries(result.style).forEach(([key, value]) => {
-        const cssKey = this.camelToKebab(key);
-        element2.style.setProperty(cssKey, String(value));
-      });
-    }
-    if (result.zIndex !== void 0) {
-      element2.style.zIndex = String(result.zIndex);
-    }
-    if (result.pointerEvents === false) {
-      element2.style.pointerEvents = "none";
-    }
-  }
-  /**
-   * Fallback rendering (simple string replacement)
-   */
-  fallbackRender(template, bindings3) {
-    let html = template;
-    html = html.replace(/\{\{([^}]+)\}\}/g, (match, expression) => {
-      const value = this.evaluateExpression(expression.trim(), bindings3);
-      return value != null ? String(value) : "";
-    });
-    return html;
-  }
-  /**
-   * Evaluate expression in binding context
-   */
-  evaluateExpression(expression, bindings3) {
-    try {
-      const parts = expression.split(".");
-      let value = bindings3;
-      for (const part of parts) {
-        if (value == null) {
-          return void 0;
+    },
+    "ports": {
+      "enabled": true,
+      "defaultVisibility": "on-hover",
+      "rendering": {
+        "mode": "svg",
+        "size": {
+          "width": 8,
+          "height": 8,
+          "hoverScale": 1.5
+        },
+        "svg": {
+          "shape": "circle",
+          "fill": "#1976D2",
+          "stroke": "#FFFFFF",
+          "strokeWidth": 2
         }
-        value = value[part];
+      },
+      "left": {
+        "enabled": true,
+        "type": "input",
+        "maxConnections": void 0
+      },
+      "right": {
+        "enabled": true,
+        "type": "output",
+        "maxConnections": void 0
+      },
+      "top": {
+        "enabled": true,
+        "type": "bi",
+        "maxConnections": void 0
+      },
+      "bottom": {
+        "enabled": true,
+        "type": "bi",
+        "maxConnections": void 0
       }
-      return value;
-    } catch (error) {
-      this.eventBus.emit("renderer:warning", {
-        message: "Failed to evaluate expression",
-        expression,
-        error,
-        phase: "expression-evaluation"
-      });
-      return void 0;
+    },
+    "behavior": {
+      "draggable": true,
+      "selectable": true,
+      "connectable": true,
+      "resizable": false,
+      "deletable": true
     }
-  }
-  /**
-   * Build className string
-   */
-  buildClassName(className) {
-    if (!className) {
-      return void 0;
-    }
-    if (Array.isArray(className)) {
-      return className.join(" ");
-    }
-    return className;
-  }
-  /**
-   * Convert camelCase to kebab-case
-   */
-  camelToKebab(str) {
-    return str.replace(/([a-z0-9])([A-Z])/g, "$1-$2").toLowerCase();
-  }
-  /**
-   * Dispose resources for a specific node
-   * @param nodeUuid - UUID of node to clean up
-   */
-  disposeNode(nodeUuid) {
-    const element2 = this.renderedElements.get(nodeUuid);
-    if (element2 && element2.parentNode) {
-      element2.parentNode.removeChild(element2);
-    }
-    this.renderedElements.delete(nodeUuid);
-    const self2 = this.selfObjects.get(nodeUuid);
-    if (self2) {
-      if (typeof self2.destroy === "function") {
-        self2.destroy();
+  },
+  "defaultData": {
+    "label": "User Task"
+  },
+  "dataSchema": {
+    "type": "object",
+    "properties": {
+      "label": {
+        "type": "string",
+        "default": ""
       }
-      Object.keys(self2).forEach((key) => {
-        delete self2[key];
-      });
-    }
-    this.selfObjects.delete(nodeUuid);
-    const handlers = this.eventHandlers.get(nodeUuid);
-    if (handlers) {
-      Object.keys(handlers).forEach((key) => {
-        delete handlers[key];
-      });
-    }
-    this.eventHandlers.delete(nodeUuid);
-    const subscriptions = this.eventSubscriptions.get(nodeUuid);
-    if (subscriptions) {
-      subscriptions.forEach((unsubscribe) => unsubscribe());
-    }
-    this.eventSubscriptions.delete(nodeUuid);
-  }
-  /**
-   * Cleanup all renderer resources
-   */
-  dispose() {
-    const nodeUuids = Array.from(this.renderedElements.keys());
-    nodeUuids.forEach((uuid) => this.disposeNode(uuid));
-    this.renderedElements.clear();
-    this.selfObjects.clear();
-    this.eventHandlers.clear();
-    this.eventSubscriptions.clear();
+    },
+    "required": [
+      "label"
+    ]
   }
 };
+
+// libs/engine/src/templates/generated/bpmn/bpmn-service-task.template.ts
+var bpmnServiceTaskTemplate = {
+  "id": "bpmn-service-task",
+  "version": "1.0.0",
+  "meta": {
+    "name": "Service Task",
+    "description": "A task performed by an automated service",
+    "category": "common",
+    "tags": [
+      "task",
+      "service",
+      "automated",
+      "system"
+    ],
+    "author": "Auto-Generated"
+  },
+  "structure": {
+    "type": "bpmn:service-task",
+    "size": {
+      "width": 120,
+      "height": 80,
+      "minWidth": 80,
+      "maxWidth": 300,
+      "minHeight": 60,
+      "maxHeight": 200
+    },
+    "shape": {
+      "type": "rect",
+      "fill": "#E8F5E9",
+      "stroke": "#000000",
+      "strokeWidth": 2,
+      "opacity": 1
+    },
+    "html": {
+      "mode": "template",
+      "template": `<div class="bpmn-service-task-content">
+          <div class="node-label">{{data.label || 'Service Task'}}</div>
+        </div>`,
+      "className": "bpmn-service-task",
+      "style": {
+        "display": "flex",
+        "alignItems": "center",
+        "justifyContent": "center",
+        "padding": "8px",
+        "fontFamily": "Arial, sans-serif",
+        "fontSize": "14px",
+        "textAlign": "center",
+        "wordBreak": "break-word"
+      }
+    },
+    "ports": {
+      "enabled": true,
+      "defaultVisibility": "on-hover",
+      "rendering": {
+        "mode": "svg",
+        "size": {
+          "width": 8,
+          "height": 8,
+          "hoverScale": 1.5
+        },
+        "svg": {
+          "shape": "circle",
+          "fill": "#1976D2",
+          "stroke": "#FFFFFF",
+          "strokeWidth": 2
+        }
+      },
+      "left": {
+        "enabled": true,
+        "type": "input",
+        "maxConnections": void 0
+      },
+      "right": {
+        "enabled": true,
+        "type": "output",
+        "maxConnections": void 0
+      },
+      "top": {
+        "enabled": true,
+        "type": "bi",
+        "maxConnections": void 0
+      },
+      "bottom": {
+        "enabled": true,
+        "type": "bi",
+        "maxConnections": void 0
+      }
+    },
+    "behavior": {
+      "draggable": true,
+      "selectable": true,
+      "connectable": true,
+      "resizable": false,
+      "deletable": true
+    }
+  },
+  "defaultData": {
+    "label": "Service Task"
+  },
+  "dataSchema": {
+    "type": "object",
+    "properties": {
+      "label": {
+        "type": "string",
+        "default": ""
+      }
+    },
+    "required": [
+      "label"
+    ]
+  }
+};
+
+// libs/engine/src/templates/generated/bpmn/bpmn-manual-task.template.ts
+var bpmnManualTaskTemplate = {
+  "id": "bpmn-manual-task",
+  "version": "1.0.0",
+  "meta": {
+    "name": "Manual Task",
+    "description": "A manual task performed outside the system",
+    "category": "common",
+    "tags": [
+      "task",
+      "manual",
+      "user",
+      "physical"
+    ],
+    "author": "Auto-Generated"
+  },
+  "structure": {
+    "type": "bpmn:manual-task",
+    "size": {
+      "width": 120,
+      "height": 80,
+      "minWidth": 80,
+      "maxWidth": 300,
+      "minHeight": 60,
+      "maxHeight": 200
+    },
+    "shape": {
+      "type": "rect",
+      "fill": "#FFF3E0",
+      "stroke": "#000000",
+      "strokeWidth": 2,
+      "opacity": 1
+    },
+    "html": {
+      "mode": "template",
+      "template": `<div class="bpmn-manual-task-content">
+          <div class="node-label">{{data.label || 'Manual Task'}}</div>
+        </div>`,
+      "className": "bpmn-manual-task",
+      "style": {
+        "display": "flex",
+        "alignItems": "center",
+        "justifyContent": "center",
+        "padding": "8px",
+        "fontFamily": "Arial, sans-serif",
+        "fontSize": "14px",
+        "textAlign": "center",
+        "wordBreak": "break-word"
+      }
+    },
+    "ports": {
+      "enabled": true,
+      "defaultVisibility": "on-hover",
+      "rendering": {
+        "mode": "svg",
+        "size": {
+          "width": 8,
+          "height": 8,
+          "hoverScale": 1.5
+        },
+        "svg": {
+          "shape": "circle",
+          "fill": "#1976D2",
+          "stroke": "#FFFFFF",
+          "strokeWidth": 2
+        }
+      },
+      "left": {
+        "enabled": true,
+        "type": "input",
+        "maxConnections": void 0
+      },
+      "right": {
+        "enabled": true,
+        "type": "output",
+        "maxConnections": void 0
+      },
+      "top": {
+        "enabled": true,
+        "type": "bi",
+        "maxConnections": void 0
+      },
+      "bottom": {
+        "enabled": true,
+        "type": "bi",
+        "maxConnections": void 0
+      }
+    },
+    "behavior": {
+      "draggable": true,
+      "selectable": true,
+      "connectable": true,
+      "resizable": false,
+      "deletable": true
+    }
+  },
+  "defaultData": {
+    "label": "Manual Task"
+  },
+  "dataSchema": {
+    "type": "object",
+    "properties": {
+      "label": {
+        "type": "string",
+        "default": ""
+      }
+    },
+    "required": [
+      "label"
+    ]
+  }
+};
+
+// libs/engine/src/templates/generated/bpmn/bpmn-business-rule-task.template.ts
+var bpmnBusinessRuleTaskTemplate = {
+  "id": "bpmn-business-rule-task",
+  "version": "1.0.0",
+  "meta": {
+    "name": "Business Rule Task",
+    "description": "A task that executes business rules",
+    "category": "common",
+    "tags": [
+      "task",
+      "rules",
+      "automated",
+      "decision"
+    ],
+    "author": "Auto-Generated"
+  },
+  "structure": {
+    "type": "bpmn:business-rule-task",
+    "size": {
+      "width": 120,
+      "height": 80,
+      "minWidth": 80,
+      "maxWidth": 300,
+      "minHeight": 60,
+      "maxHeight": 200
+    },
+    "shape": {
+      "type": "rect",
+      "fill": "#F3E5F5",
+      "stroke": "#000000",
+      "strokeWidth": 2,
+      "opacity": 1
+    },
+    "html": {
+      "mode": "template",
+      "template": `<div class="bpmn-business-rule-task-content">
+          <div class="node-label">{{data.label || 'Business Rule Task'}}</div>
+        </div>`,
+      "className": "bpmn-business-rule-task",
+      "style": {
+        "display": "flex",
+        "alignItems": "center",
+        "justifyContent": "center",
+        "padding": "8px",
+        "fontFamily": "Arial, sans-serif",
+        "fontSize": "14px",
+        "textAlign": "center",
+        "wordBreak": "break-word"
+      }
+    },
+    "ports": {
+      "enabled": true,
+      "defaultVisibility": "on-hover",
+      "rendering": {
+        "mode": "svg",
+        "size": {
+          "width": 8,
+          "height": 8,
+          "hoverScale": 1.5
+        },
+        "svg": {
+          "shape": "circle",
+          "fill": "#1976D2",
+          "stroke": "#FFFFFF",
+          "strokeWidth": 2
+        }
+      },
+      "left": {
+        "enabled": true,
+        "type": "input",
+        "maxConnections": void 0
+      },
+      "right": {
+        "enabled": true,
+        "type": "output",
+        "maxConnections": void 0
+      },
+      "top": {
+        "enabled": true,
+        "type": "bi",
+        "maxConnections": void 0
+      },
+      "bottom": {
+        "enabled": true,
+        "type": "bi",
+        "maxConnections": void 0
+      }
+    },
+    "behavior": {
+      "draggable": true,
+      "selectable": true,
+      "connectable": true,
+      "resizable": false,
+      "deletable": true
+    }
+  },
+  "defaultData": {
+    "label": "Business Rule Task"
+  },
+  "dataSchema": {
+    "type": "object",
+    "properties": {
+      "label": {
+        "type": "string",
+        "default": ""
+      }
+    },
+    "required": [
+      "label"
+    ]
+  }
+};
+
+// libs/engine/src/templates/generated/bpmn/bpmn-script-task.template.ts
+var bpmnScriptTaskTemplate = {
+  "id": "bpmn-script-task",
+  "version": "1.0.0",
+  "meta": {
+    "name": "Script Task",
+    "description": "A task that executes a script",
+    "category": "common",
+    "tags": [
+      "task",
+      "script",
+      "automated",
+      "code"
+    ],
+    "author": "Auto-Generated"
+  },
+  "structure": {
+    "type": "bpmn:script-task",
+    "size": {
+      "width": 120,
+      "height": 80,
+      "minWidth": 80,
+      "maxWidth": 300,
+      "minHeight": 60,
+      "maxHeight": 200
+    },
+    "shape": {
+      "type": "rect",
+      "fill": "#FCE4EC",
+      "stroke": "#000000",
+      "strokeWidth": 2,
+      "opacity": 1
+    },
+    "html": {
+      "mode": "template",
+      "template": `<div class="bpmn-script-task-content">
+          <div class="node-label">{{data.label || 'Script Task'}}</div>
+        </div>`,
+      "className": "bpmn-script-task",
+      "style": {
+        "display": "flex",
+        "alignItems": "center",
+        "justifyContent": "center",
+        "padding": "8px",
+        "fontFamily": "Arial, sans-serif",
+        "fontSize": "14px",
+        "textAlign": "center",
+        "wordBreak": "break-word"
+      }
+    },
+    "ports": {
+      "enabled": true,
+      "defaultVisibility": "on-hover",
+      "rendering": {
+        "mode": "svg",
+        "size": {
+          "width": 8,
+          "height": 8,
+          "hoverScale": 1.5
+        },
+        "svg": {
+          "shape": "circle",
+          "fill": "#1976D2",
+          "stroke": "#FFFFFF",
+          "strokeWidth": 2
+        }
+      },
+      "left": {
+        "enabled": true,
+        "type": "input",
+        "maxConnections": void 0
+      },
+      "right": {
+        "enabled": true,
+        "type": "output",
+        "maxConnections": void 0
+      },
+      "top": {
+        "enabled": true,
+        "type": "bi",
+        "maxConnections": void 0
+      },
+      "bottom": {
+        "enabled": true,
+        "type": "bi",
+        "maxConnections": void 0
+      }
+    },
+    "behavior": {
+      "draggable": true,
+      "selectable": true,
+      "connectable": true,
+      "resizable": false,
+      "deletable": true
+    }
+  },
+  "defaultData": {
+    "label": "Script Task"
+  },
+  "dataSchema": {
+    "type": "object",
+    "properties": {
+      "label": {
+        "type": "string",
+        "default": ""
+      }
+    },
+    "required": [
+      "label"
+    ]
+  }
+};
+
+// libs/engine/src/templates/generated/bpmn/bpmn-exclusive-gateway.template.ts
+var bpmnExclusiveGatewayTemplate = {
+  "id": "bpmn-exclusive-gateway",
+  "version": "1.0.0",
+  "meta": {
+    "name": "Exclusive Gateway",
+    "description": "A gateway that selects one outgoing path (XOR)",
+    "category": "workflow",
+    "tags": [
+      "gateway",
+      "xor",
+      "decision",
+      "exclusive",
+      "bpmn"
+    ],
+    "author": "Auto-Generated"
+  },
+  "structure": {
+    "type": "bpmn:exclusive-gateway",
+    "size": {
+      "width": 50,
+      "height": 50,
+      "minWidth": 80,
+      "maxWidth": 300,
+      "minHeight": 60,
+      "maxHeight": 200
+    },
+    "shape": {
+      "type": "diamond",
+      "fill": "#FFF9C4",
+      "stroke": "#F57F17",
+      "strokeWidth": 2,
+      "opacity": 1
+    },
+    "html": {
+      "mode": "template",
+      "template": `<div class="bpmn-exclusive-gateway-content">
+          <div class="node-label">{{data.label || 'Exclusive Gateway'}}</div>
+        </div>`,
+      "className": "bpmn-exclusive-gateway",
+      "style": {
+        "display": "flex",
+        "alignItems": "center",
+        "justifyContent": "center",
+        "padding": "8px",
+        "fontFamily": "Arial, sans-serif",
+        "fontSize": "14px",
+        "textAlign": "center",
+        "wordBreak": "break-word"
+      }
+    },
+    "ports": {
+      "enabled": true,
+      "defaultVisibility": "on-hover",
+      "rendering": {
+        "mode": "svg",
+        "size": {
+          "width": 8,
+          "height": 8,
+          "hoverScale": 1.5
+        },
+        "svg": {
+          "shape": "circle",
+          "fill": "#F57C00",
+          "stroke": "#FFFFFF",
+          "strokeWidth": 2
+        }
+      },
+      "left": {
+        "enabled": true,
+        "type": "input",
+        "maxConnections": void 0
+      },
+      "right": {
+        "enabled": true,
+        "type": "output",
+        "maxConnections": void 0
+      },
+      "top": {
+        "enabled": true,
+        "type": "output",
+        "maxConnections": void 0
+      },
+      "bottom": {
+        "enabled": true,
+        "type": "output",
+        "maxConnections": void 0
+      }
+    },
+    "behavior": {
+      "draggable": true,
+      "selectable": true,
+      "connectable": true,
+      "resizable": false,
+      "deletable": true
+    }
+  },
+  "defaultData": {
+    "label": "Exclusive Gateway"
+  },
+  "dataSchema": {
+    "type": "object",
+    "properties": {
+      "label": {
+        "type": "string",
+        "default": ""
+      }
+    },
+    "required": [
+      "label"
+    ]
+  }
+};
+
+// libs/engine/src/templates/generated/bpmn/bpmn-parallel-gateway.template.ts
+var bpmnParallelGatewayTemplate = {
+  "id": "bpmn-parallel-gateway",
+  "version": "1.0.0",
+  "meta": {
+    "name": "Parallel Gateway",
+    "description": "A gateway that forks or joins all paths (AND)",
+    "category": "workflow",
+    "tags": [
+      "gateway",
+      "and",
+      "parallel",
+      "fork",
+      "join",
+      "bpmn"
+    ],
+    "author": "Auto-Generated"
+  },
+  "structure": {
+    "type": "bpmn:parallel-gateway",
+    "size": {
+      "width": 50,
+      "height": 50,
+      "minWidth": 80,
+      "maxWidth": 300,
+      "minHeight": 60,
+      "maxHeight": 200
+    },
+    "shape": {
+      "type": "diamond",
+      "fill": "#E0F7FA",
+      "stroke": "#00838F",
+      "strokeWidth": 2,
+      "opacity": 1
+    },
+    "html": {
+      "mode": "template",
+      "template": `<div class="bpmn-parallel-gateway-content">
+          <div class="node-label">{{data.label || 'Parallel Gateway'}}</div>
+        </div>`,
+      "className": "bpmn-parallel-gateway",
+      "style": {
+        "display": "flex",
+        "alignItems": "center",
+        "justifyContent": "center",
+        "padding": "8px",
+        "fontFamily": "Arial, sans-serif",
+        "fontSize": "14px",
+        "textAlign": "center",
+        "wordBreak": "break-word"
+      }
+    },
+    "ports": {
+      "enabled": true,
+      "defaultVisibility": "on-hover",
+      "rendering": {
+        "mode": "svg",
+        "size": {
+          "width": 8,
+          "height": 8,
+          "hoverScale": 1.5
+        },
+        "svg": {
+          "shape": "circle",
+          "fill": "#F57C00",
+          "stroke": "#FFFFFF",
+          "strokeWidth": 2
+        }
+      },
+      "left": {
+        "enabled": true,
+        "type": "input",
+        "maxConnections": void 0
+      },
+      "right": {
+        "enabled": true,
+        "type": "output",
+        "maxConnections": void 0
+      },
+      "top": {
+        "enabled": true,
+        "type": "output",
+        "maxConnections": void 0
+      },
+      "bottom": {
+        "enabled": true,
+        "type": "output",
+        "maxConnections": void 0
+      }
+    },
+    "behavior": {
+      "draggable": true,
+      "selectable": true,
+      "connectable": true,
+      "resizable": false,
+      "deletable": true
+    }
+  },
+  "defaultData": {
+    "label": "Parallel Gateway"
+  },
+  "dataSchema": {
+    "type": "object",
+    "properties": {
+      "label": {
+        "type": "string",
+        "default": ""
+      }
+    },
+    "required": [
+      "label"
+    ]
+  }
+};
+
+// libs/engine/src/templates/generated/bpmn/bpmn-inclusive-gateway.template.ts
+var bpmnInclusiveGatewayTemplate = {
+  "id": "bpmn-inclusive-gateway",
+  "version": "1.0.0",
+  "meta": {
+    "name": "Inclusive Gateway",
+    "description": "A gateway that selects one or more paths (OR)",
+    "category": "workflow",
+    "tags": [
+      "gateway",
+      "or",
+      "inclusive",
+      "bpmn"
+    ],
+    "author": "Auto-Generated"
+  },
+  "structure": {
+    "type": "bpmn:inclusive-gateway",
+    "size": {
+      "width": 50,
+      "height": 50,
+      "minWidth": 80,
+      "maxWidth": 300,
+      "minHeight": 60,
+      "maxHeight": 200
+    },
+    "shape": {
+      "type": "diamond",
+      "fill": "#F3E5F5",
+      "stroke": "#7B1FA2",
+      "strokeWidth": 2,
+      "opacity": 1
+    },
+    "html": {
+      "mode": "template",
+      "template": `<div class="bpmn-inclusive-gateway-content">
+          <div class="node-label">{{data.label || 'Inclusive Gateway'}}</div>
+        </div>`,
+      "className": "bpmn-inclusive-gateway",
+      "style": {
+        "display": "flex",
+        "alignItems": "center",
+        "justifyContent": "center",
+        "padding": "8px",
+        "fontFamily": "Arial, sans-serif",
+        "fontSize": "14px",
+        "textAlign": "center",
+        "wordBreak": "break-word"
+      }
+    },
+    "ports": {
+      "enabled": true,
+      "defaultVisibility": "on-hover",
+      "rendering": {
+        "mode": "svg",
+        "size": {
+          "width": 8,
+          "height": 8,
+          "hoverScale": 1.5
+        },
+        "svg": {
+          "shape": "circle",
+          "fill": "#F57C00",
+          "stroke": "#FFFFFF",
+          "strokeWidth": 2
+        }
+      },
+      "left": {
+        "enabled": true,
+        "type": "input",
+        "maxConnections": void 0
+      },
+      "right": {
+        "enabled": true,
+        "type": "output",
+        "maxConnections": void 0
+      },
+      "top": {
+        "enabled": true,
+        "type": "output",
+        "maxConnections": void 0
+      },
+      "bottom": {
+        "enabled": true,
+        "type": "output",
+        "maxConnections": void 0
+      }
+    },
+    "behavior": {
+      "draggable": true,
+      "selectable": true,
+      "connectable": true,
+      "resizable": false,
+      "deletable": true
+    }
+  },
+  "defaultData": {
+    "label": "Inclusive Gateway"
+  },
+  "dataSchema": {
+    "type": "object",
+    "properties": {
+      "label": {
+        "type": "string",
+        "default": ""
+      }
+    },
+    "required": [
+      "label"
+    ]
+  }
+};
+
+// libs/engine/src/templates/generated/bpmn/bpmn-start-event.template.ts
+var bpmnStartEventTemplate = {
+  "id": "bpmn-start-event",
+  "version": "1.0.0",
+  "meta": {
+    "name": "Start Event",
+    "description": "Event that starts a process",
+    "category": "workflow",
+    "tags": [
+      "event",
+      "start",
+      "begin",
+      "bpmn"
+    ],
+    "author": "Auto-Generated"
+  },
+  "structure": {
+    "type": "bpmn:start-event",
+    "size": {
+      "width": 36,
+      "height": 36,
+      "minWidth": 80,
+      "maxWidth": 300,
+      "minHeight": 60,
+      "maxHeight": 200
+    },
+    "shape": {
+      "type": "circle",
+      "fill": "#E8F5E9",
+      "stroke": "#388E3C",
+      "strokeWidth": 2,
+      "opacity": 1
+    },
+    "html": {
+      "mode": "template",
+      "template": `<div class="bpmn-start-event-content">
+          <div class="node-label">{{data.label || 'Start Event'}}</div>
+        </div>`,
+      "className": "bpmn-start-event",
+      "style": {
+        "display": "flex",
+        "alignItems": "center",
+        "justifyContent": "center",
+        "padding": "8px",
+        "fontFamily": "Arial, sans-serif",
+        "fontSize": "14px",
+        "textAlign": "center",
+        "wordBreak": "break-word"
+      }
+    },
+    "ports": {
+      "enabled": true,
+      "defaultVisibility": "on-hover",
+      "rendering": {
+        "mode": "svg",
+        "size": {
+          "width": 8,
+          "height": 8,
+          "hoverScale": 1.5
+        },
+        "svg": {
+          "shape": "circle",
+          "fill": "#1976D2",
+          "stroke": "#FFFFFF",
+          "strokeWidth": 2
+        }
+      },
+      "top": {
+        "enabled": true,
+        "type": "bi",
+        "maxConnections": void 0
+      },
+      "right": {
+        "enabled": true,
+        "type": "bi",
+        "maxConnections": void 0
+      },
+      "bottom": {
+        "enabled": true,
+        "type": "bi",
+        "maxConnections": void 0
+      },
+      "left": {
+        "enabled": true,
+        "type": "bi",
+        "maxConnections": void 0
+      }
+    },
+    "behavior": {
+      "draggable": true,
+      "selectable": true,
+      "connectable": true,
+      "resizable": false,
+      "deletable": true
+    }
+  },
+  "defaultData": {
+    "label": "Start Event"
+  },
+  "dataSchema": {
+    "type": "object",
+    "properties": {
+      "label": {
+        "type": "string",
+        "default": ""
+      }
+    },
+    "required": [
+      "label"
+    ]
+  }
+};
+
+// libs/engine/src/templates/generated/bpmn/bpmn-end-event.template.ts
+var bpmnEndEventTemplate = {
+  "id": "bpmn-end-event",
+  "version": "1.0.0",
+  "meta": {
+    "name": "End Event",
+    "description": "Event that ends a process",
+    "category": "workflow",
+    "tags": [
+      "event",
+      "end",
+      "terminate",
+      "bpmn"
+    ],
+    "author": "Auto-Generated"
+  },
+  "structure": {
+    "type": "bpmn:end-event",
+    "size": {
+      "width": 36,
+      "height": 36,
+      "minWidth": 80,
+      "maxWidth": 300,
+      "minHeight": 60,
+      "maxHeight": 200
+    },
+    "shape": {
+      "type": "circle",
+      "fill": "#FFEBEE",
+      "stroke": "#C62828",
+      "strokeWidth": 4,
+      "opacity": 1
+    },
+    "html": {
+      "mode": "template",
+      "template": `<div class="bpmn-end-event-content">
+          <div class="node-label">{{data.label || 'End Event'}}</div>
+        </div>`,
+      "className": "bpmn-end-event",
+      "style": {
+        "display": "flex",
+        "alignItems": "center",
+        "justifyContent": "center",
+        "padding": "8px",
+        "fontFamily": "Arial, sans-serif",
+        "fontSize": "14px",
+        "textAlign": "center",
+        "wordBreak": "break-word"
+      }
+    },
+    "ports": {
+      "enabled": true,
+      "defaultVisibility": "on-hover",
+      "rendering": {
+        "mode": "svg",
+        "size": {
+          "width": 8,
+          "height": 8,
+          "hoverScale": 1.5
+        },
+        "svg": {
+          "shape": "circle",
+          "fill": "#1976D2",
+          "stroke": "#FFFFFF",
+          "strokeWidth": 2
+        }
+      },
+      "top": {
+        "enabled": true,
+        "type": "bi",
+        "maxConnections": void 0
+      },
+      "right": {
+        "enabled": true,
+        "type": "bi",
+        "maxConnections": void 0
+      },
+      "bottom": {
+        "enabled": true,
+        "type": "bi",
+        "maxConnections": void 0
+      },
+      "left": {
+        "enabled": true,
+        "type": "bi",
+        "maxConnections": void 0
+      }
+    },
+    "behavior": {
+      "draggable": true,
+      "selectable": true,
+      "connectable": true,
+      "resizable": false,
+      "deletable": true
+    }
+  },
+  "defaultData": {
+    "label": "End Event"
+  },
+  "dataSchema": {
+    "type": "object",
+    "properties": {
+      "label": {
+        "type": "string",
+        "default": ""
+      }
+    },
+    "required": [
+      "label"
+    ]
+  }
+};
+
+// libs/engine/src/templates/generated/bpmn/bpmn-intermediate-event.template.ts
+var bpmnIntermediateEventTemplate = {
+  "id": "bpmn-intermediate-event",
+  "version": "1.0.0",
+  "meta": {
+    "name": "Intermediate Event",
+    "description": "Event that occurs during process execution",
+    "category": "workflow",
+    "tags": [
+      "event",
+      "intermediate",
+      "catching",
+      "throwing",
+      "bpmn"
+    ],
+    "author": "Auto-Generated"
+  },
+  "structure": {
+    "type": "bpmn:intermediate-event",
+    "size": {
+      "width": 36,
+      "height": 36,
+      "minWidth": 80,
+      "maxWidth": 300,
+      "minHeight": 60,
+      "maxHeight": 200
+    },
+    "shape": {
+      "type": "circle",
+      "fill": "#FFF9C4",
+      "stroke": "#F57F17",
+      "strokeWidth": 3,
+      "opacity": 1
+    },
+    "html": {
+      "mode": "template",
+      "template": `<div class="bpmn-intermediate-event-content">
+          <div class="node-label">{{data.label || 'Intermediate Event'}}</div>
+        </div>`,
+      "className": "bpmn-intermediate-event",
+      "style": {
+        "display": "flex",
+        "alignItems": "center",
+        "justifyContent": "center",
+        "padding": "8px",
+        "fontFamily": "Arial, sans-serif",
+        "fontSize": "14px",
+        "textAlign": "center",
+        "wordBreak": "break-word"
+      }
+    },
+    "ports": {
+      "enabled": true,
+      "defaultVisibility": "on-hover",
+      "rendering": {
+        "mode": "svg",
+        "size": {
+          "width": 8,
+          "height": 8,
+          "hoverScale": 1.5
+        },
+        "svg": {
+          "shape": "circle",
+          "fill": "#1976D2",
+          "stroke": "#FFFFFF",
+          "strokeWidth": 2
+        }
+      },
+      "top": {
+        "enabled": true,
+        "type": "bi",
+        "maxConnections": void 0
+      },
+      "right": {
+        "enabled": true,
+        "type": "bi",
+        "maxConnections": void 0
+      },
+      "bottom": {
+        "enabled": true,
+        "type": "bi",
+        "maxConnections": void 0
+      },
+      "left": {
+        "enabled": true,
+        "type": "bi",
+        "maxConnections": void 0
+      }
+    },
+    "behavior": {
+      "draggable": true,
+      "selectable": true,
+      "connectable": true,
+      "resizable": false,
+      "deletable": true
+    }
+  },
+  "defaultData": {
+    "label": "Intermediate Event"
+  },
+  "dataSchema": {
+    "type": "object",
+    "properties": {
+      "label": {
+        "type": "string",
+        "default": ""
+      }
+    },
+    "required": [
+      "label"
+    ]
+  }
+};
+
+// libs/engine/src/templates/generated/bpmn/bpmn-message-event.template.ts
+var bpmnMessageEventTemplate = {
+  "id": "bpmn-message-event",
+  "version": "1.0.0",
+  "meta": {
+    "name": "Message Event",
+    "description": "Event triggered by a message",
+    "category": "common",
+    "tags": [
+      "event",
+      "message",
+      "communication"
+    ],
+    "author": "Auto-Generated"
+  },
+  "structure": {
+    "type": "bpmn:message-event",
+    "size": {
+      "width": 120,
+      "height": 80,
+      "minWidth": 80,
+      "maxWidth": 300,
+      "minHeight": 60,
+      "maxHeight": 200
+    },
+    "shape": {
+      "type": "rect",
+      "fill": "#E3F2FD",
+      "stroke": "#000000",
+      "strokeWidth": 2,
+      "opacity": 1
+    },
+    "html": {
+      "mode": "template",
+      "template": `<div class="bpmn-message-event-content">
+          <div class="node-label">{{data.label || 'Message Event'}}</div>
+        </div>`,
+      "className": "bpmn-message-event",
+      "style": {
+        "display": "flex",
+        "alignItems": "center",
+        "justifyContent": "center",
+        "padding": "8px",
+        "fontFamily": "Arial, sans-serif",
+        "fontSize": "14px",
+        "textAlign": "center",
+        "wordBreak": "break-word"
+      }
+    },
+    "ports": {
+      "enabled": true,
+      "defaultVisibility": "on-hover",
+      "rendering": {
+        "mode": "svg",
+        "size": {
+          "width": 8,
+          "height": 8,
+          "hoverScale": 1.5
+        },
+        "svg": {
+          "shape": "circle",
+          "fill": "#1976D2",
+          "stroke": "#FFFFFF",
+          "strokeWidth": 2
+        }
+      },
+      "left": {
+        "enabled": true,
+        "type": "input",
+        "maxConnections": void 0
+      },
+      "right": {
+        "enabled": true,
+        "type": "output",
+        "maxConnections": void 0
+      },
+      "top": {
+        "enabled": true,
+        "type": "bi",
+        "maxConnections": void 0
+      },
+      "bottom": {
+        "enabled": true,
+        "type": "bi",
+        "maxConnections": void 0
+      }
+    },
+    "behavior": {
+      "draggable": true,
+      "selectable": true,
+      "connectable": true,
+      "resizable": false,
+      "deletable": true
+    }
+  },
+  "defaultData": {
+    "label": "Message Event"
+  },
+  "dataSchema": {
+    "type": "object",
+    "properties": {
+      "label": {
+        "type": "string",
+        "default": ""
+      }
+    },
+    "required": [
+      "label"
+    ]
+  }
+};
+
+// libs/engine/src/templates/generated/bpmn/bpmn-timer-event.template.ts
+var bpmnTimerEventTemplate = {
+  "id": "bpmn-timer-event",
+  "version": "1.0.0",
+  "meta": {
+    "name": "Timer Event",
+    "description": "Event triggered by a timer",
+    "category": "common",
+    "tags": [
+      "event",
+      "timer",
+      "time",
+      "schedule"
+    ],
+    "author": "Auto-Generated"
+  },
+  "structure": {
+    "type": "bpmn:timer-event",
+    "size": {
+      "width": 120,
+      "height": 80,
+      "minWidth": 80,
+      "maxWidth": 300,
+      "minHeight": 60,
+      "maxHeight": 200
+    },
+    "shape": {
+      "type": "rect",
+      "fill": "#FFF3E0",
+      "stroke": "#000000",
+      "strokeWidth": 2,
+      "opacity": 1
+    },
+    "html": {
+      "mode": "template",
+      "template": `<div class="bpmn-timer-event-content">
+          <div class="node-label">{{data.label || 'Timer Event'}}</div>
+        </div>`,
+      "className": "bpmn-timer-event",
+      "style": {
+        "display": "flex",
+        "alignItems": "center",
+        "justifyContent": "center",
+        "padding": "8px",
+        "fontFamily": "Arial, sans-serif",
+        "fontSize": "14px",
+        "textAlign": "center",
+        "wordBreak": "break-word"
+      }
+    },
+    "ports": {
+      "enabled": true,
+      "defaultVisibility": "on-hover",
+      "rendering": {
+        "mode": "svg",
+        "size": {
+          "width": 8,
+          "height": 8,
+          "hoverScale": 1.5
+        },
+        "svg": {
+          "shape": "circle",
+          "fill": "#1976D2",
+          "stroke": "#FFFFFF",
+          "strokeWidth": 2
+        }
+      },
+      "left": {
+        "enabled": true,
+        "type": "input",
+        "maxConnections": void 0
+      },
+      "right": {
+        "enabled": true,
+        "type": "output",
+        "maxConnections": void 0
+      },
+      "top": {
+        "enabled": true,
+        "type": "bi",
+        "maxConnections": void 0
+      },
+      "bottom": {
+        "enabled": true,
+        "type": "bi",
+        "maxConnections": void 0
+      }
+    },
+    "behavior": {
+      "draggable": true,
+      "selectable": true,
+      "connectable": true,
+      "resizable": false,
+      "deletable": true
+    }
+  },
+  "defaultData": {
+    "label": "Timer Event"
+  },
+  "dataSchema": {
+    "type": "object",
+    "properties": {
+      "label": {
+        "type": "string",
+        "default": ""
+      }
+    },
+    "required": [
+      "label"
+    ]
+  }
+};
+
+// libs/engine/src/templates/generated/bpmn/bpmn-error-event.template.ts
+var bpmnErrorEventTemplate = {
+  "id": "bpmn-error-event",
+  "version": "1.0.0",
+  "meta": {
+    "name": "Error Event",
+    "description": "Event for error handling",
+    "category": "common",
+    "tags": [
+      "event",
+      "error",
+      "exception",
+      "fault"
+    ],
+    "author": "Auto-Generated"
+  },
+  "structure": {
+    "type": "bpmn:error-event",
+    "size": {
+      "width": 120,
+      "height": 80,
+      "minWidth": 80,
+      "maxWidth": 300,
+      "minHeight": 60,
+      "maxHeight": 200
+    },
+    "shape": {
+      "type": "rect",
+      "fill": "#FFCDD2",
+      "stroke": "#D32F2F",
+      "strokeWidth": 2,
+      "opacity": 1
+    },
+    "html": {
+      "mode": "template",
+      "template": `<div class="bpmn-error-event-content">
+          <div class="node-label">{{data.label || 'Error Event'}}</div>
+        </div>`,
+      "className": "bpmn-error-event",
+      "style": {
+        "display": "flex",
+        "alignItems": "center",
+        "justifyContent": "center",
+        "padding": "8px",
+        "fontFamily": "Arial, sans-serif",
+        "fontSize": "14px",
+        "textAlign": "center",
+        "wordBreak": "break-word"
+      }
+    },
+    "ports": {
+      "enabled": true,
+      "defaultVisibility": "on-hover",
+      "rendering": {
+        "mode": "svg",
+        "size": {
+          "width": 8,
+          "height": 8,
+          "hoverScale": 1.5
+        },
+        "svg": {
+          "shape": "circle",
+          "fill": "#1976D2",
+          "stroke": "#FFFFFF",
+          "strokeWidth": 2
+        }
+      },
+      "left": {
+        "enabled": true,
+        "type": "input",
+        "maxConnections": void 0
+      },
+      "right": {
+        "enabled": true,
+        "type": "output",
+        "maxConnections": void 0
+      },
+      "top": {
+        "enabled": true,
+        "type": "bi",
+        "maxConnections": void 0
+      },
+      "bottom": {
+        "enabled": true,
+        "type": "bi",
+        "maxConnections": void 0
+      }
+    },
+    "behavior": {
+      "draggable": true,
+      "selectable": true,
+      "connectable": true,
+      "resizable": false,
+      "deletable": true
+    }
+  },
+  "defaultData": {
+    "label": "Error Event"
+  },
+  "dataSchema": {
+    "type": "object",
+    "properties": {
+      "label": {
+        "type": "string",
+        "default": ""
+      }
+    },
+    "required": [
+      "label"
+    ]
+  }
+};
+
+// libs/engine/src/templates/generated/flowchart/index.ts
+var flowchart_exports = {};
+__export(flowchart_exports, {
+  flowchartConnectorTemplate: () => flowchartConnectorTemplate,
+  flowchartDataTemplate: () => flowchartDataTemplate,
+  flowchartDecisionTemplate: () => flowchartDecisionTemplate,
+  flowchartDelayTemplate: () => flowchartDelayTemplate,
+  flowchartDisplayTemplate: () => flowchartDisplayTemplate,
+  flowchartDocumentTemplate: () => flowchartDocumentTemplate,
+  flowchartManualInputTemplate: () => flowchartManualInputTemplate,
+  flowchartManualOperationTemplate: () => flowchartManualOperationTemplate,
+  flowchartMergeTemplate: () => flowchartMergeTemplate,
+  flowchartOrTemplate: () => flowchartOrTemplate,
+  flowchartPredefinedProcessTemplate: () => flowchartPredefinedProcessTemplate,
+  flowchartPreparationTemplate: () => flowchartPreparationTemplate,
+  flowchartProcessTemplate: () => flowchartProcessTemplate,
+  flowchartStoredDataTemplate: () => flowchartStoredDataTemplate,
+  flowchartSummingJunctionTemplate: () => flowchartSummingJunctionTemplate,
+  flowchartTerminalTemplate: () => flowchartTerminalTemplate
+});
+
+// libs/engine/src/templates/generated/flowchart/flowchart-process.template.ts
+var flowchartProcessTemplate = {
+  "id": "flowchart-process",
+  "version": "1.0.0",
+  "meta": {
+    "name": "Process",
+    "description": "A process or operation step",
+    "category": "workflow",
+    "tags": [
+      "operation",
+      "step",
+      "action",
+      "flowchart"
+    ],
+    "author": "Auto-Generated"
+  },
+  "structure": {
+    "type": "flowchart:process",
+    "size": {
+      "width": 120,
+      "height": 60,
+      "minWidth": 80,
+      "maxWidth": 250,
+      "minHeight": 50,
+      "maxHeight": 150
+    },
+    "shape": {
+      "type": "rect",
+      "fill": "#E3F2FD",
+      "stroke": "#1976D2",
+      "strokeWidth": 2,
+      "opacity": 1
+    },
+    "html": {
+      "mode": "template",
+      "template": `<div class="flowchart-process-content">
+          <div class="node-label">{{data.label || 'Process'}}</div>
+        </div>`,
+      "className": "flowchart-process",
+      "style": {
+        "display": "flex",
+        "alignItems": "center",
+        "justifyContent": "center",
+        "padding": "8px",
+        "fontFamily": "Arial, sans-serif",
+        "fontSize": "14px",
+        "textAlign": "center",
+        "wordBreak": "break-word"
+      }
+    },
+    "ports": {
+      "enabled": true,
+      "defaultVisibility": "on-hover",
+      "rendering": {
+        "mode": "svg",
+        "size": {
+          "width": 8,
+          "height": 8,
+          "hoverScale": 1.5
+        },
+        "svg": {
+          "shape": "circle",
+          "fill": "#1976D2",
+          "stroke": "#FFFFFF",
+          "strokeWidth": 2
+        }
+      },
+      "left": {
+        "enabled": true,
+        "type": "input",
+        "maxConnections": void 0
+      },
+      "right": {
+        "enabled": true,
+        "type": "output",
+        "maxConnections": void 0
+      },
+      "top": {
+        "enabled": true,
+        "type": "bi",
+        "maxConnections": void 0
+      },
+      "bottom": {
+        "enabled": true,
+        "type": "bi",
+        "maxConnections": void 0
+      }
+    },
+    "behavior": {
+      "draggable": true,
+      "selectable": true,
+      "connectable": true,
+      "resizable": true,
+      "deletable": true
+    }
+  },
+  "defaultData": {
+    "label": "Process"
+  },
+  "dataSchema": {
+    "type": "object",
+    "properties": {
+      "label": {
+        "type": "string",
+        "default": ""
+      }
+    },
+    "required": [
+      "label"
+    ]
+  }
+};
+
+// libs/engine/src/templates/generated/flowchart/flowchart-decision.template.ts
+var flowchartDecisionTemplate = {
+  "id": "flowchart-decision",
+  "version": "1.0.0",
+  "meta": {
+    "name": "Decision",
+    "description": "A decision or conditional branch point",
+    "category": "workflow",
+    "tags": [
+      "control-flow",
+      "decision",
+      "conditional",
+      "branch",
+      "flowchart"
+    ],
+    "author": "Auto-Generated"
+  },
+  "structure": {
+    "type": "flowchart:decision",
+    "size": {
+      "width": 100,
+      "height": 100,
+      "minWidth": 80,
+      "maxWidth": 250,
+      "minHeight": 50,
+      "maxHeight": 150
+    },
+    "shape": {
+      "type": "diamond",
+      "fill": "#FFF3E0",
+      "stroke": "#F57C00",
+      "strokeWidth": 2,
+      "opacity": 1
+    },
+    "html": {
+      "mode": "template",
+      "template": `<div class="flowchart-decision-content">
+          <div class="node-label">{{data.label || 'Decision'}}</div>
+        </div>`,
+      "className": "flowchart-decision",
+      "style": {
+        "display": "flex",
+        "alignItems": "center",
+        "justifyContent": "center",
+        "padding": "8px",
+        "fontFamily": "Arial, sans-serif",
+        "fontSize": "14px",
+        "textAlign": "center",
+        "wordBreak": "break-word"
+      }
+    },
+    "ports": {
+      "enabled": true,
+      "defaultVisibility": "on-hover",
+      "rendering": {
+        "mode": "svg",
+        "size": {
+          "width": 8,
+          "height": 8,
+          "hoverScale": 1.5
+        },
+        "svg": {
+          "shape": "circle",
+          "fill": "#F57C00",
+          "stroke": "#FFFFFF",
+          "strokeWidth": 2
+        }
+      },
+      "left": {
+        "enabled": true,
+        "type": "input",
+        "maxConnections": void 0
+      },
+      "right": {
+        "enabled": true,
+        "type": "output",
+        "maxConnections": void 0
+      },
+      "top": {
+        "enabled": true,
+        "type": "output",
+        "maxConnections": void 0
+      },
+      "bottom": {
+        "enabled": true,
+        "type": "output",
+        "maxConnections": void 0
+      }
+    },
+    "behavior": {
+      "draggable": true,
+      "selectable": true,
+      "connectable": true,
+      "resizable": true,
+      "deletable": true
+    }
+  },
+  "defaultData": {
+    "label": "Decision"
+  },
+  "dataSchema": {
+    "type": "object",
+    "properties": {
+      "label": {
+        "type": "string",
+        "default": ""
+      }
+    },
+    "required": [
+      "label"
+    ]
+  }
+};
+
+// libs/engine/src/templates/generated/flowchart/flowchart-terminal.template.ts
+var flowchartTerminalTemplate = {
+  "id": "flowchart-terminal",
+  "version": "1.0.0",
+  "meta": {
+    "name": "Terminal",
+    "description": "Start or end point of a flow",
+    "category": "workflow",
+    "tags": [
+      "terminal",
+      "start",
+      "end",
+      "boundary",
+      "flowchart"
+    ],
+    "author": "Auto-Generated"
+  },
+  "structure": {
+    "type": "flowchart:terminal",
+    "size": {
+      "width": 120,
+      "height": 50,
+      "minWidth": 80,
+      "maxWidth": 250,
+      "minHeight": 50,
+      "maxHeight": 150
+    },
+    "shape": {
+      "type": "rect",
+      "fill": "#E8F5E9",
+      "stroke": "#388E3C",
+      "strokeWidth": 2,
+      "opacity": 1,
+      "cornerRadius": 25
+    },
+    "html": {
+      "mode": "template",
+      "template": `<div class="flowchart-terminal-content">
+          <div class="node-label">{{data.label || 'Terminal'}}</div>
+        </div>`,
+      "className": "flowchart-terminal",
+      "style": {
+        "display": "flex",
+        "alignItems": "center",
+        "justifyContent": "center",
+        "padding": "8px",
+        "fontFamily": "Arial, sans-serif",
+        "fontSize": "14px",
+        "textAlign": "center",
+        "wordBreak": "break-word"
+      }
+    },
+    "ports": {
+      "enabled": true,
+      "defaultVisibility": "on-hover",
+      "rendering": {
+        "mode": "svg",
+        "size": {
+          "width": 8,
+          "height": 8,
+          "hoverScale": 1.5
+        },
+        "svg": {
+          "shape": "circle",
+          "fill": "#1976D2",
+          "stroke": "#FFFFFF",
+          "strokeWidth": 2
+        }
+      },
+      "left": {
+        "enabled": true,
+        "type": "input",
+        "maxConnections": void 0
+      },
+      "right": {
+        "enabled": true,
+        "type": "output",
+        "maxConnections": void 0
+      },
+      "top": {
+        "enabled": true,
+        "type": "bi",
+        "maxConnections": void 0
+      },
+      "bottom": {
+        "enabled": true,
+        "type": "bi",
+        "maxConnections": void 0
+      }
+    },
+    "behavior": {
+      "draggable": true,
+      "selectable": true,
+      "connectable": true,
+      "resizable": true,
+      "deletable": true
+    }
+  },
+  "defaultData": {
+    "label": "Terminal"
+  },
+  "dataSchema": {
+    "type": "object",
+    "properties": {
+      "label": {
+        "type": "string",
+        "default": ""
+      }
+    },
+    "required": [
+      "label"
+    ]
+  }
+};
+
+// libs/engine/src/templates/generated/flowchart/flowchart-data.template.ts
+var flowchartDataTemplate = {
+  "id": "flowchart-data",
+  "version": "1.0.0",
+  "meta": {
+    "name": "Data",
+    "description": "Data input or output",
+    "category": "workflow",
+    "tags": [
+      "data",
+      "io",
+      "input",
+      "output",
+      "flowchart"
+    ],
+    "author": "Auto-Generated"
+  },
+  "structure": {
+    "type": "flowchart:data",
+    "size": {
+      "width": 120,
+      "height": 60,
+      "minWidth": 80,
+      "maxWidth": 250,
+      "minHeight": 50,
+      "maxHeight": 150
+    },
+    "shape": {
+      "type": "rect",
+      "fill": "#F3E5F5",
+      "stroke": "#7B1FA2",
+      "strokeWidth": 2,
+      "opacity": 1
+    },
+    "html": {
+      "mode": "template",
+      "template": `<div class="flowchart-data-content">
+          <div class="node-label">{{data.label || 'Data'}}</div>
+        </div>`,
+      "className": "flowchart-data",
+      "style": {
+        "display": "flex",
+        "alignItems": "center",
+        "justifyContent": "center",
+        "padding": "8px",
+        "fontFamily": "Arial, sans-serif",
+        "fontSize": "14px",
+        "textAlign": "center",
+        "wordBreak": "break-word"
+      }
+    },
+    "ports": {
+      "enabled": true,
+      "defaultVisibility": "on-hover",
+      "rendering": {
+        "mode": "svg",
+        "size": {
+          "width": 8,
+          "height": 8,
+          "hoverScale": 1.5
+        },
+        "svg": {
+          "shape": "circle",
+          "fill": "#1976D2",
+          "stroke": "#FFFFFF",
+          "strokeWidth": 2
+        }
+      },
+      "left": {
+        "enabled": true,
+        "type": "input",
+        "maxConnections": void 0
+      },
+      "right": {
+        "enabled": true,
+        "type": "output",
+        "maxConnections": void 0
+      },
+      "top": {
+        "enabled": true,
+        "type": "bi",
+        "maxConnections": void 0
+      },
+      "bottom": {
+        "enabled": true,
+        "type": "bi",
+        "maxConnections": void 0
+      }
+    },
+    "behavior": {
+      "draggable": true,
+      "selectable": true,
+      "connectable": true,
+      "resizable": true,
+      "deletable": true
+    }
+  },
+  "defaultData": {
+    "label": "Data"
+  },
+  "dataSchema": {
+    "type": "object",
+    "properties": {
+      "label": {
+        "type": "string",
+        "default": ""
+      }
+    },
+    "required": [
+      "label"
+    ]
+  }
+};
+
+// libs/engine/src/templates/generated/flowchart/flowchart-document.template.ts
+var flowchartDocumentTemplate = {
+  "id": "flowchart-document",
+  "version": "1.0.0",
+  "meta": {
+    "name": "Document",
+    "description": "Document or report",
+    "category": "workflow",
+    "tags": [
+      "data",
+      "document",
+      "output",
+      "report",
+      "flowchart"
+    ],
+    "author": "Auto-Generated"
+  },
+  "structure": {
+    "type": "flowchart:document",
+    "size": {
+      "width": 120,
+      "height": 70,
+      "minWidth": 80,
+      "maxWidth": 250,
+      "minHeight": 50,
+      "maxHeight": 150
+    },
+    "shape": {
+      "type": "rect",
+      "fill": "#FFF9C4",
+      "stroke": "#F57F17",
+      "strokeWidth": 2,
+      "opacity": 1
+    },
+    "html": {
+      "mode": "template",
+      "template": `<div class="flowchart-document-content">
+          <div class="node-label">{{data.label || 'Document'}}</div>
+        </div>`,
+      "className": "flowchart-document",
+      "style": {
+        "display": "flex",
+        "alignItems": "center",
+        "justifyContent": "center",
+        "padding": "8px",
+        "fontFamily": "Arial, sans-serif",
+        "fontSize": "14px",
+        "textAlign": "center",
+        "wordBreak": "break-word"
+      }
+    },
+    "ports": {
+      "enabled": true,
+      "defaultVisibility": "on-hover",
+      "rendering": {
+        "mode": "svg",
+        "size": {
+          "width": 8,
+          "height": 8,
+          "hoverScale": 1.5
+        },
+        "svg": {
+          "shape": "circle",
+          "fill": "#1976D2",
+          "stroke": "#FFFFFF",
+          "strokeWidth": 2
+        }
+      },
+      "left": {
+        "enabled": true,
+        "type": "input",
+        "maxConnections": void 0
+      },
+      "right": {
+        "enabled": true,
+        "type": "output",
+        "maxConnections": void 0
+      },
+      "top": {
+        "enabled": true,
+        "type": "bi",
+        "maxConnections": void 0
+      },
+      "bottom": {
+        "enabled": true,
+        "type": "bi",
+        "maxConnections": void 0
+      }
+    },
+    "behavior": {
+      "draggable": true,
+      "selectable": true,
+      "connectable": true,
+      "resizable": true,
+      "deletable": true
+    }
+  },
+  "defaultData": {
+    "label": "Document"
+  },
+  "dataSchema": {
+    "type": "object",
+    "properties": {
+      "label": {
+        "type": "string",
+        "default": ""
+      }
+    },
+    "required": [
+      "label"
+    ]
+  }
+};
+
+// libs/engine/src/templates/generated/flowchart/flowchart-connector.template.ts
+var flowchartConnectorTemplate = {
+  "id": "flowchart-connector",
+  "version": "1.0.0",
+  "meta": {
+    "name": "Connector",
+    "description": "Flow connector or reference point",
+    "category": "workflow",
+    "tags": [
+      "connector",
+      "reference",
+      "junction",
+      "flowchart"
+    ],
+    "author": "Auto-Generated"
+  },
+  "structure": {
+    "type": "flowchart:connector",
+    "size": {
+      "width": 40,
+      "height": 40,
+      "minWidth": 80,
+      "maxWidth": 250,
+      "minHeight": 50,
+      "maxHeight": 150
+    },
+    "shape": {
+      "type": "circle",
+      "fill": "#FFFFFF",
+      "stroke": "#757575",
+      "strokeWidth": 2,
+      "opacity": 1
+    },
+    "html": {
+      "mode": "template",
+      "template": `<div class="flowchart-connector-content">
+          <div class="node-label">{{data.label || 'Connector'}}</div>
+        </div>`,
+      "className": "flowchart-connector",
+      "style": {
+        "display": "flex",
+        "alignItems": "center",
+        "justifyContent": "center",
+        "padding": "8px",
+        "fontFamily": "Arial, sans-serif",
+        "fontSize": "14px",
+        "textAlign": "center",
+        "wordBreak": "break-word"
+      }
+    },
+    "ports": {
+      "enabled": true,
+      "defaultVisibility": "on-hover",
+      "rendering": {
+        "mode": "svg",
+        "size": {
+          "width": 8,
+          "height": 8,
+          "hoverScale": 1.5
+        },
+        "svg": {
+          "shape": "circle",
+          "fill": "#1976D2",
+          "stroke": "#FFFFFF",
+          "strokeWidth": 2
+        }
+      },
+      "top": {
+        "enabled": true,
+        "type": "bi",
+        "maxConnections": void 0
+      },
+      "right": {
+        "enabled": true,
+        "type": "bi",
+        "maxConnections": void 0
+      },
+      "bottom": {
+        "enabled": true,
+        "type": "bi",
+        "maxConnections": void 0
+      },
+      "left": {
+        "enabled": true,
+        "type": "bi",
+        "maxConnections": void 0
+      }
+    },
+    "behavior": {
+      "draggable": true,
+      "selectable": true,
+      "connectable": true,
+      "resizable": false,
+      "deletable": true
+    }
+  },
+  "defaultData": {
+    "label": "Connector"
+  },
+  "dataSchema": {
+    "type": "object",
+    "properties": {
+      "label": {
+        "type": "string",
+        "default": ""
+      }
+    },
+    "required": [
+      "label"
+    ]
+  }
+};
+
+// libs/engine/src/templates/generated/flowchart/flowchart-delay.template.ts
+var flowchartDelayTemplate = {
+  "id": "flowchart-delay",
+  "version": "1.0.0",
+  "meta": {
+    "name": "Delay",
+    "description": "Delay or wait step",
+    "category": "workflow",
+    "tags": [
+      "operation",
+      "delay",
+      "wait",
+      "pause",
+      "flowchart"
+    ],
+    "author": "Auto-Generated"
+  },
+  "structure": {
+    "type": "flowchart:delay",
+    "size": {
+      "width": 120,
+      "height": 60,
+      "minWidth": 80,
+      "maxWidth": 250,
+      "minHeight": 50,
+      "maxHeight": 150
+    },
+    "shape": {
+      "type": "rect",
+      "fill": "#FFEBEE",
+      "stroke": "#C62828",
+      "strokeWidth": 2,
+      "opacity": 1,
+      "cornerRadius": 15
+    },
+    "html": {
+      "mode": "template",
+      "template": `<div class="flowchart-delay-content">
+          <div class="node-label">{{data.label || 'Delay'}}</div>
+        </div>`,
+      "className": "flowchart-delay",
+      "style": {
+        "display": "flex",
+        "alignItems": "center",
+        "justifyContent": "center",
+        "padding": "8px",
+        "fontFamily": "Arial, sans-serif",
+        "fontSize": "14px",
+        "textAlign": "center",
+        "wordBreak": "break-word"
+      }
+    },
+    "ports": {
+      "enabled": true,
+      "defaultVisibility": "on-hover",
+      "rendering": {
+        "mode": "svg",
+        "size": {
+          "width": 8,
+          "height": 8,
+          "hoverScale": 1.5
+        },
+        "svg": {
+          "shape": "circle",
+          "fill": "#1976D2",
+          "stroke": "#FFFFFF",
+          "strokeWidth": 2
+        }
+      },
+      "left": {
+        "enabled": true,
+        "type": "input",
+        "maxConnections": void 0
+      },
+      "right": {
+        "enabled": true,
+        "type": "output",
+        "maxConnections": void 0
+      },
+      "top": {
+        "enabled": true,
+        "type": "bi",
+        "maxConnections": void 0
+      },
+      "bottom": {
+        "enabled": true,
+        "type": "bi",
+        "maxConnections": void 0
+      }
+    },
+    "behavior": {
+      "draggable": true,
+      "selectable": true,
+      "connectable": true,
+      "resizable": true,
+      "deletable": true
+    }
+  },
+  "defaultData": {
+    "label": "Delay"
+  },
+  "dataSchema": {
+    "type": "object",
+    "properties": {
+      "label": {
+        "type": "string",
+        "default": ""
+      }
+    },
+    "required": [
+      "label"
+    ]
+  }
+};
+
+// libs/engine/src/templates/generated/flowchart/flowchart-manual-input.template.ts
+var flowchartManualInputTemplate = {
+  "id": "flowchart-manual-input",
+  "version": "1.0.0",
+  "meta": {
+    "name": "Manual Input",
+    "description": "Manual input or data entry",
+    "category": "workflow",
+    "tags": [
+      "input",
+      "manual",
+      "data-entry",
+      "user-input",
+      "flowchart"
+    ],
+    "author": "Auto-Generated"
+  },
+  "structure": {
+    "type": "flowchart:manual-input",
+    "size": {
+      "width": 120,
+      "height": 60,
+      "minWidth": 80,
+      "maxWidth": 250,
+      "minHeight": 50,
+      "maxHeight": 150
+    },
+    "shape": {
+      "type": "rect",
+      "fill": "#E0F7FA",
+      "stroke": "#00838F",
+      "strokeWidth": 2,
+      "opacity": 1
+    },
+    "html": {
+      "mode": "template",
+      "template": `<div class="flowchart-manual-input-content">
+          <div class="node-label">{{data.label || 'Manual Input'}}</div>
+        </div>`,
+      "className": "flowchart-manual-input",
+      "style": {
+        "display": "flex",
+        "alignItems": "center",
+        "justifyContent": "center",
+        "padding": "8px",
+        "fontFamily": "Arial, sans-serif",
+        "fontSize": "14px",
+        "textAlign": "center",
+        "wordBreak": "break-word"
+      }
+    },
+    "ports": {
+      "enabled": true,
+      "defaultVisibility": "on-hover",
+      "rendering": {
+        "mode": "svg",
+        "size": {
+          "width": 8,
+          "height": 8,
+          "hoverScale": 1.5
+        },
+        "svg": {
+          "shape": "circle",
+          "fill": "#1976D2",
+          "stroke": "#FFFFFF",
+          "strokeWidth": 2
+        }
+      },
+      "left": {
+        "enabled": true,
+        "type": "input",
+        "maxConnections": void 0
+      },
+      "right": {
+        "enabled": true,
+        "type": "output",
+        "maxConnections": void 0
+      },
+      "top": {
+        "enabled": true,
+        "type": "bi",
+        "maxConnections": void 0
+      },
+      "bottom": {
+        "enabled": true,
+        "type": "bi",
+        "maxConnections": void 0
+      }
+    },
+    "behavior": {
+      "draggable": true,
+      "selectable": true,
+      "connectable": true,
+      "resizable": true,
+      "deletable": true
+    }
+  },
+  "defaultData": {
+    "label": "Manual Input"
+  },
+  "dataSchema": {
+    "type": "object",
+    "properties": {
+      "label": {
+        "type": "string",
+        "default": ""
+      }
+    },
+    "required": [
+      "label"
+    ]
+  }
+};
+
+// libs/engine/src/templates/generated/flowchart/flowchart-manual-operation.template.ts
+var flowchartManualOperationTemplate = {
+  "id": "flowchart-manual-operation",
+  "version": "1.0.0",
+  "meta": {
+    "name": "Manual Operation",
+    "description": "Manual operation or task",
+    "category": "workflow",
+    "tags": [
+      "operation",
+      "manual",
+      "task",
+      "flowchart"
+    ],
+    "author": "Auto-Generated"
+  },
+  "structure": {
+    "type": "flowchart:manual-operation",
+    "size": {
+      "width": 120,
+      "height": 60,
+      "minWidth": 80,
+      "maxWidth": 250,
+      "minHeight": 50,
+      "maxHeight": 150
+    },
+    "shape": {
+      "type": "rect",
+      "fill": "#FCE4EC",
+      "stroke": "#C2185B",
+      "strokeWidth": 2,
+      "opacity": 1
+    },
+    "html": {
+      "mode": "template",
+      "template": `<div class="flowchart-manual-operation-content">
+          <div class="node-label">{{data.label || 'Manual Operation'}}</div>
+        </div>`,
+      "className": "flowchart-manual-operation",
+      "style": {
+        "display": "flex",
+        "alignItems": "center",
+        "justifyContent": "center",
+        "padding": "8px",
+        "fontFamily": "Arial, sans-serif",
+        "fontSize": "14px",
+        "textAlign": "center",
+        "wordBreak": "break-word"
+      }
+    },
+    "ports": {
+      "enabled": true,
+      "defaultVisibility": "on-hover",
+      "rendering": {
+        "mode": "svg",
+        "size": {
+          "width": 8,
+          "height": 8,
+          "hoverScale": 1.5
+        },
+        "svg": {
+          "shape": "circle",
+          "fill": "#1976D2",
+          "stroke": "#FFFFFF",
+          "strokeWidth": 2
+        }
+      },
+      "left": {
+        "enabled": true,
+        "type": "input",
+        "maxConnections": void 0
+      },
+      "right": {
+        "enabled": true,
+        "type": "output",
+        "maxConnections": void 0
+      },
+      "top": {
+        "enabled": true,
+        "type": "bi",
+        "maxConnections": void 0
+      },
+      "bottom": {
+        "enabled": true,
+        "type": "bi",
+        "maxConnections": void 0
+      }
+    },
+    "behavior": {
+      "draggable": true,
+      "selectable": true,
+      "connectable": true,
+      "resizable": true,
+      "deletable": true
+    }
+  },
+  "defaultData": {
+    "label": "Manual Operation"
+  },
+  "dataSchema": {
+    "type": "object",
+    "properties": {
+      "label": {
+        "type": "string",
+        "default": ""
+      }
+    },
+    "required": [
+      "label"
+    ]
+  }
+};
+
+// libs/engine/src/templates/generated/flowchart/flowchart-predefined-process.template.ts
+var flowchartPredefinedProcessTemplate = {
+  "id": "flowchart-predefined-process",
+  "version": "1.0.0",
+  "meta": {
+    "name": "Predefined Process",
+    "description": "A predefined process or subroutine",
+    "category": "workflow",
+    "tags": [
+      "operation",
+      "subroutine",
+      "predefined",
+      "module",
+      "flowchart"
+    ],
+    "author": "Auto-Generated"
+  },
+  "structure": {
+    "type": "flowchart:predefined-process",
+    "size": {
+      "width": 120,
+      "height": 80,
+      "minWidth": 80,
+      "maxWidth": 250,
+      "minHeight": 50,
+      "maxHeight": 150
+    },
+    "shape": {
+      "type": "rect",
+      "fill": "#FFFFFF",
+      "stroke": "#000000",
+      "strokeWidth": 3,
+      "opacity": 1
+    },
+    "html": {
+      "mode": "template",
+      "template": `<div class="flowchart-predefined-process-content">
+          <div class="node-label">{{data.label || 'Predefined Process'}}</div>
+        </div>`,
+      "className": "flowchart-predefined-process",
+      "style": {
+        "display": "flex",
+        "alignItems": "center",
+        "justifyContent": "center",
+        "padding": "8px",
+        "fontFamily": "Arial, sans-serif",
+        "fontSize": "14px",
+        "textAlign": "center",
+        "wordBreak": "break-word"
+      }
+    },
+    "ports": {
+      "enabled": true,
+      "defaultVisibility": "on-hover",
+      "rendering": {
+        "mode": "svg",
+        "size": {
+          "width": 8,
+          "height": 8,
+          "hoverScale": 1.5
+        },
+        "svg": {
+          "shape": "circle",
+          "fill": "#1976D2",
+          "stroke": "#FFFFFF",
+          "strokeWidth": 2
+        }
+      },
+      "left": {
+        "enabled": true,
+        "type": "input",
+        "maxConnections": void 0
+      },
+      "right": {
+        "enabled": true,
+        "type": "output",
+        "maxConnections": void 0
+      },
+      "top": {
+        "enabled": true,
+        "type": "bi",
+        "maxConnections": void 0
+      },
+      "bottom": {
+        "enabled": true,
+        "type": "bi",
+        "maxConnections": void 0
+      }
+    },
+    "behavior": {
+      "draggable": true,
+      "selectable": true,
+      "connectable": true,
+      "resizable": false,
+      "deletable": true
+    }
+  },
+  "defaultData": {
+    "label": "Predefined Process"
+  },
+  "dataSchema": {
+    "type": "object",
+    "properties": {
+      "label": {
+        "type": "string",
+        "default": ""
+      }
+    },
+    "required": [
+      "label"
+    ]
+  }
+};
+
+// libs/engine/src/templates/generated/flowchart/flowchart-stored-data.template.ts
+var flowchartStoredDataTemplate = {
+  "id": "flowchart-stored-data",
+  "version": "1.0.0",
+  "meta": {
+    "name": "Stored Data",
+    "description": "Stored data, database, or file",
+    "category": "workflow",
+    "tags": [
+      "data",
+      "storage",
+      "database",
+      "file",
+      "flowchart"
+    ],
+    "author": "Auto-Generated"
+  },
+  "structure": {
+    "type": "flowchart:stored-data",
+    "size": {
+      "width": 120,
+      "height": 70,
+      "minWidth": 80,
+      "maxWidth": 250,
+      "minHeight": 50,
+      "maxHeight": 150
+    },
+    "shape": {
+      "type": "rect",
+      "fill": "#E8F5E9",
+      "stroke": "#388E3C",
+      "strokeWidth": 2,
+      "opacity": 1
+    },
+    "html": {
+      "mode": "template",
+      "template": `<div class="flowchart-stored-data-content">
+          <div class="node-label">{{data.label || 'Stored Data'}}</div>
+        </div>`,
+      "className": "flowchart-stored-data",
+      "style": {
+        "display": "flex",
+        "alignItems": "center",
+        "justifyContent": "center",
+        "padding": "8px",
+        "fontFamily": "Arial, sans-serif",
+        "fontSize": "14px",
+        "textAlign": "center",
+        "wordBreak": "break-word"
+      }
+    },
+    "ports": {
+      "enabled": true,
+      "defaultVisibility": "on-hover",
+      "rendering": {
+        "mode": "svg",
+        "size": {
+          "width": 8,
+          "height": 8,
+          "hoverScale": 1.5
+        },
+        "svg": {
+          "shape": "circle",
+          "fill": "#1976D2",
+          "stroke": "#FFFFFF",
+          "strokeWidth": 2
+        }
+      },
+      "left": {
+        "enabled": true,
+        "type": "input",
+        "maxConnections": void 0
+      },
+      "right": {
+        "enabled": true,
+        "type": "output",
+        "maxConnections": void 0
+      },
+      "top": {
+        "enabled": true,
+        "type": "bi",
+        "maxConnections": void 0
+      },
+      "bottom": {
+        "enabled": true,
+        "type": "bi",
+        "maxConnections": void 0
+      }
+    },
+    "behavior": {
+      "draggable": true,
+      "selectable": true,
+      "connectable": true,
+      "resizable": false,
+      "deletable": true
+    }
+  },
+  "defaultData": {
+    "label": "Stored Data"
+  },
+  "dataSchema": {
+    "type": "object",
+    "properties": {
+      "label": {
+        "type": "string",
+        "default": ""
+      }
+    },
+    "required": [
+      "label"
+    ]
+  }
+};
+
+// libs/engine/src/templates/generated/flowchart/flowchart-display.template.ts
+var flowchartDisplayTemplate = {
+  "id": "flowchart-display",
+  "version": "1.0.0",
+  "meta": {
+    "name": "Display",
+    "description": "Display or output to screen",
+    "category": "workflow",
+    "tags": [
+      "data",
+      "display",
+      "output",
+      "screen",
+      "flowchart"
+    ],
+    "author": "Auto-Generated"
+  },
+  "structure": {
+    "type": "flowchart:display",
+    "size": {
+      "width": 120,
+      "height": 80,
+      "minWidth": 80,
+      "maxWidth": 250,
+      "minHeight": 50,
+      "maxHeight": 150
+    },
+    "shape": {
+      "type": "rect",
+      "fill": "#F3E5F5",
+      "stroke": "#7B1FA2",
+      "strokeWidth": 2,
+      "opacity": 1,
+      "cornerRadius": 15
+    },
+    "html": {
+      "mode": "template",
+      "template": `<div class="flowchart-display-content">
+          <div class="node-label">{{data.label || 'Display'}}</div>
+        </div>`,
+      "className": "flowchart-display",
+      "style": {
+        "display": "flex",
+        "alignItems": "center",
+        "justifyContent": "center",
+        "padding": "8px",
+        "fontFamily": "Arial, sans-serif",
+        "fontSize": "14px",
+        "textAlign": "center",
+        "wordBreak": "break-word"
+      }
+    },
+    "ports": {
+      "enabled": true,
+      "defaultVisibility": "on-hover",
+      "rendering": {
+        "mode": "svg",
+        "size": {
+          "width": 8,
+          "height": 8,
+          "hoverScale": 1.5
+        },
+        "svg": {
+          "shape": "circle",
+          "fill": "#1976D2",
+          "stroke": "#FFFFFF",
+          "strokeWidth": 2
+        }
+      },
+      "left": {
+        "enabled": true,
+        "type": "input",
+        "maxConnections": void 0
+      },
+      "right": {
+        "enabled": true,
+        "type": "output",
+        "maxConnections": void 0
+      },
+      "top": {
+        "enabled": true,
+        "type": "bi",
+        "maxConnections": void 0
+      },
+      "bottom": {
+        "enabled": true,
+        "type": "bi",
+        "maxConnections": void 0
+      }
+    },
+    "behavior": {
+      "draggable": true,
+      "selectable": true,
+      "connectable": true,
+      "resizable": true,
+      "deletable": true
+    }
+  },
+  "defaultData": {
+    "label": "Display"
+  },
+  "dataSchema": {
+    "type": "object",
+    "properties": {
+      "label": {
+        "type": "string",
+        "default": ""
+      }
+    },
+    "required": [
+      "label"
+    ]
+  }
+};
+
+// libs/engine/src/templates/generated/flowchart/flowchart-preparation.template.ts
+var flowchartPreparationTemplate = {
+  "id": "flowchart-preparation",
+  "version": "1.0.0",
+  "meta": {
+    "name": "Preparation",
+    "description": "Preparation or initialization step",
+    "category": "workflow",
+    "tags": [
+      "operation",
+      "preparation",
+      "initialization",
+      "setup",
+      "flowchart"
+    ],
+    "author": "Auto-Generated"
+  },
+  "structure": {
+    "type": "flowchart:preparation",
+    "size": {
+      "width": 140,
+      "height": 60,
+      "minWidth": 80,
+      "maxWidth": 250,
+      "minHeight": 50,
+      "maxHeight": 150
+    },
+    "shape": {
+      "type": "hexagon",
+      "fill": "#FFF3E0",
+      "stroke": "#F57C00",
+      "strokeWidth": 2,
+      "opacity": 1
+    },
+    "html": {
+      "mode": "template",
+      "template": `<div class="flowchart-preparation-content">
+          <div class="node-label">{{data.label || 'Preparation'}}</div>
+        </div>`,
+      "className": "flowchart-preparation",
+      "style": {
+        "display": "flex",
+        "alignItems": "center",
+        "justifyContent": "center",
+        "padding": "8px",
+        "fontFamily": "Arial, sans-serif",
+        "fontSize": "14px",
+        "textAlign": "center",
+        "wordBreak": "break-word"
+      }
+    },
+    "ports": {
+      "enabled": true,
+      "defaultVisibility": "on-hover",
+      "rendering": {
+        "mode": "svg",
+        "size": {
+          "width": 8,
+          "height": 8,
+          "hoverScale": 1.5
+        },
+        "svg": {
+          "shape": "circle",
+          "fill": "#1976D2",
+          "stroke": "#FFFFFF",
+          "strokeWidth": 2
+        }
+      },
+      "left": {
+        "enabled": true,
+        "type": "input",
+        "maxConnections": void 0
+      },
+      "right": {
+        "enabled": true,
+        "type": "output",
+        "maxConnections": void 0
+      },
+      "top": {
+        "enabled": true,
+        "type": "bi",
+        "maxConnections": void 0
+      },
+      "bottom": {
+        "enabled": true,
+        "type": "bi",
+        "maxConnections": void 0
+      }
+    },
+    "behavior": {
+      "draggable": true,
+      "selectable": true,
+      "connectable": true,
+      "resizable": true,
+      "deletable": true
+    }
+  },
+  "defaultData": {
+    "label": "Preparation"
+  },
+  "dataSchema": {
+    "type": "object",
+    "properties": {
+      "label": {
+        "type": "string",
+        "default": ""
+      }
+    },
+    "required": [
+      "label"
+    ]
+  }
+};
+
+// libs/engine/src/templates/generated/flowchart/flowchart-merge.template.ts
+var flowchartMergeTemplate = {
+  "id": "flowchart-merge",
+  "version": "1.0.0",
+  "meta": {
+    "name": "Merge",
+    "description": "Merge multiple flows into one",
+    "category": "workflow",
+    "tags": [
+      "flow-control",
+      "merge",
+      "join",
+      "flowchart"
+    ],
+    "author": "Auto-Generated"
+  },
+  "structure": {
+    "type": "flowchart:merge",
+    "size": {
+      "width": 80,
+      "height": 70,
+      "minWidth": 80,
+      "maxWidth": 250,
+      "minHeight": 50,
+      "maxHeight": 150
+    },
+    "shape": {
+      "type": "rect",
+      "fill": "#E8F5E9",
+      "stroke": "#388E3C",
+      "strokeWidth": 2,
+      "opacity": 1
+    },
+    "html": {
+      "mode": "template",
+      "template": `<div class="flowchart-merge-content">
+          <div class="node-label">{{data.label || 'Merge'}}</div>
+        </div>`,
+      "className": "flowchart-merge",
+      "style": {
+        "display": "flex",
+        "alignItems": "center",
+        "justifyContent": "center",
+        "padding": "8px",
+        "fontFamily": "Arial, sans-serif",
+        "fontSize": "14px",
+        "textAlign": "center",
+        "wordBreak": "break-word"
+      }
+    },
+    "ports": {
+      "enabled": true,
+      "defaultVisibility": "on-hover",
+      "rendering": {
+        "mode": "svg",
+        "size": {
+          "width": 8,
+          "height": 8,
+          "hoverScale": 1.5
+        },
+        "svg": {
+          "shape": "circle",
+          "fill": "#1976D2",
+          "stroke": "#FFFFFF",
+          "strokeWidth": 2
+        }
+      },
+      "left": {
+        "enabled": true,
+        "type": "input",
+        "maxConnections": void 0
+      },
+      "right": {
+        "enabled": true,
+        "type": "output",
+        "maxConnections": void 0
+      },
+      "top": {
+        "enabled": true,
+        "type": "bi",
+        "maxConnections": void 0
+      },
+      "bottom": {
+        "enabled": true,
+        "type": "bi",
+        "maxConnections": void 0
+      }
+    },
+    "behavior": {
+      "draggable": true,
+      "selectable": true,
+      "connectable": true,
+      "resizable": true,
+      "deletable": true
+    }
+  },
+  "defaultData": {
+    "label": "Merge"
+  },
+  "dataSchema": {
+    "type": "object",
+    "properties": {
+      "label": {
+        "type": "string",
+        "default": ""
+      }
+    },
+    "required": [
+      "label"
+    ]
+  }
+};
+
+// libs/engine/src/templates/generated/flowchart/flowchart-or.template.ts
+var flowchartOrTemplate = {
+  "id": "flowchart-or",
+  "version": "1.0.0",
+  "meta": {
+    "name": "OR",
+    "description": "Logical OR operation",
+    "category": "workflow",
+    "tags": [
+      "flow-control",
+      "or",
+      "logic",
+      "flowchart"
+    ],
+    "author": "Auto-Generated"
+  },
+  "structure": {
+    "type": "flowchart:or",
+    "size": {
+      "width": 60,
+      "height": 60,
+      "minWidth": 80,
+      "maxWidth": 250,
+      "minHeight": 50,
+      "maxHeight": 150
+    },
+    "shape": {
+      "type": "circle",
+      "fill": "#FFF9C4",
+      "stroke": "#F57F17",
+      "strokeWidth": 2,
+      "opacity": 1
+    },
+    "html": {
+      "mode": "template",
+      "template": `<div class="flowchart-or-content">
+          <div class="node-label">{{data.label || 'OR'}}</div>
+        </div>`,
+      "className": "flowchart-or",
+      "style": {
+        "display": "flex",
+        "alignItems": "center",
+        "justifyContent": "center",
+        "padding": "8px",
+        "fontFamily": "Arial, sans-serif",
+        "fontSize": "14px",
+        "textAlign": "center",
+        "wordBreak": "break-word"
+      }
+    },
+    "ports": {
+      "enabled": true,
+      "defaultVisibility": "on-hover",
+      "rendering": {
+        "mode": "svg",
+        "size": {
+          "width": 8,
+          "height": 8,
+          "hoverScale": 1.5
+        },
+        "svg": {
+          "shape": "circle",
+          "fill": "#1976D2",
+          "stroke": "#FFFFFF",
+          "strokeWidth": 2
+        }
+      },
+      "top": {
+        "enabled": true,
+        "type": "bi",
+        "maxConnections": void 0
+      },
+      "right": {
+        "enabled": true,
+        "type": "bi",
+        "maxConnections": void 0
+      },
+      "bottom": {
+        "enabled": true,
+        "type": "bi",
+        "maxConnections": void 0
+      },
+      "left": {
+        "enabled": true,
+        "type": "bi",
+        "maxConnections": void 0
+      }
+    },
+    "behavior": {
+      "draggable": true,
+      "selectable": true,
+      "connectable": true,
+      "resizable": true,
+      "deletable": true
+    }
+  },
+  "defaultData": {
+    "label": "OR"
+  },
+  "dataSchema": {
+    "type": "object",
+    "properties": {
+      "label": {
+        "type": "string",
+        "default": ""
+      }
+    },
+    "required": [
+      "label"
+    ]
+  }
+};
+
+// libs/engine/src/templates/generated/flowchart/flowchart-summing-junction.template.ts
+var flowchartSummingJunctionTemplate = {
+  "id": "flowchart-summing-junction",
+  "version": "1.0.0",
+  "meta": {
+    "name": "Summing Junction",
+    "description": "Summing junction for combining flows",
+    "category": "workflow",
+    "tags": [
+      "flow-control",
+      "sum",
+      "combine",
+      "junction",
+      "flowchart"
+    ],
+    "author": "Auto-Generated"
+  },
+  "structure": {
+    "type": "flowchart:summing-junction",
+    "size": {
+      "width": 120,
+      "height": 80,
+      "minWidth": 80,
+      "maxWidth": 250,
+      "minHeight": 50,
+      "maxHeight": 150
+    },
+    "shape": {
+      "type": "rect",
+      "fill": "#E0F2F1",
+      "stroke": "#00695C",
+      "strokeWidth": 2,
+      "opacity": 1
+    },
+    "html": {
+      "mode": "template",
+      "template": `<div class="flowchart-summing-junction-content">
+          <div class="node-label">{{data.label || 'Summing Junction'}}</div>
+        </div>`,
+      "className": "flowchart-summing-junction",
+      "style": {
+        "display": "flex",
+        "alignItems": "center",
+        "justifyContent": "center",
+        "padding": "8px",
+        "fontFamily": "Arial, sans-serif",
+        "fontSize": "14px",
+        "textAlign": "center",
+        "wordBreak": "break-word"
+      }
+    },
+    "ports": {
+      "enabled": true,
+      "defaultVisibility": "on-hover",
+      "rendering": {
+        "mode": "svg",
+        "size": {
+          "width": 8,
+          "height": 8,
+          "hoverScale": 1.5
+        },
+        "svg": {
+          "shape": "circle",
+          "fill": "#1976D2",
+          "stroke": "#FFFFFF",
+          "strokeWidth": 2
+        }
+      },
+      "left": {
+        "enabled": true,
+        "type": "input",
+        "maxConnections": void 0
+      },
+      "right": {
+        "enabled": true,
+        "type": "output",
+        "maxConnections": void 0
+      },
+      "top": {
+        "enabled": true,
+        "type": "bi",
+        "maxConnections": void 0
+      },
+      "bottom": {
+        "enabled": true,
+        "type": "bi",
+        "maxConnections": void 0
+      }
+    },
+    "behavior": {
+      "draggable": true,
+      "selectable": true,
+      "connectable": true,
+      "resizable": false,
+      "deletable": true
+    }
+  },
+  "defaultData": {
+    "label": "Summing Junction"
+  },
+  "dataSchema": {
+    "type": "object",
+    "properties": {
+      "label": {
+        "type": "string",
+        "default": ""
+      }
+    },
+    "required": [
+      "label"
+    ]
+  }
+};
+
+// libs/engine/src/templates/generated/uml/index.ts
+var uml_exports = {};
+__export(uml_exports, {
+  umlAbstractClassTemplate: () => umlAbstractClassTemplate,
+  umlActivationTemplate: () => umlActivationTemplate,
+  umlActivityPartitionTemplate: () => umlActivityPartitionTemplate,
+  umlActivityTemplate: () => umlActivityTemplate,
+  umlActorTemplate: () => umlActorTemplate,
+  umlClassTemplate: () => umlClassTemplate,
+  umlCollaborationTemplate: () => umlCollaborationTemplate,
+  umlComponentTemplate: () => umlComponentTemplate,
+  umlDatatypeTemplate: () => umlDatatypeTemplate,
+  umlDecisionTemplate: () => umlDecisionTemplate,
+  umlEnumTemplate: () => umlEnumTemplate,
+  umlFinalNodeTemplate: () => umlFinalNodeTemplate,
+  umlFinalStateTemplate: () => umlFinalStateTemplate,
+  umlForkTemplate: () => umlForkTemplate,
+  umlInitialNodeTemplate: () => umlInitialNodeTemplate,
+  umlInitialStateTemplate: () => umlInitialStateTemplate,
+  umlInterfaceTemplate: () => umlInterfaceTemplate,
+  umlJoinTemplate: () => umlJoinTemplate,
+  umlLifelineTemplate: () => umlLifelineTemplate,
+  umlMergeTemplate: () => umlMergeTemplate,
+  umlNodeTemplate: () => umlNodeTemplate,
+  umlNoteTemplate: () => umlNoteTemplate,
+  umlObjectTemplate: () => umlObjectTemplate,
+  umlPackageTemplate: () => umlPackageTemplate,
+  umlPartTemplate: () => umlPartTemplate,
+  umlPortTemplate: () => umlPortTemplate,
+  umlPrimitiveTypeTemplate: () => umlPrimitiveTypeTemplate,
+  umlSignalTemplate: () => umlSignalTemplate,
+  umlStateTemplate: () => umlStateTemplate,
+  umlUseCaseTemplate: () => umlUseCaseTemplate
+});
+
+// libs/engine/src/templates/generated/uml/uml-class.template.ts
+var umlClassTemplate = {
+  "id": "uml-class",
+  "version": "1.0.0",
+  "meta": {
+    "name": "Class",
+    "description": "A class in the object-oriented model",
+    "category": "diagram",
+    "tags": [
+      "classifier",
+      "class",
+      "object-oriented",
+      "uml"
+    ],
+    "author": "Auto-Generated"
+  },
+  "structure": {
+    "type": "uml:class",
+    "size": {
+      "width": 120,
+      "height": 80,
+      "minWidth": 120,
+      "maxWidth": 400,
+      "minHeight": 80,
+      "maxHeight": 600
+    },
+    "shape": {
+      "type": "rect",
+      "fill": "#E3F2FD",
+      "stroke": "#1976D2",
+      "strokeWidth": 2,
+      "opacity": 1
+    },
+    "html": {
+      "mode": "template",
+      "template": `<div class="uml-class-container">
+          <div class="class-header">
+            {{data.stereotype ? '&laquo;' + data.stereotype + '&raquo;' : ''}}
+            <div class="class-name">{{data.name || 'Class'}}</div>
+          </div>
+          <div class="divider"></div>
+          <div class="attributes-section">
+            {{#if data.attributes}}
+              {{#each data.attributes}}
+                <div class="attribute">
+                  <span class="visibility">{{this.visibility}}</span>
+                  <span class="name">{{this.name}}</span>:
+                  <span class="type">{{this.type}}</span>
+                </div>
+              {{/each}}
+            {{else}}
+              <div class="empty-section"></div>
+            {{/if}}
+          </div>
+          <div class="divider"></div>
+          <div class="methods-section">
+            {{#if data.methods}}
+              {{#each data.methods}}
+                <div class="method">
+                  <span class="visibility">{{this.visibility}}</span>
+                  <span class="name">{{this.name}}</span>({{this.params}}):
+                  <span class="return-type">{{this.returnType}}</span>
+                </div>
+              {{/each}}
+            {{else}}
+              <div class="empty-section"></div>
+            {{/if}}
+          </div>
+        </div>`,
+      "className": "uml-class",
+      "style": {
+        "fontFamily": "monospace",
+        "fontSize": "12px",
+        "padding": "0"
+      }
+    },
+    "ports": {
+      "enabled": true,
+      "defaultVisibility": "on-hover",
+      "rendering": {
+        "mode": "svg",
+        "size": {
+          "width": 8,
+          "height": 8,
+          "hoverScale": 1.5
+        },
+        "svg": {
+          "shape": "circle",
+          "fill": "#1976D2",
+          "stroke": "#FFFFFF",
+          "strokeWidth": 2
+        }
+      },
+      "left": {
+        "enabled": true,
+        "type": "input",
+        "maxConnections": void 0
+      },
+      "right": {
+        "enabled": true,
+        "type": "output",
+        "maxConnections": void 0
+      },
+      "top": {
+        "enabled": true,
+        "type": "bi",
+        "maxConnections": void 0
+      },
+      "bottom": {
+        "enabled": true,
+        "type": "bi",
+        "maxConnections": void 0
+      }
+    },
+    "behavior": {
+      "draggable": true,
+      "selectable": true,
+      "connectable": true,
+      "resizable": true,
+      "deletable": true
+    }
+  },
+  "defaultData": {
+    "label": "Class"
+  },
+  "dataSchema": {
+    "type": "object",
+    "properties": {
+      "name": {
+        "type": "string",
+        "default": "Class"
+      },
+      "stereotype": {
+        "type": "string",
+        "enum": [
+          "interface",
+          "abstract",
+          "entity",
+          "control",
+          "boundary"
+        ]
+      },
+      "attributes": {
+        "type": "array",
+        "items": {
+          "type": "object",
+          "properties": {
+            "visibility": {
+              "type": "string",
+              "enum": [
+                "+",
+                "-",
+                "#",
+                "~"
+              ],
+              "default": "+"
+            },
+            "name": {
+              "type": "string"
+            },
+            "type": {
+              "type": "string"
+            },
+            "defaultValue": {
+              "type": "string"
+            },
+            "isStatic": {
+              "type": "boolean",
+              "default": false
+            }
+          },
+          "required": [
+            "name",
+            "type"
+          ]
+        },
+        "default": []
+      },
+      "methods": {
+        "type": "array",
+        "items": {
+          "type": "object",
+          "properties": {
+            "visibility": {
+              "type": "string",
+              "enum": [
+                "+",
+                "-",
+                "#",
+                "~"
+              ],
+              "default": "+"
+            },
+            "name": {
+              "type": "string"
+            },
+            "params": {
+              "type": "string",
+              "default": ""
+            },
+            "returnType": {
+              "type": "string",
+              "default": "void"
+            },
+            "isStatic": {
+              "type": "boolean",
+              "default": false
+            },
+            "isAbstract": {
+              "type": "boolean",
+              "default": false
+            }
+          },
+          "required": [
+            "name"
+          ]
+        },
+        "default": []
+      }
+    },
+    "required": [
+      "name"
+    ]
+  }
+};
+
+// libs/engine/src/templates/generated/uml/uml-interface.template.ts
+var umlInterfaceTemplate = {
+  "id": "uml-interface",
+  "version": "1.0.0",
+  "meta": {
+    "name": "Interface",
+    "description": "An interface defining a contract",
+    "category": "diagram",
+    "tags": [
+      "classifier",
+      "interface",
+      "contract",
+      "uml"
+    ],
+    "author": "Auto-Generated"
+  },
+  "structure": {
+    "type": "uml:interface",
+    "size": {
+      "width": 120,
+      "height": 80,
+      "minWidth": 120,
+      "maxWidth": 400,
+      "minHeight": 80,
+      "maxHeight": 600
+    },
+    "shape": {
+      "type": "rect",
+      "fill": "#F3E5F5",
+      "stroke": "#7B1FA2",
+      "strokeWidth": 2,
+      "opacity": 1
+    },
+    "html": {
+      "mode": "template",
+      "template": `<div class="uml-class-container">
+          <div class="class-header">
+            {{data.stereotype ? '&laquo;' + data.stereotype + '&raquo;' : ''}}
+            <div class="class-name">{{data.name || 'Class'}}</div>
+          </div>
+          <div class="divider"></div>
+          <div class="attributes-section">
+            {{#if data.attributes}}
+              {{#each data.attributes}}
+                <div class="attribute">
+                  <span class="visibility">{{this.visibility}}</span>
+                  <span class="name">{{this.name}}</span>:
+                  <span class="type">{{this.type}}</span>
+                </div>
+              {{/each}}
+            {{else}}
+              <div class="empty-section"></div>
+            {{/if}}
+          </div>
+          <div class="divider"></div>
+          <div class="methods-section">
+            {{#if data.methods}}
+              {{#each data.methods}}
+                <div class="method">
+                  <span class="visibility">{{this.visibility}}</span>
+                  <span class="name">{{this.name}}</span>({{this.params}}):
+                  <span class="return-type">{{this.returnType}}</span>
+                </div>
+              {{/each}}
+            {{else}}
+              <div class="empty-section"></div>
+            {{/if}}
+          </div>
+        </div>`,
+      "className": "uml-interface",
+      "style": {
+        "fontFamily": "monospace",
+        "fontSize": "12px",
+        "padding": "0"
+      }
+    },
+    "ports": {
+      "enabled": true,
+      "defaultVisibility": "on-hover",
+      "rendering": {
+        "mode": "svg",
+        "size": {
+          "width": 8,
+          "height": 8,
+          "hoverScale": 1.5
+        },
+        "svg": {
+          "shape": "circle",
+          "fill": "#1976D2",
+          "stroke": "#FFFFFF",
+          "strokeWidth": 2
+        }
+      },
+      "left": {
+        "enabled": true,
+        "type": "input",
+        "maxConnections": void 0
+      },
+      "right": {
+        "enabled": true,
+        "type": "output",
+        "maxConnections": void 0
+      },
+      "top": {
+        "enabled": true,
+        "type": "bi",
+        "maxConnections": void 0
+      },
+      "bottom": {
+        "enabled": true,
+        "type": "bi",
+        "maxConnections": void 0
+      }
+    },
+    "behavior": {
+      "draggable": true,
+      "selectable": true,
+      "connectable": true,
+      "resizable": false,
+      "deletable": true
+    }
+  },
+  "defaultData": {
+    "label": "Interface"
+  },
+  "dataSchema": {
+    "type": "object",
+    "properties": {
+      "name": {
+        "type": "string",
+        "default": "Class"
+      },
+      "stereotype": {
+        "type": "string",
+        "enum": [
+          "interface",
+          "abstract",
+          "entity",
+          "control",
+          "boundary"
+        ]
+      },
+      "attributes": {
+        "type": "array",
+        "items": {
+          "type": "object",
+          "properties": {
+            "visibility": {
+              "type": "string",
+              "enum": [
+                "+",
+                "-",
+                "#",
+                "~"
+              ],
+              "default": "+"
+            },
+            "name": {
+              "type": "string"
+            },
+            "type": {
+              "type": "string"
+            },
+            "defaultValue": {
+              "type": "string"
+            },
+            "isStatic": {
+              "type": "boolean",
+              "default": false
+            }
+          },
+          "required": [
+            "name",
+            "type"
+          ]
+        },
+        "default": []
+      },
+      "methods": {
+        "type": "array",
+        "items": {
+          "type": "object",
+          "properties": {
+            "visibility": {
+              "type": "string",
+              "enum": [
+                "+",
+                "-",
+                "#",
+                "~"
+              ],
+              "default": "+"
+            },
+            "name": {
+              "type": "string"
+            },
+            "params": {
+              "type": "string",
+              "default": ""
+            },
+            "returnType": {
+              "type": "string",
+              "default": "void"
+            },
+            "isStatic": {
+              "type": "boolean",
+              "default": false
+            },
+            "isAbstract": {
+              "type": "boolean",
+              "default": false
+            }
+          },
+          "required": [
+            "name"
+          ]
+        },
+        "default": []
+      }
+    },
+    "required": [
+      "name"
+    ]
+  }
+};
+
+// libs/engine/src/templates/generated/uml/uml-abstract-class.template.ts
+var umlAbstractClassTemplate = {
+  "id": "uml-abstract-class",
+  "version": "1.0.0",
+  "meta": {
+    "name": "Abstract Class",
+    "description": "An abstract class that cannot be instantiated",
+    "category": "diagram",
+    "tags": [
+      "classifier",
+      "abstract",
+      "class",
+      "uml"
+    ],
+    "author": "Auto-Generated"
+  },
+  "structure": {
+    "type": "uml:abstract-class",
+    "size": {
+      "width": 120,
+      "height": 80,
+      "minWidth": 120,
+      "maxWidth": 400,
+      "minHeight": 80,
+      "maxHeight": 600
+    },
+    "shape": {
+      "type": "rect",
+      "fill": "#FFF3E0",
+      "stroke": "#F57C00",
+      "strokeWidth": 2,
+      "opacity": 1
+    },
+    "html": {
+      "mode": "template",
+      "template": `<div class="uml-class-container">
+          <div class="class-header">
+            {{data.stereotype ? '&laquo;' + data.stereotype + '&raquo;' : ''}}
+            <div class="class-name">{{data.name || 'Class'}}</div>
+          </div>
+          <div class="divider"></div>
+          <div class="attributes-section">
+            {{#if data.attributes}}
+              {{#each data.attributes}}
+                <div class="attribute">
+                  <span class="visibility">{{this.visibility}}</span>
+                  <span class="name">{{this.name}}</span>:
+                  <span class="type">{{this.type}}</span>
+                </div>
+              {{/each}}
+            {{else}}
+              <div class="empty-section"></div>
+            {{/if}}
+          </div>
+          <div class="divider"></div>
+          <div class="methods-section">
+            {{#if data.methods}}
+              {{#each data.methods}}
+                <div class="method">
+                  <span class="visibility">{{this.visibility}}</span>
+                  <span class="name">{{this.name}}</span>({{this.params}}):
+                  <span class="return-type">{{this.returnType}}</span>
+                </div>
+              {{/each}}
+            {{else}}
+              <div class="empty-section"></div>
+            {{/if}}
+          </div>
+        </div>`,
+      "className": "uml-abstract-class",
+      "style": {
+        "fontFamily": "monospace",
+        "fontSize": "12px",
+        "padding": "0"
+      }
+    },
+    "ports": {
+      "enabled": true,
+      "defaultVisibility": "on-hover",
+      "rendering": {
+        "mode": "svg",
+        "size": {
+          "width": 8,
+          "height": 8,
+          "hoverScale": 1.5
+        },
+        "svg": {
+          "shape": "circle",
+          "fill": "#1976D2",
+          "stroke": "#FFFFFF",
+          "strokeWidth": 2
+        }
+      },
+      "left": {
+        "enabled": true,
+        "type": "input",
+        "maxConnections": void 0
+      },
+      "right": {
+        "enabled": true,
+        "type": "output",
+        "maxConnections": void 0
+      },
+      "top": {
+        "enabled": true,
+        "type": "bi",
+        "maxConnections": void 0
+      },
+      "bottom": {
+        "enabled": true,
+        "type": "bi",
+        "maxConnections": void 0
+      }
+    },
+    "behavior": {
+      "draggable": true,
+      "selectable": true,
+      "connectable": true,
+      "resizable": false,
+      "deletable": true
+    }
+  },
+  "defaultData": {
+    "label": "Abstract Class"
+  },
+  "dataSchema": {
+    "type": "object",
+    "properties": {
+      "name": {
+        "type": "string",
+        "default": "Class"
+      },
+      "stereotype": {
+        "type": "string",
+        "enum": [
+          "interface",
+          "abstract",
+          "entity",
+          "control",
+          "boundary"
+        ]
+      },
+      "attributes": {
+        "type": "array",
+        "items": {
+          "type": "object",
+          "properties": {
+            "visibility": {
+              "type": "string",
+              "enum": [
+                "+",
+                "-",
+                "#",
+                "~"
+              ],
+              "default": "+"
+            },
+            "name": {
+              "type": "string"
+            },
+            "type": {
+              "type": "string"
+            },
+            "defaultValue": {
+              "type": "string"
+            },
+            "isStatic": {
+              "type": "boolean",
+              "default": false
+            }
+          },
+          "required": [
+            "name",
+            "type"
+          ]
+        },
+        "default": []
+      },
+      "methods": {
+        "type": "array",
+        "items": {
+          "type": "object",
+          "properties": {
+            "visibility": {
+              "type": "string",
+              "enum": [
+                "+",
+                "-",
+                "#",
+                "~"
+              ],
+              "default": "+"
+            },
+            "name": {
+              "type": "string"
+            },
+            "params": {
+              "type": "string",
+              "default": ""
+            },
+            "returnType": {
+              "type": "string",
+              "default": "void"
+            },
+            "isStatic": {
+              "type": "boolean",
+              "default": false
+            },
+            "isAbstract": {
+              "type": "boolean",
+              "default": false
+            }
+          },
+          "required": [
+            "name"
+          ]
+        },
+        "default": []
+      }
+    },
+    "required": [
+      "name"
+    ]
+  }
+};
+
+// libs/engine/src/templates/generated/uml/uml-enum.template.ts
+var umlEnumTemplate = {
+  "id": "uml-enum",
+  "version": "1.0.0",
+  "meta": {
+    "name": "Enumeration",
+    "description": "An enumeration type",
+    "category": "diagram",
+    "tags": [
+      "classifier",
+      "enum",
+      "enumeration",
+      "uml"
+    ],
+    "author": "Auto-Generated"
+  },
+  "structure": {
+    "type": "uml:enum",
+    "size": {
+      "width": 120,
+      "height": 80,
+      "minWidth": 120,
+      "maxWidth": 400,
+      "minHeight": 80,
+      "maxHeight": 600
+    },
+    "shape": {
+      "type": "rect",
+      "fill": "#E8F5E9",
+      "stroke": "#388E3C",
+      "strokeWidth": 2,
+      "opacity": 1
+    },
+    "html": {
+      "mode": "template",
+      "template": `<div class="uml-class-container">
+          <div class="class-header">
+            {{data.stereotype ? '&laquo;' + data.stereotype + '&raquo;' : ''}}
+            <div class="class-name">{{data.name || 'Class'}}</div>
+          </div>
+          <div class="divider"></div>
+          <div class="attributes-section">
+            {{#if data.attributes}}
+              {{#each data.attributes}}
+                <div class="attribute">
+                  <span class="visibility">{{this.visibility}}</span>
+                  <span class="name">{{this.name}}</span>:
+                  <span class="type">{{this.type}}</span>
+                </div>
+              {{/each}}
+            {{else}}
+              <div class="empty-section"></div>
+            {{/if}}
+          </div>
+          <div class="divider"></div>
+          <div class="methods-section">
+            {{#if data.methods}}
+              {{#each data.methods}}
+                <div class="method">
+                  <span class="visibility">{{this.visibility}}</span>
+                  <span class="name">{{this.name}}</span>({{this.params}}):
+                  <span class="return-type">{{this.returnType}}</span>
+                </div>
+              {{/each}}
+            {{else}}
+              <div class="empty-section"></div>
+            {{/if}}
+          </div>
+        </div>`,
+      "className": "uml-enum",
+      "style": {
+        "fontFamily": "monospace",
+        "fontSize": "12px",
+        "padding": "0"
+      }
+    },
+    "ports": {
+      "enabled": true,
+      "defaultVisibility": "on-hover",
+      "rendering": {
+        "mode": "svg",
+        "size": {
+          "width": 8,
+          "height": 8,
+          "hoverScale": 1.5
+        },
+        "svg": {
+          "shape": "circle",
+          "fill": "#1976D2",
+          "stroke": "#FFFFFF",
+          "strokeWidth": 2
+        }
+      },
+      "left": {
+        "enabled": true,
+        "type": "input",
+        "maxConnections": void 0
+      },
+      "right": {
+        "enabled": true,
+        "type": "output",
+        "maxConnections": void 0
+      },
+      "top": {
+        "enabled": true,
+        "type": "bi",
+        "maxConnections": void 0
+      },
+      "bottom": {
+        "enabled": true,
+        "type": "bi",
+        "maxConnections": void 0
+      }
+    },
+    "behavior": {
+      "draggable": true,
+      "selectable": true,
+      "connectable": true,
+      "resizable": false,
+      "deletable": true
+    }
+  },
+  "defaultData": {
+    "label": "Enumeration"
+  },
+  "dataSchema": {
+    "type": "object",
+    "properties": {
+      "name": {
+        "type": "string",
+        "default": "Class"
+      },
+      "stereotype": {
+        "type": "string",
+        "enum": [
+          "interface",
+          "abstract",
+          "entity",
+          "control",
+          "boundary"
+        ]
+      },
+      "attributes": {
+        "type": "array",
+        "items": {
+          "type": "object",
+          "properties": {
+            "visibility": {
+              "type": "string",
+              "enum": [
+                "+",
+                "-",
+                "#",
+                "~"
+              ],
+              "default": "+"
+            },
+            "name": {
+              "type": "string"
+            },
+            "type": {
+              "type": "string"
+            },
+            "defaultValue": {
+              "type": "string"
+            },
+            "isStatic": {
+              "type": "boolean",
+              "default": false
+            }
+          },
+          "required": [
+            "name",
+            "type"
+          ]
+        },
+        "default": []
+      },
+      "methods": {
+        "type": "array",
+        "items": {
+          "type": "object",
+          "properties": {
+            "visibility": {
+              "type": "string",
+              "enum": [
+                "+",
+                "-",
+                "#",
+                "~"
+              ],
+              "default": "+"
+            },
+            "name": {
+              "type": "string"
+            },
+            "params": {
+              "type": "string",
+              "default": ""
+            },
+            "returnType": {
+              "type": "string",
+              "default": "void"
+            },
+            "isStatic": {
+              "type": "boolean",
+              "default": false
+            },
+            "isAbstract": {
+              "type": "boolean",
+              "default": false
+            }
+          },
+          "required": [
+            "name"
+          ]
+        },
+        "default": []
+      }
+    },
+    "required": [
+      "name"
+    ]
+  }
+};
+
+// libs/engine/src/templates/generated/uml/uml-package.template.ts
+var umlPackageTemplate = {
+  "id": "uml-package",
+  "version": "1.0.0",
+  "meta": {
+    "name": "Package",
+    "description": "A package for organizing elements",
+    "category": "diagram",
+    "tags": [
+      "structural",
+      "package",
+      "namespace",
+      "container",
+      "uml"
+    ],
+    "author": "Auto-Generated"
+  },
+  "structure": {
+    "type": "uml:package",
+    "size": {
+      "width": 180,
+      "height": 120,
+      "minWidth": 120,
+      "maxWidth": 400,
+      "minHeight": 80,
+      "maxHeight": 600
+    },
+    "shape": {
+      "type": "rect",
+      "fill": "#FFF9C4",
+      "stroke": "#F57F17",
+      "strokeWidth": 2,
+      "opacity": 1
+    },
+    "html": {
+      "mode": "template",
+      "template": `<div class="uml-package-content">
+          <div class="node-label">{{data.label || 'Package'}}</div>
+        </div>`,
+      "className": "uml-package",
+      "style": {
+        "display": "flex",
+        "alignItems": "center",
+        "justifyContent": "center",
+        "padding": "8px",
+        "fontFamily": "Arial, sans-serif",
+        "fontSize": "14px",
+        "textAlign": "center",
+        "wordBreak": "break-word"
+      }
+    },
+    "ports": {
+      "enabled": true,
+      "defaultVisibility": "on-hover",
+      "rendering": {
+        "mode": "svg",
+        "size": {
+          "width": 8,
+          "height": 8,
+          "hoverScale": 1.5
+        },
+        "svg": {
+          "shape": "circle",
+          "fill": "#1976D2",
+          "stroke": "#FFFFFF",
+          "strokeWidth": 2
+        }
+      },
+      "left": {
+        "enabled": true,
+        "type": "input",
+        "maxConnections": void 0
+      },
+      "right": {
+        "enabled": true,
+        "type": "output",
+        "maxConnections": void 0
+      },
+      "top": {
+        "enabled": true,
+        "type": "bi",
+        "maxConnections": void 0
+      },
+      "bottom": {
+        "enabled": true,
+        "type": "bi",
+        "maxConnections": void 0
+      }
+    },
+    "behavior": {
+      "draggable": true,
+      "selectable": true,
+      "connectable": true,
+      "resizable": true,
+      "deletable": true
+    }
+  },
+  "defaultData": {
+    "label": "Package"
+  },
+  "dataSchema": {
+    "type": "object",
+    "properties": {
+      "label": {
+        "type": "string",
+        "default": ""
+      }
+    },
+    "required": [
+      "label"
+    ]
+  }
+};
+
+// libs/engine/src/templates/generated/uml/uml-component.template.ts
+var umlComponentTemplate = {
+  "id": "uml-component",
+  "version": "1.0.0",
+  "meta": {
+    "name": "Component",
+    "description": "A modular part of the system",
+    "category": "diagram",
+    "tags": [
+      "structural",
+      "component",
+      "module",
+      "uml"
+    ],
+    "author": "Auto-Generated"
+  },
+  "structure": {
+    "type": "uml:component",
+    "size": {
+      "width": 140,
+      "height": 90,
+      "minWidth": 120,
+      "maxWidth": 400,
+      "minHeight": 80,
+      "maxHeight": 600
+    },
+    "shape": {
+      "type": "rect",
+      "fill": "#E0F7FA",
+      "stroke": "#00838F",
+      "strokeWidth": 2,
+      "opacity": 1
+    },
+    "html": {
+      "mode": "template",
+      "template": `<div class="uml-component-content">
+          <div class="node-label">{{data.label || 'Component'}}</div>
+        </div>`,
+      "className": "uml-component",
+      "style": {
+        "display": "flex",
+        "alignItems": "center",
+        "justifyContent": "center",
+        "padding": "8px",
+        "fontFamily": "Arial, sans-serif",
+        "fontSize": "14px",
+        "textAlign": "center",
+        "wordBreak": "break-word"
+      }
+    },
+    "ports": {
+      "enabled": true,
+      "defaultVisibility": "on-hover",
+      "rendering": {
+        "mode": "svg",
+        "size": {
+          "width": 8,
+          "height": 8,
+          "hoverScale": 1.5
+        },
+        "svg": {
+          "shape": "circle",
+          "fill": "#1976D2",
+          "stroke": "#FFFFFF",
+          "strokeWidth": 2
+        }
+      },
+      "left": {
+        "enabled": true,
+        "type": "input",
+        "maxConnections": void 0
+      },
+      "right": {
+        "enabled": true,
+        "type": "output",
+        "maxConnections": void 0
+      },
+      "top": {
+        "enabled": true,
+        "type": "bi",
+        "maxConnections": void 0
+      },
+      "bottom": {
+        "enabled": true,
+        "type": "bi",
+        "maxConnections": void 0
+      }
+    },
+    "behavior": {
+      "draggable": true,
+      "selectable": true,
+      "connectable": true,
+      "resizable": true,
+      "deletable": true
+    }
+  },
+  "defaultData": {
+    "label": "Component"
+  },
+  "dataSchema": {
+    "type": "object",
+    "properties": {
+      "label": {
+        "type": "string",
+        "default": ""
+      }
+    },
+    "required": [
+      "label"
+    ]
+  }
+};
+
+// libs/engine/src/templates/generated/uml/uml-node.template.ts
+var umlNodeTemplate = {
+  "id": "uml-node",
+  "version": "1.0.0",
+  "meta": {
+    "name": "Node",
+    "description": "A physical or virtual deployment node",
+    "category": "diagram",
+    "tags": [
+      "deployment",
+      "node",
+      "infrastructure",
+      "uml"
+    ],
+    "author": "Auto-Generated"
+  },
+  "structure": {
+    "type": "uml:node",
+    "size": {
+      "width": 120,
+      "height": 100,
+      "minWidth": 120,
+      "maxWidth": 400,
+      "minHeight": 80,
+      "maxHeight": 600
+    },
+    "shape": {
+      "type": "rect",
+      "fill": "#FFEBEE",
+      "stroke": "#C62828",
+      "strokeWidth": 2,
+      "opacity": 1
+    },
+    "html": {
+      "mode": "template",
+      "template": `<div class="uml-node-content">
+          <div class="node-label">{{data.label || 'Node'}}</div>
+        </div>`,
+      "className": "uml-node",
+      "style": {
+        "display": "flex",
+        "alignItems": "center",
+        "justifyContent": "center",
+        "padding": "8px",
+        "fontFamily": "Arial, sans-serif",
+        "fontSize": "14px",
+        "textAlign": "center",
+        "wordBreak": "break-word"
+      }
+    },
+    "ports": {
+      "enabled": true,
+      "defaultVisibility": "on-hover",
+      "rendering": {
+        "mode": "svg",
+        "size": {
+          "width": 8,
+          "height": 8,
+          "hoverScale": 1.5
+        },
+        "svg": {
+          "shape": "circle",
+          "fill": "#1976D2",
+          "stroke": "#FFFFFF",
+          "strokeWidth": 2
+        }
+      },
+      "left": {
+        "enabled": true,
+        "type": "input",
+        "maxConnections": void 0
+      },
+      "right": {
+        "enabled": true,
+        "type": "output",
+        "maxConnections": void 0
+      },
+      "top": {
+        "enabled": true,
+        "type": "bi",
+        "maxConnections": void 0
+      },
+      "bottom": {
+        "enabled": true,
+        "type": "bi",
+        "maxConnections": void 0
+      }
+    },
+    "behavior": {
+      "draggable": true,
+      "selectable": true,
+      "connectable": true,
+      "resizable": true,
+      "deletable": true
+    }
+  },
+  "defaultData": {
+    "label": "Node"
+  },
+  "dataSchema": {
+    "type": "object",
+    "properties": {
+      "label": {
+        "type": "string",
+        "default": ""
+      }
+    },
+    "required": [
+      "label"
+    ]
+  }
+};
+
+// libs/engine/src/templates/generated/uml/uml-actor.template.ts
+var umlActorTemplate = {
+  "id": "uml-actor",
+  "version": "1.0.0",
+  "meta": {
+    "name": "Actor",
+    "description": "An external actor interacting with the system",
+    "category": "diagram",
+    "tags": [
+      "use-case",
+      "actor",
+      "external",
+      "user",
+      "uml"
+    ],
+    "author": "Auto-Generated"
+  },
+  "structure": {
+    "type": "uml:actor",
+    "size": {
+      "width": 60,
+      "height": 80,
+      "minWidth": 120,
+      "maxWidth": 400,
+      "minHeight": 80,
+      "maxHeight": 600
+    },
+    "shape": {
+      "type": "rect",
+      "fill": "#FFFFFF",
+      "stroke": "#000000",
+      "strokeWidth": 2,
+      "opacity": 1
+    },
+    "html": {
+      "mode": "template",
+      "template": `<div class="uml-actor-content">
+          <div class="use-case-name">{{data.name || 'Use Case'}}</div>
+          {{#if data.description}}
+            <div class="use-case-description">{{data.description}}</div>
+          {{/if}}
+        </div>`,
+      "className": "uml-actor",
+      "style": {
+        "display": "flex",
+        "flexDirection": "column",
+        "alignItems": "center",
+        "justifyContent": "center",
+        "padding": "12px",
+        "fontFamily": "Arial, sans-serif",
+        "fontSize": "13px",
+        "textAlign": "center"
+      }
+    },
+    "ports": {
+      "enabled": true,
+      "defaultVisibility": "on-hover",
+      "rendering": {
+        "mode": "svg",
+        "size": {
+          "width": 8,
+          "height": 8,
+          "hoverScale": 1.5
+        },
+        "svg": {
+          "shape": "circle",
+          "fill": "#1976D2",
+          "stroke": "#FFFFFF",
+          "strokeWidth": 2
+        }
+      },
+      "left": {
+        "enabled": true,
+        "type": "input",
+        "maxConnections": void 0
+      },
+      "right": {
+        "enabled": true,
+        "type": "output",
+        "maxConnections": void 0
+      },
+      "top": {
+        "enabled": true,
+        "type": "bi",
+        "maxConnections": void 0
+      },
+      "bottom": {
+        "enabled": true,
+        "type": "bi",
+        "maxConnections": void 0
+      }
+    },
+    "behavior": {
+      "draggable": true,
+      "selectable": true,
+      "connectable": true,
+      "resizable": false,
+      "deletable": true
+    }
+  },
+  "defaultData": {
+    "label": "Actor"
+  },
+  "dataSchema": {
+    "type": "object",
+    "properties": {
+      "label": {
+        "type": "string",
+        "default": ""
+      }
+    },
+    "required": [
+      "label"
+    ]
+  }
+};
+
+// libs/engine/src/templates/generated/uml/uml-use-case.template.ts
+var umlUseCaseTemplate = {
+  "id": "uml-use-case",
+  "version": "1.0.0",
+  "meta": {
+    "name": "Use Case",
+    "description": "A use case representing system functionality",
+    "category": "diagram",
+    "tags": [
+      "use-case",
+      "functionality",
+      "requirement",
+      "uml"
+    ],
+    "author": "Auto-Generated"
+  },
+  "structure": {
+    "type": "uml:use-case",
+    "size": {
+      "width": 140,
+      "height": 70,
+      "minWidth": 120,
+      "maxWidth": 400,
+      "minHeight": 80,
+      "maxHeight": 600
+    },
+    "shape": {
+      "type": "ellipse",
+      "fill": "#E8F5E9",
+      "stroke": "#388E3C",
+      "strokeWidth": 2,
+      "opacity": 1
+    },
+    "html": {
+      "mode": "template",
+      "template": `<div class="uml-use-case-content">
+          <div class="use-case-name">{{data.name || 'Use Case'}}</div>
+          {{#if data.description}}
+            <div class="use-case-description">{{data.description}}</div>
+          {{/if}}
+        </div>`,
+      "className": "uml-use-case",
+      "style": {
+        "display": "flex",
+        "flexDirection": "column",
+        "alignItems": "center",
+        "justifyContent": "center",
+        "padding": "12px",
+        "fontFamily": "Arial, sans-serif",
+        "fontSize": "13px",
+        "textAlign": "center"
+      }
+    },
+    "ports": {
+      "enabled": true,
+      "defaultVisibility": "on-hover",
+      "rendering": {
+        "mode": "svg",
+        "size": {
+          "width": 8,
+          "height": 8,
+          "hoverScale": 1.5
+        },
+        "svg": {
+          "shape": "circle",
+          "fill": "#1976D2",
+          "stroke": "#FFFFFF",
+          "strokeWidth": 2
+        }
+      },
+      "left": {
+        "enabled": true,
+        "type": "input",
+        "maxConnections": void 0
+      },
+      "right": {
+        "enabled": true,
+        "type": "output",
+        "maxConnections": void 0
+      },
+      "top": {
+        "enabled": true,
+        "type": "bi",
+        "maxConnections": void 0
+      },
+      "bottom": {
+        "enabled": true,
+        "type": "bi",
+        "maxConnections": void 0
+      }
+    },
+    "behavior": {
+      "draggable": true,
+      "selectable": true,
+      "connectable": true,
+      "resizable": true,
+      "deletable": true
+    }
+  },
+  "defaultData": {
+    "label": "Use Case"
+  },
+  "dataSchema": {
+    "type": "object",
+    "properties": {
+      "label": {
+        "type": "string",
+        "default": ""
+      }
+    },
+    "required": [
+      "label"
+    ]
+  }
+};
+
+// libs/engine/src/templates/generated/uml/uml-state.template.ts
+var umlStateTemplate = {
+  "id": "uml-state",
+  "version": "1.0.0",
+  "meta": {
+    "name": "State",
+    "description": "A state in a state machine",
+    "category": "diagram",
+    "tags": [
+      "state-machine",
+      "state",
+      "behavior",
+      "uml"
+    ],
+    "author": "Auto-Generated"
+  },
+  "structure": {
+    "type": "uml:state",
+    "size": {
+      "width": 120,
+      "height": 60,
+      "minWidth": 120,
+      "maxWidth": 400,
+      "minHeight": 80,
+      "maxHeight": 600
+    },
+    "shape": {
+      "type": "rect",
+      "fill": "#FFF3E0",
+      "stroke": "#F57C00",
+      "strokeWidth": 2,
+      "opacity": 1,
+      "cornerRadius": 12
+    },
+    "html": {
+      "mode": "template",
+      "template": `<div class="uml-state-content">
+          <div class="node-label">{{data.label || 'State'}}</div>
+        </div>`,
+      "className": "uml-state",
+      "style": {
+        "display": "flex",
+        "alignItems": "center",
+        "justifyContent": "center",
+        "padding": "8px",
+        "fontFamily": "Arial, sans-serif",
+        "fontSize": "14px",
+        "textAlign": "center",
+        "wordBreak": "break-word"
+      }
+    },
+    "ports": {
+      "enabled": true,
+      "defaultVisibility": "on-hover",
+      "rendering": {
+        "mode": "svg",
+        "size": {
+          "width": 8,
+          "height": 8,
+          "hoverScale": 1.5
+        },
+        "svg": {
+          "shape": "circle",
+          "fill": "#1976D2",
+          "stroke": "#FFFFFF",
+          "strokeWidth": 2
+        }
+      },
+      "left": {
+        "enabled": true,
+        "type": "input",
+        "maxConnections": void 0
+      },
+      "right": {
+        "enabled": true,
+        "type": "output",
+        "maxConnections": void 0
+      },
+      "top": {
+        "enabled": true,
+        "type": "bi",
+        "maxConnections": void 0
+      },
+      "bottom": {
+        "enabled": true,
+        "type": "bi",
+        "maxConnections": void 0
+      }
+    },
+    "behavior": {
+      "draggable": true,
+      "selectable": true,
+      "connectable": true,
+      "resizable": true,
+      "deletable": true
+    }
+  },
+  "defaultData": {
+    "label": "State"
+  },
+  "dataSchema": {
+    "type": "object",
+    "properties": {
+      "label": {
+        "type": "string",
+        "default": ""
+      }
+    },
+    "required": [
+      "label"
+    ]
+  }
+};
+
+// libs/engine/src/templates/generated/uml/uml-initial-state.template.ts
+var umlInitialStateTemplate = {
+  "id": "uml-initial-state",
+  "version": "1.0.0",
+  "meta": {
+    "name": "Initial State",
+    "description": "The initial state in a state machine",
+    "category": "diagram",
+    "tags": [
+      "state-machine",
+      "initial",
+      "start",
+      "uml"
+    ],
+    "author": "Auto-Generated"
+  },
+  "structure": {
+    "type": "uml:initial-state",
+    "size": {
+      "width": 20,
+      "height": 20,
+      "minWidth": 120,
+      "maxWidth": 400,
+      "minHeight": 80,
+      "maxHeight": 600
+    },
+    "shape": {
+      "type": "circle",
+      "fill": "#000000",
+      "stroke": "#000000",
+      "strokeWidth": 2,
+      "opacity": 1
+    },
+    "html": {
+      "mode": "template",
+      "template": `<div class="uml-initial-state-content">
+          <div class="node-label">{{data.label || 'Initial State'}}</div>
+        </div>`,
+      "className": "uml-initial-state",
+      "style": {
+        "display": "flex",
+        "alignItems": "center",
+        "justifyContent": "center",
+        "padding": "8px",
+        "fontFamily": "Arial, sans-serif",
+        "fontSize": "14px",
+        "textAlign": "center",
+        "wordBreak": "break-word"
+      }
+    },
+    "ports": {
+      "enabled": true,
+      "defaultVisibility": "on-hover",
+      "rendering": {
+        "mode": "svg",
+        "size": {
+          "width": 8,
+          "height": 8,
+          "hoverScale": 1.5
+        },
+        "svg": {
+          "shape": "circle",
+          "fill": "#1976D2",
+          "stroke": "#FFFFFF",
+          "strokeWidth": 2
+        }
+      },
+      "top": {
+        "enabled": true,
+        "type": "bi",
+        "maxConnections": void 0
+      },
+      "right": {
+        "enabled": true,
+        "type": "bi",
+        "maxConnections": void 0
+      },
+      "bottom": {
+        "enabled": true,
+        "type": "bi",
+        "maxConnections": void 0
+      },
+      "left": {
+        "enabled": true,
+        "type": "bi",
+        "maxConnections": void 0
+      }
+    },
+    "behavior": {
+      "draggable": true,
+      "selectable": true,
+      "connectable": true,
+      "resizable": false,
+      "deletable": true
+    }
+  },
+  "defaultData": {
+    "label": "Initial State"
+  },
+  "dataSchema": {
+    "type": "object",
+    "properties": {
+      "label": {
+        "type": "string",
+        "default": ""
+      }
+    },
+    "required": [
+      "label"
+    ]
+  }
+};
+
+// libs/engine/src/templates/generated/uml/uml-final-state.template.ts
+var umlFinalStateTemplate = {
+  "id": "uml-final-state",
+  "version": "1.0.0",
+  "meta": {
+    "name": "Final State",
+    "description": "A final state in a state machine",
+    "category": "diagram",
+    "tags": [
+      "state-machine",
+      "final",
+      "end",
+      "terminal",
+      "uml"
+    ],
+    "author": "Auto-Generated"
+  },
+  "structure": {
+    "type": "uml:final-state",
+    "size": {
+      "width": 20,
+      "height": 20,
+      "minWidth": 120,
+      "maxWidth": 400,
+      "minHeight": 80,
+      "maxHeight": 600
+    },
+    "shape": {
+      "type": "circle",
+      "fill": "#FFFFFF",
+      "stroke": "#000000",
+      "strokeWidth": 4,
+      "opacity": 1
+    },
+    "html": {
+      "mode": "template",
+      "template": `<div class="uml-final-state-content">
+          <div class="node-label">{{data.label || 'Final State'}}</div>
+        </div>`,
+      "className": "uml-final-state",
+      "style": {
+        "display": "flex",
+        "alignItems": "center",
+        "justifyContent": "center",
+        "padding": "8px",
+        "fontFamily": "Arial, sans-serif",
+        "fontSize": "14px",
+        "textAlign": "center",
+        "wordBreak": "break-word"
+      }
+    },
+    "ports": {
+      "enabled": true,
+      "defaultVisibility": "on-hover",
+      "rendering": {
+        "mode": "svg",
+        "size": {
+          "width": 8,
+          "height": 8,
+          "hoverScale": 1.5
+        },
+        "svg": {
+          "shape": "circle",
+          "fill": "#1976D2",
+          "stroke": "#FFFFFF",
+          "strokeWidth": 2
+        }
+      },
+      "top": {
+        "enabled": true,
+        "type": "bi",
+        "maxConnections": void 0
+      },
+      "right": {
+        "enabled": true,
+        "type": "bi",
+        "maxConnections": void 0
+      },
+      "bottom": {
+        "enabled": true,
+        "type": "bi",
+        "maxConnections": void 0
+      },
+      "left": {
+        "enabled": true,
+        "type": "bi",
+        "maxConnections": void 0
+      }
+    },
+    "behavior": {
+      "draggable": true,
+      "selectable": true,
+      "connectable": true,
+      "resizable": false,
+      "deletable": true
+    }
+  },
+  "defaultData": {
+    "label": "Final State"
+  },
+  "dataSchema": {
+    "type": "object",
+    "properties": {
+      "label": {
+        "type": "string",
+        "default": ""
+      }
+    },
+    "required": [
+      "label"
+    ]
+  }
+};
+
+// libs/engine/src/templates/generated/uml/uml-note.template.ts
+var umlNoteTemplate = {
+  "id": "uml-note",
+  "version": "1.0.0",
+  "meta": {
+    "name": "Note",
+    "description": "A note or comment",
+    "category": "diagram",
+    "tags": [
+      "annotation",
+      "note",
+      "comment",
+      "documentation",
+      "uml"
+    ],
+    "author": "Auto-Generated"
+  },
+  "structure": {
+    "type": "uml:note",
+    "size": {
+      "width": 100,
+      "height": 80,
+      "minWidth": 120,
+      "maxWidth": 400,
+      "minHeight": 80,
+      "maxHeight": 600
+    },
+    "shape": {
+      "type": "rect",
+      "fill": "#FFFDE7",
+      "stroke": "#F57F17",
+      "strokeWidth": 1,
+      "opacity": 1
+    },
+    "html": {
+      "mode": "template",
+      "template": `<div class="uml-note-content">
+          <div class="node-label">{{data.label || 'Note'}}</div>
+        </div>`,
+      "className": "uml-note",
+      "style": {
+        "display": "flex",
+        "alignItems": "center",
+        "justifyContent": "center",
+        "padding": "8px",
+        "fontFamily": "Arial, sans-serif",
+        "fontSize": "14px",
+        "textAlign": "center",
+        "wordBreak": "break-word"
+      }
+    },
+    "ports": {
+      "enabled": true,
+      "defaultVisibility": "on-hover",
+      "rendering": {
+        "mode": "svg",
+        "size": {
+          "width": 8,
+          "height": 8,
+          "hoverScale": 1.5
+        },
+        "svg": {
+          "shape": "circle",
+          "fill": "#1976D2",
+          "stroke": "#FFFFFF",
+          "strokeWidth": 2
+        }
+      },
+      "left": {
+        "enabled": true,
+        "type": "input",
+        "maxConnections": void 0
+      },
+      "right": {
+        "enabled": true,
+        "type": "output",
+        "maxConnections": void 0
+      },
+      "top": {
+        "enabled": true,
+        "type": "bi",
+        "maxConnections": void 0
+      },
+      "bottom": {
+        "enabled": true,
+        "type": "bi",
+        "maxConnections": void 0
+      }
+    },
+    "behavior": {
+      "draggable": true,
+      "selectable": true,
+      "connectable": true,
+      "resizable": true,
+      "deletable": true
+    }
+  },
+  "defaultData": {
+    "label": "Note"
+  },
+  "dataSchema": {
+    "type": "object",
+    "properties": {
+      "label": {
+        "type": "string",
+        "default": ""
+      }
+    },
+    "required": [
+      "label"
+    ]
+  }
+};
+
+// libs/engine/src/templates/generated/uml/uml-activity.template.ts
+var umlActivityTemplate = {
+  "id": "uml-activity",
+  "version": "1.0.0",
+  "meta": {
+    "name": "Activity",
+    "description": "An activity in an activity diagram",
+    "category": "diagram",
+    "tags": [
+      "activity",
+      "action",
+      "behavior",
+      "uml"
+    ],
+    "author": "Auto-Generated"
+  },
+  "structure": {
+    "type": "uml:activity",
+    "size": {
+      "width": 120,
+      "height": 60,
+      "minWidth": 120,
+      "maxWidth": 400,
+      "minHeight": 80,
+      "maxHeight": 600
+    },
+    "shape": {
+      "type": "rect",
+      "fill": "#E3F2FD",
+      "stroke": "#1976D2",
+      "strokeWidth": 2,
+      "opacity": 1,
+      "cornerRadius": 20
+    },
+    "html": {
+      "mode": "template",
+      "template": `<div class="uml-activity-content">
+          <div class="node-label">{{data.label || 'Activity'}}</div>
+        </div>`,
+      "className": "uml-activity",
+      "style": {
+        "display": "flex",
+        "alignItems": "center",
+        "justifyContent": "center",
+        "padding": "8px",
+        "fontFamily": "Arial, sans-serif",
+        "fontSize": "14px",
+        "textAlign": "center",
+        "wordBreak": "break-word"
+      }
+    },
+    "ports": {
+      "enabled": true,
+      "defaultVisibility": "on-hover",
+      "rendering": {
+        "mode": "svg",
+        "size": {
+          "width": 8,
+          "height": 8,
+          "hoverScale": 1.5
+        },
+        "svg": {
+          "shape": "circle",
+          "fill": "#1976D2",
+          "stroke": "#FFFFFF",
+          "strokeWidth": 2
+        }
+      },
+      "left": {
+        "enabled": true,
+        "type": "input",
+        "maxConnections": void 0
+      },
+      "right": {
+        "enabled": true,
+        "type": "output",
+        "maxConnections": void 0
+      },
+      "top": {
+        "enabled": true,
+        "type": "bi",
+        "maxConnections": void 0
+      },
+      "bottom": {
+        "enabled": true,
+        "type": "bi",
+        "maxConnections": void 0
+      }
+    },
+    "behavior": {
+      "draggable": true,
+      "selectable": true,
+      "connectable": true,
+      "resizable": true,
+      "deletable": true
+    }
+  },
+  "defaultData": {
+    "label": "Activity"
+  },
+  "dataSchema": {
+    "type": "object",
+    "properties": {
+      "label": {
+        "type": "string",
+        "default": ""
+      }
+    },
+    "required": [
+      "label"
+    ]
+  }
+};
+
+// libs/engine/src/templates/generated/uml/uml-decision.template.ts
+var umlDecisionTemplate = {
+  "id": "uml-decision",
+  "version": "1.0.0",
+  "meta": {
+    "name": "Decision",
+    "description": "A decision/branch node in an activity diagram",
+    "category": "diagram",
+    "tags": [
+      "activity",
+      "decision",
+      "branch",
+      "conditional",
+      "uml"
+    ],
+    "author": "Auto-Generated"
+  },
+  "structure": {
+    "type": "uml:decision",
+    "size": {
+      "width": 50,
+      "height": 50,
+      "minWidth": 120,
+      "maxWidth": 400,
+      "minHeight": 80,
+      "maxHeight": 600
+    },
+    "shape": {
+      "type": "diamond",
+      "fill": "#FFF9C4",
+      "stroke": "#F57F17",
+      "strokeWidth": 2,
+      "opacity": 1
+    },
+    "html": {
+      "mode": "template",
+      "template": `<div class="uml-decision-content">
+          <div class="node-label">{{data.label || 'Decision'}}</div>
+        </div>`,
+      "className": "uml-decision",
+      "style": {
+        "display": "flex",
+        "alignItems": "center",
+        "justifyContent": "center",
+        "padding": "8px",
+        "fontFamily": "Arial, sans-serif",
+        "fontSize": "14px",
+        "textAlign": "center",
+        "wordBreak": "break-word"
+      }
+    },
+    "ports": {
+      "enabled": true,
+      "defaultVisibility": "on-hover",
+      "rendering": {
+        "mode": "svg",
+        "size": {
+          "width": 8,
+          "height": 8,
+          "hoverScale": 1.5
+        },
+        "svg": {
+          "shape": "circle",
+          "fill": "#F57C00",
+          "stroke": "#FFFFFF",
+          "strokeWidth": 2
+        }
+      },
+      "left": {
+        "enabled": true,
+        "type": "input",
+        "maxConnections": void 0
+      },
+      "right": {
+        "enabled": true,
+        "type": "output",
+        "maxConnections": void 0
+      },
+      "top": {
+        "enabled": true,
+        "type": "output",
+        "maxConnections": void 0
+      },
+      "bottom": {
+        "enabled": true,
+        "type": "output",
+        "maxConnections": void 0
+      }
+    },
+    "behavior": {
+      "draggable": true,
+      "selectable": true,
+      "connectable": true,
+      "resizable": true,
+      "deletable": true
+    }
+  },
+  "defaultData": {
+    "label": "Decision"
+  },
+  "dataSchema": {
+    "type": "object",
+    "properties": {
+      "label": {
+        "type": "string",
+        "default": ""
+      }
+    },
+    "required": [
+      "label"
+    ]
+  }
+};
+
+// libs/engine/src/templates/generated/uml/uml-merge.template.ts
+var umlMergeTemplate = {
+  "id": "uml-merge",
+  "version": "1.0.0",
+  "meta": {
+    "name": "Merge",
+    "description": "A merge node in an activity diagram",
+    "category": "diagram",
+    "tags": [
+      "activity",
+      "merge",
+      "join-flow",
+      "uml"
+    ],
+    "author": "Auto-Generated"
+  },
+  "structure": {
+    "type": "uml:merge",
+    "size": {
+      "width": 120,
+      "height": 80,
+      "minWidth": 120,
+      "maxWidth": 400,
+      "minHeight": 80,
+      "maxHeight": 600
+    },
+    "shape": {
+      "type": "rect",
+      "fill": "#E8F5E9",
+      "stroke": "#388E3C",
+      "strokeWidth": 2,
+      "opacity": 1
+    },
+    "html": {
+      "mode": "template",
+      "template": `<div class="uml-merge-content">
+          <div class="node-label">{{data.label || 'Merge'}}</div>
+        </div>`,
+      "className": "uml-merge",
+      "style": {
+        "display": "flex",
+        "alignItems": "center",
+        "justifyContent": "center",
+        "padding": "8px",
+        "fontFamily": "Arial, sans-serif",
+        "fontSize": "14px",
+        "textAlign": "center",
+        "wordBreak": "break-word"
+      }
+    },
+    "ports": {
+      "enabled": true,
+      "defaultVisibility": "on-hover",
+      "rendering": {
+        "mode": "svg",
+        "size": {
+          "width": 8,
+          "height": 8,
+          "hoverScale": 1.5
+        },
+        "svg": {
+          "shape": "circle",
+          "fill": "#1976D2",
+          "stroke": "#FFFFFF",
+          "strokeWidth": 2
+        }
+      },
+      "left": {
+        "enabled": true,
+        "type": "input",
+        "maxConnections": void 0
+      },
+      "right": {
+        "enabled": true,
+        "type": "output",
+        "maxConnections": void 0
+      },
+      "top": {
+        "enabled": true,
+        "type": "bi",
+        "maxConnections": void 0
+      },
+      "bottom": {
+        "enabled": true,
+        "type": "bi",
+        "maxConnections": void 0
+      }
+    },
+    "behavior": {
+      "draggable": true,
+      "selectable": true,
+      "connectable": true,
+      "resizable": false,
+      "deletable": true
+    }
+  },
+  "defaultData": {
+    "label": "Merge"
+  },
+  "dataSchema": {
+    "type": "object",
+    "properties": {
+      "label": {
+        "type": "string",
+        "default": ""
+      }
+    },
+    "required": [
+      "label"
+    ]
+  }
+};
+
+// libs/engine/src/templates/generated/uml/uml-fork.template.ts
+var umlForkTemplate = {
+  "id": "uml-fork",
+  "version": "1.0.0",
+  "meta": {
+    "name": "Fork",
+    "description": "A fork/split node for parallel flows",
+    "category": "diagram",
+    "tags": [
+      "activity",
+      "fork",
+      "split",
+      "parallel",
+      "concurrency",
+      "uml"
+    ],
+    "author": "Auto-Generated"
+  },
+  "structure": {
+    "type": "uml:fork",
+    "size": {
+      "width": 100,
+      "height": 10,
+      "minWidth": 120,
+      "maxWidth": 400,
+      "minHeight": 80,
+      "maxHeight": 600
+    },
+    "shape": {
+      "type": "rect",
+      "fill": "#000000",
+      "stroke": "#000000",
+      "strokeWidth": 1,
+      "opacity": 1
+    },
+    "html": {
+      "mode": "template",
+      "template": `<div class="uml-fork-content">
+          <div class="node-label">{{data.label || 'Fork'}}</div>
+        </div>`,
+      "className": "uml-fork",
+      "style": {
+        "display": "flex",
+        "alignItems": "center",
+        "justifyContent": "center",
+        "padding": "8px",
+        "fontFamily": "Arial, sans-serif",
+        "fontSize": "14px",
+        "textAlign": "center",
+        "wordBreak": "break-word"
+      }
+    },
+    "ports": {
+      "enabled": true,
+      "defaultVisibility": "on-hover",
+      "rendering": {
+        "mode": "svg",
+        "size": {
+          "width": 8,
+          "height": 8,
+          "hoverScale": 1.5
+        },
+        "svg": {
+          "shape": "circle",
+          "fill": "#1976D2",
+          "stroke": "#FFFFFF",
+          "strokeWidth": 2
+        }
+      },
+      "left": {
+        "enabled": true,
+        "type": "input",
+        "maxConnections": void 0
+      },
+      "right": {
+        "enabled": true,
+        "type": "output",
+        "maxConnections": void 0
+      },
+      "top": {
+        "enabled": true,
+        "type": "bi",
+        "maxConnections": void 0
+      },
+      "bottom": {
+        "enabled": true,
+        "type": "bi",
+        "maxConnections": void 0
+      }
+    },
+    "behavior": {
+      "draggable": true,
+      "selectable": true,
+      "connectable": true,
+      "resizable": true,
+      "deletable": true
+    }
+  },
+  "defaultData": {
+    "label": "Fork"
+  },
+  "dataSchema": {
+    "type": "object",
+    "properties": {
+      "label": {
+        "type": "string",
+        "default": ""
+      }
+    },
+    "required": [
+      "label"
+    ]
+  }
+};
+
+// libs/engine/src/templates/generated/uml/uml-join.template.ts
+var umlJoinTemplate = {
+  "id": "uml-join",
+  "version": "1.0.0",
+  "meta": {
+    "name": "Join",
+    "description": "A join/synchronization node for parallel flows",
+    "category": "diagram",
+    "tags": [
+      "activity",
+      "join",
+      "sync",
+      "parallel",
+      "concurrency",
+      "uml"
+    ],
+    "author": "Auto-Generated"
+  },
+  "structure": {
+    "type": "uml:join",
+    "size": {
+      "width": 120,
+      "height": 80,
+      "minWidth": 120,
+      "maxWidth": 400,
+      "minHeight": 80,
+      "maxHeight": 600
+    },
+    "shape": {
+      "type": "rect",
+      "fill": "#FFFFFF",
+      "stroke": "#000000",
+      "strokeWidth": 2,
+      "opacity": 1
+    },
+    "html": {
+      "mode": "template",
+      "template": `<div class="uml-join-content">
+          <div class="node-label">{{data.label || 'Join'}}</div>
+        </div>`,
+      "className": "uml-join",
+      "style": {
+        "display": "flex",
+        "alignItems": "center",
+        "justifyContent": "center",
+        "padding": "8px",
+        "fontFamily": "Arial, sans-serif",
+        "fontSize": "14px",
+        "textAlign": "center",
+        "wordBreak": "break-word"
+      }
+    },
+    "ports": {
+      "enabled": true,
+      "defaultVisibility": "on-hover",
+      "rendering": {
+        "mode": "svg",
+        "size": {
+          "width": 8,
+          "height": 8,
+          "hoverScale": 1.5
+        },
+        "svg": {
+          "shape": "circle",
+          "fill": "#1976D2",
+          "stroke": "#FFFFFF",
+          "strokeWidth": 2
+        }
+      },
+      "left": {
+        "enabled": true,
+        "type": "input",
+        "maxConnections": void 0
+      },
+      "right": {
+        "enabled": true,
+        "type": "output",
+        "maxConnections": void 0
+      },
+      "top": {
+        "enabled": true,
+        "type": "bi",
+        "maxConnections": void 0
+      },
+      "bottom": {
+        "enabled": true,
+        "type": "bi",
+        "maxConnections": void 0
+      }
+    },
+    "behavior": {
+      "draggable": true,
+      "selectable": true,
+      "connectable": true,
+      "resizable": false,
+      "deletable": true
+    }
+  },
+  "defaultData": {
+    "label": "Join"
+  },
+  "dataSchema": {
+    "type": "object",
+    "properties": {
+      "label": {
+        "type": "string",
+        "default": ""
+      }
+    },
+    "required": [
+      "label"
+    ]
+  }
+};
+
+// libs/engine/src/templates/generated/uml/uml-initial-node.template.ts
+var umlInitialNodeTemplate = {
+  "id": "uml-initial-node",
+  "version": "1.0.0",
+  "meta": {
+    "name": "Initial Node",
+    "description": "The starting point of an activity",
+    "category": "diagram",
+    "tags": [
+      "activity",
+      "initial",
+      "start",
+      "uml"
+    ],
+    "author": "Auto-Generated"
+  },
+  "structure": {
+    "type": "uml:initial-node",
+    "size": {
+      "width": 20,
+      "height": 20,
+      "minWidth": 120,
+      "maxWidth": 400,
+      "minHeight": 80,
+      "maxHeight": 600
+    },
+    "shape": {
+      "type": "circle",
+      "fill": "#000000",
+      "stroke": "#000000",
+      "strokeWidth": 2,
+      "opacity": 1
+    },
+    "html": {
+      "mode": "template",
+      "template": `<div class="uml-initial-node-content">
+          <div class="node-label">{{data.label || 'Initial Node'}}</div>
+        </div>`,
+      "className": "uml-initial-node",
+      "style": {
+        "display": "flex",
+        "alignItems": "center",
+        "justifyContent": "center",
+        "padding": "8px",
+        "fontFamily": "Arial, sans-serif",
+        "fontSize": "14px",
+        "textAlign": "center",
+        "wordBreak": "break-word"
+      }
+    },
+    "ports": {
+      "enabled": true,
+      "defaultVisibility": "on-hover",
+      "rendering": {
+        "mode": "svg",
+        "size": {
+          "width": 8,
+          "height": 8,
+          "hoverScale": 1.5
+        },
+        "svg": {
+          "shape": "circle",
+          "fill": "#1976D2",
+          "stroke": "#FFFFFF",
+          "strokeWidth": 2
+        }
+      },
+      "top": {
+        "enabled": true,
+        "type": "bi",
+        "maxConnections": void 0
+      },
+      "right": {
+        "enabled": true,
+        "type": "bi",
+        "maxConnections": void 0
+      },
+      "bottom": {
+        "enabled": true,
+        "type": "bi",
+        "maxConnections": void 0
+      },
+      "left": {
+        "enabled": true,
+        "type": "bi",
+        "maxConnections": void 0
+      }
+    },
+    "behavior": {
+      "draggable": true,
+      "selectable": true,
+      "connectable": true,
+      "resizable": false,
+      "deletable": true
+    }
+  },
+  "defaultData": {
+    "label": "Initial Node"
+  },
+  "dataSchema": {
+    "type": "object",
+    "properties": {
+      "label": {
+        "type": "string",
+        "default": ""
+      }
+    },
+    "required": [
+      "label"
+    ]
+  }
+};
+
+// libs/engine/src/templates/generated/uml/uml-final-node.template.ts
+var umlFinalNodeTemplate = {
+  "id": "uml-final-node",
+  "version": "1.0.0",
+  "meta": {
+    "name": "Final Node",
+    "description": "The ending point of an activity",
+    "category": "diagram",
+    "tags": [
+      "activity",
+      "final",
+      "end",
+      "terminal",
+      "uml"
+    ],
+    "author": "Auto-Generated"
+  },
+  "structure": {
+    "type": "uml:final-node",
+    "size": {
+      "width": 24,
+      "height": 24,
+      "minWidth": 120,
+      "maxWidth": 400,
+      "minHeight": 80,
+      "maxHeight": 600
+    },
+    "shape": {
+      "type": "circle",
+      "fill": "#000000",
+      "stroke": "#000000",
+      "strokeWidth": 4,
+      "opacity": 1
+    },
+    "html": {
+      "mode": "template",
+      "template": `<div class="uml-final-node-content">
+          <div class="node-label">{{data.label || 'Final Node'}}</div>
+        </div>`,
+      "className": "uml-final-node",
+      "style": {
+        "display": "flex",
+        "alignItems": "center",
+        "justifyContent": "center",
+        "padding": "8px",
+        "fontFamily": "Arial, sans-serif",
+        "fontSize": "14px",
+        "textAlign": "center",
+        "wordBreak": "break-word"
+      }
+    },
+    "ports": {
+      "enabled": true,
+      "defaultVisibility": "on-hover",
+      "rendering": {
+        "mode": "svg",
+        "size": {
+          "width": 8,
+          "height": 8,
+          "hoverScale": 1.5
+        },
+        "svg": {
+          "shape": "circle",
+          "fill": "#1976D2",
+          "stroke": "#FFFFFF",
+          "strokeWidth": 2
+        }
+      },
+      "top": {
+        "enabled": true,
+        "type": "bi",
+        "maxConnections": void 0
+      },
+      "right": {
+        "enabled": true,
+        "type": "bi",
+        "maxConnections": void 0
+      },
+      "bottom": {
+        "enabled": true,
+        "type": "bi",
+        "maxConnections": void 0
+      },
+      "left": {
+        "enabled": true,
+        "type": "bi",
+        "maxConnections": void 0
+      }
+    },
+    "behavior": {
+      "draggable": true,
+      "selectable": true,
+      "connectable": true,
+      "resizable": false,
+      "deletable": true
+    }
+  },
+  "defaultData": {
+    "label": "Final Node"
+  },
+  "dataSchema": {
+    "type": "object",
+    "properties": {
+      "label": {
+        "type": "string",
+        "default": ""
+      }
+    },
+    "required": [
+      "label"
+    ]
+  }
+};
+
+// libs/engine/src/templates/generated/uml/uml-activity-partition.template.ts
+var umlActivityPartitionTemplate = {
+  "id": "uml-activity-partition",
+  "version": "1.0.0",
+  "meta": {
+    "name": "Activity Partition",
+    "description": "A swimlane for organizing activities by responsibility",
+    "category": "diagram",
+    "tags": [
+      "activity",
+      "partition",
+      "swimlane",
+      "responsibility",
+      "container",
+      "uml"
+    ],
+    "author": "Auto-Generated"
+  },
+  "structure": {
+    "type": "uml:activity-partition",
+    "size": {
+      "width": 200,
+      "height": 400,
+      "minWidth": 120,
+      "maxWidth": 400,
+      "minHeight": 80,
+      "maxHeight": 600
+    },
+    "shape": {
+      "type": "rect",
+      "fill": "transparent",
+      "stroke": "#9E9E9E",
+      "strokeWidth": 2,
+      "opacity": 1
+    },
+    "html": {
+      "mode": "template",
+      "template": `<div class="uml-activity-partition-content">
+          <div class="node-label">{{data.label || 'Activity Partition'}}</div>
+        </div>`,
+      "className": "uml-activity-partition",
+      "style": {
+        "display": "flex",
+        "alignItems": "center",
+        "justifyContent": "center",
+        "padding": "8px",
+        "fontFamily": "Arial, sans-serif",
+        "fontSize": "14px",
+        "textAlign": "center",
+        "wordBreak": "break-word"
+      }
+    },
+    "ports": {
+      "enabled": true,
+      "defaultVisibility": "on-hover",
+      "rendering": {
+        "mode": "svg",
+        "size": {
+          "width": 8,
+          "height": 8,
+          "hoverScale": 1.5
+        },
+        "svg": {
+          "shape": "circle",
+          "fill": "#1976D2",
+          "stroke": "#FFFFFF",
+          "strokeWidth": 2
+        }
+      },
+      "left": {
+        "enabled": true,
+        "type": "input",
+        "maxConnections": void 0
+      },
+      "right": {
+        "enabled": true,
+        "type": "output",
+        "maxConnections": void 0
+      },
+      "top": {
+        "enabled": true,
+        "type": "bi",
+        "maxConnections": void 0
+      },
+      "bottom": {
+        "enabled": true,
+        "type": "bi",
+        "maxConnections": void 0
+      }
+    },
+    "behavior": {
+      "draggable": true,
+      "selectable": true,
+      "connectable": true,
+      "resizable": true,
+      "deletable": true
+    }
+  },
+  "defaultData": {
+    "label": "Activity Partition"
+  },
+  "dataSchema": {
+    "type": "object",
+    "properties": {
+      "label": {
+        "type": "string",
+        "default": ""
+      }
+    },
+    "required": [
+      "label"
+    ]
+  }
+};
+
+// libs/engine/src/templates/generated/uml/uml-lifeline.template.ts
+var umlLifelineTemplate = {
+  "id": "uml-lifeline",
+  "version": "1.0.0",
+  "meta": {
+    "name": "Lifeline",
+    "description": "A lifeline representing an object in a sequence diagram",
+    "category": "diagram",
+    "tags": [
+      "sequence",
+      "interaction",
+      "lifeline",
+      "participant",
+      "uml"
+    ],
+    "author": "Auto-Generated"
+  },
+  "structure": {
+    "type": "uml:lifeline",
+    "size": {
+      "width": 100,
+      "height": 60,
+      "minWidth": 120,
+      "maxWidth": 400,
+      "minHeight": 80,
+      "maxHeight": 600
+    },
+    "shape": {
+      "type": "rect",
+      "fill": "#E3F2FD",
+      "stroke": "#1976D2",
+      "strokeWidth": 2,
+      "opacity": 1
+    },
+    "html": {
+      "mode": "template",
+      "template": `<div class="uml-lifeline-content">
+          <div class="node-label">{{data.label || 'Lifeline'}}</div>
+        </div>`,
+      "className": "uml-lifeline",
+      "style": {
+        "display": "flex",
+        "alignItems": "center",
+        "justifyContent": "center",
+        "padding": "8px",
+        "fontFamily": "Arial, sans-serif",
+        "fontSize": "14px",
+        "textAlign": "center",
+        "wordBreak": "break-word"
+      }
+    },
+    "ports": {
+      "enabled": true,
+      "defaultVisibility": "on-hover",
+      "rendering": {
+        "mode": "svg",
+        "size": {
+          "width": 8,
+          "height": 8,
+          "hoverScale": 1.5
+        },
+        "svg": {
+          "shape": "circle",
+          "fill": "#1976D2",
+          "stroke": "#FFFFFF",
+          "strokeWidth": 2
+        }
+      },
+      "left": {
+        "enabled": true,
+        "type": "input",
+        "maxConnections": void 0
+      },
+      "right": {
+        "enabled": true,
+        "type": "output",
+        "maxConnections": void 0
+      },
+      "top": {
+        "enabled": true,
+        "type": "bi",
+        "maxConnections": void 0
+      },
+      "bottom": {
+        "enabled": true,
+        "type": "bi",
+        "maxConnections": void 0
+      }
+    },
+    "behavior": {
+      "draggable": true,
+      "selectable": true,
+      "connectable": true,
+      "resizable": true,
+      "deletable": true
+    }
+  },
+  "defaultData": {
+    "label": "Lifeline"
+  },
+  "dataSchema": {
+    "type": "object",
+    "properties": {
+      "label": {
+        "type": "string",
+        "default": ""
+      }
+    },
+    "required": [
+      "label"
+    ]
+  }
+};
+
+// libs/engine/src/templates/generated/uml/uml-activation.template.ts
+var umlActivationTemplate = {
+  "id": "uml-activation",
+  "version": "1.0.0",
+  "meta": {
+    "name": "Activation",
+    "description": "An activation box showing when an object is active",
+    "category": "diagram",
+    "tags": [
+      "sequence",
+      "interaction",
+      "activation",
+      "execution",
+      "uml"
+    ],
+    "author": "Auto-Generated"
+  },
+  "structure": {
+    "type": "uml:activation",
+    "size": {
+      "width": 15,
+      "height": 80,
+      "minWidth": 120,
+      "maxWidth": 400,
+      "minHeight": 80,
+      "maxHeight": 600
+    },
+    "shape": {
+      "type": "rect",
+      "fill": "#FFFFFF",
+      "stroke": "#1976D2",
+      "strokeWidth": 2,
+      "opacity": 1
+    },
+    "html": {
+      "mode": "template",
+      "template": `<div class="uml-activation-content">
+          <div class="node-label">{{data.label || 'Activation'}}</div>
+        </div>`,
+      "className": "uml-activation",
+      "style": {
+        "display": "flex",
+        "alignItems": "center",
+        "justifyContent": "center",
+        "padding": "8px",
+        "fontFamily": "Arial, sans-serif",
+        "fontSize": "14px",
+        "textAlign": "center",
+        "wordBreak": "break-word"
+      }
+    },
+    "ports": {
+      "enabled": true,
+      "defaultVisibility": "on-hover",
+      "rendering": {
+        "mode": "svg",
+        "size": {
+          "width": 8,
+          "height": 8,
+          "hoverScale": 1.5
+        },
+        "svg": {
+          "shape": "circle",
+          "fill": "#1976D2",
+          "stroke": "#FFFFFF",
+          "strokeWidth": 2
+        }
+      },
+      "left": {
+        "enabled": true,
+        "type": "input",
+        "maxConnections": void 0
+      },
+      "right": {
+        "enabled": true,
+        "type": "output",
+        "maxConnections": void 0
+      },
+      "top": {
+        "enabled": true,
+        "type": "bi",
+        "maxConnections": void 0
+      },
+      "bottom": {
+        "enabled": true,
+        "type": "bi",
+        "maxConnections": void 0
+      }
+    },
+    "behavior": {
+      "draggable": true,
+      "selectable": true,
+      "connectable": true,
+      "resizable": true,
+      "deletable": true
+    }
+  },
+  "defaultData": {
+    "label": "Activation"
+  },
+  "dataSchema": {
+    "type": "object",
+    "properties": {
+      "label": {
+        "type": "string",
+        "default": ""
+      }
+    },
+    "required": [
+      "label"
+    ]
+  }
+};
+
+// libs/engine/src/templates/generated/uml/uml-object.template.ts
+var umlObjectTemplate = {
+  "id": "uml-object",
+  "version": "1.0.0",
+  "meta": {
+    "name": "Object",
+    "description": "An instance of a class",
+    "category": "diagram",
+    "tags": [
+      "classifier",
+      "object",
+      "instance",
+      "uml"
+    ],
+    "author": "Auto-Generated"
+  },
+  "structure": {
+    "type": "uml:object",
+    "size": {
+      "width": 120,
+      "height": 80,
+      "minWidth": 120,
+      "maxWidth": 400,
+      "minHeight": 80,
+      "maxHeight": 600
+    },
+    "shape": {
+      "type": "rect",
+      "fill": "#F3E5F5",
+      "stroke": "#7B1FA2",
+      "strokeWidth": 2,
+      "opacity": 1
+    },
+    "html": {
+      "mode": "template",
+      "template": `<div class="uml-class-container">
+          <div class="class-header">
+            {{data.stereotype ? '&laquo;' + data.stereotype + '&raquo;' : ''}}
+            <div class="class-name">{{data.name || 'Class'}}</div>
+          </div>
+          <div class="divider"></div>
+          <div class="attributes-section">
+            {{#if data.attributes}}
+              {{#each data.attributes}}
+                <div class="attribute">
+                  <span class="visibility">{{this.visibility}}</span>
+                  <span class="name">{{this.name}}</span>:
+                  <span class="type">{{this.type}}</span>
+                </div>
+              {{/each}}
+            {{else}}
+              <div class="empty-section"></div>
+            {{/if}}
+          </div>
+          <div class="divider"></div>
+          <div class="methods-section">
+            {{#if data.methods}}
+              {{#each data.methods}}
+                <div class="method">
+                  <span class="visibility">{{this.visibility}}</span>
+                  <span class="name">{{this.name}}</span>({{this.params}}):
+                  <span class="return-type">{{this.returnType}}</span>
+                </div>
+              {{/each}}
+            {{else}}
+              <div class="empty-section"></div>
+            {{/if}}
+          </div>
+        </div>`,
+      "className": "uml-object",
+      "style": {
+        "fontFamily": "monospace",
+        "fontSize": "12px",
+        "padding": "0"
+      }
+    },
+    "ports": {
+      "enabled": true,
+      "defaultVisibility": "on-hover",
+      "rendering": {
+        "mode": "svg",
+        "size": {
+          "width": 8,
+          "height": 8,
+          "hoverScale": 1.5
+        },
+        "svg": {
+          "shape": "circle",
+          "fill": "#1976D2",
+          "stroke": "#FFFFFF",
+          "strokeWidth": 2
+        }
+      },
+      "left": {
+        "enabled": true,
+        "type": "input",
+        "maxConnections": void 0
+      },
+      "right": {
+        "enabled": true,
+        "type": "output",
+        "maxConnections": void 0
+      },
+      "top": {
+        "enabled": true,
+        "type": "bi",
+        "maxConnections": void 0
+      },
+      "bottom": {
+        "enabled": true,
+        "type": "bi",
+        "maxConnections": void 0
+      }
+    },
+    "behavior": {
+      "draggable": true,
+      "selectable": true,
+      "connectable": true,
+      "resizable": false,
+      "deletable": true
+    }
+  },
+  "defaultData": {
+    "label": "Object"
+  },
+  "dataSchema": {
+    "type": "object",
+    "properties": {
+      "name": {
+        "type": "string",
+        "default": "Class"
+      },
+      "stereotype": {
+        "type": "string",
+        "enum": [
+          "interface",
+          "abstract",
+          "entity",
+          "control",
+          "boundary"
+        ]
+      },
+      "attributes": {
+        "type": "array",
+        "items": {
+          "type": "object",
+          "properties": {
+            "visibility": {
+              "type": "string",
+              "enum": [
+                "+",
+                "-",
+                "#",
+                "~"
+              ],
+              "default": "+"
+            },
+            "name": {
+              "type": "string"
+            },
+            "type": {
+              "type": "string"
+            },
+            "defaultValue": {
+              "type": "string"
+            },
+            "isStatic": {
+              "type": "boolean",
+              "default": false
+            }
+          },
+          "required": [
+            "name",
+            "type"
+          ]
+        },
+        "default": []
+      },
+      "methods": {
+        "type": "array",
+        "items": {
+          "type": "object",
+          "properties": {
+            "visibility": {
+              "type": "string",
+              "enum": [
+                "+",
+                "-",
+                "#",
+                "~"
+              ],
+              "default": "+"
+            },
+            "name": {
+              "type": "string"
+            },
+            "params": {
+              "type": "string",
+              "default": ""
+            },
+            "returnType": {
+              "type": "string",
+              "default": "void"
+            },
+            "isStatic": {
+              "type": "boolean",
+              "default": false
+            },
+            "isAbstract": {
+              "type": "boolean",
+              "default": false
+            }
+          },
+          "required": [
+            "name"
+          ]
+        },
+        "default": []
+      }
+    },
+    "required": [
+      "name"
+    ]
+  }
+};
+
+// libs/engine/src/templates/generated/uml/uml-datatype.template.ts
+var umlDatatypeTemplate = {
+  "id": "uml-datatype",
+  "version": "1.0.0",
+  "meta": {
+    "name": "DataType",
+    "description": "A data type defining a value",
+    "category": "diagram",
+    "tags": [
+      "classifier",
+      "datatype",
+      "value",
+      "uml"
+    ],
+    "author": "Auto-Generated"
+  },
+  "structure": {
+    "type": "uml:datatype",
+    "size": {
+      "width": 120,
+      "height": 80,
+      "minWidth": 120,
+      "maxWidth": 400,
+      "minHeight": 80,
+      "maxHeight": 600
+    },
+    "shape": {
+      "type": "rect",
+      "fill": "#E0F2F1",
+      "stroke": "#00695C",
+      "strokeWidth": 2,
+      "opacity": 1
+    },
+    "html": {
+      "mode": "template",
+      "template": `<div class="uml-class-container">
+          <div class="class-header">
+            {{data.stereotype ? '&laquo;' + data.stereotype + '&raquo;' : ''}}
+            <div class="class-name">{{data.name || 'Class'}}</div>
+          </div>
+          <div class="divider"></div>
+          <div class="attributes-section">
+            {{#if data.attributes}}
+              {{#each data.attributes}}
+                <div class="attribute">
+                  <span class="visibility">{{this.visibility}}</span>
+                  <span class="name">{{this.name}}</span>:
+                  <span class="type">{{this.type}}</span>
+                </div>
+              {{/each}}
+            {{else}}
+              <div class="empty-section"></div>
+            {{/if}}
+          </div>
+          <div class="divider"></div>
+          <div class="methods-section">
+            {{#if data.methods}}
+              {{#each data.methods}}
+                <div class="method">
+                  <span class="visibility">{{this.visibility}}</span>
+                  <span class="name">{{this.name}}</span>({{this.params}}):
+                  <span class="return-type">{{this.returnType}}</span>
+                </div>
+              {{/each}}
+            {{else}}
+              <div class="empty-section"></div>
+            {{/if}}
+          </div>
+        </div>`,
+      "className": "uml-datatype",
+      "style": {
+        "fontFamily": "monospace",
+        "fontSize": "12px",
+        "padding": "0"
+      }
+    },
+    "ports": {
+      "enabled": true,
+      "defaultVisibility": "on-hover",
+      "rendering": {
+        "mode": "svg",
+        "size": {
+          "width": 8,
+          "height": 8,
+          "hoverScale": 1.5
+        },
+        "svg": {
+          "shape": "circle",
+          "fill": "#1976D2",
+          "stroke": "#FFFFFF",
+          "strokeWidth": 2
+        }
+      },
+      "left": {
+        "enabled": true,
+        "type": "input",
+        "maxConnections": void 0
+      },
+      "right": {
+        "enabled": true,
+        "type": "output",
+        "maxConnections": void 0
+      },
+      "top": {
+        "enabled": true,
+        "type": "bi",
+        "maxConnections": void 0
+      },
+      "bottom": {
+        "enabled": true,
+        "type": "bi",
+        "maxConnections": void 0
+      }
+    },
+    "behavior": {
+      "draggable": true,
+      "selectable": true,
+      "connectable": true,
+      "resizable": false,
+      "deletable": true
+    }
+  },
+  "defaultData": {
+    "label": "DataType"
+  },
+  "dataSchema": {
+    "type": "object",
+    "properties": {
+      "name": {
+        "type": "string",
+        "default": "Class"
+      },
+      "stereotype": {
+        "type": "string",
+        "enum": [
+          "interface",
+          "abstract",
+          "entity",
+          "control",
+          "boundary"
+        ]
+      },
+      "attributes": {
+        "type": "array",
+        "items": {
+          "type": "object",
+          "properties": {
+            "visibility": {
+              "type": "string",
+              "enum": [
+                "+",
+                "-",
+                "#",
+                "~"
+              ],
+              "default": "+"
+            },
+            "name": {
+              "type": "string"
+            },
+            "type": {
+              "type": "string"
+            },
+            "defaultValue": {
+              "type": "string"
+            },
+            "isStatic": {
+              "type": "boolean",
+              "default": false
+            }
+          },
+          "required": [
+            "name",
+            "type"
+          ]
+        },
+        "default": []
+      },
+      "methods": {
+        "type": "array",
+        "items": {
+          "type": "object",
+          "properties": {
+            "visibility": {
+              "type": "string",
+              "enum": [
+                "+",
+                "-",
+                "#",
+                "~"
+              ],
+              "default": "+"
+            },
+            "name": {
+              "type": "string"
+            },
+            "params": {
+              "type": "string",
+              "default": ""
+            },
+            "returnType": {
+              "type": "string",
+              "default": "void"
+            },
+            "isStatic": {
+              "type": "boolean",
+              "default": false
+            },
+            "isAbstract": {
+              "type": "boolean",
+              "default": false
+            }
+          },
+          "required": [
+            "name"
+          ]
+        },
+        "default": []
+      }
+    },
+    "required": [
+      "name"
+    ]
+  }
+};
+
+// libs/engine/src/templates/generated/uml/uml-primitive-type.template.ts
+var umlPrimitiveTypeTemplate = {
+  "id": "uml-primitive-type",
+  "version": "1.0.0",
+  "meta": {
+    "name": "PrimitiveType",
+    "description": "A primitive type (int, string, bool, etc.)",
+    "category": "diagram",
+    "tags": [
+      "classifier",
+      "primitive",
+      "basic-type",
+      "uml"
+    ],
+    "author": "Auto-Generated"
+  },
+  "structure": {
+    "type": "uml:primitive-type",
+    "size": {
+      "width": 120,
+      "height": 80,
+      "minWidth": 120,
+      "maxWidth": 400,
+      "minHeight": 80,
+      "maxHeight": 600
+    },
+    "shape": {
+      "type": "rect",
+      "fill": "#E8EAF6",
+      "stroke": "#3F51B5",
+      "strokeWidth": 2,
+      "opacity": 1
+    },
+    "html": {
+      "mode": "template",
+      "template": `<div class="uml-class-container">
+          <div class="class-header">
+            {{data.stereotype ? '&laquo;' + data.stereotype + '&raquo;' : ''}}
+            <div class="class-name">{{data.name || 'Class'}}</div>
+          </div>
+          <div class="divider"></div>
+          <div class="attributes-section">
+            {{#if data.attributes}}
+              {{#each data.attributes}}
+                <div class="attribute">
+                  <span class="visibility">{{this.visibility}}</span>
+                  <span class="name">{{this.name}}</span>:
+                  <span class="type">{{this.type}}</span>
+                </div>
+              {{/each}}
+            {{else}}
+              <div class="empty-section"></div>
+            {{/if}}
+          </div>
+          <div class="divider"></div>
+          <div class="methods-section">
+            {{#if data.methods}}
+              {{#each data.methods}}
+                <div class="method">
+                  <span class="visibility">{{this.visibility}}</span>
+                  <span class="name">{{this.name}}</span>({{this.params}}):
+                  <span class="return-type">{{this.returnType}}</span>
+                </div>
+              {{/each}}
+            {{else}}
+              <div class="empty-section"></div>
+            {{/if}}
+          </div>
+        </div>`,
+      "className": "uml-primitive-type",
+      "style": {
+        "fontFamily": "monospace",
+        "fontSize": "12px",
+        "padding": "0"
+      }
+    },
+    "ports": {
+      "enabled": true,
+      "defaultVisibility": "on-hover",
+      "rendering": {
+        "mode": "svg",
+        "size": {
+          "width": 8,
+          "height": 8,
+          "hoverScale": 1.5
+        },
+        "svg": {
+          "shape": "circle",
+          "fill": "#1976D2",
+          "stroke": "#FFFFFF",
+          "strokeWidth": 2
+        }
+      },
+      "left": {
+        "enabled": true,
+        "type": "input",
+        "maxConnections": void 0
+      },
+      "right": {
+        "enabled": true,
+        "type": "output",
+        "maxConnections": void 0
+      },
+      "top": {
+        "enabled": true,
+        "type": "bi",
+        "maxConnections": void 0
+      },
+      "bottom": {
+        "enabled": true,
+        "type": "bi",
+        "maxConnections": void 0
+      }
+    },
+    "behavior": {
+      "draggable": true,
+      "selectable": true,
+      "connectable": true,
+      "resizable": false,
+      "deletable": true
+    }
+  },
+  "defaultData": {
+    "label": "PrimitiveType"
+  },
+  "dataSchema": {
+    "type": "object",
+    "properties": {
+      "name": {
+        "type": "string",
+        "default": "Class"
+      },
+      "stereotype": {
+        "type": "string",
+        "enum": [
+          "interface",
+          "abstract",
+          "entity",
+          "control",
+          "boundary"
+        ]
+      },
+      "attributes": {
+        "type": "array",
+        "items": {
+          "type": "object",
+          "properties": {
+            "visibility": {
+              "type": "string",
+              "enum": [
+                "+",
+                "-",
+                "#",
+                "~"
+              ],
+              "default": "+"
+            },
+            "name": {
+              "type": "string"
+            },
+            "type": {
+              "type": "string"
+            },
+            "defaultValue": {
+              "type": "string"
+            },
+            "isStatic": {
+              "type": "boolean",
+              "default": false
+            }
+          },
+          "required": [
+            "name",
+            "type"
+          ]
+        },
+        "default": []
+      },
+      "methods": {
+        "type": "array",
+        "items": {
+          "type": "object",
+          "properties": {
+            "visibility": {
+              "type": "string",
+              "enum": [
+                "+",
+                "-",
+                "#",
+                "~"
+              ],
+              "default": "+"
+            },
+            "name": {
+              "type": "string"
+            },
+            "params": {
+              "type": "string",
+              "default": ""
+            },
+            "returnType": {
+              "type": "string",
+              "default": "void"
+            },
+            "isStatic": {
+              "type": "boolean",
+              "default": false
+            },
+            "isAbstract": {
+              "type": "boolean",
+              "default": false
+            }
+          },
+          "required": [
+            "name"
+          ]
+        },
+        "default": []
+      }
+    },
+    "required": [
+      "name"
+    ]
+  }
+};
+
+// libs/engine/src/templates/generated/uml/uml-signal.template.ts
+var umlSignalTemplate = {
+  "id": "uml-signal",
+  "version": "1.0.0",
+  "meta": {
+    "name": "Signal",
+    "description": "A signal for asynchronous communication",
+    "category": "diagram",
+    "tags": [
+      "behavioral",
+      "signal",
+      "async",
+      "communication",
+      "uml"
+    ],
+    "author": "Auto-Generated"
+  },
+  "structure": {
+    "type": "uml:signal",
+    "size": {
+      "width": 100,
+      "height": 60,
+      "minWidth": 120,
+      "maxWidth": 400,
+      "minHeight": 80,
+      "maxHeight": 600
+    },
+    "shape": {
+      "type": "rect",
+      "fill": "#FFF3E0",
+      "stroke": "#F57C00",
+      "strokeWidth": 2,
+      "opacity": 1
+    },
+    "html": {
+      "mode": "template",
+      "template": `<div class="uml-signal-content">
+          <div class="node-label">{{data.label || 'Signal'}}</div>
+        </div>`,
+      "className": "uml-signal",
+      "style": {
+        "display": "flex",
+        "alignItems": "center",
+        "justifyContent": "center",
+        "padding": "8px",
+        "fontFamily": "Arial, sans-serif",
+        "fontSize": "14px",
+        "textAlign": "center",
+        "wordBreak": "break-word"
+      }
+    },
+    "ports": {
+      "enabled": true,
+      "defaultVisibility": "on-hover",
+      "rendering": {
+        "mode": "svg",
+        "size": {
+          "width": 8,
+          "height": 8,
+          "hoverScale": 1.5
+        },
+        "svg": {
+          "shape": "circle",
+          "fill": "#1976D2",
+          "stroke": "#FFFFFF",
+          "strokeWidth": 2
+        }
+      },
+      "left": {
+        "enabled": true,
+        "type": "input",
+        "maxConnections": void 0
+      },
+      "right": {
+        "enabled": true,
+        "type": "output",
+        "maxConnections": void 0
+      },
+      "top": {
+        "enabled": true,
+        "type": "bi",
+        "maxConnections": void 0
+      },
+      "bottom": {
+        "enabled": true,
+        "type": "bi",
+        "maxConnections": void 0
+      }
+    },
+    "behavior": {
+      "draggable": true,
+      "selectable": true,
+      "connectable": true,
+      "resizable": true,
+      "deletable": true
+    }
+  },
+  "defaultData": {
+    "label": "Signal"
+  },
+  "dataSchema": {
+    "type": "object",
+    "properties": {
+      "label": {
+        "type": "string",
+        "default": ""
+      }
+    },
+    "required": [
+      "label"
+    ]
+  }
+};
+
+// libs/engine/src/templates/generated/uml/uml-port.template.ts
+var umlPortTemplate = {
+  "id": "uml-port",
+  "version": "1.0.0",
+  "meta": {
+    "name": "Port",
+    "description": "A port on a component or class",
+    "category": "diagram",
+    "tags": [
+      "composite",
+      "port",
+      "interface-point",
+      "uml"
+    ],
+    "author": "Auto-Generated"
+  },
+  "structure": {
+    "type": "uml:port",
+    "size": {
+      "width": 20,
+      "height": 20,
+      "minWidth": 120,
+      "maxWidth": 400,
+      "minHeight": 80,
+      "maxHeight": 600
+    },
+    "shape": {
+      "type": "rect",
+      "fill": "#FFFFFF",
+      "stroke": "#00838F",
+      "strokeWidth": 2,
+      "opacity": 1
+    },
+    "html": {
+      "mode": "template",
+      "template": `<div class="uml-port-content">
+          <div class="node-label">{{data.label || 'Port'}}</div>
+        </div>`,
+      "className": "uml-port",
+      "style": {
+        "display": "flex",
+        "alignItems": "center",
+        "justifyContent": "center",
+        "padding": "8px",
+        "fontFamily": "Arial, sans-serif",
+        "fontSize": "14px",
+        "textAlign": "center",
+        "wordBreak": "break-word"
+      }
+    },
+    "ports": {
+      "enabled": true,
+      "defaultVisibility": "on-hover",
+      "rendering": {
+        "mode": "svg",
+        "size": {
+          "width": 8,
+          "height": 8,
+          "hoverScale": 1.5
+        },
+        "svg": {
+          "shape": "circle",
+          "fill": "#1976D2",
+          "stroke": "#FFFFFF",
+          "strokeWidth": 2
+        }
+      },
+      "left": {
+        "enabled": true,
+        "type": "input",
+        "maxConnections": void 0
+      },
+      "right": {
+        "enabled": true,
+        "type": "output",
+        "maxConnections": void 0
+      },
+      "top": {
+        "enabled": true,
+        "type": "bi",
+        "maxConnections": void 0
+      },
+      "bottom": {
+        "enabled": true,
+        "type": "bi",
+        "maxConnections": void 0
+      }
+    },
+    "behavior": {
+      "draggable": true,
+      "selectable": true,
+      "connectable": true,
+      "resizable": false,
+      "deletable": true
+    }
+  },
+  "defaultData": {
+    "label": "Port"
+  },
+  "dataSchema": {
+    "type": "object",
+    "properties": {
+      "label": {
+        "type": "string",
+        "default": ""
+      }
+    },
+    "required": [
+      "label"
+    ]
+  }
+};
+
+// libs/engine/src/templates/generated/uml/uml-part.template.ts
+var umlPartTemplate = {
+  "id": "uml-part",
+  "version": "1.0.0",
+  "meta": {
+    "name": "Part",
+    "description": "A part in a composite structure",
+    "category": "diagram",
+    "tags": [
+      "composite",
+      "part",
+      "component-part",
+      "uml"
+    ],
+    "author": "Auto-Generated"
+  },
+  "structure": {
+    "type": "uml:part",
+    "size": {
+      "width": 100,
+      "height": 60,
+      "minWidth": 120,
+      "maxWidth": 400,
+      "minHeight": 80,
+      "maxHeight": 600
+    },
+    "shape": {
+      "type": "rect",
+      "fill": "#E1F5FE",
+      "stroke": "#0277BD",
+      "strokeWidth": 2,
+      "opacity": 1
+    },
+    "html": {
+      "mode": "template",
+      "template": `<div class="uml-part-content">
+          <div class="node-label">{{data.label || 'Part'}}</div>
+        </div>`,
+      "className": "uml-part",
+      "style": {
+        "display": "flex",
+        "alignItems": "center",
+        "justifyContent": "center",
+        "padding": "8px",
+        "fontFamily": "Arial, sans-serif",
+        "fontSize": "14px",
+        "textAlign": "center",
+        "wordBreak": "break-word"
+      }
+    },
+    "ports": {
+      "enabled": true,
+      "defaultVisibility": "on-hover",
+      "rendering": {
+        "mode": "svg",
+        "size": {
+          "width": 8,
+          "height": 8,
+          "hoverScale": 1.5
+        },
+        "svg": {
+          "shape": "circle",
+          "fill": "#1976D2",
+          "stroke": "#FFFFFF",
+          "strokeWidth": 2
+        }
+      },
+      "left": {
+        "enabled": true,
+        "type": "input",
+        "maxConnections": void 0
+      },
+      "right": {
+        "enabled": true,
+        "type": "output",
+        "maxConnections": void 0
+      },
+      "top": {
+        "enabled": true,
+        "type": "bi",
+        "maxConnections": void 0
+      },
+      "bottom": {
+        "enabled": true,
+        "type": "bi",
+        "maxConnections": void 0
+      }
+    },
+    "behavior": {
+      "draggable": true,
+      "selectable": true,
+      "connectable": true,
+      "resizable": false,
+      "deletable": true
+    }
+  },
+  "defaultData": {
+    "label": "Part"
+  },
+  "dataSchema": {
+    "type": "object",
+    "properties": {
+      "label": {
+        "type": "string",
+        "default": ""
+      }
+    },
+    "required": [
+      "label"
+    ]
+  }
+};
+
+// libs/engine/src/templates/generated/uml/uml-collaboration.template.ts
+var umlCollaborationTemplate = {
+  "id": "uml-collaboration",
+  "version": "1.0.0",
+  "meta": {
+    "name": "Collaboration",
+    "description": "A collaboration between multiple elements",
+    "category": "diagram",
+    "tags": [
+      "composite",
+      "collaboration",
+      "interaction",
+      "uml"
+    ],
+    "author": "Auto-Generated"
+  },
+  "structure": {
+    "type": "uml:collaboration",
+    "size": {
+      "width": 140,
+      "height": 70,
+      "minWidth": 120,
+      "maxWidth": 400,
+      "minHeight": 80,
+      "maxHeight": 600
+    },
+    "shape": {
+      "type": "ellipse",
+      "fill": "#F3E5F5",
+      "stroke": "#7B1FA2",
+      "strokeWidth": 2,
+      "opacity": 1
+    },
+    "html": {
+      "mode": "template",
+      "template": `<div class="uml-collaboration-content">
+          <div class="node-label">{{data.label || 'Collaboration'}}</div>
+        </div>`,
+      "className": "uml-collaboration",
+      "style": {
+        "display": "flex",
+        "alignItems": "center",
+        "justifyContent": "center",
+        "padding": "8px",
+        "fontFamily": "Arial, sans-serif",
+        "fontSize": "14px",
+        "textAlign": "center",
+        "wordBreak": "break-word"
+      }
+    },
+    "ports": {
+      "enabled": true,
+      "defaultVisibility": "on-hover",
+      "rendering": {
+        "mode": "svg",
+        "size": {
+          "width": 8,
+          "height": 8,
+          "hoverScale": 1.5
+        },
+        "svg": {
+          "shape": "circle",
+          "fill": "#1976D2",
+          "stroke": "#FFFFFF",
+          "strokeWidth": 2
+        }
+      },
+      "left": {
+        "enabled": true,
+        "type": "input",
+        "maxConnections": void 0
+      },
+      "right": {
+        "enabled": true,
+        "type": "output",
+        "maxConnections": void 0
+      },
+      "top": {
+        "enabled": true,
+        "type": "bi",
+        "maxConnections": void 0
+      },
+      "bottom": {
+        "enabled": true,
+        "type": "bi",
+        "maxConnections": void 0
+      }
+    },
+    "behavior": {
+      "draggable": true,
+      "selectable": true,
+      "connectable": true,
+      "resizable": true,
+      "deletable": true
+    }
+  },
+  "defaultData": {
+    "label": "Collaboration"
+  },
+  "dataSchema": {
+    "type": "object",
+    "properties": {
+      "label": {
+        "type": "string",
+        "default": ""
+      }
+    },
+    "required": [
+      "label"
+    ]
+  }
+};
+
+// libs/engine/src/templates/generated/erd/index.ts
+var erd_exports = {};
+__export(erd_exports, {
+  erdAssociativeEntityTemplate: () => erdAssociativeEntityTemplate,
+  erdAttributeTemplate: () => erdAttributeTemplate,
+  erdBridgeEntityTemplate: () => erdBridgeEntityTemplate,
+  erdCompositeAttributeTemplate: () => erdCompositeAttributeTemplate,
+  erdDerivedAttributeTemplate: () => erdDerivedAttributeTemplate,
+  erdDiscriminatorTemplate: () => erdDiscriminatorTemplate,
+  erdEntityTemplate: () => erdEntityTemplate,
+  erdIsaTemplate: () => erdIsaTemplate,
+  erdKeyAttributeTemplate: () => erdKeyAttributeTemplate,
+  erdMultivaluedAttributeTemplate: () => erdMultivaluedAttributeTemplate,
+  erdOptionalAttributeTemplate: () => erdOptionalAttributeTemplate,
+  erdPartialKeyTemplate: () => erdPartialKeyTemplate,
+  erdRelationshipTemplate: () => erdRelationshipTemplate,
+  erdSubtypeTemplate: () => erdSubtypeTemplate,
+  erdSupertypeTemplate: () => erdSupertypeTemplate,
+  erdTableTemplate: () => erdTableTemplate,
+  erdViewTemplate: () => erdViewTemplate,
+  erdWeakEntityTemplate: () => erdWeakEntityTemplate,
+  erdWeakRelationshipTemplate: () => erdWeakRelationshipTemplate
+});
+
+// libs/engine/src/templates/generated/erd/erd-entity.template.ts
+var erdEntityTemplate = {
+  "id": "erd-entity",
+  "version": "1.0.0",
+  "meta": {
+    "name": "Entity",
+    "description": "An entity in the database",
+    "category": "diagram",
+    "tags": [
+      "entity",
+      "table",
+      "strong-entity",
+      "erd"
+    ],
+    "author": "Auto-Generated"
+  },
+  "structure": {
+    "type": "erd:entity",
+    "size": {
+      "width": 140,
+      "height": 70,
+      "minWidth": 140,
+      "maxWidth": 350,
+      "minHeight": 70,
+      "maxHeight": 500
+    },
+    "shape": {
+      "type": "rect",
+      "fill": "#E3F2FD",
+      "stroke": "#1976D2",
+      "strokeWidth": 2,
+      "opacity": 1
+    },
+    "html": {
+      "mode": "template",
+      "template": `<div class="erd-entity-container">
+          <div class="entity-header">
+            {{data.name || 'Entity'}}
+          </div>
+          <div class="divider"></div>
+          <div class="fields-section">
+            {{#if data.fields}}
+              {{#each data.fields}}
+                <div class="field" data-field-id="{{this.name}}">
+                  {{#if this.primaryKey}}<span class="pk-indicator">PK</span>{{/if}}
+                  {{#if this.foreignKey}}<span class="fk-indicator">FK</span>{{/if}}
+                  <span class="field-name {{#if this.primaryKey}}primary-key{{/if}}">
+                    {{this.name}}
+                  </span>:
+                  <span class="field-type">{{this.type}}</span>
+                  {{#if this.notNull}}<span class="constraint">NOT NULL</span>{{/if}}
+                </div>
+              {{/each}}
+            {{else}}
+              <div class="empty-section">No fields</div>
+            {{/if}}
+          </div>
+        </div>`,
+      "className": "erd-entity",
+      "style": {
+        "fontFamily": "monospace",
+        "fontSize": "12px",
+        "padding": "0"
+      }
+    },
+    "ports": {
+      "enabled": true,
+      "defaultVisibility": "on-hover",
+      "rendering": {
+        "mode": "svg",
+        "size": {
+          "width": 6,
+          "height": 6,
+          "hoverScale": 1.5
+        },
+        "svg": {
+          "shape": "circle",
+          "fill": "#1976D2",
+          "stroke": "#FFFFFF",
+          "strokeWidth": 1
+        }
+      },
+      "left": {
+        "enabled": true,
+        "type": "bi",
+        "maxConnections": void 0
+      },
+      "right": {
+        "enabled": true,
+        "type": "bi",
+        "maxConnections": void 0
+      }
+    },
+    "behavior": {
+      "draggable": true,
+      "selectable": true,
+      "connectable": true,
+      "resizable": true,
+      "deletable": true
+    }
+  },
+  "defaultData": {
+    "label": "Entity"
+  },
+  "dataSchema": {
+    "type": "object",
+    "properties": {
+      "name": {
+        "type": "string",
+        "default": "Entity"
+      },
+      "fields": {
+        "type": "array",
+        "items": {
+          "type": "object",
+          "properties": {
+            "name": {
+              "type": "string"
+            },
+            "type": {
+              "type": "string"
+            },
+            "primaryKey": {
+              "type": "boolean",
+              "default": false
+            },
+            "foreignKey": {
+              "type": "boolean",
+              "default": false
+            },
+            "unique": {
+              "type": "boolean",
+              "default": false
+            },
+            "notNull": {
+              "type": "boolean",
+              "default": false
+            },
+            "autoIncrement": {
+              "type": "boolean",
+              "default": false
+            },
+            "defaultValue": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "name",
+            "type"
+          ]
+        },
+        "default": []
+      }
+    },
+    "required": [
+      "name"
+    ]
+  }
+};
+
+// libs/engine/src/templates/generated/erd/erd-weak-entity.template.ts
+var erdWeakEntityTemplate = {
+  "id": "erd-weak-entity",
+  "version": "1.0.0",
+  "meta": {
+    "name": "Weak Entity",
+    "description": "An entity that depends on a strong entity",
+    "category": "diagram",
+    "tags": [
+      "entity",
+      "weak-entity",
+      "dependent",
+      "erd"
+    ],
+    "author": "Auto-Generated"
+  },
+  "structure": {
+    "type": "erd:weak-entity",
+    "size": {
+      "width": 120,
+      "height": 80,
+      "minWidth": 140,
+      "maxWidth": 350,
+      "minHeight": 70,
+      "maxHeight": 500
+    },
+    "shape": {
+      "type": "rect",
+      "fill": "#FFFFFF",
+      "stroke": "#000000",
+      "strokeWidth": 4,
+      "opacity": 1
+    },
+    "html": {
+      "mode": "template",
+      "template": `<div class="erd-entity-container">
+          <div class="entity-header">
+            {{data.name || 'Entity'}}
+          </div>
+          <div class="divider"></div>
+          <div class="fields-section">
+            {{#if data.fields}}
+              {{#each data.fields}}
+                <div class="field" data-field-id="{{this.name}}">
+                  {{#if this.primaryKey}}<span class="pk-indicator">PK</span>{{/if}}
+                  {{#if this.foreignKey}}<span class="fk-indicator">FK</span>{{/if}}
+                  <span class="field-name {{#if this.primaryKey}}primary-key{{/if}}">
+                    {{this.name}}
+                  </span>:
+                  <span class="field-type">{{this.type}}</span>
+                  {{#if this.notNull}}<span class="constraint">NOT NULL</span>{{/if}}
+                </div>
+              {{/each}}
+            {{else}}
+              <div class="empty-section">No fields</div>
+            {{/if}}
+          </div>
+        </div>`,
+      "className": "erd-weak-entity",
+      "style": {
+        "fontFamily": "monospace",
+        "fontSize": "12px",
+        "padding": "0"
+      }
+    },
+    "ports": {
+      "enabled": true,
+      "defaultVisibility": "on-hover",
+      "rendering": {
+        "mode": "svg",
+        "size": {
+          "width": 6,
+          "height": 6,
+          "hoverScale": 1.5
+        },
+        "svg": {
+          "shape": "circle",
+          "fill": "#1976D2",
+          "stroke": "#FFFFFF",
+          "strokeWidth": 1
+        }
+      },
+      "left": {
+        "enabled": true,
+        "type": "bi",
+        "maxConnections": void 0
+      },
+      "right": {
+        "enabled": true,
+        "type": "bi",
+        "maxConnections": void 0
+      }
+    },
+    "behavior": {
+      "draggable": true,
+      "selectable": true,
+      "connectable": true,
+      "resizable": false,
+      "deletable": true
+    }
+  },
+  "defaultData": {
+    "label": "Weak Entity"
+  },
+  "dataSchema": {
+    "type": "object",
+    "properties": {
+      "name": {
+        "type": "string",
+        "default": "Entity"
+      },
+      "fields": {
+        "type": "array",
+        "items": {
+          "type": "object",
+          "properties": {
+            "name": {
+              "type": "string"
+            },
+            "type": {
+              "type": "string"
+            },
+            "primaryKey": {
+              "type": "boolean",
+              "default": false
+            },
+            "foreignKey": {
+              "type": "boolean",
+              "default": false
+            },
+            "unique": {
+              "type": "boolean",
+              "default": false
+            },
+            "notNull": {
+              "type": "boolean",
+              "default": false
+            },
+            "autoIncrement": {
+              "type": "boolean",
+              "default": false
+            },
+            "defaultValue": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "name",
+            "type"
+          ]
+        },
+        "default": []
+      }
+    },
+    "required": [
+      "name"
+    ]
+  }
+};
+
+// libs/engine/src/templates/generated/erd/erd-relationship.template.ts
+var erdRelationshipTemplate = {
+  "id": "erd-relationship",
+  "version": "1.0.0",
+  "meta": {
+    "name": "Relationship",
+    "description": "A relationship between entities",
+    "category": "diagram",
+    "tags": [
+      "relationship",
+      "association",
+      "erd"
+    ],
+    "author": "Auto-Generated"
+  },
+  "structure": {
+    "type": "erd:relationship",
+    "size": {
+      "width": 120,
+      "height": 120,
+      "minWidth": 140,
+      "maxWidth": 350,
+      "minHeight": 70,
+      "maxHeight": 500
+    },
+    "shape": {
+      "type": "diamond",
+      "fill": "#FFF3E0",
+      "stroke": "#F57C00",
+      "strokeWidth": 2,
+      "opacity": 1
+    },
+    "html": {
+      "mode": "template",
+      "template": `<div class="erd-relationship-content">
+          <div class="node-label">{{data.label || 'Relationship'}}</div>
+        </div>`,
+      "className": "erd-relationship",
+      "style": {
+        "display": "flex",
+        "alignItems": "center",
+        "justifyContent": "center",
+        "padding": "8px",
+        "fontFamily": "Arial, sans-serif",
+        "fontSize": "14px",
+        "textAlign": "center",
+        "wordBreak": "break-word"
+      }
+    },
+    "ports": {
+      "enabled": true,
+      "defaultVisibility": "on-hover",
+      "rendering": {
+        "mode": "svg",
+        "size": {
+          "width": 8,
+          "height": 8,
+          "hoverScale": 1.5
+        },
+        "svg": {
+          "shape": "circle",
+          "fill": "#F57C00",
+          "stroke": "#FFFFFF",
+          "strokeWidth": 2
+        }
+      },
+      "left": {
+        "enabled": true,
+        "type": "input",
+        "maxConnections": void 0
+      },
+      "right": {
+        "enabled": true,
+        "type": "output",
+        "maxConnections": void 0
+      },
+      "top": {
+        "enabled": true,
+        "type": "output",
+        "maxConnections": void 0
+      },
+      "bottom": {
+        "enabled": true,
+        "type": "output",
+        "maxConnections": void 0
+      }
+    },
+    "behavior": {
+      "draggable": true,
+      "selectable": true,
+      "connectable": true,
+      "resizable": true,
+      "deletable": true
+    }
+  },
+  "defaultData": {
+    "label": "Relationship"
+  },
+  "dataSchema": {
+    "type": "object",
+    "properties": {
+      "label": {
+        "type": "string",
+        "default": ""
+      }
+    },
+    "required": [
+      "label"
+    ]
+  }
+};
+
+// libs/engine/src/templates/generated/erd/erd-weak-relationship.template.ts
+var erdWeakRelationshipTemplate = {
+  "id": "erd-weak-relationship",
+  "version": "1.0.0",
+  "meta": {
+    "name": "Weak Relationship",
+    "description": "An identifying relationship for weak entities",
+    "category": "diagram",
+    "tags": [
+      "relationship",
+      "weak-relationship",
+      "identifying",
+      "erd"
+    ],
+    "author": "Auto-Generated"
+  },
+  "structure": {
+    "type": "erd:weak-relationship",
+    "size": {
+      "width": 120,
+      "height": 80,
+      "minWidth": 140,
+      "maxWidth": 350,
+      "minHeight": 70,
+      "maxHeight": 500
+    },
+    "shape": {
+      "type": "rect",
+      "fill": "#FFFFFF",
+      "stroke": "#000000",
+      "strokeWidth": 4,
+      "opacity": 1
+    },
+    "html": {
+      "mode": "template",
+      "template": `<div class="erd-weak-relationship-content">
+          <div class="node-label">{{data.label || 'Weak Relationship'}}</div>
+        </div>`,
+      "className": "erd-weak-relationship",
+      "style": {
+        "display": "flex",
+        "alignItems": "center",
+        "justifyContent": "center",
+        "padding": "8px",
+        "fontFamily": "Arial, sans-serif",
+        "fontSize": "14px",
+        "textAlign": "center",
+        "wordBreak": "break-word"
+      }
+    },
+    "ports": {
+      "enabled": true,
+      "defaultVisibility": "on-hover",
+      "rendering": {
+        "mode": "svg",
+        "size": {
+          "width": 8,
+          "height": 8,
+          "hoverScale": 1.5
+        },
+        "svg": {
+          "shape": "circle",
+          "fill": "#1976D2",
+          "stroke": "#FFFFFF",
+          "strokeWidth": 2
+        }
+      },
+      "left": {
+        "enabled": true,
+        "type": "input",
+        "maxConnections": void 0
+      },
+      "right": {
+        "enabled": true,
+        "type": "output",
+        "maxConnections": void 0
+      },
+      "top": {
+        "enabled": true,
+        "type": "bi",
+        "maxConnections": void 0
+      },
+      "bottom": {
+        "enabled": true,
+        "type": "bi",
+        "maxConnections": void 0
+      }
+    },
+    "behavior": {
+      "draggable": true,
+      "selectable": true,
+      "connectable": true,
+      "resizable": false,
+      "deletable": true
+    }
+  },
+  "defaultData": {
+    "label": "Weak Relationship"
+  },
+  "dataSchema": {
+    "type": "object",
+    "properties": {
+      "label": {
+        "type": "string",
+        "default": ""
+      }
+    },
+    "required": [
+      "label"
+    ]
+  }
+};
+
+// libs/engine/src/templates/generated/erd/erd-attribute.template.ts
+var erdAttributeTemplate = {
+  "id": "erd-attribute",
+  "version": "1.0.0",
+  "meta": {
+    "name": "Attribute",
+    "description": "An attribute of an entity",
+    "category": "diagram",
+    "tags": [
+      "attribute",
+      "property",
+      "field",
+      "erd"
+    ],
+    "author": "Auto-Generated"
+  },
+  "structure": {
+    "type": "erd:attribute",
+    "size": {
+      "width": 100,
+      "height": 50,
+      "minWidth": 140,
+      "maxWidth": 350,
+      "minHeight": 70,
+      "maxHeight": 500
+    },
+    "shape": {
+      "type": "ellipse",
+      "fill": "#F3E5F5",
+      "stroke": "#7B1FA2",
+      "strokeWidth": 2,
+      "opacity": 1
+    },
+    "html": {
+      "mode": "template",
+      "template": `<div class="erd-attribute-content">
+          <div class="node-label">{{data.label || 'Attribute'}}</div>
+        </div>`,
+      "className": "erd-attribute",
+      "style": {
+        "display": "flex",
+        "alignItems": "center",
+        "justifyContent": "center",
+        "padding": "8px",
+        "fontFamily": "Arial, sans-serif",
+        "fontSize": "14px",
+        "textAlign": "center",
+        "wordBreak": "break-word"
+      }
+    },
+    "ports": {
+      "enabled": true,
+      "defaultVisibility": "on-hover",
+      "rendering": {
+        "mode": "svg",
+        "size": {
+          "width": 8,
+          "height": 8,
+          "hoverScale": 1.5
+        },
+        "svg": {
+          "shape": "circle",
+          "fill": "#1976D2",
+          "stroke": "#FFFFFF",
+          "strokeWidth": 2
+        }
+      },
+      "left": {
+        "enabled": true,
+        "type": "input",
+        "maxConnections": void 0
+      },
+      "right": {
+        "enabled": true,
+        "type": "output",
+        "maxConnections": void 0
+      },
+      "top": {
+        "enabled": true,
+        "type": "bi",
+        "maxConnections": void 0
+      },
+      "bottom": {
+        "enabled": true,
+        "type": "bi",
+        "maxConnections": void 0
+      }
+    },
+    "behavior": {
+      "draggable": true,
+      "selectable": true,
+      "connectable": true,
+      "resizable": true,
+      "deletable": true
+    }
+  },
+  "defaultData": {
+    "label": "Attribute"
+  },
+  "dataSchema": {
+    "type": "object",
+    "properties": {
+      "label": {
+        "type": "string",
+        "default": ""
+      }
+    },
+    "required": [
+      "label"
+    ]
+  }
+};
+
+// libs/engine/src/templates/generated/erd/erd-key-attribute.template.ts
+var erdKeyAttributeTemplate = {
+  "id": "erd-key-attribute",
+  "version": "1.0.0",
+  "meta": {
+    "name": "Key Attribute",
+    "description": "A primary key attribute",
+    "category": "diagram",
+    "tags": [
+      "attribute",
+      "primary-key",
+      "key",
+      "erd"
+    ],
+    "author": "Auto-Generated"
+  },
+  "structure": {
+    "type": "erd:key-attribute",
+    "size": {
+      "width": 120,
+      "height": 80,
+      "minWidth": 140,
+      "maxWidth": 350,
+      "minHeight": 70,
+      "maxHeight": 500
+    },
+    "shape": {
+      "type": "rect",
+      "fill": "#FFFFFF",
+      "stroke": "#000000",
+      "strokeWidth": 2,
+      "opacity": 1
+    },
+    "html": {
+      "mode": "template",
+      "template": `<div class="erd-key-attribute-content">
+          <div class="node-label">{{data.label || 'Key Attribute'}}</div>
+        </div>`,
+      "className": "erd-key-attribute",
+      "style": {
+        "display": "flex",
+        "alignItems": "center",
+        "justifyContent": "center",
+        "padding": "8px",
+        "fontFamily": "Arial, sans-serif",
+        "fontSize": "14px",
+        "textAlign": "center",
+        "wordBreak": "break-word"
+      }
+    },
+    "ports": {
+      "enabled": true,
+      "defaultVisibility": "on-hover",
+      "rendering": {
+        "mode": "svg",
+        "size": {
+          "width": 8,
+          "height": 8,
+          "hoverScale": 1.5
+        },
+        "svg": {
+          "shape": "circle",
+          "fill": "#1976D2",
+          "stroke": "#FFFFFF",
+          "strokeWidth": 2
+        }
+      },
+      "left": {
+        "enabled": true,
+        "type": "input",
+        "maxConnections": void 0
+      },
+      "right": {
+        "enabled": true,
+        "type": "output",
+        "maxConnections": void 0
+      },
+      "top": {
+        "enabled": true,
+        "type": "bi",
+        "maxConnections": void 0
+      },
+      "bottom": {
+        "enabled": true,
+        "type": "bi",
+        "maxConnections": void 0
+      }
+    },
+    "behavior": {
+      "draggable": true,
+      "selectable": true,
+      "connectable": true,
+      "resizable": false,
+      "deletable": true
+    }
+  },
+  "defaultData": {
+    "label": "Key Attribute"
+  },
+  "dataSchema": {
+    "type": "object",
+    "properties": {
+      "label": {
+        "type": "string",
+        "default": ""
+      }
+    },
+    "required": [
+      "label"
+    ]
+  }
+};
+
+// libs/engine/src/templates/generated/erd/erd-multivalued-attribute.template.ts
+var erdMultivaluedAttributeTemplate = {
+  "id": "erd-multivalued-attribute",
+  "version": "1.0.0",
+  "meta": {
+    "name": "Multivalued Attribute",
+    "description": "An attribute that can have multiple values",
+    "category": "diagram",
+    "tags": [
+      "attribute",
+      "multivalued",
+      "collection",
+      "erd"
+    ],
+    "author": "Auto-Generated"
+  },
+  "structure": {
+    "type": "erd:multivalued-attribute",
+    "size": {
+      "width": 120,
+      "height": 80,
+      "minWidth": 140,
+      "maxWidth": 350,
+      "minHeight": 70,
+      "maxHeight": 500
+    },
+    "shape": {
+      "type": "rect",
+      "fill": "#FFFFFF",
+      "stroke": "#000000",
+      "strokeWidth": 4,
+      "opacity": 1
+    },
+    "html": {
+      "mode": "template",
+      "template": `<div class="erd-multivalued-attribute-content">
+          <div class="node-label">{{data.label || 'Multivalued Attribute'}}</div>
+        </div>`,
+      "className": "erd-multivalued-attribute",
+      "style": {
+        "display": "flex",
+        "alignItems": "center",
+        "justifyContent": "center",
+        "padding": "8px",
+        "fontFamily": "Arial, sans-serif",
+        "fontSize": "14px",
+        "textAlign": "center",
+        "wordBreak": "break-word"
+      }
+    },
+    "ports": {
+      "enabled": true,
+      "defaultVisibility": "on-hover",
+      "rendering": {
+        "mode": "svg",
+        "size": {
+          "width": 8,
+          "height": 8,
+          "hoverScale": 1.5
+        },
+        "svg": {
+          "shape": "circle",
+          "fill": "#1976D2",
+          "stroke": "#FFFFFF",
+          "strokeWidth": 2
+        }
+      },
+      "left": {
+        "enabled": true,
+        "type": "input",
+        "maxConnections": void 0
+      },
+      "right": {
+        "enabled": true,
+        "type": "output",
+        "maxConnections": void 0
+      },
+      "top": {
+        "enabled": true,
+        "type": "bi",
+        "maxConnections": void 0
+      },
+      "bottom": {
+        "enabled": true,
+        "type": "bi",
+        "maxConnections": void 0
+      }
+    },
+    "behavior": {
+      "draggable": true,
+      "selectable": true,
+      "connectable": true,
+      "resizable": false,
+      "deletable": true
+    }
+  },
+  "defaultData": {
+    "label": "Multivalued Attribute"
+  },
+  "dataSchema": {
+    "type": "object",
+    "properties": {
+      "label": {
+        "type": "string",
+        "default": ""
+      }
+    },
+    "required": [
+      "label"
+    ]
+  }
+};
+
+// libs/engine/src/templates/generated/erd/erd-derived-attribute.template.ts
+var erdDerivedAttributeTemplate = {
+  "id": "erd-derived-attribute",
+  "version": "1.0.0",
+  "meta": {
+    "name": "Derived Attribute",
+    "description": "An attribute whose value is calculated/derived",
+    "category": "diagram",
+    "tags": [
+      "attribute",
+      "derived",
+      "calculated",
+      "erd"
+    ],
+    "author": "Auto-Generated"
+  },
+  "structure": {
+    "type": "erd:derived-attribute",
+    "size": {
+      "width": 120,
+      "height": 80,
+      "minWidth": 140,
+      "maxWidth": 350,
+      "minHeight": 70,
+      "maxHeight": 500
+    },
+    "shape": {
+      "type": "rect",
+      "fill": "#FFFFFF",
+      "stroke": "#000000",
+      "strokeWidth": 2,
+      "opacity": 1
+    },
+    "html": {
+      "mode": "template",
+      "template": `<div class="erd-derived-attribute-content">
+          <div class="node-label">{{data.label || 'Derived Attribute'}}</div>
+        </div>`,
+      "className": "erd-derived-attribute",
+      "style": {
+        "display": "flex",
+        "alignItems": "center",
+        "justifyContent": "center",
+        "padding": "8px",
+        "fontFamily": "Arial, sans-serif",
+        "fontSize": "14px",
+        "textAlign": "center",
+        "wordBreak": "break-word"
+      }
+    },
+    "ports": {
+      "enabled": true,
+      "defaultVisibility": "on-hover",
+      "rendering": {
+        "mode": "svg",
+        "size": {
+          "width": 8,
+          "height": 8,
+          "hoverScale": 1.5
+        },
+        "svg": {
+          "shape": "circle",
+          "fill": "#1976D2",
+          "stroke": "#FFFFFF",
+          "strokeWidth": 2
+        }
+      },
+      "left": {
+        "enabled": true,
+        "type": "input",
+        "maxConnections": void 0
+      },
+      "right": {
+        "enabled": true,
+        "type": "output",
+        "maxConnections": void 0
+      },
+      "top": {
+        "enabled": true,
+        "type": "bi",
+        "maxConnections": void 0
+      },
+      "bottom": {
+        "enabled": true,
+        "type": "bi",
+        "maxConnections": void 0
+      }
+    },
+    "behavior": {
+      "draggable": true,
+      "selectable": true,
+      "connectable": true,
+      "resizable": false,
+      "deletable": true
+    }
+  },
+  "defaultData": {
+    "label": "Derived Attribute"
+  },
+  "dataSchema": {
+    "type": "object",
+    "properties": {
+      "label": {
+        "type": "string",
+        "default": ""
+      }
+    },
+    "required": [
+      "label"
+    ]
+  }
+};
+
+// libs/engine/src/templates/generated/erd/erd-composite-attribute.template.ts
+var erdCompositeAttributeTemplate = {
+  "id": "erd-composite-attribute",
+  "version": "1.0.0",
+  "meta": {
+    "name": "Composite Attribute",
+    "description": "An attribute composed of multiple sub-attributes",
+    "category": "diagram",
+    "tags": [
+      "attribute",
+      "composite",
+      "complex",
+      "erd"
+    ],
+    "author": "Auto-Generated"
+  },
+  "structure": {
+    "type": "erd:composite-attribute",
+    "size": {
+      "width": 120,
+      "height": 80,
+      "minWidth": 140,
+      "maxWidth": 350,
+      "minHeight": 70,
+      "maxHeight": 500
+    },
+    "shape": {
+      "type": "rect",
+      "fill": "#FFFFFF",
+      "stroke": "#000000",
+      "strokeWidth": 2,
+      "opacity": 1
+    },
+    "html": {
+      "mode": "template",
+      "template": `<div class="erd-composite-attribute-content">
+          <div class="node-label">{{data.label || 'Composite Attribute'}}</div>
+        </div>`,
+      "className": "erd-composite-attribute",
+      "style": {
+        "display": "flex",
+        "alignItems": "center",
+        "justifyContent": "center",
+        "padding": "8px",
+        "fontFamily": "Arial, sans-serif",
+        "fontSize": "14px",
+        "textAlign": "center",
+        "wordBreak": "break-word"
+      }
+    },
+    "ports": {
+      "enabled": true,
+      "defaultVisibility": "on-hover",
+      "rendering": {
+        "mode": "svg",
+        "size": {
+          "width": 8,
+          "height": 8,
+          "hoverScale": 1.5
+        },
+        "svg": {
+          "shape": "circle",
+          "fill": "#1976D2",
+          "stroke": "#FFFFFF",
+          "strokeWidth": 2
+        }
+      },
+      "left": {
+        "enabled": true,
+        "type": "input",
+        "maxConnections": void 0
+      },
+      "right": {
+        "enabled": true,
+        "type": "output",
+        "maxConnections": void 0
+      },
+      "top": {
+        "enabled": true,
+        "type": "bi",
+        "maxConnections": void 0
+      },
+      "bottom": {
+        "enabled": true,
+        "type": "bi",
+        "maxConnections": void 0
+      }
+    },
+    "behavior": {
+      "draggable": true,
+      "selectable": true,
+      "connectable": true,
+      "resizable": false,
+      "deletable": true
+    }
+  },
+  "defaultData": {
+    "label": "Composite Attribute"
+  },
+  "dataSchema": {
+    "type": "object",
+    "properties": {
+      "label": {
+        "type": "string",
+        "default": ""
+      }
+    },
+    "required": [
+      "label"
+    ]
+  }
+};
+
+// libs/engine/src/templates/generated/erd/erd-isa.template.ts
+var erdIsaTemplate = {
+  "id": "erd-isa",
+  "version": "1.0.0",
+  "meta": {
+    "name": "ISA",
+    "description": 'An "is-a" relationship for inheritance/specialization',
+    "category": "diagram",
+    "tags": [
+      "inheritance",
+      "specialization",
+      "generalization",
+      "isa",
+      "erd"
+    ],
+    "author": "Auto-Generated"
+  },
+  "structure": {
+    "type": "erd:isa",
+    "size": {
+      "width": 80,
+      "height": 70,
+      "minWidth": 140,
+      "maxWidth": 350,
+      "minHeight": 70,
+      "maxHeight": 500
+    },
+    "shape": {
+      "type": "rect",
+      "fill": "#E8F5E9",
+      "stroke": "#388E3C",
+      "strokeWidth": 2,
+      "opacity": 1
+    },
+    "html": {
+      "mode": "template",
+      "template": `<div class="erd-isa-content">
+          <div class="node-label">{{data.label || 'ISA'}}</div>
+        </div>`,
+      "className": "erd-isa",
+      "style": {
+        "display": "flex",
+        "alignItems": "center",
+        "justifyContent": "center",
+        "padding": "8px",
+        "fontFamily": "Arial, sans-serif",
+        "fontSize": "14px",
+        "textAlign": "center",
+        "wordBreak": "break-word"
+      }
+    },
+    "ports": {
+      "enabled": true,
+      "defaultVisibility": "on-hover",
+      "rendering": {
+        "mode": "svg",
+        "size": {
+          "width": 8,
+          "height": 8,
+          "hoverScale": 1.5
+        },
+        "svg": {
+          "shape": "circle",
+          "fill": "#1976D2",
+          "stroke": "#FFFFFF",
+          "strokeWidth": 2
+        }
+      },
+      "left": {
+        "enabled": true,
+        "type": "input",
+        "maxConnections": void 0
+      },
+      "right": {
+        "enabled": true,
+        "type": "output",
+        "maxConnections": void 0
+      },
+      "top": {
+        "enabled": true,
+        "type": "bi",
+        "maxConnections": void 0
+      },
+      "bottom": {
+        "enabled": true,
+        "type": "bi",
+        "maxConnections": void 0
+      }
+    },
+    "behavior": {
+      "draggable": true,
+      "selectable": true,
+      "connectable": true,
+      "resizable": true,
+      "deletable": true
+    }
+  },
+  "defaultData": {
+    "label": "ISA"
+  },
+  "dataSchema": {
+    "type": "object",
+    "properties": {
+      "label": {
+        "type": "string",
+        "default": ""
+      }
+    },
+    "required": [
+      "label"
+    ]
+  }
+};
+
+// libs/engine/src/templates/generated/erd/erd-associative-entity.template.ts
+var erdAssociativeEntityTemplate = {
+  "id": "erd-associative-entity",
+  "version": "1.0.0",
+  "meta": {
+    "name": "Associative Entity",
+    "description": "An entity that represents a many-to-many relationship with attributes",
+    "category": "diagram",
+    "tags": [
+      "entity",
+      "associative",
+      "junction",
+      "bridge",
+      "many-to-many",
+      "erd"
+    ],
+    "author": "Auto-Generated"
+  },
+  "structure": {
+    "type": "erd:associative-entity",
+    "size": {
+      "width": 150,
+      "height": 70,
+      "minWidth": 140,
+      "maxWidth": 350,
+      "minHeight": 70,
+      "maxHeight": 500
+    },
+    "shape": {
+      "type": "rect",
+      "fill": "#FFF3E0",
+      "stroke": "#F57C00",
+      "strokeWidth": 3,
+      "opacity": 1,
+      "cornerRadius": 8
+    },
+    "html": {
+      "mode": "template",
+      "template": `<div class="erd-entity-container">
+          <div class="entity-header">
+            {{data.name || 'Entity'}}
+          </div>
+          <div class="divider"></div>
+          <div class="fields-section">
+            {{#if data.fields}}
+              {{#each data.fields}}
+                <div class="field" data-field-id="{{this.name}}">
+                  {{#if this.primaryKey}}<span class="pk-indicator">PK</span>{{/if}}
+                  {{#if this.foreignKey}}<span class="fk-indicator">FK</span>{{/if}}
+                  <span class="field-name {{#if this.primaryKey}}primary-key{{/if}}">
+                    {{this.name}}
+                  </span>:
+                  <span class="field-type">{{this.type}}</span>
+                  {{#if this.notNull}}<span class="constraint">NOT NULL</span>{{/if}}
+                </div>
+              {{/each}}
+            {{else}}
+              <div class="empty-section">No fields</div>
+            {{/if}}
+          </div>
+        </div>`,
+      "className": "erd-associative-entity",
+      "style": {
+        "fontFamily": "monospace",
+        "fontSize": "12px",
+        "padding": "0"
+      }
+    },
+    "ports": {
+      "enabled": true,
+      "defaultVisibility": "on-hover",
+      "rendering": {
+        "mode": "svg",
+        "size": {
+          "width": 6,
+          "height": 6,
+          "hoverScale": 1.5
+        },
+        "svg": {
+          "shape": "circle",
+          "fill": "#1976D2",
+          "stroke": "#FFFFFF",
+          "strokeWidth": 1
+        }
+      },
+      "left": {
+        "enabled": true,
+        "type": "bi",
+        "maxConnections": void 0
+      },
+      "right": {
+        "enabled": true,
+        "type": "bi",
+        "maxConnections": void 0
+      }
+    },
+    "behavior": {
+      "draggable": true,
+      "selectable": true,
+      "connectable": true,
+      "resizable": true,
+      "deletable": true
+    }
+  },
+  "defaultData": {
+    "label": "Associative Entity"
+  },
+  "dataSchema": {
+    "type": "object",
+    "properties": {
+      "name": {
+        "type": "string",
+        "default": "Entity"
+      },
+      "fields": {
+        "type": "array",
+        "items": {
+          "type": "object",
+          "properties": {
+            "name": {
+              "type": "string"
+            },
+            "type": {
+              "type": "string"
+            },
+            "primaryKey": {
+              "type": "boolean",
+              "default": false
+            },
+            "foreignKey": {
+              "type": "boolean",
+              "default": false
+            },
+            "unique": {
+              "type": "boolean",
+              "default": false
+            },
+            "notNull": {
+              "type": "boolean",
+              "default": false
+            },
+            "autoIncrement": {
+              "type": "boolean",
+              "default": false
+            },
+            "defaultValue": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "name",
+            "type"
+          ]
+        },
+        "default": []
+      }
+    },
+    "required": [
+      "name"
+    ]
+  }
+};
+
+// libs/engine/src/templates/generated/erd/erd-partial-key.template.ts
+var erdPartialKeyTemplate = {
+  "id": "erd-partial-key",
+  "version": "1.0.0",
+  "meta": {
+    "name": "Partial Key",
+    "description": "A partial key attribute (discriminator for weak entities)",
+    "category": "diagram",
+    "tags": [
+      "attribute",
+      "partial-key",
+      "discriminator",
+      "weak-key",
+      "erd"
+    ],
+    "author": "Auto-Generated"
+  },
+  "structure": {
+    "type": "erd:partial-key",
+    "size": {
+      "width": 120,
+      "height": 80,
+      "minWidth": 140,
+      "maxWidth": 350,
+      "minHeight": 70,
+      "maxHeight": 500
+    },
+    "shape": {
+      "type": "rect",
+      "fill": "#FFFFFF",
+      "stroke": "#000000",
+      "strokeWidth": 2,
+      "opacity": 1
+    },
+    "html": {
+      "mode": "template",
+      "template": `<div class="erd-partial-key-content">
+          <div class="node-label">{{data.label || 'Partial Key'}}</div>
+        </div>`,
+      "className": "erd-partial-key",
+      "style": {
+        "display": "flex",
+        "alignItems": "center",
+        "justifyContent": "center",
+        "padding": "8px",
+        "fontFamily": "Arial, sans-serif",
+        "fontSize": "14px",
+        "textAlign": "center",
+        "wordBreak": "break-word"
+      }
+    },
+    "ports": {
+      "enabled": true,
+      "defaultVisibility": "on-hover",
+      "rendering": {
+        "mode": "svg",
+        "size": {
+          "width": 8,
+          "height": 8,
+          "hoverScale": 1.5
+        },
+        "svg": {
+          "shape": "circle",
+          "fill": "#1976D2",
+          "stroke": "#FFFFFF",
+          "strokeWidth": 2
+        }
+      },
+      "left": {
+        "enabled": true,
+        "type": "input",
+        "maxConnections": void 0
+      },
+      "right": {
+        "enabled": true,
+        "type": "output",
+        "maxConnections": void 0
+      },
+      "top": {
+        "enabled": true,
+        "type": "bi",
+        "maxConnections": void 0
+      },
+      "bottom": {
+        "enabled": true,
+        "type": "bi",
+        "maxConnections": void 0
+      }
+    },
+    "behavior": {
+      "draggable": true,
+      "selectable": true,
+      "connectable": true,
+      "resizable": false,
+      "deletable": true
+    }
+  },
+  "defaultData": {
+    "label": "Partial Key"
+  },
+  "dataSchema": {
+    "type": "object",
+    "properties": {
+      "label": {
+        "type": "string",
+        "default": ""
+      }
+    },
+    "required": [
+      "label"
+    ]
+  }
+};
+
+// libs/engine/src/templates/generated/erd/erd-optional-attribute.template.ts
+var erdOptionalAttributeTemplate = {
+  "id": "erd-optional-attribute",
+  "version": "1.0.0",
+  "meta": {
+    "name": "Optional Attribute",
+    "description": "An attribute that may have null values",
+    "category": "diagram",
+    "tags": [
+      "attribute",
+      "optional",
+      "nullable",
+      "erd"
+    ],
+    "author": "Auto-Generated"
+  },
+  "structure": {
+    "type": "erd:optional-attribute",
+    "size": {
+      "width": 120,
+      "height": 80,
+      "minWidth": 140,
+      "maxWidth": 350,
+      "minHeight": 70,
+      "maxHeight": 500
+    },
+    "shape": {
+      "type": "rect",
+      "fill": "#FFFFFF",
+      "stroke": "#000000",
+      "strokeWidth": 2,
+      "opacity": 1
+    },
+    "html": {
+      "mode": "template",
+      "template": `<div class="erd-optional-attribute-content">
+          <div class="node-label">{{data.label || 'Optional Attribute'}}</div>
+        </div>`,
+      "className": "erd-optional-attribute",
+      "style": {
+        "display": "flex",
+        "alignItems": "center",
+        "justifyContent": "center",
+        "padding": "8px",
+        "fontFamily": "Arial, sans-serif",
+        "fontSize": "14px",
+        "textAlign": "center",
+        "wordBreak": "break-word"
+      }
+    },
+    "ports": {
+      "enabled": true,
+      "defaultVisibility": "on-hover",
+      "rendering": {
+        "mode": "svg",
+        "size": {
+          "width": 8,
+          "height": 8,
+          "hoverScale": 1.5
+        },
+        "svg": {
+          "shape": "circle",
+          "fill": "#1976D2",
+          "stroke": "#FFFFFF",
+          "strokeWidth": 2
+        }
+      },
+      "left": {
+        "enabled": true,
+        "type": "input",
+        "maxConnections": void 0
+      },
+      "right": {
+        "enabled": true,
+        "type": "output",
+        "maxConnections": void 0
+      },
+      "top": {
+        "enabled": true,
+        "type": "bi",
+        "maxConnections": void 0
+      },
+      "bottom": {
+        "enabled": true,
+        "type": "bi",
+        "maxConnections": void 0
+      }
+    },
+    "behavior": {
+      "draggable": true,
+      "selectable": true,
+      "connectable": true,
+      "resizable": false,
+      "deletable": true
+    }
+  },
+  "defaultData": {
+    "label": "Optional Attribute"
+  },
+  "dataSchema": {
+    "type": "object",
+    "properties": {
+      "label": {
+        "type": "string",
+        "default": ""
+      }
+    },
+    "required": [
+      "label"
+    ]
+  }
+};
+
+// libs/engine/src/templates/generated/erd/erd-table.template.ts
+var erdTableTemplate = {
+  "id": "erd-table",
+  "version": "1.0.0",
+  "meta": {
+    "name": "Table",
+    "description": "A database table (physical model)",
+    "category": "diagram",
+    "tags": [
+      "physical",
+      "table",
+      "database",
+      "relational",
+      "erd"
+    ],
+    "author": "Auto-Generated"
+  },
+  "structure": {
+    "type": "erd:table",
+    "size": {
+      "width": 180,
+      "height": 120,
+      "minWidth": 140,
+      "maxWidth": 350,
+      "minHeight": 70,
+      "maxHeight": 500
+    },
+    "shape": {
+      "type": "rect",
+      "fill": "#E8F5E9",
+      "stroke": "#388E3C",
+      "strokeWidth": 2,
+      "opacity": 1
+    },
+    "html": {
+      "mode": "template",
+      "template": `<div class="erd-table-content">
+          <div class="node-label">{{data.label || 'Table'}}</div>
+        </div>`,
+      "className": "erd-table",
+      "style": {
+        "display": "flex",
+        "alignItems": "center",
+        "justifyContent": "center",
+        "padding": "8px",
+        "fontFamily": "Arial, sans-serif",
+        "fontSize": "14px",
+        "textAlign": "center",
+        "wordBreak": "break-word"
+      }
+    },
+    "ports": {
+      "enabled": true,
+      "defaultVisibility": "on-hover",
+      "rendering": {
+        "mode": "svg",
+        "size": {
+          "width": 8,
+          "height": 8,
+          "hoverScale": 1.5
+        },
+        "svg": {
+          "shape": "circle",
+          "fill": "#1976D2",
+          "stroke": "#FFFFFF",
+          "strokeWidth": 2
+        }
+      },
+      "left": {
+        "enabled": true,
+        "type": "input",
+        "maxConnections": void 0
+      },
+      "right": {
+        "enabled": true,
+        "type": "output",
+        "maxConnections": void 0
+      },
+      "top": {
+        "enabled": true,
+        "type": "bi",
+        "maxConnections": void 0
+      },
+      "bottom": {
+        "enabled": true,
+        "type": "bi",
+        "maxConnections": void 0
+      }
+    },
+    "behavior": {
+      "draggable": true,
+      "selectable": true,
+      "connectable": true,
+      "resizable": true,
+      "deletable": true
+    }
+  },
+  "defaultData": {
+    "label": "Table"
+  },
+  "dataSchema": {
+    "type": "object",
+    "properties": {
+      "label": {
+        "type": "string",
+        "default": ""
+      }
+    },
+    "required": [
+      "label"
+    ]
+  }
+};
+
+// libs/engine/src/templates/generated/erd/erd-view.template.ts
+var erdViewTemplate = {
+  "id": "erd-view",
+  "version": "1.0.0",
+  "meta": {
+    "name": "View",
+    "description": "A database view (virtual table)",
+    "category": "diagram",
+    "tags": [
+      "physical",
+      "view",
+      "virtual-table",
+      "query",
+      "erd"
+    ],
+    "author": "Auto-Generated"
+  },
+  "structure": {
+    "type": "erd:view",
+    "size": {
+      "width": 120,
+      "height": 80,
+      "minWidth": 140,
+      "maxWidth": 350,
+      "minHeight": 70,
+      "maxHeight": 500
+    },
+    "shape": {
+      "type": "rect",
+      "fill": "#E0F2F1",
+      "stroke": "#00695C",
+      "strokeWidth": 2,
+      "opacity": 1
+    },
+    "html": {
+      "mode": "template",
+      "template": `<div class="erd-view-content">
+          <div class="node-label">{{data.label || 'View'}}</div>
+        </div>`,
+      "className": "erd-view",
+      "style": {
+        "display": "flex",
+        "alignItems": "center",
+        "justifyContent": "center",
+        "padding": "8px",
+        "fontFamily": "Arial, sans-serif",
+        "fontSize": "14px",
+        "textAlign": "center",
+        "wordBreak": "break-word"
+      }
+    },
+    "ports": {
+      "enabled": true,
+      "defaultVisibility": "on-hover",
+      "rendering": {
+        "mode": "svg",
+        "size": {
+          "width": 8,
+          "height": 8,
+          "hoverScale": 1.5
+        },
+        "svg": {
+          "shape": "circle",
+          "fill": "#1976D2",
+          "stroke": "#FFFFFF",
+          "strokeWidth": 2
+        }
+      },
+      "left": {
+        "enabled": true,
+        "type": "input",
+        "maxConnections": void 0
+      },
+      "right": {
+        "enabled": true,
+        "type": "output",
+        "maxConnections": void 0
+      },
+      "top": {
+        "enabled": true,
+        "type": "bi",
+        "maxConnections": void 0
+      },
+      "bottom": {
+        "enabled": true,
+        "type": "bi",
+        "maxConnections": void 0
+      }
+    },
+    "behavior": {
+      "draggable": true,
+      "selectable": true,
+      "connectable": true,
+      "resizable": false,
+      "deletable": true
+    }
+  },
+  "defaultData": {
+    "label": "View"
+  },
+  "dataSchema": {
+    "type": "object",
+    "properties": {
+      "label": {
+        "type": "string",
+        "default": ""
+      }
+    },
+    "required": [
+      "label"
+    ]
+  }
+};
+
+// libs/engine/src/templates/generated/erd/erd-bridge-entity.template.ts
+var erdBridgeEntityTemplate = {
+  "id": "erd-bridge-entity",
+  "version": "1.0.0",
+  "meta": {
+    "name": "Bridge Entity",
+    "description": "A bridge table resolving many-to-many relationships",
+    "category": "diagram",
+    "tags": [
+      "entity",
+      "bridge",
+      "junction",
+      "link-table",
+      "many-to-many",
+      "erd"
+    ],
+    "author": "Auto-Generated"
+  },
+  "structure": {
+    "type": "erd:bridge-entity",
+    "size": {
+      "width": 120,
+      "height": 80,
+      "minWidth": 140,
+      "maxWidth": 350,
+      "minHeight": 70,
+      "maxHeight": 500
+    },
+    "shape": {
+      "type": "rect",
+      "fill": "#FFF9C4",
+      "stroke": "#F57F17",
+      "strokeWidth": 2,
+      "opacity": 1
+    },
+    "html": {
+      "mode": "template",
+      "template": `<div class="erd-entity-container">
+          <div class="entity-header">
+            {{data.name || 'Entity'}}
+          </div>
+          <div class="divider"></div>
+          <div class="fields-section">
+            {{#if data.fields}}
+              {{#each data.fields}}
+                <div class="field" data-field-id="{{this.name}}">
+                  {{#if this.primaryKey}}<span class="pk-indicator">PK</span>{{/if}}
+                  {{#if this.foreignKey}}<span class="fk-indicator">FK</span>{{/if}}
+                  <span class="field-name {{#if this.primaryKey}}primary-key{{/if}}">
+                    {{this.name}}
+                  </span>:
+                  <span class="field-type">{{this.type}}</span>
+                  {{#if this.notNull}}<span class="constraint">NOT NULL</span>{{/if}}
+                </div>
+              {{/each}}
+            {{else}}
+              <div class="empty-section">No fields</div>
+            {{/if}}
+          </div>
+        </div>`,
+      "className": "erd-bridge-entity",
+      "style": {
+        "fontFamily": "monospace",
+        "fontSize": "12px",
+        "padding": "0"
+      }
+    },
+    "ports": {
+      "enabled": true,
+      "defaultVisibility": "on-hover",
+      "rendering": {
+        "mode": "svg",
+        "size": {
+          "width": 6,
+          "height": 6,
+          "hoverScale": 1.5
+        },
+        "svg": {
+          "shape": "circle",
+          "fill": "#1976D2",
+          "stroke": "#FFFFFF",
+          "strokeWidth": 1
+        }
+      },
+      "left": {
+        "enabled": true,
+        "type": "bi",
+        "maxConnections": void 0
+      },
+      "right": {
+        "enabled": true,
+        "type": "bi",
+        "maxConnections": void 0
+      }
+    },
+    "behavior": {
+      "draggable": true,
+      "selectable": true,
+      "connectable": true,
+      "resizable": false,
+      "deletable": true
+    }
+  },
+  "defaultData": {
+    "label": "Bridge Entity"
+  },
+  "dataSchema": {
+    "type": "object",
+    "properties": {
+      "name": {
+        "type": "string",
+        "default": "Entity"
+      },
+      "fields": {
+        "type": "array",
+        "items": {
+          "type": "object",
+          "properties": {
+            "name": {
+              "type": "string"
+            },
+            "type": {
+              "type": "string"
+            },
+            "primaryKey": {
+              "type": "boolean",
+              "default": false
+            },
+            "foreignKey": {
+              "type": "boolean",
+              "default": false
+            },
+            "unique": {
+              "type": "boolean",
+              "default": false
+            },
+            "notNull": {
+              "type": "boolean",
+              "default": false
+            },
+            "autoIncrement": {
+              "type": "boolean",
+              "default": false
+            },
+            "defaultValue": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "name",
+            "type"
+          ]
+        },
+        "default": []
+      }
+    },
+    "required": [
+      "name"
+    ]
+  }
+};
+
+// libs/engine/src/templates/generated/erd/erd-subtype.template.ts
+var erdSubtypeTemplate = {
+  "id": "erd-subtype",
+  "version": "1.0.0",
+  "meta": {
+    "name": "Subtype",
+    "description": "A specialized entity in a generalization hierarchy",
+    "category": "diagram",
+    "tags": [
+      "inheritance",
+      "subtype",
+      "specialization",
+      "child",
+      "erd"
+    ],
+    "author": "Auto-Generated"
+  },
+  "structure": {
+    "type": "erd:subtype",
+    "size": {
+      "width": 120,
+      "height": 80,
+      "minWidth": 140,
+      "maxWidth": 350,
+      "minHeight": 70,
+      "maxHeight": 500
+    },
+    "shape": {
+      "type": "rect",
+      "fill": "#E8F5E9",
+      "stroke": "#388E3C",
+      "strokeWidth": 2,
+      "opacity": 1
+    },
+    "html": {
+      "mode": "template",
+      "template": `<div class="erd-subtype-content">
+          <div class="node-label">{{data.label || 'Subtype'}}</div>
+        </div>`,
+      "className": "erd-subtype",
+      "style": {
+        "display": "flex",
+        "alignItems": "center",
+        "justifyContent": "center",
+        "padding": "8px",
+        "fontFamily": "Arial, sans-serif",
+        "fontSize": "14px",
+        "textAlign": "center",
+        "wordBreak": "break-word"
+      }
+    },
+    "ports": {
+      "enabled": true,
+      "defaultVisibility": "on-hover",
+      "rendering": {
+        "mode": "svg",
+        "size": {
+          "width": 8,
+          "height": 8,
+          "hoverScale": 1.5
+        },
+        "svg": {
+          "shape": "circle",
+          "fill": "#1976D2",
+          "stroke": "#FFFFFF",
+          "strokeWidth": 2
+        }
+      },
+      "left": {
+        "enabled": true,
+        "type": "input",
+        "maxConnections": void 0
+      },
+      "right": {
+        "enabled": true,
+        "type": "output",
+        "maxConnections": void 0
+      },
+      "top": {
+        "enabled": true,
+        "type": "bi",
+        "maxConnections": void 0
+      },
+      "bottom": {
+        "enabled": true,
+        "type": "bi",
+        "maxConnections": void 0
+      }
+    },
+    "behavior": {
+      "draggable": true,
+      "selectable": true,
+      "connectable": true,
+      "resizable": false,
+      "deletable": true
+    }
+  },
+  "defaultData": {
+    "label": "Subtype"
+  },
+  "dataSchema": {
+    "type": "object",
+    "properties": {
+      "label": {
+        "type": "string",
+        "default": ""
+      }
+    },
+    "required": [
+      "label"
+    ]
+  }
+};
+
+// libs/engine/src/templates/generated/erd/erd-supertype.template.ts
+var erdSupertypeTemplate = {
+  "id": "erd-supertype",
+  "version": "1.0.0",
+  "meta": {
+    "name": "Supertype",
+    "description": "A generalized entity in a generalization hierarchy",
+    "category": "diagram",
+    "tags": [
+      "inheritance",
+      "supertype",
+      "generalization",
+      "parent",
+      "erd"
+    ],
+    "author": "Auto-Generated"
+  },
+  "structure": {
+    "type": "erd:supertype",
+    "size": {
+      "width": 120,
+      "height": 80,
+      "minWidth": 140,
+      "maxWidth": 350,
+      "minHeight": 70,
+      "maxHeight": 500
+    },
+    "shape": {
+      "type": "rect",
+      "fill": "#E3F2FD",
+      "stroke": "#1976D2",
+      "strokeWidth": 2,
+      "opacity": 1
+    },
+    "html": {
+      "mode": "template",
+      "template": `<div class="erd-supertype-content">
+          <div class="node-label">{{data.label || 'Supertype'}}</div>
+        </div>`,
+      "className": "erd-supertype",
+      "style": {
+        "display": "flex",
+        "alignItems": "center",
+        "justifyContent": "center",
+        "padding": "8px",
+        "fontFamily": "Arial, sans-serif",
+        "fontSize": "14px",
+        "textAlign": "center",
+        "wordBreak": "break-word"
+      }
+    },
+    "ports": {
+      "enabled": true,
+      "defaultVisibility": "on-hover",
+      "rendering": {
+        "mode": "svg",
+        "size": {
+          "width": 8,
+          "height": 8,
+          "hoverScale": 1.5
+        },
+        "svg": {
+          "shape": "circle",
+          "fill": "#1976D2",
+          "stroke": "#FFFFFF",
+          "strokeWidth": 2
+        }
+      },
+      "left": {
+        "enabled": true,
+        "type": "input",
+        "maxConnections": void 0
+      },
+      "right": {
+        "enabled": true,
+        "type": "output",
+        "maxConnections": void 0
+      },
+      "top": {
+        "enabled": true,
+        "type": "bi",
+        "maxConnections": void 0
+      },
+      "bottom": {
+        "enabled": true,
+        "type": "bi",
+        "maxConnections": void 0
+      }
+    },
+    "behavior": {
+      "draggable": true,
+      "selectable": true,
+      "connectable": true,
+      "resizable": false,
+      "deletable": true
+    }
+  },
+  "defaultData": {
+    "label": "Supertype"
+  },
+  "dataSchema": {
+    "type": "object",
+    "properties": {
+      "label": {
+        "type": "string",
+        "default": ""
+      }
+    },
+    "required": [
+      "label"
+    ]
+  }
+};
+
+// libs/engine/src/templates/generated/erd/erd-discriminator.template.ts
+var erdDiscriminatorTemplate = {
+  "id": "erd-discriminator",
+  "version": "1.0.0",
+  "meta": {
+    "name": "Discriminator",
+    "description": "A discriminator attribute for subtype determination",
+    "category": "diagram",
+    "tags": [
+      "inheritance",
+      "discriminator",
+      "subtype-indicator",
+      "erd"
+    ],
+    "author": "Auto-Generated"
+  },
+  "structure": {
+    "type": "erd:discriminator",
+    "size": {
+      "width": 60,
+      "height": 60,
+      "minWidth": 140,
+      "maxWidth": 350,
+      "minHeight": 70,
+      "maxHeight": 500
+    },
+    "shape": {
+      "type": "diamond",
+      "fill": "#FFF9C4",
+      "stroke": "#F57F17",
+      "strokeWidth": 2,
+      "opacity": 1
+    },
+    "html": {
+      "mode": "template",
+      "template": `<div class="erd-discriminator-content">
+          <div class="node-label">{{data.label || 'Discriminator'}}</div>
+        </div>`,
+      "className": "erd-discriminator",
+      "style": {
+        "display": "flex",
+        "alignItems": "center",
+        "justifyContent": "center",
+        "padding": "8px",
+        "fontFamily": "Arial, sans-serif",
+        "fontSize": "14px",
+        "textAlign": "center",
+        "wordBreak": "break-word"
+      }
+    },
+    "ports": {
+      "enabled": true,
+      "defaultVisibility": "on-hover",
+      "rendering": {
+        "mode": "svg",
+        "size": {
+          "width": 8,
+          "height": 8,
+          "hoverScale": 1.5
+        },
+        "svg": {
+          "shape": "circle",
+          "fill": "#F57C00",
+          "stroke": "#FFFFFF",
+          "strokeWidth": 2
+        }
+      },
+      "left": {
+        "enabled": true,
+        "type": "input",
+        "maxConnections": void 0
+      },
+      "right": {
+        "enabled": true,
+        "type": "output",
+        "maxConnections": void 0
+      },
+      "top": {
+        "enabled": true,
+        "type": "output",
+        "maxConnections": void 0
+      },
+      "bottom": {
+        "enabled": true,
+        "type": "output",
+        "maxConnections": void 0
+      }
+    },
+    "behavior": {
+      "draggable": true,
+      "selectable": true,
+      "connectable": true,
+      "resizable": false,
+      "deletable": true
+    }
+  },
+  "defaultData": {
+    "label": "Discriminator"
+  },
+  "dataSchema": {
+    "type": "object",
+    "properties": {
+      "label": {
+        "type": "string",
+        "default": ""
+      }
+    },
+    "required": [
+      "label"
+    ]
+  }
+};
+
+// libs/engine/src/templates/generated/register.ts
+function isNodeTemplate(v) {
+  return !!v && typeof v === "object" && "id" in v && "structure" in v && "meta" in v;
+}
+function generatedTemplates() {
+  const seen = /* @__PURE__ */ new Set();
+  const out = [];
+  for (const v of Object.values(generated_exports)) {
+    if (isNodeTemplate(v) && !seen.has(v.id)) {
+      seen.add(v.id);
+      out.push(v);
+    }
+  }
+  return out;
+}
+function registerGeneratedTemplates(registry5) {
+  const templates = generatedTemplates();
+  registry5.registerMany(templates);
+  return templates.length;
+}
 
 // libs/engine/src/template-library/common-templates.ts
 var UserAvatarTemplate = {
@@ -143019,6 +152957,618 @@ var ERDTemplates = {
   ERDFieldOptionB,
   // Modern Repeater Approach (RECOMMENDED)
   ERDTableRepeater
+};
+
+// libs/engine/src/templates/stencils.ts
+function templatesOf(mod) {
+  const seen = /* @__PURE__ */ new Set();
+  const out = [];
+  for (const v of Object.values(mod)) {
+    if (v && typeof v === "object" && "id" in v && "structure" in v && "meta" in v) {
+      const t = v;
+      if (!seen.has(t.id)) {
+        seen.add(t.id);
+        out.push(t);
+      }
+    }
+  }
+  return out;
+}
+function builtInStencils() {
+  return [
+    { id: "flowchart", name: "Flowchart", description: "Process, decision, data and terminator shapes.", masters: templatesOf(flowchart_exports) },
+    { id: "bpmn", name: "BPMN", description: "Tasks, gateways and events for business process models.", masters: templatesOf(bpmn_exports) },
+    { id: "uml", name: "UML", description: "Class, activity, state and component shapes.", masters: templatesOf(uml_exports) },
+    { id: "erd", name: "ERD", description: "Entities, relationships and attributes for data models.", masters: templatesOf(erd_exports) },
+    { id: "common", name: "Basic", description: "Cards, buttons, inputs, badges and avatars.", masters: templatesOf(CommonTemplates) },
+    { id: "workflow", name: "Workflow", description: "Ready-made workflow and automation nodes.", masters: templatesOf(WorkflowTemplates) },
+    { id: "data-viz", name: "Data viz", description: "KPI, chart and metric widgets.", masters: templatesOf(DataVizTemplates) },
+    { id: "erd-rich", name: "ERD (rich)", description: "Detailed entity shapes with typed column rows.", masters: templatesOf(ERDTemplates) }
+  ].filter((s) => s.masters.length > 0);
+}
+function getStencil(id) {
+  return builtInStencils().find((s) => s.id === id);
+}
+function listStencils() {
+  return builtInStencils();
+}
+function registerStencils(registry5, stencils = builtInStencils()) {
+  let n3 = 0;
+  for (const s of stencils) {
+    for (const m of s.masters) {
+      registry5.register(m);
+      n3++;
+    }
+  }
+  return n3;
+}
+
+// libs/engine/src/rendering/HtmlTemplateRenderer.ts
+var HtmlTemplateRenderer = class {
+  constructor(eventBus) {
+    this.eventBus = eventBus;
+    /**
+     * Track event handlers by node UUID for cleanup
+     */
+    this.eventHandlers = /* @__PURE__ */ new Map();
+    /**
+     * Track rendered results by node UUID for cleanup
+     */
+    this.renderResults = /* @__PURE__ */ new Map();
+  }
+  /**
+   * Render HTML configuration to result
+   * @param config - HTML configuration from template
+   * @param node - Node model with data
+   * @returns Render result with HTML, bindings, and event handlers
+   */
+  render(config, node) {
+    this.disposeNode(node.uuid);
+    const mode = this.determineMode(config);
+    const result = {
+      mode,
+      eventHandlers: {},
+      bindings: {},
+      pointerEvents: config.pointerEvents !== false,
+      // Default true
+      zIndex: config.zIndex,
+      className: this.buildClassName(config.className),
+      style: config.style,
+      nodeId: node.id,
+      nodeUuid: node.uuid
+    };
+    if (mode === "component") {
+      return this.renderComponentMode(config, result);
+    } else {
+      return this.renderTemplateMode(config, node, result);
+    }
+  }
+  /**
+   * Determine rendering mode from config
+   */
+  determineMode(config) {
+    if (config.mode) {
+      return config.mode;
+    }
+    if (config.template) {
+      return "template";
+    }
+    if (config.component) {
+      return "component";
+    }
+    throw new Error("HtmlConfig must specify either template or component");
+  }
+  /**
+   * Render component mode (pass-through)
+   */
+  renderComponentMode(config, result) {
+    if (!config.component) {
+      throw new Error("Component mode requires component property");
+    }
+    result.componentRef = config.component;
+    return result;
+  }
+  /**
+   * Render template mode with LemonadeJS
+   */
+  renderTemplateMode(config, node, result) {
+    if (!config.template) {
+      throw new Error("Template mode requires template property");
+    }
+    result.bindings = this.resolveBindings(config, node);
+    if (config.events) {
+      result.eventHandlers = this.createEventHandlers(config.events, node);
+    }
+    result.html = this.renderTemplate(config.template, result.bindings, result);
+    this.renderResults.set(node.uuid, result);
+    if (Object.keys(result.eventHandlers).length > 0) {
+      this.eventHandlers.set(node.uuid, result.eventHandlers);
+    }
+    return result;
+  }
+  /**
+   * Resolve data bindings from node data
+   */
+  resolveBindings(config, node) {
+    const bindings3 = {};
+    bindings3["data"] = node.data || {};
+    bindings3["nodeId"] = node.id;
+    bindings3["nodeUuid"] = node.uuid;
+    if (config.bindings) {
+      for (const [key, path] of Object.entries(config.bindings)) {
+        bindings3[key] = this.getValueByPath(node, path);
+      }
+    }
+    return bindings3;
+  }
+  /**
+   * Get value from node by path (e.g., 'data.user.name')
+   */
+  getValueByPath(node, path) {
+    const parts = path.split(".");
+    let value = node;
+    for (const part of parts) {
+      if (value == null) {
+        return void 0;
+      }
+      value = value[part];
+    }
+    return value;
+  }
+  /**
+   * Create event handlers that emit to EventBus
+   */
+  createEventHandlers(events, node) {
+    const handlers = {};
+    for (const [domEvent, engineEvent] of Object.entries(events)) {
+      handlers[domEvent] = (event) => {
+        this.eventBus.emit(engineEvent, {
+          nodeId: node.id,
+          nodeUuid: node.uuid,
+          nodeData: node.data,
+          event,
+          domEventType: domEvent
+        });
+      };
+    }
+    return handlers;
+  }
+  /**
+   * Render template with bindings (simplified LemonadeJS-style)
+   * In production, this would use actual LemonadeJS library
+   *
+   * Phase 3.4: Simple template rendering for testing
+   * Real implementation will use LemonadeJS when package is available
+   */
+  renderTemplate(template, bindings3, result) {
+    let html = template;
+    html = html.replace(/\{\{([^}]+)\}\}/g, (match, expression) => {
+      const value = this.evaluateExpression(expression.trim(), bindings3);
+      return value != null ? String(value) : "";
+    });
+    const containerAttrs = [];
+    if (result.className) {
+      containerAttrs.push(`class="${result.className}"`);
+    }
+    if (result.style) {
+      const styleStr = Object.entries(result.style).map(([key, value]) => `${this.camelToKebab(key)}: ${value}`).join("; ");
+      containerAttrs.push(`style="${styleStr}"`);
+    }
+    if (result.pointerEvents === false) {
+      containerAttrs.push('style="pointer-events: none"');
+    }
+    if (result.zIndex !== void 0) {
+      const existingStyle = containerAttrs.find((attr) => attr.startsWith("style="));
+      if (existingStyle) {
+        containerAttrs[containerAttrs.indexOf(existingStyle)] = existingStyle.replace(
+          '"',
+          `"z-index: ${result.zIndex}; `
+        );
+      } else {
+        containerAttrs.push(`style="z-index: ${result.zIndex}"`);
+      }
+    }
+    if (containerAttrs.length > 0) {
+      html = `<div ${containerAttrs.join(" ")}>${html}</div>`;
+    }
+    return html;
+  }
+  /**
+   * Evaluate expression in binding context
+   */
+  evaluateExpression(expression, bindings3) {
+    try {
+      const parts = expression.split(".");
+      let value = bindings3;
+      for (const part of parts) {
+        if (value == null) {
+          return void 0;
+        }
+        value = value[part];
+      }
+      return value;
+    } catch (error) {
+      this.eventBus.emit("renderer:warning", {
+        message: "Failed to evaluate expression",
+        expression,
+        error,
+        phase: "expression-evaluation",
+        renderer: "HtmlTemplateRenderer"
+      });
+      return void 0;
+    }
+  }
+  /**
+   * Build className string from config
+   */
+  buildClassName(className) {
+    if (!className) {
+      return void 0;
+    }
+    if (Array.isArray(className)) {
+      return className.join(" ");
+    }
+    return className;
+  }
+  /**
+   * Convert camelCase to kebab-case for CSS properties
+   */
+  camelToKebab(str) {
+    return str.replace(/([a-z0-9])([A-Z])/g, "$1-$2").toLowerCase();
+  }
+  /**
+   * Dispose resources for a specific node
+   * @param nodeUuid - UUID of node to clean up
+   */
+  disposeNode(nodeUuid) {
+    const handlers = this.eventHandlers.get(nodeUuid);
+    if (handlers) {
+      Object.keys(handlers).forEach((key) => {
+        delete handlers[key];
+      });
+    }
+    this.eventHandlers.delete(nodeUuid);
+    const result = this.renderResults.get(nodeUuid);
+    if (result) {
+      if (result.bindings) {
+        Object.keys(result.bindings).forEach((key) => {
+          delete result.bindings[key];
+        });
+      }
+      if (result.eventHandlers) {
+        Object.keys(result.eventHandlers).forEach((key) => {
+          delete result.eventHandlers[key];
+        });
+      }
+    }
+    this.renderResults.delete(nodeUuid);
+  }
+  /**
+   * Cleanup all renderer resources
+   */
+  dispose() {
+    const nodeUuids = Array.from(this.renderResults.keys());
+    nodeUuids.forEach((uuid) => this.disposeNode(uuid));
+    this.eventHandlers.clear();
+    this.renderResults.clear();
+  }
+};
+
+// libs/engine/src/rendering/LemonadeJSRenderer.ts
+var lemonade = __toESM(require_lemonade());
+var LemonadeJSRenderer = class {
+  constructor(eventBus) {
+    this.eventBus = eventBus;
+    /**
+     * Track rendered elements by node UUID for cleanup
+     */
+    this.renderedElements = /* @__PURE__ */ new Map();
+    /**
+     * Track LemonadeJS self objects by node UUID for cleanup
+     */
+    this.selfObjects = /* @__PURE__ */ new Map();
+    /**
+     * Track event handlers by node UUID for cleanup
+     */
+    this.eventHandlers = /* @__PURE__ */ new Map();
+    /**
+     * Track EventBus subscriptions by node UUID for cleanup
+     */
+    this.eventSubscriptions = /* @__PURE__ */ new Map();
+  }
+  /**
+   * Render HTML configuration to LemonadeJS element
+   * @param config - HTML configuration from template
+   * @param node - Node model with data
+   * @returns Render result with LemonadeJS element
+   */
+  render(config, node) {
+    this.disposeNode(node.uuid);
+    const mode = this.determineMode(config);
+    const result = {
+      mode,
+      eventHandlers: {},
+      bindings: {},
+      pointerEvents: config.pointerEvents !== false,
+      zIndex: config.zIndex,
+      className: this.buildClassName(config.className),
+      style: config.style,
+      nodeId: node.id,
+      nodeUuid: node.uuid
+    };
+    if (mode === "component") {
+      return this.renderComponentMode(config, result);
+    } else {
+      return this.renderTemplateMode(config, node, result);
+    }
+  }
+  /**
+   * Determine rendering mode from config
+   */
+  determineMode(config) {
+    if (config.mode) {
+      return config.mode;
+    }
+    if (config.template) {
+      return "template";
+    }
+    if (config.component) {
+      return "component";
+    }
+    throw new Error("HtmlConfig must specify either template or component");
+  }
+  /**
+   * Render component mode (pass-through)
+   */
+  renderComponentMode(config, result) {
+    if (!config.component) {
+      throw new Error("Component mode requires component property");
+    }
+    result.componentRef = config.component;
+    return result;
+  }
+  /**
+   * Render template mode with LemonadeJS
+   */
+  renderTemplateMode(config, node, result) {
+    if (!config.template) {
+      throw new Error("Template mode requires template property");
+    }
+    result.self = this.createSelfObject(node, config, result);
+    if (config.events) {
+      result.eventHandlers = this.createEventHandlers(config.events, node);
+    }
+    result.bindings = this.resolveBindings(config, node);
+    try {
+      result.element = lemonade.element(config.template, result.self);
+      if (result.element) {
+        this.applyStyles(result.element, result);
+      }
+      result.html = result.element?.outerHTML;
+    } catch (error) {
+      this.eventBus.emit("renderer:error", {
+        nodeId: node.id,
+        nodeUuid: node.uuid,
+        error,
+        message: "LemonadeJS rendering error",
+        phase: "template-rendering"
+      });
+      result.html = this.fallbackRender(config.template, result.bindings);
+    }
+    if (result.element) {
+      this.renderedElements.set(node.uuid, result.element);
+    }
+    if (result.self) {
+      this.selfObjects.set(node.uuid, result.self);
+    }
+    if (Object.keys(result.eventHandlers).length > 0) {
+      this.eventHandlers.set(node.uuid, result.eventHandlers);
+    }
+    return result;
+  }
+  /**
+   * Create LemonadeJS self object with reactive data
+   */
+  createSelfObject(node, config, result) {
+    const self2 = {
+      // Node data (reactive)
+      data: node.data || {},
+      nodeId: node.id,
+      nodeUuid: node.uuid,
+      // Custom bindings
+      ...config.bindings ? this.resolveCustomBindings(config.bindings, node) : {}
+    };
+    if (config.events) {
+      Object.entries(config.events).forEach(([domEvent, engineEvent]) => {
+        const methodName = `on${domEvent.charAt(0).toUpperCase()}${domEvent.slice(1)}`;
+        self2[methodName] = (e) => {
+          this.eventBus.emit(engineEvent, {
+            nodeId: node.id,
+            nodeUuid: node.uuid,
+            nodeData: node.data,
+            event: e,
+            domEventType: domEvent
+          });
+        };
+      });
+    }
+    return self2;
+  }
+  /**
+   * Resolve custom bindings from config
+   */
+  resolveCustomBindings(bindings3, node) {
+    const resolved2 = {};
+    for (const [key, path] of Object.entries(bindings3)) {
+      resolved2[key] = this.getValueByPath(node, path);
+    }
+    return resolved2;
+  }
+  /**
+   * Create event handlers that emit to EventBus
+   */
+  createEventHandlers(events, node) {
+    const handlers = {};
+    for (const [domEvent, engineEvent] of Object.entries(events)) {
+      handlers[domEvent] = (event) => {
+        this.eventBus.emit(engineEvent, {
+          nodeId: node.id,
+          nodeUuid: node.uuid,
+          nodeData: node.data,
+          event,
+          domEventType: domEvent
+        });
+      };
+    }
+    return handlers;
+  }
+  /**
+   * Resolve data bindings from node
+   */
+  resolveBindings(config, node) {
+    const bindings3 = {
+      data: node.data || {},
+      nodeId: node.id,
+      nodeUuid: node.uuid
+    };
+    if (config.bindings) {
+      for (const [key, path] of Object.entries(config.bindings)) {
+        bindings3[key] = this.getValueByPath(node, path);
+      }
+    }
+    return bindings3;
+  }
+  /**
+   * Get value from node by path
+   */
+  getValueByPath(node, path) {
+    const parts = path.split(".");
+    let value = node;
+    for (const part of parts) {
+      if (value == null) {
+        return void 0;
+      }
+      value = value[part];
+    }
+    return value;
+  }
+  /**
+   * Apply styles and classes to rendered element
+   */
+  applyStyles(element2, result) {
+    if (result.className) {
+      element2.className = result.className;
+    }
+    if (result.style) {
+      Object.entries(result.style).forEach(([key, value]) => {
+        const cssKey = this.camelToKebab(key);
+        element2.style.setProperty(cssKey, String(value));
+      });
+    }
+    if (result.zIndex !== void 0) {
+      element2.style.zIndex = String(result.zIndex);
+    }
+    if (result.pointerEvents === false) {
+      element2.style.pointerEvents = "none";
+    }
+  }
+  /**
+   * Fallback rendering (simple string replacement)
+   */
+  fallbackRender(template, bindings3) {
+    let html = template;
+    html = html.replace(/\{\{([^}]+)\}\}/g, (match, expression) => {
+      const value = this.evaluateExpression(expression.trim(), bindings3);
+      return value != null ? String(value) : "";
+    });
+    return html;
+  }
+  /**
+   * Evaluate expression in binding context
+   */
+  evaluateExpression(expression, bindings3) {
+    try {
+      const parts = expression.split(".");
+      let value = bindings3;
+      for (const part of parts) {
+        if (value == null) {
+          return void 0;
+        }
+        value = value[part];
+      }
+      return value;
+    } catch (error) {
+      this.eventBus.emit("renderer:warning", {
+        message: "Failed to evaluate expression",
+        expression,
+        error,
+        phase: "expression-evaluation"
+      });
+      return void 0;
+    }
+  }
+  /**
+   * Build className string
+   */
+  buildClassName(className) {
+    if (!className) {
+      return void 0;
+    }
+    if (Array.isArray(className)) {
+      return className.join(" ");
+    }
+    return className;
+  }
+  /**
+   * Convert camelCase to kebab-case
+   */
+  camelToKebab(str) {
+    return str.replace(/([a-z0-9])([A-Z])/g, "$1-$2").toLowerCase();
+  }
+  /**
+   * Dispose resources for a specific node
+   * @param nodeUuid - UUID of node to clean up
+   */
+  disposeNode(nodeUuid) {
+    const element2 = this.renderedElements.get(nodeUuid);
+    if (element2 && element2.parentNode) {
+      element2.parentNode.removeChild(element2);
+    }
+    this.renderedElements.delete(nodeUuid);
+    const self2 = this.selfObjects.get(nodeUuid);
+    if (self2) {
+      if (typeof self2.destroy === "function") {
+        self2.destroy();
+      }
+      Object.keys(self2).forEach((key) => {
+        delete self2[key];
+      });
+    }
+    this.selfObjects.delete(nodeUuid);
+    const handlers = this.eventHandlers.get(nodeUuid);
+    if (handlers) {
+      Object.keys(handlers).forEach((key) => {
+        delete handlers[key];
+      });
+    }
+    this.eventHandlers.delete(nodeUuid);
+    const subscriptions = this.eventSubscriptions.get(nodeUuid);
+    if (subscriptions) {
+      subscriptions.forEach((unsubscribe) => unsubscribe());
+    }
+    this.eventSubscriptions.delete(nodeUuid);
+  }
+  /**
+   * Cleanup all renderer resources
+   */
+  dispose() {
+    const nodeUuids = Array.from(this.renderedElements.keys());
+    nodeUuids.forEach((uuid) => this.disposeNode(uuid));
+    this.renderedElements.clear();
+    this.selfObjects.clear();
+    this.eventHandlers.clear();
+    this.eventSubscriptions.clear();
+  }
 };
 
 // libs/engine/src/template-library/integration.ts
@@ -148399,6 +158949,12 @@ var SelectionToolsController = class {
   /** The kind of gesture in flight (`null` when idle) — hosts branch on it. */
   activeGesture() {
     return this.gesture?.kind ?? null;
+  }
+  /** The node the in-flight gesture is acting on (`null` when idle). Lets a host
+   *  exclude it from a snap's sibling set — a box must not snap to itself. */
+  activeGestureNodeId() {
+    const g = this.gesture;
+    return g?.nodeId ?? null;
   }
   // ==========================================================================
   // The layer
@@ -174638,6 +185194,7 @@ var DomEventBinder = class {
     this.groupDrag = null;
     this.spaceKeyPressed = false;
     this.engine()?.setSnapGuides(null);
+    this.closeTextEditor();
   }
   // ==========================================================================
   // Pointer events — the fork. Touch goes to the gesture controller; mouse and
@@ -174983,12 +185540,22 @@ var DomEventBinder = class {
     }
     if (this.selectionTools.activeGesture() === "resize") {
       const { x, y } = this.toWorld(event);
-      if (this.selectionTools.updateResize(engine, x, y, {
-        shift: event.shiftKey,
-        alt: event.altKey,
-        ctrl: event.ctrlKey,
-        meta: event.metaKey
-      })) {
+      if (this.selectionTools.updateResize(
+        engine,
+        x,
+        y,
+        {
+          shift: event.shiftKey,
+          alt: event.altKey,
+          ctrl: event.ctrlKey,
+          meta: event.metaKey
+        },
+        // T2/visio — snap the RESIZED box to sibling edges/centres. `updateResize`
+        // always accepted this hook and the binder never passed one, so a resize
+        // was the one gesture with no alignment help. Shares `enableHelperLines`
+        // with the drag: a host that asked for snap guides means both.
+        this.resizeSnapHook(engine)
+      )) {
         this.host.interaction.invalidatePortHitCache();
         this.host.requestRender();
       }
@@ -175155,6 +185722,7 @@ var DomEventBinder = class {
       const moved = drag.committed;
       this.nodeDrag = null;
       if (moved && engine) this.commitNodeMove(engine, drag);
+      if (moved && engine) this.applyMembershipOnDrop(engine, drag);
       const connected = moved ? this.commitProximityConnection() : false;
       if (moved) this.emitNodesChange();
       if (connected) this.emitEdgesChange();
@@ -175203,6 +185771,9 @@ var DomEventBinder = class {
       const node = engine.getDiagram()?.getNodeAtPosition(worldX, worldY);
       if (node) {
         this.host.emit("node:doubleclick", { node, world: { x: worldX, y: worldY } });
+        if (engine.getInteractionConfig().enableInPlaceTextEdit === true) {
+          this.openTextEditor(engine, { type: "node", nodeId: node.id });
+        }
       }
       return;
     }
@@ -175628,6 +186199,68 @@ var DomEventBinder = class {
    * execute() is a visual no-op that records one history entry, and undo restores `from`.
    * A multi-node drag collapses into one MacroCommand — one gesture, one undo step.
    */
+  /**
+   * T8/visio — after a node drag COMMITS its move, reparent it into whatever
+   * container it was dropped in (or unembed it when dropped outside every one).
+   *
+   * The whole drop policy already lived in `GroupMembershipService`: innermost
+   * hit-test, per-group `canAddMember` veto, coordinate translation, and
+   * undoable Add/RemoveFromGroupCommand on the shared stack. It was simply
+   * never constructed outside its own specs, so a drag into a container moved
+   * the node's x/y and nothing else. This is the missing call.
+   *
+   * Runs only for a single-node drag: a multi-select drop into a container is a
+   * separate policy question (which member wins the hit-test?), and guessing it
+   * silently is worse than leaving it to a host.
+   */
+  /**
+   * T2/visio — the snap hook handed to `updateResize`, or undefined when helper
+   * lines are off. Snaps the resized box against every OTHER node's box and
+   * publishes the same guides the drag path draws, so a resize aligns to its
+   * neighbours instead of landing a pixel out.
+   */
+  resizeSnapHook(engine) {
+    if (engine.getInteractionConfig().enableHelperLines !== true) return void 0;
+    const id = this.selectionTools.activeGestureNodeId();
+    const snap = this.snapController();
+    snap.syncWithEngineConfig(engine);
+    const others = snap.siblingBoxes(engine, id ? [id] : []);
+    return (box) => {
+      const result = snap.computeSnap(box, others);
+      engine.setSnapGuides(
+        result.guides.length > 0 ? result.guides.map(
+          (g) => g.orientation === "vertical" ? { x1: g.position, y1: g.from, x2: g.position, y2: g.to, kind: "alignment" } : { x1: g.from, y1: g.position, x2: g.to, y2: g.position, kind: "alignment" }
+        ) : null
+      );
+      return result.box;
+    };
+  }
+  applyMembershipOnDrop(engine, drag) {
+    if (engine.getInteractionConfig().enableGroupMembershipOnDrop !== true) return;
+    if (drag.nodeIds.length !== 1 || this.isReadonly()) return;
+    const diagram = engine.getDiagram();
+    if (!diagram) return;
+    const node = diagram.getNode(drag.nodeIds[0]);
+    if (!node || node.state.locked) return;
+    if (!this.membership || this.membership.diagram !== diagram) {
+      this.membership = {
+        diagram,
+        service: new GroupMembershipService({ diagram, dispatcher: engine.commandManager })
+      };
+    }
+    const service = this.membership.service;
+    service.refresh();
+    const point = {
+      x: node.position.x + node.size.width / 2,
+      y: node.position.y + node.size.height / 2
+    };
+    void Promise.resolve(service.handleNodeDragEnd(node.id, point)).then((result) => {
+      if (result?.changed) {
+        this.emitNodesChange();
+        this.host.requestRender();
+      }
+    });
+  }
   commitNodeMove(engine, drag) {
     if (!drag.committed || !drag.startPositions) return;
     const diagram = engine.getDiagram();
@@ -175718,6 +186351,86 @@ var DomEventBinder = class {
       default:
         return true;
     }
+  }
+  /**
+   * T10/visio — open the transient text widget over a node's label.
+   *
+   * The SESSION (what text, where, single- or multi-line) and the COMMIT (an
+   * undoable command) both come from `InPlaceTextEditor`; the only thing this
+   * adds is the DOM input and where to put it — mapped through the live
+   * world→client transform so it lands on the label at any zoom or pan.
+   */
+  openTextEditor(engine, target) {
+    if (!this.textEditor) this.textEditor = new InPlaceTextEditor();
+    const editor = this.textEditor;
+    this.closeTextEditor();
+    const session = editor.begin(engine, target);
+    if (!session) return;
+    const rect = this.host.getRect();
+    const at = this.host.viewport.worldToClient(session.center.x, session.center.y, rect);
+    const input = document.createElement("input");
+    input.type = "text";
+    input.value = session.value;
+    input.className = "grafloria-text-editor";
+    input.setAttribute("aria-label", "Edit label");
+    Object.assign(input.style, {
+      position: "fixed",
+      left: `${at.x}px`,
+      top: `${at.y}px`,
+      transform: "translate(-50%, -50%)",
+      zIndex: "1000",
+      font: "12px sans-serif",
+      textAlign: "center",
+      minWidth: "40px",
+      padding: "1px 4px"
+    });
+    let settled = false;
+    const cleanup = () => {
+      input.removeEventListener("keydown", onKeyDown);
+      input.removeEventListener("blur", commit);
+      input.remove();
+      if (this.activeTextInput === input) this.activeTextInput = void 0;
+    };
+    const commit = () => {
+      if (settled) return;
+      settled = true;
+      const command = editor.commit(engine, input.value);
+      cleanup();
+      if (command) void engine.commandManager.execute(command);
+      this.host.requestRender();
+      this.emitNodesChange();
+    };
+    const cancel = () => {
+      if (settled) return;
+      settled = true;
+      editor.cancel();
+      cleanup();
+      this.host.requestRender();
+    };
+    const onKeyDown = (e) => {
+      e.stopPropagation();
+      if (e.key === "Enter") {
+        e.preventDefault();
+        commit();
+      } else if (e.key === "Escape") {
+        e.preventDefault();
+        cancel();
+      }
+    };
+    input.addEventListener("keydown", onKeyDown);
+    input.addEventListener("blur", commit);
+    (this.container.ownerDocument ?? document).body.appendChild(input);
+    this.activeTextInput = input;
+    input.focus();
+    input.select();
+  }
+  /** Drop any live text widget without committing (a new edit, or teardown). */
+  closeTextEditor() {
+    if (!this.activeTextInput) return;
+    const input = this.activeTextInput;
+    this.activeTextInput = void 0;
+    this.textEditor?.cancel();
+    input.remove();
   }
   toWorld(event) {
     return this.host.viewport.clientToWorld(event.clientX, event.clientY, this.host.getRect());
@@ -183532,6 +194245,421 @@ function umlClasses(api) {
   return (model.getNodes?.() ?? []).filter((n3) => n3.getMetadata?.("kitClass")).map((n3) => new UmlClass(api, n3.id));
 }
 
+// libs/element/src/lib/stencil-kit/styles.ts
+var STENCIL_KIT_STYLE_ID = "grafloria-stencil-kit-styles";
+var CSS5 = `
+.gf-stencil {
+  --gf-st-bg: #fff; --gf-st-ink: #1e2436; --gf-st-mut: #6b7280;
+  --gf-st-line: #e5e7eb; --gf-st-accent: #3B52D9; --gf-st-hover: #f5f7ff;
+  display: flex; flex-direction: column; min-height: 0; height: 100%;
+  background: var(--gf-st-bg); color: var(--gf-st-ink);
+  font: 13px/1.4 ui-sans-serif, system-ui, -apple-system, sans-serif;
+  border-right: 1px solid var(--gf-st-line); box-sizing: border-box;
+}
+@media (prefers-color-scheme: dark) {
+  .gf-stencil {
+    --gf-st-bg: #161a24; --gf-st-ink: #e8ecfb; --gf-st-mut: #9aa4bf;
+    --gf-st-line: #2a3040; --gf-st-accent: #8fa2ff; --gf-st-hover: #1e2536;
+  }
+}
+.gf-stencil-search { padding: 10px; border-bottom: 1px solid var(--gf-st-line); }
+.gf-stencil-search input {
+  width: 100%; box-sizing: border-box; padding: 7px 10px; border-radius: 8px;
+  border: 1px solid var(--gf-st-line); background: var(--gf-st-bg);
+  color: var(--gf-st-ink); font: inherit; outline: none;
+}
+.gf-stencil-search input:focus { border-color: var(--gf-st-accent); }
+.gf-stencil-body { overflow: auto; flex: 1; min-height: 0; padding-bottom: 8px; }
+.gf-stencil-group > summary {
+  cursor: pointer; padding: 8px 10px; font-weight: 600; font-size: 12px;
+  letter-spacing: .02em; text-transform: uppercase; color: var(--gf-st-mut);
+  list-style: none; user-select: none; display: flex; align-items: center; gap: 6px;
+}
+.gf-stencil-group > summary::-webkit-details-marker { display: none; }
+.gf-stencil-group > summary::before { content: '\u25B8'; font-size: 10px; transition: transform .15s; }
+.gf-stencil-group[open] > summary::before { transform: rotate(90deg); }
+.gf-stencil-group > summary:hover { color: var(--gf-st-ink); }
+.gf-stencil-count { margin-left: auto; font-weight: 500; opacity: .7; text-transform: none; }
+.gf-stencil-items {
+  display: grid; grid-template-columns: repeat(auto-fill, minmax(74px, 1fr));
+  gap: 4px; padding: 2px 8px 10px;
+}
+.gf-stencil-item {
+  display: flex; flex-direction: column; align-items: center; gap: 4px;
+  padding: 8px 4px; border-radius: 8px; cursor: grab; border: 1px solid transparent;
+  text-align: center; background: none;
+}
+.gf-stencil-item:hover { background: var(--gf-st-hover); border-color: var(--gf-st-line); }
+.gf-stencil-item:active { cursor: grabbing; }
+.gf-stencil-item svg { display: block; overflow: visible; }
+.gf-stencil-label {
+  font-size: 10.5px; color: var(--gf-st-mut); line-height: 1.25;
+  display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical;
+  overflow: hidden; word-break: break-word;
+}
+.gf-stencil-item:hover .gf-stencil-label { color: var(--gf-st-ink); }
+.gf-stencil-empty { padding: 18px 12px; color: var(--gf-st-mut); font-size: 12px; text-align: center; }
+.gf-shapedata {
+  --gf-st-bg: #fff; --gf-st-ink: #1e2436; --gf-st-mut: #6b7280;
+  --gf-st-line: #e5e7eb; --gf-st-accent: #3B52D9;
+  display: flex; flex-direction: column; height: 100%; box-sizing: border-box;
+  background: var(--gf-st-bg); color: var(--gf-st-ink); overflow: auto;
+  font: 13px/1.4 ui-sans-serif, system-ui, -apple-system, sans-serif;
+  border-left: 1px solid var(--gf-st-line);
+}
+@media (prefers-color-scheme: dark) {
+  .gf-shapedata { --gf-st-bg: #161a24; --gf-st-ink: #e8ecfb; --gf-st-mut: #9aa4bf; --gf-st-line: #2a3040; --gf-st-accent: #8fa2ff; }
+}
+.gf-sd-title {
+  padding: 10px 12px; font-weight: 600; font-size: 12px; text-transform: uppercase;
+  letter-spacing: .02em; color: var(--gf-st-mut); border-bottom: 1px solid var(--gf-st-line);
+}
+.gf-sd-empty { padding: 16px 12px; color: var(--gf-st-mut); font-size: 12px; }
+.gf-sd-fields { display: flex; flex-direction: column; gap: 8px; padding: 12px; }
+.gf-sd-row { display: flex; flex-direction: column; gap: 3px; }
+.gf-sd-label { font-size: 11px; color: var(--gf-st-mut); }
+.gf-sd-input {
+  padding: 6px 8px; border: 1px solid var(--gf-st-line); border-radius: 7px;
+  background: var(--gf-st-bg); color: var(--gf-st-ink); font: inherit; outline: none; width: 100%; box-sizing: border-box;
+}
+.gf-sd-input:focus { border-color: var(--gf-st-accent); }
+.gf-sd-check { width: 16px; height: 16px; accent-color: var(--gf-st-accent); }
+
+/* The canvas while a stencil is held over it. */
+.gf-stencil-target { outline: 2px dashed var(--gf-st-accent); outline-offset: -3px; }
+`;
+function ensureStencilKitStyles(doc = document) {
+  if (doc.getElementById(STENCIL_KIT_STYLE_ID)) return;
+  const style = doc.createElement("style");
+  style.id = STENCIL_KIT_STYLE_ID;
+  style.textContent = CSS5;
+  doc.head.appendChild(style);
+}
+
+// libs/element/src/lib/stencil-kit/palette.ts
+var SVG_NS5 = "http://www.w3.org/2000/svg";
+var DND_TYPE = "application/x-grafloria-master";
+function thumbnail(master, box = 34) {
+  const svg = document.createElementNS(SVG_NS5, "svg");
+  svg.setAttribute("width", String(box));
+  svg.setAttribute("height", String(box));
+  svg.setAttribute("viewBox", `0 0 ${box} ${box}`);
+  svg.setAttribute("aria-hidden", "true");
+  const struct = master.structure ?? {};
+  const paint2 = struct.shape ?? {};
+  const w0 = Number(struct.size?.width) || 100;
+  const h0 = Number(struct.size?.height) || 60;
+  const pad = 3;
+  const s = Math.min((box - pad * 2) / w0, (box - pad * 2) / h0);
+  const w = Math.max(6, w0 * s);
+  const h = Math.max(6, h0 * s);
+  let el;
+  try {
+    const spec = getShape(paint2.type).outline(w, h);
+    el = document.createElementNS(SVG_NS5, spec.el);
+    for (const [k, v] of Object.entries(spec.geom)) el.setAttribute(k, String(v));
+  } catch {
+    el = document.createElementNS(SVG_NS5, "rect");
+    el.setAttribute("width", String(w));
+    el.setAttribute("height", String(h));
+    el.setAttribute("rx", "3");
+  }
+  el.setAttribute("fill", paint2.fill ?? "#eef1fb");
+  el.setAttribute("stroke", paint2.stroke ?? "#3B52D9");
+  el.setAttribute("stroke-width", String(Math.min(Number(paint2.strokeWidth) || 1.5, 2)));
+  const g = document.createElementNS(SVG_NS5, "g");
+  g.setAttribute("transform", `translate(${(box - w) / 2} ${(box - h) / 2})`);
+  g.appendChild(el);
+  svg.appendChild(g);
+  return svg;
+}
+function subtree(diagram, root) {
+  const out = [root];
+  const stack = [root];
+  while (stack.length) {
+    const n3 = stack.pop();
+    const ids = Array.from(n3?.children ?? []);
+    for (const id of ids) {
+      const c = diagram.getNode(id);
+      if (c) {
+        out.push(c);
+        stack.push(c);
+      }
+    }
+  }
+  return out;
+}
+function bindStencilPalette(api, hosts, options = {}) {
+  ensureStencilKitStyles(hosts.palette.ownerDocument ?? document);
+  const stencils = options.stencils ?? listStencils();
+  const collapsed = new Set(options.collapsed ?? stencils.slice(1).map((s) => s.id));
+  const { palette, canvas } = hosts;
+  let query = "";
+  palette.classList.add("gf-stencil");
+  palette.innerHTML = "";
+  let input = null;
+  if (options.search !== false) {
+    const wrap = document.createElement("div");
+    wrap.className = "gf-stencil-search";
+    input = document.createElement("input");
+    input.type = "search";
+    input.placeholder = "Search shapes\u2026";
+    input.setAttribute("aria-label", "Search shapes");
+    input.addEventListener("input", () => {
+      query = input.value.trim().toLowerCase();
+      renderList();
+    });
+    wrap.appendChild(input);
+    palette.appendChild(wrap);
+  }
+  const body = document.createElement("div");
+  body.className = "gf-stencil-body";
+  palette.appendChild(body);
+  const matches = (m) => {
+    if (!query) return true;
+    const meta = m.meta ?? {};
+    const hay = [meta.name, m.id, ...meta.tags ?? []].join(" ").toLowerCase();
+    return hay.includes(query);
+  };
+  function renderList() {
+    body.innerHTML = "";
+    let shown = 0;
+    for (const stencil of stencils) {
+      const hits = stencil.masters.filter(matches);
+      if (hits.length === 0) continue;
+      shown += hits.length;
+      const group = document.createElement("details");
+      group.className = "gf-stencil-group";
+      group.open = query ? true : !collapsed.has(stencil.id);
+      group.addEventListener("toggle", () => {
+        if (query) return;
+        if (group.open) collapsed.delete(stencil.id);
+        else collapsed.add(stencil.id);
+      });
+      const summary = document.createElement("summary");
+      summary.append(stencil.name);
+      const count2 = document.createElement("span");
+      count2.className = "gf-stencil-count";
+      count2.textContent = String(hits.length);
+      summary.appendChild(count2);
+      summary.title = stencil.description;
+      group.appendChild(summary);
+      const items = document.createElement("div");
+      items.className = "gf-stencil-items";
+      for (const master of hits) items.appendChild(itemEl(master));
+      group.appendChild(items);
+      body.appendChild(group);
+    }
+    if (shown === 0) {
+      const empty2 = document.createElement("div");
+      empty2.className = "gf-stencil-empty";
+      empty2.textContent = query ? `No shapes match \u201C${query}\u201D.` : "No stencils.";
+      body.appendChild(empty2);
+    }
+  }
+  function itemEl(master) {
+    const meta = master.meta ?? {};
+    const el = document.createElement("div");
+    el.className = "gf-stencil-item";
+    el.draggable = true;
+    el.dataset["masterId"] = master.id;
+    el.title = meta.description ? `${meta.name} \u2014 ${meta.description}` : meta.name ?? master.id;
+    el.appendChild(thumbnail(master));
+    const label = document.createElement("span");
+    label.className = "gf-stencil-label";
+    label.textContent = meta.name ?? master.id;
+    el.appendChild(label);
+    el.addEventListener("dragstart", (e) => {
+      const dt = e.dataTransfer;
+      if (!dt) return;
+      dt.setData(DND_TYPE, master.id);
+      dt.setData("text/plain", meta.name ?? master.id);
+      dt.effectAllowed = "copy";
+    });
+    return el;
+  }
+  const heldMaster = (e) => {
+    const dt = e.dataTransfer;
+    if (!dt) return null;
+    return dt.types.includes(DND_TYPE) ? dt.getData(DND_TYPE) || "" : null;
+  };
+  const onDragOver = (e) => {
+    if (heldMaster(e) === null) return;
+    e.preventDefault();
+    if (e.dataTransfer) e.dataTransfer.dropEffect = "copy";
+    canvas.classList.add("gf-stencil-target");
+  };
+  const onDragLeave = (e) => {
+    if (e.relatedTarget && canvas.contains(e.relatedTarget)) return;
+    canvas.classList.remove("gf-stencil-target");
+  };
+  const onDrop = (e) => {
+    const id = heldMaster(e);
+    canvas.classList.remove("gf-stencil-target");
+    if (!id) return;
+    e.preventDefault();
+    const rect = canvas.getBoundingClientRect();
+    void place(id, api.viewport.clientToWorld(e.clientX, e.clientY, rect));
+  };
+  canvas.addEventListener("dragover", onDragOver);
+  canvas.addEventListener("dragleave", onDragLeave);
+  canvas.addEventListener("drop", onDrop);
+  async function place(masterId, world) {
+    const engine = api.getEngine();
+    const diagram = api.getModel();
+    const registry5 = engine?.templateRegistry;
+    const master = registry5?.get(masterId);
+    if (!master || !diagram) return null;
+    const struct = master.structure ?? {};
+    const w = Number(struct.size?.width) || 100;
+    const h = Number(struct.size?.height) || 60;
+    const at = { x: world.x - w / 2, y: world.y - h / 2 };
+    const factory = new NodeFactory(registry5, diagram);
+    const root = factory.createFromTemplate(masterId, options.data?.(master) ?? {}, at);
+    const created = subtree(diagram, root);
+    const cmds = created.map((n3) => new AddNodeCommand(n3));
+    for (const n3 of [...created].reverse()) diagram.removeNode(n3.id);
+    await engine.commandManager.execute(new BatchCommand(`Place ${master.meta?.name ?? masterId}`, cmds));
+    options.onPlace?.({ master, nodeId: root.id, x: at.x, y: at.y });
+    return root.id;
+  }
+  renderList();
+  return {
+    setSearch(q) {
+      query = (q ?? "").trim().toLowerCase();
+      if (input) input.value = q ?? "";
+      renderList();
+    },
+    place,
+    destroy() {
+      canvas.removeEventListener("dragover", onDragOver);
+      canvas.removeEventListener("dragleave", onDragLeave);
+      canvas.removeEventListener("drop", onDrop);
+      canvas.classList.remove("gf-stencil-target");
+      palette.classList.remove("gf-stencil");
+      palette.innerHTML = "";
+    }
+  };
+}
+
+// libs/element/src/lib/stencil-kit/shape-data.ts
+function schemaFor(engine, node) {
+  const templateId = node?.getMetadata?.("templateId");
+  if (!templateId) return null;
+  const master = engine?.templateRegistry?.get?.(templateId);
+  const props = master?.dataSchema?.properties;
+  return props && typeof props === "object" ? props : null;
+}
+function humanize(key) {
+  const spaced = key.replace(/[_-]+/g, " ").replace(/([a-z0-9])([A-Z])/g, "$1 $2");
+  return spaced.charAt(0).toUpperCase() + spaced.slice(1);
+}
+function bindShapeDataPanel(api, host, options = {}) {
+  ensureStencilKitStyles(host.ownerDocument ?? document);
+  host.classList.add("gf-shapedata");
+  const title = options.title ?? "Shape data";
+  const emptyText = options.emptyText ?? "Select a shape to edit its data.";
+  function render2() {
+    host.innerHTML = "";
+    const head = document.createElement("div");
+    head.className = "gf-sd-title";
+    head.textContent = title;
+    host.appendChild(head);
+    const diagram = api.getModel();
+    const engine = api.getEngine();
+    const selected = diagram?.getSelectedNodes?.() ?? [];
+    if (selected.length !== 1) {
+      const empty2 = document.createElement("div");
+      empty2.className = "gf-sd-empty";
+      empty2.textContent = selected.length > 1 ? "Select a single shape." : emptyText;
+      host.appendChild(empty2);
+      return;
+    }
+    const node = selected[0];
+    const props = schemaFor(engine, node);
+    if (!props || Object.keys(props).length === 0) {
+      const empty2 = document.createElement("div");
+      empty2.className = "gf-sd-empty";
+      empty2.textContent = "This shape has no data fields.";
+      host.appendChild(empty2);
+      return;
+    }
+    const form = document.createElement("div");
+    form.className = "gf-sd-fields";
+    for (const [key, prop] of Object.entries(props)) {
+      const row = document.createElement("label");
+      row.className = "gf-sd-row";
+      const label = document.createElement("span");
+      label.className = "gf-sd-label";
+      label.textContent = prop.title ?? humanize(key);
+      if (prop.description) row.title = prop.description;
+      row.appendChild(label);
+      const current = node.getData?.(key) ?? prop.default ?? "";
+      const commit = (value) => {
+        void engine.commandManager.execute(new SetNodeDataCommand(node.id, { [key]: value }));
+        options.onEdit?.({ nodeId: node.id, key, value });
+      };
+      let field;
+      if (Array.isArray(prop.enum) && prop.enum.length > 0) {
+        const sel = document.createElement("select");
+        sel.className = "gf-sd-input";
+        for (const opt of prop.enum) {
+          const o = document.createElement("option");
+          o.value = String(opt);
+          o.textContent = String(opt);
+          if (String(opt) === String(current)) o.selected = true;
+          sel.appendChild(o);
+        }
+        sel.addEventListener("change", () => commit(sel.value));
+        field = sel;
+      } else if (prop.type === "boolean") {
+        const box = document.createElement("input");
+        box.type = "checkbox";
+        box.className = "gf-sd-check";
+        box.checked = current === true || current === "true";
+        box.addEventListener("change", () => commit(box.checked));
+        field = box;
+      } else {
+        const input = document.createElement("input");
+        const numeric = prop.type === "number" || prop.type === "integer";
+        input.type = numeric ? "number" : "text";
+        input.className = "gf-sd-input";
+        input.value = current === void 0 || current === null ? "" : String(current);
+        input.addEventListener("change", () => {
+          if (numeric) {
+            const n3 = input.value === "" ? null : Number(input.value);
+            if (n3 !== null && Number.isNaN(n3)) {
+              input.value = String(node.getData?.(key) ?? "");
+              return;
+            }
+            commit(n3);
+          } else {
+            commit(input.value);
+          }
+        });
+        input.addEventListener("keydown", (e) => {
+          e.stopPropagation();
+          if (e.key === "Enter") input.blur();
+        });
+        field = input;
+      }
+      row.appendChild(field);
+      form.appendChild(row);
+    }
+    host.appendChild(form);
+  }
+  const off = api.on("selection:change", () => render2());
+  render2();
+  return {
+    refresh: render2,
+    destroy() {
+      off?.();
+      host.classList.remove("gf-shapedata");
+      host.innerHTML = "";
+    }
+  };
+}
+
 // libs/element/src/index.ts
 defineGrafloriaFlow();
 export {
@@ -183551,6 +194679,7 @@ export {
   AddPortCommand,
   AddStrokeCommand,
   AddToGroupCommand,
+  AlignCommand,
   AnimationColorSchemes,
   AnimationLifecycleManager,
   AnimationPerformanceService,
@@ -183669,6 +194798,7 @@ export {
   DijkstraRouter,
   DirtyRegionTracker,
   DisposableStore,
+  DistributeCommand,
   DomEventBinder,
   DrawTool,
   DuplicateCommand,
@@ -183863,6 +194993,7 @@ export {
   SetLinkLabelCommand,
   SetLinkLabelsCommand,
   SetLinkPointsCommand,
+  SetNodeDataCommand,
   SetNodeLabelCommand,
   SetNodeStyleCommand,
   SetNodeZIndexCommand,
@@ -183950,6 +195081,8 @@ export {
   bindCardEditing,
   bindDashboardGrid,
   bindPresence,
+  bindShapeDataPanel,
+  bindStencilPalette,
   boardHeightFor,
   boundsIntersect,
   boundsOfPoints,
@@ -183972,6 +195105,7 @@ export {
   buildShapeBody,
   buildShapeSelection,
   buildShapeShadow,
+  builtInStencils,
   bumpMutationEpoch,
   bundleNormal,
   bytesToBase64,
@@ -184102,6 +195236,7 @@ export {
   ensureDiagramKitStyles,
   ensureMotionPreferenceStyles,
   ensureScreenLayer,
+  ensureStencilKitStyles,
   entityOf,
   erDiagram,
   erMarkers,
@@ -184161,6 +195296,7 @@ export {
   generateStateFromDiagram,
   generateTokenBridgeBlock,
   generateUUID,
+  generatedTemplates,
   geometryOf,
   getAllTemplates,
   getAnchor,
@@ -184193,6 +195329,7 @@ export {
   getShape,
   getShapeDefinition,
   getShapeRegistryVersion,
+  getStencil,
   getStyle,
   getStyleRegistryVersion,
   getTemplatesByCategory,
@@ -184278,6 +195415,7 @@ export {
   listLinkTemplates,
   listMarkers,
   listShapes,
+  listStencils,
   listStyles,
   listTools,
   loadCanvasPlugins,
@@ -184390,6 +195528,7 @@ export {
   registerDiagramMigration,
   registerERDTypes,
   registerFlowchartTypes,
+  registerGeneratedTemplates,
   registerLabelTemplate,
   registerLinkTemplate,
   registerMarker,
@@ -184397,6 +195536,7 @@ export {
   registerPathShape,
   registerPortLayout,
   registerShape,
+  registerStencils,
   registerTemplateLibrary,
   registerTemplatesByCategory,
   registerTemplatesById,
