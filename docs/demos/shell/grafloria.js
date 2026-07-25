@@ -194419,6 +194419,38 @@ function ensureStencilKitStyles(doc = document) {
 // libs/element/src/lib/stencil-kit/palette.ts
 var SVG_NS5 = "http://www.w3.org/2000/svg";
 var DND_TYPE = "application/x-grafloria-master";
+var UML_CLASSIFIERS = {
+  "uml-class": null,
+  "uml-abstract-class": "\xABabstract\xBB",
+  "uml-interface": "\xABinterface\xBB",
+  "uml-enumeration": "\xABenumeration\xBB",
+  "uml-datatype": "\xABdataType\xBB",
+  "uml-primitivetype": "\xABprimitive\xBB",
+  "uml-signal": "\xABsignal\xBB",
+  "uml-object": null
+};
+var BPMN_EVENT_GLYPH = {
+  "bpmn-message-event": "\u2709",
+  "bpmn-timer-event": "\u23F1",
+  "bpmn-error-event": "\u26A1"
+};
+function applyNotationPanel(node, masterId, master) {
+  const glyph = BPMN_EVENT_GLYPH[masterId];
+  if (glyph) {
+    node.setMetadata("panel", { icon: { glyph, size: 16, corner: "tl" } });
+    return;
+  }
+  if (!(masterId in UML_CLASSIFIERS)) return;
+  const stereotype = UML_CLASSIFIERS[masterId];
+  const name = master.meta?.name ?? "Class";
+  const rows = masterId === "uml-enumeration" ? [{ text: "VALUE_A" }, { text: "VALUE_B" }] : [{ text: "+ field: Type" }, { text: "+ method(): void" }];
+  node.setMetadata("panel", {
+    header: { text: stereotype ? `${stereotype} ${name}` : name },
+    rows,
+    rowHeight: 18
+  });
+  node.setLabel?.("");
+}
 function thumbnail(master, box = 34) {
   const svg = document.createElementNS(SVG_NS5, "svg");
   svg.setAttribute("width", String(box));
@@ -194602,6 +194634,7 @@ function bindStencilPalette(api, hosts, options = {}) {
         if (n3.getMetadata?.("useHTMLLayer") === true) n3.setMetadata("useHTMLLayer", false);
       }
     }
+    applyNotationPanel(root, masterId, master);
     const cmds = created.map((n3) => new AddNodeCommand(n3));
     for (const n3 of [...created].reverse()) diagram.removeNode(n3.id);
     await engine.commandManager.execute(new BatchCommand(`Place ${master.meta?.name ?? masterId}`, cmds));

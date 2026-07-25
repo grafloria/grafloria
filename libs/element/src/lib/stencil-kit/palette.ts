@@ -64,6 +64,48 @@ export interface StencilPaletteHandle {
   destroy(): void;
 }
 
+
+/** UML classifiers get a name compartment + a member compartment. */
+const UML_CLASSIFIERS: Record<string, string | null> = {
+  'uml-class': null, 'uml-abstract-class': '«abstract»', 'uml-interface': '«interface»',
+  'uml-enumeration': '«enumeration»', 'uml-datatype': '«dataType»',
+  'uml-primitivetype': '«primitive»', 'uml-signal': '«signal»', 'uml-object': null,
+};
+
+/** BPMN event types carry their trigger glyph inside the circle. */
+const BPMN_EVENT_GLYPH: Record<string, string> = {
+  'bpmn-message-event': '✉', 'bpmn-timer-event': '⏱', 'bpmn-error-event': '⚡',
+};
+
+/**
+ * Give a placed master its notation furniture: UML compartments, or a BPMN
+ * event trigger glyph. Both ride `metadata.panel`, so they paint in SVG and
+ * survive export — see the note at the call site.
+ */
+function applyNotationPanel(node: any, masterId: string, master: NodeTemplate): void {
+  const glyph = BPMN_EVENT_GLYPH[masterId];
+  if (glyph) {
+    node.setMetadata('panel', { icon: { glyph, size: 16, corner: 'tl' } });
+    return;
+  }
+  if (!(masterId in UML_CLASSIFIERS)) return;
+  const stereotype = UML_CLASSIFIERS[masterId];
+  const name = (master as any).meta?.name ?? 'Class';
+  // Placeholder members, so a dropped classifier looks like a UML card the user
+  // can then edit rather than an empty box.
+  const rows = masterId === 'uml-enumeration'
+    ? [{ text: 'VALUE_A' }, { text: 'VALUE_B' }]
+    : [{ text: '+ field: Type' }, { text: '+ method(): void' }];
+  node.setMetadata('panel', {
+    header: { text: stereotype ? `${stereotype} ${name}` : name },
+    rows,
+    rowHeight: 18,
+  });
+  // The header IS the classifier's name, so the node's own centred label would
+  // simply repeat it in the gap between the compartments.
+  node.setLabel?.('');
+}
+
 /** A thumbnail SVG for a master, drawn from its real outline + declared paint. */
 function thumbnail(master: NodeTemplate, box = 34): SVGSVGElement {
   const svg = document.createElementNS(SVG_NS, 'svg');
@@ -303,6 +345,15 @@ export function bindStencilPalette(
         if (n.getMetadata?.('useHTMLLayer') === true) n.setMetadata('useHTMLLayer', false);
       }
     }
+
+    // COMPARTMENTS & EVENT MARKERS. `metadata.panel` drives the renderer's
+    // composite-panel overlay (header band + stacked rows + a corner glyph) —
+    // a complete, themed, SVG-NATIVE subsystem that shipped with zero callers.
+    // Using it here rather than the UML kit's `metadata.html` route is
+    // deliberate: an HTML-layer card is not vector-exportable and depends on a
+    // layer the plain SVG embed does not run — the exact dependency that made
+    // every dropped master render blank.
+    applyNotationPanel(root, masterId, master);
 
     // Serialize into commands BEFORE detaching (AddNodeCommand snapshots in its
     // constructor), then detach and replay through the command manager.
