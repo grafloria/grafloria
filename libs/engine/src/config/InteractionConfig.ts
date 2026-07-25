@@ -224,6 +224,15 @@ export interface InteractionConfig {
   enableGroupMembershipOnDrop: boolean;
 
   /**
+   * T10/visio — double-click a node to edit its label in place. The editor
+   * (session + undoable commit) shipped in the renderer but was auto-wired ONLY
+   * in the Angular wrapper, so a vanilla / React / Vue embed got a
+   * `node:doubleclick` event and no caret. Default false (opt-in) so a host that
+   * already answers that event with its own editor keeps sole control.
+   */
+  enableInPlaceTextEdit: boolean;
+
+  /**
    * wave12/connect-ergonomics (gap 3) — React-Flow "Easy Connect": make the
    * whole node BODY a connection handle. A press on a node body (not over a
    * specific port) starts a connection from the node's nearest/default port
@@ -405,6 +414,7 @@ export const DEFAULT_INTERACTION_CONFIG: InteractionConfig = {
   // changes the feel for every embedder. The Visio editor surface enables it.
   enableHelperLines: false,
   enableGroupMembershipOnDrop: false,
+  enableInPlaceTextEdit: false,
   enableEasyConnect: false,
   easyConnectModifier: 'none',
 };

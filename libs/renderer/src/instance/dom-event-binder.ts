@@ -23,6 +23,7 @@ import type { ToolHandle } from '../interaction/selection-tools';
 import { portWorldPosition } from '../svg/port-positioning';
 import { delegateWheelToScrollable } from './wheel-scroll-yield';
 import { SnapController } from '../interaction/snapping';
+import { InPlaceTextEditor, type TextEditTarget } from '../interaction/in-place-editor';
 import type { ProximityCandidate } from '../interaction/snapping';
 
 /**
@@ -156,6 +157,9 @@ export class DomEventBinder {
    * a highlight it painted can always be cleared by the same instance.
    */
   private snap?: SnapController;
+  /** T10 — the in-place label editor + its live DOM widget (lazy). */
+  private textEditor?: InPlaceTextEditor;
+  private activeTextInput?: HTMLInputElement;
   /** T8 — lazily built per diagram; rebuilt when the diagram identity changes. */
   private membership?: { service: GroupMembershipService; diagram: unknown };
   /** The proximity candidate currently highlighted mid-drag (for commit on drop). */
@@ -408,6 +412,7 @@ export class DomEventBinder {
     this.groupDrag = null;
     this.spaceKeyPressed = false;
     this.engine()?.setSnapGuides(null);
+    this.closeTextEditor(); // T10: never leave a caret floating over a dead canvas
   }
 
   // ==========================================================================
@@ -1241,6 +1246,14 @@ export class DomEventBinder {
       const node = engine.getDiagram()?.getNodeAtPosition(worldX, worldY);
       if (node) {
         this.host.emit('node:doubleclick', { node, world: { x: worldX, y: worldY } });
+        // T10/visio — double-click EDITS the label. InPlaceTextEditor (session +
+        // undoable commit) was real but auto-wired only in the Angular wrapper,
+        // so a vanilla/React/Vue embed got an event and no editor. Opt-in via
+        // `enableInPlaceTextEdit`; the host can still prefer its own editor by
+        // leaving it off and handling `node:doubleclick`.
+        if (engine.getInteractionConfig().enableInPlaceTextEdit === true) {
+          this.openTextEditor(engine, { type: 'node', nodeId: node.id });
+        }
       }
       return;
     }
@@ -1949,6 +1962,92 @@ export class DomEventBinder {
       case 'none':
       default: return true;
     }
+  }
+
+  /**
+   * T10/visio — open the transient text widget over a node's label.
+   *
+   * The SESSION (what text, where, single- or multi-line) and the COMMIT (an
+   * undoable command) both come from `InPlaceTextEditor`; the only thing this
+   * adds is the DOM input and where to put it — mapped through the live
+   * world→client transform so it lands on the label at any zoom or pan.
+   */
+  private openTextEditor(engine: DiagramEngine, target: TextEditTarget): void {
+    if (!this.textEditor) this.textEditor = new InPlaceTextEditor();
+    const editor = this.textEditor;
+    this.closeTextEditor();
+
+    const session = editor.begin(engine, target);
+    if (!session) return;
+
+    const rect = this.host.getRect();
+    const at = this.host.viewport.worldToClient(session.center.x, session.center.y, rect);
+
+    const input = document.createElement('input');
+    input.type = 'text';
+    input.value = session.value;
+    input.className = 'grafloria-text-editor';
+    input.setAttribute('aria-label', 'Edit label');
+    // Fixed positioning keys off the same client coords worldToClient reports,
+    // so the widget needs no assumptions about the container's offset parent.
+    Object.assign(input.style, {
+      position: 'fixed',
+      left: `${at.x}px`,
+      top: `${at.y}px`,
+      transform: 'translate(-50%, -50%)',
+      zIndex: '1000',
+      font: '12px sans-serif',
+      textAlign: 'center',
+      minWidth: '40px',
+      padding: '1px 4px',
+    } as Partial<CSSStyleDeclaration>);
+
+    let settled = false;
+    const cleanup = () => {
+      input.removeEventListener('keydown', onKeyDown);
+      input.removeEventListener('blur', commit);
+      input.remove();
+      if (this.activeTextInput === input) this.activeTextInput = undefined;
+    };
+    const commit = () => {
+      if (settled) return;
+      settled = true;
+      const command = editor.commit(engine, input.value);
+      cleanup();
+      if (command) void engine.commandManager.execute(command);
+      this.host.requestRender();
+      this.emitNodesChange();
+    };
+    const cancel = () => {
+      if (settled) return;
+      settled = true;
+      editor.cancel();
+      cleanup();
+      this.host.requestRender();
+    };
+    const onKeyDown = (e: KeyboardEvent) => {
+      // The canvas' own key handling (Delete, Escape, arrows) must not fire
+      // while a caret is live in this input.
+      e.stopPropagation();
+      if (e.key === 'Enter') { e.preventDefault(); commit(); }
+      else if (e.key === 'Escape') { e.preventDefault(); cancel(); }
+    };
+
+    input.addEventListener('keydown', onKeyDown);
+    input.addEventListener('blur', commit);
+    (this.container.ownerDocument ?? document).body.appendChild(input);
+    this.activeTextInput = input;
+    input.focus();
+    input.select();
+  }
+
+  /** Drop any live text widget without committing (a new edit, or teardown). */
+  private closeTextEditor(): void {
+    if (!this.activeTextInput) return;
+    const input = this.activeTextInput;
+    this.activeTextInput = undefined;
+    this.textEditor?.cancel();
+    input.remove();
   }
 
   private toWorld(event: MouseEvent): { x: number; y: number } {
