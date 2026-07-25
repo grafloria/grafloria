@@ -122,6 +122,26 @@
     "error": null
   },
   {
+    "rel": "diagrams/shape-data.html",
+    "slug": "diagrams__shape-data",
+    "boot": "/var/folders/pd/8g99tsp56714y1x3d39xqs180000gn/T/grafloria-visual-a/diagrams__shape-data.boot.png",
+    "after": "/var/folders/pd/8g99tsp56714y1x3d39xqs180000gn/T/grafloria-visual-a/diagrams__shape-data.after.png",
+    "reactflow": null,
+    "pro": false,
+    "pageErrors": [],
+    "error": null
+  },
+  {
+    "rel": "diagrams/stencil-palette.html",
+    "slug": "diagrams__stencil-palette",
+    "boot": "/var/folders/pd/8g99tsp56714y1x3d39xqs180000gn/T/grafloria-visual-a/diagrams__stencil-palette.boot.png",
+    "after": "/var/folders/pd/8g99tsp56714y1x3d39xqs180000gn/T/grafloria-visual-a/diagrams__stencil-palette.after.png",
+    "reactflow": null,
+    "pro": false,
+    "pageErrors": [],
+    "error": null
+  },
+  {
     "rel": "diagrams/table-er.html",
     "slug": "diagrams__table-er",
     "boot": "/var/folders/pd/8g99tsp56714y1x3d39xqs180000gn/T/grafloria-visual-a/diagrams__table-er.boot.png",
@@ -138,6 +158,16 @@
     "after": "/var/folders/pd/8g99tsp56714y1x3d39xqs180000gn/T/grafloria-visual-a/diagrams__uml-relationships.after.png",
     "reactflow": "Class Diagram",
     "pro": true,
+    "pageErrors": [],
+    "error": null
+  },
+  {
+    "rel": "diagrams/visio-editor.html",
+    "slug": "diagrams__visio-editor",
+    "boot": "/var/folders/pd/8g99tsp56714y1x3d39xqs180000gn/T/grafloria-visual-a/diagrams__visio-editor.boot.png",
+    "after": "/var/folders/pd/8g99tsp56714y1x3d39xqs180000gn/T/grafloria-visual-a/diagrams__visio-editor.after.png",
+    "reactflow": null,
+    "pro": false,
     "pageErrors": [],
     "error": null
   },
@@ -279,6 +309,16 @@
     "after": "/var/folders/pd/8g99tsp56714y1x3d39xqs180000gn/T/grafloria-visual-a/grouping__collapse-expand.after.png",
     "reactflow": "Collapsible / Expandable",
     "pro": true,
+    "pageErrors": [],
+    "error": null
+  },
+  {
+    "rel": "grouping/drop-to-contain.html",
+    "slug": "grouping__drop-to-contain",
+    "boot": "/var/folders/pd/8g99tsp56714y1x3d39xqs180000gn/T/grafloria-visual-a/grouping__drop-to-contain.boot.png",
+    "after": "/var/folders/pd/8g99tsp56714y1x3d39xqs180000gn/T/grafloria-visual-a/grouping__drop-to-contain.after.png",
+    "reactflow": null,
+    "pro": false,
     "pageErrors": [],
     "error": null
   },
@@ -765,6 +805,16 @@
     "boot": "/var/folders/pd/8g99tsp56714y1x3d39xqs180000gn/T/grafloria-visual-a/nodes__easy-connect.boot.png",
     "after": "/var/folders/pd/8g99tsp56714y1x3d39xqs180000gn/T/grafloria-visual-a/nodes__easy-connect.after.png",
     "reactflow": "Easy Connect",
+    "pro": false,
+    "pageErrors": [],
+    "error": null
+  },
+  {
+    "rel": "nodes/edit-label.html",
+    "slug": "nodes__edit-label",
+    "boot": "/var/folders/pd/8g99tsp56714y1x3d39xqs180000gn/T/grafloria-visual-a/nodes__edit-label.boot.png",
+    "after": "/var/folders/pd/8g99tsp56714y1x3d39xqs180000gn/T/grafloria-visual-a/nodes__edit-label.after.png",
+    "reactflow": null,
     "pro": false,
     "pageErrors": [],
     "error": null

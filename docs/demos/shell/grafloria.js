@@ -170446,6 +170446,15 @@ function polylineLength(points) {
   }
   return total;
 }
+var MIN_LABEL_FONT_PX = 8;
+function fitFontSize(text, maxWidth, base) {
+  if (!text || !isFinite(maxWidth) || maxWidth <= 0) return base;
+  let longest = 0;
+  for (const token of text.split(/[\s-]+/)) longest = Math.max(longest, token.length);
+  if (longest === 0) return base;
+  const needed = maxWidth / (longest * 0.6);
+  return needed >= base ? base : Math.max(MIN_LABEL_FONT_PX, Math.floor(needed));
+}
 var _SVGRenderer = class _SVGRenderer {
   constructor(engine, config = {}, theme) {
     this.engine = engine;
@@ -173793,7 +173802,10 @@ var _SVGRenderer = class _SVGRenderer {
       width,
       height
     );
-    const fontSize = this.theme.typography.fontSize.md;
+    const label = String(node.getLabel());
+    const baseFont = this.theme.typography.fontSize.md;
+    const fontSize = fitFontSize(label, inner.w, baseFont);
+    const shrunk = fontSize < baseFont;
     const lineHeight = fontSize * 1.2;
     const maxLines = Math.max(1, Math.floor(inner.h / lineHeight));
     const clipId = `node-clip-${node.id}`;
@@ -173809,7 +173821,7 @@ var _SVGRenderer = class _SVGRenderer {
       ]
     };
     const text = renderTextBlock({
-      text: String(node.getLabel()),
+      text: label,
       x: inner.x + inner.w / 2,
       y: inner.y + inner.h / 2,
       maxWidth: inner.w,
@@ -173822,10 +173834,17 @@ var _SVGRenderer = class _SVGRenderer {
       nonInteractive: true,
       // CSS mode lets `.diagram-label` drive font/fill; programmatic mode emits them.
       className: this.config.useCSSMode ? "diagram-label" : void 0,
-      emitFontSize: !this.config.useCSSMode,
+      // In CSS mode `.diagram-label` normally owns the font. A shrink-to-fit is
+      // geometry, not theming, so it MUST be emitted inline or the label keeps
+      // the stylesheet's size and overflows exactly as before.
+      emitFontSize: !this.config.useCSSMode || shrunk,
       color: this.config.useCSSMode ? void 0 : this.theme.colors.text.primary,
       fontWeight: this.config.useCSSMode ? void 0 : this.theme.typography.fontWeight.medium
     });
+    if (shrunk) {
+      const props = text.props;
+      props["style"] = { ...props["style"] ?? {}, fontSize: `${fontSize}px` };
+    }
     return [clip, text];
   }
   renderNodeShape(node, styles, isHovered) {
@@ -195292,6 +195311,7 @@ export {
   findCycles,
   findPortGroup,
   fitCmdsToBox,
+  fitFontSize,
   flattenPath,
   followPresenter,
   fontFaceCss,

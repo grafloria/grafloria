@@ -299,6 +299,27 @@ function polylineLength(points: Array<{ x: number; y: number }>): number {
  * Renders diagram to VNode tree for framework-agnostic consumption
  * Integrates with engine's performance features (SpatialIndex, dirty marking, LOD)
  */
+/**
+ * The font size at which `text`'s widest UNBREAKABLE token fits `maxWidth`.
+ *
+ * `wrapText` breaks on spaces and hyphens only, so a single long word cannot be
+ * wrapped and simply overflows its shape's inner box, where the clip path cuts
+ * it mid-glyph. Shrinking is what a user expects (and what Visio does); the
+ * floor keeps a label legible rather than shrinking it to nothing — past that
+ * point the existing ellipsis behaviour takes over.
+ */
+const MIN_LABEL_FONT_PX = 8;
+export function fitFontSize(text: string, maxWidth: number, base: number): number {
+  if (!text || !isFinite(maxWidth) || maxWidth <= 0) return base;
+  // Longest token AFTER the breaks wrapText can actually make (spaces, hyphens).
+  let longest = 0;
+  for (const token of text.split(/[\s-]+/)) longest = Math.max(longest, token.length);
+  if (longest === 0) return base;
+  // Same 0.6em average-glyph estimate the wrap engine uses, so both agree.
+  const needed = maxWidth / (longest * 0.6);
+  return needed >= base ? base : Math.max(MIN_LABEL_FONT_PX, Math.floor(needed));
+}
+
 export class SVGRenderer implements IRenderer {
   readonly mode = 'svg' as const;
 
@@ -4989,7 +5010,15 @@ export class SVGRenderer implements IRenderer {
       height
     );
 
-    const fontSize = this.theme.typography.fontSize.md as number;
+    const label = String(node.getLabel());
+    // SHRINK-TO-FIT (Visio does this too). `wrapText` can only break on spaces
+    // and hyphens, so a single long token — "Decision" in a diamond's 50px inner
+    // box, "Connector" in a 36px circle — stayed one over-wide line and the clip
+    // path sheared it ("Decisior", "nnec"). Scale the font down just enough for
+    // the widest unbreakable token to fit, with a legibility floor.
+    const baseFont = this.theme.typography.fontSize.md as number;
+    const fontSize = fitFontSize(label, inner.w, baseFont);
+    const shrunk = fontSize < baseFont;
     const lineHeight = fontSize * 1.2;
     const maxLines = Math.max(1, Math.floor(inner.h / lineHeight));
     const clipId = `node-clip-${node.id}`;
@@ -5007,7 +5036,7 @@ export class SVGRenderer implements IRenderer {
     };
 
     const text = renderTextBlock({
-      text: String(node.getLabel()),
+      text: label,
       x: inner.x + inner.w / 2,
       y: inner.y + inner.h / 2,
       maxWidth: inner.w,
@@ -5020,10 +5049,22 @@ export class SVGRenderer implements IRenderer {
       nonInteractive: true,
       // CSS mode lets `.diagram-label` drive font/fill; programmatic mode emits them.
       className: this.config.useCSSMode ? 'diagram-label' : undefined,
-      emitFontSize: !this.config.useCSSMode,
+      // In CSS mode `.diagram-label` normally owns the font. A shrink-to-fit is
+      // geometry, not theming, so it MUST be emitted inline or the label keeps
+      // the stylesheet's size and overflows exactly as before.
+      emitFontSize: !this.config.useCSSMode || shrunk,
       color: this.config.useCSSMode ? undefined : (this.theme.colors.text.primary as string),
       fontWeight: this.config.useCSSMode ? undefined : (this.theme.typography.fontWeight.medium as number),
     });
+
+    // A shrink must WIN over `.diagram-label`'s font-size: `fontSize` is emitted
+    // as an SVG presentation attribute, and any CSS rule outranks those — which
+    // is why emitting it alone left the label at the stylesheet size and still
+    // clipped. An inline style beats the class.
+    if (shrunk) {
+      const props = text.props as Record<string, unknown>;
+      props['style'] = { ...(props['style'] as object ?? {}), fontSize: `${fontSize}px` };
+    }
 
     return [clip, text];
   }
