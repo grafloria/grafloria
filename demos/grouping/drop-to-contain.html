@@ -1,0 +1,131 @@
+<meta charset="utf-8">
+<title>Drop to contain — Grafloria</title>
+<link rel="stylesheet" href="../shell/demo.css?v=drawer3">
+<header id="demo-head"></header>
+<div id="canvas"></div>
+<script type="module">
+import { render } from '../shell/grafloria.js';
+import { defineDemo, check } from '../shell/demo.js?v=drawer3';
+
+// T8/visio — Visio containment: DROPPING a shape inside a container makes it a
+// member, so it then travels with the container. GroupMembershipService always
+// held the whole policy (innermost hit-test, per-group veto, coordinate
+// translation, undoable Add/RemoveFromGroupCommand); nothing called it, so a
+// drag into a frame used to change x/y and nothing else.
+defineDemo({
+  name: 'Drop to contain',
+  blurb: 'Drag a shape into a container and it JOINS it — membership follows the drop, so the shape then moves with its container. Drop it back outside and it unembeds.',
+  howTo: [
+    'Drag the loose "invoice" node into the "Billing" frame and let go: it becomes a member of Billing.',
+    'Now press an empty part of the Billing frame and drag it — "invoice" travels with the container, because it really joined it (not just overlapped it).',
+    'Drag "invoice" back out onto empty canvas: it unembeds and stops following the frame.',
+    'Drop it into "Archive" instead: it leaves Billing and joins Archive in one gesture.',
+    'Press Ctrl/⌘+Z: the membership change is on the same undo stack as the move.',
+  ],
+  reactflow: null,
+
+  async setup(ctx) {
+    const api = render({
+      nodes: [
+        { id: 'inv',  position: { x: 760, y: 420 }, size: { width: 130, height: 56 }, label: 'invoice' },
+        { id: 'paid', position: { x: 150, y: 150 }, size: { width: 130, height: 56 }, label: 'paid' },
+        { id: 'old',  position: { x: 520, y: 150 }, size: { width: 130, height: 56 }, label: '2024 ledger' },
+      ],
+      edges: [],
+    }, ctx.host);
+    ctx.instance = api;
+    ctx.diagram = api.getModel();
+    ctx.engine = api.getEngine();
+
+    // The gesture under test — opt-in, like every other interaction flag.
+    ctx.engine.setInteractionConfig({ enableGroupMembershipOnDrop: true, enableGroupDrag: true });
+
+    const billing = await ctx.engine.addGroup({ name: 'Billing' });
+    billing.setFrame({ x: 110, y: 100, width: 320, height: 220 });
+    await ctx.engine.addToGroup(billing.id, 'paid');
+    ctx.billing = billing;
+
+    const archive = await ctx.engine.addGroup({ name: 'Archive' });
+    archive.setFrame({ x: 480, y: 100, width: 320, height: 220 });
+    await ctx.engine.addToGroup(archive.id, 'old');
+    ctx.archive = archive;
+
+    api.renderNow();
+    await ctx.tick();
+  },
+
+  async assert(ctx) {
+    const api = ctx.instance, m = ctx.diagram, billing = ctx.billing, archive = ctx.archive;
+    const memberOf = (g) => [...g.members];
+
+    // A REAL pointer drag through the binder — the only way to prove the drop
+    // path is wired (calling the service directly would test the service, which
+    // was never the broken part).
+    const host = document.querySelector('svg.grafloria-diagram')?.closest('.grafloria-diagram-root')?.parentElement
+      || document.getElementById('canvas');
+    const rect = () => host.getBoundingClientRect();
+    let down = false;
+    const fire = (type, cx, cy) => {
+      if (type === 'pointerdown') down = true;
+      const buttons = type === 'pointerup' ? 0 : type === 'pointerdown' ? 1 : down ? 1 : 0;
+      if (type === 'pointerup') down = false;
+      host.dispatchEvent(new PointerEvent(type, { clientX: cx, clientY: cy, bubbles: true, cancelable: true, button: 0, buttons, pointerId: 1, pointerType: 'mouse' }));
+    };
+    const raf2 = () => new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r)));
+    /** Drag a node so its CENTRE lands on the given world point, then release. */
+    const dragTo = async (id, wx, wy) => {
+      const n = m.getNode(id);
+      const from = api.viewport.worldToClient(n.position.x + n.size.width / 2, n.position.y + n.size.height / 2, rect());
+      const to = api.viewport.worldToClient(wx, wy, rect());
+      fire('pointermove', from.x, from.y);
+      fire('pointerdown', from.x, from.y);
+      // several frames so the drag crosses the threshold and tracks like a hand
+      for (let i = 1; i <= 4; i++) {
+        fire('pointermove', from.x + ((to.x - from.x) * i) / 4, from.y + ((to.y - from.y) * i) / 4);
+        await raf2();
+      }
+      fire('pointerup', to.x, to.y);
+      await raf2();
+      await new Promise((r) => setTimeout(r, 30)); // the membership commit is async
+    };
+
+    // 0. The loose node starts outside every container.
+    check(!memberOf(billing).includes('inv'), 'invoice should start outside Billing');
+    check(!memberOf(archive).includes('inv'), 'invoice should start outside Archive');
+
+    // 1. THE TEETH — a real drag that ENDS inside Billing makes the node a member.
+    await dragTo('inv', 240, 275);
+    check(memberOf(billing).includes('inv'), 'dropping inside Billing did not make invoice a member');
+
+    // 2. Membership is REAL: the container now carries it. Drag an EMPTY part of
+    //    the Billing frame (enableGroupDrag) and the new member must travel with
+    //    it — that is what containment means, and it is what a user would do.
+    const before = { ...m.getNode('inv').position };
+    const gFrom = api.viewport.worldToClient(400, 300, rect());   // inside the frame, clear of both nodes
+    const gTo = api.viewport.worldToClient(440, 325, rect());     // +40, +25
+    fire('pointermove', gFrom.x, gFrom.y);
+    fire('pointerdown', gFrom.x, gFrom.y);
+    for (let i = 1; i <= 4; i++) {
+      fire('pointermove', gFrom.x + ((gTo.x - gFrom.x) * i) / 4, gFrom.y + ((gTo.y - gFrom.y) * i) / 4);
+      await raf2();
+    }
+    fire('pointerup', gTo.x, gTo.y);
+    await raf2();
+    const moved = m.getNode('inv');
+    check(Math.abs(moved.position.x - (before.x + 40)) < 3 && Math.abs(moved.position.y - (before.y + 25)) < 3,
+      `the member did not travel with its container (moved to ${Math.round(moved.position.x)},${Math.round(moved.position.y)} from ${Math.round(before.x)},${Math.round(before.y)})`);
+
+    // 3. Dropping into ANOTHER container transfers membership in one gesture.
+    await dragTo('inv', 640, 275);
+    check(memberOf(archive).includes('inv'), 'dropping into Archive did not add the member');
+    check(!memberOf(billing).includes('inv'), 'the node stayed a member of Billing after leaving it');
+
+    // 4. Dropping OUTSIDE every container unembeds it.
+    await dragTo('inv', 830, 450);
+    check(!memberOf(archive).includes('inv'), 'dropping outside every container did not unembed');
+    check(!memberOf(billing).includes('inv'), 'unembed left a stale membership');
+
+    ctx.instance.renderNow();
+  },
+});
+</script>

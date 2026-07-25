@@ -1,6 +1,6 @@
 import type { DiagramEngine, LinkModel, NodeModel, GroupModel } from '@grafloria/engine';
 // wave12/connect-ergonomics (gap 1): the ONE undoable step a subflow drag commits.
-import { MoveGroupCommand, MoveNodeCommand, MacroCommand } from '@grafloria/engine';
+import { MoveGroupCommand, MoveNodeCommand, MacroCommand, GroupMembershipService } from '@grafloria/engine';
 import type { Command } from '@grafloria/engine';
 import type { GroupFrameSnapshot, GroupNodeMove, GroupFrameMove } from '@grafloria/engine';
 import type { InteractionController } from '../interaction/interaction-controller';
@@ -23,6 +23,8 @@ import type { ToolHandle } from '../interaction/selection-tools';
 import { portWorldPosition } from '../svg/port-positioning';
 import { delegateWheelToScrollable } from './wheel-scroll-yield';
 import { SnapController } from '../interaction/snapping';
+import { InPlaceTextEditor, type TextEditTarget } from '../interaction/in-place-editor';
+import type { Rectangle } from '../types/geometry.types';
 import type { ProximityCandidate } from '../interaction/snapping';
 
 /**
@@ -156,6 +158,11 @@ export class DomEventBinder {
    * a highlight it painted can always be cleared by the same instance.
    */
   private snap?: SnapController;
+  /** T10 — the in-place label editor + its live DOM widget (lazy). */
+  private textEditor?: InPlaceTextEditor;
+  private activeTextInput?: HTMLInputElement;
+  /** T8 — lazily built per diagram; rebuilt when the diagram identity changes. */
+  private membership?: { service: GroupMembershipService; diagram: unknown };
   /** The proximity candidate currently highlighted mid-drag (for commit on drop). */
   private proximityCandidate: ProximityCandidate | null = null;
 
@@ -406,6 +413,7 @@ export class DomEventBinder {
     this.groupDrag = null;
     this.spaceKeyPressed = false;
     this.engine()?.setSnapGuides(null);
+    this.closeTextEditor(); // T10: never leave a caret floating over a dead canvas
   }
 
   // ==========================================================================
@@ -949,12 +957,22 @@ export class DomEventBinder {
     if (this.selectionTools.activeGesture() === 'resize') {
       const { x, y } = this.toWorld(event);
       if (
-        this.selectionTools.updateResize(engine, x, y, {
-          shift: event.shiftKey,
-          alt: event.altKey,
-          ctrl: event.ctrlKey,
-          meta: event.metaKey,
-        })
+        this.selectionTools.updateResize(
+          engine,
+          x,
+          y,
+          {
+            shift: event.shiftKey,
+            alt: event.altKey,
+            ctrl: event.ctrlKey,
+            meta: event.metaKey,
+          },
+          // T2/visio — snap the RESIZED box to sibling edges/centres. `updateResize`
+          // always accepted this hook and the binder never passed one, so a resize
+          // was the one gesture with no alignment help. Shares `enableHelperLines`
+          // with the drag: a host that asked for snap guides means both.
+          this.resizeSnapHook(engine)
+        )
       ) {
         this.host.interaction.invalidatePortHitCache();
         this.host.requestRender();
@@ -1174,6 +1192,8 @@ export class DomEventBinder {
       this.nodeDrag = null;
       // wave12: record the completed drag as one undoable step BEFORE anything else.
       if (moved && engine) this.commitNodeMove(engine, drag);
+      // T8/visio: the drop may also change WHAT CONTAINS the node.
+      if (moved && engine) this.applyMembershipOnDrop(engine, drag);
       // wave12 (gap 2): a drag that ended near a compatible port auto-links on drop.
       const connected = moved ? this.commitProximityConnection() : false;
       if (moved) this.emitNodesChange();
@@ -1237,6 +1257,14 @@ export class DomEventBinder {
       const node = engine.getDiagram()?.getNodeAtPosition(worldX, worldY);
       if (node) {
         this.host.emit('node:doubleclick', { node, world: { x: worldX, y: worldY } });
+        // T10/visio — double-click EDITS the label. InPlaceTextEditor (session +
+        // undoable commit) was real but auto-wired only in the Angular wrapper,
+        // so a vanilla/React/Vue embed got an event and no editor. Opt-in via
+        // `enableInPlaceTextEdit`; the host can still prefer its own editor by
+        // leaving it off and handling `node:doubleclick`.
+        if (engine.getInteractionConfig().enableInPlaceTextEdit === true) {
+          this.openTextEditor(engine, { type: 'node', nodeId: node.id });
+        }
       }
       return;
     }
@@ -1800,6 +1828,80 @@ export class DomEventBinder {
    * execute() is a visual no-op that records one history entry, and undo restores `from`.
    * A multi-node drag collapses into one MacroCommand — one gesture, one undo step.
    */
+  /**
+   * T8/visio — after a node drag COMMITS its move, reparent it into whatever
+   * container it was dropped in (or unembed it when dropped outside every one).
+   *
+   * The whole drop policy already lived in `GroupMembershipService`: innermost
+   * hit-test, per-group `canAddMember` veto, coordinate translation, and
+   * undoable Add/RemoveFromGroupCommand on the shared stack. It was simply
+   * never constructed outside its own specs, so a drag into a container moved
+   * the node's x/y and nothing else. This is the missing call.
+   *
+   * Runs only for a single-node drag: a multi-select drop into a container is a
+   * separate policy question (which member wins the hit-test?), and guessing it
+   * silently is worse than leaving it to a host.
+   */
+  /**
+   * T2/visio — the snap hook handed to `updateResize`, or undefined when helper
+   * lines are off. Snaps the resized box against every OTHER node's box and
+   * publishes the same guides the drag path draws, so a resize aligns to its
+   * neighbours instead of landing a pixel out.
+   */
+  private resizeSnapHook(engine: DiagramEngine): ((box: Rectangle) => Rectangle) | undefined {
+    if (engine.getInteractionConfig().enableHelperLines !== true) return undefined;
+    const id = this.selectionTools.activeGestureNodeId();
+    const snap = this.snapController();
+    snap.syncWithEngineConfig(engine);
+    const others = snap.siblingBoxes(engine, id ? [id] : []);
+    return (box: Rectangle) => {
+      const result = snap.computeSnap(box, others);
+      engine.setSnapGuides(
+        result.guides.length > 0
+          ? result.guides.map((g) =>
+              g.orientation === 'vertical'
+                ? { x1: g.position, y1: g.from, x2: g.position, y2: g.to, kind: 'alignment' as const }
+                : { x1: g.from, y1: g.position, x2: g.to, y2: g.position, kind: 'alignment' as const }
+            )
+          : null
+      );
+      return result.box;
+    };
+  }
+
+  private applyMembershipOnDrop(engine: DiagramEngine, drag: NodeDragState): void {
+    if (engine.getInteractionConfig().enableGroupMembershipOnDrop !== true) return;
+    if (drag.nodeIds.length !== 1 || this.isReadonly()) return;
+
+    const diagram = engine.getDiagram();
+    if (!diagram) return;
+    const node = diagram.getNode(drag.nodeIds[0]);
+    if (!node || node.state.locked) return;
+
+    if (!this.membership || this.membership.diagram !== diagram) {
+      this.membership = {
+        diagram,
+        service: new GroupMembershipService({ diagram, dispatcher: engine.commandManager }),
+      };
+    }
+    const service = this.membership.service;
+    service.refresh(); // groups may have moved during the drag
+
+    // Hit-test the node's CENTRE, not the pointer: the cursor can sit outside a
+    // small node's body, and it is the shape's position that decides where it
+    // landed.
+    const point = {
+      x: node.position.x + node.size.width / 2,
+      y: node.position.y + node.size.height / 2,
+    };
+    void Promise.resolve(service.handleNodeDragEnd(node.id, point)).then((result) => {
+      if (result?.changed) {
+        this.emitNodesChange();
+        this.host.requestRender();
+      }
+    });
+  }
+
   private commitNodeMove(engine: DiagramEngine, drag: NodeDragState): void {
     if (!drag.committed || !drag.startPositions) return;
     const diagram = engine.getDiagram();
@@ -1898,6 +2000,92 @@ export class DomEventBinder {
       case 'none':
       default: return true;
     }
+  }
+
+  /**
+   * T10/visio — open the transient text widget over a node's label.
+   *
+   * The SESSION (what text, where, single- or multi-line) and the COMMIT (an
+   * undoable command) both come from `InPlaceTextEditor`; the only thing this
+   * adds is the DOM input and where to put it — mapped through the live
+   * world→client transform so it lands on the label at any zoom or pan.
+   */
+  private openTextEditor(engine: DiagramEngine, target: TextEditTarget): void {
+    if (!this.textEditor) this.textEditor = new InPlaceTextEditor();
+    const editor = this.textEditor;
+    this.closeTextEditor();
+
+    const session = editor.begin(engine, target);
+    if (!session) return;
+
+    const rect = this.host.getRect();
+    const at = this.host.viewport.worldToClient(session.center.x, session.center.y, rect);
+
+    const input = document.createElement('input');
+    input.type = 'text';
+    input.value = session.value;
+    input.className = 'grafloria-text-editor';
+    input.setAttribute('aria-label', 'Edit label');
+    // Fixed positioning keys off the same client coords worldToClient reports,
+    // so the widget needs no assumptions about the container's offset parent.
+    Object.assign(input.style, {
+      position: 'fixed',
+      left: `${at.x}px`,
+      top: `${at.y}px`,
+      transform: 'translate(-50%, -50%)',
+      zIndex: '1000',
+      font: '12px sans-serif',
+      textAlign: 'center',
+      minWidth: '40px',
+      padding: '1px 4px',
+    } as Partial<CSSStyleDeclaration>);
+
+    let settled = false;
+    const cleanup = () => {
+      input.removeEventListener('keydown', onKeyDown);
+      input.removeEventListener('blur', commit);
+      input.remove();
+      if (this.activeTextInput === input) this.activeTextInput = undefined;
+    };
+    const commit = () => {
+      if (settled) return;
+      settled = true;
+      const command = editor.commit(engine, input.value);
+      cleanup();
+      if (command) void engine.commandManager.execute(command);
+      this.host.requestRender();
+      this.emitNodesChange();
+    };
+    const cancel = () => {
+      if (settled) return;
+      settled = true;
+      editor.cancel();
+      cleanup();
+      this.host.requestRender();
+    };
+    const onKeyDown = (e: KeyboardEvent) => {
+      // The canvas' own key handling (Delete, Escape, arrows) must not fire
+      // while a caret is live in this input.
+      e.stopPropagation();
+      if (e.key === 'Enter') { e.preventDefault(); commit(); }
+      else if (e.key === 'Escape') { e.preventDefault(); cancel(); }
+    };
+
+    input.addEventListener('keydown', onKeyDown);
+    input.addEventListener('blur', commit);
+    (this.container.ownerDocument ?? document).body.appendChild(input);
+    this.activeTextInput = input;
+    input.focus();
+    input.select();
+  }
+
+  /** Drop any live text widget without committing (a new edit, or teardown). */
+  private closeTextEditor(): void {
+    if (!this.activeTextInput) return;
+    const input = this.activeTextInput;
+    this.activeTextInput = undefined;
+    this.textEditor?.cancel();
+    input.remove();
   }
 
   private toWorld(event: MouseEvent): { x: number; y: number } {

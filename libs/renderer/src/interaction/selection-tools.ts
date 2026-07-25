@@ -515,6 +515,13 @@ export class SelectionToolsController {
     return this.gesture?.kind ?? null;
   }
 
+  /** The node the in-flight gesture is acting on (`null` when idle). Lets a host
+   *  exclude it from a snap's sibling set — a box must not snap to itself. */
+  activeGestureNodeId(): string | null {
+    const g = this.gesture as { nodeId?: string } | null;
+    return g?.nodeId ?? null;
+  }
+
   // ==========================================================================
   // The layer
   // ==========================================================================

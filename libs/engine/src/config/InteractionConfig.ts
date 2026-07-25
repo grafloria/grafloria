@@ -212,6 +212,27 @@ export interface InteractionConfig {
   enableHelperLines: boolean;
 
   /**
+   * T8/visio — Visio-style containment: dropping a node inside a container's
+   * frame REPARENTS it (and dropping it outside every container unembeds it),
+   * so it then moves with its container. `GroupMembershipService` always had
+   * the full drop logic — hit-test, per-group `canAddMember` veto, coordinate
+   * translation, undoable Add/RemoveFromGroupCommand — and nothing ever called
+   * it, so a drag into a container only changed x/y. Default false (opt-in),
+   * like every other gesture in this block: turning it on globally changes what
+   * an existing drag MEANS for any host that draws frames decoratively.
+   */
+  enableGroupMembershipOnDrop: boolean;
+
+  /**
+   * T10/visio — double-click a node to edit its label in place. The editor
+   * (session + undoable commit) shipped in the renderer but was auto-wired ONLY
+   * in the Angular wrapper, so a vanilla / React / Vue embed got a
+   * `node:doubleclick` event and no caret. Default false (opt-in) so a host that
+   * already answers that event with its own editor keeps sole control.
+   */
+  enableInPlaceTextEdit: boolean;
+
+  /**
    * wave12/connect-ergonomics (gap 3) — React-Flow "Easy Connect": make the
    * whole node BODY a connection handle. A press on a node body (not over a
    * specific port) starts a connection from the node's nearest/default port
@@ -387,7 +408,13 @@ export const DEFAULT_INTERACTION_CONFIG: InteractionConfig = {
   enableGroupDrag: false,
   enableProximityConnect: false,
   proximityConnectRadius: 0, // 0 → fall back to DEFAULT_SNAP_CONFIG.proximityConnectRadius
+  // Kept opt-in at the library level: a global default-on regresses the drag
+  // covenant (the interaction gate's 1:1-move assumption — verified: it fails
+  // DRAG-ATTACH on contextual-zoom + LINK-SELECT-SPAN on layout-portfolio), and
+  // changes the feel for every embedder. The Visio editor surface enables it.
   enableHelperLines: false,
+  enableGroupMembershipOnDrop: false,
+  enableInPlaceTextEdit: false,
   enableEasyConnect: false,
   easyConnectModifier: 'none',
 };
