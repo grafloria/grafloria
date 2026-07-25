@@ -82,6 +82,20 @@ const CSS = `
 }
 .gf-sd-input:focus { border-color: var(--gf-st-accent); }
 .gf-sd-check { width: 16px; height: 16px; accent-color: var(--gf-st-accent); }
+.gf-sd-section {
+  font-size: 10.5px; font-weight: 600; text-transform: uppercase; letter-spacing: .04em;
+  color: var(--gf-st-mut); margin: 10px 0 2px; padding-top: 8px; border-top: 1px solid var(--gf-st-line);
+}
+.gf-sd-section:first-child { margin-top: 0; padding-top: 0; border-top: 0; }
+.gf-sd-danger {
+  margin-top: 8px; padding: 6px 10px; border-radius: 7px; cursor: pointer;
+  border: 1px solid #fecaca; background: #fef2f2; color: #b91c1c;
+  font: 600 12px ui-sans-serif, system-ui, sans-serif;
+}
+.gf-sd-danger:hover { background: #fee2e2; }
+@media (prefers-color-scheme: dark) {
+  .gf-sd-danger { background: #2a1414; border-color: #7f1d1d; color: #fca5a5; }
+}
 
 /* The canvas while a stencil is held over it. */
 .gf-stencil-target { outline: 2px dashed var(--gf-st-accent); outline-offset: -3px; }
