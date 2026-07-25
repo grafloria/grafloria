@@ -70,8 +70,12 @@ So the fix for most rows is a **one-line data change per master** — point it a
 |---|---|---|
 | BPMN | ~~all 6 Tasks render sharp~~ | **CORRECTED + DONE.** Measured: plain **Task already rendered rx=8** and **UML State rx=12** — both were right; my first measurement read the drop-shadow `<rect>` (rx=4) instead of the body. The real defect was narrower: the 5 task *variants* (User/Service/Script/Manual/Business Rule) carried **no** `cornerRadius` while plain Task did. All six are now rx=8. |
 | UML | **Class / Interface** | ~~should be rounded~~ — **verified correctly SHARP** (rx=none), which is right for UML classifiers. No action. |
-| BPMN | events | correct circles, but no **event-type icon** (envelope / clock / lightning) inside |
-| UML | **Class / Interface / Enumeration** etc. | rectangle is correct, but real UML needs **name / attribute / method compartments** — the divider lines are absent |
+| BPMN | events | ~~no event-type icon~~ — **DONE.** ✉ / ⏱ / ⚡ via the panel `icon.glyph` slot. |
+| UML | **Class / Interface / Enumeration** etc. | ~~no compartments~~ — **DONE.** Real name + member compartments via `metadata.panel`. |
+
+> **STATUS: DONE (2026-07-25).** The decisive find: `libs/renderer/src/svg/panel.ts` + `renderPanelOverlay()` already implement a complete, themed, **SVG-native** composite panel — header band, stacked rows, corner icon/badges — whose own doc comment says it exists for *"ERD/UML rows"*. **Nothing set `metadata.panel`.** Another built-tested-and-wired-to-nothing subsystem, the same shape as `GroupMembershipService` and `InPlaceTextEditor`.
+>
+> Chosen over the UML kit's `metadata.html` route deliberately: an HTML-layer card is not vector-exportable and depends on a layer the plain SVG embed does not run — the exact dependency that made all 109 dropped masters render blank earlier. Verified by rendering before building on it.
 
 ## D · Correct today ✓
 
