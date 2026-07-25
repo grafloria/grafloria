@@ -1,0 +1,103 @@
+<meta charset="utf-8">
+<title>Stencil palette (Visio-style) — Grafloria</title>
+<link rel="stylesheet" href="../shell/demo.css?v=drawer3">
+<header id="demo-head"></header>
+<div id="canvas"></div>
+<style>
+  /* The two-pane authoring frame: palette rail + canvas. */
+  #stencil-split { display: flex; height: 100%; min-height: 0; }
+  #stencil-rail { width: 232px; flex: none; }
+  #stencil-canvas { flex: 1; min-width: 0; position: relative; }
+</style>
+<script type="module">
+import { render, listStencils, registerStencils, bindStencilPalette } from '../shell/grafloria.js';
+import { defineDemo, check } from '../shell/demo.js?v=drawer3';
+
+defineDemo({
+  name: 'Stencil palette (Visio-style)',
+  blurb: 'Drag a shape out of a categorized stencil palette and drop it on the canvas — 80 BPMN / flowchart / UML / ERD masters, searchable, each thumbnail drawn from the shape\'s own outline geometry.',
+  howTo: [
+    'Look at the rail: stencil sections (Flowchart, BPMN, UML, ERD, Basic…) each showing a count. Every thumbnail is the REAL shape — the palette draws it from the master\'s own outline, not a stock icon.',
+    'Drag any shape from the rail onto the canvas: it drops centred on your cursor as a live node — selectable, draggable, connectable like any other.',
+    'Type in the search box ("gateway", "entity", "decision"): sections filter live and matching groups open themselves.',
+    'Press Ctrl/⌘+Z after a drop: the whole shape disappears in ONE undo step — a drop is a single command, not a raw model write.',
+    'Click a section header to collapse it; the palette remembers which sections you closed while you keep browsing.',
+  ],
+  reactflow: null,
+
+  async setup(ctx) {
+    // Two panes inside the demo host: the palette rail and the diagram canvas.
+    const split = document.createElement('div');
+    split.id = 'stencil-split';
+    const rail = document.createElement('div');
+    rail.id = 'stencil-rail';
+    const canvasEl = document.createElement('div');
+    canvasEl.id = 'stencil-canvas';
+    split.append(rail, canvasEl);
+    ctx.host.appendChild(split);
+
+    const api = render({ nodes: [], edges: [] }, canvasEl);
+    ctx.instance = api;
+    ctx.diagram = api.getModel();
+
+    // Every built-in master behind engine.templateRegistry, so NodeFactory can
+    // stamp any of them by id (T4/T5).
+    ctx.registered = registerStencils(api.getEngine().templateRegistry);
+
+    // The palette itself: sections from listStencils(), drops onto the canvas.
+    ctx.palette = bindStencilPalette(api, { palette: rail, canvas: canvasEl }, {
+      data: (master) => ({ label: master.meta?.name ?? master.id }),
+    });
+    ctx.stencils = listStencils();
+
+    await ctx.tick();
+  },
+
+  async assert(ctx) {
+    const api = ctx.instance, m = ctx.diagram;
+
+    // 1. The palette rendered real, categorized sections.
+    const groups = document.querySelectorAll('#stencil-rail .gf-stencil-group');
+    check(groups.length >= 6, `expected ≥6 stencil sections, got ${groups.length}`);
+    const items = document.querySelectorAll('#stencil-rail .gf-stencil-item');
+    check(items.length > 0, 'no shapes rendered in the palette');
+    check(ctx.registered >= 80, `expected ≥80 masters registered, got ${ctx.registered}`);
+
+    // 2. Every item is DRAGGABLE and carries a real thumbnail (not a placeholder).
+    const first = items[0];
+    check(first.draggable === true, 'palette items must be draggable');
+    check(!!first.querySelector('svg'), 'palette item has no thumbnail svg');
+
+    // 3. THE TEETH — a drop actually stamps a live node at the requested point.
+    const before = m.getNodes().length;
+    const id = await ctx.palette.place('flowchart-decision', { x: 400, y: 260 });
+    check(!!id, 'place() returned no node id');
+    const node = m.getNode(id);
+    check(!!node, 'the placed master is not in the model');
+    check(node.type === 'flowchart:decision', `placed node has the wrong type: ${node.type}`);
+    // Dropped CENTRED on the point (100×100 master → top-left at 350,210).
+    check(Math.abs(node.position.x - 350) < 2, `expected x≈350, got ${node.position.x}`);
+    check(Math.abs(node.position.y - 210) < 2, `expected y≈210, got ${node.position.y}`);
+    check(m.getNodes().length === before + 1, 'a drop must add exactly one node');
+
+    // 4. A drop is ONE undoable command — Ctrl+Z removes the whole shape.
+    await api.getEngine().commandManager.undo();
+    check(!m.getNode(id), 'undo did not remove the placed shape');
+    check(m.getNodes().length === before, 'undo left the model dirty');
+    await api.getEngine().commandManager.redo();
+    check(!!m.getNode(id), 'redo did not restore the placed shape');
+
+    // 5. Search narrows the list and never hides a match.
+    ctx.palette.setSearch('gateway');
+    const shown = [...document.querySelectorAll('#stencil-rail .gf-stencil-item')];
+    check(shown.length > 0, 'search for "gateway" matched nothing');
+    check(shown.every((el) => (el.textContent || '').toLowerCase().includes('gateway')),
+      'search returned a non-matching shape');
+    ctx.palette.setSearch('');
+    check(document.querySelectorAll('#stencil-rail .gf-stencil-item').length === items.length,
+      'clearing the search did not restore the full list');
+
+    api.renderNow();
+  },
+});
+</script>

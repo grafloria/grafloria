@@ -686,6 +686,15 @@ export type {
   TableWidgetData,
 } from './lib/dashboard-kit';
 
+// The stencil kit — a Visio-style palette that drags shape masters onto the
+// canvas (T6/T7). Pairs with listStencils()/registerStencils() above.
+export { bindStencilPalette, ensureStencilKitStyles } from './lib/stencil-kit';
+export type {
+  StencilPaletteApi,
+  StencilPaletteOptions,
+  StencilPaletteHandle,
+} from './lib/stencil-kit';
+
 /* ==========================================================================
  * PHASE 0 — THE INVERSION.
  *
