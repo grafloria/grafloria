@@ -42,3 +42,6 @@ export * from './PortCommands'; // wave6/ports (dynamic auto-ports)
 
 // C — node stacking order as undoable commands (dashboard z-order).
 export * from './NodeZOrderCommands';
+
+// T3 — Align & Distribute (Visio/Figma-style multi-node arrangement).
+export * from './AlignCommands';
