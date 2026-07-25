@@ -80,6 +80,30 @@ defineDemo({
     check(Math.abs(node.position.y - 210) < 2, `expected y≈210, got ${node.position.y}`);
     check(m.getNodes().length === before + 1, 'a drop must add exactly one node');
 
+    // 3b. THE TEETH THAT WERE MISSING — a placed shape must actually PAINT.
+    //     Node-in-model + a <g> in the DOM is NOT proof: NodeFactory flags every
+    //     master carrying `structure.html` as useHTMLLayer, and the SVG renderer
+    //     answers that with an EMPTY group. All 109 masters rendered as nothing
+    //     while every model-level check stayed green. Assert ink, not presence.
+    const painted = (nid) => {
+      const el = document.querySelector(`#canvas [data-node-id="${nid}"]`);
+      return el ? el.querySelectorAll('rect,path,circle,ellipse,polygon,text').length : 0;
+    };
+    api.renderNow();
+    await new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r)));
+    check(painted(id) > 0, 'the placed shape rendered NO ink (empty node group)');
+    // and not just this one — sample every stencil, since the flag is per-master
+    for (const st of ctx.stencils) {
+      const probe = st.masters[0];
+      const pid = await ctx.palette.place(probe.id, { x: 700, y: 420 });
+      api.renderNow();
+      await new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r)));
+      check(painted(pid) > 0, `stencil "${st.id}" master "${probe.id}" rendered NO ink`);
+      // undo THROUGH the stack, so the probe leaves the history exactly as it
+      // found it and step 4's undo still targets the step-3 placement
+      await api.getEngine().commandManager.undo();
+    }
+
     // 4. A drop is ONE undoable command — Ctrl+Z removes the whole shape.
     await api.getEngine().commandManager.undo();
     check(!m.getNode(id), 'undo did not remove the placed shape');
