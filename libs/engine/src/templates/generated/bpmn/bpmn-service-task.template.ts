@@ -40,7 +40,8 @@ export const bpmnServiceTaskTemplate: NodeTemplate = {
       "fill": "#E8F5E9",
       "stroke": "#000000",
       "strokeWidth": 2,
-      "opacity": 1
+      "opacity": 1,
+      "cornerRadius": 8
     },
     "html": {
       "mode": "template",
@@ -101,7 +102,8 @@ export const bpmnServiceTaskTemplate: NodeTemplate = {
       "connectable": true,
       "resizable": false,
       "deletable": true
-    }
+    },
+      "cornerRadius": 8
   },
   "defaultData": {
     "label": "Service Task"

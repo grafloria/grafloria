@@ -141002,7 +141002,8 @@ var bpmnUserTaskTemplate = {
       "fill": "#E3F2FD",
       "stroke": "#000000",
       "strokeWidth": 2,
-      "opacity": 1
+      "opacity": 1,
+      "cornerRadius": 8
     },
     "html": {
       "mode": "template",
@@ -141065,7 +141066,8 @@ var bpmnUserTaskTemplate = {
       "connectable": true,
       "resizable": false,
       "deletable": true
-    }
+    },
+    "cornerRadius": 8
   },
   "defaultData": {
     "label": "User Task"
@@ -141115,7 +141117,8 @@ var bpmnServiceTaskTemplate = {
       "fill": "#E8F5E9",
       "stroke": "#000000",
       "strokeWidth": 2,
-      "opacity": 1
+      "opacity": 1,
+      "cornerRadius": 8
     },
     "html": {
       "mode": "template",
@@ -141178,7 +141181,8 @@ var bpmnServiceTaskTemplate = {
       "connectable": true,
       "resizable": false,
       "deletable": true
-    }
+    },
+    "cornerRadius": 8
   },
   "defaultData": {
     "label": "Service Task"
@@ -141228,7 +141232,8 @@ var bpmnManualTaskTemplate = {
       "fill": "#FFF3E0",
       "stroke": "#000000",
       "strokeWidth": 2,
-      "opacity": 1
+      "opacity": 1,
+      "cornerRadius": 8
     },
     "html": {
       "mode": "template",
@@ -141291,7 +141296,8 @@ var bpmnManualTaskTemplate = {
       "connectable": true,
       "resizable": false,
       "deletable": true
-    }
+    },
+    "cornerRadius": 8
   },
   "defaultData": {
     "label": "Manual Task"
@@ -141341,7 +141347,8 @@ var bpmnBusinessRuleTaskTemplate = {
       "fill": "#F3E5F5",
       "stroke": "#000000",
       "strokeWidth": 2,
-      "opacity": 1
+      "opacity": 1,
+      "cornerRadius": 8
     },
     "html": {
       "mode": "template",
@@ -141404,7 +141411,8 @@ var bpmnBusinessRuleTaskTemplate = {
       "connectable": true,
       "resizable": false,
       "deletable": true
-    }
+    },
+    "cornerRadius": 8
   },
   "defaultData": {
     "label": "Business Rule Task"
@@ -141454,7 +141462,8 @@ var bpmnScriptTaskTemplate = {
       "fill": "#FCE4EC",
       "stroke": "#000000",
       "strokeWidth": 2,
-      "opacity": 1
+      "opacity": 1,
+      "cornerRadius": 8
     },
     "html": {
       "mode": "template",
@@ -141517,7 +141526,8 @@ var bpmnScriptTaskTemplate = {
       "connectable": true,
       "resizable": false,
       "deletable": true
-    }
+    },
+    "cornerRadius": 8
   },
   "defaultData": {
     "label": "Script Task"
