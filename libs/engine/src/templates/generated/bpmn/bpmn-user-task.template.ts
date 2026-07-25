@@ -40,7 +40,8 @@ export const bpmnUserTaskTemplate: NodeTemplate = {
       "fill": "#E3F2FD",
       "stroke": "#000000",
       "strokeWidth": 2,
-      "opacity": 1
+      "opacity": 1,
+      "cornerRadius": 8
     },
     "html": {
       "mode": "template",
@@ -101,7 +102,8 @@ export const bpmnUserTaskTemplate: NodeTemplate = {
       "connectable": true,
       "resizable": false,
       "deletable": true
-    }
+    },
+      "cornerRadius": 8
   },
   "defaultData": {
     "label": "User Task"
