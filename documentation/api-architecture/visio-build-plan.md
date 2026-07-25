@@ -54,6 +54,15 @@ Phase 1 ships value in week one and is independent of everything else. Phase 2 i
 
 ## Phase 2 — Stencils & the palette (the signature feature)
 
+> **Status (2026-07-25, branch `feat/visio-phase1`): T5, T6, T7 all ✅ DONE.**
+> - **T5** (`069890c`) — `Stencil` model + `listStencils()`/`getStencil()`/`registerStencils()`, **8 named sections** built from the authored notation groupings (`meta.category` is too coarse: all 30 UML + 19 ERD masters share `"diagram"`). Named front-door exports added. 7 tests; 544 element tests still green.
+> - **T6+T7** (`a1f873f`) — `bindStencilPalette()` in a new `libs/element/src/lib/stencil-kit/` (mirrors the dashboard-kit idiom). Categorized collapsible sections, live search, and a thumbnail drawn from each master's **own** `getShape(type).outline(w,h)` — the palette shows the real silhouette, not stock icons. Drag-to-place via **HTML5 DnD** (deliberately not pointer events: the canvas binder consumes `pointerdown`).
+> - **Undo:** `NodeFactory.createFromTemplate` writes straight to the model, so the kit captures the created subtree, detaches it, and replays it through the CommandManager as one `BatchCommand` → **one Ctrl+Z removes a dropped shape.**
+> - **Proof:** 105th demo `demos/diagrams/stencil-palette.html`. Live-verified: **8 sections, 109 shapes, 109 thumbnails**, scripted checks PASS, and a **real Playwright HTML5 drag** places `flowchart:connector` at exactly the cursor-centred point with one-undo. Gates: gallery **105/105**, interaction 1/1, zero page errors.
+>
+> **Remaining for the full Visio experience:** Phase 3 (T8 drag-into-container reparent · T9 shape-data panel · T10 in-place text) and Phase 4 (T11 flagship editor, which is also where T1/T2 snapping gets switched on).
+
+
 ### T4 · Own the template registry on the engine + register the 80 masters — **S**
 - **Why:** `TemplateRegistry` is real and wired to `NodeFactory`, and a 26-template `template-library/` is registered — but the **80 `templates/generated/` masters** (bpmn 15, erd 19, flowchart 16, uml 30) are imported by nothing, and `engine.templateRegistry` as a `DiagramEngine` property is still absent (row: *Shape / stencil libraries*).
 - **Touch:** `libs/engine/src/templates/TemplateRegistry.ts:14`, `templates/generated/index.ts`, `template-library/integration.ts:62` (`registerTemplateLibrary`), `NodeFactory.ts:29`; add a `templateRegistry`/`nodeFactory` property to `DiagramEngine.ts`.
