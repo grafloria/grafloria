@@ -24,6 +24,7 @@ import { portWorldPosition } from '../svg/port-positioning';
 import { delegateWheelToScrollable } from './wheel-scroll-yield';
 import { SnapController } from '../interaction/snapping';
 import { InPlaceTextEditor, type TextEditTarget } from '../interaction/in-place-editor';
+import type { Rectangle } from '../types/geometry.types';
 import type { ProximityCandidate } from '../interaction/snapping';
 
 /**
@@ -956,12 +957,22 @@ export class DomEventBinder {
     if (this.selectionTools.activeGesture() === 'resize') {
       const { x, y } = this.toWorld(event);
       if (
-        this.selectionTools.updateResize(engine, x, y, {
-          shift: event.shiftKey,
-          alt: event.altKey,
-          ctrl: event.ctrlKey,
-          meta: event.metaKey,
-        })
+        this.selectionTools.updateResize(
+          engine,
+          x,
+          y,
+          {
+            shift: event.shiftKey,
+            alt: event.altKey,
+            ctrl: event.ctrlKey,
+            meta: event.metaKey,
+          },
+          // T2/visio — snap the RESIZED box to sibling edges/centres. `updateResize`
+          // always accepted this hook and the binder never passed one, so a resize
+          // was the one gesture with no alignment help. Shares `enableHelperLines`
+          // with the drag: a host that asked for snap guides means both.
+          this.resizeSnapHook(engine)
+        )
       ) {
         this.host.interaction.invalidatePortHitCache();
         this.host.requestRender();
@@ -1831,6 +1842,33 @@ export class DomEventBinder {
    * separate policy question (which member wins the hit-test?), and guessing it
    * silently is worse than leaving it to a host.
    */
+  /**
+   * T2/visio — the snap hook handed to `updateResize`, or undefined when helper
+   * lines are off. Snaps the resized box against every OTHER node's box and
+   * publishes the same guides the drag path draws, so a resize aligns to its
+   * neighbours instead of landing a pixel out.
+   */
+  private resizeSnapHook(engine: DiagramEngine): ((box: Rectangle) => Rectangle) | undefined {
+    if (engine.getInteractionConfig().enableHelperLines !== true) return undefined;
+    const id = this.selectionTools.activeGestureNodeId();
+    const snap = this.snapController();
+    snap.syncWithEngineConfig(engine);
+    const others = snap.siblingBoxes(engine, id ? [id] : []);
+    return (box: Rectangle) => {
+      const result = snap.computeSnap(box, others);
+      engine.setSnapGuides(
+        result.guides.length > 0
+          ? result.guides.map((g) =>
+              g.orientation === 'vertical'
+                ? { x1: g.position, y1: g.from, x2: g.position, y2: g.to, kind: 'alignment' as const }
+                : { x1: g.from, y1: g.position, x2: g.to, y2: g.position, kind: 'alignment' as const }
+            )
+          : null
+      );
+      return result.box;
+    };
+  }
+
   private applyMembershipOnDrop(engine: DiagramEngine, drag: NodeDragState): void {
     if (engine.getInteractionConfig().enableGroupMembershipOnDrop !== true) return;
     if (drag.nodeIds.length !== 1 || this.isReadonly()) return;
